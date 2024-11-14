@@ -50,27 +50,6 @@ create table user_audit_log
 );
 
 /*
- * Authentication functions
- */
--- Check if discord login is allowed
-create or replace function is_allowed_login()
-    returns boolean as
-$$
-declare
-    discord_id text;
-begin
-    -- Get the user's discord id from auth.jwt()
-    discord_id := (select raw_user_meta_data ->> 'discord_id' from auth.users where id = auth.uid());
-
-    -- Check if user exists in user_profiles and is active
-    return exists (select 1
-                   from user_profiles
-                   where discord_id = discord_id
-                     and is_active = true);
-end;
-$$ language plpgsql security definer;
-
-/*
  * Role checking functions
  */
 -- Check if user has specific role
@@ -87,7 +66,8 @@ begin
                            or 'president'::role_type = any (roles)
                        ));
 end;
-$$ language plpgsql security definer;
+$$ language plpgsql security invoker
+                    set search_path = '';
 
 -- Check if user has any of the specified roles
 create or replace function has_any_role(user_id uuid, required_roles role_type[])
@@ -103,7 +83,8 @@ begin
                            or 'president'::role_type = any (roles)
                        ));
 end;
-$$ language plpgsql security definer;
+$$ language plpgsql security invoker
+                    set search_path = '';
 
 /*
  * Triggers
@@ -116,7 +97,7 @@ begin
     new.updated_at = now();
     return new;
 end;
-$$ language plpgsql;
+$$ language plpgsql set search_path = '';
 
 create trigger update_user_profiles_updated_at
     before update
@@ -141,7 +122,8 @@ begin
     end if;
     return new;
 end;
-$$ language plpgsql security definer;
+$$ language plpgsql security invoker
+                    set search_path = '';
 
 create trigger log_role_changes
     after update
@@ -161,41 +143,54 @@ alter table user_audit_log
 alter table auth.users
     enable row level security;
 
--- Auth policies
-create policy "Only allowed users can sign in"
-    on auth.users
-    for select
-    using (
-    is_allowed_login()
-    );
 
 -- User profile policies
 create policy "Users can view all active profiles"
     on user_profiles
-    for select using (
+    for select
+    to authenticated
+    using (
     is_active = true
-        and is_allowed_login()
+    );
+
+create policy "Only admins and committee members can add profiles"
+    on user_profiles
+    for insert
+    to authenticated
+    with check (
+    has_any_role((select auth.uid()), array ['admin', 'president', 'committee_coordinator']::role_type[])
+    );
+
+create policy "Only admins, committee members and the user can delete profiles"
+    on user_profiles
+    for delete
+    to authenticated
+    using (
+    has_any_role((select auth.uid()), array ['admin', 'president', 'committee_coordinator']::role_type[])
+        or id = (select auth.uid())
     );
 
 create policy "Users can update their own basic info"
     on user_profiles
-    for update using (id = auth.uid())
-    with check (id = auth.uid());
+    for update
+    to authenticated
+    using (id = (select auth.uid()));
 
 create policy "Committee coordinators can manage roles"
     on user_profiles
-    for update using (
-    has_any_role(auth.uid(), array ['committee_coordinator', 'president', 'admin']::role_type[])
-    )
-    with check (
-    has_any_role(auth.uid(), array ['committee_coordinator', 'president', 'admin']::role_type[])
+    for update
+    to authenticated
+    using (
+    has_any_role((select auth.uid()), array ['committee_coordinator', 'president', 'admin']::role_type[])
     );
 
 -- Audit log policies
 create policy "Audit logs viewable by admins"
     on user_audit_log
-    for select using (
-    has_any_role(auth.uid(), array ['admin', 'president', 'committee_coordinator']::role_type[])
+    for select
+    to authenticated
+    using (
+    has_any_role((select auth.uid()), array ['admin', 'president', 'committee_coordinator']::role_type[])
     );
 
 /*
