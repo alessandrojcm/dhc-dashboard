@@ -31,7 +31,6 @@ create table user_profiles
     first_name text not null,
     last_name  text not null,
     is_active  boolean                  default true,
-    last_login timestamp with time zone,
     created_at timestamp with time zone default now(),
     updated_at timestamp with time zone default now()
 );
@@ -85,11 +84,7 @@ begin
     return exists (select 1
                    from user_roles
                    where user_roles.user_id = uid
-                     and (
-                       role && required_roles
-                           or 'admin'::role_type = any (role)
-                           or 'president'::role_type = any (role)
-                       ));
+                     and (select role = any (required_roles)));
 end;
 $$ language plpgsql security invoker
                     set search_path = '';
@@ -316,7 +311,7 @@ grant all
 
 revoke all
     on table public.user_roles
-    from authenticated, anon, public;
+    from anon, public;
 
 create policy "Allow auth admin to read user roles" ON public.user_roles
     as permissive for select
@@ -373,7 +368,7 @@ create policy "Committee coordinators can add roles"
     on user_roles
     for insert
     to authenticated
-    using (
+    with check (
     has_any_role((select auth.uid()), array ['committee_coordinator', 'president', 'admin']::role_type[])
     );
 
@@ -389,7 +384,8 @@ create policy "Users, admin and president can see their own roles"
     on user_roles
     for select
     to authenticated using (
-        (select auth.uid()) = user_roles.user_id or has_any_role((select auth.uid()), array ['committee_coordinator', 'president', 'admin']::role_type[])
+    (select auth.uid()) = user_roles.user_id or
+    has_any_role((select auth.uid()), array ['committee_coordinator', 'president', 'admin']::role_type[])
     );
 
 -- Audit log policies
