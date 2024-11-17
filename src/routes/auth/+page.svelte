@@ -9,6 +9,7 @@
 	const errorMessage = new URLSearchParams(hash).get('error_description');
 
 	export const prerender = true;
+	export const csr = false;
 </script>
 
 <Card class="flex flex-col self-center w-2/4 h-96 justify-around items-center mt-[40%]">
