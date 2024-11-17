@@ -25,7 +25,7 @@
 	</main>
 </div>
 
-<style>
+<style lanb="postcss">
 	.app {
 		display: flex;
 		flex-direction: column;
