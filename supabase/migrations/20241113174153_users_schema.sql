@@ -17,6 +17,7 @@ create type role_type as enum (
     'pr_manager',
     'volunteer_coordinator',
     'research_coordinator',
+    'coach',
     -- Normal members
     'member'
     );
@@ -65,12 +66,10 @@ create or replace function has_role(uid uuid, required_role role_type)
 $$
 begin
     return exists (select 1
-                   from user_roles
+                   from public.user_roles
                    where user_roles.user_id = uid
                      and (
-                       required_role = any (role)
-                           or 'admin'::role_type = any (role)
-                           or 'president'::role_type = any (role)
+                       required_role = role
                        ));
 end;
 $$ language plpgsql security invoker
@@ -82,7 +81,7 @@ create or replace function has_any_role(uid uuid, required_roles role_type[])
 $$
 begin
     return exists (select 1
-                   from user_roles
+                   from public.user_roles
                    where user_roles.user_id = uid
                      and (select role = any (required_roles)));
 end;
@@ -363,29 +362,39 @@ create policy "Users can update their own basic info"
     for update
     to authenticated
     using (id = (select auth.uid()));
-
-create policy "Committee coordinators can add roles"
-    on user_roles
-    for insert
-    to authenticated
-    with check (
-    has_any_role((select auth.uid()), array ['committee_coordinator', 'president', 'admin']::role_type[])
+-- Existing policy: Allow committee coordinators, presidents, and admins to add roles
+-- Updated to restrict adding 'admin' role only to admins
+CREATE POLICY "Committee coordinators can add roles"
+    ON user_roles
+    FOR INSERT
+    TO authenticated
+    WITH CHECK (
+    (
+        has_any_role((SELECT auth.uid()), ARRAY['committee_coordinator', 'president', 'admin']::role_type[]) AND
+        role <> 'admin'
+        ) OR (
+        has_role((SELECT auth.uid()), 'admin') AND
+        role = 'admin'
+        )
     );
 
-create policy "Committee coordinators can update roles"
-    on user_roles
-    for update
-    to authenticated
-    using (
-    has_any_role((select auth.uid()), array ['committee_coordinator', 'president', 'admin']::role_type[])
+-- Existing policy: Committee coordinators can update roles
+CREATE POLICY "Committee coordinators can update roles"
+    ON user_roles
+    FOR UPDATE
+    TO authenticated
+    USING (
+    has_any_role((SELECT auth.uid()), ARRAY['committee_coordinator', 'president', 'admin']::role_type[])
     );
 
-create policy "Users, admin and president can see their own roles"
-    on user_roles
-    for select
-    to authenticated using (
-    (select auth.uid()) = user_roles.user_id or
-    has_any_role((select auth.uid()), array ['committee_coordinator', 'president', 'admin']::role_type[])
+-- Existing policy: Users, admin and president can see their own roles
+CREATE POLICY "Users, admin and president can see their own roles"
+    ON user_roles
+    FOR SELECT
+    TO authenticated
+    USING (
+    (SELECT auth.uid()) = user_roles.user_id OR
+    has_any_role((SELECT auth.uid()), ARRAY['committee_coordinator', 'president', 'admin']::role_type[])
     );
 
 -- Audit log policies
