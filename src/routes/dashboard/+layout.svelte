@@ -1,10 +1,14 @@
 <script lang="ts">
-	import Navbar from '$lib/components/ui/Navbar.svelte';
 	import type { LayoutData } from './$types';
 	import type { UserData } from '$lib/types';
+	import { SidebarProvider } from '$lib/components/ui/sidebar';
+	import DashboardSidebar from '$lib/components/ui/DashboardSidebar.svelte';
+	import * as Breadcrumb from '$lib/components/ui/breadcrumb/index.js';
+	import { Separator } from '$lib/components/ui/separator';
 
 	let { children, data }: { data: LayoutData; children: any } = $props();
 	let supabase = $derived(data.supabase);
+	let roles = $derived.by(() => new Set(data.roles));
 	let userData = $derived.by(() => {
 		return Promise.all([
 			supabase
@@ -25,10 +29,20 @@
 <svelte:head>
 	<title>Dublin Hema Club - Dashboard</title>
 </svelte:head>
-<Navbar logout={() => supabase.auth.signOut()} {userData} />
-<main class="max-w-7xl">
-	{@render children()}
-</main>
+<SidebarProvider>
+	<DashboardSidebar {roles} logout={() => supabase.auth.signOut()} {userData} />
+	<main class="w-full">
+		<Breadcrumb.Root class="m-6">
+			<Breadcrumb.List>
+				<Breadcrumb.Item>
+					<Breadcrumb.Page>Dashboard</Breadcrumb.Page>
+				</Breadcrumb.Item>
+			</Breadcrumb.List>
+		</Breadcrumb.Root>
+		<Separator class="mb-2" />
+		{@render children()}
+	</main>
+</SidebarProvider>
 
 <style>
 	main {
@@ -38,6 +52,6 @@
 		width: 100%;
 		margin: 0 auto;
 		box-sizing: border-box;
-		padding: 1rem;
+		padding-bottom: 1rem;
 	}
 </style>

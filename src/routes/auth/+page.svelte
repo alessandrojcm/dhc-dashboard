@@ -7,16 +7,13 @@
 
 	const hash = $page.url.hash.split('#')[1] as string;
 	const errorMessage = new URLSearchParams(hash).get('error_description');
-
-	export const prerender = true;
-	export const csr = false;
 </script>
 
-<Card class="flex flex-col self-center w-2/4 h-96 justify-around items-center mt-[40%]">
+<Card class="flex flex-col self-center w-2/4 h-96 justify-around items-center mt-[15%]">
 	<h2 class="prose font-bold prose-h2 text-2xl">Log in to the DHC Dashboard</h2>
 	<form method="POST" class="flex justify-center">
 		<Button type="submit" class="bg-[#5865F2] hover:bg-[#FFFFFF] hover:text-[#000000]">
-			<DiscordLogo class="pr-2" />
+			<DiscordLogo />
 			Login with Discord</Button
 		>
 	</form>
