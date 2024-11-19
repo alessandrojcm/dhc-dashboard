@@ -3,12 +3,14 @@
 	import type { UserData } from '$lib/types';
 	import { SidebarProvider } from '$lib/components/ui/sidebar';
 	import DashboardSidebar from '$lib/components/ui/DashboardSidebar.svelte';
-	import * as Breadcrumb from '$lib/components/ui/breadcrumb/index.js';
+	import { page } from '$app/stores';
+	import * as Breadcrumb from '$lib/components/ui/breadcrumb';
 	import { Separator } from '$lib/components/ui/separator';
 
 	let { children, data }: { data: LayoutData; children: any } = $props();
 	let supabase = $derived(data.supabase);
 	let roles = $derived.by(() => new Set(data.roles));
+	let paths = $derived.by(() => $page.url.pathname.split('/'));
 	let userData = $derived.by(() => {
 		return Promise.all([
 			supabase
@@ -24,6 +26,13 @@
 				}) as UserData
 		);
 	});
+	function getLink(item: string): string {
+		let index = paths.indexOf(item);
+		if (index === -1) {
+			return '#';
+		}
+		return paths.slice(0, index + 1).join('/');
+	}
 </script>
 
 <svelte:head>
@@ -34,9 +43,27 @@
 	<main class="w-full">
 		<Breadcrumb.Root class="m-6">
 			<Breadcrumb.List>
-				<Breadcrumb.Item>
-					<Breadcrumb.Page>Dashboard</Breadcrumb.Page>
-				</Breadcrumb.Item>
+				{#each paths as item, index (item)}
+					{#if index !== paths.length - 1}
+						<Breadcrumb.Item>
+							<Breadcrumb.Link
+								class="capitalize"
+								href={getLink(item)}
+							>
+								{item.replace('-', ' ')}
+							</Breadcrumb.Link>
+						</Breadcrumb.Item>
+					{:else}
+						<Breadcrumb.Item>
+							<Breadcrumb.Page class="capitalize">
+								<a href={getLink(item)}>{item.replace('-', ' ')}</a>
+							</Breadcrumb.Page>
+						</Breadcrumb.Item>
+					{/if}
+					{#if index < paths.length - 1}
+						<Breadcrumb.Separator>/</Breadcrumb.Separator>
+					{/if}
+				{/each}
 			</Breadcrumb.List>
 		</Breadcrumb.Root>
 		<Separator class="mb-2" />

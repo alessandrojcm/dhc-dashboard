@@ -14,6 +14,12 @@ importers:
       '@supabase/supabase-js':
         specifier: ^2.46.1
         version: 2.46.1
+      '@tanstack/svelte-query':
+        specifier: ^5.60.5
+        version: 5.60.5(svelte@5.2.3)
+      '@tanstack/svelte-table':
+        specifier: ^8.20.5
+        version: 8.20.5(svelte@5.2.3)
       jwt-decode:
         specifier: ^4.0.0
         version: 4.0.0
@@ -535,6 +541,24 @@ packages:
     resolution: {integrity: sha512-AqhlCXl+8grUz8uqExv5OTtgpjuVIwFTSXTrh8y9/pw6q2ek7fJ+Y8ZEVw7EB2DCcuCOtEjf9w3+J3rzts01uA==}
     peerDependencies:
       tailwindcss: '>=3.0.0 || insiders || >=4.0.0-alpha.20'
+
+  '@tanstack/query-core@5.60.5':
+    resolution: {integrity: sha512-jiS1aC3XI3BJp83ZiTuDLerTmn9P3U95r6p+6/SNauLJaYxfIC4dMuWygwnBHIZxjn2zJqEpj3nysmPieoxfPQ==}
+
+  '@tanstack/svelte-query@5.60.5':
+    resolution: {integrity: sha512-4aVM0iF/10fcOlQUO/P+oaod4Kr1GhYdPhxw4ValEG+JodHJSSiwV7PMlMuhm7EdLsH2oczfHn7oVvWMqzfQSg==}
+    peerDependencies:
+      svelte: ^3.54.0 || ^4.0.0 || ^5.0.0-next.0
+
+  '@tanstack/svelte-table@8.20.5':
+    resolution: {integrity: sha512-sFqrA6zAt0mzreg3HWlcPeIwrfKp25tMDTrhkeq5GDzWthv/sW9bRFR3YGRcoxmtmHk3mS1wLQfJrotDXu7eDg==}
+    engines: {node: '>=12'}
+    peerDependencies:
+      svelte: ^4.0.0 || ^3.49.0
+
+  '@tanstack/table-core@8.20.5':
+    resolution: {integrity: sha512-P9dF7XbibHph2PFRz8gfBKEXEY/HJPOhym8CHmjF8y3q5mWpKx9xtZapXQUWCgkqvsK0R46Azuz+VaxD4Xl+Tg==}
+    engines: {node: '>=12'}
 
   '@types/cookie@0.6.0':
     resolution: {integrity: sha512-4Kh9a6B2bQciAhf7FSuMRRkUWecJgJu9nPnx3yzpsfXX/c50REIqpHY4C82bXP90qrLtXtkDxTZosYO3UpOwlA==}
@@ -2221,6 +2245,20 @@ snapshots:
       lodash.merge: 4.6.2
       postcss-selector-parser: 6.0.10
       tailwindcss: 3.4.15
+
+  '@tanstack/query-core@5.60.5': {}
+
+  '@tanstack/svelte-query@5.60.5(svelte@5.2.3)':
+    dependencies:
+      '@tanstack/query-core': 5.60.5
+      svelte: 5.2.3
+
+  '@tanstack/svelte-table@8.20.5(svelte@5.2.3)':
+    dependencies:
+      '@tanstack/table-core': 8.20.5
+      svelte: 5.2.3
+
+  '@tanstack/table-core@8.20.5': {}
 
   '@types/cookie@0.6.0': {}
 

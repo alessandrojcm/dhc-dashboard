@@ -4,6 +4,7 @@ import { sequence } from '@sveltejs/kit/hooks';
 
 import { PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY } from '$env/static/public';
 import type { Database } from './database.types';
+import { jwtDecode } from 'jwt-decode';
 
 const supabase: Handle = async ({ event, resolve }) => {
 	/**
@@ -90,4 +91,24 @@ const authGuard: Handle = async ({ event, resolve }) => {
 	return resolve(event);
 };
 
-export const handle: Handle = sequence(supabase, authGuard);
+const roleGuard: Handle = async ({ event, resolve }) => {
+	const { session, user } = await event.locals.safeGetSession();
+	const tokenClaim = jwtDecode(session?.access_token!);
+	const roles = new Set((tokenClaim as { app_metadata: { roles: string[] } }).app_metadata!.roles);
+	if (
+		event.url.pathname.includes('beginners-workshop/waitlist') &&
+		![
+			roles.has('beginners_coordinator'),
+			roles.has('president'),
+			roles.has('admin'),
+			roles.has('coach'),
+			roles.has('committee_coordinator')
+		].some(Boolean)
+	) {
+		redirect(303, '/dashboard');
+	}
+
+	return resolve(event);
+};
+
+export const handle: Handle = sequence(supabase, authGuard, roleGuard);
