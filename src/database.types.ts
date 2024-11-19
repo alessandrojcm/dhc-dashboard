@@ -61,7 +61,6 @@ export type Database = {
 					first_name: string;
 					id: string;
 					is_active: boolean | null;
-					last_login: string | null;
 					last_name: string;
 					updated_at: string | null;
 				};
@@ -70,7 +69,6 @@ export type Database = {
 					first_name: string;
 					id: string;
 					is_active?: boolean | null;
-					last_login?: string | null;
 					last_name: string;
 					updated_at?: string | null;
 				};
@@ -79,7 +77,6 @@ export type Database = {
 					first_name?: string;
 					id?: string;
 					is_active?: boolean | null;
-					last_login?: string | null;
 					last_name?: string;
 					updated_at?: string | null;
 				};
@@ -103,9 +100,161 @@ export type Database = {
 				};
 				Relationships: [];
 			};
+			waitlist: {
+				Row: {
+					admin_notes: string | null;
+					date_of_birth: string;
+					email: string;
+					first_name: string;
+					id: string;
+					initial_registration_date: string | null;
+					insurance_form_submitted: boolean | null;
+					last_contacted: string | null;
+					last_name: string;
+					last_status_change: string | null;
+					medical_conditions: string | null;
+					phone_number: string;
+					status: Database['public']['Enums']['waitlist_status'];
+				};
+				Insert: {
+					admin_notes?: string | null;
+					date_of_birth: string;
+					email: string;
+					first_name: string;
+					id?: string;
+					initial_registration_date?: string | null;
+					insurance_form_submitted?: boolean | null;
+					last_contacted?: string | null;
+					last_name: string;
+					last_status_change?: string | null;
+					medical_conditions?: string | null;
+					phone_number: string;
+					status?: Database['public']['Enums']['waitlist_status'];
+				};
+				Update: {
+					admin_notes?: string | null;
+					date_of_birth?: string;
+					email?: string;
+					first_name?: string;
+					id?: string;
+					initial_registration_date?: string | null;
+					insurance_form_submitted?: boolean | null;
+					last_contacted?: string | null;
+					last_name?: string;
+					last_status_change?: string | null;
+					medical_conditions?: string | null;
+					phone_number?: string;
+					status?: Database['public']['Enums']['waitlist_status'];
+				};
+				Relationships: [];
+			};
+			waitlist_status_history: {
+				Row: {
+					changed_at: string | null;
+					changed_by: string | null;
+					id: string;
+					new_status: Database['public']['Enums']['waitlist_status'];
+					notes: string | null;
+					old_status: Database['public']['Enums']['waitlist_status'] | null;
+					waitlist_id: string | null;
+				};
+				Insert: {
+					changed_at?: string | null;
+					changed_by?: string | null;
+					id?: string;
+					new_status: Database['public']['Enums']['waitlist_status'];
+					notes?: string | null;
+					old_status?: Database['public']['Enums']['waitlist_status'] | null;
+					waitlist_id?: string | null;
+				};
+				Update: {
+					changed_at?: string | null;
+					changed_by?: string | null;
+					id?: string;
+					new_status?: Database['public']['Enums']['waitlist_status'];
+					notes?: string | null;
+					old_status?: Database['public']['Enums']['waitlist_status'] | null;
+					waitlist_id?: string | null;
+				};
+				Relationships: [
+					{
+						foreignKeyName: 'waitlist_status_history_waitlist_id_fkey';
+						columns: ['waitlist_id'];
+						isOneToOne: false;
+						referencedRelation: 'waitlist';
+						referencedColumns: ['id'];
+					},
+					{
+						foreignKeyName: 'waitlist_status_history_waitlist_id_fkey';
+						columns: ['waitlist_id'];
+						isOneToOne: false;
+						referencedRelation: 'waitlist_management_view';
+						referencedColumns: ['id'];
+					}
+				];
+			};
 		};
 		Views: {
-			[_ in never]: never;
+			waitlist_management_view: {
+				Row: {
+					admin_notes: string | null;
+					age: number | null;
+					current_position: number | null;
+					date_of_birth: string | null;
+					email: string | null;
+					first_name: string | null;
+					full_name: string | null;
+					id: string | null;
+					initial_registration_date: string | null;
+					insurance_form_submitted: boolean | null;
+					last_contacted: string | null;
+					last_name: string | null;
+					last_status_change: string | null;
+					medical_conditions: string | null;
+					never_invited: boolean | null;
+					phone_number: string | null;
+					status: Database['public']['Enums']['waitlist_status'] | null;
+				};
+				Insert: {
+					admin_notes?: string | null;
+					age?: never;
+					current_position?: never;
+					date_of_birth?: string | null;
+					email?: string | null;
+					first_name?: string | null;
+					full_name?: never;
+					id?: string | null;
+					initial_registration_date?: string | null;
+					insurance_form_submitted?: boolean | null;
+					last_contacted?: string | null;
+					last_name?: string | null;
+					last_status_change?: string | null;
+					medical_conditions?: string | null;
+					never_invited?: never;
+					phone_number?: string | null;
+					status?: Database['public']['Enums']['waitlist_status'] | null;
+				};
+				Update: {
+					admin_notes?: string | null;
+					age?: never;
+					current_position?: never;
+					date_of_birth?: string | null;
+					email?: string | null;
+					first_name?: string | null;
+					full_name?: never;
+					id?: string | null;
+					initial_registration_date?: string | null;
+					insurance_form_submitted?: boolean | null;
+					last_contacted?: string | null;
+					last_name?: string | null;
+					last_status_change?: string | null;
+					medical_conditions?: string | null;
+					never_invited?: never;
+					phone_number?: string | null;
+					status?: Database['public']['Enums']['waitlist_status'] | null;
+				};
+				Relationships: [];
+			};
 		};
 		Functions: {
 			custom_access_token_hook: {
@@ -117,6 +266,12 @@ export type Database = {
 			get_current_user_with_profile: {
 				Args: Record<PropertyKey, never>;
 				Returns: Json;
+			};
+			get_waitlist_position: {
+				Args: {
+					p_waitlist_id: string;
+				};
+				Returns: number;
 			};
 			has_any_role: {
 				Args: {
@@ -132,6 +287,14 @@ export type Database = {
 				};
 				Returns: boolean;
 			};
+			update_waitlist_status: {
+				Args: {
+					p_waitlist_id: string;
+					p_new_status: Database['public']['Enums']['waitlist_status'];
+					p_notes?: string;
+				};
+				Returns: undefined;
+			};
 		};
 		Enums: {
 			role_type:
@@ -146,7 +309,16 @@ export type Database = {
 				| 'pr_manager'
 				| 'volunteer_coordinator'
 				| 'research_coordinator'
+				| 'coach'
 				| 'member';
+			waitlist_status:
+				| 'waiting'
+				| 'invited'
+				| 'paid'
+				| 'deferred'
+				| 'cancelled'
+				| 'completed'
+				| 'no_reply';
 		};
 		CompositeTypes: {
 			[_ in never]: never;
