@@ -58,7 +58,7 @@
 										<Sidebar.MenuButton
 											class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
 										>
-											{item.title}
+											<a href={`/dashboard/${item.url}`}>{item.title}</a>
 										</Sidebar.MenuButton>
 									</Sidebar.MenuItem>
 								{/if}
