@@ -6,7 +6,6 @@ import Footer from './table-footer.svelte';
 import Head from './table-head.svelte';
 import Header from './table-header.svelte';
 import Row from './table-row.svelte';
-import FlexRender from './flex-render.svelte';
 
 export {
 	Root,
@@ -25,9 +24,5 @@ export {
 	Footer as TableFooter,
 	Head as TableHead,
 	Header as TableHeader,
-	Row as TableRow,
-	FlexRender
+	Row as TableRow
 };
-
-export * from './svelte-table.svelte';
-export * from './render-component';
