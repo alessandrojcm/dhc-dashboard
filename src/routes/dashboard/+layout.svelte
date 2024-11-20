@@ -6,7 +6,8 @@
 	import { page } from '$app/stores';
 	import * as Breadcrumb from '$lib/components/ui/breadcrumb';
 	import { Separator } from '$lib/components/ui/separator';
-
+	import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
+	import { SvelteQueryDevtools } from '@tanstack/svelte-query-devtools';
 	let { children, data }: { data: LayoutData; children: any } = $props();
 	let supabase = $derived(data.supabase);
 	let roles = $derived.by(() => new Set(data.roles));
@@ -33,6 +34,7 @@
 		}
 		return paths.slice(0, index + 1).join('/');
 	}
+	const queryClient = new QueryClient();
 </script>
 
 <svelte:head>
@@ -46,10 +48,7 @@
 				{#each paths as item, index (item)}
 					{#if index !== paths.length - 1}
 						<Breadcrumb.Item>
-							<Breadcrumb.Link
-								class="capitalize"
-								href={getLink(item)}
-							>
+							<Breadcrumb.Link class="capitalize" href={getLink(item)}>
 								{item.replace('-', ' ')}
 							</Breadcrumb.Link>
 						</Breadcrumb.Item>
@@ -67,7 +66,10 @@
 			</Breadcrumb.List>
 		</Breadcrumb.Root>
 		<Separator class="mb-2" />
-		{@render children()}
+		<QueryClientProvider client={queryClient}>
+			{@render children()}
+			<SvelteQueryDevtools />
+		</QueryClientProvider>
 	</main>
 </SidebarProvider>
 
