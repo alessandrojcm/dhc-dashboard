@@ -3,12 +3,15 @@
 	import {
 		createSvelteTable,
 		FlexRender,
+		renderComponent,
 		renderSnippet
 	} from '$lib/components/ui/data-table/index.js';
 	import {
 		getCoreRowModel,
 		getPaginationRowModel,
+		getSortedRowModel,
 		type PaginationState,
+		type SortingState,
 		type TableOptions
 	} from '@tanstack/table-core';
 	import { page } from '$app/stores';
@@ -16,6 +19,7 @@
 	import type { Tables } from '$database';
 	import * as Table from '$lib/components/ui/table';
 	import * as Pagination from '$lib/components/ui/pagination';
+	import SortHeader from '$lib/components/ui/table/sort-header.svelte';
 	import dayjs from 'dayjs';
 	import { createRawSnippet } from 'svelte';
 	import * as Select from '$lib/components/ui/select';
@@ -26,16 +30,31 @@
 	const pageSize = $derived(Number($page.url.searchParams.get('pageSize')) || 10);
 	const rangeStart = $derived(currentPage * pageSize);
 	const rangeEnd = $derived(rangeStart + pageSize);
+	const sortingState: SortingState = $derived.by(() => {
+		const sortColumn = $page.url.searchParams.get('sort');
+		const sortDirection = $page.url.searchParams.get('direction');
+		if (!sortColumn) return [];
+		return [
+			{
+				id: sortColumn,
+				desc: sortDirection === 'desc'
+			}
+		];
+	});
 	$inspect(rangeStart, rangeEnd);
 	const waitlistQuery = createQuery(() => ({
-		queryKey: ['waitlist', pageSize, currentPage, rangeStart],
+		queryKey: ['waitlist', pageSize, currentPage, rangeStart, sortingState],
 		placeholderData: keepPreviousData,
-		queryFn: () =>
-			supabase
-				.from('waitlist')
-				.select('*', { count: 'estimated' })
-				.range(rangeStart, rangeEnd)
-				.throwOnError()
+		queryFn: () => {
+			const query = () =>
+				supabase.from('waitlist').select('*', { count: 'estimated' }).range(rangeStart, rangeEnd);
+			if (sortingState.length > 0) {
+				return query()
+					.order(sortingState[0].id, { ascending: !sortingState[0].desc })
+					.throwOnError();
+			}
+			return query().throwOnError();
+		}
 	}));
 	// TODO: sorting etc, pagination, fix types, loading indicator
 	function onPaginationChange(newPagination: Partial<PaginationState>) {
@@ -49,13 +68,22 @@
 		newParams.set('pageSize', paginationState.pageSize.toString());
 		goto(`/dashboard/beginners-workshop/waitlist?${newParams.toString()}`);
 	}
+	function onSortingChange(newSorting: SortingState) {
+		const [sortingState] = newSorting;
+		const newParams = new URLSearchParams($page.url.searchParams);
+		newParams.set('sort', sortingState.id);
+		newParams.set('direction', sortingState.desc ? 'desc' : 'asc');
+		goto(`/dashboard/beginners-workshop/waitlist?${newParams.toString()}`);
+	}
 	const tableOptions = $state<TableOptions<Tables<'waitlist'>>>({
 		autoResetPageIndex: false,
 		manualPagination: true,
+		manualSorting: true,
 		columns: [
 			{
 				accessorKey: 'first_name',
-				header: 'First Name'
+				header: 'First Name',
+				footer: `Total ${waitlistQuery.data.count} people on the waitlist`
 			},
 			{
 				accessorKey: 'last_name',
@@ -84,14 +112,35 @@
 			},
 			{
 				accessorKey: 'date_of_birth',
-				header: 'Date of Birth',
+				header: ({ column }) =>
+					renderComponent(SortHeader, {
+						onclick: () => column.toggleSorting(column.getIsSorted() === 'asc'),
+						header: 'Date of Birth',
+						class: 'p-2',
+						sortDirection: column.getIsSorted()
+					}),
 				cell: ({ getValue }) => {
-					return dayjs(getValue()).format('DD/MM/YYYY');
+					return renderSnippet(
+						createRawSnippet((value) => ({
+							render: () => {
+								const date = dayjs(getValue());
+								const age = dayjs().diff(date, 'years');
+								return `<p class="${age < 16 ? 'text-red-800' : ''}">${date.format('DD/MM/YYYY')} (Age ${age})</p>`;
+							}
+						})),
+						getValue()
+					);
 				}
 			},
 			{
 				accessorKey: 'initial_registration_date',
-				header: 'Initial Registration Date',
+				header: ({ column }) =>
+					renderComponent(SortHeader, {
+						onclick: () => column.toggleSorting(column.getIsSorted() === 'asc'),
+						header: 'Initial Registration Date',
+						class: 'p-2',
+						sortDirection: column.getIsSorted()
+					}),
 				cell: ({ getValue }) => {
 					return dayjs(getValue()).format('DD/MM/YYYY HH:mm');
 				}
@@ -133,17 +182,28 @@
 				onPaginationChange(updater);
 			}
 		},
+		onSortingChange: (updater) => {
+			if (typeof updater === 'function') {
+				onSortingChange(updater(sortingState));
+			} else {
+				onSortingChange(updater);
+			}
+		},
 		state: {
 			get pagination() {
 				return {
 					pageIndex: currentPage,
 					pageSize
 				} as PaginationState;
+			},
+			get sorting() {
+				return sortingState;
 			}
 		},
 		rowCount: waitlistQuery.data?.count ?? 0,
 		getCoreRowModel: getCoreRowModel(),
-		getPaginationRowModel: getPaginationRowModel()
+		getPaginationRowModel: getPaginationRowModel(),
+		getSortedRowModel: getSortedRowModel()
 	});
 	const table = createSvelteTable(tableOptions);
 </script>
@@ -155,7 +215,7 @@
 			<Table.Header class="sticky top-0 z-10 bg-white">
 				{#each table.getHeaderGroups() as headerGroup (headerGroup.id)}
 					{#each headerGroup.headers as header (header.id)}
-						<Table.Head class="text-black prose prose-p font-medium">
+						<Table.Head class="text-black prose prose-p  text-sm font-medium">
 							<FlexRender content={header.column.columnDef.header} context={header.getContext()} />
 						</Table.Head>
 					{/each}
@@ -172,21 +232,41 @@
 					</Table.Row>
 				{/each}
 			</Table.Body>
+			<Table.Footer class="sticky bottom-0 z-10 bg-white">
+				{#each table.getFooterGroups() as footerGroup}
+					<Table.Row>
+						{#each footerGroup.headers as header}
+							<Table.Cell>
+								{#if !header.isPlaceholder}
+									<FlexRender
+										content={header.column.columnDef.footer}
+										context={header.getContext()}
+									/>
+								{/if}
+							</Table.Cell>
+						{/each}
+					</Table.Row>
+				{/each}
+			</Table.Footer>
 		</Table.Root>
 	</div>
 	<div class="flex items-start justify-end space-x-2 py-4 mr-4">
-		<div class="flex items-center gap-2 mr-auto">
+		<div class="flex items-center gap-2 mr-auto ml-4">
 			<p class="prose">Elements per page</p>
-				<Select.Root type="single" value={pageSize.toString()} onValueChange={(value) => onPaginationChange({ pageSize: Number(value) })}>
-					<Select.Trigger class="w-16">{pageSize}</Select.Trigger>
-					<Select.Content>
-						{#each pageSizeOptions as pageSizeOption}
-							<Select.Item value={pageSizeOption.toString()}>
-								{pageSizeOption}
-							</Select.Item>
-						{/each}
-					</Select.Content>
-				</Select.Root>
+			<Select.Root
+				type="single"
+				value={pageSize.toString()}
+				onValueChange={(value) => onPaginationChange({ pageSize: Number(value) })}
+			>
+				<Select.Trigger class="w-16">{pageSize}</Select.Trigger>
+				<Select.Content>
+					{#each pageSizeOptions as pageSizeOption}
+						<Select.Item value={pageSizeOption.toString()}>
+							{pageSizeOption}
+						</Select.Item>
+					{/each}
+				</Select.Content>
+			</Select.Root>
 		</div>
 		<Pagination.Root
 			count={waitlistQuery.data?.count ?? 0}
