@@ -26,12 +26,16 @@
 	import { createRawSnippet } from 'svelte';
 	import type { QueryData } from '@supabase/supabase-js';
 	import type { FetchAndCountResult } from '$lib/types';
+	import { Input } from '$lib/components/ui/input';
+	import { Button } from '$lib/components/ui/button';
+	import { Cross2 } from 'svelte-radix';
 
 	let pageSizeOptions = [10, 25, 50, 100];
 	const { data } = $props();
 	const supabase = data.supabase;
 	const currentPage = $derived(Number($page.url.searchParams.get('page')) || 0);
 	const pageSize = $derived(Number($page.url.searchParams.get('pageSize')) || 10);
+	const searchQuery = $derived($page.url.searchParams.get('q') || '');
 	const rangeStart = $derived(currentPage * pageSize);
 	const rangeEnd = $derived(rangeStart + pageSize);
 	const sortingState: SortingState = $derived.by(() => {
@@ -45,22 +49,26 @@
 			}
 		];
 	});
+
 	$inspect(rangeStart, rangeEnd);
 	const waitlistQuery = createQuery<FetchAndCountResult<'waitlist'>, Error>(() => ({
-		queryKey: ['waitlist', pageSize, currentPage, rangeStart, sortingState],
+		queryKey: ['waitlist', pageSize, currentPage, rangeStart, sortingState, searchQuery],
 		placeholderData: keepPreviousData,
 		queryFn: () => {
-			const query = () =>
-				supabase.from('waitlist').select('*', { count: 'estimated' }).range(rangeStart, rangeEnd);
-			if (sortingState.length > 0) {
-				return query()
-					.order(sortingState[0].id, { ascending: !sortingState[0].desc })
-					.throwOnError() as QueryData<Tables<'waitlist'>>;
+			let query = supabase.from('waitlist').select('*', { count: 'estimated' });
+			if (searchQuery.length > 0) {
+				query = query.textSearch('search_text', `'${searchQuery}'`, {
+					type: 'websearch'
+				});
 			}
-			return query().throwOnError() as QueryData<Tables<'waitlist'>>;
+			if (sortingState.length > 0) {
+				query = query.order(sortingState[0].id, { ascending: !sortingState[0].desc });
+			}
+			return query.range(rangeStart, rangeEnd).throwOnError() as QueryData<
+				FetchAndCountResult<'waitlist'>
+			>;
 		}
 	}));
-	// TODO: sorting etc, pagination, fix types, loading indicator
 	function onPaginationChange(newPagination: Partial<PaginationState>) {
 		const paginationState: PaginationState = {
 			pageIndex: currentPage,
@@ -77,6 +85,11 @@
 		const newParams = new URLSearchParams($page.url.searchParams);
 		newParams.set('sort', sortingState.id);
 		newParams.set('direction', sortingState.desc ? 'desc' : 'asc');
+		goto(`/dashboard/beginners-workshop/waitlist?${newParams.toString()}`);
+	}
+	function onSearchChange(newSearch: string) {
+		const newParams = new URLSearchParams($page.url.searchParams);
+		newParams.set('q', newSearch);
 		goto(`/dashboard/beginners-workshop/waitlist?${newParams.toString()}`);
 	}
 	const tableOptions = $state<TableOptions<Tables<'waitlist'>>>({
@@ -269,6 +282,18 @@
 
 <h1 class="prose prose-h1 text-xl ml-2">Beginners Workshop Waitlist</h1>
 <div class="rounded-md border min-h-96 mx-2 md:m-10 p-2">
+	<div class="flex w-full max-w-sm items-center space-x-2 mb-2">
+		<Input
+			value={searchQuery}
+			onchange={(t) => onSearchChange(t.target?.value)}
+			placeholder="Search for a person"
+			class="max-w-md"
+		/>
+
+		<Button variant="ghost" type="button" onclick={() => onSearchChange('')}>
+			<Cross2 />
+		</Button>
+	</div>
 	<div class="overflow-x-auto overflow-y-auto h-[75vh]">
 		<Table.Root class="w-full">
 			<Table.Header class="sticky top-0 z-10 bg-white">

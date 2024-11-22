@@ -58,6 +58,7 @@ export type Database = {
 			user_profiles: {
 				Row: {
 					created_at: string | null;
+					date_of_birth: string;
 					first_name: string;
 					id: string;
 					is_active: boolean | null;
@@ -66,6 +67,7 @@ export type Database = {
 				};
 				Insert: {
 					created_at?: string | null;
+					date_of_birth: string;
 					first_name: string;
 					id: string;
 					is_active?: boolean | null;
@@ -74,6 +76,7 @@ export type Database = {
 				};
 				Update: {
 					created_at?: string | null;
+					date_of_birth?: string;
 					first_name?: string;
 					id?: string;
 					is_active?: boolean | null;
@@ -114,6 +117,7 @@ export type Database = {
 					last_status_change: string | null;
 					medical_conditions: string | null;
 					phone_number: string;
+					search_text: unknown | null;
 					status: Database['public']['Enums']['waitlist_status'];
 				};
 				Insert: {
@@ -129,6 +133,7 @@ export type Database = {
 					last_status_change?: string | null;
 					medical_conditions?: string | null;
 					phone_number: string;
+					search_text?: unknown | null;
 					status?: Database['public']['Enums']['waitlist_status'];
 				};
 				Update: {
@@ -144,6 +149,7 @@ export type Database = {
 					last_status_change?: string | null;
 					medical_conditions?: string | null;
 					phone_number?: string;
+					search_text?: unknown | null;
 					status?: Database['public']['Enums']['waitlist_status'];
 				};
 				Relationships: [];
