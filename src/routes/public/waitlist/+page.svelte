@@ -4,14 +4,18 @@
 	import { Button } from '$lib/components/ui/button';
 	import { superForm } from 'sveltekit-superforms';
 	import * as Card from '$lib/components/ui/card';
+	import { dev } from '$app/environment';
 	import DatePicker from '$lib/components/ui/date-picker.svelte';
+	import { valibotClient } from 'sveltekit-superforms/adapters';
+	import beginnersWaitlist from '$lib/schemas/beginnersWaitlist';
+	import SuperDebug from 'sveltekit-superforms';
+	import { fromDate, getLocalTimeZone } from '@internationalized/date';
 
-	const form = superForm({});
-	const handleFormSubmit = (event: Event) => {
-		event.preventDefault();
-		console.log('Form Data:', form);
-		// Perform form submission or any necessary validation here
-	};
+	export let data;
+	const form = superForm(data.form, {
+		validators: valibotClient(beginnersWaitlist)
+	});
+	const { form: formData, enhance } = form;
 </script>
 
 <svelte:head>
@@ -26,72 +30,95 @@
 		>
 	</Card.Header>
 	<Card.Content>
-		<form on:submit={handleFormSubmit} class="flex flex-col gap-4 items-stretch">
+		<form method="POST" {form} use:enhance class="flex flex-col gap-4 items-stretch">
 			<Form.Field {form} name="firstName">
 				<Form.Control>
 					{#snippet children({ props })}
-						<Form.Label>First Name</Form.Label>
-						<Input {...props} bind:value={form.firstName} placeholder="Enter your first name" />
+						<Form.Label>First name</Form.Label>
+						<Input
+							{...props}
+							bind:value={$formData.firstName}
+							placeholder="Enter your first name"
+						/>
 					{/snippet}
 				</Form.Control>
+				<Form.FieldErrors />
 			</Form.Field>
 
 			<Form.Field {form} name="lastName">
 				<Form.Control>
 					{#snippet children({ props })}
-						<Form.Label>Last Name</Form.Label>
-						<Input {...props} bind:value={form.lastName} placeholder="Enter your last name" />
+						<Form.Label>Last name</Form.Label>
+						<Input {...props} bind:value={$formData.lastName} placeholder="Enter your last name" />
 					{/snippet}
 				</Form.Control>
+				<Form.FieldErrors />
 			</Form.Field>
 
 			<Form.Field {form} name="email">
 				<Form.Control>
 					{#snippet children({ props })}
 						<Form.Label>Email</Form.Label>
-						<Input type="email" {...props} bind:value={form.email} placeholder="Enter your email" />
+						<Input
+							type="email"
+							{...props}
+							bind:value={$formData.email}
+							placeholder="Enter your email"
+						/>
 					{/snippet}
 				</Form.Control>
+				<Form.FieldErrors />
 			</Form.Field>
 
 			<Form.Field {form} name="phoneNumber">
 				<Form.Control>
 					{#snippet children({ props })}
-						<Form.Label>Phone Number</Form.Label>
+						<Form.Label>Phone number</Form.Label>
 						<Input
 							type="tel"
 							{...props}
-							bind:value={form.phoneNumber}
+							bind:value={$formData.phoneNumber}
 							placeholder="Enter your phone number"
 						/>
 					{/snippet}
 				</Form.Control>
+				<Form.FieldErrors />
 			</Form.Field>
 
 			<Form.Field {form} name="dateOfBirth">
 				<Form.Control>
 					{#snippet children({ props })}
-						<Form.Label>Date of Birth</Form.Label>
-						<DatePicker />
+						<Form.Label>Date of birth</Form.Label>
+						<DatePicker
+							value={$formData.dateOfBirth
+								? fromDate($formData.dateOfBirth, getLocalTimeZone())
+								: null}
+							onDateChange={(date) => form.form.update((curr) => ({ ...curr, dateOfBirth: date }))}
+						/>
 					{/snippet}
 				</Form.Control>
+				<Form.FieldErrors />
 			</Form.Field>
 
-			<Form.Field {form} name="medicalCondition">
+			<Form.Field {form} name="medicalConditions">
 				<Form.Control>
 					{#snippet children({ props })}
-						<Form.Label>Any Medical Condition</Form.Label>
+						<Form.Label>Any medical condition?</Form.Label>
 						<Input
 							type="textarea"
 							{...props}
-							bind:value={form.medicalCondition}
+							bind:value={$formData.medicalConditions}
 							placeholder="Enter any medical conditions"
 						/>
 					{/snippet}
 				</Form.Control>
+				<Form.FieldErrors />
 			</Form.Field>
 
 			<Button type="submit">Submit</Button>
 		</form>
 	</Card.Content>
 </Card.Root>
+{#if dev}
+	<SuperDebug data={form} />
+{/if}
