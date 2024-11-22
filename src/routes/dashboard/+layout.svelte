@@ -78,7 +78,7 @@
 		flex: 1;
 		display: flex;
 		flex-direction: column;
-		width: 100%;
+		width: calc(100vw - var(--sidebar-width));
 		margin: 0 auto;
 		box-sizing: border-box;
 		padding-bottom: 1rem;
