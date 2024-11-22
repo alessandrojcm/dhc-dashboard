@@ -208,7 +208,7 @@
 							render: () =>
 								`<div class="w-[150px] md:w-[200px] whitespace-break-spaces break-words">${value()}</div>`
 						})),
-						getValue()
+						getValue() ?? 'N/A'
 					);
 				}
 			},
