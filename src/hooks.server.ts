@@ -2,7 +2,7 @@ import { createServerClient } from '@supabase/ssr';
 import { type Handle, redirect } from '@sveltejs/kit';
 import { sequence } from '@sveltejs/kit/hooks';
 
-import { PUBLIC_SUPABASE_URL, PUBLIC_SUPABASE_ANON_KEY } from '$env/static/public';
+import { PUBLIC_SUPABASE_ANON_KEY, PUBLIC_SUPABASE_URL } from '$env/static/public';
 import type { Database } from './database.types';
 import { jwtDecode } from 'jwt-decode';
 
@@ -92,7 +92,10 @@ const authGuard: Handle = async ({ event, resolve }) => {
 };
 
 const roleGuard: Handle = async ({ event, resolve }) => {
-	const { session, user } = await event.locals.safeGetSession();
+	const { session } = await event.locals.safeGetSession();
+	if (!session?.access_token) {
+		return resolve(event);
+	}
 	const tokenClaim = jwtDecode(session?.access_token!);
 	const roles = new Set((tokenClaim as { app_metadata: { roles: string[] } }).app_metadata!.roles);
 	if (
