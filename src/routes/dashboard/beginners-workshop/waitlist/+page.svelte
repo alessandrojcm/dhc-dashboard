@@ -20,6 +20,7 @@
 	import * as Select from '$lib/components/ui/select';
 	import * as Table from '$lib/components/ui/table/index.js';
 	import * as Pagination from '$lib/components/ui/pagination/index.js';
+	import { Badge } from '$lib/components/ui/badge';
 	import SortHeader from '$lib/components/ui/table/sort-header.svelte';
 	import dayjs from 'dayjs';
 	import { createRawSnippet } from 'svelte';
@@ -114,7 +115,8 @@
 				cell: ({ getValue }) => {
 					return renderSnippet(
 						createRawSnippet((value) => ({
-							render: () => `<a href="mailto:${value()}" class="w-[150px] md:w-[200px] whitespace-break-spaces break-words">${value()}</a>`
+							render: () =>
+								`<a href="mailto:${value()}" class="w-[150px] md:w-[200px] whitespace-break-spaces break-words">${value()}</a>`
 						})),
 						getValue()
 					);
@@ -136,12 +138,13 @@
 				accessorKey: 'status',
 				header: 'Status',
 				cell: ({ getValue }) => {
-					return renderSnippet(
-						createRawSnippet((value) => ({
-							render: () => `<div class="w-[100px]">${value()}</div>`
-						})),
-						getValue()
-					);
+					return renderComponent(Badge, {
+						variant: getValue(),
+						class: 'h-8',
+						children: createRawSnippet(() => ({
+							render: () => `<p class="capitalize">${getValue().replace('-', ' ')}</p>`
+						}))
+					});
 				}
 			},
 			{
@@ -157,7 +160,7 @@
 					return renderSnippet(
 						createRawSnippet((value) => ({
 							render: () => {
-								const date = dayjs(getValue());
+								const date = dayjs(value());
 								const age = dayjs().diff(date, 'years');
 								return `<div class="w-[120px] ${age < 16 ? 'text-red-800' : ''}">${date.format('DD/MM/YYYY')} (Age ${age})</div>`;
 							}
@@ -202,7 +205,8 @@
 				cell: ({ getValue }) => {
 					return renderSnippet(
 						createRawSnippet((value) => ({
-							render: () => `<div class="w-[150px] md:w-[200px] whitespace-break-spaces break-words">${value()}</div>`
+							render: () =>
+								`<div class="w-[150px] md:w-[200px] whitespace-break-spaces break-words">${value()}</div>`
 						})),
 						getValue()
 					);
@@ -214,9 +218,10 @@
 				cell: ({ getValue }) => {
 					return renderSnippet(
 						createRawSnippet((value) => ({
-							render: () => `<div class="w-[150px] md:w-[200px] whitespace-break-spaces break-words">${value()}</div>`
+							render: () =>
+								`<div class="w-[150px] md:w-[200px] whitespace-break-spaces break-words">${value()}</div>`
 						})),
-						getValue()
+						getValue() ?? 'N/A'
 					);
 				}
 			}
@@ -279,7 +284,9 @@
 				{#each table.getRowModel().rows as row (row.id)}
 					<Table.Row>
 						{#each row.getVisibleCells() as cell (cell.id)}
-							<Table.Cell class="whitespace-normal md:whitespace-nowrap py-2 md:py-4 px-2 md:px-3 text-xs md:text-sm prose prose-p">
+							<Table.Cell
+								class="whitespace-normal md:whitespace-nowrap py-2 md:py-4 px-2 md:px-3 text-xs md:text-sm prose prose-p"
+							>
 								<FlexRender content={cell.column.columnDef.cell} context={cell.getContext()} />
 							</Table.Cell>
 						{/each}
