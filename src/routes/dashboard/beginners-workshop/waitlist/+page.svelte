@@ -48,10 +48,6 @@
 	const waitlistQuery = createQuery<FetchAndCountResult<'waitlist'>, Error>(() => ({
 		queryKey: ['waitlist', pageSize, currentPage, rangeStart, sortingState],
 		placeholderData: keepPreviousData,
-		initialData: {
-				count: 0,
-				data: []
-		},
 		queryFn: () => {
 			const query = () =>
 				supabase.from('waitlist').select('*', { count: 'estimated' }).range(rangeStart, rangeEnd);
@@ -63,8 +59,6 @@
 			return query().throwOnError() as QueryData<Tables<'waitlist'>>;
 		}
 	}));
-	const waitlistData = $state(waitlistQuery.data);
-	$inspect(waitlistData);
 	// TODO: sorting etc, pagination, fix types, loading indicator
 	function onPaginationChange(newPagination: Partial<PaginationState>) {
 		const paginationState: PaginationState = {
@@ -92,11 +86,27 @@
 			{
 				accessorKey: 'first_name',
 				header: 'First Name',
-				footer: `Total ${waitlistData.count} people on the waitlist`
+				footer: `Total ${waitlistQuery?.data?.count} people on the waitlist`,
+				cell: ({ getValue }) => {
+					return renderSnippet(
+						createRawSnippet((value) => ({
+							render: () => `<div class="w-[100px] md:w-[120px]">${value()}</div>`
+						})),
+						getValue()
+					);
+				}
 			},
 			{
 				accessorKey: 'last_name',
-				header: 'Last Name'
+				header: 'Last Name',
+				cell: ({ getValue }) => {
+					return renderSnippet(
+						createRawSnippet((value) => ({
+							render: () => `<div class="w-[100px] md:w-[120px]">${value()}</div>`
+						})),
+						getValue()
+					);
+				}
 			},
 			{
 				accessorKey: 'email',
@@ -104,8 +114,7 @@
 				cell: ({ getValue }) => {
 					return renderSnippet(
 						createRawSnippet((value) => ({
-							render: () =>
-								`<p class="max-w-[25ch] break-words whitespace-break-spaces">${value()}</p>`
+							render: () => `<a href="mailto:${value()}" class="w-[150px] md:w-[200px] whitespace-break-spaces break-words">${value()}</a>`
 						})),
 						getValue()
 					);
@@ -113,11 +122,27 @@
 			},
 			{
 				accessorKey: 'phone_number',
-				header: 'Phone Number'
+				header: 'Phone Number',
+				cell: ({ getValue }) => {
+					return renderSnippet(
+						createRawSnippet((value) => ({
+							render: () => `<div class="w-[120px]">${value()}</div>`
+						})),
+						getValue()
+					);
+				}
 			},
 			{
 				accessorKey: 'status',
-				header: 'Status'
+				header: 'Status',
+				cell: ({ getValue }) => {
+					return renderSnippet(
+						createRawSnippet((value) => ({
+							render: () => `<div class="w-[100px]">${value()}</div>`
+						})),
+						getValue()
+					);
+				}
 			},
 			{
 				accessorKey: 'date_of_birth',
@@ -134,7 +159,7 @@
 							render: () => {
 								const date = dayjs(getValue());
 								const age = dayjs().diff(date, 'years');
-								return `<p class="${age < 16 ? 'text-red-800' : ''}">${date.format('DD/MM/YYYY')} (Age ${age})</p>`;
+								return `<div class="w-[120px] ${age < 16 ? 'text-red-800' : ''}">${date.format('DD/MM/YYYY')} (Age ${age})</div>`;
 							}
 						})),
 						getValue()
@@ -146,17 +171,30 @@
 				header: ({ column }) =>
 					renderComponent(SortHeader, {
 						onclick: () => column.toggleSorting(column.getIsSorted() === 'asc'),
-						header: 'Initial Registration Date',
+						header: 'Initial Registration',
 						class: 'p-2',
 						sortDirection: column.getIsSorted()
 					}),
 				cell: ({ getValue }) => {
-					return dayjs(getValue()).format('DD/MM/YYYY HH:mm');
+					return renderSnippet(
+						createRawSnippet((value) => ({
+							render: () => `<div class="w-[120px]">${dayjs(getValue()).format('DD/MM/YYYY')}</div>`
+						})),
+						getValue()
+					);
 				}
 			},
 			{
 				accessorKey: 'last_contacted',
-				header: 'Last Contacted'
+				header: 'Last Contacted',
+				cell: ({ getValue }) => {
+					return renderSnippet(
+						createRawSnippet((value) => ({
+							render: () => `<div class="w-[120px]">${value()}</div>`
+						})),
+						getValue()
+					);
+				}
 			},
 			{
 				accessorKey: 'medical_conditions',
@@ -164,8 +202,7 @@
 				cell: ({ getValue }) => {
 					return renderSnippet(
 						createRawSnippet((value) => ({
-							render: () =>
-								`<p class="max-w-[25ch] break-words whitespace-break-spaces">${value()}</p>`
+							render: () => `<div class="w-[150px] md:w-[200px] whitespace-break-spaces break-words">${value()}</div>`
 						})),
 						getValue()
 					);
@@ -173,11 +210,19 @@
 			},
 			{
 				accessorKey: 'admin_notes',
-				header: 'Admin Notes'
+				header: 'Admin Notes',
+				cell: ({ getValue }) => {
+					return renderSnippet(
+						createRawSnippet((value) => ({
+							render: () => `<div class="w-[150px] md:w-[200px] whitespace-break-spaces break-words">${value()}</div>`
+						})),
+						getValue()
+					);
+				}
 			}
 		],
 		get data() {
-			return waitlistData.data ?? [];
+			return waitlistQuery?.data?.data ?? [];
 		},
 		onPaginationChange: (updater) => {
 			if (typeof updater === 'function') {
@@ -209,7 +254,7 @@
 				return sortingState;
 			}
 		},
-		rowCount: waitlistData?.count ?? 0,
+		rowCount: waitlistQuery?.data?.count ?? 0,
 		getCoreRowModel: getCoreRowModel(),
 		getPaginationRowModel: getPaginationRowModel(),
 		getSortedRowModel: getSortedRowModel()
@@ -218,13 +263,13 @@
 </script>
 
 <h1 class="prose prose-h1 text-xl ml-2">Beginners Workshop Waitlist</h1>
-<div class="rounded-md border min-h-96 m-10 p-2">
-	<div class="overflow-y-auto h-[75vh]">
-		<Table.Root class="table-fixed w-full">
+<div class="rounded-md border min-h-96 mx-2 md:m-10 p-2">
+	<div class="overflow-x-auto overflow-y-auto h-[75vh]">
+		<Table.Root class="w-full">
 			<Table.Header class="sticky top-0 z-10 bg-white">
 				{#each table.getHeaderGroups() as headerGroup (headerGroup.id)}
 					{#each headerGroup.headers as header (header.id)}
-						<Table.Head class="text-black prose prose-p  text-sm font-medium">
+						<Table.Head class="text-black prose prose-p text-xs md:text-sm font-medium p-2">
 							<FlexRender content={header.column.columnDef.header} context={header.getContext()} />
 						</Table.Head>
 					{/each}
@@ -234,7 +279,7 @@
 				{#each table.getRowModel().rows as row (row.id)}
 					<Table.Row>
 						{#each row.getVisibleCells() as cell (cell.id)}
-							<Table.Cell class="whitespace-nowrap py-4 px-3 text-sm prose prose-p">
+							<Table.Cell class="whitespace-normal md:whitespace-nowrap py-2 md:py-4 px-2 md:px-3 text-xs md:text-sm prose prose-p">
 								<FlexRender content={cell.column.columnDef.cell} context={cell.getContext()} />
 							</Table.Cell>
 						{/each}
@@ -278,7 +323,7 @@
 			</Select.Root>
 		</div>
 		<Pagination.Root
-			count={waitlistData?.count ?? 0}
+			count={waitlistQuery?.data?.count ?? 0}
 			perPage={pageSize}
 			page={currentPage + 1}
 			onPageChange={(page) => table.setPageIndex(page - 1)}
