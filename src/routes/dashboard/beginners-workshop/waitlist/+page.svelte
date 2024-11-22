@@ -17,12 +17,15 @@
 	import { page } from '$app/stores';
 	import { goto } from '$app/navigation';
 	import type { Tables } from '$database';
-	import * as Table from '$lib/components/ui/table';
-	import * as Pagination from '$lib/components/ui/pagination';
+	import * as Select from '$lib/components/ui/select';
+	import * as Table from '$lib/components/ui/table/index.js';
+	import * as Pagination from '$lib/components/ui/pagination/index.js';
 	import SortHeader from '$lib/components/ui/table/sort-header.svelte';
 	import dayjs from 'dayjs';
 	import { createRawSnippet } from 'svelte';
-	import * as Select from '$lib/components/ui/select';
+	import type { QueryData } from '@supabase/supabase-js';
+	import type { FetchAndCountResult } from '$lib/types';
+
 	let pageSizeOptions = [10, 25, 50, 100];
 	const { data } = $props();
 	const supabase = data.supabase;
@@ -42,20 +45,26 @@
 		];
 	});
 	$inspect(rangeStart, rangeEnd);
-	const waitlistQuery = createQuery(() => ({
+	const waitlistQuery = createQuery<FetchAndCountResult<'waitlist'>, Error>(() => ({
 		queryKey: ['waitlist', pageSize, currentPage, rangeStart, sortingState],
 		placeholderData: keepPreviousData,
+		initialData: {
+				count: 0,
+				data: []
+		},
 		queryFn: () => {
 			const query = () =>
 				supabase.from('waitlist').select('*', { count: 'estimated' }).range(rangeStart, rangeEnd);
 			if (sortingState.length > 0) {
 				return query()
 					.order(sortingState[0].id, { ascending: !sortingState[0].desc })
-					.throwOnError();
+					.throwOnError() as QueryData<Tables<'waitlist'>>;
 			}
-			return query().throwOnError();
+			return query().throwOnError() as QueryData<Tables<'waitlist'>>;
 		}
 	}));
+	const waitlistData = $state(waitlistQuery.data);
+	$inspect(waitlistData);
 	// TODO: sorting etc, pagination, fix types, loading indicator
 	function onPaginationChange(newPagination: Partial<PaginationState>) {
 		const paginationState: PaginationState = {
@@ -83,7 +92,7 @@
 			{
 				accessorKey: 'first_name',
 				header: 'First Name',
-				footer: `Total ${waitlistQuery.data.count} people on the waitlist`
+				footer: `Total ${waitlistData.count} people on the waitlist`
 			},
 			{
 				accessorKey: 'last_name',
@@ -168,7 +177,7 @@
 			}
 		],
 		get data() {
-			return waitlistQuery.data?.data ?? [];
+			return waitlistData.data ?? [];
 		},
 		onPaginationChange: (updater) => {
 			if (typeof updater === 'function') {
@@ -200,7 +209,7 @@
 				return sortingState;
 			}
 		},
-		rowCount: waitlistQuery.data?.count ?? 0,
+		rowCount: waitlistData?.count ?? 0,
 		getCoreRowModel: getCoreRowModel(),
 		getPaginationRowModel: getPaginationRowModel(),
 		getSortedRowModel: getSortedRowModel()
@@ -269,7 +278,7 @@
 			</Select.Root>
 		</div>
 		<Pagination.Root
-			count={waitlistQuery.data?.count ?? 0}
+			count={waitlistData?.count ?? 0}
 			perPage={pageSize}
 			page={currentPage + 1}
 			onPageChange={(page) => table.setPageIndex(page - 1)}

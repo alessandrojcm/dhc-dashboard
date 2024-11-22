@@ -1,3 +1,5 @@
+import type { Database } from '$database';
+
 export type UserData = {
 	firstName: string;
 	lastName: string;
@@ -20,4 +22,9 @@ export type NavigationGroup = {
 
 export type NavData = {
 	navMain: NavigationGroup[];
+};
+
+export type FetchAndCountResult<T extends keyof Database['public']['Tables']> = {
+	data: Database['public']['Tables'][T]['Row'][];
+	count: number;
 };
