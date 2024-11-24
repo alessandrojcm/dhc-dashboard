@@ -4,12 +4,7 @@ import * as v from 'valibot';
 const formValidation = v.object({
 	firstName: v.pipe(v.string(), v.nonEmpty('First name is required.')),
 	lastName: v.pipe(v.string(), v.nonEmpty('Last name is required.')),
-	email: v.pipe(
-		v.string(),
-		v.nonEmpty('Please enter your email.'),
-		v.email('The email is badly formatted.'),
-		v.maxLength(30, 'Your email is too long.')
-	),
+	email: v.pipe(v.string(), v.nonEmpty('Please enter your email.'), v.email('Email is invalid.')),
 	phoneNumber: v.pipe(
 		v.string(),
 		v.nonEmpty('Phone number is required.')
@@ -17,7 +12,7 @@ const formValidation = v.object({
 	),
 	dateOfBirth: v.pipe(
 		v.date('Date of birth is required.'),
-		v.toMinValue(dayjs().subtract(16, 'year').toDate())
+		v.check((input) => dayjs().diff(input, 'years') >= 16, 'You must be at least 16 years old.')
 	),
 	medicalConditions: v.pipe(v.string())
 });

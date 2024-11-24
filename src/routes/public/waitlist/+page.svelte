@@ -1,21 +1,29 @@
 <script lang="ts">
 	import * as Form from '$lib/components/ui/form';
+	import dayjs from 'dayjs'
 	import { Input } from '$lib/components/ui/input';
 	import { Button } from '$lib/components/ui/button';
-	import { superForm } from 'sveltekit-superforms';
+	import { superForm, dateProxy } from 'sveltekit-superforms';
+	import { getLocalTimeZone, fromDate } from '@internationalized/date';
 	import * as Card from '$lib/components/ui/card';
 	import { dev } from '$app/environment';
 	import DatePicker from '$lib/components/ui/date-picker.svelte';
 	import { valibotClient } from 'sveltekit-superforms/adapters';
 	import beginnersWaitlist from '$lib/schemas/beginnersWaitlist';
 	import SuperDebug from 'sveltekit-superforms';
-	import { fromDate, getLocalTimeZone } from '@internationalized/date';
 
-	export let data;
+	const { data } = $props();
 	const form = superForm(data.form, {
 		validators: valibotClient(beginnersWaitlist)
 	});
-	const { form: formData, enhance } = form;
+	const { form: formData, enhance, errors } = form;
+	const dobProxy = dateProxy(form, 'dateOfBirth', { format: 'date', taint: true });
+	const dobValue = $derived.by(() => {
+		if (!dayjs($dobProxy).isValid()) {
+			return fromDate(new Date(), getLocalTimeZone());
+		}
+		return fromDate(dayjs($dobProxy).toDate(), getLocalTimeZone());
+	});
 </script>
 
 <svelte:head>
@@ -90,9 +98,8 @@
 					{#snippet children({ props })}
 						<Form.Label>Date of birth</Form.Label>
 						<DatePicker
-							value={$formData.dateOfBirth
-								? fromDate($formData.dateOfBirth, getLocalTimeZone())
-								: null}
+							invalid={Boolean(props['aria-invalid'])}
+							value={dobValue}
 							onDateChange={(date) => form.form.update((curr) => ({ ...curr, dateOfBirth: date }))}
 						/>
 					{/snippet}
@@ -120,5 +127,5 @@
 	</Card.Content>
 </Card.Root>
 {#if dev}
-	<SuperDebug data={form} />
+	<SuperDebug data={{ $formData, $errors }} />
 {/if}
