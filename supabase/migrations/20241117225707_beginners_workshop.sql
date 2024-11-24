@@ -16,7 +16,7 @@ create table waitlist
     -- Personal Information
     first_name                text            not null,
     last_name                 text            not null,
-    email                     text            not null,
+    email                     text            not null unique,
     phone_number              text            not null,
     date_of_birth             date            not null,
     -- Medical and Insurance
@@ -35,7 +35,8 @@ create table waitlist
     constraint future_birth_date check (extract(year from date_of_birth) >= 16 and date_of_birth < current_date)
 );
 
-alter table waitlist enable row level security;
+alter table waitlist
+    enable row level security;
 
 -- Status history tracking
 create table waitlist_status_history
@@ -110,6 +111,14 @@ create policy "Committee and coaches can view waitlist"
 -- Only workshop coordinators and admins can modify waitlist
 create policy "Workshop coordinators can modify waitlist"
     on waitlist for all
+    to authenticated
+    using (
+    has_any_role((select auth.uid()), array ['admin', 'president', 'beginners_coordinator']::role_type[])
+    );
+
+create policy "Only committee members can view the waitlist history"
+    on waitlist_status_history
+    for all
     to authenticated
     using (
     has_any_role((select auth.uid()), array ['admin', 'president', 'beginners_coordinator']::role_type[])
