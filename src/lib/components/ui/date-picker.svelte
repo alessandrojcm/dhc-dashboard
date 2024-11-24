@@ -9,22 +9,24 @@
 	type Props = {
 		value: DateValue;
 		onDateChange: (date: Date) => void;
-		invalid?: boolean
-	}
+		name: string;
+		id: string;
+		'data-fs-error': string | undefined;
+		'aria-describedby': string | undefined;
+		'aria-invalid': 'true' | undefined;
+		'aria-required': 'true' | undefined;
+		'data-fs-control': string;
+	};
 
 	const df = new DateFormatter('en-US', {
 		dateStyle: 'long'
 	});
 
-	let {
-		value = $bindable<DateValue>(),
-		onDateChange,
-		invalid = false,
-	}: Props = $props();
+	let { value, onDateChange, ...rest }: Props = $props();
 </script>
 
 <Popover.Root>
-	<Popover.Trigger>
+	<Popover.Trigger {...rest}>
 		{#snippet child({ props })}
 			<Button
 				variant="outline"
@@ -38,7 +40,6 @@
 	</Popover.Trigger>
 	<Popover.Content class="w-auto p-0">
 		<Calendar
-			aria-invalid={invalid}
 			bind:value
 			type="single"
 			initialFocus

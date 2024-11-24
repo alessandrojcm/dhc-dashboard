@@ -11,8 +11,9 @@ const formValidation = v.object({
 		// additional phone number validation if needed
 	),
 	dateOfBirth: v.pipe(
-		v.date('Date of birth is required.'),
-		v.check((input) => dayjs().diff(input, 'years') >= 16, 'You must be at least 16 years old.')
+		v.string('Date of birth is required.'),
+		v.check((input) => dayjs().diff(input, 'years') >= 16, 'You must be at least 16 years old.'),
+		v.transform((input) => dayjs(input).toISOString())
 	),
 	medicalConditions: v.pipe(v.string())
 });
