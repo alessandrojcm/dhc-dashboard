@@ -3,7 +3,7 @@
 	import dayjs from 'dayjs';
 	import { Input } from '$lib/components/ui/input';
 	import { Button } from '$lib/components/ui/button';
-	import { superForm } from 'sveltekit-superforms';
+	import { dateProxy, superForm } from 'sveltekit-superforms';
 	import { getLocalTimeZone, fromDate } from '@internationalized/date';
 	import * as Card from '$lib/components/ui/card';
 	import { dev } from '$app/environment';
@@ -13,18 +13,18 @@
 	import SuperDebug from 'sveltekit-superforms';
 	import { CheckCircled } from 'svelte-radix';
 	import * as Alert from '$lib/components/ui/alert';
+	import { AsYouType } from 'libphonenumber-js/min';
 
 	const { data } = $props();
 	const form = superForm(data.form, {
 		validators: valibotClient(beginnersWaitlist)
 	});
 	const { form: formData, enhance, errors, message } = form;
+	const dobProxy = dateProxy(form, 'dateOfBirth', { format: `date` });
 	const dobValue = $derived.by(() => {
-		if (!dayjs($formData.dateOfBirth).isValid()) {
-			return fromDate(new Date(), getLocalTimeZone());
-		}
 		return fromDate(dayjs($formData.dateOfBirth).toDate(), getLocalTimeZone());
 	});
+	const formatedPhone = $derived.by(() => new AsYouType('IE').input($formData.phoneNumber));
 </script>
 
 <svelte:head>
@@ -97,7 +97,10 @@
 							<Input
 								type="tel"
 								{...props}
-								bind:value={$formData.phoneNumber}
+								value={formatedPhone}
+								onchange={(event) => {
+									$formData.phoneNumber = event.target.value;
+								}}
 								placeholder="Enter your phone number"
 							/>
 						{/snippet}
@@ -110,15 +113,16 @@
 						{#snippet children({ props })}
 							<Form.Label>Date of birth</Form.Label>
 							<DatePicker
+								{...props}
 								value={dobValue}
 								onDateChange={(date) => {
 									if (!date) {
 										return;
 									}
-									$formData.dateOfBirth = date.toISOString();
+									$formData.dateOfBirth = date;
 								}}
 							/>
-							<input hidden value={$formData.dateOfBirth} name={props.name} />
+							<input id="dobInput" type="date" hidden value={$dobProxy} name={props.name} />
 						{/snippet}
 					</Form.Control>
 					<Form.FieldErrors />

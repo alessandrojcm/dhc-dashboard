@@ -69,6 +69,7 @@
 		"@tanstack/table-core": "^8.20.5",
 		"dayjs": "^1.11.13",
 		"jwt-decode": "^4.0.0",
+		"libphonenumber-js": "^1.11.15",
 		"svelte-radix": "^2.0.1"
 	}
 }
