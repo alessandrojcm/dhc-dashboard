@@ -6,14 +6,21 @@
 	import { Calendar } from '$lib/components/ui/calendar/index.js';
 	import * as Popover from '$lib/components/ui/popover/index.js';
 
+	type Props = {
+		value: DateValue;
+		onDateChange: (date: Date) => void;
+		invalid?: boolean
+	}
+
 	const df = new DateFormatter('en-US', {
 		dateStyle: 'long'
 	});
 
 	let {
-		value = $bindable<DateValue | null>(),
-		onDateChange
-	}: { value: DateValue; onDateChange: (date: Date) => void } = $props();
+		value = $bindable<DateValue>(),
+		onDateChange,
+		invalid = false,
+	}: Props = $props();
 </script>
 
 <Popover.Root>
@@ -31,6 +38,7 @@
 	</Popover.Trigger>
 	<Popover.Content class="w-auto p-0">
 		<Calendar
+			aria-invalid={invalid}
 			bind:value
 			type="single"
 			initialFocus
