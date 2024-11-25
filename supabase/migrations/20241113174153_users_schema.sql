@@ -28,7 +28,8 @@ create type role_type as enum (
 -- User profiles
 create table user_profiles
 (
-    id         uuid references auth.users (id) primary key,
+    id         uuid default gen_random_uuid() primary key ,
+    supabase_user_id uuid references auth.users (id),
     first_name text not null,
     last_name  text not null,
     is_active  boolean                  default true,
@@ -49,7 +50,7 @@ comment on table public.user_roles is 'Application roles for each user.';
 -- Audit log
 create table user_audit_log
 (
-    id         uuid                     default uuid_generate_v4() primary key,
+    id         uuid                     default gen_random_uuid() primary key,
     user_id    uuid references auth.users (id),
     action     text not null,
     details    jsonb,
@@ -361,7 +362,7 @@ create policy "Users can update their own basic info"
     on user_profiles
     for update
     to authenticated
-    using (id = (select auth.uid()));
+    using (id = (select auth.uid()) and user_profiles.is_active = true);
 -- Existing policy: Allow committee coordinators, presidents, and admins to add roles
 -- Updated to restrict adding 'admin' role only to admins
 CREATE POLICY "Committee coordinators can add roles"

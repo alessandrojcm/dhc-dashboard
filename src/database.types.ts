@@ -60,50 +60,77 @@ export type Database = {
 					created_at: string | null;
 					date_of_birth: string;
 					first_name: string;
+					gender: Database['public']['Enums']['gender'] | null;
 					id: string;
 					is_active: boolean | null;
 					last_name: string;
+					phone_number: string;
+					pronouns: string | null;
+					search_text: unknown | null;
+					supabase_user_id: string | null;
 					updated_at: string | null;
+					waitlist_id: string | null;
 				};
 				Insert: {
 					created_at?: string | null;
 					date_of_birth: string;
 					first_name: string;
-					id: string;
+					gender?: Database['public']['Enums']['gender'] | null;
+					id?: string;
 					is_active?: boolean | null;
 					last_name: string;
+					phone_number?: string;
+					pronouns?: string | null;
+					search_text?: unknown | null;
+					supabase_user_id?: string | null;
 					updated_at?: string | null;
+					waitlist_id?: string | null;
 				};
 				Update: {
 					created_at?: string | null;
 					date_of_birth?: string;
 					first_name?: string;
+					gender?: Database['public']['Enums']['gender'] | null;
 					id?: string;
 					is_active?: boolean | null;
 					last_name?: string;
+					phone_number?: string;
+					pronouns?: string | null;
+					search_text?: unknown | null;
+					supabase_user_id?: string | null;
 					updated_at?: string | null;
+					waitlist_id?: string | null;
 				};
-				Relationships: [];
+				Relationships: [
+					{
+						foreignKeyName: 'fk_waitlist_id';
+						columns: ['waitlist_id'];
+						isOneToOne: false;
+						referencedRelation: 'waitlist';
+						referencedColumns: ['id'];
+					},
+					{
+						foreignKeyName: 'fk_waitlist_id';
+						columns: ['waitlist_id'];
+						isOneToOne: false;
+						referencedRelation: 'waitlist_management_view';
+						referencedColumns: ['id'];
+					}
+				];
 			};
 			user_roles: {
 				Row: {
-					gender: Database['public']['Enums']['gender'] | null;
 					id: number;
-					pronouns: string | null;
 					role: Database['public']['Enums']['role_type'];
 					user_id: string;
 				};
 				Insert: {
-					gender?: Database['public']['Enums']['gender'] | null;
 					id?: number;
-					pronouns?: string | null;
 					role: Database['public']['Enums']['role_type'];
 					user_id: string;
 				};
 				Update: {
-					gender?: Database['public']['Enums']['gender'] | null;
 					id?: number;
-					pronouns?: string | null;
 					role?: Database['public']['Enums']['role_type'];
 					user_id?: string;
 				};
@@ -112,56 +139,35 @@ export type Database = {
 			waitlist: {
 				Row: {
 					admin_notes: string | null;
-					date_of_birth: string;
 					email: string;
-					first_name: string;
-					gender: Database['public']['Enums']['gender'] | null;
 					id: string;
 					initial_registration_date: string | null;
 					insurance_form_submitted: boolean | null;
 					last_contacted: string | null;
-					last_name: string;
 					last_status_change: string | null;
 					medical_conditions: string | null;
-					phone_number: string;
-					pronouns: string | null;
-					search_text: unknown | null;
 					status: Database['public']['Enums']['waitlist_status'];
 				};
 				Insert: {
 					admin_notes?: string | null;
-					date_of_birth: string;
 					email: string;
-					first_name: string;
-					gender?: Database['public']['Enums']['gender'] | null;
 					id?: string;
 					initial_registration_date?: string | null;
 					insurance_form_submitted?: boolean | null;
 					last_contacted?: string | null;
-					last_name: string;
 					last_status_change?: string | null;
 					medical_conditions?: string | null;
-					phone_number: string;
-					pronouns?: string | null;
-					search_text?: unknown | null;
 					status?: Database['public']['Enums']['waitlist_status'];
 				};
 				Update: {
 					admin_notes?: string | null;
-					date_of_birth?: string;
 					email?: string;
-					first_name?: string;
-					gender?: Database['public']['Enums']['gender'] | null;
 					id?: string;
 					initial_registration_date?: string | null;
 					insurance_form_submitted?: boolean | null;
 					last_contacted?: string | null;
-					last_name?: string;
 					last_status_change?: string | null;
 					medical_conditions?: string | null;
-					phone_number?: string;
-					pronouns?: string | null;
-					search_text?: unknown | null;
 					status?: Database['public']['Enums']['waitlist_status'];
 				};
 				Relationships: [];
@@ -218,58 +224,15 @@ export type Database = {
 					admin_notes: string | null;
 					age: number | null;
 					current_position: number | null;
-					date_of_birth: string | null;
 					email: string | null;
-					first_name: string | null;
 					full_name: string | null;
 					id: string | null;
 					initial_registration_date: string | null;
 					insurance_form_submitted: boolean | null;
 					last_contacted: string | null;
-					last_name: string | null;
 					last_status_change: string | null;
 					medical_conditions: string | null;
-					never_invited: boolean | null;
-					phone_number: string | null;
 					status: Database['public']['Enums']['waitlist_status'] | null;
-				};
-				Insert: {
-					admin_notes?: string | null;
-					age?: never;
-					current_position?: never;
-					date_of_birth?: string | null;
-					email?: string | null;
-					first_name?: string | null;
-					full_name?: never;
-					id?: string | null;
-					initial_registration_date?: string | null;
-					insurance_form_submitted?: boolean | null;
-					last_contacted?: string | null;
-					last_name?: string | null;
-					last_status_change?: string | null;
-					medical_conditions?: string | null;
-					never_invited?: never;
-					phone_number?: string | null;
-					status?: Database['public']['Enums']['waitlist_status'] | null;
-				};
-				Update: {
-					admin_notes?: string | null;
-					age?: never;
-					current_position?: never;
-					date_of_birth?: string | null;
-					email?: string | null;
-					first_name?: string | null;
-					full_name?: never;
-					id?: string | null;
-					initial_registration_date?: string | null;
-					insurance_form_submitted?: boolean | null;
-					last_contacted?: string | null;
-					last_name?: string | null;
-					last_status_change?: string | null;
-					medical_conditions?: string | null;
-					never_invited?: never;
-					phone_number?: string | null;
-					status?: Database['public']['Enums']['waitlist_status'] | null;
 				};
 				Relationships: [];
 			};
@@ -308,6 +271,30 @@ export type Database = {
 					required_role: Database['public']['Enums']['role_type'];
 				};
 				Returns: boolean;
+			};
+			insert_waitlist_entry: {
+				Args: {
+					first_name: string;
+					last_name: string;
+					email: string;
+					date_of_birth: string;
+					phone_number: string;
+					pronouns: string;
+					gender: Database['public']['Enums']['gender'];
+					medical_conditions: string;
+				};
+				Returns: {
+					profile_id: string;
+					waitlist_id: string;
+					user_first_name: string;
+					user_last_name: string;
+					user_email: string;
+					user_date_of_birth: string;
+					user_phone_number: string;
+					user_pronouns: string;
+					user_gender: Database['public']['Enums']['gender'];
+					user_medical_conditions: string;
+				}[];
 			};
 			update_waitlist_status: {
 				Args: {

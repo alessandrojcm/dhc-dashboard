@@ -24,15 +24,12 @@ async function seedWaitlist(count = 10) {
 		first_name: faker.person.firstName(),
 		last_name: faker.person.lastName(),
 		email: faker.internet.email(),
-		phone_number: faker.phone.number({ style: 'international' }),
 		date_of_birth: faker.date.between({
 			from: '1970-01-01',
 			to: new Date(Date.now() - 16 * 365 * 24 * 60 * 60 * 1000)
 		}),
-		medical_conditions: faker.helpers.arrayElement([null, faker.lorem.sentence()]),
-		insurance_form_submitted: faker.datatype.boolean(),
-		status: 'waiting',
-		admin_notes: faker.helpers.arrayElement([null, faker.lorem.paragraph()]),
+		phone_number: faker.phone.number({ style: 'international' }),
+		pronouns: faker.helpers.arrayElement(['he/him', 'she/her', 'they/them']),
 		gender: faker.helpers.arrayElement([
 			'man (cis)',
 			'woman (cis)',
@@ -41,17 +38,20 @@ async function seedWaitlist(count = 10) {
 			'woman (trans)',
 			'other'
 		]),
-		pronouns: faker.helpers.arrayElement(['he/him', 'she/her', 'they/them'])
+		medical_conditions: faker.helpers.arrayElement([null, faker.lorem.sentence()])
 	}));
 
-	const { data, error } = await supabase.from('waitlist').insert(entries).select();
-
-	if (error) {
-		console.error('Error seeding data:', error);
-		return;
-	}
-
-	console.log(`Successfully inserted ${data.length} waitlist entries`);
+	await Promise.all(
+		entries.map(async (entry) => {
+			const { error } = await supabase.rpc('insert_waitlist_entry', entry);
+			if (error) {
+				console.error('Error seeding data:', error);
+				return Promise.reject(error);
+			}
+			return Promise.resolve();
+		})
+	);
+	console.log(`Successfully inserted ${entries.length} waitlist entries`);
 }
 
 const count = process.argv[2] ? parseInt(process.argv[2]) : 10;
