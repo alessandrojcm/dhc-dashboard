@@ -1,5 +1,9 @@
 <script lang="ts">
-	import { createQuery, keepPreviousData } from '@tanstack/svelte-query';
+	import {
+		createMutation,
+		createQuery,
+		keepPreviousData,
+	} from '@tanstack/svelte-query';
 	import {
 		createSvelteTable,
 		FlexRender,
@@ -24,11 +28,14 @@
 	import SortHeader from '$lib/components/ui/table/sort-header.svelte';
 	import dayjs from 'dayjs';
 	import { createRawSnippet } from 'svelte';
-	import type { QueryData } from '@supabase/supabase-js';
-	import type { FetchAndCountResult } from '$lib/types';
+	import type { PostgrestResponse, QueryData } from '@supabase/supabase-js';
+	import type { FetchAndCountResult, MutationPayload } from '$lib/types';
 	import { Input } from '$lib/components/ui/input';
 	import { Button } from '$lib/components/ui/button';
 	import { Cross2 } from 'svelte-radix';
+	import ActionButtons from './actions-buttons.svelte';
+	const columns =
+		'current_position,full_name,email,phone_number,status,age,initial_registration_date,last_contacted,medical_conditions,admin_notes';
 
 	let pageSizeOptions = [10, 25, 50, 100];
 	const { data } = $props();
@@ -51,11 +58,11 @@
 	});
 
 	$inspect(rangeStart, rangeEnd);
-	const waitlistQuery = createQuery<FetchAndCountResult<'waitlist'>, Error>(() => ({
+	const waitlistQuery = createQuery<FetchAndCountResult<'waitlist_status_history'>, Error>(() => ({
 		queryKey: ['waitlist', pageSize, currentPage, rangeStart, sortingState, searchQuery],
 		placeholderData: keepPreviousData,
 		queryFn: () => {
-			let query = supabase.from('waitlist').select('*', { count: 'estimated' });
+			let query = supabase.from('waitlist_management_view').select(columns, { count: 'estimated' });
 			if (searchQuery.length > 0) {
 				query = query.textSearch('search_text', `'${searchQuery}'`, {
 					type: 'websearch'
@@ -67,6 +74,19 @@
 			return query.range(rangeStart, rangeEnd).throwOnError() as QueryData<
 				FetchAndCountResult<'waitlist'>
 			>;
+		}
+	}));
+	const updateWaitlistEntry = createMutation<
+		void,
+		Error,
+		MutationPayload<'waitlist'> & { email: string }
+	>(() => ({
+		mutationFn: async ({ email, ...rest }) => {
+			const { error } = await supabase.from('waitlist').update(rest).eq('email', email);
+			if (error) throw error;
+		},
+		onSuccess: () => {
+			waitlistQuery.refetch();
 		}
 	}));
 	function onPaginationChange(newPagination: Partial<PaginationState>) {
@@ -92,31 +112,44 @@
 		newParams.set('q', newSearch);
 		goto(`/dashboard/beginners-workshop/waitlist?${newParams.toString()}`);
 	}
-	const tableOptions = $state<TableOptions<Tables<'waitlist'>>>({
+	const tableOptions = $state<TableOptions<Tables<'waitlist_management_view'>>>({
 		autoResetPageIndex: false,
 		manualPagination: true,
 		manualSorting: true,
 		columns: [
 			{
-				accessorKey: 'first_name',
-				header: 'First Name',
+				header: 'Actions',
+				cell: ({ row }) => {
+					return renderComponent(ActionButtons, {
+						medicalConditions: row.original.medical_conditions ?? 'N/A',
+						adminNotes: row.original.admin_notes ?? 'N/A',
+						onEdit(newValue) {
+							updateWaitlistEntry.mutate({
+								email: row.original.email!,
+								admin_notes: newValue
+							});
+						}
+					});
+				}
+			},
+			{
+				accessorKey: 'current_position',
+				header: ({ column }) =>
+					renderComponent(SortHeader, {
+						onclick: () => column.toggleSorting(column.getIsSorted() === 'asc'),
+						header: 'Position',
+						class: 'p-2',
+						sortDirection: column.getIsSorted()
+					})
+			},
+			{
+				accessorKey: 'full_name',
+				header: 'Full Name',
 				footer: `Total ${waitlistQuery?.data?.count} people on the waitlist`,
 				cell: ({ getValue }) => {
 					return renderSnippet(
 						createRawSnippet((value) => ({
-							render: () => `<div class="w-[100px] md:w-[120px]">${value()}</div>`
-						})),
-						getValue()
-					);
-				}
-			},
-			{
-				accessorKey: 'last_name',
-				header: 'Last Name',
-				cell: ({ getValue }) => {
-					return renderSnippet(
-						createRawSnippet((value) => ({
-							render: () => `<div class="w-[100px] md:w-[120px]">${value()}</div>`
+							render: () => `<div class="w-[100px] md:w-[120px] whitespace-break-spaces break-words">${value()}</div>`
 						})),
 						getValue()
 					);
@@ -161,11 +194,11 @@
 				}
 			},
 			{
-				accessorKey: 'date_of_birth',
+				accessorKey: 'age',
 				header: ({ column }) =>
 					renderComponent(SortHeader, {
 						onclick: () => column.toggleSorting(column.getIsSorted() === 'asc'),
-						header: 'Date of Birth',
+						header: 'Age',
 						class: 'p-2',
 						sortDirection: column.getIsSorted()
 					}),
@@ -173,9 +206,7 @@
 					return renderSnippet(
 						createRawSnippet((value) => ({
 							render: () => {
-								const date = dayjs(value());
-								const age = dayjs().diff(date, 'years');
-								return `<div class="w-[120px] ${age < 16 ? 'text-red-800' : ''}">${date.format('DD/MM/YYYY')} (Age ${age})</div>`;
+								return `<div class="w-[120px] ${value() < 16 ? 'text-red-800' : ''}">${value()}</div>`;
 							}
 						})),
 						getValue()
@@ -207,32 +238,6 @@
 					return renderSnippet(
 						createRawSnippet((value) => ({
 							render: () => `<div class="w-[120px]">${value()}</div>`
-						})),
-						getValue()
-					);
-				}
-			},
-			{
-				accessorKey: 'medical_conditions',
-				header: 'Medical Conditions',
-				cell: ({ getValue }) => {
-					return renderSnippet(
-						createRawSnippet((value) => ({
-							render: () =>
-								`<div class="w-[150px] md:w-[200px] whitespace-break-spaces break-words">${value()}</div>`
-						})),
-						getValue() ?? 'N/A'
-					);
-				}
-			},
-			{
-				accessorKey: 'admin_notes',
-				header: 'Admin Notes',
-				cell: ({ getValue }) => {
-					return renderSnippet(
-						createRawSnippet((value) => ({
-							render: () =>
-								`<div class="w-[150px] md:w-[200px] whitespace-break-spaces break-words">${value()}</div>`
 						})),
 						getValue() ?? 'N/A'
 					);
