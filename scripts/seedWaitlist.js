@@ -32,7 +32,16 @@ async function seedWaitlist(count = 10) {
 		medical_conditions: faker.helpers.arrayElement([null, faker.lorem.sentence()]),
 		insurance_form_submitted: faker.datatype.boolean(),
 		status: 'waiting',
-		admin_notes: faker.helpers.arrayElement([null, faker.lorem.paragraph()])
+		admin_notes: faker.helpers.arrayElement([null, faker.lorem.paragraph()]),
+		gender: faker.helpers.arrayElement([
+			'man (cis)',
+			'woman (cis)',
+			'non-binary',
+			'man (trans)',
+			'woman (trans)',
+			'other'
+		]),
+		pronouns: faker.helpers.arrayElement(['he/him', 'she/her', 'they/them'])
 	}));
 
 	const { data, error } = await supabase.from('waitlist').insert(entries).select();

@@ -7,10 +7,10 @@ CREATE TYPE gender AS ENUM (
     'other'
     );
 
-ALTER TABLE user_roles
+ALTER TABLE user_profiles
     ADD COLUMN gender gender;
 
-ALTER TABLE user_roles
+ALTER TABLE user_profiles
     ADD COLUMN pronouns text;
 
 ALTER TABLE waitlist
