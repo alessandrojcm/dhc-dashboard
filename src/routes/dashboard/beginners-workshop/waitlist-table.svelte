@@ -30,6 +30,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Cross2 } from 'svelte-radix';
 	import ActionButtons from './actions-buttons.svelte';
+	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
 
 	const columns =
 		'current_position,full_name,email,phone_number,status,age,initial_registration_date,last_contacted,medical_conditions,admin_notes';
@@ -293,9 +294,14 @@
 		class="max-w-md"
 	/>
 
-	<Button variant="ghost" type="button" onclick={() => onSearchChange('')}>
-		<Cross2 />
-	</Button>
+	{#if searchQuery !== ''}
+		<Button variant="ghost" type="button" onclick={() => onSearchChange('')}>
+			<Cross2 />
+		</Button>
+	{/if}
+	{#if waitlistQuery.isFetching}
+		<LoaderCircle/>
+	{/if}
 </div>
 <div class="overflow-x-auto overflow-y-auto h-[75vh]">
 	<Table.Root class="w-full">

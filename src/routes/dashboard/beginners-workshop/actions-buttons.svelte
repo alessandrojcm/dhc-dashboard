@@ -18,7 +18,7 @@
 <div class="flex gap-w">
 	<Tooltip.Root>
 		<Tooltip.Trigger>
-			<Button variant="ghost" aria-label="Medical conditions">
+			<Button variant="ghost" aria-label="Medical conditions" class="text-red-500">
 				<BriefcaseMedical />
 			</Button>
 		</Tooltip.Trigger>
@@ -26,7 +26,7 @@
 	</Tooltip.Root>
 	<Popover.Root onOpenChange={(open) => !open && (isEdit = false)}>
 		<Popover.Trigger>
-			<Button variant="ghost" aria-label="Admin notes">
+			<Button variant="ghost" aria-label="Admin notes" class="text-blue-500">
 				<NotebookPen />
 			</Button>
 		</Popover.Trigger>
