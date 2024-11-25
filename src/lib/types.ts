@@ -16,7 +16,7 @@ export type NavigationItem = {
 export type NavigationGroup = {
 	title: string;
 	url: string;
-	items: NavigationItem[];
+	items?: NavigationItem[];
 	role: Set<string>;
 };
 

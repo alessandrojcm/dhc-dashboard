@@ -28,13 +28,13 @@ create type role_type as enum (
 -- User profiles
 create table user_profiles
 (
-    id         uuid default gen_random_uuid() primary key ,
+    id               uuid                     default gen_random_uuid() primary key,
     supabase_user_id uuid references auth.users (id),
-    first_name text not null,
-    last_name  text not null,
-    is_active  boolean                  default true,
-    created_at timestamp with time zone default now(),
-    updated_at timestamp with time zone default now()
+    first_name       text not null,
+    last_name        text not null,
+    is_active        boolean                  default true,
+    created_at       timestamp with time zone default now(),
+    updated_at       timestamp with time zone default now()
 );
 
 create table public.user_roles
@@ -86,7 +86,7 @@ begin
                    where user_roles.user_id = uid
                      and (select role = any (required_roles)));
 end;
-$$ language plpgsql security invoker
+$$ language plpgsql security definer
                     set search_path = '';
 
 /*
@@ -346,7 +346,7 @@ create policy "Only admins and committee members can add profiles"
     for insert
     to authenticated
     with check (
-    has_any_role((select auth.uid()), array ['admin', 'president', 'committee_coordinator']::role_type[])
+    (select has_any_role((select auth.uid()), array ['admin', 'president', 'committee_coordinator']::role_type[]))
     );
 
 create policy "Only admins, committee members and the user can delete profiles"
@@ -354,7 +354,7 @@ create policy "Only admins, committee members and the user can delete profiles"
     for delete
     to authenticated
     using (
-    has_any_role((select auth.uid()), array ['admin', 'president', 'committee_coordinator']::role_type[])
+    (select has_any_role((select auth.uid()), array ['admin', 'president', 'committee_coordinator']::role_type[]))
         or id = (select auth.uid())
     );
 
@@ -371,12 +371,12 @@ CREATE POLICY "Committee coordinators can add roles"
     TO authenticated
     WITH CHECK (
     (
-        has_any_role((SELECT auth.uid()), ARRAY['committee_coordinator', 'president', 'admin']::role_type[]) AND
-        role <> 'admin'
-        ) OR (
-        has_role((SELECT auth.uid()), 'admin') AND
-        role = 'admin'
-        )
+        (select
+             has_any_role((SELECT auth.uid()), ARRAY ['committee_coordinator', 'president', 'admin']::role_type[]) AND
+             role <> 'admin')) OR (select (
+                                              has_role((SELECT auth.uid()), 'admin') AND
+                                              role = 'admin'
+                                              ))
     );
 
 -- Existing policy: Committee coordinators can update roles
@@ -385,7 +385,7 @@ CREATE POLICY "Committee coordinators can update roles"
     FOR UPDATE
     TO authenticated
     USING (
-    has_any_role((SELECT auth.uid()), ARRAY['committee_coordinator', 'president', 'admin']::role_type[])
+    (select has_any_role((SELECT auth.uid()), ARRAY ['committee_coordinator', 'president', 'admin']::role_type[]))
     );
 
 -- Existing policy: Users, admin and president can see their own roles
@@ -395,7 +395,7 @@ CREATE POLICY "Users, admin and president can see their own roles"
     TO authenticated
     USING (
     (SELECT auth.uid()) = user_roles.user_id OR
-    has_any_role((SELECT auth.uid()), ARRAY['committee_coordinator', 'president', 'admin']::role_type[])
+    (SELECT has_any_role((SELECT auth.uid()), ARRAY ['committee_coordinator', 'president', 'admin']::role_type[]))
     );
 
 -- Audit log policies
@@ -404,11 +404,11 @@ create policy "Audit logs viewable by admins"
     for select
     to authenticated
     using (
-    has_any_role((select auth.uid()), array ['admin', 'president', 'committee_coordinator']::role_type[])
+    (SELECT has_any_role((select auth.uid()), array ['admin', 'president', 'committee_coordinator']::role_type[]))
     );
 
 /*
  * Indexes
  */
 create index idx_user_audit_created_at on user_audit_log (created_at);
-create index idx_user_role on user_roles (role);
+create index idx_user_role on user_roles using btree (role, user_id, id);
