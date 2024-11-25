@@ -28,3 +28,6 @@ export type FetchAndCountResult<T extends keyof Database['public']['Tables']> = 
 	data: Database['public']['Tables'][T]['Row'][];
 	count: number;
 };
+
+export type MutationPayload<T extends keyof Database['public']['Tables']> =
+	Database['public']['Tables'][T]['Update'];
