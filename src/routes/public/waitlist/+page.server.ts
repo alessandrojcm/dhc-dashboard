@@ -13,7 +13,11 @@ const supabaseAdmin = createClient<Database>(PUBLIC_SUPABASE_URL, env.SERVICE_RO
 
 export const load: PageServerLoad = async () => {
 	return {
-		form: await superValidate(valibot(beginnersWaitlist))
+		form: await superValidate(valibot(beginnersWaitlist)),
+		genders: await supabaseAdmin
+			.rpc('get_gender_options')
+			.throwOnError()
+			.then((res) => res.data as string[])
 	};
 };
 
@@ -30,7 +34,7 @@ export const actions: Actions = {
 			first_name: formData.firstName,
 			last_name: formData.lastName,
 			email: formData.email,
-			date_of_birth: formData.dateOfBirth,
+			date_of_birth: formData.dateOfBirth.toISOString(),
 			phone_number: formData.phoneNumber
 		});
 		// Duplicated email

@@ -87,17 +87,23 @@ export type Database = {
 			};
 			user_roles: {
 				Row: {
+					gender: Database['public']['Enums']['gender'] | null;
 					id: number;
+					pronouns: string | null;
 					role: Database['public']['Enums']['role_type'];
 					user_id: string;
 				};
 				Insert: {
+					gender?: Database['public']['Enums']['gender'] | null;
 					id?: number;
+					pronouns?: string | null;
 					role: Database['public']['Enums']['role_type'];
 					user_id: string;
 				};
 				Update: {
+					gender?: Database['public']['Enums']['gender'] | null;
 					id?: number;
+					pronouns?: string | null;
 					role?: Database['public']['Enums']['role_type'];
 					user_id?: string;
 				};
@@ -109,6 +115,7 @@ export type Database = {
 					date_of_birth: string;
 					email: string;
 					first_name: string;
+					gender: Database['public']['Enums']['gender'] | null;
 					id: string;
 					initial_registration_date: string | null;
 					insurance_form_submitted: boolean | null;
@@ -117,6 +124,7 @@ export type Database = {
 					last_status_change: string | null;
 					medical_conditions: string | null;
 					phone_number: string;
+					pronouns: string | null;
 					search_text: unknown | null;
 					status: Database['public']['Enums']['waitlist_status'];
 				};
@@ -125,6 +133,7 @@ export type Database = {
 					date_of_birth: string;
 					email: string;
 					first_name: string;
+					gender?: Database['public']['Enums']['gender'] | null;
 					id?: string;
 					initial_registration_date?: string | null;
 					insurance_form_submitted?: boolean | null;
@@ -133,6 +142,7 @@ export type Database = {
 					last_status_change?: string | null;
 					medical_conditions?: string | null;
 					phone_number: string;
+					pronouns?: string | null;
 					search_text?: unknown | null;
 					status?: Database['public']['Enums']['waitlist_status'];
 				};
@@ -141,6 +151,7 @@ export type Database = {
 					date_of_birth?: string;
 					email?: string;
 					first_name?: string;
+					gender?: Database['public']['Enums']['gender'] | null;
 					id?: string;
 					initial_registration_date?: string | null;
 					insurance_form_submitted?: boolean | null;
@@ -149,6 +160,7 @@ export type Database = {
 					last_status_change?: string | null;
 					medical_conditions?: string | null;
 					phone_number?: string;
+					pronouns?: string | null;
 					search_text?: unknown | null;
 					status?: Database['public']['Enums']['waitlist_status'];
 				};
@@ -273,6 +285,10 @@ export type Database = {
 				Args: Record<PropertyKey, never>;
 				Returns: Json;
 			};
+			get_gender_options: {
+				Args: Record<PropertyKey, never>;
+				Returns: Json;
+			};
 			get_waitlist_position: {
 				Args: {
 					p_waitlist_id: string;
@@ -303,6 +319,13 @@ export type Database = {
 			};
 		};
 		Enums: {
+			gender:
+				| 'man (cis)'
+				| 'woman (cis)'
+				| 'non-binary'
+				| 'man (trans)'
+				| 'woman (trans)'
+				| 'other';
 			role_type:
 				| 'admin'
 				| 'president'

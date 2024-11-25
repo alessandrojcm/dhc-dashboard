@@ -16,7 +16,9 @@ const formValidation = v.object({
 		v.date('Date of birth is required.'),
 		v.check((input) => dayjs().diff(input, 'years') >= 16, 'You must be at least 16 years old.')
 	),
-	medicalConditions: v.pipe(v.string())
+	medicalConditions: v.pipe(v.string()),
+	pronouns: v.string(),
+	gender: v.string()
 });
 
 export default formValidation;
