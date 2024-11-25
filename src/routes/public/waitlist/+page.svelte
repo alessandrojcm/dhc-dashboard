@@ -150,6 +150,7 @@
 							<Input {...props} bind:value={$formData.pronouns} placeholder="Enter your pronouns" />
 						{/snippet}
 					</Form.Control>
+					<Form.Description>Please separate with slashes (e.g. they/them).</Form.Description>
 					<Tooltip.Provider>
 						<Tooltip.Root>
 							<Tooltip.Trigger>

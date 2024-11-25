@@ -35,7 +35,9 @@ export const actions: Actions = {
 			last_name: formData.lastName,
 			email: formData.email,
 			date_of_birth: formData.dateOfBirth.toISOString(),
-			phone_number: formData.phoneNumber
+			phone_number: formData.phoneNumber,
+			pronouns: formData.pronouns.toLowerCase(),
+			gender: formData.gender as Database['public']['Enums']['gender']
 		});
 		// Duplicated email
 		if (error?.code === '23505') {

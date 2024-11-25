@@ -17,7 +17,13 @@ const formValidation = v.object({
 		v.check((input) => dayjs().diff(input, 'years') >= 16, 'You must be at least 16 years old.')
 	),
 	medicalConditions: v.pipe(v.string()),
-	pronouns: v.string(),
+	pronouns: v.pipe(
+		v.string(),
+		v.check(
+			(input) => /^\/?[\w-]+(\/[\w-]+)*\/?$/.test(input),
+			'Pronouns must be written between slashes (e.g., he/him/they).'
+		)
+	),
 	gender: v.string()
 });
 
