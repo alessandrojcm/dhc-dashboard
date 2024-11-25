@@ -12,13 +12,7 @@
 				title: "Beginners Workshop",
 				url: "beginners-workshop",
 				role: new Set(['admin', 'coach', 'beginners_coordinator', 'president']),
-				items: [
-					{
-						title: "Waitlist",
-						url: 'beginners-workshop/waitlist',
-						role: new Set(['admin', 'coach', 'beginners_coordinator', 'president']),
-					}
-				],
+				items: []
 			},
 		],
 	};

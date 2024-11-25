@@ -6,14 +6,15 @@
 	import { page } from '$app/stores';
 	import * as Breadcrumb from '$lib/components/ui/breadcrumb';
 	import { Separator } from '$lib/components/ui/separator';
-	import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
-	import { SvelteQueryDevtools } from '@tanstack/svelte-query-devtools';
+	import { createQuery, QueryClient, } from '@tanstack/svelte-query';
 	let { children, data }: { data: LayoutData; children: any } = $props();
 	let supabase = $derived(data.supabase);
 	let roles = $derived.by(() => new Set(data.roles));
 	let paths = $derived.by(() => $page.url.pathname.split('/'));
-	let userData = $derived.by(() => {
-		return Promise.all([
+	const userDataQuery = createQuery<UserData>(() => ({
+		queryKey: ['logged_in_user_data'],
+		experimental_prefetchInRender: true,
+		queryFn: () =>  Promise.all([
 			supabase
 				.rpc('get_current_user_with_profile')
 				.then(({ data }) => data as Omit<UserData, 'email'>),
@@ -25,8 +26,9 @@
 					lastName: userData.lastName,
 					email: sessionData.user?.email!
 				}) as UserData
-		);
-	});
+		)
+	}))
+	const userData = $derived(userDataQuery.data)
 	function getLink(item: string): string {
 		let index = paths.indexOf(item);
 		if (index === -1) {
@@ -34,14 +36,13 @@
 		}
 		return paths.slice(0, index + 1).join('/');
 	}
-	const queryClient = new QueryClient();
 </script>
 
 <svelte:head>
 	<title>Dublin Hema Club - Dashboard</title>
 </svelte:head>
 <SidebarProvider>
-	<DashboardSidebar {roles} logout={() => supabase.auth.signOut()} {userData} />
+	<DashboardSidebar {roles} logout={() => supabase.auth.signOut()} userData={userDataQuery.promise} />
 	<main class="w-full">
 		<Breadcrumb.Root class="m-6">
 			<Breadcrumb.List>
@@ -66,10 +67,7 @@
 			</Breadcrumb.List>
 		</Breadcrumb.Root>
 		<Separator class="mb-2" />
-		<QueryClientProvider client={queryClient}>
 			{@render children()}
-			<SvelteQueryDevtools />
-		</QueryClientProvider>
 	</main>
 </SidebarProvider>
 
