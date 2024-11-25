@@ -12,7 +12,7 @@ create type waitlist_status as enum (
 -- Create waitlist table
 create table waitlist
 (
-    id                        uuid                     default uuid_generate_v4() primary key,
+    id                        uuid                     default gen_random_uuid() primary key,
     -- Personal Information
     first_name                text            not null,
     last_name                 text            not null,

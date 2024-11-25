@@ -12,7 +12,7 @@ begin
                    'roles', array_agg(public.user_roles.role)
            )
     from public.user_profiles
-             left join public.user_roles on public.user_profiles.id = public.user_roles.user_id
+             left join public.user_roles on public.user_profiles.supabase_user_id = public.user_roles.user_id
     where public.user_profiles.id = curr_id::uuid
     group by public.user_profiles.first_name, public.user_profiles.last_name);
 end;

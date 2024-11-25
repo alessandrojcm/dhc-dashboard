@@ -30,14 +30,15 @@ export const actions: Actions = {
 			});
 		}
 		const formData = form.data;
-		const { error } = await supabaseAdmin.from('waitlist').insert({
+		const { error } = await supabaseAdmin.rpc('insert_waitlist_entry', {
 			first_name: formData.firstName,
 			last_name: formData.lastName,
 			email: formData.email,
 			date_of_birth: formData.dateOfBirth.toISOString(),
 			phone_number: formData.phoneNumber,
 			pronouns: formData.pronouns.toLowerCase(),
-			gender: formData.gender as Database['public']['Enums']['gender']
+			gender: formData.gender as Database['public']['Enums']['gender'],
+			medical_conditions: formData.medicalConditions
 		});
 		// Duplicated email
 		if (error?.code === '23505') {
