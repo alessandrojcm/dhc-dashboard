@@ -1,10 +1,12 @@
 <script lang="ts">
 	import type { SupabaseClient } from '@supabase/supabase-js';
 	import type { Database } from '$database';
+	im
 	import * as Card from '$lib/components/ui/card/index.js';
 	import * as Resizable from '$lib/components/ui/resizable/index.js';
 
 	const { supabase }: { supabase: SupabaseClient<Database> } = $props();
+	const totalCountQuery = createQuery<number>()
 </script>
 <h2 class="prose prose-h2 text-lg mb-2">Workshop analytics</h2>
 
