@@ -13,6 +13,8 @@
 	import SuperDebug from 'sveltekit-superforms';
 	import { CheckCircled } from 'svelte-radix';
 	import * as Alert from '$lib/components/ui/alert';
+	import * as Select from '$lib/components/ui/select';
+	import * as Tooltip from '$lib/components/ui/tooltip';
 	import { AsYouType } from 'libphonenumber-js/min';
 
 	const { data } = $props();
@@ -25,6 +27,7 @@
 		return fromDate(dayjs($formData.dateOfBirth).toDate(), getLocalTimeZone());
 	});
 	const formatedPhone = $derived.by(() => new AsYouType('IE').input($formData.phoneNumber));
+	$inspect(data.genders);
 </script>
 
 <svelte:head>
@@ -108,6 +111,57 @@
 					<Form.FieldErrors />
 				</Form.Field>
 
+				<Form.Field {form} name="gender">
+					<Form.Control>
+						{#snippet children({ props })}
+							<Form.Label>Gender</Form.Label>
+							<Select.Root type="single" bind:value={$formData.gender} name={props.name}>
+								<Select.Trigger {...props}>
+									{#if $formData.gender}
+										<p class="capitalize">{$formData.gender}</p>
+									{:else}
+										Select your gender
+									{/if}
+								</Select.Trigger>
+								<Select.Content>
+									{#each data.genders as gender}
+										<Select.Item class="capitalize" value={gender} label={gender} />
+									{/each}
+								</Select.Content>
+							</Select.Root>
+						{/snippet}
+					</Form.Control>
+					<Tooltip.Provider>
+						<Tooltip.Root>
+							<Tooltip.Trigger>
+								<Form.Description class="underline">Why do we need this?</Form.Description>
+							</Tooltip.Trigger>
+							<Tooltip.Content side="bottom">
+								<p>We use this information to better understand the preferences of our members.</p>
+							</Tooltip.Content>
+						</Tooltip.Root>
+					</Tooltip.Provider>
+					<Form.FieldErrors />
+				</Form.Field>
+				<Form.Field {form} name="pronouns">
+					<Form.Control>
+						{#snippet children({ props })}
+							<Form.Label>Pronouns</Form.Label>
+							<Input {...props} bind:value={$formData.pronouns} placeholder="Enter your pronouns" />
+						{/snippet}
+					</Form.Control>
+					<Tooltip.Provider>
+						<Tooltip.Root>
+							<Tooltip.Trigger>
+								<Form.Description class="underline">Why do we need this?</Form.Description>
+							</Tooltip.Trigger>
+							<Tooltip.Content side="bottom">
+								<p>We use this information to better understand the preferences of our members.</p>
+							</Tooltip.Content>
+						</Tooltip.Root>
+					</Tooltip.Provider>
+				</Form.Field>
+
 				<Form.Field {form} name="dateOfBirth">
 					<Form.Control>
 						{#snippet children({ props })}
@@ -125,6 +179,16 @@
 							<input id="dobInput" type="date" hidden value={$dobProxy} name={props.name} />
 						{/snippet}
 					</Form.Control>
+					<Tooltip.Provider>
+						<Tooltip.Root>
+							<Tooltip.Trigger>
+								<Form.Description class="underline">Why do we need this?</Form.Description>
+							</Tooltip.Trigger>
+							<Tooltip.Content side="bottom">
+								<p>For insurance reasons, HEMA practitioners need to be at least 16 years old.</p>
+							</Tooltip.Content>
+						</Tooltip.Root>
+					</Tooltip.Provider>
 					<Form.FieldErrors />
 				</Form.Field>
 
