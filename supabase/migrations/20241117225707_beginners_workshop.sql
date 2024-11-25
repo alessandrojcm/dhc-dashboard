@@ -41,7 +41,7 @@ alter table waitlist
 -- Status history tracking
 create table waitlist_status_history
 (
-    id          uuid                     default uuid_generate_v4() primary key,
+    id          uuid                     default gen_random_uuid() primary key,
     waitlist_id uuid references waitlist (id),
     old_status  waitlist_status,
     new_status  waitlist_status not null,
@@ -104,8 +104,8 @@ create policy "Committee and coaches can view waitlist"
     on waitlist for select
     to authenticated
     using (
-    has_any_role((select auth.uid()), array ['admin', 'president', 'committee_coordinator',
-        'beginners_coordinator', 'coach']::role_type[])
+    (select has_any_role((select auth.uid()), array ['admin', 'president', 'committee_coordinator',
+        'beginners_coordinator', 'coach']::role_type[]))
     );
 
 -- Only workshop coordinators and admins can modify waitlist
@@ -113,7 +113,7 @@ create policy "Workshop coordinators can modify waitlist"
     on waitlist for all
     to authenticated
     using (
-    has_any_role((select auth.uid()), array ['admin', 'president', 'beginners_coordinator']::role_type[])
+    (select has_any_role((select auth.uid()), array ['admin', 'president', 'beginners_coordinator']::role_type[]))
     );
 
 create policy "Only committee members can view the waitlist history"
@@ -121,7 +121,7 @@ create policy "Only committee members can view the waitlist history"
     for all
     to authenticated
     using (
-    has_any_role((select auth.uid()), array ['admin', 'president', 'beginners_coordinator']::role_type[])
+    (select has_any_role((select auth.uid()), array ['admin', 'president', 'beginners_coordinator']::role_type[]))
     );
 
 -- Indexes for performance
@@ -164,3 +164,32 @@ create trigger waitlist_status_change
     on waitlist
     for each row
 execute function update_last_status_change();
+
+alter table waitlist_status_history
+    enable row level security;
+
+
+-- Only committee members, coaches, and admins can view waitlist
+create policy "Committee and coaches can view waitlist status"
+    on waitlist for select
+    to authenticated
+    using (
+    (select has_any_role((select auth.uid()), array ['admin', 'president', 'committee_coordinator',
+        'beginners_coordinator', 'coach']::role_type[]))
+    );
+
+-- Only workshop coordinators and admins can modify waitlist
+create policy "Workshop coordinators can modify waitlist status"
+    on waitlist for all
+    to authenticated
+    using (
+    (select has_any_role((select auth.uid()), array ['admin', 'president', 'beginners_coordinator']::role_type[]))
+    );
+
+create policy "Only committee members can view the waitlist status history"
+    on waitlist_status_history
+    for all
+    to authenticated
+    using (
+    (select has_any_role((select auth.uid()), array ['admin', 'president', 'beginners_coordinator']::role_type[]))
+    );

@@ -96,19 +96,19 @@
 		const newParams = new URLSearchParams($page.url.searchParams);
 		newParams.set('page', paginationState.pageIndex.toString());
 		newParams.set('pageSize', paginationState.pageSize.toString());
-		goto(`/dashboard/beginners-workshop/waitlist?${newParams.toString()}`);
+		goto(`/dashboard/beginners-workshop?${newParams.toString()}`);
 	}
 	function onSortingChange(newSorting: SortingState) {
 		const [sortingState] = newSorting;
 		const newParams = new URLSearchParams($page.url.searchParams);
 		newParams.set('sort', sortingState.id);
 		newParams.set('direction', sortingState.desc ? 'desc' : 'asc');
-		goto(`/dashboard/beginners-workshop/waitlist?${newParams.toString()}`);
+		goto(`/dashboard/beginners-workshop?${newParams.toString()}`);
 	}
 	function onSearchChange(newSearch: string) {
 		const newParams = new URLSearchParams($page.url.searchParams);
 		newParams.set('q', newSearch);
-		goto(`/dashboard/beginners-workshop/waitlist?${newParams.toString()}`);
+		goto(`/dashboard/beginners-workshop?${newParams.toString()}`);
 	}
 	const tableOptions = $state<TableOptions<Tables<'waitlist_management_view'>>>({
 		autoResetPageIndex: false,
