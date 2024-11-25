@@ -59,12 +59,15 @@ async function seedUsers(csvPath) {
 			first_name: record.first_name,
 			last_name: record.last_name,
 			date_of_birth: parsedDate.format('YYYY-MM-DD'),
-			is_active: true
+			is_active: true,
+			pronouns: record.pronouns,
+			gender: record.gender
 		});
 
 		if (profileError) {
 			console.error(`Error creating profile for ${record.email}:`, profileError.message);
 			console.log('Profile Error details:', profileError);
+			await supabase.auth.admin.deleteUser(authUser.user.id, false);
 			continue;
 		}
 
@@ -79,6 +82,7 @@ async function seedUsers(csvPath) {
 		if (roleError) {
 			console.error(`Error inserting roles for ${record.email}:`, roleError.message);
 			console.log('Role Error details:', roleError);
+			await supabase.auth.admin.deleteUser(authUser.user.id, false);
 		}
 	}
 
