@@ -23,9 +23,10 @@
 	});
 
 	let { value, onDateChange, ...rest }: Props = $props();
+	let open = $state(false);
 </script>
 
-<Popover.Root>
+<Popover.Root bind:open>
 	<Popover.Trigger {...rest}>
 		{#snippet child({ props })}
 			<Button
@@ -43,7 +44,10 @@
 			bind:value
 			type="single"
 			initialFocus
-			onValueChange={(date) => date && onDateChange(date.toDate(getLocalTimeZone()))}
+			onValueChange={(date) => {
+				date && onDateChange(date.toDate(getLocalTimeZone()));
+				open = false;
+			}}
 		/>
 	</Popover.Content>
 </Popover.Root>

@@ -5,6 +5,7 @@
     <file url="file://$PROJECT_DIR$/supabase/migrations/20241117204047_user_rpcs.sql" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/supabase/migrations/20241117225707_beginners_workshop.sql" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/supabase/migrations/20241122133115_text_search_and_age_check.sql" dialect="PostgreSQL" />
+    <file url="file://$PROJECT_DIR$/supabase/migrations/20241124233753_add_extra_personal_fields.sql" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/supabase/migrations/20241125103648_normalize_user_profiles.sql" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/supabase/seed.sql" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/supabase/tests/database/insert_waitlist_entry.sql" dialect="PostgreSQL" />
