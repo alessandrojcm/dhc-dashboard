@@ -33,6 +33,7 @@ create table user_profiles
     first_name       text not null,
     last_name        text not null,
     is_active        boolean                  default true,
+    medical_conditions text,
     created_at       timestamp with time zone default now(),
     updated_at       timestamp with time zone default now()
 );
