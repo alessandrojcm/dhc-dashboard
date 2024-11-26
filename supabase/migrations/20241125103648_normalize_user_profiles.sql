@@ -78,18 +78,18 @@ create or replace function insert_waitlist_entry(
                 user_medical_conditions text
             )
     language plpgsql
-    set search_path = 'public'
+    set search_path = ''
 as
 $$
 declare
     new_waitlist_id uuid;
 begin
     begin
-        insert into waitlist (medical_conditions, email)
+        insert into public.waitlist (medical_conditions, email)
         values (medical_conditions, email)
         returning id into new_waitlist_id;
 
-        insert into user_profiles (first_name, last_name, date_of_birth, phone_number, pronouns, gender,
+        insert into public.user_profiles (first_name, last_name, date_of_birth, phone_number, pronouns, gender,
                                    is_active, waitlist_id)
         values (first_name,
                 last_name,
@@ -111,8 +111,8 @@ begin
                    u.pronouns           AS user_pronouns,
                    u.gender             AS user_gender,
                    w.medical_conditions AS user_medical_conditions
-            FROM waitlist w
-                     JOIN user_profiles u ON w.id = u.waitlist_id
+            FROM public.waitlist w
+                     JOIN public.user_profiles u ON w.id = u.waitlist_id
             WHERE w.id = new_waitlist_id;
     exception
         when others then

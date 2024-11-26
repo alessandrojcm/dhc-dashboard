@@ -1,35 +1,155 @@
 <script lang="ts">
 	import type { SupabaseClient } from '@supabase/supabase-js';
 	import type { Database } from '$database';
-	im
 	import * as Card from '$lib/components/ui/card/index.js';
 	import * as Resizable from '$lib/components/ui/resizable/index.js';
+	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
+	import { createQuery } from '@tanstack/svelte-query';
+	import { BarChart, ScatterChart, Tooltip } from 'layerchart';
+	import { interpolateRainbow } from 'd3-scale-chromatic';
+	import { quantize } from 'd3-interpolate';
 
 	const { supabase }: { supabase: SupabaseClient<Database> } = $props();
-	const totalCountQuery = createQuery<number>()
+	const totalCountQuery = createQuery<number>(() => ({
+		queryKey: ['waitlist', 'totalCount'],
+		queryFn: () =>
+			supabase
+				.from('waitlist_management_view')
+				.select('id', { count: 'exact', head: true })
+				.throwOnError()
+				.then((r) => r.count ?? 0)
+	}));
+	const averageAge = createQuery<number>(() => ({
+		queryKey: ['waitlist', 'avgAge'],
+		queryFn: () =>
+			supabase
+				.from('waitlist_management_view')
+				.select('avg_age:age.avg()')
+				.single()
+				.throwOnError()
+				.then((res) => res.data?.avg_age)
+	}));
+	const genderDistribution = createQuery<{
+		gender: Database['public']['Enums']['gender'];
+		count: number;
+	}>(() => ({
+		queryKey: ['waitlist', 'genderDistribution'],
+		queryFn: () =>
+			supabase
+				.from('user_profiles')
+				.select('gender,value:gender.count()')
+				.is('is_active', false)
+				.not('waitlist_id', 'is', null)
+				.is('supabase_user_id', null)
+				.throwOnError()
+				.then((r) => r.data)
+	}));
+	const genderDistributionData = $derived(genderDistribution.data ?? []);
+	const ageDistributionQuery = createQuery<{
+		age: string;
+		count: number;
+	}>(() => ({
+		queryKey: ['waitlist', 'ageDistribution'],
+		queryFn: () =>
+			supabase
+				.from('waitlist_management_view')
+				.select('age,value:age.count()')
+				.order('age', { ascending: true })
+				.throwOnError()
+				.then((r) => r.data)
+	}));
+	const ageDistribution = $derived.by(() => {
+		const result = ageDistributionQuery.data ?? [];
+		const distribution = new Map();
+		result.forEach((row) => {
+			if (!distribution.has(row.age)) {
+				distribution.set(row.age, [row]);
+			} else {
+				distribution.set(row.age, [...distribution.get(row.age), row]);
+			}
+		});
+		return Array.from(distribution.entries()).map(([age, rows], i) => ({
+			key: age,
+			data: rows,
+			color: 'hsl(var(--color-primary))'
+		}));
+	});
 </script>
+
 <h2 class="prose prose-h2 text-lg mb-2">Workshop analytics</h2>
 
-{#snippet keyMetrics()}
-	<Card.Root>
+<div class="flex gap-2">
+	<Card.Root class="bg-green-200 w-36">
 		<Card.Header>
-			<Card.Title>Metrics</Card.Title>
+			<Card.Description class="text-black">Total waitlist</Card.Description>
 		</Card.Header>
-		<Card.Content class="grid grid-cols-2">
-			<Card.Root class="bg-green-200 col-start-1">
-				<Card.Header>
-					<Card.Description class="text-black">Total waitlist</Card.Description>
-				</Card.Header>
-				<Card.Content>
-					<p class="prose text-4xl">400</p>
-				</Card.Content>
-			</Card.Root>
+		<Card.Content>
+			{#if totalCountQuery.isLoading}
+				<Skeleton class="h-[2.5rem] w-[5rem]" />
+			{:else}
+				<p class="text-black text-4xl">
+					{totalCountQuery.data ?? 0}
+				</p>
+			{/if}
 		</Card.Content>
 	</Card.Root>
-{/snippet}
-
-<Resizable.PaneGroup direction="horizontal">
-	<Resizable.Pane minSize={30}>{@render keyMetrics()}</Resizable.Pane>
+	<Card.Root class="bg-yellow-200 w-36">
+		<Card.Header>
+			<Card.Description class="text-black">Average age</Card.Description>
+		</Card.Header>
+		<Card.Content>
+			{#if averageAge.isLoading}
+				<Skeleton class="h-[2.5rem] w-[5rem]" />
+			{:else}
+				<p class="text-black text-4xl">
+					{(averageAge.data ?? 0).toLocaleString('en-UK', { maximumFractionDigits: 2 })}
+				</p>
+			{/if}
+		</Card.Content>
+	</Card.Root>
+</div>
+<!--TODO: chart type fix labels-->
+<Resizable.PaneGroup direction="vertical" class="mt-2">
+	<Resizable.Pane class="min-h-[400px] p-4 border rounded">
+		<h3>Gender demographics</h3>
+		<div class="h-[300px] mt-4">
+			<BarChart
+				data={genderDistributionData}
+				x="gender"
+				y="value"
+				yDomain={[0, null]}
+				cRange={quantize(interpolateRainbow, 8)}
+				legend
+			>
+				<svelte:fragment slot="tooltip" let:y let:classes let:x>
+					<Tooltip.Root clas={classes} let:data>
+						<Tooltip.Header class="capitalize">
+							{x(data)}
+						</Tooltip.Header>
+						<Tooltip.List>
+							<Tooltip.Item label="Members" value={y(data)} />
+						</Tooltip.List>
+					</Tooltip.Root>
+				</svelte:fragment>
+			</BarChart>
+		</div>
+	</Resizable.Pane>
 	<Resizable.Handle />
-	<Resizable.Pane>Two</Resizable.Pane>
+	<Resizable.Pane class="min-h-[400px] p-4 border rounded">
+		<h3 class="mb-4">Age groups</h3>
+		<div class="h-[300px]">
+			<ScatterChart series={ageDistribution} rRange={[2, 30]} xNice yNice x="age" y="value" legend>
+				<svelte:fragment slot="tooltip" let:y let:classes>
+					<Tooltip.Root clas={classes} let:data>
+						<Tooltip.Header>
+							{data.seriesKey} years old
+						</Tooltip.Header>
+						<Tooltip.List>
+							<Tooltip.Item label="Members" value={y(data)} />
+						</Tooltip.List>
+					</Tooltip.Root>
+				</svelte:fragment>
+			</ScatterChart>
+		</div>
+	</Resizable.Pane>
 </Resizable.PaneGroup>

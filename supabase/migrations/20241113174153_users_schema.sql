@@ -333,12 +333,24 @@ alter table user_roles
 
 
 -- User profile policies
-create policy "Users can view all active profiles"
+create policy "Committee members can see al profiles"
     on user_profiles
     for select
     to authenticated
     using (
-    is_active = true
+    (select has_any_role((select auth.uid()), array [
+        'admin',
+        'president',
+        'treasurer',
+        'committee_coordinator',
+        'sparring_coordinator',
+        'workshop_coordinator',
+        'beginners_coordinator',
+        'quartermaster',
+        'pr_manager',
+        'volunteer_coordinator',
+        'research_coordinator'
+        ]::role_type[]))
     );
 
 create policy "Only admins and committee members can add profiles"
