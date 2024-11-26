@@ -218,6 +218,6 @@
 		{/if}
 	</Card.Content>
 </Card.Root>
-<!--{#if dev}-->
-<!--	<SuperDebug data={{ $formData, $errors, $message }} />-->
-<!--{/if}-->
+{#if dev}
+	<SuperDebug data={{ $formData, $errors, $message }} />
+{/if}
