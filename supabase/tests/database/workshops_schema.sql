@@ -20,17 +20,16 @@ SELECT tests.create_supabase_user('member', 'member@example.com');
 
 SELECT tests.authenticate_as_service_role();
 INSERT INTO user_roles (user_id, role)
-VALUES
-    ((SELECT tests.get_supabase_uid('admin')), 'admin'),
-    ((SELECT tests.get_supabase_uid('president')), 'president'),
-    ((SELECT tests.get_supabase_uid('committee_coordinator')), 'committee_coordinator'),
-    ((SELECT tests.get_supabase_uid('coach')), 'coach'),
-    ((SELECT tests.get_supabase_uid('member')), 'member');
+VALUES ((SELECT tests.get_supabase_uid('admin')), 'admin'),
+       ((SELECT tests.get_supabase_uid('president')), 'president'),
+       ((SELECT tests.get_supabase_uid('committee_coordinator')), 'committee_coordinator'),
+       ((SELECT tests.get_supabase_uid('coach')), 'coach'),
+       ((SELECT tests.get_supabase_uid('member')), 'member');
 
 -- Setup: Insert test records into the waitlist
-INSERT INTO waitlist (id, first_name, last_name, email, phone_number, date_of_birth, status)
-VALUES ('10000000-0000-0000-0000-000000000001', 'John', 'Doe', 'john.doe@example.com', '1234567890', '1980-01-01', 'waiting'),
-       ('10000000-0000-0000-0000-000000000002', 'Jane', 'Doe', 'jane.doe@example.com', '1234567890', '1980-01-01', 'waiting');
+INSERT INTO waitlist (id, email, status)
+VALUES ('10000000-0000-0000-0000-000000000001', 'john@doe.com', 'waiting'),
+       ('10000000-0000-0000-0000-000000000002', 'john2@doe.com', 'waiting');
 SELECT tests.clear_authentication();
 
 -- Test cases for RLS policies and function
@@ -58,8 +57,10 @@ SELECT lives_ok(
 
 -- Test case 4: Coach cannot update waitlist and check if the status has not changed
 SELECT tests.authenticate_as('coach');
-UPDATE waitlist SET status = 'paid' WHERE id = '10000000-0000-0000-0000-000000000002';
-SELECT is (
+UPDATE waitlist
+SET status = 'paid'
+WHERE id = '10000000-0000-0000-0000-000000000002';
+SELECT is(
                (SELECT status FROM waitlist WHERE id = '10000000-0000-0000-0000-000000000002'),
                'invited',
                'Coach should not be able to update the waitlist'
@@ -67,7 +68,7 @@ SELECT is (
 
 -- Test case 5: Normal member cannot check the waitlist
 SELECT tests.authenticate_as('member');
-SELECT is (
+SELECT is(
                (SELECT status FROM waitlist WHERE id = '10000000-0000-0000-0000-000000000002'),
                NULL,
                'Normal member should not be able to update the waitlist'
@@ -109,6 +110,7 @@ SELECT results_eq(
                'SELECT id FROM waitlist WHERE false'
        );
 
-SELECT * FROM finish();
+SELECT *
+FROM finish();
 -- Clean up
 ROLLBACK;

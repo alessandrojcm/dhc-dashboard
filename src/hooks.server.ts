@@ -105,7 +105,7 @@ const roleGuard: Handle = async ({ event, resolve }) => {
 	const tokenClaim = jwtDecode(session?.access_token!);
 	const roles = new Set((tokenClaim as { app_metadata: { roles: string[] } }).app_metadata!.roles);
 	if (
-		event.url.pathname.includes('beginners-workshop/waitlist') &&
+		event.url.pathname.includes('beginners-workshop') &&
 		![
 			roles.has('beginners_coordinator'),
 			roles.has('president'),

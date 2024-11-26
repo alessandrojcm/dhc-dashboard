@@ -6,6 +6,7 @@
     <file url="file://$PROJECT_DIR$/supabase/migrations/20241117225707_beginners_workshop.sql" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/supabase/migrations/20241122133115_text_search_and_age_check.sql" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/supabase/migrations/20241125103648_normalize_user_profiles.sql" dialect="PostgreSQL" />
+    <file url="file://$PROJECT_DIR$/supabase/seed.sql" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/supabase/tests/database/users_schema.sql" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/supabase/tests/database/workshops_schema.sql" dialect="PostgreSQL" />
     <file url="PROJECT" dialect="PostgreSQL" />

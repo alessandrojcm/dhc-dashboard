@@ -61,7 +61,8 @@ async function seedUsers(csvPath) {
 			date_of_birth: parsedDate.format('YYYY-MM-DD'),
 			is_active: true,
 			pronouns: record.pronouns,
-			gender: record.gender
+			gender: record.gender,
+			supabase_user_id: authUser.user.id
 		});
 
 		if (profileError) {

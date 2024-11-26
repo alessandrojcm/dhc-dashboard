@@ -54,6 +54,7 @@ select w.*,
 from user_profiles u
          join waitlist w on u.waitlist_id = w.id
 where u.waitlist_id is not null;
+
 create or replace function insert_waitlist_entry(
     first_name text,
     last_name text,
@@ -61,7 +62,7 @@ create or replace function insert_waitlist_entry(
     date_of_birth timestamptz,
     phone_number text,
     pronouns text,
-    gender gender,
+    gender public.gender,
     medical_conditions text
 )
     returns table
@@ -74,7 +75,7 @@ create or replace function insert_waitlist_entry(
                 user_date_of_birth      date,
                 user_phone_number       text,
                 user_pronouns           text,
-                user_gender             gender,
+                user_gender             public.gender,
                 user_medical_conditions text
             )
     language plpgsql

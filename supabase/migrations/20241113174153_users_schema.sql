@@ -29,7 +29,7 @@ create type role_type as enum (
 create table user_profiles
 (
     id               uuid                     default gen_random_uuid() primary key,
-    supabase_user_id uuid references auth.users (id),
+    supabase_user_id uuid references auth.users (id) unique,
     first_name       text not null,
     last_name        text not null,
     is_active        boolean                  default true,
@@ -353,6 +353,12 @@ create policy "Committee members can see al profiles"
         ]::role_type[]))
     );
 
+create policy "Users can view their own profile"
+    on user_profiles
+    for select
+    to authenticated
+    using ((select auth.uid()) = user_profiles.supabase_user_id and (select user_profiles.is_active) is true);
+
 create policy "Only admins and committee members can add profiles"
     on user_profiles
     for insert
@@ -367,14 +373,14 @@ create policy "Only admins, committee members and the user can delete profiles"
     to authenticated
     using (
     (select has_any_role((select auth.uid()), array ['admin', 'president', 'committee_coordinator']::role_type[]))
-        or id = (select auth.uid())
+        or supabase_user_id = (select auth.uid())
     );
 
 create policy "Users can update their own basic info"
     on user_profiles
     for update
     to authenticated
-    using (id = (select auth.uid()) and user_profiles.is_active = true);
+    using (supabase_user_id = (select auth.uid()) and user_profiles.is_active = true);
 -- Existing policy: Allow committee coordinators, presidents, and admins to add roles
 -- Updated to restrict adding 'admin' role only to admins
 CREATE POLICY "Committee coordinators can add roles"
