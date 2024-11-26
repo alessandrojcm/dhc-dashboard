@@ -19,8 +19,6 @@ create table waitlist
     email                     text            not null unique,
     phone_number              text            not null,
     date_of_birth             date            not null,
-    -- Medical and Insurance
-    medical_conditions        text,
     insurance_form_submitted  boolean                  default false,
     -- Status Management
     status                    waitlist_status not null default 'waiting',
