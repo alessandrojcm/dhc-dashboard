@@ -1,5 +1,5 @@
 -- Add search vector column
-ALTER TABLE waitlist
+ALTER TABLE public.waitlist
     ADD COLUMN search_text tsvector
         GENERATED ALWAYS AS (
             setweight(to_tsvector('english', coalesce(first_name, '')), 'A') ||

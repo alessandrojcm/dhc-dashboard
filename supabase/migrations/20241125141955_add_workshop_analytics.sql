@@ -1,5 +1,6 @@
 -- Update enum type
 ALTER TYPE waitlist_status ADD VALUE IF NOT EXISTS 'joined';
+ALTER ROLE authenticator SET pgrst.db_aggregates_enabled = 'true';
 
 -- Updated conversion metrics function
 CREATE OR REPLACE FUNCTION get_conversion_metrics(
@@ -16,6 +17,7 @@ CREATE OR REPLACE FUNCTION get_conversion_metrics(
                 join_conversion_rate     numeric,
                 avg_time_to_join         interval
             )
+    set search_path = ''
 AS
 $$
 BEGIN
@@ -30,7 +32,7 @@ BEGIN
                                                        THEN last_status_change - initial_registration_date
                                                    END
                                        )                                              as avg_time_to_join
-                                FROM waitlist
+                                FROM public.waitlist
                                 WHERE initial_registration_date BETWEEN start_date AND end_date
                                 GROUP BY 1)
         SELECT m.cohort_date,

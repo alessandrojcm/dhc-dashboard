@@ -22,6 +22,7 @@ ALTER TABLE waitlist
 create or replace function get_gender_options()
     returns json
     language plpgsql
+    set search_path = ''
 as
 $$
 DECLARE

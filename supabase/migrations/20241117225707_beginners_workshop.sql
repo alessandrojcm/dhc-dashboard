@@ -53,22 +53,24 @@ create table waitlist_status_history
 -- Function to update waitlist status
 create or replace function update_waitlist_status(
     p_waitlist_id uuid,
-    p_new_status waitlist_status,
+    p_new_status public.waitlist_status,
     p_notes text default null
 )
-    returns void as
+    returns void
+    set search_path = ''
+as
 $$
 declare
-    v_old_status waitlist_status;
+    v_old_status public.waitlist_status;
 begin
     -- Get current status
     select status
     into v_old_status
-    from waitlist
+    from public.waitlist
     where id = p_waitlist_id;
 
     -- Update status and last_status_change
-    update waitlist
+    update public.waitlist
     set status             = p_new_status,
         last_status_change = now()
     where id = p_waitlist_id;
@@ -82,7 +84,9 @@ $$ language plpgsql security invoker;
 
 -- Function to get position in waitlist
 create or replace function get_waitlist_position(p_waitlist_id uuid)
-    returns integer as
+    returns integer
+    set search_path = ''
+as
 $$
 begin
     return (select position
@@ -91,7 +95,7 @@ begin
                              order by
                                  initial_registration_date
                              ) as position
-                  from waitlist
+                  from public.waitlist
                   where status = 'waiting') as positions
             where id = p_waitlist_id);
 end;
@@ -104,8 +108,8 @@ create policy "Committee and coaches can view waitlist"
     on waitlist for select
     to authenticated
     using (
-    (select has_any_role((select auth.uid()), array ['admin', 'president', 'committee_coordinator',
-        'beginners_coordinator', 'coach']::role_type[]))
+    (select public.has_any_role((select auth.uid()), array ['admin', 'president', 'committee_coordinator',
+        'beginners_coordinator', 'coach']::public.role_type[]))
     );
 
 -- Only workshop coordinators and admins can modify waitlist
@@ -113,7 +117,7 @@ create policy "Workshop coordinators can modify waitlist"
     on waitlist for all
     to authenticated
     using (
-    (select has_any_role((select auth.uid()), array ['admin', 'president', 'beginners_coordinator']::role_type[]))
+    (select public.has_any_role((select auth.uid()), array ['admin', 'president', 'beginners_coordinator']::public.role_type[]))
     );
 
 create policy "Only committee members can view the waitlist history"
@@ -121,7 +125,7 @@ create policy "Only committee members can view the waitlist history"
     for all
     to authenticated
     using (
-    (select has_any_role((select auth.uid()), array ['admin', 'president', 'beginners_coordinator']::role_type[]))
+    (select public.has_any_role((select auth.uid()), array ['admin', 'president', 'beginners_coordinator']::public.role_type[]))
     );
 
 -- Indexes for performance
@@ -149,7 +153,9 @@ from waitlist w;
 
 -- Trigger to maintain last_status_change
 create or replace function update_last_status_change()
-    returns trigger as
+    returns trigger
+    set search_path = ''
+as
 $$
 begin
     if OLD.status != NEW.status then
@@ -174,8 +180,8 @@ create policy "Committee and coaches can view waitlist status"
     on waitlist for select
     to authenticated
     using (
-    (select has_any_role((select auth.uid()), array ['admin', 'president', 'committee_coordinator',
-        'beginners_coordinator', 'coach']::role_type[]))
+    (select public.has_any_role((select auth.uid()), array ['admin', 'president', 'committee_coordinator',
+        'beginners_coordinator', 'coach']::public.role_type[]))
     );
 
 -- Only workshop coordinators and admins can modify waitlist
@@ -183,7 +189,7 @@ create policy "Workshop coordinators can modify waitlist status"
     on waitlist for all
     to authenticated
     using (
-    (select has_any_role((select auth.uid()), array ['admin', 'president', 'beginners_coordinator']::role_type[]))
+    (select public.has_any_role((select auth.uid()), array ['admin', 'president', 'beginners_coordinator']::public.role_type[]))
     );
 
 create policy "Only committee members can view the waitlist status history"
@@ -191,5 +197,5 @@ create policy "Only committee members can view the waitlist status history"
     for all
     to authenticated
     using (
-    (select has_any_role((select auth.uid()), array ['admin', 'president', 'beginners_coordinator']::role_type[]))
+    (select public.has_any_role((select auth.uid()), array ['admin', 'president', 'beginners_coordinator']::public.role_type[]))
     );
