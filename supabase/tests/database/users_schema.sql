@@ -1,7 +1,7 @@
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS "basejump-supabase_test_helpers";
 -- Load pgTAP
-SELECT plan(54);
+SELECT plan(56);
 -- Adjust number based on total test count
 
 -- Test schema existence
@@ -40,7 +40,14 @@ SELECT columns_are('public', 'user_profiles', ARRAY [
     'last_name',
     'is_active',
     'created_at',
-    'updated_at'
+    'updated_at',
+    'date_of_birth',
+    'gender',
+    'phone_number',
+    'pronouns',
+    'search_text',
+    'supabase_user_id',
+    'waitlist_id'
     ], 'user_profiles should have the correct columns');
 
 SELECT col_is_pk('public', 'user_profiles', 'id', 'user_profiles.id should be primary key');
@@ -89,10 +96,11 @@ SELECT trigger_is('public', 'user_profiles', 'update_user_profiles_updated_at', 
 
 -- Test policies for user_profiles
 SELECT policies_are('public', 'user_profiles', ARRAY [
-    'Users can view all active profiles',
+    'Committee members can see al profiles',
     'Only admins and committee members can add profiles',
     'Only admins, committee members and the user can delete profiles',
-    'Users can update their own basic info'
+    'Users can update their own basic info',
+    'Users can view their own profile'
     ], 'user_profiles should have all expected policies');
 
 -- Test policies for user_roles
@@ -110,7 +118,10 @@ SELECT policies_are('public', 'user_audit_log', ARRAY [
 -- Test indexes
 SELECT has_index('public', 'user_audit_log', 'idx_user_audit_created_at', ARRAY ['created_at'],
                  'Should have index on user_audit_log(created_at)');
-SELECT has_index('public', 'user_roles', 'idx_user_role', ARRAY ['role'], 'Should have index on user_roles(role)');
+SELECT has_index('public', 'user_profiles', 'idx_waitlist_user_profile', ARRAY ['waitlist_id']);
+SELECT has_index('public', 'user_profiles', 'idx_user_profiles_names', ARRAY ['first_name', 'last_name']);
+SELECT has_index('public', 'user_profiles', 'idx_waitlist_concat_info',
+                 ARRAY ['first_name', 'last_name', 'waitlist_id']);
 
 -- Test function behavior
 -- Create test users and roles
@@ -123,7 +134,8 @@ select tests.create_supabase_user('coach', 'coach@test.com');
 select tests.create_supabase_user('member', 'member@test.com');
 
 -- To avoid clashes, is going to be rolled back anyway
-DELETE from user_roles;
+DELETE
+from user_roles;
 
 insert into user_roles (user_id, role)
 values (tests.get_supabase_uid('admin'), 'admin');
@@ -133,8 +145,8 @@ insert into user_roles (user_id, role)
 values (tests.get_supabase_uid('coach'), 'coach');
 insert into user_roles (user_id, role)
 values (tests.get_supabase_uid('member'), 'member');
-insert into user_profiles (id, first_name, last_name, is_active)
-values (tests.get_supabase_uid('member'), 'member', 'member', true);
+insert into user_profiles (supabase_user_id, first_name, last_name, is_active, date_of_birth)
+values (tests.get_supabase_uid('member'), 'member', 'member', true, '11-05-1996');
 
 -- Test has_role function
 SELECT ok(
@@ -174,8 +186,8 @@ select throws_ok(
 
 select tests.authenticate_as('admin');
 select tests.create_supabase_user('test');
-insert into user_profiles (id, first_name, last_name, is_active)
-values (tests.get_supabase_uid('test'), 'test', '1', true);
+insert into user_profiles (supabase_user_id, first_name, last_name, is_active, date_of_birth)
+values (tests.get_supabase_uid('test'), 'test', '1', true, '11-05-1996');
 select tests.clear_authentication();
 
 SELECT is(
@@ -189,19 +201,11 @@ SELECT tests.authenticate_as('member');
 -- Positive tests: What a member *should* be able to do
 
 SELECT is(
-               (SELECT id
+               (SELECT supabase_user_id
                 FROM user_profiles
-                WHERE id = tests.get_supabase_uid('member')::uuid),
+                WHERE supabase_user_id = tests.get_supabase_uid('member')::uuid),
                tests.get_supabase_uid('member')::uuid,
                'Member can view their own profile'
-       );
-
-SELECT ok(
-               EXISTS(SELECT 1
-                      FROM user_profiles
-                      WHERE id = tests.get_supabase_uid('test')::uuid -- Assuming 'test' is another active user
-               ),
-               'Member can view other active profiles'
        );
 
 
@@ -217,8 +221,16 @@ SELECT lives_ok(
 
 -- Negative tests: What a member *should not* be able to do
 
+SELECT is(
+               EXISTS((SELECT 1
+                       FROM user_profiles
+                       WHERE id = tests.get_supabase_uid('test')::uuid)),
+               false,
+               'Member cannot view other active profiles'
+       );
+
 SELECT throws_ok(
-               'INSERT INTO user_profiles (id, first_name, last_name) VALUES (gen_random_uuid(), ''Test'', ''User'')',
+               'INSERT INTO user_profiles (supabase_user_id, first_name, last_name, date_of_birth) VALUES (gen_random_uuid(), ''Test'', ''User'', ''11-05-1996'')',
                '42501' -- Permission denied
        );
 
@@ -233,15 +245,18 @@ SELECT is(
 
 DELETE
 FROM user_profiles
-WHERE id = tests.get_supabase_uid('test')::uuid;
-
-SELECT ok(
-               EXISTS(SELECT 1
+WHERE supabase_user_id = tests.get_supabase_uid('test')::uuid;
+-- Need to authenticate as admin to assert
+select tests.clear_authentication();
+select tests.authenticate_as_service_role();
+SELECT is(
+               (SELECT supabase_user_id
                       FROM user_profiles
-                      WHERE id = tests.get_supabase_uid('test')::uuid),
+                      WHERE supabase_user_id = tests.get_supabase_uid('test')::uuid),
+               (select tests.get_supabase_uid('test')),
                'Member cannot delete other users'' profiles'
        );
-
+select tests.authenticate_as('member');
 
 SELECT is(
                (SELECT id FROM user_audit_log LIMIT 1),
@@ -287,8 +302,8 @@ SELECT tests.create_supabase_user('test2');
 -- Positive Test: Admin should be able to insert a new user profile
 SELECT lives_ok(
                $$
-    INSERT INTO user_profiles (id, first_name, last_name, is_active)
-    VALUES (tests.get_supabase_uid('test2'), 'Test', 'User', true);
+    INSERT INTO user_profiles (supabase_user_id, first_name, last_name, is_active, date_of_birth)
+    VALUES (tests.get_supabase_uid('test2'), 'Test', 'User', true, '11-05-1996');
     $$,
                'Admin should be able to insert a new user profile'
        );
