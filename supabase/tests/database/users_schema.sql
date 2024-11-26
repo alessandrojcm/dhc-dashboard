@@ -409,9 +409,6 @@ SELECT is(
 -- Reset authentication
 SELECT tests.clear_authentication();
 
-
--- Repeat the above process for other roles like 'treasurer', 'coach', etc.
-
 -- Finish the test
 SELECT *
 FROM finish();
