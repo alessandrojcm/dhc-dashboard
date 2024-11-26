@@ -31,7 +31,7 @@ begin
     select json_agg(enumlabel) as gender_options
     into options
     from pg_enum
-    where enumtypid = 'gender'::regtype;
+    where enumtypid = 'public.gender'::regtype;
     return options;
 end;
 $$;
