@@ -1,8 +1,7 @@
 -- Create weapon preference enum
 CREATE TYPE public.preferred_weapon AS ENUM (
     'longsword',
-    'sword_and_buckler',
-    'both'
+    'sword_and_buckler'
     );
 
 -- Create members table
@@ -14,10 +13,11 @@ CREATE TABLE public.member_profiles
     next_of_kin_name      TEXT                    NOT NULL,
     next_of_kin_phone     TEXT                    NOT NULL,
     -- Member preferences and status
-    preferred_weapon      public.preferred_weapon NOT NULL,
+    preferred_weapon      public.preferred_weapon[] NOT NULL,
     membership_start_date TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     membership_end_date   TIMESTAMP WITH TIME ZONE,
     last_payment_date     TIMESTAMP WITH TIME ZONE,
+    insurance_form_submitted BOOLEAN DEFAULT FALSE NOT NULL,
     -- Additional dynamic data
     additional_data       JSONB                    DEFAULT '{}'::jsonb,
     -- Metadata
@@ -38,7 +38,7 @@ CREATE OR REPLACE FUNCTION public.complete_member_registration(
     p_user_profile_id UUID,
     p_next_of_kin_name TEXT,
     p_next_of_kin_phone TEXT,
-    p_preferred_weapon public.preferred_weapon,
+    p_preferred_weapon public.preferred_weapon[],
     p_additional_data JSONB DEFAULT '{}'::jsonb
 ) RETURNS UUID
     LANGUAGE plpgsql
