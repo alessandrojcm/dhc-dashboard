@@ -6,7 +6,7 @@
 	import { page } from '$app/stores';
 	import * as Breadcrumb from '$lib/components/ui/breadcrumb';
 	import { Separator } from '$lib/components/ui/separator';
-	import { createQuery, QueryClient, } from '@tanstack/svelte-query';
+	import { createQuery } from '@tanstack/svelte-query';
 	let { children, data }: { data: LayoutData; children: any } = $props();
 	let supabase = $derived(data.supabase);
 	let roles = $derived.by(() => new Set(data.roles));
@@ -14,21 +14,23 @@
 	const userDataQuery = createQuery<UserData>(() => ({
 		queryKey: ['logged_in_user_data'],
 		experimental_prefetchInRender: true,
-		queryFn: () =>  Promise.all([
-			supabase
-				.rpc('get_current_user_with_profile')
-				.then(({ data }) => data as Omit<UserData, 'email'>),
-			supabase.auth.getUser().then(({ data }) => data)
-		]).then(
-			([userData, sessionData]) =>
-				({
-					firstName: userData.firstName,
-					lastName: userData.lastName,
-					email: sessionData.user?.email!
-				}) as UserData
-		)
-	}))
-	const userData = $derived(userDataQuery.data)
+		enabled: true,
+		queryFn: () =>
+			Promise.all([
+				supabase
+					.rpc('get_current_user_with_profile')
+					.then(({ data }) => data as Omit<UserData, 'email'>),
+				supabase.auth.getUser().then(({ data }) => data)
+			]).then(
+				([userData, sessionData]) =>
+					({
+						firstName: userData.firstName,
+						lastName: userData.lastName,
+						email: sessionData.user?.email!,
+						id: sessionData.user?.id!
+					}) as UserData
+			)
+	}));
 	function getLink(item: string): string {
 		let index = paths.indexOf(item);
 		if (index === -1) {
@@ -42,7 +44,12 @@
 	<title>Dublin Hema Club - Dashboard</title>
 </svelte:head>
 <SidebarProvider>
-	<DashboardSidebar {roles} logout={() => supabase.auth.signOut()} userData={userDataQuery.promise} />
+	<DashboardSidebar
+		{roles}
+		logout={() => supabase.auth.signOut()}
+		userData={userDataQuery.promise}
+		navData={data.navData}
+	/>
 	<main class="w-full">
 		<Breadcrumb.Root class="m-6">
 			<Breadcrumb.List>
@@ -56,7 +63,9 @@
 					{:else}
 						<Breadcrumb.Item>
 							<Breadcrumb.Page class="capitalize">
-								<a href={getLink(item)}>{item.replace('-', ' ')}</a>
+								{item === userDataQuery?.data?.id
+									? `${userDataQuery.data?.firstName} ${userDataQuery.data?.lastName}`
+									: item.replace('-', ' ')}
 							</Breadcrumb.Page>
 						</Breadcrumb.Item>
 					{/if}
@@ -67,7 +76,7 @@
 			</Breadcrumb.List>
 		</Breadcrumb.Root>
 		<Separator class="mb-2" />
-			{@render children()}
+		{@render children()}
 	</main>
 </SidebarProvider>
 

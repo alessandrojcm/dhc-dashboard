@@ -5,22 +5,14 @@
 	import * as Avatar from '$lib/components/ui/avatar';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import type { NavData, UserData } from '$lib/types';
-
-	const data: NavData = {
-		navMain: [
-			{
-				title: 'Beginners Workshop',
-				url: 'beginners-workshop',
-				role: new Set(['admin', 'coach', 'beginners_coordinator', 'president'])
-			}
-		]
-	};
+	import { Link } from 'lucide-svelte';
 
 	type Props = {
 		className?: string | undefined | null;
 		logout: () => void;
-		userData: Promise<UserData>;
+		userData: Promise<Partial<UserData>>;
 		roles: Set<string>;
+		navData: NavData;
 	};
 
 	let {
@@ -29,6 +21,7 @@
 		userData,
 		logout,
 		roles,
+		navData: data,
 		...restProps
 	}: ComponentProps<typeof Sidebar.Root> & Props = $props();
 </script>
@@ -74,30 +67,32 @@
 		<Sidebar.Menu>
 			<Sidebar.MenuItem>
 				<DropdownMenu.Root>
-					<DropdownMenu.Trigger>
-						<Sidebar.MenuButton
-							size="lg"
-							class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
-						>
-							{#await userData}
-								<Skeleton class="h-[50px]" />
-							{:then user}
+					{#await userData}
+						<Skeleton class="h-[50px]" />
+					{:then user}
+						<DropdownMenu.Trigger>
+							<Sidebar.MenuButton
+								size="lg"
+								class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+							>
 								<Avatar.Root class="h-8 w-8">
 									<Avatar.Fallback
-										>{user.firstName.charAt(0)}{user.lastName.charAt(0)}</Avatar.Fallback
+										>{user?.firstName?.charAt(0)}{user?.lastName?.charAt(0)}</Avatar.Fallback
 									>
 								</Avatar.Root>
-
 								<div class="flex flex-col space-y-1">
-									<p class="text-sm font-medium leading-none">{user.firstName} {user.lastName}</p>
-									<p class="text-muted-foreground text-xs leading-none">{user.email}</p>
+									<p class="text-sm font-medium leading-none">{user?.firstName} {user?.lastName}</p>
+									<p class="text-muted-foreground text-xs leading-none">{user?.email}</p>
 								</div>
-							{/await}
-						</Sidebar.MenuButton>
-					</DropdownMenu.Trigger>
-					<DropdownMenu.Content class="w-56" align="end">
-						<DropdownMenu.Item onclick={logout}>Log out</DropdownMenu.Item>
-					</DropdownMenu.Content>
+							</Sidebar.MenuButton>
+						</DropdownMenu.Trigger>
+						<DropdownMenu.Content class="w-56" align="end">
+							<DropdownMenu.Item>
+								<a href={`dashboard/members/${user?.id}`}>My Profile</a>
+							</DropdownMenu.Item>
+							<DropdownMenu.Item onclick={logout}>Log out</DropdownMenu.Item>
+						</DropdownMenu.Content>
+					{/await}
 				</DropdownMenu.Root>
 			</Sidebar.MenuItem>
 		</Sidebar.Menu>
