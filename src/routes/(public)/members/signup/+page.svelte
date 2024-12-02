@@ -16,17 +16,21 @@
 		validators: valibotClient(formSchema),
 		validationMethod: 'onblur'
 	});
-	const { form: formData, enhance, submitting } = form;
+	const { form: formData, enhance, submitting, errors } = form;
 	const formatedPhone = $derived.by(() => new AsYouType('IE').input($formData.phoneNumber));
 	const formatedNextOfKinPhone = $derived.by(() =>
 		new AsYouType('IE').input($formData.nextOfKinNumber)
 	);
 </script>
 
+<svelte:head>
+	<title>Join Dublin Hema Club</title>
+</svelte:head>
+
 <Card.Root class="w-full max-w-2xl">
 	<Card.Header>
-		<Card.Title>Sign Up for the Adventure</Card.Title>
-		<Card.Description>Join our band of heroes! Fill out the form below to begin your journey.</Card.Description>
+		<Card.Title>Join Dublin Hema Club</Card.Title>
+		<Card.Description>We are glad you decided to join us! Please fill up the following details</Card.Description>
 	</Card.Header>
 	<Card.Content>
 		<form {form} method="POST" class="space-y-6" use:enhance>
@@ -101,8 +105,7 @@
 					<Form.Control>
 						{#snippet children({ props })}
 							<Checkbox {...props} bind:checked={$formData.insuranceFormSubmitted} />
-							<Form.Label style="margin-top: 0 !important">Please make sure you have submitted HEMA Ireland's insurance form</Form.Label>
-							<Form.FieldErrors />
+							<Form.Label style="margin-top: 0 !important" class={$errors?.insuranceFormSubmitted ? 'text-red-500':''}>Please make sure you have submitted HEMA Ireland's insurance form</Form.Label>
 						{/snippet}
 					</Form.Control>
 				</Form.Field>

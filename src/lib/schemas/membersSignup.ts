@@ -13,7 +13,10 @@ const formSchema = v.object({
 		v.check((input) => Boolean(parsePhoneNumber(input, 'IE')?.isValid), 'Invalid phone number'),
 		v.transform((input) => parsePhoneNumber(input, 'IE')!.formatInternational())
 	),
-  insuranceFormSubmitted: v.boolean('Please confirm you have read and accepted the insurance form.')
+	insuranceFormSubmitted: v.pipe(
+		v.boolean('Please confirm you have read and accepted the insurance form.'),
+		v.check((input) => input, 'Please confirm you have read and accepted the insurance form.')
+	)
 });
 
 export default formSchema;
