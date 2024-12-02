@@ -9,7 +9,7 @@
 	const errorMessage = new URLSearchParams(hash).get('error_description');
 </script>
 
-<Card class="flex flex-col self-center w-2/4 h-96 justify-around items-center mt-[15%]">
+<Card class="flex flex-col self-center w-2/4 h-96 justify-around items-center">
 	<h2 class="prose font-bold prose-h2 text-2xl">Log in to the DHC Dashboard</h2>
 	<form method="POST" class="flex justify-center">
 		<Button type="submit" class="bg-[#5865F2] hover:bg-[#FFFFFF] hover:text-[#000000]">
