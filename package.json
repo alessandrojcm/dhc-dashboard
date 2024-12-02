@@ -3,7 +3,7 @@
 	"version": "0.0.1",
 	"type": "module",
 	"scripts": {
-		"dev": "vite dev",
+		"dev": "vite dev --host",
 		"build": "vite build",
 		"preview": "vite preview",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
@@ -49,7 +49,7 @@
 		"postcss": "^8.4.49",
 		"prettier": "^3.3.3",
 		"prettier-plugin-svelte": "^3.3.1",
-		"supabase": "^1.223.10",
+		"supabase": "^1.226.3",
 		"svelte": "^5.2.7",
 		"svelte-check": "^4.0.9",
 		"sveltekit-superforms": "^2.20.1",
