@@ -13,7 +13,7 @@ function invariant(condition: unknown, message: string): asserts condition {
 	}
 }
 // need to normalize medical_conditions
-export const load: PageServerLoad = async ({ url, ...rest }) => {
+export const load: PageServerLoad = async ({ url }) => {
 	try {
 		const accessToken = url.searchParams.get('access_token');
 	invariant(accessToken === null, `${url.pathname}?error_description=missing_access_token`);

@@ -101,7 +101,9 @@ SELECT policies_are('public', 'user_profiles', ARRAY [
     'Only admins and committee members can add profiles',
     'Only admins, committee members and the user can delete profiles',
     'Users can update their own basic info',
-    'Users can view their own profile'
+    'Users can view their own profile',
+    'Service role can manage user profiles',
+    'Committee members can update user profiles'
     ], 'user_profiles should have all expected policies');
 
 -- Test policies for user_roles
@@ -109,7 +111,8 @@ SELECT policies_are('public', 'user_roles', ARRAY [
     'Committee coordinators can add roles',
     'Committee coordinators can update roles',
     'Users, admin and president can see their own roles',
-    'Allow auth admin to read user roles'
+    'Allow auth admin to read user roles',
+    'Service role can insert user_roles entries'
     ], 'user_roles should have all expected policies');
 
 -- Test policies for user_audit_log
@@ -409,7 +412,6 @@ SELECT is(
 
 -- Reset authentication
 SELECT tests.clear_authentication();
-
 -- Finish the test
 SELECT *
 FROM finish();

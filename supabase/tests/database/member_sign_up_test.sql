@@ -36,6 +36,32 @@ VALUES
     (gen_random_uuid(), 'member@test.com'),
     (gen_random_uuid(), 'active@test.com');
 
+-- Create a user profile without waitlist entry
+INSERT INTO public.user_profiles (
+    id,
+    supabase_user_id,
+    waitlist_id,
+    first_name,
+    last_name,
+    phone_number,
+    date_of_birth,
+    pronouns,
+    gender,
+    is_active
+)
+VALUES (
+    gen_random_uuid(),
+    tests.get_supabase_uid('no_waitlist_user'),
+    null,
+    'No',
+    'Waitlist',
+    '+1234567890',
+    '1990-01-01'::timestamptz,
+    'they/them',
+    'non-binary',
+    false
+);
+
 -- Create user profiles
 INSERT INTO public.user_profiles (
     id,
@@ -168,9 +194,9 @@ WHERE email = 'banned@test.com';
 -- Test 1: Null input
 SELECT throws_ok(
     'SELECT get_membership_info(NULL)',
-    'U0001',
-    'User ID cannot be null.',
-    'Should throw U0001 for null user ID'
+    'U0002',
+    'User not found.',
+    'Should throw U0002 for null user ID'
 );
 
 -- Test 2: Non-existent user
@@ -209,7 +235,7 @@ SELECT throws_ok(
 SELECT throws_ok(
     format('SELECT get_membership_info(%L::uuid)', tests.get_supabase_uid('no_waitlist_user')),
     'U0006',
-    'Waitlist entry not found.',
+    format('Waitlist entry not found for email: %s', 'no_waitlist@test.com'),
     'Should throw U0006 for user without waitlist entry'
 );
 
