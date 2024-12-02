@@ -16,10 +16,12 @@ function getSupabaseServiceClient() {
 async function setupUser(
 	{
 		addWaitlist = true,
-		addSupabaseId = true
-	}: { addWaitlist: boolean; addSupabaseId: boolean } = {
+		addSupabaseId = true,
+		setWaitlistNotCompleted = false
+	}: { addWaitlist: boolean; addSupabaseId: boolean; setWaitlistNotCompleted: boolean } = {
 		addWaitlist: true,
-		addSupabaseId: true
+		addSupabaseId: true,
+		setWaitlistNotCompleted: false
 	}
 ) {
 	const supabaseServiceClient = getSupabaseServiceClient();
@@ -64,16 +66,24 @@ async function setupUser(
 	if (inviteLink.error) {
 		throw new Error(inviteLink.error.message);
 	}
-	
+
 	await supabaseServiceClient
 		.from('user_profiles')
 		.update({
 			supabase_user_id: addSupabaseId ? inviteLink.data.user.id : null,
-			waitlist_id: addWaitlist ? waitlisEntry.data.waitlist_id : null,
+			waitlist_id: addWaitlist ? waitlisEntry.data.waitlist_id : null
 		})
 		.eq('id', waitlisEntry.data.profile_id)
 		.select()
-		.throwOnError()
+		.throwOnError();
+
+	await supabaseServiceClient
+		.from('waitlist')
+		.update({
+			status: setWaitlistNotCompleted ? 'cancelled' : 'completed'
+		})
+		.eq('email', testData.email)
+		.throwOnError();
 	const verifyOtp = await supabaseServiceClient.auth.verifyOtp({
 		token_hash: inviteLink.data.properties.hashed_token,
 		type: 'invite'
@@ -114,6 +124,11 @@ test.describe('Member Signup - Negative test cases', () => {
 			addWaitlist: true,
 			addSupabaseId: true,
 			token: 'invalid_token'
+		},
+		{
+			addWaitlist: true,
+			addSupabaseId: true,
+			setWaitlistNotCompleted: true
 		}
 	].forEach((override) => {
 		let testData: Awaited<ReturnType<typeof setupUser>>;
@@ -121,15 +136,17 @@ test.describe('Member Signup - Negative test cases', () => {
 			testData = await setupUser(override);
 		});
 		// test.afterAll(() => testData.cleanUp());
-	
+
 		test(`should show correct error page when the waitlist entry is wrong ${JSON.stringify(override)}`, async ({
 			page
 		}) => {
-			await page.goto('/members/signup?access_token=' + (override?.token !== undefined ? override.token : testData.token));
+			await page.goto(
+				'/members/signup?access_token=' +
+					(override?.token !== undefined ? override.token : testData.token)
+			);
 			await expect(page.getByText('Something has gone wrong')).toBeVisible();
 		});
 	});
-	
 });
 test.describe('Member Signup - Correct token', () => {
 	// Test data generated once for all tests
@@ -146,12 +163,12 @@ test.describe('Member Signup - Correct token', () => {
 		await page.waitForSelector('form');
 	});
 
-	test.afterAll(async () => {
-		await testData.cleanUp();
-	});
+	// test.afterAll(async () => {
+	// 	await testData.cleanUp();
+	// });
 
 	test('should show all required form steps', async ({ page }) => {
-		await expect(page.getByText('Sign Up for the Adventure')).toBeVisible();
+		await expect(page.getByText(/join dublin hema club/i)).toBeVisible();
 		await expect(page.getByText('First Name')).toBeVisible();
 		await expect(page.getByText('Last Name')).toBeVisible();
 		await expect(page.getByText('Email')).toBeVisible();

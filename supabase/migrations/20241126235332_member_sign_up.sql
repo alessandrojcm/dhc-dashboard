@@ -23,6 +23,7 @@ declare
     v_pronouns text;
     v_gender text;
     v_email text;
+    v_waitlist_status public.waitlist_status;
 begin
     -- Get all information in one query for better performance and consistency
     with user_info as (
@@ -31,6 +32,7 @@ begin
             u.banned_until,
             up.waitlist_id as waitlist_id,
             mp.id as member_id,
+            w.status as waitlist_status,
             coalesce(up.is_active, false) as is_active,
             up.first_name,
             up.last_name,
@@ -41,18 +43,19 @@ begin
         from auth.users u
         left join public.user_profiles up on up.supabase_user_id = u.id
         left join public.member_profiles mp on mp.user_profile_id = up.id
+        left join public.waitlist w on w.id = up.waitlist_id
         where u.id = uid
     )
     select 
-        email, banned_until, waitlist_id, member_id, is_active,
+        email, banned_until, waitlist_id, member_id, waitlist_status, is_active,
         first_name, last_name, phone_number, date_of_birth, pronouns, gender
     into strict
-        v_email, v_banned_until, v_waitlist_id, v_member_id, v_is_active,
+        v_email, v_banned_until, v_waitlist_id, v_member_id, v_waitlist_status, v_is_active,
         v_first_name, v_last_name, v_phone_number, v_date_of_birth, v_pronouns, v_gender
     from user_info;
 
-    raise log 'Debug values: email=%, waitlist_id=%, member_id=%, is_active=%', 
-        v_email, v_waitlist_id, v_member_id, v_is_active;
+    raise log 'Debug values: email=%, waitlist_id=%, member_id=%, is_active=%, waitlist_status=%', 
+        v_email, v_waitlist_id, v_member_id, v_is_active, v_waitlist_status;
 
     -- Check conditions in order
     if v_banned_until > now() then
@@ -80,6 +83,11 @@ begin
             errcode = 'U0006',
             message = format('Waitlist entry not found for email: %s', v_email),
             hint = 'Email not found in waitlist';
+    elsif v_waitlist_status != 'completed' or v_waitlist_status != 'invited' then
+        raise exception using
+            errcode = 'U0007',
+            message = 'This user has not completed the workshop.',
+            hint = 'Waitlist status: ' || v_waitlist_status;
     end if;
 
     -- Build the result JSONB only after all checks pass
@@ -133,9 +141,9 @@ begin
     -- This will throw if any of the conditions are not met
     perform get_membership_info(uid);
 
-    -- Update user profile and set active status to false
+    -- Update user profile and set active status to true since they've completed signup
     update public.user_profiles 
-    set is_active = false,
+    set is_active = true,
         first_name = create_pending_member.first_name,
         last_name = create_pending_member.last_name,
         phone_number = create_pending_member.phone_number,
