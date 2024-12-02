@@ -32,7 +32,7 @@ alter table waitlist
     drop column phone_number;
 
 alter table user_profiles
-    add constraint fk_waitlist_id foreign key (waitlist_id) references waitlist (id);
+    add constraint fk_waitlist_id foreign key (waitlist_id) references waitlist (id) on delete cascade;
 
 ALTER TABLE user_profiles
     ADD COLUMN search_text tsvector
@@ -48,6 +48,7 @@ create view waitlist_management_view as
 select w.*,
        u.search_text                           as search_text,
        u.phone_number                          as phone_number,
+       u.medical_conditions                    as medical_conditions,
        concat(u.first_name, ' ', u.last_name)  as full_name,
        get_waitlist_position(w.id)             as current_position,
        extract(year from age(u.date_of_birth)) as age
@@ -86,12 +87,12 @@ declare
     new_waitlist_id uuid;
 begin
     begin
-        insert into public.waitlist (medical_conditions, email)
-        values (medical_conditions, email)
+        insert into public.waitlist (email)
+        values (email)
         returning id into new_waitlist_id;
 
         insert into public.user_profiles (first_name, last_name, date_of_birth, phone_number, pronouns, gender,
-                                   is_active, waitlist_id)
+                                          is_active, waitlist_id, medical_conditions)
         values (first_name,
                 last_name,
                 date_of_birth,
@@ -99,7 +100,8 @@ begin
                 pronouns,
                 gender,
                 false,
-                new_waitlist_id);
+                new_waitlist_id,
+                medical_conditions);
 
         RETURN QUERY
             SELECT u.id                 AS profile_id,
@@ -111,7 +113,7 @@ begin
                    u.phone_number       AS user_phone_number,
                    u.pronouns           AS user_pronouns,
                    u.gender             AS user_gender,
-                   w.medical_conditions AS user_medical_conditions
+                   u.medical_conditions AS user_medical_conditions
             FROM public.waitlist w
                      JOIN public.user_profiles u ON w.id = u.waitlist_id
             WHERE w.id = new_waitlist_id;

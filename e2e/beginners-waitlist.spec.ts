@@ -3,27 +3,35 @@ import { test, expect } from '@playwright/test';
 import { faker } from '@faker-js/faker';
 import dayjs from 'dayjs';
 
+const testData = {
+	firstName: faker.person.firstName(),
+	lastName: faker.person.lastName(),
+	email: faker.internet.email(),
+	phoneNumber: faker.phone.number({ style: 'international' }),
+	dateOfBirth: dayjs().subtract(16, 'years'), // Ensure date format is YYYY-MM-DD
+	medicalConditions: faker.lorem.sentence()
+};
+
 test('fills out the waitlist form and asserts no errors', async ({ page }) => {
 	// Generate test data using faker-js
-	const testData = {
-		firstName: faker.person.firstName(),
-		lastName: faker.person.lastName(),
-		email: faker.internet.email(),
-		phoneNumber: faker.phone.number(),
-		dateOfBirth: dayjs(faker.date.past({ years: 20 })), // Ensure date format is YYYY-MM-DD
-		medicalConditions: faker.lorem.sentence()
-	};
 
 	// Navigate to the form page
-	await page.goto('/public/waitlist');
+	await page.goto('/waitlist');
 
 	// Fill out the form
 	await page.fill('input[name="firstName"]', testData.firstName);
 	await page.fill('input[name="lastName"]', testData.lastName);
 	await page.fill('input[name="email"]', testData.email);
 	await page.fill('input[name="phoneNumber"]', testData.phoneNumber);
+	await page.getByPlaceholder('Enter your pronouns').fill('he/him');
+	await page.evaluate(() => {
+		document.querySelector('button[name="gender"]')?.scrollIntoView();
+	});
+	await page.getByRole('button', { name: 'gender' }).click();
+	await page.getByRole('option', { name: 'man (cis)', exact: true }).click();
+	await page.getByPlaceholder('Enter your pronouns').fill('he/him');
 
-	await page.getByRole('button', { name: 'Select a date' }).click();
+	await page.getByLabel('Date of birth').click();
 	await page.getByLabel('Select year').click();
 	await page.getByRole('option', { name: testData.dateOfBirth.year().toString() }).click();
 	await page.getByLabel('Select month').click();
@@ -36,4 +44,19 @@ test('fills out the waitlist form and asserts no errors', async ({ page }) => {
 	await page.click('button[type="submit"]');
 	const invalidFields = await page.getByText(/required/i).all();
 	expect(invalidFields.length).toBe(0);
+});
+
+test('it should not allow people under 16 to sign up', async ({ page }) => {
+	// Generate test data using faker-js
+
+	// Navigate to the form page
+	await page.goto('/waitlist');
+	const dateOfBirth = dayjs();
+
+	await page.getByLabel('Date of birth').click();
+	await page.getByLabel(dateOfBirth.format('dddd, MMMM D')).click();
+
+	// Submit the form
+	await page.click('button[type="submit"]');
+	await expect(await page.getByText(/you must be at least 16 years old/i)).toBeInViewport();
 });

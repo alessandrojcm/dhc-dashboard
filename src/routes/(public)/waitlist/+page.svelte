@@ -24,6 +24,9 @@
 	const { form: formData, enhance, errors, message } = form;
 	const dobProxy = dateProxy(form, 'dateOfBirth', { format: `date` });
 	const dobValue = $derived.by(() => {
+		if (!dayjs($formData.dateOfBirth).isValid() || dayjs($formData.dateOfBirth).isSame(dayjs())) {
+			return undefined;
+		}
 		return fromDate(dayjs($formData.dateOfBirth).toDate(), getLocalTimeZone());
 	});
 	const formatedPhone = $derived.by(() => new AsYouType('IE').input($formData.phoneNumber));
@@ -38,8 +41,8 @@
 		<Card.Title class="prose prose-h1 text-xl">Waitlist Form</Card.Title>
 		<Card.Description class="prose">
 			Thanks for your interest in Dublin Hema Club! Please sign up for our waitlist, we will contact
-			you once a spot for our beginners workshop opens</Card.Description
-		>
+			you once a spot for our beginners workshop opens
+		</Card.Description>
 	</Card.Header>
 	<Card.Content>
 		{#if $message?.text}
@@ -150,7 +153,9 @@
 							<Input {...props} bind:value={$formData.pronouns} placeholder="Enter your pronouns" />
 						{/snippet}
 					</Form.Control>
-					<Form.Description>Please separate with slashes (e.g. they/them).</Form.Description>
+					<Form.Description
+						class={$errors?.pronouns ? 'text-red-500' : ''}
+					>Please separate with slashes (e.g. they/them).</Form.Description>
 					<Tooltip.Provider>
 						<Tooltip.Root>
 							<Tooltip.Trigger>
