@@ -7,7 +7,6 @@ create or replace function get_membership_info(uid uuid)
     returns jsonb
     language plpgsql
     security definer
-    stable
     set search_path = public
 as
 $$
@@ -17,57 +16,88 @@ declare
     v_waitlist_id uuid;
     v_member_id uuid;
     v_is_active boolean;
+    v_first_name text;
+    v_last_name text;
+    v_phone_number text;
+    v_date_of_birth timestamptz;
+    v_pronouns text;
+    v_gender text;
+    v_email text;
 begin
-    if uid is null then
-        raise sqlstate 'U0001' using message = 'User ID cannot be null.';
-    end if;
-
-    if not exists (select 1 from auth.users where id = uid) then
-        raise sqlstate 'U0002' using message = 'User not found.';
-    end if;
-
-    -- Get all the necessary information in one query
+    -- Get all information in one query for better performance and consistency
+    with user_info as (
+        select 
+            u.email,
+            u.banned_until,
+            up.waitlist_id as waitlist_id,
+            mp.id as member_id,
+            coalesce(up.is_active, false) as is_active,
+            up.first_name,
+            up.last_name,
+            up.phone_number,
+            up.date_of_birth,
+            up.pronouns,
+            up.gender
+        from auth.users u
+        left join public.user_profiles up on up.supabase_user_id = u.id
+        left join public.member_profiles mp on mp.user_profile_id = up.id
+        where u.id = uid
+    )
     select 
-        u.banned_until,
-        w.id as waitlist_id,
-        mp.id as member_id,
-        up.is_active,
-        case 
-            when mp.id is not null then null -- Will be handled below
-            else jsonb_build_object(
-                'first_name', up.first_name,
-                'last_name', up.last_name,
-                'phone_number', up.phone_number,
-                'date_of_birth', up.date_of_birth,
-                'pronouns', up.pronouns,
-                'gender', up.gender
-            )
-        end as profile_info
-    into v_banned_until, v_waitlist_id, v_member_id, v_is_active, v_result
-    from auth.users u
-    left join public.waitlist w on w.email = u.email
-    left join public.user_profiles up on up.waitlist_id = w.id
-    left join public.member_profiles mp on mp.user_profile_id = up.id
-    where u.id = uid;
+        email, banned_until, waitlist_id, member_id, is_active,
+        first_name, last_name, phone_number, date_of_birth, pronouns, gender
+    into strict
+        v_email, v_banned_until, v_waitlist_id, v_member_id, v_is_active,
+        v_first_name, v_last_name, v_phone_number, v_date_of_birth, v_pronouns, v_gender
+    from user_info;
+
+    raise log 'Debug values: email=%, waitlist_id=%, member_id=%, is_active=%', 
+        v_email, v_waitlist_id, v_member_id, v_is_active;
 
     -- Check conditions in order
     if v_banned_until > now() then
-        raise sqlstate 'U0003' using message = 'User is banned.';
+        raise exception using
+            errcode = 'U0003',
+            message = 'User is banned.',
+            hint = 'Banned until: ' || v_banned_until;
     end if;
 
     if v_member_id is not null then
-        raise sqlstate 'U0004' using message = 'User already has a member profile.';
+        raise exception using
+            errcode = 'U0004',
+            message = 'User already has a member profile.',
+            hint = 'Member ID: ' || v_member_id;
     end if;
 
     if v_is_active then
-        raise sqlstate 'U0005' using message = 'User is already active.';
+        raise exception using
+            errcode = 'U0005',
+            message = 'User is already active.';
     end if;
 
     if v_waitlist_id is null then
-        raise sqlstate 'U0006' using message = 'Waitlist entry not found.';
+        raise exception using
+            errcode = 'U0006',
+            message = format('Waitlist entry not found for email: %s', v_email),
+            hint = 'Email not found in waitlist';
     end if;
 
-    return v_result;
+    -- Build the result JSONB only after all checks pass
+    return jsonb_build_object(
+        'first_name', v_first_name,
+        'last_name', v_last_name,
+        'phone_number', v_phone_number,
+        'date_of_birth', v_date_of_birth,
+        'pronouns', v_pronouns,
+        'gender', v_gender
+    );
+exception
+    when no_data_found then
+        raise exception using
+            errcode = 'U0002',
+            message = 'User not found.';
+    when others then
+        raise;
 end;
 $$;
 
@@ -118,7 +148,7 @@ begin
     returning id into v_user_profile_id;
 
     if v_user_profile_id is null then
-        raise sqlstate 'U0007' using message = 'User profile not found.';
+        raise exception 'User profile not found.' using errcode = 'U0007';
     end if;
 
     -- Create member profile
@@ -158,25 +188,6 @@ begin
         ),
         'message', 'Pending member created successfully. Membership will be activated upon payment confirmation.'
     );
-
-exception
-    -- Handle exceptions from get_membership_info
-    when sqlstate 'U0001' then
-        raise;
-    when sqlstate 'U0002' then
-        raise;
-    when sqlstate 'U0003' then
-        raise;
-    when sqlstate 'U0004' then
-        raise;
-    when sqlstate 'U0005' then
-        raise;
-    when sqlstate 'U0006' then
-        raise;
-    when sqlstate 'U0007' then
-        raise;
-    when others then
-        raise;
 end;
 $$;
 

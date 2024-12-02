@@ -32,7 +32,7 @@ alter table waitlist
     drop column phone_number;
 
 alter table user_profiles
-    add constraint fk_waitlist_id foreign key (waitlist_id) references waitlist (id);
+    add constraint fk_waitlist_id foreign key (waitlist_id) references waitlist (id) on delete cascade;
 
 ALTER TABLE user_profiles
     ADD COLUMN search_text tsvector
