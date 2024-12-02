@@ -17,7 +17,8 @@
 		"supabase:start": "supabase start",
 		"supabase:reset": "supabase db reset",
 		"seed:committee": "node ./scripts/seedCommitteeMembers.js ./scripts/users.csv",
-		"seed:waitlist": "node ./scripts/seedWaitlist.js"
+		"seed:waitlist": "node ./scripts/seedWaitlist.js",
+		"seed:members": "node ./scripts/seedMembers.js"
 	},
 	"devDependencies": {
 		"@faker-js/faker": "^9.2.0",

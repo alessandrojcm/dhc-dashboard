@@ -1,23 +1,6 @@
-import { createClient } from '@supabase/supabase-js';
 import { faker } from '@faker-js/faker';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
-import dotenv from 'dotenv';
+import { supabase } from './supabaseServiceRole';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-// Load env file from project root
-dotenv.config({ path: join(__dirname, '..', '.env') });
-
-const supabaseUrl = process.env.PUBLIC_SUPABASE_URL;
-const serviceRoleKey = process.env.SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !serviceRoleKey) {
-	throw new Error('Missing SUPABASE_URL or SERVICE_ROLE_KEY in environment variables');
-}
-
-const supabase = createClient(supabaseUrl, serviceRoleKey);
 
 async function seedWaitlist(count = 10) {
 	const entries = Array.from({ length: count }, () => ({

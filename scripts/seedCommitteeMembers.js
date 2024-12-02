@@ -1,28 +1,10 @@
-import { createClient } from '@supabase/supabase-js';
 import { parse } from 'csv-parse/sync';
-import dotenv from 'dotenv';
 import fs from 'fs';
 import dayjs from 'dayjs';
 import customParseFormat from 'dayjs/plugin/customParseFormat.js';
-import { dirname, join } from 'path';
-import { fileURLToPath } from 'url';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-// Load env file from project root
-dotenv.config({ path: join(__dirname, '..', '.env') });
+import { supabase } from './supabaseServiceRole.js';
 
 dayjs.extend(customParseFormat);
-
-const supabaseUrl = process.env.PUBLIC_SUPABASE_URL;
-const serviceRoleKey = process.env.SERVICE_ROLE_KEY;
-
-if (!supabaseUrl || !serviceRoleKey) {
-	throw new Error('Missing SUPABASE_URL or SERVICE_ROLE_KEY in environment variables');
-}
-
-const supabase = createClient(supabaseUrl, serviceRoleKey);
 
 async function seedUsers(csvPath) {
 	const fileContent = fs.readFileSync(csvPath, 'utf-8');
