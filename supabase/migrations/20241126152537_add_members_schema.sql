@@ -148,13 +148,20 @@ CREATE POLICY "Committee members can view all profiles"
     );
 
 CREATE POLICY "Committee members can modify profiles"
-    ON public.member_profiles FOR ALL
+    ON public.member_profiles FOR UPDATE
     TO authenticated
     USING (
     (SELECT public.has_any_role(
                     (SELECT auth.uid()),
-                    ARRAY ['admin', 'president', 'treasurer', 'committee_coordinator', 'sparring_coordinator', 'workshop_coordinator', 'beginners_coordinator', 'quartermaster', 'pr_manager', 'volunteer_coordinator', 'research_coordinator', 'coach']::public.role_type[]
+                    ARRAY ['admin', 'president', 'treasurer', 'committee_coordinator']::public.role_type[]
             ))
+    );
+
+CREATE POLICY "Users can edit their own profile"
+    ON public.member_profiles FOR UPDATE
+    TO authenticated
+    USING (
+        (select auth.uid()) = public.member_profiles.id
     );
 
 -- Helper view for member management
