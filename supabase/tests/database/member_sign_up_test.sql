@@ -3,7 +3,7 @@ BEGIN;
 -- Load the pgTAP extension
 CREATE EXTENSION IF NOT EXISTS "basejump-supabase_test_helpers";
 
-SELECT plan(16);
+SELECT plan(18);
 
 -- Test function existence
 SELECT has_function(
@@ -27,14 +27,43 @@ SELECT tests.create_supabase_user('new_user', 'new@test.com');
 SELECT tests.create_supabase_user('new_user2', 'new2@test.com');
 SELECT tests.create_supabase_user('existing_member', 'member@test.com');
 SELECT tests.create_supabase_user('no_waitlist_user', 'no_waitlist@test.com');
+SELECT tests.create_supabase_user('incomplete_user', 'incomplete@test.com');
 
 -- Create test data
-INSERT INTO public.waitlist (id, email)
+INSERT INTO public.waitlist (id, email, status)
 VALUES 
-    (gen_random_uuid(), 'new@test.com'),
-    (gen_random_uuid(), 'new2@test.com'),
-    (gen_random_uuid(), 'member@test.com'),
-    (gen_random_uuid(), 'active@test.com');
+    (gen_random_uuid(), 'new@test.com', 'completed'),
+    (gen_random_uuid(), 'new2@test.com', 'completed'),
+    (gen_random_uuid(), 'member@test.com', 'completed'),
+    (gen_random_uuid(), 'active@test.com', 'completed'),
+    (gen_random_uuid(), 'incomplete@test.com', 'waiting');
+
+-- Create incomplete user profile
+INSERT INTO public.user_profiles (
+    id,
+    supabase_user_id,
+    waitlist_id,
+    first_name,
+    last_name,
+    phone_number,
+    date_of_birth,
+    pronouns,
+    gender,
+    is_active
+)
+SELECT 
+    gen_random_uuid(),
+    tests.get_supabase_uid('incomplete_user'),
+    w.id,
+    'Incomplete',
+    'User',
+    '+1234567890',
+    '1990-01-01'::timestamptz,
+    'they/them',
+    'non-binary',
+    false
+FROM public.waitlist w
+WHERE w.email = 'incomplete@test.com';
 
 -- Create a user profile without waitlist entry
 INSERT INTO public.user_profiles (
@@ -239,13 +268,21 @@ SELECT throws_ok(
     'Should throw U0006 for user without waitlist entry'
 );
 
--- Test 7: Valid new user
+-- Test 7: Incomplete workshop
+SELECT throws_ok(
+    format('SELECT get_membership_info(%L::uuid)', tests.get_supabase_uid('incomplete_user')),
+    'U0007',
+    'This user has not completed the workshop.',
+    'Should throw U0007 for user with incomplete workshop'
+);
+
+-- Test 8: Valid new user
 SELECT lives_ok(
     format('SELECT get_membership_info(%L::uuid)', tests.get_supabase_uid('new_user')),
     'Should not throw for valid new user'
 );
 
--- Test 8: Check all required fields for valid user
+-- Test 9: Check all required fields for valid user
 SELECT ok(
     (
         SELECT bool_and(key IS NOT NULL)
@@ -259,7 +296,7 @@ SELECT ok(
 
 -- Test create_pending_member function
 
--- Test 9: Create pending member success
+-- Test 10: Create pending member success
 SELECT lives_ok(
     format(
         'SELECT create_pending_member(%L::uuid, ''Updated'', ''Name'', ''+1234567890'', ''1990-01-01''::timestamptz, ''they/them'', ''non-binary'', ''none'', ''Next of Kin'', ''+9876543210'', ARRAY[''longsword'']::public.preferred_weapon[], ''{}''::jsonb)',
@@ -268,27 +305,27 @@ SELECT lives_ok(
     'Should successfully create pending member'
 );
 
--- Test 10: Check member_id in response
+-- Test 11: Check member_id in response
 SELECT ok(
     (SELECT id IS NOT NULL FROM public.member_profiles WHERE id = tests.get_supabase_uid('new_user')),
     'Should have created member profile with correct ID'
 );
 
--- Test 11: Check insurance_form_submitted is false
+-- Test 12: Check insurance_form_submitted is false
 SELECT is(
     (SELECT insurance_form_submitted FROM public.member_profiles WHERE id = tests.get_supabase_uid('new_user')),
     false,
     'Insurance form submitted should be false for new member'
 );
 
--- Test 12: Verify user profile is inactive
+-- Test 13: Verify user profile is active
 SELECT is(
     (SELECT is_active FROM public.user_profiles WHERE supabase_user_id = tests.get_supabase_uid('new_user')),
-    false,
-    'User profile should be inactive after creating pending member'
+    true,
+    'User profile should be active after creating member profile'
 );
 
--- Test 13: Verify profile fields in response
+-- Test 14: Verify profile fields in response
 SELECT ok(
     (
         SELECT bool_and(key IS NOT NULL) AND count(*) = 11
@@ -317,7 +354,7 @@ SELECT ok(
     'Should return all required fields in profile'
 );
 
--- Test 14: Verify error propagation
+-- Test 15: Verify error propagation
 SELECT throws_ok(
     format(
         'SELECT create_pending_member(%L::uuid, ''Test'', ''User'', ''+1234567890'', ''1990-01-01''::timestamptz, ''they/them'', ''non-binary'', ''none'', ''Next of Kin'', ''+9876543210'', ARRAY[''longsword'']::public.preferred_weapon[], ''{}''::jsonb)',
@@ -326,6 +363,17 @@ SELECT throws_ok(
     'U0003',
     'User is banned.',
     'Should propagate error from get_membership_info'
+);
+
+-- Test 16: Verify error propagation for incomplete workshop
+SELECT throws_ok(
+    format(
+        'SELECT create_pending_member(%L::uuid, ''Test'', ''User'', ''+1234567890'', ''1990-01-01''::timestamptz, ''they/them'', ''non-binary'', ''none'', ''Next of Kin'', ''+9876543210'', ARRAY[''longsword'']::public.preferred_weapon[], ''{}''::jsonb)',
+        tests.get_supabase_uid('incomplete_user')
+    ),
+    'U0007',
+    'This user has not completed the workshop.',
+    'Should propagate error from get_membership_info for incomplete workshop'
 );
 
 -- Cleanup test data
