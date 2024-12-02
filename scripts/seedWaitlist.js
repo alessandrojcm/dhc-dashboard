@@ -21,9 +21,9 @@ const supabase = createClient(supabaseUrl, serviceRoleKey);
 
 async function seedWaitlist(count = 10) {
 	const entries = Array.from({ length: count }, () => ({
-		first_name: faker.person.firstName(),
+	    first_name: faker.person.firstName(),
 		last_name: faker.person.lastName(),
-		email: faker.internet.email(),
+		email: faker.internet.email().toLowerCase(),
 		date_of_birth: faker.date.between({
 			from: '1970-01-01',
 			to: new Date(Date.now() - 16 * 365 * 24 * 60 * 60 * 1000)
