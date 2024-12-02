@@ -16,7 +16,7 @@ create table waitlist
     -- Personal Information
     first_name                text            not null,
     last_name                 text            not null,
-    email                     text            not null unique,
+    email                     text            not null unique check ( email = lower(email) ),
     phone_number              text            not null,
     date_of_birth             date            not null,
     insurance_form_submitted  boolean                  default false,

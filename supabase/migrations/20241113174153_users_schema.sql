@@ -332,6 +332,15 @@ alter table auth.users
 alter table user_roles
     enable row level security;
 
+-- Grant service role access to user_profiles
+grant all on user_profiles to service_role;
+
+create policy "Service role can manage user profiles"
+    on user_profiles
+    for all
+    to service_role
+    using (true)
+    with check (true);
 
 -- User profile policies
 create policy "Committee members can see al profiles"
@@ -382,6 +391,15 @@ create policy "Users can update their own basic info"
     for update
     to authenticated
     using (supabase_user_id = (select auth.uid()) and user_profiles.is_active = true);
+
+create policy "Committee members can update user profiles"
+    on user_profiles
+    for update
+    to authenticated
+    using (
+        (select has_any_role((select auth.uid()), array ['admin', 'president', 'committee_coordinator']::role_type[]))
+    );
+
 -- Existing policy: Allow committee coordinators, presidents, and admins to add roles
 -- Updated to restrict adding 'admin' role only to admins
 CREATE POLICY "Committee coordinators can add roles"
@@ -416,6 +434,12 @@ CREATE POLICY "Users, admin and president can see their own roles"
     (SELECT auth.uid()) = user_roles.user_id OR
     (SELECT has_any_role((SELECT auth.uid()), ARRAY ['committee_coordinator', 'president', 'admin']::role_type[]))
     );
+
+CREATE POLICY "Service role can insert user_roles entries"
+    on user_roles
+    for insert
+    to service_role
+    with check (true);
 
 -- Audit log policies
 create policy "Audit logs viewable by admins"
