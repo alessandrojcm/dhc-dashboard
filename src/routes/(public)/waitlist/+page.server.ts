@@ -3,21 +3,16 @@ import { message, setError, superValidate } from 'sveltekit-superforms';
 import { valibot } from 'sveltekit-superforms/adapters';
 import beginnersWaitlist from '$lib/schemas/beginnersWaitlist';
 import { fail } from '@sveltejs/kit';
-import { createClient } from '@supabase/supabase-js';
-import { env } from '$env/dynamic/private';
-import { PUBLIC_SUPABASE_URL } from '$env/static/public';
 import type { Database } from '$database';
+import { supabaseServiceClient } from '$lib/server/supabaseServiceClient';
 
-// Creating an admin client to be able to insert to the column
-const supabaseAdmin = createClient<Database>(PUBLIC_SUPABASE_URL, env.SERVICE_ROLE_KEY);
 
 export const load: PageServerLoad = async () => {
 	return {
 		form: await superValidate(valibot(beginnersWaitlist)),
-		genders: await supabaseAdmin
+		genders: await supabaseServiceClient
 			.rpc('get_gender_options')
-			.throwOnError()
-			.then((res) => res.data as string[])
+			.then((res) => (res.data ?? []) as string[])
 	};
 };
 
@@ -30,7 +25,7 @@ export const actions: Actions = {
 			});
 		}
 		const formData = form.data;
-		const { error } = await supabaseAdmin.rpc('insert_waitlist_entry', {
+		const { error } = await supabaseServiceClient.rpc('insert_waitlist_entry', {
 			first_name: formData.firstName,
 			last_name: formData.lastName,
 			email: formData.email,
