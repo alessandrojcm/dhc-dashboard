@@ -24,9 +24,6 @@ test('fills out the waitlist form and asserts no errors', async ({ page }) => {
 	await page.fill('input[name="email"]', testData.email);
 	await page.fill('input[name="phoneNumber"]', testData.phoneNumber);
 	await page.getByPlaceholder('Enter your pronouns').fill('he/him');
-	await page.evaluate(() => {
-		document.querySelector('button[name="gender"]')?.scrollIntoView();
-	});
 	await page.getByRole('button', { name: 'gender' }).click();
 	await page.getByRole('option', { name: 'man (cis)', exact: true }).click();
 	await page.getByPlaceholder('Enter your pronouns').fill('he/him');
@@ -35,8 +32,8 @@ test('fills out the waitlist form and asserts no errors', async ({ page }) => {
 	await page.getByLabel('Select year').click();
 	await page.getByRole('option', { name: testData.dateOfBirth.year().toString() }).click();
 	await page.getByLabel('Select month').click();
-	await page.getByRole('option', { name: testData.dateOfBirth.format('MMMM') }).click();
-	await page.getByLabel(testData.dateOfBirth.format('dddd, MMMM D')).click();
+	await page.getByRole('option', { name: testData.dateOfBirth.format('MMMM') }).dblclick();
+	await page.getByLabel(testData.dateOfBirth.format('dddd, MMMM D,')).click();
 
 	await page.fill('input[name="medicalConditions"]', testData.medicalConditions);
 
@@ -54,7 +51,10 @@ test('it should not allow people under 16 to sign up', async ({ page }) => {
 	const dateOfBirth = dayjs();
 
 	await page.getByLabel('Date of birth').click();
-	await page.getByLabel(dateOfBirth.format('dddd, MMMM D')).click();
+	await page
+		.getByText((dateOfBirth.day() + 1).toString())
+		.first()
+		.click();
 
 	// Submit the form
 	await page.click('button[type="submit"]');

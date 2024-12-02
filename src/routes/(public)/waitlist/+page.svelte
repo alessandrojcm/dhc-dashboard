@@ -16,6 +16,7 @@
 	import * as Select from '$lib/components/ui/select';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import { AsYouType } from 'libphonenumber-js/min';
+	import { HelpCircle } from 'lucide-svelte';
 
 	const { data } = $props();
 	const form = superForm(data.form, {
@@ -36,7 +37,20 @@
 <svelte:head>
 	<title>Dublin Hema Club - Waitlist Registration</title>
 </svelte:head>
-<Card.Root class="self-center w-96 mt-[15%]">
+
+{#snippet whyThisField(message: string)}
+	<Tooltip.Provider>
+		<Tooltip.Root>
+			<Tooltip.Trigger>
+				<HelpCircle class="h-4 w-4 text-muted-foreground" />
+			</Tooltip.Trigger>
+			<Tooltip.Content>
+				{message}
+			</Tooltip.Content>
+		</Tooltip.Root>
+	</Tooltip.Provider>
+{/snippet}
+<Card.Root class="self-center">
 	<Card.Header>
 		<Card.Title class="prose prose-h1 text-xl">Waitlist Form</Card.Title>
 		<Card.Description class="prose">
@@ -53,38 +67,40 @@
 			</Alert.Root>
 		{:else}
 			<form method="POST" {form} use:enhance class="flex flex-col gap-4 items-stretch">
-				<Form.Field {form} name="firstName">
-					<Form.Control>
-						{#snippet children({ props })}
-							<Form.Label>First name</Form.Label>
-							<Input
-								{...props}
-								bind:value={$formData.firstName}
-								placeholder="Enter your first name"
-							/>
-						{/snippet}
-					</Form.Control>
-					<Form.FieldErrors />
-				</Form.Field>
+				<div class="flex gap-4 w-full justify-stretch">
+					<Form.Field {form} name="firstName" class="flex-1">
+						<Form.Control>
+							{#snippet children({ props })}
+								<Form.Label required>First name</Form.Label>
+								<Input
+									{...props}
+									bind:value={$formData.firstName}
+									placeholder="Enter your first name"
+								/>
+							{/snippet}
+						</Form.Control>
+						<Form.FieldErrors />
+					</Form.Field>
 
-				<Form.Field {form} name="lastName">
-					<Form.Control>
-						{#snippet children({ props })}
-							<Form.Label>Last name</Form.Label>
-							<Input
-								{...props}
-								bind:value={$formData.lastName}
-								placeholder="Enter your last name"
-							/>
-						{/snippet}
-					</Form.Control>
-					<Form.FieldErrors />
-				</Form.Field>
+					<Form.Field {form} name="lastName" class="flex-1">
+						<Form.Control>
+							{#snippet children({ props })}
+								<Form.Label required>Last name</Form.Label>
+								<Input
+									{...props}
+									bind:value={$formData.lastName}
+									placeholder="Enter your last name"
+								/>
+							{/snippet}
+						</Form.Control>
+						<Form.FieldErrors />
+					</Form.Field>
+				</div>
 
 				<Form.Field {form} name="email">
 					<Form.Control>
 						{#snippet children({ props })}
-							<Form.Label>Email</Form.Label>
+							<Form.Label required>Email</Form.Label>
 							<Input
 								type="email"
 								{...props}
@@ -99,7 +115,7 @@
 				<Form.Field {form} name="phoneNumber">
 					<Form.Control>
 						{#snippet children({ props })}
-							<Form.Label>Phone number</Form.Label>
+							<Form.Label required>Phone number</Form.Label>
 							<Input
 								type="tel"
 								{...props}
@@ -117,7 +133,10 @@
 				<Form.Field {form} name="gender">
 					<Form.Control>
 						{#snippet children({ props })}
-							<Form.Label>Gender</Form.Label>
+							<Form.Label required>Gender</Form.Label>
+							{@render whyThisField(
+								'This helps us maintain a balanced and inclusive training environment'
+							)}
 							<Select.Root type="single" bind:value={$formData.gender} name={props.name}>
 								<Select.Trigger {...props}>
 									{#if $formData.gender}
@@ -134,44 +153,30 @@
 							</Select.Root>
 						{/snippet}
 					</Form.Control>
-					<Tooltip.Provider>
-						<Tooltip.Root>
-							<Tooltip.Trigger>
-								<Form.Description class="underline">Why do we need this?</Form.Description>
-							</Tooltip.Trigger>
-							<Tooltip.Content side="bottom">
-								<p>We use this information to better understand the preferences of our members.</p>
-							</Tooltip.Content>
-						</Tooltip.Root>
-					</Tooltip.Provider>
 					<Form.FieldErrors />
 				</Form.Field>
 				<Form.Field {form} name="pronouns">
 					<Form.Control>
 						{#snippet children({ props })}
-							<Form.Label>Pronouns</Form.Label>
+							<Form.Label required>Pronouns</Form.Label>
+							{@render whyThisField(
+								'This helps us maintain a balanced and inclusive training environment'
+							)}
 							<Input {...props} bind:value={$formData.pronouns} placeholder="Enter your pronouns" />
 						{/snippet}
 					</Form.Control>
-					<Form.Description
-						class={$errors?.pronouns ? 'text-red-500' : ''}
-					>Please separate with slashes (e.g. they/them).</Form.Description>
-					<Tooltip.Provider>
-						<Tooltip.Root>
-							<Tooltip.Trigger>
-								<Form.Description class="underline">Why do we need this?</Form.Description>
-							</Tooltip.Trigger>
-							<Tooltip.Content side="bottom">
-								<p>We use this information to better understand the preferences of our members.</p>
-							</Tooltip.Content>
-						</Tooltip.Root>
-					</Tooltip.Provider>
+					<Form.Description class={$errors?.pronouns ? 'text-red-500' : ''}
+						>Please separate with slashes (e.g. they/them).</Form.Description
+					>
 				</Form.Field>
 
 				<Form.Field {form} name="dateOfBirth">
 					<Form.Control>
 						{#snippet children({ props })}
-							<Form.Label>Date of birth</Form.Label>
+							<Form.Label required>Date of birth</Form.Label>
+							{@render whyThisField(
+								'For insurance reasons, HEMA practitioners need to be at least 16 years old'
+							)}
 							<DatePicker
 								{...props}
 								value={dobValue}
@@ -185,16 +190,6 @@
 							<input id="dobInput" type="date" hidden value={$dobProxy} name={props.name} />
 						{/snippet}
 					</Form.Control>
-					<Tooltip.Provider>
-						<Tooltip.Root>
-							<Tooltip.Trigger>
-								<Form.Description class="underline">Why do we need this?</Form.Description>
-							</Tooltip.Trigger>
-							<Tooltip.Content side="bottom">
-								<p>For insurance reasons, HEMA practitioners need to be at least 16 years old.</p>
-							</Tooltip.Content>
-						</Tooltip.Root>
-					</Tooltip.Provider>
 					<Form.FieldErrors />
 				</Form.Field>
 
@@ -218,6 +213,6 @@
 		{/if}
 	</Card.Content>
 </Card.Root>
-{#if dev}
+{#if false}
 	<SuperDebug data={{ $formData, $errors, $message }} />
 {/if}
