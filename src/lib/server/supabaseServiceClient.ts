@@ -4,6 +4,12 @@ import { env } from '$env/dynamic/private';
 import { PUBLIC_SUPABASE_URL } from '$env/static/public';
 import type { Database } from '$database';
 
-const supabaseServiceClient = createClient<Database>(PUBLIC_SUPABASE_URL, env.SERVICE_ROLE_KEY);
+const supabaseServiceClient = createClient<Database>(PUBLIC_SUPABASE_URL, env.SERVICE_ROLE_KEY, {
+	auth: {
+		persistSession: false,
+		autoRefreshToken: false,
+		detectSessionInUrl: false
+	}
+});
 
 export { supabaseServiceClient };

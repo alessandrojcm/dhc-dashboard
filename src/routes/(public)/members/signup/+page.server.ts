@@ -1,34 +1,69 @@
-import type { PageServerLoad } from './$types';
+import signupSchema, { type SignupForm } from '$lib/schemas/membersSignup';
 import { supabaseServiceClient } from '$lib/server/supabaseServiceClient.js';
-import { jwtDecode } from 'jwt-decode';
-import { redirect } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import dayjs from 'dayjs';
-import * as url from 'node:url';
+import { jwtDecode } from 'jwt-decode';
+import { superValidate } from 'sveltekit-superforms';
+import { valibot } from 'sveltekit-superforms/adapters';
+import type { Actions, PageServerLoad } from './$types';
 
-function invariant(condition: unknown, url: string): asserts condition {
-	if (!condition) {
-		throw redirect(301, url);
+function invariant(condition: unknown, message: string): asserts condition {
+	if (condition) {
+		error(404, { message });
 	}
 }
 // need to normalize medical_conditions
-export const load: PageServerLoad = async ({ url }) => {
-	const accessToken = url.searchParams.get('access_token');
-	invariant(accessToken === null, `${url.pathname}?error=missing_access_token`);
+export const load: PageServerLoad = async ({ url, ...rest }) => {
+	try {
+		const accessToken = url.searchParams.get('access_token');
+	invariant(accessToken === null, `${url.pathname}?error_description=missing_access_token`);
 	const tokenClaim = jwtDecode(accessToken!);
 	invariant(
 		dayjs.unix(tokenClaim.exp!).isBefore(dayjs()),
-		`${url.pathname}?error=expired_access_token`
+		`${url.pathname}?error_description=expired_access_token`
 	);
 
 	const userData = await supabaseServiceClient.auth.admin.getUserById(tokenClaim.sub!);
-	invariant(userData.error || !userData.data?.user, `${url.pathname}?error=invalid_access_token`);
+	invariant(userData.error || !userData.data?.user, 'This invite is not valid');
 
-	// Is this an active user?
-	const userProfile = await supabaseServiceClient
-		.from('user_profiles')
-		.select('first_name,last_name,phone_number,date_of_birth, pronouns, gender, is_active')
-		.eq('supabase_user_id', userData.data.user!.id)
+	const waitlistedMemberData = await supabaseServiceClient
+		.rpc('get_membership_info', {
+			uid: userData.data.user!.id
+		})
 		.single();
-	invariant(userProfile.error !== null, `${url}?error=error_fetching_user`);
-	console.log(userProfile);
+	// cannot used the invariant otherwhise typescript will
+	// cast data to null
+	if (waitlistedMemberData.error !== null) {
+		error(404, {
+			message: 'Waitlist entry not found'
+		});
+	}
+	const { data } = waitlistedMemberData as Record<string, any>;
+
+	return {
+		form: await superValidate(
+			{
+				firstName: data?.first_name,
+				lastName: data?.last_name,
+				email: userData.data.user!.email,
+				dateOfBirth: new Date(data?.date_of_birth),
+				phoneNumber: data?.phone_number,
+				pronouns: data?.pronouns,
+				gender: data?.gender,
+				medicalConditions: data?.medical_conditions
+			},
+			valibot(signupSchema)
+		)
+	};
+	} catch (err) {
+		error(404, {
+			message: 'Waitlist entry not found'
+		});
+	}
+};
+
+export const actions: Actions = {
+	default: async (event) => {
+		return superValidate(event, valibot(signupSchema));
+	}
 };
