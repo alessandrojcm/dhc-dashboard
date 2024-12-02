@@ -69,7 +69,7 @@ const supabase: Handle = async ({ event, resolve }) => {
 };
 
 const authGuard: Handle = async ({ event, resolve }) => {
-	if (event.url.pathname.startsWith('/public')) {
+	if (event.route.id?.includes('public')) {
 		return resolve(event);
 	}
 	const { session, user } = await event.locals.safeGetSession();
@@ -95,7 +95,7 @@ const authGuard: Handle = async ({ event, resolve }) => {
 };
 
 const roleGuard: Handle = async ({ event, resolve }) => {
-	if (event.url.pathname.startsWith('/public')) {
+	if (event.route.id?.includes('public')) {
 		return resolve(event);
 	}
 	const { session } = await event.locals.safeGetSession();
