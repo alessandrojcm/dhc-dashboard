@@ -1,5 +1,5 @@
 import { faker } from '@faker-js/faker';
-import { supabase } from './supabaseServiceRole';
+import { supabase } from './supabaseServiceRole.js';
 
 
 async function seedWaitlist(count = 10) {

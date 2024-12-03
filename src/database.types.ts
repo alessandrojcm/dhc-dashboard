@@ -420,6 +420,12 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: Json
       }
+      get_member_data: {
+        Args: {
+          user_uuid: string
+        }
+        Returns: Database["public"]["CompositeTypes"]["member_data_type"]
+      }
       get_membership_info: {
         Args: {
           uid: string
@@ -524,7 +530,26 @@ export type Database = {
         | "joined"
     }
     CompositeTypes: {
-      [_ in never]: never
+      member_data_type: {
+        first_name: string | null
+        last_name: string | null
+        is_active: boolean | null
+        medical_conditions: string | null
+        phone_number: string | null
+        gender: string | null
+        pronouns: string | null
+        date_of_birth: string | null
+        next_of_kin_name: string | null
+        next_of_kin_phone: string | null
+        preferred_weapon:
+          | Database["public"]["Enums"]["preferred_weapon"][]
+          | null
+        membership_start_date: string | null
+        membership_end_date: string | null
+        last_payment_date: string | null
+        insurance_form_submitted: boolean | null
+        additional_data: Json | null
+      }
     }
   }
 }
