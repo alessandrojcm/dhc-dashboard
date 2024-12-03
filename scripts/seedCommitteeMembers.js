@@ -67,6 +67,23 @@ async function seedUsers(csvPath) {
 			console.log('Role Error details:', roleError);
 			await supabase.auth.admin.deleteUser(authUser.user.id, false);
 		}
+
+		// create member_profiles entry
+		const { error: memberError } = await supabase.from('member_profiles').insert({
+			id: authUser.user.id,
+			user_profile_id: authUser.user.id,
+			next_of_kin_name: record.next_of_kin_name,
+			next_of_kin_phone: record.next_of_kin_phone,
+			preferred_weapon: record.preferred_weapon.split(',').map((weapon) => weapon.trim()),
+			insurance_form_submitted: true,
+			additional_data: record.additional_data
+		});
+
+		if (memberError) {
+			console.error(`Error creating member profile for ${record.email}:`, memberError.message);
+			console.log('Member Error details:', memberError);
+			await supabase.auth.admin.deleteUser(authUser.user.id, false);
+		}
 	}
 
 	console.log(`Finished processing ${records.length} users`);
