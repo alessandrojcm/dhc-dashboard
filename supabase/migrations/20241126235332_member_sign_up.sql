@@ -83,7 +83,7 @@ begin
             errcode = 'U0006',
             message = format('Waitlist entry not found for email: %s', v_email),
             hint = 'Email not found in waitlist';
-    elsif v_waitlist_status != 'completed' or v_waitlist_status != 'invited' then
+    elsif v_waitlist_status not in ('completed', 'invited') then
         raise exception using
             errcode = 'U0007',
             message = 'This user has not completed the workshop.',

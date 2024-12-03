@@ -80,7 +80,8 @@ SELECT has_view('public', 'member_management_view', 'View member_management_view
 SELECT policies_are('public', 'member_profiles', ARRAY [
     'Members can view their own profile',
     'Committee members can view all profiles',
-    'Committee members can modify profiles'
+    'Committee members can modify profiles',
+    'Users can edit their own profile'
     ], 'member_profiles should have exactly these policies');
 
 -- Test triggers
