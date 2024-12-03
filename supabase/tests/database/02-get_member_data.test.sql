@@ -3,7 +3,7 @@ BEGIN;
 -- Load the pgTAP and test helpers extensions
 CREATE EXTENSION IF NOT EXISTS "basejump-supabase_test_helpers";
 
-SELECT plan(6);
+SELECT plan(13);
 
 -- Test function existence
 SELECT has_function(
@@ -24,7 +24,11 @@ INSERT INTO public.user_profiles (
     first_name,
     last_name,
     medical_conditions,
-    date_of_birth
+    phone_number,
+    gender,
+    pronouns,
+    date_of_birth,
+    is_active
 )
 VALUES (
     gen_random_uuid(),
@@ -32,7 +36,11 @@ VALUES (
     'Test',
     'User',
     'None',
-    '1990-01-01'::date
+    '+1234567890',
+    'non-binary',
+    'they/them',
+    '1990-01-01'::date,
+    true
 );
 
 -- Create test member profile
@@ -41,14 +49,24 @@ INSERT INTO public.member_profiles (
     user_profile_id,
     next_of_kin_name,
     next_of_kin_phone,
-    preferred_weapon
+    preferred_weapon,
+    membership_start_date,
+    membership_end_date,
+    last_payment_date,
+    insurance_form_submitted,
+    additional_data
 )
 SELECT 
     tests.get_supabase_uid('test_member'),
     up.id,
     'Next Kin',
     '+1234567890',
-    ARRAY['longsword']::public.preferred_weapon[]
+    ARRAY['longsword']::public.preferred_weapon[],
+    NOW(),
+    NOW() + interval '1 year',
+    NOW(),
+    true,
+    '{}'::jsonb
 FROM public.user_profiles up
 WHERE up.supabase_user_id = tests.get_supabase_uid('test_member');
 
@@ -72,7 +90,7 @@ SELECT throws_ok(
     'Should throw error for non-existent user'
 );
 
--- Test 3-6: Successful retrieval
+-- Test 3-12: Successful retrieval
 SELECT is(
     (SELECT first_name FROM public.get_member_data(tests.get_supabase_uid('test_member'))),
     'Test',
@@ -91,7 +109,47 @@ SELECT is(
     'Next of kin name should match'
 );
 
--- Cleanup is handled by transaction ROLLBACK
+SELECT is(
+    (SELECT next_of_kin_phone FROM public.get_member_data(tests.get_supabase_uid('test_member'))),
+    '+1234567890',
+    'Next of kin phone should match'
+);
+
+SELECT is(
+    (SELECT phone_number FROM public.get_member_data(tests.get_supabase_uid('test_member'))),
+    '+1234567890',
+    'Phone number should match'
+);
+
+SELECT is(
+    (SELECT gender FROM public.get_member_data(tests.get_supabase_uid('test_member'))),
+    'non-binary',
+    'Gender should match'
+);
+
+SELECT is(
+    (SELECT pronouns FROM public.get_member_data(tests.get_supabase_uid('test_member'))),
+    'they/them',
+    'Pronouns should match'
+);
+
+SELECT is(
+    (SELECT date_of_birth FROM public.get_member_data(tests.get_supabase_uid('test_member'))),
+    '1990-01-01'::date,
+    'Date of birth should match'
+);
+
+SELECT is(
+    (SELECT is_active FROM public.get_member_data(tests.get_supabase_uid('test_member'))),
+    true,
+    'Is active should match'
+);
+
+SELECT is(
+    (SELECT insurance_form_submitted FROM public.get_member_data(tests.get_supabase_uid('test_member'))),
+    true,
+    'Insurance form submitted should match'
+);
 
 SELECT * FROM finish();
 ROLLBACK;
