@@ -13,7 +13,7 @@ begin
            )
     from public.user_profiles
              left join public.user_roles on public.user_profiles.supabase_user_id = public.user_roles.user_id
-    where public.user_profiles.id = curr_id::uuid
+    where public.user_profiles.supabase_user_id = curr_id::uuid
     group by public.user_profiles.first_name, public.user_profiles.last_name);
 end;
 $$;

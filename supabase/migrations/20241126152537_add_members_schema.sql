@@ -38,8 +38,7 @@ CREATE OR REPLACE FUNCTION public.complete_member_registration(
     p_user_profile_id UUID,
     p_next_of_kin_name TEXT,
     p_next_of_kin_phone TEXT,
-    p_preferred_weapon public.preferred_weapon[],
-    p_additional_data JSONB DEFAULT '{}'::jsonb
+    p_insurance_form_submitted BOOLEAN
 ) RETURNS UUID
     LANGUAGE plpgsql
     SECURITY DEFINER
@@ -60,20 +59,29 @@ BEGIN
         RAISE EXCEPTION 'User profile not found';
     END IF;
 
+    IF p_insurance_form_submitted IS FALSE THEN
+        RAISE EXCEPTION 'You must submit the insurance form';
+    END IF;
+
     -- Create member profile
     INSERT INTO public.member_profiles (id,
                                         user_profile_id,
                                         next_of_kin_name,
                                         next_of_kin_phone,
                                         preferred_weapon,
-                                        additional_data)
+                                        insurance_form_submitted
+                                        )
     VALUES (v_user_id,
             p_user_profile_id,
             p_next_of_kin_name,
             p_next_of_kin_phone,
-            p_preferred_weapon,
-            p_additional_data)
+            ARRAY []::public.preferred_weapon[],
+            p_insurance_form_submitted)
     RETURNING id INTO v_member_id;
+
+    UPDATE public.user_profiles
+    SET is_active = true
+    WHERE id = p_user_profile_id;
 
     -- Add member role
     INSERT INTO public.user_roles (user_id, role)

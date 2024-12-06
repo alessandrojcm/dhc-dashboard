@@ -65,6 +65,7 @@ export const load: PageServerLoad = async ({ url }) => {
 
 export const actions: Actions = {
 	default: async (event) => {
+		//  TODO: this
 		return superValidate(event, valibot(signupSchema));
 	}
 };

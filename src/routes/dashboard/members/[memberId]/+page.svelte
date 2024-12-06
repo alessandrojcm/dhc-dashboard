@@ -3,7 +3,6 @@
 	import * as Form from '$lib/components/ui/form';
 	import { Input } from '$lib/components/ui/input';
 	import { Button } from '$lib/components/ui/button';
-	import { Label } from '$lib/components/ui/label';
 	import * as Select from '$lib/components/ui/select';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import * as Tabs from '$lib/components/ui/tabs';
@@ -15,16 +14,18 @@
 	import { getLocalTimeZone, fromDate } from '@internationalized/date';
 	import dayjs from 'dayjs';
 	import { AsYouType } from 'libphonenumber-js/min';
-	import FormDescription from '$lib/components/ui/form/form-description.svelte';
-	import { Description } from 'formsnap';
+	import { Checkbox } from '$lib/components/ui/checkbox';
+	import { toast } from 'svelte-sonner';
+	import { onDestroy } from 'svelte';
 
 	const { data } = $props();
 
 	const form = superForm(data.form, {
 		validators: valibotClient(signupSchema),
-		validationMethod: 'onblur'
+		validationMethod: 'oninput',
+		resetForm: false
 	});
-	const { form: formData, enhance, submitting } = form;
+	const { form: formData, enhance, submitting, errors, message } = form;
 	const dobProxy = dateProxy(form, 'dateOfBirth', { format: `date` });
 	const dobValue = $derived.by(() => {
 		if (!dayjs($formData.dateOfBirth).isValid() || dayjs($formData.dateOfBirth).isSame(dayjs())) {
@@ -36,7 +37,16 @@
 	const formatedNextOfKinPhone = $derived.by(() =>
 		new AsYouType('IE').input($formData.nextOfKinNumber)
 	);
-	$inspect($formData);
+
+	const sub = message.subscribe((m) => {
+		if (m?.success) {
+			toast.success(m.success, { position: 'top-right' });
+		}
+	});
+
+	onDestroy(() => {
+		sub();
+	});
 </script>
 
 <Card.Root class="w-full max-w-4xl mx-auto">
@@ -58,7 +68,7 @@
 						<Form.Field {form} name="firstName">
 							<Form.Control>
 								{#snippet children({ props })}
-									<Label for="firstName">First name</Label>
+									<Form.Label for="firstName">First name</Form.Label>
 									<Input {...props} bind:value={$formData.firstName} />
 								{/snippet}
 							</Form.Control>
@@ -68,7 +78,7 @@
 						<Form.Field {form} name="lastName">
 							<Form.Control>
 								{#snippet children({ props })}
-									<Label for="lastName">Last name</Label>
+									<Form.Label for="lastName">Last name</Form.Label>
 									<Input {...props} bind:value={$formData.lastName} />
 								{/snippet}
 							</Form.Control>
@@ -79,7 +89,7 @@
 					<Form.Field {form} name="dateOfBirth">
 						<Form.Control>
 							{#snippet children({ props })}
-								<Label for="dateOfBirth">Date of Birth</Label>
+								<Form.Label for="dateOfBirth">Date of Birth</Form.Label>
 								<DatePicker
 									{...props}
 									value={dobValue}
@@ -99,7 +109,7 @@
 					<Form.Field {form} name="gender">
 						<Form.Control>
 							{#snippet children({ props })}
-								<Label for="gender">Gender</Label>
+								<Form.Label for="gender">Gender</Form.Label>
 								<Select.Root type="single" bind:value={$formData.gender} name={props.name}>
 									{#await data.genders}
 										<Select.Trigger class="w-full" {...props} loading>
@@ -124,7 +134,7 @@
 					<Form.Field {form} name="pronouns">
 						<Form.Control>
 							{#snippet children({ props })}
-								<Label for="pronouns">Pronouns</Label>
+								<Form.Label for="pronouns">Pronouns</Form.Label>
 								<Input
 									{...props}
 									bind:value={$formData.pronouns}
@@ -140,8 +150,14 @@
 					<Form.Field {form} name="email">
 						<Form.Control>
 							{#snippet children({ props })}
-								<Label for="email">Email</Label>
-								<Input class="cursor-not-allowed bg-gray-300/50" readonly {...props} type="email" bind:value={$formData.email} />
+								<Form.Label for="email">Email</Form.Label>
+								<Input
+									class="cursor-not-allowed bg-gray-300/50"
+									readonly
+									{...props}
+									type="email"
+									bind:value={$formData.email}
+								/>
 							{/snippet}
 						</Form.Control>
 						<Form.FormDescription>
@@ -153,10 +169,10 @@
 					<Form.Field {form} name="phoneNumber">
 						<Form.Control>
 							{#snippet children({ props })}
-								<Label for="phoneNumber">Phone Number</Label>
+								<Form.Label for="phoneNumber">Phone Number</Form.Label>
 								<Input
-									{...props}
 									type="tel"
+									{...props}
 									value={formatedPhone}
 									onchange={(event) => {
 										$formData.phoneNumber = event.target.value;
@@ -170,7 +186,7 @@
 					<Form.Field {form} name="nextOfKin">
 						<Form.Control>
 							{#snippet children({ props })}
-								<Label for="nextOfKin">Next of Kin</Label>
+								<Form.Label for="nextOfKin">Next of Kin</Form.Label>
 								<Input {...props} bind:value={$formData.nextOfKin} />
 							{/snippet}
 						</Form.Control>
@@ -180,7 +196,7 @@
 					<Form.Field {form} name="nextOfKinNumber">
 						<Form.Control>
 							{#snippet children({ props })}
-								<Label for="nextOfKinNumber">Next of Kin Phone Number</Label>
+								<Form.Label for="nextOfKinNumber">Next of Kin Phone Number</Form.Label>
 								<Input
 									{...props}
 									type="tel"
@@ -199,7 +215,7 @@
 					<Form.Field {form} name="weapon">
 						<Form.Control>
 							{#snippet children({ props })}
-								<Label for="weapon">Preferred Weapon</Label>
+								<Form.Label for="weapon">Preferred Weapon</Form.Label>
 								<Select.Root type="multiple" bind:value={$formData.weapon}>
 									{#await data.weapons}
 										<Select.Trigger class="capitalize" {...props} loading>
@@ -231,7 +247,7 @@
 					<Form.Field {form} name="medicalConditions">
 						<Form.Control>
 							{#snippet children({ props })}
-								<Label for="medicalConditions">Medical Conditions</Label>
+								<Form.Label for="medicalConditions">Medical Conditions</Form.Label>
 								<Textarea
 									{...props}
 									bind:value={$formData.medicalConditions}
@@ -241,6 +257,18 @@
 							{/snippet}
 						</Form.Control>
 						<Form.FieldErrors />
+					</Form.Field>
+					<Form.Field {form} name="insuranceFormSubmitted" class="flex items-center gap-2">
+						<Form.Control>
+							{#snippet children({ props })}
+								<Checkbox {...props} bind:checked={$formData.insuranceFormSubmitted} />
+								<Form.Label
+									style="margin-top: 0 !important"
+									class={$errors?.insuranceFormSubmitted ? 'text-red-500' : ''}
+									>Please make sure you have submitted HEMA Ireland's insurance form</Form.Label
+								>
+							{/snippet}
+						</Form.Control>
 					</Form.Field>
 				</Tabs.Content>
 			</Tabs.Root>

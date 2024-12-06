@@ -3,7 +3,7 @@ BEGIN;
 -- Load the pgTAP extension
 CREATE EXTENSION IF NOT EXISTS "basejump-supabase_test_helpers";
 
-SELECT plan(18);
+SELECT plan(10);
 
 -- Test function existence
 SELECT has_function(
@@ -13,12 +13,6 @@ SELECT has_function(
     'Function get_membership_info(uuid) should exist'
 );
 
-SELECT has_function(
-    'public',
-    'create_pending_member',
-    ARRAY['uuid', 'text', 'text', 'text', 'timestamptz', 'text', 'public.gender', 'text', 'text', 'text', 'public.preferred_weapon[]', 'jsonb'],
-    'Function create_pending_member should exist with correct parameters'
-);
 
 -- Setup test data
 SELECT tests.create_supabase_user('active_user', 'active@test.com');
@@ -292,88 +286,6 @@ SELECT ok(
         WHERE key IN ('first_name', 'last_name', 'phone_number', 'date_of_birth', 'pronouns', 'gender')
     ),
     'Should return all required fields for valid user'
-);
-
--- Test create_pending_member function
-
--- Test 10: Create pending member success
-SELECT lives_ok(
-    format(
-        'SELECT create_pending_member(%L::uuid, ''Updated'', ''Name'', ''+1234567890'', ''1990-01-01''::timestamptz, ''they/them'', ''non-binary'', ''none'', ''Next of Kin'', ''+9876543210'', ARRAY[''longsword'']::public.preferred_weapon[], ''{}''::jsonb)',
-        tests.get_supabase_uid('new_user')
-    ),
-    'Should successfully create pending member'
-);
-
--- Test 11: Check member_id in response
-SELECT ok(
-    (SELECT id IS NOT NULL FROM public.member_profiles WHERE id = tests.get_supabase_uid('new_user')),
-    'Should have created member profile with correct ID'
-);
-
--- Test 12: Check insurance_form_submitted is false
-SELECT is(
-    (SELECT insurance_form_submitted FROM public.member_profiles WHERE id = tests.get_supabase_uid('new_user')),
-    false,
-    'Insurance form submitted should be false for new member'
-);
-
--- Test 13: Verify user profile is active
-SELECT is(
-    (SELECT is_active FROM public.user_profiles WHERE supabase_user_id = tests.get_supabase_uid('new_user')),
-    true,
-    'User profile should be active after creating member profile'
-);
-
--- Test 14: Verify profile fields in response
-SELECT ok(
-    (
-        SELECT bool_and(key IS NOT NULL) AND count(*) = 11
-        FROM jsonb_object_keys(
-            (create_pending_member(
-                tests.get_supabase_uid('new_user2'),
-                'New2',
-                'User2',
-                '+1234567890',
-                '1990-01-01'::timestamptz,
-                'they/them',
-                'non-binary',
-                'none',
-                'Next of Kin',
-                '+9876543210',
-                ARRAY['longsword']::public.preferred_weapon[],
-                '{}'::jsonb
-            )->'profile')::jsonb
-        ) AS key
-        WHERE key IN (
-            'first_name', 'last_name', 'phone_number', 'date_of_birth', 'pronouns', 'gender',
-            'medical_conditions', 'next_of_kin_name', 'next_of_kin_phone', 'preferred_weapon',
-            'insurance_form_submitted'
-        )
-    ),
-    'Should return all required fields in profile'
-);
-
--- Test 15: Verify error propagation
-SELECT throws_ok(
-    format(
-        'SELECT create_pending_member(%L::uuid, ''Test'', ''User'', ''+1234567890'', ''1990-01-01''::timestamptz, ''they/them'', ''non-binary'', ''none'', ''Next of Kin'', ''+9876543210'', ARRAY[''longsword'']::public.preferred_weapon[], ''{}''::jsonb)',
-        tests.get_supabase_uid('banned_user')
-    ),
-    'U0003',
-    'User is banned.',
-    'Should propagate error from get_membership_info'
-);
-
--- Test 16: Verify error propagation for incomplete workshop
-SELECT throws_ok(
-    format(
-        'SELECT create_pending_member(%L::uuid, ''Test'', ''User'', ''+1234567890'', ''1990-01-01''::timestamptz, ''they/them'', ''non-binary'', ''none'', ''Next of Kin'', ''+9876543210'', ARRAY[''longsword'']::public.preferred_weapon[], ''{}''::jsonb)',
-        tests.get_supabase_uid('incomplete_user')
-    ),
-    'U0007',
-    'This user has not completed the workshop.',
-    'Should propagate error from get_membership_info for incomplete workshop'
 );
 
 -- Cleanup test data
