@@ -1,114 +1,6 @@
 import { test, expect } from '@playwright/test';
-import { faker } from '@faker-js/faker/locale/en_IE';
 import 'dotenv/config';
-import { createClient } from '@supabase/supabase-js';
-import type { Database } from '../src/database.types';
-
-function getSupabaseServiceClient() {
-	const supabaseUrl = process.env.PUBLIC_SUPABASE_URL;
-	const serviceRoleKey = process.env.SERVICE_ROLE_KEY;
-	if (!supabaseUrl || !serviceRoleKey) {
-		throw new Error('Missing SUPABASE_URL or SERVICE_ROLE_KEY in environment variables');
-	}
-	return createClient<Database>(supabaseUrl, serviceRoleKey);
-}
-
-async function setupUser(
-	{
-		addWaitlist = true,
-		addSupabaseId = true,
-		setWaitlistNotCompleted = false
-	}: { addWaitlist: boolean; addSupabaseId: boolean; setWaitlistNotCompleted: boolean } = {
-		addWaitlist: true,
-		addSupabaseId: true,
-		setWaitlistNotCompleted: false
-	}
-) {
-	const supabaseServiceClient = getSupabaseServiceClient();
-	const testData = {
-		first_name: faker.person.firstName(),
-		last_name: faker.person.lastName(),
-		email: faker.internet.email().toLowerCase(),
-		date_of_birth: faker.date.birthdate({ min: 16, max: 65, mode: 'age' }),
-		pronouns: faker.helpers.arrayElement(['he/him', 'she/her', 'they/them']),
-		gender: faker.helpers.arrayElement([
-			'man (cis)',
-			'woman (cis)',
-			'non-binary'
-		] as Database['public']['Enums']['gender'][]),
-		weapon: faker.helpers.arrayElement(['longsword', 'rapier', 'sabre']),
-		phone_number: faker.phone.number({ style: 'international' }),
-		next_of_kin: {
-			name: faker.person.fullName(),
-			phone_number: faker.phone.number({ style: 'international' })
-		},
-		medical_conditions: faker.helpers.arrayElement(['None', 'Asthma', 'Previous knee injury'])
-	};
-	const waitlisEntry = await supabaseServiceClient
-		.rpc('insert_waitlist_entry', {
-			first_name: testData.first_name,
-			last_name: testData.last_name,
-			email: testData.email,
-			date_of_birth: testData.date_of_birth.toISOString(),
-			phone_number: testData.phone_number,
-			pronouns: testData.pronouns,
-			gender: testData.gender as Database['public']['Enums']['gender'],
-			medical_conditions: testData.medical_conditions
-		})
-		.single();
-	if (waitlisEntry.error) {
-		throw new Error(waitlisEntry.error.message);
-	}
-	const inviteLink = await supabaseServiceClient.auth.admin.generateLink({
-		type: 'invite',
-		email: testData.email
-	});
-	if (inviteLink.error) {
-		throw new Error(inviteLink.error.message);
-	}
-
-	await supabaseServiceClient
-		.from('user_profiles')
-		.update({
-			supabase_user_id: addSupabaseId ? inviteLink.data.user.id : null,
-			waitlist_id: addWaitlist ? waitlisEntry.data.waitlist_id : null
-		})
-		.eq('id', waitlisEntry.data.profile_id)
-		.select()
-		.throwOnError();
-
-	await supabaseServiceClient
-		.from('waitlist')
-		.update({
-			status: setWaitlistNotCompleted ? 'cancelled' : 'completed'
-		})
-		.eq('email', testData.email)
-		.throwOnError();
-	const verifyOtp = await supabaseServiceClient.auth.verifyOtp({
-		token_hash: inviteLink.data.properties.hashed_token,
-		type: 'invite'
-	});
-	if (verifyOtp.error) {
-		throw new Error(verifyOtp.error.message);
-	}
-	await supabaseServiceClient.auth.signOut();
-	function cleanUp() {
-		// We need to create another client because when we use verifyOtp, we are effectively
-		// logging as the user we are verifying the token for, hence we lose the service role privileges
-		const client = getSupabaseServiceClient();
-		return Promise.all([
-			client.from('user_profiles').delete().eq('id', waitlisEntry?.data?.profile_id).throwOnError(),
-			client.auth.admin.deleteUser(inviteLink.data.user?.id)
-		]);
-	}
-	return Promise.resolve({
-		...testData,
-		waitlistId: waitlisEntry.data.waitlist_id,
-		profileId: waitlisEntry.data.profile_id,
-		token: verifyOtp.data.session?.access_token,
-		cleanUp
-	});
-}
+import { setupWaitlistedUser } from './setupFunctions';
 
 test.describe('Member Signup - Negative test cases', () => {
 	[
@@ -131,11 +23,10 @@ test.describe('Member Signup - Negative test cases', () => {
 			setWaitlistNotCompleted: true
 		}
 	].forEach((override) => {
-		let testData: Awaited<ReturnType<typeof setupUser>>;
+		let testData: Awaited<ReturnType<typeof setupWaitlistedUser>>;
 		test.beforeAll(async () => {
-			testData = await setupUser(override);
+			testData = await setupWaitlistedUser(override);
 		});
-		// test.afterAll(() => testData.cleanUp());
 
 		test(`should show correct error page when the waitlist entry is wrong ${JSON.stringify(override)}`, async ({
 			page
@@ -150,10 +41,10 @@ test.describe('Member Signup - Negative test cases', () => {
 });
 test.describe('Member Signup - Correct token', () => {
 	// Test data generated once for all tests
-	let testData: Awaited<ReturnType<typeof setupUser>>;
+	let testData: Awaited<ReturnType<typeof setupWaitlistedUser>>;
 
-	test.beforeAll(async () => {
-		testData = await setupUser();
+	test.beforeEach(async () => {
+		testData = await setupWaitlistedUser();
 	});
 
 	test.beforeEach(async ({ page }) => {
@@ -162,10 +53,6 @@ test.describe('Member Signup - Correct token', () => {
 		// Wait for the form to be visible
 		await page.waitForSelector('form');
 	});
-
-	// test.afterAll(async () => {
-	// 	await testData.cleanUp();
-	// });
 
 	test('should show all required form steps', async ({ page }) => {
 		await expect(page.getByText(/join dublin hema club/i)).toBeVisible();

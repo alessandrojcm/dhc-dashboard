@@ -1,6 +1,7 @@
 <script lang="ts">
 	import '../app.css';
 	import type { LayoutData } from './$types';
+	import Toaster from "$lib/components/ui/sonner/sonner.svelte";
 	import { type Snippet } from 'svelte';
 	import { goto, invalidate } from '$app/navigation';
 	import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
@@ -36,6 +37,7 @@
 	{:else}
 		{@render children()}
 	{/if}
+	<Toaster />
 </div>
 
 <style lanb="postcss">

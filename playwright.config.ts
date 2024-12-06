@@ -1,22 +1,18 @@
 import { defineConfig } from '@playwright/test';
+import { resolve } from 'path';
 
 export default defineConfig({
 	use: {
 		launchOptions: {
-			args: ["--start-maximized"],
+			args: ['--start-maximized']
 		}
-	},
-	webServer: {
-		command: 'npm run build && npm run preview',
-		port: 4173,
-		reuseExistingServer: true
 	},
 	projects: [
 		{
 			name: 'chromium',
 			use: {
 				browserName: 'chromium',
-				baseURL: 'http://localhost:5173',
+				baseURL: 'http://127.0.0.1:5173',
 				viewport: null
 			}
 		},
@@ -24,10 +20,12 @@ export default defineConfig({
 			name: 'firefox',
 			use: {
 				browserName: 'firefox',
-				baseURL: 'http://localhost:5173',
+				baseURL: 'http://127.0.0.1:5173',
 				viewport: null
 			}
 		}
 	],
-	testDir: 'e2e'
+	testDir: 'e2e',
+	globalSetup: resolve('./e2e/global-setup.ts'),
+	globalTeardown: resolve('./e2e/global-setup.ts')
 });

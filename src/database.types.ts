@@ -369,27 +369,9 @@ export type Database = {
           p_user_profile_id: string
           p_next_of_kin_name: string
           p_next_of_kin_phone: string
-          p_preferred_weapon: Database["public"]["Enums"]["preferred_weapon"][]
-          p_additional_data?: Json
+          p_insurance_form_submitted: boolean
         }
         Returns: string
-      }
-      create_pending_member: {
-        Args: {
-          uid: string
-          first_name: string
-          last_name: string
-          phone_number: string
-          date_of_birth: string
-          pronouns: string
-          gender: Database["public"]["Enums"]["gender"]
-          medical_conditions: string
-          next_of_kin_name: string
-          next_of_kin_phone: string
-          preferred_weapon: Database["public"]["Enums"]["preferred_weapon"][]
-          additional_data?: Json
-        }
-        Returns: Json
       }
       custom_access_token_hook: {
         Args: {
@@ -479,6 +461,28 @@ export type Database = {
           user_gender: Database["public"]["Enums"]["gender"]
           user_medical_conditions: string
         }[]
+      }
+      update_member_data: {
+        Args: {
+          user_uuid: string
+          p_first_name?: string
+          p_last_name?: string
+          p_is_active?: boolean
+          p_medical_conditions?: string
+          p_phone_number?: string
+          p_gender?: Database["public"]["Enums"]["gender"]
+          p_pronouns?: string
+          p_date_of_birth?: string
+          p_next_of_kin_name?: string
+          p_next_of_kin_phone?: string
+          p_preferred_weapon?: Database["public"]["Enums"]["preferred_weapon"][]
+          p_membership_start_date?: string
+          p_membership_end_date?: string
+          p_last_payment_date?: string
+          p_insurance_form_submitted?: boolean
+          p_additional_data?: Json
+        }
+        Returns: Database["public"]["CompositeTypes"]["member_data_type"]
       }
       update_member_payment: {
         Args: {

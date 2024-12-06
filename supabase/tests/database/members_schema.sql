@@ -66,7 +66,7 @@ SELECT fk_ok('public', 'member_profiles', 'user_profile_id', 'public', 'user_pro
 
 -- Test functions existence
 SELECT has_function('public', 'complete_member_registration',
-                    ARRAY ['uuid', 'text', 'text', 'public.preferred_weapon[]', 'jsonb'],
+                    ARRAY ['uuid', 'text', 'text', 'boolean'],
                     'Function complete_member_registration should exist');
 SELECT has_function('public', 'update_member_payment', ARRAY ['uuid', 'timestamp with time zone'],
                     'Function update_member_payment should exist');
@@ -100,10 +100,7 @@ SELECT isnt(
                                p_user_profile_id := (select id from public.user_profiles where supabase_user_id = tests.get_supabase_uid('test')),
                                p_next_of_kin_name := 'Test Kin',
                                p_next_of_kin_phone := '1234567890',
-                               p_preferred_weapon := ARRAY['longsword'::public.preferred_weapon],
-                               p_additional_data := '{
-                                 "test": true
-                               }'::jsonb
+                               p_insurance_form_submitted := true
                        )),
                null,
                'complete_member_registration should return UUID'
