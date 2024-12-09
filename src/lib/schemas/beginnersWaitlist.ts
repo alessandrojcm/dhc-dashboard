@@ -9,8 +9,8 @@ const formValidation = v.object({
 	phoneNumber: v.pipe(
 		v.string(),
 		v.nonEmpty('Phone number is required.'),
-		v.check((input) => Boolean(parsePhoneNumber(input, 'IE')?.isValid), 'Invalid phone number'),
-		v.transform((input) => parsePhoneNumber(input, 'IE')!.formatInternational())
+		v.check((input) => Boolean(parsePhoneNumber(input)?.isValid), 'Invalid phone number'),
+		v.transform((input) => parsePhoneNumber(input)!.formatInternational())
 	),
 	dateOfBirth: v.pipe(
 		v.date('Date of birth is required.'),

@@ -73,8 +73,8 @@ test.describe('Member Signup - Correct token', () => {
 		// Try to proceed without filling required fields
 		await page.getByRole('button', { name: 'Complete Sign Up' }).click();
 		// Check for validation messages
-		await expect(page.getByText('Please enter your next of kin.')).toBeVisible();
-		await expect(page.getByText('Phone number of your next of kin is required.')).toBeVisible();
+		await expect(page.getByPlaceholder(/full name of your next of kin/i)).toBeVisible();
+		await expect(page.getByPlaceholder(/enter your next of kin's phone number/i)).toBeVisible();
 	});
 
 	test('should format phone numbers correctly', async ({ page }) => {

@@ -22,8 +22,7 @@ const data: NavData = {
 				'pr_manager',
 				'volunteer_coordinator',
 				'research_coordinator',
-				'coach',
-				'member'
+				'coach'
 			])
 		}
 	]
