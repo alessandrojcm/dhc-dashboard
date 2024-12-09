@@ -29,11 +29,12 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Button } from '$lib/components/ui/button';
 	import { Cross2 } from 'svelte-radix';
-	import ActionButtons from './actions-buttons.svelte';
 	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
+	import { Eye } from 'lucide-svelte';
+	import MemberActions from './member-actions.svelte';
 
 	const columns =
-		'current_position,full_name,email,phone_number,status,age,initial_registration_date,last_contacted,medical_conditions,admin_notes';
+		'id,first_name,last_name,email,phone_number,gender,pronouns,is_active,preferred_weapon,membership_start_date,membership_end_date,last_payment_date,insurance_form_submitted,roles,age';
 
 	let pageSizeOptions = [10, 25, 50, 100];
 
@@ -56,12 +57,11 @@
 		];
 	});
 
-	$inspect(rangeStart, rangeEnd);
-	const waitlistQuery = createQuery<FetchAndCountResult<'waitlist_status_history'>, Error>(() => ({
-		queryKey: ['waitlist', pageSize, currentPage, rangeStart, sortingState, searchQuery],
+	const membersQuery = createQuery<FetchAndCountResult<'member_management_view'>, Error>(() => ({
+		queryKey: ['members', pageSize, currentPage, rangeStart, sortingState, searchQuery],
 		placeholderData: keepPreviousData,
 		queryFn: () => {
-			let query = supabase.from('waitlist_management_view').select(columns, { count: 'estimated' });
+			let query = supabase.from('member_management_view').select(columns, { count: 'estimated' });
 			if (searchQuery.length > 0) {
 				query = query.textSearch('search_text', `'${searchQuery}'`, {
 					type: 'websearch'
@@ -71,23 +71,26 @@
 				query = query.order(sortingState[0].id, { ascending: !sortingState[0].desc });
 			}
 			return query.range(rangeStart, rangeEnd).throwOnError() as QueryData<
-				FetchAndCountResult<'waitlist'>
+				FetchAndCountResult<'member_management_view'>
 			>;
 		}
 	}));
-	const updateWaitlistEntry = createMutation<
-		void,
-		Error,
-		MutationPayload<'waitlist'> & { email: string }
-	>(() => ({
-		mutationFn: async ({ email, ...rest }) => {
-			const { error } = await supabase.from('waitlist').update(rest).eq('email', email);
-			if (error) throw error;
-		},
-		onSuccess: () => {
-			waitlistQuery.refetch();
-		}
-	}));
+
+	const updateMemberEntry = createMutation<void, Error, MutationPayload<'member_management_view'>>(
+		() => ({
+			mutationFn: async (updates) => {
+				const { error } = await supabase
+					.from('member_management_view')
+					.update(updates)
+					.eq('id', updates.id);
+				if (error) throw error;
+			},
+			onSuccess: () => {
+				membersQuery.refetch();
+			}
+		})
+	);
+
 	function onPaginationChange(newPagination: Partial<PaginationState>) {
 		const paginationState: PaginationState = {
 			pageIndex: currentPage,
@@ -97,54 +100,65 @@
 		const newParams = new URLSearchParams($page.url.searchParams);
 		newParams.set('page', paginationState.pageIndex.toString());
 		newParams.set('pageSize', paginationState.pageSize.toString());
-		goto(`/dashboard/beginners-workshop?${newParams.toString()}`);
+		goto(`/dashboard/members?${newParams.toString()}`);
 	}
+
 	function onSortingChange(newSorting: SortingState) {
 		const [sortingState] = newSorting;
 		const newParams = new URLSearchParams($page.url.searchParams);
 		newParams.set('sort', sortingState.id);
 		newParams.set('direction', sortingState.desc ? 'desc' : 'asc');
-		goto(`/dashboard/beginners-workshop?${newParams.toString()}`);
+		goto(`/dashboard/members?${newParams.toString()}`);
 	}
+
 	function onSearchChange(newSearch: string) {
 		const newParams = new URLSearchParams($page.url.searchParams);
 		newParams.set('q', newSearch);
-		goto(`/dashboard/beginners-workshop?${newParams.toString()}`);
+		goto(`/dashboard/members?${newParams.toString()}`);
 	}
-	const tableOptions = $state<TableOptions<Tables<'waitlist_management_view'>>>({
+
+	const tableOptions = $state<TableOptions<Tables<'member_management_view'>>>({
 		autoResetPageIndex: false,
 		manualPagination: true,
 		manualSorting: true,
 		columns: [
 			{
-				header: 'Actions',
+				id: 'actions',
+				header: '',
 				cell: ({ row }) => {
-					return renderComponent(ActionButtons, {
-						medicalConditions: row.original.medical_conditions ?? 'N/A',
-						adminNotes: row.original.admin_notes ?? 'N/A',
-						onEdit(newValue) {
-							updateWaitlistEntry.mutate({
-								email: row.original.email!,
-								admin_notes: newValue
-							});
-						}
+					return renderComponent(MemberActions, {
+						memberId: row.original.id!
 					});
 				}
 			},
 			{
-				accessorKey: 'current_position',
+				accessorKey: 'first_name',
 				header: ({ column }) =>
 					renderComponent(SortHeader, {
 						onclick: () => column.toggleSorting(column.getIsSorted() === 'asc'),
-						header: 'Position',
+						header: 'First Name',
 						class: 'p-2',
 						sortDirection: column.getIsSorted()
-					})
+					}),
+				cell: ({ getValue }) => {
+					return renderSnippet(
+						createRawSnippet((value) => ({
+							render: () =>
+								`<div class="w-[100px] md:w-[120px] whitespace-break-spaces break-words">${value()}</div>`
+						})),
+						getValue()
+					);
+				}
 			},
 			{
-				accessorKey: 'full_name',
-				header: 'Full Name',
-				footer: `Total ${waitlistQuery?.data?.count} people on the waitlist`,
+				accessorKey: 'last_name',
+				header: ({ column }) =>
+					renderComponent(SortHeader, {
+						onclick: () => column.toggleSorting(column.getIsSorted() === 'asc'),
+						header: 'Last Name',
+						class: 'p-2',
+						sortDirection: column.getIsSorted()
+					}),
 				cell: ({ getValue }) => {
 					return renderSnippet(
 						createRawSnippet((value) => ({
@@ -181,14 +195,14 @@
 				}
 			},
 			{
-				accessorKey: 'status',
+				accessorKey: 'is_active',
 				header: 'Status',
 				cell: ({ getValue }) => {
 					return renderComponent(Badge, {
-						variant: getValue(),
+						variant: getValue() ? 'default' : 'destructive',
 						class: 'h-8',
 						children: createRawSnippet(() => ({
-							render: () => `<p class="capitalize">${getValue().replace('-', ' ')}</p>`
+							render: () => `<p class="capitalize">${getValue() ? 'Active' : 'Inactive'}</p>`
 						}))
 					});
 				}
@@ -201,51 +215,71 @@
 						header: 'Age',
 						class: 'p-2',
 						sortDirection: column.getIsSorted()
-					}),
+					})
+			},
+			{
+				accessorKey: 'preferred_weapon',
+				header: 'Weapons',
 				cell: ({ getValue }) => {
+					const weapons = getValue() as string[];
 					return renderSnippet(
-						createRawSnippet((value) => ({
-							render: () => {
-								return `<div class="w-[120px] ${value() < 16 ? 'text-red-800' : ''}">${value()}</div>`;
-							}
+						createRawSnippet(() => ({
+							render: () =>
+								`<div class="flex gap-1 flex-wrap">${weapons
+									.map(
+										(w) =>
+											`<span class="bg-primary/10 text-primary rounded px-2 py-1 text-sm capitalize">${w.replace(
+												/[-_]/g,
+												' '
+											)}</span>`
+									)
+									.join('')}</div>`
 						})),
-						getValue()
+						weapons
 					);
 				}
 			},
 			{
-				accessorKey: 'initial_registration_date',
+				accessorKey: 'membership_start_date',
 				header: ({ column }) =>
 					renderComponent(SortHeader, {
 						onclick: () => column.toggleSorting(column.getIsSorted() === 'asc'),
-						header: 'Initial Registration',
+						header: 'Member Since',
 						class: 'p-2',
 						sortDirection: column.getIsSorted()
 					}),
 				cell: ({ getValue }) => {
+					const date = getValue() as string;
 					return renderSnippet(
 						createRawSnippet((value) => ({
-							render: () => `<div class="w-[120px]">${dayjs(getValue()).format('DD/MM/YYYY')}</div>`
+							render: () => dayjs(value()).format('MMM D, YYYY')
 						})),
-						getValue()
+						date
 					);
 				}
 			},
 			{
-				accessorKey: 'last_contacted',
-				header: 'Last Contacted',
+				accessorKey: 'last_payment_date',
+				header: ({ column }) =>
+					renderComponent(SortHeader, {
+						onclick: () => column.toggleSorting(column.getIsSorted() === 'asc'),
+						header: 'Last Payment',
+						class: 'p-2',
+						sortDirection: column.getIsSorted()
+					}),
 				cell: ({ getValue }) => {
+					const date = getValue() as string;
 					return renderSnippet(
 						createRawSnippet((value) => ({
-							render: () => `<div class="w-[120px]">${value()}</div>`
+							render: () => (value() ? dayjs(value()).format('MMM D, YYYY') : 'Never')
 						})),
-						getValue() ?? 'N/A'
+						date
 					);
 				}
 			}
 		],
 		get data() {
-			return waitlistQuery?.data?.data ?? [];
+			return membersQuery?.data?.data ?? [];
 		},
 		onPaginationChange: (updater) => {
 			if (typeof updater === 'function') {
@@ -277,20 +311,20 @@
 				return sortingState;
 			}
 		},
-		rowCount: waitlistQuery?.data?.count ?? 0,
+		rowCount: membersQuery?.data?.count ?? 0,
 		getCoreRowModel: getCoreRowModel(),
 		getPaginationRowModel: getPaginationRowModel(),
 		getSortedRowModel: getSortedRowModel()
 	});
+
 	const table = createSvelteTable(tableOptions);
 </script>
 
-<h2 class="prose prose-h2 text-lg mb-2 ml-2">Waitlist</h2>
 <div class="flex w-full max-w-sm items-center space-x-2 mb-2 p-2">
 	<Input
 		value={searchQuery}
 		onchange={(t) => onSearchChange(t.target?.value)}
-		placeholder="Search for a person"
+		placeholder="Search members"
 		class="max-w-md"
 	/>
 
@@ -299,10 +333,11 @@
 			<Cross2 />
 		</Button>
 	{/if}
-	{#if waitlistQuery.isFetching}
+	{#if membersQuery.isFetching}
 		<LoaderCircle />
 	{/if}
 </div>
+
 <div class="overflow-x-auto overflow-y-auto h-[75vh]">
 	<Table.Root class="w-full">
 		<Table.Header class="sticky top-0 z-10 bg-white">
@@ -327,24 +362,9 @@
 				</Table.Row>
 			{/each}
 		</Table.Body>
-		<Table.Footer class="sticky bottom-0 z-10 bg-white">
-			{#each table.getFooterGroups() as footerGroup}
-				<Table.Row>
-					{#each footerGroup.headers as header}
-						<Table.Cell>
-							{#if !header.isPlaceholder}
-								<FlexRender
-									content={header.column.columnDef.footer}
-									context={header.getContext()}
-								/>
-							{/if}
-						</Table.Cell>
-					{/each}
-				</Table.Row>
-			{/each}
-		</Table.Footer>
 	</Table.Root>
 </div>
+
 <div class="flex items-start justify-end space-x-2 py-4 mr-4">
 	<div class="flex items-center gap-2 mr-auto ml-4">
 		<p class="prose">Elements per page</p>
@@ -364,7 +384,7 @@
 		</Select.Root>
 	</div>
 	<Pagination.Root
-		count={waitlistQuery?.data?.count ?? 0}
+		count={membersQuery?.data?.count ?? 0}
 		perPage={pageSize}
 		page={currentPage + 1}
 		onPageChange={(page) => table.setPageIndex(page - 1)}

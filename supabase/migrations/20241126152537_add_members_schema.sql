@@ -186,7 +186,8 @@ SELECT mp.*,
        w.id                        as from_waitlist_id,
        w.initial_registration_date as waitlist_registration_date,
        array_agg(ur.role)          as roles,
-         extract(year from age(up.date_of_birth)) as age
+       extract(year from age(up.date_of_birth)) as age,
+       up.search_text                           as search_text
 FROM public.member_profiles mp
          JOIN public.user_profiles up ON mp.user_profile_id = up.id
          JOIN auth.users au ON up.supabase_user_id = au.id
