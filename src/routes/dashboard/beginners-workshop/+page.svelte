@@ -2,8 +2,6 @@
 	import WaitlistTable from './waitlist-table.svelte';
 	import Analytics from './workshop-analytics.svelte'
 	import * as Tabs from '$lib/components/ui/tabs/index.js';
-	import { page } from '$app/stores';
-	import { goto } from '$app/navigation';
 
 	const { data } = $props();
 	const supabase = data.supabase;

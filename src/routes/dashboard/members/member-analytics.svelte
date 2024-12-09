@@ -5,26 +5,31 @@
 	import * as Resizable from '$lib/components/ui/resizable/index.js';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { createQuery } from '@tanstack/svelte-query';
-	import { ageChart, demographicsChart } from '$lib/components/ui/analytics-charts.svelte';
+
+	import {
+		ageChart,
+		demographicsChart,
+		preferredWeaponChart
+	} from '$lib/components/ui/analytics-charts.svelte';
 
 	const { supabase }: { supabase: SupabaseClient<Database> } = $props();
 	const totalCountQuery = createQuery<number>(() => ({
-		queryKey: ['waitlist', 'totalCount'],
+		queryKey: ['members', 'totalCount'],
 		queryFn: () =>
 			supabase
-				.from('waitlist_management_view')
+				.from('member_management_view')
 				.select('id', { count: 'exact', head: true })
-				.neq('status', 'completed')
+				.eq('is_active', true)
 				.throwOnError()
 				.then((r) => r.count ?? 0)
 	}));
 	const averageAge = createQuery<number>(() => ({
-		queryKey: ['waitlist', 'avgAge'],
+		queryKey: ['members', 'avgAge'],
 		queryFn: () =>
 			supabase
-				.from('waitlist_management_view')
+				.from('member_management_view')
 				.select('avg_age:age.avg()')
-				.neq('status', 'completed')
+				.eq('is_active', true)
 				.single()
 				.throwOnError()
 				.then((res) => res.data?.avg_age)
@@ -33,14 +38,12 @@
 		gender: Database['public']['Enums']['gender'];
 		count: number;
 	}>(() => ({
-		queryKey: ['waitlist', 'genderDistribution'],
+		queryKey: ['members', 'genderDistribution'],
 		queryFn: () =>
 			supabase
-				.from('user_profiles')
+				.from('member_management_view')
 				.select('gender,value:gender.count()')
-				.is('is_active', false)
-				.not('waitlist_id', 'is', null)
-				.is('supabase_user_id', null)
+				.eq('is_active', true)
 				.throwOnError()
 				.then((r) => r.data)
 	}));
@@ -53,15 +56,49 @@
 			}
 		]
 	>(() => ({
-		queryKey: ['waitlist', 'ageDistribution'],
+		queryKey: ['members', 'ageDistribution'],
 		queryFn: () =>
 			supabase
-				.from('waitlist_management_view')
+				.from('member_management_view')
 				.select('age,value:age.count()')
-				.neq('status', 'completed')
+				.eq('is_active', true)
 				.order('age', { ascending: true })
 				.throwOnError()
 				.then((r) => r.data)
+	}));
+	const weaponPreferencesDistribution = createQuery<
+		[
+			{
+				weapon: string;
+				count: number;
+			}
+		]
+	>(() => ({
+		queryKey: ['members', 'weaponPreferencesDistribution'],
+		queryFn: async () => {
+			const { data } = await supabase
+				.from('member_management_view')
+				.select('preferred_weapon')
+				.eq('is_active', true)
+				.throwOnError();
+
+			// Process the data in JavaScript
+			const weapons = data?.flatMap((d) => d.preferred_weapon) ?? [];
+			const counts = weapons.reduce(
+				(acc, weapon) => {
+					acc[weapon] = (acc[weapon] || 0) + 1;
+					return acc;
+				},
+				{} as Record<string, number>
+			);
+
+			return Object.entries(counts)
+				.map(([weapon, count]) => ({
+					weapon,
+					count
+				}))
+				.sort((a, b) => a.weapon.localeCompare(b.weapon));
+		}
 	}));
 	const ageDistribution = $derived.by(() => {
 		const result = ageDistributionQuery.data ?? [];
@@ -81,12 +118,12 @@
 	});
 </script>
 
-<h2 class="prose prose-h2 text-lg mb-2">Workshop analytics</h2>
+<h2 class="prose prose-h2 text-lg mb-2">Members analytics</h2>
 
 <div class="flex gap-2">
 	<Card.Root class="bg-green-200 w-36">
 		<Card.Header>
-			<Card.Description class="text-black">Total waitlist</Card.Description>
+			<Card.Description class="text-black">Total Members</Card.Description>
 		</Card.Header>
 		<Card.Content>
 			{#if totalCountQuery.isLoading}
@@ -116,7 +153,15 @@
 
 <Resizable.PaneGroup direction="vertical" class="mt-2">
 	<Resizable.Pane class="min-h-[400px] p-4 border rounded">
-		{@render demographicsChart(genderDistributionData)}
+		<Resizable.PaneGroup direction="horizontal">
+			<Resizable.Pane class="min-h-[400px]">
+				{@render demographicsChart(genderDistributionData)}
+			</Resizable.Pane>
+			<Resizable.Handle />
+			<Resizable.Pane class="min-h-[400px] pl-4">
+				{@render preferredWeaponChart(weaponPreferencesDistribution.data)}
+			</Resizable.Pane>
+		</Resizable.PaneGroup>
 	</Resizable.Pane>
 	<Resizable.Handle />
 	<Resizable.Pane class="min-h-[400px] p-4 border rounded">
