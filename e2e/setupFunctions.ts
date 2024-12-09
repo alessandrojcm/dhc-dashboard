@@ -115,9 +115,11 @@ export async function setupWaitlistedUser(
 }
 
 export async function createMember({
-	email = faker.internet.email().toLowerCase()
+	email = faker.internet.email().toLowerCase(),
+	roles = new Set(['member'])
 }: {
 	email: string;
+	roles?: Set<Database['public']['Enums']['role_type']>
 }) {
 	const supabaseServiceClient = getSupabaseServiceClient();
 	const testData = {
@@ -188,6 +190,14 @@ export async function createMember({
 		.throwOnError();
 
 	await supabaseServiceClient
+		.from('user_roles')
+		.insert(Array.from(roles).filter((role) => role !== 'member').map((role) => ({
+			user_id: inviteLink.data.user.id,
+			role
+		})))
+		.throwOnError();
+
+	await supabaseServiceClient
 		.from('waitlist')
 		.update({
 			status: 'completed'
@@ -220,6 +230,7 @@ export async function createMember({
 		profileId: waitlisEntry.data.profile_id,
 		session: verifyOtp.data.session,
 		memberId: data,
+		userId: verifyOtp.data.user?.id,
 		cleanUp
 	});
 }

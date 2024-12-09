@@ -92,6 +92,7 @@
 							<Input
 								type="tel"
 								{...props}
+								placeholder="Enter your next of kin's phone number"
 								value={formatedNextOfKinPhone}
 								onchange={(event) => {
 									$formData.nextOfKinNumber = event.target.value;

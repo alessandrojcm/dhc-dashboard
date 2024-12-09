@@ -104,6 +104,9 @@ const roleGuard: Handle = async ({ event, resolve }) => {
 	}
 	const tokenClaim = jwtDecode(session?.access_token!);
 	const roles = new Set((tokenClaim as { app_metadata: { roles: string[] } }).app_metadata!.roles);
+	if (roles.has('member') && roles.size === 1 && !event.url.pathname.includes('members')) {
+		return redirect(303, `/dashboard/members/${session.user.id}`);
+	}
 	if (
 		event.url.pathname.includes('beginners-workshop') &&
 		![

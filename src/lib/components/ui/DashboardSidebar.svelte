@@ -30,7 +30,7 @@
 	<Sidebar.Header>
 		<h2 class="text-lg mt-2 text-black font-medium">Dublin Hema Club</h2>
 	</Sidebar.Header>
-	<Sidebar.Content>
+	<Sidebar.Content data-testid="sidebar">
 		<!-- We create a Sidebar.Group for each parent. -->
 		{#each data.navMain as group (group.title)}
 			{#if group.role.intersection(roles).size > 0}
@@ -87,9 +87,11 @@
 							</Sidebar.MenuButton>
 						</DropdownMenu.Trigger>
 						<DropdownMenu.Content class="w-56" align="end">
-							<DropdownMenu.Item>
-								<a href={`dashboard/members/${user?.id}`}>My Profile</a>
-							</DropdownMenu.Item>
+							{#if roles.size > 1}
+								<DropdownMenu.Item>
+									<a href={`dashboard/members/${user?.id}`}>My Profile</a>
+								</DropdownMenu.Item>
+							{/if}
 							<DropdownMenu.Item onclick={logout}>Log out</DropdownMenu.Item>
 						</DropdownMenu.Content>
 					{/await}
