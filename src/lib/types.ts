@@ -24,9 +24,8 @@ export type NavigationGroup = {
 export type NavData = {
 	navMain: NavigationGroup[];
 };
-
-export type FetchAndCountResult<T extends keyof Database['public']['Tables']> = {
-	data: Database['public']['Tables'][T]['Row'][];
+export type FetchAndCountResult<T extends keyof (Database['public']['Tables'] | Database['public']['Views'])> = {
+	data: (Database['public']['Tables'] | Database['public']['Views'])[T]['Row'][];
 	count: number;
 };
 
