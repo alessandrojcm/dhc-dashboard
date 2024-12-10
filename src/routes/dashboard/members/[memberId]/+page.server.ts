@@ -4,6 +4,7 @@ import { valibot } from 'sveltekit-superforms/adapters';
 import { fail, message, setError, superValidate } from 'sveltekit-superforms';
 import signupSchema from '$lib/schemas/membersSignup';
 import type { Database } from 'lucide-svelte';
+import { supabaseServiceClient } from '$lib/server/supabaseServiceClient';
 
 export const load: PageServerLoad = async ({ params, locals }) => {
 	const memberData = await locals.supabase.rpc('get_member_data', {
@@ -15,12 +16,16 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		});
 	}
 	const memberProfile: Database['public']['CompositeTypes']['member_data_type'] = memberData.data!;
+	const email = await supabaseServiceClient.auth.admin
+		.getUserById(params.memberId)
+		.then((u) => u.data?.user?.email ?? '');
+
 	return {
 		form: await superValidate(
 			{
 				firstName: memberProfile.first_name,
 				lastName: memberProfile.last_name,
-				email: locals.user?.email,
+				email,
 				phoneNumber: memberProfile.phone_number,
 				dateOfBirth: new Date(memberProfile.date_of_birth),
 				pronouns: memberProfile.pronouns,
@@ -52,7 +57,7 @@ export const actions: Actions = {
 			});
 		}
 		const { error } = await event.locals.supabase.rpc('update_member_data', {
-			user_uuid: event.locals.user?.id!,
+			user_uuid: event.params.memberId!,
 			p_first_name: form.data.firstName,
 			p_last_name: form.data.lastName,
 			p_phone_number: form.data.phoneNumber,

@@ -136,7 +136,7 @@
 								<Form.Label for="gender">Gender</Form.Label>
 								<Select.Root type="single" bind:value={$formData.gender} name={props.name}>
 									{#await data.genders}
-										<Select.Trigger class="w-full" {...props} loading>
+										<Select.Trigger class="w-full capitalize" {...props} loading>
 											{$formData.gender ? $formData.gender : 'Select your gender'}
 										</Select.Trigger>
 									{:then genders}
@@ -159,6 +159,7 @@
 							{#snippet children({ props })}
 								<Form.Label for="pronouns">Pronouns</Form.Label>
 								<Input
+									class="capitalize"
 									{...props}
 									bind:value={$formData.pronouns}
 									placeholder="e.g. she/her, they/them"
@@ -171,10 +172,10 @@
 						<Form.Control>
 							{#snippet children({ props })}
 								<Form.Label for="weapon">Preferred Weapon</Form.Label>
-								<Select.Root type="multiple" bind:value={$formData.weapon}>
+								<Select.Root type="multiple" bind:value={$formData.weapon} name={props.name}>
 									{#await data.weapons}
 										<Select.Trigger class="capitalize" {...props} loading>
-											{$formData.weapon
+											{$formData.weapon?.length > 0
 												? $formData.weapon.join(', ')
 												: 'Select your preferred weapon(s)'}
 										</Select.Trigger>
