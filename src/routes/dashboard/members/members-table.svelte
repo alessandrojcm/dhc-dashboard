@@ -20,18 +20,19 @@
 	import * as Select from '$lib/components/ui/select';
 	import * as Table from '$lib/components/ui/table/index.js';
 	import * as Pagination from '$lib/components/ui/pagination/index.js';
+	import * as Sheet from '$lib/components/ui/sheet';
 	import { Badge } from '$lib/components/ui/badge';
 	import SortHeader from '$lib/components/ui/table/sort-header.svelte';
 	import dayjs from 'dayjs';
 	import { createRawSnippet } from 'svelte';
 	import type { QueryData, SupabaseClient } from '@supabase/supabase-js';
-	import type { FetchAndCountResult, MutationPayload } from '$lib/types';
+	import type { FetchAndCountResult } from '$lib/types';
 	import { Input } from '$lib/components/ui/input';
 	import { Button } from '$lib/components/ui/button';
 	import { Cross2 } from 'svelte-radix';
 	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
-	import { Eye } from 'lucide-svelte';
 	import MemberActions from './member-actions.svelte';
+	import { Ambulance } from 'lucide-svelte';
 
 	const columns =
 		'id,first_name,last_name,email,phone_number,gender,pronouns,is_active,preferred_weapon,membership_start_date,membership_end_date,last_payment_date,insurance_form_submitted,roles,age';
@@ -56,11 +57,28 @@
 			}
 		];
 	});
+	let selectedMemberId = $state<string | null>(null);
+	const selectedMemberQuery = createQuery<
+		Database['public']['Functions']['get_member_data']['Returns']
+	>(() => ({
+		queryKey: ['selectedMemberId', selectedMemberId],
+		enabled: selectedMemberId !== null,
+		queryFn: async ({ signal }) => {
+			return await supabase
+				.rpc('get_member_data', {
+					user_uuid: selectedMemberId!
+				})
+				.abortSignal(signal)
+				.single()
+				.throwOnError()
+				.then((r) => r.data)
+		}
+	}));
 
 	const membersQuery = createQuery<FetchAndCountResult<'member_management_view'>, Error>(() => ({
 		queryKey: ['members', pageSize, currentPage, rangeStart, sortingState, searchQuery],
 		placeholderData: keepPreviousData,
-		queryFn: () => {
+		queryFn: async ({ signal }) => {
 			let query = supabase.from('member_management_view').select(columns, { count: 'estimated' });
 			if (searchQuery.length > 0) {
 				query = query.textSearch('search_text', `'${searchQuery}'`, {
@@ -70,26 +88,11 @@
 			if (sortingState.length > 0) {
 				query = query.order(sortingState[0].id, { ascending: !sortingState[0].desc });
 			}
-			return query.range(rangeStart, rangeEnd).throwOnError() as QueryData<
+			return query.range(rangeStart, rangeEnd).abortSignal(signal).throwOnError() as QueryData<
 				FetchAndCountResult<'member_management_view'>
 			>;
 		}
 	}));
-
-	const updateMemberEntry = createMutation<void, Error, MutationPayload<'member_management_view'>>(
-		() => ({
-			mutationFn: async (updates) => {
-				const { error } = await supabase
-					.from('member_management_view')
-					.update(updates)
-					.eq('id', updates.id);
-				if (error) throw error;
-			},
-			onSuccess: () => {
-				membersQuery.refetch();
-			}
-		})
-	);
 
 	function onPaginationChange(newPagination: Partial<PaginationState>) {
 		const paginationState: PaginationState = {
@@ -127,7 +130,9 @@
 				header: '',
 				cell: ({ row }) => {
 					return renderComponent(MemberActions, {
-						memberId: row.original.id!
+						memberId: row.original.id!,
+						userId: row.original.id!,
+						setSelectedUserId: (id: string) => (selectedMemberId = id)
 					});
 				}
 			},
@@ -415,3 +420,40 @@
 		{/snippet}
 	</Pagination.Root>
 </div>
+
+<Sheet.Root
+	open={Boolean(selectedMemberQuery.data) && selectedMemberId !== null}
+	onOpenChange={(open) => (selectedMemberId = open ? selectedMemberId : null)}
+>
+	<Sheet.Content side="right" class="w-[400px]">
+		<Sheet.Header>
+			<Sheet.Title class="flex items-center gap-2">
+				<Ambulance class="h-5 w-5 text-destructive" />
+				Emergency Contact
+			</Sheet.Title>
+		</Sheet.Header>
+		<div class="grid gap-4 px-6 py-4">
+			<div class="rounded-lg border border-destructive/20 bg-destructive/5 p-4">
+				<div class="flex flex-col space-y-3">
+					<div>
+						<span class="text-sm font-medium text-muted-foreground">Member Name</span>
+						<div class="text-base font-medium">{selectedMemberQuery.data?.first_name} {selectedMemberQuery.data?.last_name}</div>
+					</div>
+					<div class="border-t border-destructive/20 pt-3">
+						<span class="text-sm font-medium text-destructive">Emergency Contact Details</span>
+						<div class="mt-2 space-y-2">
+							<div>
+								<span class="text-sm font-medium text-muted-foreground">Name</span>
+								<div class="text-base">{selectedMemberQuery.data?.next_of_kin_name}</div>
+							</div>
+							<div>
+								<span class="text-sm font-medium text-muted-foreground">Phone</span>
+								<div class="text-base font-medium text-destructive">{selectedMemberQuery.data?.next_of_kin_phone}</div>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</Sheet.Content>
+</Sheet.Root>
