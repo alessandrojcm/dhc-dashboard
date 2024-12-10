@@ -73,6 +73,6 @@ export const actions: Actions = {
 		if (error) {
 			return setError(form, 'pronouns', 'There was an error updating your profile.');
 		}
-		return message(form, { success: 'Your profile has been updated!' });
+		return message(form, { success: 'Profile has been updated!' });
 	}
 };

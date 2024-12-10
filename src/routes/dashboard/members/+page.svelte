@@ -18,7 +18,7 @@
 <Tabs.Root {value} onValueChange={onTabChagne} class="p-2 min-h-96 mr-2">
 	<Tabs.List>
 		<Tabs.Trigger value="dashboard">Dashboard</Tabs.Trigger>
-		<Tabs.Trigger value="members">Members</Tabs.Trigger>
+		<Tabs.Trigger value="members">Members list</Tabs.Trigger>
 	</Tabs.List>
 	<Tabs.Content value="dashboard">
 		<Analytics {supabase} />
