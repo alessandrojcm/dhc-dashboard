@@ -5,7 +5,6 @@
 	import * as Avatar from '$lib/components/ui/avatar';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import type { NavData, UserData } from '$lib/types';
-	import { Link } from 'lucide-svelte';
 
 	type Props = {
 		className?: string | undefined | null;

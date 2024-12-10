@@ -1,10 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { createMember } from './setupFunctions';
-import { getSupabaseServiceClient } from './setupFunctions';
 import { loginAsUser } from './supabaseLogin';
 
-// For base64 encoding in Node environment
-const btoa = (str: string) => Buffer.from(str).toString('base64');
 
 test.describe('Member Self-Management', () => {
 	let testData: Awaited<ReturnType<typeof createMember>>;
