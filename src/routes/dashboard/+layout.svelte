@@ -43,7 +43,7 @@
 <svelte:head>
 	<title>Dublin Hema Club - Dashboard</title>
 </svelte:head>
-<SidebarProvider>
+<SidebarProvider class="h-[calc(100vh-5rem)]">
 	<DashboardSidebar
 		{roles}
 		logout={() => supabase.auth.signOut()}

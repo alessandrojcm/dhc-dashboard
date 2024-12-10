@@ -5,7 +5,6 @@
 	import { Button } from '$lib/components/ui/button';
 	import * as Select from '$lib/components/ui/select';
 	import { Textarea } from '$lib/components/ui/textarea';
-	import * as Tabs from '$lib/components/ui/tabs';
 	import { superForm } from 'sveltekit-superforms';
 	import { valibotClient } from 'sveltekit-superforms/adapters';
 	import signupSchema from '$lib/schemas/membersSignup';
@@ -54,38 +53,62 @@
 		<Card.Title>Member Information</Card.Title>
 		<Card.Description>View and edit your membership details</Card.Description>
 	</Card.Header>
-	<Card.Content class="min-h-96">
+	<Card.Content class="min-h-96 max-h-[80svh] overflow-y-auto">
 		<form method="POST" use:enhance class="space-y-8">
-			<Tabs.Root value="personal" class="w-full">
-				<Tabs.List class="grid w-full grid-cols-3">
-					<Tabs.Trigger value="personal">Personal</Tabs.Trigger>
-					<Tabs.Trigger value="contact">Contact</Tabs.Trigger>
-					<Tabs.Trigger value="membership">Membership</Tabs.Trigger>
-				</Tabs.List>
-
-				<Tabs.Content value="personal" class="space-y-4">
-					<div class="grid grid-cols-2 gap-4">
-						<Form.Field {form} name="firstName">
-							<Form.Control>
-								{#snippet children({ props })}
-									<Form.Label for="firstName">First name</Form.Label>
-									<Input {...props} bind:value={$formData.firstName} />
-								{/snippet}
-							</Form.Control>
-							<Form.FieldErrors />
-						</Form.Field>
-
-						<Form.Field {form} name="lastName">
-							<Form.Control>
-								{#snippet children({ props })}
-									<Form.Label for="lastName">Last name</Form.Label>
-									<Input {...props} bind:value={$formData.lastName} />
-								{/snippet}
-							</Form.Control>
-							<Form.FieldErrors />
-						</Form.Field>
-					</div>
-
+			<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+				<div class="space-y-6">
+					<Form.Field {form} name="firstName">
+						<Form.Control>
+							{#snippet children({ props })}
+								<Form.Label for="firstName">First name</Form.Label>
+								<Input {...props} bind:value={$formData.firstName} />
+							{/snippet}
+						</Form.Control>
+						<Form.FieldErrors />
+					</Form.Field>
+					<Form.Field {form} name="lastName">
+						<Form.Control>
+							{#snippet children({ props })}
+								<Form.Label for="lastName">Last name</Form.Label>
+								<Input {...props} bind:value={$formData.lastName} />
+							{/snippet}
+						</Form.Control>
+						<Form.FieldErrors />
+					</Form.Field>
+					<Form.Field {form} name="email">
+						<Form.Control>
+							{#snippet children({ props })}
+								<Form.Label for="email">Email</Form.Label>
+								<Input
+									class="cursor-not-allowed bg-gray-300/50"
+									readonly
+									{...props}
+									type="email"
+									bind:value={$formData.email}
+								/>
+							{/snippet}
+						</Form.Control>
+						<Form.FormDescription>
+							Please contact us if you need to change your email.
+						</Form.FormDescription>
+						<Form.FieldErrors />
+					</Form.Field>
+					<Form.Field {form} name="phoneNumber">
+						<Form.Control>
+							{#snippet children({ props })}
+								<Form.Label for="phoneNumber">Phone Number</Form.Label>
+								<Input
+									{...props}
+									type="tel"
+									value={formatedPhone}
+									onchange={(event) => {
+										$formData.phoneNumber = event.target.value;
+									}}
+								/>
+							{/snippet}
+						</Form.Control>
+						<Form.FieldErrors />
+					</Form.Field>
 					<Form.Field {form} name="dateOfBirth">
 						<Form.Control>
 							{#snippet children({ props })}
@@ -105,7 +128,8 @@
 						</Form.Control>
 						<Form.FieldErrors />
 					</Form.Field>
-
+				</div>
+				<div class="space-y-6">
 					<Form.Field {form} name="gender">
 						<Form.Control>
 							{#snippet children({ props })}
@@ -130,7 +154,6 @@
 						</Form.Control>
 						<Form.FieldErrors />
 					</Form.Field>
-
 					<Form.Field {form} name="pronouns">
 						<Form.Control>
 							{#snippet children({ props })}
@@ -144,74 +167,6 @@
 						</Form.Control>
 						<Form.FieldErrors />
 					</Form.Field>
-				</Tabs.Content>
-
-				<Tabs.Content value="contact" class="space-y-4">
-					<Form.Field {form} name="email">
-						<Form.Control>
-							{#snippet children({ props })}
-								<Form.Label for="email">Email</Form.Label>
-								<Input
-									class="cursor-not-allowed bg-gray-300/50"
-									readonly
-									{...props}
-									type="email"
-									bind:value={$formData.email}
-								/>
-							{/snippet}
-						</Form.Control>
-						<Form.FormDescription>
-							Please contact us if you need to change your email.
-						</Form.FormDescription>
-						<Form.FieldErrors />
-					</Form.Field>
-
-					<Form.Field {form} name="phoneNumber">
-						<Form.Control>
-							{#snippet children({ props })}
-								<Form.Label for="phoneNumber">Phone Number</Form.Label>
-								<Input
-									type="tel"
-									{...props}
-									value={formatedPhone}
-									onchange={(event) => {
-										$formData.phoneNumber = event.target.value;
-									}}
-								/>
-							{/snippet}
-						</Form.Control>
-						<Form.FieldErrors />
-					</Form.Field>
-
-					<Form.Field {form} name="nextOfKin">
-						<Form.Control>
-							{#snippet children({ props })}
-								<Form.Label for="nextOfKin">Next of Kin</Form.Label>
-								<Input {...props} bind:value={$formData.nextOfKin} />
-							{/snippet}
-						</Form.Control>
-						<Form.FieldErrors />
-					</Form.Field>
-
-					<Form.Field {form} name="nextOfKinNumber">
-						<Form.Control>
-							{#snippet children({ props })}
-								<Form.Label for="nextOfKinNumber">Next of Kin Phone Number</Form.Label>
-								<Input
-									{...props}
-									type="tel"
-									value={formatedNextOfKinPhone}
-									onchange={(event) => {
-										$formData.nextOfKinNumber = event.target.value;
-									}}
-								/>
-							{/snippet}
-						</Form.Control>
-						<Form.FieldErrors />
-					</Form.Field>
-				</Tabs.Content>
-
-				<Tabs.Content value="membership" class="space-y-4">
 					<Form.Field {form} name="weapon">
 						<Form.Control>
 							{#snippet children({ props })}
@@ -243,7 +198,6 @@
 						<Form.FormDescription>You can select more than one</Form.FormDescription>
 						<Form.FieldErrors />
 					</Form.Field>
-
 					<Form.Field {form} name="medicalConditions">
 						<Form.Control>
 							{#snippet children({ props })}
@@ -253,6 +207,36 @@
 									bind:value={$formData.medicalConditions}
 									placeholder="Please list any medical conditions or allergies you have. If none, leave blank."
 									class="min-h-[100px]"
+								/>
+							{/snippet}
+						</Form.Control>
+						<Form.FieldErrors />
+					</Form.Field>
+				</div>
+			</div>
+			<div class="space-y-6">
+				<h3 class="text-lg font-semibold">Emergency Contact</h3>
+				<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+					<Form.Field {form} name="nextOfKin">
+						<Form.Control>
+							{#snippet children({ props })}
+								<Form.Label for="nextOfKin">Next of Kin</Form.Label>
+								<Input {...props} bind:value={$formData.nextOfKin} />
+							{/snippet}
+						</Form.Control>
+						<Form.FieldErrors />
+					</Form.Field>
+					<Form.Field {form} name="nextOfKinNumber">
+						<Form.Control>
+							{#snippet children({ props })}
+								<Form.Label for="nextOfKinNumber">Next of Kin Phone Number</Form.Label>
+								<Input
+									{...props}
+									type="tel"
+									value={formatedNextOfKinPhone}
+									onchange={(event) => {
+										$formData.nextOfKinNumber = event.target.value;
+									}}
 								/>
 							{/snippet}
 						</Form.Control>
@@ -270,8 +254,9 @@
 							{/snippet}
 						</Form.Control>
 					</Form.Field>
-				</Tabs.Content>
-			</Tabs.Root>
+				</div>
+			</div>
+
 			<Button type="submit" class="w-full" disabled={$submitting}>
 				{$submitting ? 'Saving...' : 'Save Changes'}
 			</Button>
