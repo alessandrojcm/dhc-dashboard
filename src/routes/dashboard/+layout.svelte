@@ -63,9 +63,7 @@
 					{:else}
 						<Breadcrumb.Item>
 							<Breadcrumb.Page class="capitalize">
-								{item === userDataQuery?.data?.id
-									? `${userDataQuery.data?.firstName} ${userDataQuery.data?.lastName}`
-									: item.replace('-', ' ')}
+								{item.replaceAll('-', ' ')}
 							</Breadcrumb.Page>
 						</Breadcrumb.Item>
 					{/if}
