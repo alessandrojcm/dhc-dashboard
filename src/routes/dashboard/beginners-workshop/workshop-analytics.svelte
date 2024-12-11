@@ -10,21 +10,23 @@
 	const { supabase }: { supabase: SupabaseClient<Database> } = $props();
 	const totalCountQuery = createQuery<number>(() => ({
 		queryKey: ['waitlist', 'totalCount'],
-		queryFn: () =>
+		queryFn: async ({ signal }) =>
 			supabase
 				.from('waitlist_management_view')
 				.select('id', { count: 'exact', head: true })
 				.neq('status', 'completed')
+				.abortSignal(signal)
 				.throwOnError()
 				.then((r) => r.count ?? 0)
 	}));
 	const averageAge = createQuery<number>(() => ({
 		queryKey: ['waitlist', 'avgAge'],
-		queryFn: () =>
+		queryFn: async ({ signal }) =>
 			supabase
 				.from('waitlist_management_view')
 				.select('avg_age:age.avg()')
 				.neq('status', 'completed')
+				.abortSignal(signal)
 				.single()
 				.throwOnError()
 				.then((res) => res.data?.avg_age)
@@ -34,13 +36,14 @@
 		count: number;
 	}>(() => ({
 		queryKey: ['waitlist', 'genderDistribution'],
-		queryFn: () =>
+		queryFn: async ({ signal }) =>
 			supabase
 				.from('user_profiles')
 				.select('gender,value:gender.count()')
 				.is('is_active', false)
 				.not('waitlist_id', 'is', null)
 				.is('supabase_user_id', null)
+				.abortSignal(signal)
 				.throwOnError()
 				.then((r) => r.data)
 	}));
@@ -54,12 +57,13 @@
 		]
 	>(() => ({
 		queryKey: ['waitlist', 'ageDistribution'],
-		queryFn: () =>
+		queryFn: async ({ signal }) =>
 			supabase
 				.from('waitlist_management_view')
 				.select('age,value:age.count()')
 				.neq('status', 'completed')
 				.order('age', { ascending: true })
+				.abortSignal(signal)
 				.throwOnError()
 				.then((r) => r.data)
 	}));
