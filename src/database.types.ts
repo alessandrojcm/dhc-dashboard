@@ -366,6 +366,9 @@ export type Database = {
           medical_conditions: string | null
           phone_number: string | null
           search_text: unknown | null
+          social_media_consent:
+            | Database["public"]["Enums"]["social_media_consent"]
+            | null
           status: Database["public"]["Enums"]["waitlist_status"] | null
         }
         Relationships: []
@@ -374,7 +377,7 @@ export type Database = {
     Functions: {
       complete_member_registration: {
         Args: {
-          p_user_profile_id: string
+          v_user_id: string
           p_next_of_kin_name: string
           p_next_of_kin_phone: string
           p_insurance_form_submitted: boolean

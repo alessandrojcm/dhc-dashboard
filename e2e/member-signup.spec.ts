@@ -88,4 +88,15 @@ test.describe('Member Signup - Correct token', () => {
 		await page.locator('input[name="nextOfKinNumber"]').press('Tab');
 		await expect(page.getByLabel('Next of Kin Phone Number')).toHaveValue(expected_format);
 	});
+
+	test('should set up the member', async ({ page }) => {
+		// Fill in the form
+		await page.getByLabel('Next of Kin', { exact: true }).fill('John Doe');
+		await page
+			.getByLabel('Next of Kin Phone Number')
+			.pressSequentially('0838774532', { delay: 50 });
+		await page.getByLabel("Please make sure you have submitted HEMA Ireland's insurance form").check();
+		await page.getByRole('button', { name: 'Complete Sign Up' }).click();
+		await expect(page.getByText('Thanks for joining us!')).toBeVisible();
+	});
 });

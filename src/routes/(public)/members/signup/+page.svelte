@@ -6,21 +6,22 @@
 	import * as Card from '$lib/components/ui/card';
 	import { superForm } from 'sveltekit-superforms';
 	import { valibotClient } from 'sveltekit-superforms/adapters';
-	import formSchema from '$lib/schemas/membersSignup';
+	import { memberSignupSchema } from '$lib/schemas/membersSignup';
 	import { AsYouType } from 'libphonenumber-js/min';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 
 	const { data } = $props();
 
 	const form = superForm(data.form, {
-		validators: valibotClient(formSchema),
+		validators: valibotClient(memberSignupSchema),
 		validationMethod: 'onblur'
 	});
 	const { form: formData, enhance, submitting, errors } = form;
-	const formatedPhone = $derived.by(() => new AsYouType('IE').input($formData.phoneNumber));
+	const formatedPhone = $derived.by(() => new AsYouType('IE').input(data.userData.phoneNumber));
 	const formatedNextOfKinPhone = $derived.by(() =>
 		new AsYouType('IE').input($formData.nextOfKinNumber)
 	);
+	$inspect($errors);
 </script>
 
 <svelte:head>
@@ -37,27 +38,27 @@
 			<div class="grid grid-cols-2 gap-4">
 				<div>
 					<p>First Name</p>
-					<p class="text-sm text-gray-600">{$formData.firstName}</p>
+					<p class="text-sm text-gray-600">{data.userData.firstName}</p>
 				</div>
 				<div>
 					<p>Last Name</p>
-					<p class="text-sm text-gray-600">{$formData.lastName}</p>
+					<p class="text-sm text-gray-600">{data.userData.lastName}</p>
 				</div>
 				<div>
 					<p>Email</p>
-					<p class="text-sm text-gray-600">{$formData.email}</p>
+					<p class="text-sm text-gray-600">{data.userData.email}</p>
 				</div>
 				<div>
 					<p>Date of Birth</p>
-					<p class="text-sm text-gray-600">{dayjs($formData.dateOfBirth).format('DD/MM/YYYY')}</p>
+					<p class="text-sm text-gray-600">{dayjs(data.userData.dateOfBirth).format('DD/MM/YYYY')}</p>
 				</div>
 				<div>
 					<p>Gender</p>
-					<p class="text-sm text-gray-600 capitalize">{$formData.gender}</p>
+					<p class="text-sm text-gray-600 capitalize">{data.userData.gender}</p>
 				</div>
 				<div>
 					<p>Pronouns</p>
-					<p class="text-sm text-gray-600 capitalize">{$formData.pronouns}</p>
+					<p class="text-sm text-gray-600 capitalize">{data.userData.pronouns}</p>
 				</div>
 				<div>
 					<p>Phone Number</p>
@@ -66,7 +67,7 @@
 				<div>
 					<p>Medical Conditions</p>
 					<p class="text-sm text-gray-600">
-						{$formData.medicalConditions === '' ? 'N/A' : $formData.medicalConditions}
+						{!data.userData.medicalConditions ? 'N/A' : data.userData.medicalConditions}
 					</p>
 				</div>
 			</div>
