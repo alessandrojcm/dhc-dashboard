@@ -1,7 +1,7 @@
 import { faker } from '@faker-js/faker';
 import { supabase } from './supabaseServiceRole.js';
 
-
+const SOCIAL_MEDIA_CONSENT= ['no', 'yes_recognizable', 'yes_unrecognizable'];
 async function seedWaitlist(count = 10) {
 	const entries = Array.from({ length: count }, () => ({
 	    first_name: faker.person.firstName(),
@@ -21,7 +21,8 @@ async function seedWaitlist(count = 10) {
 			'woman (trans)',
 			'other'
 		]),
-		medical_conditions: faker.helpers.arrayElement([null, faker.lorem.sentence()])
+		medical_conditions: faker.helpers.arrayElement([null, faker.lorem.sentence()]),
+		social_media_consent: faker.helpers.arrayElement(SOCIAL_MEDIA_CONSENT),
 	}));
 
 	await Promise.all(
