@@ -56,7 +56,7 @@
 				<Alert.Description>{$message.text}</Alert.Description>
 			</Alert.Root>
 		{:else}
-			<form method="POST" {form} use:enhance class="flex flex-col gap-4 items-stretch">
+			<form method="POST" use:enhance class="flex flex-col gap-4 items-stretch">
 				<div class="flex gap-4 w-full justify-stretch">
 					<Form.Field {form} name="firstName" class="flex-1">
 						<Form.Control>
