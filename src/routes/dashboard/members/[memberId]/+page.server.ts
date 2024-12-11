@@ -3,7 +3,7 @@ import type { PageServerLoad } from './$types';
 import { valibot } from 'sveltekit-superforms/adapters';
 import { fail, message, setError, superValidate } from 'sveltekit-superforms';
 import signupSchema from '$lib/schemas/membersSignup';
-import type { Database } from 'lucide-svelte';
+import type { Database } from '$database';
 import { supabaseServiceClient } from '$lib/server/supabaseServiceClient';
 
 export const load: PageServerLoad = async ({ params, locals }) => {
@@ -34,7 +34,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 				nextOfKin: memberProfile.next_of_kin_name,
 				nextOfKinNumber: memberProfile.next_of_kin_phone,
 				weapon: memberProfile.preferred_weapon,
-				insuranceFormSubmitted: memberProfile.insurance_form_submitted
+				insuranceFormSubmitted: memberProfile.insurance_form_submitted,
+				socialMediaConsent: memberProfile.social_media_consent
 			},
 			valibot(signupSchema),
 			{ errors: false }
@@ -68,7 +69,8 @@ export const actions: Actions = {
 			p_next_of_kin_name: form.data.nextOfKin,
 			p_next_of_kin_phone: form.data.nextOfKinNumber,
 			p_preferred_weapon: form.data.weapon as Database['public']['Enums']['preferred_weapon'],
-			p_insurance_form_submitted: form.data.insuranceFormSubmitted
+			p_insurance_form_submitted: form.data.insuranceFormSubmitted,
+			p_social_media_consent: form.data.socialMediaConsent
 		});
 		if (error) {
 			return setError(form, 'pronouns', 'There was an error updating your profile.');

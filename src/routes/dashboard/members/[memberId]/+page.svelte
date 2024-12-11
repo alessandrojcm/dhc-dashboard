@@ -16,6 +16,8 @@
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { toast } from 'svelte-sonner';
 	import { onDestroy } from 'svelte';
+	import { whyThisField } from '$lib/components/ui/why-this-field.svelte';
+	import * as RadioGroup from '$lib/components/ui/radio-group/index.js';
 
 	const { data } = $props();
 
@@ -199,6 +201,45 @@
 						<Form.FormDescription>You can select more than one</Form.FormDescription>
 						<Form.FieldErrors />
 					</Form.Field>
+					<Form.Fieldset {form} name="socialMediaConsent">
+						<span class="flex items-center gap-2">
+							<p class="text-sm font-medium">Social media consent</p>
+							{@render whyThisField(
+								'We sometimes take pictures for our social media, please indicate if you are comfortable with this'
+							)}
+						</span>
+						<RadioGroup.Root
+							name="socialMediaConsent"
+							class="flex justify-start"
+							bind:value={$formData.socialMediaConsent}
+						>
+							<div class="flex items-center space-x-3 space-y-0">
+								<Form.Control>
+									{#snippet children({ props })}
+										<RadioGroup.Item value="no" {...props} />
+										<Form.Label class="font-normal">No</Form.Label>
+									{/snippet}
+								</Form.Control>
+							</div>
+							<div class="flex items-center space-x-3 space-y-0">
+								<Form.Control>
+									{#snippet children({ props })}
+										<RadioGroup.Item value="yes_unrecognizable" {...props} />
+										<Form.Label class="font-normal">If not recognizable (wearing a mask)</Form.Label>
+									{/snippet}
+								</Form.Control>
+							</div>
+							<div class="flex items-center space-x-3 space-y-0">
+								<Form.Control>
+									{#snippet children({ props })}
+										<RadioGroup.Item value="yes_recognizable" {...props} />
+										<Form.Label class="font-normal">Yes</Form.Label>
+									{/snippet}
+								</Form.Control>
+							</div>
+						</RadioGroup.Root>
+						<Form.FieldErrors />
+					</Form.Fieldset>
 					<Form.Field {form} name="medicalConditions">
 						<Form.Control>
 							{#snippet children({ props })}
