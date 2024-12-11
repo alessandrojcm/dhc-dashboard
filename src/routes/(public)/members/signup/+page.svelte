@@ -33,7 +33,7 @@
 		<Card.Description>We are glad you decided to join us! Please fill up the following details</Card.Description>
 	</Card.Header>
 	<Card.Content>
-		<form {form} method="POST" class="space-y-6" use:enhance>
+		<form method="POST" class="space-y-6" use:enhance>
 			<div class="grid grid-cols-2 gap-4">
 				<div>
 					<p>First Name</p>

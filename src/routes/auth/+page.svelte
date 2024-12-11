@@ -4,6 +4,7 @@
 	import { Card } from '$lib/components/ui/card';
 	import { DiscordLogo, ExclamationTriangle } from 'svelte-radix';
 	import * as Alert from '$lib/components/ui/alert/index.js';
+	import { Form } from '$lib/components/ui/form/index.js';
 
 	const hash = $page.url.hash.split('#')[1] as string;
 	const errorMessage = new URLSearchParams(hash).get('error_description');
