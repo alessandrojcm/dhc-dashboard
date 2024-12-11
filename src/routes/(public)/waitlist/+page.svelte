@@ -6,7 +6,6 @@
 	import { dateProxy, superForm } from 'sveltekit-superforms';
 	import { getLocalTimeZone, fromDate } from '@internationalized/date';
 	import * as Card from '$lib/components/ui/card';
-	import { dev } from '$app/environment';
 	import DatePicker from '$lib/components/ui/date-picker.svelte';
 	import { valibotClient } from 'sveltekit-superforms/adapters';
 	import beginnersWaitlist from '$lib/schemas/beginnersWaitlist';
@@ -17,6 +16,8 @@
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import { AsYouType } from 'libphonenumber-js/min';
 	import { HelpCircle } from 'lucide-svelte';
+	import Textarea from '$lib/components/ui/textarea/textarea.svelte';
+	import * as RadioGroup from '$lib/components/ui/radio-group/index.js';
 
 	const { data } = $props();
 	const form = superForm(data.form, {
@@ -192,13 +193,51 @@
 					</Form.Control>
 					<Form.FieldErrors />
 				</Form.Field>
+				<Form.Fieldset {form} name="socialMediaConsent">
+					<span class="flex items-center gap-2">
+						<p class="text-sm font-medium">Social media consent</p>
+						{@render whyThisField(
+							'We sometimes take pictures for our social media, please indicate if you are comfortable with this'
+						)}
+					</span>
+					<RadioGroup.Root
+						name="socialMediaConsent"
+						class="flex justify-start"
+						bind:value={$formData.socialMediaConsent}
+					>
+						<div class="flex items-center space-x-3 space-y-0">
+							<Form.Control>
+								{#snippet children({ props })}
+									<RadioGroup.Item value="no" {...props} />
+									<Form.Label class="font-normal">No</Form.Label>
+								{/snippet}
+							</Form.Control>
+						</div>
+						<div class="flex items-center space-x-3 space-y-0">
+							<Form.Control>
+								{#snippet children({ props })}
+									<RadioGroup.Item value="yes_unrecognizable" {...props} />
+									<Form.Label class="font-normal">If not recognizable (wearing a mask)</Form.Label>
+								{/snippet}
+							</Form.Control>
+						</div>
+						<div class="flex items-center space-x-3 space-y-0">
+							<Form.Control>
+								{#snippet children({ props })}
+									<RadioGroup.Item value="yes_recognizable" {...props} />
+									<Form.Label class="font-normal">Yes</Form.Label>
+								{/snippet}
+							</Form.Control>
+						</div>
+					</RadioGroup.Root>
+					<Form.FieldErrors />
+				</Form.Fieldset>
 
 				<Form.Field {form} name="medicalConditions">
 					<Form.Control>
 						{#snippet children({ props })}
 							<Form.Label>Any medical condition?</Form.Label>
-							<Input
-								type="textarea"
+							<Textarea
 								{...props}
 								bind:value={$formData.medicalConditions}
 								placeholder="Enter any medical conditions"
