@@ -236,6 +236,17 @@ FROM public.member_profiles mp
          LEFT JOIN public.waitlist w ON up.waitlist_id = w.id
          LEFT JOIN public.user_roles ur ON up.supabase_user_id = ur.user_id
 GROUP BY mp.id, up.id, au.id, w.id;
+drop view if exists waitlist_management_view;
+create view waitlist_management_view as
+select w.*,
+       u.search_text                           as search_text,
+       u.phone_number                          as phone_number,
+       u.medical_conditions                    as medical_conditions,
+       concat(u.first_name, ' ', u.last_name)  as full_name,
+       get_waitlist_position(w.id)             as current_position,
+       extract(year from age(u.date_of_birth)) as age,
+       u.social_media_consent as social_media_consent
+from user_profiles u
+         join waitlist w on u.waitlist_id = w.id
+where u.waitlist_id is not null;
 
--- Grant necessary permissions
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.member_profiles TO authenticated;
