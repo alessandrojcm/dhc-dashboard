@@ -18,6 +18,7 @@
 	import { HelpCircle } from 'lucide-svelte';
 	import Textarea from '$lib/components/ui/textarea/textarea.svelte';
 	import * as RadioGroup from '$lib/components/ui/radio-group/index.js';
+	import { whyThisField } from '$lib/components/ui/why-this-field.svelte';
 
 	const { data } = $props();
 	const form = superForm(data.form, {
@@ -39,18 +40,6 @@
 	<title>Dublin Hema Club - Waitlist Registration</title>
 </svelte:head>
 
-{#snippet whyThisField(message: string)}
-	<Tooltip.Provider>
-		<Tooltip.Root>
-			<Tooltip.Trigger>
-				<HelpCircle class="h-4 w-4 text-muted-foreground" />
-			</Tooltip.Trigger>
-			<Tooltip.Content>
-				{message}
-			</Tooltip.Content>
-		</Tooltip.Root>
-	</Tooltip.Provider>
-{/snippet}
 <Card.Root class="self-center">
 	<Card.Header>
 		<Card.Title class="prose prose-h1 text-xl">Waitlist Form</Card.Title>

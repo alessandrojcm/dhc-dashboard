@@ -33,7 +33,7 @@
 	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
 
 	const columns =
-		'current_position,full_name,email,phone_number,status,age,initial_registration_date,last_contacted,medical_conditions,admin_notes';
+		'current_position,full_name,email,phone_number,status,age,initial_registration_date,last_contacted,medical_conditions,admin_notes,social_media_consent';
 
 	let pageSizeOptions = [10, 25, 50, 100];
 
@@ -178,6 +178,24 @@
 						})),
 						getValue()
 					);
+				}
+			},
+			{
+				accessorKey: 'social_media_consent',
+				header: 'Social  Consent',
+				cell: ({ getValue }) => {
+					return renderComponent(Badge, {
+						variant:
+							getValue() !== 'no'
+								? getValue() === 'yes_recognizable'
+									? 'default'
+									: 'secondary'
+								: 'destructive',
+						class: 'h-8',
+						children: createRawSnippet(() => ({
+							render: () => `<p class="first-letter:capitalize">${getValue().replace('_', ', ')}</p>`
+						}))
+					});
 				}
 			},
 			{

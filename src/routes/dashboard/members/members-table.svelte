@@ -35,7 +35,7 @@
 	import { Ambulance } from 'lucide-svelte';
 
 	const columns =
-		'id,first_name,last_name,email,phone_number,gender,pronouns,is_active,preferred_weapon,membership_start_date,membership_end_date,last_payment_date,insurance_form_submitted,roles,age';
+		'id,first_name,last_name,email,phone_number,gender,pronouns,is_active,preferred_weapon,membership_start_date,membership_end_date,last_payment_date,insurance_form_submitted,roles,age,social_media_consent';
 
 	let pageSizeOptions = [10, 25, 50, 100];
 
@@ -71,7 +71,7 @@
 				.abortSignal(signal)
 				.single()
 				.throwOnError()
-				.then((r) => r.data)
+				.then((r) => r.data);
 		}
 	}));
 
@@ -223,6 +223,24 @@
 					})
 			},
 			{
+				accessorKey: 'social_media_consent',
+				header: 'Social  Consent',
+				cell: ({ getValue }) => {
+					return renderComponent(Badge, {
+						variant:
+							getValue() !== 'no'
+								? getValue() === 'yes_recognizable'
+									? 'default'
+									: 'secondary'
+								: 'destructive',
+						class: 'h-8',
+						children: createRawSnippet(() => ({
+							render: () => `<p class="first-letter:capitalize">${getValue().replace('_', ', ')}</p>`
+						}))
+					});
+				}
+			},
+			{
 				accessorKey: 'preferred_weapon',
 				header: 'Weapons',
 				cell: ({ getValue }) => {
@@ -233,7 +251,7 @@
 								`<div class="flex gap-1 flex-wrap">${weapons
 									.map(
 										(w) =>
-											`<span class="bg-primary/10 text-primary rounded px-2 py-1 text-sm capitalize">${w.replace(
+											`<span class="bg-primary/10 text-primary rounded px-2 py-1 text-sm first-letter:capitalize">${w.replace(
 												/[-_]/g,
 												' '
 											)}</span>`
@@ -437,7 +455,10 @@
 				<div class="flex flex-col space-y-3">
 					<div>
 						<span class="text-sm font-medium text-muted-foreground">Member Name</span>
-						<div class="text-base font-medium">{selectedMemberQuery.data?.first_name} {selectedMemberQuery.data?.last_name}</div>
+						<div class="text-base font-medium">
+							{selectedMemberQuery.data?.first_name}
+							{selectedMemberQuery.data?.last_name}
+						</div>
 					</div>
 					<div class="border-t border-destructive/20 pt-3">
 						<span class="text-sm font-medium text-destructive">Emergency Contact Details</span>
@@ -448,7 +469,9 @@
 							</div>
 							<div>
 								<span class="text-sm font-medium text-muted-foreground">Phone</span>
-								<div class="text-base font-medium text-destructive">{selectedMemberQuery.data?.next_of_kin_phone}</div>
+								<div class="text-base font-medium text-destructive">
+									{selectedMemberQuery.data?.next_of_kin_phone}
+								</div>
 							</div>
 						</div>
 					</div>
