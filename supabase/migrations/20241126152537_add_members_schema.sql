@@ -35,7 +35,7 @@ CREATE INDEX idx_member_profiles_user_id ON public.member_profiles (user_profile
 
 -- Function to complete member registration
 CREATE OR REPLACE FUNCTION public.complete_member_registration(
-    p_user_profile_id UUID,
+    v_user_id UUID,
     p_next_of_kin_name TEXT,
     p_next_of_kin_phone TEXT,
     p_insurance_form_submitted BOOLEAN
@@ -46,18 +46,17 @@ CREATE OR REPLACE FUNCTION public.complete_member_registration(
 AS
 $$
 DECLARE
+    p_user_profile_id UUID;
     v_member_id UUID;
-    v_user_id   UUID;
 BEGIN
-    -- Get user ID
-    SELECT supabase_user_id
-    INTO v_user_id
-    FROM public.user_profiles
-    WHERE id = p_user_profile_id;
 
-    IF v_user_id IS NULL THEN
-        RAISE EXCEPTION 'User profile not found';
-    END IF;
+    SELECT id into p_user_profile_id
+    FROM public.user_profiles
+    WHERE supabase_user_id = v_user_id;
+
+    if p_user_profile_id is null then
+        RAISE EXCEPTION 'User not found';
+    end if;
 
     IF p_insurance_form_submitted IS FALSE THEN
         RAISE EXCEPTION 'You must submit the insurance form';

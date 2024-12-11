@@ -97,7 +97,7 @@ insert into public.user_profiles (id, supabase_user_id, date_of_birth, first_nam
 -- Test complete_member_registration
 SELECT isnt(
                (SELECT public.complete_member_registration(
-                               p_user_profile_id := (select id from public.user_profiles where supabase_user_id = tests.get_supabase_uid('test')),
+                               v_user_id := (select tests.get_supabase_uid('test')),
                                p_next_of_kin_name := 'Test Kin',
                                p_next_of_kin_phone := '1234567890',
                                p_insurance_form_submitted := true
