@@ -35,8 +35,9 @@ test('fills out the waitlist form and asserts no errors', async ({ page }) => {
 	await page.getByLabel('Select month').click();
 	await page.getByRole('option', { name: testData.dateOfBirth.format('MMMM') }).dblclick();
 	await page.getByLabel(testData.dateOfBirth.format('dddd, MMMM D,')).click();
+	await page.getByRole('radio', { name: 'No', exact: true }).click();
 
-	await page.fill('input[name="medicalConditions"]', testData.medicalConditions);
+	await page.getByLabel(/any medical condition/i).fill(testData.medicalConditions);
 
 	// Submit the form
 	await page.click('button[type="submit"]');
@@ -50,7 +51,7 @@ test('it should not allow people under 16 to sign up', async ({ page }) => {
 	// Navigate to the form page
 	await page.goto('/waitlist');
 	const dateOfBirth = dayjs();
-	await page.getByPlaceholder(/select a date/i).click();
+	await page.getByLabel(/date of birth/i).click();
 	await page.getByLabel('Select year').click();
 	await page.getByRole('option', { name: dateOfBirth.year().toString() }).click();
 	await page.getByLabel('Select month').click();

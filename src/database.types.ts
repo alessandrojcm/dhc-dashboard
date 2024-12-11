@@ -134,6 +134,7 @@ export type Database = {
           phone_number: string
           pronouns: string | null
           search_text: unknown | null
+          social_media_consent: Database["public"]["Enums"]["social_media_consent"]
           supabase_user_id: string | null
           updated_at: string | null
           waitlist_id: string | null
@@ -150,6 +151,7 @@ export type Database = {
           phone_number?: string
           pronouns?: string | null
           search_text?: unknown | null
+          social_media_consent?: Database["public"]["Enums"]["social_media_consent"]
           supabase_user_id?: string | null
           updated_at?: string | null
           waitlist_id?: string | null
@@ -166,6 +168,7 @@ export type Database = {
           phone_number?: string
           pronouns?: string | null
           search_text?: unknown | null
+          social_media_consent?: Database["public"]["Enums"]["social_media_consent"]
           supabase_user_id?: string | null
           updated_at?: string | null
           waitlist_id?: string | null
@@ -302,6 +305,7 @@ export type Database = {
       member_management_view: {
         Row: {
           additional_data: Json | null
+          age: number | null
           created_at: string | null
           email: string | null
           first_name: string | null
@@ -322,6 +326,10 @@ export type Database = {
             | null
           pronouns: string | null
           roles: Database["public"]["Enums"]["role_type"][] | null
+          search_text: unknown | null
+          social_media_consent:
+            | Database["public"]["Enums"]["social_media_consent"]
+            | null
           updated_at: string | null
           user_profile_id: string | null
           waitlist_registration_date: string | null
@@ -448,6 +456,7 @@ export type Database = {
           pronouns: string
           gender: Database["public"]["Enums"]["gender"]
           medical_conditions: string
+          social_media_consent?: Database["public"]["Enums"]["social_media_consent"]
         }
         Returns: {
           profile_id: string
@@ -460,6 +469,7 @@ export type Database = {
           user_pronouns: string
           user_gender: Database["public"]["Enums"]["gender"]
           user_medical_conditions: string
+          user_social_media_consent: Database["public"]["Enums"]["social_media_consent"]
         }[]
       }
       update_member_data: {
@@ -481,6 +491,7 @@ export type Database = {
           p_last_payment_date?: string
           p_insurance_form_submitted?: boolean
           p_additional_data?: Json
+          p_social_media_consent?: Database["public"]["Enums"]["social_media_consent"]
         }
         Returns: Database["public"]["CompositeTypes"]["member_data_type"]
       }
@@ -523,6 +534,7 @@ export type Database = {
         | "research_coordinator"
         | "coach"
         | "member"
+      social_media_consent: "no" | "yes_recognizable" | "yes_unrecognizable"
       waitlist_status:
         | "waiting"
         | "invited"
@@ -553,6 +565,9 @@ export type Database = {
         last_payment_date: string | null
         insurance_form_submitted: boolean | null
         additional_data: Json | null
+        social_media_consent:
+          | Database["public"]["Enums"]["social_media_consent"]
+          | null
       }
     }
   }

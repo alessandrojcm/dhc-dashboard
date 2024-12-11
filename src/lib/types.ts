@@ -31,3 +31,10 @@ export type FetchAndCountResult<T extends keyof (Database['public']['Tables'] | 
 
 export type MutationPayload<T extends keyof Database['public']['Tables']> =
 	Database['public']['Tables'][T]['Update'];
+
+
+export enum SocialMediaConsent {
+	no = 'no',
+	yes_recognizable = 'yes_recognizable',
+	yes_unrecognizable = 'yes_unrecognizable'
+}

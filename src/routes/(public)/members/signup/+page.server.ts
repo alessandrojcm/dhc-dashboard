@@ -1,4 +1,4 @@
-import signupSchema, { type SignupForm } from '$lib/schemas/membersSignup';
+import signupSchema from '$lib/schemas/membersSignup';
 import { supabaseServiceClient } from '$lib/server/supabaseServiceClient.js';
 import { error } from '@sveltejs/kit';
 import dayjs from 'dayjs';
@@ -6,6 +6,7 @@ import { jwtDecode } from 'jwt-decode';
 import { superValidate } from 'sveltekit-superforms';
 import { valibot } from 'sveltekit-superforms/adapters';
 import type { Actions, PageServerLoad } from './$types';
+import type { Database } from '$database';
 
 function invariant(condition: unknown, message: string): asserts condition {
 	if (condition) {
@@ -38,7 +39,9 @@ export const load: PageServerLoad = async ({ url }) => {
 				message: 'Waitlist entry not found'
 			});
 		}
-		const { data } = waitlistedMemberData as Record<string, any>;
+		const { data } = waitlistedMemberData as unknown as {
+			data: Database['public']['CompositeTypes']['member_data_type'];
+		};
 
 		return {
 			form: await superValidate(

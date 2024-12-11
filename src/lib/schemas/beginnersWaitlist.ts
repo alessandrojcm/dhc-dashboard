@@ -1,6 +1,7 @@
 import dayjs from 'dayjs';
 import * as v from 'valibot';
 import parsePhoneNumber from 'libphonenumber-js';
+import { SocialMediaConsent } from '$lib/types';
 
 const formValidation = v.object({
 	firstName: v.pipe(v.string(), v.nonEmpty('First name is required.')),
@@ -24,7 +25,11 @@ const formValidation = v.object({
 			'Pronouns must be written between slashes (e.g., he/him/they).'
 		)
 	),
-	gender: v.string()
+	gender: v.string(),
+	socialMediaConsent: v.optional(
+		v.enum(SocialMediaConsent, 'Please select an option'),
+		SocialMediaConsent.no
+	)
 });
 
 export default formValidation;
