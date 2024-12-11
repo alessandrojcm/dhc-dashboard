@@ -16,7 +16,7 @@ SELECT has_function(
 SELECT has_function(
     'public',
     'update_member_data',
-    ARRAY['uuid', 'text', 'text', 'boolean', 'text', 'text', 'public.gender', 'text', 'date', 'text', 'text', 'public.preferred_weapon[]', 'timestamp with time zone', 'timestamp with time zone', 'timestamp with time zone', 'boolean', 'jsonb'],
+    ARRAY['uuid', 'text', 'text', 'boolean', 'text', 'text', 'public.gender', 'text', 'date', 'text', 'text', 'public.preferred_weapon[]', 'timestamp with time zone', 'timestamp with time zone', 'timestamp with time zone', 'boolean', 'jsonb', 'public.social_media_consent'],
     'Function update_member_data should exist with all optional parameters'
 );
 

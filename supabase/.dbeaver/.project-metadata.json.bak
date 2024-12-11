@@ -1,0 +1,1 @@
+{"resources":{"tests/database/02-get_member_data.test.sql":{"default-datasource":"postgres-jdbc-1938e8b0218-15fb69a52edfff14","default-catalog":"postgres","default-schema":"public"}}}
