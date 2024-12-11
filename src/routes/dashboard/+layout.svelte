@@ -15,10 +15,11 @@
 		queryKey: ['logged_in_user_data'],
 		experimental_prefetchInRender: true,
 		enabled: true,
-		queryFn: () =>
+		queryFn: async ({ signal }) =>
 			Promise.all([
 				supabase
 					.rpc('get_current_user_with_profile')
+					.abortSignal(signal)
 					.then(({ data }) => data as Omit<UserData, 'email'>),
 				supabase.auth.getUser().then(({ data }) => data)
 			]).then(
