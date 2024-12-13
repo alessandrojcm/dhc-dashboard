@@ -94,6 +94,39 @@ export type Database = {
           },
         ]
       }
+      settings: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          key: string
+          type: Database["public"]["Enums"]["setting_type"]
+          updated_at: string | null
+          updated_by: string | null
+          value: string
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          key: string
+          type: Database["public"]["Enums"]["setting_type"]
+          updated_at?: string | null
+          updated_by?: string | null
+          value: string
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          key?: string
+          type?: Database["public"]["Enums"]["setting_type"]
+          updated_at?: string | null
+          updated_by?: string | null
+          value?: string
+        }
+        Relationships: []
+      }
       user_audit_log: {
         Row: {
           action: string
@@ -537,6 +570,7 @@ export type Database = {
         | "research_coordinator"
         | "coach"
         | "member"
+      setting_type: "text" | "boolean"
       social_media_consent: "no" | "yes_recognizable" | "yes_unrecognizable"
       waitlist_status:
         | "waiting"

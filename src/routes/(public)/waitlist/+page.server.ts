@@ -2,12 +2,21 @@ import type { Actions, PageServerLoad } from './$types';
 import { message, setError, superValidate } from 'sveltekit-superforms';
 import { valibot } from 'sveltekit-superforms/adapters';
 import beginnersWaitlist from '$lib/schemas/beginnersWaitlist';
-import { fail } from '@sveltejs/kit';
+import { error, fail } from '@sveltejs/kit';
 import type { Database } from '$database';
 import { supabaseServiceClient } from '$lib/server/supabaseServiceClient';
 
 
 export const load: PageServerLoad = async () => {
+	const isWaitlistOpen = await supabaseServiceClient
+		.from('settings')
+		.select('value')
+		.eq('key', 'waitlist_open')
+		.single()
+		.then(result => result.data.value === 'true');
+	if (!isWaitlistOpen) {
+		error(401, 'The waitlist is currently closed, please come back later.');
+	}
 	return {
 		form: await superValidate(valibot(beginnersWaitlist)),
 		genders: await supabaseServiceClient
