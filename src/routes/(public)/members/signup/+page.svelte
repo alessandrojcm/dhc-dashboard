@@ -21,7 +21,6 @@
 	const formatedNextOfKinPhone = $derived.by(() =>
 		new AsYouType('IE').input($formData.nextOfKinNumber)
 	);
-	$inspect($errors);
 </script>
 
 <svelte:head>

@@ -1,4 +1,4 @@
-import signupSchema, { memberSignupSchema } from '$lib/schemas/membersSignup';
+import { memberSignupSchema } from '$lib/schemas/membersSignup';
 import { supabaseServiceClient } from '$lib/server/supabaseServiceClient.js';
 import { error, fail, redirect } from '@sveltejs/kit';
 import dayjs from 'dayjs';

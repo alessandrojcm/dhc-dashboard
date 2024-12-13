@@ -207,7 +207,7 @@ export async function createMember({
 
 	const { data, error } = await supabaseServiceClient
 		.rpc('complete_member_registration', {
-			p_user_profile_id: waitlisEntry.data.profile_id,
+			v_user_id: inviteLink.data.user.id,
 			p_next_of_kin_name: testData.next_of_kin.name,
 			p_next_of_kin_phone: testData.next_of_kin.phone_number,
 			p_insurance_form_submitted: true

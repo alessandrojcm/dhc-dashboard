@@ -61,4 +61,5 @@ CREATE TRIGGER settings_updated_at
 
 -- Insert initial settings
 INSERT INTO settings (key, value, type, description) VALUES
-    ('waitlist_open', 'false', 'boolean', 'Controls whether the waitlist is currently accepting new members');
+    ('waitlist_open', 'false', 'boolean', 'Controls whether the waitlist is currently accepting new members')
+    ('hema_insurance_form_link', '', 'test', 'Link to the HEMA insurance form for members');

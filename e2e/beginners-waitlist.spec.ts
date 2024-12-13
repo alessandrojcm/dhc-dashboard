@@ -2,6 +2,7 @@
 import { test, expect } from '@playwright/test';
 import { faker } from '@faker-js/faker';
 import dayjs from 'dayjs';
+import { getSupabaseServiceClient } from './setupFunctions';
 
 const testData = {
 	firstName: faker.person.firstName(),
@@ -41,6 +42,7 @@ test('fills out the waitlist form and asserts no errors', async ({ page }) => {
 
 	// Submit the form
 	await page.click('button[type="submit"]');
+	await page.pause();
 	const invalidFields = await page.getByText(/required/i).all();
 	expect(invalidFields.length).toBe(0);
 });
@@ -61,4 +63,19 @@ test('it should not allow people under 16 to sign up', async ({ page }) => {
 	// Submit the form
 	await page.click('button[type="submit"]');
 	await expect(await page.getByText(/you must be at least 16 years old/i)).toBeInViewport();
+});
+
+test('it should not show the waitlist if closed', async ({ page }) => {
+	await (
+		await getSupabaseServiceClient()
+	)
+		.from('settings')
+		.update({
+			value: 'false'
+		})
+		.eq('key', 'waitlist_open')
+		.throwOnError();
+	// Navigate to the form page
+	await page.goto('/waitlist');
+	await expect(page.getByText(/the waitlist is currently closed/i)).toBeVisible();
 });
