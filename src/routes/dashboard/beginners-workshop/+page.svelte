@@ -33,54 +33,59 @@
 </script>
 
 {#snippet waitlistToggleDialog()}
-	{#await data.isWaitlistOpen then isOpen}
-		<AlertDialog.Root>
-			<AlertDialog.Trigger class="flex items-center gap-1 ml-auto">
-				{#if isOpen}
-					<LockOpen class="w-4 h-4" />
-					Close Waitlist
-				{:else}
-					<Lock class="w-4 h-4" />
-					Open Waitlist
-				{/if}
-			</AlertDialog.Trigger>
-			<AlertDialog.Content>
-				<AlertDialog.Header>
-					<AlertDialog.Title>{isOpen ? 'Close' : 'Open'} waitlist</AlertDialog.Title>
-					<AlertDialog.Description>
-						Are you sure you want to {isOpen ? 'close' : 'open'} the waitlist? This action will affect
-						new registrations.
-					</AlertDialog.Description>
-				</AlertDialog.Header>
-				<AlertDialog.Footer>
-					<AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
-					<AlertDialog.Action onclick={() => toggleWaitlistMutation.mutate()}
-						>{isOpen ? 'Close' : 'Open'}</AlertDialog.Action
-					>
-				</AlertDialog.Footer>
-			</AlertDialog.Content>
-		</AlertDialog.Root>
-	{:catch}
-		<Button disabled class="ml-auto">
-			<LoaderCircle class="w-4 h-4 mr-1" />
-			Loading...
-		</Button>
-	{/await}
+	{#if data.canToggleWaitlist}
+		{#await data.isWaitlistOpen then isOpen}
+			<AlertDialog.Root>
+				<AlertDialog.Trigger class="fixed right-4 top-4">
+					<Button variant="outline">
+						{#if isOpen}
+							<LockOpen class="w-4 h-4" />
+							Close Waitlist
+						{:else}
+							<Lock class="w-4 h-4" />
+							Open Waitlist
+						{/if}
+					</Button>
+				</AlertDialog.Trigger>
+				<AlertDialog.Content>
+					<AlertDialog.Header>
+						<AlertDialog.Title>{isOpen ? 'Close' : 'Open'} waitlist</AlertDialog.Title>
+						<AlertDialog.Description>
+							Are you sure you want to {isOpen ? 'close' : 'open'} the waitlist? This action will affect
+							new registrations.
+						</AlertDialog.Description>
+					</AlertDialog.Header>
+					<AlertDialog.Footer>
+						<AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
+						<AlertDialog.Action onclick={() => toggleWaitlistMutation.mutate()}
+							data-testid="action">{isOpen ? 'Close' : 'Open'}</AlertDialog.Action
+						>
+					</AlertDialog.Footer>
+				</AlertDialog.Content>
+			</AlertDialog.Root>
+		{:catch}
+			<Button disabled class="ml-auto">
+				<LoaderCircle class="w-4 h-4 mr-1" />
+				Loading...
+			</Button>
+		{/await}
+	{/if}
 {/snippet}
+<div class="relative">
+	{@render waitlistToggleDialog()}
+	<Tabs.Root bind:value class="p-2 min-h-96 mr-2">
+		<div class="inline-flex w-full">
+			<Tabs.List>
+				<Tabs.Trigger value="dashboard">Dashboard</Tabs.Trigger>
+				<Tabs.Trigger value="waitlist">Waitlist</Tabs.Trigger>
+			</Tabs.List>
+		</div>
 
-<Tabs.Root bind:value class="p-2 min-h-96 mr-2">
-	<div class="inline-flex w-full">
-		<Tabs.List>
-			<Tabs.Trigger value="dashboard">Dashboard</Tabs.Trigger>
-			<Tabs.Trigger value="waitlist">Waitlist</Tabs.Trigger>
-		</Tabs.List>
-		{@render waitlistToggleDialog()}
-	</div>
-
-	<Tabs.Content value="dashboard">
-		<Analytics {supabase} />
-	</Tabs.Content>
-	<Tabs.Content value="waitlist">
-		<WaitlistTable {supabase} />
-	</Tabs.Content>
-</Tabs.Root>
+		<Tabs.Content value="dashboard">
+			<Analytics {supabase} />
+		</Tabs.Content>
+		<Tabs.Content value="waitlist">
+			<WaitlistTable {supabase} />
+		</Tabs.Content>
+	</Tabs.Root>
+</div>

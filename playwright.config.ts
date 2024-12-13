@@ -26,6 +26,6 @@ export default defineConfig({
 		}
 	],
 	testDir: 'e2e',
-	globalSetup: resolve('./e2e/global-setup.ts'),
-	globalTeardown: resolve('./e2e/global-setup.ts')
+	globalSetup: resolve('./e2e/global-setup'),
+	globalTeardown: resolve('./e2e/global-setup')
 });
