@@ -38,7 +38,7 @@
 		"@types/eslint": "^9.6.1",
 		"@types/pg": "^8.11.10",
 		"autoprefixer": "^10.4.20",
-		"bits-ui": "1.0.0-next.70",
+		"bits-ui": "1.0.0-next.71",
 		"clsx": "^2.1.1",
 		"csv-parse": "^5.6.0",
 		"d3-scale": "^4.0.2",
@@ -75,7 +75,7 @@
 	"dependencies": {
 		"@internationalized/date": "^3.6.0",
 		"@supabase/ssr": "^0.5.2",
-		"@supabase/supabase-js": "^2.47.6",
+		"@supabase/supabase-js": "2.47.5",
 		"@tanstack/svelte-query": "https://pkg.pr.new/@tanstack/svelte-query@28f98f9560ff5878fd839807ead5324a7b9328c4",
 		"@tanstack/svelte-query-devtools": "^5.62.7",
 		"@tanstack/svelte-table": "9.0.0-alpha.10",

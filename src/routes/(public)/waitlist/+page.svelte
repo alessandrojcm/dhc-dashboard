@@ -13,9 +13,7 @@
 	import { CheckCircled } from 'svelte-radix';
 	import * as Alert from '$lib/components/ui/alert';
 	import * as Select from '$lib/components/ui/select';
-	import * as Tooltip from '$lib/components/ui/tooltip';
 	import { AsYouType } from 'libphonenumber-js/min';
-	import { HelpCircle } from 'lucide-svelte';
 	import Textarea from '$lib/components/ui/textarea/textarea.svelte';
 	import * as RadioGroup from '$lib/components/ui/radio-group/index.js';
 	import { whyThisField } from '$lib/components/ui/why-this-field.svelte';

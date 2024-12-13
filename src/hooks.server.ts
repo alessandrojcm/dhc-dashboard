@@ -4,7 +4,7 @@ import { sequence } from '@sveltejs/kit/hooks';
 
 import { PUBLIC_SUPABASE_ANON_KEY, PUBLIC_SUPABASE_URL } from '$env/static/public';
 import type { Database } from './database.types';
-import { jwtDecode } from 'jwt-decode';
+import { getRolesFromSession } from '$lib/server/getRolesFromSession';
 
 const supabase: Handle = async ({ event, resolve }) => {
 	/**
@@ -102,8 +102,7 @@ const roleGuard: Handle = async ({ event, resolve }) => {
 	if (!session?.access_token) {
 		return resolve(event);
 	}
-	const tokenClaim = jwtDecode(session?.access_token!);
-	const roles = new Set((tokenClaim as { app_metadata: { roles: string[] } }).app_metadata!.roles);
+	const roles = getRolesFromSession(session)
 	if (roles.has('member') && roles.size === 1 && !event.url.pathname.includes('members')) {
 		return redirect(303, `/dashboard/members/${session.user.id}`);
 	}
