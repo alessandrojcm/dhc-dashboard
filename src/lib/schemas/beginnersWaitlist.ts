@@ -6,7 +6,12 @@ import { SocialMediaConsent } from '$lib/types';
 const formValidation = v.object({
 	firstName: v.pipe(v.string(), v.nonEmpty('First name is required.')),
 	lastName: v.pipe(v.string(), v.nonEmpty('Last name is required.')),
-	email: v.pipe(v.string(), v.nonEmpty('Please enter your email.'), v.email('Email is invalid.')),
+	email: v.pipe(
+		v.string(),
+		v.nonEmpty('Please enter your email.'),
+		v.email('Email is invalid.'),
+		v.transform((input) => input.toLowerCase())
+	),
 	phoneNumber: v.pipe(
 		v.string(),
 		v.nonEmpty('Phone number is required.'),

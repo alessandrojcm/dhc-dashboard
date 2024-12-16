@@ -42,9 +42,7 @@ test('fills out the waitlist form and asserts no errors', async ({ page }) => {
 
 	// Submit the form
 	await page.click('button[type="submit"]');
-	await page.pause();
-	const invalidFields = await page.getByText(/required/i).all();
-	expect(invalidFields.length).toBe(0);
+	await expect(page.getByText('You have been added to the waitlist, we will be in contact soon!')).toBeVisible();
 });
 
 test('it should not allow people under 16 to sign up', async ({ page }) => {

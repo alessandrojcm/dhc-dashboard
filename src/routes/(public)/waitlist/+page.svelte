@@ -17,6 +17,7 @@
 	import Textarea from '$lib/components/ui/textarea/textarea.svelte';
 	import * as RadioGroup from '$lib/components/ui/radio-group/index.js';
 	import { whyThisField } from '$lib/components/ui/why-this-field.svelte';
+	import { toast } from 'svelte-sonner';
 
 	const { data } = $props();
 	const form = superForm(data.form, {
@@ -31,7 +32,20 @@
 		return fromDate(dayjs($formData.dateOfBirth).toDate(), getLocalTimeZone());
 	});
 	const formatedPhone = $derived.by(() => new AsYouType('IE').input($formData.phoneNumber));
-	$inspect(data.genders);
+
+	$effect(() => {
+		const unsubscribe = message.subscribe((message) => {
+			if (message?.error) {
+				toast.error('There was an error with your submission. We have been notified. Please try again later.', {
+					position: 'top-right'
+				});
+			}
+		});
+
+		return unsubscribe;
+	});
+	
+	$inspect($errors);
 </script>
 
 <svelte:head>
@@ -47,11 +61,10 @@
 		</Card.Description>
 	</Card.Header>
 	<Card.Content>
-		{#if $message?.text}
+		{#if $message?.success}
 			<Alert.Root variant="success">
 				<CheckCircled class="h-4 w-4" />
-				<Alert.Title>Thank you!</Alert.Title>
-				<Alert.Description>{$message.text}</Alert.Description>
+				<Alert.Description>{$message.success}</Alert.Description>
 			</Alert.Root>
 		{:else}
 			<form method="POST" use:enhance class="flex flex-col gap-4 items-stretch">

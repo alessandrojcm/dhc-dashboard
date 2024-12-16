@@ -6,14 +6,14 @@ import { error, fail } from '@sveltejs/kit';
 import type { Database } from '$database';
 import { supabaseServiceClient } from '$lib/server/supabaseServiceClient';
 
-
 export const load: PageServerLoad = async () => {
 	const isWaitlistOpen = await supabaseServiceClient
 		.from('settings')
 		.select('value')
 		.eq('key', 'waitlist_open')
 		.single()
-		.then(result => result.data.value === 'true')
+		.throwOnError()
+		.then((result) => result.data.value === 'true')
 		.catch(() => false);
 	if (!isWaitlistOpen) {
 		error(401, 'The waitlist is currently closed, please come back later.');
@@ -49,10 +49,16 @@ export const actions: Actions = {
 		if (error?.code === '23505') {
 			return setError(form, 'email', 'You are already on the waitlist!');
 		} else if (error) {
-			return fail(500, { error });
+			return message(
+				form,
+				{
+					error: 'Something has gone wrong, please try again later.'
+				},
+				{ status: 500 }
+			);
 		}
 		return message(form, {
-			text: 'You have been added to the waitlist, we will be in contact soon!'
+			success: 'You have been added to the waitlist, we will be in contact soon!'
 		});
 	}
 };
