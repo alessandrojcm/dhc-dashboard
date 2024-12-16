@@ -55,7 +55,14 @@ export const load: PageServerLoad = async ({ url }) => {
 				pronouns: data?.pronouns,
 				gender: data?.gender,
 				medicalConditions: data?.medical_conditions
-			}
+			},
+			insuranceFormLink: supabaseServiceClient
+				.from('settings')
+				.select('value')
+				.eq('key', 'insurance_form_link')
+				.limit(1)
+				.single()
+				.then((result) => result.data?.value)
 		};
 	} catch (err) {
 		error(404, {
