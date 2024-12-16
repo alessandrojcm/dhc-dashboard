@@ -45,7 +45,14 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		>,
 		weapons: locals.supabase.rpc('get_weapons_options').then((r) => r.data ?? []) as Promise<
 			string[]
-		>
+		>,
+		insuranceFormLink: supabaseServiceClient
+			.from('settings')
+			.select('value')
+			.eq('key', 'insurance_form_link')
+			.limit(1)
+			.single()
+			.then((result) => result.data?.value)
 	};
 };
 

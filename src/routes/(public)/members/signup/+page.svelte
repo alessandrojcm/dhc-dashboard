@@ -9,6 +9,7 @@
 	import { memberSignupSchema } from '$lib/schemas/membersSignup';
 	import { AsYouType } from 'libphonenumber-js/min';
 	import { Checkbox } from '$lib/components/ui/checkbox';
+	import Skeleton from '$lib/components/ui/skeleton/skeleton.svelte';
 
 	const { data } = $props();
 
@@ -21,6 +22,7 @@
 	const formatedNextOfKinPhone = $derived.by(() =>
 		new AsYouType('IE').input($formData.nextOfKinNumber)
 	);
+	$inspect(data.insuranceFormLink);
 </script>
 
 <svelte:head>
@@ -30,7 +32,9 @@
 <Card.Root class="w-full max-w-2xl">
 	<Card.Header>
 		<Card.Title>Join Dublin Hema Club</Card.Title>
-		<Card.Description>We are glad you decided to join us! Please fill up the following details</Card.Description>
+		<Card.Description
+			>We are glad you decided to join us! Please fill up the following details</Card.Description
+		>
 	</Card.Header>
 	<Card.Content>
 		<form method="POST" class="space-y-6" use:enhance>
@@ -49,7 +53,9 @@
 				</div>
 				<div>
 					<p>Date of Birth</p>
-					<p class="text-sm text-gray-600">{dayjs(data.userData.dateOfBirth).format('DD/MM/YYYY')}</p>
+					<p class="text-sm text-gray-600">
+						{dayjs(data.userData.dateOfBirth).format('DD/MM/YYYY')}
+					</p>
 				</div>
 				<div>
 					<p>Gender</p>
@@ -102,14 +108,26 @@
 					</Form.Control>
 					<Form.FieldErrors />
 				</Form.Field>
-				<Form.Field {form} name="insuranceFormSubmitted" class="flex items-center gap-2">
-					<Form.Control>
-						{#snippet children({ props })}
-							<Checkbox {...props} bind:checked={$formData.insuranceFormSubmitted} />
-							<Form.Label style="margin-top: 0 !important" class={$errors?.insuranceFormSubmitted ? 'text-red-500':''}>Please make sure you have submitted HEMA Ireland's insurance form</Form.Label>
-						{/snippet}
-					</Form.Control>
-				</Form.Field>
+				{#await data.insuranceFormLink}
+					<Skeleton class="h-8 w-full" />
+				{:then insuranceFormLink}
+					<Form.Field {form} name="insuranceFormSubmitted" class="flex items-center gap-2">
+						<Form.Control>
+							{#snippet children({ props })}
+								<Checkbox {...props} bind:checked={$formData.insuranceFormSubmitted} />
+								<Form.Label
+									style="margin-top: 0 !important"
+									class={$errors?.insuranceFormSubmitted ? 'text-red-500' : ''}
+									>Please make sure you have submitted HEMA Ireland's <a
+										class="text-blue-500 underline"
+										href={insuranceFormLink}
+										target="_blank">insurance form</a
+									></Form.Label
+								>
+							{/snippet}
+						</Form.Control>
+					</Form.Field>
+				{/await}
 			</div>
 			<div class="flex justify-between">
 				<Button type="submit" class="ml-auto" disabled={$submitting}>
