@@ -89,14 +89,26 @@ test.describe('Member Signup - Correct token', () => {
 		await expect(page.getByLabel('Next of Kin Phone Number')).toHaveValue(expected_format);
 	});
 
-	test('should set up the member', async ({ page }) => {
+	test('should set up the member and process payment', async ({ page }) => {
 		// Fill in the form
 		await page.getByLabel('Next of Kin', { exact: true }).fill('John Doe');
 		await page
 			.getByLabel('Next of Kin Phone Number')
 			.pressSequentially('0838774532', { delay: 50 });
-		await page.getByLabel("Please make sure you have submitted HEMA Ireland's insurance form").check();
-		await page.getByRole('button', { name: 'Complete Sign Up' }).click();
-		await expect(page.getByText('Thanks for joining us!')).toBeVisible();
+		await page.locator('input[name="nextOfKinNumber"]').press('Tab');
+		await page
+			.getByLabel("Please make sure you have submitted HEMA Ireland's insurance form")
+			.check();
+		const stripeFrame = await page.locator('.__PrivateStripeElement').frameLocator('iframe');
+		// Stripe's succesful IBAN number
+		await stripeFrame.getByLabel('IBAN').fill('IE29AIBK93115212345678');
+		await stripeFrame.getByLabel('Address line 1').fill('123 Main Street');
+		await stripeFrame.getByLabel('Address line 2').fill('Apt 4B');
+		await stripeFrame.getByLabel('City').fill('Dublin');
+		await stripeFrame.getByLabel('Eircode').fill('K45 HR22');
+		await stripeFrame.getByLabel('County').selectOption('County Dublin');
+		await page.pause();
+		await page.getByRole('button', { name: /sign up/i }).click();
+		await expect(page).toHaveURL(/thank-you/, { timeout: 30000 });
 	});
 });

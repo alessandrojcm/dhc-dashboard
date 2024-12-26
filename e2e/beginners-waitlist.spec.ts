@@ -39,7 +39,6 @@ test('fills out the waitlist form and asserts no errors', async ({ page }) => {
 	await page.getByRole('radio', { name: 'No', exact: true }).click();
 
 	await page.getByLabel(/any medical condition/i).fill(testData.medicalConditions);
-
 	// Submit the form
 	await page.click('button[type="submit"]');
 	await expect(page.getByText('You have been added to the waitlist, we will be in contact soon!')).toBeVisible();

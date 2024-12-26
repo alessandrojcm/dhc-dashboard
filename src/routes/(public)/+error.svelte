@@ -1,6 +1,7 @@
 <script lang="ts">
 	import * as Alert from '$lib/components/ui/alert';
     import { page } from '$app/stores';
+	console.log($page.error)
 </script>
 
 <svelte:head>

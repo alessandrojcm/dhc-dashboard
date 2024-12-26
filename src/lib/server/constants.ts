@@ -1,0 +1,1 @@
+export const MEMEMBERSHIP_FEE_LOOKUP_NAME = 'standard_membership_fee';
