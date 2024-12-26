@@ -10,5 +10,9 @@
             "username": "postgres",
             "password": "postgres"
         }
+    ],
+    "deno.enable": true,
+    "deno.enablePaths": [
+        "./supabase/functions"
     ]
 }
