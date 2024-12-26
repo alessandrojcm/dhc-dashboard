@@ -14,15 +14,22 @@ export const memberSignupSchema = v.object({
 	insuranceFormSubmitted: v.pipe(
 		v.boolean('Please confirm you have read and accepted the insurance form.'),
 		v.check((input) => input, 'Please confirm you have read and accepted the insurance form.')
-	)
+	),
+	stripeConfirmationToken: v.pipe(
+		v.string(),
+		v.nonEmpty('Something has gone wrong with your payment, please try again.')
+	),
+	paymentIntentId: v.pipe(
+		v.string(),
+		v.nonEmpty('Something has gone wrong with your payment, please try again.')
+	),
 });
 
 const formSchema = v.object({
 	...beginnersWaitlist.entries,
 	...memberSignupSchema.entries,
-	weapon: v.array(v.string('Please select your preferred weapon.')),
+	weapon: v.array(v.string('Please select your preferred weapon.'))
 });
-
 
 export default formSchema;
 export type SignupForm = v.InferInput<typeof formSchema>;
