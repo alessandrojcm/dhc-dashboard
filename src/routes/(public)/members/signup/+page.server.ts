@@ -1,17 +1,17 @@
 import { memberSignupSchema } from '$lib/schemas/membersSignup';
 import { supabaseServiceClient } from '$lib/server/supabaseServiceClient.js';
-import { error, fail, redirect } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import dayjs from 'dayjs';
 import { jwtDecode } from 'jwt-decode';
-import { message, superValidate } from 'sveltekit-superforms';
+import { message, superValidate, fail } from 'sveltekit-superforms';
 import { valibot } from 'sveltekit-superforms/adapters';
 import type { Actions, PageServerLoad } from './$types';
 import { invariant } from '$lib/server/invariant';
 import { stripeClient } from '$lib/server/stripe';
 import { MEMEMBERSHIP_FEE_LOOKUP_NAME } from '$lib/server/constants';
 import Dinero from 'dinero.js';
-import { kysely, sql } from '$lib/server/kysely';
-import type Stripe from 'stripe';
+import { kysely } from '$lib/server/kysely';
+import Stripe from 'stripe';
 import { completeMemberRegistration, getMembershipInfo } from '$lib/server/kyselyRPCFunctions';
 
 // need to normalize medical_conditions
@@ -162,7 +162,48 @@ export const actions: Actions = {
 			})
 			.catch((err) => {
 				console.log(err);
-				return message(form, { paymentFailed: true });
+				let errorMessage = 'An unexpected error occurred';
+
+				if (err instanceof Error && 'code' in err) {
+					const stripeError = err as { code: string };
+					switch (stripeError.code) {
+						case 'charge_exceeds_source_limit':
+						case 'charge_exceeds_transaction_limit':
+							errorMessage = 'The payment amount exceeds the account payment volume limit';
+							break;
+						case 'charge_exceeds_weekly_limit':
+							errorMessage = 'The payment amount exceeds the weekly transaction limit';
+							break;
+						case 'requires_payment_method':
+							errorMessage = 'Please try again with a different payment method';
+							break;
+						case 'payment_intent_requires_action':
+							return message(form, { requiresAction: true });
+						case 'payment_intent_payment_failure':
+							errorMessage = 'The payment failed. Please try again';
+							break;
+						case 'payment_intent_authentication_failure':
+							errorMessage = 'The payment authentication failed. Please try again';
+							break;
+						case 'payment_intent_invalid':
+							errorMessage = 'The payment information is invalid. Please try again';
+							break;
+						case 'payment_intent_unexpected_state':
+							errorMessage = 'An unexpected error occurred with the payment. Please try again';
+							break;
+					}
+				}
+
+				return message(
+					form,
+					{
+						paymentFailed: true,
+						errorMessage
+					},
+					{
+						status: 500
+					}
+				);
 			});
 	}
 };
