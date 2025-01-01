@@ -49,7 +49,8 @@ SELECT columns_are('public', 'user_profiles', ARRAY [
     'supabase_user_id',
     'waitlist_id',
     'medical_conditions',
-    'social_media_consent'
+    'social_media_consent',
+    'customer_id'
     ], 'user_profiles should have the correct columns');
 
 SELECT col_is_pk('public', 'user_profiles', 'id', 'user_profiles.id should be primary key');
