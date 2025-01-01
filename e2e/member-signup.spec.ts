@@ -35,7 +35,7 @@ test.describe('Member Signup - Negative test cases', () => {
 				'/members/signup?access_token=' +
 					(override?.token !== undefined ? override.token : testData.token)
 			);
-			await expect(page.getByText('Something has gone wrong')).toBeVisible();
+			await expect(page.getByText('Internal Error')).toBeVisible();
 		});
 	});
 });
@@ -52,6 +52,10 @@ test.describe('Member Signup - Correct token', () => {
 		await page.goto('/members/signup?access_token=' + testData.token);
 		// Wait for the form to be visible
 		await page.waitForSelector('form');
+	});
+
+	test('Closed page without completing payment', async ({ page }) => {
+		await page.goto('/dashboard/members');
 	});
 
 	test('should show all required form steps', async ({ page }) => {

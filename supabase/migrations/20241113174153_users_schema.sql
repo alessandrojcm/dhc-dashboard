@@ -177,6 +177,26 @@ begin
                );
     end if;
 
+    -- Check if user exists in user_profiles and is active
+    select exists(
+        select 1
+        from public.user_profiles
+        where supabase_user_id = (event ->> 'user_id')::uuid
+        and is_active = true
+    ) into is_valid;
+
+    insert into auth.audit_log_entries (instance_id,
+                                      id,
+                                      payload)
+    values (hook_instance_id,
+            gen_random_uuid(),
+            jsonb_build_object(
+                'event', event,
+                'step', 'auth_hook_info',
+                'detail', 'user_profile_active_check',
+                'exists_and_active', is_valid
+            ));
+
     if not is_valid then
         insert into auth.audit_log_entries (instance_id,
                                             id,
@@ -185,15 +205,15 @@ begin
                 gen_random_uuid(),
                 jsonb_build_object(
                         'event', event,
-                        'error', 'User not found in profiles',
+                        'error', 'User not found in profiles or inactive',
                         'step', 'auth_hook_error',
-                        'detail', 'user_not_found'
+                        'detail', 'user_not_found_or_inactive'
                 ));
 
         return jsonb_build_object(
                 'error', jsonb_build_object(
                         'http_code', 403,
-                        'message', 'User not registered in the system'
+                        'message', 'User not registered in the system or inactive'
                          )
                );
     end if;
