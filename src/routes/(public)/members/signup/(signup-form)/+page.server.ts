@@ -5,7 +5,7 @@ import dayjs from 'dayjs';
 import { jwtDecode } from 'jwt-decode';
 import { message, superValidate, fail } from 'sveltekit-superforms';
 import { valibot } from 'sveltekit-superforms/adapters';
-import type { Actions, PageServerLoad } from './$types';
+import type { Actions, PageServerLoad } from '../$types';
 import { invariant } from '$lib/server/invariant';
 import { stripeClient } from '$lib/server/stripe';
 import { MEMEMBERSHIP_FEE_LOOKUP_NAME } from '$lib/server/constants';
@@ -122,7 +122,7 @@ export const load: PageServerLoad = async ({ parent }) => {
 
 export const actions: Actions = {
 	default: async (event) => {
-		const accessToken = event.url.searchParams.get('access_token');
+		const accessToken = event.cookies.get('access-token');
 		invariant(accessToken === null, `${event.url.pathname}?error_description=missing_access_token`);
 		const tokenClaim = jwtDecode(accessToken!);
 		invariant(
@@ -158,6 +158,7 @@ export const actions: Actions = {
 				if (status === 'requires_action') {
 					return message(form, { requiresAction: status === 'requires_action' });
 				}
+				event.cookies.delete('access-token', { path: '/' });
 				return message(form, { paymentFailed: false });
 			})
 			.catch((err) => {

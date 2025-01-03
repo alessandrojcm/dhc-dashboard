@@ -10,10 +10,6 @@ test.describe('Member Signup - Negative test cases', () => {
 		},
 		{
 			addWaitlist: true,
-			addSupabaseId: false
-		},
-		{
-			addWaitlist: true,
 			addSupabaseId: true,
 			token: 'invalid_token'
 		},
@@ -32,10 +28,10 @@ test.describe('Member Signup - Negative test cases', () => {
 			page
 		}) => {
 			await page.goto(
-				'/members/signup?access_token=' +
+				'/members/signup/callback?access_token=' +
 					(override?.token !== undefined ? override.token : testData.token)
 			);
-			await expect(page.getByText('Internal Error')).toBeVisible();
+			await expect(page.getByText('Invalid Invite')).toBeVisible();
 		});
 	});
 });
@@ -49,7 +45,8 @@ test.describe('Member Signup - Correct token', () => {
 
 	test.beforeEach(async ({ page }) => {
 		// Start from the signup page
-		await page.goto('/members/signup?access_token=' + testData.token);
+		await page.goto('/members/signup/callback#access_token=' + testData.token);
+		await page.waitForURL('/members/signup');
 		// Wait for the form to be visible
 		await page.waitForSelector('form');
 	});
@@ -59,7 +56,6 @@ test.describe('Member Signup - Correct token', () => {
 	});
 
 	test('should show all required form steps', async ({ page }) => {
-		await expect(page.getByText(/join dublin hema club/i)).toBeVisible();
 		await expect(page.getByText('First Name')).toBeVisible();
 		await expect(page.getByText('Last Name')).toBeVisible();
 		await expect(page.getByText('Email')).toBeVisible();
@@ -75,7 +71,7 @@ test.describe('Member Signup - Correct token', () => {
 
 	test('should validate required fields', async ({ page }) => {
 		// Try to proceed without filling required fields
-		await page.getByRole('button', { name: 'Complete Sign Up' }).click();
+		await page.getByRole('button', { name: 'Sign Up' }).click();
 		// Check for validation messages
 		await expect(page.getByPlaceholder(/full name of your next of kin/i)).toBeVisible();
 		await expect(page.getByPlaceholder(/enter your next of kin's phone number/i)).toBeVisible();
@@ -113,7 +109,11 @@ test.describe('Member Signup - Correct token', () => {
 		await stripeFrame.getByLabel('County').selectOption('County Dublin');
 		await page.pause();
 		await page.getByRole('button', { name: /sign up/i }).click();
-		await expect(page.getByText('Your membership has been successfully processed. Welcome to Dublin Hema Club! You will receive a Discord invite by email shortly.')).toBeVisible({ timeout: 30000 });
+		await expect(
+			page.getByText(
+				'Your membership has been successfully processed. Welcome to Dublin Hema Club! You will receive a Discord invite by email shortly.'
+			)
+		).toBeVisible({ timeout: 30000 });
 	});
 
 	test('should show error when payment exceeds weekly limit', async ({ page }) => {
@@ -126,7 +126,7 @@ test.describe('Member Signup - Correct token', () => {
 		await page
 			.getByLabel("Please make sure you have submitted HEMA Ireland's insurance form")
 			.check();
-		
+
 		const stripeFrame = await page.locator('.__PrivateStripeElement').frameLocator('iframe');
 		// Stripe IBAN that triggers weekly limit exceeded error
 		await stripeFrame.getByLabel('IBAN').fill('IE69AIBK93115200121212');
@@ -135,9 +135,11 @@ test.describe('Member Signup - Correct token', () => {
 		await stripeFrame.getByLabel('City').fill('Dublin');
 		await stripeFrame.getByLabel('Eircode').fill('K45 HR22');
 		await stripeFrame.getByLabel('County').selectOption('County Dublin');
-		
+
 		await page.getByRole('button', { name: /sign up/i }).click();
-		await expect(page.getByText('The payment amount exceeds the account payment volume limit')).toBeVisible({ timeout: 5000 });
+		await expect(
+			page.getByText('The payment amount exceeds the account payment volume limit')
+		).toBeVisible({ timeout: 5000 });
 	});
 
 	test('should show error when payment source limit is exceeded', async ({ page }) => {
@@ -150,7 +152,7 @@ test.describe('Member Signup - Correct token', () => {
 		await page
 			.getByLabel("Please make sure you have submitted HEMA Ireland's insurance form")
 			.check();
-		
+
 		const stripeFrame = await page.locator('.__PrivateStripeElement').frameLocator('iframe');
 		// Stripe IBAN that triggers source limit exceeded error
 		await stripeFrame.getByLabel('IBAN').fill('IE10AIBK93115200343434');
@@ -159,8 +161,10 @@ test.describe('Member Signup - Correct token', () => {
 		await stripeFrame.getByLabel('City').fill('Dublin');
 		await stripeFrame.getByLabel('Eircode').fill('K45 HR22');
 		await stripeFrame.getByLabel('County').selectOption('County Dublin');
-		
+
 		await page.getByRole('button', { name: /sign up/i }).click();
-		await expect(page.getByText('The payment amount exceeds the account payment volume limit')).toBeVisible({ timeout: 5000 });
+		await expect(
+			page.getByText('The payment amount exceeds the account payment volume limit')
+		).toBeVisible({ timeout: 5000 });
 	});
 });

@@ -1,12 +1,12 @@
 import { supabaseServiceClient } from '$lib/server/supabaseServiceClient';
 import dayjs from 'dayjs';
 import { jwtDecode } from 'jwt-decode';
-import type { LayoutServerLoad } from './$types';
+import type { LayoutServerLoad } from '../$types';
 import { invariant } from '$lib/server/invariant';
 import type { User } from '@supabase/supabase-js';
 
-export const load: LayoutServerLoad = async ({ url }) => {
-	const accessToken = url.searchParams.get('access_token');
+export const load: LayoutServerLoad = async ({ url, cookies }) => {
+	const accessToken = cookies.get('access-token');
 	invariant(accessToken === null, `${url.pathname}?error_description=missing_access_token`);
 	const tokenClaim = jwtDecode(accessToken!);
 	invariant(
