@@ -63,9 +63,10 @@ export async function setupWaitlistedUser(
 	if (waitlisEntry.error) {
 		throw new Error(waitlisEntry.error.message);
 	}
-	const inviteLink = await supabaseServiceClient.auth.admin.generateLink({
-		type: 'invite',
-		email: testData.email
+	const inviteLink = await supabaseServiceClient.auth.admin.createUser({
+		email: testData.email,
+		password: 'password',
+		email_confirm: true
 	});
 	if (inviteLink.error) {
 		throw new Error(inviteLink.error.message);
@@ -88,9 +89,9 @@ export async function setupWaitlistedUser(
 		})
 		.eq('email', testData.email)
 		.throwOnError();
-	const verifyOtp = await supabaseServiceClient.auth.verifyOtp({
-		token_hash: inviteLink.data.properties.hashed_token,
-		type: 'invite'
+	const verifyOtp = await supabaseServiceClient.auth.signInWithPassword({
+		email: testData.email,
+		password: 'password'
 	});
 	if (verifyOtp.error) {
 		throw new Error(verifyOtp.error.message);
@@ -119,7 +120,7 @@ export async function createMember({
 	roles = new Set(['member'])
 }: {
 	email: string;
-	roles?: Set<Database['public']['Enums']['role_type']>
+	roles?: Set<Database['public']['Enums']['role_type']>;
 }) {
 	const supabaseServiceClient = getSupabaseServiceClient();
 	const testData = {
@@ -191,10 +192,14 @@ export async function createMember({
 
 	await supabaseServiceClient
 		.from('user_roles')
-		.insert(Array.from(roles).filter((role) => role !== 'member').map((role) => ({
-			user_id: inviteLink.data.user.id,
-			role
-		})))
+		.insert(
+			Array.from(roles)
+				.filter((role) => role !== 'member')
+				.map((role) => ({
+					user_id: inviteLink.data.user.id,
+					role
+				}))
+		)
 		.throwOnError();
 
 	await supabaseServiceClient
