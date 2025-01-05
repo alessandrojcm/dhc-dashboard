@@ -2,22 +2,48 @@ services:
   dev:
     image: denoland/deno:debian-1.39.1
     volumes:
-      - .:/app
-    working_dir: /app
+      - ./src:/workspace/src
+      - ./static:/workspace/static
+      - ./e2e:/workspace/e2e
+      - ./package.json:/workspace/package.json
+      - ./pnpm-lock.yaml:/workspace/pnpm-lock.yaml
+      - ./vite.config.ts:/workspace/vite.config.ts
+      - ./svelte.config.js:/workspace/svelte.config.js
+      - ./tsconfig.json:/workspace/tsconfig.json
+      - ./postcss.config.js:/workspace/postcss.config.js
+      - ./tailwind.config.js:/workspace/tailwind.config.js
+      - ./.npmrc:/workspace/.npmrc
+      - node_modules:/workspace/node_modules
+    working_dir: /workspace
     ports:
       - "5173:5173"
     environment:
-      - NODE_VERSION=20
+      - NODE_VERSION=21
     command: >
       bash -c "
         apt-get update && apt-get install -y curl &&
-        curl -fsSL https://deb.nodesource.com/setup_20.x | bash - &&
+        curl -fsSL https://deb.nodesource.com/setup_21.x | bash - &&
         apt-get install -y nodejs &&
         corepack enable &&
         corepack prepare pnpm@9.12.0 --activate &&
         pnpm install &&
         pnpm dev
       "
+    restart: unless-stopped
+    develop:
+      watch:
+        - action: sync
+          path: ./src
+          target: /workspace/src
+        - action: sync
+          path: ./static
+          target: /workspace/static
+        - action: sync
+          path: ./e2e
+          target: /workspace/e2e
+        - action: sync+restart
+          path: ./package.json
+          target: /workspace/package.json
     
   open_hands_runtime:
     image: 'docker.all-hands.dev/all-hands-ai/runtime:0.18-nikolaik'
@@ -53,3 +79,4 @@ services:
 volumes:
   smtp4dev-data:
   openhands-state:
+  node_modules:
