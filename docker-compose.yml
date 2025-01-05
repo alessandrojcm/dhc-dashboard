@@ -1,0 +1,84 @@
+services:
+  dev:
+    env_file:
+      - .env
+    image: denoland/deno:debian-1.39.1
+    volumes:
+      - ./src:/workspace/src
+      - ./static:/workspace/static
+      - ./e2e:/workspace/e2e
+      - ./package.json:/workspace/package.json
+      - ./pnpm-lock.yaml:/workspace/pnpm-lock.yaml
+      - ./vite.config.ts:/workspace/vite.config.ts
+      - ./svelte.config.js:/workspace/svelte.config.js
+      - ./tsconfig.json:/workspace/tsconfig.json
+      - ./postcss.config.js:/workspace/postcss.config.js
+      - ./tailwind.config.js:/workspace/tailwind.config.js
+      - ./.npmrc:/workspace/.npmrc
+      - ./.svelte-kit:/workspace/.svelte-kit
+    working_dir: /workspace
+    ports:
+      - "5173:5173"
+    environment:
+      - NODE_VERSION=21
+    command: >
+      bash -c "
+        apt-get update && apt-get install -y curl &&
+        curl -fsSL https://deb.nodesource.com/setup_23.x | bash - &&
+        apt-get install -y nodejs &&
+        corepack enable &&
+        corepack prepare pnpm@9.12.0 --activate &&
+        pnpm install &&
+        pnpm dev
+      "
+    restart: unless-stopped
+    develop:
+      watch:
+        - action: sync
+          path: ./src
+          target: /workspace/src
+        - action: sync
+          path: ./static
+          target: /workspace/static
+        - action: sync
+          path: ./e2e
+          target: /workspace/e2e
+        - action: sync+restart
+          path: ./package.json
+          target: /workspace/package.json
+    
+  open_hands_runtime:
+    image: 'ghcr.io/all-hands-ai/runtime:main-nikolaik'
+    pull_policy: always
+  smtp_server:
+    image: 'rnwood/smtp4dev'
+    ports:
+      - '5000:80'
+      - '2525:25'
+    volumes:
+      - smtp4dev-data:/smtp4dev
+    environment:
+      - RelayOptions__Login=smtp4dev
+      - RelayOptions__Password=smtp4dev
+  open_hands:
+    stdin_open: true
+    tty: true
+    pull_policy: always
+    environment:
+      - SANDBOX_RUNTIME_CONTAINER_IMAGE=ghcr.io/all-hands-ai/runtime:main-nikolaik
+      - LOG_ALL_EVENTS=true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - openhands-state:/.openhands-state
+    ports:
+      - 3000:3000
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    container_name: openhands-app
+    image: ghcr.io/all-hands-ai/openhands:main
+    depends_on:
+      - open_hands_runtime
+
+volumes:
+  smtp4dev-data:
+  openhands-state:
