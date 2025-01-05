@@ -1,5 +1,7 @@
 services:
   dev:
+    env_file:
+      - .env
     image: denoland/deno:debian-1.39.1
     volumes:
       - ./src:/workspace/src
@@ -13,7 +15,7 @@ services:
       - ./postcss.config.js:/workspace/postcss.config.js
       - ./tailwind.config.js:/workspace/tailwind.config.js
       - ./.npmrc:/workspace/.npmrc
-      - node_modules:/workspace/node_modules
+      - ./.svelte-kit:/workspace/.svelte-kit
     working_dir: /workspace
     ports:
       - "5173:5173"
@@ -22,7 +24,7 @@ services:
     command: >
       bash -c "
         apt-get update && apt-get install -y curl &&
-        curl -fsSL https://deb.nodesource.com/setup_21.x | bash - &&
+        curl -fsSL https://deb.nodesource.com/setup_23.x | bash - &&
         apt-get install -y nodejs &&
         corepack enable &&
         corepack prepare pnpm@9.12.0 --activate &&
@@ -46,37 +48,37 @@ services:
           target: /workspace/package.json
     
   open_hands_runtime:
-    image: 'docker.all-hands.dev/all-hands-ai/runtime:0.18-nikolaik'
+    image: 'ghcr.io/all-hands-ai/runtime:main-nikolaik'
+    pull_policy: always
   smtp_server:
     image: 'rnwood/smtp4dev'
     ports:
-      - "5000:80"
-      - "2525:25"
+      - '5000:80'
+      - '2525:25'
     volumes:
       - smtp4dev-data:/smtp4dev
     environment:
       - RelayOptions__Login=smtp4dev
       - RelayOptions__Password=smtp4dev
   open_hands:
-    image: 'docker.all-hands.dev/all-hands-ai/openhands:0.18'
+    stdin_open: true
+    tty: true
+    pull_policy: always
     environment:
-      - SANDBOX_RUNTIME_CONTAINER_IMAGE=docker.all-hands.dev/all-hands-ai/runtime:0.18-nikolaik
+      - SANDBOX_RUNTIME_CONTAINER_IMAGE=ghcr.io/all-hands-ai/runtime:main-nikolaik
       - LOG_ALL_EVENTS=true
-      - SANDBOX_USER_ID=1000
-      - WORKSPACE_MOUNT_PATH=/home/alessandroc/repos
-      - /home/alessandroc/repos=/opt/workspace_base
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ~/.openhands-state:/.openhands-state
+      - openhands-state:/.openhands-state
     ports:
-      - "3000:3000"
+      - 3000:3000
     extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - host.docker.internal:host-gateway
     container_name: openhands-app
+    image: ghcr.io/all-hands-ai/openhands:main
     depends_on:
       - open_hands_runtime
-    
+
 volumes:
   smtp4dev-data:
   openhands-state:
-  node_modules:

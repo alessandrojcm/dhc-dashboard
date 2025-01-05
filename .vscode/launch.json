@@ -12,6 +12,26 @@
             "runtimeArgs": ["vite", "dev", "--host"],
             "cwd": "${workspaceFolder}",
             "console": "integratedTerminal"
+        },
+        {
+            "name": "Docker Node.js Launch",
+            "type": "docker",
+            "request": "launch",
+            "preLaunchTask": "docker-run: debug",
+            "platform": "node"
+          }
+    ],
+    "tasks": [
+        {
+          "type": "docker-run",
+          "label": "docker-run: debug",
+          "dependsOn": ["docker-build"],
+          "dockerRun": {
+            "command": "nest start --debug 0.0.0.0:9229"
+          },
+          "node": {
+            "enableDebugging": true
+          }
         }
-    ]
+      ]
 }
