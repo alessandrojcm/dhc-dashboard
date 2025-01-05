@@ -1,13 +1,16 @@
 name: OpenHands Resolver
 
 on:
-  push:
-    branches:
-      - main
-      - chore/docker-compose
+  issues:
+    types: [labeled]
   pull_request:
-    branches:
-      - main
+    types: [labeled]
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
 
 jobs:
   resolve:
