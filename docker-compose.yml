@@ -1,4 +1,24 @@
 services:
+  dev:
+    image: denoland/deno:debian-1.39.1
+    volumes:
+      - .:/app
+    working_dir: /app
+    ports:
+      - "5173:5173"
+    environment:
+      - NODE_VERSION=20
+    command: >
+      bash -c "
+        apt-get update && apt-get install -y curl &&
+        curl -fsSL https://deb.nodesource.com/setup_20.x | bash - &&
+        apt-get install -y nodejs &&
+        corepack enable &&
+        corepack prepare pnpm@9.12.0 --activate &&
+        pnpm install &&
+        pnpm dev
+      "
+    
   open_hands_runtime:
     image: 'docker.all-hands.dev/all-hands-ai/runtime:0.18-nikolaik'
   smtp_server:
