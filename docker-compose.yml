@@ -1,0 +1,35 @@
+services:
+  open_hands_runtime:
+    image: 'docker.all-hands.dev/all-hands-ai/runtime:0.18-nikolaik'
+  smtp_server:
+    image: 'rnwood/smtp4dev'
+    ports:
+      - "5000:80"
+      - "2525:25"
+    volumes:
+      - smtp4dev-data:/smtp4dev
+    environment:
+      - RelayOptions__Login=smtp4dev
+      - RelayOptions__Password=smtp4dev
+  open_hands:
+    image: 'docker.all-hands.dev/all-hands-ai/openhands:0.18'
+    environment:
+      - SANDBOX_RUNTIME_CONTAINER_IMAGE=docker.all-hands.dev/all-hands-ai/runtime:0.18-nikolaik
+      - LOG_ALL_EVENTS=true
+      - SANDBOX_USER_ID=1000
+      - WORKSPACE_MOUNT_PATH=/home/alessandroc/repos
+      - /home/alessandroc/repos=/opt/workspace_base
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ~/.openhands-state:/.openhands-state
+    ports:
+      - "3000:3000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    container_name: openhands-app
+    depends_on:
+      - open_hands_runtime
+    
+volumes:
+  smtp4dev-data:
+  openhands-state:
