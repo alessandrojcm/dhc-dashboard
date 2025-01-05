@@ -17,5 +17,5 @@
     ],
     "deno.cacheOnSave": true,
     "deno.envFile": ".env",
-    "deno.config": "deno.json"
+    "deno.config": "deno.json",
 }
