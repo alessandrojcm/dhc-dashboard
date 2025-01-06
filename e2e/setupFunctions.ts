@@ -2,6 +2,12 @@ import { faker } from '@faker-js/faker/locale/en_IE';
 import 'dotenv/config';
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from '../src/database.types';
+import { ANNUAL_FEE_LOOKUP, MEMBERSHIP_FEE_LOOKUP_NAME } from '../src/lib/server/constants';
+import stripe from 'stripe';
+
+export const stripeClient = new stripe(process.env.STRIPE_SECRET_KEY!, {
+	apiVersion: '2024-12-18.acacia'
+});
 
 export function getSupabaseServiceClient() {
 	const supabaseUrl = process.env.PUBLIC_SUPABASE_URL;
@@ -117,10 +123,12 @@ export async function setupWaitlistedUser(
 
 export async function createMember({
 	email = faker.internet.email().toLowerCase(),
-	roles = new Set(['member'])
+	roles = new Set(['member']),
+	createSubscription = false
 }: {
 	email: string;
 	roles?: Set<Database['public']['Enums']['role_type']>;
+	createSubscription?: boolean;
 }) {
 	const supabaseServiceClient = getSupabaseServiceClient();
 	const testData = {
@@ -153,7 +161,8 @@ export async function createMember({
 			.throwOnError();
 		return Promise.all([
 			client.from('user_profiles').delete().eq('id', waitlisEntry?.data?.profile_id).throwOnError(),
-			client.auth.admin.deleteUser(inviteLink.data.user?.id)
+			client.auth.admin.deleteUser(inviteLink.data.user?.id),
+			cleanUpFn?.()
 		]);
 	}
 	const waitlisEntry = await supabaseServiceClient
@@ -179,12 +188,20 @@ export async function createMember({
 	if (inviteLink.error) {
 		throw new Error(inviteLink.error.message);
 	}
+	let cleanUpFn: () => Promise<void>;
+	let customerId: string | null = null;
+	if (createSubscription) {
+		const { cleanUp, ...rest } = await createStripeCustomerWithSubscription(testData.email);
+		customerId = rest.customerId;
+		cleanUpFn = cleanUp;
+	}
 
 	await supabaseServiceClient
 		.from('user_profiles')
 		.update({
 			supabase_user_id: inviteLink.data.user.id,
-			waitlist_id: waitlisEntry.data.waitlist_id
+			waitlist_id: waitlisEntry.data.waitlist_id,
+			customer_id: customerId
 		})
 		.eq('id', waitlisEntry.data.profile_id)
 		.select()
@@ -238,4 +255,82 @@ export async function createMember({
 		userId: verifyOtp.data.user?.id,
 		cleanUp
 	});
+}
+
+export async function createStripeCustomerWithSubscription(email: string) {
+	// Create a customer
+	const customer = await stripeClient.customers.create({
+		email,
+		metadata: {
+			source: 'test'
+		}
+	});
+
+	// Create a SEPA Direct Debit payment method
+	const paymentMethod = await stripeClient.paymentMethods.create({
+		type: 'sepa_debit',
+		sepa_debit: {
+			iban: 'IE29AIBK93115212345678'
+		},
+		billing_details: {
+			email,
+			name: 'Test User'
+		}
+	});
+
+	// Attach the payment method to the customer
+	await stripeClient.paymentMethods.attach(paymentMethod.id, {
+		customer: customer.id
+	});
+
+	// Set as default payment method
+	await stripeClient.customers.update(customer.id, {
+		invoice_settings: {
+			default_payment_method: paymentMethod.id
+		}
+	});
+
+	// Get the price ID for the membership fee
+	let prices = await stripeClient.prices.search({
+		query: `lookup_key:'${MEMBERSHIP_FEE_LOOKUP_NAME}'`
+	});
+
+	if (!prices.data.length) {
+		throw new Error(`No price found with lookup key: ${MEMBERSHIP_FEE_LOOKUP_NAME}`);
+	}
+
+	// Create the subscription
+	let subscription = await stripeClient.subscriptions.create({
+		customer: customer.id,
+		items: [{ price: prices.data[0].id }],
+		default_payment_method: paymentMethod.id,
+		expand: ['latest_invoice.payment_intent']
+	});
+
+
+	// Get the price ID for the membership fee
+	prices = await stripeClient.prices.search({
+		query: `lookup_key:'${ANNUAL_FEE_LOOKUP}'`
+	});
+
+	if (!prices.data.length) {
+		throw new Error(`No price found with lookup key: ${ANNUAL_FEE_LOOKUP}`);
+	}
+
+	// Create the subscription
+	subscription = await stripeClient.subscriptions.create({
+		customer: customer.id,
+		items: [{ price: prices.data[0].id }],
+		default_payment_method: paymentMethod.id,
+		expand: ['latest_invoice.payment_intent']
+	});
+
+	return {
+		customerId: customer.id,
+		subscriptionId: subscription.id,
+		paymentMethodId: paymentMethod.id,
+		async cleanUp() {
+			await stripeClient.customers.del(customer.id);
+		}
+	};
 }
