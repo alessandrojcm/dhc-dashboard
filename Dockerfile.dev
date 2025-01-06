@@ -1,0 +1,44 @@
+FROM node:23-bullseye-slim
+
+# Add labels for better container management
+LABEL maintainer="Dublin HEMA Club"
+LABEL description="Development environment for DHC Dashboard"
+
+# Install necessary system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Enable and prepare pnpm with specific version
+RUN corepack enable && \
+    corepack prepare pnpm@9.15.3 --activate
+
+# Use non-root user for better security
+USER node
+
+WORKDIR /workspace
+
+# Copy package files first to leverage Docker cache
+COPY --chown=node:node package.json pnpm-lock.yaml ./
+
+# Install dependencies
+RUN pnpm install --frozen-lockfile
+
+# Copy configuration files
+COPY --chown=node:node \
+    vite.config.ts \
+    svelte.config.js \
+    tsconfig.json \
+    postcss.config.js \
+    tailwind.config.js \
+    .npmrc \
+    ./
+
+# Copy source code and other necessary directories
+COPY --chown=node:node ./src ./src
+COPY --chown=node:node ./static ./static
+COPY --chown=node:node ./e2e ./e2e
+COPY --chown=node:node ./.svelte-kit ./.svelte-kit
+
+# Set environment to development
+ENV NODE_ENV=development

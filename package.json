@@ -79,7 +79,6 @@
 		"vite": "^6.0.6",
 		"vitest": "^2.1.8"
 	},
-	"packageManager": "pnpm@9.12.0+sha512.4abf725084d7bcbafbd728bfc7bee61f2f791f977fd87542b3579dcb23504d170d46337945e4c66485cd12d588a0c0e570ed9c477e7ccdd8507cf05f3f92eaca",
 	"dependencies": {
 		"@dinero.js/currencies": "2.0.0-alpha.1",
 		"@internationalized/date": "^3.6.0",
@@ -98,5 +97,6 @@
 		"layerchart": "^0.60.3",
 		"libphonenumber-js": "^1.11.17",
 		"svelte-radix": "^2.0.1"
-	}
+	},
+	"packageManager": "pnpm@9.15.3+sha512.1f79bc245a66eb0b07c5d4d83131240774642caaa86ef7d0434ab47c0d16f66b04e21e0c086eb61e62c77efc4d7f7ec071afad3796af64892fae66509173893a"
 }
