@@ -19,6 +19,7 @@
 	import { whyThisField } from '$lib/components/ui/why-this-field.svelte';
 	import * as RadioGroup from '$lib/components/ui/radio-group/index.js';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
+	import { ExternalLink } from 'lucide-svelte';
 
 	const { data } = $props();
 
@@ -49,6 +50,8 @@
 	onDestroy(() => {
 		sub();
 	});
+
+	$inspect($errors)
 </script>
 
 <Card.Root class="w-full max-w-4xl mx-auto">
@@ -131,6 +134,9 @@
 						</Form.Control>
 						<Form.FieldErrors />
 					</Form.Field>
+					<Button variant="outline" type="submit"
+						>Manage payment settings <ExternalLink class="ml-2 h-4 w-4" /></Button
+					>
 				</div>
 				<div class="space-y-6">
 					<Form.Field {form} name="gender">

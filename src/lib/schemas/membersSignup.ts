@@ -27,7 +27,7 @@ export const memberSignupSchema = v.object({
 
 const formSchema = v.object({
 	...beginnersWaitlist.entries,
-	...memberSignupSchema.entries,
+	...v.omit(memberSignupSchema, ['stripeConfirmationToken', 'paymentIntentId']).entries,
 	weapon: v.array(v.string('Please select your preferred weapon.'))
 });
 
