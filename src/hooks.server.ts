@@ -103,7 +103,7 @@ const roleGuard: Handle = async ({ event, resolve }) => {
 		return resolve(event);
 	}
 	const roles = getRolesFromSession(session)
-	if (roles.has('member') && roles.size === 1 && !event.url.pathname.includes('members')) {
+	if (roles.has('member') && roles.size === 1 && !event.url.pathname.includes(`/members/${session.user.id}`)) {
 		return redirect(303, `/dashboard/members/${session.user.id}`);
 	}
 	if (

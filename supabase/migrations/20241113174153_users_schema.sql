@@ -140,62 +140,38 @@ declare
     claims           jsonb;
     user_roles       public.role_type[];
     is_valid         bool;
-    hook_instance_id uuid;
 begin
-    hook_instance_id := gen_random_uuid();
-    -- Create one instance ID for the entire hook execution
-
-    -- Log the start of hook execution
-    insert into auth.audit_log_entries (instance_id,
-                                        id,
-                                        payload)
-    values (hook_instance_id,
-            gen_random_uuid(),
-            jsonb_build_object(
-                    'event', event,
-                    'step', 'auth_hook_start'
-            ));
-
     -- Check if user_id exists in the event
     if event ->> 'user_id' is null then
-        insert into auth.audit_log_entries (instance_id,
-                                            id,
-                                            payload)
-        values (hook_instance_id,
-                gen_random_uuid(),
-                jsonb_build_object(
-                        'event', event,
-                        'error', 'No user_id in event',
-                        'step', 'auth_hook_error'
-                ));
-
+        raise log 'Invalid token data: missing user_id';
         return jsonb_build_object(
-                'error', jsonb_build_object(
-                        'http_code', 403,
-                        'message', 'Invalid token data'
-                         )
-               );
+            'error', jsonb_build_object(
+                'http_code', 403,
+                'message', 'Invalid token data'
+            )
+        );
     end if;
 
-    if not is_valid then
-        insert into auth.audit_log_entries (instance_id,
-                                            id,
-                                            payload)
-        values (hook_instance_id,
-                gen_random_uuid(),
-                jsonb_build_object(
-                        'event', event,
-                        'error', 'User not found in profiles',
-                        'step', 'auth_hook_error',
-                        'detail', 'user_not_found'
-                ));
+    -- Check if user exists in user_profiles
+    select exists(
+        select 1
+        from public.user_profiles
+        where supabase_user_id = (event ->> 'user_id')::uuid
+    ) into is_valid;
 
+    raise log 'Checking user profile existence: %', jsonb_build_object(
+        'user_id', event ->> 'user_id',
+        'exists', is_valid
+    );
+
+    if not is_valid then
+        raise warning 'User not found in profiles: %', event ->> 'user_id';
         return jsonb_build_object(
-                'error', jsonb_build_object(
-                        'http_code', 403,
-                        'message', 'User not registered in the system'
-                         )
-               );
+            'error', jsonb_build_object(
+                'http_code', 403,
+                'message', 'User not registered in the system'
+            )
+        );
     end if;
 
     -- Get user roles
@@ -205,37 +181,19 @@ begin
         from public.user_roles
         where user_id = (event ->> 'user_id')::uuid;
 
-        insert into auth.audit_log_entries (instance_id,
-                                            id,
-                                            payload)
-        values (hook_instance_id,
-                gen_random_uuid(),
-                jsonb_build_object(
-                        'event', event,
-                        'roles', user_roles,
-                        'step', 'auth_hook_info',
-                        'detail', 'roles_fetched'
-                ));
+        raise log 'User roles fetched: %', jsonb_build_object(
+            'user_id', event ->> 'user_id',
+            'roles', user_roles
+        );
     exception
         when others then
-            insert into auth.audit_log_entries (instance_id,
-                                                id,
-                                                payload)
-            values (hook_instance_id,
-                    gen_random_uuid(),
-                    jsonb_build_object(
-                            'event', event,
-                            'error', SQLERRM,
-                            'step', 'auth_hook_error',
-                            'detail', 'roles_fetch_failed'
-                    ));
-
+            raise warning 'Error fetching user roles: %', SQLERRM;
             return jsonb_build_object(
-                    'error', jsonb_build_object(
-                            'http_code', 403,
-                            'message', 'Error fetching user roles'
-                             )
-                   );
+                'error', jsonb_build_object(
+                    'http_code', 403,
+                    'message', 'Error fetching user roles'
+                )
+            );
     end;
 
     -- Handle claims
@@ -260,62 +218,50 @@ begin
         -- Update final event
         event := jsonb_set(event, '{claims}', claims);
 
-        insert into auth.audit_log_entries (instance_id,
-                                            id,
-                                            payload)
-        values (hook_instance_id,
-                gen_random_uuid(),
-                jsonb_build_object(
-                        'event', event,
-                        'final_claims', claims,
-                        'step', 'auth_hook_success'
-                ));
+        raise log 'Claims updated successfully: %', jsonb_build_object(
+            'user_id', event ->> 'user_id',
+            'final_claims', claims
+        );
 
         return event;
     exception
         when others then
-            insert into auth.audit_log_entries (instance_id,
-                                                id,
-                                                payload)
-            values (hook_instance_id,
-                    gen_random_uuid(),
-                    jsonb_build_object(
-                            'event', event,
-                            'error', SQLERRM,
-                            'step', 'auth_hook_error',
-                            'detail', 'claims_processing_failed'
-                    ));
-
+            raise warning 'Error processing claims: %', SQLERRM;
             return jsonb_build_object(
-                    'error', jsonb_build_object(
-                            'http_code', 403,
-                            'message', 'Error processing claims'
-                             )
-                   );
+                'error', jsonb_build_object(
+                    'http_code', 403,
+                    'message', 'Error processing claims'
+                )
+            );
     end;
 end;
 $$;
 
 grant usage on schema public to supabase_auth_admin;
 
-grant execute
-    on function public.custom_access_token_hook
-    to supabase_auth_admin;
-
-revoke execute
-    on function public.custom_access_token_hook
-    from authenticated, anon, public;
-
 grant all
     on table public.user_roles
     to supabase_auth_admin;
+
+grant all
+    on table public.user_profiles
+    to supabase_auth_admin;
+
+revoke all
+    on table public.user_profiles
+    from anon, public;
 
 revoke all
     on table public.user_roles
     from anon, public;
 
 create policy "Allow auth admin to read user roles" ON public.user_roles
-    as permissive for select
+    for select
+    to supabase_auth_admin
+    using (true);
+    
+create policy "Allow auth admin to read user profiles" ON public.user_profiles
+    for select
     to supabase_auth_admin
     using (true);
 

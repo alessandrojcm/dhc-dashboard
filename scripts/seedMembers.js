@@ -1,10 +1,11 @@
 import { faker } from '@faker-js/faker';
 import { supabase } from './supabaseServiceRole.js';
+import { stripeClient } from './stripeClient.js';
 
 const PREFERRED_WEAPONS = ['longsword', 'sword_and_buckler'];
 const GENDERS = ['man (cis)', 'woman (cis)', 'non-binary', 'man (trans)', 'woman (trans)', 'other'];
 const PRONOUNS = ['he/him', 'she/her', 'they/them'];
-const SOCIAL_MEDIA_CONSENT= ['no', 'yes_recognizable', 'yes_unrecognizable'];
+const SOCIAL_MEDIA_CONSENT = ['no', 'yes_recognizable', 'yes_unrecognizable'];
 
 async function createAuthUser(email, firstName, lastName) {
 	const { data, error } = await supabase.auth.admin.createUser({
@@ -25,6 +26,7 @@ async function createAuthUser(email, firstName, lastName) {
 }
 
 async function seedMembers(count = 10) {
+	// Generate member data
 	const members = Array.from({ length: count }, () => {
 		const firstName = faker.person.firstName();
 		const lastName = faker.person.lastName();
@@ -43,66 +45,64 @@ async function seedMembers(count = 10) {
 		};
 	});
 
-	// Create auth users and user profiles
-	const createdMembers = await Promise.all(
-		members.map(async (member) => {
-			// Create auth user
-			const authUser = await createAuthUser(member.email, member.first_name, member.last_name);
-			if (!authUser) return null;
-
-			// Create waitlist entry first
-			const { data: waitlist, error: waitlistError } = await supabase
-				.from('waitlist')
-				.insert({
-					email: member.email,
-					status: 'completed'
-				})
-				.select()
-				.single();
-
-			if (waitlistError) {
-				console.error('Error creating waitlist entry:', waitlistError);
-				return null;
-			}
-
-			// Create user profile
-			const { data: profile, error: profileError } = await supabase
-				.from('user_profiles')
-				.insert({
-					supabase_user_id: authUser.id,
-					first_name: member.first_name,
-					last_name: member.last_name,
-					phone_number: member.phone_number,
-					date_of_birth: member.date_of_birth,
-					pronouns: member.pronouns,
-					gender: member.gender,
-					is_active: true,
-					waitlist_id: waitlist.id,
-					medical_conditions: member.medical_conditions,
-                    social_media_consent: faker.helpers.arrayElement(SOCIAL_MEDIA_CONSENT),
-				})
-				.select()
-				.single();
-
-			if (profileError) {
-				console.error('Error creating user profile:', profileError);
-				return null;
-			}
-
-			return {
-				authUser,
-				profile
-			};
-		})
+	// Create auth users in batch
+	const authUsers = await Promise.all(
+		members.map((member) => createAuthUser(member.email, member.first_name, member.last_name))
 	);
+	const validAuthUsers = authUsers.filter(Boolean);
 
-	// Filter out any failed creations
-	const validMembers = createdMembers.filter(Boolean);
+	if (validAuthUsers.length === 0) {
+		console.log('No auth users created');
+		return;
+	}
 
-	// Create member profiles
-	const memberProfiles = validMembers.map(({ authUser, profile }) => ({
+	// Prepare waitlist entries
+	const waitlistEntries = validAuthUsers.map((_, index) => ({
+		email: members[index].email,
+		status: 'completed'
+	}));
+
+	// Batch insert waitlist entries
+	const { data: createdWaitlistEntries, error: waitlistError } = await supabase
+		.from('waitlist')
+		.insert(waitlistEntries)
+		.select();
+
+	if (waitlistError) {
+		console.error('Error creating waitlist entries:', waitlistError);
+		return;
+	}
+
+	// Prepare user profiles
+	const userProfiles = validAuthUsers.map((authUser, index) => ({
+		supabase_user_id: authUser.id,
+		first_name: members[index].first_name,
+		last_name: members[index].last_name,
+		phone_number: members[index].phone_number,
+		date_of_birth: members[index].date_of_birth,
+		pronouns: members[index].pronouns,
+		gender: members[index].gender,
+		is_active: true,
+		waitlist_id: createdWaitlistEntries[index].id,
+		medical_conditions: members[index].medical_conditions,
+		social_media_consent: faker.helpers.arrayElement(SOCIAL_MEDIA_CONSENT)
+	}));
+
+	// Batch insert user profiles
+	const { data: createdProfiles, error: profileError } = await supabase
+		.from('user_profiles')
+		.insert(userProfiles)
+		.select();
+
+	if (profileError) {
+		console.error('Error creating user profiles:', profileError);
+		return;
+	}
+
+	// Prepare member profiles
+	const memberProfiles = validAuthUsers.map((authUser, index) => ({
 		id: authUser.id,
-		user_profile_id: profile.id,
+		user_profile_id: createdProfiles[index].id,
 		next_of_kin_name: faker.person.fullName(),
 		next_of_kin_phone: faker.phone.number({ format: 'international' }),
 		preferred_weapon: faker.helpers.arrayElements(PREFERRED_WEAPONS, { min: 1, max: 2 }),
@@ -112,30 +112,45 @@ async function seedMembers(count = 10) {
 		additional_data: {}
 	}));
 
-	if (memberProfiles.length === 0) {
-		console.log('No member profiles to create');
+	// Batch insert member profiles
+	const { error: memberProfileError } = await supabase
+		.from('member_profiles')
+		.insert(memberProfiles);
+
+	if (memberProfileError) {
+		console.error('Error creating member profiles:', memberProfileError);
 		return;
 	}
 
-	const { error: insertError } = await supabase.from('member_profiles').insert(memberProfiles);
+	// Prepare user roles
+	const userRoles = validAuthUsers.map((authUser) => ({
+		user_id: authUser.id,
+		role: 'member'
+	}));
 
-	if (insertError) {
-		console.error('Error inserting member profiles:', insertError);
-		return;
-	}
-
-	// Add member role to users
-	const { error: roleError } = await supabase.from('user_roles').insert(
-		memberProfiles.map((profile) => ({
-			user_id: profile.id,
-			role: 'member'
-		}))
-	);
+	// Batch insert user roles
+	const { error: roleError } = await supabase.from('user_roles').insert(userRoles);
 
 	if (roleError) {
 		console.error('Error adding member roles:', roleError);
 		return;
 	}
+	// Just the first 25 to avoid Stripe Rate Limiting
+	const sliceMembers = userProfiles.slice(0, 25);
+	await Promise.all(
+		sliceMembers.map(async (member) => {
+			const { id } = await stripeClient.customers.create({
+				name: `${member.first_name} ${member.last_name}`,
+				email: member.email
+			});
+			await supabase
+				.from('user_profiles')
+				.update({
+					customer_id: id
+				})
+				.eq('supabase_user_id', member.supabase_user_id);
+		})
+	);
 
 	console.log(`Successfully created ${memberProfiles.length} member profiles`);
 }
