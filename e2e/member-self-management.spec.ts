@@ -1,9 +1,8 @@
 import { test, expect } from '@playwright/test';
 import { createMember } from './setupFunctions';
 import { loginAsUser } from './supabaseLogin';
-// TODO: add test for settings mutations
 // TODO: update stripe details when settings are updated (only phone & name)
-// TODO: add webhook for when a subscription is updated/cancelled/paid
+
 test.describe('Member Self-Management', () => {
 	let testData: Awaited<ReturnType<typeof createMember>>;
 	test.beforeAll(async () => {
@@ -24,6 +23,8 @@ test.describe('Member Self-Management', () => {
 		await expect(page.getByText(/member information/i)).toBeVisible();
 		await page.pause();
 		await page.getByLabel(/first name/i).fill('Updated name');
+		await page.getByLabel(/preferred weapon/i).click();
+		await page.getByRole('option', { name: 'Longsword' }).click();
 		await page.getByRole('button', { name: /save changes/i }).click();
 
 		await expect(page.getByText(/profile has been updated/i)).toBeVisible();
