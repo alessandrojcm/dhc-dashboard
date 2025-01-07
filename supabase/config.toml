@@ -242,7 +242,7 @@ enabled = false
 enabled = true
 # Configure one of the supported request policies: `oneshot`, `per_worker`.
 # Use `oneshot` for hot reload, or `per_worker` for load testing.
-policy = "oneshot"
+policy = "per_worker"
 inspector_port = 8083
 
 [analytics]
@@ -263,6 +263,3 @@ s3_region = "env(S3_REGION)"
 s3_access_key = "env(S3_ACCESS_KEY)"
 # Configures AWS_SECRET_ACCESS_KEY for S3 bucket
 s3_secret_key = "env(S3_SECRET_KEY)"
-
-[functions.waitlist-signup]
-verify_jwt = false

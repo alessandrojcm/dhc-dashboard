@@ -1,0 +1,54 @@
+name: OpenHands Resolver
+
+on:
+  issues:
+    types: [labeled]
+  pull_request:
+    types: [labeled]
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+      
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          
+      - name: Install Poetry
+        run: |
+          curl -sSL https://install.python-poetry.org | python3 -
+          
+      - name: Install OpenHands
+        run: |
+          poetry config virtualenvs.create false
+          poetry install
+        working-directory: /openhands
+        
+      - name: Run OpenHands Resolver
+        run: |
+          poetry run python -m openhands.resolver.cli \
+            --repo-url ${{ github.server_url }}/${{ github.repository }} \
+            --commit-sha ${{ github.sha }} \
+            --github-token ${{ secrets.GITHUB_TOKEN }} \
+            --output-file openhands-resolver-output.json
+            
+      - name: Upload resolver output
+        uses: actions/upload-artifact@v4
+        with:
+          name: openhands-resolver-output
+          path: openhands-resolver-output.json

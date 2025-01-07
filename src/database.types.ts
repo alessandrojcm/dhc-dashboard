@@ -157,6 +157,7 @@ export type Database = {
       user_profiles: {
         Row: {
           created_at: string | null
+          customer_id: string | null
           date_of_birth: string
           first_name: string
           gender: Database["public"]["Enums"]["gender"] | null
@@ -174,6 +175,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string | null
+          customer_id?: string | null
           date_of_birth: string
           first_name: string
           gender?: Database["public"]["Enums"]["gender"] | null
@@ -191,6 +193,7 @@ export type Database = {
         }
         Update: {
           created_at?: string | null
+          customer_id?: string | null
           date_of_birth?: string
           first_name?: string
           gender?: Database["public"]["Enums"]["gender"] | null
