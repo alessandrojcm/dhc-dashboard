@@ -1,63 +1,63 @@
-import { error, type Actions } from '@sveltejs/kit';
+import { error, redirect, type Actions } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { valibot } from 'sveltekit-superforms/adapters';
 import { fail, message, setError, superValidate } from 'sveltekit-superforms';
 import signupSchema from '$lib/schemas/membersSignup';
 import type { Database } from '$database';
 import { supabaseServiceClient } from '$lib/server/supabaseServiceClient';
+import { kysely } from '$lib/server/kysely';
+import { stripeClient } from '$lib/server/stripe';
+import { getMemberData } from '$lib/server/kyselyRPCFunctions';
 
 export const load: PageServerLoad = async ({ params, locals }) => {
-	const memberData = await locals.supabase.rpc('get_member_data', {
-		user_uuid: params.memberId
-	});
-	if (memberData.error) {
+	try {
+		const memberProfile = await getMemberData(params.memberId, kysely);
+		const email = locals.session?.user.email;
+
+		return {
+			form: await superValidate(
+				{
+					firstName: memberProfile.first_name,
+					lastName: memberProfile.last_name,
+					email,
+					phoneNumber: memberProfile.phone_number,
+					dateOfBirth: new Date(memberProfile.date_of_birth),
+					pronouns: memberProfile.pronouns,
+					gender: memberProfile.gender,
+					medicalConditions: memberProfile.medical_conditions,
+					nextOfKin: memberProfile.next_of_kin_name,
+					nextOfKinNumber: memberProfile.next_of_kin_phone,
+					weapon: memberProfile.preferred_weapon,
+					insuranceFormSubmitted: memberProfile.insurance_form_submitted,
+					socialMediaConsent: memberProfile.social_media_consent
+				},
+				valibot(signupSchema),
+				{ errors: false }
+			),
+			genders: locals.supabase.rpc('get_gender_options').then((r) => r.data ?? []) as Promise<
+				string[]
+			>,
+			weapons: locals.supabase.rpc('get_weapons_options').then((r) => r.data ?? []) as Promise<
+				string[]
+			>,
+			insuranceFormLink: supabaseServiceClient
+				.from('settings')
+				.select('value')
+				.eq('key', 'insurance_form_link')
+				.limit(1)
+				.single()
+				.then((result) => result.data?.value)
+		};
+	} catch (e) {
+		console.error(e);
 		error(404, {
 			message: 'Member not found'
 		});
 	}
-	const memberProfile: Database['public']['CompositeTypes']['member_data_type'] = memberData.data!;
-	const email = await supabaseServiceClient.auth.admin
-		.getUserById(params.memberId)
-		.then((u) => u.data?.user?.email ?? '');
-
-	return {
-		form: await superValidate(
-			{
-				firstName: memberProfile.first_name,
-				lastName: memberProfile.last_name,
-				email,
-				phoneNumber: memberProfile.phone_number,
-				dateOfBirth: new Date(memberProfile.date_of_birth),
-				pronouns: memberProfile.pronouns,
-				gender: memberProfile.gender,
-				medicalConditions: memberProfile.medical_conditions,
-				nextOfKin: memberProfile.next_of_kin_name,
-				nextOfKinNumber: memberProfile.next_of_kin_phone,
-				weapon: memberProfile.preferred_weapon,
-				insuranceFormSubmitted: memberProfile.insurance_form_submitted,
-				socialMediaConsent: memberProfile.social_media_consent
-			},
-			valibot(signupSchema),
-			{ errors: false }
-		),
-		genders: locals.supabase.rpc('get_gender_options').then((r) => r.data ?? []) as Promise<
-			string[]
-		>,
-		weapons: locals.supabase.rpc('get_weapons_options').then((r) => r.data ?? []) as Promise<
-			string[]
-		>,
-		insuranceFormLink: supabaseServiceClient
-			.from('settings')
-			.select('value')
-			.eq('key', 'insurance_form_link')
-			.limit(1)
-			.single()
-			.then((result) => result.data?.value)
-	};
 };
 
 export const actions: Actions = {
-	default: async (event) => {
+	'update-profile': async (event) => {
 		const form = await superValidate(event, valibot(signupSchema));
 		if (!form.valid) {
 			return fail(422, {
@@ -83,5 +83,26 @@ export const actions: Actions = {
 			return setError(form, 'pronouns', 'There was an error updating your profile.');
 		}
 		return message(form, { success: 'Profile has been updated!' });
+	},
+	'payment-settings': async (event) => {
+		const memberId = event.params.memberId!;
+		const customerId = await kysely
+			.selectFrom('user_profiles')
+			.select('customer_id')
+			.where('supabase_user_id', '=', memberId)
+			.limit(1)
+			.execute()
+			.then((result) => result[0]?.customer_id);
+
+		if (!customerId) {
+			return fail(404, {
+				message: 'Member not found'
+			});
+		}
+		const billingPortalSession = await stripeClient.billingPortal.sessions.create({
+			customer: customerId,
+			return_url: `${event.url.origin}/dashboard/members/${memberId}`
+		});
+		return redirect(303, billingPortalSession.url);
 	}
 };

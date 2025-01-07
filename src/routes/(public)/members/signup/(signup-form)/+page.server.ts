@@ -8,7 +8,7 @@ import { valibot } from 'sveltekit-superforms/adapters';
 import type { Actions, PageServerLoad } from '../$types';
 import { invariant } from '$lib/server/invariant';
 import { stripeClient } from '$lib/server/stripe';
-import { MEMEMBERSHIP_FEE_LOOKUP_NAME } from '$lib/server/constants';
+import { MEMBERSHIP_FEE_LOOKUP_NAME } from '$lib/server/constants';
 import Dinero from 'dinero.js';
 import { kysely } from '$lib/server/kysely';
 import Stripe from 'stripe';
@@ -53,7 +53,7 @@ export const load: PageServerLoad = async ({ parent }) => {
 		// we need to redirect to payment if the user has already signed up but has not paid
 		const subscriptionPrice = await stripeClient.prices
 			.list({
-				lookup_keys: [MEMEMBERSHIP_FEE_LOOKUP_NAME]
+				lookup_keys: [MEMBERSHIP_FEE_LOOKUP_NAME]
 			})
 			.then((result) => result.data[0]);
 		const subscription = await stripeClient.subscriptions.create({

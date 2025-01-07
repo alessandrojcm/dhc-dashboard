@@ -4,6 +4,7 @@
 
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 import Stripe from 'npm:stripe@17.5.0';
+import dayjs from 'npm:dayjs';
 import { db } from '../_shared/db.ts';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') ?? '', {
@@ -20,7 +21,10 @@ const corsHeaders = {
 async function setLastPayment(customerId: string, paidDate: number, subscriptionEnd: number) {
   await db
     .updateTable('member_profiles')
-    .set({ last_payment_date: new Date(paidDate), membership_end_date: new Date(subscriptionEnd) })
+    .set({ 
+      last_payment_date: dayjs.unix(paidDate).toDate(), 
+      membership_end_date: dayjs.unix(subscriptionEnd).toDate() 
+    })
     .whereExists(
       qb => qb.selectFrom('user_profiles')
         .select('id')
@@ -29,6 +33,15 @@ async function setLastPayment(customerId: string, paidDate: number, subscription
     )
 	.execute()
 	.then(console.log);
+}
+
+async function setUserInactive(customerId: string) {
+	await db
+		.updateTable('user_profiles')
+		.set({ is_active: false })
+		.where('customer_id', '=', customerId)
+		.execute()
+		.then(console.log);
 }
 
 addEventListener('beforeUnload', (ev) => {
@@ -59,11 +72,44 @@ Deno.serve(async (req) => {
 
 		// Handle the event
 		if (event.type === 'invoice.paid') {
-			const paymentIntent = event.data.object;
+			const invoice = event.data.object;
 
-			// Get the customer ID from the payment intent
-			const customerId = paymentIntent.customer as string;
-			EdgeRuntime.waitUntil(setLastPayment(customerId, paymentIntent.created, paymentIntent.period_end));
+			// Get the customer ID from the invoice
+			const customerId = invoice.customer as string;
+			
+			// Get the line items to see what was paid for
+			const lineItems = invoice.lines.data;
+			
+			// Check each line item's price lookup key to determine what was paid for
+			for (const item of lineItems) {
+				const lookupKey = item.price.lookup_key;
+				
+				if (lookupKey === 'standard_membership_fee') {
+					console.log(`Customer ${customerId} paid for standard membership fee`);
+					EdgeRuntime.waitUntil(setLastPayment(customerId, invoice.created, invoice.period_end));
+				} else if (lookupKey === 'annual_membership_fee') {
+					console.log(`Customer ${customerId} paid for annual membership fee`);
+				}
+			}
+
+			return new Response(JSON.stringify({ success: true }), {
+				headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+				status: 200
+			});
+		} else if (event.type === 'customer.subscription.deleted') {
+			const subscription = event.data.object;
+			const customerId = subscription.customer as string;
+
+			// Get the subscription items to check what was cancelled
+			const items = subscription.items.data;
+			for (const item of items) {
+				const lookupKey = item.price.lookup_key;
+				if (lookupKey === 'standard_membership_fee') {
+					console.log(`Standard membership cancelled for customer ${customerId}`);
+					EdgeRuntime.waitUntil(setUserInactive(customerId));
+					break;
+				}
+			}
 
 			return new Response(JSON.stringify({ success: true }), {
 				headers: { ...corsHeaders, 'Content-Type': 'application/json' },

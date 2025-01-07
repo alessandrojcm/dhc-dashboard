@@ -25,3 +25,14 @@ export function completeMemberRegistration(
 		.execute(executor)
 		.then((r) => r.rows[0]);
 }
+
+export function getMemberData(
+	userId: string,
+	executor: QueryExecutorProvider
+): Promise<Database['public']['CompositeTypes']['member_data_type']> {
+	return sql<
+		Database['public']['CompositeTypes']['member_data_type']
+	>`select * from get_member_data(${userId}::uuid)`
+		.execute(executor)
+		.then((r) => r.rows[0]);
+}
