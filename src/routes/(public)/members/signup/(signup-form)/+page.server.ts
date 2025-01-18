@@ -8,14 +8,20 @@ import { valibot } from 'sveltekit-superforms/adapters';
 import type { Actions, PageServerLoad } from '../$types';
 import { invariant } from '$lib/server/invariant';
 import { stripeClient } from '$lib/server/stripe';
-import { MEMBERSHIP_FEE_LOOKUP_NAME } from '$lib/server/constants';
+import { MEMBERSHIP_FEE_LOOKUP_NAME, ANNUAL_FEE_LOOKUP } from '$lib/server/constants';
 import Dinero from 'dinero.js';
 import { kysely } from '$lib/server/kysely';
 import Stripe from 'stripe';
 import { completeMemberRegistration, getMembershipInfo } from '$lib/server/kyselyRPCFunctions';
 
+type StripePaymentInfo = {
+	customerId: string;
+	annualSubscriptionPaymentIntendId: string;
+	membershipSubscriptionPaymentIntendId: string;
+};
+
 // need to normalize medical_conditions
-export const load: PageServerLoad = async ({ parent }) => {
+export const load: PageServerLoad = async ({ parent, cookies }) => {
 	const { userData } = await parent();
 	try {
 		const waitlistedMemberData = await kysely.transaction().execute(async (trx) => {
@@ -50,38 +56,79 @@ export const load: PageServerLoad = async ({ parent }) => {
 
 			return { ...waitlistedMemberData, customer_id };
 		});
-		// we need to redirect to payment if the user has already signed up but has not paid
-		const subscriptionPrice = await stripeClient.prices
-			.list({
-				lookup_keys: [MEMBERSHIP_FEE_LOOKUP_NAME]
-			})
-			.then((result) => result.data[0]);
-		const subscription = await stripeClient.subscriptions.create({
-			customer: waitlistedMemberData.customer_id!,
-			items: [
-				{
-					price: subscriptionPrice!.id
-				}
-			],
-			billing_cycle_anchor_config: {
-				day_of_month: 1
-			},
-			payment_behavior: 'default_incomplete',
-			payment_settings: {
-				save_default_payment_method: 'on_subscription',
-				payment_method_types: ['sepa_debit']
-			},
-			expand: ['latest_invoice.payment_intent']
-		});
-		return {
-			form: await superValidate(
-				{
-					paymentIntentId: ((subscription.latest_invoice as Stripe.Invoice)!
-						.payment_intent as Stripe.PaymentIntent)!.id
+
+		const [subscriptionPrice, annualFeePrice] = await Promise.all([
+			stripeClient.prices
+				.list({
+					lookup_keys: [MEMBERSHIP_FEE_LOOKUP_NAME]
+				})
+				.then((result) => result.data[0]),
+			stripeClient.prices
+				.list({
+					lookup_keys: [ANNUAL_FEE_LOOKUP]
+				})
+				.then((result) => result.data[0])
+		]);
+
+		const [monthlySubscription, annualSubscription] = await Promise.all([
+			stripeClient.subscriptions.create({
+				customer: waitlistedMemberData.customer_id!,
+				items: [
+					{
+						price: subscriptionPrice!.id
+					}
+				],
+				billing_cycle_anchor_config: {
+					day_of_month: 1
 				},
-				valibot(memberSignupSchema),
-				{ errors: false }
-			),
+				payment_behavior: 'default_incomplete',
+				payment_settings: {
+					payment_method_types: ['sepa_debit']
+				},
+				expand: ['latest_invoice.payment_intent'],
+				collection_method: 'charge_automatically'
+			}),
+			stripeClient.subscriptions.create({
+				customer: waitlistedMemberData.customer_id!,
+				items: [
+					{
+						price: annualFeePrice!.id
+					}
+				],
+				payment_behavior: 'default_incomplete',
+				payment_settings: {
+					payment_method_types: ['sepa_debit']
+				},
+				billing_cycle_anchor_config: {
+					month: 1,
+					day_of_month: 7
+				},
+				expand: ['latest_invoice.payment_intent'],
+				collection_method: 'charge_automatically'
+			})
+		]);
+
+		const monthlyPaymentIntent = (monthlySubscription.latest_invoice as Stripe.Invoice)!
+			.payment_intent as Stripe.PaymentIntent;
+		const annualPaymentIntent = (annualSubscription.latest_invoice as Stripe.Invoice)!
+			.payment_intent as Stripe.PaymentIntent;
+
+		const proratedAmount = monthlyPaymentIntent.amount + annualPaymentIntent.amount;
+		const proratedMonthlyAmount = monthlyPaymentIntent.amount;
+		const proratedAnnualAmount = annualPaymentIntent.amount;
+
+		cookies.set(
+			'stripe-payment-info',
+			JSON.stringify({
+				customerId: waitlistedMemberData.customer_id!,
+				annualSubscriptionPaymentIntendId: annualPaymentIntent.id,
+				membershipSubscriptionPaymentIntendId: monthlyPaymentIntent.id
+			} satisfies StripePaymentInfo),
+			{ path: '/', httpOnly: true, secure: true, sameSite: 'strict' }
+		);
+
+		return {
+			form: await superValidate({}, valibot(memberSignupSchema), { errors: false }),
 			userData: {
 				firstName: waitlistedMemberData?.first_name,
 				lastName: waitlistedMemberData?.last_name,
@@ -100,17 +147,27 @@ export const load: PageServerLoad = async ({ parent }) => {
 				.single()
 				.then((result) => result.data?.value),
 			proratedPrice: Dinero({
-				amount: ((subscription.latest_invoice as Stripe.Invoice)!
-					.payment_intent as Stripe.PaymentIntent)!.amount!,
+				amount: proratedAmount,
 				currency: 'EUR'
 			}).toJSON(),
-			subscriptionAmount: Dinero({
-				amount: subscription.plan.amount,
+			proratedMonthlyPrice: Dinero({
+				amount: proratedMonthlyAmount,
 				currency: 'EUR'
 			}).toJSON(),
-			nextBillingDate: dayjs().add(1, 'month').startOf('month').toDate(),
-			clientSecret: ((subscription.latest_invoice as Stripe.Invoice)!
-				.payment_intent as Stripe.PaymentIntent)!.client_secret
+			proratedAnnualPrice: Dinero({
+				amount: proratedAnnualAmount,
+				currency: 'EUR'
+			}).toJSON(),
+			monthlyFee: Dinero({
+				amount: monthlySubscription.plan.amount,
+				currency: 'EUR'
+			}).toJSON(),
+			annualFee: Dinero({
+				amount: annualSubscription.plan.amount,
+				currency: 'EUR'
+			}).toJSON(),
+			nextMonthlyBillingDate: dayjs().add(1, 'month').startOf('month').toDate(),
+			nextAnnualBillingDate: dayjs().add(1, 'year').startOf('year').set('date', 7).toDate()
 		};
 	} catch (err) {
 		console.error(err);
@@ -123,12 +180,11 @@ export const load: PageServerLoad = async ({ parent }) => {
 export const actions: Actions = {
 	default: async (event) => {
 		const accessToken = event.cookies.get('access-token');
-		invariant(accessToken === null, `${event.url.pathname}?error_description=missing_access_token`);
+		invariant(accessToken === null, 'There has ben an error with your signup.');
 		const tokenClaim = jwtDecode(accessToken!);
-		invariant(
-			dayjs.unix(tokenClaim.exp!).isBefore(dayjs()),
-			`${event.url.pathname}?error_description=expired_access_token`
-		);
+		const paymentInfo = event.cookies.get('stripe-payment-info');
+		invariant(paymentInfo == undefined, 'Payment info not found.');
+		invariant(dayjs.unix(tokenClaim.exp!).isBefore(dayjs()), 'This invitation has expired');
 
 		const form = await superValidate(event, valibot(memberSignupSchema));
 		if (!form.valid) {
@@ -136,9 +192,19 @@ export const actions: Actions = {
 				form
 			});
 		}
-		return await kysely
+		const {
+			customerId,
+			annualSubscriptionPaymentIntendId,
+			membershipSubscriptionPaymentIntendId
+		}: StripePaymentInfo = JSON.parse(paymentInfo!);
+		const confirmationToken: Stripe.ConfirmationToken = JSON.parse(
+			form.data.stripeConfirmationToken
+		);
+
+		return kysely
 			.transaction()
 			.execute(async (trx) => {
+				// First complete the member registration
 				await completeMemberRegistration(
 					{
 						v_user_id: tokenClaim.sub!,
@@ -148,21 +214,60 @@ export const actions: Actions = {
 					},
 					trx
 				);
-
-				const response = await stripeClient.paymentIntents.confirm(form.data.paymentIntentId, {
-					confirmation_token: form.data.stripeConfirmationToken
+				const intent = await stripeClient.setupIntents.create({
+					confirm: true,
+					customer: customerId,
+					confirmation_token: confirmationToken.id,
+					payment_method_types: ['sepa_debit']
 				});
-				return response.status;
-			})
-			.then((status) => {
-				if (status === 'requires_action') {
-					return message(form, { requiresAction: status === 'requires_action' });
-				}
+
+				invariant(
+					intent.status == 'requires_payment_method',
+					'payment_intent_requires_payment_method'
+				);
+				invariant(intent.payment_method == null, 'payment_method_not_found');
+				const paymentMethodId =
+					typeof intent.payment_method === 'string'
+						? intent.payment_method
+						: (intent.payment_method! as Stripe.PaymentMethod)!.id;
+				// const [monthlySubscription, annualSubscription] = await getMembershipSubcriptions({
+				// 	customerId,
+				// 	paymentMedhodId: paymentMethodId
+				// });
+
+				await Promise.all([
+					stripeClient.paymentIntents.confirm(membershipSubscriptionPaymentIntendId, {
+						payment_method: paymentMethodId,
+						mandate_data: {
+							customer_acceptance: {
+								type: 'online',
+								online: {
+									ip_address: event.getClientAddress(),
+									user_agent: event.request.headers.get('user-agent')!
+								}
+							}
+						}
+					}),
+					stripeClient.paymentIntents.confirm(annualSubscriptionPaymentIntendId, {
+						payment_method: paymentMethodId,
+						mandate_data: {
+							customer_acceptance: {
+								type: 'online',
+								online: {
+									ip_address: event.getClientAddress(),
+									user_agent: event.request.headers.get('user-agent')!
+								}
+							}
+						}
+					})
+				]);
+
+				// Success! Delete the access token cookie
 				event.cookies.delete('access-token', { path: '/' });
 				return message(form, { paymentFailed: false });
 			})
 			.catch((err) => {
-				console.log(err);
+				console.error('Error in signup transaction:', err);
 				let errorMessage = 'An unexpected error occurred';
 
 				if (err instanceof Error && 'code' in err) {
