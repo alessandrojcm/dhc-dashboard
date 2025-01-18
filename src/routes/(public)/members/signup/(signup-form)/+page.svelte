@@ -9,7 +9,13 @@
 	import { AsYouType } from 'libphonenumber-js/min';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { ArrowRightIcon, Info } from 'lucide-svelte';
-	import { loadStripe, type StripeElements } from '@stripe/stripe-js';
+	import {
+		loadStripe,
+		type StripeElements,
+		type StripeElementsOptions,
+		type StripeIbanElement,
+		type StripePaymentElement
+	} from '@stripe/stripe-js';
 	import { PUBLIC_STRIPE_KEY } from '$env/static/public';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import { Elements, PaymentElement } from 'svelte-stripe';
@@ -22,44 +28,126 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import * as Alert from '$lib/components/ui/alert';
+	import { get } from 'svelte/store';
 
 	const { data } = $props();
 	let stripe: Awaited<ReturnType<typeof loadStripe>> | null = $state(null);
 	let elements: StripeElements | null | undefined = $state(null);
+	let paymentElement: StripePaymentElement | null | undefined = $state(null);
 	let showThanks = $state(false);
 
-	const { subscriptionAmount, proratedPrice, nextBillingDate } = data;
-	const subscriptionAmountDinero = Dinero(subscriptionAmount);
+	const {
+		proratedPrice,
+		monthlyFee,
+		annualFee,
+		nextMonthlyBillingDate,
+		nextAnnualBillingDate
+	} = data;
 	const proratedPriceDinero = Dinero(proratedPrice);
+	const monthlyFeeDinero = Dinero(monthlyFee);
+	const annualFeeDinero = Dinero(annualFee);
+
+	const stripeElementsOptions: StripeElementsOptions = {
+		mode: 'setup',
+		payment_method_types: ['sepa_debit'],
+		currency: 'eur',
+		paymentMethodCreation: 'manual',
+		appearance: {
+			theme: 'flat',
+			variables: {
+				colorPrimary: '221.2 83.2% 53.3%',
+				borderRadius: '1rem',
+				fontFamily: 'Inter, sans-serif',
+				fontSizeBase: '1rem',
+				fontSizeSm: '0.875rem'
+			},
+			rules: {
+				'.Label': {
+					fontWeight: '500'
+				},
+				'.Input': {
+					marginTop: '.5rem',
+					backgroundColor: 'transparent',
+					border: 'hsl(214.3 31.8% 91.4%) 1px solid',
+					borderRadius: 'calc(var(--borderRadius) - 2px)',
+					fontSize: 'var(--fontSizeSm)',
+					padding: '0.5rem 0.75rem'
+				}
+			}
+		}
+		// customerSessionClientSecret: customerSessionId!
+	};
 
 	const form = superForm(data.form, {
 		validators: valibotClient(memberSignupSchema),
-		validationMethod: 'onblur',
 		invalidateAll: false,
 		resetForm: false,
-		onSubmit: async ({ customRequest }) => {
-			await elements!.submit();
-			const { error, confirmationToken } = await stripe!.createConfirmationToken({
-				elements: elements!
-			});
-			if (error) {
-				toast.error(
-					'There was an error with your payment. We have been notified. Please try again later.'
-				);
+		validationMethod: 'onblur',
+		scrollToError: 'smooth',
+		onSubmit: async function ({ cancel, customRequest }) {
+			const { valid } = await form.validateForm({ focusOnError: true, update: true });
+			if (!valid) {
+				scrollTo({ top: 0, behavior: 'smooth' });
+				cancel();
+			}
+			if (!stripe || !elements) {
+				toast.error('Payment system not initialized');
+				cancel();
+				return;
+			}
+
+			const { error: elementsError } = await elements.submit();
+			if (elementsError?.message) {
+				toast.error(elementsError.message);
+				cancel();
+				return;
+			}
+			// Create the payment method directly
+			const { error: paymentMethodError, confirmationToken } = await stripe.createConfirmationToken(
+				{
+					elements,
+					params: {
+						return_url: window.location.href + '/members/signup',
+					}
+				}
+			);
+
+			if (paymentMethodError?.message) {
+				toast.error(paymentMethodError.message);
 				return;
 			}
 			$formData.stripeConfirmationToken = JSON.stringify(confirmationToken);
 			customRequest(({ controller, action, formData }) => {
-				formData.set('stripeConfirmationToken', confirmationToken.id);
+				formData.set('stripeConfirmationToken', JSON.stringify(confirmationToken));
 				return fetch(action, {
 					signal: controller.signal,
 					method: 'POST',
 					body: formData
 				});
 			});
+		},
+		onResult: async ({ result }) => {
+			if (result.type === 'error') {
+				toast.error(result.error.message);
+				return;
+			}
+
+			if (result.type === 'failure') {
+				if (result.data?.paymentFailed) {
+					toast.error(result.data.errorMessage || 'Payment failed');
+					return;
+				}
+				toast.error(
+					'Something has gone wrong with your payment, we have been notified and are working on it.'
+				);
+			}
+
+			if (result.type === 'success') {
+				showThanks = true;
+			}
 		}
 	});
-	const { form: formData, enhance, submitting, errors, message } = form;
+	const { form: formData, enhance, submitting, errors } = form;
 	const formatedPhone = $derived.by(() => new AsYouType('IE').input(data.userData.phoneNumber!));
 	const formatedNextOfKinPhone = $derived.by(() =>
 		new AsYouType('IE').input($formData.nextOfKinNumber)
@@ -68,43 +156,19 @@
 	onMount(() => {
 		loadStripe(PUBLIC_STRIPE_KEY).then((result) => {
 			stripe = result;
-		});
-		const unsub = message.subscribe(async (m) => {
-			if (m?.paymentFailed === true) {
-				toast.error(
-					m.errorMessage || 'There was an error with your payment. We have been notified. Please try again later.'
-				);
-			} else if (m?.requiresAction === true) {
-				const response = await stripe?.handleNextAction({
-					clientSecret: data.clientSecret!
-				});
-
-				if (response?.error) {
-					toast.error(
-						'There was an error processing your payment action. Please try again.'
-					);
-				} else {
-					showThanks = true;
+			elements = stripe?.elements(stripeElementsOptions);
+			paymentElement = elements?.create('payment', {
+				defaultValues: {
+					billingDetails: {
+						name: `${data.userData.firstName} ${data.userData.lastName}`,
+						email: data.userData.email,
+						phone: data.userData.phoneNumber
+					}
 				}
-			} else if (m?.paymentFailed === false) {
-				showThanks = true;
-			}
-		});
-
-		return () => {
-			unsub();
-		};
-	});
-
-	$effect(() => {
-		if (elements) {
-			elements.update({
-				payment_method_types: ['sepa_debit']
 			});
-		}
+			paymentElement?.mount('#payment-element');
+		});
 	});
-
-	$inspect($formData.paymentIntentId);
 </script>
 
 {#snippet thanksAlert()}
@@ -205,7 +269,8 @@
 											<Info class="h-4 w-4" />
 										</TooltipTrigger>
 										<TooltipContent>
-											This is the calculated amount for the remainder of this month
+											This is the combined prorated amount for your first month's membership and
+											annual fee
 										</TooltipContent>
 									</Tooltip.Root>
 								</Tooltip.Provider>
@@ -214,7 +279,7 @@
 						</div>
 						<div class="flex justify-between items-center">
 							<div class="flex items-center gap-2">
-								<span>Monthly subscription</span>
+								<span>Monthly membership fee</span>
 								<TooltipProvider>
 									<Tooltip.Root>
 										<TooltipTrigger>
@@ -224,58 +289,37 @@
 									</Tooltip.Root>
 								</TooltipProvider>
 							</div>
-							<span class="font-semibold">{subscriptionAmountDinero.toFormat()}</span>
+							<span class="font-semibold">{monthlyFeeDinero.toFormat()}</span>
 						</div>
-						<div class="flex justify-between items-center text-sm text-muted-foreground">
-							<span>Next billing date</span>
-							<span>{dayjs(nextBillingDate).format('D MMMM YYYY')}</span>
+						<div class="flex justify-between items-center">
+							<div class="flex items-center gap-2">
+								<span>Annual membership fee</span>
+								<TooltipProvider>
+									<Tooltip.Root>
+										<TooltipTrigger>
+											<Info class="h-4 w-4" />
+										</TooltipTrigger>
+										<TooltipContent>Yearly fee charged every January 7th</TooltipContent>
+									</Tooltip.Root>
+								</TooltipProvider>
+							</div>
+							<span class="font-semibold">{annualFeeDinero.toFormat()}</span>
+						</div>
+						<div class="border-t border-border pt-4 space-y-2">
+							<div class="flex justify-between items-center text-sm text-muted-foreground">
+								<span>Next monthly payment</span>
+								<span>{dayjs(nextMonthlyBillingDate).format('D MMMM YYYY')}</span>
+							</div>
+							<div class="flex justify-between items-center text-sm text-muted-foreground">
+								<span>Next annual payment</span>
+								<span>{dayjs(nextAnnualBillingDate).format('D MMMM YYYY')}</span>
+							</div>
 						</div>
 					</div>
 				</Card.Content>
 			</Card.Root>
-			{#if stripe}
-				<Elements
-					{stripe}
-					mode="subscription"
-					amount={proratedPriceDinero.getAmount()}
-					currency="eur"
-					theme="flat"
-					locale="en"
-					variables={{
-						colorPrimary: '221.2 83.2% 53.3%',
-						borderRadius: '1rem',
-						fontFamily: 'Inter, sans-serif',
-						fontSizeBase: '1rem',
-						fontSizeSm: '0.875rem'
-					}}
-					rules={{
-						'.Label': {
-							fontWeight: '500'
-						},
-						'.Input': {
-							marginTop: '.5rem',
-							backgroundColor: 'transparent',
-							border: 'hsl(214.3 31.8% 91.4%) 1px solid',
-							borderRadius: 'calc(var(--borderRadius) - 2px)',
-							fontSize: 'var(--fontSizeSm)',
-							padding: '0.5rem 0.75rem'
-						}
-					}}
-					bind:elements
-				>
-					<PaymentElement
-						options={{
-							defaultValues: {
-								billingDetails: {
-									email: data.userData.email,
-									name: `${data.userData.firstName} ${data.userData.lastName}`
-								}
-							},
-							business: { name: 'Dublin Hema Club' }
-						}}
-					/>
-				</Elements>
-			{:else}
+			<div id="payment-element"></div>
+			{#if !stripe}
 				<Skeleton class="h-96" />
 			{/if}
 
@@ -298,16 +342,62 @@
 					{/snippet}
 				</Form.Control>
 			</Form.Field>
-			<Form.Field {form} name="paymentIntentId">
+			<Form.Field {form} name="annualSubscriptionId">
 				<Form.Control>
 					{#snippet children({ props })}
 						<input
-							id="paymentIntentId"
+							id="annualSubscriptionId"
 							name={props.name}
 							readonly
-							value={$formData.paymentIntentId}
+							value={$formData.annualSubscriptionId}
 							hidden
 						/>
+					{/snippet}
+				</Form.Control>
+			</Form.Field>
+			<Form.Field {form} name="monthlySubscriptionId">
+				<Form.Control>
+					{#snippet children({ props })}
+						<input
+							id="monthlySubscriptionId"
+							name={props.name}
+							readonly
+							value={$formData.monthlySubscriptionId}
+							hidden
+						/>
+					{/snippet}
+				</Form.Control>
+			</Form.Field>
+			<Form.Field {form} name="annualSubscriptionPaymentIntentId">
+				<Form.Control>
+					{#snippet children({ props })}
+						<input
+							id="annualSubscriptionPaymentIntentId"
+							name={props.name}
+							readonly
+							value={$formData.annualSubscriptionPaymentIntentId}
+							hidden
+						/>
+					{/snippet}
+				</Form.Control>
+			</Form.Field>
+			<Form.Field {form} name="monthlySubscriptionPaymentIntentId">
+				<Form.Control>
+					{#snippet children({ props })}
+						<input
+							id="monthlySubscriptionPaymentIntentId"
+							name={props.name}
+							readonly
+							value={$formData.monthlySubscriptionPaymentIntentId}
+							hidden
+						/>
+					{/snippet}
+				</Form.Control>
+			</Form.Field>
+			<Form.Field {form} name="customerId">
+				<Form.Control>
+					{#snippet children({ props })}
+						<input id="customerId" name={props.name} readonly value={$formData.customerId} hidden />
 					{/snippet}
 				</Form.Control>
 			</Form.Field>

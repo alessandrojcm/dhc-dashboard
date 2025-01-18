@@ -18,16 +18,12 @@ export const memberSignupSchema = v.object({
 	stripeConfirmationToken: v.pipe(
 		v.string(),
 		v.nonEmpty('Something has gone wrong with your payment, please try again.')
-	),
-	paymentIntentId: v.pipe(
-		v.string(),
-		v.nonEmpty('Something has gone wrong with your payment, please try again.')
-	),
+	)
 });
 
 const formSchema = v.object({
 	...beginnersWaitlist.entries,
-	...v.omit(memberSignupSchema, ['stripeConfirmationToken', 'paymentIntentId']).entries,
+	...v.omit(memberSignupSchema, ['insuranceFormSubmitted', 'stripeConfirmationToken']).entries,
 	weapon: v.array(v.string('Please select your preferred weapon.'))
 });
 
