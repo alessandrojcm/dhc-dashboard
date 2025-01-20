@@ -3,14 +3,16 @@
 // This enables autocomplete, go to definition, etc.
 
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
-import Stripe from 'npm:stripe@17.5.0';
+import { Stripe } from 'https://esm.sh/stripe@17.5.0/';
+import type { Stripe as TStripe } from 'https://esm.sh/v135/stripe@17.5.0/types/index.d.ts';
 import dayjs from 'npm:dayjs';
 import { db } from '../_shared/db.ts';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') ?? '', {
 	apiVersion: '2024-12-18.acacia',
 	maxNetworkRetries: 3,
-    timeout: 30 * 1000
+	timeout: 30 * 1000,
+	httpClient: Stripe.createFetchHttpClient()
 });
 
 const corsHeaders = {
@@ -18,21 +20,43 @@ const corsHeaders = {
 	'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type'
 };
 
+const allowedEvents: TStripe.Event.Type[] = [
+	'checkout.session.completed',
+	'customer.subscription.created',
+	'customer.subscription.updated',
+	'customer.subscription.deleted',
+	'customer.subscription.paused',
+	'customer.subscription.resumed',
+	'customer.subscription.pending_update_applied',
+	'customer.subscription.pending_update_expired',
+	'customer.subscription.trial_will_end',
+	'invoice.paid',
+	'invoice.payment_failed',
+	'invoice.payment_action_required',
+	'invoice.upcoming',
+	'invoice.marked_uncollectible',
+	'invoice.payment_succeeded',
+	'payment_intent.succeeded',
+	'payment_intent.payment_failed',
+	'payment_intent.canceled'
+];
+
 async function setLastPayment(customerId: string, paidDate: number, subscriptionEnd: number) {
-  await db
-    .updateTable('member_profiles')
-    .set({ 
-      last_payment_date: dayjs.unix(paidDate).toDate(), 
-      membership_end_date: dayjs.unix(subscriptionEnd).toDate() 
-    })
-    .whereExists(
-      qb => qb.selectFrom('user_profiles')
-        .select('id')
-        .whereRef('user_profiles.id', '=', 'member_profiles.user_profile_id')
-        .where('user_profiles.customer_id', '=', customerId)
-    )
-	.execute()
-	.then(console.log);
+	await db
+		.updateTable('member_profiles')
+		.set({
+			last_payment_date: dayjs.unix(paidDate).toDate(),
+			membership_end_date: dayjs.unix(subscriptionEnd).toDate()
+		})
+		.whereExists((qb) =>
+			qb
+				.selectFrom('user_profiles')
+				.select('id')
+				.whereRef('user_profiles.id', '=', 'member_profiles.user_profile_id')
+				.where('user_profiles.customer_id', '=', customerId)
+		)
+		.execute()
+		.then(console.log);
 }
 
 async function setUserInactive(customerId: string) {
@@ -42,6 +66,44 @@ async function setUserInactive(customerId: string) {
 		.where('customer_id', '=', customerId)
 		.execute()
 		.then(console.log);
+}
+
+async function syncStripeDataToKV(customerId: string) {
+	try {
+		// Fetch latest subscription data from Stripe
+		const subscriptions: { data: TStripe.Subscription[] } = await stripe.subscriptions.list({
+			customer: customerId,
+			limit: 2, // User can have at most 2 subscriptions
+			status: 'all',
+			expand: ['data.latest_invoice']
+		});
+
+		// Find the standard membership subscription
+		const standardMembershipSub = subscriptions.data.find((sub) =>
+			sub.items.data.some((item) => item.price.lookup_key === 'standard_membership_fee')
+		);
+
+		// If no standard membership or it's not active, mark user as inactive
+		if (
+			!standardMembershipSub ||
+			['canceled', 'incomplete_expired', 'paused', 'unpaid'].includes(standardMembershipSub.status)
+		) {
+			return setUserInactive(customerId);
+		}
+
+		// Update last payment info if subscription is active
+		if (standardMembershipSub.status === 'active') {
+			return setLastPayment(
+				customerId,
+				standardMembershipSub.current_period_start,
+				standardMembershipSub.current_period_end
+			);
+		}
+		return Promise.resolve();
+	} catch (error) {
+		console.error('Error syncing Stripe data:', error);
+		throw error;
+	}
 }
 
 addEventListener('beforeUnload', (ev) => {
@@ -54,71 +116,35 @@ Deno.serve(async (req) => {
 	}
 
 	try {
-		// Get the stripe signature from the headers
 		const signature = req.headers.get('stripe-signature');
 		if (!signature) {
 			throw new Error('No stripe signature found');
 		}
 
-		// Get the raw body
 		const body = await req.text();
-
-		// Verify the webhook signature
 		const event = await stripe.webhooks.constructEventAsync(
 			body,
 			signature,
 			Deno.env.get('STRIPE_WEBHOOK_SIGNING_SECRET') ?? ''
 		);
 
-		// Handle the event
-		if (event.type === 'invoice.paid') {
-			const invoice = event.data.object;
-
-			// Get the customer ID from the invoice
-			const customerId = invoice.customer as string;
-			
-			// Get the line items to see what was paid for
-			const lineItems = invoice.lines.data;
-			
-			// Check each line item's price lookup key to determine what was paid for
-			for (const item of lineItems) {
-				const lookupKey = item.price.lookup_key;
-				
-				if (lookupKey === 'standard_membership_fee') {
-					console.log(`Customer ${customerId} paid for standard membership fee`);
-					EdgeRuntime.waitUntil(setLastPayment(customerId, invoice.created, invoice.period_end));
-				} else if (lookupKey === 'annual_membership_fee') {
-					console.log(`Customer ${customerId} paid for annual membership fee`);
-				}
-			}
-
-			return new Response(JSON.stringify({ success: true }), {
-				headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-				status: 200
-			});
-		} else if (event.type === 'customer.subscription.deleted') {
-			const subscription = event.data.object;
-			const customerId = subscription.customer as string;
-
-			// Get the subscription items to check what was cancelled
-			const items = subscription.items.data;
-			for (const item of items) {
-				const lookupKey = item.price.lookup_key;
-				if (lookupKey === 'standard_membership_fee') {
-					console.log(`Standard membership cancelled for customer ${customerId}`);
-					EdgeRuntime.waitUntil(setUserInactive(customerId));
-					break;
-				}
-			}
-
-			return new Response(JSON.stringify({ success: true }), {
+		// Check if event type is in allowed events
+		if (!allowedEvents.includes(event.type as TStripe.Event.Type)) {
+			console.log(`Ignoring unhandled event type: ${event.type}`);
+			return new Response(JSON.stringify({ received: true }), {
 				headers: { ...corsHeaders, 'Content-Type': 'application/json' },
 				status: 200
 			});
 		}
 
-		// Return a 200 for other events we're not handling
-		return new Response(JSON.stringify({ received: true }), {
+		const { customer: customerId } = event?.data?.object as {
+			customer: string;
+		};
+
+		// Sync stripe data for all relevant events
+		EdgeRuntime.waitUntil(syncStripeDataToKV(customerId));
+
+		return new Response(JSON.stringify({ success: true }), {
 			headers: { ...corsHeaders, 'Content-Type': 'application/json' },
 			status: 200
 		});
