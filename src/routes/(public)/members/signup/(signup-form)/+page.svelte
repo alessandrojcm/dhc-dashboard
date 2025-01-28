@@ -13,12 +13,10 @@
 		loadStripe,
 		type StripeElements,
 		type StripeElementsOptions,
-		type StripeIbanElement,
 		type StripePaymentElement
 	} from '@stripe/stripe-js';
 	import { PUBLIC_STRIPE_KEY } from '$env/static/public';
 	import { Skeleton } from '$lib/components/ui/skeleton';
-	import { Elements, PaymentElement } from 'svelte-stripe';
 	import * as Card from '$lib/components/ui/card';
 	import { TooltipProvider, TooltipTrigger, TooltipContent } from '$lib/components/ui/tooltip';
 	import * as Tooltip from '$lib/components/ui/tooltip';
@@ -28,7 +26,6 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import * as Alert from '$lib/components/ui/alert';
-	import { get } from 'svelte/store';
 
 	const { data } = $props();
 	let stripe: Awaited<ReturnType<typeof loadStripe>> | null = $state(null);
@@ -339,65 +336,6 @@
 								>
 							{/await}
 						</Form.Label>
-					{/snippet}
-				</Form.Control>
-			</Form.Field>
-			<Form.Field {form} name="annualSubscriptionId">
-				<Form.Control>
-					{#snippet children({ props })}
-						<input
-							id="annualSubscriptionId"
-							name={props.name}
-							readonly
-							value={$formData.annualSubscriptionId}
-							hidden
-						/>
-					{/snippet}
-				</Form.Control>
-			</Form.Field>
-			<Form.Field {form} name="monthlySubscriptionId">
-				<Form.Control>
-					{#snippet children({ props })}
-						<input
-							id="monthlySubscriptionId"
-							name={props.name}
-							readonly
-							value={$formData.monthlySubscriptionId}
-							hidden
-						/>
-					{/snippet}
-				</Form.Control>
-			</Form.Field>
-			<Form.Field {form} name="annualSubscriptionPaymentIntentId">
-				<Form.Control>
-					{#snippet children({ props })}
-						<input
-							id="annualSubscriptionPaymentIntentId"
-							name={props.name}
-							readonly
-							value={$formData.annualSubscriptionPaymentIntentId}
-							hidden
-						/>
-					{/snippet}
-				</Form.Control>
-			</Form.Field>
-			<Form.Field {form} name="monthlySubscriptionPaymentIntentId">
-				<Form.Control>
-					{#snippet children({ props })}
-						<input
-							id="monthlySubscriptionPaymentIntentId"
-							name={props.name}
-							readonly
-							value={$formData.monthlySubscriptionPaymentIntentId}
-							hidden
-						/>
-					{/snippet}
-				</Form.Control>
-			</Form.Field>
-			<Form.Field {form} name="customerId">
-				<Form.Control>
-					{#snippet children({ props })}
-						<input id="customerId" name={props.name} readonly value={$formData.customerId} hidden />
 					{/snippet}
 				</Form.Control>
 			</Form.Field>

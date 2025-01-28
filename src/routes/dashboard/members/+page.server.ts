@@ -1,8 +1,9 @@
 import type { PageServerLoad, Actions } from './$types';
-import { getRolesFromSession } from '$lib/server/getRolesFromSession';
+import { getRolesFromSession } from '$lib/server/roles';
 import { superValidate, fail, message } from 'sveltekit-superforms';
 import { valibot } from 'sveltekit-superforms/adapters';
 import settingsSchema from '$lib/schemas/membersSettings';
+import { kysely } from '$lib/server/kysely';
 
 const SETTINGS_ROLES = new Set(['president', 'committee_coordinator', 'admin']);
 
@@ -44,18 +45,20 @@ export const actions: Actions = {
 			return fail(400, { form });
 		}
 
-		const { error } = await locals.supabase
-			.from('settings')
-			.update({ value: form.data.insuranceFormLink })
-			.eq('key', 'hema_insurance_form_link');
-
-		if (error) {
-			fail(500, {
-				form,
-				message: { failure: 'Failed to update settings' }
+		return kysely
+			.updateTable('settings')
+			.set({ value: form.data.insuranceFormLink })
+			.where('key', '=', 'hema_insurance_form_link')
+			.execute()
+			.then(() => {
+				return message(form, { success: 'Settings updated successfully' });
+			})
+			.catch((error) => {
+				console.error('Error updating settings:', error);
+				return fail(500, {
+					form,
+					message: { failure: 'Failed to update settings' }
+				});
 			});
-		}
-
-		return message(form, { success: 'Settings updated successfully' });
 	}
 };

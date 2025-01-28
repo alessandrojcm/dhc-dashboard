@@ -1,7 +1,6 @@
-import { getRolesFromSession } from '$lib/server/getRolesFromSession';
+import { getRolesFromSession, allowedToggleRoles } from '$lib/server/roles';
 import type { PageServerLoad } from './$types';
 
-const allowedToggleRoles = new Set(['president', 'admin', 'committee_coordinator']);
 export const load: PageServerLoad = async ({ locals, depends }) => {
 	depends('wailist:status');
 	return {

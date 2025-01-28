@@ -3,7 +3,7 @@ BEGIN;
 -- Load the pgTAP extension
 CREATE EXTENSION IF NOT EXISTS "basejump-supabase_test_helpers";
 
-SELECT plan(10);
+SELECT plan(17);
 
 -- Test function existence
 SELECT has_function(
@@ -13,6 +13,7 @@ SELECT has_function(
     'Function get_membership_info(uuid) should exist'
 );
 
+select tests.authenticate_as_service_role();
 
 -- Setup test data
 SELECT tests.create_supabase_user('active_user', 'active@test.com');
@@ -23,6 +24,7 @@ SELECT tests.create_supabase_user('existing_member', 'member@test.com');
 SELECT tests.create_supabase_user('no_waitlist_user', 'no_waitlist@test.com');
 SELECT tests.create_supabase_user('incomplete_user', 'incomplete@test.com');
 
+
 -- Create test data
 INSERT INTO public.waitlist (id, email, status)
 VALUES 
@@ -31,6 +33,8 @@ VALUES
     (gen_random_uuid(), 'member@test.com', 'completed'),
     (gen_random_uuid(), 'active@test.com', 'completed'),
     (gen_random_uuid(), 'incomplete@test.com', 'waiting');
+
+
 
 -- Create incomplete user profile
 INSERT INTO public.user_profiles (
@@ -207,10 +211,12 @@ SELECT
 FROM public.user_profiles up
 WHERE up.supabase_user_id = tests.get_supabase_uid('existing_member');
 
+set role postgres;
 -- Ban a user
 UPDATE auth.users 
 SET banned_until = now() + interval '1 day'
 WHERE email = 'banned@test.com';
+reset role;
 
 -- Test get_membership_info function
 
@@ -287,6 +293,92 @@ SELECT ok(
     ),
     'Should return all required fields for valid user'
 );
+
+select tests.clear_authentication();
+-- Test 10: Test RLS policies
+SET LOCAL role authenticated;
+SET LOCAL "request.jwt.claims" to '{"role": "authenticated", "sub": "11111111-1111-1111-1111-111111111111"}';
+
+-- Test that non-admin users cannot insert waitlist entries directly
+select throws_ok(
+    'INSERT INTO public.waitlist (email) VALUES (''test@test.com'');',
+    '42501',
+    'new row violates row-level security policy for table "waitlist"',
+    'Should throw U0001 for non-admin user'
+);
+
+-- Switch to service role to verify
+SET LOCAL ROLE service_role;
+SELECT results_eq(
+    'select count(*) from public.waitlist where email = ''test@test.com''',
+    array[0::bigint],
+    'Non-admin users should not be able to insert waitlist entries directly'
+);
+
+-- Switch back to authenticated for update
+SET LOCAL ROLE authenticated;
+SET LOCAL "request.jwt.claims" to '{"role": "authenticated", "sub": "11111111-1111-1111-1111-111111111111"}';
+UPDATE public.waitlist
+SET status = 'completed'
+WHERE email = 'test@test.com';
+
+-- Switch to service role to verify
+SET LOCAL ROLE service_role;
+SELECT results_eq(
+    'select count(*) from public.waitlist where email = ''test@test.com'' and status = ''completed''',
+    array[0::bigint],
+    'Non-admin users should not be able to update waitlist entries'
+);
+
+-- Switch back to authenticated for delete
+SET LOCAL ROLE authenticated;
+SET LOCAL "request.jwt.claims" to '{"role": "authenticated", "sub": "11111111-1111-1111-1111-111111111111"}';
+DELETE FROM public.waitlist
+WHERE email = 'test@test.com';
+
+-- Switch to service role to verify
+SET LOCAL ROLE service_role;
+SELECT results_eq(
+    'select count(*) from public.waitlist where email = ''test@test.com''',
+    array[0::bigint],
+    'Non-admin users should not be able to delete waitlist entries'
+);
+
+-- Switch back to authenticated for user profiles test
+SET LOCAL ROLE authenticated;
+SET LOCAL "request.jwt.claims" to '{"role": "authenticated", "sub": "11111111-1111-1111-1111-111111111111"}';
+select throws_ok(
+    'INSERT INTO public.user_profiles (first_name, last_name, is_active) VALUES (''Test'', ''User'', true);',
+    '42501',
+    'new row violates row-level security policy for table "user_profiles"',
+    'Shout throw an error when inserting'
+);
+
+-- Switch to service role to verify
+SET LOCAL ROLE service_role;
+SELECT results_eq(
+    'select count(*) from public.user_profiles where first_name = ''Test'' and last_name = ''User''',
+    array[0::bigint],
+    'Non-admin users should not be able to insert user profiles directly'
+);
+
+-- Switch back to authenticated for update
+SET LOCAL ROLE authenticated;
+SET LOCAL "request.jwt.claims" to '{"role": "authenticated", "sub": "11111111-1111-1111-1111-111111111111"}';
+UPDATE public.user_profiles
+SET first_name = 'Updated'
+WHERE first_name = 'Test';
+
+-- Switch to service role to verify
+SET LOCAL ROLE service_role;
+SELECT results_eq(
+    'select count(*) from public.user_profiles where first_name = ''Updated''',
+    array[0::bigint],
+    'Non-admin users should not be able to update user profiles'
+);
+
+-- Reset role
+SET LOCAL ROLE authenticated;
 
 -- Cleanup test data
 SELECT tests.clear_authentication();

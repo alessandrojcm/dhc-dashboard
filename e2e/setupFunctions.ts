@@ -1,9 +1,11 @@
 import { faker } from '@faker-js/faker/locale/en_IE';
 import 'dotenv/config';
 import { createClient } from '@supabase/supabase-js';
+import stripe from 'stripe';
+
 import type { Database } from '../src/database.types';
 import { ANNUAL_FEE_LOOKUP, MEMBERSHIP_FEE_LOOKUP_NAME } from '../src/lib/server/constants';
-import stripe from 'stripe';
+
 
 export const stripeClient = new stripe(process.env.STRIPE_SECRET_KEY!, {
 	apiVersion: '2024-12-18.acacia'

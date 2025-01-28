@@ -281,15 +281,8 @@ alter table user_roles
 -- Grant service role access to user_profiles
 grant all on user_profiles to service_role;
 
-create policy "Service role can manage user profiles"
-    on user_profiles
-    for all
-    to service_role
-    using (true)
-    with check (true);
-
 -- User profile policies
-create policy "Committee members can see al profiles"
+create policy "Committee members can see all profiles"
     on user_profiles
     for select
     to authenticated
@@ -315,63 +308,7 @@ create policy "Users can view their own profile"
     to authenticated
     using ((select auth.uid()) = user_profiles.supabase_user_id and (select user_profiles.is_active) is true);
 
-create policy "Only admins and committee members can add profiles"
-    on user_profiles
-    for insert
-    to authenticated
-    with check (
-    (select has_any_role((select auth.uid()), array ['admin', 'president', 'committee_coordinator']::role_type[]))
-    );
-
-create policy "Only admins, committee members and the user can delete profiles"
-    on user_profiles
-    for delete
-    to authenticated
-    using (
-    (select has_any_role((select auth.uid()), array ['admin', 'president', 'committee_coordinator']::role_type[]))
-        or supabase_user_id = (select auth.uid())
-    );
-
-create policy "Users can update their own basic info"
-    on user_profiles
-    for update
-    to authenticated
-    using (supabase_user_id = (select auth.uid()) and user_profiles.is_active = true);
-
-create policy "Committee members can update user profiles"
-    on user_profiles
-    for update
-    to authenticated
-    using (
-        (select has_any_role((select auth.uid()), array ['admin', 'president', 'committee_coordinator']::role_type[]))
-    );
-
--- Existing policy: Allow committee coordinators, presidents, and admins to add roles
--- Updated to restrict adding 'admin' role only to admins
-CREATE POLICY "Committee coordinators can add roles"
-    ON user_roles
-    FOR INSERT
-    TO authenticated
-    WITH CHECK (
-    (
-        (select
-             has_any_role((SELECT auth.uid()), ARRAY ['committee_coordinator', 'president', 'admin']::role_type[]) AND
-             role <> 'admin')) OR (select (
-                                              has_role((SELECT auth.uid()), 'admin') AND
-                                              role = 'admin'
-                                              ))
-    );
-
--- Existing policy: Committee coordinators can update roles
-CREATE POLICY "Committee coordinators can update roles"
-    ON user_roles
-    FOR UPDATE
-    TO authenticated
-    USING (
-    (select has_any_role((SELECT auth.uid()), ARRAY ['committee_coordinator', 'president', 'admin']::role_type[]))
-    );
-
--- Existing policy: Users, admin and president can see their own roles
+-- Keep read policy for user roles
 CREATE POLICY "Users, admin and president can see their own roles"
     ON user_roles
     FOR SELECT
@@ -381,13 +318,9 @@ CREATE POLICY "Users, admin and president can see their own roles"
     (SELECT has_any_role((SELECT auth.uid()), ARRAY ['committee_coordinator', 'president', 'admin']::role_type[]))
     );
 
-CREATE POLICY "Service role can insert user_roles entries"
-    on user_roles
-    for insert
-    to service_role
-    with check (true);
+-- Keep service role policy for user roles
 
--- Audit log policies
+-- Keep read policy for audit logs
 create policy "Audit logs viewable by admins"
     on user_audit_log
     for select

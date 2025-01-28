@@ -14,7 +14,7 @@
 			supabase
 				.from('waitlist_management_view')
 				.select('id', { count: 'exact', head: true })
-				.neq('status', 'completed')
+				.neq('status', 'joined')
 				.abortSignal(signal)
 				.throwOnError()
 				.then((r) => r.count ?? 0)
@@ -25,7 +25,7 @@
 			supabase
 				.from('waitlist_management_view')
 				.select('avg_age:age.avg()')
-				.neq('status', 'completed')
+				.neq('status', 'joined')
 				.abortSignal(signal)
 				.single()
 				.throwOnError()
@@ -61,7 +61,7 @@
 			supabase
 				.from('waitlist_management_view')
 				.select('age,value:age.count()')
-				.neq('status', 'completed')
+				.neq('status', 'joined')
 				.order('age', { ascending: true })
 				.abortSignal(signal)
 				.throwOnError()

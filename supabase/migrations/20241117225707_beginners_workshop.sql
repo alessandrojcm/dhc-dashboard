@@ -110,20 +110,13 @@ create policy "Committee and coaches can view waitlist"
         'beginners_coordinator', 'coach']::public.role_type[]))
     );
 
--- Only workshop coordinators and admins can modify waitlist
-create policy "Workshop coordinators can modify waitlist"
-    on waitlist for all
-    to authenticated
-    using (
-    (select public.has_any_role((select auth.uid()), array ['admin', 'president', 'beginners_coordinator']::public.role_type[]))
-    );
-
+-- Keep read policies
 create policy "Only committee members can view the waitlist history"
     on waitlist_status_history
-    for all
+    for select
     to authenticated
     using (
-    (select public.has_any_role((select auth.uid()), array ['admin', 'president', 'beginners_coordinator']::public.role_type[]))
+        has_any_role((select auth.uid()), array['admin', 'president', 'committee_coordinator']::role_type[])
     );
 
 -- Indexes for performance
@@ -171,29 +164,3 @@ execute function update_last_status_change();
 
 alter table waitlist_status_history
     enable row level security;
-
-
--- Only committee members, coaches, and admins can view waitlist
-create policy "Committee and coaches can view waitlist status"
-    on waitlist for select
-    to authenticated
-    using (
-    (select public.has_any_role((select auth.uid()), array ['admin', 'president', 'committee_coordinator',
-        'beginners_coordinator', 'coach']::public.role_type[]))
-    );
-
--- Only workshop coordinators and admins can modify waitlist
-create policy "Workshop coordinators can modify waitlist status"
-    on waitlist for all
-    to authenticated
-    using (
-    (select public.has_any_role((select auth.uid()), array ['admin', 'president', 'beginners_coordinator']::public.role_type[]))
-    );
-
-create policy "Only committee members can view the waitlist status history"
-    on waitlist_status_history
-    for all
-    to authenticated
-    using (
-    (select public.has_any_role((select auth.uid()), array ['admin', 'president', 'beginners_coordinator']::public.role_type[]))
-    );

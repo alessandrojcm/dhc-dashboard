@@ -13,6 +13,18 @@ const testData = {
 	medicalConditions: faker.lorem.sentence()
 };
 
+test.afterAll(async () => {
+	await (
+		await getSupabaseServiceClient()
+	)
+		.from('settings')
+		.update({
+			value: 'true'
+		})
+		.eq('key', 'waitlist_open')
+		.throwOnError();
+})
+
 test('fills out the waitlist form and asserts no errors', async ({ page }) => {
 	// Generate test data using faker-js
 

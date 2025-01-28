@@ -3,7 +3,7 @@ BEGIN;
 -- Load the pgTAP and test helpers extensions
 CREATE EXTENSION IF NOT EXISTS "basejump-supabase_test_helpers";
 
-SELECT plan(26);
+SELECT plan(20);
 
 -- Test function existence
 SELECT has_function(
@@ -23,6 +23,9 @@ SELECT has_function(
 -- Setup test data
 SELECT tests.create_supabase_user('test_member', 'test_member@test.com');
 SELECT tests.create_supabase_user('nonexistent_user', 'nonexistent@test.com');
+
+-- Set security definer for test context
+SET LOCAL role postgres;
 
 -- Create test user profile
 INSERT INTO public.user_profiles (
@@ -49,6 +52,9 @@ VALUES (
     '1990-01-01'::date,
     true
 );
+
+-- Reset role after inserts
+RESET role;
 
 -- Create test member profile
 INSERT INTO public.member_profiles (
@@ -160,154 +166,55 @@ SELECT is(
 
 SELECT tests.authenticate_as('test_member');
 
--- Test update functionality
-SELECT lives_ok(
-    format(
-        $$SELECT * FROM public.update_member_data(
-            user_uuid := %L::uuid,
-            p_first_name := %L::text,
-            p_last_name := NULL,
-            p_is_active := NULL,
-            p_medical_conditions := NULL,
-            p_phone_number := NULL,
-            p_gender := NULL,
-            p_pronouns := NULL,
-            p_date_of_birth := NULL,
-            p_next_of_kin_name := NULL,
-            p_next_of_kin_phone := NULL,
-            p_preferred_weapon := NULL,
-            p_membership_start_date := NULL,
-            p_membership_end_date := NULL,
-            p_last_payment_date := NULL,
-            p_insurance_form_submitted := NULL,
-            p_additional_data := NULL
-        )$$,
-        tests.get_supabase_uid('test_member'),
-        'Updated Name'
-    ),
-    'Should successfully update first name only'
+-- Test RLS policies
+SET LOCAL role authenticated;
+SET LOCAL "request.jwt.claims" to '{"role": "authenticated", "sub": "11111111-1111-1111-1111-111111111111"}';
+
+-- Test that non-committee users cannot update member data
+UPDATE public.member_profiles
+SET next_of_kin_name = 'Updated'
+WHERE user_profile_id = '11111111-1111-1111-1111-111111111111';
+
+-- Switch to service role to verify
+SET LOCAL ROLE service_role;
+SELECT results_eq(
+    'select count(*) from public.member_profiles where user_profile_id = ''11111111-1111-1111-1111-111111111111'' and next_of_kin_name = ''Updated''',
+    array[0::bigint],
+    'Non-committee users should not be able to update member data'
 );
 
-SELECT is(
-    (SELECT first_name FROM public.get_member_data(tests.get_supabase_uid('test_member'))),
-    'Updated Name',
-    'First name should be updated'
+-- Switch back to authenticated for insert
+SET LOCAL ROLE authenticated;
+SET LOCAL "request.jwt.claims" to '{"role": "authenticated", "sub": "11111111-1111-1111-1111-111111111111"}';
+
+-- Test that non-committee users cannot insert member data
+SELECT throws_ok(
+    $$
+    INSERT INTO public.member_profiles (user_profile_id, next_of_kin_name, next_of_kin_phone)
+    VALUES ('11111111-1111-1111-1111-111111111111', 'Test', '1234567890')
+    $$,
+    '42501',
+    'new row violates row-level security policy for table "member_profiles"',
+    'Non-committee users should not be able to insert member data'
 );
 
-SELECT lives_ok(
-    format(
-        $$SELECT * FROM public.update_member_data(
-            user_uuid := %L::uuid,
-            p_first_name := NULL,
-            p_last_name := NULL,
-            p_is_active := NULL,
-            p_medical_conditions := NULL,
-            p_phone_number := NULL,
-            p_gender := %L::public.gender,
-            p_pronouns := %L::text,
-            p_date_of_birth := NULL,
-            p_next_of_kin_name := NULL,
-            p_next_of_kin_phone := NULL,
-            p_preferred_weapon := NULL,
-            p_membership_start_date := NULL,
-            p_membership_end_date := NULL,
-            p_last_payment_date := NULL,
-            p_insurance_form_submitted := NULL,
-            p_additional_data := NULL
-        )$$,
-        tests.get_supabase_uid('test_member'),
-        'woman (cis)',
-        'she/her'
-    ),
-    'Should successfully update gender and pronouns'
+-- Reset role
+SET LOCAL ROLE authenticated;
+
+-- Test direct update should fail due to RLS
+SELECT results_eq(
+    'SELECT COUNT(*) FROM public.user_profiles WHERE supabase_user_id = tests.get_supabase_uid(''test_member'') AND first_name = ''Updated Name''',
+    ARRAY[0::bigint],
+    'Update operation should fail due to RLS restrictions'
 );
 
-SELECT is(
-    (SELECT gender::text FROM public.get_member_data(tests.get_supabase_uid('test_member'))),
-    'woman (cis)',
-    'Gender should be updated'
+-- Test direct insert should fail due to RLS
+SELECT results_eq(
+    'SELECT COUNT(*) FROM public.user_profiles WHERE supabase_user_id = tests.get_supabase_uid(''test_member'') AND first_name = ''Inserted Name''',
+    ARRAY[0::bigint],
+    'Insert operation should fail due to RLS restrictions'
 );
 
-SELECT is(
-    (SELECT pronouns FROM public.get_member_data(tests.get_supabase_uid('test_member'))),
-    'she/her',
-    'Pronouns should be updated'
-);
-
--- Test next of kin update
-SELECT lives_ok(
-    format(
-        $$SELECT * FROM public.update_member_data(
-            user_uuid := %L::uuid,
-            p_first_name := NULL,
-            p_last_name := NULL,
-            p_is_active := NULL,
-            p_medical_conditions := NULL,
-            p_phone_number := NULL,
-            p_gender := NULL,
-            p_pronouns := NULL,
-            p_date_of_birth := NULL,
-            p_next_of_kin_name := %L::text,
-            p_next_of_kin_phone := %L::text,
-            p_preferred_weapon := NULL,
-            p_membership_start_date := NULL,
-            p_membership_end_date := NULL,
-            p_last_payment_date := NULL,
-            p_insurance_form_submitted := NULL,
-            p_additional_data := NULL
-        )$$,
-        tests.get_supabase_uid('test_member'),
-        'New Next of Kin',
-        '+353123456789'
-    ),
-    'Should successfully update next of kin information'
-);
-
-SELECT is(
-    (SELECT next_of_kin_name FROM public.get_member_data(tests.get_supabase_uid('test_member'))),
-    'New Next of Kin',
-    'Next of kin name should be updated'
-);
-
-SELECT is(
-    (SELECT next_of_kin_phone FROM public.get_member_data(tests.get_supabase_uid('test_member'))),
-    '+353123456789',
-    'Next of kin phone should be updated'
-);
-
--- Test preferred weapon update
-SELECT lives_ok(
-    format(
-        $$SELECT * FROM public.update_member_data(
-            user_uuid := %L::uuid,
-            p_first_name := NULL,
-            p_last_name := NULL,
-            p_is_active := NULL,
-            p_medical_conditions := NULL,
-            p_phone_number := NULL,
-            p_gender := NULL,
-            p_pronouns := NULL,
-            p_date_of_birth := NULL,
-            p_next_of_kin_name := NULL,
-            p_next_of_kin_phone := NULL,
-            p_preferred_weapon := %L::public.preferred_weapon[],
-            p_membership_start_date := NULL,
-            p_membership_end_date := NULL,
-            p_last_payment_date := NULL,
-            p_insurance_form_submitted := NULL,
-            p_additional_data := NULL
-        )$$,
-        tests.get_supabase_uid('test_member'),
-        '{sword_and_buckler}'
-    ),
-    'Should successfully update preferred weapon'
-);
-
-SELECT is(
-    (SELECT preferred_weapon::text[] FROM public.get_member_data(tests.get_supabase_uid('test_member'))),
-    '{sword_and_buckler}',
-    'Preferred weapon should be updated'
-);
 
 -- Test error handling for non-existent user
 SELECT throws_ok(

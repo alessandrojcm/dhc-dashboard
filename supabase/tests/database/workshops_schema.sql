@@ -62,7 +62,7 @@ SET status = 'paid'
 WHERE id = '10000000-0000-0000-0000-000000000002';
 SELECT is(
                (SELECT status FROM waitlist WHERE id = '10000000-0000-0000-0000-000000000002'),
-               'invited',
+               'waiting',
                'Coach should not be able to update the waitlist'
        );
 
