@@ -4,7 +4,7 @@ import { sequence } from '@sveltejs/kit/hooks';
 
 import { PUBLIC_SUPABASE_ANON_KEY, PUBLIC_SUPABASE_URL } from '$env/static/public';
 import type { Database } from './database.types';
-import { getRolesFromSession } from '$lib/server/getRolesFromSession';
+import { getRolesFromSession } from '$lib/server/roles';
 
 const supabase: Handle = async ({ event, resolve }) => {
 	/**

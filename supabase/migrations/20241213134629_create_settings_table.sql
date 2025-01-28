@@ -23,24 +23,7 @@ CREATE INDEX settings_key_idx ON settings(key);
 ALTER TABLE settings ENABLE ROW LEVEL SECURITY;
 -- Create policies
 -- Allow authenticated users to read settings
-CREATE POLICY "Authenticated users can read settings" ON settings FOR
-SELECT TO authenticated USING (true);
--- Allow admin, president, and committee coordinator to manage settings
-CREATE POLICY "Admin roles can manage settings" ON settings FOR ALL TO authenticated USING (
-    has_any_role(
-        (
-            SELECT auth.uid()
-        ),
-        ARRAY ['admin', 'president', 'committee_coordinator']::role_type []
-    )
-) WITH CHECK (
-    has_any_role(
-        (
-            SELECT auth.uid()
-        ),
-        ARRAY ['admin', 'president', 'committee_coordinator']::role_type []
-    )
-);
+CREATE POLICY "Authenticated users can read settings" ON settings FOR SELECT TO authenticated USING (true);
 -- Function to automatically update updated_at timestamp
 CREATE OR REPLACE FUNCTION update_settings_updated_at() RETURNS TRIGGER AS $$ BEGIN NEW.updated_at = now();
 NEW.updated_by = auth.uid();

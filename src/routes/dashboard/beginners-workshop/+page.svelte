@@ -13,21 +13,27 @@
 	const { data } = $props();
 	const supabase = data.supabase;
 	let value = $state('dashboard');
+	let dialogOpen = $state(false);
 
 	const toggleWaitlistMutation = createMutation(() => ({
 		mutationFn: async () => {
-			return supabase
-				.from('settings')
-				.update({ value: (await data.isWaitlistOpen) === false ? 'true' : 'false' })
-				.eq('key', 'waitlist_open')
-				.select();
+			const response = await fetch('/dashboard/beginners-workshop', {
+				method: 'POST'
+			});
+			const result = await response.json();
+			if (!result.success) {
+				throw new Error(result.error || 'Failed to toggle waitlist');
+			}
+			return result;
 		},
 		onSuccess: () => {
 			invalidate('wailist:status');
 			toast.success('Waitlist status updated', { position: 'top-center' });
+			dialogOpen = false;
 		},
-		onError: () => {
-			toast.error('Error updating waitlist status', { position: 'top-center' });
+		onError: (error) => {
+			toast.error(error.message || 'Error updating waitlist status', { position: 'top-center' });
+			dialogOpen = false;
 		}
 	}));
 </script>
@@ -35,9 +41,9 @@
 {#snippet waitlistToggleDialog()}
 	{#if data.canToggleWaitlist}
 		{#await data.isWaitlistOpen then isOpen}
-			<AlertDialog.Root>
+			<AlertDialog.Root bind:open={dialogOpen}>
 				<AlertDialog.Trigger class="fixed right-4 top-4">
-					<Button variant="outline">
+					<Button variant="outline" onclick={() => dialogOpen = true}>
 						{#if isOpen}
 							<LockOpen class="w-4 h-4" />
 							Close Waitlist
@@ -56,7 +62,7 @@
 						</AlertDialog.Description>
 					</AlertDialog.Header>
 					<AlertDialog.Footer>
-						<AlertDialog.Cancel>Cancel</AlertDialog.Cancel>
+						<AlertDialog.Cancel onclick={() => dialogOpen = false}>Cancel</AlertDialog.Cancel>
 						<AlertDialog.Action onclick={() => toggleWaitlistMutation.mutate()}
 							data-testid="action">{isOpen ? 'Close' : 'Open'}</AlertDialog.Action
 						>

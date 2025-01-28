@@ -79,9 +79,7 @@ SELECT has_view('public', 'member_management_view', 'View member_management_view
 -- Test RLS policies exist
 SELECT policies_are('public', 'member_profiles', ARRAY [
     'Members can view their own profile',
-    'Committee members can view all profiles',
-    'Committee members can modify profiles',
-    'Users can edit their own profile'
+    'Committee members can view all profiles'
     ], 'member_profiles should have exactly these policies');
 
 -- Test triggers
