@@ -34,6 +34,18 @@ export type Database = {
   }
   public: {
     Tables: {
+      is_valid: {
+        Row: {
+          exists: boolean | null
+        }
+        Insert: {
+          exists?: boolean | null
+        }
+        Update: {
+          exists?: boolean | null
+        }
+        Relationships: []
+      }
       member_profiles: {
         Row: {
           additional_data: Json | null
@@ -444,6 +456,14 @@ export type Database = {
       get_current_user_with_profile: {
         Args: Record<PropertyKey, never>
         Returns: Json
+      }
+      get_email_from_auth_users: {
+        Args: {
+          user_id: string
+        }
+        Returns: {
+          email: string
+        }[]
       }
       get_gender_options: {
         Args: Record<PropertyKey, never>

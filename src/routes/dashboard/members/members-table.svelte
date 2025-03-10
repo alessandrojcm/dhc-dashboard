@@ -78,6 +78,7 @@
 	const membersQuery = createQuery<FetchAndCountResult<'member_management_view'>, Error>(() => ({
 		queryKey: ['members', pageSize, currentPage, rangeStart, sortingState, searchQuery],
 		placeholderData: keepPreviousData,
+		initialData: { data: [], count: 0 },
 		queryFn: async ({ signal }) => {
 			let query = supabase.from('member_management_view').select(columns, { count: 'estimated' });
 			if (searchQuery.length > 0) {
@@ -125,17 +126,17 @@
 		manualPagination: true,
 		manualSorting: true,
 		columns: [
-			{
-				id: 'actions',
-				header: '',
-				cell: ({ row }) => {
-					return renderComponent(MemberActions, {
-						memberId: row.original.id!,
-						userId: row.original.id!,
-						setSelectedUserId: (id: string) => (selectedMemberId = id)
-					});
-				}
-			},
+			// {
+			// 	id: 'actions',
+			// 	header: '',
+			// 	cell: ({ row }) => {
+			// 		return renderComponent(MemberActions, {
+			// 			memberId: row.original.id!,
+			// 			userId: row.original.id!,
+			// 			setSelectedUserId: (id: string) => (selectedMemberId = id)
+			// 		});
+			// 	}
+			// },
 			{
 				accessorKey: 'first_name',
 				header: ({ column }) =>
@@ -341,6 +342,7 @@
 	});
 
 	const table = createSvelteTable(tableOptions);
+
 </script>
 
 <div class="flex w-full max-w-sm items-center space-x-2 mb-2 p-2">
@@ -440,7 +442,7 @@
 </div>
 
 <Sheet.Root
-	open={Boolean(selectedMemberQuery.data) && selectedMemberId !== null}
+	open={Boolean(selectedMemberQuery?.data) && selectedMemberId !== null}
 	onOpenChange={(open) => (selectedMemberId = open ? selectedMemberId : null)}
 >
 	<Sheet.Content side="right" class="w-[400px]">
