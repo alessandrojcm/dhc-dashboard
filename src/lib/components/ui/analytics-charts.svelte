@@ -9,7 +9,7 @@
 	<h3 class="mb-4">Age groups</h3>
 	<div class="h-[300px]">
 		<ScatterChart
-			series={ageDistribution}
+			data={ageDistribution}
 			x="age"
 			y="value"
 			yDomain={[0, null]}

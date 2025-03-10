@@ -15,7 +15,7 @@
 
 <FormPrimitive.Label {...restProps} bind:ref aria-required={required.toString()}>
 	{#snippet child({ props })}
-		<Label {...props} class={cn('data-[fs-error]:text-destructive', className)}>
+		<Label {...props} class={cn('data-fs-error:text-destructive', className)}>
 			{@render children?.()}
 		</Label>
 		{#if required}

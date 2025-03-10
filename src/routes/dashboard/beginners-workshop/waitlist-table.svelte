@@ -56,23 +56,38 @@
 		];
 	});
 
+	function getWaitlistQuery({
+		searchQuery,
+		sortingState,
+		rangeStart,
+		rangeEnd
+	}: {
+		searchQuery: string;
+		sortingState: SortingState;
+		rangeStart: number;
+		rangeEnd: number;
+	}) {
+		let query = supabase.from('waitlist_management_view').select(columns, { count: 'estimated' });
+		if (searchQuery.length > 0) {
+			query = query.textSearch('search_text', `'${searchQuery}'`, {
+				type: 'websearch'
+			});
+		}
+		if (sortingState.length > 0) {
+			query = query.order(sortingState[0].id, { ascending: !sortingState[0].desc });
+		}
+		return query
+			.range(rangeStart, rangeEnd)
+			.throwOnError()
+			.then((r) => ({ data: r.data, count: r.count }));
+	}
+
 	$inspect(rangeStart, rangeEnd);
-	const waitlistQuery = createQuery<FetchAndCountResult<'waitlist_status_history'>, Error>(() => ({
-		queryKey: ['waitlist', pageSize, currentPage, rangeStart, sortingState, searchQuery],
+	const waitlistQuery = createQuery<ReturnType<typeof getWaitlistQuery>>(() => ({
+		queryKey: ['waitlist', { rangeStart, rangeEnd, sortingState, searchQuery }],
 		placeholderData: keepPreviousData,
-		queryFn: () => {
-			let query = supabase.from('waitlist_management_view').select(columns, { count: 'estimated' });
-			if (searchQuery.length > 0) {
-				query = query.textSearch('search_text', `'${searchQuery}'`, {
-					type: 'websearch'
-				});
-			}
-			if (sortingState.length > 0) {
-				query = query.order(sortingState[0].id, { ascending: !sortingState[0].desc });
-			}
-			return query.range(rangeStart, rangeEnd).throwOnError() as QueryData<
-				FetchAndCountResult<'waitlist'>
-			>;
+		queryFn: ({ queryKey }) => {
+			return getWaitlistQuery(queryKey[1]);
 		}
 	}));
 	const updateWaitlistEntry = createMutation<
@@ -144,7 +159,7 @@
 			{
 				accessorKey: 'full_name',
 				header: 'Full Name',
-				footer: `Total ${waitlistQuery?.data?.count} people on the waitlist`,
+				footer: ({ table }) => `Total ${table.getRowCount() ?? 0} people on the waitlist`,
 				cell: ({ getValue }) => {
 					return renderSnippet(
 						createRawSnippet((value) => ({
@@ -193,7 +208,8 @@
 								: 'destructive',
 						class: 'h-8',
 						children: createRawSnippet(() => ({
-							render: () => `<p class="first-letter:capitalize">${getValue().replace('_', ', ')}</p>`
+							render: () =>
+								`<p class="first-letter:capitalize">${getValue().replace('_', ', ')}</p>`
 						}))
 					});
 				}
@@ -295,7 +311,9 @@
 				return sortingState;
 			}
 		},
-		rowCount: waitlistQuery?.data?.count ?? 0,
+		get rowCount() {
+			return waitlistQuery?.data?.count ?? 0;
+		},
 		getCoreRowModel: getCoreRowModel(),
 		getPaginationRowModel: getPaginationRowModel(),
 		getSortedRowModel: getSortedRowModel()

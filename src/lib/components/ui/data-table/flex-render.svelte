@@ -25,13 +25,17 @@
 	let { content, context }: Props = $props();
 </script>
 
-{#if typeof content === "string"}
+{#if typeof content === undefined}
+	{''}
+{:else if typeof content === "string"}
 	{content}
 {:else if content instanceof Function}
 	<!-- It's unlikely that a CellContext will be passed to a Header -->
 	<!-- eslint-disable-next-line @typescript-eslint/no-explicit-any -->
-	{@const result = content(context as any)}
-	{#if result instanceof RenderComponentConfig}
+	{@const result = content ? content(context as any) : null}
+	{#if result === null || result === undefined}
+		<!-- Handle null/undefined result -->
+	{:else if result instanceof RenderComponentConfig}
 		{@const { component: Component, props } = result}
 		<Component {...props} />
 	{:else if result instanceof RenderSnippetConfig}
