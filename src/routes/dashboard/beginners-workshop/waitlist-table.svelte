@@ -343,11 +343,13 @@
 	<Table.Root class="w-full">
 		<Table.Header class="sticky top-0 z-10 bg-white">
 			{#each table.getHeaderGroups() as headerGroup (headerGroup.id)}
-				{#each headerGroup.headers as header (header.id)}
-					<Table.Head class="text-black prose prose-p text-xs md:text-sm font-medium p-2">
-						<FlexRender content={header.column.columnDef.header} context={header.getContext()} />
-					</Table.Head>
-				{/each}
+				<Table.Row>
+					{#each headerGroup.headers as header (header.id)}
+						<Table.Head class="text-black prose prose-p text-xs md:text-sm font-medium p-2">
+							<FlexRender content={header.column.columnDef.header} context={header.getContext()} />
+						</Table.Head>
+					{/each}
+				</Table.Row>
 			{/each}
 		</Table.Header>
 		<Table.Body>
