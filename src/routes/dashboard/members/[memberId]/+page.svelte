@@ -1,25 +1,23 @@
 <script lang="ts">
+	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
+	import { Checkbox } from '$lib/components/ui/checkbox';
+	import DatePicker from '$lib/components/ui/date-picker.svelte';
 	import * as Form from '$lib/components/ui/form';
 	import { Input } from '$lib/components/ui/input';
-	import { Button } from '$lib/components/ui/button';
+	import * as RadioGroup from '$lib/components/ui/radio-group/index.js';
 	import * as Select from '$lib/components/ui/select';
+	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { Textarea } from '$lib/components/ui/textarea';
-	import { superForm } from 'sveltekit-superforms';
-	import { valibotClient } from 'sveltekit-superforms/adapters';
+	import { whyThisField } from '$lib/components/ui/why-this-field.svelte';
 	import signupSchema from '$lib/schemas/membersSignup';
-	import DatePicker from '$lib/components/ui/date-picker.svelte';
-	import { dateProxy } from 'sveltekit-superforms';
-	import { getLocalTimeZone, fromDate } from '@internationalized/date';
+	import { fromDate, getLocalTimeZone } from '@internationalized/date';
 	import dayjs from 'dayjs';
 	import { AsYouType } from 'libphonenumber-js/min';
-	import { Checkbox } from '$lib/components/ui/checkbox';
-	import { toast } from 'svelte-sonner';
-	import { onDestroy } from 'svelte';
-	import { whyThisField } from '$lib/components/ui/why-this-field.svelte';
-	import * as RadioGroup from '$lib/components/ui/radio-group/index.js';
-	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { ExternalLink } from 'lucide-svelte';
+	import { toast } from 'svelte-sonner';
+	import { dateProxy, superForm } from 'sveltekit-superforms';
+	import { valibotClient } from 'sveltekit-superforms/adapters';
 
 	const { data } = $props();
 
@@ -40,15 +38,14 @@
 	const formatedNextOfKinPhone = $derived.by(() =>
 		new AsYouType('IE').input($formData.nextOfKinNumber)
 	);
+	$effect(() => {
+		const sub = message.subscribe((m) => {
+			if (m?.success) {
+				toast.success(m.success, { position: 'top-right' });
+			}
+		});
 
-	const sub = message.subscribe((m) => {
-		if (m?.success) {
-			toast.success(m.success, { position: 'top-right' });
-		}
-	});
-
-	onDestroy(() => {
-		sub();
+		return sub;
 	});
 
 	$inspect($errors);

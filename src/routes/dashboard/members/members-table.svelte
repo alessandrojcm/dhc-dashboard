@@ -1,11 +1,25 @@
 <script lang="ts">
-	import { createMutation, createQuery, keepPreviousData } from '@tanstack/svelte-query';
+	import { goto } from '$app/navigation';
+	import { page } from '$app/stores';
+	import type { Database, Tables } from '$database';
+	import { Badge } from '$lib/components/ui/badge';
+	import { Button } from '$lib/components/ui/button';
 	import {
 		createSvelteTable,
 		FlexRender,
 		renderComponent,
 		renderSnippet
 	} from '$lib/components/ui/data-table/index.js';
+	import { Input } from '$lib/components/ui/input';
+	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
+	import * as Pagination from '$lib/components/ui/pagination/index.js';
+	import * as Select from '$lib/components/ui/select';
+	import * as Sheet from '$lib/components/ui/sheet';
+	import * as Table from '$lib/components/ui/table/index.js';
+	import SortHeader from '$lib/components/ui/table/sort-header.svelte';
+	import type { FetchAndCountResult } from '$lib/types';
+	import type { QueryData, SupabaseClient } from '@supabase/supabase-js';
+	import { createQuery, keepPreviousData } from '@tanstack/svelte-query';
 	import {
 		getCoreRowModel,
 		getPaginationRowModel,
@@ -14,25 +28,15 @@
 		type SortingState,
 		type TableOptions
 	} from '@tanstack/table-core';
-	import { page } from '$app/stores';
-	import { goto } from '$app/navigation';
-	import type { Database, Tables } from '$database';
-	import * as Select from '$lib/components/ui/select';
-	import * as Table from '$lib/components/ui/table/index.js';
-	import * as Pagination from '$lib/components/ui/pagination/index.js';
-	import * as Sheet from '$lib/components/ui/sheet';
-	import { Badge } from '$lib/components/ui/badge';
-	import SortHeader from '$lib/components/ui/table/sort-header.svelte';
 	import dayjs from 'dayjs';
-	import { createRawSnippet } from 'svelte';
-	import type { QueryData, SupabaseClient } from '@supabase/supabase-js';
-	import type { FetchAndCountResult } from '$lib/types';
-	import { Input } from '$lib/components/ui/input';
-	import { Button } from '$lib/components/ui/button';
-	import { Cross2 } from 'svelte-radix';
-	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
-	import MemberActions from './member-actions.svelte';
 	import { Ambulance } from 'lucide-svelte';
+	import { createRawSnippet } from 'svelte';
+	import { Cross2 } from 'svelte-radix';
+	import MemberActions from './member-actions.svelte';
+	import {
+		RenderComponentConfig,
+		RenderSnippetConfig
+	} from '$lib/components/ui/data-table/render-helpers';
 
 	const columns =
 		'id,first_name,last_name,email,phone_number,gender,pronouns,is_active,preferred_weapon,membership_start_date,membership_end_date,last_payment_date,insurance_form_submitted,roles,age,social_media_consent';
@@ -126,17 +130,17 @@
 		manualPagination: true,
 		manualSorting: true,
 		columns: [
-			// {
-			// 	id: 'actions',
-			// 	header: '',
-			// 	cell: ({ row }) => {
-			// 		return renderComponent(MemberActions, {
-			// 			memberId: row.original.id!,
-			// 			userId: row.original.id!,
-			// 			setSelectedUserId: (id: string) => (selectedMemberId = id)
-			// 		});
-			// 	}
-			// },
+			{
+				id: 'actions',
+				header: 'Actions',
+				cell: ({ row }) => {
+					return renderComponent(MemberActions, {
+						memberId: row.original.id!,
+						userId: row.original.id!,
+						setSelectedUserId: (id: string) => (selectedMemberId = id)
+					});
+				}
+			},
 			{
 				accessorKey: 'first_name',
 				header: ({ column }) =>
@@ -236,7 +240,8 @@
 								: 'destructive',
 						class: 'h-8',
 						children: createRawSnippet(() => ({
-							render: () => `<p class="first-letter:capitalize">${getValue().replace('_', ', ')}</p>`
+							render: () =>
+								`<p class="first-letter:capitalize">${getValue().replace('_', ', ')}</p>`
 						}))
 					});
 				}
@@ -276,7 +281,7 @@
 					const date = getValue() as string;
 					return renderSnippet(
 						createRawSnippet((value) => ({
-							render: () => dayjs(value()).format('MMM D, YYYY')
+							render: () => `<p>${dayjs(value()).format('MMM D, YYYY')}</p>`
 						})),
 						date
 					);
@@ -295,7 +300,7 @@
 					const date = getValue() as string;
 					return renderSnippet(
 						createRawSnippet((value) => ({
-							render: () => (value() ? dayjs(value()).format('MMM D, YYYY') : 'Never')
+							render: () => `<p>${value() ? dayjs(value()).format('MMM D, YYYY') : 'Never'}</p>`
 						})),
 						date
 					);
@@ -342,7 +347,6 @@
 	});
 
 	const table = createSvelteTable(tableOptions);
-
 </script>
 
 <div class="flex w-full max-w-sm items-center space-x-2 mb-2 p-2">
@@ -367,11 +371,16 @@
 	<Table.Root class="w-full">
 		<Table.Header class="sticky top-0 z-10 bg-white">
 			{#each table.getHeaderGroups() as headerGroup (headerGroup.id)}
-				{#each headerGroup.headers as header (header.id)}
-					<Table.Head class="text-black prose prose-p text-xs md:text-sm font-medium p-2">
-						<FlexRender content={header.column.columnDef.header} context={header.getContext()} />
-					</Table.Head>
-				{/each}
+				<Table.Row>
+					{#each headerGroup.headers as header (header.id)}
+						<Table.Head class="text-black prose prose-p text-xs md:text-sm font-medium p-2">
+							<FlexRender
+								content={header.column.columnDef.header ?? ''}
+								context={header.getContext() ?? {}}
+							/>
+						</Table.Head>
+					{/each}
+				</Table.Row>
 			{/each}
 		</Table.Header>
 		<Table.Body>
