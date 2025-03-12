@@ -53,7 +53,7 @@
 			theme: 'flat',
 			variables: {
 				colorPrimary: '221.2 83.2% 53.3%',
-				borderRadius: '1rem',
+				borderRadius: '.5rem',
 				fontFamily: 'Inter, sans-serif',
 				fontSizeBase: '1rem',
 				fontSizeSm: '0.875rem'
