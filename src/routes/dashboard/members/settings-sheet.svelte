@@ -21,7 +21,7 @@
 		validators: valibotClient(memberSettingsSchema),
 		onResult: ({ result }) => {
 			result.type === 'error' && toast.error(result.error.message);
-			result.type === 'success' && toast.success(result.data?.message);
+			result.type === 'success' && toast.success(result.data?.message || 'Settings updated successfully');
 		}
 	});
 
