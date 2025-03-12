@@ -321,7 +321,6 @@
 	const table = createSvelteTable(tableOptions);
 </script>
 
-<h2 class="prose prose-h2 text-lg mb-2 ml-2">Waitlist</h2>
 <div class="flex w-full max-w-sm items-center space-x-2 mb-2 p-2">
 	<Input
 		value={searchQuery}

@@ -13,7 +13,8 @@ const config = {
 		// See https://svelte.dev/docs/kit/adapters for more information about adapters.
 		adapter: adapter(),
 		alias: {
-			$database: './src/database.types.ts'
+			$database: './src/database.types.ts',
+			$assets: './src/assets'
 		}
 	}
 };

@@ -5,6 +5,7 @@
 	import * as Avatar from '$lib/components/ui/avatar';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import type { NavData, UserData } from '$lib/types';
+	import DHCLogo from '$assets/dhc-logo.svg?raw';
 
 	type Props = {
 		className?: string | undefined | null;
@@ -25,8 +26,11 @@
 	}: ComponentProps<typeof Sidebar.Root> & Props = $props();
 </script>
 
-<Sidebar.Root bind:ref {collapsible} {...restProps} class="h-[100vh]">
-	<Sidebar.Header>
+<Sidebar.Root bind:ref {collapsible} {...restProps} class="h-[100vh] border-r-1">
+	<Sidebar.Header class="flex flex-row items-center">
+		<div class="h-12 w-12">
+			{@html DHCLogo}
+		</div>
 		<h2 class="text-lg mt-2 text-black font-medium">Dublin Hema Club</h2>
 	</Sidebar.Header>
 	<Sidebar.Content data-testid="sidebar">
