@@ -32,6 +32,9 @@ importers:
       '@tanstack/table-core':
         specifier: ^8.21.2
         version: 8.21.2
+      country-codes-list:
+        specifier: ^2.0.0
+        version: 2.0.0
       d3-array:
         specifier: ^3.2.4
         version: 3.2.4
@@ -123,6 +126,9 @@ importers:
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
+      country-flag-icons:
+        specifier: ^1.5.18
+        version: 1.5.18
       csv-parse:
         specifier: ^5.6.0
         version: 5.6.0
@@ -1557,6 +1563,12 @@ packages:
   cookie@0.7.2:
     resolution: {integrity: sha512-yki5XnKuf750l50uGTllt6kKILY4nQ1eNIQatoXEByZ5dWgnKqbnqmTrBE5B4N7lrMJKQ2ytWMiTO2o0v6Ew/w==}
     engines: {node: '>= 0.6'}
+
+  country-codes-list@2.0.0:
+    resolution: {integrity: sha512-KZqq/LBdCD76hQCa6nOx0bA/nIjYly1OtV8+Bbt/4SW+mJEqGk7oZHjUj7PRrV0gXJJKs6Tv2cIntFdofBByvA==}
+
+  country-flag-icons@1.5.18:
+    resolution: {integrity: sha512-z+Uzesi8u8IdkViqqbzzbkf3+a7WJpcET5B7sPwTg7GXqPYpVEgNlZ/FC3l8KO4mEf+mNkmzKLppKTN4PlCJEQ==}
 
   cross-fetch@4.1.0:
     resolution: {integrity: sha512-uKm5PU+MHTootlWEY+mZ4vvXoCn4fLQxT9dSc1sXVMSFkINTJVN8cAQROpwcKm8bJ/c7rgZVIBWzH5T78sNZZw==}
@@ -5078,6 +5090,10 @@ snapshots:
   cookie@0.6.0: {}
 
   cookie@0.7.2: {}
+
+  country-codes-list@2.0.0: {}
+
+  country-flag-icons@1.5.18: {}
 
   cross-fetch@4.1.0:
     dependencies:

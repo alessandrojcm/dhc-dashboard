@@ -35,8 +35,13 @@ test('fills out the waitlist form and asserts no errors', async ({ page }) => {
 	await page.fill('input[name="firstName"]', testData.firstName);
 	await page.fill('input[name="lastName"]', testData.lastName);
 	await page.fill('input[name="email"]', testData.email);
-	await page.getByLabel(/phone number/i).pressSequentially(testData.phoneNumber, { delay: 50 });
-	await page.getByLabel(/phone number/i).blur();
+	
+	// Find the phone input field (it's now inside the phone input component)
+	// The new component has a div wrapper with an Input of type tel inside
+	const phoneInputField = page.locator('div').filter({ hasText: /phone number/i }).locator('input[type="tel"]');
+	
+	await phoneInputField.pressSequentially(testData.phoneNumber, { delay: 50 });
+	await phoneInputField.blur();
 	await page.getByPlaceholder('Enter your pronouns').fill('he/him');
 	await page.getByLabel(/gender/i).click();
 	await page.getByRole('option', { name: 'man (cis)', exact: true }).click();
