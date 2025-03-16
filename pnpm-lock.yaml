@@ -161,7 +161,7 @@ importers:
         version: 2.0.0(kysely@0.27.6)(postgres@3.4.5)
       kysely-supabase:
         specifier: ^0.2.0
-        version: 0.2.0(@supabase/supabase-js@2.49.1)(kysely@0.27.6)(supabase@2.15.8)
+        version: 0.2.0(@supabase/supabase-js@2.49.1)(kysely@0.27.6)(supabase@2.19.7)
       lucide-svelte:
         specifier: ^0.479.0
         version: 0.479.0(svelte@5.22.6)
@@ -190,8 +190,8 @@ importers:
         specifier: ^17.7.0
         version: 17.7.0
       supabase:
-        specifier: ^2.15.8
-        version: 2.15.8
+        specifier: ^2.19.7
+        version: 2.19.7
       svelte:
         specifier: ^5.22.6
         version: 5.22.6
@@ -3239,8 +3239,8 @@ packages:
     engines: {node: '>=16 || 14 >=14.17'}
     hasBin: true
 
-  supabase@2.15.8:
-    resolution: {integrity: sha512-yY4kVpdd7x9u5QqTW/8zUXIrMgdkBDGqQwkDugBLe8uoFdH9tVZKt0L5RmuM21RJ0MEQkby2sQrTfiXvgGyx9w==}
+  supabase@2.19.7:
+    resolution: {integrity: sha512-+Qu5xHvk/CnAHb5iDpCWCX0SdwFR5smpTG6VUSTw/T8WxCDDQsIb2mui2pu18wqKOZ0NLs/ZTDDb2+yPejTRBQ==}
     engines: {npm: '>=8'}
     hasBin: true
 
@@ -5850,11 +5850,11 @@ snapshots:
       kysely: 0.27.6
       postgres: 3.4.5
 
-  kysely-supabase@0.2.0(@supabase/supabase-js@2.49.1)(kysely@0.27.6)(supabase@2.15.8):
+  kysely-supabase@0.2.0(@supabase/supabase-js@2.49.1)(kysely@0.27.6)(supabase@2.19.7):
     dependencies:
       '@supabase/supabase-js': 2.49.1
       kysely: 0.27.6
-      supabase: 2.15.8
+      supabase: 2.19.7
 
   kysely@0.27.6: {}
 
@@ -6761,7 +6761,7 @@ snapshots:
       pirates: 4.0.6
       ts-interface-checker: 0.1.13
 
-  supabase@2.15.8:
+  supabase@2.19.7:
     dependencies:
       bin-links: 5.0.0
       https-proxy-agent: 7.0.6

@@ -2,7 +2,7 @@
 CREATE TYPE social_media_consent AS ENUM ('no', 'yes_recognizable', 'yes_unrecognizable');
 -- Add social_media_consent field to user_profiles
 ALTER TABLE public.user_profiles
-ADD COLUMN social_media_consent social_media_consent NOT NULL DEFAULT 'no';
+ADD COLUMN social_media_consent social_media_consent DEFAULT 'no';
 -- Add comment to explain the field's purpose
 COMMENT ON COLUMN public.user_profiles.social_media_consent IS 'Indicates whether and how the user has consented to appear in social media posts';
 -- Drop old function
