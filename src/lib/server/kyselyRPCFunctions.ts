@@ -12,6 +12,61 @@ export function getMembershipInfo(
 		.then((r) => r.rows[0].get_membership_info);
 }
 
+export function getInvitationInfo(
+	userId: string,
+	executor: QueryExecutorProvider
+): Promise<Record<string, unknown>> {
+	return sql<{
+		get_invitation_info: Record<string, unknown>;
+	}>`select * from get_invitation_info(${userId}::uuid)`
+		.execute(executor)
+		.then((r) => r.rows[0].get_invitation_info);
+}
+
+export function createInvitation(
+	{
+		email,
+		invitationType,
+		waitlistId = null,
+		expiresAt = null,
+		metadata = null
+	}: {
+		email: string;
+		invitationType: 'workshop' | 'admin';
+		waitlistId?: string | null;
+		expiresAt?: Date | null;
+		metadata?: Record<string, unknown> | null;
+	},
+	executor: QueryExecutorProvider
+): Promise<string> {
+	return sql<{
+		create_invitation: string;
+	}>`select * from create_invitation(
+		${email}::text,
+		${invitationType}::text,
+		${waitlistId}::uuid,
+		${expiresAt}::timestamptz,
+		${metadata ? JSON.stringify(metadata) : null}::jsonb
+	)`
+		.execute(executor)
+		.then((r) => r.rows[0].create_invitation);
+}
+
+export function updateInvitationStatus(
+	invitationId: string,
+	status: 'pending' | 'accepted' | 'expired' | 'revoked',
+	executor: QueryExecutorProvider
+): Promise<boolean> {
+	return sql<{
+		update_invitation_status: boolean;
+	}>`select * from update_invitation_status(
+		${invitationId}::uuid,
+		${status}::invitation_status
+	)`
+		.execute(executor)
+		.then((r) => r.rows[0].update_invitation_status);
+}
+
 export function completeMemberRegistration(
 	{
 		v_user_id,
