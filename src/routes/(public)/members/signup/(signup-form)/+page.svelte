@@ -26,6 +26,7 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import * as Alert from '$lib/components/ui/alert';
+	import PhoneInput from '$lib/components/ui/phone-input.svelte';
 
 	const { data } = $props();
 	let stripe: Awaited<ReturnType<typeof loadStripe>> | null = $state(null);
@@ -240,15 +241,7 @@
 				<Form.Control>
 					{#snippet children({ props })}
 						<Form.Label required>Next of Kin Phone Number</Form.Label>
-						<Input
-							type="tel"
-							{...props}
-							placeholder="Enter your next of kin's phone number"
-							value={formatedNextOfKinPhone}
-							onchange={(event) => {
-								$formData.nextOfKinNumber = event.target.value;
-							}}
-						/>
+						<PhoneInput placeholder="Enter your next of kin's phone number" {...props} bind:phoneNumber={$formData.nextOfKinNumber} />
 					{/snippet}
 				</Form.Control>
 				<Form.FieldErrors />

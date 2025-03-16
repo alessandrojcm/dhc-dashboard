@@ -13,10 +13,10 @@
 	import { CheckCircled } from 'svelte-radix';
 	import * as Alert from '$lib/components/ui/alert';
 	import * as Select from '$lib/components/ui/select';
-	import { AsYouType } from 'libphonenumber-js/min';
 	import Textarea from '$lib/components/ui/textarea/textarea.svelte';
 	import * as RadioGroup from '$lib/components/ui/radio-group/index.js';
 	import { whyThisField } from '$lib/components/ui/why-this-field.svelte';
+	import PhoneInput from '$lib/components/ui/phone-input.svelte'
 	import { toast } from 'svelte-sonner';
 
 	const { data } = $props();
@@ -31,7 +31,6 @@
 		}
 		return fromDate(dayjs($formData.dateOfBirth).toDate(), getLocalTimeZone());
 	});
-	const formatedPhone = $derived.by(() => new AsYouType('IE').input($formData.phoneNumber));
 
 	$effect(() => {
 		const unsubscribe = message.subscribe((message) => {
@@ -117,15 +116,7 @@
 					<Form.Control>
 						{#snippet children({ props })}
 							<Form.Label required>Phone number</Form.Label>
-							<Input
-								type="tel"
-								{...props}
-								value={formatedPhone}
-								onchange={(event) => {
-									$formData.phoneNumber = event.target.value;
-								}}
-								placeholder="Enter your phone number"
-							/>
+							<PhoneInput {...props} bind:phoneNumber={$formData.phoneNumber} />
 						{/snippet}
 					</Form.Control>
 					<Form.FieldErrors />

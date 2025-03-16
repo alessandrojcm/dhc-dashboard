@@ -5,6 +5,7 @@
 	import DatePicker from '$lib/components/ui/date-picker.svelte';
 	import * as Form from '$lib/components/ui/form';
 	import { Input } from '$lib/components/ui/input';
+	import PhoneInput from '$lib/components/ui/phone-input.svelte';
 	import * as RadioGroup from '$lib/components/ui/radio-group/index.js';
 	import * as Select from '$lib/components/ui/select';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
@@ -13,7 +14,6 @@
 	import signupSchema from '$lib/schemas/membersSignup';
 	import { fromDate, getLocalTimeZone } from '@internationalized/date';
 	import dayjs from 'dayjs';
-	import { AsYouType } from 'libphonenumber-js/min';
 	import { ExternalLink } from 'lucide-svelte';
 	import { toast } from 'svelte-sonner';
 	import { dateProxy, superForm } from 'sveltekit-superforms';
@@ -34,10 +34,6 @@
 		}
 		return fromDate(dayjs($formData.dateOfBirth).toDate(), getLocalTimeZone());
 	});
-	const formatedPhone = $derived.by(() => new AsYouType('IE').input($formData.phoneNumber));
-	const formatedNextOfKinPhone = $derived.by(() =>
-		new AsYouType('IE').input($formData.nextOfKinNumber)
-	);
 	$effect(() => {
 		const sub = message.subscribe((m) => {
 			if (m?.success) {
@@ -100,14 +96,7 @@
 						<Form.Control>
 							{#snippet children({ props })}
 								<Form.Label for="phoneNumber">Phone Number</Form.Label>
-								<Input
-									{...props}
-									type="tel"
-									value={formatedPhone}
-									onchange={(event) => {
-										$formData.phoneNumber = event.target.value;
-									}}
-								/>
+								<PhoneInput {...props} bind:phoneNumber={$formData.phoneNumber} />
 							{/snippet}
 						</Form.Control>
 						<Form.FieldErrors />
@@ -277,13 +266,10 @@
 						<Form.Control>
 							{#snippet children({ props })}
 								<Form.Label for="nextOfKinNumber">Next of Kin Phone Number</Form.Label>
-								<Input
+								<PhoneInput
+									placeholder="Enter your next of kin's phone number"
 									{...props}
-									type="tel"
-									value={formatedNextOfKinPhone}
-									onchange={(event) => {
-										$formData.nextOfKinNumber = event.target.value;
-									}}
+									bind:phoneNumber={$formData.nextOfKinNumber}
 								/>
 							{/snippet}
 						</Form.Control>

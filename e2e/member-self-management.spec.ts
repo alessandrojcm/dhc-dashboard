@@ -16,6 +16,7 @@ test.describe('Member Self-Management', () => {
 	test('should navigate to member profile whe using only member', async ({ page }) => {
 		await page.goto('/dashboard');
 		await expect(page.getByText(/member information/i)).toBeVisible();
+		await page.pause();
 	});
 
 	test('should update member profile', async ({ page }) => {
