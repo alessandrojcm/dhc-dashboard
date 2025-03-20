@@ -100,12 +100,14 @@ SELECT trigger_is('public', 'user_profiles', 'update_user_profiles_updated_at', 
 -- Test policies for user_profiles
 SELECT policies_are('public', 'user_profiles', ARRAY [
     'Committee members can see all profiles',
-    'Users can view their own profile'
+    'Users can view their own profile',
+    'Allow auth admin to read user profiles'
 ], 'user_profiles should have all expected policies');
 
 -- Test policies for user_roles
 SELECT policies_are('public', 'user_roles', ARRAY [
-    'Users, admin and president can see their own roles'
+    'Users, admin and president can see their own roles',
+    'Allow auth admin to read user roles'
 ], 'user_roles should have all expected policies');
 
 -- Test policies for user_audit_log

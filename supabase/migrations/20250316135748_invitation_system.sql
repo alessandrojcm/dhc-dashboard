@@ -29,12 +29,12 @@ ALTER TABLE public.invitations ENABLE ROW LEVEL SECURITY;
 -- Allow admins to see all invitations
 CREATE POLICY "Admins can see all invitations" 
   ON public.invitations FOR SELECT 
-  USING (public.has_any_role((select auth.uid()), ARRAY['admin', 'president', 'committee_coordinator']::role_type[]));
+  USING (public.has_any_role((select auth.uid()), ARRAY['admin', 'president', 'committee_coordinator']::public.role_type[]));
 
 -- Allow admins to create/update invitations
 CREATE POLICY "Admins can create and update invitations" 
   ON public.invitations FOR ALL 
-  USING (public.has_any_role((select auth.uid()), ARRAY['admin', 'president', 'committee_coordinator']::role_type[]));
+  USING (public.has_any_role((select auth.uid()), ARRAY['admin', 'president', 'committee_coordinator']::public.role_type[]));
 
 -- Allow users to see their own invitations
 CREATE POLICY "Users can see their own invitations" 
@@ -59,7 +59,7 @@ DECLARE
   v_invitation_id UUID;
 BEGIN
   -- Check if caller has admin role
-  IF NOT public.has_any_role((select auth.uid()), ARRAY['admin', 'president', 'committee_coordinator']::role_type[]) THEN
+  IF NOT public.has_any_role((select auth.uid()), ARRAY['admin', 'president', 'committee_coordinator']::public.role_type[]) THEN
     RAISE EXCEPTION USING
       errcode = 'PERM1',
       message = 'Permission denied: Admin role required to create invitations';
@@ -282,7 +282,7 @@ AS $$
 BEGIN
   -- Check if caller has admin role or is the user associated with the invitation
   IF NOT (
-    public.has_any_role((select auth.uid()), ARRAY['admin', 'president', 'committee_coordinator']::role_type[]) OR
+    public.has_any_role((select auth.uid()), ARRAY['admin', 'president', 'committee_coordinator']::public.role_type[]) OR
     EXISTS (
       SELECT 1 FROM public.invitations 
       WHERE id = p_invitation_id AND user_id = (select auth.uid())
