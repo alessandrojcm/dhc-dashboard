@@ -51,15 +51,18 @@ CREATE OR REPLACE FUNCTION public.create_invitation(
 )
 RETURNS UUID
 LANGUAGE plpgsql
-SECURITY DEFINER
+SECURITY INVOKER
 SET search_path = ''
 AS $$
 DECLARE
   v_user_id UUID;
   v_invitation_id UUID;
 BEGIN
-  -- Check if caller has admin role
-  IF NOT public.has_any_role((select auth.uid()), ARRAY['admin', 'president', 'committee_coordinator']::public.role_type[]) THEN
+  -- Check if caller has admin role or is a service role
+  IF NOT (
+    public.has_any_role((select auth.uid()), ARRAY['admin', 'president', 'committee_coordinator']::public.role_type[]) OR
+    (select current_role) IN ('postgres', 'service_role')
+  ) THEN
     RAISE EXCEPTION USING
       errcode = 'PERM1',
       message = 'Permission denied: Admin role required to create invitations';
@@ -108,7 +111,7 @@ CREATE OR REPLACE FUNCTION public.get_invitation_info(
 )
 RETURNS JSONB
 LANGUAGE plpgsql
-SECURITY DEFINER
+SECURITY INVOKER
 SET search_path = ''
 AS $$
 DECLARE
@@ -128,6 +131,17 @@ DECLARE
   v_gender TEXT;
   v_medical_conditions TEXT;
 BEGIN
+  -- Check if this is a service role or if the user is trying to get their own invitation info
+  IF NOT (
+    p_user_id = (select auth.uid()) OR
+    (select current_role) IN ('postgres', 'service_role') OR
+    public.has_any_role((select auth.uid()), ARRAY['admin', 'president', 'committee_coordinator']::public.role_type[])
+  ) THEN
+    RAISE EXCEPTION USING
+      errcode = 'PERM1',
+      message = 'Permission denied: Cannot access invitation info for another user';
+  END IF;
+
   -- Get user email and banned status
   SELECT email, banned_until INTO v_user_email, v_banned_until
   FROM auth.users
@@ -224,7 +238,7 @@ BEGIN
         'workshop',
         jsonb_build_object('auto_created', true, 'waitlist_status', v_waitlist_status)
       )
-      RETURNING id INTO v_invitation_id;
+      RETURNING id, status INTO v_invitation_id, v_invitation_status;
     EXCEPTION
       WHEN no_data_found THEN
         RAISE EXCEPTION USING
@@ -256,7 +270,8 @@ BEGIN
     'date_of_birth', v_date_of_birth,
     'pronouns', v_pronouns,
     'gender', v_gender,
-    'medical_conditions', v_medical_conditions
+    'medical_conditions', v_medical_conditions,
+    'status', v_invitation_status
   );
   
 EXCEPTION
@@ -276,17 +291,18 @@ CREATE OR REPLACE FUNCTION public.update_invitation_status(
 )
 RETURNS BOOLEAN
 LANGUAGE plpgsql
-SECURITY DEFINER
+SECURITY INVOKER
 SET search_path = ''
 AS $$
 BEGIN
-  -- Check if caller has admin role or is the user associated with the invitation
+  -- Check if caller has admin role, is the user associated with the invitation, or is a service role
   IF NOT (
     public.has_any_role((select auth.uid()), ARRAY['admin', 'president', 'committee_coordinator']::public.role_type[]) OR
     EXISTS (
       SELECT 1 FROM public.invitations 
       WHERE id = p_invitation_id AND user_id = (select auth.uid())
-    )
+    ) OR
+    (select current_role) IN ('postgres', 'service_role')
   ) THEN
     RAISE EXCEPTION USING
       errcode = 'PERM1',
