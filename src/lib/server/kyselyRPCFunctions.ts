@@ -1,6 +1,18 @@
 import type { Database } from '$database';
 import { sql, type QueryExecutorProvider } from 'kysely';
 
+type GetInvitationInfoResult = {
+	invitation_id: string;
+	first_name: string;
+	last_name: string;
+	phone_number: string;
+	date_of_birth: string;
+	pronouns: string;
+	gender: Database["public"]["Enums"]["gender"];
+	medical_conditions: string;
+	status: Database["public"]["Enums"]["invitation_status"];
+};
+
 export function getMembershipInfo(
 	userId: string,
 	executor: QueryExecutorProvider
@@ -15,9 +27,9 @@ export function getMembershipInfo(
 export function getInvitationInfo(
 	userId: string,
 	executor: QueryExecutorProvider
-): Promise<Record<string, unknown>> {
+): Promise<GetInvitationInfoResult> {
 	return sql<{
-		get_invitation_info: Record<string, unknown>;
+		get_invitation_info: GetInvitationInfoResult;
 	}>`select * from get_invitation_info(${userId}::uuid)`
 		.execute(executor)
 		.then((r) => r.rows[0].get_invitation_info);
