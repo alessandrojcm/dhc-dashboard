@@ -12,7 +12,7 @@ import { MEMBERSHIP_FEE_LOOKUP_NAME, ANNUAL_FEE_LOOKUP } from '$lib/server/const
 import Dinero from 'dinero.js';
 import { kysely } from '$lib/server/kysely';
 import Stripe from 'stripe';
-import { completeMemberRegistration, getMembershipInfo } from '$lib/server/kyselyRPCFunctions';
+import { completeMemberRegistration, getInvitationInfo, updateInvitationStatus } from '$lib/server/kyselyRPCFunctions';
 
 type StripePaymentInfo = {
 	customerId: string;
@@ -24,8 +24,15 @@ type StripePaymentInfo = {
 export const load: PageServerLoad = async ({ parent, cookies }) => {
 	const { userData } = await parent();
 	try {
-		const waitlistedMemberData = await kysely.transaction().execute(async (trx) => {
-			const waitlistedMemberData = await getMembershipInfo(userData.id, trx);
+		const invitationData = await kysely.transaction().execute(async (trx) => {
+			// Get invitation info instead of waitlist info
+			const invitationInfo = await getInvitationInfo(userData.id, trx)
+			
+			if (!invitationInfo || invitationInfo.status !== 'pending') {
+				throw error(404, {
+					message: 'Invalid invitation'
+				});
+			}
 
 			let customer_id = await trx
 				.selectFrom('user_profiles')
@@ -37,7 +44,7 @@ export const load: PageServerLoad = async ({ parent, cookies }) => {
 			if (!customer_id) {
 				customer_id = await stripeClient.customers
 					.create({
-						name: `${waitlistedMemberData.first_name} ${waitlistedMemberData.last_name}`,
+						name: `${invitationInfo.first_name} ${invitationInfo.last_name}`,
 						email: userData.email,
 						metadata: {
 							user_uuid: userData.id
@@ -54,7 +61,7 @@ export const load: PageServerLoad = async ({ parent, cookies }) => {
 					.execute();
 			}
 
-			return { ...waitlistedMemberData, customer_id };
+			return { ...invitationInfo, customer_id };
 		});
 
 		const [subscriptionPrice, annualFeePrice] = await Promise.all([
@@ -72,7 +79,7 @@ export const load: PageServerLoad = async ({ parent, cookies }) => {
 
 		const [monthlySubscription, annualSubscription] = await Promise.all([
 			stripeClient.subscriptions.create({
-				customer: waitlistedMemberData.customer_id!,
+				customer: invitationData.customer_id!,
 				items: [
 					{
 						price: subscriptionPrice!.id
@@ -89,7 +96,7 @@ export const load: PageServerLoad = async ({ parent, cookies }) => {
 				collection_method: 'charge_automatically'
 			}),
 			stripeClient.subscriptions.create({
-				customer: waitlistedMemberData.customer_id!,
+				customer: invitationData.customer_id!,
 				items: [
 					{
 						price: annualFeePrice!.id
@@ -120,7 +127,7 @@ export const load: PageServerLoad = async ({ parent, cookies }) => {
 		cookies.set(
 			'stripe-payment-info',
 			JSON.stringify({
-				customerId: waitlistedMemberData.customer_id!,
+				customerId: invitationData.customer_id!,
 				annualSubscriptionPaymentIntendId: annualPaymentIntent.id,
 				membershipSubscriptionPaymentIntendId: monthlyPaymentIntent.id
 			} satisfies StripePaymentInfo),
@@ -130,14 +137,14 @@ export const load: PageServerLoad = async ({ parent, cookies }) => {
 		return {
 			form: await superValidate({}, valibot(memberSignupSchema), { errors: false }),
 			userData: {
-				firstName: waitlistedMemberData?.first_name,
-				lastName: waitlistedMemberData?.last_name,
+				firstName: invitationData.first_name,
+				lastName: invitationData.last_name,
 				email: userData.email,
-				dateOfBirth: new Date(waitlistedMemberData!.date_of_birth!),
-				phoneNumber: waitlistedMemberData?.phone_number,
-				pronouns: waitlistedMemberData?.pronouns,
-				gender: waitlistedMemberData?.gender,
-				medicalConditions: waitlistedMemberData?.medical_conditions
+				dateOfBirth: new Date(invitationData.date_of_birth),
+				phoneNumber: invitationData.phone_number,
+				pronouns: invitationData.pronouns,
+				gender: invitationData.gender,
+				medicalConditions: invitationData.medical_conditions
 			},
 			insuranceFormLink: supabaseServiceClient
 				.from('settings')
@@ -180,7 +187,7 @@ export const load: PageServerLoad = async ({ parent, cookies }) => {
 export const actions: Actions = {
 	default: async (event) => {
 		const accessToken = event.cookies.get('access-token');
-		invariant(accessToken === null, 'There has ben an error with your signup.');
+		invariant(accessToken === null, 'There has been an error with your signup.');
 		const tokenClaim = jwtDecode(accessToken!);
 		const paymentInfo = event.cookies.get('stripe-payment-info');
 		invariant(paymentInfo == undefined, 'Payment info not found.');
@@ -204,7 +211,13 @@ export const actions: Actions = {
 		return kysely
 			.transaction()
 			.execute(async (trx) => {
-				// First complete the member registration
+				// First get the invitation info and update its status to accepted
+				const invitationInfo = await getInvitationInfo(tokenClaim.sub!, trx)
+				if (invitationInfo && invitationInfo.invitation_id) {
+					await updateInvitationStatus(invitationInfo.invitation_id, 'accepted', trx);
+				}
+				
+				// Then complete the member registration
 				await completeMemberRegistration(
 					{
 						v_user_id: tokenClaim.sub!,
@@ -214,6 +227,7 @@ export const actions: Actions = {
 					},
 					trx
 				);
+				
 				const intent = await stripeClient.setupIntents.create({
 					confirm: true,
 					customer: customerId,
@@ -229,11 +243,7 @@ export const actions: Actions = {
 				const paymentMethodId =
 					typeof intent.payment_method === 'string'
 						? intent.payment_method
-						: (intent.payment_method! as Stripe.PaymentMethod)!.id;
-				// const [monthlySubscription, annualSubscription] = await getMembershipSubcriptions({
-				// 	customerId,
-				// 	paymentMedhodId: paymentMethodId
-				// });
+						: (intent.payment_method! as Stripe.PaymentMethod).id;
 
 				await Promise.all([
 					stripeClient.paymentIntents.confirm(membershipSubscriptionPaymentIntendId, {
@@ -280,36 +290,22 @@ export const actions: Actions = {
 						case 'charge_exceeds_weekly_limit':
 							errorMessage = 'The payment amount exceeds the weekly transaction limit';
 							break;
-						case 'requires_payment_method':
-							errorMessage = 'Please try again with a different payment method';
-							break;
-						case 'payment_intent_requires_action':
-							return message(form, { requiresAction: true });
-						case 'payment_intent_payment_failure':
-							errorMessage = 'The payment failed. Please try again';
-							break;
 						case 'payment_intent_authentication_failure':
-							errorMessage = 'The payment authentication failed. Please try again';
+							errorMessage = 'The payment authentication failed';
 							break;
-						case 'payment_intent_invalid':
-							errorMessage = 'The payment information is invalid. Please try again';
+						case 'payment_method_unactivated':
+							errorMessage = 'The payment method is not activated';
 							break;
-						case 'payment_intent_unexpected_state':
-							errorMessage = 'An unexpected error occurred with the payment. Please try again';
+						case 'payment_intent_payment_attempt_failed':
+							errorMessage = 'The payment attempt failed';
+							break;
+						default:
+							errorMessage = 'An error occurred with the payment processor';
 							break;
 					}
 				}
 
-				return message(
-					form,
-					{
-						paymentFailed: true,
-						errorMessage
-					},
-					{
-						status: 500
-					}
-				);
+				return message(form, { paymentFailed: true, error: errorMessage }, { status: 400 });
 			});
 	}
 };
