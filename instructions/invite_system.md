@@ -82,20 +82,14 @@
 ### 2. Frontend Integration
 - Create UI components for invitation management:
   - Admin panel to create and manage invitations
-  - User interface to accept invitations
   - Notification system for invitation status changes
-- Implement invitation acceptance flow
 
 ### 3. Email Notifications
 - Set up email templates for invitations
 - Implement email sending when invitations are created
-- Add reminder emails for pending invitations
-- Send notifications when invitations expire
 
 ### 4. Additional Features
 - Implement bulk invitation creation
-- Add invitation analytics (acceptance rate, expiration rate)
-- Create invitation logs for audit purposes
 
 ### 5. Documentation
 - Document the API endpoints

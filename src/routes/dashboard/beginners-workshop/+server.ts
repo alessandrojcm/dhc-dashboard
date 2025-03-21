@@ -1,7 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { getRolesFromSession, allowedToggleRoles } from '$lib/server/roles';
-import { kysely } from '$lib/server/kysely';
+import { kysely, executeWithRLS } from '$lib/server/kysely';
 
 export const POST: RequestHandler = async ({ locals }) => {
     try {
@@ -20,11 +20,15 @@ export const POST: RequestHandler = async ({ locals }) => {
 
         const newValue = currentValue.value === 'true' ? 'false' : 'true';
 
-        await kysely
-            .updateTable('settings')
-            .set({ value: newValue })
-            .where('key', '=', 'waitlist_open')
-            .execute();
+        await executeWithRLS({
+            claims: locals.session!.user!
+        }, async (trx) => {
+            await trx
+                .updateTable('settings')
+                .set({ value: newValue })
+                .where('key', '=', 'waitlist_open')
+                .execute();
+        });
 
         return json({ success: true });
     } catch (error) {

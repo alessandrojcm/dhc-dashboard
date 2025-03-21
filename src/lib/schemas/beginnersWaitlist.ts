@@ -1,7 +1,6 @@
-import dayjs from 'dayjs';
 import * as v from 'valibot';
-import parsePhoneNumber from 'libphonenumber-js';
 import { SocialMediaConsent } from '$lib/types';
+import { dobValidator, phoneNumberValidator } from './commonValidators';
 
 const formValidation = v.object({
 	firstName: v.pipe(v.string(), v.nonEmpty('First name is required.')),
@@ -12,16 +11,8 @@ const formValidation = v.object({
 		v.email('Email is invalid.'),
 		v.transform((input) => input.toLowerCase())
 	),
-	phoneNumber: v.pipe(
-		v.string(),
-		v.nonEmpty('Phone number is required.'),
-		v.check((input) => Boolean(parsePhoneNumber(input)?.isValid), 'Invalid phone number'),
-		v.transform((input) => parsePhoneNumber(input)!.formatInternational())
-	),
-	dateOfBirth: v.pipe(
-		v.date('Date of birth is required.'),
-		v.check((input) => dayjs().diff(input, 'years') >= 16, 'You must be at least 16 years old.')
-	),
+	phoneNumber: phoneNumberValidator(),
+	dateOfBirth: dobValidator,
 	medicalConditions: v.pipe(v.string()),
 	pronouns: v.pipe(
 		v.string(),
