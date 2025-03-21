@@ -1,13 +1,13 @@
-import { error, redirect, type Actions } from '@sveltejs/kit';
-import type { PageServerLoad } from './$types';
-import { valibot } from 'sveltekit-superforms/adapters';
-import { fail, message, setError, superValidate } from 'sveltekit-superforms';
-import signupSchema from '$lib/schemas/membersSignup';
 import type { Database } from '$database';
-import { supabaseServiceClient } from '$lib/server/supabaseServiceClient';
-import { kysely } from '$lib/server/kysely';
-import { stripeClient } from '$lib/server/stripe';
+import signupSchema from '$lib/schemas/membersSignup';
+import { executeWithRLS, kysely } from '$lib/server/kysely';
 import { getMemberData, updateMemberData } from '$lib/server/kyselyRPCFunctions';
+import { stripeClient } from '$lib/server/stripe';
+import { supabaseServiceClient } from '$lib/server/supabaseServiceClient';
+import { error, redirect, type Actions } from '@sveltejs/kit';
+import { fail, message, setError, superValidate } from 'sveltekit-superforms';
+import { valibot } from 'sveltekit-superforms/adapters';
+import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params, locals }) => {
 	try {
@@ -65,56 +65,61 @@ export const actions: Actions = {
 			});
 		}
 		try {
-			await kysely.transaction().execute(async (trx) => {
-				// Get current user data for comparison
-				const currentUser = await trx
-					.selectFrom('user_profiles')
-					.select(['first_name', 'last_name', 'phone_number', 'customer_id'])
-					.where('supabase_user_id', '=', event.params.memberId!)
-					.limit(1)
-					.execute()
-					.then((result) => result[0]);
+			await executeWithRLS(
+				{
+					claims: event.locals.session!.user!
+				},
+				async (trx) => {
+					// Get current user data for comparison
+					const currentUser = await trx
+						.selectFrom('user_profiles')
+						.select(['first_name', 'last_name', 'phone_number', 'customer_id'])
+						.where('supabase_user_id', '=', event.params.memberId!)
+						.limit(1)
+						.execute()
+						.then((result) => result[0]);
 
-				if (!currentUser?.customer_id) {
-					throw new Error('Customer ID not found');
+					if (!currentUser?.customer_id) {
+						throw new Error('Customer ID not found');
+					}
+
+					// Update member data
+					await updateMemberData(
+						{
+							user_uuid: event.params.memberId!,
+							p_first_name: form.data.firstName,
+							p_last_name: form.data.lastName,
+							p_phone_number: form.data.phoneNumber,
+							p_date_of_birth: form.data.dateOfBirth.toISOString(),
+							p_pronouns: form.data.pronouns,
+							p_gender: form.data.gender as Database['public']['Enums']['gender'],
+							p_medical_conditions: form.data.medicalConditions,
+							p_next_of_kin_name: form.data.nextOfKin,
+							p_next_of_kin_phone: form.data.nextOfKinNumber,
+							p_preferred_weapon: form.data
+								.weapon as Database['public']['Enums']['preferred_weapon'][],
+							p_insurance_form_submitted: form.data.insuranceFormSubmitted,
+							p_social_media_consent: form.data
+								.socialMediaConsent as Database['public']['Enums']['social_media_consent']
+						},
+						trx
+					);
+
+					// Check if name or phone number changed
+					const currentName = `${currentUser.first_name} ${currentUser.last_name}`.trim();
+					const newName = `${form.data.firstName} ${form.data.lastName}`.trim();
+					const nameChanged = currentName !== newName;
+					const phoneChanged = currentUser.phone_number !== form.data.phoneNumber;
+
+					// Only update Stripe if necessary
+					if (nameChanged || phoneChanged) {
+						await stripeClient.customers.update(currentUser.customer_id, {
+							...(nameChanged && { name: newName }),
+							...(phoneChanged && { phone: form.data.phoneNumber })
+						});
+					}
 				}
-
-				// Update member data
-				await updateMemberData(
-					{
-						user_uuid: event.params.memberId!,
-						p_first_name: form.data.firstName,
-						p_last_name: form.data.lastName,
-						p_phone_number: form.data.phoneNumber,
-						p_date_of_birth: form.data.dateOfBirth.toISOString(),
-						p_pronouns: form.data.pronouns,
-						p_gender: form.data.gender as Database['public']['Enums']['gender'],
-						p_medical_conditions: form.data.medicalConditions,
-						p_next_of_kin_name: form.data.nextOfKin,
-						p_next_of_kin_phone: form.data.nextOfKinNumber,
-						p_preferred_weapon:
-							form.data.weapon as Database['public']['Enums']['preferred_weapon'][],
-						p_insurance_form_submitted: form.data.insuranceFormSubmitted,
-						p_social_media_consent: form.data
-							.socialMediaConsent as Database['public']['Enums']['social_media_consent']
-					},
-					trx
-				);
-
-				// Check if name or phone number changed
-				const currentName = `${currentUser.first_name} ${currentUser.last_name}`.trim();
-				const newName = `${form.data.firstName} ${form.data.lastName}`.trim();
-				const nameChanged = currentName !== newName;
-				const phoneChanged = currentUser.phone_number !== form.data.phoneNumber;
-
-				// Only update Stripe if necessary
-				if (nameChanged || phoneChanged) {
-					await stripeClient.customers.update(currentUser.customer_id, {
-						...(nameChanged && { name: newName }),
-						...(phoneChanged && { phone: form.data.phoneNumber })
-					});
-				}
-			});
+			);
 
 			return message(form, { success: 'Profile has been updated!' });
 		} catch (err) {

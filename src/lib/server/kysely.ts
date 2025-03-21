@@ -1,8 +1,16 @@
 import type { KyselyDatabase } from '$lib/types';
-import { Kysely, sql } from 'kysely';
+import { Kysely, sql, Transaction } from 'kysely';
 import { env } from '$env/dynamic/private';
 import postgres from 'postgres';
 import { PostgresJSDialect } from 'kysely-postgres-js';
+import { type User } from '@supabase/supabase-js';
+
+interface RLSData {
+	/**
+	 * Claims to be set in the transaction
+	 */
+	claims: User;
+}
 
 export const kysely = new Kysely<KyselyDatabase>({
 	dialect: new PostgresJSDialect({
@@ -24,5 +32,19 @@ export const kysely = new Kysely<KyselyDatabase>({
 		)
 	})
 });
+
+export async function executeWithRLS<T>(
+	authData: RLSData,
+	callback: (trx: Transaction<KyselyDatabase>) => Promise<T>
+) {
+	return await kysely.transaction().execute(async (trx) => {
+		// set transaction level auth variables and run transaction
+		await sql`
+      SET LOCAL request.jwt.claims = ${sql.lit(JSON.stringify(authData.claims))};
+      SET LOCAL ROLE authenticated;
+    `.execute(trx);
+		return await callback(trx);
+	});
+}
 
 export { sql };

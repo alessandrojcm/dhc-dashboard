@@ -4,6 +4,7 @@ import { jwtDecode } from 'jwt-decode';
 export function getRolesFromSession(session: Session) {
 	try {
 		const tokenClaim = jwtDecode(session?.access_token);
+		console.log(tokenClaim)
 		return new Set((tokenClaim as { app_metadata: { roles: string[] } }).app_metadata?.roles || []);
 	} catch (error) {
 		console.error('Error decoding token:', error);

@@ -147,9 +147,6 @@
 	});
 	const { form: formData, enhance, submitting, errors } = form;
 	const formatedPhone = $derived.by(() => new AsYouType('IE').input(data.userData.phoneNumber!));
-	const formatedNextOfKinPhone = $derived.by(() =>
-		new AsYouType('IE').input($formData.nextOfKinNumber)
-	);
 
 	onMount(() => {
 		loadStripe(PUBLIC_STRIPE_KEY).then((result) => {
