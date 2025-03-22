@@ -58,6 +58,7 @@ test.describe('Invitation System', () => {
     
     // Add to list first
     await page.getByRole('button', { name: 'Add to List' }).click();
+    await page.pause();
     
     // Verify the invitation was added to the list
     await expect(page.getByText(testEmail)).toBeVisible();

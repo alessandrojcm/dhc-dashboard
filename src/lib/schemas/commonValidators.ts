@@ -8,7 +8,7 @@ export const phoneNumberValidator = (nomEmptyMessage: string = 'Phone number is 
 		v.nonEmpty(nomEmptyMessage),
 		v.check((input) => {
 			if (input === '') return false;
-			return Boolean(parsePhoneNumber(input ?? '', 'IE')?.isValid);
+			return Boolean(parsePhoneNumber(input ?? '', 'IE')?.isValid());
 		}, 'Invalid phone number'),
 		v.transform((input) => parsePhoneNumber(input ?? '', 'IE')!.formatInternational())
 	);
