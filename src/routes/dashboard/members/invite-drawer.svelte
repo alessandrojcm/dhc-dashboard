@@ -9,46 +9,54 @@
 	import { ScrollArea } from '$lib/components/ui/scroll-area';
 	import { Separator } from '$lib/components/ui/separator';
 	import * as Sheet from '$lib/components/ui/sheet/index.js';
-	import { adminInviteSchema, type AdminInviteSchemaOutput } from '$lib/schemas/adminInvite';
+	import {
+		adminInviteSchema,
+		type AdminInviteSchemaOutput,
+		bulkInviteSchema,
+		type BulkInviteSchemaOutput
+	} from '$lib/schemas/adminInvite';
 	import { fromDate, getLocalTimeZone } from '@internationalized/date';
 	import dayjs from 'dayjs';
-	import { Info, Plus, Trash2 } from 'lucide-svelte';
+	import { Info, Loader, Plus, Trash2 } from 'lucide-svelte';
 	import { valibotClient } from 'sveltekit-superforms/adapters';
 	import { dateProxy, superForm, type SuperValidated } from 'sveltekit-superforms/client';
 
 	const props: {
 		inviteForm: SuperValidated<AdminInviteSchemaOutput, any, AdminInviteSchemaOutput>;
+		bulkInviteForm: SuperValidated<BulkInviteSchemaOutput, any, BulkInviteSchemaOutput>;
 	} = $props();
-
-	let invites = $state<AdminInviteSchemaOutput[]>([]);
 
 	let isOpen = $state(false);
 
 	// Single invite form
 	const form = superForm(props.inviteForm, {
+		validators: valibotClient(adminInviteSchema),
+		applyAction: false,
 		resetForm: true,
+		validationMethod: 'onblur'
+	});
+
+	const { form: formData, message, reset: resetForm, validateForm } = form;
+
+	const bulkInviteForm = superForm(props.bulkInviteForm, {
 		taintedMessage: null,
 		dataType: 'json',
-		validators: valibotClient(adminInviteSchema),
+		validationMethod: 'onsubmit',
+		validators: valibotClient(bulkInviteSchema),
 		onResult: ({ result }: { result: any }) => {
 			if (result.type === 'success') {
-				resetForm();
-				addInviteToList();
+				resetBulkForm();
 			}
-		},
-		onSubmit: ({ customRequest }) => {
-			customRequest(({ controller, action }) => {
-				return fetch(action, {
-					signal: controller.signal,
-					method: 'POST',
-					body: JSON.stringify(invites)
-				});
-			});
 		}
 	});
 
-	const { form: formData, message, reset: resetForm, enhance } = form;
-
+	const {
+		form: bulkFormData,
+		message: bulkMessage,
+		reset: resetBulkForm,
+		enhance: bulkEnhance,
+		submitting: bulkSubmitting,
+	} = bulkInviteForm;
 	const dobProxy = dateProxy(form, 'dateOfBirth', { format: `date` });
 	const dobValue = $derived.by(() => {
 		if (!dayjs($formData.dateOfBirth).isValid() || dayjs($formData.dateOfBirth).isSame(dayjs())) {
@@ -58,13 +66,17 @@
 	});
 
 	// Add current invite to the list
-	function addInviteToList() {
+	async function addInviteToList() {
+		const result = await validateForm({ update: true });
+		if (!result.valid) {
+			return;
+		}
 		const { firstName, lastName, email, phoneNumber, dateOfBirth, expirationDays } = $formData;
 
 		// Only add if we have at least email filled out
 		if (email) {
-			invites = [
-				...invites,
+			$bulkFormData.invites = [
+				...$bulkFormData.invites,
 				{
 					firstName: firstName || '',
 					lastName: lastName || '',
@@ -87,37 +99,14 @@
 
 	// Remove an invite from the list
 	function removeInvite(index: number) {
-		invites = invites.filter((_: any, i: number) => i !== index);
+		$bulkFormData.invites = $bulkFormData.invites.filter((_: any, i: number) => i !== index);
 	}
 
 	// Clear all invites
 	function clearAllInvites() {
-		invites = [];
+		$bulkFormData.invites = [];
 	}
-
-	// Submit bulk invites
-	function submitBulkInvites(event: Event) {
-		event.preventDefault();
-		
-		if (invites.length === 0) return;
-		
-		const formData = new FormData();
-		formData.append('invites', JSON.stringify(invites));
-		
-		fetch('?/createBulkInvites', {
-			method: 'POST',
-			body: formData
-		})
-		.then(response => response.json())
-		.then(result => {
-			if (result.type === 'success') {
-				clearAllInvites();
-			}
-		})
-		.catch(error => {
-			console.error('Error submitting invites:', error);
-		});
-	}
+	$inspect($bulkMessage)
 </script>
 
 <Button variant="outline" onclick={() => (isOpen = true)}>Invite Members</Button>
@@ -132,15 +121,15 @@
 
 		<div class="py-4 space-y-6">
 			<!-- Invite Form -->
-			<form method="POST" action="?/createBulkInvites" use:enhance class="space-y-4">
-				{#if $message}
-					<Alert variant={$message.success ? 'success' : 'destructive'}>
+			<form class="space-y-4">
+				{#if $bulkMessage}
+					<Alert variant={$bulkMessage.success ? 'success' : 'destructive'}>
 						<Info class="h-4 w-4" />
 						<AlertTitle>
-							{$message.success ? 'Success!' : 'Error!'}
+							{$bulkMessage.success ? 'Success!' : 'Something went wrong'}
 						</AlertTitle>
 						<AlertDescription>
-							{$message.success || $message.failure}
+							{$bulkMessage.success || $bulkMessage.failure}
 						</AlertDescription>
 					</Alert>
 				{/if}
@@ -231,25 +220,38 @@
 					</Form.Control>
 					<Form.FieldErrors />
 				</Form.Field>
-
-				<div class="flex justify-between gap-2">
-					<Button type="submit" variant="default" disabled={invites.length === 0}
-						>Send Invite</Button
-					>
-					<Button type="button" variant="outline" onclick={addInviteToList}>
-						<Plus class="mr-2 h-4 w-4" />
-						Add to List
-					</Button>
-				</div>
 			</form>
+			<div class="flex justify-between gap-2">
+				<form method="POST" action="?/createBulkInvites" use:bulkEnhance>
+					<input type="hidden" name="invites" value={JSON.stringify($bulkFormData.invites)} />
+					<Button
+						type="submit"
+						class="w-full"
+						disabled={$bulkFormData.invites.length === 0 || $bulkSubmitting}
+					>
+						{#if $bulkSubmitting}
+							<Loader class="mr-2 h-4 w-4" />
+						{/if}
+						Send {$bulkFormData.invites.length} Invitations
+					</Button>
+				</form>
+				<Button
+					type="button"
+					variant="outline"
+					onclick={addInviteToList}
+				>
+					<Plus class="mr-2 h-4 w-4" />
+					Add to List
+				</Button>
+			</div>
 
 			<Separator />
 
 			<!-- Invite List -->
 			<div class="space-y-4">
 				<div class="flex items-center justify-between">
-					<h3 class="text-lg font-medium">Invite List ({invites.length})</h3>
-					{#if invites.length > 0}
+					<h3 class="text-lg font-medium">Invite List ({$bulkFormData.invites.length})</h3>
+					{#if $bulkFormData.invites.length > 0}
 						<Button variant="outline" size="sm" onclick={clearAllInvites}>Clear All</Button>
 					{/if}
 				</div>
@@ -267,15 +269,14 @@
 						</AlertDescription>
 					</Alert>
 				{/if}
-
 				<ScrollArea class="h-[300px] pr-4">
-					{#if invites.length === 0}
+					{#if $bulkFormData.invites.length === 0}
 						<div class="text-center py-8 text-muted-foreground">
 							<p>No invites added yet. Add members using the form above.</p>
 						</div>
 					{:else}
 						<div class="space-y-3">
-							{#each invites as invite, index}
+							{#each $bulkFormData.invites as invite, index}
 								<Card class="p-3">
 									<div class="flex justify-between items-start">
 										<div>
@@ -302,13 +303,6 @@
 						</div>
 					{/if}
 				</ScrollArea>
-
-				{#if invites.length > 0}
-					<form method="POST" action="?/createBulkInvites" onsubmit={submitBulkInvites} class="pt-2">
-						<input type="hidden" name="invites" value={JSON.stringify(invites)} />
-						<Button type="submit" class="w-full">Send {invites.length} Invitations</Button>
-					</form>
-				{/if}
 			</div>
 		</div>
 	</Sheet.Content>

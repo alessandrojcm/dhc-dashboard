@@ -21,7 +21,7 @@ export const POST: RequestHandler = async ({ locals }) => {
         const newValue = currentValue.value === 'true' ? 'false' : 'true';
 
         await executeWithRLS({
-            claims: locals.session!.user!
+            claims: locals.session!
         }, async (trx) => {
             await trx
                 .updateTable('settings')

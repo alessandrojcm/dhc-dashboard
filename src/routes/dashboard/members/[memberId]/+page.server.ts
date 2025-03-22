@@ -67,7 +67,7 @@ export const actions: Actions = {
 		try {
 			await executeWithRLS(
 				{
-					claims: event.locals.session!.user!
+					claims: event.locals.session!
 				},
 				async (trx) => {
 					// Get current user data for comparison
