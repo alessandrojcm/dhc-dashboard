@@ -43,7 +43,12 @@ CREATE POLICY "Users can see their own invitations"
 
 -- Create function to generate invitation
 CREATE OR REPLACE FUNCTION public.create_invitation(
+  v_user_id UUID,
   p_email TEXT,
+  p_first_name TEXT,
+  p_last_name TEXT,
+  p_date_of_birth TIMESTAMPTZ,
+  p_phone_number TEXT,
   p_invitation_type TEXT,
   p_waitlist_id UUID DEFAULT NULL,
   p_expires_at TIMESTAMPTZ DEFAULT (now() + interval '7 days'),
@@ -55,7 +60,6 @@ SECURITY INVOKER
 SET search_path = ''
 AS $$
 DECLARE
-  v_user_id UUID;
   v_invitation_id UUID;
 BEGIN
   -- Check if caller has admin role or is a service role
@@ -68,16 +72,37 @@ BEGIN
       message = 'Permission denied: Admin role required to create invitations';
   END IF;
 
-  -- Check if user exists
-  SELECT id INTO v_user_id
-  FROM auth.users
-  WHERE email = p_email;
-  
   -- Check if there's already an active invitation
   UPDATE public.invitations
   SET status = 'expired',
       updated_at = now()
   WHERE email = p_email AND status = 'pending';
+
+  -- Create user profile
+
+  INSERT INTO public.user_profiles (
+    supabase_user_id,
+    first_name,
+    last_name,
+    date_of_birth,
+    phone_number,
+    is_active
+  ) VALUES (
+    v_user_id,
+    p_first_name,
+    p_last_name,
+    p_date_of_birth,
+    p_phone_number
+    false
+  );
+
+  INSERT INTO public.user_roles (
+    user_id,
+    role
+  ) values (
+    v_user_id,
+    'member'
+  );
   
   -- Create new invitation
   INSERT INTO public.invitations (
