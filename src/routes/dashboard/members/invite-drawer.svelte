@@ -33,7 +33,7 @@
 		validators: valibotClient(adminInviteSchema),
 		applyAction: false,
 		resetForm: true,
-		validationMethod: 'onblur'
+		validationMethod: 'oninput'
 	});
 
 	const { form: formData, message, reset: resetForm, validateForm } = form;
