@@ -8,9 +8,9 @@ type GetInvitationInfoResult = {
 	phone_number: string;
 	date_of_birth: string;
 	pronouns: string;
-	gender: Database["public"]["Enums"]["gender"];
+	gender: Database['public']['Enums']['gender'];
 	medical_conditions: string;
-	status: Database["public"]["Enums"]["invitation_status"];
+	status: Database['public']['Enums']['invitation_status'];
 };
 
 export function getMembershipInfo(
@@ -41,20 +41,35 @@ export function createInvitation(
 		invitationType,
 		waitlistId = null,
 		expiresAt = null,
-		metadata = null
+		metadata = null,
+		userId,
+		firstName,
+		lastName,
+		dateOfBirth,
+		phoneNumber
 	}: {
 		email: string;
 		invitationType: 'workshop' | 'admin';
 		waitlistId?: string | null;
 		expiresAt?: Date | null;
 		metadata?: Record<string, unknown> | null;
+		userId: string;
+		firstName: string;
+		lastName: string;
+		dateOfBirth: string;
+		phoneNumber: string;
 	},
 	executor: QueryExecutorProvider
 ): Promise<string> {
 	return sql<{
 		create_invitation: string;
 	}>`select * from create_invitation(
+		${userId}::uuid,
 		${email}::text,
+		${firstName}::text,
+		${lastName}::text,
+		${dateOfBirth}::timestamptz,
+		${phoneNumber}::text,
 		${invitationType}::text,
 		${waitlistId}::uuid,
 		${expiresAt}::timestamptz,
