@@ -294,6 +294,7 @@
 											size="icon"
 											class="h-8 w-8"
 											onclick={() => removeInvite(index)}
+											aria-label="Remove invite"
 										>
 											<Trash2 class="h-4 w-4" />
 										</Button>
