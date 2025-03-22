@@ -38,7 +38,7 @@
 			</Tabs.List>
 			
 			{#if data.canEditSettings}
-				<InviteDrawer inviteForm={data.inviteForm} />
+				<InviteDrawer inviteForm={data.inviteForm} bulkInviteForm={data.bulkInviteForm} />
 			{/if}
 		</div>
 		

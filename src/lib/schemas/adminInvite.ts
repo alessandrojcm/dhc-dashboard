@@ -20,6 +20,12 @@ const adminInviteSchema = v.object({
 	)
 });
 
-export { adminInviteSchema };
+const bulkInviteSchema = v.object({
+	invites: v.pipe(v.array(adminInviteSchema), v.minLength(1))
+});
+
+export { adminInviteSchema, bulkInviteSchema };
+export type BulkInviteSchema = v.InferInput<typeof bulkInviteSchema>;
+export type BulkInviteSchemaOutput = v.InferOutput<typeof bulkInviteSchema>;
 export type AdminInviteSchema = v.InferInput<typeof adminInviteSchema>;
 export type AdminInviteSchemaOutput = v.InferOutput<typeof adminInviteSchema>;

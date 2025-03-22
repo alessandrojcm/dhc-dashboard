@@ -1,19 +1,20 @@
-import { adminInviteSchema } from '$lib/schemas/adminInvite';
+import {
+	adminInviteSchema,
+	bulkInviteSchema,
+	type BulkInviteSchemaOutput
+} from '$lib/schemas/adminInvite';
 import settingsSchema from '$lib/schemas/membersSettings';
-import { executeWithRLS, kysely } from '$lib/server/kysely';
+import { executeWithRLS } from '$lib/server/kysely';
 import { createInvitation } from '$lib/server/kyselyRPCFunctions';
 import { getRolesFromSession } from '$lib/server/roles';
+import type { AuthError } from '@supabase/supabase-js';
 import dayjs from 'dayjs';
 import { fail, message, superValidate } from 'sveltekit-superforms';
 import { valibot } from 'sveltekit-superforms/adapters';
-import * as v from 'valibot';
 import type { Actions, PageServerLoad } from './$types';
-import type { AuthError } from '@supabase/supabase-js';
+import { supabaseServiceClient } from '$lib/server/supabaseServiceClient';
 
 const SETTINGS_ROLES = new Set(['president', 'committee_coordinator', 'admin']);
-const bulkInviteSchema = v.object({
-	invites: v.pipe(v.array(adminInviteSchema), v.minLength(1))
-});
 
 export const load: PageServerLoad = async ({ locals }) => {
 	const roles = getRolesFromSession(locals.session!);
@@ -33,24 +34,29 @@ export const load: PageServerLoad = async ({ locals }) => {
 	);
 	const inviteForm = await superValidate(
 		{
-			dateOfBirth: new Date(),
+			dateOfBirth: new Date('2000-01-01'),
 			expirationDays: 7
 		},
 		valibot(adminInviteSchema),
 		{ errors: false }
 	);
+	const bulkInviteForm = await superValidate({ invites: [] }, valibot(bulkInviteSchema), {
+		errors: false
+	});
 	if (!canEditSettings) {
 		return {
 			canEditSettings,
 			form,
-			inviteForm
+			inviteForm,
+			bulkInviteForm
 		};
 	}
 
 	return {
 		canEditSettings,
 		form,
-		inviteForm
+		inviteForm,
+		bulkInviteForm
 	};
 };
 
@@ -68,7 +74,7 @@ export const actions: Actions = {
 
 		return executeWithRLS(
 			{
-				claims: locals.session!.user!
+				claims: locals.session!
 			},
 			async (trx) => {
 				return trx
@@ -97,21 +103,22 @@ export const actions: Actions = {
 
 		const form = await superValidate(request, valibot(bulkInviteSchema));
 		if (!form.valid) {
-			return fail(400, { form });
+			return fail(400, {
+				form: {
+					...form,
+					message: { failure: 'There was an error seding the invites.' }
+				}
+			});
 		}
+		const invites = form.data.invites;
 
 		try {
-			const { invites } = form.data;
-			const results: {
-				email: string;
-				success: boolean;
-				error?: AuthError;
-			}[] = [];
+			const results: Array<{ email: string; success: boolean; error?: any }> = [];
 
 			// Process invites in a transaction
 			await executeWithRLS(
 				{
-					claims: locals.session!.user!
+					claims: locals.session!
 				},
 				async (trx) => {
 					for (const invite of invites) {
@@ -132,23 +139,28 @@ export const actions: Actions = {
 
 						try {
 							// Also invite the user via Supabase Admin SDK
-							const { error } = await locals.supabase.auth.admin.inviteUserByEmail(email, {
+							const result = await supabaseServiceClient.auth.admin.inviteUserByEmail(email, {
 								data: {
 									first_name: firstName,
 									last_name: lastName
 								}
 							});
 
-							if (error) {
-								throw error;
+							if (result.error) {
+								throw result.error;
 							}
 							// Create invitation using the kysely function
 							await createInvitation(
 								{
+									userId: result.data.user?.id!,
 									email,
 									invitationType: 'admin',
 									expiresAt,
-									metadata
+									metadata,
+									firstName,
+									lastName,
+									dateOfBirth: dateOfBirth.toISOString(),
+									phoneNumber
 								},
 								trx
 							);
