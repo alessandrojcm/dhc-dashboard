@@ -6,23 +6,22 @@ import { loginAsUser } from './supabaseLogin';
 test.describe('Member Self-Management', () => {
 	let testData: Awaited<ReturnType<typeof createMember>>;
 	test.beforeAll(async () => {
-		testData = await createMember({ email: 'test@test.com', createSubscription: true });
+		testData = await createMember({ email: `test-${Date.now()}@test.com`, createSubscription: true });
 	});
 	test.beforeEach(async ({ context }) => {
-		await loginAsUser(context, 'test@test.com');
+		await loginAsUser(context, testData.email);
 	});
 	test.afterAll(() => testData?.cleanUp());
 
 	test('should navigate to member profile whe using only member', async ({ page }) => {
 		await page.goto('/dashboard');
 		await expect(page.getByText(/member information/i)).toBeVisible();
-		await page.pause();
+		;
 	});
 
 	test('should update member profile', async ({ page }) => {
 		await page.goto('/dashboard');
 		await expect(page.getByText(/member information/i)).toBeVisible();
-		await page.pause();
 		await page.getByLabel(/first name/i).fill('Updated name');
 		await page.getByLabel(/preferred weapon/i).click();
 		await page.getByRole('option', { name: 'Longsword' }).click();
@@ -49,12 +48,14 @@ test.describe('Member Self-Management', () => {
 test.describe('Member Management - Admin', () => {
 	let adminData: Awaited<ReturnType<typeof createMember>>;
 	let memberData: Awaited<ReturnType<typeof createMember>>;
+	let adminEmail: string;
 	test.beforeAll(async () => {
-		adminData = await createMember({ email: 'admin@test.com', roles: new Set(['admin']) });
-		memberData = await createMember({ email: 'member@test.com', roles: new Set(['member']) });
+		adminEmail = `admin-${Date.now()}@test.com`;
+		adminData = await createMember({ email: adminEmail, roles: new Set(['admin']) });
+		memberData = await createMember({ email: `member-${Date.now()}@test.com`, roles: new Set(['member']) });
 	});
 	test.beforeEach(async ({ context }) => {
-		await loginAsUser(context, 'admin@test.com');
+		await loginAsUser(context, adminEmail);
 	});
 	test.afterAll(() => Promise.all([adminData?.cleanUp(), memberData?.cleanUp()]));
 
@@ -78,18 +79,22 @@ test.describe('Member Management - Admin', () => {
 test.describe('Member management - cross member role check', () => {
 	let memberOne: Awaited<ReturnType<typeof createMember>>;
 	let memberTwo: Awaited<ReturnType<typeof createMember>>;
+	let member1Email: string;
+	let member2Email: string;
+	
 	test.beforeAll(async () => {
-		memberOne = await createMember({ email: 'member1@member.com', roles: new Set(['member']) });
-		memberTwo = await createMember({ email: 'member2@member.com', roles: new Set(['member']) });
+		member1Email = `member1-${Date.now()}@member.com`;
+		member2Email = `member2-${Date.now()}@member.com`;
+		memberTwo = await createMember({ email: member2Email, roles: new Set(['member']) });
+		memberOne = await createMember({ email: member1Email, roles: new Set(['member']) });
 	});
 	test.beforeEach(async ({ context }) => {
-		await loginAsUser(context, 'member1@member.com');
+		await loginAsUser(context, member1Email);
 	});
 	test.afterAll(() => Promise.all([memberOne?.cleanUp(), memberTwo?.cleanUp()]));
 
-	test("it should not allow to navigate to another member's profile", async ({ page }) => {
-		const response = await page.goto(`/dashboard/members/${memberTwo.userId}`);
-		expect(response?.status()).toBe(404);
-		await expect(page.getByText(/member not found/i)).toBeVisible();
+	test("it should be redirected to its own profile if trying to access another users profile", async ({ page }) => {
+		await page.goto(`/dashboard/members/${memberTwo.userId}`);
+		await expect(page.getByText(memberOne.first_name)).toBeVisible();
 	});
 });

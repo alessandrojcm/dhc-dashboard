@@ -96,7 +96,7 @@
 						<Form.Control>
 							{#snippet children({ props })}
 								<Form.Label for="phoneNumber">Phone Number</Form.Label>
-								<PhoneInput {...props} bind:phoneNumber={$formData.phoneNumber} />
+								<PhoneInput placeholder="Enter your phone number" {...props} bind:phoneNumber={$formData.phoneNumber} />
 							{/snippet}
 						</Form.Control>
 						<Form.FieldErrors />

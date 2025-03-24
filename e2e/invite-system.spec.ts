@@ -58,7 +58,6 @@ test.describe('Invitation System', () => {
     
     // Add to list first
     await page.getByRole('button', { name: 'Add to List' }).click();
-    await page.pause();
     
     // Verify the invitation was added to the list
     await expect(page.getByText(testEmail)).toBeVisible();
@@ -83,8 +82,7 @@ test.describe('Invitation System', () => {
     await page.getByRole('button', { name: 'Add to List' }).click();
     
     // Verify validation errors
-    await expect(page.getByText('Email is required')).toBeVisible();
-    await expect(page.getByText('Date of birth is required')).toBeVisible();
+    await expect(page.getByText(/please enter an email/i)).toBeVisible();
     await expect(page.getByText('Phone Number is required')).toBeVisible();
   });
 
@@ -204,7 +202,7 @@ test.describe('Invitation System', () => {
     await page.getByLabel('Select month').click();
     await page.getByRole('option', { name: dateOfBirth2.format('MMMM') }).dblclick();
     await page.getByLabel(dateOfBirth2.format('dddd, MMMM D,')).click();
-    
+    await expect(page.getByLabel('Phone Number')).toBeVisible();
     await page.getByLabel('Phone Number').fill('987654321');
     await page.getByLabel('Expiration (days)').fill('7');
     

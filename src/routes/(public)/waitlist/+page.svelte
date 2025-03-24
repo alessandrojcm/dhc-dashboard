@@ -1,23 +1,22 @@
 <script lang="ts">
-	import * as Form from '$lib/components/ui/form';
-	import dayjs from 'dayjs';
-	import { Input } from '$lib/components/ui/input';
+	import * as Alert from '$lib/components/ui/alert';
 	import { Button } from '$lib/components/ui/button';
-	import { dateProxy, superForm } from 'sveltekit-superforms';
-	import { getLocalTimeZone, fromDate } from '@internationalized/date';
 	import * as Card from '$lib/components/ui/card';
 	import DatePicker from '$lib/components/ui/date-picker.svelte';
-	import { valibotClient } from 'sveltekit-superforms/adapters';
-	import beginnersWaitlist from '$lib/schemas/beginnersWaitlist';
-	import SuperDebug from 'sveltekit-superforms';
-	import { CheckCircled } from 'svelte-radix';
-	import * as Alert from '$lib/components/ui/alert';
+	import * as Form from '$lib/components/ui/form';
+	import { Input } from '$lib/components/ui/input';
+	import PhoneInput from '$lib/components/ui/phone-input.svelte';
+	import * as RadioGroup from '$lib/components/ui/radio-group/index.js';
 	import * as Select from '$lib/components/ui/select';
 	import Textarea from '$lib/components/ui/textarea/textarea.svelte';
-	import * as RadioGroup from '$lib/components/ui/radio-group/index.js';
 	import { whyThisField } from '$lib/components/ui/why-this-field.svelte';
-	import PhoneInput from '$lib/components/ui/phone-input.svelte'
+	import beginnersWaitlist from '$lib/schemas/beginnersWaitlist';
+	import { fromDate, getLocalTimeZone } from '@internationalized/date';
+	import dayjs from 'dayjs';
+	import { CheckCircled } from 'svelte-radix';
 	import { toast } from 'svelte-sonner';
+	import { dateProxy, superForm } from 'sveltekit-superforms';
+	import { valibotClient } from 'sveltekit-superforms/adapters';
 
 	const { data } = $props();
 	const form = superForm(data.form, {
@@ -243,6 +242,3 @@
 		{/if}
 	</Card.Content>
 </Card.Root>
-{#if false}
-	<SuperDebug data={{ $formData, $errors, $message }} />
-{/if}
