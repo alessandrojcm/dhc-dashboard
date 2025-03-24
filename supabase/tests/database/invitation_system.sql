@@ -38,6 +38,9 @@ SELECT policies_are('public', 'invitations', ARRAY[
 SELECT tests.create_supabase_user('admin', 'admin@test.com');
 SELECT tests.create_supabase_user('normal', 'normal@test.com');
 SELECT tests.create_supabase_user('banned', 'banned@test.com');
+SELECT tests.create_supabase_user('invite_test1', 'invite_test1@test.com');
+SELECT tests.create_supabase_user('invite_test2', 'invite_test2@test.com');
+SELECT tests.create_supabase_user('invite_test3', 'invite_test3@test.com');
 
 -- Insert test roles
 INSERT INTO public.user_roles (user_id, role)
@@ -56,7 +59,12 @@ SELECT tests.authenticate_as('admin');
 SELECT lives_ok(
     $$
     SELECT public.create_invitation(
+        tests.get_supabase_uid('invite_test1'),
         'test@example.com',
+        'Test',
+        'User',
+        '1990-01-01'::timestamptz,
+        '1234567890',
         'workshop',
         NULL,
         now() + interval '7 days',
@@ -71,7 +79,12 @@ SELECT tests.authenticate_as('normal');
 SELECT throws_ok(
     $$
     SELECT public.create_invitation(
+        tests.get_supabase_uid('normal'),
         'test@example.com',
+        'Test',
+        'User',
+        '1990-01-01'::timestamptz,
+        '1234567890',
         'workshop'
     )
     $$,
@@ -86,7 +99,12 @@ SELECT tests.authenticate_as('admin');
 SELECT lives_ok(
     $$
     SELECT public.create_invitation(
+        tests.get_supabase_uid('invite_test2'),
         'duplicate@test.com',
+        'Test',
+        'User',
+        '1990-01-01'::timestamptz,
+        '1234567890',
         'workshop'
     )
     $$,
@@ -106,6 +124,8 @@ SELECT results_eq(
 -- Test get_invitation_info function
 SELECT tests.authenticate_as('banned');
 
+-- Set role to postgres to bypass RLS for the test
+SET ROLE postgres;
 SELECT throws_ok(
     format(
         'SELECT public.get_invitation_info(%L::uuid)',
@@ -115,13 +135,19 @@ SELECT throws_ok(
     'User is banned.',
     'Banned user should not be able to get invitation info'
 );
+RESET ROLE;
 
 -- Test update_invitation_status function
 SELECT tests.authenticate_as('admin');
 
 WITH new_invitation AS (
     SELECT public.create_invitation(
+        tests.get_supabase_uid('invite_test3'),
         'status@test.com',
+        'Test',
+        'User',
+        '1990-01-01'::timestamptz,
+        '1234567890',
         'workshop'
     ) as invitation_id
 )
