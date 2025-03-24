@@ -1,6 +1,6 @@
 import { faker } from '@faker-js/faker/locale/en_IE';
-import 'dotenv/config';
 import { createClient } from '@supabase/supabase-js';
+import 'dotenv/config';
 import stripe from 'stripe';
 
 import type { Database } from '../src/database.types';
@@ -109,8 +109,16 @@ export async function setupWaitlistedUser(
 		// logging as the user we are verifying the token for, hence we lose the service role privileges
 		const client = getSupabaseServiceClient();
 		return Promise.all([
-			waitlisEntry?.data?.profile_id ? client.from('user_profiles').delete().eq('id', waitlisEntry.data.profile_id).throwOnError() : Promise.resolve(),
-			inviteLink.data.user?.id ? client.auth.admin.deleteUser(inviteLink.data.user.id) : Promise.resolve()
+			waitlisEntry?.data?.profile_id
+				? client
+						.from('user_profiles')
+						.delete()
+						.eq('id', waitlisEntry.data.profile_id)
+						.throwOnError()
+				: Promise.resolve(),
+			inviteLink.data.user?.id
+				? client.auth.admin.deleteUser(inviteLink.data.user.id)
+				: Promise.resolve()
 		]);
 	}
 	return Promise.resolve({
@@ -181,7 +189,7 @@ export async function createMember({
 			last_name: testData.last_name,
 			email: testData.email,
 			date_of_birth: testData.date_of_birth.toISOString(),
-			phone_number: testData.phone_number,
+			phone_number: testData.phone_number.toString(),
 			pronouns: testData.pronouns,
 			gender: testData.gender as Database['public']['Enums']['gender'],
 			medical_conditions: testData.medical_conditions
@@ -237,7 +245,7 @@ export async function createMember({
 		.eq('email', testData.email)
 		.throwOnError();
 
-	const { data, error } = await supabaseServiceClient
+	const { data } = await supabaseServiceClient
 		.rpc('complete_member_registration', {
 			v_user_id: inviteLink.data.user?.id || '',
 			p_next_of_kin_name: testData.next_of_kin.name,
@@ -245,9 +253,6 @@ export async function createMember({
 			p_insurance_form_submitted: true
 		})
 		.throwOnError();
-	if (error) {
-		throw new Error(error.message || 'Unknown error occurred');
-	}
 	const verifyOtp = await supabaseServiceClient.auth.signInWithPassword({
 		email: testData.email,
 		password: 'password'
@@ -317,7 +322,6 @@ export async function createStripeCustomerWithSubscription(email: string) {
 		expand: ['latest_invoice.payment_intent']
 	});
 
-
 	// Get the price ID for the membership fee
 	prices = await stripeClient.prices.search({
 		query: `lookup_key:'${ANNUAL_FEE_LOOKUP}'`
@@ -359,15 +363,15 @@ export async function setupInvitedUser(
 		addSupabaseId: true,
 		invitationStatus: 'pending' as Database['public']['Enums']['invitation_status']
 	};
-	const overrides = { 
-		...defaultInviteValues, 
-		...params, 
+	const overrides = {
+		...defaultInviteValues,
+		...params,
 		email: params.email || faker.internet.email().toLowerCase()
 	};
-	
+
 	const { addSupabaseId, addInvitation, invitationStatus, email } = overrides;
 	const supabaseServiceClient = getSupabaseServiceClient();
-	
+
 	// Create test user data
 	const testData = {
 		first_name: faker.person.firstName(),
@@ -388,7 +392,7 @@ export async function setupInvitedUser(
 		},
 		medical_conditions: faker.helpers.arrayElement(['None', 'Asthma', 'Previous knee injury'])
 	};
-	
+
 	// Create user profile using direct database query instead of RPC
 	const { data: userProfileData, error: userProfileError } = await supabaseServiceClient
 		.from('user_profiles')
@@ -404,30 +408,30 @@ export async function setupInvitedUser(
 		})
 		.select()
 		.single();
-	
+
 	if (userProfileError) {
 		throw new Error(userProfileError.message);
 	}
-	
+
 	if (!userProfileData) {
 		throw new Error('Failed to create user profile');
 	}
-	
+
 	// Create auth user
 	const inviteLink = await supabaseServiceClient.auth.admin.createUser({
 		email: testData.email,
 		password: 'password',
 		email_confirm: true
 	});
-	
+
 	if (inviteLink.error) {
 		throw new Error(inviteLink.error.message);
 	}
-	
+
 	if (!inviteLink.data.user) {
 		throw new Error('Failed to create auth user');
 	}
-	
+
 	// Update user profile with Supabase user ID
 	await supabaseServiceClient
 		.from('user_profiles')
@@ -437,14 +441,15 @@ export async function setupInvitedUser(
 		.eq('id', userProfileData.id)
 		.select()
 		.throwOnError();
-	
+
 	// Create invitation using direct database query instead of RPC
-	let invitationId = null;
+	let invitationId: string | null = null;
 	if (addInvitation) {
-		const expiresAt = invitationStatus === 'expired' 
-			? new Date(Date.now() - 86400000).toISOString() // 1 day ago
-			: new Date(Date.now() + 604800000).toISOString(); // 7 days from now
-			
+		const expiresAt =
+			invitationStatus === 'expired'
+				? new Date(Date.now() - 86400000).toISOString() // 1 day ago
+				: new Date(Date.now() + 604800000).toISOString(); // 7 days from now
+
 		const { data: invitationData, error: invitationError } = await supabaseServiceClient
 			.from('invitations')
 			.insert({
@@ -457,44 +462,50 @@ export async function setupInvitedUser(
 			})
 			.select()
 			.single();
-			
+
 		if (invitationError) {
 			throw new Error(invitationError.message);
 		}
-		
+
 		if (!invitationData) {
 			throw new Error('Failed to create invitation');
 		}
-		
+
 		invitationId = invitationData.id;
 	}
-	
+
 	// Sign in to get access token
 	const verifyOtp = await supabaseServiceClient.auth.signInWithPassword({
 		email: testData.email,
 		password: 'password'
 	});
-	
+
 	if (verifyOtp.error) {
 		throw new Error(verifyOtp.error.message);
 	}
-	
+
 	if (!verifyOtp.data.session || !verifyOtp.data.session.access_token) {
 		throw new Error('Failed to get access token');
 	}
-	
+
 	await supabaseServiceClient.auth.signOut();
-	
+
 	// Cleanup function
 	function cleanUp() {
 		const client = getSupabaseServiceClient();
 		return Promise.all([
-			client.from('user_profiles').delete().eq('id', userProfileData.id).throwOnError(),
-			inviteLink.data.user ? client.auth.admin.deleteUser(inviteLink.data.user.id) : Promise.resolve(),
-			invitationId ? client.from('invitations').delete().eq('id', invitationId).throwOnError() : Promise.resolve()
+			userProfileData
+				? client.from('user_profiles').delete().eq('id', userProfileData.id).throwOnError()
+				: Promise.resolve(),
+			inviteLink.data.user
+				? client.auth.admin.deleteUser(inviteLink.data.user.id)
+				: Promise.resolve(),
+			invitationId
+				? client.from('invitations').delete().eq('id', invitationId).throwOnError()
+				: Promise.resolve()
 		]);
 	}
-	
+
 	return Promise.resolve({
 		...testData,
 		invitationId,

@@ -1,7 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { createMember } from './setupFunctions';
 import { loginAsUser } from './supabaseLogin';
-// TODO: update stripe details when settings are updated (only phone & name)
 
 test.describe('Member Self-Management', () => {
 	let testData: Awaited<ReturnType<typeof createMember>>;
@@ -35,7 +34,8 @@ test.describe('Member Self-Management', () => {
 	test('it should show manage subscription button', async ({ page }) => {
 		await page.goto('/dashboard');
 		await page.getByText(/manage payment settings/i).click();
-		await expect(page).toHaveURL(/billing\.stripe\.com/);
+		const newPage = await page.waitForEvent('popup');
+		await expect(newPage).toHaveURL(/billing\.stripe\.com/);
 	});
 
 	test('it should not show other options when user is only member', async ({ page }) => {
@@ -52,7 +52,7 @@ test.describe('Member Management - Admin', () => {
 	test.beforeAll(async () => {
 		adminEmail = `admin-${Date.now()}@test.com`;
 		adminData = await createMember({ email: adminEmail, roles: new Set(['admin']) });
-		memberData = await createMember({ email: `member-${Date.now()}@test.com`, roles: new Set(['member']) });
+		memberData = await createMember({ email: `member-${Date.now()}@test.com`, roles: new Set(['member']), createSubscription: true });
 	});
 	test.beforeEach(async ({ context }) => {
 		await loginAsUser(context, adminEmail);
