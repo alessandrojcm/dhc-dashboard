@@ -5,13 +5,13 @@ import { getMemberData, updateMemberData } from '$lib/server/kyselyRPCFunctions'
 import { getRolesFromSession, SETTINGS_ROLES } from '$lib/server/roles';
 import { stripeClient } from '$lib/server/stripe';
 import { supabaseServiceClient } from '$lib/server/supabaseServiceClient';
-import { error, redirect, type Actions, type ServerLoadEvent } from '@sveltejs/kit';
-import { fail, message, setError, superValidate } from 'sveltekit-superforms';
+import { error, type Actions, type ServerLoadEvent } from '@sveltejs/kit';
+import { fail, message, setMessage, superValidate } from 'sveltekit-superforms';
 import { valibot } from 'sveltekit-superforms/adapters';
 import type { RequestEvent } from '../$types';
 import type { PageServerLoad } from './$types';
 
-async function canUpdateSettings(event: RequestEvent|ServerLoadEvent) {
+async function canUpdateSettings(event: RequestEvent | ServerLoadEvent) {
 	const roles = getRolesFromSession(event.locals.session!);
 	if (roles.intersection(SETTINGS_ROLES).size > 0) {
 		return true;
@@ -30,7 +30,7 @@ async function canUpdateSettings(event: RequestEvent|ServerLoadEvent) {
 export const load: PageServerLoad = async (event) => {
 	const { params, locals } = event;
 	try {
-		const isAdmin = canUpdateSettings(event);
+		const isAdmin = await canUpdateSettings(event);
 		const memberProfile = await getMemberData(params.memberId, kysely);
 		if (!isAdmin && (!memberProfile || params.memberId !== locals.session?.user.id)) {
 			return error(404, 'Member not found');
@@ -69,7 +69,8 @@ export const load: PageServerLoad = async (event) => {
 				.eq('key', 'insurance_form_link')
 				.limit(1)
 				.single()
-				.then((result) => result.data?.value)
+				.then((result) => result.data?.value),
+			isAdmin
 		};
 	} catch (e) {
 		console.error(e);
@@ -78,7 +79,7 @@ export const load: PageServerLoad = async (event) => {
 		});
 	}
 };
-// TODO fix update by admin and show error feedback
+
 export const actions: Actions = {
 	'update-profile': async (event) => {
 		const canUpdate = await canUpdateSettings(event as RequestEvent);
@@ -146,28 +147,13 @@ export const actions: Actions = {
 			return message(form, { success: 'Profile has been updated!' });
 		} catch (err) {
 			console.error('Error updating member profile:', err);
-			return setError(form, 'There was an error updating your profile. Please try again later.');
-		}
-	},
-	'payment-settings': async (event) => {
-		const memberId = event.params.memberId!;
-		const customerId = await kysely
-			.selectFrom('user_profiles')
-			.select('customer_id')
-			.where('supabase_user_id', '=', memberId)
-			.limit(1)
-			.execute()
-			.then((result) => result[0]?.customer_id);
-
-		if (!customerId) {
-			return fail(404, {
-				message: 'Member not found'
+			setMessage(form, { failure: 'Failed to update profile' });
+			return fail(500, {
+				form,
+				message: {
+					failure: 'Failed to update profile'
+				}
 			});
 		}
-		const billingPortalSession = await stripeClient.billingPortal.sessions.create({
-			customer: customerId,
-			return_url: `${event.url.origin}/dashboard/members/${memberId}`
-		});
-		return redirect(303, billingPortalSession.url);
 	}
 };
