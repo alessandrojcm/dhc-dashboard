@@ -77,7 +77,7 @@ BEGIN
   SET status = 'expired',
       updated_at = now()
   WHERE email = p_email AND status = 'pending';
-
+  
   -- Create user profile
 
   INSERT INTO public.user_profiles (
@@ -92,7 +92,7 @@ BEGIN
     p_first_name,
     p_last_name,
     p_date_of_birth,
-    p_phone_number
+    p_phone_number,
     false
   );
 
@@ -116,8 +116,7 @@ BEGIN
     metadata
   ) VALUES (
     p_email,
-    v_user_id,
-    p_waitlist_id,
+    v_user_id,    p_waitlist_id,
     'pending',
     p_expires_at,
     (select auth.uid()),
