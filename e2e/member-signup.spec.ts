@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import 'dotenv/config';
 import { setupInvitedUser } from './setupFunctions';
 
@@ -35,7 +35,7 @@ test.describe('Member Signup - Negative test cases', () => {
 		});
 	});
 });
-test.setTimeout(50000000)
+test.setTimeout(50000000);
 test.describe('Member Signup - Valid invitation', () => {
 	// Test data generated once for all tests
 	let testData: Awaited<ReturnType<typeof setupInvitedUser>>;
@@ -86,8 +86,11 @@ test.describe('Member Signup - Valid invitation', () => {
 
 		// Find the phone input field (it's now inside the phone input component)
 		// The new component has a div wrapper with an Input of type tel inside
-		const phoneInputField = page.locator('div').filter({ hasText: 'Next of Kin Phone Number' }).locator('input[type="tel"]');
-		
+		const phoneInputField = page
+			.locator('div')
+			.filter({ hasText: 'Next of Kin Phone Number' })
+			.locator('input[type="tel"]');
+
 		await phoneInputField.pressSequentially(raw_phone_number, { delay: 50 });
 		await phoneInputField.press('Tab');
 		await expect(phoneInputField).toHaveValue(expected_format);
@@ -99,8 +102,11 @@ test.describe('Member Signup - Valid invitation', () => {
 
 		// Find the phone input field (it's now inside the phone input component)
 		// The new component has a div wrapper with an Input of type tel inside
-		const phoneInputField = page.locator('div').filter({ hasText: 'Next of Kin Phone Number' }).locator('input[type="tel"]');
-		
+		const phoneInputField = page
+			.locator('div')
+			.filter({ hasText: 'Next of Kin Phone Number' })
+			.locator('input[type="tel"]');
+
 		await phoneInputField.pressSequentially('0838774532', { delay: 50 });
 		await phoneInputField.press('Tab');
 		await page
@@ -114,7 +120,6 @@ test.describe('Member Signup - Valid invitation', () => {
 		await stripeFrame.getByLabel('City').fill('Dublin');
 		await stripeFrame.getByLabel('Eircode').fill('K45 HR22');
 		await stripeFrame.getByLabel('County').selectOption('County Dublin');
-		;
 		await page.getByRole('button', { name: /sign up/i }).click();
 		await expect(
 			page.getByText(
@@ -129,8 +134,11 @@ test.describe('Member Signup - Valid invitation', () => {
 
 		// Find the phone input field (it's now inside the phone input component)
 		// The new component has a div wrapper with an Input of type tel inside
-		const phoneInputField = page.locator('div').filter({ hasText: 'Next of Kin Phone Number' }).locator('input[type="tel"]');
-		
+		const phoneInputField = page
+			.locator('div')
+			.filter({ hasText: 'Next of Kin Phone Number' })
+			.locator('input[type="tel"]');
+
 		await phoneInputField.pressSequentially('0838774532', { delay: 50 });
 		await phoneInputField.press('Tab');
 		await page
@@ -158,8 +166,11 @@ test.describe('Member Signup - Valid invitation', () => {
 
 		// Find the phone input field (it's now inside the phone input component)
 		// The new component has a div wrapper with an Input of type tel inside
-		const phoneInputField = page.locator('div').filter({ hasText: 'Next of Kin Phone Number' }).locator('input[type="tel"]');
-		
+		const phoneInputField = page
+			.locator('div')
+			.filter({ hasText: 'Next of Kin Phone Number' })
+			.locator('input[type="tel"]');
+
 		await phoneInputField.pressSequentially('0838774532', { delay: 50 });
 		await phoneInputField.press('Tab');
 		await page
