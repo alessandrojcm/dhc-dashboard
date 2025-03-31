@@ -1,7 +1,7 @@
 BEGIN;
 CREATE EXTENSION IF NOT EXISTS "basejump-supabase_test_helpers";
 CREATE EXTENSION IF NOT EXISTS "pgtap";
-SELECT plan(7);
+SELECT plan(8);
 
 -- Test case: Expiration scenarios
 -- This test verifies:
@@ -119,6 +119,27 @@ SELECT lives_ok(
     $$,
     'Should update expiration time to simulate time passing during signup'
 );
+
+-- Test 8: Verify get_invitation_info correctly handles expired invitations
+-- First, make sure the user has the correct email in auth.users
+SET ROLE postgres;
+
+UPDATE auth.users 
+SET email = 'expires_during_signup@example.com'
+WHERE id = tests.get_supabase_uid('test_user_exp3');
+
+-- Now try to get invitation info for the user with expired invitation
+SELECT throws_ok(
+    format(
+        'SELECT public.get_invitation_info(%L::uuid)',
+        tests.get_supabase_uid('test_user_exp3')
+    ),
+    'U0009',
+    'Invitation has expired.',
+    'get_invitation_info should throw an error for expired invitation'
+);
+
+RESET ROLE;
 
 -- Verify update_invitation_status correctly handles expired invitations
 -- We'll do this without using the test framework to avoid the FOR UPDATE issue
