@@ -42,8 +42,6 @@
 
 		return unsubscribe;
 	});
-	
-	$inspect($errors);
 </script>
 
 <svelte:head>

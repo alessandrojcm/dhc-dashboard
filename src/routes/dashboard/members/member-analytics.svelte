@@ -13,73 +13,67 @@
 	} from '$lib/components/ui/analytics-charts.svelte';
 
 	const { supabase }: { supabase: SupabaseClient<Database> } = $props();
-	const totalCountQuery = createQuery<number>(() => ({
+	const totalCountQuery = createQuery(() => ({
 		queryKey: ['members', 'totalCount'],
-		queryFn: () =>
+		queryFn: ({ signal }) =>
 			supabase
 				.from('member_management_view')
 				.select('id', { count: 'exact', head: true })
 				.eq('is_active', true)
+				.abortSignal(signal)
 				.throwOnError()
 				.then((r) => r.count ?? 0)
 	}));
 	const averageAge = createQuery<number>(() => ({
 		queryKey: ['members', 'avgAge'],
-		queryFn: () =>
+		queryFn: ({ signal }) =>
 			supabase
 				.from('member_management_view')
 				.select('avg_age:age.avg()')
 				.eq('is_active', true)
+				.abortSignal(signal)
 				.single()
 				.throwOnError()
-				.then((res) => res.data?.avg_age)
+				.then((res) => res.data?.avg_age ?? 0)
 	}));
-	const genderDistribution = createQuery<{
-		gender: Database['public']['Enums']['gender'];
-		count: number;
-	}>(() => ({
+	const genderDistribution = createQuery<
+		{ gender: Database['public']['Enums']['gender']; value: number }[]
+	>(() => ({
 		queryKey: ['members', 'genderDistribution'],
-		queryFn: () =>
+		queryFn: ({ signal }) =>
 			supabase
 				.from('member_management_view')
 				.select('gender,value:gender.count()')
 				.eq('is_active', true)
+				.abortSignal(signal)
 				.throwOnError()
-				.then((r) => r.data)
+				.then((r) => r.data ?? [])
 	}));
 	const genderDistributionData = $derived(genderDistribution.data ?? []);
 	const ageDistributionQuery = createQuery<
-		[
-			{
-				age: string;
-				count: number;
-			}
-		]
+		{ age: number | null; value: number }[]
 	>(() => ({
 		queryKey: ['members', 'ageDistribution'],
-		queryFn: () =>
+		queryFn: ({ signal }) =>
 			supabase
 				.from('member_management_view')
 				.select('age,value:age.count()')
 				.eq('is_active', true)
 				.order('age', { ascending: true })
+				.abortSignal(signal)
 				.throwOnError()
-				.then((r) => r.data)
+				.then((r) => r.data ?? [])
 	}));
 	const weaponPreferencesDistribution = createQuery<
-		[
-			{
-				weapon: string;
-				count: number;
-			}
-		]
+		{ weapon: string; count: number }[]
 	>(() => ({
 		queryKey: ['members', 'weaponPreferencesDistribution'],
-		queryFn: async () => {
+		queryFn: async ({ signal }) => {
 			const { data } = await supabase
 				.from('member_management_view')
 				.select('preferred_weapon')
 				.eq('is_active', true)
+				.abortSignal(signal)
 				.throwOnError();
 
 			// Process the data in JavaScript
@@ -159,7 +153,7 @@
 			</Resizable.Pane>
 			<Resizable.Handle />
 			<Resizable.Pane class="min-h-[400px] pl-4">
-				{@render preferredWeaponChart(weaponPreferencesDistribution.data)}
+				{@render preferredWeaponChart(weaponPreferencesDistribution.data ?? [])}
 			</Resizable.Pane>
 		</Resizable.PaneGroup>
 	</Resizable.Pane>

@@ -10,6 +10,7 @@ import { fail, message, setMessage, superValidate } from 'sveltekit-superforms';
 import { valibot } from 'sveltekit-superforms/adapters';
 import type { RequestEvent } from '../$types';
 import type { PageServerLoad } from './$types';
+import type { SocialMediaConsent } from '$lib/types.ts';
 
 async function canUpdateSettings(event: RequestEvent | ServerLoadEvent) {
 	const roles = getRolesFromSession(event.locals.session!);
@@ -40,19 +41,22 @@ export const load: PageServerLoad = async (event) => {
 		return {
 			form: await superValidate(
 				{
-					firstName: memberProfile.first_name,
-					lastName: memberProfile.last_name,
+					firstName: memberProfile.first_name ?? undefined,
+					lastName: memberProfile.last_name ?? undefined,
 					email,
-					phoneNumber: memberProfile.phone_number,
-					dateOfBirth: new Date(memberProfile.date_of_birth),
-					pronouns: memberProfile.pronouns,
-					gender: memberProfile.gender,
-					medicalConditions: memberProfile.medical_conditions,
-					nextOfKin: memberProfile.next_of_kin_name,
-					nextOfKinNumber: memberProfile.next_of_kin_phone,
-					weapon: memberProfile.preferred_weapon,
-					insuranceFormSubmitted: memberProfile.insurance_form_submitted,
-					socialMediaConsent: memberProfile.social_media_consent
+					phoneNumber: memberProfile.phone_number ?? undefined,
+					dateOfBirth: memberProfile.date_of_birth
+						? new Date(memberProfile.date_of_birth)
+						: undefined,
+					pronouns: memberProfile.pronouns ?? undefined,
+					gender: memberProfile.gender ?? undefined,
+					medicalConditions: memberProfile.medical_conditions ?? undefined,
+					nextOfKin: memberProfile.next_of_kin_name ?? undefined,
+					nextOfKinNumber: memberProfile.next_of_kin_phone ?? undefined,
+					weapon: memberProfile.preferred_weapon ?? undefined,
+					insuranceFormSubmitted: memberProfile.insurance_form_submitted ?? undefined,
+					socialMediaConsent:
+						(memberProfile.social_media_consent as SocialMediaConsent) ?? undefined
 				},
 				valibot(signupSchema),
 				{ errors: false }

@@ -77,7 +77,7 @@
 				distribution.set(row.age, [...distribution.get(row.age), row]);
 			}
 		});
-		return Array.from(distribution.entries()).map(([age, rows], i) => ({
+		return Array.from(distribution.entries()).map(([age, rows]) => ({
 			key: age,
 			data: rows,
 			color: 'hsl(var(--color-primary))'

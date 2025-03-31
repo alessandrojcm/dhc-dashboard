@@ -1,6 +1,6 @@
 import type { RequestHandler } from '@sveltejs/kit';
+import { error } from '@sveltejs/kit';
 import { kysely } from '$lib/server/kysely';
-import { error, redirect } from '@sveltejs/kit';
 import { stripeClient } from '$lib/server/stripe';
 
 export const POST: RequestHandler = async (event) => {

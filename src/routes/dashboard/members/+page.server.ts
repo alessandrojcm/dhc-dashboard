@@ -1,8 +1,4 @@
-import {
-	adminInviteSchema,
-	bulkInviteSchema,
-	type BulkInviteSchemaOutput
-} from '$lib/schemas/adminInvite';
+import { adminInviteSchema, bulkInviteSchema } from '$lib/schemas/adminInvite';
 import settingsSchema from '$lib/schemas/membersSettings';
 import { executeWithRLS } from '$lib/server/kysely';
 import { createInvitation } from '$lib/server/kyselyRPCFunctions';

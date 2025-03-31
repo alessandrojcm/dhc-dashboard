@@ -106,7 +106,6 @@
 	function clearAllInvites() {
 		$bulkFormData.invites = [];
 	}
-	$inspect($bulkMessage)
 </script>
 
 <Button variant="outline" onclick={() => (isOpen = true)}>Invite Members</Button>
