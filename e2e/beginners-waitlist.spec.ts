@@ -8,7 +8,7 @@ const testData = {
 	firstName: faker.person.firstName(),
 	lastName: faker.person.lastName(),
 	email: faker.internet.email(),
-	phoneNumber: faker.phone.number({ style: 'international' }),
+	phoneNumber: '0840997863',
 	dateOfBirth: dayjs().subtract(16, 'years'), // Ensure date format is YYYY-MM-DD
 	medicalConditions: faker.lorem.sentence()
 };

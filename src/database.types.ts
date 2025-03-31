@@ -34,17 +34,69 @@ export type Database = {
   }
   public: {
     Tables: {
-      is_valid: {
+      invitations: {
         Row: {
-          exists: boolean | null
+          created_at: string
+          created_by: string | null
+          email: string
+          expires_at: string
+          id: string
+          invitation_type: string
+          metadata: Json | null
+          status: Database["public"]["Enums"]["invitation_status"]
+          updated_at: string
+          user_id: string | null
+          waitlist_id: string | null
         }
         Insert: {
-          exists?: boolean | null
+          created_at?: string
+          created_by?: string | null
+          email: string
+          expires_at?: string
+          id?: string
+          invitation_type: string
+          metadata?: Json | null
+          status?: Database["public"]["Enums"]["invitation_status"]
+          updated_at?: string
+          user_id?: string | null
+          waitlist_id?: string | null
         }
         Update: {
-          exists?: boolean | null
+          created_at?: string
+          created_by?: string | null
+          email?: string
+          expires_at?: string
+          id?: string
+          invitation_type?: string
+          metadata?: Json | null
+          status?: Database["public"]["Enums"]["invitation_status"]
+          updated_at?: string
+          user_id?: string | null
+          waitlist_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "invitations_waitlist_id_fkey"
+            columns: ["waitlist_id"]
+            isOneToOne: false
+            referencedRelation: "member_management_view"
+            referencedColumns: ["from_waitlist_id"]
+          },
+          {
+            foreignKeyName: "invitations_waitlist_id_fkey"
+            columns: ["waitlist_id"]
+            isOneToOne: false
+            referencedRelation: "waitlist"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invitations_waitlist_id_fkey"
+            columns: ["waitlist_id"]
+            isOneToOne: false
+            referencedRelation: "waitlist_management_view"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       member_profiles: {
         Row: {
@@ -180,7 +232,9 @@ export type Database = {
           phone_number: string
           pronouns: string | null
           search_text: unknown | null
-          social_media_consent: Database["public"]["Enums"]["social_media_consent"]
+          social_media_consent:
+            | Database["public"]["Enums"]["social_media_consent"]
+            | null
           supabase_user_id: string | null
           updated_at: string | null
           waitlist_id: string | null
@@ -198,7 +252,9 @@ export type Database = {
           phone_number?: string
           pronouns?: string | null
           search_text?: unknown | null
-          social_media_consent?: Database["public"]["Enums"]["social_media_consent"]
+          social_media_consent?:
+            | Database["public"]["Enums"]["social_media_consent"]
+            | null
           supabase_user_id?: string | null
           updated_at?: string | null
           waitlist_id?: string | null
@@ -216,7 +272,9 @@ export type Database = {
           phone_number?: string
           pronouns?: string | null
           search_text?: unknown | null
-          social_media_consent?: Database["public"]["Enums"]["social_media_consent"]
+          social_media_consent?:
+            | Database["public"]["Enums"]["social_media_consent"]
+            | null
           supabase_user_id?: string | null
           updated_at?: string | null
           waitlist_id?: string | null
@@ -432,6 +490,16 @@ export type Database = {
         }
         Returns: string
       }
+      create_invitation: {
+        Args: {
+          p_email: string
+          p_invitation_type: string
+          p_waitlist_id?: string
+          p_expires_at?: string
+          p_metadata?: Json
+        }
+        Returns: string
+      }
       custom_access_token_hook: {
         Args: {
           event: Json
@@ -467,6 +535,12 @@ export type Database = {
       }
       get_gender_options: {
         Args: Record<PropertyKey, never>
+        Returns: Json
+      }
+      get_invitation_info: {
+        Args: {
+          p_user_id: string
+        }
         Returns: Json
       }
       get_member_data: {
@@ -531,6 +605,17 @@ export type Database = {
           user_social_media_consent: Database["public"]["Enums"]["social_media_consent"]
         }[]
       }
+      mark_expired_invitations: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
+      update_invitation_status: {
+        Args: {
+          p_invitation_id: string
+          p_status: Database["public"]["Enums"]["invitation_status"]
+        }
+        Returns: boolean
+      }
       update_member_data: {
         Args: {
           user_uuid: string
@@ -578,6 +663,7 @@ export type Database = {
         | "man (trans)"
         | "woman (trans)"
         | "other"
+      invitation_status: "pending" | "accepted" | "expired" | "revoked"
       preferred_weapon: "longsword" | "sword_and_buckler"
       role_type:
         | "admin"

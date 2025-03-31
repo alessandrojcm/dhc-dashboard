@@ -1,10 +1,13 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
 	import { Checkbox } from '$lib/components/ui/checkbox';
+	import dayjs from 'dayjs';
 	import DatePicker from '$lib/components/ui/date-picker.svelte';
 	import * as Form from '$lib/components/ui/form';
 	import { Input } from '$lib/components/ui/input';
+	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
 	import PhoneInput from '$lib/components/ui/phone-input.svelte';
 	import * as RadioGroup from '$lib/components/ui/radio-group/index.js';
 	import * as Select from '$lib/components/ui/select';
@@ -13,7 +16,7 @@
 	import { whyThisField } from '$lib/components/ui/why-this-field.svelte';
 	import signupSchema from '$lib/schemas/membersSignup';
 	import { fromDate, getLocalTimeZone } from '@internationalized/date';
-	import dayjs from 'dayjs';
+	import { createMutation } from '@tanstack/svelte-query';
 	import { ExternalLink } from 'lucide-svelte';
 	import { toast } from 'svelte-sonner';
 	import { dateProxy, superForm } from 'sveltekit-superforms';
@@ -34,10 +37,22 @@
 		}
 		return fromDate(dayjs($formData.dateOfBirth).toDate(), getLocalTimeZone());
 	});
+	const openBillinPortal = createMutation(() => ({
+		mutationFn: () =>
+			fetch(`/dashboard/members/${page.params.memberId}`, {
+				method: 'POST'
+			}).then((res) => res.json()),
+		onSuccess: (data) => {
+			window.open(data.portalURL, '_blank');
+		}
+	}));
 	$effect(() => {
 		const sub = message.subscribe((m) => {
 			if (m?.success) {
 				toast.success(m.success, { position: 'top-right' });
+			}
+			if (m?.failure) {
+				toast.error(m.failure, { position: 'top-right' });
 			}
 		});
 
@@ -96,7 +111,11 @@
 						<Form.Control>
 							{#snippet children({ props })}
 								<Form.Label for="phoneNumber">Phone Number</Form.Label>
-								<PhoneInput {...props} bind:phoneNumber={$formData.phoneNumber} />
+								<PhoneInput
+									placeholder="Enter your phone number"
+									{...props}
+									bind:phoneNumber={$formData.phoneNumber}
+								/>
 							{/snippet}
 						</Form.Control>
 						<Form.FieldErrors />
@@ -120,9 +139,20 @@
 						</Form.Control>
 						<Form.FieldErrors />
 					</Form.Field>
-					<Button variant="outline" type="submit" formaction="?/payment-settings" class="w-full"
-						>Manage payment settings <ExternalLink class="ml-2 h-4 w-4" /></Button
-					>
+					{#if data.isAdmin}
+						<Button
+							disabled={openBillinPortal.isPending}
+							variant="outline"
+							type="button"
+							onclick={() => openBillinPortal.mutate()}
+							class="w-full"
+						>
+							{#if openBillinPortal.isPending}
+								<LoaderCircle class="ml-2 h-4 w-4" />
+							{/if}
+							Manage payment settings <ExternalLink class="ml-2 h-4 w-4" /></Button
+						>
+					{/if}
 				</div>
 				<div class="space-y-6">
 					<Form.Field {form} name="gender">

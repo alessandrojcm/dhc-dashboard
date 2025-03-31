@@ -139,12 +139,12 @@ test.describe('Settings Management - Regular Member', () => {
 	let memberData: Awaited<ReturnType<typeof createMember>>;
 	test.beforeAll(async () => {
 		memberData = await createMember({
-			email: 'member@test.com',
+			email: `member-${Date.now()}@test.com`,
 			roles: new Set(['member'])
 		});
 	});
 	test.beforeEach(async ({ context }) => {
-		await loginAsUser(context, 'member@test.com');
+		await loginAsUser(context, memberData.email);
 	});
 	test.afterAll(() => memberData?.cleanUp());
 
@@ -155,7 +155,6 @@ test.describe('Settings Management - Regular Member', () => {
 
 	test('should not see waitlist toggle', async ({ page }) => {
 		await page.goto('/dashboard/beginners-workshop');
-		const toggleButton = page.getByText(/open waitlist|close waitlist/i);
-		await expect(toggleButton).toBeNull();
+		expect(page.getByText(/open waitlist|close waitlist/i)).not.toBeVisible();
 	});
 });
