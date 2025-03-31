@@ -12,12 +12,20 @@ import { MEMBERSHIP_FEE_LOOKUP_NAME, ANNUAL_FEE_LOOKUP } from '$lib/server/const
 import Dinero from 'dinero.js';
 import { kysely } from '$lib/server/kysely';
 import Stripe from 'stripe';
-import { completeMemberRegistration, getInvitationInfo, updateInvitationStatus } from '$lib/server/kyselyRPCFunctions';
+import {
+	completeMemberRegistration,
+	getInvitationInfo,
+	updateInvitationStatus
+} from '$lib/server/kyselyRPCFunctions';
 
 type StripePaymentInfo = {
 	customerId: string;
 	annualSubscriptionPaymentIntendId: string;
 	membershipSubscriptionPaymentIntendId: string;
+};
+
+type SubscriptionWithPlan = Stripe.Subscription & {
+	plan: Stripe.Plan;
 };
 
 // need to normalize medical_conditions
@@ -26,8 +34,8 @@ export const load: PageServerLoad = async ({ parent, cookies }) => {
 	try {
 		const invitationData = await kysely.transaction().execute(async (trx) => {
 			// Get invitation info instead of waitlist info
-			const invitationInfo = await getInvitationInfo(userData.id, trx)
-			
+			const invitationInfo = await getInvitationInfo(userData.id, trx);
+
 			if (!invitationInfo || invitationInfo.status !== 'pending') {
 				throw error(404, {
 					message: 'Invalid invitation'
@@ -166,11 +174,11 @@ export const load: PageServerLoad = async ({ parent, cookies }) => {
 				currency: 'EUR'
 			}).toJSON(),
 			monthlyFee: Dinero({
-				amount: monthlySubscription.plan.amount,
+				amount: (monthlySubscription as unknown as SubscriptionWithPlan).plan.amount ?? undefined,
 				currency: 'EUR'
 			}).toJSON(),
 			annualFee: Dinero({
-				amount: annualSubscription.plan.amount,
+				amount: (annualSubscription as unknown as SubscriptionWithPlan).plan.amount ?? undefined,
 				currency: 'EUR'
 			}).toJSON(),
 			nextMonthlyBillingDate: dayjs().add(1, 'month').startOf('month').toDate(),
@@ -212,11 +220,11 @@ export const actions: Actions = {
 			.transaction()
 			.execute(async (trx) => {
 				// First get the invitation info and update its status to accepted
-				const invitationInfo = await getInvitationInfo(tokenClaim.sub!, trx)
+				const invitationInfo = await getInvitationInfo(tokenClaim.sub!, trx);
 				if (invitationInfo && invitationInfo.invitation_id) {
 					await updateInvitationStatus(invitationInfo.invitation_id, 'accepted', trx);
 				}
-				
+
 				// Then complete the member registration
 				await completeMemberRegistration(
 					{
@@ -227,7 +235,7 @@ export const actions: Actions = {
 					},
 					trx
 				);
-				
+
 				const intent = await stripeClient.setupIntents.create({
 					confirm: true,
 					customer: customerId,

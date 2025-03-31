@@ -1,11 +1,24 @@
 <script lang="ts">
-	import { createMutation, createQuery, keepPreviousData } from '@tanstack/svelte-query';
+	import { goto } from '$app/navigation';
+	import { page } from '$app/stores';
+	import type { Database, Tables } from '$database';
+	import { Badge } from '$lib/components/ui/badge';
+	import { Button } from '$lib/components/ui/button';
 	import {
 		createSvelteTable,
 		FlexRender,
 		renderComponent,
 		renderSnippet
 	} from '$lib/components/ui/data-table/index.js';
+	import { Input } from '$lib/components/ui/input';
+	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
+	import * as Pagination from '$lib/components/ui/pagination/index.js';
+	import * as Select from '$lib/components/ui/select';
+	import * as Table from '$lib/components/ui/table/index.js';
+	import SortHeader from '$lib/components/ui/table/sort-header.svelte';
+	import type { MutationPayload } from '$lib/types';
+	import type { SupabaseClient } from '@supabase/supabase-js';
+	import { createMutation, createQuery, keepPreviousData } from '@tanstack/svelte-query';
 	import {
 		getCoreRowModel,
 		getPaginationRowModel,
@@ -14,23 +27,10 @@
 		type SortingState,
 		type TableOptions
 	} from '@tanstack/table-core';
-	import { page } from '$app/stores';
-	import { goto } from '$app/navigation';
-	import type { Database, Tables } from '$database';
-	import * as Select from '$lib/components/ui/select';
-	import * as Table from '$lib/components/ui/table/index.js';
-	import * as Pagination from '$lib/components/ui/pagination/index.js';
-	import { Badge } from '$lib/components/ui/badge';
-	import SortHeader from '$lib/components/ui/table/sort-header.svelte';
 	import dayjs from 'dayjs';
 	import { createRawSnippet } from 'svelte';
-	import type { QueryData, SupabaseClient } from '@supabase/supabase-js';
-	import type { FetchAndCountResult, MutationPayload } from '$lib/types';
-	import { Input } from '$lib/components/ui/input';
-	import { Button } from '$lib/components/ui/button';
 	import { Cross2 } from 'svelte-radix';
 	import ActionButtons from './actions-buttons.svelte';
-	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
 
 	const columns =
 		'current_position,full_name,email,phone_number,status,age,initial_registration_date,last_contacted,medical_conditions,admin_notes,social_media_consent';
@@ -60,12 +60,14 @@
 		searchQuery,
 		sortingState,
 		rangeStart,
-		rangeEnd
+		rangeEnd,
+		signal
 	}: {
 		searchQuery: string;
 		sortingState: SortingState;
 		rangeStart: number;
 		rangeEnd: number;
+		signal: AbortSignal;
 	}) {
 		let query = supabase.from('waitlist_management_view').select(columns, { count: 'estimated' });
 		if (searchQuery.length > 0) {
@@ -78,16 +80,15 @@
 		}
 		return query
 			.range(rangeStart, rangeEnd)
+			.abortSignal(signal)
 			.throwOnError()
 			.then((r) => ({ data: r.data, count: r.count }));
 	}
-
-	$inspect(rangeStart, rangeEnd);
 	const waitlistQuery = createQuery<ReturnType<typeof getWaitlistQuery>>(() => ({
 		queryKey: ['waitlist', { rangeStart, rangeEnd, sortingState, searchQuery }],
 		placeholderData: keepPreviousData,
-		queryFn: ({ queryKey }) => {
-			return getWaitlistQuery(queryKey[1]);
+		queryFn: ({ signal, queryKey }) => {
+			return getWaitlistQuery({ ...queryKey[1], signal });
 		}
 	}));
 	const updateWaitlistEntry = createMutation<

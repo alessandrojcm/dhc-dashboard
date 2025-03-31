@@ -13,8 +13,7 @@ export const load: PageServerLoad = async () => {
 		.eq('key', 'waitlist_open')
 		.single()
 		.throwOnError()
-		.then((result) => result.data.value === 'true')
-		.catch(() => false);
+		.then((result) => result?.data?.value === 'true');
 	if (!isWaitlistOpen) {
 		error(401, 'The waitlist is currently closed, please come back later.');
 	}

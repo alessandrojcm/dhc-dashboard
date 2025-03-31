@@ -58,8 +58,6 @@
 
 		return sub;
 	});
-
-	$inspect($errors);
 </script>
 
 <Card.Root class="w-full max-w-4xl mx-auto">
