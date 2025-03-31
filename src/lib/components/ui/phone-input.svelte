@@ -107,6 +107,7 @@
 		<Popover.Trigger bind:ref={triggerRef}>
 			{#snippet child({ props })}
 				<Button
+					aria-label="Country code"
 					variant="outline"
 					class="w-[16ch] justify-between"
 					{...props}

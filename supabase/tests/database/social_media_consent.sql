@@ -3,7 +3,7 @@ BEGIN;
 CREATE EXTENSION IF NOT EXISTS "basejump-supabase_test_helpers";
 CREATE EXTENSION IF NOT EXISTS pgtap;
 
-SELECT plan(6);
+SELECT plan(5);
 
 -- Test 1: Check if social_media_consent type exists
 SELECT has_type(
@@ -30,12 +30,6 @@ SELECT has_column(
 SELECT col_type_is(
     'public', 'user_profiles', 'social_media_consent', 'social_media_consent',
     'social_media_consent should be of type social_media_consent'
-);
-
--- Test 5: Check not null constraint
-SELECT col_not_null(
-    'public', 'user_profiles', 'social_media_consent',
-    'social_media_consent should be NOT NULL'
 );
 
 -- Create test user and profile

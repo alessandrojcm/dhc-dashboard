@@ -1,17 +1,40 @@
-import { error, redirect, type Actions } from '@sveltejs/kit';
-import type { PageServerLoad } from './$types';
-import { valibot } from 'sveltekit-superforms/adapters';
-import { fail, message, setError, superValidate } from 'sveltekit-superforms';
-import signupSchema from '$lib/schemas/membersSignup';
 import type { Database } from '$database';
-import { supabaseServiceClient } from '$lib/server/supabaseServiceClient';
+import signupSchema from '$lib/schemas/membersSignup';
 import { kysely } from '$lib/server/kysely';
-import { stripeClient } from '$lib/server/stripe';
 import { getMemberData, updateMemberData } from '$lib/server/kyselyRPCFunctions';
+import { getRolesFromSession, SETTINGS_ROLES } from '$lib/server/roles';
+import { stripeClient } from '$lib/server/stripe';
+import { supabaseServiceClient } from '$lib/server/supabaseServiceClient';
+import { error, type Actions, type ServerLoadEvent } from '@sveltejs/kit';
+import { fail, message, setMessage, superValidate } from 'sveltekit-superforms';
+import { valibot } from 'sveltekit-superforms/adapters';
+import type { RequestEvent } from '../$types';
+import type { PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ params, locals }) => {
+async function canUpdateSettings(event: RequestEvent | ServerLoadEvent) {
+	const roles = getRolesFromSession(event.locals.session!);
+	if (roles.intersection(SETTINGS_ROLES).size > 0) {
+		return true;
+	}
+	const {
+		data: { user },
+		error
+	} = await event.locals.supabase.auth.getUser();
+
+	if (error || user?.id !== event.locals.session?.user.id) {
+		return false;
+	}
+	return true;
+}
+
+export const load: PageServerLoad = async (event) => {
+	const { params, locals } = event;
 	try {
+		const isAdmin = await canUpdateSettings(event);
 		const memberProfile = await getMemberData(params.memberId, kysely);
+		if (!isAdmin && (!memberProfile || params.memberId !== locals.session?.user.id)) {
+			return error(404, 'Member not found');
+		}
 		const email = locals.session?.user.email;
 
 		return {
@@ -46,7 +69,8 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 				.eq('key', 'insurance_form_link')
 				.limit(1)
 				.single()
-				.then((result) => result.data?.value)
+				.then((result) => result.data?.value),
+			isAdmin
 		};
 	} catch (e) {
 		console.error(e);
@@ -58,6 +82,10 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 
 export const actions: Actions = {
 	'update-profile': async (event) => {
+		const canUpdate = await canUpdateSettings(event as RequestEvent);
+		if (!canUpdate) {
+			return fail(403, { message: 'Unauthorized' });
+		}
 		const form = await superValidate(event, valibot(signupSchema));
 		if (!form.valid) {
 			return fail(422, {
@@ -92,8 +120,8 @@ export const actions: Actions = {
 						p_medical_conditions: form.data.medicalConditions,
 						p_next_of_kin_name: form.data.nextOfKin,
 						p_next_of_kin_phone: form.data.nextOfKinNumber,
-						p_preferred_weapon:
-							form.data.weapon as Database['public']['Enums']['preferred_weapon'][],
+						p_preferred_weapon: form.data
+							.weapon as Database['public']['Enums']['preferred_weapon'][],
 						p_insurance_form_submitted: form.data.insuranceFormSubmitted,
 						p_social_media_consent: form.data
 							.socialMediaConsent as Database['public']['Enums']['social_media_consent']
@@ -119,28 +147,13 @@ export const actions: Actions = {
 			return message(form, { success: 'Profile has been updated!' });
 		} catch (err) {
 			console.error('Error updating member profile:', err);
-			return setError(form, 'There was an error updating your profile. Please try again later.');
-		}
-	},
-	'payment-settings': async (event) => {
-		const memberId = event.params.memberId!;
-		const customerId = await kysely
-			.selectFrom('user_profiles')
-			.select('customer_id')
-			.where('supabase_user_id', '=', memberId)
-			.limit(1)
-			.execute()
-			.then((result) => result[0]?.customer_id);
-
-		if (!customerId) {
-			return fail(404, {
-				message: 'Member not found'
+			setMessage(form, { failure: 'Failed to update profile' });
+			return fail(500, {
+				form,
+				message: {
+					failure: 'Failed to update profile'
+				}
 			});
 		}
-		const billingPortalSession = await stripeClient.billingPortal.sessions.create({
-			customer: customerId,
-			return_url: `${event.url.origin}/dashboard/members/${memberId}`
-		});
-		return redirect(303, billingPortalSession.url);
 	}
 };

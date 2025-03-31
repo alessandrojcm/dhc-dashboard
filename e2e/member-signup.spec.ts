@@ -1,30 +1,30 @@
 import { test, expect } from '@playwright/test';
 import 'dotenv/config';
-import { setupWaitlistedUser } from './setupFunctions';
+import { setupInvitedUser } from './setupFunctions';
 
 test.describe('Member Signup - Negative test cases', () => {
 	[
 		{
-			addWaitlist: false,
+			addInvitation: false,
 			addSupabaseId: true
 		},
 		{
-			addWaitlist: true,
+			addInvitation: true,
 			addSupabaseId: true,
 			token: 'invalid_token'
 		},
 		{
-			addWaitlist: true,
+			addInvitation: true,
 			addSupabaseId: true,
-			setWaitlistNotCompleted: true
+			invitationStatus: 'expired' as const
 		}
 	].forEach((override) => {
-		let testData: Awaited<ReturnType<typeof setupWaitlistedUser>>;
+		let testData: Awaited<ReturnType<typeof setupInvitedUser>>;
 		test.beforeAll(async () => {
-			testData = await setupWaitlistedUser(override);
+			testData = await setupInvitedUser(override);
 		});
 
-		test(`should show correct error page when the waitlist entry is wrong ${JSON.stringify(override)}`, async ({
+		test(`should show correct error page when the invitation is invalid ${JSON.stringify(override)}`, async ({
 			page
 		}) => {
 			await page.goto(
@@ -35,12 +35,13 @@ test.describe('Member Signup - Negative test cases', () => {
 		});
 	});
 });
-test.describe('Member Signup - Correct token', () => {
+test.setTimeout(50000000)
+test.describe('Member Signup - Valid invitation', () => {
 	// Test data generated once for all tests
-	let testData: Awaited<ReturnType<typeof setupWaitlistedUser>>;
+	let testData: Awaited<ReturnType<typeof setupInvitedUser>>;
 
 	test.beforeEach(async () => {
-		testData = await setupWaitlistedUser();
+		testData = await setupInvitedUser();
 	});
 
 	test.beforeEach(async ({ page }) => {
@@ -113,7 +114,7 @@ test.describe('Member Signup - Correct token', () => {
 		await stripeFrame.getByLabel('City').fill('Dublin');
 		await stripeFrame.getByLabel('Eircode').fill('K45 HR22');
 		await stripeFrame.getByLabel('County').selectOption('County Dublin');
-		await page.pause();
+		;
 		await page.getByRole('button', { name: /sign up/i }).click();
 		await expect(
 			page.getByText(

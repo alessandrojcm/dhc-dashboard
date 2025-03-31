@@ -1,14 +1,13 @@
 import { faker } from '@faker-js/faker/locale/en_IE';
-import 'dotenv/config';
 import { createClient } from '@supabase/supabase-js';
+import 'dotenv/config';
 import stripe from 'stripe';
 
 import type { Database } from '../src/database.types';
 import { ANNUAL_FEE_LOOKUP, MEMBERSHIP_FEE_LOOKUP_NAME } from '../src/lib/server/constants';
 
-
-export const stripeClient = new stripe(process.env.STRIPE_SECRET_KEY!, {
-	apiVersion: '2024-12-18.acacia'
+export const stripeClient = new stripe(process.env.STRIPE_SECRET_KEY || '', {
+	apiVersion: '2025-02-24.acacia'
 });
 
 export function getSupabaseServiceClient() {
@@ -110,8 +109,16 @@ export async function setupWaitlistedUser(
 		// logging as the user we are verifying the token for, hence we lose the service role privileges
 		const client = getSupabaseServiceClient();
 		return Promise.all([
-			client.from('user_profiles').delete().eq('id', waitlisEntry?.data?.profile_id).throwOnError(),
-			client.auth.admin.deleteUser(inviteLink.data.user?.id)
+			waitlisEntry?.data?.profile_id
+				? client
+						.from('user_profiles')
+						.delete()
+						.eq('id', waitlisEntry.data.profile_id)
+						.throwOnError()
+				: Promise.resolve(),
+			inviteLink.data.user?.id
+				? client.auth.admin.deleteUser(inviteLink.data.user.id)
+				: Promise.resolve()
 		]);
 	}
 	return Promise.resolve({
@@ -156,16 +163,25 @@ export async function createMember({
 		// We need to create another client because when we use verifyOtp, we are effectively
 		// logging as the user we are verifying the token for, hence we lose the service role privileges
 		const client = getSupabaseServiceClient();
-		await client
-			.from('member_profiles')
-			.delete()
-			.eq('user_profile_id', waitlisEntry?.data?.profile_id)
-			.throwOnError();
-		return Promise.all([
-			client.from('user_profiles').delete().eq('id', waitlisEntry?.data?.profile_id).throwOnError(),
-			client.auth.admin.deleteUser(inviteLink.data.user?.id),
-			cleanUpFn?.()
-		]);
+		if (waitlisEntry?.data?.profile_id) {
+			await client
+				.from('member_profiles')
+				.delete()
+				.eq('user_profile_id', waitlisEntry.data.profile_id)
+				.throwOnError();
+			await client
+				.from('user_profiles')
+				.delete()
+				.eq('id', waitlisEntry.data.profile_id)
+				.throwOnError();
+		}
+		if (inviteLink.data.user?.id) {
+			await client.auth.admin.deleteUser(inviteLink.data.user.id);
+		}
+		if (cleanUpFn) {
+			await cleanUpFn();
+		}
+		return Promise.resolve();
 	}
 	const waitlisEntry = await supabaseServiceClient
 		.rpc('insert_waitlist_entry', {
@@ -173,7 +189,7 @@ export async function createMember({
 			last_name: testData.last_name,
 			email: testData.email,
 			date_of_birth: testData.date_of_birth.toISOString(),
-			phone_number: testData.phone_number,
+			phone_number: testData.phone_number.toString(),
 			pronouns: testData.pronouns,
 			gender: testData.gender as Database['public']['Enums']['gender'],
 			medical_conditions: testData.medical_conditions
@@ -229,17 +245,14 @@ export async function createMember({
 		.eq('email', testData.email)
 		.throwOnError();
 
-	const { data, error } = await supabaseServiceClient
+	const { data } = await supabaseServiceClient
 		.rpc('complete_member_registration', {
-			v_user_id: inviteLink.data.user.id,
+			v_user_id: inviteLink.data.user?.id || '',
 			p_next_of_kin_name: testData.next_of_kin.name,
 			p_next_of_kin_phone: testData.next_of_kin.phone_number,
 			p_insurance_form_submitted: true
 		})
 		.throwOnError();
-	if (error) {
-		throw new Error(error.message);
-	}
 	const verifyOtp = await supabaseServiceClient.auth.signInWithPassword({
 		email: testData.email,
 		password: 'password'
@@ -309,7 +322,6 @@ export async function createStripeCustomerWithSubscription(email: string) {
 		expand: ['latest_invoice.payment_intent']
 	});
 
-
 	// Get the price ID for the membership fee
 	prices = await stripeClient.prices.search({
 		query: `lookup_key:'${ANNUAL_FEE_LOOKUP}'`
@@ -335,4 +347,170 @@ export async function createStripeCustomerWithSubscription(email: string) {
 			await stripeClient.customers.del(customer.id);
 		}
 	};
+}
+
+export async function setupInvitedUser(
+	params: Partial<{
+		addInvitation: boolean;
+		addSupabaseId: boolean;
+		email: string;
+		invitationStatus: Database['public']['Enums']['invitation_status'];
+		token: string;
+	}> = {}
+) {
+	const defaultInviteValues = {
+		addInvitation: true,
+		addSupabaseId: true,
+		invitationStatus: 'pending' as Database['public']['Enums']['invitation_status']
+	};
+	const overrides = {
+		...defaultInviteValues,
+		...params,
+		email: params.email || faker.internet.email().toLowerCase()
+	};
+
+	const { addSupabaseId, addInvitation, invitationStatus, email } = overrides;
+	const supabaseServiceClient = getSupabaseServiceClient();
+
+	// Create test user data
+	const testData = {
+		first_name: faker.person.firstName(),
+		last_name: faker.person.lastName(),
+		email,
+		date_of_birth: faker.date.birthdate({ min: 16, max: 65, mode: 'age' }),
+		pronouns: faker.helpers.arrayElement(['he/him', 'she/her', 'they/them']),
+		gender: faker.helpers.arrayElement([
+			'man (cis)',
+			'woman (cis)',
+			'non-binary'
+		] as Database['public']['Enums']['gender'][]),
+		weapon: faker.helpers.arrayElement(['longsword', 'rapier', 'sabre']),
+		phone_number: faker.phone.number({ style: 'international' }),
+		next_of_kin: {
+			name: faker.person.fullName(),
+			phone_number: faker.phone.number({ style: 'international' })
+		},
+		medical_conditions: faker.helpers.arrayElement(['None', 'Asthma', 'Previous knee injury'])
+	};
+
+	// Create user profile using direct database query instead of RPC
+	const { data: userProfileData, error: userProfileError } = await supabaseServiceClient
+		.from('user_profiles')
+		.insert({
+			first_name: testData.first_name,
+			last_name: testData.last_name,
+			date_of_birth: testData.date_of_birth.toISOString(),
+			phone_number: testData.phone_number,
+			pronouns: testData.pronouns,
+			gender: testData.gender,
+			medical_conditions: testData.medical_conditions,
+			is_active: false
+		})
+		.select()
+		.single();
+
+	if (userProfileError) {
+		throw new Error(userProfileError.message);
+	}
+
+	if (!userProfileData) {
+		throw new Error('Failed to create user profile');
+	}
+
+	// Create auth user
+	const inviteLink = await supabaseServiceClient.auth.admin.createUser({
+		email: testData.email,
+		password: 'password',
+		email_confirm: true
+	});
+
+	if (inviteLink.error) {
+		throw new Error(inviteLink.error.message);
+	}
+
+	if (!inviteLink.data.user) {
+		throw new Error('Failed to create auth user');
+	}
+
+	// Update user profile with Supabase user ID
+	await supabaseServiceClient
+		.from('user_profiles')
+		.update({
+			supabase_user_id: addSupabaseId ? inviteLink.data.user.id : null
+		})
+		.eq('id', userProfileData.id)
+		.select()
+		.throwOnError();
+
+	// Create invitation using direct database query instead of RPC
+	let invitationId: string | null = null;
+	if (addInvitation) {
+		const expiresAt =
+			invitationStatus === 'expired'
+				? new Date(Date.now() - 86400000).toISOString() // 1 day ago
+				: new Date(Date.now() + 604800000).toISOString(); // 7 days from now
+
+		const { data: invitationData, error: invitationError } = await supabaseServiceClient
+			.from('invitations')
+			.insert({
+				email: testData.email,
+				invitation_type: 'workshop',
+				expires_at: expiresAt,
+				status: invitationStatus,
+				metadata: { test: true },
+				user_id: addSupabaseId && inviteLink.data.user ? inviteLink.data.user.id : null
+			})
+			.select()
+			.single();
+
+		if (invitationError) {
+			throw new Error(invitationError.message);
+		}
+
+		if (!invitationData) {
+			throw new Error('Failed to create invitation');
+		}
+
+		invitationId = invitationData.id;
+	}
+
+	// Sign in to get access token
+	const verifyOtp = await supabaseServiceClient.auth.signInWithPassword({
+		email: testData.email,
+		password: 'password'
+	});
+
+	if (verifyOtp.error) {
+		throw new Error(verifyOtp.error.message);
+	}
+
+	if (!verifyOtp.data.session || !verifyOtp.data.session.access_token) {
+		throw new Error('Failed to get access token');
+	}
+
+	await supabaseServiceClient.auth.signOut();
+
+	// Cleanup function
+	function cleanUp() {
+		const client = getSupabaseServiceClient();
+		return Promise.all([
+			userProfileData
+				? client.from('user_profiles').delete().eq('id', userProfileData.id).throwOnError()
+				: Promise.resolve(),
+			inviteLink.data.user
+				? client.auth.admin.deleteUser(inviteLink.data.user.id)
+				: Promise.resolve(),
+			invitationId
+				? client.from('invitations').delete().eq('id', invitationId).throwOnError()
+				: Promise.resolve()
+		]);
+	}
+
+	return Promise.resolve({
+		...testData,
+		invitationId,
+		profileId: userProfileData.id,
+		token: overrides.token || verifyOtp.data.session.access_token,
+		cleanUp
+	});
 }
