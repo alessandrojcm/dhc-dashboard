@@ -249,92 +249,129 @@ BEGIN
   END IF;
   
   -- Check if user already has a member profile
-  SELECT mp.id, up.is_active
-  INTO v_member_id, v_is_active
-  FROM public.user_profiles up
-  LEFT JOIN public.member_profiles mp ON mp.user_profile_id = up.id
-  WHERE up.supabase_user_id = p_user_id
-  FOR UPDATE; -- Lock the row to prevent race conditions
+  -- First lock the user_profiles row if it exists
+  SELECT id INTO v_member_id
+  FROM public.user_profiles
+  WHERE supabase_user_id = p_user_id
+  FOR UPDATE;
   
+  -- Then get the member profile info if the user profile exists
   IF v_member_id IS NOT NULL THEN
-    RAISE EXCEPTION USING
-      errcode = 'U0004',
-      message = 'User already has a member profile.',
-      hint = 'Member ID: ' || v_member_id;
-  END IF;
-  
-  IF v_is_active THEN
-    RAISE EXCEPTION USING
-      errcode = 'U0005',
-      message = 'User is already active.';
+    -- Get member profile info
+    SELECT mp.id, up.is_active
+    INTO v_member_id, v_is_active
+    FROM public.user_profiles up
+    LEFT JOIN public.member_profiles mp ON mp.user_profile_id = up.id
+    WHERE up.supabase_user_id = p_user_id;
+    
+    IF v_member_id IS NOT NULL THEN
+      RAISE EXCEPTION USING
+        errcode = 'U0004',
+        message = 'User already has a member profile.',
+        hint = 'Member ID: ' || v_member_id;
+    END IF;
+    
+    IF v_is_active THEN
+      RAISE EXCEPTION USING
+        errcode = 'U0005',
+        message = 'User is already active.';
+    END IF;
   END IF;
   
   -- Check for valid invitation with FOR UPDATE to lock the row
   SELECT 
-    i.id, i.status, i.expires_at,
-    up.first_name, up.last_name, up.phone_number,
-    up.date_of_birth, up.pronouns, up.gender,
-    up.medical_conditions
+    i.id, i.status, i.expires_at
   INTO
-    v_invitation_id, v_invitation_status, v_invitation_expires_at,
-    v_first_name, v_last_name, v_phone_number,
-    v_date_of_birth, v_pronouns, v_gender,
-    v_medical_conditions
+    v_invitation_id, v_invitation_status, v_invitation_expires_at
   FROM public.invitations i
-  LEFT JOIN public.user_profiles up ON up.supabase_user_id = p_user_id
   WHERE (i.user_id = p_user_id OR i.email = v_user_email)
   AND i.status = 'pending'
   ORDER BY i.created_at DESC
   LIMIT 1
   FOR UPDATE; -- Lock the row to prevent race conditions
   
-  IF v_invitation_id IS NULL THEN
+  -- If we found an invitation, get the user profile data
+  IF v_invitation_id IS NOT NULL THEN
+    -- Check if the invitation has expired
+    IF v_invitation_expires_at < now() THEN
+      -- Update invitation status to expired
+      UPDATE public.invitations
+      SET status = 'expired',
+          updated_at = now()
+      WHERE id = v_invitation_id;
+      
+      RAISE EXCEPTION USING
+        errcode = 'U0009',
+        message = 'Invitation has expired.',
+        hint = 'Please request a new invitation';
+    END IF;
+    
+    SELECT 
+      up.first_name, up.last_name, up.phone_number,
+      up.date_of_birth, up.pronouns, up.gender,
+      up.medical_conditions
+    INTO
+      v_first_name, v_last_name, v_phone_number,
+      v_date_of_birth, v_pronouns, v_gender,
+      v_medical_conditions
+    FROM public.user_profiles up
+    WHERE up.supabase_user_id = p_user_id;
+  ELSE
     -- Check if user has a waitlist entry with completed status
     DECLARE
       v_waitlist_id UUID;
       v_waitlist_status public.waitlist_status;
     BEGIN
-      SELECT w.id, w.status
-      INTO v_waitlist_id, v_waitlist_status
+      -- Lock the waitlist row if it exists
+      SELECT w.id
+      INTO v_waitlist_id
       FROM public.waitlist w
       JOIN public.user_profiles up ON up.waitlist_id = w.id
       WHERE up.supabase_user_id = p_user_id
-      FOR UPDATE; -- Lock the row to prevent race conditions
+      FOR UPDATE;
       
-      IF v_waitlist_id IS NULL THEN
+      IF v_waitlist_id IS NOT NULL THEN
+        -- Now get the status
+        SELECT w.status
+        INTO v_waitlist_status
+        FROM public.waitlist w
+        WHERE w.id = v_waitlist_id;
+        
+        IF v_waitlist_status NOT IN ('completed', 'invited') THEN
+          RAISE EXCEPTION USING
+            errcode = 'U0007',
+            message = 'This user has not completed the workshop.',
+            hint = 'Waitlist status: ' || v_waitlist_status;
+        END IF;
+        
+        -- If we get here, the user has a completed workshop but no invitation
+        -- Let's create one automatically
+        INSERT INTO public.invitations (
+          email,
+          user_id,
+          waitlist_id,
+          status,
+          expires_at,
+          created_by,
+          invitation_type,
+          metadata
+        ) VALUES (
+          v_user_email,
+          p_user_id,
+          v_waitlist_id,
+          'pending',
+          now() + interval '30 days',
+          p_user_id,
+          'workshop',
+          jsonb_build_object('auto_created', true, 'waitlist_status', v_waitlist_status)
+        )
+        RETURNING id, status, expires_at INTO v_invitation_id, v_invitation_status, v_invitation_expires_at;
+      ELSE
         RAISE EXCEPTION USING
           errcode = 'U0006',
           message = format('Waitlist entry not found for email: %s', v_user_email),
           hint = 'Email not found in waitlist';
-      ELSIF v_waitlist_status NOT IN ('completed', 'invited') THEN
-        RAISE EXCEPTION USING
-          errcode = 'U0007',
-          message = 'This user has not completed the workshop.',
-          hint = 'Waitlist status: ' || v_waitlist_status;
       END IF;
-      
-      -- If we get here, the user has a completed workshop but no invitation
-      -- Let's create one automatically
-      INSERT INTO public.invitations (
-        email,
-        user_id,
-        waitlist_id,
-        status,
-        expires_at,
-        created_by,
-        invitation_type,
-        metadata
-      ) VALUES (
-        v_user_email,
-        p_user_id,
-        v_waitlist_id,
-        'pending',
-        now() + interval '30 days',
-        p_user_id,
-        'workshop',
-        jsonb_build_object('auto_created', true, 'waitlist_status', v_waitlist_status)
-      )
-      RETURNING id, status, expires_at INTO v_invitation_id, v_invitation_status, v_invitation_expires_at;
     EXCEPTION
       WHEN no_data_found THEN
         RAISE EXCEPTION USING
@@ -344,32 +381,21 @@ BEGIN
     END;
   END IF;
   
-  IF v_invitation_expires_at < now() THEN
-    -- Update invitation status to expired
-    UPDATE public.invitations
-    SET status = 'expired',
-        updated_at = now()
-    WHERE id = v_invitation_id;
-    
-    RAISE EXCEPTION USING
-      errcode = 'U0009',
-      message = 'Invitation has expired.',
-      hint = 'Please request a new invitation';
-  END IF;
-  
-  -- Build the result JSONB
-  RETURN jsonb_build_object(
+  -- Build the result JSON
+  v_result := jsonb_build_object(
     'invitation_id', v_invitation_id,
+    'status', v_invitation_status,
+    'expires_at', v_invitation_expires_at,
     'first_name', v_first_name,
     'last_name', v_last_name,
     'phone_number', v_phone_number,
     'date_of_birth', v_date_of_birth,
     'pronouns', v_pronouns,
     'gender', v_gender,
-    'medical_conditions', v_medical_conditions,
-    'status', v_invitation_status
+    'medical_conditions', v_medical_conditions
   );
   
+  RETURN v_result;
 EXCEPTION
   WHEN no_data_found THEN
     RAISE EXCEPTION USING
