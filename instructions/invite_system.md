@@ -130,11 +130,12 @@ To address these edge cases, we will implement a structured testing approach:
      - ✅ Confirmed that creating a new pending invitation expires any existing ones
      - ✅ Tested that we can have invitations with different statuses (accepted, expired, revoked) for the same email
 
-   - **Expiration scenarios**:
-     - Mock time to test invitations expiring at different stages of signup
-     - Test the automatic expiration function with different time ranges
-     - Verify the system's behavior when an invitation expires mid-signup
-     - Test the `mark_expired_invitations` function with various date scenarios
+   - ✅ **Expiration scenarios**:
+     - ✅ Created test file `invitation_expiration_test.sql` to verify expiration behavior
+     - ✅ Tested invitations with different expiration times
+     - ✅ Verified the `mark_expired_invitations` function works correctly
+     - ✅ Tested the system's behavior when an invitation expires mid-signup
+     - ✅ Verified that both `get_invitation_info` and `update_invitation_status` correctly handle expired invitations
 
    - **Permission boundary tests**:
      - Test each role (admin, president, committee_coordinator, member, etc.) attempting to:
@@ -199,5 +200,3 @@ Each test category should include both positive test cases (expected to succeed)
 2. Fix the remaining lint errors in setupFunctions.ts
 3. Implement additional edge case tests
 4. Begin frontend implementation of the invitation management UI
-5. Set up email notification system for invitations
-6. Add invitation revocation and resending functionality
