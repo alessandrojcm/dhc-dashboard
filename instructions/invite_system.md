@@ -118,6 +118,66 @@
   - Behavior when a user is banned after receiving an invitation
   - Testing invitation flows with various user roles and permissions
 
+#### Plan A: Structured Unit and Integration Testing
+
+To address these edge cases, we will implement a structured testing approach:
+
+1. **Database Unit Tests Enhancement**
+   - ✅ **Multiple status invitations test**:
+     - ✅ Created test file `invitation_multiple_status_test.sql` to verify multiple invitations behavior
+     - ✅ Tested creating multiple invitations for the same email with different statuses
+     - ✅ Verified the unique constraint (email + status)
+     - ✅ Confirmed that creating a new pending invitation expires any existing ones
+     - ✅ Tested that we can have invitations with different statuses (accepted, expired, revoked) for the same email
+
+   - **Expiration scenarios**:
+     - Mock time to test invitations expiring at different stages of signup
+     - Test the automatic expiration function with different time ranges
+     - Verify the system's behavior when an invitation expires mid-signup
+     - Test the `mark_expired_invitations` function with various date scenarios
+
+   - **Permission boundary tests**:
+     - Test each role (admin, president, committee_coordinator, member, etc.) attempting to:
+       - Create invitations (should only work for admins, presidents, committee coordinators)
+       - View invitations (admins can see all, users can only see their own)
+       - Update invitations (verify proper permission enforcement)
+     - Test all permission checks in the database functions
+     - Verify RLS policies are working correctly for each role
+
+   - **Banned user scenarios**:
+     - Test the invitation flow for users who get banned after receiving an invitation
+     - Verify that banned users cannot access invitation information
+     - Test the system's behavior when trying to accept an invitation for a banned user
+
+2. **API Integration Tests**
+   - **Race condition tests**:
+     - Implement concurrent test runners that attempt to accept the same invitation
+     - Verify database constraints prevent duplicate acceptances
+     - Test transaction isolation levels to ensure data consistency
+     - Verify proper error handling for concurrent operations
+
+   - **Malformed data tests**:
+     - Send invalid data to invitation endpoints
+     - Test JSON validation for the metadata field
+     - Test with invalid email formats, missing required fields, etc.
+     - Ensure proper error handling and validation for all inputs
+
+3. **End-to-End Testing**
+   - **Complete workflow tests**:
+     - Test the entire invitation flow from creation to acceptance
+     - Test invitation creation via bulk invite
+     - Test invitation revocation and its effects
+     - Verify email notifications work correctly (once implemented)
+     - Test all user roles and permission combinations
+
+   - **UI interaction tests**:
+     - Test the invite drawer component with various inputs
+     - Verify form validation works correctly for all fields
+     - Test error message display and handling
+     - Verify proper UI updates after invitation actions
+
+Each test category should include both positive test cases (expected to succeed) and negative test cases (expected to fail with specific error messages).
+
 ### 2. Frontend Integration
 - ~~Create UI components for invitation management:~~
   - ~~Admin panel to create and manage invitations~~
