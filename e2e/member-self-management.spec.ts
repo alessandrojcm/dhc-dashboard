@@ -1,11 +1,14 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { createMember } from './setupFunctions';
 import { loginAsUser } from './supabaseLogin';
 
 test.describe('Member Self-Management', () => {
 	let testData: Awaited<ReturnType<typeof createMember>>;
 	test.beforeAll(async () => {
-		testData = await createMember({ email: `test-${Date.now()}@test.com`, createSubscription: true });
+		testData = await createMember({
+			email: `test-${Date.now()}@test.com`,
+			createSubscription: true
+		});
 	});
 	test.beforeEach(async ({ context }) => {
 		await loginAsUser(context, testData.email);
@@ -15,7 +18,6 @@ test.describe('Member Self-Management', () => {
 	test('should navigate to member profile whe using only member', async ({ page }) => {
 		await page.goto('/dashboard');
 		await expect(page.getByText(/member information/i)).toBeVisible();
-		;
 	});
 
 	test('should update member profile', async ({ page }) => {
@@ -52,7 +54,11 @@ test.describe('Member Management - Admin', () => {
 	test.beforeAll(async () => {
 		adminEmail = `admin-${Date.now()}@test.com`;
 		adminData = await createMember({ email: adminEmail, roles: new Set(['admin']) });
-		memberData = await createMember({ email: `member-${Date.now()}@test.com`, roles: new Set(['member']), createSubscription: true });
+		memberData = await createMember({
+			email: `member-${Date.now()}@test.com`,
+			roles: new Set(['member']),
+			createSubscription: true
+		});
 	});
 	test.beforeEach(async ({ context }) => {
 		await loginAsUser(context, adminEmail);
@@ -81,7 +87,7 @@ test.describe('Member management - cross member role check', () => {
 	let memberTwo: Awaited<ReturnType<typeof createMember>>;
 	let member1Email: string;
 	let member2Email: string;
-	
+
 	test.beforeAll(async () => {
 		member1Email = `member1-${Date.now()}@member.com`;
 		member2Email = `member2-${Date.now()}@member.com`;
@@ -93,7 +99,9 @@ test.describe('Member management - cross member role check', () => {
 	});
 	test.afterAll(() => Promise.all([memberOne?.cleanUp(), memberTwo?.cleanUp()]));
 
-	test("it should be redirected to its own profile if trying to access another users profile", async ({ page }) => {
+	test('it should be redirected to its own profile if trying to access another users profile', async ({
+		page
+	}) => {
 		await page.goto(`/dashboard/members/${memberTwo.userId}`);
 		await expect(page.getByText(memberOne.first_name)).toBeVisible();
 	});

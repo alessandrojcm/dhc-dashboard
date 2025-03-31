@@ -1,5 +1,5 @@
 // playwright.test.ts
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { faker } from '@faker-js/faker';
 import dayjs from 'dayjs';
 import { getSupabaseServiceClient } from './setupFunctions';
@@ -23,7 +23,7 @@ test.afterAll(async () => {
 		})
 		.eq('key', 'waitlist_open')
 		.throwOnError();
-})
+});
 
 test('fills out the waitlist form and asserts no errors', async ({ page }) => {
 	// Generate test data using faker-js
@@ -35,11 +35,14 @@ test('fills out the waitlist form and asserts no errors', async ({ page }) => {
 	await page.fill('input[name="firstName"]', testData.firstName);
 	await page.fill('input[name="lastName"]', testData.lastName);
 	await page.fill('input[name="email"]', testData.email);
-	
+
 	// Find the phone input field (it's now inside the phone input component)
 	// The new component has a div wrapper with an Input of type tel inside
-	const phoneInputField = page.locator('div').filter({ hasText: /phone number/i }).locator('input[type="tel"]');
-	
+	const phoneInputField = page
+		.locator('div')
+		.filter({ hasText: /phone number/i })
+		.locator('input[type="tel"]');
+
 	await phoneInputField.pressSequentially(testData.phoneNumber, { delay: 50 });
 	await phoneInputField.blur();
 	await page.getByPlaceholder('Enter your pronouns').fill('he/him');
@@ -58,7 +61,9 @@ test('fills out the waitlist form and asserts no errors', async ({ page }) => {
 	await page.getByLabel(/any medical condition/i).fill(testData.medicalConditions);
 	// Submit the form
 	await page.click('button[type="submit"]');
-	await expect(page.getByText('You have been added to the waitlist, we will be in contact soon!')).toBeVisible();
+	await expect(
+		page.getByText('You have been added to the waitlist, we will be in contact soon!')
+	).toBeVisible();
 });
 
 test('it should not allow people under 16 to sign up', async ({ page }) => {

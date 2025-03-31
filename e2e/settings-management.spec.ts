@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { createMember } from './setupFunctions';
 import { loginAsUser } from './supabaseLogin';
 
@@ -24,13 +24,13 @@ test.describe('Settings Management - Admin', () => {
 		await page.goto('/dashboard/beginners-workshop');
 		const toggleButton = page.getByText(/open waitlist|close waitlist/i);
 		await expect(toggleButton).toBeVisible();
-		
+
 		// Click the toggle button
 		await toggleButton.click();
-		
+
 		// Confirm the action in the alert dialog
 		await page.getByTestId('action').click();
-		
+
 		// Check for success message
 		await expect(page.getByText(/waitlist status updated/i)).toBeVisible();
 	});
@@ -61,13 +61,13 @@ test.describe('Settings Management - Committee Coordinator', () => {
 		await page.goto('/dashboard/beginners-workshop');
 		const toggleButton = page.getByText(/open waitlist|close waitlist/i);
 		await expect(toggleButton).toBeVisible();
-		
+
 		// Click the toggle button
 		await toggleButton.click();
-		
+
 		// Confirm the action in the alert dialog
 		await page.getByTestId('action').click();
-		
+
 		// Check for success message
 		await expect(page.getByText(/waitlist status updated/i)).toBeVisible();
 	});
@@ -98,13 +98,13 @@ test.describe('Settings Management - President', () => {
 		await page.goto('/dashboard/beginners-workshop');
 		const toggleButton = page.getByText(/open waitlist|close waitlist/i);
 		await expect(toggleButton).toBeVisible();
-		
+
 		// Click the toggle button
 		await toggleButton.click();
-		
+
 		// Confirm the action in the alert dialog
 		await page.getByTestId('action').click();
-		
+
 		// Check for success message
 		await expect(page.getByText(/waitlist status updated/i)).toBeVisible();
 	});
