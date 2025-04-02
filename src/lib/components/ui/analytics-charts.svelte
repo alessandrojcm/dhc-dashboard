@@ -1,5 +1,15 @@
 <script lang="ts" module>
-	import { ScatterChart, Tooltip, BarChart, PieChart, Svg, Axis, Points } from 'layerchart';
+	import {
+		ScatterChart,
+		Tooltip,
+		BarChart,
+		PieChart,
+		Svg,
+		Axis,
+		Points,
+		Bars,
+		Highlight
+	} from 'layerchart';
 	import { schemeTableau10 } from 'd3-scale-chromatic';
 
 	export { ageChart, demographicsChart, preferredWeaponChart };
@@ -25,9 +35,9 @@
 				<Points class="stroke-surface-content/50" />
 			</Svg>
 
-			<Tooltip.Root let:data>
+			<Tooltip.Root let:data style="fill: white;">
 				<Tooltip.Header>
-					{data.seriesKey} years old
+					{data.age} years old
 				</Tooltip.Header>
 				<Tooltip.List>
 					<Tooltip.Item label="Members" value={data.value} />
@@ -47,9 +57,17 @@
 			yDomain={[0, null]}
 			cRange={schemeTableau10}
 			legend
+			tooltip={{ mode: 'band' }}
 		>
+			<Svg>
+				<Bars strokeWidth={1} class="group-hover:fill-primary color-white transition-colors" />
+				<Highlight
+					area={{ class: 'fill-gray-200 bg-primary' }}
+					bar={{ class: 'fill-primary hover:fill-transparent', strokeWidth: 1 }}
+				/>
+			</Svg>
 			<svelte:fragment slot="tooltip" let:y let:classes let:x>
-				<Tooltip.Root clas={classes} let:data>
+				<Tooltip.Root let:data class={classes}>
 					<Tooltip.Header class="capitalize">
 						{x(data)}
 					</Tooltip.Header>
@@ -76,7 +94,7 @@
 			label={(d: { weapon: string }) => d.weapon.replaceAll(/[_-]/g, ' ')}
 		>
 			<svelte:fragment slot="tooltip" let:y let:classes let:x>
-				<Tooltip.Root clas={classes} let:data>
+				<Tooltip.Root class={classes} let:data>
 					<Tooltip.Header class="capitalize">
 						{x(data)}
 					</Tooltip.Header>
