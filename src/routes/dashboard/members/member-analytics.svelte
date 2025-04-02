@@ -22,7 +22,7 @@
 				.eq('is_active', true)
 				.abortSignal(signal)
 				.throwOnError()
-				.then((r) => r.count ?? 0)
+				.then((r) => r.count ?? 0) as Promise<number>
 	}));
 	const averageAge = createQuery<number>(() => ({
 		queryKey: ['members', 'avgAge'],
@@ -34,7 +34,7 @@
 				.abortSignal(signal)
 				.single()
 				.throwOnError()
-				.then((res) => res.data?.avg_age ?? 0)
+				.then((res) => res.data?.avg_age ?? 0) as Promise<number>
 	}));
 	const genderDistribution = createQuery<
 		{ gender: Database['public']['Enums']['gender']; value: number }[]
@@ -47,12 +47,14 @@
 				.eq('is_active', true)
 				.abortSignal(signal)
 				.throwOnError()
-				.then((r) => r.data ?? [])
+				.then((r) => r.data ?? []) as Promise<
+				{
+					gender: string;
+					value: number;
+				}[]
+			>
 	}));
-	const genderDistributionData = $derived(genderDistribution.data ?? []);
-	const ageDistributionQuery = createQuery<
-		{ age: number | null; value: number }[]
-	>(() => ({
+	const ageDistributionQuery = createQuery(() => ({
 		queryKey: ['members', 'ageDistribution'],
 		queryFn: ({ signal }) =>
 			supabase
@@ -62,11 +64,14 @@
 				.order('age', { ascending: true })
 				.abortSignal(signal)
 				.throwOnError()
-				.then((r) => r.data ?? [])
+				.then((r) => r.data ?? []) as Promise<
+				{
+					age: number | null;
+					value: number;
+				}[]
+			>
 	}));
-	const weaponPreferencesDistribution = createQuery<
-		{ weapon: string; count: number }[]
-	>(() => ({
+	const weaponPreferencesDistribution = createQuery<{ weapon: string; count: number }[]>(() => ({
 		queryKey: ['members', 'weaponPreferencesDistribution'],
 		queryFn: async ({ signal }) => {
 			const { data } = await supabase
@@ -80,7 +85,9 @@
 			const weapons = data?.flatMap((d) => d.preferred_weapon) ?? [];
 			const counts = weapons.reduce(
 				(acc, weapon) => {
-					acc[weapon] = (acc[weapon] || 0) + 1;
+					if (weapon !== null) {
+						acc[weapon] = (acc[weapon] || 0) + 1;
+					}
 					return acc;
 				},
 				{} as Record<string, number>
@@ -91,25 +98,12 @@
 					weapon,
 					count
 				}))
-				.sort((a, b) => a.weapon.localeCompare(b.weapon));
+				.sort((a, b) => a.weapon.localeCompare(b.weapon)) as Array<{
+				weapon: string;
+				count: number;
+			}>;
 		}
 	}));
-	const ageDistribution = $derived.by(() => {
-		const result = ageDistributionQuery.data ?? [];
-		const distribution = new Map();
-		result.forEach((row) => {
-			if (!distribution.has(row.age)) {
-				distribution.set(row.age, [row]);
-			} else {
-				distribution.set(row.age, [...distribution.get(row.age), row]);
-			}
-		});
-		return Array.from(distribution.entries()).map(([age, rows], i) => ({
-			key: age,
-			data: rows,
-			color: 'hsl(var(--color-primary))'
-		}));
-	});
 </script>
 
 <h2 class="prose prose-h2 text-lg mb-2">Members analytics</h2>
@@ -149,7 +143,7 @@
 	<Resizable.Pane class="min-h-[400px] p-4 border rounded">
 		<Resizable.PaneGroup direction="horizontal">
 			<Resizable.Pane class="min-h-[400px]">
-				{@render demographicsChart(genderDistributionData)}
+				{@render demographicsChart(genderDistribution.data ?? [])}
 			</Resizable.Pane>
 			<Resizable.Handle />
 			<Resizable.Pane class="min-h-[400px] pl-4">
@@ -159,6 +153,6 @@
 	</Resizable.Pane>
 	<Resizable.Handle />
 	<Resizable.Pane class="min-h-[400px] p-4 border rounded">
-		{@render ageChart(ageDistribution)}
+		{@render ageChart(ageDistributionQuery.data ?? [])}
 	</Resizable.Pane>
 </Resizable.PaneGroup>
