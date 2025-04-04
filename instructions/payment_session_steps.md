@@ -77,25 +77,17 @@ export interface Database {
 }
 ```
 
-### 3. Modify the Load Function
+### 3. ✅ Modify the Load Function
 
 Update the load function in `src/routes/(public)/members/signup/(signup-form)/+page.server.ts`:
 
 ```typescript
+// Implementation completed with the following improvements:
+
 export const load: PageServerLoad = async ({ parent, cookies }) => {
   const { userData } = await parent();
   try {
-    const invitationData = await kysely.transaction().execute(async (trx) => {
-      // Existing invitation validation code...
-      
-      // Customer ID creation code...
-      
-      return { ...invitationInfo, customer_id };
-    });
-
-    const [subscriptionPrice, annualFeePrice] = await Promise.all([
-      // Existing price lookup code...
-    ]);
+    // ... existing invitation validation and customer ID creation ...
 
     // Check for an existing valid payment session
     const existingSession = await kysely
@@ -109,94 +101,72 @@ export const load: PageServerLoad = async ({ parent, cookies }) => {
         'annual_amount'
       ])
       .where('user_id', '=', userData.id)
-      .where('expires_at', '>', new Date())
+      .where('expires_at', '>', dayjs().toISOString()) // Using dayjs for date handling
       .where('is_used', '=', false)
       .orderBy('created_at', 'desc')
       .executeTakeFirst();
 
-    let monthlyPaymentIntent: Stripe.PaymentIntent;
-    let annualPaymentIntent: Stripe.PaymentIntent;
-    let proratedMonthlyAmount: number;
-    let proratedAnnualAmount: number;
-    let monthlySubscription: any;
-    let annualSubscription: any;
+    let monthlyPaymentIntent: Stripe.PaymentIntent | undefined;
+    let annualPaymentIntent: Stripe.PaymentIntent | undefined;
+    let proratedMonthlyAmount: number = 0;
+    let proratedAnnualAmount: number = 0;
+    let monthlySubscription: Stripe.Subscription | undefined;
+    let annualSubscription: Stripe.Subscription | undefined;
+    let validExistingSession = false;
 
     if (existingSession) {
       // Retrieve the payment intents to ensure they're still valid
       try {
-        [monthlyPaymentIntent, annualPaymentIntent] = await Promise.all([
+        const [retrievedMonthlyIntent, retrievedAnnualIntent] = await Promise.all([
           stripeClient.paymentIntents.retrieve(existingSession.monthly_payment_intent_id),
           stripeClient.paymentIntents.retrieve(existingSession.annual_payment_intent_id)
         ]);
 
         // Only use if they're still in a usable state
         if (
-          monthlyPaymentIntent.status === 'requires_payment_method' &&
-          annualPaymentIntent.status === 'requires_payment_method'
+          retrievedMonthlyIntent.status === 'requires_payment_method' &&
+          retrievedAnnualIntent.status === 'requires_payment_method'
         ) {
+          monthlyPaymentIntent = retrievedMonthlyIntent;
+          annualPaymentIntent = retrievedAnnualIntent;
           proratedMonthlyAmount = existingSession.monthly_amount;
           proratedAnnualAmount = existingSession.annual_amount;
-          
+          validExistingSession = true;
+
           // Retrieve subscriptions for display purposes
-          [monthlySubscription, annualSubscription] = await Promise.all([
+          const [retrievedMonthlySubscription, retrievedAnnualSubscription] = await Promise.all([
             stripeClient.subscriptions.retrieve(existingSession.monthly_subscription_id),
             stripeClient.subscriptions.retrieve(existingSession.annual_subscription_id)
           ]);
+
+          monthlySubscription = retrievedMonthlySubscription;
+          annualSubscription = retrievedAnnualSubscription;
         } else {
-          // Payment intents are in an unusable state, create new ones
-          throw new Error('Payment intents are in an unusable state');
+          // Payment intents are in an unusable state, just mark as invalid
+          console.log(
+            'Payment intents are in an unusable state:',
+            retrievedMonthlyIntent.status,
+            retrievedAnnualIntent.status
+          );
+          validExistingSession = false;
         }
       } catch (error) {
         // If there's any error retrieving or validating, create new ones
         console.error('Error retrieving existing payment session:', error);
-        existingSession = null;
+        validExistingSession = false;
       }
     }
 
-    if (!existingSession) {
-      // Create new subscriptions as in your current code
-      [monthlySubscription, annualSubscription] = await Promise.all([
-        stripeClient.subscriptions.create({
-          customer: invitationData.customer_id!,
-          items: [{ price: subscriptionPrice!.id }],
-          billing_cycle_anchor_config: { day_of_month: 1 },
-          payment_behavior: 'default_incomplete',
-          payment_settings: { payment_method_types: ['sepa_debit'] },
-          expand: ['latest_invoice.payment_intent'],
-          collection_method: 'charge_automatically'
-        }),
-        stripeClient.subscriptions.create({
-          customer: invitationData.customer_id!,
-          items: [{ price: annualFeePrice!.id }],
-          payment_behavior: 'default_incomplete',
-          payment_settings: { payment_method_types: ['sepa_debit'] },
-          billing_cycle_anchor_config: { month: 1, day_of_month: 7 },
-          expand: ['latest_invoice.payment_intent'],
-          collection_method: 'charge_automatically'
-        })
-      ]);
+    if (!existingSession || !validExistingSession) {
+      // Create new subscriptions if no valid existing session
+      // ... subscription creation code ...
 
-      monthlyPaymentIntent = (monthlySubscription.latest_invoice as Stripe.Invoice)!
-        .payment_intent as Stripe.PaymentIntent;
-      annualPaymentIntent = (annualSubscription.latest_invoice as Stripe.Invoice)!
-        .payment_intent as Stripe.PaymentIntent;
-
-      proratedMonthlyAmount = monthlyPaymentIntent.amount;
-      proratedAnnualAmount = annualPaymentIntent.amount;
-
-      // Store the new session
+      // Store the new session with proper expiration
       await kysely
         .insertInto('payment_sessions')
         .values({
-          user_id: userData.id,
-          customer_id: invitationData.customer_id!,
-          monthly_subscription_id: monthlySubscription.id,
-          annual_subscription_id: annualSubscription.id,
-          monthly_payment_intent_id: monthlyPaymentIntent.id,
-          annual_payment_intent_id: annualPaymentIntent.id,
-          monthly_amount: proratedMonthlyAmount,
-          annual_amount: proratedAnnualAmount,
-          expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 hours
+          // ... session data ...
+          expires_at: dayjs().add(24, 'hour').toISOString() // 24 hours using dayjs
         })
         .execute();
     }
@@ -242,19 +212,21 @@ export const load: PageServerLoad = async ({ parent, cookies }) => {
 };
 ```
 
-### 4. Update the Default Action
+### 4. ✅ Update the Default Action
 
 Modify the default action in the same file to mark payment sessions as used after successful payment:
 
 ```typescript
+// Implementation completed with the following improvements:
+
 export const actions: Actions = {
   default: async (event) => {
-    // Existing code...
+    // ... existing code for form validation and payment processing ...
     
     return kysely
       .transaction()
       .execute(async (trx) => {
-        // Existing code for invitation handling and payment processing...
+        // ... invitation handling and payment processing ...
         
         // After successful payment confirmation, mark the session as used
         await trx
@@ -264,11 +236,11 @@ export const actions: Actions = {
           .where('annual_payment_intent_id', '=', annualSubscriptionPaymentIntendId)
           .execute();
           
-        // Rest of the existing code...
+        // ... rest of the existing code ...
         return message(form, { paymentFailed: false });
       })
       .catch((err) => {
-        // Existing error handling...
+        // ... error handling ...
       });
   }
 };
@@ -372,7 +344,7 @@ supabase schedules create cleanup-payment-sessions --cron "0 0 * * *" --function
 
 Or set up the schedule in the Supabase dashboard under "Edge Functions" > "Schedules".
 
-### 7. Testing
+### 7. ✅ Testing
 
 Test the implementation with these scenarios:
 
@@ -396,6 +368,18 @@ Test the implementation with these scenarios:
    - Complete the signup process with payment
    - Verify the session is marked as used
    - Verify refreshing the page after completion doesn't create new sessions
+
+## Implementation Notes
+
+1. **Date Handling**: Used `dayjs()` instead of raw `Date` objects or SQL functions for consistent date handling across the application.
+
+2. **Error Handling**: Improved error handling by using a `validExistingSession` flag instead of throwing and immediately catching errors.
+
+3. **Type Safety**: Enhanced TypeScript type safety with proper nullable types and initialization.
+
+4. **Session Expiration**: Set payment sessions to expire after 24 hours to prevent stale data.
+
+5. **Session Cleanup**: Implemented marking sessions as used after successful payment to prevent reuse.
 
 ## Notes and Considerations
 
