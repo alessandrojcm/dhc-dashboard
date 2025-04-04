@@ -19,6 +19,7 @@
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import * as Card from '$lib/components/ui/card';
 	import { TooltipProvider, TooltipTrigger, TooltipContent } from '$lib/components/ui/tooltip';
+	import * as Accordion from '$lib/components/ui/accordion';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import Dinero from 'dinero.js';
 	import { toast } from 'svelte-sonner';
@@ -292,7 +293,28 @@
 							</div>
 							<span class="font-semibold">{annualFeeDinero.toFormat()}</span>
 						</div>
-						<div class="border-t border-border pt-4 space-y-2">
+						
+						<Accordion.Root class="mt-2" type="single">
+							<Accordion.Item value="promo-code">
+								<Accordion.Trigger>
+									Have a promotional code?
+								</Accordion.Trigger>
+								<Accordion.Content>
+									<div class="pt-2 px-2">
+										<Input 
+											type="text" 
+											placeholder="Enter promotional code" 
+											name="promoCode" 
+											class="w-full" 
+										/>
+										<Button variant="outline" class="mt-2 w-full" type="button">
+											Apply Code
+										</Button>
+									</div>
+								</Accordion.Content>
+							</Accordion.Item>
+						</Accordion.Root>
+						<div class="pt-4 space-y-2">
 							<div class="flex justify-between items-center text-sm text-muted-foreground">
 								<span>Next monthly payment</span>
 								<span>{dayjs(nextMonthlyBillingDate).format('D MMMM YYYY')}</span>
