@@ -85,52 +85,148 @@ export const load: PageServerLoad = async ({ parent, cookies }) => {
 				.then((result) => result.data[0])
 		]);
 
-		const [monthlySubscription, annualSubscription] = await Promise.all([
-			stripeClient.subscriptions.create({
-				customer: invitationData.customer_id!,
-				items: [
-					{
-						price: subscriptionPrice!.id
-					}
-				],
-				billing_cycle_anchor_config: {
-					day_of_month: 1
-				},
-				payment_behavior: 'default_incomplete',
-				payment_settings: {
-					payment_method_types: ['sepa_debit']
-				},
-				expand: ['latest_invoice.payment_intent'],
-				collection_method: 'charge_automatically'
-			}),
-			stripeClient.subscriptions.create({
-				customer: invitationData.customer_id!,
-				items: [
-					{
-						price: annualFeePrice!.id
-					}
-				],
-				payment_behavior: 'default_incomplete',
-				payment_settings: {
-					payment_method_types: ['sepa_debit']
-				},
-				billing_cycle_anchor_config: {
-					month: 1,
-					day_of_month: 7
-				},
-				expand: ['latest_invoice.payment_intent'],
-				collection_method: 'charge_automatically'
-			})
-		]);
+		// Check for an existing valid payment session
+		const existingSession = await kysely
+			.selectFrom('payment_sessions')
+			.select([
+				'monthly_subscription_id',
+				'annual_subscription_id',
+				'monthly_payment_intent_id',
+				'annual_payment_intent_id',
+				'monthly_amount',
+				'annual_amount'
+			])
+			.where('user_id', '=', userData.id)
+			.where('expires_at', '>', dayjs().toISOString())
+			.where('is_used', '=', false)
+			.orderBy('created_at', 'desc')
+			.executeTakeFirst();
 
-		const monthlyPaymentIntent = (monthlySubscription.latest_invoice as Stripe.Invoice)!
-			.payment_intent as Stripe.PaymentIntent;
-		const annualPaymentIntent = (annualSubscription.latest_invoice as Stripe.Invoice)!
-			.payment_intent as Stripe.PaymentIntent;
+		let monthlyPaymentIntent: Stripe.PaymentIntent | undefined;
+		let annualPaymentIntent: Stripe.PaymentIntent | undefined;
+		let proratedMonthlyAmount: number = 0;
+		let proratedAnnualAmount: number = 0;
+		let monthlySubscription: Stripe.Subscription | undefined;
+		let annualSubscription: Stripe.Subscription | undefined;
+		let validExistingSession = false;
 
-		const proratedAmount = monthlyPaymentIntent.amount + annualPaymentIntent.amount;
-		const proratedMonthlyAmount = monthlyPaymentIntent.amount;
-		const proratedAnnualAmount = annualPaymentIntent.amount;
+		if (existingSession) {
+			// Retrieve the payment intents to ensure they're still valid
+			try {
+				const [retrievedMonthlyIntent, retrievedAnnualIntent] = await Promise.all([
+					stripeClient.paymentIntents.retrieve(existingSession.monthly_payment_intent_id),
+					stripeClient.paymentIntents.retrieve(existingSession.annual_payment_intent_id)
+				]);
+
+				// Only use if they're still in a usable state
+				if (
+					retrievedMonthlyIntent.status === 'requires_payment_method' &&
+					retrievedAnnualIntent.status === 'requires_payment_method'
+				) {
+					monthlyPaymentIntent = retrievedMonthlyIntent;
+					annualPaymentIntent = retrievedAnnualIntent;
+					proratedMonthlyAmount = existingSession.monthly_amount;
+					proratedAnnualAmount = existingSession.annual_amount;
+					validExistingSession = true;
+
+					// Retrieve subscriptions for display purposes
+					const [retrievedMonthlySubscription, retrievedAnnualSubscription] = await Promise.all([
+						stripeClient.subscriptions.retrieve(existingSession.monthly_subscription_id),
+						stripeClient.subscriptions.retrieve(existingSession.annual_subscription_id)
+					]);
+
+					monthlySubscription = retrievedMonthlySubscription;
+					annualSubscription = retrievedAnnualSubscription;
+				} else {
+					// Payment intents are in an unusable state, just mark as invalid
+					console.log(
+						'Payment intents are in an unusable state:',
+						retrievedMonthlyIntent.status,
+						retrievedAnnualIntent.status
+					);
+					validExistingSession = false;
+				}
+			} catch (error) {
+				// If there's any error retrieving or validating, create new ones
+				console.error('Error retrieving existing payment session:', error);
+				validExistingSession = false;
+			}
+		}
+		if (!existingSession || !validExistingSession) {
+			// Create new subscriptions if no valid existing session
+			const [newMonthlySubscription, newAnnualSubscription] = await Promise.all([
+				stripeClient.subscriptions.create({
+					customer: invitationData.customer_id!,
+					items: [
+						{
+							price: subscriptionPrice!.id
+						}
+					],
+					billing_cycle_anchor_config: {
+						day_of_month: 1
+					},
+					payment_behavior: 'default_incomplete',
+					payment_settings: {
+						payment_method_types: ['sepa_debit']
+					},
+					expand: ['latest_invoice.payment_intent'],
+					collection_method: 'charge_automatically'
+				}),
+				stripeClient.subscriptions.create({
+					customer: invitationData.customer_id!,
+					items: [
+						{
+							price: annualFeePrice!.id
+						}
+					],
+					payment_behavior: 'default_incomplete',
+					payment_settings: {
+						payment_method_types: ['sepa_debit']
+					},
+					billing_cycle_anchor_config: {
+						month: 1,
+						day_of_month: 7
+					},
+					expand: ['latest_invoice.payment_intent'],
+					collection_method: 'charge_automatically'
+				})
+			]);
+
+			monthlySubscription = newMonthlySubscription;
+			annualSubscription = newAnnualSubscription;
+
+			const newMonthlyPaymentIntent = (newMonthlySubscription.latest_invoice as Stripe.Invoice)!
+				.payment_intent as Stripe.PaymentIntent;
+			const newAnnualPaymentIntent = (newAnnualSubscription.latest_invoice as Stripe.Invoice)!
+				.payment_intent as Stripe.PaymentIntent;
+
+			monthlyPaymentIntent = newMonthlyPaymentIntent;
+			annualPaymentIntent = newAnnualPaymentIntent;
+			proratedMonthlyAmount = newMonthlyPaymentIntent.amount;
+			proratedAnnualAmount = newAnnualPaymentIntent.amount;
+
+			// Store the new session
+			await kysely
+				.insertInto('payment_sessions')
+				.values({
+					user_id: userData.id,
+					monthly_subscription_id: newMonthlySubscription.id,
+					annual_subscription_id: newAnnualSubscription.id,
+					monthly_payment_intent_id: newMonthlyPaymentIntent.id,
+					annual_payment_intent_id: newAnnualPaymentIntent.id,
+					monthly_amount: (monthlySubscription as unknown as SubscriptionWithPlan).plan.amount!,
+					annual_amount: (annualSubscription as unknown as SubscriptionWithPlan).plan.amount!,
+					expires_at: dayjs().add(24, 'hour').toISOString()
+				})
+				.execute();
+		}
+
+		// Ensure payment intents are defined before using them
+		if (!monthlyPaymentIntent || !annualPaymentIntent) {
+			throw error(500, {
+				message: 'Failed to create payment intents'
+			});
+		}
 
 		cookies.set(
 			'stripe-payment-info',
@@ -162,7 +258,7 @@ export const load: PageServerLoad = async ({ parent, cookies }) => {
 				.single()
 				.then((result) => result.data?.value),
 			proratedPrice: Dinero({
-				amount: proratedAmount,
+				amount: proratedMonthlyAmount + proratedAnnualAmount,
 				currency: 'EUR'
 			}).toJSON(),
 			proratedMonthlyPrice: Dinero({
@@ -279,6 +375,14 @@ export const actions: Actions = {
 						}
 					})
 				]);
+
+				// After successful payment confirmation, mark the session as used
+				await trx
+					.updateTable('payment_sessions')
+					.set({ is_used: true })
+					.where('monthly_payment_intent_id', '=', membershipSubscriptionPaymentIntendId)
+					.where('annual_payment_intent_id', '=', annualSubscriptionPaymentIntendId)
+					.execute();
 
 				// Success! Delete the access token cookie
 				event.cookies.delete('access-token', { path: '/' });

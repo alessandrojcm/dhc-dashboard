@@ -34,6 +34,56 @@ export type Database = {
   }
   public: {
     Tables: {
+      payment_sessions: {
+        Row: {
+          id: number
+          user_id: string
+          monthly_subscription_id: string
+          annual_subscription_id: string
+          monthly_payment_intent_id: string
+          annual_payment_intent_id: string
+          monthly_amount: number
+          annual_amount: number
+          created_at: string
+          expires_at: string
+          is_used: boolean
+        }
+        Insert: {
+          id?: number
+          user_id: string
+          monthly_subscription_id: string
+          annual_subscription_id: string
+          monthly_payment_intent_id: string
+          annual_payment_intent_id: string
+          monthly_amount: number
+          annual_amount: number
+          created_at?: string
+          expires_at: string
+          is_used?: boolean
+        }
+        Update: {
+          id?: number
+          user_id?: string
+          monthly_subscription_id?: string
+          annual_subscription_id?: string
+          monthly_payment_intent_id?: string
+          annual_payment_intent_id?: string
+          monthly_amount?: number
+          annual_amount?: number
+          created_at?: string
+          expires_at?: string
+          is_used?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_sessions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
+      },
       invitations: {
         Row: {
           created_at: string
