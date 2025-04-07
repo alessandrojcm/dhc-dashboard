@@ -8,7 +8,11 @@ import { valibot } from 'sveltekit-superforms/adapters';
 import type { Actions, PageServerLoad } from '../$types';
 import { invariant } from '$lib/server/invariant';
 import { stripeClient } from '$lib/server/stripe';
-import { MEMBERSHIP_FEE_LOOKUP_NAME, ANNUAL_FEE_LOOKUP } from '$lib/server/constants';
+import {
+	MEMBERSHIP_FEE_LOOKUP_NAME,
+	ANNUAL_FEE_LOOKUP,
+	STRIPE_SIGNUP_INFO
+} from '$lib/server/constants';
 import Dinero from 'dinero.js';
 import { kysely } from '$lib/server/kysely';
 import Stripe from 'stripe';
@@ -17,16 +21,9 @@ import {
 	getInvitationInfo,
 	updateInvitationStatus
 } from '$lib/server/kyselyRPCFunctions';
-
-type StripePaymentInfo = {
-	customerId: string;
-	annualSubscriptionPaymentIntendId: string;
-	membershipSubscriptionPaymentIntendId: string;
-};
-
-type SubscriptionWithPlan = Stripe.Subscription & {
-	plan: Stripe.Plan;
-};
+import type { PlanPricing } from '$lib/types';
+import type { StripePaymentInfo } from '$lib/types';
+import type { SubscriptionWithPlan } from '$lib/types';
 
 // need to normalize medical_conditions
 export const load: PageServerLoad = async ({ parent, cookies }) => {
@@ -229,7 +226,7 @@ export const load: PageServerLoad = async ({ parent, cookies }) => {
 		}
 
 		cookies.set(
-			'stripe-payment-info',
+			STRIPE_SIGNUP_INFO,
 			JSON.stringify({
 				customerId: invitationData.customer_id!,
 				annualSubscriptionPaymentIntendId: annualPaymentIntent.id,
@@ -257,26 +254,28 @@ export const load: PageServerLoad = async ({ parent, cookies }) => {
 				.limit(1)
 				.single()
 				.then((result) => result.data?.value),
-			proratedPrice: Dinero({
-				amount: proratedMonthlyAmount + proratedAnnualAmount,
-				currency: 'EUR'
-			}).toJSON(),
-			proratedMonthlyPrice: Dinero({
-				amount: proratedMonthlyAmount,
-				currency: 'EUR'
-			}).toJSON(),
-			proratedAnnualPrice: Dinero({
-				amount: proratedAnnualAmount,
-				currency: 'EUR'
-			}).toJSON(),
-			monthlyFee: Dinero({
-				amount: (monthlySubscription as unknown as SubscriptionWithPlan).plan.amount ?? undefined,
-				currency: 'EUR'
-			}).toJSON(),
-			annualFee: Dinero({
-				amount: (annualSubscription as unknown as SubscriptionWithPlan).plan.amount ?? undefined,
-				currency: 'EUR'
-			}).toJSON(),
+			planPricing: {
+				proratedPrice: Dinero({
+					amount: proratedMonthlyAmount + proratedAnnualAmount,
+					currency: 'EUR'
+				}).toJSON(),
+				proratedMonthlyPrice: Dinero({
+					amount: proratedMonthlyAmount,
+					currency: 'EUR'
+				}).toJSON(),
+				proratedAnnualPrice: Dinero({
+					amount: proratedAnnualAmount,
+					currency: 'EUR'
+				}).toJSON(),
+				monthlyFee: Dinero({
+					amount: (monthlySubscription as unknown as SubscriptionWithPlan).plan.amount!,
+					currency: 'EUR'
+				}).toJSON(),
+				annualFee: Dinero({
+					amount: (annualSubscription as unknown as SubscriptionWithPlan).plan.amount!,
+					currency: 'EUR'
+				}).toJSON()
+			} satisfies PlanPricing,
 			nextMonthlyBillingDate: dayjs().add(1, 'month').startOf('month').toDate(),
 			nextAnnualBillingDate: dayjs().add(1, 'year').startOf('year').set('date', 7).toDate()
 		};
@@ -293,7 +292,7 @@ export const actions: Actions = {
 		const accessToken = event.cookies.get('access-token');
 		invariant(accessToken === null, 'There has been an error with your signup.');
 		const tokenClaim = jwtDecode(accessToken!);
-		const paymentInfo = event.cookies.get('stripe-payment-info');
+		const paymentInfo = event.cookies.get(STRIPE_SIGNUP_INFO);
 		invariant(paymentInfo == undefined, 'Payment info not found.');
 		invariant(dayjs.unix(tokenClaim.exp!).isBefore(dayjs()), 'This invitation has expired');
 
