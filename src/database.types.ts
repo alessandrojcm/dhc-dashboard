@@ -44,6 +44,7 @@ export type Database = {
           annual_payment_intent_id: string
           monthly_amount: number
           annual_amount: number
+          coupon_id: string
           created_at: string
           expires_at: string
           is_used: boolean
@@ -57,6 +58,7 @@ export type Database = {
           annual_payment_intent_id: string
           monthly_amount: number
           annual_amount: number
+          coupon_id: string
           created_at?: string
           expires_at: string
           is_used?: boolean
@@ -70,6 +72,7 @@ export type Database = {
           annual_payment_intent_id?: string
           monthly_amount?: number
           annual_amount?: number
+          coupon_id?: string
           created_at?: string
           expires_at?: string
           is_used?: boolean
