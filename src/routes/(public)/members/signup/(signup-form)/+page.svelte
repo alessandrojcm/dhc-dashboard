@@ -233,7 +233,7 @@
 			</div>
 			<div>
 				<p>Phone Number</p>
-				<p class="text-sm text-gray-600">{formatedPhone}</p>
+				<p class="text-sm text-gray-600">{formatedPhone?.formatInternational()}</p>
 			</div>
 			<div>
 				<p>Medical Conditions</p>
@@ -291,7 +291,7 @@
 							</div>
 							<span class="font-semibold">{proratedPriceDinero.toFormat()}</span>
 						</div>
-						{#if couponCode && applyCoupon.isSuccess && !applyCoupon.isPending}
+						{#if couponCode && applyCoupon.isSuccess}
 							<small class="text-sm text-green-600">Code {couponCode} applied</small>
 						{/if}
 						<div class="flex justify-between items-center">

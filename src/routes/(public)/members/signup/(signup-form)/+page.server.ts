@@ -8,11 +8,8 @@ import { valibot } from 'sveltekit-superforms/adapters';
 import type { Actions, PageServerLoad } from '../$types';
 import { invariant } from '$lib/server/invariant';
 import { stripeClient } from '$lib/server/stripe';
-import {
-	MEMBERSHIP_FEE_LOOKUP_NAME,
-	ANNUAL_FEE_LOOKUP,
-	STRIPE_SIGNUP_INFO
-} from '$lib/server/constants';
+import { STRIPE_SIGNUP_INFO } from '$lib/server/constants';
+import { getPriceIds } from '$lib/server/priceManagement';
 import Dinero from 'dinero.js';
 import { kysely } from '$lib/server/kysely';
 import Stripe from 'stripe';
@@ -29,76 +26,65 @@ import type { SubscriptionWithPlan } from '$lib/types';
 export const load: PageServerLoad = async ({ parent, cookies }) => {
 	const { userData } = await parent();
 	try {
-		const invitationData = await kysely.transaction().execute(async (trx) => {
-			// Get invitation info instead of waitlist info
-			const invitationInfo = await getInvitationInfo(userData.id, trx);
+		// Run these operations in parallel for better performance
+		const [invitationData, existingSession, priceIds] = await Promise.all([
+			kysely.transaction().execute(async (trx) => {
+				// Get invitation info instead of waitlist info
+				const invitationInfo = await getInvitationInfo(userData.id, trx);
 
-			if (!invitationInfo || invitationInfo.status !== 'pending') {
-				throw error(404, {
-					message: 'Invalid invitation'
-				});
-			}
+				if (!invitationInfo || invitationInfo.status !== 'pending') {
+					throw error(404, {
+						message: 'Invalid invitation'
+					});
+				}
 
-			let customer_id = await trx
-				.selectFrom('user_profiles')
-				.select(['customer_id'])
-				.where('supabase_user_id', '=', userData!.id)
-				.executeTakeFirst()
-				.then((r) => r?.customer_id);
-
-			if (!customer_id) {
-				customer_id = await stripeClient.customers
-					.create({
-						name: `${invitationInfo.first_name} ${invitationInfo.last_name}`,
-						email: userData.email,
-						metadata: {
-							user_uuid: userData.id
-						}
-					})
-					.then((result) => result.id);
-
-				await trx
-					.updateTable('user_profiles')
-					.set({
-						customer_id
-					})
+				let customer_id = await trx
+					.selectFrom('user_profiles')
+					.select(['customer_id'])
 					.where('supabase_user_id', '=', userData!.id)
-					.execute();
-			}
+					.executeTakeFirst()
+					.then((r) => r?.customer_id);
 
-			return { ...invitationInfo, customer_id };
-		});
+				if (!customer_id) {
+					customer_id = await stripeClient.customers
+						.create({
+							name: `${invitationInfo.first_name} ${invitationInfo.last_name}`,
+							email: userData.email,
+							metadata: {
+								user_uuid: userData.id
+							}
+						})
+						.then((result) => result.id);
 
-		const [subscriptionPrice, annualFeePrice] = await Promise.all([
-			stripeClient.prices
-				.list({
-					lookup_keys: [MEMBERSHIP_FEE_LOOKUP_NAME]
-				})
-				.then((result) => result.data[0]),
-			stripeClient.prices
-				.list({
-					lookup_keys: [ANNUAL_FEE_LOOKUP]
-				})
-				.then((result) => result.data[0])
+					await trx
+						.updateTable('user_profiles')
+						.set({
+							customer_id
+						})
+						.where('supabase_user_id', '=', userData!.id)
+						.execute();
+				}
+
+				return { ...invitationInfo, customer_id };
+			}),
+			kysely
+				.selectFrom('payment_sessions')
+				.select([
+					'monthly_subscription_id',
+					'annual_subscription_id',
+					'monthly_payment_intent_id',
+					'annual_payment_intent_id',
+					'monthly_amount',
+					'annual_amount',
+					'coupon_id'
+				])
+				.where('user_id', '=', userData.id)
+				.where('expires_at', '>', dayjs().toISOString())
+				.where('is_used', '=', false)
+				.orderBy('created_at', 'desc')
+				.executeTakeFirst(),
+			getPriceIds() // Get cached price IDs
 		]);
-
-		// Check for an existing valid payment session
-		const existingSession = await kysely
-			.selectFrom('payment_sessions')
-			.select([
-				'monthly_subscription_id',
-				'annual_subscription_id',
-				'monthly_payment_intent_id',
-				'annual_payment_intent_id',
-				'monthly_amount',
-				'annual_amount',
-				'coupon_id'
-			])
-			.where('user_id', '=', userData.id)
-			.where('expires_at', '>', dayjs().toISOString())
-			.where('is_used', '=', false)
-			.orderBy('created_at', 'desc')
-			.executeTakeFirst();
 
 		let monthlyPaymentIntent: Stripe.PaymentIntent | undefined;
 		let annualPaymentIntent: Stripe.PaymentIntent | undefined;
@@ -157,7 +143,7 @@ export const load: PageServerLoad = async ({ parent, cookies }) => {
 					customer: invitationData.customer_id!,
 					items: [
 						{
-							price: subscriptionPrice!.id
+							price: priceIds.monthly // Use cached price ID
 						}
 					],
 					billing_cycle_anchor_config: {
@@ -174,7 +160,7 @@ export const load: PageServerLoad = async ({ parent, cookies }) => {
 					customer: invitationData.customer_id!,
 					items: [
 						{
-							price: annualFeePrice!.id
+							price: priceIds.annual // Use cached price ID
 						}
 					],
 					payment_behavior: 'default_incomplete',
@@ -276,7 +262,7 @@ export const load: PageServerLoad = async ({ parent, cookies }) => {
 					amount: (annualSubscription as unknown as SubscriptionWithPlan).plan.amount!,
 					currency: 'EUR'
 				}).toJSON(),
-				coupon: existingSession?.coupon_id
+				coupon: existingSession?.coupon_id ?? undefined
 			} satisfies PlanPricing,
 			nextMonthlyBillingDate: dayjs().add(1, 'month').startOf('month').toDate(),
 			nextAnnualBillingDate: dayjs().add(1, 'year').startOf('year').set('date', 7).toDate()
