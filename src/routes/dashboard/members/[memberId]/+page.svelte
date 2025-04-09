@@ -108,7 +108,7 @@
 					<Form.Field {form} name="phoneNumber">
 						<Form.Control>
 							{#snippet children({ props })}
-								<Form.Label for="phoneNumber">Phone Number</Form.Label>
+								<Form.Label required>Phone Number</Form.Label>
 								<PhoneInput
 									placeholder="Enter your phone number"
 									{...props}
@@ -293,7 +293,7 @@
 					<Form.Field {form} name="nextOfKinNumber">
 						<Form.Control>
 							{#snippet children({ props })}
-								<Form.Label for="nextOfKinNumber">Next of Kin Phone Number</Form.Label>
+								<Form.Label required>Next of Kin Phone Number</Form.Label>
 								<PhoneInput
 									placeholder="Enter your next of kin's phone number"
 									{...props}

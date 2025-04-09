@@ -34,9 +34,12 @@
 	$effect(() => {
 		const unsubscribe = message.subscribe((message) => {
 			if (message?.error) {
-				toast.error('There was an error with your submission. We have been notified. Please try again later.', {
-					position: 'top-right'
-				});
+				toast.error(
+					'There was an error with your submission. We have been notified. Please try again later.',
+					{
+						position: 'top-right'
+					}
+				);
 			}
 		});
 
@@ -113,7 +116,11 @@
 					<Form.Control>
 						{#snippet children({ props })}
 							<Form.Label required>Phone number</Form.Label>
-							<PhoneInput placeholder="Enter your phone number" {...props} bind:phoneNumber={$formData.phoneNumber} />
+							<PhoneInput
+								placeholder="Enter your phone number"
+								{...props}
+								bind:phoneNumber={$formData.phoneNumber}
+							/>
 						{/snippet}
 					</Form.Control>
 					<Form.FieldErrors />

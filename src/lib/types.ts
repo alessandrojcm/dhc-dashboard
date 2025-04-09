@@ -56,6 +56,7 @@ export type PlanPricing = {
     proratedAnnualPrice: Dinero.DineroObject;
     monthlyFee: Dinero.DineroObject;
     annualFee: Dinero.DineroObject;
+	coupon?: string;
 }
 
 export type SubscriptionWithPlan = Stripe.Subscription & {
