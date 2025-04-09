@@ -1,5 +1,6 @@
 import type { Database } from '$database';
 import type { KyselifyDatabase } from 'kysely-supabase';
+import type Stripe from 'stripe';
 
 export type UserData = {
 	firstName: string;
@@ -42,3 +43,22 @@ export enum SocialMediaConsent {
 }
 
 export type KyselyDatabase = KyselifyDatabase<Database>;
+
+export type StripePaymentInfo = {
+	customerId: string;
+	annualSubscriptionPaymentIntendId: string;
+	membershipSubscriptionPaymentIntendId: string;
+};
+
+export type PlanPricing = {
+    proratedPrice: Dinero.DineroObject;
+    proratedMonthlyPrice: Dinero.DineroObject;
+    proratedAnnualPrice: Dinero.DineroObject;
+    monthlyFee: Dinero.DineroObject;
+    annualFee: Dinero.DineroObject;
+	coupon?: string;
+}
+
+export type SubscriptionWithPlan = Stripe.Subscription & {
+	plan: Stripe.Plan;
+}
