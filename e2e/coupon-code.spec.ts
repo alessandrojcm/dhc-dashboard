@@ -129,7 +129,7 @@ test.describe('Member Signup - Coupon Codes', () => {
 		await page.waitForTimeout(1000);
 
 		await expect(page.getByText(/coupon code not valid/i)).not.toBeVisible({ timeout: 1000 });
-
+		await expect(page.getByText(`Code ${annualCouponCode} applied`)).toBeVisible({ timeout: 1000 });
 		// Refresh the pricing data to verify it's updated
 		await page.reload();
 		await page.waitForSelector('form');
@@ -147,6 +147,7 @@ test.describe('Member Signup - Coupon Codes', () => {
 		await page.waitForTimeout(1000);
 
 		await expect(page.getByText(/coupon code not valid/i)).not.toBeVisible({ timeout: 1000 });
+		await expect(page.getByText(`Code ${monthlyCouponCode} applied`)).toBeVisible({ timeout: 1000 });
 
 		// Refresh the pricing data to verify it's updated
 		await page.reload();
@@ -165,6 +166,7 @@ test.describe('Member Signup - Coupon Codes', () => {
 		await page.waitForTimeout(1000);
 
 		await expect(page.getByText(/coupon code not valid/i)).not.toBeVisible({ timeout: 1000 });
+		await expect(page.getByText(`Code ${combinedCouponCode} applied`)).toBeVisible({ timeout: 1000 });
 
 		// Refresh the pricing data to verify it's updated
 		await page.reload();
