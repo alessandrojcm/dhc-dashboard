@@ -6,7 +6,7 @@
 	import { superForm } from 'sveltekit-superforms';
 	import { valibotClient } from 'sveltekit-superforms/adapters';
 	import { memberSignupSchema } from '$lib/schemas/membersSignup';
-	import { AsYouType } from 'libphonenumber-js/min';
+	import { parsePhoneNumberFromString } from 'libphonenumber-js/min';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { ArrowRightIcon, Info } from 'lucide-svelte';
 	import {
@@ -32,13 +32,12 @@
 	import type { PlanPricing } from '$lib/types.js';
 
 	const { data } = $props();
+	const { planPricing, nextMonthlyBillingDate, nextAnnualBillingDate } = data;
 	let stripe: Awaited<ReturnType<typeof loadStripe>> | null = $state(null);
 	let elements: StripeElements | null | undefined = $state(null);
 	let paymentElement: StripePaymentElement | null | undefined = $state(null);
 	let showThanks = $state(false);
-	let couponCode = $state('');
-
-	const { planPricing, nextMonthlyBillingDate, nextAnnualBillingDate } = data;
+	let couponCode = $state(planPricing?.coupon ?? '');
 
 	const stripeElementsOptions: StripeElementsOptions = {
 		mode: 'setup',
@@ -68,7 +67,6 @@
 				}
 			}
 		}
-		// customerSessionClientSecret: customerSessionId!
 	};
 
 	const form = superForm(data.form, {
@@ -141,7 +139,7 @@
 		}
 	});
 	const { form: formData, enhance, submitting, errors } = form;
-	const formatedPhone = $derived.by(() => new AsYouType('IE').input(data.userData.phoneNumber!));
+	const formatedPhone = $derived.by(() => parsePhoneNumberFromString(data.userData.phoneNumber!));
 	const planData = createQuery(() => ({
 		queryKey: ['plan-pricing'],
 		queryFn: ({ signal }) =>
@@ -293,6 +291,9 @@
 							</div>
 							<span class="font-semibold">{proratedPriceDinero.toFormat()}</span>
 						</div>
+						{#if couponCode && applyCoupon.isSuccess && !applyCoupon.isPending}
+							<small class="text-sm text-green-600">Code {couponCode} applied</small>
+						{/if}
 						<div class="flex justify-between items-center">
 							<div class="flex items-center gap-2">
 								<span>Monthly membership fee</span>
@@ -330,7 +331,9 @@
 										<Input
 											type="text"
 											placeholder="Enter promotional code"
-											class={applyCoupon.status === 'error' ? 'border-red-500 w-full bg-white' : 'w-full bg-white'}
+											class={applyCoupon.status === 'error'
+												? 'border-red-500 w-full bg-white'
+												: 'w-full bg-white'}
 											bind:value={couponCode}
 										/>
 										{#if applyCoupon.status === 'error'}

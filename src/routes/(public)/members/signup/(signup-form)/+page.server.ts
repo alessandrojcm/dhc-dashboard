@@ -41,7 +41,7 @@ export const load: PageServerLoad = async ({ parent, cookies }) => {
 
 			let customer_id = await trx
 				.selectFrom('user_profiles')
-				.select('customer_id')
+				.select(['customer_id'])
 				.where('supabase_user_id', '=', userData!.id)
 				.executeTakeFirst()
 				.then((r) => r?.customer_id);
@@ -91,7 +91,8 @@ export const load: PageServerLoad = async ({ parent, cookies }) => {
 				'monthly_payment_intent_id',
 				'annual_payment_intent_id',
 				'monthly_amount',
-				'annual_amount'
+				'annual_amount',
+				'coupon_id'
 			])
 			.where('user_id', '=', userData.id)
 			.where('expires_at', '>', dayjs().toISOString())
@@ -274,7 +275,8 @@ export const load: PageServerLoad = async ({ parent, cookies }) => {
 				annualFee: Dinero({
 					amount: (annualSubscription as unknown as SubscriptionWithPlan).plan.amount!,
 					currency: 'EUR'
-				}).toJSON()
+				}).toJSON(),
+				coupon: existingSession?.coupon_id
 			} satisfies PlanPricing,
 			nextMonthlyBillingDate: dayjs().add(1, 'month').startOf('month').toDate(),
 			nextAnnualBillingDate: dayjs().add(1, 'year').startOf('year').set('date', 7).toDate()
