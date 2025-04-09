@@ -6,7 +6,7 @@
 	import { superForm } from 'sveltekit-superforms';
 	import { valibotClient } from 'sveltekit-superforms/adapters';
 	import { memberSignupSchema } from '$lib/schemas/membersSignup';
-	import { AsYouType } from 'libphonenumber-js/min';
+	import { parsePhoneNumberFromString } from 'libphonenumber-js/min';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { ArrowRightIcon, Info } from 'lucide-svelte';
 	import {
@@ -19,6 +19,7 @@
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import * as Card from '$lib/components/ui/card';
 	import { TooltipProvider, TooltipTrigger, TooltipContent } from '$lib/components/ui/tooltip';
+	import * as Accordion from '$lib/components/ui/accordion';
 	import * as Tooltip from '$lib/components/ui/tooltip';
 	import Dinero from 'dinero.js';
 	import { toast } from 'svelte-sonner';
@@ -27,23 +28,16 @@
 	import { goto } from '$app/navigation';
 	import * as Alert from '$lib/components/ui/alert';
 	import PhoneInput from '$lib/components/ui/phone-input.svelte';
+	import { createMutation, createQuery } from '@tanstack/svelte-query';
+	import type { PlanPricing } from '$lib/types.js';
 
 	const { data } = $props();
+	const { planPricing, nextMonthlyBillingDate, nextAnnualBillingDate } = data;
 	let stripe: Awaited<ReturnType<typeof loadStripe>> | null = $state(null);
 	let elements: StripeElements | null | undefined = $state(null);
 	let paymentElement: StripePaymentElement | null | undefined = $state(null);
 	let showThanks = $state(false);
-
-	const {
-		proratedPrice,
-		monthlyFee,
-		annualFee,
-		nextMonthlyBillingDate,
-		nextAnnualBillingDate
-	} = data;
-	const proratedPriceDinero = Dinero(proratedPrice);
-	const monthlyFeeDinero = Dinero(monthlyFee);
-	const annualFeeDinero = Dinero(annualFee);
+	let couponCode = $state(planPricing?.coupon ?? '');
 
 	const stripeElementsOptions: StripeElementsOptions = {
 		mode: 'setup',
@@ -73,7 +67,6 @@
 				}
 			}
 		}
-		// customerSessionClientSecret: customerSessionId!
 	};
 
 	const form = superForm(data.form, {
@@ -105,7 +98,7 @@
 				{
 					elements,
 					params: {
-						return_url: window.location.href + '/members/signup',
+						return_url: window.location.href + '/members/signup'
 					}
 				}
 			);
@@ -146,7 +139,37 @@
 		}
 	});
 	const { form: formData, enhance, submitting, errors } = form;
-	const formatedPhone = $derived.by(() => new AsYouType('IE').input(data.userData.phoneNumber!));
+	const formatedPhone = $derived.by(() => parsePhoneNumberFromString(data.userData.phoneNumber!));
+	const planData = createQuery(() => ({
+		queryKey: ['plan-pricing'],
+		queryFn: ({ signal }) =>
+			fetch('/api/signup/plan-pricing', { signal }).then(
+				(res) => res.json() as unknown as PlanPricing
+			),
+		initialData: planPricing,
+		refetchOnMount: false
+	}));
+
+	const applyCoupon = createMutation(() => ({
+		mutationFn: (code: string) =>
+			fetch('/api/signup/coupon', { method: 'POST', body: JSON.stringify({ code }) }).then(
+				async (res) => {
+					const { message } = (await res.json()) as unknown as { message: string };
+					if (res.status >= 400) {
+						throw new Error(message, {
+							cause: message
+						});
+					}
+					return message;
+				}
+			),
+		onSuccess: () => {
+			planData.refetch();
+		}
+	}));
+	const proratedPriceDinero = $derived(Dinero(planData.data!.proratedPrice));
+	const monthlyFeeDinero = $derived(Dinero(planData.data!.monthlyFee));
+	const annualFeeDinero = $derived(Dinero(planData.data!.annualFee));
 
 	onMount(() => {
 		loadStripe(PUBLIC_STRIPE_KEY).then((result) => {
@@ -210,7 +233,7 @@
 			</div>
 			<div>
 				<p>Phone Number</p>
-				<p class="text-sm text-gray-600">{formatedPhone}</p>
+				<p class="text-sm text-gray-600">{formatedPhone?.formatInternational()}</p>
 			</div>
 			<div>
 				<p>Medical Conditions</p>
@@ -238,7 +261,11 @@
 				<Form.Control>
 					{#snippet children({ props })}
 						<Form.Label required>Next of Kin Phone Number</Form.Label>
-						<PhoneInput placeholder="Enter your next of kin's phone number" {...props} bind:phoneNumber={$formData.nextOfKinNumber} />
+						<PhoneInput
+							placeholder="Enter your next of kin's phone number"
+							{...props}
+							bind:phoneNumber={$formData.nextOfKinNumber}
+						/>
 					{/snippet}
 				</Form.Control>
 				<Form.FieldErrors />
@@ -264,6 +291,9 @@
 							</div>
 							<span class="font-semibold">{proratedPriceDinero.toFormat()}</span>
 						</div>
+						{#if couponCode && applyCoupon.isSuccess}
+							<small class="text-sm text-green-600">Code {couponCode} applied</small>
+						{/if}
 						<div class="flex justify-between items-center">
 							<div class="flex items-center gap-2">
 								<span>Monthly membership fee</span>
@@ -292,7 +322,39 @@
 							</div>
 							<span class="font-semibold">{annualFeeDinero.toFormat()}</span>
 						</div>
-						<div class="border-t border-border pt-4 space-y-2">
+
+						<Accordion.Root class="mt-2" type="single">
+							<Accordion.Item value="promo-code">
+								<Accordion.Trigger>Have a promotional code?</Accordion.Trigger>
+								<Accordion.Content>
+									<div class="pt-2 px-2">
+										<Input
+											type="text"
+											placeholder="Enter promotional code"
+											class={applyCoupon.status === 'error'
+												? 'border-red-500 w-full bg-white'
+												: 'w-full bg-white'}
+											bind:value={couponCode}
+										/>
+										{#if applyCoupon.status === 'error'}
+											<p class="text-red-500">{applyCoupon.error.message}</p>
+										{/if}
+										<Button
+											disabled={couponCode === ''}
+											variant="outline"
+											class="mt-2 w-full bg-white"
+											type="button"
+											onclick={() => applyCoupon.mutate(couponCode)}
+											>Apply Code
+											{#if applyCoupon.status === 'pending'}
+												<LoaderCircle />
+											{/if}
+										</Button>
+									</div>
+								</Accordion.Content>
+							</Accordion.Item>
+						</Accordion.Root>
+						<div class="pt-4 space-y-2">
 							<div class="flex justify-between items-center text-sm text-muted-foreground">
 								<span>Next monthly payment</span>
 								<span>{dayjs(nextMonthlyBillingDate).format('D MMMM YYYY')}</span>

@@ -16,6 +16,7 @@
 		"supabase": "supabase",
 		"supabase:start": "supabase start",
 		"supabase:reset": "supabase db reset",
+		"supabase:types": "supabase gen types typescript --local > database.types.ts",
 		"seed:committee": "node ./scripts/seedCommitteeMembers.js ./scripts/users.csv",
 		"seed:waitlist": "node ./scripts/seedWaitlist.js",
 		"seed:members": "node ./scripts/seedMembers.js"
@@ -25,6 +26,7 @@
 		"@eslint/js": "^9.23.0",
 		"@faker-js/faker": "^9.6.0",
 		"@fontsource/fira-mono": "^5.2.5",
+		"@lucide/svelte": "^0.487.0",
 		"@neoconfetti/svelte": "^2.2.2",
 		"@playwright/test": "^1.51.0",
 		"@snaplet/copycat": "^6.0.0",

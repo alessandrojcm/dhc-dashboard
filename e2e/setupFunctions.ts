@@ -491,8 +491,9 @@ export async function setupInvitedUser(
 	await supabaseServiceClient.auth.signOut();
 
 	// Cleanup function
-	function cleanUp() {
+	async function cleanUp() {
 		const client = getSupabaseServiceClient();
+		await client.from('payment_sessions').delete().eq('user_id', inviteLink.data.user!.id).throwOnError();
 		return Promise.all([
 			userProfileData
 				? client.from('user_profiles').delete().eq('id', userProfileData.id).throwOnError()
