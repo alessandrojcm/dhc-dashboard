@@ -162,7 +162,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 			}
 
 			// Create an object to store the fields to update
-			const updateFields: Record<string, any> = {
+			const updateFields: Record<string, string> = {
 				coupon_id: code,
 				// Don't update monthly_amount and annual_amount as they should reflect the plan amounts
 				// Update the payment intent IDs as they change when a coupon is applied
@@ -188,21 +188,6 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 				.set(updateFields)
 				.where('user_id', '=', userId)
 				.execute();
-
-			// Update the cookie with the new payment intent IDs
-			const stripePaymentInfo = cookies.get(STRIPE_SIGNUP_INFO);
-			if (stripePaymentInfo) {
-				const paymentInfo = JSON.parse(stripePaymentInfo);
-				cookies.set(
-					STRIPE_SIGNUP_INFO,
-					JSON.stringify({
-						...paymentInfo,
-						annualSubscriptionPaymentIntendId: updatedAnnualPaymentIntentId,
-						membershipSubscriptionPaymentIntendId: updatedMonthlyPaymentIntentId
-					}),
-					{ path: '/', httpOnly: true, secure: true, sameSite: 'strict' }
-				);
-			}
 		}
 	});
 
