@@ -25,3 +25,5 @@ vite.config.ts.timestamp-*
 /scripts/users.csv
 
 .windsurfrules
+# Local Netlify folder
+.netlify
