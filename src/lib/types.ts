@@ -56,7 +56,12 @@ export type PlanPricing = {
     proratedAnnualPrice: Dinero.DineroObject;
     monthlyFee: Dinero.DineroObject;
     annualFee: Dinero.DineroObject;
-	coupon?: string;
+    // Discounted amounts for recurring payments
+    discountedMonthlyFee?: Dinero.DineroObject;
+    discountedAnnualFee?: Dinero.DineroObject;
+    // Discount information
+    coupon?: string;
+    discountPercentage?: number;
 }
 
 export type SubscriptionWithPlan = Stripe.Subscription & {

@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS public.payment_sessions (
   annual_payment_intent_id TEXT NOT NULL,
   monthly_amount INTEGER NOT NULL,
   annual_amount INTEGER NOT NULL,
+  total_amount FLOAT NOT NULL,
   created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
   expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
   is_used BOOLEAN NOT NULL DEFAULT FALSE
