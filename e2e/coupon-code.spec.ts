@@ -10,6 +10,7 @@ test.describe('Member Signup - Coupon Codes', () => {
 	let annualCouponCode: string;
 	let monthlyCouponCode: string;
 	let combinedCouponCode: string;
+	let onceCouponCode: string;
 	// Promotion code IDs for cleanup
 	let promotionCodeIds: string[] = [];
 
@@ -34,7 +35,7 @@ test.describe('Member Signup - Coupon Codes', () => {
 		}
 
 		// Create coupons in Stripe
-		const [annualCoupon, monthlyCoupon, combinedCoupon] = await Promise.all([
+		const [annualCoupon, monthlyCoupon, combinedCoupon, onceCoupon] = await Promise.all([
 			// Coupon for annual fee only - 20% off
 			stripeClient.coupons.create({
 				percent_off: 20,
@@ -53,40 +54,59 @@ test.describe('Member Signup - Coupon Codes', () => {
 					products: [monthlyPrices.data[0].product as string]
 				}
 			}),
-			// Coupon for both fees - 10% off
+			// Coupon for both fees - 10% off (permanent discount)
 			stripeClient.coupons.create({
 				percent_off: 10,
+				duration: 'forever',
+				name: 'Combined Test Discount (Permanent)'
+			}),
+			// Coupon for both fees - 15% off (one-time discount)
+			stripeClient.coupons.create({
+				percent_off: 15,
 				duration: 'once',
-				name: 'Combined Test Discount'
+				name: 'One-time Test Discount'
 			})
 		]);
 
 		// Create promotion codes for the coupons
-		const [annualPromotion, monthlyPromotion, combinedPromotion] = await Promise.all([
-			stripeClient.promotionCodes.create({
-				coupon: annualCoupon.id,
-				code: `ANNUAL-${Date.now().toString().slice(-6)}`,
-				max_redemptions: 5
-			}),
-			stripeClient.promotionCodes.create({
-				coupon: monthlyCoupon.id,
-				code: `MONTHLY-${Date.now().toString().slice(-6)}`,
-				max_redemptions: 5
-			}),
-			stripeClient.promotionCodes.create({
-				coupon: combinedCoupon.id,
-				code: `COMBINED-${Date.now().toString().slice(-6)}`,
-				max_redemptions: 5
-			})
-		]);
+		const [annualPromotion, monthlyPromotion, combinedPromotion, oncePromotion] = await Promise.all(
+			[
+				stripeClient.promotionCodes.create({
+					coupon: annualCoupon.id,
+					code: `ANNUAL-${Date.now().toString().slice(-6)}`,
+					max_redemptions: 5
+				}),
+				stripeClient.promotionCodes.create({
+					coupon: monthlyCoupon.id,
+					code: `MONTHLY-${Date.now().toString().slice(-6)}`,
+					max_redemptions: 5
+				}),
+				stripeClient.promotionCodes.create({
+					coupon: combinedCoupon.id,
+					code: `COMBINED-${Date.now().toString().slice(-6)}`,
+					max_redemptions: 5
+				}),
+				stripeClient.promotionCodes.create({
+					coupon: onceCoupon.id,
+					code: `ONCE-${Date.now().toString().slice(-6)}`,
+					max_redemptions: 5
+				})
+			]
+		);
 
 		// Save promotion codes for tests
 		annualCouponCode = annualPromotion.code;
 		monthlyCouponCode = monthlyPromotion.code;
 		combinedCouponCode = combinedPromotion.code;
+		onceCouponCode = oncePromotion.code;
 
 		// Save promotion code IDs for cleanup
-		promotionCodeIds = [annualPromotion.id, monthlyPromotion.id, combinedPromotion.id];
+		promotionCodeIds = [
+			annualPromotion.id,
+			monthlyPromotion.id,
+			combinedPromotion.id,
+			oncePromotion.id
+		];
 	});
 
 	test.afterAll(async () => {
@@ -147,30 +167,223 @@ test.describe('Member Signup - Coupon Codes', () => {
 		await page.waitForTimeout(1000);
 
 		await expect(page.getByText(/coupon code not valid/i)).not.toBeVisible({ timeout: 1000 });
-		await expect(page.getByText(`Code ${monthlyCouponCode} applied`)).toBeVisible({ timeout: 1000 });
+		await expect(page.getByText(`Code ${monthlyCouponCode} applied`)).toBeVisible({
+			timeout: 1000
+		});
 
 		// Refresh the pricing data to verify it's updated
 		await page.reload();
 		await page.waitForSelector('form');
 	});
 
-	test('should apply valid combined coupon code', async ({ page }) => {
+	test('should apply valid combined coupon code and show discounted prices', async ({ page }) => {
 		// Find and click the accordion trigger for promotional code
 		await page.getByText('Have a promotional code?').click();
+
+		// Get the original prices before applying the coupon
+		const originalMonthlyPrice = await page
+			.locator('text=Monthly membership fee')
+			.locator('..')
+			.locator('..')
+			.locator('span.font-semibold')
+			.textContent();
+		const originalAnnualPrice = await page
+			.locator('text=Annual membership fee')
+			.locator('..')
+			.locator('..')
+			.locator('span.font-semibold')
+			.textContent();
+		console.log(
+			`Original prices - Monthly: ${originalMonthlyPrice}, Annual: ${originalAnnualPrice}`
+		);
 
 		// Fill in the coupon code
 		await page.getByPlaceholder('Enter promotional code').fill(combinedCouponCode);
 		await page.getByRole('button', { name: 'Apply Code' }).click();
 
 		// Wait for the API call to complete and prices to update
-		await page.waitForTimeout(1000);
+		await page.waitForTimeout(2000);
 
 		await expect(page.getByText(/coupon code not valid/i)).not.toBeVisible({ timeout: 1000 });
-		await expect(page.getByText(`Code ${combinedCouponCode} applied`)).toBeVisible({ timeout: 1000 });
+		await expect(page.getByText(`Code ${combinedCouponCode} applied`)).toBeVisible({
+			timeout: 1000
+		});
 
 		// Refresh the pricing data to verify it's updated
 		await page.reload();
 		await page.waitForSelector('form');
+
+		// Wait for the discount to be applied and visible
+		await page.waitForSelector('text=Discount applied:', { timeout: 5000 });
+
+		// Check that the discounted prices are shown
+		const discountedMonthlyPrice = await page
+			.locator('text=Monthly membership fee')
+			.locator('..')
+			.locator('..')
+			.locator('span.text-green-600')
+			.textContent();
+		const discountedAnnualPrice = await page
+			.locator('text=Annual membership fee')
+			.locator('..')
+			.locator('..')
+			.locator('span.text-green-600')
+			.textContent();
+		console.log(
+			`Discounted prices - Monthly: ${discountedMonthlyPrice}, Annual: ${discountedAnnualPrice}`
+		);
+
+		// Verify that the original prices are shown with strikethrough
+		await expect(
+			page
+				.locator('text=Monthly membership fee')
+				.locator('..')
+				.locator('..')
+				.locator('span.line-through')
+		).toBeVisible();
+		await expect(
+			page
+				.locator('text=Annual membership fee')
+				.locator('..')
+				.locator('..')
+				.locator('span.line-through')
+		).toBeVisible();
+
+		// Verify that the discount percentage is shown
+		await expect(page.locator('text=Discount applied:')).toBeVisible();
+
+		// Verify that the "Applies to all future payments" text is shown (since we're using a 'forever' coupon)
+		await expect(page.locator('text=Applies to all future payments')).toBeVisible();
+
+		// Verify that the discounted prices are less than the original prices
+		const originalMonthlyValue = parseFloat(originalMonthlyPrice!.replace(/[^0-9.]/g, ''));
+		const discountedMonthlyValue = parseFloat(discountedMonthlyPrice!.replace(/[^0-9.]/g, ''));
+		const originalAnnualValue = parseFloat(originalAnnualPrice!.replace(/[^0-9.]/g, ''));
+		const discountedAnnualValue = parseFloat(discountedAnnualPrice!.replace(/[^0-9.]/g, ''));
+
+		expect(discountedMonthlyValue).toBeLessThan(originalMonthlyValue);
+		expect(discountedAnnualValue).toBeLessThan(originalAnnualValue);
+
+		// Verify the discount percentage is approximately 10% (for combined coupon)
+		const monthlyDiscountPercent = Math.round(
+			((originalMonthlyValue - discountedMonthlyValue) / originalMonthlyValue) * 100
+		);
+		const annualDiscountPercent = Math.round(
+			((originalAnnualValue - discountedAnnualValue) / originalAnnualValue) * 100
+		);
+
+		console.log(
+			`Discount percentages - Monthly: ${monthlyDiscountPercent}%, Annual: ${annualDiscountPercent}%`
+		);
+		expect(monthlyDiscountPercent).toBeCloseTo(10, 1); // Allow 1% tolerance
+		expect(annualDiscountPercent).toBeCloseTo(10, 1); // Allow 1% tolerance
+	});
+
+	test('should apply one-time coupon and show "Applies to first payment only"', async ({
+		page
+	}) => {
+		// Find and click the accordion trigger for promotional code
+		await page.getByText('Have a promotional code?').click();
+
+		// Get the original prices before applying the coupon
+		const originalMonthlyPrice = await page
+			.locator('text=Monthly membership fee')
+			.locator('..')
+			.locator('..')
+			.locator('span.font-semibold')
+			.textContent();
+		const originalAnnualPrice = await page
+			.locator('text=Annual membership fee')
+			.locator('..')
+			.locator('..')
+			.locator('span.font-semibold')
+			.textContent();
+		console.log(
+			`Original prices - Monthly: ${originalMonthlyPrice}, Annual: ${originalAnnualPrice}`
+		);
+
+		// Fill in the coupon code
+		await page.getByPlaceholder('Enter promotional code').fill(onceCouponCode);
+		await page.getByRole('button', { name: 'Apply Code' }).click();
+
+		// Wait for the API call to complete and prices to update
+		await page.waitForTimeout(2000);
+
+		await expect(page.getByText(/coupon code not valid/i)).not.toBeVisible({ timeout: 1000 });
+		await expect(page.getByText(`Code ${onceCouponCode} applied`)).toBeVisible({
+			timeout: 1000
+		});
+
+		// Refresh the pricing data to verify it's updated
+		await page.reload();
+		await page.waitForSelector('form');
+
+		// Wait for the discount to be applied and visible
+		await page.waitForSelector('text=Discount applied:', { timeout: 5000 });
+
+		// Verify that the "Applies to first payment only" text is shown (since we're using a 'once' coupon)
+		await expect(page.locator('text=Applies to first payment only')).toBeVisible();
+
+		// Verify that the discount percentage is shown
+		await expect(page.locator('text=Discount applied: 15% off')).toBeVisible();
+
+		// For a 'once' coupon, the original prices should still be shown without strikethrough
+		// since the discount only applies to the first payment
+		await expect(
+			page
+				.locator('text=Monthly membership fee')
+				.locator('..')
+				.locator('..')
+				.locator('span.line-through')
+		).not.toBeVisible();
+		await expect(
+			page
+				.locator('text=Annual membership fee')
+				.locator('..')
+				.locator('..')
+				.locator('span.line-through')
+		).not.toBeVisible();
+
+		// But the first payment should show a discounted amount with strikethrough for the original amount
+		await expect(
+			page
+				.locator('text=Pro-rated amount')
+				.locator('..')
+				.locator('..')
+				.locator('span.text-green-600')
+		).toBeVisible();
+		await expect(
+			page.locator('text=Pro-rated amount').locator('..').locator('..').locator('span.line-through')
+		).toBeVisible();
+
+		// Get the discounted first payment amount
+		const discountedFirstPayment = await page
+			.locator('text=Pro-rated amount')
+			.locator('..')
+			.locator('..')
+			.locator('span.text-green-600')
+			.textContent();
+		const originalFirstPayment = await page
+			.locator('text=Pro-rated amount')
+			.locator('..')
+			.locator('..')
+			.locator('span.line-through')
+			.textContent();
+		console.log(
+			`First payment - Original: ${originalFirstPayment}, Discounted: ${discountedFirstPayment}`
+		);
+
+		// Verify that the discounted first payment is less than the original
+		const originalFirstPaymentValue = parseFloat(originalFirstPayment!.replace(/[^0-9.]/g, ''));
+		const discountedFirstPaymentValue = parseFloat(discountedFirstPayment!.replace(/[^0-9.]/g, ''));
+		expect(discountedFirstPaymentValue).toBeLessThan(originalFirstPaymentValue);
+
+		// Verify the discount percentage is approximately 15% (for one-time coupon)
+		const firstPaymentDiscountPercent = Math.round(
+			((originalFirstPaymentValue - discountedFirstPaymentValue) / originalFirstPaymentValue) * 100
+		);
+		console.log(`First payment discount percentage: ${firstPaymentDiscountPercent}%`);
+		expect(firstPaymentDiscountPercent).toBeCloseTo(15, 1); // Allow 1% tolerance
 	});
 
 	test('should reject invalid coupon codes', async ({ page }) => {
@@ -197,5 +410,63 @@ test.describe('Member Signup - Coupon Codes', () => {
 
 		// Verify error message
 		await expect(page.getByText(/coupon code not valid/i)).toBeVisible({ timeout: 5000 });
+	});
+
+	test('should process payment with coupon', async ({ page }) => {
+		await page.getByLabel('Next of Kin', { exact: true }).fill('John Doe');
+
+		// Find the phone input field (it's now inside the phone input component)
+		// The new component has a div wrapper with an Input of type tel inside
+		const phoneInputField = page
+			.locator('div')
+			.filter({ hasText: 'Next of Kin Phone Number' })
+			.locator('input[type="tel"]');
+
+		await phoneInputField.pressSequentially('0838774532', { delay: 50 });
+		await page.getByText('Have a promotional code?').click();
+
+		// Get the original prices before applying the coupon
+		const originalMonthlyPrice = await page
+			.locator('text=Monthly membership fee')
+			.locator('..')
+			.locator('..')
+			.locator('span.font-semibold')
+			.textContent();
+		const originalAnnualPrice = await page
+			.locator('text=Annual membership fee')
+			.locator('..')
+			.locator('..')
+			.locator('span.font-semibold')
+			.textContent();
+		console.log(
+			`Original prices - Monthly: ${originalMonthlyPrice}, Annual: ${originalAnnualPrice}`
+		);
+
+		// Fill in the coupon code
+		await page.getByPlaceholder('Enter promotional code').fill(combinedCouponCode);
+		await page.getByRole('button', { name: 'Apply Code' }).click();
+
+		// Wait for the API call to complete and prices to update
+		await page.waitForTimeout(2000);
+
+		await expect(page.getByText(/coupon code not valid/i)).not.toBeVisible({ timeout: 1000 });
+		await expect(page.getByText(`Code ${combinedCouponCode} applied`)).toBeVisible({
+			timeout: 1000
+		});
+		await phoneInputField.press('Tab');
+		const stripeFrame = await page.locator('.__PrivateStripeElement').frameLocator('iframe');
+		// Stripe's succesful IBAN number
+		await stripeFrame.getByLabel('IBAN').fill('IE29AIBK93115212345678');
+		await stripeFrame.getByLabel('Address line 1').fill('123 Main Street');
+		await stripeFrame.getByLabel('Address line 2').fill('Apt 4B');
+		await stripeFrame.getByLabel('City').fill('Dublin');
+		await stripeFrame.getByLabel('Eircode').fill('K45 HR22');
+		await stripeFrame.getByLabel('County').selectOption('County Dublin');
+		await page.getByRole('button', { name: /sign up/i }).click();
+		await expect(
+			page.getByText(
+				'Your membership has been successfully processed. Welcome to Dublin Hema Club! You will receive a Discord invite by email shortly.'
+			)
+		).toBeVisible({ timeout: 30000 });
 	});
 });

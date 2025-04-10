@@ -4,6 +4,7 @@ import dayjs from 'dayjs';
 import { invariant } from '$lib/server/invariant';
 import Dinero from 'dinero.js';
 import { kysely } from '$lib/server/kysely';
+import { stripeClient } from '$lib/server/stripe';
 import type { PlanPricing } from '$lib/types';
 
 export const GET: RequestHandler = async ({ cookies }) => {
@@ -22,7 +23,11 @@ export const GET: RequestHandler = async ({ cookies }) => {
 			'annual_payment_intent_id',
 			'monthly_amount',
 			'annual_amount',
-			'coupon_id'
+			'total_amount',
+			'coupon_id',
+			'discounted_monthly_amount',
+			'discounted_annual_amount',
+			'discount_percentage'
 		])
 		.where('user_id', '=', userId)
 		.where('expires_at', '>', dayjs().toISOString())
@@ -40,22 +45,77 @@ export const GET: RequestHandler = async ({ cookies }) => {
 	}
 
 	// Use the values stored in the database instead of making API calls to Stripe
+	// Plan amounts (what user will pay regularly)
 	const monthlyAmount = existingSession.monthly_amount;
 	const annualAmount = existingSession.annual_amount;
 
+	// Get the payment intent amounts (what user will pay now, including proration and discounts)
+	// If total_amount is not available, we need to get the payment intent amounts from Stripe
+	let proratedMonthlyAmount = 0;
+	let proratedAnnualAmount = 0;
+	let totalAmount = existingSession.total_amount;
+
+	if (totalAmount === undefined || totalAmount === null) {
+		// If total_amount is not available, try to get the payment intent amounts from Stripe
+		try {
+			const [monthlyPaymentIntent, annualPaymentIntent] = await Promise.all([
+				stripeClient.paymentIntents.retrieve(existingSession.monthly_payment_intent_id),
+				stripeClient.paymentIntents.retrieve(existingSession.annual_payment_intent_id)
+			]);
+
+			proratedMonthlyAmount = monthlyPaymentIntent.amount;
+			proratedAnnualAmount = annualPaymentIntent.amount;
+			totalAmount = proratedMonthlyAmount + proratedAnnualAmount;
+
+			// Update the payment_sessions table with the total_amount
+			await kysely
+				.updateTable('payment_sessions')
+				.set({
+					total_amount: totalAmount
+				})
+				.where('user_id', '=', userId)
+				.where('monthly_payment_intent_id', '=', existingSession.monthly_payment_intent_id)
+				.where('annual_payment_intent_id', '=', existingSession.annual_payment_intent_id)
+				.execute();
+		} catch (error) {
+			console.error('Error retrieving payment intents:', error);
+			// Fallback to using the plan amounts
+			totalAmount = monthlyAmount + annualAmount;
+			proratedMonthlyAmount = monthlyAmount;
+			proratedAnnualAmount = annualAmount;
+		}
+	} else {
+		// If we have a total amount but not individual prorated amounts, split it proportionally
+		const totalPlanAmount = monthlyAmount + annualAmount;
+		if (totalPlanAmount > 0) {
+			proratedMonthlyAmount = Math.round((monthlyAmount / totalPlanAmount) * totalAmount);
+			proratedAnnualAmount = totalAmount - proratedMonthlyAmount; // Ensure they add up exactly
+		}
+	}
+
+	// Get discount percentage if available, otherwise calculate it
+	let discountPercentage: number | undefined = existingSession.discount_percentage ?? undefined;
+	if (discountPercentage === undefined && existingSession.discounted_monthly_amount && existingSession.coupon_id) {
+		// Calculate the discount percentage based on the monthly amount
+		const discount = monthlyAmount - existingSession.discounted_monthly_amount;
+		discountPercentage = Math.round((discount / monthlyAmount) * 100);
+	}
+
 	return Response.json({
+		// What the user will pay now (prorated and possibly discounted)
 		proratedPrice: Dinero({
-			amount: monthlyAmount + annualAmount,
+			amount: totalAmount,
 			currency: 'EUR'
 		}).toJSON(),
 		proratedMonthlyPrice: Dinero({
-			amount: monthlyAmount,
+			amount: proratedMonthlyAmount,
 			currency: 'EUR'
 		}).toJSON(),
 		proratedAnnualPrice: Dinero({
-			amount: annualAmount,
+			amount: proratedAnnualAmount,
 			currency: 'EUR'
 		}).toJSON(),
+		// What the user will pay regularly (plan amounts)
 		monthlyFee: Dinero({
 			amount: monthlyAmount,
 			currency: 'EUR'
@@ -64,6 +124,21 @@ export const GET: RequestHandler = async ({ cookies }) => {
 			amount: annualAmount,
 			currency: 'EUR'
 		}).toJSON(),
-		coupon: existingSession?.coupon_id ?? undefined
+		// Discounted amounts for recurring payments
+		...(existingSession.discounted_monthly_amount && {
+			discountedMonthlyFee: Dinero({
+				amount: existingSession.discounted_monthly_amount,
+				currency: 'EUR'
+			}).toJSON()
+		}),
+		...(existingSession.discounted_annual_amount && {
+			discountedAnnualFee: Dinero({
+				amount: existingSession.discounted_annual_amount,
+				currency: 'EUR'
+			}).toJSON()
+		}),
+		// Discount information
+		coupon: existingSession?.coupon_id ?? undefined,
+		...(discountPercentage !== undefined && { discountPercentage })
 	} satisfies PlanPricing);
 };
