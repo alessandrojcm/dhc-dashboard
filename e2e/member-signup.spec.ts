@@ -66,7 +66,6 @@ test.describe('Member Signup - Valid invitation', () => {
 		await expect(page.getByLabel('Next of Kin Phone Number')).toBeVisible();
 
 		await expect(page.getByText('Medical Conditions')).toBeVisible();
-		await expect(page.getByLabel(/insurance form/)).toBeVisible();
 	});
 
 	test('should validate required fields', async ({ page }) => {
@@ -108,9 +107,6 @@ test.describe('Member Signup - Valid invitation', () => {
 
 		await phoneInputField.pressSequentially('0838774532', { delay: 50 });
 		await phoneInputField.press('Tab');
-		await page
-			.getByLabel("Please make sure you have submitted HEMA Ireland's insurance form")
-			.check();
 		const stripeFrame = await page.locator('.__PrivateStripeElement').frameLocator('iframe');
 		// Stripe's succesful IBAN number
 		await stripeFrame.getByLabel('IBAN').fill('IE29AIBK93115212345678');
@@ -140,9 +136,6 @@ test.describe('Member Signup - Valid invitation', () => {
 
 		await phoneInputField.pressSequentially('0838774532', { delay: 50 });
 		await phoneInputField.press('Tab');
-		await page
-			.getByLabel("Please make sure you have submitted HEMA Ireland's insurance form")
-			.check();
 
 		const stripeFrame = await page.locator('.__PrivateStripeElement').frameLocator('iframe');
 		// Stripe IBAN that triggers weekly limit exceeded error
@@ -172,9 +165,6 @@ test.describe('Member Signup - Valid invitation', () => {
 
 		await phoneInputField.pressSequentially('0838774532', { delay: 50 });
 		await phoneInputField.press('Tab');
-		await page
-			.getByLabel("Please make sure you have submitted HEMA Ireland's insurance form")
-			.check();
 
 		const stripeFrame = await page.locator('.__PrivateStripeElement').frameLocator('iframe');
 		// Stripe IBAN that triggers source limit exceeded error

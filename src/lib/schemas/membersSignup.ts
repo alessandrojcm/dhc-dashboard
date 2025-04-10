@@ -6,10 +6,7 @@ import { phoneNumberValidator } from './commonValidators';
 export const memberSignupSchema = v.object({
 	nextOfKin: v.pipe(v.string(), v.nonEmpty('Please enter your next of kin.')),
 	nextOfKinNumber: phoneNumberValidator('Phone number of your next of kin is required.'),
-	insuranceFormSubmitted: v.pipe(
-		v.boolean('Please confirm you have read and accepted the insurance form.'),
-		v.check((input) => input, 'Please confirm you have read and accepted the insurance form.')
-	),
+	insuranceFormSubmitted: v.optional(v.boolean()),
 	stripeConfirmationToken: v.pipe(
 		v.string(),
 		v.nonEmpty('Something has gone wrong with your payment, please try again.')

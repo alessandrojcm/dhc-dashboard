@@ -371,26 +371,6 @@
 			{#if !stripe}
 				<Skeleton class="h-96" />
 			{/if}
-
-			<Form.Field {form} name="insuranceFormSubmitted" class="flex items-center gap-2">
-				<Form.Control>
-					{#snippet children({ props })}
-						<Checkbox {...props} bind:checked={$formData.insuranceFormSubmitted} />
-						<Form.Label
-							style="margin-top: 0 !important"
-							class={$errors?.insuranceFormSubmitted ? 'text-red-500' : ''}
-							>Please make sure you have submitted HEMA Ireland's
-							{#await data.insuranceFormLink}
-								<span class="text-blue-500 underline cursor-pointer">insurance form</span>
-							{:then insuranceFormLink}
-								<a class="text-blue-500 underline" href={insuranceFormLink} target="_blank"
-									>insurance form</a
-								>
-							{/await}
-						</Form.Label>
-					{/snippet}
-				</Form.Control>
-			</Form.Field>
 		</div>
 		<div class="flex justify-between">
 			<Button type="submit" class="ml-auto" disabled={$submitting}>
