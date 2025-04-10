@@ -163,39 +163,54 @@ export type Database = {
           annual_amount: number
           annual_payment_intent_id: string
           annual_subscription_id: string
+          coupon_id: string | null
           created_at: string
+          discount_percentage: number | null
+          discounted_annual_amount: number | null
+          discounted_monthly_amount: number | null
           expires_at: string
           id: number
           is_used: boolean
           monthly_amount: number
           monthly_payment_intent_id: string
           monthly_subscription_id: string
+          total_amount: number
           user_id: string
         }
         Insert: {
           annual_amount: number
           annual_payment_intent_id: string
           annual_subscription_id: string
+          coupon_id?: string | null
           created_at?: string
+          discount_percentage?: number | null
+          discounted_annual_amount?: number | null
+          discounted_monthly_amount?: number | null
           expires_at: string
           id?: number
           is_used?: boolean
           monthly_amount: number
           monthly_payment_intent_id: string
           monthly_subscription_id: string
+          total_amount: number
           user_id: string
         }
         Update: {
           annual_amount?: number
           annual_payment_intent_id?: string
           annual_subscription_id?: string
+          coupon_id?: string | null
           created_at?: string
+          discount_percentage?: number | null
+          discounted_annual_amount?: number | null
+          discounted_monthly_amount?: number | null
           expires_at?: string
           id?: number
           is_used?: boolean
           monthly_amount?: number
           monthly_payment_intent_id?: string
           monthly_subscription_id?: string
+          total_amount?: number
           user_id?: string
         }
         Relationships: [
@@ -560,16 +575,11 @@ export type Database = {
         Returns: string
       }
       custom_access_token_hook: {
-        Args: {
-          event: Json
-        }
+        Args: { event: Json }
         Returns: Json
       }
       get_conversion_metrics: {
-        Args: {
-          start_date: string
-          end_date: string
-        }
+        Args: { start_date: string; end_date: string }
         Returns: {
           cohort_date: string
           total_signups: number
@@ -585,9 +595,7 @@ export type Database = {
         Returns: Json
       }
       get_email_from_auth_users: {
-        Args: {
-          user_id: string
-        }
+        Args: { user_id: string }
         Returns: {
           email: string
         }[]
@@ -597,27 +605,19 @@ export type Database = {
         Returns: Json
       }
       get_invitation_info: {
-        Args: {
-          p_user_id: string
-        }
+        Args: { p_user_id: string }
         Returns: Json
       }
       get_member_data: {
-        Args: {
-          user_uuid: string
-        }
+        Args: { user_uuid: string }
         Returns: Database["public"]["CompositeTypes"]["member_data_type"]
       }
       get_membership_info: {
-        Args: {
-          uid: string
-        }
+        Args: { uid: string }
         Returns: Json
       }
       get_waitlist_position: {
-        Args: {
-          p_waitlist_id: string
-        }
+        Args: { p_waitlist_id: string }
         Returns: number
       }
       get_weapons_options: {
@@ -699,10 +699,7 @@ export type Database = {
         Returns: Database["public"]["CompositeTypes"]["member_data_type"]
       }
       update_member_payment: {
-        Args: {
-          p_user_id: string
-          p_payment_date?: string
-        }
+        Args: { p_user_id: string; p_payment_date?: string }
         Returns: undefined
       }
       update_waitlist_status: {

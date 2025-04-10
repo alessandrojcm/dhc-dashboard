@@ -1,16 +1,13 @@
 import { memberSignupSchema } from '$lib/schemas/membersSignup';
-import { supabaseServiceClient } from '$lib/server/supabaseServiceClient.js';
 import { error } from '@sveltejs/kit';
 import dayjs from 'dayjs';
 import { jwtDecode } from 'jwt-decode';
-import { message, superValidate, fail } from 'sveltekit-superforms';
+import { fail, message, superValidate } from 'sveltekit-superforms';
 import { valibot } from 'sveltekit-superforms/adapters';
 import type { Actions, PageServerLoad } from '../$types';
 import { invariant } from '$lib/server/invariant';
 import { stripeClient } from '$lib/server/stripe';
-import { STRIPE_SIGNUP_INFO } from '$lib/server/constants';
 import { getPriceIds } from '$lib/server/priceManagement';
-import Dinero from 'dinero.js';
 import { kysely } from '$lib/server/kysely';
 import Stripe from 'stripe';
 import {
@@ -18,212 +15,65 @@ import {
 	getInvitationInfo,
 	updateInvitationStatus
 } from '$lib/server/kyselyRPCFunctions';
-import type { PlanPricing } from '$lib/types';
-import type { StripePaymentInfo } from '$lib/types';
-import type { SubscriptionWithPlan } from '$lib/types';
+import type { PlanPricing, SubscriptionWithPlan } from '$lib/types';
+import { generatePricingInfo, getNextBillingDates } from '$lib/server/pricingUtils';
+import {
+	createSubscriptionSession,
+	getExistingPaymentSession,
+	validateExistingSession
+} from '$lib/server/subscriptionCreation';
 
 // need to normalize medical_conditions
 export const load: PageServerLoad = async ({ parent, cookies }) => {
 	const { userData } = await parent();
+
 	try {
-		// Run these operations in parallel for better performance
-		const [invitationData, existingSession, priceIds] = await Promise.all([
-			kysely.transaction().execute(async (trx) => {
-				// Get invitation info instead of waitlist info
-				const invitationInfo = await getInvitationInfo(userData.id, trx);
+		// Get invitation data first (essential for page rendering)
+		const invitationData = await kysely.transaction().execute(async (trx) => {
+			// Get invitation info instead of waitlist info
+			const invitationInfo = await getInvitationInfo(userData.id, trx);
 
-				if (!invitationInfo || invitationInfo.status !== 'pending') {
-					throw error(404, {
-						message: 'Invalid invitation'
-					});
-				}
-
-				let customer_id = await trx
-					.selectFrom('user_profiles')
-					.select(['customer_id'])
-					.where('supabase_user_id', '=', userData!.id)
-					.executeTakeFirst()
-					.then((r) => r?.customer_id);
-
-				if (!customer_id) {
-					customer_id = await stripeClient.customers
-						.create({
-							name: `${invitationInfo.first_name} ${invitationInfo.last_name}`,
-							email: userData.email,
-							metadata: {
-								user_uuid: userData.id
-							}
-						})
-						.then((result) => result.id);
-
-					await trx
-						.updateTable('user_profiles')
-						.set({
-							customer_id
-						})
-						.where('supabase_user_id', '=', userData!.id)
-						.execute();
-				}
-
-				return { ...invitationInfo, customer_id };
-			}),
-			kysely
-				.selectFrom('payment_sessions')
-				.select([
-					'monthly_subscription_id',
-					'annual_subscription_id',
-					'monthly_payment_intent_id',
-					'annual_payment_intent_id',
-					'monthly_amount',
-					'annual_amount',
-					'coupon_id'
-				])
-				.where('user_id', '=', userData.id)
-				.where('expires_at', '>', dayjs().toISOString())
-				.where('is_used', '=', false)
-				.orderBy('created_at', 'desc')
-				.executeTakeFirst(),
-			getPriceIds() // Get cached price IDs
-		]);
-
-		let monthlyPaymentIntent: Stripe.PaymentIntent | undefined;
-		let annualPaymentIntent: Stripe.PaymentIntent | undefined;
-		let proratedMonthlyAmount: number = 0;
-		let proratedAnnualAmount: number = 0;
-		let monthlySubscription: Stripe.Subscription | undefined;
-		let annualSubscription: Stripe.Subscription | undefined;
-		let validExistingSession = false;
-
-		if (existingSession) {
-			// Retrieve the payment intents to ensure they're still valid
-			try {
-				const [retrievedMonthlyIntent, retrievedAnnualIntent] = await Promise.all([
-					stripeClient.paymentIntents.retrieve(existingSession.monthly_payment_intent_id),
-					stripeClient.paymentIntents.retrieve(existingSession.annual_payment_intent_id)
-				]);
-
-				// Only use if they're still in a usable state
-				if (
-					retrievedMonthlyIntent.status === 'requires_payment_method' &&
-					retrievedAnnualIntent.status === 'requires_payment_method'
-				) {
-					monthlyPaymentIntent = retrievedMonthlyIntent;
-					annualPaymentIntent = retrievedAnnualIntent;
-					proratedMonthlyAmount = existingSession.monthly_amount;
-					proratedAnnualAmount = existingSession.annual_amount;
-					validExistingSession = true;
-
-					// Retrieve subscriptions for display purposes
-					const [retrievedMonthlySubscription, retrievedAnnualSubscription] = await Promise.all([
-						stripeClient.subscriptions.retrieve(existingSession.monthly_subscription_id),
-						stripeClient.subscriptions.retrieve(existingSession.annual_subscription_id)
-					]);
-
-					monthlySubscription = retrievedMonthlySubscription;
-					annualSubscription = retrievedAnnualSubscription;
-				} else {
-					// Payment intents are in an unusable state, just mark as invalid
-					console.log(
-						'Payment intents are in an unusable state:',
-						retrievedMonthlyIntent.status,
-						retrievedAnnualIntent.status
-					);
-					validExistingSession = false;
-				}
-			} catch (error) {
-				// If there's any error retrieving or validating, create new ones
-				console.error('Error retrieving existing payment session:', error);
-				validExistingSession = false;
+			if (!invitationInfo || invitationInfo.status !== 'pending') {
+				throw error(404, {
+					message: 'Invalid invitation'
+				});
 			}
-		}
-		if (!existingSession || !validExistingSession) {
-			// Create new subscriptions if no valid existing session
-			const [newMonthlySubscription, newAnnualSubscription] = await Promise.all([
-				stripeClient.subscriptions.create({
-					customer: invitationData.customer_id!,
-					items: [
-						{
-							price: priceIds.monthly // Use cached price ID
+
+			let customer_id = await trx
+				.selectFrom('user_profiles')
+				.select(['customer_id'])
+				.where('supabase_user_id', '=', userData!.id)
+				.executeTakeFirst()
+				.then((r) => r?.customer_id);
+
+			if (!customer_id) {
+				customer_id = await stripeClient.customers
+					.create({
+						name: `${invitationInfo.first_name} ${invitationInfo.last_name}`,
+						email: userData.email,
+						metadata: {
+							user_uuid: userData.id
 						}
-					],
-					billing_cycle_anchor_config: {
-						day_of_month: 1
-					},
-					payment_behavior: 'default_incomplete',
-					payment_settings: {
-						payment_method_types: ['sepa_debit']
-					},
-					expand: ['latest_invoice.payment_intent'],
-					collection_method: 'charge_automatically'
-				}),
-				stripeClient.subscriptions.create({
-					customer: invitationData.customer_id!,
-					items: [
-						{
-							price: priceIds.annual // Use cached price ID
-						}
-					],
-					payment_behavior: 'default_incomplete',
-					payment_settings: {
-						payment_method_types: ['sepa_debit']
-					},
-					billing_cycle_anchor_config: {
-						month: 1,
-						day_of_month: 7
-					},
-					expand: ['latest_invoice.payment_intent'],
-					collection_method: 'charge_automatically'
-				})
-			]);
+					})
+					.then((result) => result.id);
 
-			monthlySubscription = newMonthlySubscription;
-			annualSubscription = newAnnualSubscription;
+				await trx
+					.updateTable('user_profiles')
+					.set({
+						customer_id
+					})
+					.where('supabase_user_id', '=', userData!.id)
+					.execute();
+			}
 
-			const newMonthlyPaymentIntent = (newMonthlySubscription.latest_invoice as Stripe.Invoice)!
-				.payment_intent as Stripe.PaymentIntent;
-			const newAnnualPaymentIntent = (newAnnualSubscription.latest_invoice as Stripe.Invoice)!
-				.payment_intent as Stripe.PaymentIntent;
+			return { ...invitationInfo, customer_id };
+		});
 
-			monthlyPaymentIntent = newMonthlyPaymentIntent;
-			annualPaymentIntent = newAnnualPaymentIntent;
-			proratedMonthlyAmount = newMonthlyPaymentIntent.amount;
-			proratedAnnualAmount = newAnnualPaymentIntent.amount;
-
-			// Store the new session
-			await kysely
-				.insertInto('payment_sessions')
-				.values({
-					user_id: userData.id,
-					monthly_subscription_id: newMonthlySubscription.id,
-					annual_subscription_id: newAnnualSubscription.id,
-					monthly_payment_intent_id: newMonthlyPaymentIntent.id,
-					annual_payment_intent_id: newAnnualPaymentIntent.id,
-					monthly_amount: (monthlySubscription as unknown as SubscriptionWithPlan).plan.amount!,
-					annual_amount: (annualSubscription as unknown as SubscriptionWithPlan).plan.amount!,
-					expires_at: dayjs().add(24, 'hour').toISOString()
-				})
-				.execute();
-		}
-
-		// Ensure payment intents are defined before using them
-		if (!monthlyPaymentIntent || !annualPaymentIntent) {
-			throw error(500, {
-				message: 'Failed to create payment intents'
-			});
-		}
-
-		cookies.set(
-			STRIPE_SIGNUP_INFO,
-			JSON.stringify({
-				customerId: invitationData.customer_id!,
-				annualSubscriptionPaymentIntendId: annualPaymentIntent.id,
-				membershipSubscriptionPaymentIntendId: monthlyPaymentIntent.id
-			} satisfies StripePaymentInfo),
-			{ path: '/', httpOnly: true, secure: true, sameSite: 'strict' }
-		);
-
+		// Return essential data immediately, with pricing as a streamed promise
 		return {
-			form: await superValidate({}, valibot(memberSignupSchema), { errors: false }),
+			form: await superValidate({}, valibot(memberSignupSchema), {
+				errors: false
+			}),
 			userData: {
 				firstName: invitationData.first_name,
 				lastName: invitationData.last_name,
@@ -234,38 +84,14 @@ export const load: PageServerLoad = async ({ parent, cookies }) => {
 				gender: invitationData.gender,
 				medicalConditions: invitationData.medical_conditions
 			},
-			insuranceFormLink: supabaseServiceClient
-				.from('settings')
-				.select('value')
-				.eq('key', 'insurance_form_link')
-				.limit(1)
-				.single()
-				.then((result) => result.data?.value),
-			planPricing: {
-				proratedPrice: Dinero({
-					amount: proratedMonthlyAmount + proratedAnnualAmount,
-					currency: 'EUR'
-				}).toJSON(),
-				proratedMonthlyPrice: Dinero({
-					amount: proratedMonthlyAmount,
-					currency: 'EUR'
-				}).toJSON(),
-				proratedAnnualPrice: Dinero({
-					amount: proratedAnnualAmount,
-					currency: 'EUR'
-				}).toJSON(),
-				monthlyFee: Dinero({
-					amount: (monthlySubscription as unknown as SubscriptionWithPlan).plan.amount!,
-					currency: 'EUR'
-				}).toJSON(),
-				annualFee: Dinero({
-					amount: (annualSubscription as unknown as SubscriptionWithPlan).plan.amount!,
-					currency: 'EUR'
-				}).toJSON(),
-				coupon: existingSession?.coupon_id ?? undefined
-			} satisfies PlanPricing,
-			nextMonthlyBillingDate: dayjs().add(1, 'month').startOf('month').toDate(),
-			nextAnnualBillingDate: dayjs().add(1, 'year').startOf('year').set('date', 7).toDate()
+			insuranceFormLink: '',
+			// Stream these values
+			streamed: {
+				// This will be streamed to the client as it resolves
+				pricingData: getPricingData(userData.id, invitationData.customer_id!)
+			},
+			// These are needed for the page but can be calculated immediately
+			...getNextBillingDates()
 		};
 	} catch (err) {
 		console.error(err);
@@ -275,13 +101,56 @@ export const load: PageServerLoad = async ({ parent, cookies }) => {
 	}
 };
 
+// Helper function to get pricing data (will be streamed)
+async function getPricingData(userId: string, customerId: string): Promise<PlanPricing> {
+	// Get existing session and price IDs in parallel
+	const [existingSessionData, priceIds] = await Promise.all([
+		getExistingPaymentSession(userId),
+		getPriceIds()
+	]);
+
+	let subscriptionData;
+
+	if (existingSessionData) {
+		// Validate existing session
+		subscriptionData = await validateExistingSession(existingSessionData);
+	}
+
+	if (!existingSessionData || !subscriptionData?.valid) {
+		// Create new subscriptions if no valid existing session
+		subscriptionData = await createSubscriptionSession(userId, customerId, priceIds);
+	}
+
+	// Validate subscription data and throw error if invalid
+	if (
+		!subscriptionData ||
+		![
+			'annualPaymentIntent',
+			'monthlyPaymentIntent',
+			'monthlySubscription',
+			'annualSubscription'
+		].every((prop) => !!subscriptionData[prop]) ||
+		subscriptionData.proratedMonthlyAmount === undefined ||
+		subscriptionData.proratedAnnualAmount === undefined
+	) {
+		throw error(500, 'Failed to retrieve or create valid subscription session data.');
+	}
+
+	// Generate and return pricing info (TypeScript now knows these values exist)
+	return generatePricingInfo(
+		subscriptionData.monthlySubscription as unknown as SubscriptionWithPlan,
+		subscriptionData.annualSubscription as unknown as SubscriptionWithPlan,
+		subscriptionData.proratedMonthlyAmount as number,
+		subscriptionData.proratedAnnualAmount as number,
+		existingSessionData
+	);
+}
+
 export const actions: Actions = {
 	default: async (event) => {
 		const accessToken = event.cookies.get('access-token');
 		invariant(accessToken === null, 'There has been an error with your signup.');
 		const tokenClaim = jwtDecode(accessToken!);
-		const paymentInfo = event.cookies.get(STRIPE_SIGNUP_INFO);
-		invariant(paymentInfo == undefined, 'Payment info not found.');
 		invariant(dayjs.unix(tokenClaim.exp!).isBefore(dayjs()), 'This invitation has expired');
 
 		const form = await superValidate(event, valibot(memberSignupSchema));
@@ -290,11 +159,7 @@ export const actions: Actions = {
 				form
 			});
 		}
-		const {
-			customerId,
-			annualSubscriptionPaymentIntendId,
-			membershipSubscriptionPaymentIntendId
-		}: StripePaymentInfo = JSON.parse(paymentInfo!);
+
 		const confirmationToken: Stripe.ConfirmationToken = JSON.parse(
 			form.data.stripeConfirmationToken
 		);
@@ -302,6 +167,18 @@ export const actions: Actions = {
 		return kysely
 			.transaction()
 			.execute(async (trx) => {
+				const paymentSession = await getExistingPaymentSession(tokenClaim!.sub!, trx);
+				if (!paymentSession) {
+					throw error(404, 'No payment session found for this user.');
+				}
+				const {
+					annual_subscription_id,
+					monthly_subscription_id,
+					annual_payment_intent_id,
+					monthly_payment_intent_id,
+					customer_id
+				} = paymentSession;
+
 				// First get the invitation info and update its status to accepted
 				const invitationInfo = await getInvitationInfo(tokenClaim.sub!, trx);
 				if (invitationInfo && invitationInfo.invitation_id) {
@@ -314,14 +191,14 @@ export const actions: Actions = {
 						v_user_id: tokenClaim.sub!,
 						p_next_of_kin_name: form.data.nextOfKin,
 						p_next_of_kin_phone: form.data.nextOfKinNumber,
-						p_insurance_form_submitted: form.data.insuranceFormSubmitted
+						p_insurance_form_submitted: true
 					},
 					trx
 				);
 
 				const intent = await stripeClient.setupIntents.create({
 					confirm: true,
-					customer: customerId,
+					customer: customer_id!,
 					confirmation_token: confirmationToken.id,
 					payment_method_types: ['sepa_debit']
 				});
@@ -337,7 +214,7 @@ export const actions: Actions = {
 						: (intent.payment_method! as Stripe.PaymentMethod).id;
 
 				await Promise.all([
-					stripeClient.paymentIntents.confirm(membershipSubscriptionPaymentIntendId, {
+					stripeClient.paymentIntents.confirm(monthly_payment_intent_id, {
 						payment_method: paymentMethodId,
 						mandate_data: {
 							customer_acceptance: {
@@ -349,7 +226,7 @@ export const actions: Actions = {
 							}
 						}
 					}),
-					stripeClient.paymentIntents.confirm(annualSubscriptionPaymentIntendId, {
+					stripeClient.paymentIntents.confirm(annual_payment_intent_id, {
 						payment_method: paymentMethodId,
 						mandate_data: {
 							customer_acceptance: {
@@ -367,8 +244,8 @@ export const actions: Actions = {
 				await trx
 					.updateTable('payment_sessions')
 					.set({ is_used: true })
-					.where('monthly_payment_intent_id', '=', membershipSubscriptionPaymentIntendId)
-					.where('annual_payment_intent_id', '=', annualSubscriptionPaymentIntendId)
+					.where('monthly_payment_intent_id', '=', `membershipSubscriptionPaymentIntendId`)
+					.where('annual_payment_intent_id', '=', annual_payment_intent_id)
 					.execute();
 
 				// Success! Delete the access token cookie
@@ -404,7 +281,13 @@ export const actions: Actions = {
 					}
 				}
 
-				return message(form, { paymentFailed: true, error: errorMessage }, { status: 400 });
+				return message(
+					form,
+					{ paymentFailed: true, error: errorMessage },
+					{
+						status: 400
+					}
+				);
 			});
 	}
 };
