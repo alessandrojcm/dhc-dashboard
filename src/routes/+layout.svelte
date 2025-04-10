@@ -1,57 +1,45 @@
 <script lang="ts">
-	import Header from './Header.svelte';
 	import '../app.css';
+	import type { LayoutData } from './$types';
+	import Toaster from '$lib/components/ui/sonner/sonner.svelte';
+	import { type Snippet } from 'svelte';
+	import { goto, invalidate } from '$app/navigation';
+	import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
+	import { SvelteQueryDevtools } from '@tanstack/svelte-query-devtools';
 
-	let { children } = $props();
+	let { children, data }: { children: Snippet; data: LayoutData } = $props();
+	let session = $derived(data.session);
+	let supabase = $derived(data.supabase);
+	const queryClient = new QueryClient();
+
+	$effect(() => {
+		const { data } = supabase.auth.onAuthStateChange((event, newSession) => {
+			if (event === 'SIGNED_OUT') {
+				goto('/auth', {
+					replaceState: true
+				});
+			}
+			if (newSession?.expires_at !== session?.expires_at) {
+				invalidate('supabase:auth');
+			}
+		});
+
+		return () => data.subscription.unsubscribe();
+	});
 </script>
 
 <div class="app">
-	<Header />
-
-	<main>
+	<QueryClientProvider client={queryClient}>
 		{@render children()}
-	</main>
-
-	<footer>
-		<p>
-			visit <a href="https://svelte.dev/docs/kit">svelte.dev/docs/kit</a> to learn about SvelteKit
-		</p>
-	</footer>
+		<SvelteQueryDevtools />
+	</QueryClientProvider>
+	<Toaster />
 </div>
 
-<style>
+<style lanb="postcss">
 	.app {
 		display: flex;
 		flex-direction: column;
 		min-height: 100vh;
-	}
-
-	main {
-		flex: 1;
-		display: flex;
-		flex-direction: column;
-		padding: 1rem;
-		width: 100%;
-		max-width: 64rem;
-		margin: 0 auto;
-		box-sizing: border-box;
-	}
-
-	footer {
-		display: flex;
-		flex-direction: column;
-		justify-content: center;
-		align-items: center;
-		padding: 12px;
-	}
-
-	footer a {
-		font-weight: bold;
-	}
-
-	@media (min-width: 480px) {
-		footer {
-			padding: 12px 0;
-		}
 	}
 </style>
