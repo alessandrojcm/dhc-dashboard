@@ -1,0 +1,1 @@
+ALTER TABLE public.payment_sessions ADD COLUMN coupon_id TEXT;
