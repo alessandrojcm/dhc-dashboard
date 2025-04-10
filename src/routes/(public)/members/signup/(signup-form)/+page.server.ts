@@ -76,7 +76,11 @@ export const load: PageServerLoad = async ({ parent, cookies }) => {
 					'annual_payment_intent_id',
 					'monthly_amount',
 					'annual_amount',
-					'coupon_id'
+					'coupon_id',
+					'total_amount',
+					'discounted_monthly_amount',
+					'discounted_annual_amount',
+					'discount_percentage'
 				])
 				.where('user_id', '=', userData.id)
 				.where('expires_at', '>', dayjs().toISOString())
@@ -109,8 +113,8 @@ export const load: PageServerLoad = async ({ parent, cookies }) => {
 				) {
 					monthlyPaymentIntent = retrievedMonthlyIntent;
 					annualPaymentIntent = retrievedAnnualIntent;
-					proratedMonthlyAmount = existingSession.monthly_amount;
-					proratedAnnualAmount = existingSession.annual_amount;
+					proratedMonthlyAmount = retrievedMonthlyIntent.amount;
+					proratedAnnualAmount = retrievedAnnualIntent.amount;
 					validExistingSession = true;
 
 					// Retrieve subscriptions for display purposes
@@ -198,8 +202,11 @@ export const load: PageServerLoad = async ({ parent, cookies }) => {
 					annual_subscription_id: newAnnualSubscription.id,
 					monthly_payment_intent_id: newMonthlyPaymentIntent.id,
 					annual_payment_intent_id: newAnnualPaymentIntent.id,
+					// Save the full plan amounts (what user will pay regularly)
 					monthly_amount: (monthlySubscription as unknown as SubscriptionWithPlan).plan.amount!,
 					annual_amount: (annualSubscription as unknown as SubscriptionWithPlan).plan.amount!,
+					// Save the prorated amount (what user will pay now)
+					total_amount: proratedMonthlyAmount + proratedAnnualAmount,
 					expires_at: dayjs().add(24, 'hour').toISOString()
 				})
 				.execute();
@@ -243,6 +250,7 @@ export const load: PageServerLoad = async ({ parent, cookies }) => {
 				.then((result) => result.data?.value),
 			planPricing: {
 				proratedPrice: Dinero({
+					// Use the total prorated amount that the user will pay now
 					amount: proratedMonthlyAmount + proratedAnnualAmount,
 					currency: 'EUR'
 				}).toJSON(),
@@ -262,6 +270,29 @@ export const load: PageServerLoad = async ({ parent, cookies }) => {
 					amount: (annualSubscription as unknown as SubscriptionWithPlan).plan.amount!,
 					currency: 'EUR'
 				}).toJSON(),
+				// Include discounted amounts if they exist
+				...(existingSession?.discounted_monthly_amount && {
+					discountedMonthlyFee: Dinero({
+						amount: existingSession.discounted_monthly_amount,
+						currency: 'EUR'
+					}).toJSON()
+				}),
+				...(existingSession?.discounted_annual_amount && {
+					discountedAnnualFee: Dinero({
+						amount: existingSession.discounted_annual_amount,
+						currency: 'EUR'
+					}).toJSON()
+				}),
+				// Use stored discount percentage if available, otherwise calculate it
+				...(existingSession?.discount_percentage ? {
+					discountPercentage: existingSession.discount_percentage
+				} : existingSession?.discounted_monthly_amount ? {
+					discountPercentage: Math.round(
+						((monthlySubscription as unknown as SubscriptionWithPlan).plan.amount! - existingSession.discounted_monthly_amount) /
+							(monthlySubscription as unknown as SubscriptionWithPlan).plan.amount! *
+							100
+					)
+				} : {}),
 				coupon: existingSession?.coupon_id ?? undefined
 			} satisfies PlanPricing,
 			nextMonthlyBillingDate: dayjs().add(1, 'month').startOf('month').toDate(),
@@ -314,7 +345,7 @@ export const actions: Actions = {
 						v_user_id: tokenClaim.sub!,
 						p_next_of_kin_name: form.data.nextOfKin,
 						p_next_of_kin_phone: form.data.nextOfKinNumber,
-						p_insurance_form_submitted: form.data.insuranceFormSubmitted
+						p_insurance_form_submitted: true
 					},
 					trx
 				);

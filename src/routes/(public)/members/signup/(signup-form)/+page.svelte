@@ -170,6 +170,14 @@
 	const proratedPriceDinero = $derived(Dinero(planData.data!.proratedPrice));
 	const monthlyFeeDinero = $derived(Dinero(planData.data!.monthlyFee));
 	const annualFeeDinero = $derived(Dinero(planData.data!.annualFee));
+	// Discounted amounts if available
+	const discountedMonthlyFeeDinero = $derived(
+		planData.data!.discountedMonthlyFee ? Dinero(planData.data!.discountedMonthlyFee) : null
+	);
+	const discountedAnnualFeeDinero = $derived(
+		planData.data!.discountedAnnualFee ? Dinero(planData.data!.discountedAnnualFee) : null
+	);
+	const discountPercentage = $derived(planData.data!.discountPercentage);
 
 	onMount(() => {
 		loadStripe(PUBLIC_STRIPE_KEY).then((result) => {
@@ -289,7 +297,20 @@
 									</Tooltip.Root>
 								</Tooltip.Provider>
 							</div>
-							<span class="font-semibold">{proratedPriceDinero.toFormat()}</span>
+							<div class="flex flex-col items-end">
+								{#if discountPercentage && (discountedMonthlyFeeDinero === null && discountedAnnualFeeDinero === null)}
+									<!-- For one-time coupons, show discounted first payment -->
+									<span class="font-semibold text-green-600">
+										{Dinero({
+											amount: Math.round(proratedPriceDinero.getAmount() * (1 - discountPercentage / 100)),
+											currency: 'EUR'
+										}).toFormat()}
+									</span>
+									<span class="text-sm line-through text-muted-foreground">{proratedPriceDinero.toFormat()}</span>
+								{:else}
+									<span class="font-semibold">{proratedPriceDinero.toFormat()}</span>
+								{/if}
+							</div>
 						</div>
 						{#if couponCode && applyCoupon.isSuccess}
 							<small class="text-sm text-green-600">Code {couponCode} applied</small>
@@ -306,7 +327,14 @@
 									</Tooltip.Root>
 								</TooltipProvider>
 							</div>
-							<span class="font-semibold">{monthlyFeeDinero.toFormat()}</span>
+							<div class="flex flex-col items-end">
+								{#if discountedMonthlyFeeDinero}
+									<span class="font-semibold text-green-600">{discountedMonthlyFeeDinero.toFormat()}</span>
+									<span class="text-sm line-through text-muted-foreground">{monthlyFeeDinero.toFormat()}</span>
+								{:else}
+									<span class="font-semibold">{monthlyFeeDinero.toFormat()}</span>
+								{/if}
+							</div>
 						</div>
 						<div class="flex justify-between items-center">
 							<div class="flex items-center gap-2">
@@ -320,8 +348,25 @@
 									</Tooltip.Root>
 								</TooltipProvider>
 							</div>
-							<span class="font-semibold">{annualFeeDinero.toFormat()}</span>
+							<div class="flex flex-col items-end">
+								{#if discountedAnnualFeeDinero}
+									<span class="font-semibold text-green-600">{discountedAnnualFeeDinero.toFormat()}</span>
+									<span class="text-sm line-through text-muted-foreground">{annualFeeDinero.toFormat()}</span>
+								{:else}
+									<span class="font-semibold">{annualFeeDinero.toFormat()}</span>
+								{/if}
+							</div>
 						</div>
+						{#if discountPercentage}
+						<div class="mt-2 p-2 bg-green-50 text-green-700 rounded-md text-sm">
+							<span class="font-semibold">Discount applied: {discountPercentage}% off</span>
+							{#if discountedMonthlyFeeDinero === null && discountedAnnualFeeDinero === null}
+								<span class="block text-xs mt-1">(Applies to first payment only)</span>
+							{:else}
+								<span class="block text-xs mt-1">(Applies to all future payments)</span>
+							{/if}
+						</div>
+						{/if}
 
 						<Accordion.Root class="mt-2" type="single">
 							<Accordion.Item value="promo-code">
