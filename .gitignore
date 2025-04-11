@@ -27,3 +27,6 @@ vite.config.ts.timestamp-*
 .windsurfrules
 # Local Netlify folder
 .netlify
+
+# Sentry Config File
+.env.sentry-build-plugin
