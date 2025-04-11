@@ -1,3 +1,4 @@
+import * as Sentry from '@sentry/sveltekit';
 import { createServerClient } from '@supabase/ssr';
 import { type Handle, redirect } from '@sveltejs/kit';
 import { sequence } from '@sveltejs/kit/hooks';
@@ -5,6 +6,11 @@ import { sequence } from '@sveltejs/kit/hooks';
 import { PUBLIC_SUPABASE_ANON_KEY, PUBLIC_SUPABASE_URL } from '$env/static/public';
 import { getRolesFromSession } from '$lib/server/roles';
 import type { Database } from './database.types';
+
+Sentry.init({
+	dsn: 'https://410c1b65794005c22ea5e8c794ddac10@o4509135535079424.ingest.de.sentry.io/4509135536783440',
+	tracesSampleRate: 1
+});
 
 const supabase: Handle = async ({ event, resolve }) => {
 	/**
@@ -102,8 +108,12 @@ const roleGuard: Handle = async ({ event, resolve }) => {
 	if (!session?.access_token) {
 		return resolve(event);
 	}
-	const roles = getRolesFromSession(session)
-	if (roles.has('member') && roles.size === 1 && !event.url.pathname.includes(`/members/${session.user.id}`)) {
+	const roles = getRolesFromSession(session);
+	if (
+		roles.has('member') &&
+		roles.size === 1 &&
+		!event.url.pathname.includes(`/members/${session.user.id}`)
+	) {
 		return redirect(303, `/dashboard/members/${session.user.id}`);
 	}
 	if (
@@ -122,4 +132,8 @@ const roleGuard: Handle = async ({ event, resolve }) => {
 	return resolve(event);
 };
 
-export const handle: Handle = sequence(supabase, authGuard, roleGuard);
+export const handle: Handle = sequence(
+	Sentry.sentryHandle(),
+	sequence(supabase, authGuard, roleGuard)
+);
+export const handleError = Sentry.handleErrorWithSentry();

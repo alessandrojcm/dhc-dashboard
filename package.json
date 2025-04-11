@@ -88,6 +88,7 @@
 	"dependencies": {
 		"@dinero.js/currencies": "2.0.0-alpha.1",
 		"@internationalized/date": "^3.7.0",
+		"@sentry/sveltekit": "^9",
 		"@supabase/ssr": "^0.6.1",
 		"@supabase/supabase-js": "2.49.4",
 		"@tanstack/svelte-query": "https://pkg.pr.new/@tanstack/svelte-query@28f98f9560ff5878fd839807ead5324a7b9328c4",
