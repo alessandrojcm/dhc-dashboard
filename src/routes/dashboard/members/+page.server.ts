@@ -9,6 +9,7 @@ import { fail, message, superValidate } from 'sveltekit-superforms';
 import { valibot } from 'sveltekit-superforms/adapters';
 import type { Actions, PageServerLoad } from './$types';
 import { supabaseServiceClient } from '$lib/server/supabaseServiceClient';
+import { PUBLIC_SITE_URL } from '$env/static/public';
 
 const SETTINGS_ROLES = new Set(['president', 'committee_coordinator', 'admin']);
 
@@ -136,6 +137,7 @@ export const actions: Actions = {
 						try {
 							// Also invite the user via Supabase Admin SDK
 							const result = await supabaseServiceClient.auth.admin.inviteUserByEmail(email, {
+								redirectTo: `${PUBLIC_SITE_URL}/members/signup/callback`,
 								data: {
 									first_name: firstName,
 									last_name: lastName
@@ -148,7 +150,7 @@ export const actions: Actions = {
 							// Create invitation using the kysely function
 							await createInvitation(
 								{
-									userId: result.data.user?.id!,
+									userId: result.data.user?.id,
 									email,
 									invitationType: 'admin',
 									expiresAt,
