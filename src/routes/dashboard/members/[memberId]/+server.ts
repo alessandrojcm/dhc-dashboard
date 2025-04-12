@@ -1,10 +1,11 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { error } from '@sveltejs/kit';
-import { kysely } from '$lib/server/kysely';
 import { stripeClient } from '$lib/server/stripe';
+import { getKyselyClient } from '$lib/server/kysely';
 
 export const POST: RequestHandler = async (event) => {
 	const memberId = event.params.memberId!;
+	const kysely = getKyselyClient(event.platform.env.HYPERDRIVE);
 	const customerId = await kysely
 		.selectFrom('user_profiles')
 		.select('customer_id')

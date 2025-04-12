@@ -8,24 +8,26 @@ import type { Actions, PageServerLoad } from '../$types';
 import { invariant } from '$lib/server/invariant';
 import { stripeClient } from '$lib/server/stripe';
 import { getPriceIds } from '$lib/server/priceManagement';
-import { kysely } from '$lib/server/kysely';
+import { getKyselyClient } from '$lib/server/kysely';
 import Stripe from 'stripe';
 import {
 	completeMemberRegistration,
 	getInvitationInfo,
 	updateInvitationStatus
 } from '$lib/server/kyselyRPCFunctions';
-import type { PlanPricing, SubscriptionWithPlan } from '$lib/types';
+import type { KyselyDatabase, PlanPricing, SubscriptionWithPlan } from '$lib/types';
 import { generatePricingInfo, getNextBillingDates } from '$lib/server/pricingUtils';
 import {
 	createSubscriptionSession,
 	getExistingPaymentSession,
 	validateExistingSession
 } from '$lib/server/subscriptionCreation';
+import type { Kysely } from 'kysely';
 
 // need to normalize medical_conditions
-export const load: PageServerLoad = async ({ parent, cookies }) => {
+export const load: PageServerLoad = async ({ parent, platform }) => {
 	const { userData } = await parent();
+	const kysely = getKyselyClient(platform.env.HYPERDRIVE);
 
 	try {
 		// Get invitation data first (essential for page rendering)
@@ -88,7 +90,7 @@ export const load: PageServerLoad = async ({ parent, cookies }) => {
 			// Stream these values
 			streamed: {
 				// This will be streamed to the client as it resolves
-				pricingData: getPricingData(userData.id, invitationData.customer_id!)
+				pricingData: getPricingData(userData.id, invitationData.customer_id!, kysely)
 			},
 			// These are needed for the page but can be calculated immediately
 			...getNextBillingDates()
@@ -102,11 +104,15 @@ export const load: PageServerLoad = async ({ parent, cookies }) => {
 };
 
 // Helper function to get pricing data (will be streamed)
-async function getPricingData(userId: string, customerId: string): Promise<PlanPricing> {
+async function getPricingData(
+	userId: string,
+	customerId: string,
+	kysely: Kysely<KyselyDatabase>
+): Promise<PlanPricing> {
 	// Get existing session and price IDs in parallel
 	const [existingSessionData, priceIds] = await Promise.all([
-		getExistingPaymentSession(userId),
-		getPriceIds()
+		getExistingPaymentSession(userId, kysely),
+		getPriceIds(kysely)
 	]);
 
 	let subscriptionData;
@@ -118,7 +124,7 @@ async function getPricingData(userId: string, customerId: string): Promise<PlanP
 
 	if (!existingSessionData || !subscriptionData?.valid) {
 		// Create new subscriptions if no valid existing session
-		subscriptionData = await createSubscriptionSession(userId, customerId, priceIds);
+		subscriptionData = await createSubscriptionSession(userId, customerId, priceIds, kysely);
 	}
 
 	// Validate subscription data and throw error if invalid
@@ -159,6 +165,7 @@ export const actions: Actions = {
 				form
 			});
 		}
+		const kysely = getKyselyClient(event.platform.env.HYPERDRIVE);
 
 		const confirmationToken: Stripe.ConfirmationToken = JSON.parse(
 			form.data.stripeConfirmationToken

@@ -3,11 +3,12 @@ import { jwtDecode } from 'jwt-decode';
 import dayjs from 'dayjs';
 import { invariant } from '$lib/server/invariant';
 import Dinero from 'dinero.js';
-import { kysely } from '$lib/server/kysely';
 import { stripeClient } from '$lib/server/stripe';
 import type { PlanPricing } from '$lib/types';
+import { getKyselyClient } from '$lib/server/kysely';
 
-export const GET: RequestHandler = async ({ cookies }) => {
+export const GET: RequestHandler = async ({ cookies, platform }) => {
+	const kysely = getKyselyClient(platform.env.HYPERDRIVE);
 	const accessToken = cookies.get('access-token');
 	invariant(accessToken === null, 'There has been an error with your signup.');
 	const tokenClaim = jwtDecode(accessToken!);
@@ -95,7 +96,11 @@ export const GET: RequestHandler = async ({ cookies }) => {
 
 	// Get discount percentage if available, otherwise calculate it
 	let discountPercentage: number | undefined = existingSession.discount_percentage ?? undefined;
-	if (discountPercentage === undefined && existingSession.discounted_monthly_amount && existingSession.coupon_id) {
+	if (
+		discountPercentage === undefined &&
+		existingSession.discounted_monthly_amount &&
+		existingSession.coupon_id
+	) {
 		// Calculate the discount percentage based on the monthly amount
 		const discount = monthlyAmount - existingSession.discounted_monthly_amount;
 		discountPercentage = Math.round((discount / monthlyAmount) * 100);
