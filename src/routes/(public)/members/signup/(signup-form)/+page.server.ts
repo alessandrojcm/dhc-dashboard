@@ -91,7 +91,12 @@ export const load: PageServerLoad = async ({ parent, platform }) => {
 			// Stream these values
 			streamed: {
 				// This will be streamed to the client as it resolves
-				pricingData: getPricingData(userData.id, invitationData.customer_id!, kysely)
+				pricingData: getPricingData(userData.id, invitationData.customer_id!, kysely).catch(
+					(err) => {
+						Sentry.captureMessage(`Error in pricing data: ${err}`, 'error');
+						throw error(500, 'Failed to retrieve pricing data.');
+					}
+				)
 			},
 			// These are needed for the page but can be calculated immediately
 			...getNextBillingDates()
