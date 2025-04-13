@@ -9,7 +9,7 @@ export default defineConfig({
 			sourceMapsUploadOptions: {
 				telemetry: false,
 				org: 'dublin-hema-club',
-				project: 'dhc-dasboard'
+				project: 'dhc-dashboard'
 			},
 			adapter: 'cloudflare'
 		}),
