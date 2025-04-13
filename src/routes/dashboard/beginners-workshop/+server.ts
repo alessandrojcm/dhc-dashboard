@@ -1,4 +1,6 @@
 import { json } from '@sveltejs/kit';
+import * as Sentry from '@sentry/sveltekit';
+
 import type { RequestHandler } from './$types';
 import { getRolesFromSession, allowedToggleRoles } from '$lib/server/roles';
 import { executeWithRLS, getKyselyClient } from '$lib/server/kysely';
@@ -35,7 +37,7 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
 
 		return json({ success: true });
 	} catch (error) {
-		console.error('Error toggling waitlist:', error);
+		Sentry.captureMessage(`Error toggling waitlist: ${error}}`, 'error');
 		return json({ success: false, error: 'Internal server error' }, { status: 500 });
 	}
 };

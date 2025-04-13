@@ -6,6 +6,7 @@ import Dinero from 'dinero.js';
 import { stripeClient } from '$lib/server/stripe';
 import type { PlanPricing } from '$lib/types';
 import { getKyselyClient } from '$lib/server/kysely';
+import * as Sentry from '@sentry/sveltekit';
 
 export const GET: RequestHandler = async ({ cookies, platform }) => {
 	const kysely = getKyselyClient(platform.env.HYPERDRIVE);
@@ -79,7 +80,7 @@ export const GET: RequestHandler = async ({ cookies, platform }) => {
 				.where('annual_payment_intent_id', '=', existingSession.annual_payment_intent_id)
 				.execute();
 		} catch (error) {
-			console.error('Error retrieving payment intents:', error);
+			Sentry.captureMessage(`Error retrieving payment intents: ${error}`, 'error');
 			// Fallback to using the plan amounts
 			totalAmount = monthlyAmount + annualAmount;
 			proratedMonthlyAmount = monthlyAmount;
