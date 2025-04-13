@@ -1,11 +1,11 @@
-import { handleErrorWithSentry, sentryHandle, initCloudflareSentryHandle } from "@sentry/sveltekit"; import { createServerClient } from '@supabase/ssr';
+import { handleErrorWithSentry, sentryHandle, initCloudflareSentryHandle } from '@sentry/sveltekit';
+import { createServerClient } from '@supabase/ssr';
 import { type Handle, redirect } from '@sveltejs/kit';
 import { sequence } from '@sveltejs/kit/hooks';
 
 import { PUBLIC_SUPABASE_ANON_KEY, PUBLIC_SUPABASE_URL } from '$env/static/public';
 import { getRolesFromSession } from '$lib/server/roles';
 import type { Database } from './database.types';
-
 
 const supabase: Handle = async ({ event, resolve }) => {
 	/**
@@ -129,7 +129,9 @@ const roleGuard: Handle = async ({ event, resolve }) => {
 
 export const handle: Handle = sequence(
 	initCloudflareSentryHandle({
-		dsn: 'https://410c1b65794005c22ea5e8c794ddac10@o4509135535079424.ingest.de.sentry.io/dhc-dashboard',
+		enabled: Boolean(process.env.SENTRY_AUTH_TOKEN),
+		environment: Boolean(process.env.SENTRY_AUTH_TOKEN) ? 'production' : 'development',
+		dsn: 'https://410c1b65794005c22ea5e8c794ddac10@o4509135535079424.ingest.de.sentry.io/4509135536783440',
 		tracesSampleRate: 1
 	}),
 	sentryHandle(),
