@@ -8,12 +8,17 @@ export default defineConfig({
 		sentrySvelteKit({
 			sourceMapsUploadOptions: {
 				org: 'dublin-hema-club',
-				project: 'javascript-sveltekit'
+				project: 'dhc-dasboard'
 			}
 		}),
 		sveltekit(),
 		tailwindcss()
 	],
+	build: {
+		rollupOptions: {
+			external: ['cloudflare:workers']
+		}
+	},
 	test: {
 		include: ['src/**/*.{test,spec}.{js,ts}']
 	}

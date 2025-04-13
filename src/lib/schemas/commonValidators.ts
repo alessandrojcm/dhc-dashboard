@@ -1,6 +1,7 @@
 import dayjs from 'dayjs';
 import { parsePhoneNumber } from 'libphonenumber-js/min';
 import * as v from 'valibot';
+import * as Sentry from '@sentry/sveltekit';
 
 export const phoneNumberValidator = (nomEmptyMessage: string = 'Phone number is required.') =>
 	v.pipe(
@@ -11,7 +12,7 @@ export const phoneNumberValidator = (nomEmptyMessage: string = 'Phone number is 
 			try {
 				return Boolean(parsePhoneNumber(input ?? '', 'IE')?.isValid());
 			} catch (error) {
-				console.warn(error);
+				Sentry.captureMessage(`Phone number validation error: ${error}`, 'warning');
 				return false;
 			}
 		}, 'Invalid phone number'),

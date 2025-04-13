@@ -1,6 +1,5 @@
 import type { Database } from '$database';
 import signupSchema from '$lib/schemas/membersSignup';
-import { kysely } from '$lib/server/kysely';
 import { getMemberData, updateMemberData } from '$lib/server/kyselyRPCFunctions';
 import { getRolesFromSession, SETTINGS_ROLES } from '$lib/server/roles';
 import { stripeClient } from '$lib/server/stripe';
@@ -11,6 +10,8 @@ import { valibot } from 'sveltekit-superforms/adapters';
 import type { RequestEvent } from '../$types';
 import type { PageServerLoad } from './$types';
 import type { SocialMediaConsent } from '$lib/types.ts';
+import { getKyselyClient } from '$lib/server/kysely';
+import * as Sentry from '@sentry/sveltekit';
 
 async function canUpdateSettings(event: RequestEvent | ServerLoadEvent) {
 	const roles = getRolesFromSession(event.locals.session!);
@@ -30,6 +31,7 @@ async function canUpdateSettings(event: RequestEvent | ServerLoadEvent) {
 
 export const load: PageServerLoad = async (event) => {
 	const { params, locals } = event;
+	const kysely = getKyselyClient(event.platform.env.HYPERDRIVE);
 	try {
 		const isAdmin = await canUpdateSettings(event);
 		const memberProfile = await getMemberData(params.memberId, kysely);
@@ -77,7 +79,7 @@ export const load: PageServerLoad = async (event) => {
 			isAdmin
 		};
 	} catch (e) {
-		console.error(e);
+		Sentry.captureMessage(`Error loading member data: ${e}`, 'error');
 		error(404, {
 			message: 'Member not found'
 		});
@@ -96,6 +98,7 @@ export const actions: Actions = {
 				form
 			});
 		}
+		const kysely = getKyselyClient(event.platform.env.HYPERDRIVE);
 		try {
 			await kysely.transaction().execute(async (trx) => {
 				// Get current user data for comparison
@@ -150,7 +153,7 @@ export const actions: Actions = {
 
 			return message(form, { success: 'Profile has been updated!' });
 		} catch (err) {
-			console.error('Error updating member profile:', err);
+			Sentry.captureMessage(`Error updating member profile: ${err}`, 'error');
 			setMessage(form, { failure: 'Failed to update profile' });
 			return fail(500, {
 				form,

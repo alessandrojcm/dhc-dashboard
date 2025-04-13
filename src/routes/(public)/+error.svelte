@@ -1,7 +1,8 @@
 <script lang="ts">
 	import * as Alert from '$lib/components/ui/alert';
-    import { page } from '$app/stores';
-	console.log($page.error)
+	import { page } from '$app/stores';
+	import * as Sentry from '@sentry/sveltekit';
+	Sentry.captureMessage(`Error page loaded: ${$page.error?.message}`, 'error');
 </script>
 
 <svelte:head>

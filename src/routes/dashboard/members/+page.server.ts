@@ -10,6 +10,7 @@ import { valibot } from 'sveltekit-superforms/adapters';
 import type { Actions, PageServerLoad } from './$types';
 import { supabaseServiceClient } from '$lib/server/supabaseServiceClient';
 import { PUBLIC_SITE_URL } from '$env/static/public';
+import * as Sentry from '@sentry/sveltekit';
 
 const SETTINGS_ROLES = new Set(['president', 'committee_coordinator', 'admin']);
 
@@ -83,7 +84,7 @@ export const actions: Actions = {
 						return message(form, { success: 'Settings updated successfully' });
 					})
 					.catch((error) => {
-						console.error('Error updating settings:', error);
+						Sentry.captureMessage(`Error updating settings: ${error}}`, 'error');
 						return fail(500, {
 							form,
 							message: { failure: 'Failed to update settings' }
@@ -165,7 +166,7 @@ export const actions: Actions = {
 
 							results.push({ email, success: true });
 						} catch (error) {
-							console.error(`Error inviting ${email}:`, error);
+							Sentry.captureMessage(`Error inviting ${email}: ${error}`, 'error');
 							results.push({ email, success: false, error: error as AuthError });
 						}
 					}
@@ -185,7 +186,7 @@ export const actions: Actions = {
 				});
 			}
 		} catch (error) {
-			console.error('Error creating bulk invitations:', error);
+			Sentry.captureMessage(`Error creating bulk invitations: ${error}`, 'error');
 			return fail(500, {
 				form,
 				message: { failure: 'Failed to create invitations' }
