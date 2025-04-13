@@ -7,9 +7,11 @@ export default defineConfig({
 	plugins: [
 		sentrySvelteKit({
 			sourceMapsUploadOptions: {
+				telemetry: false,
 				org: 'dublin-hema-club',
 				project: 'dhc-dasboard'
-			}
+			},
+			adapter: 'cloudflare'
 		}),
 		sveltekit(),
 		tailwindcss()
