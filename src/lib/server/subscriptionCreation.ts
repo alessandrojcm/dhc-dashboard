@@ -177,7 +177,7 @@ export async function validateExistingSession(existingSession: ExistingSession) 
 		}
 	} catch (error) {
 		// If there's any error retrieving or validating, create new ones
-		Sentry.captureMessage(`Error retrieving existing payment session: ${error}}`, 'error');
+		Sentry.captureException(error);
 		return { valid: false };
 	}
 }
