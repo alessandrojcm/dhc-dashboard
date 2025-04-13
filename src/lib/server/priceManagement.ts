@@ -65,7 +65,7 @@ async function getCachedPriceIds(kysely: Kysely<KyselyDatabase>): Promise<PriceI
 			annual: annualData.value
 		};
 	} catch (error) {
-		Sentry.captureMessage(`Error getting cached price IDs: ${error}`, 'error');
+		Sentry.captureException(error);
 		return null;
 	}
 }
