@@ -1,4 +1,4 @@
-import { handleErrorWithSentry, sentryHandle, initCloudflareSentryHandle } from '@sentry/sveltekit';
+import { handleErrorWithSentry, initCloudflareSentryHandle, sentryHandle } from '@sentry/sveltekit';
 import { createServerClient } from '@supabase/ssr';
 import { type Handle, redirect } from '@sveltejs/kit';
 import { sequence } from '@sveltejs/kit/hooks';
@@ -134,6 +134,8 @@ export const handle: Handle = sequence(
 		tracesSampleRate: 1
 	}),
 	sentryHandle(),
-	sequence(supabase, authGuard, roleGuard)
+	supabase,
+	authGuard,
+	roleGuard
 );
 export const handleError = handleErrorWithSentry();
