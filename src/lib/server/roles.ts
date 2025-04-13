@@ -1,12 +1,13 @@
 import type { Session } from '@supabase/supabase-js';
 import { jwtDecode } from 'jwt-decode';
+import * as Sentry from '@sentry/sveltekit';
 
 export function getRolesFromSession(session: Session) {
 	try {
 		const tokenClaim = jwtDecode(session?.access_token);
 		return new Set((tokenClaim as { app_metadata: { roles: string[] } }).app_metadata?.roles || []);
 	} catch (error) {
-		console.error('Error decoding token:', error);
+		Sentry.captureMessage(`Error decoding token: ${error}`, 'error');
 		return new Set();
 	}
 }

@@ -1,4 +1,3 @@
-import { env } from '$env/dynamic/private';
 import type { KyselyDatabase } from '$lib/types';
 import { type Session } from '@supabase/supabase-js';
 import { jwtDecode } from 'jwt-decode';
@@ -24,26 +23,30 @@ type SupabaseToken = {
 	role?: string;
 };
 
-export const kysely = new Kysely<KyselyDatabase>({
-	dialect: new PostgresJSDialect({
-		postgres: postgres(
-			`postgresql://${env.POSTGRES_USER}:${env.POSTGRES_PASSWORD}@${env.POSTGRES_HOST}:${env.POSTGRES_PORT}/${env.POSTGRES_DB}`,
-			{
-				transform: {
-					value: {
-						from: (value) => {
-							if (value instanceof Date) {
-								return value.toISOString();
-							} else {
-								return value;
+export function getKyselyClient(connectionString: string) {
+	return new Kysely<KyselyDatabase>({
+		dialect: new PostgresJSDialect({
+			postgres: postgres(
+				connectionString,
+				{
+					prepare: true,
+					transform: {
+						value: {
+							from: (value) => {
+								if (value instanceof Date) {
+									return value.toISOString();
+								} else {
+									return value;
+								}
 							}
 						}
 					}
 				}
-			}
-		)
-	})
-});
+			)
+		})
+	});
+	
+}
 
 export async function executeWithRLS<T>(
 	authData: RLSData,

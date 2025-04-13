@@ -1,10 +1,10 @@
 import { stripeClient } from '$lib/server/stripe';
-import { kysely } from '$lib/server/kysely';
 import dayjs from 'dayjs';
 import type Stripe from 'stripe';
 import type { KyselyDatabase, SubscriptionWithPlan } from '$lib/types';
-import type { Transaction } from 'kysely';
-import type { Database } from '$database';
+import type { Kysely, Transaction } from 'kysely';
+import { getKyselyClient } from './kysely';
+import * as Sentry from '@sentry/sveltekit';
 
 /**
  * Creates subscription and payment intents for a user
@@ -13,7 +13,8 @@ import type { Database } from '$database';
 export async function createSubscriptionSession(
 	userId: string,
 	customerId: string,
-	priceIds: { monthly: string; annual: string }
+	priceIds: { monthly: string; annual: string },
+	kysely: Kysely<KyselyDatabase>
 ) {
 	let monthlyPaymentIntent: Stripe.PaymentIntent | undefined;
 	let annualPaymentIntent: Stripe.PaymentIntent | undefined;
@@ -105,8 +106,11 @@ export async function createSubscriptionSession(
 /**
  * Retrieves an existing payment session for a user
  */
-export async function getExistingPaymentSession(userId: string, trx?: Transaction<KyselyDatabase>) {
-	return (trx ?? kysely)
+export async function getExistingPaymentSession(
+	userId: string,
+	client: Transaction<KyselyDatabase> | Kysely<KyselyDatabase>
+) {
+	return client
 		.selectFrom('payment_sessions')
 		.select([
 			'monthly_subscription_id',
@@ -163,16 +167,17 @@ export async function validateExistingSession(existingSession: ExistingSession) 
 			};
 		} else {
 			// Payment intents are in an unusable state
-			console.log(
-				'Payment intents are in an unusable state:',
-				retrievedMonthlyIntent.status,
-				retrievedAnnualIntent.status
+			Sentry.captureMessage(
+				`Payment intents are in an unusable state:,
+				${retrievedMonthlyIntent.status},
+				${retrievedAnnualIntent.status}`,
+				'log'
 			);
 			return { valid: false };
 		}
 	} catch (error) {
 		// If there's any error retrieving or validating, create new ones
-		console.error('Error retrieving existing payment session:', error);
+		Sentry.captureMessage(`Error retrieving existing payment session: ${error}}`, 'error');
 		return { valid: false };
 	}
 }

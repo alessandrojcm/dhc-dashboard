@@ -3,12 +3,12 @@ import { stripeClient } from '$lib/server/stripe';
 import dayjs from 'dayjs';
 import { jwtDecode } from 'jwt-decode';
 import type { RequestHandler } from './$types';
-import { kysely } from '$lib/server/kysely';
 import type Stripe from 'stripe';
-import { STRIPE_SIGNUP_INFO } from '$lib/server/constants';
+import { getKyselyClient } from '$lib/server/kysely';
+import * as Sentry from '@sentry/sveltekit';
 
-export const POST: RequestHandler = async ({ request, cookies }) => {
-	const code = await request.json().then((data) => data.code);
+export const POST: RequestHandler = async ({ request, cookies, platform }) => {
+	const code = await request.json<{ code: string }>().then((data) => data?.code);
 	if (!code) {
 		return Response.json({ message: 'Invalid request' }, { status: 400 });
 	}
@@ -19,7 +19,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	if (promotionCodes.data.length === 0) {
 		return Response.json({ message: 'Coupon code not valid.' }, { status: 400 });
 	}
-
+	const kysely = getKyselyClient(platform.env.HYPERDRIVE);
 	const accessToken = cookies.get('access-token');
 	invariant(accessToken === null, 'There has been an error with your signup.');
 	const tokenClaim = jwtDecode(accessToken!);
@@ -64,7 +64,10 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 				})
 				.catch((err) => {
 					errorCount++;
-					console.error(`Discount code ${code} is not valid for annual subscription`, err);
+					Sentry.captureMessage(
+						`Discount code ${code} is not valid for annual subscription ${err}`,
+						'error'
+					);
 					return null;
 				}),
 			stripeClient.subscriptions
@@ -78,7 +81,10 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 				})
 				.catch((err) => {
 					errorCount++;
-					console.error(`Discount code ${code} is not valid for monthly subscription`, err);
+					Sentry.captureMessage(
+						`Discount code ${code} is not valid for monthly subscription ${err}`,
+						'error'
+					);
 					return null;
 				})
 		]);
@@ -162,7 +168,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 			}
 
 			// Create an object to store the fields to update
-			const updateFields: Record<string, string> = {
+			const updateFields: Record<string, string | number> = {
 				coupon_id: code,
 				// Don't update monthly_amount and annual_amount as they should reflect the plan amounts
 				// Update the payment intent IDs as they change when a coupon is applied
@@ -171,8 +177,8 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 				// Update the total amount (what user will pay now) with the prorated amounts
 				total_amount: proratedMonthlyAmount + proratedAnnualAmount,
 				// Store the discounted amounts for recurring payments
-				discounted_monthly_amount: discountedMonthlyAmount,
-				discounted_annual_amount: discountedAnnualAmount
+				discounted_monthly_amount: discountedMonthlyAmount ?? 0,
+				discounted_annual_amount: discountedAnnualAmount ?? 0
 			};
 
 			// Store the discount percentage for both one-time and permanent discounts
