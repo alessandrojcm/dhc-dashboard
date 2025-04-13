@@ -15,6 +15,7 @@ import {
 	getInvitationInfo,
 	updateInvitationStatus
 } from '$lib/server/kyselyRPCFunctions';
+import * as Sentry from '@sentry/sveltekit';
 import type { KyselyDatabase, PlanPricing, SubscriptionWithPlan } from '$lib/types';
 import { generatePricingInfo, getNextBillingDates } from '$lib/server/pricingUtils';
 import {
@@ -96,7 +97,7 @@ export const load: PageServerLoad = async ({ parent, platform }) => {
 			...getNextBillingDates()
 		};
 	} catch (err) {
-		console.error(err);
+		Sentry.captureMessage(`Error in signup page load: ${err}`, 'error');
 		error(404, {
 			message: 'Something went wrong'
 		});
@@ -260,7 +261,7 @@ export const actions: Actions = {
 				return message(form, { paymentFailed: false });
 			})
 			.catch((err) => {
-				console.error('Error in signup transaction:', err);
+				Sentry.captureMessage(`Error in signup transaction: ${err}`, 'error');
 				let errorMessage = 'An unexpected error occurred';
 
 				if (err instanceof Error && 'code' in err) {

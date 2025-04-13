@@ -11,6 +11,7 @@ import type { RequestEvent } from '../$types';
 import type { PageServerLoad } from './$types';
 import type { SocialMediaConsent } from '$lib/types.ts';
 import { getKyselyClient } from '$lib/server/kysely';
+import * as Sentry from '@sentry/sveltekit';
 
 async function canUpdateSettings(event: RequestEvent | ServerLoadEvent) {
 	const roles = getRolesFromSession(event.locals.session!);
@@ -78,7 +79,7 @@ export const load: PageServerLoad = async (event) => {
 			isAdmin
 		};
 	} catch (e) {
-		console.error(e);
+		Sentry.captureMessage(`Error loading member data: ${e}`, 'error');
 		error(404, {
 			message: 'Member not found'
 		});
@@ -152,7 +153,7 @@ export const actions: Actions = {
 
 			return message(form, { success: 'Profile has been updated!' });
 		} catch (err) {
-			console.error('Error updating member profile:', err);
+			Sentry.captureMessage(`Error updating member profile: ${err}`, 'error');
 			setMessage(form, { failure: 'Failed to update profile' });
 			return fail(500, {
 				form,

@@ -3,6 +3,7 @@ import { MEMBERSHIP_FEE_LOOKUP_NAME, ANNUAL_FEE_LOOKUP } from '$lib/server/const
 import dayjs from 'dayjs';
 import type { Kysely } from 'kysely';
 import type { KyselyDatabase } from '$lib/types';
+import * as Sentry from '@sentry/sveltekit';
 
 interface PriceIds {
 	monthly: string;
@@ -64,7 +65,7 @@ async function getCachedPriceIds(kysely: Kysely<KyselyDatabase>): Promise<PriceI
 			annual: annualData.value
 		};
 	} catch (error) {
-		console.error('Error getting cached price IDs:', error);
+		Sentry.captureMessage(`Error getting cached price IDs: ${error}`, 'error');
 		return null;
 	}
 }

@@ -5,6 +5,7 @@ import { jwtDecode } from 'jwt-decode';
 import type { RequestHandler } from './$types';
 import type Stripe from 'stripe';
 import { getKyselyClient } from '$lib/server/kysely';
+import * as Sentry from '@sentry/sveltekit';
 
 export const POST: RequestHandler = async ({ request, cookies, platform }) => {
 	const code = await request.json<{ code: string }>().then((data) => data?.code);
@@ -63,7 +64,10 @@ export const POST: RequestHandler = async ({ request, cookies, platform }) => {
 				})
 				.catch((err) => {
 					errorCount++;
-					console.error(`Discount code ${code} is not valid for annual subscription`, err);
+					Sentry.captureMessage(
+						`Discount code ${code} is not valid for annual subscription ${err}`,
+						'error'
+					);
 					return null;
 				}),
 			stripeClient.subscriptions
@@ -77,7 +81,10 @@ export const POST: RequestHandler = async ({ request, cookies, platform }) => {
 				})
 				.catch((err) => {
 					errorCount++;
-					console.error(`Discount code ${code} is not valid for monthly subscription`, err);
+					Sentry.captureMessage(
+						`Discount code ${code} is not valid for monthly subscription ${err}`,
+						'error'
+					);
 					return null;
 				})
 		]);

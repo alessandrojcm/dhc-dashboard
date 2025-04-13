@@ -4,6 +4,7 @@ import type Stripe from 'stripe';
 import type { KyselyDatabase, SubscriptionWithPlan } from '$lib/types';
 import type { Kysely, Transaction } from 'kysely';
 import { getKyselyClient } from './kysely';
+import * as Sentry from '@sentry/sveltekit';
 
 /**
  * Creates subscription and payment intents for a user
@@ -166,16 +167,17 @@ export async function validateExistingSession(existingSession: ExistingSession) 
 			};
 		} else {
 			// Payment intents are in an unusable state
-			console.log(
-				'Payment intents are in an unusable state:',
-				retrievedMonthlyIntent.status,
-				retrievedAnnualIntent.status
+			Sentry.captureMessage(
+				`Payment intents are in an unusable state:,
+				${retrievedMonthlyIntent.status},
+				${retrievedAnnualIntent.status}`,
+				'log'
 			);
 			return { valid: false };
 		}
 	} catch (error) {
 		// If there's any error retrieving or validating, create new ones
-		console.error('Error retrieving existing payment session:', error);
+		Sentry.captureMessage(`Error retrieving existing payment session: ${error}}`, 'error');
 		return { valid: false };
 	}
 }
