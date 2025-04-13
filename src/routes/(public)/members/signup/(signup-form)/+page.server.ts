@@ -93,7 +93,7 @@ export const load: PageServerLoad = async ({ parent, platform }) => {
 				// This will be streamed to the client as it resolves
 				pricingData: getPricingData(userData.id, invitationData.customer_id!, kysely).catch(
 					(err) => {
-						Sentry.captureMessage(`Error in pricing data: ${err}`, 'error');
+						Sentry.captureException(err);
 						throw error(500, 'Failed to retrieve pricing data.');
 					}
 				)
@@ -102,7 +102,7 @@ export const load: PageServerLoad = async ({ parent, platform }) => {
 			...getNextBillingDates()
 		};
 	} catch (err) {
-		Sentry.captureMessage(`Error in signup page load: ${err}`, 'error');
+		Sentry.captureException(err);
 		error(404, {
 			message: 'Something went wrong'
 		});
@@ -266,7 +266,7 @@ export const actions: Actions = {
 				return message(form, { paymentFailed: false });
 			})
 			.catch((err) => {
-				Sentry.captureMessage(`Error in signup transaction: ${err}`, 'error');
+				Sentry.captureException(err);
 				let errorMessage = 'An unexpected error occurred';
 
 				if (err instanceof Error && 'code' in err) {
