@@ -84,7 +84,6 @@ async function fetchPriceIdsFromStripe(): Promise<PriceIds> {
 			limit: 1
 		})
 	]);
-
 	// Extract price IDs
 	const monthlyPriceId = monthlyPrices.data[0]?.id;
 	const annualPriceId = annualPrices.data[0]?.id;

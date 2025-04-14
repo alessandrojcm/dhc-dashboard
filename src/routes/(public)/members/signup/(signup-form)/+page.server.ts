@@ -185,8 +185,6 @@ export const actions: Actions = {
 					throw error(404, 'No payment session found for this user.');
 				}
 				const {
-					annual_subscription_id,
-					monthly_subscription_id,
 					annual_payment_intent_id,
 					monthly_payment_intent_id,
 					customer_id
