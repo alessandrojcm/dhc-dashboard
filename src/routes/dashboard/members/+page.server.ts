@@ -1,6 +1,6 @@
 import { adminInviteSchema, bulkInviteSchema } from '$lib/schemas/adminInvite';
 import settingsSchema from '$lib/schemas/membersSettings';
-import { executeWithRLS } from '$lib/server/kysely';
+import { executeWithRLS, getKyselyClient } from '$lib/server/kysely';
 import { createInvitation } from '$lib/server/kyselyRPCFunctions';
 import { getRolesFromSession } from '$lib/server/roles';
 import type { AuthError } from '@supabase/supabase-js';
@@ -59,7 +59,7 @@ export const load: PageServerLoad = async ({ locals }) => {
 };
 
 export const actions: Actions = {
-	updateSettings: async ({ request, locals }) => {
+	updateSettings: async ({ request, locals, platform }) => {
 		const roles = getRolesFromSession(locals.session!);
 		if (roles.intersection(SETTINGS_ROLES).size === 0) {
 			return fail(403, { message: 'Unauthorized' });
@@ -69,8 +69,9 @@ export const actions: Actions = {
 		if (!form.valid) {
 			return fail(400, { form });
 		}
-
+		const kysely = getKyselyClient(platform.env.HYPERDRIVE);
 		return executeWithRLS(
+			kysely,
 			{
 				claims: locals.session!
 			},
@@ -93,7 +94,7 @@ export const actions: Actions = {
 			}
 		);
 	},
-	createBulkInvites: async ({ request, locals }) => {
+	createBulkInvites: async ({ request, locals, platform }) => {
 		const roles = getRolesFromSession(locals.session!);
 		if (roles.intersection(SETTINGS_ROLES).size === 0) {
 			return fail(403, { message: 'Unauthorized' });
@@ -115,6 +116,7 @@ export const actions: Actions = {
 
 			// Process invites in a transaction
 			await executeWithRLS(
+				getKyselyClient(platform.env.HYPERDRIVE),
 				{
 					claims: locals.session!
 				},

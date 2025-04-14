@@ -49,6 +49,7 @@ export function getKyselyClient(connectionString: string) {
 }
 
 export async function executeWithRLS<T>(
+	kysely: Kysely<KyselyDatabase>,
 	authData: RLSData,
 	callback: (trx: Transaction<KyselyDatabase>) => Promise<T>
 ) {
