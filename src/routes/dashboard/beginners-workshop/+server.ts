@@ -23,6 +23,7 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
 		const newValue = currentValue.value === 'true' ? 'false' : 'true';
 
 		await executeWithRLS(
+			kysely,
 			{
 				claims: locals.session!
 			},

@@ -35,7 +35,7 @@ test.describe('Member Signup - Coupon Codes', () => {
 		}
 
 		// Create coupons in Stripe
-		const [annualCoupon, monthlyCoupon, combinedCoupon, onceCoupon] = await Promise.all([
+		const [annualCoupon, monthlyCoupon, combinedCoupon, onceCoupon, once100Coupon] = await Promise.all([
 			// Coupon for annual fee only - 20% off
 			stripeClient.coupons.create({
 				percent_off: 20,
@@ -65,11 +65,17 @@ test.describe('Member Signup - Coupon Codes', () => {
 				percent_off: 15,
 				duration: 'once',
 				name: 'One-time Test Discount'
+			}),
+			// Coupon for both fees - 100% off (one-time discount)
+			stripeClient.coupons.create({
+				percent_off: 100,
+				duration: 'once',
+				name: '100% Off First Payment'
 			})
 		]);
 
 		// Create promotion codes for the coupons
-		const [annualPromotion, monthlyPromotion, combinedPromotion, oncePromotion] = await Promise.all(
+		const [annualPromotion, monthlyPromotion, combinedPromotion, oncePromotion, once100Promotion] = await Promise.all(
 			[
 				stripeClient.promotionCodes.create({
 					coupon: annualCoupon.id,
@@ -90,6 +96,11 @@ test.describe('Member Signup - Coupon Codes', () => {
 					coupon: onceCoupon.id,
 					code: `ONCE-${Date.now().toString().slice(-6)}`,
 					max_redemptions: 5
+				}),
+				stripeClient.promotionCodes.create({
+					coupon: once100Coupon.id,
+					code: 'ONCE100OFF',
+					max_redemptions: 5
 				})
 			]
 		);
@@ -99,13 +110,15 @@ test.describe('Member Signup - Coupon Codes', () => {
 		monthlyCouponCode = monthlyPromotion.code;
 		combinedCouponCode = combinedPromotion.code;
 		onceCouponCode = oncePromotion.code;
+		// We don't need to save this as we're using a fixed code 'ONCE100OFF'
 
 		// Save promotion code IDs for cleanup
 		promotionCodeIds = [
 			annualPromotion.id,
 			monthlyPromotion.id,
 			combinedPromotion.id,
-			oncePromotion.id
+			oncePromotion.id,
+			once100Promotion.id
 		];
 	});
 
@@ -468,5 +481,40 @@ test.describe('Member Signup - Coupon Codes', () => {
 				'Your membership has been successfully processed. Welcome to Dublin Hema Club! You will receive a Discord invite by email shortly.'
 			)
 		).toBeVisible({ timeout: 30000 });
+	});
+
+	test('applying a 100% once coupon shows €0.00 prorated price', async ({ page }) => {
+		// Find and click the accordion trigger for promotional code
+		await page.getByText('Have a promotional code?').click();
+
+		// Get the original prorated price before applying the coupon
+		const originalProratedPrice = await page.getByText('Pro-rated amount (first payment)', { exact: false }).textContent();
+		console.log(`Original prorated price: ${originalProratedPrice}`);
+
+		// Fill in the coupon code for a 100% once coupon
+		await page.getByPlaceholder('Enter promotional code').fill('ONCE100OFF'); // Assuming this coupon exists
+		await page.getByRole('button', { name: 'Apply Code' }).click();
+
+		// Verify the coupon was applied successfully
+		await expect(page.getByText(/coupon code not valid/i)).not.toBeVisible({ timeout: 1000 });
+		await expect(page.getByText(`Code ONCE100OFF applied`)).toBeVisible();
+
+		// Wait for the discount to be applied and visible
+		await page.waitForSelector('text=Discount applied:', { timeout: 5000 });
+
+		// Verify discount message and specific text for 'once' coupon
+		await expect(page.getByText('Discount applied: 100% off')).toBeVisible();
+		await expect(page.getByText('(Applies to first payment only)')).toBeVisible();
+
+		// Verify the prorated amount displays €0.00 (or currency equivalent)
+		const discountedPrice = await page
+			.locator('text=Prorated Amount')
+			.locator('..')
+			.locator('span.font-semibold')
+			.textContent();
+		console.log(`Discounted prorated price: ${discountedPrice}`);
+
+		// Check that the price is now €0.00 (or equivalent zero amount)
+		await expect(page.locator('text=Prorated Amount').locator('..').locator('span.font-semibold')).toContainText('€0.00');
 	});
 });
