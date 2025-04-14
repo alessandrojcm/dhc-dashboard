@@ -1,5 +1,5 @@
 <script lang="ts">
-	import DHCLogo from './src/assets/images/dhc-logo.png?enhanced';
+	import DHCLogo from '/src/assets/images/dhc-logo.png?enhanced';
 	const { children } = $props();
 </script>
 
