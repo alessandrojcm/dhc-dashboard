@@ -2,8 +2,10 @@ import { sentrySvelteKit } from '@sentry/sveltekit';
 import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vitest/config';
 import tailwindcss from '@tailwindcss/vite';
+import { enhancedImages } from '@sveltejs/enhanced-img';
 
 export default defineConfig({
+	assetsInclude: ['src/assets/**/*'],
 	plugins: [
 		sentrySvelteKit({
 			sourceMapsUploadOptions: {
@@ -13,8 +15,10 @@ export default defineConfig({
 			},
 			adapter: 'cloudflare'
 		}),
+		enhancedImages(),
 		sveltekit(),
 		tailwindcss()
+		// analyzer()
 	],
 	build: {
 		rollupOptions: {

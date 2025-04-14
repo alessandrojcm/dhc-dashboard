@@ -5,7 +5,7 @@
 	import * as Avatar from '$lib/components/ui/avatar';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import type { NavData, UserData } from '$lib/types';
-	import DHCLogo from '$lib/components/dhc-logo.svelte';
+	import DHCLogo from './src/assets/images/dhc-logo.png?enhanced';
 
 	type Props = {
 		className?: string | undefined | null;
@@ -29,7 +29,7 @@
 <Sidebar.Root bind:ref {collapsible} {...restProps} class="h-[100vh] border-r-1">
 	<Sidebar.Header class="flex flex-row items-center">
 		<div class="h-12 w-12">
-			<DHCLogo />
+			<enhanced:img src={DHCLogo} alt="Dublin Hema Club Logo" />
 		</div>
 		<h2 class="text-lg mt-2 text-black font-medium">Dublin Hema Club</h2>
 	</Sidebar.Header>
