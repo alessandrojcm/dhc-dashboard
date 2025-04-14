@@ -11,13 +11,7 @@ const adminInviteSchema = v.object({
 		v.transform((input) => input.toLowerCase())
 	),
 	phoneNumber: phoneNumberValidator(),
-	dateOfBirth: dobValidator,
-	expirationDays: v.pipe(
-		v.number(),
-		v.integer('Expiration days must be a whole number.'),
-		v.minValue(1, 'Expiration must be at least 1 day.'),
-		v.maxValue(365, 'Expiration cannot exceed 365 days.')
-	)
+	dateOfBirth: dobValidator
 });
 
 const bulkInviteSchema = v.object({

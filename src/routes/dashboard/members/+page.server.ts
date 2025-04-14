@@ -122,11 +122,11 @@ export const actions: Actions = {
 				},
 				async (trx) => {
 					for (const invite of invites) {
-						const { firstName, lastName, email, phoneNumber, dateOfBirth, expirationDays } = invite;
+						const { firstName, lastName, email, phoneNumber, dateOfBirth } = invite;
 
 						// Calculate expiration date based on the invite's expirationDays or default to 7 days
 						const expiresAt = dayjs()
-							.add(expirationDays || 7, 'day')
+							.add(1, 'day')
 							.toDate();
 
 						// Create metadata with user details

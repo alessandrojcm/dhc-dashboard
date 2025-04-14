@@ -71,7 +71,7 @@
 		if (!result.valid) {
 			return;
 		}
-		const { firstName, lastName, email, phoneNumber, dateOfBirth, expirationDays } = $formData;
+		const { firstName, lastName, email, phoneNumber, dateOfBirth } = $formData;
 
 		// Only add if we have at least email filled out
 		if (email) {
@@ -82,16 +82,14 @@
 					lastName: lastName || '',
 					email,
 					phoneNumber: phoneNumber || '',
-					dateOfBirth: dateOfBirth || new Date(),
-					expirationDays: expirationDays || 7
+					dateOfBirth: dateOfBirth || new Date()
 				}
 			];
 
 			// Clear the form for the next invite
 			resetForm({
 				newState: {
-					dateOfBirth: new Date(),
-					expirationDays: 7
+					dateOfBirth: new Date()
 				}
 			});
 		}
@@ -197,23 +195,6 @@
 								placeholder="Enter your phone number"
 								{...props}
 								bind:phoneNumber={$formData.phoneNumber}
-							/>
-						{/snippet}
-					</Form.Control>
-					<Form.FieldErrors />
-				</Form.Field>
-
-				<!-- Expiration Days -->
-				<Form.Field {form} name="expirationDays">
-					<Form.Control>
-						{#snippet children({ props })}
-							<Form.Label>Expiration (days)</Form.Label>
-							<Input
-								{...props}
-								type="number"
-								min="1"
-								max="365"
-								bind:value={$formData.expirationDays}
 							/>
 						{/snippet}
 					</Form.Control>
