@@ -1,15 +1,10 @@
 import { adminInviteSchema, bulkInviteSchema } from '$lib/schemas/adminInvite';
 import settingsSchema from '$lib/schemas/membersSettings';
 import { executeWithRLS, getKyselyClient } from '$lib/server/kysely';
-import { createInvitation } from '$lib/server/kyselyRPCFunctions';
 import { getRolesFromSession } from '$lib/server/roles';
-import type { AuthError } from '@supabase/supabase-js';
-import dayjs from 'dayjs';
 import { fail, message, superValidate } from 'sveltekit-superforms';
 import { valibot } from 'sveltekit-superforms/adapters';
 import type { Actions, PageServerLoad } from './$types';
-import { supabaseServiceClient } from '$lib/server/supabaseServiceClient';
-import { PUBLIC_SITE_URL } from '$env/static/public';
 import * as Sentry from '@sentry/sveltekit';
 
 const SETTINGS_ROLES = new Set(['president', 'committee_coordinator', 'admin']);
@@ -105,86 +100,55 @@ export const actions: Actions = {
 			return fail(400, {
 				form: {
 					...form,
-					message: { failure: 'There was an error seding the invites.' }
+					message: { failure: 'There was an error sending the invites.' }
 				}
 			});
 		}
-		const invites = form.data.invites;
 
 		try {
-			const results: Array<{ email: string; success: boolean; error?: any }> = [];
+			// Prepare the payload for the Edge Function
+			const payload = {
+				invites: form.data.invites,
+				session: locals.session
+			};
 
-			// Process invites in a transaction
-			await executeWithRLS(
-				getKyselyClient(platform.env.HYPERDRIVE),
-				{
-					claims: locals.session!
+			// Call the Edge Function asynchronously
+			const edgeFunctionUrl = platform?.env?.EDGE_FUNCTION_URL || 'http://localhost:54321/functions/v1';
+			const response = await fetch(`${edgeFunctionUrl}/bulk_invite_with_subscription`, {
+				method: 'POST',
+				headers: { 
+					'Content-Type': 'application/json',
+					'Authorization': `Bearer ${locals.session?.access_token}`
 				},
-				async (trx) => {
-					for (const invite of invites) {
-						const { firstName, lastName, email, phoneNumber, dateOfBirth } = invite;
+				body: JSON.stringify(payload)
+			});
 
-						// Calculate expiration date based on the invite's expirationDays or default to 7 days
-						const expiresAt = dayjs()
-							.add(1, 'day')
-							.toDate();
+			if (!response.ok) {
+				const errorData = await response.json();
+				Sentry.captureMessage(`Edge function error: ${JSON.stringify(errorData)}`, 'error');
+				return fail(response.status, {
+					form,
+					message: { failure: 'Failed to process invitations. Please try again later.' }
+				});
+			}
 
-						// Create metadata with user details
-						const metadata = {
-							firstName,
-							lastName,
-							phoneNumber,
-							dateOfBirth: dateOfBirth.toISOString()
-						};
-
-						try {
-							// Also invite the user via Supabase Admin SDK
-							const result = await supabaseServiceClient.auth.admin.inviteUserByEmail(email, {
-								redirectTo: `${PUBLIC_SITE_URL}/members/signup/callback`,
-								data: {
-									first_name: firstName,
-									last_name: lastName
-								}
-							});
-
-							if (result.error) {
-								throw result.error;
-							}
-							// Create invitation using the kysely function
-							await createInvitation(
-								{
-									userId: result.data.user?.id,
-									email,
-									invitationType: 'admin',
-									expiresAt,
-									metadata,
-									firstName,
-									lastName,
-									dateOfBirth: dateOfBirth.toISOString(),
-									phoneNumber
-								},
-								trx
-							);
-
-							results.push({ email, success: true });
-						} catch (error) {
-							Sentry.captureMessage(`Error inviting ${email}: ${error}`, 'error');
-							results.push({ email, success: false, error: error as AuthError });
-						}
-					}
-				}
-			);
-
-			const successCount = results.filter((r) => r.success).length;
+			const data = await response.json() as { results: Array<{ email: string; success: boolean; error?: string }> };
+			const results = data.results || [];
+			const successCount = results.filter(r => r.success).length;
 			const failureCount = results.length - successCount;
 
 			if (failureCount === 0) {
 				return message(form, {
 					success: `Successfully sent ${successCount} invitation${successCount !== 1 ? 's' : ''}`
 				});
-			} else {
+			} else if (successCount > 0) {
 				return message(form, {
 					warning: `Sent ${successCount} invitation${successCount !== 1 ? 's' : ''}, but ${failureCount} failed`
+				});
+			} else {
+				return fail(500, {
+					form,
+					message: { failure: 'Failed to create invitations' }
 				});
 			}
 		} catch (error) {
