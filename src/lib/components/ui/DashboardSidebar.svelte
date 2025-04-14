@@ -5,7 +5,7 @@
 	import * as Avatar from '$lib/components/ui/avatar';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import type { NavData, UserData } from '$lib/types';
-	import DHCLogo from './src/assets/images/dhc-logo.png?enhanced';
+	import DHCLogo from '/src/assets/images/dhc-logo.png?enhanced';
 
 	type Props = {
 		className?: string | undefined | null;
