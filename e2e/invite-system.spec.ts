@@ -53,8 +53,6 @@ test.describe('Invitation System', () => {
 		// Fill phone number
 		await page.getByLabel('Phone Number').fill('123456789');
 
-		// Set expiration days
-		await page.getByLabel('Expiration (days)').fill('14');
 
 		// Add to list first
 		await page.getByRole('button', { name: 'Add to List' }).click();
@@ -111,7 +109,6 @@ test.describe('Invitation System', () => {
 		await page.getByLabel(dateOfBirth.format('dddd, MMMM D,')).click();
 
 		await page.getByLabel('Phone Number').fill('123456789');
-		await page.getByLabel('Expiration (days)').fill('14');
 
 		// Click "Add to List" button
 		await page.getByRole('button', { name: 'Add to List' }).click();
@@ -137,7 +134,6 @@ test.describe('Invitation System', () => {
 		await page.getByLabel(dateOfBirth2.format('dddd, MMMM D,')).click();
 
 		await page.getByLabel('Phone Number').fill('987654321');
-		await page.getByLabel('Expiration (days)').fill('7');
 
 		// Click "Add to List" button
 		await page.getByRole('button', { name: 'Add to List' }).click();
@@ -181,7 +177,6 @@ test.describe('Invitation System', () => {
 		await page.getByLabel(dateOfBirth.format('dddd, MMMM D,')).click();
 
 		await page.getByLabel('Phone Number').fill('123456789');
-		await page.getByLabel('Expiration (days)').fill('14');
 
 		// Click "Add to List" button
 		await page.getByRole('button', { name: 'Add to List' }).click();
@@ -204,7 +199,6 @@ test.describe('Invitation System', () => {
 		await page.getByLabel(dateOfBirth2.format('dddd, MMMM D,')).click();
 		await expect(page.getByLabel('Phone Number')).toBeVisible();
 		await page.getByLabel('Phone Number').fill('987654321');
-		await page.getByLabel('Expiration (days)').fill('7');
 
 		// Click "Add to List" button
 		await page.getByRole('button', { name: 'Add to List' }).click();
