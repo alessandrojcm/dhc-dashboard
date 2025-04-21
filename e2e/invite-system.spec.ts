@@ -62,7 +62,6 @@ test.describe('Invitation System', () => {
 		await expect(page.getByText('Invite List (1)')).toBeVisible();
 		// Then send the invite - note that the form is now empty but that's OK
 		// The "Send Invitations" button submits a different form with the invites list
-		await page.pause();
 		await page.getByRole('button', { name: 'Send 1 Invitations' }).click();
 
 		// Verify success message with a longer timeout

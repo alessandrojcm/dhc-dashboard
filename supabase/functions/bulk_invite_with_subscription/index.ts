@@ -288,6 +288,15 @@ serve(async (req: Request) => {
     if (req.method === "OPTIONS") {
       return new Response("ok", { headers: corsHeaders });
     }
+    if(req.method !== 'POST') {
+      return new Response(
+        JSON.stringify({ error: "Method not allowed" }),
+        {
+          status: 405,
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        },
+      );
+    }
     // Initialize Supabase client with anon key for authentication
     const supabaseClient = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
