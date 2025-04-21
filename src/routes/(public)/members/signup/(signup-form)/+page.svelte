@@ -26,7 +26,7 @@
 	import PricingDisplay from './pricing-display.svelte';
 
 	const { data } = $props();
-	const { streamed, nextMonthlyBillingDate, nextAnnualBillingDate } = data;
+	const { nextMonthlyBillingDate, nextAnnualBillingDate } = data;
 	let stripe: Awaited<ReturnType<typeof loadStripe>> | null = $state(null);
 	let elements: StripeElements | null | undefined = $state(null);
 	let paymentElement: StripePaymentElement | null | undefined = $state(null);
@@ -70,7 +70,7 @@
 		resetForm: false,
 		validationMethod: 'onblur',
 		scrollToError: 'smooth',
-		onSubmit: async function({ cancel, customRequest }) {
+		onSubmit: async function ({ cancel, customRequest }) {
 			const { valid } = await form.validateForm({ focusOnError: true, update: true });
 			if (!valid) {
 				scrollTo({ top: 0, behavior: 'smooth' });
@@ -139,14 +139,14 @@
 	// Keep planData query for coupon updates, but initial display uses streamed data
 	const planData = createQuery(() => ({
 		queryKey: ['plan-pricing', couponCode],
+		refetchOnMount: true,
 		queryFn: async () => {
 			const res = await fetch(`/api/signup/plan-pricing?coupon=${couponCode}`);
 			if (!res.ok) {
 				throw new Error('Failed to fetch pricing');
 			}
 			return (await res.json()) as PlanPricing;
-		},
-		enabled: couponCode !== '' // Only enable if a coupon is entered
+		}
 	}));
 
 	const applyCoupon = createMutation(() => ({
@@ -180,9 +180,7 @@
 					}
 				}
 			});
-			streamed.pricingData.then(() => {
-				paymentElement?.mount('#payment-element');
-			});
+			paymentElement?.mount('#payment-element');
 		});
 	});
 </script>
@@ -274,26 +272,14 @@
 				import PricingDisplay from './pricing-display.svelte';
 			</script>
 
-			<!-- Use the new PricingDisplay component -->
-			{#if planData.isSuccess}
-				<PricingDisplay 
-					planPricingData={planData} 
-					{couponCode} 
-					{applyCoupon} 
-					{nextMonthlyBillingDate} 
-					{nextAnnualBillingDate} 
-					{stripe} 
-				/>
-			{:else}
-				<PricingDisplay 
-					planPricingData={streamed.pricingData} 
-					{couponCode} 
-					{applyCoupon} 
-					{nextMonthlyBillingDate} 
-					{nextAnnualBillingDate} 
-					{stripe} 
-				/>
-			{/if}
+			<PricingDisplay
+				planPricingData={planData}
+				{couponCode}
+				{applyCoupon}
+				{nextMonthlyBillingDate}
+				{nextAnnualBillingDate}
+				{stripe}
+			/>
 		</div>
 		<div class="flex justify-between">
 			<Button type="submit" class="ml-auto" disabled={$submitting}>
