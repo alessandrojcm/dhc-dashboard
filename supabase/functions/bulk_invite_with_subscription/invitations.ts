@@ -1,4 +1,4 @@
-import { sql, type QueryExecutorProvider } from 'https://esm.sh/kysely@0.23.4';
+import { sql, type QueryExecutorProvider } from 'kysely';
 
 export type InvitationInfo = {
   invitation_id: string;

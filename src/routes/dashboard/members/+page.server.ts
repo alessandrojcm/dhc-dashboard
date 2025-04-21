@@ -1,4 +1,4 @@
-import { adminInviteSchema, bulkInviteSchema } from '$lib/schemas/adminInvite';
+import { bulkInviteSchema } from '$lib/schemas/adminInvite';
 import settingsSchema from '$lib/schemas/membersSettings';
 import { executeWithRLS, getKyselyClient } from '$lib/server/kysely';
 import { getRolesFromSession } from '$lib/server/roles';
@@ -25,31 +25,16 @@ export const load: PageServerLoad = async ({ locals }) => {
 		valibot(settingsSchema),
 		{ errors: false }
 	);
-	const inviteForm = await superValidate(
-		{
-			dateOfBirth: new Date('2000-01-01'),
-			expirationDays: 7
-		},
-		valibot(adminInviteSchema),
-		{ errors: false }
-	);
-	const bulkInviteForm = await superValidate({ invites: [] }, valibot(bulkInviteSchema), {
-		errors: false
-	});
 	if (!canEditSettings) {
 		return {
 			canEditSettings,
-			form,
-			inviteForm,
-			bulkInviteForm
+			form
 		};
 	}
 
 	return {
 		canEditSettings,
-		form,
-		inviteForm,
-		bulkInviteForm
+		form
 	};
 };
 
@@ -112,45 +97,25 @@ export const actions: Actions = {
 				session: locals.session
 			};
 
-			// Call the Edge Function asynchronously
-			const edgeFunctionUrl = platform?.env?.EDGE_FUNCTION_URL || 'http://localhost:54321/functions/v1';
-			const response = await fetch(`${edgeFunctionUrl}/bulk_invite_with_subscription`, {
-				method: 'POST',
-				headers: { 
-					'Content-Type': 'application/json',
-					'Authorization': `Bearer ${locals.session?.access_token}`
-				},
-				body: JSON.stringify(payload)
+			// Call the Edge Function asynchronously using the Supabase SDK
+			const { data, error } = await supabaseServiceClient.functions.invoke('bulk_invite_with_subscription', {
+				body: payload,
+				headers: {
+					Authorization: `Bearer ${locals.session?.access_token}`
+				}
 			});
 
-			if (!response.ok) {
-				const errorData = await response.json();
-				Sentry.captureMessage(`Edge function error: ${JSON.stringify(errorData)}`, 'error');
-				return fail(response.status, {
+			if (error) {
+				Sentry.captureMessage(`Edge function error: ${JSON.stringify(error)}`, 'error');
+				return fail(500, {
 					form,
 					message: { failure: 'Failed to process invitations. Please try again later.' }
 				});
 			}
 
-			const data = await response.json() as { results: Array<{ email: string; success: boolean; error?: string }> };
-			const results = data.results || [];
-			const successCount = results.filter(r => r.success).length;
-			const failureCount = results.length - successCount;
-
-			if (failureCount === 0) {
-				return message(form, {
-					success: `Successfully sent ${successCount} invitation${successCount !== 1 ? 's' : ''}`
-				});
-			} else if (successCount > 0) {
-				return message(form, {
-					warning: `Sent ${successCount} invitation${successCount !== 1 ? 's' : ''}, but ${failureCount} failed`
-				});
-			} else {
-				return fail(500, {
-					form,
-					message: { failure: 'Failed to create invitations' }
-				});
-			}
+			return message(form, {
+				success: 'Invitations are being processed in the background. You will be notified when completed.'
+			});
 		} catch (error) {
 			Sentry.captureMessage(`Error creating bulk invitations: ${error}`, 'error');
 			return fail(500, {
