@@ -1,6 +1,6 @@
-import { sql, type QueryExecutorProvider } from 'https://esm.sh/kysely@0.23.4';
-import type { Stripe } from 'https://esm.sh/stripe@12.4.0?target=deno';
-import dayjs from 'https://esm.sh/dayjs@1.11.7';
+import { sql, type QueryExecutorProvider } from 'kysely';
+import type { Stripe } from 'stripe';
+import dayjs from 'dayjs';
 
 /**
  * Interface for subscription session result
@@ -10,8 +10,8 @@ export interface SubscriptionSessionResult {
   annualSubscription: Stripe.Subscription;
   monthlyPaymentIntent: Stripe.PaymentIntent;
   annualPaymentIntent: Stripe.PaymentIntent;
-  proratedMonthlyAmount: number;
-  proratedAnnualAmount: number;
+  monthlyAmount: number;
+  annualAmount: number;
   sessionId: string;
 }
 
@@ -20,18 +20,14 @@ export interface SubscriptionSessionResult {
  */
 export async function createPaymentSession(
   userId: string,
-  customerId: string,
   monthlySubscription: Stripe.Subscription,
   annualSubscription: Stripe.Subscription,
-  monthlyPaymentIntent: Stripe.PaymentIntent,
-  annualPaymentIntent: Stripe.PaymentIntent,
+  monthlyPaymentIntentId: string,
+  annualPaymentIntentId: string,
+  monthlyAmount: number,
+  annualAmount: number,
   executor: QueryExecutorProvider
 ): Promise<string> {
-  const monthlyAmount = monthlySubscription.items.data[0]?.price?.unit_amount || 0;
-  const annualAmount = annualSubscription.items.data[0]?.price?.unit_amount || 0;
-  const proratedMonthlyAmount = monthlyPaymentIntent.amount;
-  const proratedAnnualAmount = annualPaymentIntent.amount;
-  
   // Store the new session
   const result = await sql<{ id: string }>`
     INSERT INTO payment_sessions (
@@ -48,11 +44,11 @@ export async function createPaymentSession(
       ${userId}::uuid,
       ${monthlySubscription.id}::text,
       ${annualSubscription.id}::text,
-      ${monthlyPaymentIntent.id}::text,
-      ${annualPaymentIntent.id}::text,
+      ${monthlyPaymentIntentId}::text,
+      ${annualPaymentIntentId}::text,
       ${monthlyAmount}::integer,
       ${annualAmount}::integer,
-      ${proratedMonthlyAmount + proratedAnnualAmount}::integer,
+      ${monthlyAmount + annualAmount}::integer,
       ${dayjs().add(24, 'hour').toISOString()}::timestamptz
     )
     RETURNING id

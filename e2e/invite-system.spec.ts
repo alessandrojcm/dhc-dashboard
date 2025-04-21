@@ -60,13 +60,15 @@ test.describe('Invitation System', () => {
 		// Verify the invitation was added to the list
 		await expect(page.getByText(testEmail)).toBeVisible();
 		await expect(page.getByText('Invite List (1)')).toBeVisible();
-
 		// Then send the invite - note that the form is now empty but that's OK
 		// The "Send Invitations" button submits a different form with the invites list
+		await page.pause();
 		await page.getByRole('button', { name: 'Send 1 Invitations' }).click();
 
 		// Verify success message with a longer timeout
-		await expect(page.getByText('Success!')).toBeVisible({ timeout: 10000 });
+		await expect(
+  page.getByText('Invitations are being processed in the background. You will be notified when completed.', { exact: false })
+).toBeVisible({ timeout: 10000 });
 	});
 
 	test('should validate required fields when adding to list', async ({ page }) => {
@@ -149,7 +151,9 @@ test.describe('Invitation System', () => {
 		await page.getByRole('button', { name: 'Send 2 Invitations' }).click();
 
 		// Verify success message with a longer timeout
-		await expect(page.getByText('Success!')).toBeVisible({ timeout: 10000 });
+		await expect(
+  page.getByText('Invitations are being processed in the background. You will be notified when completed.', { exact: false })
+).toBeVisible({ timeout: 10000 });
 	});
 
 	test('should be able to remove invitations from the list', async ({ page }) => {

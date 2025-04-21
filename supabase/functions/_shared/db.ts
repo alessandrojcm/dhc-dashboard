@@ -1,10 +1,10 @@
-import { Pool } from 'https://deno.land/x/postgres@v0.17.0/mod.ts';
+import { Pool } from 'postgres';
 import {
 	Kysely,
 	PostgresAdapter,
 	PostgresIntrospector,
 	PostgresQueryCompiler
-} from 'https://esm.sh/kysely@0.23.4';
+} from 'kysely';
 import { PostgresDriver } from './kyselyDriver.ts';
 import type { KyselyDatabase } from '../../../src/lib/types.ts';
 
