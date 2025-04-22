@@ -1,7 +1,5 @@
 <script lang="ts">
-	export {}; // Add default export to fix TypeScript error
-
-	import { onDestroy, onMount } from 'svelte';
+	import { onMount } from 'svelte';
 	import dayjs from 'dayjs';
 	import relativeTime from 'dayjs/plugin/relativeTime';
 	import type { SupabaseClient } from '@supabase/supabase-js';
