@@ -60,7 +60,7 @@ export const POST: RequestHandler = async ({ request, cookies, platform }) => {
 							promotion_code: promotionCodes.data[0].id
 						}
 					],
-					expand: ['latest_invoice.payment_intent']
+					expand: ['latest_invoice.payments'],
 				})
 				.catch((err) => {
 					errorCount++;
@@ -77,7 +77,7 @@ export const POST: RequestHandler = async ({ request, cookies, platform }) => {
 							promotion_code: promotionCodes.data[0].id
 						}
 					],
-					expand: ['latest_invoice.payment_intent']
+					expand: ['latest_invoice.payments'],
 				})
 				.catch((err) => {
 					errorCount++;
@@ -101,6 +101,14 @@ export const POST: RequestHandler = async ({ request, cookies, platform }) => {
 
 			// Get the coupon details to calculate discounted amounts
 			const couponDetails = await stripeClient.coupons.retrieve(promotionCodes.data[0].coupon.id);
+			
+			// Check if this is a 'forever' duration coupon with 'amount_off' which is no longer supported in Basil
+			if (couponDetails.duration === 'forever' && couponDetails.amount_off) {
+				return Response.json(
+					{ message: 'This coupon type is no longer supported. Please contact support.' },
+					{ status: 400 }
+				);
+			}
 
 			// Handle different coupon durations
 			// If duration is 'once', it only applies to the first payment and doesn't affect recurring plan pricing
@@ -149,21 +157,21 @@ export const POST: RequestHandler = async ({ request, cookies, platform }) => {
 
 			if (updatedAnnualSubscription) {
 				const annualInvoice = updatedAnnualSubscription.latest_invoice as Stripe.Invoice;
-				if (annualInvoice && annualInvoice.payment_intent) {
-					const paymentIntent = annualInvoice.payment_intent as Stripe.PaymentIntent;
+				if (annualInvoice && annualInvoice.payments?.data?.[0]?.payment) {
+					const paymentIntent = annualInvoice.payments?.data?.[0]?.payment!;
 					// Get the prorated amount from the payment intent
-					proratedAnnualAmount = paymentIntent.amount;
-					updatedAnnualPaymentIntentId = paymentIntent.id;
+					proratedAnnualAmount = annualInvoice.amount_due! as number;
+					updatedAnnualPaymentIntentId = paymentIntent.payment_intent! as string;
 				}
 			}
 
 			if (updatedMonthlySubscription) {
 				const monthlyInvoice = updatedMonthlySubscription.latest_invoice as Stripe.Invoice;
-				if (monthlyInvoice && monthlyInvoice.payment_intent) {
-					const paymentIntent = monthlyInvoice.payment_intent as Stripe.PaymentIntent;
+				if (monthlyInvoice && monthlyInvoice.payments?.data?.[0]?.payment) {
+					const paymentIntent = monthlyInvoice.payments?.data?.[0]?.payment!;
 					// Get the prorated amount from the payment intent
-					proratedMonthlyAmount = paymentIntent.amount;
-					updatedMonthlyPaymentIntentId = paymentIntent.id;
+					proratedMonthlyAmount = monthlyInvoice.amount_due! as number;
+					updatedMonthlyPaymentIntentId = paymentIntent.payment_intent! as string;
 				}
 			}
 
