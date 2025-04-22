@@ -11,24 +11,24 @@
 	import dayjs from 'dayjs';
 	import type { CreateMutationResult, CreateQueryResult } from '@tanstack/svelte-query';
 
-
 	let {
 		planPricingData,
 		couponCode = $bindable(''),
 		applyCoupon,
 		nextMonthlyBillingDate,
-		nextAnnualBillingDate,
-		stripe
+		nextAnnualBillingDate
 	}: {
 		planPricingData: CreateQueryResult<PlanPricing, Error>;
 		couponCode: string | undefined;
 		applyCoupon: CreateMutationResult<string, Error, string>;
 		nextMonthlyBillingDate: Date;
 		nextAnnualBillingDate: Date;
-		stripe: any;
-	} = $props()
+	} = $props();
+
+	let stripeClass = $derived(`mt-4 ${planPricingData.isLoading ? 'hidden' : ''}`);
 </script>
-{#if planPricingData.isPending}
+
+{#if planPricingData.isLoading}
 	<!-- Loading state -->
 	<Card.Root class="bg-muted">
 		<Card.Content class="pt-6">
@@ -38,7 +38,7 @@
 			</div>
 		</Card.Content>
 	</Card.Root>
-{:else if (planPricingData as CreateQueryResult<PlanPricing, Error>).isSuccess}
+{:else if !(planPricingData as CreateQueryResult<PlanPricing, Error>).isError}
 	<!-- Handle QueryResult -->
 	{@const planPricing = (planPricingData as CreateQueryResult<PlanPricing, Error>).data!}
 	{@const proratedPriceDinero = Dinero(planPricing.proratedPrice)}
@@ -51,16 +51,19 @@
 		? Dinero(planPricing.discountedAnnualFee)
 		: null}
 	{@const discountPercentage = planPricing.discountPercentage}
-	
+
 	<!-- Calculate the visual display price for 'once' coupons -->
-	{@const displayProratedPriceDinero = Boolean(discountPercentage) && 
-		discountedMonthlyFeeDinero === null && 
+	{@const displayProratedPriceDinero =
+		Boolean(discountPercentage) &&
+		discountedMonthlyFeeDinero === null &&
 		discountedAnnualFeeDinero === null
-		? Dinero({
-			amount: Math.round(proratedPriceDinero.getAmount() * (100 - (discountPercentage ?? 0)) / 100),
-			currency: proratedPriceDinero.getCurrency()
-		})
-		: proratedPriceDinero}
+			? Dinero({
+					amount: Math.round(
+						(proratedPriceDinero.getAmount() * (100 - (discountPercentage ?? 0))) / 100
+					),
+					currency: proratedPriceDinero.getCurrency()
+				})
+			: proratedPriceDinero}
 
 	<Card.Root class="bg-muted">
 		<Card.Content class="pt-6">
@@ -74,8 +77,8 @@
 									<Info class="h-4 w-4" />
 								</Tooltip.Trigger>
 								<Tooltip.Content>
-									This is the initial amount charged today, covering the rest of the current
-									month and the annual fee.
+									This is the initial amount charged today, covering the rest of the current month
+									and the annual fee.
 								</Tooltip.Content>
 							</Tooltip.Root>
 						</Tooltip.Provider>
@@ -97,10 +100,10 @@
 					<div class="flex flex-col items-end">
 						{#if discountedMonthlyFeeDinero}
 							<span class="font-semibold text-green-600"
-							>{discountedMonthlyFeeDinero.toFormat()}</span
+								>{discountedMonthlyFeeDinero.toFormat()}</span
 							>
 							<span class="text-sm line-through text-muted-foreground"
-							>{monthlyFeeDinero.toFormat()}</span
+								>{monthlyFeeDinero.toFormat()}</span
 							>
 						{:else}
 							<span class="font-semibold">{monthlyFeeDinero.toFormat()}</span>
@@ -122,10 +125,10 @@
 					<div class="flex flex-col items-end">
 						{#if discountedAnnualFeeDinero}
 							<span class="font-semibold text-green-600"
-							>{discountedAnnualFeeDinero.toFormat()}</span
+								>{discountedAnnualFeeDinero.toFormat()}</span
 							>
 							<span class="text-sm line-through text-muted-foreground"
-							>{annualFeeDinero.toFormat()}</span
+								>{annualFeeDinero.toFormat()}</span
 							>
 						{:else}
 							<span class="font-semibold">{annualFeeDinero.toFormat()}</span>
@@ -168,7 +171,7 @@
 									class="mt-2 w-full bg-white"
 									type="button"
 									onclick={() => applyCoupon.mutate(couponCode)}
-								>Apply Code
+									>Apply Code
 									{#if applyCoupon.isPending}
 										<LoaderCircle class="animate-spin ml-2 h-4 w-4" />
 									{/if}
@@ -190,8 +193,6 @@
 			</div>
 		</Card.Content>
 	</Card.Root>
-
-	<div class="mt-4" id="payment-element"></div>
 {:else if (planPricingData as CreateQueryResult<PlanPricing, Error>).isLoading}
 	<!-- Loading state for QueryResult -->
 	<Card.Root class="bg-muted">
@@ -224,3 +225,4 @@
 		</Card.Content>
 	</Card.Root>
 {/if}
+<div class={stripeClass} id="payment-element"></div>

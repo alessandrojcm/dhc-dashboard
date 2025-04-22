@@ -24,8 +24,7 @@
 	import {
 		createMutation,
 		createQuery,
-		QueryObserver,
-		useQueryClient
+		keepPreviousData
 	} from '@tanstack/svelte-query';
 	import type { PlanPricing } from '$lib/types.js';
 	import PricingDisplay from './pricing-display.svelte';
@@ -146,6 +145,7 @@
 	const planData = createQuery(() => ({
 		queryKey,
 		refetchOnMount: true,
+		placeholderData: keepPreviousData,
 		queryFn: async () => {
 			const res = await fetch(`/api/signup/plan-pricing?coupon=${couponCode}`);
 			if (!res.ok) {
@@ -154,9 +154,6 @@
 			return (await res.json()) as PlanPricing;
 		}
 	}));
-
-	const queryClient = useQueryClient();
-	const queryObserver = $derived.by(() => new QueryObserver(queryClient, { queryKey }));
 
 	const applyCoupon = createMutation(() => ({
 		mutationFn: (code: string) =>
@@ -189,12 +186,7 @@
 					}
 				}
 			});
-			const observer = queryObserver.subscribe((query) => {
-				if (query.isSuccess) {
-					paymentElement?.mount('#payment-element');
-				}
-			});
-			return observer;
+			paymentElement?.mount('#payment-element');
 		});
 	});
 </script>
@@ -292,7 +284,6 @@
 				{applyCoupon}
 				{nextMonthlyBillingDate}
 				{nextAnnualBillingDate}
-				{stripe}
 			/>
 		</div>
 		<div class="flex justify-between">
