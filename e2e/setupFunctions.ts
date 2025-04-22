@@ -1,20 +1,26 @@
-import { faker } from '@faker-js/faker/locale/en_IE';
-import { createClient } from '@supabase/supabase-js';
-import 'dotenv/config';
-import stripe from 'stripe';
+import { faker } from "@faker-js/faker/locale/en_IE";
+import { createClient } from "@supabase/supabase-js";
+import "dotenv/config";
+import stripe from "stripe";
 
-import type { Database } from '../src/database.types';
-import { ANNUAL_FEE_LOOKUP, MEMBERSHIP_FEE_LOOKUP_NAME } from '../src/lib/server/constants';
+import type { Database } from "../src/database.types";
+import {
+	ANNUAL_FEE_LOOKUP,
+	MEMBERSHIP_FEE_LOOKUP_NAME,
+} from "../src/lib/server/constants";
+import { createSeedClient } from "@snaplet/seed";
 
-export const stripeClient = new stripe(process.env.STRIPE_SECRET_KEY || '', {
-	apiVersion: '2025-02-24.acacia'
+export const stripeClient = new stripe(process.env.STRIPE_SECRET_KEY || "", {
+	apiVersion: "2025-03-31.basil",
 });
 
 export function getSupabaseServiceClient() {
 	const supabaseUrl = process.env.PUBLIC_SUPABASE_URL;
 	const serviceRoleKey = process.env.SERVICE_ROLE_KEY;
 	if (!supabaseUrl || !serviceRoleKey) {
-		throw new Error('Missing SUPABASE_URL or SERVICE_ROLE_KEY in environment variables');
+		throw new Error(
+			"Missing SUPABASE_URL or SERVICE_ROLE_KEY in environment variables",
+		);
 	}
 	return createClient<Database>(supabaseUrl, serviceRoleKey);
 }
@@ -22,7 +28,7 @@ export function getSupabaseServiceClient() {
 const defaultValues = {
 	addWaitlist: true,
 	addSupabaseId: true,
-	setWaitlistNotCompleted: false
+	setWaitlistNotCompleted: false,
 };
 
 export async function setupWaitlistedUser(
@@ -31,40 +37,53 @@ export async function setupWaitlistedUser(
 		addSupabaseId: boolean;
 		setWaitlistNotCompleted: boolean;
 		email: string;
-	}> = {}
+	}> = {},
 ) {
-	const overrides = { ...defaultValues, ...params, email: faker.internet.email().toLowerCase() };
-	const { addSupabaseId, addWaitlist, setWaitlistNotCompleted, email } = overrides;
+	const overrides = {
+		...defaultValues,
+		...params,
+		email: faker.internet.email().toLowerCase(),
+	};
+	const { addSupabaseId, addWaitlist, setWaitlistNotCompleted, email } =
+		overrides;
 	const supabaseServiceClient = getSupabaseServiceClient();
 	const testData = {
 		first_name: faker.person.firstName(),
 		last_name: faker.person.lastName(),
 		email,
-		date_of_birth: faker.date.birthdate({ min: 16, max: 65, mode: 'age' }),
-		pronouns: faker.helpers.arrayElement(['he/him', 'she/her', 'they/them']),
+		date_of_birth: faker.date.birthdate({ min: 16, max: 65, mode: "age" }),
+		pronouns: faker.helpers.arrayElement([
+			"he/him",
+			"she/her",
+			"they/them",
+		]),
 		gender: faker.helpers.arrayElement([
-			'man (cis)',
-			'woman (cis)',
-			'non-binary'
-		] as Database['public']['Enums']['gender'][]),
-		weapon: faker.helpers.arrayElement(['longsword', 'rapier', 'sabre']),
-		phone_number: faker.phone.number({ style: 'international' }),
+			"man (cis)",
+			"woman (cis)",
+			"non-binary",
+		] as Database["public"]["Enums"]["gender"][]),
+		weapon: faker.helpers.arrayElement(["longsword", "rapier", "sabre"]),
+		phone_number: faker.phone.number({ style: "international" }),
 		next_of_kin: {
 			name: faker.person.fullName(),
-			phone_number: faker.phone.number({ style: 'international' })
+			phone_number: faker.phone.number({ style: "international" }),
 		},
-		medical_conditions: faker.helpers.arrayElement(['None', 'Asthma', 'Previous knee injury'])
+		medical_conditions: faker.helpers.arrayElement([
+			"None",
+			"Asthma",
+			"Previous knee injury",
+		]),
 	};
 	const waitlisEntry = await supabaseServiceClient
-		.rpc('insert_waitlist_entry', {
+		.rpc("insert_waitlist_entry", {
 			first_name: testData.first_name,
 			last_name: testData.last_name,
 			email: testData.email,
 			date_of_birth: testData.date_of_birth.toISOString(),
 			phone_number: testData.phone_number,
 			pronouns: testData.pronouns,
-			gender: testData.gender as Database['public']['Enums']['gender'],
-			medical_conditions: testData.medical_conditions
+			gender: testData.gender as Database["public"]["Enums"]["gender"],
+			medical_conditions: testData.medical_conditions,
 		})
 		.single();
 	if (waitlisEntry.error) {
@@ -72,33 +91,33 @@ export async function setupWaitlistedUser(
 	}
 	const inviteLink = await supabaseServiceClient.auth.admin.createUser({
 		email: testData.email,
-		password: 'password',
-		email_confirm: true
+		password: "password",
+		email_confirm: true,
 	});
 	if (inviteLink.error) {
 		throw new Error(inviteLink.error.message);
 	}
 
 	await supabaseServiceClient
-		.from('user_profiles')
+		.from("user_profiles")
 		.update({
 			supabase_user_id: addSupabaseId ? inviteLink.data.user.id : null,
-			waitlist_id: addWaitlist ? waitlisEntry.data.waitlist_id : null
+			waitlist_id: addWaitlist ? waitlisEntry.data.waitlist_id : null,
 		})
-		.eq('id', waitlisEntry.data.profile_id)
+		.eq("id", waitlisEntry.data.profile_id)
 		.select()
 		.throwOnError();
 
 	await supabaseServiceClient
-		.from('waitlist')
+		.from("waitlist")
 		.update({
-			status: setWaitlistNotCompleted ? 'cancelled' : 'completed'
+			status: setWaitlistNotCompleted ? "cancelled" : "completed",
 		})
-		.eq('email', testData.email)
+		.eq("email", testData.email)
 		.throwOnError();
 	const verifyOtp = await supabaseServiceClient.auth.signInWithPassword({
 		email: testData.email,
-		password: 'password'
+		password: "password",
 	});
 	if (verifyOtp.error) {
 		throw new Error(verifyOtp.error.message);
@@ -111,14 +130,14 @@ export async function setupWaitlistedUser(
 		return Promise.all([
 			waitlisEntry?.data?.profile_id
 				? client
-						.from('user_profiles')
-						.delete()
-						.eq('id', waitlisEntry.data.profile_id)
-						.throwOnError()
+					.from("user_profiles")
+					.delete()
+					.eq("id", waitlisEntry.data.profile_id)
+					.throwOnError()
 				: Promise.resolve(),
 			inviteLink.data.user?.id
 				? client.auth.admin.deleteUser(inviteLink.data.user.id)
-				: Promise.resolve()
+				: Promise.resolve(),
 		]);
 	}
 	return Promise.resolve({
@@ -126,17 +145,17 @@ export async function setupWaitlistedUser(
 		waitlistId: waitlisEntry.data.waitlist_id,
 		profileId: waitlisEntry.data.profile_id,
 		token: verifyOtp.data.session?.access_token,
-		cleanUp
+		cleanUp,
 	});
 }
 
 export async function createMember({
 	email = faker.internet.email().toLowerCase(),
-	roles = new Set(['member']),
-	createSubscription = false
+	roles = new Set(["member"]),
+	createSubscription = false,
 }: {
 	email: string;
-	roles?: Set<Database['public']['Enums']['role_type']>;
+	roles?: Set<Database["public"]["Enums"]["role_type"]>;
 	createSubscription?: boolean;
 }) {
 	const supabaseServiceClient = getSupabaseServiceClient();
@@ -144,20 +163,28 @@ export async function createMember({
 		first_name: faker.person.firstName(),
 		last_name: faker.person.lastName(),
 		email: email,
-		date_of_birth: faker.date.birthdate({ min: 16, max: 65, mode: 'age' }),
-		pronouns: faker.helpers.arrayElement(['he/him', 'she/her', 'they/them']),
+		date_of_birth: faker.date.birthdate({ min: 16, max: 65, mode: "age" }),
+		pronouns: faker.helpers.arrayElement([
+			"he/him",
+			"she/her",
+			"they/them",
+		]),
 		gender: faker.helpers.arrayElement([
-			'man (cis)',
-			'woman (cis)',
-			'non-binary'
-		] as Database['public']['Enums']['gender'][]),
-		weapon: faker.helpers.arrayElement(['longsword', 'rapier', 'sabre']),
-		phone_number: faker.phone.number({ style: 'international' }),
+			"man (cis)",
+			"woman (cis)",
+			"non-binary",
+		] as Database["public"]["Enums"]["gender"][]),
+		weapon: faker.helpers.arrayElement(["longsword", "rapier", "sabre"]),
+		phone_number: faker.phone.number({ style: "international" }),
 		next_of_kin: {
 			name: faker.person.fullName(),
-			phone_number: faker.phone.number({ style: 'international' })
+			phone_number: faker.phone.number({ style: "international" }),
 		},
-		medical_conditions: faker.helpers.arrayElement(['None', 'Asthma', 'Previous knee injury'])
+		medical_conditions: faker.helpers.arrayElement([
+			"None",
+			"Asthma",
+			"Previous knee injury",
+		]),
 	};
 	async function cleanUp() {
 		// We need to create another client because when we use verifyOtp, we are effectively
@@ -165,14 +192,14 @@ export async function createMember({
 		const client = getSupabaseServiceClient();
 		if (waitlisEntry?.data?.profile_id) {
 			await client
-				.from('member_profiles')
+				.from("member_profiles")
 				.delete()
-				.eq('user_profile_id', waitlisEntry.data.profile_id)
+				.eq("user_profile_id", waitlisEntry.data.profile_id)
 				.throwOnError();
 			await client
-				.from('user_profiles')
+				.from("user_profiles")
 				.delete()
-				.eq('id', waitlisEntry.data.profile_id)
+				.eq("id", waitlisEntry.data.profile_id)
 				.throwOnError();
 		}
 		if (inviteLink.data.user?.id) {
@@ -184,15 +211,15 @@ export async function createMember({
 		return Promise.resolve();
 	}
 	const waitlisEntry = await supabaseServiceClient
-		.rpc('insert_waitlist_entry', {
+		.rpc("insert_waitlist_entry", {
 			first_name: testData.first_name,
 			last_name: testData.last_name,
 			email: testData.email,
 			date_of_birth: testData.date_of_birth.toISOString(),
 			phone_number: testData.phone_number.toString(),
 			pronouns: testData.pronouns,
-			gender: testData.gender as Database['public']['Enums']['gender'],
-			medical_conditions: testData.medical_conditions
+			gender: testData.gender as Database["public"]["Enums"]["gender"],
+			medical_conditions: testData.medical_conditions,
 		})
 		.single();
 	if (waitlisEntry.error) {
@@ -200,8 +227,8 @@ export async function createMember({
 	}
 	const inviteLink = await supabaseServiceClient.auth.admin.createUser({
 		email: testData.email,
-		password: 'password',
-		email_confirm: true
+		password: "password",
+		email_confirm: true,
 	});
 	if (inviteLink.error) {
 		throw new Error(inviteLink.error.message);
@@ -209,53 +236,55 @@ export async function createMember({
 	let cleanUpFn: () => Promise<void>;
 	let customerId: string | null = null;
 	if (createSubscription) {
-		const { cleanUp, ...rest } = await createStripeCustomerWithSubscription(testData.email);
+		const { cleanUp, ...rest } = await createStripeCustomerWithSubscription(
+			testData.email,
+		);
 		customerId = rest.customerId;
 		cleanUpFn = cleanUp;
 	}
 
 	await supabaseServiceClient
-		.from('user_profiles')
+		.from("user_profiles")
 		.update({
 			supabase_user_id: inviteLink.data.user.id,
 			waitlist_id: waitlisEntry.data.waitlist_id,
-			customer_id: customerId
+			customer_id: customerId,
 		})
-		.eq('id', waitlisEntry.data.profile_id)
+		.eq("id", waitlisEntry.data.profile_id)
 		.select()
 		.throwOnError();
 
 	await supabaseServiceClient
-		.from('user_roles')
+		.from("user_roles")
 		.insert(
 			Array.from(roles)
-				.filter((role) => role !== 'member')
+				.filter((role) => role !== "member")
 				.map((role) => ({
 					user_id: inviteLink.data.user.id,
-					role
-				}))
+					role,
+				})),
 		)
 		.throwOnError();
 
 	await supabaseServiceClient
-		.from('waitlist')
+		.from("waitlist")
 		.update({
-			status: 'completed'
+			status: "completed",
 		})
-		.eq('email', testData.email)
+		.eq("email", testData.email)
 		.throwOnError();
 
 	const { data } = await supabaseServiceClient
-		.rpc('complete_member_registration', {
-			v_user_id: inviteLink.data.user?.id || '',
+		.rpc("complete_member_registration", {
+			v_user_id: inviteLink.data.user?.id || "",
 			p_next_of_kin_name: testData.next_of_kin.name,
 			p_next_of_kin_phone: testData.next_of_kin.phone_number,
-			p_insurance_form_submitted: true
+			p_insurance_form_submitted: true,
 		})
 		.throwOnError();
 	const verifyOtp = await supabaseServiceClient.auth.signInWithPassword({
 		email: testData.email,
-		password: 'password'
+		password: "password",
 	});
 	if (verifyOtp.error) {
 		throw new Error(verifyOtp.error.message);
@@ -268,7 +297,7 @@ export async function createMember({
 		session: verifyOtp.data.session,
 		memberId: data,
 		userId: verifyOtp.data.user?.id,
-		cleanUp
+		cleanUp,
 	});
 }
 
@@ -277,41 +306,43 @@ export async function createStripeCustomerWithSubscription(email: string) {
 	const customer = await stripeClient.customers.create({
 		email,
 		metadata: {
-			source: 'test'
-		}
+			source: "test",
+		},
 	});
 
 	// Create a SEPA Direct Debit payment method
 	const paymentMethod = await stripeClient.paymentMethods.create({
-		type: 'sepa_debit',
+		type: "sepa_debit",
 		sepa_debit: {
-			iban: 'IE29AIBK93115212345678'
+			iban: "IE29AIBK93115212345678",
 		},
 		billing_details: {
 			email,
-			name: 'Test User'
-		}
+			name: "Test User",
+		},
 	});
 
 	// Attach the payment method to the customer
 	await stripeClient.paymentMethods.attach(paymentMethod.id, {
-		customer: customer.id
+		customer: customer.id,
 	});
 
 	// Set as default payment method
 	await stripeClient.customers.update(customer.id, {
 		invoice_settings: {
-			default_payment_method: paymentMethod.id
-		}
+			default_payment_method: paymentMethod.id,
+		},
 	});
 
 	// Get the price ID for the membership fee
 	let prices = await stripeClient.prices.search({
-		query: `lookup_key:'${MEMBERSHIP_FEE_LOOKUP_NAME}'`
+		query: `lookup_key:'${MEMBERSHIP_FEE_LOOKUP_NAME}'`,
 	});
 
 	if (!prices.data.length) {
-		throw new Error(`No price found with lookup key: ${MEMBERSHIP_FEE_LOOKUP_NAME}`);
+		throw new Error(
+			`No price found with lookup key: ${MEMBERSHIP_FEE_LOOKUP_NAME}`,
+		);
 	}
 
 	// Create the subscription
@@ -319,12 +350,12 @@ export async function createStripeCustomerWithSubscription(email: string) {
 		customer: customer.id,
 		items: [{ price: prices.data[0].id }],
 		default_payment_method: paymentMethod.id,
-		expand: ['latest_invoice.payment_intent']
+		expand: ["latest_invoice.payment_intent"],
 	});
 
 	// Get the price ID for the membership fee
 	prices = await stripeClient.prices.search({
-		query: `lookup_key:'${ANNUAL_FEE_LOOKUP}'`
+		query: `lookup_key:'${ANNUAL_FEE_LOOKUP}'`,
 	});
 
 	if (!prices.data.length) {
@@ -336,7 +367,7 @@ export async function createStripeCustomerWithSubscription(email: string) {
 		customer: customer.id,
 		items: [{ price: prices.data[0].id }],
 		default_payment_method: paymentMethod.id,
-		expand: ['latest_invoice.payment_intent']
+		expand: ["latest_invoice.payment_intent"],
 	});
 
 	return {
@@ -345,7 +376,7 @@ export async function createStripeCustomerWithSubscription(email: string) {
 		paymentMethodId: paymentMethod.id,
 		async cleanUp() {
 			await stripeClient.customers.del(customer.id);
-		}
+		},
 	};
 }
 
@@ -354,19 +385,20 @@ export async function setupInvitedUser(
 		addInvitation: boolean;
 		addSupabaseId: boolean;
 		email: string;
-		invitationStatus: Database['public']['Enums']['invitation_status'];
+		invitationStatus: Database["public"]["Enums"]["invitation_status"];
 		token: string;
-	}> = {}
+	}> = {},
 ) {
 	const defaultInviteValues = {
 		addInvitation: true,
 		addSupabaseId: true,
-		invitationStatus: 'pending' as Database['public']['Enums']['invitation_status']
+		invitationStatus:
+			"pending" as Database["public"]["Enums"]["invitation_status"],
 	};
 	const overrides = {
 		...defaultInviteValues,
 		...params,
-		email: params.email || faker.internet.email().toLowerCase()
+		email: params.email || faker.internet.email().toLowerCase(),
 	};
 
 	const { addSupabaseId, addInvitation, invitationStatus, email } = overrides;
@@ -377,141 +409,199 @@ export async function setupInvitedUser(
 		first_name: faker.person.firstName(),
 		last_name: faker.person.lastName(),
 		email,
-		date_of_birth: faker.date.birthdate({ min: 16, max: 65, mode: 'age' }),
-		pronouns: faker.helpers.arrayElement(['he/him', 'she/her', 'they/them']),
+		date_of_birth: faker.date.birthdate({ min: 16, max: 65, mode: "age" }),
+		pronouns: faker.helpers.arrayElement([
+			"he/him",
+			"she/her",
+			"they/them",
+		]),
 		gender: faker.helpers.arrayElement([
-			'man (cis)',
-			'woman (cis)',
-			'non-binary'
-		] as Database['public']['Enums']['gender'][]),
-		weapon: faker.helpers.arrayElement(['longsword', 'rapier', 'sabre']),
-		phone_number: faker.phone.number({ style: 'international' }),
+			"man (cis)",
+			"woman (cis)",
+			"non-binary",
+		] as Database["public"]["Enums"]["gender"][]),
+		weapon: faker.helpers.arrayElement(["longsword", "rapier", "sabre"]),
+		phone_number: faker.phone.number({ style: "international" }),
 		next_of_kin: {
 			name: faker.person.fullName(),
-			phone_number: faker.phone.number({ style: 'international' })
+			phone_number: faker.phone.number({ style: "international" }),
 		},
-		medical_conditions: faker.helpers.arrayElement(['None', 'Asthma', 'Previous knee injury'])
+		medical_conditions: faker.helpers.arrayElement([
+			"None",
+			"Asthma",
+			"Previous knee injury",
+		]),
 	};
 
-	// Create user profile using direct database query instead of RPC
-	const { data: userProfileData, error: userProfileError } = await supabaseServiceClient
+	// Create a user in Supabase Auth
+	const { data: authData, error: authError } = await supabaseServiceClient.auth.admin
+		.createUser({
+			email: testData.email,
+			password: "password",
+			email_confirm: true,
+			user_metadata: {
+				first_name: testData.first_name,
+				last_name: testData.last_name,
+			},
+		});
+
+	if (authError) {
+		throw new Error(`Error creating user: ${authError.message}`);
+	}
+
+	// Create a Stripe customer for the invited user
+	const customer = await stripeClient.customers.create({
+		name: `${testData.first_name} ${testData.last_name}`,
+		email: testData.email,
+		metadata: {
+			invited_by: "e2e-test",
+		},
+	});
+
+	// Calculate expiration date (24 hours from now)
+	const expiresAt = new Date();
+	expiresAt.setHours(expiresAt.getHours() + 24);
+
+	// Create invitation using the stored procedure
+	// This will also create the user profile
+	const { data: invitationId, error: invitationError } = await supabaseServiceClient
+		.rpc('create_invitation', {
+			v_user_id: authData.user.id,
+			p_email: testData.email,
+			p_first_name: testData.first_name,
+			p_last_name: testData.last_name,
+			p_date_of_birth: testData.date_of_birth.toISOString(),
+			p_phone_number: testData.phone_number,
+			p_invitation_type: 'admin',
+			p_waitlist_id: undefined,
+			p_expires_at: expiresAt.toISOString(),
+			p_metadata: {}
+		});
+
+	if (invitationError) {
+		throw new Error(`Error creating invitation: ${invitationError.message}`);
+	}
+
+	// Update user profile with customer ID directly
+	const { error: profileError } = await supabaseServiceClient
 		.from('user_profiles')
+		.update({ customer_id: customer.id })
+		.eq('supabase_user_id', authData.user.id);
+
+	if (profileError) {
+		throw new Error(`Error updating user profile: ${profileError.message}`);
+	}
+
+	// User profile already has customer_id from the upsert operation above
+
+	// Get price IDs for subscriptions
+	const [monthlyPrices, annualPrices] = await Promise.all([
+		stripeClient.prices.search({
+			query: `lookup_key:'${MEMBERSHIP_FEE_LOOKUP_NAME}'`,
+		}),
+		stripeClient.prices.search({
+			query: `lookup_key:'${ANNUAL_FEE_LOOKUP}'`,
+		}),
+	]);
+
+	if (!monthlyPrices.data.length || !annualPrices.data.length) {
+		throw new Error('Failed to retrieve price IDs from Stripe');
+	}
+
+	// Create new subscriptions using Promise.all like in the Deno function
+	const [monthlySubscription, annualSubscription] = await Promise.all([
+		stripeClient.subscriptions.create({
+			customer: customer.id,
+			items: [{ price: monthlyPrices.data[0].id }],
+			billing_cycle_anchor_config: {
+				day_of_month: 1,
+			},
+			payment_behavior: 'default_incomplete',
+			payment_settings: {
+				payment_method_types: ['sepa_debit'],
+			},
+			expand: ['latest_invoice.payments'],
+			collection_method: 'charge_automatically',
+		}),
+		stripeClient.subscriptions.create({
+			customer: customer.id,
+			items: [{ price: annualPrices.data[0].id }],
+			payment_behavior: 'default_incomplete',
+			payment_settings: {
+				payment_method_types: ['sepa_debit'],
+			},
+			billing_cycle_anchor_config: {
+				month: 1,
+				day_of_month: 7,
+			},
+			expand: ['latest_invoice.payments'],
+			collection_method: 'charge_automatically',
+		}),
+	]);
+
+	// Extract payment intents exactly as in the Deno function
+	const monthlyInvoice = monthlySubscription.latest_invoice as any;
+	const annualInvoice = annualSubscription.latest_invoice as any;
+	const monthlyPayment = monthlyInvoice.payments?.data?.[0]?.payment!;
+	const annualPayment = annualInvoice.payments?.data?.[0]?.payment!;
+	
+	// Extract payment intent IDs
+	const monthlyPaymentIntent = monthlyPayment.payment_intent! as string;
+	const annualPaymentIntent = annualPayment.payment_intent! as string;
+
+	// Create payment session directly in the database since create_payment_session stored procedure isn't available
+	const { data: sessionData, error: sessionError } = await supabaseServiceClient
+		.from('payment_sessions')
 		.insert({
-			first_name: testData.first_name,
-			last_name: testData.last_name,
-			date_of_birth: testData.date_of_birth.toISOString(),
-			phone_number: testData.phone_number,
-			pronouns: testData.pronouns,
-			gender: testData.gender,
-			medical_conditions: testData.medical_conditions,
-			is_active: false
+			user_id: authData.user.id,
+			monthly_subscription_id: monthlySubscription.id,
+			annual_subscription_id: annualSubscription.id,
+			monthly_payment_intent_id: monthlyPaymentIntent,
+			annual_payment_intent_id: annualPaymentIntent,
+			monthly_amount: monthlyInvoice.amount_due,
+			annual_amount: annualInvoice.amount_due,
+			total_amount: monthlyInvoice.amount_due + annualInvoice.amount_due,
+			expires_at: expiresAt.toISOString(),
 		})
 		.select()
 		.single();
 
-	if (userProfileError) {
-		throw new Error(userProfileError.message);
+	if (sessionError) {
+		throw new Error(`Error creating payment session: ${sessionError.message}`);
 	}
-
-	if (!userProfileData) {
-		throw new Error('Failed to create user profile');
-	}
-
-	// Create auth user
-	const inviteLink = await supabaseServiceClient.auth.admin.createUser({
-		email: testData.email,
-		password: 'password',
-		email_confirm: true
-	});
-
-	if (inviteLink.error) {
-		throw new Error(inviteLink.error.message);
-	}
-
-	if (!inviteLink.data.user) {
-		throw new Error('Failed to create auth user');
-	}
-
-	// Update user profile with Supabase user ID
-	await supabaseServiceClient
-		.from('user_profiles')
-		.update({
-			supabase_user_id: addSupabaseId ? inviteLink.data.user.id : null
-		})
-		.eq('id', userProfileData.id)
-		.select()
-		.throwOnError();
-
-	// Create invitation using direct database query instead of RPC
-	let invitationId: string | null = null;
-	if (addInvitation) {
-		const expiresAt =
-			invitationStatus === 'expired'
-				? new Date(Date.now() - 86400000).toISOString() // 1 day ago
-				: new Date(Date.now() + 604800000).toISOString(); // 7 days from now
-
-		const { data: invitationData, error: invitationError } = await supabaseServiceClient
-			.from('invitations')
-			.insert({
-				email: testData.email,
-				invitation_type: 'workshop',
-				expires_at: expiresAt,
-				status: invitationStatus,
-				metadata: { test: true },
-				user_id: addSupabaseId && inviteLink.data.user ? inviteLink.data.user.id : null
-			})
-			.select()
-			.single();
-
-		if (invitationError) {
-			throw new Error(invitationError.message);
-		}
-
-		if (!invitationData) {
-			throw new Error('Failed to create invitation');
-		}
-
-		invitationId = invitationData.id;
-	}
-
-	// Sign in to get access token
-	const verifyOtp = await supabaseServiceClient.auth.signInWithPassword({
-		email: testData.email,
-		password: 'password'
-	});
-
-	if (verifyOtp.error) {
-		throw new Error(verifyOtp.error.message);
-	}
-
-	if (!verifyOtp.data.session || !verifyOtp.data.session.access_token) {
-		throw new Error('Failed to get access token');
-	}
-
-	await supabaseServiceClient.auth.signOut();
-
 	// Cleanup function
 	async function cleanUp() {
-		const client = getSupabaseServiceClient();
-		await client.from('payment_sessions').delete().eq('user_id', inviteLink.data.user!.id).throwOnError();
-		return Promise.all([
-			userProfileData
-				? client.from('user_profiles').delete().eq('id', userProfileData.id).throwOnError()
-				: Promise.resolve(),
-			inviteLink.data.user
-				? client.auth.admin.deleteUser(inviteLink.data.user.id)
-				: Promise.resolve(),
-			invitationId
-				? client.from('invitations').delete().eq('id', invitationId).throwOnError()
-				: Promise.resolve()
+		const client = await createSeedClient();
+		await client.$resetDatabase([
+			"public.payment_sessions",
+			"public.user_profiles",
+			"public.invitations",
 		]);
 	}
 
 	return Promise.resolve({
 		...testData,
-		invitationId,
-		profileId: userProfileData.id,
-		token: overrides.token || verifyOtp.data.session.access_token,
-		cleanUp
+		token: async () => {
+			// Sign in to get access token
+			const verifyOtp = await supabaseServiceClient.auth
+				.signInWithPassword({
+					email: testData.email,
+					password: "password",
+				});
+
+			if (verifyOtp.error) {
+				throw new Error(verifyOtp.error.message);
+			}
+
+			if (
+				!verifyOtp.data.session || !verifyOtp.data.session.access_token
+			) {
+				throw new Error("Failed to get access token");
+			}
+
+			await supabaseServiceClient.auth.signOut();
+			return verifyOtp.data.session.access_token;
+		},
+		cleanUp,
 	});
 }

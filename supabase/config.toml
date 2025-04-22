@@ -244,6 +244,7 @@ enabled = true
 # Use `oneshot` for hot reload, or `per_worker` for load testing.
 policy = "per_worker"
 inspector_port = 8083
+deno_version = 2
 
 [analytics]
 enabled = true

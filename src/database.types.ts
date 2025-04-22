@@ -34,6 +34,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      invitation_processing_logs: {
+        Row: {
+          created_at: string
+          failure_count: number
+          id: string
+          results: Json
+          success_count: number
+          total_count: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          failure_count: number
+          id?: string
+          results: Json
+          success_count: number
+          total_count: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          failure_count?: number
+          id?: string
+          results?: Json
+          success_count?: number
+          total_count?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
       invitations: {
         Row: {
           created_at: string

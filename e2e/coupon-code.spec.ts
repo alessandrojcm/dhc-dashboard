@@ -144,7 +144,7 @@ test.describe('Member Signup - Coupon Codes', () => {
 
 	test.beforeEach(async ({ page }) => {
 		// Start from the signup page
-		await page.goto('/members/signup/callback#access_token=' + testData.token);
+		await page.goto('/members/signup/callback#access_token=' + (await testData.token()));
 		await page.waitForURL('/members/signup');
 		// Wait for the form to be visible
 		await page.waitForSelector('form');

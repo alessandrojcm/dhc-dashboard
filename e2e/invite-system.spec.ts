@@ -53,8 +53,6 @@ test.describe('Invitation System', () => {
 		// Fill phone number
 		await page.getByLabel('Phone Number').fill('123456789');
 
-		// Set expiration days
-		await page.getByLabel('Expiration (days)').fill('14');
 
 		// Add to list first
 		await page.getByRole('button', { name: 'Add to List' }).click();
@@ -62,13 +60,14 @@ test.describe('Invitation System', () => {
 		// Verify the invitation was added to the list
 		await expect(page.getByText(testEmail)).toBeVisible();
 		await expect(page.getByText('Invite List (1)')).toBeVisible();
-
 		// Then send the invite - note that the form is now empty but that's OK
 		// The "Send Invitations" button submits a different form with the invites list
 		await page.getByRole('button', { name: 'Send 1 Invitations' }).click();
 
 		// Verify success message with a longer timeout
-		await expect(page.getByText('Success!')).toBeVisible({ timeout: 10000 });
+		await expect(
+  page.getByText('Invitations are being processed in the background. You will be notified when completed.', { exact: false })
+).toBeVisible({ timeout: 10000 });
 	});
 
 	test('should validate required fields when adding to list', async ({ page }) => {
@@ -111,7 +110,6 @@ test.describe('Invitation System', () => {
 		await page.getByLabel(dateOfBirth.format('dddd, MMMM D,')).click();
 
 		await page.getByLabel('Phone Number').fill('123456789');
-		await page.getByLabel('Expiration (days)').fill('14');
 
 		// Click "Add to List" button
 		await page.getByRole('button', { name: 'Add to List' }).click();
@@ -137,7 +135,6 @@ test.describe('Invitation System', () => {
 		await page.getByLabel(dateOfBirth2.format('dddd, MMMM D,')).click();
 
 		await page.getByLabel('Phone Number').fill('987654321');
-		await page.getByLabel('Expiration (days)').fill('7');
 
 		// Click "Add to List" button
 		await page.getByRole('button', { name: 'Add to List' }).click();
@@ -153,7 +150,9 @@ test.describe('Invitation System', () => {
 		await page.getByRole('button', { name: 'Send 2 Invitations' }).click();
 
 		// Verify success message with a longer timeout
-		await expect(page.getByText('Success!')).toBeVisible({ timeout: 10000 });
+		await expect(
+  page.getByText('Invitations are being processed in the background. You will be notified when completed.', { exact: false })
+).toBeVisible({ timeout: 10000 });
 	});
 
 	test('should be able to remove invitations from the list', async ({ page }) => {
@@ -181,7 +180,6 @@ test.describe('Invitation System', () => {
 		await page.getByLabel(dateOfBirth.format('dddd, MMMM D,')).click();
 
 		await page.getByLabel('Phone Number').fill('123456789');
-		await page.getByLabel('Expiration (days)').fill('14');
 
 		// Click "Add to List" button
 		await page.getByRole('button', { name: 'Add to List' }).click();
@@ -204,7 +202,6 @@ test.describe('Invitation System', () => {
 		await page.getByLabel(dateOfBirth2.format('dddd, MMMM D,')).click();
 		await expect(page.getByLabel('Phone Number')).toBeVisible();
 		await page.getByLabel('Phone Number').fill('987654321');
-		await page.getByLabel('Expiration (days)').fill('7');
 
 		// Click "Add to List" button
 		await page.getByRole('button', { name: 'Add to List' }).click();
