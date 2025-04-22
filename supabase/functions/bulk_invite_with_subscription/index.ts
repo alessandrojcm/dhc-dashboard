@@ -505,6 +505,13 @@ async function processInvitations(
     console.log(
       `Completed processing ${invites.length} invitations in ${processingTime}s`,
     );
+    // send notification to the user that created the invitation
+    await db.insertInto('notifications')
+    .values({
+      user_id: user.id,
+      body: `Successfully processed ${results.length} invitations out of ${invites.length}`,
+    })
+    .execute();
     return results;
   } catch (error) {
     Sentry.captureException(error);

@@ -6,6 +6,8 @@
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import type { NavData, UserData } from '$lib/types';
 	import DHCLogo from '/src/assets/images/dhc-logo.png?enhanced';
+	import NotificationCenter from '$lib/components/notifications/NotificationCenter.svelte';
+	import type { SupabaseClient } from '@supabase/supabase-js';
 
 	type Props = {
 		className?: string | undefined | null;
@@ -13,6 +15,7 @@
 		userData: Promise<Partial<UserData>>;
 		roles: Set<string>;
 		navData: NavData;
+		supabase: SupabaseClient;
 	};
 
 	let {
@@ -22,6 +25,7 @@
 		logout,
 		roles,
 		navData: data,
+		supabase,
 		...restProps
 	}: ComponentProps<typeof Sidebar.Root> & Props = $props();
 </script>
@@ -68,6 +72,12 @@
 	</Sidebar.Content>
 	<Sidebar.Footer class="m-2 mb-4">
 		<Sidebar.Menu>
+			<!-- Notifications Item -->
+			<Sidebar.MenuItem>
+				<NotificationCenter {supabase} />
+			</Sidebar.MenuItem>
+
+			<!-- User Profile Item -->
 			<Sidebar.MenuItem>
 				<DropdownMenu.Root>
 					{#await userData}
