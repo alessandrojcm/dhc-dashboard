@@ -379,7 +379,7 @@ export async function createStripeCustomerWithSubscription(email: string) {
 		},
 	};
 }
-// TODO: figure out the setup function
+
 export async function setupInvitedUser(
 	params: Partial<{
 		addInvitation: boolean;
@@ -433,21 +433,142 @@ export async function setupInvitedUser(
 		]),
 	};
 
-	await supabaseServiceClient.functions.invoke(
-		"bulk_invite_with_subscription",
-		{
-			body: {
-				invites: [{
-					firstName: testData.first_name,
-					lastName: testData.last_name,
-					email,
-					phoneNumber: testData.phone_number,
-					dateOfBirth: testData.date_of_birth,
-				}],
+	// Create a user in Supabase Auth
+	const { data: authData, error: authError } = await supabaseServiceClient.auth.admin
+		.createUser({
+			email: testData.email,
+			password: "password",
+			email_confirm: true,
+			user_metadata: {
+				first_name: testData.first_name,
+				last_name: testData.last_name,
 			},
-			method: "POST",
+		});
+
+	if (authError) {
+		throw new Error(`Error creating user: ${authError.message}`);
+	}
+
+	// Create a Stripe customer for the invited user
+	const customer = await stripeClient.customers.create({
+		name: `${testData.first_name} ${testData.last_name}`,
+		email: testData.email,
+		metadata: {
+			invited_by: "e2e-test",
 		},
-	);
+	});
+
+	// Calculate expiration date (24 hours from now)
+	const expiresAt = new Date();
+	expiresAt.setHours(expiresAt.getHours() + 24);
+
+	// Create invitation using the stored procedure
+	// This will also create the user profile
+	const { data: invitationId, error: invitationError } = await supabaseServiceClient
+		.rpc('create_invitation', {
+			v_user_id: authData.user.id,
+			p_email: testData.email,
+			p_first_name: testData.first_name,
+			p_last_name: testData.last_name,
+			p_date_of_birth: testData.date_of_birth.toISOString(),
+			p_phone_number: testData.phone_number,
+			p_invitation_type: 'admin',
+			p_waitlist_id: undefined,
+			p_expires_at: expiresAt.toISOString(),
+			p_metadata: {}
+		});
+
+	if (invitationError) {
+		throw new Error(`Error creating invitation: ${invitationError.message}`);
+	}
+
+	// Update user profile with customer ID directly
+	const { error: profileError } = await supabaseServiceClient
+		.from('user_profiles')
+		.update({ customer_id: customer.id })
+		.eq('supabase_user_id', authData.user.id);
+
+	if (profileError) {
+		throw new Error(`Error updating user profile: ${profileError.message}`);
+	}
+
+	// User profile already has customer_id from the upsert operation above
+
+	// Get price IDs for subscriptions
+	const [monthlyPrices, annualPrices] = await Promise.all([
+		stripeClient.prices.search({
+			query: `lookup_key:'${MEMBERSHIP_FEE_LOOKUP_NAME}'`,
+		}),
+		stripeClient.prices.search({
+			query: `lookup_key:'${ANNUAL_FEE_LOOKUP}'`,
+		}),
+	]);
+
+	if (!monthlyPrices.data.length || !annualPrices.data.length) {
+		throw new Error('Failed to retrieve price IDs from Stripe');
+	}
+
+	// Create new subscriptions using Promise.all like in the Deno function
+	const [monthlySubscription, annualSubscription] = await Promise.all([
+		stripeClient.subscriptions.create({
+			customer: customer.id,
+			items: [{ price: monthlyPrices.data[0].id }],
+			billing_cycle_anchor_config: {
+				day_of_month: 1,
+			},
+			payment_behavior: 'default_incomplete',
+			payment_settings: {
+				payment_method_types: ['sepa_debit'],
+			},
+			expand: ['latest_invoice.payments'],
+			collection_method: 'charge_automatically',
+		}),
+		stripeClient.subscriptions.create({
+			customer: customer.id,
+			items: [{ price: annualPrices.data[0].id }],
+			payment_behavior: 'default_incomplete',
+			payment_settings: {
+				payment_method_types: ['sepa_debit'],
+			},
+			billing_cycle_anchor_config: {
+				month: 1,
+				day_of_month: 7,
+			},
+			expand: ['latest_invoice.payments'],
+			collection_method: 'charge_automatically',
+		}),
+	]);
+
+	// Extract payment intents exactly as in the Deno function
+	const monthlyInvoice = monthlySubscription.latest_invoice as any;
+	const annualInvoice = annualSubscription.latest_invoice as any;
+	const monthlyPayment = monthlyInvoice.payments?.data?.[0]?.payment!;
+	const annualPayment = annualInvoice.payments?.data?.[0]?.payment!;
+	
+	// Extract payment intent IDs
+	const monthlyPaymentIntent = monthlyPayment.payment_intent! as string;
+	const annualPaymentIntent = annualPayment.payment_intent! as string;
+
+	// Create payment session directly in the database since create_payment_session stored procedure isn't available
+	const { data: sessionData, error: sessionError } = await supabaseServiceClient
+		.from('payment_sessions')
+		.insert({
+			user_id: authData.user.id,
+			monthly_subscription_id: monthlySubscription.id,
+			annual_subscription_id: annualSubscription.id,
+			monthly_payment_intent_id: monthlyPaymentIntent,
+			annual_payment_intent_id: annualPaymentIntent,
+			monthly_amount: monthlyInvoice.amount_due,
+			annual_amount: annualInvoice.amount_due,
+			total_amount: monthlyInvoice.amount_due + annualInvoice.amount_due,
+			expires_at: expiresAt.toISOString(),
+		})
+		.select()
+		.single();
+
+	if (sessionError) {
+		throw new Error(`Error creating payment session: ${sessionError.message}`);
+	}
 	// Cleanup function
 	async function cleanUp() {
 		const client = await createSeedClient();
