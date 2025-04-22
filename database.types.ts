@@ -188,6 +188,30 @@ export type Database = {
           },
         ]
       }
+      notifications: {
+        Row: {
+          body: string
+          created_at: string
+          id: string
+          read_at: string | null
+          user_id: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          id?: string
+          read_at?: string | null
+          user_id: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          id?: string
+          read_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       payment_sessions: {
         Row: {
           annual_amount: number
@@ -697,6 +721,10 @@ export type Database = {
       mark_expired_invitations: {
         Args: Record<PropertyKey, never>
         Returns: number
+      }
+      mark_notification_as_read: {
+        Args: { notification_id: string }
+        Returns: undefined
       }
       update_invitation_status: {
         Args: {
