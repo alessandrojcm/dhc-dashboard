@@ -21,7 +21,12 @@
 	import { goto } from '$app/navigation';
 	import * as Alert from '$lib/components/ui/alert';
 	import PhoneInput from '$lib/components/ui/phone-input.svelte';
-	import { createMutation, createQuery } from '@tanstack/svelte-query';
+	import {
+		createMutation,
+		createQuery,
+		QueryObserver,
+		useQueryClient
+	} from '@tanstack/svelte-query';
 	import type { PlanPricing } from '$lib/types.js';
 	import PricingDisplay from './pricing-display.svelte';
 
@@ -135,10 +140,11 @@
 	});
 	const { form: formData, enhance, submitting } = form;
 	const formatedPhone = $derived.by(() => parsePhoneNumberFromString(data.userData.phoneNumber!));
+	const queryKey = $derived(['plan-pricing', couponCode]);
 
 	// Keep planData query for coupon updates, but initial display uses streamed data
 	const planData = createQuery(() => ({
-		queryKey: ['plan-pricing', couponCode],
+		queryKey,
 		refetchOnMount: true,
 		queryFn: async () => {
 			const res = await fetch(`/api/signup/plan-pricing?coupon=${couponCode}`);
@@ -148,6 +154,9 @@
 			return (await res.json()) as PlanPricing;
 		}
 	}));
+
+	const queryClient = useQueryClient();
+	const queryObserver = $derived.by(() => new QueryObserver(queryClient, { queryKey }));
 
 	const applyCoupon = createMutation(() => ({
 		mutationFn: (code: string) =>
@@ -180,7 +189,12 @@
 					}
 				}
 			});
-			paymentElement?.mount('#payment-element');
+			const observer = queryObserver.subscribe((query) => {
+				if (query.isSuccess) {
+					paymentElement?.mount('#payment-element');
+				}
+			});
+			return observer;
 		});
 	});
 </script>

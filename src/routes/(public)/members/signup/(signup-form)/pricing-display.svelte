@@ -191,12 +191,7 @@
 		</Card.Content>
 	</Card.Root>
 
-	{#if !stripe}
-		<div class="mt-4 h-96 bg-gray-100 animate-pulse rounded-md"></div>
-	{:else}
-		<!-- Stripe Elements mounting div inside the :then block -->
-		<div class="mt-4" id="payment-element"></div>
-	{/if}
+	<div class="mt-4" id="payment-element"></div>
 {:else if (planPricingData as CreateQueryResult<PlanPricing, Error>).isLoading}
 	<!-- Loading state for QueryResult -->
 	<Card.Root class="bg-muted">
