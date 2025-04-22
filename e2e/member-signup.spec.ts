@@ -45,7 +45,7 @@ test.describe('Member Signup - Valid invitation', () => {
 
 	test.beforeEach(async ({ page }) => {
 		// Start from the signup page
-		await page.goto('/members/signup/callback#access_token=' + testData.token);
+		await page.goto('/members/signup/callback#access_token=' + (await testData.token()));
 		await page.waitForURL('/members/signup');
 		// Wait for the form to be visible
 		await page.waitForSelector('form');
@@ -115,7 +115,6 @@ test.describe('Member Signup - Valid invitation', () => {
 		await stripeFrame.getByLabel('City').fill('Dublin');
 		await stripeFrame.getByLabel('Eircode').fill('K45 HR22');
 		await stripeFrame.getByLabel('County').selectOption('County Dublin');
-		await page.pause();
 		await page.getByRole('button', { name: /sign up/i }).click();
 		await expect(
 			page.getByText(
