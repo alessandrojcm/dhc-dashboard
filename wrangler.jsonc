@@ -6,6 +6,7 @@
     "directory": ".cloudflare/public",
     "binding": "ASSETS"
   },
+  "upload_source_maps": true,
   "build": {
     "command": "pnpm run build"
   },
