@@ -232,6 +232,9 @@ enabled = false
 # tenant = "my-auth0-tenant"
 # tenant_region = "us"
 
+[functions.stripe-webhooks]
+verify_jwt = false
+
 # Use AWS Cognito (Amplify) as a third-party provider alongside Supabase Auth.
 [auth.third_party.aws_cognito]
 enabled = false
