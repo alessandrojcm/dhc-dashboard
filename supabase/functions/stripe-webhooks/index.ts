@@ -2,25 +2,19 @@
 // https://deno.land/manual/getting_started/setup_your_environment
 // This enables autocomplete, go to definition, etc.
 
-import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
-import { Stripe } from 'https://esm.sh/stripe@17.5.0/';
-import type { Stripe as TStripe } from 'https://esm.sh/v135/stripe@17.5.0/types/index.d.ts';
+import { Stripe } from 'stripe';
 import dayjs from 'npm:dayjs';
 import { db } from '../_shared/db.ts';
+import { corsHeaders } from '../_shared/cors.ts';
 
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') ?? '', {
-	apiVersion: '2024-12-18.acacia',
+	apiVersion: '2025-03-31.basil',
 	maxNetworkRetries: 3,
 	timeout: 30 * 1000,
 	httpClient: Stripe.createFetchHttpClient()
 });
 
-const corsHeaders = {
-	'Access-Control-Allow-Origin': '*',
-	'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type'
-};
-
-const allowedEvents: TStripe.Event.Type[] = [
+const allowedEvents: Stripe.Event.Type[] = [
 	'checkout.session.completed',
 	'customer.subscription.created',
 	'customer.subscription.updated',
@@ -71,7 +65,7 @@ async function setUserInactive(customerId: string) {
 async function syncStripeDataToKV(customerId: string) {
 	try {
 		// Fetch latest subscription data from Stripe
-		const subscriptions: { data: TStripe.Subscription[] } = await stripe.subscriptions.list({
+		const subscriptions: { data: Stripe.Subscription[] } = await stripe.subscriptions.list({
 			customer: customerId,
 			limit: 2, // User can have at most 2 subscriptions
 			status: 'all',
@@ -129,7 +123,7 @@ Deno.serve(async (req) => {
 		);
 
 		// Check if event type is in allowed events
-		if (!allowedEvents.includes(event.type as TStripe.Event.Type)) {
+		if (!allowedEvents.includes(event.type as Stripe.Event.Type)) {
 			console.log(`Ignoring unhandled event type: ${event.type}`);
 			return new Response(JSON.stringify({ received: true }), {
 				headers: { ...corsHeaders, 'Content-Type': 'application/json' },

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Database } from '$database';
 	import { Alert, AlertDescription, AlertTitle } from '$lib/components/ui/alert';
 	import { Button } from '$lib/components/ui/button';
 	import { Card } from '$lib/components/ui/card';
@@ -9,43 +10,64 @@
 	import { ScrollArea } from '$lib/components/ui/scroll-area';
 	import { Separator } from '$lib/components/ui/separator';
 	import * as Sheet from '$lib/components/ui/sheet/index.js';
-	import {
-		adminInviteSchema,
-		type AdminInviteSchemaOutput,
-		bulkInviteSchema,
-		type BulkInviteSchemaOutput
-	} from '$lib/schemas/adminInvite';
+	import { bulkInviteSchema, adminInviteSchema } from '$lib/schemas/adminInvite';
 	import { fromDate, getLocalTimeZone } from '@internationalized/date';
+	import type { SupabaseClient } from '@supabase/supabase-js';
 	import dayjs from 'dayjs';
 	import { Info, Loader, Plus, Trash2 } from 'lucide-svelte';
-	import { valibotClient } from 'sveltekit-superforms/adapters';
-	import { dateProxy, superForm, type SuperValidated } from 'sveltekit-superforms/client';
-
-	const props: {
-		inviteForm: SuperValidated<AdminInviteSchemaOutput, any, AdminInviteSchemaOutput>;
-		bulkInviteForm: SuperValidated<BulkInviteSchemaOutput, any, BulkInviteSchemaOutput>;
-	} = $props();
+	import { valibotClient, valibot } from 'sveltekit-superforms/adapters';
+	import {
+		dateProxy,
+		superForm,
+		defaults,
+		setMessage
+	} from 'sveltekit-superforms/client';
 
 	let isOpen = $state(false);
 
+	const { supabase }: { supabase: SupabaseClient<Database> } = $props();
+
 	// Single invite form
-	const form = superForm(props.inviteForm, {
+	const form = superForm(defaults(valibot(adminInviteSchema)), {
 		validators: valibotClient(adminInviteSchema),
 		applyAction: false,
 		resetForm: true,
-		validationMethod: 'oninput'
+		validationMethod: 'oninput',
+		SPA: true
 	});
 
 	const { form: formData, message, reset: resetForm, validateForm } = form;
 
-	const bulkInviteForm = superForm(props.bulkInviteForm, {
-		taintedMessage: null,
+	const bulkInviteForm = superForm(defaults(valibot(bulkInviteSchema)), {
+		SPA: true,
 		dataType: 'json',
 		validationMethod: 'onsubmit',
 		validators: valibotClient(bulkInviteSchema),
-		onResult: ({ result }: { result: any }) => {
-			if (result.type === 'success') {
+		async onUpdate({ form }) {
+			// Only submit if there are invites
+			if (form.data.invites.length === 0) {
+				setMessage(form, { failure: 'No invites to send.' });
+				return;
+			}
+			try {
+				// Call the Edge Function via fetch (since supabaseClient is deleted)
+				// Assumes you have a public Edge Function endpoint set up
+				// You may need to adjust the URL and headers for your setup
+				const response = await supabase.functions.invoke('bulk_invite_with_subscription', {
+					body: { invites: form.data.invites },
+					method: 'POST'
+				});
+				if (response.error) {
+					setMessage(form, { failure: 'Failed to process invitations. Please try again later.' });
+					return;
+				}
+				setMessage(form, {
+					success:
+						'Invitations are being processed in the background. You will be notified when completed.'
+				});
 				resetBulkForm();
+			} catch (err) {
+				setMessage(form, { failure: 'Failed to create invitations.' });
 			}
 		}
 	});
@@ -55,7 +77,7 @@
 		message: bulkMessage,
 		reset: resetBulkForm,
 		enhance: bulkEnhance,
-		submitting: bulkSubmitting,
+		submitting: bulkSubmitting
 	} = bulkInviteForm;
 	const dobProxy = dateProxy(form, 'dateOfBirth', { format: `date` });
 	const dobValue = $derived.by(() => {
@@ -71,7 +93,7 @@
 		if (!result.valid) {
 			return;
 		}
-		const { firstName, lastName, email, phoneNumber, dateOfBirth, expirationDays } = $formData;
+		const { firstName, lastName, email, phoneNumber, dateOfBirth } = $formData;
 
 		// Only add if we have at least email filled out
 		if (email) {
@@ -82,16 +104,14 @@
 					lastName: lastName || '',
 					email,
 					phoneNumber: phoneNumber || '',
-					dateOfBirth: dateOfBirth || new Date(),
-					expirationDays: expirationDays || 7
+					dateOfBirth: dateOfBirth || new Date()
 				}
 			];
 
 			// Clear the form for the next invite
 			resetForm({
 				newState: {
-					dateOfBirth: new Date(),
-					expirationDays: 7
+					dateOfBirth: new Date()
 				}
 			});
 		}
@@ -125,10 +145,17 @@
 					<Alert variant={$bulkMessage.success ? 'success' : 'destructive'}>
 						<Info class="h-4 w-4" />
 						<AlertTitle>
-							{$bulkMessage.success ? 'Success!' : 'Something went wrong'}
+							{$bulkMessage.success
+								? 'Invitations are being processed in the background.'
+								: 'Something went wrong'}
 						</AlertTitle>
 						<AlertDescription>
-							{$bulkMessage.success || $bulkMessage.failure}
+							{#if $bulkMessage.success}
+								Invitations are being processed in the background. You will be notified when
+								completed.
+							{:else}
+								{$bulkMessage.failure}
+							{/if}
 						</AlertDescription>
 					</Alert>
 				{/if}
@@ -202,27 +229,9 @@
 					</Form.Control>
 					<Form.FieldErrors />
 				</Form.Field>
-
-				<!-- Expiration Days -->
-				<Form.Field {form} name="expirationDays">
-					<Form.Control>
-						{#snippet children({ props })}
-							<Form.Label>Expiration (days)</Form.Label>
-							<Input
-								{...props}
-								type="number"
-								min="1"
-								max="365"
-								bind:value={$formData.expirationDays}
-							/>
-						{/snippet}
-					</Form.Control>
-					<Form.FieldErrors />
-				</Form.Field>
 			</form>
 			<div class="flex justify-between gap-2">
-				<form method="POST" action="?/createBulkInvites" use:bulkEnhance>
-					<input type="hidden" name="invites" value={JSON.stringify($bulkFormData.invites)} />
+				<form use:bulkEnhance>
 					<Button
 						type="submit"
 						class="w-full"
@@ -234,11 +243,7 @@
 						Send {$bulkFormData.invites.length} Invitations
 					</Button>
 				</form>
-				<Button
-					type="button"
-					variant="outline"
-					onclick={addInviteToList}
-				>
+				<Button type="button" variant="outline" onclick={addInviteToList}>
 					<Plus class="mr-2 h-4 w-4" />
 					Add to List
 				</Button>

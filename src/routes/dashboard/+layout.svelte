@@ -50,6 +50,7 @@
 		logout={() => supabase.auth.signOut()}
 		userData={userDataQuery.promise}
 		navData={data.navData}
+		{supabase}
 	/>
 	<main class="w-full">
 		<Breadcrumb.Root class="m-6">
