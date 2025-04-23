@@ -4,11 +4,15 @@ import * as Sentry from '@sentry/sveltekit';
 import type { RequestHandler } from './$types';
 import { getRolesFromSession, allowedToggleRoles } from '$lib/server/roles';
 import { executeWithRLS, getKyselyClient } from '$lib/server/kysely';
+import { invariant } from '$lib/server/invariant';
 
 export const POST: RequestHandler = async ({ locals, platform }) => {
 	try {
+		const { session } = await locals.safeGetSession();
+		invariant(session === null, "Unauthorized");
+		const roles = getRolesFromSession(session!);
 		const canToggleWaitlist =
-			getRolesFromSession(locals.session!).intersection(allowedToggleRoles).size > 0;
+			roles.intersection(allowedToggleRoles).size > 0;
 
 		if (!canToggleWaitlist) {
 			return json({ success: false }, { status: 403 });
@@ -25,7 +29,7 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
 		await executeWithRLS(
 			kysely,
 			{
-				claims: locals.session!
+				claims: session!
 			},
 			async (trx) => {
 				await trx
