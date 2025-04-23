@@ -34,6 +34,36 @@ export type Database = {
   }
   public: {
     Tables: {
+      invitation_processing_logs: {
+        Row: {
+          created_at: string
+          failure_count: number
+          id: string
+          results: Json
+          success_count: number
+          total_count: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          failure_count: number
+          id?: string
+          results: Json
+          success_count: number
+          total_count: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          failure_count?: number
+          id?: string
+          results?: Json
+          success_count?: number
+          total_count?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
       invitations: {
         Row: {
           created_at: string
@@ -157,6 +187,30 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      notifications: {
+        Row: {
+          body: string
+          created_at: string
+          id: string
+          read_at: string | null
+          user_id: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          id?: string
+          read_at?: string | null
+          user_id: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          id?: string
+          read_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
       }
       payment_sessions: {
         Row: {
@@ -667,6 +721,10 @@ export type Database = {
       mark_expired_invitations: {
         Args: Record<PropertyKey, never>
         Returns: number
+      }
+      mark_notification_as_read: {
+        Args: { notification_id: string }
+        Returns: undefined
       }
       update_invitation_status: {
         Args: {

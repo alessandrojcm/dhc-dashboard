@@ -12,7 +12,7 @@ export default defineConfig({
 			name: 'chromium',
 			use: {
 				browserName: 'chromium',
-				baseURL: 'http://127.0.0.1:8787',
+				baseURL: 'http://127.0.0.1:5173',
 				viewport: null
 			}
 		},
@@ -20,7 +20,7 @@ export default defineConfig({
 			name: 'firefox',
 			use: {
 				browserName: 'firefox',
-				baseURL: 'http://127.0.0.1:8787',
+				baseURL: 'http://127.0.0.1:5173',
 				viewport: null
 			}
 		}

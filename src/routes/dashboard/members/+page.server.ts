@@ -1,15 +1,10 @@
-import { adminInviteSchema, bulkInviteSchema } from '$lib/schemas/adminInvite';
+import { bulkInviteSchema } from '$lib/schemas/adminInvite';
 import settingsSchema from '$lib/schemas/membersSettings';
 import { executeWithRLS, getKyselyClient } from '$lib/server/kysely';
-import { createInvitation } from '$lib/server/kyselyRPCFunctions';
 import { getRolesFromSession } from '$lib/server/roles';
-import type { AuthError } from '@supabase/supabase-js';
-import dayjs from 'dayjs';
 import { fail, message, superValidate } from 'sveltekit-superforms';
 import { valibot } from 'sveltekit-superforms/adapters';
 import type { Actions, PageServerLoad } from './$types';
-import { supabaseServiceClient } from '$lib/server/supabaseServiceClient';
-import { PUBLIC_SITE_URL } from '$env/static/public';
 import * as Sentry from '@sentry/sveltekit';
 
 const SETTINGS_ROLES = new Set(['president', 'committee_coordinator', 'admin']);
@@ -30,31 +25,16 @@ export const load: PageServerLoad = async ({ locals }) => {
 		valibot(settingsSchema),
 		{ errors: false }
 	);
-	const inviteForm = await superValidate(
-		{
-			dateOfBirth: new Date('2000-01-01'),
-			expirationDays: 7
-		},
-		valibot(adminInviteSchema),
-		{ errors: false }
-	);
-	const bulkInviteForm = await superValidate({ invites: [] }, valibot(bulkInviteSchema), {
-		errors: false
-	});
 	if (!canEditSettings) {
 		return {
 			canEditSettings,
-			form,
-			inviteForm,
-			bulkInviteForm
+			form
 		};
 	}
 
 	return {
 		canEditSettings,
-		form,
-		inviteForm,
-		bulkInviteForm
+		form
 	};
 };
 
@@ -105,88 +85,37 @@ export const actions: Actions = {
 			return fail(400, {
 				form: {
 					...form,
-					message: { failure: 'There was an error seding the invites.' }
+					message: { failure: 'There was an error sending the invites.' }
 				}
 			});
 		}
-		const invites = form.data.invites;
 
 		try {
-			const results: Array<{ email: string; success: boolean; error?: any }> = [];
+			// Prepare the payload for the Edge Function
+			const payload = {
+				invites: form.data.invites,
+				session: locals.session
+			};
 
-			// Process invites in a transaction
-			await executeWithRLS(
-				getKyselyClient(platform.env.HYPERDRIVE),
-				{
-					claims: locals.session!
-				},
-				async (trx) => {
-					for (const invite of invites) {
-						const { firstName, lastName, email, phoneNumber, dateOfBirth, expirationDays } = invite;
-
-						// Calculate expiration date based on the invite's expirationDays or default to 7 days
-						const expiresAt = dayjs()
-							.add(expirationDays || 7, 'day')
-							.toDate();
-
-						// Create metadata with user details
-						const metadata = {
-							firstName,
-							lastName,
-							phoneNumber,
-							dateOfBirth: dateOfBirth.toISOString()
-						};
-
-						try {
-							// Also invite the user via Supabase Admin SDK
-							const result = await supabaseServiceClient.auth.admin.inviteUserByEmail(email, {
-								redirectTo: `${PUBLIC_SITE_URL}/members/signup/callback`,
-								data: {
-									first_name: firstName,
-									last_name: lastName
-								}
-							});
-
-							if (result.error) {
-								throw result.error;
-							}
-							// Create invitation using the kysely function
-							await createInvitation(
-								{
-									userId: result.data.user?.id,
-									email,
-									invitationType: 'admin',
-									expiresAt,
-									metadata,
-									firstName,
-									lastName,
-									dateOfBirth: dateOfBirth.toISOString(),
-									phoneNumber
-								},
-								trx
-							);
-
-							results.push({ email, success: true });
-						} catch (error) {
-							Sentry.captureMessage(`Error inviting ${email}: ${error}`, 'error');
-							results.push({ email, success: false, error: error as AuthError });
-						}
-					}
+			// Call the Edge Function asynchronously using the Supabase SDK
+			const { data, error } = await supabaseServiceClient.functions.invoke('bulk_invite_with_subscription', {
+				body: payload,
+				headers: {
+					Authorization: `Bearer ${locals.session?.access_token}`
 				}
-			);
+			});
 
-			const successCount = results.filter((r) => r.success).length;
-			const failureCount = results.length - successCount;
-
-			if (failureCount === 0) {
-				return message(form, {
-					success: `Successfully sent ${successCount} invitation${successCount !== 1 ? 's' : ''}`
-				});
-			} else {
-				return message(form, {
-					warning: `Sent ${successCount} invitation${successCount !== 1 ? 's' : ''}, but ${failureCount} failed`
+			if (error) {
+				Sentry.captureMessage(`Edge function error: ${JSON.stringify(error)}`, 'error');
+				return fail(500, {
+					form,
+					message: { failure: 'Failed to process invitations. Please try again later.' }
 				});
 			}
+
+			return message(form, {
+				success: 'Invitations are being processed in the background. You will be notified when completed.'
+			});
 		} catch (error) {
 			Sentry.captureMessage(`Error creating bulk invitations: ${error}`, 'error');
 			return fail(500, {
