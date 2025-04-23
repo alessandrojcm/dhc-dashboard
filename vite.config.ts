@@ -16,6 +16,7 @@ export default defineConfig({
 			},
 			sourcemaps: {
 				filesToDeleteAfterUpload: ["./svelte-kit/output/**/*.map"],
+				assets: ["./svelte-kit/output/**/*.map"]
 			},
 			adapter: "cloudflare",
 		}),

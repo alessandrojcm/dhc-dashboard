@@ -7,7 +7,7 @@ import { createServerClient } from "@supabase/ssr";
 import { type Handle, redirect } from "@sveltejs/kit";
 import { sequence } from "@sveltejs/kit/hooks";
 
-import { env } from "$env/dynamic/private";
+import { env } from "$env/dynamic/public";
 import { getRolesFromSession } from "$lib/server/roles";
 import type { Database } from "./database.types";
 
