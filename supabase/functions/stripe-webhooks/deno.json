@@ -3,10 +3,15 @@
     "dev": "deno run --watch main.ts"
   },
   "imports": {
-    "@std/assert": "jsr:@std/assert@1",
-    "dayjs": "https://esm.sh/dayjs@1.11.7",
+    "std/": "https://deno.land/std@0.210.0/",
+    "std/http/server": "https://deno.land/std@0.168.0/http/server.ts",
+    "@supabase/supabase-js": "jsr:@supabase/supabase-js",
+    "@sentry/deno": "npm:@sentry/deno",
+    "dayjs": "npm:dayjs",
     "stripe": "npm:stripe",
     "postgres": "https://deno.land/x/postgres@v0.17.0/mod.ts",
-    "$shared": "../_shared"
+    "kysely": "npm:kysely@^0.28.1",
+    "$shared": "../_shared",
+    "jwt-decode": "npm:jwt-decode"
   }
 }

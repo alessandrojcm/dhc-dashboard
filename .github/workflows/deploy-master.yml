@@ -38,5 +38,5 @@ jobs:
         with:
           version: latest
 
-      - run: supabase db push
+      - run: supabase db push --project-ref $PROJECT_ID
 
