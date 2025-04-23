@@ -7,6 +7,7 @@ import { valibot } from "sveltekit-superforms/adapters";
 import type { Actions, PageServerLoad } from "./$types";
 import * as Sentry from "@sentry/sveltekit";
 import { invariant } from "$lib/server/invariant";
+import { supabaseServiceClient } from "$lib/server/supabaseServiceClient";
 
 const SETTINGS_ROLES = new Set(["president", "committee_coordinator", "admin"]);
 
