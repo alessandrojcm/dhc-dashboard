@@ -440,6 +440,7 @@ async function processInvitations(
                 first_name: invite.firstName,
                 last_name: invite.lastName,
               },
+              redirectTo: `${Deno.env.get("APP_URL")}/members/signup/callback`
             });
 
           if (authError) {
