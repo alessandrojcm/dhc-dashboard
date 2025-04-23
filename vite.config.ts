@@ -8,8 +8,8 @@ export default defineConfig({
 	assetsInclude: ["src/assets/**/*"],
 	plugins: [
 		sentrySvelteKit({
+			debug: true,
 			sourceMapsUploadOptions: {
-				telemetry: false,
 				org: "dublin-hema-club",
 				project: "dhc-dashboard",
 				authToken: process.env.SENTRY_AUTH_TOKEN,
