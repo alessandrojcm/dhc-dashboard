@@ -256,8 +256,11 @@ async function createSubscriptionSession(
       annualSubscription,
       monthlyPayment.payment_intent! as string,
       annualPayment.payment_intent! as string,
-      monthlyInvoice.amount_due! as number,
-      annualInvoice.amount_due! as number,
+      // Price of the plan itself without proration
+      monthlySubscription.items.data[0].plan.amount! as number,
+      annualSubscription.items.data[0].plan.amount! as number,
+      // Total amount due for both subscriptions right now
+      monthlyInvoice.amount_due! + annualInvoice.amount_due!,
       executor,
     );
     console.log(`Created payment session for user ${userId}`);

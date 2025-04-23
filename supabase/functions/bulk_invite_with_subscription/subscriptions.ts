@@ -26,6 +26,7 @@ export async function createPaymentSession(
   annualPaymentIntentId: string,
   monthlyAmount: number,
   annualAmount: number,
+  totalAmount: number,
   executor: QueryExecutorProvider
 ): Promise<string> {
   // Store the new session
@@ -48,7 +49,7 @@ export async function createPaymentSession(
       ${annualPaymentIntentId}::text,
       ${monthlyAmount}::integer,
       ${annualAmount}::integer,
-      ${monthlyAmount + annualAmount}::integer,
+      ${totalAmount}::integer,
       ${dayjs().add(24, 'hour').toISOString()}::timestamptz
     )
     RETURNING id
