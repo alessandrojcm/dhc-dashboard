@@ -21,7 +21,18 @@ async function canUpdateSettings(event: RequestEvent | ServerLoadEvent) {
 	const { session } = await event.locals.safeGetSession();
 	invariant(session === null, "Unauthorized");
 	const roles = getRolesFromSession(session!);
-	return roles.intersection(SETTINGS_ROLES).size > 0;
+	if (roles.intersection(SETTINGS_ROLES).size > 0) {
+		return true;
+	}
+	const {
+		data: { user },
+		error
+	} = await event.locals.supabase.auth.getUser();
+
+	if (error || user?.id !== event.locals.session?.user.id) {
+		return false;
+	}
+	return true;
 }
 
 export const load: PageServerLoad = async (event) => {
@@ -184,10 +195,7 @@ export const actions: Actions = {
 			);
 			setMessage(form, { failure: "Failed to update profile" });
 			return fail(500, {
-				form,
-				message: {
-					failure: "Failed to update profile",
-				},
+				form
 			});
 		}
 	},

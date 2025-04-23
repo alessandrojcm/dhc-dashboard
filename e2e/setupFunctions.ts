@@ -350,7 +350,7 @@ export async function createStripeCustomerWithSubscription(email: string) {
 		customer: customer.id,
 		items: [{ price: prices.data[0].id }],
 		default_payment_method: paymentMethod.id,
-		expand: ["latest_invoice.payment_intent"],
+		expand: ["latest_invoice.payments"],
 	});
 
 	// Get the price ID for the membership fee
@@ -367,7 +367,7 @@ export async function createStripeCustomerWithSubscription(email: string) {
 		customer: customer.id,
 		items: [{ price: prices.data[0].id }],
 		default_payment_method: paymentMethod.id,
-		expand: ["latest_invoice.payment_intent"],
+		expand: ["latest_invoice.payments"],
 	});
 
 	return {
