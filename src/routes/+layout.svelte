@@ -3,7 +3,7 @@
 	import type { LayoutData } from './$types';
 	import Toaster from '$lib/components/ui/sonner/sonner.svelte';
 	import { type Snippet } from 'svelte';
-	import { goto, invalidate } from '$app/navigation';
+	import { invalidate, goto } from '$app/navigation';
 	import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
 	import { SvelteQueryDevtools } from '@tanstack/svelte-query-devtools';
 
@@ -16,7 +16,8 @@
 		const { data } = supabase.auth.onAuthStateChange((event, newSession) => {
 			if (event === 'SIGNED_OUT') {
 				goto('/auth', {
-					replaceState: true
+					replaceState: true,
+					invalidateAll: true
 				});
 			}
 			if (newSession?.expires_at !== session?.expires_at) {

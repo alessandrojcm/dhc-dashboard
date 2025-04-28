@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
+	import { replaceState } from '$app/navigation';
 	import { page } from '$app/state';
 	import * as Alert from '$lib/components/ui/alert';
 	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
@@ -19,7 +19,7 @@
 				},
 			}).then((res) => {
 				if (res.ok) {
-					goto(res.headers.get('Location') || '/members/signup', {
+					replaceState(res.headers.get('Location') ?? '/members/signup', {
 						replaceState: true
 					});
 				} else {

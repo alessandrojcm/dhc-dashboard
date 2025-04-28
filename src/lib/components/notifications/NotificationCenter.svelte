@@ -76,17 +76,18 @@
 				['notifications'],
 				(oldData: (typeof notificationsQuery)['data']) => {
 					// Find if the notification being marked as read is currently unread
-					const targetNotification = oldData?.pages.flatMap(page => page.data).find(
-						notification => notification.id === notificationId
-					);
-					
+					const targetNotification = oldData?.pages
+						.flatMap((page) => page.data)
+						.find((notification) => notification.id === notificationId);
+
 					// Only decrease count if the notification was previously unread
 					const shouldDecreaseCount = targetNotification && !targetNotification.read_at;
-					
+
 					// Calculate new count if needed
-					const newCount = shouldDecreaseCount && oldData?.pages[0]?.count !== undefined
-						? Math.max(0, oldData.pages[0].count - 1) // Ensure count doesn't go below 0
-						: oldData?.pages[0]?.count;
+					const newCount =
+						shouldDecreaseCount && oldData?.pages[0]?.count !== undefined
+							? Math.max(0, oldData.pages[0].count - 1) // Ensure count doesn't go below 0
+							: oldData?.pages[0]?.count;
 
 					return {
 						...oldData,
@@ -94,11 +95,13 @@
 							...page,
 							// Update count in the first page
 							...(index === 0 && newCount !== undefined ? { count: newCount } : {}),
-							data: page.data.map((notification) =>
-								notification.id === notificationId
-									? { ...notification, read_at: new Date().toISOString() }
-									: notification
-							).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+							data: page.data
+								.map((notification) =>
+									notification.id === notificationId
+										? { ...notification, read_at: new Date().toISOString() }
+										: notification
+								)
+								.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 						}))
 					};
 				}
@@ -128,10 +131,12 @@
 						...page,
 						// Set count to 0 in the first page since all notifications will be read
 						...(index === 0 ? { count: 0 } : {}),
-						data: page.data.map((notification) => ({
-							...notification,
-							read_at: new Date().toISOString()
-						})).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+						data: page.data
+							.map((notification) => ({
+								...notification,
+								read_at: new Date().toISOString()
+							}))
+							.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 					}))
 				})
 			);
@@ -159,9 +164,10 @@
 						['notifications'],
 						(oldData: (typeof notificationsQuery)['data']) => {
 							// Increase the count for unread notifications if this is a new unread notification
-							const newCount = !payload.new.read_at && oldData?.pages[0]?.count !== undefined
-								? oldData.pages[0].count + 1
-								: oldData?.pages[0]?.count;
+							const newCount =
+								!payload.new.read_at && oldData?.pages[0]?.count !== undefined
+									? oldData.pages[0].count + 1
+									: oldData?.pages[0]?.count;
 
 							return {
 								...oldData,
@@ -169,7 +175,11 @@
 									...page,
 									// Update count in the first page
 									...(index === 0 && newCount !== undefined ? { count: newCount } : {}),
-									data: page.data.concat(payload.new).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+									data: page.data
+										.concat(payload.new)
+										.sort(
+											(a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+										)
 								}))
 							};
 						}
@@ -200,7 +210,13 @@
 			)
 			.subscribe();
 
-		return subscription.unsubscribe;
+		return () => {
+			try {
+				subscription.unsubscribe();
+			} catch (e) {
+				console.warn(e);
+			}
+		};
 	});
 
 	function formatTime(timestamp: string): string {
@@ -221,7 +237,9 @@
 </script>
 
 <DropdownMenu.Root>
-	<DropdownMenu.Trigger class="relative flex items-center py-2 rounded hover:bg-muted min-h-[40px] w-full">
+	<DropdownMenu.Trigger
+		class="relative flex items-center py-2 rounded hover:bg-muted min-h-[40px] w-full"
+	>
 		<div class="flex items-center w-full px-5">
 			<Bell
 				size={20}
