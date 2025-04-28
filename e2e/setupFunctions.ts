@@ -558,8 +558,8 @@ export async function setupInvitedUser(
 			annual_subscription_id: annualSubscription.id,
 			monthly_payment_intent_id: monthlyPaymentIntent,
 			annual_payment_intent_id: annualPaymentIntent,
-			monthly_amount: monthlyInvoice.amount_due,
-			annual_amount: annualInvoice.amount_due,
+			monthly_amount: monthlySubscription.items.data[0].plan.amount! as number,
+			annual_amount: annualSubscription.items.data[0].plan.amount! as number,
 			total_amount: monthlyInvoice.amount_due + annualInvoice.amount_due,
 			expires_at: expiresAt.toISOString(),
 		})

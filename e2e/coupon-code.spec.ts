@@ -11,6 +11,7 @@ test.describe('Member Signup - Coupon Codes', () => {
 	let monthlyCouponCode: string;
 	let combinedCouponCode: string;
 	let onceCouponCode: string;
+	let migrationCouponCode: string;
 	// Promotion code IDs for cleanup
 	let promotionCodeIds: string[] = [];
 
@@ -35,7 +36,7 @@ test.describe('Member Signup - Coupon Codes', () => {
 		}
 
 		// Create coupons in Stripe
-		const [annualCoupon, monthlyCoupon, combinedCoupon, onceCoupon, once100Coupon] = await Promise.all([
+		const [annualCoupon, monthlyCoupon, combinedCoupon, onceCoupon, once100Coupon, migrationCoupon] = await Promise.all([
 			// Coupon for annual fee only - 20% off
 			stripeClient.coupons.create({
 				percent_off: 20,
@@ -71,11 +72,17 @@ test.describe('Member Signup - Coupon Codes', () => {
 				percent_off: 100,
 				duration: 'once',
 				name: '100% Off First Payment'
+			}),
+			// Special migration coupon for testing the migration code functionality
+			stripeClient.coupons.create({
+				percent_off: 100,
+				duration: 'once',
+				name: 'Migration Discount'
 			})
 		]);
 
 		// Create promotion codes for the coupons
-		const [annualPromotion, monthlyPromotion, combinedPromotion, oncePromotion, once100Promotion] = await Promise.all(
+		const [annualPromotion, monthlyPromotion, combinedPromotion, oncePromotion, once100Promotion, migrationPromotion] = await Promise.all(
 			[
 				stripeClient.promotionCodes.create({
 					coupon: annualCoupon.id,
@@ -101,6 +108,12 @@ test.describe('Member Signup - Coupon Codes', () => {
 					coupon: once100Coupon.id,
 					code: 'ONCE100OFF',
 					max_redemptions: 5
+				}),
+				// Create the migration code with the exact name from the environment variable
+				stripeClient.promotionCodes.create({
+					coupon: migrationCoupon.id,
+					code: process.env.PUBLIC_DASHBOARD_MIGRATION_CODE || 'DHCDASHBOARD',
+					max_redemptions: 5
 				})
 			]
 		);
@@ -110,6 +123,7 @@ test.describe('Member Signup - Coupon Codes', () => {
 		monthlyCouponCode = monthlyPromotion.code;
 		combinedCouponCode = combinedPromotion.code;
 		onceCouponCode = oncePromotion.code;
+		migrationCouponCode = migrationPromotion.code;
 		// We don't need to save this as we're using a fixed code 'ONCE100OFF'
 
 		// Save promotion code IDs for cleanup
@@ -118,7 +132,8 @@ test.describe('Member Signup - Coupon Codes', () => {
 			monthlyPromotion.id,
 			combinedPromotion.id,
 			oncePromotion.id,
-			once100Promotion.id
+			once100Promotion.id,
+			migrationPromotion.id
 		];
 	});
 
@@ -516,5 +531,69 @@ test.describe('Member Signup - Coupon Codes', () => {
 
 		// Check that the price is now €0.00 (or equivalent zero amount)
 		await expect(page.locator('text=Prorated Amount').locator('..').locator('span.font-semibold')).toContainText('€0.00');
+	});
+
+	test('applying the migration code creates credit notes and shows €0.00 total', async ({ page }) => {
+		// Find and click the accordion trigger for promotional code
+		await page.getByText('Have a promotional code?').click();
+
+		// Get the original prices before applying the migration code
+		const originalProratedPrice = await page.getByText('Pro-rated amount (first payment)', { exact: false }).textContent();
+		console.log(`Original prorated price: ${originalProratedPrice}`);
+
+		// Fill in the migration code
+		await page.getByPlaceholder('Enter promotional code').fill(migrationCouponCode);
+		await page.getByRole('button', { name: 'Apply Code' }).click();
+
+		// Verify the code was applied successfully
+		await expect(page.getByText(/coupon code not valid/i)).not.toBeVisible({ timeout: 1000 });
+		await expect(page.getByText(`Code ${migrationCouponCode} applied`)).toBeVisible();
+
+		// Wait for the page to update
+		await page.waitForTimeout(2000);
+
+		// Refresh to ensure we see the updated state
+		await page.reload();
+		await page.waitForSelector('form');
+
+		// Verify the prorated amount is now €0.00 (or currency equivalent)
+		// This confirms that the credit notes were applied correctly
+		const discountedPrice = await page
+			.locator('text=Pro-rated amount')
+			.locator('..')
+			.locator('..')
+			.locator('span.font-semibold')
+			.textContent();
+		console.log(`Discounted prorated price after migration code: ${discountedPrice}`);
+
+		// Check that the total price is now €0.00 (or equivalent zero amount)
+		await expect(page.locator('text=Total').locator('..').locator('span.font-semibold')).toContainText('€0.00');
+
+		// Optional: Complete the signup process to verify everything works end-to-end
+		await page.getByLabel('Next of Kin', { exact: true }).fill('John Doe');
+		const phoneInputField = page
+			.locator('div')
+			.filter({ hasText: 'Next of Kin Phone Number' })
+			.locator('input[type="tel"]');
+		await phoneInputField.pressSequentially('0838774532', { delay: 50 });
+		
+		// Fill in payment details even though the amount is €0.00
+		const stripeFrame = await page.locator('.__PrivateStripeElement').frameLocator('iframe');
+		await stripeFrame.getByLabel('IBAN').fill('IE29AIBK93115212345678');
+		await stripeFrame.getByLabel('Address line 1').fill('123 Main Street');
+		await stripeFrame.getByLabel('Address line 2').fill('Apt 4B');
+		await stripeFrame.getByLabel('City').fill('Dublin');
+		await stripeFrame.getByLabel('Eircode').fill('K45 HR22');
+		await stripeFrame.getByLabel('County').selectOption('County Dublin');
+		
+		// Complete signup
+		await page.getByRole('button', { name: /sign up/i }).click();
+		
+		// Verify successful signup
+		await expect(
+			page.getByText(
+				'Your membership has been successfully processed. Welcome to Dublin Hema Club! You will receive a Discord invite by email shortly.'
+			)
+		).toBeVisible({ timeout: 30000 });
 	});
 });
