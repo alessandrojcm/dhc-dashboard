@@ -82,8 +82,8 @@ const genderDistributionData = $derived.by(() => {
 
 <h2 class="prose prose-h2 text-lg mb-2">Workshop analytics</h2>
 
-<div class="flex gap-2">
-	<Card.Root class="bg-green-200 w-36">
+<div class="flex flex-wrap justify-center md:justify-start gap-4">
+	<Card.Root class="bg-green-200 w-36 text-center md:text-left">
 		<Card.Header>
 			<Card.Description class="text-black">Total waitlist</Card.Description>
 		</Card.Header>
@@ -97,7 +97,7 @@ const genderDistributionData = $derived.by(() => {
 			{/if}
 		</Card.Content>
 	</Card.Root>
-	<Card.Root class="bg-yellow-200 w-36">
+	<Card.Root class="bg-yellow-200 w-36 text-center md:text-left">
 		<Card.Header>
 			<Card.Description class="text-black">Average age</Card.Description>
 		</Card.Header>

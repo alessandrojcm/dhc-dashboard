@@ -4,10 +4,13 @@
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 	import * as Avatar from '$lib/components/ui/avatar';
 	import { Skeleton } from '$lib/components/ui/skeleton';
+	import { Button } from '$lib/components/ui/button';
 	import type { NavData, UserData } from '$lib/types';
 	import DHCLogo from '/src/assets/images/dhc-logo.png?enhanced';
 	import NotificationCenter from '$lib/components/notifications/NotificationCenter.svelte';
 	import type { SupabaseClient } from '@supabase/supabase-js';
+	import { Menu } from 'lucide-svelte';
+	import { useSidebar } from '$lib/components/ui/sidebar/context.svelte.js';
 
 	type Props = {
 		className?: string | undefined | null;
@@ -18,9 +21,18 @@
 		supabase: SupabaseClient;
 	};
 
+	// Get the sidebar context
+	const sidebar = useSidebar();
+
+	// Function to toggle the sidebar on mobile
+	function toggleSidebar() {
+		sidebar.toggle();
+		console.log('Sidebar toggled on mobile');
+	}
+
 	let {
 		ref = $bindable(null),
-		collapsible = 'none',
+		collapsible = 'offcanvas',
 		userData,
 		logout,
 		roles,
@@ -30,7 +42,23 @@
 	}: ComponentProps<typeof Sidebar.Root> & Props = $props();
 </script>
 
-<Sidebar.Root bind:ref {collapsible} {...restProps} class="h-[100vh] border-r-1">
+<div class="md:hidden fixed top-4 left-4 z-50">
+	<Button 
+		variant="outline" 
+		size="icon" 
+		aria-label="Toggle menu"
+		onclick={toggleSidebar}
+	>
+		<Menu class="h-4 w-4" />
+	</Button>
+</div>
+
+<Sidebar.Root 
+	bind:ref 
+	{collapsible} 
+	{...restProps} 
+	class="h-[100vh] border-r-1 md:block">
+
 	<Sidebar.Header class="flex flex-row items-center">
 		<div class="h-12 w-12">
 			<enhanced:img src={DHCLogo} alt="Dublin Hema Club Logo" />

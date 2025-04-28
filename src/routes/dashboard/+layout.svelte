@@ -62,7 +62,7 @@
 	/>
 	<main class="w-full">
 		<Breadcrumb.Root class="m-6">
-			<Breadcrumb.List>
+			<Breadcrumb.List class="ml-12 md:ml-0">
 				{#each paths as item, index (item)}
 					{#if index !== paths.length - 1}
 						<Breadcrumb.Item>
@@ -93,8 +93,14 @@
 		flex: 1;
 		display: flex;
 		flex-direction: column;
-		width: calc(100vw - var(--sidebar-width));
+		width: 100%;
 		margin: 0 auto;
 		box-sizing: border-box;
+	}
+
+	@media (min-width: 768px) {
+		main {
+			width: calc(100vw - var(--sidebar-width));
+		}
 	}
 </style>
