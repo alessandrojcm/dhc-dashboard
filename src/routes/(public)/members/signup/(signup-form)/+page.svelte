@@ -201,7 +201,6 @@
 		<Button onclick={() => goto('/dashboard')} class="mt-2">Go to Dashboard</Button>
 	</Alert.Root>
 {/snippet}
-
 {#if showThanks}
 	{@render thanksAlert()}
 {:else}
@@ -217,7 +216,7 @@
 			</div>
 			<div>
 				<p>Email</p>
-				<p class="text-sm text-gray-600">{data.userData.email}</p>
+				<p class="text-sm text-gray-600 break-words">{data.userData.email}</p>
 			</div>
 			<div>
 				<p>Date of Birth</p>
