@@ -6,11 +6,9 @@
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { createQuery } from '@tanstack/svelte-query';
 
-	import {
-		ageChart,
-		demographicsChart,
-		preferredWeaponChart
-	} from '$lib/components/ui/analytics-charts.svelte';
+	import WeaponPieChart from '$lib/components/weapon-pie-chart.svelte';
+	import GenderBarChart from '$lib/components/gender-bar-chart.svelte';
+	import AgeScatterChart from '$lib/components/age-scatter-chart.svelte';
 
 	const { supabase }: { supabase: SupabaseClient<Database> } = $props();
 	const totalCountQuery = createQuery(() => ({
@@ -36,23 +34,17 @@
 				.throwOnError()
 				.then((res) => res.data?.avg_age ?? 0) as Promise<number>
 	}));
-	const genderDistribution = createQuery<
-		{ gender: Database['public']['Enums']['gender']; value: number }[]
-	>(() => ({
+	
+	const genderDistribution = createQuery(() => ({
 		queryKey: ['members', 'genderDistribution'],
 		queryFn: ({ signal }) =>
 			supabase
 				.from('member_management_view')
-				.select('gender,value:gender.count()')
+				.select('gender,count:gender.count()')
 				.eq('is_active', true)
 				.abortSignal(signal)
 				.throwOnError()
-				.then((r) => r.data ?? []) as Promise<
-				{
-					gender: string;
-					value: number;
-				}[]
-			>
+				.then((r) => r.data ?? [])
 	}));
 	const ageDistributionQuery = createQuery(() => ({
 		queryKey: ['members', 'ageDistribution'],
@@ -143,16 +135,20 @@
 	<Resizable.Pane class="min-h-[400px] p-4 border rounded">
 		<Resizable.PaneGroup direction="horizontal">
 			<Resizable.Pane class="min-h-[400px]">
-				{@render demographicsChart(genderDistribution.data ?? [])}
+				<GenderBarChart
+					genderDistributionData={genderDistribution.data
+						? genderDistribution.data.map((row) => ({ gender: row.gender, value: row.count }))
+						: []}
+				/>
 			</Resizable.Pane>
 			<Resizable.Handle />
 			<Resizable.Pane class="min-h-[400px] pl-4">
-				{@render preferredWeaponChart(weaponPreferencesDistribution.data ?? [])}
+				<WeaponPieChart weaponDistributionData={weaponPreferencesDistribution.data ?? []} />
 			</Resizable.Pane>
 		</Resizable.PaneGroup>
 	</Resizable.Pane>
 	<Resizable.Handle />
 	<Resizable.Pane class="min-h-[400px] p-4 border rounded">
-		{@render ageChart(ageDistributionQuery.data ?? [])}
+		<AgeScatterChart ageDistribution={ageDistributionQuery.data ?? []} />
 	</Resizable.Pane>
 </Resizable.PaneGroup>
