@@ -11,8 +11,10 @@
 		Highlight
 	} from 'layerchart';
 	import { schemeTableau10 } from 'd3-scale-chromatic';
+	import AgeScatterChart from '$lib/components/age-scatter-chart.svelte';
+	import GenderBarChart from '$lib/components/gender-bar-chart.svelte';
 
-	export { ageChart, demographicsChart, preferredWeaponChart };
+	export { ageChart, demographicsChart, preferredWeaponChart, unovisAgeChart, unovisGenderChart };
 </script>
 
 {#snippet ageChart(ageDistribution: [{ age: string; value: number }])}
@@ -47,6 +49,10 @@
 	</div>
 {/snippet}
 
+{#snippet unovisAgeChart(ageDistribution: [{ age: string; value: number }])}
+	<AgeScatterChart {ageDistribution} />
+{/snippet}
+
 {#snippet demographicsChart(genderDistributionData: [{ gender: string; value: number }])}
 	<h3>Gender demographics</h3>
 	<div class="h-[300px] mt-4">
@@ -78,6 +84,10 @@
 			</svelte:fragment>
 		</BarChart>
 	</div>
+{/snippet}
+
+{#snippet unovisGenderChart(genderDistributionData: Array<{ gender: string; value: number }>)}
+	<GenderBarChart {genderDistributionData} />
 {/snippet}
 
 {#snippet preferredWeaponChart(

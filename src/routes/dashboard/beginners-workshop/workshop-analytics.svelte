@@ -5,7 +5,8 @@
 	import * as Resizable from '$lib/components/ui/resizable/index.js';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { createQuery } from '@tanstack/svelte-query';
-	import { ageChart, demographicsChart } from '$lib/components/ui/analytics-charts.svelte';
+	import GenderBarChart from '$lib/components/gender-bar-chart.svelte';
+	import AgeScatterChart from '$lib/components/age-scatter-chart.svelte';
 
 	const { supabase }: { supabase: SupabaseClient<Database> } = $props();
 	const totalCountQuery = createQuery<number>(() => ({
@@ -29,33 +30,35 @@
 				.abortSignal(signal)
 				.single()
 				.throwOnError()
-				.then((res) => res.data?.avg_age)
+				.then((res) => res.data?.avg_age ?? 0)
 	}));
-	const genderDistribution = createQuery<{
-		gender: Database['public']['Enums']['gender'];
-		count: number;
-	}>(() => ({
+	// Define the type for gender distribution data
+type GenderDistributionItem = { gender: string; value: number };
+
+const genderDistribution = createQuery(() => ({
 		queryKey: ['waitlist', 'genderDistribution'],
 		queryFn: async ({ signal }) =>
 			supabase
 				.from('user_profiles')
-				.select('gender,value:gender.count()')
+				.select('gender,count:gender.count()')
 				.is('is_active', false)
 				.not('waitlist_id', 'is', null)
 				.is('supabase_user_id', null)
 				.abortSignal(signal)
 				.throwOnError()
-				.then((r) => r.data)
+				.then((r) => r.data || [])
 	}));
-	const genderDistributionData = $derived(genderDistribution.data ?? []);
-	const ageDistributionQuery = createQuery<
-		[
-			{
-				age: string;
-				count: number;
-			}
-		]
-	>(() => ({
+	
+
+	// Transform the gender distribution data to match the expected format for GenderBarChart
+const genderDistributionData = $derived.by(() => {
+		if (!genderDistribution.data) return [];
+		return genderDistribution.data.map((row) => ({
+			gender: row.gender,
+			value: row.count
+		})) as GenderDistributionItem[];
+	});
+	const ageDistributionQuery = createQuery(() => ({
 		queryKey: ['waitlist', 'ageDistribution'],
 		queryFn: async ({ signal }) =>
 			supabase
@@ -69,18 +72,10 @@
 	}));
 	const ageDistribution = $derived.by(() => {
 		const result = ageDistributionQuery.data ?? [];
-		const distribution = new Map();
-		result.forEach((row) => {
-			if (!distribution.has(row.age)) {
-				distribution.set(row.age, [row]);
-			} else {
-				distribution.set(row.age, [...distribution.get(row.age), row]);
-			}
-		});
-		return Array.from(distribution.entries()).map(([age, rows]) => ({
-			key: age,
-			data: rows,
-			color: 'hsl(var(--color-primary))'
+		// Transform the data to match the expected format for AgeScatterChart
+		return result.map(row => ({
+			age: row.age,
+			value: row.value
 		}));
 	});
 </script>
@@ -120,10 +115,10 @@
 
 <Resizable.PaneGroup direction="vertical" class="mt-2">
 	<Resizable.Pane class="min-h-[400px] p-4 border rounded">
-		{@render demographicsChart(genderDistributionData)}
+		<GenderBarChart genderDistributionData={genderDistributionData} />
 	</Resizable.Pane>
 	<Resizable.Handle />
 	<Resizable.Pane class="min-h-[400px] p-4 border rounded">
-		{@render ageChart(ageDistribution)}
+		<AgeScatterChart ageDistribution={ageDistribution} />
 	</Resizable.Pane>
 </Resizable.PaneGroup>

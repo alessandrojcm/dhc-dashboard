@@ -68,7 +68,7 @@
 		"prettier": "^3.5.3",
 		"prettier-plugin-svelte": "^3.3.3",
 		"stripe": "^18.0.0",
-		"supabase": "^2.22.4",
+		"supabase": "^2.22.6",
 		"svelte": "^5.28.2",
 		"svelte-check": "^4.1.6",
 		"svelte-sonner": "^0.3.28",
@@ -97,6 +97,8 @@
 		"@tanstack/svelte-query-devtools": "^5.74.6",
 		"@tanstack/svelte-table": "9.0.0-alpha.10",
 		"@tanstack/table-core": "^8.21.3",
+		"@unovis/svelte": "^1.5.1",
+		"@unovis/ts": "^1.5.1",
 		"country-codes-list": "^2.0.0",
 		"d3-array": "^3.2.4",
 		"d3-interpolate": "^3.0.1",
@@ -105,12 +107,11 @@
 		"dinero.js": "^1.9.1",
 		"jwt-decode": "^4.0.0",
 		"kysely": "^0.28.1",
-		"layerchart": "^1.0.9",
 		"libphonenumber-js": "^1.12.7",
 		"postgres": "^3.4.5",
 		"svelte-radix": "^2.0.1"
 	},
-	"packageManager": "pnpm@10.6.2+sha512.47870716bea1572b53df34ad8647b42962bc790ce2bf4562ba0f643237d7302a3d6a8ecef9e4bdfc01d23af1969aa90485d4cebb0b9638fa5ef1daef656f6c1b",
+	"packageManager": "pnpm@10.9.0",
 	"pnpm": {
 		"onlyBuiltDependencies": [
 			"@parcel/watcher",
