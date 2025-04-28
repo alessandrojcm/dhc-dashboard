@@ -1,6 +1,5 @@
 <script lang="ts">
 	import * as Popover from '$lib/components/ui/popover/index.js';
-	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import { Button } from '$lib/components/ui/button';
 	import { BriefcaseMedical, NotebookPen, Edit } from 'lucide-svelte';
 	import { Label } from '$lib/components/ui/label';
@@ -16,14 +15,19 @@
 </script>
 
 <div class="flex gap-w">
-	<Tooltip.Root>
-		<Tooltip.Trigger>
+	<!-- Medical Conditions - Using Popover instead of Tooltip for mobile compatibility -->
+	<Popover.Root>
+		<Popover.Trigger>
 			<Button variant="ghost" aria-label="Medical conditions">
 				<BriefcaseMedical />
 			</Button>
-		</Tooltip.Trigger>
-		<Tooltip.Content>{medicalConditions}</Tooltip.Content>
-	</Tooltip.Root>
+		</Popover.Trigger>
+		<Popover.Content class="p-2 max-w-[250px] break-words">
+			<p class="text-sm">{medicalConditions}</p>
+		</Popover.Content>
+	</Popover.Root>
+
+	<!-- Admin Notes -->
 	<Popover.Root onOpenChange={(open) => !open && (isEdit = false)}>
 		<Popover.Trigger>
 			<Button variant="ghost" aria-label="Admin notes">

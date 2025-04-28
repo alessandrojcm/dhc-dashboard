@@ -15,10 +15,11 @@
 	import * as Pagination from '$lib/components/ui/pagination/index.js';
 	import * as Select from '$lib/components/ui/select';
 	import * as Sheet from '$lib/components/ui/sheet';
+	import * as Popover from '$lib/components/ui/popover/index.js';
 	import * as Table from '$lib/components/ui/table/index.js';
 	import SortHeader from '$lib/components/ui/table/sort-header.svelte';
-	import type { FetchAndCountResult } from '$lib/types';
-	import type { QueryData, SupabaseClient } from '@supabase/supabase-js';
+	import type { SupabaseClient } from '@supabase/supabase-js';
+	import { BriefcaseMedical, Edit } from 'lucide-svelte';
 	import { createQuery, keepPreviousData } from '@tanstack/svelte-query';
 	import {
 		getCoreRowModel,
@@ -33,10 +34,6 @@
 	import { createRawSnippet } from 'svelte';
 	import { Cross2 } from 'svelte-radix';
 	import MemberActions from './member-actions.svelte';
-	import {
-		RenderComponentConfig,
-		RenderSnippetConfig
-	} from '$lib/components/ui/data-table/render-helpers';
 
 	const columns =
 		'id,first_name,last_name,email,phone_number,gender,pronouns,is_active,preferred_weapon,membership_start_date,membership_end_date,last_payment_date,insurance_form_submitted,roles,age,social_media_consent';
@@ -62,9 +59,7 @@
 		];
 	});
 	let selectedMemberId = $state<string | null>(null);
-	const selectedMemberQuery = createQuery<
-		Database['public']['Functions']['get_member_data']['Returns']
-	>(() => ({
+	const selectedMemberQuery = createQuery(() => ({
 		queryKey: ['selectedMemberId', selectedMemberId],
 		enabled: selectedMemberId !== null,
 		queryFn: async ({ signal }) => {
@@ -79,7 +74,7 @@
 		}
 	}));
 
-	const membersQuery = createQuery<FetchAndCountResult<'member_management_view'>, Error>(() => ({
+	const membersQuery = createQuery(() => ({
 		queryKey: ['members', pageSize, currentPage, rangeStart, sortingState, searchQuery],
 		placeholderData: keepPreviousData,
 		initialData: { data: [], count: 0 },
@@ -93,9 +88,14 @@
 			if (sortingState.length > 0) {
 				query = query.order(sortingState[0].id, { ascending: !sortingState[0].desc });
 			}
-			return query.range(rangeStart, rangeEnd).abortSignal(signal).throwOnError() as QueryData<
-				FetchAndCountResult<'member_management_view'>
-			>;
+			const { data, error } = await query
+				.range(rangeStart, rangeEnd)
+				.abortSignal(signal)
+				.throwOnError();
+			if (error) {
+				throw error;
+			}
+			return { data, count: data.length };
 		}
 	}));
 
@@ -367,7 +367,8 @@
 	{/if}
 </div>
 
-<div class="overflow-x-auto overflow-y-auto h-[75vh]">
+<!-- Desktop Table View (hidden on mobile) -->
+<div class="hidden md:block overflow-x-auto overflow-y-auto h-[70lvh]">
 	<Table.Root class="w-full">
 		<Table.Header class="sticky top-0 z-10 bg-white">
 			{#each table.getHeaderGroups() as headerGroup (headerGroup.id)}
@@ -399,15 +400,126 @@
 	</Table.Root>
 </div>
 
-<div class="flex items-start justify-end space-x-2 py-4 mr-4">
-	<div class="flex items-center gap-2 mr-auto ml-4">
-		<p class="prose">Elements per page</p>
+<!-- Mobile Card View (hidden on desktop) -->
+<div class="md:hidden overflow-y-auto h-[60svh] px-2 py-1">
+	<div class="space-y-4">
+		{#each table.getRowModel().rows as row (row.id)}
+			<div class="bg-card text-card-foreground rounded-lg border shadow-sm p-4">
+				<!-- Name and Actions Row -->
+				<div class="flex justify-between items-center mb-3">
+					<div class="font-medium text-base">
+						{row.original.first_name}
+						{row.original.last_name}
+					</div>
+					<div>
+						<!-- Action buttons directly implemented -->
+						<div class="flex gap-1">
+							<!-- Emergency Contact -->
+							<Button
+								variant="ghost"
+								size="icon"
+								aria-label="Emergency Contact"
+								onclick={() => (selectedMemberId = row.original.id)}
+							>
+								<Ambulance class="h-4 w-4" />
+							</Button>
+
+							<!-- Edit Button -->
+							<Button
+								variant="ghost"
+								size="icon"
+								aria-label="Edit member details"
+								href={`/dashboard/members/${row.original.id}`}
+							>
+								<Edit class="h-4 w-4" />
+							</Button>
+						</div>
+					</div>
+				</div>
+
+				<!-- Email -->
+				<div class="grid grid-cols-3 py-1 border-b">
+					<div class="text-sm font-medium text-muted-foreground">Email</div>
+					<div class="col-span-2 text-sm break-words">{row.original.email}</div>
+				</div>
+
+				<!-- Phone -->
+				<div class="grid grid-cols-3 py-1 border-b">
+					<div class="text-sm font-medium text-muted-foreground">Phone</div>
+					<div class="col-span-2 text-sm">{row.original.phone_number || 'N/A'}</div>
+				</div>
+
+				<!-- Gender -->
+				<div class="grid grid-cols-3 py-1 border-b">
+					<div class="text-sm font-medium text-muted-foreground">Gender</div>
+					<div class="col-span-2 text-sm capitalize">{row.original.gender || 'N/A'}</div>
+				</div>
+
+				<!-- Age -->
+				<div class="grid grid-cols-3 py-1 border-b">
+					<div class="text-sm font-medium text-muted-foreground">Age</div>
+					<div class="col-span-2 text-sm">{row.original.age || 'N/A'}</div>
+				</div>
+
+				<!-- Social Media Consent -->
+				<div class="grid grid-cols-3 py-1 border-b">
+					<div class="text-sm font-medium text-muted-foreground">Social Consent</div>
+					<div class="col-span-2">
+						<Badge
+							variant={row.original.social_media_consent === 'yes_recognizable' ||
+							row.original.social_media_consent === 'yes_unrecognizable'
+								? 'default'
+								: 'destructive'}
+							class="h-6"
+						>
+							<p class="capitalize">
+								{row.original.social_media_consent?.replace('_', ' ') ?? 'Unknown'}
+							</p>
+						</Badge>
+					</div>
+				</div>
+
+				<!-- Preferred Weapon -->
+				<div class="grid grid-cols-3 py-1 border-b">
+					<div class="text-sm font-medium text-muted-foreground">Weapons</div>
+					<div class="col-span-2 text-sm">
+						{#if row.original.preferred_weapon}
+							{#each row.original.preferred_weapon as weapon}
+								<Badge variant="outline" class="mr-1 mb-1 capitalize">
+									{weapon.replace(/_/g, ' ')}
+								</Badge>
+							{/each}
+						{:else}
+							None specified
+						{/if}
+					</div>
+				</div>
+
+				<!-- Member Since -->
+				<div class="grid grid-cols-3 py-1">
+					<div class="text-sm font-medium text-muted-foreground">Member Since</div>
+					<div class="col-span-2 text-sm">
+						{#if row.original.membership_start_date}
+							{dayjs(row.original.membership_start_date).format('MMM D, YYYY')}
+						{:else}
+							Never
+						{/if}
+					</div>
+				</div>
+			</div>
+		{/each}
+	</div>
+</div>
+
+<div class="flex flex-col md:flex-row items-center justify-between gap-4 p-4 bg-card border-t">
+	<div class="flex items-center gap-2 w-full md:w-auto justify-start">
+		<p class="text-sm text-muted-foreground">Elements per page</p>
 		<Select.Root
 			type="single"
 			value={pageSize.toString()}
 			onValueChange={(value) => onPaginationChange({ pageSize: Number(value) })}
 		>
-			<Select.Trigger class="w-16">{pageSize}</Select.Trigger>
+			<Select.Trigger class="w-16 h-8">{pageSize}</Select.Trigger>
 			<Select.Content>
 				{#each pageSizeOptions as pageSizeOption}
 					<Select.Item value={pageSizeOption.toString()}>
@@ -417,37 +529,39 @@
 			</Select.Content>
 		</Select.Root>
 	</div>
-	<Pagination.Root
-		count={membersQuery?.data?.count ?? 0}
-		perPage={pageSize}
-		page={currentPage + 1}
-		onPageChange={(page) => table.setPageIndex(page - 1)}
-		class="m-0 w-auto"
-	>
-		{#snippet children({ pages, currentPage })}
-			<Pagination.Content>
-				<Pagination.Item>
-					<Pagination.PrevButton />
-				</Pagination.Item>
-				{#each pages as page (page.key)}
-					{#if page.type === 'ellipsis'}
-						<Pagination.Item>
-							<Pagination.Ellipsis />
-						</Pagination.Item>
-					{:else}
-						<Pagination.Item>
-							<Pagination.Link {page} isActive={currentPage === page.value}>
-								{page.value}
-							</Pagination.Link>
-						</Pagination.Item>
-					{/if}
-				{/each}
-				<Pagination.Item>
-					<Pagination.NextButton />
-				</Pagination.Item>
-			</Pagination.Content>
-		{/snippet}
-	</Pagination.Root>
+	<div class="w-full md:w-auto flex justify-center md:justify-end">
+		<Pagination.Root
+			count={membersQuery?.data?.count ?? 0}
+			perPage={pageSize}
+			page={currentPage + 1}
+			onPageChange={(page) => table.setPageIndex(page - 1)}
+			class="m-0"
+		>
+			{#snippet children({ pages, currentPage })}
+				<Pagination.Content>
+					<Pagination.Item>
+						<Pagination.PrevButton />
+					</Pagination.Item>
+					{#each pages as page (page.key)}
+						{#if page.type === 'ellipsis'}
+							<Pagination.Item class="hidden sm:block">
+								<Pagination.Ellipsis />
+							</Pagination.Item>
+						{:else}
+							<Pagination.Item class={page.value !== currentPage && page.value !== currentPage - 1 && page.value !== currentPage + 1 ? 'hidden sm:block' : ''}>
+								<Pagination.Link {page} isActive={currentPage === page.value}>
+									{page.value}
+								</Pagination.Link>
+							</Pagination.Item>
+						{/if}
+					{/each}
+					<Pagination.Item>
+						<Pagination.NextButton />
+					</Pagination.Item>
+				</Pagination.Content>
+			{/snippet}
+		</Pagination.Root>
+	</div>
 </div>
 
 <Sheet.Root
