@@ -100,8 +100,8 @@
 
 <h2 class="prose prose-h2 text-lg mb-2">Members analytics</h2>
 
-<div class="flex gap-2">
-	<Card.Root class="bg-green-200 w-36">
+<div class="flex flex-wrap justify-center md:justify-start gap-4">
+	<Card.Root class="bg-green-200 w-36 text-center md:text-left">
 		<Card.Header>
 			<Card.Description class="text-black">Total Members</Card.Description>
 		</Card.Header>
@@ -115,7 +115,7 @@
 			{/if}
 		</Card.Content>
 	</Card.Root>
-	<Card.Root class="bg-yellow-200 w-36">
+	<Card.Root class="bg-yellow-200 w-36 text-center md:text-left">
 		<Card.Header>
 			<Card.Description class="text-black">Average age</Card.Description>
 		</Card.Header>
@@ -132,20 +132,23 @@
 </div>
 
 <Resizable.PaneGroup direction="vertical" class="mt-2">
+	<!-- Gender Demographics Card -->
 	<Resizable.Pane class="min-h-[400px] p-4 border rounded">
-		<Resizable.PaneGroup direction="horizontal">
-			<Resizable.Pane class="min-h-[400px]">
-				<GenderBarChart
-					genderDistributionData={genderDistribution.data
-						? genderDistribution.data.map((row) => ({ gender: row.gender, value: row.count }))
-						: []}
-				/>
-			</Resizable.Pane>
-			<Resizable.Handle />
-			<Resizable.Pane class="min-h-[400px] pl-4">
-				<WeaponPieChart weaponDistributionData={weaponPreferencesDistribution.data ?? []} />
-			</Resizable.Pane>
-		</Resizable.PaneGroup>
+		<h3 class="text-lg font-medium mb-4">Gender Demographics</h3>
+		<GenderBarChart
+			genderDistributionData={genderDistribution.data
+				? genderDistribution.data.map((row) => ({ gender: row.gender, value: row.count }))
+				: []}
+		/>
+	</Resizable.Pane>
+	
+	<!-- Separator between Gender and Weapon cards -->
+	<Resizable.Handle />
+	
+	<!-- Preferred Weapons Card -->
+	<Resizable.Pane class="min-h-[400px] p-4 border rounded">
+		<h3 class="text-lg font-medium mb-4">Preferred Weapons</h3>
+		<WeaponPieChart weaponDistributionData={weaponPreferencesDistribution.data ?? []} />
 	</Resizable.Pane>
 	<Resizable.Handle />
 	<Resizable.Pane class="min-h-[400px] p-4 border rounded">
