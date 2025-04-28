@@ -17,7 +17,7 @@ export function generatePricingInfo(
 	return {
 		proratedPrice: Dinero({
 			// Use the total prorated amount that the user will pay now
-			amount: proratedMonthlyAmount + proratedAnnualAmount,
+			amount: existingSession?.total_amount,
 			currency: 'EUR'
 		}).toJSON(),
 		proratedMonthlyPrice: Dinero({
