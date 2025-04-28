@@ -3,14 +3,16 @@
 	import type { UserData } from '$lib/types';
 	import { SidebarProvider } from '$lib/components/ui/sidebar';
 	import DashboardSidebar from '$lib/components/ui/DashboardSidebar.svelte';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import * as Breadcrumb from '$lib/components/ui/breadcrumb';
 	import { Separator } from '$lib/components/ui/separator';
 	import { createQuery } from '@tanstack/svelte-query';
+	import { goto } from '$app/navigation';
+
 	let { children, data }: { data: LayoutData; children: any } = $props();
 	let supabase = $derived(data.supabase);
 	let roles = $derived.by(() => new Set(data.roles));
-	let paths = $derived.by(() => $page.url.pathname.split('/'));
+	let paths = $derived.by(() => page.url.pathname.split('/'));
 	const userDataQuery = createQuery<UserData>(() => ({
 		queryKey: ['logged_in_user_data'],
 		experimental_prefetchInRender: true,
@@ -47,7 +49,13 @@
 <SidebarProvider class="h-[calc(100vh-5rem)]">
 	<DashboardSidebar
 		{roles}
-		logout={() => supabase.auth.signOut()}
+		logout={async () => {
+			await supabase.auth.signOut();
+			goto('/auth', {
+				replaceState: true,
+				invalidateAll: true
+			});
+		}}
 		userData={userDataQuery.promise}
 		navData={data.navData}
 		{supabase}
