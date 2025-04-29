@@ -15,9 +15,10 @@
 		</div>
 		<Card.Title>Join Dublin Hema Club</Card.Title>
 		<Card.Description
-			>We are glad you decided to join us! Please fill up the following details and complete your
-			first payment</Card.Description
-		>
+			>We are glad you decided to join us! These are the personal details we have from you, if
+			anything is not right, you will be able to change it later. Please fill up your next of kin
+			data and the payment info below.
+		</Card.Description>
 	</Card.Header>
 	<Card.Content class="max-h-[80svh] overflow-y-auto">
 		{@render children()}

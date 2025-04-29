@@ -23,17 +23,6 @@ export const POST: RequestHandler = async ({ request, cookies, platform }) => {
 	// Check if this is the special migration code
 	const isMigrationCode = code === DASHBOARD_MIGRATION_CODE;
 	// If it's not the migration code, verify it's a valid promotion code
-	if (!isMigrationCode) {
-		const promotionCodes = await stripeClient.promotionCodes.list({
-			active: true,
-			code,
-		});
-		if (promotionCodes.data.length === 0) {
-			return Response.json({ message: "Coupon code not valid." }, {
-				status: 400,
-			});
-		}
-	}
 	const kysely = getKyselyClient(platform.env.HYPERDRIVE);
 	const accessToken = cookies.get("access-token");
 	invariant(
@@ -54,7 +43,7 @@ export const POST: RequestHandler = async ({ request, cookies, platform }) => {
 			"monthly_payment_intent_id",
 			"annual_payment_intent_id",
 			"monthly_amount",
-			"annual_amount",
+			"annual_amount", 
 		])
 		.where("user_id", "=", userId)
 		.where("expires_at", ">", dayjs().toISOString())

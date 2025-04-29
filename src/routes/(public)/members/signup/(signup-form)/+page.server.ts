@@ -14,13 +14,13 @@ import {
 	updateInvitationStatus,
 } from "$lib/server/kyselyRPCFunctions";
 import * as Sentry from "@sentry/sveltekit";
-import {
-	getNextBillingDates
-} from "$lib/server/pricingUtils";
-import {
-	getExistingPaymentSession,
-} from "$lib/server/subscriptionCreation";
+import { getNextBillingDates } from "$lib/server/pricingUtils";
+import { getExistingPaymentSession } from "$lib/server/subscriptionCreation";
 import type { Actions, PageServerLoad } from "./$types";
+import { env } from "$env/dynamic/public";
+
+const DASHBOARD_MIGRATION_CODE = env.PUBLIC_DASHBOARD_MIGRATION_CODE ??
+	"DHCDASHBOARD";
 
 // need to normalize medical_conditions
 export const load: PageServerLoad = async ({ parent, platform }) => {
@@ -183,7 +183,17 @@ export const actions: Actions = {
 								},
 							},
 						},
-					),
+					).catch((err: Stripe.errors.StripeAPIError) => {
+						if (
+							paymentSession.coupon_id !==
+								DASHBOARD_MIGRATION_CODE
+						) {
+							throw err;
+						}
+						Sentry.captureMessage(
+							`Payment intent ${monthly_payment_intent_id} is in an unexpected state due to migration code ${DASHBOARD_MIGRATION_CODE}`,
+						);
+					}),
 					stripeClient.paymentIntents.confirm(
 						annual_payment_intent_id,
 						{
@@ -200,7 +210,17 @@ export const actions: Actions = {
 								},
 							},
 						},
-					),
+					).catch((err: Stripe.errors.StripeAPIError) => {
+						if (
+							paymentSession.coupon_id !==
+								DASHBOARD_MIGRATION_CODE
+						) {
+							throw err;
+						}
+						Sentry.captureMessage(
+							`Payment intent ${annual_payment_intent_id} is in an unexpected state due to migration code ${DASHBOARD_MIGRATION_CODE}`,
+						);
+					}),
 				]);
 
 				// After successful payment confirmation, mark the session as used
