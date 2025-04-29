@@ -5,10 +5,23 @@
 	import * as Resizable from '$lib/components/ui/resizable/index.js';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { createQuery } from '@tanstack/svelte-query';
+	import { onMount } from 'svelte';
+	import { browser } from '$app/environment';
 
-	import WeaponPieChart from '$lib/components/weapon-pie-chart.svelte';
-	import GenderBarChart from '$lib/components/gender-bar-chart.svelte';
-	import AgeScatterChart from '$lib/components/age-scatter-chart.svelte';
+	let WeaponPieChart: typeof import('$lib/components/weapon-pie-chart.svelte').default | null =
+		$state(null);
+	let GenderBarChart: typeof import('$lib/components/gender-bar-chart.svelte').default | null =
+		$state(null);
+	let AgeScatterChart: typeof import('$lib/components/age-scatter-chart.svelte').default | null =
+		$state(null);
+
+	onMount(async () => {
+		if (browser) {
+			WeaponPieChart = (await import('$lib/components/weapon-pie-chart.svelte')).default;
+			GenderBarChart = (await import('$lib/components/gender-bar-chart.svelte')).default;
+			AgeScatterChart = (await import('$lib/components/age-scatter-chart.svelte')).default;
+		}
+	});
 
 	const { supabase }: { supabase: SupabaseClient<Database> } = $props();
 	const totalCountQuery = createQuery(() => ({
@@ -34,7 +47,7 @@
 				.throwOnError()
 				.then((res) => res.data?.avg_age ?? 0) as Promise<number>
 	}));
-	
+
 	const genderDistribution = createQuery(() => ({
 		queryKey: ['members', 'genderDistribution'],
 		queryFn: ({ signal }) =>
@@ -135,23 +148,29 @@
 	<!-- Gender Demographics Card -->
 	<Resizable.Pane class="min-h-[400px] p-4 border rounded">
 		<h3 class="text-lg font-medium mb-4">Gender Demographics</h3>
-		<GenderBarChart
-			genderDistributionData={genderDistribution.data
-				? genderDistribution.data.map((row) => ({ gender: row.gender, value: row.count }))
-				: []}
-		/>
+		{#if GenderBarChart}
+			<GenderBarChart
+				genderDistributionData={genderDistribution.data
+					? genderDistribution.data.map((row) => ({ gender: row.gender, value: row.count }))
+					: []}
+			/>
+		{/if}
 	</Resizable.Pane>
-	
+
 	<!-- Separator between Gender and Weapon cards -->
 	<Resizable.Handle />
-	
+
 	<!-- Preferred Weapons Card -->
 	<Resizable.Pane class="min-h-[400px] p-4 border rounded">
 		<h3 class="text-lg font-medium mb-4">Preferred Weapons</h3>
-		<WeaponPieChart weaponDistributionData={weaponPreferencesDistribution.data ?? []} />
+		{#if WeaponPieChart}
+			<WeaponPieChart weaponDistributionData={weaponPreferencesDistribution.data ?? []} />
+		{/if}
 	</Resizable.Pane>
 	<Resizable.Handle />
 	<Resizable.Pane class="min-h-[400px] p-4 border rounded">
-		<AgeScatterChart ageDistribution={ageDistributionQuery.data ?? []} />
+		{#if AgeScatterChart}
+			<AgeScatterChart ageDistribution={ageDistributionQuery?.data ?? []} />
+		{/if}
 	</Resizable.Pane>
 </Resizable.PaneGroup>

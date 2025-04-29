@@ -5,8 +5,21 @@
 	import * as Resizable from '$lib/components/ui/resizable/index.js';
 	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { createQuery } from '@tanstack/svelte-query';
-	import GenderBarChart from '$lib/components/gender-bar-chart.svelte';
-	import AgeScatterChart from '$lib/components/age-scatter-chart.svelte';
+	import { browser } from '$app/environment';
+	import { onMount } from 'svelte';
+	import { Component } from 'lucide-svelte';
+
+	let GenderBarChart: typeof import('$lib/components/gender-bar-chart.svelte').default | null =
+		$state(null);
+	let AgeScatterChart: typeof import('$lib/components/age-scatter-chart.svelte').default | null =
+		$state(null);
+
+	onMount(async () => {
+		if (browser) {
+			GenderBarChart = (await import('$lib/components/gender-bar-chart.svelte')).default;
+			AgeScatterChart = (await import('$lib/components/age-scatter-chart.svelte')).default;
+		}
+	});
 
 	const { supabase }: { supabase: SupabaseClient<Database> } = $props();
 	const totalCountQuery = createQuery<number>(() => ({
@@ -33,9 +46,9 @@
 				.then((res) => res.data?.avg_age ?? 0)
 	}));
 	// Define the type for gender distribution data
-type GenderDistributionItem = { gender: string; value: number };
+	type GenderDistributionItem = { gender: string; value: number };
 
-const genderDistribution = createQuery(() => ({
+	const genderDistribution = createQuery(() => ({
 		queryKey: ['waitlist', 'genderDistribution'],
 		queryFn: async ({ signal }) =>
 			supabase
@@ -48,10 +61,9 @@ const genderDistribution = createQuery(() => ({
 				.throwOnError()
 				.then((r) => r.data || [])
 	}));
-	
 
 	// Transform the gender distribution data to match the expected format for GenderBarChart
-const genderDistributionData = $derived.by(() => {
+	const genderDistributionData = $derived.by(() => {
 		if (!genderDistribution.data) return [];
 		return genderDistribution.data.map((row) => ({
 			gender: row.gender,
@@ -73,7 +85,7 @@ const genderDistributionData = $derived.by(() => {
 	const ageDistribution = $derived.by(() => {
 		const result = ageDistributionQuery.data ?? [];
 		// Transform the data to match the expected format for AgeScatterChart
-		return result.map(row => ({
+		return result.map((row) => ({
 			age: row.age,
 			value: row.value
 		}));
@@ -115,10 +127,14 @@ const genderDistributionData = $derived.by(() => {
 
 <Resizable.PaneGroup direction="vertical" class="mt-2">
 	<Resizable.Pane class="min-h-[400px] p-4 border rounded">
-		<GenderBarChart genderDistributionData={genderDistributionData} />
+		{#if GenderBarChart}
+			<GenderBarChart {genderDistributionData} />
+		{/if}
 	</Resizable.Pane>
 	<Resizable.Handle />
 	<Resizable.Pane class="min-h-[400px] p-4 border rounded">
-		<AgeScatterChart ageDistribution={ageDistribution} />
+		{#if AgeScatterChart}
+			<AgeScatterChart {ageDistribution} />
+		{/if}
 	</Resizable.Pane>
 </Resizable.PaneGroup>

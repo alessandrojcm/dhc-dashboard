@@ -1,7 +1,7 @@
 <script lang="ts">
 	import WaitlistTable from './waitlist-table.svelte';
 	import Analytics from './workshop-analytics.svelte';
-	import * as Tabs from '$lib/components/ui/tabs/index.js';
+	import { Root, List, Trigger, Content } from '$lib/components/ui/tabs/index.js';
 	import { Lock, LockOpen } from 'lucide-svelte';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog/index.js';
 	import Button from '$lib/components/ui/button/button.svelte';
@@ -79,19 +79,19 @@
 {/snippet}
 <div class="relative">
 	{@render waitlistToggleDialog()}
-	<Tabs.Root bind:value class="p-2 min-h-96 mr-2">
+	<Root bind:value class="p-2 min-h-96 mr-2">
 		<div class="inline-flex w-full">
-			<Tabs.List>
-				<Tabs.Trigger value="dashboard">Dashboard</Tabs.Trigger>
-				<Tabs.Trigger value="waitlist">Waitlist</Tabs.Trigger>
-			</Tabs.List>
+			<List>
+				<Trigger value="dashboard">Dashboard</Trigger>
+				<Trigger value="waitlist">Waitlist</Trigger>
+			</List>
 		</div>
 
-		<Tabs.Content value="dashboard">
+		<Content value="dashboard">
 			<Analytics {supabase} />
-		</Tabs.Content>
-		<Tabs.Content value="waitlist">
+		</Content>
+		<Content value="waitlist">
 			<WaitlistTable {supabase} />
-		</Tabs.Content>
-	</Tabs.Root>
+		</Content>
+	</Root>
 </div>
