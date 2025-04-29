@@ -15,11 +15,10 @@
 	import * as Pagination from '$lib/components/ui/pagination/index.js';
 	import * as Select from '$lib/components/ui/select';
 	import * as Sheet from '$lib/components/ui/sheet';
-	import * as Popover from '$lib/components/ui/popover/index.js';
 	import * as Table from '$lib/components/ui/table/index.js';
 	import SortHeader from '$lib/components/ui/table/sort-header.svelte';
 	import type { SupabaseClient } from '@supabase/supabase-js';
-	import { BriefcaseMedical, Edit } from 'lucide-svelte';
+	import { Edit } from 'lucide-svelte';
 	import { createQuery, keepPreviousData } from '@tanstack/svelte-query';
 	import {
 		getCoreRowModel,

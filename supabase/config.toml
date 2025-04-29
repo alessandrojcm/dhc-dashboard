@@ -235,7 +235,7 @@ enabled = false
 [functions.stripe-webhooks]
 verify_jwt = false
 
-# Use AWS Cognito (Amplify) as a third-party provider alongside Supabase Auth.
+# Use AWS Cognito (Amplify) as a third-party provider alongside Supabase Auth.re
 [auth.third_party.aws_cognito]
 enabled = false
 # user_pool_id = "my-user-pool-id"

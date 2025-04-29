@@ -1,22 +1,21 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
-	import * as Tabs from '$lib/components/ui/tabs/index.js';
+	import { Root, List, Trigger, Content } from '$lib/components/ui/tabs/index.js';
 	import InviteDrawer from './invite-drawer.svelte';
 	import Analytics from './member-analytics.svelte';
 	import MembersTable from './members-table.svelte';
 	import SettingsSheet from './settings-sheet.svelte';
 
 	const { data } = $props();
-	let value = $state($page.url.searchParams.get('tab') || 'dashboard');
+	let value = $state(page.url.searchParams.get('tab') || 'dashboard');
 
 	function onTabChagne(value: string) {
-		const newParams = new URLSearchParams($page.url.searchParams);
+		const newParams = new URLSearchParams(page.url.searchParams);
 		newParams.set('tab', value);
 		goto(`/dashboard/members?${newParams.toString()}`);
 	}
-	
 </script>
 
 <div class="relative">
@@ -30,23 +29,23 @@
 		{/await}
 	{/if}
 
-	<Tabs.Root {value} onValueChange={onTabChagne} class="p-2 min-h-96 mr-2">
+	<Root {value} onValueChange={onTabChagne} class="p-2 min-h-96 mr-2">
 		<div class="flex justify-between items-center mb-2">
-			<Tabs.List>
-				<Tabs.Trigger value="dashboard">Dashboard</Tabs.Trigger>
-				<Tabs.Trigger value="members">Members list</Tabs.Trigger>
-			</Tabs.List>
-			
+			<List>
+				<Trigger value="dashboard">Dashboard</Trigger>
+				<Trigger value="members">Members list</Trigger>
+			</List>
+
 			{#if data.canEditSettings}
-				<InviteDrawer supabase={data.supabase}/>
+				<InviteDrawer supabase={data.supabase} />
 			{/if}
 		</div>
-		
-		<Tabs.Content value="dashboard">
+<!-- how to import the analytics... -->
+		<Content value="dashboard">
 			<Analytics supabase={data.supabase} />
-		</Tabs.Content>
-		<Tabs.Content value="members">
+		</Content>
+		<Content value="members">
 			<MembersTable supabase={data.supabase} />
-		</Tabs.Content>
-	</Tabs.Root>
+		</Content>
+	</Root>
 </div>
