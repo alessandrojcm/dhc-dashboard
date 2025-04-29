@@ -35,12 +35,12 @@ const allowedEvents: Stripe.Event.Type[] = [
 	'payment_intent.canceled'
 ];
 
-async function setLastPayment(customerId: string, paidDate: number, subscriptionEnd: number) {
+async function setLastPayment(customerId: string, paidDate: number, subscriptionEnd: number | null) {
 	await db
 		.updateTable('member_profiles')
 		.set({
 			last_payment_date: dayjs.unix(paidDate).toDate(),
-			membership_end_date: dayjs.unix(subscriptionEnd).toDate()
+			membership_end_date: subscriptionEnd ? dayjs.unix(subscriptionEnd).toDate() : null
 		})
 		.whereExists((qb) =>
 			qb
@@ -89,8 +89,8 @@ async function syncStripeDataToKV(customerId: string) {
 		if (standardMembershipSub.status === 'active') {
 			return setLastPayment(
 				customerId,
-				standardMembershipSub.current_period_start,
-				standardMembershipSub.current_period_end
+				standardMembershipSub.start_date,
+				standardMembershipSub.ended_at ?? null
 			);
 		}
 		return Promise.resolve();
