@@ -130,7 +130,7 @@
 						<DropdownMenu.Content class="w-56" align="end">
 							{#if roles.size > 1}
 								<DropdownMenu.Item>
-									<a href={`members/${user?.id}`}>My Profile</a>
+									<a href={`/dashboard/members/${user?.id}`}>My Profile</a>
 								</DropdownMenu.Item>
 							{/if}
 							<DropdownMenu.Item onclick={logout}>Log out</DropdownMenu.Item>
