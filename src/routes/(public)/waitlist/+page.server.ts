@@ -41,7 +41,7 @@ export const actions: Actions = {
 			await kysely.transaction().execute(async (trx) => {
 				// 1. call existing function and capture the waitlist row
 				const results = await insertWaitlistEntry(formData, trx);
-				const waitlistId = results.waitlist_id;
+				const profileId = results.profile_id;
 				if (
 					[
 						formData.guardianFirstName,
@@ -54,7 +54,7 @@ export const actions: Actions = {
 					await trx
 						.insertInto('waitlist_guardians')
 						.values({
-							waitlist_id: waitlistId,
+							profile_id: profileId,
 							first_name: formData.firstName!,
 							last_name: formData.lastName!,
 							phone_number: formData.phoneNumber!
