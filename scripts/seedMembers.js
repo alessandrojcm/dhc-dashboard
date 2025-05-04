@@ -1,6 +1,7 @@
 import { faker } from '@faker-js/faker';
 import { supabase } from './supabaseServiceRole.js';
 import { stripeClient } from './stripeClient.js';
+import dayjs from 'dayjs';
 
 const PREFERRED_WEAPONS = ['longsword', 'sword_and_buckler'];
 const GENDERS = ['man (cis)', 'woman (cis)', 'non-binary', 'man (trans)', 'woman (trans)', 'other'];
@@ -113,7 +114,7 @@ async function seedMembers(count = 10) {
 	}));
 
 	// Batch insert member profiles
-	const { error: memberProfileError } = await supabase
+	const { error: memberProfileError, data: memberProfileData } = await supabase
 		.from('member_profiles')
 		.insert(memberProfiles);
 
@@ -150,6 +151,17 @@ async function seedMembers(count = 10) {
 				})
 				.eq('supabase_user_id', member.supabase_user_id);
 		})
+	);
+	const underageMembers = memberProfileData.filter(
+		(m) => m.date_of_birth && dayjs(m.date_of_birth).isBefore(dayjs().subtract(18, 'years'))
+	);
+	await supabase.from('waitlist_guardians').insert(
+		underageMembers.map((m) => ({
+			profile_id: m.profile_id,
+			first_name: faker.person.firstName(),
+			last_name: faker.person.lastName(),
+			phone_number: faker.phone.number()
+		}))
 	);
 
 	console.log(`Successfully created ${memberProfiles.length} member profiles`);

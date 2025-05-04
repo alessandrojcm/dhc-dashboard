@@ -1,10 +1,11 @@
 import { faker } from '@faker-js/faker';
 import { supabase } from './supabaseServiceRole.js';
+import dayjs from 'dayjs';
 
-const SOCIAL_MEDIA_CONSENT= ['no', 'yes_recognizable', 'yes_unrecognizable'];
+const SOCIAL_MEDIA_CONSENT = ['no', 'yes_recognizable', 'yes_unrecognizable'];
 async function seedWaitlist(count = 10) {
 	const entries = Array.from({ length: count }, () => ({
-	    first_name: faker.person.firstName(),
+		first_name: faker.person.firstName(),
 		last_name: faker.person.lastName(),
 		email: faker.internet.email().toLowerCase(),
 		date_of_birth: faker.date.between({
@@ -22,7 +23,7 @@ async function seedWaitlist(count = 10) {
 			'other'
 		]),
 		medical_conditions: faker.helpers.arrayElement([null, faker.lorem.sentence()]),
-		social_media_consent: faker.helpers.arrayElement(SOCIAL_MEDIA_CONSENT),
+		social_media_consent: faker.helpers.arrayElement(SOCIAL_MEDIA_CONSENT)
 	}));
 
 	await Promise.all(
@@ -32,6 +33,18 @@ async function seedWaitlist(count = 10) {
 				console.error('Error seeding data:', error);
 				return Promise.reject(error);
 			}
+			if (
+				!entry.date_of_birth &&
+				dayjs(entry.date_of_birth).isBefore(dayjs().subtract(18, 'years'))
+			) {
+				return Promise.resolve();
+			}
+			await supabase.from('waitlist_guardians').insert({
+				profile_id: entry.profile_id,
+				first_name: faker.person.firstName(),
+				last_name: faker.person.lastName(),
+				phone_number: faker.phone.number()
+			});
 			return Promise.resolve();
 		})
 	);
