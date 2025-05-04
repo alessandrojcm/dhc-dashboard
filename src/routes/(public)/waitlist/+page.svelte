@@ -17,18 +17,31 @@
 	import { toast } from 'svelte-sonner';
 	import { dateProxy, superForm } from 'sveltekit-superforms';
 	import { valibotClient } from 'sveltekit-superforms/adapters';
+	import { LoaderCircle } from 'lucide-svelte';
 
 	const { data } = $props();
 	const form = superForm(data.form, {
-		validators: valibotClient(beginnersWaitlist)
+		validators: valibotClient(beginnersWaitlist),
+		validationMethod: 'onblur'
 	});
-	const { form: formData, enhance, errors, message } = form;
+	const { form: formData, enhance, errors, submitting, message } = form;
 	const dobProxy = dateProxy(form, 'dateOfBirth', { format: `date` });
 	const dobValue = $derived.by(() => {
 		if (!dayjs($formData.dateOfBirth).isValid() || dayjs($formData.dateOfBirth).isSame(dayjs())) {
 			return undefined;
 		}
 		return fromDate(dayjs($formData.dateOfBirth).toDate(), getLocalTimeZone());
+	});
+
+	// Derived store to check if user is under 18
+	const isUnderAge = $derived.by(() => {
+		if (!$formData.dateOfBirth) {
+			return false;
+		}
+		if (!dayjs($formData.dateOfBirth).isValid()) {
+			return false;
+		}
+		return dayjs().diff($formData.dateOfBirth, 'year') < 18;
 	});
 
 	$effect(() => {
@@ -59,7 +72,7 @@
 			you once a spot for our beginners workshop opens
 		</Card.Description>
 	</Card.Header>
-	<Card.Content>
+	<Card.Content class="overflow-auto max-h-[85svh]">
 		{#if $message?.success}
 			<Alert.Root variant="success">
 				<CheckCircled class="h-4 w-4" />
@@ -162,7 +175,8 @@
 						{/snippet}
 					</Form.Control>
 					<Form.Description class={$errors?.pronouns ? 'text-red-500' : ''}
-						>Please separate with slashes (e.g. they/them).</Form.Description
+					>Please separate with slashes (e.g. they/them).
+					</Form.Description
 					>
 				</Form.Field>
 
@@ -242,7 +256,73 @@
 					<Form.FieldErrors />
 				</Form.Field>
 
-				<Button type="submit">Submit</Button>
+				{#if isUnderAge}
+					<div class="mt-4 p-4 bg-gray-50 rounded-md border border-gray-200">
+						<h3 class="text-lg font-medium mb-4">Guardian Information (Required for under 18)</h3>
+
+						<div class="flex gap-4 w-full justify-stretch">
+							<Form.Field {form} name="guardianFirstName" class="flex-1">
+								<Form.Control>
+									{#snippet children({ props })}
+										<Form.Label required>Guardian First Name</Form.Label>
+										<Input
+											{...props}
+											bind:value={$formData.guardianFirstName}
+											placeholder="Enter guardian's first name"
+										/>
+									{/snippet}
+								</Form.Control>
+								<Form.FieldErrors />
+							</Form.Field>
+
+							<Form.Field {form} name="guardianLastName" class="flex-1">
+								<Form.Control>
+									{#snippet children({ props })}
+										<Form.Label required>Guardian Last Name</Form.Label>
+										<Input
+											{...props}
+											bind:value={$formData.guardianLastName}
+											placeholder="Enter guardian's last name"
+										/>
+									{/snippet}
+								</Form.Control>
+								<Form.FieldErrors />
+							</Form.Field>
+						</div>
+
+						<Form.Field {form} name="guardianPhoneNumber">
+							<Form.Control>
+								{#snippet children({ props })}
+									<Form.Label required>Guardian Phone Number</Form.Label>
+									<PhoneInput
+										placeholder="Enter guardian's phone number"
+										{...props}
+										bind:phoneNumber={() => $formData?.guardianPhoneNumber ?? '', (v) => {
+												if(!v) {
+													return
+												}
+												form.form.update(f => {
+													return {
+														...f,
+														guardianPhoneNumber: v
+													}
+												}, {taint: true})
+											}}
+									/>
+								{/snippet}
+							</Form.Control>
+							<Form.FieldErrors />
+						</Form.Field>
+					</div>
+				{/if}
+
+				<Button type="submit" disabled={!form.submitting}>
+					{#if $submitting}
+						<LoaderCircle class="animate-spin"/>
+					{:else}
+						Submit
+					{/if}
+				</Button>
 			</form>
 		{/if}
 	</Card.Content>

@@ -1,10 +1,11 @@
 import type { Actions, PageServerLoad } from './$types';
-import { message, setError, superValidate } from 'sveltekit-superforms';
+import { message, superValidate } from 'sveltekit-superforms';
 import { valibot } from 'sveltekit-superforms/adapters';
-import beginnersWaitlist from '$lib/schemas/beginnersWaitlist';
+import beginnersWaitlist, { calculateAge } from '$lib/schemas/beginnersWaitlist';
 import { error, fail } from '@sveltejs/kit';
-import type { Database } from '$database';
 import { supabaseServiceClient } from '$lib/server/supabaseServiceClient';
+import { getKyselyClient } from '$lib/server/kysely';
+import { insertWaitlistEntry } from '$lib/server/kyselyRPCFunctions';
 
 export const load: PageServerLoad = async () => {
 	const isWaitlistOpen = await supabaseServiceClient
@@ -34,25 +35,38 @@ export const actions: Actions = {
 			});
 		}
 		const formData = form.data;
-		const { error } = await supabaseServiceClient.rpc('insert_waitlist_entry', {
-			first_name: formData.firstName,
-			last_name: formData.lastName,
-			email: formData.email,
-			date_of_birth: formData.dateOfBirth.toISOString(),
-			phone_number: formData.phoneNumber,
-			pronouns: formData.pronouns.toLowerCase(),
-			gender: formData.gender as Database['public']['Enums']['gender'],
-			medical_conditions: formData.medicalConditions
-		});
-		// Duplicated email
-		if (error?.code === '23505') {
-			return setError(form, 'email', 'You are already on the waitlist!');
-		} else if (error) {
+		const age = calculateAge(formData.dateOfBirth);
+		try {
+			const kysely = getKyselyClient(event.platform.env.HYPERDRIVE);
+			await kysely.transaction().execute(async (trx) => {
+				// 1. call existing function and capture the waitlist row
+				const results = await insertWaitlistEntry(formData, trx);
+				const waitlistId = results.waitlist_id;
+				if (
+					[
+						formData.guardianFirstName,
+						formData.guardianLastName,
+						formData.guardianPhoneNumber,
+						age < 18
+					].every(Boolean)
+				) {
+					// 2. insert guardian row
+					await trx
+						.insertInto('waitlist_guardians')
+						.values({
+							waitlist_id: waitlistId,
+							first_name: formData.firstName!,
+							last_name: formData.lastName!,
+							phone_number: formData.phoneNumber!
+						})
+						.execute();
+				}
+			});
+		} catch (err) {
+			console.error(err);
 			return message(
 				form,
-				{
-					error: 'Something has gone wrong, please try again later.'
-				},
+				{ error: 'Something has gone wrong, please try again later.' },
 				{ status: 500 }
 			);
 		}

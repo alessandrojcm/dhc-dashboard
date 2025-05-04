@@ -1,5 +1,6 @@
 import type { Database } from '$database';
 import { sql, type QueryExecutorProvider } from 'kysely';
+import BeginnersWaitlist, { type BeginnersFormSchema } from '$lib/schemas/beginnersWaitlist';
 
 type GetInvitationInfoResult = {
 	invitation_id: string;
@@ -19,9 +20,30 @@ export function getMembershipInfo(
 ): Promise<Database['public']['CompositeTypes']['member_data_type']> {
 	return sql<{
 		get_membership_info: Database['public']['CompositeTypes']['member_data_type'];
-	}>`select * from get_membership_info(${userId}::uuid)`
+	}>`select *
+		 from get_membership_info(${userId}::uuid)`
 		.execute(executor)
 		.then((r) => r.rows[0].get_membership_info);
+}
+
+export function insertWaitlistEntry(
+	formData: BeginnersFormSchema,
+	executor: QueryExecutorProvider
+) {
+	return sql<Database['public']['Functions']['insert_waitlist_entry']['Returns'][0]>`select *
+		 from insert_waitlist_entry(
+			 ${formData.firstName},
+			 ${formData.lastName},
+			 ${formData.email},
+			 ${formData.dateOfBirth.toISOString()},
+			 ${formData.phoneNumber},
+			 ${formData.pronouns.toLowerCase()},
+			 ${formData.gender},
+			 ${formData.medicalConditions},
+			 ${formData.socialMediaConsent}
+					)`
+		.execute(executor)
+		.then((r) => r.rows[0]);
 }
 
 export function getInvitationInfo(
@@ -30,7 +52,8 @@ export function getInvitationInfo(
 ): Promise<GetInvitationInfoResult> {
 	return sql<{
 		get_invitation_info: GetInvitationInfoResult;
-	}>`select * from get_invitation_info(${userId}::uuid)`
+	}>`select *
+		 from get_invitation_info(${userId}::uuid)`
 		.execute(executor)
 		.then((r) => r.rows[0].get_invitation_info);
 }
@@ -63,18 +86,19 @@ export function createInvitation(
 ): Promise<string> {
 	return sql<{
 		create_invitation: string;
-	}>`select * from create_invitation(
-		${userId}::uuid,
-		${email}::text,
-		${firstName}::text,
-		${lastName}::text,
-		${dateOfBirth}::timestamptz,
-		${phoneNumber}::text,
-		${invitationType}::text,
-		${waitlistId}::uuid,
-		${expiresAt}::timestamptz,
-		${metadata ? JSON.stringify(metadata) : null}::jsonb
-	)`
+	}>`select *
+		 from create_invitation(
+			 ${userId}::uuid,
+			 ${email}::text,
+			 ${firstName}::text,
+			 ${lastName}::text,
+			 ${dateOfBirth}::timestamptz,
+			 ${phoneNumber}::text,
+			 ${invitationType}::text,
+			 ${waitlistId}::uuid,
+			 ${expiresAt}::timestamptz,
+			 ${metadata ? JSON.stringify(metadata) : null}::jsonb
+					)`
 		.execute(executor)
 		.then((r) => r.rows[0].create_invitation);
 }
@@ -86,10 +110,11 @@ export function updateInvitationStatus(
 ): Promise<boolean> {
 	return sql<{
 		update_invitation_status: boolean;
-	}>`select * from update_invitation_status(
-		${invitationId}::uuid,
-		${status}::invitation_status
-	)`
+	}>`select *
+		 from update_invitation_status(
+			 ${invitationId}::uuid,
+			 ${status}::invitation_status
+					)`
 		.execute(executor)
 		.then((r) => r.rows[0].update_invitation_status);
 }
@@ -103,7 +128,9 @@ export function completeMemberRegistration(
 	}: Database['public']['Functions']['complete_member_registration']['Args'],
 	executor: QueryExecutorProvider
 ): Promise<string> {
-	return sql<string>`select * from complete_member_registration(${v_user_id}::uuid, ${p_next_of_kin_name}::text, ${p_next_of_kin_phone}::text, ${p_insurance_form_submitted})`
+	return sql<string>`select *
+										 from complete_member_registration(${v_user_id}::uuid, ${p_next_of_kin_name}::text,
+																											 ${p_next_of_kin_phone}::text, ${p_insurance_form_submitted})`
 		.execute(executor)
 		.then((r) => r.rows[0]);
 }
@@ -112,9 +139,8 @@ export function getMemberData(
 	userId: string,
 	executor: QueryExecutorProvider
 ): Promise<Database['public']['CompositeTypes']['member_data_type']> {
-	return sql<
-		Database['public']['CompositeTypes']['member_data_type']
-	>`select * from get_member_data(${userId}::uuid)`
+	return sql<Database['public']['CompositeTypes']['member_data_type']>`select *
+		from get_member_data(${userId}::uuid)`
 		.execute(executor)
 		.then((r) => r.rows[0]);
 }
@@ -144,26 +170,27 @@ export function updateMemberData(
 ): Promise<Database['public']['CompositeTypes']['member_data_type']> {
 	return sql<{
 		update_member_data: Database['public']['CompositeTypes']['member_data_type'];
-	}>`select * from update_member_data(
-		${user_uuid}::uuid,
-		${p_first_name ?? null}::text,
-		${p_last_name ?? null}::text,
-		${p_is_active ?? null}::boolean,
-		${p_medical_conditions ?? null}::text,
-		${p_phone_number ?? null}::text,
-		${p_gender ?? null}::gender,
-		${p_pronouns ?? null}::text,
-		${p_date_of_birth ?? null}::date,
-		${p_next_of_kin_name ?? null}::text,
-		${p_next_of_kin_phone ?? null}::text,
-		${p_preferred_weapon ?? null}::preferred_weapon[],
-		${p_membership_start_date ?? null}::timestamptz,
-		${p_membership_end_date ?? null}::timestamptz,
-		${p_last_payment_date ?? null}::timestamptz,
-		${p_insurance_form_submitted ?? null}::boolean,
-		${p_additional_data ?? null}::jsonb,
-		${p_social_media_consent ?? 'no'}::social_media_consent
-	)`
+	}>`select *
+		 from update_member_data(
+			 ${user_uuid}::uuid,
+			 ${p_first_name ?? null}::text,
+			 ${p_last_name ?? null}::text,
+			 ${p_is_active ?? null}::boolean,
+			 ${p_medical_conditions ?? null}::text,
+			 ${p_phone_number ?? null}::text,
+			 ${p_gender ?? null}::gender,
+			 ${p_pronouns ?? null}::text,
+			 ${p_date_of_birth ?? null}::date,
+			 ${p_next_of_kin_name ?? null}::text,
+			 ${p_next_of_kin_phone ?? null}::text,
+			 ${p_preferred_weapon ?? null}::preferred_weapon[],
+			 ${p_membership_start_date ?? null}::timestamptz,
+			 ${p_membership_end_date ?? null}::timestamptz,
+			 ${p_last_payment_date ?? null}::timestamptz,
+			 ${p_insurance_form_submitted ?? null}::boolean,
+			 ${p_additional_data ?? null}::jsonb,
+			 ${p_social_media_consent ?? 'no'}::social_media_consent
+					)`
 		.execute(executor)
 		.then((r) => r.rows[0].update_member_data);
 }

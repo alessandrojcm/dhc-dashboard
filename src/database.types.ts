@@ -473,6 +473,55 @@ export type Database = {
         }
         Relationships: []
       }
+      waitlist_guardians: {
+        Row: {
+          created_at: string | null
+          first_name: string
+          id: string
+          last_name: string
+          phone_number: string
+          waitlist_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          first_name: string
+          id?: string
+          last_name: string
+          phone_number: string
+          waitlist_id: string
+        }
+        Update: {
+          created_at?: string | null
+          first_name?: string
+          id?: string
+          last_name?: string
+          phone_number?: string
+          waitlist_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "waitlist_guardians_waitlist_id_fkey"
+            columns: ["waitlist_id"]
+            isOneToOne: false
+            referencedRelation: "member_management_view"
+            referencedColumns: ["from_waitlist_id"]
+          },
+          {
+            foreignKeyName: "waitlist_guardians_waitlist_id_fkey"
+            columns: ["waitlist_id"]
+            isOneToOne: false
+            referencedRelation: "waitlist"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "waitlist_guardians_waitlist_id_fkey"
+            columns: ["waitlist_id"]
+            isOneToOne: false
+            referencedRelation: "waitlist_management_view"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       waitlist_status_history: {
         Row: {
           changed_at: string | null
