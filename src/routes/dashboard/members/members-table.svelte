@@ -14,11 +14,9 @@
 	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
 	import * as Pagination from '$lib/components/ui/pagination/index.js';
 	import * as Select from '$lib/components/ui/select';
-	import * as Sheet from '$lib/components/ui/sheet';
 	import * as Table from '$lib/components/ui/table/index.js';
 	import SortHeader from '$lib/components/ui/table/sort-header.svelte';
 	import type { SupabaseClient } from '@supabase/supabase-js';
-	import { Edit } from 'lucide-svelte';
 	import { createQuery, keepPreviousData } from '@tanstack/svelte-query';
 	import {
 		getCoreRowModel,
@@ -35,7 +33,7 @@
 	import MemberActions from './member-actions.svelte';
 
 	const columns =
-		'id,first_name,last_name,email,phone_number,gender,pronouns,is_active,preferred_weapon,membership_start_date,membership_end_date,last_payment_date,insurance_form_submitted,roles,age,social_media_consent,next_of_kin_name,next_of_kin_phone,guardian_first_name,guardian_last_name,guardian_phone_number';
+		'id,first_name,last_name,email,phone_number,gender,pronouns,is_active,preferred_weapon,membership_start_date,membership_end_date,last_payment_date,insurance_form_submitted,roles,age,social_media_consent,next_of_kin_name,next_of_kin_phone,guardian_first_name,guardian_last_name,guardian_phone_number,medical_conditions,additional_data,created_at,updated_at';
 
 	let pageSizeOptions = [10, 25, 50, 100];
 
