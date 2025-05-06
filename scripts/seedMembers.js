@@ -152,17 +152,20 @@ async function seedMembers(count = 10) {
 				.eq('supabase_user_id', member.supabase_user_id);
 		})
 	);
-	const underageMembers = memberProfileData.filter(
-		(m) => m.date_of_birth && dayjs(m.date_of_birth).isBefore(dayjs().subtract(18, 'years'))
+	const underageMembers = createdProfiles.filter(
+		(m) => m.date_of_birth && dayjs(m.date_of_birth).isAfter(dayjs().subtract(18, 'years'))
 	);
-	await supabase.from('waitlist_guardians').insert(
-		underageMembers.map((m) => ({
-			profile_id: m.profile_id,
-			first_name: faker.person.firstName(),
-			last_name: faker.person.lastName(),
-			phone_number: faker.phone.number()
-		}))
-	);
+	await supabase
+		.from('waitlist_guardians')
+		.insert(
+			underageMembers.map((m) => ({
+				profile_id: m.id,
+				first_name: faker.person.firstName(),
+				last_name: faker.person.lastName(),
+				phone_number: faker.phone.number()
+			}))
+		)
+		.throwOnError();
 
 	console.log(`Successfully created ${memberProfiles.length} member profiles`);
 }
