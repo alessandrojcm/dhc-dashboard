@@ -28,23 +28,26 @@ async function seedWaitlist(count = 10) {
 
 	await Promise.all(
 		entries.map(async (entry) => {
-			const { error } = await supabase.rpc('insert_waitlist_entry', entry);
+			const { error, data } = await supabase.rpc('insert_waitlist_entry', entry);
 			if (error) {
 				console.error('Error seeding data:', error);
 				return Promise.reject(error);
 			}
 			if (
 				!entry.date_of_birth &&
-				dayjs(entry.date_of_birth).isBefore(dayjs().subtract(18, 'years'))
+				dayjs(entry.date_of_birth).isAfter(dayjs().subtract(18, 'years'))
 			) {
 				return Promise.resolve();
 			}
-			await supabase.from('waitlist_guardians').insert({
-				profile_id: entry.profile_id,
-				first_name: faker.person.firstName(),
-				last_name: faker.person.lastName(),
-				phone_number: faker.phone.number()
-			});
+			await supabase
+				.from('waitlist_guardians')
+				.insert({
+					profile_id: data[0].profile_id,
+					first_name: faker.person.firstName(),
+					last_name: faker.person.lastName(),
+					phone_number: faker.phone.number()
+				})
+				.throwOnError();
 			return Promise.resolve();
 		})
 	);

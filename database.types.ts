@@ -578,6 +578,9 @@ export type Database = {
           first_name: string | null
           from_waitlist_id: string | null
           gender: Database["public"]["Enums"]["gender"] | null
+          guardian_first_name: string | null
+          guardian_last_name: string | null
+          guardian_phone_number: string | null
           id: string | null
           insurance_form_submitted: boolean | null
           is_active: boolean | null
@@ -625,6 +628,9 @@ export type Database = {
           current_position: number | null
           email: string | null
           full_name: string | null
+          guardian_first_name: string | null
+          guardian_last_name: string | null
+          guardian_phone_number: string | null
           id: string | null
           initial_registration_date: string | null
           insurance_form_submitted: boolean | null
