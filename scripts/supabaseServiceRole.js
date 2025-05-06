@@ -15,7 +15,10 @@ const serviceRoleKey = process.env.SERVICE_ROLE_KEY;
 if (!supabaseUrl || !serviceRoleKey) {
 	throw new Error('Missing SUPABASE_URL or SERVICE_ROLE_KEY in environment variables');
 }
-
+/**
+ *
+ * @type {import('@supabase/supabase-js').SupabaseClient<import('./src/database.types')>}
+ */
 const supabase = createClient(supabaseUrl, serviceRoleKey);
 
 export { supabase };
