@@ -40,4 +40,4 @@ dist
 
 .wrangler
 
-.idea/
+.idea/*
