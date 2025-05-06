@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import type { Database, Tables } from '$database';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
@@ -24,31 +24,31 @@
 		getCoreRowModel,
 		getPaginationRowModel,
 		getSortedRowModel,
+		getExpandedRowModel,
 		type PaginationState,
 		type SortingState,
 		type TableOptions
 	} from '@tanstack/table-core';
 	import dayjs from 'dayjs';
-	import { Ambulance } from 'lucide-svelte';
 	import { createRawSnippet } from 'svelte';
 	import { Cross2 } from 'svelte-radix';
 	import MemberActions from './member-actions.svelte';
 
 	const columns =
-		'id,first_name,last_name,email,phone_number,gender,pronouns,is_active,preferred_weapon,membership_start_date,membership_end_date,last_payment_date,insurance_form_submitted,roles,age,social_media_consent';
+		'id,first_name,last_name,email,phone_number,gender,pronouns,is_active,preferred_weapon,membership_start_date,membership_end_date,last_payment_date,insurance_form_submitted,roles,age,social_media_consent,next_of_kin_name,next_of_kin_phone,guardian_first_name,guardian_last_name,guardian_phone_number';
 
 	let pageSizeOptions = [10, 25, 50, 100];
 
 	const { supabase }: { supabase: SupabaseClient<Database> } = $props();
 
-	const currentPage = $derived(Number($page.url.searchParams.get('page')) || 0);
-	const pageSize = $derived(Number($page.url.searchParams.get('pageSize')) || 10);
-	const searchQuery = $derived($page.url.searchParams.get('q') || '');
+	const currentPage = $derived(Number(page.url.searchParams.get('page')) || 0);
+	const pageSize = $derived(Number(page.url.searchParams.get('pageSize')) || 10);
+	const searchQuery = $derived(page.url.searchParams.get('q') || '');
 	const rangeStart = $derived(currentPage * pageSize);
 	const rangeEnd = $derived(rangeStart + pageSize);
 	const sortingState: SortingState = $derived.by(() => {
-		const sortColumn = $page.url.searchParams.get('sort');
-		const sortDirection = $page.url.searchParams.get('direction');
+		const sortColumn = page.url.searchParams.get('sort');
+		const sortDirection = page.url.searchParams.get('direction');
 		if (!sortColumn) return [];
 		return [
 			{
@@ -57,21 +57,6 @@
 			}
 		];
 	});
-	let selectedMemberId = $state<string | null>(null);
-	const selectedMemberQuery = createQuery(() => ({
-		queryKey: ['selectedMemberId', selectedMemberId],
-		enabled: selectedMemberId !== null,
-		queryFn: async ({ signal }) => {
-			return await supabase
-				.rpc('get_member_data', {
-					user_uuid: selectedMemberId!
-				})
-				.abortSignal(signal)
-				.single()
-				.throwOnError()
-				.then((r) => r.data);
-		}
-	}));
 
 	const membersQuery = createQuery(() => ({
 		queryKey: ['members', pageSize, currentPage, rangeStart, sortingState, searchQuery],
@@ -104,7 +89,7 @@
 			pageSize,
 			...newPagination
 		};
-		const newParams = new URLSearchParams($page.url.searchParams);
+		const newParams = new URLSearchParams(page.url.searchParams);
 		newParams.set('page', paginationState.pageIndex.toString());
 		newParams.set('pageSize', paginationState.pageSize.toString());
 		goto(`/dashboard/members?${newParams.toString()}`);
@@ -112,22 +97,26 @@
 
 	function onSortingChange(newSorting: SortingState) {
 		const [sortingState] = newSorting;
-		const newParams = new URLSearchParams($page.url.searchParams);
+		const newParams = new URLSearchParams(page.url.searchParams);
 		newParams.set('sort', sortingState.id);
 		newParams.set('direction', sortingState.desc ? 'desc' : 'asc');
 		goto(`/dashboard/members?${newParams.toString()}`);
 	}
 
 	function onSearchChange(newSearch: string) {
-		const newParams = new URLSearchParams($page.url.searchParams);
+		const newParams = new URLSearchParams(page.url.searchParams);
 		newParams.set('q', newSearch);
 		goto(`/dashboard/members?${newParams.toString()}`);
 	}
+
+	// State for expanded rows
+	let expandedState = $state({});
 
 	const tableOptions = $state<TableOptions<Tables<'member_management_view'>>>({
 		autoResetPageIndex: false,
 		manualPagination: true,
 		manualSorting: true,
+		getExpandedRowModel: getExpandedRowModel(),
 		columns: [
 			{
 				id: 'actions',
@@ -135,8 +124,8 @@
 				cell: ({ row }) => {
 					return renderComponent(MemberActions, {
 						memberId: row.original.id!,
-						userId: row.original.id!,
-						setSelectedUserId: (id: string) => (selectedMemberId = id)
+						isExpanded: row.getIsExpanded(),
+						onToggleExpand: () => row.toggleExpanded()
 					});
 				}
 			},
@@ -224,7 +213,17 @@
 						header: 'Age',
 						class: 'p-2',
 						sortDirection: column.getIsSorted()
-					})
+					}),
+				cell: ({ getValue }) => {
+					return renderSnippet(
+						createRawSnippet((value) => ({
+							render: () => {
+								return `<div class="w-[120px] ${value() < 18 ? 'text-red-800' : ''}">${value() < 18 ? value() + '(👶)' : value()}</div>`;
+							}
+						})),
+						getValue()
+					);
+				}
 			},
 			{
 				accessorKey: 'social_media_consent',
@@ -329,6 +328,9 @@
 			}
 		},
 		state: {
+			get expanded() {
+				return expandedState;
+			},
 			get pagination() {
 				return {
 					pageIndex: currentPage,
@@ -337,6 +339,13 @@
 			},
 			get sorting() {
 				return sortingState;
+			}
+		},
+		onExpandedChange: (updater) => {
+			if (typeof updater === 'function') {
+				expandedState = updater(expandedState);
+			} else {
+				expandedState = updater;
 			}
 		},
 		rowCount: membersQuery?.data?.count ?? 0,
@@ -367,7 +376,7 @@
 </div>
 
 <!-- Desktop Table View (hidden on mobile) -->
-<div class="hidden md:block overflow-x-auto overflow-y-auto h-[70lvh]">
+<div class="hidden md:block overflow-x-auto overflow-y-auto h-[65svh]">
 	<Table.Root class="w-full">
 		<Table.Header class="sticky top-0 z-10 bg-white">
 			{#each table.getHeaderGroups() as headerGroup (headerGroup.id)}
@@ -394,6 +403,57 @@
 						</Table.Cell>
 					{/each}
 				</Table.Row>
+				{#if row.getIsExpanded()}
+					<Table.Row>
+						<Table.Cell colspan={row.getVisibleCells().length} class="p-4 bg-muted/20">
+							<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+								<!-- Next of Kin Information -->
+								<div class="bg-card rounded-lg border p-4">
+									<h3 class="text-sm font-medium mb-2">Next of Kin Information</h3>
+									<div class="grid grid-cols-3 gap-2">
+										<div class="text-xs font-medium text-muted-foreground">Name</div>
+										<div class="col-span-2 text-xs">
+											{row.original.next_of_kin_name || 'N/A'}
+										</div>
+
+										<div class="text-xs font-medium text-muted-foreground">Phone</div>
+										<div class="col-span-2 text-xs">
+											{row.original.next_of_kin_phone || 'N/A'}
+										</div>
+									</div>
+								</div>
+
+								<!-- Guardian Information -->
+								<div class="bg-card rounded-lg border p-4">
+									<h3 class="text-sm font-medium mb-2">Guardian Information</h3>
+									{#if row.original.guardian_first_name || row.original.guardian_last_name || row.original.guardian_phone_number}
+										<div class="grid grid-cols-3 gap-2">
+											<div class="text-xs font-medium text-muted-foreground">Name</div>
+											<div class="col-span-2 text-xs">
+												{row.original.guardian_first_name || ''} {row.original.guardian_last_name || ''}
+											</div>
+
+											<div class="text-xs font-medium text-muted-foreground">Phone</div>
+											<div class="col-span-2 text-xs">
+												{row.original.guardian_phone_number || 'N/A'}
+											</div>
+										</div>
+									{:else}
+										<p class="text-xs text-muted-foreground">No guardian information available</p>
+									{/if}
+								</div>
+
+								<!-- Medical Conditions -->
+								<div class="bg-card rounded-lg border p-4">
+									<h3 class="text-sm font-medium mb-2">Medical Conditions</h3>
+									<p class="text-xs">
+										{row.original.medical_conditions || 'None reported'}
+									</p>
+								</div>
+							</div>
+						</Table.Cell>
+					</Table.Row>
+				{/if}
 			{/each}
 		</Table.Body>
 	</Table.Root>
@@ -411,28 +471,13 @@
 						{row.original.last_name}
 					</div>
 					<div>
-						<!-- Action buttons directly implemented -->
-						<div class="flex gap-1">
-							<!-- Emergency Contact -->
-							<Button
-								variant="ghost"
-								size="icon"
-								aria-label="Emergency Contact"
-								onclick={() => (selectedMemberId = row.original.id)}
-							>
-								<Ambulance class="h-4 w-4" />
-							</Button>
-
-							<!-- Edit Button -->
-							<Button
-								variant="ghost"
-								size="icon"
-								aria-label="Edit member details"
-								href={`/dashboard/members/${row.original.id}`}
-							>
-								<Edit class="h-4 w-4" />
-							</Button>
-						</div>
+						<MemberActions
+							memberId={row.original.id!}
+							userId={row.original.id!}
+							setSelectedUserId={(id) => (selectedMemberId = id)}
+							isExpanded={row.getIsExpanded()}
+							onToggleExpand={() => row.toggleExpanded()}
+						/>
 					</div>
 				</div>
 
@@ -505,6 +550,55 @@
 						{/if}
 					</div>
 				</div>
+
+				<!-- Expanded Content -->
+				{#if row.getIsExpanded()}
+					<div class="mt-4 pt-4 border-t border-muted">
+						<!-- Next of Kin Information -->
+						<div class="mb-4">
+							<h3 class="text-sm font-medium mb-2">Next of Kin Information</h3>
+							<div class="grid grid-cols-3 gap-2">
+								<div class="text-xs font-medium text-muted-foreground">Name</div>
+								<div class="col-span-2 text-xs">
+									{row.original.next_of_kin_name || 'N/A'}
+								</div>
+
+								<div class="text-xs font-medium text-muted-foreground">Phone</div>
+								<div class="col-span-2 text-xs">
+									{row.original.next_of_kin_phone || 'N/A'}
+								</div>
+							</div>
+						</div>
+
+						<!-- Guardian Information -->
+						<div class="mb-4">
+							<h3 class="text-sm font-medium mb-2">Guardian Information</h3>
+							{#if row.original.guardian_first_name || row.original.guardian_last_name || row.original.guardian_phone_number}
+								<div class="grid grid-cols-3 gap-2">
+									<div class="text-xs font-medium text-muted-foreground">Name</div>
+									<div class="col-span-2 text-xs">
+										{row.original.guardian_first_name || ''} {row.original.guardian_last_name || ''}
+									</div>
+
+									<div class="text-xs font-medium text-muted-foreground">Phone</div>
+									<div class="col-span-2 text-xs">
+										{row.original.guardian_phone_number || 'N/A'}
+									</div>
+								</div>
+							{:else}
+								<p class="text-xs text-muted-foreground">No guardian information available</p>
+							{/if}
+						</div>
+
+						<!-- Medical Conditions -->
+						<div>
+							<h3 class="text-sm font-medium mb-2">Medical Conditions</h3>
+							<p class="text-xs">
+								{row.original.medical_conditions || 'None reported'}
+							</p>
+						</div>
+					</div>
+				{/if}
 			</div>
 		{/each}
 	</div>
@@ -562,45 +656,3 @@
 		</Pagination.Root>
 	</div>
 </div>
-
-<Sheet.Root
-	open={Boolean(selectedMemberQuery?.data) && selectedMemberId !== null}
-	onOpenChange={(open) => (selectedMemberId = open ? selectedMemberId : null)}
->
-	<Sheet.Content side="right" class="w-[400px]">
-		<Sheet.Header>
-			<Sheet.Title class="flex items-center gap-2">
-				<Ambulance class="h-5 w-5 text-destructive" />
-				Emergency Contact
-			</Sheet.Title>
-		</Sheet.Header>
-		<div class="grid gap-4 px-6 py-4">
-			<div class="rounded-lg border border-destructive/20 bg-destructive/5 p-4">
-				<div class="flex flex-col space-y-3">
-					<div>
-						<span class="text-sm font-medium text-muted-foreground">Member Name</span>
-						<div class="text-base font-medium">
-							{selectedMemberQuery.data?.first_name}
-							{selectedMemberQuery.data?.last_name}
-						</div>
-					</div>
-					<div class="border-t border-destructive/20 pt-3">
-						<span class="text-sm font-medium text-destructive">Emergency Contact Details</span>
-						<div class="mt-2 space-y-2">
-							<div>
-								<span class="text-sm font-medium text-muted-foreground">Name</span>
-								<div class="text-base">{selectedMemberQuery.data?.next_of_kin_name}</div>
-							</div>
-							<div>
-								<span class="text-sm font-medium text-muted-foreground">Phone</span>
-								<div class="text-base font-medium text-destructive">
-									{selectedMemberQuery.data?.next_of_kin_phone}
-								</div>
-							</div>
-						</div>
-					</div>
-				</div>
-			</div>
-		</div>
-	</Sheet.Content>
-</Sheet.Root>

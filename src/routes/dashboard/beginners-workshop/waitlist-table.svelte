@@ -20,7 +20,7 @@
 	import type { SupabaseClient } from '@supabase/supabase-js';
 	import { createMutation, createQuery, keepPreviousData } from '@tanstack/svelte-query';
 	import {
-		getCoreRowModel,
+		getCoreRowModel, getExpandedRowModel,
 		getPaginationRowModel,
 		getSortedRowModel,
 		type PaginationState,
@@ -29,11 +29,12 @@
 	} from '@tanstack/table-core';
 	import dayjs from 'dayjs';
 	import { createRawSnippet } from 'svelte';
-	import { Cross2 } from 'svelte-radix';
-	import ActionButtons from './actions-buttons.svelte';
+ import { Cross2 } from 'svelte-radix';
+ import { ChevronDown, ChevronUp } from 'lucide-svelte';
+ import ActionButtons from './actions-buttons.svelte';
 
-	const columns =
-		'current_position,full_name,email,phone_number,status,age,initial_registration_date,last_contacted,medical_conditions,admin_notes,social_media_consent';
+ const columns =
+ 	'current_position,full_name,email,phone_number,status,age,initial_registration_date,last_contacted,medical_conditions,admin_notes,social_media_consent,guardian_first_name,guardian_last_name,guardian_phone_number';
 
 	let pageSizeOptions = [10, 25, 50, 100];
 
@@ -57,12 +58,12 @@
 	});
 
 	function getWaitlistQuery({
-		searchQuery,
-		sortingState,
-		rangeStart,
-		rangeEnd,
-		signal
-	}: {
+															searchQuery,
+															sortingState,
+															rangeStart,
+															rangeEnd,
+															signal
+														}: {
 		searchQuery: string;
 		sortingState: SortingState;
 		rangeStart: number;
@@ -84,6 +85,7 @@
 			.throwOnError()
 			.then((r) => ({ data: r.data, count: r.count }));
 	}
+
 	const waitlistQuery = createQuery<ReturnType<typeof getWaitlistQuery>>(() => ({
 		queryKey: ['waitlist', { rangeStart, rangeEnd, sortingState, searchQuery }],
 		placeholderData: keepPreviousData,
@@ -104,6 +106,7 @@
 			waitlistQuery.refetch();
 		}
 	}));
+
 	function onPaginationChange(newPagination: Partial<PaginationState>) {
 		const paginationState: PaginationState = {
 			pageIndex: currentPage,
@@ -115,6 +118,7 @@
 		newParams.set('pageSize', paginationState.pageSize.toString());
 		goto(`/dashboard/beginners-workshop?${newParams.toString()}`);
 	}
+
 	function onSortingChange(newSorting: SortingState) {
 		const [sortingState] = newSorting;
 		const newParams = new URLSearchParams($page.url.searchParams);
@@ -122,22 +126,50 @@
 		newParams.set('direction', sortingState.desc ? 'desc' : 'asc');
 		goto(`/dashboard/beginners-workshop?${newParams.toString()}`);
 	}
+
 	function onSearchChange(newSearch: string) {
 		const newParams = new URLSearchParams($page.url.searchParams);
 		newParams.set('q', newSearch);
 		goto(`/dashboard/beginners-workshop?${newParams.toString()}`);
 	}
+
+	// State for expanded rows
+	let expandedState = $state({});
+
 	const tableOptions = $state<TableOptions<Tables<'waitlist_management_view'>>>({
 		autoResetPageIndex: false,
 		manualPagination: true,
 		manualSorting: true,
+		getExpandedRowModel: getExpandedRowModel(),
+		state: {
+			get expanded() {
+				return expandedState;
+			},
+			get pagination() {
+				return {
+					pageIndex: currentPage,
+					pageSize
+				} as PaginationState;
+			},
+			get sorting() {
+				return sortingState;
+			}
+		},
+		onExpandedChange: (updater) => {
+			if (typeof updater === 'function') {
+				expandedState = updater(expandedState);
+			} else {
+				expandedState = updater;
+			}
+		},
 		columns: [
 			{
 				header: 'Actions',
 				cell: ({ row }) => {
 					return renderComponent(ActionButtons, {
-						medicalConditions: row.original.medical_conditions ?? 'N/A',
 						adminNotes: row.original.admin_notes ?? 'N/A',
+						isExpanded: row.getIsExpanded(),
+						onToggleExpand: () => row.toggleExpanded(),
 						onEdit(newValue) {
 							updateWaitlistEntry.mutate({
 								email: row.original.email!,
@@ -241,7 +273,7 @@
 					return renderSnippet(
 						createRawSnippet((value) => ({
 							render: () => {
-								return `<div class="w-[120px] ${value() < 16 ? 'text-red-800' : ''}">${value()}</div>`;
+								return `<div class="w-[120px] ${value() < 18 ? 'text-red-800' : ''}">${value() < 18 ? value() + '(👶)' : value()}</div>`;
 							}
 						})),
 						getValue()
@@ -301,17 +333,6 @@
 				onSortingChange(updater);
 			}
 		},
-		state: {
-			get pagination() {
-				return {
-					pageIndex: currentPage,
-					pageSize
-				} as PaginationState;
-			},
-			get sorting() {
-				return sortingState;
-			}
-		},
 		get rowCount() {
 			return waitlistQuery?.data?.count ?? 0;
 		},
@@ -340,7 +361,7 @@
 	{/if}
 </div>
 <!-- Desktop Table View (hidden on mobile) -->
-<div class="hidden md:block overflow-x-auto overflow-y-auto h-[75lvh]">
+<div class="hidden md:block overflow-x-auto overflow-y-auto h-[65svh]">
 	<Table.Root class="w-full">
 		<Table.Header class="sticky top-0 z-10 bg-white">
 			{#each table.getHeaderGroups() as headerGroup (headerGroup.id)}
@@ -364,6 +385,41 @@
 						</Table.Cell>
 					{/each}
 				</Table.Row>
+				{#if row.getIsExpanded()}
+					<Table.Row>
+						<Table.Cell colspan={row.getVisibleCells().length} class="p-4 bg-muted/20">
+							<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+								<!-- Guardian Information -->
+								<div class="bg-card rounded-lg border p-4">
+									<h3 class="text-sm font-medium mb-2">Guardian Information</h3>
+									{#if row.original.guardian_first_name || row.original.guardian_last_name || row.original.guardian_phone_number}
+										<div class="grid grid-cols-3 gap-2">
+											<div class="text-xs font-medium text-muted-foreground">Name</div>
+											<div class="col-span-2 text-xs">
+												{row.original.guardian_first_name || ''} {row.original.guardian_last_name || ''}
+											</div>
+
+											<div class="text-xs font-medium text-muted-foreground">Phone</div>
+											<div class="col-span-2 text-xs">
+												{row.original.guardian_phone_number || 'N/A'}
+											</div>
+										</div>
+									{:else}
+										<p class="text-xs text-muted-foreground">No guardian information available</p>
+									{/if}
+								</div>
+
+								<!-- Medical Conditions -->
+								<div class="bg-card rounded-lg border p-4">
+									<h3 class="text-sm font-medium mb-2">Medical Conditions</h3>
+									<p class="text-xs">
+										{row.original.medical_conditions || 'None reported'}
+									</p>
+								</div>
+							</div>
+						</Table.Cell>
+					</Table.Row>
+				{/if}
 			{/each}
 		</Table.Body>
 		<Table.Footer class="sticky bottom-0 z-10 bg-white">
@@ -402,8 +458,9 @@
 					<!-- Actions -->
 					<div>
 						<ActionButtons
-							medicalConditions={row.original.medical_conditions ?? 'N/A'}
 							adminNotes={row.original.admin_notes ?? 'N/A'}
+							isExpanded={row.getIsExpanded()}
+							onToggleExpand={() => row.toggleExpanded()}
 							onEdit={(newValue) => {
 								if (row.original.email) {
 									updateWaitlistEntry.mutate({
@@ -415,7 +472,7 @@
 						/>
 					</div>
 				</div>
-				
+
 				<!-- Status Badge -->
 				<div class="mb-3">
 					{#if row.original.status}
@@ -431,7 +488,7 @@
 						</Badge>
 					{/if}
 				</div>
-				
+
 				<!-- Email -->
 				<div class="grid grid-cols-3 py-1 border-b">
 					<div class="text-sm font-medium text-muted-foreground">Email</div>
@@ -439,19 +496,19 @@
 						<a href="mailto:{row.original.email}">{row.original.email}</a>
 					</div>
 				</div>
-				
+
 				<!-- Phone -->
 				<div class="grid grid-cols-3 py-1 border-b">
 					<div class="text-sm font-medium text-muted-foreground">Phone</div>
 					<div class="col-span-2 text-sm">{row.original.phone_number || 'N/A'}</div>
 				</div>
-				
+
 				<!-- Age -->
 				<div class="grid grid-cols-3 py-1 border-b">
 					<div class="text-sm font-medium text-muted-foreground">Age</div>
 					<div class="col-span-2 text-sm">{row.original.age || 'N/A'}</div>
 				</div>
-				
+
 				<!-- Registration Date -->
 				<div class="grid grid-cols-3 py-1 border-b">
 					<div class="text-sm font-medium text-muted-foreground">Registered</div>
@@ -463,7 +520,7 @@
 						{/if}
 					</div>
 				</div>
-				
+
 				<!-- Last Contacted -->
 				<div class="grid grid-cols-3 py-1">
 					<div class="text-sm font-medium text-muted-foreground">Last Contact</div>
@@ -475,6 +532,39 @@
 						{/if}
 					</div>
 				</div>
+
+				<!-- Expanded Content -->
+				{#if row.getIsExpanded()}
+					<div class="mt-4 pt-4 border-t border-muted">
+						<!-- Guardian Information -->
+						<div class="mb-4">
+							<h3 class="text-sm font-medium mb-2">Guardian Information</h3>
+							{#if row.original.guardian_first_name || row.original.guardian_last_name || row.original.guardian_phone_number}
+								<div class="grid grid-cols-3 gap-2">
+									<div class="text-xs font-medium text-muted-foreground">Name</div>
+									<div class="col-span-2 text-xs">
+										{row.original.guardian_first_name || ''} {row.original.guardian_last_name || ''}
+									</div>
+
+									<div class="text-xs font-medium text-muted-foreground">Phone</div>
+									<div class="col-span-2 text-xs">
+										{row.original.guardian_phone_number || 'N/A'}
+									</div>
+								</div>
+							{:else}
+								<p class="text-xs text-muted-foreground">No guardian information available</p>
+							{/if}
+						</div>
+
+						<!-- Medical Conditions -->
+						<div>
+							<h3 class="text-sm font-medium mb-2">Medical Conditions</h3>
+							<p class="text-xs">
+								{row.original.medical_conditions || 'None reported'}
+							</p>
+						</div>
+					</div>
+				{/if}
 			</div>
 		{/each}
 	</div>
@@ -516,7 +606,8 @@
 								<Pagination.Ellipsis />
 							</Pagination.Item>
 						{:else}
-							<Pagination.Item class={page.value !== currentPage && page.value !== currentPage - 1 && page.value !== currentPage + 1 ? 'hidden sm:block' : ''}>
+							<Pagination.Item
+								class={page.value !== currentPage && page.value !== currentPage - 1 && page.value !== currentPage + 1 ? 'hidden sm:block' : ''}>
 								<Pagination.Link {page} isActive={currentPage === page.value}>
 									{page.value}
 								</Pagination.Link>

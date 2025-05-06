@@ -1,31 +1,31 @@
 <script lang="ts">
 	import * as Popover from '$lib/components/ui/popover/index.js';
 	import { Button } from '$lib/components/ui/button';
-	import { BriefcaseMedical, NotebookPen, Edit } from 'lucide-svelte';
+ import { BriefcaseMedical, NotebookPen, Edit, ChevronDown, ChevronUp } from 'lucide-svelte';
 	import { Label } from '$lib/components/ui/label';
 	import { Textarea } from '$lib/components/ui/textarea';
-	type Props = {
-		medicalConditions: string;
-		adminNotes: string;
-		onEdit: (newValue: string) => void;
-	};
+ type Props = {
+ 	adminNotes: string;
+ 	onEdit: (newValue: string) => void;
+ 	isExpanded?: boolean;
+ 	onToggleExpand?: () => void;
+ };
 	let isEdit = $state(false);
-	const { medicalConditions, adminNotes, onEdit }: Props = $props();
+ const { adminNotes, onEdit, isExpanded = false, onToggleExpand }: Props = $props();
 	let value = $state(adminNotes);
 </script>
 
 <div class="flex gap-w">
-	<!-- Medical Conditions - Using Popover instead of Tooltip for mobile compatibility -->
-	<Popover.Root>
-		<Popover.Trigger>
-			<Button variant="ghost" aria-label="Medical conditions">
-				<BriefcaseMedical />
-			</Button>
-		</Popover.Trigger>
-		<Popover.Content class="p-2 max-w-[250px] break-words">
-			<p class="text-sm">{medicalConditions}</p>
-		</Popover.Content>
-	</Popover.Root>
+	<!-- Expander Button -->
+	{#if onToggleExpand}
+		<Button variant="ghost" size="icon" class="h-8 w-8" onclick={onToggleExpand} aria-label="Expand row">
+			{#if isExpanded}
+				<ChevronUp class="h-4 w-4" />
+			{:else}
+				<ChevronDown class="h-4 w-4" />
+			{/if}
+		</Button>
+	{/if}
 
 	<!-- Admin Notes -->
 	<Popover.Root onOpenChange={(open) => !open && (isEdit = false)}>

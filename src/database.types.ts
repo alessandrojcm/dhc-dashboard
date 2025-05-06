@@ -473,6 +473,48 @@ export type Database = {
         }
         Relationships: []
       }
+      waitlist_guardians: {
+        Row: {
+          created_at: string | null
+          first_name: string
+          id: string
+          last_name: string
+          phone_number: string
+          profile_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          first_name: string
+          id?: string
+          last_name: string
+          phone_number: string
+          profile_id: string
+        }
+        Update: {
+          created_at?: string | null
+          first_name?: string
+          id?: string
+          last_name?: string
+          phone_number?: string
+          profile_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "waitlist_guardians_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "member_management_view"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "waitlist_guardians_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "member_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       waitlist_status_history: {
         Row: {
           changed_at: string | null
@@ -536,6 +578,9 @@ export type Database = {
           first_name: string | null
           from_waitlist_id: string | null
           gender: Database["public"]["Enums"]["gender"] | null
+          guardian_first_name: string | null
+          guardian_last_name: string | null
+          guardian_phone_number: string | null
           id: string | null
           insurance_form_submitted: boolean | null
           is_active: boolean | null
@@ -583,6 +628,9 @@ export type Database = {
           current_position: number | null
           email: string | null
           full_name: string | null
+          guardian_first_name: string | null
+          guardian_last_name: string | null
+          guardian_phone_number: string | null
           id: string | null
           initial_registration_date: string | null
           insurance_form_submitted: boolean | null
