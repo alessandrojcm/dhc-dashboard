@@ -46,10 +46,10 @@
 					<Button variant="outline" onclick={() => dialogOpen = true}>
 						{#if isOpen}
 							<LockOpen class="w-4 h-4" />
-							Close Waitlist
+							<p class="hidden md:block">Close Waitlist</p>
 						{:else}
 							<Lock class="w-4 h-4" />
-							Open Waitlist
+							<p class="hidden md:block">Open Waitlist</p>
 						{/if}
 					</Button>
 				</AlertDialog.Trigger>
