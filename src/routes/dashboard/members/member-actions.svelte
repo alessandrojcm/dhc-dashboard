@@ -1,7 +1,7 @@
 <script lang="ts">
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import { Button } from '$lib/components/ui/button';
-	import { Ambulance, Edit, ChevronDown, ChevronUp } from 'lucide-svelte';
+	import { Edit, ChevronDown, ChevronUp } from 'lucide-svelte';
 
 	type Props = {
 		memberId: string;

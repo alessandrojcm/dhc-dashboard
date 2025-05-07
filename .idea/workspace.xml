@@ -1,0 +1,327 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AIAssistantCustomInstructionsStorage">
+    <option name="instructions">
+      <map>
+        <entry key="AIAssistant.VCS.GenerateCommitMessage">
+          <value>
+            <AIAssistantStoredInstruction>
+              <option name="actionId" value="AIAssistant.VCS.GenerateCommitMessage" />
+              <option name="content" value="Avoid overly verbose descriptions or unnecessary details. Use conventional commits." />
+            </AIAssistantStoredInstruction>
+          </value>
+        </entry>
+      </map>
+    </option>
+  </component>
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="feat: add invite management and UI enhancements&#10;&#10;- Replaced `complete_member_registration` SQL function with API-based invite workflows.&#10;- Added resend invitation API and related UI updates for waitlist.&#10;- Improved waitlist filtering (`status`).&#10;- Updated Stripe API version.&#10;- Enhanced IDE configuration and standardized code formatting." />
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="ChangesViewManager">
+    <option name="groupingKeys">
+      <option value="directory" />
+      <option value="repository" />
+    </option>
+  </component>
+  <component name="Git.Settings">
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="GitToolBoxStore">
+    <option name="recentBranches">
+      <RecentBranches>
+        <option name="branchesForRepo">
+          <list>
+            <RecentBranchesForRepo>
+              <option name="branches">
+                <list>
+                  <RecentBranch>
+                    <option name="branchName" value="feat/waitlist-invitation" />
+                    <option name="lastUsedInstant" value="1746624363" />
+                  </RecentBranch>
+                  <RecentBranch>
+                    <option name="branchName" value="develop" />
+                    <option name="lastUsedInstant" value="1746624182" />
+                  </RecentBranch>
+                </list>
+              </option>
+              <option name="repositoryRootUrl" value="file://$PROJECT_DIR$" />
+            </RecentBranchesForRepo>
+          </list>
+        </option>
+      </RecentBranches>
+    </option>
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 5
+}</component>
+  <component name="ProjectId" id="2w0RrPrqirONsrfVsMl0OuIGHnG" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "Attach to Node.js/Chrome.Edge Functions.executor": "Debug",
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "Node.js.script.js.executor": "Run",
+    "Node.js.seedMembers.js.executor": "Debug",
+    "Node.js.seedWaitlist.js.executor": "Run",
+    "Playwright.underage user (16-17) should be able to submit with guardian information.executor": "Run",
+    "Playwright.underage user (16-17) should be required to fill guardian fields.executor": "Run",
+    "Playwright.underage-guardian-waitlist.spec.ts.executor": "Run",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "com.codeium.enabled": "true",
+    "deno.use.library": "true",
+    "git-widget-placeholder": "feat/waitlist-invitation",
+    "junie.onboarding.icon.badge.shown": "true",
+    "last_opened_file_path": "/Users/alessandrojcm/repos/dhc-dashboard",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "pnpm",
+    "npm.dev.executor": "Run",
+    "prettierjs.PrettierConfiguration.Package": "/Users/alessandrojcm/repos/dhc-dashboard/node_modules/prettier",
+    "settings.editor.selected.configurable": "preferences.pluginManager",
+    "ts.external.directory.path": "/Users/alessandrojcm/repos/dhc-dashboard/node_modules/typescript/lib",
+    "vue.rearranger.settings.migration": "true"
+  },
+  "keyToStringList": {
+    "DatabaseDriversLRU": [
+      "postgresql"
+    ]
+  }
+}]]></component>
+  <component name="RunManager" selected="npm.dev">
+    <configuration name="Edge Functions" type="ChromiumRemoteDebugType" factoryName="Chromium Remote" port="8083">
+      <method v="2" />
+    </configuration>
+    <configuration name="underage user (16-17) should be required to fill guardian fields" type="JavaScriptTestRunnerPlaywright" temporary="true" nameIsGenerated="true">
+      <node-interpreter value="project" />
+      <playwright-package value="$PROJECT_DIR$/node_modules/@playwright/test" />
+      <working-dir value="$PROJECT_DIR$" />
+      <envs />
+      <scope-kind value="TEST" />
+      <test-file value="$PROJECT_DIR$/e2e/underage-guardian-waitlist.spec.ts" />
+      <test-names>
+        <test-name value="underage user (16-17) should be required to fill guardian fields" />
+      </test-names>
+      <method v="2" />
+    </configuration>
+    <configuration name="script.js" type="NodeJSConfigurationType" temporary="true" nameIsGenerated="true" path-to-js-file="$PROJECT_DIR$/script.js" working-dir="$PROJECT_DIR$">
+      <method v="2" />
+    </configuration>
+    <configuration name="seedMembers.js" type="NodeJSConfigurationType" temporary="true" nameIsGenerated="true" path-to-js-file="$PROJECT_DIR$/scripts/seedMembers.js" working-dir="$PROJECT_DIR$/scripts">
+      <method v="2" />
+    </configuration>
+    <configuration name="seedWaitlist.js" type="NodeJSConfigurationType" temporary="true" nameIsGenerated="true" path-to-js-file="seedWaitlist.js" working-dir="$PROJECT_DIR$/scripts">
+      <method v="2" />
+    </configuration>
+    <configuration name="dev" type="js.build_tools.npm" temporary="true" nameIsGenerated="true">
+      <package-json value="$PROJECT_DIR$/package.json" />
+      <command value="run" />
+      <scripts>
+        <script value="dev" />
+      </scripts>
+      <node-interpreter value="project" />
+      <envs />
+      <method v="2" />
+    </configuration>
+    <list>
+      <item itemvalue="Attach to Node.js/Chrome.Edge Functions" />
+      <item itemvalue="Node.js.script.js" />
+      <item itemvalue="Node.js.seedMembers.js" />
+      <item itemvalue="Node.js.seedWaitlist.js" />
+      <item itemvalue="npm.dev" />
+      <item itemvalue="Playwright.underage user (16-17) should be required to fill guardian fields" />
+    </list>
+    <recent_temporary>
+      <list>
+        <item itemvalue="npm.dev" />
+        <item itemvalue="Node.js.script.js" />
+        <item itemvalue="Node.js.seedWaitlist.js" />
+        <item itemvalue="Node.js.seedMembers.js" />
+        <item itemvalue="Playwright.underage user (16-17) should be required to fill guardian fields" />
+      </list>
+    </recent_temporary>
+  </component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-js-predefined-d6986cc7102b-f27c65a3e318-JavaScript-WS-251.23774.424" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="TaskManager">
+    <task active="true" id="Default" summary="Default task">
+      <changelist id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="" />
+      <created>1745176702782</created>
+      <option name="number" value="Default" />
+      <option name="presentableId" value="Default" />
+      <updated>1745176702782</updated>
+      <workItem from="1745176704173" duration="13000" />
+      <workItem from="1745176725153" duration="288000" />
+      <workItem from="1746265627551" duration="19000" />
+      <workItem from="1746265656477" duration="287000" />
+      <workItem from="1746265950264" duration="6617000" />
+      <workItem from="1746272613413" duration="2891000" />
+      <workItem from="1746376532703" duration="5715000" />
+      <workItem from="1746522949242" duration="4417000" />
+      <workItem from="1746530144467" duration="1686000" />
+      <workItem from="1746536621904" duration="7707000" />
+      <workItem from="1746565788689" duration="3036000" />
+      <workItem from="1746608020126" duration="17886000" />
+    </task>
+    <task id="LOCAL-00001" summary="Add guardian support for underage waitlist entries&#10;&#10;Introduce `waitlist_guardians` table and transactional logic for adding guardian details when underage users join the waitlist. Updates include database migrations, UI adjustments for conditional input fields, validation logic, and tests to ensure age-based gating.">
+      <option name="closed" value="true" />
+      <created>1746379528855</created>
+      <option name="number" value="00001" />
+      <option name="presentableId" value="LOCAL-00001" />
+      <option name="project" value="LOCAL" />
+      <updated>1746379528855</updated>
+    </task>
+    <task id="LOCAL-00002" summary="Update `waitlist_guardians` to reference `profile_id` instead of `waitlist_id`&#10;&#10;Replaced `waitlist_id` with `profile_id` across database schema, relationships, and scripts to align with updated data model. Adjusted related seeding logic and server routes to ensure consistency and maintain functionality.">
+      <option name="closed" value="true" />
+      <created>1746380457533</created>
+      <option name="number" value="00002" />
+      <option name="presentableId" value="LOCAL-00002" />
+      <option name="project" value="LOCAL" />
+      <updated>1746380457533</updated>
+    </task>
+    <task id="LOCAL-00003" summary="`feat: add guardian information to views, RLS policy, and UI components`">
+      <option name="closed" value="true" />
+      <created>1746529849695</created>
+      <option name="number" value="00003" />
+      <option name="presentableId" value="LOCAL-00003" />
+      <option name="project" value="LOCAL" />
+      <updated>1746529849695</updated>
+    </task>
+    <task id="LOCAL-00004" summary="`feat: add medical_conditions to member management view and members-table`">
+      <option name="closed" value="true" />
+      <created>1746530683338</created>
+      <option name="number" value="00004" />
+      <option name="presentableId" value="LOCAL-00004" />
+      <option name="project" value="LOCAL" />
+      <updated>1746530683338</updated>
+    </task>
+    <task id="LOCAL-00005" summary="`feat(stripe): update to API version 2025-04-30, dependencies and improve transaction handling`">
+      <option name="closed" value="true" />
+      <created>1746564175078</created>
+      <option name="number" value="00005" />
+      <option name="presentableId" value="LOCAL-00005" />
+      <option name="project" value="LOCAL" />
+      <updated>1746564175078</updated>
+    </task>
+    <task id="LOCAL-00006" summary="chore: updated gitignore">
+      <option name="closed" value="true" />
+      <created>1746564381306</created>
+      <option name="number" value="00006" />
+      <option name="presentableId" value="LOCAL-00006" />
+      <option name="project" value="LOCAL" />
+      <updated>1746564381306</updated>
+    </task>
+    <task id="LOCAL-00007" summary="chore: updated gitignore">
+      <option name="closed" value="true" />
+      <created>1746564459656</created>
+      <option name="number" value="00007" />
+      <option name="presentableId" value="LOCAL-00007" />
+      <option name="project" value="LOCAL" />
+      <updated>1746564459656</updated>
+    </task>
+    <task id="LOCAL-00008" summary="feat: implemented invitations list of members">
+      <option name="closed" value="true" />
+      <created>1746611084424</created>
+      <option name="number" value="00008" />
+      <option name="presentableId" value="LOCAL-00008" />
+      <option name="project" value="LOCAL" />
+      <updated>1746611084424</updated>
+    </task>
+    <task id="LOCAL-00009" summary="chore: e2e test for invitations">
+      <option name="closed" value="true" />
+      <created>1746623936434</created>
+      <option name="number" value="00009" />
+      <option name="presentableId" value="LOCAL-00009" />
+      <option name="project" value="LOCAL" />
+      <updated>1746623936434</updated>
+    </task>
+    <task id="LOCAL-00010" summary="feat: add bulk invite functionality and UI enhancements for waitlist management&#10;&#10;- Added `complete_member_registration` SQL function for handling member registration.&#10;- Enhanced waitlist table with bulk invite feature using Supabase functions.&#10;- Introduced `SendIcon` button for inviting members with tooltips.&#10;- Refactored background processing logic for invitations.&#10;- Improved state management, query handling, and updates for waitlist invitations.">
+      <option name="closed" value="true" />
+      <created>1746629807808</created>
+      <option name="number" value="00010" />
+      <option name="presentableId" value="LOCAL-00010" />
+      <option name="project" value="LOCAL" />
+      <updated>1746629807808</updated>
+    </task>
+    <task id="LOCAL-00011" summary="chore: add database schema and data source configuration files">
+      <option name="closed" value="true" />
+      <created>1746629840580</created>
+      <option name="number" value="00011" />
+      <option name="presentableId" value="LOCAL-00011" />
+      <option name="project" value="LOCAL" />
+      <updated>1746629840580</updated>
+    </task>
+    <task id="LOCAL-00012" summary="feat: add invite management and UI enhancements&#10;&#10;- Replaced `complete_member_registration` SQL function with API-based invite workflows.&#10;- Added resend invitation API and related UI updates for waitlist.&#10;- Improved waitlist filtering (`status`).&#10;- Updated Stripe API version.&#10;- Enhanced IDE configuration and standardized code formatting.">
+      <option name="closed" value="true" />
+      <created>1746653930087</created>
+      <option name="number" value="00012" />
+      <option name="presentableId" value="LOCAL-00012" />
+      <option name="project" value="LOCAL" />
+      <updated>1746653930087</updated>
+    </task>
+    <option name="localTasksCounter" value="13" />
+    <servers />
+  </component>
+  <component name="TypeScriptGeneratedFilesManager">
+    <option name="version" value="3" />
+  </component>
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State />
+          </value>
+        </entry>
+      </map>
+    </option>
+  </component>
+  <component name="VcsManagerConfiguration">
+    <option name="CHECK_CODE_SMELLS_BEFORE_PROJECT_COMMIT" value="false" />
+    <MESSAGE value="Add guardian support for underage waitlist entries&#10;&#10;Introduce `waitlist_guardians` table and transactional logic for adding guardian details when underage users join the waitlist. Updates include database migrations, UI adjustments for conditional input fields, validation logic, and tests to ensure age-based gating." />
+    <MESSAGE value="Update `waitlist_guardians` to reference `profile_id` instead of `waitlist_id`&#10;&#10;Replaced `waitlist_id` with `profile_id` across database schema, relationships, and scripts to align with updated data model. Adjusted related seeding logic and server routes to ensure consistency and maintain functionality." />
+    <MESSAGE value="`feat: add guardian information to views, RLS policy, and UI components`" />
+    <MESSAGE value="`feat: add medical_conditions to member management view and members-table`" />
+    <MESSAGE value="`feat(stripe): update to API version 2025-04-30, dependencies and improve transaction handling`" />
+    <MESSAGE value="chore: updated gitignore" />
+    <MESSAGE value="feat: implemented invitations list of members" />
+    <MESSAGE value="chore: e2e test for invitations" />
+    <MESSAGE value="`chore: add data source meta and schema files for IDE configuration`" />
+    <MESSAGE value="feat: add bulk invite functionality and UI enhancements for waitlist management&#10;&#10;- Added `complete_member_registration` SQL function for handling member registration.&#10;- Enhanced waitlist table with bulk invite feature using Supabase functions.&#10;- Introduced `SendIcon` button for inviting members with tooltips.&#10;- Refactored background processing logic for invitations.&#10;- Improved state management, query handling, and updates for waitlist invitations." />
+    <MESSAGE value="chore: add database schema and data source configuration files" />
+    <MESSAGE value="feat: add invite management and UI enhancements&#10;&#10;- Replaced `complete_member_registration` SQL function with API-based invite workflows.&#10;- Added resend invitation API and related UI updates for waitlist.&#10;- Improved waitlist filtering (`status`).&#10;- Updated Stripe API version.&#10;- Enhanced IDE configuration and standardized code formatting." />
+    <option name="LAST_COMMIT_MESSAGE" value="feat: add invite management and UI enhancements&#10;&#10;- Replaced `complete_member_registration` SQL function with API-based invite workflows.&#10;- Added resend invitation API and related UI updates for waitlist.&#10;- Improved waitlist filtering (`status`).&#10;- Updated Stripe API version.&#10;- Enhanced IDE configuration and standardized code formatting." />
+  </component>
+  <component name="XDebuggerManager">
+    <breakpoint-manager>
+      <breakpoints>
+        <line-breakpoint enabled="true" type="javascript">
+          <url>file://$PROJECT_DIR$/src/routes/(public)/members/signup/(signup-form)/+page.server.ts</url>
+          <line>80</line>
+          <properties lambdaOrdinal="-1" />
+          <option name="timeStamp" value="7" />
+        </line-breakpoint>
+      </breakpoints>
+      <default-breakpoints>
+        <breakpoint enabled="true" type="javascript-exception" />
+      </default-breakpoints>
+    </breakpoint-manager>
+  </component>
+</project>
