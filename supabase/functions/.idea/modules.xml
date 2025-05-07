@@ -2,7 +2,7 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/.idea/dhc-dashboard.iml" filepath="$PROJECT_DIR$/.idea/dhc-dashboard.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/functions.iml" filepath="$PROJECT_DIR$/.idea/functions.iml" />
     </modules>
   </component>
 </project>
