@@ -29,12 +29,18 @@ const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "", {
 });
 
 // Define types for our application
-interface InviteData {
+type InviteData = {
   firstName: string;
   lastName: string;
   email: string;
   phoneNumber: string;
   dateOfBirth: string | Date;
+};
+
+function isInviteData(
+  invite: InviteData | string,
+): invite is InviteData {
+  return typeof invite !== "string";
 }
 
 interface UserData {
@@ -280,6 +286,195 @@ async function createSubscriptionSession(
   }
 }
 
+
+/**
+ * Process invitations in the background
+ */
+async function processInvitations(
+	invites: (InviteData | string)[],
+	user: UserData,
+	supabaseAdmin: ReturnType<typeof createClient>,
+	priceIds: { monthly: string; annual: string },
+) {
+	console.log(
+		`Starting background processing of ${invites.length} invitations`,
+	);
+	const results: InviteResult[] = [];
+	const startTime = Date.now();
+
+	try {
+		// Process each invite
+		for (const invite of invites) {
+			let inviteData: InviteData;
+			try {
+				// Process the invite in a transaction to ensure atomicity
+				await db.transaction().execute(async (trx) => {
+					if (isInviteData(invite)) {
+						inviteData = invite;
+					} else {
+						const result = await trx.selectFrom("user_profiles")
+							.select([
+								"first_name",
+								"last_name",
+								"phone_number",
+								"date_of_birth",
+							])
+							.where("waitlist_id", "=", invite)
+							.leftJoin("waitlist", "waitlist.id", "user_profiles.waitlist_id")
+							.select(["email"])
+							.executeTakeFirst();
+						inviteData = {
+							firstName: result.first_name,
+							lastName: result.last_name,
+							email: result.email,
+							dateOfBirth: dayjs(result.date_of_birth).toDate(),
+							phoneNumber: result.phone_number,
+						};
+					}
+
+					console.log(`Processing invitation for ${inviteData.email}`);
+					// Calculate unified expiration date (24 hours from now)
+					const expiresAt = dayjs().add(24, "hour").toDate();
+
+					// Create a Stripe customer for the invited user
+					const customer = await stripe.customers.create({
+						name: `${inviteData.firstName} ${inviteData.lastName}`,
+						email: inviteData.email,
+						metadata: {
+							invited_by: user.id,
+						},
+					});
+					console.log(`Created Stripe customer for ${inviteData.email}`);
+					console.log(`Creating subscription for ${inviteData.email}`);
+					// Invite the user via Supabase Auth
+					const { data: authData, error: authError } = await supabaseAdmin.auth
+						.admin.inviteUserByEmail(inviteData.email, {
+							data: {
+								first_name: inviteData.firstName,
+								last_name: inviteData.lastName,
+							},
+							redirectTo: `${Deno.env.get("APP_URL")}/members/signup/callback`,
+						});
+
+					if (authError) {
+						throw new Error(`Error inviting user: ${authError.message}`);
+					}
+					// Create the invitation record using Kysely
+					await createInvitation({
+						userId: authData.user.id,
+						email: inviteData.email,
+						invitationType: "admin",
+						expiresAt,
+						firstName: inviteData.firstName,
+						lastName: inviteData.lastName,
+						dateOfBirth: inviteData.dateOfBirth,
+						phoneNumber: inviteData.phoneNumber,
+					}, trx);
+
+					// Update user profile with customer ID using Kysely
+					await updateUserProfileWithCustomerId(
+						authData.user.id,
+						customer.id,
+						trx,
+					);
+					console.log(`Updated user profile for ${inviteData.email}`);
+					// Create subscription session
+					await createSubscriptionSession(
+						authData.user.id,
+						customer.id,
+						priceIds,
+						trx,
+					);
+					if (!isInviteData(invite)) {
+						await trx.updateTable("waitlist").set({
+							status: "invited",
+						}).where("id", "=", invite).execute();
+					}
+					console.log(`Created subscription for ${inviteData.email}`);
+					console.log(`Creating invitation record for ${inviteData.email}`);
+				});
+
+				// If we get here, the transaction was successful
+				results.push({
+					email: inviteData.email,
+					success: true,
+				});
+				console.log(
+					`Successfully processed invitation for ${inviteData.email}`,
+				);
+			} catch (error) {
+				console.error(
+					`Failed to process invitation for ${inviteData.email}:`,
+					error,
+				);
+				Sentry.captureException(error);
+				const errorMessage = error instanceof Error
+					? error.message
+					: String(error);
+				results.push({
+					email: inviteData.email,
+					success: false,
+					error: errorMessage,
+				});
+			}
+		}
+
+		// Store the results in a database or send a notification
+		await storeProcessingResults(results, user.id);
+
+		const processingTime = (Date.now() - startTime) / 1000;
+		console.log(
+			`Completed processing ${invites.length} invitations in ${processingTime}s`,
+		);
+		// send notification to the user that created the invitation
+		const failedInvites = results.filter((r) => !r.success).length;
+		const successInvites = results.filter((r) => r.success).length;
+		await db.insertInto("notifications")
+			.values({
+				user_id: user.id,
+				body: failedInvites === 0
+					? `Successfully processed ${successInvites} invitations out of ${invites.length}`
+					: `Successfully processed ${successInvites} invitations out of ${invites.length}, failed to process ${failedInvites} invitations`,
+			})
+			.execute();
+		return results;
+	} catch (error) {
+		Sentry.captureException(error);
+		const errorMessage = error instanceof Error ? error.message : String(error);
+		console.error(`Error in background processing: ${errorMessage}`);
+		throw error;
+	}
+}
+
+/**
+ * Store the processing results in the database
+ */
+async function storeProcessingResults(results: InviteResult[], userId: string) {
+	try {
+		const successCount = results.filter((r) => r.success).length;
+		const failureCount = results.length - successCount;
+
+		// Store the processing summary in the database
+		await db.insertInto("invitation_processing_logs")
+			.values({
+				user_id: userId,
+				total_count: results.length,
+				success_count: successCount,
+				failure_count: failureCount,
+				results: JSON.stringify(results),
+				created_at: new Date().toISOString(),
+			})
+			.execute();
+
+		console.log(
+			`Stored processing results: ${successCount} successful, ${failureCount} failed`,
+		);
+	} catch (error) {
+		Sentry.captureException(error);
+		console.error("Failed to store processing results:", error);
+	}
+}
+
 // Add event listener for beforeUnload to handle graceful shutdown
 addEventListener("beforeunload", (event) => {
   console.log("Function is about to be terminated:", event);
@@ -339,7 +534,7 @@ serve(async (req: Request) => {
     );
 
     // Parse JSON payload from the request
-    const { invites } = await req.json() as { invites: InviteData[] };
+    const payload = await req.json() as { invites: InviteData[] } | string[];
 
     // Validate user permissions (only admins, presidents, committee coordinators)
     const roles = await getRolesFromSession(token);
@@ -371,7 +566,7 @@ serve(async (req: Request) => {
 
     // Create a background task to process invitations
     const processingPromise = processInvitations(
-      invites,
+			Array.isArray(payload) ? payload : payload.invites,
       userData.user,
       supabaseAdmin,
       priceIds,
@@ -383,8 +578,7 @@ serve(async (req: Request) => {
     // Return an immediate response to the client
     return new Response(
       JSON.stringify({
-        message: "Invitations are being processed in the background",
-        count: invites.length,
+        message: "Invitations are being processed in the background"
       }),
       { headers: { "Content-Type": "application/json", ...corsHeaders } },
     );
@@ -401,159 +595,3 @@ serve(async (req: Request) => {
   }
 });
 
-/**
- * Process invitations in the background
- */
-async function processInvitations(
-  invites: InviteData[],
-  user: UserData,
-  supabaseAdmin: ReturnType<typeof createClient>,
-  priceIds: { monthly: string; annual: string },
-) {
-  console.log(
-    `Starting background processing of ${invites.length} invitations`,
-  );
-  const results: InviteResult[] = [];
-  const startTime = Date.now();
-
-  try {
-    // Process each invite
-    for (const invite of invites) {
-      try {
-        // Process the invite in a transaction to ensure atomicity
-        await db.transaction().execute(async (trx) => {
-          console.log(`Processing invitation for ${invite.email}`);
-          // Calculate unified expiration date (24 hours from now)
-          const expiresAt = dayjs().add(24, "hour").toDate();
-
-          // Create a Stripe customer for the invited user
-          const customer = await stripe.customers.create({
-            name: `${invite.firstName} ${invite.lastName}`,
-            email: invite.email,
-            metadata: {
-              invited_by: user.id,
-            },
-          });
-          console.log(`Created Stripe customer for ${invite.email}`);
-          console.log(`Creating subscription for ${invite.email}`);
-          // Invite the user via Supabase Auth
-          const { data: authData, error: authError } = await supabaseAdmin.auth
-            .admin.inviteUserByEmail(invite.email, {
-              data: {
-                first_name: invite.firstName,
-                last_name: invite.lastName,
-              },
-              redirectTo: `${Deno.env.get("APP_URL")}/members/signup/callback`,
-            });
-
-          if (authError) {
-            throw new Error(`Error inviting user: ${authError.message}`);
-          }
-          // Create the invitation record using Kysely
-          await createInvitation({
-            userId: authData.user.id,
-            email: invite.email,
-            invitationType: "admin",
-            expiresAt,
-            firstName: invite.firstName,
-            lastName: invite.lastName,
-            dateOfBirth: invite.dateOfBirth,
-            phoneNumber: invite.phoneNumber,
-          }, trx);
-
-          // Update user profile with customer ID using Kysely
-          await updateUserProfileWithCustomerId(
-            authData.user.id,
-            customer.id,
-            trx,
-          );
-          console.log(`Updated user profile for ${invite.email}`);
-          // Create subscription session
-          await createSubscriptionSession(
-            authData.user.id,
-            customer.id,
-            priceIds,
-            trx,
-          );
-          console.log(`Created subscription for ${invite.email}`);
-          console.log(`Creating invitation record for ${invite.email}`);
-        });
-
-        // If we get here, the transaction was successful
-        results.push({
-          email: invite.email,
-          success: true,
-        });
-        console.log(`Successfully processed invitation for ${invite.email}`);
-      } catch (error) {
-        console.error(
-          `Failed to process invitation for ${invite.email}:`,
-          error,
-        );
-        Sentry.captureException(error);
-        const errorMessage = error instanceof Error
-          ? error.message
-          : String(error);
-        results.push({
-          email: invite.email,
-          success: false,
-          error: errorMessage,
-        });
-      }
-    }
-
-    // Store the results in a database or send a notification
-    await storeProcessingResults(results, user.id);
-
-    const processingTime = (Date.now() - startTime) / 1000;
-    console.log(
-      `Completed processing ${invites.length} invitations in ${processingTime}s`,
-    );
-    // send notification to the user that created the invitation
-    const failedInvites = results.filter((r) => !r.success).length;
-    const successInvites = results.filter((r) => r.success).length;
-    await db.insertInto("notifications")
-      .values({
-        user_id: user.id,
-        body: failedInvites === 0
-          ? `Successfully processed ${successInvites} invitations out of ${invites.length}`
-          : `Successfully processed ${successInvites} invitations out of ${invites.length}, failed to process ${failedInvites} invitations`,
-      })
-      .execute();
-    return results;
-  } catch (error) {
-    Sentry.captureException(error);
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error(`Error in background processing: ${errorMessage}`);
-    throw error;
-  }
-}
-
-/**
- * Store the processing results in the database
- */
-async function storeProcessingResults(results: InviteResult[], userId: string) {
-  try {
-    const successCount = results.filter((r) => r.success).length;
-    const failureCount = results.length - successCount;
-
-    // Store the processing summary in the database
-    await db.insertInto("invitation_processing_logs")
-      .values({
-        user_id: userId,
-        total_count: results.length,
-        success_count: successCount,
-        failure_count: failureCount,
-        results: JSON.stringify(results),
-        created_at: new Date().toISOString(),
-      })
-      .execute();
-
-    console.log(
-      `Stored processing results: ${successCount} successful, ${failureCount} failed`,
-    );
-  } catch (error) {
-    Sentry.captureException(error);
-    console.error("Failed to store processing results:", error);
-  }
-}
