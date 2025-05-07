@@ -1,6 +1,6 @@
 import type { Database } from '$database';
 import { sql, type QueryExecutorProvider } from 'kysely';
-import BeginnersWaitlist, { type BeginnersFormSchema } from '$lib/schemas/beginnersWaitlist';
+import { type BeginnersFormSchema } from '$lib/schemas/beginnersWaitlist';
 
 type GetInvitationInfoResult = {
 	invitation_id: string;
