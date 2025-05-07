@@ -18,57 +18,15 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="feat: implemented invitations list of members">
-      <change afterPath="$PROJECT_DIR$/supabase/functions/.idea/inspectionProfiles/Project_Default.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/.gitignore" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/.idea/.gitignore" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/AugmentWebviewStateStore.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/codeStyles/Project.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/codeStyles/codeStyleConfig.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/cssdialects.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources.local.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/2166b03c-6430-494c-8751-7027e61fa75c.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/2166b03c-6430-494c-8751-7027e61fa75c/storage_v2/_src_/database/postgres.edMnLQ.meta" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/2166b03c-6430-494c-8751-7027e61fa75c/storage_v2/_src_/database/postgres.edMnLQ/schema/_realtime.yt4u0g.meta" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/2166b03c-6430-494c-8751-7027e61fa75c/storage_v2/_src_/database/postgres.edMnLQ/schema/auth.qN0tAA.meta" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/2166b03c-6430-494c-8751-7027e61fa75c/storage_v2/_src_/database/postgres.edMnLQ/schema/auth.qN0tAA.zip" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/2166b03c-6430-494c-8751-7027e61fa75c/storage_v2/_src_/database/postgres.edMnLQ/schema/extensions.FGwmlA.meta" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/2166b03c-6430-494c-8751-7027e61fa75c/storage_v2/_src_/database/postgres.edMnLQ/schema/extensions.FGwmlA.zip" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/2166b03c-6430-494c-8751-7027e61fa75c/storage_v2/_src_/database/postgres.edMnLQ/schema/graphql.6bO1EA.meta" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/2166b03c-6430-494c-8751-7027e61fa75c/storage_v2/_src_/database/postgres.edMnLQ/schema/graphql.6bO1EA.zip" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/2166b03c-6430-494c-8751-7027e61fa75c/storage_v2/_src_/database/postgres.edMnLQ/schema/graphql_public.f3MqDw.meta" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/2166b03c-6430-494c-8751-7027e61fa75c/storage_v2/_src_/database/postgres.edMnLQ/schema/graphql_public.f3MqDw.zip" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/2166b03c-6430-494c-8751-7027e61fa75c/storage_v2/_src_/database/postgres.edMnLQ/schema/information_schema.FNRwLQ.meta" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/2166b03c-6430-494c-8751-7027e61fa75c/storage_v2/_src_/database/postgres.edMnLQ/schema/information_schema.FNRwLQ.zip" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/2166b03c-6430-494c-8751-7027e61fa75c/storage_v2/_src_/database/postgres.edMnLQ/schema/net.nakBAA.meta" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/2166b03c-6430-494c-8751-7027e61fa75c/storage_v2/_src_/database/postgres.edMnLQ/schema/net.nakBAA.zip" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/2166b03c-6430-494c-8751-7027e61fa75c/storage_v2/_src_/database/postgres.edMnLQ/schema/pg_catalog.0S1ZNQ.meta" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/2166b03c-6430-494c-8751-7027e61fa75c/storage_v2/_src_/database/postgres.edMnLQ/schema/pg_catalog.0S1ZNQ.zip" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/2166b03c-6430-494c-8751-7027e61fa75c/storage_v2/_src_/database/postgres.edMnLQ/schema/pgbouncer.E3m6rQ.meta" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/2166b03c-6430-494c-8751-7027e61fa75c/storage_v2/_src_/database/postgres.edMnLQ/schema/pgbouncer.E3m6rQ.zip" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/2166b03c-6430-494c-8751-7027e61fa75c/storage_v2/_src_/database/postgres.edMnLQ/schema/pgsodium.8AauhQ.meta" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/2166b03c-6430-494c-8751-7027e61fa75c/storage_v2/_src_/database/postgres.edMnLQ/schema/pgsodium.8AauhQ.zip" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/2166b03c-6430-494c-8751-7027e61fa75c/storage_v2/_src_/database/postgres.edMnLQ/schema/pgsodium_masks.-EyzsA.meta" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/2166b03c-6430-494c-8751-7027e61fa75c/storage_v2/_src_/database/postgres.edMnLQ/schema/public.abK9xQ.meta" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/2166b03c-6430-494c-8751-7027e61fa75c/storage_v2/_src_/database/postgres.edMnLQ/schema/public.abK9xQ.zip" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/2166b03c-6430-494c-8751-7027e61fa75c/storage_v2/_src_/database/postgres.edMnLQ/schema/realtime.a63JzA.meta" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/2166b03c-6430-494c-8751-7027e61fa75c/storage_v2/_src_/database/postgres.edMnLQ/schema/storage.e0Kwjw.meta" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/2166b03c-6430-494c-8751-7027e61fa75c/storage_v2/_src_/database/postgres.edMnLQ/schema/storage.e0Kwjw.zip" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/2166b03c-6430-494c-8751-7027e61fa75c/storage_v2/_src_/database/postgres.edMnLQ/schema/supabase_functions.QNaTjw.meta" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/2166b03c-6430-494c-8751-7027e61fa75c/storage_v2/_src_/database/postgres.edMnLQ/schema/supabase_functions.QNaTjw.zip" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/2166b03c-6430-494c-8751-7027e61fa75c/storage_v2/_src_/database/postgres.edMnLQ/schema/supabase_migrations.YEw1QA.meta" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/2166b03c-6430-494c-8751-7027e61fa75c/storage_v2/_src_/database/postgres.edMnLQ/schema/vault.MrKsBg.meta" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/2166b03c-6430-494c-8751-7027e61fa75c/storage_v2/_src_/database/postgres.edMnLQ/schema/vault.MrKsBg.zip" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/deno.xml" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/.idea/deno.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dhc-dashboard.iml" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/.idea/functions.iml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/git_toolbox_blame.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/git_toolbox_prj.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/jsLibraryMappings.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/material_theme_project_new.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/modules.xml" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/.idea/modules.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/prettier.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/sqldialects.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/vcs.xml" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/.idea/vcs.xml" afterDir="false" />
+    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="chore: e2e test for invitations">
+      <change beforePath="$PROJECT_DIR$/.idea/dataSources.local.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources.local.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/sqldialects.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/sqldialects.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/lib/server/kyselyRPCFunctions.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/server/kyselyRPCFunctions.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/(public)/members/signup/(signup-form)/+page.server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/(public)/members/signup/(signup-form)/+page.server.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/beginners-workshop/actions-buttons.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/beginners-workshop/actions-buttons.svelte" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/beginners-workshop/waitlist-table.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/beginners-workshop/waitlist-table.svelte" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/supabase/functions/bulk_invite_with_subscription/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/bulk_invite_with_subscription/index.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -84,6 +42,31 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
+  <component name="GitToolBoxStore">
+    <option name="recentBranches">
+      <RecentBranches>
+        <option name="branchesForRepo">
+          <list>
+            <RecentBranchesForRepo>
+              <option name="branches">
+                <list>
+                  <RecentBranch>
+                    <option name="branchName" value="feat/waitlist-invitation" />
+                    <option name="lastUsedInstant" value="1746624363" />
+                  </RecentBranch>
+                  <RecentBranch>
+                    <option name="branchName" value="develop" />
+                    <option name="lastUsedInstant" value="1746624182" />
+                  </RecentBranch>
+                </list>
+              </option>
+              <option name="repositoryRootUrl" value="file://$PROJECT_DIR$" />
+            </RecentBranchesForRepo>
+          </list>
+        </option>
+      </RecentBranches>
+    </option>
+  </component>
   <component name="ProjectColorInfo">{
   &quot;associatedIndex&quot;: 5
 }</component>
@@ -92,39 +75,43 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
-    &quot;Node.js.seedMembers.js.executor&quot;: &quot;Debug&quot;,
-    &quot;Node.js.seedWaitlist.js.executor&quot;: &quot;Run&quot;,
-    &quot;Playwright.underage user (16-17) should be able to submit with guardian information.executor&quot;: &quot;Run&quot;,
-    &quot;Playwright.underage user (16-17) should be required to fill guardian fields.executor&quot;: &quot;Run&quot;,
-    &quot;Playwright.underage-guardian-waitlist.spec.ts.executor&quot;: &quot;Run&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;com.codeium.enabled&quot;: &quot;true&quot;,
-    &quot;deno.use.library&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;feat/invitations-manager&quot;,
-    &quot;junie.onboarding.icon.badge.shown&quot;: &quot;true&quot;,
-    &quot;last_opened_file_path&quot;: &quot;/Users/alessandrojcm/repos/dhc-dashboard&quot;,
-    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
-    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
-    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
-    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
-    &quot;nodejs_package_manager_path&quot;: &quot;pnpm&quot;,
-    &quot;npm.dev.executor&quot;: &quot;Debug&quot;,
-    &quot;prettierjs.PrettierConfiguration.Package&quot;: &quot;/Users/alessandrojcm/repos/dhc-dashboard/node_modules/prettier&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.pluginManager&quot;,
-    &quot;ts.external.directory.path&quot;: &quot;/Users/alessandrojcm/repos/dhc-dashboard/node_modules/typescript/lib&quot;,
-    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "Attach to Node.js/Chrome.Edge Functions.executor": "Debug",
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "Node.js.seedMembers.js.executor": "Debug",
+    "Node.js.seedWaitlist.js.executor": "Run",
+    "Playwright.underage user (16-17) should be able to submit with guardian information.executor": "Run",
+    "Playwright.underage user (16-17) should be required to fill guardian fields.executor": "Run",
+    "Playwright.underage-guardian-waitlist.spec.ts.executor": "Run",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "com.codeium.enabled": "true",
+    "deno.use.library": "true",
+    "git-widget-placeholder": "feat/waitlist-invitation",
+    "junie.onboarding.icon.badge.shown": "true",
+    "last_opened_file_path": "/Users/alessandrojcm/repos/dhc-dashboard",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "pnpm",
+    "npm.dev.executor": "Debug",
+    "prettierjs.PrettierConfiguration.Package": "/Users/alessandrojcm/repos/dhc-dashboard/node_modules/prettier",
+    "settings.editor.selected.configurable": "preferences.pluginManager",
+    "ts.external.directory.path": "/Users/alessandrojcm/repos/dhc-dashboard/node_modules/typescript/lib",
+    "vue.rearranger.settings.migration": "true"
   },
-  &quot;keyToStringList&quot;: {
-    &quot;DatabaseDriversLRU&quot;: [
-      &quot;postgresql&quot;
+  "keyToStringList": {
+    "DatabaseDriversLRU": [
+      "postgresql"
     ]
   }
-}</component>
-  <component name="RunManager" selected="Node.js.seedWaitlist.js">
+}]]></component>
+  <component name="RunManager" selected="Attach to Node.js/Chrome.Edge Functions">
+    <configuration name="Edge Functions" type="ChromiumRemoteDebugType" factoryName="Chromium Remote" port="8083">
+      <method v="2" />
+    </configuration>
     <configuration name="underage user (16-17) should be able to submit with guardian information" type="JavaScriptTestRunnerPlaywright" temporary="true" nameIsGenerated="true">
       <node-interpreter value="project" />
       <playwright-package value="$PROJECT_DIR$/node_modules/@playwright/test" />
@@ -152,7 +139,7 @@
     <configuration name="seedMembers.js" type="NodeJSConfigurationType" temporary="true" nameIsGenerated="true" path-to-js-file="$PROJECT_DIR$/scripts/seedMembers.js" working-dir="$PROJECT_DIR$/scripts">
       <method v="2" />
     </configuration>
-    <configuration name="seedWaitlist.js" type="NodeJSConfigurationType" temporary="true" nameIsGenerated="true" path-to-js-file="$PROJECT_DIR$/scripts/seedWaitlist.js" working-dir="$PROJECT_DIR$/scripts">
+    <configuration name="seedWaitlist.js" type="NodeJSConfigurationType" temporary="true" nameIsGenerated="true" path-to-js-file="seedWaitlist.js" working-dir="$PROJECT_DIR$/scripts">
       <method v="2" />
     </configuration>
     <configuration name="dev" type="js.build_tools.npm" temporary="true" nameIsGenerated="true">
@@ -165,6 +152,14 @@
       <envs />
       <method v="2" />
     </configuration>
+    <list>
+      <item itemvalue="Attach to Node.js/Chrome.Edge Functions" />
+      <item itemvalue="Node.js.seedMembers.js" />
+      <item itemvalue="Node.js.seedWaitlist.js" />
+      <item itemvalue="npm.dev" />
+      <item itemvalue="Playwright.underage user (16-17) should be able to submit with guardian information" />
+      <item itemvalue="Playwright.underage user (16-17) should be required to fill guardian fields" />
+    </list>
     <recent_temporary>
       <list>
         <item itemvalue="Node.js.seedWaitlist.js" />
@@ -200,7 +195,7 @@
       <workItem from="1746530144467" duration="1686000" />
       <workItem from="1746536621904" duration="7707000" />
       <workItem from="1746565788689" duration="3036000" />
-      <workItem from="1746608020126" duration="4073000" />
+      <workItem from="1746608020126" duration="9857000" />
     </task>
     <task id="LOCAL-00001" summary="Add guardian support for underage waitlist entries&#10;&#10;Introduce `waitlist_guardians` table and transactional logic for adding guardian details when underage users join the waitlist. Updates include database migrations, UI adjustments for conditional input fields, validation logic, and tests to ensure age-based gating.">
       <option name="closed" value="true" />
@@ -266,7 +261,15 @@
       <option name="project" value="LOCAL" />
       <updated>1746611084424</updated>
     </task>
-    <option name="localTasksCounter" value="9" />
+    <task id="LOCAL-00009" summary="chore: e2e test for invitations">
+      <option name="closed" value="true" />
+      <created>1746623936434</created>
+      <option name="number" value="00009" />
+      <option name="presentableId" value="LOCAL-00009" />
+      <option name="project" value="LOCAL" />
+      <updated>1746623936434</updated>
+    </task>
+    <option name="localTasksCounter" value="10" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -292,6 +295,7 @@
     <MESSAGE value="`feat(stripe): update to API version 2025-04-30, dependencies and improve transaction handling`" />
     <MESSAGE value="chore: updated gitignore" />
     <MESSAGE value="feat: implemented invitations list of members" />
-    <option name="LAST_COMMIT_MESSAGE" value="feat: implemented invitations list of members" />
+    <MESSAGE value="chore: e2e test for invitations" />
+    <option name="LAST_COMMIT_MESSAGE" value="chore: e2e test for invitations" />
   </component>
 </project>
