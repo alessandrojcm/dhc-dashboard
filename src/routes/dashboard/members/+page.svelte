@@ -6,6 +6,7 @@
 	import InviteDrawer from './invite-drawer.svelte';
 	import Analytics from './member-analytics.svelte';
 	import MembersTable from './members-table.svelte';
+	import InvitationsTable from './invitations-table.svelte';
 	import SettingsSheet from './settings-sheet.svelte';
 
 	const { data } = $props();
@@ -34,6 +35,7 @@
 			<List>
 				<Trigger value="dashboard">Dashboard</Trigger>
 				<Trigger value="members">Members list</Trigger>
+				<Trigger value="invitations">Invitations</Trigger>
 			</List>
 
 			{#if data.canEditSettings}
@@ -46,6 +48,9 @@
 		</Content>
 		<Content value="members">
 			<MembersTable supabase={data.supabase} />
+		</Content>
+		<Content value="invitations">
+			<InvitationsTable supabase={data.supabase} />
 		</Content>
 	</Root>
 </div>

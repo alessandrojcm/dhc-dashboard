@@ -291,7 +291,7 @@ serve(async (req: Request) => {
     if (req.method === "OPTIONS") {
       return new Response("ok", { headers: corsHeaders });
     }
-    if(req.method !== 'POST') {
+    if (req.method !== "POST") {
       return new Response(
         JSON.stringify({ error: "Method not allowed" }),
         {
@@ -443,7 +443,7 @@ async function processInvitations(
                 first_name: invite.firstName,
                 last_name: invite.lastName,
               },
-              redirectTo: `${Deno.env.get("APP_URL")}/members/signup/callback`
+              redirectTo: `${Deno.env.get("APP_URL")}/members/signup/callback`,
             });
 
           if (authError) {
@@ -510,12 +510,16 @@ async function processInvitations(
       `Completed processing ${invites.length} invitations in ${processingTime}s`,
     );
     // send notification to the user that created the invitation
-    await db.insertInto('notifications')
-    .values({
-      user_id: user.id,
-      body: `Successfully processed ${results.length} invitations out of ${invites.length}`,
-    })
-    .execute();
+    const failedInvites = results.filter((r) => !r.success).length;
+    const successInvites = results.filter((r) => r.success).length;
+    await db.insertInto("notifications")
+      .values({
+        user_id: user.id,
+        body: failedInvites === 0
+          ? `Successfully processed ${successInvites} invitations out of ${invites.length}`
+          : `Successfully processed ${successInvites} invitations out of ${invites.length}, failed to process ${failedInvites} invitations`,
+      })
+      .execute();
     return results;
   } catch (error) {
     Sentry.captureException(error);
