@@ -81,6 +81,7 @@
 		if (sortingState.length > 0) {
 			query = query.order(sortingState[0].id, { ascending: !sortingState[0].desc });
 		}
+		query = query.neq('status', 'joined')
 		return query
 			.range(rangeStart, rangeEnd)
 			.abortSignal(signal)
@@ -122,7 +123,38 @@
 			toast.success('Invitations are being processed in the background.');
 		},
 		onError: (oldData) => {
-			toast.error('Something has gone wrong, inviting members.');
+			toast.error('Something has gone wrong inviting members.');
+			queryClient.setQueryData(waitlistQueryKey, oldData);
+		}
+	}));
+
+	const resendInvitationLink = createMutation(() => ({
+		mutationFn: async (emails: string[]) => fetch(`/api/admin/invite-link`, {
+			method: 'POST',
+			body: JSON.stringify({
+				emails
+			})
+		}).then(res => {
+			if (!res.ok) {
+				throw new Error('Failed to resend invitation link');
+			}
+		}),
+		onMutate: (emails) => {
+			const oldData = queryClient.getQueryData(waitlistQueryKey);
+			queryClient.setQueryData(waitlistQueryKey, (oldData: Awaited<typeof waitlistQuery['data']>) => ({
+				...oldData,
+				data: oldData?.data?.map((d) => ({
+					...d,
+					...(d.email && emails.includes(d.email) ? { status: 'invited' } : {})
+				}))
+			}));
+			return { oldData };
+		},
+		onSuccess: () => {
+			toast.success('Invitation link resent.');
+		},
+		onError: (oldData) => {
+			toast.error('Something has gone wrong inviting members.');
 			queryClient.setQueryData(waitlistQueryKey, oldData);
 		}
 	}));
@@ -228,7 +260,7 @@
 						isExpanded: row.getIsExpanded(),
 						onToggleExpand: () => row.toggleExpanded(),
 						inviteMember: () => {
-							inviteMember.mutate([row.original.id!]);
+							row.original.status !== 'invited' ? inviteMember.mutate([row.original.id!]) : resendInvitationLink.mutate([row.original.email!]);
 						},
 						onEdit(newValue) {
 							updateWaitlistEntry.mutate({

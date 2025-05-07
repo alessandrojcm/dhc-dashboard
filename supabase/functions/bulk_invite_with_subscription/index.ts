@@ -22,7 +22,7 @@ Sentry.init({
 
 // Initialize Stripe client
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") || "", {
-  apiVersion: "2025-03-31.basil",
+  apiVersion: "2025-04-30.basil",
   maxNetworkRetries: 3,
   timeout: 30 * 1000,
   httpClient: Stripe.createFetchHttpClient(),
