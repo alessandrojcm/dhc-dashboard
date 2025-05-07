@@ -29,7 +29,6 @@ export async function getExistingPaymentSession(
 		.where('user_id', '=', userId)
 		.where('expires_at', '>', dayjs().toISOString())
 		.where('is_used', '=', false)
-		.orderBy('payment_sessions.created_at', 'desc')
 		.executeTakeFirst();
 }
 export type ExistingSession = Awaited<ReturnType<typeof getExistingPaymentSession>>;

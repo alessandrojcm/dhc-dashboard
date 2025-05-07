@@ -146,6 +146,7 @@
 		queryKey,
 		refetchOnMount: true,
 		placeholderData: keepPreviousData,
+		refetchOnWindowFocus: false,
 		queryFn: async () => {
 			const res = await fetch(`/api/signup/plan-pricing?coupon=${couponCode}`);
 			if (!res.ok) {

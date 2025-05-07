@@ -67,7 +67,7 @@
 		"postcss": "^8.5.3",
 		"prettier": "^3.5.3",
 		"prettier-plugin-svelte": "^3.3.3",
-		"stripe": "^18.0.0",
+		"stripe": "^18.1.0",
 		"supabase": "^2.22.12",
 		"svelte": "^5.28.2",
 		"svelte-check": "^4.1.6",

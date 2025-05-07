@@ -1,53 +1,52 @@
-import { bulkInviteSchema } from "$lib/schemas/adminInvite";
-import settingsSchema from "$lib/schemas/membersSettings";
-import { executeWithRLS, getKyselyClient } from "$lib/server/kysely";
-import { getRolesFromSession } from "$lib/server/roles";
-import { fail, message, superValidate } from "sveltekit-superforms";
-import { valibot } from "sveltekit-superforms/adapters";
-import type { Actions, PageServerLoad } from "./$types";
-import * as Sentry from "@sentry/sveltekit";
-import { invariant } from "$lib/server/invariant";
-import { supabaseServiceClient } from "$lib/server/supabaseServiceClient";
-
-const SETTINGS_ROLES = new Set(["president", "committee_coordinator", "admin"]);
+import { bulkInviteSchema } from '$lib/schemas/adminInvite';
+import settingsSchema from '$lib/schemas/membersSettings';
+import { executeWithRLS, getKyselyClient } from '$lib/server/kysely';
+import { getRolesFromSession, SETTINGS_ROLES } from '$lib/server/roles';
+import { fail, message, superValidate } from 'sveltekit-superforms';
+import { valibot } from 'sveltekit-superforms/adapters';
+import type { Actions, PageServerLoad } from './$types';
+import * as Sentry from '@sentry/sveltekit';
+import { invariant } from '$lib/server/invariant';
+import { supabaseServiceClient } from '$lib/server/supabaseServiceClient';
+import type { Session } from '@supabase/supabase-js';
 
 export const load: PageServerLoad = async ({ locals }) => {
 	const { session } = await locals.safeGetSession();
-	invariant(session === null, "Unauthorized");
+	invariant(session === null, 'Unauthorized');
 	const roles = getRolesFromSession(session!);
 	const canEditSettings = roles.intersection(SETTINGS_ROLES).size > 0;
 
 	const { data } = await locals.supabase
-		.from("settings")
-		.select("value")
-		.eq("key", "hema_insurance_form_link")
+		.from('settings')
+		.select('value')
+		.eq('key', 'hema_insurance_form_link')
 		.single();
 	const form = await superValidate(
 		{
-			insuranceFormLink: canEditSettings && data ? data.value : "",
+			insuranceFormLink: canEditSettings && data ? data.value : ''
 		},
 		valibot(settingsSchema),
-		{ errors: false },
+		{ errors: false }
 	);
 	if (!canEditSettings) {
 		return {
 			canEditSettings,
-			form,
+			form
 		};
 	}
 
 	return {
 		canEditSettings,
-		form,
+		form
 	};
 };
 
 export const actions: Actions = {
 	updateSettings: async ({ request, locals, platform }) => {
-		const roles = getRolesFromSession(locals.session!);
-		if (roles.intersection(SETTINGS_ROLES).size === 0) {
-			return fail(403, { message: "Unauthorized" });
-		}
+		const { session } = await locals.safeGetSession();
+		invariant(session === null, 'Unauthorized');
+		const roles = getRolesFromSession(session!);
+		invariant(roles.intersection(SETTINGS_ROLES).size > 0, 'Unauthorized', 403);
 
 		const form = await superValidate(request, valibot(settingsSchema));
 		if (!form.valid) {
@@ -57,37 +56,34 @@ export const actions: Actions = {
 		return executeWithRLS(
 			kysely,
 			{
-				claims: locals.session!,
+				claims: locals.session!
 			},
 			async (trx) => {
 				return trx
-					.updateTable("settings")
+					.updateTable('settings')
 					.set({ value: form.data.insuranceFormLink })
-					.where("key", "=", "hema_insurance_form_link")
+					.where('key', '=', 'hema_insurance_form_link')
 					.execute()
 					.then(() => {
 						return message(form, {
-							success: "Settings updated successfully",
+							success: 'Settings updated successfully'
 						});
 					})
 					.catch((error) => {
-						Sentry.captureMessage(
-							`Error updating settings: ${error}}`,
-							"error",
-						);
+						Sentry.captureMessage(`Error updating settings: ${error}}`, 'error');
 						return fail(500, {
 							form,
-							message: { failure: "Failed to update settings" },
+							message: { failure: 'Failed to update settings' }
 						});
 					});
-			},
+			}
 		);
 	},
-	createBulkInvites: async ({ request, locals, platform }) => {
-		const roles = getRolesFromSession(locals.session!);
-		if (roles.intersection(SETTINGS_ROLES).size === 0) {
-			return fail(403, { message: "Unauthorized" });
-		}
+	createBulkInvites: async ({ request, locals }) => {
+		const { session } = await locals.safeGetSession();
+		invariant(session === null, 'Unauthorized');
+		const roles = getRolesFromSession(session!);
+		invariant(roles.intersection(SETTINGS_ROLES).size === 0, 'Unauthorized', 403);
 
 		const form = await superValidate(request, valibot(bulkInviteSchema));
 		if (!form.valid) {
@@ -95,9 +91,9 @@ export const actions: Actions = {
 				form: {
 					...form,
 					message: {
-						failure: "There was an error sending the invites.",
-					},
-				},
+						failure: 'There was an error sending the invites.'
+					}
+				}
 			});
 		}
 
@@ -105,45 +101,40 @@ export const actions: Actions = {
 			// Prepare the payload for the Edge Function
 			const payload = {
 				invites: form.data.invites,
-				session: locals.session,
+				session: locals.session
 			};
 
 			// Call the Edge Function asynchronously using the Supabase SDK
-			const { data, error } = await supabaseServiceClient.functions
-				.invoke("bulk_invite_with_subscription", {
+			const { error } = await supabaseServiceClient.functions.invoke(
+				'bulk_invite_with_subscription',
+				{
 					body: payload,
 					headers: {
-						Authorization: `Bearer ${locals.session?.access_token}`,
-					},
-				});
+						Authorization: `Bearer ${(session as unknown as Session)?.access_token}`
+					}
+				}
+			);
 
 			if (error) {
-				Sentry.captureMessage(
-					`Edge function error: ${JSON.stringify(error)}`,
-					"error",
-				);
+				Sentry.captureMessage(`Edge function error: ${JSON.stringify(error)}`, 'error');
 				return fail(500, {
 					form,
 					message: {
-						failure:
-							"Failed to process invitations. Please try again later.",
-					},
+						failure: 'Failed to process invitations. Please try again later.'
+					}
 				});
 			}
 
 			return message(form, {
 				success:
-					"Invitations are being processed in the background. You will be notified when completed.",
+					'Invitations are being processed in the background. You will be notified when completed.'
 			});
 		} catch (error) {
-			Sentry.captureMessage(
-				`Error creating bulk invitations: ${error}`,
-				"error",
-			);
+			Sentry.captureMessage(`Error creating bulk invitations: ${error}`, 'error');
 			return fail(500, {
 				form,
-				message: { failure: "Failed to create invitations" },
+				message: { failure: 'Failed to create invitations' }
 			});
 		}
-	},
+	}
 };

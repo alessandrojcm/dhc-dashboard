@@ -20,7 +20,7 @@
 			data and the payment info below.
 		</Card.Description>
 	</Card.Header>
-	<Card.Content class="max-h-[80svh] overflow-y-auto">
+	<Card.Content class="h-auto max-h-[75svh] overflow-y-auto">
 		{@render children()}
 	</Card.Content>
 </Card.Root>
