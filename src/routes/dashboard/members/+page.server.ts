@@ -1,23 +1,14 @@
 import { bulkInviteSchema } from '$lib/schemas/adminInvite';
 import settingsSchema from '$lib/schemas/membersSettings';
 import { executeWithRLS, getKyselyClient } from '$lib/server/kysely';
-import { getRolesFromSession } from '$lib/server/roles';
+import { getRolesFromSession, SETTINGS_ROLES } from '$lib/server/roles';
 import { fail, message, superValidate } from 'sveltekit-superforms';
 import { valibot } from 'sveltekit-superforms/adapters';
-import * as v from 'valibot';
 import type { Actions, PageServerLoad } from './$types';
 import * as Sentry from '@sentry/sveltekit';
 import { invariant } from '$lib/server/invariant';
-import { PUBLIC_SITE_URL } from '$env/static/public';
 import { supabaseServiceClient } from '$lib/server/supabaseServiceClient';
 import type { Session } from '@supabase/supabase-js';
-import dayjs from 'dayjs';
-
-const SETTINGS_ROLES = new Set(['president', 'committee_coordinator', 'admin']);
-
-const resendInviteSchema = v.object({
-	emails: v.pipe(v.array(v.pipe(v.string(), v.email())), v.minLength(1))
-});
 
 export const load: PageServerLoad = async ({ locals }) => {
 	const { session } = await locals.safeGetSession();
@@ -145,44 +136,5 @@ export const actions: Actions = {
 				message: { failure: 'Failed to create invitations' }
 			});
 		}
-	},
-	resendInvitationLink: async ({ request, locals, platform }) => {
-		const { session } = await locals.safeGetSession();
-		invariant(session === null, 'Unauthorized');
-		const roles = getRolesFromSession(session!);
-		const canEditSettings = roles.intersection(SETTINGS_ROLES).size > 0;
-		invariant(!canEditSettings, 'Unauthorized', 403);
-
-		const { emails } = v.parse(resendInviteSchema, await request.json());
-
-		const kysely = getKyselyClient(platform.env.HYPERDRIVE);
-
-		await executeWithRLS(
-			kysely,
-			{
-				claims: session as unknown as Session
-			},
-			async (trx) => {
-				for (const email of emails) {
-					await supabaseServiceClient.auth.admin.generateLink({
-						email,
-						type: 'magiclink',
-						options: {
-							redirectTo: `${PUBLIC_SITE_URL}/members/signup/callback`
-						}
-					});
-				}
-				await trx
-					.updateTable('invitations')
-					.set({
-						status: 'pending',
-						expires_at: dayjs().add(1, 'day').toISOString()
-					})
-					.where('email', 'in', emails)
-					.execute();
-			}
-		);
-
-		return { success: true };
 	}
 };

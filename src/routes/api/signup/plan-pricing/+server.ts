@@ -44,12 +44,12 @@ export const GET: RequestHandler = async ({ cookies, platform }) => {
 
 	// Generate and return pricing info using only the payment session data
 	return Response.json(
-		await generatePricingInfo(
+		generatePricingInfo(
 			monthlySubscription,
 			annualSubscription,
 			paymentSession.monthly_amount,
 			paymentSession.annual_amount,
-			paymentSession,
-		),
+			paymentSession
+		)
 	);
 };

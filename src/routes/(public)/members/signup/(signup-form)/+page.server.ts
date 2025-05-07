@@ -1,7 +1,7 @@
 import { memberSignupSchema } from '$lib/schemas/membersSignup';
 import { error } from '@sveltejs/kit';
 import dayjs from 'dayjs';
-import { jwtDecode } from 'jwt-decode';
+import { jwtDecode, type JwtPayload } from 'jwt-decode';
 import { fail, message, superValidate } from 'sveltekit-superforms';
 import { valibot } from 'sveltekit-superforms/adapters';
 import { invariant } from '$lib/server/invariant';
@@ -79,7 +79,7 @@ export const actions: Actions = {
 	default: async (event) => {
 		const accessToken = event.cookies.get('access-token');
 		invariant(accessToken === null, 'There has been an error with your signup.');
-		const tokenClaim = jwtDecode(accessToken!);
+		const tokenClaim = jwtDecode<JwtPayload & { email: string }>(accessToken!);
 		invariant(dayjs.unix(tokenClaim.exp!).isBefore(dayjs()), 'This invitation has expired');
 
 		const form = await superValidate(event, valibot(memberSignupSchema));
@@ -109,16 +109,28 @@ export const actions: Actions = {
 					await updateInvitationStatus(invitationInfo.invitation_id, 'accepted', trx);
 				}
 
-				// Then complete the member registration
-				await completeMemberRegistration(
-					{
-						v_user_id: tokenClaim.sub!,
-						p_next_of_kin_name: form.data.nextOfKin,
-						p_next_of_kin_phone: form.data.nextOfKinNumber,
-						p_insurance_form_submitted: true
-					},
+				await Promise.all([
+					completeMemberRegistration(
+						{
+							v_user_id: tokenClaim.sub!,
+							p_next_of_kin_name: form.data.nextOfKin,
+							p_next_of_kin_phone: form.data.nextOfKinNumber,
+							p_insurance_form_submitted: true
+						},
+						trx
+					),
 					trx
-				);
+						.updateTable('payment_sessions')
+						.set({ is_used: true })
+						.where('monthly_payment_intent_id', '=', monthly_payment_intent_id)
+						.where('annual_payment_intent_id', '=', annual_payment_intent_id)
+						.execute(),
+					trx
+						.updateTable('waitlist')
+						.set({ status: 'joined' })
+						.where('email', '=', tokenClaim.email!)
+						.execute()
+				]);
 
 				const intent = await stripeClient.setupIntents.create({
 					confirm: true,
@@ -181,22 +193,6 @@ export const actions: Actions = {
 							);
 						})
 				]);
-
-				// After successful payment confirmation, mark the session as used
-				await trx
-					.updateTable("payment_sessions")
-					.set({ is_used: true })
-					.where(
-						"monthly_payment_intent_id",
-						"=",
-						monthly_payment_intent_id,
-					)
-					.where(
-						"annual_payment_intent_id",
-						"=",
-						annual_payment_intent_id,
-					)
-					.execute();
 
 				// Success! Delete the access token cookie
 				event.cookies.delete('access-token', { path: '/' });
