@@ -113,11 +113,15 @@
 
 	const resendInvitationLink = createMutation(() => ({
 		mutationFn: async (data: { email: string, invitationId: string }[]) => {
-			return fetch(`${page.url.origin}${page.url.pathname}?/resendInvitationLink`, {
+			return fetch(`/api/admin/invite-link`, {
 				method: 'POST',
 				body: JSON.stringify({
 					emails: data.map(e => e.email)
 				})
+			}).then(res => {
+				if (!res.ok) {
+					throw new Error('Failed to resend invitation link');
+				}
 			});
 		},
 		onSuccess: () => {

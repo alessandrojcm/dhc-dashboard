@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import type { Database, Tables } from '$database';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
@@ -15,39 +15,41 @@
 	import * as Pagination from '$lib/components/ui/pagination/index.js';
 	import * as Select from '$lib/components/ui/select';
 	import * as Table from '$lib/components/ui/table/index.js';
+	import * as Checkbox from '$lib/components/ui/checkbox/index.js';
 	import SortHeader from '$lib/components/ui/table/sort-header.svelte';
 	import type { MutationPayload } from '$lib/types';
 	import type { SupabaseClient } from '@supabase/supabase-js';
-	import { createMutation, createQuery, keepPreviousData } from '@tanstack/svelte-query';
+	import { createMutation, createQuery, keepPreviousData, useQueryClient } from '@tanstack/svelte-query';
 	import {
 		getCoreRowModel, getExpandedRowModel,
 		getPaginationRowModel,
 		getSortedRowModel,
-		type PaginationState,
+		type PaginationState, type RowSelectionState,
 		type SortingState,
 		type TableOptions
 	} from '@tanstack/table-core';
 	import dayjs from 'dayjs';
 	import { createRawSnippet } from 'svelte';
- import { Cross2 } from 'svelte-radix';
- import { ChevronDown, ChevronUp } from 'lucide-svelte';
- import ActionButtons from './actions-buttons.svelte';
+	import { Cross2 } from 'svelte-radix';
+	import ActionButtons from './actions-buttons.svelte';
+	import { toast } from 'svelte-sonner';
+	import { Loader2, SendIcon } from 'lucide-svelte';
 
- const columns =
- 	'current_position,full_name,email,phone_number,status,age,initial_registration_date,last_contacted,medical_conditions,admin_notes,social_media_consent,guardian_first_name,guardian_last_name,guardian_phone_number';
+	const columns =
+		'id,current_position,full_name,email,phone_number,status,age,initial_registration_date,last_contacted,medical_conditions,admin_notes,social_media_consent,guardian_first_name,guardian_last_name,guardian_phone_number';
 
 	let pageSizeOptions = [10, 25, 50, 100];
 
 	const { supabase }: { supabase: SupabaseClient<Database> } = $props();
 
-	const currentPage = $derived(Number($page.url.searchParams.get('page')) || 0);
-	const pageSize = $derived(Number($page.url.searchParams.get('pageSize')) || 10);
-	const searchQuery = $derived($page.url.searchParams.get('q') || '');
+	const currentPage = $derived(Number(page.url.searchParams.get('page')) || 0);
+	const pageSize = $derived(Number(page.url.searchParams.get('pageSize')) || 10);
+	const searchQuery = $derived(page.url.searchParams.get('q') || '');
 	const rangeStart = $derived(currentPage * pageSize);
 	const rangeEnd = $derived(rangeStart + pageSize);
 	const sortingState: SortingState = $derived.by(() => {
-		const sortColumn = $page.url.searchParams.get('sort');
-		const sortDirection = $page.url.searchParams.get('direction');
+		const sortColumn = page.url.searchParams.get('sort');
+		const sortDirection = page.url.searchParams.get('direction');
 		if (!sortColumn) return [];
 		return [
 			{
@@ -79,6 +81,7 @@
 		if (sortingState.length > 0) {
 			query = query.order(sortingState[0].id, { ascending: !sortingState[0].desc });
 		}
+		query = query.neq('status', 'joined')
 		return query
 			.range(rangeStart, rangeEnd)
 			.abortSignal(signal)
@@ -86,13 +89,76 @@
 			.then((r) => ({ data: r.data, count: r.count }));
 	}
 
+	const waitlistQueryKey = $derived(['waitlist', { rangeStart, rangeEnd, sortingState, searchQuery }]);
 	const waitlistQuery = createQuery<ReturnType<typeof getWaitlistQuery>>(() => ({
-		queryKey: ['waitlist', { rangeStart, rangeEnd, sortingState, searchQuery }],
+		queryKey: waitlistQueryKey,
 		placeholderData: keepPreviousData,
 		queryFn: ({ signal, queryKey }) => {
 			return getWaitlistQuery({ ...queryKey[1], signal });
 		}
 	}));
+	const queryClient = useQueryClient();
+	const inviteMember = createMutation(() => ({
+		mutationFn: async (waitlistIds: string[]) => supabase.functions.invoke('bulk_invite_with_subscription', {
+			body: waitlistIds,
+			method: 'POST'
+		}).then(r => {
+			if (r.error) {
+				throw r.error;
+			}
+		}),
+		onMutate: (waitlistIds) => {
+			const oldData = queryClient.getQueryData(waitlistQueryKey);
+			queryClient.setQueryData(waitlistQueryKey, (oldData: Awaited<typeof waitlistQuery['data']>) => ({
+				...oldData,
+				data: oldData?.data?.map((d) => ({
+					...d,
+					...(d.id && waitlistIds.includes(d.id) ? { status: 'invited' } : {})
+				}))
+			}));
+			return { oldData };
+		},
+		onSuccess: () => {
+			selectedState = {};
+			toast.success('Invitations are being processed in the background.');
+		},
+		onError: (oldData) => {
+			toast.error('Something has gone wrong inviting members.');
+			queryClient.setQueryData(waitlistQueryKey, oldData);
+		}
+	}));
+
+	const resendInvitationLink = createMutation(() => ({
+		mutationFn: async (emails: string[]) => fetch(`/api/admin/invite-link`, {
+			method: 'POST',
+			body: JSON.stringify({
+				emails
+			})
+		}).then(res => {
+			if (!res.ok) {
+				throw new Error('Failed to resend invitation link');
+			}
+		}),
+		onMutate: (emails) => {
+			const oldData = queryClient.getQueryData(waitlistQueryKey);
+			queryClient.setQueryData(waitlistQueryKey, (oldData: Awaited<typeof waitlistQuery['data']>) => ({
+				...oldData,
+				data: oldData?.data?.map((d) => ({
+					...d,
+					...(d.email && emails.includes(d.email) ? { status: 'invited' } : {})
+				}))
+			}));
+			return { oldData };
+		},
+		onSuccess: () => {
+			toast.success('Invitation link resent.');
+		},
+		onError: (oldData) => {
+			toast.error('Something has gone wrong inviting members.');
+			queryClient.setQueryData(waitlistQueryKey, oldData);
+		}
+	}));
+
 	const updateWaitlistEntry = createMutation<
 		void,
 		Error,
@@ -104,6 +170,9 @@
 		},
 		onSuccess: () => {
 			waitlistQuery.refetch();
+		},
+		onSettled: () => {
+			waitlistQuery.refetch();
 		}
 	}));
 
@@ -113,7 +182,7 @@
 			pageSize,
 			...newPagination
 		};
-		const newParams = new URLSearchParams($page.url.searchParams);
+		const newParams = new URLSearchParams(page.url.searchParams);
 		newParams.set('page', paginationState.pageIndex.toString());
 		newParams.set('pageSize', paginationState.pageSize.toString());
 		goto(`/dashboard/beginners-workshop?${newParams.toString()}`);
@@ -121,20 +190,22 @@
 
 	function onSortingChange(newSorting: SortingState) {
 		const [sortingState] = newSorting;
-		const newParams = new URLSearchParams($page.url.searchParams);
+		const newParams = new URLSearchParams(page.url.searchParams);
 		newParams.set('sort', sortingState.id);
 		newParams.set('direction', sortingState.desc ? 'desc' : 'asc');
 		goto(`/dashboard/beginners-workshop?${newParams.toString()}`);
 	}
 
 	function onSearchChange(newSearch: string) {
-		const newParams = new URLSearchParams($page.url.searchParams);
+		const newParams = new URLSearchParams(page.url.searchParams);
 		newParams.set('q', newSearch);
 		goto(`/dashboard/beginners-workshop?${newParams.toString()}`);
 	}
 
 	// State for expanded rows
 	let expandedState = $state({});
+	let selectedState = $state<RowSelectionState>({});
+	let inviteCount = $derived(Object.values(selectedState).filter(Boolean).length);
 
 	const tableOptions = $state<TableOptions<Tables<'waitlist_management_view'>>>({
 		autoResetPageIndex: false,
@@ -162,7 +233,25 @@
 				expandedState = updater;
 			}
 		},
+		onRowSelectionChange: (updater) => {
+			if (typeof updater === 'function') {
+				selectedState = updater(selectedState);
+			} else {
+				selectedState = updater;
+			}
+		},
 		columns: [
+			{
+				header: '',
+				id: 'selection',
+				cell: ({ row }) => {
+					return renderComponent(Checkbox.Checkbox, {
+						checked: row.getIsSelected(),
+						onCheckedChange: (value) => row.toggleSelected(!!value),
+						disabled: row.original.status === 'invited'
+					});
+				}
+			},
 			{
 				header: 'Actions',
 				cell: ({ row }) => {
@@ -170,6 +259,9 @@
 						adminNotes: row.original.admin_notes ?? 'N/A',
 						isExpanded: row.getIsExpanded(),
 						onToggleExpand: () => row.toggleExpanded(),
+						inviteMember: () => {
+							row.original.status !== 'invited' ? inviteMember.mutate([row.original.id!]) : resendInvitationLink.mutate([row.original.email!]);
+						},
 						onEdit(newValue) {
 							updateWaitlistEntry.mutate({
 								email: row.original.email!,
@@ -336,6 +428,7 @@
 		get rowCount() {
 			return waitlistQuery?.data?.count ?? 0;
 		},
+		getRowId: (row) => row.id!,
 		getCoreRowModel: getCoreRowModel(),
 		getPaginationRowModel: getPaginationRowModel(),
 		getSortedRowModel: getSortedRowModel()
@@ -343,7 +436,7 @@
 	const table = createSvelteTable(tableOptions);
 </script>
 
-<div class="flex w-full max-w-sm items-center space-x-2 mb-2 p-2">
+<div class="flex w-full max-w-auto items-center space-x-2 mb-2 p-2">
 	<Input
 		value={searchQuery}
 		onchange={(t) => onSearchChange(t.target?.value)}
@@ -359,6 +452,16 @@
 	{#if waitlistQuery.isFetching}
 		<LoaderCircle />
 	{/if}
+
+	<Button class="ml-auto" disabled={inviteCount === 0 || inviteMember.isPending}
+					onclick={() => inviteMember.mutate(Object.keys(selectedState))}>
+		{#if inviteMember.isPending}
+			<Loader2 class="mr-2 h-4 w-4 animate-spin" />
+		{:else}
+			<SendIcon class="mr-2 h-4 w-4" />
+		{/if}
+		Invite {inviteCount} members
+	</Button>
 </div>
 <!-- Desktop Table View (hidden on mobile) -->
 <div class="hidden md:block overflow-x-auto overflow-y-auto h-[65svh]">
@@ -422,7 +525,7 @@
 				{/if}
 			{/each}
 		</Table.Body>
-		<Table.Footer class="sticky bottom-0 z-10 bg-white">
+		<Table.Footer class="sticky bottom-0 z-1 bg-white">
 			{#each table.getFooterGroups() as footerGroup}
 				<Table.Row>
 					{#each footerGroup.headers as header}
