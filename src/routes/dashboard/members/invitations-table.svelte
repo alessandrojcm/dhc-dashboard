@@ -32,6 +32,8 @@
 	import { Cross2 } from 'svelte-radix';
 	import { toast } from 'svelte-sonner';
 	import InvitationActions from './invitation-actions.svelte';
+	import { ChevronDown, MoreHorizontal, SendIcon } from 'lucide-svelte';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 
 	const columns = 'id,email,status,expires_at,created_at';
 
@@ -54,7 +56,7 @@
 				desc: sortDirection === 'desc'
 			}
 		];
-	});
+	})
 
 	const invitationsQueryKey = $derived(['invitations', pageSize, currentPage, rangeStart, sortingState, searchQuery]);
 
@@ -246,141 +248,71 @@
 	</Table.Root>
 </div>
 
-<!--&lt;!&ndash; Mobile Card View (hidden on desktop) &ndash;&gt;-->
-<!--<div class="md:hidden overflow-y-auto h-[60svh] px-2 py-1">-->
-<!--	<div class="space-y-4">-->
-<!--		{#each table.getRowModel().rows as row (row.id)}-->
-<!--			<div class="bg-card text-card-foreground rounded-lg border shadow-sm p-4">-->
-<!--				&lt;!&ndash; Name and Actions Row &ndash;&gt;-->
-<!--				<div class="flex justify-between items-center mb-3">-->
-<!--					<div class="font-medium text-base">-->
-<!--						{row.original.first_name}-->
-<!--						{row.original.last_name}-->
-<!--					</div>-->
-<!--				</div>-->
+<!-- Mobile Card View (hidden on desktop) -->
+<div class="md:hidden overflow-y-auto h-[60svh] px-2 py-1">
+	<div class="space-y-4">
+		{#each table.getRowModel().rows as row (row.id)}
+			<div class="bg-card text-card-foreground rounded-lg border shadow-sm p-4">
+				<!-- Email and Actions Row -->
+				<div class="flex justify-between items-center mb-3">
+					<div class="font-medium text-base break-words">
+						{row.original.email}
+					</div>
+					<div class="flex items-center space-x-2">
+						<Button
+							variant="ghost"
+							size="icon"
+							class="h-8 w-8"
+							aria-label="Resend invitation"
+							onclick={() => resendInvitationLink.mutate([{
+								email: row.original.email,
+								invitationId: row.original.id
+							}])}
+						>
+							<SendIcon class="h-4 w-4" />
+						</Button>
+					</div>
+				</div>
 
-<!--				&lt;!&ndash; Email &ndash;&gt;-->
-<!--				<div class="grid grid-cols-3 py-1 border-b">-->
-<!--					<div class="text-sm font-medium text-muted-foreground">Email</div>-->
-<!--					<div class="col-span-2 text-sm break-words">{row.original.email}</div>-->
-<!--				</div>-->
+				<!-- Status Badge -->
+				<div class="mb-3">
+					<Badge
+						variant={row.original.status === 'pending' ? 'default' : 'destructive'}
+						class="h-6"
+					>
+						<p class="capitalize">{row.original.status || 'Unknown'}</p>
+					</Badge>
+				</div>
 
-<!--				&lt;!&ndash; Phone &ndash;&gt;-->
-<!--				<div class="grid grid-cols-3 py-1 border-b">-->
-<!--					<div class="text-sm font-medium text-muted-foreground">Phone</div>-->
-<!--					<div class="col-span-2 text-sm">{row.original.phone_number || 'N/A'}</div>-->
-<!--				</div>-->
+				<!-- Expires -->
+				<div class="grid grid-cols-3 py-1 border-b">
+					<div class="text-sm font-medium text-muted-foreground">Expires</div>
+					<div class="col-span-2 text-sm">
+						{#if row.original.expires_at}
+							<span class={dayjs(row.original.expires_at).isBefore(dayjs()) ? 'text-destructive' : ''}>
+								{dayjs(row.original.expires_at).format('MMM D, YYYY')}
+							</span>
+						{:else}
+							N/A
+						{/if}
+					</div>
+				</div>
 
-<!--				&lt;!&ndash; Gender &ndash;&gt;-->
-<!--				<div class="grid grid-cols-3 py-1 border-b">-->
-<!--					<div class="text-sm font-medium text-muted-foreground">Gender</div>-->
-<!--					<div class="col-span-2 text-sm capitalize">{row.original.gender || 'N/A'}</div>-->
-<!--				</div>-->
-
-<!--				&lt;!&ndash; Age &ndash;&gt;-->
-<!--				<div class="grid grid-cols-3 py-1 border-b">-->
-<!--					<div class="text-sm font-medium text-muted-foreground">Age</div>-->
-<!--					<div class="col-span-2 text-sm">{row.original.age || 'N/A'}</div>-->
-<!--				</div>-->
-
-<!--				&lt;!&ndash; Social Media Consent &ndash;&gt;-->
-<!--				<div class="grid grid-cols-3 py-1 border-b">-->
-<!--					<div class="text-sm font-medium text-muted-foreground">Social Consent</div>-->
-<!--					<div class="col-span-2">-->
-<!--						<Badge-->
-<!--							variant={row.original.social_media_consent === 'yes_recognizable' ||-->
-<!--							row.original.social_media_consent === 'yes_unrecognizable'-->
-<!--								? 'default'-->
-<!--								: 'destructive'}-->
-<!--							class="h-6"-->
-<!--						>-->
-<!--							<p class="capitalize">-->
-<!--								{row.original.social_media_consent?.replace('_', ' ') ?? 'Unknown'}-->
-<!--							</p>-->
-<!--						</Badge>-->
-<!--					</div>-->
-<!--				</div>-->
-
-<!--				&lt;!&ndash; Preferred Weapon &ndash;&gt;-->
-<!--				<div class="grid grid-cols-3 py-1 border-b">-->
-<!--					<div class="text-sm font-medium text-muted-foreground">Weapons</div>-->
-<!--					<div class="col-span-2 text-sm">-->
-<!--						{#if row.original.preferred_weapon}-->
-<!--							{#each row.original.preferred_weapon as weapon}-->
-<!--								<Badge variant="outline" class="mr-1 mb-1 capitalize">-->
-<!--									{weapon.replace(/_/g, ' ')}-->
-<!--								</Badge>-->
-<!--							{/each}-->
-<!--						{:else}-->
-<!--							None specified-->
-<!--						{/if}-->
-<!--					</div>-->
-<!--				</div>-->
-
-<!--				&lt;!&ndash; Member Since &ndash;&gt;-->
-<!--				<div class="grid grid-cols-3 py-1">-->
-<!--					<div class="text-sm font-medium text-muted-foreground">Member Since</div>-->
-<!--					<div class="col-span-2 text-sm">-->
-<!--						{#if row.original.membership_start_date}-->
-<!--							{dayjs(row.original.membership_start_date).format('MMM D, YYYY')}-->
-<!--						{:else}-->
-<!--							Never-->
-<!--						{/if}-->
-<!--					</div>-->
-<!--				</div>-->
-
-<!--				&lt;!&ndash; Expanded Content &ndash;&gt;-->
-<!--				{#if row.getIsExpanded()}-->
-<!--					<div class="mt-4 pt-4 border-t border-muted">-->
-<!--						&lt;!&ndash; Next of Kin Information &ndash;&gt;-->
-<!--						<div class="mb-4">-->
-<!--							<h3 class="text-sm font-medium mb-2">Next of Kin Information</h3>-->
-<!--							<div class="grid grid-cols-3 gap-2">-->
-<!--								<div class="text-xs font-medium text-muted-foreground">Name</div>-->
-<!--								<div class="col-span-2 text-xs">-->
-<!--									{row.original.next_of_kin_name || 'N/A'}-->
-<!--								</div>-->
-
-<!--								<div class="text-xs font-medium text-muted-foreground">Phone</div>-->
-<!--								<div class="col-span-2 text-xs">-->
-<!--									{row.original.next_of_kin_phone || 'N/A'}-->
-<!--								</div>-->
-<!--							</div>-->
-<!--						</div>-->
-
-<!--						&lt;!&ndash; Guardian Information &ndash;&gt;-->
-<!--						<div class="mb-4">-->
-<!--							<h3 class="text-sm font-medium mb-2">Guardian Information</h3>-->
-<!--							{#if row.original.guardian_first_name || row.original.guardian_last_name || row.original.guardian_phone_number}-->
-<!--								<div class="grid grid-cols-3 gap-2">-->
-<!--									<div class="text-xs font-medium text-muted-foreground">Name</div>-->
-<!--									<div class="col-span-2 text-xs">-->
-<!--										{row.original.guardian_first_name || ''} {row.original.guardian_last_name || ''}-->
-<!--									</div>-->
-
-<!--									<div class="text-xs font-medium text-muted-foreground">Phone</div>-->
-<!--									<div class="col-span-2 text-xs">-->
-<!--										{row.original.guardian_phone_number || 'N/A'}-->
-<!--									</div>-->
-<!--								</div>-->
-<!--							{:else}-->
-<!--								<p class="text-xs text-muted-foreground">No guardian information available</p>-->
-<!--							{/if}-->
-<!--						</div>-->
-
-<!--						&lt;!&ndash; Medical Conditions &ndash;&gt;-->
-<!--						<div>-->
-<!--							<h3 class="text-sm font-medium mb-2">Medical Conditions</h3>-->
-<!--							<p class="text-xs">-->
-<!--								{row.original.medical_conditions || 'None reported'}-->
-<!--							</p>-->
-<!--						</div>-->
-<!--					</div>-->
-<!--				{/if}-->
-<!--			</div>-->
-<!--		{/each}-->
-<!--	</div>-->
-<!--</div>-->
+				<!-- Created -->
+				<div class="grid grid-cols-3 py-1 border-b">
+					<div class="text-sm font-medium text-muted-foreground">Created</div>
+					<div class="col-span-2 text-sm">
+						{#if row.original.created_at}
+							{dayjs(row.original.created_at).format('MMM D, YYYY')}
+						{:else}
+							Unknown
+						{/if}
+					</div>
+				</div>
+			</div>
+		{/each}
+	</div>
+</div>
 
 <div class="flex flex-col md:flex-row items-center justify-between gap-4 p-4 bg-card border-t">
 	<div class="flex items-center gap-2 w-full md:w-auto justify-start">
