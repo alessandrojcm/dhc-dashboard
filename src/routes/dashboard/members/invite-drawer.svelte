@@ -130,15 +130,20 @@
 
 <Button variant="outline" onclick={() => (isOpen = true)}>Invite Members</Button>
 
-<Sheet.Root bind:open={isOpen}>
+<Sheet.Root bind:open={isOpen} onOpenChange={(open) => {
+	if(!open) {
+		resetBulkForm();
+	}
+}}>
 	<Sheet.Content class="w-[400px] sm:w-[540px]" side="right">
 		<Sheet.Header>
 			<Sheet.Title>Invite Members</Sheet.Title>
-			<Sheet.Description>Add new members to the club by sending them invitations.</Sheet.Description
+			<Sheet.Description>Add new members to the club by sending them invitations.
+			</Sheet.Description
 			>
 		</Sheet.Header>
 
-		<div class="py-4 space-y-6">
+		<div class="space-y-6">
 			<!-- Invite Form -->
 			<form class="space-y-4">
 				{#if $bulkMessage}
@@ -273,13 +278,14 @@
 						</AlertDescription>
 					</Alert>
 				{/if}
-				<ScrollArea class="h-[300px] pr-4">
-					{#if $bulkFormData.invites.length === 0}
-						<div class="text-center py-8 text-muted-foreground">
-							<p>No invites added yet. Add members using the form above.</p>
-						</div>
-					{:else}
-						<div class="space-y-3">
+
+				{#if $bulkFormData.invites.length === 0}
+					<div class="text-center py-8 text-muted-foreground">
+						<p>No invites added yet. Add members using the form above.</p>
+					</div>
+				{:else}
+					<ScrollArea class="h-[300px]">
+						<div class="space-y-3 pr-2">
 							{#each $bulkFormData.invites as invite, index}
 								<Card class="p-3">
 									<div class="flex justify-between items-start">
@@ -306,8 +312,8 @@
 								</Card>
 							{/each}
 						</div>
-					{/if}
-				</ScrollArea>
+					</ScrollArea>
+				{/if}
 			</div>
 		</div>
 	</Sheet.Content>

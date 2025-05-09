@@ -81,7 +81,7 @@
 		if (sortingState.length > 0) {
 			query = query.order(sortingState[0].id, { ascending: !sortingState[0].desc });
 		}
-		query = query.neq('status', 'joined')
+		query = query.neq('status', 'joined');
 		return query
 			.range(rangeStart, rangeEnd)
 			.abortSignal(signal)
@@ -561,6 +561,9 @@
 					<!-- Actions -->
 					<div>
 						<ActionButtons
+							inviteMember={() => {
+							row.original.status !== 'invited' ? inviteMember.mutate([row.original.id!]) : resendInvitationLink.mutate([row.original.email!]);
+						}}
 							adminNotes={row.original.admin_notes ?? 'N/A'}
 							isExpanded={row.getIsExpanded()}
 							onToggleExpand={() => row.toggleExpanded()}
