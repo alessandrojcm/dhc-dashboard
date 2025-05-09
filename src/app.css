@@ -70,7 +70,7 @@
 	--input: 214.3 31.8% 91.4%;
 	--ring: 221.2 83.2% 53.3%;
 	--radius: .15rem;
-	--sidebar-background: var(--color-slate-50);
+	--sidebar-background: white;
 }
 
 .dark {
