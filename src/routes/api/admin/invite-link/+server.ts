@@ -31,8 +31,12 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
 		},
 		async (trx) => {
 			for (const email of emails) {
-				const { error } = await supabaseServiceClient.auth.admin.inviteUserByEmail(email, {
-					redirectTo: `${PUBLIC_SITE_URL}/members/signup/callback`
+				const { error } = await supabaseServiceClient.auth.signInWithOtp({
+					email,
+					options: {
+						shouldCreateUser: false,
+						emailRedirectTo: `${PUBLIC_SITE_URL}/members/signup/callback`
+					}
 				});
 				if (error) {
 					Sentry.captureException(error);
