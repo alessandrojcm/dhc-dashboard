@@ -1,7 +1,5 @@
 import { memberSignupSchema } from '$lib/schemas/membersSignup';
 import { error } from '@sveltejs/kit';
-import dayjs from 'dayjs';
-import { jwtDecode, type JwtPayload } from 'jwt-decode';
 import { fail, message, superValidate } from 'sveltekit-superforms';
 import { valibot } from 'sveltekit-superforms/adapters';
 import { invariant } from '$lib/server/invariant';
@@ -22,31 +20,17 @@ import { env } from '$env/dynamic/public';
 const DASHBOARD_MIGRATION_CODE = env.PUBLIC_DASHBOARD_MIGRATION_CODE ?? 'DHCDASHBOARD';
 
 // need to normalize medical_conditions
-export const load: PageServerLoad = async ({ parent, platform }) => {
-	const { userData } = await parent();
+export const load: PageServerLoad = async ({ params, platform }) => {
+	const invitationId = params.invitationId;
 	const kysely = getKyselyClient(platform.env.HYPERDRIVE);
 
 	try {
 		// Get invitation data first (essential for page rendering)
-		const invitationData = await kysely.transaction().execute(async (trx) => {
-			// Get invitation info instead of waitlist info
-			const invitationInfo = await getInvitationInfo(userData.id, trx);
+		const invitationData = await getInvitationInfo(invitationId, kysely);
 
-			if (!invitationInfo || invitationInfo.status !== 'pending') {
-				throw error(404, {
-					message: 'Invalid invitation'
-				});
-			}
-
-			const customer_id = await trx
-				.selectFrom('user_profiles')
-				.select(['customer_id'])
-				.where('supabase_user_id', '=', userData!.id)
-				.executeTakeFirst()
-				.then((r) => r?.customer_id);
-
-			return { ...invitationInfo, customer_id };
-		});
+		if (!invitationData) {
+			return error(404, 'Invitation not found');
+		}
 
 		// Return essential data immediately, with pricing as a streamed promise
 		return {
@@ -56,7 +40,7 @@ export const load: PageServerLoad = async ({ parent, platform }) => {
 			userData: {
 				firstName: invitationData.first_name,
 				lastName: invitationData.last_name,
-				email: userData.email,
+				email: invitationData.email,
 				dateOfBirth: new Date(invitationData.date_of_birth),
 				phoneNumber: invitationData.phone_number,
 				pronouns: invitationData.pronouns,
@@ -77,11 +61,6 @@ export const load: PageServerLoad = async ({ parent, platform }) => {
 
 export const actions: Actions = {
 	default: async (event) => {
-		const accessToken = event.cookies.get('access-token');
-		invariant(accessToken === null, 'There has been an error with your signup.');
-		const tokenClaim = jwtDecode<JwtPayload & { email: string }>(accessToken!);
-		invariant(dayjs.unix(tokenClaim.exp!).isBefore(dayjs()), 'This invitation has expired');
-
 		const form = await superValidate(event, valibot(memberSignupSchema));
 		if (!form.valid) {
 			return fail(422, {
@@ -89,7 +68,6 @@ export const actions: Actions = {
 			});
 		}
 		const kysely = getKyselyClient(event.platform.env.HYPERDRIVE);
-
 		const confirmationToken: Stripe.ConfirmationToken = JSON.parse(
 			form.data.stripeConfirmationToken
 		);
@@ -97,22 +75,22 @@ export const actions: Actions = {
 		return kysely
 			.transaction()
 			.execute(async (trx) => {
-				const paymentSession = await getExistingPaymentSession(tokenClaim!.sub!, trx);
+				const invitationData = await getInvitationInfo(event.params.invitationId, trx);
+				const paymentSession = await getExistingPaymentSession(invitationData.user_id, trx);
 				if (!paymentSession) {
 					throw error(404, 'No payment session found for this user.');
 				}
 				const { annual_payment_intent_id, monthly_payment_intent_id, customer_id } = paymentSession;
 
 				// First get the invitation info and update its status to accepted
-				const invitationInfo = await getInvitationInfo(tokenClaim.sub!, trx);
-				if (invitationInfo && invitationInfo.invitation_id) {
-					await updateInvitationStatus(invitationInfo.invitation_id, 'accepted', trx);
+				if (invitationData && invitationData.invitation_id) {
+					await updateInvitationStatus(invitationData.invitation_id, 'accepted', trx);
 				}
 
 				await Promise.all([
 					completeMemberRegistration(
 						{
-							v_user_id: tokenClaim.sub!,
+							v_user_id: invitationData.user_id,
 							p_next_of_kin_name: form.data.nextOfKin,
 							p_next_of_kin_phone: form.data.nextOfKinNumber,
 							p_insurance_form_submitted: true
@@ -128,7 +106,7 @@ export const actions: Actions = {
 					trx
 						.updateTable('waitlist')
 						.set({ status: 'joined' })
-						.where('email', '=', tokenClaim.email!)
+						.where('email', '=', invitationData.email)
 						.execute()
 				]);
 

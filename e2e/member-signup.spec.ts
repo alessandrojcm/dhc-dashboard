@@ -27,10 +27,9 @@ test.describe('Member Signup - Negative test cases', () => {
 		test(`should show correct error page when the invitation is invalid ${JSON.stringify(override)}`, async ({
 			page
 		}) => {
-			await page.goto(
-				'/members/signup/callback?access_token=' +
-					(override?.token !== undefined ? override.token : testData.token)
-			);
+			// Use a non-existent invitationId for invalid cases
+			const invalidInvitationId = '00000000-0000-0000-0000-000000000000';
+			await page.goto(`/members/signup/${invalidInvitationId}`);
 			await expect(page.getByText('Invalid Invite')).toBeVisible();
 		});
 	});
@@ -44,11 +43,18 @@ test.describe('Member Signup - Valid invitation', () => {
 	});
 
 	test.beforeEach(async ({ page }) => {
-		// Start from the signup page
-		await page.goto('/members/signup/callback#access_token=' + (await testData.token()));
-		await page.waitForURL('/members/signup');
-		// Wait for the form to be visible
-		await page.waitForSelector('form');
+		// Start from the signup page with invitationId in the URL
+		await page.goto(
+			`/members/signup/${testData.invitationId}?email=${encodeURIComponent(testData.email)}&dateOfBirth=${encodeURIComponent(
+				testData.date_of_birth.format('YYYY-MM-DD')
+			)}`
+		);
+
+		// Submit the verification form
+		await page.getByRole('button', { name: 'Verify Invitation' }).click();
+
+		// Wait for verification to complete and payment form to be visible
+		await expect(page.getByText('First Name')).toBeVisible();
 	});
 
 	test('Closed page without completing payment', async ({ page }) => {
@@ -112,6 +118,7 @@ test.describe('Member Signup - Valid invitation', () => {
 		await stripeFrame.getByLabel('IBAN').fill('IE29AIBK93115212345678');
 		await stripeFrame.getByLabel('Address line 1').fill('123 Main Street');
 		await stripeFrame.getByLabel('Address line 2').fill('Apt 4B');
+		await stripeFrame.getByLabel('Country or region').selectOption('Ireland');
 		await stripeFrame.getByLabel('City').fill('Dublin');
 		await stripeFrame.getByLabel('Eircode').fill('K45 HR22');
 		await stripeFrame.getByLabel('County').selectOption('County Dublin');

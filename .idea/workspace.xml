@@ -18,11 +18,38 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="feat: enhance invite workflow and UI; improve IDE config&#10;&#10;- Added API-based invite workflows, replacing `complete_member_registration` SQL function.&#10;- Introduced resend invitation API and related UI updates for waitlist.&#10;- Improved waitlist filtering by `status`.&#10;- Updated Stripe API version.&#10;- Refined IDE configuration and applied consistent code formatting.">
+    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="Merge branch 'main' into develop&#10;&#10;# Conflicts:&#10;#&#9;.idea/workspace.xml">
+      <change afterPath="$PROJECT_DIR$/src/lib/schemas/inviteValidationSchema.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]/+error.svelte" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]/confirm-invitation.svelte" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]/payment-form.svelte" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/src/routes/api/invite/[invitationId]/+server.ts" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/supabase/functions/_shared/emailClient.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/dataSources.local.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources.local.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/public.abK9xQ.meta" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/public.abK9xQ.meta" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/public.abK9xQ.zip" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/public.abK9xQ.zip" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/prettier.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/prettier.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/sqldialects.xml" beforeDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/app.css" beforeDir="false" afterPath="$PROJECT_DIR$/src/app.css" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/beginners-workshop/waitlist-table.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/beginners-workshop/waitlist-table.svelte" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/members/invitations-table.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/members/invitations-table.svelte" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/database.types.ts" beforeDir="false" afterPath="$PROJECT_DIR$/database.types.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/e2e/member-signup.spec.ts" beforeDir="false" afterPath="$PROJECT_DIR$/e2e/member-signup.spec.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/e2e/setupFunctions.ts" beforeDir="false" afterPath="$PROJECT_DIR$/e2e/setupFunctions.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/database.types.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/database.types.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/lib/server/kyselyRPCFunctions.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/server/kyselyRPCFunctions.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/(public)/members/signup/(signup-form)/+layout.server.ts" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/(public)/members/signup/(signup-form)/+layout.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]/+layout.svelte" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/(public)/members/signup/(signup-form)/+page.server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]/+page.server.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/(public)/members/signup/(signup-form)/+page.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]/+page.svelte" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/(public)/members/signup/(signup-form)/pricing-display.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/(public)/members/signup/callback/+page.svelte" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/(public)/members/signup/callback/+server.ts" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/api/signup/plan-pricing/+server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/api/signup/plan-pricing/[invitationId]/+server.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/supabase/functions/_shared/db.ts" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/_shared/db.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/supabase/functions/_shared/deno.json" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/_shared/deno.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/supabase/functions/_shared/deno.lock" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/_shared/deno.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/supabase/functions/bulk_invite_with_subscription/deno.json" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/bulk_invite_with_subscription/deno.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/supabase/functions/bulk_invite_with_subscription/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/bulk_invite_with_subscription/index.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -46,6 +73,10 @@
             <RecentBranchesForRepo>
               <option name="branches">
                 <list>
+                  <RecentBranch>
+                    <option name="branchName" value="feat/remote-otp-for-invites" />
+                    <option name="lastUsedInstant" value="1747144305" />
+                  </RecentBranch>
                   <RecentBranch>
                     <option name="branchName" value="main" />
                     <option name="lastUsedInstant" value="1746819058" />
@@ -85,17 +116,19 @@
     "RunOnceActivity.git.unshallow": "true",
     "com.codeium.enabled": "true",
     "deno.use.library": "true",
-    "git-widget-placeholder": "main",
+    "git-widget-placeholder": "feat/remote-otp-for-invites",
     "junie.onboarding.icon.badge.shown": "true",
-    "last_opened_file_path": "/Users/alessandrojcm/repos/dhc-dashboard",
+    "last_opened_file_path": "/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]",
     "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.standard": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.standard": "",
     "node.js.selected.package.tslint": "(autodetect)",
     "nodejs_package_manager_path": "pnpm",
-    "npm.dev.executor": "Run",
+    "npm.dev.executor": "Debug",
     "prettierjs.PrettierConfiguration.Package": "/Users/alessandrojcm/repos/dhc-dashboard/node_modules/prettier",
-    "settings.editor.selected.configurable": "preferences.pluginManager",
+    "settings.editor.selected.configurable": "settings.javascript.linters.eslint",
     "ts.external.directory.path": "/Users/alessandrojcm/repos/dhc-dashboard/node_modules/typescript/lib",
     "vue.rearranger.settings.migration": "true"
   },
@@ -105,7 +138,17 @@
     ]
   }
 }]]></component>
-  <component name="RunManager" selected="Node.js.script.js">
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]" />
+    </key>
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/src/routes/api/signup/plan-pricing/[invitationId]" />
+      <recent name="$PROJECT_DIR$/src/routes/api/invite/[invitationId]" />
+      <recent name="$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]" />
+    </key>
+  </component>
+  <component name="RunManager" selected="npm.dev">
     <configuration name="Edge Functions" type="ChromiumRemoteDebugType" factoryName="Chromium Remote" port="8083">
       <method v="2" />
     </configuration>
@@ -150,10 +193,10 @@
     </list>
     <recent_temporary>
       <list>
-        <item itemvalue="Node.js.script.js" />
         <item itemvalue="npm.dev" />
         <item itemvalue="Node.js.seedWaitlist.js" />
         <item itemvalue="Node.js.seedMembers.js" />
+        <item itemvalue="Node.js.script.js" />
         <item itemvalue="Playwright.underage user (16-17) should be required to fill guardian fields" />
       </list>
     </recent_temporary>
@@ -161,7 +204,7 @@
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
-        <option value="bundled-js-predefined-d6986cc7102b-f27c65a3e318-JavaScript-WS-251.23774.424" />
+        <option value="bundled-js-predefined-d6986cc7102b-6a121458b545-JavaScript-WS-251.25410.117" />
       </set>
     </attachedChunks>
   </component>
@@ -186,6 +229,10 @@
       <workItem from="1746608020126" duration="17886000" />
       <workItem from="1746785418551" duration="491000" />
       <workItem from="1746817125267" duration="1771000" />
+      <workItem from="1747143774176" duration="63000" />
+      <workItem from="1747143871817" duration="1853000" />
+      <workItem from="1747247915261" duration="4017000" />
+      <workItem from="1747301102898" duration="12955000" />
     </task>
     <task id="LOCAL-00001" summary="Add guardian support for underage waitlist entries&#10;&#10;Introduce `waitlist_guardians` table and transactional logic for adding guardian details when underage users join the waitlist. Updates include database migrations, UI adjustments for conditional input fields, validation logic, and tests to ensure age-based gating.">
       <option name="closed" value="true" />
@@ -327,9 +374,20 @@
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
-      <default-breakpoints>
-        <breakpoint enabled="true" type="javascript-exception" />
-      </default-breakpoints>
+      <breakpoints>
+        <line-breakpoint enabled="true" type="javascript">
+          <url>file://$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]/+page.server.ts</url>
+          <line>63</line>
+          <properties lambdaOrdinal="-1" />
+          <option name="timeStamp" value="7" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="javascript">
+          <url>file://$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]/+page.server.ts</url>
+          <line>77</line>
+          <properties lambdaOrdinal="-1" />
+          <option name="timeStamp" value="14" />
+        </line-breakpoint>
+      </breakpoints>
     </breakpoint-manager>
   </component>
 </project>
