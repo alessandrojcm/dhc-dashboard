@@ -28,9 +28,12 @@
 	} from '@tanstack/svelte-query';
 	import type { PlanPricing } from '$lib/types.js';
 	import PricingDisplay from './pricing-display.svelte';
+	import type { PageServerData } from './$types';
+	import { page } from '$app/state';
 
-	const { data } = $props();
-	const { nextMonthlyBillingDate, nextAnnualBillingDate } = data;
+	const props: PageServerData = $props();
+
+	const { nextMonthlyBillingDate, nextAnnualBillingDate } = props;
 	let stripe: Awaited<ReturnType<typeof loadStripe>> | null = $state(null);
 	let elements: StripeElements | null | undefined = $state(null);
 	let paymentElement: StripePaymentElement | null | undefined = $state(null);
@@ -68,13 +71,14 @@
 		}
 	};
 
-	const form = superForm(data.form, {
+	const form = superForm(props.form, {
 		validators: valibotClient(memberSignupSchema),
 		invalidateAll: false,
 		resetForm: false,
 		validationMethod: 'onblur',
-		scrollToError: 'smooth',
-		onSubmit: async function ({ cancel, customRequest }) {
+		scrollToError: true,
+		autoFocusOnError: true,
+		onSubmit: async function({ cancel, customRequest }) {
 			const { valid } = await form.validateForm({ focusOnError: true, update: true });
 			if (!valid) {
 				scrollTo({ top: 0, behavior: 'smooth' });
@@ -138,7 +142,7 @@
 		}
 	});
 	const { form: formData, enhance, submitting } = form;
-	const formatedPhone = $derived.by(() => parsePhoneNumberFromString(data.userData.phoneNumber!));
+	const formatedPhone = $derived.by(() => parsePhoneNumberFromString(props.userData.phoneNumber!));
 	const queryKey = $derived(['plan-pricing', couponCode]);
 
 	// Keep planData query for coupon updates, but initial display uses streamed data
@@ -148,7 +152,7 @@
 		placeholderData: keepPreviousData,
 		refetchOnWindowFocus: false,
 		queryFn: async () => {
-			const res = await fetch(`/api/signup/plan-pricing?coupon=${couponCode}`);
+			const res = await fetch(`/api/signup/plan-pricing/${page.params.invitationId}`);
 			if (!res.ok) {
 				throw new Error('Failed to fetch pricing');
 			}
@@ -181,9 +185,9 @@
 			paymentElement = elements?.create('payment', {
 				defaultValues: {
 					billingDetails: {
-						name: `${data.userData.firstName} ${data.userData.lastName}`,
-						email: data.userData.email,
-						phone: data.userData.phoneNumber
+						name: `${props.userData.firstName} ${props.userData.lastName}`,
+						email: props.userData.email,
+						phone: props.userData.phoneNumber
 					}
 				}
 			});
@@ -209,29 +213,29 @@
 		<div class="grid grid-cols-2 gap-4">
 			<div>
 				<p>First Name</p>
-				<p class="text-sm text-gray-600">{data.userData.firstName}</p>
+				<p class="text-sm text-gray-600">{props.userData.firstName}</p>
 			</div>
 			<div>
 				<p>Last Name</p>
-				<p class="text-sm text-gray-600">{data.userData.lastName}</p>
+				<p class="text-sm text-gray-600">{props.userData.lastName}</p>
 			</div>
 			<div>
 				<p>Email</p>
-				<p class="text-sm text-gray-600 break-words">{data.userData.email}</p>
+				<p class="text-sm text-gray-600 break-words">{props.userData.email}</p>
 			</div>
 			<div>
 				<p>Date of Birth</p>
 				<p class="text-sm text-gray-600">
-					{dayjs(data.userData.dateOfBirth).format('DD/MM/YYYY')}
+					{dayjs(props.userData.dateOfBirth).format('DD/MM/YYYY')}
 				</p>
 			</div>
 			<div>
 				<p>Gender</p>
-				<p class="text-sm text-gray-600 capitalize">{data.userData.gender}</p>
+				<p class="text-sm text-gray-600 capitalize">{props.userData.gender}</p>
 			</div>
 			<div>
 				<p>Pronouns</p>
-				<p class="text-sm text-gray-600 capitalize">{data.userData.pronouns}</p>
+				<p class="text-sm text-gray-600 capitalize">{props.userData.pronouns}</p>
 			</div>
 			<div>
 				<p>Phone Number</p>
@@ -240,7 +244,7 @@
 			<div>
 				<p>Medical Conditions</p>
 				<p class="text-sm text-gray-600">
-					{!data.userData.medicalConditions ? 'N/A' : data.userData.medicalConditions}
+					{!props.userData.medicalConditions ? 'N/A' : props.userData.medicalConditions}
 				</p>
 			</div>
 		</div>
