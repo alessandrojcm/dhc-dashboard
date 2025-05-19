@@ -18,18 +18,12 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="feat: refactor invitation to use invitation id instead of tokens">
+    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="feat: refactored admin endpoint to add emails to the queue.">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/docker-compose.yml" beforeDir="false" afterPath="$PROJECT_DIR$/docker-compose.yml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/api/admin/invite-link/+server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/api/admin/invite-link/+server.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/members/invite-drawer.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/members/invite-drawer.svelte" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/supabase/config.toml" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/config.toml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/supabase/functions/.idea/material_theme_project_new.xml" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/.idea/material_theme_project_new.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/supabase/functions/_shared/db.ts" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/_shared/db.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/supabase/functions/_shared/deno.lock" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/_shared/deno.lock" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/supabase/functions/bulk_invite_with_subscription/deno.json" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/bulk_invite_with_subscription/deno.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/supabase/functions/bulk_invite_with_subscription/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/bulk_invite_with_subscription/index.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/vite.config.ts" beforeDir="false" afterPath="$PROJECT_DIR$/vite.config.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]/+layout.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]/+layout.svelte" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]/+page.server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]/+page.server.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]/+page.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]/+page.svelte" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/api/invite/[invitationId]/+server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/api/invite/[invitationId]/+server.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -214,7 +208,7 @@
       <workItem from="1747247915261" duration="4017000" />
       <workItem from="1747301102898" duration="13627000" />
       <workItem from="1747391319863" duration="6883000" />
-      <workItem from="1747641441985" duration="8655000" />
+      <workItem from="1747641441985" duration="10798000" />
     </task>
     <task id="LOCAL-00001" summary="Add guardian support for underage waitlist entries&#10;&#10;Introduce `waitlist_guardians` table and transactional logic for adding guardian details when underage users join the waitlist. Updates include database migrations, UI adjustments for conditional input fields, validation logic, and tests to ensure age-based gating.">
       <option name="closed" value="true" />
@@ -328,7 +322,39 @@
       <option name="project" value="LOCAL" />
       <updated>1747333381228</updated>
     </task>
-    <option name="localTasksCounter" value="15" />
+    <task id="LOCAL-00015" summary="feat: added migrations for new email invite processing.&#10;&#10;It now uses the uuid of the invite as a route and sends an email manually.">
+      <option name="closed" value="true" />
+      <created>1747656802729</created>
+      <option name="number" value="00015" />
+      <option name="presentableId" value="LOCAL-00015" />
+      <option name="project" value="LOCAL" />
+      <updated>1747656802729</updated>
+    </task>
+    <task id="LOCAL-00016" summary="feat: added migrations for new email invite processing.&#10;&#10;It now uses the uuid of the invite as a route and sends an email manually.">
+      <option name="closed" value="true" />
+      <created>1747656809582</created>
+      <option name="number" value="00016" />
+      <option name="presentableId" value="LOCAL-00016" />
+      <option name="project" value="LOCAL" />
+      <updated>1747656809583</updated>
+    </task>
+    <task id="LOCAL-00017" summary="feat: added functions for email processing using a supabase queue.">
+      <option name="closed" value="true" />
+      <created>1747656828038</created>
+      <option name="number" value="00017" />
+      <option name="presentableId" value="LOCAL-00017" />
+      <option name="project" value="LOCAL" />
+      <updated>1747656828038</updated>
+    </task>
+    <task id="LOCAL-00018" summary="feat: refactored admin endpoint to add emails to the queue.">
+      <option name="closed" value="true" />
+      <created>1747656846479</created>
+      <option name="number" value="00018" />
+      <option name="presentableId" value="LOCAL-00018" />
+      <option name="project" value="LOCAL" />
+      <updated>1747656846479</updated>
+    </task>
+    <option name="localTasksCounter" value="19" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -361,20 +387,18 @@
     <MESSAGE value="feat: add invite management and UI enhancements&#10;&#10;- Replaced `complete_member_registration` SQL function with API-based invite workflows.&#10;- Added resend invitation API and related UI updates for waitlist.&#10;- Improved waitlist filtering (`status`).&#10;- Updated Stripe API version.&#10;- Enhanced IDE configuration and standardized code formatting." />
     <MESSAGE value="feat: enhance invite workflow and UI; improve IDE config&#10;&#10;- Added API-based invite workflows, replacing `complete_member_registration` SQL function.&#10;- Introduced resend invitation API and related UI updates for waitlist.&#10;- Improved waitlist filtering by `status`.&#10;- Updated Stripe API version.&#10;- Refined IDE configuration and applied consistent code formatting." />
     <MESSAGE value="feat: refactor invitation to use invitation id instead of tokens" />
-    <option name="LAST_COMMIT_MESSAGE" value="feat: refactor invitation to use invitation id instead of tokens" />
+    <MESSAGE value="feat: added migrations for new email invite processing.&#10;&#10;It now uses the uuid of the invite as a route and sends an email manually." />
+    <MESSAGE value="feat: added functions for email processing using a supabase queue." />
+    <MESSAGE value="feat: refactored admin endpoint to add emails to the queue." />
+    <option name="LAST_COMMIT_MESSAGE" value="feat: refactored admin endpoint to add emails to the queue." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
       <breakpoints>
         <line-breakpoint enabled="true" type="javascript">
           <url>file://$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]/+page.server.ts</url>
-          <line>63</line>
+          <line>65</line>
           <option name="timeStamp" value="7" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" type="javascript">
-          <url>file://$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]/+page.server.ts</url>
-          <line>77</line>
-          <option name="timeStamp" value="14" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>

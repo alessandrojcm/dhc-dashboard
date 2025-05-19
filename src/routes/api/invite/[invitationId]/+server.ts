@@ -2,8 +2,9 @@ import type { RequestHandler } from '@sveltejs/kit';
 import * as v from 'valibot';
 import { getKyselyClient } from '$lib/server/kysely';
 import { inviteValidationSchema } from '$lib/schemas/inviteValidationSchema';
+import dayjs from 'dayjs';
 
-export const POST: RequestHandler = async ({ request, params, platform }) => {
+export const POST: RequestHandler = async ({ request, params, platform, cookies }) => {
 	const invitationId = v.safeParse(v.pipe(v.string(), v.nonEmpty(), v.uuid()), params.invitationId);
 	if (!invitationId.success) {
 		return new Response(null, { status: 404 });
@@ -28,6 +29,11 @@ export const POST: RequestHandler = async ({ request, params, platform }) => {
 			if (!result?.id) {
 				return new Response(null, { status: 404 });
 			}
+			cookies.set(`invite-confirmed-${invitationId.output}`, 'true', {
+				path: '/',
+				httpOnly: true,
+				expires: dayjs().add(1, 'day').toDate()
+			});
 			return new Response(null, { status: 200 });
 		});
 };

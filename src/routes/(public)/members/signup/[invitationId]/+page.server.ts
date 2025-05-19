@@ -20,9 +20,10 @@ import { env } from '$env/dynamic/public';
 const DASHBOARD_MIGRATION_CODE = env.PUBLIC_DASHBOARD_MIGRATION_CODE ?? 'DHCDASHBOARD';
 
 // need to normalize medical_conditions
-export const load: PageServerLoad = async ({ params, platform }) => {
+export const load: PageServerLoad = async ({ params, platform, cookies }) => {
 	const invitationId = params.invitationId;
 	const kysely = getKyselyClient(platform.env.HYPERDRIVE);
+	const isConfirmed = Boolean(cookies.get(`invite-confirmed-${invitationId}`));
 
 	try {
 		// Get invitation data first (essential for page rendering)
@@ -47,6 +48,7 @@ export const load: PageServerLoad = async ({ params, platform }) => {
 				gender: invitationData.gender,
 				medicalConditions: invitationData.medical_conditions
 			},
+			isConfirmed,
 			insuranceFormLink: '',
 			// These are needed for the page but can be calculated immediately
 			...getNextBillingDates()
