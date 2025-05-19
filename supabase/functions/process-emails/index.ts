@@ -90,7 +90,12 @@ async function processEmailQueue() {
 				const msg = row.message;
 				const payload = v.safeParse(payloadSchema, msg);
 				if (!payload.success) {
-					Sentry.captureMessage(`Invalid email queue message: ${JSON.stringify(msg)}`, 'error');
+					Sentry.captureMessage(
+						`Invalid email queue message: ${JSON.stringify(msg)}, errors: ${JSON.stringify(
+							payload.issues
+						)}`,
+						'error'
+					);
 					await sql`SELECT * FROM pgmq.delete('email_queue', ${msgId}::bigint)`.execute(db);
 					continue;
 				}
