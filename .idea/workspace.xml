@@ -18,16 +18,9 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="chore: updated svelte shadcn">
+    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="feat: add tab navigation and selection to beginners workshop page&#10;&#10;- Introduced dynamic tab switching with `Select` component.&#10;- Tabs now persist in URL for a better user experience.">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/lib/components/ui/calendar/calendar.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/components/ui/calendar/calendar.svelte" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/beginners-workshop/+page.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/beginners-workshop/+page.svelte" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/beginners-workshop/waitlist-table.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/beginners-workshop/waitlist-table.svelte" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/members/+page.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/members/+page.svelte" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/members/invitations-table.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/members/invitations-table.svelte" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/members/invite-drawer.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/members/invite-drawer.svelte" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/members/members-table.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/members/members-table.svelte" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/members/settings-sheet.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/members/settings-sheet.svelte" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -214,7 +207,7 @@
       <workItem from="1747391319863" duration="6883000" />
       <workItem from="1747641441985" duration="10975000" />
       <workItem from="1747671310985" duration="61000" />
-      <workItem from="1747671383030" duration="3907000" />
+      <workItem from="1747671383030" duration="5179000" />
     </task>
     <task id="LOCAL-00001" summary="Add guardian support for underage waitlist entries&#10;&#10;Introduce `waitlist_guardians` table and transactional logic for adding guardian details when underage users join the waitlist. Updates include database migrations, UI adjustments for conditional input fields, validation logic, and tests to ensure age-based gating.">
       <option name="closed" value="true" />
@@ -376,7 +369,23 @@
       <option name="project" value="LOCAL" />
       <updated>1747671659747</updated>
     </task>
-    <option name="localTasksCounter" value="21" />
+    <task id="LOCAL-00021" summary="feat: add tab navigation and selection to beginners workshop page&#10;&#10;- Introduced dynamic tab switching with `Select` component.&#10;- Tabs now persist in URL for a better user experience.">
+      <option name="closed" value="true" />
+      <created>1747675404186</created>
+      <option name="number" value="00021" />
+      <option name="presentableId" value="LOCAL-00021" />
+      <option name="project" value="LOCAL" />
+      <updated>1747675404187</updated>
+    </task>
+    <task id="LOCAL-00022" summary="feat: add tab navigation and selection to beginners workshop page&#10;&#10;- Introduced dynamic tab switching with `Select` component.&#10;- Tabs now persist in URL for a better user experience.">
+      <option name="closed" value="true" />
+      <created>1747675835417</created>
+      <option name="number" value="00022" />
+      <option name="presentableId" value="LOCAL-00022" />
+      <option name="project" value="LOCAL" />
+      <updated>1747675835417</updated>
+    </task>
+    <option name="localTasksCounter" value="23" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -414,7 +423,9 @@
     <MESSAGE value="feat: refactored admin endpoint to add emails to the queue." />
     <MESSAGE value="feat: improve invite workflow with email processing and confirmation logic&#10;&#10;- Added support for email processing using Supabase queue.&#10;- Introduced cookie-based invite confirmation tracking.&#10;- Updated public signup pages to reflect invite confirmation status.&#10;- Adjusted layout for mobile responsiveness." />
     <MESSAGE value="chore: updated svelte shadcn" />
-    <option name="LAST_COMMIT_MESSAGE" value="chore: updated svelte shadcn" />
+    <MESSAGE value="chore: updated readme" />
+    <MESSAGE value="feat: add tab navigation and selection to beginners workshop page&#10;&#10;- Introduced dynamic tab switching with `Select` component.&#10;- Tabs now persist in URL for a better user experience." />
+    <option name="LAST_COMMIT_MESSAGE" value="feat: add tab navigation and selection to beginners workshop page&#10;&#10;- Introduced dynamic tab switching with `Select` component.&#10;- Tabs now persist in URL for a better user experience." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
