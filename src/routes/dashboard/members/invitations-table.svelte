@@ -251,6 +251,9 @@
 <!-- Mobile Card View (hidden on desktop) -->
 <div class="md:hidden overflow-y-auto h-[60svh] px-2 py-1">
 	<div class="space-y-4">
+		{#if table.getRowCount() === 0}
+			<p class="text-foreground">No results found</p>
+		{/if}
 		{#each table.getRowModel().rows as row (row.id)}
 			<div class="bg-card text-card-foreground rounded-lg border shadow-sm p-4">
 				<!-- Email and Actions Row -->

@@ -8,15 +8,31 @@
 	import MembersTable from './members-table.svelte';
 	import InvitationsTable from './invitations-table.svelte';
 	import SettingsSheet from './settings-sheet.svelte';
+	import * as Select from '$lib/components/ui/select';
 
 	const { data } = $props();
-	let value = $state(page.url.searchParams.get('tab') || 'dashboard');
+	let value = $derived(page.url.searchParams.get('tab') || 'dashboard');
 
-	function onTabChagne(value: string) {
+	function onTabChange(value: string) {
 		const newParams = new URLSearchParams(page.url.searchParams);
 		newParams.set('tab', value);
 		goto(`/dashboard/members?${newParams.toString()}`);
 	}
+	let views = [
+		{
+			id: "dashboard",
+			label: "Dashboard",
+		},
+		{
+			id: "members",
+			label: "Members list",
+		},
+		{
+			id: "invitations",
+			label: "Invitations",
+		},
+	];
+	let viewLabel = $derived(views.find((view) => view.id === value)?.label || "Dashboard");
 </script>
 
 <div class="relative">
@@ -30,9 +46,19 @@
 		{/await}
 	{/if}
 
-	<Root {value} onValueChange={onTabChagne} class="p-2 min-h-96 mr-2">
+	<Root {value} onValueChange={onTabChange} class="p-2 min-h-96 mr-2">
 		<div class="flex justify-between items-center mb-2">
-			<List>
+			<Select.Root value={value} type="single" onValueChange={onTabChange}>
+				<Select.Trigger class="md:hidden flex w-fit" size="sm" id="view-selector">
+					{viewLabel}
+				</Select.Trigger>
+				<Select.Content>
+					{#each views as view (view.id)}
+						<Select.Item value={view.id}>{view.label}</Select.Item>
+					{/each}
+				</Select.Content>
+			</Select.Root>
+			<List class="md:flex hidden">
 				<Trigger value="dashboard">Dashboard</Trigger>
 				<Trigger value="members">Members list</Trigger>
 				<Trigger value="invitations">Invitations</Trigger>
@@ -42,7 +68,6 @@
 				<InviteDrawer supabase={data.supabase} />
 			{/if}
 		</div>
-<!-- how to import the analytics... -->
 		<Content value="dashboard">
 			<Analytics supabase={data.supabase} />
 		</Content>
