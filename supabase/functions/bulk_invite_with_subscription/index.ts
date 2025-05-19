@@ -361,7 +361,7 @@ async function processInvitations(
 					invitationLink.searchParams.set('email', inviteData.email);
 
 					const payload = JSON.stringify({
-						transactionalId: 'invite_member',
+						transactionalId: 'inviteMember',
 						email: inviteData.email,
 						dataVariables: {
 							firstName: inviteData.firstName,

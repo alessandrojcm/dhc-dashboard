@@ -1,13 +1,10 @@
 import { invariant } from '$lib/server/invariant';
 import { getRolesFromSession, SETTINGS_ROLES } from '$lib/server/roles';
-import { executeWithRLS, getKyselyClient, sql } from '$lib/server/kysely';
-import type { Session } from '@supabase/supabase-js';
-import { supabaseServiceClient } from '$lib/server/supabaseServiceClient';
+import { getKyselyClient, sql } from '$lib/server/kysely';
 import dayjs from 'dayjs';
 import * as v from 'valibot';
 import type { RequestHandler } from '@sveltejs/kit';
 import { PUBLIC_SITE_URL } from '$env/static/public';
-import * as Sentry from '@sentry/sveltekit';
 
 const resendInviteSchema = v.object({
 	emails: v.pipe(v.array(v.pipe(v.string(), v.email())), v.minLength(1))
@@ -45,7 +42,7 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
 					);
 					invitationLink.searchParams.set('email', i.email);
 					return {
-						transactionalId: 'invite_member',
+						transactionalId: 'inviteMember',
 						email: i.email,
 						dataVariables: {
 							firstName: i.first_name,
