@@ -130,11 +130,7 @@
 
 <Button variant="outline" onclick={() => (isOpen = true)}>Invite Members</Button>
 
-<Sheet.Root bind:open={isOpen} onOpenChange={(open) => {
-	if(!open) {
-		resetBulkForm();
-	}
-}}>
+<Sheet.Root bind:open={isOpen}>
 	<Sheet.Content class="w-[400px] sm:w-[540px]" side="right">
 		<Sheet.Header>
 			<Sheet.Title>Invite Members</Sheet.Title>

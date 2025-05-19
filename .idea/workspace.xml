@@ -18,38 +18,18 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="Merge branch 'main' into develop&#10;&#10;# Conflicts:&#10;#&#9;.idea/workspace.xml">
-      <change afterPath="$PROJECT_DIR$/src/lib/schemas/inviteValidationSchema.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]/+error.svelte" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]/confirm-invitation.svelte" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]/payment-form.svelte" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/routes/api/invite/[invitationId]/+server.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/supabase/functions/_shared/emailClient.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources.local.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources.local.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/public.abK9xQ.meta" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/public.abK9xQ.meta" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/public.abK9xQ.zip" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/public.abK9xQ.zip" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/prettier.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/prettier.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/sqldialects.xml" beforeDir="false" />
+    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="feat: refactor invitation to use invitation id instead of tokens">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/database.types.ts" beforeDir="false" afterPath="$PROJECT_DIR$/database.types.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/e2e/member-signup.spec.ts" beforeDir="false" afterPath="$PROJECT_DIR$/e2e/member-signup.spec.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/e2e/setupFunctions.ts" beforeDir="false" afterPath="$PROJECT_DIR$/e2e/setupFunctions.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/database.types.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/database.types.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/lib/server/kyselyRPCFunctions.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/server/kyselyRPCFunctions.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/(public)/members/signup/(signup-form)/+layout.server.ts" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/(public)/members/signup/(signup-form)/+layout.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]/+layout.svelte" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/(public)/members/signup/(signup-form)/+page.server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]/+page.server.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/(public)/members/signup/(signup-form)/+page.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]/+page.svelte" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/(public)/members/signup/(signup-form)/pricing-display.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/(public)/members/signup/callback/+page.svelte" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/(public)/members/signup/callback/+server.ts" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/api/signup/plan-pricing/+server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/api/signup/plan-pricing/[invitationId]/+server.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docker-compose.yml" beforeDir="false" afterPath="$PROJECT_DIR$/docker-compose.yml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/api/admin/invite-link/+server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/api/admin/invite-link/+server.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/members/invite-drawer.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/members/invite-drawer.svelte" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/supabase/config.toml" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/config.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/supabase/functions/.idea/material_theme_project_new.xml" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/.idea/material_theme_project_new.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/supabase/functions/_shared/db.ts" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/_shared/db.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/supabase/functions/_shared/deno.json" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/_shared/deno.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/supabase/functions/_shared/deno.lock" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/_shared/deno.lock" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/supabase/functions/bulk_invite_with_subscription/deno.json" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/bulk_invite_with_subscription/deno.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/supabase/functions/bulk_invite_with_subscription/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/bulk_invite_with_subscription/index.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/vite.config.ts" beforeDir="false" afterPath="$PROJECT_DIR$/vite.config.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -128,7 +108,7 @@
     "nodejs_package_manager_path": "pnpm",
     "npm.dev.executor": "Debug",
     "prettierjs.PrettierConfiguration.Package": "/Users/alessandrojcm/repos/dhc-dashboard/node_modules/prettier",
-    "settings.editor.selected.configurable": "settings.javascript.linters.eslint",
+    "settings.editor.selected.configurable": "preferences.sourceCode.Less",
     "ts.external.directory.path": "/Users/alessandrojcm/repos/dhc-dashboard/node_modules/typescript/lib",
     "vue.rearranger.settings.migration": "true"
   },
@@ -232,7 +212,9 @@
       <workItem from="1747143774176" duration="63000" />
       <workItem from="1747143871817" duration="1853000" />
       <workItem from="1747247915261" duration="4017000" />
-      <workItem from="1747301102898" duration="12955000" />
+      <workItem from="1747301102898" duration="13627000" />
+      <workItem from="1747391319863" duration="6883000" />
+      <workItem from="1747641441985" duration="8655000" />
     </task>
     <task id="LOCAL-00001" summary="Add guardian support for underage waitlist entries&#10;&#10;Introduce `waitlist_guardians` table and transactional logic for adding guardian details when underage users join the waitlist. Updates include database migrations, UI adjustments for conditional input fields, validation logic, and tests to ensure age-based gating.">
       <option name="closed" value="true" />
@@ -338,7 +320,15 @@
       <option name="project" value="LOCAL" />
       <updated>1746824550587</updated>
     </task>
-    <option name="localTasksCounter" value="14" />
+    <task id="LOCAL-00014" summary="feat: refactor invitation to use invitation id instead of tokens">
+      <option name="closed" value="true" />
+      <created>1747333381228</created>
+      <option name="number" value="00014" />
+      <option name="presentableId" value="LOCAL-00014" />
+      <option name="project" value="LOCAL" />
+      <updated>1747333381228</updated>
+    </task>
+    <option name="localTasksCounter" value="15" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -370,7 +360,8 @@
     <MESSAGE value="chore: add database schema and data source configuration files" />
     <MESSAGE value="feat: add invite management and UI enhancements&#10;&#10;- Replaced `complete_member_registration` SQL function with API-based invite workflows.&#10;- Added resend invitation API and related UI updates for waitlist.&#10;- Improved waitlist filtering (`status`).&#10;- Updated Stripe API version.&#10;- Enhanced IDE configuration and standardized code formatting." />
     <MESSAGE value="feat: enhance invite workflow and UI; improve IDE config&#10;&#10;- Added API-based invite workflows, replacing `complete_member_registration` SQL function.&#10;- Introduced resend invitation API and related UI updates for waitlist.&#10;- Improved waitlist filtering by `status`.&#10;- Updated Stripe API version.&#10;- Refined IDE configuration and applied consistent code formatting." />
-    <option name="LAST_COMMIT_MESSAGE" value="feat: enhance invite workflow and UI; improve IDE config&#10;&#10;- Added API-based invite workflows, replacing `complete_member_registration` SQL function.&#10;- Introduced resend invitation API and related UI updates for waitlist.&#10;- Improved waitlist filtering by `status`.&#10;- Updated Stripe API version.&#10;- Refined IDE configuration and applied consistent code formatting." />
+    <MESSAGE value="feat: refactor invitation to use invitation id instead of tokens" />
+    <option name="LAST_COMMIT_MESSAGE" value="feat: refactor invitation to use invitation id instead of tokens" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -378,13 +369,11 @@
         <line-breakpoint enabled="true" type="javascript">
           <url>file://$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]/+page.server.ts</url>
           <line>63</line>
-          <properties lambdaOrdinal="-1" />
           <option name="timeStamp" value="7" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="javascript">
           <url>file://$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]/+page.server.ts</url>
           <line>77</line>
-          <properties lambdaOrdinal="-1" />
           <option name="timeStamp" value="14" />
         </line-breakpoint>
       </breakpoints>
