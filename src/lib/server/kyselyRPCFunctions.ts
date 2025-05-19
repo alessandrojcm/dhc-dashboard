@@ -12,6 +12,8 @@ type GetInvitationInfoResult = {
 	gender: Database['public']['Enums']['gender'];
 	medical_conditions: string;
 	status: Database['public']['Enums']['invitation_status'];
+	user_id: string;
+	email: string;
 };
 
 export function getMembershipInfo(
@@ -47,13 +49,13 @@ export function insertWaitlistEntry(
 }
 
 export function getInvitationInfo(
-	userId: string,
+	invitationId: string,
 	executor: QueryExecutorProvider
 ): Promise<GetInvitationInfoResult> {
 	return sql<{
 		get_invitation_info: GetInvitationInfoResult;
 	}>`select *
-		 from get_invitation_info(${userId}::uuid)`
+		 from get_invitation_info(${invitationId}::uuid)`
 		.execute(executor)
 		.then((r) => r.rows[0].get_invitation_info);
 }

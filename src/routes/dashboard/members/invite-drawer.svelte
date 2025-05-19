@@ -109,11 +109,7 @@
 			];
 
 			// Clear the form for the next invite
-			resetForm({
-				newState: {
-					dateOfBirth: new Date()
-				}
-			});
+			resetForm();
 		}
 	}
 
@@ -130,12 +126,8 @@
 
 <Button variant="outline" onclick={() => (isOpen = true)}>Invite Members</Button>
 
-<Sheet.Root bind:open={isOpen} onOpenChange={(open) => {
-	if(!open) {
-		resetBulkForm();
-	}
-}}>
-	<Sheet.Content class="w-[400px] sm:w-[540px]" side="right">
+<Sheet.Root bind:open={isOpen}>
+	<Sheet.Content class="w-[400px] sm:w-[540px] p-4 scroll-smooth" side="right">
 		<Sheet.Header>
 			<Sheet.Title>Invite Members</Sheet.Title>
 			<Sheet.Description>Add new members to the club by sending them invitations.
@@ -143,7 +135,7 @@
 			>
 		</Sheet.Header>
 
-		<div class="space-y-6">
+		<div class="space-y-6 scroll-smooth overflow-y-scroll">
 			<!-- Invite Form -->
 			<form class="space-y-4">
 				{#if $bulkMessage}

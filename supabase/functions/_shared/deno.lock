@@ -3,7 +3,9 @@
   "specifiers": {
     "jsr:@std/assert@1": "1.0.12",
     "jsr:@std/internal@^1.0.6": "1.0.6",
-    "npm:kysely@~0.28.1": "0.28.1"
+    "npm:jwt-decode@*": "4.0.0",
+    "npm:kysely@~0.28.1": "0.28.1",
+    "npm:nodemailer@*": "7.0.3"
   },
   "jsr": {
     "@std/assert@1.0.12": {
@@ -17,8 +19,14 @@
     }
   },
   "npm": {
+    "jwt-decode@4.0.0": {
+      "integrity": "sha512-+KJGIyHgkGuIq3IEBNftfhW/LfWhXUIY6OmyVWjliu5KH1y0fw7VQ8YndE2O4qZdMSd9SqbnC8GOcZEy0Om7sA=="
+    },
     "kysely@0.28.1": {
       "integrity": "sha512-umkhsHB0y2JvI83DUtuYYTfvr063xTHTcr/k1z0E2Bg39zGiBcdDvlbP79YMcItn55pKQtD120sZmKa9jhCVtw=="
+    },
+    "nodemailer@7.0.3": {
+      "integrity": "sha512-Ajq6Sz1x7cIK3pN6KesGTah+1gnwMnx5gKl3piQlQQE/PwyJ4Mbc8is2psWYxK3RJTVeqsDaCv8ZzXLCDHMTZw=="
     }
   },
   "remote": {
@@ -91,7 +99,9 @@
   "workspace": {
     "dependencies": [
       "jsr:@std/assert@1",
-      "npm:kysely@~0.28.1"
+      "npm:jwt-decode@*",
+      "npm:kysely@~0.28.1",
+      "npm:nodemailer@*"
     ]
   }
 }

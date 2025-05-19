@@ -34,12 +34,12 @@
 </Button>
 
 <Sheet.Root bind:open={isOpen}>
-	<Sheet.Content class="w-[400px]">
+	<Sheet.Content class="w-full">
 		<Sheet.Header>
 			<Sheet.Title>Settings</Sheet.Title>
 			<Sheet.Description>Configure your members settings here.</Sheet.Description>
 		</Sheet.Header>
-		<form method="POST" action="?/updateSettings" use:enhance class="space-y-4 mt-4">
+		<form method="POST" action="?/updateSettings" use:enhance class="space-y-4 mt-4 p-8">
 			<Form.Field {form} name="insuranceFormLink">
 				<Form.Control>
 					{#snippet children({ props })}

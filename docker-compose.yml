@@ -24,19 +24,23 @@ services:
         - action: sync+restart
           path: ./package.json
           target: /workspace/package.json
-    
+
   open_hands_runtime:
     image: 'ghcr.io/all-hands-ai/runtime:main-nikolaik'
   smtp_server:
     image: 'rnwood/smtp4dev'
     ports:
       - '5001:80'
-      - '2525:25'
+      - '4654:465'
     volumes:
       - smtp4dev-data:/smtp4dev
     environment:
-      - RelayOptions__Login=smtp4dev
-      - RelayOptions__Password=smtp4dev
+      - RELAYOPTIONS__LOGIN=smtp4dev
+      - RELAYOPTIONS__PASSWORD=smtp4dev
+      - SERVEROPTIONS__HOSTNAME=smtp_server
+      - RelayOptions__SmtpPort=465
+    networks:
+      - supabase_network_dhc-dashboard
   open_hands:
     stdin_open: true
     tty: true
@@ -60,3 +64,7 @@ services:
 volumes:
   smtp4dev-data:
   openhands-state:
+
+networks:
+  supabase_network_dhc-dashboard:
+    external: true

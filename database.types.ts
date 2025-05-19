@@ -503,14 +503,7 @@ export type Database = {
             foreignKeyName: "waitlist_guardians_profile_id_fkey"
             columns: ["profile_id"]
             isOneToOne: false
-            referencedRelation: "member_management_view"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "waitlist_guardians_profile_id_fkey"
-            columns: ["profile_id"]
-            isOneToOne: false
-            referencedRelation: "member_profiles"
+            referencedRelation: "user_profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -586,6 +579,7 @@ export type Database = {
           is_active: boolean | null
           last_name: string | null
           last_payment_date: string | null
+          medical_conditions: string | null
           membership_end_date: string | null
           membership_start_date: string | null
           next_of_kin_name: string | null
@@ -707,7 +701,7 @@ export type Database = {
         Returns: Json
       }
       get_invitation_info: {
-        Args: { p_user_id: string }
+        Args: { p_invitation_id: string }
         Returns: Json
       }
       get_member_data: {
