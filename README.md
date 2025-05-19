@@ -62,6 +62,7 @@ Set these in your `.env` or `.env.local` file at the project root. Variables pre
 - `SUPABASE_SERVICE_ROLE_KEY`: Supabase service role key (provides elevated privileges for backend operations).
 - `POSTGRES_CONNECTION_STRING`: Connection string for your project's Postgres database (used by Deno functions for direct DB access).
 - `INVITE_MEMBER_TRANSACTIONAL_ID`: Edge function env, the invite member Loops transactional ID
+- `LOOPS_API_KEY`: Loops API key
 
 Supabase vault items:
 - `project_url`: The URL of your Supabase project (used for server-side access in functions).
