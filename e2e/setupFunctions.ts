@@ -6,6 +6,7 @@ import stripe from 'stripe';
 import type { Database } from '../src/database.types';
 import { ANNUAL_FEE_LOOKUP, MEMBERSHIP_FEE_LOOKUP_NAME } from '../src/lib/server/constants';
 import { createSeedClient } from '@snaplet/seed';
+import dayjs from 'dayjs';
 
 export const stripeClient = new stripe(process.env.STRIPE_SECRET_KEY || '', {
 	apiVersion: '2025-04-30.basil'
@@ -432,18 +433,21 @@ export async function setupInvitedUser(
 
 	// Create invitation using the stored procedure
 	// This will also create the user profile
-	const { error: invitationError } = await supabaseServiceClient.rpc('create_invitation', {
-		v_user_id: authData.user.id,
-		p_email: testData.email,
-		p_first_name: testData.first_name,
-		p_last_name: testData.last_name,
-		p_date_of_birth: testData.date_of_birth.toISOString(),
-		p_phone_number: testData.phone_number,
-		p_invitation_type: 'admin',
-		p_waitlist_id: undefined,
-		p_expires_at: expiresAt.toISOString(),
-		p_metadata: {}
-	});
+	const { error: invitationError, data: invitationData } = await supabaseServiceClient.rpc(
+		'create_invitation',
+		{
+			v_user_id: authData.user.id,
+			p_email: testData.email,
+			p_first_name: testData.first_name,
+			p_last_name: testData.last_name,
+			p_date_of_birth: testData.date_of_birth.toISOString(),
+			p_phone_number: testData.phone_number,
+			p_invitation_type: 'admin',
+			p_waitlist_id: undefined,
+			p_expires_at: expiresAt.toISOString(),
+			p_metadata: {}
+		}
+	);
 
 	if (invitationError) {
 		throw new Error(`Error creating invitation: ${invitationError.message}`);
@@ -549,6 +553,8 @@ export async function setupInvitedUser(
 
 	return Promise.resolve({
 		...testData,
+		date_of_birth: dayjs(testData.date_of_birth.toISOString()),
+		invitationId: invitationData,
 		token: async () => {
 			// Sign in to get access token
 			const verifyOtp = await supabaseServiceClient.auth.signInWithPassword({

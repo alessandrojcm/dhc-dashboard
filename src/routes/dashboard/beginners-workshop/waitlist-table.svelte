@@ -436,13 +436,14 @@
 	const table = createSvelteTable(tableOptions);
 </script>
 
-<div class="flex w-full max-w-auto items-center space-x-2 mb-2 p-2">
-	<Input
-		value={searchQuery}
-		onchange={(t) => onSearchChange(t.target?.value)}
-		placeholder="Search for a person"
-		class="max-w-md"
-	/>
+<div class="flex flex-col md:flex-row w-full max-w-auto items-stretch md:items-center space-x-2 mb-2 p-2">
+<span class="flex flex-nowrap items-center gap-2">
+		<Input
+			value={searchQuery}
+			onchange={(t) => onSearchChange(t.target?.value)}
+			placeholder="Search for a person"
+			class="w-full md:max-w-md"
+		/>
 
 	{#if searchQuery !== ''}
 		<Button variant="ghost" type="button" onclick={() => onSearchChange('')}>
@@ -452,8 +453,9 @@
 	{#if waitlistQuery.isFetching}
 		<LoaderCircle />
 	{/if}
+</span>
 
-	<Button class="ml-auto" disabled={inviteCount === 0 || inviteMember.isPending}
+	<Button class="md:ml-auto" disabled={inviteCount === 0 || inviteMember.isPending}
 					onclick={() => inviteMember.mutate(Object.keys(selectedState))}>
 		{#if inviteMember.isPending}
 			<Loader2 class="mr-2 h-4 w-4 animate-spin" />
@@ -547,6 +549,9 @@
 <!-- Mobile Card View (hidden on desktop) -->
 <div class="md:hidden overflow-y-auto h-[60svh] px-2 py-1">
 	<div class="space-y-4">
+		{#if table.getRowCount() === 0}
+			<p class="text-foreground">No results found</p>
+		{/if}
 		{#each table.getRowModel().rows as row (row.id)}
 			<div class="bg-card text-card-foreground rounded-lg border shadow-sm p-4">
 				<!-- Name and Actions Row -->
