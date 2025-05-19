@@ -3,7 +3,7 @@
 	import ConfirmInvitation from './confirm-invitation.svelte';
 
 	const { data } = $props();
-	let isVerified = $state(false);
+	let isVerified = $state(data.isConfirmed);
 
 </script>
 
