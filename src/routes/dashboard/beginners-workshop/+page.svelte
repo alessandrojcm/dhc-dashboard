@@ -7,12 +7,13 @@
 	import Button from '$lib/components/ui/button/button.svelte';
 	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
 	import { createMutation } from '@tanstack/svelte-query';
-	import { invalidate } from '$app/navigation';
+	import { goto, invalidate } from '$app/navigation';
 	import { toast } from 'svelte-sonner';
+	import { page } from '$app/state';
+	import * as Select from '$lib/components/ui/select';
 
 	const { data } = $props();
 	const supabase = data.supabase;
-	let value = $state('dashboard');
 	let dialogOpen = $state(false);
 
 	const toggleWaitlistMutation = createMutation(() => ({
@@ -36,6 +37,25 @@
 			dialogOpen = false;
 		}
 	}));
+
+	let value = $derived(page.url.searchParams.get('tab') || 'dashboard');
+
+	function onTabChange(value: string) {
+		const newParams = new URLSearchParams(page.url.searchParams);
+		newParams.set('tab', value);
+		goto(`/dashboard/beginners-workshop?${newParams.toString()}`);
+	}
+	let views = [
+		{
+			id: "dashboard",
+			label: "Dashboard",
+		},
+		{
+			id: "waitlist",
+			label: "Waitlist",
+		},
+	];
+	let viewLabel = $derived(views.find((view) => view.id === value)?.label || "Dashboard");
 </script>
 
 {#snippet waitlistToggleDialog()}
@@ -81,7 +101,17 @@
 	{@render waitlistToggleDialog()}
 	<Root bind:value class="p-2 min-h-96 mr-2">
 		<div class="inline-flex w-full">
-			<List>
+			<Select.Root value={value} type="single" onValueChange={onTabChange}>
+				<Select.Trigger class="md:hidden flex w-fit" size="sm" id="view-selector">
+					{viewLabel}
+				</Select.Trigger>
+				<Select.Content>
+					{#each views as view (view.id)}
+						<Select.Item value={view.id}>{view.label}</Select.Item>
+					{/each}
+				</Select.Content>
+			</Select.Root>
+			<List class="md:flex hidden">
 				<Trigger value="dashboard">Dashboard</Trigger>
 				<Trigger value="waitlist">Waitlist</Trigger>
 			</List>
