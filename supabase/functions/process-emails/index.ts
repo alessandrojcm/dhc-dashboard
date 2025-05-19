@@ -5,6 +5,8 @@ import { corsHeaders } from '../_shared/cors.ts';
 import * as v from 'valibot';
 import { LoopsClient } from 'loops';
 
+const transactionalEnumTitles = ['inviteMember'] as const;
+
 export const transactionalIds: Record<string, string> = {
 	inviteMember: Deno.env.get('INVITE_MEMBER_TRANSACTIONAL_ID') ?? 'invite_member'
 } as const;
@@ -13,7 +15,7 @@ const loops = new LoopsClient(Deno.env.get('LOOPS_API_KEY')!);
 const isDevelopment = Deno.env.get('ENVIRONMENT') === 'development';
 
 const payloadSchema = v.object({
-	transactionalId: v.enum(transactionalIds),
+	transactionalId: v.picklist(transactionalEnumTitles),
 	email: v.pipe(v.string(), v.email()),
 	dataVariables: v.record(v.string(), v.string())
 });
@@ -112,7 +114,7 @@ async function processEmailQueue() {
 				} else {
 					// Send the email
 					await loops.sendTransactionalEmail({
-						transactionalId,
+						transactionalId: transactionalIds[transactionalId],
 						email: email,
 						dataVariables
 					});

@@ -18,10 +18,8 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="chore: updated readme">
+    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="fix: correct transactional id">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/api/admin/invite-link/+server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/api/admin/invite-link/+server.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/supabase/functions/bulk_invite_with_subscription/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/bulk_invite_with_subscription/index.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/supabase/functions/process-emails/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/process-emails/index.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
@@ -395,7 +393,15 @@
       <option name="project" value="LOCAL" />
       <updated>1747692569890</updated>
     </task>
-    <option name="localTasksCounter" value="24" />
+    <task id="LOCAL-00024" summary="fix: correct transactional id">
+      <option name="closed" value="true" />
+      <created>1747693862570</created>
+      <option name="number" value="00024" />
+      <option name="presentableId" value="LOCAL-00024" />
+      <option name="project" value="LOCAL" />
+      <updated>1747693862570</updated>
+    </task>
+    <option name="localTasksCounter" value="25" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -435,7 +441,8 @@
     <MESSAGE value="chore: updated svelte shadcn" />
     <MESSAGE value="feat: add tab navigation and selection to beginners workshop page&#10;&#10;- Introduced dynamic tab switching with `Select` component.&#10;- Tabs now persist in URL for a better user experience." />
     <MESSAGE value="chore: updated readme" />
-    <option name="LAST_COMMIT_MESSAGE" value="chore: updated readme" />
+    <MESSAGE value="fix: correct transactional id" />
+    <option name="LAST_COMMIT_MESSAGE" value="fix: correct transactional id" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
