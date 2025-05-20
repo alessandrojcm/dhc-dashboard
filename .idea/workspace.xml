@@ -18,12 +18,10 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="fix: correct transactional id">
+    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="feat: integrated posthog">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/pnpm-lock.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/pnpm-lock.yaml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/hooks.client.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/hooks.client.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/+layout.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/+layout.svelte" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/auth/+page.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/auth/+page.svelte" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/supabase/functions/process-emails/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/process-emails/index.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -404,7 +402,15 @@
       <option name="project" value="LOCAL" />
       <updated>1747693862570</updated>
     </task>
-    <option name="localTasksCounter" value="25" />
+    <task id="LOCAL-00025" summary="feat: integrated posthog">
+      <option name="closed" value="true" />
+      <created>1747737188942</created>
+      <option name="number" value="00025" />
+      <option name="presentableId" value="LOCAL-00025" />
+      <option name="project" value="LOCAL" />
+      <updated>1747737188942</updated>
+    </task>
+    <option name="localTasksCounter" value="26" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -445,7 +451,8 @@
     <MESSAGE value="feat: add tab navigation and selection to beginners workshop page&#10;&#10;- Introduced dynamic tab switching with `Select` component.&#10;- Tabs now persist in URL for a better user experience." />
     <MESSAGE value="chore: updated readme" />
     <MESSAGE value="fix: correct transactional id" />
-    <option name="LAST_COMMIT_MESSAGE" value="fix: correct transactional id" />
+    <MESSAGE value="feat: integrated posthog" />
+    <option name="LAST_COMMIT_MESSAGE" value="feat: integrated posthog" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
