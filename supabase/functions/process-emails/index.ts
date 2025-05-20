@@ -98,7 +98,7 @@ async function processEmailQueue() {
 						)}`,
 						'error'
 					);
-					await sql`SELECT * FROM pgmq.delete('email_queue', ${msgId}::bigint)`.execute(db);
+					await sql`SELECT * FROM pgmq.archive('email_queue', ${msgId}::bigint)`.execute(db);
 					continue;
 				}
 
