@@ -84,9 +84,9 @@
 
 		<!-- Separator -->
 		<div class="flex items-center">
-			<Separator class="flex-grow w-auto" />
+			<Separator class="flex-grow w-auto" style="width: auto"/>
 			<span class="px-3 text-sm text-muted-foreground">OR</span>
-			<Separator class="flex-grow w-auto" />
+			<Separator class="flex-grow w-auto" style="width: auto"/>
 		</div>
 
 		<!-- Discord Login -->
