@@ -1,6 +1,7 @@
 import { dev } from '$app/environment';
 import { handleErrorWithSentry, replayIntegration } from '@sentry/sveltekit';
 import * as Sentry from '@sentry/sveltekit';
+import posthog from 'posthog-js';
 
 Sentry.init({
 	enabled: !dev,
@@ -16,7 +17,14 @@ Sentry.init({
 	replaysOnErrorSampleRate: 1.0,
 
 	// If you don't want to use Session Replay, just remove the line below:
-	integrations: [replayIntegration()]
+	integrations: [
+		replayIntegration(),
+		posthog.sentryIntegration({
+			organization: 'dublin-hema-club',
+			projectId: 4509135536783440,
+			severityAllowList: ['error', 'info']
+		})
+	]
 });
 
 // If you have a custom error handler, pass it to `handleErrorWithSentry`
