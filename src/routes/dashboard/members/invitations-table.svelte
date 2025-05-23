@@ -10,14 +10,11 @@
 		renderComponent,
 		renderSnippet
 	} from '$lib/components/ui/data-table/index.js';
-	import { Input } from '$lib/components/ui/input';
-	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
 	import * as Pagination from '$lib/components/ui/pagination/index.js';
 	import * as Select from '$lib/components/ui/select';
 	import * as Table from '$lib/components/ui/table/index.js';
-	import SortHeader from '$lib/components/ui/table/sort-header.svelte';
 	import type { SupabaseClient } from '@supabase/supabase-js';
-	import { createMutation, createQuery, keepPreviousData, useQueryClient } from '@tanstack/svelte-query';
+	import { createMutation, createQuery, keepPreviousData } from '@tanstack/svelte-query';
 	import {
 		getCoreRowModel,
 		getPaginationRowModel,
@@ -25,15 +22,15 @@
 		getExpandedRowModel,
 		type PaginationState,
 		type SortingState,
-		type TableOptions
 	} from '@tanstack/table-core';
 	import dayjs from 'dayjs';
 	import { createRawSnippet } from 'svelte';
-	import { Cross2 } from 'svelte-radix';
 	import { toast } from 'svelte-sonner';
 	import InvitationActions from './invitation-actions.svelte';
-	import { ChevronDown, MoreHorizontal, SendIcon } from 'lucide-svelte';
-	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
+	import { SendIcon } from 'lucide-svelte';
+	import CopyButton from '$lib/components/ui/copy-button.svelte';
+	import type { ComponentProps } from 'svelte';
+	import { getInvitationLink } from '$lib/utils/invitation';
 
 	const columns = 'id,email,status,expires_at,created_at';
 
@@ -149,7 +146,8 @@
 						resendInvitation: () => resendInvitationLink.mutate([{
 							email: row.original.email,
 							invitationId: row.original.id!
-						}])
+						}]),
+						invitationLink: getInvitationLink(row.original.id!, row.original.email)
 					});
 				}
 			},
