@@ -127,13 +127,13 @@
 
 <Resizable.PaneGroup direction="vertical" class="mt-2">
 	<Resizable.Pane class="min-h-[400px] p-4 border rounded">
-		{#if GenderBarChart}
+		{#if GenderBarChart && genderDistributionData && genderDistributionData.length > 0}
 			<GenderBarChart {genderDistributionData} />
 		{/if}
 	</Resizable.Pane>
 	<Resizable.Handle />
 	<Resizable.Pane class="min-h-[400px] p-4 border rounded">
-		{#if AgeScatterChart}
+		{#if AgeScatterChart && ageDistribution && ageDistribution.length > 0}
 			<AgeScatterChart {ageDistribution} />
 		{/if}
 	</Resizable.Pane>

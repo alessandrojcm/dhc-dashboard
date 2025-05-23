@@ -109,6 +109,20 @@
 			}>;
 		}
 	}));
+
+	const genderDistributionData = $derived.by(() => {
+		return genderDistribution.data
+			? genderDistribution.data.map((row) => ({ gender: row.gender, value: row.count }))
+			: [];
+	});
+
+	const ageDistributionData = $derived.by(() => {
+		return ageDistributionQuery.data ?? [];
+	});
+
+	const weaponPreferencesDistributionData = $derived.by(() => {
+		return weaponPreferencesDistribution.data ?? [];
+	});
 </script>
 
 <h2 class="prose prose-h2 text-lg mb-2">Members analytics</h2>
@@ -148,11 +162,9 @@
 	<!-- Gender Demographics Card -->
 	<Resizable.Pane class="min-h-[400px] p-4 border rounded">
 		<h3 class="text-lg font-medium mb-4">Gender Demographics</h3>
-		{#if GenderBarChart}
+		{#if GenderBarChart && genderDistributionData && genderDistributionData.length > 0}
 			<GenderBarChart
-				genderDistributionData={genderDistribution.data
-					? genderDistribution.data.map((row) => ({ gender: row.gender, value: row.count }))
-					: []}
+				genderDistributionData={genderDistributionData}
 			/>
 		{/if}
 	</Resizable.Pane>
@@ -163,14 +175,14 @@
 	<!-- Preferred Weapons Card -->
 	<Resizable.Pane class="min-h-[400px] p-4 border rounded">
 		<h3 class="text-lg font-medium mb-4">Preferred Weapons</h3>
-		{#if WeaponPieChart}
-			<WeaponPieChart weaponDistributionData={weaponPreferencesDistribution.data ?? []} />
+		{#if WeaponPieChart && weaponPreferencesDistributionData && weaponPreferencesDistributionData.length > 0}
+			<WeaponPieChart weaponDistributionData={weaponPreferencesDistributionData} />
 		{/if}
 	</Resizable.Pane>
 	<Resizable.Handle />
 	<Resizable.Pane class="min-h-[400px] p-4 border rounded">
-		{#if AgeScatterChart}
-			<AgeScatterChart ageDistribution={ageDistributionQuery?.data ?? []} />
+		{#if AgeScatterChart && ageDistributionData && ageDistributionData.length > 0}
+			<AgeScatterChart ageDistribution={ageDistributionData} />
 		{/if}
 	</Resizable.Pane>
 </Resizable.PaneGroup>
