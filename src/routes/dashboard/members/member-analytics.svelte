@@ -175,13 +175,13 @@
 	<!-- Preferred Weapons Card -->
 	<Resizable.Pane class="min-h-[400px] p-4 border rounded">
 		<h3 class="text-lg font-medium mb-4">Preferred Weapons</h3>
-		{#if WeaponPieChart && weaponPreferencesDistributionData && weaponPreferencesDistributionData.length > 0}
+		{#if WeaponPieChart && weaponPreferencesDistributionData}
 			<WeaponPieChart weaponDistributionData={weaponPreferencesDistributionData} />
 		{/if}
 	</Resizable.Pane>
 	<Resizable.Handle />
 	<Resizable.Pane class="min-h-[400px] p-4 border rounded">
-		{#if AgeScatterChart && ageDistributionData && ageDistributionData.length > 0}
+		{#if AgeScatterChart && ageDistributionData}
 			<AgeScatterChart ageDistribution={ageDistributionData} />
 		{/if}
 	</Resizable.Pane>
