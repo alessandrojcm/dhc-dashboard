@@ -2,14 +2,17 @@
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import { Button } from '$lib/components/ui/button';
 	import { SendIcon } from 'lucide-svelte';
+	import CopyButton from '$lib/components/ui/copy-button.svelte';
 
 	type Props = {
 		resendInvitation: () => void;
+		invitationLink: string;
 	};
-	let { resendInvitation }: Props = $props();
+	let { resendInvitation, invitationLink }: Props = $props();
 </script>
 
 <div class="flex gap-1">
+	<CopyButton text={invitationLink} label="Copy invitation link" />
 	<Tooltip.Root>
 		<Tooltip.Trigger>
 			<Button
