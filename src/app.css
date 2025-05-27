@@ -47,6 +47,8 @@
 	--color-slate-800: oklch(15.68% 0.003 17.52);
 	--color-slate-900: oklch(13.01% 0.002 17.43);
 	--color-slate-950: oklch(8.81% 0.005 18.05);
+	--popover: oklch(1 0 0);
+	--popover-foreground: oklch(0.141 0.005 285.823);
 }
 
 :root {
@@ -54,8 +56,8 @@
 	--foreground: 345.0 6.1% 12.9%;
 	--card: 0 0% 100%;
 	--card-foreground: 0.0 0.0% 0.0%;
-	--popover: 0 0% 100%;
-	--popover-foreground: 222.2 84% 4.9%;
+	--popover: oklch(1 0 0);
+	--popover-foreground: oklch(0.141 0.005 285.823);
 	--primary: 212.9 63.8% 34.7%;
 	--primary-foreground: 216.0 100.0% 98.0%;
 	--secondary: 44.0 66.8% 49.6%;
@@ -78,8 +80,8 @@
 	--foreground: 210 40% 98%;
 	--card: 222.2 84% 4.9%;
 	--card-foreground: 210 40% 98%;
-	--popover: 222.2 84% 4.9%;
-	--popover-foreground: 210 40% 98%;
+	--popover: oklch(1 0 0);
+	--popover-foreground: oklch(0.141 0.005 285.823);
 	--primary: 217.2 91.2% 59.8%;
 	--primary-foreground: 222.2 47.4% 11.2%;
 	--secondary: 217.2 32.6% 17.5%;
