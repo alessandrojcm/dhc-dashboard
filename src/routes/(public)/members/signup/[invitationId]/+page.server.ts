@@ -36,12 +36,15 @@ export const load: PageServerLoad = async ({ params, platform, cookies }) => {
 					invitationId,
 					trx,
 				);
-				const paymentSessionId = trx.selectFrom("payment_sessions")
+				const paymentSessionId = await trx.selectFrom("payment_sessions")
 					.select("id").where("user_id", "=", invitationData.user_id)
 					.executeTakeFirst();
+				if (!paymentSessionId) {
+					throw error(404, "No payment session found for this user.");
+				}
 				return {
 					invitationData,
-					paymentSessionId,
+					paymentSessionId: paymentSessionId.id,
 				};
 			});
 
