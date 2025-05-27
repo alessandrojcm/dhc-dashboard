@@ -99,7 +99,7 @@
 {/snippet}
 <div class="relative">
 	{@render waitlistToggleDialog()}
-	<Root bind:value class="p-2 min-h-96 mr-2">
+	<Root bind:value class="p-2 min-h-96 mr-2" onValueChange={onTabChange}>
 		<div class="inline-flex w-full">
 			<Select.Root value={value} type="single" onValueChange={onTabChange}>
 				<Select.Trigger class="md:hidden flex w-fit" size="sm" id="view-selector">
