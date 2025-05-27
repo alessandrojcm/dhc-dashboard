@@ -65,7 +65,7 @@
 		<Card.Title>Member Information</Card.Title>
 		<Card.Description>View and edit your membership details</Card.Description>
 	</Card.Header>
-	<Card.Content class="min-h-96 max-h-[80svh] overflow-y-auto">
+	<Card.Content class="min-h-96 max-h-[73dvh] overflow-y-auto">
 		<form method="POST" action="?/update-profile" use:enhance class="space-y-8">
 			<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
 				<div class="space-y-6">
