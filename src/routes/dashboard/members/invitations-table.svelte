@@ -198,6 +198,18 @@
 				return sortingState;
 			}
 		},
+		onPaginationChange: (updater) => {
+			if (typeof updater === 'function') {
+				onPaginationChange(
+					updater({
+						pageIndex: currentPage,
+						pageSize
+					})
+				);
+			} else {
+				onPaginationChange(updater);
+			}
+		},
 		onSortingChange: (updater) => {
 			if (typeof updater === 'function') {
 				onSortingChange(updater(sortingState));

@@ -26,7 +26,7 @@ async function canUpdateSettings(event: RequestEvent | ServerLoadEvent) {
 	}
 	const {
 		data: { user },
-		error
+		error,
 	} = await event.locals.supabase.auth.getUser();
 
 	if (error || user?.id !== event.locals.session?.user.id) {
@@ -47,7 +47,9 @@ export const load: PageServerLoad = async (event) => {
 		) {
 			return error(404, "Member not found");
 		}
-		const email = locals.session?.user.email;
+		const email = await supabaseServiceClient.auth.admin.getUserById(
+			params.memberId
+		).then((r) => r.data.user?.email ?? '');
 
 		return {
 			form: await superValidate(
@@ -69,10 +71,9 @@ export const load: PageServerLoad = async (event) => {
 					weapon: memberProfile.preferred_weapon ?? undefined,
 					insuranceFormSubmitted:
 						memberProfile.insurance_form_submitted ?? undefined,
-					socialMediaConsent:
-						(memberProfile
-							.social_media_consent as SocialMediaConsent) ??
-							undefined,
+					socialMediaConsent: (memberProfile
+						.social_media_consent as SocialMediaConsent) ??
+						undefined,
 				},
 				valibot(signupSchema),
 				{ errors: false },
@@ -195,7 +196,7 @@ export const actions: Actions = {
 			);
 			setMessage(form, { failure: "Failed to update profile" });
 			return fail(500, {
-				form
+				form,
 			});
 		}
 	},
