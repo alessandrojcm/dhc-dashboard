@@ -203,7 +203,7 @@
 			Your membership has been successfully processed. Welcome to Dublin Hema Club! You will receive
 			a Discord invite by email shortly.
 		</Alert.Description>
-		<Button onclick={() => goto('/dashboard')} class="mt-2">Go to Dashboard</Button>
+		<Button onclick={() => goto('/dashboard')} class="mt-2 fit-content">Go to Dashboard</Button>
 	</Alert.Root>
 {/snippet}
 {#if showThanks}

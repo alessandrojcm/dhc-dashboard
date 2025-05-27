@@ -25,6 +25,8 @@ test.describe('Member Self-Management', () => {
 		await expect(page.getByText(/member information/i)).toBeVisible();
 		await page.getByLabel(/first name/i).fill('Updated name');
 		await page.getByLabel(/preferred weapon/i).click();
+		await page.pause();
+
 		await page.getByRole('option', { name: 'Longsword' }).click();
 		await page.getByRole('button', { name: /save changes/i }).click();
 
