@@ -1,7 +1,5 @@
-import { invariant } from "$lib/server/invariant";
 import { stripeClient } from "$lib/server/stripe";
 import dayjs from "dayjs";
-import { jwtDecode } from "jwt-decode";
 import type { RequestHandler } from "./$types";
 import type Stripe from "stripe";
 import { getKyselyClient } from "$lib/server/kysely";
@@ -12,7 +10,7 @@ import type { Database } from "$database";
 const DASHBOARD_MIGRATION_CODE = env.PUBLIC_DASHBOARD_MIGRATION_CODE ??
 	"DHCDASHBOARD";
 
-export const POST: RequestHandler = async ({ request, cookies, platform }) => {
+export const POST: RequestHandler = async ({ request, params, cookies, platform }) => {
 	const code = await request.json<{ code: string }>().then((data) =>
 		data?.code
 	);
@@ -24,17 +22,6 @@ export const POST: RequestHandler = async ({ request, cookies, platform }) => {
 	const isMigrationCode = code === DASHBOARD_MIGRATION_CODE;
 	// If it's not the migration code, verify it's a valid promotion code
 	const kysely = getKyselyClient(platform.env.HYPERDRIVE);
-	const accessToken = cookies.get("access-token");
-	invariant(
-		accessToken === null,
-		"There has been an error with your signup.",
-	);
-	const tokenClaim = jwtDecode(accessToken!);
-	invariant(
-		dayjs.unix(tokenClaim.exp!).isBefore(dayjs()),
-		"This invitation has expired",
-	);
-	const userId = tokenClaim.sub!;
 	const existingSession = await kysely
 		.selectFrom("payment_sessions")
 		.select([
@@ -43,11 +30,11 @@ export const POST: RequestHandler = async ({ request, cookies, platform }) => {
 			"monthly_payment_intent_id",
 			"annual_payment_intent_id",
 			"monthly_amount",
-			"annual_amount", 
+			"annual_amount",
 		])
-		.where("user_id", "=", userId)
-		.where("expires_at", ">", dayjs().toISOString())
-		.where("is_used", "=", false)
+		.where("payment_sessions.id", "=", Number(params.paymentSesssionId))
+		.where("payment_sessions.expires_at", ">", dayjs().toISOString())
+		.where("payment_sessions.is_used", "=", false)
 		.leftJoin(
 			"user_profiles",
 			"user_profiles.supabase_user_id",
@@ -161,7 +148,9 @@ export const POST: RequestHandler = async ({ request, cookies, platform }) => {
 			}
 
 			// Update payment session with credit note information
-			const updateFields: Partial<Database['public']['Tables']['payment_sessions']['Row']> = {
+			const updateFields: Partial<
+				Database["public"]["Tables"]["payment_sessions"]["Row"]
+			> = {
 				coupon_id: code,
 				total_amount: 0, // Set to 0 since we're crediting the full amount,
 			};
@@ -176,7 +165,8 @@ export const POST: RequestHandler = async ({ request, cookies, platform }) => {
 					const paymentIntent = annualInvoice.payments?.data?.[0]
 						?.payment!;
 					// Get the prorated amount from the payment intent
-					updateFields.annual_payment_intent_id = paymentIntent.payment_intent! as string
+					updateFields.annual_payment_intent_id = paymentIntent
+						.payment_intent! as string;
 				}
 			}
 
@@ -190,7 +180,8 @@ export const POST: RequestHandler = async ({ request, cookies, platform }) => {
 					const paymentIntent = monthlyInvoice.payments?.data?.[0]
 						?.payment!;
 					// Get the prorated amount from the payment intent
-					updateFields.monthly_payment_intent_id = paymentIntent.payment_intent! as string
+					updateFields.monthly_payment_intent_id = paymentIntent
+						.payment_intent! as string;
 				}
 			}
 
@@ -198,7 +189,7 @@ export const POST: RequestHandler = async ({ request, cookies, platform }) => {
 			await trx
 				.updateTable("payment_sessions")
 				.set(updateFields)
-				.where("user_id", "=", userId)
+				.where("id", "=", Number(params.paymentSesssionId))
 				.execute();
 		} else {
 			// Regular coupon code flow
@@ -400,7 +391,7 @@ export const POST: RequestHandler = async ({ request, cookies, platform }) => {
 				await trx
 					.updateTable("payment_sessions")
 					.set(updateFields)
-					.where("user_id", "=", userId)
+					.where("id", "=", Number(params.paymentSesssionId))
 					.execute();
 			}
 		}
