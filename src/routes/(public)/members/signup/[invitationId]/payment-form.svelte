@@ -162,7 +162,7 @@
 
 	const applyCoupon = createMutation(() => ({
 		mutationFn: (code: string) =>
-			fetch('/api/signup/coupon', { method: 'POST', body: JSON.stringify({ code }) }).then(
+			fetch(`/api/signup/coupon/${props.paymentSessionId}`, { method: 'POST', body: JSON.stringify({ code }) }).then(
 				async (res) => {
 					const { message } = (await res.json()) as unknown as { message: string };
 					if (res.status >= 400) {
