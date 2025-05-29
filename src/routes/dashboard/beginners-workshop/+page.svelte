@@ -15,6 +15,7 @@
 	const { data } = $props();
 	const supabase = data.supabase;
 	let dialogOpen = $state(false);
+	let value = $derived(page.url.searchParams.get('tab') || 'dashboard');
 
 	const toggleWaitlistMutation = createMutation(() => ({
 		mutationFn: async () => {
@@ -38,8 +39,6 @@
 		}
 	}));
 
-	let value = $derived(page.url.searchParams.get('tab') || 'dashboard');
-
 	function onTabChange(value: string) {
 		const newParams = new URLSearchParams(page.url.searchParams);
 		newParams.set('tab', value);
@@ -47,15 +46,15 @@
 	}
 	let views = [
 		{
-			id: "dashboard",
-			label: "Dashboard",
+			id: 'dashboard',
+			label: 'Dashboard'
 		},
 		{
-			id: "waitlist",
-			label: "Waitlist",
-		},
+			id: 'waitlist',
+			label: 'Waitlist'
+		}
 	];
-	let viewLabel = $derived(views.find((view) => view.id === value)?.label || "Dashboard");
+	let viewLabel = $derived(views.find((view) => view.id === value)?.label || 'Dashboard');
 </script>
 
 {#snippet waitlistToggleDialog()}
@@ -63,7 +62,7 @@
 		{#await data.isWaitlistOpen then isOpen}
 			<AlertDialog.Root bind:open={dialogOpen}>
 				<AlertDialog.Trigger class="fixed right-4 top-4">
-					<Button variant="outline" onclick={() => dialogOpen = true}>
+					<Button variant="outline" onclick={() => (dialogOpen = true)}>
 						{#if isOpen}
 							<LockOpen class="w-4 h-4" />
 							<p class="hidden md:block">Close Waitlist</p>
@@ -82,9 +81,9 @@
 						</AlertDialog.Description>
 					</AlertDialog.Header>
 					<AlertDialog.Footer>
-						<AlertDialog.Cancel onclick={() => dialogOpen = false}>Cancel</AlertDialog.Cancel>
-						<AlertDialog.Action onclick={() => toggleWaitlistMutation.mutate()}
-							data-testid="action">{isOpen ? 'Close' : 'Open'}</AlertDialog.Action
+						<AlertDialog.Cancel onclick={() => (dialogOpen = false)}>Cancel</AlertDialog.Cancel>
+						<AlertDialog.Action onclick={() => toggleWaitlistMutation.mutate()} data-testid="action"
+							>{isOpen ? 'Close' : 'Open'}</AlertDialog.Action
 						>
 					</AlertDialog.Footer>
 				</AlertDialog.Content>
@@ -99,9 +98,9 @@
 {/snippet}
 <div class="relative">
 	{@render waitlistToggleDialog()}
-	<Root bind:value class="p-2 min-h-96 mr-2" onValueChange={onTabChange}>
+	<Root {value} class="p-2 min-h-96 mr-2" onValueChange={onTabChange}>
 		<div class="inline-flex w-full">
-			<Select.Root value={value} type="single" onValueChange={onTabChange}>
+			<Select.Root {value} type="single" onValueChange={onTabChange}>
 				<Select.Trigger class="md:hidden flex w-fit" size="sm" id="view-selector">
 					{viewLabel}
 				</Select.Trigger>
