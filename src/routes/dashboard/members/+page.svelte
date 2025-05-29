@@ -48,7 +48,7 @@
 
 	<Root {value} onValueChange={onTabChange} class="p-2 min-h-96 mr-2">
 		<div class="flex justify-between items-center mb-2">
-			<Select.Root value={value} type="single" onValueChange={onTabChange}>
+			<Select.Root {value} type="single" onValueChange={onTabChange}>
 				<Select.Trigger class="md:hidden flex w-fit" size="sm" id="view-selector">
 					{viewLabel}
 				</Select.Trigger>

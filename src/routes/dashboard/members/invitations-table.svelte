@@ -38,11 +38,11 @@
 
 	const { supabase }: { supabase: SupabaseClient<Database> } = $props();
 
-	const currentPage = $derived(Number(page.url.searchParams.get('invitePage')) || 0);
-	const pageSize = $derived(Number(page.url.searchParams.get('invitePageSize')) || 10);
-	const searchQuery = $derived(page.url.searchParams.get('inviteQ') || '');
-	const rangeStart = $derived(currentPage * pageSize);
-	const rangeEnd = $derived(rangeStart + pageSize);
+	const currentPage = $derived.by(() => Number(page.url.searchParams.get('invitePage')) || 0);
+	const pageSize = $derived.by(() => Number(page.url.searchParams.get('invitePageSize')) || 10);
+	const searchQuery = $derived.by(() =>page.url.searchParams.get('inviteQ') || '');
+	const rangeStart = $derived.by(() => currentPage * pageSize);
+	const rangeEnd = $derived.by(() => rangeStart + pageSize);
 	const sortingState: SortingState = $derived.by(() => {
 		const sortColumn = page.url.searchParams.get('inviteSort');
 		const sortDirection = page.url.searchParams.get('inviteDirection');
@@ -134,6 +134,9 @@
 
 	// Create table
 	const table = createSvelteTable({
+		autoResetPageIndex: false,
+		manualPagination: true,
+		manualSorting: true,
 		get data() {
 			return invitationsQuery.data?.data || [];
 		},
