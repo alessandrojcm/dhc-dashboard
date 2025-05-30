@@ -62,7 +62,7 @@
 <CalendarPrimitive.Root
 	type="single"
 	weekdayFormat="short"
-	class={cn("rounded-md border p-3")}
+	class={cn("rounded-md border p-3 bg-white")}
 	bind:value
 	bind:placeholder
 	{...restProps}
