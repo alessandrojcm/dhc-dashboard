@@ -14,10 +14,12 @@ import SubTrigger from "./dropdown-menu-sub-trigger.svelte";
 import GroupHeading from "./dropdown-menu-group-heading.svelte";
 const Sub = DropdownMenuPrimitive.Sub;
 const Root = DropdownMenuPrimitive.Root;
+const Portal = DropdownMenuPrimitive.Portal;
 
 export {
 	CheckboxItem,
 	Content,
+	Portal,
 	Root as DropdownMenu,
 	CheckboxItem as DropdownMenuCheckboxItem,
 	Content as DropdownMenuContent,
