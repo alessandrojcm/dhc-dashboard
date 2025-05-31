@@ -40,25 +40,16 @@
 		supabase,
 		...restProps
 	}: ComponentProps<typeof Sidebar.Root> & Props = $props();
+	let customAnchor = $state<HTMLElement>(null!);
 </script>
 
 <div class="md:hidden fixed top-4 left-4 z-50">
-	<Button 
-		variant="outline" 
-		size="icon" 
-		aria-label="Toggle menu"
-		onclick={toggleSidebar}
-	>
+	<Button variant="outline" size="icon" aria-label="Toggle menu" onclick={toggleSidebar}>
 		<Menu class="h-4 w-4" />
 	</Button>
 </div>
 
-<Sidebar.Root 
-	bind:ref 
-	{collapsible} 
-	{...restProps} 
-	class="h-[100vh] border-r-1 md:block">
-
+<Sidebar.Root bind:ref {collapsible} {...restProps} class="h-[100vh] border-r-1 md:block">
 	<Sidebar.Header class="flex flex-row items-center">
 		<div class="h-12 w-12">
 			<enhanced:img src={DHCLogo} alt="Dublin Hema Club Logo" />
@@ -78,6 +69,7 @@
 									{#if item.role.intersection(roles).size > 0}
 										<Sidebar.MenuItem>
 											<Sidebar.MenuButton
+												onclick={toggleSidebar}
 												class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
 											>
 												<a href={`/dashboard/${item.url}`}>{item.title}</a>
@@ -89,6 +81,7 @@
 						</Sidebar.GroupContent>
 					{:else}
 						<Sidebar.MenuButton
+							onclick={toggleSidebar}
 							class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
 						>
 							<a href={`/dashboard/${group.url}`}>{group.title}</a>
@@ -107,6 +100,7 @@
 
 			<!-- User Profile Item -->
 			<Sidebar.MenuItem>
+				<div bind:this={customAnchor}></div>
 				<DropdownMenu.Root>
 					{#await userData}
 						<Skeleton class="h-[50px]" />
@@ -114,11 +108,11 @@
 						<DropdownMenu.Trigger>
 							<Sidebar.MenuButton
 								size="lg"
-								class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+								class="data-[state=open]:bg-sidebar-accent cursor-pointer data-[state=open]:text-sidebar-accent-foreground"
 							>
 								<Avatar.Root class="h-8 w-8">
 									<Avatar.Fallback
-									>{user?.firstName?.charAt(0)}{user?.lastName?.charAt(0)}</Avatar.Fallback
+										>{user?.firstName?.charAt(0)}{user?.lastName?.charAt(0)}</Avatar.Fallback
 									>
 								</Avatar.Root>
 								<div class="flex flex-col space-y-1">
@@ -127,7 +121,11 @@
 								</div>
 							</Sidebar.MenuButton>
 						</DropdownMenu.Trigger>
-						<DropdownMenu.Content class="w-56" align="end">
+
+						<DropdownMenu.Content strategy="fixed" {customAnchor} class="w-56">
+							<DropdownMenu.Item>
+								<a href={`/dashboard/members/${user?.id}`}>My Profile</a>
+							</DropdownMenu.Item>
 							{#if roles.size > 1}
 								<DropdownMenu.Item>
 									<a href={`/dashboard/members/${user?.id}`}>My Profile</a>
