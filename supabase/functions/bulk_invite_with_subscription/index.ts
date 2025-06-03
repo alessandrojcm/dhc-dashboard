@@ -7,7 +7,7 @@ import { db, sql } from '../_shared/db.ts';
 import { corsHeaders } from '../_shared/cors.ts';
 import { getRolesFromSession } from '../_shared/getRolesFromSession.ts';
 import { createInvitation } from './invitations.ts';
-import { createPaymentSession, updateUserProfileWithCustomerId } from './subscriptions.ts';
+import { createPaymentSession as createPaymentSessionDb, updateUserProfileWithCustomerId } from './subscriptions.ts';
 import { QueryExecutorProvider } from 'kysely';
 
 // Initialize Sentry
@@ -47,15 +47,11 @@ interface InviteResult {
 	email: string;
 	success: boolean;
 	error?: string;
+	invitationId?: string;
+	paymentSessionId?: string;
 }
 
-interface SubscriptionSessionResult {
-	monthlySubscription: Stripe.Subscription;
-	annualSubscription: Stripe.Subscription;
-	monthlyPaymentIntent: string;
-	annualPaymentIntent: string;
-	proratedMonthlyAmount: number;
-	proratedAnnualAmount: number;
+interface PaymentSessionResult {
 	sessionId: string;
 }
 
@@ -190,82 +186,29 @@ async function updatePriceCache(prices: PriceIds): Promise<void> {
 	});
 }
 
-// Helper function to create a subscription session
-async function createSubscriptionSession(
+// Helper function to create a payment session (without subscriptions or payment intents)
+async function createLocalPaymentSession(
 	userId: string,
-	customerId: string,
-	priceIds: { monthly: string; annual: string },
+	_customerId: string, // Not used but kept for compatibility
 	executor: QueryExecutorProvider
-): Promise<SubscriptionSessionResult> {
+): Promise<PaymentSessionResult> {
 	try {
-		console.log(`Creating subscription session for user ${userId}`);
-		// Create new subscriptions
-		const [monthlySubscription, annualSubscription] = await Promise.all([
-			stripe.subscriptions.create({
-				customer: customerId,
-				items: [{ price: priceIds.monthly }],
-				billing_cycle_anchor_config: {
-					day_of_month: 1
-				},
-				payment_behavior: 'default_incomplete',
-				payment_settings: {
-					payment_method_types: ['sepa_debit']
-				},
-				expand: ['latest_invoice.payments'],
-				collection_method: 'charge_automatically'
-			}),
-			stripe.subscriptions.create({
-				customer: customerId,
-				items: [{ price: priceIds.annual }],
-				payment_behavior: 'default_incomplete',
-				payment_settings: {
-					payment_method_types: ['sepa_debit']
-				},
-				billing_cycle_anchor_config: {
-					month: 1,
-					day_of_month: 7
-				},
-				expand: ['latest_invoice.payments'],
-				collection_method: 'charge_automatically'
-			})
-		]);
-		console.log(`Created subscriptions for user ${userId}`);
-		const monthlyInvoice = monthlySubscription.latest_invoice as Stripe.Invoice;
-		const annualInvoice = annualSubscription.latest_invoice as Stripe.Invoice;
-		const monthlyPayment = monthlyInvoice.payments?.data?.[0]?.payment!;
-		const annualPayment = annualInvoice.payments?.data?.[0]?.payment!;
-		console.log(`Created payment intents for user ${userId}`);
-		console.debug(monthlyPayment, annualPayment);
-
-		// Store the payment session using Kysely
 		console.log(`Creating payment session for user ${userId}`);
-		const sessionId = await createPaymentSession(
+		
+		// Store the payment session using Kysely with minimal data
+		const sessionId = await createPaymentSessionDb(
 			userId,
-			monthlySubscription,
-			annualSubscription,
-			monthlyPayment.payment_intent! as string,
-			annualPayment.payment_intent! as string,
-			// Price of the plan itself without proration
-			monthlySubscription.items.data[0].plan.amount! as number,
-			annualSubscription.items.data[0].plan.amount! as number,
-			// Total amount due for both subscriptions right now
-			monthlyInvoice.amount_due! + annualInvoice.amount_due!,
 			executor
 		);
 		console.log(`Created payment session for user ${userId}`);
+		
 		return {
-			monthlySubscription,
-			annualSubscription,
-			monthlyPaymentIntent: monthlyPayment.payment_intent! as string,
-			annualPaymentIntent: annualPayment.payment_intent! as string,
-			proratedMonthlyAmount: monthlyInvoice.amount_due! as number,
-			proratedAnnualAmount: annualInvoice.amount_due! as number,
 			sessionId
 		};
 	} catch (error) {
 		Sentry.captureException(error);
 		const errorMessage = error instanceof Error ? error.message : String(error);
-		throw new Error(`Error creating subscription session: ${errorMessage}`);
+		throw new Error(`Error creating payment session: ${errorMessage}`);
 	}
 }
 
@@ -276,7 +219,8 @@ async function processInvitations(
 	invites: (InviteData | string)[],
 	user: UserData,
 	supabaseAdmin: ReturnType<typeof createClient>,
-	priceIds: { monthly: string; annual: string }
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	_priceIds: { monthly: string; annual: string } // Not used but kept for compatibility
 ) {
 	console.log(`Starting background processing of ${invites.length} invitations`);
 	const results: InviteResult[] = [];
@@ -285,7 +229,7 @@ async function processInvitations(
 	try {
 		// Process each invite
 		for (const invite of invites) {
-			let inviteData: InviteData;
+			let inviteData: InviteData = {} as InviteData; // Initialize to avoid 'used before assigned' errors
 			try {
 				// Process the invite in a transaction to ensure atomicity
 				await db.transaction().execute(async (trx) => {
@@ -380,8 +324,10 @@ async function processInvitations(
 					// Update user profile with customer ID using Kysely
 					await updateUserProfileWithCustomerId(authData.user.id, customer.id, trx);
 					console.log(`Updated user profile for ${inviteData.email}`);
-					// Create subscription session
-					await createSubscriptionSession(authData.user.id, customer.id, priceIds, trx);
+					// Create payment session (without subscriptions)
+					const paymentSession = await createLocalPaymentSession(authData.user.id, customer.id, trx);
+					const paymentSessionId = paymentSession.sessionId;
+
 					if (!isInviteData(invite)) {
 						await trx
 							.updateTable('waitlist')
@@ -391,17 +337,16 @@ async function processInvitations(
 							.where('id', '=', invite)
 							.execute();
 					}
-					console.log(`Created subscription for ${inviteData.email}`);
-					console.log(`Creating invitation record for ${inviteData.email}`);
-				});
 
-				// If we get here, the transaction was successful
-				results.push({
-					email: inviteData.email,
-					success: true
-				});
+					results.push({
+						email: inviteData.email,
+						success: true,
+						invitationId,
+						paymentSessionId
+					});
 				console.log(`Successfully processed invitation for ${inviteData.email}`);
-			} catch (error) {
+			}); // <-- close transaction
+		} catch (error) {
 				console.error(`Failed to process invitation for ${inviteData.email}:`, error);
 				Sentry.captureException(error);
 				const errorMessage = error instanceof Error ? error.message : String(error);
