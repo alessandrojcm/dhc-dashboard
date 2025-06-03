@@ -112,6 +112,8 @@ export const actions: Actions = {
 					annual_payment_intent_id,
 					monthly_payment_intent_id,
 					customer_id,
+					monthly_subscription_id,
+					annual_subscription_id,
 				} = paymentSession;
 
 				// First get the invitation info and update its status to accepted
@@ -175,6 +177,12 @@ export const actions: Actions = {
 						: (intent.payment_method! as Stripe.PaymentMethod).id;
 
 				await Promise.all([
+					stripeClient.subscriptions.update(monthly_subscription_id, {
+						default_payment_method: paymentMethodId,
+					}),
+					stripeClient.subscriptions.update(annual_subscription_id, {
+						default_payment_method: paymentMethodId,
+					}),
 					stripeClient.paymentIntents
 						.confirm(monthly_payment_intent_id, {
 							payment_method: paymentMethodId,
