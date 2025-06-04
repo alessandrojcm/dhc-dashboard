@@ -74,12 +74,9 @@ export async function refreshPreviewAmounts(
 	const currentDate = dayjs();
 	
 	// For monthly: first day of next month
-	const nextMonth = currentDate.add(1, 'month').startOf('month');
-	const monthlyBillingAnchor = Math.floor(nextMonth.valueOf() / 1000);
-	
+	const monthlyBillingAnchor = currentDate.add(1, 'month').startOf('month').unix();
 	// For annual: January 7th of next year
-	const nextYear = currentDate.month() >= 11 ? currentDate.add(1, 'year').year() : currentDate.year() + 1;
-	const annualBillingAnchor = Math.floor(dayjs(`${nextYear}-01-07`).valueOf() / 1000);
+	const annualBillingAnchor = currentDate.add(1, 'year').set('month', 0).set('day', 7).unix();
 	
 	// Create discounts array if coupon is provided
 	const discounts = couponId ? [{ coupon: couponId }] : undefined;
@@ -144,10 +141,6 @@ export async function refreshPreviewAmounts(
 		discountPercentage = Math.round((totalDiscount / monthly.subtotal) * 100);
 	}
 	
-	// Get the annual price to calculate prorations
-	// We don't need monthly price as we're using the invoice preview amount
-	const annualPrice = await stripeClient.prices.retrieve(priceIds.annual);
-	
 	// Calculate manual proration for monthly subscription
 	// For monthly: prorate based on days remaining in current month
 	const daysInMonth = currentDate.daysInMonth();
@@ -156,7 +149,8 @@ export async function refreshPreviewAmounts(
 	const proratedMonthlyAmount = Math.round(dailyRate * daysRemaining);
 	
 	// For annual fee, we charge the full amount as it's a one-time yearly fee
-	const proratedAnnualAmount = annualPrice.unit_amount || 0;
+	// We can get this directly from the annual invoice preview
+	const proratedAnnualAmount = annual.amount_due;
 	
 	// Apply discount to prorated amounts if applicable
 	const discountedProratedMonthlyAmount = discountPercentage 
