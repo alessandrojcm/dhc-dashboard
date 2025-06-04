@@ -6,6 +6,12 @@ import { generatePricingInfo } from './pricingUtils';
 import type { ExistingSession } from './subscriptionCreation';
 import type { PlanPricing, SubscriptionWithPlan } from '$lib/types';
 import dayjs from 'dayjs';
+import isLeapYear from 'dayjs/plugin/isLeapYear';
+import dayOfYear from 'dayjs/plugin/dayOfYear';
+
+// Extend dayjs with plugins
+dayjs.extend(isLeapYear);
+dayjs.extend(dayOfYear);
 
 export interface PriceIds {
 	monthly: string;
@@ -148,9 +154,12 @@ export async function refreshPreviewAmounts(
 	const dailyRate = monthly.amount_due / daysInMonth;
 	const proratedMonthlyAmount = Math.round(dailyRate * daysRemaining);
 	
-	// For annual fee, we charge the full amount as it's a one-time yearly fee
-	// We can get this directly from the annual invoice preview
-	const proratedAnnualAmount = annual.amount_due;
+	// Prorate annual fee based on days remaining in the current year
+	const daysInYear = currentDate.isLeapYear() ? 366 : 365;
+	const dayOfYear = currentDate.dayOfYear();
+	const daysRemainingInYear = daysInYear - dayOfYear + 1; // +1 to include current day
+	const annualDailyRate = annual.amount_due / daysInYear;
+	const proratedAnnualAmount = Math.round(annualDailyRate * daysRemainingInYear);
 	
 	// Apply discount to prorated amounts if applicable
 	const discountedProratedMonthlyAmount = discountPercentage 
@@ -170,8 +179,8 @@ export async function refreshPreviewAmounts(
 			preview_annual_amount: annual.amount_due,
 			// We're assuming these columns exist after applying the migration
 			// If they don't exist yet, comment these lines out until migration is applied
-			// prorated_monthly_amount: discountedProratedMonthlyAmount,
-			// prorated_annual_amount: discountedProratedAnnualAmount,
+			prorated_monthly_amount: discountedProratedMonthlyAmount,
+			prorated_annual_amount: discountedProratedAnnualAmount,
 			...(discountPercentage ? { discount_percentage: discountPercentage } : {})
 		})
 		.where(eb => eb('id', '=', sessionId))
