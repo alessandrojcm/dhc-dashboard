@@ -5,6 +5,7 @@ import type { KyselyDatabase } from '$lib/types';
 import { generatePricingInfo } from './pricingUtils';
 import type { ExistingSession } from './subscriptionCreation';
 import type { PlanPricing, SubscriptionWithPlan } from '$lib/types';
+import dayjs from 'dayjs';
 
 export interface PriceIds {
 	monthly: string;
@@ -69,16 +70,16 @@ export async function refreshPreviewAmounts(
 }> {
 	const priceIds = await fetchPriceIds();
 	
-	// Calculate billing cycle anchors
-	const currentDate = new Date();
+	// Calculate billing cycle anchors using dayjs
+	const currentDate = dayjs();
 	
 	// For monthly: first day of next month
-	const nextMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1);
-	const monthlyBillingAnchor = Math.floor(nextMonth.getTime() / 1000);
+	const nextMonth = currentDate.add(1, 'month').startOf('month');
+	const monthlyBillingAnchor = Math.floor(nextMonth.valueOf() / 1000);
 	
 	// For annual: January 7th of next year
-	const nextYear = currentDate.getFullYear() + (currentDate.getMonth() >= 11 ? 1 : 0);
-	const annualBillingAnchor = Math.floor(new Date(nextYear, 0, 7).getTime() / 1000);
+	const nextYear = currentDate.month() >= 11 ? currentDate.add(1, 'year').year() : currentDate.year() + 1;
+	const annualBillingAnchor = Math.floor(dayjs(`${nextYear}-01-07`).valueOf() / 1000);
 	
 	// Create discounts array if coupon is provided
 	const discounts = couponId ? [{ coupon: couponId }] : undefined;
@@ -143,19 +144,16 @@ export async function refreshPreviewAmounts(
 		discountPercentage = Math.round((totalDiscount / monthly.subtotal) * 100);
 	}
 	
-	// Get the original prices to calculate prorations
-	const [monthlyPrice, annualPrice] = await Promise.all([
-		stripeClient.prices.retrieve(priceIds.monthly),
-		stripeClient.prices.retrieve(priceIds.annual)
-	]);
+	// Get the annual price to calculate prorations
+	// We don't need monthly price as we're using the invoice preview amount
+	const annualPrice = await stripeClient.prices.retrieve(priceIds.annual);
 	
-	// Calculate manual prorations
-	const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
-	const remainingDays = daysInMonth - currentDate.getDate() + 1; // +1 to include today
-	const monthlyUnitAmount = monthlyPrice.unit_amount || 0;
-	
-	// Calculate prorated amount for the current month
-	const proratedMonthlyAmount = Math.round((monthlyUnitAmount * remainingDays) / daysInMonth);
+	// Calculate manual proration for monthly subscription
+	// For monthly: prorate based on days remaining in current month
+	const daysInMonth = currentDate.daysInMonth();
+	const daysRemaining = daysInMonth - currentDate.date() + 1; // +1 to include current day
+	const dailyRate = monthly.amount_due / daysInMonth;
+	const proratedMonthlyAmount = Math.round(dailyRate * daysRemaining);
 	
 	// For annual fee, we charge the full amount as it's a one-time yearly fee
 	const proratedAnnualAmount = annualPrice.unit_amount || 0;
