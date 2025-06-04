@@ -1,16 +1,18 @@
-import type { RequestEvent } from '@sveltejs/kit';
+import type { RequestHandler } from '@sveltejs/kit';
 import { getKyselyClient } from '$lib/server/kysely';
 import { getExistingPaymentSession } from '$lib/server/subscriptionCreation';
+import type { ExistingSession } from '$lib/server/subscriptionCreation';
 import { error } from '@sveltejs/kit';
-import type { SubscriptionWithPlan } from '$lib/types';
 import { refreshPreviewAmounts } from '$lib/server/stripePriceCache';
 import { generatePricingInfo } from '$lib/server/pricingUtils';
+import type { SubscriptionWithPlan } from '$lib/types';
+import * as Sentry from '@sentry/sveltekit';
 
 /**
  * Consolidated endpoint for plan pricing and invoice preview
  * Handles both basic pricing information and detailed invoice preview with proration and discounts
  */
-export async function GET({ params, platform = {}, url }: RequestEvent) {
+export const GET: RequestHandler = async ({ params, platform = {}, url }) => {
 	const kysely = getKyselyClient(platform.env.HYPERDRIVE);
 	
 	// Get invitation and user data
@@ -28,13 +30,15 @@ export async function GET({ params, platform = {}, url }: RequestEvent) {
 	// Get payment session data with all necessary fields
 	const paymentSession = await kysely
 		.selectFrom('payment_sessions')
-		.select('id')
-		.select('coupon_id')
-		.select('monthly_amount')
-		.select('annual_amount')
-		.select('preview_monthly_amount')
-		.select('preview_annual_amount')
-		.select('discount_percentage')
+		.select([
+			'id',
+			'coupon_id',
+			'monthly_amount',
+			'annual_amount',
+			'preview_monthly_amount',
+			'preview_annual_amount',
+			'discount_percentage'
+		])
 		// Note: These columns will be available after the migration is applied
 		// For now, we'll handle their absence gracefully
 		.leftJoin('user_profiles', 'user_profiles.supabase_user_id', 'payment_sessions.user_id')
@@ -103,18 +107,57 @@ export async function GET({ params, platform = {}, url }: RequestEvent) {
 			paymentSession.id // Pass as number, not string
 		);
 				// Return the result with prorated amounts from the refreshPreviewAmounts function
+			// Create subscription objects for pricing info generation
+			const monthlySubscription = {
+				plan: { amount: result.monthlyAmount }
+			} as unknown as SubscriptionWithPlan;
+
+			const annualSubscription = {
+				plan: { amount: result.annualAmount }
+			} as unknown as SubscriptionWithPlan;
+			
+			// Create a session object with the data we already have
+			const sessionData: ExistingSession = {
+				monthly_subscription_id: null,
+				annual_subscription_id: null,
+				monthly_payment_intent_id: null,
+				annual_payment_intent_id: null,
+				monthly_amount: result.monthlyAmount,
+				annual_amount: result.annualAmount,
+				coupon_id: paymentSession.coupon_id,
+				total_amount: result.proratedMonthlyAmount + result.proratedAnnualAmount,
+				discounted_monthly_amount: null,
+				discounted_annual_amount: null,
+				discount_percentage: paymentSession.discount_percentage,
+				customer_id: paymentSession.customer_id
+			};
+			
+			// Generate pricing info using the session data we've constructed
+			const pricingInfo = generatePricingInfo(
+				monthlySubscription,
+				annualSubscription,
+				result.proratedMonthlyAmount,
+				result.proratedAnnualAmount,
+				sessionData
+			);
+			
 			return Response.json({
-				pricingInfo: result.pricingInfo,
+				pricingInfo,
 				monthlyAmount: result.monthlyAmount,
 				annualAmount: result.annualAmount,
-				// These come from the refreshPreviewAmounts function, not the database
 				proratedMonthlyAmount: result.proratedMonthlyAmount,
 				proratedAnnualAmount: result.proratedAnnualAmount,
 				totalAmount: result.totalAmount,
 				discountPercentage: paymentSession.discount_percentage
 			});
 	} catch (err) {
-		console.error('Error refreshing preview amounts:', err);
+		Sentry.captureException(err, {
+			extra: {
+				message: 'Failed to generate pricing preview',
+				invitationId: params.invitationId,
+				paymentSessionId: paymentSession.id,
+			}
+		});
 		throw error(500, 'Failed to generate pricing preview');
 	}
 };
