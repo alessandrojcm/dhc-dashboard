@@ -230,6 +230,8 @@ export type Database = {
           monthly_subscription_id: string | null
           preview_annual_amount: number | null
           preview_monthly_amount: number | null
+          prorated_annual_amount: number | null
+          prorated_monthly_amount: number | null
           total_amount: number
           user_id: string
         }
@@ -250,6 +252,8 @@ export type Database = {
           monthly_subscription_id?: string | null
           preview_annual_amount?: number | null
           preview_monthly_amount?: number | null
+          prorated_annual_amount?: number | null
+          prorated_monthly_amount?: number | null
           total_amount: number
           user_id: string
         }
@@ -270,6 +274,8 @@ export type Database = {
           monthly_subscription_id?: string | null
           preview_annual_amount?: number | null
           preview_monthly_amount?: number | null
+          prorated_annual_amount?: number | null
+          prorated_monthly_amount?: number | null
           total_amount?: number
           user_id?: string
         }
