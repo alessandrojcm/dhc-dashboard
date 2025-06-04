@@ -31,7 +31,7 @@ export const GET: RequestHandler = async ({ params, platform = {}, url }) => {
 	const paymentSession = await kysely
 		.selectFrom('payment_sessions')
 		.select([
-			'id',
+			'payment_sessions.id',
 			'coupon_id',
 			'monthly_amount',
 			'annual_amount',
@@ -71,30 +71,18 @@ export const GET: RequestHandler = async ({ params, platform = {}, url }) => {
 				plan: { amount: fullSession.annual_amount }
 			} as unknown as SubscriptionWithPlan;
 			
-			// Use existing preview amounts
-			const monthlyAmount = paymentSession.preview_monthly_amount || fullSession.monthly_amount;
-			const annualAmount = paymentSession.preview_annual_amount || fullSession.annual_amount;
-			
 			// Calculate prorated amounts manually until migration is applied
 			// In the future, these will come from the database
 			const proratedMonthlyAmount = 0; // Will be populated by migration
 			const proratedAnnualAmount = 0; // Will be populated by migration
 			
-			return Response.json({
-				pricingInfo: generatePricingInfo(
-					monthlySubscription,
-					annualSubscription,
-					proratedMonthlyAmount,
-					proratedAnnualAmount,
-					fullSession
-				),
-				monthlyAmount,
-				annualAmount,
+			return Response.json(generatePricingInfo(
+				monthlySubscription,
+				annualSubscription,
 				proratedMonthlyAmount,
 				proratedAnnualAmount,
-				totalAmount: monthlyAmount + annualAmount,
-				discountPercentage: paymentSession.discount_percentage
-			});
+				fullSession
+			));
 		}
 	}
 	
@@ -141,15 +129,7 @@ export const GET: RequestHandler = async ({ params, platform = {}, url }) => {
 				sessionData
 			);
 			
-			return Response.json({
-				pricingInfo,
-				monthlyAmount: result.monthlyAmount,
-				annualAmount: result.annualAmount,
-				proratedMonthlyAmount: result.proratedMonthlyAmount,
-				proratedAnnualAmount: result.proratedAnnualAmount,
-				totalAmount: result.totalAmount,
-				discountPercentage: paymentSession.discount_percentage
-			});
+			return Response.json(pricingInfo);
 	} catch (err) {
 		Sentry.captureException(err, {
 			extra: {
