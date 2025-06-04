@@ -13,9 +13,45 @@ import {
 } from "$lib/server/kyselyRPCFunctions";
 import * as Sentry from "@sentry/sveltekit";
 import { getNextBillingDates } from "$lib/server/pricingUtils";
-import { getExistingPaymentSession } from "$lib/server/subscriptionCreation";
 import type { Actions, PageServerLoad } from "./$types";
 import { env } from "$env/dynamic/public";
+
+
+async function getPaymentSession(
+	userId: string,
+	kysely: ReturnType<typeof getKyselyClient>,
+) {
+	return kysely
+		.selectFrom("payment_sessions")
+		.select([
+			"payment_sessions.id",
+			"coupon_id",
+			"monthly_amount",
+			"annual_amount",
+			"preview_monthly_amount",
+			"preview_annual_amount",
+			"discount_percentage",
+			"monthly_subscription_id",
+			"annual_subscription_id",
+			"monthly_payment_intent_id",
+			"annual_payment_intent_id",
+			"total_amount",
+			"discounted_monthly_amount",
+			"discounted_annual_amount",
+		])
+		.leftJoin(
+			"user_profiles",
+			"user_profiles.supabase_user_id",
+			"payment_sessions.user_id",
+		)
+		.select(["customer_id"])
+		.where((eb) => eb("payment_sessions.user_id", "=", userId))
+		.where((eb) => eb("payment_sessions.is_used", "=", false))
+		.where((eb) =>
+			eb("payment_sessions.expires_at", ">", dayjs().toISOString())
+		)
+		.executeTakeFirst();
+}
 
 const DASHBOARD_MIGRATION_CODE = env.PUBLIC_DASHBOARD_MIGRATION_CODE ??
 	"DHCDASHBOARD";
@@ -101,7 +137,7 @@ export const actions: Actions = {
 					event.params.invitationId,
 					trx,
 				);
-				const paymentSession = await getExistingPaymentSession(
+				const paymentSession = await getPaymentSession(
 					invitationData.user_id,
 					trx,
 				);
@@ -176,7 +212,7 @@ export const actions: Actions = {
 
 				await Promise.all([
 					stripeClient.paymentIntents
-						.confirm(monthly_payment_intent_id, {
+						.confirm(monthly_payment_intent_id!, {
 							payment_method: paymentMethodId,
 							mandate_data: {
 								customer_acceptance: {
@@ -202,7 +238,7 @@ export const actions: Actions = {
 							);
 						}),
 					stripeClient.paymentIntents
-						.confirm(annual_payment_intent_id, {
+						.confirm(annual_payment_intent_id!, {
 							payment_method: paymentMethodId,
 							mandate_data: {
 								customer_acceptance: {

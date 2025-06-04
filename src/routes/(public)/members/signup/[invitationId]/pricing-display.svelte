@@ -211,7 +211,7 @@
 				<AlertTriangle class="h-8 w-8 mb-2" />
 				<span class="font-semibold">Error loading pricing information</span>
 				<span class="text-sm mt-1">{planPricingData?.error?.message}</span>
-				<span class="text-xs mt-2">Please try refreshing the page or contact support.</span>
+				<span class="text-xs mt-2">Please try refreshing the page.</span>
 			</div>
 		</Card.Content>
 	</Card.Root>

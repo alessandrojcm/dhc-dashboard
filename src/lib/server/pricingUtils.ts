@@ -2,7 +2,6 @@ import Dinero from 'dinero.js';
 import type { PlanPricing } from '$lib/types';
 import type { SubscriptionWithPlan } from '$lib/types';
 import dayjs from 'dayjs';
-import type { ExistingSession } from '$lib/server/subscriptionCreation.ts';
 
 /**
  * Generates pricing information for display on the signup page
@@ -12,7 +11,13 @@ export function generatePricingInfo(
 	annualSubscription: SubscriptionWithPlan,
 	proratedMonthlyAmount: number,
 	proratedAnnualAmount: number,
-	existingSession?: ExistingSession
+	existingSession?: {
+		total_amount: number;
+		discounted_monthly_amount: number;
+		discounted_annual_amount: number;
+		discount_percentage: number;
+		coupon_id: string | null;
+	}
 ): PlanPricing {
 	return {
 		proratedPrice: Dinero({
