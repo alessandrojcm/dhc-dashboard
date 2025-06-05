@@ -14,13 +14,15 @@
 	let {
 		planPricingData,
 		couponCode = $bindable(''),
+		currentCoupon,
 		applyCoupon,
 		nextMonthlyBillingDate,
 		nextAnnualBillingDate
 	}: {
 		planPricingData: CreateQueryResult<PlanPricing, Error>;
 		couponCode: string | undefined;
-		applyCoupon: CreateMutationResult<string, Error, string>;
+		currentCoupon: string | undefined;
+		applyCoupon: CreateMutationResult<PlanPricing, Error, string>;
 		nextMonthlyBillingDate: Date;
 		nextAnnualBillingDate: Date;
 	} = $props();
@@ -145,8 +147,8 @@
 						{/if}
 					</div>
 				{/if}
-				{#if couponCode && applyCoupon.isSuccess}
-					<small class="text-sm text-green-600">Code {couponCode} applied</small>
+				{#if currentCoupon && applyCoupon.isSuccess}
+					<small class="text-sm text-green-600">Code {currentCoupon} applied</small>
 				{/if}
 
 				<Accordion.Root class="mt-2" type="single">

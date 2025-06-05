@@ -6,70 +6,58 @@ import dayjs from 'dayjs';
 /**
  * Generates pricing information for display on the signup page
  */
-export function generatePricingInfo(
-	monthlySubscription: SubscriptionWithPlan,
-	annualSubscription: SubscriptionWithPlan,
-	proratedMonthlyAmount: number,
-	proratedAnnualAmount: number,
-	existingSession?: {
-		total_amount: number;
-		discounted_monthly_amount: number;
-		discounted_annual_amount: number;
-		discount_percentage: number;
-		coupon_id: string | null;
-	}
-): PlanPricing {
+export function generatePricingInfo({
+	proratedPrice,
+	monthlyFee,
+	annualFee,
+	discountPercentage = 0,
+	coupon = undefined,
+	discountedMonthlyFee = undefined,
+	discountedAnnualFee = undefined
+}: {
+	proratedPrice: number;
+	monthlyFee: number;
+	annualFee: number;
+	discountPercentage?: number;
+	coupon?: string;
+	discountedMonthlyFee?: number;
+	discountedAnnualFee?: number;
+}): PlanPricing {
 	return {
 		proratedPrice: Dinero({
-			// Use the total prorated amount that the user will pay now
-			amount: existingSession?.total_amount,
+			amount: proratedPrice,
 			currency: 'EUR'
 		}).toJSON(),
 		proratedMonthlyPrice: Dinero({
-			amount: proratedMonthlyAmount,
+			amount: proratedPrice,
 			currency: 'EUR'
 		}).toJSON(),
 		proratedAnnualPrice: Dinero({
-			amount: proratedAnnualAmount,
+			amount: proratedPrice,
 			currency: 'EUR'
 		}).toJSON(),
 		monthlyFee: Dinero({
-			amount: monthlySubscription.plan.amount!,
+			amount: monthlyFee,
 			currency: 'EUR'
 		}).toJSON(),
 		annualFee: Dinero({
-			amount: annualSubscription.plan.amount!,
+			amount: annualFee,
 			currency: 'EUR'
 		}).toJSON(),
-		// Include discounted amounts if they exist
-		...(existingSession?.discounted_monthly_amount && {
+		...(discountedMonthlyFee ? {
 			discountedMonthlyFee: Dinero({
-				amount: existingSession.discounted_monthly_amount,
+				amount: discountedMonthlyFee,
 				currency: 'EUR'
 			}).toJSON()
-		}),
-		...(existingSession?.discounted_annual_amount && {
+		} : {}),
+		...(discountedAnnualFee ? {
 			discountedAnnualFee: Dinero({
-				amount: existingSession.discounted_annual_amount,
+				amount: discountedAnnualFee,
 				currency: 'EUR'
 			}).toJSON()
-		}),
-		// Use stored discount percentage if available, otherwise calculate it
-		...(existingSession?.discount_percentage
-			? {
-					discountPercentage: existingSession.discount_percentage
-				}
-			: existingSession?.discounted_monthly_amount
-				? {
-						discountPercentage: Math.round(
-							(((monthlySubscription as unknown as SubscriptionWithPlan).plan.amount! -
-								existingSession.discounted_monthly_amount) /
-								(monthlySubscription as unknown as SubscriptionWithPlan).plan.amount!) *
-								100
-						)
-					}
-				: {}),
-		coupon: existingSession?.coupon_id ?? undefined
+		} : {}),
+		...(coupon ? { coupon } : {}),
+		discountPercentage
 	} as PlanPricing;
 }
 
@@ -79,6 +67,6 @@ export function generatePricingInfo(
 export function getNextBillingDates() {
 	return {
 		nextMonthlyBillingDate: dayjs().add(1, 'month').startOf('month').toDate(),
-		nextAnnualBillingDate: dayjs().add(1, 'year').startOf('year').set('date', 7).toDate()
+		nextAnnualBillingDate: dayjs().month(0).date(7).add(1, 'year').toDate()
 	};
 }
