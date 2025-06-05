@@ -1,7 +1,5 @@
 -- 1.1 Add new columns (safe, additive)
 ALTER TABLE public.payment_sessions
-  ADD COLUMN IF NOT EXISTS preview_monthly_amount INTEGER,
-  ADD COLUMN IF NOT EXISTS preview_annual_amount INTEGER,
   ADD COLUMN IF NOT EXISTS discounted_monthly_amount INTEGER DEFAULT 0,
   ADD COLUMN IF NOT EXISTS discounted_annual_amount INTEGER DEFAULT 0,
   ADD COLUMN IF NOT EXISTS discount_percentage INTEGER;

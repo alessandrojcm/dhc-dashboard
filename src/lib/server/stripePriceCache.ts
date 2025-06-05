@@ -89,7 +89,7 @@ export async function refreshPreviewAmounts(
 	).unix();
 
 	// Create discounts array if coupon is provided
-	const discounts = couponId ? [{ coupon: couponId }] : undefined;
+	const discounts = couponId ? [{ promotion_code: couponId }] : undefined;
 
 	// Preview both monthly and annual subscriptions with proper billing cycle anchors
 	const [monthly, annual] = await Promise.all([
@@ -97,48 +97,21 @@ export async function refreshPreviewAmounts(
 			customer: customerId,
 			currency: "eur",
 			subscription_details: {
-				items: [{ price: priceIds.monthly }],
+				items: [{ price: priceIds.monthly, discounts }],
 				billing_cycle_anchor: monthlyBillingAnchor,
 			},
-			discounts,
 			preview_mode: "recurring",
 		}),
 		stripeClient.invoices.createPreview({
 			customer: customerId,
 			currency: "eur",
 			subscription_details: {
-				items: [{ price: priceIds.annual }],
+				items: [{ price: priceIds.annual, discounts }],
 				billing_cycle_anchor: annualBillingAnchor,
 			},
-			discounts,
 			preview_mode: "recurring",
 		}),
 	]);
-
-	// Get the full payment session to pass to generatePricingInfo
-	const session = await db
-		.selectFrom("payment_sessions")
-		.select([
-			"monthly_subscription_id",
-			"annual_subscription_id",
-			"monthly_payment_intent_id",
-			"annual_payment_intent_id",
-			"monthly_amount",
-			"annual_amount",
-			"coupon_id",
-			"total_amount",
-			"discounted_monthly_amount",
-			"discounted_annual_amount",
-			"discount_percentage",
-		])
-		.leftJoin(
-			"user_profiles",
-			"user_profiles.supabase_user_id",
-			"payment_sessions.user_id",
-		)
-		.select(["customer_id"])
-		.where((eb) => eb("payment_sessions.id", "=", sessionId))
-		.executeTakeFirst();
 
 	// Calculate discount percentage if applicable
 	let discountPercentage: number | undefined;
