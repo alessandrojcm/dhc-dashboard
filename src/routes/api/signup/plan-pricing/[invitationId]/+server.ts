@@ -1,13 +1,9 @@
 import { error, json, type RequestHandler } from "@sveltejs/kit";
 import { getKyselyClient } from "$lib/server/kysely";
-import { generatePricingInfo } from "$lib/server/pricingUtils";
+import { generatePricingInfo, getPriceIds } from "$lib/server/pricingUtils";
 import * as Sentry from "@sentry/sveltekit";
 import { stripeClient } from "$lib/server/stripe";
 import { env } from "$env/dynamic/private";
-import {
-	ANNUAL_FEE_LOOKUP,
-	MEMBERSHIP_FEE_LOOKUP_NAME,
-} from "$lib/server/constants";
 import dayjs from "dayjs";
 import isSameOrAfter from "dayjs/plugin/isSameOrAfter";
 dayjs.extend(isSameOrAfter);
@@ -27,16 +23,9 @@ async function getPricingDetails(
 	couponCode?: string
 ) {
 	// Fetch base Stripe prices
-	const prices = await stripeClient.prices.list({
-		lookup_keys: [MEMBERSHIP_FEE_LOOKUP_NAME, ANNUAL_FEE_LOOKUP],
-		active: true,
-		limit: 2,
-	});
+	const {monthly,annual} = await getPriceIds(kysely);
 
-	const monthlyPrice = prices.data.find(p => p.lookup_key === MEMBERSHIP_FEE_LOOKUP_NAME);
-	const annualPrice = prices.data.find(p => p.lookup_key === ANNUAL_FEE_LOOKUP);
-
-	if (!monthlyPrice || !annualPrice) {
+	if (!monthly || !annual) {
 		Sentry.captureMessage("Base prices not found for membership products", {
 			extra: { userId },
 		});
@@ -66,7 +55,7 @@ async function getPricingDetails(
 				subscription_details: {
 					items: [
 						{
-							price: monthlyPrice.id,
+							price: monthly,
 							quantity: 1
 						}
 					],
@@ -79,7 +68,7 @@ async function getPricingDetails(
 				subscription_details: {
 					items: [
 						{
-							price: annualPrice.id,
+							price: annual,
 							quantity: 1
 						}
 					],
@@ -92,7 +81,7 @@ async function getPricingDetails(
 				subscription_details: {
 					items: [
 						{
-							price: monthlyPrice.id,
+							price: monthly,
 							quantity: 1
 						}
 					],
@@ -105,7 +94,7 @@ async function getPricingDetails(
 				subscription_details: {
 					items: [
 						{
-							price: annualPrice.id,
+							price: annual,
 							quantity: 1
 						}
 					],
