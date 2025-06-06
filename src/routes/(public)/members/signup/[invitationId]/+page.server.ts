@@ -12,7 +12,7 @@ import {
 	updateInvitationStatus,
 } from "$lib/server/kyselyRPCFunctions";
 import * as Sentry from "@sentry/sveltekit";
-import { getNextBillingDates } from "$lib/server/pricingUtils";
+import { getNextBillingDates, getPriceIds } from "$lib/server/pricingUtils";
 import type { Actions, PageServerLoad } from "./$types";
 import { env } from "$env/dynamic/public";
 import { ANNUAL_FEE_LOOKUP, MEMBERSHIP_FEE_LOOKUP_NAME } from "$lib/server/constants";
@@ -143,16 +143,9 @@ export const actions: Actions = {
 						: (intent.payment_method! as Stripe.PaymentMethod).id;
 
 				// Fetch base Stripe prices
-				const prices = await stripeClient.prices.list({
-					lookup_keys: [MEMBERSHIP_FEE_LOOKUP_NAME, ANNUAL_FEE_LOOKUP],
-					active: true,
-					limit: 2,
-				});
+				const { monthly, annual } = await getPriceIds(kysely);
 
-				const monthlyPrice = prices.data.find(p => p.lookup_key === MEMBERSHIP_FEE_LOOKUP_NAME);
-				const annualPrice = prices.data.find(p => p.lookup_key === ANNUAL_FEE_LOOKUP);
-
-				if (!monthlyPrice || !annualPrice) {
+				if (!monthly || !annual) {
 					Sentry.captureMessage("Base prices not found for membership products", {
 						extra: { userId: invitationData.user_id },
 					});
@@ -180,7 +173,7 @@ export const actions: Actions = {
 				await Promise.all([
 					stripeClient.subscriptions.create({
 						customer: customerId.customer_id!,
-						items: [{ price: monthlyPrice.id }],
+						items: [{ price: monthly }],
 						billing_cycle_anchor_config: {
 							day_of_month: 1
 						},
@@ -190,12 +183,17 @@ export const actions: Actions = {
 						},
 						expand: ['latest_invoice.payments'],
 						collection_method: 'charge_automatically',
-						trial_end: isMigration ? nextMonth : undefined,
 						default_payment_method: paymentMethodId,
 						discounts: !isMigration && promotionCodeId ? [{ promotion_code: promotionCodeId }] : undefined,
-					}).then(subscription => {
+					}).then(async subscription => {
 						if ((subscription.latest_invoice as Stripe.Invoice).payments!.data.length === 0) {
 							return
+						}
+						if (isMigration) {
+							return stripeClient.creditNotes.create({
+								invoice: (subscription.latest_invoice as Stripe.Invoice).id!,
+								amount: (subscription.latest_invoice as Stripe.Invoice).amount_due,
+							})
 						}
 						return stripeClient.paymentIntents
 							.confirm((subscription.latest_invoice as Stripe.Invoice).payments!.data[0].payment.payment_intent as string, {
@@ -215,7 +213,7 @@ export const actions: Actions = {
 					}),
 					stripeClient.subscriptions.create({
 						customer: customerId.customer_id!,
-						items: [{ price: annualPrice.id }],
+						items: [{ price: annual }],
 						payment_behavior: 'default_incomplete',
 						payment_settings: {
 							payment_method_types: ['sepa_debit']
@@ -226,12 +224,17 @@ export const actions: Actions = {
 						},
 						expand: ['latest_invoice.payments'],
 						collection_method: 'charge_automatically',
-						trial_end: isMigration ? nextJanuary : undefined,
 						default_payment_method: paymentMethodId,
 						discounts: !isMigration && promotionCodeId ? [{ promotion_code: promotionCodeId }] : undefined,
-					}).then(subscription => {
+					}).then(async subscription => {
 						if ((subscription.latest_invoice as Stripe.Invoice).payments!.data.length === 0) {
 							return
+						}
+						if(isMigration) {
+							return stripeClient.creditNotes.create({
+								invoice: (subscription.latest_invoice as Stripe.Invoice).id!,
+								amount: (subscription.latest_invoice as Stripe.Invoice).amount_due,
+							})
 						}
 						return stripeClient.paymentIntents
 							.confirm((subscription.latest_invoice as Stripe.Invoice).payments!.data[0].payment.payment_intent as string, {
