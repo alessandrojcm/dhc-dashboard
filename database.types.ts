@@ -215,8 +215,8 @@ export type Database = {
       payment_sessions: {
         Row: {
           annual_amount: number
-          annual_payment_intent_id: string
-          annual_subscription_id: string
+          annual_payment_intent_id: string | null
+          annual_subscription_id: string | null
           coupon_id: string | null
           created_at: string
           discount_percentage: number | null
@@ -226,15 +226,19 @@ export type Database = {
           id: number
           is_used: boolean
           monthly_amount: number
-          monthly_payment_intent_id: string
-          monthly_subscription_id: string
+          monthly_payment_intent_id: string | null
+          monthly_subscription_id: string | null
+          preview_annual_amount: number | null
+          preview_monthly_amount: number | null
+          prorated_annual_amount: number | null
+          prorated_monthly_amount: number | null
           total_amount: number
           user_id: string
         }
         Insert: {
           annual_amount: number
-          annual_payment_intent_id: string
-          annual_subscription_id: string
+          annual_payment_intent_id?: string | null
+          annual_subscription_id?: string | null
           coupon_id?: string | null
           created_at?: string
           discount_percentage?: number | null
@@ -244,15 +248,19 @@ export type Database = {
           id?: number
           is_used?: boolean
           monthly_amount: number
-          monthly_payment_intent_id: string
-          monthly_subscription_id: string
+          monthly_payment_intent_id?: string | null
+          monthly_subscription_id?: string | null
+          preview_annual_amount?: number | null
+          preview_monthly_amount?: number | null
+          prorated_annual_amount?: number | null
+          prorated_monthly_amount?: number | null
           total_amount: number
           user_id: string
         }
         Update: {
           annual_amount?: number
-          annual_payment_intent_id?: string
-          annual_subscription_id?: string
+          annual_payment_intent_id?: string | null
+          annual_subscription_id?: string | null
           coupon_id?: string | null
           created_at?: string
           discount_percentage?: number | null
@@ -262,8 +270,12 @@ export type Database = {
           id?: number
           is_used?: boolean
           monthly_amount?: number
-          monthly_payment_intent_id?: string
-          monthly_subscription_id?: string
+          monthly_payment_intent_id?: string | null
+          monthly_subscription_id?: string | null
+          preview_annual_amount?: number | null
+          preview_monthly_amount?: number | null
+          prorated_annual_amount?: number | null
+          prorated_monthly_amount?: number | null
           total_amount?: number
           user_id?: string
         }

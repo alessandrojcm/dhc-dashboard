@@ -1,56 +1,34 @@
 import { sql, type QueryExecutorProvider } from 'kysely';
-import type { Stripe } from 'stripe';
 import dayjs from 'dayjs';
 
 /**
- * Interface for subscription session result
+ * Interface for payment session result
  */
-export interface SubscriptionSessionResult {
-  monthlySubscription: Stripe.Subscription;
-  annualSubscription: Stripe.Subscription;
-  monthlyPaymentIntent: Stripe.PaymentIntent;
-  annualPaymentIntent: Stripe.PaymentIntent;
-  monthlyAmount: number;
-  annualAmount: number;
+export interface PaymentSessionResult {
   sessionId: string;
 }
 
 /**
  * Creates a payment session record in the database
+ * 
+ * Modified to only store user_id, coupon_id (optional), and expires_at (7 days)
+ * without creating subscriptions or payment intents
  */
 export async function createPaymentSession(
   userId: string,
-  monthlySubscription: Stripe.Subscription,
-  annualSubscription: Stripe.Subscription,
-  monthlyPaymentIntentId: string,
-  annualPaymentIntentId: string,
-  monthlyAmount: number,
-  annualAmount: number,
-  totalAmount: number,
-  executor: QueryExecutorProvider
+  executor: QueryExecutorProvider,
+  couponId?: string
 ): Promise<string> {
-  // Store the new session
+  // Store the new session with minimal data
   const result = await sql<{ id: string }>`
     INSERT INTO payment_sessions (
       user_id,
-      monthly_subscription_id,
-      annual_subscription_id,
-      monthly_payment_intent_id,
-      annual_payment_intent_id,
-      monthly_amount,
-      annual_amount,
-      total_amount,
+      coupon_id,
       expires_at
     ) VALUES (
       ${userId}::uuid,
-      ${monthlySubscription.id}::text,
-      ${annualSubscription.id}::text,
-      ${monthlyPaymentIntentId}::text,
-      ${annualPaymentIntentId}::text,
-      ${monthlyAmount}::integer,
-      ${annualAmount}::integer,
-      ${totalAmount}::integer,
-      ${dayjs().add(24, 'hour').toISOString()}::timestamptz
+      ${couponId || null}::text,
+      ${dayjs().add(7, 'day').toISOString()}::timestamptz
     )
     RETURNING id
   `.execute(executor);
