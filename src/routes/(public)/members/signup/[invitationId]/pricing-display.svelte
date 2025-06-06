@@ -14,13 +14,15 @@
 	let {
 		planPricingData,
 		couponCode = $bindable(''),
+		currentCoupon,
 		applyCoupon,
 		nextMonthlyBillingDate,
 		nextAnnualBillingDate
 	}: {
 		planPricingData: CreateQueryResult<PlanPricing, Error>;
 		couponCode: string | undefined;
-		applyCoupon: CreateMutationResult<string, Error, string>;
+		currentCoupon: string | undefined;
+		applyCoupon: CreateMutationResult<PlanPricing, Error, string>;
 		nextMonthlyBillingDate: Date;
 		nextAnnualBillingDate: Date;
 	} = $props();
@@ -145,8 +147,8 @@
 						{/if}
 					</div>
 				{/if}
-				{#if couponCode && applyCoupon.isSuccess}
-					<small class="text-sm text-green-600">Code {couponCode} applied</small>
+				{#if currentCoupon && applyCoupon.isSuccess}
+					<small class="text-sm text-green-600">Code {currentCoupon} applied</small>
 				{/if}
 
 				<Accordion.Root class="mt-2" type="single">
@@ -211,7 +213,7 @@
 				<AlertTriangle class="h-8 w-8 mb-2" />
 				<span class="font-semibold">Error loading pricing information</span>
 				<span class="text-sm mt-1">{planPricingData?.error?.message}</span>
-				<span class="text-xs mt-2">Please try refreshing the page or contact support.</span>
+				<span class="text-xs mt-2">Please try refreshing the page.</span>
 			</div>
 		</Card.Content>
 	</Card.Root>

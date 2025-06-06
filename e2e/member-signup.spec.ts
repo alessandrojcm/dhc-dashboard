@@ -122,7 +122,6 @@ test.describe('Member Signup - Valid invitation', () => {
 		await stripeFrame.getByLabel('City').fill('Dublin');
 		await stripeFrame.getByLabel('Eircode').fill('K45 HR22');
 		await stripeFrame.getByLabel('County').selectOption('County Dublin');
-
 		await page.getByRole('button', { name: /sign up/i }).click();
 		await expect(
 			page.getByText(
