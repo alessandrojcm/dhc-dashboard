@@ -214,7 +214,7 @@ importers:
         specifier: ^3.4.0
         version: 3.4.0(prettier@3.5.3)(svelte@5.33.10)
       stripe:
-        specifier: ^18.2.1
+        specifier: ^18.2.0
         version: 18.2.1(@types/node@22.15.27)
       supabase:
         specifier: ^2.24.3
