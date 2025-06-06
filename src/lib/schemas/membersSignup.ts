@@ -10,7 +10,8 @@ export const memberSignupSchema = v.object({
 	stripeConfirmationToken: v.pipe(
 		v.string(),
 		v.nonEmpty('Something has gone wrong with your payment, please try again.')
-	)
+	),
+	couponCode: v.optional(v.string())
 });
 
 const formSchema = v.object({
