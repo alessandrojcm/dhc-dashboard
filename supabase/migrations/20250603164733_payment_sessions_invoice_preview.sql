@@ -11,5 +11,5 @@ ALTER TABLE public.payment_sessions
   ALTER COLUMN monthly_payment_intent_id DROP NOT NULL,
   ALTER COLUMN annual_payment_intent_id DROP NOT NULL,
   ALTER COLUMN monthly_amount DROP NOT NULL,
-  ALTER COLUMN annual_amount DROP NOT NULL
+  ALTER COLUMN annual_amount DROP NOT NULL,
   ALTER COLUMN total_amount DROP NOT NULL;
