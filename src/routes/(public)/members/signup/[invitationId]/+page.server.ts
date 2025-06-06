@@ -12,10 +12,11 @@ import {
 	updateInvitationStatus,
 } from "$lib/server/kyselyRPCFunctions";
 import * as Sentry from "@sentry/sveltekit";
-import { getNextBillingDates } from "$lib/server/pricingUtils";
-import { getExistingPaymentSession } from "$lib/server/subscriptionCreation";
+import { getNextBillingDates, getPriceIds } from "$lib/server/pricingUtils";
 import type { Actions, PageServerLoad } from "./$types";
 import { env } from "$env/dynamic/public";
+import { ANNUAL_FEE_LOOKUP, MEMBERSHIP_FEE_LOOKUP_NAME } from "$lib/server/constants";
+import dayjs from "dayjs";
 
 const DASHBOARD_MIGRATION_CODE = env.PUBLIC_DASHBOARD_MIGRATION_CODE ??
 	"DHCDASHBOARD";
@@ -23,30 +24,17 @@ const DASHBOARD_MIGRATION_CODE = env.PUBLIC_DASHBOARD_MIGRATION_CODE ??
 // need to normalize medical_conditions
 export const load: PageServerLoad = async ({ params, platform, cookies }) => {
 	const invitationId = params.invitationId;
-	const kysely = getKyselyClient(platform.env.HYPERDRIVE);
+	const kysely = getKyselyClient(platform?.env.HYPERDRIVE);
 	const isConfirmed = Boolean(
 		cookies.get(`invite-confirmed-${invitationId}`),
 	);
 
 	try {
 		// Get invitation data first (essential for page rendering)
-		const { paymentSessionId, invitationData } = await kysely.transaction()
-			.execute(async (trx) => {
-				const invitationData = await getInvitationInfo(
-					invitationId,
-					trx,
-				);
-				const paymentSessionId = await trx.selectFrom("payment_sessions")
-					.select("id").where("user_id", "=", invitationData.user_id)
-					.executeTakeFirst();
-				if (!paymentSessionId) {
-					throw error(404, "No payment session found for this user.");
-				}
-				return {
-					invitationData,
-					paymentSessionId: paymentSessionId.id,
-				};
-			});
+		const invitationData = await getInvitationInfo(
+			invitationId,
+			kysely,
+		);
 
 		if (!invitationData) {
 			return error(404, "Invitation not found");
@@ -67,7 +55,6 @@ export const load: PageServerLoad = async ({ params, platform, cookies }) => {
 				gender: invitationData.gender,
 				medicalConditions: invitationData.medical_conditions,
 			},
-			paymentSessionId,
 			isConfirmed,
 			insuranceFormLink: "",
 			// These are needed for the page but can be calculated immediately
@@ -89,7 +76,7 @@ export const actions: Actions = {
 				form,
 			});
 		}
-		const kysely = getKyselyClient(event.platform.env.HYPERDRIVE);
+		const kysely = getKyselyClient(event.platform?.env.HYPERDRIVE);
 		const confirmationToken: Stripe.ConfirmationToken = JSON.parse(
 			form.data.stripeConfirmationToken,
 		);
@@ -101,20 +88,13 @@ export const actions: Actions = {
 					event.params.invitationId,
 					trx,
 				);
-				const paymentSession = await getExistingPaymentSession(
-					invitationData.user_id,
-					trx,
-				);
-				if (!paymentSession) {
-					throw error(404, "No payment session found for this user.");
+				const customerId = await trx.selectFrom('user_profiles')
+					.select('customer_id')
+					.where('supabase_user_id', '=', invitationData.user_id)
+					.executeTakeFirst();
+				if (!customerId) {
+					throw error(404, "No customer ID found for this user.");
 				}
-				const {
-					annual_payment_intent_id,
-					monthly_payment_intent_id,
-					customer_id,
-					monthly_subscription_id,
-					annual_subscription_id,
-				} = paymentSession;
 
 				// First get the invitation info and update its status to accepted
 				if (invitationData && invitationData.invitation_id) {
@@ -136,20 +116,6 @@ export const actions: Actions = {
 						trx,
 					),
 					trx
-						.updateTable("payment_sessions")
-						.set({ is_used: true })
-						.where(
-							"monthly_payment_intent_id",
-							"=",
-							monthly_payment_intent_id,
-						)
-						.where(
-							"annual_payment_intent_id",
-							"=",
-							annual_payment_intent_id,
-						)
-						.execute(),
-					trx
 						.updateTable("waitlist")
 						.set({ status: "joined" })
 						.where("email", "=", invitationData.email)
@@ -158,7 +124,7 @@ export const actions: Actions = {
 
 				const intent = await stripeClient.setupIntents.create({
 					confirm: true,
-					customer: customer_id!,
+					customer: customerId.customer_id!,
 					confirmation_token: confirmationToken.id,
 					payment_method_types: ["sepa_debit"],
 				});
@@ -176,66 +142,117 @@ export const actions: Actions = {
 						? intent.payment_method
 						: (intent.payment_method! as Stripe.PaymentMethod).id;
 
+				// Fetch base Stripe prices
+				const { monthly, annual } = await getPriceIds(kysely);
+
+				if (!monthly || !annual) {
+					Sentry.captureMessage("Base prices not found for membership products", {
+						extra: { userId: invitationData.user_id },
+					});
+					throw error(500, "Could not retrieve base product prices.");
+				}
+				let isMigration = false;
+				let promotionCodeId: string | undefined;
+				const nextMonth = dayjs().add(1, 'month').startOf('month').unix();
+				const nextJanuary = dayjs().month(0).date(7).add(1, 'year').unix();
+				if (form.data.couponCode) {
+					const promotionCodes = await stripeClient.promotionCodes.list({
+						active: true,
+						code: form.data.couponCode,
+						limit: 1,
+					});
+					if (!promotionCodes.data.length) {
+						throw error(400, "Invalid or inactive promotion code");
+					}
+					if (form.data.couponCode.toLowerCase().trim() === DASHBOARD_MIGRATION_CODE.toLowerCase().trim()) {
+						isMigration = true;
+					} else {
+						promotionCodeId = promotionCodes.data[0].id;
+					}
+				}
 				await Promise.all([
-					stripeClient.subscriptions.update(monthly_subscription_id, {
+					stripeClient.subscriptions.create({
+						customer: customerId.customer_id!,
+						items: [{ price: monthly }],
+						billing_cycle_anchor_config: {
+							day_of_month: 1
+						},
+						payment_behavior: 'default_incomplete',
+						payment_settings: {
+							payment_method_types: ['sepa_debit']
+						},
+						expand: ['latest_invoice.payments'],
+						collection_method: 'charge_automatically',
 						default_payment_method: paymentMethodId,
-					}),
-					stripeClient.subscriptions.update(annual_subscription_id, {
-						default_payment_method: paymentMethodId,
-					}),
-					stripeClient.paymentIntents
-						.confirm(monthly_payment_intent_id, {
-							payment_method: paymentMethodId,
-							mandate_data: {
-								customer_acceptance: {
-									type: "online",
-									online: {
-										ip_address: event.getClientAddress(),
-										user_agent: event.request.headers.get(
-											"user-agent",
-										)!,
+						discounts: !isMigration && promotionCodeId ? [{ promotion_code: promotionCodeId }] : undefined,
+					}).then(async subscription => {
+						if ((subscription.latest_invoice as Stripe.Invoice).payments!.data.length === 0) {
+							return
+						}
+						if (isMigration) {
+							return stripeClient.creditNotes.create({
+								invoice: (subscription.latest_invoice as Stripe.Invoice).id!,
+								amount: (subscription.latest_invoice as Stripe.Invoice).amount_due,
+							})
+						}
+						return stripeClient.paymentIntents
+							.confirm((subscription.latest_invoice as Stripe.Invoice).payments!.data[0].payment.payment_intent as string, {
+								payment_method: paymentMethodId,
+								mandate_data: {
+									customer_acceptance: {
+										type: "online",
+										online: {
+											ip_address: event.getClientAddress(),
+											user_agent: event.request.headers.get(
+												"user-agent",
+											)!,
+										},
 									},
 								},
-							},
-						})
-						.catch((err: Stripe.errors.StripeAPIError) => {
-							if (
-								paymentSession.coupon_id !==
-									DASHBOARD_MIGRATION_CODE
-							) {
-								throw err;
-							}
-							Sentry.captureMessage(
-								`Payment intent ${monthly_payment_intent_id} is in an unexpected state due to migration code ${DASHBOARD_MIGRATION_CODE}`,
-							);
-						}),
-					stripeClient.paymentIntents
-						.confirm(annual_payment_intent_id, {
-							payment_method: paymentMethodId,
-							mandate_data: {
-								customer_acceptance: {
-									type: "online",
-									online: {
-										ip_address: event.getClientAddress(),
-										user_agent: event.request.headers.get(
-											"user-agent",
-										)!,
+							})
+					}),
+					stripeClient.subscriptions.create({
+						customer: customerId.customer_id!,
+						items: [{ price: annual }],
+						payment_behavior: 'default_incomplete',
+						payment_settings: {
+							payment_method_types: ['sepa_debit']
+						},
+						billing_cycle_anchor_config: {
+							month: 1,
+							day_of_month: 7
+						},
+						expand: ['latest_invoice.payments'],
+						collection_method: 'charge_automatically',
+						default_payment_method: paymentMethodId,
+						discounts: !isMigration && promotionCodeId ? [{ promotion_code: promotionCodeId }] : undefined,
+					}).then(async subscription => {
+						if ((subscription.latest_invoice as Stripe.Invoice).payments!.data.length === 0) {
+							return
+						}
+						if(isMigration) {
+							return stripeClient.creditNotes.create({
+								invoice: (subscription.latest_invoice as Stripe.Invoice).id!,
+								amount: (subscription.latest_invoice as Stripe.Invoice).amount_due,
+							})
+						}
+						return stripeClient.paymentIntents
+							.confirm((subscription.latest_invoice as Stripe.Invoice).payments!.data[0].payment.payment_intent as string, {
+								payment_method: paymentMethodId,
+								mandate_data: {
+									customer_acceptance: {
+										type: "online",
+										online: {
+											ip_address: event.getClientAddress(),
+											user_agent: event.request.headers.get(
+												"user-agent",
+											)!,
+										},
 									},
 								},
-							},
-						})
-						.catch((err: Stripe.errors.StripeAPIError) => {
-							if (
-								paymentSession.coupon_id !==
-									DASHBOARD_MIGRATION_CODE
-							) {
-								throw err;
-							}
-							Sentry.captureMessage(
-								`Payment intent ${annual_payment_intent_id} is in an unexpected state due to migration code ${DASHBOARD_MIGRATION_CODE}`,
-							);
-						}),
-				]);
+							})
+					})
+				])
 
 				// Success! Delete the access token cookie
 				event.cookies.delete("access-token", { path: "/" });

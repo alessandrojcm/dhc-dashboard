@@ -123,7 +123,7 @@ test.describe("Member Signup - Coupon Codes", () => {
 				}),
 				stripeClient.promotionCodes.create({
 					coupon: once100Coupon.id,
-					code: "ONCE100OFF",
+					code: `ONCE100OFF-${Date.now().toString().slice(-6)}`,
 					max_redemptions: 5,
 				}),
 				// Create the migration code with the exact name from the environment variable
@@ -185,9 +185,10 @@ test.describe("Member Signup - Coupon Codes", () => {
 	test.beforeEach(async ({ page }) => {
 		// Start from the signup page
 		await page.goto(
-			"/members/signup/callback#access_token=" + (await testData.token()),
+			`/members/signup/${testData.invitationId}?email=${encodeURIComponent(testData.email)}&dateOfBirth=${encodeURIComponent(
+				testData.date_of_birth.format('YYYY-MM-DD')
+			)}`
 		);
-		await page.waitForURL("/members/signup");
 		// Wait for the form to be visible
 		await page.waitForSelector("form");
 	});
@@ -200,6 +201,7 @@ test.describe("Member Signup - Coupon Codes", () => {
 		await page.getByPlaceholder("Enter promotional code").fill(
 			annualCouponCode,
 		);
+		await page.pause(); 
 		await page.getByRole("button", { name: "Apply Code" }).click();
 
 		// Wait for the API call to complete and prices to update

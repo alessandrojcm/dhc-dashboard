@@ -7,7 +7,7 @@
 	import { valibotClient } from 'sveltekit-superforms/adapters';
 	import { memberSignupSchema } from '$lib/schemas/membersSignup';
 	import { parsePhoneNumberFromString } from 'libphonenumber-js/min';
-	import { ArrowRightIcon } from 'lucide-svelte';
+	import { ArrowRightIcon, Proportions } from 'lucide-svelte';
 	import {
 		loadStripe,
 		type StripeElements,
@@ -24,7 +24,8 @@
 	import {
 		createMutation,
 		createQuery,
-		keepPreviousData
+		keepPreviousData,
+		useQueryClient
 	} from '@tanstack/svelte-query';
 	import type { PlanPricing } from '$lib/types.js';
 	import PricingDisplay from './pricing-display.svelte';
@@ -32,6 +33,7 @@
 	import { page } from '$app/state';
 
 	const props: PageServerData = $props();
+	let currentCoupon = $state('');
 
 	const { nextMonthlyBillingDate, nextAnnualBillingDate } = props;
 	let stripe: Awaited<ReturnType<typeof loadStripe>> | null = $state(null);
@@ -113,6 +115,7 @@
 			$formData.stripeConfirmationToken = JSON.stringify(confirmationToken);
 			customRequest(({ controller, action, formData }) => {
 				formData.set('stripeConfirmationToken', JSON.stringify(confirmationToken));
+				formData.set('couponCode', currentCoupon);
 				return fetch(action, {
 					signal: controller.signal,
 					method: 'POST',
@@ -143,7 +146,8 @@
 	});
 	const { form: formData, enhance, submitting } = form;
 	const formatedPhone = $derived.by(() => parsePhoneNumberFromString(props.userData.phoneNumber!));
-	const queryKey = $derived(['plan-pricing', couponCode]);
+	const queryKey = $derived(['plan-pricing']);
+	const queryClient = useQueryClient();
 
 	// Keep planData query for coupon updates, but initial display uses streamed data
 	const planData = createQuery(() => ({
@@ -162,19 +166,22 @@
 
 	const applyCoupon = createMutation(() => ({
 		mutationFn: (code: string) =>
-			fetch(`/api/signup/coupon/${props.paymentSessionId}`, { method: 'POST', body: JSON.stringify({ code }) }).then(
+			fetch(`/api/signup/plan-pricing/${page.params.invitationId}`, { method: 'POST', body: JSON.stringify({ code }) }).then(
 				async (res) => {
-					const { message } = (await res.json()) as unknown as { message: string };
-					if (res.status >= 400) {
+					if (!res.ok) {
+						const { message } = (await res.json()) as unknown as { message: string };
+
 						throw new Error(message, {
 							cause: message
 						});
 					}
-					return message;
+					return [(await res.json()) as PlanPricing, code];
 				}
 			),
-		onSuccess: () => {
-			planData.refetch();
+		onSuccess: (res: [PlanPricing, string]) => {
+			const [planPricing, code] = res;
+			queryClient.setQueryData(queryKey, planPricing);
+			currentCoupon = code;
 		}
 	}));
 
@@ -203,7 +210,7 @@
 			Your membership has been successfully processed. Welcome to Dublin Hema Club! You will receive
 			a Discord invite by email shortly.
 		</Alert.Description>
-		<Button onclick={() => goto('/dashboard')} class="mt-2 fit-content">Go to Dashboard</Button>
+		<Button onclick={() => goto('/dashboard')} class="mt-2 w-fit">Go to Dashboard</Button>
 	</Alert.Root>
 {/snippet}
 {#if showThanks}
@@ -286,6 +293,7 @@
 				planPricingData={planData}
 				{couponCode}
 				{applyCoupon}
+				{currentCoupon}
 				{nextMonthlyBillingDate}
 				{nextAnnualBillingDate}
 			/>
