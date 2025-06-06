@@ -1,8 +1,6 @@
 import { error, json, type RequestHandler } from "@sveltejs/kit";
 import { getKyselyClient } from "$lib/server/kysely";
-import { refreshPreviewAmounts } from "$lib/server/stripePriceCache";
 import { generatePricingInfo } from "$lib/server/pricingUtils";
-import type { SubscriptionWithPlan, PlanPricing } from "$lib/types";
 import * as Sentry from "@sentry/sveltekit";
 import { stripeClient } from "$lib/server/stripe";
 import { env } from "$env/dynamic/private";
@@ -26,7 +24,6 @@ const couponCodeSchema = v.object({
 async function getPricingDetails(
 	userId: string,
 	kysely: ReturnType<typeof getKyselyClient>,
-	paymentSessionId: number,
 	couponCode?: string
 ) {
 	// Fetch base Stripe prices
@@ -41,7 +38,7 @@ async function getPricingDetails(
 
 	if (!monthlyPrice || !annualPrice) {
 		Sentry.captureMessage("Base prices not found for membership products", {
-			extra: { userId, paymentSessionId },
+			extra: { userId },
 		});
 		throw error(500, "Could not retrieve base product prices.");
 	}
@@ -60,6 +57,7 @@ async function getPricingDetails(
 	const customerId = userProfile.customer_id;
 	const nextMonth = dayjs().add(1, 'month').startOf('month').unix();
 	const nextJanuary = dayjs().month(0).date(7).add(1, 'year').unix();
+	
 	try {
 		// Get invoice previews for initial payment, next month, and next January
 		const [initialInvoiceMonthly, initialInvoiceAnnual, nextMonthInvoice, nextJanuaryInvoice] = await Promise.all([
@@ -116,28 +114,13 @@ async function getPricingDetails(
 				...(couponCode ? { discounts: [{ promotion_code: couponCode }] } : {})
 			})
 		]);
+
 		// Calculate total discount and discount percentage
 		const totalDiscount = initialInvoiceMonthly.total_discount_amounts?.reduce((sum, discount) => sum + discount.amount, 0) ?? 0;
 		const discountPercentage = totalDiscount > 0 ? Math.round((totalDiscount / initialInvoiceMonthly.subtotal) * 100) : 0;
 
-		// Update payment session with new invoice details
-		await kysely
-			.updateTable("payment_sessions")
-			.set({
-				monthly_amount: initialInvoiceMonthly.amount_due,
-				annual_amount: nextJanuaryInvoice.amount_due,
-				preview_monthly_amount: nextMonthInvoice.amount_due,
-				preview_annual_amount: nextJanuaryInvoice.amount_due,
-				discount_percentage: discountPercentage,
-				total_amount: initialInvoiceMonthly.amount_due,
-				discounted_monthly_amount: initialInvoiceMonthly.amount_due,
-				discounted_annual_amount: nextJanuaryInvoice.amount_due
-			})
-			.where("id", "=", paymentSessionId)
-			.execute();
-
-			const monthlyDiscount = nextMonthInvoice?.total_discount_amounts?.reduce((sum, discount) => sum + discount.amount, 0) ?? 0;
-			const annualDiscount = nextJanuaryInvoice?.total_discount_amounts?.reduce((sum, discount) => sum + discount.amount, 0) ?? 0;
+		const monthlyDiscount = nextMonthInvoice?.total_discount_amounts?.reduce((sum, discount) => sum + discount.amount, 0) ?? 0;
+		const annualDiscount = nextJanuaryInvoice?.total_discount_amounts?.reduce((sum, discount) => sum + discount.amount, 0) ?? 0;
 
 		return {
 			proratedPrice: initialInvoiceMonthly.amount_due + initialInvoiceAnnual.amount_due,
@@ -153,43 +136,6 @@ async function getPricingDetails(
 		Sentry.captureException(err);
 		throw error(500, "Failed to get pricing details");
 	}
-}
-
-
-async function getPaymentSession(
-	userId: string,
-	kysely: ReturnType<typeof getKyselyClient>,
-) {
-	return kysely
-		.selectFrom("payment_sessions")
-		.select([
-			"payment_sessions.id",
-			"coupon_id",
-			"monthly_amount",
-			"annual_amount",
-			"preview_monthly_amount",
-			"preview_annual_amount",
-			"discount_percentage",
-			"monthly_subscription_id",
-			"annual_subscription_id",
-			"monthly_payment_intent_id",
-			"annual_payment_intent_id",
-			"total_amount",
-			"discounted_monthly_amount",
-			"discounted_annual_amount",
-		])
-		.leftJoin(
-			"user_profiles",
-			"user_profiles.supabase_user_id",
-			"payment_sessions.user_id",
-		)
-		.select(["customer_id"])
-		.where((eb) => eb("payment_sessions.user_id", "=", userId))
-		.where((eb) => eb("payment_sessions.is_used", "=", false))
-		.where((eb) =>
-			eb("payment_sessions.expires_at", ">", dayjs().toISOString())
-		)
-		.executeTakeFirst();
 }
 
 export const POST: RequestHandler = async ({ request, params, platform }) => {
@@ -226,20 +172,13 @@ export const POST: RequestHandler = async ({ request, params, platform }) => {
 			throw error(400, "Invalid coupon code");
 		}
 
-		// Get payment session
-		const paymentSession = await getPaymentSession(invitation.user_id!, kysely);
-		if (!paymentSession) {
-			throw error(404, "Payment session not found");
-		}
-
 		// Handle no coupon code
-		if (!couponCode) {
+		if (!couponCode.output?.code) {
 			const pricingInfo = await getPricingDetails(
 				invitation.user_id!,
-				kysely,
-				paymentSession.id!
+				kysely
 			);
-			return json(pricingInfo);
+			return json(generatePricingInfo(pricingInfo));
 		}
 
 		// Validate promotion code with Stripe
@@ -254,11 +193,10 @@ export const POST: RequestHandler = async ({ request, params, platform }) => {
 		}
 
 		// Handle migration code
-		if (couponCode.output.code === DASHBOARD_MIGRATION_CODE.toLowerCase()) {
+		if (couponCode.output.code.toLowerCase().trim() === DASHBOARD_MIGRATION_CODE.toLowerCase().trim()) {
 			const pricingInfo = await getPricingDetails(
 				invitation.user_id!,
-				kysely,
-				paymentSession.id!
+				kysely
 			);
 
 			// Override with migration pricing (proration = 0)
@@ -266,18 +204,11 @@ export const POST: RequestHandler = async ({ request, params, platform }) => {
 				...pricingInfo,
 				proratedPrice: 0,
 				discountPercentage: 100,
-				code: couponCode,
+				coupon: couponCode.output.code,
 			};
-
-			// Save migration code in DB
-			await kysely.updateTable("payment_sessions")
-				.set({ coupon_id: couponCode.output.code, total_amount: 0, discount_percentage: 100 })
-				.where("id", "=", paymentSession.id)
-				.execute();
 
 			return json(generatePricingInfo(migrationPricing));
 		}
-
 
 		const couponDetails = await stripeClient.coupons.retrieve(promotionCodes.data[0].coupon.id, {
 			expand: ['applies_to']
@@ -288,31 +219,12 @@ export const POST: RequestHandler = async ({ request, params, platform }) => {
 			throw error(400, "Forever coupons can only be percentage-based, not amount-based");
 		}
 
-		// Calculate discount percentage for DB storage
-		let discountPercentage = 0;
-		if (couponDetails.percent_off) {
-			discountPercentage = couponDetails.percent_off;
-		} else if (couponDetails.amount_off && couponDetails.duration === 'once') {
-			// Approximate percentage for one-time amount discounts
-			const totalAmount = (paymentSession.monthly_amount || 0) + (paymentSession.annual_amount || 0);
-			if (totalAmount > 0) {
-				discountPercentage = Math.round((couponDetails.amount_off / totalAmount) * 100);
-			}
-		}
-
 		// Get pricing with discount applied
 		const pricingInfo = await getPricingDetails(
 			invitation.user_id!,
 			kysely,
-			paymentSession.id!,
 			promotionCodes.data[0].id
 		);
-
-		// Save coupon in DB
-		await kysely.updateTable("payment_sessions")
-			.set({ coupon_id: couponCode.output.code, discount_percentage: discountPercentage })
-			.where("id", "=", paymentSession.id)
-			.execute();
 
 		return json(generatePricingInfo(pricingInfo));
 	} catch (err) {
@@ -339,24 +251,16 @@ export const GET: RequestHandler = async ({ params, platform }) => {
 			.select(["user_id"])
 			.where("id", "=", invitationId)
 			.where("status", "=", "pending")
-			.where("expires_at", ">", dayjs().toISOString()) // Consider re-adding if needed for stricter validation
+			.where("expires_at", ">", dayjs().toISOString())
 			.executeTakeFirst();
 
 		if (!invitation) {
 			throw error(404, "Invitation not found");
 		}
 
-
-		// Get payment session
-		const paymentSession = await getPaymentSession(invitation.user_id!, kysely);
-		if (!paymentSession) {
-			throw error(404, "Payment session not found");
-		}
-
 		const pricingInfo = await getPricingDetails(
 			invitation.user_id!,
-			kysely,
-			paymentSession.id!,
+			kysely
 		);
 
 		return json(generatePricingInfo(pricingInfo));

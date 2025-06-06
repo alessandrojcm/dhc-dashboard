@@ -115,6 +115,7 @@
 			$formData.stripeConfirmationToken = JSON.stringify(confirmationToken);
 			customRequest(({ controller, action, formData }) => {
 				formData.set('stripeConfirmationToken', JSON.stringify(confirmationToken));
+				formData.set('couponCode', currentCoupon);
 				return fetch(action, {
 					signal: controller.signal,
 					method: 'POST',
@@ -177,7 +178,8 @@
 					return [(await res.json()) as PlanPricing, code];
 				}
 			),
-		onSuccess: ([planPricing, code]) => {
+		onSuccess: (res: [PlanPricing, string]) => {
+			const [planPricing, code] = res;
 			queryClient.setQueryData(queryKey, planPricing);
 			currentCoupon = code;
 		}
@@ -208,7 +210,7 @@
 			Your membership has been successfully processed. Welcome to Dublin Hema Club! You will receive
 			a Discord invite by email shortly.
 		</Alert.Description>
-		<Button onclick={() => goto('/dashboard')} class="mt-2 fit-content">Go to Dashboard</Button>
+		<Button onclick={() => goto('/dashboard')} class="mt-2 w-fit">Go to Dashboard</Button>
 	</Alert.Root>
 {/snippet}
 {#if showThanks}

@@ -123,7 +123,7 @@ test.describe("Member Signup - Coupon Codes", () => {
 				}),
 				stripeClient.promotionCodes.create({
 					coupon: once100Coupon.id,
-					code: "ONCE100OFF",
+					code: `ONCE100OFF-${Date.now().toString().slice(-6)}`,
 					max_redemptions: 5,
 				}),
 				// Create the migration code with the exact name from the environment variable
