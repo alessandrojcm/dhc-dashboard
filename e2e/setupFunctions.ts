@@ -9,7 +9,7 @@ import { createSeedClient } from '@snaplet/seed';
 import dayjs from 'dayjs';
 
 export const stripeClient = new stripe(process.env.STRIPE_SECRET_KEY || '', {
-	apiVersion: '2025-04-30.basil'
+	apiVersion: '2025-05-28.basil'
 });
 
 export function getSupabaseServiceClient() {
@@ -511,8 +511,8 @@ export async function setupInvitedUser(
 	]);
 
 	// Extract payment intents exactly as in the Deno function
-	const monthlyInvoice = monthlySubscription.latest_invoice as String.Invoice;
-	const annualInvoice = annualSubscription.latest_invoice as Stripe.Invoice;
+	const monthlyInvoice = monthlySubscription.latest_invoice as stripe.Invoice;
+	const annualInvoice = annualSubscription.latest_invoice as stripe.Invoice;
 	const monthlyPayment = monthlyInvoice.payments?.data?.[0]?.payment!;
 	const annualPayment = annualInvoice.payments?.data?.[0]?.payment!;
 
@@ -520,35 +520,10 @@ export async function setupInvitedUser(
 	const monthlyPaymentIntent = monthlyPayment.payment_intent! as string;
 	const annualPaymentIntent = annualPayment.payment_intent! as string;
 
-	// Create payment session directly in the database since create_payment_session stored procedure isn't available
-	const { error: sessionError } = await supabaseServiceClient
-		.from('payment_sessions')
-		.insert({
-			user_id: authData.user.id,
-			monthly_subscription_id: monthlySubscription.id,
-			annual_subscription_id: annualSubscription.id,
-			monthly_payment_intent_id: monthlyPaymentIntent,
-			annual_payment_intent_id: annualPaymentIntent,
-			monthly_amount: monthlySubscription.items.data[0].plan.amount! as number,
-			annual_amount: annualSubscription.items.data[0].plan.amount! as number,
-			total_amount: monthlyInvoice.amount_due + annualInvoice.amount_due,
-			expires_at: expiresAt.toISOString()
-		})
-		.select()
-		.single();
-
-	if (sessionError) {
-		throw new Error(`Error creating payment session: ${sessionError.message}`);
-	}
-
 	// Cleanup function
 	async function cleanUp() {
 		const client = await createSeedClient();
-		await client.$resetDatabase([
-			'public.payment_sessions',
-			'public.user_profiles',
-			'public.invitations'
-		]);
+		await client.$resetDatabase(['public.user_profiles', 'public.invitations']);
 	}
 
 	return Promise.resolve({
