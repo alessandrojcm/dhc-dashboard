@@ -33,7 +33,7 @@
 	import MemberActions from './member-actions.svelte';
 
 	const columns =
-		'id,first_name,last_name,email,phone_number,gender,pronouns,is_active,preferred_weapon,membership_start_date,membership_end_date,last_payment_date,insurance_form_submitted,roles,age,social_media_consent,next_of_kin_name,next_of_kin_phone,guardian_first_name,guardian_last_name,guardian_phone_number,medical_conditions,additional_data,created_at,updated_at';
+		'id,first_name,last_name,email,phone_number,gender,pronouns,is_active,preferred_weapon,membership_start_date,membership_end_date,last_payment_date,insurance_form_submitted,roles,age,social_media_consent,next_of_kin_name,next_of_kin_phone,guardian_first_name,guardian_last_name,guardian_phone_number,medical_conditions,additional_data,created_at,updated_at,from_waitlist_id,search_text,user_profile_id,waitlist_registration_date';
 
 	let pageSizeOptions = [10, 25, 50, 100];
 
@@ -43,7 +43,7 @@
 	const pageSize = $derived(Number(page.url.searchParams.get('pageSize')) || 10);
 	const searchQuery = $derived(page.url.searchParams.get('q') || '');
 	const rangeStart = $derived(currentPage * pageSize);
-	const rangeEnd = $derived(rangeStart + pageSize);
+	const rangeEnd = $derived(rangeStart + pageSize - 1);
 	const sortingState: SortingState = $derived.by(() => {
 		const sortColumn = page.url.searchParams.get('sort');
 		const sortDirection = page.url.searchParams.get('direction');
@@ -61,7 +61,7 @@
 		placeholderData: keepPreviousData,
 		initialData: { data: [], count: 0 },
 		queryFn: async ({ signal }) => {
-			let query = supabase.from('member_management_view').select(columns, { count: 'estimated' });
+			let query = supabase.from('member_management_view').select(columns, { count: 'exact' });
 			if (searchQuery.length > 0) {
 				query = query.textSearch('search_text', `'${searchQuery}'`, {
 					type: 'websearch'
@@ -70,14 +70,14 @@
 			if (sortingState.length > 0) {
 				query = query.order(sortingState[0].id, { ascending: !sortingState[0].desc });
 			}
-			const { data, error } = await query
+			const { data, error, count } = await query
 				.range(rangeStart, rangeEnd)
 				.abortSignal(signal)
 				.throwOnError();
 			if (error) {
 				throw error;
 			}
-			return { data, count: data.length };
+			return { data, count: count ?? 0 };
 		}
 	}));
 
@@ -325,6 +325,7 @@
 				onSortingChange(updater);
 			}
 		},
+		getRowId: (row) => row.id!,
 		state: {
 			get expanded() {
 				return expandedState;
@@ -358,7 +359,8 @@
 <div class="flex w-full max-w-sm items-center space-x-2 mb-2 p-2">
 	<Input
 		value={searchQuery}
-		onchange={(t) => onSearchChange(t.target?.value)}
+		onchange={(t: Event & { currentTarget: EventTarget & HTMLInputElement }) =>
+			onSearchChange(t.currentTarget.value)}
 		placeholder="Search members"
 		class="max-w-md"
 	/>
@@ -382,8 +384,8 @@
 					{#each headerGroup.headers as header (header.id)}
 						<Table.Head class="text-black prose prose-p text-xs md:text-sm font-medium p-2">
 							<FlexRender
-								content={header.column.columnDef.header ?? ''}
-								context={header.getContext() ?? {}}
+								content={header.column.columnDef.header}
+								context={header.getContext()}
 							/>
 						</Table.Head>
 					{/each}
@@ -397,7 +399,10 @@
 						<Table.Cell
 							class="whitespace-normal md:whitespace-nowrap py-2 md:py-4 px-2 md:px-3 text-xs md:text-sm prose prose-p"
 						>
-							<FlexRender content={cell.column.columnDef.cell} context={cell.getContext()} />
+							<FlexRender
+								content={cell.column.columnDef.cell}
+								context={cell.getContext()}
+							/>
 						</Table.Cell>
 					{/each}
 				</Table.Row>
@@ -474,8 +479,6 @@
 					<div>
 						<MemberActions
 							memberId={row.original.id!}
-							userId={row.original.id!}
-							setSelectedUserId={(id) => (selectedMemberId = id)}
 							isExpanded={row.getIsExpanded()}
 							onToggleExpand={() => row.toggleExpanded()}
 						/>

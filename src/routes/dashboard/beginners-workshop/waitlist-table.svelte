@@ -36,7 +36,7 @@
 	import { Loader2, SendIcon } from 'lucide-svelte';
 
 	const columns =
-		'id,current_position,full_name,email,phone_number,status,age,initial_registration_date,last_contacted,medical_conditions,admin_notes,social_media_consent,guardian_first_name,guardian_last_name,guardian_phone_number';
+		'id,current_position,full_name,email,phone_number,status,age,initial_registration_date,last_contacted,medical_conditions,admin_notes,social_media_consent,guardian_first_name,guardian_last_name,guardian_phone_number,insurance_form_submitted,last_status_change,search_text';
 
 	let pageSizeOptions = [10, 25, 50, 100];
 
@@ -46,7 +46,7 @@
 	const pageSize = $derived(Number(page.url.searchParams.get('pageSize')) || 10);
 	const searchQuery = $derived(page.url.searchParams.get('q') || '');
 	const rangeStart = $derived(currentPage * pageSize);
-	const rangeEnd = $derived(rangeStart + pageSize);
+	const rangeEnd = $derived(rangeStart + pageSize - 1);
 	const sortingState: SortingState = $derived.by(() => {
 		const sortColumn = page.url.searchParams.get('sort');
 		const sortDirection = page.url.searchParams.get('direction');
@@ -59,20 +59,20 @@
 		];
 	});
 
-	function getWaitlistQuery({
-															searchQuery,
-															sortingState,
-															rangeStart,
-															rangeEnd,
-															signal
-														}: {
+	async function getWaitlistQuery({
+		searchQuery,
+		sortingState,
+		rangeStart,
+		rangeEnd,
+		signal
+	}: {
 		searchQuery: string;
 		sortingState: SortingState;
 		rangeStart: number;
 		rangeEnd: number;
 		signal: AbortSignal;
 	}) {
-		let query = supabase.from('waitlist_management_view').select(columns, { count: 'estimated' });
+		let query = supabase.from('waitlist_management_view').select(columns, { count: 'exact' });
 		if (searchQuery.length > 0) {
 			query = query.textSearch('search_text', `'${searchQuery}'`, {
 				type: 'websearch'
@@ -82,19 +82,28 @@
 			query = query.order(sortingState[0].id, { ascending: !sortingState[0].desc });
 		}
 		query = query.neq('status', 'joined');
-		return query
-			.range(rangeStart, rangeEnd)
-			.abortSignal(signal)
-			.throwOnError()
-			.then((r) => ({ data: r.data, count: r.count }));
+		const { data, count, error } = await query.range(rangeStart, rangeEnd).abortSignal(signal);
+		if (error) {
+			throw error;
+		}
+		return { data, count: count ?? 0 };
 	}
 
-	const waitlistQueryKey = $derived(['waitlist', { rangeStart, rangeEnd, sortingState, searchQuery }]);
-	const waitlistQuery = createQuery<ReturnType<typeof getWaitlistQuery>>(() => ({
+	const waitlistQueryKey = $derived([
+		'waitlist',
+		{ rangeStart, rangeEnd, sortingState, searchQuery }
+	]);
+	const waitlistQuery = createQuery<Awaited<ReturnType<typeof getWaitlistQuery>>>(() => ({
 		queryKey: waitlistQueryKey,
 		placeholderData: keepPreviousData,
 		queryFn: ({ signal, queryKey }) => {
-			return getWaitlistQuery({ ...queryKey[1], signal });
+			const params = queryKey[1] as {
+				rangeStart: number;
+				rangeEnd: number;
+				sortingState: SortingState;
+				searchQuery: string;
+			};
+			return getWaitlistQuery({ ...params, signal });
 		}
 	}));
 	const queryClient = useQueryClient();
@@ -109,13 +118,16 @@
 		}),
 		onMutate: (waitlistIds) => {
 			const oldData = queryClient.getQueryData(waitlistQueryKey);
-			queryClient.setQueryData(waitlistQueryKey, (oldData: Awaited<typeof waitlistQuery['data']>) => ({
-				...oldData,
-				data: oldData?.data?.map((d) => ({
-					...d,
-					...(d.id && waitlistIds.includes(d.id) ? { status: 'invited' } : {})
-				}))
-			}));
+			queryClient.setQueryData(
+				waitlistQueryKey,
+				(oldData: Awaited<typeof waitlistQuery['data']>) => ({
+					...oldData,
+					data: oldData?.data?.map((d) => ({
+						...d,
+						...(d.id && waitlistIds.includes(d.id) ? { status: 'invited' } : {})
+					}))
+				})
+			);
 			return { oldData };
 		},
 		onSuccess: () => {
@@ -141,13 +153,16 @@
 		}),
 		onMutate: (emails) => {
 			const oldData = queryClient.getQueryData(waitlistQueryKey);
-			queryClient.setQueryData(waitlistQueryKey, (oldData: Awaited<typeof waitlistQuery['data']>) => ({
-				...oldData,
-				data: oldData?.data?.map((d) => ({
-					...d,
-					...(d.email && emails.includes(d.email) ? { status: 'invited' } : {})
-				}))
-			}));
+			queryClient.setQueryData(
+				waitlistQueryKey,
+				(oldData: Awaited<typeof waitlistQuery['data']>) => ({
+					...oldData,
+					data: oldData?.data?.map((d) => ({
+						...d,
+						...(d.email && emails.includes(d.email) ? { status: 'invited' } : {})
+					}))
+				})
+			);
 			return { oldData };
 		},
 		onSuccess: () => {
@@ -247,7 +262,7 @@
 				cell: ({ row }) => {
 					return renderComponent(Checkbox.Checkbox, {
 						checked: row.getIsSelected(),
-						onCheckedChange: (value) => row.toggleSelected(!!value),
+						onCheckedChange: (value: boolean | 'indeterminate') => row.toggleSelected(!!value),
 						disabled: row.original.status === 'invited'
 					});
 				}
@@ -440,7 +455,8 @@
 <span class="flex flex-nowrap items-center gap-2">
 		<Input
 			value={searchQuery}
-			onchange={(t) => onSearchChange(t.target?.value)}
+			onchange={(t: Event & { currentTarget: EventTarget & HTMLInputElement }) =>
+				onSearchChange(t.currentTarget.value)}
 			placeholder="Search for a person"
 			class="w-full md:max-w-md"
 		/>
