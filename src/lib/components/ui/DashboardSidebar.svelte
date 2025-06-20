@@ -11,6 +11,8 @@
 	import type { SupabaseClient } from '@supabase/supabase-js';
 	import { Menu } from 'lucide-svelte';
 	import { useSidebar } from '$lib/components/ui/sidebar/context.svelte.js';
+	import * as Sheet from '$lib/components/ui/sheet/index.js';
+	import { browser } from '$app/environment';
 
 	type Props = {
 		className?: string | undefined | null;
@@ -26,8 +28,11 @@
 
 	// Function to toggle the sidebar on mobile
 	function toggleSidebar() {
-		sidebar.toggle();
-		console.log('Sidebar toggled on mobile');
+		if (!browser) return;
+		// We only want to toggle the sidebar on mobile
+		if (window.innerWidth < 768) {
+			sidebar.toggle();
+		}
 	}
 
 	let {
