@@ -7,7 +7,6 @@
 	import { createQuery } from '@tanstack/svelte-query';
 	import { browser } from '$app/environment';
 	import { onMount } from 'svelte';
-	import { Component } from 'lucide-svelte';
 
 	let GenderBarChart: typeof import('$lib/components/gender-bar-chart.svelte').default | null =
 		$state(null);
@@ -125,7 +124,7 @@
 	</Card.Root>
 </div>
 
-<Resizable.PaneGroup direction="vertical" class="mt-2">
+<Resizable.PaneGroup direction="horizontal" class="mt-2">
 	<Resizable.Pane class="min-h-[400px] p-4 border rounded">
 		{#if GenderBarChart && genderDistributionData}
 			<GenderBarChart {genderDistributionData} />

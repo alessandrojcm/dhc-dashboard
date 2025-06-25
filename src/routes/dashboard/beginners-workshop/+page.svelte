@@ -4,15 +4,18 @@
 	import { Root, List, Trigger, Content } from '$lib/components/ui/tabs/index.js';
 	import { Lock, LockOpen } from 'lucide-svelte';
 	import * as AlertDialog from '$lib/components/ui/alert-dialog/index.js';
-	import Button from '$lib/components/ui/button/button.svelte';
+	import { Button } from '$lib/components/ui/button';
 	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
 	import { createMutation } from '@tanstack/svelte-query';
 	import { goto, invalidate } from '$app/navigation';
 	import { toast } from 'svelte-sonner';
 	import { page } from '$app/state';
 	import * as Select from '$lib/components/ui/select';
+	import { PlusCircle } from 'lucide-svelte';
+	import type { PageData } from './$types';
+	import WorkshopsTable from './workshops-table.svelte';
 
-	const { data } = $props();
+	let { data }: { data: PageData } = $props();
 	const supabase = data.supabase;
 	let dialogOpen = $state(false);
 	let value = $derived(page.url.searchParams.get('tab') || 'dashboard');
@@ -55,6 +58,7 @@
 		}
 	];
 	let viewLabel = $derived(views.find((view) => view.id === value)?.label || 'Dashboard');
+
 </script>
 
 {#snippet waitlistToggleDialog()}
@@ -96,10 +100,17 @@
 		{/await}
 	{/if}
 {/snippet}
-<div class="relative">
+<div class="relative md:ml-2 md:pl-2">
 	{@render waitlistToggleDialog()}
+	<!-- Analytics/graphs section -->
+	<div class="mb-8">
+		<div class="mb-4">
+			<Analytics {supabase} />
+		</div>
+	</div>
+
 	<Root {value} class="p-2 min-h-96 mr-2" onValueChange={onTabChange}>
-		<div class="inline-flex w-full">
+		<div class="inline-flex w-full mb-4">
 			<Select.Root {value} type="single" onValueChange={onTabChange}>
 				<Select.Trigger class="md:hidden flex w-fit" size="sm" id="view-selector">
 					{viewLabel}
@@ -111,13 +122,21 @@
 				</Select.Content>
 			</Select.Root>
 			<List class="md:flex hidden">
-				<Trigger value="dashboard">Dashboard</Trigger>
+				<Trigger value="dashboard">Workshops</Trigger>
 				<Trigger value="waitlist">Waitlist</Trigger>
 			</List>
 		</div>
 
 		<Content value="dashboard">
-			<Analytics {supabase} />
+			<div class="flex items-center justify-between mb-4">
+				<div class="flex items-center space-x-2">
+					<Button href="/dashboard/beginners-workshop/new">
+						<PlusCircle class="mr-2 h-4 w-4" />
+						Create Workshop
+					</Button>
+				</div>
+			</div>
+			<WorkshopsTable workshops={data.workshops} />
 		</Content>
 		<Content value="waitlist">
 			<WaitlistTable {supabase} />

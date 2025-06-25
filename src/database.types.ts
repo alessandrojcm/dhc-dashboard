@@ -212,83 +212,6 @@ export type Database = {
         }
         Relationships: []
       }
-      payment_sessions: {
-        Row: {
-          annual_amount: number
-          annual_payment_intent_id: string | null
-          annual_subscription_id: string | null
-          coupon_id: string | null
-          created_at: string
-          discount_percentage: number | null
-          discounted_annual_amount: number | null
-          discounted_monthly_amount: number | null
-          expires_at: string
-          id: number
-          is_used: boolean
-          monthly_amount: number
-          monthly_payment_intent_id: string | null
-          monthly_subscription_id: string | null
-          preview_annual_amount: number | null
-          preview_monthly_amount: number | null
-          prorated_annual_amount: number | null
-          prorated_monthly_amount: number | null
-          total_amount: number
-          user_id: string
-        }
-        Insert: {
-          annual_amount: number
-          annual_payment_intent_id?: string | null
-          annual_subscription_id?: string | null
-          coupon_id?: string | null
-          created_at?: string
-          discount_percentage?: number | null
-          discounted_annual_amount?: number | null
-          discounted_monthly_amount?: number | null
-          expires_at: string
-          id?: number
-          is_used?: boolean
-          monthly_amount: number
-          monthly_payment_intent_id?: string | null
-          monthly_subscription_id?: string | null
-          preview_annual_amount?: number | null
-          preview_monthly_amount?: number | null
-          prorated_annual_amount?: number | null
-          prorated_monthly_amount?: number | null
-          total_amount: number
-          user_id: string
-        }
-        Update: {
-          annual_amount?: number
-          annual_payment_intent_id?: string | null
-          annual_subscription_id?: string | null
-          coupon_id?: string | null
-          created_at?: string
-          discount_percentage?: number | null
-          discounted_annual_amount?: number | null
-          discounted_monthly_amount?: number | null
-          expires_at?: string
-          id?: number
-          is_used?: boolean
-          monthly_amount?: number
-          monthly_payment_intent_id?: string | null
-          monthly_subscription_id?: string | null
-          preview_annual_amount?: number | null
-          preview_monthly_amount?: number | null
-          prorated_annual_amount?: number | null
-          prorated_monthly_amount?: number | null
-          total_amount?: number
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "payment_sessions_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "user_profiles"
-            referencedColumns: ["supabase_user_id"]
-          },
-        ]
-      }
       settings: {
         Row: {
           created_at: string | null
@@ -572,6 +495,158 @@ export type Database = {
           },
         ]
       }
+      workshop_assistants: {
+        Row: {
+          member_id: string
+          workshop_id: string
+        }
+        Insert: {
+          member_id: string
+          workshop_id: string
+        }
+        Update: {
+          member_id?: string
+          workshop_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workshop_assistants_member_id_fkey"
+            columns: ["member_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workshop_assistants_workshop_id_fkey"
+            columns: ["workshop_id"]
+            isOneToOne: false
+            referencedRelation: "workshops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workshop_attendees: {
+        Row: {
+          checked_in_at: string | null
+          checkin_token: string | null
+          consent_media_at: string | null
+          credit_used_at: string | null
+          id: string
+          insurance_ok_at: string | null
+          invited_at: string | null
+          paid_at: string | null
+          payment_url_token: string | null
+          priority: number
+          refunded_at: string | null
+          signature_url: string | null
+          status: Database["public"]["Enums"]["workshop_attendee_status"]
+          user_profile_id: string
+          workshop_id: string
+        }
+        Insert: {
+          checked_in_at?: string | null
+          checkin_token?: string | null
+          consent_media_at?: string | null
+          credit_used_at?: string | null
+          id?: string
+          insurance_ok_at?: string | null
+          invited_at?: string | null
+          paid_at?: string | null
+          payment_url_token?: string | null
+          priority?: number
+          refunded_at?: string | null
+          signature_url?: string | null
+          status?: Database["public"]["Enums"]["workshop_attendee_status"]
+          user_profile_id: string
+          workshop_id: string
+        }
+        Update: {
+          checked_in_at?: string | null
+          checkin_token?: string | null
+          consent_media_at?: string | null
+          credit_used_at?: string | null
+          id?: string
+          insurance_ok_at?: string | null
+          invited_at?: string | null
+          paid_at?: string | null
+          payment_url_token?: string | null
+          priority?: number
+          refunded_at?: string | null
+          signature_url?: string | null
+          status?: Database["public"]["Enums"]["workshop_attendee_status"]
+          user_profile_id?: string
+          workshop_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workshop_attendees_user_profile_id_fkey"
+            columns: ["user_profile_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workshop_attendees_workshop_id_fkey"
+            columns: ["workshop_id"]
+            isOneToOne: false
+            referencedRelation: "workshops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workshops: {
+        Row: {
+          batch_size: number
+          capacity: number
+          coach_id: string | null
+          cool_off_days: number
+          created_at: string
+          id: string
+          location: string
+          notes_md: string | null
+          status: Database["public"]["Enums"]["workshop_status"]
+          stripe_price_key: string | null
+          updated_at: string
+          workshop_date: string
+        }
+        Insert: {
+          batch_size?: number
+          capacity?: number
+          coach_id?: string | null
+          cool_off_days?: number
+          created_at?: string
+          id?: string
+          location: string
+          notes_md?: string | null
+          status?: Database["public"]["Enums"]["workshop_status"]
+          stripe_price_key?: string | null
+          updated_at?: string
+          workshop_date: string
+        }
+        Update: {
+          batch_size?: number
+          capacity?: number
+          coach_id?: string | null
+          cool_off_days?: number
+          created_at?: string
+          id?: string
+          location?: string
+          notes_md?: string | null
+          status?: Database["public"]["Enums"]["workshop_status"]
+          stripe_price_key?: string | null
+          updated_at?: string
+          workshop_date?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workshops_coach_id_fkey"
+            columns: ["coach_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       member_management_view: {
@@ -654,10 +729,6 @@ export type Database = {
       }
     }
     Functions: {
-      cleanup_payment_sessions: {
-        Args: Record<PropertyKey, never>
-        Returns: number
-      }
       complete_member_registration: {
         Args: {
           v_user_id: string
@@ -858,6 +929,13 @@ export type Database = {
         | "completed"
         | "no_reply"
         | "joined"
+      workshop_attendee_status:
+        | "invited"
+        | "confirmed"
+        | "attended"
+        | "no_show"
+        | "cancelled"
+      workshop_status: "draft" | "published" | "finished" | "cancelled"
     }
     CompositeTypes: {
       member_data_type: {
@@ -1035,6 +1113,14 @@ export const Constants = {
         "no_reply",
         "joined",
       ],
+      workshop_attendee_status: [
+        "invited",
+        "confirmed",
+        "attended",
+        "no_show",
+        "cancelled",
+      ],
+      workshop_status: ["draft", "published", "finished", "cancelled"],
     },
   },
 } as const
