@@ -69,11 +69,14 @@ This document outlines the technical approach for implementing Step 3 of the Beg
 
 ## Summary of Implementation Tasks
 - [x] Implement PATCH `/api/workshops/:id/publish` endpoint.
-- [ ] Implement `workshop_inviter` edge function:
-  - Batch selection, attendee row creation, Stripe payment link generation.
-  - Print intended emails to console.
-  - Invalidate links when full.
-  - Log errors, continue on partial failure.
+- [x] Implement `workshop_inviter` edge function:
+  - ✅ Batch selection, attendee row creation, Stripe payment link generation.
+  - ✅ Print intended emails to console.
+  - ✅ Invalidate links when full (with proper exclusion of current batch).
+  - ✅ Log errors, continue on partial failure.
+  - ✅ Uses Stripe Payment Links API for hosted payments.
+  - ✅ Comprehensive Sentry error tracking.
+  - 🔄 **Email integration TBD** - currently prints to console.
 - [ ] Update admin UI to allow manual attendee addition before publishing.
 - [ ] Ensure RLS and security for all new endpoints and data.
 
