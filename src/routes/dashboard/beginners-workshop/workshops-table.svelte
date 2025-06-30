@@ -1,5 +1,10 @@
 <script lang="ts">
-	import { createSvelteTable, FlexRender } from '$lib/components/ui/data-table/index.js';
+	import {
+		createSvelteTable,
+		FlexRender,
+		renderComponent,
+		renderSnippet
+	} from '$lib/components/ui/data-table/index.js';
 	import * as Table from '$lib/components/ui/table/index.js';
 	import * as Pagination from '$lib/components/ui/pagination/index.js';
 	import {
@@ -8,16 +13,37 @@
 		getPaginationRowModel,
 		type SortingState
 	} from '@tanstack/table-core';
+	import { createQuery, keepPreviousData } from '@tanstack/svelte-query';
 	import dayjs from 'dayjs';
-	import type { PageData } from './$types';
 	import * as Select from '$lib/components/ui/select/index.js';
+	import type { SupabaseClient } from '@supabase/supabase-js';
+	import type { Database } from '$database';
+	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
+	import { Badge } from '$lib/components/ui/badge/index.js';
+	import { createRawSnippet } from 'svelte';
 
-	const { workshops }: { workshops: PageData['workshops'] } = $props();
+	// Define the workshop type based on the API response
+	interface Workshop {
+		id: string;
+		workshop_date: string;
+		location: string;
+		status: string;
+		capacity: number;
+		coach: {
+			first_name: string;
+			last_name: string;
+		};
+	}
 
-	let currentPage = $state(0);
-	let pageSize = $state(10);
-	let sortingState: SortingState = $state([]);
+	const { supabase }: { supabase: SupabaseClient<Database> } = $props();
+
 	const pageSizeOptions = [10, 25, 50, 100];
+	const currentPage = $derived(Number(page.url.searchParams.get('workshopPage')) || 0);
+	const pageSize = $derived(Number(page.url.searchParams.get('workshopPageSize')) || 10);
+	const rangeStart = $derived(currentPage * pageSize);
+	const rangeEnd = $derived(rangeStart + pageSize - 1);
+	let sortingState: SortingState = $state([]);
 
 	const columns = [
 		{
@@ -35,40 +61,58 @@
 		{
 			accessorKey: 'coach',
 			header: 'Coach',
-			cell: ({ getValue }: { getValue: () => string | null }) => getValue() || 'Unassigned',
+			cell: ({ getValue }: { getValue: () => Workshop['coach'] | null }) => `${getValue()?.first_name} ${getValue()?.last_name}` || 'Unassigned',
 			enableSorting: true
 		},
 		{
 			accessorKey: 'status',
 			header: 'Status',
 			cell: ({ getValue }: { getValue: () => string }) => {
-				const value = getValue();
-				return {
-					$$render: () =>
-						`<span class='inline-block'><span class='badge badge-default'>${value}</span></span>`
-				};
+				return renderComponent(Badge, {
+					variant: getValue() === 'draft' ? 'default' : 'outline',
+					class: 'h-8',
+					children: createRawSnippet(() => ({
+						render: () => `<p class="capitalize">${getValue()}</p>`
+					}))	
+				});
 			}
 		},
 		{
 			accessorKey: 'capacity',
 			header: 'Capacity',
 			cell: ({ getValue }: { getValue: () => number }) => getValue()
-		},
-		{
-			id: 'actions',
-			header: 'Actions',
-			cell: ({ row }: { row: any }) => {
-				const id = row.original.id;
-				return {
-					$$render: () =>
-						`<a class='button button-ghost button-sm' href='/dashboard/beginners-workshop/${id}'>Edit</a>`
-				};
-			}
 		}
 	];
 
+	const workshopsQueryKey = $derived(['workshops', { rangeStart, rangeEnd, sortingState }]);
+
+	const workshopsQuery = createQuery<Workshop[]>(() => ({
+		queryKey: workshopsQueryKey,
+		placeholderData: keepPreviousData,
+		refetchOnMount: true,
+		queryFn: async ({ signal }) => {
+			return supabase
+				.from('workshops')
+				.select(`id, workshop_date, location, status, capacity, coach:user_profiles!workshops_coach_id_fkey(first_name, last_name)`)
+				.order('created_at', { ascending: false })
+				.range(rangeStart, rangeEnd)
+				.throwOnError()
+				.abortSignal(signal)
+				.then(({ data }) => (data as Workshop[]) ?? []);
+		}
+	}));
+
+	function onPaginationChange(newPagination: { pageIndex: number; pageSize: number }) {
+		const newParams = new URLSearchParams(page.url.searchParams);
+		newParams.set('workshopPage', newPagination.pageIndex.toString());
+		newParams.set('workshopPageSize', newPagination.pageSize.toString());
+		goto(`/dashboard/beginners-workshop?${newParams.toString()}`);
+	}
+
 	const table = createSvelteTable({
-		data: workshops,
+		get data() {
+			return workshopsQuery.data ?? [];
+		},
 		columns,
 		state: {
 			get sorting() {
@@ -85,17 +129,15 @@
 		onPaginationChange: (updater) => {
 			if (typeof updater === 'function') {
 				const next = updater({ pageIndex: currentPage, pageSize });
-				currentPage = next.pageIndex;
-				pageSize = next.pageSize;
+				onPaginationChange(next);
 			} else {
-				currentPage = updater.pageIndex;
-				pageSize = updater.pageSize;
+				onPaginationChange(updater);
 			}
 		},
 		getCoreRowModel: getCoreRowModel(),
 		getSortedRowModel: getSortedRowModel(),
 		getPaginationRowModel: getPaginationRowModel(),
-		manualPagination: false,
+		manualPagination: true,
 		manualSorting: false,
 		autoResetPageIndex: false
 	});
@@ -206,6 +248,8 @@
 		<Select.Root
 			type="single"
 			value={pageSize.toString()}
+			onValueChange={(value) =>
+				onPaginationChange({ pageIndex: currentPage, pageSize: Number(value) })}
 		>
 			<Select.Trigger class="w-16 h-8">{pageSize}</Select.Trigger>
 			<Select.Content>

@@ -303,7 +303,7 @@
 					</Dialog.Root>
 				</div>
 			</div>
-			<WorkshopsTable workshops={data.workshops} />
+			<WorkshopsTable {supabase} />
 		</Content>
 		<Content value="waitlist">
 			<h2 class="prose prose-h2 text-lg mb-2">Waitlist</h2>

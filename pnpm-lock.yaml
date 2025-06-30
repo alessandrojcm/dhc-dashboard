@@ -24,11 +24,11 @@ importers:
         specifier: 2.50.0
         version: 2.50.0
       '@tanstack/svelte-query':
-        specifier: https://pkg.pr.new/@tanstack/svelte-query@28f98f9560ff5878fd839807ead5324a7b9328c4
-        version: https://pkg.pr.new/@tanstack/svelte-query@28f98f9560ff5878fd839807ead5324a7b9328c4(svelte@5.34.7)
+        specifier: https://pkg.pr.new/@tanstack/svelte-query@746b9c5d83e901deb3a5ca7012a4b4e2b617c5e3
+        version: https://pkg.pr.new/@tanstack/svelte-query@746b9c5d83e901deb3a5ca7012a4b4e2b617c5e3(svelte@5.34.7)
       '@tanstack/svelte-query-devtools':
         specifier: ^5.80.10
-        version: 5.80.10(@tanstack/svelte-query@https://pkg.pr.new/@tanstack/svelte-query@28f98f9560ff5878fd839807ead5324a7b9328c4(svelte@5.34.7))(svelte@5.34.7)
+        version: 5.80.10(@tanstack/svelte-query@https://pkg.pr.new/@tanstack/svelte-query@746b9c5d83e901deb3a5ca7012a4b4e2b617c5e3(svelte@5.34.7))(svelte@5.34.7)
       '@tanstack/svelte-table':
         specifier: 9.0.0-alpha.10
         version: 9.0.0-alpha.10(svelte@5.34.7)
@@ -1954,9 +1954,9 @@ packages:
     peerDependencies:
       vite: ^5.2.0 || ^6
 
-  '@tanstack/query-core@https://pkg.pr.new/TanStack/query/@tanstack/query-core@28f98f9':
-    resolution: {tarball: https://pkg.pr.new/TanStack/query/@tanstack/query-core@28f98f9}
-    version: 5.59.17
+  '@tanstack/query-core@https://pkg.pr.new/TanStack/query/@tanstack/query-core@746b9c5':
+    resolution: {tarball: https://pkg.pr.new/TanStack/query/@tanstack/query-core@746b9c5}
+    version: 5.75.7
 
   '@tanstack/query-devtools@5.80.0':
     resolution: {integrity: sha512-D6gH4asyjaoXrCOt5vG5Og/YSj0D/TxwNQgtLJIgWbhbWCC/emu2E92EFoVHh4ppVWg1qT2gKHvKyQBEFZhCuA==}
@@ -1968,11 +1968,11 @@ packages:
       '@tanstack/svelte-query': ^5.80.10
       svelte: ^3.54.0 || ^4.0.0 || ^5.0.0
 
-  '@tanstack/svelte-query@https://pkg.pr.new/@tanstack/svelte-query@28f98f9560ff5878fd839807ead5324a7b9328c4':
-    resolution: {tarball: https://pkg.pr.new/@tanstack/svelte-query@28f98f9560ff5878fd839807ead5324a7b9328c4}
-    version: 5.59.17
+  '@tanstack/svelte-query@https://pkg.pr.new/@tanstack/svelte-query@746b9c5d83e901deb3a5ca7012a4b4e2b617c5e3':
+    resolution: {tarball: https://pkg.pr.new/@tanstack/svelte-query@746b9c5d83e901deb3a5ca7012a4b4e2b617c5e3}
+    version: 5.75.7
     peerDependencies:
-      svelte: ^5.0.0
+      svelte: ^5.7.0
 
   '@tanstack/svelte-table@9.0.0-alpha.10':
     resolution: {integrity: sha512-H0eAQlpXgK9JYYrgc0cWXVqEJywxkhuYODnVobUZGskFg6J+5PP+7UCjzrY9ftMge6s1hwb2Ipq3u4wPYJz7HA==}
@@ -7013,20 +7013,20 @@ snapshots:
       tailwindcss: 4.1.10
       vite: 6.3.5(@types/node@24.0.3)(jiti@2.4.2)(lightningcss@1.30.1)(yaml@2.8.0)
 
-  '@tanstack/query-core@https://pkg.pr.new/TanStack/query/@tanstack/query-core@28f98f9': {}
+  '@tanstack/query-core@https://pkg.pr.new/TanStack/query/@tanstack/query-core@746b9c5': {}
 
   '@tanstack/query-devtools@5.80.0': {}
 
-  '@tanstack/svelte-query-devtools@5.80.10(@tanstack/svelte-query@https://pkg.pr.new/@tanstack/svelte-query@28f98f9560ff5878fd839807ead5324a7b9328c4(svelte@5.34.7))(svelte@5.34.7)':
+  '@tanstack/svelte-query-devtools@5.80.10(@tanstack/svelte-query@https://pkg.pr.new/@tanstack/svelte-query@746b9c5d83e901deb3a5ca7012a4b4e2b617c5e3(svelte@5.34.7))(svelte@5.34.7)':
     dependencies:
       '@tanstack/query-devtools': 5.80.0
-      '@tanstack/svelte-query': https://pkg.pr.new/@tanstack/svelte-query@28f98f9560ff5878fd839807ead5324a7b9328c4(svelte@5.34.7)
+      '@tanstack/svelte-query': https://pkg.pr.new/@tanstack/svelte-query@746b9c5d83e901deb3a5ca7012a4b4e2b617c5e3(svelte@5.34.7)
       esm-env: 1.2.2
       svelte: 5.34.7
 
-  '@tanstack/svelte-query@https://pkg.pr.new/@tanstack/svelte-query@28f98f9560ff5878fd839807ead5324a7b9328c4(svelte@5.34.7)':
+  '@tanstack/svelte-query@https://pkg.pr.new/@tanstack/svelte-query@746b9c5d83e901deb3a5ca7012a4b4e2b617c5e3(svelte@5.34.7)':
     dependencies:
-      '@tanstack/query-core': https://pkg.pr.new/TanStack/query/@tanstack/query-core@28f98f9
+      '@tanstack/query-core': https://pkg.pr.new/TanStack/query/@tanstack/query-core@746b9c5
       svelte: 5.34.7
 
   '@tanstack/svelte-table@9.0.0-alpha.10(svelte@5.34.7)':
