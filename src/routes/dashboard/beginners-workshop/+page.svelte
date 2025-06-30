@@ -128,6 +128,7 @@
 		</div>
 
 		<Content value="dashboard">
+			<h2 class="prose prose-h2 text-lg mb-2">Workshop list</h2>
 			<div class="flex items-center justify-between mb-4">
 				<div class="flex items-center space-x-2">
 					<Button href="/dashboard/beginners-workshop/new">
@@ -139,6 +140,7 @@
 			<WorkshopsTable workshops={data.workshops} />
 		</Content>
 		<Content value="waitlist">
+			<h2 class="prose prose-h2 text-lg mb-2">Waitlist</h2>
 			<WaitlistTable {supabase} />
 		</Content>
 	</Root>

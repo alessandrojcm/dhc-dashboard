@@ -172,7 +172,7 @@ Variables passed via the Loops API JSON payload; Loops handles HTML generation a
 
 ## 8. Step-by-Step Implementation Timeline
 1. **[DONE]** DB migrations & RLS (~1 d)
-2. Admin CRUD pages (draft state) (~1 d)
+2. **[DONE]** Admin CRUD pages (draft state) (~1 d)
 3. Publish action + batch inviter function (~1 d)
 4. Payment flow & webhook integration (~1 d)
 5. Cool-off top-up scheduler (~0.5 d)
