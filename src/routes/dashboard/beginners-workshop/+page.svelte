@@ -6,19 +6,45 @@
 	import * as AlertDialog from '$lib/components/ui/alert-dialog/index.js';
 	import { Button } from '$lib/components/ui/button';
 	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
-	import { createMutation } from '@tanstack/svelte-query';
+	import { createMutation, createQuery } from '@tanstack/svelte-query';
 	import { goto, invalidate } from '$app/navigation';
 	import { toast } from 'svelte-sonner';
 	import { page } from '$app/state';
-	import * as Select from '$lib/components/ui/select';
+	import * as Select from '$lib/components/ui/select/index.js';
 	import { PlusCircle } from 'lucide-svelte';
 	import type { PageData } from './$types';
 	import WorkshopsTable from './workshops-table.svelte';
+	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import { Input } from '$lib/components/ui/input';
+	import DatePicker from '$lib/components/ui/date-picker.svelte';
+	import Textarea from '$lib/components/ui/textarea/textarea.svelte';
+	import type { DateValue } from '@internationalized/date';
+	import type { SupabaseClient } from '@supabase/supabase-js';
+	import { fromDate, getLocalTimeZone } from '@internationalized/date';
 
 	let { data }: { data: PageData } = $props();
 	const supabase = data.supabase;
 	let dialogOpen = $state(false);
 	let value = $derived(page.url.searchParams.get('tab') || 'dashboard');
+	let createDialogOpen = $state(false);
+	let isSubmitting = $state(false);
+	let errorMsg = $state('');
+
+	// Workshop form state
+	let form = $state({
+		workshop_date: '',
+		location: '',
+		coach_id: '',
+		capacity: 16,
+		notes_md: ''
+	});
+	let dateValue: DateValue | null = $state(null);
+
+	type CoachProfile = {
+		id: string;
+		first_name: string;
+		last_name: string;
+	};
 
 	const toggleWaitlistMutation = createMutation(() => ({
 		mutationFn: async () => {
@@ -59,6 +85,67 @@
 	];
 	let viewLabel = $derived(views.find((view) => view.id === value)?.label || 'Dashboard');
 
+	async function fetchCoachesFromApi() {
+		const res = await fetch('/api/coaches');
+		if (!res.ok) throw new Error('Failed to fetch coaches');
+		return await res.json();
+	}
+
+	const coachesQuery = createQuery(() => ({
+		queryKey: ['coaches'],
+		queryFn: fetchCoachesFromApi
+	}));
+
+	function handleDateChange(date: Date) {
+		if (!date) return;
+		dateValue = fromDate(date, getLocalTimeZone());
+		form.workshop_date = date.toISOString();
+	}
+
+	async function handleCreateWorkshop(e: Event) {
+		e.preventDefault();
+		isSubmitting = true;
+		errorMsg = '';
+		try {
+			const res = await fetch('/api/workshops', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					workshop_date: form.workshop_date,
+					location: form.location,
+					coach_id: form.coach_id,
+					capacity: Number(form.capacity),
+					notes_md: form.notes_md
+				})
+			});
+			if (!res.ok) {
+				let errMsg = 'Failed to create workshop';
+				try {
+					const err = await res.json();
+					if (err && typeof err === 'object' && 'error' in err && typeof err.error === 'string') errMsg = err.error;
+				} catch {}
+				throw new Error(errMsg);
+			}
+			createDialogOpen = false;
+			// Reset form
+			form = {
+				workshop_date: '',
+				location: '',
+				coach_id: '',
+				capacity: 16,
+				notes_md: ''
+			};
+			dateValue = null;
+			// Refresh workshops list
+			invalidate('workshops');
+			toast.success('Workshop created');
+		} catch (error: unknown) {
+			errorMsg = error instanceof Error ? error.message : String(error);
+			toast.error(errorMsg);
+		} finally {
+			isSubmitting = false;
+		}
+	}
 </script>
 
 {#snippet waitlistToggleDialog()}
@@ -131,10 +218,94 @@
 			<h2 class="prose prose-h2 text-lg mb-2">Workshop list</h2>
 			<div class="flex items-center justify-between mb-4">
 				<div class="flex items-center space-x-2">
-					<Button href="/dashboard/beginners-workshop/new">
-						<PlusCircle class="mr-2 h-4 w-4" />
-						Create Workshop
-					</Button>
+					<Dialog.Root bind:open={createDialogOpen}>
+						<Dialog.Trigger>
+							<Button type="button" on:click={() => (createDialogOpen = true)}>
+								<PlusCircle class="mr-2 h-4 w-4" />
+								Create Workshop
+							</Button>
+						</Dialog.Trigger>
+						<Dialog.Content class="sm:max-w-[500px]">
+							<Dialog.Header>
+								<Dialog.Title>New Workshop</Dialog.Title>
+								<Dialog.Description>
+									Fill in the details to create a new workshop in draft state.
+								</Dialog.Description>
+							</Dialog.Header>
+							<form onsubmit={handleCreateWorkshop} class="space-y-4 mt-2">
+								<div>
+									<label class="block text-sm font-medium mb-1" for="workshop_date">Date</label>
+									<DatePicker
+										id="workshop_date"
+										name="workshop_date"
+										value={dateValue ?? fromDate(new Date(), getLocalTimeZone())}
+										onDateChange={handleDateChange}
+										data-fs-error=""
+										aria-describedby=""
+										aria-invalid={undefined}
+										aria-required={undefined}
+										data-fs-control=""
+									/>
+								</div>
+								<div>
+									<label class="block text-sm font-medium mb-1" for="location">Location</label>
+									<Input id="location" bind:value={form.location} required />
+								</div>
+								<div>
+									<label class="block text-sm font-medium mb-1" for="coach_id">Coach</label>
+									<Select.Root
+										type="single"
+										name="coach_id"
+										bind:value={form.coach_id}
+									>
+										<Select.Trigger class="w-full">
+											{#if coachesQuery.isLoading}
+												Loading...
+											{:else if coachesQuery.isError}
+												Error loading coaches
+											{:else if form.coach_id}
+												{#each Array.isArray(coachesQuery.data) ? coachesQuery.data : [] as CoachProfile[] as coach (coach.id)}
+													{#if coach.id === form.coach_id}
+														{coach.first_name} {coach.last_name}
+													{/if}
+												{/each}
+											{:else}
+												Select coach
+											{/if}
+										</Select.Trigger>
+										<Select.Content>
+											{#each Array.isArray(coachesQuery.data) ? coachesQuery.data : [] as CoachProfile[] as coach (coach.id)}
+												<Select.Item value={coach.id} label={`${coach.first_name} ${coach.last_name}`}>
+													{coach.first_name} {coach.last_name}
+												</Select.Item>
+											{/each}
+										</Select.Content>
+									</Select.Root>
+								</div>
+								<div>
+									<label class="block text-sm font-medium mb-1" for="capacity">Capacity</label>
+									<Input id="capacity" type="number" min="1" bind:value={form.capacity} required />
+								</div>
+								<div>
+									<label class="block text-sm font-medium mb-1" for="notes_md">Notes</label>
+									<Textarea id="notes_md" bind:value={form.notes_md} rows={3} />
+								</div>
+								{#if errorMsg}
+									<div class="text-red-600 text-sm">{errorMsg}</div>
+								{/if}
+								<Dialog.Footer>
+									<Button type="submit" disabled={isSubmitting}>
+										{#if isSubmitting}
+											<LoaderCircle class="animate-spin inline-block w-4 h-4 mr-2" />
+											Creating...
+										{:else}
+											Create
+										{/if}
+									</Button>
+								</Dialog.Footer>
+							</form>
+						</Dialog.Content>
+					</Dialog.Root>
 				</div>
 			</div>
 			<WorkshopsTable workshops={data.workshops} />
