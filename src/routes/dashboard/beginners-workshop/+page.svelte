@@ -21,30 +21,58 @@
 	import type { DateValue } from '@internationalized/date';
 	import type { SupabaseClient } from '@supabase/supabase-js';
 	import { fromDate, getLocalTimeZone } from '@internationalized/date';
+	import { superForm, defaults, setMessage } from 'sveltekit-superforms/client';
+	import { valibotClient, valibot } from 'sveltekit-superforms/adapters';
+	import { workshopCreateSchema } from '$lib/schemas/workshopCreate';
+	import * as Form from '$lib/components/ui/form/index.js';
+	import dayjs from 'dayjs';
 
 	let { data }: { data: PageData } = $props();
 	const supabase = data.supabase;
 	let dialogOpen = $state(false);
 	let value = $derived(page.url.searchParams.get('tab') || 'dashboard');
 	let createDialogOpen = $state(false);
-	let isSubmitting = $state(false);
-	let errorMsg = $state('');
 
-	// Workshop form state
-	let form = $state({
-		workshop_date: '',
-		location: '',
-		coach_id: '',
-		capacity: 16,
-		notes_md: ''
+	// Setup superForm
+	const form = superForm(defaults(valibot(workshopCreateSchema)), {
+		validators: valibotClient(workshopCreateSchema),
+		applyAction: false,
+		resetForm: true,
+		validationMethod: 'oninput',
+		SPA: true,
+		async onUpdate({ form }) {
+			if (!form.valid) return;
+			try {
+				const res = await fetch('/api/workshops', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify(form.data)
+				});
+				if (!res.ok) {
+					let errMsg = 'Failed to create workshop';
+					try {
+						const err = await res.json();
+						if (err && typeof err === 'object' && 'error' in err && typeof err.error === 'string') errMsg = err.error;
+					} catch {}
+					setMessage(form, { failure: errMsg });
+					return;
+				}
+				setMessage(form, { success: 'Workshop created!' });
+				await invalidate('/dashboard/beginners-workshop');
+				reset();
+				createDialogOpen = false;
+			} catch (error: unknown) {
+				setMessage(form, { failure: error instanceof Error ? error.message : String(error) });
+			}
+		}
 	});
-	let dateValue: DateValue | null = $state(null);
+	const { form: formData, message, reset, validateForm, submitting, enhance } = form;
 
-	type CoachProfile = {
-		id: string;
-		first_name: string;
-		last_name: string;
-	};
+	// Date handling for DatePicker
+	const dateValue = $derived.by(() => {
+		if (!$formData.workshop_date || !dayjs($formData.workshop_date).isValid()) return null;
+		return fromDate(dayjs($formData.workshop_date).toDate(), getLocalTimeZone());
+	});
 
 	const toggleWaitlistMutation = createMutation(() => ({
 		mutationFn: async () => {
@@ -95,57 +123,6 @@
 		queryKey: ['coaches'],
 		queryFn: fetchCoachesFromApi
 	}));
-
-	function handleDateChange(date: Date) {
-		if (!date) return;
-		dateValue = fromDate(date, getLocalTimeZone());
-		form.workshop_date = date.toISOString();
-	}
-
-	async function handleCreateWorkshop(e: Event) {
-		e.preventDefault();
-		isSubmitting = true;
-		errorMsg = '';
-		try {
-			const res = await fetch('/api/workshops', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					workshop_date: form.workshop_date,
-					location: form.location,
-					coach_id: form.coach_id,
-					capacity: Number(form.capacity),
-					notes_md: form.notes_md
-				})
-			});
-			if (!res.ok) {
-				let errMsg = 'Failed to create workshop';
-				try {
-					const err = await res.json();
-					if (err && typeof err === 'object' && 'error' in err && typeof err.error === 'string') errMsg = err.error;
-				} catch {}
-				throw new Error(errMsg);
-			}
-			createDialogOpen = false;
-			// Reset form
-			form = {
-				workshop_date: '',
-				location: '',
-				coach_id: '',
-				capacity: 16,
-				notes_md: ''
-			};
-			dateValue = null;
-			// Refresh workshops list
-			invalidate('workshops');
-			toast.success('Workshop created');
-		} catch (error: unknown) {
-			errorMsg = error instanceof Error ? error.message : String(error);
-			toast.error(errorMsg);
-		} finally {
-			isSubmitting = false;
-		}
-	}
 </script>
 
 {#snippet waitlistToggleDialog()}
@@ -232,71 +209,89 @@
 									Fill in the details to create a new workshop in draft state.
 								</Dialog.Description>
 							</Dialog.Header>
-							<form onsubmit={handleCreateWorkshop} class="space-y-4 mt-2">
-								<div>
-									<label class="block text-sm font-medium mb-1" for="workshop_date">Date</label>
-									<DatePicker
-										id="workshop_date"
-										name="workshop_date"
-										value={dateValue ?? fromDate(new Date(), getLocalTimeZone())}
-										onDateChange={handleDateChange}
-										data-fs-error=""
-										aria-describedby=""
-										aria-invalid={undefined}
-										aria-required={undefined}
-										data-fs-control=""
-									/>
-								</div>
-								<div>
-									<label class="block text-sm font-medium mb-1" for="location">Location</label>
-									<Input id="location" bind:value={form.location} required />
-								</div>
-								<div>
-									<label class="block text-sm font-medium mb-1" for="coach_id">Coach</label>
-									<Select.Root
-										type="single"
-										name="coach_id"
-										bind:value={form.coach_id}
-									>
-										<Select.Trigger class="w-full">
-											{#if coachesQuery.isLoading}
-												Loading...
-											{:else if coachesQuery.isError}
-												Error loading coaches
-											{:else if form.coach_id}
-												{#each Array.isArray(coachesQuery.data) ? coachesQuery.data : [] as CoachProfile[] as coach (coach.id)}
-													{#if coach.id === form.coach_id}
-														{coach.first_name} {coach.last_name}
+							<form class="space-y-4 mt-2" use:enhance>
+								<Form.Field {form} name="workshop_date">
+									<Form.Control>
+										{#snippet children({ props })}
+											<Form.Label required>Date</Form.Label>
+											<DatePicker
+												{...props}
+												value={dateValue}
+												onDateChange={date => $formData.workshop_date = date.toISOString()}
+											/>
+										{/snippet}
+									</Form.Control>
+									<Form.FieldErrors />
+								</Form.Field>
+								<Form.Field {form} name="location">
+									<Form.Control>
+										{#snippet children({ props })}
+											<Form.Label required>Location</Form.Label>
+											<Input {...props} bind:value={$formData.location} />
+										{/snippet}
+									</Form.Control>
+									<Form.FieldErrors />
+								</Form.Field>
+								<Form.Field {form} name="coach_id">
+									<Form.Control>
+										{#snippet children({ props })}
+											<Form.Label required>Coach</Form.Label>
+											<Select.Root
+												type="single"
+												name="coach_id"
+												bind:value={$formData.coach_id}
+											>
+												<Select.Trigger class="w-full">
+													{#if coachesQuery.isLoading}
+														Loading...
+													{:else if coachesQuery.isError}
+														Error loading coaches
+													{:else if $formData.coach_id}
+														{#each Array.isArray(coachesQuery.data) ? coachesQuery.data : [] as coach (coach.id)}
+															{#if coach.id === $formData.coach_id}
+																{coach.first_name} {coach.last_name}
+															{/if}
+														{/each}
+													{:else}
+														Select coach
 													{/if}
-												{/each}
-											{:else}
-												Select coach
-											{/if}
-										</Select.Trigger>
-										<Select.Content>
-											{#each Array.isArray(coachesQuery.data) ? coachesQuery.data : [] as CoachProfile[] as coach (coach.id)}
-												<Select.Item value={coach.id} label={`${coach.first_name} ${coach.last_name}`}>
-													{coach.first_name} {coach.last_name}
-												</Select.Item>
-											{/each}
-										</Select.Content>
-									</Select.Root>
-								</div>
-								<div>
-									<label class="block text-sm font-medium mb-1" for="capacity">Capacity</label>
-									<Input id="capacity" type="number" min="1" bind:value={form.capacity} required />
-								</div>
-								<div>
-									<label class="block text-sm font-medium mb-1" for="notes_md">Notes</label>
-									<Textarea id="notes_md" bind:value={form.notes_md} rows={3} />
-								</div>
-								{#if errorMsg}
-									<div class="text-red-600 text-sm">{errorMsg}</div>
+												</Select.Trigger>
+												<Select.Content>
+													{#each Array.isArray(coachesQuery.data) ? coachesQuery.data : [] as coach (coach.id)}
+														<Select.Item value={coach.id} label={`${coach.first_name} ${coach.last_name}`}>
+															{coach.first_name} {coach.last_name}
+														</Select.Item>
+													{/each}
+												</Select.Content>
+											</Select.Root>
+										{/snippet}
+									</Form.Control>
+									<Form.FieldErrors />
+								</Form.Field>
+								<Form.Field {form} name="capacity">
+									<Form.Control>
+										{#snippet children({ props })}
+											<Form.Label required>Capacity</Form.Label>
+											<Input {...props} type="number" min="1" bind:value={$formData.capacity} />
+										{/snippet}
+									</Form.Control>
+									<Form.FieldErrors />
+								</Form.Field>
+								<Form.Field {form} name="notes_md">
+									<Form.Control>
+										{#snippet children({ props })}
+											<Form.Label>Notes</Form.Label>
+											<Textarea {...props} bind:value={$formData.notes_md} rows={3} />
+										{/snippet}
+									</Form.Control>
+									<Form.FieldErrors />
+								</Form.Field>
+								{#if $message?.error}
+									<div class="text-red-600 text-sm">{$message.error}</div>
 								{/if}
 								<Dialog.Footer>
-									<Button type="submit" disabled={isSubmitting}>
-										{#if isSubmitting}
-											<LoaderCircle class="animate-spin inline-block w-4 h-4 mr-2" />
+									<Button type="submit" disabled={$submitting}>
+										{#if $submitting}
 											Creating...
 										{:else}
 											Create

@@ -480,7 +480,7 @@ export async function setupInvitedUser(
 	}
 
 	// Create new subscriptions using Promise.all like in the Deno function
-	const [monthlySubscription, annualSubscription] = await Promise.all([
+	await Promise.all([
 		stripeClient.subscriptions.create({
 			customer: customer.id,
 			items: [{ price: monthlyPrices.data[0].id }],
@@ -509,16 +509,6 @@ export async function setupInvitedUser(
 			collection_method: 'charge_automatically'
 		})
 	]);
-
-	// Extract payment intents exactly as in the Deno function
-	const monthlyInvoice = monthlySubscription.latest_invoice as stripe.Invoice;
-	const annualInvoice = annualSubscription.latest_invoice as stripe.Invoice;
-	const monthlyPayment = monthlyInvoice.payments?.data?.[0]?.payment!;
-	const annualPayment = annualInvoice.payments?.data?.[0]?.payment!;
-
-	// Extract payment intent IDs
-	const monthlyPaymentIntent = monthlyPayment.payment_intent! as string;
-	const annualPaymentIntent = annualPayment.payment_intent! as string;
 
 	// Cleanup function
 	async function cleanUp() {

@@ -7,7 +7,7 @@
 	import * as Popover from '$lib/components/ui/popover/index.js';
 
 	type Props = {
-		value: DateValue;
+		value: DateValue | null;
 		onDateChange: (date: Date) => void;
 		name: string;
 		id: string;
@@ -24,6 +24,7 @@
 
 	let { value, onDateChange, ...rest }: Props = $props();
 	let open = $state(false);
+	let calendarValue = value ?? undefined;
 </script>
 
 <Popover.Root bind:open>
@@ -41,7 +42,7 @@
 	</Popover.Trigger>
 	<Popover.Content class="w-auto p-0">
 		<Calendar
-			bind:value
+			bind:value={calendarValue}
 			type="single"
 			initialFocus
 			onValueChange={(date) => {
