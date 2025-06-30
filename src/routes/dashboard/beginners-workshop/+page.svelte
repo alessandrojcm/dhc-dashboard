@@ -18,8 +18,6 @@
 	import { Input } from '$lib/components/ui/input';
 	import DatePicker from '$lib/components/ui/date-picker.svelte';
 	import Textarea from '$lib/components/ui/textarea/textarea.svelte';
-	import type { DateValue } from '@internationalized/date';
-	import type { SupabaseClient } from '@supabase/supabase-js';
 	import { fromDate, getLocalTimeZone } from '@internationalized/date';
 	import { superForm, defaults, setMessage } from 'sveltekit-superforms/client';
 	import { valibotClient, valibot } from 'sveltekit-superforms/adapters';
@@ -123,6 +121,10 @@
 		queryKey: ['coaches'],
 		queryFn: fetchCoachesFromApi
 	}));
+
+	function handleWorkshopSelect(id: string) {
+		goto(`/dashboard/beginners-workshop/${id}`);
+	}
 </script>
 
 {#snippet waitlistToggleDialog()}
@@ -303,7 +305,10 @@
 					</Dialog.Root>
 				</div>
 			</div>
-			<WorkshopsTable {supabase} />
+			<WorkshopsTable
+				supabase={supabase}
+				onSelectWorkshop={handleWorkshopSelect}
+			/>
 		</Content>
 		<Content value="waitlist">
 			<h2 class="prose prose-h2 text-lg mb-2">Waitlist</h2>

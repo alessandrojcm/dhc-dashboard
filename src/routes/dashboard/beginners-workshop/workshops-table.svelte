@@ -36,7 +36,7 @@
 		};
 	}
 
-	const { supabase }: { supabase: SupabaseClient<Database> } = $props();
+	let { supabase, onSelectWorkshop }: { supabase: SupabaseClient<Database>, onSelectWorkshop?: (id: string) => void } = $props();
 
 	const pageSizeOptions = [10, 25, 50, 100];
 	const currentPage = $derived(Number(page.url.searchParams.get('workshopPage')) || 0);
@@ -166,7 +166,7 @@
 				</Table.Row>
 			{:else}
 				{#each table.getRowModel().rows as row (row.id)}
-					<Table.Row>
+					<Table.Row onclick={() => onSelectWorkshop?.(row.original.id)} class="cursor-pointer hover:bg-accent">
 						{#each row.getVisibleCells() as cell (cell.id)}
 							<Table.Cell
 								class="whitespace-normal md:whitespace-nowrap py-2 md:py-4 px-2 md:px-3 text-xs md:text-sm prose prose-p"
@@ -188,7 +188,7 @@
 			<p class="text-foreground">No workshops found</p>
 		{/if}
 		{#each table.getRowModel().rows as row (row.id)}
-			<div class="bg-card text-card-foreground rounded-lg border shadow-sm p-4">
+			<div class="bg-card text-card-foreground rounded-lg border shadow-sm p-4 cursor-pointer hover:bg-accent" onclick={() => onSelectWorkshop?.(row.original.id)}>
 				<div class="flex justify-between items-center mb-3">
 					<div class="font-medium text-base">
 						<FlexRender
