@@ -8,9 +8,14 @@
   import { toast } from 'svelte-sonner';
   import { invalidate } from '$app/navigation';
   import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
+  import * as Dialog from '$lib/components/ui/dialog/index.js';
+  import { Input } from '$lib/components/ui/input';
+  import { Search, UserPlus, Trash2 } from 'lucide-svelte';
 //   import { marked } from 'marked';
   let { supabase }: { supabase: SupabaseClient } = $props();
   let workshopId = $derived(page.params.workshopId);
+  let addAttendeeDialogOpen = $state(false);
+  let searchQuery = $state('');
 
   const workshopQuery = createQuery(() => ({
     queryKey: ['workshop', workshopId],
@@ -23,7 +28,26 @@
         .eq('id', workshopId)
         .abortSignal(signal)
         .single()
-        .throwOnError();
+        .throwOnError()
+        .then(data => data.data);
+    }
+  }));
+
+  // Query for manually added attendees (those added before publishing)
+  const manualAttendeesQuery = createQuery(() => ({
+    queryKey: ['manual-attendees', workshopId],
+    enabled: !!workshopId,
+    queryFn: async ({ signal }) => {
+      if (!workshopId) return [];
+      const { data, error } = await supabase
+        .from('workshop_attendees')
+        .select('id, user_profile_id, priority, user_profiles(first_name, last_name, waitlist:waitlist(email))')
+        .eq('workshop_id', workshopId)
+        .is('invited_at', null) // Only show manually added attendees (not yet invited)
+        .abortSignal(signal);
+      
+      if (error) throw error;
+      return data ?? [];
     }
   }));
 
@@ -47,6 +71,7 @@
       toast.success('Workshop published successfully!');
       // Invalidate the workshop query to refetch the updated data
       workshopQuery.refetch();
+      manualAttendeesQuery.refetch();
       // Also invalidate the workshop list
       invalidate('/dashboard/beginners-workshop');
     },
@@ -55,10 +80,133 @@
     }
   }));
 
+  const addAttendeeMutation = createMutation(() => ({
+    mutationFn: async ({ workshopId, userId, priority = 1 }: { workshopId: string; userId: string; priority?: number }) => {
+      const response = await fetch(`/api/workshops/${workshopId}/attendees`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          user_profile_id: userId,
+          priority
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ message: 'Failed to add attendee' }));
+        throw new Error(error.message || 'Failed to add attendee');
+      }
+
+      return response.json();
+    },
+    onSuccess: () => {
+      toast.success('Attendee added successfully!');
+      manualAttendeesQuery.refetch();
+      // Clear search
+      searchQuery = '';
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to add attendee');
+    }
+  }));
+
+  const removeAttendeeMutation = createMutation(() => ({
+    mutationFn: async ({ workshopId, attendeeId }: { workshopId: string; attendeeId: string }) => {
+      const response = await fetch(`/api/workshops/${workshopId}/attendees?attendee_id=${attendeeId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ message: 'Failed to remove attendee' }));
+        throw new Error(error.message || 'Failed to remove attendee');
+      }
+
+      return response.json();
+    },
+    onSuccess: () => {
+      toast.success('Attendee removed successfully!');
+      manualAttendeesQuery.refetch();
+    },
+    onError: (error: Error) => {
+      toast.error(error.message || 'Failed to remove attendee');
+    }
+  }));
+
+  // User search query - search waitlist users who haven't been added to this workshop
+  const userSearchQuery = createQuery(() => ({
+    queryKey: ['user-search', searchQuery, workshopId],
+    enabled: !!searchQuery && searchQuery.length >= 2 && !!workshopId,
+    queryFn: async ({ signal }) => {
+      if (!searchQuery || searchQuery.length < 2 || !workshopId) return [];
+      
+      // Get users already added to this workshop to exclude them
+      const { data: existingAttendees } = await supabase
+        .from('workshop_attendees')
+        .select('user_profile_id')
+        .eq('workshop_id', workshopId);
+      
+      const excludedUserIds = existingAttendees?.map(a => a.user_profile_id) || [];
+      
+      // Search waitlist_management_view for users not already in this workshop
+      let query = supabase
+        .from('waitlist_management_view')
+        .select('id, first_name, last_name, email, status')
+        .limit(10);
+      
+      // Use textSearch on search_text column for name-based search
+      query = query.textSearch('search_text', `'${searchQuery}'`, {
+        type: 'websearch'
+      });
+      
+      // Exclude users already added to this workshop
+      if (excludedUserIds.length > 0) {
+        query = query.not('id', 'in', `(${excludedUserIds.join(',')})`);
+      }
+      
+      const { data, error } = await query.abortSignal(signal);
+      
+      if (error) {
+        console.error('User search error:', error);
+        return [];
+      }
+      
+      return data?.map((user: any) => ({
+        id: user.id,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        email: user.email,
+        status: user.status
+      })) || [];
+    }
+  }));
+
+
   function handlePublish() {
     if (!workshopId || !workshopQuery.data) return;
     publishMutation.mutate(workshopId);
   }
+
+  function handleAddAttendee(userId: string) {
+    if (!workshopId) return;
+    addAttendeeMutation.mutate({ workshopId, userId });
+  }
+
+  function handleRemoveAttendee(attendeeId: string) {
+    if (!workshopId) return;
+    removeAttendeeMutation.mutate({ workshopId, attendeeId });
+  }
+
+  function getAttendeeEmail(attendee: any): string {
+    return attendee.user_profiles?.waitlist?.email || 'No email';
+  }
+
+  function getAttendeeName(attendee: any): string {
+    const profile = attendee.user_profiles;
+    if (!profile) return 'Unknown';
+    return `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || 'Unknown';
+  }
+  $inspect(workshopQuery.data);
 </script>
 
 <div class="bg-card border rounded-lg p-4 h-full flex flex-col">
@@ -89,6 +237,95 @@
       <div class="font-medium">Cool-off Days:</div>
       <div>{workshopQuery.data.cool_off_days}</div>
     </div>
+
+    <!-- Manual Attendees Section - Show for all workshop statuses -->
+      <div class="mb-4">
+        <div class="flex items-center justify-between mb-2">
+          <h4 class="font-medium text-sm">Priority Attendees</h4>
+          <Dialog.Root bind:open={addAttendeeDialogOpen}>
+            <Dialog.Trigger>
+              <Button size="sm" variant="outline">
+                <UserPlus class="mr-1 h-3 w-3" />
+                Add Attendee
+              </Button>
+            </Dialog.Trigger>
+            <Dialog.Content class="sm:max-w-[400px]">
+              <Dialog.Header>
+                <Dialog.Title>Add Priority Attendee</Dialog.Title>
+                <Dialog.Description>
+                  Search and add users as priority attendees to this workshop.
+                </Dialog.Description>
+              </Dialog.Header>
+              <div class="space-y-4">
+                <div class="relative">
+                  <Search class="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    type="text"
+                    placeholder="Search by name or email..."
+                    class="pl-9"
+                    bind:value={searchQuery}
+                  />
+                </div>
+                {#if userSearchQuery.isLoading}
+                  <div class="flex items-center justify-center py-4">
+                    <LoaderCircle class="h-4 w-4 animate-spin" />
+                  </div>
+                {:else if userSearchQuery.data && userSearchQuery.data.length > 0}
+                  <div class="max-h-48 overflow-y-auto space-y-1">
+                    {#each userSearchQuery.data as user}
+                      <div class="flex items-center justify-between p-2 hover:bg-muted rounded">
+                        <div class="flex-1">
+                          <div class="font-medium text-sm">{user.first_name} {user.last_name}</div>
+                          <div class="text-xs text-muted-foreground">{user.email || 'No email'}</div>
+                        </div>
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onclick={() => handleAddAttendee(user.id)}
+                          disabled={addAttendeeMutation.isPending}
+                        >
+                          Add
+                        </Button>
+                      </div>
+                    {/each}
+                  </div>
+                {:else if searchQuery.length >= 2}
+                  <div class="text-center py-4 text-sm text-muted-foreground">
+                    No users found
+                  </div>
+                {/if}
+              </div>
+            </Dialog.Content>
+          </Dialog.Root>
+        </div>
+        
+        {#if manualAttendeesQuery.isLoading}
+          <div class="text-muted-foreground text-xs py-2">Loading attendees...</div>
+        {:else if manualAttendeesQuery.data && manualAttendeesQuery.data.length > 0}
+          <div class="space-y-1 max-h-32 overflow-y-auto">
+            {#each manualAttendeesQuery.data as attendee}
+              <div class="flex items-center justify-between p-2 bg-muted rounded text-xs">
+                <div class="flex-1">
+                  <div class="font-medium">{getAttendeeName(attendee)}</div>
+                  <div class="text-muted-foreground">{getAttendeeEmail(attendee)}</div>
+                </div>
+                <Button 
+                  size="sm" 
+                  variant="ghost"
+                  onclick={() => handleRemoveAttendee(attendee.id)}
+                  disabled={removeAttendeeMutation.isPending}
+                  class="h-6 w-6 p-0"
+                >
+                  <Trash2 class="h-3 w-3" />
+                </Button>
+              </div>
+            {/each}
+          </div>
+        {:else}
+          <div class="text-muted-foreground text-xs py-2">No priority attendees added yet</div>
+        {/if}
+      </div>
+
     <div class="flex gap-2 mb-4">
       <Button size="sm" variant="outline">Edit</Button>
       <Button 

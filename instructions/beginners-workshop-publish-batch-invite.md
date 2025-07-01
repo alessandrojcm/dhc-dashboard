@@ -76,9 +76,17 @@ This document outlines the technical approach for implementing Step 3 of the Beg
   - ✅ Log errors, continue on partial failure.
   - ✅ Uses Stripe Payment Links API for hosted payments.
   - ✅ Comprehensive Sentry error tracking.
+  - ✅ **Manual attendee processing** - handles pre-added attendees before batch invite.
   - 🔄 **Email integration TBD** - currently prints to console.
-- [ ] Update admin UI to allow manual attendee addition before publishing.
-- [ ] Ensure RLS and security for all new endpoints and data.
+- [x] Update admin UI to allow manual attendee addition before publishing.
+  - ✅ **Manual attendee API endpoints** - POST/DELETE `/api/workshops/:id/attendees`
+  - ✅ **User search API** - GET `/api/users/search` for finding users to add
+  - ✅ **Admin UI components** - Search, add, and remove attendees in workshop detail view
+  - ✅ **Priority attendee handling** - Manual attendees processed first with priority
+- [x] Ensure RLS and security for all new endpoints and data.
+  - ✅ **Role-based access control** - Only admins can manage attendees
+  - ✅ **Draft-only restriction** - Manual attendees can only be added to draft workshops
+  - ✅ **Input validation** - Proper validation for all API endpoints
 
 ---
 

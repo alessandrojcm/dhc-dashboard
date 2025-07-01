@@ -19,9 +19,11 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="feat: css fixes">
+      <change beforePath="$PROJECT_DIR$/.idea/dataSources.local.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources.local.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/beginners-workshop/workshop-analytics.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/beginners-workshop/workshop-analytics.svelte" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/members/member-analytics.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/members/member-analytics.svelte" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/instructions/beginners-workshop-publish-batch-invite.md" beforeDir="false" afterPath="$PROJECT_DIR$/instructions/beginners-workshop-publish-batch-invite.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/beginners-workshop/[workshopId]/workshop-detail.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/beginners-workshop/[workshopId]/workshop-detail.svelte" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/supabase/functions/workshop_inviter/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/workshop_inviter/index.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -97,7 +99,7 @@
     "RunOnceActivity.git.unshallow": "true",
     "com.codeium.enabled": "true",
     "deno.use.library": "true",
-    "git-widget-placeholder": "fix/chart-reactivity",
+    "git-widget-placeholder": "feature/ale-63-beginners-workshop",
     "junie.onboarding.icon.badge.shown": "true",
     "last_opened_file_path": "/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]",
     "node.js.detected.package.eslint": "true",
@@ -109,7 +111,7 @@
     "nodejs_package_manager_path": "pnpm",
     "npm.dev.executor": "Debug",
     "prettierjs.PrettierConfiguration.Package": "/Users/alessandrojcm/repos/dhc-dashboard/node_modules/prettier",
-    "settings.editor.selected.configurable": "preferences.pluginManager",
+    "settings.editor.selected.configurable": "com.anthropic.code.plugin.settings",
     "ts.external.directory.path": "/Users/alessandrojcm/repos/dhc-dashboard/node_modules/typescript/lib",
     "vue.rearranger.settings.migration": "true"
   },
@@ -185,7 +187,7 @@
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
-        <option value="bundled-js-predefined-d6986cc7102b-6a121458b545-JavaScript-WS-251.25410.117" />
+        <option value="bundled-js-predefined-d6986cc7102b-b26f3e71634d-JavaScript-WS-251.26094.131" />
       </set>
     </attachedChunks>
   </component>
@@ -220,6 +222,8 @@
       <workItem from="1747671383030" duration="5179000" />
       <workItem from="1747742236222" duration="598000" />
       <workItem from="1747989697082" duration="1834000" />
+      <workItem from="1751328110497" duration="27000" />
+      <workItem from="1751328145213" duration="4076000" />
     </task>
     <task id="LOCAL-00001" summary="Add guardian support for underage waitlist entries&#10;&#10;Introduce `waitlist_guardians` table and transactional logic for adding guardian details when underage users join the waitlist. Updates include database migrations, UI adjustments for conditional input fields, validation logic, and tests to ensure age-based gating.">
       <option name="closed" value="true" />
@@ -491,7 +495,7 @@
       <breakpoints>
         <line-breakpoint enabled="true" type="javascript">
           <url>file://$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]/+page.server.ts</url>
-          <line>65</line>
+          <line>72</line>
           <option name="timeStamp" value="7" />
         </line-breakpoint>
       </breakpoints>
