@@ -103,8 +103,9 @@
     onSuccess: () => {
       toast.success('Attendee added successfully!');
       manualAttendeesQuery.refetch();
-      // Clear search
+      // Clear search and close dialog
       searchQuery = '';
+      addAttendeeDialogOpen = false;
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Failed to add attendee');
@@ -140,44 +141,16 @@
     queryFn: async ({ signal }) => {
       if (!searchQuery || searchQuery.length < 2 || !workshopId) return [];
       
-      // Get users already added to this workshop to exclude them
-      const { data: existingAttendees } = await supabase
-        .from('workshop_attendees')
-        .select('user_profile_id')
-        .eq('workshop_id', workshopId);
-      
-      const excludedUserIds = existingAttendees?.map(a => a.user_profile_id) || [];
-      
-      // Search waitlist_management_view for users not already in this workshop
-      let query = supabase
-        .from('waitlist_management_view')
-        .select('id, first_name, last_name, email, status')
-        .limit(10);
-      
-      // Use textSearch on search_text column for name-based search
-      query = query.textSearch('search_text', `'${searchQuery}'`, {
-        type: 'websearch'
+      const response = await fetch(`/api/workshops/${workshopId}/search-users?q=${encodeURIComponent(searchQuery)}`, {
+        signal
       });
       
-      // Exclude users already added to this workshop
-      if (excludedUserIds.length > 0) {
-        query = query.not('id', 'in', `(${excludedUserIds.join(',')})`);
-      }
-      
-      const { data, error } = await query.abortSignal(signal);
-      
-      if (error) {
-        console.error('User search error:', error);
+      if (!response.ok) {
+        console.error('User search error:', response.statusText);
         return [];
       }
       
-      return data?.map((user: any) => ({
-        id: user.id,
-        first_name: user.first_name,
-        last_name: user.last_name,
-        email: user.email,
-        status: user.status
-      })) || [];
+      return await response.json();
     }
   }));
 
@@ -275,7 +248,7 @@
                     {#each userSearchQuery.data as user}
                       <div class="flex items-center justify-between p-2 hover:bg-muted rounded">
                         <div class="flex-1">
-                          <div class="font-medium text-sm">{user.first_name} {user.last_name}</div>
+                          <div class="font-medium text-sm">{user.full_name}</div>
                           <div class="text-xs text-muted-foreground">{user.email || 'No email'}</div>
                         </div>
                         <Button 

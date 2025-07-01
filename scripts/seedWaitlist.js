@@ -34,8 +34,8 @@ async function seedWaitlist(count = 10) {
 				return Promise.reject(error);
 			}
 			if (
-				!entry.date_of_birth &&
-				dayjs(entry.date_of_birth).isAfter(dayjs().subtract(18, 'years'))
+				!entry.date_of_birth ||
+				!dayjs(entry.date_of_birth).isAfter(dayjs().subtract(18, 'years'))
 			) {
 				return Promise.resolve();
 			}
