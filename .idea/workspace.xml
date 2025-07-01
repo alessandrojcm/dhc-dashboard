@@ -18,7 +18,13 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="fix: resolve workshop user search functionality&#10;&#10;- Fix waitlist seeding script guardian creation logic error&#10;- Update workshop search API to use user_profiles table with text search&#10;- Add support for partial matching from 3+ characters using PostgreSQL prefix search&#10;- Update frontend to display full_name instead of separate first/last names&#10;- Ensure search only returns users with existing profiles to prevent &quot;user profile not found&quot; errors&#10;&#10;🤖 Generated with [Claude Code](https://claude.ai/code)&#10;&#10;Co-Authored-By: Claude &lt;noreply@anthropic.com&gt;" />
+    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="feat: improve attendee search UX with Command dropdown&#10;&#10;- Replace modal with shadcn Command component dropdown for better UX&#10;- Implement non-intrusive popover interface for adding priority attendees&#10;- Add real-time search with grouped results and clear state messaging&#10;- Include loading indicators and visual feedback for user actions&#10;- Fix Svelte 5 compatibility by removing asChild directive&#10;- Maintain keyboard accessibility and proper ARIA semantics&#10;&#10;🤖 Generated with [Claude Code](https://claude.ai/code)&#10;&#10;Co-Authored-By: Claude &lt;noreply@anthropic.com&gt;">
+      <change afterPath="$PROJECT_DIR$/supabase/functions/workshop_topup/index.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/instructions/ale-63-beginners-workshop-implementation-plan.md" beforeDir="false" afterPath="$PROJECT_DIR$/instructions/ale-63-beginners-workshop-implementation-plan.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/supabase/functions/bulk_invite_with_subscription/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/bulk_invite_with_subscription/index.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/supabase/functions/stripe-webhooks/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/stripe-webhooks/index.ts" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -217,7 +223,7 @@
       <workItem from="1747742236222" duration="598000" />
       <workItem from="1747989697082" duration="1834000" />
       <workItem from="1751328110497" duration="27000" />
-      <workItem from="1751328145213" duration="6523000" />
+      <workItem from="1751328145213" duration="9802000" />
     </task>
     <task id="LOCAL-00001" summary="Add guardian support for underage waitlist entries&#10;&#10;Introduce `waitlist_guardians` table and transactional logic for adding guardian details when underage users join the waitlist. Updates include database migrations, UI adjustments for conditional input fields, validation logic, and tests to ensure age-based gating.">
       <option name="closed" value="true" />
@@ -443,7 +449,15 @@
       <option name="project" value="LOCAL" />
       <updated>1751366907233</updated>
     </task>
-    <option name="localTasksCounter" value="29" />
+    <task id="LOCAL-00029" summary="feat: improve attendee search UX with Command dropdown&#10;&#10;- Replace modal with shadcn Command component dropdown for better UX&#10;- Implement non-intrusive popover interface for adding priority attendees&#10;- Add real-time search with grouped results and clear state messaging&#10;- Include loading indicators and visual feedback for user actions&#10;- Fix Svelte 5 compatibility by removing asChild directive&#10;- Maintain keyboard accessibility and proper ARIA semantics&#10;&#10;🤖 Generated with [Claude Code](https://claude.ai/code)&#10;&#10;Co-Authored-By: Claude &lt;noreply@anthropic.com&gt;">
+      <option name="closed" value="true" />
+      <created>1751367259768</created>
+      <option name="number" value="00029" />
+      <option name="presentableId" value="LOCAL-00029" />
+      <option name="project" value="LOCAL" />
+      <updated>1751367259768</updated>
+    </task>
+    <option name="localTasksCounter" value="30" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -474,7 +488,6 @@
   </component>
   <component name="VcsManagerConfiguration">
     <option name="CHECK_CODE_SMELLS_BEFORE_PROJECT_COMMIT" value="false" />
-    <MESSAGE value="Update `waitlist_guardians` to reference `profile_id` instead of `waitlist_id`&#10;&#10;Replaced `waitlist_id` with `profile_id` across database schema, relationships, and scripts to align with updated data model. Adjusted related seeding logic and server routes to ensure consistency and maintain functionality." />
     <MESSAGE value="`feat: add guardian information to views, RLS policy, and UI components`" />
     <MESSAGE value="`feat: add medical_conditions to member management view and members-table`" />
     <MESSAGE value="`feat(stripe): update to API version 2025-04-30, dependencies and improve transaction handling`" />
@@ -499,7 +512,8 @@
     <MESSAGE value="feat: css fixes" />
     <MESSAGE value="feat: implemented workshop inviter and workshop detail view" />
     <MESSAGE value="fix: resolve workshop user search functionality&#10;&#10;- Fix waitlist seeding script guardian creation logic error&#10;- Update workshop search API to use user_profiles table with text search&#10;- Add support for partial matching from 3+ characters using PostgreSQL prefix search&#10;- Update frontend to display full_name instead of separate first/last names&#10;- Ensure search only returns users with existing profiles to prevent &quot;user profile not found&quot; errors&#10;&#10; Generated with [Claude Code](https://claude.ai/code)&#10;&#10;Co-Authored-By: Claude &lt;noreply@anthropic.com&gt;" />
-    <option name="LAST_COMMIT_MESSAGE" value="fix: resolve workshop user search functionality&#10;&#10;- Fix waitlist seeding script guardian creation logic error&#10;- Update workshop search API to use user_profiles table with text search&#10;- Add support for partial matching from 3+ characters using PostgreSQL prefix search&#10;- Update frontend to display full_name instead of separate first/last names&#10;- Ensure search only returns users with existing profiles to prevent &quot;user profile not found&quot; errors&#10;&#10; Generated with [Claude Code](https://claude.ai/code)&#10;&#10;Co-Authored-By: Claude &lt;noreply@anthropic.com&gt;" />
+    <MESSAGE value="feat: improve attendee search UX with Command dropdown&#10;&#10;- Replace modal with shadcn Command component dropdown for better UX&#10;- Implement non-intrusive popover interface for adding priority attendees&#10;- Add real-time search with grouped results and clear state messaging&#10;- Include loading indicators and visual feedback for user actions&#10;- Fix Svelte 5 compatibility by removing asChild directive&#10;- Maintain keyboard accessibility and proper ARIA semantics&#10;&#10; Generated with [Claude Code](https://claude.ai/code)&#10;&#10;Co-Authored-By: Claude &lt;noreply@anthropic.com&gt;" />
+    <option name="LAST_COMMIT_MESSAGE" value="feat: improve attendee search UX with Command dropdown&#10;&#10;- Replace modal with shadcn Command component dropdown for better UX&#10;- Implement non-intrusive popover interface for adding priority attendees&#10;- Add real-time search with grouped results and clear state messaging&#10;- Include loading indicators and visual feedback for user actions&#10;- Fix Svelte 5 compatibility by removing asChild directive&#10;- Maintain keyboard accessibility and proper ARIA semantics&#10;&#10; Generated with [Claude Code](https://claude.ai/code)&#10;&#10;Co-Authored-By: Claude &lt;noreply@anthropic.com&gt;" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>

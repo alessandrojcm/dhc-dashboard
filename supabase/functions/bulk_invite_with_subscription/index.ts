@@ -7,7 +7,10 @@ import { db, sql } from '../_shared/db.ts';
 import { corsHeaders } from '../_shared/cors.ts';
 import { getRolesFromSession } from '../_shared/getRolesFromSession.ts';
 import { createInvitation } from './invitations.ts';
-import { createPaymentSession as createPaymentSessionDb, updateUserProfileWithCustomerId } from './subscriptions.ts';
+import {
+	createPaymentSession as createPaymentSessionDb,
+	updateUserProfileWithCustomerId
+} from './subscriptions.ts';
 import { QueryExecutorProvider } from 'kysely';
 
 // Initialize Sentry
@@ -19,7 +22,7 @@ Sentry.init({
 
 // Initialize Stripe client
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') || '', {
-	apiVersion: '2025-04-30.basil',
+	apiVersion: '2025-05-28.basil',
 	maxNetworkRetries: 3,
 	timeout: 30 * 1000,
 	httpClient: Stripe.createFetchHttpClient()
@@ -194,14 +197,11 @@ async function createLocalPaymentSession(
 ): Promise<PaymentSessionResult> {
 	try {
 		console.log(`Creating payment session for user ${userId}`);
-		
+
 		// Store the payment session using Kysely with minimal data
-		const sessionId = await createPaymentSessionDb(
-			userId,
-			executor
-		);
+		const sessionId = await createPaymentSessionDb(userId, executor);
 		console.log(`Created payment session for user ${userId}`);
-		
+
 		return {
 			sessionId
 		};
@@ -325,7 +325,11 @@ async function processInvitations(
 					await updateUserProfileWithCustomerId(authData.user.id, customer.id, trx);
 					console.log(`Updated user profile for ${inviteData.email}`);
 					// Create payment session (without subscriptions)
-					const paymentSession = await createLocalPaymentSession(authData.user.id, customer.id, trx);
+					const paymentSession = await createLocalPaymentSession(
+						authData.user.id,
+						customer.id,
+						trx
+					);
 					const paymentSessionId = paymentSession.sessionId;
 
 					if (!isInviteData(invite)) {
@@ -344,9 +348,9 @@ async function processInvitations(
 						invitationId,
 						paymentSessionId
 					});
-				console.log(`Successfully processed invitation for ${inviteData.email}`);
-			}); // <-- close transaction
-		} catch (error) {
+					console.log(`Successfully processed invitation for ${inviteData.email}`);
+				}); // <-- close transaction
+			} catch (error) {
 				console.error(`Failed to process invitation for ${inviteData.email}:`, error);
 				Sentry.captureException(error);
 				const errorMessage = error instanceof Error ? error.message : String(error);

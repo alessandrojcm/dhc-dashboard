@@ -117,8 +117,7 @@ credit_used_at   timestamptz  -- if credit applied to future workshop
    - Logic: determine available slots, fetch wait-list (priority order), create `workshop_attendees` rows, send email using `process-emails`.
 4. **Scheduled cron `workshop_topup` (daily)**
    - For each *published* workshop with date > today: if `slotsRemaining > 0` AND `lastBatchSent + cool_off_days <= today` → call `workshop_inviter`.
-5. **Stripe payment session endpoint** `/api/workshop-payment/:token` (server-only)
-   - Validate token, create Stripe Checkout Session, return client secret.
+5. **Stripe payment session endpoint** (we are using stripe payment links with Stripe self-hosted UI)
    - Webhook on payment_success updates attendee `status=confirmed`.
 6. **Edge Function `workshop_reminder`** (cron, daily)
    - Two days pre-event, send reminder + QR to all `confirmed` attendees.
@@ -173,7 +172,7 @@ Variables passed via the Loops API JSON payload; Loops handles HTML generation a
 ## 8. Step-by-Step Implementation Timeline
 1. **[DONE]** DB migrations & RLS (~1 d)
 2. **[DONE]** Admin CRUD pages (draft state) (~1 d)
-3. Publish action + batch inviter function (~1 d)
+3. **[DONE]** Publish action + batch inviter function (~1 d)
 4. Payment flow & webhook integration (~1 d)
 5. Cool-off top-up scheduler (~0.5 d)
 6. Reminder email & QR generation (~0.5 d)
