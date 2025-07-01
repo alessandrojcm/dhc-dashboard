@@ -8,13 +8,13 @@
   import { toast } from 'svelte-sonner';
   import { invalidate } from '$app/navigation';
   import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
-  import * as Dialog from '$lib/components/ui/dialog/index.js';
-  import { Input } from '$lib/components/ui/input';
-  import { Search, UserPlus, Trash2 } from 'lucide-svelte';
+  import * as Command from '$lib/components/ui/command/index.js';
+  import * as Popover from '$lib/components/ui/popover/index.js';
+  import { UserPlus, Trash2, ChevronsUpDown, Check } from 'lucide-svelte';
 //   import { marked } from 'marked';
   let { supabase }: { supabase: SupabaseClient } = $props();
   let workshopId = $derived(page.params.workshopId);
-  let addAttendeeDialogOpen = $state(false);
+  let commandOpen = $state(false);
   let searchQuery = $state('');
 
   const workshopQuery = createQuery(() => ({
@@ -103,9 +103,9 @@
     onSuccess: () => {
       toast.success('Attendee added successfully!');
       manualAttendeesQuery.refetch();
-      // Clear search and close dialog
+      // Clear search and close popover
       searchQuery = '';
-      addAttendeeDialogOpen = false;
+      commandOpen = false;
     },
     onError: (error: Error) => {
       toast.error(error.message || 'Failed to add attendee');
@@ -215,61 +215,58 @@
       <div class="mb-4">
         <div class="flex items-center justify-between mb-2">
           <h4 class="font-medium text-sm">Priority Attendees</h4>
-          <Dialog.Root bind:open={addAttendeeDialogOpen}>
-            <Dialog.Trigger>
-              <Button size="sm" variant="outline">
+          <Popover.Root bind:open={commandOpen}>
+            <Popover.Trigger>
+              <Button size="sm" variant="outline" role="combobox" aria-expanded={commandOpen}>
                 <UserPlus class="mr-1 h-3 w-3" />
                 Add Attendee
+                <ChevronsUpDown class="ml-1 h-3 w-3 opacity-50" />
               </Button>
-            </Dialog.Trigger>
-            <Dialog.Content class="sm:max-w-[400px]">
-              <Dialog.Header>
-                <Dialog.Title>Add Priority Attendee</Dialog.Title>
-                <Dialog.Description>
-                  Search and add users as priority attendees to this workshop.
-                </Dialog.Description>
-              </Dialog.Header>
-              <div class="space-y-4">
-                <div class="relative">
-                  <Search class="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    type="text"
-                    placeholder="Search by name or email..."
-                    class="pl-9"
-                    bind:value={searchQuery}
-                  />
-                </div>
-                {#if userSearchQuery.isLoading}
-                  <div class="flex items-center justify-center py-4">
-                    <LoaderCircle class="h-4 w-4 animate-spin" />
-                  </div>
-                {:else if userSearchQuery.data && userSearchQuery.data.length > 0}
-                  <div class="max-h-48 overflow-y-auto space-y-1">
-                    {#each userSearchQuery.data as user}
-                      <div class="flex items-center justify-between p-2 hover:bg-muted rounded">
-                        <div class="flex-1">
-                          <div class="font-medium text-sm">{user.full_name}</div>
-                          <div class="text-xs text-muted-foreground">{user.email || 'No email'}</div>
-                        </div>
-                        <Button 
-                          size="sm" 
-                          variant="outline"
-                          onclick={() => handleAddAttendee(user.id)}
+            </Popover.Trigger>
+            <Popover.Content class="w-80 p-0" align="end">
+              <Command.Root shouldFilter={false}>
+                <Command.Input
+                  placeholder="Search by name or email..."
+                  bind:value={searchQuery}
+                  class="h-9"
+                />
+                <Command.List class="max-h-60">
+                  {#if userSearchQuery.isLoading}
+                    <div class="flex items-center justify-center py-6">
+                      <LoaderCircle class="h-4 w-4 animate-spin" />
+                    </div>
+                  {:else if userSearchQuery.data && userSearchQuery.data.length > 0}
+                    <Command.Group heading="Available Users">
+                      {#each userSearchQuery.data as user}
+                        <Command.Item
+                          value={user.id}
+                          onSelect={() => handleAddAttendee(user.id)}
+                          class="flex items-center justify-between cursor-pointer"
                           disabled={addAttendeeMutation.isPending}
                         >
-                          Add
-                        </Button>
-                      </div>
-                    {/each}
-                  </div>
-                {:else if searchQuery.length >= 2}
-                  <div class="text-center py-4 text-sm text-muted-foreground">
-                    No users found
-                  </div>
-                {/if}
-              </div>
-            </Dialog.Content>
-          </Dialog.Root>
+                          <div class="flex-1">
+                            <div class="font-medium text-sm">{user.full_name}</div>
+                            <div class="text-xs text-muted-foreground">{user.email || 'No email'}</div>
+                          </div>
+                          {#if addAttendeeMutation.isPending}
+                            <LoaderCircle class="h-3 w-3 animate-spin" />
+                          {:else}
+                            <Check class="h-3 w-3 opacity-0 group-data-[selected]:opacity-100" />
+                          {/if}
+                        </Command.Item>
+                      {/each}
+                    </Command.Group>
+                  {:else if searchQuery.length >= 2}
+                    <Command.Empty>No users found.</Command.Empty>
+                  {:else if searchQuery.length < 2 && searchQuery.length > 0}
+                    <Command.Empty>Type at least 2 characters to search.</Command.Empty>
+                  {:else}
+                    <Command.Empty>Start typing to search for users.</Command.Empty>
+                  {/if}
+                </Command.List>
+              </Command.Root>
+            </Popover.Content>
+          </Popover.Root>
         </div>
         
         {#if manualAttendeesQuery.isLoading}

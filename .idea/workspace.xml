@@ -18,20 +18,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="feat: implemented workshop inviter and workshop detail view">
-      <change afterPath="$PROJECT_DIR$/.mcp.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/auth.qN0tAA.meta" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/auth.qN0tAA.meta" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/auth.qN0tAA.zip" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/auth.qN0tAA.zip" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/pgmq.23k0AA.meta" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/pgmq.23k0AA.meta" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/pgmq.23k0AA.zip" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/pgmq.23k0AA.zip" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/public.abK9xQ.meta" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/public.abK9xQ.meta" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/public.abK9xQ.zip" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/vault.MrKsBg.meta" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/vault.MrKsBg.meta" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/scripts/seedWaitlist.js" beforeDir="false" afterPath="$PROJECT_DIR$/scripts/seedWaitlist.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/beginners-workshop/[workshopId]/workshop-detail.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/beginners-workshop/[workshopId]/workshop-detail.svelte" afterDir="false" />
-    </list>
+    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="fix: resolve workshop user search functionality&#10;&#10;- Fix waitlist seeding script guardian creation logic error&#10;- Update workshop search API to use user_profiles table with text search&#10;- Add support for partial matching from 3+ characters using PostgreSQL prefix search&#10;- Update frontend to display full_name instead of separate first/last names&#10;- Ensure search only returns users with existing profiles to prevent &quot;user profile not found&quot; errors&#10;&#10;🤖 Generated with [Claude Code](https://claude.ai/code)&#10;&#10;Co-Authored-By: Claude &lt;noreply@anthropic.com&gt;" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -230,7 +217,7 @@
       <workItem from="1747742236222" duration="598000" />
       <workItem from="1747989697082" duration="1834000" />
       <workItem from="1751328110497" duration="27000" />
-      <workItem from="1751328145213" duration="6015000" />
+      <workItem from="1751328145213" duration="6523000" />
     </task>
     <task id="LOCAL-00001" summary="Add guardian support for underage waitlist entries&#10;&#10;Introduce `waitlist_guardians` table and transactional logic for adding guardian details when underage users join the waitlist. Updates include database migrations, UI adjustments for conditional input fields, validation logic, and tests to ensure age-based gating.">
       <option name="closed" value="true" />
@@ -448,7 +435,15 @@
       <option name="project" value="LOCAL" />
       <updated>1751364744057</updated>
     </task>
-    <option name="localTasksCounter" value="28" />
+    <task id="LOCAL-00028" summary="fix: resolve workshop user search functionality&#10;&#10;- Fix waitlist seeding script guardian creation logic error&#10;- Update workshop search API to use user_profiles table with text search&#10;- Add support for partial matching from 3+ characters using PostgreSQL prefix search&#10;- Update frontend to display full_name instead of separate first/last names&#10;- Ensure search only returns users with existing profiles to prevent &quot;user profile not found&quot; errors&#10;&#10;🤖 Generated with [Claude Code](https://claude.ai/code)&#10;&#10;Co-Authored-By: Claude &lt;noreply@anthropic.com&gt;">
+      <option name="closed" value="true" />
+      <created>1751366907233</created>
+      <option name="number" value="00028" />
+      <option name="presentableId" value="LOCAL-00028" />
+      <option name="project" value="LOCAL" />
+      <updated>1751366907233</updated>
+    </task>
+    <option name="localTasksCounter" value="29" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -479,7 +474,6 @@
   </component>
   <component name="VcsManagerConfiguration">
     <option name="CHECK_CODE_SMELLS_BEFORE_PROJECT_COMMIT" value="false" />
-    <MESSAGE value="Add guardian support for underage waitlist entries&#10;&#10;Introduce `waitlist_guardians` table and transactional logic for adding guardian details when underage users join the waitlist. Updates include database migrations, UI adjustments for conditional input fields, validation logic, and tests to ensure age-based gating." />
     <MESSAGE value="Update `waitlist_guardians` to reference `profile_id` instead of `waitlist_id`&#10;&#10;Replaced `waitlist_id` with `profile_id` across database schema, relationships, and scripts to align with updated data model. Adjusted related seeding logic and server routes to ensure consistency and maintain functionality." />
     <MESSAGE value="`feat: add guardian information to views, RLS policy, and UI components`" />
     <MESSAGE value="`feat: add medical_conditions to member management view and members-table`" />
@@ -504,7 +498,8 @@
     <MESSAGE value="feat: integrated posthog" />
     <MESSAGE value="feat: css fixes" />
     <MESSAGE value="feat: implemented workshop inviter and workshop detail view" />
-    <option name="LAST_COMMIT_MESSAGE" value="feat: implemented workshop inviter and workshop detail view" />
+    <MESSAGE value="fix: resolve workshop user search functionality&#10;&#10;- Fix waitlist seeding script guardian creation logic error&#10;- Update workshop search API to use user_profiles table with text search&#10;- Add support for partial matching from 3+ characters using PostgreSQL prefix search&#10;- Update frontend to display full_name instead of separate first/last names&#10;- Ensure search only returns users with existing profiles to prevent &quot;user profile not found&quot; errors&#10;&#10; Generated with [Claude Code](https://claude.ai/code)&#10;&#10;Co-Authored-By: Claude &lt;noreply@anthropic.com&gt;" />
+    <option name="LAST_COMMIT_MESSAGE" value="fix: resolve workshop user search functionality&#10;&#10;- Fix waitlist seeding script guardian creation logic error&#10;- Update workshop search API to use user_profiles table with text search&#10;- Add support for partial matching from 3+ characters using PostgreSQL prefix search&#10;- Update frontend to display full_name instead of separate first/last names&#10;- Ensure search only returns users with existing profiles to prevent &quot;user profile not found&quot; errors&#10;&#10; Generated with [Claude Code](https://claude.ai/code)&#10;&#10;Co-Authored-By: Claude &lt;noreply@anthropic.com&gt;" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
