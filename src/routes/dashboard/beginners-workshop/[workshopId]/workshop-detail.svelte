@@ -10,12 +10,17 @@
   import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
   import * as Command from '$lib/components/ui/command/index.js';
   import * as Popover from '$lib/components/ui/popover/index.js';
-  import { UserPlus, Trash2, ChevronsUpDown, Check } from 'lucide-svelte';
+  import * as Dialog from '$lib/components/ui/dialog/index.js';
+  import { UserPlus, Trash2, ChevronsUpDown, Check, QrCode, Download } from 'lucide-svelte';
+  import { generateWorkshopQR } from '$lib/utils/qrcode.js';
 //   import { marked } from 'marked';
   let { supabase }: { supabase: SupabaseClient } = $props();
   let workshopId = $derived(page.params.workshopId);
   let commandOpen = $state(false);
   let searchQuery = $state('');
+  let qrModalOpen = $state(false);
+  let qrCodeData = $state<{ data: string; url: string; format: string } | null>(null);
+  let qrLoading = $state(false);
 
   const workshopQuery = createQuery(() => ({
     queryKey: ['workshop', workshopId],
@@ -179,6 +184,44 @@
     if (!profile) return 'Unknown';
     return `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || 'Unknown';
   }
+
+  async function handleShowQR() {
+    if (!workshopId) return;
+    
+    qrLoading = true;
+    try {
+      const result = await generateWorkshopQR(workshopId, 'svg', { width: 400, margin: 4 });
+      qrCodeData = result;
+      qrModalOpen = true;
+    } catch (error) {
+      console.error('Error generating QR code:', error);
+      toast.error('Failed to generate QR code');
+    } finally {
+      qrLoading = false;
+    }
+  }
+
+  async function handleDownloadQR() {
+    if (!workshopId) return;
+    
+    try {
+      const result = await generateWorkshopQR(workshopId, 'png', { width: 800, margin: 4 });
+      
+      // Create download link
+      const link = document.createElement('a');
+      link.href = result.data;
+      link.download = `workshop-${workshopId}-qr-code.png`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      toast.success('QR code downloaded');
+    } catch (error) {
+      console.error('Error downloading QR code:', error);
+      toast.error('Failed to download QR code');
+    }
+  }
+
   $inspect(workshopQuery.data);
 </script>
 
@@ -317,6 +360,89 @@
         Finish
       </Button>
     </div>
+
+    <!-- QR Code Section -->
+    {#if workshopQuery.data.status === 'published'}
+      <div class="border-t pt-4 mt-4">
+        <h4 class="font-medium text-sm mb-2">Check-in QR Code</h4>
+        <div class="flex gap-2">
+          <Button 
+            size="sm" 
+            variant="outline"
+            onclick={handleShowQR}
+            disabled={qrLoading}
+          >
+            {#if qrLoading}
+              <LoaderCircle class="mr-2 h-3 w-3 animate-spin" />
+            {:else}
+              <QrCode class="mr-2 h-3 w-3" />
+            {/if}
+            Show QR Code
+          </Button>
+          <Button 
+            size="sm" 
+            variant="outline"
+            onclick={handleDownloadQR}
+          >
+            <Download class="mr-2 h-3 w-3" />
+            Download
+          </Button>
+        </div>
+        <p class="text-xs text-muted-foreground mt-1">
+          Display QR code at workshop entrance for attendee self-check-in
+        </p>
+      </div>
+    {/if}
     <!-- <div class="prose prose-sm max-w-none" use:html={marked(workshopQuery.data.notes_md)}></div> -->
   {/if}
-</div> 
+</div>
+
+<!-- QR Code Modal -->
+<Dialog.Root bind:open={qrModalOpen}>
+  <Dialog.Content class="max-w-2xl">
+    <Dialog.Header>
+      <Dialog.Title>Workshop Check-in QR Code</Dialog.Title>
+      <Dialog.Description>
+        Display this QR code at the workshop entrance for attendees to self-check-in
+      </Dialog.Description>
+    </Dialog.Header>
+    
+    {#if qrCodeData}
+      <div class="flex flex-col items-center space-y-4 py-6">
+        <!-- QR Code Display -->
+        <div class="bg-white p-8 rounded-lg border-2 border-gray-200 shadow-sm">
+          {@html qrCodeData.data}
+        </div>
+        
+        <!-- Workshop Info -->
+        {#if workshopQuery.data}
+          <div class="text-center space-y-1">
+            <h3 class="font-semibold">Beginner's Workshop</h3>
+            <p class="text-sm text-muted-foreground">
+              {dayjs(workshopQuery.data.workshop_date).format('MMMM D, YYYY [at] h:mm A')}
+            </p>
+            <p class="text-sm text-muted-foreground">{workshopQuery.data.location}</p>
+          </div>
+        {/if}
+        
+        <!-- URL for manual entry -->
+        <div class="text-center max-w-full px-4">
+          <p class="text-xs text-muted-foreground mb-1">Or visit:</p>
+          <p class="text-xs font-mono break-all text-blue-600 bg-gray-50 p-2 rounded">
+            {qrCodeData.url}
+          </p>
+        </div>
+      </div>
+    {/if}
+    
+    <Dialog.Footer class="flex justify-between">
+      <Button variant="outline" onclick={handleDownloadQR}>
+        <Download class="mr-2 h-4 w-4" />
+        Download PNG
+      </Button>
+      <Dialog.Close asChild let:builder>
+        <Button builders={[builder]} variant="secondary">Close</Button>
+      </Dialog.Close>
+    </Dialog.Footer>
+  </Dialog.Content>
+</Dialog.Root> 
