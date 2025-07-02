@@ -18,12 +18,9 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="feat: improve attendee search UX with Command dropdown&#10;&#10;- Replace modal with shadcn Command component dropdown for better UX&#10;- Implement non-intrusive popover interface for adding priority attendees&#10;- Add real-time search with grouped results and clear state messaging&#10;- Include loading indicators and visual feedback for user actions&#10;- Fix Svelte 5 compatibility by removing asChild directive&#10;- Maintain keyboard accessibility and proper ARIA semantics&#10;&#10;🤖 Generated with [Claude Code](https://claude.ai/code)&#10;&#10;Co-Authored-By: Claude &lt;noreply@anthropic.com&gt;">
-      <change afterPath="$PROJECT_DIR$/supabase/functions/workshop_topup/index.ts" afterDir="false" />
+    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="refactor: update workshop_topup function with vault integration and enhanced request structure&#10;&#10;- Replace hardcoded settings with secure vault secrets for project URL and service role key.&#10;- Include current time in the request body for tracking.&#10;- Improve readability with consistent formatting and indentation updates.">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/instructions/ale-63-beginners-workshop-implementation-plan.md" beforeDir="false" afterPath="$PROJECT_DIR$/instructions/ale-63-beginners-workshop-implementation-plan.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/supabase/functions/bulk_invite_with_subscription/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/bulk_invite_with_subscription/index.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/supabase/functions/stripe-webhooks/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/stripe-webhooks/index.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/supabase/migrations/20250702210736_add_refunds_cancellations_support.sql" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/migrations/20250702210736_add_refunds_cancellations_support.sql" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -85,42 +82,42 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "Attach to Node.js/Chrome.Edge Functions.executor": "Debug",
-    "ModuleVcsDetector.initialDetectionPerformed": "true",
-    "Node.js.script.js.executor": "Run",
-    "Node.js.seedMembers.js.executor": "Debug",
-    "Node.js.seedWaitlist.js.executor": "Run",
-    "Playwright.underage user (16-17) should be able to submit with guardian information.executor": "Run",
-    "Playwright.underage user (16-17) should be required to fill guardian fields.executor": "Run",
-    "Playwright.underage-guardian-waitlist.spec.ts.executor": "Run",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "com.codeium.enabled": "true",
-    "deno.use.library": "true",
-    "git-widget-placeholder": "feature/ale-63-beginners-workshop",
-    "junie.onboarding.icon.badge.shown": "true",
-    "last_opened_file_path": "/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]",
-    "node.js.detected.package.eslint": "true",
-    "node.js.detected.package.standard": "true",
-    "node.js.detected.package.tslint": "true",
-    "node.js.selected.package.eslint": "(autodetect)",
-    "node.js.selected.package.standard": "",
-    "node.js.selected.package.tslint": "(autodetect)",
-    "nodejs_package_manager_path": "pnpm",
-    "npm.dev.executor": "Debug",
-    "prettierjs.PrettierConfiguration.Package": "/Users/alessandrojcm/repos/dhc-dashboard/node_modules/prettier",
-    "settings.editor.selected.configurable": "com.anthropic.code.plugin.settings",
-    "ts.external.directory.path": "/Users/alessandrojcm/repos/dhc-dashboard/node_modules/typescript/lib",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;Attach to Node.js/Chrome.Edge Functions.executor&quot;: &quot;Debug&quot;,
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;Node.js.script.js.executor&quot;: &quot;Run&quot;,
+    &quot;Node.js.seedMembers.js.executor&quot;: &quot;Debug&quot;,
+    &quot;Node.js.seedWaitlist.js.executor&quot;: &quot;Run&quot;,
+    &quot;Playwright.underage user (16-17) should be able to submit with guardian information.executor&quot;: &quot;Run&quot;,
+    &quot;Playwright.underage user (16-17) should be required to fill guardian fields.executor&quot;: &quot;Run&quot;,
+    &quot;Playwright.underage-guardian-waitlist.spec.ts.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;com.codeium.enabled&quot;: &quot;true&quot;,
+    &quot;deno.use.library&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;feature/ale-63-beginners-workshop&quot;,
+    &quot;junie.onboarding.icon.badge.shown&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.standard&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.standard&quot;: &quot;&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;pnpm&quot;,
+    &quot;npm.dev.executor&quot;: &quot;Debug&quot;,
+    &quot;prettierjs.PrettierConfiguration.Package&quot;: &quot;/Users/alessandrojcm/repos/dhc-dashboard/node_modules/prettier&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;com.anthropic.code.plugin.settings&quot;,
+    &quot;ts.external.directory.path&quot;: &quot;/Users/alessandrojcm/repos/dhc-dashboard/node_modules/typescript/lib&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   },
-  "keyToStringList": {
-    "DatabaseDriversLRU": [
-      "postgresql"
+  &quot;keyToStringList&quot;: {
+    &quot;DatabaseDriversLRU&quot;: [
+      &quot;postgresql&quot;
     ]
   }
-}]]></component>
+}</component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
       <recent name="$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]" />
@@ -187,7 +184,7 @@
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
-        <option value="bundled-js-predefined-d6986cc7102b-b26f3e71634d-JavaScript-WS-251.26094.131" />
+        <option value="bundled-js-predefined-d6986cc7102b-09060db00ec0-JavaScript-WS-251.26927.40" />
       </set>
     </attachedChunks>
   </component>
@@ -223,7 +220,11 @@
       <workItem from="1747742236222" duration="598000" />
       <workItem from="1747989697082" duration="1834000" />
       <workItem from="1751328110497" duration="27000" />
-      <workItem from="1751328145213" duration="9802000" />
+      <workItem from="1751328145213" duration="10721000" />
+      <workItem from="1751404414458" duration="2531000" />
+      <workItem from="1751439049554" duration="869000" />
+      <workItem from="1751451365385" duration="3195000" />
+      <workItem from="1751487226687" duration="3529000" />
     </task>
     <task id="LOCAL-00001" summary="Add guardian support for underage waitlist entries&#10;&#10;Introduce `waitlist_guardians` table and transactional logic for adding guardian details when underage users join the waitlist. Updates include database migrations, UI adjustments for conditional input fields, validation logic, and tests to ensure age-based gating.">
       <option name="closed" value="true" />
@@ -457,7 +458,23 @@
       <option name="project" value="LOCAL" />
       <updated>1751367259768</updated>
     </task>
-    <option name="localTasksCounter" value="30" />
+    <task id="LOCAL-00030" summary="feat: add workshop_topup scheduler and integrate payment link handling&#10;&#10;- Add `workshop_topup` daily scheduler via SQL migration and cron job for automating attendee top-ups.&#10;- Implement edge function `workshop_topup` with error handling, Sentry integration, and detailed logging.&#10;- Update `stripe-webhooks` to support workshop payment success flow and attendee status updates.&#10;- Minor refactoring for readability and consistency in existing code.">
+      <option name="closed" value="true" />
+      <created>1751372989415</created>
+      <option name="number" value="00030" />
+      <option name="presentableId" value="LOCAL-00030" />
+      <option name="project" value="LOCAL" />
+      <updated>1751372989415</updated>
+    </task>
+    <task id="LOCAL-00031" summary="refactor: update workshop_topup function with vault integration and enhanced request structure&#10;&#10;- Replace hardcoded settings with secure vault secrets for project URL and service role key.&#10;- Include current time in the request body for tracking.&#10;- Improve readability with consistent formatting and indentation updates.">
+      <option name="closed" value="true" />
+      <created>1751374837056</created>
+      <option name="number" value="00031" />
+      <option name="presentableId" value="LOCAL-00031" />
+      <option name="project" value="LOCAL" />
+      <updated>1751374837056</updated>
+    </task>
+    <option name="localTasksCounter" value="32" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -488,8 +505,6 @@
   </component>
   <component name="VcsManagerConfiguration">
     <option name="CHECK_CODE_SMELLS_BEFORE_PROJECT_COMMIT" value="false" />
-    <MESSAGE value="`feat: add guardian information to views, RLS policy, and UI components`" />
-    <MESSAGE value="`feat: add medical_conditions to member management view and members-table`" />
     <MESSAGE value="`feat(stripe): update to API version 2025-04-30, dependencies and improve transaction handling`" />
     <MESSAGE value="chore: updated gitignore" />
     <MESSAGE value="feat: implemented invitations list of members" />
@@ -513,7 +528,9 @@
     <MESSAGE value="feat: implemented workshop inviter and workshop detail view" />
     <MESSAGE value="fix: resolve workshop user search functionality&#10;&#10;- Fix waitlist seeding script guardian creation logic error&#10;- Update workshop search API to use user_profiles table with text search&#10;- Add support for partial matching from 3+ characters using PostgreSQL prefix search&#10;- Update frontend to display full_name instead of separate first/last names&#10;- Ensure search only returns users with existing profiles to prevent &quot;user profile not found&quot; errors&#10;&#10; Generated with [Claude Code](https://claude.ai/code)&#10;&#10;Co-Authored-By: Claude &lt;noreply@anthropic.com&gt;" />
     <MESSAGE value="feat: improve attendee search UX with Command dropdown&#10;&#10;- Replace modal with shadcn Command component dropdown for better UX&#10;- Implement non-intrusive popover interface for adding priority attendees&#10;- Add real-time search with grouped results and clear state messaging&#10;- Include loading indicators and visual feedback for user actions&#10;- Fix Svelte 5 compatibility by removing asChild directive&#10;- Maintain keyboard accessibility and proper ARIA semantics&#10;&#10; Generated with [Claude Code](https://claude.ai/code)&#10;&#10;Co-Authored-By: Claude &lt;noreply@anthropic.com&gt;" />
-    <option name="LAST_COMMIT_MESSAGE" value="feat: improve attendee search UX with Command dropdown&#10;&#10;- Replace modal with shadcn Command component dropdown for better UX&#10;- Implement non-intrusive popover interface for adding priority attendees&#10;- Add real-time search with grouped results and clear state messaging&#10;- Include loading indicators and visual feedback for user actions&#10;- Fix Svelte 5 compatibility by removing asChild directive&#10;- Maintain keyboard accessibility and proper ARIA semantics&#10;&#10; Generated with [Claude Code](https://claude.ai/code)&#10;&#10;Co-Authored-By: Claude &lt;noreply@anthropic.com&gt;" />
+    <MESSAGE value="feat: add workshop_topup scheduler and integrate payment link handling&#10;&#10;- Add `workshop_topup` daily scheduler via SQL migration and cron job for automating attendee top-ups.&#10;- Implement edge function `workshop_topup` with error handling, Sentry integration, and detailed logging.&#10;- Update `stripe-webhooks` to support workshop payment success flow and attendee status updates.&#10;- Minor refactoring for readability and consistency in existing code." />
+    <MESSAGE value="refactor: update workshop_topup function with vault integration and enhanced request structure&#10;&#10;- Replace hardcoded settings with secure vault secrets for project URL and service role key.&#10;- Include current time in the request body for tracking.&#10;- Improve readability with consistent formatting and indentation updates." />
+    <option name="LAST_COMMIT_MESSAGE" value="refactor: update workshop_topup function with vault integration and enhanced request structure&#10;&#10;- Replace hardcoded settings with secure vault secrets for project URL and service role key.&#10;- Include current time in the request body for tracking.&#10;- Improve readability with consistent formatting and indentation updates." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>

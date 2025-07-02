@@ -379,34 +379,51 @@ export type Database = {
         Row: {
           admin_notes: string | null
           email: string
+          has_paid_credit: boolean | null
           id: string
           initial_registration_date: string | null
           insurance_form_submitted: boolean | null
           last_contacted: string | null
           last_status_change: string | null
+          previous_workshop_id: string | null
+          priority_level: number | null
           status: Database["public"]["Enums"]["waitlist_status"]
         }
         Insert: {
           admin_notes?: string | null
           email: string
+          has_paid_credit?: boolean | null
           id?: string
           initial_registration_date?: string | null
           insurance_form_submitted?: boolean | null
           last_contacted?: string | null
           last_status_change?: string | null
+          previous_workshop_id?: string | null
+          priority_level?: number | null
           status?: Database["public"]["Enums"]["waitlist_status"]
         }
         Update: {
           admin_notes?: string | null
           email?: string
+          has_paid_credit?: boolean | null
           id?: string
           initial_registration_date?: string | null
           insurance_form_submitted?: boolean | null
           last_contacted?: string | null
           last_status_change?: string | null
+          previous_workshop_id?: string | null
+          priority_level?: number | null
           status?: Database["public"]["Enums"]["waitlist_status"]
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "waitlist_previous_workshop_id_fkey"
+            columns: ["previous_workshop_id"]
+            isOneToOne: false
+            referencedRelation: "workshops"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       waitlist_guardians: {
         Row: {
@@ -527,6 +544,8 @@ export type Database = {
       }
       workshop_attendees: {
         Row: {
+          cancelled_at: string | null
+          cancelled_by: string | null
           checked_in_at: string | null
           checkin_token: string | null
           consent_media_at: string | null
@@ -534,16 +553,24 @@ export type Database = {
           id: string
           insurance_ok_at: string | null
           invited_at: string | null
+          onboarding_completed_at: string | null
+          onboarding_token: string | null
           paid_at: string | null
           payment_url_token: string | null
           priority: number
+          refund_processed_at: string | null
+          refund_requested: boolean | null
           refunded_at: string | null
           signature_url: string | null
           status: Database["public"]["Enums"]["workshop_attendee_status"]
+          stripe_refund_id: string | null
           user_profile_id: string
+          waitlist_return_requested: boolean | null
           workshop_id: string
         }
         Insert: {
+          cancelled_at?: string | null
+          cancelled_by?: string | null
           checked_in_at?: string | null
           checkin_token?: string | null
           consent_media_at?: string | null
@@ -551,16 +578,24 @@ export type Database = {
           id?: string
           insurance_ok_at?: string | null
           invited_at?: string | null
+          onboarding_completed_at?: string | null
+          onboarding_token?: string | null
           paid_at?: string | null
           payment_url_token?: string | null
           priority?: number
+          refund_processed_at?: string | null
+          refund_requested?: boolean | null
           refunded_at?: string | null
           signature_url?: string | null
           status?: Database["public"]["Enums"]["workshop_attendee_status"]
+          stripe_refund_id?: string | null
           user_profile_id: string
+          waitlist_return_requested?: boolean | null
           workshop_id: string
         }
         Update: {
+          cancelled_at?: string | null
+          cancelled_by?: string | null
           checked_in_at?: string | null
           checkin_token?: string | null
           consent_media_at?: string | null
@@ -568,16 +603,29 @@ export type Database = {
           id?: string
           insurance_ok_at?: string | null
           invited_at?: string | null
+          onboarding_completed_at?: string | null
+          onboarding_token?: string | null
           paid_at?: string | null
           payment_url_token?: string | null
           priority?: number
+          refund_processed_at?: string | null
+          refund_requested?: boolean | null
           refunded_at?: string | null
           signature_url?: string | null
           status?: Database["public"]["Enums"]["workshop_attendee_status"]
+          stripe_refund_id?: string | null
           user_profile_id?: string
+          waitlist_return_requested?: boolean | null
           workshop_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "workshop_attendees_cancelled_by_fkey"
+            columns: ["cancelled_by"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "workshop_attendees_user_profile_id_fkey"
             columns: ["user_profile_id"]
@@ -795,6 +843,18 @@ export type Database = {
         Args: { uid: string }
         Returns: Json
       }
+      get_prioritized_waitlist_for_workshop: {
+        Args: { workshop_id_param: string; limit_param?: number }
+        Returns: {
+          waitlist_id: string
+          email: string
+          first_name: string
+          last_name: string
+          priority_level: number
+          created_at: string
+          admin_notes: string
+        }[]
+      }
       get_waitlist_position: {
         Args: { p_waitlist_id: string }
         Returns: number
@@ -850,6 +910,22 @@ export type Database = {
       mark_notification_as_read: {
         Args: { notification_id: string }
         Returns: undefined
+      }
+      move_cancelled_attendee_to_waitlist: {
+        Args: {
+          attendee_id_param: string
+          workshop_id_param: string
+          admin_notes_param?: string
+        }
+        Returns: string
+      }
+      reset_waitlist_priority_after_workshop: {
+        Args: { workshop_id_param: string }
+        Returns: undefined
+      }
+      trigger_workshop_topup: {
+        Args: Record<PropertyKey, never>
+        Returns: string
       }
       update_invitation_status: {
         Args: {
@@ -935,6 +1011,7 @@ export type Database = {
         | "attended"
         | "no_show"
         | "cancelled"
+        | "pre_checked"
       workshop_status: "draft" | "published" | "finished" | "cancelled"
     }
     CompositeTypes: {
@@ -1119,6 +1196,7 @@ export const Constants = {
         "attended",
         "no_show",
         "cancelled",
+        "pre_checked",
       ],
       workshop_status: ["draft", "published", "finished", "cancelled"],
     },

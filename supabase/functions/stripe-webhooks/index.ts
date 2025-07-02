@@ -104,9 +104,10 @@ async function syncStripeDataToKV(customerId: string) {
 		throw error;
 	}
 }
-
+// TODO: Save payment for refund?
 async function handleWorkshopPaymentSuccess(
 	paymentLinkId: string,
+	customerId: string,
 	metadata: Record<string, string>
 ) {
 	try {
@@ -121,17 +122,26 @@ async function handleWorkshopPaymentSuccess(
 			`Processing workshop payment success for workshop ${workshop_id}, user ${user_profile_id}`
 		);
 
-		// Update workshop attendee status to confirmed
-		const result = await db
-			.updateTable('workshop_attendees')
-			.set({
-				status: 'confirmed',
-				paid_at: new Date()
-			})
-			.where('workshop_id', '=', workshop_id)
-			.where('user_profile_id', '=', user_profile_id)
-			.where('payment_url_token', '=', paymentLinkId)
-			.executeTakeFirst();
+		const result = await db.transaction().execute(async (trx) => {
+			return Promise.all([
+				trx
+					.updateTable('workshop_attendees')
+					.set({
+						status: 'confirmed',
+						paid_at: new Date()
+					})
+					.where('workshop_id', '=', workshop_id)
+					.where('user_profile_id', '=', user_profile_id)
+					.where('payment_url_token', '=', paymentLinkId)
+					.executeTakeFirst(),
+				trx
+					.updateTable('user_profiles')
+					.set({
+						customer_id: customerId
+					})
+					.executeTakeFirst()
+			]).then((r) => r[0]);
+		});
 
 		if (result.numUpdatedRows === 0) {
 			console.error(
@@ -185,6 +195,8 @@ Deno.serve(async (req) => {
 		// Handle workshop payment completion
 		if (event.type === 'checkout.session.completed') {
 			const session = eventObject as Stripe.Checkout.Session;
+			const paymentLinkId =
+				typeof session.payment_link === 'string' ? session.payment_link : session.payment_link!.id!;
 
 			// Check if this is a workshop payment via payment link
 			if (session.payment_link) {
@@ -194,11 +206,15 @@ Deno.serve(async (req) => {
 
 				try {
 					// Fetch the payment link to get its metadata
-					const paymentLink = await stripe.paymentLinks.retrieve(session.payment_link);
+					const paymentLink = await stripe.paymentLinks.retrieve(paymentLinkId);
 
 					if (paymentLink.metadata?.workshop_id && paymentLink.metadata?.user_profile_id) {
 						EdgeRuntime.waitUntil(
-							handleWorkshopPaymentSuccess(session.payment_link, paymentLink.metadata)
+							handleWorkshopPaymentSuccess(
+								paymentLinkId,
+								typeof session.customer === 'string' ? session.customer : session.customer!.id,
+								paymentLink.metadata
+							)
 						);
 
 						return new Response(JSON.stringify({ success: true, type: 'workshop_payment' }), {

@@ -1,0 +1,18 @@
+{
+  "tasks": {
+    "start": "deno run --allow-all --watch index.ts"
+  },
+  "compilerOptions": {
+    "allowJs": true,
+    "lib": ["deno.window"]
+  },
+  "imports": {
+    "https://deno.land/std@0.208.0/": "https://deno.land/std@0.208.0/",
+    "https://esm.sh/": "https://esm.sh/",
+    "npm:": "https://esm.sh/",
+    "std/": "https://deno.land/std@0.208.0/",
+    "@sentry/deno": "https://deno.land/x/sentry@7.81.1/index.mjs",
+    "kysely": "npm:kysely@0.27.2",
+    "postgres": "npm:postgres@3.4.3"
+  }
+}
