@@ -32,7 +32,10 @@ const allowedEvents: Stripe.Event.Type[] = [
 	'invoice.payment_succeeded',
 	'payment_intent.succeeded',
 	'payment_intent.payment_failed',
-	'payment_intent.canceled'
+	'payment_intent.canceled',
+	'charge.dispute.created',
+	'refund.created',
+	'refund.updated'
 ];
 
 async function setLastPayment(
@@ -104,6 +107,56 @@ async function syncStripeDataToKV(customerId: string) {
 		throw error;
 	}
 }
+
+async function handleWorkshopRefund(
+	refundId: string,
+	amount: number,
+	metadata: Record<string, string>
+) {
+	try {
+		const { workshop_id, attendee_id } = metadata;
+
+		if (!workshop_id || !attendee_id) {
+			console.error('Missing workshop_id or attendee_id in refund metadata:', metadata);
+			return;
+		}
+
+		console.log(
+			`Processing workshop refund for attendee ${attendee_id} in workshop ${workshop_id}, amount: ${amount / 100}€`
+		);
+
+		const result = await db.transaction().execute(async (trx) => {
+			// Update the attendee record with refund confirmation
+			const updateResult = await trx
+				.updateTable('workshop_attendees')
+				.set({
+					refund_processed_at: new Date(),
+					stripe_refund_id: refundId,
+					refunded_at: new Date()
+				})
+				.where('id', '=', attendee_id)
+				.where('workshop_id', '=', workshop_id)
+				.executeTakeFirst();
+
+			return updateResult;
+		});
+
+		if (Number(result.numUpdatedRows) === 0) {
+			console.error(
+				`No workshop attendee found for refund ${refundId}, attendee ${attendee_id}, workshop ${workshop_id}`
+			);
+			return;
+		}
+
+		console.log(
+			`Successfully processed refund for attendee ${attendee_id} in workshop ${workshop_id}, refund ID: ${refundId}`
+		);
+	} catch (error) {
+		console.error('Error handling workshop refund:', error);
+		throw error;
+	}
+}
+
 // TODO: Save payment for refund?
 async function handleWorkshopPaymentSuccess(
 	paymentLinkId: string,
@@ -143,7 +196,7 @@ async function handleWorkshopPaymentSuccess(
 			]).then((r) => r[0]);
 		});
 
-		if (result.numUpdatedRows === 0) {
+		if (Number(result.numUpdatedRows) === 0) {
 			console.error(
 				`No workshop attendee found for payment link ${paymentLinkId}, workshop ${workshop_id}, user ${user_profile_id}`
 			);
@@ -225,6 +278,25 @@ Deno.serve(async (req) => {
 				} catch (stripeError) {
 					console.error('Error retrieving payment link:', stripeError);
 				}
+			}
+		}
+
+		// Handle refund events
+		if (event.type === 'refund.created' || event.type === 'refund.updated') {
+			const refund = eventObject as Stripe.Refund;
+
+			// Only handle refunds that have our metadata (workshop refunds)
+			if (refund.metadata?.workshop_id && refund.metadata?.attendee_id) {
+				console.log(
+					`Processing refund ${event.type} for refund ${refund.id}, attendee ${refund.metadata.attendee_id}`
+				);
+
+				EdgeRuntime.waitUntil(handleWorkshopRefund(refund.id, refund.amount, refund.metadata));
+
+				return new Response(JSON.stringify({ success: true, type: 'workshop_refund' }), {
+					headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+					status: 200
+				});
 			}
 		}
 

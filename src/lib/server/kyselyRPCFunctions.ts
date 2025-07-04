@@ -196,3 +196,21 @@ export function updateMemberData(
 		.execute(executor)
 		.then((r) => r.rows[0].update_member_data);
 }
+
+export function moveCancelledAttendeeToWaitlist(
+	attendeeId: string,
+	workshopId: string,
+	executor: QueryExecutorProvider,
+	adminNotes?: string
+): Promise<string> {
+	return sql<{
+		move_cancelled_attendee_to_waitlist: string;
+	}>`select *
+		 from move_cancelled_attendee_to_waitlist(
+			 ${attendeeId}::uuid,
+			 ${workshopId}::uuid,
+			 ${adminNotes ?? null}::text
+				)`
+		.execute(executor)
+		.then((r) => r.rows[0].move_cancelled_attendee_to_waitlist);
+}
