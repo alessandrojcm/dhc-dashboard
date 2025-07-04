@@ -6,7 +6,7 @@
 	import * as AlertDialog from '$lib/components/ui/alert-dialog/index.js';
 	import { Button } from '$lib/components/ui/button';
 	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
-	import { createMutation, createQuery } from '@tanstack/svelte-query';
+	import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
 	import { goto, invalidate } from '$app/navigation';
 	import { toast } from 'svelte-sonner';
 	import { page } from '$app/state';
@@ -27,6 +27,7 @@
 
 	let { data }: { data: PageData } = $props();
 	const supabase = data.supabase;
+	const queryClient = useQueryClient();
 	let dialogOpen = $state(false);
 	let value = $derived(page.url.searchParams.get('tab') || 'dashboard');
 	let createDialogOpen = $state(false);
@@ -56,7 +57,8 @@
 					return;
 				}
 				setMessage(form, { success: 'Workshop created!' });
-				await invalidate('/dashboard/beginners-workshop');
+				// Invalidate the workshops query to refresh the table
+				await queryClient.invalidateQueries({ queryKey: ['workshops'] });
 				reset();
 				createDialogOpen = false;
 			} catch (error: unknown) {

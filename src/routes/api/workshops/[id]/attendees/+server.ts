@@ -10,6 +10,107 @@ const addAttendeeSchema = v.object({
   priority: v.optional(v.number(), 1) // Default to priority 1 for manual additions
 });
 
+const getAttendeesQuerySchema = v.object({
+  status: v.optional(v.union([
+    v.literal('all'),
+    v.literal('invited'),
+    v.literal('confirmed'),
+    v.literal('attended'),
+    v.literal('cancelled'),
+    v.literal('no_show')
+  ]), 'all')
+});
+
+export const GET: RequestHandler = async ({ params, url, locals, platform }) => {
+  // Check authentication
+  const { session } = await locals.safeGetSession();
+  if (!session) throw error(401, 'Not authenticated');
+  
+  // Role check - allow broader access for viewing attendees
+  const roles = getRolesFromSession(session) as Set<string>;
+  const allowed = new Set(['admin', 'president', 'beginners_coordinator', 'committee', 'coach']);
+  const intersection = new Set([...roles].filter((role) => allowed.has(role)));
+  if (intersection.size === 0) {
+    throw error(403, 'Insufficient permissions');
+  }
+
+  const workshopId = params.id;
+  if (!workshopId) {
+    throw error(400, 'Workshop ID required');
+  }
+
+  // Validate query parameters
+  const statusFilter = url.searchParams.get('status') || 'all';
+  const validation = v.safeParse(getAttendeesQuerySchema, { status: statusFilter });
+  
+  if (!validation.success) {
+    throw error(400, 'Invalid status filter: ' + JSON.stringify(validation.issues));
+  }
+
+  const { status } = validation.output;
+
+  const db = getKyselyClient(platform?.env.HYPERDRIVE);
+  if (!db) {
+    throw error(500, 'Database connection failed');
+  }
+
+  try {
+    const attendees = await executeWithRLS(db, { claims: session }, async (trx) => {
+      let query = trx
+        .selectFrom('workshop_attendees')
+        .leftJoin('user_profiles', 'workshop_attendees.user_profile_id', 'user_profiles.id')
+        .select([
+          'workshop_attendees.id',
+          'workshop_attendees.status',
+          'workshop_attendees.invited_at',
+          'workshop_attendees.user_profile_id',
+          'workshop_attendees.checked_in_at',
+          'workshop_attendees.paid_at',
+          'workshop_attendees.onboarding_completed_at',
+          'workshop_attendees.cancelled_at',
+          'workshop_attendees.refund_processed_at',
+          'workshop_attendees.refund_requested',
+          'workshop_attendees.stripe_refund_id',
+          'user_profiles.first_name',
+          'user_profiles.last_name'
+        ])
+        .where('workshop_attendees.workshop_id', '=', workshopId);
+
+      // Apply status filter if not 'all'
+      if (status !== 'all') {
+        query = query.where('workshop_attendees.status', '=', status as any);
+      }
+
+      return await query.execute();
+    });
+
+    // Transform the result to match the expected frontend format
+    const transformedAttendees = attendees.map(row => ({
+      id: row.id,
+      status: row.status,
+      invited_at: row.invited_at,
+      user_profile_id: row.user_profile_id,
+      checked_in_at: row.checked_in_at,
+      paid_at: row.paid_at,
+      onboarding_completed_at: row.onboarding_completed_at,
+      cancelled_at: row.cancelled_at,
+      refund_processed_at: row.refund_processed_at,
+      refund_requested: row.refund_requested,
+      stripe_refund_id: row.stripe_refund_id,
+      user_profiles: {
+        first_name: row.first_name,
+        last_name: row.last_name
+      }
+    }));
+
+    return json(transformedAttendees);
+
+  } catch (e: any) {
+    Sentry.captureException(e);
+    throw error(500, e?.message || 'Failed to fetch attendees');
+  }
+};
+
 export const POST: RequestHandler = async ({ params, request, locals, platform }) => {
   // Check authentication
   const { session } = await locals.safeGetSession();

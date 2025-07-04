@@ -52,7 +52,6 @@ export const POST: RequestHandler = async ({ params, request, locals, platform }
 	}
 
 	const { reason, moveToWaitlist, requestRefund } = parsed.output;
-	// TODO: user_profiles doesnot have email, get email from the waitlist entry
 	try {
 		const result = await executeWithRLS(db, { claims: session }, async (trx) => {
 			// First, verify the attendee exists and get their details

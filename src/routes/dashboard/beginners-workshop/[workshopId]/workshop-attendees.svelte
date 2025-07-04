@@ -24,8 +24,9 @@
 	import { page } from '$app/state';
 	import { onDestroy } from 'svelte';
 	import { toast } from 'svelte-sonner';
+	import type { Database } from '$database';
 
-	let { supabase }: { supabase: SupabaseClient } = $props();
+	let { supabase }: { supabase: SupabaseClient<Database> } = $props();
 	const workshopId = page.params.workshopId;
 	let statusFilter = $state('all');
 	const queryClient = useQueryClient();
@@ -137,23 +138,30 @@
 		};
 	}
 
-	function getAttendees(signal: AbortSignal) {
+	async function getAttendees(signal: AbortSignal): Promise<WorkshopAttendee[]> {
 		if (!workshopId) return [];
-		let query = supabase
-			.from('workshop_attendees')
-			.select('id, status, invited_at, user_profile_id, checked_in_at, paid_at, onboarding_completed_at, cancelled_at, refund_processed_at, refund_requested, stripe_refund_id, user_profiles(first_name, last_name)')
-			.eq('workshop_id', workshopId);
+		
+		const params = new URLSearchParams();
 		if (statusFilter !== 'all') {
-			query = query.eq('status', statusFilter);
+			params.set('status', statusFilter);
 		}
-		return query.abortSignal(signal).throwOnError();
+		
+		const response = await fetch(`/api/workshops/${workshopId}/attendees?${params.toString()}`, {
+			signal
+		});
+		
+		if (!response.ok) {
+			throw new Error('Failed to fetch attendees');
+		}
+		
+		return await response.json();
 	}
 
 	const attendeesQuery = createQuery(() => ({
 		queryKey: ['workshop-attendees', workshopId, statusFilter],
 		enabled: !!workshopId,
 		queryFn: async ({ signal }) => {
-			return getAttendees(signal) as WorkshopAttendee[];
+			return await getAttendees(signal);
 		}
 	}));
 

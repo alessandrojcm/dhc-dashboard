@@ -18,16 +18,12 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="refactor: update workshop_topup function with vault integration and enhanced request structure&#10;&#10;- Replace hardcoded settings with secure vault secrets for project URL and service role key.&#10;- Include current time in the request body for tracking.&#10;- Improve readability with consistent formatting and indentation updates.">
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/auth.qN0tAA.meta" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/auth.qN0tAA.meta" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/pgmq.23k0AA.meta" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/pgmq.23k0AA.meta" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/public.abK9xQ.meta" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/public.abK9xQ.meta" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/vault.MrKsBg.meta" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/vault.MrKsBg.meta" afterDir="false" />
+    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="fix: logical error when inviting people from the waitlist">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/lib/server/kyselyRPCFunctions.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/server/kyselyRPCFunctions.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/(public)/workshop/checkin/[workshopId]/+page.server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/(public)/workshop/checkin/[workshopId]/+page.server.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/supabase/functions/workshop_inviter/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/workshop_inviter/index.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/api/workshops/[id]/attendees/+server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/api/workshops/[id]/attendees/+server.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/api/workshops/[id]/attendees/[attendeeId]/cancel/+server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/api/workshops/[id]/attendees/[attendeeId]/cancel/+server.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/beginners-workshop/+page.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/beginners-workshop/+page.svelte" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/beginners-workshop/[workshopId]/workshop-attendees.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/beginners-workshop/[workshopId]/workshop-attendees.svelte" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -232,7 +228,7 @@
       <workItem from="1751439049554" duration="869000" />
       <workItem from="1751451365385" duration="3195000" />
       <workItem from="1751487226687" duration="3529000" />
-      <workItem from="1751623048827" duration="5260000" />
+      <workItem from="1751623048827" duration="12123000" />
     </task>
     <task id="LOCAL-00001" summary="Add guardian support for underage waitlist entries&#10;&#10;Introduce `waitlist_guardians` table and transactional logic for adding guardian details when underage users join the waitlist. Updates include database migrations, UI adjustments for conditional input fields, validation logic, and tests to ensure age-based gating.">
       <option name="closed" value="true" />
@@ -482,7 +478,15 @@
       <option name="project" value="LOCAL" />
       <updated>1751374837056</updated>
     </task>
-    <option name="localTasksCounter" value="32" />
+    <task id="LOCAL-00032" summary="fix: logical error when inviting people from the waitlist">
+      <option name="closed" value="true" />
+      <created>1751633820496</created>
+      <option name="number" value="00032" />
+      <option name="presentableId" value="LOCAL-00032" />
+      <option name="project" value="LOCAL" />
+      <updated>1751633820496</updated>
+    </task>
+    <option name="localTasksCounter" value="33" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -513,7 +517,6 @@
   </component>
   <component name="VcsManagerConfiguration">
     <option name="CHECK_CODE_SMELLS_BEFORE_PROJECT_COMMIT" value="false" />
-    <MESSAGE value="`feat(stripe): update to API version 2025-04-30, dependencies and improve transaction handling`" />
     <MESSAGE value="chore: updated gitignore" />
     <MESSAGE value="feat: implemented invitations list of members" />
     <MESSAGE value="chore: e2e test for invitations" />
@@ -538,7 +541,8 @@
     <MESSAGE value="feat: improve attendee search UX with Command dropdown&#10;&#10;- Replace modal with shadcn Command component dropdown for better UX&#10;- Implement non-intrusive popover interface for adding priority attendees&#10;- Add real-time search with grouped results and clear state messaging&#10;- Include loading indicators and visual feedback for user actions&#10;- Fix Svelte 5 compatibility by removing asChild directive&#10;- Maintain keyboard accessibility and proper ARIA semantics&#10;&#10; Generated with [Claude Code](https://claude.ai/code)&#10;&#10;Co-Authored-By: Claude &lt;noreply@anthropic.com&gt;" />
     <MESSAGE value="feat: add workshop_topup scheduler and integrate payment link handling&#10;&#10;- Add `workshop_topup` daily scheduler via SQL migration and cron job for automating attendee top-ups.&#10;- Implement edge function `workshop_topup` with error handling, Sentry integration, and detailed logging.&#10;- Update `stripe-webhooks` to support workshop payment success flow and attendee status updates.&#10;- Minor refactoring for readability and consistency in existing code." />
     <MESSAGE value="refactor: update workshop_topup function with vault integration and enhanced request structure&#10;&#10;- Replace hardcoded settings with secure vault secrets for project URL and service role key.&#10;- Include current time in the request body for tracking.&#10;- Improve readability with consistent formatting and indentation updates." />
-    <option name="LAST_COMMIT_MESSAGE" value="refactor: update workshop_topup function with vault integration and enhanced request structure&#10;&#10;- Replace hardcoded settings with secure vault secrets for project URL and service role key.&#10;- Include current time in the request body for tracking.&#10;- Improve readability with consistent formatting and indentation updates." />
+    <MESSAGE value="fix: logical error when inviting people from the waitlist" />
+    <option name="LAST_COMMIT_MESSAGE" value="fix: logical error when inviting people from the waitlist" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
