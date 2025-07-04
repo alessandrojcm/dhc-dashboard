@@ -37,6 +37,8 @@ interface WaitlistMember {
 	last_name: string;
 	phone_number: string;
 	initial_registration_date: string;
+	priority_level?: number;
+	admin_notes?: string;
 }
 
 interface InviteResult {
@@ -296,7 +298,7 @@ async function fetchManualAttendees(workshop_id: string): Promise<WaitlistMember
 				wa.user_profile_id,
 				up.first_name,
 				up.last_name,
-				w.phone_number,
+				up.phone_number,
 				w.initial_registration_date
 			FROM workshop_attendees wa
 			JOIN user_profiles up ON up.id = wa.user_profile_id
@@ -321,28 +323,33 @@ async function fetchManualAttendees(workshop_id: string): Promise<WaitlistMember
 
 async function fetchWaitlistMembers(workshop_id: string): Promise<WaitlistMember[]> {
 	try {
-		// Fetch waitlist members who have completed the workshop and are not already in this workshop
-		const result = await sql<WaitlistMember>`
-			SELECT 
-				w.id,
-				w.email,
-				up.id as user_profile_id,
-				up.first_name,
-				up.last_name,
-				w.phone_number,
-				w.initial_registration_date
-			FROM waitlist w
-			JOIN user_profiles up ON up.waitlist_id = w.id
-			WHERE w.status = 'completed'
-			AND up.id NOT IN (
-				SELECT user_profile_id 
-				FROM workshop_attendees 
-				WHERE workshop_id = ${workshop_id}
-			)
-			ORDER BY w.initial_registration_date ASC
+		// Use the prioritized waitlist function that includes all needed data in a single query
+		const result = await sql<{
+			waitlist_id: string;
+			email: string;
+			user_profile_id: string;
+			first_name: string;
+			last_name: string;
+			phone_number: string;
+			priority_level: number;
+			created_at: string;
+			admin_notes: string;
+		}>`
+			SELECT * FROM get_prioritized_waitlist_for_workshop(${workshop_id}::uuid, NULL)
 		`.execute(db);
 
-		return result.rows;
+		// Map to the expected WaitlistMember format (no additional queries needed)
+		return result.rows.map((member) => ({
+			id: member.waitlist_id,
+			email: member.email,
+			user_profile_id: member.user_profile_id,
+			first_name: member.first_name,
+			last_name: member.last_name,
+			phone_number: member.phone_number,
+			initial_registration_date: member.created_at,
+			priority_level: member.priority_level,
+			admin_notes: member.admin_notes
+		} as WaitlistMember));
 	} catch (error) {
 		console.error(`Error fetching waitlist members for workshop ${workshop_id}:`, error);
 		Sentry.captureException(error, {

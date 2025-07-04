@@ -19,8 +19,15 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="refactor: update workshop_topup function with vault integration and enhanced request structure&#10;&#10;- Replace hardcoded settings with secure vault secrets for project URL and service role key.&#10;- Include current time in the request body for tracking.&#10;- Improve readability with consistent formatting and indentation updates.">
+      <change beforePath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/auth.qN0tAA.meta" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/auth.qN0tAA.meta" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/pgmq.23k0AA.meta" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/pgmq.23k0AA.meta" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/public.abK9xQ.meta" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/public.abK9xQ.meta" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/vault.MrKsBg.meta" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/vault.MrKsBg.meta" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/supabase/migrations/20250702210736_add_refunds_cancellations_support.sql" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/migrations/20250702210736_add_refunds_cancellations_support.sql" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/lib/server/kyselyRPCFunctions.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/server/kyselyRPCFunctions.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/(public)/workshop/checkin/[workshopId]/+page.server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/(public)/workshop/checkin/[workshopId]/+page.server.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/supabase/functions/workshop_inviter/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/workshop_inviter/index.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -225,6 +232,7 @@
       <workItem from="1751439049554" duration="869000" />
       <workItem from="1751451365385" duration="3195000" />
       <workItem from="1751487226687" duration="3529000" />
+      <workItem from="1751623048827" duration="5260000" />
     </task>
     <task id="LOCAL-00001" summary="Add guardian support for underage waitlist entries&#10;&#10;Introduce `waitlist_guardians` table and transactional logic for adding guardian details when underage users join the waitlist. Updates include database migrations, UI adjustments for conditional input fields, validation logic, and tests to ensure age-based gating.">
       <option name="closed" value="true" />
@@ -491,7 +499,7 @@
                   <entry key="branch">
                     <value>
                       <list>
-                        <option value="origin/fix/chart-reactivity" />
+                        <option value="feature/ale-63-beginners-workshop" />
                       </list>
                     </value>
                   </entry>

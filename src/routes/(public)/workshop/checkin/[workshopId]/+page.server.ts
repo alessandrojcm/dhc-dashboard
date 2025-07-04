@@ -4,6 +4,7 @@ import { valibot } from 'sveltekit-superforms/adapters';
 import { checkinSchema } from '$lib/schemas/workshopCreate';
 import { error, fail } from '@sveltejs/kit';
 import { getKyselyClient } from '$lib/server/kysely';
+import { resetWaitlistPriorityAfterWorkshop } from '$lib/server/kyselyRPCFunctions';
 
 export const load: PageServerLoad = async ({ params, platform }) => {
 	const { workshopId } = params;
@@ -106,6 +107,33 @@ export const actions: Actions = {
 					})
 					.where('id', '=', attendee.id)
 					.execute();
+
+				// Check if this workshop is now fully completed (all confirmed attendees have attended)
+				const workshopAttendanceStats = await trx
+					.selectFrom('workshop_attendees')
+					.select([
+						'status',
+						trx.fn.count('id').as('count')
+					])
+					.where('workshop_id', '=', workshopId)
+					.where('status', 'in', ['confirmed', 'attended'])
+					.groupBy('status')
+					.execute();
+
+				const confirmedCount = workshopAttendanceStats.find(s => s.status === 'confirmed')?.count || 0;
+				const attendedCount = workshopAttendanceStats.find(s => s.status === 'attended')?.count || 0;
+
+				// If all confirmed attendees have now attended, reset waitlist priorities
+				if (Number(confirmedCount) === 0 && Number(attendedCount) > 0) {
+					console.log(`Workshop ${workshopId} is now fully completed. Resetting waitlist priorities.`);
+					try {
+						await resetWaitlistPriorityAfterWorkshop(workshopId, trx);
+						console.log(`Successfully reset waitlist priorities for workshop ${workshopId}`);
+					} catch (resetError) {
+						console.error(`Failed to reset waitlist priorities for workshop ${workshopId}:`, resetError);
+						// Don't fail the transaction for this - it's a background operation
+					}
+				}
 
 				return {
 					email: attendee.email,

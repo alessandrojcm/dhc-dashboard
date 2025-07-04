@@ -214,3 +214,46 @@ export function moveCancelledAttendeeToWaitlist(
 		.execute(executor)
 		.then((r) => r.rows[0].move_cancelled_attendee_to_waitlist);
 }
+
+export function getPrioritizedWaitlistForWorkshop(
+	workshopId: string,
+	executor: QueryExecutorProvider,
+	limit?: number
+): Promise<Array<{
+	waitlist_id: string;
+	email: string;
+	user_profile_id: string;
+	first_name: string;
+	last_name: string;
+	phone_number: string;
+	priority_level: number;
+	created_at: string;
+	admin_notes: string;
+}>> {
+	return sql<{
+		waitlist_id: string;
+		email: string;
+		user_profile_id: string;
+		first_name: string;
+		last_name: string;
+		phone_number: string;
+		priority_level: number;
+		created_at: string;
+		admin_notes: string;
+	}>`select *
+		 from get_prioritized_waitlist_for_workshop(
+			 ${workshopId}::uuid,
+			 ${limit ?? null}::integer
+				)`
+		.execute(executor)
+		.then((r) => r.rows);
+}
+
+export function resetWaitlistPriorityAfterWorkshop(
+	workshopId: string,
+	executor: QueryExecutorProvider
+): Promise<void> {
+	return sql`select reset_waitlist_priority_after_workshop(${workshopId}::uuid)`
+		.execute(executor)
+		.then(() => undefined);
+}
