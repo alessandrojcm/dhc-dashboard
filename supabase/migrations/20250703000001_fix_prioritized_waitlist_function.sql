@@ -33,7 +33,7 @@ BEGIN
         wl.admin_notes
     FROM waitlist wl
     LEFT JOIN public.user_profiles up ON up.waitlist_id = wl.id
-    WHERE wl.status = 'completed'  -- Fixed: should be 'completed' not 'active'
+    WHERE wl.status = 'waiting'  -- Only people waiting for their first beginner's workshop
     AND up.id IS NOT NULL  -- Ensure we have a valid user profile
     -- Exclude people who cancelled from this specific workshop
     AND (wl.previous_workshop_id IS NULL OR wl.previous_workshop_id != workshop_id_param)
