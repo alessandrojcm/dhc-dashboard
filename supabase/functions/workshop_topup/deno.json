@@ -14,7 +14,7 @@
     "@sentry/deno": "https://deno.land/x/sentry@7.81.1/index.mjs",
     "stripe": "npm:stripe@13.11.0",
     "kysely": "npm:kysely@0.27.2",
-    "postgres": "npm:postgres@3.4.3",
+    "postgres": "https://deno.land/x/postgres@v0.17.0/mod.ts",
     "$shared": "../_shared"
   }
 } 

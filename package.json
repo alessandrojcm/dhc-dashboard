@@ -16,6 +16,7 @@
 		"supabase": "supabase",
 		"supabase:start": "supabase start",
 		"supabase:reset": "supabase db reset",
+		"supabase:functions:serve": "pnpm supabase functions serve --env-file ./.dev.vars",
 		"supabase:types": "supabase gen types typescript --local > database.types.ts && supabase gen types typescript --local > src/database.types.ts",
 		"seed:committee": "node ./scripts/seedCommitteeMembers.js ./scripts/users.csv",
 		"seed:waitlist": "node ./scripts/seedWaitlist.js",
