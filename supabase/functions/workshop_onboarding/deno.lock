@@ -1,0 +1,25 @@
+{
+  "version": "5",
+  "specifiers": {
+    "npm:kysely@0.27.2": "0.27.2",
+    "npm:postgres@3.4.3": "3.4.3"
+  },
+  "npm": {
+    "kysely@0.27.2": {
+      "integrity": "sha512-DmRvEfiR/NLpgsTbSxma2ldekhsdcd65+MNiKXyd/qj7w7X5e3cLkXxcj+MypsRDjPhHQ/CD5u3Eq1sBYzX0bw=="
+    },
+    "postgres@3.4.3": {
+      "integrity": "sha512-iHJn4+M9vbTdHSdDzNkC0crHq+1CUdFhx+YqCE+SqWxPjm+Zu63jq7yZborOBF64c8pc58O5uMudyL1FQcHacA=="
+    }
+  },
+  "remote": {
+    "https://deno.land/x/sentry@7.81.1/index.mjs": "250bfd26f5de2aa5d1524f1e2a98ac505223e3813dc9fe830ab274de060ba719",
+    "https://esm.sh/": "a467aff52eab120b03a3732e528166cafcf1837c69b7d8914bcb1ae39ef3bd51"
+  },
+  "workspace": {
+    "dependencies": [
+      "npm:kysely@0.27.2",
+      "npm:postgres@3.4.3"
+    ]
+  }
+}

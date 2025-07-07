@@ -1,4 +1,3 @@
-import { serve } from 'std/http/server';
 import * as Sentry from '@sentry/deno';
 import Stripe from 'stripe';
 import { db, sql } from '../_shared/db.ts';
@@ -49,7 +48,7 @@ interface InviteResult {
 	payment_link?: string;
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
 	// Handle CORS
 	if (req.method === 'OPTIONS') {
 		return new Response('ok', { headers: corsHeaders });
@@ -110,24 +109,22 @@ serve(async (req) => {
 		console.log(`Found ${manualAttendees.length} manually added attendees to process`);
 
 		// Process manual attendees in parallel
-		const manualPromises = manualAttendees.map(attendee => 
+		const manualPromises = manualAttendees.map((attendee) =>
 			processAttendeeInvitation(workshop, attendee, { isManualAttendee: true })
 		);
-		
+
 		const manualResults = await Promise.allSettled(manualPromises);
 		let manualSuccessCount = 0;
 
 		manualResults.forEach((result, index) => {
 			const attendee = manualAttendees[index];
-			
+
 			if (result.status === 'fulfilled' && result.value.success) {
 				manualSuccessCount++;
 				// Print intended email to console
 				printIntendedEmailForManual(workshop, attendee, result.value.payment_link!);
 			} else {
-				const error = result.status === 'rejected' 
-					? result.reason 
-					: result.value.error;
+				const error = result.status === 'rejected' ? result.reason : result.value.error;
 				console.error(
 					`Failed to process manual attendee invitation for ${attendee.email}: ${error}`
 				);
@@ -148,38 +145,36 @@ serve(async (req) => {
 		console.log(`Selected waitlist batch size: ${batchSize}`);
 
 		// Step 7: Process waitlist attendees in parallel
-		const waitlistPromises = selectedMembers.map(member => 
+		const waitlistPromises = selectedMembers.map((member) =>
 			processAttendeeInvitation(workshop, member)
 		);
-		
+
 		const waitlistResults = await Promise.allSettled(waitlistPromises);
 		let waitlistSuccessCount = 0;
 
 		waitlistResults.forEach((result, index) => {
 			const member = selectedMembers[index];
-			
+
 			if (result.status === 'fulfilled' && result.value.success) {
 				waitlistSuccessCount++;
 				// Print intended email to console
 				printIntendedEmail(workshop, member, result.value.payment_link!);
 			} else {
-				const error = result.status === 'rejected' 
-					? result.reason 
-					: result.value.error;
+				const error = result.status === 'rejected' ? result.reason : result.value.error;
 				console.error(`Failed to process invitation for ${member.email}: ${error}`);
 			}
 		});
 
 		// Combine all successful results for user ID extraction
 		const successfulResults: InviteResult[] = [];
-		
+
 		// Add successful manual attendees
 		manualResults.forEach((result, index) => {
 			if (result.status === 'fulfilled' && result.value.success) {
 				successfulResults.push(result.value);
 			}
 		});
-		
+
 		// Add successful waitlist attendees
 		waitlistResults.forEach((result, index) => {
 			if (result.status === 'fulfilled' && result.value.success) {
@@ -195,7 +190,7 @@ serve(async (req) => {
 			console.log(
 				'Workshop is now full, invalidating all remaining pending links (excluding current batch)'
 			);
-			const currentBatchUserIds = successfulResults.map(result => result.user_profile_id);
+			const currentBatchUserIds = successfulResults.map((result) => result.user_profile_id);
 			await invalidateAllPendingLinks(workshop_id, currentBatchUserIds);
 		}
 
@@ -339,17 +334,20 @@ async function fetchWaitlistMembers(workshop_id: string): Promise<WaitlistMember
 		`.execute(db);
 
 		// Map to the expected WaitlistMember format (no additional queries needed)
-		return result.rows.map((member) => ({
-			id: member.waitlist_id,
-			email: member.email,
-			user_profile_id: member.user_profile_id,
-			first_name: member.first_name,
-			last_name: member.last_name,
-			phone_number: member.phone_number,
-			initial_registration_date: member.created_at,
-			priority_level: member.priority_level,
-			admin_notes: member.admin_notes
-		} as WaitlistMember));
+		return result.rows.map(
+			(member) =>
+				({
+					id: member.waitlist_id,
+					email: member.email,
+					user_profile_id: member.user_profile_id,
+					first_name: member.first_name,
+					last_name: member.last_name,
+					phone_number: member.phone_number,
+					initial_registration_date: member.created_at,
+					priority_level: member.priority_level,
+					admin_notes: member.admin_notes
+				}) as WaitlistMember
+		);
 	} catch (error) {
 		console.error(`Error fetching waitlist members for workshop ${workshop_id}:`, error);
 		Sentry.captureException(error, {

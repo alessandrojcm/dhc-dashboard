@@ -18,14 +18,18 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="fix: fetch attendees was not working">
+    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="feat: beginners workshop capacity tests">
+      <change afterPath="$PROJECT_DIR$/supabase/functions/workshop_topup/deno.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.snaplet/dataModel.json" beforeDir="false" afterPath="$PROJECT_DIR$/.snaplet/dataModel.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/CLAUDE.md" beforeDir="false" afterPath="$PROJECT_DIR$/CLAUDE.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/e2e/beginners-workshop-admin.spec.ts" beforeDir="false" afterPath="$PROJECT_DIR$/e2e/beginners-workshop-admin.spec.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/e2e/supabaseLogin.ts" beforeDir="false" afterPath="$PROJECT_DIR$/e2e/supabaseLogin.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/hooks.server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/hooks.server.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/api/workshops/[id]/attendees/+server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/api/workshops/[id]/attendees/+server.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/api/workshops/+server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/api/workshops/+server.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/api/workshops/[id]/search-users/+server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/api/workshops/[id]/search-users/+server.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/supabase/functions/workshop_inviter/deno.json" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/workshop_inviter/deno.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/supabase/functions/workshop_inviter/deno.lock" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/workshop_inviter/deno.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/supabase/functions/workshop_inviter/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/workshop_inviter/index.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/supabase/functions/workshop_onboarding/deno.json" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/workshop_onboarding/deno.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/supabase/functions/workshop_onboarding/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/workshop_onboarding/index.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/supabase/functions/workshop_topup/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/workshop_topup/index.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/supabase/migrations/20250621101317_create_workshop_table.sql" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/migrations/20250621101317_create_workshop_table.sql" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -95,6 +99,10 @@
     "Node.js.seedMembers.js.executor": "Debug",
     "Node.js.seedWaitlist.js.executor": "Run",
     "Playwright.Beginners Workshop Admin Page.should create a new workshop in draft state via API.executor": "Run",
+    "Playwright.Workshop CRUD API Tests.Workshop Creation API.should create workshop with beginners_coordinator role.executor": "Run",
+    "Playwright.Workshop CRUD API Tests.Workshop User Search API.executor": "Run",
+    "Playwright.Workshop CRUD API Tests.Workshop User Search API.should reject search with query too short.executor": "Debug",
+    "Playwright.Workshop CRUD API Tests.executor": "Run",
     "Playwright.Workshop Capacity and Attendee Management Tests.Attendee Management API.should add attendee to workshop.executor": "Run",
     "Playwright.Workshop Capacity and Attendee Management Tests.Attendee Management API.should allow priority attendees to exceed capacity.executor": "Run",
     "Playwright.Workshop Capacity and Attendee Management Tests.Attendee Management API.should fetch workshop attendees.executor": "Run",
@@ -107,8 +115,14 @@
     "Playwright.Workshop Capacity and Attendee Management Tests.Attendee Management API.should respect workshop capacity limits.executor": "Run",
     "Playwright.Workshop Capacity and Attendee Management Tests.Capacity Configuration API.should set workshop capacity.executor": "Run",
     "Playwright.Workshop Capacity and Attendee Management Tests.Capacity Configuration UI.executor": "Run",
+    "Playwright.Workshop Capacity and Attendee Management Tests.Workshop Detail Page Tests.executor": "Run",
+    "Playwright.Workshop Capacity and Attendee Management Tests.Workshop UI Tests.should allow adding priority attendees.executor": "Run",
     "Playwright.Workshop Capacity and Attendee Management Tests.Workshop UI Tests.should create workshop via UI.executor": "Run",
     "Playwright.Workshop Capacity and Attendee Management Tests.Workshop UI Tests.should display workshops table on main page.executor": "Run",
+    "Playwright.Workshop Capacity and Attendee Management Tests.Workshop UI Tests.should show priority attendees section.executor": "Run",
+    "Playwright.Workshop Capacity and Attendee Management Tests.Workshop UI Tests.should show publish button for draft workshop.executor": "Run",
+    "Playwright.Workshop Capacity and Attendee Management Tests.Workshop UI Tests.should show tab navigation on main page.executor": "Run",
+    "Playwright.Workshop Capacity and Attendee Management Tests.Workshop UI Tests.should show workshop table pagination on main page.executor": "Run",
     "Playwright.underage user (16-17) should be able to submit with guardian information.executor": "Run",
     "Playwright.underage user (16-17) should be required to fill guardian fields.executor": "Run",
     "Playwright.underage-guardian-waitlist.spec.ts.executor": "Run",
@@ -118,7 +132,7 @@
     "deno.use.library": "true",
     "git-widget-placeholder": "feature/ale-63-beginners-workshop",
     "junie.onboarding.icon.badge.shown": "true",
-    "last_opened_file_path": "/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]",
+    "last_opened_file_path": "/Users/alessandrojcm/repos/dhc-dashboard/supabase/functions/workshop_topup",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.standard": "true",
     "node.js.detected.package.tslint": "true",
@@ -126,7 +140,7 @@
     "node.js.selected.package.standard": "",
     "node.js.selected.package.tslint": "(autodetect)",
     "nodejs_package_manager_path": "pnpm",
-    "npm.dev.executor": "Run",
+    "npm.dev.executor": "Debug",
     "npm.test:e2e.executor": "Run",
     "prettierjs.PrettierConfiguration.Package": "/Users/alessandrojcm/repos/dhc-dashboard/node_modules/prettier",
     "settings.editor.selected.configurable": "com.anthropic.code.plugin.settings",
@@ -141,6 +155,7 @@
 }]]></component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
+      <recent name="$PROJECT_DIR$/supabase/functions/workshop_topup" />
       <recent name="$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
@@ -149,94 +164,94 @@
       <recent name="$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]" />
     </key>
   </component>
-  <component name="RunManager" selected="Playwright.Workshop Capacity and Attendee Management Tests.Workshop UI Tests.should show priority attendees section">
+  <component name="RunManager" selected="Playwright.Workshop CRUD API Tests.Data Validation and Edge Cases.should handle extremely large capacity values">
     <configuration name="Edge Functions" type="ChromiumRemoteDebugType" factoryName="Chromium Remote" port="8083">
       <method v="2" />
     </configuration>
-    <configuration name="Workshop Capacity and Attendee Management Tests.Capacity Configuration UI" type="JavaScriptTestRunnerPlaywright" temporary="true" nameIsGenerated="true">
+    <configuration name="Workshop CRUD API Tests.Data Validation and Edge Cases.should handle extremely large capacity values" type="JavaScriptTestRunnerPlaywright" temporary="true" nameIsGenerated="true">
+      <node-interpreter value="project" />
+      <playwright-package value="$PROJECT_DIR$/node_modules/@playwright/test" />
+      <working-dir value="$PROJECT_DIR$" />
+      <envs />
+      <scope-kind value="TEST" />
+      <test-file value="$PROJECT_DIR$/e2e/workshop-crud-api.spec.ts" />
+      <test-names>
+        <test-name value="Workshop CRUD API Tests" />
+        <test-name value="Data Validation and Edge Cases" />
+        <test-name value="should handle extremely large capacity values" />
+      </test-names>
+      <method v="2" />
+    </configuration>
+    <configuration name="Workshop CRUD API Tests.Data Validation and Edge Cases.should handle malformed UUID in workshop ID" type="JavaScriptTestRunnerPlaywright" temporary="true" nameIsGenerated="true">
+      <node-interpreter value="project" />
+      <playwright-package value="$PROJECT_DIR$/node_modules/@playwright/test" />
+      <working-dir value="$PROJECT_DIR$" />
+      <envs />
+      <scope-kind value="TEST" />
+      <test-file value="$PROJECT_DIR$/e2e/workshop-crud-api.spec.ts" />
+      <test-names>
+        <test-name value="Workshop CRUD API Tests" />
+        <test-name value="Data Validation and Edge Cases" />
+        <test-name value="should handle malformed UUID in workshop ID" />
+      </test-names>
+      <method v="2" />
+    </configuration>
+    <configuration name="Workshop CRUD API Tests.Workshop Creation API.should create workshop with beginners_coordinator role" type="JavaScriptTestRunnerPlaywright" temporary="true" nameIsGenerated="true">
+      <node-interpreter value="project" />
+      <playwright-package value="$PROJECT_DIR$/node_modules/@playwright/test" />
+      <working-dir value="$PROJECT_DIR$" />
+      <envs />
+      <scope-kind value="TEST" />
+      <test-file value="$PROJECT_DIR$/e2e/workshop-crud-api.spec.ts" />
+      <test-names>
+        <test-name value="Workshop CRUD API Tests" />
+        <test-name value="Workshop Creation API" />
+        <test-name value="should create workshop with beginners_coordinator role" />
+      </test-names>
+      <method v="2" />
+    </configuration>
+    <configuration name="Workshop CRUD API Tests.Workshop User Search API" type="JavaScriptTestRunnerPlaywright" temporary="true" nameIsGenerated="true">
       <node-interpreter value="project" />
       <playwright-package value="$PROJECT_DIR$/node_modules/@playwright/test" />
       <working-dir value="$PROJECT_DIR$" />
       <envs />
       <scope-kind value="SUITE" />
-      <test-file value="$PROJECT_DIR$/e2e/workshop-capacity-attendee-management.spec.ts" />
+      <test-file value="$PROJECT_DIR$/e2e/workshop-crud-api.spec.ts" />
       <test-names>
-        <test-name value="Workshop Capacity and Attendee Management Tests" />
-        <test-name value="Capacity Configuration UI" />
+        <test-name value="Workshop CRUD API Tests" />
+        <test-name value="Workshop User Search API" />
       </test-names>
       <method v="2" />
     </configuration>
-    <configuration name="Workshop Capacity and Attendee Management Tests.Workshop UI Tests.should create workshop via UI" type="JavaScriptTestRunnerPlaywright" temporary="true" nameIsGenerated="true">
+    <configuration name="Workshop CRUD API Tests.Workshop User Search API.should reject search with query too short" type="JavaScriptTestRunnerPlaywright" temporary="true" nameIsGenerated="true">
       <node-interpreter value="project" />
       <playwright-package value="$PROJECT_DIR$/node_modules/@playwright/test" />
       <working-dir value="$PROJECT_DIR$" />
       <envs />
       <scope-kind value="TEST" />
-      <test-file value="$PROJECT_DIR$/e2e/workshop-capacity-attendee-management.spec.ts" />
+      <test-file value="$PROJECT_DIR$/e2e/workshop-crud-api.spec.ts" />
       <test-names>
-        <test-name value="Workshop Capacity and Attendee Management Tests" />
-        <test-name value="Workshop UI Tests" />
-        <test-name value="should create workshop via UI" />
-      </test-names>
-      <method v="2" />
-    </configuration>
-    <configuration name="Workshop Capacity and Attendee Management Tests.Workshop UI Tests.should display workshops table on main page" type="JavaScriptTestRunnerPlaywright" temporary="true" nameIsGenerated="true">
-      <node-interpreter value="project" />
-      <playwright-package value="$PROJECT_DIR$/node_modules/@playwright/test" />
-      <working-dir value="$PROJECT_DIR$" />
-      <envs />
-      <scope-kind value="TEST" />
-      <test-file value="$PROJECT_DIR$/e2e/workshop-capacity-attendee-management.spec.ts" />
-      <test-names>
-        <test-name value="Workshop Capacity and Attendee Management Tests" />
-        <test-name value="Workshop UI Tests" />
-        <test-name value="should display workshops table on main page" />
-      </test-names>
-      <method v="2" />
-    </configuration>
-    <configuration name="Workshop Capacity and Attendee Management Tests.Workshop UI Tests.should show priority attendees section" type="JavaScriptTestRunnerPlaywright" temporary="true" nameIsGenerated="true">
-      <node-interpreter value="project" />
-      <playwright-package value="$PROJECT_DIR$/node_modules/@playwright/test" />
-      <working-dir value="$PROJECT_DIR$" />
-      <envs />
-      <scope-kind value="TEST" />
-      <test-file value="$PROJECT_DIR$/e2e/workshop-capacity-attendee-management.spec.ts" />
-      <test-names>
-        <test-name value="Workshop Capacity and Attendee Management Tests" />
-        <test-name value="Workshop UI Tests" />
-        <test-name value="should show priority attendees section" />
-      </test-names>
-      <method v="2" />
-    </configuration>
-    <configuration name="Workshop Capacity and Attendee Management Tests.Workshop UI Tests.should show publish button for draft workshop" type="JavaScriptTestRunnerPlaywright" temporary="true" nameIsGenerated="true">
-      <node-interpreter value="project" />
-      <playwright-package value="$PROJECT_DIR$/node_modules/@playwright/test" />
-      <working-dir value="$PROJECT_DIR$" />
-      <envs />
-      <scope-kind value="TEST" />
-      <test-file value="$PROJECT_DIR$/e2e/workshop-capacity-attendee-management.spec.ts" />
-      <test-names>
-        <test-name value="Workshop Capacity and Attendee Management Tests" />
-        <test-name value="Workshop UI Tests" />
-        <test-name value="should show publish button for draft workshop" />
+        <test-name value="Workshop CRUD API Tests" />
+        <test-name value="Workshop User Search API" />
+        <test-name value="should reject search with query too short" />
       </test-names>
       <method v="2" />
     </configuration>
     <list>
       <item itemvalue="Attach to Node.js/Chrome.Edge Functions" />
-      <item itemvalue="Playwright.Workshop Capacity and Attendee Management Tests.Capacity Configuration UI" />
-      <item itemvalue="Playwright.Workshop Capacity and Attendee Management Tests.Workshop UI Tests.should create workshop via UI" />
-      <item itemvalue="Playwright.Workshop Capacity and Attendee Management Tests.Workshop UI Tests.should display workshops table on main page" />
-      <item itemvalue="Playwright.Workshop Capacity and Attendee Management Tests.Workshop UI Tests.should show priority attendees section" />
-      <item itemvalue="Playwright.Workshop Capacity and Attendee Management Tests.Workshop UI Tests.should show publish button for draft workshop" />
+      <item itemvalue="Playwright.Workshop CRUD API Tests.Data Validation and Edge Cases.should handle extremely large capacity values" />
+      <item itemvalue="Playwright.Workshop CRUD API Tests.Data Validation and Edge Cases.should handle malformed UUID in workshop ID" />
+      <item itemvalue="Playwright.Workshop CRUD API Tests.Workshop Creation API.should create workshop with beginners_coordinator role" />
+      <item itemvalue="Playwright.Workshop CRUD API Tests.Workshop User Search API" />
+      <item itemvalue="Playwright.Workshop CRUD API Tests.Workshop User Search API.should reject search with query too short" />
     </list>
     <recent_temporary>
       <list>
-        <item itemvalue="Playwright.Workshop Capacity and Attendee Management Tests.Workshop UI Tests.should show priority attendees section" />
-        <item itemvalue="Playwright.Workshop Capacity and Attendee Management Tests.Workshop UI Tests.should show publish button for draft workshop" />
-        <item itemvalue="Playwright.Workshop Capacity and Attendee Management Tests.Workshop UI Tests.should create workshop via UI" />
-        <item itemvalue="Playwright.Workshop Capacity and Attendee Management Tests.Workshop UI Tests.should display workshops table on main page" />
-        <item itemvalue="Playwright.Workshop Capacity and Attendee Management Tests.Capacity Configuration UI" />
+        <item itemvalue="Playwright.Workshop CRUD API Tests.Data Validation and Edge Cases.should handle extremely large capacity values" />
+        <item itemvalue="Playwright.Workshop CRUD API Tests.Data Validation and Edge Cases.should handle malformed UUID in workshop ID" />
+        <item itemvalue="Playwright.Workshop CRUD API Tests.Workshop User Search API.should reject search with query too short" />
+        <item itemvalue="Playwright.Workshop CRUD API Tests.Workshop User Search API" />
+        <item itemvalue="Playwright.Workshop CRUD API Tests.Workshop Creation API.should create workshop with beginners_coordinator role" />
       </list>
     </recent_temporary>
   </component>
@@ -288,7 +303,7 @@
       <workItem from="1751717611479" duration="870000" />
       <workItem from="1751724514790" duration="139000" />
       <workItem from="1751830769447" duration="1706000" />
-      <workItem from="1751879803773" duration="5645000" />
+      <workItem from="1751879803773" duration="10362000" />
     </task>
     <task id="LOCAL-00001" summary="Add guardian support for underage waitlist entries&#10;&#10;Introduce `waitlist_guardians` table and transactional logic for adding guardian details when underage users join the waitlist. Updates include database migrations, UI adjustments for conditional input fields, validation logic, and tests to ensure age-based gating.">
       <option name="closed" value="true" />
@@ -554,7 +569,15 @@
       <option name="project" value="LOCAL" />
       <updated>1751639396028</updated>
     </task>
-    <option name="localTasksCounter" value="34" />
+    <task id="LOCAL-00034" summary="feat: beginners workshop capacity tests">
+      <option name="closed" value="true" />
+      <created>1751886366112</created>
+      <option name="number" value="00034" />
+      <option name="presentableId" value="LOCAL-00034" />
+      <option name="project" value="LOCAL" />
+      <updated>1751886366112</updated>
+    </task>
+    <option name="localTasksCounter" value="35" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -585,7 +608,6 @@
   </component>
   <component name="VcsManagerConfiguration">
     <option name="CHECK_CODE_SMELLS_BEFORE_PROJECT_COMMIT" value="false" />
-    <MESSAGE value="feat: implemented invitations list of members" />
     <MESSAGE value="chore: e2e test for invitations" />
     <MESSAGE value="`chore: add data source meta and schema files for IDE configuration`" />
     <MESSAGE value="feat: add bulk invite functionality and UI enhancements for waitlist management&#10;&#10;- Added `complete_member_registration` SQL function for handling member registration.&#10;- Enhanced waitlist table with bulk invite feature using Supabase functions.&#10;- Introduced `SendIcon` button for inviting members with tooltips.&#10;- Refactored background processing logic for invitations.&#10;- Improved state management, query handling, and updates for waitlist invitations." />
@@ -610,7 +632,8 @@
     <MESSAGE value="refactor: update workshop_topup function with vault integration and enhanced request structure&#10;&#10;- Replace hardcoded settings with secure vault secrets for project URL and service role key.&#10;- Include current time in the request body for tracking.&#10;- Improve readability with consistent formatting and indentation updates." />
     <MESSAGE value="fix: logical error when inviting people from the waitlist" />
     <MESSAGE value="fix: fetch attendees was not working" />
-    <option name="LAST_COMMIT_MESSAGE" value="fix: fetch attendees was not working" />
+    <MESSAGE value="feat: beginners workshop capacity tests" />
+    <option name="LAST_COMMIT_MESSAGE" value="feat: beginners workshop capacity tests" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -621,14 +644,15 @@
           <option name="timeStamp" value="7" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="javascript">
-          <url>file://$PROJECT_DIR$/src/routes/api/workshops/+server.ts</url>
-          <line>24</line>
-          <option name="timeStamp" value="14" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" type="javascript">
           <url>file://$PROJECT_DIR$/src/routes/api/workshops/[id]/attendees/+server.ts</url>
           <line>28</line>
           <option name="timeStamp" value="16" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="javascript">
+          <url>file://$PROJECT_DIR$/src/routes/api/workshops/[id]/search-users/+server.ts</url>
+          <line>16</line>
+          <properties lambdaOrdinal="-1" />
+          <option name="timeStamp" value="21" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>

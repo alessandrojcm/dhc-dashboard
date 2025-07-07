@@ -59,7 +59,7 @@ create index on workshop_attendees (status);
 alter table workshops
     enable row level security;
 create policy "Admins and coaches can manage workshops" on workshops for all
-    using (has_any_role((select auth.uid()), array ['admin', 'president', 'coach']::role_type[]));
+    using (has_any_role((select auth.uid()), array ['admin', 'president', 'coach', 'beginners_coordinator']::role_type[]));
 create policy "Authenticated users can view published workshops" on workshops for select
     using (status = 'published');
 
@@ -67,7 +67,7 @@ create policy "Authenticated users can view published workshops" on workshops fo
 alter table workshop_assistants
     enable row level security;
 create policy "Admins and coaches can manage assistants" on workshop_assistants for all
-    using (has_any_role((select auth.uid()), array ['admin', 'president', 'coach']::role_type[]));
+    using (has_any_role((select auth.uid()), array ['admin', 'president', 'coach', 'beginners_coordinator']::role_type[]));
 create policy "Assistants can see their own assignment" on workshop_assistants for select
     using ((select supabase_user_id from user_profiles where id = member_id) = (select auth.uid()));
 
@@ -75,7 +75,7 @@ create policy "Assistants can see their own assignment" on workshop_assistants f
 alter table workshop_attendees
     enable row level security;
 create policy "Admins and coaches can manage attendees" on workshop_attendees for all
-    using (has_any_role((select auth.uid()), array ['admin', 'president', 'coach']::role_type[]));
+    using (has_any_role((select auth.uid()), array ['admin', 'president', 'coach', 'beginners_coordinator']::role_type[]));
 
 create policy "Attendees can see their own records" on workshop_attendees for select
     using ((select supabase_user_id from user_profiles where id = user_profile_id) = (select auth.uid()));
@@ -103,4 +103,4 @@ execute procedure set_updated_at();
 -- The CHECK constraint was incorrect as payment_url_token is a token, not a full URL.
 -- ALTER TABLE workshop_attendees
 -- ADD CONSTRAINT payment_url_token_is_url
--- CHECK (payment_url_token ~ '^https?://'); 
+-- CHECK (payment_url_token ~ '^https?://');

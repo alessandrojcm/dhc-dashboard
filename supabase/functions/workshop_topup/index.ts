@@ -1,4 +1,3 @@
-import { serve } from 'std/http/server';
 import * as Sentry from '@sentry/deno';
 import { db, sql } from '../_shared/db.ts';
 import { corsHeaders } from '../_shared/cors.ts';
@@ -21,7 +20,7 @@ interface WorkshopToTopup {
 	last_batch_sent: string | null;
 }
 
-serve(async (req) => {
+Deno.serve(async (req) => {
 	// Handle CORS
 	if (req.method === 'OPTIONS') {
 		return new Response('ok', { headers: corsHeaders });

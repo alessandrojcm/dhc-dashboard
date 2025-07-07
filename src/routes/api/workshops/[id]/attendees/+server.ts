@@ -37,10 +37,11 @@ export const GET: RequestHandler = async ({ params, url, locals, platform }) => 
 		throw error(403, 'Insufficient permissions');
 	}
 
-	const workshopId = params.id;
-	if (!workshopId) {
+	const validateResult = v.safeParse(v.pipe(v.string(), v.uuid()), params.id);
+	if (!validateResult.success) {
 		throw error(400, 'Workshop ID required');
 	}
+	const workshopId = validateResult.output;
 
 	// Validate query parameters
 	const statusFilter = url.searchParams.get('status') || 'all';

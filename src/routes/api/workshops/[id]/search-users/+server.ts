@@ -26,7 +26,7 @@ export const GET: RequestHandler = async ({ params, url, locals, platform }) => 
 	}
 
 	if (!searchQuery || searchQuery.length < 2) {
-		return json([]);
+		throw error(400, 'Search query too short. Minimum 2 characters required');
 	}
 
 	const db = getKyselyClient(platform?.env.HYPERDRIVE);
@@ -37,9 +37,13 @@ export const GET: RequestHandler = async ({ params, url, locals, platform }) => 
 	try {
 		const results = await executeWithRLS(db, { claims: session }, async (trx) => {
 			// Use prefix matching for queries 3+ characters, exact matching for shorter queries
-			const tsQuery = searchQuery.length >= 3 
-				? `${searchQuery.split(' ').map(term => `${term}:*`).join(' & ')}`
-				: searchQuery;
+			const tsQuery =
+				searchQuery.length >= 3
+					? `${searchQuery
+							.split(' ')
+							.map((term) => `${term}:*`)
+							.join(' & ')}`
+					: searchQuery;
 
 			const searchResults = await sql`
         SELECT DISTINCT
