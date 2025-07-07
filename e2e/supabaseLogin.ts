@@ -35,4 +35,6 @@ export async function loginAsUser(context: BrowserContext, email: string) {
 	]);
 
 	console.log('Cookie set successfully');
+
+	return `sb-${projectRef}-auth-token`;
 }

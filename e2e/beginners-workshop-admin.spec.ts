@@ -6,7 +6,7 @@ test.describe('Beginners Workshop Admin Page', () => {
 	let adminData: Awaited<ReturnType<typeof createMember>>;
 
 	test.beforeAll(async () => {
-		const uniqueEmail = `workshop-admin-${Date.now()}@test.com`;
+		const uniqueEmail = `workshop-admin-${Date.now()}-${Math.random().toString(36).substring(2, 11)}@test.com`;
 		adminData = await createMember({
 			email: uniqueEmail,
 			roles: new Set(['admin'])
@@ -21,8 +21,8 @@ test.describe('Beginners Workshop Admin Page', () => {
 
 	test('should load the beginners workshop dashboard', async ({ page }) => {
 		await page.goto('/dashboard/beginners-workshop');
-		await expect(page.getByRole('heading', { name: /workshops/i })).toBeVisible();
-		await expect(page.getByRole('button', { name: /create workshop/i })).toBeVisible();
+		await expect(page.getByRole('tab', { name: /workshops/i })).toBeVisible();
+		await expect(page.getByText('Create Workshop')).toBeVisible();
 		await expect(page.getByRole('table')).toBeVisible();
 	});
 
@@ -43,7 +43,12 @@ test.describe('Beginners Workshop Admin Page', () => {
 		// Make the API request
 		const response = await request.post('/api/workshops', {
 			data: workshopData,
-			headers: { 'Content-Type': 'application/json' }
+			headers: {
+				'Content-Type': 'application/json',
+				cookie: await context
+					.cookies()
+					.then((cookies) => cookies.map((c) => `${c.name}=${c.value}`).join('; '))
+			}
 		});
 
 		expect(response.status()).toBe(200);
@@ -58,7 +63,10 @@ test.describe('Beginners Workshop Admin Page', () => {
 		expect(typeof created.id).toBe('string');
 		expect(new Date(created.workshop_date).toISOString()).toBe(workshopData.workshop_date);
 
-		// Clean up: delete the created workshop (if possible)
-		// If you have a delete endpoint or direct DB access, add cleanup here
+		// Clean up: delete the created workshop directly from database to prevent foreign key constraint issues
+		// Import supabase client dynamically
+		const { getSupabaseServiceClient } = await import('./setupFunctions');
+		const client = getSupabaseServiceClient();
+		await client.from('workshops').delete().eq('id', created.id);
 	});
-}); 
+});

@@ -4,7 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a SvelteKit application for managing a Historical European Martial Arts club (Dublin Hema Club, DHC for short) dashboard. It handles member management,
+This is a SvelteKit application for managing a Historical European Martial Arts club (Dublin Hema Club, DHC for short)
+dashboard. It handles member management,
 workshop coordination, payment processing, and subscription management using Supabase as the backend and Stripe for
 payments.
 
@@ -52,9 +53,16 @@ payments.
 
 ### Key Patterns
 
+
+### Test Driven Development
+
+- All code MUST be covered by tests, we are NOT aiming for 100% test coverage, but key functionality needs to be tested
+- ALWAYS write tests first, verify they fail 
+- AFTER writing tests, write code to pass the tests
+
 #### Database Access
 
-- **Queries**: Use Supabase client directly (`supabase.from('table').select()`)
+- **Queries**: Use Supabase client directly (`supabase.from('table').select()`) from client side
 - **Mutations**: Use Kysely with RLS (`executeWithRLS()` helper in `src/lib/server/kysely.ts`)
 - **Types**: Auto-generated from Supabase schema in `database.types.ts`
 
@@ -122,6 +130,7 @@ Required for development:
 - Always implement loading and error states for data fetching
 - Use semantic HTML elements
 - Implement proper error handling and logging
+- ALWAYS use svelte-shadcn components first, resort to tailwind 4 custom styles if components do not suffice
 
 ### Database Guidelines
 

@@ -18,12 +18,14 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="fix: logical error when inviting people from the waitlist">
+    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="fix: fetch attendees was not working">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.snaplet/dataModel.json" beforeDir="false" afterPath="$PROJECT_DIR$/.snaplet/dataModel.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/CLAUDE.md" beforeDir="false" afterPath="$PROJECT_DIR$/CLAUDE.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/e2e/beginners-workshop-admin.spec.ts" beforeDir="false" afterPath="$PROJECT_DIR$/e2e/beginners-workshop-admin.spec.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/e2e/supabaseLogin.ts" beforeDir="false" afterPath="$PROJECT_DIR$/e2e/supabaseLogin.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/hooks.server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/hooks.server.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/routes/api/workshops/[id]/attendees/+server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/api/workshops/[id]/attendees/+server.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/api/workshops/[id]/attendees/[attendeeId]/cancel/+server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/api/workshops/[id]/attendees/[attendeeId]/cancel/+server.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/beginners-workshop/+page.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/beginners-workshop/+page.svelte" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/beginners-workshop/[workshopId]/workshop-attendees.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/beginners-workshop/[workshopId]/workshop-attendees.svelte" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -85,42 +87,58 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;Attach to Node.js/Chrome.Edge Functions.executor&quot;: &quot;Debug&quot;,
-    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
-    &quot;Node.js.script.js.executor&quot;: &quot;Run&quot;,
-    &quot;Node.js.seedMembers.js.executor&quot;: &quot;Debug&quot;,
-    &quot;Node.js.seedWaitlist.js.executor&quot;: &quot;Run&quot;,
-    &quot;Playwright.underage user (16-17) should be able to submit with guardian information.executor&quot;: &quot;Run&quot;,
-    &quot;Playwright.underage user (16-17) should be required to fill guardian fields.executor&quot;: &quot;Run&quot;,
-    &quot;Playwright.underage-guardian-waitlist.spec.ts.executor&quot;: &quot;Run&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;com.codeium.enabled&quot;: &quot;true&quot;,
-    &quot;deno.use.library&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;feature/ale-63-beginners-workshop&quot;,
-    &quot;junie.onboarding.icon.badge.shown&quot;: &quot;true&quot;,
-    &quot;last_opened_file_path&quot;: &quot;/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]&quot;,
-    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
-    &quot;node.js.detected.package.standard&quot;: &quot;true&quot;,
-    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
-    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
-    &quot;node.js.selected.package.standard&quot;: &quot;&quot;,
-    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
-    &quot;nodejs_package_manager_path&quot;: &quot;pnpm&quot;,
-    &quot;npm.dev.executor&quot;: &quot;Debug&quot;,
-    &quot;prettierjs.PrettierConfiguration.Package&quot;: &quot;/Users/alessandrojcm/repos/dhc-dashboard/node_modules/prettier&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;com.anthropic.code.plugin.settings&quot;,
-    &quot;ts.external.directory.path&quot;: &quot;/Users/alessandrojcm/repos/dhc-dashboard/node_modules/typescript/lib&quot;,
-    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "Attach to Node.js/Chrome.Edge Functions.executor": "Debug",
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "Node.js.script.js.executor": "Run",
+    "Node.js.seedMembers.js.executor": "Debug",
+    "Node.js.seedWaitlist.js.executor": "Run",
+    "Playwright.Beginners Workshop Admin Page.should create a new workshop in draft state via API.executor": "Run",
+    "Playwright.Workshop Capacity and Attendee Management Tests.Attendee Management API.should add attendee to workshop.executor": "Run",
+    "Playwright.Workshop Capacity and Attendee Management Tests.Attendee Management API.should allow priority attendees to exceed capacity.executor": "Run",
+    "Playwright.Workshop Capacity and Attendee Management Tests.Attendee Management API.should fetch workshop attendees.executor": "Run",
+    "Playwright.Workshop Capacity and Attendee Management Tests.Attendee Management API.should filter attendees by status.executor": "Run",
+    "Playwright.Workshop Capacity and Attendee Management Tests.Attendee Management API.should prevent duplicate attendees.executor": "Run",
+    "Playwright.Workshop Capacity and Attendee Management Tests.Attendee Management API.should reject adding non-existent attendee.executor": "Run",
+    "Playwright.Workshop Capacity and Attendee Management Tests.Attendee Management API.should reject attendee operations with insufficient permissions.executor": "Run",
+    "Playwright.Workshop Capacity and Attendee Management Tests.Attendee Management API.should reject attendee operations without authentication.executor": "Run",
+    "Playwright.Workshop Capacity and Attendee Management Tests.Attendee Management API.should remove attendee from workshop.executor": "Run",
+    "Playwright.Workshop Capacity and Attendee Management Tests.Attendee Management API.should respect workshop capacity limits.executor": "Run",
+    "Playwright.Workshop Capacity and Attendee Management Tests.Capacity Configuration API.should set workshop capacity.executor": "Run",
+    "Playwright.Workshop Capacity and Attendee Management Tests.Capacity Configuration UI.executor": "Run",
+    "Playwright.Workshop Capacity and Attendee Management Tests.Workshop UI Tests.should create workshop via UI.executor": "Run",
+    "Playwright.Workshop Capacity and Attendee Management Tests.Workshop UI Tests.should display workshops table on main page.executor": "Run",
+    "Playwright.underage user (16-17) should be able to submit with guardian information.executor": "Run",
+    "Playwright.underage user (16-17) should be required to fill guardian fields.executor": "Run",
+    "Playwright.underage-guardian-waitlist.spec.ts.executor": "Run",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "com.codeium.enabled": "true",
+    "deno.use.library": "true",
+    "git-widget-placeholder": "feature/ale-63-beginners-workshop",
+    "junie.onboarding.icon.badge.shown": "true",
+    "last_opened_file_path": "/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.standard": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.standard": "",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "pnpm",
+    "npm.dev.executor": "Run",
+    "npm.test:e2e.executor": "Run",
+    "prettierjs.PrettierConfiguration.Package": "/Users/alessandrojcm/repos/dhc-dashboard/node_modules/prettier",
+    "settings.editor.selected.configurable": "com.anthropic.code.plugin.settings",
+    "ts.external.directory.path": "/Users/alessandrojcm/repos/dhc-dashboard/node_modules/typescript/lib",
+    "vue.rearranger.settings.migration": "true"
   },
-  &quot;keyToStringList&quot;: {
-    &quot;DatabaseDriversLRU&quot;: [
-      &quot;postgresql&quot;
+  "keyToStringList": {
+    "DatabaseDriversLRU": [
+      "postgresql"
     ]
   }
-}</component>
+}]]></component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
       <recent name="$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]" />
@@ -131,56 +149,94 @@
       <recent name="$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]" />
     </key>
   </component>
-  <component name="RunManager" selected="npm.dev">
+  <component name="RunManager" selected="Playwright.Workshop Capacity and Attendee Management Tests.Workshop UI Tests.should show priority attendees section">
     <configuration name="Edge Functions" type="ChromiumRemoteDebugType" factoryName="Chromium Remote" port="8083">
       <method v="2" />
     </configuration>
-    <configuration name="underage user (16-17) should be required to fill guardian fields" type="JavaScriptTestRunnerPlaywright" temporary="true" nameIsGenerated="true">
+    <configuration name="Workshop Capacity and Attendee Management Tests.Capacity Configuration UI" type="JavaScriptTestRunnerPlaywright" temporary="true" nameIsGenerated="true">
+      <node-interpreter value="project" />
+      <playwright-package value="$PROJECT_DIR$/node_modules/@playwright/test" />
+      <working-dir value="$PROJECT_DIR$" />
+      <envs />
+      <scope-kind value="SUITE" />
+      <test-file value="$PROJECT_DIR$/e2e/workshop-capacity-attendee-management.spec.ts" />
+      <test-names>
+        <test-name value="Workshop Capacity and Attendee Management Tests" />
+        <test-name value="Capacity Configuration UI" />
+      </test-names>
+      <method v="2" />
+    </configuration>
+    <configuration name="Workshop Capacity and Attendee Management Tests.Workshop UI Tests.should create workshop via UI" type="JavaScriptTestRunnerPlaywright" temporary="true" nameIsGenerated="true">
       <node-interpreter value="project" />
       <playwright-package value="$PROJECT_DIR$/node_modules/@playwright/test" />
       <working-dir value="$PROJECT_DIR$" />
       <envs />
       <scope-kind value="TEST" />
-      <test-file value="$PROJECT_DIR$/e2e/underage-guardian-waitlist.spec.ts" />
+      <test-file value="$PROJECT_DIR$/e2e/workshop-capacity-attendee-management.spec.ts" />
       <test-names>
-        <test-name value="underage user (16-17) should be required to fill guardian fields" />
+        <test-name value="Workshop Capacity and Attendee Management Tests" />
+        <test-name value="Workshop UI Tests" />
+        <test-name value="should create workshop via UI" />
       </test-names>
       <method v="2" />
     </configuration>
-    <configuration name="script.js" type="NodeJSConfigurationType" temporary="true" nameIsGenerated="true" path-to-js-file="$PROJECT_DIR$/script.js" working-dir="$PROJECT_DIR$">
-      <method v="2" />
-    </configuration>
-    <configuration name="seedMembers.js" type="NodeJSConfigurationType" temporary="true" nameIsGenerated="true" path-to-js-file="$PROJECT_DIR$/scripts/seedMembers.js" working-dir="$PROJECT_DIR$/scripts">
-      <method v="2" />
-    </configuration>
-    <configuration name="seedWaitlist.js" type="NodeJSConfigurationType" temporary="true" nameIsGenerated="true" path-to-js-file="seedWaitlist.js" working-dir="$PROJECT_DIR$/scripts">
-      <method v="2" />
-    </configuration>
-    <configuration name="dev" type="js.build_tools.npm" temporary="true" nameIsGenerated="true">
-      <package-json value="$PROJECT_DIR$/package.json" />
-      <command value="run" />
-      <scripts>
-        <script value="dev" />
-      </scripts>
+    <configuration name="Workshop Capacity and Attendee Management Tests.Workshop UI Tests.should display workshops table on main page" type="JavaScriptTestRunnerPlaywright" temporary="true" nameIsGenerated="true">
       <node-interpreter value="project" />
+      <playwright-package value="$PROJECT_DIR$/node_modules/@playwright/test" />
+      <working-dir value="$PROJECT_DIR$" />
       <envs />
+      <scope-kind value="TEST" />
+      <test-file value="$PROJECT_DIR$/e2e/workshop-capacity-attendee-management.spec.ts" />
+      <test-names>
+        <test-name value="Workshop Capacity and Attendee Management Tests" />
+        <test-name value="Workshop UI Tests" />
+        <test-name value="should display workshops table on main page" />
+      </test-names>
+      <method v="2" />
+    </configuration>
+    <configuration name="Workshop Capacity and Attendee Management Tests.Workshop UI Tests.should show priority attendees section" type="JavaScriptTestRunnerPlaywright" temporary="true" nameIsGenerated="true">
+      <node-interpreter value="project" />
+      <playwright-package value="$PROJECT_DIR$/node_modules/@playwright/test" />
+      <working-dir value="$PROJECT_DIR$" />
+      <envs />
+      <scope-kind value="TEST" />
+      <test-file value="$PROJECT_DIR$/e2e/workshop-capacity-attendee-management.spec.ts" />
+      <test-names>
+        <test-name value="Workshop Capacity and Attendee Management Tests" />
+        <test-name value="Workshop UI Tests" />
+        <test-name value="should show priority attendees section" />
+      </test-names>
+      <method v="2" />
+    </configuration>
+    <configuration name="Workshop Capacity and Attendee Management Tests.Workshop UI Tests.should show publish button for draft workshop" type="JavaScriptTestRunnerPlaywright" temporary="true" nameIsGenerated="true">
+      <node-interpreter value="project" />
+      <playwright-package value="$PROJECT_DIR$/node_modules/@playwright/test" />
+      <working-dir value="$PROJECT_DIR$" />
+      <envs />
+      <scope-kind value="TEST" />
+      <test-file value="$PROJECT_DIR$/e2e/workshop-capacity-attendee-management.spec.ts" />
+      <test-names>
+        <test-name value="Workshop Capacity and Attendee Management Tests" />
+        <test-name value="Workshop UI Tests" />
+        <test-name value="should show publish button for draft workshop" />
+      </test-names>
       <method v="2" />
     </configuration>
     <list>
       <item itemvalue="Attach to Node.js/Chrome.Edge Functions" />
-      <item itemvalue="Node.js.script.js" />
-      <item itemvalue="Node.js.seedMembers.js" />
-      <item itemvalue="Node.js.seedWaitlist.js" />
-      <item itemvalue="npm.dev" />
-      <item itemvalue="Playwright.underage user (16-17) should be required to fill guardian fields" />
+      <item itemvalue="Playwright.Workshop Capacity and Attendee Management Tests.Capacity Configuration UI" />
+      <item itemvalue="Playwright.Workshop Capacity and Attendee Management Tests.Workshop UI Tests.should create workshop via UI" />
+      <item itemvalue="Playwright.Workshop Capacity and Attendee Management Tests.Workshop UI Tests.should display workshops table on main page" />
+      <item itemvalue="Playwright.Workshop Capacity and Attendee Management Tests.Workshop UI Tests.should show priority attendees section" />
+      <item itemvalue="Playwright.Workshop Capacity and Attendee Management Tests.Workshop UI Tests.should show publish button for draft workshop" />
     </list>
     <recent_temporary>
       <list>
-        <item itemvalue="npm.dev" />
-        <item itemvalue="Node.js.seedWaitlist.js" />
-        <item itemvalue="Node.js.seedMembers.js" />
-        <item itemvalue="Node.js.script.js" />
-        <item itemvalue="Playwright.underage user (16-17) should be required to fill guardian fields" />
+        <item itemvalue="Playwright.Workshop Capacity and Attendee Management Tests.Workshop UI Tests.should show priority attendees section" />
+        <item itemvalue="Playwright.Workshop Capacity and Attendee Management Tests.Workshop UI Tests.should show publish button for draft workshop" />
+        <item itemvalue="Playwright.Workshop Capacity and Attendee Management Tests.Workshop UI Tests.should create workshop via UI" />
+        <item itemvalue="Playwright.Workshop Capacity and Attendee Management Tests.Workshop UI Tests.should display workshops table on main page" />
+        <item itemvalue="Playwright.Workshop Capacity and Attendee Management Tests.Capacity Configuration UI" />
       </list>
     </recent_temporary>
   </component>
@@ -228,7 +284,11 @@
       <workItem from="1751439049554" duration="869000" />
       <workItem from="1751451365385" duration="3195000" />
       <workItem from="1751487226687" duration="3529000" />
-      <workItem from="1751623048827" duration="12123000" />
+      <workItem from="1751623048827" duration="24204000" />
+      <workItem from="1751717611479" duration="870000" />
+      <workItem from="1751724514790" duration="139000" />
+      <workItem from="1751830769447" duration="1706000" />
+      <workItem from="1751879803773" duration="5645000" />
     </task>
     <task id="LOCAL-00001" summary="Add guardian support for underage waitlist entries&#10;&#10;Introduce `waitlist_guardians` table and transactional logic for adding guardian details when underage users join the waitlist. Updates include database migrations, UI adjustments for conditional input fields, validation logic, and tests to ensure age-based gating.">
       <option name="closed" value="true" />
@@ -486,7 +546,15 @@
       <option name="project" value="LOCAL" />
       <updated>1751633820496</updated>
     </task>
-    <option name="localTasksCounter" value="33" />
+    <task id="LOCAL-00033" summary="fix: fetch attendees was not working">
+      <option name="closed" value="true" />
+      <created>1751639396028</created>
+      <option name="number" value="00033" />
+      <option name="presentableId" value="LOCAL-00033" />
+      <option name="project" value="LOCAL" />
+      <updated>1751639396028</updated>
+    </task>
+    <option name="localTasksCounter" value="34" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -517,7 +585,6 @@
   </component>
   <component name="VcsManagerConfiguration">
     <option name="CHECK_CODE_SMELLS_BEFORE_PROJECT_COMMIT" value="false" />
-    <MESSAGE value="chore: updated gitignore" />
     <MESSAGE value="feat: implemented invitations list of members" />
     <MESSAGE value="chore: e2e test for invitations" />
     <MESSAGE value="`chore: add data source meta and schema files for IDE configuration`" />
@@ -542,7 +609,8 @@
     <MESSAGE value="feat: add workshop_topup scheduler and integrate payment link handling&#10;&#10;- Add `workshop_topup` daily scheduler via SQL migration and cron job for automating attendee top-ups.&#10;- Implement edge function `workshop_topup` with error handling, Sentry integration, and detailed logging.&#10;- Update `stripe-webhooks` to support workshop payment success flow and attendee status updates.&#10;- Minor refactoring for readability and consistency in existing code." />
     <MESSAGE value="refactor: update workshop_topup function with vault integration and enhanced request structure&#10;&#10;- Replace hardcoded settings with secure vault secrets for project URL and service role key.&#10;- Include current time in the request body for tracking.&#10;- Improve readability with consistent formatting and indentation updates." />
     <MESSAGE value="fix: logical error when inviting people from the waitlist" />
-    <option name="LAST_COMMIT_MESSAGE" value="fix: logical error when inviting people from the waitlist" />
+    <MESSAGE value="fix: fetch attendees was not working" />
+    <option name="LAST_COMMIT_MESSAGE" value="fix: fetch attendees was not working" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -551,6 +619,16 @@
           <url>file://$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]/+page.server.ts</url>
           <line>72</line>
           <option name="timeStamp" value="7" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="javascript">
+          <url>file://$PROJECT_DIR$/src/routes/api/workshops/+server.ts</url>
+          <line>24</line>
+          <option name="timeStamp" value="14" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="javascript">
+          <url>file://$PROJECT_DIR$/src/routes/api/workshops/[id]/attendees/+server.ts</url>
+          <line>28</line>
+          <option name="timeStamp" value="16" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>
