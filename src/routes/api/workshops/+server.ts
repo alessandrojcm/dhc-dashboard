@@ -34,8 +34,6 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
 	if (intersection.size === 0) {
 		throw error(403, 'Insufficient permissions');
 	}
-
-	const db = getKyselyClient(platform?.env.HYPERDRIVE);
 	let body: unknown;
 	try {
 		body = await request.json();
@@ -49,6 +47,9 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
 		Sentry.captureException(parsed.issues);
 		throw error(400, 'Validation failed: ' + JSON.stringify(parsed.issues));
 	}
+
+	const db = getKyselyClient(platform?.env.HYPERDRIVE);
+
 	const { workshop_date, location, coach_id, capacity, notes_md } = parsed.output;
 
 	try {

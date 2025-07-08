@@ -18,14 +18,10 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="fix: errors with supabase functions for workshop inviter">
-      <change afterPath="$PROJECT_DIR$/.claude/commands/local-dev.md" afterDir="false" />
+    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="feat: api tests">
+      <change beforePath="$PROJECT_DIR$/.claude/commands/local-dev.md" beforeDir="false" afterPath="$PROJECT_DIR$/.claude/commands/local-dev.md" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/supabase/functions/workshop_inviter/deno.json" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/workshop_inviter/deno.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/supabase/functions/workshop_inviter/deno.lock" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/workshop_inviter/deno.lock" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/supabase/functions/workshop_onboarding/deno.json" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/workshop_onboarding/deno.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/supabase/functions/workshop_topup/deno.json" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/workshop_topup/deno.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/api/workshops/+server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/api/workshops/+server.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -125,6 +121,9 @@
     "Playwright.Workshop Capacity and Attendee Management Tests.Workshop UI Tests.should show workshop table pagination on main page.executor": "Run",
     "Playwright.Workshop Permissions and Access Control Tests.Data Access Control.should control workshop data visibility by role.executor": "Run",
     "Playwright.Workshop Permissions and Access Control Tests.executor": "Run",
+    "Playwright.Workshop Scheduling and Validation Tests.Date and Time Validation API.Location Management API.should validate location requirements.executor": "Run",
+    "Playwright.Workshop Scheduling and Validation Tests.Date and Time Validation API.executor": "Run",
+    "Playwright.Workshop State Management Tests.executor": "Run",
     "Playwright.underage user (16-17) should be able to submit with guardian information.executor": "Run",
     "Playwright.underage user (16-17) should be required to fill guardian fields.executor": "Run",
     "Playwright.underage-guardian-waitlist.spec.ts.executor": "Run",
@@ -166,7 +165,7 @@
       <recent name="$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]" />
     </key>
   </component>
-  <component name="RunManager" selected="Playwright.Workshop Permissions and Access Control Tests.Data Access Control.should control workshop data visibility by role">
+  <component name="RunManager" selected="Playwright.Workshop State Management Tests">
     <configuration name="Edge Functions" type="ChromiumRemoteDebugType" factoryName="Chromium Remote" port="8083">
       <method v="2" />
     </configuration>
@@ -184,6 +183,46 @@
       </test-names>
       <method v="2" />
     </configuration>
+    <configuration name="Workshop Scheduling and Validation Tests.Date and Time Validation API" type="JavaScriptTestRunnerPlaywright" temporary="true" nameIsGenerated="true">
+      <node-interpreter value="project" />
+      <playwright-package value="$PROJECT_DIR$/node_modules/@playwright/test" />
+      <working-dir value="$PROJECT_DIR$" />
+      <envs />
+      <scope-kind value="SUITE" />
+      <test-file value="$PROJECT_DIR$/e2e/workshop-scheduling-validation.spec.ts" />
+      <test-names>
+        <test-name value="Workshop Scheduling and Validation Tests" />
+        <test-name value="Date and Time Validation API" />
+      </test-names>
+      <method v="2" />
+    </configuration>
+    <configuration name="Workshop Scheduling and Validation Tests.Date and Time Validation API.Location Management API.should validate location requirements" type="JavaScriptTestRunnerPlaywright" temporary="true" nameIsGenerated="true">
+      <node-interpreter value="project" />
+      <playwright-package value="$PROJECT_DIR$/node_modules/@playwright/test" />
+      <working-dir value="$PROJECT_DIR$" />
+      <envs />
+      <scope-kind value="TEST" />
+      <test-file value="$PROJECT_DIR$/e2e/workshop-scheduling-validation.spec.ts" />
+      <test-names>
+        <test-name value="Workshop Scheduling and Validation Tests" />
+        <test-name value="Date and Time Validation API" />
+        <test-name value="Location Management API" />
+        <test-name value="should validate location requirements" />
+      </test-names>
+      <method v="2" />
+    </configuration>
+    <configuration name="Workshop State Management Tests" type="JavaScriptTestRunnerPlaywright" temporary="true" nameIsGenerated="true">
+      <node-interpreter value="project" />
+      <playwright-package value="$PROJECT_DIR$/node_modules/@playwright/test" />
+      <working-dir value="$PROJECT_DIR$" />
+      <envs />
+      <scope-kind value="SUITE" />
+      <test-file value="$PROJECT_DIR$/e2e/workshop-state-management.spec.ts" />
+      <test-names>
+        <test-name value="Workshop State Management Tests" />
+      </test-names>
+      <method v="2" />
+    </configuration>
     <configuration name="dev" type="js.build_tools.npm" temporary="true" nameIsGenerated="true">
       <package-json value="$PROJECT_DIR$/package.json" />
       <command value="run" />
@@ -197,10 +236,16 @@
     <list>
       <item itemvalue="Attach to Node.js/Chrome.Edge Functions" />
       <item itemvalue="npm.dev" />
+      <item itemvalue="Playwright.Workshop State Management Tests" />
       <item itemvalue="Playwright.Workshop Permissions and Access Control Tests.Data Access Control.should control workshop data visibility by role" />
+      <item itemvalue="Playwright.Workshop Scheduling and Validation Tests.Date and Time Validation API" />
+      <item itemvalue="Playwright.Workshop Scheduling and Validation Tests.Date and Time Validation API.Location Management API.should validate location requirements" />
     </list>
     <recent_temporary>
       <list>
+        <item itemvalue="Playwright.Workshop State Management Tests" />
+        <item itemvalue="Playwright.Workshop Scheduling and Validation Tests.Date and Time Validation API.Location Management API.should validate location requirements" />
+        <item itemvalue="Playwright.Workshop Scheduling and Validation Tests.Date and Time Validation API" />
         <item itemvalue="Playwright.Workshop Permissions and Access Control Tests.Data Access Control.should control workshop data visibility by role" />
         <item itemvalue="npm.dev" />
       </list>
@@ -254,7 +299,8 @@
       <workItem from="1751717611479" duration="870000" />
       <workItem from="1751724514790" duration="139000" />
       <workItem from="1751830769447" duration="1706000" />
-      <workItem from="1751879803773" duration="17041000" />
+      <workItem from="1751879803773" duration="19750000" />
+      <workItem from="1751983589029" duration="2454000" />
     </task>
     <task id="LOCAL-00001" summary="Add guardian support for underage waitlist entries&#10;&#10;Introduce `waitlist_guardians` table and transactional logic for adding guardian details when underage users join the waitlist. Updates include database migrations, UI adjustments for conditional input fields, validation logic, and tests to ensure age-based gating.">
       <option name="closed" value="true" />
@@ -536,7 +582,23 @@
       <option name="project" value="LOCAL" />
       <updated>1751899548054</updated>
     </task>
-    <option name="localTasksCounter" value="36" />
+    <task id="LOCAL-00036" summary="fix: deno function errors">
+      <option name="closed" value="true" />
+      <created>1751908631180</created>
+      <option name="number" value="00036" />
+      <option name="presentableId" value="LOCAL-00036" />
+      <option name="project" value="LOCAL" />
+      <updated>1751908631180</updated>
+    </task>
+    <task id="LOCAL-00037" summary="feat: api tests">
+      <option name="closed" value="true" />
+      <created>1751908640675</created>
+      <option name="number" value="00037" />
+      <option name="presentableId" value="LOCAL-00037" />
+      <option name="project" value="LOCAL" />
+      <updated>1751908640675</updated>
+    </task>
+    <option name="localTasksCounter" value="38" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -567,8 +629,6 @@
   </component>
   <component name="VcsManagerConfiguration">
     <option name="CHECK_CODE_SMELLS_BEFORE_PROJECT_COMMIT" value="false" />
-    <MESSAGE value="`chore: add data source meta and schema files for IDE configuration`" />
-    <MESSAGE value="feat: add bulk invite functionality and UI enhancements for waitlist management&#10;&#10;- Added `complete_member_registration` SQL function for handling member registration.&#10;- Enhanced waitlist table with bulk invite feature using Supabase functions.&#10;- Introduced `SendIcon` button for inviting members with tooltips.&#10;- Refactored background processing logic for invitations.&#10;- Improved state management, query handling, and updates for waitlist invitations." />
     <MESSAGE value="chore: add database schema and data source configuration files" />
     <MESSAGE value="feat: add invite management and UI enhancements&#10;&#10;- Replaced `complete_member_registration` SQL function with API-based invite workflows.&#10;- Added resend invitation API and related UI updates for waitlist.&#10;- Improved waitlist filtering (`status`).&#10;- Updated Stripe API version.&#10;- Enhanced IDE configuration and standardized code formatting." />
     <MESSAGE value="feat: enhance invite workflow and UI; improve IDE config&#10;&#10;- Added API-based invite workflows, replacing `complete_member_registration` SQL function.&#10;- Introduced resend invitation API and related UI updates for waitlist.&#10;- Improved waitlist filtering by `status`.&#10;- Updated Stripe API version.&#10;- Refined IDE configuration and applied consistent code formatting." />
@@ -592,7 +652,9 @@
     <MESSAGE value="fix: fetch attendees was not working" />
     <MESSAGE value="feat: beginners workshop capacity tests" />
     <MESSAGE value="fix: errors with supabase functions for workshop inviter" />
-    <option name="LAST_COMMIT_MESSAGE" value="fix: errors with supabase functions for workshop inviter" />
+    <MESSAGE value="fix: deno function errors" />
+    <MESSAGE value="feat: api tests" />
+    <option name="LAST_COMMIT_MESSAGE" value="feat: api tests" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>

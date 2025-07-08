@@ -13,9 +13,15 @@ payments.
 
 ### Environment Setup
 
-- `pnpm supabase:start` - Start local Supabase development instance
+- `pnpm supabase:start` - Start local Supabase development instance (REQUIRED FIRST)
+- `pnpm supabase:functions:serve` - Start Supabase edge functions (REQUIRED for E2E tests)
 - `pnpm dev` - Start development server (uses Vite with --host flag)
 - `pnpm supabase:reset` - Reset and seed the local database
+
+**IMPORTANT**: For E2E testing, ALL THREE services must be running in this order:
+1. `pnpm supabase:start`
+2. `pnpm supabase:functions:serve` 
+3. `pnpm dev`
 
 ### Database & Types
 
@@ -59,6 +65,19 @@ payments.
 - All code MUST be covered by tests, we are NOT aiming for 100% test coverage, but key functionality needs to be tested
 - ALWAYS write tests first, verify they fail 
 - AFTER writing tests, write code to pass the tests
+
+#### E2E Testing Guidelines
+
+- **Reference working tests**: When fixing failing tests, ALWAYS compare with similar working tests to understand correct patterns
+- **Use unique test data**: Generate unique emails/IDs using timestamps and random suffixes to avoid conflicts:
+  ```javascript
+  const timestamp = Date.now();
+  const randomSuffix = Math.random().toString(36).substring(2, 15);
+  email: `admin-${timestamp}-${randomSuffix}@test.com`
+  ```
+- **Authentication helpers**: Always use `makeAuthenticatedRequest()` instead of direct authorization headers
+- **Service dependencies**: E2E tests require all services running (see Environment Setup section)
+- **Response format consistency**: API responses follow `{success: true, [resource]: data}` pattern
 
 #### Database Access
 
@@ -111,6 +130,14 @@ payments.
 - Stripe Payment Links generated for each attendee
 - Email notifications handled by edge functions
 
+##### Workshop State Transitions
+
+- **Draft → Published**: Triggers invitation edge functions
+- **Published → Finished**: Requires no pending/invited attendees
+- **Any State → Cancelled**: Except finished/already cancelled
+- **State validation**: Always check current state before transitions
+- **Edge functions**: Publishing integrates with `workshop_inviter` function
+
 ### Environment Variables
 
 Required for development:
@@ -147,9 +174,40 @@ Required for development:
 - Log errors to Sentry
 - Follow role-based access patterns
 
+#### API Endpoint Development
+
+- **Pattern consistency**: New endpoints MUST follow existing endpoint patterns exactly
+- **Reference implementation**: Use existing endpoints as templates (e.g., `/api/workshops/[id]/publish/+server.ts`)
+- **Security pattern**: All workshop endpoints use roles: `['admin', 'president', 'beginners_coordinator']`
+- **Response format**: Always return `{success: true, [resource]: updatedRecord}`
+- **Error handling**: Use same Sentry integration and error mapping patterns
+- **Business logic**: Implement state validation before mutations (check current state, validate transitions)
+- **Database transactions**: Use `executeWithRLS()` wrapper for all mutations
+
 ### File Naming
 
 - Components: kebab-case (e.g., `workshop-detail.svelte`)
 - API routes: RESTful patterns with `+server.ts`
 - Types: PascalCase interfaces
 - Utilities: camelCase functions
+
+## Development Workflows
+
+### Local Development Setup Order
+
+1. **Start services in correct order**:
+   - `pnpm supabase:start` (must be first)
+   - `pnpm supabase:functions:serve` (for edge functions)
+   - `pnpm dev` (for development/testing)
+
+2. **Before running E2E tests**: Ensure all three services are running
+3. **Database changes**: Always run `pnpm supabase:types` after schema changes
+4. **Test failures**: Compare with working tests in same codebase before debugging
+
+### Debugging Guidelines
+
+- **Test failures**: Always check service dependencies first (supabase, edge functions, dev server)
+- **Authentication issues**: Verify `makeAuthenticatedRequest` helper usage vs direct headers
+- **Response format issues**: Check API returns `{success: true, [resource]: data}` format
+- **Test conflicts**: Ensure unique test data generation to prevent interference
+- **Missing endpoints**: Use existing endpoint as exact template for implementation
