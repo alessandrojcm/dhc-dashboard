@@ -19,6 +19,7 @@ payments.
 - `pnpm supabase:reset` - Reset and seed the local database
 
 **IMPORTANT**: For E2E testing, ALL THREE services must be running in this order:
+
 1. `pnpm supabase:start`
 2. `pnpm supabase:functions:serve`
 3. `pnpm dev`
@@ -59,7 +60,6 @@ payments.
 
 ### Key Patterns
 
-
 ### Test Driven Development
 
 - All code MUST be covered by tests, we are NOT aiming for 100% test coverage, but key functionality needs to be tested
@@ -68,7 +68,8 @@ payments.
 
 #### E2E Testing Guidelines
 
-- **Reference working tests**: When fixing failing tests, ALWAYS compare with similar working tests to understand correct patterns
+- **Reference working tests**: When fixing failing tests, ALWAYS compare with similar working tests to understand
+  correct patterns
 - **Use unique test data**: Generate unique emails/IDs using timestamps and random suffixes to avoid conflicts:
   ```javascript
   const timestamp = Date.now();
@@ -158,6 +159,10 @@ Required for development:
 - Use semantic HTML elements
 - Implement proper error handling and logging
 - ALWAYS use svelte-shadcn components first, resort to tailwind 4 custom styles if components do not suffice
+- ALWAYS use superform. If the submission is client-only, then use SPA mode.
+- ALWAYS use our form components in src/components/ui/form
+- ALWAYS use dinero.js for any money operations
+- ALWAYS use day.js for any date operations
 
 ### Database Guidelines
 
@@ -165,7 +170,16 @@ Required for development:
 - Use Kysely with `executeWithRLS()` for all mutations
 - Always work within RLS constraints
 - Generate types after schema changes: `pnpm supabase:types`
-
+- Use the `has_any_role` database utility to check for permissions, example usage:
+```sql
+SELECT has_any_role(
+                    (
+                        SELECT auth.uid()
+                    ),
+                    ARRAY ['committee_coordinator', 'president', 'admin']::role_type []
+                )
+```
+- If a new migration is applied, generate database types with pnpm supabase:types
 ### API Guidelines
 
 - Validate inputs with Valibot schemas

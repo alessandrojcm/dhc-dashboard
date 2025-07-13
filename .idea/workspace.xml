@@ -18,10 +18,19 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="feat: css fixes">
-      <change afterPath="$PROJECT_DIR$/CLAUDE.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources.local.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources.local.xml" afterDir="false" />
+    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="feat: club activities implementation plan">
+      <change afterPath="$PROJECT_DIR$/.claude/commands/local-dev.md" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.snaplet/dataModel.json" beforeDir="false" afterPath="$PROJECT_DIR$/.snaplet/dataModel.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/CLAUDE.md" beforeDir="false" afterPath="$PROJECT_DIR$/CLAUDE.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/database.types.ts" beforeDir="false" afterPath="$PROJECT_DIR$/database.types.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/e2e/setupFunctions.ts" beforeDir="false" afterPath="$PROJECT_DIR$/e2e/setupFunctions.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/instructions/stage1_low_level_implementation.md" beforeDir="false" afterPath="$PROJECT_DIR$/instructions/stage1_low_level_implementation.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/database.types.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/database.types.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/lib/server/kysely.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/server/kysely.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/lib/server/roles.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/server/roles.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/+error.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/+error.svelte" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -101,6 +110,11 @@
     "Node.js.script.js.executor": "Run",
     "Node.js.seedMembers.js.executor": "Debug",
     "Node.js.seedWaitlist.js.executor": "Run",
+    "Playwright.Workshop API.executor": "Run",
+    "Playwright.Workshop Management.executor": "Run",
+    "Playwright.Workshop UI.executor": "Run",
+    "Playwright.Workshop UI.should display and validate workshop creation form.executor": "Debug",
+    "Playwright.Workshop UI.should navigate to create workshop form.executor": "Run",
     "Playwright.underage user (16-17) should be able to submit with guardian information.executor": "Run",
     "Playwright.underage user (16-17) should be required to fill guardian fields.executor": "Run",
     "Playwright.underage-guardian-waitlist.spec.ts.executor": "Run",
@@ -140,29 +154,59 @@
       <recent name="$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]" />
     </key>
   </component>
-  <component name="RunManager" selected="npm.dev">
+  <component name="RunManager" selected="Playwright.Workshop UI.should display and validate workshop creation form">
     <configuration name="Edge Functions" type="ChromiumRemoteDebugType" factoryName="Chromium Remote" port="8083">
       <method v="2" />
     </configuration>
-    <configuration name="underage user (16-17) should be required to fill guardian fields" type="JavaScriptTestRunnerPlaywright" temporary="true" nameIsGenerated="true">
+    <configuration name="Workshop API" type="JavaScriptTestRunnerPlaywright" temporary="true" nameIsGenerated="true">
+      <node-interpreter value="project" />
+      <playwright-package value="$PROJECT_DIR$/node_modules/@playwright/test" />
+      <working-dir value="$PROJECT_DIR$" />
+      <envs />
+      <scope-kind value="SUITE" />
+      <test-file value="$PROJECT_DIR$/e2e/api/workshops.spec.ts" />
+      <test-names>
+        <test-name value="Workshop API" />
+      </test-names>
+      <method v="2" />
+    </configuration>
+    <configuration name="Workshop UI" type="JavaScriptTestRunnerPlaywright" temporary="true" nameIsGenerated="true">
+      <node-interpreter value="project" />
+      <playwright-package value="$PROJECT_DIR$/node_modules/@playwright/test" />
+      <working-dir value="$PROJECT_DIR$" />
+      <envs />
+      <scope-kind value="SUITE" />
+      <test-file value="$PROJECT_DIR$/e2e/workshops-ui.spec.ts" />
+      <test-names>
+        <test-name value="Workshop UI" />
+      </test-names>
+      <method v="2" />
+    </configuration>
+    <configuration name="Workshop UI.should display and validate workshop creation form" type="JavaScriptTestRunnerPlaywright" temporary="true" nameIsGenerated="true">
       <node-interpreter value="project" />
       <playwright-package value="$PROJECT_DIR$/node_modules/@playwright/test" />
       <working-dir value="$PROJECT_DIR$" />
       <envs />
       <scope-kind value="TEST" />
-      <test-file value="$PROJECT_DIR$/e2e/underage-guardian-waitlist.spec.ts" />
+      <test-file value="$PROJECT_DIR$/e2e/workshops-ui.spec.ts" />
       <test-names>
-        <test-name value="underage user (16-17) should be required to fill guardian fields" />
+        <test-name value="Workshop UI" />
+        <test-name value="should display and validate workshop creation form" />
       </test-names>
       <method v="2" />
     </configuration>
-    <configuration name="script.js" type="NodeJSConfigurationType" temporary="true" nameIsGenerated="true" path-to-js-file="$PROJECT_DIR$/script.js" working-dir="$PROJECT_DIR$">
-      <method v="2" />
-    </configuration>
-    <configuration name="seedMembers.js" type="NodeJSConfigurationType" temporary="true" nameIsGenerated="true" path-to-js-file="$PROJECT_DIR$/scripts/seedMembers.js" working-dir="$PROJECT_DIR$/scripts">
-      <method v="2" />
-    </configuration>
-    <configuration name="seedWaitlist.js" type="NodeJSConfigurationType" temporary="true" nameIsGenerated="true" path-to-js-file="seedWaitlist.js" working-dir="$PROJECT_DIR$/scripts">
+    <configuration name="Workshop UI.should navigate to create workshop form" type="JavaScriptTestRunnerPlaywright" temporary="true" nameIsGenerated="true">
+      <node-interpreter value="project" />
+      <playwright-package value="$PROJECT_DIR$/node_modules/@playwright/test" />
+      <working-dir value="$PROJECT_DIR$" />
+      <cli-options value="--headed" />
+      <envs />
+      <scope-kind value="TEST" />
+      <test-file value="$PROJECT_DIR$/e2e/workshops-ui.spec.ts" />
+      <test-names>
+        <test-name value="Workshop UI" />
+        <test-name value="should navigate to create workshop form" />
+      </test-names>
       <method v="2" />
     </configuration>
     <configuration name="dev" type="js.build_tools.npm" temporary="true" nameIsGenerated="true">
@@ -177,26 +221,26 @@
     </configuration>
     <list>
       <item itemvalue="Attach to Node.js/Chrome.Edge Functions" />
-      <item itemvalue="Node.js.script.js" />
-      <item itemvalue="Node.js.seedMembers.js" />
-      <item itemvalue="Node.js.seedWaitlist.js" />
       <item itemvalue="npm.dev" />
-      <item itemvalue="Playwright.underage user (16-17) should be required to fill guardian fields" />
+      <item itemvalue="Playwright.Workshop API" />
+      <item itemvalue="Playwright.Workshop UI" />
+      <item itemvalue="Playwright.Workshop UI.should display and validate workshop creation form" />
+      <item itemvalue="Playwright.Workshop UI.should navigate to create workshop form" />
     </list>
     <recent_temporary>
       <list>
-        <item itemvalue="Playwright.underage user (16-17) should be required to fill guardian fields" />
+        <item itemvalue="Playwright.Workshop UI.should display and validate workshop creation form" />
+        <item itemvalue="Playwright.Workshop API" />
+        <item itemvalue="Playwright.Workshop UI" />
+        <item itemvalue="Playwright.Workshop UI.should navigate to create workshop form" />
         <item itemvalue="npm.dev" />
-        <item itemvalue="Node.js.seedWaitlist.js" />
-        <item itemvalue="Node.js.seedMembers.js" />
-        <item itemvalue="Node.js.script.js" />
       </list>
     </recent_temporary>
   </component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
-        <option value="bundled-js-predefined-d6986cc7102b-6a121458b545-JavaScript-WS-251.25410.117" />
+        <option value="bundled-js-predefined-d6986cc7102b-09060db00ec0-JavaScript-WS-251.26927.40" />
       </set>
     </attachedChunks>
   </component>
@@ -231,6 +275,7 @@
       <workItem from="1747671383030" duration="5179000" />
       <workItem from="1747742236222" duration="598000" />
       <workItem from="1747989697082" duration="1834000" />
+      <workItem from="1752311400094" duration="9693000" />
     </task>
     <task id="LOCAL-00001" summary="Add guardian support for underage waitlist entries&#10;&#10;Introduce `waitlist_guardians` table and transactional logic for adding guardian details when underage users join the waitlist. Updates include database migrations, UI adjustments for conditional input fields, validation logic, and tests to ensure age-based gating.">
       <option name="closed" value="true" />
@@ -440,7 +485,15 @@
       <option name="project" value="LOCAL" />
       <updated>1747739217999</updated>
     </task>
-    <option name="localTasksCounter" value="27" />
+    <task id="LOCAL-00027" summary="feat: club activities implementation plan">
+      <option name="closed" value="true" />
+      <created>1752230102557</created>
+      <option name="number" value="00027" />
+      <option name="presentableId" value="LOCAL-00027" />
+      <option name="project" value="LOCAL" />
+      <updated>1752230102557</updated>
+    </task>
+    <option name="localTasksCounter" value="28" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -495,7 +548,8 @@
     <MESSAGE value="fix: correct transactional id" />
     <MESSAGE value="feat: integrated posthog" />
     <MESSAGE value="feat: css fixes" />
-    <option name="LAST_COMMIT_MESSAGE" value="feat: css fixes" />
+    <MESSAGE value="feat: club activities implementation plan" />
+    <option name="LAST_COMMIT_MESSAGE" value="feat: club activities implementation plan" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>

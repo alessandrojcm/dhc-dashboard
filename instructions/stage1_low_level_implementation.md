@@ -1,89 +1,69 @@
-# Stage 1: Low-Level Technical Implementation
+# Stage 1: Low-Level Technical Implementation ✅ DONE
 
 ## Technical Implementation Plan
 
 ### 1. Database Schema (`supabase/migrations/`)
 
-**Migration file**: `20240101000000_create_club_activities.sql`
+**Migration file**: `pnpm supabase migrations new create_club_activities`
 
 ```sql
 -- Create enums
 CREATE TYPE club_activity_status AS ENUM ('planned', 'published', 'finished', 'cancelled');
-CREATE TYPE refund_policy AS ENUM ('no_refund', '1_day', '3_days', '1_week');
 
 -- Create club_activities table
-CREATE TABLE club_activities (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    title VARCHAR(255) NOT NULL,
-    description TEXT,
-    location VARCHAR(255),
-    start_date TIMESTAMPTZ NOT NULL,
-    end_date TIMESTAMPTZ NOT NULL,
-    max_capacity INTEGER NOT NULL CHECK (max_capacity > 0),
-    price_member INTEGER NOT NULL CHECK (price_member >= 0), -- cents
-    price_non_member INTEGER NOT NULL CHECK (price_non_member >= 0), -- cents
-    is_public BOOLEAN DEFAULT true,
-    refund_policy refund_policy DEFAULT '3_days',
-    status club_activity_status DEFAULT 'planned',
-    created_at TIMESTAMPTZ DEFAULT now(),
-    updated_at TIMESTAMPTZ DEFAULT now(),
-    created_by UUID REFERENCES auth.users(id)
+CREATE TABLE club_activities
+(
+    id               UUID PRIMARY KEY     DEFAULT gen_random_uuid(),
+    title            TEXT        NOT NULL,
+    description      TEXT,
+    location         TEXT        NOT NULL,
+    start_date       TIMESTAMPTZ NOT NULL,
+    end_date         TIMESTAMPTZ NOT NULL,
+    max_capacity     INTEGER     NOT NULL CHECK (max_capacity > 0),
+    price_member     FLOAT       NOT NULL CHECK (price_member >= 0),          -- cents
+    price_non_member FLOAT       NOT NULL CHECK (price_non_member >= 0),      -- cents
+    is_public        BOOLEAN              DEFAULT false,
+    refund_days      INTEGER              DEFAULT 3 CHECK (refund_days >= 0), -- NULL means no refunds
+    status           club_activity_status DEFAULT 'planned',
+    created_at       TIMESTAMPTZ          DEFAULT now(),
+    updated_at       TIMESTAMPTZ          DEFAULT now(),
+    created_by       UUID REFERENCES auth.users (id)
 );
 
 -- RLS policies
-ALTER TABLE club_activities ENABLE ROW LEVEL SECURITY;
+ALTER TABLE club_activities
+    ENABLE ROW LEVEL SECURITY;
 
 -- Policy for workshop coordinators
 CREATE POLICY "Workshop coordinators can manage activities" ON club_activities
     FOR ALL USING (
-        EXISTS (
-            SELECT 1 FROM user_roles ur
-            JOIN roles r ON ur.role_id = r.id
-            WHERE ur.user_id = auth.uid() 
-            AND r.name IN ('admin', 'president', 'beginners_coordinator')
-        )
+    (
+        (SELECT has_any_role(
+                        (SELECT auth.uid()),
+                        ARRAY ['workshop_coordinator', 'president', 'admin']::role_type[]
+                )))
     );
 
 -- Triggers for updated_at
 CREATE OR REPLACE FUNCTION update_updated_at_column()
-RETURNS TRIGGER AS $$
+    RETURNS TRIGGER AS
+$$
 BEGIN
     NEW.updated_at = now();
     RETURN NEW;
 END;
 $$ language 'plpgsql';
 
-CREATE TRIGGER update_club_activities_updated_at 
-    BEFORE UPDATE ON club_activities 
-    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+CREATE TRIGGER update_club_activities_updated_at
+    BEFORE UPDATE
+    ON club_activities
+    FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
 ```
 
 ### 2. TypeScript Types (`src/lib/types/`)
 
-**File**: `src/lib/types/workshops.ts`
-
-```typescript
-import type { Database } from '../database.types';
-
-export type ClubActivity = Database['public']['Tables']['club_activities']['Row'];
-export type ClubActivityInsert = Database['public']['Tables']['club_activities']['Insert'];
-export type ClubActivityUpdate = Database['public']['Tables']['club_activities']['Update'];
-export type ClubActivityStatus = Database['public']['Enums']['club_activity_status'];
-export type RefundPolicy = Database['public']['Enums']['refund_policy'];
-
-export interface WorkshopFormData {
-    title: string;
-    description?: string;
-    location?: string;
-    start_date: string;
-    end_date: string;
-    max_capacity: number;
-    price_member: number;
-    price_non_member: number;
-    is_public: boolean;
-    refund_policy: RefundPolicy;
-}
-```
+Generate with pnpm database:types after migrations are applied.
 
 ### 3. Kysely Models (`src/lib/server/`)
 
@@ -95,15 +75,20 @@ import type { ClubActivityInsert, ClubActivityUpdate } from '../types/workshops'
 
 export async function createWorkshop(
     data: ClubActivityInsert,
-    userId: string
+    userId: string,
+    platform: App.Platform
 ): Promise<ClubActivity> {
+    const kysely = getKyselyClient(platform.env.HYPERDRIVE);
     const result = await executeWithRLS(
-        (db) => db
-            .insertInto('club_activities')
-            .values({ ...data, created_by: userId })
-            .returning('*')
-            .executeTakeFirstOrThrow(),
-        userId
+        kysely,
+        { claims: { sub: userId } },
+        async (trx) => {
+            return await trx
+                .insertInto('club_activities')
+                .values({ ...data, created_by: userId })
+                .returning('*')
+                .executeTakeFirstOrThrow();
+        }
     );
     return result;
 }
@@ -111,54 +96,71 @@ export async function createWorkshop(
 export async function updateWorkshop(
     id: string,
     data: ClubActivityUpdate,
-    userId: string
+    userId: string,
+    platform: App.Platform
 ): Promise<ClubActivity> {
+    const kysely = getKyselyClient(platform.env.HYPERDRIVE);
     const result = await executeWithRLS(
-        (db) => db
-            .updateTable('club_activities')
-            .set(data)
-            .where('id', '=', id)
-            .returning('*')
-            .executeTakeFirstOrThrow(),
-        userId
+        kysely,
+        { claims: { sub: userId } },
+        async (trx) => {
+            return await trx
+                .updateTable('club_activities')
+                .set(data)
+                .where('id', '=', id)
+                .returning('*')
+                .executeTakeFirstOrThrow();
+        }
     );
     return result;
 }
 
-export async function deleteWorkshop(id: string, userId: string): Promise<void> {
+export async function deleteWorkshop(id: string, userId: string, platform: App.Platform): Promise<void> {
+    const kysely = getKyselyClient(platform.env.HYPERDRIVE);
     await executeWithRLS(
-        (db) => db
-            .deleteFrom('club_activities')
-            .where('id', '=', id)
-            .execute(),
-        userId
+        kysely,
+        { claims: { sub: userId } },
+        async (trx) => {
+            await trx
+                .deleteFrom('club_activities')
+                .where('id', '=', id)
+                .execute();
+        }
     );
 }
 
-export async function publishWorkshop(id: string, userId: string): Promise<ClubActivity> {
+export async function publishWorkshop(id: string, userId: string, platform: App.Platform): Promise<ClubActivity> {
+    const kysely = getKyselyClient(platform.env.HYPERDRIVE);
     const result = await executeWithRLS(
-        (db) => db
-            .updateTable('club_activities')
-            .set({ status: 'published' })
-            .where('id', '=', id)
-            .where('status', '=', 'planned')
-            .returning('*')
-            .executeTakeFirstOrThrow(),
-        userId
+        kysely,
+        { claims: { sub: userId } },
+        async (trx) => {
+            return await trx
+                .updateTable('club_activities')
+                .set({ status: 'published' })
+                .where('id', '=', id)
+                .where('status', '=', 'planned')
+                .returning('*')
+                .executeTakeFirstOrThrow();
+        }
     );
     return result;
 }
 
-export async function cancelWorkshop(id: string, userId: string): Promise<ClubActivity> {
+export async function cancelWorkshop(id: string, userId: string, platform: App.Platform): Promise<ClubActivity> {
+    const kysely = getKyselyClient(platform.env.HYPERDRIVE);
     const result = await executeWithRLS(
-        (db) => db
-            .updateTable('club_activities')
-            .set({ status: 'cancelled' })
-            .where('id', '=', id)
-            .where('status', 'in', ['planned', 'published'])
-            .returning('*')
-            .executeTakeFirstOrThrow(),
-        userId
+        kysely,
+        { claims: { sub: userId } },
+        async (trx) => {
+            return await trx
+                .updateTable('club_activities')
+                .set({ status: 'cancelled' })
+                .where('id', '=', id)
+                .where('status', 'in', ['planned', 'published'])
+                .returning('*')
+                .executeTakeFirstOrThrow();
+        }
     );
     return result;
 }
@@ -173,246 +175,428 @@ import * as v from 'valibot';
 
 export const CreateWorkshopSchema = v.object({
     title: v.pipe(v.string(), v.minLength(1, 'Title is required'), v.maxLength(255)),
-    description: v.optional(v.string()),
-    location: v.optional(v.pipe(v.string(), v.maxLength(255))),
+    description: v.string(),
+    location: v.string(),
     start_date: v.pipe(v.string(), v.isoDateTime()),
     end_date: v.pipe(v.string(), v.isoDateTime()),
     max_capacity: v.pipe(v.number(), v.minValue(1, 'Capacity must be at least 1')),
     price_member: v.pipe(v.number(), v.minValue(0, 'Price cannot be negative')),
     price_non_member: v.pipe(v.number(), v.minValue(0, 'Price cannot be negative')),
-    is_public: v.boolean(),
-    refund_policy: v.picklist(['no_refund', '1_day', '3_days', '1_week'])
+    is_public: v.optional(v.boolean(), false),
+    refund_days: v.nullable(v.pipe(v.number(), v.minValue(0, 'Refund days cannot be negative')))
 });
 
 export const UpdateWorkshopSchema = v.partial(CreateWorkshopSchema);
 ```
 
-### 5. API Endpoints (`src/routes/api/workshops/`)
+### 5. Authorization Utility (`src/lib/server/`)
+
+**File**: `src/lib/server/auth.ts` (add to existing file)
+
+```typescript
+import { getRolesFromSession } from './roles';
+import { invariant } from './utils';
+
+export async function authorize(locals: App.Locals, allowedRoles: string[]) {
+    const { session } = await locals.safeGetSession();
+    invariant(session === null, 'Unauthorized');
+    
+    const roles = getRolesFromSession(session!);
+    const hasPermission = roles.intersection(new Set(allowedRoles)).size > 0;
+    invariant(!hasPermission, 'Unauthorized', 403);
+    
+    return session!;
+}
+```
+
+### 6. API Endpoints (`src/routes/api/workshops/`)
 
 **File**: `src/routes/api/workshops/+server.ts`
 
 ```typescript
 import { json } from '@sveltejs/kit';
-import { safeGetSession } from '$lib/server/auth';
+import { authorize } from '$lib/server/auth';
 import { createWorkshop } from '$lib/server/workshops';
 import { CreateWorkshopSchema } from '$lib/schemas/workshops';
-import { parse } from 'valibot';
-import { authorize } from '$lib/server/roles';
+import { safeParse } from 'valibot';
+import type { RequestHandler } from './$types';
 
-export async function POST({ request, locals }) {
+export const POST: RequestHandler = async ({ request, locals, platform }) => {
     try {
-        const session = await safeGetSession(locals);
-        await authorize(session, ['admin', 'president', 'beginners_coordinator']);
+        const session = await authorize(locals, ['admin', 'president', 'workshop_coordinator']);
         
         const body = await request.json();
-        const validated = parse(CreateWorkshopSchema, body);
+        const result = safeParse(CreateWorkshopSchema, body);
         
-        const workshop = await createWorkshop(validated, session.user.id);
+        if (!result.success) {
+            return json({ success: false, error: 'Invalid data', issues: result.issues }, { status: 400 });
+        }
+        
+        const workshop = await createWorkshop(result.output, session.user.id, platform);
         
         return json({ success: true, workshop });
     } catch (error) {
         console.error('Create workshop error:', error);
-        return json({ success: false, error: error.message }, { status: 400 });
+        return json({ success: false, error: error.message }, { status: 500 });
     }
-}
+};
 ```
 
 **File**: `src/routes/api/workshops/[id]/+server.ts`
 
 ```typescript
 import { json } from '@sveltejs/kit';
-import { safeGetSession } from '$lib/server/auth';
+import { authorize } from '$lib/server/auth';
 import { updateWorkshop, deleteWorkshop } from '$lib/server/workshops';
 import { UpdateWorkshopSchema } from '$lib/schemas/workshops';
-import { parse } from 'valibot';
-import { authorize } from '$lib/server/roles';
+import { safeParse } from 'valibot';
+import type { RequestHandler } from './$types';
 
-export async function PUT({ request, locals, params }) {
+export const PUT: RequestHandler = async ({ request, locals, params, platform }) => {
     try {
-        const session = await safeGetSession(locals);
-        await authorize(session, ['admin', 'president', 'beginners_coordinator']);
+        const session = await authorize(locals, ['admin', 'president', 'workshop_coordinator']);
         
         const body = await request.json();
-        const validated = parse(UpdateWorkshopSchema, body);
+        const result = safeParse(UpdateWorkshopSchema, body);
         
-        const workshop = await updateWorkshop(params.id, validated, session.user.id);
+        if (!result.success) {
+            return json({ success: false, error: 'Invalid data', issues: result.issues }, { status: 400 });
+        }
+        
+        const workshop = await updateWorkshop(params.id!, result.output, session.user.id, platform);
         
         return json({ success: true, workshop });
     } catch (error) {
         console.error('Update workshop error:', error);
-        return json({ success: false, error: error.message }, { status: 400 });
+        return json({ success: false, error: error.message }, { status: 500 });
     }
-}
+};
 
-export async function DELETE({ locals, params }) {
+export const DELETE: RequestHandler = async ({ locals, params, platform }) => {
     try {
-        const session = await safeGetSession(locals);
-        await authorize(session, ['admin', 'president', 'beginners_coordinator']);
+        const session = await authorize(locals, ['admin', 'president', 'workshop_coordinator']);
         
-        await deleteWorkshop(params.id, session.user.id);
+        await deleteWorkshop(params.id!, session.user.id, platform);
         
         return json({ success: true });
     } catch (error) {
         console.error('Delete workshop error:', error);
-        return json({ success: false, error: error.message }, { status: 400 });
+        return json({ success: false, error: error.message }, { status: 500 });
     }
-}
+};
 ```
 
 **File**: `src/routes/api/workshops/[id]/publish/+server.ts`
 
 ```typescript
 import { json } from '@sveltejs/kit';
-import { safeGetSession } from '$lib/server/auth';
+import { authorize } from '$lib/server/auth';
 import { publishWorkshop } from '$lib/server/workshops';
-import { authorize } from '$lib/server/roles';
+import type { RequestHandler } from './$types';
 
-export async function POST({ locals, params }) {
+export const POST: RequestHandler = async ({ locals, params, platform }) => {
     try {
-        const session = await safeGetSession(locals);
-        await authorize(session, ['admin', 'president', 'beginners_coordinator']);
+        const session = await authorize(locals, ['admin', 'president', 'workshop_coordinator']);
         
-        const workshop = await publishWorkshop(params.id, session.user.id);
+        const workshop = await publishWorkshop(params.id!, session.user.id, platform);
         
         return json({ success: true, workshop });
     } catch (error) {
         console.error('Publish workshop error:', error);
-        return json({ success: false, error: error.message }, { status: 400 });
+        return json({ success: false, error: error.message }, { status: 500 });
     }
-}
+};
 ```
 
 **File**: `src/routes/api/workshops/[id]/cancel/+server.ts`
 
 ```typescript
 import { json } from '@sveltejs/kit';
-import { safeGetSession } from '$lib/server/auth';
+import { authorize } from '$lib/server/auth';
 import { cancelWorkshop } from '$lib/server/workshops';
-import { authorize } from '$lib/server/roles';
+import type { RequestHandler } from './$types';
 
-export async function POST({ locals, params }) {
+export const POST: RequestHandler = async ({ locals, params, platform }) => {
     try {
-        const session = await safeGetSession(locals);
-        await authorize(session, ['admin', 'president', 'beginners_coordinator']);
+        const session = await authorize(locals, ['admin', 'president', 'workshop_coordinator']);
         
-        const workshop = await cancelWorkshop(params.id, session.user.id);
+        const workshop = await cancelWorkshop(params.id!, session.user.id, platform);
         
         return json({ success: true, workshop });
     } catch (error) {
         console.error('Cancel workshop error:', error);
-        return json({ success: false, error: error.message }, { status: 400 });
+        return json({ success: false, error: error.message }, { status: 500 });
     }
-}
+};
 ```
 
-### 6. Frontend Components (`src/lib/components/workshops/`)
+### 7. Frontend Routes with Superforms (`src/routes/dashboard/workshops/`)
 
-**File**: `src/lib/components/workshops/workshop-form.svelte`
+**File**: `src/routes/dashboard/workshops/create/+page.server.ts`
+
+```typescript
+import { superValidate } from 'sveltekit-superforms';
+import { valibot } from 'sveltekit-superforms/adapters';
+import { fail } from '@sveltejs/kit';
+import { CreateWorkshopSchema } from '$lib/schemas/workshops';
+import { createWorkshop } from '$lib/server/workshops';
+import { authorize } from '$lib/server/auth';
+import { message } from 'sveltekit-superforms';
+import type { PageServerLoad, Actions } from './$types';
+
+export const load: PageServerLoad = async ({ locals }) => {
+    await authorize(locals, ['admin', 'president', 'workshop_coordinator']);
+    
+    return {
+        form: await superValidate(valibot(CreateWorkshopSchema))
+    };
+};
+
+export const actions: Actions = {
+    default: async ({ request, locals, platform }) => {
+        const session = await authorize(locals, ['admin', 'president', 'workshop_coordinator']);
+        
+        const form = await superValidate(request, valibot(CreateWorkshopSchema));
+        
+        if (!form.valid) {
+            return fail(400, { form });
+        }
+        
+        try {
+            const workshop = await createWorkshop(form.data, session.user.id, platform);
+            
+            return message(form, {
+                success: `Workshop "${workshop.title}" created successfully!`
+            });
+        } catch (error) {
+            console.error('Create workshop error:', error);
+            return message(form, {
+                error: 'Failed to create workshop. Please try again.'
+            }, { status: 500 });
+        }
+    }
+};
+```
+
+**File**: `src/routes/dashboard/workshops/create/+page.svelte`
 
 ```svelte
 <script lang="ts">
-import { createMutation, createQuery } from '@tanstack/svelte-query';
+import { superForm } from 'sveltekit-superforms';
+import { valibotClient } from 'sveltekit-superforms/adapters';
+import { CreateWorkshopSchema } from '$lib/schemas/workshops';
 import { Button } from '$lib/components/ui/button';
 import { Input } from '$lib/components/ui/input';
-import { Label } from '$lib/components/ui/label';
 import { Textarea } from '$lib/components/ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '$lib/components/ui/select';
 import { Switch } from '$lib/components/ui/switch';
-import type { WorkshopFormData } from '$lib/types/workshops';
+import { Alert } from '$lib/components/ui/alert';
+import * as Form from '$lib/components/ui/form';
+import { LoaderCircle, CheckCircled } from 'lucide-svelte';
+import { goto } from '$app/navigation';
 
-interface Props {
-    initialData?: WorkshopFormData;
-    onSubmit: (data: WorkshopFormData) => void;
-    isLoading?: boolean;
-}
+const { data } = $props();
 
-let { initialData, onSubmit, isLoading = false }: Props = $props();
-
-let formData = $state({
-    title: initialData?.title ?? '',
-    description: initialData?.description ?? '',
-    location: initialData?.location ?? '',
-    start_date: initialData?.start_date ?? '',
-    end_date: initialData?.end_date ?? '',
-    max_capacity: initialData?.max_capacity ?? 10,
-    price_member: initialData?.price_member ?? 0,
-    price_non_member: initialData?.price_non_member ?? 0,
-    is_public: initialData?.is_public ?? true,
-    refund_policy: initialData?.refund_policy ?? '3_days'
+const form = superForm(data.form, {
+    validators: valibotClient(CreateWorkshopSchema),
+    validationMethod: 'onblur',
+    onSuccess: () => goto('/dashboard/workshops')
 });
 
-function handleSubmit() {
-    onSubmit(formData);
-}
+const { form: formData, enhance, errors, submitting, message } = form;
+
 </script>
 
-<form on:submit|preventDefault={handleSubmit} class="space-y-4">
-    <div>
-        <Label for="title">Title</Label>
-        <Input id="title" bind:value={formData.title} required />
+<div class="space-y-6">
+    <div class="flex justify-between items-center">
+        <h1 class="text-3xl font-bold">Create Workshop</h1>
+        <Button variant="outline" href="/dashboard/workshops">
+            Back to Workshops
+        </Button>
     </div>
-    
-    <div>
-        <Label for="description">Description</Label>
-        <Textarea id="description" bind:value={formData.description} />
-    </div>
-    
-    <div>
-        <Label for="location">Location</Label>
-        <Input id="location" bind:value={formData.location} />
-    </div>
-    
-    <div class="grid grid-cols-2 gap-4">
-        <div>
-            <Label for="start_date">Start Date</Label>
-            <Input id="start_date" type="datetime-local" bind:value={formData.start_date} required />
+
+    <!-- Success message -->
+    {#if $message?.success}
+        <Alert.Root variant="success">
+            <CheckCircled class="h-4 w-4" />
+            <Alert.Description>{$message.success}</Alert.Description>
+        </Alert.Root>
+    {/if}
+
+    <!-- Error message -->
+    {#if $message?.error}
+        <Alert.Root variant="destructive">
+            <Alert.Description>{$message.error}</Alert.Description>
+        </Alert.Root>
+    {/if}
+
+    <form method="POST" use:enhance class="space-y-6">
+        <Form.Field {form} name="title">
+            <Form.Control>
+                {#snippet children({ props })}
+                    <Form.Label required>Title</Form.Label>
+                    <Input
+                        {...props}
+                        bind:value={$formData.title}
+                        placeholder="Enter workshop title"
+                    />
+                {/snippet}
+            </Form.Control>
+            <Form.FieldErrors />
+        </Form.Field>
+
+        <Form.Field {form} name="description">
+            <Form.Control>
+                {#snippet children({ props })}
+                    <Form.Label>Description</Form.Label>
+                    <Textarea
+                        {...props}
+                        bind:value={$formData.description}
+                        placeholder="Enter workshop description"
+                        rows={4}
+                    />
+                {/snippet}
+            </Form.Control>
+            <Form.FieldErrors />
+        </Form.Field>
+
+        <Form.Field {form} name="location">
+            <Form.Control>
+                {#snippet children({ props })}
+                    <Form.Label required>Location</Form.Label>
+                    <Input
+                        {...props}
+                        bind:value={$formData.location}
+                        placeholder="Enter workshop location"
+                    />
+                {/snippet}
+            </Form.Control>
+            <Form.FieldErrors />
+        </Form.Field>
+
+        <div class="grid grid-cols-2 gap-4">
+            <Form.Field {form} name="start_date">
+                <Form.Control>
+                    {#snippet children({ props })}
+                        <Form.Label required>Start Date</Form.Label>
+                        <Input
+                            {...props}
+                            type="datetime-local"
+                            bind:value={$formData.start_date}
+                        />
+                    {/snippet}
+                </Form.Control>
+                <Form.FieldErrors />
+            </Form.Field>
+
+            <Form.Field {form} name="end_date">
+                <Form.Control>
+                    {#snippet children({ props })}
+                        <Form.Label required>End Date</Form.Label>
+                        <Input
+                            {...props}
+                            type="datetime-local"
+                            bind:value={$formData.end_date}
+                        />
+                    {/snippet}
+                </Form.Control>
+                <Form.FieldErrors />
+            </Form.Field>
         </div>
-        <div>
-            <Label for="end_date">End Date</Label>
-            <Input id="end_date" type="datetime-local" bind:value={formData.end_date} required />
+
+        <Form.Field {form} name="max_capacity">
+            <Form.Control>
+                {#snippet children({ props })}
+                    <Form.Label required>Maximum Capacity</Form.Label>
+                    <Input
+                        {...props}
+                        type="number"
+                        min="1"
+                        bind:value={$formData.max_capacity}
+                        placeholder="Enter maximum capacity"
+                    />
+                {/snippet}
+            </Form.Control>
+            <Form.FieldErrors />
+        </Form.Field>
+
+        <div class="grid grid-cols-2 gap-4">
+            <Form.Field {form} name="price_member">
+                <Form.Control>
+                    {#snippet children({ props })}
+                        <Form.Label required>Member Price (€)</Form.Label>
+                        <Input
+                            {...props}
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            bind:value={$formData.price_member}
+                            placeholder="0.00"
+                        />
+                    {/snippet}
+                </Form.Control>
+                <Form.FieldErrors />
+            </Form.Field>
+
+            <Form.Field {form} name="price_non_member">
+                <Form.Control>
+                    {#snippet children({ props })}
+                        <Form.Label required>Non-Member Price (€)</Form.Label>
+                        <Input
+                            {...props}
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            bind:value={$formData.price_non_member}
+                            placeholder="0.00"
+                        />
+                    {/snippet}
+                </Form.Control>
+                <Form.FieldErrors />
+            </Form.Field>
         </div>
-    </div>
-    
-    <div>
-        <Label for="max_capacity">Maximum Capacity</Label>
-        <Input id="max_capacity" type="number" min="1" bind:value={formData.max_capacity} required />
-    </div>
-    
-    <div class="grid grid-cols-2 gap-4">
-        <div>
-            <Label for="price_member">Member Price (cents)</Label>
-            <Input id="price_member" type="number" min="0" bind:value={formData.price_member} required />
-        </div>
-        <div>
-            <Label for="price_non_member">Non-Member Price (cents)</Label>
-            <Input id="price_non_member" type="number" min="0" bind:value={formData.price_non_member} required />
-        </div>
-    </div>
-    
-    <div class="flex items-center space-x-2">
-        <Switch id="is_public" bind:checked={formData.is_public} />
-        <Label for="is_public">Public Workshop</Label>
-    </div>
-    
-    <div>
-        <Label for="refund_policy">Refund Policy</Label>
-        <Select bind:value={formData.refund_policy}>
-            <SelectTrigger>
-                <SelectValue placeholder="Select refund policy" />
-            </SelectTrigger>
-            <SelectContent>
-                <SelectItem value="no_refund">No Refund</SelectItem>
-                <SelectItem value="1_day">1 Day Before</SelectItem>
-                <SelectItem value="3_days">3 Days Before</SelectItem>
-                <SelectItem value="1_week">1 Week Before</SelectItem>
-            </SelectContent>
-        </Select>
-    </div>
-    
-    <Button type="submit" disabled={isLoading}>
-        {isLoading ? 'Saving...' : 'Save Workshop'}
-    </Button>
-</form>
+
+        <Form.Field {form} name="is_public">
+            <Form.Control>
+                {#snippet children({ props })}
+                    <div class="flex items-center space-x-2">
+                        <Switch
+                            {...props}
+                            id="is_public"
+                            bind:checked={$formData.is_public}
+                        />
+                        <Form.Label for="is_public">Public Workshop</Form.Label>
+                    </div>
+                {/snippet}
+            </Form.Control>
+            <Form.FieldErrors />
+        </Form.Field>
+
+        <Form.Field {form} name="refund_days">
+            <Form.Control>
+                {#snippet children({ props })}
+                    <Form.Label>Refund Days (leave empty for no refunds)</Form.Label>
+                    <Input
+                        {...props}
+                        type="number"
+                        min="0"
+                        bind:value={$formData.refund_days}
+                        placeholder="e.g., 3 for 3 days before"
+                    />
+                {/snippet}
+            </Form.Control>
+            <Form.FieldErrors />
+        </Form.Field>
+
+        <Button type="submit" disabled={$submitting} class="w-full">
+            {#if $submitting}
+                <LoaderCircle class="mr-2 h-4 w-4 animate-spin" />
+                Creating Workshop...
+            {:else}
+                Create Workshop
+            {/if}
+        </Button>
+    </form>
+</div>
 ```
 
 **File**: `src/lib/components/workshops/workshop-list.svelte`
@@ -697,7 +881,7 @@ test.describe('Workshop Management', () => {
             price_member: 1000,
             price_non_member: 2000,
             is_public: true,
-            refund_policy: '3_days'
+            refund_days: 3
         };
         
         const response = await makeAuthenticatedRequest(page, '/api/workshops', {
@@ -721,7 +905,7 @@ test.describe('Workshop Management', () => {
                 price_member: 1000,
                 price_non_member: 2000,
                 is_public: true,
-                refund_policy: '3_days'
+                refund_days: 3
             }
         });
         
@@ -749,7 +933,7 @@ test.describe('Workshop Management', () => {
                 price_member: 1000,
                 price_non_member: 2000,
                 is_public: true,
-                refund_policy: '3_days'
+                refund_days: 3
             }
         });
         
