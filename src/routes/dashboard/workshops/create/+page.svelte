@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { dateProxy, superForm } from 'sveltekit-superforms';
+	import { superForm } from 'sveltekit-superforms';
 	import { valibotClient } from 'sveltekit-superforms/adapters';
 	import { CreateWorkshopSchema } from '$lib/schemas/workshops';
 	import { Button } from '$lib/components/ui/button';
@@ -8,7 +8,7 @@
 	import { Switch } from '$lib/components/ui/switch';
 	import { Alert, AlertDescription } from '$lib/components/ui/alert';
 	import * as Form from '$lib/components/ui/form';
-	import DatePicker from '$lib/components/ui/date-picker.svelte';
+	import Calendar25 from '$lib/components/calendar-25.svelte';
 	import { CheckCircle } from 'lucide-svelte';
 	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
 	import { goto } from '$app/navigation';
@@ -29,17 +29,36 @@
 	});
 
 	const { form: formData, enhance, submitting, message } = form;
-	const workshopDateProxy = dateProxy(form, 'workshop_date', { format: `date` });
 	
-	// Date picker state
-	const dateValue = $derived.by(() => {
-		if (!dayjs($formData.workshop_date).isValid() || dayjs($formData.workshop_date).isSame(dayjs())) {
-			return undefined;
-		}
-		return fromDate(dayjs($formData.workshop_date).toDate(), getLocalTimeZone());
-	});
+	// Calendar state
+	let calendarDate = $state<any>();
+	let startTime = $state('10:30');
+	let endTime = $state('12:30');
+	
+	// Initialize with default date if needed
+	if (!calendarDate) {
+		calendarDate = fromDate(new Date(), getLocalTimeZone());
+		// Call update to set initial form values
+		setTimeout(() => updateWorkshopDates(), 0);
+	}
 
-	// Price handling - form stores euros directly (no conversion needed)
+	function updateWorkshopDates() {
+		if (calendarDate && startTime) {
+			const date = calendarDate.toDate(getLocalTimeZone());
+			const [hours, minutes] = startTime.split(':').map(Number);
+			const newDate = new Date(date);
+			newDate.setHours(hours, minutes, 0, 0);
+			$formData.workshop_date = newDate;
+		}
+		
+		if (calendarDate && endTime) {
+			const date = calendarDate.toDate(getLocalTimeZone());
+			const [hours, minutes] = endTime.split(':').map(Number);
+			const newDate = new Date(date);
+			newDate.setHours(hours, minutes, 0, 0);
+			$formData.workshop_end_date = newDate;
+		}
+	}
 
 
 </script>
@@ -109,46 +128,49 @@
 			<Form.FieldErrors />
 		</Form.Field>
 
-		<div class="grid grid-cols-2 gap-4">
-			<Form.Field {form} name="workshop_date">
-				<Form.Control>
-					{#snippet children({ props })}
-						<Form.Label required>Workshop Date</Form.Label>
-						<DatePicker
-							{...props}
-							value={dateValue}
-							onDateChange={(date) => {
-								if (!date) return;
-								$formData.workshop_date = date;
-							}}
-						/>
-						<input
-							id="workshop_date"
-							type="date"
-							hidden
-							value={$workshopDateProxy}
-							name={props.name}
-						/>
-					{/snippet}
-				</Form.Control>
-				<Form.FieldErrors />
-			</Form.Field>
+		<Form.Field {form} name="workshop_date">
+			<Form.Control>
+				{#snippet children({ props })}
+					<Form.Label required>Workshop Date & Time</Form.Label>
+					<Calendar25
+						id="workshop"
+						bind:date={calendarDate}
+						bind:startTime
+						bind:endTime
+						onDateChange={updateWorkshopDates}
+						onStartTimeChange={updateWorkshopDates}
+						onEndTimeChange={updateWorkshopDates}
+					/>
+					<input
+						id="workshop_date"
+						type="datetime-local"
+						hidden
+						value={$formData.workshop_date ? dayjs($formData.workshop_date).format('YYYY-MM-DDTHH:mm:ss') : ''}
+						name="workshop_date"
+						readonly
+					/>
+					<input
+						id="workshop_end_date"
+						type="datetime-local"
+						hidden
+						value={$formData.workshop_end_date ? dayjs($formData.workshop_end_date).format('YYYY-MM-DDTHH:mm:ss') : ''}
+						name="workshop_end_date"
+						readonly
+					/>
+				{/snippet}
+			</Form.Control>
+			<Form.FieldErrors />
+		</Form.Field>
 
-			<Form.Field {form} name="workshop_time">
-				<Form.Control>
-					{#snippet children({ props })}
-						<Form.Label required>Workshop Time</Form.Label>
-						<Input
-							{...props}
-							type="time"
-							bind:value={$formData.workshop_time}
-							placeholder="e.g., 19:00"
-						/>
-					{/snippet}
-				</Form.Control>
-				<Form.FieldErrors />
-			</Form.Field>
-		</div>
+		<!-- Hidden field to capture workshop_end_date validation errors -->
+		<Form.Field {form} name="workshop_end_date">
+			<Form.Control>
+				{#snippet children({ props })}
+					<!-- This field is just for validation errors, no visible input -->
+				{/snippet}
+			</Form.Control>
+			<Form.FieldErrors />
+		</Form.Field>
 
 		<Form.Field {form} name="max_capacity">
 			<Form.Control>
