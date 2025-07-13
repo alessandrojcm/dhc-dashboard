@@ -53,7 +53,7 @@
 					<div class="flex justify-between items-start">
 						<CardTitle>{workshop.title}</CardTitle>
 						<Badge class={getStatusColor(workshop.status)}>
-							{workshop.status}
+							{workshop.status.charAt(0).toUpperCase() + workshop.status.slice(1)}
 						</Badge>
 					</div>
 				</CardHeader>
@@ -78,9 +78,11 @@
 							<div>
 								<strong>Member Price:</strong> {formatPrice(workshop.price_member)}
 							</div>
-							<div>
-								<strong>Non-Member Price:</strong> {formatPrice(workshop.price_non_member)}
-							</div>
+							{#if workshop.is_public}
+								<div>
+									<strong>Non-Member Price:</strong> {formatPrice(workshop.price_non_member)}
+								</div>
+							{/if}
 						</div>
 						<div class="flex gap-2 mt-4">
 							<Button variant="outline" size="sm" onclick={() => onEdit(workshop)}>
