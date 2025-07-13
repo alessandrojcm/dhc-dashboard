@@ -31,9 +31,8 @@ export const actions: Actions = {
 
 		try {
 			// Transform form data to database format
-			const workshopDate = dayjs(form.data.workshop_date);
-			const [hours, minutes] = form.data.workshop_time.split(':').map(Number);
-			const startDateTime = workshopDate.hour(hours).minute(minutes).toISOString();
+			const startDateTime = dayjs(form.data.workshop_date).toISOString();
+			const endDateTime = dayjs(form.data.workshop_end_date).toISOString();
 
 			// Convert euro prices to cents
 			const memberPriceCents = Dinero({
@@ -50,12 +49,12 @@ export const actions: Actions = {
 				description: form.data.description,
 				location: form.data.location,
 				start_date: startDateTime,
+				end_date: endDateTime,
 				max_capacity: form.data.max_capacity,
 				price_member: memberPriceCents,
 				price_non_member: nonMemberPriceCents,
 				is_public: form.data.is_public || false,
-				refund_days: form.data.refund_deadline_days,
-				end_date: startDateTime
+				refund_days: form.data.refund_deadline_days
 			};
 
 			const workshop = await createWorkshop(workshopData, session, platform!);

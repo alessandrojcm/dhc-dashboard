@@ -16,10 +16,9 @@ export async function createWorkshop(
 		// For single-day workshops, set end_date to start_date
 		const workshopData = {
 			...data,
-			end_date: data.start_date, // Single day workshop
 			created_by: session.user.id
 		};
-		
+
 		return await trx
 			.insertInto('club_activities')
 			.values(workshopData)
@@ -54,10 +53,8 @@ export async function updateWorkshop(
 	const kysely = getKyselyClient(platform.env.HYPERDRIVE);
 	const result = await executeWithRLS(kysely, { claims: session }, async (trx) => {
 		// For single-day workshops, set end_date to start_date if start_date is being updated
-		const updateData = data.start_date 
-			? { ...data, end_date: data.start_date }
-			: data;
-			
+		const updateData = data.start_date ? { ...data, end_date: data.start_date } : data;
+
 		return await trx
 			.updateTable('club_activities')
 			.set(updateData)

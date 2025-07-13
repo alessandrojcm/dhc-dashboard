@@ -163,6 +163,7 @@ Required for development:
 - ALWAYS use our form components in src/components/ui/form
 - ALWAYS use dinero.js for any money operations
 - ALWAYS use day.js for any date operations
+- ALWAYS try to avoid $effects unless is absolutely necessary. Prefer $derived runes and event handlers
 
 ### Database Guidelines
 
