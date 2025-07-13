@@ -26,26 +26,22 @@ type SupabaseToken = {
 export function getKyselyClient(connectionString: string) {
 	return new Kysely<KyselyDatabase>({
 		dialect: new PostgresJSDialect({
-			postgres: postgres(
-				connectionString,
-				{
-					prepare: true,
-					transform: {
-						value: {
-							from: (value) => {
-								if (value instanceof Date) {
-									return value.toISOString();
-								} else {
-									return value;
-								}
+			postgres: postgres(connectionString, {
+				prepare: true,
+				transform: {
+					value: {
+						from: (value) => {
+							if (value instanceof Date) {
+								return value.toISOString();
+							} else {
+								return value;
 							}
 						}
 					}
 				}
-			)
+			})
 		})
 	});
-	
 }
 
 export async function executeWithRLS<T>(
@@ -56,16 +52,16 @@ export async function executeWithRLS<T>(
 	const decoded = jwtDecode(authData.claims.access_token) as SupabaseToken;
 	return await kysely.transaction().execute(async (trx) => {
 		// set transaction level auth variables and run transaction
-		sql`
-       -- auth.jwt()
-          select set_config('request.jwt.claims', ${sql.lit(
-						JSON.stringify(authData.claims.access_token)
-					)}, TRUE);
-          -- auth.uid()
-          select set_config('request.jwt.claim.sub', ${sql.lit(decoded.sub ?? '')}, TRUE);												
-          -- set local role
-          set local role ${sql.raw(decoded.role ?? 'anon')};
-          `.execute(trx);
+		await sql`
+			-- auth.jwt()
+			select set_config('request.jwt.claims', ${sql.lit(
+				JSON.stringify(authData.claims.access_token)
+			)}, TRUE);
+			-- auth.uid()
+			select set_config('request.jwt.claim.sub', ${sql.lit(decoded.sub ?? '')}, TRUE);
+			-- set local role
+			set local role ${sql.raw(decoded.role ?? 'anon')};
+		`.execute(trx);
 		return await callback(trx);
 	});
 }

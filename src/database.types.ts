@@ -34,6 +34,60 @@ export type Database = {
   }
   public: {
     Tables: {
+      club_activities: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          end_date: string
+          id: string
+          is_public: boolean | null
+          location: string
+          max_capacity: number
+          price_member: number
+          price_non_member: number
+          refund_days: number | null
+          start_date: string
+          status: Database["public"]["Enums"]["club_activity_status"] | null
+          title: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          end_date: string
+          id?: string
+          is_public?: boolean | null
+          location: string
+          max_capacity: number
+          price_member: number
+          price_non_member: number
+          refund_days?: number | null
+          start_date: string
+          status?: Database["public"]["Enums"]["club_activity_status"] | null
+          title: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          end_date?: string
+          id?: string
+          is_public?: boolean | null
+          location?: string
+          max_capacity?: number
+          price_member?: number
+          price_non_member?: number
+          refund_days?: number | null
+          start_date?: string
+          status?: Database["public"]["Enums"]["club_activity_status"] | null
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       invitation_processing_logs: {
         Row: {
           created_at: string
@@ -211,83 +265,6 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
-      }
-      payment_sessions: {
-        Row: {
-          annual_amount: number
-          annual_payment_intent_id: string | null
-          annual_subscription_id: string | null
-          coupon_id: string | null
-          created_at: string
-          discount_percentage: number | null
-          discounted_annual_amount: number | null
-          discounted_monthly_amount: number | null
-          expires_at: string
-          id: number
-          is_used: boolean
-          monthly_amount: number
-          monthly_payment_intent_id: string | null
-          monthly_subscription_id: string | null
-          preview_annual_amount: number | null
-          preview_monthly_amount: number | null
-          prorated_annual_amount: number | null
-          prorated_monthly_amount: number | null
-          total_amount: number
-          user_id: string
-        }
-        Insert: {
-          annual_amount: number
-          annual_payment_intent_id?: string | null
-          annual_subscription_id?: string | null
-          coupon_id?: string | null
-          created_at?: string
-          discount_percentage?: number | null
-          discounted_annual_amount?: number | null
-          discounted_monthly_amount?: number | null
-          expires_at: string
-          id?: number
-          is_used?: boolean
-          monthly_amount: number
-          monthly_payment_intent_id?: string | null
-          monthly_subscription_id?: string | null
-          preview_annual_amount?: number | null
-          preview_monthly_amount?: number | null
-          prorated_annual_amount?: number | null
-          prorated_monthly_amount?: number | null
-          total_amount: number
-          user_id: string
-        }
-        Update: {
-          annual_amount?: number
-          annual_payment_intent_id?: string | null
-          annual_subscription_id?: string | null
-          coupon_id?: string | null
-          created_at?: string
-          discount_percentage?: number | null
-          discounted_annual_amount?: number | null
-          discounted_monthly_amount?: number | null
-          expires_at?: string
-          id?: number
-          is_used?: boolean
-          monthly_amount?: number
-          monthly_payment_intent_id?: string | null
-          monthly_subscription_id?: string | null
-          preview_annual_amount?: number | null
-          preview_monthly_amount?: number | null
-          prorated_annual_amount?: number | null
-          prorated_monthly_amount?: number | null
-          total_amount?: number
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "payment_sessions_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: false
-            referencedRelation: "user_profiles"
-            referencedColumns: ["supabase_user_id"]
-          },
-        ]
       }
       settings: {
         Row: {
@@ -654,10 +631,6 @@ export type Database = {
       }
     }
     Functions: {
-      cleanup_payment_sessions: {
-        Args: Record<PropertyKey, never>
-        Returns: number
-      }
       complete_member_registration: {
         Args: {
           v_user_id: string
@@ -824,6 +797,7 @@ export type Database = {
       }
     }
     Enums: {
+      club_activity_status: "planned" | "published" | "finished" | "cancelled"
       gender:
         | "man (cis)"
         | "woman (cis)"
@@ -998,6 +972,7 @@ export const Constants = {
   },
   public: {
     Enums: {
+      club_activity_status: ["planned", "published", "finished", "cancelled"],
       gender: [
         "man (cis)",
         "woman (cis)",
