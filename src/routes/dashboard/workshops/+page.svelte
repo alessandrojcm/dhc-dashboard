@@ -90,7 +90,7 @@
 	}
 </script>
 
-<div class="space-y-6">
+<div class="p-6 space-y-6">
 	<div class="flex justify-between items-center">
 		<h1 class="text-3xl font-bold">Workshops</h1>
 		<Button onclick={handleCreate}>Create Workshop</Button>
