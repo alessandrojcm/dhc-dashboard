@@ -88,6 +88,38 @@ export type Database = {
         }
         Relationships: []
       }
+      club_activity_interest: {
+        Row: {
+          club_activity_id: string
+          created_at: string | null
+          id: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          club_activity_id: string
+          created_at?: string | null
+          id?: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          club_activity_id?: string
+          created_at?: string | null
+          id?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "club_activity_interest_club_activity_id_fkey"
+            columns: ["club_activity_id"]
+            isOneToOne: false
+            referencedRelation: "club_activities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       invitation_processing_logs: {
         Row: {
           created_at: string
@@ -551,6 +583,21 @@ export type Database = {
       }
     }
     Views: {
+      club_activity_interest_counts: {
+        Row: {
+          club_activity_id: string | null
+          interest_count: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "club_activity_interest_club_activity_id_fkey"
+            columns: ["club_activity_id"]
+            isOneToOne: false
+            referencedRelation: "club_activities"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       member_management_view: {
         Row: {
           additional_data: Json | null

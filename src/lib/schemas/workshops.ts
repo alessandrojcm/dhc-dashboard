@@ -35,5 +35,10 @@ export const CreateWorkshopSchema = v.pipe(
 
 export const UpdateWorkshopSchema = v.partial(CreateWorkshopSchema);
 
+export const expressInterestSchema = v.object({
+	workshopId: v.pipe(v.string(), v.uuid('Must be a valid UUID'))
+});
+
 export type CreateWorkshopData = v.InferInput<typeof CreateWorkshopSchema>;
 export type UpdateWorkshopData = v.InferInput<typeof UpdateWorkshopSchema>;
+export type ExpressInterestInput = v.InferInput<typeof expressInterestSchema>;
