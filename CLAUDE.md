@@ -99,6 +99,7 @@ payments.
 - UI components in `src/lib/components/ui/` (shadcn-svelte style)
 - Data fetching with TanStack Query (`createQuery`, `createMutation`)
 - Component naming: kebab-case (e.g., `my-component.svelte`)
+- TankStack Query Svelte uses a thunk pattern to create queries/mutation `createQuery(() => ({}))`
 
 ### Directory Structure
 

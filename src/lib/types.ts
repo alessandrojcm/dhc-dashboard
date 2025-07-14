@@ -1,6 +1,7 @@
 import type { Database } from '$database';
 import type { KyselifyDatabase } from 'kysely-supabase';
 import type Stripe from 'stripe';
+import type { CalendarEvent } from '@schedule-x/calendar';
 
 export type UserData = {
 	firstName: string;
@@ -51,19 +52,33 @@ export type StripePaymentInfo = {
 };
 
 export type PlanPricing = {
-    proratedPrice: Dinero.DineroObject;
-    proratedMonthlyPrice: Dinero.DineroObject;
-    proratedAnnualPrice: Dinero.DineroObject;
-    monthlyFee: Dinero.DineroObject;
-    annualFee: Dinero.DineroObject;
-    // Discounted amounts for recurring payments
-    discountedMonthlyFee?: Dinero.DineroObject;
-    discountedAnnualFee?: Dinero.DineroObject;
-    // Discount information
-    coupon?: string;
-    discountPercentage?: number;
-}
+	proratedPrice: Dinero.DineroObject;
+	proratedMonthlyPrice: Dinero.DineroObject;
+	proratedAnnualPrice: Dinero.DineroObject;
+	monthlyFee: Dinero.DineroObject;
+	annualFee: Dinero.DineroObject;
+	// Discounted amounts for recurring payments
+	discountedMonthlyFee?: Dinero.DineroObject;
+	discountedAnnualFee?: Dinero.DineroObject;
+	// Discount information
+	coupon?: string;
+	discountPercentage?: number;
+};
 
 export type SubscriptionWithPlan = Stripe.Subscription & {
 	plan: Stripe.Plan;
-}
+};
+
+export type Workshop = Database['public']['Tables']['club_activities']['Row'] & {
+	user_interest: { user_id: string }[];
+	interest_count: { interest_count: number | null }[];
+	description: string | undefined;
+	userId: string;
+};
+
+export type WorkshopCalendarEvent = CalendarEvent & {
+	workshop: Workshop;
+	isInterested: boolean;
+	isLoading: true;
+	onToggleInterest: (id: string) => void;
+};

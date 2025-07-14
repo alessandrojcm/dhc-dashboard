@@ -10,7 +10,7 @@ Allow members to express interest in planned workshops. Members can view planned
 - **Frontend terminology**: "workshops" for user-facing elements
 - **API pattern**: Mutation-only endpoints (use Supabase client for queries)
 - **Calendar integration**: Schedule-X library for calendar display
-- **Data access**: Kysely for all mutations, Supabase client for queries
+- **Data access**: Kysely for all mutations, Supabase client for queries in the front end. Server-side always use kysely.
 
 ### Answered Questions
 1. **Refund Policy Granularity**: Per workshop, default to 3 days before the workshop
