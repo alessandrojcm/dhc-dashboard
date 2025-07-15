@@ -29,7 +29,7 @@
 	}
 </script>
 
-<div class="workshop-event-modal drop-shadow-accent">
+<div class="workshop-event-modal">
 	<div class="modal-header">
 		<h2 class="text-xl font-semibold">{workshop?.title || event?.title || 'Workshop'}</h2>
 		<div class="flex items-center gap-2">

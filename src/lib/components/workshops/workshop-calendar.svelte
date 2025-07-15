@@ -62,14 +62,14 @@
 	let popoverElement: HTMLElement | undefined = $state();
 	let popoverPosition = $state({ x: 0, y: 0 });
 
-	// Convert workshops to EventCalendar events format
+	// Convert workshops to EventCalendar events format with shadcn colors
 	const events: CalendarEvent[] = $derived(workshops.map(workshop => ({
 		id: workshop.id,
 		title: workshop.title,
 		start: dayjs(workshop.start_date).format('YYYY-MM-DD HH:mm'),
 		end: dayjs(workshop.end_date).format('YYYY-MM-DD HH:mm'),
-		backgroundColor: '#3b82f6',
-		textColor: '#ffffff',
+		backgroundColor: 'hsl(var(--primary))',
+		textColor: 'hsl(var(--primary-foreground))',
 		extendedProps: {
 			workshop: workshop,
 			description: workshop.description,
@@ -135,7 +135,7 @@
 		}
 	};
 
-	// Calendar options
+	// Calendar options with shadcn theming
 	const options = $derived({
 		view: 'dayGridMonth',
 		events: events,
@@ -162,7 +162,7 @@
 						<div class="workshop-event-info text-xs opacity-80 mt-1">
 							<div class="flex items-center justify-between">
 								<span>${interestCount} interested</span>
-								${isInterested ? '<span class="text-green-400">✓ Interested</span>' : ''}
+								${isInterested ? '<span class="text-secondary-foreground bg-secondary px-1 rounded-sm">✓ Interested</span>' : ''}
 							</div>
 						</div>
 					</div>
@@ -172,7 +172,29 @@
 		dayMaxEvents: true,
 		moreLinkContent: (arg: MoreLinkInfo): string => `+${arg.num} more`,
 		selectable: false,
-		editable: false
+		editable: false,
+		// Custom theme to match shadcn design system
+		theme: (defaultTheme: any) => ({
+			...defaultTheme,
+			calendar: 'ec bg-card text-card-foreground border border-border rounded-lg',
+			header: 'ec-header bg-card border-b border-border',
+			toolbar: 'ec-toolbar flex items-center justify-between p-4',
+			button: 'ec-button inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2',
+			buttonGroup: 'ec-button-group flex',
+			active: 'ec-active bg-primary text-primary-foreground hover:bg-primary/90',
+			title: 'ec-title text-lg font-semibold text-foreground',
+			body: 'ec-body bg-card',
+			dayHead: 'ec-day-head bg-muted/50 border-b border-border text-muted-foreground font-medium text-sm p-2',
+			day: 'ec-day border-r border-b border-border hover:bg-muted/50 transition-colors',
+			today: 'ec-today bg-accent/20',
+			otherMonth: 'ec-other-month text-muted-foreground/50',
+			event: 'ec-event bg-primary text-primary-foreground rounded-sm border border-primary/20 shadow-sm',
+			eventBody: 'ec-event-body p-1',
+			eventTitle: 'ec-event-title font-medium text-xs',
+			eventTime: 'ec-event-time text-xs opacity-90',
+			popup: 'ec-popup bg-popover text-popover-foreground border border-border rounded-lg shadow-lg',
+			nowIndicator: 'ec-now-indicator bg-destructive'
+		})
 	});
 	$inspect(selectedEvent)
 </script>
@@ -183,9 +205,9 @@
 	</div>
 	
 	<!-- Legend -->
-	<div class="flex items-center gap-4 mt-4 text-sm">
+	<div class="flex items-center gap-4 mt-4 text-sm text-muted-foreground">
 		<div class="flex items-center gap-2">
-			<div class="w-4 h-4 bg-blue-500 rounded"></div>
+			<div class="w-4 h-4 bg-primary rounded-sm border border-primary/20"></div>
 			<span>Planned Workshops</span>
 		</div>
 	</div>
@@ -195,8 +217,8 @@
 <div
 	bind:this={popoverElement}
 	popover="auto"
-	class="w-96 bg-white text-gray-900 border border-gray-200 rounded-lg shadow-lg p-0 m-0"
-	style="position: absolute; left: {popoverPosition.x - 192}px; top: {popoverPosition.y}px; transform: translateY(-100%); color: rgb(17 24 39);"
+	class="workshop-popover w-96 p-0 m-0"
+	style="position: absolute; left: {popoverPosition.x - 192}px; top: {popoverPosition.y}px; transform: translateY(-100%);"
 >
 	{#if selectedEvent}
 		<WorkshopEventModal 
@@ -226,17 +248,63 @@
 		line-height: 1.1;
 	}
 	
-	/* Ensure popover text is visible */
+	/* Ensure popover inherits theme colors */
 	:global([popover]) {
-		color: rgb(17 24 39);
+		color: hsl(var(--popover-foreground));
+		background-color: hsl(var(--popover));
 	}
 	
 	:global([popover] *) {
 		color: inherit;
 	}
 	
-	:global([popover] .text-muted-foreground) {
-		color: var(--color-white) !important;
+	/* Override default event calendar styles with shadcn theme */
+	:global(.ec) {
+		font-family: inherit;
+	}
+	
+	/* Ensure buttons use shadcn styling */
+	:global(.ec-button) {
+		transition: all 0.2s ease-in-out;
+	}
+	
+	:global(.ec-button:hover) {
+		background-color: hsl(var(--accent));
+		color: hsl(var(--accent-foreground));
+	}
+	
+	:global(.ec-button.ec-active) {
+		background-color: hsl(var(--primary));
+		color: hsl(var(--primary-foreground));
+	}
+	
+	/* Style the more link */
+	:global(.ec .ec-more-link) {
+		color: hsl(var(--primary));
+		text-decoration: none;
+		font-size: 0.75rem;
+		padding: 0.25rem;
+		border-radius: calc(var(--radius) - 2px);
+		transition: all 0.2s ease-in-out;
+	}
+	
+	:global(.ec .ec-more-link:hover) {
+		background-color: hsl(var(--accent));
+		color: hsl(var(--accent-foreground));
+	}
+	
+	/* Proper popover styling */
+	:global(.workshop-popover) {
+		background-color: hsl(var(--popover));
+		color: hsl(var(--popover-foreground));
+		border: 1px solid hsl(var(--border));
+		border-radius: calc(var(--radius) + 2px);
+		box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+	}
+	
+	/* Popover backdrop */
+	:global(.workshop-popover::backdrop) {
+		background-color: var(--color-white);
 	}
 </style>
 
