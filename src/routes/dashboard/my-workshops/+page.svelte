@@ -1,8 +1,9 @@
 <script lang="ts">
 	import { createQuery, createMutation, useQueryClient } from '@tanstack/svelte-query';
-	import WorkshopCalendar from '$lib/components/workshops/workshop-calendar.svelte';
+	import WorkshopList from '$lib/components/workshops/workshop-list.svelte';
 	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import { Skeleton } from '$lib/components/ui/skeleton';
+	import { Tabs, TabsContent, TabsList, TabsTrigger } from '$lib/components/ui/tabs/index.js';
 	import { toast } from 'svelte-sonner';
 	import { CalendarDays } from 'lucide-svelte';
 
@@ -11,6 +12,7 @@
 	const userId = data!.user!.id;
 
 	const queryClient = useQueryClient();
+	let activeTab = $state('planned');
 
 	const workshopsQuery = createQuery(() => ({
 		queryKey: ['workshops', 'planned'],
@@ -66,35 +68,41 @@
 		<h1 class="text-2xl font-bold">My Workshops</h1>
 	</div>
 
-	{#if workshopsQuery.isLoading}
-		<div class="space-y-4">
-			{#each Array(3) as _, index (index)}
-				<Skeleton class="h-32 w-full" />
-			{/each}
-		</div>
-	{:else if workshopsQuery.error}
-		<Card>
-			<CardContent class="pt-6">
-				<p class="text-destructive">Error loading workshops: {workshopsQuery.error.message}</p>
-			</CardContent>
-		</Card>
-	{:else}
-		<div class="grid gap-6">
-			<!-- Calendar View -->
-			<Card>
-				<CardHeader>
-					<CardTitle>Workshop Calendar</CardTitle>
-					<CardDescription>View planned workshops and express your interest</CardDescription>
-				</CardHeader>
-				<CardContent>
-					<WorkshopCalendar
-						workshops={workshopsQuery.data ?? []}
-						onInterestToggle={handleInterestToggle}
-						{userId}
-						isLoading={interestMutation.isPending}
-					/>
-				</CardContent>
-			</Card>
-		</div>
-	{/if}
+	<Tabs bind:value={activeTab}>
+		<TabsList>
+			<TabsTrigger value="planned">Planned</TabsTrigger>
+		</TabsList>
+
+		<TabsContent value="planned">
+			{#if workshopsQuery.isLoading}
+				<div class="space-y-4">
+					{#each Array(3) as _, index (index)}
+						<Skeleton class="h-32 w-full" />
+					{/each}
+				</div>
+			{:else if workshopsQuery.error}
+				<Card>
+					<CardContent class="pt-6">
+						<p class="text-destructive">Error loading workshops: {workshopsQuery.error.message}</p>
+					</CardContent>
+				</Card>
+			{:else}
+				<Card>
+					<CardHeader>
+						<CardTitle>Planned Workshops</CardTitle>
+						<CardDescription>View planned workshops and express your interest</CardDescription>
+					</CardHeader>
+					<CardContent>
+						<WorkshopList
+							workshops={workshopsQuery.data ?? []}
+							onInterestToggle={handleInterestToggle}
+							{userId}
+							isLoading={interestMutation.isPending}
+							showInterestButton={true}
+						/>
+					</CardContent>
+				</Card>
+			{/if}
+		</TabsContent>
+	</Tabs>
 </div>

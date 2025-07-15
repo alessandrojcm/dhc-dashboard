@@ -28,7 +28,7 @@ const data: NavData = {
 		{
 			title: 'Workshops',
 			url: 'workshops',
-			role: new Set(['admin', 'president', 'member', 'committee_coordinator'])
+			role: new Set(['admin', 'president', 'committee_coordinator'])
 		},
 		{
 			title: 'My Workshops',
