@@ -12,7 +12,7 @@
 	import { CheckCircle } from 'lucide-svelte';
 	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
 	import { goto } from '$app/navigation';
-	import { fromDate, getLocalTimeZone } from '@internationalized/date';
+	import { getLocalTimeZone } from '@internationalized/date';
 	import dayjs from 'dayjs';
 
 	const { data } = $props();
@@ -22,6 +22,7 @@
 		validationMethod: 'onblur',
 		onUpdated: ({ form }) => {
 			if (form.message?.success) {
+				window?.scrollTo({ top: 0, behavior: 'smooth' });
 				setTimeout(() => goto('/dashboard/workshops'), 2000);
 			}
 		},
@@ -34,13 +35,6 @@
 	let calendarDate = $state<any>();
 	let startTime = $state('10:30');
 	let endTime = $state('12:30');
-	
-	// Initialize with default date if needed
-	if (!calendarDate) {
-		calendarDate = fromDate(new Date(), getLocalTimeZone());
-		// Call update to set initial form values
-		setTimeout(() => updateWorkshopDates(), 0);
-	}
 
 	function updateWorkshopDates() {
 		if (calendarDate && startTime) {
@@ -59,8 +53,6 @@
 			$formData.workshop_end_date = newDate;
 		}
 	}
-
-
 </script>
 
 <div class="max-w-4xl mx-auto p-6 space-y-8">
@@ -178,7 +170,7 @@
 			<!-- Hidden field to capture workshop_end_date validation errors -->
 			<Form.Field {form} name="workshop_end_date">
 				<Form.Control>
-					{#snippet children({ props })}
+					{#snippet children()}
 						<!-- This field is just for validation errors, no visible input -->
 					{/snippet}
 				</Form.Control>

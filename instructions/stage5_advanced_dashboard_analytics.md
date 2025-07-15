@@ -9,7 +9,7 @@ Comprehensive member experience and coordinator insights. Members have full work
 - **Database naming**: `club_activities` schema to distinguish from existing beginners workshop
 - **Frontend terminology**: "workshops" for user-facing elements
 - **API pattern**: Mutation-only endpoints (use Supabase client for queries)
-- **Calendar integration**: Schedule-X library for calendar display
+- **Calendar integration**: vkurko/calendar library for calendar display
 - **Data access**: Kysely for all mutations, Supabase client for queries
 
 ### Answered Questions
@@ -29,7 +29,7 @@ Comprehensive member experience and coordinator insights. Members have full work
 
 ## Frontend Enhancements
 
-### Full Schedule-X Calendar Implementation
+### Full vkurko/calendar Implementation
 - Complete calendar integration with all workshop states
 - Interactive calendar with workshop details
 - Mobile-responsive calendar interface
@@ -48,7 +48,7 @@ Comprehensive member experience and coordinator insights. Members have full work
 - Registration timeline
 
 ### Upcoming Workshops Dashboard
-- Schedule-X calendar integration for upcoming workshops
+- vkurko/calendar integration for upcoming workshops
 - Quick registration actions from dashboard
 - Workshop reminders and notifications
 - Registration deadline alerts
@@ -98,7 +98,7 @@ Comprehensive member experience and coordinator insights. Members have full work
 - **Service dependencies**: E2E tests require all services running (supabase:start, supabase:functions:serve, dev)
 - **Response format**: API responses follow `{success: true, [resource]: data}` pattern
 - **Mobile testing**: Test responsive design and touch interactions
-- **Calendar testing**: Test Schedule-X integration and all calendar features
+- **Calendar testing**: Test vkurko/calendar integration and all calendar features
 
 ## Security Requirements
 - All mutations through Kysely with RLS enforcement
@@ -115,7 +115,7 @@ Comprehensive member experience and coordinator insights. Members have full work
 - Performance optimization for analytics queries
 
 ## Success Criteria
-- Full Schedule-X calendar integration works on all devices
+- Full vkurko/calendar integration works on all devices
 - Advanced search and filtering functions correctly
 - Registration history displays complete member information
 - Mobile interface is fully functional and responsive

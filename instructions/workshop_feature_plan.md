@@ -9,7 +9,7 @@ Create a comprehensive workshop planning feature for extra club activities (trai
 - **Database naming**: `club_activities` schema to distinguish from existing beginners workshop
 - **Frontend terminology**: "workshops" for user-facing elements
 - **API pattern**: Mutation-only endpoints (use Supabase client for queries)
-- **Calendar integration**: Schedule-X library for calendar display
+- **Calendar integration**: vkurko/calendar library for calendar display
 - **Data access**: Kysely for all mutations, Supabase client for queries
 
 ## Implementation Stages
@@ -66,7 +66,7 @@ Create a comprehensive workshop planning feature for extra club activities (trai
 
 #### Frontend
 - Member calendar view at `/dashboard/my-workshops/`
-- Schedule-X calendar integration showing planned workshops
+- vkurko/calendar integration showing planned workshops
 - Interest buttons on planned workshops
 - Interest count display for coordinators
 
@@ -149,10 +149,10 @@ Create a comprehensive workshop planning feature for extra club activities (trai
 **MVP:** Members have full workshop management interface with analytics
 
 #### Frontend Enhancements
-- Full Schedule-X calendar implementation
+- Full vkurko/calendar implementation
 - Advanced filtering and search
 - Registration history view
-- Upcoming workshops dashboard (in the Schedule-X calendar)
+- Upcoming workshops dashboard (in the vkurko/calendar)
 - Mobile-responsive design
 
 #### Analytics Features

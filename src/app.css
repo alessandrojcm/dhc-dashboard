@@ -47,7 +47,7 @@
 	--color-slate-800: oklch(15.68% 0.003 17.52);
 	--color-slate-900: oklch(13.01% 0.002 17.43);
 	--color-slate-950: oklch(8.81% 0.005 18.05);
-	--popover: oklch(1 0 359)
+	--popover: oklch(1 0 359);
 	--popover-foreground: oklch(0.141 0.005 285.823);
 }
 
