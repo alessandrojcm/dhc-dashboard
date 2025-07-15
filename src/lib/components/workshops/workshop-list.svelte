@@ -84,29 +84,14 @@
 								</div>
 							{/if}
 						</div>
-						<div class="flex gap-2 mt-4">
-							<Button variant="outline" size="sm" onclick={() => onEdit(workshop)}>
-								Edit
-							</Button>
-							
-							{#if workshop.status === 'planned'}
-								<Button variant="default" size="sm" onclick={() => onPublish(workshop)}>
-									Publish
-								</Button>
-							{/if}
-							
-							{#if workshop.status === 'planned' || workshop.status === 'published'}
-								<Button variant="destructive" size="sm" onclick={() => onCancel(workshop)}>
-									Cancel
-								</Button>
-							{/if}
-							
-							{#if workshop.status === 'planned'}
-								<Button variant="destructive" size="sm" onclick={() => onDelete(workshop)}>
-									Delete
-								</Button>
-							{/if}
-						</div>
+<!--						<div class="flex justify-end pt-4">-->
+<!--							<Button-->
+<!--								variant={hasInterest ? "primary" : "outline"}-->
+<!--								onclick={handleInterestToggle}-->
+<!--							>-->
+<!--								{hasInterest ? 'Withdraw Interest' : 'Express Interest'}-->
+<!--							</Button>-->
+<!--						</div>-->
 					</div>
 				</CardContent>
 			</Card>

@@ -11,30 +11,12 @@ importers:
       '@dinero.js/currencies':
         specifier: 2.0.0-alpha.1
         version: 2.0.0-alpha.1
+      '@event-calendar/core':
+        specifier: ^4.5.0
+        version: 4.5.0
       '@internationalized/date':
         specifier: ^3.8.2
         version: 3.8.2
-      '@schedule-x/calendar':
-        specifier: ^2.36.0
-        version: 2.36.0(@preact/signals@2.2.1(preact@10.26.9))(preact@10.26.9)
-      '@schedule-x/event-modal':
-        specifier: ^2.36.0
-        version: 2.36.0(@preact/signals@2.2.1(preact@10.26.9))(preact@10.26.9)
-      '@schedule-x/events-service':
-        specifier: ^2.36.0
-        version: 2.36.0
-      '@schedule-x/scroll-controller':
-        specifier: ^2.36.0
-        version: 2.36.0(@preact/signals@2.2.1(preact@10.26.9))
-      '@schedule-x/svelte':
-        specifier: ^2.3.0
-        version: 2.3.0(@schedule-x/calendar@2.36.0(@preact/signals@2.2.1(preact@10.26.9))(preact@10.26.9))(@schedule-x/shared@2.36.0(@preact/signals@2.2.1(preact@10.26.9)))(svelte@5.35.6)
-      '@schedule-x/theme-default':
-        specifier: ^2.36.0
-        version: 2.36.0
-      '@schedule-x/theme-shadcn':
-        specifier: ^2.36.0
-        version: 2.36.0
       '@sentry/sveltekit':
         specifier: ^9.37.0
         version: 9.37.0(@cloudflare/workers-types@4.20250711.0)(@sveltejs/kit@2.22.5(@sveltejs/vite-plugin-svelte@6.0.0(svelte@5.35.6)(vite@7.0.4(@types/node@24.0.13)(jiti@2.4.2)(lightningcss@1.30.1)(yaml@2.8.0)))(svelte@5.35.6)(vite@7.0.4(@types/node@24.0.13)(jiti@2.4.2)(lightningcss@1.30.1)(yaml@2.8.0)))(svelte@5.35.6)(vite@7.0.4(@types/node@24.0.13)(jiti@2.4.2)(lightningcss@1.30.1)(yaml@2.8.0))
@@ -171,6 +153,9 @@ importers:
       '@types/eslint':
         specifier: ^9.6.1
         version: 9.6.1
+      '@types/event-calendar__core':
+        specifier: ^4.4.0
+        version: 4.4.0
       bits-ui:
         specifier: 2.8.10
         version: 2.8.10(@internationalized/date@3.8.2)(svelte@5.35.6)
@@ -829,6 +814,9 @@ packages:
   '@eslint/plugin-kit@0.3.3':
     resolution: {integrity: sha512-1+WqvgNMhmlAambTvT3KPtCl/Ibr68VldY2XY40SL1CE0ZXiakFR/cbTspaF5HsnpDMvcYYoJHfl4980NBjGag==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
+
+  '@event-calendar/core@4.5.0':
+    resolution: {integrity: sha512-H7z3MCmXJP7Gdzdf9cxA3rR9ANw15y8cD041twStNQ3S7PniqcH+qygvZOHp45vTxNj2HA9vOUR4Reno8AK89Q==}
 
   '@exodus/schemasafe@1.3.0':
     resolution: {integrity: sha512-5Aap/GaRupgNx/feGBwLLTVv8OQFfv3pq2lPRzPg9R+IOBnDgghTGW7l7EuVXOvg5cc/xSAlRW8rBrjIC3Nvqw==}
@@ -1490,14 +1478,6 @@ packages:
   '@poppinss/macroable@1.0.5':
     resolution: {integrity: sha512-6u61y1HHd090MEk1Av0/1btDmm2Hh/+XoJj+HgFYRh9koUPI822ybJbwLHuqjLNCiY+o1gRykg2igEqOf/VBZw==}
 
-  '@preact/signals-core@1.11.0':
-    resolution: {integrity: sha512-jglbibeWHuFRzEWVFY/TT7wB1PppJxmcSfUHcK+2J9vBRtiooMfw6tAPttojNYrrpdGViqAYCbPpmWYlMm+eMQ==}
-
-  '@preact/signals@2.2.1':
-    resolution: {integrity: sha512-cX3mijdjHbbz3dBoJ6z687CGYEOp9ifj3uFnm4UKW+DxXKPMvE2y/VSdm0PXhXmHnr6F0iSnDJ+dLwmV7CYT5A==}
-    peerDependencies:
-      preact: '>= 10.25.0'
-
   '@prisma/debug@5.14.0-dev.34':
     resolution: {integrity: sha512-mc4Ue07QjYcb4yV0ZXap2AJBLlBAk0owO3fHKWovQA9Ig2XXlxlAUesk9RxPYKj9zIpDZXYMPUC3iKIdUi5SUA==}
 
@@ -1656,44 +1636,6 @@ packages:
 
   '@scaleleap/pg-format@1.0.0':
     resolution: {integrity: sha512-gFkcYMnpeylF2OJ30FsDBjwICB9JTiZ5i3guPwdiBDrJFwIKr+Zk6jwI8Mg22a4FwXn5ezd5cHEFMKqBqBz4RQ==}
-
-  '@schedule-x/calendar@2.36.0':
-    resolution: {integrity: sha512-UqPMoxjok3SFNvgx1+PY5Whmoig+gU7sjy80z68A9QQ1FjIt1Q3ODPZKdA3G0spDss9lDtKilpO393vWpXJyfg==}
-    peerDependencies:
-      '@preact/signals': ^2.0.2
-      preact: ^10.19.2
-
-  '@schedule-x/event-modal@2.36.0':
-    resolution: {integrity: sha512-dMjgtBhOTy/M/MUy1khGafVqs978zECv2Tb5MM4oBrPOO5ofbuKRpYzIsbnsyz5SsgCX1ThQHTLr7ndN5WocYA==}
-    peerDependencies:
-      '@preact/signals': ^2.0.2
-      preact: ^10.19.2
-
-  '@schedule-x/events-service@2.36.0':
-    resolution: {integrity: sha512-M4dz8AgaEtpbXAanvYvuPnEDAKlhMO7d6R8WQ8wX8hXsJSzWa18XS3qLJOT+5jCR7O8QD8aDIDg3RpihleUeiA==}
-
-  '@schedule-x/scroll-controller@2.36.0':
-    resolution: {integrity: sha512-Cip0LGKe6iK0w5gAIdi5iOTaQjCAzODbISLqGwGYY6Qben+IQ76LYL/deF8+HqXmVrlsRGjneUBLY4cQY6Cw/A==}
-    peerDependencies:
-      '@preact/signals': ^2.0.2
-
-  '@schedule-x/shared@2.36.0':
-    resolution: {integrity: sha512-BhwlLp+OO/Ib/YbC7u7Su/6QRXWXUJjZflEsDqGTxgnLt0jmmNWkghascmmWkKVvSHR6eFc3aZ2FQ6F5sm48Tw==}
-    peerDependencies:
-      '@preact/signals': ^2.0.2
-
-  '@schedule-x/svelte@2.3.0':
-    resolution: {integrity: sha512-Gv+3r101T8CrBQZPvFsbkY1jn/16QEF/FCxN9c6dYfSX2sMp9L+pQeOKkq7oy8ofcGudUsgCgu3lmYyQDWyU5w==}
-    peerDependencies:
-      '@schedule-x/calendar': ^2.23.0
-      '@schedule-x/shared': ^2.23.0
-      svelte: ^4 || ^5
-
-  '@schedule-x/theme-default@2.36.0':
-    resolution: {integrity: sha512-jkN9/srYS54dO2h12iCvNMMrLEiod6BAoUc47KbOgGE66zyUU+kmQwUOYQ3A2LrKyIWjwtCp3Ewdd4h/HHvG9A==}
-
-  '@schedule-x/theme-shadcn@2.36.0':
-    resolution: {integrity: sha512-ScmEV9e5Cv9SpRreBTiIZl2joKVpS72RutMo+Z6PH6o8UwiFGe/yNhgIFSpoH/Jfad+6uAbXvxwjUUhI4eyong==}
 
   '@sentry-internal/browser-utils@9.37.0':
     resolution: {integrity: sha512-thn6LSsdAWDeU5bjfyK2Vf9fLbIWYdRfzSIxyeV+HDL5fdck3bozS3dfTd8Q5yoI1+8wo5gQ9WHQbcDUxtcRHQ==}
@@ -2236,6 +2178,9 @@ packages:
 
   '@types/estree@1.0.8':
     resolution: {integrity: sha512-dWHzHa2WqEXI/O1E9OjrocMTKJl2mSrEolh1Iomrv6U+JuNwaHXsXx9bLu5gG7BUWFIN0skIQJQ/L1rIex4X6w==}
+
+  '@types/event-calendar__core@4.4.0':
+    resolution: {integrity: sha512-8Y4k+acsniRXn1bR0UGgDJE0Qquuk4+Dgx43VS1isIcAK00sfdu2hs726ikuWWzLZGm44ZfYtbq1eM84RtfT4g==}
 
   '@types/geojson@7946.0.16':
     resolution: {integrity: sha512-6C8nqWur3j98U6+lXDfTUWIfgvZU+EumvpHKcYjujKH7woYyLj2sUmff0tRhrqM7BohUw7Pz3ZB1jj2gW9Fvmg==}
@@ -5823,6 +5768,10 @@ snapshots:
       '@eslint/core': 0.15.1
       levn: 0.4.1
 
+  '@event-calendar/core@4.5.0':
+    dependencies:
+      svelte: 5.35.6
+
   '@exodus/schemasafe@1.3.0':
     optional: true
 
@@ -6553,13 +6502,6 @@ snapshots:
   '@poppinss/macroable@1.0.5':
     optional: true
 
-  '@preact/signals-core@1.11.0': {}
-
-  '@preact/signals@2.2.1(preact@10.26.9)':
-    dependencies:
-      '@preact/signals-core': 1.11.0
-      preact: 10.26.9
-
   '@prisma/debug@5.14.0-dev.34': {}
 
   '@prisma/engines-version@5.14.0-6.264f24ce0b2f544ff968ff76bfaa999de1161361': {}
@@ -6693,36 +6635,6 @@ snapshots:
       ebnf: 1.9.1
 
   '@scaleleap/pg-format@1.0.0': {}
-
-  '@schedule-x/calendar@2.36.0(@preact/signals@2.2.1(preact@10.26.9))(preact@10.26.9)':
-    dependencies:
-      '@preact/signals': 2.2.1(preact@10.26.9)
-      preact: 10.26.9
-
-  '@schedule-x/event-modal@2.36.0(@preact/signals@2.2.1(preact@10.26.9))(preact@10.26.9)':
-    dependencies:
-      '@preact/signals': 2.2.1(preact@10.26.9)
-      preact: 10.26.9
-
-  '@schedule-x/events-service@2.36.0': {}
-
-  '@schedule-x/scroll-controller@2.36.0(@preact/signals@2.2.1(preact@10.26.9))':
-    dependencies:
-      '@preact/signals': 2.2.1(preact@10.26.9)
-
-  '@schedule-x/shared@2.36.0(@preact/signals@2.2.1(preact@10.26.9))':
-    dependencies:
-      '@preact/signals': 2.2.1(preact@10.26.9)
-
-  '@schedule-x/svelte@2.3.0(@schedule-x/calendar@2.36.0(@preact/signals@2.2.1(preact@10.26.9))(preact@10.26.9))(@schedule-x/shared@2.36.0(@preact/signals@2.2.1(preact@10.26.9)))(svelte@5.35.6)':
-    dependencies:
-      '@schedule-x/calendar': 2.36.0(@preact/signals@2.2.1(preact@10.26.9))(preact@10.26.9)
-      '@schedule-x/shared': 2.36.0(@preact/signals@2.2.1(preact@10.26.9))
-      svelte: 5.35.6
-
-  '@schedule-x/theme-default@2.36.0': {}
-
-  '@schedule-x/theme-shadcn@2.36.0': {}
 
   '@sentry-internal/browser-utils@9.37.0':
     dependencies:
@@ -7377,6 +7289,10 @@ snapshots:
       '@types/json-schema': 7.0.15
 
   '@types/estree@1.0.8': {}
+
+  '@types/event-calendar__core@4.4.0':
+    dependencies:
+      svelte: 5.35.6
 
   '@types/geojson@7946.0.16': {}
 

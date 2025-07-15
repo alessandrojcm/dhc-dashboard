@@ -9,7 +9,7 @@ Allow members to express interest in planned workshops. Members can view planned
 - **Database naming**: `club_activities` schema to distinguish from existing beginners workshop
 - **Frontend terminology**: "workshops" for user-facing elements
 - **API pattern**: Mutation-only endpoints (use Supabase client for queries)
-- **Calendar integration**: Schedule-X library for calendar display
+- **Calendar integration**: vkurko/calendar library for calendar display
 - **Data access**: Kysely for all mutations, Supabase client for queries in the front end. Server-side always use kysely.
 
 ### Answered Questions
@@ -49,7 +49,7 @@ Allow members to express interest in planned workshops. Members can view planned
 
 ## Frontend
 - Member calendar view at `/dashboard/my-workshops/`
-- Schedule-X calendar integration showing planned workshops
+- vkurko/calendar integration showing planned workshops
 - Interest buttons on planned workshops
 - Interest count display for coordinators
 
@@ -60,7 +60,7 @@ Allow members to express interest in planned workshops. Members can view planned
 - Use TanStack Query for data fetching and caching
 - Component naming: kebab-case (e.g., `workshop-calendar.svelte`)
 
-### Schedule-X Calendar Integration
+### vkurko/calendar Integration
 - Display planned workshops in calendar view
 - Show interest status for each workshop
 - Allow interest expression directly from calendar
@@ -77,7 +77,7 @@ Allow members to express interest in planned workshops. Members can view planned
 - **Authentication**: Always use `makeAuthenticatedRequest()` instead of direct authorization headers
 - **Service dependencies**: E2E tests require all services running (supabase:start, supabase:functions:serve, dev)
 - **Response format**: API responses follow `{success: true, [resource]: data}` pattern
-- **Calendar functionality**: Test Schedule-X integration and workshop display
+- **Calendar functionality**: Test vkurko/calendar integration and workshop display
 
 ## Security Requirements
 - All mutations through Kysely with RLS enforcement

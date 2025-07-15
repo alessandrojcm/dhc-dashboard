@@ -1,7 +1,7 @@
 import type { Database } from '$database';
 import type { KyselifyDatabase } from 'kysely-supabase';
 import type Stripe from 'stripe';
-import type { CalendarEvent } from '@schedule-x/calendar';
+// Removed Schedule-X import - using vkurko/calendar now
 
 export type UserData = {
 	firstName: string;
@@ -72,13 +72,19 @@ export type SubscriptionWithPlan = Stripe.Subscription & {
 export type Workshop = Database['public']['Tables']['club_activities']['Row'] & {
 	user_interest: { user_id: string }[];
 	interest_count: { interest_count: number | null }[];
-	description: string | undefined;
-	userId: string;
 };
 
-export type WorkshopCalendarEvent = CalendarEvent & {
+export type WorkshopCalendarEvent = {
+	id: string;
+	title: string;
+	start: string;
+	end: string;
 	workshop: Workshop;
 	isInterested: boolean;
-	isLoading: true;
-	onToggleInterest: (id: string) => void;
+	isLoading: boolean;
+	userId: string;
+	handleEdit: (workshop: Workshop) => void;
+	handleDelete: (workshop: Workshop) => void;
+	handlePublish: (workshop: Workshop) => void;
+	handleCancel: (workshop: Workshop) => void;
 };

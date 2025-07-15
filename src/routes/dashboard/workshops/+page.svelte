@@ -2,28 +2,34 @@
 	import { goto } from '$app/navigation';
 	import { Button } from '$lib/components/ui/button';
 	import { Alert, AlertDescription } from '$lib/components/ui/alert';
-	import WorkshopList from '$lib/components/workshops/workshop-list.svelte';
+	import WorkshopCalendar from '$lib/components/workshops/workshop-calendar.svelte';
 	import { createQuery, createMutation, useQueryClient } from '@tanstack/svelte-query';
-	import type { Database } from '$database';
+	import type { Workshop } from '$lib/types';
 
-	type ClubActivity = Database['public']['Tables']['club_activities']['Row'];
 
 	let {
 		data
 	} = $props();
 	const queryClient = useQueryClient();
 	const supabase = data.supabase;
+	const userId = data!.user!.id;
+
 
 	const workshopsQuery = createQuery(() => ({
 		queryKey: ['workshops'],
-		queryFn: async () => {
+		refetchOnMount: true,
+		queryFn: async ({ signal }) => {
 			const { data, error } = await supabase
 				.from('club_activities')
-				.select('*')
-				.order('start_date', { ascending: true });
+				.select(`
+					*,
+					interest_count:club_activity_interest_counts(interest_count),
+					user_interest:club_activity_interest(user_id)
+				`)
+				.abortSignal(signal);
 
 			if (error) throw error;
-			return data || [];
+			return data;
 		}
 	}));
 
@@ -71,20 +77,20 @@
 		goto('/dashboard/workshops/create');
 	}
 
-	function handleEdit(workshop: ClubActivity) {
+	function handleEdit(workshop: Workshop) {
 		goto(`/dashboard/workshops/${workshop.id}/edit`);
 	}
 
-	async function handleDelete(workshop: ClubActivity) {
+	async function handleDelete(workshop: Workshop) {
 		if (!confirm(`Are you sure you want to delete "${workshop.title}"?`)) return;
 		deleteMutation.mutate(workshop.id);
 	}
 
-	async function handlePublish(workshop: ClubActivity) {
+	async function handlePublish(workshop: Workshop) {
 		publishMutation.mutate(workshop.id);
 	}
 
-	async function handleCancel(workshop: ClubActivity) {
+	async function handleCancel(workshop: Workshop) {
 		if (!confirm(`Are you sure you want to cancel "${workshop.title}"?`)) return;
 		cancelMutation.mutate(workshop.id);
 	}
@@ -119,11 +125,11 @@
 			<AlertDescription>{cancelMutation.error?.message || String(cancelMutation.error)}</AlertDescription>
 		</Alert>
 	{/if}
-	<WorkshopList
-		workshops={workshopsQuery.data ?? []}
-		onEdit={handleEdit}
-		onDelete={handleDelete}
-		onPublish={handlePublish}
-		onCancel={handleCancel}
-	/>
+	<WorkshopCalendar
+		handleEdit={handleEdit}
+		handleDelete={handleDelete}
+		handlePublish={handlePublish}
+		handleCancel={handleCancel}
+		isLoading={workshopsQuery.isLoading}
+		workshops={workshopsQuery.data ??[]} {userId} />
 </div>
