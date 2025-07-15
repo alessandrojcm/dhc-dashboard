@@ -6,17 +6,34 @@
 	import dayjs from 'dayjs';
 	import Dinero from 'dinero.js';
 
-	type ClubActivity = Database['public']['Tables']['club_activities']['Row'];
+	type ClubActivity = Database['public']['Tables']['club_activities']['Row'] & {
+		interest_count?: { interest_count: number }[];
+		user_interest?: { user_id: string }[];
+	};
 
 	interface Props {
 		workshops: ClubActivity[];
-		onEdit: (workshop: ClubActivity) => void;
-		onDelete: (workshop: ClubActivity) => void;
-		onPublish: (workshop: ClubActivity) => void;
-		onCancel: (workshop: ClubActivity) => void;
+		onEdit?: (workshop: ClubActivity) => void;
+		onDelete?: (workshop: ClubActivity) => void;
+		onPublish?: (workshop: ClubActivity) => void;
+		onCancel?: (workshop: ClubActivity) => void;
+		onInterestToggle?: (workshopId: string) => void;
+		userId?: string;
+		isLoading?: boolean;
+		showInterestButton?: boolean;
 	}
 
-	let { workshops, onEdit, onDelete, onPublish, onCancel }: Props = $props();
+	let { 
+		workshops, 
+		onEdit, 
+		onDelete, 
+		onPublish, 
+		onCancel, 
+		onInterestToggle,
+		userId,
+		isLoading = false,
+		showInterestButton = false
+	}: Props = $props();
 
 	function getStatusColor(status: string) {
 		switch (status) {
@@ -34,6 +51,14 @@
 
 	function formatPrice(price: number) {
 		return Dinero({ amount: price, currency: 'EUR' }).toFormat();
+	}
+
+	function hasUserInterest(workshop: ClubActivity): boolean {
+		return workshop.user_interest && workshop.user_interest.length > 0;
+	}
+
+	function getInterestCount(workshop: ClubActivity): number {
+		return workshop.interest_count?.[0]?.interest_count ?? 0;
 	}
 </script>
 
@@ -83,15 +108,23 @@
 									<strong>Non-Member Price:</strong> {formatPrice(workshop.price_non_member)}
 								</div>
 							{/if}
+							{#if showInterestButton}
+								<div>
+									<strong>Interest:</strong> {getInterestCount(workshop)} people interested
+								</div>
+							{/if}
 						</div>
-<!--						<div class="flex justify-end pt-4">-->
-<!--							<Button-->
-<!--								variant={hasInterest ? "primary" : "outline"}-->
-<!--								onclick={handleInterestToggle}-->
-<!--							>-->
-<!--								{hasInterest ? 'Withdraw Interest' : 'Express Interest'}-->
-<!--							</Button>-->
-<!--						</div>-->
+						{#if showInterestButton && onInterestToggle}
+							<div class="flex justify-end pt-4">
+								<Button
+									variant={hasUserInterest(workshop) ? "default" : "outline"}
+									onclick={() => onInterestToggle(workshop.id)}
+									disabled={isLoading}
+								>
+									{hasUserInterest(workshop) ? 'Withdraw Interest' : 'Express Interest'}
+								</Button>
+							</div>
+						{/if}
 					</div>
 				</CardContent>
 			</Card>

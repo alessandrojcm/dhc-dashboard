@@ -18,10 +18,12 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="feat: migrate workshop calendar to native Popover API with TypeScript improvements&#10;&#10;- Replace Schedule-X calendar with vkurko/calendar (@event-calendar/core) for better Svelte 5 compatibility&#10;- Implement native Popover API instead of custom positioning logic for better accessibility and performance&#10;- Add comprehensive TypeScript interfaces (CalendarEvent, EventClickInfo, EventContentInfo) removing all 'any' types&#10;- Fix text visibility issues in popover with proper CSS color overrides&#10;- Enhance event content rendering with interest count and user interest status&#10;- Improve null safety with proper checks and fallback values&#10;- Maintain all existing functionality while improving code maintainability&#10;&#10;🤖 Generated with [opencode](https://opencode.ai)&#10;&#10;Co-Authored-By: opencode &lt;noreply@opencode.ai&gt;">
+    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="feat(workshops): update styles to align with shadcn design system&#10;&#10;- Adjust calendar event colors and theming using shadcn variables&#10;- Update workshop modal and popover styles for consistent theming&#10;- Refactor CSS for better readability and maintainability&#10;- Enhance &quot;Interested&quot; badge with updated styles and accessibility">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/lib/components/workshops/workshop-calendar.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/components/workshops/workshop-calendar.svelte" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/lib/components/workshops/workshop-event-modal.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/components/workshops/workshop-event-modal.svelte" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/lib/components/workshops/workshop-list.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/components/workshops/workshop-list.svelte" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/lib/server/rbacRoles.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/server/rbacRoles.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/my-workshops/+page.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/my-workshops/+page.svelte" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -157,7 +159,7 @@
       <recent name="$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]" />
     </key>
   </component>
-  <component name="RunManager" selected="Playwright.Workshop API.should create workshop as admin">
+  <component name="RunManager" selected="Playwright.Workshop Interest System.should display planned workshops in calendar view">
     <configuration name="Edge Functions" type="ChromiumRemoteDebugType" factoryName="Chromium Remote" port="8083">
       <method v="2" />
     </configuration>
@@ -232,8 +234,8 @@
     </list>
     <recent_temporary>
       <list>
-        <item itemvalue="Playwright.Workshop API.should create workshop as admin" />
         <item itemvalue="Playwright.Workshop Interest System.should display planned workshops in calendar view" />
+        <item itemvalue="Playwright.Workshop API.should create workshop as admin" />
         <item itemvalue="Playwright.Workshop Interest System" />
         <item itemvalue="npm.dev" />
         <item itemvalue="Playwright.Workshop UI.should display and validate workshop creation form" />
@@ -280,7 +282,7 @@
       <workItem from="1747989697082" duration="1834000" />
       <workItem from="1752311400094" duration="13532000" />
       <workItem from="1752486460407" duration="23082000" />
-      <workItem from="1752565012747" duration="1322000" />
+      <workItem from="1752565012747" duration="2078000" />
     </task>
     <task id="LOCAL-00001" summary="Add guardian support for underage waitlist entries&#10;&#10;Introduce `waitlist_guardians` table and transactional logic for adding guardian details when underage users join the waitlist. Updates include database migrations, UI adjustments for conditional input fields, validation logic, and tests to ensure age-based gating.">
       <option name="closed" value="true" />
@@ -514,7 +516,15 @@
       <option name="project" value="LOCAL" />
       <updated>1752565791261</updated>
     </task>
-    <option name="localTasksCounter" value="30" />
+    <task id="LOCAL-00030" summary="feat(workshops): update styles to align with shadcn design system&#10;&#10;- Adjust calendar event colors and theming using shadcn variables&#10;- Update workshop modal and popover styles for consistent theming&#10;- Refactor CSS for better readability and maintainability&#10;- Enhance &quot;Interested&quot; badge with updated styles and accessibility">
+      <option name="closed" value="true" />
+      <created>1752566372063</created>
+      <option name="number" value="00030" />
+      <option name="presentableId" value="LOCAL-00030" />
+      <option name="project" value="LOCAL" />
+      <updated>1752566372063</updated>
+    </task>
+    <option name="localTasksCounter" value="31" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -545,7 +555,6 @@
   </component>
   <component name="VcsManagerConfiguration">
     <option name="CHECK_CODE_SMELLS_BEFORE_PROJECT_COMMIT" value="false" />
-    <MESSAGE value="`feat: add guardian information to views, RLS policy, and UI components`" />
     <MESSAGE value="`feat: add medical_conditions to member management view and members-table`" />
     <MESSAGE value="`feat(stripe): update to API version 2025-04-30, dependencies and improve transaction handling`" />
     <MESSAGE value="chore: updated gitignore" />
@@ -570,7 +579,8 @@
     <MESSAGE value="feat: club activities implementation plan" />
     <MESSAGE value="feat: member workshop calendar" />
     <MESSAGE value="feat: migrate workshop calendar to native Popover API with TypeScript improvements&#10;&#10;- Replace Schedule-X calendar with vkurko/calendar (@event-calendar/core) for better Svelte 5 compatibility&#10;- Implement native Popover API instead of custom positioning logic for better accessibility and performance&#10;- Add comprehensive TypeScript interfaces (CalendarEvent, EventClickInfo, EventContentInfo) removing all 'any' types&#10;- Fix text visibility issues in popover with proper CSS color overrides&#10;- Enhance event content rendering with interest count and user interest status&#10;- Improve null safety with proper checks and fallback values&#10;- Maintain all existing functionality while improving code maintainability&#10;&#10; Generated with [opencode](https://opencode.ai)&#10;&#10;Co-Authored-By: opencode &lt;noreply@opencode.ai&gt;" />
-    <option name="LAST_COMMIT_MESSAGE" value="feat: migrate workshop calendar to native Popover API with TypeScript improvements&#10;&#10;- Replace Schedule-X calendar with vkurko/calendar (@event-calendar/core) for better Svelte 5 compatibility&#10;- Implement native Popover API instead of custom positioning logic for better accessibility and performance&#10;- Add comprehensive TypeScript interfaces (CalendarEvent, EventClickInfo, EventContentInfo) removing all 'any' types&#10;- Fix text visibility issues in popover with proper CSS color overrides&#10;- Enhance event content rendering with interest count and user interest status&#10;- Improve null safety with proper checks and fallback values&#10;- Maintain all existing functionality while improving code maintainability&#10;&#10; Generated with [opencode](https://opencode.ai)&#10;&#10;Co-Authored-By: opencode &lt;noreply@opencode.ai&gt;" />
+    <MESSAGE value="feat(workshops): update styles to align with shadcn design system&#10;&#10;- Adjust calendar event colors and theming using shadcn variables&#10;- Update workshop modal and popover styles for consistent theming&#10;- Refactor CSS for better readability and maintainability&#10;- Enhance &quot;Interested&quot; badge with updated styles and accessibility" />
+    <option name="LAST_COMMIT_MESSAGE" value="feat(workshops): update styles to align with shadcn design system&#10;&#10;- Adjust calendar event colors and theming using shadcn variables&#10;- Update workshop modal and popover styles for consistent theming&#10;- Refactor CSS for better readability and maintainability&#10;- Enhance &quot;Interested&quot; badge with updated styles and accessibility" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>

@@ -295,16 +295,11 @@
 	
 	/* Proper popover styling */
 	:global(.workshop-popover) {
-		background-color: hsl(var(--popover));
+		background-color: var(--color-white);
 		color: hsl(var(--popover-foreground));
 		border: 1px solid hsl(var(--border));
 		border-radius: calc(var(--radius) + 2px);
 		box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-	}
-	
-	/* Popover backdrop */
-	:global(.workshop-popover::backdrop) {
-		background-color: var(--color-white);
 	}
 </style>
 
