@@ -77,7 +77,6 @@ test.describe('Workshop Interest System', () => {
 		// Switch to member user for the test
 		await loginAsUser(context, memberData.email);
 		await page.goto('/dashboard/my-workshops');
-		await page.pause();
 
 		// Take a screenshot to see what's on the page
 		await page.screenshot({ path: 'debug-my-workshops-page.png' });

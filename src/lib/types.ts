@@ -8,6 +8,8 @@ export type UserData = {
 	lastName: string;
 	email: string;
 	id: string;
+	phoneNumber: string;
+	customerId?: string;
 };
 
 export type NavigationItem = {

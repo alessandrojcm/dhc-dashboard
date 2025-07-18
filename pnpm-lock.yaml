@@ -30,8 +30,8 @@ importers:
         specifier: https://pkg.pr.new/@tanstack/svelte-query@28f98f9560ff5878fd839807ead5324a7b9328c4
         version: https://pkg.pr.new/@tanstack/svelte-query@28f98f9560ff5878fd839807ead5324a7b9328c4(svelte@5.35.6)
       '@tanstack/svelte-query-devtools':
-        specifier: ^5.82.0
-        version: 5.82.0(@tanstack/svelte-query@https://pkg.pr.new/@tanstack/svelte-query@28f98f9560ff5878fd839807ead5324a7b9328c4(svelte@5.35.6))(svelte@5.35.6)
+        specifier: ^5.80.10
+        version: 5.83.0(@tanstack/svelte-query@https://pkg.pr.new/@tanstack/svelte-query@28f98f9560ff5878fd839807ead5324a7b9328c4(svelte@5.35.6))(svelte@5.35.6)
       '@tanstack/svelte-table':
         specifier: 9.0.0-alpha.10
         version: 9.0.0-alpha.10(svelte@5.35.6)
@@ -2008,11 +2008,11 @@ packages:
   '@tanstack/query-devtools@5.81.2':
     resolution: {integrity: sha512-jCeJcDCwKfoyyBXjXe9+Lo8aTkavygHHsUHAlxQKKaDeyT0qyQNLKl7+UyqYH2dDF6UN/14873IPBHchcsU+Zg==}
 
-  '@tanstack/svelte-query-devtools@5.82.0':
-    resolution: {integrity: sha512-WNRm87Figg6doLzzOHGhCtKeAMbNIK/JLyXWCsfiD2XqJfZHcnBtpOt7qwxYtpFPzpbBekKmnm4tocGC9ZekXA==}
-    version: 5.82.0
+  '@tanstack/svelte-query-devtools@5.83.0':
+    resolution: {integrity: sha512-RLt78HpQxyqbuovjQ0uClv7pP/kFlzdiy0NKVXsw8x+JSOi0CGM1/0TGiNgwMKOU7PhsT3NQ3KGIwQai1FghSw==}
+    version: 5.83.0
     peerDependencies:
-      '@tanstack/svelte-query': ^5.82.0
+      '@tanstack/svelte-query': ^5.83.0
       svelte: ^3.54.0 || ^4.0.0 || ^5.0.0
 
   '@tanstack/svelte-query@https://pkg.pr.new/@tanstack/svelte-query@28f98f9560ff5878fd839807ead5324a7b9328c4':
@@ -7103,7 +7103,7 @@ snapshots:
 
   '@tanstack/query-devtools@5.81.2': {}
 
-  '@tanstack/svelte-query-devtools@5.82.0(@tanstack/svelte-query@https://pkg.pr.new/@tanstack/svelte-query@28f98f9560ff5878fd839807ead5324a7b9328c4(svelte@5.35.6))(svelte@5.35.6)':
+  '@tanstack/svelte-query-devtools@5.83.0(@tanstack/svelte-query@https://pkg.pr.new/@tanstack/svelte-query@28f98f9560ff5878fd839807ead5324a7b9328c4(svelte@5.35.6))(svelte@5.35.6)':
     dependencies:
       '@tanstack/query-devtools': 5.81.2
       '@tanstack/svelte-query': https://pkg.pr.new/@tanstack/svelte-query@28f98f9560ff5878fd839807ead5324a7b9328c4(svelte@5.35.6)

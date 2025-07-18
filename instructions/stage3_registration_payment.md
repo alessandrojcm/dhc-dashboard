@@ -30,14 +30,16 @@ Enable registration and payment for published workshops. Members can register an
 
 ### `club_activity_registrations` table
 - Link to existing `club_activities` table
-- User identification and contact information
+- User tracking:
+  - For members, link with the user_profiles table via the supabase user id (so auth.users.id = user_profiles.supabase_user_id)
+  - For non members, ie for public workshops, create en external_users table that will collect basic contact info (first name, last name, email, phone number) and link to the club_activity_registrations table
 - Payment tracking fields
 - Registration status enum (pending, confirmed, cancelled)
 - Timestamp tracking for registration
 
 ### Additional Database Requirements:
 - Hard capacity validation functions (no waitlists)
-- Payment tracking integration with Stripe
+- Payment tracking integration with Stripe via payment intents, no product needed
 - Registration status management
 - Capacity enforcement before registration
 
