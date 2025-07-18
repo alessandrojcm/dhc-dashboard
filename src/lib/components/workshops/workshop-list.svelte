@@ -1,47 +1,53 @@
 <script lang="ts">
 	import { Badge } from '$lib/components/ui/badge';
-	import { Button } from '$lib/components/ui/button';
 	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
+	import { Button, buttonVariants } from '$lib/components/ui/button/index.js';
+	import * as Dialog from '$lib/components/ui/dialog/index.js';
+	import WorkshopExpressCheckout from './workshop-express-checkout.svelte';
 	import type { Database } from '$database';
 	import dayjs from 'dayjs';
 	import Dinero from 'dinero.js';
+	import { useQueryClient } from '@tanstack/svelte-query';
+	import { clsx } from 'clsx';
+	import type { UserData } from '$lib/types';
 
 	type ClubActivity = Database['public']['Tables']['club_activities']['Row'] & {
 		interest_count?: { interest_count: number }[];
 		user_interest?: { user_id: string }[];
+		attendee_count?: { member_user_id: string }[];
 	};
 
 	interface Props {
 		workshops: ClubActivity[];
-		onEdit?: (workshop: ClubActivity) => void;
-		onDelete?: (workshop: ClubActivity) => void;
-		onPublish?: (workshop: ClubActivity) => void;
-		onCancel?: (workshop: ClubActivity) => void;
 		onInterestToggle?: (workshopId: string) => void;
-		userId?: string;
 		isLoading?: boolean;
-		showInterestButton?: boolean;
+		userId: string;
 	}
 
-	let { 
-		workshops, 
-		onEdit, 
-		onDelete, 
-		onPublish, 
-		onCancel, 
+	let {
+		workshops,
 		onInterestToggle,
-		userId,
 		isLoading = false,
-		showInterestButton = false
+		userId
 	}: Props = $props();
 
-	function getStatusColor(status: string) {
+	let selectedWorkshop: ClubActivity | null = $state(null);
+	const queryClient = useQueryClient();
+
+	const userData: UserData = queryClient.getQueryData(['logged_in_user_data']);
+
+	function getStatusColor(status: string = 'planned') {
 		switch (status) {
-			case 'planned': return 'bg-yellow-500';
-			case 'published': return 'bg-green-500';
-			case 'finished': return 'bg-blue-500';
-			case 'cancelled': return 'bg-red-500';
-			default: return 'bg-gray-500';
+			case 'planned':
+				return 'bg-yellow-500';
+			case 'published':
+				return 'bg-green-500';
+			case 'finished':
+				return 'bg-blue-500';
+			case 'cancelled':
+				return 'bg-red-500';
+			default:
+				return 'bg-gray-500';
 		}
 	}
 
@@ -54,11 +60,19 @@
 	}
 
 	function hasUserInterest(workshop: ClubActivity): boolean {
-		return workshop.user_interest && workshop.user_interest.length > 0;
+		if (workshop.status === 'published') {
+			return workshop?.attendee_count?.map(i => i.member_user_id).includes(userId) ?? false;
+		}
+		return workshop?.user_interest?.map(i => i.user_id).includes(userId) ?? false;
 	}
 
 	function getInterestCount(workshop: ClubActivity): number {
-		return workshop.interest_count?.[0]?.interest_count ?? 0;
+		return workshop.status === 'published' ? workshop.attendee_count?.length ?? 0 : workshop.interest_count?.[0]?.interest_count ?? 0;
+	}
+
+	function getWorkshopPrice(workshop: ClubActivity): number {
+		// For now, assume all users are members - you can enhance this logic
+		return workshop.price_member;
 	}
 </script>
 
@@ -77,8 +91,8 @@
 				<CardHeader>
 					<div class="flex justify-between items-start">
 						<CardTitle>{workshop.title}</CardTitle>
-						<Badge class={getStatusColor(workshop.status)}>
-							{workshop.status.charAt(0).toUpperCase() + workshop.status.slice(1)}
+						<Badge class={`${getStatusColor(workshop.status)} capitalize`}>
+							{workshop?.status}
 						</Badge>
 					</div>
 				</CardHeader>
@@ -108,13 +122,52 @@
 									<strong>Non-Member Price:</strong> {formatPrice(workshop.price_non_member)}
 								</div>
 							{/if}
-							{#if showInterestButton}
+							{#if workshop.status === 'planned'}
 								<div>
 									<strong>Interest:</strong> {getInterestCount(workshop)} people interested
 								</div>
 							{/if}
+							{#if workshop.status === 'published'}
+								<div>
+									<strong>Attendees:</strong> {getInterestCount(workshop)} people attending
+								</div>
+							{/if}
 						</div>
-						{#if showInterestButton && onInterestToggle}
+						{#if workshop.status === 'published' && userId}
+							<Dialog.Root>
+								<Dialog.Trigger
+									onclick={() => (selectedWorkshop=workshop)}
+									class={clsx("flex justify-end pt-4", buttonVariants({ variant: !hasUserInterest(workshop) ? "default" : "destructive" }))}
+								>
+									{!hasUserInterest(workshop) ? 'Register' : 'Cancel Registration'}
+								</Dialog.Trigger
+								>
+								<Dialog.Content>
+									{#if selectedWorkshop !== null}
+										<Dialog.Header>
+											<Dialog.Title>Workshop Registration</Dialog.Title>
+											<Dialog.Description>
+												Complete your registration for {selectedWorkshop.title}
+											</Dialog.Description>
+										</Dialog.Header>
+
+										<WorkshopExpressCheckout 
+											workshopId={selectedWorkshop.id}
+											workshopTitle={selectedWorkshop.title}
+											amount={getWorkshopPrice(selectedWorkshop)}
+											customerId={userData?.customerId}
+											onSuccess={() => {
+												selectedWorkshop = null;
+												queryClient.invalidateQueries({ queryKey: ['workshops'] });
+											}}
+											onCancel={() => selectedWorkshop = null}
+										/>
+									{/if}
+								</Dialog.Content>
+							</Dialog.Root>
+
+						{/if}
+						{#if workshop.status === 'planned' && onInterestToggle}
 							<div class="flex justify-end pt-4">
 								<Button
 									variant={hasUserInterest(workshop) ? "default" : "outline"}

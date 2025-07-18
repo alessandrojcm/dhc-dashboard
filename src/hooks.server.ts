@@ -100,7 +100,7 @@ const authGuard: Handle = async ({ event, resolve }) => {
 };
 
 const roleGuard: Handle = async ({ event, resolve }) => {
-	if (event.route.id?.includes('public')) {
+	if (event.route.id?.includes('public') || event.url.pathname.includes('installHook.js.map')) {
 		return resolve(event);
 	}
 	const { session } = await event.locals.safeGetSession();

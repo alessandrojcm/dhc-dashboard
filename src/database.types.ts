@@ -120,6 +120,109 @@ export type Database = {
           },
         ]
       }
+      club_activity_registrations: {
+        Row: {
+          amount_paid: number
+          cancelled_at: string | null
+          club_activity_id: string
+          confirmed_at: string | null
+          created_at: string | null
+          currency: string
+          external_user_id: string | null
+          id: string
+          member_user_id: string | null
+          registered_at: string | null
+          registration_notes: string | null
+          status: Database["public"]["Enums"]["registration_status"]
+          stripe_checkout_session_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          amount_paid: number
+          cancelled_at?: string | null
+          club_activity_id: string
+          confirmed_at?: string | null
+          created_at?: string | null
+          currency?: string
+          external_user_id?: string | null
+          id?: string
+          member_user_id?: string | null
+          registered_at?: string | null
+          registration_notes?: string | null
+          status?: Database["public"]["Enums"]["registration_status"]
+          stripe_checkout_session_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          amount_paid?: number
+          cancelled_at?: string | null
+          club_activity_id?: string
+          confirmed_at?: string | null
+          created_at?: string | null
+          currency?: string
+          external_user_id?: string | null
+          id?: string
+          member_user_id?: string | null
+          registered_at?: string | null
+          registration_notes?: string | null
+          status?: Database["public"]["Enums"]["registration_status"]
+          stripe_checkout_session_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "club_activity_registrations_club_activity_id_fkey"
+            columns: ["club_activity_id"]
+            isOneToOne: false
+            referencedRelation: "club_activities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_activity_registrations_external_user_id_fkey"
+            columns: ["external_user_id"]
+            isOneToOne: false
+            referencedRelation: "external_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "club_activity_registrations_member_user_id_fkey"
+            columns: ["member_user_id"]
+            isOneToOne: false
+            referencedRelation: "user_profiles"
+            referencedColumns: ["supabase_user_id"]
+          },
+        ]
+      }
+      external_users: {
+        Row: {
+          created_at: string | null
+          email: string
+          first_name: string
+          id: string
+          last_name: string
+          phone_number: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          email: string
+          first_name: string
+          id?: string
+          last_name: string
+          phone_number?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          email?: string
+          first_name?: string
+          id?: string
+          last_name?: string
+          phone_number?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       invitation_processing_logs: {
         Row: {
           created_at: string
@@ -678,6 +781,10 @@ export type Database = {
       }
     }
     Functions: {
+      check_workshop_capacity: {
+        Args: { activity_id: string }
+        Returns: boolean
+      }
       complete_member_registration: {
         Args: {
           v_user_id: string
@@ -800,6 +907,16 @@ export type Database = {
         Args: { notification_id: string }
         Returns: undefined
       }
+      register_for_workshop_checkout: {
+        Args: {
+          p_activity_id: string
+          p_amount_paid: number
+          p_stripe_checkout_session_id: string
+          p_member_user_id?: string
+          p_external_user_data?: Json
+        }
+        Returns: string
+      }
       update_invitation_status: {
         Args: {
           p_invitation_id: string
@@ -854,6 +971,7 @@ export type Database = {
         | "other"
       invitation_status: "pending" | "accepted" | "expired" | "revoked"
       preferred_weapon: "longsword" | "sword_and_buckler"
+      registration_status: "pending" | "confirmed" | "cancelled" | "refunded"
       role_type:
         | "admin"
         | "president"
@@ -1030,6 +1148,7 @@ export const Constants = {
       ],
       invitation_status: ["pending", "accepted", "expired", "revoked"],
       preferred_weapon: ["longsword", "sword_and_buckler"],
+      registration_status: ["pending", "confirmed", "cancelled", "refunded"],
       role_type: [
         "admin",
         "president",

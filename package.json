@@ -98,7 +98,7 @@
 		"@supabase/ssr": "^0.6.1",
 		"@supabase/supabase-js": "2.50.5",
 		"@tanstack/svelte-query": "https://pkg.pr.new/@tanstack/svelte-query@28f98f9560ff5878fd839807ead5324a7b9328c4",
-		"@tanstack/svelte-query-devtools": "^5.82.0",
+		"@tanstack/svelte-query-devtools": "^5.80.10",
 		"@tanstack/svelte-table": "9.0.0-alpha.10",
 		"@tanstack/table-core": "^8.21.3",
 		"@unovis/svelte": "^1.5.2",

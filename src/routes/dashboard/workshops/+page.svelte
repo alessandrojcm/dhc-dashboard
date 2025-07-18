@@ -6,7 +6,7 @@
 	import { createQuery, createMutation, useQueryClient } from '@tanstack/svelte-query';
 	import type { Workshop } from '$lib/types';
 
-
+	// Improvement: add pagination by month
 	let {
 		data
 	} = $props();

@@ -9,10 +9,10 @@
 
 	let { data } = $props();
 	let supabase = data.supabase;
-	const userId = data!.user!.id;
+	const userId = data.user!.id;
 
 	const queryClient = useQueryClient();
-	let activeTab = $state('planned');
+	let activeTab = $state('published');
 
 	const workshopsQuery = createQuery(() => ({
 		queryKey: ['workshops', 'planned'],
@@ -26,6 +26,24 @@
 				`)
 				.abortSignal(signal)
 				.eq('status', 'planned')
+				.order('start_date', { ascending: true });
+
+			if (error) throw error;
+			return workshops;
+		}
+	}));
+
+	const publishedWorkshopsQuery = createQuery(() => ({
+		queryKey: ['workshops', 'published'],
+		queryFn: async ({ signal }) => {
+			const { data: workshops, error } = await supabase
+				.from('club_activities')
+				.select(`
+					*,
+					attendee_count:club_activity_registrations(member_user_id)
+				`)
+				.abortSignal(signal)
+				.eq('status', 'published')
 				.order('start_date', { ascending: true });
 
 			if (error) throw error;
@@ -70,8 +88,40 @@
 
 	<Tabs bind:value={activeTab}>
 		<TabsList>
+			<TabsTrigger value="published">Upcoming</TabsTrigger>
 			<TabsTrigger value="planned">Planned</TabsTrigger>
 		</TabsList>
+
+		<TabsContent value="published">
+			{#if publishedWorkshopsQuery.isLoading}
+				<div class="space-y-4">
+					{#each Array(3) as _, index (index)}
+						<Skeleton class="h-32 w-full" />
+					{/each}
+				</div>
+			{:else if publishedWorkshopsQuery.error}
+				<Card>
+					<CardContent class="pt-6">
+						<p class="text-destructive">Error loading workshops: {publishedWorkshopsQuery.error.message}</p>
+					</CardContent>
+				</Card>
+			{:else}
+				<Card>
+					<CardHeader>
+						<CardTitle>Upcoming Workshops</CardTitle>
+						<CardDescription>View upcoming workshops and sign up for them</CardDescription>
+					</CardHeader>
+					<CardContent>
+						<WorkshopList
+							{userId}
+							workshops={publishedWorkshopsQuery.data ?? []}
+							onInterestToggle={handleInterestToggle}
+							isLoading={interestMutation.isPending}
+						/>
+					</CardContent>
+				</Card>
+			{/if}
+		</TabsContent>
 
 		<TabsContent value="planned">
 			{#if workshopsQuery.isLoading}
@@ -94,11 +144,10 @@
 					</CardHeader>
 					<CardContent>
 						<WorkshopList
+							{userId}
 							workshops={workshopsQuery.data ?? []}
 							onInterestToggle={handleInterestToggle}
-							{userId}
 							isLoading={interestMutation.isPending}
-							showInterestButton={true}
 						/>
 					</CardContent>
 				</Card>
