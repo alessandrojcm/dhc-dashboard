@@ -18,30 +18,19 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="feat(workshops): add interest tracking and improve &quot;My Workshops&quot; page&#10;&#10;- Introduce interest tracking for workshops with interest counts and user-specific status&#10;- Add interest toggle button in workshop list with loading state and accessibility improvements&#10;- Replace calendar view with workshop list for better usability&#10;- Refactor &quot;My Workshops&quot; page to use tabs for better organization">
-      <change afterPath="$PROJECT_DIR$/src/routes/(public)/workshops/[id]/confirmation/+page.svelte" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources.local.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources.local.xml" afterDir="false" />
+    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="feat: implemented workshops payment">
+      <change afterPath="$PROJECT_DIR$/opecode.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/_supabase.gyJpoQ/schema/public.abK9xQ.meta" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/_supabase.gyJpoQ/schema/public.abK9xQ.meta" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/auth.qN0tAA.meta" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/auth.qN0tAA.meta" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/pgmq.23k0AA.meta" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/pgmq.23k0AA.meta" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/public.abK9xQ.meta" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/public.abK9xQ.meta" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/public.abK9xQ.zip" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/public.abK9xQ.zip" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/vault.MrKsBg.meta" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/vault.MrKsBg.meta" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/database.types.ts" beforeDir="false" afterPath="$PROJECT_DIR$/database.types.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/debug-my-workshops-page.png" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/e2e/workshops-interest.spec.ts" beforeDir="false" afterPath="$PROJECT_DIR$/e2e/workshops-interest.spec.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/instructions/stage3_registration_payment.md" beforeDir="false" afterPath="$PROJECT_DIR$/instructions/stage3_registration_payment.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/pnpm-lock.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/pnpm-lock.yaml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/e2e/my-workshops.spec.ts" beforeDir="false" afterPath="$PROJECT_DIR$/e2e/my-workshops.spec.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/database.types.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/database.types.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/hooks.server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/hooks.server.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/lib/components/workshops/workshop-calendar.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/components/workshops/workshop-calendar.svelte" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/lib/components/workshops/workshop-list.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/components/workshops/workshop-list.svelte" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/lib/server/stripe.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/server/stripe.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/lib/types.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/types.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/api/workshops/+server.ts" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/+layout.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/+layout.svelte" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/my-workshops/+page.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/my-workshops/+page.svelte" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/workshops/+page.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/workshops/+page.svelte" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/supabase/functions/stripe-webhooks/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/stripe-webhooks/index.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/api/workshops/[id]/+server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/api/workshops/[id]/+server.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -305,7 +294,7 @@
       <workItem from="1752486460407" duration="23082000" />
       <workItem from="1752565012747" duration="20625000" />
       <workItem from="1752648784139" duration="619000" />
-      <workItem from="1752824185730" duration="6801000" />
+      <workItem from="1752824185730" duration="23734000" />
     </task>
     <task id="LOCAL-00001" summary="Add guardian support for underage waitlist entries&#10;&#10;Introduce `waitlist_guardians` table and transactional logic for adding guardian details when underage users join the waitlist. Updates include database migrations, UI adjustments for conditional input fields, validation logic, and tests to ensure age-based gating.">
       <option name="closed" value="true" />
@@ -555,7 +544,15 @@
       <option name="project" value="LOCAL" />
       <updated>1752567148823</updated>
     </task>
-    <option name="localTasksCounter" value="32" />
+    <task id="LOCAL-00032" summary="feat: implemented workshops payment">
+      <option name="closed" value="true" />
+      <created>1752865216274</created>
+      <option name="number" value="00032" />
+      <option name="presentableId" value="LOCAL-00032" />
+      <option name="project" value="LOCAL" />
+      <updated>1752865216274</updated>
+    </task>
+    <option name="localTasksCounter" value="33" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -596,7 +593,6 @@
   </component>
   <component name="VcsManagerConfiguration">
     <option name="CHECK_CODE_SMELLS_BEFORE_PROJECT_COMMIT" value="false" />
-    <MESSAGE value="`feat(stripe): update to API version 2025-04-30, dependencies and improve transaction handling`" />
     <MESSAGE value="chore: updated gitignore" />
     <MESSAGE value="feat: implemented invitations list of members" />
     <MESSAGE value="chore: e2e test for invitations" />
@@ -621,7 +617,8 @@
     <MESSAGE value="feat: migrate workshop calendar to native Popover API with TypeScript improvements&#10;&#10;- Replace Schedule-X calendar with vkurko/calendar (@event-calendar/core) for better Svelte 5 compatibility&#10;- Implement native Popover API instead of custom positioning logic for better accessibility and performance&#10;- Add comprehensive TypeScript interfaces (CalendarEvent, EventClickInfo, EventContentInfo) removing all 'any' types&#10;- Fix text visibility issues in popover with proper CSS color overrides&#10;- Enhance event content rendering with interest count and user interest status&#10;- Improve null safety with proper checks and fallback values&#10;- Maintain all existing functionality while improving code maintainability&#10;&#10; Generated with [opencode](https://opencode.ai)&#10;&#10;Co-Authored-By: opencode &lt;noreply@opencode.ai&gt;" />
     <MESSAGE value="feat(workshops): update styles to align with shadcn design system&#10;&#10;- Adjust calendar event colors and theming using shadcn variables&#10;- Update workshop modal and popover styles for consistent theming&#10;- Refactor CSS for better readability and maintainability&#10;- Enhance &quot;Interested&quot; badge with updated styles and accessibility" />
     <MESSAGE value="feat(workshops): add interest tracking and improve &quot;My Workshops&quot; page&#10;&#10;- Introduce interest tracking for workshops with interest counts and user-specific status&#10;- Add interest toggle button in workshop list with loading state and accessibility improvements&#10;- Replace calendar view with workshop list for better usability&#10;- Refactor &quot;My Workshops&quot; page to use tabs for better organization" />
-    <option name="LAST_COMMIT_MESSAGE" value="feat(workshops): add interest tracking and improve &quot;My Workshops&quot; page&#10;&#10;- Introduce interest tracking for workshops with interest counts and user-specific status&#10;- Add interest toggle button in workshop list with loading state and accessibility improvements&#10;- Replace calendar view with workshop list for better usability&#10;- Refactor &quot;My Workshops&quot; page to use tabs for better organization" />
+    <MESSAGE value="feat: implemented workshops payment" />
+    <option name="LAST_COMMIT_MESSAGE" value="feat: implemented workshops payment" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
