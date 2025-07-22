@@ -120,9 +120,72 @@ export type Database = {
           },
         ]
       }
+      club_activity_refunds: {
+        Row: {
+          completed_at: string | null
+          created_at: string | null
+          id: string
+          processed_at: string | null
+          processed_by: string | null
+          refund_amount: number
+          refund_reason: string | null
+          registration_id: string
+          requested_at: string
+          requested_by: string | null
+          status: Database["public"]["Enums"]["refund_status"]
+          stripe_payment_intent_id: string | null
+          stripe_refund_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string | null
+          id?: string
+          processed_at?: string | null
+          processed_by?: string | null
+          refund_amount: number
+          refund_reason?: string | null
+          registration_id: string
+          requested_at?: string
+          requested_by?: string | null
+          status?: Database["public"]["Enums"]["refund_status"]
+          stripe_payment_intent_id?: string | null
+          stripe_refund_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string | null
+          id?: string
+          processed_at?: string | null
+          processed_by?: string | null
+          refund_amount?: number
+          refund_reason?: string | null
+          registration_id?: string
+          requested_at?: string
+          requested_by?: string | null
+          status?: Database["public"]["Enums"]["refund_status"]
+          stripe_payment_intent_id?: string | null
+          stripe_refund_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "club_activity_refunds_registration_id_fkey"
+            columns: ["registration_id"]
+            isOneToOne: true
+            referencedRelation: "club_activity_registrations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       club_activity_registrations: {
         Row: {
           amount_paid: number
+          attendance_marked_at: string | null
+          attendance_marked_by: string | null
+          attendance_notes: string | null
+          attendance_status: string | null
           cancelled_at: string | null
           club_activity_id: string
           confirmed_at: string | null
@@ -139,6 +202,10 @@ export type Database = {
         }
         Insert: {
           amount_paid: number
+          attendance_marked_at?: string | null
+          attendance_marked_by?: string | null
+          attendance_notes?: string | null
+          attendance_status?: string | null
           cancelled_at?: string | null
           club_activity_id: string
           confirmed_at?: string | null
@@ -155,6 +222,10 @@ export type Database = {
         }
         Update: {
           amount_paid?: number
+          attendance_marked_at?: string | null
+          attendance_marked_by?: string | null
+          attendance_notes?: string | null
+          attendance_status?: string | null
           cancelled_at?: string | null
           club_activity_id?: string
           confirmed_at?: string | null
@@ -781,6 +852,14 @@ export type Database = {
       }
     }
     Functions: {
+      calculate_refund_amount: {
+        Args: { registration_id: string }
+        Returns: number
+      }
+      check_refund_eligibility: {
+        Args: { registration_id: string }
+        Returns: boolean
+      }
       check_workshop_capacity: {
         Args: { activity_id: string }
         Returns: boolean
@@ -971,6 +1050,12 @@ export type Database = {
         | "other"
       invitation_status: "pending" | "accepted" | "expired" | "revoked"
       preferred_weapon: "longsword" | "sword_and_buckler"
+      refund_status:
+        | "pending"
+        | "processing"
+        | "completed"
+        | "failed"
+        | "cancelled"
       registration_status: "pending" | "confirmed" | "cancelled" | "refunded"
       role_type:
         | "admin"
@@ -1148,6 +1233,13 @@ export const Constants = {
       ],
       invitation_status: ["pending", "accepted", "expired", "revoked"],
       preferred_weapon: ["longsword", "sword_and_buckler"],
+      refund_status: [
+        "pending",
+        "processing",
+        "completed",
+        "failed",
+        "cancelled",
+      ],
       registration_status: ["pending", "confirmed", "cancelled", "refunded"],
       role_type: [
         "admin",

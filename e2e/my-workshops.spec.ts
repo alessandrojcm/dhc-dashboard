@@ -106,7 +106,6 @@ test.describe('My Workshops Page', () => {
 	test('should load my-workshops page with correct structure', async ({ page, context }) => {
 		await loginAsUser(context, memberData.email);
 		await page.goto('/dashboard/my-workshops');
-		await page.pause();
 		// Check page title and heading
 		await expect(page.locator('h1:has-text("My Workshops")')).toBeVisible();
 
