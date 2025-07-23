@@ -85,8 +85,5 @@ export type WorkshopCalendarEvent = {
 	isInterested: boolean;
 	isLoading: boolean;
 	userId: string;
-	handleEdit: (workshop: Workshop) => void;
-	handleDelete: (workshop: Workshop) => void;
-	handlePublish: (workshop: Workshop) => void;
-	handleCancel: (workshop: Workshop) => void;
+	handleEdit?: (workshop: Workshop) => void;
 };

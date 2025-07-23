@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Calendar, DayGrid, TimeGrid, Interaction } from '@event-calendar/core';
 	import '@event-calendar/core/index.css';
+	import * as Dialog from '$lib/components/ui/dialog';
 	import dayjs from 'dayjs';
 	import WorkshopEventModal from './workshop-event-modal.svelte';
 	import type { Workshop, WorkshopCalendarEvent } from '$lib/types';
@@ -22,14 +23,8 @@
 		};
 	}
 
-	interface EventClickInfo {
-		event: {
-			id: string;
-			title: string;
-			extendedProps: CalendarEvent['extendedProps'];
-		};
-		el: HTMLElement;
-	}
+	// Use the actual EventClickInfo type from event-calendar
+	type EventClickInfo = any; // We'll use any to avoid type conflicts
 
 	interface EventContentInfo {
 		event: {
@@ -51,44 +46,65 @@
 		userId,
 		isLoading = false,
 		handleEdit,
-		handleDelete,
-		handlePublish,
-		handleCancel,
 		onInterestToggle
 	}: {
 		workshops: Workshop[],
 		userId?: string;
 		isLoading: boolean;
 		handleEdit?: (workshop: Workshop) => void;
-		handleDelete?: (workshop: Workshop) => void;
-		handlePublish?: (workshop: Workshop) => void;
-		handleCancel?: (workshop: Workshop) => void;
 		onInterestToggle?: (workshopId: string) => void;
 	} = $props();
 
 	let calendarElement: HTMLElement;
 	let selectedEvent: WorkshopCalendarEvent | null = $state(null);
-	let popoverElement: HTMLElement | undefined = $state();
-	let popoverPosition = $state({ x: 0, y: 0 });
+	let dialogOpen = $state(false);
 
-	// Convert workshops to EventCalendar events format with shadcn colors
-	const events: CalendarEvent[] = $derived(workshops.map(workshop => ({
-		id: workshop.id,
-		title: workshop.title,
-		start: dayjs(workshop.start_date).format('YYYY-MM-DD HH:mm'),
-		end: dayjs(workshop.end_date).format('YYYY-MM-DD HH:mm'),
-		backgroundColor: 'hsl(var(--primary))',
-		textColor: 'hsl(var(--primary-foreground))',
-		extendedProps: {
-			workshop: workshop,
-			description: workshop.description,
-			location: workshop.location,
-			interestCount: workshop.interest_count?.[0]?.interest_count || 0,
-			isInterested: workshop.user_interest && workshop.user_interest.length > 0
-		}
-	})));
-	// Function to handle event click and show native popover
-	const handleEventClick = (info: EventClickInfo) => {
+	// Convert workshops to EventCalendar events format with status-based colors
+	const events: CalendarEvent[] = $derived(workshops.map(workshop => {
+		const getStatusColors = (status: string) => {
+			switch (status) {
+				case 'planned':
+					return {
+						backgroundColor: 'hsl(var(--primary))',
+						textColor: 'hsl(var(--primary-foreground))'
+					};
+				case 'published':
+					return {
+						backgroundColor: 'hsl(142 76% 36%)', // green-600
+						textColor: 'hsl(0 0% 100%)' // white
+					};
+				case 'cancelled':
+					return {
+						backgroundColor: 'hsl(var(--destructive))',
+						textColor: 'hsl(var(--destructive-foreground))'
+					};
+				default:
+					return {
+						backgroundColor: 'hsl(var(--muted))',
+						textColor: 'hsl(var(--muted-foreground))'
+					};
+			}
+		};
+
+		const colors = getStatusColors(workshop.status || 'planned');
+		
+		return {
+			id: workshop.id,
+			title: workshop.title,
+			start: dayjs(workshop.start_date).format('YYYY-MM-DD HH:mm'),
+			end: dayjs(workshop.end_date).format('YYYY-MM-DD HH:mm'),
+			backgroundColor: colors.backgroundColor,
+			textColor: colors.textColor,
+			extendedProps: {
+				workshop: workshop,
+				description: workshop.description || undefined,
+				location: workshop.location,
+				interestCount: workshop.interest_count?.[0]?.interest_count || 0,
+			}
+		};
+	}));
+	// Function to handle event click and show dialog
+	const handleEventClick = (info: any) => {
 		const workshop = info.event.extendedProps?.workshop;
 		const isInterested = info.event.extendedProps?.isInterested;
 
@@ -103,49 +119,10 @@
 			isInterested: isInterested || false,
 			isLoading: isLoading,
 			userId: userId || '',
-			handleEdit: handleEdit || (() => {
-			}),
-			handleDelete: handleDelete || (() => {
-			}),
-			handlePublish: handlePublish || (() => {
-			}),
-			handleCancel: handleCancel || (() => {
-			})
+			handleEdit: handleEdit
 		};
 
-		// Calculate position for the popover
-		const clickedElement = info.el;
-		if (clickedElement && calendarElement) {
-			const rect = clickedElement.getBoundingClientRect();
-			const calendarRect = calendarElement.getBoundingClientRect();
-
-			// Position relative to the calendar container
-			let x = rect.left - calendarRect.left + rect.width / 2;
-			let y = rect.top - calendarRect.top;
-
-			// Ensure popover doesn't go off screen
-			const popoverWidth = 384; // w-96 = 384px
-			if (x - popoverWidth / 2 < 0) {
-				x = popoverWidth / 2;
-			}
-			if (x + popoverWidth / 2 > calendarRect.width) {
-				x = calendarRect.width - popoverWidth / 2;
-			}
-
-			// Position above the event, or below if no space
-			if (y > 200) {
-				y = y - 10; // Above with some margin
-			} else {
-				y = rect.bottom - calendarRect.top + 10; // Below with margin
-			}
-
-			popoverPosition = { x, y };
-		}
-
-		// Show the native popover
-		if (popoverElement) {
-			popoverElement.showPopover();
-		}
+		dialogOpen = true;
 	};
 
 	// Calendar options with shadcn theming
@@ -159,10 +136,9 @@
 		},
 		height: '600px',
 		eventClick: handleEventClick,
-		eventContent: (info: EventContentInfo): EventContentResult => {
+		eventContent: (info: any) => {
 			const workshop = info.event.extendedProps?.workshop;
 			const interestCount = info.event.extendedProps?.interestCount || 0;
-			const isInterested = info.event.extendedProps?.isInterested || false;
 
 			if (!workshop) {
 				return { html: `<div class="workshop-event p-1">${info.event.title}</div>` };
@@ -170,19 +146,21 @@
 
 			return {
 				html: `
-					<div class="workshop-event p-1">
-						<div class="workshop-event-title font-medium text-sm">${workshop.title}</div>
-						<div class="workshop-event-info text-xs opacity-80 mt-1">
+					<div class="workshop-event p-2 cursor-pointer hover:opacity-90 transition-opacity">
+						<div class="workshop-event-title font-medium text-sm flex items-center gap-1">
+							<span class="truncate">${workshop.title}</span>
+						</div>
+						<div class="workshop-event-info text-xs opacity-90 mt-1">
 							<div class="flex items-center justify-between">
 								<span>${interestCount} interested</span>
-								${isInterested ? '<span class="text-secondary-foreground bg-secondary px-1 rounded-sm">✓ Interested</span>' : ''}
+								<span class="text-xs opacity-75">${dayjs(workshop.start_date).format('HH:mm')}</span>
 							</div>
 						</div>
 					</div>
 				`
 			};
 		},
-		dayMaxEvents: true,
+		dayMaxEvents: false, // Show all events without "+X more" limit
 		moreLinkContent: (arg: MoreLinkInfo): string => `+${arg.num} more`,
 		selectable: false,
 		editable: false,
@@ -209,7 +187,6 @@
 			nowIndicator: 'ec-now-indicator bg-destructive'
 		})
 	});
-	$inspect(selectedEvent);
 </script>
 
 <div class="workshop-calendar-container relative">
@@ -218,29 +195,34 @@
 	</div>
 
 	<!-- Legend -->
-	<div class="flex items-center gap-4 mt-4 text-sm text-muted-foreground">
+	<div class="flex items-center gap-6 mt-4 text-sm text-muted-foreground">
 		<div class="flex items-center gap-2">
 			<div class="w-4 h-4 bg-primary rounded-sm border border-primary/20"></div>
-			<span>Planned Workshops</span>
+			<span>Planned</span>
+		</div>
+		<div class="flex items-center gap-2">
+			<div class="w-4 h-4 bg-green-500 rounded-sm border border-green-500/20"></div>
+			<span>Published</span>
+		</div>
+		<div class="flex items-center gap-2">
+			<div class="w-4 h-4 bg-destructive rounded-sm border border-destructive/20"></div>
+			<span>Cancelled</span>
 		</div>
 	</div>
 </div>
 
-<!-- Workshop Event Popover using native Popover API -->
-<div
-	bind:this={popoverElement}
-	popover="auto"
-	class="workshop-popover w-96 p-0 m-0"
-	style="position: absolute; left: {popoverPosition.x - 192}px; top: {popoverPosition.y}px; transform: translateY(-100%);"
->
-	{#if selectedEvent}
-		<WorkshopEventModal
-			calendarEvent={selectedEvent}
-			{onInterestToggle}
-			onClose={() => popoverElement?.hidePopover()}
-		/>
-	{/if}
-</div>
+<!-- Workshop Event Dialog -->
+<Dialog.Root bind:open={dialogOpen}>
+	<Dialog.Content class="max-w-lg p-0 gap-0">
+		{#if selectedEvent}
+			<WorkshopEventModal
+				calendarEvent={selectedEvent}
+				{onInterestToggle}
+				onClose={() => dialogOpen = false}
+			/>
+		{/if}
+	</Dialog.Content>
+</Dialog.Root>
 
 <style>
     .workshop-calendar-container {
@@ -261,15 +243,7 @@
         line-height: 1.1;
     }
 
-    /* Ensure popover inherits theme colors */
-    :global([popover]) {
-        color: hsl(var(--popover-foreground));
-        background-color: hsl(var(--popover));
-    }
-
-    :global([popover] *) {
-        color: inherit;
-    }
+    /* Dialog content styling */
 
     /* Override default event calendar styles with shadcn theme */
     :global(.ec) {
@@ -306,13 +280,6 @@
         color: hsl(var(--accent-foreground));
     }
 
-    /* Proper popover styling */
-    :global(.workshop-popover) {
-        background-color: var(--color-white);
-        color: hsl(var(--popover-foreground));
-        border: 1px solid hsl(var(--border));
-        border-radius: calc(var(--radius) + 2px);
-        box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-    }
+
 </style>
 

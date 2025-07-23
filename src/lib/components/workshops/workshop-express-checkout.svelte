@@ -11,7 +11,7 @@
 	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
 	import * as Alert from '$lib/components/ui/alert';
 	import { Button } from '$lib/components/ui/button';
-
+// TODO: handle redirections for payments
 	interface Props {
 		workshopId: string;
 		workshopTitle: string;

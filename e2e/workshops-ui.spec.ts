@@ -94,26 +94,21 @@ test.describe('Workshop UI', () => {
 		await page.getByRole('textbox', { name: /title/i }).fill(workshopTitle);
 		await page.getByRole('textbox', { name: /description/i }).fill('Test workshop created via UI');
 		await page.getByRole('textbox', { name: /location/i }).fill('Test Location');
-
 		// Set workshop date (tomorrow) - using dayjs
 		const workshopDate = dayjs().add(1, 'day');
-		await page.getByLabel('Workshop Date').click();
+		await page.getByRole('button', { name: 'Date' }).click();
+		await page.getByRole('button', { name: 'Select year' }).click();
 		await page.getByRole('option', { name: workshopDate.year().toString() }).click();
-		await page.getByLabel('Select month').click();
-		await page.getByRole('option', { name: workshopDate.format('MMMM') }).dblclick();
-		await page.getByLabel(workshopDate.format('dddd, MMMM D,')).click();
+		await page.getByRole('button', { name: 'Select month' }).click();
+		await page.getByRole('option', { name: workshopDate.format('MMMM') }).click();
+		await page.getByRole('button', { name: workshopDate.format('dddd, MMMM D') }).click();
+		await page.getByRole('textbox', { name: 'From' }).fill(workshopDate.format('HH:mm:ss'));
+		await page
+			.getByRole('textbox', { name: 'To' })
+			.fill(workshopDate.add(1, 'hour').format('HH:mm:ss'));
 
-		// Set workshop time
-		await page.getByRole('textbox', { name: /workshop time/i }).fill('14:30');
-
-		await page.getByRole('spinbutton', { name: /maximum capacity/i }).fill('15');
-		await page.getByRole('spinbutton', { name: /member price/i }).fill('15');
-
-		// Enable public workshop so non-member price field appears
-		await page.getByText('Public Workshop', { exact: true }).click();
-		await page.getByRole('spinbutton', { name: /non-member price/i }).fill('25');
-
-		await page.getByRole('spinbutton', { name: /refund deadline/i }).fill('3');
+		await page.getByText(/maximum capacity/i).fill('15');
+		await page.getByText(/member price/i).fill('15');
 
 		// Submit the form
 		await page.getByRole('button', { name: 'Create Workshop' }).click();

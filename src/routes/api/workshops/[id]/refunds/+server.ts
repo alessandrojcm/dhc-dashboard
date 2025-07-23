@@ -20,7 +20,11 @@ export const GET: RequestHandler = async ({ locals, params, platform }) => {
 
 export const POST: RequestHandler = async ({ request, locals, platform }) => {
 	try {
-		const session = await authorize(locals, WORKSHOP_ROLES);
+		const { session } = await locals.safeGetSession();
+
+		if (!session) {
+			return json({ success: false, error: 'Authentication required' }, { status: 401 });
+		}
 
 		const body = await request.json();
 		const result = safeParse(ProcessRefundSchema, body);
@@ -32,6 +36,35 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
 			);
 		}
 
+		const { getKyselyClient, executeWithRLS } = await import('$lib/server/kysely');
+		const kysely = getKyselyClient(platform!.env.HYPERDRIVE);
+
+		const registration = await executeWithRLS(kysely, { claims: session }, async (trx) => {
+			return await trx
+				.selectFrom('club_activity_registrations')
+				.select(['member_user_id'])
+				.where('id', '=', result.output.registration_id)
+				.executeTakeFirst();
+		});
+
+		if (!registration) {
+			return json({ success: false, error: 'Registration not found' }, { status: 404 });
+		}
+
+		const isOwner = registration.member_user_id === session.user.id;
+
+		// 3) If not the owner, check if they are admin/coordinator
+		if (!isOwner) {
+			try {
+				await authorize(locals, WORKSHOP_ROLES);
+			} catch {
+				return json(
+					{ success: false, error: 'You can only request refunds for your own registrations' },
+					{ status: 403 }
+				);
+			}
+		}
+
 		const refund = await processRefund(
 			result.output.registration_id,
 			result.output.reason,
@@ -41,7 +74,9 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
 
 		return json({ success: true, refund });
 	} catch (error) {
+		console.error('Refund processing error:', error);
 		Sentry.captureException(error);
-		return json({ success: false, error: (error as Error).message }, { status: 500 });
+		const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+		return json({ success: false, error: errorMessage }, { status: 500 });
 	}
 };

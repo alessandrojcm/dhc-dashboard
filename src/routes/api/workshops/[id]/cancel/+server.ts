@@ -8,9 +8,9 @@ import * as Sentry from '@sentry/sveltekit';
 export const POST: RequestHandler = async ({ locals, params, platform }) => {
 	try {
 		const session = await authorize(locals, WORKSHOP_ROLES);
-		
-		const workshop = await cancelWorkshop(params.id!, session, platform);
-		
+
+		const workshop = await cancelWorkshop(params.id!, session, platform!);
+
 		return json({ success: true, workshop });
 	} catch (error) {
 		Sentry.captureException(error);
