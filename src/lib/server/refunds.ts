@@ -113,17 +113,17 @@ export async function processRefund(
 		if (eligibilityResult.stripe_checkout_session_id) {
 			try {
 				// Get the payment intent from the checkout session
-				const checkoutSession = await stripeClient.checkout.sessions.retrieve(
+				const paymentIntent = await stripeClient.paymentIntents.retrieve(
 					eligibilityResult.stripe_checkout_session_id
 				);
 
-				if (!checkoutSession.payment_intent) {
+				if (!paymentIntent) {
 					throw new Error('No payment intent found for checkout session');
 				}
 
 				// Create the refund
 				const stripeRefund = await stripeClient.refunds.create({
-					payment_intent: checkoutSession.payment_intent as string,
+					payment_intent: paymentIntent.id,
 					amount: eligibilityResult.amount_paid,
 					reason: 'requested_by_customer'
 				});
@@ -156,21 +156,23 @@ export async function getWorkshopRefunds(
 	workshopId: string,
 	session: Session,
 	platform: App.Platform
-): Promise<{
-	id: string;
-	registration_id: string;
-	refund_amount: number;
-	refund_reason: string | null;
-	status: string;
-	stripe_refund_id: string | null;
-	requested_at: string;
-	processed_at: string | null;
-	completed_at: string | null;
-	requested_by: string | null;
-	processed_by: string | null;
-	created_at: string | null;
-	updated_at: string | null;
-}[]> {
+): Promise<
+	{
+		id: string;
+		registration_id: string;
+		refund_amount: number;
+		refund_reason: string | null;
+		status: string;
+		stripe_refund_id: string | null;
+		requested_at: string;
+		processed_at: string | null;
+		completed_at: string | null;
+		requested_by: string | null;
+		processed_by: string | null;
+		created_at: string | null;
+		updated_at: string | null;
+	}[]
+> {
 	const kysely = getKyselyClient(platform.env.HYPERDRIVE);
 
 	return await executeWithRLS(kysely, { claims: session }, async (trx) => {

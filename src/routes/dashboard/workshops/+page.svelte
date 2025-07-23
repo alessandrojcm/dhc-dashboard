@@ -13,8 +13,7 @@
 	const queryClient = useQueryClient();
 	const supabase = data.supabase;
 	const userId = data!.user!.id;
-
-
+	// TODO: edit workshop
 	const workshopsQuery = createQuery(() => ({
 		queryKey: ['workshops'],
 		refetchOnMount: true,
@@ -26,6 +25,7 @@
 					interest_count:club_activity_interest_counts(interest_count),
 					user_interest:club_activity_interest(user_id)
 				`)
+				.neq('status', 'cancelled')
 				.abortSignal(signal);
 
 			if (error) throw error;
@@ -33,45 +33,7 @@
 		}
 	}));
 
-	// Mutations for workshop actions
-	const deleteMutation = createMutation(() => ({
-		mutationFn: async (workshopId: string) => {
-			const response = await fetch(`/api/workshops/${workshopId}`, {
-				method: 'DELETE'
-			});
-			if (!response.ok) throw new Error('Failed to delete workshop');
-			return response.json();
-		},
-		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ['workshops'] });
-		}
-	}));
-
-	const publishMutation = createMutation(() => ({
-		mutationFn: async (workshopId: string) => {
-			const response = await fetch(`/api/workshops/${workshopId}/publish`, {
-				method: 'POST'
-			});
-			if (!response.ok) throw new Error('Failed to publish workshop');
-			return response.json();
-		},
-		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ['workshops'] });
-		}
-	}));
-
-	const cancelMutation = createMutation(() => ({
-		mutationFn: async (workshopId: string) => {
-			const response = await fetch(`/api/workshops/${workshopId}/cancel`, {
-				method: 'POST'
-			});
-			if (!response.ok) throw new Error('Failed to cancel workshop');
-			return response.json();
-		},
-		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ['workshops'] });
-		}
-	}));
+	// Simple handlers - mutations are now handled in the modal component
 
 	function handleCreate() {
 		goto('/dashboard/workshops/create');
@@ -81,19 +43,7 @@
 		goto(`/dashboard/workshops/${workshop.id}/edit`);
 	}
 
-	async function handleDelete(workshop: Workshop) {
-		if (!confirm(`Are you sure you want to delete "${workshop.title}"?`)) return;
-		deleteMutation.mutate(workshop.id);
-	}
-
-	async function handlePublish(workshop: Workshop) {
-		publishMutation.mutate(workshop.id);
-	}
-
-	async function handleCancel(workshop: Workshop) {
-		if (!confirm(`Are you sure you want to cancel "${workshop.title}"?`)) return;
-		cancelMutation.mutate(workshop.id);
-	}
+	// Only edit handler needed - mutations are handled in the modal
 </script>
 
 <div class="p-6 space-y-6">
@@ -108,28 +58,9 @@
 		</Alert>
 	{/if}
 
-	{#if deleteMutation.error}
-		<Alert variant="destructive">
-			<AlertDescription>{deleteMutation.error?.message || String(deleteMutation.error)}</AlertDescription>
-		</Alert>
-	{/if}
-
-	{#if publishMutation.error}
-		<Alert variant="destructive">
-			<AlertDescription>{publishMutation.error?.message || String(publishMutation.error)}</AlertDescription>
-		</Alert>
-	{/if}
-
-	{#if cancelMutation.error}
-		<Alert variant="destructive">
-			<AlertDescription>{cancelMutation.error?.message || String(cancelMutation.error)}</AlertDescription>
-		</Alert>
-	{/if}
+	<!-- Error handling is now done in the modal component with toast notifications -->
 	<WorkshopCalendar
 		handleEdit={handleEdit}
-		handleDelete={handleDelete}
-		handlePublish={handlePublish}
-		handleCancel={handleCancel}
 		isLoading={workshopsQuery.isLoading}
 		workshops={workshopsQuery.data ??[]} {userId} />
 </div>

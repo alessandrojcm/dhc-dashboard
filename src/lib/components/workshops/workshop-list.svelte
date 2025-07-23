@@ -10,7 +10,7 @@
 	import { useQueryClient } from '@tanstack/svelte-query';
 	import { clsx } from 'clsx';
 	import type { UserData } from '$lib/types';
-
+	// TODO: cancel registration for user with refund elegibility
 	type ClubActivity = Database['public']['Tables']['club_activities']['Row'] & {
 		interest_count?: { interest_count: number }[];
 		user_interest?: { user_id: string }[];
@@ -151,7 +151,7 @@
 											</Dialog.Description>
 										</Dialog.Header>
 
-										<WorkshopExpressCheckout 
+										<WorkshopExpressCheckout
 											workshopId={selectedWorkshop.id}
 											workshopTitle={selectedWorkshop.title}
 											amount={getWorkshopPrice(selectedWorkshop)}

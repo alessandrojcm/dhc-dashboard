@@ -1,5 +1,10 @@
 # Workshop Feature Implementation Plan
 
+TODO: Things to implement
+* communication system
+* worshop edit
+* 3rd-party people
+
 ## Overview
 Create a comprehensive workshop planning feature for extra club activities (training sessions, social events, etc.). The system will be called "workshops" in the frontend but use `club_activities` as the database schema to avoid confusion with the existing beginners workshop system.
 

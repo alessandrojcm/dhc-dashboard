@@ -1,6 +1,7 @@
 import { executeWithRLS, getKyselyClient } from './kysely';
 import type { Database } from '$database';
 import type { Session } from '@supabase/supabase-js';
+import { stripeClient } from '$lib/server/stripe';
 
 export type ClubActivity = Database['public']['Tables']['club_activities']['Row'];
 export type ClubActivityInsert = Database['public']['Tables']['club_activities']['Insert'];
@@ -88,7 +89,11 @@ export async function deleteWorkshop(
 ): Promise<void> {
 	const kysely = getKyselyClient(platform.env.HYPERDRIVE);
 	await executeWithRLS(kysely, { claims: session }, async (trx) => {
-		await trx.deleteFrom('club_activities').where('id', '=', id).execute();
+		await trx
+			.deleteFrom('club_activities')
+			.where('id', '=', id)
+			.where('status', '=', 'planned')
+			.execute();
 	});
 }
 
@@ -133,11 +138,34 @@ export async function cancelWorkshop(
 ): Promise<ClubActivity> {
 	const kysely = getKyselyClient(platform.env.HYPERDRIVE);
 	const result = await executeWithRLS(kysely, { claims: session }, async (trx) => {
+		const registrations = await trx
+			.selectFrom('club_activity_registrations')
+			.select(['stripe_checkout_session_id', 'amount_paid'])
+			.where('club_activity_id', '=', id)
+			.where('stripe_checkout_session_id', 'is not', 'null')
+			.execute();
+
+		await Promise.all(
+			registrations.map(async (registration) => {
+				const paymentIntent = await stripeClient.paymentIntents.retrieve(
+					registration.stripe_checkout_session_id!
+				);
+				if (!paymentIntent) {
+					return Promise.resolve();
+				}
+				return stripeClient.refunds.create({
+					payment_intent: paymentIntent.id,
+					amount: registration.amount_paid,
+					reason: 'requested_by_customer'
+				});
+			})
+		);
+
 		return await trx
 			.updateTable('club_activities')
 			.set({ status: 'cancelled' })
 			.where('id', '=', id)
-			.where('status', 'in', ['planned', 'published'])
+			.where('status', '=', 'published')
 			.returning([
 				'id',
 				'title',

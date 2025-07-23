@@ -125,14 +125,6 @@ otp_length = 6
 # Number of seconds before the email OTP expires (defaults to 1 hour).
 otp_expiry = 3600
 
-# Use a production-ready SMTP server
-[auth.email.smtp]
- host = "smtp_server_dhc-dashboard"
- port = 25
- user = "smtp4dev"
- pass = "smtp4dev"
- admin_email = "admin@example.com"
- sender_name = "fake_sender"
 
 # Uncomment to customize email template
 [auth.email.template.invite]
