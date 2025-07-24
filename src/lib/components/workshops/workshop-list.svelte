@@ -4,17 +4,17 @@
 	import { Button, buttonVariants } from '$lib/components/ui/button/index.js';
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import WorkshopExpressCheckout from './workshop-express-checkout.svelte';
+	import WorkshopCancellationDialog from './workshop-cancellation-dialog.svelte';
 	import type { Database } from '$database';
 	import dayjs from 'dayjs';
 	import Dinero from 'dinero.js';
 	import { useQueryClient } from '@tanstack/svelte-query';
-	import { clsx } from 'clsx';
 	import type { UserData } from '$lib/types';
-	// TODO: cancel registration for user with refund elegibility
+
 	type ClubActivity = Database['public']['Tables']['club_activities']['Row'] & {
 		interest_count?: { interest_count: number }[];
 		user_interest?: { user_id: string }[];
-		attendee_count?: { member_user_id: string }[];
+		attendee_count?: { id: string; member_user_id: string; status: string }[];
 	};
 
 	interface Props {
@@ -32,6 +32,8 @@
 	}: Props = $props();
 
 	let selectedWorkshop: ClubActivity | null = $state(null);
+	let showCancellationDialog = $state(false);
+	let selectedRegistration: { id: string; status: string } | null = $state(null);
 	const queryClient = useQueryClient();
 
 	const userData: UserData = queryClient.getQueryData(['logged_in_user_data']);
@@ -61,9 +63,17 @@
 
 	function hasUserInterest(workshop: ClubActivity): boolean {
 		if (workshop.status === 'published') {
-			return workshop?.attendee_count?.map(i => i.member_user_id).includes(userId) ?? false;
+			return workshop?.attendee_count?.some(i => i.member_user_id === userId) ?? false;
 		}
 		return workshop?.user_interest?.map(i => i.user_id).includes(userId) ?? false;
+	}
+
+	function getUserRegistration(workshop: ClubActivity): { id: string; status: string } | null {
+		if (workshop.status === 'published') {
+			const registration = workshop?.attendee_count?.find(i => i.member_user_id === userId);
+			return registration ? { id: registration.id, status: registration.status } : null;
+		}
+		return null;
 	}
 
 	function getInterestCount(workshop: ClubActivity): number {
@@ -73,6 +83,23 @@
 	function getWorkshopPrice(workshop: ClubActivity): number {
 		// For now, assume all users are members - you can enhance this logic
 		return workshop.price_member;
+	}
+
+	function isRefunded(workshop: ClubActivity): boolean {
+		return workshop.attendee_count?.some(i => i.status === 'refunded' && i.member_user_id === userId) ?? false;
+	}
+
+	function handleCancelRegistration(workshop: ClubActivity) {
+		const registration = getUserRegistration(workshop);
+		if (registration) {
+			selectedWorkshop = workshop;
+			selectedRegistration = registration;
+			showCancellationDialog = true;
+		}
+	}
+
+	function handleRegistrationSuccess() {
+		queryClient.invalidateQueries({ queryKey: ['workshops'] });
 	}
 </script>
 
@@ -91,9 +118,15 @@
 				<CardHeader>
 					<div class="flex justify-between items-start">
 						<CardTitle>{workshop.title}</CardTitle>
-						<Badge class={`${getStatusColor(workshop.status)} capitalize`}>
-							{workshop?.status}
-						</Badge>
+						{#if isRefunded(workshop)}
+							<Badge class={`${getStatusColor('cancelled')} capitalize`}>
+								Refunded
+							</Badge>
+						{:else}
+							<Badge class={`${getStatusColor(workshop.status)} capitalize`}>
+								{workshop?.status}
+							</Badge>
+						{/if}
 					</div>
 				</CardHeader>
 				<CardContent>
@@ -134,38 +167,47 @@
 							{/if}
 						</div>
 						{#if workshop.status === 'published' && userId}
-							<Dialog.Root>
-								<Dialog.Trigger
-									onclick={() => (selectedWorkshop=workshop)}
-									class={clsx("flex justify-end pt-4", buttonVariants({ variant: !hasUserInterest(workshop) ? "default" : "destructive" }))}
-								>
-									{!hasUserInterest(workshop) ? 'Register' : 'Cancel Registration'}
-								</Dialog.Trigger
-								>
-								<Dialog.Content>
-									{#if selectedWorkshop !== null}
-										<Dialog.Header>
-											<Dialog.Title>Workshop Registration</Dialog.Title>
-											<Dialog.Description>
-												Complete your registration for {selectedWorkshop.title}
-											</Dialog.Description>
-										</Dialog.Header>
+							<div class="flex justify-end pt-4">
+								{#if !hasUserInterest(workshop)}
+									<Dialog.Root>
+										<Dialog.Trigger
+											onclick={() => (selectedWorkshop=workshop)}
+											class={buttonVariants({ variant: "default" })}
+										>
+											Register
+										</Dialog.Trigger>
+										<Dialog.Content>
+											{#if selectedWorkshop !== null}
+												<Dialog.Header>
+													<Dialog.Title>Workshop Registration</Dialog.Title>
+													<Dialog.Description>
+														Complete your registration for {selectedWorkshop.title}
+													</Dialog.Description>
+												</Dialog.Header>
 
-										<WorkshopExpressCheckout
-											workshopId={selectedWorkshop.id}
-											workshopTitle={selectedWorkshop.title}
-											amount={getWorkshopPrice(selectedWorkshop)}
-											customerId={userData?.customerId}
-											onSuccess={() => {
-												selectedWorkshop = null;
-												queryClient.invalidateQueries({ queryKey: ['workshops'] });
-											}}
-											onCancel={() => selectedWorkshop = null}
-										/>
-									{/if}
-								</Dialog.Content>
-							</Dialog.Root>
-
+												<WorkshopExpressCheckout
+													workshopId={selectedWorkshop.id}
+													workshopTitle={selectedWorkshop.title}
+													amount={getWorkshopPrice(selectedWorkshop)}
+													customerId={userData?.customerId}
+													onSuccess={() => {
+														selectedWorkshop = null;
+														handleRegistrationSuccess();
+													}}
+													onCancel={() => selectedWorkshop = null}
+												/>
+											{/if}
+										</Dialog.Content>
+									</Dialog.Root>
+								{:else if !isRefunded(workshop)}
+									<Button
+										variant="destructive"
+										onclick={() => handleCancelRegistration(workshop)}
+									>
+										Cancel Registration
+									</Button>
+								{/if}
+							</div>
 						{/if}
 						{#if workshop.status === 'planned' && onInterestToggle}
 							<div class="flex justify-end pt-4">
@@ -184,3 +226,20 @@
 		{/each}
 	{/if}
 </div>
+
+{#if selectedWorkshop && selectedRegistration}
+	<WorkshopCancellationDialog
+		workshop={selectedWorkshop}
+		registrationId={selectedRegistration.id}
+		registrationStatus={selectedRegistration.status}
+		open={showCancellationDialog}
+		onOpenChange={(open) => {
+			showCancellationDialog = open;
+			if (!open) {
+				selectedWorkshop = null;
+				selectedRegistration = null;
+			}
+		}}
+		onSuccess={handleRegistrationSuccess}
+	/>
+{/if}

@@ -23,7 +23,8 @@
 				.select(`
 					*,
 					interest_count:club_activity_interest_counts(interest_count),
-					user_interest:club_activity_interest(user_id)
+					user_interest:club_activity_interest(user_id),
+					user_registrations:club_activity_registrations(member_user_id)
 				`)
 				.neq('status', 'cancelled')
 				.abortSignal(signal);

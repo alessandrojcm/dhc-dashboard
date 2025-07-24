@@ -40,7 +40,7 @@
 				.from('club_activities')
 				.select(`
 					*,
-					attendee_count:club_activity_registrations(member_user_id)
+					attendee_count:club_activity_registrations(id, member_user_id, status)
 				`)
 				.abortSignal(signal)
 				.eq('status', 'published')

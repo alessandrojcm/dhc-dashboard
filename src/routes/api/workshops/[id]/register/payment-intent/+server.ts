@@ -95,7 +95,7 @@ export const POST: RequestHandler = async ({ request, params, locals, platform }
 			automatic_payment_methods: {
 				enabled: false
 			},
-			payment_method_types: ['card', 'link', 'revolut_pay']
+			payment_method_types: ['card', 'link']
 		};
 
 		// Attach customer if provided
