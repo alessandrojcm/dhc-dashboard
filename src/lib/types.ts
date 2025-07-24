@@ -74,6 +74,7 @@ export type SubscriptionWithPlan = Stripe.Subscription & {
 export type Workshop = Database['public']['Tables']['club_activities']['Row'] & {
 	user_interest: { user_id: string }[];
 	interest_count: { interest_count: number | null }[];
+	user_registrations: { member_user_id: number | null }[];
 };
 
 export type WorkshopCalendarEvent = {

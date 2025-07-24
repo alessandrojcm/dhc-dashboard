@@ -18,25 +18,17 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="feat: implemented workshop attendee management">
+    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/e2e/workshops-ui.spec.ts" beforeDir="false" afterPath="$PROJECT_DIR$/e2e/workshops-ui.spec.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/instructions/workshop_feature_plan.md" beforeDir="false" afterPath="$PROJECT_DIR$/instructions/workshop_feature_plan.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/pnpm-lock.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/pnpm-lock.yaml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/lib/components/ui/popover/popover-content.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/components/ui/popover/popover-content.svelte" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/lib/components/workshops/workshop-calendar.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/components/workshops/workshop-calendar.svelte" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/lib/components/workshops/workshop-event-modal.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/components/workshops/workshop-event-modal.svelte" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/lib/components/workshops/workshop-express-checkout.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/components/workshops/workshop-express-checkout.svelte" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/lib/server/refunds.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/server/refunds.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/lib/server/workshops.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/server/workshops.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/lib/components/workshops/workshop-list.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/components/workshops/workshop-list.svelte" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/lib/types.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/types.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/api/workshops/[id]/cancel/+server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/api/workshops/[id]/cancel/+server.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/api/workshops/[id]/refunds/+server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/api/workshops/[id]/refunds/+server.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/auth/+page.server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/auth/+page.server.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/auth/+page.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/auth/+page.svelte" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/api/workshops/[id]/register/+server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/api/workshops/[id]/register/+server.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/api/workshops/[id]/register/payment-intent/+server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/api/workshops/[id]/register/payment-intent/+server.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/my-workshops/+page.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/my-workshops/+page.svelte" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/routes/dashboard/workshops/+page.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/workshops/+page.svelte" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/supabase/config.toml" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/config.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/supabase/functions/stripe-webhooks/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/stripe-webhooks/index.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -300,7 +292,8 @@
       <workItem from="1752486460407" duration="23082000" />
       <workItem from="1752565012747" duration="20625000" />
       <workItem from="1752648784139" duration="619000" />
-      <workItem from="1752824185730" duration="34770000" />
+      <workItem from="1752824185730" duration="40120000" />
+      <workItem from="1753384777244" duration="1866000" />
     </task>
     <task id="LOCAL-00001" summary="Add guardian support for underage waitlist entries&#10;&#10;Introduce `waitlist_guardians` table and transactional logic for adding guardian details when underage users join the waitlist. Updates include database migrations, UI adjustments for conditional input fields, validation logic, and tests to ensure age-based gating.">
       <option name="closed" value="true" />
@@ -566,7 +559,15 @@
       <option name="project" value="LOCAL" />
       <updated>1753181749854</updated>
     </task>
-    <option name="localTasksCounter" value="34" />
+    <task id="LOCAL-00034" summary="feat(workshops): add E2E test for full workshop lifecycle with admin and attendees&#10;&#10;- Introduce E2E test covering workshop creation, attendee registration, cancellations, refunds, and attendance marking&#10;- Enhance `workshop-event-modal` with delete/cancel popovers and loading states&#10;- Update `supabase` package to v2.31.8 for API consistency and feature support&#10;- Refactor modal styles and button actions for improved UX and accessibility">
+      <option name="closed" value="true" />
+      <created>1753301939529</created>
+      <option name="number" value="00034" />
+      <option name="presentableId" value="LOCAL-00034" />
+      <option name="project" value="LOCAL" />
+      <updated>1753301939530</updated>
+    </task>
+    <option name="localTasksCounter" value="35" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -607,7 +608,6 @@
   </component>
   <component name="VcsManagerConfiguration">
     <option name="CHECK_CODE_SMELLS_BEFORE_PROJECT_COMMIT" value="false" />
-    <MESSAGE value="feat: implemented invitations list of members" />
     <MESSAGE value="chore: e2e test for invitations" />
     <MESSAGE value="`chore: add data source meta and schema files for IDE configuration`" />
     <MESSAGE value="feat: add bulk invite functionality and UI enhancements for waitlist management&#10;&#10;- Added `complete_member_registration` SQL function for handling member registration.&#10;- Enhanced waitlist table with bulk invite feature using Supabase functions.&#10;- Introduced `SendIcon` button for inviting members with tooltips.&#10;- Refactored background processing logic for invitations.&#10;- Improved state management, query handling, and updates for waitlist invitations." />
@@ -632,7 +632,8 @@
     <MESSAGE value="feat(workshops): add interest tracking and improve &quot;My Workshops&quot; page&#10;&#10;- Introduce interest tracking for workshops with interest counts and user-specific status&#10;- Add interest toggle button in workshop list with loading state and accessibility improvements&#10;- Replace calendar view with workshop list for better usability&#10;- Refactor &quot;My Workshops&quot; page to use tabs for better organization" />
     <MESSAGE value="feat: implemented workshops payment" />
     <MESSAGE value="feat: implemented workshop attendee management" />
-    <option name="LAST_COMMIT_MESSAGE" value="feat: implemented workshop attendee management" />
+    <MESSAGE value="feat(workshops): add E2E test for full workshop lifecycle with admin and attendees&#10;&#10;- Introduce E2E test covering workshop creation, attendee registration, cancellations, refunds, and attendance marking&#10;- Enhance `workshop-event-modal` with delete/cancel popovers and loading states&#10;- Update `supabase` package to v2.31.8 for API consistency and feature support&#10;- Refactor modal styles and button actions for improved UX and accessibility" />
+    <option name="LAST_COMMIT_MESSAGE" value="feat(workshops): add E2E test for full workshop lifecycle with admin and attendees&#10;&#10;- Introduce E2E test covering workshop creation, attendee registration, cancellations, refunds, and attendance marking&#10;- Enhance `workshop-event-modal` with delete/cancel popovers and loading states&#10;- Update `supabase` package to v2.31.8 for API consistency and feature support&#10;- Refactor modal styles and button actions for improved UX and accessibility" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -645,26 +646,27 @@
         <line-breakpoint enabled="true" type="javascript">
           <url>file://$PROJECT_DIR$/src/routes/auth/+page.server.ts</url>
           <line>39</line>
-          <properties lambdaOrdinal="-1" />
           <option name="timeStamp" value="10" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="javascript">
           <url>file://$PROJECT_DIR$/src/routes/auth/+page.server.ts</url>
           <line>38</line>
-          <properties lambdaOrdinal="-1" />
           <option name="timeStamp" value="11" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="javascript">
           <url>file://$PROJECT_DIR$/src/routes/auth/+page.server.ts</url>
           <line>13</line>
-          <properties lambdaOrdinal="-1" />
           <option name="timeStamp" value="12" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="javascript">
           <url>file://$PROJECT_DIR$/src/routes/auth/+page.server.ts</url>
           <line>51</line>
-          <properties lambdaOrdinal="-1" />
           <option name="timeStamp" value="13" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="javascript">
+          <url>file://$PROJECT_DIR$/src/routes/api/workshops/[id]/register/+server.ts</url>
+          <line>268</line>
+          <option name="timeStamp" value="19" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>

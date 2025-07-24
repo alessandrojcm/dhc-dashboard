@@ -17,6 +17,7 @@ const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') ?? '', {
 const allowedEvents: Stripe.Event.Type[] = [
 	'charge.succeeded',
 	'charge.expired',
+	'charge.refunded',
 	'customer.subscription.created',
 	'customer.subscription.updated',
 	'customer.subscription.deleted',
@@ -131,6 +132,55 @@ async function handleWorkshopCheckoutExpired(session: Stripe.Charge) {
 	}
 }
 
+async function handleChargeRefunded(charge: Stripe.Charge) {
+	try {
+		// Get all refunds for this charge
+		const refunds = await stripe.refunds.list({
+			charge: charge.id,
+			limit: 100
+		});
+
+		for (const refund of refunds.data) {
+			// Update refund status based on Stripe refund status
+			let status: 'completed' | 'failed' | 'processing';
+			let completed_at: Date | null = null;
+
+			switch (refund.status) {
+				case 'succeeded':
+					status = 'completed';
+					completed_at = new Date();
+					break;
+				case 'failed':
+					status = 'failed';
+					break;
+				case 'pending':
+				case 'requires_action':
+					status = 'processing';
+					break;
+				default:
+					status = 'processing';
+			}
+
+			// Update refund status in database
+			const updateData: any = { status };
+			if (completed_at) {
+				updateData.completed_at = completed_at;
+			}
+
+			await db
+				.updateTable('club_activity_refunds')
+				.set(updateData)
+				.where('stripe_refund_id', '=', refund.id)
+				.execute();
+
+			console.log(`Refund status updated: ${refund.id} -> ${status} for charge: ${charge.id}`);
+		}
+	} catch (error) {
+		console.error('Error handling charge refund:', error);
+		throw error;
+	}
+}
+
 async function syncStripeDataToKV(customerId: string) {
 	try {
 		// Fetch latest subscription data from Stripe
@@ -211,6 +261,9 @@ Deno.serve(async (req) => {
 			if (session.metadata?.workshop_id) {
 				EdgeRuntime.waitUntil(handleWorkshopCheckoutExpired(session));
 			}
+		} else if (event.type === 'charge.refunded') {
+			const charge = event.data.object as Stripe.Charge;
+			EdgeRuntime.waitUntil(handleChargeRefunded(charge));
 		}
 
 		// Handle subscription-related events

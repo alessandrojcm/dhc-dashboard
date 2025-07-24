@@ -19,6 +19,7 @@
 			description?: string;
 			location?: string;
 			interestCount: number;
+			registrationCount: number;
 			isInterested: boolean;
 		};
 	}
@@ -87,7 +88,7 @@
 		};
 
 		const colors = getStatusColors(workshop.status || 'planned');
-		
+
 		return {
 			id: workshop.id,
 			title: workshop.title,
@@ -100,6 +101,7 @@
 				description: workshop.description || undefined,
 				location: workshop.location,
 				interestCount: workshop.interest_count?.[0]?.interest_count || 0,
+				registrationCount: workshop?.user_registrations?.length || 0
 			}
 		};
 	}));
@@ -137,8 +139,9 @@
 		height: '600px',
 		eventClick: handleEventClick,
 		eventContent: (info: any) => {
-			const workshop = info.event.extendedProps?.workshop;
+			const workshop: Workshop = info.event.extendedProps?.workshop;
 			const interestCount = info.event.extendedProps?.interestCount || 0;
+			const registrationCount = info.event.extendedProps?.registrationCount || 0;
 
 			if (!workshop) {
 				return { html: `<div class="workshop-event p-1">${info.event.title}</div>` };
@@ -152,7 +155,7 @@
 						</div>
 						<div class="workshop-event-info text-xs opacity-90 mt-1">
 							<div class="flex items-center justify-between">
-								<span>${interestCount} interested</span>
+								<span>${workshop.status === 'planned' ? `${interestCount} interested` : `${registrationCount} registered`}</span>
 								<span class="text-xs opacity-75">${dayjs(workshop.start_date).format('HH:mm')}</span>
 							</div>
 						</div>
