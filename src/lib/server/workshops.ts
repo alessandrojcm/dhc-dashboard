@@ -39,7 +39,9 @@ export async function createWorkshop(
 				'status',
 				'created_at',
 				'updated_at',
-				'created_by'
+				'created_by',
+				'announce_discord',
+				'announce_email'
 			])
 			.executeTakeFirstOrThrow();
 	});
@@ -76,7 +78,9 @@ export async function updateWorkshop(
 				'status',
 				'created_at',
 				'updated_at',
-				'created_by'
+				'created_by',
+				'announce_discord',
+				'announce_email'
 			])
 			.executeTakeFirstOrThrow();
 	});
@@ -125,7 +129,9 @@ export async function publishWorkshop(
 				'status',
 				'created_at',
 				'updated_at',
-				'created_by'
+				'created_by',
+				'announce_discord',
+				'announce_email'
 			])
 			.executeTakeFirstOrThrow();
 	});
@@ -188,7 +194,9 @@ export async function cancelWorkshop(
 				'status',
 				'created_at',
 				'updated_at',
-				'created_by'
+				'created_by',
+				'announce_discord',
+				'announce_email'
 			])
 			.executeTakeFirstOrThrow();
 	});

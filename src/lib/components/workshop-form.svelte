@@ -274,6 +274,63 @@
 			</div>
 		</div>
 
+		<!-- Communication Settings Section (Create mode only) -->
+		{#if mode === 'create'}
+			<div class="space-y-6">
+				<h2 class="text-xl font-semibold text-gray-900 border-b pb-2">Communication Settings</h2>
+				
+				<div class="bg-blue-50 rounded-lg p-4 border border-blue-200">
+					<p class="text-sm text-blue-700 mb-4">
+						All workshop status changes will be announced through selected channels
+					</p>
+					
+					<div class="space-y-4">
+						<Form.Field {form} name="announce_discord">
+							<Form.Control>
+								{#snippet children({ props })}
+									<div class="flex items-center space-x-3">
+										<Switch
+											{...props}
+											id="announce_discord"
+											bind:checked={$formData.announce_discord}
+										/>
+										<div>
+											<Form.Label for="announce_discord" class="text-base font-medium">Announce in Discord</Form.Label>
+											<p class="text-sm text-blue-700">
+												Send workshop announcements to the Discord server
+											</p>
+										</div>
+									</div>
+								{/snippet}
+							</Form.Control>
+							<Form.FieldErrors />
+						</Form.Field>
+
+						<Form.Field {form} name="announce_email">
+							<Form.Control>
+								{#snippet children({ props })}
+									<div class="flex items-center space-x-3">
+										<Switch
+											{...props}
+											id="announce_email"
+											bind:checked={$formData.announce_email}
+										/>
+										<div>
+											<Form.Label for="announce_email" class="text-base font-medium">Announce via Email</Form.Label>
+											<p class="text-sm text-blue-700">
+												Send workshop announcements via email to all active members
+											</p>
+										</div>
+									</div>
+								{/snippet}
+							</Form.Control>
+							<Form.FieldErrors />
+						</Form.Field>
+					</div>
+				</div>
+			</div>
+		{/if}
+
 		<!-- Pricing & Access Section -->
 		<div class="space-y-6">
 			<h2 class="text-xl font-semibold text-gray-900 border-b pb-2">Pricing & Access</h2>
