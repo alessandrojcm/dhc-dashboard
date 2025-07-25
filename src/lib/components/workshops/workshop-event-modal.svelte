@@ -17,7 +17,14 @@
 
 	const queryClient = useQueryClient();
 	const workshop = event.workshop;
-	const interestCount = workshop?.interest_count?.at(0)?.interest_count ?? 0;
+	const interestCount = $derived.by(() => {
+		if (event.workshop.status === 'published') {
+			return workshop.user_registrations?.filter(r => r.status !== 'refunded')?.length ?? 0;
+		} else if (event.workshop.status === 'planned') {
+			return workshop?.interest_count?.at(0)?.interest_count ?? 0;
+		}
+		return 0;
+	});
 
 	// Mutations for workshop actions with proper loading states
 	const deleteMutation = createMutation(() => ({
@@ -149,11 +156,11 @@
 			</div>
 		{/if}
 
-		<!-- Interest Count -->
+		<!-- Interest/Registration Count -->
 		<div class="flex items-center gap-3">
 			<Users class="w-5 h-5 text-muted-foreground" />
 			<span class="text-sm text-foreground">{interestCount} {interestCount === 1 ? 'person' : 'people'}
-				interested</span>
+				{workshop.status === 'planned' ? 'interested' : 'registered'}</span>
 		</div>
 
 		<!-- Description -->
@@ -182,8 +189,8 @@
 		<div class="border-t border-border pt-5 -mx-6 px-6">
 			<div class="flex flex-wrap gap-3">
 				{#if hasEditAction}
-					<Button variant="outline" size="sm" onclick={handleEdit}>
-						Edit
+					<Button variant="outline" size="sm" onclick={handleEdit} data-testid="edit-workshop-button">
+						Edit Workshop
 					</Button>
 				{/if}
 

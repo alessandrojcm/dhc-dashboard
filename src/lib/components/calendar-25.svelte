@@ -16,6 +16,7 @@
 		onDateChange?: (date: CalendarDate | undefined) => void;
 		onStartTimeChange?: (time: string) => void;
 		onEndTimeChange?: (time: string) => void;
+		disabled?: boolean;
 	}
 
 	let { 
@@ -25,7 +26,8 @@
 		endTime = $bindable(),
 		onDateChange,
 		onStartTimeChange,
-		onEndTimeChange
+		onEndTimeChange,
+		disabled,
 	}: Props = $props();
 
 	let open = $state(false);
@@ -52,7 +54,7 @@
 		<Popover.Root bind:open>
 			<Popover.Trigger id="{id}-date">
 				{#snippet child({ props })}
-					<Button {...props} variant="outline" class="w-full justify-between font-normal">
+					<Button disabled={disabled} {...props} variant="outline" class="w-full justify-between font-normal">
 						{date
 							? date.toDate(getLocalTimeZone()).toLocaleDateString()
 							: "Select date"}
@@ -65,6 +67,7 @@
 					type="single"
 					value={date}
 					captionLayout="dropdown"
+					disabled={disabled}
 					onValueChange={(newDate) => {
 						handleDateChange(newDate);
 						open = false;
@@ -81,6 +84,7 @@
 				id="{id}-time-from"
 				step="1"
 				value={startTime || "10:30"}
+				disabled={disabled}
 				oninput={(e) => {
 					handleStartTimeChange(e.currentTarget.value);
 				}}
@@ -94,6 +98,7 @@
 				id="{id}-time-to"
 				step="1"
 				value={endTime || "12:30"}
+				disabled={disabled}
 				oninput={(e) => {
 					handleEndTimeChange(e.currentTarget.value);
 				}}
