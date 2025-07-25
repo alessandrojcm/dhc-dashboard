@@ -7,8 +7,7 @@ import { db, sql } from '../_shared/db.ts';
 import { corsHeaders } from '../_shared/cors.ts';
 import { getRolesFromSession } from '../_shared/getRolesFromSession.ts';
 import { createInvitation } from './invitations.ts';
-import { createPaymentSession as createPaymentSessionDb, updateUserProfileWithCustomerId } from './subscriptions.ts';
-import { QueryExecutorProvider } from 'kysely';
+import { updateUserProfileWithCustomerId } from './subscriptions.ts';
 
 // Initialize Sentry
 Sentry.init({
@@ -19,7 +18,7 @@ Sentry.init({
 
 // Initialize Stripe client
 const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') || '', {
-	apiVersion: '2025-04-30.basil',
+	apiVersion: '2025-06-30.basil',
 	maxNetworkRetries: 3,
 	timeout: 30 * 1000,
 	httpClient: Stripe.createFetchHttpClient()
@@ -48,11 +47,6 @@ interface InviteResult {
 	success: boolean;
 	error?: string;
 	invitationId?: string;
-	paymentSessionId?: string;
-}
-
-interface PaymentSessionResult {
-	sessionId: string;
 }
 
 // Interface for price IDs
@@ -186,32 +180,6 @@ async function updatePriceCache(prices: PriceIds): Promise<void> {
 	});
 }
 
-// Helper function to create a payment session (without subscriptions or payment intents)
-async function createLocalPaymentSession(
-	userId: string,
-	_customerId: string, // Not used but kept for compatibility
-	executor: QueryExecutorProvider
-): Promise<PaymentSessionResult> {
-	try {
-		console.log(`Creating payment session for user ${userId}`);
-		
-		// Store the payment session using Kysely with minimal data
-		const sessionId = await createPaymentSessionDb(
-			userId,
-			executor
-		);
-		console.log(`Created payment session for user ${userId}`);
-		
-		return {
-			sessionId
-		};
-	} catch (error) {
-		Sentry.captureException(error);
-		const errorMessage = error instanceof Error ? error.message : String(error);
-		throw new Error(`Error creating payment session: ${errorMessage}`);
-	}
-}
-
 /**
  * Process invitations in the background
  */
@@ -324,9 +292,6 @@ async function processInvitations(
 					// Update user profile with customer ID using Kysely
 					await updateUserProfileWithCustomerId(authData.user.id, customer.id, trx);
 					console.log(`Updated user profile for ${inviteData.email}`);
-					// Create payment session (without subscriptions)
-					const paymentSession = await createLocalPaymentSession(authData.user.id, customer.id, trx);
-					const paymentSessionId = paymentSession.sessionId;
 
 					if (!isInviteData(invite)) {
 						await trx
@@ -341,12 +306,11 @@ async function processInvitations(
 					results.push({
 						email: inviteData.email,
 						success: true,
-						invitationId,
-						paymentSessionId
+						invitationId
 					});
-				console.log(`Successfully processed invitation for ${inviteData.email}`);
-			}); // <-- close transaction
-		} catch (error) {
+					console.log(`Successfully processed invitation for ${inviteData.email}`);
+				}); // <-- close transaction
+			} catch (error) {
 				console.error(`Failed to process invitation for ${inviteData.email}:`, error);
 				Sentry.captureException(error);
 				const errorMessage = error instanceof Error ? error.message : String(error);
