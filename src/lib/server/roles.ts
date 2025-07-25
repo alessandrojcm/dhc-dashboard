@@ -15,3 +15,5 @@ export function getRolesFromSession(session: Session) {
 export const allowedToggleRoles = new Set(['president', 'admin', 'committee_coordinator']);
 
 export const SETTINGS_ROLES = new Set(['president', 'committee_coordinator', 'admin']);
+
+export const WORKSHOP_ROLES = new Set(['workshop_coordinator', 'president', 'admin']);

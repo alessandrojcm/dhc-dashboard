@@ -18,10 +18,10 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="feat: css fixes">
+    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="feat: added workshop update feature">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/beginners-workshop/workshop-analytics.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/beginners-workshop/workshop-analytics.svelte" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/members/member-analytics.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/members/member-analytics.svelte" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/supabase/functions/bulk_invite_with_subscription/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/bulk_invite_with_subscription/index.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/supabase/functions/bulk_invite_with_subscription/subscriptions.ts" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/bulk_invite_with_subscription/subscriptions.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -34,10 +34,17 @@
       <option value="repository" />
     </option>
   </component>
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="package.json" />
+      </list>
+    </option>
+  </component>
   <component name="Git.Settings">
     <option name="RECENT_BRANCH_BY_REPOSITORY">
       <map>
-        <entry key="$PROJECT_DIR$" value="develop" />
+        <entry key="$PROJECT_DIR$" value="feature/ale-63-beginners-workshop" />
       </map>
     </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -51,12 +58,16 @@
               <option name="branches">
                 <list>
                   <RecentBranch>
-                    <option name="branchName" value="fix/chart-reactivity" />
-                    <option name="lastUsedInstant" value="1747995819" />
+                    <option name="branchName" value="feat/workshops-planing" />
+                    <option name="lastUsedInstant" value="1752226725" />
                   </RecentBranch>
                   <RecentBranch>
                     <option name="branchName" value="develop" />
-                    <option name="lastUsedInstant" value="1747736376" />
+                    <option name="lastUsedInstant" value="1752226443" />
+                  </RecentBranch>
+                  <RecentBranch>
+                    <option name="branchName" value="fix/chart-reactivity" />
+                    <option name="lastUsedInstant" value="1747995819" />
                   </RecentBranch>
                   <RecentBranch>
                     <option name="branchName" value="main" />
@@ -75,6 +86,9 @@
       </RecentBranches>
     </option>
   </component>
+  <component name="HighlightingSettingsPerFile">
+    <setting file="file://$PROJECT_DIR$/node_modules/.pnpm/@stripe+stripe-js@7.4.0/node_modules/@stripe/stripe-js/dist/stripe-js/elements/express-checkout.d.ts" root0="SKIP_INSPECTION" />
+  </component>
   <component name="ProjectColorInfo">{
   &quot;associatedIndex&quot;: 5
 }</component>
@@ -90,6 +104,14 @@
     "Node.js.script.js.executor": "Run",
     "Node.js.seedMembers.js.executor": "Debug",
     "Node.js.seedWaitlist.js.executor": "Run",
+    "Playwright.Workshop API.executor": "Run",
+    "Playwright.Workshop API.should create workshop as admin.executor": "Run",
+    "Playwright.Workshop Interest System.executor": "Run",
+    "Playwright.Workshop Interest System.should display planned workshops in calendar view.executor": "Debug",
+    "Playwright.Workshop Management.executor": "Run",
+    "Playwright.Workshop UI.executor": "Run",
+    "Playwright.Workshop UI.should display and validate workshop creation form.executor": "Debug",
+    "Playwright.Workshop UI.should navigate to create workshop form.executor": "Run",
     "Playwright.underage user (16-17) should be able to submit with guardian information.executor": "Run",
     "Playwright.underage user (16-17) should be required to fill guardian fields.executor": "Run",
     "Playwright.underage-guardian-waitlist.spec.ts.executor": "Run",
@@ -97,7 +119,7 @@
     "RunOnceActivity.git.unshallow": "true",
     "com.codeium.enabled": "true",
     "deno.use.library": "true",
-    "git-widget-placeholder": "fix/chart-reactivity",
+    "git-widget-placeholder": "develop",
     "junie.onboarding.icon.badge.shown": "true",
     "last_opened_file_path": "/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]",
     "node.js.detected.package.eslint": "true",
@@ -119,6 +141,15 @@
     ]
   }
 }]]></component>
+  <component name="ReactDesignerToolWindowState">
+    <option name="myId2Visible">
+      <map>
+        <entry key="com.intellij.reactbuddy.reactComponents" value="false" />
+        <entry key="com.intellij.reactbuddy.reactInspector" value="false" />
+        <entry key="com.intellij.reactbuddy.storybook" value="false" />
+      </map>
+    </option>
+  </component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
       <recent name="$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]" />
@@ -133,25 +164,55 @@
     <configuration name="Edge Functions" type="ChromiumRemoteDebugType" factoryName="Chromium Remote" port="8083">
       <method v="2" />
     </configuration>
-    <configuration name="underage user (16-17) should be required to fill guardian fields" type="JavaScriptTestRunnerPlaywright" temporary="true" nameIsGenerated="true">
+    <configuration name="Workshop API.should create workshop as admin" type="JavaScriptTestRunnerPlaywright" temporary="true" nameIsGenerated="true">
       <node-interpreter value="project" />
       <playwright-package value="$PROJECT_DIR$/node_modules/@playwright/test" />
       <working-dir value="$PROJECT_DIR$" />
       <envs />
       <scope-kind value="TEST" />
-      <test-file value="$PROJECT_DIR$/e2e/underage-guardian-waitlist.spec.ts" />
+      <test-file value="$PROJECT_DIR$/e2e/api/workshops.spec.ts" />
       <test-names>
-        <test-name value="underage user (16-17) should be required to fill guardian fields" />
+        <test-name value="Workshop API" />
+        <test-name value="should create workshop as admin" />
       </test-names>
       <method v="2" />
     </configuration>
-    <configuration name="script.js" type="NodeJSConfigurationType" temporary="true" nameIsGenerated="true" path-to-js-file="$PROJECT_DIR$/script.js" working-dir="$PROJECT_DIR$">
+    <configuration name="Workshop Interest System" type="JavaScriptTestRunnerPlaywright" temporary="true" nameIsGenerated="true">
+      <node-interpreter value="project" />
+      <playwright-package value="$PROJECT_DIR$/node_modules/@playwright/test" />
+      <working-dir value="$PROJECT_DIR$" />
+      <envs />
+      <scope-kind value="SUITE" />
+      <test-file value="$PROJECT_DIR$/e2e/workshops-interest.spec.ts" />
+      <test-names>
+        <test-name value="Workshop Interest System" />
+      </test-names>
       <method v="2" />
     </configuration>
-    <configuration name="seedMembers.js" type="NodeJSConfigurationType" temporary="true" nameIsGenerated="true" path-to-js-file="$PROJECT_DIR$/scripts/seedMembers.js" working-dir="$PROJECT_DIR$/scripts">
+    <configuration name="Workshop Interest System.should display planned workshops in calendar view" type="JavaScriptTestRunnerPlaywright" temporary="true" nameIsGenerated="true">
+      <node-interpreter value="project" />
+      <playwright-package value="$PROJECT_DIR$/node_modules/@playwright/test" />
+      <working-dir value="$PROJECT_DIR$" />
+      <envs />
+      <scope-kind value="TEST" />
+      <test-file value="$PROJECT_DIR$/e2e/workshops-interest.spec.ts" />
+      <test-names>
+        <test-name value="Workshop Interest System" />
+        <test-name value="should display planned workshops in calendar view" />
+      </test-names>
       <method v="2" />
     </configuration>
-    <configuration name="seedWaitlist.js" type="NodeJSConfigurationType" temporary="true" nameIsGenerated="true" path-to-js-file="seedWaitlist.js" working-dir="$PROJECT_DIR$/scripts">
+    <configuration name="Workshop UI.should display and validate workshop creation form" type="JavaScriptTestRunnerPlaywright" temporary="true" nameIsGenerated="true">
+      <node-interpreter value="project" />
+      <playwright-package value="$PROJECT_DIR$/node_modules/@playwright/test" />
+      <working-dir value="$PROJECT_DIR$" />
+      <envs />
+      <scope-kind value="TEST" />
+      <test-file value="$PROJECT_DIR$/e2e/workshops-ui.spec.ts" />
+      <test-names>
+        <test-name value="Workshop UI" />
+        <test-name value="should display and validate workshop creation form" />
+      </test-names>
       <method v="2" />
     </configuration>
     <configuration name="dev" type="js.build_tools.npm" temporary="true" nameIsGenerated="true">
@@ -166,26 +227,26 @@
     </configuration>
     <list>
       <item itemvalue="Attach to Node.js/Chrome.Edge Functions" />
-      <item itemvalue="Node.js.script.js" />
-      <item itemvalue="Node.js.seedMembers.js" />
-      <item itemvalue="Node.js.seedWaitlist.js" />
       <item itemvalue="npm.dev" />
-      <item itemvalue="Playwright.underage user (16-17) should be required to fill guardian fields" />
+      <item itemvalue="Playwright.Workshop API.should create workshop as admin" />
+      <item itemvalue="Playwright.Workshop Interest System" />
+      <item itemvalue="Playwright.Workshop Interest System.should display planned workshops in calendar view" />
+      <item itemvalue="Playwright.Workshop UI.should display and validate workshop creation form" />
     </list>
     <recent_temporary>
       <list>
         <item itemvalue="npm.dev" />
-        <item itemvalue="Node.js.seedWaitlist.js" />
-        <item itemvalue="Node.js.seedMembers.js" />
-        <item itemvalue="Node.js.script.js" />
-        <item itemvalue="Playwright.underage user (16-17) should be required to fill guardian fields" />
+        <item itemvalue="Playwright.Workshop Interest System.should display planned workshops in calendar view" />
+        <item itemvalue="Playwright.Workshop API.should create workshop as admin" />
+        <item itemvalue="Playwright.Workshop Interest System" />
+        <item itemvalue="Playwright.Workshop UI.should display and validate workshop creation form" />
       </list>
     </recent_temporary>
   </component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
-        <option value="bundled-js-predefined-d6986cc7102b-6a121458b545-JavaScript-WS-251.25410.117" />
+        <option value="bundled-js-predefined-d6986cc7102b-09060db00ec0-JavaScript-WS-251.26927.40" />
       </set>
     </attachedChunks>
   </component>
@@ -220,6 +281,13 @@
       <workItem from="1747671383030" duration="5179000" />
       <workItem from="1747742236222" duration="598000" />
       <workItem from="1747989697082" duration="1834000" />
+      <workItem from="1752311400094" duration="13532000" />
+      <workItem from="1752486460407" duration="23082000" />
+      <workItem from="1752565012747" duration="20625000" />
+      <workItem from="1752648784139" duration="619000" />
+      <workItem from="1752824185730" duration="40120000" />
+      <workItem from="1753384777244" duration="7204000" />
+      <workItem from="1753450120908" duration="9415000" />
     </task>
     <task id="LOCAL-00001" summary="Add guardian support for underage waitlist entries&#10;&#10;Introduce `waitlist_guardians` table and transactional logic for adding guardian details when underage users join the waitlist. Updates include database migrations, UI adjustments for conditional input fields, validation logic, and tests to ensure age-based gating.">
       <option name="closed" value="true" />
@@ -429,13 +497,98 @@
       <option name="project" value="LOCAL" />
       <updated>1747739217999</updated>
     </task>
-    <option name="localTasksCounter" value="27" />
+    <task id="LOCAL-00027" summary="feat: club activities implementation plan">
+      <option name="closed" value="true" />
+      <created>1752230102557</created>
+      <option name="number" value="00027" />
+      <option name="presentableId" value="LOCAL-00027" />
+      <option name="project" value="LOCAL" />
+      <updated>1752230102557</updated>
+    </task>
+    <task id="LOCAL-00028" summary="feat: member workshop calendar">
+      <option name="closed" value="true" />
+      <created>1752524352151</created>
+      <option name="number" value="00028" />
+      <option name="presentableId" value="LOCAL-00028" />
+      <option name="project" value="LOCAL" />
+      <updated>1752524352151</updated>
+    </task>
+    <task id="LOCAL-00029" summary="feat: migrate workshop calendar to native Popover API with TypeScript improvements&#10;&#10;- Replace Schedule-X calendar with vkurko/calendar (@event-calendar/core) for better Svelte 5 compatibility&#10;- Implement native Popover API instead of custom positioning logic for better accessibility and performance&#10;- Add comprehensive TypeScript interfaces (CalendarEvent, EventClickInfo, EventContentInfo) removing all 'any' types&#10;- Fix text visibility issues in popover with proper CSS color overrides&#10;- Enhance event content rendering with interest count and user interest status&#10;- Improve null safety with proper checks and fallback values&#10;- Maintain all existing functionality while improving code maintainability&#10;&#10;🤖 Generated with [opencode](https://opencode.ai)&#10;&#10;Co-Authored-By: opencode &lt;noreply@opencode.ai&gt;">
+      <option name="closed" value="true" />
+      <created>1752565791261</created>
+      <option name="number" value="00029" />
+      <option name="presentableId" value="LOCAL-00029" />
+      <option name="project" value="LOCAL" />
+      <updated>1752565791261</updated>
+    </task>
+    <task id="LOCAL-00030" summary="feat(workshops): update styles to align with shadcn design system&#10;&#10;- Adjust calendar event colors and theming using shadcn variables&#10;- Update workshop modal and popover styles for consistent theming&#10;- Refactor CSS for better readability and maintainability&#10;- Enhance &quot;Interested&quot; badge with updated styles and accessibility">
+      <option name="closed" value="true" />
+      <created>1752566372063</created>
+      <option name="number" value="00030" />
+      <option name="presentableId" value="LOCAL-00030" />
+      <option name="project" value="LOCAL" />
+      <updated>1752566372063</updated>
+    </task>
+    <task id="LOCAL-00031" summary="feat(workshops): add interest tracking and improve &quot;My Workshops&quot; page&#10;&#10;- Introduce interest tracking for workshops with interest counts and user-specific status&#10;- Add interest toggle button in workshop list with loading state and accessibility improvements&#10;- Replace calendar view with workshop list for better usability&#10;- Refactor &quot;My Workshops&quot; page to use tabs for better organization">
+      <option name="closed" value="true" />
+      <created>1752567148823</created>
+      <option name="number" value="00031" />
+      <option name="presentableId" value="LOCAL-00031" />
+      <option name="project" value="LOCAL" />
+      <updated>1752567148823</updated>
+    </task>
+    <task id="LOCAL-00032" summary="feat: implemented workshops payment">
+      <option name="closed" value="true" />
+      <created>1752865216274</created>
+      <option name="number" value="00032" />
+      <option name="presentableId" value="LOCAL-00032" />
+      <option name="project" value="LOCAL" />
+      <updated>1752865216274</updated>
+    </task>
+    <task id="LOCAL-00033" summary="feat: implemented workshop attendee management">
+      <option name="closed" value="true" />
+      <created>1753181749854</created>
+      <option name="number" value="00033" />
+      <option name="presentableId" value="LOCAL-00033" />
+      <option name="project" value="LOCAL" />
+      <updated>1753181749854</updated>
+    </task>
+    <task id="LOCAL-00034" summary="feat(workshops): add E2E test for full workshop lifecycle with admin and attendees&#10;&#10;- Introduce E2E test covering workshop creation, attendee registration, cancellations, refunds, and attendance marking&#10;- Enhance `workshop-event-modal` with delete/cancel popovers and loading states&#10;- Update `supabase` package to v2.31.8 for API consistency and feature support&#10;- Refactor modal styles and button actions for improved UX and accessibility">
+      <option name="closed" value="true" />
+      <created>1753301939529</created>
+      <option name="number" value="00034" />
+      <option name="presentableId" value="LOCAL-00034" />
+      <option name="project" value="LOCAL" />
+      <updated>1753301939530</updated>
+    </task>
+    <task id="LOCAL-00035" summary="feat(workshops): add cancellation and refund functionality&#10;&#10;- Introduce workshop cancellation dialog with refund eligibility checks&#10;- Implement refund eligibility utility function with detailed checks&#10;- Enhance workshop list with cancellation buttons and refunded badge&#10;- Update calendar and API to include registration status and counts&#10;- Refactor user registration actions for better state handling and UX">
+      <option name="closed" value="true" />
+      <created>1753386850699</created>
+      <option name="number" value="00035" />
+      <option name="presentableId" value="LOCAL-00035" />
+      <option name="project" value="LOCAL" />
+      <updated>1753386850699</updated>
+    </task>
+    <task id="LOCAL-00036" summary="feat: added workshop update feature">
+      <option name="closed" value="true" />
+      <created>1753455114440</created>
+      <option name="number" value="00036" />
+      <option name="presentableId" value="LOCAL-00036" />
+      <option name="project" value="LOCAL" />
+      <updated>1753455114440</updated>
+    </task>
+    <option name="localTasksCounter" value="37" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
     <option name="version" value="3" />
   </component>
   <component name="Vcs.Log.Tabs.Properties">
+    <option name="OPEN_GENERIC_TABS">
+      <map>
+        <entry key="edc934b6-6809-4886-961c-0dde361ad715" value="TOOL_WINDOW" />
+      </map>
+    </option>
     <option name="TAB_STATES">
       <map>
         <entry key="MAIN">
@@ -455,20 +608,16 @@
             </State>
           </value>
         </entry>
+        <entry key="edc934b6-6809-4886-961c-0dde361ad715">
+          <value>
+            <State />
+          </value>
+        </entry>
       </map>
     </option>
   </component>
   <component name="VcsManagerConfiguration">
     <option name="CHECK_CODE_SMELLS_BEFORE_PROJECT_COMMIT" value="false" />
-    <MESSAGE value="Add guardian support for underage waitlist entries&#10;&#10;Introduce `waitlist_guardians` table and transactional logic for adding guardian details when underage users join the waitlist. Updates include database migrations, UI adjustments for conditional input fields, validation logic, and tests to ensure age-based gating." />
-    <MESSAGE value="Update `waitlist_guardians` to reference `profile_id` instead of `waitlist_id`&#10;&#10;Replaced `waitlist_id` with `profile_id` across database schema, relationships, and scripts to align with updated data model. Adjusted related seeding logic and server routes to ensure consistency and maintain functionality." />
-    <MESSAGE value="`feat: add guardian information to views, RLS policy, and UI components`" />
-    <MESSAGE value="`feat: add medical_conditions to member management view and members-table`" />
-    <MESSAGE value="`feat(stripe): update to API version 2025-04-30, dependencies and improve transaction handling`" />
-    <MESSAGE value="chore: updated gitignore" />
-    <MESSAGE value="feat: implemented invitations list of members" />
-    <MESSAGE value="chore: e2e test for invitations" />
-    <MESSAGE value="`chore: add data source meta and schema files for IDE configuration`" />
     <MESSAGE value="feat: add bulk invite functionality and UI enhancements for waitlist management&#10;&#10;- Added `complete_member_registration` SQL function for handling member registration.&#10;- Enhanced waitlist table with bulk invite feature using Supabase functions.&#10;- Introduced `SendIcon` button for inviting members with tooltips.&#10;- Refactored background processing logic for invitations.&#10;- Improved state management, query handling, and updates for waitlist invitations." />
     <MESSAGE value="chore: add database schema and data source configuration files" />
     <MESSAGE value="feat: add invite management and UI enhancements&#10;&#10;- Replaced `complete_member_registration` SQL function with API-based invite workflows.&#10;- Added resend invitation API and related UI updates for waitlist.&#10;- Improved waitlist filtering (`status`).&#10;- Updated Stripe API version.&#10;- Enhanced IDE configuration and standardized code formatting." />
@@ -484,7 +633,17 @@
     <MESSAGE value="fix: correct transactional id" />
     <MESSAGE value="feat: integrated posthog" />
     <MESSAGE value="feat: css fixes" />
-    <option name="LAST_COMMIT_MESSAGE" value="feat: css fixes" />
+    <MESSAGE value="feat: club activities implementation plan" />
+    <MESSAGE value="feat: member workshop calendar" />
+    <MESSAGE value="feat: migrate workshop calendar to native Popover API with TypeScript improvements&#10;&#10;- Replace Schedule-X calendar with vkurko/calendar (@event-calendar/core) for better Svelte 5 compatibility&#10;- Implement native Popover API instead of custom positioning logic for better accessibility and performance&#10;- Add comprehensive TypeScript interfaces (CalendarEvent, EventClickInfo, EventContentInfo) removing all 'any' types&#10;- Fix text visibility issues in popover with proper CSS color overrides&#10;- Enhance event content rendering with interest count and user interest status&#10;- Improve null safety with proper checks and fallback values&#10;- Maintain all existing functionality while improving code maintainability&#10;&#10; Generated with [opencode](https://opencode.ai)&#10;&#10;Co-Authored-By: opencode &lt;noreply@opencode.ai&gt;" />
+    <MESSAGE value="feat(workshops): update styles to align with shadcn design system&#10;&#10;- Adjust calendar event colors and theming using shadcn variables&#10;- Update workshop modal and popover styles for consistent theming&#10;- Refactor CSS for better readability and maintainability&#10;- Enhance &quot;Interested&quot; badge with updated styles and accessibility" />
+    <MESSAGE value="feat(workshops): add interest tracking and improve &quot;My Workshops&quot; page&#10;&#10;- Introduce interest tracking for workshops with interest counts and user-specific status&#10;- Add interest toggle button in workshop list with loading state and accessibility improvements&#10;- Replace calendar view with workshop list for better usability&#10;- Refactor &quot;My Workshops&quot; page to use tabs for better organization" />
+    <MESSAGE value="feat: implemented workshops payment" />
+    <MESSAGE value="feat: implemented workshop attendee management" />
+    <MESSAGE value="feat(workshops): add E2E test for full workshop lifecycle with admin and attendees&#10;&#10;- Introduce E2E test covering workshop creation, attendee registration, cancellations, refunds, and attendance marking&#10;- Enhance `workshop-event-modal` with delete/cancel popovers and loading states&#10;- Update `supabase` package to v2.31.8 for API consistency and feature support&#10;- Refactor modal styles and button actions for improved UX and accessibility" />
+    <MESSAGE value="feat(workshops): add cancellation and refund functionality&#10;&#10;- Introduce workshop cancellation dialog with refund eligibility checks&#10;- Implement refund eligibility utility function with detailed checks&#10;- Enhance workshop list with cancellation buttons and refunded badge&#10;- Update calendar and API to include registration status and counts&#10;- Refactor user registration actions for better state handling and UX" />
+    <MESSAGE value="feat: added workshop update feature" />
+    <option name="LAST_COMMIT_MESSAGE" value="feat: added workshop update feature" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -493,6 +652,31 @@
           <url>file://$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]/+page.server.ts</url>
           <line>65</line>
           <option name="timeStamp" value="7" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="javascript">
+          <url>file://$PROJECT_DIR$/src/routes/auth/+page.server.ts</url>
+          <line>39</line>
+          <option name="timeStamp" value="10" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="javascript">
+          <url>file://$PROJECT_DIR$/src/routes/auth/+page.server.ts</url>
+          <line>38</line>
+          <option name="timeStamp" value="11" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="javascript">
+          <url>file://$PROJECT_DIR$/src/routes/auth/+page.server.ts</url>
+          <line>13</line>
+          <option name="timeStamp" value="12" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="javascript">
+          <url>file://$PROJECT_DIR$/src/routes/auth/+page.server.ts</url>
+          <line>51</line>
+          <option name="timeStamp" value="13" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="javascript">
+          <url>file://$PROJECT_DIR$/src/routes/api/workshops/[id]/register/+server.ts</url>
+          <line>268</line>
+          <option name="timeStamp" value="19" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>
