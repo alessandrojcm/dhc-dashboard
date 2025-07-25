@@ -2,160 +2,288 @@
 // https://deno.land/manual/getting_started/setup_your_environment
 // This enables autocomplete, go to definition, etc.
 
-import { Stripe } from "stripe";
-import dayjs from "npm:dayjs";
-import { db } from "../_shared/db.ts";
-import { corsHeaders } from "../_shared/cors.ts";
+import { Stripe } from 'stripe';
+import dayjs from 'npm:dayjs';
+import { db } from '../_shared/db.ts';
+import { corsHeaders } from '../_shared/cors.ts';
 
-const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") ?? "", {
-  apiVersion: "2025-04-30.basil",
-  maxNetworkRetries: 3,
-  timeout: 30 * 1000,
-  httpClient: Stripe.createFetchHttpClient(),
+const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') ?? '', {
+	apiVersion: '2025-06-30.basil',
+	maxNetworkRetries: 3,
+	timeout: 30 * 1000,
+	httpClient: Stripe.createFetchHttpClient()
 });
 
 const allowedEvents: Stripe.Event.Type[] = [
-  "checkout.session.completed",
-  "customer.subscription.created",
-  "customer.subscription.updated",
-  "customer.subscription.deleted",
-  "customer.subscription.paused",
-  "customer.subscription.resumed",
-  "customer.subscription.pending_update_applied",
-  "customer.subscription.pending_update_expired",
-  "customer.subscription.trial_will_end",
-  "invoice.paid",
-  "invoice.payment_failed",
-  "invoice.payment_action_required",
-  "invoice.upcoming",
-  "invoice.marked_uncollectible",
-  "invoice.payment_succeeded",
-  "payment_intent.succeeded",
-  "payment_intent.payment_failed",
-  "payment_intent.canceled",
+	'charge.succeeded',
+	'charge.expired',
+	'charge.refunded',
+	'customer.subscription.created',
+	'customer.subscription.updated',
+	'customer.subscription.deleted',
+	'customer.subscription.paused',
+	'customer.subscription.resumed',
+	'customer.subscription.pending_update_applied',
+	'customer.subscription.pending_update_expired',
+	'customer.subscription.trial_will_end',
+	'invoice.paid',
+	'invoice.payment_failed',
+	'invoice.payment_action_required',
+	'invoice.upcoming',
+	'invoice.marked_uncollectible',
+	'invoice.payment_succeeded',
+	'payment_intent.succeeded',
+	'payment_intent.payment_failed',
+	'payment_intent.canceled'
 ];
 
 async function setLastPayment(
-  customerId: string,
-  paidDate: number,
-  subscriptionEnd: number | null,
+	customerId: string,
+	paidDate: number,
+	subscriptionEnd: number | null
 ) {
-  await db.transaction().execute(async (trx) => {
-    const memberProfileId = await trx.selectFrom("user_profiles")
-      .select("supabase_user_id")
-      .where("user_profiles.customer_id", "=", customerId)
-      .execute().then((r) => r[0].supabase_user_id as string);
-    return trx.updateTable("member_profiles")
-      .set({
-        last_payment_date: dayjs.unix(paidDate).toDate(),
-        membership_end_date: subscriptionEnd
-          ? dayjs.unix(subscriptionEnd).toDate()
-          : null,
-      }).where("member_profiles.id", "=", memberProfileId)
-      .execute();
-  });
+	await db.transaction().execute(async (trx) => {
+		const memberProfileId = await trx
+			.selectFrom('user_profiles')
+			.select('supabase_user_id')
+			.where('user_profiles.customer_id', '=', customerId)
+			.execute()
+			.then((r) => r[0].supabase_user_id as string);
+		return trx
+			.updateTable('member_profiles')
+			.set({
+				last_payment_date: dayjs.unix(paidDate).toDate(),
+				membership_end_date: subscriptionEnd ? dayjs.unix(subscriptionEnd).toDate() : null
+			})
+			.where('member_profiles.id', '=', memberProfileId)
+			.execute();
+	});
 }
 
 async function setUserInactive(customerId: string) {
-  await db
-    .updateTable("user_profiles")
-    .set({ is_active: false })
-    .where("customer_id", "=", customerId)
-    .execute()
-    .then(console.log);
+	await db
+		.updateTable('user_profiles')
+		.set({ is_active: false })
+		.where('customer_id', '=', customerId)
+		.execute()
+		.then(console.log);
+}
+
+async function handleWorkshopCheckoutCompleted(session: Stripe.Charge) {
+	try {
+		if (session.metadata?.workshop_id && session.metadata?.registration_data) {
+			const registrationData = JSON.parse(session.metadata.registration_data);
+
+			// Create the registration record now that payment is complete
+			await db
+				.selectFrom(
+					db
+						.fn('register_for_workshop_checkout', [
+							session.metadata.workshop_id,
+							session.amount || 0,
+							session.id,
+							registrationData.memberUserId || null,
+							registrationData.externalUserData
+								? JSON.stringify(registrationData.externalUserData)
+								: null
+						])
+						.as('registration_id')
+				)
+				.select('registration_id')
+				.executeTakeFirst();
+
+			// Update status to confirmed since payment is complete
+			await db
+				.updateTable('club_activity_registrations')
+				.set({
+					status: 'confirmed',
+					confirmed_at: new Date()
+				})
+				.where('stripe_checkout_session_id', '=', session.id)
+				.execute();
+
+			console.log(`Workshop registration confirmed for checkout session: ${session.id}`);
+		}
+	} catch (error) {
+		console.error('Error handling workshop checkout completion:', error);
+		throw error;
+	}
+}
+
+async function handleWorkshopCheckoutExpired(session: Stripe.Charge) {
+	try {
+		if (session.metadata?.workshop_id) {
+			// Mark any pending registrations as cancelled
+			await db
+				.updateTable('club_activity_registrations')
+				.set({
+					status: 'cancelled',
+					cancelled_at: new Date()
+				})
+				.where('stripe_checkout_session_id', '=', session.id)
+				.where('status', '=', 'pending')
+				.execute();
+
+			console.log(`Workshop registration cancelled for expired checkout session: ${session.id}`);
+		}
+	} catch (error) {
+		console.error('Error handling workshop checkout expiration:', error);
+		throw error;
+	}
+}
+
+async function handleChargeRefunded(charge: Stripe.Charge) {
+	try {
+		// Get all refunds for this charge
+		const refunds = await stripe.refunds.list({
+			charge: charge.id,
+			limit: 100
+		});
+
+		for (const refund of refunds.data) {
+			// Update refund status based on Stripe refund status
+			let status: 'completed' | 'failed' | 'processing';
+			let completed_at: Date | null = null;
+
+			switch (refund.status) {
+				case 'succeeded':
+					status = 'completed';
+					completed_at = new Date();
+					break;
+				case 'failed':
+					status = 'failed';
+					break;
+				case 'pending':
+				case 'requires_action':
+					status = 'processing';
+					break;
+				default:
+					status = 'processing';
+			}
+
+			// Update refund status in database
+			const updateData: any = { status };
+			if (completed_at) {
+				updateData.completed_at = completed_at;
+			}
+
+			await db
+				.updateTable('club_activity_refunds')
+				.set(updateData)
+				.where('stripe_refund_id', '=', refund.id)
+				.execute();
+
+			console.log(`Refund status updated: ${refund.id} -> ${status} for charge: ${charge.id}`);
+		}
+	} catch (error) {
+		console.error('Error handling charge refund:', error);
+		throw error;
+	}
 }
 
 async function syncStripeDataToKV(customerId: string) {
-  try {
-    // Fetch latest subscription data from Stripe
-    const subscriptions = await stripe.subscriptions.list({
-      customer: customerId,
-      limit: 2, // User can have at most 2 subscriptions
-      status: "all",
-      expand: ["data.latest_invoice"],
-    });
+	try {
+		// Fetch latest subscription data from Stripe
+		const subscriptions = await stripe.subscriptions.list({
+			customer: customerId,
+			limit: 2, // User can have at most 2 subscriptions
+			status: 'all',
+			expand: ['data.latest_invoice']
+		});
 
-    // Find the standard membership subscription
-    const standardMembershipSub = subscriptions.data.find((sub) =>
-      sub.items.data.some((item) =>
-        item.price.lookup_key === "standard_membership_fee"
-      )
-    );
+		// Find the standard membership subscription
+		const standardMembershipSub = subscriptions.data.find((sub) =>
+			sub.items.data.some((item) => item.price.lookup_key === 'standard_membership_fee')
+		);
 
-    // If no standard membership or it's not active, mark user as inactive
-    if (
-      !standardMembershipSub ||
-      ["canceled", "incomplete_expired", "paused", "unpaid"].includes(
-        standardMembershipSub.status,
-      )
-    ) {
-      return setUserInactive(customerId);
-    }
+		// If no standard membership or it's not active, mark user as inactive
+		if (
+			!standardMembershipSub ||
+			['canceled', 'incomplete_expired', 'paused', 'unpaid'].includes(standardMembershipSub.status)
+		) {
+			return setUserInactive(customerId);
+		}
 
-    // Update last payment info if subscription is active
-    if (standardMembershipSub.status === "active") {
-      return setLastPayment(
-        customerId,
-        standardMembershipSub.start_date,
-        standardMembershipSub.ended_at ?? null,
-      );
-    }
-    return Promise.resolve();
-  } catch (error) {
-    console.error("Error syncing Stripe data:", error);
-    throw error;
-  }
+		// Update last payment info if subscription is active
+		if (standardMembershipSub.status === 'active') {
+			return setLastPayment(
+				customerId,
+				standardMembershipSub.start_date,
+				standardMembershipSub.ended_at ?? null
+			);
+		}
+		return Promise.resolve();
+	} catch (error) {
+		console.error('Error syncing Stripe data:', error);
+		throw error;
+	}
 }
 
-addEventListener("beforeUnload", (ev) => {
-  console.log("task terminated because", ev);
+addEventListener('beforeUnload', (ev) => {
+	console.log('task terminated because', ev);
 });
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
-  }
+	if (req.method === 'OPTIONS') {
+		return new Response('ok', { headers: corsHeaders });
+	}
 
-  try {
-    const signature = req.headers.get("stripe-signature");
-    if (!signature) {
-      throw new Error("No stripe signature found");
-    }
+	try {
+		const signature = req.headers.get('stripe-signature');
+		if (!signature) {
+			throw new Error('No stripe signature found');
+		}
 
-    const body = await req.text();
-    const event = await stripe.webhooks.constructEventAsync(
-      body,
-      signature,
-      Deno.env.get("STRIPE_WEBHOOK_SIGNING_SECRET") ?? "",
-    );
+		const body = await req.text();
+		const event = await stripe.webhooks.constructEventAsync(
+			body,
+			signature,
+			Deno.env.get('STRIPE_WEBHOOK_SIGNING_SECRET') ?? ''
+		);
 
-    // Check if event type is in allowed events
-    if (!allowedEvents.includes(event.type as Stripe.Event.Type)) {
-      console.log(`Ignoring unhandled event type: ${event.type}`);
-      return new Response(JSON.stringify({ received: true }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 200,
-      });
-    }
+		// Check if event type is in allowed events
+		if (!allowedEvents.includes(event.type as Stripe.Event.Type)) {
+			console.log(`Ignoring unhandled event type: ${event.type}`);
+			return new Response(JSON.stringify({ received: true }), {
+				headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+				status: 200
+			});
+		}
 
-    const { customer: customerId } = event?.data?.object as {
-      customer: string;
-    };
+		// Handle workshop registration checkout sessions
+		if (event.type === 'charge.succeeded') {
+			const session = event.data.object as Stripe.Charge;
+			if (session.metadata?.workshop_id) {
+				EdgeRuntime.waitUntil(handleWorkshopCheckoutCompleted(session));
+			}
+		} else if (event.type === 'charge.expired') {
+			const session = event.data.object as Stripe.Charge;
+			if (session.metadata?.workshop_id) {
+				EdgeRuntime.waitUntil(handleWorkshopCheckoutExpired(session));
+			}
+		} else if (event.type === 'charge.refunded') {
+			const charge = event.data.object as Stripe.Charge;
+			EdgeRuntime.waitUntil(handleChargeRefunded(charge));
+		}
 
-    // Sync stripe data for all relevant events
-    EdgeRuntime.waitUntil(syncStripeDataToKV(customerId));
+		// Handle subscription-related events
+		const eventObject = event?.data?.object as { customer?: string };
+		if (eventObject.customer) {
+			// Sync stripe data for subscription events
+			EdgeRuntime.waitUntil(syncStripeDataToKV(eventObject.customer));
+		}
 
-    return new Response(JSON.stringify({ success: true }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 200,
-    });
-  } catch (err) {
-    console.error("Error processing webhook:", err);
-    return new Response(JSON.stringify({ error: (err as Error)?.message }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-      status: 400,
-    });
-  }
+		return new Response(JSON.stringify({ success: true }), {
+			headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+			status: 200
+		});
+	} catch (err) {
+		console.error('Error processing webhook:', err);
+		return new Response(JSON.stringify({ error: (err as Error)?.message }), {
+			headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+			status: 400
+		});
+	}
 });
 
 /* To invoke locally:

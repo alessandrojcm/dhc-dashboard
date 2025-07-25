@@ -24,6 +24,16 @@ const data: NavData = {
 				'research_coordinator',
 				'coach'
 			])
+		},
+		{
+			title: 'Workshops',
+			url: 'workshops',
+			role: new Set(['admin', 'president', 'committee_coordinator'])
+		},
+		{
+			title: 'My Workshops',
+			url: 'my-workshops',
+			role: new Set(['member']) // All authenticated users have member role
 		}
 	]
 };

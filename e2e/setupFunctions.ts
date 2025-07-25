@@ -247,6 +247,13 @@ export async function createMember({
 		)
 		.throwOnError();
 
+	// Update user metadata to include roles in JWT token
+	await supabaseServiceClient.auth.admin.updateUserById(inviteLink.data.user.id, {
+		app_metadata: {
+			roles: Array.from(roles)
+		}
+	});
+
 	await supabaseServiceClient
 		.from('waitlist')
 		.update({
