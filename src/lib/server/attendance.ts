@@ -58,6 +58,15 @@ export async function updateAttendance(
 
 	return await executeWithRLS(kysely, { claims: session }, async (trx) => {
 		const results = [];
+		const workshop = await trx
+			.selectFrom('club_activities')
+			.select('id', 'start_date', 'end_date')
+			.where('start_date', '>=', new Date())
+			.where('id', '=', workshopId)
+			.executeTakeFirst();
+		if (!workshop) {
+			throw new Error('Cannot update attendance for a workshop that has not started yet');
+		}
 
 		for (const update of attendanceUpdates) {
 			const result = await trx

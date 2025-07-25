@@ -12,10 +12,10 @@ export const load: PageServerLoad = async ({ params, locals, platform }) => {
 
 	// Run all queries in parallel for better performance
 	const [workshop, attendeesData, refundsData] = await Promise.all([
-		// Verify the workshop exists
+		// Verify the workshop exists and get refund policy
 		kysely
 			.selectFrom('club_activities')
-			.select(['id', 'title', 'status'])
+			.select(['id', 'title', 'status', 'start_date', 'refund_days'])
 			.where('id', '=', workshopId)
 			.executeTakeFirst(),
 

@@ -10,7 +10,6 @@
 	let {
 		data
 	} = $props();
-	const queryClient = useQueryClient();
 	const supabase = data.supabase;
 	const userId = data!.user!.id;
 	// TODO: edit workshop
@@ -24,7 +23,7 @@
 					*,
 					interest_count:club_activity_interest_counts(interest_count),
 					user_interest:club_activity_interest(user_id),
-					user_registrations:club_activity_registrations(member_user_id)
+					user_registrations:club_activity_registrations(member_user_id, status)
 				`)
 				.neq('status', 'cancelled')
 				.abortSignal(signal);

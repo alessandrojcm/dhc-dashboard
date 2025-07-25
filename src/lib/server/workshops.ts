@@ -2,6 +2,7 @@ import { executeWithRLS, getKyselyClient } from './kysely';
 import type { Database } from '$database';
 import type { Session } from '@supabase/supabase-js';
 import { stripeClient } from '$lib/server/stripe';
+import type { Stripe } from 'stripe';
 
 export type ClubActivity = Database['public']['Tables']['club_activities']['Row'];
 export type ClubActivityInsert = Database['public']['Tables']['club_activities']['Insert'];
@@ -142,9 +143,8 @@ export async function cancelWorkshop(
 			.selectFrom('club_activity_registrations')
 			.select(['stripe_checkout_session_id', 'amount_paid'])
 			.where('club_activity_id', '=', id)
-			.where('stripe_checkout_session_id', 'is not', 'null')
+			.where('stripe_checkout_session_id', 'is not', null)
 			.execute();
-
 		await Promise.all(
 			registrations.map(async (registration) => {
 				const paymentIntent = await stripeClient.paymentIntents.retrieve(
@@ -153,11 +153,18 @@ export async function cancelWorkshop(
 				if (!paymentIntent) {
 					return Promise.resolve();
 				}
-				return stripeClient.refunds.create({
-					payment_intent: paymentIntent.id,
-					amount: registration.amount_paid,
-					reason: 'requested_by_customer'
-				});
+				return stripeClient.refunds
+					.create({
+						payment_intent: paymentIntent.id,
+						amount: registration.amount_paid,
+						reason: 'requested_by_customer'
+					})
+					.catch((err: Stripe.StripeRawError) => {
+						if (err.code === 'charge_already_refunded') {
+							return Promise.resolve();
+						}
+						throw err;
+					});
 			})
 		);
 
@@ -186,4 +193,56 @@ export async function cancelWorkshop(
 			.executeTakeFirstOrThrow();
 	});
 	return result;
+}
+
+export async function canEditWorkshopPricing(
+	workshopId: string,
+	platform: App.Platform
+): Promise<boolean> {
+	const kysely = getKyselyClient(platform.env.HYPERDRIVE);
+	
+	// Get workshop status
+	const workshop = await kysely
+		.selectFrom('club_activities')
+		.select(['status'])
+		.where('id', '=', workshopId)
+		.executeTakeFirst();
+
+	if (!workshop) {
+		return false;
+	}
+
+	// If workshop is in planned status, pricing can always be edited
+	if (workshop.status === 'planned') {
+		return true;
+	}
+
+	// For other statuses, check if there are any registrations
+	const registrationCount = await kysely
+		.selectFrom('club_activity_registrations')
+		.select(kysely.fn.count('id').as('count'))
+		.where('club_activity_id', '=', workshopId)
+		.executeTakeFirst();
+
+	return Number(registrationCount?.count || 0) === 0;
+}
+
+export async function canEditWorkshop(
+	workshopId: string,
+	platform: App.Platform
+): Promise<boolean> {
+	const kysely = getKyselyClient(platform.env.HYPERDRIVE);
+	
+	const workshop = await kysely
+		.selectFrom('club_activities')
+		.select(['status'])
+		.where('id', '=', workshopId)
+		.executeTakeFirst();
+
+	if (!workshop) {
+		return false;
+	}
+
+	// Only planned workshops can be edited
+	return workshop.status === 'planned';
 }
