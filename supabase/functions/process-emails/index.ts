@@ -5,10 +5,11 @@ import { corsHeaders } from '../_shared/cors.ts';
 import * as v from 'valibot';
 import { LoopsClient } from 'loops';
 
-const transactionalEnumTitles = ['inviteMember'] as const;
+const transactionalEnumTitles = ['inviteMember', 'workshopAnnouncement'] as const;
 
 export const transactionalIds: Record<string, string> = {
-	inviteMember: Deno.env.get('INVITE_MEMBER_TRANSACTIONAL_ID') ?? 'invite_member'
+	inviteMember: Deno.env.get('INVITE_MEMBER_TRANSACTIONAL_ID') ?? 'invite_member',
+	workshopAnnouncement: Deno.env.get('WORKSHOP_ANNOUNCEMENT_TRANSACTIONAL_ID') ?? 'workshop_announcement'
 } as const;
 
 const loops = new LoopsClient(Deno.env.get('LOOPS_API_KEY')!);

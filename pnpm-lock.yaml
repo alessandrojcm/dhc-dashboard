@@ -11,6 +11,9 @@ importers:
       '@dinero.js/currencies':
         specifier: 2.0.0-alpha.1
         version: 2.0.0-alpha.1
+      '@event-calendar/core':
+        specifier: ^4.5.0
+        version: 4.5.0
       '@internationalized/date':
         specifier: ^3.8.2
         version: 3.8.2
@@ -27,8 +30,8 @@ importers:
         specifier: https://pkg.pr.new/@tanstack/svelte-query@28f98f9560ff5878fd839807ead5324a7b9328c4
         version: https://pkg.pr.new/@tanstack/svelte-query@28f98f9560ff5878fd839807ead5324a7b9328c4(svelte@5.35.6)
       '@tanstack/svelte-query-devtools':
-        specifier: ^5.82.0
-        version: 5.82.0(@tanstack/svelte-query@https://pkg.pr.new/@tanstack/svelte-query@28f98f9560ff5878fd839807ead5324a7b9328c4(svelte@5.35.6))(svelte@5.35.6)
+        specifier: ^5.80.10
+        version: 5.83.0(@tanstack/svelte-query@https://pkg.pr.new/@tanstack/svelte-query@28f98f9560ff5878fd839807ead5324a7b9328c4(svelte@5.35.6))(svelte@5.35.6)
       '@tanstack/svelte-table':
         specifier: 9.0.0-alpha.10
         version: 9.0.0-alpha.10(svelte@5.35.6)
@@ -94,8 +97,8 @@ importers:
         specifier: ^5.2.6
         version: 5.2.6
       '@lucide/svelte':
-        specifier: ^0.525.0
-        version: 0.525.0(svelte@5.35.6)
+        specifier: ^0.515.0
+        version: 0.515.0(svelte@5.35.6)
       '@neoconfetti/svelte':
         specifier: ^2.2.2
         version: 2.2.2(svelte@5.35.6)
@@ -150,6 +153,9 @@ importers:
       '@types/eslint':
         specifier: ^9.6.1
         version: 9.6.1
+      '@types/event-calendar__core':
+        specifier: ^4.4.0
+        version: 4.4.0
       bits-ui:
         specifier: 2.8.10
         version: 2.8.10(@internationalized/date@3.8.2)(svelte@5.35.6)
@@ -191,7 +197,7 @@ importers:
         version: 2.0.0(kysely@0.28.2)(postgres@3.4.7)
       kysely-supabase:
         specifier: ^0.2.0
-        version: 0.2.0(@supabase/supabase-js@2.50.5)(kysely@0.28.2)(supabase@2.30.4)
+        version: 0.2.0(@supabase/supabase-js@2.50.5)(kysely@0.28.2)(supabase@2.31.8)
       layerchart:
         specifier: 2.0.0-next.6
         version: 2.0.0-next.6(svelte@5.35.6)
@@ -217,8 +223,8 @@ importers:
         specifier: ^18.3.0
         version: 18.3.0(@types/node@24.0.13)
       supabase:
-        specifier: ^2.30.4
-        version: 2.30.4
+        specifier: ^2.31.8
+        version: 2.31.8
       svelte:
         specifier: ^5.35.6
         version: 5.35.6
@@ -809,6 +815,9 @@ packages:
     resolution: {integrity: sha512-1+WqvgNMhmlAambTvT3KPtCl/Ibr68VldY2XY40SL1CE0ZXiakFR/cbTspaF5HsnpDMvcYYoJHfl4980NBjGag==}
     engines: {node: ^18.18.0 || ^20.9.0 || >=21.1.0}
 
+  '@event-calendar/core@4.5.0':
+    resolution: {integrity: sha512-H7z3MCmXJP7Gdzdf9cxA3rR9ANw15y8cD041twStNQ3S7PniqcH+qygvZOHp45vTxNj2HA9vOUR4Reno8AK89Q==}
+
   '@exodus/schemasafe@1.3.0':
     resolution: {integrity: sha512-5Aap/GaRupgNx/feGBwLLTVv8OQFfv3pq2lPRzPg9R+IOBnDgghTGW7l7EuVXOvg5cc/xSAlRW8rBrjIC3Nvqw==}
 
@@ -1209,8 +1218,8 @@ packages:
   '@layerstack/utils@1.1.0-next.2':
     resolution: {integrity: sha512-9Y4TOAE0iIVvnrf1mkft79rF/vTO84bZuc4hjhJB7XguFjy2f00pEfrDjF+IqleWImMFfRu31K2IMM6wRWEBXQ==}
 
-  '@lucide/svelte@0.525.0':
-    resolution: {integrity: sha512-dyUxkXzepagLUzL8jHQNdeH286nC66ClLACsg+Neu/bjkRJWPWMzkT+H0DKlE70QdkicGCfs1ZGmXCc351hmZA==}
+  '@lucide/svelte@0.515.0':
+    resolution: {integrity: sha512-CEAyqcZmNBfYzVgaRmK2RFJP5tnbXxekRyDk0XX/eZQRfsJmkDvmQwXNX8C869BgNeryzmrRyjHhUL6g9ZOHNA==}
     peerDependencies:
       svelte: ^5
 
@@ -1999,11 +2008,11 @@ packages:
   '@tanstack/query-devtools@5.81.2':
     resolution: {integrity: sha512-jCeJcDCwKfoyyBXjXe9+Lo8aTkavygHHsUHAlxQKKaDeyT0qyQNLKl7+UyqYH2dDF6UN/14873IPBHchcsU+Zg==}
 
-  '@tanstack/svelte-query-devtools@5.82.0':
-    resolution: {integrity: sha512-WNRm87Figg6doLzzOHGhCtKeAMbNIK/JLyXWCsfiD2XqJfZHcnBtpOt7qwxYtpFPzpbBekKmnm4tocGC9ZekXA==}
-    version: 5.82.0
+  '@tanstack/svelte-query-devtools@5.83.0':
+    resolution: {integrity: sha512-RLt78HpQxyqbuovjQ0uClv7pP/kFlzdiy0NKVXsw8x+JSOi0CGM1/0TGiNgwMKOU7PhsT3NQ3KGIwQai1FghSw==}
+    version: 5.83.0
     peerDependencies:
-      '@tanstack/svelte-query': ^5.82.0
+      '@tanstack/svelte-query': ^5.83.0
       svelte: ^3.54.0 || ^4.0.0 || ^5.0.0
 
   '@tanstack/svelte-query@https://pkg.pr.new/@tanstack/svelte-query@28f98f9560ff5878fd839807ead5324a7b9328c4':
@@ -2169,6 +2178,9 @@ packages:
 
   '@types/estree@1.0.8':
     resolution: {integrity: sha512-dWHzHa2WqEXI/O1E9OjrocMTKJl2mSrEolh1Iomrv6U+JuNwaHXsXx9bLu5gG7BUWFIN0skIQJQ/L1rIex4X6w==}
+
+  '@types/event-calendar__core@4.4.0':
+    resolution: {integrity: sha512-8Y4k+acsniRXn1bR0UGgDJE0Qquuk4+Dgx43VS1isIcAK00sfdu2hs726ikuWWzLZGm44ZfYtbq1eM84RtfT4g==}
 
   '@types/geojson@7946.0.16':
     resolution: {integrity: sha512-6C8nqWur3j98U6+lXDfTUWIfgvZU+EumvpHKcYjujKH7woYyLj2sUmff0tRhrqM7BohUw7Pz3ZB1jj2gW9Fvmg==}
@@ -4697,8 +4709,8 @@ packages:
   stylis@4.2.0:
     resolution: {integrity: sha512-Orov6g6BB1sDfYgzWfTHDOxamtX1bE/zo104Dh9e6fqJ3PooipYyfJ0pUmrZO2wAvO8YbEyeFrkV91XTsGMSrw==}
 
-  supabase@2.30.4:
-    resolution: {integrity: sha512-AOCyd2vmBBMTXbnahiCU0reRNxKS4n5CrPciUF2tcTrQ8dLzl1HwcLfe5DrG8E0QRcKHPDdzprmh/2+y4Ta5MA==}
+  supabase@2.31.8:
+    resolution: {integrity: sha512-AsALbB9qKqUhu5A8gZK5VMR2SPo2DPP7W544MBk7JKfLo3Pi8YoAxGxx5skarfeqDtHkzEREU/seFIaYP/bl3A==}
     engines: {npm: '>=8'}
     hasBin: true
 
@@ -5756,6 +5768,10 @@ snapshots:
       '@eslint/core': 0.15.1
       levn: 0.4.1
 
+  '@event-calendar/core@4.5.0':
+    dependencies:
+      svelte: 5.35.6
+
   '@exodus/schemasafe@1.3.0':
     optional: true
 
@@ -6180,7 +6196,7 @@ snapshots:
       date-fns: 4.1.0
       lodash-es: 4.17.21
 
-  '@lucide/svelte@0.525.0(svelte@5.35.6)':
+  '@lucide/svelte@0.515.0(svelte@5.35.6)':
     dependencies:
       svelte: 5.35.6
 
@@ -7087,7 +7103,7 @@ snapshots:
 
   '@tanstack/query-devtools@5.81.2': {}
 
-  '@tanstack/svelte-query-devtools@5.82.0(@tanstack/svelte-query@https://pkg.pr.new/@tanstack/svelte-query@28f98f9560ff5878fd839807ead5324a7b9328c4(svelte@5.35.6))(svelte@5.35.6)':
+  '@tanstack/svelte-query-devtools@5.83.0(@tanstack/svelte-query@https://pkg.pr.new/@tanstack/svelte-query@28f98f9560ff5878fd839807ead5324a7b9328c4(svelte@5.35.6))(svelte@5.35.6)':
     dependencies:
       '@tanstack/query-devtools': 5.81.2
       '@tanstack/svelte-query': https://pkg.pr.new/@tanstack/svelte-query@28f98f9560ff5878fd839807ead5324a7b9328c4(svelte@5.35.6)
@@ -7273,6 +7289,10 @@ snapshots:
       '@types/json-schema': 7.0.15
 
   '@types/estree@1.0.8': {}
+
+  '@types/event-calendar__core@4.4.0':
+    dependencies:
+      svelte: 5.35.6
 
   '@types/geojson@7946.0.16': {}
 
@@ -8904,11 +8924,11 @@ snapshots:
       kysely: 0.28.2
       postgres: 3.4.7
 
-  kysely-supabase@0.2.0(@supabase/supabase-js@2.50.5)(kysely@0.28.2)(supabase@2.30.4):
+  kysely-supabase@0.2.0(@supabase/supabase-js@2.50.5)(kysely@0.28.2)(supabase@2.31.8):
     dependencies:
       '@supabase/supabase-js': 2.50.5
       kysely: 0.28.2
-      supabase: 2.30.4
+      supabase: 2.31.8
 
   kysely@0.28.2: {}
 
@@ -9947,7 +9967,7 @@ snapshots:
 
   stylis@4.2.0: {}
 
-  supabase@2.30.4:
+  supabase@2.31.8:
     dependencies:
       bin-links: 5.0.0
       https-proxy-agent: 7.0.6

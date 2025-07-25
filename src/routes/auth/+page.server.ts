@@ -30,11 +30,11 @@ export const actions: Actions = {
 			if (!error) {
 				redirect(303, data.url);
 			}
-			
+
 			setError(form, 'auth_method', error.message);
 			return fail(403, { form });
 		}
-
+		debugger;
 		// Handle Magic Link authentication
 		if (authMethod === 'magic_link') {
 			if (!form.data.email) {
