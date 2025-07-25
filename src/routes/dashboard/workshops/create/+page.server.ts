@@ -54,7 +54,9 @@ export const actions: Actions = {
 				price_member: memberPriceCents,
 				price_non_member: nonMemberPriceCents,
 				is_public: form.data.is_public || false,
-				refund_days: form.data.refund_deadline_days
+				refund_days: form.data.refund_deadline_days,
+				announce_discord: form.data.announce_discord || false,
+				announce_email: form.data.announce_email || false
 			};
 
 			const workshop = await createWorkshop(workshopData, session, platform!);

@@ -3,23 +3,6 @@ import * as Sentry from '@sentry/deno';
 import { db, sql } from '../_shared/db.ts';
 import { corsHeaders } from '../_shared/cors.ts';
 import * as v from 'valibot';
-import { LoopsClient } from 'loops';
-
-const transactionalEnumTitles = ['inviteMember', 'workshopAnnouncement'] as const;
-
-export const transactionalIds: Record<string, string> = {
-	inviteMember: Deno.env.get('INVITE_MEMBER_TRANSACTIONAL_ID') ?? 'invite_member',
-	workshopAnnouncement: Deno.env.get('WORKSHOP_ANNOUNCEMENT_TRANSACTIONAL_ID') ?? 'workshop_announcement'
-} as const;
-
-const loops = new LoopsClient(Deno.env.get('LOOPS_API_KEY')!);
-const isDevelopment = Deno.env.get('ENVIRONMENT') === 'development';
-
-const payloadSchema = v.object({
-	transactionalId: v.picklist(transactionalEnumTitles),
-	email: v.pipe(v.string(), v.email()),
-	dataVariables: v.record(v.string(), v.string())
-});
 
 // Initialize Sentry for error tracking
 Sentry.init({
@@ -27,23 +10,30 @@ Sentry.init({
 	environment: Deno.env.get('ENVIRONMENT') || 'development'
 });
 
+const isDevelopment = Deno.env.get('ENVIRONMENT') === 'development';
+const DISCORD_WEBHOOK_URL = Deno.env.get('DISCORD_WEBHOOK_URL');
+
 // Maximum number of messages to process in a single run
 const BATCH_SIZE = 10;
 
+// Discord message payload schema
+const discordMessageSchema = v.object({
+	message: v.string(),
+	workshop_id: v.pipe(v.string(), v.uuid()),
+	announcement_type: v.picklist(['created', 'status_changed', 'time_changed', 'location_changed'])
+});
+
 /**
  * Verifies if the provided bearer token matches the service role key stored in the vault
- * @param authHeader The Authorization header from the request
- * @returns A boolean indicating if the token is valid
  */
 async function verifyBearerToken(authHeader: string | null): Promise<boolean> {
 	if (!authHeader || !authHeader.startsWith('Bearer ')) {
 		return false;
 	}
 
-	const token = authHeader.substring(7); // Remove 'Bearer ' prefix
+	const token = authHeader.substring(7);
 
 	try {
-		// Query the vault.decrypted_secrets table to get the service role key
 		const result = await sql<{ decrypted_secret: string }>`
 			SELECT decrypted_secret 
 			FROM vault.decrypted_secrets 
@@ -64,8 +54,44 @@ async function verifyBearerToken(authHeader: string | null): Promise<boolean> {
 	}
 }
 
-async function processEmailQueue() {
-	console.log('Processing email queue...');
+/**
+ * Send message to Discord webhook
+ */
+async function sendDiscordMessage(message: string): Promise<boolean> {
+	if (!DISCORD_WEBHOOK_URL) {
+		console.error('Discord webhook URL not configured');
+		return false;
+	}
+
+	try {
+		const response = await fetch(DISCORD_WEBHOOK_URL, {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify({
+				content: `Hey @everyone!\n${message}`,
+				allowed_mentions: {
+					parse: ['everyone']
+				}
+			})
+		});
+
+		if (!response.ok) {
+			console.error(`Discord webhook failed: ${response.status} ${response.statusText}`);
+			return false;
+		}
+
+		return true;
+	} catch (error) {
+		console.error(`Error sending Discord message: ${error}`);
+		Sentry.captureException(error);
+		return false;
+	}
+}
+
+async function processDiscordQueue() {
+	console.log('Processing Discord queue...');
 
 	try {
 		// Read up to BATCH_SIZE messages from the queue
@@ -74,13 +100,13 @@ async function processEmailQueue() {
 			message: string;
 		}>`
 			WITH msgs AS (SELECT *
-										FROM pgmq.read('email_queue', 30, ${BATCH_SIZE}))
+										FROM pgmq.read('discord_queue', 30, ${BATCH_SIZE}))
 			SELECT *
 			FROM msgs
 		`.execute(db);
 
 		const rows = messages.rows;
-		console.log(`Found ${rows.length} messages to process`);
+		console.log(`Found ${rows.length} Discord messages to process`);
 
 		if (rows.length === 0) {
 			return { processed: 0 };
@@ -91,41 +117,43 @@ async function processEmailQueue() {
 			try {
 				const msgId = row.msg_id;
 				const msg = row.message;
-				const payload = v.safeParse(payloadSchema, msg);
+				const payload = v.safeParse(discordMessageSchema, msg);
+
 				if (!payload.success) {
 					Sentry.captureMessage(
-						`Invalid email queue message: ${JSON.stringify(msg)}, errors: ${JSON.stringify(
+						`Invalid Discord queue message: ${JSON.stringify(msg)}, errors: ${JSON.stringify(
 							payload.issues
 						)}`,
 						'error'
 					);
-					await sql`SELECT * FROM pgmq.archive('email_queue', ${msgId}::bigint)`.execute(db);
+					await sql`SELECT * FROM pgmq.archive('discord_queue', ${msgId}::bigint)`.execute(db);
 					continue;
 				}
 
-				console.log(`Processing message ${msgId}: ${JSON.stringify(msg)}`);
+				console.log(`Processing Discord message ${msgId}: ${JSON.stringify(msg)}`);
 
-				// Extract email data from the message
-				const email = payload.output.email;
-				const transactionalId = payload.output.transactionalId;
-				const dataVariables = payload.output.dataVariables;
+				const { message, workshop_id, announcement_type } = payload.output;
+
 				if (isDevelopment) {
-					console.log(`Skipping email send in development mode: ${JSON.stringify(msg)}`);
-					console.log(`Payload that would have been sent is: ${JSON.stringify(dataVariables)}`);
+					console.log(`Skipping Discord send in development mode: ${message}`);
+					console.log(`Workshop ID: ${workshop_id}, Type: ${announcement_type}`);
 				} else {
-					// Send the email
-					await loops.sendTransactionalEmail({
-						transactionalId: transactionalIds[transactionalId],
-						email: email,
-						dataVariables
-					});
-					console.log(`Email sent to ${email} with transactional ID ${transactionalId}`);
+					// Send the Discord message
+					const success = await sendDiscordMessage(message);
+
+					if (!success) {
+						console.error(`Failed to send Discord message for workshop ${workshop_id}`);
+						// Don't archive the message so it can be retried
+						continue;
+					}
+
+					console.log(`Discord message sent for workshop ${workshop_id}`);
 				}
 
-				// Delete the message after successful processing
-				await sql`SELECT * FROM pgmq.archive('email_queue', ${msgId}::bigint)`.execute(db);
+				// Archive the message after successful processing
+				await sql`SELECT * FROM pgmq.archive('discord_queue', ${msgId}::bigint)`.execute(db);
 			} catch (error) {
-				console.error(`Error processing message: ${error}`);
+				console.error(`Error processing Discord message: ${error}`);
 				Sentry.captureException(error);
 				// Don't delete the message if there was an error, so it can be retried
 			}
@@ -133,7 +161,7 @@ async function processEmailQueue() {
 
 		return { processed: rows.length };
 	} catch (error) {
-		console.error(`Error reading from queue: ${error}`);
+		console.error(`Error reading from Discord queue: ${error}`);
 		Sentry.captureException(error);
 		return { error: error.message };
 	}
@@ -162,8 +190,7 @@ serve(async (req) => {
 			});
 		}
 
-		const result = processEmailQueue();
-		EdgeRuntime.waitUntil(result);
+		const result = await processDiscordQueue();
 
 		return new Response(JSON.stringify(result), {
 			headers: {
