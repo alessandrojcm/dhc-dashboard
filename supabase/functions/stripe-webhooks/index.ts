@@ -196,16 +196,48 @@ async function syncStripeDataToKV(customerId: string) {
 			sub.items.data.some((item) => item.price.lookup_key === 'standard_membership_fee')
 		);
 
-		// If no standard membership or it's not active, mark user as inactive
+		// If no standard membership or it's canceled/expired/unpaid, mark user as inactive
 		if (
 			!standardMembershipSub ||
-			['canceled', 'incomplete_expired', 'paused', 'unpaid'].includes(standardMembershipSub.status)
+			['canceled', 'incomplete_expired', 'unpaid'].includes(standardMembershipSub.status)
 		) {
 			return setUserInactive(customerId);
 		}
 
+		// Handle paused subscriptions - keep user active, update pause status in DB
+		if (standardMembershipSub.pause_collection !== null) {
+			const resumeDate = standardMembershipSub.pause_collection?.resumes_at
+				? dayjs.unix(standardMembershipSub.pause_collection.resumes_at).toDate()
+				: null;
+
+			// Update pause status in database
+			await db
+				.updateTable('member_profiles')
+				.set({ subscription_paused_until: resumeDate })
+				.where(
+					'user_profile_id',
+					'in',
+					db.selectFrom('user_profiles').select('id').where('customer_id', '=', customerId)
+				)
+				.execute();
+
+			console.log(`Subscription paused for customer: ${customerId} until ${resumeDate}`);
+			return Promise.resolve();
+		}
+
 		// Update last payment info if subscription is active
 		if (standardMembershipSub.status === 'active') {
+			// Clear any pause status when subscription becomes active
+			await db
+				.updateTable('member_profiles')
+				.set({ subscription_paused_until: null })
+				.where(
+					'user_profile_id',
+					'in',
+					db.selectFrom('user_profiles').select('id').where('customer_id', '=', customerId)
+				)
+				.execute();
+
 			return setLastPayment(
 				customerId,
 				standardMembershipSub.start_date,

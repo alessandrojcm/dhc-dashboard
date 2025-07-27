@@ -2,7 +2,6 @@
 	import { page } from '$app/state';
 	import { Button } from '$lib/components/ui/button';
 	import * as Card from '$lib/components/ui/card';
-	import { Checkbox } from '$lib/components/ui/checkbox';
 	import dayjs from 'dayjs';
 	import DatePicker from '$lib/components/ui/date-picker.svelte';
 	import * as Form from '$lib/components/ui/form';
@@ -11,7 +10,6 @@
 	import PhoneInput from '$lib/components/ui/phone-input.svelte';
 	import * as RadioGroup from '$lib/components/ui/radio-group/index.js';
 	import * as Select from '$lib/components/ui/select';
-	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import { whyThisField } from '$lib/components/ui/why-this-field.svelte';
 	import signupSchema from '$lib/schemas/membersSignup';
@@ -21,6 +19,9 @@
 	import { toast } from 'svelte-sonner';
 	import { dateProxy, superForm } from 'sveltekit-superforms';
 	import { valibotClient } from 'sveltekit-superforms/adapters';
+	import { Badge } from '$lib/components/ui/badge';
+	import PauseSubscriptionModal from '$lib/components/ui/pause-subscription-modal.svelte';
+	import type Stripe from 'stripe';
 
 	const { data } = $props();
 
@@ -29,7 +30,7 @@
 		validationMethod: 'oninput',
 		resetForm: false
 	});
-	const { form: formData, enhance, submitting, errors, message } = form;
+	const { form: formData, enhance, submitting, message } = form;
 	const dobProxy = dateProxy(form, 'dateOfBirth', { format: `date` });
 	const dobValue = $derived.by(() => {
 		if (!dayjs($formData.dateOfBirth).isValid() || dayjs($formData.dateOfBirth).isSame(dayjs())) {
@@ -37,6 +38,7 @@
 		}
 		return fromDate(dayjs($formData.dateOfBirth).toDate(), getLocalTimeZone());
 	});
+	let pausedUntil: dayjs.Dayjs | null = $derived(data.member.subscription_paused_until ? dayjs(data.member.subscription_paused_until) : null);
 	const openBillinPortal = createMutation(() => ({
 		mutationFn: () =>
 			fetch(`/dashboard/members/${page.params.memberId}`, {
@@ -46,6 +48,53 @@
 			window.open(data.portalURL, '_blank');
 		}
 	}));
+
+	let showPauseModal = $state(false);
+
+	const pauseMutation = createMutation(() => ({
+		mutationFn: async (pauseData: { pauseUntil: string }) => {
+			console.log('Sending pause request:', pauseData);
+			const response = await fetch(`/api/members/${page.params.memberId}/subscription/pause`, {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify(pauseData)
+			});
+
+			const data = await response.json();
+
+			if (!response.ok) {
+				throw new Error(data.error || `HTTP error! status: ${response.status}`);
+			}
+			return data as { subscription: Stripe.Response<Stripe.Subscription> };
+		},
+		onSuccess: ({ subscription }: { subscription: Stripe.Response<Stripe.Subscription> }) => {
+			showPauseModal = false;
+			pausedUntil = dayjs.unix(subscription.pause_collection!.resumes_at!);
+		},
+		onError: (error) => {
+			toast.error(`Failed to pause subscription: ${error.message}`);
+		}
+	}));
+
+	const resumeMutation = createMutation(() => ({
+		mutationFn: () =>
+			fetch(`/api/members/${page.params.memberId}/subscription/pause`, {
+				method: 'DELETE'
+			})
+				.then(r => {
+					if (!r.ok) {
+						throw new Error(`HTTP error! status: ${r.status}`);
+					}
+					return r;
+				}).then(r => r.json()),
+		onSuccess: () => {
+			pausedUntil = null;
+		},
+		onError: (error) => {
+			toast.error(`Failed to resume subscription: ${error.message}`);
+		}
+	}));
+
 	$effect(() => {
 		const sub = message.subscribe((m) => {
 			if (m?.success) {
@@ -137,7 +186,7 @@
 						</Form.Control>
 						<Form.FieldErrors />
 					</Form.Field>
-					{#if data.isAdmin}
+					{#if data.canUpdate}
 						<Button
 							disabled={openBillinPortal.isPending}
 							variant="outline"
@@ -148,8 +197,44 @@
 							{#if openBillinPortal.isPending}
 								<LoaderCircle class="ml-2 h-4 w-4" />
 							{/if}
-							Manage payment settings <ExternalLink class="ml-2 h-4 w-4" /></Button
+							Manage payment settings
+							<ExternalLink class="ml-2 h-4 w-4" />
+						</Button
 						>
+
+						<div class="space-y-4">
+							<div class="flex items-center justify-between">
+								<span class="text-sm font-medium">Subscription Status:</span>
+								{#if pausedUntil?.isAfter(dayjs())}
+									<Badge variant="secondary">
+										Paused until {pausedUntil.format('MMM D, YYYY')}
+									</Badge>
+								{:else}
+									<Badge variant="default">Active</Badge>
+								{/if}
+							</div>
+
+							{#if pausedUntil?.isAfter(dayjs())}
+								<Button
+									variant="outline"
+									onclick={() => resumeMutation.mutate()}
+									disabled={resumeMutation.isPending}
+									type="button"
+									class="w-full"
+								>
+									{resumeMutation.isPending ? 'Resuming...' : 'Resume Subscription'}
+								</Button>
+							{:else}
+								<Button
+									variant="outline"
+									onclick={() => showPauseModal = true}
+									type="button"
+									class="w-full"
+								>
+									Pause Subscription
+								</Button>
+							{/if}
+						</div>
 					{/if}
 				</div>
 				<div class="space-y-6">
@@ -211,7 +296,7 @@
 										<Select.Content>
 											{#each weapons as weapon}
 												<Select.Item class="capitalize" value={weapon}
-													>{weapon.replace(/[_-]/g, ' ')}</Select.Item
+												>{weapon.replace(/[_-]/g, ' ')}</Select.Item
 												>
 											{/each}
 										</Select.Content>
@@ -246,7 +331,8 @@
 								<Form.Control>
 									{#snippet children({ props })}
 										<RadioGroup.Item value="yes_unrecognizable" {...props} />
-										<Form.Label class="font-normal">If not recognizable (wearing a mask)</Form.Label
+										<Form.Label class="font-normal">If not recognizable (wearing a mask)
+										</Form.Label
 										>
 									{/snippet}
 								</Form.Control>
@@ -313,3 +399,14 @@
 		</form>
 	</Card.Content>
 </Card.Root>
+
+{#if showPauseModal}
+	<PauseSubscriptionModal
+		bind:open={showPauseModal}
+		onConfirm={(data) => {
+			console.log('Modal onConfirm called with:', data);
+			pauseMutation.mutate(data);
+		}}
+		isPending={pauseMutation.isPending}
+	/>
+{/if}

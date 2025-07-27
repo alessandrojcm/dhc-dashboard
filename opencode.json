@@ -17,6 +17,11 @@
       "type": "remote",
       "url": "https://svelte-llm.khromov.se/mcp/mcp",
       "enabled": true
+    },
+    "linear": {
+      "type": "local",
+      "command": ["npx", "-y", "mcp-remote", "https://mcp.linear.app/sse"],
+      "enabled": true
     }
   }
 }

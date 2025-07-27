@@ -33,7 +33,7 @@
 	import MemberActions from './member-actions.svelte';
 
 	const columns =
-		'id,first_name,last_name,email,phone_number,gender,pronouns,is_active,preferred_weapon,membership_start_date,membership_end_date,last_payment_date,insurance_form_submitted,roles,age,social_media_consent,next_of_kin_name,next_of_kin_phone,guardian_first_name,guardian_last_name,guardian_phone_number,medical_conditions,additional_data,created_at,updated_at,from_waitlist_id,search_text,user_profile_id,waitlist_registration_date';
+		'id,first_name,last_name,email,phone_number,gender,pronouns,is_active,preferred_weapon,membership_start_date,membership_end_date,last_payment_date,insurance_form_submitted,roles,age,social_media_consent,next_of_kin_name,next_of_kin_phone,guardian_first_name,guardian_last_name,guardian_phone_number,medical_conditions,additional_data,created_at,updated_at,from_waitlist_id,search_text,user_profile_id,waitlist_registration_date,subscription_paused_until';
 
 	let pageSizeOptions = [10, 25, 50, 100];
 
@@ -196,10 +196,42 @@
 				cell: ({ getValue }) => {
 					return renderComponent(Badge, {
 						variant: getValue() ? 'default' : 'destructive',
-						class: 'h-8',
+						class: 'h-6',
 						children: createRawSnippet(() => ({
 							render: () => `<p class="capitalize">${getValue() ? 'Active' : 'Inactive'}</p>`
 						}))
+					});
+				}
+			},
+			{
+				accessorKey: 'subscription_paused_until',
+				header: 'Subscription',
+				cell: ({ row }) => {
+					const pausedUntil = row.original.subscription_paused_until;
+					const isActive = row.original.is_active;
+					
+					if (!isActive) {
+						return renderComponent(Badge, {
+							variant: 'destructive',
+							class: 'h-6',
+							children: createRawSnippet(() => ({ render: () => 'Inactive' }))
+						});
+					}
+					
+					if (pausedUntil && dayjs(pausedUntil).isAfter(dayjs())) {
+						return renderComponent(Badge, {
+							variant: 'secondary',
+							class: 'h-6',
+							children: createRawSnippet(() => ({ 
+								render: () => `Paused until ${dayjs(pausedUntil).format('MMM D, YYYY')}` 
+							}))
+						});
+					}
+					
+					return renderComponent(Badge, {
+						variant: 'default',
+						class: 'h-6',
+						children: createRawSnippet(() => ({ render: () => 'Active' }))
 					});
 				}
 			},
@@ -524,6 +556,26 @@
 								{row.original.social_media_consent?.replace('_', ' ') ?? 'Unknown'}
 							</p>
 						</Badge>
+					</div>
+				</div>
+
+				<!-- Subscription Status -->
+				<div class="grid grid-cols-3 py-1 border-b">
+					<div class="text-sm font-medium text-muted-foreground">Subscription</div>
+					<div class="col-span-2">
+						{#if !row.original.is_active}
+							<Badge variant="destructive" class="h-6">
+								<p>Inactive</p>
+							</Badge>
+						{:else if row.original.subscription_paused_until && dayjs(row.original.subscription_paused_until).isAfter(dayjs())}
+							<Badge variant="secondary" class="h-6">
+								<p>Paused until {dayjs(row.original.subscription_paused_until).format('MMM D, YYYY')}</p>
+							</Badge>
+						{:else}
+							<Badge variant="default" class="h-6">
+								<p>Active</p>
+							</Badge>
+						{/if}
 					</div>
 				</div>
 

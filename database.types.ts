@@ -406,6 +406,7 @@ export type Database = {
           next_of_kin_name: string
           next_of_kin_phone: string
           preferred_weapon: Database["public"]["Enums"]["preferred_weapon"][]
+          subscription_paused_until: string | null
           updated_at: string | null
           user_profile_id: string
         }
@@ -420,6 +421,7 @@ export type Database = {
           next_of_kin_name: string
           next_of_kin_phone: string
           preferred_weapon: Database["public"]["Enums"]["preferred_weapon"][]
+          subscription_paused_until?: string | null
           updated_at?: string | null
           user_profile_id: string
         }
@@ -434,6 +436,7 @@ export type Database = {
           next_of_kin_name?: string
           next_of_kin_phone?: string
           preferred_weapon?: Database["public"]["Enums"]["preferred_weapon"][]
+          subscription_paused_until?: string | null
           updated_at?: string | null
           user_profile_id?: string
         }
@@ -783,6 +786,7 @@ export type Database = {
           additional_data: Json | null
           age: number | null
           created_at: string | null
+          customer_id: string | null
           email: string | null
           first_name: string | null
           from_waitlist_id: string | null
@@ -810,6 +814,7 @@ export type Database = {
           social_media_consent:
             | Database["public"]["Enums"]["social_media_consent"]
             | null
+          subscription_paused_until: string | null
           updated_at: string | null
           user_profile_id: string | null
           waitlist_registration_date: string | null
@@ -858,10 +863,6 @@ export type Database = {
       }
     }
     Functions: {
-      add_workshop_announcement: {
-        Args: { workshop_id: string; announcement_type: string }
-        Returns: undefined
-      }
       calculate_refund_amount: {
         Args: { registration_id: string }
         Returns: number
@@ -901,6 +902,15 @@ export type Database = {
       custom_access_token_hook: {
         Args: { event: Json }
         Returns: Json
+      }
+      get_active_users_for_announcements: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          user_id: string
+          email: string
+          first_name: string
+          last_name: string
+        }[]
       }
       get_conversion_metrics: {
         Args: { start_date: string; end_date: string }
@@ -996,8 +1006,8 @@ export type Database = {
         Args: { notification_id: string }
         Returns: undefined
       }
-      process_workshop_announcements: {
-        Args: Record<PropertyKey, never>
+      queue_workshop_announcement: {
+        Args: { workshop_id: string; announcement_type?: string }
         Returns: undefined
       }
       register_for_workshop_checkout: {
