@@ -24,7 +24,7 @@ export async function processRefund(
 }> {
 	const kysely = getKyselyClient(platform.env.HYPERDRIVE);
 
-	return await executeWithRLS(kysely, { claims: session }, async (trx) => {
+	return await kysely.transaction().execute(async (trx) => {
 		// Check eligibility
 		const eligibilityResult = await trx
 			.selectFrom('club_activity_registrations as car')
