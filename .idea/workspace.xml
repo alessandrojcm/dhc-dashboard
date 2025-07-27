@@ -18,10 +18,22 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="feat: added workshop update feature">
+    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="fix: remove payment session from bulk invite">
+      <change beforePath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/_supabase.gyJpoQ/schema/public.abK9xQ.meta" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/_supabase.gyJpoQ/schema/public.abK9xQ.meta" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/auth.qN0tAA.meta" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/auth.qN0tAA.meta" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/pgmq.23k0AA.meta" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/pgmq.23k0AA.meta" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/public.abK9xQ.meta" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/public.abK9xQ.meta" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/public.abK9xQ.zip" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/public.abK9xQ.zip" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/vault.MrKsBg.meta" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources/9afcef58-a872-4ebb-ae04-6e26101c65f0/storage_v2/_src_/database/postgres.edMnLQ/schema/vault.MrKsBg.meta" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/supabase/functions/bulk_invite_with_subscription/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/bulk_invite_with_subscription/index.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/supabase/functions/bulk_invite_with_subscription/subscriptions.ts" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/bulk_invite_with_subscription/subscriptions.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/database.types.ts" beforeDir="false" afterPath="$PROJECT_DIR$/database.types.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/opecode.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/database.types.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/database.types.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/members/[memberId]/+page.server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/members/[memberId]/+page.server.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/members/[memberId]/+page.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/members/[memberId]/+page.svelte" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/members/members-table.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/members/members-table.svelte" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/supabase/functions/stripe-webhooks/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/stripe-webhooks/index.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -58,6 +70,10 @@
               <option name="branches">
                 <list>
                   <RecentBranch>
+                    <option name="branchName" value="feature/ale-64-add-a-feature-to-pause-subscriptions" />
+                    <option name="lastUsedInstant" value="1753607019" />
+                  </RecentBranch>
+                  <RecentBranch>
                     <option name="branchName" value="feat/workshops-planing" />
                     <option name="lastUsedInstant" value="1752226725" />
                   </RecentBranch>
@@ -72,10 +88,6 @@
                   <RecentBranch>
                     <option name="branchName" value="main" />
                     <option name="lastUsedInstant" value="1747694895" />
-                  </RecentBranch>
-                  <RecentBranch>
-                    <option name="branchName" value="feat/remote-otp-for-invites" />
-                    <option name="lastUsedInstant" value="1747144305" />
                   </RecentBranch>
                 </list>
               </option>
@@ -97,50 +109,50 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "Attach to Node.js/Chrome.Edge Functions.executor": "Debug",
-    "ModuleVcsDetector.initialDetectionPerformed": "true",
-    "Node.js.script.js.executor": "Run",
-    "Node.js.seedMembers.js.executor": "Debug",
-    "Node.js.seedWaitlist.js.executor": "Run",
-    "Playwright.Workshop API.executor": "Run",
-    "Playwright.Workshop API.should create workshop as admin.executor": "Run",
-    "Playwright.Workshop Interest System.executor": "Run",
-    "Playwright.Workshop Interest System.should display planned workshops in calendar view.executor": "Debug",
-    "Playwright.Workshop Management.executor": "Run",
-    "Playwright.Workshop UI.executor": "Run",
-    "Playwright.Workshop UI.should display and validate workshop creation form.executor": "Debug",
-    "Playwright.Workshop UI.should navigate to create workshop form.executor": "Run",
-    "Playwright.underage user (16-17) should be able to submit with guardian information.executor": "Run",
-    "Playwright.underage user (16-17) should be required to fill guardian fields.executor": "Run",
-    "Playwright.underage-guardian-waitlist.spec.ts.executor": "Run",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "com.codeium.enabled": "true",
-    "deno.use.library": "true",
-    "git-widget-placeholder": "develop",
-    "junie.onboarding.icon.badge.shown": "true",
-    "last_opened_file_path": "/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]",
-    "node.js.detected.package.eslint": "true",
-    "node.js.detected.package.standard": "true",
-    "node.js.detected.package.tslint": "true",
-    "node.js.selected.package.eslint": "(autodetect)",
-    "node.js.selected.package.standard": "",
-    "node.js.selected.package.tslint": "(autodetect)",
-    "nodejs_package_manager_path": "pnpm",
-    "npm.dev.executor": "Debug",
-    "prettierjs.PrettierConfiguration.Package": "/Users/alessandrojcm/repos/dhc-dashboard/node_modules/prettier",
-    "settings.editor.selected.configurable": "preferences.pluginManager",
-    "ts.external.directory.path": "/Users/alessandrojcm/repos/dhc-dashboard/node_modules/typescript/lib",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;Attach to Node.js/Chrome.Edge Functions.executor&quot;: &quot;Debug&quot;,
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;Node.js.script.js.executor&quot;: &quot;Run&quot;,
+    &quot;Node.js.seedMembers.js.executor&quot;: &quot;Debug&quot;,
+    &quot;Node.js.seedWaitlist.js.executor&quot;: &quot;Run&quot;,
+    &quot;Playwright.Workshop API.executor&quot;: &quot;Run&quot;,
+    &quot;Playwright.Workshop API.should create workshop as admin.executor&quot;: &quot;Run&quot;,
+    &quot;Playwright.Workshop Interest System.executor&quot;: &quot;Run&quot;,
+    &quot;Playwright.Workshop Interest System.should display planned workshops in calendar view.executor&quot;: &quot;Debug&quot;,
+    &quot;Playwright.Workshop Management.executor&quot;: &quot;Run&quot;,
+    &quot;Playwright.Workshop UI.executor&quot;: &quot;Run&quot;,
+    &quot;Playwright.Workshop UI.should display and validate workshop creation form.executor&quot;: &quot;Debug&quot;,
+    &quot;Playwright.Workshop UI.should navigate to create workshop form.executor&quot;: &quot;Run&quot;,
+    &quot;Playwright.underage user (16-17) should be able to submit with guardian information.executor&quot;: &quot;Run&quot;,
+    &quot;Playwright.underage user (16-17) should be required to fill guardian fields.executor&quot;: &quot;Run&quot;,
+    &quot;Playwright.underage-guardian-waitlist.spec.ts.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;com.codeium.enabled&quot;: &quot;true&quot;,
+    &quot;deno.use.library&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;feature/ale-64-add-a-feature-to-pause-subscriptions&quot;,
+    &quot;junie.onboarding.icon.badge.shown&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.standard&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.standard&quot;: &quot;&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;pnpm&quot;,
+    &quot;npm.dev.executor&quot;: &quot;Debug&quot;,
+    &quot;prettierjs.PrettierConfiguration.Package&quot;: &quot;/Users/alessandrojcm/repos/dhc-dashboard/node_modules/prettier&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.pluginManager&quot;,
+    &quot;ts.external.directory.path&quot;: &quot;/Users/alessandrojcm/repos/dhc-dashboard/node_modules/typescript/lib&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   },
-  "keyToStringList": {
-    "DatabaseDriversLRU": [
-      "postgresql"
+  &quot;keyToStringList&quot;: {
+    &quot;DatabaseDriversLRU&quot;: [
+      &quot;postgresql&quot;
     ]
   }
-}]]></component>
+}</component>
   <component name="ReactDesignerToolWindowState">
     <option name="myId2Visible">
       <map>
@@ -288,6 +300,8 @@
       <workItem from="1752824185730" duration="40120000" />
       <workItem from="1753384777244" duration="7204000" />
       <workItem from="1753450120908" duration="9415000" />
+      <workItem from="1753624621353" duration="14000" />
+      <workItem from="1753624646505" duration="3336000" />
     </task>
     <task id="LOCAL-00001" summary="Add guardian support for underage waitlist entries&#10;&#10;Introduce `waitlist_guardians` table and transactional logic for adding guardian details when underage users join the waitlist. Updates include database migrations, UI adjustments for conditional input fields, validation logic, and tests to ensure age-based gating.">
       <option name="closed" value="true" />
@@ -577,7 +591,15 @@
       <option name="project" value="LOCAL" />
       <updated>1753455114440</updated>
     </task>
-    <option name="localTasksCounter" value="37" />
+    <task id="LOCAL-00037" summary="fix: remove payment session from bulk invite">
+      <option name="closed" value="true" />
+      <created>1753461483533</created>
+      <option name="number" value="00037" />
+      <option name="presentableId" value="LOCAL-00037" />
+      <option name="project" value="LOCAL" />
+      <updated>1753461483533</updated>
+    </task>
+    <option name="localTasksCounter" value="38" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -618,7 +640,6 @@
   </component>
   <component name="VcsManagerConfiguration">
     <option name="CHECK_CODE_SMELLS_BEFORE_PROJECT_COMMIT" value="false" />
-    <MESSAGE value="feat: add bulk invite functionality and UI enhancements for waitlist management&#10;&#10;- Added `complete_member_registration` SQL function for handling member registration.&#10;- Enhanced waitlist table with bulk invite feature using Supabase functions.&#10;- Introduced `SendIcon` button for inviting members with tooltips.&#10;- Refactored background processing logic for invitations.&#10;- Improved state management, query handling, and updates for waitlist invitations." />
     <MESSAGE value="chore: add database schema and data source configuration files" />
     <MESSAGE value="feat: add invite management and UI enhancements&#10;&#10;- Replaced `complete_member_registration` SQL function with API-based invite workflows.&#10;- Added resend invitation API and related UI updates for waitlist.&#10;- Improved waitlist filtering (`status`).&#10;- Updated Stripe API version.&#10;- Enhanced IDE configuration and standardized code formatting." />
     <MESSAGE value="feat: enhance invite workflow and UI; improve IDE config&#10;&#10;- Added API-based invite workflows, replacing `complete_member_registration` SQL function.&#10;- Introduced resend invitation API and related UI updates for waitlist.&#10;- Improved waitlist filtering by `status`.&#10;- Updated Stripe API version.&#10;- Refined IDE configuration and applied consistent code formatting." />
@@ -643,7 +664,8 @@
     <MESSAGE value="feat(workshops): add E2E test for full workshop lifecycle with admin and attendees&#10;&#10;- Introduce E2E test covering workshop creation, attendee registration, cancellations, refunds, and attendance marking&#10;- Enhance `workshop-event-modal` with delete/cancel popovers and loading states&#10;- Update `supabase` package to v2.31.8 for API consistency and feature support&#10;- Refactor modal styles and button actions for improved UX and accessibility" />
     <MESSAGE value="feat(workshops): add cancellation and refund functionality&#10;&#10;- Introduce workshop cancellation dialog with refund eligibility checks&#10;- Implement refund eligibility utility function with detailed checks&#10;- Enhance workshop list with cancellation buttons and refunded badge&#10;- Update calendar and API to include registration status and counts&#10;- Refactor user registration actions for better state handling and UX" />
     <MESSAGE value="feat: added workshop update feature" />
-    <option name="LAST_COMMIT_MESSAGE" value="feat: added workshop update feature" />
+    <MESSAGE value="fix: remove payment session from bulk invite" />
+    <option name="LAST_COMMIT_MESSAGE" value="fix: remove payment session from bulk invite" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
