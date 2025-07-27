@@ -19,9 +19,9 @@
 5||-9223372036854775808|T|G
 5||16384|T|G
 5||16564|T|G</Grants>
-      <IntrospectionStateNumber>1570</IntrospectionStateNumber>
+      <IntrospectionStateNumber>4568</IntrospectionStateNumber>
       <ServerVersion>15.8</ServerVersion>
-      <StartupTime>1753458094</StartupTime>
+      <StartupTime>1753609201</StartupTime>
       <TimeZones>true ACDT
 true ACSST
 false ACST
@@ -1412,7 +1412,7 @@ false posix/Zulu
 13209||10|C|G
 13209||-9223372036854775808|U|G
 13209||10|U|G</Grants>
-      <IntrospectionStateNumber>1573</IntrospectionStateNumber>
+      <IntrospectionStateNumber>4569</IntrospectionStateNumber>
       <ObjectId>16755</ObjectId>
       <OwnerName>postgres</OwnerName>
     </database>
@@ -1463,13 +1463,13 @@ false posix/Zulu
 16505||16559|U|G
 16505||16564|U|G
 16599||10|C|G
-16599||17536|C|G
+16599||17608|C|G
 16599||10|U|G
 16599||16384|U|G
 16599||16447|U|G
 16599||16448|U|G
 16599||16449|U|G
-16599||17536|U|G
+16599||17608|U|G
 16607||10|C|G
 16607||10|U|G
 16607||16447|U|G
@@ -1522,7 +1522,7 @@ false posix/Zulu
 18702||16384|C|G
 18702||3373|U|G
 18702||16384|U|G</Grants>
-      <IntrospectionStateNumber>1570</IntrospectionStateNumber>
+      <IntrospectionStateNumber>4568</IntrospectionStateNumber>
       <ObjectId>5</ObjectId>
       <OwnerName>postgres</OwnerName>
     </database>
@@ -1609,7 +1609,7 @@ pgrst.db_aggregates_enabled=true</Config>
 16504
 16559
 16729
-17536
+17608
 3373
 4200
 6181</RoleGrants>
@@ -1653,7 +1653,7 @@ log_statement=none</Config>
     </role>
     <role id="27" parent="1" name="supabase_realtime_admin">
       <Inherit>0</Inherit>
-      <ObjectId>17536</ObjectId>
+      <ObjectId>17608</ObjectId>
     </role>
     <role id="28" parent="1" name="supabase_replication_admin">
       <CanLogin>1</CanLogin>
@@ -5040,8 +5040,8 @@ log_statement=none</Config>
     <schema id="277" parent="2" name="public">
       <Comment>standard public schema</Comment>
       <Current>1</Current>
-      <IntrospectionStateNumber>1573</IntrospectionStateNumber>
-      <LastIntrospectionLocalTimestamp>2025-07-25.15:48:31</LastIntrospectionLocalTimestamp>
+      <IntrospectionStateNumber>4569</IntrospectionStateNumber>
+      <LastIntrospectionLocalTimestamp>2025-07-27.12:58:20</LastIntrospectionLocalTimestamp>
       <ObjectId>2200</ObjectId>
       <StateNumber>518</StateNumber>
       <OwnerName>pg_database_owner</OwnerName>
@@ -8988,8 +8988,8 @@ log_statement=none</Config>
 18149||16384|w|G
 18149||16504|w|G
 18149||16564|w|G</Grants>
-      <IntrospectionStateNumber>1570</IntrospectionStateNumber>
-      <LastIntrospectionLocalTimestamp>2025-07-25.15:48:27</LastIntrospectionLocalTimestamp>
+      <IntrospectionStateNumber>4568</IntrospectionStateNumber>
+      <LastIntrospectionLocalTimestamp>2025-07-27.12:58:18</LastIntrospectionLocalTimestamp>
       <ObjectId>16457</ObjectId>
       <StateNumber>859</StateNumber>
       <OwnerName>supabase_admin</OwnerName>
@@ -9104,8 +9104,8 @@ log_statement=none</Config>
 19009||16384|t|G
 19009||16384|D|G
 19009||16384|w|G</Grants>
-      <IntrospectionStateNumber>1570</IntrospectionStateNumber>
-      <LastIntrospectionLocalTimestamp>2025-07-25.15:48:27</LastIntrospectionLocalTimestamp>
+      <IntrospectionStateNumber>4568</IntrospectionStateNumber>
+      <LastIntrospectionLocalTimestamp>2025-07-27.12:58:18</LastIntrospectionLocalTimestamp>
       <ObjectId>18702</ObjectId>
       <StateNumber>1387</StateNumber>
       <OwnerName>postgres</OwnerName>
@@ -9605,34 +9605,6 @@ log_statement=none</Config>
 18684||16447|w|G
 18684||16448|w|G
 18684||16449|w|G
-18695||16384|d|G
-18695||16447|d|G
-18695||16448|d|G
-18695||16449|d|G
-18695||16384|a|G
-18695||16447|a|G
-18695||16448|a|G
-18695||16449|a|G
-18695||16384|x|G
-18695||16447|x|G
-18695||16448|x|G
-18695||16449|x|G
-18695||16384|r|G
-18695||16447|r|G
-18695||16448|r|G
-18695||16449|r|G
-18695||16384|t|G
-18695||16447|t|G
-18695||16448|t|G
-18695||16449|t|G
-18695||16384|D|G
-18695||16447|D|G
-18695||16448|D|G
-18695||16449|D|G
-18695||16384|w|G
-18695||16447|w|G
-18695||16448|w|G
-18695||16449|w|G
 18700||-9223372036854775808|X|G
 18700||16384|X|G
 18700||16447|X|G
@@ -9850,16 +9822,44 @@ log_statement=none</Config>
 19024||16384|X|G
 19024||16447|X|G
 19024||16448|X|G
-19024||16449|X|G</Grants>
-      <IntrospectionStateNumber>1570</IntrospectionStateNumber>
-      <LastIntrospectionLocalTimestamp>2025-07-25.15:48:27</LastIntrospectionLocalTimestamp>
+19024||16449|X|G
+19026||16384|d|G
+19026||16447|d|G
+19026||16448|d|G
+19026||16449|d|G
+19026||16384|a|G
+19026||16447|a|G
+19026||16448|a|G
+19026||16449|a|G
+19026||16384|x|G
+19026||16447|x|G
+19026||16448|x|G
+19026||16449|x|G
+19026||16384|r|G
+19026||16447|r|G
+19026||16448|r|G
+19026||16449|r|G
+19026||16384|t|G
+19026||16447|t|G
+19026||16448|t|G
+19026||16449|t|G
+19026||16384|D|G
+19026||16447|D|G
+19026||16448|D|G
+19026||16449|D|G
+19026||16384|w|G
+19026||16447|w|G
+19026||16448|w|G
+19026||16449|w|G</Grants>
+      <IntrospectionStateNumber>4568</IntrospectionStateNumber>
+      <LastIntrospectionLocalTimestamp>2025-07-27.12:58:18</LastIntrospectionLocalTimestamp>
       <ObjectId>2200</ObjectId>
       <StateNumber>1353</StateNumber>
       <OwnerName>pg_database_owner</OwnerName>
     </schema>
     <schema id="540" parent="3" name="realtime">
       <ObjectId>16599</ObjectId>
-      <StateNumber>1176</StateNumber>
+      <StateNumber>1210</StateNumber>
       <OwnerName>supabase_admin</OwnerName>
     </schema>
     <schema id="541" parent="3" name="storage">
@@ -9904,8 +9904,8 @@ log_statement=none</Config>
 16667||16384|X|O
 16668||10|X|G
 16668||16384|X|O</Grants>
-      <IntrospectionStateNumber>1570</IntrospectionStateNumber>
-      <LastIntrospectionLocalTimestamp>2025-07-25.15:48:27</LastIntrospectionLocalTimestamp>
+      <IntrospectionStateNumber>4568</IntrospectionStateNumber>
+      <LastIntrospectionLocalTimestamp>2025-07-27.12:58:18</LastIntrospectionLocalTimestamp>
       <ObjectId>16645</ObjectId>
       <StateNumber>914</StateNumber>
       <OwnerName>supabase_admin</OwnerName>
@@ -11092,7 +11092,7 @@ joined</Labels>
     </table>
     <table id="673" parent="539" name="member_profiles">
       <ObjectId>18403</ObjectId>
-      <StateNumber>1361</StateNumber>
+      <StateNumber>1398</StateNumber>
       <AccessMethodId>2</AccessMethodId>
       <OwnerName>postgres</OwnerName>
     </table>
@@ -11153,9 +11153,8 @@ joined</Labels>
       <OwnerName>postgres</OwnerName>
     </view>
     <view id="683" parent="539" name="member_management_view">
-      <ObjectId>18695</ObjectId>
-      <SourceTextLength>1259</SourceTextLength>
-      <StateNumber>1385</StateNumber>
+      <ObjectId>19026</ObjectId>
+      <StateNumber>1398</StateNumber>
       <OwnerName>postgres</OwnerName>
     </view>
     <view id="684" parent="539" name="waitlist_management_view">
@@ -15717,7 +15716,13 @@ status</ColNames>
       <StoredType>timestamp with time zone|0s</StoredType>
       <TypeId>1184</TypeId>
     </column>
-    <foreign-key id="1399" parent="673" name="member_profiles_id_fkey">
+    <column id="1399" parent="673" name="subscription_paused_until">
+      <Position>13</Position>
+      <StateNumber>1398</StateNumber>
+      <StoredType>timestamp with time zone|0s</StoredType>
+      <TypeId>1184</TypeId>
+    </column>
+    <foreign-key id="1400" parent="673" name="member_profiles_id_fkey">
       <ColNames>id</ColNames>
       <NameSurrogate>1</NameSurrogate>
       <ObjectId>18415</ObjectId>
@@ -15729,7 +15734,7 @@ status</ColNames>
       <RefTableKind>table</RefTableKind>
       <RefTableParentName>auth</RefTableParentName>
     </foreign-key>
-    <foreign-key id="1400" parent="673" name="fk_user_profile">
+    <foreign-key id="1401" parent="673" name="fk_user_profile">
       <ColNames>user_profile_id</ColNames>
       <ObjectId>18425</ObjectId>
       <OnDelete>cascade</OnDelete>
@@ -15737,7 +15742,7 @@ status</ColNames>
       <RefKeyColPositions>1</RefKeyColPositions>
       <RefTableId>18209</RefTableId>
     </foreign-key>
-    <foreign-key id="1401" parent="673" name="member_profiles_user_profile_id_fkey">
+    <foreign-key id="1402" parent="673" name="member_profiles_user_profile_id_fkey">
       <ColNames>user_profile_id</ColNames>
       <NameSurrogate>1</NameSurrogate>
       <ObjectId>18420</ObjectId>
@@ -15745,7 +15750,7 @@ status</ColNames>
       <RefKeyColPositions>1</RefKeyColPositions>
       <RefTableId>18209</RefTableId>
     </foreign-key>
-    <index id="1402" parent="673" name="member_profiles_pkey">
+    <index id="1403" parent="673" name="member_profiles_pkey">
       <ColNames>id</ColNames>
       <NameSurrogate>1</NameSurrogate>
       <ObjectId>18413</ObjectId>
@@ -15754,20 +15759,27 @@ status</ColNames>
       <Unique>1</Unique>
       <AccessMethodId>403</AccessMethodId>
     </index>
-    <index id="1403" parent="673" name="idx_member_profiles_user_id">
+    <index id="1404" parent="673" name="idx_member_profiles_user_id">
       <ColNames>user_profile_id</ColNames>
       <ObjectId>18430</ObjectId>
       <StateNumber>1361</StateNumber>
       <AccessMethodId>403</AccessMethodId>
     </index>
-    <key id="1404" parent="673" name="member_profiles_pkey">
+    <index id="1405" parent="673" name="idx_member_profiles_subscription_paused_until">
+      <ColNames>subscription_paused_until</ColNames>
+      <Condition>(subscription_paused_until IS NOT NULL)</Condition>
+      <ObjectId>19025</ObjectId>
+      <StateNumber>1398</StateNumber>
+      <AccessMethodId>403</AccessMethodId>
+    </index>
+    <key id="1406" parent="673" name="member_profiles_pkey">
       <NameSurrogate>1</NameSurrogate>
       <ObjectId>18414</ObjectId>
       <Primary>1</Primary>
       <StateNumber>1361</StateNumber>
       <UnderlyingIndexId>18413</UnderlyingIndexId>
     </key>
-    <security-policy id="1405" parent="673" name="Committee members can view all profiles">
+    <security-policy id="1407" parent="673" name="Committee members can view all profiles">
       <ObjectId>18435</ObjectId>
       <OperationType>select</OperationType>
       <Permissive>1</Permissive>
@@ -15775,7 +15787,7 @@ status</ColNames>
       <UsingExpression>( SELECT has_any_role(( SELECT auth.uid() AS uid), ARRAY[&apos;admin&apos;::role_type, &apos;president&apos;::role_type, &apos;treasurer&apos;::role_type, &apos;committee_coordinator&apos;::role_type, &apos;sparring_coordinator&apos;::role_type, &apos;workshop_coordinator&apos;::role_type, &apos;beginners_coordinator&apos;::role_type, &apos;quartermaster&apos;::role_type, &apos;pr_manager&apos;::role_type, &apos;volunteer_coordinator&apos;::role_type, &apos;research_coordinator&apos;::role_type, &apos;coach&apos;::role_type]) AS has_any_role)</UsingExpression>
       <RoleIds>16448</RoleIds>
     </security-policy>
-    <security-policy id="1406" parent="673" name="Members can view their own profile">
+    <security-policy id="1408" parent="673" name="Members can view their own profile">
       <ObjectId>18434</ObjectId>
       <OperationType>select</OperationType>
       <Permissive>1</Permissive>
@@ -15783,14 +15795,14 @@ status</ColNames>
       <UsingExpression>(( SELECT auth.uid() AS uid) = id)</UsingExpression>
       <RoleIds>16448</RoleIds>
     </security-policy>
-    <trigger id="1407" parent="673" name="update_member_profiles_updated_at">
+    <trigger id="1409" parent="673" name="update_member_profiles_updated_at">
       <Events>U</Events>
       <ObjectId>18433</ObjectId>
       <StateNumber>1361</StateNumber>
       <Turn>before-row</Turn>
       <CallRoutineId>18256</CallRoutineId>
     </trigger>
-    <column id="1408" parent="674" name="id">
+    <column id="1410" parent="674" name="id">
       <DefaultExpression>gen_random_uuid()</DefaultExpression>
       <NotNull>1</NotNull>
       <Position>1</Position>
@@ -15798,21 +15810,21 @@ status</ColNames>
       <StoredType>uuid|0s</StoredType>
       <TypeId>2950</TypeId>
     </column>
-    <column id="1409" parent="674" name="user_id">
+    <column id="1411" parent="674" name="user_id">
       <NotNull>1</NotNull>
       <Position>2</Position>
       <StateNumber>1378</StateNumber>
       <StoredType>uuid|0s</StoredType>
       <TypeId>2950</TypeId>
     </column>
-    <column id="1410" parent="674" name="body">
+    <column id="1412" parent="674" name="body">
       <NotNull>1</NotNull>
       <Position>3</Position>
       <StateNumber>1378</StateNumber>
       <StoredType>text|0s</StoredType>
       <TypeId>25</TypeId>
     </column>
-    <column id="1411" parent="674" name="created_at">
+    <column id="1413" parent="674" name="created_at">
       <DefaultExpression>now()</DefaultExpression>
       <NotNull>1</NotNull>
       <Position>4</Position>
@@ -15820,13 +15832,13 @@ status</ColNames>
       <StoredType>timestamp with time zone|0s</StoredType>
       <TypeId>1184</TypeId>
     </column>
-    <column id="1412" parent="674" name="read_at">
+    <column id="1414" parent="674" name="read_at">
       <Position>5</Position>
       <StateNumber>1378</StateNumber>
       <StoredType>timestamp with time zone|0s</StoredType>
       <TypeId>1184</TypeId>
     </column>
-    <index id="1413" parent="674" name="notifications_pkey">
+    <index id="1415" parent="674" name="notifications_pkey">
       <ColNames>id</ColNames>
       <NameSurrogate>1</NameSurrogate>
       <ObjectId>18652</ObjectId>
@@ -15835,33 +15847,33 @@ status</ColNames>
       <Unique>1</Unique>
       <AccessMethodId>403</AccessMethodId>
     </index>
-    <index id="1414" parent="674" name="notifications_user_id_idx">
+    <index id="1416" parent="674" name="notifications_user_id_idx">
       <ColNames>user_id</ColNames>
       <ObjectId>18654</ObjectId>
       <StateNumber>1378</StateNumber>
       <AccessMethodId>403</AccessMethodId>
     </index>
-    <index id="1415" parent="674" name="notifications_created_at_idx">
+    <index id="1417" parent="674" name="notifications_created_at_idx">
       <ColNames>created_at</ColNames>
       <ObjectId>18655</ObjectId>
       <StateNumber>1378</StateNumber>
       <AccessMethodId>403</AccessMethodId>
     </index>
-    <key id="1416" parent="674" name="notifications_pkey">
+    <key id="1418" parent="674" name="notifications_pkey">
       <NameSurrogate>1</NameSurrogate>
       <ObjectId>18653</ObjectId>
       <Primary>1</Primary>
       <StateNumber>1378</StateNumber>
       <UnderlyingIndexId>18652</UnderlyingIndexId>
     </key>
-    <security-policy id="1417" parent="674" name="System can insert notifications">
+    <security-policy id="1419" parent="674" name="System can insert notifications">
       <CheckExpression>true</CheckExpression>
       <ObjectId>18657</ObjectId>
       <OperationType>insert</OperationType>
       <Permissive>1</Permissive>
       <StateNumber>1378</StateNumber>
     </security-policy>
-    <security-policy id="1418" parent="674" name="Users can update their own notifications">
+    <security-policy id="1420" parent="674" name="Users can update their own notifications">
       <CheckExpression>(( SELECT auth.uid() AS uid) = user_id)</CheckExpression>
       <ObjectId>18658</ObjectId>
       <OperationType>update</OperationType>
@@ -15869,21 +15881,21 @@ status</ColNames>
       <StateNumber>1378</StateNumber>
       <UsingExpression>(( SELECT auth.uid() AS uid) = user_id)</UsingExpression>
     </security-policy>
-    <security-policy id="1419" parent="674" name="Users can view their own notifications">
+    <security-policy id="1421" parent="674" name="Users can view their own notifications">
       <ObjectId>18656</ObjectId>
       <OperationType>select</OperationType>
       <Permissive>1</Permissive>
       <StateNumber>1378</StateNumber>
       <UsingExpression>(( SELECT auth.uid() AS uid) = user_id)</UsingExpression>
     </security-policy>
-    <check id="1420" parent="675" name="valid_boolean_values">
+    <check id="1422" parent="675" name="valid_boolean_values">
       <ColNames>type
 value</ColNames>
       <ObjectId>18485</ObjectId>
       <Predicate>(type &lt;&gt; &apos;boolean&apos;::setting_type) OR (value = ANY (ARRAY[&apos;true&apos;::text, &apos;false&apos;::text]))</Predicate>
       <StateNumber>1365</StateNumber>
     </check>
-    <column id="1421" parent="675" name="id">
+    <column id="1423" parent="675" name="id">
       <DefaultExpression>gen_random_uuid()</DefaultExpression>
       <NotNull>1</NotNull>
       <Position>1</Position>
@@ -15891,54 +15903,54 @@ value</ColNames>
       <StoredType>uuid|0s</StoredType>
       <TypeId>2950</TypeId>
     </column>
-    <column id="1422" parent="675" name="key">
+    <column id="1424" parent="675" name="key">
       <NotNull>1</NotNull>
       <Position>2</Position>
       <StateNumber>1365</StateNumber>
       <StoredType>text|0s</StoredType>
       <TypeId>25</TypeId>
     </column>
-    <column id="1423" parent="675" name="value">
+    <column id="1425" parent="675" name="value">
       <NotNull>1</NotNull>
       <Position>3</Position>
       <StateNumber>1365</StateNumber>
       <StoredType>text|0s</StoredType>
       <TypeId>25</TypeId>
     </column>
-    <column id="1424" parent="675" name="type">
+    <column id="1426" parent="675" name="type">
       <NotNull>1</NotNull>
       <Position>4</Position>
       <StateNumber>1365</StateNumber>
       <StoredType>setting_type|0s</StoredType>
       <TypeId>18474</TypeId>
     </column>
-    <column id="1425" parent="675" name="description">
+    <column id="1427" parent="675" name="description">
       <Position>5</Position>
       <StateNumber>1365</StateNumber>
       <StoredType>text|0s</StoredType>
       <TypeId>25</TypeId>
     </column>
-    <column id="1426" parent="675" name="created_at">
+    <column id="1428" parent="675" name="created_at">
       <DefaultExpression>now()</DefaultExpression>
       <Position>6</Position>
       <StateNumber>1365</StateNumber>
       <StoredType>timestamp with time zone|0s</StoredType>
       <TypeId>1184</TypeId>
     </column>
-    <column id="1427" parent="675" name="updated_at">
+    <column id="1429" parent="675" name="updated_at">
       <DefaultExpression>now()</DefaultExpression>
       <Position>7</Position>
       <StateNumber>1365</StateNumber>
       <StoredType>timestamp with time zone|0s</StoredType>
       <TypeId>1184</TypeId>
     </column>
-    <column id="1428" parent="675" name="updated_by">
+    <column id="1430" parent="675" name="updated_by">
       <Position>8</Position>
       <StateNumber>1365</StateNumber>
       <StoredType>uuid|0s</StoredType>
       <TypeId>2950</TypeId>
     </column>
-    <foreign-key id="1429" parent="675" name="settings_updated_by_fkey">
+    <foreign-key id="1431" parent="675" name="settings_updated_by_fkey">
       <ColNames>updated_by</ColNames>
       <NameSurrogate>1</NameSurrogate>
       <ObjectId>18492</ObjectId>
@@ -15950,7 +15962,7 @@ value</ColNames>
       <RefTableKind>table</RefTableKind>
       <RefTableParentName>auth</RefTableParentName>
     </foreign-key>
-    <index id="1430" parent="675" name="settings_pkey">
+    <index id="1432" parent="675" name="settings_pkey">
       <ColNames>id</ColNames>
       <NameSurrogate>1</NameSurrogate>
       <ObjectId>18488</ObjectId>
@@ -15959,7 +15971,7 @@ value</ColNames>
       <Unique>1</Unique>
       <AccessMethodId>403</AccessMethodId>
     </index>
-    <index id="1431" parent="675" name="settings_key_key">
+    <index id="1433" parent="675" name="settings_key_key">
       <ColNames>key</ColNames>
       <NameSurrogate>1</NameSurrogate>
       <ObjectId>18490</ObjectId>
@@ -15970,7 +15982,7 @@ value</ColNames>
       <CollationIds>100</CollationIds>
       <CollationParentNames>pg_catalog</CollationParentNames>
     </index>
-    <index id="1432" parent="675" name="settings_key_idx">
+    <index id="1434" parent="675" name="settings_key_idx">
       <ColNames>key</ColNames>
       <ObjectId>18497</ObjectId>
       <StateNumber>1365</StateNumber>
@@ -15979,20 +15991,20 @@ value</ColNames>
       <CollationIds>100</CollationIds>
       <CollationParentNames>pg_catalog</CollationParentNames>
     </index>
-    <key id="1433" parent="675" name="settings_pkey">
+    <key id="1435" parent="675" name="settings_pkey">
       <NameSurrogate>1</NameSurrogate>
       <ObjectId>18489</ObjectId>
       <Primary>1</Primary>
       <StateNumber>1365</StateNumber>
       <UnderlyingIndexId>18488</UnderlyingIndexId>
     </key>
-    <key id="1434" parent="675" name="settings_key_key">
+    <key id="1436" parent="675" name="settings_key_key">
       <NameSurrogate>1</NameSurrogate>
       <ObjectId>18491</ObjectId>
       <StateNumber>1365</StateNumber>
       <UnderlyingIndexId>18490</UnderlyingIndexId>
     </key>
-    <security-policy id="1435" parent="675" name="Authenticated users can read settings">
+    <security-policy id="1437" parent="675" name="Authenticated users can read settings">
       <ObjectId>18498</ObjectId>
       <OperationType>select</OperationType>
       <Permissive>1</Permissive>
@@ -16000,7 +16012,7 @@ value</ColNames>
       <UsingExpression>true</UsingExpression>
       <RoleIds>16448</RoleIds>
     </security-policy>
-    <security-policy id="1436" parent="675" name="Committee members can delete settings">
+    <security-policy id="1438" parent="675" name="Committee members can delete settings">
       <ObjectId>18668</ObjectId>
       <OperationType>delete</OperationType>
       <Permissive>1</Permissive>
@@ -16008,7 +16020,7 @@ value</ColNames>
       <UsingExpression>( SELECT has_any_role(( SELECT auth.uid() AS uid), ARRAY[&apos;admin&apos;::role_type, &apos;president&apos;::role_type, &apos;committee_coordinator&apos;::role_type]) AS has_any_role)</UsingExpression>
       <RoleIds>16448</RoleIds>
     </security-policy>
-    <security-policy id="1437" parent="675" name="Committee members can insert settings">
+    <security-policy id="1439" parent="675" name="Committee members can insert settings">
       <CheckExpression>( SELECT has_any_role(( SELECT auth.uid() AS uid), ARRAY[&apos;admin&apos;::role_type, &apos;president&apos;::role_type, &apos;committee_coordinator&apos;::role_type]) AS has_any_role)</CheckExpression>
       <ObjectId>18667</ObjectId>
       <OperationType>insert</OperationType>
@@ -16016,7 +16028,7 @@ value</ColNames>
       <StateNumber>1381</StateNumber>
       <RoleIds>16448</RoleIds>
     </security-policy>
-    <security-policy id="1438" parent="675" name="Committee members can modify settings">
+    <security-policy id="1440" parent="675" name="Committee members can modify settings">
       <CheckExpression>( SELECT has_any_role(( SELECT auth.uid() AS uid), ARRAY[&apos;admin&apos;::role_type, &apos;president&apos;::role_type, &apos;committee_coordinator&apos;::role_type]) AS has_any_role)</CheckExpression>
       <ObjectId>18665</ObjectId>
       <OperationType>update</OperationType>
@@ -16025,14 +16037,14 @@ value</ColNames>
       <UsingExpression>( SELECT has_any_role(( SELECT auth.uid() AS uid), ARRAY[&apos;admin&apos;::role_type, &apos;president&apos;::role_type, &apos;committee_coordinator&apos;::role_type]) AS has_any_role)</UsingExpression>
       <RoleIds>16448</RoleIds>
     </security-policy>
-    <trigger id="1439" parent="675" name="settings_updated_at">
+    <trigger id="1441" parent="675" name="settings_updated_at">
       <Events>U</Events>
       <ObjectId>18500</ObjectId>
       <StateNumber>1365</StateNumber>
       <Turn>before-row</Turn>
       <CallRoutineId>18499</CallRoutineId>
     </trigger>
-    <column id="1440" parent="676" name="id">
+    <column id="1442" parent="676" name="id">
       <DefaultExpression>gen_random_uuid()</DefaultExpression>
       <NotNull>1</NotNull>
       <Position>1</Position>
@@ -16040,39 +16052,39 @@ value</ColNames>
       <StoredType>uuid|0s</StoredType>
       <TypeId>2950</TypeId>
     </column>
-    <column id="1441" parent="676" name="user_id">
+    <column id="1443" parent="676" name="user_id">
       <Position>2</Position>
       <StateNumber>1353</StateNumber>
       <StoredType>uuid|0s</StoredType>
       <TypeId>2950</TypeId>
     </column>
-    <column id="1442" parent="676" name="action">
+    <column id="1444" parent="676" name="action">
       <NotNull>1</NotNull>
       <Position>3</Position>
       <StateNumber>1353</StateNumber>
       <StoredType>text|0s</StoredType>
       <TypeId>25</TypeId>
     </column>
-    <column id="1443" parent="676" name="details">
+    <column id="1445" parent="676" name="details">
       <Position>4</Position>
       <StateNumber>1353</StateNumber>
       <StoredType>jsonb|0s</StoredType>
       <TypeId>3802</TypeId>
     </column>
-    <column id="1444" parent="676" name="ip_address">
+    <column id="1446" parent="676" name="ip_address">
       <Position>5</Position>
       <StateNumber>1353</StateNumber>
       <StoredType>text|0s</StoredType>
       <TypeId>25</TypeId>
     </column>
-    <column id="1445" parent="676" name="created_at">
+    <column id="1447" parent="676" name="created_at">
       <DefaultExpression>now()</DefaultExpression>
       <Position>6</Position>
       <StateNumber>1353</StateNumber>
       <StoredType>timestamp with time zone|0s</StoredType>
       <TypeId>1184</TypeId>
     </column>
-    <foreign-key id="1446" parent="676" name="user_audit_log_user_id_fkey">
+    <foreign-key id="1448" parent="676" name="user_audit_log_user_id_fkey">
       <ColNames>user_id</ColNames>
       <NameSurrogate>1</NameSurrogate>
       <ObjectId>18249</ObjectId>
@@ -16084,7 +16096,7 @@ value</ColNames>
       <RefTableKind>table</RefTableKind>
       <RefTableParentName>auth</RefTableParentName>
     </foreign-key>
-    <index id="1447" parent="676" name="user_audit_log_pkey">
+    <index id="1449" parent="676" name="user_audit_log_pkey">
       <ColNames>id</ColNames>
       <NameSurrogate>1</NameSurrogate>
       <ObjectId>18247</ObjectId>
@@ -16093,20 +16105,20 @@ value</ColNames>
       <Unique>1</Unique>
       <AccessMethodId>403</AccessMethodId>
     </index>
-    <index id="1448" parent="676" name="idx_user_audit_created_at">
+    <index id="1450" parent="676" name="idx_user_audit_created_at">
       <ColNames>created_at</ColNames>
       <ObjectId>18268</ObjectId>
       <StateNumber>1353</StateNumber>
       <AccessMethodId>403</AccessMethodId>
     </index>
-    <key id="1449" parent="676" name="user_audit_log_pkey">
+    <key id="1451" parent="676" name="user_audit_log_pkey">
       <NameSurrogate>1</NameSurrogate>
       <ObjectId>18248</ObjectId>
       <Primary>1</Primary>
       <StateNumber>1353</StateNumber>
       <UnderlyingIndexId>18247</UnderlyingIndexId>
     </key>
-    <security-policy id="1450" parent="676" name="Audit logs viewable by admins">
+    <security-policy id="1452" parent="676" name="Audit logs viewable by admins">
       <ObjectId>18267</ObjectId>
       <OperationType>select</OperationType>
       <Permissive>1</Permissive>
@@ -16114,13 +16126,13 @@ value</ColNames>
       <UsingExpression>( SELECT has_any_role(( SELECT auth.uid() AS uid), ARRAY[&apos;admin&apos;::role_type, &apos;president&apos;::role_type, &apos;committee_coordinator&apos;::role_type]) AS has_any_role)</UsingExpression>
       <RoleIds>16448</RoleIds>
     </security-policy>
-    <check id="1451" parent="677" name="dob_age_check">
+    <check id="1453" parent="677" name="dob_age_check">
       <ColNames>date_of_birth</ColNames>
       <ObjectId>18356</ObjectId>
       <Predicate>(date_of_birth &lt; CURRENT_DATE) AND (EXTRACT(year FROM age((CURRENT_DATE)::timestamp with time zone, (date_of_birth)::timestamp with time zone)) &gt;= (16)::numeric)</Predicate>
       <StateNumber>1357</StateNumber>
     </check>
-    <column id="1452" parent="677" name="id">
+    <column id="1454" parent="677" name="id">
       <DefaultExpression>gen_random_uuid()</DefaultExpression>
       <NotNull>1</NotNull>
       <Position>1</Position>
@@ -16128,73 +16140,73 @@ value</ColNames>
       <StoredType>uuid|0s</StoredType>
       <TypeId>2950</TypeId>
     </column>
-    <column id="1453" parent="677" name="supabase_user_id">
+    <column id="1455" parent="677" name="supabase_user_id">
       <Position>2</Position>
       <StateNumber>1353</StateNumber>
       <StoredType>uuid|0s</StoredType>
       <TypeId>2950</TypeId>
     </column>
-    <column id="1454" parent="677" name="first_name">
+    <column id="1456" parent="677" name="first_name">
       <NotNull>1</NotNull>
       <Position>3</Position>
       <StateNumber>1353</StateNumber>
       <StoredType>text|0s</StoredType>
       <TypeId>25</TypeId>
     </column>
-    <column id="1455" parent="677" name="last_name">
+    <column id="1457" parent="677" name="last_name">
       <NotNull>1</NotNull>
       <Position>4</Position>
       <StateNumber>1353</StateNumber>
       <StoredType>text|0s</StoredType>
       <TypeId>25</TypeId>
     </column>
-    <column id="1456" parent="677" name="is_active">
+    <column id="1458" parent="677" name="is_active">
       <DefaultExpression>true</DefaultExpression>
       <Position>5</Position>
       <StateNumber>1353</StateNumber>
       <StoredType>boolean|0s</StoredType>
       <TypeId>16</TypeId>
     </column>
-    <column id="1457" parent="677" name="medical_conditions">
+    <column id="1459" parent="677" name="medical_conditions">
       <Position>6</Position>
       <StateNumber>1353</StateNumber>
       <StoredType>text|0s</StoredType>
       <TypeId>25</TypeId>
     </column>
-    <column id="1458" parent="677" name="created_at">
+    <column id="1460" parent="677" name="created_at">
       <DefaultExpression>now()</DefaultExpression>
       <Position>7</Position>
       <StateNumber>1353</StateNumber>
       <StoredType>timestamp with time zone|0s</StoredType>
       <TypeId>1184</TypeId>
     </column>
-    <column id="1459" parent="677" name="updated_at">
+    <column id="1461" parent="677" name="updated_at">
       <DefaultExpression>now()</DefaultExpression>
       <Position>8</Position>
       <StateNumber>1353</StateNumber>
       <StoredType>timestamp with time zone|0s</StoredType>
       <TypeId>1184</TypeId>
     </column>
-    <column id="1460" parent="677" name="date_of_birth">
+    <column id="1462" parent="677" name="date_of_birth">
       <NotNull>1</NotNull>
       <Position>9</Position>
       <StateNumber>1357</StateNumber>
       <StoredType>date|0s</StoredType>
       <TypeId>1082</TypeId>
     </column>
-    <column id="1461" parent="677" name="gender">
+    <column id="1463" parent="677" name="gender">
       <Position>10</Position>
       <StateNumber>1358</StateNumber>
       <StoredType>gender|0s</StoredType>
       <TypeId>18358</TypeId>
     </column>
-    <column id="1462" parent="677" name="pronouns">
+    <column id="1464" parent="677" name="pronouns">
       <Position>11</Position>
       <StateNumber>1358</StateNumber>
       <StoredType>text|0s</StoredType>
       <TypeId>25</TypeId>
     </column>
-    <column id="1463" parent="677" name="phone_number">
+    <column id="1465" parent="677" name="phone_number">
       <DefaultExpression>&apos;&apos;::text</DefaultExpression>
       <NotNull>1</NotNull>
       <Position>12</Position>
@@ -16202,13 +16214,13 @@ value</ColNames>
       <StoredType>text|0s</StoredType>
       <TypeId>25</TypeId>
     </column>
-    <column id="1464" parent="677" name="waitlist_id">
+    <column id="1466" parent="677" name="waitlist_id">
       <Position>13</Position>
       <StateNumber>1359</StateNumber>
       <StoredType>uuid|0s</StoredType>
       <TypeId>2950</TypeId>
     </column>
-    <column id="1465" parent="677" name="search_text">
+    <column id="1467" parent="677" name="search_text">
       <DefaultExpression>(setweight(to_tsvector(&apos;english&apos;::regconfig, COALESCE(first_name, &apos;&apos;::text)), &apos;A&apos;::&quot;char&quot;) || setweight(to_tsvector(&apos;english&apos;::regconfig, COALESCE(last_name, &apos;&apos;::text)), &apos;A&apos;::&quot;char&quot;))</DefaultExpression>
       <IdentityKind>always</IdentityKind>
       <Position>14</Position>
@@ -16216,7 +16228,7 @@ value</ColNames>
       <StoredType>tsvector|0s</StoredType>
       <TypeId>3614</TypeId>
     </column>
-    <column id="1466" parent="677" name="social_media_consent">
+    <column id="1468" parent="677" name="social_media_consent">
       <Comment>Indicates whether and how the user has consented to appear in social media posts</Comment>
       <DefaultExpression>&apos;no&apos;::social_media_consent</DefaultExpression>
       <Position>15</Position>
@@ -16224,13 +16236,13 @@ value</ColNames>
       <StoredType>social_media_consent|0s</StoredType>
       <TypeId>18450</TypeId>
     </column>
-    <column id="1467" parent="677" name="customer_id">
+    <column id="1469" parent="677" name="customer_id">
       <Position>16</Position>
       <StateNumber>1366</StateNumber>
       <StoredType>text|0s</StoredType>
       <TypeId>25</TypeId>
     </column>
-    <foreign-key id="1468" parent="677" name="user_profiles_supabase_user_id_fkey">
+    <foreign-key id="1470" parent="677" name="user_profiles_supabase_user_id_fkey">
       <ColNames>supabase_user_id</ColNames>
       <NameSurrogate>1</NameSurrogate>
       <ObjectId>18222</ObjectId>
@@ -16242,7 +16254,7 @@ value</ColNames>
       <RefTableKind>table</RefTableKind>
       <RefTableParentName>auth</RefTableParentName>
     </foreign-key>
-    <foreign-key id="1469" parent="677" name="fk_waitlist_id">
+    <foreign-key id="1471" parent="677" name="fk_waitlist_id">
       <ColNames>waitlist_id</ColNames>
       <ObjectId>18373</ObjectId>
       <OnDelete>cascade</OnDelete>
@@ -16250,7 +16262,7 @@ value</ColNames>
       <RefKeyColPositions>1</RefKeyColPositions>
       <RefTableId>18287</RefTableId>
     </foreign-key>
-    <index id="1470" parent="677" name="user_profiles_pkey">
+    <index id="1472" parent="677" name="user_profiles_pkey">
       <ColNames>id</ColNames>
       <NameSurrogate>1</NameSurrogate>
       <ObjectId>18218</ObjectId>
@@ -16259,7 +16271,7 @@ value</ColNames>
       <Unique>1</Unique>
       <AccessMethodId>403</AccessMethodId>
     </index>
-    <index id="1471" parent="677" name="user_profiles_supabase_user_id_key">
+    <index id="1473" parent="677" name="user_profiles_supabase_user_id_key">
       <ColNames>supabase_user_id</ColNames>
       <NameSurrogate>1</NameSurrogate>
       <ObjectId>18220</ObjectId>
@@ -16267,7 +16279,7 @@ value</ColNames>
       <Unique>1</Unique>
       <AccessMethodId>403</AccessMethodId>
     </index>
-    <index id="1472" parent="677" name="idx_waitlist_concat_info">
+    <index id="1474" parent="677" name="idx_waitlist_concat_info">
       <ColNames>first_name
 last_name
 waitlist_id</ColNames>
@@ -16281,7 +16293,7 @@ default</CollationNames>
       <CollationParentNames>pg_catalog
 pg_catalog</CollationParentNames>
     </index>
-    <index id="1473" parent="677" name="idx_user_profiles_names">
+    <index id="1475" parent="677" name="idx_user_profiles_names">
       <ColNames>first_name
 last_name</ColNames>
       <ObjectId>18387</ObjectId>
@@ -16294,26 +16306,26 @@ default</CollationNames>
       <CollationParentNames>pg_catalog
 pg_catalog</CollationParentNames>
     </index>
-    <index id="1474" parent="677" name="idx_waitlist_user_profile">
+    <index id="1476" parent="677" name="idx_waitlist_user_profile">
       <ColNames>waitlist_id</ColNames>
       <ObjectId>18386</ObjectId>
       <StateNumber>1359</StateNumber>
       <AccessMethodId>403</AccessMethodId>
     </index>
-    <key id="1475" parent="677" name="user_profiles_pkey">
+    <key id="1477" parent="677" name="user_profiles_pkey">
       <NameSurrogate>1</NameSurrogate>
       <ObjectId>18219</ObjectId>
       <Primary>1</Primary>
       <StateNumber>1353</StateNumber>
       <UnderlyingIndexId>18218</UnderlyingIndexId>
     </key>
-    <key id="1476" parent="677" name="user_profiles_supabase_user_id_key">
+    <key id="1478" parent="677" name="user_profiles_supabase_user_id_key">
       <NameSurrogate>1</NameSurrogate>
       <ObjectId>18221</ObjectId>
       <StateNumber>1353</StateNumber>
       <UnderlyingIndexId>18220</UnderlyingIndexId>
     </key>
-    <security-policy id="1477" parent="677" name="Allow auth admin to read user profiles">
+    <security-policy id="1479" parent="677" name="Allow auth admin to read user profiles">
       <ObjectId>18261</ObjectId>
       <OperationType>select</OperationType>
       <Permissive>1</Permissive>
@@ -16321,7 +16333,7 @@ pg_catalog</CollationParentNames>
       <UsingExpression>true</UsingExpression>
       <RoleIds>16504</RoleIds>
     </security-policy>
-    <security-policy id="1478" parent="677" name="Commitee members can create users">
+    <security-policy id="1480" parent="677" name="Commitee members can create users">
       <CheckExpression>( SELECT has_any_role(( SELECT auth.uid() AS uid), ARRAY[&apos;admin&apos;::role_type, &apos;president&apos;::role_type, &apos;committee_coordinator&apos;::role_type]) AS has_any_role)</CheckExpression>
       <ObjectId>18265</ObjectId>
       <OperationType>insert</OperationType>
@@ -16329,7 +16341,7 @@ pg_catalog</CollationParentNames>
       <StateNumber>1353</StateNumber>
       <RoleIds>16448</RoleIds>
     </security-policy>
-    <security-policy id="1479" parent="677" name="Committee members can see all profiles">
+    <security-policy id="1481" parent="677" name="Committee members can see all profiles">
       <ObjectId>18262</ObjectId>
       <OperationType>select</OperationType>
       <Permissive>1</Permissive>
@@ -16337,7 +16349,7 @@ pg_catalog</CollationParentNames>
       <UsingExpression>( SELECT has_any_role(( SELECT auth.uid() AS uid), ARRAY[&apos;admin&apos;::role_type, &apos;president&apos;::role_type, &apos;treasurer&apos;::role_type, &apos;committee_coordinator&apos;::role_type, &apos;sparring_coordinator&apos;::role_type, &apos;workshop_coordinator&apos;::role_type, &apos;beginners_coordinator&apos;::role_type, &apos;quartermaster&apos;::role_type, &apos;pr_manager&apos;::role_type, &apos;volunteer_coordinator&apos;::role_type, &apos;research_coordinator&apos;::role_type]) AS has_any_role)</UsingExpression>
       <RoleIds>16448</RoleIds>
     </security-policy>
-    <security-policy id="1480" parent="677" name="Users can view their own profile">
+    <security-policy id="1482" parent="677" name="Users can view their own profile">
       <ObjectId>18263</ObjectId>
       <OperationType>select</OperationType>
       <Permissive>1</Permissive>
@@ -16345,14 +16357,14 @@ pg_catalog</CollationParentNames>
       <UsingExpression>((( SELECT auth.uid() AS uid) = supabase_user_id) AND (( SELECT user_profiles.is_active) IS TRUE))</UsingExpression>
       <RoleIds>16448</RoleIds>
     </security-policy>
-    <trigger id="1481" parent="677" name="update_user_profiles_updated_at">
+    <trigger id="1483" parent="677" name="update_user_profiles_updated_at">
       <Events>U</Events>
       <ObjectId>18257</ObjectId>
       <StateNumber>1353</StateNumber>
       <Turn>before-row</Turn>
       <CallRoutineId>18256</CallRoutineId>
     </trigger>
-    <column id="1482" parent="678" name="id">
+    <column id="1484" parent="678" name="id">
       <IdentityKind>by-default</IdentityKind>
       <NotNull>1</NotNull>
       <Position>1</Position>
@@ -16361,21 +16373,21 @@ pg_catalog</CollationParentNames>
       <SequenceId>18227</SequenceId>
       <TypeId>20</TypeId>
     </column>
-    <column id="1483" parent="678" name="user_id">
+    <column id="1485" parent="678" name="user_id">
       <NotNull>1</NotNull>
       <Position>2</Position>
       <StateNumber>1353</StateNumber>
       <StoredType>uuid|0s</StoredType>
       <TypeId>2950</TypeId>
     </column>
-    <column id="1484" parent="678" name="role">
+    <column id="1486" parent="678" name="role">
       <NotNull>1</NotNull>
       <Position>3</Position>
       <StateNumber>1353</StateNumber>
       <StoredType>role_type|0s</StoredType>
       <TypeId>18183</TypeId>
     </column>
-    <foreign-key id="1485" parent="678" name="user_roles_user_id_fkey">
+    <foreign-key id="1487" parent="678" name="user_roles_user_id_fkey">
       <ColNames>user_id</ColNames>
       <NameSurrogate>1</NameSurrogate>
       <ObjectId>18235</ObjectId>
@@ -16388,7 +16400,7 @@ pg_catalog</CollationParentNames>
       <RefTableKind>table</RefTableKind>
       <RefTableParentName>auth</RefTableParentName>
     </foreign-key>
-    <index id="1486" parent="678" name="user_roles_pkey">
+    <index id="1488" parent="678" name="user_roles_pkey">
       <ColNames>id</ColNames>
       <NameSurrogate>1</NameSurrogate>
       <ObjectId>18231</ObjectId>
@@ -16397,7 +16409,7 @@ pg_catalog</CollationParentNames>
       <Unique>1</Unique>
       <AccessMethodId>403</AccessMethodId>
     </index>
-    <index id="1487" parent="678" name="user_roles_user_id_role_key">
+    <index id="1489" parent="678" name="user_roles_user_id_role_key">
       <ColNames>user_id
 role</ColNames>
       <NameSurrogate>1</NameSurrogate>
@@ -16406,7 +16418,7 @@ role</ColNames>
       <Unique>1</Unique>
       <AccessMethodId>403</AccessMethodId>
     </index>
-    <index id="1488" parent="678" name="idx_user_role">
+    <index id="1490" parent="678" name="idx_user_role">
       <ColNames>role
 user_id
 id</ColNames>
@@ -16414,20 +16426,20 @@ id</ColNames>
       <StateNumber>1353</StateNumber>
       <AccessMethodId>403</AccessMethodId>
     </index>
-    <key id="1489" parent="678" name="user_roles_pkey">
+    <key id="1491" parent="678" name="user_roles_pkey">
       <NameSurrogate>1</NameSurrogate>
       <ObjectId>18232</ObjectId>
       <Primary>1</Primary>
       <StateNumber>1353</StateNumber>
       <UnderlyingIndexId>18231</UnderlyingIndexId>
     </key>
-    <key id="1490" parent="678" name="user_roles_user_id_role_key">
+    <key id="1492" parent="678" name="user_roles_user_id_role_key">
       <NameSurrogate>1</NameSurrogate>
       <ObjectId>18234</ObjectId>
       <StateNumber>1353</StateNumber>
       <UnderlyingIndexId>18233</UnderlyingIndexId>
     </key>
-    <security-policy id="1491" parent="678" name="Allow auth admin to read user roles">
+    <security-policy id="1493" parent="678" name="Allow auth admin to read user roles">
       <ObjectId>18260</ObjectId>
       <OperationType>select</OperationType>
       <Permissive>1</Permissive>
@@ -16435,7 +16447,7 @@ id</ColNames>
       <UsingExpression>true</UsingExpression>
       <RoleIds>16504</RoleIds>
     </security-policy>
-    <security-policy id="1492" parent="678" name="Commitee members can insert into roles">
+    <security-policy id="1494" parent="678" name="Commitee members can insert into roles">
       <CheckExpression>( SELECT has_any_role(( SELECT auth.uid() AS uid), ARRAY[&apos;admin&apos;::role_type, &apos;president&apos;::role_type, &apos;committee_coordinator&apos;::role_type]) AS has_any_role)</CheckExpression>
       <ObjectId>18266</ObjectId>
       <OperationType>insert</OperationType>
@@ -16443,7 +16455,7 @@ id</ColNames>
       <StateNumber>1353</StateNumber>
       <RoleIds>16448</RoleIds>
     </security-policy>
-    <security-policy id="1493" parent="678" name="Users, admin and president can see their own roles">
+    <security-policy id="1495" parent="678" name="Users, admin and president can see their own roles">
       <ObjectId>18264</ObjectId>
       <OperationType>select</OperationType>
       <Permissive>1</Permissive>
@@ -16451,13 +16463,13 @@ id</ColNames>
       <UsingExpression>((( SELECT auth.uid() AS uid) = user_id) OR ( SELECT has_any_role(( SELECT auth.uid() AS uid), ARRAY[&apos;committee_coordinator&apos;::role_type, &apos;president&apos;::role_type, &apos;admin&apos;::role_type]) AS has_any_role))</UsingExpression>
       <RoleIds>16448</RoleIds>
     </security-policy>
-    <check id="1494" parent="679" name="waitlist_email_check">
+    <check id="1496" parent="679" name="waitlist_email_check">
       <ColNames>email</ColNames>
       <ObjectId>18295</ObjectId>
       <Predicate>email = lower(email)</Predicate>
       <StateNumber>1355</StateNumber>
     </check>
-    <column id="1495" parent="679" name="id">
+    <column id="1497" parent="679" name="id">
       <DefaultExpression>gen_random_uuid()</DefaultExpression>
       <NotNull>1</NotNull>
       <Position>1</Position>
@@ -16465,21 +16477,21 @@ id</ColNames>
       <StoredType>uuid|0s</StoredType>
       <TypeId>2950</TypeId>
     </column>
-    <column id="1496" parent="679" name="email">
+    <column id="1498" parent="679" name="email">
       <NotNull>1</NotNull>
       <Position>4</Position>
       <StateNumber>1355</StateNumber>
       <StoredType>text|0s</StoredType>
       <TypeId>25</TypeId>
     </column>
-    <column id="1497" parent="679" name="insurance_form_submitted">
+    <column id="1499" parent="679" name="insurance_form_submitted">
       <DefaultExpression>false</DefaultExpression>
       <Position>7</Position>
       <StateNumber>1355</StateNumber>
       <StoredType>boolean|0s</StoredType>
       <TypeId>16</TypeId>
     </column>
-    <column id="1498" parent="679" name="status">
+    <column id="1500" parent="679" name="status">
       <DefaultExpression>&apos;waiting&apos;::waitlist_status</DefaultExpression>
       <NotNull>1</NotNull>
       <Position>8</Position>
@@ -16487,33 +16499,33 @@ id</ColNames>
       <StoredType>waitlist_status|0s</StoredType>
       <TypeId>18273</TypeId>
     </column>
-    <column id="1499" parent="679" name="initial_registration_date">
+    <column id="1501" parent="679" name="initial_registration_date">
       <DefaultExpression>now()</DefaultExpression>
       <Position>9</Position>
       <StateNumber>1355</StateNumber>
       <StoredType>timestamp with time zone|0s</StoredType>
       <TypeId>1184</TypeId>
     </column>
-    <column id="1500" parent="679" name="last_status_change">
+    <column id="1502" parent="679" name="last_status_change">
       <DefaultExpression>now()</DefaultExpression>
       <Position>10</Position>
       <StateNumber>1355</StateNumber>
       <StoredType>timestamp with time zone|0s</StoredType>
       <TypeId>1184</TypeId>
     </column>
-    <column id="1501" parent="679" name="last_contacted">
+    <column id="1503" parent="679" name="last_contacted">
       <Position>11</Position>
       <StateNumber>1355</StateNumber>
       <StoredType>timestamp with time zone|0s</StoredType>
       <TypeId>1184</TypeId>
     </column>
-    <column id="1502" parent="679" name="admin_notes">
+    <column id="1504" parent="679" name="admin_notes">
       <Position>12</Position>
       <StateNumber>1355</StateNumber>
       <StoredType>text|0s</StoredType>
       <TypeId>25</TypeId>
     </column>
-    <index id="1503" parent="679" name="waitlist_pkey">
+    <index id="1505" parent="679" name="waitlist_pkey">
       <ColNames>id</ColNames>
       <NameSurrogate>1</NameSurrogate>
       <ObjectId>18299</ObjectId>
@@ -16522,7 +16534,7 @@ id</ColNames>
       <Unique>1</Unique>
       <AccessMethodId>403</AccessMethodId>
     </index>
-    <index id="1504" parent="679" name="unique_email">
+    <index id="1506" parent="679" name="unique_email">
       <ColNames>email</ColNames>
       <ObjectId>18301</ObjectId>
       <StateNumber>1356</StateNumber>
@@ -16532,31 +16544,31 @@ id</ColNames>
       <CollationIds>100</CollationIds>
       <CollationParentNames>pg_catalog</CollationParentNames>
     </index>
-    <index id="1505" parent="679" name="idx_waitlist_status">
+    <index id="1507" parent="679" name="idx_waitlist_status">
       <ColNames>status</ColNames>
       <ObjectId>18326</ObjectId>
       <StateNumber>1356</StateNumber>
       <AccessMethodId>403</AccessMethodId>
     </index>
-    <index id="1506" parent="679" name="idx_waitlist_registration_date">
+    <index id="1508" parent="679" name="idx_waitlist_registration_date">
       <ColNames>initial_registration_date</ColNames>
       <ObjectId>18327</ObjectId>
       <StateNumber>1356</StateNumber>
       <AccessMethodId>403</AccessMethodId>
     </index>
-    <key id="1507" parent="679" name="waitlist_pkey">
+    <key id="1509" parent="679" name="waitlist_pkey">
       <NameSurrogate>1</NameSurrogate>
       <ObjectId>18300</ObjectId>
       <Primary>1</Primary>
       <StateNumber>1355</StateNumber>
       <UnderlyingIndexId>18299</UnderlyingIndexId>
     </key>
-    <key id="1508" parent="679" name="unique_email">
+    <key id="1510" parent="679" name="unique_email">
       <ObjectId>18302</ObjectId>
       <StateNumber>1355</StateNumber>
       <UnderlyingIndexId>18301</UnderlyingIndexId>
     </key>
-    <security-policy id="1509" parent="679" name="Committee and coaches can view waitlist">
+    <security-policy id="1511" parent="679" name="Committee and coaches can view waitlist">
       <ObjectId>18324</ObjectId>
       <OperationType>select</OperationType>
       <Permissive>1</Permissive>
@@ -16564,14 +16576,14 @@ id</ColNames>
       <UsingExpression>( SELECT has_any_role(( SELECT auth.uid() AS uid), ARRAY[&apos;admin&apos;::role_type, &apos;president&apos;::role_type, &apos;committee_coordinator&apos;::role_type, &apos;beginners_coordinator&apos;::role_type, &apos;coach&apos;::role_type]) AS has_any_role)</UsingExpression>
       <RoleIds>16448</RoleIds>
     </security-policy>
-    <trigger id="1510" parent="679" name="waitlist_status_change">
+    <trigger id="1512" parent="679" name="waitlist_status_change">
       <Events>U</Events>
       <ObjectId>18336</ObjectId>
       <StateNumber>1355</StateNumber>
       <Turn>before-row</Turn>
       <CallRoutineId>18335</CallRoutineId>
     </trigger>
-    <column id="1511" parent="680" name="id">
+    <column id="1513" parent="680" name="id">
       <DefaultExpression>gen_random_uuid()</DefaultExpression>
       <NotNull>1</NotNull>
       <Position>1</Position>
@@ -16579,42 +16591,42 @@ id</ColNames>
       <StoredType>uuid|0s</StoredType>
       <TypeId>2950</TypeId>
     </column>
-    <column id="1512" parent="680" name="profile_id">
+    <column id="1514" parent="680" name="profile_id">
       <NotNull>1</NotNull>
       <Position>2</Position>
       <StateNumber>1382</StateNumber>
       <StoredType>uuid|0s</StoredType>
       <TypeId>2950</TypeId>
     </column>
-    <column id="1513" parent="680" name="first_name">
+    <column id="1515" parent="680" name="first_name">
       <NotNull>1</NotNull>
       <Position>3</Position>
       <StateNumber>1382</StateNumber>
       <StoredType>text|0s</StoredType>
       <TypeId>25</TypeId>
     </column>
-    <column id="1514" parent="680" name="last_name">
+    <column id="1516" parent="680" name="last_name">
       <NotNull>1</NotNull>
       <Position>4</Position>
       <StateNumber>1382</StateNumber>
       <StoredType>text|0s</StoredType>
       <TypeId>25</TypeId>
     </column>
-    <column id="1515" parent="680" name="phone_number">
+    <column id="1517" parent="680" name="phone_number">
       <NotNull>1</NotNull>
       <Position>5</Position>
       <StateNumber>1382</StateNumber>
       <StoredType>text|0s</StoredType>
       <TypeId>25</TypeId>
     </column>
-    <column id="1516" parent="680" name="created_at">
+    <column id="1518" parent="680" name="created_at">
       <DefaultExpression>now()</DefaultExpression>
       <Position>6</Position>
       <StateNumber>1382</StateNumber>
       <StoredType>timestamp with time zone|0s</StoredType>
       <TypeId>1184</TypeId>
     </column>
-    <foreign-key id="1517" parent="680" name="waitlist_guardians_profile_id_fkey">
+    <foreign-key id="1519" parent="680" name="waitlist_guardians_profile_id_fkey">
       <ColNames>profile_id</ColNames>
       <NameSurrogate>1</NameSurrogate>
       <ObjectId>18678</ObjectId>
@@ -16623,7 +16635,7 @@ id</ColNames>
       <RefKeyColPositions>1</RefKeyColPositions>
       <RefTableId>18209</RefTableId>
     </foreign-key>
-    <index id="1518" parent="680" name="waitlist_guardians_pkey">
+    <index id="1520" parent="680" name="waitlist_guardians_pkey">
       <ColNames>id</ColNames>
       <NameSurrogate>1</NameSurrogate>
       <ObjectId>18676</ObjectId>
@@ -16632,20 +16644,20 @@ id</ColNames>
       <Unique>1</Unique>
       <AccessMethodId>403</AccessMethodId>
     </index>
-    <index id="1519" parent="680" name="waitlist_guardians_profile_id_idx">
+    <index id="1521" parent="680" name="waitlist_guardians_profile_id_idx">
       <ColNames>profile_id</ColNames>
       <ObjectId>18683</ObjectId>
       <StateNumber>1382</StateNumber>
       <AccessMethodId>403</AccessMethodId>
     </index>
-    <key id="1520" parent="680" name="waitlist_guardians_pkey">
+    <key id="1522" parent="680" name="waitlist_guardians_pkey">
       <NameSurrogate>1</NameSurrogate>
       <ObjectId>18677</ObjectId>
       <Primary>1</Primary>
       <StateNumber>1382</StateNumber>
       <UnderlyingIndexId>18676</UnderlyingIndexId>
     </key>
-    <security-policy id="1521" parent="680" name="Committee members can see guardians">
+    <security-policy id="1523" parent="680" name="Committee members can see guardians">
       <ObjectId>18694</ObjectId>
       <Permissive>1</Permissive>
       <StateNumber>1384</StateNumber>
@@ -16654,7 +16666,7 @@ id</ColNames>
           WHERE (user_profiles.id = waitlist_guardians.profile_id)))))</UsingExpression>
       <RoleIds>16448</RoleIds>
     </security-policy>
-    <column id="1522" parent="681" name="id">
+    <column id="1524" parent="681" name="id">
       <DefaultExpression>gen_random_uuid()</DefaultExpression>
       <NotNull>1</NotNull>
       <Position>1</Position>
@@ -16662,45 +16674,45 @@ id</ColNames>
       <StoredType>uuid|0s</StoredType>
       <TypeId>2950</TypeId>
     </column>
-    <column id="1523" parent="681" name="waitlist_id">
+    <column id="1525" parent="681" name="waitlist_id">
       <Position>2</Position>
       <StateNumber>1355</StateNumber>
       <StoredType>uuid|0s</StoredType>
       <TypeId>2950</TypeId>
     </column>
-    <column id="1524" parent="681" name="old_status">
+    <column id="1526" parent="681" name="old_status">
       <Position>3</Position>
       <StateNumber>1355</StateNumber>
       <StoredType>waitlist_status|0s</StoredType>
       <TypeId>18273</TypeId>
     </column>
-    <column id="1525" parent="681" name="new_status">
+    <column id="1527" parent="681" name="new_status">
       <NotNull>1</NotNull>
       <Position>4</Position>
       <StateNumber>1355</StateNumber>
       <StoredType>waitlist_status|0s</StoredType>
       <TypeId>18273</TypeId>
     </column>
-    <column id="1526" parent="681" name="changed_at">
+    <column id="1528" parent="681" name="changed_at">
       <DefaultExpression>now()</DefaultExpression>
       <Position>5</Position>
       <StateNumber>1355</StateNumber>
       <StoredType>timestamp with time zone|0s</StoredType>
       <TypeId>1184</TypeId>
     </column>
-    <column id="1527" parent="681" name="changed_by">
+    <column id="1529" parent="681" name="changed_by">
       <Position>6</Position>
       <StateNumber>1355</StateNumber>
       <StoredType>uuid|0s</StoredType>
       <TypeId>2950</TypeId>
     </column>
-    <column id="1528" parent="681" name="notes">
+    <column id="1530" parent="681" name="notes">
       <Position>7</Position>
       <StateNumber>1355</StateNumber>
       <StoredType>text|0s</StoredType>
       <TypeId>25</TypeId>
     </column>
-    <foreign-key id="1529" parent="681" name="waitlist_status_history_waitlist_id_fkey">
+    <foreign-key id="1531" parent="681" name="waitlist_status_history_waitlist_id_fkey">
       <ColNames>waitlist_id</ColNames>
       <NameSurrogate>1</NameSurrogate>
       <ObjectId>18312</ObjectId>
@@ -16708,7 +16720,7 @@ id</ColNames>
       <RefKeyColPositions>1</RefKeyColPositions>
       <RefTableId>18287</RefTableId>
     </foreign-key>
-    <foreign-key id="1530" parent="681" name="waitlist_status_history_changed_by_fkey">
+    <foreign-key id="1532" parent="681" name="waitlist_status_history_changed_by_fkey">
       <ColNames>changed_by</ColNames>
       <NameSurrogate>1</NameSurrogate>
       <ObjectId>18317</ObjectId>
@@ -16720,7 +16732,7 @@ id</ColNames>
       <RefTableKind>table</RefTableKind>
       <RefTableParentName>auth</RefTableParentName>
     </foreign-key>
-    <index id="1531" parent="681" name="waitlist_status_history_pkey">
+    <index id="1533" parent="681" name="waitlist_status_history_pkey">
       <ColNames>id</ColNames>
       <NameSurrogate>1</NameSurrogate>
       <ObjectId>18310</ObjectId>
@@ -16729,14 +16741,14 @@ id</ColNames>
       <Unique>1</Unique>
       <AccessMethodId>403</AccessMethodId>
     </index>
-    <key id="1532" parent="681" name="waitlist_status_history_pkey">
+    <key id="1534" parent="681" name="waitlist_status_history_pkey">
       <NameSurrogate>1</NameSurrogate>
       <ObjectId>18311</ObjectId>
       <Primary>1</Primary>
       <StateNumber>1355</StateNumber>
       <UnderlyingIndexId>18310</UnderlyingIndexId>
     </key>
-    <security-policy id="1533" parent="681" name="Only committee members can view the waitlist history">
+    <security-policy id="1535" parent="681" name="Only committee members can view the waitlist history">
       <ObjectId>18325</ObjectId>
       <OperationType>select</OperationType>
       <Permissive>1</Permissive>
@@ -16744,359 +16756,369 @@ id</ColNames>
       <UsingExpression>has_any_role(( SELECT auth.uid() AS uid), ARRAY[&apos;admin&apos;::role_type, &apos;president&apos;::role_type, &apos;committee_coordinator&apos;::role_type])</UsingExpression>
       <RoleIds>16448</RoleIds>
     </security-policy>
-    <column id="1534" parent="682" name="club_activity_id">
+    <column id="1536" parent="682" name="club_activity_id">
       <Position>1</Position>
       <StateNumber>1394</StateNumber>
       <StoredType>uuid|0s</StoredType>
     </column>
-    <column id="1535" parent="682" name="interest_count">
+    <column id="1537" parent="682" name="interest_count">
       <Position>2</Position>
       <StateNumber>1394</StateNumber>
       <StoredType>bigint|0s</StoredType>
     </column>
-    <column id="1536" parent="683" name="id">
+    <column id="1538" parent="683" name="id">
       <Position>1</Position>
-      <StateNumber>1385</StateNumber>
+      <StateNumber>1398</StateNumber>
       <StoredType>uuid|0s</StoredType>
     </column>
-    <column id="1537" parent="683" name="user_profile_id">
+    <column id="1539" parent="683" name="user_profile_id">
       <Position>2</Position>
-      <StateNumber>1385</StateNumber>
+      <StateNumber>1398</StateNumber>
       <StoredType>uuid|0s</StoredType>
     </column>
-    <column id="1538" parent="683" name="next_of_kin_name">
+    <column id="1540" parent="683" name="next_of_kin_name">
       <Position>3</Position>
-      <StateNumber>1385</StateNumber>
+      <StateNumber>1398</StateNumber>
       <StoredType>text|0s</StoredType>
     </column>
-    <column id="1539" parent="683" name="next_of_kin_phone">
+    <column id="1541" parent="683" name="next_of_kin_phone">
       <Position>4</Position>
-      <StateNumber>1385</StateNumber>
+      <StateNumber>1398</StateNumber>
       <StoredType>text|0s</StoredType>
     </column>
-    <column id="1540" parent="683" name="preferred_weapon">
+    <column id="1542" parent="683" name="preferred_weapon">
       <Position>5</Position>
-      <StateNumber>1385</StateNumber>
+      <StateNumber>1398</StateNumber>
       <StoredType>preferred_weapon[]|0s</StoredType>
     </column>
-    <column id="1541" parent="683" name="membership_start_date">
+    <column id="1543" parent="683" name="membership_start_date">
       <Position>6</Position>
-      <StateNumber>1385</StateNumber>
+      <StateNumber>1398</StateNumber>
       <StoredType>timestamp with time zone|0s</StoredType>
     </column>
-    <column id="1542" parent="683" name="membership_end_date">
+    <column id="1544" parent="683" name="membership_end_date">
       <Position>7</Position>
-      <StateNumber>1385</StateNumber>
+      <StateNumber>1398</StateNumber>
       <StoredType>timestamp with time zone|0s</StoredType>
     </column>
-    <column id="1543" parent="683" name="last_payment_date">
+    <column id="1545" parent="683" name="last_payment_date">
       <Position>8</Position>
-      <StateNumber>1385</StateNumber>
+      <StateNumber>1398</StateNumber>
       <StoredType>timestamp with time zone|0s</StoredType>
     </column>
-    <column id="1544" parent="683" name="insurance_form_submitted">
+    <column id="1546" parent="683" name="insurance_form_submitted">
       <Position>9</Position>
-      <StateNumber>1385</StateNumber>
+      <StateNumber>1398</StateNumber>
       <StoredType>boolean|0s</StoredType>
     </column>
-    <column id="1545" parent="683" name="additional_data">
+    <column id="1547" parent="683" name="additional_data">
       <Position>10</Position>
-      <StateNumber>1385</StateNumber>
+      <StateNumber>1398</StateNumber>
       <StoredType>jsonb|0s</StoredType>
     </column>
-    <column id="1546" parent="683" name="created_at">
+    <column id="1548" parent="683" name="created_at">
       <Position>11</Position>
-      <StateNumber>1385</StateNumber>
+      <StateNumber>1398</StateNumber>
       <StoredType>timestamp with time zone|0s</StoredType>
     </column>
-    <column id="1547" parent="683" name="updated_at">
+    <column id="1549" parent="683" name="updated_at">
       <Position>12</Position>
-      <StateNumber>1385</StateNumber>
+      <StateNumber>1398</StateNumber>
       <StoredType>timestamp with time zone|0s</StoredType>
     </column>
-    <column id="1548" parent="683" name="first_name">
+    <column id="1550" parent="683" name="subscription_paused_until">
       <Position>13</Position>
-      <StateNumber>1385</StateNumber>
-      <StoredType>text|0s</StoredType>
+      <StateNumber>1398</StateNumber>
+      <StoredType>timestamp with time zone|0s</StoredType>
     </column>
-    <column id="1549" parent="683" name="last_name">
+    <column id="1551" parent="683" name="first_name">
       <Position>14</Position>
-      <StateNumber>1385</StateNumber>
+      <StateNumber>1398</StateNumber>
       <StoredType>text|0s</StoredType>
     </column>
-    <column id="1550" parent="683" name="phone_number">
+    <column id="1552" parent="683" name="last_name">
       <Position>15</Position>
-      <StateNumber>1385</StateNumber>
+      <StateNumber>1398</StateNumber>
       <StoredType>text|0s</StoredType>
     </column>
-    <column id="1551" parent="683" name="gender">
+    <column id="1553" parent="683" name="phone_number">
       <Position>16</Position>
-      <StateNumber>1385</StateNumber>
+      <StateNumber>1398</StateNumber>
+      <StoredType>text|0s</StoredType>
+    </column>
+    <column id="1554" parent="683" name="gender">
+      <Position>17</Position>
+      <StateNumber>1398</StateNumber>
       <StoredType>gender|0s</StoredType>
     </column>
-    <column id="1552" parent="683" name="pronouns">
-      <Position>17</Position>
-      <StateNumber>1385</StateNumber>
+    <column id="1555" parent="683" name="pronouns">
+      <Position>18</Position>
+      <StateNumber>1398</StateNumber>
       <StoredType>text|0s</StoredType>
     </column>
-    <column id="1553" parent="683" name="is_active">
-      <Position>18</Position>
-      <StateNumber>1385</StateNumber>
+    <column id="1556" parent="683" name="is_active">
+      <Position>19</Position>
+      <StateNumber>1398</StateNumber>
       <StoredType>boolean|0s</StoredType>
     </column>
-    <column id="1554" parent="683" name="medical_conditions">
-      <Position>19</Position>
-      <StateNumber>1385</StateNumber>
+    <column id="1557" parent="683" name="customer_id">
+      <Position>20</Position>
+      <StateNumber>1398</StateNumber>
       <StoredType>text|0s</StoredType>
     </column>
-    <column id="1555" parent="683" name="email">
-      <Position>20</Position>
-      <StateNumber>1385</StateNumber>
+    <column id="1558" parent="683" name="medical_conditions">
+      <Position>21</Position>
+      <StateNumber>1398</StateNumber>
+      <StoredType>text|0s</StoredType>
+    </column>
+    <column id="1559" parent="683" name="email">
+      <Position>22</Position>
+      <StateNumber>1398</StateNumber>
       <StoredType>varchar|0s</StoredType>
     </column>
-    <column id="1556" parent="683" name="from_waitlist_id">
-      <Position>21</Position>
-      <StateNumber>1385</StateNumber>
+    <column id="1560" parent="683" name="from_waitlist_id">
+      <Position>23</Position>
+      <StateNumber>1398</StateNumber>
       <StoredType>uuid|0s</StoredType>
     </column>
-    <column id="1557" parent="683" name="waitlist_registration_date">
-      <Position>22</Position>
-      <StateNumber>1385</StateNumber>
+    <column id="1561" parent="683" name="waitlist_registration_date">
+      <Position>24</Position>
+      <StateNumber>1398</StateNumber>
       <StoredType>timestamp with time zone|0s</StoredType>
     </column>
-    <column id="1558" parent="683" name="roles">
-      <Position>23</Position>
-      <StateNumber>1385</StateNumber>
+    <column id="1562" parent="683" name="roles">
+      <Position>25</Position>
+      <StateNumber>1398</StateNumber>
       <StoredType>role_type[]|0s</StoredType>
     </column>
-    <column id="1559" parent="683" name="age">
-      <Position>24</Position>
-      <StateNumber>1385</StateNumber>
+    <column id="1563" parent="683" name="age">
+      <Position>26</Position>
+      <StateNumber>1398</StateNumber>
       <StoredType>numeric|0s</StoredType>
     </column>
-    <column id="1560" parent="683" name="search_text">
-      <Position>25</Position>
-      <StateNumber>1385</StateNumber>
+    <column id="1564" parent="683" name="search_text">
+      <Position>27</Position>
+      <StateNumber>1398</StateNumber>
       <StoredType>tsvector|0s</StoredType>
     </column>
-    <column id="1561" parent="683" name="social_media_consent">
-      <Position>26</Position>
-      <StateNumber>1385</StateNumber>
+    <column id="1565" parent="683" name="social_media_consent">
+      <Position>28</Position>
+      <StateNumber>1398</StateNumber>
       <StoredType>social_media_consent|0s</StoredType>
     </column>
-    <column id="1562" parent="683" name="guardian_first_name">
-      <Position>27</Position>
-      <StateNumber>1385</StateNumber>
-      <StoredType>text|0s</StoredType>
-    </column>
-    <column id="1563" parent="683" name="guardian_last_name">
-      <Position>28</Position>
-      <StateNumber>1385</StateNumber>
-      <StoredType>text|0s</StoredType>
-    </column>
-    <column id="1564" parent="683" name="guardian_phone_number">
+    <column id="1566" parent="683" name="guardian_first_name">
       <Position>29</Position>
-      <StateNumber>1385</StateNumber>
+      <StateNumber>1398</StateNumber>
       <StoredType>text|0s</StoredType>
     </column>
-    <column id="1565" parent="684" name="id">
+    <column id="1567" parent="683" name="guardian_last_name">
+      <Position>30</Position>
+      <StateNumber>1398</StateNumber>
+      <StoredType>text|0s</StoredType>
+    </column>
+    <column id="1568" parent="683" name="guardian_phone_number">
+      <Position>31</Position>
+      <StateNumber>1398</StateNumber>
+      <StoredType>text|0s</StoredType>
+    </column>
+    <column id="1569" parent="684" name="id">
       <Position>1</Position>
       <StateNumber>1383</StateNumber>
       <StoredType>uuid|0s</StoredType>
     </column>
-    <column id="1566" parent="684" name="email">
+    <column id="1570" parent="684" name="email">
       <Position>2</Position>
       <StateNumber>1383</StateNumber>
       <StoredType>text|0s</StoredType>
     </column>
-    <column id="1567" parent="684" name="insurance_form_submitted">
+    <column id="1571" parent="684" name="insurance_form_submitted">
       <Position>3</Position>
       <StateNumber>1383</StateNumber>
       <StoredType>boolean|0s</StoredType>
     </column>
-    <column id="1568" parent="684" name="status">
+    <column id="1572" parent="684" name="status">
       <Position>4</Position>
       <StateNumber>1383</StateNumber>
       <StoredType>waitlist_status|0s</StoredType>
     </column>
-    <column id="1569" parent="684" name="initial_registration_date">
+    <column id="1573" parent="684" name="initial_registration_date">
       <Position>5</Position>
       <StateNumber>1383</StateNumber>
       <StoredType>timestamp with time zone|0s</StoredType>
     </column>
-    <column id="1570" parent="684" name="last_status_change">
+    <column id="1574" parent="684" name="last_status_change">
       <Position>6</Position>
       <StateNumber>1383</StateNumber>
       <StoredType>timestamp with time zone|0s</StoredType>
     </column>
-    <column id="1571" parent="684" name="last_contacted">
+    <column id="1575" parent="684" name="last_contacted">
       <Position>7</Position>
       <StateNumber>1383</StateNumber>
       <StoredType>timestamp with time zone|0s</StoredType>
     </column>
-    <column id="1572" parent="684" name="admin_notes">
+    <column id="1576" parent="684" name="admin_notes">
       <Position>8</Position>
       <StateNumber>1383</StateNumber>
       <StoredType>text|0s</StoredType>
     </column>
-    <column id="1573" parent="684" name="search_text">
+    <column id="1577" parent="684" name="search_text">
       <Position>9</Position>
       <StateNumber>1383</StateNumber>
       <StoredType>tsvector|0s</StoredType>
     </column>
-    <column id="1574" parent="684" name="phone_number">
+    <column id="1578" parent="684" name="phone_number">
       <Position>10</Position>
       <StateNumber>1383</StateNumber>
       <StoredType>text|0s</StoredType>
     </column>
-    <column id="1575" parent="684" name="medical_conditions">
+    <column id="1579" parent="684" name="medical_conditions">
       <Position>11</Position>
       <StateNumber>1383</StateNumber>
       <StoredType>text|0s</StoredType>
     </column>
-    <column id="1576" parent="684" name="full_name">
+    <column id="1580" parent="684" name="full_name">
       <Position>12</Position>
       <StateNumber>1383</StateNumber>
       <StoredType>text|0s</StoredType>
     </column>
-    <column id="1577" parent="684" name="current_position">
+    <column id="1581" parent="684" name="current_position">
       <Position>13</Position>
       <StateNumber>1383</StateNumber>
       <StoredType>integer|0s</StoredType>
     </column>
-    <column id="1578" parent="684" name="age">
+    <column id="1582" parent="684" name="age">
       <Position>14</Position>
       <StateNumber>1383</StateNumber>
       <StoredType>numeric|0s</StoredType>
     </column>
-    <column id="1579" parent="684" name="social_media_consent">
+    <column id="1583" parent="684" name="social_media_consent">
       <Position>15</Position>
       <StateNumber>1383</StateNumber>
       <StoredType>social_media_consent|0s</StoredType>
     </column>
-    <column id="1580" parent="684" name="guardian_first_name">
+    <column id="1584" parent="684" name="guardian_first_name">
       <Position>16</Position>
       <StateNumber>1383</StateNumber>
       <StoredType>text|0s</StoredType>
     </column>
-    <column id="1581" parent="684" name="guardian_last_name">
+    <column id="1585" parent="684" name="guardian_last_name">
       <Position>17</Position>
       <StateNumber>1383</StateNumber>
       <StoredType>text|0s</StoredType>
     </column>
-    <column id="1582" parent="684" name="guardian_phone_number">
+    <column id="1586" parent="684" name="guardian_phone_number">
       <Position>18</Position>
       <StateNumber>1383</StateNumber>
       <StoredType>text|0s</StoredType>
     </column>
-    <argument id="1583" parent="685">
+    <argument id="1587" parent="685">
       <ArgumentDirection>R</ArgumentDirection>
       <StoredType>bytea|0s</StoredType>
     </argument>
-    <argument id="1584" parent="685" name="message">
+    <argument id="1588" parent="685" name="message">
       <Position>1</Position>
       <StoredType>bytea|0s</StoredType>
     </argument>
-    <argument id="1585" parent="685" name="additional">
+    <argument id="1589" parent="685" name="additional">
       <Position>2</Position>
       <StoredType>bytea|0s</StoredType>
     </argument>
-    <argument id="1586" parent="685" name="key_id">
+    <argument id="1590" parent="685" name="key_id">
       <Position>3</Position>
       <StoredType>bigint|0s</StoredType>
     </argument>
-    <argument id="1587" parent="685" name="context">
+    <argument id="1591" parent="685" name="context">
       <DefaultExpression>&apos;\x7067736f6469756d&apos;::bytea</DefaultExpression>
       <Position>4</Position>
       <StoredType>bytea|0s</StoredType>
     </argument>
-    <argument id="1588" parent="685" name="nonce">
+    <argument id="1592" parent="685" name="nonce">
       <DefaultExpression>NULL::bytea</DefaultExpression>
       <Position>5</Position>
       <StoredType>bytea|0s</StoredType>
     </argument>
-    <argument id="1589" parent="686">
+    <argument id="1593" parent="686">
       <ArgumentDirection>R</ArgumentDirection>
       <StoredType>bytea|0s</StoredType>
     </argument>
-    <argument id="1590" parent="686" name="message">
+    <argument id="1594" parent="686" name="message">
       <Position>1</Position>
       <StoredType>bytea|0s</StoredType>
     </argument>
-    <argument id="1591" parent="686" name="additional">
+    <argument id="1595" parent="686" name="additional">
       <Position>2</Position>
       <StoredType>bytea|0s</StoredType>
     </argument>
-    <argument id="1592" parent="686" name="key_id">
+    <argument id="1596" parent="686" name="key_id">
       <Position>3</Position>
       <StoredType>bigint|0s</StoredType>
     </argument>
-    <argument id="1593" parent="686" name="context">
+    <argument id="1597" parent="686" name="context">
       <DefaultExpression>&apos;\x7067736f6469756d&apos;::bytea</DefaultExpression>
       <Position>4</Position>
       <StoredType>bytea|0s</StoredType>
     </argument>
-    <argument id="1594" parent="686" name="nonce">
+    <argument id="1598" parent="686" name="nonce">
       <DefaultExpression>NULL::bytea</DefaultExpression>
       <Position>5</Position>
       <StoredType>bytea|0s</StoredType>
     </argument>
-    <argument id="1595" parent="687">
+    <argument id="1599" parent="687">
       <ArgumentDirection>R</ArgumentDirection>
       <StoredType>bytea|0s</StoredType>
     </argument>
-    <argument id="1596" parent="688">
+    <argument id="1600" parent="688">
       <ArgumentDirection>R</ArgumentDirection>
       <StoredType>uuid|0s</StoredType>
     </argument>
-    <argument id="1597" parent="688" name="new_secret">
+    <argument id="1601" parent="688" name="new_secret">
       <Position>1</Position>
       <StoredType>text|0s</StoredType>
     </argument>
-    <argument id="1598" parent="688" name="new_name">
+    <argument id="1602" parent="688" name="new_name">
       <DefaultExpression>NULL::text</DefaultExpression>
       <Position>2</Position>
       <StoredType>text|0s</StoredType>
     </argument>
-    <argument id="1599" parent="688" name="new_description">
+    <argument id="1603" parent="688" name="new_description">
       <DefaultExpression>&apos;&apos;::text</DefaultExpression>
       <Position>3</Position>
       <StoredType>text|0s</StoredType>
     </argument>
-    <argument id="1600" parent="688" name="new_key_id">
+    <argument id="1604" parent="688" name="new_key_id">
       <DefaultExpression>NULL::uuid</DefaultExpression>
       <Position>4</Position>
       <StoredType>uuid|0s</StoredType>
     </argument>
-    <argument id="1601" parent="689">
+    <argument id="1605" parent="689">
       <ArgumentDirection>R</ArgumentDirection>
       <StoredType>void|0s</StoredType>
     </argument>
-    <argument id="1602" parent="689" name="secret_id">
+    <argument id="1606" parent="689" name="secret_id">
       <Position>1</Position>
       <StoredType>uuid|0s</StoredType>
     </argument>
-    <argument id="1603" parent="689" name="new_secret">
+    <argument id="1607" parent="689" name="new_secret">
       <DefaultExpression>NULL::text</DefaultExpression>
       <Position>2</Position>
       <StoredType>text|0s</StoredType>
     </argument>
-    <argument id="1604" parent="689" name="new_name">
+    <argument id="1608" parent="689" name="new_name">
       <DefaultExpression>NULL::text</DefaultExpression>
       <Position>3</Position>
       <StoredType>text|0s</StoredType>
     </argument>
-    <argument id="1605" parent="689" name="new_description">
+    <argument id="1609" parent="689" name="new_description">
       <DefaultExpression>NULL::text</DefaultExpression>
       <Position>4</Position>
       <StoredType>text|0s</StoredType>
     </argument>
-    <argument id="1606" parent="689" name="new_key_id">
+    <argument id="1610" parent="689" name="new_key_id">
       <DefaultExpression>NULL::uuid</DefaultExpression>
       <Position>5</Position>
       <StoredType>uuid|0s</StoredType>
     </argument>
-    <column id="1607" parent="690" name="id">
+    <column id="1611" parent="690" name="id">
       <DefaultExpression>gen_random_uuid()</DefaultExpression>
       <NotNull>1</NotNull>
       <Position>1</Position>
@@ -17104,13 +17126,13 @@ id</ColNames>
       <StoredType>uuid|0s</StoredType>
       <TypeId>2950</TypeId>
     </column>
-    <column id="1608" parent="690" name="name">
+    <column id="1612" parent="690" name="name">
       <Position>2</Position>
       <StateNumber>914</StateNumber>
       <StoredType>text|0s</StoredType>
       <TypeId>25</TypeId>
     </column>
-    <column id="1609" parent="690" name="description">
+    <column id="1613" parent="690" name="description">
       <DefaultExpression>&apos;&apos;::text</DefaultExpression>
       <NotNull>1</NotNull>
       <Position>3</Position>
@@ -17118,27 +17140,27 @@ id</ColNames>
       <StoredType>text|0s</StoredType>
       <TypeId>25</TypeId>
     </column>
-    <column id="1610" parent="690" name="secret">
+    <column id="1614" parent="690" name="secret">
       <NotNull>1</NotNull>
       <Position>4</Position>
       <StateNumber>914</StateNumber>
       <StoredType>text|0s</StoredType>
       <TypeId>25</TypeId>
     </column>
-    <column id="1611" parent="690" name="key_id">
+    <column id="1615" parent="690" name="key_id">
       <Position>5</Position>
       <StateNumber>914</StateNumber>
       <StoredType>uuid|0s</StoredType>
       <TypeId>2950</TypeId>
     </column>
-    <column id="1612" parent="690" name="nonce">
+    <column id="1616" parent="690" name="nonce">
       <DefaultExpression>vault._crypto_aead_det_noncegen()</DefaultExpression>
       <Position>6</Position>
       <StateNumber>914</StateNumber>
       <StoredType>bytea|0s</StoredType>
       <TypeId>17</TypeId>
     </column>
-    <column id="1613" parent="690" name="created_at">
+    <column id="1617" parent="690" name="created_at">
       <DefaultExpression>CURRENT_TIMESTAMP</DefaultExpression>
       <NotNull>1</NotNull>
       <Position>7</Position>
@@ -17146,7 +17168,7 @@ id</ColNames>
       <StoredType>timestamp with time zone|0s</StoredType>
       <TypeId>1184</TypeId>
     </column>
-    <column id="1614" parent="690" name="updated_at">
+    <column id="1618" parent="690" name="updated_at">
       <DefaultExpression>CURRENT_TIMESTAMP</DefaultExpression>
       <NotNull>1</NotNull>
       <Position>8</Position>
@@ -17154,7 +17176,7 @@ id</ColNames>
       <StoredType>timestamp with time zone|0s</StoredType>
       <TypeId>1184</TypeId>
     </column>
-    <index id="1615" parent="690" name="secrets_pkey">
+    <index id="1619" parent="690" name="secrets_pkey">
       <ColNames>id</ColNames>
       <NameSurrogate>1</NameSurrogate>
       <ObjectId>16660</ObjectId>
@@ -17163,7 +17185,7 @@ id</ColNames>
       <Unique>1</Unique>
       <AccessMethodId>403</AccessMethodId>
     </index>
-    <index id="1616" parent="690" name="secrets_name_idx">
+    <index id="1620" parent="690" name="secrets_name_idx">
       <ColNames>name</ColNames>
       <Condition>(name IS NOT NULL)</Condition>
       <ObjectId>16662</ObjectId>
@@ -17174,54 +17196,54 @@ id</ColNames>
       <CollationIds>100</CollationIds>
       <CollationParentNames>pg_catalog</CollationParentNames>
     </index>
-    <key id="1617" parent="690" name="secrets_pkey">
+    <key id="1621" parent="690" name="secrets_pkey">
       <NameSurrogate>1</NameSurrogate>
       <ObjectId>16661</ObjectId>
       <Primary>1</Primary>
       <StateNumber>914</StateNumber>
       <UnderlyingIndexId>16660</UnderlyingIndexId>
     </key>
-    <column id="1618" parent="691" name="id">
+    <column id="1622" parent="691" name="id">
       <Position>1</Position>
       <StateNumber>914</StateNumber>
       <StoredType>uuid|0s</StoredType>
     </column>
-    <column id="1619" parent="691" name="name">
+    <column id="1623" parent="691" name="name">
       <Position>2</Position>
       <StateNumber>914</StateNumber>
       <StoredType>text|0s</StoredType>
     </column>
-    <column id="1620" parent="691" name="description">
+    <column id="1624" parent="691" name="description">
       <Position>3</Position>
       <StateNumber>914</StateNumber>
       <StoredType>text|0s</StoredType>
     </column>
-    <column id="1621" parent="691" name="secret">
+    <column id="1625" parent="691" name="secret">
       <Position>4</Position>
       <StateNumber>914</StateNumber>
       <StoredType>text|0s</StoredType>
     </column>
-    <column id="1622" parent="691" name="decrypted_secret">
+    <column id="1626" parent="691" name="decrypted_secret">
       <Position>5</Position>
       <StateNumber>914</StateNumber>
       <StoredType>text|0s</StoredType>
     </column>
-    <column id="1623" parent="691" name="key_id">
+    <column id="1627" parent="691" name="key_id">
       <Position>6</Position>
       <StateNumber>914</StateNumber>
       <StoredType>uuid|0s</StoredType>
     </column>
-    <column id="1624" parent="691" name="nonce">
+    <column id="1628" parent="691" name="nonce">
       <Position>7</Position>
       <StateNumber>914</StateNumber>
       <StoredType>bytea|0s</StoredType>
     </column>
-    <column id="1625" parent="691" name="created_at">
+    <column id="1629" parent="691" name="created_at">
       <Position>8</Position>
       <StateNumber>914</StateNumber>
       <StoredType>timestamp with time zone|0s</StoredType>
     </column>
-    <column id="1626" parent="691" name="updated_at">
+    <column id="1630" parent="691" name="updated_at">
       <Position>9</Position>
       <StateNumber>914</StateNumber>
       <StoredType>timestamp with time zone|0s</StoredType>
