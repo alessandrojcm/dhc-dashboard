@@ -9,6 +9,8 @@
 	type Props = {
 		value: DateValue;
 		onDateChange: (date: Date) => void;
+		minValue?: DateValue;
+		maxValue?: DateValue
 		name: string;
 		id: string;
 		'data-fs-error': string | undefined;
@@ -22,7 +24,7 @@
 		dateStyle: 'long'
 	});
 
-	let { value, onDateChange, ...rest }: Props = $props();
+	let { value, onDateChange, minValue, maxValue, ...rest }: Props = $props();
 	let open = $state(false);
 </script>
 
@@ -44,6 +46,8 @@
 			bind:value
 			type="single"
 			initialFocus
+			minValue={minValue}
+			maxValue={maxValue}
 			onValueChange={(date) => {
 				date && onDateChange(date.toDate(getLocalTimeZone()));
 				open = false;
