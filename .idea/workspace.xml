@@ -18,13 +18,15 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="fix: refunds not working for users">
-      <change afterPath="$PROJECT_DIR$/evals/workshop-generator.eval.ts" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/src/lib/server/workshop-generator.ts" afterDir="false" />
+    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="chore(deps): update dependencies and introduce AI-related packages&#10;&#10;- Add `@ai-sdk/groq`, `@ai-sdk/svelte`, `@ai-sdk/valibot`, `ollama-ai-provider`, and `ai` for AI capabilities.&#10;- Include utility packages like `evalite`, `autoevals`, and `better-sqlite3`.&#10;- Bump versions for several dependencies and dev dependencies, improving compatibility and features.">
+      <change afterPath="$PROJECT_DIR$/src/routes/api/workshops/generate/+server.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/pnpm-lock.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/pnpm-lock.yaml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/lib/schemas/workshops.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/schemas/workshops.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/lib/components/workshop-form.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/components/workshop-form.svelte" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/lib/server/workshop-generator.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/server/workshop-generator.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/auth/+page.server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/auth/+page.server.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/workshops/+page.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/workshops/+page.svelte" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/workshops/create/+page.server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/workshops/create/+page.server.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/workshops/create/+page.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/workshops/create/+page.svelte" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -164,7 +166,7 @@
       <recent name="$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]" />
     </key>
   </component>
-  <component name="RunManager" selected="Node.js.test.ts">
+  <component name="RunManager" selected="npm.dev">
     <configuration name="Edge Functions" type="ChromiumRemoteDebugType" factoryName="Chromium Remote" port="8083">
       <method v="2" />
     </configuration>
@@ -229,8 +231,8 @@
     </list>
     <recent_temporary>
       <list>
-        <item itemvalue="Node.js.test.ts" />
         <item itemvalue="npm.dev" />
+        <item itemvalue="Node.js.test.ts" />
         <item itemvalue="Playwright.Workshop Interest System.should display planned workshops in calendar view" />
         <item itemvalue="Playwright.Workshop API.should create workshop as admin" />
         <item itemvalue="Playwright.Workshop Interest System" />
@@ -285,7 +287,7 @@
       <workItem from="1753624621353" duration="14000" />
       <workItem from="1753624646505" duration="3336000" />
       <workItem from="1753629574041" duration="109000" />
-      <workItem from="1753636997043" duration="14869000" />
+      <workItem from="1753636997043" duration="23162000" />
     </task>
     <task id="LOCAL-00001" summary="Add guardian support for underage waitlist entries&#10;&#10;Introduce `waitlist_guardians` table and transactional logic for adding guardian details when underage users join the waitlist. Updates include database migrations, UI adjustments for conditional input fields, validation logic, and tests to ensure age-based gating.">
       <option name="closed" value="true" />
@@ -591,7 +593,15 @@
       <option name="project" value="LOCAL" />
       <updated>1753637157607</updated>
     </task>
-    <option name="localTasksCounter" value="39" />
+    <task id="LOCAL-00039" summary="chore(deps): update dependencies and introduce AI-related packages&#10;&#10;- Add `@ai-sdk/groq`, `@ai-sdk/svelte`, `@ai-sdk/valibot`, `ollama-ai-provider`, and `ai` for AI capabilities.&#10;- Include utility packages like `evalite`, `autoevals`, and `better-sqlite3`.&#10;- Bump versions for several dependencies and dev dependencies, improving compatibility and features.">
+      <option name="closed" value="true" />
+      <created>1753720917116</created>
+      <option name="number" value="00039" />
+      <option name="presentableId" value="LOCAL-00039" />
+      <option name="project" value="LOCAL" />
+      <updated>1753720917117</updated>
+    </task>
+    <option name="localTasksCounter" value="40" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -632,8 +642,6 @@
   </component>
   <component name="VcsManagerConfiguration">
     <option name="CHECK_CODE_SMELLS_BEFORE_PROJECT_COMMIT" value="false" />
-    <MESSAGE value="feat: add invite management and UI enhancements&#10;&#10;- Replaced `complete_member_registration` SQL function with API-based invite workflows.&#10;- Added resend invitation API and related UI updates for waitlist.&#10;- Improved waitlist filtering (`status`).&#10;- Updated Stripe API version.&#10;- Enhanced IDE configuration and standardized code formatting." />
-    <MESSAGE value="feat: enhance invite workflow and UI; improve IDE config&#10;&#10;- Added API-based invite workflows, replacing `complete_member_registration` SQL function.&#10;- Introduced resend invitation API and related UI updates for waitlist.&#10;- Improved waitlist filtering by `status`.&#10;- Updated Stripe API version.&#10;- Refined IDE configuration and applied consistent code formatting." />
     <MESSAGE value="feat: refactor invitation to use invitation id instead of tokens" />
     <MESSAGE value="feat: added migrations for new email invite processing.&#10;&#10;It now uses the uuid of the invite as a route and sends an email manually." />
     <MESSAGE value="feat: added functions for email processing using a supabase queue." />
@@ -657,7 +665,9 @@
     <MESSAGE value="feat: added workshop update feature" />
     <MESSAGE value="fix: remove payment session from bulk invite" />
     <MESSAGE value="fix: refunds not working for users" />
-    <option name="LAST_COMMIT_MESSAGE" value="fix: refunds not working for users" />
+    <MESSAGE value="feat: refunds not working for users" />
+    <MESSAGE value="chore(deps): update dependencies and introduce AI-related packages&#10;&#10;- Add `@ai-sdk/groq`, `@ai-sdk/svelte`, `@ai-sdk/valibot`, `ollama-ai-provider`, and `ai` for AI capabilities.&#10;- Include utility packages like `evalite`, `autoevals`, and `better-sqlite3`.&#10;- Bump versions for several dependencies and dev dependencies, improving compatibility and features." />
+    <option name="LAST_COMMIT_MESSAGE" value="chore(deps): update dependencies and introduce AI-related packages&#10;&#10;- Add `@ai-sdk/groq`, `@ai-sdk/svelte`, `@ai-sdk/valibot`, `ollama-ai-provider`, and `ai` for AI capabilities.&#10;- Include utility packages like `evalite`, `autoevals`, and `better-sqlite3`.&#10;- Bump versions for several dependencies and dev dependencies, improving compatibility and features." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -669,12 +679,12 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" type="javascript">
           <url>file://$PROJECT_DIR$/src/routes/auth/+page.server.ts</url>
-          <line>39</line>
+          <line>38</line>
           <option name="timeStamp" value="10" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="javascript">
           <url>file://$PROJECT_DIR$/src/routes/auth/+page.server.ts</url>
-          <line>38</line>
+          <line>37</line>
           <option name="timeStamp" value="11" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="javascript">
@@ -684,13 +694,19 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" type="javascript">
           <url>file://$PROJECT_DIR$/src/routes/auth/+page.server.ts</url>
-          <line>51</line>
+          <line>50</line>
           <option name="timeStamp" value="13" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="javascript">
           <url>file://$PROJECT_DIR$/src/routes/api/workshops/[id]/register/+server.ts</url>
           <line>268</line>
           <option name="timeStamp" value="19" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="javascript">
+          <url>file://$PROJECT_DIR$/src/routes/dashboard/workshops/create/+page.server.ts</url>
+          <line>29</line>
+          <properties lambdaOrdinal="-1" />
+          <option name="timeStamp" value="22" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>
