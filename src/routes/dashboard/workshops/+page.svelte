@@ -3,6 +3,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Alert, AlertDescription } from '$lib/components/ui/alert';
 	import WorkshopCalendar from '$lib/components/workshops/workshop-calendar.svelte';
+	import QuickCreateWorkshop from '$lib/components/workshops/quick-create-workshop.svelte';
 	import { createQuery, createMutation, useQueryClient } from '@tanstack/svelte-query';
 	import type { Workshop } from '$lib/types';
 
@@ -49,7 +50,10 @@
 <div class="p-6 space-y-6">
 	<div class="flex justify-between items-center">
 		<h1 class="text-3xl font-bold">Workshops</h1>
-		<Button onclick={handleCreate}>Create Workshop</Button>
+		<div class="flex gap-2">
+			<QuickCreateWorkshop />
+			<Button onclick={handleCreate}>Create Workshop</Button>
+		</div>
 	</div>
 
 	{#if workshopsQuery.error}
