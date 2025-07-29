@@ -10,12 +10,28 @@ import dayjs from 'dayjs';
 import * as Sentry from '@sentry/sveltekit';
 import type { PageServerLoad, Actions } from './$types';
 import Dinero from 'dinero.js';
+import { coerceToCreateWorkshopSchema } from '$lib/server/workshop-generator';
 
-export const load: PageServerLoad = async ({ locals }) => {
+export const load: PageServerLoad = async ({ locals, url }) => {
 	await authorize(locals, WORKSHOP_ROLES);
 
+	// Check if this is a generated workshop (from quick create)
+	const generatedParam = url.searchParams.get('generated');
+	let generatedData = null;
+
+	if (generatedParam && generatedParam !== 'true') {
+		try {
+			generatedData =
+				coerceToCreateWorkshopSchema(JSON.parse(decodeURIComponent(generatedParam)))?.output ?? {};
+		} catch (error) {
+			console.error('Failed to parse generated data:', error);
+		}
+	}
 	return {
-		form: await superValidate(valibot(CreateWorkshopSchema))
+		form: await superValidate(generatedData || {}, valibot(CreateWorkshopSchema), {
+			errors: false
+		}),
+		isGenerated: !!generatedData
 	};
 };
 
