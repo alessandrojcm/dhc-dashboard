@@ -3,6 +3,7 @@ import * as v from 'valibot';
 import { generateObject } from 'ai';
 import { valibotSchema } from '@ai-sdk/valibot';
 import { BaseWorkshopSchema, CreateWorkshopSchema } from '$lib/schemas/workshops';
+import { env } from '$env/dynamic/private';
 
 export const LLMCreateWrokshopSchema = v.object({
 	...v.omit(BaseWorkshopSchema, ['workshop_date', 'workshop_end_date']).entries,
@@ -115,7 +116,9 @@ export function coerceToCreateWorkshopSchema(
 	return v.safeParse(CreateWorkshopSchema, {
 		...output,
 		workshop_date: dayjs(output.workshop_date).toDate(),
-		workshop_end_date: dayjs(output.workshop_end_date).toDate()
+		workshop_end_date: dayjs(output.workshop_end_date).toDate(),
+		price_member: output.price_member / 100,
+		price_non_member: output.price_non_member ? output.price_non_member / 100 : undefined
 	});
 }
 
@@ -131,6 +134,7 @@ export async function generateWorkshopData(prompt: string, signal?: AbortSignal)
 		system,
 		temperature: 0.5,
 		prompt,
+		...(env?.GROQ_API_KEY && { apiKey: env.GROQ_API_KEY }),
 		...(signal && { abortSignal: signal }),
 		experimental_repairText: ({ text, error }) => {
 			try {
