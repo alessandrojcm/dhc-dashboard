@@ -3,7 +3,7 @@ import dayjs from 'dayjs';
 
 const isToday = (date: Date) => dayjs(date).isSame(dayjs(), 'day');
 
-const BaseWorkshopSchema = v.object({
+export const BaseWorkshopSchema = v.object({
 	title: v.pipe(v.string(), v.minLength(1, 'Title is required'), v.maxLength(255)),
 	description: v.optional(v.string(), ''),
 	location: v.pipe(v.string(), v.minLength(1, 'Location is required')),

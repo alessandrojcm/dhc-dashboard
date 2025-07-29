@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { superForm } from 'sveltekit-superforms';
+	import { dateProxy, superForm } from 'sveltekit-superforms';
 	import { valibotClient } from 'sveltekit-superforms/adapters';
 	import { CreateWorkshopSchema, UpdateWorkshopSchema } from '$lib/schemas/workshops';
 	import { Button } from '$lib/components/ui/button';
@@ -11,7 +11,13 @@
 	import Calendar25 from '$lib/components/calendar-25.svelte';
 	import { CheckCircle } from 'lucide-svelte';
 	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
-	import { getLocalTimeZone } from '@internationalized/date';
+	import {
+		type CalendarDate,
+		fromDate,
+		getLocalTimeZone,
+		toCalendarDate,
+		toCalendarDateTime
+	} from '@internationalized/date';
 	import dayjs from 'dayjs';
 
 	interface Props {
@@ -34,47 +40,82 @@
 			if (form.message?.success) {
 				window?.scrollTo({ top: 0, behavior: 'smooth' });
 				if (onSuccess) {
+					reset({
+						keepMessage: false
+					});
 					onSuccess(form);
 				}
 			}
-		},
+		}
 	});
 
-	const { form: formData, enhance, submitting, message } = form;
-	
-	// Calendar state
-	let calendarDate = $state<any>();
-	let startTime = $state('10:30');
-	let endTime = $state('12:30');
+	const { form: formData, enhance, submitting, message, reset } = form;
 
-	// Initialize calendar state from existing data in edit mode
-	$effect(() => {
-		if (mode === 'edit' && $formData.workshop_date) {
-			const date = new Date($formData.workshop_date);
-			startTime = dayjs(date).format('HH:mm');
-			
-			if ($formData.workshop_end_date) {
-				const endDate = new Date($formData.workshop_end_date);
-				endTime = dayjs(endDate).format('HH:mm');
+	const workshopDateValue = $derived.by(() => {
+		const date = dayjs($formData.workshop_date);
+		if (!date.isValid() || date.isSame(dayjs())) {
+			return undefined;
+		}
+		return toCalendarDate(fromDate(date.toDate(), getLocalTimeZone()));
+	});
+
+	const startTime = $derived.by(() => {
+		const date = dayjs($formData.workshop_date);
+		if (!date.isValid()) return '';
+		return date.format('HH:mm');
+	});
+
+	const endTime = $derived.by(() => {
+		const date = dayjs($formData.workshop_end_date);
+		if (!date.isValid()) return '';
+		return date.format('HH:mm');
+	});
+
+	function updateWorkshopDates(date?: CalendarDate | string, op: 'start' | 'end' | 'date' = 'date') {
+		if (!date) return;
+
+		if (typeof date === 'string' && op === 'start') {
+			const [hour, minute] = date.split(':').map(Number);
+			const currentDate = dayjs($formData.workshop_date);
+			const baseDate = currentDate.isValid() ? currentDate : dayjs();
+			$formData.workshop_date = baseDate.hour(hour).minute(minute).toDate();
+			return;
+		}
+
+		if (typeof date === 'string' && op === 'end') {
+			const [hour, minute] = date.split(':').map(Number);
+
+			let baseDate = dayjs($formData.workshop_end_date);
+			if (!baseDate.isValid()) {
+				baseDate = dayjs($formData.workshop_date);
 			}
-		}
-	});
+			if (!baseDate.isValid()) {
+				baseDate = dayjs();
+			}
 
-	function updateWorkshopDates() {
-		if (calendarDate && startTime) {
-			const date = calendarDate.toDate(getLocalTimeZone());
-			const [hours, minutes] = startTime.split(':').map(Number);
-			const newDate = new Date(date);
-			newDate.setHours(hours, minutes, 0, 0);
-			$formData.workshop_date = newDate;
+			$formData.workshop_end_date = baseDate.hour(hour).minute(minute).toDate();
+			return;
 		}
-		
-		if (calendarDate && endTime) {
-			const date = calendarDate.toDate(getLocalTimeZone());
-			const [hours, minutes] = endTime.split(':').map(Number);
-			const newDate = new Date(date);
-			newDate.setHours(hours, minutes, 0, 0);
-			$formData.workshop_end_date = newDate;
+
+		// Handle date change (CalendarDate) - preserve existing times or use defaults
+		if (typeof date !== 'string') {
+			const startDate = dayjs($formData.workshop_date);
+			const startTime = startDate.isValid()
+				? { hour: startDate.hour(), minute: startDate.minute() }
+				: { hour: 10, minute: 0 };
+
+			const endDate = dayjs($formData.workshop_end_date);
+			const endTime = endDate.isValid()
+				? { hour: endDate.hour(), minute: endDate.minute() }
+				: { hour: 12, minute: 0 };
+
+			$formData.workshop_date = toCalendarDateTime(date)
+				.set(startTime)
+				.toDate(getLocalTimeZone());
+
+			$formData.workshop_end_date = toCalendarDateTime(date)
+				.set(endTime)
+				.toDate(getLocalTimeZone());
 		}
 	}
 
@@ -128,7 +169,7 @@
 		<!-- Basic Information Section -->
 		<div class="space-y-6">
 			<h2 class="text-xl font-semibold text-gray-900 border-b pb-2">Basic Information</h2>
-			
+
 			<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
 				<Form.Field {form} name="title">
 					<Form.Control>
@@ -181,7 +222,7 @@
 		<!-- Date & Time Section -->
 		<div class="space-y-6">
 			<h2 class="text-xl font-semibold text-gray-900 border-b pb-2">Date & Time</h2>
-			
+
 			<Form.Field {form} name="workshop_date">
 				<Form.Control>
 					{#snippet children({ props })}
@@ -189,29 +230,33 @@
 						<div class="bg-gray-50 rounded-lg p-4">
 							<Calendar25
 								id="workshop"
-								bind:date={calendarDate}
-								bind:startTime
-								bind:endTime
-								onDateChange={updateWorkshopDates}
-								onStartTimeChange={updateWorkshopDates}
-								onEndTimeChange={updateWorkshopDates}
+								date={workshopDateValue}
+								{startTime}
+								{endTime}
+								onDateChange={d => updateWorkshopDates(d, 'date')}
+								onStartTimeChange={d => updateWorkshopDates(d, 'start')}
+								onEndTimeChange={d => updateWorkshopDates(d, 'end')}
 								disabled={!isWorkshopEditable}
 							/>
 						</div>
 						<input
-							id="workshop_date"
+							name="workshop_date"
 							type="datetime-local"
 							hidden
-							value={$formData.workshop_date ? dayjs($formData.workshop_date).format('YYYY-MM-DDTHH:mm:ss') : ''}
-							name="workshop_date"
+							value={(() => {
+								const date = dayjs($formData.workshop_date);
+								return date.isValid() ? date.format('YYYY-MM-DDTHH:mm') : '';
+							})()}
 							readonly
 						/>
 						<input
-							id="workshop_end_date"
+							name="workshop_end_date"
 							type="datetime-local"
 							hidden
-							value={$formData.workshop_end_date ? dayjs($formData.workshop_end_date).format('YYYY-MM-DDTHH:mm:ss') : ''}
-							name="workshop_end_date"
+							value={(() => {
+								const date = dayjs($formData.workshop_end_date);
+								return date.isValid() ? date.format('YYYY-MM-DDTHH:mm') : '';
+							})()}
 							readonly
 						/>
 					{/snippet}
@@ -233,7 +278,7 @@
 		<!-- Workshop Details Section -->
 		<div class="space-y-6">
 			<h2 class="text-xl font-semibold text-gray-900 border-b pb-2">Workshop Details</h2>
-			
+
 			<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
 				<Form.Field {form} name="max_capacity">
 					<Form.Control>
@@ -278,12 +323,12 @@
 		{#if mode === 'create'}
 			<div class="space-y-6">
 				<h2 class="text-xl font-semibold text-gray-900 border-b pb-2">Communication Settings</h2>
-				
+
 				<div class="bg-blue-50 rounded-lg p-4 border border-blue-200">
 					<p class="text-sm text-blue-700 mb-4">
 						All workshop status changes will be announced through selected channels
 					</p>
-					
+
 					<div class="space-y-4">
 						<Form.Field {form} name="announce_discord">
 							<Form.Control>
@@ -334,7 +379,7 @@
 		<!-- Pricing & Access Section -->
 		<div class="space-y-6">
 			<h2 class="text-xl font-semibold text-gray-900 border-b pb-2">Pricing & Access</h2>
-			
+
 			{#if !canEditPricing}
 				<Alert variant="default" class="border-orange-200 bg-orange-50">
 					<AlertDescription class="text-orange-800">
@@ -342,7 +387,7 @@
 					</AlertDescription>
 				</Alert>
 			{/if}
-			
+
 			<Form.Field {form} name="is_public">
 				<Form.Control>
 					{#snippet children({ props })}
@@ -394,7 +439,8 @@
 							{#snippet children({ props })}
 								<Form.Label required>Non-Member Price</Form.Label>
 								<div class="relative">
-									<span class="absolute left-3 top-1/2 transform -translate-y-1/2 text-sm text-muted-foreground">€</span>
+									<span
+										class="absolute left-3 top-1/2 transform -translate-y-1/2 text-sm text-muted-foreground">€</span>
 									<Input
 										{...props}
 										type="number"
@@ -411,7 +457,8 @@
 						<Form.FieldErrors />
 					</Form.Field>
 				{:else}
-					<div class="flex items-center justify-center h-20 text-sm text-muted-foreground bg-gray-50 border border-dashed border-gray-300 rounded-lg">
+					<div
+						class="flex items-center justify-center h-20 text-sm text-muted-foreground bg-gray-50 border border-dashed border-gray-300 rounded-lg">
 						<div class="text-center">
 							<p class="font-medium">Non-Member Pricing</p>
 							<p class="text-xs">Available for public workshops only</p>
