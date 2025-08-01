@@ -270,6 +270,74 @@ export type Database = {
           },
         ]
       }
+      containers: {
+        Row: {
+          created_at: string | null
+          created_by: string
+          description: string | null
+          id: string
+          name: string
+          parent_container_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by: string
+          description?: string | null
+          id?: string
+          name: string
+          parent_container_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string
+          description?: string | null
+          id?: string
+          name?: string
+          parent_container_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "containers_parent_container_id_fkey"
+            columns: ["parent_container_id"]
+            isOneToOne: false
+            referencedRelation: "containers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      equipment_categories: {
+        Row: {
+          attribute_schema: Json
+          available_attributes: Json
+          created_at: string | null
+          description: string | null
+          id: string
+          name: string
+          updated_at: string | null
+        }
+        Insert: {
+          attribute_schema?: Json
+          available_attributes?: Json
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          name: string
+          updated_at?: string | null
+        }
+        Update: {
+          attribute_schema?: Json
+          available_attributes?: Json
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          name?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       external_users: {
         Row: {
           created_at: string | null
@@ -299,6 +367,121 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      inventory_history: {
+        Row: {
+          action: Database["public"]["Enums"]["inventory_action"]
+          changed_by: string
+          created_at: string | null
+          id: string
+          item_id: string
+          new_container_id: string | null
+          notes: string | null
+          old_container_id: string | null
+        }
+        Insert: {
+          action: Database["public"]["Enums"]["inventory_action"]
+          changed_by: string
+          created_at?: string | null
+          id?: string
+          item_id: string
+          new_container_id?: string | null
+          notes?: string | null
+          old_container_id?: string | null
+        }
+        Update: {
+          action?: Database["public"]["Enums"]["inventory_action"]
+          changed_by?: string
+          created_at?: string | null
+          id?: string
+          item_id?: string
+          new_container_id?: string | null
+          notes?: string | null
+          old_container_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_history_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "inventory_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_history_new_container_id_fkey"
+            columns: ["new_container_id"]
+            isOneToOne: false
+            referencedRelation: "containers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_history_old_container_id_fkey"
+            columns: ["old_container_id"]
+            isOneToOne: false
+            referencedRelation: "containers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      inventory_items: {
+        Row: {
+          attributes: Json
+          category_id: string
+          container_id: string
+          created_at: string | null
+          created_by: string | null
+          id: string
+          notes: string | null
+          out_for_maintenance: boolean | null
+          photo_url: string | null
+          quantity: number
+          updated_at: string | null
+          updated_by: string | null
+        }
+        Insert: {
+          attributes?: Json
+          category_id: string
+          container_id: string
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          out_for_maintenance?: boolean | null
+          photo_url?: string | null
+          quantity?: number
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Update: {
+          attributes?: Json
+          category_id?: string
+          container_id?: string
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          notes?: string | null
+          out_for_maintenance?: boolean | null
+          photo_url?: string | null
+          quantity?: number
+          updated_at?: string | null
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inventory_items_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "equipment_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inventory_items_container_id_fkey"
+            columns: ["container_id"]
+            isOneToOne: false
+            referencedRelation: "containers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       invitation_processing_logs: {
         Row: {
@@ -1072,6 +1255,12 @@ export type Database = {
         | "man (trans)"
         | "woman (trans)"
         | "other"
+      inventory_action:
+        | "created"
+        | "moved"
+        | "updated"
+        | "maintenance_out"
+        | "maintenance_in"
       invitation_status: "pending" | "accepted" | "expired" | "revoked"
       preferred_weapon: "longsword" | "sword_and_buckler"
       refund_status:
@@ -1266,6 +1455,13 @@ export const Constants = {
         "man (trans)",
         "woman (trans)",
         "other",
+      ],
+      inventory_action: [
+        "created",
+        "moved",
+        "updated",
+        "maintenance_out",
+        "maintenance_in",
       ],
       invitation_status: ["pending", "accepted", "expired", "revoked"],
       preferred_weapon: ["longsword", "sword_and_buckler"],

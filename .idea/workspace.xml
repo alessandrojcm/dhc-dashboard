@@ -19,14 +19,11 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="chore(deps): update dependencies and introduce AI-related packages&#10;&#10;- Add `@ai-sdk/groq`, `@ai-sdk/svelte`, `@ai-sdk/valibot`, `ollama-ai-provider`, and `ai` for AI capabilities.&#10;- Include utility packages like `evalite`, `autoevals`, and `better-sqlite3`.&#10;- Bump versions for several dependencies and dev dependencies, improving compatibility and features.">
-      <change afterPath="$PROJECT_DIR$/src/routes/api/workshops/generate/+server.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/lib/components/workshop-form.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/components/workshop-form.svelte" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/lib/server/workshop-generator.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/server/workshop-generator.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/auth/+page.server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/auth/+page.server.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/workshops/+page.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/workshops/+page.svelte" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/workshops/create/+page.server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/workshops/create/+page.server.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/workshops/create/+page.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/workshops/create/+page.svelte" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/AGENTS.md" beforeDir="false" afterPath="$PROJECT_DIR$/AGENTS.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/CLAUDE.md" beforeDir="false" afterPath="$PROJECT_DIR$/CLAUDE.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/database.types.ts" beforeDir="false" afterPath="$PROJECT_DIR$/database.types.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/database.types.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/database.types.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -63,8 +60,8 @@
               <option name="branches">
                 <list>
                   <RecentBranch>
-                    <option name="branchName" value="create-workshop-with-ai" />
-                    <option name="lastUsedInstant" value="1753645520" />
+                    <option name="branchName" value="feature/ale-41-inventory-management" />
+                    <option name="lastUsedInstant" value="1754069949" />
                   </RecentBranch>
                   <RecentBranch>
                     <option name="branchName" value="develop" />
@@ -125,7 +122,7 @@
     "RunOnceActivity.git.unshallow": "true",
     "com.codeium.enabled": "true",
     "deno.use.library": "true",
-    "git-widget-placeholder": "create-workshop-with-ai",
+    "git-widget-placeholder": "feature/ale-41-inventory-management",
     "junie.onboarding.icon.badge.shown": "true",
     "last_opened_file_path": "/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]",
     "node.js.detected.package.eslint": "true",
@@ -705,7 +702,6 @@
         <line-breakpoint enabled="true" type="javascript">
           <url>file://$PROJECT_DIR$/src/routes/dashboard/workshops/create/+page.server.ts</url>
           <line>29</line>
-          <properties lambdaOrdinal="-1" />
           <option name="timeStamp" value="22" />
         </line-breakpoint>
       </breakpoints>
