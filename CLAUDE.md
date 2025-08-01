@@ -5,9 +5,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 
 This is a SvelteKit application for managing a Historical European Martial Arts club (Dublin Hema Club, DHC for short)
-dashboard. It handles member management,
-workshop coordination, payment processing, and subscription management using Supabase as the backend and Stripe for
-payments.
+dashboard. It handles member management, workshop coordination, payment processing, subscription management, and 
+inventory management using Supabase as the backend and Stripe for payments.
 
 ## Development Commands
 
@@ -139,6 +138,27 @@ payments.
 - **Any State → Cancelled**: Except finished/already cancelled
 - **State validation**: Always check current state before transitions
 - **Edge functions**: Publishing integrates with `workshop_inviter` function
+
+#### Inventory Management
+
+- **Hierarchical container system**: Supports nested containers (rooms → bags → equipment)
+- **Flexible equipment categories**: JSON Schema validation with pg-jsonschema extension
+- **Role-based access**: Quartermaster has full CRUD, members have read-only access
+- **Audit trail**: Complete history tracking for all inventory changes
+- **Photo storage**: Supabase Storage integration for equipment photos
+
+##### Inventory Database Schema
+
+- **containers**: Hierarchical storage locations with circular reference prevention
+- **equipment_categories**: Flexible attribute definitions with JSON Schema validation
+- **inventory_items**: Equipment with validated attributes, quantity tracking, maintenance status
+- **inventory_history**: Complete audit trail for all inventory operations
+
+##### Inventory Access Control
+
+- **Quartermaster role**: Full access to all inventory operations
+- **Members**: Read-only access, cannot see items out for maintenance
+- **JSON Schema validation**: Enforced at database level using pg-jsonschema extension
 
 ### Environment Variables
 
