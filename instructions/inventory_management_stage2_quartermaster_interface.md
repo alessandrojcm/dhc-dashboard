@@ -171,42 +171,291 @@ Build the complete administrative interface for quartermasters to manage the inv
 - Dynamic filters based on available categories and attributes
 - Save/load filter presets
 
-## API Endpoints to Implement
+## Data Loading and Form Handling
 
-### Container Endpoints
+### Page Loaders (using Supabase client)
+
+**Container Data Loading:**
 ```typescript
-// GET /api/inventory/containers - List all containers with hierarchy
-// POST /api/inventory/containers - Create new container
-// GET /api/inventory/containers/[id] - Get container with contents
-// PUT /api/inventory/containers/[id] - Update container
-// DELETE /api/inventory/containers/[id] - Delete container (if empty)
+// containers/+page.server.ts - Load container hierarchy
+export const load = async ({ locals: { supabase } }) => {
+  const { data: containers } = await supabase
+    .from('containers')
+    .select('*, parent_container:parent_container_id(*)')
+    .order('name');
+  return { containers };
+};
+
+// containers/[id]/+page.server.ts - Load container with contents
+export const load = async ({ params, locals: { supabase } }) => {
+  const [containerResult, itemsResult] = await Promise.all([
+    supabase.from('containers').select('*').eq('id', params.id).single(),
+    supabase.from('inventory_items').select('*, category:equipment_categories(*)').eq('container_id', params.id)
+  ]);
+  return { container: containerResult.data, items: itemsResult.data };
+};
 ```
 
-### Category Endpoints
+**Category Data Loading:**
 ```typescript
-// GET /api/inventory/categories - List all categories
-// POST /api/inventory/categories - Create new category
-// GET /api/inventory/categories/[id] - Get category details
-// PUT /api/inventory/categories/[id] - Update category and attributes
-// DELETE /api/inventory/categories/[id] - Delete category (if unused)
+// categories/+page.server.ts - Load all categories
+export const load = async ({ locals: { supabase } }) => {
+  const { data: categories } = await supabase
+    .from('equipment_categories')
+    .select('*')
+    .order('name');
+  return { categories };
+};
 ```
 
-### Item Endpoints
+**Item Data Loading:**
 ```typescript
-// GET /api/inventory/items - List items with filtering/search
-// POST /api/inventory/items - Create new item
-// GET /api/inventory/items/[id] - Get item with history
-// PUT /api/inventory/items/[id] - Update item
-// DELETE /api/inventory/items/[id] - Delete item
-// POST /api/inventory/items/[id]/move - Move item to different container
-// PUT /api/inventory/items/[id]/maintenance - Toggle maintenance status
+// items/+page.server.ts - Load items with filtering
+export const load = async ({ url, locals: { supabase } }) => {
+  let query = supabase
+    .from('inventory_items')
+    .select('*, container:containers(*), category:equipment_categories(*)');
+  
+  // Apply filters from URL params
+  const categoryFilter = url.searchParams.get('category');
+  const containerFilter = url.searchParams.get('container');
+  const search = url.searchParams.get('search');
+  
+  if (categoryFilter) query = query.eq('category_id', categoryFilter);
+  if (containerFilter) query = query.eq('container_id', containerFilter);
+  if (search) query = query.textSearch('attributes', search);
+  
+  const { data: items } = await query.order('created_at', { ascending: false });
+  return { items };
+};
 ```
 
-### Utility Endpoints
+### Client-Side Data Fetching (for real-time updates)
+
+For components that need real-time data updates, use Supabase client directly:
+
 ```typescript
-// GET /api/inventory/search - Advanced search across items
-// GET /api/inventory/stats - Dashboard statistics
-// POST /api/inventory/photos - Upload item photos
+// In Svelte components - use Supabase client for reactive queries
+<script>
+  import { createQuery } from '@tanstack/svelte-query';
+  
+  export let data; // From page loader
+  
+  // Use TanStack Query for real-time updates when needed
+  const containersQuery = createQuery(() => ({
+    queryKey: ['containers'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('containers')
+        .select('*, parent_container:parent_container_id(*)')
+        .order('name');
+      return data;
+    },
+    initialData: data.containers, // Use server-loaded data as initial
+    refetchInterval: 30000 // Optional: refresh every 30 seconds
+  }));
+</script>
+
+{#each $containersQuery.data as container}
+  <div>{container.name}</div>
+{/each}
+```
+
+### Form Actions (using Kysely with RLS)
+
+**Container Actions:**
+```typescript
+// containers/create/+page.server.ts
+import { superValidate } from 'sveltekit-superforms';
+import { valibot } from 'sveltekit-superforms/adapters';
+import { fail, redirect } from '@sveltejs/kit';
+import { containerSchema } from '$lib/schemas/inventory';
+
+export const load = async ({ locals: { supabase } }) => {
+  // Load parent containers for selection
+  const { data: containers } = await supabase
+    .from('containers')
+    .select('id, name')
+    .order('name');
+  
+  return {
+    form: await superValidate(valibot(containerSchema)),
+    containers
+  };
+};
+
+export const actions = {
+  default: async ({ request, locals: { executeWithRLS } }) => {
+    const form = await superValidate(request, valibot(containerSchema));
+    if (!form.valid) return fail(400, { form });
+    
+    const result = await executeWithRLS(
+      db.insertInto('containers')
+        .values({
+          id: crypto.randomUUID(),
+          name: form.data.name,
+          description: form.data.description,
+          parent_container_id: form.data.parent_container_id,
+          created_at: new Date().toISOString()
+        })
+        .returningAll()
+    );
+    
+    redirect(303, `/dashboard/inventory/containers/${result[0].id}`);
+  }
+};
+
+// containers/[id]/edit/+page.server.ts
+export const load = async ({ params, locals: { supabase } }) => {
+  const [containerResult, containersResult] = await Promise.all([
+    supabase.from('containers').select('*').eq('id', params.id).single(),
+    supabase.from('containers').select('id, name').order('name')
+  ]);
+  
+  return {
+    form: await superValidate(containerResult.data, valibot(containerSchema)),
+    containers: containersResult.data
+  };
+};
+
+export const actions = {
+  update: async ({ params, request, locals: { executeWithRLS } }) => {
+    const form = await superValidate(request, valibot(containerSchema));
+    if (!form.valid) return fail(400, { form });
+    
+    const result = await executeWithRLS(
+      db.updateTable('containers')
+        .set({
+          name: form.data.name,
+          description: form.data.description,
+          parent_container_id: form.data.parent_container_id,
+          updated_at: new Date().toISOString()
+        })
+        .where('id', '=', params.id)
+        .returningAll()
+    );
+    
+    return { form };
+  },
+  
+  delete: async ({ params, locals: { executeWithRLS } }) => {
+    await executeWithRLS(
+      db.deleteFrom('containers').where('id', '=', params.id)
+    );
+    redirect(303, '/dashboard/inventory/containers');
+  }
+};
+```
+
+**Category Actions:**
+```typescript
+// categories/create/+page.server.ts
+export const actions = {
+  default: async ({ request, locals: { executeWithRLS } }) => {
+    const form = await superValidate(request, categorySchema);
+    if (!form.valid) return fail(400, { form });
+    
+    const result = await executeWithRLS(
+      db.insertInto('equipment_categories')
+        .values({
+          id: crypto.randomUUID(),
+          name: form.data.name,
+          description: form.data.description,
+          available_attributes: form.data.available_attributes,
+          created_at: new Date().toISOString()
+        })
+        .returningAll()
+    );
+    
+    return { form, category: result[0] };
+  }
+};
+```
+
+**Item Actions:**
+```typescript
+// items/create/+page.server.ts
+export const actions = {
+  default: async ({ request, locals: { executeWithRLS } }) => {
+    const form = await superValidate(request, itemSchema);
+    if (!form.valid) return fail(400, { form });
+    
+    const result = await executeWithRLS(
+      db.insertInto('inventory_items')
+        .values({
+          id: crypto.randomUUID(),
+          container_id: form.data.container_id,
+          category_id: form.data.category_id,
+          attributes: form.data.attributes,
+          quantity: form.data.quantity,
+          notes: form.data.notes,
+          out_for_maintenance: form.data.out_for_maintenance,
+          created_at: new Date().toISOString()
+        })
+        .returningAll()
+    );
+    
+    return { form, item: result[0] };
+  }
+};
+
+// items/[id]/+page.server.ts
+export const actions = {
+  update: async ({ params, request, locals: { executeWithRLS } }) => {
+    const form = await superValidate(request, itemSchema);
+    if (!form.valid) return fail(400, { form });
+    
+    const result = await executeWithRLS(
+      db.updateTable('inventory_items')
+        .set({
+          container_id: form.data.container_id,
+          category_id: form.data.category_id,
+          attributes: form.data.attributes,
+          quantity: form.data.quantity,
+          notes: form.data.notes,
+          out_for_maintenance: form.data.out_for_maintenance,
+          updated_at: new Date().toISOString()
+        })
+        .where('id', '=', params.id)
+        .returningAll()
+    );
+    
+    return { form, item: result[0] };
+  },
+  
+  move: async ({ params, request, locals: { executeWithRLS } }) => {
+    const formData = await request.formData();
+    const newContainerId = formData.get('container_id') as string;
+    
+    const result = await executeWithRLS(
+      db.updateTable('inventory_items')
+        .set({
+          container_id: newContainerId,
+          updated_at: new Date().toISOString()
+        })
+        .where('id', '=', params.id)
+        .returningAll()
+    );
+    
+    return { item: result[0] };
+  },
+  
+  toggleMaintenance: async ({ params, locals: { executeWithRLS } }) => {
+    const result = await executeWithRLS(
+      db.updateTable('inventory_items')
+        .set({
+          out_for_maintenance: db.selectFrom('inventory_items')
+            .select(sql`NOT out_for_maintenance`.as('toggle'))
+            .where('id', '=', params.id),
+          updated_at: new Date().toISOString()
+        })
+        .where('id', '=', params.id)
+        .returningAll()
+    );
+    
+    return { item: result[0] };
+  }
+};
 ```
 
 ## Validation Schemas
@@ -245,25 +494,122 @@ const itemSchema = object({
 
 ## State Management
 
-### TanStack Query Integration
+### SuperForms Integration (Svelte 5 Syntax)
 
-**Queries:**
-- `useContainers()` - Fetch container hierarchy
-- `useCategories()` - Fetch all categories
-- `useItems(filters)` - Fetch items with filtering
-- `useItemHistory(itemId)` - Fetch item history
-- `useInventoryStats()` - Dashboard statistics
+**Form Setup in Components:**
+```typescript
+// containers/create/+page.svelte
+<script lang="ts">
+  import { superForm } from 'sveltekit-superforms';
+  import { valibot } from 'sveltekit-superforms/adapters';
+  import { containerSchema } from '$lib/schemas/inventory';
+  
+  let { data } = $props();
+  
+  const { form, errors, enhance, submitting } = superForm(data.form, {
+    validators: valibot(containerSchema),
+    resetForm: true
+  });
+</script>
 
-**Mutations:**
-- `useCreateContainer()` - Create new container
-- `useUpdateContainer()` - Update container
-- `useDeleteContainer()` - Delete container
-- `useCreateCategory()` - Create new category
-- `useUpdateCategory()` - Update category
-- `useCreateItem()` - Create new item
-- `useUpdateItem()` - Update item
-- `useMoveItem()` - Move item between containers
-- `useToggleMaintenance()` - Toggle maintenance status
+<form method="POST" use:enhance>
+  <input bind:value={$form.name} name="name" />
+  {#if $errors.name}<span class="error">{$errors.name}</span>{/if}
+  
+  <textarea bind:value={$form.description} name="description"></textarea>
+  {#if $errors.description}<span class="error">{$errors.description}</span>{/if}
+  
+  <select bind:value={$form.parent_container_id} name="parent_container_id">
+    <option value="">No parent container</option>
+    {#each data.containers as container}
+      <option value={container.id}>{container.name}</option>
+    {/each}
+  </select>
+  
+  <button type="submit" disabled={$submitting}>
+    {$submitting ? 'Creating...' : 'Create Container'}
+  </button>
+</form>
+```
+
+**Dynamic Item Forms:**
+```typescript
+// items/create/+page.svelte
+<script lang="ts">
+  import { superForm } from 'sveltekit-superforms';
+  import { valibot } from 'sveltekit-superforms/adapters';
+  import { itemSchema } from '$lib/schemas/inventory';
+  import DynamicAttributeFields from '$lib/components/inventory/DynamicAttributeFields.svelte';
+  
+  let { data } = $props();
+  
+  const { form, errors, enhance, submitting } = superForm(data.form, {
+    validators: valibot(itemSchema)
+  });
+  
+  // Reactive category selection for dynamic attributes using $derived
+  let selectedCategory = $derived(
+    data.categories.find(c => c.id === $form.category_id)
+  );
+</script>
+
+<form method="POST" use:enhance>
+  <select bind:value={$form.category_id} name="category_id">
+    <option value="">Select a category</option>
+    {#each data.categories as category}
+      <option value={category.id}>{category.name}</option>
+    {/each}
+  </select>
+  
+  <select bind:value={$form.container_id} name="container_id">
+    <option value="">Select a container</option>
+    {#each data.containers as container}
+      <option value={container.id}>{container.name}</option>
+    {/each}
+  </select>
+  
+  {#if selectedCategory}
+    <DynamicAttributeFields 
+      category={selectedCategory} 
+      bind:attributes={$form.attributes} 
+      errors={$errors.attributes} 
+    />
+  {/if}
+  
+  <input type="number" bind:value={$form.quantity} name="quantity" min="1" />
+  
+  <button type="submit" disabled={$submitting}>
+    {$submitting ? 'Creating...' : 'Create Item'}
+  </button>
+</form>
+```
+
+### Client-Side Data Fetching (when needed)
+
+For real-time updates or complex interactions, use TanStack Query:
+
+```typescript
+// For dashboard stats that update frequently
+const statsQuery = createQuery(() => ({
+  queryKey: ['inventory-stats'],
+  queryFn: async () => {
+    const response = await fetch('/api/inventory/stats');
+    return response.json();
+  },
+  refetchInterval: 30000 // Refresh every 30 seconds
+}));
+
+// For search functionality with debouncing
+const searchQuery = createQuery(() => ({
+  queryKey: ['inventory-search', searchTerm],
+  queryFn: async () => {
+    if (!searchTerm) return [];
+    const response = await fetch(`/api/inventory/search?q=${encodeURIComponent(searchTerm)}`);
+    return response.json();
+  },
+  enabled: searchTerm.length > 2
+}));
+```
 
 ## User Experience Features
 
@@ -303,15 +649,17 @@ const itemSchema = object({
    - Implement dynamic item form that adapts to categories
    - Build comprehensive item listing with search/filters
 
-3. **API Endpoints**
-   - Implement all CRUD endpoints with proper validation
-   - Add search and filtering capabilities
-   - Integrate photo upload with Supabase storage
+3. **Form Actions and Data Loading**
+   - Implement all CRUD operations using SvelteKit form actions
+   - Set up page loaders for data fetching with Supabase client
+   - Add search and filtering capabilities through URL parameters
+   - Integrate photo upload with Supabase storage (separate API endpoint if needed)
 
-4. **State Management**
-   - Set up TanStack Query hooks for all data operations
-   - Implement optimistic updates for better UX
-   - Add error handling and retry logic
+4. **Form Handling and State Management**
+   - Set up SuperForms for all form interactions with proper validation
+   - Use page loaders for initial data loading and navigation
+   - Add TanStack Query only for real-time features (search, stats)
+   - Implement proper error handling and success feedback
 
 5. **Testing**
    - Write E2E tests for all major workflows

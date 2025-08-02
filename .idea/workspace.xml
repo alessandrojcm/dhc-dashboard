@@ -20,10 +20,7 @@
   <component name="ChangeListManager">
     <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="chore(deps): update dependencies and introduce AI-related packages&#10;&#10;- Add `@ai-sdk/groq`, `@ai-sdk/svelte`, `@ai-sdk/valibot`, `ollama-ai-provider`, and `ai` for AI capabilities.&#10;- Include utility packages like `evalite`, `autoevals`, and `better-sqlite3`.&#10;- Bump versions for several dependencies and dev dependencies, improving compatibility and features.">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/AGENTS.md" beforeDir="false" afterPath="$PROJECT_DIR$/AGENTS.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/CLAUDE.md" beforeDir="false" afterPath="$PROJECT_DIR$/CLAUDE.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/database.types.ts" beforeDir="false" afterPath="$PROJECT_DIR$/database.types.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/database.types.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/database.types.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/instructions/inventory_management_stage2_quartermaster_interface.md" beforeDir="false" afterPath="$PROJECT_DIR$/instructions/inventory_management_stage2_quartermaster_interface.md" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
