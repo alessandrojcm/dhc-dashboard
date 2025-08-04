@@ -22,7 +22,7 @@ CREATE POLICY "Users can view their own invitation processing logs"
   ON public.invitation_processing_logs
   FOR SELECT
   USING ((select auth.uid()) = user_id);
-g
+
 -- Create index for faster queries
 CREATE INDEX invitation_processing_logs_user_id_idx ON public.invitation_processing_logs(user_id);
 CREATE INDEX invitation_processing_logs_created_at_idx ON public.invitation_processing_logs(created_at);
