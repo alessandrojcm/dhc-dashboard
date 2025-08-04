@@ -1,5 +1,5 @@
 import dayjs from 'dayjs';
-import { parsePhoneNumber } from 'libphonenumber-js/min';
+import { formatIncompletePhoneNumber, parsePhoneNumber } from 'libphonenumber-js/min';
 import * as v from 'valibot';
 import * as Sentry from '@sentry/sveltekit';
 
@@ -16,7 +16,7 @@ export const phoneNumberValidator = (nomEmptyMessage: string = 'Phone number is 
 				return false;
 			}
 		}, 'Invalid phone number'),
-		v.transform((input) => parsePhoneNumber(input ?? '', 'IE')!.formatInternational())
+		v.transform((input) => formatIncompletePhoneNumber(input))
 	);
 
 export const dobValidator = v.pipe(
