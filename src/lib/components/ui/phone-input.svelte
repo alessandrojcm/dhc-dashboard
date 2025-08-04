@@ -6,19 +6,13 @@
 	import getUnicodeFlagIcon from 'country-flag-icons/unicode';
 	import { Input } from '$lib/components/ui/input';
 	import * as countryCodesList from 'country-codes-list';
-	import { AsYouType, parsePhoneNumber, type CountryCode } from 'libphonenumber-js/min';
+	import { AsYouType, parsePhoneNumber, type CountryCode, formatIncompletePhoneNumber } from 'libphonenumber-js/min';
 	import { parseIncompletePhoneNumber } from 'libphonenumber-js';
 	import { ChevronDown, ChevronUp } from 'lucide-svelte';
 
 	const countryCodes = $state(countryCodesList.all());
 	let open = $state(false);
-	let value = $state('IE'); // Default country code
 	let triggerRef = $state<HTMLButtonElement>(null!);
-	let nationalNumber = $state(''); // Store the national number without country code
-
-	const selectedValue = $derived.by(() => {
-		return countryCodesList.findOne('countryCode', value ?? 'IE')?.countryCallingCode ?? null;
-	});
 
 	let {
 		phoneNumber = $bindable(''),
@@ -36,43 +30,54 @@
 		'data-fs-control': string;
 	} = $props();
 
-	// Parse the incoming phone number when the component mounts or phoneNumber changes
-	$effect(() => {
-		parseIncomingPhoneNumber();
+	let { nationalNumber, value } = $derived.by(() => {
+
+		return parseIncomingPhoneNumber(phoneNumber);
+	});
+
+	const selectedValue = $derived.by(() => {
+		if (!value) return null;
+		return countryCodesList.findOne('countryCode', value)?.countryCallingCode ?? null;
 	});
 
 	// Format the national number for display in the input field
 	const formatedPhone = $derived.by(() => {
-		return new AsYouType((value as CountryCode) ?? 'IE').input(nationalNumber);
+		if (!value) return new AsYouType().input(nationalNumber);
+		return new AsYouType(value as CountryCode).input(nationalNumber);
 	});
 
 	// Parse an incoming phone number to extract country code and national number
-	function parseIncomingPhoneNumber() {
+	function parseIncomingPhoneNumber(phoneNumber: string) {
 		if (!phoneNumber) {
-			nationalNumber = '';
-			return;
+			return { nationalNumber: '', value: 'IE' as CountryCode };
 		}
-
 		try {
 			// If the number starts with '+', it's in international format
 			if (phoneNumber.startsWith('+')) {
 				const parsedNumber = parsePhoneNumber(phoneNumber);
 				if (parsedNumber && parsedNumber.country) {
-					// Update the country code dropdown
-					value = parsedNumber.country;
-					// Set the national number without the country code
-					nationalNumber = parsedNumber.nationalNumber || '';
+					return {
+						value: parsedNumber.country,
+						nationalNumber: parsedNumber.nationalNumber || ''
+					};
 				} else {
-					// If parsing fails, treat the whole thing as a national number
-					nationalNumber = phoneNumber.substring(1); // Remove the + sign
+					return {
+						value: 'IE' as CountryCode,
+						nationalNumber: phoneNumber.substring(1) // Remove the + sign
+					};
 				}
 			} else {
-				// If not in international format, use as is
-				nationalNumber = phoneNumber;
+				return {
+					nationalNumber: phoneNumber,
+					value: 'IE' as CountryCode
+				};
 			}
 		} catch (error) {
 			// If parsing fails, just use the raw number
-			nationalNumber = phoneNumber;
+			return {
+				nationalNumber: phoneNumber,
+				value: 'IE' as CountryCode
+			};
 		}
 	}
 
@@ -90,7 +95,6 @@
 	function updatePhoneNumber(inputValue: string) {
 		// Parse the input to remove any formatting
 		nationalNumber = parseIncompletePhoneNumber(inputValue);
-
 		// Update the parent with the full international format
 		if (selectedValue && nationalNumber) {
 			phoneNumber = `+${selectedValue}${nationalNumber}`;
@@ -137,11 +141,7 @@
 							<Command.Item
 								value={country.countryNameEn}
 								onSelect={() => {
-									value = country.countryCode;
-									// Update the parent with the new country code
-									if (nationalNumber) {
-										phoneNumber = `+${country.countryCallingCode}${nationalNumber}`;
-									}
+									phoneNumber = formatIncompletePhoneNumber(`+${country.countryCallingCode}${nationalNumber}`);
 									closeAndFocusTrigger();
 								}}
 							>
@@ -156,12 +156,12 @@
 	</Popover.Root>
 	<Input
 		type="tel"
-		{...props}
 		value={formatedPhone}
 		onchange={(event) => {
 			if (!event.target) return;
-			updatePhoneNumber(event.target.value);
+	  	updatePhoneNumber(event.target.value);
 		}}
 		{placeholder}
 	/>
+	<input type="hidden" {...props} bind:value={phoneNumber} />
 </div>
