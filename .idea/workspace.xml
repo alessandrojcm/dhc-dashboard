@@ -18,16 +18,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="chore(deps): update dependencies and introduce AI-related packages&#10;&#10;- Add `@ai-sdk/groq`, `@ai-sdk/svelte`, `@ai-sdk/valibot`, `ollama-ai-provider`, and `ai` for AI capabilities.&#10;- Include utility packages like `evalite`, `autoevals`, and `better-sqlite3`.&#10;- Bump versions for several dependencies and dev dependencies, improving compatibility and features.">
-      <change afterPath="$PROJECT_DIR$/src/routes/api/workshops/generate/+server.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/lib/components/workshop-form.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/components/workshop-form.svelte" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/lib/server/workshop-generator.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/server/workshop-generator.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/auth/+page.server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/auth/+page.server.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/workshops/+page.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/workshops/+page.svelte" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/workshops/create/+page.server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/workshops/create/+page.server.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/workshops/create/+page.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/workshops/create/+page.svelte" afterDir="false" />
-    </list>
+    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="feat(phone): improve phone number validation and formatting&#10;&#10;- Use `formatIncompletePhoneNumber` for better partial number formatting&#10;- Simplify phone input logic and enhance parsing accuracy&#10;- Update `PhoneInput` component with hidden input for binding raw values&#10;- Change phone validation schema to handle incomplete phone numbers more gracefully&#10;- Improve `phone-input.svelte` user experience and maintain consistent behavior across the application&#10;&#10;# Conflicts:&#10;#&#9;.idea/workspace.xml" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -63,24 +54,20 @@
               <option name="branches">
                 <list>
                   <RecentBranch>
-                    <option name="branchName" value="create-workshop-with-ai" />
-                    <option name="lastUsedInstant" value="1753645520" />
-                  </RecentBranch>
-                  <RecentBranch>
-                    <option name="branchName" value="develop" />
-                    <option name="lastUsedInstant" value="1753637167" />
+                    <option name="branchName" value="main" />
+                    <option name="lastUsedInstant" value="1754128627" />
                   </RecentBranch>
                   <RecentBranch>
                     <option name="branchName" value="feat/workshops-planing" />
                     <option name="lastUsedInstant" value="1752226725" />
                   </RecentBranch>
                   <RecentBranch>
-                    <option name="branchName" value="fix/chart-reactivity" />
-                    <option name="lastUsedInstant" value="1747995819" />
+                    <option name="branchName" value="develop" />
+                    <option name="lastUsedInstant" value="1752226443" />
                   </RecentBranch>
                   <RecentBranch>
-                    <option name="branchName" value="main" />
-                    <option name="lastUsedInstant" value="1747694895" />
+                    <option name="branchName" value="fix/chart-reactivity" />
+                    <option name="lastUsedInstant" value="1747995819" />
                   </RecentBranch>
                 </list>
               </option>
@@ -102,51 +89,52 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "Attach to Node.js/Chrome.Edge Functions.executor": "Debug",
-    "ModuleVcsDetector.initialDetectionPerformed": "true",
-    "Node.js.script.js.executor": "Run",
-    "Node.js.seedMembers.js.executor": "Debug",
-    "Node.js.seedWaitlist.js.executor": "Run",
-    "Node.js.test.ts.executor": "Run",
-    "Playwright.Workshop API.executor": "Run",
-    "Playwright.Workshop API.should create workshop as admin.executor": "Run",
-    "Playwright.Workshop Interest System.executor": "Run",
-    "Playwright.Workshop Interest System.should display planned workshops in calendar view.executor": "Debug",
-    "Playwright.Workshop Management.executor": "Run",
-    "Playwright.Workshop UI.executor": "Run",
-    "Playwright.Workshop UI.should display and validate workshop creation form.executor": "Debug",
-    "Playwright.Workshop UI.should navigate to create workshop form.executor": "Run",
-    "Playwright.underage user (16-17) should be able to submit with guardian information.executor": "Run",
-    "Playwright.underage user (16-17) should be required to fill guardian fields.executor": "Run",
-    "Playwright.underage-guardian-waitlist.spec.ts.executor": "Run",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "com.codeium.enabled": "true",
-    "deno.use.library": "true",
-    "git-widget-placeholder": "create-workshop-with-ai",
-    "junie.onboarding.icon.badge.shown": "true",
-    "last_opened_file_path": "/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]",
-    "node.js.detected.package.eslint": "true",
-    "node.js.detected.package.standard": "true",
-    "node.js.detected.package.tslint": "true",
-    "node.js.selected.package.eslint": "(autodetect)",
-    "node.js.selected.package.standard": "",
-    "node.js.selected.package.tslint": "(autodetect)",
-    "nodejs_package_manager_path": "pnpm",
-    "npm.dev.executor": "Debug",
-    "prettierjs.PrettierConfiguration.Package": "/Users/alessandrojcm/repos/dhc-dashboard/node_modules/prettier",
-    "settings.editor.selected.configurable": "preferences.pluginManager",
-    "ts.external.directory.path": "/Users/alessandrojcm/repos/dhc-dashboard/node_modules/typescript/lib",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;Attach to Node.js/Chrome.Edge Functions.executor&quot;: &quot;Debug&quot;,
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;Node.js.script.js.executor&quot;: &quot;Run&quot;,
+    &quot;Node.js.seedMembers.js.executor&quot;: &quot;Debug&quot;,
+    &quot;Node.js.seedWaitlist.js.executor&quot;: &quot;Run&quot;,
+    &quot;Playwright.Workshop API.executor&quot;: &quot;Run&quot;,
+    &quot;Playwright.Workshop API.should create workshop as admin.executor&quot;: &quot;Run&quot;,
+    &quot;Playwright.Workshop Interest System.executor&quot;: &quot;Run&quot;,
+    &quot;Playwright.Workshop Interest System.should display planned workshops in calendar view.executor&quot;: &quot;Debug&quot;,
+    &quot;Playwright.Workshop Management.executor&quot;: &quot;Run&quot;,
+    &quot;Playwright.Workshop UI.executor&quot;: &quot;Run&quot;,
+    &quot;Playwright.Workshop UI.should display and validate workshop creation form.executor&quot;: &quot;Debug&quot;,
+    &quot;Playwright.Workshop UI.should navigate to create workshop form.executor&quot;: &quot;Run&quot;,
+    &quot;Playwright.underage user (16-17) should be able to submit with guardian information.executor&quot;: &quot;Run&quot;,
+    &quot;Playwright.underage user (16-17) should be required to fill guardian fields.executor&quot;: &quot;Run&quot;,
+    &quot;Playwright.underage-guardian-waitlist.spec.ts.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;com.codeium.enabled&quot;: &quot;true&quot;,
+    &quot;deno.use.library&quot;: &quot;true&quot;,
+    &quot;disable.download.node.interpreter.editor.notification&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;junie.onboarding.icon.badge.shown&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.standard&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.standard&quot;: &quot;&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;pnpm&quot;,
+    &quot;npm.dev.executor&quot;: &quot;Debug&quot;,
+    &quot;prettierjs.PrettierConfiguration.Package&quot;: &quot;/Users/alessandrojcm/repos/dhc-dashboard/node_modules/prettier&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.pluginManager&quot;,
+    &quot;to.speed.mode.migration.done&quot;: &quot;true&quot;,
+    &quot;ts.external.directory.path&quot;: &quot;/Users/alessandrojcm/repos/dhc-dashboard/node_modules/typescript/lib&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   },
-  "keyToStringList": {
-    "DatabaseDriversLRU": [
-      "postgresql"
+  &quot;keyToStringList&quot;: {
+    &quot;DatabaseDriversLRU&quot;: [
+      &quot;postgresql&quot;
     ]
   }
-}]]></component>
+}</component>
   <component name="ReactDesignerToolWindowState">
     <option name="myId2Visible">
       <map>
@@ -208,7 +196,17 @@
       </test-names>
       <method v="2" />
     </configuration>
-    <configuration name="test.ts" type="NodeJSConfigurationType" temporary="true" nameIsGenerated="true" path-to-js-file="$PROJECT_DIR$/test.ts" typescript-loader="bundled" working-dir="$PROJECT_DIR$">
+    <configuration name="Workshop UI.should display and validate workshop creation form" type="JavaScriptTestRunnerPlaywright" temporary="true" nameIsGenerated="true">
+      <node-interpreter value="project" />
+      <playwright-package value="$PROJECT_DIR$/node_modules/@playwright/test" />
+      <working-dir value="$PROJECT_DIR$" />
+      <envs />
+      <scope-kind value="TEST" />
+      <test-file value="$PROJECT_DIR$/e2e/workshops-ui.spec.ts" />
+      <test-names>
+        <test-name value="Workshop UI" />
+        <test-name value="should display and validate workshop creation form" />
+      </test-names>
       <method v="2" />
     </configuration>
     <configuration name="dev" type="js.build_tools.npm" temporary="true" nameIsGenerated="true">
@@ -223,8 +221,8 @@
     </configuration>
     <list>
       <item itemvalue="Attach to Node.js/Chrome.Edge Functions" />
-      <item itemvalue="Node.js.test.ts" />
       <item itemvalue="npm.dev" />
+      <item itemvalue="Playwright.Workshop UI.should display and validate workshop creation form" />
       <item itemvalue="Playwright.Workshop API.should create workshop as admin" />
       <item itemvalue="Playwright.Workshop Interest System" />
       <item itemvalue="Playwright.Workshop Interest System.should display planned workshops in calendar view" />
@@ -232,10 +230,10 @@
     <recent_temporary>
       <list>
         <item itemvalue="npm.dev" />
-        <item itemvalue="Node.js.test.ts" />
         <item itemvalue="Playwright.Workshop Interest System.should display planned workshops in calendar view" />
         <item itemvalue="Playwright.Workshop API.should create workshop as admin" />
         <item itemvalue="Playwright.Workshop Interest System" />
+        <item itemvalue="Playwright.Workshop UI.should display and validate workshop creation form" />
       </list>
     </recent_temporary>
   </component>
@@ -287,7 +285,8 @@
       <workItem from="1753624621353" duration="14000" />
       <workItem from="1753624646505" duration="3336000" />
       <workItem from="1753629574041" duration="109000" />
-      <workItem from="1753636997043" duration="23162000" />
+      <workItem from="1754224797902" duration="2007000" />
+      <workItem from="1754316866887" duration="3372000" />
     </task>
     <task id="LOCAL-00001" summary="Add guardian support for underage waitlist entries&#10;&#10;Introduce `waitlist_guardians` table and transactional logic for adding guardian details when underage users join the waitlist. Updates include database migrations, UI adjustments for conditional input fields, validation logic, and tests to ensure age-based gating.">
       <option name="closed" value="true" />
@@ -585,23 +584,7 @@
       <option name="project" value="LOCAL" />
       <updated>1753461483533</updated>
     </task>
-    <task id="LOCAL-00038" summary="fix: refunds not working for users">
-      <option name="closed" value="true" />
-      <created>1753637157607</created>
-      <option name="number" value="00038" />
-      <option name="presentableId" value="LOCAL-00038" />
-      <option name="project" value="LOCAL" />
-      <updated>1753637157607</updated>
-    </task>
-    <task id="LOCAL-00039" summary="chore(deps): update dependencies and introduce AI-related packages&#10;&#10;- Add `@ai-sdk/groq`, `@ai-sdk/svelte`, `@ai-sdk/valibot`, `ollama-ai-provider`, and `ai` for AI capabilities.&#10;- Include utility packages like `evalite`, `autoevals`, and `better-sqlite3`.&#10;- Bump versions for several dependencies and dev dependencies, improving compatibility and features.">
-      <option name="closed" value="true" />
-      <created>1753720917116</created>
-      <option name="number" value="00039" />
-      <option name="presentableId" value="LOCAL-00039" />
-      <option name="project" value="LOCAL" />
-      <updated>1753720917117</updated>
-    </task>
-    <option name="localTasksCounter" value="40" />
+    <option name="localTasksCounter" value="38" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -623,7 +606,7 @@
                   <entry key="branch">
                     <value>
                       <list>
-                        <option value="origin/fix/chart-reactivity" />
+                        <option value="main" />
                       </list>
                     </value>
                   </entry>
@@ -642,6 +625,9 @@
   </component>
   <component name="VcsManagerConfiguration">
     <option name="CHECK_CODE_SMELLS_BEFORE_PROJECT_COMMIT" value="false" />
+    <MESSAGE value="chore: add database schema and data source configuration files" />
+    <MESSAGE value="feat: add invite management and UI enhancements&#10;&#10;- Replaced `complete_member_registration` SQL function with API-based invite workflows.&#10;- Added resend invitation API and related UI updates for waitlist.&#10;- Improved waitlist filtering (`status`).&#10;- Updated Stripe API version.&#10;- Enhanced IDE configuration and standardized code formatting." />
+    <MESSAGE value="feat: enhance invite workflow and UI; improve IDE config&#10;&#10;- Added API-based invite workflows, replacing `complete_member_registration` SQL function.&#10;- Introduced resend invitation API and related UI updates for waitlist.&#10;- Improved waitlist filtering by `status`.&#10;- Updated Stripe API version.&#10;- Refined IDE configuration and applied consistent code formatting." />
     <MESSAGE value="feat: refactor invitation to use invitation id instead of tokens" />
     <MESSAGE value="feat: added migrations for new email invite processing.&#10;&#10;It now uses the uuid of the invite as a route and sends an email manually." />
     <MESSAGE value="feat: added functions for email processing using a supabase queue." />
@@ -664,10 +650,7 @@
     <MESSAGE value="feat(workshops): add cancellation and refund functionality&#10;&#10;- Introduce workshop cancellation dialog with refund eligibility checks&#10;- Implement refund eligibility utility function with detailed checks&#10;- Enhance workshop list with cancellation buttons and refunded badge&#10;- Update calendar and API to include registration status and counts&#10;- Refactor user registration actions for better state handling and UX" />
     <MESSAGE value="feat: added workshop update feature" />
     <MESSAGE value="fix: remove payment session from bulk invite" />
-    <MESSAGE value="fix: refunds not working for users" />
-    <MESSAGE value="feat: refunds not working for users" />
-    <MESSAGE value="chore(deps): update dependencies and introduce AI-related packages&#10;&#10;- Add `@ai-sdk/groq`, `@ai-sdk/svelte`, `@ai-sdk/valibot`, `ollama-ai-provider`, and `ai` for AI capabilities.&#10;- Include utility packages like `evalite`, `autoevals`, and `better-sqlite3`.&#10;- Bump versions for several dependencies and dev dependencies, improving compatibility and features." />
-    <option name="LAST_COMMIT_MESSAGE" value="chore(deps): update dependencies and introduce AI-related packages&#10;&#10;- Add `@ai-sdk/groq`, `@ai-sdk/svelte`, `@ai-sdk/valibot`, `ollama-ai-provider`, and `ai` for AI capabilities.&#10;- Include utility packages like `evalite`, `autoevals`, and `better-sqlite3`.&#10;- Bump versions for several dependencies and dev dependencies, improving compatibility and features." />
+    <option name="LAST_COMMIT_MESSAGE" value="fix: remove payment session from bulk invite" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -678,35 +661,19 @@
           <option name="timeStamp" value="7" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="javascript">
-          <url>file://$PROJECT_DIR$/src/routes/auth/+page.server.ts</url>
-          <line>38</line>
-          <option name="timeStamp" value="10" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" type="javascript">
-          <url>file://$PROJECT_DIR$/src/routes/auth/+page.server.ts</url>
-          <line>37</line>
-          <option name="timeStamp" value="11" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" type="javascript">
-          <url>file://$PROJECT_DIR$/src/routes/auth/+page.server.ts</url>
-          <line>13</line>
-          <option name="timeStamp" value="12" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" type="javascript">
-          <url>file://$PROJECT_DIR$/src/routes/auth/+page.server.ts</url>
-          <line>50</line>
-          <option name="timeStamp" value="13" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" type="javascript">
           <url>file://$PROJECT_DIR$/src/routes/api/workshops/[id]/register/+server.ts</url>
           <line>268</line>
           <option name="timeStamp" value="19" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="javascript">
-          <url>file://$PROJECT_DIR$/src/routes/dashboard/workshops/create/+page.server.ts</url>
-          <line>29</line>
-          <properties lambdaOrdinal="-1" />
-          <option name="timeStamp" value="22" />
+          <url>file://$PROJECT_DIR$/src/routes/dashboard/members/[memberId]/+page.server.ts</url>
+          <line>107</line>
+          <option name="timeStamp" value="21" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="javascript">
+          <url>file://$PROJECT_DIR$/src/routes/dashboard/members/[memberId]/+page.server.ts</url>
+          <line>172</line>
+          <option name="timeStamp" value="24" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>
