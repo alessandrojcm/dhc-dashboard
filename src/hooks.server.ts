@@ -7,6 +7,7 @@ import { env } from '$env/dynamic/public';
 import { getRolesFromSession } from '$lib/server/roles';
 import type { Database } from './database.types';
 import { dev } from '$app/environment';
+import { canAccessUrl } from '$lib/server/rbacRoles';
 
 const supabase: Handle = async ({ event, resolve }) => {
 	/**
@@ -108,15 +109,7 @@ const roleGuard: Handle = async ({ event, resolve }) => {
 		return resolve(event);
 	}
 	const roles = getRolesFromSession(session);
-	if (
-		roles.has('member') &&
-		roles.size === 1 &&
-		![
-			event.url.pathname.includes(`/members/${session.user.id}`),
-			event.url.pathname.includes(`/my-workshops`),
-			event.url.pathname.includes(`/api`)
-		].some(Boolean)
-	) {
+	if (event.url.pathname.includes('/api') || canAccessUrl(event.url.pathname, roles)) {
 		return redirect(303, `/dashboard/members/${session.user.id}`);
 	}
 	if (

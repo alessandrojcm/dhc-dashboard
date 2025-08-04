@@ -17,10 +17,10 @@ export type Database = {
     Functions: {
       graphql: {
         Args: {
+          extensions?: Json
           operationName?: string
           query?: string
           variables?: Json
-          extensions?: Json
         }
         Returns: Json
       }
@@ -1051,7 +1051,7 @@ export type Database = {
         Returns: number
       }
       check_refund_eligibility: {
-        Args: { registration_id: string }
+        Args: { reg_id: string }
         Returns: boolean
       }
       check_workshop_capacity: {
@@ -1060,25 +1060,25 @@ export type Database = {
       }
       complete_member_registration: {
         Args: {
-          v_user_id: string
+          p_insurance_form_submitted: boolean
           p_next_of_kin_name: string
           p_next_of_kin_phone: string
-          p_insurance_form_submitted: boolean
+          v_user_id: string
         }
         Returns: string
       }
       create_invitation: {
         Args: {
-          v_user_id: string
-          p_email: string
-          p_first_name: string
-          p_last_name: string
           p_date_of_birth: string
-          p_phone_number: string
-          p_invitation_type: string
-          p_waitlist_id?: string
+          p_email: string
           p_expires_at?: string
+          p_first_name: string
+          p_invitation_type: string
+          p_last_name: string
           p_metadata?: Json
+          p_phone_number: string
+          p_waitlist_id?: string
+          v_user_id: string
         }
         Returns: string
       }
@@ -1096,7 +1096,7 @@ export type Database = {
         }[]
       }
       get_conversion_metrics: {
-        Args: { start_date: string; end_date: string }
+        Args: { end_date: string; start_date: string }
         Returns: {
           cohort_date: string
           total_signups: number
@@ -1143,28 +1143,28 @@ export type Database = {
       }
       has_any_role: {
         Args: {
-          uid: string
           required_roles: Database["public"]["Enums"]["role_type"][]
+          uid: string
         }
         Returns: boolean
       }
       has_role: {
         Args: {
-          uid: string
           required_role: Database["public"]["Enums"]["role_type"]
+          uid: string
         }
         Returns: boolean
       }
       insert_waitlist_entry: {
         Args: {
-          first_name: string
-          last_name: string
-          email: string
           date_of_birth: string
+          email: string
+          first_name: string
+          gender: Database["public"]["Enums"]["gender"]
+          last_name: string
+          medical_conditions: string
           phone_number: string
           pronouns: string
-          gender: Database["public"]["Enums"]["gender"]
-          medical_conditions: string
           social_media_consent?: Database["public"]["Enums"]["social_media_consent"]
         }
         Returns: {
@@ -1190,16 +1190,16 @@ export type Database = {
         Returns: undefined
       }
       queue_workshop_announcement: {
-        Args: { workshop_id: string; announcement_type?: string }
+        Args: { announcement_type?: string; workshop_id: string }
         Returns: undefined
       }
       register_for_workshop_checkout: {
         Args: {
           p_activity_id: string
           p_amount_paid: number
-          p_stripe_checkout_session_id: string
-          p_member_user_id?: string
           p_external_user_data?: Json
+          p_member_user_id?: string
+          p_stripe_checkout_session_id: string
         }
         Returns: string
       }
@@ -1212,36 +1212,36 @@ export type Database = {
       }
       update_member_data: {
         Args: {
-          user_uuid: string
-          p_first_name?: string
-          p_last_name?: string
-          p_is_active?: boolean
-          p_medical_conditions?: string
-          p_phone_number?: string
-          p_gender?: Database["public"]["Enums"]["gender"]
-          p_pronouns?: string
+          p_additional_data?: Json
           p_date_of_birth?: string
+          p_first_name?: string
+          p_gender?: Database["public"]["Enums"]["gender"]
+          p_insurance_form_submitted?: boolean
+          p_is_active?: boolean
+          p_last_name?: string
+          p_last_payment_date?: string
+          p_medical_conditions?: string
+          p_membership_end_date?: string
+          p_membership_start_date?: string
           p_next_of_kin_name?: string
           p_next_of_kin_phone?: string
+          p_phone_number?: string
           p_preferred_weapon?: Database["public"]["Enums"]["preferred_weapon"][]
-          p_membership_start_date?: string
-          p_membership_end_date?: string
-          p_last_payment_date?: string
-          p_insurance_form_submitted?: boolean
-          p_additional_data?: Json
+          p_pronouns?: string
           p_social_media_consent?: Database["public"]["Enums"]["social_media_consent"]
+          user_uuid: string
         }
         Returns: Database["public"]["CompositeTypes"]["member_data_type"]
       }
       update_member_payment: {
-        Args: { p_user_id: string; p_payment_date?: string }
+        Args: { p_payment_date?: string; p_user_id: string }
         Returns: undefined
       }
       update_waitlist_status: {
         Args: {
-          p_waitlist_id: string
           p_new_status: Database["public"]["Enums"]["waitlist_status"]
           p_notes?: string
+          p_waitlist_id: string
         }
         Returns: undefined
       }

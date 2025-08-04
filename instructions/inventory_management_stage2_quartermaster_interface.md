@@ -1,5 +1,9 @@
 # Inventory Management System - Stage 2: Quartermaster Management Interface
 
+NOTES:
+This is implemented, we just need to fix some server side error loaders
+and do a full e2e test. Remove the key property from the category creator
+
 ## Feature Overview
 
 This is Stage 2 of implementing an inventory management system for the Dublin Hema Club (DHC) dashboard. This stage builds upon the core data model from Stage 1 to create the administrative interface for quartermasters to manage inventory.
