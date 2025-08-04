@@ -74,7 +74,7 @@
 		"prettier": "^3.6.2",
 		"prettier-plugin-svelte": "^3.4.0",
 		"stripe": "^18.3.0",
-		"supabase": "^2.31.8",
+		"supabase": "^2.33.9",
 		"svelte": "^5.35.6",
 		"svelte-check": "^4.2.2",
 		"svelte-sonner": "^1.0.5",
