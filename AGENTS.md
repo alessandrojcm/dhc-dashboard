@@ -82,9 +82,11 @@ payments.
 
 #### Database Access
 
-- **Queries**: Use Supabase client directly (`supabase.from('table').select()`) from client side
+- **Queries**: Use Supabase client directly (`supabase.from('table').select()`) ONLY from client side, for queries on the SERVER side, use kysely
 - **Mutations**: Use Kysely with RLS (`executeWithRLS()` helper in `src/lib/server/kysely.ts`)
 - **Types**: Auto-generated from Supabase schema in `database.types.ts`
+- **Svelte patterns**: Prefer loader/actions where possible, use SuperForm. Only resort to /api/ route handlers when it makes sense (i.e we just have a small mutation like a toggle)
+- **Svelte types**: SvelteKit has a very comprehensive type generation system (import from './$types'). Prefer that over custom types and DO NOT use any.
 
 #### Authentication & Authorization
 

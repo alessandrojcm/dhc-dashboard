@@ -18,9 +18,28 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="chore(deps): update dependencies and introduce AI-related packages&#10;&#10;- Add `@ai-sdk/groq`, `@ai-sdk/svelte`, `@ai-sdk/valibot`, `ollama-ai-provider`, and `ai` for AI capabilities.&#10;- Include utility packages like `evalite`, `autoevals`, and `better-sqlite3`.&#10;- Bump versions for several dependencies and dev dependencies, improving compatibility and features.">
+    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="wip">
+      <change afterPath="$PROJECT_DIR$/src/routes/dashboard/inventory/+layout.server.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/dataSources.local.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources.local.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/instructions/inventory_management_stage2_quartermaster_interface.md" beforeDir="false" afterPath="$PROJECT_DIR$/instructions/inventory_management_stage2_quartermaster_interface.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/AGENTS.md" beforeDir="false" afterPath="$PROJECT_DIR$/AGENTS.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/database.types.ts" beforeDir="false" afterPath="$PROJECT_DIR$/database.types.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/database.types.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/database.types.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/hooks.server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/hooks.server.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/lib/server/auth.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/server/auth.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/lib/server/rbacRoles.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/server/rbacRoles.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/lib/server/roles.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/server/roles.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/inventory/+layout.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/inventory/+layout.svelte" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/inventory/+page.server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/inventory/+page.server.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/inventory/containers/+page.server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/inventory/containers/+page.server.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/inventory/containers/+page.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/inventory/containers/+page.svelte" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/inventory/containers/[id]/+page.server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/inventory/containers/[id]/+page.server.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/inventory/containers/[id]/+page.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/inventory/containers/[id]/+page.svelte" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/inventory/containers/[id]/edit/+page.server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/inventory/containers/[id]/edit/+page.server.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/inventory/containers/[id]/edit/+page.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/inventory/containers/[id]/edit/+page.svelte" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/inventory/containers/create/+page.server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/inventory/containers/create/+page.server.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/inventory/containers/create/+page.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/inventory/containers/create/+page.svelte" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/inventory/items/[id]/+page.server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/inventory/items/[id]/+page.server.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -96,51 +115,52 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "Attach to Node.js/Chrome.Edge Functions.executor": "Debug",
-    "ModuleVcsDetector.initialDetectionPerformed": "true",
-    "Node.js.script.js.executor": "Run",
-    "Node.js.seedMembers.js.executor": "Debug",
-    "Node.js.seedWaitlist.js.executor": "Run",
-    "Node.js.test.ts.executor": "Run",
-    "Playwright.Workshop API.executor": "Run",
-    "Playwright.Workshop API.should create workshop as admin.executor": "Run",
-    "Playwright.Workshop Interest System.executor": "Run",
-    "Playwright.Workshop Interest System.should display planned workshops in calendar view.executor": "Debug",
-    "Playwright.Workshop Management.executor": "Run",
-    "Playwright.Workshop UI.executor": "Run",
-    "Playwright.Workshop UI.should display and validate workshop creation form.executor": "Debug",
-    "Playwright.Workshop UI.should navigate to create workshop form.executor": "Run",
-    "Playwright.underage user (16-17) should be able to submit with guardian information.executor": "Run",
-    "Playwright.underage user (16-17) should be required to fill guardian fields.executor": "Run",
-    "Playwright.underage-guardian-waitlist.spec.ts.executor": "Run",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "com.codeium.enabled": "true",
-    "deno.use.library": "true",
-    "git-widget-placeholder": "feature/ale-41-inventory-management",
-    "junie.onboarding.icon.badge.shown": "true",
-    "last_opened_file_path": "/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]",
-    "node.js.detected.package.eslint": "true",
-    "node.js.detected.package.standard": "true",
-    "node.js.detected.package.tslint": "true",
-    "node.js.selected.package.eslint": "(autodetect)",
-    "node.js.selected.package.standard": "",
-    "node.js.selected.package.tslint": "(autodetect)",
-    "nodejs_package_manager_path": "pnpm",
-    "npm.dev.executor": "Debug",
-    "prettierjs.PrettierConfiguration.Package": "/Users/alessandrojcm/repos/dhc-dashboard/node_modules/prettier",
-    "settings.editor.selected.configurable": "preferences.pluginManager",
-    "ts.external.directory.path": "/Users/alessandrojcm/repos/dhc-dashboard/node_modules/typescript/lib",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;Attach to Node.js/Chrome.Edge Functions.executor&quot;: &quot;Debug&quot;,
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;Node.js.script.js.executor&quot;: &quot;Run&quot;,
+    &quot;Node.js.seedMembers.js.executor&quot;: &quot;Debug&quot;,
+    &quot;Node.js.seedWaitlist.js.executor&quot;: &quot;Run&quot;,
+    &quot;Node.js.test.ts.executor&quot;: &quot;Run&quot;,
+    &quot;Playwright.Workshop API.executor&quot;: &quot;Run&quot;,
+    &quot;Playwright.Workshop API.should create workshop as admin.executor&quot;: &quot;Run&quot;,
+    &quot;Playwright.Workshop Interest System.executor&quot;: &quot;Run&quot;,
+    &quot;Playwright.Workshop Interest System.should display planned workshops in calendar view.executor&quot;: &quot;Debug&quot;,
+    &quot;Playwright.Workshop Management.executor&quot;: &quot;Run&quot;,
+    &quot;Playwright.Workshop UI.executor&quot;: &quot;Run&quot;,
+    &quot;Playwright.Workshop UI.should display and validate workshop creation form.executor&quot;: &quot;Debug&quot;,
+    &quot;Playwright.Workshop UI.should navigate to create workshop form.executor&quot;: &quot;Run&quot;,
+    &quot;Playwright.underage user (16-17) should be able to submit with guardian information.executor&quot;: &quot;Run&quot;,
+    &quot;Playwright.underage user (16-17) should be required to fill guardian fields.executor&quot;: &quot;Run&quot;,
+    &quot;Playwright.underage-guardian-waitlist.spec.ts.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;com.codeium.enabled&quot;: &quot;true&quot;,
+    &quot;deno.use.library&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;feature/ale-41-inventory-management&quot;,
+    &quot;junie.onboarding.icon.badge.shown&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.standard&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.standard&quot;: &quot;&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;pnpm&quot;,
+    &quot;npm.dev.executor&quot;: &quot;Debug&quot;,
+    &quot;prettierjs.PrettierConfiguration.Package&quot;: &quot;/Users/alessandrojcm/repos/dhc-dashboard/node_modules/prettier&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.pluginManager&quot;,
+    &quot;to.speed.mode.migration.done&quot;: &quot;true&quot;,
+    &quot;ts.external.directory.path&quot;: &quot;/Users/alessandrojcm/repos/dhc-dashboard/node_modules/typescript/lib&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   },
-  "keyToStringList": {
-    "DatabaseDriversLRU": [
-      "postgresql"
+  &quot;keyToStringList&quot;: {
+    &quot;DatabaseDriversLRU&quot;: [
+      &quot;postgresql&quot;
     ]
   }
-}]]></component>
+}</component>
   <component name="ReactDesignerToolWindowState">
     <option name="myId2Visible">
       <map>
@@ -236,7 +256,7 @@
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
-        <option value="bundled-js-predefined-d6986cc7102b-09060db00ec0-JavaScript-WS-251.27812.50" />
+        <option value="bundled-js-predefined-d6986cc7102b-e03c56caf84a-JavaScript-WS-252.23892.411" />
       </set>
     </attachedChunks>
   </component>
@@ -282,6 +302,9 @@
       <workItem from="1753624646505" duration="3336000" />
       <workItem from="1753629574041" duration="109000" />
       <workItem from="1753636997043" duration="23162000" />
+      <workItem from="1754469992864" duration="2050000" />
+      <workItem from="1754480873511" duration="1438000" />
+      <workItem from="1754489280290" duration="1014000" />
     </task>
     <task id="LOCAL-00001" summary="Add guardian support for underage waitlist entries&#10;&#10;Introduce `waitlist_guardians` table and transactional logic for adding guardian details when underage users join the waitlist. Updates include database migrations, UI adjustments for conditional input fields, validation logic, and tests to ensure age-based gating.">
       <option name="closed" value="true" />
@@ -595,7 +618,31 @@
       <option name="project" value="LOCAL" />
       <updated>1753720917117</updated>
     </task>
-    <option name="localTasksCounter" value="40" />
+    <task id="LOCAL-00040" summary="wip">
+      <option name="closed" value="true" />
+      <created>1754342596776</created>
+      <option name="number" value="00040" />
+      <option name="presentableId" value="LOCAL-00040" />
+      <option name="project" value="LOCAL" />
+      <updated>1754342596776</updated>
+    </task>
+    <task id="LOCAL-00041" summary="wip">
+      <option name="closed" value="true" />
+      <created>1754387544156</created>
+      <option name="number" value="00041" />
+      <option name="presentableId" value="LOCAL-00041" />
+      <option name="project" value="LOCAL" />
+      <updated>1754387544156</updated>
+    </task>
+    <task id="LOCAL-00042" summary="wip">
+      <option name="closed" value="true" />
+      <created>1754388671108</created>
+      <option name="number" value="00042" />
+      <option name="presentableId" value="LOCAL-00042" />
+      <option name="project" value="LOCAL" />
+      <updated>1754388671108</updated>
+    </task>
+    <option name="localTasksCounter" value="43" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -636,7 +683,6 @@
   </component>
   <component name="VcsManagerConfiguration">
     <option name="CHECK_CODE_SMELLS_BEFORE_PROJECT_COMMIT" value="false" />
-    <MESSAGE value="feat: refactor invitation to use invitation id instead of tokens" />
     <MESSAGE value="feat: added migrations for new email invite processing.&#10;&#10;It now uses the uuid of the invite as a route and sends an email manually." />
     <MESSAGE value="feat: added functions for email processing using a supabase queue." />
     <MESSAGE value="feat: refactored admin endpoint to add emails to the queue." />
@@ -661,7 +707,8 @@
     <MESSAGE value="fix: refunds not working for users" />
     <MESSAGE value="feat: refunds not working for users" />
     <MESSAGE value="chore(deps): update dependencies and introduce AI-related packages&#10;&#10;- Add `@ai-sdk/groq`, `@ai-sdk/svelte`, `@ai-sdk/valibot`, `ollama-ai-provider`, and `ai` for AI capabilities.&#10;- Include utility packages like `evalite`, `autoevals`, and `better-sqlite3`.&#10;- Bump versions for several dependencies and dev dependencies, improving compatibility and features." />
-    <option name="LAST_COMMIT_MESSAGE" value="chore(deps): update dependencies and introduce AI-related packages&#10;&#10;- Add `@ai-sdk/groq`, `@ai-sdk/svelte`, `@ai-sdk/valibot`, `ollama-ai-provider`, and `ai` for AI capabilities.&#10;- Include utility packages like `evalite`, `autoevals`, and `better-sqlite3`.&#10;- Bump versions for several dependencies and dev dependencies, improving compatibility and features." />
+    <MESSAGE value="wip" />
+    <option name="LAST_COMMIT_MESSAGE" value="wip" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
