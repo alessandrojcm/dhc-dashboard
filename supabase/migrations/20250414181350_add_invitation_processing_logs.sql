@@ -23,14 +23,6 @@ CREATE POLICY "Users can view their own invitation processing logs"
   FOR SELECT
   USING ((select auth.uid()) = user_id);
 
--- Only allow service role to insert logs
-CREATE POLICY "Service role can insert invitation processing logs"
-  ON public.invitation_processing_logs
-  FOR INSERT
-  WITH CHECK (
-    auth.jwt() ->> 'role' IN ('service_role', 'postgres')
-  );
-
 -- Create index for faster queries
 CREATE INDEX invitation_processing_logs_user_id_idx ON public.invitation_processing_logs(user_id);
 CREATE INDEX invitation_processing_logs_created_at_idx ON public.invitation_processing_logs(created_at);

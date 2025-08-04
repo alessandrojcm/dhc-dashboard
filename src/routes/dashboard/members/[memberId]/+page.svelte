@@ -22,13 +22,14 @@
 	import { Badge } from '$lib/components/ui/badge';
 	import PauseSubscriptionModal from '$lib/components/ui/pause-subscription-modal.svelte';
 	import type Stripe from 'stripe';
+	import SuperDebug from 'sveltekit-superforms';
 
 	const { data } = $props();
 
 	const form = superForm(data.form, {
 		validators: valibotClient(signupSchema),
-		validationMethod: 'oninput',
-		resetForm: false
+		validationMethod: 'onblur',
+		resetForm: false,
 	});
 	const { form: formData, enhance, submitting, message } = form;
 	const dobProxy = dateProxy(form, 'dateOfBirth', { format: `date` });
@@ -161,7 +162,13 @@
 								<PhoneInput
 									placeholder="Enter your phone number"
 									{...props}
-									bind:phoneNumber={$formData.phoneNumber}
+									bind:phoneNumber={
+									() =>$formData.phoneNumber,
+									(v) => {
+										
+										$formData.phoneNumber = v;
+									}
+									}
 								/>
 							{/snippet}
 						</Form.Control>
@@ -392,7 +399,9 @@
 
 				</div>
 			</div>
-
+			{#if import.meta.env.DEV}
+				<SuperDebug data={formData} />
+			{/if}
 			<Button type="submit" class="w-full" disabled={$submitting}>
 				{$submitting ? 'Saving...' : 'Save Changes'}
 			</Button>
