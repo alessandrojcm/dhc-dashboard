@@ -53,7 +53,7 @@ export const categorySchema = object({
 	description: optional(
 		pipe(string(), maxLength(500, 'Description must be less than 500 characters'))
 	),
-	available_attributes: optional(record(string(), attributeDefinitionSchema))
+	available_attributes: optional(array(attributeDefinitionSchema), [])
 });
 
 export const itemSchema = object({
@@ -74,8 +74,8 @@ export const itemSearchSchema = object({
 	limit: optional(pipe(number(), minValue(1), maxValue(100)))
 });
 
-export type ContainerSchema = typeof containerSchema;
+export type ContainerSchema = InferOutput<typeof containerSchema>;
 export type CategorySchema = InferOutput<typeof categorySchema>;
-export type ItemSchema = typeof itemSchema;
-export type ItemSearchSchema = typeof itemSearchSchema;
-export type AttributeDefinition = typeof attributeDefinitionSchema;
+export type ItemSchema = InferOutput<typeof itemSchema>;
+export type ItemSearchSchema = InferOutput<typeof itemSearchSchema>;
+export type AttributeDefinition = InferOutput<typeof attributeDefinitionSchema>;

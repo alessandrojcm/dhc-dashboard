@@ -5,9 +5,9 @@
 	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
-	import { Label } from '$lib/components/ui/label';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import { Select, SelectContent, SelectItem, SelectTrigger } from '$lib/components/ui/select';
+	import * as Form from '$lib/components/ui/form';
 	import { AlertCircleIcon, ArrowLeft, FolderOpen, Trash2 } from 'lucide-svelte';
 	import { enhance } from '$app/forms';
 	import type { Database } from '$database';
@@ -26,9 +26,11 @@
 
 	let { data } = $props();
 
-	const { form, errors, enhance: formEnhance, submitting, message } = superForm(data.form, {
+	const form = superForm(data.form, {
 		validators: valibot(containerSchema)
 	});
+
+	const { form: formData, errors, enhance: formEnhance, submitting, message } = form;
 
 	// Build hierarchy display for parent selection
 	const buildHierarchyDisplay = (containers: Container[]): HierarchicalContainer[] => {
@@ -96,7 +98,7 @@
 	const excludedIds = getDescendantIds(data.container.id, data.containers);
 	const availableContainers = data.containers.filter(c => !excludedIds.has(c.id));
 	const hierarchicalContainers = buildHierarchyDisplay(availableContainers);
-	const selectedContainer = $derived(hierarchicalContainers.find(container => container.id === $form.parent_container_id));
+	const selectedContainer = $derived(hierarchicalContainers.find(container => container.id === $formData.parent_container_id));
 
 	let showDeleteConfirm = $state(false);
 </script>
@@ -131,62 +133,64 @@
 			</CardHeader>
 			<CardContent>
 				<form method="POST" action="?/update" use:formEnhance class="space-y-6">
-					<div class="space-y-2">
-						<Label for="name">Container Name *</Label>
-						<Input
-							id="name"
-							name="name"
-							bind:value={$form.name}
-							placeholder="e.g., Main Storage Room, Black Duffel Bag #1"
-							class={$errors.name ? 'border-destructive' : ''}
-						/>
-						{#if $errors.name}
-							<p class="text-sm text-destructive">{$errors.name}</p>
-						{/if}
-					</div>
+					<Form.Field {form} name="name">
+						<Form.Control>
+							{#snippet children({ props })}
+								<Form.Label>Container Name *</Form.Label>
+								<Input
+									{...props}
+									bind:value={$formData.name}
+									placeholder="e.g., Main Storage Room, Black Duffel Bag #1"
+								/>
+							{/snippet}
+						</Form.Control>
+						<Form.FieldErrors />
+					</Form.Field>
 
-					<div class="space-y-2">
-						<Label for="description">Description</Label>
-						<Textarea
-							id="description"
-							name="description"
-							bind:value={$form.description}
-							placeholder="Optional description of the container and its purpose"
-							rows={3}
-							class={$errors.description ? 'border-destructive' : ''}
-						/>
-						{#if $errors.description}
-							<p class="text-sm text-destructive">{$errors.description}</p>
-						{/if}
-					</div>
+					<Form.Field {form} name="description">
+						<Form.Control>
+							{#snippet children({ props })}
+								<Form.Label>Description</Form.Label>
+								<Textarea
+									{...props}
+									bind:value={$formData.description}
+									placeholder="Optional description of the container and its purpose"
+									rows={3}
+								/>
+							{/snippet}
+						</Form.Control>
+						<Form.FieldErrors />
+					</Form.Field>
 
-					<div class="space-y-2">
-						<Label for="parent_container_id">Parent Container</Label>
-						<Select type="single" bind:value={$form.parent_container_id} name="parent_container_id">
-							<SelectTrigger>
-								{selectedContainer ? selectedContainer.displayName : 'Select a parent container (optional)'}
-							</SelectTrigger>
-							<SelectContent>
-								<SelectItem value="">No parent container (root level)</SelectItem>
-								{#each hierarchicalContainers as container}
-									<SelectItem value={container.id}>
-										{container.displayName}
-									</SelectItem>
-								{/each}
-							</SelectContent>
-						</Select>
-						{#if $errors.parent_container_id}
-							<p class="text-sm text-destructive">{$errors.parent_container_id}</p>
-						{/if}
-						<p class="text-sm text-muted-foreground">
+					<Form.Field {form} name="parent_container_id">
+						<Form.Control>
+							{#snippet children({ props })}
+								<Form.Label>Parent Container</Form.Label>
+								<Select type="single" bind:value={$formData.parent_container_id} name={props.name}>
+									<SelectTrigger {...props}>
+										{selectedContainer ? selectedContainer.displayName : 'Select a parent container (optional)'}
+									</SelectTrigger>
+									<SelectContent>
+										<SelectItem value="">No parent container (root level)</SelectItem>
+										{#each hierarchicalContainers as container}
+											<SelectItem value={container.id}>
+												{container.displayName}
+											</SelectItem>
+										{/each}
+									</SelectContent>
+								</Select>
+							{/snippet}
+						</Form.Control>
+						<Form.Description>
 							Choose a parent container to create a hierarchy. Leave empty to create a root-level container.
-						</p>
-					</div>
+						</Form.Description>
+						<Form.FieldErrors />
+					</Form.Field>
 
 					<div class="flex gap-3 pt-4">
-						<Button type="submit" disabled={$submitting}>
+						<Form.Button type="submit" disabled={$submitting}>
 							{$submitting ? 'Updating...' : 'Update Container'}
-						</Button>
+						</Form.Button>
 						<Button href="/dashboard/inventory/containers/{data.container.id}" variant="outline">
 							Cancel
 						</Button>

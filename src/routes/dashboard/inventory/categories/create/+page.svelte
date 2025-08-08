@@ -1,27 +1,32 @@
 <script lang="ts">
-	import { superForm } from 'sveltekit-superforms';
+	import SuperDebug, { superForm } from 'sveltekit-superforms';
 	import { valibot } from 'sveltekit-superforms/adapters';
 	import { categorySchema } from '$lib/schemas/inventory';
 	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
-	import { Label } from '$lib/components/ui/label';
 	import { Textarea } from '$lib/components/ui/textarea';
+	import * as Form from '$lib/components/ui/form';
 	import { ArrowLeft, Tags } from 'lucide-svelte';
 	import AttributeBuilder from '$lib/components/inventory/AttributeBuilder.svelte';
+	import { toast } from 'svelte-sonner';
+	import { goto } from '$app/navigation';
 
 	let { data } = $props();
 
-	const { form, errors, enhance, submitting } = superForm(data.form, {
+	const form = superForm(data.form, {
 		validators: valibot(categorySchema),
 		resetForm: true,
-		dataType: 'json'
+		dataType: 'json',
+		onUpdated: ({ form }) => {
+			if (form.message?.success) {
+				toast.success(form.message.success);
+				setTimeout(() => goto('/dashboard/inventory/categories'), 1500);
+			}
+		}
 	});
 
-	// Initialize available_attributes if not set
-	if (!$form.available_attributes) {
-		$form.available_attributes = {};
-	}
+	const { form: formData, enhance, submitting } = form;
 </script>
 
 <div class="p-6">
@@ -48,34 +53,34 @@
 				</CardDescription>
 			</CardHeader>
 			<CardContent class="space-y-4">
-				<div class="space-y-2">
-					<Label for="name">Category Name *</Label>
-					<Input
-						id="name"
-						name="name"
-						bind:value={$form.name}
-						placeholder="e.g., Masks, Jackets, Swords"
-						class={$errors.name ? 'border-destructive' : ''}
-					/>
-					{#if $errors.name}
-						<p class="text-sm text-destructive">{$errors.name}</p>
-					{/if}
-				</div>
+				<Form.Field {form} name="name">
+					<Form.Control>
+						{#snippet children({ props })}
+							<Form.Label>Category Name *</Form.Label>
+							<Input
+								{...props}
+								bind:value={$formData.name}
+								placeholder="e.g., Masks, Jackets, Swords"
+							/>
+						{/snippet}
+					</Form.Control>
+					<Form.FieldErrors />
+				</Form.Field>
 
-				<div class="space-y-2">
-					<Label for="description">Description</Label>
-					<Textarea
-						id="description"
-						name="description"
-						bind:value={$form.description}
-						placeholder="Optional description of this equipment category"
-						rows={3}
-						class={$errors.description ? 'border-destructive' : ''}
-					/>
-					{#if $errors.description}
-						<p class="text-sm text-destructive">{$errors.description}</p>
-					{/if}
-				</div>
+				<Form.Field {form} name="description">
+					<Form.Control>
+						{#snippet children({ props })}
+							<Form.Label>Description</Form.Label>
+							<Textarea
+								{...props}
+								bind:value={$formData.description}
+								placeholder="Optional description of this equipment category"
+								rows={3}
+							/>
+						{/snippet}
+					</Form.Control>
+					<Form.FieldErrors />
+				</Form.Field>
 			</CardContent>
 		</Card>
 
@@ -84,22 +89,26 @@
 			<CardHeader>
 				<CardTitle>Custom Attributes</CardTitle>
 				<CardDescription>
-					Define the attributes that items in this category will have. For example, masks might have attributes like "brand", "size", and "color".
+					Define the attributes that items in this category will have. For example, masks might have attributes like
+					"brand", "size", and "color".
 				</CardDescription>
 			</CardHeader>
 			<CardContent>
-				<AttributeBuilder bind:attributes={$form.available_attributes} errors={$errors} />
+				<AttributeBuilder {form} />
 			</CardContent>
 		</Card>
 
 		<!-- Actions -->
 		<div class="flex gap-3">
-			<Button type="submit" disabled={$submitting}>
+			<Form.Button type="submit" disabled={$submitting}>
 				{$submitting ? 'Creating...' : 'Create Category'}
-			</Button>
+			</Form.Button>
 			<Button href="/dashboard/inventory/categories" variant="outline">
 				Cancel
 			</Button>
 		</div>
 	</form>
+	{#if import.meta.env.DEV}
+		<SuperDebug data={$formData}/>
+	{/if}
 </div>

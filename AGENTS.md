@@ -168,6 +168,20 @@ Required for development:
 - ALWAYS use day.js for any date operations
 - ALWAYS try to avoid $effects unless is absolutely necessary. Prefer $derived runes and event handlers
 
+For forms, ALWAYS use the Form component from src/components/ui/form. This is the usage:
+```svelte
+<form>
+ <Form.Field>
+  <Form.Control>
+   <Form.Label />
+   <!-- Any Form input component -->
+  </Form.Control>
+  <Form.Description />
+  <Form.FieldErrors />
+ </Form.Field>
+</form>
+```
+
 ### Database Guidelines
 
 - Use Supabase client for queries only
