@@ -7,22 +7,19 @@
 	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Plus, Trash2, Settings } from 'lucide-svelte';
-
-	interface AttributeDefinition {
-		type: 'text' | 'select' | 'number' | 'boolean';
-		label: string;
-		required?: boolean;
-		options?: string[];
-		default_value?: any;
-	}
+	import type { SuperForm } from 'sveltekit-superforms/client';
+	import type { AttributeDefinition, CategorySchema } from '$lib/schemas/inventory';
+	import * as Form from '$lib/components/ui/form';
 
 	let {
-		attributes = $bindable({}),
-		errors = {}
+		form
 	}: {
-		attributes: Record<string, AttributeDefinition>;
-		errors?: Record<string, string>;
+		form: SuperForm<CategorySchema>
 	} = $props();
+	const { form: formData } = form;
+	const attributeCount = $derived($formData.available_attributes.length);
+	const hasAttributes = $derived(attributeCount > 0);
+
 
 	let newAttribute = $state<AttributeDefinition>({
 		type: 'text',
@@ -30,29 +27,11 @@
 		required: false
 	});
 
-	// Auto-generate key from display label
-	const generateKey = (label: string): string => {
-		return label
-			.toLowerCase()
-			.replace(/[^a-z0-9\s]/g, '') // Remove special characters
-			.replace(/\s+/g, '') // Remove spaces
-			.replace(/^([a-z])/, (match, p1) => p1.toLowerCase()) // Ensure first letter is lowercase
-			.replace(/\s([a-z])/g, (match, p1) => p1.toUpperCase()); // Convert to camelCase
-	};
-
 	const addAttribute = () => {
 		if (!newAttribute.label) return;
 
-		const key = generateKey(newAttribute.label);
-		// Ensure key is unique
-		let finalKey = key;
-		let counter = 1;
-		while (attributes[finalKey]) {
-			finalKey = `${key}${counter}`;
-			counter++;
-		}
 
-		attributes[finalKey] = { ...newAttribute };
+		$formData.available_attributes = [...$formData.available_attributes, { ...newAttribute, ...(newAttribute.type === 'select' && { options: [] }) }];
 
 		// Reset form
 		newAttribute = {
@@ -61,71 +40,6 @@
 			required: false
 		};
 	};
-
-	const removeAttribute = (key: string) => {
-		delete attributes[key];
-		attributes = { ...attributes };
-	};
-
-	const updateAttribute = (key: string, updates: Partial<AttributeDefinition>) => {
-		attributes[key] = { ...attributes[key], ...updates };
-		attributes = { ...attributes };
-	};
-
-	const addOption = (key: string) => {
-		if (!attributes[key].options) {
-			attributes[key].options = [];
-		}
-		attributes[key].options!.push('');
-		attributes = { ...attributes };
-	};
-
-	const updateOption = (key: string, index: number, value: string) => {
-		if (attributes[key].options) {
-			attributes[key].options[index] = value;
-			attributes = { ...attributes };
-		}
-	};
-
-	const removeOption = (key: string, index: number) => {
-		if (attributes[key].options) {
-			attributes[key].options.splice(index, 1);
-			attributes = { ...attributes };
-		}
-	};
-
-	// Derive error messages from the errors object
-	const errorMessage = $derived(() => {
-		if (!errors || Object.keys(errors).length === 0) return '';
-		
-		const messages: string[] = [];
-		
-		// Handle available_attributes errors
-		if (errors.available_attributes) {
-			const attrErrors = errors.available_attributes;
-			for (const [attrKey, attrError] of Object.entries(attrErrors)) {
-				if (typeof attrError === 'object' && attrError !== null) {
-					// Handle nested errors (like label errors)
-					for (const [field, fieldErrors] of Object.entries(attrError)) {
-						if (Array.isArray(fieldErrors)) {
-							messages.push(...fieldErrors.map(err => `${attrKey}.${field}: ${err}`));
-						}
-					}
-				} else if (typeof attrError === 'string') {
-					messages.push(`${attrKey}: ${attrError}`);
-				}
-			}
-		}
-		
-		// Handle any other top-level errors
-		for (const [key, value] of Object.entries(errors)) {
-			if (key !== 'available_attributes' && typeof value === 'string') {
-				messages.push(`${key}: ${value}`);
-			}
-		}
-		
-		return messages.join(', ');
-	});
 </script>
 
 <div class="space-y-6">
@@ -145,18 +59,13 @@
 					bind:value={newAttribute.label}
 					placeholder="e.g., Brand, Size, Color"
 				/>
-				{#if newAttribute.label}
-					<p class="text-sm text-muted-foreground">
-						Key will be: <code class="bg-muted px-1 py-0.5 rounded text-xs">{generateKey(newAttribute.label)}</code>
-					</p>
-				{/if}
 			</div>
 
 			<div class="grid grid-cols-2 gap-4">
 				<div class="space-y-2">
 					<Label for="attr-type">Attribute Type</Label>
 					<Select type="single" bind:value={newAttribute.type}>
-						<SelectTrigger class="capitalize">
+						<SelectTrigger id="attr-type" class="capitalize">
 							{newAttribute.type}
 						</SelectTrigger>
 						<SelectContent>
@@ -181,16 +90,16 @@
 	</Card>
 
 	<!-- Existing Attributes -->
-	{#if Object.keys(attributes).length > 0}
+	{#if hasAttributes}
 		<Card>
 			<CardHeader>
 				<CardTitle class="flex items-center gap-2">
 					<Settings class="h-5 w-5" />
-					Category Attributes ({Object.keys(attributes).length})
+					Category Attributes ({attributeCount})
 				</CardTitle>
 			</CardHeader>
 			<CardContent class="space-y-4">
-				{#each Object.entries(attributes) as [key, attr]}
+				{#each $formData.available_attributes as attr, index}
 					<div class="border rounded-lg p-4 space-y-4">
 						<div class="flex items-center justify-between">
 							<div class="flex items-center gap-2">
@@ -203,68 +112,86 @@
 							<Button
 								variant="ghost"
 								size="sm"
-								onclick={() => removeAttribute(key)}
+								onclick={() => ($formData.available_attributes = $formData.available_attributes.filter((_, i) => i !== index))}
 								class="text-destructive hover:text-destructive"
 							>
 								<Trash2 class="h-4 w-4" />
 							</Button>
 						</div>
+						<Form.Field {form} name='available_attributes[{index}].label' }>
+							<Form.Control>
+								{#snippet children({ props }) }
+									<Form.Label>Display Label</Form.Label>
+									<Input
+										{...props}
+										bind:value={$formData.available_attributes[index].label}
+									/>
+								{/snippet}
+							</Form.Control>
+							<Form.FieldErrors />
+						</Form.Field>
+						<Form.Field {form} name='available_attributes[{index}].required' }>
+							<Form.Control>
+								{#snippet children({ props }) }
+									<div class="flex items-center space-x-2 pt-6">
+										<Checkbox
+											{...props}
+											bind:checked={$formData.available_attributes[index].required}
+										/>
+										<Form.Label>Required field</Form.Label>
+									</div>
+								{/snippet}
+							</Form.Control>
+							<Form.FieldErrors />
+						</Form.Field>
 
-						<div class="grid grid-cols-2 gap-4">
-							<div class="space-y-2">
-								<Label>Display Label</Label>
-								<Input
-									bind:value={attr.label}
-									onchange={() => updateAttribute(key, { label: attr.label })}
-								/>
-							</div>
-							<div class="flex items-center space-x-2 pt-6">
-								<Checkbox
-									bind:checked={attr.required}
-									onchange={() => updateAttribute(key, { required: attr.required })}
-								/>
-								<Label>Required field</Label>
-							</div>
-						</div>
-
-						{#if attr.type === 'select'}
-							<div class="space-y-2">
-								<Label>Options</Label>
-								<div class="space-y-2">
-									{#each attr.options || [] as option, index}
-										<div class="flex gap-2">
-											<Input
-												bind:value={attr.options[index]}
-												onchange={() => updateOption(key, index, option)}
-												placeholder="Option value"
-											/>
+						{#if attr.type === 'select' && attr.options}
+							<Form.Field {form} name='available_attributes[{index}].options' }>
+								<Form.Control>
+									{#snippet children({ props }) }
+										<input type="hidden" {...props} bind:value={$formData.available_attributes[index].options} />
+										<Form.Label>Options</Form.Label>
+										<div class="space-y-2">
+											{#each attr.options ?? [] as value, i}
+												<Form.Field {form} name='available_attributes[{index}].options[{i}]'>
+													<Form.Control>
+														{#snippet children({ props }) }
+															<Form.Label>Option {i + 1}</Form.Label>
+															<Input
+																{...props}
+																placeholder="Option value"
+																bind:value={$formData.available_attributes[index].options[i]}
+															/>
+															<Button
+																variant="ghost"
+																size="sm"
+																aria-label={`Remove option ${value}`}
+																onclick={() => ($formData.available_attributes[index].options[i]=attr.options?.filter((v) => v !== value))}
+															>
+																<Trash2 class="h-4 w-4" />
+															</Button>
+														{/snippet}
+													</Form.Control>
+													<Form.FieldErrors />
+												</Form.Field>
+											{/each}
 											<Button
-												variant="ghost"
+												variant="outline"
 												size="sm"
-												onclick={() => removeOption(key, index)}
+												onclick={() => ($formData.available_attributes[index].options = [...(attr.options ?? []), ''])}
 											>
-												<Trash2 class="h-4 w-4" />
+												<Plus class="mr-2 h-4 w-4" />
+												Add Option
 											</Button>
 										</div>
-									{/each}
-									<Button
-										variant="outline"
-										size="sm"
-										onclick={() => addOption(key)}
-									>
-										<Plus class="mr-2 h-4 w-4" />
-										Add Option
-									</Button>
-								</div>
-							</div>
+									{/snippet}
+								</Form.Control>
+								<Form.FieldErrors />
+							</Form.Field>
 						{/if}
 					</div>
 				{/each}
 			</CardContent>
 		</Card>
-	{/if}
-
-	{#if errorMessage()}
-		<p class="text-sm text-destructive">{errorMessage()}</p>
 	{/if}
 </div>

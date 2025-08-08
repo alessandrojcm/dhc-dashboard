@@ -1086,6 +1086,10 @@ export type Database = {
         Args: { event: Json }
         Returns: Json
       }
+      generate_attribute_schema: {
+        Args: { attributes_array: Json }
+        Returns: Json
+      }
       get_active_users_for_announcements: {
         Args: Record<PropertyKey, never>
         Returns: {

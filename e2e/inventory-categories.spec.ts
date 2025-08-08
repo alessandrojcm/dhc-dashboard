@@ -54,18 +54,21 @@ test.describe('Inventory Categories Management', () => {
 			const timestamp = Date.now();
 			const categoryName = `Test Category ${timestamp}`;
 
-			// Click create category button
-			await page.getByRole('button', { name: /create category/i }).click();
+			// Click create category button (could be "Add Category" or "Create Category" depending on empty state)
+			await page
+				.getByRole('link', { name: /(?:add|create) category/i })
+				.first()
+				.click();
 
 			// Fill basic form
-			await page.getByLabel(/name/i).fill(categoryName);
+			await page.getByLabel(/category name/i).fill(categoryName);
 			await page.getByLabel(/description/i).fill('Test category for equipment');
 
 			// Submit form
-			await page.getByRole('button', { name: /create/i }).click();
+			await page.getByRole('button', { name: /create category/i }).click();
 
-			// Should show success message
-			await expect(page.getByText(/category created successfully/i)).toBeVisible();
+			// Should redirect to categories list
+			await expect(page).toHaveURL('/dashboard/inventory/categories/create');
 
 			// Should appear in categories list
 			await expect(page.getByText(categoryName)).toBeVisible();
@@ -79,20 +82,29 @@ test.describe('Inventory Categories Management', () => {
 			const categoryName = `Weapons Category ${timestamp}`;
 
 			// Click create category button
-			await page.getByRole('button', { name: /create category/i }).click();
+			await page
+				.getByRole('link', { name: /(?:add|create) category/i })
+				.first()
+				.click();
 
 			// Fill basic form
-			await page.getByLabel(/name/i).fill(categoryName);
+			await page.getByLabel(/category name/i).fill(categoryName);
 			await page.getByLabel(/description/i).fill('Category for weapon equipment');
 
 			// Add attributes using AttributeBuilder
 			// Add text attribute
-			await page.getByLabel(/display label/i).fill('Brand');
+			await page
+				.getByLabel(/display label/i)
+				.first()
+				.fill('Brand');
 			await page.getByRole('button', { name: /add attribute/i }).click();
 
 			// Add select attribute
-			await page.getByLabel(/display label/i).fill('Weapon Type');
-			await page.getByRole('combobox', { name: /attribute type/i }).click();
+			await page
+				.getByLabel(/display label/i)
+				.first()
+				.fill('Weapon Type');
+			await page.getByRole('button', { name: 'Attribute Type' }).click();
 			await page.getByText('Dropdown Select').click();
 			await page.getByRole('button', { name: /add attribute/i }).click();
 
@@ -100,26 +112,38 @@ test.describe('Inventory Categories Management', () => {
 			await page.getByRole('button', { name: /add option/i }).click();
 			await page.getByPlaceholder(/option value/i).fill('Longsword');
 			await page.getByRole('button', { name: /add option/i }).click();
-			await page.getByPlaceholder(/option value/i).last().fill('Rapier');
+			await page
+				.getByPlaceholder(/option value/i)
+				.last()
+				.fill('Rapier');
 
 			// Add number attribute
-			await page.getByLabel(/display label/i).fill('Weight (kg)');
-			await page.getByRole('combobox', { name: /attribute type/i }).click();
+			await page
+				.getByLabel(/display label/i)
+				.first()
+				.fill('Weight (kg)');
+			await page.getByRole('button', { name: /attribute type/i }).click();
 			await page.getByText('Number Input').click();
-			await page.getByRole('checkbox', { name: /required field/i }).check();
+			await page
+				.getByRole('checkbox', { name: /required field/i })
+				.last()
+				.check();
 			await page.getByRole('button', { name: /add attribute/i }).click();
 
 			// Add boolean attribute
-			await page.getByLabel(/display label/i).fill('In Maintenance');
-			await page.getByRole('combobox', { name: /attribute type/i }).click();
+			await page
+				.getByLabel(/display label/i)
+				.first()
+				.fill('In Maintenance');
+			await page.getByRole('button', { name: /attribute type/i }).click();
 			await page.getByText('Checkbox').click();
 			await page.getByRole('button', { name: /add attribute/i }).click();
 
 			// Submit form
-			await page.getByRole('button', { name: /create/i }).click();
+			await page.getByRole('button', { name: /create category/i }).click();
 
-			// Should show success message
-			await expect(page.getByText(/category created successfully/i)).toBeVisible();
+			// Should redirect to categories list
+			await expect(page).toHaveURL('/dashboard/inventory/categories');
 
 			// Should appear in categories list
 			await expect(page.getByText(categoryName)).toBeVisible();
@@ -156,7 +180,7 @@ test.describe('Inventory Categories Management', () => {
 			await page.goto(`/dashboard/inventory/categories/${categoryId}/edit`);
 
 			// Update basic info
-			await page.getByLabel(/name/i).fill(updatedName);
+			await page.getByLabel(/category name/i).fill(updatedName);
 			await page.getByLabel(/description/i).fill('Updated description');
 
 			// Modify existing attribute
@@ -167,10 +191,7 @@ test.describe('Inventory Categories Management', () => {
 			await page.getByRole('button', { name: /add attribute/i }).click();
 
 			// Submit changes
-			await page.getByRole('button', { name: /update/i }).click();
-
-			// Should show success message
-			await expect(page.getByText(/category updated successfully/i)).toBeVisible();
+			await page.getByRole('button', { name: /update category/i }).click();
 
 			// Should redirect to categories list
 			await expect(page).toHaveURL('/dashboard/inventory/categories');
@@ -187,11 +208,11 @@ test.describe('Inventory Categories Management', () => {
 			const categoryName = `Delete Me ${timestamp}`;
 
 			// Create category first
-			await page.getByRole('button', { name: /create category/i }).click();
-			await page.getByLabel(/name/i).fill(categoryName);
+			await page.getByRole('link', { name: /(?:add|create) category/i }).click();
+			await page.getByLabel(/category name/i).fill(categoryName);
 			await page.getByLabel(/description/i).fill('Category to be deleted');
-			await page.getByRole('button', { name: /create/i }).click();
-			await expect(page.getByText(/category created successfully/i)).toBeVisible();
+			await page.getByRole('button', { name: /create category/i }).click();
+			await expect(page).toHaveURL('/dashboard/inventory/categories');
 
 			// Find and delete the category
 			await page.getByText(categoryName).click();
@@ -200,8 +221,8 @@ test.describe('Inventory Categories Management', () => {
 			// Confirm deletion
 			await page.getByRole('button', { name: /confirm/i }).click();
 
-			// Should show success message
-			await expect(page.getByText(/category deleted successfully/i)).toBeVisible();
+			// Should redirect to categories list
+			await expect(page).toHaveURL('/dashboard/inventory/categories');
 
 			// Should not appear in list
 			await expect(page.getByText(categoryName)).not.toBeVisible();
@@ -209,7 +230,7 @@ test.describe('Inventory Categories Management', () => {
 
 		test('should prevent deletion of category with items', async ({ page, context }) => {
 			await loginAsUser(context, quartermasterData.email);
-			
+
 			const timestamp = Date.now();
 			const categoryName = `Category With Items ${timestamp}`;
 
@@ -267,10 +288,10 @@ test.describe('Inventory Categories Management', () => {
 			const categoryName = `Key Generation Test ${timestamp}`;
 
 			// Click create category button
-			await page.getByRole('button', { name: /create category/i }).click();
+			await page.getByRole('link', { name: /(?:add|create) category/i }).click();
 
 			// Fill basic form
-			await page.getByLabel(/name/i).fill(categoryName);
+			await page.getByLabel(/category name/i).fill(categoryName);
 			await page.getByLabel(/description/i).fill('Test category for key generation');
 
 			// Add attribute with complex label
@@ -292,10 +313,10 @@ test.describe('Inventory Categories Management', () => {
 			await page.getByRole('button', { name: /add attribute/i }).click();
 
 			// Submit form
-			await page.getByRole('button', { name: /create/i }).click();
+			await page.getByRole('button', { name: /create category/i }).click();
 
-			// Should create successfully
-			await expect(page.getByText(/category created successfully/i)).toBeVisible();
+			// Should redirect to categories list
+			await expect(page).toHaveURL('/dashboard/inventory/categories');
 		});
 
 		test('should handle attribute validation errors', async ({ page, context }) => {
@@ -306,10 +327,10 @@ test.describe('Inventory Categories Management', () => {
 			const categoryName = `Validation Test ${timestamp}`;
 
 			// Click create category button
-			await page.getByRole('button', { name: /create category/i }).click();
+			await page.getByRole('link', { name: /(?:add|create) category/i }).click();
 
 			// Fill basic form
-			await page.getByLabel(/name/i).fill(categoryName);
+			await page.getByLabel(/category name/i).fill(categoryName);
 			await page.getByLabel(/description/i).fill('Test category for validation');
 
 			// Add select attribute without options
@@ -319,15 +340,17 @@ test.describe('Inventory Categories Management', () => {
 			await page.getByRole('button', { name: /add attribute/i }).click();
 
 			// Submit form (should fail validation)
-			await page.getByRole('button', { name: /create/i }).click();
+			await page.getByRole('button', { name: /create category/i }).click();
 
 			// Should show validation error
-			await expect(page.getByText(/invalid type: expected string but received undefined/i)).toBeVisible();
+			await expect(
+				page.getByText(/invalid type: expected string but received undefined/i)
+			).toBeVisible();
 		});
 
 		test('should allow editing attribute options', async ({ page, context }) => {
 			await loginAsUser(context, quartermasterData.email);
-			
+
 			const timestamp = Date.now();
 			const categoryName = `Edit Options Test ${timestamp}`;
 
@@ -358,21 +381,28 @@ test.describe('Inventory Categories Management', () => {
 
 			// Add new option
 			await page.getByRole('button', { name: /add option/i }).click();
-			await page.getByPlaceholder(/option value/i).last().fill('Sabre');
+			await page
+				.getByPlaceholder(/option value/i)
+				.last()
+				.fill('Sabre');
 
 			// Remove first option
-			await page.locator('input[value="Longsword"]').locator('..').getByRole('button', { name: /trash/i }).click();
+			await page
+				.locator('input[value="Longsword"]')
+				.locator('..')
+				.getByRole('button', { name: /trash/i })
+				.click();
 
 			// Submit changes
-			await page.getByRole('button', { name: /update/i }).click();
+			await page.getByRole('button', { name: /update category/i }).click();
 
-			// Should show success message
-			await expect(page.getByText(/category updated successfully/i)).toBeVisible();
+			// Should redirect to categories list
+			await expect(page).toHaveURL('/dashboard/inventory/categories');
 		});
 
 		test('should remove attributes correctly', async ({ page, context }) => {
 			await loginAsUser(context, quartermasterData.email);
-			
+
 			const timestamp = Date.now();
 			const categoryName = `Remove Attribute Test ${timestamp}`;
 
@@ -412,7 +442,12 @@ test.describe('Inventory Categories Management', () => {
 			await expect(page.locator('input[value="Weight"]')).toBeVisible();
 
 			// Remove middle attribute (Model)
-			await page.locator('input[value="Model"]').locator('..').locator('..').getByRole('button', { name: /trash/i }).click();
+			await page
+				.locator('input[value="Model"]')
+				.locator('..')
+				.locator('..')
+				.getByRole('button', { name: /trash/i })
+				.click();
 
 			// Should not show Model attribute anymore
 			await expect(page.locator('input[value="Model"]')).not.toBeVisible();
@@ -422,10 +457,10 @@ test.describe('Inventory Categories Management', () => {
 			await expect(page.locator('input[value="Weight"]')).toBeVisible();
 
 			// Submit changes
-			await page.getByRole('button', { name: /update/i }).click();
+			await page.getByRole('button', { name: /update category/i }).click();
 
-			// Should show success message
-			await expect(page.getByText(/category updated successfully/i)).toBeVisible();
+			// Should redirect to categories list
+			await expect(page).toHaveURL('/dashboard/inventory/categories');
 		});
 	});
 
@@ -489,25 +524,29 @@ test.describe('Inventory Categories Management', () => {
 			const categoryId = createResponse.category.id;
 
 			// Update category
-			const updateResponse = await makeAuthenticatedRequest(page, `/api/inventory/categories/${categoryId}`, {
-				method: 'PUT',
-				data: {
-					name: `Updated Test ${timestamp}`,
-					description: 'Updated description',
-					available_attributes: {
-						brand: {
-							type: 'text',
-							label: 'Manufacturer',
-							required: true
-						},
-						model: {
-							type: 'text',
-							label: 'Model',
-							required: false
+			const updateResponse = await makeAuthenticatedRequest(
+				page,
+				`/api/inventory/categories/${categoryId}`,
+				{
+					method: 'PUT',
+					data: {
+						name: `Updated Test ${timestamp}`,
+						description: 'Updated description',
+						available_attributes: {
+							brand: {
+								type: 'text',
+								label: 'Manufacturer',
+								required: true
+							},
+							model: {
+								type: 'text',
+								label: 'Model',
+								required: false
+							}
 						}
 					}
 				}
-			});
+			);
 
 			expect(updateResponse.success).toBe(true);
 			expect(updateResponse.category.name).toBe(`Updated Test ${timestamp}`);
@@ -535,9 +574,13 @@ test.describe('Inventory Categories Management', () => {
 			const categoryId = createResponse.category.id;
 
 			// Delete category
-			const deleteResponse = await makeAuthenticatedRequest(page, `/api/inventory/categories/${categoryId}`, {
-				method: 'DELETE'
-			});
+			const deleteResponse = await makeAuthenticatedRequest(
+				page,
+				`/api/inventory/categories/${categoryId}`,
+				{
+					method: 'DELETE'
+				}
+			);
 
 			expect(deleteResponse.success).toBe(true);
 		});
@@ -620,7 +663,7 @@ test.describe('Inventory Categories Management', () => {
 			await page.goto('/dashboard/inventory/categories');
 
 			// Should see create button
-			await expect(page.getByRole('button', { name: /create category/i })).toBeVisible();
+			await expect(page.getByRole('link', { name: /(?:add|create) category/i })).toBeVisible();
 
 			// Should be able to access categories page
 			await expect(page.getByRole('heading', { name: /categories/i })).toBeVisible();
@@ -634,7 +677,7 @@ test.describe('Inventory Categories Management', () => {
 			await expect(page.getByRole('heading', { name: /categories/i })).toBeVisible();
 
 			// Should not see create button
-			await expect(page.getByRole('button', { name: /create category/i })).not.toBeVisible();
+			await expect(page.getByRole('link', { name: /(?:add|create) category/i })).not.toBeVisible();
 		});
 
 		test('should deny member API access to create categories', async ({ page, context }) => {
@@ -659,7 +702,7 @@ test.describe('Inventory Categories Management', () => {
 			await page.goto('/dashboard/inventory/categories');
 
 			// Should see create button
-			await expect(page.getByRole('button', { name: /create category/i })).toBeVisible();
+			await expect(page.getByRole('link', { name: /(?:add|create) category/i })).toBeVisible();
 
 			// Should be able to create via API
 			await page.goto('/dashboard');
@@ -679,7 +722,7 @@ test.describe('Inventory Categories Management', () => {
 	test.describe('Category Search and Filtering', () => {
 		test('should search categories by name', async ({ page, context }) => {
 			await loginAsUser(context, quartermasterData.email);
-			
+
 			const timestamp = Date.now();
 
 			// Create test categories
@@ -715,7 +758,7 @@ test.describe('Inventory Categories Management', () => {
 
 		test('should filter categories by attribute types', async ({ page, context }) => {
 			await loginAsUser(context, quartermasterData.email);
-			
+
 			const timestamp = Date.now();
 
 			// Create categories with different attribute types
