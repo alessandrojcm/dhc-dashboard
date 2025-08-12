@@ -221,11 +221,11 @@
     </configuration>
     <list>
       <item itemvalue="Attach to Node.js/Chrome.Edge Functions" />
-      <item itemvalue="npm.dev" />
       <item itemvalue="Playwright.Workshop API.should create workshop as admin" />
       <item itemvalue="Playwright.Workshop Interest System" />
       <item itemvalue="Playwright.Workshop Interest System.should display planned workshops in calendar view" />
       <item itemvalue="Playwright.Workshop UI.should display and validate workshop creation form" />
+      <item itemvalue="npm.dev" />
     </list>
     <recent_temporary>
       <list>

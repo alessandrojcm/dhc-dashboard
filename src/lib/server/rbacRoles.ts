@@ -1,4 +1,5 @@
 import type { NavData, NavigationGroup } from '$lib/types';
+import { WORKSHOP_ROLES } from '$lib/server/roles';
 
 const data: NavData = {
 	navMain: [
@@ -28,7 +29,7 @@ const data: NavData = {
 		{
 			title: 'Workshops',
 			url: 'workshops',
-			role: new Set(['admin', 'president', 'committee_coordinator'])
+			role: WORKSHOP_ROLES
 		},
 		{
 			title: 'My Workshops',
