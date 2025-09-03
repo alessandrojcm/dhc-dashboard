@@ -120,6 +120,106 @@
       ],
       "uniqueConstraints": []
     },
+    "a_discord_queue": {
+      "id": "pgmq.a_discord_queue",
+      "schemaName": "pgmq",
+      "tableName": "a_discord_queue",
+      "fields": [
+        {
+          "id": "pgmq.a_discord_queue.msg_id",
+          "name": "msg_id",
+          "columnName": "msg_id",
+          "type": "int8",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": true,
+          "maxLength": null
+        },
+        {
+          "id": "pgmq.a_discord_queue.read_ct",
+          "name": "read_ct",
+          "columnName": "read_ct",
+          "type": "int4",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "pgmq.a_discord_queue.enqueued_at",
+          "name": "enqueued_at",
+          "columnName": "enqueued_at",
+          "type": "timestamptz",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "pgmq.a_discord_queue.archived_at",
+          "name": "archived_at",
+          "columnName": "archived_at",
+          "type": "timestamptz",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "pgmq.a_discord_queue.vt",
+          "name": "vt",
+          "columnName": "vt",
+          "type": "timestamptz",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "pgmq.a_discord_queue.message",
+          "name": "message",
+          "columnName": "message",
+          "type": "jsonb",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        }
+      ],
+      "uniqueConstraints": [
+        {
+          "name": "a_discord_queue_pkey",
+          "fields": [
+            "msg_id"
+          ],
+          "nullNotDistinct": false
+        }
+      ]
+    },
     "a_email_queue": {
       "id": "pgmq.a_email_queue",
       "schemaName": "pgmq",
@@ -213,6 +313,106 @@
       "uniqueConstraints": [
         {
           "name": "a_email_queue_pkey",
+          "fields": [
+            "msg_id"
+          ],
+          "nullNotDistinct": false
+        }
+      ]
+    },
+    "a_workshop_announcement": {
+      "id": "pgmq.a_workshop_announcement",
+      "schemaName": "pgmq",
+      "tableName": "a_workshop_announcement",
+      "fields": [
+        {
+          "id": "pgmq.a_workshop_announcement.msg_id",
+          "name": "msg_id",
+          "columnName": "msg_id",
+          "type": "int8",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": true,
+          "maxLength": null
+        },
+        {
+          "id": "pgmq.a_workshop_announcement.read_ct",
+          "name": "read_ct",
+          "columnName": "read_ct",
+          "type": "int4",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "pgmq.a_workshop_announcement.enqueued_at",
+          "name": "enqueued_at",
+          "columnName": "enqueued_at",
+          "type": "timestamptz",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "pgmq.a_workshop_announcement.archived_at",
+          "name": "archived_at",
+          "columnName": "archived_at",
+          "type": "timestamptz",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "pgmq.a_workshop_announcement.vt",
+          "name": "vt",
+          "columnName": "vt",
+          "type": "timestamptz",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "pgmq.a_workshop_announcement.message",
+          "name": "message",
+          "columnName": "message",
+          "type": "jsonb",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        }
+      ],
+      "uniqueConstraints": [
+        {
+          "name": "a_workshop_announcement_pkey",
           "fields": [
             "msg_id"
           ],
@@ -457,20 +657,6 @@
           "isRequired": false,
           "kind": "object",
           "relationName": "objectsTobuckets",
-          "relationFromFields": [],
-          "relationToFields": [],
-          "isList": true,
-          "isId": false,
-          "isGenerated": false,
-          "sequence": false,
-          "hasDefaultValue": false
-        },
-        {
-          "name": "prefixes",
-          "type": "prefixes",
-          "isRequired": false,
-          "kind": "object",
-          "relationName": "prefixesTobuckets",
           "relationFromFields": [],
           "relationToFields": [],
           "isList": true,
@@ -741,6 +927,34 @@
           "maxLength": null
         },
         {
+          "id": "public.club_activities.announce_discord",
+          "name": "announce_discord",
+          "columnName": "announce_discord",
+          "type": "bool",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.club_activities.announce_email",
+          "name": "announce_email",
+          "columnName": "announce_email",
+          "type": "bool",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": false,
+          "maxLength": null
+        },
+        {
           "name": "users",
           "type": "users",
           "isRequired": false,
@@ -757,11 +971,1167 @@
           "isGenerated": false,
           "sequence": false,
           "hasDefaultValue": false
+        },
+        {
+          "name": "club_activity_interest",
+          "type": "club_activity_interest",
+          "isRequired": false,
+          "kind": "object",
+          "relationName": "club_activity_interestToclub_activities",
+          "relationFromFields": [],
+          "relationToFields": [],
+          "isList": true,
+          "isId": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false
+        },
+        {
+          "name": "club_activity_registrations",
+          "type": "club_activity_registrations",
+          "isRequired": false,
+          "kind": "object",
+          "relationName": "club_activity_registrationsToclub_activities",
+          "relationFromFields": [],
+          "relationToFields": [],
+          "isList": true,
+          "isId": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false
         }
       ],
       "uniqueConstraints": [
         {
           "name": "club_activities_pkey",
+          "fields": [
+            "id"
+          ],
+          "nullNotDistinct": false
+        }
+      ]
+    },
+    "club_activity_interest": {
+      "id": "public.club_activity_interest",
+      "schemaName": "public",
+      "tableName": "club_activity_interest",
+      "fields": [
+        {
+          "id": "public.club_activity_interest.id",
+          "name": "id",
+          "columnName": "id",
+          "type": "uuid",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": true,
+          "maxLength": null
+        },
+        {
+          "id": "public.club_activity_interest.club_activity_id",
+          "name": "club_activity_id",
+          "columnName": "club_activity_id",
+          "type": "uuid",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.club_activity_interest.user_id",
+          "name": "user_id",
+          "columnName": "user_id",
+          "type": "uuid",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.club_activity_interest.created_at",
+          "name": "created_at",
+          "columnName": "created_at",
+          "type": "timestamptz",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.club_activity_interest.updated_at",
+          "name": "updated_at",
+          "columnName": "updated_at",
+          "type": "timestamptz",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "name": "users",
+          "type": "users",
+          "isRequired": true,
+          "kind": "object",
+          "relationName": "club_activity_interestTousers",
+          "relationFromFields": [
+            "user_id"
+          ],
+          "relationToFields": [
+            "id"
+          ],
+          "isList": false,
+          "isId": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false
+        },
+        {
+          "name": "club_activities",
+          "type": "club_activities",
+          "isRequired": true,
+          "kind": "object",
+          "relationName": "club_activity_interestToclub_activities",
+          "relationFromFields": [
+            "club_activity_id"
+          ],
+          "relationToFields": [
+            "id"
+          ],
+          "isList": false,
+          "isId": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false
+        }
+      ],
+      "uniqueConstraints": [
+        {
+          "name": "club_activity_interest_club_activity_id_user_id_key",
+          "fields": [
+            "club_activity_id",
+            "user_id"
+          ],
+          "nullNotDistinct": false
+        },
+        {
+          "name": "club_activity_interest_pkey",
+          "fields": [
+            "id"
+          ],
+          "nullNotDistinct": false
+        }
+      ]
+    },
+    "club_activity_refunds": {
+      "id": "public.club_activity_refunds",
+      "schemaName": "public",
+      "tableName": "club_activity_refunds",
+      "fields": [
+        {
+          "id": "public.club_activity_refunds.id",
+          "name": "id",
+          "columnName": "id",
+          "type": "uuid",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": true,
+          "maxLength": null
+        },
+        {
+          "id": "public.club_activity_refunds.registration_id",
+          "name": "registration_id",
+          "columnName": "registration_id",
+          "type": "uuid",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.club_activity_refunds.refund_amount",
+          "name": "refund_amount",
+          "columnName": "refund_amount",
+          "type": "int4",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.club_activity_refunds.refund_reason",
+          "name": "refund_reason",
+          "columnName": "refund_reason",
+          "type": "text",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.club_activity_refunds.status",
+          "name": "status",
+          "columnName": "status",
+          "type": "refund_status",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.club_activity_refunds.stripe_refund_id",
+          "name": "stripe_refund_id",
+          "columnName": "stripe_refund_id",
+          "type": "text",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.club_activity_refunds.stripe_payment_intent_id",
+          "name": "stripe_payment_intent_id",
+          "columnName": "stripe_payment_intent_id",
+          "type": "text",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.club_activity_refunds.requested_at",
+          "name": "requested_at",
+          "columnName": "requested_at",
+          "type": "timestamptz",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.club_activity_refunds.processed_at",
+          "name": "processed_at",
+          "columnName": "processed_at",
+          "type": "timestamptz",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.club_activity_refunds.completed_at",
+          "name": "completed_at",
+          "columnName": "completed_at",
+          "type": "timestamptz",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.club_activity_refunds.requested_by",
+          "name": "requested_by",
+          "columnName": "requested_by",
+          "type": "uuid",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.club_activity_refunds.processed_by",
+          "name": "processed_by",
+          "columnName": "processed_by",
+          "type": "uuid",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.club_activity_refunds.created_at",
+          "name": "created_at",
+          "columnName": "created_at",
+          "type": "timestamptz",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.club_activity_refunds.updated_at",
+          "name": "updated_at",
+          "columnName": "updated_at",
+          "type": "timestamptz",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "name": "users_club_activity_refunds_processed_byTousers",
+          "type": "users",
+          "isRequired": false,
+          "kind": "object",
+          "relationName": "club_activity_refunds_processed_byTousers",
+          "relationFromFields": [
+            "processed_by"
+          ],
+          "relationToFields": [
+            "id"
+          ],
+          "isList": false,
+          "isId": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false
+        },
+        {
+          "name": "users_club_activity_refunds_requested_byTousers",
+          "type": "users",
+          "isRequired": false,
+          "kind": "object",
+          "relationName": "club_activity_refunds_requested_byTousers",
+          "relationFromFields": [
+            "requested_by"
+          ],
+          "relationToFields": [
+            "id"
+          ],
+          "isList": false,
+          "isId": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false
+        },
+        {
+          "name": "club_activity_registrations",
+          "type": "club_activity_registrations",
+          "isRequired": true,
+          "kind": "object",
+          "relationName": "club_activity_refundsToclub_activity_registrations",
+          "relationFromFields": [
+            "registration_id"
+          ],
+          "relationToFields": [
+            "id"
+          ],
+          "isList": false,
+          "isId": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false
+        }
+      ],
+      "uniqueConstraints": [
+        {
+          "name": "club_activity_refunds_pkey",
+          "fields": [
+            "id"
+          ],
+          "nullNotDistinct": false
+        },
+        {
+          "name": "club_activity_refunds_stripe_refund_id_key",
+          "fields": [
+            "stripe_refund_id"
+          ],
+          "nullNotDistinct": false
+        },
+        {
+          "name": "one_refund_per_registration",
+          "fields": [
+            "registration_id"
+          ],
+          "nullNotDistinct": false
+        }
+      ]
+    },
+    "club_activity_registrations": {
+      "id": "public.club_activity_registrations",
+      "schemaName": "public",
+      "tableName": "club_activity_registrations",
+      "fields": [
+        {
+          "id": "public.club_activity_registrations.id",
+          "name": "id",
+          "columnName": "id",
+          "type": "uuid",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": true,
+          "maxLength": null
+        },
+        {
+          "id": "public.club_activity_registrations.club_activity_id",
+          "name": "club_activity_id",
+          "columnName": "club_activity_id",
+          "type": "uuid",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.club_activity_registrations.member_user_id",
+          "name": "member_user_id",
+          "columnName": "member_user_id",
+          "type": "uuid",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.club_activity_registrations.external_user_id",
+          "name": "external_user_id",
+          "columnName": "external_user_id",
+          "type": "uuid",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.club_activity_registrations.stripe_checkout_session_id",
+          "name": "stripe_checkout_session_id",
+          "columnName": "stripe_checkout_session_id",
+          "type": "text",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.club_activity_registrations.amount_paid",
+          "name": "amount_paid",
+          "columnName": "amount_paid",
+          "type": "int4",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.club_activity_registrations.currency",
+          "name": "currency",
+          "columnName": "currency",
+          "type": "text",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.club_activity_registrations.status",
+          "name": "status",
+          "columnName": "status",
+          "type": "registration_status",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.club_activity_registrations.registered_at",
+          "name": "registered_at",
+          "columnName": "registered_at",
+          "type": "timestamptz",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.club_activity_registrations.confirmed_at",
+          "name": "confirmed_at",
+          "columnName": "confirmed_at",
+          "type": "timestamptz",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.club_activity_registrations.cancelled_at",
+          "name": "cancelled_at",
+          "columnName": "cancelled_at",
+          "type": "timestamptz",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.club_activity_registrations.registration_notes",
+          "name": "registration_notes",
+          "columnName": "registration_notes",
+          "type": "text",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.club_activity_registrations.created_at",
+          "name": "created_at",
+          "columnName": "created_at",
+          "type": "timestamptz",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.club_activity_registrations.updated_at",
+          "name": "updated_at",
+          "columnName": "updated_at",
+          "type": "timestamptz",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.club_activity_registrations.attendance_status",
+          "name": "attendance_status",
+          "columnName": "attendance_status",
+          "type": "text",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.club_activity_registrations.attendance_marked_at",
+          "name": "attendance_marked_at",
+          "columnName": "attendance_marked_at",
+          "type": "timestamptz",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.club_activity_registrations.attendance_marked_by",
+          "name": "attendance_marked_by",
+          "columnName": "attendance_marked_by",
+          "type": "uuid",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.club_activity_registrations.attendance_notes",
+          "name": "attendance_notes",
+          "columnName": "attendance_notes",
+          "type": "text",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "name": "users",
+          "type": "users",
+          "isRequired": false,
+          "kind": "object",
+          "relationName": "club_activity_registrationsTousers",
+          "relationFromFields": [
+            "attendance_marked_by"
+          ],
+          "relationToFields": [
+            "id"
+          ],
+          "isList": false,
+          "isId": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false
+        },
+        {
+          "name": "club_activities",
+          "type": "club_activities",
+          "isRequired": true,
+          "kind": "object",
+          "relationName": "club_activity_registrationsToclub_activities",
+          "relationFromFields": [
+            "club_activity_id"
+          ],
+          "relationToFields": [
+            "id"
+          ],
+          "isList": false,
+          "isId": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false
+        },
+        {
+          "name": "external_users",
+          "type": "external_users",
+          "isRequired": false,
+          "kind": "object",
+          "relationName": "club_activity_registrationsToexternal_users",
+          "relationFromFields": [
+            "external_user_id"
+          ],
+          "relationToFields": [
+            "id"
+          ],
+          "isList": false,
+          "isId": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false
+        },
+        {
+          "name": "user_profiles",
+          "type": "user_profiles",
+          "isRequired": false,
+          "kind": "object",
+          "relationName": "club_activity_registrationsTouser_profiles",
+          "relationFromFields": [
+            "member_user_id"
+          ],
+          "relationToFields": [
+            "supabase_user_id"
+          ],
+          "isList": false,
+          "isId": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false
+        },
+        {
+          "name": "club_activity_refunds",
+          "type": "club_activity_refunds",
+          "isRequired": false,
+          "kind": "object",
+          "relationName": "club_activity_refundsToclub_activity_registrations",
+          "relationFromFields": [],
+          "relationToFields": [],
+          "isList": true,
+          "isId": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false
+        }
+      ],
+      "uniqueConstraints": [
+        {
+          "name": "club_activity_registrations_pkey",
+          "fields": [
+            "id"
+          ],
+          "nullNotDistinct": false
+        },
+        {
+          "name": "club_activity_registrations_stripe_checkout_session_id_key",
+          "fields": [
+            "stripe_checkout_session_id"
+          ],
+          "nullNotDistinct": false
+        },
+        {
+          "name": "unique_external_user_per_activity",
+          "fields": [
+            "club_activity_id",
+            "external_user_id"
+          ],
+          "nullNotDistinct": false
+        },
+        {
+          "name": "unique_user_per_activity",
+          "fields": [
+            "club_activity_id",
+            "member_user_id"
+          ],
+          "nullNotDistinct": false
+        }
+      ]
+    },
+    "containers": {
+      "id": "public.containers",
+      "schemaName": "public",
+      "tableName": "containers",
+      "fields": [
+        {
+          "id": "public.containers.id",
+          "name": "id",
+          "columnName": "id",
+          "type": "uuid",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": true,
+          "maxLength": null
+        },
+        {
+          "id": "public.containers.name",
+          "name": "name",
+          "columnName": "name",
+          "type": "text",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.containers.description",
+          "name": "description",
+          "columnName": "description",
+          "type": "text",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.containers.parent_container_id",
+          "name": "parent_container_id",
+          "columnName": "parent_container_id",
+          "type": "uuid",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.containers.created_at",
+          "name": "created_at",
+          "columnName": "created_at",
+          "type": "timestamptz",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.containers.updated_at",
+          "name": "updated_at",
+          "columnName": "updated_at",
+          "type": "timestamptz",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.containers.created_by",
+          "name": "created_by",
+          "columnName": "created_by",
+          "type": "uuid",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "name": "users",
+          "type": "users",
+          "isRequired": true,
+          "kind": "object",
+          "relationName": "containersTousers",
+          "relationFromFields": [
+            "created_by"
+          ],
+          "relationToFields": [
+            "id"
+          ],
+          "isList": false,
+          "isId": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false
+        },
+        {
+          "name": "containers",
+          "type": "containers",
+          "isRequired": false,
+          "kind": "object",
+          "relationName": "containersTocontainers",
+          "relationFromFields": [
+            "parent_container_id"
+          ],
+          "relationToFields": [
+            "id"
+          ],
+          "isList": false,
+          "isId": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false
+        },
+        {
+          "name": "containers",
+          "type": "containers",
+          "isRequired": false,
+          "kind": "object",
+          "relationName": "containersTocontainers",
+          "relationFromFields": [],
+          "relationToFields": [],
+          "isList": true,
+          "isId": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false
+        },
+        {
+          "name": "inventory_history_inventory_history_new_container_idTocontainers",
+          "type": "inventory_history",
+          "isRequired": false,
+          "kind": "object",
+          "relationName": "inventory_history_new_container_idTocontainers",
+          "relationFromFields": [],
+          "relationToFields": [],
+          "isList": true,
+          "isId": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false
+        },
+        {
+          "name": "inventory_history_inventory_history_old_container_idTocontainers",
+          "type": "inventory_history",
+          "isRequired": false,
+          "kind": "object",
+          "relationName": "inventory_history_old_container_idTocontainers",
+          "relationFromFields": [],
+          "relationToFields": [],
+          "isList": true,
+          "isId": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false
+        },
+        {
+          "name": "inventory_items",
+          "type": "inventory_items",
+          "isRequired": false,
+          "kind": "object",
+          "relationName": "inventory_itemsTocontainers",
+          "relationFromFields": [],
+          "relationToFields": [],
+          "isList": true,
+          "isId": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false
+        }
+      ],
+      "uniqueConstraints": [
+        {
+          "name": "containers_pkey",
+          "fields": [
+            "id"
+          ],
+          "nullNotDistinct": false
+        }
+      ]
+    },
+    "equipment_categories": {
+      "id": "public.equipment_categories",
+      "schemaName": "public",
+      "tableName": "equipment_categories",
+      "fields": [
+        {
+          "id": "public.equipment_categories.id",
+          "name": "id",
+          "columnName": "id",
+          "type": "uuid",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": true,
+          "maxLength": null
+        },
+        {
+          "id": "public.equipment_categories.name",
+          "name": "name",
+          "columnName": "name",
+          "type": "text",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.equipment_categories.description",
+          "name": "description",
+          "columnName": "description",
+          "type": "text",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.equipment_categories.available_attributes",
+          "name": "available_attributes",
+          "columnName": "available_attributes",
+          "type": "jsonb",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.equipment_categories.attribute_schema",
+          "name": "attribute_schema",
+          "columnName": "attribute_schema",
+          "type": "jsonb",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.equipment_categories.created_at",
+          "name": "created_at",
+          "columnName": "created_at",
+          "type": "timestamptz",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.equipment_categories.updated_at",
+          "name": "updated_at",
+          "columnName": "updated_at",
+          "type": "timestamptz",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "name": "inventory_items",
+          "type": "inventory_items",
+          "isRequired": false,
+          "kind": "object",
+          "relationName": "inventory_itemsToequipment_categories",
+          "relationFromFields": [],
+          "relationToFields": [],
+          "isList": true,
+          "isId": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false
+        }
+      ],
+      "uniqueConstraints": [
+        {
+          "name": "equipment_categories_name_key",
+          "fields": [
+            "name"
+          ],
+          "nullNotDistinct": false
+        },
+        {
+          "name": "equipment_categories_pkey",
           "fields": [
             "id"
           ],
@@ -883,6 +2253,141 @@
           "fields": [
             "tenant_external_id",
             "type"
+          ],
+          "nullNotDistinct": false
+        }
+      ]
+    },
+    "external_users": {
+      "id": "public.external_users",
+      "schemaName": "public",
+      "tableName": "external_users",
+      "fields": [
+        {
+          "id": "public.external_users.id",
+          "name": "id",
+          "columnName": "id",
+          "type": "uuid",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": true,
+          "maxLength": null
+        },
+        {
+          "id": "public.external_users.first_name",
+          "name": "first_name",
+          "columnName": "first_name",
+          "type": "text",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.external_users.last_name",
+          "name": "last_name",
+          "columnName": "last_name",
+          "type": "text",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.external_users.email",
+          "name": "email",
+          "columnName": "email",
+          "type": "text",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.external_users.phone_number",
+          "name": "phone_number",
+          "columnName": "phone_number",
+          "type": "text",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.external_users.created_at",
+          "name": "created_at",
+          "columnName": "created_at",
+          "type": "timestamptz",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.external_users.updated_at",
+          "name": "updated_at",
+          "columnName": "updated_at",
+          "type": "timestamptz",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "name": "club_activity_registrations",
+          "type": "club_activity_registrations",
+          "isRequired": false,
+          "kind": "object",
+          "relationName": "club_activity_registrationsToexternal_users",
+          "relationFromFields": [],
+          "relationToFields": [],
+          "isList": true,
+          "isId": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false
+        }
+      ],
+      "uniqueConstraints": [
+        {
+          "name": "external_users_email_key",
+          "fields": [
+            "email"
+          ],
+          "nullNotDistinct": false
+        },
+        {
+          "name": "external_users_pkey",
+          "fields": [
+            "id"
           ],
           "nullNotDistinct": false
         }
@@ -1519,6 +3024,476 @@
       "uniqueConstraints": [
         {
           "name": "instances_pkey",
+          "fields": [
+            "id"
+          ],
+          "nullNotDistinct": false
+        }
+      ]
+    },
+    "inventory_history": {
+      "id": "public.inventory_history",
+      "schemaName": "public",
+      "tableName": "inventory_history",
+      "fields": [
+        {
+          "id": "public.inventory_history.id",
+          "name": "id",
+          "columnName": "id",
+          "type": "uuid",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": true,
+          "maxLength": null
+        },
+        {
+          "id": "public.inventory_history.item_id",
+          "name": "item_id",
+          "columnName": "item_id",
+          "type": "uuid",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.inventory_history.action",
+          "name": "action",
+          "columnName": "action",
+          "type": "inventory_action",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.inventory_history.old_container_id",
+          "name": "old_container_id",
+          "columnName": "old_container_id",
+          "type": "uuid",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.inventory_history.new_container_id",
+          "name": "new_container_id",
+          "columnName": "new_container_id",
+          "type": "uuid",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.inventory_history.changed_by",
+          "name": "changed_by",
+          "columnName": "changed_by",
+          "type": "uuid",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.inventory_history.notes",
+          "name": "notes",
+          "columnName": "notes",
+          "type": "text",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.inventory_history.created_at",
+          "name": "created_at",
+          "columnName": "created_at",
+          "type": "timestamptz",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "name": "users",
+          "type": "users",
+          "isRequired": true,
+          "kind": "object",
+          "relationName": "inventory_historyTousers",
+          "relationFromFields": [
+            "changed_by"
+          ],
+          "relationToFields": [
+            "id"
+          ],
+          "isList": false,
+          "isId": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false
+        },
+        {
+          "name": "containers_inventory_history_new_container_idTocontainers",
+          "type": "containers",
+          "isRequired": false,
+          "kind": "object",
+          "relationName": "inventory_history_new_container_idTocontainers",
+          "relationFromFields": [
+            "new_container_id"
+          ],
+          "relationToFields": [
+            "id"
+          ],
+          "isList": false,
+          "isId": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false
+        },
+        {
+          "name": "containers_inventory_history_old_container_idTocontainers",
+          "type": "containers",
+          "isRequired": false,
+          "kind": "object",
+          "relationName": "inventory_history_old_container_idTocontainers",
+          "relationFromFields": [
+            "old_container_id"
+          ],
+          "relationToFields": [
+            "id"
+          ],
+          "isList": false,
+          "isId": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false
+        },
+        {
+          "name": "inventory_items",
+          "type": "inventory_items",
+          "isRequired": true,
+          "kind": "object",
+          "relationName": "inventory_historyToinventory_items",
+          "relationFromFields": [
+            "item_id"
+          ],
+          "relationToFields": [
+            "id"
+          ],
+          "isList": false,
+          "isId": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false
+        }
+      ],
+      "uniqueConstraints": [
+        {
+          "name": "inventory_history_pkey",
+          "fields": [
+            "id"
+          ],
+          "nullNotDistinct": false
+        }
+      ]
+    },
+    "inventory_items": {
+      "id": "public.inventory_items",
+      "schemaName": "public",
+      "tableName": "inventory_items",
+      "fields": [
+        {
+          "id": "public.inventory_items.id",
+          "name": "id",
+          "columnName": "id",
+          "type": "uuid",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": true,
+          "maxLength": null
+        },
+        {
+          "id": "public.inventory_items.container_id",
+          "name": "container_id",
+          "columnName": "container_id",
+          "type": "uuid",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.inventory_items.category_id",
+          "name": "category_id",
+          "columnName": "category_id",
+          "type": "uuid",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.inventory_items.attributes",
+          "name": "attributes",
+          "columnName": "attributes",
+          "type": "jsonb",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.inventory_items.quantity",
+          "name": "quantity",
+          "columnName": "quantity",
+          "type": "int4",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.inventory_items.photo_url",
+          "name": "photo_url",
+          "columnName": "photo_url",
+          "type": "text",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.inventory_items.out_for_maintenance",
+          "name": "out_for_maintenance",
+          "columnName": "out_for_maintenance",
+          "type": "bool",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.inventory_items.notes",
+          "name": "notes",
+          "columnName": "notes",
+          "type": "text",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.inventory_items.created_at",
+          "name": "created_at",
+          "columnName": "created_at",
+          "type": "timestamptz",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.inventory_items.updated_at",
+          "name": "updated_at",
+          "columnName": "updated_at",
+          "type": "timestamptz",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.inventory_items.created_by",
+          "name": "created_by",
+          "columnName": "created_by",
+          "type": "uuid",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.inventory_items.updated_by",
+          "name": "updated_by",
+          "columnName": "updated_by",
+          "type": "uuid",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "name": "users_inventory_items_created_byTousers",
+          "type": "users",
+          "isRequired": false,
+          "kind": "object",
+          "relationName": "inventory_items_created_byTousers",
+          "relationFromFields": [
+            "created_by"
+          ],
+          "relationToFields": [
+            "id"
+          ],
+          "isList": false,
+          "isId": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false
+        },
+        {
+          "name": "users_inventory_items_updated_byTousers",
+          "type": "users",
+          "isRequired": false,
+          "kind": "object",
+          "relationName": "inventory_items_updated_byTousers",
+          "relationFromFields": [
+            "updated_by"
+          ],
+          "relationToFields": [
+            "id"
+          ],
+          "isList": false,
+          "isId": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false
+        },
+        {
+          "name": "containers",
+          "type": "containers",
+          "isRequired": true,
+          "kind": "object",
+          "relationName": "inventory_itemsTocontainers",
+          "relationFromFields": [
+            "container_id"
+          ],
+          "relationToFields": [
+            "id"
+          ],
+          "isList": false,
+          "isId": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false
+        },
+        {
+          "name": "equipment_categories",
+          "type": "equipment_categories",
+          "isRequired": true,
+          "kind": "object",
+          "relationName": "inventory_itemsToequipment_categories",
+          "relationFromFields": [
+            "category_id"
+          ],
+          "relationToFields": [
+            "id"
+          ],
+          "isList": false,
+          "isId": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false
+        },
+        {
+          "name": "inventory_history",
+          "type": "inventory_history",
+          "isRequired": false,
+          "kind": "object",
+          "relationName": "inventory_historyToinventory_items",
+          "relationFromFields": [],
+          "relationToFields": [],
+          "isList": true,
+          "isId": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false
+        }
+      ],
+      "uniqueConstraints": [
+        {
+          "name": "inventory_items_pkey",
           "fields": [
             "id"
           ],
@@ -2366,6 +4341,20 @@
           "isGenerated": false,
           "sequence": false,
           "hasDefaultValue": true,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "public.member_profiles.subscription_paused_until",
+          "name": "subscription_paused_until",
+          "columnName": "subscription_paused_until",
+          "type": "timestamptz",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
           "isId": false,
           "maxLength": null
         },
@@ -3501,20 +5490,6 @@
           "maxLength": null
         },
         {
-          "id": "storage.objects.level",
-          "name": "level",
-          "columnName": "level",
-          "type": "int4",
-          "isRequired": false,
-          "kind": "scalar",
-          "isList": false,
-          "isGenerated": false,
-          "sequence": false,
-          "hasDefaultValue": false,
-          "isId": false,
-          "maxLength": null
-        },
-        {
           "name": "buckets",
           "type": "buckets",
           "isRequired": false,
@@ -3545,24 +5520,6 @@
           "name": "bucketid_objname",
           "fields": [
             "bucket_id",
-            "name"
-          ],
-          "nullNotDistinct": false
-        },
-        {
-          "name": "idx_name_bucket_level_unique",
-          "fields": [
-            "bucket_id",
-            "level",
-            "name"
-          ],
-          "nullNotDistinct": false
-        },
-        {
-          "name": "objects_bucket_id_level_idx",
-          "fields": [
-            "bucket_id",
-            "level",
             "name"
           ],
           "nullNotDistinct": false
@@ -3709,107 +5666,91 @@
         }
       ]
     },
-    "prefixes": {
-      "id": "storage.prefixes",
-      "schemaName": "storage",
-      "tableName": "prefixes",
+    "q_discord_queue": {
+      "id": "pgmq.q_discord_queue",
+      "schemaName": "pgmq",
+      "tableName": "q_discord_queue",
       "fields": [
         {
-          "id": "storage.prefixes.bucket_id",
-          "name": "bucket_id",
-          "columnName": "bucket_id",
-          "type": "text",
-          "isRequired": true,
-          "kind": "scalar",
-          "isList": false,
-          "isGenerated": false,
-          "sequence": false,
-          "hasDefaultValue": false,
-          "isId": true,
-          "maxLength": null
-        },
-        {
-          "id": "storage.prefixes.name",
-          "name": "name",
-          "columnName": "name",
-          "type": "text",
-          "isRequired": true,
-          "kind": "scalar",
-          "isList": false,
-          "isGenerated": false,
-          "sequence": false,
-          "hasDefaultValue": false,
-          "isId": true,
-          "maxLength": null
-        },
-        {
-          "id": "storage.prefixes.level",
-          "name": "level",
-          "columnName": "level",
-          "type": "int4",
+          "id": "pgmq.q_discord_queue.msg_id",
+          "name": "msg_id",
+          "columnName": "msg_id",
+          "type": "int8",
           "isRequired": true,
           "kind": "scalar",
           "isList": false,
           "isGenerated": true,
-          "sequence": false,
+          "sequence": {
+            "identifier": "\"pgmq\".\"pgmq.q_discord_queue_msg_id_seq\"",
+            "increment": 1,
+            "start": 1
+          },
           "hasDefaultValue": false,
           "isId": true,
           "maxLength": null
         },
         {
-          "id": "storage.prefixes.created_at",
-          "name": "created_at",
-          "columnName": "created_at",
-          "type": "timestamptz",
-          "isRequired": false,
-          "kind": "scalar",
-          "isList": false,
-          "isGenerated": false,
-          "sequence": false,
-          "hasDefaultValue": true,
-          "isId": false,
-          "maxLength": null
-        },
-        {
-          "id": "storage.prefixes.updated_at",
-          "name": "updated_at",
-          "columnName": "updated_at",
-          "type": "timestamptz",
-          "isRequired": false,
-          "kind": "scalar",
-          "isList": false,
-          "isGenerated": false,
-          "sequence": false,
-          "hasDefaultValue": true,
-          "isId": false,
-          "maxLength": null
-        },
-        {
-          "name": "buckets",
-          "type": "buckets",
+          "id": "pgmq.q_discord_queue.read_ct",
+          "name": "read_ct",
+          "columnName": "read_ct",
+          "type": "int4",
           "isRequired": true,
-          "kind": "object",
-          "relationName": "prefixesTobuckets",
-          "relationFromFields": [
-            "bucket_id"
-          ],
-          "relationToFields": [
-            "id"
-          ],
+          "kind": "scalar",
           "isList": false,
-          "isId": false,
           "isGenerated": false,
           "sequence": false,
-          "hasDefaultValue": false
+          "hasDefaultValue": true,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "pgmq.q_discord_queue.enqueued_at",
+          "name": "enqueued_at",
+          "columnName": "enqueued_at",
+          "type": "timestamptz",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "pgmq.q_discord_queue.vt",
+          "name": "vt",
+          "columnName": "vt",
+          "type": "timestamptz",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "pgmq.q_discord_queue.message",
+          "name": "message",
+          "columnName": "message",
+          "type": "jsonb",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
         }
       ],
       "uniqueConstraints": [
         {
-          "name": "prefixes_pkey",
+          "name": "q_discord_queue_pkey",
           "fields": [
-            "bucket_id",
-            "level",
-            "name"
+            "msg_id"
           ],
           "nullNotDistinct": false
         }
@@ -3898,6 +5839,96 @@
       "uniqueConstraints": [
         {
           "name": "q_email_queue_pkey",
+          "fields": [
+            "msg_id"
+          ],
+          "nullNotDistinct": false
+        }
+      ]
+    },
+    "q_workshop_announcement": {
+      "id": "pgmq.q_workshop_announcement",
+      "schemaName": "pgmq",
+      "tableName": "q_workshop_announcement",
+      "fields": [
+        {
+          "id": "pgmq.q_workshop_announcement.msg_id",
+          "name": "msg_id",
+          "columnName": "msg_id",
+          "type": "int8",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": true,
+          "sequence": {
+            "identifier": "\"pgmq\".\"pgmq.q_workshop_announcement_msg_id_seq\"",
+            "increment": 1,
+            "start": 1
+          },
+          "hasDefaultValue": false,
+          "isId": true,
+          "maxLength": null
+        },
+        {
+          "id": "pgmq.q_workshop_announcement.read_ct",
+          "name": "read_ct",
+          "columnName": "read_ct",
+          "type": "int4",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "pgmq.q_workshop_announcement.enqueued_at",
+          "name": "enqueued_at",
+          "columnName": "enqueued_at",
+          "type": "timestamptz",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "pgmq.q_workshop_announcement.vt",
+          "name": "vt",
+          "columnName": "vt",
+          "type": "timestamptz",
+          "isRequired": true,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "pgmq.q_workshop_announcement.message",
+          "name": "message",
+          "columnName": "message",
+          "type": "jsonb",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false,
+          "isId": false,
+          "maxLength": null
+        }
+      ],
+      "uniqueConstraints": [
+        {
+          "name": "q_workshop_announcement_pkey",
           "fields": [
             "msg_id"
           ],
@@ -6070,6 +8101,34 @@
           "maxLength": 255
         },
         {
+          "id": "_realtime.tenants.max_presence_events_per_second",
+          "name": "max_presence_events_per_second",
+          "columnName": "max_presence_events_per_second",
+          "type": "int4",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": false,
+          "maxLength": null
+        },
+        {
+          "id": "_realtime.tenants.max_payload_size_in_kb",
+          "name": "max_payload_size_in_kb",
+          "columnName": "max_payload_size_in_kb",
+          "type": "int4",
+          "isRequired": false,
+          "kind": "scalar",
+          "isList": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": true,
+          "isId": false,
+          "maxLength": null
+        },
+        {
           "name": "extensions",
           "type": "extensions",
           "isRequired": false,
@@ -6472,6 +8531,20 @@
             "id"
           ],
           "isList": false,
+          "isId": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false
+        },
+        {
+          "name": "club_activity_registrations",
+          "type": "club_activity_registrations",
+          "isRequired": false,
+          "kind": "object",
+          "relationName": "club_activity_registrationsTouser_profiles",
+          "relationFromFields": [],
+          "relationToFields": [],
+          "isList": true,
           "isId": false,
           "isGenerated": false,
           "sequence": false,
@@ -7182,6 +9255,118 @@
           "isRequired": false,
           "kind": "object",
           "relationName": "club_activitiesTousers",
+          "relationFromFields": [],
+          "relationToFields": [],
+          "isList": true,
+          "isId": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false
+        },
+        {
+          "name": "club_activity_interest",
+          "type": "club_activity_interest",
+          "isRequired": false,
+          "kind": "object",
+          "relationName": "club_activity_interestTousers",
+          "relationFromFields": [],
+          "relationToFields": [],
+          "isList": true,
+          "isId": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false
+        },
+        {
+          "name": "club_activity_refunds_club_activity_refunds_processed_byTousers",
+          "type": "club_activity_refunds",
+          "isRequired": false,
+          "kind": "object",
+          "relationName": "club_activity_refunds_processed_byTousers",
+          "relationFromFields": [],
+          "relationToFields": [],
+          "isList": true,
+          "isId": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false
+        },
+        {
+          "name": "club_activity_refunds_club_activity_refunds_requested_byTousers",
+          "type": "club_activity_refunds",
+          "isRequired": false,
+          "kind": "object",
+          "relationName": "club_activity_refunds_requested_byTousers",
+          "relationFromFields": [],
+          "relationToFields": [],
+          "isList": true,
+          "isId": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false
+        },
+        {
+          "name": "club_activity_registrations",
+          "type": "club_activity_registrations",
+          "isRequired": false,
+          "kind": "object",
+          "relationName": "club_activity_registrationsTousers",
+          "relationFromFields": [],
+          "relationToFields": [],
+          "isList": true,
+          "isId": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false
+        },
+        {
+          "name": "containers",
+          "type": "containers",
+          "isRequired": false,
+          "kind": "object",
+          "relationName": "containersTousers",
+          "relationFromFields": [],
+          "relationToFields": [],
+          "isList": true,
+          "isId": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false
+        },
+        {
+          "name": "inventory_history",
+          "type": "inventory_history",
+          "isRequired": false,
+          "kind": "object",
+          "relationName": "inventory_historyTousers",
+          "relationFromFields": [],
+          "relationToFields": [],
+          "isList": true,
+          "isId": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false
+        },
+        {
+          "name": "inventory_items_inventory_items_created_byTousers",
+          "type": "inventory_items",
+          "isRequired": false,
+          "kind": "object",
+          "relationName": "inventory_items_created_byTousers",
+          "relationFromFields": [],
+          "relationToFields": [],
+          "isList": true,
+          "isId": false,
+          "isGenerated": false,
+          "sequence": false,
+          "hasDefaultValue": false
+        },
+        {
+          "name": "inventory_items_inventory_items_updated_byTousers",
+          "type": "inventory_items",
+          "isRequired": false,
+          "kind": "object",
+          "relationName": "inventory_items_updated_byTousers",
           "relationFromFields": [],
           "relationToFields": [],
           "isList": true,
@@ -7950,6 +10135,26 @@
         }
       ]
     },
+    "inventory_action": {
+      "schemaName": "public",
+      "values": [
+        {
+          "name": "created"
+        },
+        {
+          "name": "maintenance_in"
+        },
+        {
+          "name": "maintenance_out"
+        },
+        {
+          "name": "moved"
+        },
+        {
+          "name": "updated"
+        }
+      ]
+    },
     "invitation_status": {
       "schemaName": "public",
       "values": [
@@ -7975,6 +10180,43 @@
         },
         {
           "name": "sword_and_buckler"
+        }
+      ]
+    },
+    "refund_status": {
+      "schemaName": "public",
+      "values": [
+        {
+          "name": "cancelled"
+        },
+        {
+          "name": "completed"
+        },
+        {
+          "name": "failed"
+        },
+        {
+          "name": "pending"
+        },
+        {
+          "name": "processing"
+        }
+      ]
+    },
+    "registration_status": {
+      "schemaName": "public",
+      "values": [
+        {
+          "name": "cancelled"
+        },
+        {
+          "name": "confirmed"
+        },
+        {
+          "name": "pending"
+        },
+        {
+          "name": "refunded"
         }
       ]
     },

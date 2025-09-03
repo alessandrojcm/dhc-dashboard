@@ -35,17 +35,6 @@ test.describe('Inventory Containers Management', () => {
 		await adminData.cleanUp();
 	});
 
-	async function makeAuthenticatedRequest(page: any, url: string, options: any = {}) {
-		const response = await page.request.fetch(url, {
-			...options,
-			headers: {
-				'Content-Type': 'application/json',
-				...options.headers
-			}
-		});
-		return await response.json();
-	}
-
 	async function createContainer(
 		{
 			createItems = false,
@@ -75,7 +64,7 @@ test.describe('Inventory Containers Management', () => {
 
 		expect(containerError).toBeNull();
 		expect(containerData).toBeTruthy();
-
+		expect(containerName).toEqual(containerData!.name);
 		if (createItems) {
 			const containerId = containerData!.id;
 			// Create a category
@@ -84,7 +73,7 @@ test.describe('Inventory Containers Management', () => {
 				.insert({
 					name: `Test Category ${timestamp}`,
 					description: 'Test category for items',
-					available_attributes: {}
+					available_attributes: []
 				})
 				.select()
 				.single();
@@ -168,7 +157,7 @@ test.describe('Inventory Containers Management', () => {
 			await page.goto('/dashboard/inventory/containers');
 
 			// Find and edit the container
-			await page.getByRole('link', { name: `Edit ${originalName}` }).click();
+			await page.getByRole('link', { name: `Edit ${originalName!.name}` }).click();
 
 			// Update fields
 			await page.getByLabel(/name/i).fill(updatedName);
@@ -185,18 +174,18 @@ test.describe('Inventory Containers Management', () => {
 			await loginAsUser(context, quartermasterData.email);
 			await page.goto('/dashboard/inventory/containers');
 
-			const { name: containerName } = await createContainer();
+			const container = await createContainer();
 
 			// Find and delete the container
-			await page.getByRole('link', { name: `Edit ${containerName}`, exact: false }).click();
-			await page.getByRole('button', { name: /delete/i }).click();
+			await page.getByRole('link', { name: `Edit ${container!.name}` }).click();
+			await page.getByRole('button', { name: /delete container/i }).click();
 
 			// Confirm deletion
 			await page.getByRole('button', { name: /yes, delete container/i }).click();
 
 			// Should navigate back to containers list or show confirmation
 			// Container should not appear in list anymore
-			await expect(page.getByText(containerName)).not.toBeVisible();
+			await expect(page.getByText(container!.name)).not.toBeVisible();
 		});
 
 		test('should prevent deletion of container with items', async ({ page, context }) => {
@@ -264,16 +253,16 @@ test.describe('Inventory Containers Management', () => {
 			// Create hierarchy via API
 			await page.goto('/dashboard');
 			const [c1, c2, c3] = await createContainer()
-				.then(async (c) => [c, await createContainer({ parentId: c.id })])
-				.then(async (c) => [...c, await createContainer({ parentId: c[1].id })]);
+				.then(async (c) => [c, await createContainer({ parentId: c!.id })])
+				.then(async (c) => [...c, await createContainer({ parentId: c[1]!.id })]);
 
 			// Navigate to containers page
 			await page.goto('/dashboard/inventory/containers');
 
 			// Should show hierarchy
-			await expect(page.getByRole('heading', { name: c1.name })).toBeVisible();
-			await expect(page.getByRole('heading', { name: c2.name })).toBeVisible();
-			await expect(page.getByRole('heading', { name: c3.name })).toBeVisible();
+			await expect(page.getByRole('heading', { name: c1!.name }).first()).toBeVisible();
+			await expect(page.getByRole('heading', { name: c2!.name }).first()).toBeVisible();
+			await expect(page.getByRole('heading', { name: c3!.name }).first()).toBeVisible();
 
 			// Should show proper nesting indicators
 			await expect(page.locator('[data-testid="container-hierarchy"]')).toBeVisible();
