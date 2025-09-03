@@ -374,17 +374,17 @@ CREATE TRIGGER category_schema_trigger
 ## Success Criteria
 
 Stage 1 is complete when:
-- [ ] pg-jsonschema extension is enabled and configured
-- [ ] All database tables are created with proper relationships
-- [ ] JSON Schema validation is working for equipment attributes
-- [ ] RLS policies are implemented and tested
-- [ ] Database functions and triggers are working
-- [ ] Default equipment categories are seeded with proper schemas
-- [ ] TypeScript types are generated and accurate
-- [ ] Basic CRUD operations are functional
-- [ ] Unit tests pass for all database operations
-- [ ] Schema supports the hierarchical container structure
-- [ ] Supabase Storage bucket is configured for equipment photos
+- [x] pg-jsonschema extension is enabled and configured
+- [x] All database tables are created with proper relationships
+- [x] JSON Schema validation is working for equipment attributes
+- [x] RLS policies are implemented and tested
+- [x] Database functions and triggers are working
+- [x] Default equipment categories are seeded with proper schemas
+- [x] TypeScript types are generated and accurate
+- [x] Basic CRUD operations are functional
+- [x] Unit tests pass for all database operations
+- [x] Schema supports the hierarchical container structure
+- [x] Supabase Storage bucket is configured for equipment photos
 
 ## Next Stages
 

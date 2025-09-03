@@ -18,16 +18,14 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="wip">
+    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="feat(phone): improve phone number validation and formatting&#10;&#10;- Use `formatIncompletePhoneNumber` for better partial number formatting&#10;- Simplify phone input logic and enhance parsing accuracy&#10;- Update `PhoneInput` component with hidden input for binding raw values&#10;- Change phone validation schema to handle incomplete phone numbers more gracefully&#10;- Improve `phone-input.svelte` user experience and maintain consistent behavior across the application&#10;&#10;# Conflicts:&#10;#&#9;.idea/workspace.xml">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/database.types.ts" beforeDir="false" afterPath="$PROJECT_DIR$/database.types.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.snaplet/dataModel.json" beforeDir="false" afterPath="$PROJECT_DIR$/.snaplet/dataModel.json" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/e2e/inventory-categories.spec.ts" beforeDir="false" afterPath="$PROJECT_DIR$/e2e/inventory-categories.spec.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/e2e/inventory-containers.spec.ts" beforeDir="false" afterPath="$PROJECT_DIR$/e2e/inventory-containers.spec.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/instructions/inventory_management_stage1_core_data_model.md" beforeDir="false" afterPath="$PROJECT_DIR$/instructions/inventory_management_stage1_core_data_model.md" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/database.types.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/database.types.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/lib/components/inventory/AttributeBuilder.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/components/inventory/AttributeBuilder.svelte" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/lib/schemas/inventory.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/schemas/inventory.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/inventory/categories/[id]/edit/+page.server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/inventory/categories/[id]/edit/+page.server.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/inventory/categories/create/+page.server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/inventory/categories/create/+page.server.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/package.json" beforeDir="false" afterPath="$PROJECT_DIR$/package.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/pnpm-lock.yaml" beforeDir="false" afterPath="$PROJECT_DIR$/pnpm-lock.yaml" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -50,10 +48,20 @@
   <component name="Git.Settings">
     <option name="RECENT_BRANCH_BY_REPOSITORY">
       <map>
-        <entry key="$PROJECT_DIR$" value="feature/ale-63-beginners-workshop" />
+        <entry key="$PROJECT_DIR$" value="main" />
       </map>
     </option>
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="GitRewordedCommitMessages">
+    <option name="commitMessagesMapping">
+      <RewordedCommitMessageMapping>
+        <option name="originalMessage" value="wip" />
+        <option name="rewordedMessage" value="feat(e2e): add end-to-end tests for inventory categories and containers management" />
+      </RewordedCommitMessageMapping>
+    </option>
+    <option name="currentCommit" value="1" />
+    <option name="onto" value="e2527ba4e22d92b00aef8bd1ae4d61b2b81a592b" />
   </component>
   <component name="GitToolBoxStore">
     <option name="recentBranches">
@@ -65,23 +73,23 @@
                 <list>
                   <RecentBranch>
                     <option name="branchName" value="feature/ale-41-inventory-management" />
-                    <option name="lastUsedInstant" value="1754069949" />
+                    <option name="lastUsedInstant" value="1756894002" />
                   </RecentBranch>
                   <RecentBranch>
-                    <option name="branchName" value="develop" />
-                    <option name="lastUsedInstant" value="1753637167" />
+                    <option name="branchName" value="main" />
+                    <option name="lastUsedInstant" value="1754128627" />
                   </RecentBranch>
                   <RecentBranch>
                     <option name="branchName" value="feat/workshops-planing" />
                     <option name="lastUsedInstant" value="1752226725" />
                   </RecentBranch>
                   <RecentBranch>
-                    <option name="branchName" value="fix/chart-reactivity" />
-                    <option name="lastUsedInstant" value="1747995819" />
+                    <option name="branchName" value="develop" />
+                    <option name="lastUsedInstant" value="1752226443" />
                   </RecentBranch>
                   <RecentBranch>
-                    <option name="branchName" value="main" />
-                    <option name="lastUsedInstant" value="1747694895" />
+                    <option name="branchName" value="fix/chart-reactivity" />
+                    <option name="lastUsedInstant" value="1747995819" />
                   </RecentBranch>
                 </list>
               </option>
@@ -103,52 +111,54 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;Attach to Node.js/Chrome.Edge Functions.executor&quot;: &quot;Debug&quot;,
-    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
-    &quot;Node.js.script.js.executor&quot;: &quot;Run&quot;,
-    &quot;Node.js.seedMembers.js.executor&quot;: &quot;Debug&quot;,
-    &quot;Node.js.seedWaitlist.js.executor&quot;: &quot;Run&quot;,
-    &quot;Node.js.test.ts.executor&quot;: &quot;Run&quot;,
-    &quot;Playwright.Workshop API.executor&quot;: &quot;Run&quot;,
-    &quot;Playwright.Workshop API.should create workshop as admin.executor&quot;: &quot;Run&quot;,
-    &quot;Playwright.Workshop Interest System.executor&quot;: &quot;Run&quot;,
-    &quot;Playwright.Workshop Interest System.should display planned workshops in calendar view.executor&quot;: &quot;Debug&quot;,
-    &quot;Playwright.Workshop Management.executor&quot;: &quot;Run&quot;,
-    &quot;Playwright.Workshop UI.executor&quot;: &quot;Run&quot;,
-    &quot;Playwright.Workshop UI.should display and validate workshop creation form.executor&quot;: &quot;Debug&quot;,
-    &quot;Playwright.Workshop UI.should navigate to create workshop form.executor&quot;: &quot;Run&quot;,
-    &quot;Playwright.underage user (16-17) should be able to submit with guardian information.executor&quot;: &quot;Run&quot;,
-    &quot;Playwright.underage user (16-17) should be required to fill guardian fields.executor&quot;: &quot;Run&quot;,
-    &quot;Playwright.underage-guardian-waitlist.spec.ts.executor&quot;: &quot;Run&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;com.codeium.enabled&quot;: &quot;true&quot;,
-    &quot;deno.use.library&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;feature/ale-41-inventory-management&quot;,
-    &quot;junie.onboarding.icon.badge.shown&quot;: &quot;true&quot;,
-    &quot;last_opened_file_path&quot;: &quot;/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]&quot;,
-    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
-    &quot;node.js.detected.package.standard&quot;: &quot;true&quot;,
-    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
-    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
-    &quot;node.js.selected.package.standard&quot;: &quot;&quot;,
-    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
-    &quot;nodejs_package_manager_path&quot;: &quot;pnpm&quot;,
-    &quot;npm.dev.executor&quot;: &quot;Debug&quot;,
-    &quot;prettierjs.PrettierConfiguration.Package&quot;: &quot;/Users/alessandrojcm/repos/dhc-dashboard/node_modules/prettier&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.pluginManager&quot;,
-    &quot;to.speed.mode.migration.done&quot;: &quot;true&quot;,
-    &quot;ts.external.directory.path&quot;: &quot;/Users/alessandrojcm/repos/dhc-dashboard/node_modules/typescript/lib&quot;,
-    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "Attach to Node.js/Chrome.Edge Functions.executor": "Debug",
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "Node.js.script.js.executor": "Run",
+    "Node.js.seedMembers.js.executor": "Debug",
+    "Node.js.seedWaitlist.js.executor": "Run",
+    "Playwright.Inventory Categories Management.Category CRUD Operations.should delete category with no items.executor": "Run",
+    "Playwright.Inventory Containers Management.Container CRUD Operations.should delete empty container as quartermaster.executor": "Debug",
+    "Playwright.Workshop API.executor": "Run",
+    "Playwright.Workshop API.should create workshop as admin.executor": "Run",
+    "Playwright.Workshop Interest System.executor": "Run",
+    "Playwright.Workshop Interest System.should display planned workshops in calendar view.executor": "Debug",
+    "Playwright.Workshop Management.executor": "Run",
+    "Playwright.Workshop UI.executor": "Run",
+    "Playwright.Workshop UI.should display and validate workshop creation form.executor": "Debug",
+    "Playwright.Workshop UI.should navigate to create workshop form.executor": "Run",
+    "Playwright.underage user (16-17) should be able to submit with guardian information.executor": "Run",
+    "Playwright.underage user (16-17) should be required to fill guardian fields.executor": "Run",
+    "Playwright.underage-guardian-waitlist.spec.ts.executor": "Run",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "com.codeium.enabled": "true",
+    "deno.use.library": "true",
+    "disable.download.node.interpreter.editor.notification": "true",
+    "git-widget-placeholder": "feature/ale-41-inventory-management",
+    "junie.onboarding.icon.badge.shown": "true",
+    "last_opened_file_path": "/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.standard": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.standard": "",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "pnpm",
+    "npm.dev.executor": "Debug",
+    "prettierjs.PrettierConfiguration.Package": "/Users/alessandrojcm/repos/dhc-dashboard/node_modules/prettier",
+    "settings.editor.selected.configurable": "preferences.pluginManager",
+    "to.speed.mode.migration.done": "true",
+    "ts.external.directory.path": "/Users/alessandrojcm/repos/dhc-dashboard/node_modules/typescript/lib",
+    "vue.rearranger.settings.migration": "true"
   },
-  &quot;keyToStringList&quot;: {
-    &quot;DatabaseDriversLRU&quot;: [
-      &quot;postgresql&quot;
+  "keyToStringList": {
+    "DatabaseDriversLRU": [
+      "postgresql"
     ]
   }
-}</component>
+}]]></component>
   <component name="ReactDesignerToolWindowState">
     <option name="myId2Visible">
       <map>
@@ -168,8 +178,36 @@
       <recent name="$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]" />
     </key>
   </component>
-  <component name="RunManager" selected="npm.dev">
+  <component name="RunManager" selected="Playwright.Inventory Categories Management.Category CRUD Operations.should delete category with no items">
     <configuration name="Edge Functions" type="ChromiumRemoteDebugType" factoryName="Chromium Remote" port="8083">
+      <method v="2" />
+    </configuration>
+    <configuration name="Inventory Categories Management.Category CRUD Operations.should delete category with no items" type="JavaScriptTestRunnerPlaywright" temporary="true" nameIsGenerated="true">
+      <node-interpreter value="project" />
+      <playwright-package value="$PROJECT_DIR$/node_modules/@playwright/test" />
+      <working-dir value="$PROJECT_DIR$" />
+      <envs />
+      <scope-kind value="TEST" />
+      <test-file value="$PROJECT_DIR$/e2e/inventory-categories.spec.ts" />
+      <test-names>
+        <test-name value="Inventory Categories Management" />
+        <test-name value="Category CRUD Operations" />
+        <test-name value="should delete category with no items" />
+      </test-names>
+      <method v="2" />
+    </configuration>
+    <configuration name="Inventory Containers Management.Container CRUD Operations.should delete empty container as quartermaster" type="JavaScriptTestRunnerPlaywright" temporary="true" nameIsGenerated="true">
+      <node-interpreter value="project" />
+      <playwright-package value="$PROJECT_DIR$/node_modules/@playwright/test" />
+      <working-dir value="$PROJECT_DIR$" />
+      <envs />
+      <scope-kind value="TEST" />
+      <test-file value="$PROJECT_DIR$/e2e/inventory-containers.spec.ts" />
+      <test-names>
+        <test-name value="Inventory Containers Management" />
+        <test-name value="Container CRUD Operations" />
+        <test-name value="should delete empty container as quartermaster" />
+      </test-names>
       <method v="2" />
     </configuration>
     <configuration name="Workshop API.should create workshop as admin" type="JavaScriptTestRunnerPlaywright" temporary="true" nameIsGenerated="true">
@@ -182,18 +220,6 @@
       <test-names>
         <test-name value="Workshop API" />
         <test-name value="should create workshop as admin" />
-      </test-names>
-      <method v="2" />
-    </configuration>
-    <configuration name="Workshop Interest System" type="JavaScriptTestRunnerPlaywright" temporary="true" nameIsGenerated="true">
-      <node-interpreter value="project" />
-      <playwright-package value="$PROJECT_DIR$/node_modules/@playwright/test" />
-      <working-dir value="$PROJECT_DIR$" />
-      <envs />
-      <scope-kind value="SUITE" />
-      <test-file value="$PROJECT_DIR$/e2e/workshops-interest.spec.ts" />
-      <test-names>
-        <test-name value="Workshop Interest System" />
       </test-names>
       <method v="2" />
     </configuration>
@@ -210,9 +236,6 @@
       </test-names>
       <method v="2" />
     </configuration>
-    <configuration name="test.ts" type="NodeJSConfigurationType" temporary="true" nameIsGenerated="true" path-to-js-file="$PROJECT_DIR$/test.ts" typescript-loader="bundled" working-dir="$PROJECT_DIR$">
-      <method v="2" />
-    </configuration>
     <configuration name="dev" type="js.build_tools.npm" temporary="true" nameIsGenerated="true">
       <package-json value="$PROJECT_DIR$/package.json" />
       <command value="run" />
@@ -225,26 +248,26 @@
     </configuration>
     <list>
       <item itemvalue="Attach to Node.js/Chrome.Edge Functions" />
-      <item itemvalue="Node.js.test.ts" />
       <item itemvalue="npm.dev" />
+      <item itemvalue="Playwright.Inventory Categories Management.Category CRUD Operations.should delete category with no items" />
+      <item itemvalue="Playwright.Inventory Containers Management.Container CRUD Operations.should delete empty container as quartermaster" />
       <item itemvalue="Playwright.Workshop API.should create workshop as admin" />
-      <item itemvalue="Playwright.Workshop Interest System" />
       <item itemvalue="Playwright.Workshop Interest System.should display planned workshops in calendar view" />
     </list>
     <recent_temporary>
       <list>
+        <item itemvalue="Playwright.Inventory Categories Management.Category CRUD Operations.should delete category with no items" />
+        <item itemvalue="Playwright.Inventory Containers Management.Container CRUD Operations.should delete empty container as quartermaster" />
         <item itemvalue="npm.dev" />
-        <item itemvalue="Node.js.test.ts" />
         <item itemvalue="Playwright.Workshop Interest System.should display planned workshops in calendar view" />
         <item itemvalue="Playwright.Workshop API.should create workshop as admin" />
-        <item itemvalue="Playwright.Workshop Interest System" />
       </list>
     </recent_temporary>
   </component>
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
-        <option value="bundled-js-predefined-d6986cc7102b-e03c56caf84a-JavaScript-WS-252.23892.411" />
+        <option value="bundled-js-predefined-d6986cc7102b-09060db00ec0-JavaScript-WS-251.27812.50" />
       </set>
     </attachedChunks>
   </component>
@@ -289,11 +312,8 @@
       <workItem from="1753624621353" duration="14000" />
       <workItem from="1753624646505" duration="3336000" />
       <workItem from="1753629574041" duration="109000" />
-      <workItem from="1753636997043" duration="23162000" />
-      <workItem from="1754469992864" duration="2050000" />
-      <workItem from="1754480873511" duration="1438000" />
-      <workItem from="1754489280290" duration="1135000" />
-      <workItem from="1754660512075" duration="11494000" />
+      <workItem from="1754224797902" duration="2007000" />
+      <workItem from="1754316866887" duration="3372000" />
     </task>
     <task id="LOCAL-00001" summary="Add guardian support for underage waitlist entries&#10;&#10;Introduce `waitlist_guardians` table and transactional logic for adding guardian details when underage users join the waitlist. Updates include database migrations, UI adjustments for conditional input fields, validation logic, and tests to ensure age-based gating.">
       <option name="closed" value="true" />
@@ -591,63 +611,7 @@
       <option name="project" value="LOCAL" />
       <updated>1753461483533</updated>
     </task>
-    <task id="LOCAL-00038" summary="fix: refunds not working for users">
-      <option name="closed" value="true" />
-      <created>1753637157607</created>
-      <option name="number" value="00038" />
-      <option name="presentableId" value="LOCAL-00038" />
-      <option name="project" value="LOCAL" />
-      <updated>1753637157607</updated>
-    </task>
-    <task id="LOCAL-00039" summary="chore(deps): update dependencies and introduce AI-related packages&#10;&#10;- Add `@ai-sdk/groq`, `@ai-sdk/svelte`, `@ai-sdk/valibot`, `ollama-ai-provider`, and `ai` for AI capabilities.&#10;- Include utility packages like `evalite`, `autoevals`, and `better-sqlite3`.&#10;- Bump versions for several dependencies and dev dependencies, improving compatibility and features.">
-      <option name="closed" value="true" />
-      <created>1753720917116</created>
-      <option name="number" value="00039" />
-      <option name="presentableId" value="LOCAL-00039" />
-      <option name="project" value="LOCAL" />
-      <updated>1753720917117</updated>
-    </task>
-    <task id="LOCAL-00040" summary="wip">
-      <option name="closed" value="true" />
-      <created>1754342596776</created>
-      <option name="number" value="00040" />
-      <option name="presentableId" value="LOCAL-00040" />
-      <option name="project" value="LOCAL" />
-      <updated>1754342596776</updated>
-    </task>
-    <task id="LOCAL-00041" summary="wip">
-      <option name="closed" value="true" />
-      <created>1754387544156</created>
-      <option name="number" value="00041" />
-      <option name="presentableId" value="LOCAL-00041" />
-      <option name="project" value="LOCAL" />
-      <updated>1754387544156</updated>
-    </task>
-    <task id="LOCAL-00042" summary="wip">
-      <option name="closed" value="true" />
-      <created>1754388671108</created>
-      <option name="number" value="00042" />
-      <option name="presentableId" value="LOCAL-00042" />
-      <option name="project" value="LOCAL" />
-      <updated>1754388671108</updated>
-    </task>
-    <task id="LOCAL-00043" summary="feat(e2e): add end-to-end tests for inventory categories and containers management">
-      <option name="closed" value="true" />
-      <created>1754490308204</created>
-      <option name="number" value="00043" />
-      <option name="presentableId" value="LOCAL-00043" />
-      <option name="project" value="LOCAL" />
-      <updated>1754490308204</updated>
-    </task>
-    <task id="LOCAL-00044" summary="wip">
-      <option name="closed" value="true" />
-      <created>1754669186019</created>
-      <option name="number" value="00044" />
-      <option name="presentableId" value="LOCAL-00044" />
-      <option name="project" value="LOCAL" />
-      <updated>1754669186019</updated>
-    </task>
-    <option name="localTasksCounter" value="45" />
+    <option name="localTasksCounter" value="38" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -669,7 +633,7 @@
                   <entry key="branch">
                     <value>
                       <list>
-                        <option value="origin/fix/chart-reactivity" />
+                        <option value="feature/ale-41-inventory-management" />
                       </list>
                     </value>
                   </entry>
@@ -688,6 +652,10 @@
   </component>
   <component name="VcsManagerConfiguration">
     <option name="CHECK_CODE_SMELLS_BEFORE_PROJECT_COMMIT" value="false" />
+    <MESSAGE value="feat: add invite management and UI enhancements&#10;&#10;- Replaced `complete_member_registration` SQL function with API-based invite workflows.&#10;- Added resend invitation API and related UI updates for waitlist.&#10;- Improved waitlist filtering (`status`).&#10;- Updated Stripe API version.&#10;- Enhanced IDE configuration and standardized code formatting." />
+    <MESSAGE value="feat: enhance invite workflow and UI; improve IDE config&#10;&#10;- Added API-based invite workflows, replacing `complete_member_registration` SQL function.&#10;- Introduced resend invitation API and related UI updates for waitlist.&#10;- Improved waitlist filtering by `status`.&#10;- Updated Stripe API version.&#10;- Refined IDE configuration and applied consistent code formatting." />
+    <MESSAGE value="feat: refactor invitation to use invitation id instead of tokens" />
+    <MESSAGE value="feat: added migrations for new email invite processing.&#10;&#10;It now uses the uuid of the invite as a route and sends an email manually." />
     <MESSAGE value="feat: added functions for email processing using a supabase queue." />
     <MESSAGE value="feat: refactored admin endpoint to add emails to the queue." />
     <MESSAGE value="feat: improve invite workflow with email processing and confirmation logic&#10;&#10;- Added support for email processing using Supabase queue.&#10;- Introduced cookie-based invite confirmation tracking.&#10;- Updated public signup pages to reflect invite confirmation status.&#10;- Adjusted layout for mobile responsiveness." />
@@ -708,12 +676,8 @@
     <MESSAGE value="feat(workshops): add cancellation and refund functionality&#10;&#10;- Introduce workshop cancellation dialog with refund eligibility checks&#10;- Implement refund eligibility utility function with detailed checks&#10;- Enhance workshop list with cancellation buttons and refunded badge&#10;- Update calendar and API to include registration status and counts&#10;- Refactor user registration actions for better state handling and UX" />
     <MESSAGE value="feat: added workshop update feature" />
     <MESSAGE value="fix: remove payment session from bulk invite" />
-    <MESSAGE value="fix: refunds not working for users" />
-    <MESSAGE value="feat: refunds not working for users" />
-    <MESSAGE value="chore(deps): update dependencies and introduce AI-related packages&#10;&#10;- Add `@ai-sdk/groq`, `@ai-sdk/svelte`, `@ai-sdk/valibot`, `ollama-ai-provider`, and `ai` for AI capabilities.&#10;- Include utility packages like `evalite`, `autoevals`, and `better-sqlite3`.&#10;- Bump versions for several dependencies and dev dependencies, improving compatibility and features." />
     <MESSAGE value="feat(e2e): add end-to-end tests for inventory categories and containers management" />
-    <MESSAGE value="wip" />
-    <option name="LAST_COMMIT_MESSAGE" value="wip" />
+    <option name="LAST_COMMIT_MESSAGE" value="feat(e2e): add end-to-end tests for inventory categories and containers management" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
@@ -724,34 +688,55 @@
           <option name="timeStamp" value="7" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="javascript">
-          <url>file://$PROJECT_DIR$/src/routes/auth/+page.server.ts</url>
-          <line>38</line>
-          <option name="timeStamp" value="10" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" type="javascript">
-          <url>file://$PROJECT_DIR$/src/routes/auth/+page.server.ts</url>
-          <line>37</line>
-          <option name="timeStamp" value="11" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" type="javascript">
-          <url>file://$PROJECT_DIR$/src/routes/auth/+page.server.ts</url>
-          <line>13</line>
-          <option name="timeStamp" value="12" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" type="javascript">
-          <url>file://$PROJECT_DIR$/src/routes/auth/+page.server.ts</url>
-          <line>50</line>
-          <option name="timeStamp" value="13" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" type="javascript">
           <url>file://$PROJECT_DIR$/src/routes/api/workshops/[id]/register/+server.ts</url>
           <line>268</line>
           <option name="timeStamp" value="19" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="javascript">
-          <url>file://$PROJECT_DIR$/src/routes/dashboard/workshops/create/+page.server.ts</url>
-          <line>29</line>
-          <option name="timeStamp" value="22" />
+          <url>file://$PROJECT_DIR$/src/routes/dashboard/members/[memberId]/+page.server.ts</url>
+          <line>107</line>
+          <option name="timeStamp" value="21" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="javascript">
+          <url>file://$PROJECT_DIR$/src/routes/dashboard/members/[memberId]/+page.server.ts</url>
+          <line>172</line>
+          <option name="timeStamp" value="24" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="javascript">
+          <url>file://$PROJECT_DIR$/e2e/inventory-containers.spec.ts</url>
+          <line>46</line>
+          <properties lambdaOrdinal="-1" />
+          <option name="timeStamp" value="25" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="javascript">
+          <url>file://$PROJECT_DIR$/e2e/inventory-containers.spec.ts</url>
+          <line>64</line>
+          <properties lambdaOrdinal="-1" />
+          <option name="timeStamp" value="26" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="javascript">
+          <url>file://$PROJECT_DIR$/e2e/inventory-containers.spec.ts</url>
+          <line>94</line>
+          <properties lambdaOrdinal="-1" />
+          <option name="timeStamp" value="27" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="javascript">
+          <url>file://$PROJECT_DIR$/e2e/inventory-containers.spec.ts</url>
+          <line>179</line>
+          <properties lambdaOrdinal="-1" />
+          <option name="timeStamp" value="28" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="javascript">
+          <url>file://$PROJECT_DIR$/e2e/inventory-containers.spec.ts</url>
+          <line>176</line>
+          <properties lambdaOrdinal="-1" />
+          <option name="timeStamp" value="29" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="javascript">
+          <url>file://$PROJECT_DIR$/e2e/inventory-containers.spec.ts</url>
+          <line>80</line>
+          <properties lambdaOrdinal="-1" />
+          <option name="timeStamp" value="30" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>

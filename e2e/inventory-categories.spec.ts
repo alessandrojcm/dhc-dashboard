@@ -1,6 +1,8 @@
 import { expect, test } from '@playwright/test';
 import { createMember } from './setupFunctions';
 import { loginAsUser } from './supabaseLogin';
+import type { Database } from '$database';
+import { supabaseServiceClient } from '../src/lib/server/supabaseServiceClient';
 
 test.describe('Inventory Categories Management', () => {
 	let quartermasterData: Awaited<ReturnType<typeof createMember>>;
@@ -44,6 +46,15 @@ test.describe('Inventory Categories Management', () => {
 			}
 		});
 		return await response.json();
+	}
+
+	function createCategory(cat: Database['public']['Tables']['equipment_categories']['Insert']) {
+		return supabaseServiceClient
+			.from('equipment_categories')
+			.insert(cat)
+			.select('*')
+			.single()
+			.throwOnError();
 	}
 
 	test.describe('Category CRUD Operations', () => {
@@ -159,22 +170,19 @@ test.describe('Inventory Categories Management', () => {
 
 			// Create category first via API
 			await page.goto('/dashboard');
-			const createResponse = await makeAuthenticatedRequest(page, '/api/inventory/categories', {
-				method: 'POST',
-				data: {
-					name: originalName,
-					description: 'Original description',
-					available_attributes: {
-						brand: {
-							type: 'text',
-							label: 'Brand',
-							required: false
-						}
+			const createResponse = await createCategory({
+				name: originalName,
+				description: 'Original description',
+				available_attributes: {
+					brand: {
+						type: 'text',
+						label: 'Brand',
+						required: false
 					}
 				}
 			});
 
-			const categoryId = createResponse.category.id;
+			const categoryId = createResponse.data.id;
 
 			// Navigate to edit page
 			await page.goto(`/dashboard/inventory/categories/${categoryId}/edit`);
