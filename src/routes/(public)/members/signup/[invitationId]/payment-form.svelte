@@ -7,7 +7,7 @@
 	import { valibotClient } from 'sveltekit-superforms/adapters';
 	import { memberSignupSchema } from '$lib/schemas/membersSignup';
 	import { parsePhoneNumberFromString } from 'libphonenumber-js/min';
-	import { ArrowRightIcon, Proportions } from 'lucide-svelte';
+	import { ArrowRightIcon } from 'lucide-svelte';
 	import {
 		loadStripe,
 		type StripeElements,
@@ -284,11 +284,6 @@
 				<Form.FieldErrors />
 			</Form.Field>
 			<p class="prose text-lg text-black">Payment details</p>
-
-			<script>
-				import PricingDisplay from './pricing-display.svelte';
-			</script>
-
 			<PricingDisplay
 				planPricingData={planData}
 				{couponCode}
