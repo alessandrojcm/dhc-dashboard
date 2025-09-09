@@ -2,44 +2,45 @@
 	import { superForm } from 'sveltekit-superforms';
 	import { valibot } from 'sveltekit-superforms/adapters';
 	import { itemSchema } from '$lib/schemas/inventory';
-	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card';
+	import {
+		Card,
+		CardContent,
+		CardDescription,
+		CardHeader,
+		CardTitle
+	} from '$lib/components/ui/card';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
-	import { Label } from '$lib/components/ui/label';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import { Select, SelectContent, SelectItem, SelectTrigger } from '$lib/components/ui/select';
 	import { Checkbox } from '$lib/components/ui/checkbox';
+	import * as Form from '$lib/components/ui/form';
 	import { ArrowLeft, Package } from 'lucide-svelte';
 	import DynamicAttributeFields from '$lib/components/inventory/DynamicAttributeFields.svelte';
 
 	let { data } = $props();
 
-	const { form, errors, enhance, submitting } = superForm(data.form, {
+	const form = superForm(data.form, {
 		validators: valibot(itemSchema),
 		resetForm: true,
 		dataType: 'json'
 	});
 
-	// Initialize attributes if not set
-	if (!$form.attributes) {
-		$form.attributes = {};
-	}
+	const { form: formData, enhance, submitting } = form;
 
 	// Reactive category selection for dynamic attributes
-	let selectedCategory = $derived(
-		data.categories.find(c => c.id === $form.category_id)
-	);
+	let selectedCategory = $derived(data.categories.find((c) => c.id === $formData.category_id));
 
 	// Build hierarchy display for container selection
 	const buildHierarchyDisplay = (containers: any[]) => {
 		const containerMap = new Map();
 		const rootContainers: any[] = [];
 
-		containers.forEach(container => {
+		containers.forEach((container) => {
 			containerMap.set(container.id, { ...container, children: [] });
 		});
 
-		containers.forEach(container => {
+		containers.forEach((container) => {
 			if (container.parent_container_id) {
 				const parent = containerMap.get(container.parent_container_id);
 				if (parent) {
@@ -52,7 +53,7 @@
 
 		const flattenWithIndent = (containers: any[], level = 0): any[] => {
 			const result: any[] = [];
-			containers.forEach(container => {
+			containers.forEach((container) => {
 				result.push({
 					...container,
 					displayName: '  '.repeat(level) + container.name,
@@ -90,89 +91,89 @@
 					<Package class="h-5 w-5" />
 					Item Information
 				</CardTitle>
-				<CardDescription>
-					Basic details about the equipment item
-				</CardDescription>
+				<CardDescription>Basic details about the equipment item</CardDescription>
 			</CardHeader>
 			<CardContent class="space-y-4">
 				<div class="grid gap-4 md:grid-cols-2">
-					<div class="space-y-2">
-						<Label for="category_id">Category *</Label>
-						<Select type="single" bind:value={$form.category_id} name="category_id">
-							<SelectTrigger class={$errors.category_id ? 'border-destructive' : ''}>
-								{$form.category_id}
-							</SelectTrigger>
-							<SelectContent>
-								{#each data.categories as category}
-									<SelectItem value={category.id}>{category.name}</SelectItem>
-								{/each}
-							</SelectContent>
-						</Select>
-						{#if $errors.category_id}
-							<p class="text-sm text-destructive">{$errors.category_id}</p>
-						{/if}
-					</div>
+					<Form.Field {form} name="category_id">
+						<Form.Control>
+							{#snippet children({ props })}
+								<Form.Label>Category *</Form.Label>
+								<Select name={props.name} type="single" bind:value={$formData.category_id}>
+									<SelectTrigger {...props}>
+										{$formData.category_id}
+									</SelectTrigger>
+									<SelectContent>
+										{#each data.categories as category}
+											<SelectItem value={category.id}>{category.name}</SelectItem>
+										{/each}
+									</SelectContent>
+								</Select>
+							{/snippet}
+						</Form.Control>
+						<Form.FieldErrors />
+					</Form.Field>
 
-					<div class="space-y-2">
-						<Label for="container_id">Container *</Label>
-						<Select type="single" bind:value={$form.container_id} name="container_id">
-							<SelectTrigger class={$errors.container_id ? 'border-destructive' : ''}>
-								{$form.container_id}
-							</SelectTrigger>
-							<SelectContent>
-								{#each hierarchicalContainers as container}
-									<SelectItem value={container.id}>
-										{container.displayName}
-									</SelectItem>
-								{/each}
-							</SelectContent>
-						</Select>
-						{#if $errors.container_id}
-							<p class="text-sm text-destructive">{$errors.container_id}</p>
-						{/if}
-					</div>
+					<Form.Field {form} name="container_id">
+						<Form.Control>
+							{#snippet children({ props })}
+								<Form.Label>Container *</Form.Label>
+								<Select type="single" bind:value={$formData.container_id} name={props.name}>
+									<SelectTrigger {...props}>
+										{$formData.container_id}
+									</SelectTrigger>
+									<SelectContent>
+										{#each hierarchicalContainers as container}
+											<SelectItem value={container.id}>
+												{container.displayName}
+											</SelectItem>
+										{/each}
+									</SelectContent>
+								</Select>
+							{/snippet}
+						</Form.Control>
+						<Form.FieldErrors />
+					</Form.Field>
 				</div>
 
 				<div class="grid gap-4 md:grid-cols-2">
-					<div class="space-y-2">
-						<Label for="quantity">Quantity *</Label>
-						<Input
-							id="quantity"
-							name="quantity"
-							type="number"
-							min="1"
-							bind:value={$form.quantity}
-							class={$errors.quantity ? 'border-destructive' : ''}
-						/>
-						{#if $errors.quantity}
-							<p class="text-sm text-destructive">{$errors.quantity}</p>
-						{/if}
-					</div>
+					<Form.Field {form} name="quantity">
+						<Form.Control>
+							{#snippet children({ props })}
+								<Form.Label>Quantity *</Form.Label>
+								<Input {...props} type="number" min="1" bind:value={$formData.quantity} />
+							{/snippet}
+						</Form.Control>
+						<Form.FieldErrors />
+					</Form.Field>
 
-					<div class="flex items-center space-x-2 pt-6">
-						<Checkbox 
-							id="out_for_maintenance"
-							name="out_for_maintenance"
-							bind:checked={$form.out_for_maintenance}
-						/>
-						<Label for="out_for_maintenance">Out for maintenance</Label>
-					</div>
+					<Form.Field {form} name="out_for_maintenance">
+						<Form.Control>
+							{#snippet children({ props })}
+								<div class="flex items-center space-x-2 pt-6">
+									<Checkbox {...props} bind:checked={$formData.out_for_maintenance} />
+									<Form.Label>Out for maintenance</Form.Label>
+								</div>
+							{/snippet}
+						</Form.Control>
+						<Form.FieldErrors />
+					</Form.Field>
 				</div>
 
-				<div class="space-y-2">
-					<Label for="notes">Notes</Label>
-					<Textarea
-						id="notes"
-						name="notes"
-						bind:value={$form.notes}
-						placeholder="Optional notes about this item"
-						rows={3}
-						class={$errors.notes ? 'border-destructive' : ''}
-					/>
-					{#if $errors.notes}
-						<p class="text-sm text-destructive">{$errors.notes}</p>
-					{/if}
-				</div>
+				<Form.Field {form} name="notes">
+					<Form.Control>
+						{#snippet children({ props })}
+							<Form.Label>Notes</Form.Label>
+							<Textarea
+								{...props}
+								bind:value={$formData.notes}
+								placeholder="Optional notes about this item"
+								rows={3}
+							/>
+						{/snippet}
+					</Form.Control>
+					<Form.FieldErrors />
+				</Form.Field>
 			</CardContent>
 		</Card>
 
@@ -186,10 +187,10 @@
 					</CardDescription>
 				</CardHeader>
 				<CardContent>
-					<DynamicAttributeFields 
-						category={selectedCategory} 
-						bind:attributes={$form.attributes} 
-						errors={$errors} 
+					<DynamicAttributeFields
+						category={selectedCategory}
+						bind:attributes={$formData.attributes}
+						{form}
 					/>
 				</CardContent>
 			</Card>
@@ -200,9 +201,7 @@
 			<Button type="submit" disabled={$submitting}>
 				{$submitting ? 'Creating...' : 'Create Item'}
 			</Button>
-			<Button href="/dashboard/inventory/items" variant="outline">
-				Cancel
-			</Button>
+			<Button href="/dashboard/inventory/items" variant="outline">Cancel</Button>
 		</div>
 	</form>
 </div>
