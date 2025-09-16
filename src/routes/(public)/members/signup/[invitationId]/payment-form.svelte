@@ -75,7 +75,6 @@
 
 	const form = superForm(props.form, {
 		validators: valibotClient(memberSignupSchema),
-		invalidateAll: false,
 		resetForm: false,
 		validationMethod: 'onblur',
 		scrollToError: true,
@@ -269,7 +268,6 @@
 				</Form.Control>
 				<Form.FieldErrors />
 			</Form.Field>
-
 			<Form.Field {form} name="nextOfKinNumber">
 				<Form.Control>
 					{#snippet children({ props })}
