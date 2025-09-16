@@ -31,7 +31,6 @@
 	} = $props();
 
 	let { nationalNumber, value } = $derived.by(() => {
-
 		return parseIncomingPhoneNumber(phoneNumber);
 	});
 
@@ -50,6 +49,14 @@
 	function parseIncomingPhoneNumber(phoneNumber: string) {
 		if (!phoneNumber) {
 			return { nationalNumber: '', value: 'IE' as CountryCode };
+		}
+		// It is just a country code so return accordingly
+		const isCountryCode = countryCodesList.findOne('countryCallingCode', phoneNumber.replace('+',''));
+		if(isCountryCode) {
+			return  {
+				nationalNumber: '',
+				value: isCountryCode.countryCode
+			}
 		}
 		try {
 			// If the number starts with '+', it's in international format
