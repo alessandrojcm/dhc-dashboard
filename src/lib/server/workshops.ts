@@ -56,12 +56,9 @@ export async function updateWorkshop(
 ): Promise<ClubActivity> {
 	const kysely = getKyselyClient(platform.env.HYPERDRIVE);
 	const result = await executeWithRLS(kysely, { claims: session }, async (trx) => {
-		// For single-day workshops, set end_date to start_date if start_date is being updated
-		const updateData = data.start_date ? { ...data, end_date: data.start_date } : data;
-
 		return await trx
 			.updateTable('club_activities')
-			.set(updateData)
+			.set(data)
 			.where('id', '=', id)
 			.returning([
 				'id',
@@ -208,7 +205,7 @@ export async function canEditWorkshopPricing(
 	platform: App.Platform
 ): Promise<boolean> {
 	const kysely = getKyselyClient(platform.env.HYPERDRIVE);
-	
+
 	// Get workshop status
 	const workshop = await kysely
 		.selectFrom('club_activities')
@@ -240,7 +237,7 @@ export async function canEditWorkshop(
 	platform: App.Platform
 ): Promise<boolean> {
 	const kysely = getKyselyClient(platform.env.HYPERDRIVE);
-	
+
 	const workshop = await kysely
 		.selectFrom('club_activities')
 		.select(['status'])
