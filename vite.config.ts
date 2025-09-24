@@ -3,6 +3,7 @@ import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vitest/config';
 import tailwindcss from '@tailwindcss/vite';
 import { enhancedImages } from '@sveltejs/enhanced-img';
+import { sentryVitePlugin } from '@sentry/vite-plugin';
 
 export default defineConfig({
 	assetsInclude: ['src/assets/**/*'],
@@ -24,8 +25,12 @@ export default defineConfig({
 		}),
 		enhancedImages(),
 		sveltekit(),
-		tailwindcss()
-		// analyzer()
+		tailwindcss(),
+		sentryVitePlugin({
+			org: 'dublin-hema-club',
+			project: 'dhc-dashboard',
+			authToken: process.env.SENTRY_AUTH_TOKEN
+		})
 	],
 	build: {
 		rollupOptions: {
