@@ -18,7 +18,13 @@
 		toCalendarDate,
 		toCalendarDateTime
 	} from '@internationalized/date';
+	import utc from 'dayjs/plugin/utc'
+	import timezone from 'dayjs/plugin/timezone'
 	import dayjs from 'dayjs';
+
+	dayjs.extend(utc)
+	dayjs.extend(timezone)
+	dayjs.tz.setDefault(dayjs.tz.guess())
 
 	interface Props {
 		data: any;
@@ -36,6 +42,10 @@
 	const form = superForm(data.form, {
 		validators: valibotClient(schema),
 		validationMethod: 'onblur',
+		onSubmit: ({ formData }) => {
+			formData.set('workshop_date', dayjs(formData.get('workshop_date') as string).toISOString());
+			formData.set('workshop_end_date', dayjs(formData.get('workshop_end_date') as string).toISOString());
+		},
 		onUpdated: ({ form }) => {
 			if (form.message?.success) {
 				window?.scrollTo({ top: 0, behavior: 'smooth' });
