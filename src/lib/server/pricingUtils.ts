@@ -12,11 +12,8 @@ interface PriceIds {
 	annual: string;
 }
 
-
 // Fetch price IDs directly from Stripe
 async function fetchPriceIdsFromStripe(): Promise<PriceIds> {
-	
-
 	// Fetch prices from Stripe in parallel
 	const [monthlyPrices, annualPrices] = await Promise.all([
 		stripeClient.prices.list({
@@ -45,9 +42,11 @@ async function fetchPriceIdsFromStripe(): Promise<PriceIds> {
 	};
 }
 
-
 // Update the price cache in the settings table
-async function updatePriceCache(prices: PriceIds, db: Awaited<ReturnType<typeof getKyselyClient>>): Promise<void> {
+async function updatePriceCache(
+	prices: PriceIds,
+	db: Awaited<ReturnType<typeof getKyselyClient>>
+): Promise<void> {
 	const now = new Date().toISOString();
 
 	// Update cache in parallel using kysely transaction
@@ -74,7 +73,9 @@ async function updatePriceCache(prices: PriceIds, db: Awaited<ReturnType<typeof 
 }
 
 // Helper function to get price IDs from the settings table (cached) or from Stripe
-export async function getPriceIds(db: Awaited<ReturnType<typeof getKyselyClient>>): Promise<PriceIds> {
+export async function getPriceIds(
+	db: Awaited<ReturnType<typeof getKyselyClient>>
+): Promise<PriceIds> {
 	try {
 		// First try to get from settings table (cached values)
 		const cachedPrices = await getCachedPriceIds(db);
@@ -98,7 +99,9 @@ export async function getPriceIds(db: Awaited<ReturnType<typeof getKyselyClient>
 }
 
 // Get cached price IDs from the settings table
-async function getCachedPriceIds(db: Awaited<ReturnType<typeof getKyselyClient>>): Promise<PriceIds | null> {
+async function getCachedPriceIds(
+	db: Awaited<ReturnType<typeof getKyselyClient>>
+): Promise<PriceIds | null> {
 	try {
 		// Get both monthly and annual price IDs in a single query
 		const priceData = await db
@@ -143,6 +146,8 @@ export function generatePricingInfo({
 	proratedPrice,
 	monthlyFee,
 	annualFee,
+	proratedAnnualPrice,
+	proratedMonthlyPrice,
 	discountPercentage = 0,
 	coupon = undefined,
 	discountedMonthlyFee = undefined,
@@ -151,6 +156,8 @@ export function generatePricingInfo({
 	proratedPrice: number;
 	monthlyFee: number;
 	annualFee: number;
+	proratedMonthlyPrice?: number;
+	proratedAnnualPrice?: number;
 	discountPercentage?: number;
 	coupon?: string;
 	discountedMonthlyFee?: number;
@@ -162,11 +169,11 @@ export function generatePricingInfo({
 			currency: 'EUR'
 		}).toJSON(),
 		proratedMonthlyPrice: Dinero({
-			amount: proratedPrice,
+			amount: proratedMonthlyPrice ?? proratedPrice,
 			currency: 'EUR'
 		}).toJSON(),
 		proratedAnnualPrice: Dinero({
-			amount: proratedPrice,
+			amount: proratedAnnualPrice ?? proratedPrice,
 			currency: 'EUR'
 		}).toJSON(),
 		monthlyFee: Dinero({
@@ -177,18 +184,22 @@ export function generatePricingInfo({
 			amount: annualFee,
 			currency: 'EUR'
 		}).toJSON(),
-		...(discountedMonthlyFee ? {
-			discountedMonthlyFee: Dinero({
-				amount: discountedMonthlyFee,
-				currency: 'EUR'
-			}).toJSON()
-		} : {}),
-		...(discountedAnnualFee ? {
-			discountedAnnualFee: Dinero({
-				amount: discountedAnnualFee,
-				currency: 'EUR'
-			}).toJSON()
-		} : {}),
+		...(discountedMonthlyFee
+			? {
+					discountedMonthlyFee: Dinero({
+						amount: discountedMonthlyFee,
+						currency: 'EUR'
+					}).toJSON()
+				}
+			: {}),
+		...(discountedAnnualFee
+			? {
+					discountedAnnualFee: Dinero({
+						amount: discountedAnnualFee,
+						currency: 'EUR'
+					}).toJSON()
+				}
+			: {}),
 		...(coupon ? { coupon } : {}),
 		discountPercentage
 	} as PlanPricing;

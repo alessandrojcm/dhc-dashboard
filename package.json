@@ -31,7 +31,8 @@
 		"@fontsource/fira-mono": "^5.2.6",
 		"@lucide/svelte": "^0.536.0",
 		"@neoconfetti/svelte": "^2.2.2",
-		"@playwright/test": "^1.54.2",
+		"@playwright/test": "^1.54.0",
+		"@sentry/vite-plugin": "^4.3.0",
 		"@snaplet/copycat": "^6.0.0",
 		"@snaplet/seed": "0.98.0",
 		"@stripe/stripe-js": "^7.7.0",
@@ -124,7 +125,7 @@
 		"posthog-js": "^1.258.5",
 		"svelte-radix": "^2.0.1"
 	},
-	"packageManager": "pnpm@10.13.1",
+	"packageManager": "pnpm@10.16.1",
 	"pnpm": {
 		"onlyBuiltDependencies": [
 			"@parcel/watcher",

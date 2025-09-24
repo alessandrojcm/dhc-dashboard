@@ -2,7 +2,12 @@ import { superValidate } from 'sveltekit-superforms';
 import { valibot } from 'sveltekit-superforms/adapters';
 import { fail, error } from '@sveltejs/kit';
 import { UpdateWorkshopSchema } from '$lib/schemas/workshops';
-import { updateWorkshop, canEditWorkshop, canEditWorkshopPricing } from '$lib/server/workshops';
+import {
+	updateWorkshop,
+	canEditWorkshop,
+	canEditWorkshopPricing,
+	type ClubActivityUpdate
+} from '$lib/server/workshops';
 import { authorize } from '$lib/server/auth';
 import { WORKSHOP_ROLES } from '$lib/server/roles';
 import { message } from 'sveltekit-superforms';
@@ -99,24 +104,25 @@ export const actions: Actions = {
 					{ status: 400 }
 				);
 			}
-
 			// Transform form data to database format
-			const updateData: any = {};
-
-			if (form.data.title !== undefined) updateData.title = form.data.title;
-			if (form.data.description !== undefined) updateData.description = form.data.description;
-			if (form.data.location !== undefined) updateData.location = form.data.location;
-			if (form.data.max_capacity !== undefined) updateData.max_capacity = form.data.max_capacity;
-			if (form.data.is_public !== undefined) updateData.is_public = form.data.is_public;
-			if (form.data.refund_deadline_days !== undefined)
-				updateData.refund_days = form.data.refund_deadline_days;
-
-			if (form.data.workshop_date !== undefined) {
-				updateData.start_date = dayjs(form.data.workshop_date).toISOString();
-			}
-
+			const updateData: ClubActivityUpdate = {
+				...form.data,
+				start_date: form.data.workshop_date,
+				end_date: form.data.workshop_end_date,
+				refund_days: form.data.refund_deadline_days
+			};
+			// @ts-expect-error deleting the property from the spread
+			delete updateData['workshop_date'];
+			// @ts-expect-error deleting the property from the spread
+			delete updateData['workshop_end_date'];
+			// @ts-expect-error deleting the property from the spread
+			delete updateData['refund_deadline_days'];
 			if (form.data.workshop_end_date !== undefined) {
-				updateData.end_date = dayjs(form.data.workshop_end_date).toISOString();
+				const endDate = dayjs(form.data.workshop_end_date);
+				updateData.end_date = dayjs(form.data.workshop_date)
+					.set('hour', endDate.hour())
+					.set('minute', endDate.minute())
+					.toISOString();
 			}
 
 			// Convert euro prices to cents only if pricing changes are allowed
