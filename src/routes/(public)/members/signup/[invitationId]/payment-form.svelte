@@ -7,7 +7,7 @@
 	import { valibotClient } from 'sveltekit-superforms/adapters';
 	import { memberSignupSchema } from '$lib/schemas/membersSignup';
 	import { parsePhoneNumberFromString } from 'libphonenumber-js/min';
-	import { ArrowRightIcon, Proportions } from 'lucide-svelte';
+	import { ArrowRightIcon } from 'lucide-svelte';
 	import {
 		loadStripe,
 		type StripeElements,
@@ -75,7 +75,6 @@
 
 	const form = superForm(props.form, {
 		validators: valibotClient(memberSignupSchema),
-		invalidateAll: false,
 		resetForm: false,
 		validationMethod: 'onblur',
 		scrollToError: true,
@@ -269,7 +268,6 @@
 				</Form.Control>
 				<Form.FieldErrors />
 			</Form.Field>
-
 			<Form.Field {form} name="nextOfKinNumber">
 				<Form.Control>
 					{#snippet children({ props })}
@@ -284,11 +282,6 @@
 				<Form.FieldErrors />
 			</Form.Field>
 			<p class="prose text-lg text-black">Payment details</p>
-
-			<script>
-				import PricingDisplay from './pricing-display.svelte';
-			</script>
-
 			<PricingDisplay
 				planPricingData={planData}
 				{couponCode}
