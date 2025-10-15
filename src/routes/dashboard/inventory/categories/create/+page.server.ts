@@ -30,7 +30,6 @@ export const actions: { [key: string]: Action } = {
 				return await trx
 					.insertInto('equipment_categories')
 					.values({
-						id: crypto.randomUUID(),
 						name: form.data.name,
 						description: form.data.description || null,
 						available_attributes: form.data.available_attributes,

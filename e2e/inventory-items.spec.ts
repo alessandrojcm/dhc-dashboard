@@ -8,14 +8,22 @@ const createContainer = async (data: { name: string; description: string; create
 	return await supabase.from('containers').insert(data).select().single();
 };
 
-const createCategory = async (data: {
-	name: string;
-	description: string;
-	available_attributes: any[];
-}) => {
-	const supabase = getSupabaseServiceClient();
-	return await supabase.from('equipment_categories').insert(data).select().single();
-};
+async function createCategory(name: string, description: string, available_attributes: any[] = []) {
+	const supabaseServiceClient = getSupabaseServiceClient();
+	const { data: categoryData, error: categoryError } = await supabaseServiceClient
+		.from('equipment_categories')
+		.insert({
+			name,
+			description,
+			available_attributes
+		})
+		.select()
+		.single();
+
+	expect(categoryError).toBeNull();
+	expect(categoryData).toBeTruthy();
+	return categoryData;
+}
 
 test.describe('Inventory Items Management', () => {
 	let quartermasterData: Awaited<ReturnType<typeof createMember>>;
@@ -56,46 +64,45 @@ test.describe('Inventory Items Management', () => {
 		testContainerId = containerResponse.data!.id;
 
 		// Create basic test category
-		const categoryResponse = await createCategory({
-			name: `Test Category ${timestamp}`,
-			description: 'Basic category for testing',
-			available_attributes: []
-		});
-		testCategoryId = categoryResponse.data!.id;
+		const categoryData = await createCategory(
+			`Test Category ${timestamp}`,
+			'Basic category for testing'
+		);
+		testCategoryId = categoryData!.id;
 
 		// Create weapons category with attributes
-		const weaponsResponse = await createCategory({
-			name: `Weapons ${timestamp}`,
-			description: 'Weapons category',
-			available_attributes: [
-				{
-					type: 'select',
-					label: 'Weapon Type',
-					required: true,
-					options: ['Longsword', 'Rapier', 'Dagger', 'Spear'],
-					default_value: null
-				},
-				{
-					type: 'text',
-					label: 'Manufacturer',
-					required: false,
-					default_value: null
-				},
-				{
-					type: 'number',
-					label: 'Weight (kg)',
-					required: false,
-					default_value: null
-				},
-				{
-					type: 'boolean',
-					label: 'In Maintenance',
-					required: false,
-					default_value: false
-				}
-			]
-		});
-		weaponsCategoryId = weaponsResponse.data!.id;
+		const weaponsData = await createCategory(`Weapons ${timestamp}`, 'Weapons category', [
+			{
+				type: 'select',
+				label: 'Weapon Type',
+				name: 'weapon-type',
+				required: true,
+				options: ['Longsword', 'Rapier', 'Dagger', 'Spear'],
+				default_value: null
+			},
+			{
+				type: 'text',
+				label: 'Manufacturer',
+				name: 'manufacturer',
+				required: false,
+				default_value: null
+			},
+			{
+				type: 'number',
+				label: 'Weight (kg)',
+				name: 'weight',
+				required: false,
+				default_value: null
+			},
+			{
+				type: 'boolean',
+				label: 'In-Testing',
+				name: 'in-testing',
+				required: false,
+				default_value: false
+			}
+		]);
+		weaponsCategoryId = weaponsData!.id;
 	});
 
 	test.afterAll(async () => {
@@ -117,14 +124,15 @@ test.describe('Inventory Items Management', () => {
 
 			// Fill basic information
 			await page.getByLabel(/quantity/i).fill('5');
-			// Select category
+
+			// Select category - use the SelectTrigger which shows the current value
 			await page.getByRole('button', { name: /category/i }).click();
 			await page
-				.getByText(/^Test Category/)
+				.getByText(/test category/i)
 				.first()
 				.click();
 
-			// Select container
+			// Select container - use the SelectTrigger which shows the current value
 			await page.getByRole('button', { name: /container/i }).click();
 			await page.getByText('Test Container').first().click();
 
@@ -135,7 +143,7 @@ test.describe('Inventory Items Management', () => {
 			await expect(page).toHaveURL(new RegExp(`/dashboard/inventory/items/[a-f0-9-]+$`));
 
 			// Verify item was created by checking page loaded
-			await expect(page.getByRole('heading', { name: /item details/i })).toBeVisible();
+			await expect(page.getByText(/item information/i)).toBeVisible();
 		});
 
 		test('should create item with complex attributes', async ({ page, context }) => {
@@ -145,31 +153,36 @@ test.describe('Inventory Items Management', () => {
 			const timestamp = Date.now();
 
 			// Click Add Item button
-			await page.getByRole('link', { name: /add item/i }).click();
+			await page
+				.getByRole('link', { name: /add item/i })
+				.first()
+				.click();
 
 			// Fill basic information
 			await page.getByLabel(/quantity/i).fill('2');
 			await page.getByLabel(/notes/i).fill(`Notes for complex item ${timestamp}`);
-
 			// Select weapons category to get complex attributes
-			await page.getByLabel(/category/i).click();
-			await page.getByText(/^Weapons/).click();
+			await page.getByRole('button', { name: /category/i }).click();
+			await page
+				.getByRole('option', { name: /weapons/i })
+				.last()
+				.click();
 
 			// Select container
-			await page.getByLabel(/container/i).click();
-			await page.getByText('Test Container').click();
+			await page.getByRole('button', { name: /container/i }).click();
+			await page
+				.getByText(/test container/i)
+				.last()
+				.click();
 
-			// Wait for dynamic attributes to appear
-			await page.waitForSelector('text=Item Attributes');
-
-			// Fill weapon-specific attributes
-			await page.getByLabel(/weapon type/i).click();
+			// Fill weapon-specific attributes - use proper shadcn-svelte pattern for dynamic fields
+			await page.getByRole('button', { name: /weapon type/i }).click();
 			await page.getByText('Longsword').click();
 
 			await page.getByLabel(/manufacturer/i).fill('Albion Swords');
 			await page.getByLabel(/weight/i).fill('1.5');
 
-			// Check maintenance status
+			// Check maintenance status - this is the boolean field from DynamicAttributeFields
 			await page.getByLabel(/in maintenance/i).check();
 
 			// Submit form
@@ -220,18 +233,18 @@ test.describe('Inventory Items Management', () => {
 			// Fill basic required fields
 			await page.getByLabel(/quantity/i).fill('1');
 
-			// Select armor category that has required attributes
-			await page.getByLabel(/category/i).click();
-			await page.getByText(/^Armor/).click();
+			// Select weapons category which has required attributes
+			await page.getByRole('button', { name: /category/i }).click();
+			await page.getByText(/^Weapons/).click();
 
 			// Select container
-			await page.getByLabel(/container/i).click();
+			await page.getByRole('button', { name: /container/i }).click();
 			await page.getByText('Test Container').click();
 
 			// Wait for dynamic attributes to appear
 			await page.waitForSelector('text=Item Attributes');
 
-			// DON'T fill required attributes - leave 'Armor Type', 'Size', and 'Condition' empty
+			// DON'T fill required 'Weapon Type' attribute - leave it empty
 
 			// Try to submit form
 			await page.getByRole('button', { name: /create item/i }).click();
@@ -260,10 +273,10 @@ test.describe('Inventory Items Management', () => {
 			await page.getByLabel(/quantity/i).fill('-1');
 
 			// Select category and container
-			await page.getByLabel(/category/i).click();
+			await page.getByRole('button', { name: /category/i }).click();
 			await page.getByText(/^Test Category/).click();
 
-			await page.getByLabel(/container/i).click();
+			await page.getByRole('button', { name: /container/i }).click();
 			await page.getByText('Test Container').click();
 
 			// Try to submit form
@@ -428,7 +441,7 @@ test.describe('Inventory Items Management', () => {
 			await expect(page.getByText(`Basic Item ${timestamp}`)).toBeVisible();
 
 			// Use the category filter with correct label
-			await page.getByLabel(/^category$/i).click();
+			await page.getByRole('button', { name: /category/i }).click();
 			await page.getByText(/^Weapons/).click(); // Select the weapons category
 
 			// Apply the filter
@@ -476,7 +489,7 @@ test.describe('Inventory Items Management', () => {
 			await expect(page.getByText(`Second Container Item ${timestamp}`)).toBeVisible();
 
 			// Use the container filter with correct label
-			await page.getByLabel(/^container$/i).click();
+			await page.getByRole('button', { name: /container/i }).click();
 			await page.getByText(`Second Container ${timestamp}`).click();
 
 			// Apply the filter
@@ -519,7 +532,7 @@ test.describe('Inventory Items Management', () => {
 			await expect(page.getByText(`Maintenance Item ${timestamp}`)).toBeVisible();
 
 			// Filter for items out for maintenance
-			await page.getByLabel(/^maintenance$/i).click();
+			await page.getByRole('button', { name: /maintenance/i }).click();
 			await page.getByText('Out for maintenance').click(); // Match exact option text
 
 			// Apply the filter
@@ -533,7 +546,7 @@ test.describe('Inventory Items Management', () => {
 			await expect(page.getByText(`Available Item ${timestamp}`)).not.toBeVisible();
 
 			// Now test filtering for available items
-			await page.getByLabel(/^maintenance$/i).click();
+			await page.getByRole('button', { name: /maintenance/i }).click();
 			await page.getByText('Available items').click();
 
 			await page.getByRole('button', { name: /apply/i }).click();
@@ -569,7 +582,7 @@ test.describe('Inventory Items Management', () => {
 
 			// Apply multiple filters
 			await page.getByPlaceholder(/search items.../i).fill('Diverse');
-			await page.getByLabel(/^category$/i).click();
+			await page.getByRole('button', { name: /category/i }).click();
 			await page.getByText(/^Test Category/).click();
 
 			await page.getByRole('button', { name: /apply/i }).click();
@@ -626,9 +639,9 @@ test.describe('Inventory Items Management', () => {
 
 			// Apply multiple filters: search + category + maintenance status
 			await page.getByPlaceholder(/search items.../i).fill('Multi Weapon');
-			await page.getByLabel(/^category$/i).click();
+			await page.getByRole('button', { name: /category/i }).click();
 			await page.getByText(/^Weapons/).click();
-			await page.getByLabel(/^maintenance$/i).click();
+			await page.getByRole('button', { name: /maintenance/i }).click();
 			await page.getByText('Available items').click();
 
 			await page.getByRole('button', { name: /apply/i }).click();
@@ -662,7 +675,7 @@ test.describe('Inventory Items Management', () => {
 			await page.goto('/dashboard/inventory/items');
 
 			// Apply a filter
-			await page.getByLabel(/^category$/i).click();
+			await page.getByRole('button', { name: /category/i }).click();
 			await page.getByText(/^Weapons/).click();
 			await page.getByRole('button', { name: /apply/i }).click();
 
@@ -747,9 +760,9 @@ test.describe('Inventory Items Management', () => {
 
 			// Should be able to fill form and create item
 			await page.getByLabel(/quantity/i).fill('1');
-			await page.getByLabel(/category/i).click();
+			await page.getByRole('button', { name: /category/i }).click();
 			await page.getByText(/^Test Category/).click();
-			await page.getByLabel(/container/i).click();
+			await page.getByRole('button', { name: /container/i }).click();
 			await page.getByText('Test Container').click();
 			await page.getByRole('button', { name: /create item/i }).click();
 
@@ -806,9 +819,9 @@ test.describe('Inventory Items Management', () => {
 			await page.getByRole('link', { name: /add item/i }).click();
 			await page.getByLabel(/notes/i).fill(`Item for history testing ${itemName}`);
 			await page.getByLabel(/quantity/i).fill('1');
-			await page.getByLabel(/category/i).click();
+			await page.getByRole('button', { name: /category/i }).click();
 			await page.getByText(/^Test Category/).click();
-			await page.getByLabel(/container/i).click();
+			await page.getByRole('button', { name: /container/i }).click();
 			await page.getByText('Test Container').click();
 			await page.getByRole('button', { name: /create item/i }).click();
 

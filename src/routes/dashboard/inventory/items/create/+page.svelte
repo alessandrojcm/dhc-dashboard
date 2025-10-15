@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { superForm } from 'sveltekit-superforms';
+	import SuperDebug, { superForm } from 'sveltekit-superforms';
 	import { valibot } from 'sveltekit-superforms/adapters';
-	import { itemSchema } from '$lib/schemas/inventory';
+	import { type CategorySchema, itemSchema } from '$lib/schemas/inventory';
 	import {
 		Card,
 		CardContent,
@@ -16,7 +16,8 @@
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import * as Form from '$lib/components/ui/form';
 	import { ArrowLeft, Package } from 'lucide-svelte';
-	import DynamicAttributeFields from '$lib/components/inventory/DynamicAttributeFields.svelte';
+	import { dev } from '$app/environment';
+	import { Label } from '$lib/components/ui/label';
 
 	let { data } = $props();
 
@@ -29,7 +30,10 @@
 	const { form: formData, enhance, submitting } = form;
 
 	// Reactive category selection for dynamic attributes
-	let selectedCategory = $derived(data.categories.find((c) => c.id === $formData.category_id));
+	const selectedCategory: CategorySchema = $derived(
+		data.categories.find((c) => c.id === $formData.category_id) as unknown as CategorySchema
+	);
+	const categoryAttributes = $derived(selectedCategory?.available_attributes || []);
 
 	// Build hierarchy display for container selection
 	const buildHierarchyDisplay = (containers: any[]) => {
@@ -70,6 +74,24 @@
 	};
 
 	const hierarchicalContainers = buildHierarchyDisplay(data.containers);
+
+	function updateCategory() {
+		if (!selectedCategory) return;
+
+		// Reset attributes when category changes
+		$formData.attributes = {};
+
+		// Initialize attributes with default values using proper keys
+		selectedCategory.available_attributes.forEach((attr) => {
+			$formData.attributes[attr.name] =
+				attr.default_value !== undefined ? attr.default_value : null;
+		});
+	}
+
+	$effect(() => {
+		selectedCategory;
+		updateCategory();
+	});
 </script>
 
 <div class="p-6">
@@ -187,11 +209,76 @@
 					</CardDescription>
 				</CardHeader>
 				<CardContent>
-					<DynamicAttributeFields
-						category={selectedCategory}
-						bind:attributes={$formData.attributes}
-						{form}
-					/>
+					{#if categoryAttributes.length > 0}
+						<div class="space-y-4">
+							<h3 class="text-lg font-medium">Item Attributes</h3>
+							<div class="grid gap-4 md:grid-cols-2">
+								{#each categoryAttributes as attr}
+									{#if attr.name}
+										<Form.Field {form} name="attributes.{attr.name}">
+											<Label for={attr.name}>
+												{attr.label}
+												{#if attr.required}
+													<span class="text-destructive">*</span>
+												{/if}
+											</Label>
+											<Form.Control>
+												{#snippet children({ props })}
+													{#if attr.type === 'text'}
+														<Input
+															{...props}
+															bind:value={$formData.attributes[attr.name]}
+															placeholder={attr.label}
+														/>
+													{:else if attr.type === 'number'}
+														<Input
+															{...props}
+															id={attr.name}
+															type="number"
+															bind:value={$formData.attributes[attr.name]}
+															placeholder={attr.label}
+														/>
+													{:else if attr.type === 'select' && attr.options}
+														<Select
+															{...props}
+															type="single"
+															bind:value={$formData.attributes[attr.name]}
+															name="attributes.{attr.name}"
+														>
+															<SelectTrigger>
+																{String(`Select ${attr.label.toLowerCase()}`)}
+															</SelectTrigger>
+															<SelectContent>
+																{#each attr.options as option}
+																	<SelectItem value={option}>{option}</SelectItem>
+																{/each}
+															</SelectContent>
+														</Select>
+													{:else if attr.type === 'boolean'}
+														<div class="flex items-center space-x-2">
+															<Checkbox
+																id={attr.name}
+																name="attributes.{attr.name}"
+																bind:checked={$formData.attributes[attr.name]}
+															/>
+															<Label for={attr.name} class="text-sm font-normal">
+																{attr.label}
+															</Label>
+														</div>
+													{/if}
+												{/snippet}
+											</Form.Control>
+											<Form.FieldErrors />
+										</Form.Field>
+									{/if}
+								{/each}
+							</div>
+						</div>
+					{:else}
+						<div class="text-center py-8 text-muted-foreground">
+							<p>This category has no custom attributes defined.</p>
+						</div>
+					{/if}
 				</CardContent>
 			</Card>
 		{/if}
@@ -205,3 +292,6 @@
 		</div>
 	</form>
 </div>
+{#if dev}
+	<SuperDebug data={$formData} />
+{/if}

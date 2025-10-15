@@ -29,15 +29,16 @@
 
 	const addAttribute = () => {
 		if (!newAttribute.label) return;
-
-
-		$formData.available_attributes = [...$formData.available_attributes, { ...newAttribute, ...(newAttribute.type === 'select' && { options: [] }) }];
-
+		$formData.available_attributes = [...$formData.available_attributes, {
+			...newAttribute, ...(newAttribute.type === 'select' && { options: [] }),
+			name: newAttribute.label.toLowerCase().replaceAll(/ /g, '-')
+		}];
 		// Reset form
 		newAttribute = {
 			type: 'text',
 			label: '',
-			required: false
+			required: false,
+			name: ''
 		};
 	};
 </script>
@@ -118,7 +119,7 @@
 								<Trash2 class="h-4 w-4" />
 							</Button>
 						</div>
-						<Form.Field {form} name='available_attributes[{index}].label' }>
+						<Form.Field {form} name='available_attributes[{index}].label'>
 							<Form.Control>
 								{#snippet children({ props }) }
 									<Form.Label>Display Label</Form.Label>
@@ -130,7 +131,7 @@
 							</Form.Control>
 							<Form.FieldErrors />
 						</Form.Field>
-						<Form.Field {form} name='available_attributes[{index}].required' }>
+						<Form.Field {form} name='available_attributes[{index}].required'>
 							<Form.Control>
 								{#snippet children({ props }) }
 									<div class="flex items-center space-x-2 pt-6">
@@ -146,34 +147,36 @@
 						</Form.Field>
 
 						{#if attr.type === 'select' && attr.options}
-							<Form.Field {form} name='available_attributes[{index}].options' }>
+							<Form.Field {form} name='available_attributes[{index}].options'>
 								<Form.Control>
 									{#snippet children({ props }) }
 										<input type="hidden" {...props} bind:value={$formData.available_attributes[index].options} />
 										<Form.Label>Options</Form.Label>
 										<div class="space-y-2">
 											{#each attr.options ?? [] as value, i}
-												<Form.Field {form} name='available_attributes[{index}].options[{i}]'>
-													<Form.Control>
-														{#snippet children({ props }) }
-															<Form.Label>Option {i + 1}</Form.Label>
-															<Input
-																{...props}
-																placeholder="Option value"
-																bind:value={$formData.available_attributes[index].options[i]}
-															/>
-															<Button
-																variant="ghost"
-																size="sm"
-																aria-label={`Remove option ${value}`}
-																onclick={() => ($formData.available_attributes[index].options[i]=attr.options?.filter((v) => v !== value))}
-															>
-																<Trash2 class="h-4 w-4" />
-															</Button>
-														{/snippet}
-													</Form.Control>
-													<Form.FieldErrors />
-												</Form.Field>
+												{#if $formData.available_attributes[index].options}
+													<Form.Field {form} name="available_attributes[{index}].options[{i}]">
+														<Form.Control>
+															{#snippet children({ props }) }
+																<Form.Label>Option {i + 1}</Form.Label>
+																<Input
+																	{...props}
+																	placeholder="Option value"
+																	bind:value={$formData.available_attributes[index].options[i]}
+																/>
+																<Button
+																	variant="ghost"
+																	size="sm"
+																	aria-label={`Remove option ${value}`}
+																	onclick={() => ($formData.available_attributes[index].options[i]=attr.options?.filter((v) => v !== value))}
+																>
+																	<Trash2 class="h-4 w-4" />
+																</Button>
+															{/snippet}
+														</Form.Control>
+														<Form.FieldErrors />
+													</Form.Field>
+												{/if}
 											{/each}
 											<Button
 												variant="outline"

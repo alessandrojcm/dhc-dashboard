@@ -14,6 +14,7 @@ import {
 	array,
 	union,
 	literal,
+	nonEmpty,
 	type InferOutput
 } from 'valibot';
 
@@ -41,7 +42,8 @@ export const attributeDefinitionSchema = object({
 	label: pipe(string(), minLength(1, 'Label is required')),
 	required: optional(boolean()),
 	options: optional(array(string())), // For select type
-	default_value: optional(any())
+	default_value: optional(any()),
+	name: optional(string())
 });
 
 export const categorySchema = object({
@@ -57,8 +59,8 @@ export const categorySchema = object({
 });
 
 export const itemSchema = object({
-	container_id: string('Container is required'),
-	category_id: string('Category is required'),
+	container_id: pipe(string('Container is required'), nonEmpty('You must select a container')),
+	category_id: pipe(string('Category is required'), nonEmpty('You must select a category')),
 	attributes: optional(record(string(), any())),
 	quantity: pipe(number(), minValue(1, 'Quantity must be at least 1')),
 	notes: optional(pipe(string(), maxLength(1000, 'Notes must be less than 1000 characters'))),
