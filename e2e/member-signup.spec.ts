@@ -19,9 +19,8 @@ test.describe('Member Signup - Negative test cases', () => {
 			invitationStatus: 'expired' as const
 		}
 	].forEach((override) => {
-		let testData: Awaited<ReturnType<typeof setupInvitedUser>>;
 		test.beforeAll(async () => {
-			testData = await setupInvitedUser(override);
+			await setupInvitedUser(override);
 		});
 
 		test(`should show correct error page when the invitation is invalid ${JSON.stringify(override)}`, async ({
@@ -50,8 +49,7 @@ test.describe('Member Signup - Valid invitation', () => {
 			)}`
 		);
 
-		// Submit the verification form
-		await page.getByRole('button', { name: 'Verify Invitation' }).click();
+		await page.getByText(/verify invitation/i).click();
 
 		// Wait for verification to complete and payment form to be visible
 		await expect(page.getByText('First Name')).toBeVisible();
@@ -122,6 +120,7 @@ test.describe('Member Signup - Valid invitation', () => {
 		await stripeFrame.getByLabel('City').fill('Dublin');
 		await stripeFrame.getByLabel('Eircode').fill('K45 HR22');
 		await stripeFrame.getByLabel('County').selectOption('County Dublin');
+		await page.pause();
 		await page.getByRole('button', { name: /sign up/i }).click();
 		await expect(
 			page.getByText(
