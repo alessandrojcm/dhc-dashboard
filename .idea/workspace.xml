@@ -21,8 +21,11 @@
     <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="feat(phone): improve phone number validation and formatting&#10;&#10;- Use `formatIncompletePhoneNumber` for better partial number formatting&#10;- Simplify phone input logic and enhance parsing accuracy&#10;- Update `PhoneInput` component with hidden input for binding raw values&#10;- Change phone validation schema to handle incomplete phone numbers more gracefully&#10;- Improve `phone-input.svelte` user experience and maintain consistent behavior across the application&#10;&#10;# Conflicts:&#10;#&#9;.idea/workspace.xml">
       <change beforePath="$PROJECT_DIR$/.idea/dataSources.local.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources.local.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/e2e/member-signup.spec.ts" beforeDir="false" afterPath="$PROJECT_DIR$/e2e/member-signup.spec.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/opencode.json" beforeDir="false" afterPath="$PROJECT_DIR$/opencode.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]/+error.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]/+error.svelte" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]/+page.server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]/+page.server.ts" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]/payment-form.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]/payment-form.svelte" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/members/[memberId]/+page.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/members/[memberId]/+page.svelte" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -84,7 +87,7 @@
     </option>
   </component>
   <component name="HighlightingSettingsPerFile">
-    <setting file="file://$PROJECT_DIR$/node_modules/.pnpm/@stripe+stripe-js@7.4.0/node_modules/@stripe/stripe-js/dist/stripe-js/elements/express-checkout.d.ts" root0="SKIP_INSPECTION" />
+    <setting file="file://$PROJECT_DIR$/node_modules/.pnpm/sveltekit-superforms@2.27.1_@sveltejs+kit@2.27.0_@sveltejs+vite-plugin-svelte@6.1.0_sve_7fb3ebbd2045969e0e1d0d36cd7a0560/node_modules/sveltekit-superforms/dist/client/superForm.d.ts" root0="SKIP_INSPECTION" />
   </component>
   <component name="ProjectColorInfo">{
   &quot;associatedIndex&quot;: 5
@@ -94,52 +97,53 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent">{
-  &quot;keyToString&quot;: {
-    &quot;Attach to Node.js/Chrome.Edge Functions.executor&quot;: &quot;Debug&quot;,
-    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
-    &quot;Node.js.script.js.executor&quot;: &quot;Run&quot;,
-    &quot;Node.js.seedMembers.js.executor&quot;: &quot;Debug&quot;,
-    &quot;Node.js.seedWaitlist.js.executor&quot;: &quot;Run&quot;,
-    &quot;Playwright.Workshop API.executor&quot;: &quot;Run&quot;,
-    &quot;Playwright.Workshop API.should create workshop as admin.executor&quot;: &quot;Run&quot;,
-    &quot;Playwright.Workshop Interest System.executor&quot;: &quot;Run&quot;,
-    &quot;Playwright.Workshop Interest System.should display planned workshops in calendar view.executor&quot;: &quot;Debug&quot;,
-    &quot;Playwright.Workshop Management.executor&quot;: &quot;Run&quot;,
-    &quot;Playwright.Workshop UI.executor&quot;: &quot;Run&quot;,
-    &quot;Playwright.Workshop UI.should display and validate workshop creation form.executor&quot;: &quot;Debug&quot;,
-    &quot;Playwright.Workshop UI.should navigate to create workshop form.executor&quot;: &quot;Run&quot;,
-    &quot;Playwright.underage user (16-17) should be able to submit with guardian information.executor&quot;: &quot;Run&quot;,
-    &quot;Playwright.underage user (16-17) should be required to fill guardian fields.executor&quot;: &quot;Run&quot;,
-    &quot;Playwright.underage-guardian-waitlist.spec.ts.executor&quot;: &quot;Run&quot;,
-    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
-    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
-    &quot;com.codeium.enabled&quot;: &quot;true&quot;,
-    &quot;deno.use.library&quot;: &quot;true&quot;,
-    &quot;disable.download.node.interpreter.editor.notification&quot;: &quot;true&quot;,
-    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
-    &quot;junie.onboarding.icon.badge.shown&quot;: &quot;true&quot;,
-    &quot;last_opened_file_path&quot;: &quot;/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]&quot;,
-    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
-    &quot;node.js.detected.package.standard&quot;: &quot;true&quot;,
-    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
-    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
-    &quot;node.js.selected.package.standard&quot;: &quot;&quot;,
-    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
-    &quot;nodejs_package_manager_path&quot;: &quot;pnpm&quot;,
-    &quot;npm.dev.executor&quot;: &quot;Debug&quot;,
-    &quot;prettierjs.PrettierConfiguration.Package&quot;: &quot;/Users/alessandrojcm/repos/dhc-dashboard/node_modules/prettier&quot;,
-    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.pluginManager&quot;,
-    &quot;to.speed.mode.migration.done&quot;: &quot;true&quot;,
-    &quot;ts.external.directory.path&quot;: &quot;/Users/alessandrojcm/repos/dhc-dashboard/node_modules/typescript/lib&quot;,
-    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
+  <component name="PropertiesComponent"><![CDATA[{
+  "keyToString": {
+    "Attach to Node.js/Chrome.Edge Functions.executor": "Debug",
+    "ModuleVcsDetector.initialDetectionPerformed": "true",
+    "Node.js.script.js.executor": "Run",
+    "Node.js.seedMembers.js.executor": "Debug",
+    "Node.js.seedWaitlist.js.executor": "Run",
+    "Playwright.Workshop API.executor": "Run",
+    "Playwright.Workshop API.should create workshop as admin.executor": "Run",
+    "Playwright.Workshop Interest System.executor": "Run",
+    "Playwright.Workshop Interest System.should display planned workshops in calendar view.executor": "Debug",
+    "Playwright.Workshop Management.executor": "Run",
+    "Playwright.Workshop UI.executor": "Run",
+    "Playwright.Workshop UI.should display and validate workshop creation form.executor": "Debug",
+    "Playwright.Workshop UI.should navigate to create workshop form.executor": "Run",
+    "Playwright.underage user (16-17) should be able to submit with guardian information.executor": "Run",
+    "Playwright.underage user (16-17) should be required to fill guardian fields.executor": "Run",
+    "Playwright.underage-guardian-waitlist.spec.ts.executor": "Run",
+    "RunOnceActivity.ShowReadmeOnStart": "true",
+    "RunOnceActivity.git.unshallow": "true",
+    "com.codeium.enabled": "true",
+    "com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1": "true",
+    "deno.use.library": "true",
+    "disable.download.node.interpreter.editor.notification": "true",
+    "git-widget-placeholder": "develop",
+    "junie.onboarding.icon.badge.shown": "true",
+    "last_opened_file_path": "/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]",
+    "node.js.detected.package.eslint": "true",
+    "node.js.detected.package.standard": "true",
+    "node.js.detected.package.tslint": "true",
+    "node.js.selected.package.eslint": "(autodetect)",
+    "node.js.selected.package.standard": "",
+    "node.js.selected.package.tslint": "(autodetect)",
+    "nodejs_package_manager_path": "pnpm",
+    "npm.dev.executor": "Debug",
+    "prettierjs.PrettierConfiguration.Package": "/Users/alessandrojcm/repos/dhc-dashboard/node_modules/prettier",
+    "settings.editor.selected.configurable": "preferences.pluginManager",
+    "to.speed.mode.migration.done": "true",
+    "ts.external.directory.path": "/Users/alessandrojcm/repos/dhc-dashboard/node_modules/typescript/lib",
+    "vue.rearranger.settings.migration": "true"
   },
-  &quot;keyToStringList&quot;: {
-    &quot;DatabaseDriversLRU&quot;: [
-      &quot;postgresql&quot;
+  "keyToStringList": {
+    "DatabaseDriversLRU": [
+      "postgresql"
     ]
   }
-}</component>
+}]]></component>
   <component name="ReactDesignerToolWindowState">
     <option name="myId2Visible">
       <map>
@@ -226,11 +230,11 @@
     </configuration>
     <list>
       <item itemvalue="Attach to Node.js/Chrome.Edge Functions" />
+      <item itemvalue="npm.dev" />
       <item itemvalue="Playwright.Workshop API.should create workshop as admin" />
       <item itemvalue="Playwright.Workshop Interest System" />
       <item itemvalue="Playwright.Workshop Interest System.should display planned workshops in calendar view" />
       <item itemvalue="Playwright.Workshop UI.should display and validate workshop creation form" />
-      <item itemvalue="npm.dev" />
     </list>
     <recent_temporary>
       <list>
@@ -245,7 +249,7 @@
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
-        <option value="bundled-js-predefined-d6986cc7102b-e03c56caf84a-JavaScript-WS-252.23892.411" />
+        <option value="bundled-js-predefined-d6986cc7102b-3aa1da707db6-JavaScript-WS-252.26830.93" />
       </set>
     </attachedChunks>
   </component>
@@ -293,6 +297,9 @@
       <workItem from="1754224797902" duration="2007000" />
       <workItem from="1754316866887" duration="3372000" />
       <workItem from="1757446793228" duration="352000" />
+      <workItem from="1760789450646" duration="6000" />
+      <workItem from="1760789467220" duration="3741000" />
+      <workItem from="1760795430856" duration="1145000" />
     </task>
     <task id="LOCAL-00001" summary="Add guardian support for underage waitlist entries&#10;&#10;Introduce `waitlist_guardians` table and transactional logic for adding guardian details when underage users join the waitlist. Updates include database migrations, UI adjustments for conditional input fields, validation logic, and tests to ensure age-based gating.">
       <option name="closed" value="true" />
@@ -662,11 +669,6 @@
     <breakpoint-manager>
       <breakpoints>
         <line-breakpoint enabled="true" type="javascript">
-          <url>file://$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]/+page.server.ts</url>
-          <line>65</line>
-          <option name="timeStamp" value="7" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" type="javascript">
           <url>file://$PROJECT_DIR$/src/routes/api/workshops/[id]/register/+server.ts</url>
           <line>268</line>
           <option name="timeStamp" value="19" />
@@ -680,6 +682,11 @@
           <url>file://$PROJECT_DIR$/src/routes/dashboard/members/[memberId]/+page.server.ts</url>
           <line>172</line>
           <option name="timeStamp" value="24" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" type="javascript">
+          <url>file://$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]/+page.server.ts</url>
+          <line>64</line>
+          <option name="timeStamp" value="25" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>

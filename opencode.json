@@ -13,9 +13,9 @@
         "postgresql://postgres:postgres@localhost:54322/postgres"
       ]
     },
-    "svelte-llm": {
+    "svelte": {
       "type": "remote",
-      "url": "https://svelte-llm.khromov.se/mcp/mcp",
+      "url": "https://mcp.svelte.dev/mcp",
       "enabled": true
     },
     "linear": {
