@@ -10,29 +10,6 @@ const stripe = new Stripe(Deno.env.get('STRIPE_SECRET_KEY') ?? '', {
 	httpClient: Stripe.createFetchHttpClient()
 });
 
-async function setLastPayment(
-	customerId: string,
-	paidDate: number,
-	subscriptionEnd: number | null
-) {
-	await db.transaction().execute(async (trx) => {
-		const memberProfileId = await trx
-			.selectFrom('user_profiles')
-			.select('supabase_user_id')
-			.where('user_profiles.customer_id', '=', customerId)
-			.execute()
-			.then((r) => r[0].supabase_user_id as string);
-		return trx
-			.updateTable('member_profiles')
-			.set({
-				last_payment_date: dayjs.unix(paidDate).toDate(),
-				membership_end_date: subscriptionEnd ? dayjs.unix(subscriptionEnd).toDate() : null
-			})
-			.where('member_profiles.id', '=', memberProfileId)
-			.execute();
-	});
-}
-
 async function setUserInactive(customerId: string) {
 	await db
 		.updateTable('user_profiles')
@@ -81,21 +58,30 @@ async function syncStripeDataToKV(customerId: string) {
 		}
 
 		if (standardMembershipSub.status === 'active') {
-			await db
-				.updateTable('member_profiles')
-				.set({ subscription_paused_until: null })
-				.where(
-					'user_profile_id',
-					'in',
-					db.selectFrom('user_profiles').select('id').where('customer_id', '=', customerId)
-				)
-				.execute();
-
-			return setLastPayment(
-				customerId,
-				standardMembershipSub.start_date,
-				standardMembershipSub.ended_at ?? null
-			);
+			await db.transaction().execute((trx) => {
+				return Promise.all([
+					trx
+						.updateTable('member_profiles')
+						.set({
+							subscription_paused_until: null,
+							last_payment_date: dayjs.unix(standardMembershipSub.start_date).toDate(),
+							membership_end_date: standardMembershipSub.ended_at
+								? dayjs.unix(standardMembershipSub.ended_at).toDate()
+								: null
+						})
+						.where(
+							'user_profile_id',
+							'in',
+							db.selectFrom('user_profiles').select('id').where('customer_id', '=', customerId)
+						)
+						.execute(),
+					trx
+						.updateTable('user_profiles')
+						.set({ is_active: true })
+						.where('customer_id', '=', customerId)
+						.execute()
+				]);
+			});
 		}
 		return Promise.resolve();
 	} catch (error) {
