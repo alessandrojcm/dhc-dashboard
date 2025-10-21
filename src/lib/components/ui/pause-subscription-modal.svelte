@@ -6,10 +6,11 @@
 	import dayjs from 'dayjs';
 	import { type DateValue, fromDate, getLocalTimeZone } from '@internationalized/date';
 
-	let { open = $bindable(), onConfirm, isPending }: {
+	let { open = $bindable(), onConfirm, isPending, extend = false }: {
 		open: boolean;
 		onConfirm: ({ pauseUntil }: { pauseUntil: string }) => void;
-		isPending: boolean
+		isPending: boolean;
+		extend?: boolean;
 	} = $props();
 
 	const minDate = $derived(fromDate(dayjs().add(1, 'day').toDate(), getLocalTimeZone()));
@@ -54,7 +55,8 @@
 				onclick={handleConfirm}
 				disabled={!selectedDate || isPending}
 			>
-				{isPending ? 'Pausing...' : 'Pause Subscription'}
+				{isPending && !extend ? 'Pausing...' : 'Pause subscription'}
+				{isPending && extend ? 'Extending...' : 'Extend subscription pause'}
 			</Button>
 		</Dialog.Footer>
 	</Dialog.Content>
