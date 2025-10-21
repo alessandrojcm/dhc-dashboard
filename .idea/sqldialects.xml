@@ -6,6 +6,7 @@
     <file url="file://$PROJECT_DIR$/supabase/migrations/20250515161342_email_processing.sql" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/supabase/migrations/20250714102710_create_club_activity_interest.sql" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/supabase/migrations/20250804152929_security_fixes.sql" dialect="PostgreSQL" />
+    <file url="file://$PROJECT_DIR$/supabase/migrations/20251021100656_invitations_search_vector.sql" dialect="PostgreSQL" />
     <file url="file://$PROJECT_DIR$/supabase/seed.sql" dialect="PostgreSQL" />
     <file url="PROJECT" dialect="PostgreSQL" />
   </component>
