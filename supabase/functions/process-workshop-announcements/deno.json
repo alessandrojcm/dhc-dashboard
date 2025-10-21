@@ -20,5 +20,7 @@
     "allowJs": true,
     "lib": ["deno.window"],
     "strict": true
-  }
+  },"lock": {
+  "version": 4
+}
 }

@@ -19,8 +19,12 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="chore: update `deno.lock` file and `supabase/config.toml` settings">
-      <change beforePath="$PROJECT_DIR$/.idea/data_source_mapping.xml" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/supabase/functions/process-discord/deno.lock" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/process-discord/deno.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/supabase/functions/get-stripe-key/.npmrc" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/supabase/functions/get-stripe-key/deno.json" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/supabase/functions/get-stripe-key/index.ts" beforeDir="false" />
+      <change beforePath="$PROJECT_DIR$/supabase/functions/process-workshop-announcements/deno.json" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/process-workshop-announcements/deno.json" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/supabase/functions/process-workshop-announcements/deno.lock" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/process-workshop-announcements/deno.lock" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
