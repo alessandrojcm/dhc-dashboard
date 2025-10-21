@@ -23,13 +23,14 @@
 	import PauseSubscriptionModal from '$lib/components/ui/pause-subscription-modal.svelte';
 	import type Stripe from 'stripe';
 	import SuperDebug from 'sveltekit-superforms';
+	import * as ButtonGroup from '$lib/components/ui/button-group';
 
 	const { data } = $props();
 
 	const form = superForm(data.form, {
 		validators: valibotClient(signupSchema),
 		validationMethod: 'onblur',
-		resetForm: false,
+		resetForm: false
 	});
 	const { form: formData, enhance, submitting, message } = form;
 	const dobProxy = dateProxy(form, 'dateOfBirth', { format: `date` });
@@ -221,15 +222,27 @@
 							</div>
 
 							{#if pausedUntil?.isAfter(dayjs())}
-								<Button
-									variant="outline"
-									onclick={() => resumeMutation.mutate()}
-									disabled={resumeMutation.isPending}
-									type="button"
-									class="w-full"
-								>
-									{resumeMutation.isPending ? 'Resuming...' : 'Resume Subscription'}
-								</Button>
+								<ButtonGroup.Root>
+									<Button
+										variant="default"
+										onclick={() => (showPauseModal = true)}
+										disabled={resumeMutation.isPending}
+										type="button"
+										class="w-full"
+									>
+										Extend pause
+									</Button>
+									<ButtonGroup.Separator />
+									<Button
+										variant="outline"
+										onclick={() => resumeMutation.mutate()}
+										disabled={resumeMutation.isPending}
+										type="button"
+										class="w-full"
+									>
+										{resumeMutation.isPending ? 'Resuming...' : 'Resume Subscription'}
+									</Button>
+								</ButtonGroup.Root>
 							{:else}
 								<Button
 									variant="outline"
@@ -412,7 +425,6 @@
 	<PauseSubscriptionModal
 		bind:open={showPauseModal}
 		onConfirm={(data) => {
-			console.log('Modal onConfirm called with:', data);
 			pauseMutation.mutate(data);
 		}}
 		isPending={pauseMutation.isPending}
