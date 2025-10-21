@@ -209,7 +209,7 @@
 						</Button
 						>
 
-						<div class="space-y-4">
+						<div class="space-y-4 grid-cols-2 grid-rows-2">
 							<div class="flex items-center justify-between">
 								<span class="text-sm font-medium">Subscription Status:</span>
 								{#if pausedUntil?.isAfter(dayjs())}
@@ -232,7 +232,6 @@
 									>
 										Extend pause
 									</Button>
-									<ButtonGroup.Separator />
 									<Button
 										variant="outline"
 										onclick={() => resumeMutation.mutate()}
@@ -428,5 +427,7 @@
 			pauseMutation.mutate(data);
 		}}
 		isPending={pauseMutation.isPending}
+		extend={pausedUntil?.isAfter(dayjs())}
+		pausedUntil={pausedUntil}
 	/>
 {/if}
