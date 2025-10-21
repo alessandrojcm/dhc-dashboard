@@ -6,14 +6,15 @@
 	import dayjs from 'dayjs';
 	import { type DateValue, fromDate, getLocalTimeZone } from '@internationalized/date';
 
-	let { open = $bindable(), onConfirm, isPending, extend = false }: {
+	let { open = $bindable(), onConfirm, isPending, extend = false, pausedUntil }: {
 		open: boolean;
 		onConfirm: ({ pauseUntil }: { pauseUntil: string }) => void;
 		isPending: boolean;
 		extend?: boolean;
+		pausedUntil?: dayjs.Dayjs;
 	} = $props();
 
-	const minDate = $derived(fromDate(dayjs().add(1, 'day').toDate(), getLocalTimeZone()));
+	const minDate = $derived(fromDate((pausedUntil ?? dayjs().add(1, 'day')).toDate(), getLocalTimeZone()));
 	const maxDate = $derived(fromDate(dayjs().add(6, 'months').toDate(), getLocalTimeZone()));
 	let selectedDate = $state<DateValue | undefined>(minDate);
 
@@ -40,7 +41,7 @@
 			<Label for="pauseUntil">Resume Date</Label>
 			<DatePicker
 				value={selectedDate ?? fromDate(new Date(), getLocalTimeZone())}
-			  minValue={minDate}
+				minValue={minDate}
 				maxValue={maxDate}
 				onDateChange={(date) => {
 					selectedDate = fromDate(date, getLocalTimeZone());
@@ -55,8 +56,11 @@
 				onclick={handleConfirm}
 				disabled={!selectedDate || isPending}
 			>
-				{isPending && !extend ? 'Pausing...' : 'Pause subscription'}
-				{isPending && extend ? 'Extending...' : 'Extend subscription pause'}
+				{#if extend}
+					{isPending ? 'Extending...' : 'Extend subscription pause'}
+				{:else }
+					{isPending ? 'Pausing...' : 'Pause subscription'}
+				{/if}
 			</Button>
 		</Dialog.Footer>
 	</Dialog.Content>
