@@ -18,13 +18,10 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="chore: update `deno.lock` file and `supabase/config.toml` settings">
+    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="chore: remove `get-stripe-key` function and update related configs&#10;&#10;- Removed `get-stripe-key` function, including its Deno config and implementation.&#10;- Updated `deno.lock` files and related workspace configurations to reflect deletion.&#10;- Adjusted dependencies in various `deno.lock` files to ensure consistency.">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/supabase/functions/get-stripe-key/.npmrc" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/supabase/functions/get-stripe-key/deno.json" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/supabase/functions/get-stripe-key/index.ts" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/supabase/functions/process-workshop-announcements/deno.json" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/process-workshop-announcements/deno.json" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/supabase/functions/process-workshop-announcements/deno.lock" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/process-workshop-announcements/deno.lock" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/supabase/functions/stripe-sync/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/stripe-sync/index.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/supabase/functions/stripe-webhooks/index.ts" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/functions/stripe-webhooks/index.ts" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -600,7 +597,15 @@
       <option name="project" value="LOCAL" />
       <updated>1761043832319</updated>
     </task>
-    <option name="localTasksCounter" value="39" />
+    <task id="LOCAL-00039" summary="chore: remove `get-stripe-key` function and update related configs&#10;&#10;- Removed `get-stripe-key` function, including its Deno config and implementation.&#10;- Updated `deno.lock` files and related workspace configurations to reflect deletion.&#10;- Adjusted dependencies in various `deno.lock` files to ensure consistency.">
+      <option name="closed" value="true" />
+      <created>1761045249031</created>
+      <option name="number" value="00039" />
+      <option name="presentableId" value="LOCAL-00039" />
+      <option name="project" value="LOCAL" />
+      <updated>1761045249031</updated>
+    </task>
+    <option name="localTasksCounter" value="40" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -641,7 +646,6 @@
   </component>
   <component name="VcsManagerConfiguration">
     <option name="CHECK_CODE_SMELLS_BEFORE_PROJECT_COMMIT" value="false" />
-    <MESSAGE value="feat: enhance invite workflow and UI; improve IDE config&#10;&#10;- Added API-based invite workflows, replacing `complete_member_registration` SQL function.&#10;- Introduced resend invitation API and related UI updates for waitlist.&#10;- Improved waitlist filtering by `status`.&#10;- Updated Stripe API version.&#10;- Refined IDE configuration and applied consistent code formatting." />
     <MESSAGE value="feat: refactor invitation to use invitation id instead of tokens" />
     <MESSAGE value="feat: added migrations for new email invite processing.&#10;&#10;It now uses the uuid of the invite as a route and sends an email manually." />
     <MESSAGE value="feat: added functions for email processing using a supabase queue." />
@@ -666,14 +670,15 @@
     <MESSAGE value="fix: remove payment session from bulk invite" />
     <MESSAGE value="feat: enhance subscription pause/resume workflow with UI and backend improvements&#10;&#10;- Integrated `ButtonGroup` for better control over subscription pause and resume actions.&#10;- Updated pause subscription modal to support extend functionality with `extend` prop.&#10;- Refined backend logic to allow updating existing pause periods.&#10;- Removed redundant server-side validation for paused subscriptions." />
     <MESSAGE value="chore: update `deno.lock` file and `supabase/config.toml` settings" />
-    <option name="LAST_COMMIT_MESSAGE" value="chore: update `deno.lock` file and `supabase/config.toml` settings" />
+    <MESSAGE value="chore: remove `get-stripe-key` function and update related configs&#10;&#10;- Removed `get-stripe-key` function, including its Deno config and implementation.&#10;- Updated `deno.lock` files and related workspace configurations to reflect deletion.&#10;- Adjusted dependencies in various `deno.lock` files to ensure consistency." />
+    <option name="LAST_COMMIT_MESSAGE" value="chore: remove `get-stripe-key` function and update related configs&#10;&#10;- Removed `get-stripe-key` function, including its Deno config and implementation.&#10;- Updated `deno.lock` files and related workspace configurations to reflect deletion.&#10;- Adjusted dependencies in various `deno.lock` files to ensure consistency." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
       <breakpoints>
         <line-breakpoint enabled="true" type="javascript">
           <url>file://$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]/+page.server.ts</url>
-          <line>65</line>
+          <line>57</line>
           <option name="timeStamp" value="7" />
         </line-breakpoint>
         <line-breakpoint enabled="true" type="javascript">
