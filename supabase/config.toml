@@ -234,6 +234,7 @@ enabled = false
 
 [edge_runtime]
 enabled = true
+deno_version = 2
 # Configure one of the supported request policies: `oneshot`, `per_worker`.
 # Use `oneshot` for hot reload, or `per_worker` for load testing.
 policy = "per_worker"

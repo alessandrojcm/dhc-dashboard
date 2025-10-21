@@ -18,11 +18,11 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="feat: update calendar component to handle dynamic max year for date options&#10;&#10;- Adjusted `yearOptions` to derive the maximum year dynamically from `maxValue` prop.&#10;- Ensured compatibility with default behavior when `maxValue` is not provided.">
+    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="feat(phone): improve phone number validation and formatting&#10;&#10;- Use `formatIncompletePhoneNumber` for better partial number formatting&#10;- Simplify phone input logic and enhance parsing accuracy&#10;- Update `PhoneInput` component with hidden input for binding raw values&#10;- Change phone validation schema to handle incomplete phone numbers more gracefully&#10;- Improve `phone-input.svelte` user experience and maintain consistent behavior across the application&#10;&#10;# Conflicts:&#10;#&#9;.idea/workspace.xml">
+      <change beforePath="$PROJECT_DIR$/.idea/dataSources.local.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/dataSources.local.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/lib/components/ui/pause-subscription-modal.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/components/ui/pause-subscription-modal.svelte" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/api/members/[memberId]/subscription/pause/+server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/api/members/[memberId]/subscription/pause/+server.ts" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/members/[memberId]/+page.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/members/[memberId]/+page.svelte" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/supabase/config.toml" beforeDir="false" afterPath="$PROJECT_DIR$/supabase/config.toml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/supabase/functions/process-discord/deno.lock" beforeDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -60,7 +60,7 @@
                 <list>
                   <RecentBranch>
                     <option name="branchName" value="main" />
-                    <option name="lastUsedInstant" value="1754128627" />
+                    <option name="lastUsedInstant" value="1761043510" />
                   </RecentBranch>
                   <RecentBranch>
                     <option name="branchName" value="feat/workshops-planing" />
@@ -84,7 +84,7 @@
     </option>
   </component>
   <component name="HighlightingSettingsPerFile">
-    <setting file="file://$PROJECT_DIR$/node_modules/.pnpm/sveltekit-superforms@2.27.1_@sveltejs+kit@2.27.0_@sveltejs+vite-plugin-svelte@6.1.0_sve_7fb3ebbd2045969e0e1d0d36cd7a0560/node_modules/sveltekit-superforms/dist/client/superForm.d.ts" root0="SKIP_INSPECTION" />
+    <setting file="file://$PROJECT_DIR$/node_modules/.pnpm/@stripe+stripe-js@7.4.0/node_modules/@stripe/stripe-js/dist/stripe-js/elements/express-checkout.d.ts" root0="SKIP_INSPECTION" />
   </component>
   <component name="ProjectColorInfo">{
   &quot;associatedIndex&quot;: 5
@@ -94,54 +94,52 @@
     <option name="hideEmptyMiddlePackages" value="true" />
     <option name="showLibraryContents" value="true" />
   </component>
-  <component name="PropertiesComponent"><![CDATA[{
-  "keyToString": {
-    "Attach to Node.js/Chrome.Edge Functions.executor": "Debug",
-    "ModuleVcsDetector.initialDetectionPerformed": "true",
-    "Node.js.script.js.executor": "Run",
-    "Node.js.seedMembers.js.executor": "Debug",
-    "Node.js.seedWaitlist.js.executor": "Run",
-    "Playwright.Workshop API.executor": "Run",
-    "Playwright.Workshop API.should create workshop as admin.executor": "Run",
-    "Playwright.Workshop Interest System.executor": "Run",
-    "Playwright.Workshop Interest System.should display planned workshops in calendar view.executor": "Debug",
-    "Playwright.Workshop Management.executor": "Run",
-    "Playwright.Workshop UI.executor": "Run",
-    "Playwright.Workshop UI.should display and validate workshop creation form.executor": "Debug",
-    "Playwright.Workshop UI.should navigate to create workshop form.executor": "Run",
-    "Playwright.underage user (16-17) should be able to submit with guardian information.executor": "Run",
-    "Playwright.underage user (16-17) should be required to fill guardian fields.executor": "Run",
-    "Playwright.underage-guardian-waitlist.spec.ts.executor": "Run",
-    "RunOnceActivity.ShowReadmeOnStart": "true",
-    "RunOnceActivity.TerminalTabsStorage.copyFrom.TerminalArrangementManager.252": "true",
-    "RunOnceActivity.git.unshallow": "true",
-    "com.codeium.enabled": "true",
-    "com.intellij.ml.llm.matterhorn.ej.ui.settings.DefaultModelSelectionForGA.v1": "true",
-    "deno.use.library": "true",
-    "disable.download.node.interpreter.editor.notification": "true",
-    "git-widget-placeholder": "develop",
-    "junie.onboarding.icon.badge.shown": "true",
-    "last_opened_file_path": "/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]",
-    "node.js.detected.package.eslint": "true",
-    "node.js.detected.package.standard": "true",
-    "node.js.detected.package.tslint": "true",
-    "node.js.selected.package.eslint": "(autodetect)",
-    "node.js.selected.package.standard": "",
-    "node.js.selected.package.tslint": "(autodetect)",
-    "nodejs_package_manager_path": "pnpm",
-    "npm.dev.executor": "Debug",
-    "prettierjs.PrettierConfiguration.Package": "/Users/alessandrojcm/repos/dhc-dashboard/node_modules/prettier",
-    "settings.editor.selected.configurable": "preferences.sourceCode.PostgreSQL",
-    "to.speed.mode.migration.done": "true",
-    "ts.external.directory.path": "/Users/alessandrojcm/repos/dhc-dashboard/node_modules/typescript/lib",
-    "vue.rearranger.settings.migration": "true"
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;Attach to Node.js/Chrome.Edge Functions.executor&quot;: &quot;Debug&quot;,
+    &quot;ModuleVcsDetector.initialDetectionPerformed&quot;: &quot;true&quot;,
+    &quot;Node.js.script.js.executor&quot;: &quot;Run&quot;,
+    &quot;Node.js.seedMembers.js.executor&quot;: &quot;Debug&quot;,
+    &quot;Node.js.seedWaitlist.js.executor&quot;: &quot;Run&quot;,
+    &quot;Playwright.Workshop API.executor&quot;: &quot;Run&quot;,
+    &quot;Playwright.Workshop API.should create workshop as admin.executor&quot;: &quot;Run&quot;,
+    &quot;Playwright.Workshop Interest System.executor&quot;: &quot;Run&quot;,
+    &quot;Playwright.Workshop Interest System.should display planned workshops in calendar view.executor&quot;: &quot;Debug&quot;,
+    &quot;Playwright.Workshop Management.executor&quot;: &quot;Run&quot;,
+    &quot;Playwright.Workshop UI.executor&quot;: &quot;Run&quot;,
+    &quot;Playwright.Workshop UI.should display and validate workshop creation form.executor&quot;: &quot;Debug&quot;,
+    &quot;Playwright.Workshop UI.should navigate to create workshop form.executor&quot;: &quot;Run&quot;,
+    &quot;Playwright.underage user (16-17) should be able to submit with guardian information.executor&quot;: &quot;Run&quot;,
+    &quot;Playwright.underage user (16-17) should be required to fill guardian fields.executor&quot;: &quot;Run&quot;,
+    &quot;Playwright.underage-guardian-waitlist.spec.ts.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.git.unshallow&quot;: &quot;true&quot;,
+    &quot;com.codeium.enabled&quot;: &quot;true&quot;,
+    &quot;deno.use.library&quot;: &quot;true&quot;,
+    &quot;disable.download.node.interpreter.editor.notification&quot;: &quot;true&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;junie.onboarding.icon.badge.shown&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]&quot;,
+    &quot;node.js.detected.package.eslint&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.standard&quot;: &quot;true&quot;,
+    &quot;node.js.detected.package.tslint&quot;: &quot;true&quot;,
+    &quot;node.js.selected.package.eslint&quot;: &quot;(autodetect)&quot;,
+    &quot;node.js.selected.package.standard&quot;: &quot;&quot;,
+    &quot;node.js.selected.package.tslint&quot;: &quot;(autodetect)&quot;,
+    &quot;nodejs_package_manager_path&quot;: &quot;pnpm&quot;,
+    &quot;npm.dev.executor&quot;: &quot;Debug&quot;,
+    &quot;prettierjs.PrettierConfiguration.Package&quot;: &quot;/Users/alessandrojcm/repos/dhc-dashboard/node_modules/prettier&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;preferences.pluginManager&quot;,
+    &quot;to.speed.mode.migration.done&quot;: &quot;true&quot;,
+    &quot;ts.external.directory.path&quot;: &quot;/Users/alessandrojcm/repos/dhc-dashboard/node_modules/typescript/lib&quot;,
+    &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   },
-  "keyToStringList": {
-    "DatabaseDriversLRU": [
-      "postgresql"
+  &quot;keyToStringList&quot;: {
+    &quot;DatabaseDriversLRU&quot;: [
+      &quot;postgresql&quot;
     ]
   }
-}]]></component>
+}</component>
   <component name="ReactDesignerToolWindowState">
     <option name="myId2Visible">
       <map>
@@ -247,7 +245,7 @@
   <component name="SharedIndexes">
     <attachedChunks>
       <set>
-        <option value="bundled-js-predefined-d6986cc7102b-3aa1da707db6-JavaScript-WS-252.26830.93" />
+        <option value="bundled-js-predefined-d6986cc7102b-e03c56caf84a-JavaScript-WS-252.23892.411" />
       </set>
     </attachedChunks>
   </component>
@@ -295,10 +293,6 @@
       <workItem from="1754224797902" duration="2007000" />
       <workItem from="1754316866887" duration="3372000" />
       <workItem from="1757446793228" duration="352000" />
-      <workItem from="1760789450646" duration="6000" />
-      <workItem from="1760789467220" duration="3741000" />
-      <workItem from="1760795430856" duration="9464000" />
-      <workItem from="1761034757717" duration="5687000" />
     </task>
     <task id="LOCAL-00001" summary="Add guardian support for underage waitlist entries&#10;&#10;Introduce `waitlist_guardians` table and transactional logic for adding guardian details when underage users join the waitlist. Updates include database migrations, UI adjustments for conditional input fields, validation logic, and tests to ensure age-based gating.">
       <option name="closed" value="true" />
@@ -596,63 +590,7 @@
       <option name="project" value="LOCAL" />
       <updated>1753461483533</updated>
     </task>
-    <task id="LOCAL-00038" summary="fix: adjust invitation signup for form validation, environment references, and transaction logic">
-      <option name="closed" value="true" />
-      <created>1760796671920</created>
-      <option name="number" value="00038" />
-      <option name="presentableId" value="LOCAL-00038" />
-      <option name="project" value="LOCAL" />
-      <updated>1760796671920</updated>
-    </task>
-    <task id="LOCAL-00039" summary="fix: correct invitation query logic for date_of_birth validation">
-      <option name="closed" value="true" />
-      <created>1760798574969</created>
-      <option name="number" value="00039" />
-      <option name="presentableId" value="LOCAL-00039" />
-      <option name="project" value="LOCAL" />
-      <updated>1760798574969</updated>
-    </task>
-    <task id="LOCAL-00040" summary="chore: updated packages">
-      <option name="closed" value="true" />
-      <created>1761041410041</created>
-      <option name="number" value="00040" />
-      <option name="presentableId" value="LOCAL-00040" />
-      <option name="project" value="LOCAL" />
-      <updated>1761041410041</updated>
-    </task>
-    <task id="LOCAL-00041" summary="feat: add ButtonGroup UI components with variants and support for Text and Separator">
-      <option name="closed" value="true" />
-      <created>1761041426622</created>
-      <option name="number" value="00041" />
-      <option name="presentableId" value="LOCAL-00041" />
-      <option name="project" value="LOCAL" />
-      <updated>1761041426622</updated>
-    </task>
-    <task id="LOCAL-00042" summary="feat: add bulk invitation management and UI improvements&#10;&#10;- Introduced bulk resend and delete functionality for invitations.&#10;- Enhanced the invitations table with search capabilities and row selection.&#10;- Added `search_text` tsvector column to invitations for text search. &#10;- Updated UI components to support new functionalities and optimized invitation actions.">
-      <option name="closed" value="true" />
-      <created>1761041437130</created>
-      <option name="number" value="00042" />
-      <option name="presentableId" value="LOCAL-00042" />
-      <option name="project" value="LOCAL" />
-      <updated>1761041437130</updated>
-    </task>
-    <task id="LOCAL-00043" summary="feat: implement Stripe sync integration and cron job  &#10;&#10;- Added a `stripe-sync` function to handle communication with Stripe and update membership data.  &#10;- Integrated Deno configuration and dependencies for the function.  &#10;- Added a database migration to enable daily cron jobs for syncing Stripe customer data.  &#10;- Updated logic for handling inactive users, paused subscriptions, and payment data synchronization.">
-      <option name="closed" value="true" />
-      <created>1761042227634</created>
-      <option name="number" value="00043" />
-      <option name="presentableId" value="LOCAL-00043" />
-      <option name="project" value="LOCAL" />
-      <updated>1761042227634</updated>
-    </task>
-    <task id="LOCAL-00044" summary="feat: update calendar component to handle dynamic max year for date options&#10;&#10;- Adjusted `yearOptions` to derive the maximum year dynamically from `maxValue` prop.&#10;- Ensured compatibility with default behavior when `maxValue` is not provided.">
-      <option name="closed" value="true" />
-      <created>1761042994645</created>
-      <option name="number" value="00044" />
-      <option name="presentableId" value="LOCAL-00044" />
-      <option name="project" value="LOCAL" />
-      <updated>1761042994645</updated>
-    </task>
-    <option name="localTasksCounter" value="45" />
+    <option name="localTasksCounter" value="38" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -693,6 +631,14 @@
   </component>
   <component name="VcsManagerConfiguration">
     <option name="CHECK_CODE_SMELLS_BEFORE_PROJECT_COMMIT" value="false" />
+    <MESSAGE value="chore: add database schema and data source configuration files" />
+    <MESSAGE value="feat: add invite management and UI enhancements&#10;&#10;- Replaced `complete_member_registration` SQL function with API-based invite workflows.&#10;- Added resend invitation API and related UI updates for waitlist.&#10;- Improved waitlist filtering (`status`).&#10;- Updated Stripe API version.&#10;- Enhanced IDE configuration and standardized code formatting." />
+    <MESSAGE value="feat: enhance invite workflow and UI; improve IDE config&#10;&#10;- Added API-based invite workflows, replacing `complete_member_registration` SQL function.&#10;- Introduced resend invitation API and related UI updates for waitlist.&#10;- Improved waitlist filtering by `status`.&#10;- Updated Stripe API version.&#10;- Refined IDE configuration and applied consistent code formatting." />
+    <MESSAGE value="feat: refactor invitation to use invitation id instead of tokens" />
+    <MESSAGE value="feat: added migrations for new email invite processing.&#10;&#10;It now uses the uuid of the invite as a route and sends an email manually." />
+    <MESSAGE value="feat: added functions for email processing using a supabase queue." />
+    <MESSAGE value="feat: refactored admin endpoint to add emails to the queue." />
+    <MESSAGE value="feat: improve invite workflow with email processing and confirmation logic&#10;&#10;- Added support for email processing using Supabase queue.&#10;- Introduced cookie-based invite confirmation tracking.&#10;- Updated public signup pages to reflect invite confirmation status.&#10;- Adjusted layout for mobile responsiveness." />
     <MESSAGE value="chore: updated svelte shadcn" />
     <MESSAGE value="feat: add tab navigation and selection to beginners workshop page&#10;&#10;- Introduced dynamic tab switching with `Select` component.&#10;- Tabs now persist in URL for a better user experience." />
     <MESSAGE value="chore: updated readme" />
@@ -710,19 +656,16 @@
     <MESSAGE value="feat(workshops): add cancellation and refund functionality&#10;&#10;- Introduce workshop cancellation dialog with refund eligibility checks&#10;- Implement refund eligibility utility function with detailed checks&#10;- Enhance workshop list with cancellation buttons and refunded badge&#10;- Update calendar and API to include registration status and counts&#10;- Refactor user registration actions for better state handling and UX" />
     <MESSAGE value="feat: added workshop update feature" />
     <MESSAGE value="fix: remove payment session from bulk invite" />
-    <MESSAGE value="feat(phone): improve phone number validation and formatting&#10;&#10;- Use `formatIncompletePhoneNumber` for better partial number formatting&#10;- Simplify phone input logic and enhance parsing accuracy&#10;- Update `PhoneInput` component with hidden input for binding raw values&#10;- Change phone validation schema to handle incomplete phone numbers more gracefully&#10;- Improve `phone-input.svelte` user experience and maintain consistent behavior across the application&#10;&#10;# Conflicts:&#10;#&#9;.idea/workspace.xml" />
-    <MESSAGE value="fix: adjust invitation signup for form validation, environment references, and transaction logic" />
-    <MESSAGE value="fix: correct invitation query logic for date_of_birth validation" />
-    <MESSAGE value="chore: updated packages" />
-    <MESSAGE value="feat: add ButtonGroup UI components with variants and support for Text and Separator" />
-    <MESSAGE value="feat: add bulk invitation management and UI improvements&#10;&#10;- Introduced bulk resend and delete functionality for invitations.&#10;- Enhanced the invitations table with search capabilities and row selection.&#10;- Added `search_text` tsvector column to invitations for text search. &#10;- Updated UI components to support new functionalities and optimized invitation actions." />
-    <MESSAGE value="feat: implement Stripe sync integration and cron job  &#10;&#10;- Added a `stripe-sync` function to handle communication with Stripe and update membership data.  &#10;- Integrated Deno configuration and dependencies for the function.  &#10;- Added a database migration to enable daily cron jobs for syncing Stripe customer data.  &#10;- Updated logic for handling inactive users, paused subscriptions, and payment data synchronization." />
-    <MESSAGE value="feat: update calendar component to handle dynamic max year for date options&#10;&#10;- Adjusted `yearOptions` to derive the maximum year dynamically from `maxValue` prop.&#10;- Ensured compatibility with default behavior when `maxValue` is not provided." />
-    <option name="LAST_COMMIT_MESSAGE" value="feat: update calendar component to handle dynamic max year for date options&#10;&#10;- Adjusted `yearOptions` to derive the maximum year dynamically from `maxValue` prop.&#10;- Ensured compatibility with default behavior when `maxValue` is not provided." />
+    <option name="LAST_COMMIT_MESSAGE" value="fix: remove payment session from bulk invite" />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
       <breakpoints>
+        <line-breakpoint enabled="true" type="javascript">
+          <url>file://$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]/+page.server.ts</url>
+          <line>65</line>
+          <option name="timeStamp" value="7" />
+        </line-breakpoint>
         <line-breakpoint enabled="true" type="javascript">
           <url>file://$PROJECT_DIR$/src/routes/api/workshops/[id]/register/+server.ts</url>
           <line>268</line>
@@ -737,11 +680,6 @@
           <url>file://$PROJECT_DIR$/src/routes/dashboard/members/[memberId]/+page.server.ts</url>
           <line>172</line>
           <option name="timeStamp" value="24" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" type="javascript">
-          <url>file://$PROJECT_DIR$/src/routes/(public)/members/signup/[invitationId]/+page.server.ts</url>
-          <line>64</line>
-          <option name="timeStamp" value="25" />
         </line-breakpoint>
       </breakpoints>
     </breakpoint-manager>
