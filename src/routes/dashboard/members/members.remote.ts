@@ -21,15 +21,20 @@ export const deleteInvitations = command(v.array(v.pipe(v.string(), v.uuid())), 
 			.returningAll()
 			.execute();
 
-		await trx
-			.deleteFrom('user_profiles')
-			.where(
-				'user_profiles.supabase_user_id',
-				'in',
-				uIds.map((u) => u.user_id)
-			)
-			.execute();
-
-		return Promise.all(uIds.map((u) => event.locals.supabase.auth.admin.deleteUser(u.user_id!)));
+		return Promise.all([
+			trx
+				.deleteFrom('user_profiles')
+				.where(
+					'user_profiles.supabase_user_id',
+					'in',
+					uIds.map((u) => u.user_id)
+				)
+				.execute(),
+			...uIds
+				.map((u) => u.waitlist_id)
+				.filter(Boolean)
+				.map((w) => trx.deleteFrom('waitlist').where('waitlist.id', '=', w).execute()),
+			...uIds.map((u) => event.locals.supabase.auth.admin.deleteUser(u.user_id!))
+		]);
 	});
 });
