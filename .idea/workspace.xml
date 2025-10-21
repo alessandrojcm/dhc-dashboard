@@ -18,9 +18,11 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="feat: implement Stripe sync integration and cron job  &#10;&#10;- Added a `stripe-sync` function to handle communication with Stripe and update membership data.  &#10;- Integrated Deno configuration and dependencies for the function.  &#10;- Added a database migration to enable daily cron jobs for syncing Stripe customer data.  &#10;- Updated logic for handling inactive users, paused subscriptions, and payment data synchronization.">
+    <list default="true" id="150bc1e3-8212-4bb6-979d-d08c6f71c7ac" name="Changes" comment="feat: update calendar component to handle dynamic max year for date options&#10;&#10;- Adjusted `yearOptions` to derive the maximum year dynamically from `maxValue` prop.&#10;- Ensured compatibility with default behavior when `maxValue` is not provided.">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/src/lib/components/ui/calendar/calendar.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/components/ui/calendar/calendar.svelte" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/lib/components/ui/pause-subscription-modal.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/lib/components/ui/pause-subscription-modal.svelte" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/api/members/[memberId]/subscription/pause/+server.ts" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/api/members/[memberId]/subscription/pause/+server.ts" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/src/routes/dashboard/members/[memberId]/+page.svelte" beforeDir="false" afterPath="$PROJECT_DIR$/src/routes/dashboard/members/[memberId]/+page.svelte" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -296,7 +298,7 @@
       <workItem from="1760789450646" duration="6000" />
       <workItem from="1760789467220" duration="3741000" />
       <workItem from="1760795430856" duration="9464000" />
-      <workItem from="1761034757717" duration="5331000" />
+      <workItem from="1761034757717" duration="5687000" />
     </task>
     <task id="LOCAL-00001" summary="Add guardian support for underage waitlist entries&#10;&#10;Introduce `waitlist_guardians` table and transactional logic for adding guardian details when underage users join the waitlist. Updates include database migrations, UI adjustments for conditional input fields, validation logic, and tests to ensure age-based gating.">
       <option name="closed" value="true" />
@@ -642,7 +644,15 @@
       <option name="project" value="LOCAL" />
       <updated>1761042227634</updated>
     </task>
-    <option name="localTasksCounter" value="44" />
+    <task id="LOCAL-00044" summary="feat: update calendar component to handle dynamic max year for date options&#10;&#10;- Adjusted `yearOptions` to derive the maximum year dynamically from `maxValue` prop.&#10;- Ensured compatibility with default behavior when `maxValue` is not provided.">
+      <option name="closed" value="true" />
+      <created>1761042994645</created>
+      <option name="number" value="00044" />
+      <option name="presentableId" value="LOCAL-00044" />
+      <option name="project" value="LOCAL" />
+      <updated>1761042994645</updated>
+    </task>
+    <option name="localTasksCounter" value="45" />
     <servers />
   </component>
   <component name="TypeScriptGeneratedFilesManager">
@@ -683,7 +693,6 @@
   </component>
   <component name="VcsManagerConfiguration">
     <option name="CHECK_CODE_SMELLS_BEFORE_PROJECT_COMMIT" value="false" />
-    <MESSAGE value="feat: improve invite workflow with email processing and confirmation logic&#10;&#10;- Added support for email processing using Supabase queue.&#10;- Introduced cookie-based invite confirmation tracking.&#10;- Updated public signup pages to reflect invite confirmation status.&#10;- Adjusted layout for mobile responsiveness." />
     <MESSAGE value="chore: updated svelte shadcn" />
     <MESSAGE value="feat: add tab navigation and selection to beginners workshop page&#10;&#10;- Introduced dynamic tab switching with `Select` component.&#10;- Tabs now persist in URL for a better user experience." />
     <MESSAGE value="chore: updated readme" />
@@ -708,7 +717,8 @@
     <MESSAGE value="feat: add ButtonGroup UI components with variants and support for Text and Separator" />
     <MESSAGE value="feat: add bulk invitation management and UI improvements&#10;&#10;- Introduced bulk resend and delete functionality for invitations.&#10;- Enhanced the invitations table with search capabilities and row selection.&#10;- Added `search_text` tsvector column to invitations for text search. &#10;- Updated UI components to support new functionalities and optimized invitation actions." />
     <MESSAGE value="feat: implement Stripe sync integration and cron job  &#10;&#10;- Added a `stripe-sync` function to handle communication with Stripe and update membership data.  &#10;- Integrated Deno configuration and dependencies for the function.  &#10;- Added a database migration to enable daily cron jobs for syncing Stripe customer data.  &#10;- Updated logic for handling inactive users, paused subscriptions, and payment data synchronization." />
-    <option name="LAST_COMMIT_MESSAGE" value="feat: implement Stripe sync integration and cron job  &#10;&#10;- Added a `stripe-sync` function to handle communication with Stripe and update membership data.  &#10;- Integrated Deno configuration and dependencies for the function.  &#10;- Added a database migration to enable daily cron jobs for syncing Stripe customer data.  &#10;- Updated logic for handling inactive users, paused subscriptions, and payment data synchronization." />
+    <MESSAGE value="feat: update calendar component to handle dynamic max year for date options&#10;&#10;- Adjusted `yearOptions` to derive the maximum year dynamically from `maxValue` prop.&#10;- Ensured compatibility with default behavior when `maxValue` is not provided." />
+    <option name="LAST_COMMIT_MESSAGE" value="feat: update calendar component to handle dynamic max year for date options&#10;&#10;- Adjusted `yearOptions` to derive the maximum year dynamically from `maxValue` prop.&#10;- Ensured compatibility with default behavior when `maxValue` is not provided." />
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>

@@ -56,10 +56,6 @@ export const POST: RequestHandler = async ({ request, params, locals, platform }
 			return json({ success: false, error: 'Member or customer not found' }, { status: 404 });
 		}
 
-		if (member.subscription_paused_until) {
-			return json({ success: false, error: 'Subscription is already paused' }, { status: 400 });
-		}
-
 		// Find membership subscription in Stripe
 		const subscriptions = await stripeClient.subscriptions.list({
 			customer: member.customer_id,
