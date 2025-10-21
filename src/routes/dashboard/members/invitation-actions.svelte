@@ -1,14 +1,15 @@
 <script lang="ts">
 	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
 	import { Button } from '$lib/components/ui/button';
-	import { SendIcon } from 'lucide-svelte';
+	import { SendIcon, Trash2 } from 'lucide-svelte';
 	import CopyButton from '$lib/components/ui/copy-button.svelte';
 
 	type Props = {
 		resendInvitation: () => void;
 		invitationLink: string;
+		deleteInvitation: () => void;
 	};
-	let { resendInvitation, invitationLink }: Props = $props();
+	let { resendInvitation, invitationLink, deleteInvitation }: Props = $props();
 </script>
 
 <div class="flex gap-1">
@@ -25,5 +26,18 @@
 			</Button>
 		</Tooltip.Trigger>
 		<Tooltip.Content>Resend invitation email</Tooltip.Content>
+	</Tooltip.Root>
+	<Tooltip.Root>
+		<Tooltip.Trigger>
+			<Button
+				variant="ghost"
+				size="icon"
+				aria-label="Delete invitation"
+				onclick={() => deleteInvitation()}
+			>
+				<Trash2 class="h-4 w-4" />
+			</Button>
+		</Tooltip.Trigger>
+		<Tooltip.Content>Delete invitation</Tooltip.Content>
 	</Tooltip.Root>
 </div>
