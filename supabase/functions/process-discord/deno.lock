@@ -2,7 +2,6 @@
   "version": "4",
   "specifiers": {
     "npm:@sentry/deno@*": "10.20.0",
-    "npm:dayjs@*": "1.11.18",
     "npm:kysely@~0.28.1": "0.28.8",
     "npm:valibot@*": "1.1.0"
   },
@@ -19,9 +18,6 @@
         "@opentelemetry/api",
         "@sentry/core"
       ]
-    },
-    "dayjs@1.11.18": {
-      "integrity": "sha512-zFBQ7WFRvVRhKcWoUh+ZA1g2HVgUbsZm9sbddh8EC5iv93sui8DVVz1Npvz+r6meo9VKfa8NyLWBsQK1VvIKPA=="
     },
     "kysely@0.28.8": {
       "integrity": "sha512-QUOgl5ZrS9IRuhq5FvOKFSsD/3+IA6MLE81/bOOTRA/YQpKDza2sFdN5g6JCB9BOpqMJDGefLCQ9F12hRS13TA=="

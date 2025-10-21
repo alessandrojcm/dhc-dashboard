@@ -1,9 +1,9 @@
 {
-  "version": "5",
+  "version": "4",
   "specifiers": {
-    "npm:dayjs@*": "1.11.13",
-    "npm:kysely@~0.28.1": "0.28.3",
-    "npm:stripe@*": "18.4.0"
+    "npm:dayjs@*": "1.11.18",
+    "npm:kysely@~0.28.1": "0.28.8",
+    "npm:stripe@*": "19.1.0"
   },
   "npm": {
     "call-bind-apply-helpers@1.0.2": {
@@ -20,8 +20,8 @@
         "get-intrinsic"
       ]
     },
-    "dayjs@1.11.13": {
-      "integrity": "sha512-oaMBel6gjolK862uaPQOVTA7q3TZhuSvuMQAAglQDOWYO9A91IrAOUJEyKVlqJlHE0vq5p5UXxzdPfMH/x6xNg=="
+    "dayjs@1.11.18": {
+      "integrity": "sha512-zFBQ7WFRvVRhKcWoUh+ZA1g2HVgUbsZm9sbddh8EC5iv93sui8DVVz1Npvz+r6meo9VKfa8NyLWBsQK1VvIKPA=="
     },
     "dunder-proto@1.0.1": {
       "integrity": "sha512-KIN/nDJBQRcXw0MLVhZE9iQHmG68qAVIBg9CqmUYjmQIhgij9U5MFvrqkUL5FbtyyzZuOeOt0zdeRe4UY7ct+A==",
@@ -80,8 +80,8 @@
         "function-bind"
       ]
     },
-    "kysely@0.28.3": {
-      "integrity": "sha512-svKnkSH72APRdjfVCCOknxaC9Eb3nA2StHG9d5/sKOqRvHRp2Dtf1XwDvc92b4B5v6LV+EAGWXQbZ5jMOvHaDw=="
+    "kysely@0.28.8": {
+      "integrity": "sha512-QUOgl5ZrS9IRuhq5FvOKFSsD/3+IA6MLE81/bOOTRA/YQpKDza2sFdN5g6JCB9BOpqMJDGefLCQ9F12hRS13TA=="
     },
     "math-intrinsics@1.1.0": {
       "integrity": "sha512-/IXtbwEk5HTPyEwyKX6hGkYXxM9nbj64B+ilVJnC/R6B0pH5G4V3b0pVbL7DBj4tkhBAppbQUlf6F6Xl9LHu1g=="
@@ -131,8 +131,8 @@
         "side-channel-weakmap"
       ]
     },
-    "stripe@18.4.0": {
-      "integrity": "sha512-LKFeDnDYo4U/YzNgx2Lc9PT9XgKN0JNF1iQwZxgkS4lOw5NunWCnzyH5RhTlD3clIZnf54h7nyMWkS8VXPmtTQ==",
+    "stripe@19.1.0": {
+      "integrity": "sha512-FjgIiE98dMMTNssfdjMvFdD4eZyEzdWAOwPYqzhPRNZeg9ggFWlPXmX1iJKD5pPIwZBaPlC3SayQQkwsPo6/YQ==",
       "dependencies": [
         "qs"
       ]
