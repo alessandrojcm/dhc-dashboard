@@ -24,7 +24,7 @@
 	const monthFmt = new DateFormatter("en-US", {
 		month: "long"
 	});
-
+$inspect(restProps.maxValue)
 	const monthOptions = Array.from({ length: 12 }, (_, i) => {
 		const month = currentDate.set({ month: i + 1 });
 		return {
@@ -33,10 +33,17 @@
 		};
 	});
 
-	const yearOptions = Array.from({ length: 100 }, (_, i) => ({
-		label: String(new Date().getFullYear() - i),
-		value: new Date().getFullYear() - i
-	}));
+	const maxYear = $derived.by(() => {
+		if(!restProps.maxValue) {
+			return new Date().getFullYear();
+		}
+		return restProps.maxValue.year;
+	});
+
+	const yearOptions = $derived(Array.from({ length: 100 }, (_, i) => ({
+		label: String(maxYear - i),
+		value: maxYear - i
+	})));
 
 	const defaultYear = $derived(
 		placeholder
