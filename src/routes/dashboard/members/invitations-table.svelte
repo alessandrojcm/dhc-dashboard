@@ -30,7 +30,7 @@
 	import InvitationActions from './invitation-actions.svelte';
 	import { SendIcon, Trash2 } from 'lucide-svelte';
 	import { getInvitationLink } from '$lib/utils/invitation';
-	import { deleteInvitations } from './members.remote';
+	import { deleteInvitations } from '$lib/services/members.remote';
 	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
 	import { Input } from '$lib/components/ui/input';
 	import { Cross2 } from 'svelte-radix';
