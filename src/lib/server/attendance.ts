@@ -60,8 +60,8 @@ export async function updateAttendance(
 		const results = [];
 		const workshop = await trx
 			.selectFrom('club_activities')
-			.select('id', 'start_date', 'end_date')
-			.where('start_date', '>=', new Date())
+			.select(['id', 'start_date', 'end_date'])
+			.where('start_date', '>=', new Date().toISOString())
 			.where('id', '=', workshopId)
 			.executeTakeFirst();
 		if (!workshop) {
