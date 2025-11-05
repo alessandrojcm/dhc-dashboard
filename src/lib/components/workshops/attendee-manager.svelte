@@ -2,6 +2,7 @@
 	import { createMutation } from '@tanstack/svelte-query';
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
+	import { Checkbox } from '$lib/components/ui/checkbox';
 	import * as Popover from '$lib/components/ui/popover';
 	import { toast } from 'svelte-sonner';
 	import { Check, X, DollarSign, User } from 'lucide-svelte';
@@ -15,22 +16,48 @@
 		onAttendanceUpdated?: () => void;
 		onRefundProcessed?: () => void;
 	}
-	let { attendees, refunds, workshop, workshopId, onAttendanceUpdated, onRefundProcessed }: Props = $props();
+	let { attendees, refunds, workshop, workshopId, onAttendanceUpdated, onRefundProcessed }: Props =
+		$props();
 
 	let refundPopoverOpen = $state(false);
 	let attendeeIdForRefund = $state('');
+	let selectedAttendees = $state<Set<string>>(new Set());
+
+	const unattendedAttendees = $derived(attendees.filter((a) => a.attendance_status !== 'attended'));
+
+	const allSelected = $derived(
+		unattendedAttendees.length > 0 && unattendedAttendees.every((a) => selectedAttendees.has(a.id))
+	);
+
+	function toggleSelectAll() {
+		if (allSelected) {
+			selectedAttendees = new Set();
+		} else {
+			selectedAttendees = new Set(unattendedAttendees.map((a) => a.id));
+		}
+	}
+
+	function toggleAttendee(id: string) {
+		const newSelected = new Set(selectedAttendees);
+		if (newSelected.has(id)) {
+			newSelected.delete(id);
+		} else {
+			newSelected.add(id);
+		}
+		selectedAttendees = newSelected;
+	}
 
 	const markAttendedMutation = createMutation(() => ({
-		mutationFn: async (registrationId: string) => {
+		mutationFn: async (registrationIds: string[]) => {
 			const response = await fetch(`/api/workshops/${workshopId}/attendance`, {
 				method: 'PUT',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
-					attendance_updates: [{
-						registration_id: registrationId,
+					attendance_updates: registrationIds.map((id) => ({
+						registration_id: id,
 						attendance_status: 'attended',
 						notes: ''
-					}]
+					}))
 				})
 			});
 
@@ -42,10 +69,11 @@
 			return response.json();
 		},
 		onSuccess: () => {
+			selectedAttendees = new Set();
 			onAttendanceUpdated?.();
 			toast.success('Marked as attended');
 		},
-		onError: (error: any) => {
+		onError: (error: Error) => {
 			toast.error(error.message);
 		}
 	}));
@@ -74,7 +102,7 @@
 			onRefundProcessed?.();
 			toast.success('Refund processed');
 		},
-		onError: (error: any) => {
+		onError: (error: Error) => {
 			toast.error(error.message);
 		}
 	}));
@@ -103,7 +131,7 @@
 	}
 
 	function getRefund(attendeeId: string) {
-		return refunds.find(refund => refund.registration_id === attendeeId);
+		return refunds.find((refund) => refund.registration_id === attendeeId);
 	}
 
 	function formatCurrency(amount: number) {
@@ -127,33 +155,69 @@
 	}
 </script>
 
-<div class="space-y-4">
+<div class="space-y-3">
+	{#if unattendedAttendees.length > 0}
+		<div
+			class="flex items-center justify-between p-3 border rounded-lg bg-primary/5 border-primary/20"
+		>
+			<span class="text-sm font-medium">
+				{#if selectedAttendees.size > 0}
+					{selectedAttendees.size} attendee{selectedAttendees.size > 1 ? 's' : ''} selected
+				{:else}
+					Select attendees to mark as attended
+				{/if}
+			</span>
+			<Button
+				size="sm"
+				onclick={() => markAttendedMutation.mutate([...selectedAttendees])}
+				disabled={markAttendedMutation.isPending || selectedAttendees.size === 0}
+				class="gap-1"
+			>
+				<Check class="w-4 h-4" />
+				Mark as Attended
+			</Button>
+		</div>
+	{/if}
+
 	{#each attendees as attendee (attendee.id)}
 		{@const refund = getRefund(attendee.id)}
-		<div class="flex items-center justify-between p-4 border rounded-lg bg-card">
-			<div class="flex items-center gap-4">
-				<div class="flex-shrink-0">
-					<div class="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
-						<User class="w-5 h-5 text-muted-foreground" />
-					</div>
-				</div>
+		<div
+			class="flex items-center gap-3 p-4 border rounded-lg bg-card hover:bg-accent/50 transition-colors"
+		>
+			{#if attendee.attendance_status !== 'attended'}
+				<Checkbox
+					checked={selectedAttendees.has(attendee.id)}
+					onCheckedChange={() => toggleAttendee(attendee.id)}
+				/>
+			{:else}
+				<div class="w-5"></div>
+			{/if}
 
-				<div class="flex-1 min-w-0">
-					<div class="font-medium text-sm">{getAttendeeDisplayName(attendee)}</div>
-					<div class="text-xs text-muted-foreground truncate">
-						{getAttendeeEmail(attendee)}
-					</div>
-					<div class="flex items-center gap-2 mt-1">
-						<Badge variant={getStatusBadgeVariant(attendee.attendance_status)} class="text-xs capitalize">
-							{attendee.attendance_status || 'pending'}
-						</Badge>
-						{#if refund}
-							<Badge variant="secondary" class="text-xs">
-								Refunded {formatCurrency(refund.refund_amount / 100)}
-							</Badge>
-						{/if}
-					</div>
+			<div class="flex-shrink-0">
+				<div class="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
+					<User class="w-5 h-5 text-muted-foreground" />
 				</div>
+			</div>
+
+			<div class="flex-1 min-w-0">
+				<div class="font-medium text-sm">{getAttendeeDisplayName(attendee)}</div>
+				<div class="text-xs text-muted-foreground truncate">
+					{getAttendeeEmail(attendee)}
+				</div>
+			</div>
+
+			<div class="flex items-center gap-2">
+				<Badge
+					variant={getStatusBadgeVariant(attendee.attendance_status)}
+					class="text-xs capitalize"
+				>
+					{attendee.attendance_status || 'pending'}
+				</Badge>
+				{#if refund}
+					<Badge variant="secondary" class="text-xs">
+						Refunded {formatCurrency(refund.refund_amount / 100)}
+					</Badge>
+				{/if}
 			</div>
 
 			<div class="flex items-center gap-2">
@@ -161,7 +225,7 @@
 					<Button
 						size="sm"
 						variant="outline"
-						onclick={() => markAttendedMutation.mutate(attendee.id)}
+						onclick={() => markAttendedMutation.mutate([attendee.id])}
 						disabled={markAttendedMutation.isPending}
 						class="gap-1"
 					>
@@ -206,7 +270,8 @@
 									<div class="text-sm">
 										<p class="text-orange-600 font-medium">⚠ Not eligible for refund</p>
 										<p class="text-muted-foreground mt-1">
-											{eligibility.reason}. The user will be removed from the workshop without refund.
+											{eligibility.reason}. The user will be removed from the workshop without
+											refund.
 										</p>
 									</div>
 								{/if}
@@ -243,9 +308,6 @@
 	{/each}
 
 	{#if attendees.length === 0}
-		<div class="text-center py-8 text-muted-foreground">
-			No attendees registered yet
-		</div>
+		<div class="text-center py-8 text-muted-foreground">No attendees registered yet</div>
 	{/if}
 </div>
-
