@@ -1,7 +1,7 @@
 import { authorize } from '$lib/server/auth';
 import { INVENTORY_ROLES } from '$lib/server/roles';
 import { itemSchema } from '$lib/schemas/inventory';
-import { superValidate } from 'sveltekit-superforms';
+import { setMessage, superValidate } from 'sveltekit-superforms';
 import { valibot } from 'sveltekit-superforms/adapters';
 import { fail, isRedirect, redirect } from '@sveltejs/kit';
 import { executeWithRLS, getKyselyClient } from '$lib/server/kysely';
@@ -30,7 +30,10 @@ export const load = async ({ url, locals }: { url: URL; locals: App.Locals }) =>
 				notes: '',
 				out_for_maintenance: false
 			},
-			valibot(itemSchema)
+			valibot(itemSchema),
+			{
+				errors: false
+			}
 		),
 		categories: categoriesResult.data || [],
 		containers: containersResult.data || []
@@ -80,9 +83,23 @@ export const actions = {
 				throw error;
 			}
 			Sentry.captureException(error);
-			return fail(500, {
-				form,
-				error: 'Failed to create item. Please try again.'
+			console.error('Item creation error:', error);
+
+			// Extract error message from database error if available
+			let errorMessage = 'Failed to create item. Please try again.';
+			if (error instanceof Error) {
+				// Check for JSON schema validation errors
+				if (error.message.includes('json_matches_schema')) {
+					errorMessage =
+						'Item attributes do not match category requirements. Please fill all required fields.';
+				} else if (error.message.includes('violates check constraint')) {
+					errorMessage =
+						'Item attributes validation failed. Please ensure all required fields are filled correctly.';
+				}
+			}
+			setMessage(form, errorMessage);
+			return fail(400, {
+				form
 			});
 		}
 	}
