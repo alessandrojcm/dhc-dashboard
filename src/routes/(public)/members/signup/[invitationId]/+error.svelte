@@ -1,10 +1,10 @@
 <script lang="ts">
 	import * as Alert from '$lib/components/ui/alert';
-	import { page } from '$app/stores';
+	import { page } from '$app/state';
 	import { Button } from '$lib/components/ui/button';
 	import * as Sentry from '@sentry/sveltekit';
 
-	Sentry.captureMessage(`Signup error page loaded: ${$page.error?.message}`, 'error');
+	Sentry.captureMessage(`Signup error page loaded: ${page.error?.message}`, 'error');
 </script>
 
 <svelte:head>
@@ -15,7 +15,7 @@
 	<Alert.Root variant="destructive" class="max-w-md h-fit">
 		<Alert.Title>Something has gone wrong, please try again</Alert.Title>
 		<Alert.Description>
-			{$page.error?.message}
+			{page.error?.message}
 		</Alert.Description>
 		<Button class="w-fit" onclick={() => document.location.reload()}>
 			Try again

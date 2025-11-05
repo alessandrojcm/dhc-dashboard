@@ -4,6 +4,7 @@
 	import type { Database } from '$database';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
+	import { Checkbox } from '$lib/components/ui/checkbox';
 	import {
 		createSvelteTable,
 		FlexRender,
@@ -21,16 +22,19 @@
 		getSortedRowModel,
 		getExpandedRowModel,
 		type PaginationState,
-		type SortingState,
+		type SortingState
 	} from '@tanstack/table-core';
 	import dayjs from 'dayjs';
 	import { createRawSnippet } from 'svelte';
 	import { toast } from 'svelte-sonner';
 	import InvitationActions from './invitation-actions.svelte';
-	import { SendIcon } from 'lucide-svelte';
-	import CopyButton from '$lib/components/ui/copy-button.svelte';
-	import type { ComponentProps } from 'svelte';
+	import { SendIcon, Trash2 } from 'lucide-svelte';
 	import { getInvitationLink } from '$lib/utils/invitation';
+	import { deleteInvitations } from './members.remote';
+	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
+	import { Input } from '$lib/components/ui/input';
+	import { Cross2 } from 'svelte-radix';
+	import * as ButtonGroup from '$lib/components/ui/button-group';
 
 	const columns = 'id,email,status,expires_at,created_at';
 
@@ -40,7 +44,7 @@
 
 	const currentPage = $derived.by(() => Number(page.url.searchParams.get('invitePage')) || 0);
 	const pageSize = $derived.by(() => Number(page.url.searchParams.get('invitePageSize')) || 10);
-	const searchQuery = $derived.by(() =>page.url.searchParams.get('inviteQ') || '');
+	const searchQuery = $derived.by(() => page.url.searchParams.get('inviteQ') || '');
 	const rangeStart = $derived.by(() => currentPage * pageSize);
 	const rangeEnd = $derived.by(() => rangeStart + pageSize);
 	const sortingState: SortingState = $derived.by(() => {
@@ -53,9 +57,16 @@
 				desc: sortDirection === 'desc'
 			}
 		];
-	})
+	});
 
-	const invitationsQueryKey = $derived(['invitations', pageSize, currentPage, rangeStart, sortingState, searchQuery]);
+	const invitationsQueryKey = $derived([
+		'invitations',
+		pageSize,
+		currentPage,
+		rangeStart,
+		sortingState,
+		searchQuery
+	]);
 
 	// Query to fetch invitations
 	const invitationsQuery = createQuery(() => ({
@@ -67,7 +78,11 @@
 
 			// Filter by status (pending or expired)
 			query = query.in('status', ['pending', 'expired']);
-
+			if (searchQuery.length > 0) {
+				query = query.textSearch('search_text', `'${searchQuery}'`, {
+					type: 'websearch'
+				});
+			}
 			// Add sorting if provided
 			if (sortingState.length > 0) {
 				query = query.order(sortingState[0].id, { ascending: !sortingState[0].desc });
@@ -89,6 +104,12 @@
 		}
 	}));
 
+	let selectedRows = $state<Set<string>>(new Set());
+
+	// Derived state for bulk operations
+	const hasSelectedRows = $derived(selectedRows.size > 0);
+	const selectedRowsArray = $derived(Array.from(selectedRows));
+
 	function onPaginationChange(newPagination: Partial<PaginationState>) {
 		const paginationState: PaginationState = {
 			pageIndex: currentPage,
@@ -109,15 +130,20 @@
 		goto(`/dashboard/members?${newParams.toString()}`);
 	}
 
+	function onSearchChange(newSearch: string) {
+		const newParams = new URLSearchParams(page.url.searchParams);
+		newParams.set('inviteQ', newSearch);
+		goto(`/dashboard/members?${newParams.toString()}`);
+	}
 
 	const resendInvitationLink = createMutation(() => ({
-		mutationFn: async (data: { email: string, invitationId: string }[]) => {
+		mutationFn: async (data: { email: string; invitationId: string }[]) => {
 			return fetch(`/api/admin/invite-link`, {
 				method: 'POST',
 				body: JSON.stringify({
-					emails: data.map(e => e.email)
+					emails: data.map((e) => e.email)
 				})
-			}).then(res => {
+			}).then((res) => {
 				if (!res.ok) {
 					throw new Error('Failed to resend invitation link');
 				}
@@ -131,26 +157,92 @@
 		}
 	}));
 
+	// Bulk resend mutation
+	const bulkResendInvitations = createMutation(() => ({
+		mutationFn: async (selectedIds: string[]) => {
+			const selectedInvitations =
+				invitationsQuery.data?.data?.filter((invitation) => selectedIds.includes(invitation.id!)) ||
+				[];
+
+			return fetch(`/api/admin/invite-link`, {
+				method: 'POST',
+				body: JSON.stringify({
+					emails: selectedInvitations.map((invitation) => invitation.email)
+				})
+			}).then((res) => {
+				if (!res.ok) {
+					throw new Error('Failed to resend invitation links');
+				}
+			});
+		},
+		onSuccess: () => {
+			toast.success('Invitation links resent successfully');
+			selectedRows = new Set(); // Clear selection
+		},
+		onError: () => {
+			toast.error('Failed to resend invitation links');
+		}
+	}));
+
+	// Bulk delete mutation
+	const bulkDeleteInvitations = createMutation(() => ({
+		mutationFn: async (selectedIds: string[]) => {
+			await deleteInvitations(selectedIds);
+		},
+		onSuccess: () => {
+			toast.success('Invitations deleted successfully');
+			selectedRows = new Set(); // Clear selection
+			invitationsQuery.refetch(); // Refresh data
+		},
+		onError: () => {
+			toast.error('Failed to delete invitations');
+		}
+	}));
 
 	// Create table
 	const table = createSvelteTable({
 		autoResetPageIndex: false,
 		manualPagination: true,
 		manualSorting: true,
+		enableRowSelection: true,
 		get data() {
 			return invitationsQuery.data?.data || [];
 		},
 		columns: [
 			{
+				id: 'select',
+				header: () =>
+					renderComponent(Checkbox, {
+						checked: table.getIsAllRowsSelected(),
+						indeterminate: table.getIsSomeRowsSelected(),
+						onCheckedChange: (state: boolean) => {
+							table.toggleAllRowsSelected(state);
+						}
+					}),
+				cell: ({ row }) =>
+					renderComponent(Checkbox, {
+						checked: row.getIsSelected(),
+						onCheckedChange: (state: boolean) => row.toggleSelected(state)
+					})
+			},
+			{
 				id: 'actions',
 				header: 'Actions',
 				cell: ({ row }) => {
 					return renderComponent(InvitationActions, {
-						resendInvitation: () => resendInvitationLink.mutate([{
-							email: row.original.email,
-							invitationId: row.original.id!
-						}]),
-						invitationLink: getInvitationLink(row.original.id!, row.original.email)
+						resendInvitation: () =>
+							resendInvitationLink.mutate([
+								{
+									email: row.original.email,
+									invitationId: row.original.id!
+								}
+							]),
+						invitationLink: getInvitationLink(row.original.id!, row.original.email),
+						deleteInvitation: () =>
+							deleteInvitations([row.original.id!]).then(() => {
+								toast.success('Invitation deleted');
+								invitationsQuery.refetch();
+							})
 					});
 				}
 			},
@@ -166,16 +258,13 @@
 				accessorKey: 'status',
 				cell: (info) => {
 					const status = info.getValue() as string;
-					return renderComponent(
-						Badge,
-						{
-							children: createRawSnippet(() => ({
-								render: () => status
-							})),
-							variant: status === 'pending' ? 'default' : 'destructive',
-							class: 'capitalize'
-						}
-					);
+					return renderComponent(Badge, {
+						children: createRawSnippet(() => ({
+							render: () => status
+						})),
+						variant: status === 'pending' ? 'default' : 'destructive',
+						class: 'capitalize'
+					});
 				}
 			},
 			{
@@ -185,20 +274,33 @@
 				cell: (info) => {
 					const expiresAt = info.getValue() as string;
 					const isExpired = dayjs(expiresAt).isBefore(dayjs());
-					return renderSnippet(createRawSnippet(value => ({
-						render: () => `
+					return renderSnippet(
+						createRawSnippet((value) => ({
+							render: () => `
 						<div class="flex items-center">
 							<span class="${isExpired ? 'text-destructive' : ''}">
 								${dayjs(value()).format('MMM D, YYYY')}
 							</span>
 						</div>
 					`
-					})), expiresAt);
+						})),
+						expiresAt
+					);
 				}
-			}],
+			}
+		],
 		state: {
 			get sorting() {
 				return sortingState;
+			},
+			get rowSelection() {
+				return Array.from(selectedRows).reduce(
+					(prv, curr) => ({
+						...prv,
+						[curr]: true
+					}),
+					{}
+				);
 			}
 		},
 		onPaginationChange: (updater) => {
@@ -224,9 +326,76 @@
 		getSortedRowModel: getSortedRowModel(),
 		getPaginationRowModel: getPaginationRowModel(),
 		getExpandedRowModel: getExpandedRowModel(),
-		getRowId: (row) => row.id
+		getRowId: (row) => row.id,
+		onRowSelectionChange: (updater) => {
+			if (typeof updater === 'function') {
+				const currentSelection = Array.from(selectedRows).reduce(
+					(prv, curr) => ({
+						...prv,
+						[curr]: true
+					}),
+					{}
+				);
+				const newSelection = updater(currentSelection);
+				selectedRows = new Set(Object.keys(newSelection).filter((key) => newSelection[key]));
+			} else {
+				selectedRows = new Set(Object.keys(updater).filter((key) => updater[key]));
+			}
+		}
 	});
 </script>
+
+<div class="flex w-full items-center space-x-2 mb-2 p-2">
+	<Input
+		value={searchQuery}
+		onchange={(t: Event & { currentTarget: EventTarget & HTMLInputElement }) =>
+			onSearchChange(t.currentTarget.value)}
+		placeholder="Search members"
+		class="max-w-md"
+	/>
+
+	{#if searchQuery !== ''}
+		<Button variant="ghost" type="button" onclick={() => onSearchChange('')}>
+			<Cross2 />
+		</Button>
+	{/if}
+	{#if invitationsQuery.isFetching}
+		<LoaderCircle />
+	{/if}
+
+
+	<div class="flex items-center justify-between ml-auto">
+		<ButtonGroup.Root>
+			<!-- Bulk Resend Button -->
+			<Button
+				variant="outline"
+				size="sm"
+				disabled={bulkResendInvitations.isPending || selectedRows.size === 0}
+				onclick={() => bulkResendInvitations.mutate(selectedRowsArray)}
+				class="flex items-center gap-2"
+			>
+				<SendIcon class="h-4 w-4" />
+				<span class="hidden sm:inline">
+					{bulkResendInvitations.isPending ? 'Sending...' : `Resend${selectedRows.size === 0 ? '' : ` ${selectedRows.size}`}`}
+				</span>
+			</Button>
+
+			<!-- Bulk Delete Button -->
+			<Button
+				variant="destructive"
+				size="sm"
+				disabled={bulkDeleteInvitations.isPending || selectedRows.size === 0}
+				onclick={() => bulkDeleteInvitations.mutate(selectedRowsArray)}
+				class="flex items-center gap-2"
+			>
+				<Trash2 class="h-4 w-4" />
+				<span class="hidden sm:inline">
+					{bulkDeleteInvitations.isPending ? 'Deleting...' : `Delete${selectedRows.size === 0 ? '' : ` ${selectedRows.size}`}`}
+				</span>
+			</Button>
+		</ButtonGroup.Root>
+	</div>
+</div>
 
 <!-- Desktop Table View (hidden on mobile) -->
 <div class="hidden md:block overflow-x-auto overflow-y-auto h-[65svh]">
@@ -269,25 +438,31 @@
 		{/if}
 		{#each table.getRowModel().rows as row (row.id)}
 			<div class="bg-card text-card-foreground rounded-lg border shadow-sm p-4">
-				<!-- Email and Actions Row -->
-				<div class="flex justify-between items-center mb-3">
+				<!-- Checkbox and Email Row -->
+				<div class="flex items-center gap-2 mb-3">
+					<Checkbox checked={row.getIsSelected()} onchange={() => row.toggleSelected()} />
 					<div class="font-medium text-base break-words">
 						{row.original.email}
 					</div>
-					<div class="flex items-center space-x-2">
-						<Button
-							variant="ghost"
-							size="icon"
-							class="h-8 w-8"
-							aria-label="Resend invitation"
-							onclick={() => resendInvitationLink.mutate([{
-								email: row.original.email,
-								invitationId: row.original.id
-							}])}
-						>
-							<SendIcon class="h-4 w-4" />
-						</Button>
-					</div>
+				</div>
+
+				<!-- Actions Row -->
+				<div class="flex items-center space-x-2 mb-3">
+					<Button
+						variant="ghost"
+						size="icon"
+						class="h-8 w-8"
+						aria-label="Resend invitation"
+						onclick={() =>
+							resendInvitationLink.mutate([
+								{
+									email: row.original.email,
+									invitationId: row.original.id
+								}
+							])}
+					>
+						<SendIcon class="h-4 w-4" />
+					</Button>
 				</div>
 
 				<!-- Status Badge -->
@@ -305,7 +480,9 @@
 					<div class="text-sm font-medium text-muted-foreground">Expires</div>
 					<div class="col-span-2 text-sm">
 						{#if row.original.expires_at}
-							<span class={dayjs(row.original.expires_at).isBefore(dayjs()) ? 'text-destructive' : ''}>
+							<span
+								class={dayjs(row.original.expires_at).isBefore(dayjs()) ? 'text-destructive' : ''}
+							>
 								{dayjs(row.original.expires_at).format('MMM D, YYYY')}
 							</span>
 						{:else}
@@ -368,7 +545,12 @@
 							</Pagination.Item>
 						{:else}
 							<Pagination.Item
-								class={page.value !== currentPage && page.value !== currentPage - 1 && page.value !== currentPage + 1 ? 'hidden sm:block' : ''}>
+								class={page.value !== currentPage &&
+								page.value !== currentPage - 1 &&
+								page.value !== currentPage + 1
+									? 'hidden sm:block'
+									: ''}
+							>
 								<Pagination.Link {page} isActive={currentPage === page.value}>
 									{page.value}
 								</Pagination.Link>

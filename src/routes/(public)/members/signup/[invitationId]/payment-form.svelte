@@ -79,6 +79,7 @@
 		validationMethod: 'onblur',
 		scrollToError: true,
 		autoFocusOnError: true,
+		invalidateAll: false,
 		onSubmit: async function({ cancel, customRequest }) {
 			const { valid } = await form.validateForm({ focusOnError: true, update: true });
 			if (!valid) {

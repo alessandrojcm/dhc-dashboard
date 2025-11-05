@@ -1,130 +1,29 @@
 {
-  "version": "5",
+  "version": "4",
   "specifiers": {
-    "jsr:@supabase/supabase-js@*": "2.49.4",
-    "npm:@sentry/deno@*": "9.13.0",
-    "npm:@supabase/auth-js@2.69.1": "2.69.1",
-    "npm:@supabase/functions-js@2.4.4": "2.4.4",
-    "npm:@supabase/node-fetch@2.6.15": "2.6.15",
-    "npm:@supabase/postgrest-js@1.19.4": "1.19.4",
-    "npm:@supabase/realtime-js@2.11.2": "2.11.2",
-    "npm:@supabase/storage-js@2.7.1": "2.7.1",
-    "npm:dayjs@*": "1.11.13",
-    "npm:jwt-decode@*": "4.0.0",
-    "npm:kysely@~0.28.1": "0.28.2",
-    "npm:loops@*": "5.0.1",
+    "npm:@sentry/deno@*": "10.20.0",
+    "npm:kysely@~0.28.1": "0.28.8",
     "npm:valibot@*": "1.1.0"
   },
-  "jsr": {
-    "@supabase/supabase-js@2.49.4": {
-      "integrity": "4b785f9cd4a62feb7b3f84606bb923a4ea51e3e000eafff0972bc779240b7592",
-      "dependencies": [
-        "npm:@supabase/auth-js",
-        "npm:@supabase/functions-js",
-        "npm:@supabase/node-fetch",
-        "npm:@supabase/postgrest-js",
-        "npm:@supabase/realtime-js",
-        "npm:@supabase/storage-js"
-      ]
-    }
-  },
   "npm": {
-    "@sentry/core@9.13.0": {
-      "integrity": "sha512-Zn1Qec5XNkNRE/M5QjL6YJLghETg6P188G/v2OzdHdHIRf0Y58/SnJilu3louF+ogos6kaSqqdMgzqKgZ8tCdg=="
+    "@opentelemetry/api@1.9.0": {
+      "integrity": "sha512-3giAOQvZiH5F9bMlMiv8+GSPMeqg0dbaeo58/0SlA9sxSqZhnUtxzX9/2FzyhS9sWQf5S0GJE0AKBrFqjpeYcg=="
     },
-    "@sentry/deno@9.13.0": {
-      "integrity": "sha512-MBaCtVTgN7ygv3BSPiJP1wk9XN3pk4tI78HQ0F9nvq68FQovio8Jzli57MqpbqyA+vBMZxYJvnhimCdHVzgaww==",
+    "@sentry/core@10.20.0": {
+      "integrity": "sha512-S291KihnOIB8i7mVJIJBVHBMcCfIoY/KDJBHEfBoHY9M56g2An4FVhM9+/xR85+IoMkTySdXN08k9LEyQz4FpQ=="
+    },
+    "@sentry/deno@10.20.0": {
+      "integrity": "sha512-ftxpNAJ5vnArzha8Tn72dP/gSlHdTM/3XUBgK+aJT6f+zKvjR1e7ysC+5TKgcprWjLNsAlJPNvnzB/nkRWd16w==",
       "dependencies": [
+        "@opentelemetry/api",
         "@sentry/core"
       ]
     },
-    "@supabase/auth-js@2.69.1": {
-      "integrity": "sha512-FILtt5WjCNzmReeRLq5wRs3iShwmnWgBvxHfqapC/VoljJl+W8hDAyFmf1NVw3zH+ZjZ05AKxiKxVeb0HNWRMQ==",
-      "dependencies": [
-        "@supabase/node-fetch"
-      ]
-    },
-    "@supabase/functions-js@2.4.4": {
-      "integrity": "sha512-WL2p6r4AXNGwop7iwvul2BvOtuJ1YQy8EbOd0dhG1oN1q8el/BIRSFCFnWAMM/vJJlHWLi4ad22sKbKr9mvjoA==",
-      "dependencies": [
-        "@supabase/node-fetch"
-      ]
-    },
-    "@supabase/node-fetch@2.6.15": {
-      "integrity": "sha512-1ibVeYUacxWYi9i0cf5efil6adJ9WRyZBLivgjs+AUpewx1F3xPi7gLgaASI2SmIQxPoCEjAsLAzKPgMJVgOUQ==",
-      "dependencies": [
-        "whatwg-url"
-      ]
-    },
-    "@supabase/postgrest-js@1.19.4": {
-      "integrity": "sha512-O4soKqKtZIW3olqmbXXbKugUtByD2jPa8kL2m2c1oozAO11uCcGrRhkZL0kVxjBLrXHE0mdSkFsMj7jDSfyNpw==",
-      "dependencies": [
-        "@supabase/node-fetch"
-      ]
-    },
-    "@supabase/realtime-js@2.11.2": {
-      "integrity": "sha512-u/XeuL2Y0QEhXSoIPZZwR6wMXgB+RQbJzG9VErA3VghVt7uRfSVsjeqd7m5GhX3JR6dM/WRmLbVR8URpDWG4+w==",
-      "dependencies": [
-        "@supabase/node-fetch",
-        "@types/phoenix",
-        "@types/ws",
-        "ws"
-      ]
-    },
-    "@supabase/storage-js@2.7.1": {
-      "integrity": "sha512-asYHcyDR1fKqrMpytAS1zjyEfvxuOIp1CIXX7ji4lHHcJKqyk+sLl/Vxgm4sN6u8zvuUtae9e4kDxQP2qrwWBA==",
-      "dependencies": [
-        "@supabase/node-fetch"
-      ]
-    },
-    "@types/node@22.14.1": {
-      "integrity": "sha512-u0HuPQwe/dHrItgHHpmw3N2fYCR6x4ivMNbPHRkBVP4CvN+kiRrKHWk3i8tXiO/joPwXLMYvF9TTF0eqgHIuOw==",
-      "dependencies": [
-        "undici-types"
-      ]
-    },
-    "@types/phoenix@1.6.6": {
-      "integrity": "sha512-PIzZZlEppgrpoT2QgbnDU+MMzuR6BbCjllj0bM70lWoejMeNJAxCchxnv7J3XFkI8MpygtRpzXrIlmWUBclP5A=="
-    },
-    "@types/ws@8.18.1": {
-      "integrity": "sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==",
-      "dependencies": [
-        "@types/node"
-      ]
-    },
-    "dayjs@1.11.13": {
-      "integrity": "sha512-oaMBel6gjolK862uaPQOVTA7q3TZhuSvuMQAAglQDOWYO9A91IrAOUJEyKVlqJlHE0vq5p5UXxzdPfMH/x6xNg=="
-    },
-    "jwt-decode@4.0.0": {
-      "integrity": "sha512-+KJGIyHgkGuIq3IEBNftfhW/LfWhXUIY6OmyVWjliu5KH1y0fw7VQ8YndE2O4qZdMSd9SqbnC8GOcZEy0Om7sA=="
-    },
-    "kysely@0.28.2": {
-      "integrity": "sha512-4YAVLoF0Sf0UTqlhgQMFU9iQECdah7n+13ANkiuVfRvlK+uI0Etbgd7bVP36dKlG+NXWbhGua8vnGt+sdhvT7A=="
-    },
-    "loops@5.0.1": {
-      "integrity": "sha512-xM1c9mnlr8Hr4cHW944TQoK6ApynjinUWOgYZd9/B0/3lwTThq24BQ7+XLjgbFAP5kJzqDTRDQi3t+Diy51Udw=="
-    },
-    "tr46@0.0.3": {
-      "integrity": "sha512-N3WMsuqV66lT30CrXNbEjx4GEwlow3v6rr4mCcv6prnfwhS01rkgyFdjPNBYd9br7LpXV1+Emh01fHnq2Gdgrw=="
-    },
-    "undici-types@6.21.0": {
-      "integrity": "sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ=="
+    "kysely@0.28.8": {
+      "integrity": "sha512-QUOgl5ZrS9IRuhq5FvOKFSsD/3+IA6MLE81/bOOTRA/YQpKDza2sFdN5g6JCB9BOpqMJDGefLCQ9F12hRS13TA=="
     },
     "valibot@1.1.0": {
       "integrity": "sha512-Nk8lX30Qhu+9txPYTwM0cFlWLdPFsFr6LblzqIySfbZph9+BFsAHsNvHOymEviUepeIW6KFHzpX8TKhbptBXXw=="
-    },
-    "webidl-conversions@3.0.1": {
-      "integrity": "sha512-2JAn3z8AR6rjK8Sm8orRC0h/bcl/DqL7tRPdGZ4I1CjdF+EaMLmYxBHyXuKL849eucPFhvBoxMsflfOb8kxaeQ=="
-    },
-    "whatwg-url@5.0.0": {
-      "integrity": "sha512-saE57nupxk6v3HY35+jzBwYa0rKSy0XR8JSxZPwgLr7ys0IBzhGviA1/TUGJLmSVqs8pb9AnvICXEuOHLprYTw==",
-      "dependencies": [
-        "tr46",
-        "webidl-conversions"
-      ]
-    },
-    "ws@8.18.3": {
-      "integrity": "sha512-PEIGCY5tSlUt50cqyMXfCzX+oOPqN0vuGqWzbcJ2xvnkzkq46oOpz7dQaTDBdfICb4N14+GARUDw2XV2N4tvzg=="
     }
   },
   "remote": {
@@ -201,7 +100,6 @@
     "https://deno.land/x/postgres@v0.17.0/query/oid.ts": "8c33e1325f34e4ca9f11a48b8066c8cfcace5f64bc1eb17ad7247af4936999e1",
     "https://deno.land/x/postgres@v0.17.0/query/query.ts": "edb473cbcfeff2ee1c631272afb25d079d06b66b5853f42492725b03ffa742b6",
     "https://deno.land/x/postgres@v0.17.0/query/transaction.ts": "8e75c3ce0aca97da7fe126e68f8e6c08d640e5c8d2016e62cee5c254bebe7fe8",
-    "https://deno.land/x/postgres@v0.17.0/query/types.ts": "a6dc8024867fe7ccb0ba4b4fa403ee5d474c7742174128c8e689c3b5e5eaa933",
     "https://deno.land/x/postgres@v0.17.0/utils/deferred.ts": "dd94f2a57355355c47812b061a51b55263f72d24e9cb3fdb474c7519f4d61083",
     "https://deno.land/x/postgres@v0.17.0/utils/utils.ts": "19c3527ddd5c6c4c49ae36397120274c7f41f9d3cbf479cb36065d23329e9f90"
   },
