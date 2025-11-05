@@ -18,12 +18,12 @@ export const POST: RequestHandler = async ({ request, params, platform, cookies 
 	}
 	return kysely
 		.selectFrom('invitations')
-		.select(['invitations.id'])
+		.leftJoin('user_profiles', 'user_profiles.supabase_user_id', 'invitations.user_id')
+		.select(['invitations.id', 'date_of_birth'])
 		.where('invitations.id', '=', invitationId.output)
 		.where('email', '=', invitationPayload.output.email)
 		.where('status', '=', 'pending')
-		.leftJoin('user_profiles', 'user_profiles.supabase_user_id', 'invitations.user_id')
-		.where('date_of_birth', '=', invitationPayload.output.dateOfBirth)
+		.where('user_profiles.date_of_birth', '=', invitationPayload.output.dateOfBirth)
 		.executeTakeFirst()
 		.then((result) => {
 			if (!result?.id) {
