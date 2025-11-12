@@ -27,7 +27,7 @@
 	});
 
 	const { form: formData, enhance, submitting, errors, message } = form;
-	$inspect($errors)
+	$inspect($errors);
 </script>
 
 <Card
@@ -85,9 +85,9 @@
 
 		<!-- Separator -->
 		<div class="flex items-center">
-			<Separator class="flex-grow w-auto" style="width: auto"/>
+			<Separator class="flex-grow w-auto" style="width: auto" />
 			<span class="px-3 text-sm text-muted-foreground">OR</span>
-			<Separator class="flex-grow w-auto" style="width: auto"/>
+			<Separator class="flex-grow w-auto" style="width: auto" />
 		</div>
 
 		<!-- Discord Login -->

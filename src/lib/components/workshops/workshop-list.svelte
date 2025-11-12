@@ -24,12 +24,7 @@
 		userId: string;
 	}
 
-	let {
-		workshops,
-		onInterestToggle,
-		isLoading = false,
-		userId
-	}: Props = $props();
+	let { workshops, onInterestToggle, isLoading = false, userId }: Props = $props();
 
 	let selectedWorkshop: ClubActivity | null = $state(null);
 	let showCancellationDialog = $state(false);
@@ -63,21 +58,23 @@
 
 	function hasUserInterest(workshop: ClubActivity): boolean {
 		if (workshop.status === 'published') {
-			return workshop?.attendee_count?.some(i => i.member_user_id === userId) ?? false;
+			return workshop?.attendee_count?.some((i) => i.member_user_id === userId) ?? false;
 		}
-		return workshop?.user_interest?.map(i => i.user_id).includes(userId) ?? false;
+		return workshop?.user_interest?.map((i) => i.user_id).includes(userId) ?? false;
 	}
 
 	function getUserRegistration(workshop: ClubActivity): { id: string; status: string } | null {
 		if (workshop.status === 'published') {
-			const registration = workshop?.attendee_count?.find(i => i.member_user_id === userId);
+			const registration = workshop?.attendee_count?.find((i) => i.member_user_id === userId);
 			return registration ? { id: registration.id, status: registration.status } : null;
 		}
 		return null;
 	}
 
 	function getInterestCount(workshop: ClubActivity): number {
-		return workshop.status === 'published' ? workshop.attendee_count?.length ?? 0 : workshop.interest_count?.[0]?.interest_count ?? 0;
+		return workshop.status === 'published'
+			? (workshop.attendee_count?.length ?? 0)
+			: (workshop.interest_count?.[0]?.interest_count ?? 0);
 	}
 
 	function getWorkshopPrice(workshop: ClubActivity): number {
@@ -86,7 +83,11 @@
 	}
 
 	function isRefunded(workshop: ClubActivity): boolean {
-		return workshop.attendee_count?.some(i => i.status === 'refunded' && i.member_user_id === userId) ?? false;
+		return (
+			workshop.attendee_count?.some(
+				(i) => i.status === 'refunded' && i.member_user_id === userId
+			) ?? false
+		);
 	}
 
 	function handleCancelRegistration(workshop: ClubActivity) {
@@ -119,9 +120,7 @@
 					<div class="flex justify-between items-start">
 						<CardTitle>{workshop.title}</CardTitle>
 						{#if isRefunded(workshop)}
-							<Badge class={`${getStatusColor('cancelled')} capitalize`}>
-								Refunded
-							</Badge>
+							<Badge class={`${getStatusColor('cancelled')} capitalize`}>Refunded</Badge>
 						{:else}
 							<Badge class={`${getStatusColor(workshop.status)} capitalize`}>
 								{workshop?.status}
@@ -136,33 +135,41 @@
 						{/if}
 						<div class="grid grid-cols-2 gap-4 text-sm">
 							<div>
-								<strong>Start:</strong> {formatDateTime(workshop.start_date)}
+								<strong>Start:</strong>
+								{formatDateTime(workshop.start_date)}
 							</div>
 							<div>
-								<strong>End:</strong> {formatDateTime(workshop.end_date)}
+								<strong>End:</strong>
+								{formatDateTime(workshop.end_date)}
 							</div>
 							<div>
-								<strong>Location:</strong> {workshop.location}
+								<strong>Location:</strong>
+								{workshop.location}
 							</div>
 							<div>
-								<strong>Capacity:</strong> {workshop.max_capacity}
+								<strong>Capacity:</strong>
+								{workshop.max_capacity}
 							</div>
 							<div>
-								<strong>Member Price:</strong> {formatPrice(workshop.price_member)}
+								<strong>Member Price:</strong>
+								{formatPrice(workshop.price_member)}
 							</div>
 							{#if workshop.is_public}
 								<div>
-									<strong>Non-Member Price:</strong> {formatPrice(workshop.price_non_member)}
+									<strong>Non-Member Price:</strong>
+									{formatPrice(workshop.price_non_member)}
 								</div>
 							{/if}
 							{#if workshop.status === 'planned'}
 								<div>
-									<strong>Interest:</strong> {getInterestCount(workshop)} people interested
+									<strong>Interest:</strong>
+									{getInterestCount(workshop)} people interested
 								</div>
 							{/if}
 							{#if workshop.status === 'published'}
 								<div>
-									<strong>Attendees:</strong> {getInterestCount(workshop)} people attending
+									<strong>Attendees:</strong>
+									{getInterestCount(workshop)} people attending
 								</div>
 							{/if}
 						</div>
@@ -171,8 +178,8 @@
 								{#if !hasUserInterest(workshop)}
 									<Dialog.Root>
 										<Dialog.Trigger
-											onclick={() => (selectedWorkshop=workshop)}
-											class={buttonVariants({ variant: "default" })}
+											onclick={() => (selectedWorkshop = workshop)}
+											class={buttonVariants({ variant: 'default' })}
 										>
 											Register
 										</Dialog.Trigger>
@@ -194,16 +201,13 @@
 														selectedWorkshop = null;
 														handleRegistrationSuccess();
 													}}
-													onCancel={() => selectedWorkshop = null}
+													onCancel={() => (selectedWorkshop = null)}
 												/>
 											{/if}
 										</Dialog.Content>
 									</Dialog.Root>
 								{:else if !isRefunded(workshop)}
-									<Button
-										variant="destructive"
-										onclick={() => handleCancelRegistration(workshop)}
-									>
+									<Button variant="destructive" onclick={() => handleCancelRegistration(workshop)}>
 										Cancel Registration
 									</Button>
 								{/if}
@@ -212,7 +216,7 @@
 						{#if workshop.status === 'planned' && onInterestToggle}
 							<div class="flex justify-end pt-4">
 								<Button
-									variant={hasUserInterest(workshop) ? "default" : "outline"}
+									variant={hasUserInterest(workshop) ? 'default' : 'outline'}
 									onclick={() => onInterestToggle(workshop.id)}
 									disabled={isLoading}
 								>

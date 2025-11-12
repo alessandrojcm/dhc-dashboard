@@ -11,7 +11,7 @@
 		onEdit: (newValue: string) => void;
 		isExpanded?: boolean;
 		onToggleExpand?: () => void;
-		inviteMember: () => void
+		inviteMember: () => void;
 	};
 	let isEdit = $state(false);
 	const { adminNotes, onEdit, isExpanded = false, onToggleExpand, inviteMember }: Props = $props();
@@ -49,13 +49,11 @@
 		</Popover.Trigger>
 		<Popover.Content class="flex flex-col gap-y-2">
 			<Label
-			>Admin notes
+				>Admin notes
 				<Button variant="ghost" onclick={() => (isEdit = !isEdit)}>
 					<Edit class="h-4 w-4" />
-				</Button
-				>
-			</Label
-			>
+				</Button>
+			</Label>
 			{#if isEdit}
 				<Textarea class="min-h-[5ch]" bind:value />
 				<Button
@@ -63,9 +61,9 @@
 					onclick={() => {
 						onEdit(value);
 						isEdit = false;
-					}}>Save
-				</Button
-				>
+					}}
+					>Save
+				</Button>
 			{:else}
 				<p class="border border-solid border-black-200 rounded-md p-2 min-h-[5ch]">
 					{value ?? 'N/A'}

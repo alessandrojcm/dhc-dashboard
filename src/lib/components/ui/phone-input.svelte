@@ -6,7 +6,12 @@
 	import getUnicodeFlagIcon from 'country-flag-icons/unicode';
 	import { Input } from '$lib/components/ui/input';
 	import * as countryCodesList from 'country-codes-list';
-	import { AsYouType, parsePhoneNumber, type CountryCode, formatIncompletePhoneNumber } from 'libphonenumber-js/min';
+	import {
+		AsYouType,
+		parsePhoneNumber,
+		type CountryCode,
+		formatIncompletePhoneNumber
+	} from 'libphonenumber-js/min';
 	import { parseIncompletePhoneNumber } from 'libphonenumber-js';
 	import { ChevronDown, ChevronUp } from 'lucide-svelte';
 
@@ -51,12 +56,15 @@
 			return { nationalNumber: '', value: 'IE' as CountryCode };
 		}
 		// It is just a country code so return accordingly
-		const isCountryCode = countryCodesList.findOne('countryCallingCode', phoneNumber.replace('+',''));
-		if(isCountryCode) {
-			return  {
+		const isCountryCode = countryCodesList.findOne(
+			'countryCallingCode',
+			phoneNumber.replace('+', '')
+		);
+		if (isCountryCode) {
+			return {
 				nationalNumber: '',
 				value: isCountryCode.countryCode
-			}
+			};
 		}
 		try {
 			// If the number starts with '+', it's in international format
@@ -148,7 +156,9 @@
 							<Command.Item
 								value={country.countryNameEn}
 								onSelect={() => {
-									phoneNumber = formatIncompletePhoneNumber(`+${country.countryCallingCode}${nationalNumber}`);
+									phoneNumber = formatIncompletePhoneNumber(
+										`+${country.countryCallingCode}${nationalNumber}`
+									);
 									closeAndFocusTrigger();
 								}}
 							>
@@ -166,7 +176,7 @@
 		value={formatedPhone}
 		onchange={(event) => {
 			if (!event.target) return;
-	  	updatePhoneNumber(event.target.value);
+			updatePhoneNumber(event.target.value);
 		}}
 		{placeholder}
 	/>

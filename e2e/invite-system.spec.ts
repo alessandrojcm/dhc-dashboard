@@ -53,7 +53,6 @@ test.describe('Invitation System', () => {
 		// Fill phone number
 		await page.getByLabel('Phone Number').fill('123456789');
 
-
 		// Add to list first
 		await page.getByRole('button', { name: 'Add to List' }).click();
 
@@ -67,8 +66,11 @@ test.describe('Invitation System', () => {
 
 		// Verify success message with a longer timeout
 		await expect(
-  page.getByText('Invitations are being processed in the background. You will be notified when completed.', { exact: false })
-).toBeVisible({ timeout: 10000 });
+			page.getByText(
+				'Invitations are being processed in the background. You will be notified when completed.',
+				{ exact: false }
+			)
+		).toBeVisible({ timeout: 10000 });
 	});
 
 	test('should validate required fields when adding to list', async ({ page }) => {
@@ -152,8 +154,11 @@ test.describe('Invitation System', () => {
 
 		// Verify success message with a longer timeout
 		await expect(
-  page.getByText('Invitations are being processed in the background. You will be notified when completed.', { exact: false })
-).toBeVisible({ timeout: 10000 });
+			page.getByText(
+				'Invitations are being processed in the background. You will be notified when completed.',
+				{ exact: false }
+			)
+		).toBeVisible({ timeout: 10000 });
 	});
 
 	test('should be able to remove invitations from the list', async ({ page }) => {

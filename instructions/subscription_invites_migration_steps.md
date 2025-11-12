@@ -28,6 +28,7 @@ This document outlines a detailed, step-by-step plan to refactor the bulk invite
    - **Location:** `supabase/functions/bulk_invite_with_subscription/index.ts`
    - **Task:** Create a new file and setup the basic function handler.
    - **Implementation:**
+
    ```typescript
    // supabase/functions/bulk_invite_with_subscription/index.ts
    import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
@@ -37,91 +38,99 @@ This document outlines a detailed, step-by-step plan to refactor the bulk invite
    import { Stripe } from 'https://esm.sh/stripe@12.4.0?target=deno';
    import { db } from '../_shared/db.ts';
    import { createInvitation } from '../_shared/invitations.ts';
-   import { createPaymentSession, updateUserProfileWithCustomerId } from '../_shared/subscriptions.ts';
-   
+   import {
+   	createPaymentSession,
+   	updateUserProfileWithCustomerId
+   } from '../_shared/subscriptions.ts';
+
    // Add event listener for beforeUnload to handle graceful shutdown
    addEventListener('beforeunload', (event) => {
-     console.log('Function is about to be terminated:', event);
-     // Perform any cleanup if needed
+   	console.log('Function is about to be terminated:', event);
+   	// Perform any cleanup if needed
    });
-   
-   serve(async (req: Request) => {
-     try {
-       // Initialize Supabase client with anon key for authentication
-       const supabaseClient = createClient(
-         Deno.env.get('SUPABASE_URL') ?? '',
-         Deno.env.get('SUPABASE_ANON_KEY') ?? ''
-       );
-       
-       // Get the authorization header and validate the token
-       const authHeader = req.headers.get('Authorization');
-       if (!authHeader) {
-         return new Response(
-           JSON.stringify({ error: 'Missing Authorization header' }),
-           { status: 401, headers: { 'Content-Type': 'application/json' } }
-         );
-       }
-       
-       const token = authHeader.replace('Bearer ', '');
-       const { data: userData, error: authError } = await supabaseClient.auth.getUser(token);
-       
-       if (authError || !userData?.user) {
-         return new Response(
-           JSON.stringify({ error: 'Unauthorized', details: authError?.message }),
-           { status: 403, headers: { 'Content-Type': 'application/json' } }
-         );
-       }
-       
-       // Create admin client for privileged operations
-       const supabaseAdmin = createClient(
-         Deno.env.get('SUPABASE_URL') ?? '',
-         Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-       );
-       
-       // Parse JSON payload from the request
-       const { invites } = await req.json() as { invites: InviteData[] };
-       
-       // Validate user permissions (only admins, presidents, committee coordinators)
-       const { data: rolesData } = await supabaseClient.rpc('get_user_roles');
-       const userRoles = new Set(rolesData || []);
-       
-       const ALLOWED_ROLES = new Set(['admin', 'president', 'committee_coordinator']);
-       const hasPermission = [...userRoles].some(role => 
-         typeof role === 'string' && ALLOWED_ROLES.has(role)
-       );
-       
-       if (!hasPermission) {
-         return new Response(
-           JSON.stringify({ error: 'Insufficient permissions to create invitations' }),
-           { status: 403, headers: { 'Content-Type': 'application/json' } }
-         );
-       }
 
-       // Get price IDs for immediate validation
-       const priceIds = await getPriceIds();
-       
-       // Create a background task to process invitations
-       const processingPromise = processInvitations(invites, userData.user, supabaseAdmin, priceIds);
-       
-       // Use waitUntil to keep the function running in the background
-       EdgeRuntime.waitUntil(processingPromise);
-       
-       // Return an immediate response to the client
-       return new Response(
-         JSON.stringify({ 
-           message: 'Invitations are being processed in the background', 
-           count: invites.length 
-         }),
-         { headers: { 'Content-Type': 'application/json' } }
-       );
-     } catch (error) {
-       Sentry.captureException(error);
-       const errorMessage = error instanceof Error ? error.message : String(error);
-       return new Response(
-         JSON.stringify({ error: errorMessage }),
-         { status: 500, headers: { 'Content-Type': 'application/json' } }
-       );
-     }
+   serve(async (req: Request) => {
+   	try {
+   		// Initialize Supabase client with anon key for authentication
+   		const supabaseClient = createClient(
+   			Deno.env.get('SUPABASE_URL') ?? '',
+   			Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+   		);
+
+   		// Get the authorization header and validate the token
+   		const authHeader = req.headers.get('Authorization');
+   		if (!authHeader) {
+   			return new Response(JSON.stringify({ error: 'Missing Authorization header' }), {
+   				status: 401,
+   				headers: { 'Content-Type': 'application/json' }
+   			});
+   		}
+
+   		const token = authHeader.replace('Bearer ', '');
+   		const { data: userData, error: authError } = await supabaseClient.auth.getUser(token);
+
+   		if (authError || !userData?.user) {
+   			return new Response(
+   				JSON.stringify({ error: 'Unauthorized', details: authError?.message }),
+   				{ status: 403, headers: { 'Content-Type': 'application/json' } }
+   			);
+   		}
+
+   		// Create admin client for privileged operations
+   		const supabaseAdmin = createClient(
+   			Deno.env.get('SUPABASE_URL') ?? '',
+   			Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+   		);
+
+   		// Parse JSON payload from the request
+   		const { invites } = (await req.json()) as { invites: InviteData[] };
+
+   		// Validate user permissions (only admins, presidents, committee coordinators)
+   		const { data: rolesData } = await supabaseClient.rpc('get_user_roles');
+   		const userRoles = new Set(rolesData || []);
+
+   		const ALLOWED_ROLES = new Set(['admin', 'president', 'committee_coordinator']);
+   		const hasPermission = [...userRoles].some(
+   			(role) => typeof role === 'string' && ALLOWED_ROLES.has(role)
+   		);
+
+   		if (!hasPermission) {
+   			return new Response(
+   				JSON.stringify({ error: 'Insufficient permissions to create invitations' }),
+   				{ status: 403, headers: { 'Content-Type': 'application/json' } }
+   			);
+   		}
+
+   		// Get price IDs for immediate validation
+   		const priceIds = await getPriceIds();
+
+   		// Create a background task to process invitations
+   		const processingPromise = processInvitations(
+   			invites,
+   			userData.user,
+   			supabaseAdmin,
+   			priceIds
+   		);
+
+   		// Use waitUntil to keep the function running in the background
+   		EdgeRuntime.waitUntil(processingPromise);
+
+   		// Return an immediate response to the client
+   		return new Response(
+   			JSON.stringify({
+   				message: 'Invitations are being processed in the background',
+   				count: invites.length
+   			}),
+   			{ headers: { 'Content-Type': 'application/json' } }
+   		);
+   	} catch (error) {
+   		Sentry.captureException(error);
+   		const errorMessage = error instanceof Error ? error.message : String(error);
+   		return new Response(JSON.stringify({ error: errorMessage }), {
+   			status: 500,
+   			headers: { 'Content-Type': 'application/json' }
+   		});
+   	}
    });
    ```
 
@@ -129,39 +138,39 @@ This document outlines a detailed, step-by-step plan to refactor the bulk invite
    - Implemented background processing using `EdgeRuntime.waitUntil()` to improve user experience
    - Created a logging system to track invitation processing results
    - Added proper error handling and monitoring with Sentry
-   
+
    ```typescript
    // Background processing function
    async function processInvitations(
-     invites: InviteData[], 
-     user: UserData, 
-     supabaseAdmin: ReturnType<typeof createClient>,
-     priceIds: { monthly: string; annual: string }
+   	invites: InviteData[],
+   	user: UserData,
+   	supabaseAdmin: ReturnType<typeof createClient>,
+   	priceIds: { monthly: string; annual: string }
    ) {
-     console.log(`Starting background processing of ${invites.length} invitations`);
-     const results: InviteResult[] = [];
-     const startTime = Date.now();
-     
-     try {
-       // Process each invite in a transaction
-       for (const invite of invites) {
-         // ... invitation processing code ...
-       }
-       
-       // Store the results in a database
-       await storeProcessingResults(results, user.id);
-       
-       const processingTime = (Date.now() - startTime) / 1000;
-       console.log(`Completed processing ${invites.length} invitations in ${processingTime}s`);
-       return results;
-     } catch (error) {
-       Sentry.captureException(error);
-       console.error(`Error in background processing: ${errorMessage}`);
-       throw error;
-     }
+   	console.log(`Starting background processing of ${invites.length} invitations`);
+   	const results: InviteResult[] = [];
+   	const startTime = Date.now();
+
+   	try {
+   		// Process each invite in a transaction
+   		for (const invite of invites) {
+   			// ... invitation processing code ...
+   		}
+
+   		// Store the results in a database
+   		await storeProcessingResults(results, user.id);
+
+   		const processingTime = (Date.now() - startTime) / 1000;
+   		console.log(`Completed processing ${invites.length} invitations in ${processingTime}s`);
+   		return results;
+   	} catch (error) {
+   		Sentry.captureException(error);
+   		console.error(`Error in background processing: ${errorMessage}`);
+   		throw error;
+   	}
    }
    ```
-   
+
 3. **Database Migration for Logging** ✅
    - Created a new table `invitation_processing_logs` to store processing results
    - Added RLS policies for security
@@ -171,7 +180,6 @@ This document outlines a detailed, step-by-step plan to refactor the bulk invite
 
 1. **Locate the Current Endpoint**
    - **File:** `src/routes/dashboard/members/+page.server.ts`
-   
 2. **Modified the `createBulkInvites` Function**
    - **Removed** the inline, synchronous processing logic
    - **Built a payload** that includes invites and user session information
@@ -179,55 +187,54 @@ This document outlines a detailed, step-by-step plan to refactor the bulk invite
    - **Provided immediate success feedback** to the user without waiting for the background process to complete
 
 **Implemented Code:**
-   ```typescript
-   export const actions = {
-     createBulkInvites: async ({ request, locals, fetch }) => {
-       // Validate the form using superValidate and the bulkInviteSchema
-       const form = await superValidate(request, valibot(bulkInviteSchema));
-       if (!form.valid) {
-         return fail(400, {
-           form: { ...form, message: { failure: 'There was an error sending the invites.' } }
-         });
-       }
 
-       try {
-         // Prepare the payload for the Edge Function
-         const payload = {
-           invites: form.data.invites,
-           session: locals.session
-         };
+```typescript
+export const actions = {
+	createBulkInvites: async ({ request, locals, fetch }) => {
+		// Validate the form using superValidate and the bulkInviteSchema
+		const form = await superValidate(request, valibot(bulkInviteSchema));
+		if (!form.valid) {
+			return fail(400, {
+				form: { ...form, message: { failure: 'There was an error sending the invites.' } }
+			});
+		}
 
-         // Call the new Edge Function asynchronously
-         const response = await fetch(
-           `${env.EDGE_FUNCTION_URL}/bulk_invite_with_subscription`,
-           {
-             method: 'POST',
-             headers: {
-               'Content-Type': 'application/json',
-               'Authorization': `Bearer ${locals.session.access_token}`
-             },
-             body: JSON.stringify(payload)
-           }
-         );
+		try {
+			// Prepare the payload for the Edge Function
+			const payload = {
+				invites: form.data.invites,
+				session: locals.session
+			};
 
-         if (!response.ok) {
-           const errorData = await response.json();
-           throw new Error(errorData.error || 'Failed to process invitations');
-         }
+			// Call the new Edge Function asynchronously
+			const response = await fetch(`${env.EDGE_FUNCTION_URL}/bulk_invite_with_subscription`, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+					Authorization: `Bearer ${locals.session.access_token}`
+				},
+				body: JSON.stringify(payload)
+			});
 
-         // Return immediate user feedback
-         return message(form, {
-           success: 'Invitations are being processed in the background. You will be notified when completed.'
-         });
-       } catch (error) {
-         console.error('Error sending invitations:', error);
-         return fail(500, {
-           form: { ...form, message: { failure: 'There was an error sending the invites.' } }
-         });
-       }
-     }
-   };
-   ```
+			if (!response.ok) {
+				const errorData = await response.json();
+				throw new Error(errorData.error || 'Failed to process invitations');
+			}
+
+			// Return immediate user feedback
+			return message(form, {
+				success:
+					'Invitations are being processed in the background. You will be notified when completed.'
+			});
+		} catch (error) {
+			console.error('Error sending invitations:', error);
+			return fail(500, {
+				form: { ...form, message: { failure: 'There was an error sending the invites.' } }
+			});
+		}
+	}
+};
+```
 
 ### Step 3: Refactor Helper Functions ✅
 
@@ -235,7 +242,6 @@ This document outlines a detailed, step-by-step plan to refactor the bulk invite
    - **Created `_shared/invitations.ts`**
      - Implemented `createInvitation` function with proper transaction support
      - Added error handling and validation
-   
    - **Created `_shared/subscriptions.ts`**
      - Implemented `createPaymentSession` function for storing subscription details
      - Added `updateUserProfileWithCustomerId` function to update user profiles

@@ -16,7 +16,13 @@
 	{#if onToggleExpand}
 		<Tooltip.Root>
 			<Tooltip.Trigger>
-				<Button variant="ghost" size="icon" class="h-8 w-8" onclick={onToggleExpand} aria-label="Expand row">
+				<Button
+					variant="ghost"
+					size="icon"
+					class="h-8 w-8"
+					onclick={onToggleExpand}
+					aria-label="Expand row"
+				>
 					{#if isExpanded}
 						<ChevronUp class="h-4 w-4" />
 					{:else}

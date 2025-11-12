@@ -142,7 +142,6 @@
 			}
 
 			await completeRegistration.mutateAsync(paymentIntentId);
-
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Payment failed';
 		} finally {
@@ -150,9 +149,12 @@
 		}
 	}
 
-	async function initializeCheckout({ clientSecret, paymentIntentId }: {
-		clientSecret: string,
-		paymentIntentId: string
+	async function initializeCheckout({
+		clientSecret,
+		paymentIntentId
+	}: {
+		clientSecret: string;
+		paymentIntentId: string;
 	}) {
 		if (!stripe) return;
 
@@ -171,7 +173,6 @@
 
 			// Always show both payment methods for now
 			// The Express Checkout will hide itself if no express methods are available
-
 		} catch (err) {
 			error = err instanceof Error ? err.message : 'Failed to initialize payment';
 		}
@@ -210,7 +211,8 @@
 	<Alert.Root variant="success" class="w-full">
 		<Alert.Title>Registration Successful!</Alert.Title>
 		<Alert.Description>
-			You have successfully registered for {workshopTitle}. You will receive a confirmation email shortly.
+			You have successfully registered for {workshopTitle}. You will receive a confirmation email
+			shortly.
 		</Alert.Description>
 	</Alert.Root>
 {:else if error}
@@ -218,13 +220,18 @@
 		<Alert.Title>Registration Failed</Alert.Title>
 		<Alert.Description>{error}</Alert.Description>
 		<div class="mt-2 flex gap-2">
-			<Button variant="outline" size="sm" onclick={() => { error = null; createPaymentIntent.mutate(); }}>
+			<Button
+				variant="outline"
+				size="sm"
+				onclick={() => {
+					error = null;
+					createPaymentIntent.mutate();
+				}}
+			>
 				Try Again
 			</Button>
 			{#if onCancel}
-				<Button variant="ghost" size="sm" onclick={onCancel}>
-					Cancel
-				</Button>
+				<Button variant="ghost" size="sm" onclick={onCancel}>Cancel</Button>
 			{/if}
 		</div>
 	</Alert.Root>

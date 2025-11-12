@@ -209,7 +209,7 @@
 				cell: ({ row }) => {
 					const pausedUntil = row.original.subscription_paused_until;
 					const isActive = row.original.is_active;
-					
+
 					if (!isActive) {
 						return renderComponent(Badge, {
 							variant: 'destructive',
@@ -217,17 +217,17 @@
 							children: createRawSnippet(() => ({ render: () => 'Inactive' }))
 						});
 					}
-					
+
 					if (pausedUntil && dayjs(pausedUntil).isAfter(dayjs())) {
 						return renderComponent(Badge, {
 							variant: 'secondary',
 							class: 'h-6',
-							children: createRawSnippet(() => ({ 
-								render: () => `Paused until ${dayjs(pausedUntil).format('MMM D, YYYY')}` 
+							children: createRawSnippet(() => ({
+								render: () => `Paused until ${dayjs(pausedUntil).format('MMM D, YYYY')}`
 							}))
 						});
 					}
-					
+
 					return renderComponent(Badge, {
 						variant: 'default',
 						class: 'h-6',
@@ -415,10 +415,7 @@
 				<Table.Row>
 					{#each headerGroup.headers as header (header.id)}
 						<Table.Head class="text-black prose prose-p text-xs md:text-sm font-medium p-2">
-							<FlexRender
-								content={header.column.columnDef.header}
-								context={header.getContext()}
-							/>
+							<FlexRender content={header.column.columnDef.header} context={header.getContext()} />
 						</Table.Head>
 					{/each}
 				</Table.Row>
@@ -431,10 +428,7 @@
 						<Table.Cell
 							class="whitespace-normal md:whitespace-nowrap py-2 md:py-4 px-2 md:px-3 text-xs md:text-sm prose prose-p"
 						>
-							<FlexRender
-								content={cell.column.columnDef.cell}
-								context={cell.getContext()}
-							/>
+							<FlexRender content={cell.column.columnDef.cell} context={cell.getContext()} />
 						</Table.Cell>
 					{/each}
 				</Table.Row>
@@ -465,7 +459,8 @@
 										<div class="grid grid-cols-3 gap-2">
 											<div class="text-xs font-medium text-muted-foreground">Name</div>
 											<div class="col-span-2 text-xs">
-												{row.original.guardian_first_name || ''} {row.original.guardian_last_name || ''}
+												{row.original.guardian_first_name || ''}
+												{row.original.guardian_last_name || ''}
 											</div>
 
 											<div class="text-xs font-medium text-muted-foreground">Phone</div>
@@ -569,7 +564,9 @@
 							</Badge>
 						{:else if row.original.subscription_paused_until && dayjs(row.original.subscription_paused_until).isAfter(dayjs())}
 							<Badge variant="secondary" class="h-6">
-								<p>Paused until {dayjs(row.original.subscription_paused_until).format('MMM D, YYYY')}</p>
+								<p>
+									Paused until {dayjs(row.original.subscription_paused_until).format('MMM D, YYYY')}
+								</p>
 							</Badge>
 						{:else}
 							<Badge variant="default" class="h-6">
@@ -633,7 +630,8 @@
 								<div class="grid grid-cols-3 gap-2">
 									<div class="text-xs font-medium text-muted-foreground">Name</div>
 									<div class="col-span-2 text-xs">
-										{row.original.guardian_first_name || ''} {row.original.guardian_last_name || ''}
+										{row.original.guardian_first_name || ''}
+										{row.original.guardian_last_name || ''}
 									</div>
 
 									<div class="text-xs font-medium text-muted-foreground">Phone</div>
@@ -697,7 +695,13 @@
 								<Pagination.Ellipsis />
 							</Pagination.Item>
 						{:else}
-							<Pagination.Item class={page.value !== currentPage && page.value !== currentPage - 1 && page.value !== currentPage + 1 ? 'hidden sm:block' : ''}>
+							<Pagination.Item
+								class={page.value !== currentPage &&
+								page.value !== currentPage - 1 &&
+								page.value !== currentPage + 1
+									? 'hidden sm:block'
+									: ''}
+							>
 								<Pagination.Link {page} isActive={currentPage === page.value}>
 									{page.value}
 								</Pagination.Link>

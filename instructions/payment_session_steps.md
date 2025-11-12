@@ -58,22 +58,22 @@ Update your Kysely types to include the new table:
 // src/lib/server/kysely.ts or equivalent
 
 export interface Database {
-  // ... existing tables
-  
-  payment_sessions: {
-    id: Generated<number>;
-    user_id: string;
-    customer_id: string;
-    monthly_subscription_id: string;
-    annual_subscription_id: string;
-    monthly_payment_intent_id: string;
-    annual_payment_intent_id: string;
-    monthly_amount: number;
-    annual_amount: number;
-    created_at: Date;
-    expires_at: Date;
-    is_used: boolean;
-  };
+	// ... existing tables
+
+	payment_sessions: {
+		id: Generated<number>;
+		user_id: string;
+		customer_id: string;
+		monthly_subscription_id: string;
+		annual_subscription_id: string;
+		monthly_payment_intent_id: string;
+		annual_payment_intent_id: string;
+		monthly_amount: number;
+		annual_amount: number;
+		created_at: Date;
+		expires_at: Date;
+		is_used: boolean;
+	};
 }
 ```
 
@@ -85,130 +85,130 @@ Update the load function in `src/routes/(public)/members/signup/(signup-form)/+p
 // Implementation completed with the following improvements:
 
 export const load: PageServerLoad = async ({ parent, cookies }) => {
-  const { userData } = await parent();
-  try {
-    // ... existing invitation validation and customer ID creation ...
+	const { userData } = await parent();
+	try {
+		// ... existing invitation validation and customer ID creation ...
 
-    // Check for an existing valid payment session
-    const existingSession = await kysely
-      .selectFrom('payment_sessions')
-      .select([
-        'monthly_subscription_id',
-        'annual_subscription_id',
-        'monthly_payment_intent_id',
-        'annual_payment_intent_id',
-        'monthly_amount',
-        'annual_amount'
-      ])
-      .where('user_id', '=', userData.id)
-      .where('expires_at', '>', dayjs().toISOString()) // Using dayjs for date handling
-      .where('is_used', '=', false)
-      .orderBy('created_at', 'desc')
-      .executeTakeFirst();
+		// Check for an existing valid payment session
+		const existingSession = await kysely
+			.selectFrom('payment_sessions')
+			.select([
+				'monthly_subscription_id',
+				'annual_subscription_id',
+				'monthly_payment_intent_id',
+				'annual_payment_intent_id',
+				'monthly_amount',
+				'annual_amount'
+			])
+			.where('user_id', '=', userData.id)
+			.where('expires_at', '>', dayjs().toISOString()) // Using dayjs for date handling
+			.where('is_used', '=', false)
+			.orderBy('created_at', 'desc')
+			.executeTakeFirst();
 
-    let monthlyPaymentIntent: Stripe.PaymentIntent | undefined;
-    let annualPaymentIntent: Stripe.PaymentIntent | undefined;
-    let proratedMonthlyAmount: number = 0;
-    let proratedAnnualAmount: number = 0;
-    let monthlySubscription: Stripe.Subscription | undefined;
-    let annualSubscription: Stripe.Subscription | undefined;
-    let validExistingSession = false;
+		let monthlyPaymentIntent: Stripe.PaymentIntent | undefined;
+		let annualPaymentIntent: Stripe.PaymentIntent | undefined;
+		let proratedMonthlyAmount: number = 0;
+		let proratedAnnualAmount: number = 0;
+		let monthlySubscription: Stripe.Subscription | undefined;
+		let annualSubscription: Stripe.Subscription | undefined;
+		let validExistingSession = false;
 
-    if (existingSession) {
-      // Retrieve the payment intents to ensure they're still valid
-      try {
-        const [retrievedMonthlyIntent, retrievedAnnualIntent] = await Promise.all([
-          stripeClient.paymentIntents.retrieve(existingSession.monthly_payment_intent_id),
-          stripeClient.paymentIntents.retrieve(existingSession.annual_payment_intent_id)
-        ]);
+		if (existingSession) {
+			// Retrieve the payment intents to ensure they're still valid
+			try {
+				const [retrievedMonthlyIntent, retrievedAnnualIntent] = await Promise.all([
+					stripeClient.paymentIntents.retrieve(existingSession.monthly_payment_intent_id),
+					stripeClient.paymentIntents.retrieve(existingSession.annual_payment_intent_id)
+				]);
 
-        // Only use if they're still in a usable state
-        if (
-          retrievedMonthlyIntent.status === 'requires_payment_method' &&
-          retrievedAnnualIntent.status === 'requires_payment_method'
-        ) {
-          monthlyPaymentIntent = retrievedMonthlyIntent;
-          annualPaymentIntent = retrievedAnnualIntent;
-          proratedMonthlyAmount = existingSession.monthly_amount;
-          proratedAnnualAmount = existingSession.annual_amount;
-          validExistingSession = true;
+				// Only use if they're still in a usable state
+				if (
+					retrievedMonthlyIntent.status === 'requires_payment_method' &&
+					retrievedAnnualIntent.status === 'requires_payment_method'
+				) {
+					monthlyPaymentIntent = retrievedMonthlyIntent;
+					annualPaymentIntent = retrievedAnnualIntent;
+					proratedMonthlyAmount = existingSession.monthly_amount;
+					proratedAnnualAmount = existingSession.annual_amount;
+					validExistingSession = true;
 
-          // Retrieve subscriptions for display purposes
-          const [retrievedMonthlySubscription, retrievedAnnualSubscription] = await Promise.all([
-            stripeClient.subscriptions.retrieve(existingSession.monthly_subscription_id),
-            stripeClient.subscriptions.retrieve(existingSession.annual_subscription_id)
-          ]);
+					// Retrieve subscriptions for display purposes
+					const [retrievedMonthlySubscription, retrievedAnnualSubscription] = await Promise.all([
+						stripeClient.subscriptions.retrieve(existingSession.monthly_subscription_id),
+						stripeClient.subscriptions.retrieve(existingSession.annual_subscription_id)
+					]);
 
-          monthlySubscription = retrievedMonthlySubscription;
-          annualSubscription = retrievedAnnualSubscription;
-        } else {
-          // Payment intents are in an unusable state, just mark as invalid
-          console.log(
-            'Payment intents are in an unusable state:',
-            retrievedMonthlyIntent.status,
-            retrievedAnnualIntent.status
-          );
-          validExistingSession = false;
-        }
-      } catch (error) {
-        // If there's any error retrieving or validating, create new ones
-        console.error('Error retrieving existing payment session:', error);
-        validExistingSession = false;
-      }
-    }
+					monthlySubscription = retrievedMonthlySubscription;
+					annualSubscription = retrievedAnnualSubscription;
+				} else {
+					// Payment intents are in an unusable state, just mark as invalid
+					console.log(
+						'Payment intents are in an unusable state:',
+						retrievedMonthlyIntent.status,
+						retrievedAnnualIntent.status
+					);
+					validExistingSession = false;
+				}
+			} catch (error) {
+				// If there's any error retrieving or validating, create new ones
+				console.error('Error retrieving existing payment session:', error);
+				validExistingSession = false;
+			}
+		}
 
-    if (!existingSession || !validExistingSession) {
-      // Create new subscriptions if no valid existing session
-      // ... subscription creation code ...
+		if (!existingSession || !validExistingSession) {
+			// Create new subscriptions if no valid existing session
+			// ... subscription creation code ...
 
-      // Store the new session with proper expiration
-      await kysely
-        .insertInto('payment_sessions')
-        .values({
-          // ... session data ...
-          expires_at: dayjs().add(24, 'hour').toISOString() // 24 hours using dayjs
-        })
-        .execute();
-    }
+			// Store the new session with proper expiration
+			await kysely
+				.insertInto('payment_sessions')
+				.values({
+					// ... session data ...
+					expires_at: dayjs().add(24, 'hour').toISOString() // 24 hours using dayjs
+				})
+				.execute();
+		}
 
-    // Set the cookie with payment info (unchanged)
-    cookies.set(
-      'stripe-payment-info',
-      JSON.stringify({
-        customerId: invitationData.customer_id!,
-        annualSubscriptionPaymentIntendId: annualPaymentIntent.id,
-        membershipSubscriptionPaymentIntendId: monthlyPaymentIntent.id
-      } satisfies StripePaymentInfo),
-      { path: '/', httpOnly: true, secure: true, sameSite: 'strict' }
-    );
+		// Set the cookie with payment info (unchanged)
+		cookies.set(
+			'stripe-payment-info',
+			JSON.stringify({
+				customerId: invitationData.customer_id!,
+				annualSubscriptionPaymentIntendId: annualPaymentIntent.id,
+				membershipSubscriptionPaymentIntendId: monthlyPaymentIntent.id
+			} satisfies StripePaymentInfo),
+			{ path: '/', httpOnly: true, secure: true, sameSite: 'strict' }
+		);
 
-    // Return data for the page (unchanged)
-    return {
-      form: await superValidate({}, valibot(memberSignupSchema), { errors: false }),
-      userData: {
-        // Existing user data...
-      },
-      // Rest of the return values remain the same
-      proratedPrice: Dinero({
-        amount: proratedMonthlyAmount + proratedAnnualAmount,
-        currency: 'EUR'
-      }).toJSON(),
-      proratedMonthlyPrice: Dinero({
-        amount: proratedMonthlyAmount,
-        currency: 'EUR'
-      }).toJSON(),
-      proratedAnnualPrice: Dinero({
-        amount: proratedAnnualAmount,
-        currency: 'EUR'
-      }).toJSON(),
-      // Other return values...
-    };
-  } catch (err) {
-    console.error(err);
-    error(404, {
-      message: 'Something went wrong'
-    });
-  }
+		// Return data for the page (unchanged)
+		return {
+			form: await superValidate({}, valibot(memberSignupSchema), { errors: false }),
+			userData: {
+				// Existing user data...
+			},
+			// Rest of the return values remain the same
+			proratedPrice: Dinero({
+				amount: proratedMonthlyAmount + proratedAnnualAmount,
+				currency: 'EUR'
+			}).toJSON(),
+			proratedMonthlyPrice: Dinero({
+				amount: proratedMonthlyAmount,
+				currency: 'EUR'
+			}).toJSON(),
+			proratedAnnualPrice: Dinero({
+				amount: proratedAnnualAmount,
+				currency: 'EUR'
+			}).toJSON()
+			// Other return values...
+		};
+	} catch (err) {
+		console.error(err);
+		error(404, {
+			message: 'Something went wrong'
+		});
+	}
 };
 ```
 
@@ -220,29 +220,29 @@ Modify the default action in the same file to mark payment sessions as used afte
 // Implementation completed with the following improvements:
 
 export const actions: Actions = {
-  default: async (event) => {
-    // ... existing code for form validation and payment processing ...
-    
-    return kysely
-      .transaction()
-      .execute(async (trx) => {
-        // ... invitation handling and payment processing ...
-        
-        // After successful payment confirmation, mark the session as used
-        await trx
-          .updateTable('payment_sessions')
-          .set({ is_used: true })
-          .where('monthly_payment_intent_id', '=', membershipSubscriptionPaymentIntendId)
-          .where('annual_payment_intent_id', '=', annualSubscriptionPaymentIntendId)
-          .execute();
-          
-        // ... rest of the existing code ...
-        return message(form, { paymentFailed: false });
-      })
-      .catch((err) => {
-        // ... error handling ...
-      });
-  }
+	default: async (event) => {
+		// ... existing code for form validation and payment processing ...
+
+		return kysely
+			.transaction()
+			.execute(async (trx) => {
+				// ... invitation handling and payment processing ...
+
+				// After successful payment confirmation, mark the session as used
+				await trx
+					.updateTable('payment_sessions')
+					.set({ is_used: true })
+					.where('monthly_payment_intent_id', '=', membershipSubscriptionPaymentIntendId)
+					.where('annual_payment_intent_id', '=', annualSubscriptionPaymentIntendId)
+					.execute();
+
+				// ... rest of the existing code ...
+				return message(form, { paymentFailed: false });
+			})
+			.catch((err) => {
+				// ... error handling ...
+			});
+	}
 };
 ```
 
@@ -259,73 +259,69 @@ import { kysely } from '../_shared/kysely';
 
 // This function should be scheduled to run daily
 Deno.serve(async (req) => {
-  try {
-    // Verify request is authorized (implement your auth check here)
-    // ...
-    
-    const expiredSessions = await kysely
-      .selectFrom('payment_sessions')
-      .select([
-        'id',
-        'monthly_subscription_id',
-        'annual_subscription_id'
-      ])
-      .where('expires_at', '<', new Date())
-      .where('is_used', '=', false)
-      .execute();
+	try {
+		// Verify request is authorized (implement your auth check here)
+		// ...
 
-    const results = [];
-    
-    for (const session of expiredSessions) {
-      try {
-        // Cancel the subscriptions
-        await Promise.all([
-          stripe.subscriptions.cancel(session.monthly_subscription_id),
-          stripe.subscriptions.cancel(session.annual_subscription_id)
-        ]);
-        
-        results.push({
-          id: session.id,
-          status: 'cancelled'
-        });
-      } catch (error) {
-        console.error(`Error canceling subscriptions for session ${session.id}:`, error);
-        results.push({
-          id: session.id,
-          status: 'error',
-          error: error.message
-        });
-      }
-    }
+		const expiredSessions = await kysely
+			.selectFrom('payment_sessions')
+			.select(['id', 'monthly_subscription_id', 'annual_subscription_id'])
+			.where('expires_at', '<', new Date())
+			.where('is_used', '=', false)
+			.execute();
 
-    // Mark all expired sessions as used
-    await kysely
-      .updateTable('payment_sessions')
-      .set({ is_used: true })
-      .where('expires_at', '<', new Date())
-      .where('is_used', '=', false)
-      .execute();
+		const results = [];
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        processed: expiredSessions.length,
-        results
-      }),
-      { headers: { 'Content-Type': 'application/json' } }
-    );
-  } catch (error) {
-    return new Response(
-      JSON.stringify({
-        success: false,
-        error: error.message
-      }),
-      { 
-        status: 500,
-        headers: { 'Content-Type': 'application/json' }
-      }
-    );
-  }
+		for (const session of expiredSessions) {
+			try {
+				// Cancel the subscriptions
+				await Promise.all([
+					stripe.subscriptions.cancel(session.monthly_subscription_id),
+					stripe.subscriptions.cancel(session.annual_subscription_id)
+				]);
+
+				results.push({
+					id: session.id,
+					status: 'cancelled'
+				});
+			} catch (error) {
+				console.error(`Error canceling subscriptions for session ${session.id}:`, error);
+				results.push({
+					id: session.id,
+					status: 'error',
+					error: error.message
+				});
+			}
+		}
+
+		// Mark all expired sessions as used
+		await kysely
+			.updateTable('payment_sessions')
+			.set({ is_used: true })
+			.where('expires_at', '<', new Date())
+			.where('is_used', '=', false)
+			.execute();
+
+		return new Response(
+			JSON.stringify({
+				success: true,
+				processed: expiredSessions.length,
+				results
+			}),
+			{ headers: { 'Content-Type': 'application/json' } }
+		);
+	} catch (error) {
+		return new Response(
+			JSON.stringify({
+				success: false,
+				error: error.message
+			}),
+			{
+				status: 500,
+				headers: { 'Content-Type': 'application/json' }
+			}
+		);
+	}
 });
 ```
 
@@ -348,7 +344,7 @@ Or set up the schedule in the Supabase dashboard under "Edge Functions" > "Sched
 
 Test the implementation with these scenarios:
 
-1. **New User Flow**: 
+1. **New User Flow**:
    - Verify a new payment session is created on first visit
    - Check database entry is created correctly
 

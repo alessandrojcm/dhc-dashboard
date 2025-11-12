@@ -19,12 +19,19 @@
 	import SortHeader from '$lib/components/ui/table/sort-header.svelte';
 	import type { MutationPayload } from '$lib/types';
 	import type { SupabaseClient } from '@supabase/supabase-js';
-	import { createMutation, createQuery, keepPreviousData, useQueryClient } from '@tanstack/svelte-query';
 	import {
-		getCoreRowModel, getExpandedRowModel,
+		createMutation,
+		createQuery,
+		keepPreviousData,
+		useQueryClient
+	} from '@tanstack/svelte-query';
+	import {
+		getCoreRowModel,
+		getExpandedRowModel,
 		getPaginationRowModel,
 		getSortedRowModel,
-		type PaginationState, type RowSelectionState,
+		type PaginationState,
+		type RowSelectionState,
 		type SortingState,
 		type TableOptions
 	} from '@tanstack/table-core';
@@ -108,19 +115,22 @@
 	}));
 	const queryClient = useQueryClient();
 	const inviteMember = createMutation(() => ({
-		mutationFn: async (waitlistIds: string[]) => supabase.functions.invoke('bulk_invite_with_subscription', {
-			body: waitlistIds,
-			method: 'POST'
-		}).then(r => {
-			if (r.error) {
-				throw r.error;
-			}
-		}),
+		mutationFn: async (waitlistIds: string[]) =>
+			supabase.functions
+				.invoke('bulk_invite_with_subscription', {
+					body: waitlistIds,
+					method: 'POST'
+				})
+				.then((r) => {
+					if (r.error) {
+						throw r.error;
+					}
+				}),
 		onMutate: (waitlistIds) => {
 			const oldData = queryClient.getQueryData(waitlistQueryKey);
 			queryClient.setQueryData(
 				waitlistQueryKey,
-				(oldData: Awaited<typeof waitlistQuery['data']>) => ({
+				(oldData: Awaited<(typeof waitlistQuery)['data']>) => ({
 					...oldData,
 					data: oldData?.data?.map((d) => ({
 						...d,
@@ -141,21 +151,22 @@
 	}));
 
 	const resendInvitationLink = createMutation(() => ({
-		mutationFn: async (emails: string[]) => fetch(`/api/admin/invite-link`, {
-			method: 'POST',
-			body: JSON.stringify({
-				emails
-			})
-		}).then(res => {
-			if (!res.ok) {
-				throw new Error('Failed to resend invitation link');
-			}
-		}),
+		mutationFn: async (emails: string[]) =>
+			fetch(`/api/admin/invite-link`, {
+				method: 'POST',
+				body: JSON.stringify({
+					emails
+				})
+			}).then((res) => {
+				if (!res.ok) {
+					throw new Error('Failed to resend invitation link');
+				}
+			}),
 		onMutate: (emails) => {
 			const oldData = queryClient.getQueryData(waitlistQueryKey);
 			queryClient.setQueryData(
 				waitlistQueryKey,
-				(oldData: Awaited<typeof waitlistQuery['data']>) => ({
+				(oldData: Awaited<(typeof waitlistQuery)['data']>) => ({
 					...oldData,
 					data: oldData?.data?.map((d) => ({
 						...d,
@@ -275,7 +286,9 @@
 						isExpanded: row.getIsExpanded(),
 						onToggleExpand: () => row.toggleExpanded(),
 						inviteMember: () => {
-							row.original.status !== 'invited' ? inviteMember.mutate([row.original.id!]) : resendInvitationLink.mutate([row.original.email!]);
+							row.original.status !== 'invited'
+								? inviteMember.mutate([row.original.id!])
+								: resendInvitationLink.mutate([row.original.email!]);
 						},
 						onEdit(newValue) {
 							updateWaitlistEntry.mutate({
@@ -451,8 +464,10 @@
 	const table = createSvelteTable(tableOptions);
 </script>
 
-<div class="flex flex-col md:flex-row w-full max-w-auto items-stretch md:items-center space-x-2 mb-2 p-2">
-<span class="flex flex-nowrap items-center gap-2">
+<div
+	class="flex flex-col md:flex-row w-full max-w-auto items-stretch md:items-center space-x-2 mb-2 p-2"
+>
+	<span class="flex flex-nowrap items-center gap-2">
 		<Input
 			value={searchQuery}
 			onchange={(t: Event & { currentTarget: EventTarget & HTMLInputElement }) =>
@@ -461,18 +476,21 @@
 			class="w-full md:max-w-md"
 		/>
 
-	{#if searchQuery !== ''}
-		<Button variant="ghost" type="button" onclick={() => onSearchChange('')}>
-			<Cross2 />
-		</Button>
-	{/if}
-	{#if waitlistQuery.isFetching}
-		<LoaderCircle />
-	{/if}
-</span>
+		{#if searchQuery !== ''}
+			<Button variant="ghost" type="button" onclick={() => onSearchChange('')}>
+				<Cross2 />
+			</Button>
+		{/if}
+		{#if waitlistQuery.isFetching}
+			<LoaderCircle />
+		{/if}
+	</span>
 
-	<Button class="md:ml-auto" disabled={inviteCount === 0 || inviteMember.isPending}
-					onclick={() => inviteMember.mutate(Object.keys(selectedState))}>
+	<Button
+		class="md:ml-auto"
+		disabled={inviteCount === 0 || inviteMember.isPending}
+		onclick={() => inviteMember.mutate(Object.keys(selectedState))}
+	>
 		{#if inviteMember.isPending}
 			<Loader2 class="mr-2 h-4 w-4 animate-spin" />
 		{:else}
@@ -517,7 +535,8 @@
 										<div class="grid grid-cols-3 gap-2">
 											<div class="text-xs font-medium text-muted-foreground">Name</div>
 											<div class="col-span-2 text-xs">
-												{row.original.guardian_first_name || ''} {row.original.guardian_last_name || ''}
+												{row.original.guardian_first_name || ''}
+												{row.original.guardian_last_name || ''}
 											</div>
 
 											<div class="text-xs font-medium text-muted-foreground">Phone</div>
@@ -583,8 +602,10 @@
 					<div>
 						<ActionButtons
 							inviteMember={() => {
-							row.original.status !== 'invited' ? inviteMember.mutate([row.original.id!]) : resendInvitationLink.mutate([row.original.email!]);
-						}}
+								row.original.status !== 'invited'
+									? inviteMember.mutate([row.original.id!])
+									: resendInvitationLink.mutate([row.original.email!]);
+							}}
 							adminNotes={row.original.admin_notes ?? 'N/A'}
 							isExpanded={row.getIsExpanded()}
 							onToggleExpand={() => row.toggleExpanded()}
@@ -604,7 +625,14 @@
 				<div class="mb-3">
 					{#if row.original.status}
 						<Badge
-							variant={row.original.status as "waiting" | "invited" | "paid" | "deferred" | "cancelled" | "completed" | "no_reply"}
+							variant={row.original.status as
+								| 'waiting'
+								| 'invited'
+								| 'paid'
+								| 'deferred'
+								| 'cancelled'
+								| 'completed'
+								| 'no_reply'}
 							class="h-8"
 						>
 							<p class="capitalize">{row.original.status.replace('-', ' ')}</p>
@@ -670,7 +698,8 @@
 								<div class="grid grid-cols-3 gap-2">
 									<div class="text-xs font-medium text-muted-foreground">Name</div>
 									<div class="col-span-2 text-xs">
-										{row.original.guardian_first_name || ''} {row.original.guardian_last_name || ''}
+										{row.original.guardian_first_name || ''}
+										{row.original.guardian_last_name || ''}
 									</div>
 
 									<div class="text-xs font-medium text-muted-foreground">Phone</div>
@@ -734,7 +763,12 @@
 							</Pagination.Item>
 						{:else}
 							<Pagination.Item
-								class={page.value !== currentPage && page.value !== currentPage - 1 && page.value !== currentPage + 1 ? 'hidden sm:block' : ''}>
+								class={page.value !== currentPage &&
+								page.value !== currentPage - 1 &&
+								page.value !== currentPage + 1
+									? 'hidden sm:block'
+									: ''}
+							>
 								<Pagination.Link {page} isActive={currentPage === page.value}>
 									{page.value}
 								</Pagination.Link>

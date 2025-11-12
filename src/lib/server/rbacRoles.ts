@@ -1,5 +1,5 @@
 import type { NavData, NavigationGroup } from '$lib/types';
-import { WORKSHOP_ROLES } from '$lib/server/roles';
+import { INVENTORY_READ_ROLES, INVENTORY_ROLES, WORKSHOP_ROLES } from '$lib/server/roles';
 
 const data: NavData = {
 	navMain: [
@@ -35,9 +35,42 @@ const data: NavData = {
 			title: 'My Workshops',
 			url: 'my-workshops',
 			role: new Set(['member']) // All authenticated users have member role
+		},
+		{
+			title: 'Inventory',
+			url: 'inventory',
+			role: INVENTORY_ROLES,
+			items: [
+				{
+					title: 'Overview',
+					url: 'inventory',
+					role: INVENTORY_ROLES
+				},
+				{
+					title: 'Containers',
+					url: 'inventory/containers',
+					role: INVENTORY_ROLES
+				},
+				{
+					title: 'Categories',
+					url: 'inventory/categories',
+					role: INVENTORY_ROLES
+				},
+				{
+					title: 'Items',
+					url: 'inventory/items',
+					role: INVENTORY_ROLES
+				}
+			]
 		}
 	]
 };
+
+export function canAccessUrl(url: string, roles: Set<string>): boolean {
+	return data.navMain.some(
+		(group) => group.url.includes(url) && group.role.intersection(roles).size > 0
+	);
+}
 
 function filterNavByRoles(nav: NavData, roles: string[]): NavData {
 	return {
