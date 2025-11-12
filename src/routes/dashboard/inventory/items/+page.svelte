@@ -7,7 +7,7 @@
 	import { Package, Plus, Search, Filter, AlertTriangle, FolderOpen, Tags } from 'lucide-svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
-	import { Label } from '$lib/components/ui/Label';
+	import { Label } from '$lib/components/ui/label';
 
 	let { data } = $props();
 
@@ -78,7 +78,7 @@
 							bind:value={searchTerm}
 							placeholder="Search items..."
 							class="pl-10"
-							onkeydown={(e) => e.key === 'Enter' && applyFilters()}
+							onkeydown={(e: KeyboardEvent) => e.key === 'Enter' && applyFilters()}
 						/>
 					</div>
 				</div>

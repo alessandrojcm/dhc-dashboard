@@ -73,7 +73,7 @@ export const POST: RequestHandler = async ({ locals, params, platform }) => {
 		Sentry.captureException(err);
 		console.error('Error managing workshop interest:', err);
 
-		if (err.status) {
+		if (err && typeof err === 'object' && 'status' in err) {
 			throw err;
 		}
 

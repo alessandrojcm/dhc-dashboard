@@ -19,7 +19,7 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
 
 	const { emails } = v.parse(resendInviteSchema, await request.json());
 
-	const kysely = getKyselyClient(platform.env.HYPERDRIVE);
+	const kysely = getKyselyClient(platform!.env.HYPERDRIVE);
 	// We have gotten the current user with SafeGetSession, so we know there are admins
 	// we do not execute with RLS here as pgmq has no RLS enabled
 	await kysely.transaction().execute(async (trx) => {

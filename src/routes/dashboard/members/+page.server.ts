@@ -52,7 +52,7 @@ export const actions: Actions = {
 		if (!form.valid) {
 			return fail(400, { form });
 		}
-		const kysely = getKyselyClient(platform.env.HYPERDRIVE);
+		const kysely = getKyselyClient(platform!.env.HYPERDRIVE);
 		return executeWithRLS(
 			kysely,
 			{

@@ -174,9 +174,9 @@
 	<Input
 		type="tel"
 		value={formatedPhone}
-		onchange={(event) => {
+		onchange={(event: Event) => {
 			if (!event.target) return;
-			updatePhoneNumber(event.target.value);
+			updatePhoneNumber((event.target as HTMLInputElement).value);
 		}}
 		{placeholder}
 	/>
