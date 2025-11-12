@@ -17,7 +17,8 @@
 			// Refetch from server if needed
 			const { data, error } = await supabase
 				.from('club_activity_registrations')
-				.select(`
+				.select(
+					`
 					id,
 					club_activity_id,
 					status,
@@ -34,7 +35,8 @@
 						last_name,
 						email
 					)
-				`)
+				`
+				)
 				.eq('club_activity_id', workshopId)
 				.in('status', ['confirmed', 'pending'])
 				.order('created_at', { ascending: true });
@@ -51,7 +53,8 @@
 			// Refetch from server if needed - transform to match server loader structure
 			const { data: refundsData, error } = await supabase
 				.from('club_activity_refunds')
-				.select(`
+				.select(
+					`
 					id,
 					registration_id,
 					refund_amount,
@@ -70,21 +73,24 @@
 							email
 						)
 					)
-				`)
+				`
+				)
 				.eq('club_activity_registrations.club_activity_id', workshopId)
 				.order('created_at', { ascending: false });
 
 			if (error) throw error;
-			return refundsData?.map(refund => ({
-				id: refund.id,
-				registration_id: refund.registration_id,
-				refund_amount: refund.refund_amount,
-				refund_reason: refund.refund_reason,
-				status: refund.status,
-				created_at: refund.created_at,
-				user_profiles: refund.club_activity_registrations?.user_profiles || null,
-				external_users: refund.club_activity_registrations?.external_users || null
-			})) || [];
+			return (
+				refundsData?.map((refund) => ({
+					id: refund.id,
+					registration_id: refund.registration_id,
+					refund_amount: refund.refund_amount,
+					refund_reason: refund.refund_reason,
+					status: refund.status,
+					created_at: refund.created_at,
+					user_profiles: refund.club_activity_registrations?.user_profiles || null,
+					external_users: refund.club_activity_registrations?.external_users || null
+				})) || []
+			);
 		},
 		initialData: data.refunds // Use preloaded data
 	}));
@@ -106,12 +112,10 @@
 					<div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
 				</div>
 			{:else if attendeesQuery.error || refundsQuery.error}
-				<div class="text-center py-8 text-destructive">
-					Failed to load data
-				</div>
+				<div class="text-center py-8 text-destructive">Failed to load data</div>
 			{:else}
-				<AttendeeManager 
-					attendees={attendeesQuery.data || []} 
+				<AttendeeManager
+					attendees={attendeesQuery.data || []}
 					refunds={refundsQuery.data || []}
 					workshop={data.workshop}
 					{workshopId}

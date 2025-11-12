@@ -10,7 +10,7 @@
 		value: DateValue;
 		onDateChange: (date: Date) => void;
 		minValue?: DateValue;
-		maxValue?: DateValue
+		maxValue?: DateValue;
 		name: string;
 		id: string;
 		'data-fs-error': string | undefined;
@@ -46,8 +46,8 @@
 			bind:value
 			type="single"
 			initialFocus
-			minValue={minValue}
-			maxValue={maxValue}
+			{minValue}
+			{maxValue}
 			onValueChange={(date) => {
 				date && onDateChange(date.toDate(getLocalTimeZone()));
 				open = false;

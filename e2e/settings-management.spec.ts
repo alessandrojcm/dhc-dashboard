@@ -150,7 +150,7 @@ test.describe('Settings Management - Regular Member', () => {
 
 	test('should not see settings button', async ({ page }) => {
 		await page.goto('/dashboard/members');
-		await expect(page.getByRole('button', { name: "Settings" })).not.toBeVisible();
+		await expect(page.getByRole('button', { name: 'Settings' })).not.toBeVisible();
 	});
 
 	test('should not see waitlist toggle', async ({ page }) => {

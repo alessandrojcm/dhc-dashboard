@@ -1,12 +1,12 @@
 <script lang="ts">
-	import Calendar from "$lib/components/ui/calendar/calendar.svelte";
-	import * as Popover from "$lib/components/ui/popover/index.js";
-	import { Button } from "$lib/components/ui/button/index.js";
-	import { Label } from "$lib/components/ui/label/index.js";
-	import { Input } from "$lib/components/ui/input/index.js";
-	import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
-	import { getLocalTimeZone } from "@internationalized/date";
-	import type { CalendarDate } from "@internationalized/date";
+	import Calendar from '$lib/components/ui/calendar/calendar.svelte';
+	import * as Popover from '$lib/components/ui/popover/index.js';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import { Label } from '$lib/components/ui/label/index.js';
+	import { Input } from '$lib/components/ui/input/index.js';
+	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
+	import { getLocalTimeZone } from '@internationalized/date';
+	import type { CalendarDate } from '@internationalized/date';
 
 	interface Props {
 		id: string;
@@ -19,15 +19,15 @@
 		disabled?: boolean;
 	}
 
-	let { 
-		id, 
+	let {
+		id,
 		date = $bindable(),
 		startTime = $bindable(),
 		endTime = $bindable(),
 		onDateChange,
 		onStartTimeChange,
 		onEndTimeChange,
-		disabled,
+		disabled
 	}: Props = $props();
 
 	let open = $state(false);
@@ -54,10 +54,13 @@
 		<Popover.Root bind:open>
 			<Popover.Trigger id="{id}-date">
 				{#snippet child({ props })}
-					<Button disabled={disabled} {...props} variant="outline" class="w-full justify-between font-normal">
-						{date
-							? date.toDate(getLocalTimeZone()).toLocaleDateString()
-							: "Select date"}
+					<Button
+						{disabled}
+						{...props}
+						variant="outline"
+						class="w-full justify-between font-normal"
+					>
+						{date ? date.toDate(getLocalTimeZone()).toLocaleDateString() : 'Select date'}
 						<ChevronDownIcon />
 					</Button>
 				{/snippet}
@@ -67,7 +70,7 @@
 					type="single"
 					value={date}
 					captionLayout="dropdown"
-					disabled={disabled}
+					{disabled}
 					onValueChange={(newDate) => {
 						handleDateChange(newDate);
 						open = false;
@@ -83,8 +86,8 @@
 				type="time"
 				id="{id}-time-from"
 				step="1"
-				value={startTime || "10:30"}
-				disabled={disabled}
+				value={startTime || '10:30'}
+				{disabled}
 				oninput={(e) => {
 					handleStartTimeChange(e.currentTarget.value);
 				}}
@@ -97,8 +100,8 @@
 				type="time"
 				id="{id}-time-to"
 				step="1"
-				value={endTime || "12:30"}
-				disabled={disabled}
+				value={endTime || '12:30'}
+				{disabled}
 				oninput={(e) => {
 					handleEndTimeChange(e.currentTarget.value);
 				}}

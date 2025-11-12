@@ -13,14 +13,12 @@
 <div class="max-w-4xl mx-auto p-6 space-y-8">
 	<div class="flex justify-between items-center">
 		<h1 class="text-3xl font-bold">Edit Workshop</h1>
-		<Button variant="outline" href="/dashboard/workshops">
-			Back to Workshops
-		</Button>
+		<Button variant="outline" href="/dashboard/workshops">Back to Workshops</Button>
 	</div>
 
-	<WorkshopForm 
-		{data} 
-		mode="edit" 
+	<WorkshopForm
+		{data}
+		mode="edit"
 		onSuccess={handleSuccess}
 		priceEditingDisabled={data.priceEditingDisabled}
 		workshopStatus={data.workshop.status}

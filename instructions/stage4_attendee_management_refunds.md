@@ -1,17 +1,20 @@
 # Stage 4: Attendee Management & Refund System
 
 ## Overview
+
 Complete attendee lifecycle management. Coordinators can manage attendees, handle refunds, mark attendance.
 
 ## Context & Clarifications
 
 ### Key Design Decisions
+
 - **Database naming**: `club_activities` schema to distinguish from existing beginners workshop
 - **Frontend terminology**: "workshops" for user-facing elements
 - **API pattern**: Mutation-only endpoints (use Supabase client for queries)
 - **Data access**: Kysely for all mutations, Supabase client for queries
 
 ### Answered Questions
+
 1. **Refund Policy Granularity**: Per workshop, default to 3 days before the workshop
 2. **Capacity Management**: Hard capacity limits only (no waitlists)
 3. **Recurring Workshops**: No recurring workshop support needed
@@ -22,6 +25,7 @@ Complete attendee lifecycle management. Coordinators can manage attendees, handl
 8. **Cancellation Policies**: Same policy for all workshop types
 
 ### Capacity & Registration
+
 - **Hard capacity limits**: No waitlist system - when full, registration closes
 - **Refund policy**: Configurable per workshop, defaults to 3 days before event
 - **Payment methods**: Multiple payment methods supported (not just SEPA debit)
@@ -29,27 +33,32 @@ Complete attendee lifecycle management. Coordinators can manage attendees, handl
 ## Database Changes
 
 ### Refund tracking table
+
 - Link to existing `club_activity_registrations` table
 - Refund amount and reason tracking
 - Refund status enum (pending, processed, failed)
 - Timestamp tracking for refund requests and processing
 
 ### Attendance tracking fields
+
 - Add attendance status to `club_activity_registrations`
 - Attendance confirmation timestamp
 - Attendance notes/comments
 
 ### Additional Database Requirements:
+
 - Refund policy enforcement logic
 - Attendance tracking integration
 - Refund eligibility validation functions
 
 ## API Endpoints
+
 - `POST /api/workshops/[id]/refunds` - Process refunds
 - `PUT /api/workshops/[id]/attendance` - Mark attendance
 - Attendee list via Supabase client
 
 ### API Implementation Guidelines
+
 - **Pattern consistency**: Follow existing endpoint patterns exactly
 - **Security pattern**: Use roles: `['admin', 'president', 'beginners_coordinator']` for coordinator endpoints
 - **Response format**: Always return `{success: true, [resource]: updatedRecord}`
@@ -60,16 +69,19 @@ Complete attendee lifecycle management. Coordinators can manage attendees, handl
 ## Frontend
 
 ### Coordinator Features
+
 - Attendee management interface for coordinators
 - Refund processing forms
 - Attendance tracking interface
 
 ### Member Features
+
 - Refund policy display for members
 - Registration status with refund eligibility
 - Attendance confirmation view
 
 ### Frontend Guidelines
+
 - Use Svelte 5 syntax exclusively
 - ALWAYS use svelte-shadcn components first, resort to tailwind 4 custom styles if components do not suffice
 - Implement proper error handling and loading states
@@ -79,26 +91,31 @@ Complete attendee lifecycle management. Coordinators can manage attendees, handl
 ## Business Logic
 
 ### Refund Eligibility
+
 - Refund eligibility based on cancellation timing (default: 3 days before workshop)
 - Workshop status validation (can't refund for finished workshops)
 - Payment status validation (can't refund unpaid registrations)
 
 ### Refund Processing
+
 - Automated refund processing through Stripe
 - Refund amount calculation (full or partial based on policy)
 - Refund status tracking and notifications
 
 ### Attendance Management
+
 - Attendance confirmation workflow
 - Attendance tracking for analytics
 - Integration with member profiles
 
 ## Tests
+
 - Refund policy enforcement tests
 - Attendance tracking tests
 - Refund processing integration tests
 
 ### Testing Requirements
+
 - **Test Driven Development**: All code MUST be covered by tests
 - **E2E Testing**: Use unique test data with timestamps and random suffixes
 - **Authentication**: Always use `makeAuthenticatedRequest()` instead of direct authorization headers
@@ -107,6 +124,7 @@ Complete attendee lifecycle management. Coordinators can manage attendees, handl
 - **Refund testing**: Test Stripe refund integration with test payment methods
 
 ## Security Requirements
+
 - All mutations through Kysely with RLS enforcement
 - Role-based access control throughout
 - Stripe webhook signature verification
@@ -114,12 +132,14 @@ Complete attendee lifecycle management. Coordinators can manage attendees, handl
 - Secure handling of refund information
 
 ## Performance Considerations
+
 - Database indexes on frequently queried fields
 - TanStack Query for efficient data fetching and caching
 - Optimistic updates for better UX
 - Proper error handling for refund processing timeouts
 
 ## Success Criteria
+
 - Coordinators can view and manage attendee lists
 - Refund processing works correctly with Stripe integration
 - Refund eligibility is properly validated based on workshop timing

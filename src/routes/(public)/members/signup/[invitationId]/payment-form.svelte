@@ -80,7 +80,7 @@
 		scrollToError: true,
 		autoFocusOnError: true,
 		invalidateAll: false,
-		onSubmit: async function({ cancel, customRequest }) {
+		onSubmit: async function ({ cancel, customRequest }) {
 			const { valid } = await form.validateForm({ focusOnError: true, update: true });
 			if (!valid) {
 				scrollTo({ top: 0, behavior: 'smooth' });
@@ -166,18 +166,19 @@
 
 	const applyCoupon = createMutation(() => ({
 		mutationFn: (code: string) =>
-			fetch(`/api/signup/plan-pricing/${page.params.invitationId}`, { method: 'POST', body: JSON.stringify({ code }) }).then(
-				async (res) => {
-					if (!res.ok) {
-						const { message } = (await res.json()) as unknown as { message: string };
+			fetch(`/api/signup/plan-pricing/${page.params.invitationId}`, {
+				method: 'POST',
+				body: JSON.stringify({ code })
+			}).then(async (res) => {
+				if (!res.ok) {
+					const { message } = (await res.json()) as unknown as { message: string };
 
-						throw new Error(message, {
-							cause: message
-						});
-					}
-					return [(await res.json()) as PlanPricing, code];
+					throw new Error(message, {
+						cause: message
+					});
 				}
-			),
+				return [(await res.json()) as PlanPricing, code];
+			}),
 		onSuccess: (res: [PlanPricing, string]) => {
 			const [planPricing, code] = res;
 			queryClient.setQueryData(queryKey, planPricing);

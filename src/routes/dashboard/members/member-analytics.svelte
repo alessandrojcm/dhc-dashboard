@@ -17,9 +17,9 @@
 
 	onMount(async () => {
 		if (browser) {
-			WeaponPieChart = (await import('$lib/components/weapon-pie-chart.svelte')).default;
-			GenderBarChart = (await import('$lib/components/gender-bar-chart.svelte')).default;
-			AgeScatterChart = (await import('$lib/components/age-scatter-chart.svelte')).default;
+			// WeaponPieChart = (await import('$lib/components/weapon-pie-chart.svelte')).default;
+			// GenderBarChart = (await import('$lib/components/gender-bar-chart.svelte')).default;
+			// AgeScatterChart = (await import('$lib/components/age-scatter-chart.svelte')).default;
 		}
 	});
 
@@ -163,9 +163,7 @@
 	<Resizable.Pane class="min-h-[400px] p-4 border rounded">
 		<h3 class="text-lg font-medium mb-4">Gender Demographics</h3>
 		{#if GenderBarChart && genderDistributionData && genderDistributionData.length > 0}
-			<GenderBarChart
-				genderDistributionData={genderDistributionData}
-			/>
+<!--			<GenderBarChart {genderDistributionData} />-->
 		{/if}
 	</Resizable.Pane>
 
@@ -176,13 +174,13 @@
 	<Resizable.Pane class="min-h-[400px] p-4 border rounded">
 		<h3 class="text-lg font-medium mb-4">Preferred Weapons</h3>
 		{#if WeaponPieChart && weaponPreferencesDistributionData}
-			<WeaponPieChart weaponDistributionData={weaponPreferencesDistributionData} />
+<!--			<WeaponPieChart weaponDistributionData={weaponPreferencesDistributionData} />-->
 		{/if}
 	</Resizable.Pane>
 	<Resizable.Handle />
 	<Resizable.Pane class="min-h-[400px] p-4 border rounded">
 		{#if AgeScatterChart && ageDistributionData}
-			<AgeScatterChart ageDistribution={ageDistributionData} />
+<!--			<AgeScatterChart ageDistribution={ageDistributionData} />-->
 		{/if}
 	</Resizable.Pane>
 </Resizable.PaneGroup>

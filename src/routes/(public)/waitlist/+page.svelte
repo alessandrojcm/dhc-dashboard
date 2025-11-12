@@ -175,9 +175,8 @@
 						{/snippet}
 					</Form.Control>
 					<Form.Description class={$errors?.pronouns ? 'text-red-500' : ''}
-					>Please separate with slashes (e.g. they/them).
-					</Form.Description
-					>
+						>Please separate with slashes (e.g. they/them).
+					</Form.Description>
 				</Form.Field>
 
 				<Form.Field {form} name="dateOfBirth">
@@ -297,17 +296,23 @@
 									<PhoneInput
 										placeholder="Enter guardian's phone number"
 										{...props}
-										bind:phoneNumber={() => $formData?.guardianPhoneNumber ?? '', (v) => {
-												if(!v) {
-													return
+										bind:phoneNumber={
+											() => $formData?.guardianPhoneNumber ?? '',
+											(v) => {
+												if (!v) {
+													return;
 												}
-												form.form.update(f => {
-													return {
-														...f,
-														guardianPhoneNumber: v
-													}
-												}, {taint: true})
-											}}
+												form.form.update(
+													(f) => {
+														return {
+															...f,
+															guardianPhoneNumber: v
+														};
+													},
+													{ taint: true }
+												);
+											}
+										}
 									/>
 								{/snippet}
 							</Form.Control>
@@ -318,7 +323,7 @@
 
 				<Button type="submit" disabled={!form.submitting}>
 					{#if $submitting}
-						<LoaderCircle class="animate-spin"/>
+						<LoaderCircle class="animate-spin" />
 					{:else}
 						Submit
 					{/if}

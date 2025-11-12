@@ -1,30 +1,24 @@
 <script lang="ts">
 	import { Calendar as CalendarPrimitive, type WithoutChildrenOrChild } from 'bits-ui';
-	import {
-		DateFormatter,
-		getLocalTimeZone,
-		today,
-		type DateValue
-	} from "@internationalized/date";
-	import * as Calendar from "$lib/components/ui/calendar/index.js";
-	import * as Select from "$lib/components/ui/select/index.js";
-	import { cn } from "$lib/utils.js";
+	import { DateFormatter, getLocalTimeZone, today, type DateValue } from '@internationalized/date';
+	import * as Calendar from '$lib/components/ui/calendar/index.js';
+	import * as Select from '$lib/components/ui/select/index.js';
+	import { cn } from '$lib/utils.js';
 
 	let {
 		value = $bindable(),
 		placeholder = $bindable(),
-		weekdayFormat = "short",
+		weekdayFormat = 'short',
 		class: className,
 		...restProps
 	}: WithoutChildrenOrChild<CalendarPrimitive.RootProps> = $props();
 
-
 	const currentDate = today(getLocalTimeZone());
 
-	const monthFmt = new DateFormatter("en-US", {
-		month: "long"
+	const monthFmt = new DateFormatter('en-US', {
+		month: 'long'
 	});
-$inspect(restProps.maxValue)
+	$inspect(restProps.maxValue);
 	const monthOptions = Array.from({ length: 12 }, (_, i) => {
 		const month = currentDate.set({ month: i + 1 });
 		return {
@@ -34,42 +28,41 @@ $inspect(restProps.maxValue)
 	});
 
 	const maxYear = $derived.by(() => {
-		if(!restProps.maxValue) {
+		if (!restProps.maxValue) {
 			return new Date().getFullYear();
 		}
 		return restProps.maxValue.year;
 	});
 
-	const yearOptions = $derived(Array.from({ length: 100 }, (_, i) => ({
-		label: String(maxYear - i),
-		value: maxYear - i
-	})));
+	const yearOptions = $derived(
+		Array.from({ length: 100 }, (_, i) => ({
+			label: String(maxYear - i),
+			value: maxYear - i
+		}))
+	);
 
 	const defaultYear = $derived(
-		placeholder
-			? { value: placeholder.year, label: String(placeholder.year) }
-			: undefined
+		placeholder ? { value: placeholder.year, label: String(placeholder.year) } : undefined
 	);
 
 	const defaultMonth = $derived(
 		placeholder
 			? {
-				value: placeholder.month,
-				label: monthFmt.format(placeholder.toDate(getLocalTimeZone()))
-			}
+					value: placeholder.month,
+					label: monthFmt.format(placeholder.toDate(getLocalTimeZone()))
+				}
 			: undefined
 	);
 
 	const monthLabel = $derived(
-		monthOptions.find((m) => m.value === defaultMonth?.value)?.label ??
-		"Select a month"
+		monthOptions.find((m) => m.value === defaultMonth?.value)?.label ?? 'Select a month'
 	);
 </script>
 
 <CalendarPrimitive.Root
 	type="single"
 	weekdayFormat="short"
-	class={cn("rounded-md border p-3 bg-white")}
+	class={cn('rounded-md border p-3 bg-white')}
 	bind:value
 	bind:placeholder
 	{...restProps}
@@ -80,10 +73,10 @@ $inspect(restProps.maxValue)
 				type="single"
 				value={`${defaultMonth?.value}`}
 				onValueChange={(v) => {
-     if (!placeholder) return;
-     if (v === `${placeholder.month}`) return;
-     placeholder = placeholder.set({ month: Number.parseInt(v) });
-    }}
+					if (!placeholder) return;
+					if (v === `${placeholder.month}`) return;
+					placeholder = placeholder.set({ month: Number.parseInt(v) });
+				}}
 			>
 				<Select.Trigger aria-label="Select month" class="w-[60%]">
 					{monthLabel}
@@ -98,13 +91,13 @@ $inspect(restProps.maxValue)
 				type="single"
 				value={`${defaultYear?.value}`}
 				onValueChange={(v) => {
-     if (!v || !placeholder) return;
-     if (v === `${placeholder?.year}`) return;
-     placeholder = placeholder.set({ year: Number.parseInt(v) });
-    }}
+					if (!v || !placeholder) return;
+					if (v === `${placeholder?.year}`) return;
+					placeholder = placeholder.set({ year: Number.parseInt(v) });
+				}}
 			>
 				<Select.Trigger aria-label="Select year" class="w-[40%]">
-					{defaultYear?.label ?? "Select year"}
+					{defaultYear?.label ?? 'Select year'}
 				</Select.Trigger>
 				<Select.Content class="max-h-[200px] overflow-y-auto">
 					{#each yearOptions as { value, label } (value)}

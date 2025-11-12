@@ -5,9 +5,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 
 This is a SvelteKit application for managing a Historical European Martial Arts club (Dublin Hema Club, DHC for short)
-dashboard. It handles member management,
-workshop coordination, payment processing, and subscription management using Supabase as the backend and Stripe for
-payments.
+dashboard. It handles member management, workshop coordination, payment processing, subscription management, and
+inventory management using Supabase as the backend and Stripe for payments.
 
 ## Development Commands
 
@@ -74,7 +73,7 @@ payments.
   ```javascript
   const timestamp = Date.now();
   const randomSuffix = Math.random().toString(36).substring(2, 15);
-  email: `admin-${timestamp}-${randomSuffix}@test.com`
+  email: `admin-${timestamp}-${randomSuffix}@test.com`;
   ```
 - **Authentication helpers**: Always use `makeAuthenticatedRequest()` instead of direct authorization headers
 - **Service dependencies**: E2E tests require all services running (see Environment Setup section)
@@ -140,6 +139,27 @@ payments.
 - **State validation**: Always check current state before transitions
 - **Edge functions**: Publishing integrates with `workshop_inviter` function
 
+#### Inventory Management
+
+- **Hierarchical container system**: Supports nested containers (rooms → bags → equipment)
+- **Flexible equipment categories**: JSON Schema validation with pg-jsonschema extension
+- **Role-based access**: Quartermaster has full CRUD, members have read-only access
+- **Audit trail**: Complete history tracking for all inventory changes
+- **Photo storage**: Supabase Storage integration for equipment photos
+
+##### Inventory Database Schema
+
+- **containers**: Hierarchical storage locations with circular reference prevention
+- **equipment_categories**: Flexible attribute definitions with JSON Schema validation
+- **inventory_items**: Equipment with validated attributes, quantity tracking, maintenance status
+- **inventory_history**: Complete audit trail for all inventory operations
+
+##### Inventory Access Control
+
+- **Quartermaster role**: Full access to all inventory operations
+- **Members**: Read-only access, cannot see items out for maintenance
+- **JSON Schema validation**: Enforced at database level using pg-jsonschema extension
+
 ### Environment Variables
 
 Required for development:
@@ -173,6 +193,7 @@ Required for development:
 - Always work within RLS constraints
 - Generate types after schema changes: `pnpm supabase:types`
 - Use the `has_any_role` database utility to check for permissions, example usage:
+
 ```sql
 SELECT has_any_role(
                     (
@@ -181,7 +202,9 @@ SELECT has_any_role(
                     ARRAY ['committee_coordinator', 'president', 'admin']::role_type []
                 )
 ```
+
 - If a new migration is applied, generate database types with pnpm supabase:types
+
 ### API Guidelines
 
 - Validate inputs with Valibot schemas
@@ -212,9 +235,9 @@ SELECT has_any_role(
 ### Local Development Setup Order
 
 1. **Start services in correct order**:
-    - `pnpm supabase:start` (must be first)
-    - `pnpm supabase:functions:serve` (for edge functions)
-    - `pnpm dev` (for development/testing)
+   - `pnpm supabase:start` (must be first)
+   - `pnpm supabase:functions:serve` (for edge functions)
+   - `pnpm dev` (for development/testing)
 
 2. **Before running E2E tests**: Ensure all three services are running
 3. **Database changes**: Always run `pnpm supabase:types` after schema changes

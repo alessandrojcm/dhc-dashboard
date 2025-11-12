@@ -35,7 +35,7 @@
 
 			// Encode the generated data as URL parameter
 			const encodedData = encodeURIComponent(JSON.stringify(data.data));
-			
+
 			// Close popover and redirect
 			open = false;
 			prompt = '';
@@ -77,7 +77,7 @@
 					Describe your workshop in natural language and we'll generate the details for you.
 				</p>
 			</div>
-			
+
 			<div class="space-y-3">
 				<Textarea
 					bind:value={prompt}
@@ -86,11 +86,9 @@
 					onkeydown={handleKeydown}
 					disabled={generateWorkshopMutation.isPending}
 				/>
-				
+
 				<div class="flex justify-between items-center">
-					<p class="text-xs text-muted-foreground">
-						Press Cmd+Enter (or Ctrl+Enter) to generate
-					</p>
+					<p class="text-xs text-muted-foreground">Press Cmd+Enter (or Ctrl+Enter) to generate</p>
 					<div class="flex gap-2">
 						<Button
 							variant="outline"
