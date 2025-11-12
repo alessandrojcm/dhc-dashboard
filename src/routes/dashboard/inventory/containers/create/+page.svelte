@@ -2,7 +2,13 @@
 	import { superForm } from 'sveltekit-superforms';
 	import { valibot } from 'sveltekit-superforms/adapters';
 	import { containerSchema } from '$lib/schemas/inventory';
-	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card';
+	import {
+		Card,
+		CardContent,
+		CardDescription,
+		CardHeader,
+		CardTitle
+	} from '$lib/components/ui/card';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Textarea } from '$lib/components/ui/textarea';
@@ -12,7 +18,7 @@
 	import type { Database } from '$lib/../database.types';
 
 	type Container = Database['public']['Tables']['containers']['Row'];
-	
+
 	interface ContainerWithChildren extends Container {
 		children: ContainerWithChildren[];
 	}
@@ -37,12 +43,12 @@
 		const rootContainers: ContainerWithChildren[] = [];
 
 		// First pass: create all containers with empty children arrays
-		containers.forEach(container => {
+		containers.forEach((container) => {
 			containerMap.set(container.id, { ...container, children: [] });
 		});
 
 		// Second pass: build the hierarchy
-		containers.forEach(container => {
+		containers.forEach((container) => {
 			if (container.parent_container_id) {
 				const parent = containerMap.get(container.parent_container_id);
 				const child = containerMap.get(container.id);
@@ -58,9 +64,12 @@
 		});
 
 		// Flatten with indentation for display
-		const flattenWithIndent = (containers: ContainerWithChildren[], level = 0): HierarchicalContainer[] => {
+		const flattenWithIndent = (
+			containers: ContainerWithChildren[],
+			level = 0
+		): HierarchicalContainer[] => {
 			const result: HierarchicalContainer[] = [];
-			containers.forEach(container => {
+			containers.forEach((container) => {
 				result.push({
 					...container,
 					displayName: '  '.repeat(level) + container.name,
@@ -77,11 +86,11 @@
 	};
 
 	const hierarchicalContainers = buildHierarchyDisplay(data.containers);
-	
+
 	// Find the selected container for display
 	const selectedContainer = $derived.by(() => {
 		if (!$formData.parent_container_id) return null;
-		return hierarchicalContainers.find(c => c.id === $formData.parent_container_id);
+		return hierarchicalContainers.find((c) => c.id === $formData.parent_container_id);
 	});
 </script>
 
@@ -104,8 +113,8 @@
 					Container Details
 				</CardTitle>
 				<CardDescription>
-					Provide information about the new container. You can organize containers hierarchically by selecting a parent
-					container.
+					Provide information about the new container. You can organize containers hierarchically by
+					selecting a parent container.
 				</CardDescription>
 			</CardHeader>
 			<CardContent>
@@ -145,7 +154,9 @@
 								<Form.Label>Parent Container</Form.Label>
 								<Select type="single" bind:value={$formData.parent_container_id} name={props.name}>
 									<SelectTrigger {...props}>
-										{selectedContainer ? selectedContainer.displayName : 'No parent container (root level)'}
+										{selectedContainer
+											? selectedContainer.displayName
+											: 'No parent container (root level)'}
 									</SelectTrigger>
 									<SelectContent>
 										<SelectItem value="">No parent container (root level)</SelectItem>
@@ -159,7 +170,8 @@
 							{/snippet}
 						</Form.Control>
 						<Form.Description>
-							Choose a parent container to create a hierarchy. Leave empty to create a root-level container.
+							Choose a parent container to create a hierarchy. Leave empty to create a root-level
+							container.
 						</Form.Description>
 						<Form.FieldErrors />
 					</Form.Field>
@@ -168,9 +180,7 @@
 						<Form.Button type="submit" disabled={$submitting}>
 							{$submitting ? 'Creating...' : 'Create Container'}
 						</Form.Button>
-						<Button href="/dashboard/inventory/containers" variant="outline">
-							Cancel
-						</Button>
+						<Button href="/dashboard/inventory/containers" variant="outline">Cancel</Button>
 					</div>
 				</form>
 			</CardContent>

@@ -1,16 +1,14 @@
 <script lang="ts">
-	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card';
+	import {
+		Card,
+		CardContent,
+		CardDescription,
+		CardHeader,
+		CardTitle
+	} from '$lib/components/ui/card';
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
-	import {
-		ArrowLeft,
-		FolderOpen,
-		Edit,
-		Plus,
-		Package,
-		Folder,
-		AlertTriangle
-	} from 'lucide-svelte';
+	import { ArrowLeft, FolderOpen, Edit, Plus, Package, Folder, AlertTriangle } from 'lucide-svelte';
 	import dayjs from 'dayjs';
 
 	let { data } = $props();
@@ -103,7 +101,10 @@
 								Child Containers ({container.child_containers.length})
 							</span>
 							{#if data.canEdit}
-								<Button href="/dashboard/inventory/containers/create?parent={container.id}" size="sm">
+								<Button
+									href="/dashboard/inventory/containers/create?parent={container.id}"
+									size="sm"
+								>
 									<Plus class="mr-2 h-4 w-4" />
 									Add Child
 								</Button>
@@ -114,7 +115,8 @@
 						<div class="space-y-2">
 							{#each container.child_containers as child}
 								<div
-									class="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 transition-colors">
+									class="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 transition-colors"
+								>
 									<div class="flex items-center gap-3">
 										<div class="flex h-8 w-8 items-center justify-center rounded-md bg-muted">
 											<FolderOpen class="h-4 w-4" />
@@ -123,7 +125,11 @@
 											<h3 class="font-medium">{child.name}</h3>
 										</div>
 									</div>
-									<Button href="/dashboard/inventory/containers/{child.id}" variant="ghost" size="sm">
+									<Button
+										href="/dashboard/inventory/containers/{child.id}"
+										variant="ghost"
+										size="sm"
+									>
 										View
 									</Button>
 								</div>
@@ -150,11 +156,13 @@
 					</CardTitle>
 				</CardHeader>
 				<CardContent>
-					{#if !container.items || container.items.length === 0 && data.canEdit}
+					{#if !container.items || (container.items.length === 0 && data.canEdit)}
 						<div class="text-center py-8">
 							<Package class="h-12 w-12 text-muted-foreground mx-auto mb-4" />
 							<h3 class="text-lg font-semibold mb-2">No items yet</h3>
-							<p class="text-muted-foreground mb-4">Add items to this container to start tracking your inventory</p>
+							<p class="text-muted-foreground mb-4">
+								Add items to this container to start tracking your inventory
+							</p>
 							<Button href="/dashboard/inventory/items/create?container={container.id}">
 								<Plus class="mr-2 h-4 w-4" />
 								Add First Item
@@ -164,7 +172,8 @@
 						<div class="space-y-2">
 							{#each container.items as item}
 								<div
-									class="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 transition-colors">
+									class="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 transition-colors"
+								>
 									<div class="flex items-center gap-3">
 										<div class="flex h-8 w-8 items-center justify-center rounded-md bg-muted">
 											<Package class="h-4 w-4" />

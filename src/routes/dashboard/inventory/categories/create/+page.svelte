@@ -2,7 +2,13 @@
 	import SuperDebug, { superForm } from 'sveltekit-superforms';
 	import { valibot } from 'sveltekit-superforms/adapters';
 	import { categorySchema } from '$lib/schemas/inventory';
-	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card';
+	import {
+		Card,
+		CardContent,
+		CardDescription,
+		CardHeader,
+		CardTitle
+	} from '$lib/components/ui/card';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Textarea } from '$lib/components/ui/textarea';
@@ -48,9 +54,7 @@
 					<Tags class="h-5 w-5" />
 					Category Information
 				</CardTitle>
-				<CardDescription>
-					Basic details about the equipment category
-				</CardDescription>
+				<CardDescription>Basic details about the equipment category</CardDescription>
 			</CardHeader>
 			<CardContent class="space-y-4">
 				<Form.Field {form} name="name">
@@ -89,8 +93,8 @@
 			<CardHeader>
 				<CardTitle>Custom Attributes</CardTitle>
 				<CardDescription>
-					Define the attributes that items in this category will have. For example, masks might have attributes like
-					"brand", "size", and "color".
+					Define the attributes that items in this category will have. For example, masks might have
+					attributes like "brand", "size", and "color".
 				</CardDescription>
 			</CardHeader>
 			<CardContent>
@@ -103,12 +107,10 @@
 			<Form.Button type="submit" disabled={$submitting}>
 				{$submitting ? 'Creating...' : 'Create Category'}
 			</Form.Button>
-			<Button href="/dashboard/inventory/categories" variant="outline">
-				Cancel
-			</Button>
+			<Button href="/dashboard/inventory/categories" variant="outline">Cancel</Button>
 		</div>
 	</form>
 	{#if import.meta.env.DEV}
-		<SuperDebug data={$formData}/>
+		<SuperDebug data={$formData} />
 	{/if}
 </div>

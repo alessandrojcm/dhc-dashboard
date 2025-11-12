@@ -17,8 +17,6 @@
 		<Alert.Description>
 			{page.error?.message}
 		</Alert.Description>
-		<Button class="w-fit" onclick={() => document.location.reload()}>
-			Try again
-		</Button>
+		<Button class="w-fit" onclick={() => document.location.reload()}>Try again</Button>
 	</Alert.Root>
 </div>

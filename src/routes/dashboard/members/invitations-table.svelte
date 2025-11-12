@@ -363,7 +363,6 @@
 		<LoaderCircle />
 	{/if}
 
-
 	<div class="flex items-center justify-between ml-auto">
 		<ButtonGroup.Root>
 			<!-- Bulk Resend Button -->
@@ -376,7 +375,9 @@
 			>
 				<SendIcon class="h-4 w-4" />
 				<span class="hidden sm:inline">
-					{bulkResendInvitations.isPending ? 'Sending...' : `Resend${selectedRows.size === 0 ? '' : ` ${selectedRows.size}`}`}
+					{bulkResendInvitations.isPending
+						? 'Sending...'
+						: `Resend${selectedRows.size === 0 ? '' : ` ${selectedRows.size}`}`}
 				</span>
 			</Button>
 
@@ -390,7 +391,9 @@
 			>
 				<Trash2 class="h-4 w-4" />
 				<span class="hidden sm:inline">
-					{bulkDeleteInvitations.isPending ? 'Deleting...' : `Delete${selectedRows.size === 0 ? '' : ` ${selectedRows.size}`}`}
+					{bulkDeleteInvitations.isPending
+						? 'Deleting...'
+						: `Delete${selectedRows.size === 0 ? '' : ` ${selectedRows.size}`}`}
 				</span>
 			</Button>
 		</ButtonGroup.Root>

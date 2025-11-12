@@ -1,7 +1,13 @@
 <script lang="ts">
 	import { createQuery, createMutation, useQueryClient } from '@tanstack/svelte-query';
 	import WorkshopList from '$lib/components/workshops/workshop-list.svelte';
-	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card';
+	import {
+		Card,
+		CardContent,
+		CardDescription,
+		CardHeader,
+		CardTitle
+	} from '$lib/components/ui/card';
 	import { Skeleton } from '$lib/components/ui/skeleton';
 	import { Tabs, TabsContent, TabsList, TabsTrigger } from '$lib/components/ui/tabs/index.js';
 	import { toast } from 'svelte-sonner';
@@ -19,11 +25,13 @@
 		queryFn: async ({ signal }) => {
 			const { data: workshops, error } = await supabase
 				.from('club_activities')
-				.select(`
+				.select(
+					`
 					*,
 					interest_count:club_activity_interest_counts(interest_count),
 					user_interest:club_activity_interest(user_id)
-				`)
+				`
+				)
 				.abortSignal(signal)
 				.eq('status', 'planned')
 				.order('start_date', { ascending: true });
@@ -38,10 +46,12 @@
 		queryFn: async ({ signal }) => {
 			const { data: workshops, error } = await supabase
 				.from('club_activities')
-				.select(`
+				.select(
+					`
 					*,
 					attendee_count:club_activity_registrations(id, member_user_id, status)
-				`)
+				`
+				)
 				.abortSignal(signal)
 				.eq('status', 'published')
 				.order('start_date', { ascending: true });
@@ -102,7 +112,9 @@
 			{:else if publishedWorkshopsQuery.error}
 				<Card>
 					<CardContent class="pt-6">
-						<p class="text-destructive">Error loading workshops: {publishedWorkshopsQuery.error.message}</p>
+						<p class="text-destructive">
+							Error loading workshops: {publishedWorkshopsQuery.error.message}
+						</p>
 					</CardContent>
 				</Card>
 			{:else}

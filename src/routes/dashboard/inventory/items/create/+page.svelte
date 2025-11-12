@@ -19,6 +19,7 @@
 	import { dev } from '$app/environment';
 	import { Label } from '$lib/components/ui/label';
 	import { Alert, AlertDescription } from '$lib/components/ui/alert';
+	import { buildContainerHierarchy } from '$lib/utils/inventory-form';
 
 	let { data } = $props();
 
@@ -71,45 +72,7 @@
 
 	const { form: formData, enhance, submitting, message } = form;
 
-	// Build hierarchy display for container selection
-	const buildHierarchyDisplay = (containers: any[]) => {
-		const containerMap = new Map();
-		const rootContainers: any[] = [];
-
-		containers.forEach((container) => {
-			containerMap.set(container.id, { ...container, children: [] });
-		});
-
-		containers.forEach((container) => {
-			if (container.parent_container_id) {
-				const parent = containerMap.get(container.parent_container_id);
-				if (parent) {
-					parent.children.push(containerMap.get(container.id));
-				}
-			} else {
-				rootContainers.push(containerMap.get(container.id));
-			}
-		});
-
-		const flattenWithIndent = (containers: any[], level = 0): any[] => {
-			const result: any[] = [];
-			containers.forEach((container) => {
-				result.push({
-					...container,
-					displayName: '  '.repeat(level) + container.name,
-					level
-				});
-				if (container.children.length > 0) {
-					result.push(...flattenWithIndent(container.children, level + 1));
-				}
-			});
-			return result;
-		};
-
-		return flattenWithIndent(rootContainers);
-	};
-
-	const hierarchicalContainers = buildHierarchyDisplay(data.containers);
+	const hierarchicalContainers = buildContainerHierarchy(data.containers);
 
 	// Reactive category selection for dynamic attributes
 	const selectedCategory: CategorySchema = $derived(
@@ -166,10 +129,10 @@
 	</div>
 
 	<!-- Error message display -->
-	{#if message}
+	{#if $message}
 		<Alert variant="destructive">
 			<AlertCircle class="h-4 w-4" />
-			<AlertDescription>{message}</AlertDescription>
+			<AlertDescription>{$message}</AlertDescription>
 		</Alert>
 	{/if}
 

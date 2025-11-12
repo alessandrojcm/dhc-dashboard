@@ -20,19 +20,19 @@
 	}
 	let views = [
 		{
-			id: "dashboard",
-			label: "Dashboard",
+			id: 'dashboard',
+			label: 'Dashboard'
 		},
 		{
-			id: "members",
-			label: "Members list",
+			id: 'members',
+			label: 'Members list'
 		},
 		{
-			id: "invitations",
-			label: "Invitations",
-		},
+			id: 'invitations',
+			label: 'Invitations'
+		}
 	];
-	let viewLabel = $derived(views.find((view) => view.id === value)?.label || "Dashboard");
+	let viewLabel = $derived(views.find((view) => view.id === value)?.label || 'Dashboard');
 </script>
 
 <div class="relative">

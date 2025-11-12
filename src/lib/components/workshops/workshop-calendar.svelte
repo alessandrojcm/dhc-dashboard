@@ -49,7 +49,7 @@
 		handleEdit,
 		onInterestToggle
 	}: {
-		workshops: Workshop[],
+		workshops: Workshop[];
 		userId?: string;
 		isLoading: boolean;
 		handleEdit?: (workshop: Workshop) => void;
@@ -61,50 +61,52 @@
 	let dialogOpen = $state(false);
 
 	// Convert workshops to EventCalendar events format with status-based colors
-	const events: CalendarEvent[] = $derived(workshops.map(workshop => {
-		const getStatusColors = (status: string) => {
-			switch (status) {
-				case 'planned':
-					return {
-						backgroundColor: 'hsl(var(--primary))',
-						textColor: 'hsl(var(--primary-foreground))'
-					};
-				case 'published':
-					return {
-						backgroundColor: 'hsl(142 76% 36%)', // green-600
-						textColor: 'hsl(0 0% 100%)' // white
-					};
-				case 'cancelled':
-					return {
-						backgroundColor: 'hsl(var(--destructive))',
-						textColor: 'hsl(var(--destructive-foreground))'
-					};
-				default:
-					return {
-						backgroundColor: 'hsl(var(--muted))',
-						textColor: 'hsl(var(--muted-foreground))'
-					};
-			}
-		};
+	const events: CalendarEvent[] = $derived(
+		workshops.map((workshop) => {
+			const getStatusColors = (status: string) => {
+				switch (status) {
+					case 'planned':
+						return {
+							backgroundColor: 'hsl(var(--primary))',
+							textColor: 'hsl(var(--primary-foreground))'
+						};
+					case 'published':
+						return {
+							backgroundColor: 'hsl(142 76% 36%)', // green-600
+							textColor: 'hsl(0 0% 100%)' // white
+						};
+					case 'cancelled':
+						return {
+							backgroundColor: 'hsl(var(--destructive))',
+							textColor: 'hsl(var(--destructive-foreground))'
+						};
+					default:
+						return {
+							backgroundColor: 'hsl(var(--muted))',
+							textColor: 'hsl(var(--muted-foreground))'
+						};
+				}
+			};
 
-		const colors = getStatusColors(workshop.status || 'planned');
+			const colors = getStatusColors(workshop.status || 'planned');
 
-		return {
-			id: workshop.id,
-			title: workshop.title,
-			start: dayjs(workshop.start_date).format('YYYY-MM-DD HH:mm'),
-			end: dayjs(workshop.end_date).format('YYYY-MM-DD HH:mm'),
-			backgroundColor: colors.backgroundColor,
-			textColor: colors.textColor,
-			extendedProps: {
-				workshop: workshop,
-				description: workshop.description || undefined,
-				location: workshop.location,
-				interestCount: workshop.interest_count?.[0]?.interest_count || 0,
-				registrationCount: workshop?.user_registrations?.length || 0
-			}
-		};
-	}));
+			return {
+				id: workshop.id,
+				title: workshop.title,
+				start: dayjs(workshop.start_date).format('YYYY-MM-DD HH:mm'),
+				end: dayjs(workshop.end_date).format('YYYY-MM-DD HH:mm'),
+				backgroundColor: colors.backgroundColor,
+				textColor: colors.textColor,
+				extendedProps: {
+					workshop: workshop,
+					description: workshop.description || undefined,
+					location: workshop.location,
+					interestCount: workshop.interest_count?.[0]?.interest_count || 0,
+					registrationCount: workshop?.user_registrations?.length || 0
+				}
+			};
+		})
+	);
 	// Function to handle event click and show dialog
 	const handleEventClick = (info: any) => {
 		const workshop = info.event.extendedProps?.workshop;
@@ -173,20 +175,24 @@
 			calendar: 'ec bg-card text-card-foreground border border-border rounded-lg',
 			header: 'ec-header bg-card border-b border-border',
 			toolbar: 'ec-toolbar flex items-center justify-between p-4',
-			button: 'ec-button inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2',
+			button:
+				'ec-button inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 border border-input bg-background hover:bg-accent hover:text-accent-foreground h-10 px-4 py-2',
 			buttonGroup: 'ec-button-group flex',
 			active: 'ec-active bg-primary text-primary-foreground hover:bg-primary/90',
 			title: 'ec-title text-lg font-semibold text-foreground',
 			body: 'ec-body bg-card',
-			dayHead: 'ec-day-head bg-muted/50 border-b border-border text-muted-foreground font-medium text-sm p-2',
+			dayHead:
+				'ec-day-head bg-muted/50 border-b border-border text-muted-foreground font-medium text-sm p-2',
 			day: 'ec-day border-r border-b border-border hover:bg-muted/50 transition-colors',
 			today: 'ec-today bg-accent/20',
 			otherMonth: 'ec-other-month text-muted-foreground/50',
-			event: 'ec-event bg-primary text-primary-foreground rounded-sm border border-primary/20 shadow-sm',
+			event:
+				'ec-event bg-primary text-primary-foreground rounded-sm border border-primary/20 shadow-sm',
 			eventBody: 'ec-event-body p-1',
 			eventTitle: 'ec-event-title font-medium text-xs',
 			eventTime: 'ec-event-time text-xs opacity-90',
-			popup: 'ec-popup bg-popover text-popover-foreground border border-border rounded-lg shadow-lg',
+			popup:
+				'ec-popup bg-popover text-popover-foreground border border-border rounded-lg shadow-lg',
 			nowIndicator: 'ec-now-indicator bg-destructive'
 		})
 	});
@@ -221,68 +227,65 @@
 			<WorkshopEventModal
 				calendarEvent={selectedEvent}
 				{onInterestToggle}
-				onClose={() => dialogOpen = false}
+				onClose={() => (dialogOpen = false)}
 			/>
 		{/if}
 	</Dialog.Content>
 </Dialog.Root>
 
 <style>
-    .workshop-calendar-container {
-        width: 100%;
-    }
+	.workshop-calendar-container {
+		width: 100%;
+	}
 
-    /* Custom event styling */
-    :global(.workshop-event) {
-        width: 100%;
-        height: 100%;
-    }
+	/* Custom event styling */
+	:global(.workshop-event) {
+		width: 100%;
+		height: 100%;
+	}
 
-    :global(.workshop-event-title) {
-        line-height: 1.2;
-    }
+	:global(.workshop-event-title) {
+		line-height: 1.2;
+	}
 
-    :global(.workshop-event-info) {
-        line-height: 1.1;
-    }
+	:global(.workshop-event-info) {
+		line-height: 1.1;
+	}
 
-    /* Dialog content styling */
+	/* Dialog content styling */
 
-    /* Override default event calendar styles with shadcn theme */
-    :global(.ec) {
-        font-family: inherit;
-    }
+	/* Override default event calendar styles with shadcn theme */
+	:global(.ec) {
+		font-family: inherit;
+	}
 
-    /* Ensure buttons use shadcn styling */
-    :global(.ec-button) {
-        transition: all 0.2s ease-in-out;
-    }
+	/* Ensure buttons use shadcn styling */
+	:global(.ec-button) {
+		transition: all 0.2s ease-in-out;
+	}
 
-    :global(.ec-button:hover) {
-        background-color: hsl(var(--accent));
-        color: hsl(var(--accent-foreground));
-    }
+	:global(.ec-button:hover) {
+		background-color: hsl(var(--accent));
+		color: hsl(var(--accent-foreground));
+	}
 
-    :global(.ec-button.ec-active) {
-        background-color: hsl(var(--primary));
-        color: hsl(var(--primary-foreground));
-    }
+	:global(.ec-button.ec-active) {
+		background-color: hsl(var(--primary));
+		color: hsl(var(--primary-foreground));
+	}
 
-    /* Style the more link */
-    :global(.ec .ec-more-link) {
-        color: hsl(var(--primary));
-        text-decoration: none;
-        font-size: 0.75rem;
-        padding: 0.25rem;
-        border-radius: calc(var(--radius) - 2px);
-        transition: all 0.2s ease-in-out;
-    }
+	/* Style the more link */
+	:global(.ec .ec-more-link) {
+		color: hsl(var(--primary));
+		text-decoration: none;
+		font-size: 0.75rem;
+		padding: 0.25rem;
+		border-radius: calc(var(--radius) - 2px);
+		transition: all 0.2s ease-in-out;
+	}
 
-    :global(.ec .ec-more-link:hover) {
-        background-color: hsl(var(--accent));
-        color: hsl(var(--accent-foreground));
-    }
-
-
+	:global(.ec .ec-more-link:hover) {
+		background-color: hsl(var(--accent));
+		color: hsl(var(--accent-foreground));
+	}
 </style>
-

@@ -55,8 +55,8 @@ export const load = async ({ params, locals }: { params: any; locals: App.Locals
 		form: await superValidate(
 			{
 				name: container.name,
-				description: container.description || undefined,
-				parent_container_id: container.parent_container_id || undefined
+				description: container.description || '',
+				parent_container_id: container.parent_container_id || ''
 			},
 			valibot(containerSchema)
 		),

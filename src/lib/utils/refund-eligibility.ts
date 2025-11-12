@@ -32,7 +32,7 @@ export function checkRefundEligibility(
 	if (refundDays !== null) {
 		const refundDeadline = dayjs(startDate).subtract(refundDays, 'days');
 		const now = dayjs();
-		
+
 		if (now.isAfter(refundDeadline)) {
 			return {
 				isEligible: false,

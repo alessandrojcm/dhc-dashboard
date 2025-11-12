@@ -9,10 +9,9 @@ import { invariant } from '$lib/server/invariant';
 export const POST: RequestHandler = async ({ locals, platform }) => {
 	try {
 		const { session } = await locals.safeGetSession();
-		invariant(session === null, "Unauthorized");
+		invariant(session === null, 'Unauthorized');
 		const roles = getRolesFromSession(session!);
-		const canToggleWaitlist =
-			roles.intersection(allowedToggleRoles).size > 0;
+		const canToggleWaitlist = roles.intersection(allowedToggleRoles).size > 0;
 
 		if (!canToggleWaitlist) {
 			return json({ success: false }, { status: 403 });

@@ -16,12 +16,7 @@
 	import dayjs from 'dayjs';
 	import { Info, Loader, Plus, Trash2 } from 'lucide-svelte';
 	import { valibotClient, valibot } from 'sveltekit-superforms/adapters';
-	import {
-		dateProxy,
-		superForm,
-		defaults,
-		setMessage
-	} from 'sveltekit-superforms/client';
+	import { dateProxy, superForm, defaults, setMessage } from 'sveltekit-superforms/client';
 
 	let isOpen = $state(false);
 
@@ -130,9 +125,9 @@
 	<Sheet.Content class="w-[400px] sm:w-[540px] p-4 scroll-smooth" side="right">
 		<Sheet.Header>
 			<Sheet.Title>Invite Members</Sheet.Title>
-			<Sheet.Description>Add new members to the club by sending them invitations.
-			</Sheet.Description
-			>
+			<Sheet.Description
+				>Add new members to the club by sending them invitations.
+			</Sheet.Description>
 		</Sheet.Header>
 
 		<div class="space-y-6 scroll-smooth overflow-y-scroll">

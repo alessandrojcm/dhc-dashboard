@@ -4,7 +4,6 @@
 
 	const { data } = $props();
 	let isVerified = $state(data.isConfirmed);
-
 </script>
 
 {#if !isVerified}

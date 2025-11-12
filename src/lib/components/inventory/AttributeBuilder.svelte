@@ -14,12 +14,11 @@
 	let {
 		form
 	}: {
-		form: SuperForm<CategorySchema>
+		form: SuperForm<CategorySchema>;
 	} = $props();
 	const { form: formData } = form;
 	const attributeCount = $derived($formData.available_attributes.length);
 	const hasAttributes = $derived(attributeCount > 0);
-
 
 	let newAttribute = $state<AttributeDefinition>({
 		type: 'text',
@@ -29,10 +28,14 @@
 
 	const addAttribute = () => {
 		if (!newAttribute.label) return;
-		$formData.available_attributes = [...$formData.available_attributes, {
-			...newAttribute, ...(newAttribute.type === 'select' && { options: [] }),
-			name: newAttribute.label.toLowerCase().replaceAll(/ /g, '-')
-		}];
+		$formData.available_attributes = [
+			...$formData.available_attributes,
+			{
+				...newAttribute,
+				...(newAttribute.type === 'select' && { options: [] }),
+				name: newAttribute.label.toLowerCase().replaceAll(/ /g, '-')
+			}
+		];
 		// Reset form
 		newAttribute = {
 			type: 'text',
@@ -113,27 +116,27 @@
 							<Button
 								variant="ghost"
 								size="sm"
-								onclick={() => ($formData.available_attributes = $formData.available_attributes.filter((_, i) => i !== index))}
+								onclick={() =>
+									($formData.available_attributes = $formData.available_attributes.filter(
+										(_, i) => i !== index
+									))}
 								class="text-destructive hover:text-destructive"
 							>
 								<Trash2 class="h-4 w-4" />
 							</Button>
 						</div>
-						<Form.Field {form} name='available_attributes[{index}].label'>
+						<Form.Field {form} name="available_attributes[{index}].label">
 							<Form.Control>
-								{#snippet children({ props }) }
+								{#snippet children({ props })}
 									<Form.Label>Display Label</Form.Label>
-									<Input
-										{...props}
-										bind:value={$formData.available_attributes[index].label}
-									/>
+									<Input {...props} bind:value={$formData.available_attributes[index].label} />
 								{/snippet}
 							</Form.Control>
 							<Form.FieldErrors />
 						</Form.Field>
-						<Form.Field {form} name='available_attributes[{index}].required'>
+						<Form.Field {form} name="available_attributes[{index}].required">
 							<Form.Control>
-								{#snippet children({ props }) }
+								{#snippet children({ props })}
 									<div class="flex items-center space-x-2 pt-6">
 										<Checkbox
 											{...props}
@@ -147,17 +150,21 @@
 						</Form.Field>
 
 						{#if attr.type === 'select' && attr.options}
-							<Form.Field {form} name='available_attributes[{index}].options'>
+							<Form.Field {form} name="available_attributes[{index}].options">
 								<Form.Control>
-									{#snippet children({ props }) }
-										<input type="hidden" {...props} bind:value={$formData.available_attributes[index].options} />
+									{#snippet children({ props })}
+										<input
+											type="hidden"
+											{...props}
+											bind:value={$formData.available_attributes[index].options}
+										/>
 										<Form.Label>Options</Form.Label>
 										<div class="space-y-2">
 											{#each attr.options ?? [] as value, i}
 												{#if $formData.available_attributes[index].options}
 													<Form.Field {form} name="available_attributes[{index}].options[{i}]">
 														<Form.Control>
-															{#snippet children({ props }) }
+															{#snippet children({ props })}
 																<Form.Label>Option {i + 1}</Form.Label>
 																<Input
 																	{...props}
@@ -168,7 +175,9 @@
 																	variant="ghost"
 																	size="sm"
 																	aria-label={`Remove option ${value}`}
-																	onclick={() => ($formData.available_attributes[index].options[i]=attr.options?.filter((v) => v !== value))}
+																	onclick={() =>
+																		($formData.available_attributes[index].options[i] =
+																			attr.options?.filter((v) => v !== value))}
 																>
 																	<Trash2 class="h-4 w-4" />
 																</Button>
@@ -181,7 +190,11 @@
 											<Button
 												variant="outline"
 												size="sm"
-												onclick={() => ($formData.available_attributes[index].options = [...(attr.options ?? []), ''])}
+												onclick={() =>
+													($formData.available_attributes[index].options = [
+														...(attr.options ?? []),
+														''
+													])}
 											>
 												<Plus class="mr-2 h-4 w-4" />
 												Add Option

@@ -8,9 +8,7 @@
 	import type { Workshop } from '$lib/types';
 
 	// Improvement: add pagination by month
-	let {
-		data
-	} = $props();
+	let { data } = $props();
 	const supabase = data.supabase;
 	const userId = data!.user!.id;
 	// TODO: edit workshop
@@ -20,12 +18,14 @@
 		queryFn: async ({ signal }) => {
 			const { data, error } = await supabase
 				.from('club_activities')
-				.select(`
+				.select(
+					`
 					*,
 					interest_count:club_activity_interest_counts(interest_count),
 					user_interest:club_activity_interest(user_id),
 					user_registrations:club_activity_registrations(member_user_id, status)
-				`)
+				`
+				)
 				.neq('status', 'cancelled')
 				.abortSignal(signal);
 
@@ -58,13 +58,17 @@
 
 	{#if workshopsQuery.error}
 		<Alert variant="destructive">
-			<AlertDescription>{workshopsQuery.error?.message || String(workshopsQuery.error)}</AlertDescription>
+			<AlertDescription
+				>{workshopsQuery.error?.message || String(workshopsQuery.error)}</AlertDescription
+			>
 		</Alert>
 	{/if}
 
 	<!-- Error handling is now done in the modal component with toast notifications -->
 	<WorkshopCalendar
-		handleEdit={handleEdit}
+		{handleEdit}
 		isLoading={workshopsQuery.isLoading}
-		workshops={workshopsQuery.data ??[]} {userId} />
+		workshops={workshopsQuery.data ?? []}
+		{userId}
+	/>
 </div>

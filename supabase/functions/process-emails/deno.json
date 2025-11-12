@@ -1,24 +1,24 @@
 {
-  "imports": {
-    "std/": "https://deno.land/std@0.210.0/",
-    "std/http/server": "https://deno.land/std@0.168.0/http/server.ts",
-    "@supabase/supabase-js": "jsr:@supabase/supabase-js",
-    "@sentry/deno": "npm:@sentry/deno",
-    "dayjs": "npm:dayjs",
-    "postgres": "https://deno.land/x/postgres@v0.17.0/mod.ts",
-    "kysely": "npm:kysely@^0.28.1",
-    "$shared": "../_shared",
-    "jwt-decode": "npm:jwt-decode",
-    "valibot": "npm:valibot",
-    "loops": "npm:loops"
-  },
-  "tasks": {
-    "dev": "deno run --watch main.ts",
-    "start": "deno run --allow-net --allow-env --allow-read index.ts"
-  },
-  "compilerOptions": {
-    "allowJs": true,
-    "lib": ["deno.window"],
-    "strict": true
-  }
+	"imports": {
+		"std/": "https://deno.land/std@0.210.0/",
+		"std/http/server": "https://deno.land/std@0.168.0/http/server.ts",
+		"@supabase/supabase-js": "jsr:@supabase/supabase-js",
+		"@sentry/deno": "npm:@sentry/deno",
+		"dayjs": "npm:dayjs",
+		"postgres": "https://deno.land/x/postgres@v0.17.0/mod.ts",
+		"kysely": "npm:kysely@^0.28.1",
+		"$shared": "../_shared",
+		"jwt-decode": "npm:jwt-decode",
+		"valibot": "npm:valibot",
+		"loops": "npm:loops"
+	},
+	"tasks": {
+		"dev": "deno run --watch main.ts",
+		"start": "deno run --allow-net --allow-env --allow-read index.ts"
+	},
+	"compilerOptions": {
+		"allowJs": true,
+		"lib": ["deno.window"],
+		"strict": true
+	}
 }

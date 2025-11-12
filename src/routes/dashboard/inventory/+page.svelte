@@ -1,16 +1,14 @@
 <script lang="ts">
-	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card';
+	import {
+		Card,
+		CardContent,
+		CardDescription,
+		CardHeader,
+		CardTitle
+	} from '$lib/components/ui/card';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
-	import { 
-		Package, 
-		FolderOpen, 
-		Tags, 
-		AlertTriangle,
-		Plus,
-		Clock,
-		User
-	} from 'lucide-svelte';
+	import { Package, FolderOpen, Tags, AlertTriangle, Plus, Clock, User } from 'lucide-svelte';
 	import dayjs from 'dayjs';
 	import relativeTime from 'dayjs/plugin/relativeTime';
 
@@ -20,19 +18,27 @@
 
 	const getActionIcon = (action: string) => {
 		switch (action) {
-			case 'created': return Plus;
-			case 'moved': return Package;
-			case 'updated': return Clock;
-			default: return Clock;
+			case 'created':
+				return Plus;
+			case 'moved':
+				return Package;
+			case 'updated':
+				return Clock;
+			default:
+				return Clock;
 		}
 	};
 
 	const getActionColor = (action: string) => {
 		switch (action) {
-			case 'created': return 'text-green-600';
-			case 'moved': return 'text-blue-600';
-			case 'updated': return 'text-yellow-600';
-			default: return 'text-gray-600';
+			case 'created':
+				return 'text-green-600';
+			case 'moved':
+				return 'text-blue-600';
+			case 'updated':
+				return 'text-yellow-600';
+			default:
+				return 'text-gray-600';
 		}
 	};
 </script>
@@ -102,11 +108,19 @@
 					<FolderOpen class="mr-2 h-4 w-4" />
 					Create New Container
 				</Button>
-				<Button href="/dashboard/inventory/categories/create" variant="outline" class="w-full justify-start">
+				<Button
+					href="/dashboard/inventory/categories/create"
+					variant="outline"
+					class="w-full justify-start"
+				>
 					<Tags class="mr-2 h-4 w-4" />
 					Add Equipment Category
 				</Button>
-				<Button href="/dashboard/inventory/items/create" variant="outline" class="w-full justify-start">
+				<Button
+					href="/dashboard/inventory/items/create"
+					variant="outline"
+					class="w-full justify-start"
+				>
 					<Package class="mr-2 h-4 w-4" />
 					Add New Item
 				</Button>
@@ -127,7 +141,10 @@
 						{#each data.recentActivity.slice(0, 5) as activity}
 							<div class="flex items-start gap-3">
 								<div class="flex h-8 w-8 items-center justify-center rounded-full bg-muted">
-									<svelte:component this={getActionIcon(activity.action)} class="h-4 w-4 {getActionColor(activity.action)}" />
+									<svelte:component
+										this={getActionIcon(activity.action)}
+										class="h-4 w-4 {getActionColor(activity.action)}"
+									/>
 								</div>
 								<div class="flex-1 space-y-1">
 									<p class="text-sm">

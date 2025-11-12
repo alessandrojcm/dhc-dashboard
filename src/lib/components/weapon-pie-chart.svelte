@@ -3,16 +3,17 @@
 	import { schemeTableau10 } from 'd3-scale-chromatic';
 
 	type WeaponDistribution = { weapon: string; count: number };
-	
+
 	// Use Svelte 5 props syntax
-	const { weaponDistributionData = [] }: { weaponDistributionData?: Array<WeaponDistribution> } = $props();
+	const { weaponDistributionData = [] }: { weaponDistributionData?: Array<WeaponDistribution> } =
+		$props();
 
 	// Format number for display
 	const formatNumber = Intl.NumberFormat('en').format;
 
 	// Generate legend items from the data
 	const legendItems = $derived(
-		weaponDistributionData.map(item => ({
+		weaponDistributionData.map((item) => ({
 			name: item.weapon.charAt(0).toUpperCase() + item.weapon.slice(1).replaceAll(/[_-]/g, ' '),
 			color: schemeTableau10[weaponDistributionData.indexOf(item) % schemeTableau10.length]
 		}))
