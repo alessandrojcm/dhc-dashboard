@@ -7,7 +7,7 @@
 	import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
 	import { SvelteQueryDevtools } from '@tanstack/svelte-query-devtools';
 	import posthog from 'posthog-js';
-	import { browser } from '$app/environment';
+    import {browser, dev} from '$app/environment';
 	import { onMount } from 'svelte';
 
 	let { children, data }: { children: Snippet; data: LayoutData } = $props();
@@ -16,17 +16,14 @@
 	const queryClient = new QueryClient();
 
 	onMount(() => {
-		if (browser) {
+		if (browser && !dev) {
 			// Initialize PostHog
-			posthog.init(
-				'phc_8UeWfJf2mUh6QRm4BGgj38bMOJLGmdHmdGR280hMLPL',
-				{
-					api_host: 'https://us.i.posthog.com',
-					person_profiles: 'identified_only', // or 'always' to create profiles for anonymous users as well
-					capture_pageview: true,
-					capture_pageleave: true,
-				}
-			);
+			posthog.init('phc_8UeWfJf2mUh6QRm4BGgj38bMOJLGmdHmdGR280hMLPL', {
+				api_host: 'https://us.i.posthog.com',
+				person_profiles: 'identified_only', // or 'always' to create profiles for anonymous users as well
+				capture_pageview: true,
+				capture_pageleave: true
+			});
 		}
 	});
 
@@ -42,13 +39,10 @@
 				invalidate('supabase:auth');
 			}
 			if (newSession?.user) {
-				posthog.identify(
-					newSession.user.id,
-					{
-						email: newSession.user.email,
-						metadata: newSession.user.user_metadata
-					}
-				);
+				posthog.identify(newSession.user.id, {
+					email: newSession.user.email,
+					metadata: newSession.user.user_metadata
+				});
 			}
 		});
 

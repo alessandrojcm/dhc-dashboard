@@ -17,48 +17,49 @@
 
 	const invitationId = $derived(page.params.invitationId);
 
-	let {
-		isVerified = $bindable(false)
-	} = $props();
+	let { isVerified = $bindable(false) } = $props();
 
 	// Create a form with the invite validation schema
-	const form = superForm({
-		dateOfBirth: page.url.searchParams.get('dateOfBirth') || '',
-		email: page.url.searchParams.get('email') || ''
-	}, {
-		validators: valibotClient(inviteValidationSchema),
-		resetForm: false,
-		validationMethod: 'onblur',
-		SPA: true,
-		onUpdate: async ({ form, cancel }) => {
-			try {
-				const response = await fetch(`/api/invite/${invitationId}`, {
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json'
-					},
-					body: JSON.stringify({
-						email: form.data.email,
-						dateOfBirth: form.data.dateOfBirth
-					})
-				});
-
-				if (response.ok) {
-					isVerified = true;
-					goto(`/members/signup/${invitationId}`, {
-						replaceState: true
+	const form = superForm(
+		{
+			dateOfBirth: page.url.searchParams.get('dateOfBirth') || '',
+			email: page.url.searchParams.get('email') || ''
+		},
+		{
+			validators: valibotClient(inviteValidationSchema),
+			resetForm: false,
+			validationMethod: 'onblur',
+			SPA: true,
+			onUpdate: async ({ form, cancel }) => {
+				try {
+					const response = await fetch(`/api/invite/${invitationId}`, {
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json'
+						},
+						body: JSON.stringify({
+							email: form.data.email,
+							dateOfBirth: form.data.dateOfBirth
+						})
 					});
-				} else {
-					toast.error('Invalid invitation details. Please check your email and date of birth.');
+
+					if (response.ok) {
+						isVerified = true;
+						goto(`/members/signup/${invitationId}`, {
+							replaceState: true
+						});
+					} else {
+						toast.error('Invalid invitation details. Please check your email and date of birth.');
+						cancel();
+					}
+				} catch (error) {
+					toast.error('An error occurred. Please try again.');
+					console.error('Error verifying invitation:', error);
 					cancel();
 				}
-			} catch (error) {
-				toast.error('An error occurred. Please try again.');
-				console.error('Error verifying invitation:', error);
-				cancel();
 			}
 		}
-	});
+	);
 
 	const { form: formData, enhance, submitting } = form;
 	const dobProxy = dateProxy(form, 'dateOfBirth', { format: `date` });
@@ -75,7 +76,8 @@
 		<Alert.Root variant="success" class="w-full mb-6">
 			<Alert.Title>Invitation Verified!</Alert.Title>
 			<Alert.Description>
-				Your invitation has been successfully verified. Please complete your membership signup below.
+				Your invitation has been successfully verified. Please complete your membership signup
+				below.
 			</Alert.Description>
 		</Alert.Root>
 	</div>
@@ -110,11 +112,11 @@
 							{...props}
 							value={dobValue}
 							onDateChange={(date) => {
-									if (!date) {
-										return;
-									}
-									$formData.dateOfBirth = dayjs(date).format('YYYY-MM-DD');
-								}}
+								if (!date) {
+									return;
+								}
+								$formData.dateOfBirth = dayjs(date).format('YYYY-MM-DD');
+							}}
 						/>
 						<input id="dobInput" type="date" hidden value={$dobProxy} name={props.name} />
 					{/snippet}

@@ -9,18 +9,21 @@ This is Stage 1 of implementing an inventory management system for the Dublin He
 The inventory management system needs to support:
 
 **For Admin/Quartermaster:**
+
 - Category creation with hierarchical organization (containers → equipment types)
 - Equipment categories with flexible attributes (brand, size, color, type, etc.)
 - Gear creation and management with comprehensive search capabilities
 - Tree view or e-commerce style interface for inventory management
 
 **For Members:**
+
 - Read-only view to browse inventory and locate gear
 - Search functionality to find where specific equipment is stored
 
 ### System Architecture
 
 The system uses a hierarchical structure:
+
 ```
 Container: "Main Storage Room"
 ├── Container: "Black Duffel Bag #1"
@@ -40,6 +43,7 @@ Implement the core data model and database schema that will support the entire i
 Create the following tables with proper relationships and RLS policies:
 
 #### 1. containers
+
 ```sql
 - id (UUID, primary key)
 - name (text, required)
@@ -50,11 +54,13 @@ Create the following tables with proper relationships and RLS policies:
 ```
 
 **Key Features:**
+
 - Supports hierarchical nesting (containers can contain other containers)
 - Self-referencing foreign key for parent-child relationships
 - Audit trail with created_by and timestamps
 
 #### 2. equipment_categories
+
 ```sql
 - id (UUID, primary key)
 - name (text, required - e.g., "Masks", "Jackets", "Weapons")
@@ -65,48 +71,50 @@ Create the following tables with proper relationships and RLS policies:
 ```
 
 **Key Features:**
+
 - Flexible attribute system using JSONB array with JSON Schema validation
 - Uses pg-jsonschema extension for robust attribute validation
 - Array-based attribute definitions for easy form handling and dynamic management
 - Examples of available_attributes (array format):
   ```json
   [
-    {
-      "name": "brand",
-      "type": "text",
-      "required": true,
-      "label": "Brand"
-    },
-    {
-      "name": "size",
-      "type": "select",
-      "options": ["XS", "S", "M", "L", "XL"],
-      "required": false,
-      "label": "Size"
-    },
-    {
-      "name": "colour",
-      "type": "text",
-      "required": false,
-      "label": "Colour"
-    }
+  	{
+  		"name": "brand",
+  		"type": "text",
+  		"required": true,
+  		"label": "Brand"
+  	},
+  	{
+  		"name": "size",
+  		"type": "select",
+  		"options": ["XS", "S", "M", "L", "XL"],
+  		"required": false,
+  		"label": "Size"
+  	},
+  	{
+  		"name": "colour",
+  		"type": "text",
+  		"required": false,
+  		"label": "Colour"
+  	}
   ]
   ```
 - Corresponding attribute_schema (auto-generated from array):
   ```json
   {
-    "type": "object",
-    "properties": {
-      "brand": {"type": "string"},
-      "size": {"type": "string", "enum": ["XS", "S", "M", "L", "XL"]},
-      "colour": {"type": "string"}
-    },
-    "required": ["brand"],
-    "additionalProperties": false
+  	"type": "object",
+  	"properties": {
+  		"brand": { "type": "string" },
+  		"size": { "type": "string", "enum": ["XS", "S", "M", "L", "XL"] },
+  		"colour": { "type": "string" }
+  	},
+  	"required": ["brand"],
+  	"additionalProperties": false
   }
   ```
 
 #### 3. inventory_items
+
 ```sql
 - id (UUID, primary key)
 - container_id (UUID, foreign key to containers, required)
@@ -121,12 +129,14 @@ Create the following tables with proper relationships and RLS policies:
 ```
 
 **Key Features:**
+
 - Flexible attributes stored as JSONB with JSON Schema validation
 - Quantity tracking (no serial numbers needed)
 - Maintenance flag for tracking equipment status
 - Photo support using Supabase Storage
 
 #### 4. inventory_history
+
 ```sql
 - id (UUID, primary key)
 - item_id (UUID, foreign key to inventory_items, required)
@@ -139,6 +149,7 @@ Create the following tables with proper relationships and RLS policies:
 ```
 
 **Key Features:**
+
 - Complete audit trail for all inventory changes
 - Tracks movements between containers
 - Records maintenance status changes
@@ -148,16 +159,19 @@ Create the following tables with proper relationships and RLS policies:
 Implement the following access patterns:
 
 **Quartermaster Role:**
+
 - Full CRUD access to all tables
 - Can create, read, update, delete containers, categories, and items
 - Can view all history records
 
 **Members:**
+
 - Read-only access to containers, categories, and inventory_items
 - Cannot see items marked as `out_for_maintenance`
 - Cannot access inventory_history table
 
 **Public/Unauthenticated:**
+
 - No access to any inventory tables
 
 ### Database Functions & Triggers
@@ -174,6 +188,7 @@ Create supporting database functions:
 ### Migration Strategy
 
 Create a new migration file that:
+
 1. Enables pg-jsonschema extension for attribute validation
 2. Creates all four tables with proper constraints
 3. Sets up RLS policies
@@ -241,7 +256,7 @@ Based on requirements analysis, the following decisions have been made:
 
 5. **Migration Strategy**: Starting fresh with no existing data to migrate
 
-6. **Validation Rules**: 
+6. **Validation Rules**:
    - Use JSON Schema validation for equipment attributes via pg-jsonschema extension
    - No validation required for container or category names
    - Attribute validation enforced at database level using JSON Schema constraints
@@ -251,43 +266,45 @@ Based on requirements analysis, the following decisions have been made:
 Each equipment category will be seeded with `available_attributes` (array format for UI form generation). The `attribute_schema` will be auto-generated by database triggers:
 
 **Example: Masks Category**
+
 ```json
 {
-  "available_attributes": [
-    {
-      "name": "brand",
-      "type": "text",
-      "required": true,
-      "label": "Brand"
-    },
-    {
-      "name": "size",
-      "type": "select",
-      "options": ["XS", "S", "M", "L", "XL"],
-      "required": false,
-      "label": "Size"
-    },
-    {
-      "name": "colour",
-      "type": "text",
-      "required": false,
-      "label": "Colour"
-    }
-  ],
-  "attribute_schema": {
-    "type": "object",
-    "properties": {
-      "brand": {"type": "string"},
-      "size": {"type": "string", "enum": ["XS", "S", "M", "L", "XL"]},
-      "colour": {"type": "string"}
-    },
-    "required": ["brand"],
-    "additionalProperties": false
-  }
+	"available_attributes": [
+		{
+			"name": "brand",
+			"type": "text",
+			"required": true,
+			"label": "Brand"
+		},
+		{
+			"name": "size",
+			"type": "select",
+			"options": ["XS", "S", "M", "L", "XL"],
+			"required": false,
+			"label": "Size"
+		},
+		{
+			"name": "colour",
+			"type": "text",
+			"required": false,
+			"label": "Colour"
+		}
+	],
+	"attribute_schema": {
+		"type": "object",
+		"properties": {
+			"brand": { "type": "string" },
+			"size": { "type": "string", "enum": ["XS", "S", "M", "L", "XL"] },
+			"colour": { "type": "string" }
+		},
+		"required": ["brand"],
+		"additionalProperties": false
+	}
 }
 ```
 
 **Benefits of Array-Based Approach:**
+
 - **Form Library Compatibility**: Works naturally with form arrays in SuperForm and other libraries
 - **Dynamic Management**: Easy to add/remove attributes using array methods
 - **UI Iteration**: Simple to map over attributes in Svelte components
@@ -295,31 +312,33 @@ Each equipment category will be seeded with `available_attributes` (array format
 - **Individual Validation**: Each attribute definition can have its own validation rules
 
 **All Categories to Seed (Array Format):**
-- **Masks**: 
+
+- **Masks**:
   - brand (text, required)
   - size (select: XS/S/M/L/XL, optional)
   - colour (text, optional)
-- **Gorgets**: 
+- **Gorgets**:
   - brand (text, required)
-- **Gloves**: 
+- **Gloves**:
   - brand (text, required)
   - colour (text, optional)
   - model (text, optional)
-- **Plastrons**: 
+- **Plastrons**:
   - size (select: XS/S/M/L/XL, optional)
   - type (select: female/male, optional)
-- **Jackets**: 
+- **Jackets**:
   - brand (text, required)
   - colour (text, optional)
   - size (select: XS/S/M/L/XL, optional)
-- **Arming Swords**: 
+- **Arming Swords**:
   - brand (text, required)
   - model (text, optional)
-- **Longswords**: 
+- **Longswords**:
   - brand (text, required)
   - model (text, optional)
 
 **Database Function for Schema Generation:**
+
 ```sql
 CREATE OR REPLACE FUNCTION generate_attribute_schema(attributes_array jsonb)
 RETURNS jsonb AS $$
@@ -332,27 +351,27 @@ BEGIN
   LOOP
     -- Add property to schema
     schema := jsonb_set(
-      schema, 
-      ARRAY['properties', attr->>'name'], 
-      CASE 
-        WHEN attr->>'type' = 'select' THEN 
+      schema,
+      ARRAY['properties', attr->>'name'],
+      CASE
+        WHEN attr->>'type' = 'select' THEN
           jsonb_build_object('type', 'string', 'enum', attr->'options')
-        ELSE 
+        ELSE
           jsonb_build_object('type', 'string')
       END
     );
-    
+
     -- Add to required array if needed
     IF (attr->>'required')::boolean THEN
       required_fields := array_append(required_fields, attr->>'name');
     END IF;
   END LOOP;
-  
+
   -- Set required fields
   IF array_length(required_fields, 1) > 0 THEN
     schema := jsonb_set(schema, ARRAY['required'], to_jsonb(required_fields));
   END IF;
-  
+
   RETURN schema;
 END;
 $$ LANGUAGE plpgsql;
@@ -374,6 +393,7 @@ CREATE TRIGGER category_schema_trigger
 ## Success Criteria
 
 Stage 1 is complete when:
+
 - [x] pg-jsonschema extension is enabled and configured
 - [x] All database tables are created with proper relationships
 - [x] JSON Schema validation is working for equipment attributes
@@ -389,6 +409,7 @@ Stage 1 is complete when:
 ## Next Stages
 
 After Stage 1 completion:
+
 - **Stage 2**: Quartermaster Management Interface - Build the admin UI for managing containers, categories, and items
 - **Stage 3**: Advanced Organization & Search - Implement tree view, advanced search, and bulk operations
 - **Stage 4**: Member Read-Only Interface - Create public inventory browser for members

@@ -2,13 +2,7 @@
 	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
-	import {
-		FolderOpen,
-		Plus,
-		Edit,
-		Trash2,
-		Package
-	} from 'lucide-svelte';
+	import { FolderOpen, Plus, Edit, Trash2, Package } from 'lucide-svelte';
 
 	let { data } = $props();
 
@@ -18,12 +12,12 @@
 		const rootContainers: any[] = [];
 
 		// First pass: create map of all containers
-		containers.forEach(container => {
+		containers.forEach((container) => {
 			containerMap.set(container.id, { ...container, children: [] });
 		});
 
 		// Second pass: build hierarchy
-		containers.forEach(container => {
+		containers.forEach((container) => {
 			if (container.parent_container_id) {
 				const parent = containerMap.get(container.parent_container_id);
 				if (parent) {
@@ -53,7 +47,7 @@
 
 	const flattenHierarchy = (containers: any[], level = 0): any[] => {
 		const result: any[] = [];
-		containers.forEach(container => {
+		containers.forEach((container) => {
 			result.push(renderContainer(container, level));
 			if (container.children.length > 0) {
 				result.push(...flattenHierarchy(container.children, level + 1));
@@ -84,7 +78,9 @@
 			<CardContent class="flex flex-col items-center justify-center py-12">
 				<FolderOpen class="h-12 w-12 text-muted-foreground mb-4" />
 				<h3 class="text-lg font-semibold mb-2">No containers yet</h3>
-				<p class="text-muted-foreground mb-4">Create your first container to start organizing your inventory</p>
+				<p class="text-muted-foreground mb-4">
+					Create your first container to start organizing your inventory
+				</p>
 				<Button href="/dashboard/inventory/containers/create">
 					<Plus class="mr-2 h-4 w-4" />
 					Create Container
@@ -99,9 +95,15 @@
 			<CardContent>
 				<div class="space-y-2">
 					{#each flatContainers as { container, level, itemCount, hasChildren }}
-						<div class="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted/50 transition-colors">
+						<div
+							class="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted/50 transition-colors"
+						>
 							<!-- Indentation for hierarchy -->
-							<div data-testid="container-hierarchy" style="margin-left: {level * 24}px" class="flex items-center gap-3 flex-1">
+							<div
+								data-testid="container-hierarchy"
+								style="margin-left: {level * 24}px"
+								class="flex items-center gap-3 flex-1"
+							>
 								<div class="flex h-8 w-8 items-center justify-center rounded-md bg-muted">
 									<FolderOpen class="h-4 w-4" />
 								</div>
@@ -111,7 +113,9 @@
 										<h3 class="font-medium">{container.name}</h3>
 										{#if hasChildren}
 											<Badge variant="secondary" class="text-xs">
-												{container.children.length} child{container.children.length !== 1 ? 'ren' : ''}
+												{container.children.length} child{container.children.length !== 1
+													? 'ren'
+													: ''}
 											</Badge>
 										{/if}
 									</div>
@@ -131,13 +135,21 @@
 										{itemCount} item{itemCount !== 1 ? 's' : ''}
 									</Badge>
 
-									<Button aria-label={`View ${container.name}`} href="/dashboard/inventory/containers/{container.id}"
-													variant="ghost" size="sm">
+									<Button
+										aria-label={`View ${container.name}`}
+										href="/dashboard/inventory/containers/{container.id}"
+										variant="ghost"
+										size="sm"
+									>
 										View
 									</Button>
 									{#if data.canEdit}
-										<Button aria-label={`Edit ${container.name}`}
-														href="/dashboard/inventory/containers/{container.id}/edit" variant="ghost" size="sm">
+										<Button
+											aria-label={`Edit ${container.name}`}
+											href="/dashboard/inventory/containers/{container.id}/edit"
+											variant="ghost"
+											size="sm"
+										>
 											<Edit class="h-4 w-4" />
 										</Button>
 									{/if}

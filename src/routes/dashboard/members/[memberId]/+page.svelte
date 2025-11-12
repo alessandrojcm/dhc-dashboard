@@ -40,7 +40,9 @@
 		}
 		return fromDate(dayjs($formData.dateOfBirth).toDate(), getLocalTimeZone());
 	});
-	let pausedUntil: dayjs.Dayjs | null = $derived(data.member.subscription_paused_until ? dayjs(data.member.subscription_paused_until) : null);
+	let pausedUntil: dayjs.Dayjs | null = $derived(
+		data.member.subscription_paused_until ? dayjs(data.member.subscription_paused_until) : null
+	);
 	const openBillinPortal = createMutation(() => ({
 		mutationFn: () =>
 			fetch(`/dashboard/members/${page.params.memberId}`, {
@@ -83,12 +85,13 @@
 			fetch(`/api/members/${page.params.memberId}/subscription/pause`, {
 				method: 'DELETE'
 			})
-				.then(r => {
+				.then((r) => {
 					if (!r.ok) {
 						throw new Error(`HTTP error! status: ${r.status}`);
 					}
 					return r;
-				}).then(r => r.json()),
+				})
+				.then((r) => r.json()),
 		onSuccess: () => {
 			pausedUntil = null;
 		},
@@ -164,10 +167,10 @@
 									placeholder="Enter your phone number"
 									{...props}
 									bind:phoneNumber={
-									() =>$formData.phoneNumber,
-									(v) => {
-										$formData.phoneNumber = v;
-									}
+										() => $formData.phoneNumber,
+										(v) => {
+											$formData.phoneNumber = v;
+										}
 									}
 								/>
 							{/snippet}
@@ -206,8 +209,7 @@
 							{/if}
 							Manage payment settings
 							<ExternalLink class="ml-2 h-4 w-4" />
-						</Button
-						>
+						</Button>
 
 						<div class="space-y-4 grid-cols-2 grid-rows-2">
 							<div class="flex items-center justify-between">
@@ -245,7 +247,7 @@
 							{:else}
 								<Button
 									variant="outline"
-									onclick={() => showPauseModal = true}
+									onclick={() => (showPauseModal = true)}
 									type="button"
 									class="w-full"
 								>
@@ -314,7 +316,7 @@
 										<Select.Content>
 											{#each weapons as weapon}
 												<Select.Item class="capitalize" value={weapon}
-												>{weapon.replace(/[_-]/g, ' ')}</Select.Item
+													>{weapon.replace(/[_-]/g, ' ')}</Select.Item
 												>
 											{/each}
 										</Select.Content>
@@ -349,9 +351,9 @@
 								<Form.Control>
 									{#snippet children({ props })}
 										<RadioGroup.Item value="yes_unrecognizable" {...props} />
-										<Form.Label class="font-normal">If not recognizable (wearing a mask)
-										</Form.Label
-										>
+										<Form.Label class="font-normal"
+											>If not recognizable (wearing a mask)
+										</Form.Label>
 									{/snippet}
 								</Form.Control>
 							</div>
@@ -407,7 +409,6 @@
 						</Form.Control>
 						<Form.FieldErrors />
 					</Form.Field>
-
 				</div>
 			</div>
 			{#if import.meta.env.DEV}
@@ -428,6 +429,6 @@
 		}}
 		isPending={pauseMutation.isPending}
 		extend={pausedUntil?.isAfter(dayjs())}
-		pausedUntil={pausedUntil}
+		{pausedUntil}
 	/>
 {/if}

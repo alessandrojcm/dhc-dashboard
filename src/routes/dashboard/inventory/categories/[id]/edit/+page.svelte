@@ -2,7 +2,13 @@
 	import { superForm } from 'sveltekit-superforms';
 	import { valibot } from 'sveltekit-superforms/adapters';
 	import { categorySchema } from '$lib/schemas/inventory';
-	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card';
+	import {
+		Card,
+		CardContent,
+		CardDescription,
+		CardHeader,
+		CardTitle
+	} from '$lib/components/ui/card';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Textarea } from '$lib/components/ui/textarea';
@@ -50,9 +56,7 @@
 					<Tags class="h-5 w-5" />
 					Category Information
 				</CardTitle>
-				<CardDescription>
-					Basic details about the equipment category
-				</CardDescription>
+				<CardDescription>Basic details about the equipment category</CardDescription>
 			</CardHeader>
 			<CardContent class="space-y-4">
 				<Form.Field {form} name="name">
@@ -91,7 +95,8 @@
 			<CardHeader>
 				<CardTitle>Custom Attributes</CardTitle>
 				<CardDescription>
-					Define the attributes that items in this category will have. Be careful when removing attributes as it may affect existing items.
+					Define the attributes that items in this category will have. Be careful when removing
+					attributes as it may affect existing items.
 				</CardDescription>
 			</CardHeader>
 			<CardContent>
@@ -104,9 +109,7 @@
 			<Form.Button type="submit" disabled={$submitting}>
 				{$submitting ? 'Updating...' : 'Update Category'}
 			</Form.Button>
-			<Button href="/dashboard/inventory/categories" variant="outline">
-				Cancel
-			</Button>
+			<Button href="/dashboard/inventory/categories" variant="outline">Cancel</Button>
 		</div>
 	</form>
 
@@ -118,34 +121,26 @@
 				Danger Zone
 			</CardTitle>
 			<CardDescription>
-				Permanently delete this category. This action cannot be undone and will affect all items in this category.
+				Permanently delete this category. This action cannot be undone and will affect all items in
+				this category.
 			</CardDescription>
 		</CardHeader>
 		<CardContent>
 			{#if !showDeleteConfirm}
-				<Button 
-					variant="destructive" 
-					onclick={() => showDeleteConfirm = true}
-				>
+				<Button variant="destructive" onclick={() => (showDeleteConfirm = true)}>
 					Delete Category
 				</Button>
 			{:else}
 				<div class="space-y-4">
 					<p class="text-sm text-muted-foreground">
-						Are you sure you want to delete this category? This will also delete all items in this category. This action cannot be undone.
+						Are you sure you want to delete this category? This will also delete all items in this
+						category. This action cannot be undone.
 					</p>
 					<div class="flex gap-3">
 						<form method="POST" action="?/delete" use:enhance>
-							<Button type="submit" variant="destructive">
-								Yes, Delete Category
-							</Button>
+							<Button type="submit" variant="destructive">Yes, Delete Category</Button>
 						</form>
-						<Button 
-							variant="outline" 
-							onclick={() => showDeleteConfirm = false}
-						>
-							Cancel
-						</Button>
+						<Button variant="outline" onclick={() => (showDeleteConfirm = false)}>Cancel</Button>
 					</div>
 				</div>
 			{/if}

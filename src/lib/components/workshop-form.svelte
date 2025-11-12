@@ -18,13 +18,13 @@
 		toCalendarDate,
 		toCalendarDateTime
 	} from '@internationalized/date';
-	import utc from 'dayjs/plugin/utc'
-	import timezone from 'dayjs/plugin/timezone'
+	import utc from 'dayjs/plugin/utc';
+	import timezone from 'dayjs/plugin/timezone';
 	import dayjs from 'dayjs';
 
-	dayjs.extend(utc)
-	dayjs.extend(timezone)
-	dayjs.tz.setDefault(dayjs.tz.guess())
+	dayjs.extend(utc);
+	dayjs.extend(timezone);
+	dayjs.tz.setDefault(dayjs.tz.guess());
 
 	interface Props {
 		data: any;
@@ -35,7 +35,14 @@
 		workshopEditable?: boolean;
 	}
 
-	const { data, mode, onSuccess, priceEditingDisabled = false, workshopStatus, workshopEditable }: Props = $props();
+	const {
+		data,
+		mode,
+		onSuccess,
+		priceEditingDisabled = false,
+		workshopStatus,
+		workshopEditable
+	}: Props = $props();
 
 	const schema = mode === 'create' ? CreateWorkshopSchema : UpdateWorkshopSchema;
 
@@ -44,7 +51,10 @@
 		validationMethod: 'onblur',
 		onSubmit: ({ formData }) => {
 			formData.set('workshop_date', dayjs(formData.get('workshop_date') as string).toISOString());
-			formData.set('workshop_end_date', dayjs(formData.get('workshop_end_date') as string).toISOString());
+			formData.set(
+				'workshop_end_date',
+				dayjs(formData.get('workshop_end_date') as string).toISOString()
+			);
 		},
 		onUpdated: ({ form }) => {
 			if (form.message?.success) {
@@ -81,7 +91,10 @@
 		return date.format('HH:mm');
 	});
 
-	function updateWorkshopDates(date?: CalendarDate | string, op: 'start' | 'end' | 'date' = 'date') {
+	function updateWorkshopDates(
+		date?: CalendarDate | string,
+		op: 'start' | 'end' | 'date' = 'date'
+	) {
 		if (!date) return;
 
 		if (typeof date === 'string' && op === 'start') {
@@ -119,9 +132,7 @@
 				? { hour: endDate.hour(), minute: endDate.minute() }
 				: { hour: 12, minute: 0 };
 
-			$formData.workshop_date = toCalendarDateTime(date)
-				.set(startTime)
-				.toDate(getLocalTimeZone());
+			$formData.workshop_date = toCalendarDateTime(date).set(startTime).toDate(getLocalTimeZone());
 
 			$formData.workshop_end_date = toCalendarDateTime(date)
 				.set(endTime)
@@ -243,9 +254,9 @@
 								date={workshopDateValue}
 								{startTime}
 								{endTime}
-								onDateChange={d => updateWorkshopDates(d, 'date')}
-								onStartTimeChange={d => updateWorkshopDates(d, 'start')}
-								onEndTimeChange={d => updateWorkshopDates(d, 'end')}
+								onDateChange={(d) => updateWorkshopDates(d, 'date')}
+								onStartTimeChange={(d) => updateWorkshopDates(d, 'start')}
+								onEndTimeChange={(d) => updateWorkshopDates(d, 'end')}
 								disabled={!isWorkshopEditable}
 							/>
 						</div>
@@ -350,7 +361,9 @@
 											bind:checked={$formData.announce_discord}
 										/>
 										<div>
-											<Form.Label for="announce_discord" class="text-base font-medium">Announce in Discord</Form.Label>
+											<Form.Label for="announce_discord" class="text-base font-medium"
+												>Announce in Discord</Form.Label
+											>
 											<p class="text-sm text-blue-700">
 												Send workshop announcements to the Discord server
 											</p>
@@ -371,7 +384,9 @@
 											bind:checked={$formData.announce_email}
 										/>
 										<div>
-											<Form.Label for="announce_email" class="text-base font-medium">Announce via Email</Form.Label>
+											<Form.Label for="announce_email" class="text-base font-medium"
+												>Announce via Email</Form.Label
+											>
 											<p class="text-sm text-blue-700">
 												Send workshop announcements via email to all active members
 											</p>
@@ -401,7 +416,9 @@
 			<Form.Field {form} name="is_public">
 				<Form.Control>
 					{#snippet children({ props })}
-						<div class="flex items-center space-x-3 p-4 bg-blue-50 rounded-lg border border-blue-200">
+						<div
+							class="flex items-center space-x-3 p-4 bg-blue-50 rounded-lg border border-blue-200"
+						>
 							<Switch
 								{...props}
 								id="is_public"
@@ -409,7 +426,9 @@
 								disabled={!isWorkshopEditable}
 							/>
 							<div>
-								<Form.Label for="is_public" class="text-base font-medium">Public Workshop</Form.Label>
+								<Form.Label for="is_public" class="text-base font-medium"
+									>Public Workshop</Form.Label
+								>
 								<p class="text-sm text-blue-700 mt-1">
 									Enable this to allow non-members to register for the workshop
 								</p>
@@ -426,7 +445,10 @@
 						{#snippet children({ props })}
 							<Form.Label required>Member Price</Form.Label>
 							<div class="relative">
-								<span class="absolute left-3 top-1/2 transform -translate-y-1/2 text-sm text-muted-foreground">€</span>
+								<span
+									class="absolute left-3 top-1/2 transform -translate-y-1/2 text-sm text-muted-foreground"
+									>€</span
+								>
 								<Input
 									{...props}
 									type="number"
@@ -450,7 +472,9 @@
 								<Form.Label required>Non-Member Price</Form.Label>
 								<div class="relative">
 									<span
-										class="absolute left-3 top-1/2 transform -translate-y-1/2 text-sm text-muted-foreground">€</span>
+										class="absolute left-3 top-1/2 transform -translate-y-1/2 text-sm text-muted-foreground"
+										>€</span
+									>
 									<Input
 										{...props}
 										type="number"
@@ -468,7 +492,8 @@
 					</Form.Field>
 				{:else}
 					<div
-						class="flex items-center justify-center h-20 text-sm text-muted-foreground bg-gray-50 border border-dashed border-gray-300 rounded-lg">
+						class="flex items-center justify-center h-20 text-sm text-muted-foreground bg-gray-50 border border-dashed border-gray-300 rounded-lg"
+					>
 						<div class="text-center">
 							<p class="font-medium">Non-Member Pricing</p>
 							<p class="text-xs">Available for public workshops only</p>
@@ -480,7 +505,11 @@
 
 		<!-- Submit Section -->
 		<div class="pt-6 border-t">
-			<Button type="submit" disabled={$submitting || !isWorkshopEditable} class="w-full h-12 text-lg">
+			<Button
+				type="submit"
+				disabled={$submitting || !isWorkshopEditable}
+				class="w-full h-12 text-lg"
+			>
 				{#if $submitting}
 					<LoaderCircle class="mr-2 h-5 w-5" />
 					{mode === 'create' ? 'Creating' : 'Updating'} Workshop...

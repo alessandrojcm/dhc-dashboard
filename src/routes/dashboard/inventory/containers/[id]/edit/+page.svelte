@@ -2,7 +2,13 @@
 	import { superForm } from 'sveltekit-superforms';
 	import { valibot } from 'sveltekit-superforms/adapters';
 	import { containerSchema } from '$lib/schemas/inventory';
-	import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '$lib/components/ui/card';
+	import {
+		Card,
+		CardContent,
+		CardDescription,
+		CardHeader,
+		CardTitle
+	} from '$lib/components/ui/card';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Textarea } from '$lib/components/ui/textarea';
@@ -38,12 +44,12 @@
 		const rootContainers: ContainerWithChildren[] = [];
 
 		// First pass: create all containers with empty children arrays
-		containers.forEach(container => {
+		containers.forEach((container) => {
 			containerMap.set(container.id, { ...container, children: [] });
 		});
 
 		// Second pass: build the hierarchy
-		containers.forEach(container => {
+		containers.forEach((container) => {
 			if (container.parent_container_id) {
 				const parent = containerMap.get(container.parent_container_id);
 				const child = containerMap.get(container.id);
@@ -59,9 +65,12 @@
 		});
 
 		// Flatten with indentation for display
-		const flattenWithIndent = (containers: ContainerWithChildren[], level = 0): HierarchicalContainer[] => {
+		const flattenWithIndent = (
+			containers: ContainerWithChildren[],
+			level = 0
+		): HierarchicalContainer[] => {
 			const result: HierarchicalContainer[] = [];
-			containers.forEach(container => {
+			containers.forEach((container) => {
 				result.push({
 					...container,
 					displayName: '  '.repeat(level) + container.name,
@@ -83,7 +92,7 @@
 		descendants.add(containerId);
 
 		const addDescendants = (parentId: string) => {
-			containers.forEach(container => {
+			containers.forEach((container) => {
 				if (container.parent_container_id === parentId && !descendants.has(container.id)) {
 					descendants.add(container.id);
 					addDescendants(container.id);
@@ -96,9 +105,11 @@
 	};
 
 	const excludedIds = getDescendantIds(data.container.id, data.containers);
-	const availableContainers = data.containers.filter(c => !excludedIds.has(c.id));
+	const availableContainers = data.containers.filter((c) => !excludedIds.has(c.id));
 	const hierarchicalContainers = buildHierarchyDisplay(availableContainers);
-	const selectedContainer = $derived(hierarchicalContainers.find(container => container.id === $formData.parent_container_id));
+	const selectedContainer = $derived(
+		hierarchicalContainers.find((container) => container.id === $formData.parent_container_id)
+	);
 
 	let showDeleteConfirm = $state(false);
 </script>
@@ -128,7 +139,8 @@
 					Container Details
 				</CardTitle>
 				<CardDescription>
-					Update the container information. Be careful when changing the parent container as it affects the hierarchy.
+					Update the container information. Be careful when changing the parent container as it
+					affects the hierarchy.
 				</CardDescription>
 			</CardHeader>
 			<CardContent>
@@ -168,7 +180,9 @@
 								<Form.Label>Parent Container</Form.Label>
 								<Select type="single" bind:value={$formData.parent_container_id} name={props.name}>
 									<SelectTrigger {...props}>
-										{selectedContainer ? selectedContainer.displayName : 'Select a parent container (optional)'}
+										{selectedContainer
+											? selectedContainer.displayName
+											: 'Select a parent container (optional)'}
 									</SelectTrigger>
 									<SelectContent>
 										<SelectItem value="">No parent container (root level)</SelectItem>
@@ -182,7 +196,8 @@
 							{/snippet}
 						</Form.Control>
 						<Form.Description>
-							Choose a parent container to create a hierarchy. Leave empty to create a root-level container.
+							Choose a parent container to create a hierarchy. Leave empty to create a root-level
+							container.
 						</Form.Description>
 						<Form.FieldErrors />
 					</Form.Field>
@@ -212,30 +227,20 @@
 			</CardHeader>
 			<CardContent>
 				{#if !showDeleteConfirm}
-					<Button
-						variant="destructive"
-						onclick={() => showDeleteConfirm = true}
-					>
+					<Button variant="destructive" onclick={() => (showDeleteConfirm = true)}>
 						Delete Container
 					</Button>
 				{:else}
 					<div class="space-y-4">
 						<p class="text-sm text-muted-foreground">
-							Are you sure you want to delete this container? This will also delete all child containers and move any
-							items to the parent container or root level.
+							Are you sure you want to delete this container? This will also delete all child
+							containers and move any items to the parent container or root level.
 						</p>
 						<div class="flex gap-3">
 							<form method="POST" action="?/delete" use:enhance>
-								<Button type="submit" variant="destructive">
-									Yes, Delete Container
-								</Button>
+								<Button type="submit" variant="destructive">Yes, Delete Container</Button>
 							</form>
-							<Button
-								variant="outline"
-								onclick={() => showDeleteConfirm = false}
-							>
-								Cancel
-							</Button>
+							<Button variant="outline" onclick={() => (showDeleteConfirm = false)}>Cancel</Button>
 						</div>
 					</div>
 				{/if}

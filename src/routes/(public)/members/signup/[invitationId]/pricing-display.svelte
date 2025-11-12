@@ -19,7 +19,7 @@
 		currentCoupon,
 		applyCoupon,
 		nextMonthlyBillingDate,
-		nextAnnualBillingDate,
+		nextAnnualBillingDate
 	}: {
 		planPricingData: CreateQueryResult<PlanPricing, Error>;
 		couponCode: string | undefined;
@@ -64,11 +64,11 @@
 		discountedMonthlyFeeDinero === null &&
 		discountedAnnualFeeDinero === null
 			? Dinero({
-				amount: Math.round(
-					(proratedPriceDinero.getAmount() * (100 - (discountPercentage ?? 0))) / 100
-				),
-				currency: proratedPriceDinero.getCurrency()
-			})
+					amount: Math.round(
+						(proratedPriceDinero.getAmount() * (100 - (discountPercentage ?? 0))) / 100
+					),
+					currency: proratedPriceDinero.getCurrency()
+				})
 			: proratedPriceDinero}
 
 	<Card.Root class="bg-muted">
@@ -77,16 +77,19 @@
 				<div class="flex justify-between items-center">
 					<div class="flex flex-col items-start">
 						<span>Monthly membership fee</span>
-						<small class="text-sm text-gray-500">Regular monthly payment starting
-							next {dayjs(nextMonthlyBillingDate).format('MMMM [the] Do, YYYY')}</small>
+						<small class="text-sm text-gray-500"
+							>Regular monthly payment starting next {dayjs(nextMonthlyBillingDate).format(
+								'MMMM [the] Do, YYYY'
+							)}</small
+						>
 					</div>
 					<div class="flex flex-col items-end">
 						{#if discountedMonthlyFeeDinero}
 							<span class="font-semibold text-green-600"
-							>{discountedMonthlyFeeDinero.toFormat()}</span
+								>{discountedMonthlyFeeDinero.toFormat()}</span
 							>
 							<span class="text-sm line-through text-muted-foreground"
-							>{monthlyFeeDinero.toFormat()}</span
+								>{monthlyFeeDinero.toFormat()}</span
 							>
 						{:else}
 							<span class="font-semibold">{monthlyFeeDinero.toFormat()}</span>
@@ -96,16 +99,19 @@
 				<div class="flex justify-between items-center">
 					<div class="flex flex-col items-start">
 						<span>Annual membership fee</span>
-						<small class="text-sm text-gray-500">Fee charged every year, starting
-							next {dayjs(nextAnnualBillingDate).format('MMMM [the] Do, YYYY')}</small>
+						<small class="text-sm text-gray-500"
+							>Fee charged every year, starting next {dayjs(nextAnnualBillingDate).format(
+								'MMMM [the] Do, YYYY'
+							)}</small
+						>
 					</div>
 					<div class="flex flex-col items-end">
 						{#if discountedAnnualFeeDinero}
 							<span class="font-semibold text-green-600"
-							>{discountedAnnualFeeDinero.toFormat()}</span
+								>{discountedAnnualFeeDinero.toFormat()}</span
 							>
 							<span class="text-sm line-through text-muted-foreground"
-							>{annualFeeDinero.toFormat()}</span
+								>{annualFeeDinero.toFormat()}</span
 							>
 						{:else}
 							<span class="font-semibold">{annualFeeDinero.toFormat()}</span>
@@ -116,15 +122,17 @@
 					<div class="flex items-start flex-col">
 						<span>First payment</span>
 						<small class="text-sm text-gray-500">
-							This is the initial amount charged today, covering the rest of the current month
-							and the annual fee.</small>
+							This is the initial amount charged today, covering the rest of the current month and
+							the annual fee.</small
+						>
 					</div>
 				</div>
 				<div class="flex justify-between items-center p-4 text-sm m-0">
 					<div class="flex items-start flex-col mr-4">
 						<span>Pro-rated monthly fee</span>
 						<small class="text-xs text-gray-500">
-							This is the pro-rated monthly fee covering from today to the rest of the month</small>
+							This is the pro-rated monthly fee covering from today to the rest of the month</small
+						>
 					</div>
 					<span class="font-semibold text-sm">{proratedMonthlyPrice.toFormat()}</span>
 				</div>
@@ -132,7 +140,8 @@
 					<div class="flex items-start flex-col mr-4">
 						<span>Pro-rated annual fee</span>
 						<small class="text-xs text-gray-500">
-							This is the pro-rated annual fee covering from today to the rest of the year</small>
+							This is the pro-rated annual fee covering from today to the rest of the year</small
+						>
 					</div>
 					<span class="font-semibold text-sm">{proratedAnnualPrice.toFormat()}</span>
 				</div>
@@ -178,7 +187,7 @@
 									class="mt-2 w-full bg-white"
 									type="button"
 									onclick={() => applyCoupon.mutate(couponCode)}
-								>Apply Code
+									>Apply Code
 									{#if applyCoupon.isPending}
 										<LoaderCircle class="animate-spin ml-2 h-4 w-4" />
 									{/if}

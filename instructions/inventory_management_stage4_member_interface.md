@@ -9,18 +9,21 @@ This is Stage 4 of implementing an inventory management system for the Dublin He
 The inventory management system needs to support:
 
 **For Admin/Quartermaster:**
+
 - Category creation with hierarchical organization (containers → equipment types)
 - Equipment categories with flexible attributes (brand, size, color, type, etc.)
 - Gear creation and management with comprehensive search capabilities
 - Tree view or e-commerce style interface for inventory management
 
 **For Members:**
+
 - Read-only view to browse inventory and locate gear
 - Search functionality to find where specific equipment is stored
 
 ### System Architecture
 
 The system uses a hierarchical structure:
+
 ```
 Container: "Main Storage Room"
 ├── Container: "Black Duffel Bag #1"
@@ -34,6 +37,7 @@ Container: "Main Storage Room"
 ## Stage 4 Objectives
 
 Create a user-friendly, read-only interface that allows club members to:
+
 - Browse the complete inventory in an intuitive way
 - Search for specific equipment and find its location
 - View equipment details and photos
@@ -49,6 +53,7 @@ Create a user-friendly, read-only interface that allows club members to:
 ## Public Interface Structure
 
 ### Route Organization
+
 ```
 /inventory/                          # Public inventory section
 ├── +layout.svelte                   # Public layout (no admin navigation)
@@ -79,6 +84,7 @@ Create a user-friendly, read-only interface that allows club members to:
 ### 1. Public Homepage Components
 
 **InventoryHomepage.svelte**
+
 - Welcome message and system overview
 - Prominent search bar with placeholder text
 - Quick access to popular categories
@@ -87,6 +93,7 @@ Create a user-friendly, read-only interface that allows club members to:
 - Mobile-optimized layout
 
 **QuickSearch.svelte**
+
 - Prominent search input with autocomplete
 - Search suggestions based on popular items
 - Quick filter buttons (by category)
@@ -96,6 +103,7 @@ Create a user-friendly, read-only interface that allows club members to:
 ### 2. Browse Interface Components
 
 **PublicContainerTree.svelte**
+
 - Read-only version of the container tree
 - Simplified, clean visual design
 - Click to expand/collapse containers
@@ -104,6 +112,7 @@ Create a user-friendly, read-only interface that allows club members to:
 - No drag-and-drop or edit functionality
 
 **PublicInventoryGrid.svelte**
+
 - Clean, card-based layout for browsing items
 - Filter by category, container, or attributes
 - Sort by name, category, or location
@@ -114,6 +123,7 @@ Create a user-friendly, read-only interface that allows club members to:
 ### 3. Search Components
 
 **PublicSearchInterface.svelte**
+
 - Simplified search form focused on finding items
 - Category-based filtering
 - Location-based search ("What's in the black bag?")
@@ -122,6 +132,7 @@ Create a user-friendly, read-only interface that allows club members to:
 - Mobile-optimized input methods
 
 **SearchResultsPublic.svelte**
+
 - Clean results display with item photos
 - Clear location information (container path)
 - Availability status (available vs. out for maintenance)
@@ -131,6 +142,7 @@ Create a user-friendly, read-only interface that allows club members to:
 ### 4. Item Detail Components
 
 **PublicItemDetails.svelte**
+
 - Complete item information display
 - Photo gallery with zoom functionality
 - Current location with clear path display
@@ -139,6 +151,7 @@ Create a user-friendly, read-only interface that allows club members to:
 - No edit functionality or administrative data
 
 **LocationPath.svelte**
+
 - Breadcrumb-style location display
 - Shows full container hierarchy path
 - Clickable path elements to browse containers
@@ -148,12 +161,14 @@ Create a user-friendly, read-only interface that allows club members to:
 ### 5. Mobile-Optimized Components
 
 **MobileInventoryNav.svelte**
+
 - Bottom navigation for mobile devices
 - Quick access to: Browse, Search, Categories
 - Swipe gestures for navigation
 - Touch-friendly button sizes
 
 **MobileSearchBar.svelte**
+
 - Sticky search bar for mobile
 - Voice search integration
 - Quick filter chips
@@ -162,13 +177,16 @@ Create a user-friendly, read-only interface that allows club members to:
 ## Data Access and Security
 
 ### RLS Policy Verification
+
 Ensure member access policies are correctly implemented:
+
 - Members can read containers, categories, and inventory_items
 - Items marked as `out_for_maintenance` are hidden from members
 - No access to inventory_history table
 - No access to administrative functions
 
 ### Data Loading Strategy
+
 - Server-side rendering for SEO and performance
 - Efficient queries that respect RLS policies
 - Pagination for large datasets
@@ -188,18 +206,21 @@ Ensure member access policies are correctly implemented:
 ## User Experience Design
 
 ### Search-First Approach
+
 - Prominent search functionality on every page
 - Multiple search entry points
 - Search suggestions and autocomplete
 - Recent searches for returning users
 
 ### Mobile-First Design
+
 - Touch-friendly interface elements
 - Responsive grid layouts
 - Optimized image loading
 - Offline capability for cached searches
 
 ### Accessibility Features
+
 - Screen reader support
 - Keyboard navigation
 - High contrast mode
@@ -207,6 +228,7 @@ Ensure member access policies are correctly implemented:
 - Alternative text for all images
 
 ### Performance Optimization
+
 - Lazy loading of images
 - Efficient pagination
 - Cached search results
@@ -217,11 +239,13 @@ Ensure member access policies are correctly implemented:
 ### 1. Smart Search Functionality
 
 **Natural Language Search:**
+
 - "Where are the medium masks?" → Filter by category=masks, size=medium
 - "What's in the black bag?" → Search container names for "black bag"
 - "Show me all synthetic swords" → Filter by category=weapons, type=synthetic
 
 **Search Suggestions:**
+
 - Popular search terms
 - Category-based suggestions
 - Location-based suggestions
@@ -230,12 +254,14 @@ Ensure member access policies are correctly implemented:
 ### 2. Location-Focused Interface
 
 **"Where Is It?" Feature:**
+
 - Dedicated search mode for finding item locations
 - Visual container path display
 - Map-like navigation through containers
 - Quick location lookup by item name
 
 **Container Navigation:**
+
 - Intuitive browsing through container hierarchy
 - Visual indicators for container contents
 - Quick jump to specific containers
@@ -244,12 +270,14 @@ Ensure member access policies are correctly implemented:
 ### 3. Category-Based Browsing
 
 **Equipment Categories:**
+
 - Visual category cards with representative images
 - Item count per category
 - Quick filtering within categories
 - Popular items in each category
 
 **Attribute Filtering:**
+
 - Size-based filtering for clothing/protective gear
 - Brand-based filtering
 - Color-based filtering
@@ -258,6 +286,7 @@ Ensure member access policies are correctly implemented:
 ## Implementation Tasks
 
 ### Phase 1: Core Public Interface
+
 1. **Route Structure**
    - Set up public inventory routes
    - Implement proper RLS policy enforcement
@@ -269,6 +298,7 @@ Ensure member access policies are correctly implemented:
    - Implement basic item listing
 
 ### Phase 2: Search and Browse
+
 1. **Search Functionality**
    - Implement public search interface
    - Add autocomplete and suggestions
@@ -280,6 +310,7 @@ Ensure member access policies are correctly implemented:
    - Add filtering and sorting options
 
 ### Phase 3: Mobile Optimization
+
 1. **Responsive Design**
    - Optimize all components for mobile
    - Implement touch-friendly navigation
@@ -291,6 +322,7 @@ Ensure member access policies are correctly implemented:
    - Add offline capability
 
 ### Phase 4: Enhanced Features
+
 1. **Advanced Search**
    - Add location-based search
    - Implement smart search suggestions
@@ -304,18 +336,21 @@ Ensure member access policies are correctly implemented:
 ## Testing Strategy
 
 ### Functional Testing
+
 - Verify RLS policies prevent unauthorized access
 - Test search functionality across different criteria
 - Validate mobile responsiveness
 - Check accessibility compliance
 
 ### User Experience Testing
+
 - Test with actual club members
 - Validate search result relevance
 - Check mobile usability
 - Verify loading performance
 
 ### Security Testing
+
 - Confirm no administrative data exposure
 - Test RLS policy enforcement
 - Validate input sanitization
@@ -324,6 +359,7 @@ Ensure member access policies are correctly implemented:
 ## Success Criteria
 
 Stage 4 is complete when:
+
 - [ ] Members can browse inventory without administrative access
 - [ ] Search functionality helps members find equipment locations quickly
 - [ ] Mobile interface is fully functional and user-friendly
@@ -338,6 +374,7 @@ Stage 4 is complete when:
 ## Future Enhancements
 
 After Stage 4 completion, consider these additional features:
+
 - **QR Code Integration**: Scan QR codes on containers for quick lookup
 - **Equipment Reservation**: Allow members to reserve equipment in advance
 - **Usage Analytics**: Track which equipment members search for most
@@ -349,6 +386,7 @@ After Stage 4 completion, consider these additional features:
 ## Documentation
 
 Create user documentation including:
+
 - **Member Guide**: How to use the inventory system
 - **Search Tips**: Best practices for finding equipment
 - **Mobile Guide**: Using the system on mobile devices

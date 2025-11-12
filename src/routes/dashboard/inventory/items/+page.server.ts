@@ -14,13 +14,14 @@ export const load = async ({ url, locals }: { url: URL; locals: App.Locals }) =>
 	const offset = (page - 1) * limit;
 
 	// Build query
-	let query = locals.supabase
-		.from('inventory_items')
-		.select(`
+	let query = locals.supabase.from('inventory_items').select(
+		`
 			*,
 			container:containers(id, name),
 			category:equipment_categories(id, name)
-		`, { count: 'exact' });
+		`,
+		{ count: 'exact' }
+	);
 
 	// Apply filters
 	if (categoryFilter) {
@@ -35,8 +36,11 @@ export const load = async ({ url, locals }: { url: URL; locals: App.Locals }) =>
 		query = query.eq('out_for_maintenance', false);
 	}
 	if (search) {
-		// Search in attributes JSONB field
-		query = query.textSearch('attributes', search);
+		// Search in attributes JSONB field using case-insensitive pattern matching
+		// This searches across all attribute values in the JSONB object
+		query = query.or(
+			`attributes->name.ilike.%${search}%,attributes->brand.ilike.%${search}%,attributes->type.ilike.%${search}%,attributes->model.ilike.%${search}%`
+		);
 	}
 
 	// Apply pagination and ordering

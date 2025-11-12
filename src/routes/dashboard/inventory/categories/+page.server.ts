@@ -7,10 +7,12 @@ export const load = async ({ locals }: { locals: App.Locals }) => {
 	// Load categories with usage statistics
 	const { data: categories } = await locals.supabase
 		.from('equipment_categories')
-		.select(`
+		.select(
+			`
 			*,
 			item_count:inventory_items(count)
-		`)
+		`
+		)
 		.order('name');
 
 	return {

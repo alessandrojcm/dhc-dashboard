@@ -74,7 +74,7 @@ payments.
   ```javascript
   const timestamp = Date.now();
   const randomSuffix = Math.random().toString(36).substring(2, 15);
-  email: `admin-${timestamp}-${randomSuffix}@test.com`
+  email: `admin-${timestamp}-${randomSuffix}@test.com`;
   ```
 - **Authentication helpers**: Always use `makeAuthenticatedRequest()` instead of direct authorization headers
 - **Service dependencies**: E2E tests require all services running (see Environment Setup section)
@@ -169,16 +169,17 @@ Required for development:
 - ALWAYS try to avoid $effects unless is absolutely necessary. Prefer $derived runes and event handlers
 
 For forms, ALWAYS use the Form component from src/components/ui/form. This is the usage:
+
 ```svelte
 <form>
- <Form.Field>
-  <Form.Control>
-   <Form.Label />
-   <!-- Any Form input component -->
-  </Form.Control>
-  <Form.Description />
-  <Form.FieldErrors />
- </Form.Field>
+	<Form.Field>
+		<Form.Control>
+			<Form.Label />
+			<!-- Any Form input component -->
+		</Form.Control>
+		<Form.Description />
+		<Form.FieldErrors />
+	</Form.Field>
 </form>
 ```
 
@@ -189,6 +190,7 @@ For forms, ALWAYS use the Form component from src/components/ui/form. This is th
 - Always work within RLS constraints
 - Generate types after schema changes: `pnpm supabase:types`
 - Use the `has_any_role` database utility to check for permissions, example usage:
+
 ```sql
 SELECT has_any_role(
                     (
@@ -197,7 +199,9 @@ SELECT has_any_role(
                     ARRAY ['committee_coordinator', 'president', 'admin']::role_type []
                 )
 ```
+
 - If a new migration is applied, generate database types with pnpm supabase:types
+
 ### API Guidelines
 
 - Validate inputs with Valibot schemas
@@ -205,7 +209,9 @@ SELECT has_any_role(
 - Implement comprehensive error handling
 - Log errors to Sentry
 - Follow role-based access patterns
+
 ### Documentation
+
 When significant changes have been made, always update this document to reflect them so subsequent agents pick the changes.
 
 #### API Endpoint Development
@@ -230,9 +236,9 @@ When significant changes have been made, always update this document to reflect 
 ### Local Development Setup Order
 
 1. **Start services in correct order**:
-    - `pnpm supabase:start` (must be first)
-    - `pnpm supabase:functions:serve` (for edge functions)
-    - `pnpm dev` (for development/testing)
+   - `pnpm supabase:start` (must be first)
+   - `pnpm supabase:functions:serve` (for edge functions)
+   - `pnpm dev` (for development/testing)
 
 2. **Before running E2E tests**: Ensure all three services are running
 3. **Database changes**: Always run `pnpm supabase:types` after schema changes

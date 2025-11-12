@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 
 This is a SvelteKit application for managing a Historical European Martial Arts club (Dublin Hema Club, DHC for short)
-dashboard. It handles member management, workshop coordination, payment processing, subscription management, and 
+dashboard. It handles member management, workshop coordination, payment processing, subscription management, and
 inventory management using Supabase as the backend and Stripe for payments.
 
 ## Development Commands
@@ -73,7 +73,7 @@ inventory management using Supabase as the backend and Stripe for payments.
   ```javascript
   const timestamp = Date.now();
   const randomSuffix = Math.random().toString(36).substring(2, 15);
-  email: `admin-${timestamp}-${randomSuffix}@test.com`
+  email: `admin-${timestamp}-${randomSuffix}@test.com`;
   ```
 - **Authentication helpers**: Always use `makeAuthenticatedRequest()` instead of direct authorization headers
 - **Service dependencies**: E2E tests require all services running (see Environment Setup section)
@@ -193,6 +193,7 @@ Required for development:
 - Always work within RLS constraints
 - Generate types after schema changes: `pnpm supabase:types`
 - Use the `has_any_role` database utility to check for permissions, example usage:
+
 ```sql
 SELECT has_any_role(
                     (
@@ -201,7 +202,9 @@ SELECT has_any_role(
                     ARRAY ['committee_coordinator', 'president', 'admin']::role_type []
                 )
 ```
+
 - If a new migration is applied, generate database types with pnpm supabase:types
+
 ### API Guidelines
 
 - Validate inputs with Valibot schemas
@@ -232,9 +235,9 @@ SELECT has_any_role(
 ### Local Development Setup Order
 
 1. **Start services in correct order**:
-    - `pnpm supabase:start` (must be first)
-    - `pnpm supabase:functions:serve` (for edge functions)
-    - `pnpm dev` (for development/testing)
+   - `pnpm supabase:start` (must be first)
+   - `pnpm supabase:functions:serve` (for edge functions)
+   - `pnpm dev` (for development/testing)
 
 2. **Before running E2E tests**: Ensure all three services are running
 3. **Database changes**: Always run `pnpm supabase:types` after schema changes

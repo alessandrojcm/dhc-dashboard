@@ -39,7 +39,29 @@ const data: NavData = {
 		{
 			title: 'Inventory',
 			url: 'inventory',
-			role: INVENTORY_READ_ROLES
+			role: INVENTORY_ROLES,
+			items: [
+				{
+					title: 'Overview',
+					url: 'inventory',
+					role: INVENTORY_ROLES
+				},
+				{
+					title: 'Containers',
+					url: 'inventory/containers',
+					role: INVENTORY_ROLES
+				},
+				{
+					title: 'Categories',
+					url: 'inventory/categories',
+					role: INVENTORY_ROLES
+				},
+				{
+					title: 'Items',
+					url: 'inventory/items',
+					role: INVENTORY_ROLES
+				}
+			]
 		}
 	]
 };

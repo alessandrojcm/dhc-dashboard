@@ -20,7 +20,16 @@
 		enabled: true,
 		queryFn: async ({ signal }) =>
 			Promise.all([
-				supabase.from('user_profiles').select('phone_number, customer_id').eq('supabase_user_id', session!.user?.id!).abortSignal(signal).single().then(({ data }) => ({ phoneNumber: data?.phone_number ?? '', customerId: data?.customer_id })),
+				supabase
+					.from('user_profiles')
+					.select('phone_number, customer_id')
+					.eq('supabase_user_id', session!.user?.id!)
+					.abortSignal(signal)
+					.single()
+					.then(({ data }) => ({
+						phoneNumber: data?.phone_number ?? '',
+						customerId: data?.customer_id
+					})),
 				supabase
 					.rpc('get_current_user_with_profile')
 					.abortSignal(signal)
@@ -94,18 +103,18 @@
 </SidebarProvider>
 
 <style>
-    main {
-        flex: 1;
-        display: flex;
-        flex-direction: column;
-        width: 100%;
-        margin: 0 auto;
-        box-sizing: border-box;
-    }
+	main {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		width: 100%;
+		margin: 0 auto;
+		box-sizing: border-box;
+	}
 
-    @media (min-width: 768px) {
-        main {
-            width: calc(100vw - var(--sidebar-width));
-        }
-    }
+	@media (min-width: 768px) {
+		main {
+			width: calc(100vw - var(--sidebar-width));
+		}
+	}
 </style>

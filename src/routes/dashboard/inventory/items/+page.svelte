@@ -4,15 +4,7 @@
 	import { Badge } from '$lib/components/ui/badge';
 	import { Input } from '$lib/components/ui/input';
 	import { Select, SelectContent, SelectItem, SelectTrigger } from '$lib/components/ui/select';
-	import {
-		Package,
-		Plus,
-		Search,
-		Filter,
-		AlertTriangle,
-		FolderOpen,
-		Tags
-	} from 'lucide-svelte';
+	import { Package, Plus, Search, Filter, AlertTriangle, FolderOpen, Tags } from 'lucide-svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { Label } from '$lib/components/ui/Label';
@@ -50,7 +42,8 @@
 		return `${item.category?.name || 'Item'} #${item.id.slice(-8)}`;
 	};
 
-	const hasActiveFilters = searchTerm || selectedCategory || selectedContainer || selectedMaintenance;
+	const hasActiveFilters =
+		searchTerm || selectedCategory || selectedContainer || selectedMaintenance;
 </script>
 
 <div class="p-6">
@@ -78,7 +71,9 @@
 				<div class="space-y-2">
 					<Label class="text-sm font-medium">Search</Label>
 					<div class="relative">
-						<Search class="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+						<Search
+							class="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground"
+						/>
 						<Input
 							bind:value={searchTerm}
 							placeholder="Search items..."
@@ -92,7 +87,9 @@
 					<Label class="text-sm font-medium">Category</Label>
 					<Select type="single" bind:value={selectedCategory}>
 						<SelectTrigger>
-							{selectedCategory}
+							{selectedCategory
+								? data.categories.find((c) => c.id === selectedCategory)?.name
+								: 'All categories'}
 						</SelectTrigger>
 						<SelectContent>
 							<SelectItem value="">All categories</SelectItem>
@@ -107,7 +104,9 @@
 					<Label class="text-sm font-medium">Container</Label>
 					<Select type="single" bind:value={selectedContainer}>
 						<SelectTrigger>
-							{selectedContainer}
+							{selectedContainer
+								? data.containers.find((c) => c.id === selectedContainer)?.name
+								: 'All containers'}
 						</SelectTrigger>
 						<SelectContent>
 							<SelectItem value="">All containers</SelectItem>
@@ -122,7 +121,11 @@
 					<Label class="text-sm font-medium">Maintenance</Label>
 					<Select type="single" bind:value={selectedMaintenance}>
 						<SelectTrigger>
-							{selectedMaintenance}
+							{selectedMaintenance === 'true'
+								? 'Out for maintenance'
+								: selectedMaintenance === 'false'
+									? 'Available items'
+									: 'All items'}
 						</SelectTrigger>
 						<SelectContent>
 							<SelectItem value="">All items</SelectItem>
@@ -135,13 +138,9 @@
 				<div class="space-y-2">
 					<Label class="text-sm font-medium invisible">Actions</Label>
 					<div class="flex gap-2">
-						<Button onclick={applyFilters} size="sm">
-							Apply
-						</Button>
+						<Button onclick={applyFilters} size="sm">Apply</Button>
 						{#if hasActiveFilters}
-							<Button onclick={clearFilters} variant="outline" size="sm">
-								Clear
-							</Button>
+							<Button onclick={clearFilters} variant="outline" size="sm">Clear</Button>
 						{/if}
 					</div>
 				</div>
@@ -158,12 +157,12 @@
 					{hasActiveFilters ? 'No items match your filters' : 'No items yet'}
 				</h3>
 				<p class="text-muted-foreground mb-4">
-					{hasActiveFilters ? 'Try adjusting your search criteria' : 'Add your first inventory item to get started'}
+					{hasActiveFilters
+						? 'Try adjusting your search criteria'
+						: 'Add your first inventory item to get started'}
 				</p>
 				{#if hasActiveFilters}
-					<Button onclick={clearFilters} variant="outline">
-						Clear Filters
-					</Button>
+					<Button onclick={clearFilters} variant="outline">Clear Filters</Button>
 				{:else}
 					<Button href="/dashboard/inventory/items/create">
 						<Plus class="mr-2 h-4 w-4" />
@@ -185,7 +184,9 @@
 			<CardContent>
 				<div class="space-y-3">
 					{#each data.items as item}
-						<div class="flex items-center justify-between p-4 rounded-lg border hover:bg-muted/50 transition-colors">
+						<div
+							class="flex items-center justify-between p-4 rounded-lg border hover:bg-muted/50 transition-colors"
+						>
 							<div class="flex items-center gap-4">
 								<div class="flex h-10 w-10 items-center justify-center rounded-md bg-muted">
 									<Package class="h-5 w-5" />
@@ -222,9 +223,6 @@
 								<Button href="/dashboard/inventory/items/{item.id}" variant="ghost" size="sm">
 									View
 								</Button>
-								<Button href="/dashboard/inventory/items/{item.id}/edit" variant="ghost" size="sm">
-									Edit
-								</Button>
 							</div>
 						</div>
 					{/each}
@@ -242,7 +240,10 @@
 						<div class="flex gap-2">
 							{#if data.pagination.page > 1}
 								<Button
-									href="?{new URLSearchParams({...page.url.searchParams, page: (data.pagination.page - 1).toString()}).toString()}"
+									href="?{new URLSearchParams({
+										...page.url.searchParams,
+										page: (data.pagination.page - 1).toString()
+									}).toString()}"
 									variant="outline"
 									size="sm"
 								>
@@ -252,7 +253,10 @@
 
 							{#if data.pagination.page < data.pagination.totalPages}
 								<Button
-									href="?{new URLSearchParams({...page.url.searchParams, page: (data.pagination.page + 1).toString()}).toString()}"
+									href="?{new URLSearchParams({
+										...page.url.searchParams,
+										page: (data.pagination.page + 1).toString()
+									}).toString()}"
 									variant="outline"
 									size="sm"
 								>

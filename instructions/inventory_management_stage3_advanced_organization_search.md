@@ -9,18 +9,21 @@ This is Stage 3 of implementing an inventory management system for the Dublin He
 The inventory management system needs to support:
 
 **For Admin/Quartermaster:**
+
 - Category creation with hierarchical organization (containers → equipment types)
 - Equipment categories with flexible attributes (brand, size, color, type, etc.)
 - Gear creation and management with comprehensive search capabilities
 - Tree view or e-commerce style interface for inventory management
 
 **For Members:**
+
 - Read-only view to browse inventory and locate gear
 - Search functionality to find where specific equipment is stored
 
 ### System Architecture
 
 The system uses a hierarchical structure:
+
 ```
 Container: "Main Storage Room"
 ├── Container: "Black Duffel Bag #1"
@@ -47,6 +50,7 @@ Enhance the quartermaster interface with advanced features that make inventory m
 ### 1. Enhanced Tree View Interface
 
 **AdvancedContainerTree.svelte**
+
 - Interactive tree view with drag-and-drop functionality
 - Move items between containers via drag-and-drop
 - Move containers to different parent containers
@@ -59,6 +63,7 @@ Enhance the quartermaster interface with advanced features that make inventory m
 - Keyboard navigation support
 
 **TreeViewControls.svelte**
+
 - Expand/collapse all functionality
 - Filter tree by container type or contents
 - Search within tree structure
@@ -68,6 +73,7 @@ Enhance the quartermaster interface with advanced features that make inventory m
 ### 2. E-commerce Style Grid View
 
 **InventoryGridView.svelte**
+
 - Card-based layout similar to online shopping
 - Item cards with:
   - Primary photo thumbnail
@@ -80,6 +86,7 @@ Enhance the quartermaster interface with advanced features that make inventory m
 - Sort options: name, date added, location, category
 
 **ItemCard.svelte**
+
 - Reusable card component for grid view
 - Hover effects showing additional details
 - Quick actions: edit, move, maintenance toggle
@@ -89,6 +96,7 @@ Enhance the quartermaster interface with advanced features that make inventory m
 ### 3. Advanced Search System
 
 **AdvancedSearchInterface.svelte**
+
 - Multi-criteria search form with:
   - Full-text search across names, descriptions, notes
   - Category-specific attribute filters
@@ -101,6 +109,7 @@ Enhance the quartermaster interface with advanced features that make inventory m
 - Export search results
 
 **SearchFilters.svelte** (Enhanced)
+
 - Dynamic filter generation based on available data
 - Attribute-specific filters (e.g., size dropdown for clothing)
 - Range filters for numeric attributes
@@ -109,6 +118,7 @@ Enhance the quartermaster interface with advanced features that make inventory m
 - Filter presets for common searches
 
 **SearchResults.svelte**
+
 - Unified results view supporting both tree and grid layouts
 - Highlighting of search terms in results
 - Sorting and secondary filtering of results
@@ -118,6 +128,7 @@ Enhance the quartermaster interface with advanced features that make inventory m
 ### 4. Bulk Operations System
 
 **BulkOperationsPanel.svelte**
+
 - Bulk selection interface with:
   - Select all/none functionality
   - Select by criteria (category, location, etc.)
@@ -130,6 +141,7 @@ Enhance the quartermaster interface with advanced features that make inventory m
   - Export selected items data
 
 **BulkMoveDialog.svelte**
+
 - Interface for moving multiple items
 - Container selection with hierarchy display
 - Confirmation with item count and destination
@@ -139,6 +151,7 @@ Enhance the quartermaster interface with advanced features that make inventory m
 ### 5. Enhanced Photo Management
 
 **PhotoGallery.svelte**
+
 - Multiple photo support per item
 - Photo carousel/lightbox view
 - Drag-and-drop photo reordering
@@ -147,6 +160,7 @@ Enhance the quartermaster interface with advanced features that make inventory m
 - Photo compression and optimization
 
 **PhotoUpload.svelte** (Enhanced)
+
 - Multiple file selection
 - Drag-and-drop upload area
 - Upload progress indicators
@@ -157,6 +171,7 @@ Enhance the quartermaster interface with advanced features that make inventory m
 ### 6. Advanced History and Analytics
 
 **DetailedHistoryView.svelte**
+
 - Enhanced history timeline with:
   - Visual timeline with icons
   - Filtering by action type, date range, user
@@ -166,6 +181,7 @@ Enhance the quartermaster interface with advanced features that make inventory m
 - History statistics and trends
 
 **InventoryAnalytics.svelte**
+
 - Dashboard with inventory insights:
   - Most/least used equipment
   - Container utilization rates
@@ -178,6 +194,7 @@ Enhance the quartermaster interface with advanced features that make inventory m
 ## Enhanced API Endpoints
 
 ### Advanced Search Endpoints
+
 ```typescript
 // POST /api/inventory/search/advanced - Complex search with multiple criteria
 // GET /api/inventory/search/suggestions - Search autocomplete suggestions
@@ -186,6 +203,7 @@ Enhance the quartermaster interface with advanced features that make inventory m
 ```
 
 ### Bulk Operations Endpoints
+
 ```typescript
 // POST /api/inventory/bulk/move - Move multiple items
 // POST /api/inventory/bulk/update - Update multiple items
@@ -194,6 +212,7 @@ Enhance the quartermaster interface with advanced features that make inventory m
 ```
 
 ### Analytics Endpoints
+
 ```typescript
 // GET /api/inventory/analytics/overview - General inventory statistics
 // GET /api/inventory/analytics/usage - Equipment usage analytics
@@ -202,6 +221,7 @@ Enhance the quartermaster interface with advanced features that make inventory m
 ```
 
 ### Export Endpoints
+
 ```typescript
 // POST /api/inventory/export/csv - Export inventory data as CSV
 // POST /api/inventory/export/pdf - Export inventory report as PDF
@@ -213,6 +233,7 @@ Enhance the quartermaster interface with advanced features that make inventory m
 ### State Management Enhancements
 
 **Advanced Query Hooks:**
+
 ```typescript
 // Search and filtering
 const useAdvancedSearch = (criteria: SearchCriteria) => { ... }
@@ -233,6 +254,7 @@ const useExportInventory = (format: 'csv' | 'pdf') => { ... }
 ```
 
 **Local State Management:**
+
 - Bulk selection state across components
 - Search filter state with persistence
 - Tree view expansion state
@@ -242,16 +264,19 @@ const useExportInventory = (format: 'csv' | 'pdf') => { ... }
 ### Performance Optimizations
 
 **Virtual Scrolling:**
+
 - Implement virtual scrolling for large item lists
 - Lazy loading of item details and photos
 - Efficient re-rendering with Svelte's reactivity
 
 **Caching Strategy:**
+
 - Cache search results and filter options
 - Optimize image loading with lazy loading
 - Cache container hierarchy for quick navigation
 
 **Database Optimizations:**
+
 - Full-text search indexes
 - Optimized queries for complex searches
 - Pagination for large datasets
@@ -259,24 +284,28 @@ const useExportInventory = (format: 'csv' | 'pdf') => { ... }
 ## User Experience Enhancements
 
 ### Keyboard Shortcuts
+
 - Global shortcuts for common actions
 - Tree navigation with arrow keys
 - Bulk selection with Shift+Click and Ctrl+Click
 - Quick search activation (Ctrl+K)
 
 ### Responsive Design
+
 - Mobile-optimized tree view (collapsible sidebar)
 - Touch-friendly drag-and-drop
 - Responsive grid layout
 - Mobile-specific bulk operations interface
 
 ### Accessibility
+
 - Screen reader support for tree navigation
 - Keyboard-only operation capability
 - High contrast mode support
 - Focus management for complex interactions
 
 ### Progressive Enhancement
+
 - Graceful degradation without JavaScript
 - Offline capability for viewing cached data
 - Progressive loading of advanced features
@@ -284,6 +313,7 @@ const useExportInventory = (format: 'csv' | 'pdf') => { ... }
 ## Implementation Tasks
 
 ### Phase 1: Enhanced Visualization
+
 1. **Advanced Tree View**
    - Implement drag-and-drop functionality
    - Add visual indicators and status badges
@@ -295,6 +325,7 @@ const useExportInventory = (format: 'csv' | 'pdf') => { ... }
    - Add sorting and view options
 
 ### Phase 2: Advanced Search
+
 1. **Search System**
    - Build multi-criteria search interface
    - Implement full-text search with highlighting
@@ -306,6 +337,7 @@ const useExportInventory = (format: 'csv' | 'pdf') => { ... }
    - Implement filter presets
 
 ### Phase 3: Bulk Operations
+
 1. **Bulk Selection**
    - Implement bulk selection UI
    - Add selection persistence across views
@@ -317,6 +349,7 @@ const useExportInventory = (format: 'csv' | 'pdf') => { ... }
    - Add progress tracking for large operations
 
 ### Phase 4: Analytics and Reporting
+
 1. **Analytics Dashboard**
    - Create inventory statistics views
    - Build usage and maintenance analytics
@@ -330,24 +363,28 @@ const useExportInventory = (format: 'csv' | 'pdf') => { ... }
 ## Testing Strategy
 
 ### Unit Tests
+
 - Search algorithm accuracy
 - Bulk operation logic
 - Analytics calculation correctness
 - Export data formatting
 
 ### Integration Tests
+
 - Drag-and-drop functionality
 - Search with complex criteria
 - Bulk operations with large datasets
 - Photo upload and management
 
 ### E2E Tests
+
 - Complete search workflows
 - Bulk move operations
 - Tree view interactions
 - Export functionality
 
 ### Performance Tests
+
 - Large inventory handling
 - Search response times
 - Bulk operation performance
@@ -356,6 +393,7 @@ const useExportInventory = (format: 'csv' | 'pdf') => { ... }
 ## Success Criteria
 
 Stage 3 is complete when:
+
 - [ ] Advanced tree view with drag-and-drop is functional
 - [ ] E-commerce style grid view is implemented
 - [ ] Advanced search with multiple criteria works effectively
@@ -370,5 +408,6 @@ Stage 3 is complete when:
 ## Next Stages
 
 After Stage 3 completion:
+
 - **Stage 4**: Member Read-Only Interface - Public inventory browser with advanced search for members
 - **Future Enhancements**: QR code generation, check-out system, mobile app integration

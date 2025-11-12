@@ -37,10 +37,7 @@ const formValidation = v.pipe(
 				'Pronouns must be written between slashes (e.g., he/him/they).'
 			)
 		),
-		gender: v.pipe(
-			v.string(),
-			v.nonEmpty('Please select your gender.'),
-		),
+		gender: v.pipe(v.string(), v.nonEmpty('Please select your gender.')),
 		socialMediaConsent: v.optional(
 			v.enum(SocialMediaConsent, 'Please select an option'),
 			SocialMediaConsent.no

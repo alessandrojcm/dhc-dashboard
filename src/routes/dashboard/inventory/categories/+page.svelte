@@ -2,12 +2,7 @@
 	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
-	import { 
-		Tags, 
-		Plus, 
-		Edit,
-		Package
-	} from 'lucide-svelte';
+	import { Tags, Plus, Edit, Package } from 'lucide-svelte';
 
 	let { data } = $props();
 
@@ -37,7 +32,9 @@
 			<CardContent class="flex flex-col items-center justify-center py-12">
 				<Tags class="h-12 w-12 text-muted-foreground mb-4" />
 				<h3 class="text-lg font-semibold mb-2">No categories yet</h3>
-				<p class="text-muted-foreground mb-4">Create your first equipment category to start organizing your inventory</p>
+				<p class="text-muted-foreground mb-4">
+					Create your first equipment category to start organizing your inventory
+				</p>
 				<Button href="/dashboard/inventory/categories/create">
 					<Plus class="mr-2 h-4 w-4" />
 					Create Category
@@ -54,7 +51,11 @@
 								<Tags class="h-5 w-5" />
 								{category.name}
 							</span>
-							<Button href="/dashboard/inventory/categories/{category.id}/edit" variant="ghost" size="sm">
+							<Button
+								href="/dashboard/inventory/categories/{category.id}/edit"
+								variant="ghost"
+								size="sm"
+							>
 								<Edit class="h-4 w-4" />
 							</Button>
 						</CardTitle>
@@ -67,7 +68,9 @@
 						<div class="flex items-center gap-4 mb-4">
 							<div class="flex items-center gap-1">
 								<Badge variant="secondary" class="text-xs">
-									{getAttributeCount(category)} attribute{getAttributeCount(category) !== 1 ? 's' : ''}
+									{getAttributeCount(category)} attribute{getAttributeCount(category) !== 1
+										? 's'
+										: ''}
 								</Badge>
 							</div>
 							<div class="flex items-center gap-1">
@@ -95,10 +98,19 @@
 						{/if}
 
 						<div class="flex gap-2 mt-4">
-							<Button href="/dashboard/inventory/items?category={category.id}" variant="outline" size="sm" class="flex-1">
+							<Button
+								href="/dashboard/inventory/items?category={category.id}"
+								variant="outline"
+								size="sm"
+								class="flex-1"
+							>
 								View Items
 							</Button>
-							<Button href="/dashboard/inventory/categories/{category.id}/edit" variant="outline" size="sm">
+							<Button
+								href="/dashboard/inventory/categories/{category.id}/edit"
+								variant="outline"
+								size="sm"
+							>
 								Edit
 							</Button>
 						</div>
