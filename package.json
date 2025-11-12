@@ -69,7 +69,6 @@
 		"layerchart": "2.0.0-next.6",
 		"lucide-svelte": "^0.546.0",
 		"mode-watcher": "^1.1.0",
-		"ollama-ai-provider": "^1.2.0",
 		"paneforge": "1.0.2",
 		"playwright": "^1.56.1",
 		"prettier": "^3.6.2",
@@ -97,7 +96,7 @@
 	},
 	"dependencies": {
 		"@ai-sdk/groq": "^2.0.29",
-		"@ai-sdk/svelte": "3.0.76",
+		"@ai-sdk/svelte": "3.0.92",
 		"@ai-sdk/valibot": "^1.0.17",
 		"@dinero.js/currencies": "2.0.0-alpha.1",
 		"@event-calendar/core": "^4.7.1",
@@ -111,7 +110,7 @@
 		"@tanstack/table-core": "^8.21.3",
 		"@unovis/svelte": "^1.6.2",
 		"@unovis/ts": "^1.6.2",
-		"ai": "5.0.76",
+		"ai": "5.0.92",
 		"country-codes-list": "^2.0.0",
 		"d3-array": "^3.2.4",
 		"d3-interpolate": "^3.0.1",
@@ -121,6 +120,7 @@
 		"jwt-decode": "^4.0.0",
 		"kysely": "^0.28.8",
 		"libphonenumber-js": "^1.12.26",
+		"ollama-ai-provider-v2": "^1.5.3",
 		"postgres": "^3.4.7",
 		"posthog-js": "^1.290.0",
 		"svelte-radix": "^3.0.0"

@@ -15,6 +15,9 @@ export const POST: RequestHandler = async ({ locals, params, platform }) => {
 	} catch (error) {
 		Sentry.captureException(error);
 		console.error('Publish workshop error:', error);
-		return json({ success: false, error: error.message }, { status: 500 });
+		return json(
+			{ success: false, error: error instanceof Error ? error.message : 'Unknown error' },
+			{ status: 500 }
+		);
 	}
 };

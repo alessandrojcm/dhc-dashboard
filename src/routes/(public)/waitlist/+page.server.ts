@@ -37,7 +37,7 @@ export const actions: Actions = {
 		const formData = form.data;
 		const age = calculateAge(formData.dateOfBirth);
 		try {
-			const kysely = getKyselyClient(event.platform.env.HYPERDRIVE);
+			const kysely = getKyselyClient(event.platform!.env.HYPERDRIVE);
 			await kysely.transaction().execute(async (trx) => {
 				// 1. call existing function and capture the waitlist row
 				const results = await insertWaitlistEntry(formData, trx);

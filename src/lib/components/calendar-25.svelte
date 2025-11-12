@@ -88,8 +88,8 @@
 				step="1"
 				value={startTime || '10:30'}
 				{disabled}
-				oninput={(e) => {
-					handleStartTimeChange(e.currentTarget.value);
+				oninput={(e: Event) => {
+					handleStartTimeChange((e.currentTarget as HTMLInputElement).value);
 				}}
 				class="bg-background appearance-none [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
 			/>
@@ -102,8 +102,8 @@
 				step="1"
 				value={endTime || '12:30'}
 				{disabled}
-				oninput={(e) => {
-					handleEndTimeChange(e.currentTarget.value);
+				oninput={(e: Event) => {
+					handleEndTimeChange((e.currentTarget as HTMLInputElement).value);
 				}}
 				class="bg-background appearance-none [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
 			/>

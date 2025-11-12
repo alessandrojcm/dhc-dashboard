@@ -43,7 +43,7 @@
 			type="x"
 			label="Gender"
 			gridVisible={false}
-			tickFormat={(value) => {
+			tickFormat={(value: number) => {
 				// Convert numeric indices back to gender labels
 				for (const [gender, index] of genderIndices.entries()) {
 					if (index === value) return gender;

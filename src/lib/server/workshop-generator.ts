@@ -124,12 +124,12 @@ export function coerceToCreateWorkshopSchema(
 
 export async function generateWorkshopData(prompt: string, signal?: AbortSignal) {
 	const model = import.meta.env.DEV
-		? await import('ollama-ai-provider').then(({ ollama }) => ollama('qwen3:8b'))
+		? await import('ollama-ai-provider-v2').then(({ ollama }) => ollama('qwen3:8b'))
 		: await import('@ai-sdk/groq').then(({ groq }) =>
 				groq('meta-llama/llama-4-scout-17b-16e-instruct')
 			);
 	return generateObject({
-		model,
+		model: model,
 		schema: valibotSchema(LLMCreateWrokshopSchema),
 		system,
 		temperature: 0.5,

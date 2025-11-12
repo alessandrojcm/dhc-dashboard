@@ -34,7 +34,7 @@ async function canUpdateSettings(event: RequestEvent | ServerLoadEvent) {
 
 export const load: PageServerLoad = async (event) => {
 	const { params, locals } = event;
-	const kysely = getKyselyClient(event.platform.env.HYPERDRIVE);
+	const kysely = getKyselyClient(event.platform!.env.HYPERDRIVE);
 	try {
 		const canUpdate = await canUpdateSettings(event);
 		const memberProfile = await getMemberData(params.memberId, kysely);
@@ -115,7 +115,7 @@ export const actions: Actions = {
 				form
 			});
 		}
-		const kysely = getKyselyClient(event.platform.env.HYPERDRIVE);
+		const kysely = getKyselyClient(event.platform!.env.HYPERDRIVE);
 		try {
 			await kysely.transaction().execute(async (trx) => {
 				// Get current user data for comparison

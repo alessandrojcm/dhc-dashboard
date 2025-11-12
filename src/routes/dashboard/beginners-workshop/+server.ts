@@ -16,7 +16,7 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
 		if (!canToggleWaitlist) {
 			return json({ success: false }, { status: 403 });
 		}
-		const kysely = getKyselyClient(platform.env.HYPERDRIVE);
+		const kysely = getKyselyClient(platform!.env.HYPERDRIVE);
 		const currentValue = await kysely
 			.selectFrom('settings')
 			.select('value')

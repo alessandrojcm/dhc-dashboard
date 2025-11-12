@@ -18,7 +18,7 @@ export const POST: RequestHandler = async ({ request, params, cookies, platform 
 	// Check if this is the special migration code
 	const isMigrationCode = code === DASHBOARD_MIGRATION_CODE;
 	// If it's not the migration code, verify it's a valid promotion code
-	const kysely = getKyselyClient(platform.env.HYPERDRIVE);
+	const kysely = getKyselyClient(platform!.env.HYPERDRIVE);
 	const existingSession = await kysely
 		.selectFrom('payment_sessions')
 		.select([

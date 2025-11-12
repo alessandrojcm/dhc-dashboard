@@ -5,7 +5,7 @@ import { getKyselyClient } from '$lib/server/kysely';
 
 export const POST: RequestHandler = async (event) => {
 	const memberId = event.params.memberId!;
-	const kysely = getKyselyClient(event.platform.env.HYPERDRIVE);
+	const kysely = getKyselyClient(event.platform!.env.HYPERDRIVE);
 	const customerId = await kysely
 		.selectFrom('user_profiles')
 		.select('customer_id')

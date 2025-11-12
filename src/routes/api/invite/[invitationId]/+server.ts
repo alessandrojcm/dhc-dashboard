@@ -10,7 +10,7 @@ export const POST: RequestHandler = async ({ request, params, platform, cookies 
 		return new Response(null, { status: 404 });
 	}
 
-	const kysely = getKyselyClient(platform.env.HYPERDRIVE);
+	const kysely = getKyselyClient(platform!.env.HYPERDRIVE);
 	const invitationPayload = v.safeParse(inviteValidationSchema, await request.json());
 
 	if (!invitationPayload.success) {
