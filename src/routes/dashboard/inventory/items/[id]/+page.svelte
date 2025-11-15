@@ -91,9 +91,6 @@
 				$formData.attributes![attr.name] = attr.default_value ?? undefined;
 			}
 		});
-
-		console.log('Entering edit mode with form data:', $formData);
-		console.log('Selected container name should be:', selectedContainerName);
 	};
 
 	const handleCancel = () => {
@@ -455,15 +452,14 @@
 								<div class="grid gap-4 md:grid-cols-2">
 									{#if Array.isArray(displayItem.category.available_attributes)}
 										{#each displayItem.category.available_attributes as attr}
-											{@const attrDef = attr as any}
 											{@const attrValue = displayItem.attributes
-												? (displayItem.attributes as any)[attrDef.name]
+												? (displayItem.attributes)[attr.name]
 												: undefined}
 											<div>
-												<h3 class="font-medium">{attrDef.label || attrDef.name}</h3>
+												<h3 class="font-medium">{attr.label || attr.name}</h3>
 												<p class="text-sm text-muted-foreground mt-1">
 													{#if attrValue !== undefined && attrValue !== null && attrValue !== ''}
-														{#if attrDef.type === 'boolean'}
+														{#if attr.type === 'boolean'}
 															{attrValue ? 'Yes' : 'No'}
 														{:else}
 															{attrValue}
@@ -519,8 +515,6 @@
 							<div class="space-y-3">
 								{#each currentHistory as entry}
 									{@const ActionIcon = getActionIcon(entry.action)}
-									{@const oldContainer = entry.old_container as any}
-									{@const newContainer = entry.new_container as any}
 									<div class="flex items-start gap-3">
 										<div class="flex h-8 w-8 items-center justify-center rounded-full bg-muted">
 											<ActionIcon class="h-4 w-4 {getActionColor(entry.action)}" />
@@ -528,8 +522,8 @@
 										<div class="flex-1 space-y-1">
 											<p class="text-sm">
 												<span class="font-medium capitalize">{entry.action}</span>
-												{#if entry.action === 'moved' && oldContainer && newContainer}
-													from {oldContainer.name} to {newContainer.name}
+												{#if entry.action === 'moved' && entry.old_container && entry.new_container}
+													from {entry.old_container.name} to {entry.new_container.name}
 												{/if}
 											</p>
 											<p class="text-xs text-muted-foreground">

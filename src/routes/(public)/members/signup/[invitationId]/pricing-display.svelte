@@ -24,7 +24,7 @@
 		planPricingData: CreateQueryResult<PlanPricing, Error>;
 		couponCode: string | undefined;
 		currentCoupon: string | undefined;
-		applyCoupon: CreateMutationResult<PlanPricing, Error, string>;
+		applyCoupon: CreateMutationResult<[PlanPricing, string], Error, string>;
 		nextMonthlyBillingDate: Date;
 		nextAnnualBillingDate: Date;
 	} = $props();

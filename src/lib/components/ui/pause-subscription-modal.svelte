@@ -24,7 +24,11 @@
 		fromDate((pausedUntil ?? dayjs().add(1, 'day')).toDate(), getLocalTimeZone())
 	);
 	const maxDate = $derived(fromDate(dayjs().add(6, 'months').toDate(), getLocalTimeZone()));
-	let selectedDate = $state<DateValue | undefined>(minDate);
+	let selectedDate = $state<DateValue | undefined>();
+
+	$effect(() => {
+		selectedDate = minDate;
+	});
 
 	function handleConfirm(event: Event) {
 		event.preventDefault();
@@ -54,6 +58,13 @@
 				onDateChange={(date) => {
 					selectedDate = fromDate(date, getLocalTimeZone());
 				}}
+				name="pauseUntil"
+				id="pauseUntil"
+				data-fs-error={undefined}
+				aria-describedby={undefined}
+				aria-invalid={undefined}
+				aria-required={undefined}
+				data-fs-control="pauseUntil"
 			/>
 		</div>
 

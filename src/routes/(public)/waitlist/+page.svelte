@@ -84,7 +84,7 @@
 					<Form.Field {form} name="firstName" class="flex-1">
 						<Form.Control>
 							{#snippet children({ props })}
-								<Form.Label required>First name</Form.Label>
+								<Form.Label>First name</Form.Label>
 								<Input
 									{...props}
 									bind:value={$formData.firstName}
@@ -98,7 +98,7 @@
 					<Form.Field {form} name="lastName" class="flex-1">
 						<Form.Control>
 							{#snippet children({ props })}
-								<Form.Label required>Last name</Form.Label>
+								<Form.Label>Last name</Form.Label>
 								<Input
 									{...props}
 									bind:value={$formData.lastName}
@@ -113,7 +113,7 @@
 				<Form.Field {form} name="email">
 					<Form.Control>
 						{#snippet children({ props })}
-							<Form.Label required>Email</Form.Label>
+							<Form.Label>Email</Form.Label>
 							<Input
 								type="email"
 								{...props}
@@ -128,7 +128,7 @@
 				<Form.Field {form} name="phoneNumber">
 					<Form.Control>
 						{#snippet children({ props })}
-							<Form.Label required>Phone number</Form.Label>
+							<Form.Label>Phone number</Form.Label>
 							<PhoneInput
 								placeholder="Enter your phone number"
 								{...props}
@@ -142,7 +142,7 @@
 				<Form.Field {form} name="gender">
 					<Form.Control>
 						{#snippet children({ props })}
-							<Form.Label required>Gender</Form.Label>
+							<Form.Label>Gender</Form.Label>
 							{@render whyThisField(
 								'This helps us maintain a balanced and inclusive training environment'
 							)}
@@ -167,7 +167,7 @@
 				<Form.Field {form} name="pronouns">
 					<Form.Control>
 						{#snippet children({ props })}
-							<Form.Label required>Pronouns</Form.Label>
+							<Form.Label>Pronouns</Form.Label>
 							{@render whyThisField(
 								'This helps us maintain a balanced and inclusive training environment'
 							)}
@@ -182,7 +182,7 @@
 				<Form.Field {form} name="dateOfBirth">
 					<Form.Control>
 						{#snippet children({ props })}
-							<Form.Label required>Date of birth</Form.Label>
+							<Form.Label>Date of birth</Form.Label>
 							{@render whyThisField(
 								'For insurance reasons, HEMA practitioners need to be at least 16 years old'
 							)}
@@ -263,7 +263,7 @@
 							<Form.Field {form} name="guardianFirstName" class="flex-1">
 								<Form.Control>
 									{#snippet children({ props })}
-										<Form.Label required>Guardian First Name</Form.Label>
+										<Form.Label>Guardian First Name</Form.Label>
 										<Input
 											{...props}
 											bind:value={$formData.guardianFirstName}
@@ -277,7 +277,7 @@
 							<Form.Field {form} name="guardianLastName" class="flex-1">
 								<Form.Control>
 									{#snippet children({ props })}
-										<Form.Label required>Guardian Last Name</Form.Label>
+										<Form.Label>Guardian Last Name</Form.Label>
 										<Input
 											{...props}
 											bind:value={$formData.guardianLastName}
@@ -292,7 +292,7 @@
 						<Form.Field {form} name="guardianPhoneNumber">
 							<Form.Control>
 								{#snippet children({ props })}
-									<Form.Label required>Guardian Phone Number</Form.Label>
+									<Form.Label>Guardian Phone Number</Form.Label>
 									<PhoneInput
 										placeholder="Enter guardian's phone number"
 										{...props}

@@ -71,7 +71,7 @@
 					value={date}
 					captionLayout="dropdown"
 					{disabled}
-					onValueChange={(newDate) => {
+					onValueChange={(newDate?: CalendarDate) => {
 						handleDateChange(newDate);
 						open = false;
 					}}

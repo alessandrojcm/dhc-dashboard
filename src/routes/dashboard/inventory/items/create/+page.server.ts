@@ -7,18 +7,39 @@ import { fail, isRedirect, redirect } from '@sveltejs/kit';
 import { executeWithRLS, getKyselyClient } from '$lib/server/kysely';
 import * as Sentry from '@sentry/sveltekit';
 
-export const load = async ({ url, locals }: { url: URL; locals: App.Locals }) => {
+export const load = async ({
+	url,
+	locals,
+	platform
+}: {
+	url: URL;
+	locals: App.Locals;
+	platform: any;
+}) => {
 	await authorize(locals, INVENTORY_ROLES);
 
 	// Get pre-selected container or category from URL params
 	const preselectedContainer = url.searchParams.get('container');
 	const preselectedCategory = url.searchParams.get('category');
 
-	// Load categories and containers
-	const [categoriesResult, containersResult] = await Promise.all([
-		locals.supabase.from('equipment_categories').select('*').order('name'),
-		locals.supabase.from('containers').select('id, name, parent_container_id').order('name')
-	]);
+	const db = getKyselyClient(platform.env.HYPERDRIVE);
+	const { session } = await locals.safeGetSession();
+
+	if (!session) {
+		throw new Error('No session found');
+	}
+
+	// Load categories and containers using Kysely with RLS
+	const [categories, containers] = await executeWithRLS(db, { claims: session }, async (trx) => {
+		return Promise.all([
+			trx.selectFrom('equipment_categories').selectAll().orderBy('name').execute(),
+			trx
+				.selectFrom('containers')
+				.select(['id', 'name', 'parent_container_id'])
+				.orderBy('name')
+				.execute()
+		]);
+	});
 
 	return {
 		form: await superValidate(
@@ -35,8 +56,8 @@ export const load = async ({ url, locals }: { url: URL; locals: App.Locals }) =>
 				errors: false
 			}
 		),
-		categories: categoriesResult.data || [],
-		containers: containersResult.data || []
+		categories,
+		containers
 	};
 };
 

@@ -5,20 +5,13 @@
 	import * as Dialog from '$lib/components/ui/dialog/index.js';
 	import WorkshopExpressCheckout from './workshop-express-checkout.svelte';
 	import WorkshopCancellationDialog from './workshop-cancellation-dialog.svelte';
-	import type { Database } from '$database';
 	import dayjs from 'dayjs';
 	import Dinero from 'dinero.js';
 	import { useQueryClient } from '@tanstack/svelte-query';
-	import type { UserData } from '$lib/types';
-
-	type ClubActivity = Database['public']['Tables']['club_activities']['Row'] & {
-		interest_count?: { interest_count: number }[];
-		user_interest?: { user_id: string }[];
-		attendee_count?: { id: string; member_user_id: string; status: string }[];
-	};
-
-	interface Props {
-		workshops: ClubActivity[];
+    import type {ClubActivityWithInterest, UserData} from '$lib/types';
+    
+    interface Props {
+		workshops: ClubActivityWithInterest[];
 		onInterestToggle?: (workshopId: string) => void;
 		isLoading?: boolean;
 		userId: string;
@@ -26,12 +19,12 @@
 
 	let { workshops, onInterestToggle, isLoading = false, userId }: Props = $props();
 
-	let selectedWorkshop: ClubActivity | null = $state(null);
+	let selectedWorkshop: ClubActivityWithInterest | null = $state(null);
 	let showCancellationDialog = $state(false);
 	let selectedRegistration: { id: string; status: string } | null = $state(null);
 	const queryClient = useQueryClient();
 
-	const userData: UserData = queryClient.getQueryData(['logged_in_user_data']);
+	const userData = queryClient.getQueryData(['logged_in_user_data']) as UserData | undefined;
 
 	function getStatusColor(status: string = 'planned') {
 		switch (status) {
@@ -56,14 +49,14 @@
 		return Dinero({ amount: price, currency: 'EUR' }).toFormat();
 	}
 
-	function hasUserInterest(workshop: ClubActivity): boolean {
+	function hasUserInterest(workshop: ClubActivityWithInterest): boolean {
 		if (workshop.status === 'published') {
 			return workshop?.attendee_count?.some((i) => i.member_user_id === userId) ?? false;
 		}
 		return workshop?.user_interest?.map((i) => i.user_id).includes(userId) ?? false;
 	}
 
-	function getUserRegistration(workshop: ClubActivity): { id: string; status: string } | null {
+	function getUserRegistration(workshop: ClubActivityWithInterest): { id: string; status: string } | null {
 		if (workshop.status === 'published') {
 			const registration = workshop?.attendee_count?.find((i) => i.member_user_id === userId);
 			return registration ? { id: registration.id, status: registration.status } : null;
@@ -71,18 +64,18 @@
 		return null;
 	}
 
-	function getInterestCount(workshop: ClubActivity): number {
+	function getInterestCount(workshop: ClubActivityWithInterest): number {
 		return workshop.status === 'published'
 			? (workshop.attendee_count?.length ?? 0)
 			: (workshop.interest_count?.[0]?.interest_count ?? 0);
 	}
 
-	function getWorkshopPrice(workshop: ClubActivity): number {
+	function getWorkshopPrice(workshop: ClubActivityWithInterest): number {
 		// For now, assume all users are members - you can enhance this logic
 		return workshop.price_member;
 	}
 
-	function isRefunded(workshop: ClubActivity): boolean {
+	function isRefunded(workshop: ClubActivityWithInterest): boolean {
 		return (
 			workshop.attendee_count?.some(
 				(i) => i.status === 'refunded' && i.member_user_id === userId
@@ -90,7 +83,7 @@
 		);
 	}
 
-	function handleCancelRegistration(workshop: ClubActivity) {
+	function handleCancelRegistration(workshop: ClubActivityWithInterest) {
 		const registration = getUserRegistration(workshop);
 		if (registration) {
 			selectedWorkshop = workshop;
@@ -122,7 +115,7 @@
 						{#if isRefunded(workshop)}
 							<Badge class={`${getStatusColor('cancelled')} capitalize`}>Refunded</Badge>
 						{:else}
-							<Badge class={`${getStatusColor(workshop.status)} capitalize`}>
+							<Badge class={`${getStatusColor(workshop.status ?? 'planned')} capitalize`}>
 								{workshop?.status}
 							</Badge>
 						{/if}

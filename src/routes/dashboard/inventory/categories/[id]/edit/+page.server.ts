@@ -7,15 +7,24 @@ import { fail, redirect, error, isRedirect } from '@sveltejs/kit';
 import { executeWithRLS, getKyselyClient } from '$lib/server/kysely';
 import type { Action, PageServerLoadEvent } from './$types';
 
-export const load = async ({ params, locals }: PageServerLoadEvent) => {
+export const load = async ({ params, locals, platform }: PageServerLoadEvent) => {
 	await authorize(locals, INVENTORY_ROLES);
 
+	const db = getKyselyClient(platform!.env.HYPERDRIVE!);
+	const { session } = await locals.safeGetSession();
+
+	if (!session) {
+		throw new Error('No session found');
+	}
+
 	// Load category to edit
-	const { data: category } = await locals.supabase
-		.from('equipment_categories')
-		.select('*')
-		.eq('id', params.id)
-		.single();
+	const category = await executeWithRLS(db, { claims: session }, async (trx) => {
+		return trx
+			.selectFrom('equipment_categories')
+			.selectAll()
+			.where('id', '=', params.id)
+			.executeTakeFirst();
+	});
 
 	if (!category) {
 		throw error(404, 'Category not found');

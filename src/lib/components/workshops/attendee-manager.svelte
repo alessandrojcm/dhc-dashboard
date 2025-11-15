@@ -13,7 +13,7 @@
 		attendees: any[];
 		refunds: any[];
 		workshop: any;
-		workshopId: string;
+		workshopId?: string;
 		onAttendanceUpdated?: () => void;
 		onRefundProcessed?: () => void;
 	}
@@ -64,7 +64,7 @@
 			});
 
 			if (!response.ok) {
-				const error = await response.json();
+				const error = (await response.json()) as { error?: string };
 				throw new Error(error.error || 'Failed to mark attendance');
 			}
 
@@ -92,7 +92,7 @@
 			});
 
 			if (!response.ok) {
-				const error = await response.json();
+				const error = (await response.json()) as { error?: string };
 				throw new Error(error.error || 'Failed to process refund');
 			}
 

@@ -92,7 +92,7 @@
 			<Form.Field {form} name="email">
 				<Form.Control>
 					{#snippet children({ props })}
-						<Form.Label required>Email</Form.Label>
+						<Form.Label>Email</Form.Label>
 						<Input
 							{...props}
 							type="email"
@@ -107,7 +107,7 @@
 			<Form.Field {form} name="dateOfBirth">
 				<Form.Control>
 					{#snippet children({ props })}
-						<Form.Label required>Date of birth</Form.Label>
+						<Form.Label>Date of birth</Form.Label>
 						<DatePicker
 							{...props}
 							value={dobValue}

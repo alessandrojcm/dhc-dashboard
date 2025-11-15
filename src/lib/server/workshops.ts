@@ -1,12 +1,8 @@
 import { executeWithRLS, getKyselyClient } from './kysely';
-import type { Database } from '$database';
 import type { Session } from '@supabase/supabase-js';
 import { stripeClient } from '$lib/server/stripe';
 import type { Stripe } from 'stripe';
-
-export type ClubActivity = Database['public']['Tables']['club_activities']['Row'];
-export type ClubActivityInsert = Database['public']['Tables']['club_activities']['Insert'];
-export type ClubActivityUpdate = Database['public']['Tables']['club_activities']['Update'];
+import type { ClubActivity, ClubActivityInsert, ClubActivityUpdate } from '$lib/types';
 
 export async function createWorkshop(
 	data: ClubActivityInsert,

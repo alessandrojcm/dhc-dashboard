@@ -4,7 +4,7 @@
 	import * as Dialog from '$lib/components/ui/dialog';
 	import dayjs from 'dayjs';
 	import WorkshopEventModal from './workshop-event-modal.svelte';
-	import type { Workshop, WorkshopCalendarEvent } from '$lib/types';
+	import type { ClubActivityWithRegistrations, WorkshopCalendarEvent } from '$lib/types';
 
 	// Event Calendar types
 	interface CalendarEvent {
@@ -15,27 +15,13 @@
 		backgroundColor?: string;
 		textColor?: string;
 		extendedProps?: {
-			workshop: Workshop;
+			workshop: ClubActivityWithRegistrations;
 			description?: string;
 			location?: string;
 			interestCount: number;
 			registrationCount: number;
 			isInterested: boolean;
 		};
-	}
-
-	// Use the actual EventClickInfo type from event-calendar
-	type EventClickInfo = any; // We'll use any to avoid type conflicts
-
-	interface EventContentInfo {
-		event: {
-			title: string;
-			extendedProps: CalendarEvent['extendedProps'];
-		};
-	}
-
-	interface EventContentResult {
-		html: string;
 	}
 
 	interface MoreLinkInfo {
@@ -49,14 +35,13 @@
 		handleEdit,
 		onInterestToggle
 	}: {
-		workshops: Workshop[];
+		workshops: ClubActivityWithRegistrations[];
 		userId?: string;
 		isLoading: boolean;
-		handleEdit?: (workshop: Workshop) => void;
+		handleEdit?: (workshop: ClubActivityWithRegistrations) => void;
 		onInterestToggle?: (workshopId: string) => void;
 	} = $props();
 
-	let calendarElement: HTMLElement;
 	let selectedEvent: WorkshopCalendarEvent | null = $state(null);
 	let dialogOpen = $state(false);
 
@@ -102,7 +87,8 @@
 					description: workshop.description || undefined,
 					location: workshop.location,
 					interestCount: workshop.interest_count?.[0]?.interest_count || 0,
-					registrationCount: workshop?.user_registrations?.length || 0
+					registrationCount: workshop?.user_registrations?.length || 0,
+					isInterested: (workshop.user_interest?.length ?? 0) > 0
 				}
 			};
 		})
@@ -141,7 +127,7 @@
 		height: '600px',
 		eventClick: handleEventClick,
 		eventContent: (info: any) => {
-			const workshop: Workshop = info.event.extendedProps?.workshop;
+			const workshop: ClubActivityWithRegistrations = info.event.extendedProps?.workshop;
 			const interestCount = info.event.extendedProps?.interestCount || 0;
 			const registrationCount = info.event.extendedProps?.registrationCount || 0;
 
@@ -199,7 +185,7 @@
 </script>
 
 <div class="workshop-calendar-container relative">
-	<div bind:this={calendarElement}>
+	<div>
 		<Calendar plugins={[DayGrid, TimeGrid, Interaction]} {options} />
 	</div>
 

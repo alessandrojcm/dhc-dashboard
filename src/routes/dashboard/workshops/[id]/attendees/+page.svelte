@@ -13,6 +13,7 @@
 	// Use preloaded data with TanStack Query for cache management and refetching
 	const attendeesQuery = createQuery(() => ({
 		queryKey: ['workshop-attendees', workshopId],
+        enabled: !!workshopId,
 		queryFn: async () => {
 			// Refetch from server if needed
 			const { data, error } = await supabase
@@ -37,7 +38,7 @@
 					)
 				`
 				)
-				.eq('club_activity_id', workshopId)
+				.eq('club_activity_id', workshopId!)
 				.in('status', ['confirmed', 'pending'])
 				.order('created_at', { ascending: true });
 
@@ -49,6 +50,7 @@
 
 	const refundsQuery = createQuery(() => ({
 		queryKey: ['workshop-refunds', workshopId],
+        enabled: !!workshopId,
 		queryFn: async () => {
 			// Refetch from server if needed - transform to match server loader structure
 			const { data: refundsData, error } = await supabase
@@ -75,7 +77,7 @@
 					)
 				`
 				)
-				.eq('club_activity_registrations.club_activity_id', workshopId)
+				.eq('club_activity_registrations.club_activity_id', workshopId!)
 				.order('created_at', { ascending: false });
 
 			if (error) throw error;

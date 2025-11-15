@@ -27,7 +27,7 @@
 
 			return response.json();
 		},
-		onSuccess: (data) => {
+		onSuccess: (data: any) => {
 			if (data.success === false) {
 				toast.error(data.error || 'Failed to generate workshop');
 				return;

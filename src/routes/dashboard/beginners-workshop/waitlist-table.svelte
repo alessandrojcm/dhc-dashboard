@@ -49,6 +49,15 @@
 
 	const { supabase }: { supabase: SupabaseClient<Database> } = $props();
 
+    function getBadgeVariant(status: string) {
+        switch (status) {
+            case 'invited': return 'default';
+            case 'joined': return 'secondary';
+            case 'declined': return 'destructive';
+            default: return 'default';
+        }
+    }
+
 	const currentPage = $derived(Number(page.url.searchParams.get('page')) || 0);
 	const pageSize = $derived(Number(page.url.searchParams.get('pageSize')) || 10);
 	const searchQuery = $derived(page.url.searchParams.get('q') || '');
@@ -625,14 +634,7 @@
 				<div class="mb-3">
 					{#if row.original.status}
 						<Badge
-							variant={row.original.status as
-								| 'waiting'
-								| 'invited'
-								| 'paid'
-								| 'deferred'
-								| 'cancelled'
-								| 'completed'
-								| 'no_reply'}
+							variant={getBadgeVariant(row.original.status)}
 							class="h-8"
 						>
 							<p class="capitalize">{row.original.status.replace('-', ' ')}</p>
