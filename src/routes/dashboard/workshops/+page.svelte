@@ -4,14 +4,13 @@
 	import { Alert, AlertDescription } from '$lib/components/ui/alert';
 	import WorkshopCalendar from '$lib/components/workshops/workshop-calendar.svelte';
 	import QuickCreateWorkshop from '$lib/components/workshops/quick-create-workshop.svelte';
-	import { createQuery, createMutation, useQueryClient } from '@tanstack/svelte-query';
-	import type { Workshop } from '$lib/types';
+    import type { ClubActivityWithRegistrations} from '$lib/types';
+	import { createQuery } from '@tanstack/svelte-query';
 
 	// Improvement: add pagination by month
 	let { data } = $props();
 	const supabase = data.supabase;
 	const userId = data!.user!.id;
-	// TODO: edit workshop
 	const workshopsQuery = createQuery(() => ({
 		queryKey: ['workshops'],
 		refetchOnMount: true,
@@ -30,7 +29,7 @@
 				.abortSignal(signal);
 
 			if (error) throw error;
-			return data;
+			return data as ClubActivityWithRegistrations[];
 		}
 	}));
 
@@ -40,7 +39,7 @@
 		goto('/dashboard/workshops/create');
 	}
 
-	function handleEdit(workshop: Workshop) {
+	function handleEdit(workshop: ClubActivityWithRegistrations) {
 		goto(`/dashboard/workshops/${workshop.id}/edit`);
 	}
 

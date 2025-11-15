@@ -12,6 +12,7 @@
 	import { Tabs, TabsContent, TabsList, TabsTrigger } from '$lib/components/ui/tabs/index.js';
 	import { toast } from 'svelte-sonner';
 	import { CalendarDays } from 'lucide-svelte';
+    import type {ClubActivityWithInterest} from "$lib/types";
 
 	let { data } = $props();
 	let supabase = data.supabase;
@@ -37,7 +38,7 @@
 				.order('start_date', { ascending: true });
 
 			if (error) throw error;
-			return workshops;
+			return workshops as ClubActivityWithInterest[];
 		}
 	}));
 
@@ -57,7 +58,7 @@
 				.order('start_date', { ascending: true });
 
 			if (error) throw error;
-			return workshops;
+			return workshops as ClubActivityWithInterest[];
 		}
 	}));
 
@@ -70,13 +71,13 @@
 			});
 
 			if (!response.ok) {
-				const error = await response.json();
+				const error = (await response.json()) as { message?: string };
 				throw new Error(error.message || 'Failed to manage interest');
 			}
 
-			return response.json();
+			return response.json() as Promise<{ message: string }>;
 		},
-		onSuccess: (data) => {
+		onSuccess: (data: { message: string }) => {
 			queryClient.invalidateQueries({ queryKey: ['workshops', 'planned'] });
 			toast.success(data.message);
 		},

@@ -177,7 +177,7 @@
 						cause: message
 					});
 				}
-				return [(await res.json()) as PlanPricing, code];
+				return [(await res.json()) as PlanPricing, code] as [PlanPricing, string];
 			}),
 		onSuccess: (res: [PlanPricing, string]) => {
 			const [planPricing, code] = res;
@@ -260,7 +260,7 @@
 			<Form.Field {form} name="nextOfKin">
 				<Form.Control>
 					{#snippet children({ props })}
-						<Form.Label required>Next of Kin</Form.Label>
+						<Form.Label>Next of Kin</Form.Label>
 						<Input
 							{...props}
 							bind:value={$formData.nextOfKin}
@@ -273,7 +273,7 @@
 			<Form.Field {form} name="nextOfKinNumber">
 				<Form.Control>
 					{#snippet children({ props })}
-						<Form.Label required>Next of Kin Phone Number</Form.Label>
+						<Form.Label>Next of Kin Phone Number</Form.Label>
 						<PhoneInput
 							placeholder="Enter your next of kin's phone number"
 							{...props}

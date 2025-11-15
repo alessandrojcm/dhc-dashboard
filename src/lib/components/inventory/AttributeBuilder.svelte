@@ -169,14 +169,14 @@
 																<Input
 																	{...props}
 																	placeholder="Option value"
-																	bind:value={$formData.available_attributes[index].options[i]}
+																	bind:value={($formData.available_attributes[index].options as string[])[i]}
 																/>
 																<Button
 																	variant="ghost"
 																	size="sm"
 																	aria-label={`Remove option ${value}`}
 																	onclick={() =>
-																		($formData.available_attributes[index].options[i] =
+																		($formData.available_attributes[index].options =
 																			attr.options?.filter((v) => v !== value))}
 																>
 																	<Trash2 class="h-4 w-4" />

@@ -22,7 +22,7 @@
 			const response = await fetch('/dashboard/beginners-workshop', {
 				method: 'POST'
 			});
-			const result = await response.json();
+			const result = (await response.json()) as { success: boolean; error?: string };
 			if (!result.success) {
 				throw new Error(result.error || 'Failed to toggle waitlist');
 			}

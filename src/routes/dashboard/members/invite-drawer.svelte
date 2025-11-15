@@ -190,7 +190,7 @@
 				<Form.Field {form} name="dateOfBirth">
 					<Form.Control>
 						{#snippet children({ props })}
-							<Form.Label required>Date of birth</Form.Label>
+							<Form.Label>Date of birth</Form.Label>
 							<DatePicker
 								{...props}
 								value={dobValue}
@@ -211,7 +211,7 @@
 				<Form.Field {form} name="phoneNumber">
 					<Form.Control>
 						{#snippet children({ props })}
-							<Form.Label required>Phone Number</Form.Label>
+							<Form.Label>Phone Number</Form.Label>
 							<PhoneInput
 								placeholder="Enter your phone number"
 								{...props}

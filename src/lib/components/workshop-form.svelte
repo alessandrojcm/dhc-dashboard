@@ -31,7 +31,7 @@
 		mode: 'create' | 'edit';
 		onSuccess?: (form: any) => void;
 		priceEditingDisabled?: boolean;
-		workshopStatus?: string;
+		workshopStatus?: string | null;
 		workshopEditable?: boolean;
 	}
 
@@ -195,7 +195,7 @@
 				<Form.Field {form} name="title">
 					<Form.Control>
 						{#snippet children({ props })}
-							<Form.Label required>Title</Form.Label>
+							<Form.Label>Title</Form.Label>
 							<Input
 								{...props}
 								bind:value={$formData.title}
@@ -210,7 +210,7 @@
 				<Form.Field {form} name="location">
 					<Form.Control>
 						{#snippet children({ props })}
-							<Form.Label required>Location</Form.Label>
+							<Form.Label>Location</Form.Label>
 							<Input
 								{...props}
 								bind:value={$formData.location}
@@ -246,8 +246,8 @@
 
 			<Form.Field {form} name="workshop_date">
 				<Form.Control>
-					{#snippet children({ props })}
-						<Form.Label required>Workshop Date & Time</Form.Label>
+					{#snippet children()}
+						<Form.Label>Workshop Date & Time</Form.Label>
 						<div class="bg-gray-50 rounded-lg p-4">
 							<Calendar25
 								id="workshop"
@@ -304,7 +304,7 @@
 				<Form.Field {form} name="max_capacity">
 					<Form.Control>
 						{#snippet children({ props })}
-							<Form.Label required>Maximum Capacity</Form.Label>
+							<Form.Label>Maximum Capacity</Form.Label>
 							<Input
 								{...props}
 								type="number"
@@ -443,7 +443,7 @@
 				<Form.Field {form} name="price_member">
 					<Form.Control>
 						{#snippet children({ props })}
-							<Form.Label required>Member Price</Form.Label>
+							<Form.Label>Member Price</Form.Label>
 							<div class="relative">
 								<span
 									class="absolute left-3 top-1/2 transform -translate-y-1/2 text-sm text-muted-foreground"
@@ -469,7 +469,7 @@
 					<Form.Field {form} name="price_non_member">
 						<Form.Control>
 							{#snippet children({ props })}
-								<Form.Label required>Non-Member Price</Form.Label>
+								<Form.Label>Non-Member Price</Form.Label>
 								<div class="relative">
 									<span
 										class="absolute left-3 top-1/2 transform -translate-y-1/2 text-sm text-muted-foreground"

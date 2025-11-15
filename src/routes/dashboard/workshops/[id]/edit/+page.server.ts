@@ -6,7 +6,6 @@ import {
 	updateWorkshop,
 	canEditWorkshop,
 	canEditWorkshopPricing,
-	type ClubActivityUpdate
 } from '$lib/server/workshops';
 import { authorize } from '$lib/server/auth';
 import { WORKSHOP_ROLES } from '$lib/server/roles';
@@ -16,6 +15,7 @@ import * as Sentry from '@sentry/sveltekit';
 import type { PageServerLoad, Actions } from './$types';
 import Dinero from 'dinero.js';
 import { getKyselyClient } from '$lib/server/kysely';
+import type { ClubActivityUpdate } from '$lib/types';
 
 export const load: PageServerLoad = async ({ locals, params, platform }) => {
 	await authorize(locals, WORKSHOP_ROLES);
@@ -107,8 +107,8 @@ export const actions: Actions = {
 			// Transform form data to database format
 			const updateData: ClubActivityUpdate = {
 				...form.data,
-				start_date: form.data.workshop_date,
-				end_date: form.data.workshop_end_date,
+				start_date: form.data.workshop_date?.toISOString(),
+				end_date: form.data.workshop_end_date?.toISOString(),
 				refund_days: form.data.refund_deadline_days
 			};
 			// @ts-expect-error deleting the property from the spread

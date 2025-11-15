@@ -87,6 +87,97 @@ payments.
 - **Types**: Auto-generated from Supabase schema in `database.types.ts`
 - **Svelte patterns**: Prefer loader/actions where possible, use SuperForm. Only resort to /api/ route handlers when it makes sense (i.e we just have a small mutation like a toggle)
 - **Svelte types**: SvelteKit has a very comprehensive type generation system (import from './$types'). Prefer that over custom types and DO NOT use any.
+- **CRITICAL RLS Pattern**: ALL server-side loaders MUST use `executeWithRLS()` when querying with Kysely. Never use raw Kysely queries in loaders.
+
+##### Server-Side Data Loading Pattern
+
+When loading data in `+page.server.ts` files:
+
+```typescript
+import { getKyselyClient } from '$lib/server/kysely';
+import { executeWithRLS } from '$lib/server/kysely';
+
+export const load = async ({ platform, locals }) => {
+	const db = getKyselyClient(platform.env!.HYPERDRIVE!);
+	const { session } = await locals.safeGetSession();
+
+	if (!session) {
+		throw new Error('No session found');
+	}
+
+	const data = await executeWithRLS(db, { claims: session }, async (trx) => {
+		return trx.selectFrom('table').selectAll().execute();
+	});
+
+	return { data };
+};
+```
+
+##### Client-Side Data Loading Pattern (For Tables with Filtering/Pagination)
+
+For complex tables with filtering, sorting, and pagination, prefer client-side data loading using TanStack Query. Reference: `src/routes/dashboard/inventory/members/members-table.svelte`
+
+**Loader provides only filter options**:
+
+```typescript
+export const load = async ({ platform, locals }) => {
+	// Only load data needed for filters/dropdowns
+	const categories = await executeWithRLS(db, { claims: session }, async (trx) => {
+		return trx.selectFrom('equipment_categories').selectAll().execute();
+	});
+
+	return { categories };
+};
+```
+
+**Component uses TanStack Query for data**:
+
+```svelte
+<script lang="ts">
+	import { createQuery } from '@tanstack/svelte-query';
+	import { page } from '$app/stores';
+
+	let { supabase, categories } = $props();
+
+	// Parse URL params for filters
+	const currentPage = $derived(Number($page.url.searchParams.get('page')) || 1);
+	const searchTerm = $derived($page.url.searchParams.get('search') || '');
+
+	// Use createQuery with thunk pattern
+	const itemsQuery = createQuery(() => ({
+		queryKey: ['items', currentPage, searchTerm],
+		queryFn: async () => {
+			let query = supabase.from('equipment_items').select('*', { count: 'exact' });
+
+			if (searchTerm) {
+				query = query.ilike('name', `%${searchTerm}%`);
+			}
+
+			const { data, error, count } = await query.range(
+				(currentPage - 1) * PAGE_SIZE,
+				currentPage * PAGE_SIZE - 1
+			);
+
+			if (error) throw error;
+			return { items: data, total: count || 0 };
+		},
+		placeholderData: (prev) => prev // Keep previous data while loading
+	}));
+</script>
+
+{#if $itemsQuery.isPending}
+	<p>Loading...</p>
+{:else if $itemsQuery.isError}
+	<p>Error: {$itemsQuery.error.message}</p>
+{:else}
+	<!-- Render table with $itemsQuery.data.items -->
+{/if}
+```
+
+**When to use each pattern**:
+
+- **Server-side loading**: Simple pages, detail views, forms (most cases)
+- **Client-side with TanStack Query**: Tables with complex filtering, pagination, or frequent updates
 
 #### Authentication & Authorization
 

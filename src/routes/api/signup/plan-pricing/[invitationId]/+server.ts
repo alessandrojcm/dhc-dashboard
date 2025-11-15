@@ -209,10 +209,20 @@ export const POST: RequestHandler = async ({ request, params, platform }) => {
 
 			return json(generatePricingInfo(migrationPricing));
 		}
-
-		const couponDetails = await stripeClient.coupons.retrieve(promotionCodes.data[0].coupon.id, {
-			expand: ['applies_to']
-		});
+		const couponId =
+			typeof promotionCodes.data[0].promotion.coupon === 'string' &&
+			promotionCodes.data[0].promotion.coupon !== null
+				? promotionCodes.data[0].promotion.coupon
+				: promotionCodes.data[0].promotion.coupon !== null ? promotionCodes.data[0].promotion.coupon.id : null
+		if(couponId === null) {
+			throw error(400, 'Coupon not valid.')
+		}
+		const couponDetails = await stripeClient.coupons.retrieve(
+			couponId,
+			{
+				expand: ['applies_to']
+			}
+		);
 
 		// Check if coupon type is supported
 		if (couponDetails.duration === 'forever' && couponDetails.amount_off) {

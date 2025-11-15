@@ -7,15 +7,32 @@ import { fail, isRedirect, redirect } from '@sveltejs/kit';
 import * as Sentry from '@sentry/sveltekit';
 import { executeWithRLS } from '$lib/server/kysely';
 import { getKyselyClient } from '$lib/server/kysely';
+import type { InventoryContainer } from '$lib/types';
 
-export const load = async ({ locals }: { locals: App.Locals }) => {
+export const load = async ({
+	locals,
+	platform
+}: {
+	locals: App.Locals;
+	platform: App.Platform;
+}) => {
 	await authorize(locals, INVENTORY_ROLES);
 
+	const db = getKyselyClient(platform.env!.HYPERDRIVE!);
+	const { session } = await locals.safeGetSession();
+
+	if (!session) {
+		throw new Error('No session found');
+	}
+
 	// Load existing containers for parent selection
-	const { data: containers } = await locals.supabase
-		.from('containers')
-		.select('id, name, parent_container_id')
-		.order('name');
+	const containers: InventoryContainer[] = await executeWithRLS(db, { claims: session }, async (trx) => {
+		return trx
+			.selectFrom('containers')
+			.selectAll()
+			.orderBy('name')
+			.execute();
+	});
 
 	return {
 		form: await superValidate(valibot(containerSchema)),

@@ -7,25 +7,41 @@ import { fail, redirect, error, isRedirect, isActionFailure } from '@sveltejs/ki
 import { executeWithRLS, getKyselyClient } from '$lib/server/kysely';
 import { setMessage } from 'sveltekit-superforms/client';
 
-export const load = async ({ params, locals }: { params: any; locals: App.Locals }) => {
+export const load = async ({
+	params,
+	locals,
+	platform
+}: {
+	params: any;
+	locals: App.Locals;
+	platform: App.Platform;
+}) => {
 	await authorize(locals, INVENTORY_ROLES);
 
-	// Load container to edit
-	const { data: container } = await locals.supabase
-		.from('containers')
-		.select('*')
-		.eq('id', params.id)
-		.single();
+	const db = getKyselyClient(platform.env!.HYPERDRIVE!);
+	const { session } = await locals.safeGetSession();
+
+	if (!session) {
+		throw new Error('No session found');
+	}
+
+	// Load container and all containers in a single transaction
+	const [container, allContainers] = await executeWithRLS(db, { claims: session }, async (trx) => {
+		return Promise.all([
+			// Load container to edit
+			trx.selectFrom('containers').selectAll().where('id', '=', params.id).executeTakeFirst(),
+			// Load all containers for parent selection
+			trx
+				.selectFrom('containers')
+				.select(['id', 'name', 'parent_container_id'])
+				.orderBy('name')
+				.execute()
+		]);
+	});
 
 	if (!container) {
 		throw error(404, 'Container not found');
 	}
-
-	// Load all containers for parent selection (excluding current container and its descendants)
-	const { data: allContainers } = await locals.supabase
-		.from('containers')
-		.select('id, name, parent_container_id')
-		.order('name');
 
 	// Filter out current container and its descendants to prevent circular references
 	const filterDescendants = (containers: any[], excludeId: string) => {

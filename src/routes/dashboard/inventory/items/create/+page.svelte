@@ -2,6 +2,7 @@
 	import SuperDebug, { superForm } from 'sveltekit-superforms';
 	import { valibot } from 'sveltekit-superforms/adapters';
 	import { type CategorySchema, itemSchema } from '$lib/schemas/inventory';
+	import type { InventoryCategory, InventoryAttributeDefinition } from '$lib/types';
 	import {
 		Card,
 		CardContent,
@@ -36,7 +37,9 @@
 			let hasErrors = false;
 
 			if (selectedCategory) {
-				selectedCategory.available_attributes.forEach((attr) => {
+				const attributes =
+					(selectedCategory.available_attributes as InventoryAttributeDefinition[]) || [];
+				attributes.forEach((attr) => {
 					if (attr.required) {
 						const value = $formData.attributes?.[attr.name];
 						if (!value || value === '' || value === null || value === undefined) {
@@ -75,10 +78,12 @@
 	const hierarchicalContainers = buildContainerHierarchy(data.containers);
 
 	// Reactive category selection for dynamic attributes
-	const selectedCategory: CategorySchema = $derived(
-		data.categories.find((c) => c.id === $formData.category_id) as unknown as CategorySchema
+	const selectedCategory = $derived(
+		data.categories.find((c) => c.id === $formData.category_id) as InventoryCategory | undefined
 	);
-	const categoryAttributes = $derived(selectedCategory?.available_attributes || []);
+	const categoryAttributes = $derived(
+		(selectedCategory?.available_attributes as InventoryAttributeDefinition[]) || []
+	);
 
 	// Display names for selected items
 	const selectedCategoryName = $derived(selectedCategory?.name || 'Select a category');
@@ -101,9 +106,10 @@
 		if (!category) return;
 
 		// Initialize only required attributes or those with default values
-		category.available_attributes?.forEach((attr) => {
+		const attributes = (category.available_attributes as InventoryAttributeDefinition[]) || [];
+		attributes.forEach((attr) => {
 			// Only set default value if explicitly provided, don't initialize with null
-			if (attr.default_value !== undefined) {
+			if (attr.default_value !== undefined && $formData.attributes) {
 				$formData.attributes[attr.name] = attr.default_value;
 			}
 		});
@@ -259,7 +265,7 @@
 											{#if attr.type === 'text'}
 												<Input
 													id={attr.name}
-													bind:value={$formData.attributes[attr.name]}
+													bind:value={$formData.attributes![attr.name]}
 													placeholder={attr.label}
 													class={attributeErrors[attr.name]
 														? 'border-destructive focus-visible:ring-destructive'
@@ -271,7 +277,7 @@
 												<Input
 													id={attr.name}
 													type="number"
-													bind:value={$formData.attributes[attr.name]}
+													bind:value={$formData.attributes![attr.name]}
 													placeholder={attr.label}
 													class={attributeErrors[attr.name] ? 'border-destructive' : ''}
 													oninput={() => clearAttributeError(attr.name)}
@@ -279,10 +285,10 @@
 											{:else if attr.type === 'select' && attr.options}
 												<Select
 													type="single"
-													value={$formData.attributes[attr.name] || undefined}
+													value={$formData.attributes?.[attr.name] || undefined}
 													name="attributes.{attr.name}"
 													onValueChange={(value) => {
-														if (value) {
+														if (value && $formData.attributes) {
 															$formData.attributes[attr.name] = value;
 														}
 														clearAttributeError(attr.name);
@@ -291,7 +297,7 @@
 													<SelectTrigger
 														class={attributeErrors[attr.name] ? 'border-destructive' : ''}
 													>
-														{$formData.attributes[attr.name] ||
+														{$formData.attributes?.[attr.name] ||
 															`Select ${attr.label.toLowerCase()}`}
 													</SelectTrigger>
 													<SelectContent>
@@ -305,7 +311,7 @@
 													<Checkbox
 														id={attr.name}
 														name="attributes.{attr.name}"
-														bind:checked={$formData.attributes[attr.name]}
+														bind:checked={$formData.attributes![attr.name]}
 														onCheckedChange={() => clearAttributeError(attr.name)}
 													/>
 													<Label for={attr.name} class="text-sm font-normal">

@@ -7,7 +7,7 @@
 	import * as Popover from '$lib/components/ui/popover/index.js';
 
 	type Props = {
-		value: DateValue;
+		value: DateValue | undefined;
 		onDateChange: (date: Date) => void;
 		minValue?: DateValue;
 		maxValue?: DateValue;
@@ -48,7 +48,7 @@
 			initialFocus
 			{minValue}
 			{maxValue}
-			onValueChange={(date) => {
+			onValueChange={(date: DateValue | undefined) => {
 				date && onDateChange(date.toDate(getLocalTimeZone()));
 				open = false;
 			}}
