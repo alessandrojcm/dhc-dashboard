@@ -1,15 +1,14 @@
 <script lang="ts">
-	import { ContextMenu as ContextMenuPrimitive } from "bits-ui";
-	import { cn } from "$lib/utils.js";
+import type { ContextMenu as ContextMenuPrimitive } from "bits-ui";
 
-	let {
-		ref = $bindable(null),
-		portalProps,
-		class: className,
-		...restProps
-	}: ContextMenuPrimitive.ContentProps & {
-		portalProps?: ContextMenuPrimitive.PortalProps;
-	} = $props();
+const {
+	ref = $bindable(null),
+	portalProps,
+	class: className,
+	...restProps
+}: ContextMenuPrimitive.ContentProps & {
+	portalProps?: ContextMenuPrimitive.PortalProps;
+} = $props();
 </script>
 
 <ContextMenuPrimitive.Portal {...portalProps}>

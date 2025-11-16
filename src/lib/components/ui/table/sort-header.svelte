@@ -1,19 +1,17 @@
 <script lang="ts">
-	import type { ComponentProps } from 'svelte';
-	import ArrowUpDown from 'lucide-svelte/icons/arrow-up-down';
-	import { Button } from '$lib/components/ui/button/index.js';
-	import { ArrowDown, ArrowUp } from 'lucide-svelte';
-	import type { SortDirection } from '@tanstack/table-core';
+import type { SortDirection } from "@tanstack/table-core";
+import type { ComponentProps } from "svelte";
+import type { Button } from "$lib/components/ui/button/index.js";
 
-	let {
-		variant = 'ghost',
-		header,
-		sortDirection,
-		...restProps
-	}: ComponentProps<typeof Button> & {
-		header: string;
-		sortDirection?: SortDirection | false;
-	} = $props();
+const {
+	variant = "ghost",
+	header,
+	sortDirection,
+	...restProps
+}: ComponentProps<typeof Button> & {
+	header: string;
+	sortDirection?: SortDirection | false;
+} = $props();
 </script>
 
 <span class="flex items-center gap-2">

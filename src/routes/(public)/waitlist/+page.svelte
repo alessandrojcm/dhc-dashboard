@@ -1,63 +1,53 @@
 <script lang="ts">
-	import * as Alert from '$lib/components/ui/alert';
-	import { Button } from '$lib/components/ui/button';
-	import * as Card from '$lib/components/ui/card';
-	import DatePicker from '$lib/components/ui/date-picker.svelte';
-	import * as Form from '$lib/components/ui/form';
-	import { Input } from '$lib/components/ui/input';
-	import PhoneInput from '$lib/components/ui/phone-input.svelte';
-	import * as RadioGroup from '$lib/components/ui/radio-group/index.js';
-	import * as Select from '$lib/components/ui/select';
-	import Textarea from '$lib/components/ui/textarea/textarea.svelte';
-	import { whyThisField } from '$lib/components/ui/why-this-field.svelte';
-	import beginnersWaitlist from '$lib/schemas/beginnersWaitlist';
-	import { fromDate, getLocalTimeZone } from '@internationalized/date';
-	import dayjs from 'dayjs';
-	import { CheckCircled } from 'svelte-radix';
-	import { toast } from 'svelte-sonner';
-	import { dateProxy, superForm } from 'sveltekit-superforms';
-	import { valibotClient } from 'sveltekit-superforms/adapters';
-	import { LoaderCircle } from 'lucide-svelte';
+import { fromDate, getLocalTimeZone } from "@internationalized/date";
+import dayjs from "dayjs";
+import { toast } from "svelte-sonner";
+import { dateProxy, superForm } from "sveltekit-superforms";
+import { valibotClient } from "sveltekit-superforms/adapters";
+import beginnersWaitlist from "$lib/schemas/beginnersWaitlist";
 
-	const { data } = $props();
-	const form = superForm(data.form, {
-		validators: valibotClient(beginnersWaitlist),
-		validationMethod: 'onblur'
-	});
-	const { form: formData, enhance, errors, submitting, message } = form;
-	const dobProxy = dateProxy(form, 'dateOfBirth', { format: `date` });
-	const dobValue = $derived.by(() => {
-		if (!dayjs($formData.dateOfBirth).isValid() || dayjs($formData.dateOfBirth).isSame(dayjs())) {
-			return undefined;
+const { data } = $props();
+const form = superForm(data.form, {
+	validators: valibotClient(beginnersWaitlist),
+	validationMethod: "onblur",
+});
+const { form: formData, enhance, errors, submitting, message } = form;
+const _dobProxy = dateProxy(form, "dateOfBirth", { format: `date` });
+const _dobValue = $derived.by(() => {
+	if (
+		!dayjs($formData.dateOfBirth).isValid() ||
+		dayjs($formData.dateOfBirth).isSame(dayjs())
+	) {
+		return undefined;
+	}
+	return fromDate(dayjs($formData.dateOfBirth).toDate(), getLocalTimeZone());
+});
+
+// Derived store to check if user is under 18
+const _isUnderAge = $derived.by(() => {
+	if (!$formData.dateOfBirth) {
+		return false;
+	}
+	if (!dayjs($formData.dateOfBirth).isValid()) {
+		return false;
+	}
+	return dayjs().diff($formData.dateOfBirth, "year") < 18;
+});
+
+$effect(() => {
+	const unsubscribe = message.subscribe((message) => {
+		if (message?.error) {
+			toast.error(
+				"There was an error with your submission. We have been notified. Please try again later.",
+				{
+					position: "top-right",
+				},
+			);
 		}
-		return fromDate(dayjs($formData.dateOfBirth).toDate(), getLocalTimeZone());
 	});
 
-	// Derived store to check if user is under 18
-	const isUnderAge = $derived.by(() => {
-		if (!$formData.dateOfBirth) {
-			return false;
-		}
-		if (!dayjs($formData.dateOfBirth).isValid()) {
-			return false;
-		}
-		return dayjs().diff($formData.dateOfBirth, 'year') < 18;
-	});
-
-	$effect(() => {
-		const unsubscribe = message.subscribe((message) => {
-			if (message?.error) {
-				toast.error(
-					'There was an error with your submission. We have been notified. Please try again later.',
-					{
-						position: 'top-right'
-					}
-				);
-			}
-		});
-
-		return unsubscribe;
-	});
+	return unsubscribe;
+});
 </script>
 
 <svelte:head>

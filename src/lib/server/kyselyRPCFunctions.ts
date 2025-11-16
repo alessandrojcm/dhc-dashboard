@@ -1,6 +1,6 @@
-import type { Database } from '$database';
-import { sql, type QueryExecutorProvider } from 'kysely';
-import { type BeginnersFormSchema } from '$lib/schemas/beginnersWaitlist';
+import { type QueryExecutorProvider, sql } from "kysely";
+import type { Database } from "$database";
+import type { BeginnersFormSchema } from "$lib/schemas/beginnersWaitlist";
 
 type GetInvitationInfoResult = {
 	invitation_id: string;
@@ -9,19 +9,19 @@ type GetInvitationInfoResult = {
 	phone_number: string;
 	date_of_birth: string;
 	pronouns: string;
-	gender: Database['public']['Enums']['gender'];
+	gender: Database["public"]["Enums"]["gender"];
 	medical_conditions: string;
-	status: Database['public']['Enums']['invitation_status'];
+	status: Database["public"]["Enums"]["invitation_status"];
 	user_id: string;
 	email: string;
 };
 
 export function getMembershipInfo(
 	userId: string,
-	executor: QueryExecutorProvider
-): Promise<Database['public']['CompositeTypes']['member_data_type']> {
+	executor: QueryExecutorProvider,
+): Promise<Database["public"]["CompositeTypes"]["member_data_type"]> {
 	return sql<{
-		get_membership_info: Database['public']['CompositeTypes']['member_data_type'];
+		get_membership_info: Database["public"]["CompositeTypes"]["member_data_type"];
 	}>`select *
 		 from get_membership_info(${userId}::uuid)`
 		.execute(executor)
@@ -30,9 +30,11 @@ export function getMembershipInfo(
 
 export function insertWaitlistEntry(
 	formData: BeginnersFormSchema,
-	executor: QueryExecutorProvider
+	executor: QueryExecutorProvider,
 ) {
-	return sql<Database['public']['Functions']['insert_waitlist_entry']['Returns'][0]>`select *
+	return sql<
+		Database["public"]["Functions"]["insert_waitlist_entry"]["Returns"][0]
+	>`select *
 		 from insert_waitlist_entry(
 			 ${formData.firstName},
 			 ${formData.lastName},
@@ -50,7 +52,7 @@ export function insertWaitlistEntry(
 
 export function getInvitationInfo(
 	invitationId: string,
-	executor: QueryExecutorProvider
+	executor: QueryExecutorProvider,
 ): Promise<GetInvitationInfoResult> {
 	return sql<{
 		get_invitation_info: GetInvitationInfoResult;
@@ -71,10 +73,10 @@ export function createInvitation(
 		firstName,
 		lastName,
 		dateOfBirth,
-		phoneNumber
+		phoneNumber,
 	}: {
 		email: string;
-		invitationType: 'workshop' | 'admin';
+		invitationType: "workshop" | "admin";
 		waitlistId?: string | null;
 		expiresAt?: Date | null;
 		metadata?: Record<string, unknown> | null;
@@ -84,7 +86,7 @@ export function createInvitation(
 		dateOfBirth: string;
 		phoneNumber: string;
 	},
-	executor: QueryExecutorProvider
+	executor: QueryExecutorProvider,
 ): Promise<string> {
 	return sql<{
 		create_invitation: string;
@@ -107,8 +109,8 @@ export function createInvitation(
 
 export function updateInvitationStatus(
 	invitationId: string,
-	status: 'pending' | 'accepted' | 'expired' | 'revoked',
-	executor: QueryExecutorProvider
+	status: "pending" | "accepted" | "expired" | "revoked",
+	executor: QueryExecutorProvider,
 ): Promise<boolean> {
 	return sql<{
 		update_invitation_status: boolean;
@@ -126,9 +128,9 @@ export function completeMemberRegistration(
 		v_user_id,
 		p_next_of_kin_name,
 		p_next_of_kin_phone,
-		p_insurance_form_submitted
-	}: Database['public']['Functions']['complete_member_registration']['Args'],
-	executor: QueryExecutorProvider
+		p_insurance_form_submitted,
+	}: Database["public"]["Functions"]["complete_member_registration"]["Args"],
+	executor: QueryExecutorProvider,
 ): Promise<string> {
 	return sql<string>`select *
 										 from complete_member_registration(${v_user_id}::uuid, ${p_next_of_kin_name}::text,
@@ -139,9 +141,9 @@ export function completeMemberRegistration(
 
 export function getMemberData(
 	userId: string,
-	executor: QueryExecutorProvider
-): Promise<Database['public']['CompositeTypes']['member_data_type']> {
-	return sql<Database['public']['CompositeTypes']['member_data_type']>`select *
+	executor: QueryExecutorProvider,
+): Promise<Database["public"]["CompositeTypes"]["member_data_type"]> {
+	return sql<Database["public"]["CompositeTypes"]["member_data_type"]>`select *
 		from get_member_data(${userId}::uuid)`
 		.execute(executor)
 		.then((r) => r.rows[0]);
@@ -166,12 +168,12 @@ export function updateMemberData(
 		p_last_payment_date,
 		p_insurance_form_submitted,
 		p_additional_data,
-		p_social_media_consent = 'no' as Database['public']['Enums']['social_media_consent']
-	}: Database['public']['Functions']['update_member_data']['Args'],
-	executor: QueryExecutorProvider
-): Promise<Database['public']['CompositeTypes']['member_data_type']> {
+		p_social_media_consent = "no" as Database["public"]["Enums"]["social_media_consent"],
+	}: Database["public"]["Functions"]["update_member_data"]["Args"],
+	executor: QueryExecutorProvider,
+): Promise<Database["public"]["CompositeTypes"]["member_data_type"]> {
 	return sql<{
-		update_member_data: Database['public']['CompositeTypes']['member_data_type'];
+		update_member_data: Database["public"]["CompositeTypes"]["member_data_type"];
 	}>`select *
 		 from update_member_data(
 			 ${user_uuid}::uuid,
@@ -191,7 +193,7 @@ export function updateMemberData(
 			 ${p_last_payment_date ?? null}::timestamptz,
 			 ${p_insurance_form_submitted ?? null}::boolean,
 			 ${p_additional_data ?? null}::jsonb,
-			 ${p_social_media_consent ?? 'no'}::social_media_consent
+			 ${p_social_media_consent ?? "no"}::social_media_consent
 					)`
 		.execute(executor)
 		.then((r) => r.rows[0].update_member_data);

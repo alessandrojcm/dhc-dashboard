@@ -1,122 +1,126 @@
 <script lang="ts">
-	import type { Database } from '$database';
-	import { Alert, AlertDescription, AlertTitle } from '$lib/components/ui/alert';
-	import { Button } from '$lib/components/ui/button';
-	import { Card } from '$lib/components/ui/card';
-	import DatePicker from '$lib/components/ui/date-picker.svelte';
-	import * as Form from '$lib/components/ui/form/index.js';
-	import { Input } from '$lib/components/ui/input';
-	import PhoneInput from '$lib/components/ui/phone-input.svelte';
-	import { ScrollArea } from '$lib/components/ui/scroll-area';
-	import { Separator } from '$lib/components/ui/separator';
-	import * as Sheet from '$lib/components/ui/sheet/index.js';
-	import { bulkInviteSchema, adminInviteSchema } from '$lib/schemas/adminInvite';
-	import { fromDate, getLocalTimeZone } from '@internationalized/date';
-	import type { SupabaseClient } from '@supabase/supabase-js';
-	import dayjs from 'dayjs';
-	import { Info, Loader, Plus, Trash2 } from 'lucide-svelte';
-	import { valibotClient, valibot } from 'sveltekit-superforms/adapters';
-	import { dateProxy, superForm, defaults, setMessage } from 'sveltekit-superforms/client';
+import { fromDate, getLocalTimeZone } from "@internationalized/date";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import dayjs from "dayjs";
+import { valibot, valibotClient } from "sveltekit-superforms/adapters";
+import {
+	dateProxy,
+	defaults,
+	setMessage,
+	superForm,
+} from "sveltekit-superforms/client";
+import type { Database } from "$database";
+import { adminInviteSchema, bulkInviteSchema } from "$lib/schemas/adminInvite";
 
-	let isOpen = $state(false);
+const _isOpen = $state(false);
 
-	const { supabase }: { supabase: SupabaseClient<Database> } = $props();
+const { supabase }: { supabase: SupabaseClient<Database> } = $props();
 
-	// Single invite form
-	const form = superForm(defaults(valibot(adminInviteSchema)), {
-		validators: valibotClient(adminInviteSchema),
-		applyAction: false,
-		resetForm: true,
-		validationMethod: 'oninput',
-		SPA: true
-	});
+// Single invite form
+const form = superForm(defaults(valibot(adminInviteSchema)), {
+	validators: valibotClient(adminInviteSchema),
+	applyAction: false,
+	resetForm: true,
+	validationMethod: "oninput",
+	SPA: true,
+});
 
-	const { form: formData, message, reset: resetForm, validateForm } = form;
+const { form: formData, message, reset: resetForm, validateForm } = form;
 
-	const bulkInviteForm = superForm(defaults(valibot(bulkInviteSchema)), {
-		SPA: true,
-		dataType: 'json',
-		validationMethod: 'onsubmit',
-		validators: valibotClient(bulkInviteSchema),
-		async onUpdate({ form }) {
-			// Only submit if there are invites
-			if (form.data.invites.length === 0) {
-				setMessage(form, { failure: 'No invites to send.' });
-				return;
-			}
-			try {
-				// Call the Edge Function via fetch (since supabaseClient is deleted)
-				// Assumes you have a public Edge Function endpoint set up
-				// You may need to adjust the URL and headers for your setup
-				const response = await supabase.functions.invoke('bulk_invite_with_subscription', {
-					body: { invites: form.data.invites },
-					method: 'POST'
-				});
-				if (response.error) {
-					setMessage(form, { failure: 'Failed to process invitations. Please try again later.' });
-					return;
-				}
-				setMessage(form, {
-					success:
-						'Invitations are being processed in the background. You will be notified when completed.'
-				});
-				resetBulkForm();
-			} catch (err) {
-				setMessage(form, { failure: 'Failed to create invitations.' });
-			}
-		}
-	});
-
-	const {
-		form: bulkFormData,
-		message: bulkMessage,
-		reset: resetBulkForm,
-		enhance: bulkEnhance,
-		submitting: bulkSubmitting
-	} = bulkInviteForm;
-	const dobProxy = dateProxy(form, 'dateOfBirth', { format: `date` });
-	const dobValue = $derived.by(() => {
-		if (!dayjs($formData.dateOfBirth).isValid() || dayjs($formData.dateOfBirth).isSame(dayjs())) {
-			return undefined;
-		}
-		return fromDate(dayjs($formData.dateOfBirth).toDate(), getLocalTimeZone());
-	});
-
-	// Add current invite to the list
-	async function addInviteToList() {
-		const result = await validateForm({ update: true });
-		if (!result.valid) {
+const bulkInviteForm = superForm(defaults(valibot(bulkInviteSchema)), {
+	SPA: true,
+	dataType: "json",
+	validationMethod: "onsubmit",
+	validators: valibotClient(bulkInviteSchema),
+	async onUpdate({ form }) {
+		// Only submit if there are invites
+		if (form.data.invites.length === 0) {
+			setMessage(form, { failure: "No invites to send." });
 			return;
 		}
-		const { firstName, lastName, email, phoneNumber, dateOfBirth } = $formData;
-
-		// Only add if we have at least email filled out
-		if (email) {
-			$bulkFormData.invites = [
-				...$bulkFormData.invites,
+		try {
+			// Call the Edge Function via fetch (since supabaseClient is deleted)
+			// Assumes you have a public Edge Function endpoint set up
+			// You may need to adjust the URL and headers for your setup
+			const response = await supabase.functions.invoke(
+				"bulk_invite_with_subscription",
 				{
-					firstName: firstName || '',
-					lastName: lastName || '',
-					email,
-					phoneNumber: phoneNumber || '',
-					dateOfBirth: dateOfBirth || new Date()
-				}
-			];
-
-			// Clear the form for the next invite
-			resetForm();
+					body: { invites: form.data.invites },
+					method: "POST",
+				},
+			);
+			if (response.error) {
+				setMessage(form, {
+					failure: "Failed to process invitations. Please try again later.",
+				});
+				return;
+			}
+			setMessage(form, {
+				success:
+					"Invitations are being processed in the background. You will be notified when completed.",
+			});
+			resetBulkForm();
+		} catch (_err) {
+			setMessage(form, { failure: "Failed to create invitations." });
 		}
-	}
+	},
+});
 
-	// Remove an invite from the list
-	function removeInvite(index: number) {
-		$bulkFormData.invites = $bulkFormData.invites.filter((_: any, i: number) => i !== index);
+const {
+	form: bulkFormData,
+	message: bulkMessage,
+	reset: resetBulkForm,
+	enhance: bulkEnhance,
+	submitting: bulkSubmitting,
+} = bulkInviteForm;
+const _dobProxy = dateProxy(form, "dateOfBirth", { format: `date` });
+const _dobValue = $derived.by(() => {
+	if (
+		!dayjs($formData.dateOfBirth).isValid() ||
+		dayjs($formData.dateOfBirth).isSame(dayjs())
+	) {
+		return undefined;
 	}
+	return fromDate(dayjs($formData.dateOfBirth).toDate(), getLocalTimeZone());
+});
 
-	// Clear all invites
-	function clearAllInvites() {
-		$bulkFormData.invites = [];
+// Add current invite to the list
+async function _addInviteToList() {
+	const result = await validateForm({ update: true });
+	if (!result.valid) {
+		return;
 	}
+	const { firstName, lastName, email, phoneNumber, dateOfBirth } = $formData;
+
+	// Only add if we have at least email filled out
+	if (email) {
+		$bulkFormData.invites = [
+			...$bulkFormData.invites,
+			{
+				firstName: firstName || "",
+				lastName: lastName || "",
+				email,
+				phoneNumber: phoneNumber || "",
+				dateOfBirth: dateOfBirth || new Date(),
+			},
+		];
+
+		// Clear the form for the next invite
+		resetForm();
+	}
+}
+
+// Remove an invite from the list
+function _removeInvite(index: number) {
+	$bulkFormData.invites = $bulkFormData.invites.filter(
+		(_: any, i: number) => i !== index,
+	);
+}
+
+// Clear all invites
+function _clearAllInvites() {
+	$bulkFormData.invites = [];
+}
 </script>
 
 <Button variant="outline" onclick={() => (isOpen = true)}>Invite Members</Button>

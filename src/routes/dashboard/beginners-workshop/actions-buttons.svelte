@@ -1,21 +1,20 @@
 <script lang="ts">
-	import * as Popover from '$lib/components/ui/popover/index.js';
-	import { Button } from '$lib/components/ui/button';
-	import { NotebookPen, Edit, ChevronDown, ChevronUp, SendIcon } from 'lucide-svelte';
-	import { Label } from '$lib/components/ui/label';
-	import { Textarea } from '$lib/components/ui/textarea';
-	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
-
-	type Props = {
-		adminNotes: string;
-		onEdit: (newValue: string) => void;
-		isExpanded?: boolean;
-		onToggleExpand?: () => void;
-		inviteMember: () => void;
-	};
-	let isEdit = $state(false);
-	const { adminNotes, onEdit, isExpanded = false, onToggleExpand, inviteMember }: Props = $props();
-	let value = $state(adminNotes);
+type Props = {
+	adminNotes: string;
+	onEdit: (newValue: string) => void;
+	isExpanded?: boolean;
+	onToggleExpand?: () => void;
+	inviteMember: () => void;
+};
+const _isEdit = $state(false);
+const {
+	adminNotes,
+	onEdit,
+	isExpanded = false,
+	onToggleExpand,
+	inviteMember,
+}: Props = $props();
+const _value = $state(adminNotes);
 </script>
 
 <div class="flex gap-w">

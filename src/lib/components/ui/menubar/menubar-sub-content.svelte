@@ -1,12 +1,11 @@
 <script lang="ts">
-	import { Menubar as MenubarPrimitive } from "bits-ui";
-	import { cn } from "$lib/utils.js";
+import type { Menubar as MenubarPrimitive } from "bits-ui";
 
-	let {
-		ref = $bindable(null),
-		class: className,
-		...restProps
-	}: MenubarPrimitive.SubContentProps = $props();
+const {
+	ref = $bindable(null),
+	class: className,
+	...restProps
+}: MenubarPrimitive.SubContentProps = $props();
 </script>
 
 <MenubarPrimitive.SubContent

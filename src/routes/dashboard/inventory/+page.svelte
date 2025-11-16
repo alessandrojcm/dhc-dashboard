@@ -1,46 +1,37 @@
 <script lang="ts">
-	import {
-		Card,
-		CardContent,
-		CardDescription,
-		CardHeader,
-		CardTitle
-	} from '$lib/components/ui/card';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Button } from '$lib/components/ui/button';
-	import { Package, FolderOpen, Tags, AlertTriangle, Plus, Clock } from 'lucide-svelte';
-	import dayjs from 'dayjs';
-	import relativeTime from 'dayjs/plugin/relativeTime';
+import dayjs from "dayjs";
+import relativeTime from "dayjs/plugin/relativeTime";
+import { Clock, Package, Plus } from "lucide-svelte";
 
-	dayjs.extend(relativeTime);
+dayjs.extend(relativeTime);
 
-	let { data } = $props();
+const { data } = $props();
 
-	const getActionIcon = (action: string) => {
-		switch (action) {
-			case 'created':
-				return Plus;
-			case 'moved':
-				return Package;
-			case 'updated':
-				return Clock;
-			default:
-				return Clock;
-		}
-	};
+const _getActionIcon = (action: string) => {
+	switch (action) {
+		case "created":
+			return Plus;
+		case "moved":
+			return Package;
+		case "updated":
+			return Clock;
+		default:
+			return Clock;
+	}
+};
 
-	const getActionColor = (action: string) => {
-		switch (action) {
-			case 'created':
-				return 'text-green-600';
-			case 'moved':
-				return 'text-blue-600';
-			case 'updated':
-				return 'text-yellow-600';
-			default:
-				return 'text-gray-600';
-		}
-	};
+const _getActionColor = (action: string) => {
+	switch (action) {
+		case "created":
+			return "text-green-600";
+		case "moved":
+			return "text-blue-600";
+		case "updated":
+			return "text-yellow-600";
+		default:
+			return "text-gray-600";
+	}
+};
 </script>
 
 <div class="p-6">

@@ -1,160 +1,163 @@
 <script lang="ts">
-	import { createMutation } from '@tanstack/svelte-query';
-	import { Button } from '$lib/components/ui/button';
-	import * as ButtonGroup from '$lib/components/ui/button-group';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Checkbox } from '$lib/components/ui/checkbox';
-	import * as Popover from '$lib/components/ui/popover';
-	import { toast } from 'svelte-sonner';
-	import { Check, DollarSign, User, CheckCheck } from 'lucide-svelte';
-	import { checkRefundEligibility } from '$lib/utils/refund-eligibility';
+import { createMutation } from "@tanstack/svelte-query";
+import { toast } from "svelte-sonner";
+import { checkRefundEligibility } from "$lib/utils/refund-eligibility";
 
-	interface Props {
-		attendees: any[];
-		refunds: any[];
-		workshop: any;
-		workshopId?: string;
-		onAttendanceUpdated?: () => void;
-		onRefundProcessed?: () => void;
+interface Props {
+	attendees: any[];
+	refunds: any[];
+	workshop: any;
+	workshopId?: string;
+	onAttendanceUpdated?: () => void;
+	onRefundProcessed?: () => void;
+}
+
+const {
+	attendees,
+	refunds,
+	workshop,
+	workshopId,
+	onAttendanceUpdated,
+	onRefundProcessed,
+}: Props = $props();
+
+let _refundPopoverOpen = $state(false);
+let attendeeIdForRefund = $state("");
+let selectedAttendees = $state<Set<string>>(new Set());
+
+const unattendedAttendees = $derived(
+	attendees.filter((a) => a.attendance_status !== "attended"),
+);
+
+const allSelected = $derived(
+	unattendedAttendees.length > 0 &&
+		unattendedAttendees.every((a) => selectedAttendees.has(a.id)),
+);
+
+function _toggleSelectAll() {
+	if (allSelected) {
+		selectedAttendees = new Set();
+	} else {
+		selectedAttendees = new Set(unattendedAttendees.map((a) => a.id));
 	}
+}
 
-	let { attendees, refunds, workshop, workshopId, onAttendanceUpdated, onRefundProcessed }: Props =
-		$props();
+function _toggleAttendee(id: string) {
+	const newSelected = new Set(selectedAttendees);
+	if (newSelected.has(id)) {
+		newSelected.delete(id);
+	} else {
+		newSelected.add(id);
+	}
+	selectedAttendees = newSelected;
+}
 
-	let refundPopoverOpen = $state(false);
-	let attendeeIdForRefund = $state('');
-	let selectedAttendees = $state<Set<string>>(new Set());
+const _markAttendedMutation = createMutation(() => ({
+	mutationFn: async (registrationIds: string[]) => {
+		const response = await fetch(`/api/workshops/${workshopId}/attendance`, {
+			method: "PUT",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				attendance_updates: registrationIds.map((id) => ({
+					registration_id: id,
+					attendance_status: "attended",
+					notes: "",
+				})),
+			}),
+		});
 
-	const unattendedAttendees = $derived(attendees.filter((a) => a.attendance_status !== 'attended'));
+		if (!response.ok) {
+			const error = (await response.json()) as { error?: string };
+			throw new Error(error.error || "Failed to mark attendance");
+		}
 
-	const allSelected = $derived(
-		unattendedAttendees.length > 0 && unattendedAttendees.every((a) => selectedAttendees.has(a.id))
+		return response.json();
+	},
+	onSuccess: () => {
+		selectedAttendees = new Set();
+		onAttendanceUpdated?.();
+		toast.success("Marked as attended");
+	},
+	onError: (error: Error) => {
+		toast.error(error.message);
+	},
+}));
+
+const processRefundMutation = createMutation(() => ({
+	mutationFn: async (registrationId: string) => {
+		const response = await fetch(`/api/workshops/${workshopId}/refunds`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				registration_id: registrationId,
+				reason: "Requested by user",
+			}),
+		});
+
+		if (!response.ok) {
+			const error = (await response.json()) as { error?: string };
+			throw new Error(error.error || "Failed to process refund");
+		}
+
+		return response.json();
+	},
+	onSuccess: () => {
+		attendeeIdForRefund = "";
+		_refundPopoverOpen = false;
+		onRefundProcessed?.();
+		toast.success("Refund processed");
+	},
+	onError: (error: Error) => {
+		toast.error(error.message);
+	},
+}));
+
+function _getAttendeeDisplayName(attendee: any) {
+	return attendee.user_profiles?.first_name
+		? `${attendee.user_profiles.first_name} ${attendee.user_profiles.last_name}`
+		: `${attendee.external_users?.first_name} ${attendee.external_users?.last_name}`;
+}
+
+function _getAttendeeEmail(attendee: any) {
+	return attendee.user_profiles?.email || attendee.external_users?.email;
+}
+
+function _getStatusBadgeVariant(status: string) {
+	switch (status) {
+		case "attended":
+			return "default";
+		case "no_show":
+			return "destructive";
+		case "excused":
+			return "secondary";
+		default:
+			return "outline";
+	}
+}
+
+function _getRefund(attendeeId: string) {
+	return refunds.find((refund) => refund.registration_id === attendeeId);
+}
+
+function _formatCurrency(amount: number) {
+	return new Intl.NumberFormat("en-IE", {
+		style: "currency",
+		currency: "EUR",
+	}).format(amount);
+}
+
+function _getRefundEligibility(attendee: any) {
+	return checkRefundEligibility(
+		workshop.start_date,
+		workshop.refund_days,
+		workshop.status,
+		attendee.status,
 	);
+}
 
-	function toggleSelectAll() {
-		if (allSelected) {
-			selectedAttendees = new Set();
-		} else {
-			selectedAttendees = new Set(unattendedAttendees.map((a) => a.id));
-		}
-	}
-
-	function toggleAttendee(id: string) {
-		const newSelected = new Set(selectedAttendees);
-		if (newSelected.has(id)) {
-			newSelected.delete(id);
-		} else {
-			newSelected.add(id);
-		}
-		selectedAttendees = newSelected;
-	}
-
-	const markAttendedMutation = createMutation(() => ({
-		mutationFn: async (registrationIds: string[]) => {
-			const response = await fetch(`/api/workshops/${workshopId}/attendance`, {
-				method: 'PUT',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					attendance_updates: registrationIds.map((id) => ({
-						registration_id: id,
-						attendance_status: 'attended',
-						notes: ''
-					}))
-				})
-			});
-
-			if (!response.ok) {
-				const error = (await response.json()) as { error?: string };
-				throw new Error(error.error || 'Failed to mark attendance');
-			}
-
-			return response.json();
-		},
-		onSuccess: () => {
-			selectedAttendees = new Set();
-			onAttendanceUpdated?.();
-			toast.success('Marked as attended');
-		},
-		onError: (error: Error) => {
-			toast.error(error.message);
-		}
-	}));
-
-	const processRefundMutation = createMutation(() => ({
-		mutationFn: async (registrationId: string) => {
-			const response = await fetch(`/api/workshops/${workshopId}/refunds`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					registration_id: registrationId,
-					reason: 'Requested by user'
-				})
-			});
-
-			if (!response.ok) {
-				const error = (await response.json()) as { error?: string };
-				throw new Error(error.error || 'Failed to process refund');
-			}
-
-			return response.json();
-		},
-		onSuccess: () => {
-			attendeeIdForRefund = '';
-			refundPopoverOpen = false;
-			onRefundProcessed?.();
-			toast.success('Refund processed');
-		},
-		onError: (error: Error) => {
-			toast.error(error.message);
-		}
-	}));
-
-	function getAttendeeDisplayName(attendee: any) {
-		return attendee.user_profiles?.first_name
-			? `${attendee.user_profiles.first_name} ${attendee.user_profiles.last_name}`
-			: `${attendee.external_users?.first_name} ${attendee.external_users?.last_name}`;
-	}
-
-	function getAttendeeEmail(attendee: any) {
-		return attendee.user_profiles?.email || attendee.external_users?.email;
-	}
-
-	function getStatusBadgeVariant(status: string) {
-		switch (status) {
-			case 'attended':
-				return 'default';
-			case 'no_show':
-				return 'destructive';
-			case 'excused':
-				return 'secondary';
-			default:
-				return 'outline';
-		}
-	}
-
-	function getRefund(attendeeId: string) {
-		return refunds.find((refund) => refund.registration_id === attendeeId);
-	}
-
-	function formatCurrency(amount: number) {
-		return new Intl.NumberFormat('en-IE', {
-			style: 'currency',
-			currency: 'EUR'
-		}).format(amount);
-	}
-
-	function getRefundEligibility(attendee: any) {
-		return checkRefundEligibility(
-			workshop.start_date,
-			workshop.refund_days,
-			workshop.status,
-			attendee.status
-		);
-	}
-
-	function confirmRefund() {
-		processRefundMutation.mutate(attendeeIdForRefund);
-	}
+function _confirmRefund() {
+	processRefundMutation.mutate(attendeeIdForRefund);
+}
 </script>
 
 <div class="space-y-3">

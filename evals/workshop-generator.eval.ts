@@ -1,9 +1,9 @@
 import { evalite } from 'evalite';
-import * as v from 'valibot';
+import type * as v from 'valibot';
 import {
 	coerceToCreateWorkshopSchema,
 	generateWorkshopData,
-	LLMCreateWrokshopSchema
+	type LLMCreateWrokshopSchema
 } from '../src/lib/server/workshop-generator';
 
 evalite('Workshop generator eval', {
