@@ -1,17 +1,16 @@
 <script lang="ts">
-	import { Menubar as MenubarPrimitive } from "bits-ui";
-	import { cn } from "$lib/utils.js";
+import type { Menubar as MenubarPrimitive } from "bits-ui";
 
-	let {
-		ref = $bindable(null),
-		class: className,
-		inset = undefined,
-		variant = "default",
-		...restProps
-	}: MenubarPrimitive.ItemProps & {
-		inset?: boolean;
-		variant?: "default" | "destructive";
-	} = $props();
+const {
+	ref = $bindable(null),
+	class: className,
+	inset = undefined,
+	variant = "default",
+	...restProps
+}: MenubarPrimitive.ItemProps & {
+	inset?: boolean;
+	variant?: "default" | "destructive";
+} = $props();
 </script>
 
 <MenubarPrimitive.Item

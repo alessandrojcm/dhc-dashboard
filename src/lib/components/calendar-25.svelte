@@ -1,51 +1,44 @@
 <script lang="ts">
-	import Calendar from '$lib/components/ui/calendar/calendar.svelte';
-	import * as Popover from '$lib/components/ui/popover/index.js';
-	import { Button } from '$lib/components/ui/button/index.js';
-	import { Label } from '$lib/components/ui/label/index.js';
-	import { Input } from '$lib/components/ui/input/index.js';
-	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
-	import { getLocalTimeZone } from '@internationalized/date';
-	import type { CalendarDate } from '@internationalized/date';
+import type { CalendarDate } from "@internationalized/date";
 
-	interface Props {
-		id: string;
-		date?: CalendarDate;
-		startTime?: string;
-		endTime?: string;
-		onDateChange?: (date: CalendarDate | undefined) => void;
-		onStartTimeChange?: (time: string) => void;
-		onEndTimeChange?: (time: string) => void;
-		disabled?: boolean;
-	}
+interface Props {
+	id: string;
+	date?: CalendarDate;
+	startTime?: string;
+	endTime?: string;
+	onDateChange?: (date: CalendarDate | undefined) => void;
+	onStartTimeChange?: (time: string) => void;
+	onEndTimeChange?: (time: string) => void;
+	disabled?: boolean;
+}
 
-	let {
-		id,
-		date = $bindable(),
-		startTime = $bindable(),
-		endTime = $bindable(),
-		onDateChange,
-		onStartTimeChange,
-		onEndTimeChange,
-		disabled
-	}: Props = $props();
+let {
+	id,
+	date = $bindable(),
+	startTime = $bindable(),
+	endTime = $bindable(),
+	onDateChange,
+	onStartTimeChange,
+	onEndTimeChange,
+	disabled,
+}: Props = $props();
 
-	let open = $state(false);
+const _open = $state(false);
 
-	function handleDateChange(newDate: CalendarDate | undefined) {
-		date = newDate;
-		onDateChange?.(newDate);
-	}
+function _handleDateChange(newDate: CalendarDate | undefined) {
+	date = newDate;
+	onDateChange?.(newDate);
+}
 
-	function handleStartTimeChange(newTime: string) {
-		startTime = newTime;
-		onStartTimeChange?.(newTime);
-	}
+function _handleStartTimeChange(newTime: string) {
+	startTime = newTime;
+	onStartTimeChange?.(newTime);
+}
 
-	function handleEndTimeChange(newTime: string) {
-		endTime = newTime;
-		onEndTimeChange?.(newTime);
-	}
+function _handleEndTimeChange(newTime: string) {
+	endTime = newTime;
+	onEndTimeChange?.(newTime);
+}
 </script>
 
 <div class="flex flex-col gap-6">

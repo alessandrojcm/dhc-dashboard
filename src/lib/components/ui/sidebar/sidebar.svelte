@@ -1,25 +1,23 @@
 <script lang="ts">
-	import * as Sheet from "$lib/components/ui/sheet/index.js";
-	import { cn, type WithElementRef } from "$lib/utils.js";
-	import type { HTMLAttributes } from "svelte/elements";
-	import { SIDEBAR_WIDTH_MOBILE } from "./constants.js";
-	import { useSidebar } from "./context.svelte.js";
+import type { HTMLAttributes } from "svelte/elements";
+import type { WithElementRef } from "$lib/utils.js";
+import { useSidebar } from "./context.svelte.js";
 
-	let {
-		ref = $bindable(null),
-		side = "left",
-		variant = "sidebar",
-		collapsible = "offcanvas",
-		class: className,
-		children,
-		...restProps
-	}: WithElementRef<HTMLAttributes<HTMLDivElement>> & {
-		side?: "left" | "right";
-		variant?: "sidebar" | "floating" | "inset";
-		collapsible?: "offcanvas" | "icon" | "none";
-	} = $props();
+const {
+	ref = $bindable(null),
+	side = "left",
+	variant = "sidebar",
+	collapsible = "offcanvas",
+	class: className,
+	children,
+	...restProps
+}: WithElementRef<HTMLAttributes<HTMLDivElement>> & {
+	side?: "left" | "right";
+	variant?: "sidebar" | "floating" | "inset";
+	collapsible?: "offcanvas" | "icon" | "none";
+} = $props();
 
-	const sidebar = useSidebar();
+const _sidebar = useSidebar();
 </script>
 
 {#if collapsible === "none"}

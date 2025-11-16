@@ -1,12 +1,11 @@
 <script lang="ts">
-	import { Avatar as AvatarPrimitive } from "bits-ui";
-	import { cn } from "$lib/utils.js";
+import type { Avatar as AvatarPrimitive } from "bits-ui";
 
-	let {
-		ref = $bindable(null),
-		class: className,
-		...restProps
-	}: AvatarPrimitive.FallbackProps = $props();
+const {
+	ref = $bindable(null),
+	class: className,
+	...restProps
+}: AvatarPrimitive.FallbackProps = $props();
 </script>
 
 <AvatarPrimitive.Fallback

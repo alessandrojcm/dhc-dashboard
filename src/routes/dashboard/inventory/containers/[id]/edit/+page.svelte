@@ -1,117 +1,120 @@
 <script lang="ts">
-	import { superForm } from 'sveltekit-superforms';
-	import { valibot } from 'sveltekit-superforms/adapters';
-	import { containerSchema } from '$lib/schemas/inventory';
-	import {
-		Card,
-		CardContent,
-		CardDescription,
-		CardHeader,
-		CardTitle
-	} from '$lib/components/ui/card';
-	import { Button } from '$lib/components/ui/button';
-	import { Input } from '$lib/components/ui/input';
-	import { Textarea } from '$lib/components/ui/textarea';
-	import { Select, SelectContent, SelectItem, SelectTrigger } from '$lib/components/ui/select';
-	import * as Form from '$lib/components/ui/form';
-	import { AlertCircleIcon, ArrowLeft, FolderOpen, Trash2 } from 'lucide-svelte';
-	import { enhance } from '$app/forms';
-	import type { Database } from '$database';
-	import * as Alert from '$lib/components/ui/alert';
+import { superForm } from "sveltekit-superforms";
+import { valibot } from "sveltekit-superforms/adapters";
+import type { Database } from "$database";
+import { containerSchema } from "$lib/schemas/inventory";
 
-	type Container = Database['public']['Tables']['containers']['Row'];
+type Container = Database["public"]["Tables"]["containers"]["Row"];
 
-	interface ContainerWithChildren extends Container {
-		children: ContainerWithChildren[];
-	}
+interface ContainerWithChildren extends Container {
+	children: ContainerWithChildren[];
+}
 
-	interface HierarchicalContainer extends ContainerWithChildren {
-		displayName: string;
-		level: number;
-	}
+interface HierarchicalContainer extends ContainerWithChildren {
+	displayName: string;
+	level: number;
+}
 
-	let { data } = $props();
+const { data } = $props();
 
-	const form = superForm(data.form, {
-		validators: valibot(containerSchema)
+const form = superForm(data.form, {
+	validators: valibot(containerSchema),
+});
+
+const {
+	form: formData,
+	errors,
+	enhance: formEnhance,
+	submitting,
+	message,
+} = form;
+
+// Build hierarchy display for parent selection
+const buildHierarchyDisplay = (
+	containers: Container[],
+): HierarchicalContainer[] => {
+	const containerMap = new Map<string, ContainerWithChildren>();
+	const rootContainers: ContainerWithChildren[] = [];
+
+	// First pass: create all containers with empty children arrays
+	containers.forEach((container) => {
+		containerMap.set(container.id, { ...container, children: [] });
 	});
 
-	const { form: formData, errors, enhance: formEnhance, submitting, message } = form;
+	// Second pass: build the hierarchy
+	containers.forEach((container) => {
+		if (container.parent_container_id) {
+			const parent = containerMap.get(container.parent_container_id);
+			const child = containerMap.get(container.id);
+			if (parent && child) {
+				parent.children.push(child);
+			}
+		} else {
+			const rootContainer = containerMap.get(container.id);
+			if (rootContainer) {
+				rootContainers.push(rootContainer);
+			}
+		}
+	});
 
-	// Build hierarchy display for parent selection
-	const buildHierarchyDisplay = (containers: Container[]): HierarchicalContainer[] => {
-		const containerMap = new Map<string, ContainerWithChildren>();
-		const rootContainers: ContainerWithChildren[] = [];
-
-		// First pass: create all containers with empty children arrays
+	// Flatten with indentation for display
+	const flattenWithIndent = (
+		containers: ContainerWithChildren[],
+		level = 0,
+	): HierarchicalContainer[] => {
+		const result: HierarchicalContainer[] = [];
 		containers.forEach((container) => {
-			containerMap.set(container.id, { ...container, children: [] });
-		});
-
-		// Second pass: build the hierarchy
-		containers.forEach((container) => {
-			if (container.parent_container_id) {
-				const parent = containerMap.get(container.parent_container_id);
-				const child = containerMap.get(container.id);
-				if (parent && child) {
-					parent.children.push(child);
-				}
-			} else {
-				const rootContainer = containerMap.get(container.id);
-				if (rootContainer) {
-					rootContainers.push(rootContainer);
-				}
+			result.push({
+				...container,
+				displayName: "  ".repeat(level) + container.name,
+				level,
+			});
+			if (container.children.length > 0) {
+				result.push(...flattenWithIndent(container.children, level + 1));
 			}
 		});
-
-		// Flatten with indentation for display
-		const flattenWithIndent = (
-			containers: ContainerWithChildren[],
-			level = 0
-		): HierarchicalContainer[] => {
-			const result: HierarchicalContainer[] = [];
-			containers.forEach((container) => {
-				result.push({
-					...container,
-					displayName: '  '.repeat(level) + container.name,
-					level
-				});
-				if (container.children.length > 0) {
-					result.push(...flattenWithIndent(container.children, level + 1));
-				}
-			});
-			return result;
-		};
-
-		return flattenWithIndent(rootContainers);
+		return result;
 	};
 
-	// Filter out the current container and its descendants to prevent circular references
-	const getDescendantIds = (containerId: string, containers: Container[]): Set<string> => {
-		const descendants = new Set<string>();
-		descendants.add(containerId);
+	return flattenWithIndent(rootContainers);
+};
 
-		const addDescendants = (parentId: string) => {
-			containers.forEach((container) => {
-				if (container.parent_container_id === parentId && !descendants.has(container.id)) {
-					descendants.add(container.id);
-					addDescendants(container.id);
-				}
-			});
-		};
+// Filter out the current container and its descendants to prevent circular references
+const getDescendantIds = (
+	containerId: string,
+	containers: Container[],
+): Set<string> => {
+	const descendants = new Set<string>();
+	descendants.add(containerId);
 
-		addDescendants(containerId);
-		return descendants;
+	const addDescendants = (parentId: string) => {
+		containers.forEach((container) => {
+			if (
+				container.parent_container_id === parentId &&
+				!descendants.has(container.id)
+			) {
+				descendants.add(container.id);
+				addDescendants(container.id);
+			}
+		});
 	};
 
-	const excludedIds = getDescendantIds(data.container.id, data.containers);
-	const availableContainers = data.containers.filter((c) => !excludedIds.has(c.id));
-	const hierarchicalContainers = buildHierarchyDisplay(availableContainers);
-	const selectedContainer = $derived(
-		hierarchicalContainers.find((container) => container.id === $formData.parent_container_id)
-	);
+	addDescendants(containerId);
+	return descendants;
+};
 
-	let showDeleteConfirm = $state(false);
+const excludedIds = getDescendantIds(data.container.id, data.containers);
+const availableContainers = data.containers.filter(
+	(c) => !excludedIds.has(c.id),
+);
+const hierarchicalContainers = buildHierarchyDisplay(availableContainers);
+const _selectedContainer = $derived(
+	hierarchicalContainers.find(
+		(container) => container.id === $formData.parent_container_id,
+	),
+);
+
+const _showDeleteConfirm = $state(false);
 </script>
 
 <div class="p-6">

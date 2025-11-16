@@ -1,116 +1,115 @@
 <script lang="ts">
-    import {page} from '$app/state';
-    import {Button} from '$lib/components/ui/button';
-    import * as Card from '$lib/components/ui/card';
-    import dayjs from 'dayjs';
-    import DatePicker from '$lib/components/ui/date-picker.svelte';
-    import * as Form from '$lib/components/ui/form';
-    import {Input} from '$lib/components/ui/input';
-    import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
-    import PhoneInput from '$lib/components/ui/phone-input.svelte';
-    import * as RadioGroup from '$lib/components/ui/radio-group/index.js';
-    import * as Select from '$lib/components/ui/select';
-    import {Textarea} from '$lib/components/ui/textarea';
-    import {whyThisField} from '$lib/components/ui/why-this-field.svelte';
-    import signupSchema from '$lib/schemas/membersSignup';
-    import {fromDate, getLocalTimeZone} from '@internationalized/date';
-    import {createMutation} from '@tanstack/svelte-query';
-    import {ExternalLink} from 'lucide-svelte';
-    import {toast} from 'svelte-sonner';
-    import {dateProxy, superForm} from 'sveltekit-superforms';
-    import {valibotClient} from 'sveltekit-superforms/adapters';
-    import {Badge} from '$lib/components/ui/badge';
-    import PauseSubscriptionModal from '$lib/components/ui/pause-subscription-modal.svelte';
-    import type Stripe from 'stripe';
-    import SuperDebug from 'sveltekit-superforms';
-    import * as ButtonGroup from '$lib/components/ui/button-group';
+import { fromDate, getLocalTimeZone } from "@internationalized/date";
+import { createMutation } from "@tanstack/svelte-query";
+import dayjs from "dayjs";
+import type Stripe from "stripe";
+import { toast } from "svelte-sonner";
+import { dateProxy, superForm } from "sveltekit-superforms";
+import { valibotClient } from "sveltekit-superforms/adapters";
+import { page } from "$app/state";
+import signupSchema from "$lib/schemas/membersSignup";
 
-    const {data} = $props();
+const { data } = $props();
 
-    const form = superForm(data.form, {
-        validators: valibotClient(signupSchema),
-        validationMethod: 'onblur',
-        resetForm: false
-    });
-    const {form: formData, enhance, submitting, message} = form;
-    const dobProxy = dateProxy(form, 'dateOfBirth', {format: `date`});
-    const dobValue = $derived.by(() => {
-        if (!dayjs($formData.dateOfBirth).isValid() || dayjs($formData.dateOfBirth).isSame(dayjs())) {
-            return undefined;
-        }
-        return fromDate(dayjs($formData.dateOfBirth).toDate(), getLocalTimeZone());
-    });
-    let pausedUntil: dayjs.Dayjs | null = $derived(
-        data.member.subscription_paused_until ? dayjs(data.member.subscription_paused_until) : null
-    );
-    const openBillingPortal = createMutation(() => ({
-        mutationFn: () =>
-            fetch(`/dashboard/members/${page.params.memberId}`, {
-                method: 'POST'
-            }).then((res) => res.json()) as Promise<{ portalURL: string }>,
-        onSuccess: (data: { portalURL: string }) => {
-            window.open(data.portalURL, '_blank');
-        }
-    }));
+const form = superForm(data.form, {
+	validators: valibotClient(signupSchema),
+	validationMethod: "onblur",
+	resetForm: false,
+});
+const { form: formData, enhance, submitting, message } = form;
+const _dobProxy = dateProxy(form, "dateOfBirth", { format: `date` });
+const _dobValue = $derived.by(() => {
+	if (
+		!dayjs($formData.dateOfBirth).isValid() ||
+		dayjs($formData.dateOfBirth).isSame(dayjs())
+	) {
+		return undefined;
+	}
+	return fromDate(dayjs($formData.dateOfBirth).toDate(), getLocalTimeZone());
+});
+let _pausedUntil: dayjs.Dayjs | null = $derived(
+	data.member.subscription_paused_until
+		? dayjs(data.member.subscription_paused_until)
+		: null,
+);
+const _openBillingPortal = createMutation(() => ({
+	mutationFn: () =>
+		fetch(`/dashboard/members/${page.params.memberId}`, {
+			method: "POST",
+		}).then((res) => res.json()) as Promise<{ portalURL: string }>,
+	onSuccess: (data: { portalURL: string }) => {
+		window.open(data.portalURL, "_blank");
+	},
+}));
 
-    let showPauseModal = $state(false);
+let _showPauseModal = $state(false);
 
-    const pauseMutation = createMutation(() => ({
-        mutationFn: async (pauseData: { pauseUntil: string }) => {
-            const response = await fetch(`/api/members/${page.params.memberId}/subscription/pause`, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(pauseData)
-            });
+const _pauseMutation = createMutation(() => ({
+	mutationFn: async (pauseData: { pauseUntil: string }) => {
+		const response = await fetch(
+			`/api/members/${page.params.memberId}/subscription/pause`,
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(pauseData),
+			},
+		);
 
-            const data: { subscription: Stripe.Response<Stripe.Subscription>, error?: string } = await response.json();
+		const data: {
+			subscription: Stripe.Response<Stripe.Subscription>;
+			error?: string;
+		} = await response.json();
 
-            if (!response.ok) {
-                throw new Error(data?.error || `HTTP error! status: ${response.status}`);
-            }
-            return data as { subscription: Stripe.Response<Stripe.Subscription> };
-        },
-        onSuccess: ({subscription}: { subscription: Stripe.Response<Stripe.Subscription> }) => {
-            showPauseModal = false;
-            pausedUntil = dayjs.unix(subscription.pause_collection!.resumes_at!);
-        },
-        onError: (error) => {
-            toast.error(`Failed to pause subscription: ${error.message}`);
-        }
-    }));
+		if (!response.ok) {
+			throw new Error(data?.error || `HTTP error! status: ${response.status}`);
+		}
+		return data as { subscription: Stripe.Response<Stripe.Subscription> };
+	},
+	onSuccess: ({
+		subscription,
+	}: {
+		subscription: Stripe.Response<Stripe.Subscription>;
+	}) => {
+		_showPauseModal = false;
+		_pausedUntil = dayjs.unix(subscription.pause_collection?.resumes_at!);
+	},
+	onError: (error) => {
+		toast.error(`Failed to pause subscription: ${error.message}`);
+	},
+}));
 
-    const resumeMutation = createMutation(() => ({
-        mutationFn: () =>
-            fetch(`/api/members/${page.params.memberId}/subscription/pause`, {
-                method: 'DELETE'
-            })
-                .then((r) => {
-                    if (!r.ok) {
-                        throw new Error(`HTTP error! status: ${r.status}`);
-                    }
-                    return r;
-                })
-                .then((r) => r.json()),
-        onSuccess: () => {
-            pausedUntil = null;
-        },
-        onError: (error) => {
-            toast.error(`Failed to resume subscription: ${error.message}`);
-        }
-    }));
+const _resumeMutation = createMutation(() => ({
+	mutationFn: () =>
+		fetch(`/api/members/${page.params.memberId}/subscription/pause`, {
+			method: "DELETE",
+		})
+			.then((r) => {
+				if (!r.ok) {
+					throw new Error(`HTTP error! status: ${r.status}`);
+				}
+				return r;
+			})
+			.then((r) => r.json()),
+	onSuccess: () => {
+		_pausedUntil = null;
+	},
+	onError: (error) => {
+		toast.error(`Failed to resume subscription: ${error.message}`);
+	},
+}));
 
-    $effect(() => {
-        const sub = message.subscribe((m) => {
-            if (m?.success) {
-                toast.success(m.success, {position: 'top-right'});
-            }
-            if (m?.failure) {
-                toast.error(m.failure, {position: 'top-right'});
-            }
-        });
+$effect(() => {
+	const sub = message.subscribe((m) => {
+		if (m?.success) {
+			toast.success(m.success, { position: "top-right" });
+		}
+		if (m?.failure) {
+			toast.error(m.failure, { position: "top-right" });
+		}
+	});
 
-        return sub;
-    });
+	return sub;
+});
 </script>
 
 <Card.Root class="w-full max-w-4xl mx-auto">

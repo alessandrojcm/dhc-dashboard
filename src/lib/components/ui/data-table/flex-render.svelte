@@ -1,9 +1,7 @@
 <script lang="ts" module>
-	import type { CellContext, ColumnDefTemplate, HeaderContext } from '@tanstack/table-core';
-
-	type TData = unknown;
-	type TValue = unknown;
-	type TContext = unknown;
+type TData = unknown;
+type TValue = unknown;
+type TContext = unknown;
 </script>
 
 <script

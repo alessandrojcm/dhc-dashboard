@@ -1,16 +1,22 @@
-import { authorize } from '$lib/server/auth';
-import { INVENTORY_ROLES } from '$lib/server/roles';
-import { containerSchema } from '$lib/schemas/inventory';
-import { superValidate } from 'sveltekit-superforms';
-import { valibot } from 'sveltekit-superforms/adapters';
-import { fail, redirect, error, isRedirect, isActionFailure } from '@sveltejs/kit';
-import { executeWithRLS, getKyselyClient } from '$lib/server/kysely';
-import { setMessage } from 'sveltekit-superforms/client';
+import {
+	error,
+	fail,
+	isActionFailure,
+	isRedirect,
+	redirect,
+} from "@sveltejs/kit";
+import { superValidate } from "sveltekit-superforms";
+import { valibot } from "sveltekit-superforms/adapters";
+import { setMessage } from "sveltekit-superforms/client";
+import { containerSchema } from "$lib/schemas/inventory";
+import { authorize } from "$lib/server/auth";
+import { executeWithRLS, getKyselyClient } from "$lib/server/kysely";
+import { INVENTORY_ROLES } from "$lib/server/roles";
 
 export const load = async ({
 	params,
 	locals,
-	platform
+	platform,
 }: {
 	params: any;
 	locals: App.Locals;
@@ -18,29 +24,37 @@ export const load = async ({
 }) => {
 	await authorize(locals, INVENTORY_ROLES);
 
-	const db = getKyselyClient(platform.env!.HYPERDRIVE!);
+	const db = getKyselyClient(platform.env?.HYPERDRIVE!);
 	const { session } = await locals.safeGetSession();
 
 	if (!session) {
-		throw new Error('No session found');
+		throw new Error("No session found");
 	}
 
 	// Load container and all containers in a single transaction
-	const [container, allContainers] = await executeWithRLS(db, { claims: session }, async (trx) => {
-		return Promise.all([
-			// Load container to edit
-			trx.selectFrom('containers').selectAll().where('id', '=', params.id).executeTakeFirst(),
-			// Load all containers for parent selection
-			trx
-				.selectFrom('containers')
-				.select(['id', 'name', 'parent_container_id'])
-				.orderBy('name')
-				.execute()
-		]);
-	});
+	const [container, allContainers] = await executeWithRLS(
+		db,
+		{ claims: session },
+		async (trx) => {
+			return Promise.all([
+				// Load container to edit
+				trx
+					.selectFrom("containers")
+					.selectAll()
+					.where("id", "=", params.id)
+					.executeTakeFirst(),
+				// Load all containers for parent selection
+				trx
+					.selectFrom("containers")
+					.select(["id", "name", "parent_container_id"])
+					.orderBy("name")
+					.execute(),
+			]);
+		},
+	);
 
 	if (!container) {
-		throw error(404, 'Container not found');
+		throw error(404, "Container not found");
 	}
 
 	// Filter out current container and its descendants to prevent circular references
@@ -71,13 +85,13 @@ export const load = async ({
 		form: await superValidate(
 			{
 				name: container.name,
-				description: container.description || '',
-				parent_container_id: container.parent_container_id || ''
+				description: container.description || "",
+				parent_container_id: container.parent_container_id || "",
 			},
-			valibot(containerSchema)
+			valibot(containerSchema),
 		),
 		containers: availableContainers,
-		container
+		container,
 	};
 };
 
@@ -91,27 +105,27 @@ export const actions = {
 		}
 
 		try {
-			const db = getKyselyClient(platform!.env.HYPERDRIVE);
+			const db = getKyselyClient(platform?.env.HYPERDRIVE);
 			await executeWithRLS(db, { claims: session }, async (trx) => {
 				return await trx
-					.updateTable('containers')
+					.updateTable("containers")
 					.set({
 						name: form.data.name,
 						description: form.data.description || null,
 						parent_container_id: form.data.parent_container_id || null,
-						updated_at: new Date().toISOString()
+						updated_at: new Date().toISOString(),
 					})
-					.where('id', '=', params.id)
+					.where("id", "=", params.id)
 					.execute();
 			});
 
 			redirect(303, `/dashboard/inventory/containers/${params.id}`);
 		} catch (error) {
 			if (isRedirect(error)) throw error;
-			console.error('Error updating container:', error);
+			console.error("Error updating container:", error);
 			return fail(500, {
 				form,
-				error: 'Failed to update container. Please try again.'
+				error: "Failed to update container. Please try again.",
 			});
 		}
 	},
@@ -121,27 +135,34 @@ export const actions = {
 		const form = await superValidate(request, valibot(containerSchema));
 
 		try {
-			const db = getKyselyClient(platform!.env.HYPERDRIVE);
+			const db = getKyselyClient(platform?.env.HYPERDRIVE);
 			return await executeWithRLS(db, { claims: session }, async (trx) => {
 				const hasChildren = await trx
-					.selectFrom('inventory_items')
-					.select('id')
-					.where('container_id', '=', params.id)
+					.selectFrom("inventory_items")
+					.select("id")
+					.where("container_id", "=", params.id)
 					.executeTakeFirst();
 				if (hasChildren) {
-					return setMessage(form, 'Cannot delete a container that contains items.', {
-						status: 400
-					});
+					return setMessage(
+						form,
+						"Cannot delete a container that contains items.",
+						{
+							status: 400,
+						},
+					);
 				}
-				await trx.deleteFrom('containers').where('id', '=', params.id).execute();
-				return redirect(303, '/dashboard/inventory/containers');
+				await trx
+					.deleteFrom("containers")
+					.where("id", "=", params.id)
+					.execute();
+				return redirect(303, "/dashboard/inventory/containers");
 			});
 		} catch (error) {
 			if (isRedirect(error) || isActionFailure(error)) throw error;
-			console.error('Error deleting container:', error);
+			console.error("Error deleting container:", error);
 			return fail(500, {
-				error: 'Failed to delete container. Please try again.'
+				error: "Failed to delete container. Please try again.",
 			});
 		}
-	}
+	},
 };

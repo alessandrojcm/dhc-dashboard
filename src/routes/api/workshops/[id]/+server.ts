@@ -1,9 +1,9 @@
-import { json } from '@sveltejs/kit';
-import { authorize } from '$lib/server/auth';
-import { WORKSHOP_ROLES } from '$lib/server/roles';
-import { deleteWorkshop } from '$lib/server/workshops';
-import type { RequestHandler } from './$types';
-import * as Sentry from '@sentry/sveltekit';
+import * as Sentry from "@sentry/sveltekit";
+import { json } from "@sveltejs/kit";
+import { authorize } from "$lib/server/auth";
+import { WORKSHOP_ROLES } from "$lib/server/roles";
+import { deleteWorkshop } from "$lib/server/workshops";
+import type { RequestHandler } from "./$types";
 
 export const DELETE: RequestHandler = async ({ locals, params, platform }) => {
 	try {
@@ -14,10 +14,13 @@ export const DELETE: RequestHandler = async ({ locals, params, platform }) => {
 		return json({ success: true });
 	} catch (error) {
 		Sentry.captureException(error);
-		console.error('Delete workshop error:', error);
+		console.error("Delete workshop error:", error);
 		return json(
-			{ success: false, error: error instanceof Error ? error.message : 'Unknown error' },
-			{ status: 500 }
+			{
+				success: false,
+				error: error instanceof Error ? error.message : "Unknown error",
+			},
+			{ status: 500 },
 		);
 	}
 };

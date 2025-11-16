@@ -1,19 +1,17 @@
 <script lang="ts">
-	import ArrowRightIcon from "@lucide/svelte/icons/arrow-right";
-	import type { WithoutChildren } from "bits-ui";
-	import { getEmblaContext } from "./context.js";
-	import { cn } from "$lib/utils.js";
-	import { Button, type Props } from "$lib/components/ui/button/index.js";
+import type { WithoutChildren } from "bits-ui";
+import type { Props } from "$lib/components/ui/button/index.js";
+import { getEmblaContext } from "./context.js";
 
-	let {
-		ref = $bindable(null),
-		class: className,
-		variant = "outline",
-		size = "icon",
-		...restProps
-	}: WithoutChildren<Props> = $props();
+const {
+	ref = $bindable(null),
+	class: className,
+	variant = "outline",
+	size = "icon",
+	...restProps
+}: WithoutChildren<Props> = $props();
 
-	const emblaCtx = getEmblaContext("<Carousel.Next/>");
+const _emblaCtx = getEmblaContext("<Carousel.Next/>");
 </script>
 
 <Button

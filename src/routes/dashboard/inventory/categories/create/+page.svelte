@@ -1,38 +1,25 @@
 <script lang="ts">
-	import SuperDebug, { superForm } from 'sveltekit-superforms';
-	import { valibot } from 'sveltekit-superforms/adapters';
-	import { categorySchema } from '$lib/schemas/inventory';
-	import {
-		Card,
-		CardContent,
-		CardDescription,
-		CardHeader,
-		CardTitle
-	} from '$lib/components/ui/card';
-	import { Button } from '$lib/components/ui/button';
-	import { Input } from '$lib/components/ui/input';
-	import { Textarea } from '$lib/components/ui/textarea';
-	import * as Form from '$lib/components/ui/form';
-	import { ArrowLeft, Tags } from 'lucide-svelte';
-	import AttributeBuilder from '$lib/components/inventory/AttributeBuilder.svelte';
-	import { toast } from 'svelte-sonner';
-	import { goto } from '$app/navigation';
+import { toast } from "svelte-sonner";
+import { superForm } from "sveltekit-superforms";
+import { valibot } from "sveltekit-superforms/adapters";
+import { goto } from "$app/navigation";
+import { categorySchema } from "$lib/schemas/inventory";
 
-	let { data } = $props();
+const { data } = $props();
 
-	const form = superForm(data.form, {
-		validators: valibot(categorySchema),
-		resetForm: true,
-		dataType: 'json',
-		onUpdated: ({ form }) => {
-			if (form.message?.success) {
-				toast.success(form.message.success);
-				setTimeout(() => goto('/dashboard/inventory/categories'), 1500);
-			}
+const form = superForm(data.form, {
+	validators: valibot(categorySchema),
+	resetForm: true,
+	dataType: "json",
+	onUpdated: ({ form }) => {
+		if (form.message?.success) {
+			toast.success(form.message.success);
+			setTimeout(() => goto("/dashboard/inventory/categories"), 1500);
 		}
-	});
+	},
+});
 
-	const { form: formData, enhance, submitting } = form;
+const { form: formData, enhance, submitting } = form;
 </script>
 
 <div class="p-6">

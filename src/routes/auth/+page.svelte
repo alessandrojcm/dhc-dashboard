@@ -1,33 +1,28 @@
 <script lang="ts">
-	import { page } from '$app/state';
-	import { Button } from '$lib/components/ui/button';
-	import { Card } from '$lib/components/ui/card';
-	import { DiscordLogo, ExclamationTriangle } from 'svelte-radix';
-	import { Input } from '$lib/components/ui/input';
-	import { Separator } from '$lib/components/ui/separator';
-	import * as Alert from '$lib/components/ui/alert/index.js';
-	import DHCLogo from '/src/assets/images/dhc-logo.png?enhanced';
-	import authSchema from '$lib/schemas/authSchema';
-	import { superForm } from 'sveltekit-superforms';
-	import { valibotClient } from 'sveltekit-superforms/adapters';
+import { superForm } from "sveltekit-superforms";
+import { valibotClient } from "sveltekit-superforms/adapters";
+import { page } from "$app/state";
+import authSchema from "$lib/schemas/authSchema";
 
-	const hash = $derived(page.url.hash.split('#')[1] as string);
-	let errorMessage = $derived(new URLSearchParams(hash).get('error_description'));
-	const urlMessage = $derived(page.url.searchParams.get('message'));
+const hash = $derived(page.url.hash.split("#")[1] as string);
+let _errorMessage = $derived(
+	new URLSearchParams(hash).get("error_description"),
+);
+const _urlMessage = $derived(page.url.searchParams.get("message"));
 
-	const { data } = $props();
+const { data } = $props();
 
-	const form = superForm(data.form, {
-		validators: valibotClient(authSchema),
-		validationMethod: 'oninput',
-		resetForm: false,
-		onSubmit: () => {
-			errorMessage = '';
-		}
-	});
+const form = superForm(data.form, {
+	validators: valibotClient(authSchema),
+	validationMethod: "oninput",
+	resetForm: false,
+	onSubmit: () => {
+		_errorMessage = "";
+	},
+});
 
-	const { form: formData, enhance, submitting, errors, message } = form;
-	$inspect($errors);
+const { form: formData, enhance, submitting, errors, message } = form;
+$inspect($errors);
 </script>
 
 <Card

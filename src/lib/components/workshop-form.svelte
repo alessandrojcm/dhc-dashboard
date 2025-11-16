@@ -1,159 +1,158 @@
 <script lang="ts">
-	import { dateProxy, superForm } from 'sveltekit-superforms';
-	import { valibotClient } from 'sveltekit-superforms/adapters';
-	import { CreateWorkshopSchema, UpdateWorkshopSchema } from '$lib/schemas/workshops';
-	import { Button } from '$lib/components/ui/button';
-	import { Input } from '$lib/components/ui/input';
-	import { Textarea } from '$lib/components/ui/textarea';
-	import { Switch } from '$lib/components/ui/switch';
-	import { Alert, AlertDescription } from '$lib/components/ui/alert';
-	import * as Form from '$lib/components/ui/form';
-	import Calendar25 from '$lib/components/calendar-25.svelte';
-	import { CheckCircle } from 'lucide-svelte';
-	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
-	import {
-		type CalendarDate,
-		fromDate,
-		getLocalTimeZone,
-		toCalendarDate,
-		toCalendarDateTime
-	} from '@internationalized/date';
-	import utc from 'dayjs/plugin/utc';
-	import timezone from 'dayjs/plugin/timezone';
-	import dayjs from 'dayjs';
+import {
+	type CalendarDate,
+	fromDate,
+	getLocalTimeZone,
+	toCalendarDate,
+	toCalendarDateTime,
+} from "@internationalized/date";
+import dayjs from "dayjs";
+import timezone from "dayjs/plugin/timezone";
+import utc from "dayjs/plugin/utc";
+import { superForm } from "sveltekit-superforms";
+import { valibotClient } from "sveltekit-superforms/adapters";
+import {
+	CreateWorkshopSchema,
+	UpdateWorkshopSchema,
+} from "$lib/schemas/workshops";
 
-	dayjs.extend(utc);
-	dayjs.extend(timezone);
-	dayjs.tz.setDefault(dayjs.tz.guess());
+dayjs.extend(utc);
+dayjs.extend(timezone);
+dayjs.tz.setDefault(dayjs.tz.guess());
 
-	interface Props {
-		data: any;
-		mode: 'create' | 'edit';
-		onSuccess?: (form: any) => void;
-		priceEditingDisabled?: boolean;
-		workshopStatus?: string | null;
-		workshopEditable?: boolean;
+interface Props {
+	data: any;
+	mode: "create" | "edit";
+	onSuccess?: (form: any) => void;
+	priceEditingDisabled?: boolean;
+	workshopStatus?: string | null;
+	workshopEditable?: boolean;
+}
+
+const {
+	data,
+	mode,
+	onSuccess,
+	priceEditingDisabled = false,
+	workshopStatus,
+	workshopEditable,
+}: Props = $props();
+
+const schema = mode === "create" ? CreateWorkshopSchema : UpdateWorkshopSchema;
+
+const form = superForm(data.form, {
+	validators: valibotClient(schema),
+	validationMethod: "onblur",
+	onSubmit: ({ formData }) => {
+		formData.set(
+			"workshop_date",
+			dayjs(formData.get("workshop_date") as string).toISOString(),
+		);
+		formData.set(
+			"workshop_end_date",
+			dayjs(formData.get("workshop_end_date") as string).toISOString(),
+		);
+	},
+	onUpdated: ({ form }) => {
+		if (form.message?.success) {
+			window?.scrollTo({ top: 0, behavior: "smooth" });
+			if (onSuccess) {
+				reset({
+					keepMessage: false,
+				});
+				onSuccess(form);
+			}
+		}
+	},
+});
+
+const { form: formData, enhance, submitting, message, reset } = form;
+
+const _workshopDateValue = $derived.by(() => {
+	const date = dayjs($formData.workshop_date);
+	if (!date.isValid() || date.isSame(dayjs())) {
+		return undefined;
+	}
+	return toCalendarDate(fromDate(date.toDate(), getLocalTimeZone()));
+});
+
+const _startTime = $derived.by(() => {
+	const date = dayjs($formData.workshop_date);
+	if (!date.isValid()) return "";
+	return date.format("HH:mm");
+});
+
+const _endTime = $derived.by(() => {
+	const date = dayjs($formData.workshop_end_date);
+	if (!date.isValid()) return "";
+	return date.format("HH:mm");
+});
+
+function _updateWorkshopDates(
+	date?: CalendarDate | string,
+	op: "start" | "end" | "date" = "date",
+) {
+	if (!date) return;
+
+	if (typeof date === "string" && op === "start") {
+		const [hour, minute] = date.split(":").map(Number);
+		const currentDate = dayjs($formData.workshop_date);
+		const baseDate = currentDate.isValid() ? currentDate : dayjs();
+		$formData.workshop_date = baseDate.hour(hour).minute(minute).toDate();
+		return;
 	}
 
-	const {
-		data,
-		mode,
-		onSuccess,
-		priceEditingDisabled = false,
-		workshopStatus,
-		workshopEditable
-	}: Props = $props();
+	if (typeof date === "string" && op === "end") {
+		const [hour, minute] = date.split(":").map(Number);
 
-	const schema = mode === 'create' ? CreateWorkshopSchema : UpdateWorkshopSchema;
-
-	const form = superForm(data.form, {
-		validators: valibotClient(schema),
-		validationMethod: 'onblur',
-		onSubmit: ({ formData }) => {
-			formData.set('workshop_date', dayjs(formData.get('workshop_date') as string).toISOString());
-			formData.set(
-				'workshop_end_date',
-				dayjs(formData.get('workshop_end_date') as string).toISOString()
-			);
-		},
-		onUpdated: ({ form }) => {
-			if (form.message?.success) {
-				window?.scrollTo({ top: 0, behavior: 'smooth' });
-				if (onSuccess) {
-					reset({
-						keepMessage: false
-					});
-					onSuccess(form);
-				}
-			}
+		let baseDate = dayjs($formData.workshop_end_date);
+		if (!baseDate.isValid()) {
+			baseDate = dayjs($formData.workshop_date);
 		}
-	});
-
-	const { form: formData, enhance, submitting, message, reset } = form;
-
-	const workshopDateValue = $derived.by(() => {
-		const date = dayjs($formData.workshop_date);
-		if (!date.isValid() || date.isSame(dayjs())) {
-			return undefined;
-		}
-		return toCalendarDate(fromDate(date.toDate(), getLocalTimeZone()));
-	});
-
-	const startTime = $derived.by(() => {
-		const date = dayjs($formData.workshop_date);
-		if (!date.isValid()) return '';
-		return date.format('HH:mm');
-	});
-
-	const endTime = $derived.by(() => {
-		const date = dayjs($formData.workshop_end_date);
-		if (!date.isValid()) return '';
-		return date.format('HH:mm');
-	});
-
-	function updateWorkshopDates(
-		date?: CalendarDate | string,
-		op: 'start' | 'end' | 'date' = 'date'
-	) {
-		if (!date) return;
-
-		if (typeof date === 'string' && op === 'start') {
-			const [hour, minute] = date.split(':').map(Number);
-			const currentDate = dayjs($formData.workshop_date);
-			const baseDate = currentDate.isValid() ? currentDate : dayjs();
-			$formData.workshop_date = baseDate.hour(hour).minute(minute).toDate();
-			return;
+		if (!baseDate.isValid()) {
+			baseDate = dayjs();
 		}
 
-		if (typeof date === 'string' && op === 'end') {
-			const [hour, minute] = date.split(':').map(Number);
-
-			let baseDate = dayjs($formData.workshop_end_date);
-			if (!baseDate.isValid()) {
-				baseDate = dayjs($formData.workshop_date);
-			}
-			if (!baseDate.isValid()) {
-				baseDate = dayjs();
-			}
-
-			$formData.workshop_end_date = baseDate.hour(hour).minute(minute).toDate();
-			return;
-		}
-
-		// Handle date change (CalendarDate) - preserve existing times or use defaults
-		if (typeof date !== 'string') {
-			const startDate = dayjs($formData.workshop_date);
-			const startTime = startDate.isValid()
-				? { hour: startDate.hour(), minute: startDate.minute() }
-				: { hour: 10, minute: 0 };
-
-			const endDate = dayjs($formData.workshop_end_date);
-			const endTime = endDate.isValid()
-				? { hour: endDate.hour(), minute: endDate.minute() }
-				: { hour: 12, minute: 0 };
-
-			$formData.workshop_date = toCalendarDateTime(date).set(startTime).toDate(getLocalTimeZone());
-
-			$formData.workshop_end_date = toCalendarDateTime(date)
-				.set(endTime)
-				.toDate(getLocalTimeZone());
-		}
+		$formData.workshop_end_date = baseDate.hour(hour).minute(minute).toDate();
+		return;
 	}
 
-	const isWorkshopEditable = $derived.by(() => {
-		if (mode === 'create') return true;
-		// For published workshops, always return false
-		if (workshopStatus === 'published') return false;
-		// Use the explicit workshopEditable prop if provided, otherwise fall back to status check
-		if (workshopEditable !== undefined) return workshopEditable;
-		return workshopStatus === 'planned';
-	});
+	// Handle date change (CalendarDate) - preserve existing times or use defaults
+	if (typeof date !== "string") {
+		const startDate = dayjs($formData.workshop_date);
+		const startTime = startDate.isValid()
+			? { hour: startDate.hour(), minute: startDate.minute() }
+			: { hour: 10, minute: 0 };
 
-	const canEditPricing = $derived.by(() => {
-		if (mode === 'create') return true;
-		if (workshopStatus === 'planned') return true;
-		return !priceEditingDisabled;
-	});
+		const endDate = dayjs($formData.workshop_end_date);
+		const endTime = endDate.isValid()
+			? { hour: endDate.hour(), minute: endDate.minute() }
+			: { hour: 12, minute: 0 };
+
+		$formData.workshop_date = toCalendarDateTime(date)
+			.set(startTime)
+			.toDate(getLocalTimeZone());
+
+		$formData.workshop_end_date = toCalendarDateTime(date)
+			.set(endTime)
+			.toDate(getLocalTimeZone());
+	}
+}
+
+const _isWorkshopEditable = $derived.by(() => {
+	if (mode === "create") return true;
+	// For published workshops, always return false
+	if (workshopStatus === "published") return false;
+	// Use the explicit workshopEditable prop if provided, otherwise fall back to status check
+	if (workshopEditable !== undefined) return workshopEditable;
+	return workshopStatus === "planned";
+});
+
+const _canEditPricing = $derived.by(() => {
+	if (mode === "create") return true;
+	if (workshopStatus === "planned") return true;
+	return !priceEditingDisabled;
+});
 </script>
 
 <div class="space-y-8">

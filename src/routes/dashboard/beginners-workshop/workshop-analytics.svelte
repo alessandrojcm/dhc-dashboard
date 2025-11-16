@@ -1,95 +1,96 @@
 <script lang="ts">
-	import type { SupabaseClient } from '@supabase/supabase-js';
-	import type { Database } from '$database';
-	import * as Card from '$lib/components/ui/card/index.js';
-	import * as Resizable from '$lib/components/ui/resizable/index.js';
-	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
-	import { createQuery } from '@tanstack/svelte-query';
-	import { browser } from '$app/environment';
-	import { onMount } from 'svelte';
-	import { Component } from 'lucide-svelte';
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { createQuery } from "@tanstack/svelte-query";
+import { onMount } from "svelte";
+import { browser } from "$app/environment";
+import type { Database } from "$database";
 
-	let GenderBarChart: typeof import('$lib/components/gender-bar-chart.svelte').default | null =
-		$state(null);
-	let AgeScatterChart: typeof import('$lib/components/age-scatter-chart.svelte').default | null =
-		$state(null);
+let _GenderBarChart:
+	| typeof import("$lib/components/gender-bar-chart.svelte").default
+	| null = $state(null);
+let _AgeScatterChart:
+	| typeof import("$lib/components/age-scatter-chart.svelte").default
+	| null = $state(null);
 
-	onMount(async () => {
-		if (browser) {
-			GenderBarChart = (await import('$lib/components/gender-bar-chart.svelte')).default;
-			AgeScatterChart = (await import('$lib/components/age-scatter-chart.svelte')).default;
-		}
-	});
+onMount(async () => {
+	if (browser) {
+		_GenderBarChart = (await import("$lib/components/gender-bar-chart.svelte"))
+			.default;
+		_AgeScatterChart = (
+			await import("$lib/components/age-scatter-chart.svelte")
+		).default;
+	}
+});
 
-	const { supabase }: { supabase: SupabaseClient<Database> } = $props();
-	const totalCountQuery = createQuery<number>(() => ({
-		queryKey: ['waitlist', 'totalCount'],
-		queryFn: async ({ signal }) =>
-			supabase
-				.from('waitlist_management_view')
-				.select('id', { count: 'exact', head: true })
-				.neq('status', 'joined')
-				.abortSignal(signal)
-				.throwOnError()
-				.then((r) => r.count ?? 0)
+const { supabase }: { supabase: SupabaseClient<Database> } = $props();
+const _totalCountQuery = createQuery<number>(() => ({
+	queryKey: ["waitlist", "totalCount"],
+	queryFn: async ({ signal }) =>
+		supabase
+			.from("waitlist_management_view")
+			.select("id", { count: "exact", head: true })
+			.neq("status", "joined")
+			.abortSignal(signal)
+			.throwOnError()
+			.then((r) => r.count ?? 0),
+}));
+const _averageAge = createQuery<number>(() => ({
+	queryKey: ["waitlist", "avgAge"],
+	queryFn: async ({ signal }) =>
+		supabase
+			.from("waitlist_management_view")
+			.select("avg_age:age.avg()")
+			.neq("status", "joined")
+			.abortSignal(signal)
+			.single()
+			.throwOnError()
+			.then((res) => res.data?.avg_age ?? 0),
+}));
+// Define the type for gender distribution data
+type GenderDistributionItem = { gender: string; value: number };
+
+const genderDistribution = createQuery(() => ({
+	queryKey: ["waitlist", "genderDistribution"],
+	queryFn: async ({ signal }) =>
+		supabase
+			.from("user_profiles")
+			.select("gender,count:gender.count()")
+			.is("is_active", false)
+			.not("waitlist_id", "is", null)
+			.is("supabase_user_id", null)
+			.abortSignal(signal)
+			.throwOnError()
+			.then((r) => r.data || []),
+}));
+
+// Transform the gender distribution data to match the expected format for GenderBarChart
+const _genderDistributionData = $derived.by(() => {
+	if (!genderDistribution.data) return [];
+	return genderDistribution.data.map((row) => ({
+		gender: row.gender,
+		value: row.count,
+	})) as GenderDistributionItem[];
+});
+const ageDistributionQuery = createQuery(() => ({
+	queryKey: ["waitlist", "ageDistribution"],
+	queryFn: async ({ signal }) =>
+		supabase
+			.from("waitlist_management_view")
+			.select("age,value:age.count()")
+			.neq("status", "joined")
+			.order("age", { ascending: true })
+			.abortSignal(signal)
+			.throwOnError()
+			.then((r) => r.data),
+}));
+const _ageDistribution = $derived.by(() => {
+	const result = ageDistributionQuery.data ?? [];
+	// Transform the data to match the expected format for AgeScatterChart
+	return result.map((row) => ({
+		age: row.age,
+		value: row.value,
 	}));
-	const averageAge = createQuery<number>(() => ({
-		queryKey: ['waitlist', 'avgAge'],
-		queryFn: async ({ signal }) =>
-			supabase
-				.from('waitlist_management_view')
-				.select('avg_age:age.avg()')
-				.neq('status', 'joined')
-				.abortSignal(signal)
-				.single()
-				.throwOnError()
-				.then((res) => res.data?.avg_age ?? 0)
-	}));
-	// Define the type for gender distribution data
-	type GenderDistributionItem = { gender: string; value: number };
-
-	const genderDistribution = createQuery(() => ({
-		queryKey: ['waitlist', 'genderDistribution'],
-		queryFn: async ({ signal }) =>
-			supabase
-				.from('user_profiles')
-				.select('gender,count:gender.count()')
-				.is('is_active', false)
-				.not('waitlist_id', 'is', null)
-				.is('supabase_user_id', null)
-				.abortSignal(signal)
-				.throwOnError()
-				.then((r) => r.data || [])
-	}));
-
-	// Transform the gender distribution data to match the expected format for GenderBarChart
-	const genderDistributionData = $derived.by(() => {
-		if (!genderDistribution.data) return [];
-		return genderDistribution.data.map((row) => ({
-			gender: row.gender,
-			value: row.count
-		})) as GenderDistributionItem[];
-	});
-	const ageDistributionQuery = createQuery(() => ({
-		queryKey: ['waitlist', 'ageDistribution'],
-		queryFn: async ({ signal }) =>
-			supabase
-				.from('waitlist_management_view')
-				.select('age,value:age.count()')
-				.neq('status', 'joined')
-				.order('age', { ascending: true })
-				.abortSignal(signal)
-				.throwOnError()
-				.then((r) => r.data)
-	}));
-	const ageDistribution = $derived.by(() => {
-		const result = ageDistributionQuery.data ?? [];
-		// Transform the data to match the expected format for AgeScatterChart
-		return result.map((row) => ({
-			age: row.age,
-			value: row.value
-		}));
-	});
+});
 </script>
 
 <h2 class="prose prose-h2 text-lg mb-2">Workshop analytics</h2>

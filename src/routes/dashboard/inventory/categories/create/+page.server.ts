@@ -1,17 +1,20 @@
-import { authorize } from '$lib/server/auth';
-import { INVENTORY_ROLES } from '$lib/server/roles';
-import { categorySchema } from '$lib/schemas/inventory';
-import { superValidate } from 'sveltekit-superforms';
-import { valibot } from 'sveltekit-superforms/adapters';
-import { fail, isRedirect, redirect } from '@sveltejs/kit';
-import { executeWithRLS, getKyselyClient } from '$lib/server/kysely';
-import type { Action, PageServerLoadEvent } from './$types';
+import { fail, isRedirect, redirect } from "@sveltejs/kit";
+import { superValidate } from "sveltekit-superforms";
+import { valibot } from "sveltekit-superforms/adapters";
+import { categorySchema } from "$lib/schemas/inventory";
+import { authorize } from "$lib/server/auth";
+import { executeWithRLS, getKyselyClient } from "$lib/server/kysely";
+import { INVENTORY_ROLES } from "$lib/server/roles";
+import type { Action, PageServerLoadEvent } from "./$types";
 
 export const load = async ({ locals }: PageServerLoadEvent) => {
 	await authorize(locals, INVENTORY_ROLES);
 
 	return {
-		form: await superValidate({ available_attributes: [] }, valibot(categorySchema))
+		form: await superValidate(
+			{ available_attributes: [] },
+			valibot(categorySchema),
+		),
 	};
 };
 
@@ -25,16 +28,16 @@ export const actions: { [key: string]: Action } = {
 		}
 
 		try {
-			const db = getKyselyClient(platform!.env.HYPERDRIVE);
+			const db = getKyselyClient(platform?.env.HYPERDRIVE);
 			await executeWithRLS(db, { claims: session }, async (trx) => {
 				return await trx
-					.insertInto('equipment_categories')
+					.insertInto("equipment_categories")
 					.values({
 						name: form.data.name,
 						description: form.data.description || null,
 						available_attributes: form.data.available_attributes,
 						created_at: new Date().toISOString(),
-						updated_at: new Date().toISOString()
+						updated_at: new Date().toISOString(),
 					})
 					.execute();
 			});
@@ -42,11 +45,11 @@ export const actions: { [key: string]: Action } = {
 			redirect(303, `/dashboard/inventory/categories`);
 		} catch (error) {
 			if (isRedirect(error)) throw error;
-			console.error('Error creating category:', error);
+			console.error("Error creating category:", error);
 			return fail(500, {
 				form,
-				error: 'Failed to create category. Please try again.'
+				error: "Failed to create category. Please try again.",
 			});
 		}
-	}
+	},
 };

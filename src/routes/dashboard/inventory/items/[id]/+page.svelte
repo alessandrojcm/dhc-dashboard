@@ -1,143 +1,131 @@
 <script lang="ts">
-	import {
-		Card,
-		CardContent,
-		CardDescription,
-		CardHeader,
-		CardTitle
-	} from '$lib/components/ui/card';
-	import { Button } from '$lib/components/ui/button';
-	import { Badge } from '$lib/components/ui/badge';
-	import * as Form from '$lib/components/ui/form';
-	import { Input } from '$lib/components/ui/input';
-	import { Textarea } from '$lib/components/ui/textarea';
-	import { Checkbox } from '$lib/components/ui/checkbox';
-	import { Select, SelectContent, SelectItem, SelectTrigger } from '$lib/components/ui/select';
-	import { Label } from '$lib/components/ui/label';
-	import SuperDebug, { superForm } from 'sveltekit-superforms';
-	import { toast } from 'svelte-sonner';
-	import { ArrowLeft, Package, Edit, X, FolderOpen, Tags, Clock, Plus } from 'lucide-svelte';
-	import dayjs from 'dayjs';
-	import relativeTime from 'dayjs/plugin/relativeTime';
-	import { buildContainerHierarchy } from '$lib/utils/inventory-form';
-	import { dev } from '$app/environment';
+import dayjs from "dayjs";
+import relativeTime from "dayjs/plugin/relativeTime";
+import { Clock, Package, Plus } from "lucide-svelte";
+import { toast } from "svelte-sonner";
+import { superForm } from "sveltekit-superforms";
+import { buildContainerHierarchy } from "$lib/utils/inventory-form";
 
-	dayjs.extend(relativeTime);
-	let { data } = $props();
-	const { item: initialItem, containers, canEdit } = data;
+dayjs.extend(relativeTime);
+const { data } = $props();
+const { item: initialItem, containers, canEdit } = data;
 
-	// Track the current item state (will be updated after successful edits)
-	let currentItem = $state(initialItem);
+// Track the current item state (will be updated after successful edits)
+let currentItem = $state(initialItem);
 
-	// Make history reactive so it updates after invalidateAll
-	const currentHistory = $derived(data.history);
+// Make history reactive so it updates after invalidateAll
+const _currentHistory = $derived(data.history);
 
-	let isEditMode = $state(false);
-	let attributeErrors = $state<Record<string, string>>({});
+let _isEditMode = $state(false);
+let attributeErrors = $state<Record<string, string>>({});
 
-	// Use current item for display
-	const displayItem = $derived(currentItem);
-	const hierarchicalContainers = buildContainerHierarchy(containers);
+// Use current item for display
+const displayItem = $derived(currentItem);
+const hierarchicalContainers = buildContainerHierarchy(containers);
 
-	const form = superForm(data.form, {
-		dataType: 'json',
-		resetForm: false,
-		invalidateAll: true,
-		onResult({ result }) {
-			// Check if the action succeeded (not just form validation)
-			if (result.type === 'success') {
-				// Update the current item with the returned data
-				if (result.data?.item) {
-					currentItem = result.data.item;
-				}
-				toast.success('Item updated successfully');
-				isEditMode = false;
-			} else if (result.type === 'failure') {
-				toast.error(result.data?.form?.message || 'Failed to update item');
+const form = superForm(data.form, {
+	dataType: "json",
+	resetForm: false,
+	invalidateAll: true,
+	onResult({ result }) {
+		// Check if the action succeeded (not just form validation)
+		if (result.type === "success") {
+			// Update the current item with the returned data
+			if (result.data?.item) {
+				currentItem = result.data.item;
 			}
-		},
-		onError({ result }) {
-			console.error('Form submission error:', result);
-			toast.error(result.error?.message || 'Failed to update item');
+			toast.success("Item updated successfully");
+			_isEditMode = false;
+		} else if (result.type === "failure") {
+			toast.error(result.data?.form?.message || "Failed to update item");
 		}
-	});
+	},
+	onError({ result }) {
+		console.error("Form submission error:", result);
+		toast.error(result.error?.message || "Failed to update item");
+	},
+});
 
-	const { form: formData, enhance, delayed } = form;
+const { form: formData, enhance, delayed } = form;
 
-	// Use the display item's category since it can't be changed
-	const categoryAttributes = $derived(displayItem.category?.available_attributes || []);
-	const selectedContainerName = $derived.by(() => {
-		console.log('Looking for container with ID:', $formData.container_id);
-		console.log(
-			'Available containers:',
-			hierarchicalContainers.map((c) => ({ id: c.id, name: c.displayName }))
-		);
-		const container = hierarchicalContainers.find((c) => c.id === $formData.container_id);
-		console.log('Found container:', container);
-		return container?.displayName || 'Select a container';
-	});
+// Use the display item's category since it can't be changed
+const categoryAttributes = $derived(
+	displayItem.category?.available_attributes || [],
+);
+const _selectedContainerName = $derived.by(() => {
+	console.log("Looking for container with ID:", $formData.container_id);
+	console.log(
+		"Available containers:",
+		hierarchicalContainers.map((c) => ({ id: c.id, name: c.displayName })),
+	);
+	const container = hierarchicalContainers.find(
+		(c) => c.id === $formData.container_id,
+	);
+	console.log("Found container:", container);
+	return container?.displayName || "Select a container";
+});
 
-	const handleEdit = () => {
-		isEditMode = true;
+const _handleEdit = () => {
+	_isEditMode = true;
 
-		// Ensure all category attributes are initialized in form data
-		if (!$formData.attributes) {
-			$formData.attributes = {};
-		}
-
-		// Initialize any missing category attributes
-		categoryAttributes.forEach((attr) => {
-			if (attr.name && !($formData.attributes![attr.name] !== undefined)) {
-				$formData.attributes![attr.name] = attr.default_value ?? undefined;
-			}
-		});
-	};
-
-	const handleCancel = () => {
-		isEditMode = false;
-	};
-
-	function clearAttributeError(attrName: string) {
-		if (attributeErrors[attrName]) {
-			const { [attrName]: _, ...rest } = attributeErrors;
-			attributeErrors = rest;
-		}
+	// Ensure all category attributes are initialized in form data
+	if (!$formData.attributes) {
+		$formData.attributes = {};
 	}
 
-	const getItemDisplayName = (item: any) => {
-		if (item.attributes?.name) return item.attributes.name;
-		if (item.attributes?.brand && item.attributes?.type) {
-			return `${item.attributes.brand} ${item.attributes.type}`;
+	// Initialize any missing category attributes
+	categoryAttributes.forEach((attr) => {
+		if (attr.name && !($formData.attributes?.[attr.name] !== undefined)) {
+			$formData.attributes![attr.name] = attr.default_value ?? undefined;
 		}
-		return `${item.category?.name || 'Item'} #${item.id.slice(-8)}`;
-	};
+	});
+};
 
-	const getActionIcon = (action: string) => {
-		switch (action) {
-			case 'created':
-				return Plus;
-			case 'moved':
-				return Package;
-			case 'updated':
-				return Clock;
-			default:
-				return Clock;
-		}
-	};
+const _handleCancel = () => {
+	_isEditMode = false;
+};
 
-	const getActionColor = (action: string) => {
-		switch (action) {
-			case 'created':
-				return 'text-green-600';
-			case 'moved':
-				return 'text-blue-600';
-			case 'updated':
-				return 'text-yellow-600';
-			default:
-				return 'text-gray-600';
-		}
-	};
-	$inspect(categoryAttributes);
+function _clearAttributeError(attrName: string) {
+	if (attributeErrors[attrName]) {
+		const { [attrName]: _, ...rest } = attributeErrors;
+		attributeErrors = rest;
+	}
+}
+
+const _getItemDisplayName = (item: any) => {
+	if (item.attributes?.name) return item.attributes.name;
+	if (item.attributes?.brand && item.attributes?.type) {
+		return `${item.attributes.brand} ${item.attributes.type}`;
+	}
+	return `${item.category?.name || "Item"} #${item.id.slice(-8)}`;
+};
+
+const _getActionIcon = (action: string) => {
+	switch (action) {
+		case "created":
+			return Plus;
+		case "moved":
+			return Package;
+		case "updated":
+			return Clock;
+		default:
+			return Clock;
+	}
+};
+
+const _getActionColor = (action: string) => {
+	switch (action) {
+		case "created":
+			return "text-green-600";
+		case "moved":
+			return "text-blue-600";
+		case "updated":
+			return "text-yellow-600";
+		default:
+			return "text-gray-600";
+	}
+};
+$inspect(categoryAttributes);
 </script>
 
 <div class="p-6 pb-24">

@@ -1,13 +1,12 @@
 <script lang="ts">
-	import EllipsisIcon from "@lucide/svelte/icons/ellipsis";
-	import { cn, type WithElementRef, type WithoutChildren } from "$lib/utils.js";
-	import type { HTMLAttributes } from "svelte/elements";
+import type { HTMLAttributes } from "svelte/elements";
+import type { WithElementRef, WithoutChildren } from "$lib/utils.js";
 
-	let {
-		ref = $bindable(null),
-		class: className,
-		...restProps
-	}: WithoutChildren<WithElementRef<HTMLAttributes<HTMLSpanElement>>> = $props();
+const {
+	ref = $bindable(null),
+	class: className,
+	...restProps
+}: WithoutChildren<WithElementRef<HTMLAttributes<HTMLSpanElement>>> = $props();
 </script>
 
 <span

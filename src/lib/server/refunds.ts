@@ -1,12 +1,12 @@
-import { executeWithRLS, getKyselyClient } from './kysely';
-import type { Session } from '@supabase/supabase-js';
-import { stripeClient } from './stripe';
+import type { Session } from "@supabase/supabase-js";
+import { executeWithRLS, getKyselyClient } from "./kysely";
+import { stripeClient } from "./stripe";
 
 export async function processRefund(
 	registrationId: string,
 	reason: string,
 	session: Session,
-	platform: App.Platform
+	platform: App.Platform,
 ): Promise<{
 	id: string;
 	registration_id: string;
@@ -27,86 +27,88 @@ export async function processRefund(
 	return await kysely.transaction().execute(async (trx) => {
 		// Check eligibility
 		const eligibilityResult = await trx
-			.selectFrom('club_activity_registrations as car')
-			.innerJoin('club_activities as ca', 'car.club_activity_id', 'ca.id')
+			.selectFrom("club_activity_registrations as car")
+			.innerJoin("club_activities as ca", "car.club_activity_id", "ca.id")
 			.select([
-				'car.id',
-				'car.amount_paid',
-				'car.stripe_checkout_session_id',
-				'car.status as registration_status',
-				'ca.start_date',
-				'ca.refund_days',
-				'ca.status as workshop_status'
+				"car.id",
+				"car.amount_paid",
+				"car.stripe_checkout_session_id",
+				"car.status as registration_status",
+				"ca.start_date",
+				"ca.refund_days",
+				"ca.status as workshop_status",
 			])
-			.where('car.id', '=', registrationId)
+			.where("car.id", "=", registrationId)
 			.executeTakeFirst();
 
 		if (!eligibilityResult) {
-			throw new Error('Registration not found');
+			throw new Error("Registration not found");
 		}
 
 		// Validate refund eligibility
-		if (eligibilityResult.registration_status === 'refunded') {
-			throw new Error('Registration already refunded');
+		if (eligibilityResult.registration_status === "refunded") {
+			throw new Error("Registration already refunded");
 		}
 
-		if (eligibilityResult.workshop_status === 'finished') {
-			throw new Error('Cannot refund finished workshop');
+		if (eligibilityResult.workshop_status === "finished") {
+			throw new Error("Cannot refund finished workshop");
 		}
 
 		// Check refund deadline
 		if (eligibilityResult.refund_days !== null) {
 			const refundDeadline = new Date(eligibilityResult.start_date);
-			refundDeadline.setDate(refundDeadline.getDate() - eligibilityResult.refund_days);
+			refundDeadline.setDate(
+				refundDeadline.getDate() - eligibilityResult.refund_days,
+			);
 
 			if (new Date() > refundDeadline) {
-				throw new Error('Refund deadline has passed');
+				throw new Error("Refund deadline has passed");
 			}
 		}
 
 		// Check if refund already exists
 		const existingRefund = await trx
-			.selectFrom('club_activity_refunds')
-			.select('id')
-			.where('registration_id', '=', registrationId)
+			.selectFrom("club_activity_refunds")
+			.select("id")
+			.where("registration_id", "=", registrationId)
 			.executeTakeFirst();
 
 		if (existingRefund) {
-			throw new Error('Refund already requested for this registration');
+			throw new Error("Refund already requested for this registration");
 		}
 
 		// Create refund record
 		const refund = await trx
-			.insertInto('club_activity_refunds')
+			.insertInto("club_activity_refunds")
 			.values({
 				registration_id: registrationId,
 				refund_amount: eligibilityResult.amount_paid,
 				refund_reason: reason,
-				status: 'pending',
-				requested_by: session.user.id
+				status: "pending",
+				requested_by: session.user.id,
 			})
 			.returning([
-				'id',
-				'registration_id',
-				'refund_amount',
-				'refund_reason',
-				'status',
-				'stripe_refund_id',
-				'requested_at',
-				'processed_at',
-				'completed_at',
-				'requested_by',
-				'processed_by',
-				'created_at',
-				'updated_at'
+				"id",
+				"registration_id",
+				"refund_amount",
+				"refund_reason",
+				"status",
+				"stripe_refund_id",
+				"requested_at",
+				"processed_at",
+				"completed_at",
+				"requested_by",
+				"processed_by",
+				"created_at",
+				"updated_at",
 			])
 			.executeTakeFirstOrThrow();
 
 		// Update registration status
 		await trx
-			.updateTable('club_activity_registrations')
-			.set({ status: 'refunded' })
-			.where('id', '=', registrationId)
+			.updateTable("club_activity_registrations")
+			.set({ status: "refunded" })
+			.where("id", "=", registrationId)
 			.execute();
 
 		// Process Stripe refund asynchronously
@@ -114,35 +116,35 @@ export async function processRefund(
 			try {
 				// Get the payment intent from the checkout session
 				const paymentIntent = await stripeClient.paymentIntents.retrieve(
-					eligibilityResult.stripe_checkout_session_id
+					eligibilityResult.stripe_checkout_session_id,
 				);
 
 				if (!paymentIntent) {
-					throw new Error('No payment intent found for checkout session');
+					throw new Error("No payment intent found for checkout session");
 				}
 
 				// Create the refund
 				const stripeRefund = await stripeClient.refunds.create({
 					payment_intent: paymentIntent.id,
 					amount: eligibilityResult.amount_paid,
-					reason: 'requested_by_customer'
+					reason: "requested_by_customer",
 				});
 
 				await trx
-					.updateTable('club_activity_refunds')
+					.updateTable("club_activity_refunds")
 					.set({
 						stripe_refund_id: stripeRefund.id,
-						status: 'processing',
+						status: "processing",
 						processed_at: new Date().toISOString(),
-						processed_by: session.user.id
+						processed_by: session.user.id,
 					})
-					.where('id', '=', refund.id)
+					.where("id", "=", refund.id)
 					.execute();
 			} catch (stripeError) {
 				await trx
-					.updateTable('club_activity_refunds')
-					.set({ status: 'failed' })
-					.where('id', '=', refund.id)
+					.updateTable("club_activity_refunds")
+					.set({ status: "failed" })
+					.where("id", "=", refund.id)
 					.execute();
 				throw stripeError;
 			}
@@ -155,7 +157,7 @@ export async function processRefund(
 export async function getWorkshopRefunds(
 	workshopId: string,
 	session: Session,
-	platform: App.Platform
+	platform: App.Platform,
 ): Promise<
 	{
 		id: string;
@@ -177,25 +179,29 @@ export async function getWorkshopRefunds(
 
 	return await executeWithRLS(kysely, { claims: session }, async (trx) => {
 		return await trx
-			.selectFrom('club_activity_refunds as car')
-			.innerJoin('club_activity_registrations as reg', 'car.registration_id', 'reg.id')
+			.selectFrom("club_activity_refunds as car")
+			.innerJoin(
+				"club_activity_registrations as reg",
+				"car.registration_id",
+				"reg.id",
+			)
 			.select([
-				'car.id',
-				'car.registration_id',
-				'car.refund_amount',
-				'car.refund_reason',
-				'car.status',
-				'car.stripe_refund_id',
-				'car.requested_at',
-				'car.processed_at',
-				'car.completed_at',
-				'car.requested_by',
-				'car.processed_by',
-				'car.created_at',
-				'car.updated_at'
+				"car.id",
+				"car.registration_id",
+				"car.refund_amount",
+				"car.refund_reason",
+				"car.status",
+				"car.stripe_refund_id",
+				"car.requested_at",
+				"car.processed_at",
+				"car.completed_at",
+				"car.requested_by",
+				"car.processed_by",
+				"car.created_at",
+				"car.updated_at",
 			])
-			.where('reg.club_activity_id', '=', workshopId)
-			.orderBy('car.requested_at', 'desc')
+			.where("reg.club_activity_id", "=", workshopId)
+			.orderBy("car.requested_at", "desc")
 			.execute();
 	});
 }

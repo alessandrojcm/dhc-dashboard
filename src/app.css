@@ -1,6 +1,6 @@
-@import 'tailwindcss';
+@import "tailwindcss";
 
-@config '../tailwind.config.js';
+@config "../tailwind.config.js";
 
 @theme {
 	--color-blue-50: oklch(93.94% 0.021 254.92);

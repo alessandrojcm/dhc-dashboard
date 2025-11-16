@@ -1,84 +1,81 @@
 <script lang="ts">
-	import type { Database } from '$database';
-	import type { SupabaseClient } from '@supabase/supabase-js';
-	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
-	import { Button } from '$lib/components/ui/button';
-	import { Badge } from '$lib/components/ui/badge';
-	import { FolderOpen, Plus, Edit, Trash2, Package, AlertTriangle } from 'lucide-svelte';
-	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
-	import { createQuery } from '@tanstack/svelte-query';
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { createQuery } from "@tanstack/svelte-query";
+import type { Database } from "$database";
 
-	let { data } = $props();
-	const supabase: SupabaseClient<Database> = data.supabase;
+const { data } = $props();
+const supabase: SupabaseClient<Database> = data.supabase;
 
-	// Fetch containers with TanStack Query
-	const containersQuery = createQuery(() => ({
-		queryKey: ['inventory-containers'],
-		queryFn: async ({ signal }) => {
-			const { data: containers, error } = await supabase
-				.from('containers')
-				.select(
-					'id, name, description, parent_container_id, parent_container:containers!containers_parent_container_id_fkey(id, name), item_count:equipment_items(count)'
-				)
-				.order('name')
-				.abortSignal(signal);
+// Fetch containers with TanStack Query
+const containersQuery = createQuery(() => ({
+	queryKey: ["inventory-containers"],
+	queryFn: async ({ signal }) => {
+		const { data: containers, error } = await supabase
+			.from("containers")
+			.select(
+				"id, name, description, parent_container_id, parent_container:containers!containers_parent_container_id_fkey(id, name), item_count:equipment_items(count)",
+			)
+			.order("name")
+			.abortSignal(signal);
 
-			if (error) throw error;
+		if (error) throw error;
 
-			return containers || [];
+		return containers || [];
+	},
+}));
+
+// Build hierarchy tree
+const buildHierarchy = (containers: any[]) => {
+	const containerMap = new Map();
+	const rootContainers: any[] = [];
+
+	// First pass: create map of all containers
+	containers.forEach((container) => {
+		containerMap.set(container.id, { ...container, children: [] });
+	});
+
+	// Second pass: build hierarchy
+	containers.forEach((container) => {
+		if (container.parent_container_id) {
+			const parent = containerMap.get(container.parent_container_id);
+			if (parent) {
+				parent.children.push(containerMap.get(container.id));
+			}
+		} else {
+			rootContainers.push(containerMap.get(container.id));
 		}
-	}));
+	});
 
-	// Build hierarchy tree
-	const buildHierarchy = (containers: any[]) => {
-		const containerMap = new Map();
-		const rootContainers: any[] = [];
+	return rootContainers;
+};
 
-		// First pass: create map of all containers
-		containers.forEach((container) => {
-			containerMap.set(container.id, { ...container, children: [] });
-		});
+const renderContainer = (container: any, level = 0) => {
+	const itemCount = container.item_count?.[0]?.count || 0;
+	const hasChildren = container.children.length > 0;
 
-		// Second pass: build hierarchy
-		containers.forEach((container) => {
-			if (container.parent_container_id) {
-				const parent = containerMap.get(container.parent_container_id);
-				if (parent) {
-					parent.children.push(containerMap.get(container.id));
-				}
-			} else {
-				rootContainers.push(containerMap.get(container.id));
-			}
-		});
-
-		return rootContainers;
+	return {
+		container,
+		level,
+		itemCount,
+		hasChildren,
 	};
+};
 
-	const renderContainer = (container: any, level = 0) => {
-		const itemCount = container.item_count?.[0]?.count || 0;
-		const hasChildren = container.children.length > 0;
+const flattenHierarchy = (containers: any[], level = 0): any[] => {
+	const result: any[] = [];
+	containers.forEach((container) => {
+		result.push(renderContainer(container, level));
+		if (container.children.length > 0) {
+			result.push(...flattenHierarchy(container.children, level + 1));
+		}
+	});
+	return result;
+};
 
-		return {
-			container,
-			level,
-			itemCount,
-			hasChildren
-		};
-	};
-
-	const flattenHierarchy = (containers: any[], level = 0): any[] => {
-		const result: any[] = [];
-		containers.forEach((container) => {
-			result.push(renderContainer(container, level));
-			if (container.children.length > 0) {
-				result.push(...flattenHierarchy(container.children, level + 1));
-			}
-		});
-		return result;
-	};
-
-	const hierarchy = $derived(containersQuery.data ? buildHierarchy(containersQuery.data) : []);
-	const flatContainers = $derived(flattenHierarchy(hierarchy));
+const hierarchy = $derived(
+	containersQuery.data ? buildHierarchy(containersQuery.data) : [],
+);
+const _flatContainers = $derived(flattenHierarchy(hierarchy));
 </script>
 
 <div class="p-6">

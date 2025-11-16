@@ -1,126 +1,121 @@
 <script lang="ts">
-	import SuperDebug, { superForm } from 'sveltekit-superforms';
-	import { valibot } from 'sveltekit-superforms/adapters';
-	import { type CategorySchema, itemSchema } from '$lib/schemas/inventory';
-	import type { InventoryCategory, InventoryAttributeDefinition } from '$lib/types';
-	import {
-		Card,
-		CardContent,
-		CardDescription,
-		CardHeader,
-		CardTitle
-	} from '$lib/components/ui/card';
-	import { Button } from '$lib/components/ui/button';
-	import { Input } from '$lib/components/ui/input';
-	import { Textarea } from '$lib/components/ui/textarea';
-	import { Select, SelectContent, SelectItem, SelectTrigger } from '$lib/components/ui/select';
-	import { Checkbox } from '$lib/components/ui/checkbox';
-	import * as Form from '$lib/components/ui/form';
-	import { ArrowLeft, Package, AlertCircle } from 'lucide-svelte';
-	import { dev } from '$app/environment';
-	import { Label } from '$lib/components/ui/label';
-	import { Alert, AlertDescription } from '$lib/components/ui/alert';
-	import { buildContainerHierarchy } from '$lib/utils/inventory-form';
+import { superForm } from "sveltekit-superforms";
+import { valibot } from "sveltekit-superforms/adapters";
+import { itemSchema } from "$lib/schemas/inventory";
+import type {
+	InventoryAttributeDefinition,
+	InventoryCategory,
+} from "$lib/types";
+import { buildContainerHierarchy } from "$lib/utils/inventory-form";
 
-	let { data } = $props();
+const { data } = $props();
 
-	// Track validation errors for attributes
-	let attributeErrors = $state<Record<string, string>>({});
+// Track validation errors for attributes
+let attributeErrors = $state<Record<string, string>>({});
 
-	const form = superForm(data.form, {
-		validators: valibot(itemSchema),
-		resetForm: true,
-		dataType: 'json',
-		onSubmit: ({ formData: submitData, cancel }) => {
-			// Validate required attributes
-			const newErrors: Record<string, string> = {};
-			let hasErrors = false;
+const form = superForm(data.form, {
+	validators: valibot(itemSchema),
+	resetForm: true,
+	dataType: "json",
+	onSubmit: ({ formData: submitData, cancel }) => {
+		// Validate required attributes
+		const newErrors: Record<string, string> = {};
+		let hasErrors = false;
 
-			if (selectedCategory) {
-				const attributes =
-					(selectedCategory.available_attributes as InventoryAttributeDefinition[]) || [];
-				attributes.forEach((attr) => {
-					if (attr.required) {
-						const value = $formData.attributes?.[attr.name];
-						if (!value || value === '' || value === null || value === undefined) {
-							newErrors[attr.name] = `${attr.label} is required`;
-							hasErrors = true;
-						}
+		if (selectedCategory) {
+			const attributes =
+				(selectedCategory.available_attributes as InventoryAttributeDefinition[]) ||
+				[];
+			attributes.forEach((attr) => {
+				if (attr.required) {
+					const value = $formData.attributes?.[attr.name];
+					if (!value || value === "" || value === null || value === undefined) {
+						newErrors[attr.name] = `${attr.label} is required`;
+						hasErrors = true;
 					}
-				});
-			}
-
-			attributeErrors = newErrors;
-
-			if (hasErrors) {
-				cancel();
-				return;
-			}
-
-			// Clean attributes to only include non-empty values
-			const attributesRaw = submitData.get('attributes');
-			const attributes = attributesRaw ? JSON.parse(attributesRaw as string) : {};
-			const cleanedAttributes: Record<string, any> = {};
-
-			Object.entries(attributes).forEach(([key, value]) => {
-				// Only include attributes that have actual values (not null, undefined, or empty string)
-				if (value !== null && value !== undefined && value !== '') {
-					cleanedAttributes[key] = value;
 				}
 			});
-
-			submitData.set('attributes', JSON.stringify(cleanedAttributes));
 		}
-	});
 
-	const { form: formData, enhance, submitting, message } = form;
+		attributeErrors = newErrors;
 
-	const hierarchicalContainers = buildContainerHierarchy(data.containers);
+		if (hasErrors) {
+			cancel();
+			return;
+		}
 
-	// Reactive category selection for dynamic attributes
-	const selectedCategory = $derived(
-		data.categories.find((c) => c.id === $formData.category_id) as InventoryCategory | undefined
-	);
-	const categoryAttributes = $derived(
-		(selectedCategory?.available_attributes as InventoryAttributeDefinition[]) || []
-	);
+		// Clean attributes to only include non-empty values
+		const attributesRaw = submitData.get("attributes");
+		const attributes = attributesRaw ? JSON.parse(attributesRaw as string) : {};
+		const cleanedAttributes: Record<string, any> = {};
 
-	// Display names for selected items
-	const selectedCategoryName = $derived(selectedCategory?.name || 'Select a category');
-	const selectedContainerName = $derived.by(() => {
-		const container = hierarchicalContainers.find((c) => c.id === $formData.container_id);
-		return container?.displayName || 'Select a container';
-	});
-
-	function updateCategory(categoryId: string) {
-		$formData.category_id = categoryId;
-
-		// Clear attribute errors
-		attributeErrors = {};
-
-		// Reset attributes when category changes
-		$formData.attributes = {};
-
-		// Find the selected category
-		const category = data.categories.find((c) => c.id === categoryId);
-		if (!category) return;
-
-		// Initialize only required attributes or those with default values
-		const attributes = (category.available_attributes as InventoryAttributeDefinition[]) || [];
-		attributes.forEach((attr) => {
-			// Only set default value if explicitly provided, don't initialize with null
-			if (attr.default_value !== undefined && $formData.attributes) {
-				$formData.attributes[attr.name] = attr.default_value;
+		Object.entries(attributes).forEach(([key, value]) => {
+			// Only include attributes that have actual values (not null, undefined, or empty string)
+			if (value !== null && value !== undefined && value !== "") {
+				cleanedAttributes[key] = value;
 			}
 		});
-	}
 
-	function clearAttributeError(attrName: string) {
-		if (attributeErrors[attrName]) {
-			const { [attrName]: _, ...rest } = attributeErrors;
-			attributeErrors = rest;
+		submitData.set("attributes", JSON.stringify(cleanedAttributes));
+	},
+});
+
+const { form: formData, enhance, submitting, message } = form;
+
+const hierarchicalContainers = buildContainerHierarchy(data.containers);
+
+// Reactive category selection for dynamic attributes
+const selectedCategory = $derived(
+	data.categories.find((c) => c.id === $formData.category_id) as
+		| InventoryCategory
+		| undefined,
+);
+const _categoryAttributes = $derived(
+	(selectedCategory?.available_attributes as InventoryAttributeDefinition[]) ||
+		[],
+);
+
+// Display names for selected items
+const _selectedCategoryName = $derived(
+	selectedCategory?.name || "Select a category",
+);
+const _selectedContainerName = $derived.by(() => {
+	const container = hierarchicalContainers.find(
+		(c) => c.id === $formData.container_id,
+	);
+	return container?.displayName || "Select a container";
+});
+
+function _updateCategory(categoryId: string) {
+	$formData.category_id = categoryId;
+
+	// Clear attribute errors
+	attributeErrors = {};
+
+	// Reset attributes when category changes
+	$formData.attributes = {};
+
+	// Find the selected category
+	const category = data.categories.find((c) => c.id === categoryId);
+	if (!category) return;
+
+	// Initialize only required attributes or those with default values
+	const attributes =
+		(category.available_attributes as InventoryAttributeDefinition[]) || [];
+	attributes.forEach((attr) => {
+		// Only set default value if explicitly provided, don't initialize with null
+		if (attr.default_value !== undefined && $formData.attributes) {
+			$formData.attributes[attr.name] = attr.default_value;
 		}
+	});
+}
+
+function _clearAttributeError(attrName: string) {
+	if (attributeErrors[attrName]) {
+		const { [attrName]: _, ...rest } = attributeErrors;
+		attributeErrors = rest;
 	}
+}
 </script>
 
 <div class="p-6">

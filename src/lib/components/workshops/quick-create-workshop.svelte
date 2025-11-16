@@ -1,65 +1,60 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
-	import { Button } from '$lib/components/ui/button';
-	import { Input } from '$lib/components/ui/input';
-	import { Textarea } from '$lib/components/ui/textarea';
-	import { Popover, PopoverContent, PopoverTrigger } from '$lib/components/ui/popover';
-	import { createMutation } from '@tanstack/svelte-query';
-	import { toast } from 'svelte-sonner';
-	import { Sparkles, Loader2 } from 'lucide-svelte';
+import { createMutation } from "@tanstack/svelte-query";
+import { toast } from "svelte-sonner";
+import { goto } from "$app/navigation";
 
-	let prompt = $state('');
-	let open = $state(false);
+let prompt = $state("");
+let _open = $state(false);
 
-	const generateWorkshopMutation = createMutation(() => ({
-		mutationFn: async (prompt: string) => {
-			const response = await fetch('/api/workshops/generate', {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json'
-				},
-				body: JSON.stringify({ prompt })
-			});
+const generateWorkshopMutation = createMutation(() => ({
+	mutationFn: async (prompt: string) => {
+		const response = await fetch("/api/workshops/generate", {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({ prompt }),
+		});
 
-			if (!response.ok) {
-				throw new Error('Failed to generate workshop');
-			}
-
-			return response.json();
-		},
-		onSuccess: (data: any) => {
-			if (data.success === false) {
-				toast.error(data.error || 'Failed to generate workshop');
-				return;
-			}
-
-			// Encode the generated data as URL parameter
-			const encodedData = encodeURIComponent(JSON.stringify(data.data));
-
-			// Close popover and redirect
-			open = false;
-			prompt = '';
-			goto(`/dashboard/workshops/create?generated=${encodedData}`);
-		},
-		onError: (error) => {
-			toast.error(error.message || 'Failed to generate workshop');
+		if (!response.ok) {
+			throw new Error("Failed to generate workshop");
 		}
-	}));
 
-	function handleSubmit() {
-		if (!prompt.trim()) {
-			toast.error('Please enter a workshop description');
+		return response.json();
+	},
+	onSuccess: (data: any) => {
+		if (data.success === false) {
+			toast.error(data.error || "Failed to generate workshop");
 			return;
 		}
-		generateWorkshopMutation.mutate(prompt.trim());
-	}
 
-	function handleKeydown(event: KeyboardEvent) {
-		if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-			event.preventDefault();
-			handleSubmit();
-		}
+		// Encode the generated data as URL parameter
+		const encodedData = encodeURIComponent(JSON.stringify(data.data));
+
+		// Close popover and redirect
+		_open = false;
+		prompt = "";
+		goto(`/dashboard/workshops/create?generated=${encodedData}`);
+	},
+	onError: (error) => {
+		toast.error(error.message || "Failed to generate workshop");
+	},
+}));
+
+function handleSubmit() {
+	if (!prompt.trim()) {
+		toast.error("Please enter a workshop description");
+		return;
 	}
+	generateWorkshopMutation.mutate(prompt.trim());
+}
+
+function _handleKeydown(event: KeyboardEvent) {
+	if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+		event.preventDefault();
+		handleSubmit();
+	}
+}
 </script>
 
 <Popover bind:open>

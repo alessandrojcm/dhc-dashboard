@@ -1,15 +1,11 @@
 <script lang="ts">
-	import WorkshopForm from '$lib/components/workshop-form.svelte';
-	import { Button } from '$lib/components/ui/button';
-	import { Alert, AlertDescription } from '$lib/components/ui/alert';
-	import { goto } from '$app/navigation';
-	import { Sparkles } from 'lucide-svelte';
+import { goto } from "$app/navigation";
 
-	const { data } = $props();
+const { data } = $props();
 
-	function handleSuccess() {
-		setTimeout(() => goto('/dashboard/workshops'), 2000);
-	}
+function _handleSuccess() {
+	setTimeout(() => goto("/dashboard/workshops"), 2000);
+}
 </script>
 
 <div class="max-w-4xl mx-auto p-6 space-y-8">
