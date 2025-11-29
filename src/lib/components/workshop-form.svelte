@@ -1,7 +1,7 @@
 <script lang="ts">
-	import { dateProxy, superForm } from 'sveltekit-superforms';
+	import { superForm } from 'sveltekit-superforms';
 	import { valibotClient } from 'sveltekit-superforms/adapters';
-	import { CreateWorkshopSchema, UpdateWorkshopSchema } from '$lib/schemas/workshops';
+
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Textarea } from '$lib/components/ui/textarea';
@@ -21,6 +21,7 @@
 	import utc from 'dayjs/plugin/utc';
 	import timezone from 'dayjs/plugin/timezone';
 	import dayjs from 'dayjs';
+    import {CreateWorkshopSchema, UpdateWorkshopSchema} from "$lib/server/services/workshops";
 
 	dayjs.extend(utc);
 	dayjs.extend(timezone);
