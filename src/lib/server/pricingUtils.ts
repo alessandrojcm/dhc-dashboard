@@ -1,10 +1,10 @@
-import Dinero from 'dinero.js';
-import type { KyselyDatabase, PlanPricing } from '$lib/types';
-import dayjs from 'dayjs';
-import { ANNUAL_FEE_LOOKUP, MEMBERSHIP_FEE_LOOKUP_NAME } from './constants';
-import { stripeClient } from './stripe';
-import type { getKyselyClient } from './kysely';
-import * as Sentry from '@sentry/sveltekit';
+import * as Sentry from "@sentry/sveltekit";
+import dayjs from "dayjs";
+import Dinero from "dinero.js";
+import type { PlanPricing } from "$lib/types";
+import { ANNUAL_FEE_LOOKUP, MEMBERSHIP_FEE_LOOKUP_NAME } from "./constants";
+import type { getKyselyClient } from "./kysely";
+import { stripeClient } from "./stripe";
 
 // Interface for price IDs
 interface PriceIds {
@@ -19,13 +19,13 @@ async function fetchPriceIdsFromStripe(): Promise<PriceIds> {
 		stripeClient.prices.list({
 			lookup_keys: [MEMBERSHIP_FEE_LOOKUP_NAME],
 			active: true,
-			limit: 1
+			limit: 1,
 		}),
 		stripeClient.prices.list({
 			lookup_keys: [ANNUAL_FEE_LOOKUP],
 			active: true,
-			limit: 1
-		})
+			limit: 1,
+		}),
 	]);
 
 	// Extract price IDs
@@ -33,19 +33,19 @@ async function fetchPriceIdsFromStripe(): Promise<PriceIds> {
 	const annualPriceId = annualPrices.data[0]?.id;
 
 	if (!monthlyPriceId || !annualPriceId) {
-		throw new Error('Failed to retrieve price IDs from Stripe');
+		throw new Error("Failed to retrieve price IDs from Stripe");
 	}
 
 	return {
 		monthly: monthlyPriceId,
-		annual: annualPriceId
+		annual: annualPriceId,
 	};
 }
 
 // Update the price cache in the settings table
 async function updatePriceCache(
 	prices: PriceIds,
-	db: Awaited<ReturnType<typeof getKyselyClient>>
+	db: Awaited<ReturnType<typeof getKyselyClient>>,
 ): Promise<void> {
 	const now = new Date().toISOString();
 
@@ -53,28 +53,28 @@ async function updatePriceCache(
 	await db.transaction().execute(async (trx) => {
 		await Promise.all([
 			trx
-				.updateTable('settings')
+				.updateTable("settings")
 				.set({
 					value: prices.monthly,
-					updated_at: now
+					updated_at: now,
 				})
-				.where('key', '=', 'stripe_monthly_price_id')
+				.where("key", "=", "stripe_monthly_price_id")
 				.execute(),
 			trx
-				.updateTable('settings')
+				.updateTable("settings")
 				.set({
 					value: prices.annual,
-					updated_at: now
+					updated_at: now,
 				})
-				.where('key', '=', 'stripe_annual_price_id')
-				.execute()
+				.where("key", "=", "stripe_annual_price_id")
+				.execute(),
 		]);
 	});
 }
 
 // Helper function to get price IDs from the settings table (cached) or from Stripe
 export async function getPriceIds(
-	db: Awaited<ReturnType<typeof getKyselyClient>>
+	db: Awaited<ReturnType<typeof getKyselyClient>>,
 ): Promise<PriceIds> {
 	try {
 		// First try to get from settings table (cached values)
@@ -93,26 +93,30 @@ export async function getPriceIds(
 	} catch (error) {
 		Sentry.captureException(error);
 		throw new Error(
-			`Failed to get price IDs: ${error instanceof Error ? error.message : String(error)}`
+			`Failed to get price IDs: ${error instanceof Error ? error.message : String(error)}`,
 		);
 	}
 }
 
 // Get cached price IDs from the settings table
 async function getCachedPriceIds(
-	db: Awaited<ReturnType<typeof getKyselyClient>>
+	db: Awaited<ReturnType<typeof getKyselyClient>>,
 ): Promise<PriceIds | null> {
 	try {
 		// Get both monthly and annual price IDs in a single query
 		const priceData = await db
-			.selectFrom('settings')
-			.select(['key', 'value', 'updated_at'])
-			.where('key', 'in', ['stripe_monthly_price_id', 'stripe_annual_price_id'])
+			.selectFrom("settings")
+			.select(["key", "value", "updated_at"])
+			.where("key", "in", ["stripe_monthly_price_id", "stripe_annual_price_id"])
 			.execute();
 
 		// Extract monthly and annual data from results
-		const monthlyData = priceData.find((item) => item.key === 'stripe_monthly_price_id');
-		const annualData = priceData.find((item) => item.key === 'stripe_annual_price_id');
+		const monthlyData = priceData.find(
+			(item) => item.key === "stripe_monthly_price_id",
+		);
+		const annualData = priceData.find(
+			(item) => item.key === "stripe_annual_price_id",
+		);
 
 		// If either data is missing, return null
 		if (!monthlyData || !annualData) {
@@ -124,14 +128,17 @@ async function getCachedPriceIds(
 		const annualUpdatedAt = dayjs(annualData.updated_at);
 		const now = dayjs();
 
-		if (now.diff(monthlyUpdatedAt, 'hour') > 24 || now.diff(annualUpdatedAt, 'hour') > 24) {
+		if (
+			now.diff(monthlyUpdatedAt, "hour") > 24 ||
+			now.diff(annualUpdatedAt, "hour") > 24
+		) {
 			return null;
 		}
 
 		// Return cached price IDs
 		return {
 			monthly: monthlyData.value,
-			annual: annualData.value
+			annual: annualData.value,
 		};
 	} catch (error) {
 		Sentry.captureException(error);
@@ -151,7 +158,7 @@ export function generatePricingInfo({
 	discountPercentage = 0,
 	coupon = undefined,
 	discountedMonthlyFee = undefined,
-	discountedAnnualFee = undefined
+	discountedAnnualFee = undefined,
 }: {
 	proratedPrice: number;
 	monthlyFee: number;
@@ -166,42 +173,42 @@ export function generatePricingInfo({
 	return {
 		proratedPrice: Dinero({
 			amount: proratedPrice,
-			currency: 'EUR'
+			currency: "EUR",
 		}).toJSON(),
 		proratedMonthlyPrice: Dinero({
 			amount: proratedMonthlyPrice ?? proratedPrice,
-			currency: 'EUR'
+			currency: "EUR",
 		}).toJSON(),
 		proratedAnnualPrice: Dinero({
 			amount: proratedAnnualPrice ?? proratedPrice,
-			currency: 'EUR'
+			currency: "EUR",
 		}).toJSON(),
 		monthlyFee: Dinero({
 			amount: monthlyFee,
-			currency: 'EUR'
+			currency: "EUR",
 		}).toJSON(),
 		annualFee: Dinero({
 			amount: annualFee,
-			currency: 'EUR'
+			currency: "EUR",
 		}).toJSON(),
 		...(discountedMonthlyFee
 			? {
 					discountedMonthlyFee: Dinero({
 						amount: discountedMonthlyFee,
-						currency: 'EUR'
-					}).toJSON()
+						currency: "EUR",
+					}).toJSON(),
 				}
 			: {}),
 		...(discountedAnnualFee
 			? {
 					discountedAnnualFee: Dinero({
 						amount: discountedAnnualFee,
-						currency: 'EUR'
-					}).toJSON()
+						currency: "EUR",
+					}).toJSON(),
 				}
 			: {}),
 		...(coupon ? { coupon } : {}),
-		discountPercentage
+		discountPercentage,
 	} as PlanPricing;
 }
 
@@ -210,7 +217,7 @@ export function generatePricingInfo({
  */
 export function getNextBillingDates() {
 	return {
-		nextMonthlyBillingDate: dayjs().add(1, 'month').startOf('month').toDate(),
-		nextAnnualBillingDate: dayjs().month(0).date(7).add(1, 'year').toDate()
+		nextMonthlyBillingDate: dayjs().add(1, "month").startOf("month").toDate(),
+		nextAnnualBillingDate: dayjs().month(0).date(7).add(1, "year").toDate(),
 	};
 }

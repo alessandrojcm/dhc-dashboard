@@ -29,8 +29,8 @@ export function buildContainerHierarchy(containers: any[]) {
 		containers.forEach((container) => {
 			result.push({
 				...container,
-				displayName: '  '.repeat(level) + container.name,
-				level
+				displayName: "  ".repeat(level) + container.name,
+				level,
 			});
 			if (container.children.length > 0) {
 				result.push(...flattenWithIndent(container.children, level + 1));
@@ -48,7 +48,7 @@ export function buildContainerHierarchy(containers: any[]) {
  */
 export function validateCategoryAttributes(
 	categoryAttributes: any[],
-	formDataAttributes: Record<string, any>
+	formDataAttributes: Record<string, any>,
 ): { errors: Record<string, string>; hasErrors: boolean } {
 	const errors: Record<string, string> = {};
 	let hasErrors = false;
@@ -56,7 +56,7 @@ export function validateCategoryAttributes(
 	categoryAttributes.forEach((attr) => {
 		if (attr.required) {
 			const value = formDataAttributes?.[attr.name];
-			if (!value || value === '' || value === null || value === undefined) {
+			if (!value || value === "" || value === null || value === undefined) {
 				errors[attr.name] = `${attr.label} is required`;
 				hasErrors = true;
 			}
@@ -69,11 +69,13 @@ export function validateCategoryAttributes(
 /**
  * Cleans attributes to only include non-empty values
  */
-export function cleanAttributes(attributes: Record<string, any>): Record<string, any> {
+export function cleanAttributes(
+	attributes: Record<string, any>,
+): Record<string, any> {
 	const cleaned: Record<string, any> = {};
 
 	Object.entries(attributes).forEach(([key, value]) => {
-		if (value !== null && value !== undefined && value !== '') {
+		if (value !== null && value !== undefined && value !== "") {
 			cleaned[key] = value;
 		}
 	});
@@ -87,11 +89,14 @@ export function cleanAttributes(attributes: Record<string, any>): Record<string,
  */
 export function resetAttributesForCategory(
 	newCategory: any,
-	currentAttributes: Record<string, any>
+	currentAttributes: Record<string, any>,
 ): Record<string, any> {
 	const newAttributes: Record<string, any> = {};
 
-	if (newCategory?.available_attributes && Array.isArray(newCategory.available_attributes)) {
+	if (
+		newCategory?.available_attributes &&
+		Array.isArray(newCategory.available_attributes)
+	) {
 		newCategory.available_attributes.forEach((attr: any) => {
 			// Preserve existing value if it exists
 			if (currentAttributes[attr.name] !== undefined) {

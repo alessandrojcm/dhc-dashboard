@@ -1,41 +1,52 @@
-import { memberSignupSchema } from '$lib/schemas/membersSignup';
-import { error } from '@sveltejs/kit';
-import { fail, message, superValidate } from 'sveltekit-superforms';
-import { valibot } from 'sveltekit-superforms/adapters';
-import { invariant } from '$lib/server/invariant';
-import { stripeClient } from '$lib/server/stripe';
-import { getKyselyClient } from '$lib/server/kysely';
-import Stripe from 'stripe';
-import {
-	completeMemberRegistration,
-	getInvitationInfo,
-	updateInvitationStatus
-} from '$lib/server/kyselyRPCFunctions';
-import * as Sentry from '@sentry/sveltekit';
-import { getNextBillingDates, getPriceIds } from '$lib/server/pricingUtils';
-import type { Actions, PageServerLoad } from './$types';
-import { env } from '$env/dynamic/public';
+import * as Sentry from "@sentry/sveltekit";
+import { error } from "@sveltejs/kit";
+import type Stripe from "stripe";
+import { fail, message, superValidate } from "sveltekit-superforms";
+import { valibot } from "sveltekit-superforms/adapters";
+import { env } from "$env/dynamic/public";
+import { memberSignupSchema } from "$lib/schemas/membersSignup";
+import { invariant } from "$lib/server/invariant";
+import { getKyselyClient } from "$lib/server/kysely";
+import { completeMemberRegistration } from "$lib/server/kyselyRPCFunctions";
+import { getNextBillingDates, getPriceIds } from "$lib/server/pricingUtils";
+import { createInvitationService } from "$lib/server/services/invitations";
+import { stripeClient } from "$lib/server/stripe";
+import type { Actions, PageServerLoad } from "./$types";
 
-const DASHBOARD_MIGRATION_CODE = env.PUBLIC_DASHBOARD_MIGRATION_CODE ?? 'DHCDASHBOARD';
+const DASHBOARD_MIGRATION_CODE =
+	env.PUBLIC_DASHBOARD_MIGRATION_CODE ?? "DHCDASHBOARD";
 
 // need to normalize medical_conditions
-export const load: PageServerLoad = async ({ params, platform, cookies }) => {
+export const load: PageServerLoad = async ({
+	params,
+	platform,
+	cookies,
+	locals,
+}) => {
 	const invitationId = params.invitationId;
-	const kysely = getKyselyClient(platform?.env.HYPERDRIVE);
 	const isConfirmed = Boolean(cookies.get(`invite-confirmed-${invitationId}`));
 
 	try {
+		// Create a minimal session for the invitation service
+		// This is a public route, so we use a service-level session
+		const { session } = await locals.safeGetSession();
+		const invitationService = createInvitationService(
+			platform!,
+			session ?? { user: { id: "" }, access_token: "", refresh_token: "" },
+		);
+
 		// Get invitation data first (essential for page rendering)
-		const invitationData = await getInvitationInfo(invitationId, kysely);
+		const invitationData =
+			await invitationService.getInvitationInfo(invitationId);
 
 		if (!invitationData) {
-			return error(404, 'Invitation not found');
+			return error(404, "Invitation not found");
 		}
 
 		// Return essential data immediately, with pricing as a streamed promise
 		return {
 			form: await superValidate({}, valibot(memberSignupSchema), {
-				errors: false
+				errors: false,
 			}),
 			userData: {
 				firstName: invitationData.first_name,
@@ -45,17 +56,17 @@ export const load: PageServerLoad = async ({ params, platform, cookies }) => {
 				phoneNumber: invitationData.phone_number,
 				pronouns: invitationData.pronouns,
 				gender: invitationData.gender,
-				medicalConditions: invitationData.medical_conditions
+				medicalConditions: invitationData.medical_conditions,
 			},
 			isConfirmed,
-			insuranceFormLink: '',
+			insuranceFormLink: "",
 			// These are needed for the page but can be calculated immediately
-			...getNextBillingDates()
+			...getNextBillingDates(),
 		};
 	} catch (err) {
 		Sentry.captureException(err);
 		error(404, {
-			message: 'Something went wrong'
+			message: "Something went wrong",
 		});
 	}
 };
@@ -65,30 +76,44 @@ export const actions: Actions = {
 		const form = await superValidate(event, valibot(memberSignupSchema));
 		if (!form.valid) {
 			return fail(422, {
-				form
+				form,
 			});
 		}
 		const kysely = getKyselyClient(event.platform?.env.HYPERDRIVE);
 		const confirmationToken: Stripe.ConfirmationToken = JSON.parse(
-			form.data.stripeConfirmationToken
+			form.data.stripeConfirmationToken,
+		);
+
+		// Create invitation service with a minimal session for public route
+		const { session } = await event.locals.safeGetSession();
+		const invitationService = createInvitationService(
+			event.platform!,
+			session ?? { user: { id: "" }, access_token: "", refresh_token: "" },
 		);
 
 		return kysely
 			.transaction()
 			.execute(async (trx) => {
-				const invitationData = await getInvitationInfo(event.params.invitationId, trx);
+				// Get invitation info using the service
+				const invitationData = await invitationService.getInvitationInfo(
+					event.params.invitationId,
+				);
+
 				const customerId = await trx
-					.selectFrom('user_profiles')
-					.select('customer_id')
-					.where('supabase_user_id', '=', invitationData.user_id)
+					.selectFrom("user_profiles")
+					.select("customer_id")
+					.where("supabase_user_id", "=", invitationData.user_id)
 					.executeTakeFirst();
 				if (!customerId) {
-					throw error(404, 'No customer ID found for this user.');
+					throw error(404, "No customer ID found for this user.");
 				}
 
 				// First get the invitation info and update its status to accepted
-				if (invitationData && invitationData.invitation_id) {
-					await updateInvitationStatus(invitationData.invitation_id, 'accepted', trx);
+				if (invitationData?.invitation_id) {
+					await invitationService.updateStatus(
+						invitationData.invitation_id,
+						"accepted",
+					);
 				}
 
 				await Promise.all([
@@ -97,31 +122,31 @@ export const actions: Actions = {
 							v_user_id: invitationData.user_id,
 							p_next_of_kin_name: form.data.nextOfKin,
 							p_next_of_kin_phone: form.data.nextOfKinNumber,
-							p_insurance_form_submitted: true
+							p_insurance_form_submitted: true,
 						},
-						trx
+						trx,
 					),
 					trx
-						.updateTable('waitlist')
-						.set({ status: 'joined' })
-						.where('email', '=', invitationData.email)
-						.execute()
+						.updateTable("waitlist")
+						.set({ status: "joined" })
+						.where("email", "=", invitationData.email)
+						.execute(),
 				]);
 
 				const intent = await stripeClient.setupIntents.create({
 					confirm: true,
 					customer: customerId.customer_id!,
 					confirmation_token: confirmationToken.id,
-					payment_method_types: ['sepa_debit']
+					payment_method_types: ["sepa_debit"],
 				});
 
 				invariant(
-					intent.status == 'requires_payment_method',
-					'payment_intent_requires_payment_method'
+					intent.status === "requires_payment_method",
+					"payment_intent_requires_payment_method",
 				);
-				invariant(intent.payment_method == null, 'payment_method_not_found');
+				invariant(intent.payment_method == null, "payment_method_not_found");
 				const paymentMethodId =
-					typeof intent.payment_method === 'string'
+					typeof intent.payment_method === "string"
 						? intent.payment_method
 						: (intent.payment_method! as Stripe.PaymentMethod).id;
 
@@ -129,10 +154,13 @@ export const actions: Actions = {
 				const { monthly, annual } = await getPriceIds(kysely);
 
 				if (!monthly || !annual) {
-					Sentry.captureMessage('Base prices not found for membership products', {
-						extra: { userId: invitationData.user_id }
-					});
-					throw error(500, 'Could not retrieve base product prices.');
+					Sentry.captureMessage(
+						"Base prices not found for membership products",
+						{
+							extra: { userId: invitationData.user_id },
+						},
+					);
+					throw error(500, "Could not retrieve base product prices.");
 				}
 				let isMigration = false;
 				let promotionCodeId: string | undefined;
@@ -140,10 +168,10 @@ export const actions: Actions = {
 					const promotionCodes = await stripeClient.promotionCodes.list({
 						active: true,
 						code: form.data.couponCode,
-						limit: 1
+						limit: 1,
 					});
 					if (!promotionCodes.data.length) {
-						throw error(400, 'Invalid or inactive promotion code');
+						throw error(400, "Invalid or inactive promotion code");
 					}
 					if (
 						form.data.couponCode.toLowerCase().trim() ===
@@ -160,121 +188,135 @@ export const actions: Actions = {
 							customer: customerId.customer_id!,
 							items: [{ price: monthly }],
 							billing_cycle_anchor_config: {
-								day_of_month: 1
+								day_of_month: 1,
 							},
-							payment_behavior: 'default_incomplete',
+							payment_behavior: "default_incomplete",
 							payment_settings: {
-								payment_method_types: ['sepa_debit']
+								payment_method_types: ["sepa_debit"],
 							},
-							expand: ['latest_invoice.payments'],
-							collection_method: 'charge_automatically',
+							expand: ["latest_invoice.payments"],
+							collection_method: "charge_automatically",
 							default_payment_method: paymentMethodId,
 							discounts:
-								!isMigration && promotionCodeId ? [{ promotion_code: promotionCodeId }] : undefined
+								!isMigration && promotionCodeId
+									? [{ promotion_code: promotionCodeId }]
+									: undefined,
 						})
 						.then(async (subscription) => {
-							if ((subscription.latest_invoice as Stripe.Invoice).payments!.data.length === 0) {
+							if (
+								(subscription.latest_invoice as Stripe.Invoice).payments?.data
+									.length === 0
+							) {
 								return;
 							}
 							if (isMigration) {
 								return stripeClient.creditNotes.create({
 									invoice: (subscription.latest_invoice as Stripe.Invoice).id!,
-									amount: (subscription.latest_invoice as Stripe.Invoice).amount_due
+									amount: (subscription.latest_invoice as Stripe.Invoice)
+										.amount_due,
 								});
 							}
 							return stripeClient.paymentIntents.confirm(
-								(subscription.latest_invoice as Stripe.Invoice).payments!.data[0].payment
-									.payment_intent as string,
+								(subscription.latest_invoice as Stripe.Invoice).payments
+									?.data[0].payment.payment_intent as string,
 								{
 									payment_method: paymentMethodId,
 									mandate_data: {
 										customer_acceptance: {
-											type: 'online',
+											type: "online",
 											online: {
 												ip_address: event.getClientAddress(),
-												user_agent: event.request.headers.get('user-agent')!
-											}
-										}
-									}
-								}
+												user_agent: event.request.headers.get("user-agent")!,
+											},
+										},
+									},
+								},
 							);
 						}),
 					stripeClient.subscriptions
 						.create({
 							customer: customerId.customer_id!,
 							items: [{ price: annual }],
-							payment_behavior: 'default_incomplete',
+							payment_behavior: "default_incomplete",
 							payment_settings: {
-								payment_method_types: ['sepa_debit']
+								payment_method_types: ["sepa_debit"],
 							},
 							billing_cycle_anchor_config: {
 								month: 1,
-								day_of_month: 7
+								day_of_month: 7,
 							},
-							expand: ['latest_invoice.payments'],
-							collection_method: 'charge_automatically',
+							expand: ["latest_invoice.payments"],
+							collection_method: "charge_automatically",
 							default_payment_method: paymentMethodId,
 							discounts:
-								!isMigration && promotionCodeId ? [{ promotion_code: promotionCodeId }] : undefined
+								!isMigration && promotionCodeId
+									? [{ promotion_code: promotionCodeId }]
+									: undefined,
 						})
 						.then(async (subscription) => {
-							if ((subscription.latest_invoice as Stripe.Invoice).payments!.data.length === 0) {
+							if (
+								(subscription.latest_invoice as Stripe.Invoice).payments?.data
+									.length === 0
+							) {
 								return;
 							}
 							if (isMigration) {
 								return stripeClient.creditNotes.create({
 									invoice: (subscription.latest_invoice as Stripe.Invoice).id!,
-									amount: (subscription.latest_invoice as Stripe.Invoice).amount_due
+									amount: (subscription.latest_invoice as Stripe.Invoice)
+										.amount_due,
 								});
 							}
 							return stripeClient.paymentIntents.confirm(
-								(subscription.latest_invoice as Stripe.Invoice).payments!.data[0].payment
-									.payment_intent as string,
+								(subscription.latest_invoice as Stripe.Invoice).payments
+									?.data[0].payment.payment_intent as string,
 								{
 									payment_method: paymentMethodId,
 									mandate_data: {
 										customer_acceptance: {
-											type: 'online',
+											type: "online",
 											online: {
 												ip_address: event.getClientAddress(),
-												user_agent: event.request.headers.get('user-agent')!
-											}
-										}
-									}
-								}
+												user_agent: event.request.headers.get("user-agent")!,
+											},
+										},
+									},
+								},
 							);
-						})
+						}),
 				]);
 
 				// Success! Delete the access token cookie
-				event.cookies.delete('access-token', { path: '/' });
+				event.cookies.delete("access-token", { path: "/" });
 				return message(form, { paymentFailed: false });
 			})
 			.catch((err) => {
 				Sentry.captureException(err);
-				let errorMessage = 'An unexpected error occurred';
+				let errorMessage = "An unexpected error occurred";
 
-				if (err instanceof Error && 'code' in err) {
+				if (err instanceof Error && "code" in err) {
 					const stripeError = err as { code: string };
 					switch (stripeError.code) {
-						case 'charge_exceeds_source_limit':
-						case 'charge_exceeds_transaction_limit':
-							errorMessage = 'The payment amount exceeds the account payment volume limit';
+						case "charge_exceeds_source_limit":
+						case "charge_exceeds_transaction_limit":
+							errorMessage =
+								"The payment amount exceeds the account payment volume limit";
 							break;
-						case 'charge_exceeds_weekly_limit':
-							errorMessage = 'The payment amount exceeds the weekly transaction limit';
+						case "charge_exceeds_weekly_limit":
+							errorMessage =
+								"The payment amount exceeds the weekly transaction limit";
 							break;
-						case 'payment_intent_authentication_failure':
-							errorMessage = 'The payment authentication failed';
+						case "payment_intent_authentication_failure":
+							errorMessage = "The payment authentication failed";
 							break;
-						case 'payment_method_unactivated':
-							errorMessage = 'The payment method is not activated';
+						case "payment_method_unactivated":
+							errorMessage = "The payment method is not activated";
 							break;
-						case 'payment_intent_payment_attempt_failed':
-							errorMessage = 'The payment attempt failed';
+						case "payment_intent_payment_attempt_failed":
+							errorMessage = "The payment attempt failed";
 							break;
 						default:
-							errorMessage = 'An error occurred with the payment processor';
+							errorMessage = "An error occurred with the payment processor";
 							break;
 					}
 				}
@@ -283,9 +325,9 @@ export const actions: Actions = {
 					form,
 					{ paymentFailed: true, error: errorMessage },
 					{
-						status: 400
-					}
+						status: 400,
+					},
 				);
 			});
-	}
+	},
 };
