@@ -1,15 +1,9 @@
-import { Pool } from "postgres";
-import {
-	Kysely,
-	PostgresAdapter,
-	PostgresIntrospector,
-	PostgresQueryCompiler,
-	sql,
-} from "kysely";
-import { PostgresDriver } from "./kyselyDriver.ts";
-import type { KyselyDatabase } from "../../../src/lib/types.ts";
+import { Pool } from 'postgres';
+import { Kysely, PostgresAdapter, PostgresIntrospector, PostgresQueryCompiler, sql } from 'kysely';
+import { PostgresDriver } from './kyselyDriver.ts';
+import type { KyselyDatabase } from '../../../src/lib/types.ts';
 
-const pool = new Pool(Deno.env.get("POSTGRES_CONNECTION_STRING"), 1);
+const pool = new Pool(Deno.env.get('POSTGRES_CONNECTION_STRING'), 1);
 
 const db = new Kysely<KyselyDatabase>({
 	dialect: {
@@ -24,8 +18,8 @@ const db = new Kysely<KyselyDatabase>({
 		},
 		createQueryCompiler() {
 			return new PostgresQueryCompiler();
-		},
-	},
+		}
+	}
 });
 
 export { db, sql };

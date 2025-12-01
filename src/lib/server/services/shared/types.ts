@@ -1,7 +1,7 @@
-import type { Session } from "@supabase/supabase-js";
-import type { Kysely, Transaction } from "kysely";
-import type { KyselyDatabase } from "$lib/types";
-import type { Logger } from "./logger";
+import type { Session } from '@supabase/supabase-js';
+import type { Kysely, Transaction } from 'kysely';
+import type { KyselyDatabase } from '$lib/types';
+import type { Logger } from './logger';
 
 /**
  * Base configuration for all services

@@ -21,15 +21,17 @@
 	import utc from 'dayjs/plugin/utc';
 	import timezone from 'dayjs/plugin/timezone';
 	import dayjs from 'dayjs';
-    import {CreateWorkshopSchema, UpdateWorkshopSchema} from "$lib/server/services/workshops";
+	import { CreateWorkshopSchema, UpdateWorkshopSchema } from '$lib/server/services/workshops';
 
 	dayjs.extend(utc);
 	dayjs.extend(timezone);
 	dayjs.tz.setDefault(dayjs.tz.guess());
 
 	interface Props {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		data: any;
 		mode: 'create' | 'edit';
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		onSuccess?: (form: any) => void;
 		priceEditingDisabled?: boolean;
 		workshopStatus?: string | null;
@@ -246,52 +248,49 @@
 			<h2 class="text-xl font-semibold text-gray-900 border-b pb-2">Date & Time</h2>
 
 			<Form.Field {form} name="workshop_date">
-				<Form.Control>
-					{#snippet children()}
-						<Form.Label>Workshop Date & Time</Form.Label>
-						<div class="bg-gray-50 rounded-lg p-4">
-							<Calendar25
-								id="workshop"
-								date={workshopDateValue}
-								{startTime}
-								{endTime}
-								onDateChange={(d) => updateWorkshopDates(d, 'date')}
-								onStartTimeChange={(d) => updateWorkshopDates(d, 'start')}
-								onEndTimeChange={(d) => updateWorkshopDates(d, 'end')}
-								disabled={!isWorkshopEditable}
-							/>
-						</div>
-						<input
-							name="workshop_date"
-							type="datetime-local"
-							hidden
-							value={(() => {
-								const date = dayjs($formData.workshop_date);
-								return date.isValid() ? date.format('YYYY-MM-DDTHH:mm') : '';
-							})()}
-							readonly
+				<Form.Control let:attrs>
+					<Form.Label>Workshop Date & Time</Form.Label>
+					<div class="bg-gray-50 rounded-lg p-4">
+						<Calendar25
+							id="workshop"
+							date={workshopDateValue}
+							{startTime}
+							{endTime}
+							onDateChange={(d) => updateWorkshopDates(d, 'date')}
+							onStartTimeChange={(d) => updateWorkshopDates(d, 'start')}
+							onEndTimeChange={(d) => updateWorkshopDates(d, 'end')}
+							disabled={!isWorkshopEditable}
 						/>
-						<input
-							name="workshop_end_date"
-							type="datetime-local"
-							hidden
-							value={(() => {
-								const date = dayjs($formData.workshop_end_date);
-								return date.isValid() ? date.format('YYYY-MM-DDTHH:mm') : '';
-							})()}
-							readonly
-						/>
-					{/snippet}
+					</div>
+					<input
+						{...attrs}
+						name="workshop_date"
+						type="datetime-local"
+						hidden
+						value={(() => {
+							const date = dayjs($formData.workshop_date);
+							return date.isValid() ? date.format('YYYY-MM-DDTHH:mm') : '';
+						})()}
+						readonly
+					/>
+					<input
+						name="workshop_end_date"
+						type="datetime-local"
+						hidden
+						value={(() => {
+							const date = dayjs($formData.workshop_end_date);
+							return date.isValid() ? date.format('YYYY-MM-DDTHH:mm') : '';
+						})()}
+						readonly
+					/>
 				</Form.Control>
 				<Form.FieldErrors />
 			</Form.Field>
 
 			<!-- Hidden field to capture workshop_end_date validation errors -->
 			<Form.Field {form} name="workshop_end_date">
-				<Form.Control>
-					{#snippet children()}
-						<!-- This field is just for validation errors, no visible input -->
-					{/snippet}
+				<Form.Control let:attrs>
+					<input {...attrs} type="hidden" />
 				</Form.Control>
 				<Form.FieldErrors />
 			</Form.Field>

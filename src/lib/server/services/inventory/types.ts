@@ -5,7 +5,7 @@
  * including input/output types for service methods.
  */
 
-import type { InventoryCategory, InventoryContainer } from "$lib/types";
+import type { InventoryCategory, InventoryContainer } from '$lib/types';
 
 // Re-export commonly used types from lib/types
 export type {
@@ -15,8 +15,8 @@ export type {
 	InventoryContainer,
 	InventoryItem,
 	InventoryItemWithRelations,
-	InventoryHistoryWithRelations,
-} from "$lib/types";
+	InventoryHistoryWithRelations
+} from '$lib/types';
 
 // Container types
 export type ContainerWithItemCount = InventoryContainer & {
@@ -47,12 +47,7 @@ export type ItemMovement = {
 };
 
 // History types - matches database enum
-export type HistoryAction =
-	| "created"
-	| "updated"
-	| "moved"
-	| "maintenance_out"
-	| "maintenance_in";
+export type HistoryAction = 'created' | 'updated' | 'moved' | 'maintenance_out' | 'maintenance_in';
 
 export type HistoryRecord = {
 	id: string;

@@ -24,11 +24,7 @@
 		fromDate((pausedUntil ?? dayjs().add(1, 'day')).toDate(), getLocalTimeZone())
 	);
 	const maxDate = $derived(fromDate(dayjs().add(6, 'months').toDate(), getLocalTimeZone()));
-	let selectedDate = $state<DateValue | undefined>();
-
-	$effect(() => {
-		selectedDate = minDate;
-	});
+	let selectedDate = $state<DateValue | undefined>(minDate);
 
 	function handleConfirm(event: Event) {
 		event.preventDefault();
@@ -36,7 +32,9 @@
 		if (!selectedDate) {
 			return;
 		}
-		onConfirm({ pauseUntil: selectedDate.toDate(getLocalTimeZone()).toISOString() });
+		onConfirm({
+			pauseUntil: selectedDate.toDate(getLocalTimeZone()).toISOString()
+		});
 	}
 </script>
 

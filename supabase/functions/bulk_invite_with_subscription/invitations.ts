@@ -1,4 +1,4 @@
-import { sql, type QueryExecutorProvider } from "kysely";
+import { sql, type QueryExecutorProvider } from 'kysely';
 
 export type InvitationInfo = {
 	invitation_id: string;
@@ -26,7 +26,7 @@ export function createInvitation(
 		invitationType,
 		waitlistId = null,
 		expiresAt = null,
-		metadata = null,
+		metadata = null
 	}: {
 		userId: string;
 		email: string;
@@ -34,18 +34,16 @@ export function createInvitation(
 		lastName: string;
 		dateOfBirth: string | Date;
 		phoneNumber: string;
-		invitationType: "workshop" | "admin";
+		invitationType: 'workshop' | 'admin';
 		waitlistId?: string | null;
 		expiresAt?: Date | null;
 		metadata?: Record<string, unknown> | null;
 	},
-	executor: QueryExecutorProvider,
+	executor: QueryExecutorProvider
 ): Promise<string> {
 	// Convert Date objects to ISO strings
-	const dateOfBirthStr =
-		dateOfBirth instanceof Date ? dateOfBirth.toISOString() : dateOfBirth;
-	const expiresAtStr =
-		expiresAt instanceof Date ? expiresAt.toISOString() : expiresAt;
+	const dateOfBirthStr = dateOfBirth instanceof Date ? dateOfBirth.toISOString() : dateOfBirth;
+	const expiresAtStr = expiresAt instanceof Date ? expiresAt.toISOString() : expiresAt;
 
 	return sql<{
 		create_invitation: string;
@@ -70,8 +68,8 @@ export function createInvitation(
  */
 export function updateInvitationStatus(
 	invitationId: string,
-	status: "pending" | "accepted" | "expired" | "revoked",
-	executor: QueryExecutorProvider,
+	status: 'pending' | 'accepted' | 'expired' | 'revoked',
+	executor: QueryExecutorProvider
 ): Promise<boolean> {
 	return sql<{
 		update_invitation_status: boolean;
@@ -88,7 +86,7 @@ export function updateInvitationStatus(
  */
 export function getInvitationInfo(
 	userId: string,
-	executor: QueryExecutorProvider,
+	executor: QueryExecutorProvider
 ): Promise<InvitationInfo | null> {
 	return sql<{
 		get_invitation_info: InvitationInfo;

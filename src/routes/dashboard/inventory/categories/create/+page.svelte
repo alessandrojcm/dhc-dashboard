@@ -17,6 +17,7 @@
 	import AttributeBuilder from '$lib/components/inventory/AttributeBuilder.svelte';
 	import { toast } from 'svelte-sonner';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 
 	let { data } = $props();
 
@@ -27,7 +28,7 @@
 		onUpdated: ({ form }) => {
 			if (form.message?.success) {
 				toast.success(form.message.success);
-				setTimeout(() => goto('/dashboard/inventory/categories'), 1500);
+				setTimeout(() => goto(resolve('/dashboard/inventory/categories')), 1500);
 			}
 		}
 	});

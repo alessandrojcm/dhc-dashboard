@@ -6,6 +6,7 @@ declare namespace Cloudflare {
 		ASSETS: Fetcher;
 	}
 }
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 interface Env extends Cloudflare.Env {}
 
 // Begin runtime types
@@ -376,7 +377,7 @@ declare const performance: Performance;
 declare const Cloudflare: Cloudflare;
 declare const origin: string;
 declare const navigator: Navigator;
-type TestController = {}
+interface TestController {}
 interface ExecutionContext {
 	waitUntil(promise: Promise<any>): void;
 	passThroughOnException(): void;
@@ -2312,7 +2313,7 @@ interface TraceItem {
 interface TraceItemAlarmEventInfo {
 	readonly scheduledTime: Date;
 }
-type TraceItemCustomEventInfo = {}
+interface TraceItemCustomEventInfo {}
 interface TraceItemScheduledEventInfo {
 	readonly scheduledTime: number;
 	readonly cron: string;
@@ -4168,7 +4169,7 @@ type AIGatewayHeaders = {
 	[key: string]: string | number | boolean | object;
 };
 type AIGatewayUniversalRequest = {
-	provider: AIGatewayProviders | string; // eslint-disable-line
+	provider: AIGatewayProviders | string;
 	endpoint: string;
 	headers: Partial<AIGatewayHeaders>;
 	query: unknown;
@@ -4179,7 +4180,7 @@ declare abstract class AiGateway {
 	patchLog(logId: string, data: AiGatewayPatchLog): Promise<void>;
 	getLog(logId: string): Promise<AiGatewayLog>;
 	run(data: AIGatewayUniversalRequest | AIGatewayUniversalRequest[]): Promise<Response>;
-	getUrl(provider?: AIGatewayProviders | string): Promise<string>; // eslint-disable-line
+	getUrl(provider?: AIGatewayProviders | string): Promise<string>;
 }
 interface AutoRAGInternalError extends Error {}
 interface AutoRAGNotFoundError extends Error {}
@@ -4680,8 +4681,7 @@ interface IncomingRequestCfPropertiesBotManagement {
 	 */
 	clientTrustScore: number;
 }
-interface IncomingRequestCfPropertiesBotManagementEnterprise
-	extends IncomingRequestCfPropertiesBotManagement {
+interface IncomingRequestCfPropertiesBotManagementEnterprise extends IncomingRequestCfPropertiesBotManagement {
 	/**
 	 * Results of Cloudflare's Bot Management analysis
 	 */
@@ -5310,7 +5310,7 @@ declare abstract class D1PreparedStatement {
 // but this will ensure type checking on older versions still passes.
 // TypeScript's interface merging will ensure our empty interface is effectively
 // ignored when `Disposable` is included in the standard lib.
-type Disposable = {}
+interface Disposable {}
 /**
  * An email message that can be sent from a Worker.
  */
@@ -5826,7 +5826,7 @@ declare namespace Rpc {
 	};
 }
 declare namespace Cloudflare {
-	type Env = {}
+	interface Env {}
 }
 declare module 'cloudflare:workers' {
 	export type RpcStub<T extends Rpc.Stubable> = Rpc.Stub<T>;
@@ -5915,7 +5915,8 @@ declare module 'cloudflare:workers' {
 	export abstract class WorkflowEntrypoint<
 		Env = unknown,
 		T extends Rpc.Serializable<T> | unknown = unknown
-	> implements Rpc.WorkflowEntrypointBranded
+	>
+		implements Rpc.WorkflowEntrypointBranded
 	{
 		[Rpc.__WORKFLOW_ENTRYPOINT_BRAND]: never;
 		protected ctx: ExecutionContext;

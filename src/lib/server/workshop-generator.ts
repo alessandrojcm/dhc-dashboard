@@ -1,17 +1,14 @@
-import { valibotSchema } from "@ai-sdk/valibot";
-import { generateObject } from "ai";
-import dayjs from "dayjs";
-import * as v from "valibot";
-import { env } from "$env/dynamic/private";
-import {
-	BaseWorkshopSchema,
-	CreateWorkshopSchema,
-} from "$lib/server/services/workshops";
+import { valibotSchema } from '@ai-sdk/valibot';
+import { generateObject } from 'ai';
+import dayjs from 'dayjs';
+import * as v from 'valibot';
+import { env } from '$env/dynamic/private';
+import { BaseWorkshopSchema, CreateWorkshopSchema } from '$lib/server/services/workshops';
 
 export const LLMCreateWrokshopSchema = v.object({
-	...v.omit(BaseWorkshopSchema, ["workshop_date", "workshop_end_date"]).entries,
+	...v.omit(BaseWorkshopSchema, ['workshop_date', 'workshop_end_date']).entries,
 	workshop_date: v.pipe(v.string(), v.isoTimestamp()),
-	workshop_end_date: v.pipe(v.string(), v.isoTimestamp()),
+	workshop_end_date: v.pipe(v.string(), v.isoTimestamp())
 });
 
 const system = `
@@ -22,7 +19,7 @@ const system = `
 	A workshop is an extra curricular activity that takes place outside regular training. This are often
 	paid activities. You will take the instructions from the organizer and generate structured output
 	to save in the database. Check the JSON schema format you are given. Prices are given in whole numbers,
-	but you need to convert them to cents. Today is ${dayjs().format("dddd MMMM D YYYY, h:mm:ss a")}.
+	but you need to convert them to cents. Today is ${dayjs().format('dddd MMMM D YYYY, h:mm:ss a')}.
 	Our permanent venue (the centre) is St Catherine's Sport Centre in Marrowbone Lane, Dublin 8. If no venue is specified, assume this is the venue.
 	
 	Dates are always given in ISO 8601 format. Assume workshops are private by default. Assume we don't want to
@@ -40,74 +37,46 @@ const system = `
 	Output: 
 	${JSON.stringify(
 		v.parse(LLMCreateWrokshopSchema, {
-			title: "Create your own plastron",
-			description: "You will learn to create your own plastron",
-			location: "St Catherines Sport Centre",
-			workshop_date: dayjs()
-				.day(6)
-				.hour(14)
-				.second(0)
-				.minute(0)
-				.millisecond(0)
-				.toISOString(),
-			workshop_end_date: dayjs()
-				.day(6)
-				.hour(15)
-				.second(0)
-				.minute(0)
-				.millisecond(0)
-				.toISOString(),
+			title: 'Create your own plastron',
+			description: 'You will learn to create your own plastron',
+			location: 'St Catherines Sport Centre',
+			workshop_date: dayjs().day(6).hour(14).second(0).minute(0).millisecond(0).toISOString(),
+			workshop_end_date: dayjs().day(6).hour(15).second(0).minute(0).millisecond(0).toISOString(),
 			max_capacity: 20,
 			price_member: 2000,
-			refund_deadline_days: 3,
-		} as v.InferInput<typeof LLMCreateWrokshopSchema>),
+			refund_deadline_days: 3
+		} as v.InferInput<typeof LLMCreateWrokshopSchema>)
 	)}
 	
 	Create a workshop about footwork. tomorrow 2pm to 3pm, 20 euro, available to everyone, announce everywhere
 	Output: 
 	${JSON.stringify(
 		v.parse(LLMCreateWrokshopSchema, {
-			title: "Footwork workshop",
-			description: "You will footwork techniques",
-			location: "St Catherines Sport Centre",
-			workshop_date: dayjs()
-				.add(1, "day")
-				.hour(14)
-				.minute(0)
-				.millisecond(0)
-				.toISOString(),
-			workshop_end_date: dayjs()
-				.add(1, "day")
-				.hour(15)
-				.minute(0)
-				.millisecond(0)
-				.toISOString(),
+			title: 'Footwork workshop',
+			description: 'You will footwork techniques',
+			location: 'St Catherines Sport Centre',
+			workshop_date: dayjs().add(1, 'day').hour(14).minute(0).millisecond(0).toISOString(),
+			workshop_end_date: dayjs().add(1, 'day').hour(15).minute(0).millisecond(0).toISOString(),
 			max_capacity: 20,
 			price_member: 2000,
 			refund_deadline_days: 3,
 			price_non_member: 2000,
 			is_public: true,
 			announce_discord: true,
-			announce_email: true,
-		} as v.InferInput<typeof LLMCreateWrokshopSchema>),
+			announce_email: true
+		} as v.InferInput<typeof LLMCreateWrokshopSchema>)
 	)}
 	
 	Create a workshop about wrestling. saturday next week 10am to 4pm, 30 euro, 25 euro for the public, available to everyone, announce everywhere
 	Output: 
 	${JSON.stringify(
 		v.parse(LLMCreateWrokshopSchema, {
-			title: "Wrestling workshop",
-			description: "You will learn core wrestling techniques for HEMA",
-			location: "St Catherines Sport Centre",
-			workshop_date: dayjs()
-				.add(1, "week")
-				.day(6)
-				.hour(10)
-				.minute(0)
-				.millisecond(0)
-				.toISOString(),
+			title: 'Wrestling workshop',
+			description: 'You will learn core wrestling techniques for HEMA',
+			location: 'St Catherines Sport Centre',
+			workshop_date: dayjs().add(1, 'week').day(6).hour(10).minute(0).millisecond(0).toISOString(),
 			workshop_end_date: dayjs()
-				.add(1, "week")
+				.add(1, 'week')
 				.day(6)
 				.hour(16)
 				.minute(0)
@@ -119,8 +88,8 @@ const system = `
 			price_non_member: 3500,
 			is_public: true,
 			announce_discord: true,
-			announce_email: true,
-		} as v.InferInput<typeof LLMCreateWrokshopSchema>),
+			announce_email: true
+		} as v.InferInput<typeof LLMCreateWrokshopSchema>)
 	)}
 	
 	If the user enters and invalid query, for example, they set the start date before the end date, you will reply with:
@@ -142,29 +111,22 @@ const system = `
 	`;
 
 export function coerceToCreateWorkshopSchema(
-	output: v.InferInput<typeof LLMCreateWrokshopSchema>,
+	output: v.InferInput<typeof LLMCreateWrokshopSchema>
 ): v.SafeParseResult<typeof CreateWorkshopSchema> {
 	return v.safeParse(CreateWorkshopSchema, {
 		...output,
 		workshop_date: dayjs(output.workshop_date).toDate(),
 		workshop_end_date: dayjs(output.workshop_end_date).toDate(),
 		price_member: output.price_member / 100,
-		price_non_member: output.price_non_member
-			? output.price_non_member / 100
-			: undefined,
+		price_non_member: output.price_non_member ? output.price_non_member / 100 : undefined
 	});
 }
 
-export async function generateWorkshopData(
-	prompt: string,
-	signal?: AbortSignal,
-) {
+export async function generateWorkshopData(prompt: string, signal?: AbortSignal) {
 	const model = import.meta.env.DEV
-		? await import("ollama-ai-provider-v2").then(({ ollama }) =>
-				ollama("qwen3:8b"),
-			)
-		: await import("@ai-sdk/groq").then(({ groq }) =>
-				groq("meta-llama/llama-4-scout-17b-16e-instruct"),
+		? await import('ollama-ai-provider-v2').then(({ ollama }) => ollama('qwen3:8b'))
+		: await import('@ai-sdk/groq').then(({ groq }) =>
+				groq('meta-llama/llama-4-scout-17b-16e-instruct')
 			);
 	return generateObject({
 		model: model,
@@ -179,16 +141,16 @@ export async function generateWorkshopData(
 				if (error) {
 					return {
 						success: false,
-						error: "There was an error generating this workshop data",
+						error: 'There was an error generating this workshop data'
 					};
 				}
 				return JSON.parse(text);
 			} catch {
 				return {
 					success: false,
-					error: "There was an error generating this workshop data",
+					error: 'There was an error generating this workshop data'
 				};
 			}
-		},
+		}
 	});
 }

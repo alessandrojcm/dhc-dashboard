@@ -1,11 +1,6 @@
 <script lang="ts">
-	import {
-		Card,
-		CardContent,
-		CardDescription,
-		CardHeader,
-		CardTitle
-	} from '$lib/components/ui/card';
+	/* eslint-disable @typescript-eslint/no-explicit-any */
+	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
 	import { ArrowLeft, FolderOpen, Edit, Plus, Package, Folder, AlertTriangle } from 'lucide-svelte';
@@ -113,7 +108,7 @@
 					</CardHeader>
 					<CardContent>
 						<div class="space-y-2">
-							{#each container.child_containers as child}
+							{#each container.child_containers as child (child.id)}
 								<div
 									class="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 transition-colors"
 								>
@@ -170,7 +165,7 @@
 						</div>
 					{:else}
 						<div class="space-y-2">
-							{#each container.items as item}
+							{#each container.items as item (item.id)}
 								<div
 									class="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 transition-colors"
 								>

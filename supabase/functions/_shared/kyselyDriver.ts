@@ -4,9 +4,9 @@ import {
 	type Driver,
 	type PostgresCursorConstructor,
 	type QueryResult,
-	type TransactionSettings,
-} from "kysely";
-import type { Pool, PoolClient } from "postgres";
+	type TransactionSettings
+} from 'kysely';
+import type { Pool, PoolClient } from 'postgres';
 
 export interface PostgresDialectConfig {
 	pool: Pool | (() => Promise<Pool>);
@@ -27,9 +27,7 @@ export class PostgresDriver implements Driver {
 
 	async init(): Promise<void> {
 		this.#pool =
-			typeof this.#config.pool === "function"
-				? await this.#config.pool()
-				: this.#config.pool;
+			typeof this.#config.pool === 'function' ? await this.#config.pool() : this.#config.pool;
 	}
 
 	async acquireConnection(): Promise<DatabaseConnection> {
@@ -38,7 +36,7 @@ export class PostgresDriver implements Driver {
 
 		if (!connection) {
 			connection = new PostgresConnection(client, {
-				cursor: this.#config.cursor ?? null,
+				cursor: this.#config.cursor ?? null
 			});
 			this.#connections.set(client, connection);
 
@@ -55,25 +53,23 @@ export class PostgresDriver implements Driver {
 
 	async beginTransaction(
 		connection: DatabaseConnection,
-		settings: TransactionSettings,
+		settings: TransactionSettings
 	): Promise<void> {
 		if (settings.isolationLevel) {
 			await connection.executeQuery(
-				CompiledQuery.raw(
-					`start transaction isolation level ${settings.isolationLevel}`,
-				),
+				CompiledQuery.raw(`start transaction isolation level ${settings.isolationLevel}`)
 			);
 		} else {
-			await connection.executeQuery(CompiledQuery.raw("begin"));
+			await connection.executeQuery(CompiledQuery.raw('begin'));
 		}
 	}
 
 	async commitTransaction(connection: DatabaseConnection): Promise<void> {
-		await connection.executeQuery(CompiledQuery.raw("commit"));
+		await connection.executeQuery(CompiledQuery.raw('commit'));
 	}
 
 	async rollbackTransaction(connection: DatabaseConnection): Promise<void> {
-		await connection.executeQuery(CompiledQuery.raw("rollback"));
+		await connection.executeQuery(CompiledQuery.raw('rollback'));
 	}
 
 	async releaseConnection(connection: PostgresConnection): Promise<void> {
@@ -105,24 +101,24 @@ class PostgresConnection implements DatabaseConnection {
 	async executeQuery<O>(compiledQuery: CompiledQuery): Promise<QueryResult<O>> {
 		try {
 			const result = await this.#client.queryObject<O>(compiledQuery.sql, [
-				...compiledQuery.parameters,
+				...compiledQuery.parameters
 			]);
 
 			if (
-				result.command === "INSERT" ||
-				result.command === "UPDATE" ||
-				result.command === "DELETE"
+				result.command === 'INSERT' ||
+				result.command === 'UPDATE' ||
+				result.command === 'DELETE'
 			) {
 				const numAffectedRows = BigInt(result.rowCount || 0);
 
 				return {
 					numAffectedRows,
-					rows: result.rows ?? [],
+					rows: result.rows ?? []
 				};
 			}
 
 			return {
-				rows: result.rows ?? [],
+				rows: result.rows ?? []
 			};
 		} catch (err) {
 			throw extendStackTrace(err, new Error());
@@ -131,16 +127,16 @@ class PostgresConnection implements DatabaseConnection {
 
 	async *streamQuery<O>(
 		_compiledQuery: CompiledQuery,
-		chunkSize: number,
+		chunkSize: number
 	): AsyncIterableIterator<QueryResult<O>> {
 		if (!this.#options.cursor) {
 			throw new Error(
-				"'cursor' is not present in your postgres dialect config. It's required to make streaming work in postgres.",
+				"'cursor' is not present in your postgres dialect config. It's required to make streaming work in postgres."
 			);
 		}
 
 		if (!Number.isInteger(chunkSize) || chunkSize <= 0) {
-			throw new Error("chunkSize must be a positive integer");
+			throw new Error('chunkSize must be a positive integer');
 		}
 
 		// stream not available
@@ -155,7 +151,7 @@ class PostgresConnection implements DatabaseConnection {
 export function extendStackTrace(err: unknown, stackError: Error): unknown {
 	if (isStackHolder(err) && stackError.stack) {
 		// Remove the first line that just says `Error`.
-		const stackExtension = stackError.stack.split("\n").slice(1).join("\n");
+		const stackExtension = stackError.stack.split('\n').slice(1).join('\n');
 
 		err.stack += `\n${stackExtension}`;
 		return err;
@@ -170,11 +166,11 @@ interface StackHolder {
 
 function isStackHolder(obj: unknown): obj is StackHolder {
 	return (
-		typeof obj === "object" &&
+		typeof obj === 'object' &&
 		obj !== null &&
-		"stack" in obj &&
+		'stack' in obj &&
 		obj.stack !== undefined &&
 		obj.stack !== null &&
-		typeof obj.stack === "string"
+		typeof obj.stack === 'string'
 	);
 }

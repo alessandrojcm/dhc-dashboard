@@ -81,9 +81,10 @@ This is a SvelteKit application for managing a Historical European Martial Arts 
 - **Queries**: Use Supabase client directly (`supabase.from('table').select()`) ONLY from client side, for queries on the SERVER side, use kysely
 - **Mutations**: Use Kysely with RLS (`executeWithRLS()` helper in `src/lib/server/kysely.ts`)
 - **Types**: Auto-generated from Supabase schema in `database.types.ts`
-- **Svelte patterns**: Prefer loader/actions where possible, use SuperForm. Only resort to /api/ route handlers when it makes sense (i.e we just have a small mutation like a toggle)
+- **Svelte patterns**: Prefer loader/actions where possible, USE SUPERFORM ALWAYS. Only resort to /api/ route handlers when it makes sense (i.e we just have a small mutation like a toggle)
 - **Svelte types**: SvelteKit has a very comprehensive type generation system (import from './$types'). Prefer that over custom types and DO NOT use any.
 - **CRITICAL RLS Pattern**: ALL server-side loaders MUST use `executeWithRLS()` when querying with Kysely. Never use raw Kysely queries in loaders.
+- **PROPERTLY TYPE EVERTYHING**: DO NOT use `any` or `unknown` types. ALWAYS use the correct type for the resource being queried.
 
 ##### Server-Side Data Loading Pattern
 
@@ -182,6 +183,7 @@ This project uses a domain-driven service layer pattern for organizing database 
 **Location**: `src/lib/server/services/`
 
 **Core Principles**:
+
 1. **No Global Objects**: Services use dependency injection, never global singletons
 2. **Factory Functions**: Each domain provides factory functions for easy service instantiation
 3. **Validation at Form Layer**: Services accept already-validated data; validation schemas are exported for reuse
@@ -194,7 +196,13 @@ This project uses a domain-driven service layer pattern for organizing database 
 ```typescript
 import * as v from 'valibot';
 import { sentryLogger } from '$lib/server/services/shared';
-import type { Kysely, Session, Transaction, Logger, KyselyDatabase } from '$lib/server/services/shared';
+import type {
+	Kysely,
+	Session,
+	Transaction,
+	Logger,
+	KyselyDatabase
+} from '$lib/server/services/shared';
 import { executeWithRLS } from '$lib/server/services/shared';
 
 // ============================================================================
@@ -202,8 +210,8 @@ import { executeWithRLS } from '$lib/server/services/shared';
 // ============================================================================
 
 export const EntityCreateSchema = v.object({
-  name: v.pipe(v.string(), v.minLength(1, 'Name is required')),
-  description: v.optional(v.string())
+	name: v.pipe(v.string(), v.minLength(1, 'Name is required')),
+	description: v.optional(v.string())
 });
 
 export const EntityUpdateSchema = v.partial(EntityCreateSchema);
@@ -216,69 +224,69 @@ export type EntityUpdateInput = v.InferOutput<typeof EntityUpdateSchema>;
 // ============================================================================
 
 export class EntityService {
-  private logger: Logger;
+	private logger: Logger;
 
-  constructor(
-    private kysely: Kysely<KyselyDatabase>,
-    private session: Session,
-    logger?: Logger
-  ) {
-    this.logger = logger ?? console;
-  }
+	constructor(
+		private kysely: Kysely<KyselyDatabase>,
+		private session: Session,
+		logger?: Logger
+	) {
+		this.logger = logger ?? console;
+	}
 
-  // Public method (creates own transaction)
-  async create(input: EntityCreateInput): Promise<Entity> {
-    this.logger.info('Creating entity', { name: input.name });
-    
-    try {
-      return await executeWithRLS(this.kysely, { claims: this.session }, async (trx) => {
-        return this._create(trx, input);
-      });
-    } catch (error) {
-      this.logger.error('Failed to create entity', { error, input });
-      throw new Error('Failed to create entity', { cause: error });
-    }
-  }
+	// Public method (creates own transaction)
+	async create(input: EntityCreateInput): Promise<Entity> {
+		this.logger.info('Creating entity', { name: input.name });
 
-  async findById(id: string): Promise<Entity> {
-    const entity = await this.kysely
-      .selectFrom('entities')
-      .selectAll()
-      .where('id', '=', id)
-      .executeTakeFirst();
+		try {
+			return await executeWithRLS(this.kysely, { claims: this.session }, async (trx) => {
+				return this._create(trx, input);
+			});
+		} catch (error) {
+			this.logger.error('Failed to create entity', { error, input });
+			throw new Error('Failed to create entity', { cause: error });
+		}
+	}
 
-    if (!entity) {
-      throw new Error('Entity not found', { cause: { entityId: id } });
-    }
+	async findById(id: string): Promise<Entity> {
+		const entity = await this.kysely
+			.selectFrom('entities')
+			.selectAll()
+			.where('id', '=', id)
+			.executeTakeFirst();
 
-    return entity;
-  }
+		if (!entity) {
+			throw new Error('Entity not found', { cause: { entityId: id } });
+		}
 
-  async update(id: string, input: EntityUpdateInput): Promise<Entity> {
-    this.logger.info('Updating entity', { entityId: id });
-    
-    return executeWithRLS(this.kysely, { claims: this.session }, async (trx) => {
-      return this._update(trx, id, input);
-    });
-  }
+		return entity;
+	}
 
-  // Private transactional methods (for cross-service coordination)
-  async _create(trx: Transaction<KyselyDatabase>, input: EntityCreateInput): Promise<Entity> {
-    return trx
-      .insertInto('entities')
-      .values(input)
-      .returningAll()
-      .executeTakeFirstOrThrow();
-  }
+	async update(id: string, input: EntityUpdateInput): Promise<Entity> {
+		this.logger.info('Updating entity', { entityId: id });
 
-  async _update(trx: Transaction<KyselyDatabase>, id: string, input: EntityUpdateInput): Promise<Entity> {
-    return trx
-      .updateTable('entities')
-      .set(input)
-      .where('id', '=', id)
-      .returningAll()
-      .executeTakeFirstOrThrow();
-  }
+		return executeWithRLS(this.kysely, { claims: this.session }, async (trx) => {
+			return this._update(trx, id, input);
+		});
+	}
+
+	// Private transactional methods (for cross-service coordination)
+	async _create(trx: Transaction<KyselyDatabase>, input: EntityCreateInput): Promise<Entity> {
+		return trx.insertInto('entities').values(input).returningAll().executeTakeFirstOrThrow();
+	}
+
+	async _update(
+		trx: Transaction<KyselyDatabase>,
+		id: string,
+		input: EntityUpdateInput
+	): Promise<Entity> {
+		return trx
+			.updateTable('entities')
+			.set(input)
+			.where('id', '=', id)
+			.returningAll()
+			.executeTakeFirstOrThrow();
+	}
 }
 
 // ============================================================================
@@ -286,15 +294,15 @@ export class EntityService {
 // ============================================================================
 
 export function createEntityService(
-  platform: App.Platform,
-  session: Session,
-  logger?: Logger
+	platform: App.Platform,
+	session: Session,
+	logger?: Logger
 ): EntityService {
-  return new EntityService(
-    getKyselyClient(platform.env.HYPERDRIVE),
-    session,
-    logger ?? sentryLogger
-  );
+	return new EntityService(
+		getKyselyClient(platform.env.HYPERDRIVE),
+		session,
+		logger ?? sentryLogger
+	);
 }
 ```
 
@@ -304,26 +312,26 @@ export function createEntityService(
 import { createEntityService, EntityCreateSchema } from '$lib/server/services/domain';
 
 export const load = async ({ locals, platform }) => {
-  const { session } = await locals.safeGetSession();
-  const entityService = createEntityService(platform!, session);
-  
-  const entities = await entityService.findMany();
-  
-  return { entities };
+	const { session } = await locals.safeGetSession();
+	const entityService = createEntityService(platform!, session);
+
+	const entities = await entityService.findMany();
+
+	return { entities };
 };
 
 export const actions = {
-  create: async ({ request, platform, locals }) => {
-    const { session } = await locals.safeGetSession();
-    const form = await superValidate(request, valibot(EntityCreateSchema));
-    
-    if (!form.valid) return fail(400, { form });
+	create: async ({ request, platform, locals }) => {
+		const { session } = await locals.safeGetSession();
+		const form = await superValidate(request, valibot(EntityCreateSchema));
 
-    const entityService = createEntityService(platform!, session);
-    const entity = await entityService.create(form.data);
-    
-    return message(form, 'Entity created successfully!');
-  }
+		if (!form.valid) return fail(400, { form });
+
+		const entityService = createEntityService(platform!, session);
+		const entity = await entityService.create(form.data);
+
+		return message(form, 'Entity created successfully!');
+	}
 };
 ```
 
@@ -357,11 +365,13 @@ The following service domains are available for use and extension:
 ##### When to Create a New Service vs Extending Existing
 
 **Create a New Service When**:
+
 - The functionality represents a new business domain (e.g., a new `EventService` for general events)
 - The service would manage a completely different set of database tables
 - The operations don't naturally fit within any existing service's responsibilities
 
 **Extend an Existing Service When**:
+
 - Adding new operations for existing domain entities (e.g., adding `bulkUpdate()` to `MemberService`)
 - Adding related queries to the same domain (e.g., adding `getActiveMembers()` to `MemberService`)
 - Improving existing service methods (e.g., optimizing query performance)
@@ -373,29 +383,29 @@ The following service domains are available for use and extension:
 // In src/lib/server/services/members/member.service.ts
 
 export class MemberService {
-  // ... existing methods ...
+	// ... existing methods ...
 
-  // Adding a new method to existing service
-  async getActiveMembers(): Promise<Member[]> {
-    return this.kysely
-      .selectFrom('user_profiles')
-      .innerJoin('member_profiles', 'member_profiles.user_profile_id', 'user_profiles.id')
-      .where('member_profiles.status', '=', 'active')
-      .selectAll()
-      .execute();
-  }
+	// Adding a new method to existing service
+	async getActiveMembers(): Promise<Member[]> {
+		return this.kysely
+			.selectFrom('user_profiles')
+			.innerJoin('member_profiles', 'member_profiles.user_profile_id', 'user_profiles.id')
+			.where('member_profiles.status', '=', 'active')
+			.selectAll()
+			.execute();
+	}
 
-  async bulkUpdateStatus(memberIds: string[], status: MemberStatus): Promise<void> {
-    this.logger.info('Bulk updating member status', { count: memberIds.length, status });
-    
-    await executeWithRLS(this.kysely, { claims: this.session }, async (trx) => {
-      await trx
-        .updateTable('member_profiles')
-        .set({ status })
-        .where('id', 'in', memberIds)
-        .execute();
-    });
-  }
+	async bulkUpdateStatus(memberIds: string[], status: MemberStatus): Promise<void> {
+		this.logger.info('Bulk updating member status', { count: memberIds.length, status });
+
+		await executeWithRLS(this.kysely, { claims: this.session }, async (trx) => {
+			await trx
+				.updateTable('member_profiles')
+				.set({ status })
+				.where('id', 'in', memberIds)
+				.execute();
+		});
+	}
 }
 ```
 
@@ -409,27 +419,27 @@ import { createMockLogger, createMockSession, createMockKysely } from '$lib/serv
 import { EntityService } from './entity.service';
 
 describe('EntityService', () => {
-  let service: EntityService;
-  let mockKysely: ReturnType<typeof createMockKysely>;
-  let mockSession: ReturnType<typeof createMockSession>;
-  let mockLogger: ReturnType<typeof createMockLogger>;
+	let service: EntityService;
+	let mockKysely: ReturnType<typeof createMockKysely>;
+	let mockSession: ReturnType<typeof createMockSession>;
+	let mockLogger: ReturnType<typeof createMockLogger>;
 
-  beforeEach(() => {
-    mockKysely = createMockKysely();
-    mockSession = createMockSession();
-    mockLogger = createMockLogger();
-    service = new EntityService(mockKysely, mockSession, mockLogger);
-  });
+	beforeEach(() => {
+		mockKysely = createMockKysely();
+		mockSession = createMockSession();
+		mockLogger = createMockLogger();
+		service = new EntityService(mockKysely, mockSession, mockLogger);
+	});
 
-  describe('create', () => {
-    it('should create an entity with valid data', async () => {
-      const input = { name: 'Test Entity', description: 'Test' };
-      const result = await service.create(input);
-      
-      expect(mockLogger.info).toHaveBeenCalledWith('Creating entity', { name: input.name });
-      expect(result).toBeDefined();
-    });
-  });
+	describe('create', () => {
+		it('should create an entity with valid data', async () => {
+			const input = { name: 'Test Entity', description: 'Test' };
+			const result = await service.create(input);
+
+			expect(mockLogger.info).toHaveBeenCalledWith('Creating entity', { name: input.name });
+			expect(result).toBeDefined();
+		});
+	});
 });
 ```
 
@@ -439,39 +449,40 @@ When operations span multiple domains, use dependency injection to compose servi
 
 ```typescript
 export class RegistrationService {
-  private logger: Logger;
+	private logger: Logger;
 
-  constructor(
-    private kysely: Kysely<KyselyDatabase>,
-    private session: Session,
-    logger?: Logger,
-    private workshopService?: WorkshopService,
-    private memberService?: MemberService
-  ) {
-    this.logger = logger ?? console;
-  }
+	constructor(
+		private kysely: Kysely<KyselyDatabase>,
+		private session: Session,
+		logger?: Logger,
+		private workshopService?: WorkshopService,
+		private memberService?: MemberService
+	) {
+		this.logger = logger ?? console;
+	}
 
-  async registerMemberForWorkshop(memberId: string, workshopId: string): Promise<Registration> {
-    // Validate entities exist
-    const workshop = await this.workshopService!.findById(workshopId);
-    const member = await this.memberService!.findById(memberId);
-    
-    // Coordinate across services using a shared transaction
-    return executeWithRLS(this.kysely, { claims: this.session }, async (trx) => {
-      const registration = await this._create(trx, { memberId, workshopId });
-      
-      // You can call other service's _transactional methods here if needed
-      // await this.workshopService._updateAttendeeCount(trx, workshopId);
-      
-      return registration;
-    });
-  }
+	async registerMemberForWorkshop(memberId: string, workshopId: string): Promise<Registration> {
+		// Validate entities exist
+		const workshop = await this.workshopService!.findById(workshopId);
+		const member = await this.memberService!.findById(memberId);
+
+		// Coordinate across services using a shared transaction
+		return executeWithRLS(this.kysely, { claims: this.session }, async (trx) => {
+			const registration = await this._create(trx, { memberId, workshopId });
+
+			// You can call other service's _transactional methods here if needed
+			// await this.workshopService._updateAttendeeCount(trx, workshopId);
+
+			return registration;
+		});
+	}
 }
 ```
 
 ##### Service Layer Reference Documentation
 
 For complete design documentation and implementation details, see:
+
 - `/instructions/data_layer_service_pattern_design.md` - Complete design document
 - `src/lib/server/services/README.md` - Service layer documentation
 - `src/lib/server/services/*/` - Individual domain implementations

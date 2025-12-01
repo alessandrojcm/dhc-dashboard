@@ -1,4 +1,5 @@
 <script lang="ts">
+	/* eslint-disable @typescript-eslint/no-explicit-any */
 	import type { Database } from '$database';
 	import type { SupabaseClient } from '@supabase/supabase-js';
 	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
@@ -124,7 +125,7 @@
 							<div class="space-y-2">
 								<h4 class="text-sm font-medium">Attributes:</h4>
 								<div class="flex flex-wrap gap-1">
-									{#each Object.entries(category.available_attributes || {}) as [key, attr]}
+									{#each Object.entries(category.available_attributes || {}) as [key, attr] (key)}
 										<Badge variant="outline" class="text-xs">
 											{attr.label || key}
 											{#if attr.required}

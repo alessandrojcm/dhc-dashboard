@@ -1,6 +1,6 @@
-import { getContext } from "svelte";
+import { getContext } from 'svelte';
 
-export type ToastType = "success" | "error" | "info" | "warning";
+export type ToastType = 'success' | 'error' | 'info' | 'warning';
 
 export interface ToastStore {
 	success: (message: string) => string;
@@ -14,5 +14,5 @@ export interface ToastStore {
  * @returns The toast store with methods for showing different types of toasts
  */
 export function useToast(): ToastStore {
-	return getContext<ToastStore>("toast");
+	return getContext<ToastStore>('toast');
 }

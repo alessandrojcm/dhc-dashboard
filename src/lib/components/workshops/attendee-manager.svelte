@@ -10,9 +10,9 @@
 	import { checkRefundEligibility } from '$lib/utils/refund-eligibility';
 
 	interface Props {
-		attendees: any[];
-		refunds: any[];
-		workshop: any;
+		attendees: any[]; // eslint-disable-line @typescript-eslint/no-explicit-any
+		refunds: any[]; // eslint-disable-line @typescript-eslint/no-explicit-any
+		workshop: any; // eslint-disable-line @typescript-eslint/no-explicit-any
 		workshopId?: string;
 		onAttendanceUpdated?: () => void;
 		onRefundProcessed?: () => void;
@@ -23,30 +23,29 @@
 
 	let refundPopoverOpen = $state(false);
 	let attendeeIdForRefund = $state('');
-	let selectedAttendees = $state<Set<string>>(new Set());
+	let selectedAttendees = $state<string[]>([]);
 
 	const unattendedAttendees = $derived(attendees.filter((a) => a.attendance_status !== 'attended'));
 
 	const allSelected = $derived(
-		unattendedAttendees.length > 0 && unattendedAttendees.every((a) => selectedAttendees.has(a.id))
+		unattendedAttendees.length > 0 &&
+			unattendedAttendees.every((a) => selectedAttendees.includes(a.id))
 	);
 
 	function toggleSelectAll() {
 		if (allSelected) {
-			selectedAttendees = new Set();
+			selectedAttendees = [];
 		} else {
-			selectedAttendees = new Set(unattendedAttendees.map((a) => a.id));
+			selectedAttendees = unattendedAttendees.map((a) => a.id);
 		}
 	}
 
 	function toggleAttendee(id: string) {
-		const newSelected = new Set(selectedAttendees);
-		if (newSelected.has(id)) {
-			newSelected.delete(id);
+		if (selectedAttendees.includes(id)) {
+			selectedAttendees = selectedAttendees.filter((sid) => sid !== id);
 		} else {
-			newSelected.add(id);
+			selectedAttendees = [...selectedAttendees, id];
 		}
-		selectedAttendees = newSelected;
 	}
 
 	const markAttendedMutation = createMutation(() => ({
@@ -71,7 +70,7 @@
 			return response.json();
 		},
 		onSuccess: () => {
-			selectedAttendees = new Set();
+			selectedAttendees = [];
 			onAttendanceUpdated?.();
 			toast.success('Marked as attended');
 		},
@@ -109,12 +108,14 @@
 		}
 	}));
 
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	function getAttendeeDisplayName(attendee: any) {
 		return attendee.user_profiles?.first_name
 			? `${attendee.user_profiles.first_name} ${attendee.user_profiles.last_name}`
 			: `${attendee.external_users?.first_name} ${attendee.external_users?.last_name}`;
 	}
 
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	function getAttendeeEmail(attendee: any) {
 		return attendee.user_profiles?.email || attendee.external_users?.email;
 	}
@@ -143,6 +144,7 @@
 		}).format(amount);
 	}
 
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	function getRefundEligibility(attendee: any) {
 		return checkRefundEligibility(
 			workshop.start_date,
@@ -163,8 +165,8 @@
 			class="flex items-center justify-between p-3 border rounded-lg bg-primary/5 border-primary/20"
 		>
 			<span class="text-sm font-medium">
-				{#if selectedAttendees.size > 0}
-					{selectedAttendees.size} attendee{selectedAttendees.size > 1 ? 's' : ''} selected
+				{#if selectedAttendees.length > 0}
+					{selectedAttendees.length} attendee{selectedAttendees.length > 1 ? 's' : ''} selected
 				{:else}
 					Select attendees to mark as attended
 				{/if}
@@ -185,7 +187,7 @@
 				<Button
 					size="sm"
 					onclick={() => markAttendedMutation.mutate([...selectedAttendees])}
-					disabled={markAttendedMutation.isPending || selectedAttendees.size === 0}
+					disabled={markAttendedMutation.isPending || selectedAttendees.length === 0}
 				>
 					<Check class="w-4 h-4" />
 					Mark as Attended
@@ -201,7 +203,7 @@
 		>
 			{#if attendee.attendance_status !== 'attended'}
 				<Checkbox
-					checked={selectedAttendees.has(attendee.id)}
+					checked={selectedAttendees.includes(attendee.id)}
 					onCheckedChange={() => toggleAttendee(attendee.id)}
 				/>
 			{:else}

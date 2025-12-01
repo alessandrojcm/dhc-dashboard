@@ -3,7 +3,6 @@
 	import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import AttendeeManager from '$lib/components/workshops/attendee-manager.svelte';
-	import { toast } from 'svelte-sonner';
 
 	let { data } = $props();
 	const supabase = data.supabase;
@@ -13,7 +12,7 @@
 	// Use preloaded data with TanStack Query for cache management and refetching
 	const attendeesQuery = createQuery(() => ({
 		queryKey: ['workshop-attendees', workshopId],
-        enabled: !!workshopId,
+		enabled: !!workshopId,
 		queryFn: async () => {
 			// Refetch from server if needed
 			const { data, error } = await supabase
@@ -50,7 +49,7 @@
 
 	const refundsQuery = createQuery(() => ({
 		queryKey: ['workshop-refunds', workshopId],
-        enabled: !!workshopId,
+		enabled: !!workshopId,
 		queryFn: async () => {
 			// Refetch from server if needed - transform to match server loader structure
 			const { data: refundsData, error } = await supabase

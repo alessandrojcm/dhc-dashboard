@@ -8,9 +8,9 @@
 	import dayjs from 'dayjs';
 	import Dinero from 'dinero.js';
 	import { useQueryClient } from '@tanstack/svelte-query';
-    import type {ClubActivityWithInterest, UserData} from '$lib/types';
-    
-    interface Props {
+	import type { ClubActivityWithInterest, UserData } from '$lib/types';
+
+	interface Props {
 		workshops: ClubActivityWithInterest[];
 		onInterestToggle?: (workshopId: string) => void;
 		isLoading?: boolean;
@@ -56,7 +56,9 @@
 		return workshop?.user_interest?.map((i) => i.user_id).includes(userId) ?? false;
 	}
 
-	function getUserRegistration(workshop: ClubActivityWithInterest): { id: string; status: string } | null {
+	function getUserRegistration(
+		workshop: ClubActivityWithInterest
+	): { id: string; status: string } | null {
 		if (workshop.status === 'published') {
 			const registration = workshop?.attendee_count?.find((i) => i.member_user_id === userId);
 			return registration ? { id: registration.id, status: registration.status } : null;
@@ -107,7 +109,7 @@
 			</CardContent>
 		</Card>
 	{:else}
-		{#each workshops as workshop}
+		{#each workshops as workshop (workshop.id)}
 			<Card>
 				<CardHeader>
 					<div class="flex justify-between items-start">
