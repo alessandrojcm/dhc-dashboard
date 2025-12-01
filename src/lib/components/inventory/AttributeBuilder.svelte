@@ -103,7 +103,7 @@
 				</CardTitle>
 			</CardHeader>
 			<CardContent class="space-y-4">
-				{#each $formData.available_attributes as attr, index}
+				{#each $formData.available_attributes as attr, index (attr.name ?? '' + index)}
 					<div class="border rounded-lg p-4 space-y-4">
 						<div class="flex items-center justify-between">
 							<div class="flex items-center gap-2">
@@ -160,7 +160,7 @@
 										/>
 										<Form.Label>Options</Form.Label>
 										<div class="space-y-2">
-											{#each attr.options ?? [] as value, i}
+											{#each attr.options ?? [] as value, i (value + i)}
 												{#if $formData.available_attributes[index].options}
 													<Form.Field {form} name="available_attributes[{index}].options[{i}]">
 														<Form.Control>
@@ -169,7 +169,7 @@
 																<Input
 																	{...props}
 																	placeholder="Option value"
-																	bind:value={($formData.available_attributes[index].options as string[])[i]}
+																	bind:value={$formData.available_attributes[index].options[i]}
 																/>
 																<Button
 																	variant="ghost"

@@ -1,12 +1,12 @@
-import { error } from "@sveltejs/kit";
-import { authorize } from "$lib/server/auth";
-import { WORKSHOP_ROLES } from "$lib/server/roles";
+import { error } from '@sveltejs/kit';
+import { authorize } from '$lib/server/auth';
+import { WORKSHOP_ROLES } from '$lib/server/roles';
 import {
 	createWorkshopService,
 	createRegistrationService,
-	createRefundService,
-} from "$lib/server/services/workshops";
-import type { PageServerLoad } from "./$types";
+	createRefundService
+} from '$lib/server/services/workshops';
+import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params, locals, platform }) => {
 	const session = await authorize(locals, WORKSHOP_ROLES);
@@ -26,18 +26,18 @@ export const load: PageServerLoad = async ({ params, locals, platform }) => {
 		registrationService.getWorkshopAttendees(workshopId),
 
 		// Load refunds with proper joins
-		refundService.getWorkshopRefunds(workshopId),
+		refundService.getWorkshopRefunds(workshopId)
 	]);
 
 	if (!workshop) {
 		error(404, {
-			message: "Workshop not found",
+			message: 'Workshop not found'
 		});
 	}
 
 	return {
 		workshop,
 		attendees,
-		refunds,
+		refunds
 	};
 };

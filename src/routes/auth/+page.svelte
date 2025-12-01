@@ -15,7 +15,7 @@
 	let errorMessage = $derived(new URLSearchParams(hash).get('error_description'));
 	const urlMessage = $derived(page.url.searchParams.get('message'));
 
-const { data } = $props();
+	const { data } = $props();
 
 	const form = superForm(data.form, {
 		validators: valibotClient(authSchema),
@@ -26,8 +26,7 @@ const { data } = $props();
 		}
 	});
 
-const { form: formData, enhance, submitting, errors, message } = form;
-$inspect($errors);
+	const { form: formData, enhance, submitting, errors, message } = form;
 </script>
 
 <Card

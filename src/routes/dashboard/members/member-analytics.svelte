@@ -124,7 +124,10 @@
 
 	const genderDistributionData = $derived.by(() => {
 		return genderDistribution.data
-			? genderDistribution.data.map((row: any) => ({ gender: row.gender, value: row.count }))
+			? genderDistribution.data.map((row: { gender: string | null; count: number }) => ({
+					gender: row.gender,
+					value: row.count
+				}))
 			: [];
 	});
 

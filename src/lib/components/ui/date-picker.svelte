@@ -49,7 +49,9 @@
 			{minValue}
 			{maxValue}
 			onValueChange={(date: DateValue | undefined) => {
-				date && onDateChange(date.toDate(getLocalTimeZone()));
+				if (date) {
+					onDateChange(date.toDate(getLocalTimeZone()));
+				}
 				open = false;
 			}}
 		/>

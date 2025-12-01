@@ -1,29 +1,26 @@
-import * as Sentry from "@sentry/sveltekit";
-import { type Actions, error, type ServerLoadEvent } from "@sveltejs/kit";
-import { fail, message, setMessage, superValidate } from "sveltekit-superforms";
-import { valibot } from "sveltekit-superforms/adapters";
-import signupSchema from "$lib/schemas/membersSignup";
-import { invariant } from "$lib/server/invariant";
-import { getRolesFromSession, SETTINGS_ROLES } from "$lib/server/roles";
-import { supabaseServiceClient } from "$lib/server/supabaseServiceClient";
-import type { SocialMediaConsent } from "$lib/types.ts";
-import type { RequestEvent } from "../$types";
-import type { PageServerLoad } from "./$types";
-import {
-	createMemberService,
-	createProfileService,
-} from "$lib/server/services/members";
+import * as Sentry from '@sentry/sveltekit';
+import { type Actions, error, type ServerLoadEvent } from '@sveltejs/kit';
+import { fail, message, setMessage, superValidate } from 'sveltekit-superforms';
+import { valibot } from 'sveltekit-superforms/adapters';
+import signupSchema from '$lib/schemas/membersSignup';
+import { invariant } from '$lib/server/invariant';
+import { getRolesFromSession, SETTINGS_ROLES } from '$lib/server/roles';
+import { supabaseServiceClient } from '$lib/server/supabaseServiceClient';
+import type { SocialMediaConsent } from '$lib/types.ts';
+import type { RequestEvent } from '../$types';
+import type { PageServerLoad } from './$types';
+import { createMemberService, createProfileService } from '$lib/server/services/members';
 
 async function canUpdateSettings(event: RequestEvent | ServerLoadEvent) {
 	const { session } = await event.locals.safeGetSession();
-	invariant(session === null, "Unauthorized");
+	invariant(session === null, 'Unauthorized');
 	const roles = getRolesFromSession(session!);
 	if (roles.intersection(SETTINGS_ROLES).size > 0) {
 		return true;
 	}
 	const {
 		data: { user },
-		error,
+		error
 	} = await event.locals.supabase.auth.getUser();
 
 	if (error || user?.id !== event.locals.session?.user.id) {
@@ -37,7 +34,7 @@ export const load: PageServerLoad = async (event) => {
 	const { session } = await locals.safeGetSession();
 
 	if (!session || !platform?.env.HYPERDRIVE) {
-		return error(401, "Unauthorized");
+		return error(401, 'Unauthorized');
 	}
 
 	try {
@@ -47,21 +44,16 @@ export const load: PageServerLoad = async (event) => {
 		// Get member data
 		const memberProfile = await memberService.findById(params.memberId);
 
-		if (
-			!canUpdate &&
-			(!memberProfile || params.memberId !== locals.session?.user.id)
-		) {
-			return error(404, "Member not found");
+		if (!canUpdate && (!memberProfile || params.memberId !== locals.session?.user.id)) {
+			return error(404, 'Member not found');
 		}
 
 		const email = await supabaseServiceClient.auth.admin
 			.getUserById(params.memberId)
-			.then((r) => r.data.user?.email ?? "");
+			.then((r) => r.data.user?.email ?? '');
 
 		// Get member data with subscription info
-		const memberData = await memberService.findByIdWithSubscription(
-			params.memberId,
-		);
+		const memberData = await memberService.findByIdWithSubscription(params.memberId);
 
 		return {
 			form: await superValidate(
@@ -79,48 +71,46 @@ export const load: PageServerLoad = async (event) => {
 					nextOfKin: memberProfile.next_of_kin_name ?? undefined,
 					nextOfKinNumber: memberProfile.next_of_kin_phone ?? undefined,
 					weapon: memberProfile.preferred_weapon ?? undefined,
-					insuranceFormSubmitted:
-						memberProfile.insurance_form_submitted ?? undefined,
+					insuranceFormSubmitted: memberProfile.insurance_form_submitted ?? undefined,
 					socialMediaConsent:
-						(memberProfile.social_media_consent as SocialMediaConsent) ??
-						undefined,
+						(memberProfile.social_media_consent as SocialMediaConsent) ?? undefined
 				},
 				valibot(signupSchema),
-				{ errors: false },
+				{ errors: false }
 			),
-			genders: locals.supabase
-				.rpc("get_gender_options")
-				.then((r) => r.data ?? []) as Promise<string[]>,
-			weapons: locals.supabase
-				.rpc("get_weapons_options")
-				.then((r) => r.data ?? []) as Promise<string[]>,
+			genders: locals.supabase.rpc('get_gender_options').then((r) => r.data ?? []) as Promise<
+				string[]
+			>,
+			weapons: locals.supabase.rpc('get_weapons_options').then((r) => r.data ?? []) as Promise<
+				string[]
+			>,
 			insuranceFormLink: supabaseServiceClient
-				.from("settings")
-				.select("value")
-				.eq("key", "insurance_form_link")
+				.from('settings')
+				.select('value')
+				.eq('key', 'insurance_form_link')
 				.limit(1)
 				.single()
 				.then((result) => result.data?.value),
 			member: {
 				id: params.memberId,
 				customer_id: memberData?.customer_id,
-				subscription_paused_until: memberData?.subscription_paused_until,
+				subscription_paused_until: memberData?.subscription_paused_until
 			},
-			canUpdate,
+			canUpdate
 		};
 	} catch (e) {
-		Sentry.captureMessage(`Error loading member data: ${e}`, "error");
+		Sentry.captureMessage(`Error loading member data: ${e}`, 'error');
 		error(404, {
-			message: "Member not found",
+			message: 'Member not found'
 		});
 	}
 };
 
 export const actions: Actions = {
-	"update-profile": async (event) => {
+	'update-profile': async (event) => {
 		const canUpdate = await canUpdateSettings(event as RequestEvent);
 		if (!canUpdate) {
-			return fail(403, { message: "Unauthorized" });
+			return fail(403, { message: 'Unauthorized' });
 		}
 
 		const form = await superValidate(event, valibot(signupSchema));
@@ -130,7 +120,7 @@ export const actions: Actions = {
 
 		const { session } = await event.locals.safeGetSession();
 		if (!session || !event.platform?.env.HYPERDRIVE) {
-			return fail(401, { form, message: "Unauthorized" });
+			return fail(401, { form, message: 'Unauthorized' });
 		}
 
 		try {
@@ -143,20 +133,26 @@ export const actions: Actions = {
 				phoneNumber: form.data.phoneNumber,
 				dateOfBirth: form.data.dateOfBirth,
 				pronouns: form.data.pronouns,
-				gender: form.data.gender as any,
+				gender: form.data.gender as
+					| 'male'
+					| 'female'
+					| 'non_binary'
+					| 'prefer_not_to_say'
+					| 'other'
+					| undefined,
 				medicalConditions: form.data.medicalConditions,
 				nextOfKin: form.data.nextOfKin,
 				nextOfKinNumber: form.data.nextOfKinNumber,
-				preferredWeapon: form.data.weapon as any,
+				preferredWeapon: form.data.weapon as string[] | undefined,
 				insuranceFormSubmitted: form.data.insuranceFormSubmitted,
-				socialMediaConsent: form.data.socialMediaConsent as any,
+				socialMediaConsent: form.data.socialMediaConsent as 'yes' | 'no' | 'ask_me' | undefined
 			});
 
-			return message(form, { success: "Profile has been updated!" });
+			return message(form, { success: 'Profile has been updated!' });
 		} catch (err) {
-			Sentry.captureMessage(`Error updating member profile: ${err}`, "error");
-			setMessage(form, { failure: "Failed to update profile" });
+			Sentry.captureMessage(`Error updating member profile: ${err}`, 'error');
+			setMessage(form, { failure: 'Failed to update profile' });
 			return fail(500, { form });
 		}
-	},
+	}
 };

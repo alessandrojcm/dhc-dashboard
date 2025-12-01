@@ -1,10 +1,11 @@
 <script lang="ts">
+	/* eslint-disable @typescript-eslint/no-explicit-any */
 	import type { Database } from '$database';
 	import type { SupabaseClient } from '@supabase/supabase-js';
 	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
-	import { FolderOpen, Plus, Edit, Trash2, Package, AlertTriangle } from 'lucide-svelte';
+	import { FolderOpen, Plus, Edit, Package, AlertTriangle } from 'lucide-svelte';
 	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
 	import { createQuery } from '@tanstack/svelte-query';
 
@@ -31,6 +32,7 @@
 
 	// Build hierarchy tree
 	const buildHierarchy = (containers: any[]) => {
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const containerMap = new Map();
 		const rootContainers: any[] = [];
 

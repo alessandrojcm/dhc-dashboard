@@ -7,7 +7,6 @@
 	import { createQuery } from '@tanstack/svelte-query';
 	import { browser } from '$app/environment';
 	import { onMount } from 'svelte';
-	import { Component } from 'lucide-svelte';
 
 	let GenderBarChart: typeof import('$lib/components/gender-bar-chart.svelte').default | null =
 		$state(null);

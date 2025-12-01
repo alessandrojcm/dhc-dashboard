@@ -1,4 +1,4 @@
-import { type QueryExecutorProvider, sql } from "kysely";
+import { type QueryExecutorProvider, sql } from 'kysely';
 
 /**
  * Updates a user profile with a customer ID
@@ -6,7 +6,7 @@ import { type QueryExecutorProvider, sql } from "kysely";
 export async function updateUserProfileWithCustomerId(
 	userId: string,
 	customerId: string,
-	executor: QueryExecutorProvider,
+	executor: QueryExecutorProvider
 ): Promise<void> {
 	await sql`
     UPDATE user_profiles

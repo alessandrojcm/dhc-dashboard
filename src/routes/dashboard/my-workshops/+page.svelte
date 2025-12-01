@@ -12,7 +12,7 @@
 	import { Tabs, TabsContent, TabsList, TabsTrigger } from '$lib/components/ui/tabs/index.js';
 	import { toast } from 'svelte-sonner';
 	import { CalendarDays } from 'lucide-svelte';
-    import type {ClubActivityWithInterest} from "$lib/types";
+	import type { ClubActivityWithInterest } from '$lib/types';
 
 	let { data } = $props();
 	let supabase = data.supabase;
@@ -106,6 +106,7 @@
 		<TabsContent value="published">
 			{#if publishedWorkshopsQuery.isLoading}
 				<div class="space-y-4">
+					<!-- eslint-disable-next-line @typescript-eslint/no-unused-vars -->
 					{#each Array(3) as _, index (index)}
 						<Skeleton class="h-32 w-full" />
 					{/each}
@@ -139,6 +140,7 @@
 		<TabsContent value="planned">
 			{#if workshopsQuery.isLoading}
 				<div class="space-y-4">
+					<!-- eslint-disable-next-line @typescript-eslint/no-unused-vars -->
 					{#each Array(3) as _, index (index)}
 						<Skeleton class="h-32 w-full" />
 					{/each}

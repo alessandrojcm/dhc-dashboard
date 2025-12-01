@@ -1,7 +1,7 @@
 <script lang="ts">
 	import SuperDebug, { superForm } from 'sveltekit-superforms';
 	import { valibot } from 'sveltekit-superforms/adapters';
-	import { type CategorySchema, itemSchema } from '$lib/schemas/inventory';
+	import { itemSchema } from '$lib/schemas/inventory';
 	import type { InventoryCategory, InventoryAttributeDefinition } from '$lib/types';
 	import {
 		Card,
@@ -60,7 +60,7 @@
 			// Clean attributes to only include non-empty values
 			const attributesRaw = submitData.get('attributes');
 			const attributes = attributesRaw ? JSON.parse(attributesRaw as string) : {};
-			const cleanedAttributes: Record<string, any> = {};
+			const cleanedAttributes: Record<string, unknown> = {};
 
 			Object.entries(attributes).forEach(([key, value]) => {
 				// Only include attributes that have actual values (not null, undefined, or empty string)
@@ -117,7 +117,8 @@
 
 	function clearAttributeError(attrName: string) {
 		if (attributeErrors[attrName]) {
-			const { [attrName]: _, ...rest } = attributeErrors;
+			// eslint-disable-next-line @typescript-eslint/no-unused-vars
+			const { [attrName]: _removed, ...rest } = attributeErrors;
 			attributeErrors = rest;
 		}
 	}
@@ -163,7 +164,7 @@
 										{selectedCategoryName}
 									</SelectTrigger>
 									<SelectContent>
-										{#each data.categories as category}
+										{#each data.categories as category (category.id)}
 											<SelectItem value={category.id}>{category.name}</SelectItem>
 										{/each}
 									</SelectContent>
@@ -182,7 +183,7 @@
 										{selectedContainerName}
 									</SelectTrigger>
 									<SelectContent>
-										{#each hierarchicalContainers as container}
+										{#each hierarchicalContainers as container (container.id)}
 											<SelectItem value={container.id}>
 												{container.displayName}
 											</SelectItem>
@@ -250,7 +251,7 @@
 						<div class="space-y-4">
 							<h3 class="text-lg font-medium">Item Attributes</h3>
 							<div class="grid gap-4 md:grid-cols-2">
-								{#each categoryAttributes as attr}
+								{#each categoryAttributes as attr (attr.name)}
 									{#if attr.name}
 										<div class="space-y-2">
 											<Label
@@ -301,7 +302,7 @@
 															`Select ${attr.label.toLowerCase()}`}
 													</SelectTrigger>
 													<SelectContent>
-														{#each attr.options as option}
+														{#each attr.options as option (option)}
 															<SelectItem value={option}>{option}</SelectItem>
 														{/each}
 													</SelectContent>

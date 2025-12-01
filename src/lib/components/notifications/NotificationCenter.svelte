@@ -230,7 +230,7 @@
 			} else {
 				return date.format('MMM D, YYYY');
 			}
-		} catch (e) {
+		} catch {
 			return timestamp;
 		}
 	}

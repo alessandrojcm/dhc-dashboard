@@ -11,6 +11,7 @@
 	import { page } from '$app/state';
 	import * as Alert from '$lib/components/ui/alert';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import dayjs from 'dayjs';
 	import { fromDate, getLocalTimeZone } from '@internationalized/date';
 	import DatePicker from '$lib/components/ui/date-picker.svelte';
@@ -45,7 +46,7 @@
 
 					if (response.ok) {
 						isVerified = true;
-						goto(`/members/signup/${invitationId}`, {
+						goto(resolve(`/members/signup/${invitationId}`), {
 							replaceState: true
 						});
 					} else {

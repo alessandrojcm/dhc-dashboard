@@ -7,15 +7,9 @@
  * - Querying historical records
  */
 
-import type {
-	Logger,
-	Kysely,
-	Transaction,
-	KyselyDatabase,
-	Session,
-} from "../shared";
-import { executeWithRLS } from "../shared";
-import type { InventoryHistoryWithRelations, HistoryAction } from "./types";
+import type { Logger, Kysely, Transaction, KyselyDatabase, Session } from '../shared';
+import { executeWithRLS } from '../shared';
+import type { InventoryHistoryWithRelations, HistoryAction, InventoryAttributes } from './types';
 
 /**
  * Service for managing inventory history
@@ -26,7 +20,7 @@ export class HistoryService {
 	constructor(
 		private kysely: Kysely<KyselyDatabase>,
 		private session: Session,
-		logger?: Logger,
+		logger?: Logger
 	) {
 		this.logger = logger ?? console;
 	}
@@ -34,27 +28,20 @@ export class HistoryService {
 	/**
 	 * Get history for a specific item
 	 */
-	async getByItem(
-		itemId: string,
-		limit = 20,
-	): Promise<InventoryHistoryWithRelations[]> {
-		this.logger.info("Getting history for item", { itemId, limit });
+	async getByItem(itemId: string, limit = 20): Promise<InventoryHistoryWithRelations[]> {
+		this.logger.info('Getting history for item', { itemId, limit });
 
 		try {
-			return await executeWithRLS(
-				this.kysely,
-				{ claims: this.session },
-				async (trx) => {
-					return this._getByItem(trx, itemId, limit);
-				},
-			);
-		} catch (error) {
-			this.logger.error("Failed to get item history", {
-				error,
-				itemId,
+			return await executeWithRLS(this.kysely, { claims: this.session }, async (trx) => {
+				return this._getByItem(trx, itemId, limit);
 			});
-			throw new Error("Failed to get item history", {
-				cause: { itemId, originalError: error },
+		} catch (error) {
+			this.logger.error('Failed to get item history', {
+				error,
+				itemId
+			});
+			throw new Error('Failed to get item history', {
+				cause: { itemId, originalError: error }
 			});
 		}
 	}
@@ -65,41 +52,37 @@ export class HistoryService {
 	async _getByItem(
 		trx: Transaction<KyselyDatabase>,
 		itemId: string,
-		limit = 20,
+		limit = 20
 	): Promise<InventoryHistoryWithRelations[]> {
 		const records = await trx
-			.selectFrom("inventory_history")
+			.selectFrom('inventory_history')
 			.leftJoin(
-				"containers as old_container",
-				"inventory_history.old_container_id",
-				"old_container.id",
+				'containers as old_container',
+				'inventory_history.old_container_id',
+				'old_container.id'
 			)
 			.leftJoin(
-				"containers as new_container",
-				"inventory_history.new_container_id",
-				"new_container.id",
+				'containers as new_container',
+				'inventory_history.new_container_id',
+				'new_container.id'
 			)
-			.leftJoin(
-				"inventory_items",
-				"inventory_history.item_id",
-				"inventory_items.id",
-			)
+			.leftJoin('inventory_items', 'inventory_history.item_id', 'inventory_items.id')
 			.select([
-				"inventory_history.id",
-				"inventory_history.item_id",
-				"inventory_history.action",
-				"inventory_history.old_container_id",
-				"inventory_history.new_container_id",
-				"inventory_history.notes",
-				"inventory_history.changed_by",
-				"inventory_history.created_at",
-				"old_container.name as old_container_name",
-				"new_container.name as new_container_name",
-				"inventory_items.id as item_id_joined",
-				"inventory_items.attributes as item_attributes",
+				'inventory_history.id',
+				'inventory_history.item_id',
+				'inventory_history.action',
+				'inventory_history.old_container_id',
+				'inventory_history.new_container_id',
+				'inventory_history.notes',
+				'inventory_history.changed_by',
+				'inventory_history.created_at',
+				'old_container.name as old_container_name',
+				'new_container.name as new_container_name',
+				'inventory_items.id as item_id_joined',
+				'inventory_items.attributes as item_attributes'
 			])
-			.where("inventory_history.item_id", "=", itemId)
-			.orderBy("inventory_history.created_at", "desc")
+			.where('inventory_history.item_id', '=', itemId)
+			.orderBy('inventory_history.created_at', 'desc')
 			.limit(limit)
 			.execute();
 
@@ -116,15 +99,11 @@ export class HistoryService {
 			item: record.item_id_joined
 				? {
 						id: record.item_id_joined,
-						attributes: (record.item_attributes || {}) as Record<string, any>,
+						attributes: (record.item_attributes || {}) as InventoryAttributes
 					}
 				: null,
-			old_container: record.old_container_name
-				? { name: record.old_container_name }
-				: null,
-			new_container: record.new_container_name
-				? { name: record.new_container_name }
-				: null,
+			old_container: record.old_container_name ? { name: record.old_container_name } : null,
+			new_container: record.new_container_name ? { name: record.new_container_name } : null
 		}));
 	}
 
@@ -137,18 +116,18 @@ export class HistoryService {
 		oldContainerId: string | null,
 		newContainerId: string,
 		notes?: string,
-		changedBy?: string,
+		changedBy?: string
 	): Promise<void> {
 		await trx
-			.insertInto("inventory_history")
+			.insertInto('inventory_history')
 			.values({
 				item_id: itemId,
-				action: "moved",
+				action: 'moved',
 				old_container_id: oldContainerId,
 				new_container_id: newContainerId,
 				notes: notes || null,
 				changed_by: changedBy || this.session.user.id,
-				created_at: new Date().toISOString(),
+				created_at: new Date().toISOString()
 			})
 			.execute();
 	}
@@ -160,18 +139,18 @@ export class HistoryService {
 		trx: Transaction<KyselyDatabase>,
 		itemId: string,
 		containerId: string,
-		notes?: string,
+		notes?: string
 	): Promise<void> {
 		await trx
-			.insertInto("inventory_history")
+			.insertInto('inventory_history')
 			.values({
 				item_id: itemId,
-				action: "created",
+				action: 'created',
 				old_container_id: null,
 				new_container_id: containerId,
 				notes: notes || null,
 				changed_by: this.session.user.id,
-				created_at: new Date().toISOString(),
+				created_at: new Date().toISOString()
 			})
 			.execute();
 	}
@@ -182,18 +161,18 @@ export class HistoryService {
 	async _recordUpdate(
 		trx: Transaction<KyselyDatabase>,
 		itemId: string,
-		notes?: string,
+		notes?: string
 	): Promise<void> {
 		await trx
-			.insertInto("inventory_history")
+			.insertInto('inventory_history')
 			.values({
 				item_id: itemId,
-				action: "updated",
+				action: 'updated',
 				old_container_id: null,
 				new_container_id: null,
 				notes: notes || null,
 				changed_by: this.session.user.id,
-				created_at: new Date().toISOString(),
+				created_at: new Date().toISOString()
 			})
 			.execute();
 	}
@@ -205,19 +184,19 @@ export class HistoryService {
 	async _recordDeletion(
 		trx: Transaction<KyselyDatabase>,
 		itemId: string,
-		notes?: string,
+		notes?: string
 	): Promise<void> {
 		// Using "updated" action since "deleted" is not in the enum
 		await trx
-			.insertInto("inventory_history")
+			.insertInto('inventory_history')
 			.values({
 				item_id: itemId,
-				action: "updated",
+				action: 'updated',
 				old_container_id: null,
 				new_container_id: null,
-				notes: notes ? `DELETED: ${notes}` : "Item deleted",
+				notes: notes ? `DELETED: ${notes}` : 'Item deleted',
 				changed_by: this.session.user.id,
-				created_at: new Date().toISOString(),
+				created_at: new Date().toISOString()
 			})
 			.execute();
 	}
@@ -226,80 +205,65 @@ export class HistoryService {
 	 * Get recent history across all items
 	 */
 	async getRecent(limit = 50): Promise<InventoryHistoryWithRelations[]> {
-		this.logger.info("Getting recent history", { limit });
+		this.logger.info('Getting recent history', { limit });
 
 		try {
-			return await executeWithRLS(
-				this.kysely,
-				{ claims: this.session },
-				async (trx) => {
-					const records = await trx
-						.selectFrom("inventory_history")
-						.leftJoin(
-							"containers as old_container",
-							"inventory_history.old_container_id",
-							"old_container.id",
-						)
-						.leftJoin(
-							"containers as new_container",
-							"inventory_history.new_container_id",
-							"new_container.id",
-						)
-						.leftJoin(
-							"inventory_items",
-							"inventory_history.item_id",
-							"inventory_items.id",
-						)
-						.select([
-							"inventory_history.id",
-							"inventory_history.item_id",
-							"inventory_history.action",
-							"inventory_history.old_container_id",
-							"inventory_history.new_container_id",
-							"inventory_history.notes",
-							"inventory_history.changed_by",
-							"inventory_history.created_at",
-							"old_container.name as old_container_name",
-							"new_container.name as new_container_name",
-							"inventory_items.id as item_id_joined",
-							"inventory_items.attributes as item_attributes",
-						])
-						.orderBy("inventory_history.created_at", "desc")
-						.limit(limit)
-						.execute();
+			return await executeWithRLS(this.kysely, { claims: this.session }, async (trx) => {
+				const records = await trx
+					.selectFrom('inventory_history')
+					.leftJoin(
+						'containers as old_container',
+						'inventory_history.old_container_id',
+						'old_container.id'
+					)
+					.leftJoin(
+						'containers as new_container',
+						'inventory_history.new_container_id',
+						'new_container.id'
+					)
+					.leftJoin('inventory_items', 'inventory_history.item_id', 'inventory_items.id')
+					.select([
+						'inventory_history.id',
+						'inventory_history.item_id',
+						'inventory_history.action',
+						'inventory_history.old_container_id',
+						'inventory_history.new_container_id',
+						'inventory_history.notes',
+						'inventory_history.changed_by',
+						'inventory_history.created_at',
+						'old_container.name as old_container_name',
+						'new_container.name as new_container_name',
+						'inventory_items.id as item_id_joined',
+						'inventory_items.attributes as item_attributes'
+					])
+					.orderBy('inventory_history.created_at', 'desc')
+					.limit(limit)
+					.execute();
 
-					// Transform to expected structure
-					return records.map((record) => ({
-						id: record.id,
-						item_id: record.item_id,
-						action: record.action as HistoryAction,
-						old_container_id: record.old_container_id,
-						new_container_id: record.new_container_id,
-						notes: record.notes,
-						changed_by: record.changed_by,
-						created_at: record.created_at,
-						item: record.item_id_joined
-							? {
-									id: record.item_id_joined,
-									attributes: (record.item_attributes || {}) as Record<
-										string,
-										any
-									>,
-								}
-							: null,
-						old_container: record.old_container_name
-							? { name: record.old_container_name }
-							: null,
-						new_container: record.new_container_name
-							? { name: record.new_container_name }
-							: null,
-					}));
-				},
-			);
+				// Transform to expected structure
+				return records.map((record) => ({
+					id: record.id,
+					item_id: record.item_id,
+					action: record.action as HistoryAction,
+					old_container_id: record.old_container_id,
+					new_container_id: record.new_container_id,
+					notes: record.notes,
+					changed_by: record.changed_by,
+					created_at: record.created_at,
+					item: record.item_id_joined
+						? {
+								id: record.item_id_joined,
+								attributes: (record.item_attributes || {}) as InventoryAttributes
+							}
+						: null,
+					old_container: record.old_container_name ? { name: record.old_container_name } : null,
+					new_container: record.new_container_name ? { name: record.new_container_name } : null
+				}));
+			});
 		} catch (error) {
-			this.logger.error("Failed to get recent history", { error });
-			throw new Error("Failed to get recent history", {
-				cause: { originalError: error },
+			this.logger.error('Failed to get recent history', { error });
+			throw new Error('Failed to get recent history', {
+				cause: { originalError: error }
 			});
 		}
 	}

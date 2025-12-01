@@ -1,18 +1,15 @@
-import { error, fail } from "@sveltejs/kit";
-import { superValidate } from "sveltekit-superforms";
-import { valibot } from "sveltekit-superforms/adapters";
-import { authorize } from "$lib/server/auth";
-import { INVENTORY_ROLES } from "$lib/server/roles";
+import { error, fail } from '@sveltejs/kit';
+import { superValidate } from 'sveltekit-superforms';
+import { valibot } from 'sveltekit-superforms/adapters';
+import { authorize } from '$lib/server/auth';
+import { INVENTORY_ROLES } from '$lib/server/roles';
 import {
 	createItemService,
 	createHistoryService,
-	ItemUpdateSchema,
-} from "$lib/server/services/inventory";
-import type {
-	InventoryAttributeDefinition,
-	InventoryAttributes,
-} from "$lib/types";
-import type { Action, PageServerLoad } from "./$types";
+	ItemUpdateSchema
+} from '$lib/server/services/inventory';
+import type { InventoryAttributeDefinition, InventoryAttributes } from '$lib/types';
+import type { Action, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params, locals, platform }) => {
 	const session = await authorize(locals, INVENTORY_ROLES);
@@ -23,7 +20,7 @@ export const load: PageServerLoad = async ({ params, locals, platform }) => {
 	const item = await itemService.findById(params.id);
 
 	if (!item) {
-		throw error(404, "Item not found");
+		throw error(404, 'Item not found');
 	}
 
 	// Get history for the item
@@ -52,11 +49,11 @@ export const load: PageServerLoad = async ({ params, locals, platform }) => {
 			container_id: item.container.id!,
 			category_id: item.category.id!,
 			quantity: item.quantity,
-			notes: item.notes || "",
+			notes: item.notes || '',
 			out_for_maintenance: item.out_for_maintenance || false,
-			attributes: initialAttributes,
+			attributes: initialAttributes
 		},
-		valibot(ItemUpdateSchema),
+		valibot(ItemUpdateSchema)
 	);
 
 	return {
@@ -64,7 +61,7 @@ export const load: PageServerLoad = async ({ params, locals, platform }) => {
 		history,
 		categories: filterOptions.categories,
 		containers: filterOptions.containers,
-		form,
+		form
 	};
 };
 
@@ -83,8 +80,8 @@ export const actions: { [key: string]: Action } = {
 
 			return { form, item };
 		} catch (err) {
-			console.error("Failed to update item:", err);
+			console.error('Failed to update item:', err);
 			return fail(500, { form });
 		}
-	},
+	}
 };

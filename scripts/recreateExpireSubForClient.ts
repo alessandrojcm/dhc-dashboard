@@ -1,19 +1,19 @@
-import dayjs from "dayjs";
-import { Kysely, type QueryExecutorProvider, sql } from "kysely";
-import { PostgresJSDialect } from "kysely-postgres-js";
-import postgres from "postgres";
-import Stripe from "stripe";
-import type { KyselyDatabase } from "../src/lib/types";
+import dayjs from 'dayjs';
+import { Kysely, type QueryExecutorProvider, sql } from 'kysely';
+import { PostgresJSDialect } from 'kysely-postgres-js';
+import postgres from 'postgres';
+import Stripe from 'stripe';
+import type { KyselyDatabase } from '../src/lib/types';
 
 if (!process.env.CUSTOMER_ID) {
-	throw new Error("Missing CUSTOMER_ID in environment variables");
+	throw new Error('Missing CUSTOMER_ID in environment variables');
 }
 
 if (!process.env.STRIPE_SECRET_KEY) {
-	throw new Error("Missing STRIPE_SECRET_KEY in environment variables");
+	throw new Error('Missing STRIPE_SECRET_KEY in environment variables');
 }
 if (!process.env.DATABASE_URL) {
-	throw new Error("Missing DATABASE_URL in environment variables");
+	throw new Error('Missing DATABASE_URL in environment variables');
 }
 
 const monthlyPriceId = process.env.MONTHLY_PRICE_ID!;
@@ -21,7 +21,7 @@ const annualPriceId = process.env.ANNUAL_PRICE_ID!;
 const customerId = process.env.CUSTOMER_ID!;
 
 if (!monthlyPriceId || !annualPriceId || !customerId) {
-	throw new Error("Missing price IDs or customer ID in environment variables");
+	throw new Error('Missing price IDs or customer ID in environment variables');
 }
 
 function getKyselyClient(connectionString: string) {
@@ -37,11 +37,11 @@ function getKyselyClient(connectionString: string) {
 							} else {
 								return value;
 							}
-						},
-					},
-				},
-			}),
-		}),
+						}
+					}
+				}
+			})
+		})
 	});
 }
 
@@ -56,7 +56,7 @@ export async function createPaymentSession(
 	monthlyAmount: number,
 	annualAmount: number,
 	totalAmount: number,
-	executor: QueryExecutorProvider,
+	executor: QueryExecutorProvider
 ): Promise<string> {
 	// Store the new session
 	const result = await sql<{ id: string }>`
@@ -69,7 +69,7 @@ export async function createPaymentSession(
       monthly_amount = ${monthlyAmount}::integer,
       annual_amount = ${annualAmount}::integer,
       total_amount = ${totalAmount}::integer,
-      expires_at = ${dayjs().add(24, "hour").toISOString()}::timestamptz,
+      expires_at = ${dayjs().add(24, 'hour').toISOString()}::timestamptz,
       discounted_monthly_amount = NULL,
       discounted_annual_amount = NULL,
       discount_percentage = NULL
@@ -81,27 +81,25 @@ export async function createPaymentSession(
 }
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-	apiVersion: "2025-04-30.basil",
+	apiVersion: '2025-04-30.basil',
 	maxNetworkRetries: 3,
 	timeout: 30 * 1000,
-	httpClient: Stripe.createFetchHttpClient(),
+	httpClient: Stripe.createFetchHttpClient()
 });
 
 async function resetExpiredSubscriptions() {
 	const expiredSubscriptions = await stripe.subscriptions.list({
-		status: "incomplete_expired",
-		expand: ["data.latest_invoice.payments"],
+		status: 'incomplete_expired',
+		expand: ['data.latest_invoice.payments']
 	});
 
-	console.log(
-		`Found ${expiredSubscriptions.data.length} expired subscriptions`,
-	);
+	console.log(`Found ${expiredSubscriptions.data.length} expired subscriptions`);
 	await kysely.transaction().execute(async (trx) => {
 		console.log(customerId);
 		const userId = await trx
-			.selectFrom("user_profiles")
-			.select("supabase_user_id")
-			.where("customer_id", "=", customerId)
+			.selectFrom('user_profiles')
+			.select('supabase_user_id')
+			.where('customer_id', '=', customerId)
 			.executeTakeFirst()
 			.then((r) => r?.supabase_user_id);
 		if (!userId) {
@@ -113,29 +111,29 @@ async function resetExpiredSubscriptions() {
 				customer: customerId,
 				items: [{ price: monthlyPriceId }],
 				billing_cycle_anchor_config: {
-					day_of_month: 1,
+					day_of_month: 1
 				},
-				payment_behavior: "default_incomplete",
+				payment_behavior: 'default_incomplete',
 				payment_settings: {
-					payment_method_types: ["sepa_debit"],
+					payment_method_types: ['sepa_debit']
 				},
-				expand: ["latest_invoice.payments"],
-				collection_method: "charge_automatically",
+				expand: ['latest_invoice.payments'],
+				collection_method: 'charge_automatically'
 			}),
 			stripe.subscriptions.create({
 				customer: customerId,
 				items: [{ price: annualPriceId }],
-				payment_behavior: "default_incomplete",
+				payment_behavior: 'default_incomplete',
 				payment_settings: {
-					payment_method_types: ["sepa_debit"],
+					payment_method_types: ['sepa_debit']
 				},
 				billing_cycle_anchor_config: {
 					month: 1,
-					day_of_month: 7,
+					day_of_month: 7
 				},
-				expand: ["latest_invoice.payments"],
-				collection_method: "charge_automatically",
-			}),
+				expand: ['latest_invoice.payments'],
+				collection_method: 'charge_automatically'
+			})
 		]);
 		console.log(`Created subscriptions for user ${customerId}`);
 		const monthlyInvoice = monthlySubscription.latest_invoice as Stripe.Invoice;
@@ -153,7 +151,7 @@ async function resetExpiredSubscriptions() {
 			monthlyPayment,
 			annualPayment,
 			monthlyInvoice,
-			annualInvoice,
+			annualInvoice
 		);
 		await createPaymentSession(
 			userId,
@@ -166,7 +164,7 @@ async function resetExpiredSubscriptions() {
 			annualSubscription.items.data[0].plan.amount! as number,
 			// Total amount due for both subscriptions right now
 			monthlyInvoice.amount_due! + annualInvoice.amount_due!,
-			trx,
+			trx
 		);
 		console.log(`Created payment session for user ${userId}`);
 	});

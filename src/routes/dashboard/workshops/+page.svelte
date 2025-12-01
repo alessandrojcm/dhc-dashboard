@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { Button } from '$lib/components/ui/button';
 	import { Alert, AlertDescription } from '$lib/components/ui/alert';
 	import WorkshopCalendar from '$lib/components/workshops/workshop-calendar.svelte';
 	import QuickCreateWorkshop from '$lib/components/workshops/quick-create-workshop.svelte';
-    import type { ClubActivityWithRegistrations} from '$lib/types';
+	import type { ClubActivityWithRegistrations } from '$lib/types';
 	import { createQuery } from '@tanstack/svelte-query';
 
 	// Improvement: add pagination by month
@@ -36,11 +37,11 @@
 	// Simple handlers - mutations are now handled in the modal component
 
 	function handleCreate() {
-		goto('/dashboard/workshops/create');
+		goto(resolve('/dashboard/workshops/create'));
 	}
 
 	function handleEdit(workshop: ClubActivityWithRegistrations) {
-		goto(`/dashboard/workshops/${workshop.id}/edit`);
+		goto(resolve(`/dashboard/workshops/${workshop.id}/edit`));
 	}
 
 	// Only edit handler needed - mutations are handled in the modal

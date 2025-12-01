@@ -3,22 +3,16 @@
  * Handles invitation CRUD operations and validation
  */
 
-import * as v from "valibot";
-import type {
-	Kysely,
-	KyselyDatabase,
-	Logger,
-	Session,
-	Transaction,
-} from "../shared";
-import { executeWithRLS, sql } from "../shared";
+import * as v from 'valibot';
+import type { Kysely, KyselyDatabase, Logger, Session, Transaction } from '../shared';
+import { executeWithRLS, sql } from '../shared';
 import type {
 	CreateInvitationArgs,
 	Invitation,
 	InvitationInfo,
 	InvitationStatus,
-	InvitationType,
-} from "./types";
+	InvitationType
+} from './types';
 
 // ============================================================================
 // Validation Schemas (exported for reuse in forms/APIs)
@@ -29,42 +23,29 @@ import type {
  * Export this for use in SuperForms
  */
 export const InvitationCreateSchema = v.object({
-	email: v.pipe(v.string(), v.email("Please enter a valid email address.")),
-	invitationType: v.picklist(
-		["workshop", "admin"],
-		"Please select a valid invitation type.",
-	),
+	email: v.pipe(v.string(), v.email('Please enter a valid email address.')),
+	invitationType: v.picklist(['workshop', 'admin'], 'Please select a valid invitation type.'),
 	waitlistId: v.optional(v.string()),
 	expiresAt: v.optional(v.date()),
 	metadata: v.optional(v.record(v.string(), v.unknown())),
-	userId: v.pipe(v.string(), v.uuid("Please provide a valid user ID.")),
-	firstName: v.pipe(v.string(), v.nonEmpty("First name is required.")),
-	lastName: v.pipe(v.string(), v.nonEmpty("Last name is required.")),
-	dateOfBirth: v.pipe(v.string(), v.nonEmpty("Date of birth is required.")),
-	phoneNumber: v.pipe(v.string(), v.nonEmpty("Phone number is required.")),
+	userId: v.pipe(v.string(), v.uuid('Please provide a valid user ID.')),
+	firstName: v.pipe(v.string(), v.nonEmpty('First name is required.')),
+	lastName: v.pipe(v.string(), v.nonEmpty('Last name is required.')),
+	dateOfBirth: v.pipe(v.string(), v.nonEmpty('Date of birth is required.')),
+	phoneNumber: v.pipe(v.string(), v.nonEmpty('Phone number is required.'))
 });
 
-export type InvitationCreateInput = v.InferOutput<
-	typeof InvitationCreateSchema
->;
+export type InvitationCreateInput = v.InferOutput<typeof InvitationCreateSchema>;
 
 /**
  * Schema for updating invitation status
  */
 export const InvitationStatusUpdateSchema = v.object({
-	invitationId: v.pipe(
-		v.string(),
-		v.uuid("Please provide a valid invitation ID."),
-	),
-	status: v.picklist(
-		["pending", "accepted", "expired", "revoked"],
-		"Please select a valid status.",
-	),
+	invitationId: v.pipe(v.string(), v.uuid('Please provide a valid invitation ID.')),
+	status: v.picklist(['pending', 'accepted', 'expired', 'revoked'], 'Please select a valid status.')
 });
 
-export type InvitationStatusUpdateInput = v.InferOutput<
-	typeof InvitationStatusUpdateSchema
->;
+export type InvitationStatusUpdateInput = v.InferOutput<typeof InvitationStatusUpdateSchema>;
 
 // ============================================================================
 // Invitation Service
@@ -76,7 +57,7 @@ export class InvitationService {
 	constructor(
 		private kysely: Kysely<KyselyDatabase>,
 		private session: Session,
-		logger?: Logger,
+		logger?: Logger
 	) {
 		this.logger = logger ?? console;
 	}
@@ -90,7 +71,7 @@ export class InvitationService {
 	 * This function validates the invitation and returns user profile data
 	 */
 	async getInvitationInfo(invitationId: string): Promise<InvitationInfo> {
-		this.logger.info("Fetching invitation info", { invitationId });
+		this.logger.info('Fetching invitation info', { invitationId });
 
 		const result = await sql<{
 			get_invitation_info: InvitationInfo;
@@ -101,8 +82,8 @@ export class InvitationService {
 			.then((r) => r.rows[0]?.get_invitation_info);
 
 		if (!result) {
-			throw new Error("Invitation not found", {
-				cause: { invitationId, context: "InvitationService.getInvitationInfo" },
+			throw new Error('Invitation not found', {
+				cause: { invitationId, context: 'InvitationService.getInvitationInfo' }
 			});
 		}
 
@@ -113,15 +94,11 @@ export class InvitationService {
 	 * Get invitation by ID from invitations table
 	 */
 	async findById(invitationId: string): Promise<Invitation> {
-		this.logger.info("Fetching invitation by ID", { invitationId });
+		this.logger.info('Fetching invitation by ID', { invitationId });
 
-		return executeWithRLS(
-			this.kysely,
-			{ claims: this.session },
-			async (trx) => {
-				return this._findById(trx, invitationId);
-			},
-		);
+		return executeWithRLS(this.kysely, { claims: this.session }, async (trx) => {
+			return this._findById(trx, invitationId);
+		});
 	}
 
 	/**
@@ -133,30 +110,26 @@ export class InvitationService {
 		userId?: string;
 		invitationType?: InvitationType;
 	}): Promise<Invitation[]> {
-		this.logger.info("Fetching invitations", { filters });
+		this.logger.info('Fetching invitations', { filters });
 
-		return executeWithRLS(
-			this.kysely,
-			{ claims: this.session },
-			async (trx) => {
-				let query = trx.selectFrom("invitations").selectAll();
+		return executeWithRLS(this.kysely, { claims: this.session }, async (trx) => {
+			let query = trx.selectFrom('invitations').selectAll();
 
-				if (filters?.status) {
-					query = query.where("status", "=", filters.status);
-				}
-				if (filters?.email) {
-					query = query.where("email", "=", filters.email);
-				}
-				if (filters?.userId) {
-					query = query.where("user_id", "=", filters.userId);
-				}
-				if (filters?.invitationType) {
-					query = query.where("invitation_type", "=", filters.invitationType);
-				}
+			if (filters?.status) {
+				query = query.where('status', '=', filters.status);
+			}
+			if (filters?.email) {
+				query = query.where('email', '=', filters.email);
+			}
+			if (filters?.userId) {
+				query = query.where('user_id', '=', filters.userId);
+			}
+			if (filters?.invitationType) {
+				query = query.where('invitation_type', '=', filters.invitationType);
+			}
 
-				return query.execute();
-			},
-		);
+			return query.execute();
+		});
 	}
 
 	// ========================================================================
@@ -168,46 +141,35 @@ export class InvitationService {
 	 * This function also creates a user profile and assigns the member role
 	 */
 	async create(input: InvitationCreateInput): Promise<string> {
-		this.logger.info("Creating invitation", { email: input.email });
+		this.logger.info('Creating invitation', { email: input.email });
 
-		return executeWithRLS(
-			this.kysely,
-			{ claims: this.session },
-			async (trx) => {
-				return this._create(trx, input);
-			},
-		);
+		return executeWithRLS(this.kysely, { claims: this.session }, async (trx) => {
+			return this._create(trx, input);
+		});
 	}
 
 	/**
 	 * Update invitation status using the update_invitation_status RPC function
 	 */
-	async updateStatus(
-		invitationId: string,
-		status: InvitationStatus,
-	): Promise<boolean> {
-		this.logger.info("Updating invitation status", { invitationId, status });
+	async updateStatus(invitationId: string, status: InvitationStatus): Promise<boolean> {
+		this.logger.info('Updating invitation status', { invitationId, status });
 
-		return executeWithRLS(
-			this.kysely,
-			{ claims: this.session },
-			async (trx) => {
-				return this._updateStatus(trx, invitationId, status);
-			},
-		);
+		return executeWithRLS(this.kysely, { claims: this.session }, async (trx) => {
+			return this._updateStatus(trx, invitationId, status);
+		});
 	}
 
 	/**
 	 * Validate invitation (check if it exists, is pending, and not expired)
 	 */
 	async validate(invitationId: string): Promise<boolean> {
-		this.logger.info("Validating invitation", { invitationId });
+		this.logger.info('Validating invitation', { invitationId });
 
 		try {
 			const info = await this.getInvitationInfo(invitationId);
-			return info.status === "pending";
+			return info.status === 'pending';
 		} catch (error) {
-			this.logger.warn("Invitation validation failed", { invitationId, error });
+			this.logger.warn('Invitation validation failed', { invitationId, error });
 			return false;
 		}
 	}
@@ -219,19 +181,16 @@ export class InvitationService {
 	/**
 	 * Internal transactional method for fetching invitation by ID
 	 */
-	async _findById(
-		trx: Transaction<KyselyDatabase>,
-		invitationId: string,
-	): Promise<Invitation> {
+	async _findById(trx: Transaction<KyselyDatabase>, invitationId: string): Promise<Invitation> {
 		const invitation = await trx
-			.selectFrom("invitations")
+			.selectFrom('invitations')
 			.selectAll()
-			.where("id", "=", invitationId)
+			.where('id', '=', invitationId)
 			.executeTakeFirst();
 
 		if (!invitation) {
-			throw new Error("Invitation not found", {
-				cause: { invitationId, context: "InvitationService._findById" },
+			throw new Error('Invitation not found', {
+				cause: { invitationId, context: 'InvitationService._findById' }
 			});
 		}
 
@@ -241,10 +200,7 @@ export class InvitationService {
 	/**
 	 * Internal transactional method for creating an invitation
 	 */
-	async _create(
-		trx: Transaction<KyselyDatabase>,
-		input: InvitationCreateInput,
-	): Promise<string> {
+	async _create(trx: Transaction<KyselyDatabase>, input: InvitationCreateInput): Promise<string> {
 		const args: CreateInvitationArgs = {
 			v_user_id: input.userId,
 			p_email: input.email,
@@ -255,7 +211,7 @@ export class InvitationService {
 			p_invitation_type: input.invitationType,
 			p_waitlist_id: input.waitlistId,
 			p_expires_at: input.expiresAt ? input.expiresAt.toISOString() : undefined,
-			p_metadata: input.metadata as { [key: string]: string } | undefined,
+			p_metadata: input.metadata as { [key: string]: string } | undefined
 		};
 
 		const result = await sql<{
@@ -278,8 +234,8 @@ export class InvitationService {
 			.then((r) => r.rows[0]?.create_invitation);
 
 		if (!result) {
-			throw new Error("Failed to create invitation", {
-				cause: { email: input.email, context: "InvitationService._create" },
+			throw new Error('Failed to create invitation', {
+				cause: { email: input.email, context: 'InvitationService._create' }
 			});
 		}
 
@@ -292,7 +248,7 @@ export class InvitationService {
 	async _updateStatus(
 		trx: Transaction<KyselyDatabase>,
 		invitationId: string,
-		status: InvitationStatus,
+		status: InvitationStatus
 	): Promise<boolean> {
 		const result = await sql<{
 			update_invitation_status: boolean;
@@ -306,12 +262,12 @@ export class InvitationService {
 			.then((r) => r.rows[0]?.update_invitation_status);
 
 		if (result === undefined) {
-			throw new Error("Failed to update invitation status", {
+			throw new Error('Failed to update invitation status', {
 				cause: {
 					invitationId,
 					status,
-					context: "InvitationService._updateStatus",
-				},
+					context: 'InvitationService._updateStatus'
+				}
 			});
 		}
 

@@ -87,7 +87,7 @@
 					value: 'IE' as CountryCode
 				};
 			}
-		} catch (error) {
+		} catch {
 			// If parsing fails, just use the raw number
 			return {
 				nationalNumber: phoneNumber,
@@ -152,7 +152,7 @@
 				<Command.List>
 					<Command.Empty>No country found.</Command.Empty>
 					<Command.Group>
-						{#each countryCodes as country}
+						{#each countryCodes as country (country.countryCode)}
 							<Command.Item
 								value={country.countryNameEn}
 								onSelect={() => {

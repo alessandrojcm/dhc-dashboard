@@ -1,9 +1,9 @@
-import { vi, type MockedFunction } from "vitest";
-import type { Logger } from "./logger";
-import type { Session } from "@supabase/supabase-js";
-import type { Kysely } from "kysely";
-import type Stripe from "stripe";
-import type { KyselyDatabase } from "$lib/types";
+import { vi, type MockedFunction } from 'vitest';
+import type { Logger } from './logger';
+import type { Session } from '@supabase/supabase-js';
+import type { Kysely } from 'kysely';
+import type Stripe from 'stripe';
+import type { KyselyDatabase } from '$lib/types';
 
 /**
  * Creates a mock logger for testing
@@ -14,7 +14,7 @@ export function createMockLogger(): Logger {
 		info: vi.fn(),
 		error: vi.fn(),
 		warn: vi.fn(),
-		debug: vi.fn(),
+		debug: vi.fn()
 	};
 }
 
@@ -23,27 +23,27 @@ export function createMockLogger(): Logger {
  */
 export function createMockSession(overrides?: Partial<Session>): Session {
 	return {
-		access_token: "mock-access-token",
-		refresh_token: "mock-refresh-token",
+		access_token: 'mock-access-token',
+		refresh_token: 'mock-refresh-token',
 		expires_in: 3600,
 		expires_at: Date.now() + 3600000,
-		token_type: "bearer",
+		token_type: 'bearer',
 		user: {
-			id: "mock-user-id",
-			aud: "authenticated",
-			role: "authenticated",
-			email: "test@example.com",
+			id: 'mock-user-id',
+			aud: 'authenticated',
+			role: 'authenticated',
+			email: 'test@example.com',
 			email_confirmed_at: new Date().toISOString(),
-			phone: "",
+			phone: '',
 			confirmed_at: new Date().toISOString(),
 			last_sign_in_at: new Date().toISOString(),
 			app_metadata: {},
 			user_metadata: {},
 			identities: [],
 			created_at: new Date().toISOString(),
-			updated_at: new Date().toISOString(),
+			updated_at: new Date().toISOString()
 		},
-		...overrides,
+		...overrides
 	};
 }
 
@@ -52,11 +52,11 @@ export function createMockSession(overrides?: Partial<Session>): Session {
  * This is a placeholder - you'll need to implement proper mocking based on your testing needs
  */
 export type MockedKysely = {
-	selectFrom: MockedFunction<Kysely<KyselyDatabase>["selectFrom"]>;
-	insertInto: MockedFunction<Kysely<KyselyDatabase>["insertInto"]>;
-	updateTable: MockedFunction<Kysely<KyselyDatabase>["updateTable"]>;
-	deleteFrom: MockedFunction<Kysely<KyselyDatabase>["deleteFrom"]>;
-	transaction: MockedFunction<Kysely<KyselyDatabase>["transaction"]>;
+	selectFrom: MockedFunction<Kysely<KyselyDatabase>['selectFrom']>;
+	insertInto: MockedFunction<Kysely<KyselyDatabase>['insertInto']>;
+	updateTable: MockedFunction<Kysely<KyselyDatabase>['updateTable']>;
+	deleteFrom: MockedFunction<Kysely<KyselyDatabase>['deleteFrom']>;
+	transaction: MockedFunction<Kysely<KyselyDatabase>['transaction']>;
 	// Add more methods as needed
 };
 
@@ -70,7 +70,7 @@ export function createMockKysely(): MockedKysely {
 		insertInto: vi.fn(),
 		updateTable: vi.fn(),
 		deleteFrom: vi.fn(),
-		transaction: vi.fn(),
+		transaction: vi.fn()
 	} as MockedKysely;
 }
 
@@ -85,15 +85,15 @@ export function createMockStripe(): Partial<Stripe> {
 			update: vi.fn(),
 			retrieve: vi.fn(),
 			del: vi.fn(),
-			list: vi.fn(),
-		} as any,
+			list: vi.fn()
+		},
 		subscriptions: {
 			create: vi.fn(),
 			update: vi.fn(),
 			retrieve: vi.fn(),
 			cancel: vi.fn(),
-			list: vi.fn(),
-		} as any,
+			list: vi.fn()
+		}
 		// Add more Stripe resources as needed
 	};
 }
@@ -105,7 +105,7 @@ export const testData = {
 	/**
 	 * Generate a unique email for testing
 	 */
-	uniqueEmail: (prefix = "test") => {
+	uniqueEmail: (prefix = 'test') => {
 		const timestamp = Date.now();
 		const random = Math.random().toString(36).substring(2, 15);
 		return `${prefix}-${timestamp}-${random}@example.com`;
@@ -116,5 +116,5 @@ export const testData = {
 	 */
 	uniqueId: () => {
 		return `test-${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
-	},
+	}
 };

@@ -1,17 +1,17 @@
-import { serve } from "std/http/server";
-import * as Sentry from "@sentry/deno";
-import { db, sql } from "../_shared/db.ts";
-import { corsHeaders } from "../_shared/cors.ts";
-import * as v from "valibot";
+import { serve } from 'std/http/server';
+import * as Sentry from '@sentry/deno';
+import { db, sql } from '../_shared/db.ts';
+import { corsHeaders } from '../_shared/cors.ts';
+import * as v from 'valibot';
 
 // Initialize Sentry for error tracking
 Sentry.init({
-	dsn: Deno.env.get("SENTRY_DSN"),
-	environment: Deno.env.get("ENVIRONMENT") || "development",
+	dsn: Deno.env.get('SENTRY_DSN'),
+	environment: Deno.env.get('ENVIRONMENT') || 'development'
 });
 
-const isDevelopment = Deno.env.get("ENVIRONMENT") === "development";
-const DISCORD_WEBHOOK_URL = Deno.env.get("DISCORD_WEBHOOK_URL");
+const isDevelopment = Deno.env.get('ENVIRONMENT') === 'development';
+const DISCORD_WEBHOOK_URL = Deno.env.get('DISCORD_WEBHOOK_URL');
 
 // Maximum number of messages to process in a single run
 const BATCH_SIZE = 10;
@@ -20,19 +20,14 @@ const BATCH_SIZE = 10;
 const discordMessageSchema = v.object({
 	message: v.string(),
 	workshop_id: v.pipe(v.string(), v.uuid()),
-	announcement_type: v.picklist([
-		"created",
-		"status_changed",
-		"time_changed",
-		"location_changed",
-	]),
+	announcement_type: v.picklist(['created', 'status_changed', 'time_changed', 'location_changed'])
 });
 
 /**
  * Verifies if the provided bearer token matches the service role key stored in the vault
  */
 async function verifyBearerToken(authHeader: string | null): Promise<boolean> {
-	if (!authHeader || !authHeader.startsWith("Bearer ")) {
+	if (!authHeader || !authHeader.startsWith('Bearer ')) {
 		return false;
 	}
 
@@ -46,7 +41,7 @@ async function verifyBearerToken(authHeader: string | null): Promise<boolean> {
 		`.execute(db);
 
 		if (result.rows.length === 0) {
-			console.error("Service role key not found in vault");
+			console.error('Service role key not found in vault');
 			return false;
 		}
 
@@ -64,28 +59,26 @@ async function verifyBearerToken(authHeader: string | null): Promise<boolean> {
  */
 async function sendDiscordMessage(message: string): Promise<boolean> {
 	if (!DISCORD_WEBHOOK_URL) {
-		console.error("Discord webhook URL not configured");
+		console.error('Discord webhook URL not configured');
 		return false;
 	}
 
 	try {
 		const response = await fetch(DISCORD_WEBHOOK_URL, {
-			method: "POST",
+			method: 'POST',
 			headers: {
-				"Content-Type": "application/json",
+				'Content-Type': 'application/json'
 			},
 			body: JSON.stringify({
 				content: `Hey @everyone!\n${message}`,
 				allowed_mentions: {
-					parse: ["everyone"],
-				},
-			}),
+					parse: ['everyone']
+				}
+			})
 		});
 
 		if (!response.ok) {
-			console.error(
-				`Discord webhook failed: ${response.status} ${response.statusText}`,
-			);
+			console.error(`Discord webhook failed: ${response.status} ${response.statusText}`);
 			return false;
 		}
 
@@ -98,7 +91,7 @@ async function sendDiscordMessage(message: string): Promise<boolean> {
 }
 
 async function processDiscordQueue() {
-	console.log("Processing Discord queue...");
+	console.log('Processing Discord queue...');
 
 	try {
 		// Read up to BATCH_SIZE messages from the queue
@@ -129,35 +122,27 @@ async function processDiscordQueue() {
 				if (!payload.success) {
 					Sentry.captureMessage(
 						`Invalid Discord queue message: ${JSON.stringify(msg)}, errors: ${JSON.stringify(
-							payload.issues,
+							payload.issues
 						)}`,
-						"error",
+						'error'
 					);
-					await sql`SELECT * FROM pgmq.archive('discord_queue', ${msgId}::bigint)`.execute(
-						db,
-					);
+					await sql`SELECT * FROM pgmq.archive('discord_queue', ${msgId}::bigint)`.execute(db);
 					continue;
 				}
 
-				console.log(
-					`Processing Discord message ${msgId}: ${JSON.stringify(msg)}`,
-				);
+				console.log(`Processing Discord message ${msgId}: ${JSON.stringify(msg)}`);
 
 				const { message, workshop_id, announcement_type } = payload.output;
 
 				if (isDevelopment) {
 					console.log(`Skipping Discord send in development mode: ${message}`);
-					console.log(
-						`Workshop ID: ${workshop_id}, Type: ${announcement_type}`,
-					);
+					console.log(`Workshop ID: ${workshop_id}, Type: ${announcement_type}`);
 				} else {
 					// Send the Discord message
 					const success = await sendDiscordMessage(message);
 
 					if (!success) {
-						console.error(
-							`Failed to send Discord message for workshop ${workshop_id}`,
-						);
+						console.error(`Failed to send Discord message for workshop ${workshop_id}`);
 						// Don't archive the message so it can be retried
 						continue;
 					}
@@ -166,9 +151,7 @@ async function processDiscordQueue() {
 				}
 
 				// Archive the message after successful processing
-				await sql`SELECT * FROM pgmq.archive('discord_queue', ${msgId}::bigint)`.execute(
-					db,
-				);
+				await sql`SELECT * FROM pgmq.archive('discord_queue', ${msgId}::bigint)`.execute(db);
 			} catch (error) {
 				console.error(`Error processing Discord message: ${error}`);
 				Sentry.captureException(error);
@@ -186,26 +169,24 @@ async function processDiscordQueue() {
 
 serve(async (req) => {
 	// Handle CORS preflight requests
-	if (req.method === "OPTIONS") {
-		return new Response("ok", { headers: corsHeaders });
+	if (req.method === 'OPTIONS') {
+		return new Response('ok', { headers: corsHeaders });
 	}
 
-	if (req.method !== "POST") {
-		return new Response(JSON.stringify({ error: "Method not allowed" }), {
+	if (req.method !== 'POST') {
+		return new Response(JSON.stringify({ error: 'Method not allowed' }), {
 			status: 405,
-			headers: { "Content-Type": "application/json", ...corsHeaders },
+			headers: { 'Content-Type': 'application/json', ...corsHeaders }
 		});
 	}
 
 	try {
 		// Verify the bearer token
-		const isAuthorized = await verifyBearerToken(
-			req.headers.get("Authorization"),
-		);
+		const isAuthorized = await verifyBearerToken(req.headers.get('Authorization'));
 		if (!isAuthorized) {
-			return new Response(JSON.stringify({ error: "Unauthorized" }), {
+			return new Response(JSON.stringify({ error: 'Unauthorized' }), {
 				status: 401,
-				headers: { "Content-Type": "application/json", ...corsHeaders },
+				headers: { 'Content-Type': 'application/json', ...corsHeaders }
 			});
 		}
 
@@ -214,20 +195,20 @@ serve(async (req) => {
 		return new Response(JSON.stringify(result), {
 			headers: {
 				...corsHeaders,
-				"Content-Type": "application/json",
+				'Content-Type': 'application/json'
 			},
-			status: 200,
+			status: 200
 		});
 	} catch (error) {
 		console.error(`Unhandled error: ${error}`);
 		Sentry.captureException(error);
 
-		return new Response(JSON.stringify({ error: "Internal server error" }), {
+		return new Response(JSON.stringify({ error: 'Internal server error' }), {
 			headers: {
 				...corsHeaders,
-				"Content-Type": "application/json",
+				'Content-Type': 'application/json'
 			},
-			status: 500,
+			status: 500
 		});
 	}
 });

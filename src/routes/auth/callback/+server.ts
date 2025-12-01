@@ -1,18 +1,15 @@
-import { redirect } from "@sveltejs/kit";
-import type { PageServerLoadEvent } from "../$types";
+import { redirect } from '@sveltejs/kit';
+import type { PageServerLoadEvent } from '../$types';
 
 export const GET = async (event: PageServerLoadEvent) => {
 	const {
 		url,
-		locals: { supabase },
+		locals: { supabase }
 	} = event;
-	const code = url.searchParams.get("code") as string;
-	const next = url.searchParams.get("next") ?? "/";
+	const code = url.searchParams.get('code') as string;
+	const next = url.searchParams.get('next') ?? '/';
 	if (!code) {
-		throw redirect(
-			303,
-			`/auth#error_description=${encodeURIComponent("Invalid code")}`,
-		);
+		throw redirect(303, `/auth#error_description=${encodeURIComponent('Invalid code')}`);
 	}
 	const { error } = await supabase.auth.exchangeCodeForSession(code);
 	if (!error) {
@@ -20,8 +17,5 @@ export const GET = async (event: PageServerLoadEvent) => {
 	}
 
 	// return the user to an error page with instructions
-	throw redirect(
-		303,
-		`/auth#error_description=${encodeURIComponent(error.message)}`,
-	);
+	throw redirect(303, `/auth#error_description=${encodeURIComponent(error.message)}`);
 };

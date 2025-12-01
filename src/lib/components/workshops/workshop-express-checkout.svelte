@@ -87,7 +87,10 @@
 				throw new Error(errorData.error || 'Failed to create payment intent');
 			}
 
-			return response.json() as Promise<{ clientSecret: string; paymentIntentId: string }>;
+			return response.json() as Promise<{
+				clientSecret: string;
+				paymentIntentId: string;
+			}>;
 		},
 		onSuccess: (data: { clientSecret: string; paymentIntentId: string }) => {
 			initializeCheckout(data);

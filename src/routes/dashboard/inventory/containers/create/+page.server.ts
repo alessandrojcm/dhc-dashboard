@@ -1,17 +1,14 @@
-import * as Sentry from "@sentry/sveltekit";
-import { fail, isRedirect, redirect } from "@sveltejs/kit";
-import { superValidate } from "sveltekit-superforms";
-import { valibot } from "sveltekit-superforms/adapters";
-import { authorize } from "$lib/server/auth";
-import { INVENTORY_ROLES } from "$lib/server/roles";
-import {
-	createContainerService,
-	ContainerCreateSchema,
-} from "$lib/server/services/inventory";
+import * as Sentry from '@sentry/sveltekit';
+import { fail, isRedirect, redirect } from '@sveltejs/kit';
+import { superValidate } from 'sveltekit-superforms';
+import { valibot } from 'sveltekit-superforms/adapters';
+import { authorize } from '$lib/server/auth';
+import { INVENTORY_ROLES } from '$lib/server/roles';
+import { createContainerService, ContainerCreateSchema } from '$lib/server/services/inventory';
 
 export const load = async ({
 	locals,
-	platform,
+	platform
 }: {
 	locals: App.Locals;
 	platform: App.Platform;
@@ -24,7 +21,7 @@ export const load = async ({
 
 	return {
 		form: await superValidate(valibot(ContainerCreateSchema)),
-		containers: containers || [],
+		containers: containers || []
 	};
 };
 
@@ -47,11 +44,11 @@ export const actions = {
 				throw error;
 			}
 			Sentry.captureException(error);
-			console.error("Error creating container:", error);
+			console.error('Error creating container:', error);
 			return fail(500, {
 				form,
-				error: "Failed to create container. Please try again.",
+				error: 'Failed to create container. Please try again.'
 			});
 		}
-	},
+	}
 };

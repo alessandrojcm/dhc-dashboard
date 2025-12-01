@@ -12,7 +12,7 @@
 	import { toast } from 'svelte-sonner';
 
 	const props: {
-		form: SuperValidated<MemberSettingsOutput, any, MemberSettingsOutput>;
+		form: SuperValidated<MemberSettingsOutput, string, MemberSettingsOutput>;
 	} = $props();
 	let isOpen = $state(false);
 
@@ -20,9 +20,12 @@
 		resetForm: false,
 		validators: valibotClient(memberSettingsSchema),
 		onResult: ({ result }) => {
-			result.type === 'error' && toast.error(result.error.message);
-			result.type === 'success' &&
+			if (result.type === 'error') {
+				toast.error(result.error.message);
+			}
+			if (result.type === 'success') {
 				toast.success(result.data?.message || 'Settings updated successfully');
+			}
 		}
 	});
 

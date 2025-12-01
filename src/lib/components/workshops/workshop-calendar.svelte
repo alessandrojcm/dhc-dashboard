@@ -1,4 +1,5 @@
 <script lang="ts">
+	/* eslint-disable @typescript-eslint/no-explicit-any */
 	import { Calendar, DayGrid, TimeGrid, Interaction } from '@event-calendar/core';
 	import '@event-calendar/core/index.css';
 	import * as Dialog from '$lib/components/ui/dialog';
@@ -94,7 +95,9 @@
 		})
 	);
 	// Function to handle event click and show dialog
-	const handleEventClick = (info: any) => {
+	const handleEventClick = (info: {
+		event: { extendedProps?: { workshop?: ClubActivityWithRegistrations; isInterested?: boolean } };
+	}) => {
 		const workshop = info.event.extendedProps?.workshop;
 		const isInterested = info.event.extendedProps?.isInterested;
 
@@ -132,7 +135,9 @@
 			const registrationCount = info.event.extendedProps?.registrationCount || 0;
 
 			if (!workshop) {
-				return { html: `<div class="workshop-event p-1">${info.event.title}</div>` };
+				return {
+					html: `<div class="workshop-event p-1">${info.event.title}</div>`
+				};
 			}
 
 			return {
@@ -156,7 +161,7 @@
 		selectable: false,
 		editable: false,
 		// Custom theme to match shadcn design system
-		theme: (defaultTheme: any) => ({
+		theme: (defaultTheme: Record<string, string>) => ({
 			...defaultTheme,
 			calendar: 'ec bg-card text-card-foreground border border-border rounded-lg',
 			header: 'ec-header bg-card border-b border-border',

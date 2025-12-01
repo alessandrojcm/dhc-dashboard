@@ -99,12 +99,17 @@
 
 	function clearAttributeError(attrName: string) {
 		if (attributeErrors[attrName]) {
-			const { [attrName]: _, ...rest } = attributeErrors;
+			// eslint-disable-next-line @typescript-eslint/no-unused-vars
+			const { [attrName]: _removed, ...rest } = attributeErrors;
 			attributeErrors = rest;
 		}
 	}
 
-	const getItemDisplayName = (item: any) => {
+	const getItemDisplayName = (item: {
+		id: string;
+		attributes?: Record<string, unknown> | null;
+		category?: { name?: string | null } | null;
+	}) => {
 		if (item.attributes?.name) return item.attributes.name;
 		if (item.attributes?.brand && item.attributes?.type) {
 			return `${item.attributes.brand} ${item.attributes.type}`;
@@ -137,7 +142,6 @@
 				return 'text-gray-600';
 		}
 	};
-	$inspect(categoryAttributes);
 </script>
 
 <div class="p-6 pb-24">
@@ -199,7 +203,7 @@
 													{selectedContainerName}
 												</SelectTrigger>
 												<SelectContent>
-													{#each hierarchicalContainers as container}
+													{#each hierarchicalContainers as container (container.id)}
 														<SelectItem value={container.id}>
 															{container.displayName}
 														</SelectItem>
@@ -331,7 +335,7 @@
 									<div class="space-y-4">
 										<h3 class="text-lg font-medium">Item Attributes</h3>
 										<div class="grid gap-4 md:grid-cols-2">
-											{#each categoryAttributes as attr}
+											{#each categoryAttributes as attr (attr.name)}
 												{#if attr.type === 'text' || attr.type === 'number'}
 													<div class="space-y-2">
 														<Label
@@ -399,7 +403,7 @@
 																	`Select ${attr.label.toLowerCase()}`}
 															</SelectTrigger>
 															<SelectContent>
-																{#each attr.options as option}
+																{#each attr.options as option (option)}
 																	<SelectItem value={option}>{option}</SelectItem>
 																{/each}
 															</SelectContent>
@@ -451,9 +455,9 @@
 								<!-- View Mode -->
 								<div class="grid gap-4 md:grid-cols-2">
 									{#if Array.isArray(displayItem.category.available_attributes)}
-										{#each displayItem.category.available_attributes as attr}
+										{#each displayItem.category.available_attributes as attr (attr.name)}
 											{@const attrValue = displayItem.attributes
-												? (displayItem.attributes)[attr.name]
+												? displayItem.attributes[attr.name]
 												: undefined}
 											<div>
 												<h3 class="font-medium">{attr.label || attr.name}</h3>
@@ -513,7 +517,7 @@
 							<p class="text-sm text-muted-foreground">No history available</p>
 						{:else}
 							<div class="space-y-3">
-								{#each currentHistory as entry}
+								{#each currentHistory as entry (entry.id)}
 									{@const ActionIcon = getActionIcon(entry.action)}
 									<div class="flex items-start gap-3">
 										<div class="flex h-8 w-8 items-center justify-center rounded-full bg-muted">

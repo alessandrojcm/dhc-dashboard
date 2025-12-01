@@ -1,10 +1,4 @@
-export type Json =
-	| string
-	| number
-	| boolean
-	| null
-	| { [key: string]: Json | undefined }
-	| Json[];
+export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
 export type Database = {
 	graphql_public: {
@@ -50,7 +44,7 @@ export type Database = {
 					price_non_member: number;
 					refund_days: number | null;
 					start_date: string;
-					status: Database["public"]["Enums"]["club_activity_status"] | null;
+					status: Database['public']['Enums']['club_activity_status'] | null;
 					title: string;
 					updated_at: string | null;
 				};
@@ -69,7 +63,7 @@ export type Database = {
 					price_non_member: number;
 					refund_days?: number | null;
 					start_date: string;
-					status?: Database["public"]["Enums"]["club_activity_status"] | null;
+					status?: Database['public']['Enums']['club_activity_status'] | null;
 					title: string;
 					updated_at?: string | null;
 				};
@@ -88,7 +82,7 @@ export type Database = {
 					price_non_member?: number;
 					refund_days?: number | null;
 					start_date?: string;
-					status?: Database["public"]["Enums"]["club_activity_status"] | null;
+					status?: Database['public']['Enums']['club_activity_status'] | null;
 					title?: string;
 					updated_at?: string | null;
 				};
@@ -118,12 +112,12 @@ export type Database = {
 				};
 				Relationships: [
 					{
-						foreignKeyName: "club_activity_interest_club_activity_id_fkey";
-						columns: ["club_activity_id"];
+						foreignKeyName: 'club_activity_interest_club_activity_id_fkey';
+						columns: ['club_activity_id'];
 						isOneToOne: false;
-						referencedRelation: "club_activities";
-						referencedColumns: ["id"];
-					},
+						referencedRelation: 'club_activities';
+						referencedColumns: ['id'];
+					}
 				];
 			};
 			club_activity_refunds: {
@@ -138,7 +132,7 @@ export type Database = {
 					registration_id: string;
 					requested_at: string;
 					requested_by: string | null;
-					status: Database["public"]["Enums"]["refund_status"];
+					status: Database['public']['Enums']['refund_status'];
 					stripe_payment_intent_id: string | null;
 					stripe_refund_id: string | null;
 					updated_at: string | null;
@@ -154,7 +148,7 @@ export type Database = {
 					registration_id: string;
 					requested_at?: string;
 					requested_by?: string | null;
-					status?: Database["public"]["Enums"]["refund_status"];
+					status?: Database['public']['Enums']['refund_status'];
 					stripe_payment_intent_id?: string | null;
 					stripe_refund_id?: string | null;
 					updated_at?: string | null;
@@ -170,19 +164,19 @@ export type Database = {
 					registration_id?: string;
 					requested_at?: string;
 					requested_by?: string | null;
-					status?: Database["public"]["Enums"]["refund_status"];
+					status?: Database['public']['Enums']['refund_status'];
 					stripe_payment_intent_id?: string | null;
 					stripe_refund_id?: string | null;
 					updated_at?: string | null;
 				};
 				Relationships: [
 					{
-						foreignKeyName: "club_activity_refunds_registration_id_fkey";
-						columns: ["registration_id"];
+						foreignKeyName: 'club_activity_refunds_registration_id_fkey';
+						columns: ['registration_id'];
 						isOneToOne: true;
-						referencedRelation: "club_activity_registrations";
-						referencedColumns: ["id"];
-					},
+						referencedRelation: 'club_activity_registrations';
+						referencedColumns: ['id'];
+					}
 				];
 			};
 			club_activity_registrations: {
@@ -202,7 +196,7 @@ export type Database = {
 					member_user_id: string | null;
 					registered_at: string | null;
 					registration_notes: string | null;
-					status: Database["public"]["Enums"]["registration_status"];
+					status: Database['public']['Enums']['registration_status'];
 					stripe_checkout_session_id: string | null;
 					updated_at: string | null;
 				};
@@ -222,7 +216,7 @@ export type Database = {
 					member_user_id?: string | null;
 					registered_at?: string | null;
 					registration_notes?: string | null;
-					status?: Database["public"]["Enums"]["registration_status"];
+					status?: Database['public']['Enums']['registration_status'];
 					stripe_checkout_session_id?: string | null;
 					updated_at?: string | null;
 				};
@@ -242,32 +236,32 @@ export type Database = {
 					member_user_id?: string | null;
 					registered_at?: string | null;
 					registration_notes?: string | null;
-					status?: Database["public"]["Enums"]["registration_status"];
+					status?: Database['public']['Enums']['registration_status'];
 					stripe_checkout_session_id?: string | null;
 					updated_at?: string | null;
 				};
 				Relationships: [
 					{
-						foreignKeyName: "club_activity_registrations_club_activity_id_fkey";
-						columns: ["club_activity_id"];
+						foreignKeyName: 'club_activity_registrations_club_activity_id_fkey';
+						columns: ['club_activity_id'];
 						isOneToOne: false;
-						referencedRelation: "club_activities";
-						referencedColumns: ["id"];
+						referencedRelation: 'club_activities';
+						referencedColumns: ['id'];
 					},
 					{
-						foreignKeyName: "club_activity_registrations_external_user_id_fkey";
-						columns: ["external_user_id"];
+						foreignKeyName: 'club_activity_registrations_external_user_id_fkey';
+						columns: ['external_user_id'];
 						isOneToOne: false;
-						referencedRelation: "external_users";
-						referencedColumns: ["id"];
+						referencedRelation: 'external_users';
+						referencedColumns: ['id'];
 					},
 					{
-						foreignKeyName: "club_activity_registrations_member_user_id_fkey";
-						columns: ["member_user_id"];
+						foreignKeyName: 'club_activity_registrations_member_user_id_fkey';
+						columns: ['member_user_id'];
 						isOneToOne: false;
-						referencedRelation: "user_profiles";
-						referencedColumns: ["supabase_user_id"];
-					},
+						referencedRelation: 'user_profiles';
+						referencedColumns: ['supabase_user_id'];
+					}
 				];
 			};
 			containers: {
@@ -300,12 +294,12 @@ export type Database = {
 				};
 				Relationships: [
 					{
-						foreignKeyName: "containers_parent_container_id_fkey";
-						columns: ["parent_container_id"];
+						foreignKeyName: 'containers_parent_container_id_fkey';
+						columns: ['parent_container_id'];
 						isOneToOne: false;
-						referencedRelation: "containers";
-						referencedColumns: ["id"];
-					},
+						referencedRelation: 'containers';
+						referencedColumns: ['id'];
+					}
 				];
 			};
 			equipment_categories: {
@@ -370,7 +364,7 @@ export type Database = {
 			};
 			inventory_history: {
 				Row: {
-					action: Database["public"]["Enums"]["inventory_action"];
+					action: Database['public']['Enums']['inventory_action'];
 					changed_by: string;
 					created_at: string | null;
 					id: string;
@@ -380,7 +374,7 @@ export type Database = {
 					old_container_id: string | null;
 				};
 				Insert: {
-					action: Database["public"]["Enums"]["inventory_action"];
+					action: Database['public']['Enums']['inventory_action'];
 					changed_by: string;
 					created_at?: string | null;
 					id?: string;
@@ -390,7 +384,7 @@ export type Database = {
 					old_container_id?: string | null;
 				};
 				Update: {
-					action?: Database["public"]["Enums"]["inventory_action"];
+					action?: Database['public']['Enums']['inventory_action'];
 					changed_by?: string;
 					created_at?: string | null;
 					id?: string;
@@ -401,26 +395,26 @@ export type Database = {
 				};
 				Relationships: [
 					{
-						foreignKeyName: "inventory_history_item_id_fkey";
-						columns: ["item_id"];
+						foreignKeyName: 'inventory_history_item_id_fkey';
+						columns: ['item_id'];
 						isOneToOne: false;
-						referencedRelation: "inventory_items";
-						referencedColumns: ["id"];
+						referencedRelation: 'inventory_items';
+						referencedColumns: ['id'];
 					},
 					{
-						foreignKeyName: "inventory_history_new_container_id_fkey";
-						columns: ["new_container_id"];
+						foreignKeyName: 'inventory_history_new_container_id_fkey';
+						columns: ['new_container_id'];
 						isOneToOne: false;
-						referencedRelation: "containers";
-						referencedColumns: ["id"];
+						referencedRelation: 'containers';
+						referencedColumns: ['id'];
 					},
 					{
-						foreignKeyName: "inventory_history_old_container_id_fkey";
-						columns: ["old_container_id"];
+						foreignKeyName: 'inventory_history_old_container_id_fkey';
+						columns: ['old_container_id'];
 						isOneToOne: false;
-						referencedRelation: "containers";
-						referencedColumns: ["id"];
-					},
+						referencedRelation: 'containers';
+						referencedColumns: ['id'];
+					}
 				];
 			};
 			inventory_items: {
@@ -468,19 +462,19 @@ export type Database = {
 				};
 				Relationships: [
 					{
-						foreignKeyName: "inventory_items_category_id_fkey";
-						columns: ["category_id"];
+						foreignKeyName: 'inventory_items_category_id_fkey';
+						columns: ['category_id'];
 						isOneToOne: false;
-						referencedRelation: "equipment_categories";
-						referencedColumns: ["id"];
+						referencedRelation: 'equipment_categories';
+						referencedColumns: ['id'];
 					},
 					{
-						foreignKeyName: "inventory_items_container_id_fkey";
-						columns: ["container_id"];
+						foreignKeyName: 'inventory_items_container_id_fkey';
+						columns: ['container_id'];
 						isOneToOne: false;
-						referencedRelation: "containers";
-						referencedColumns: ["id"];
-					},
+						referencedRelation: 'containers';
+						referencedColumns: ['id'];
+					}
 				];
 			};
 			invitation_processing_logs: {
@@ -522,7 +516,7 @@ export type Database = {
 					id: string;
 					invitation_type: string;
 					metadata: Json | null;
-					status: Database["public"]["Enums"]["invitation_status"];
+					status: Database['public']['Enums']['invitation_status'];
 					updated_at: string;
 					user_id: string | null;
 					waitlist_id: string | null;
@@ -535,7 +529,7 @@ export type Database = {
 					id?: string;
 					invitation_type: string;
 					metadata?: Json | null;
-					status?: Database["public"]["Enums"]["invitation_status"];
+					status?: Database['public']['Enums']['invitation_status'];
 					updated_at?: string;
 					user_id?: string | null;
 					waitlist_id?: string | null;
@@ -548,33 +542,33 @@ export type Database = {
 					id?: string;
 					invitation_type?: string;
 					metadata?: Json | null;
-					status?: Database["public"]["Enums"]["invitation_status"];
+					status?: Database['public']['Enums']['invitation_status'];
 					updated_at?: string;
 					user_id?: string | null;
 					waitlist_id?: string | null;
 				};
 				Relationships: [
 					{
-						foreignKeyName: "invitations_waitlist_id_fkey";
-						columns: ["waitlist_id"];
+						foreignKeyName: 'invitations_waitlist_id_fkey';
+						columns: ['waitlist_id'];
 						isOneToOne: false;
-						referencedRelation: "member_management_view";
-						referencedColumns: ["from_waitlist_id"];
+						referencedRelation: 'member_management_view';
+						referencedColumns: ['from_waitlist_id'];
 					},
 					{
-						foreignKeyName: "invitations_waitlist_id_fkey";
-						columns: ["waitlist_id"];
+						foreignKeyName: 'invitations_waitlist_id_fkey';
+						columns: ['waitlist_id'];
 						isOneToOne: false;
-						referencedRelation: "waitlist";
-						referencedColumns: ["id"];
+						referencedRelation: 'waitlist';
+						referencedColumns: ['id'];
 					},
 					{
-						foreignKeyName: "invitations_waitlist_id_fkey";
-						columns: ["waitlist_id"];
+						foreignKeyName: 'invitations_waitlist_id_fkey';
+						columns: ['waitlist_id'];
 						isOneToOne: false;
-						referencedRelation: "waitlist_management_view";
-						referencedColumns: ["id"];
-					},
+						referencedRelation: 'waitlist_management_view';
+						referencedColumns: ['id'];
+					}
 				];
 			};
 			member_profiles: {
@@ -588,7 +582,7 @@ export type Database = {
 					membership_start_date: string | null;
 					next_of_kin_name: string;
 					next_of_kin_phone: string;
-					preferred_weapon: Database["public"]["Enums"]["preferred_weapon"][];
+					preferred_weapon: Database['public']['Enums']['preferred_weapon'][];
 					subscription_paused_until: string | null;
 					updated_at: string | null;
 					user_profile_id: string;
@@ -603,7 +597,7 @@ export type Database = {
 					membership_start_date?: string | null;
 					next_of_kin_name: string;
 					next_of_kin_phone: string;
-					preferred_weapon: Database["public"]["Enums"]["preferred_weapon"][];
+					preferred_weapon: Database['public']['Enums']['preferred_weapon'][];
 					subscription_paused_until?: string | null;
 					updated_at?: string | null;
 					user_profile_id: string;
@@ -618,26 +612,26 @@ export type Database = {
 					membership_start_date?: string | null;
 					next_of_kin_name?: string;
 					next_of_kin_phone?: string;
-					preferred_weapon?: Database["public"]["Enums"]["preferred_weapon"][];
+					preferred_weapon?: Database['public']['Enums']['preferred_weapon'][];
 					subscription_paused_until?: string | null;
 					updated_at?: string | null;
 					user_profile_id?: string;
 				};
 				Relationships: [
 					{
-						foreignKeyName: "fk_user_profile";
-						columns: ["user_profile_id"];
+						foreignKeyName: 'fk_user_profile';
+						columns: ['user_profile_id'];
 						isOneToOne: false;
-						referencedRelation: "user_profiles";
-						referencedColumns: ["id"];
+						referencedRelation: 'user_profiles';
+						referencedColumns: ['id'];
 					},
 					{
-						foreignKeyName: "member_profiles_user_profile_id_fkey";
-						columns: ["user_profile_id"];
+						foreignKeyName: 'member_profiles_user_profile_id_fkey';
+						columns: ['user_profile_id'];
 						isOneToOne: false;
-						referencedRelation: "user_profiles";
-						referencedColumns: ["id"];
-					},
+						referencedRelation: 'user_profiles';
+						referencedColumns: ['id'];
+					}
 				];
 			};
 			notifications: {
@@ -670,7 +664,7 @@ export type Database = {
 					description: string | null;
 					id: string;
 					key: string;
-					type: Database["public"]["Enums"]["setting_type"];
+					type: Database['public']['Enums']['setting_type'];
 					updated_at: string | null;
 					updated_by: string | null;
 					value: string;
@@ -680,7 +674,7 @@ export type Database = {
 					description?: string | null;
 					id?: string;
 					key: string;
-					type: Database["public"]["Enums"]["setting_type"];
+					type: Database['public']['Enums']['setting_type'];
 					updated_at?: string | null;
 					updated_by?: string | null;
 					value: string;
@@ -690,7 +684,7 @@ export type Database = {
 					description?: string | null;
 					id?: string;
 					key?: string;
-					type?: Database["public"]["Enums"]["setting_type"];
+					type?: Database['public']['Enums']['setting_type'];
 					updated_at?: string | null;
 					updated_by?: string | null;
 					value?: string;
@@ -730,7 +724,7 @@ export type Database = {
 					customer_id: string | null;
 					date_of_birth: string;
 					first_name: string;
-					gender: Database["public"]["Enums"]["gender"] | null;
+					gender: Database['public']['Enums']['gender'] | null;
 					id: string;
 					is_active: boolean | null;
 					last_name: string;
@@ -738,9 +732,7 @@ export type Database = {
 					phone_number: string;
 					pronouns: string | null;
 					search_text: unknown | null;
-					social_media_consent:
-						| Database["public"]["Enums"]["social_media_consent"]
-						| null;
+					social_media_consent: Database['public']['Enums']['social_media_consent'] | null;
 					supabase_user_id: string | null;
 					updated_at: string | null;
 					waitlist_id: string | null;
@@ -750,7 +742,7 @@ export type Database = {
 					customer_id?: string | null;
 					date_of_birth: string;
 					first_name: string;
-					gender?: Database["public"]["Enums"]["gender"] | null;
+					gender?: Database['public']['Enums']['gender'] | null;
 					id?: string;
 					is_active?: boolean | null;
 					last_name: string;
@@ -758,9 +750,7 @@ export type Database = {
 					phone_number?: string;
 					pronouns?: string | null;
 					search_text?: unknown | null;
-					social_media_consent?:
-						| Database["public"]["Enums"]["social_media_consent"]
-						| null;
+					social_media_consent?: Database['public']['Enums']['social_media_consent'] | null;
 					supabase_user_id?: string | null;
 					updated_at?: string | null;
 					waitlist_id?: string | null;
@@ -770,7 +760,7 @@ export type Database = {
 					customer_id?: string | null;
 					date_of_birth?: string;
 					first_name?: string;
-					gender?: Database["public"]["Enums"]["gender"] | null;
+					gender?: Database['public']['Enums']['gender'] | null;
 					id?: string;
 					is_active?: boolean | null;
 					last_name?: string;
@@ -778,51 +768,49 @@ export type Database = {
 					phone_number?: string;
 					pronouns?: string | null;
 					search_text?: unknown | null;
-					social_media_consent?:
-						| Database["public"]["Enums"]["social_media_consent"]
-						| null;
+					social_media_consent?: Database['public']['Enums']['social_media_consent'] | null;
 					supabase_user_id?: string | null;
 					updated_at?: string | null;
 					waitlist_id?: string | null;
 				};
 				Relationships: [
 					{
-						foreignKeyName: "fk_waitlist_id";
-						columns: ["waitlist_id"];
+						foreignKeyName: 'fk_waitlist_id';
+						columns: ['waitlist_id'];
 						isOneToOne: false;
-						referencedRelation: "member_management_view";
-						referencedColumns: ["from_waitlist_id"];
+						referencedRelation: 'member_management_view';
+						referencedColumns: ['from_waitlist_id'];
 					},
 					{
-						foreignKeyName: "fk_waitlist_id";
-						columns: ["waitlist_id"];
+						foreignKeyName: 'fk_waitlist_id';
+						columns: ['waitlist_id'];
 						isOneToOne: false;
-						referencedRelation: "waitlist";
-						referencedColumns: ["id"];
+						referencedRelation: 'waitlist';
+						referencedColumns: ['id'];
 					},
 					{
-						foreignKeyName: "fk_waitlist_id";
-						columns: ["waitlist_id"];
+						foreignKeyName: 'fk_waitlist_id';
+						columns: ['waitlist_id'];
 						isOneToOne: false;
-						referencedRelation: "waitlist_management_view";
-						referencedColumns: ["id"];
-					},
+						referencedRelation: 'waitlist_management_view';
+						referencedColumns: ['id'];
+					}
 				];
 			};
 			user_roles: {
 				Row: {
 					id: number;
-					role: Database["public"]["Enums"]["role_type"];
+					role: Database['public']['Enums']['role_type'];
 					user_id: string;
 				};
 				Insert: {
 					id?: number;
-					role: Database["public"]["Enums"]["role_type"];
+					role: Database['public']['Enums']['role_type'];
 					user_id: string;
 				};
 				Update: {
 					id?: number;
-					role?: Database["public"]["Enums"]["role_type"];
+					role?: Database['public']['Enums']['role_type'];
 					user_id?: string;
 				};
 				Relationships: [];
@@ -836,7 +824,7 @@ export type Database = {
 					insurance_form_submitted: boolean | null;
 					last_contacted: string | null;
 					last_status_change: string | null;
-					status: Database["public"]["Enums"]["waitlist_status"];
+					status: Database['public']['Enums']['waitlist_status'];
 				};
 				Insert: {
 					admin_notes?: string | null;
@@ -846,7 +834,7 @@ export type Database = {
 					insurance_form_submitted?: boolean | null;
 					last_contacted?: string | null;
 					last_status_change?: string | null;
-					status?: Database["public"]["Enums"]["waitlist_status"];
+					status?: Database['public']['Enums']['waitlist_status'];
 				};
 				Update: {
 					admin_notes?: string | null;
@@ -856,7 +844,7 @@ export type Database = {
 					insurance_form_submitted?: boolean | null;
 					last_contacted?: string | null;
 					last_status_change?: string | null;
-					status?: Database["public"]["Enums"]["waitlist_status"];
+					status?: Database['public']['Enums']['waitlist_status'];
 				};
 				Relationships: [];
 			};
@@ -887,12 +875,12 @@ export type Database = {
 				};
 				Relationships: [
 					{
-						foreignKeyName: "waitlist_guardians_profile_id_fkey";
-						columns: ["profile_id"];
+						foreignKeyName: 'waitlist_guardians_profile_id_fkey';
+						columns: ['profile_id'];
 						isOneToOne: false;
-						referencedRelation: "user_profiles";
-						referencedColumns: ["id"];
-					},
+						referencedRelation: 'user_profiles';
+						referencedColumns: ['id'];
+					}
 				];
 			};
 			waitlist_status_history: {
@@ -900,51 +888,51 @@ export type Database = {
 					changed_at: string | null;
 					changed_by: string | null;
 					id: string;
-					new_status: Database["public"]["Enums"]["waitlist_status"];
+					new_status: Database['public']['Enums']['waitlist_status'];
 					notes: string | null;
-					old_status: Database["public"]["Enums"]["waitlist_status"] | null;
+					old_status: Database['public']['Enums']['waitlist_status'] | null;
 					waitlist_id: string | null;
 				};
 				Insert: {
 					changed_at?: string | null;
 					changed_by?: string | null;
 					id?: string;
-					new_status: Database["public"]["Enums"]["waitlist_status"];
+					new_status: Database['public']['Enums']['waitlist_status'];
 					notes?: string | null;
-					old_status?: Database["public"]["Enums"]["waitlist_status"] | null;
+					old_status?: Database['public']['Enums']['waitlist_status'] | null;
 					waitlist_id?: string | null;
 				};
 				Update: {
 					changed_at?: string | null;
 					changed_by?: string | null;
 					id?: string;
-					new_status?: Database["public"]["Enums"]["waitlist_status"];
+					new_status?: Database['public']['Enums']['waitlist_status'];
 					notes?: string | null;
-					old_status?: Database["public"]["Enums"]["waitlist_status"] | null;
+					old_status?: Database['public']['Enums']['waitlist_status'] | null;
 					waitlist_id?: string | null;
 				};
 				Relationships: [
 					{
-						foreignKeyName: "waitlist_status_history_waitlist_id_fkey";
-						columns: ["waitlist_id"];
+						foreignKeyName: 'waitlist_status_history_waitlist_id_fkey';
+						columns: ['waitlist_id'];
 						isOneToOne: false;
-						referencedRelation: "member_management_view";
-						referencedColumns: ["from_waitlist_id"];
+						referencedRelation: 'member_management_view';
+						referencedColumns: ['from_waitlist_id'];
 					},
 					{
-						foreignKeyName: "waitlist_status_history_waitlist_id_fkey";
-						columns: ["waitlist_id"];
+						foreignKeyName: 'waitlist_status_history_waitlist_id_fkey';
+						columns: ['waitlist_id'];
 						isOneToOne: false;
-						referencedRelation: "waitlist";
-						referencedColumns: ["id"];
+						referencedRelation: 'waitlist';
+						referencedColumns: ['id'];
 					},
 					{
-						foreignKeyName: "waitlist_status_history_waitlist_id_fkey";
-						columns: ["waitlist_id"];
+						foreignKeyName: 'waitlist_status_history_waitlist_id_fkey';
+						columns: ['waitlist_id'];
 						isOneToOne: false;
-						referencedRelation: "waitlist_management_view";
-						referencedColumns: ["id"];
-					},
+						referencedRelation: 'waitlist_management_view';
+						referencedColumns: ['id'];
+					}
 				];
 			};
 		};
@@ -956,12 +944,12 @@ export type Database = {
 				};
 				Relationships: [
 					{
-						foreignKeyName: "club_activity_interest_club_activity_id_fkey";
-						columns: ["club_activity_id"];
+						foreignKeyName: 'club_activity_interest_club_activity_id_fkey';
+						columns: ['club_activity_id'];
 						isOneToOne: false;
-						referencedRelation: "club_activities";
-						referencedColumns: ["id"];
-					},
+						referencedRelation: 'club_activities';
+						referencedColumns: ['id'];
+					}
 				];
 			};
 			member_management_view: {
@@ -973,7 +961,7 @@ export type Database = {
 					email: string | null;
 					first_name: string | null;
 					from_waitlist_id: string | null;
-					gender: Database["public"]["Enums"]["gender"] | null;
+					gender: Database['public']['Enums']['gender'] | null;
 					guardian_first_name: string | null;
 					guardian_last_name: string | null;
 					guardian_phone_number: string | null;
@@ -988,15 +976,11 @@ export type Database = {
 					next_of_kin_name: string | null;
 					next_of_kin_phone: string | null;
 					phone_number: string | null;
-					preferred_weapon:
-						| Database["public"]["Enums"]["preferred_weapon"][]
-						| null;
+					preferred_weapon: Database['public']['Enums']['preferred_weapon'][] | null;
 					pronouns: string | null;
-					roles: Database["public"]["Enums"]["role_type"][] | null;
+					roles: Database['public']['Enums']['role_type'][] | null;
 					search_text: unknown | null;
-					social_media_consent:
-						| Database["public"]["Enums"]["social_media_consent"]
-						| null;
+					social_media_consent: Database['public']['Enums']['social_media_consent'] | null;
 					subscription_paused_until: string | null;
 					updated_at: string | null;
 					user_profile_id: string | null;
@@ -1004,19 +988,19 @@ export type Database = {
 				};
 				Relationships: [
 					{
-						foreignKeyName: "fk_user_profile";
-						columns: ["user_profile_id"];
+						foreignKeyName: 'fk_user_profile';
+						columns: ['user_profile_id'];
 						isOneToOne: false;
-						referencedRelation: "user_profiles";
-						referencedColumns: ["id"];
+						referencedRelation: 'user_profiles';
+						referencedColumns: ['id'];
 					},
 					{
-						foreignKeyName: "member_profiles_user_profile_id_fkey";
-						columns: ["user_profile_id"];
+						foreignKeyName: 'member_profiles_user_profile_id_fkey';
+						columns: ['user_profile_id'];
 						isOneToOne: false;
-						referencedRelation: "user_profiles";
-						referencedColumns: ["id"];
-					},
+						referencedRelation: 'user_profiles';
+						referencedColumns: ['id'];
+					}
 				];
 			};
 			waitlist_management_view: {
@@ -1037,10 +1021,8 @@ export type Database = {
 					medical_conditions: string | null;
 					phone_number: string | null;
 					search_text: unknown | null;
-					social_media_consent:
-						| Database["public"]["Enums"]["social_media_consent"]
-						| null;
-					status: Database["public"]["Enums"]["waitlist_status"] | null;
+					social_media_consent: Database['public']['Enums']['social_media_consent'] | null;
+					status: Database['public']['Enums']['waitlist_status'] | null;
 				};
 				Relationships: [];
 			};
@@ -1131,7 +1113,7 @@ export type Database = {
 			};
 			get_member_data: {
 				Args: { user_uuid: string };
-				Returns: Database["public"]["CompositeTypes"]["member_data_type"];
+				Returns: Database['public']['CompositeTypes']['member_data_type'];
 			};
 			get_membership_info: {
 				Args: { uid: string };
@@ -1148,14 +1130,14 @@ export type Database = {
 			has_any_role: {
 				Args: {
 					uid: string;
-					required_roles: Database["public"]["Enums"]["role_type"][];
+					required_roles: Database['public']['Enums']['role_type'][];
 				};
 				Returns: boolean;
 			};
 			has_role: {
 				Args: {
 					uid: string;
-					required_role: Database["public"]["Enums"]["role_type"];
+					required_role: Database['public']['Enums']['role_type'];
 				};
 				Returns: boolean;
 			};
@@ -1167,9 +1149,9 @@ export type Database = {
 					date_of_birth: string;
 					phone_number: string;
 					pronouns: string;
-					gender: Database["public"]["Enums"]["gender"];
+					gender: Database['public']['Enums']['gender'];
 					medical_conditions: string;
-					social_media_consent?: Database["public"]["Enums"]["social_media_consent"];
+					social_media_consent?: Database['public']['Enums']['social_media_consent'];
 				};
 				Returns: {
 					profile_id: string;
@@ -1180,9 +1162,9 @@ export type Database = {
 					user_date_of_birth: string;
 					user_phone_number: string;
 					user_pronouns: string;
-					user_gender: Database["public"]["Enums"]["gender"];
+					user_gender: Database['public']['Enums']['gender'];
 					user_medical_conditions: string;
-					user_social_media_consent: Database["public"]["Enums"]["social_media_consent"];
+					user_social_media_consent: Database['public']['Enums']['social_media_consent'];
 				}[];
 			};
 			mark_expired_invitations: {
@@ -1210,7 +1192,7 @@ export type Database = {
 			update_invitation_status: {
 				Args: {
 					p_invitation_id: string;
-					p_status: Database["public"]["Enums"]["invitation_status"];
+					p_status: Database['public']['Enums']['invitation_status'];
 				};
 				Returns: boolean;
 			};
@@ -1222,20 +1204,20 @@ export type Database = {
 					p_is_active?: boolean;
 					p_medical_conditions?: string;
 					p_phone_number?: string;
-					p_gender?: Database["public"]["Enums"]["gender"];
+					p_gender?: Database['public']['Enums']['gender'];
 					p_pronouns?: string;
 					p_date_of_birth?: string;
 					p_next_of_kin_name?: string;
 					p_next_of_kin_phone?: string;
-					p_preferred_weapon?: Database["public"]["Enums"]["preferred_weapon"][];
+					p_preferred_weapon?: Database['public']['Enums']['preferred_weapon'][];
 					p_membership_start_date?: string;
 					p_membership_end_date?: string;
 					p_last_payment_date?: string;
 					p_insurance_form_submitted?: boolean;
 					p_additional_data?: Json;
-					p_social_media_consent?: Database["public"]["Enums"]["social_media_consent"];
+					p_social_media_consent?: Database['public']['Enums']['social_media_consent'];
 				};
-				Returns: Database["public"]["CompositeTypes"]["member_data_type"];
+				Returns: Database['public']['CompositeTypes']['member_data_type'];
 			};
 			update_member_payment: {
 				Args: { p_user_id: string; p_payment_date?: string };
@@ -1244,61 +1226,51 @@ export type Database = {
 			update_waitlist_status: {
 				Args: {
 					p_waitlist_id: string;
-					p_new_status: Database["public"]["Enums"]["waitlist_status"];
+					p_new_status: Database['public']['Enums']['waitlist_status'];
 					p_notes?: string;
 				};
 				Returns: undefined;
 			};
 		};
 		Enums: {
-			club_activity_status: "planned" | "published" | "finished" | "cancelled";
+			club_activity_status: 'planned' | 'published' | 'finished' | 'cancelled';
 			gender:
-				| "man (cis)"
-				| "woman (cis)"
-				| "non-binary"
-				| "man (trans)"
-				| "woman (trans)"
-				| "other";
-			inventory_action:
-				| "created"
-				| "moved"
-				| "updated"
-				| "maintenance_out"
-				| "maintenance_in";
-			invitation_status: "pending" | "accepted" | "expired" | "revoked";
-			preferred_weapon: "longsword" | "sword_and_buckler";
-			refund_status:
-				| "pending"
-				| "processing"
-				| "completed"
-				| "failed"
-				| "cancelled";
-			registration_status: "pending" | "confirmed" | "cancelled" | "refunded";
+				| 'man (cis)'
+				| 'woman (cis)'
+				| 'non-binary'
+				| 'man (trans)'
+				| 'woman (trans)'
+				| 'other';
+			inventory_action: 'created' | 'moved' | 'updated' | 'maintenance_out' | 'maintenance_in';
+			invitation_status: 'pending' | 'accepted' | 'expired' | 'revoked';
+			preferred_weapon: 'longsword' | 'sword_and_buckler';
+			refund_status: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled';
+			registration_status: 'pending' | 'confirmed' | 'cancelled' | 'refunded';
 			role_type:
-				| "admin"
-				| "president"
-				| "treasurer"
-				| "committee_coordinator"
-				| "sparring_coordinator"
-				| "workshop_coordinator"
-				| "beginners_coordinator"
-				| "quartermaster"
-				| "pr_manager"
-				| "volunteer_coordinator"
-				| "research_coordinator"
-				| "coach"
-				| "member";
-			setting_type: "text" | "boolean";
-			social_media_consent: "no" | "yes_recognizable" | "yes_unrecognizable";
+				| 'admin'
+				| 'president'
+				| 'treasurer'
+				| 'committee_coordinator'
+				| 'sparring_coordinator'
+				| 'workshop_coordinator'
+				| 'beginners_coordinator'
+				| 'quartermaster'
+				| 'pr_manager'
+				| 'volunteer_coordinator'
+				| 'research_coordinator'
+				| 'coach'
+				| 'member';
+			setting_type: 'text' | 'boolean';
+			social_media_consent: 'no' | 'yes_recognizable' | 'yes_unrecognizable';
 			waitlist_status:
-				| "waiting"
-				| "invited"
-				| "paid"
-				| "deferred"
-				| "cancelled"
-				| "completed"
-				| "no_reply"
-				| "joined";
+				| 'waiting'
+				| 'invited'
+				| 'paid'
+				| 'deferred'
+				| 'cancelled'
+				| 'completed'
+				| 'no_reply'
+				| 'joined';
 		};
 		CompositeTypes: {
 			member_data_type: {
@@ -1312,52 +1284,43 @@ export type Database = {
 				date_of_birth: string | null;
 				next_of_kin_name: string | null;
 				next_of_kin_phone: string | null;
-				preferred_weapon:
-					| Database["public"]["Enums"]["preferred_weapon"][]
-					| null;
+				preferred_weapon: Database['public']['Enums']['preferred_weapon'][] | null;
 				membership_start_date: string | null;
 				membership_end_date: string | null;
 				last_payment_date: string | null;
 				insurance_form_submitted: boolean | null;
 				additional_data: Json | null;
-				social_media_consent:
-					| Database["public"]["Enums"]["social_media_consent"]
-					| null;
+				social_media_consent: Database['public']['Enums']['social_media_consent'] | null;
 			};
 		};
 	};
 };
 
-type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">;
+type DatabaseWithoutInternals = Omit<Database, '__InternalSupabase'>;
 
-type DefaultSchema = DatabaseWithoutInternals[Extract<
-	keyof Database,
-	"public"
->];
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, 'public'>];
 
 export type Tables<
 	DefaultSchemaTableNameOrOptions extends
-		| keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+		| keyof (DefaultSchema['Tables'] & DefaultSchema['Views'])
 		| { schema: keyof DatabaseWithoutInternals },
 	TableName extends DefaultSchemaTableNameOrOptions extends {
 		schema: keyof DatabaseWithoutInternals;
 	}
-		? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-				DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-		: never = never,
+		? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'] &
+				DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Views'])
+		: never = never
 > = DefaultSchemaTableNameOrOptions extends {
 	schema: keyof DatabaseWithoutInternals;
 }
-	? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
-			DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+	? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'] &
+			DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Views'])[TableName] extends {
 			Row: infer R;
 		}
 		? R
 		: never
-	: DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
-				DefaultSchema["Views"])
-		? (DefaultSchema["Tables"] &
-				DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+	: DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema['Tables'] & DefaultSchema['Views'])
+		? (DefaultSchema['Tables'] & DefaultSchema['Views'])[DefaultSchemaTableNameOrOptions] extends {
 				Row: infer R;
 			}
 			? R
@@ -1366,23 +1329,23 @@ export type Tables<
 
 export type TablesInsert<
 	DefaultSchemaTableNameOrOptions extends
-		| keyof DefaultSchema["Tables"]
+		| keyof DefaultSchema['Tables']
 		| { schema: keyof DatabaseWithoutInternals },
 	TableName extends DefaultSchemaTableNameOrOptions extends {
 		schema: keyof DatabaseWithoutInternals;
 	}
-		? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-		: never = never,
+		? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables']
+		: never = never
 > = DefaultSchemaTableNameOrOptions extends {
 	schema: keyof DatabaseWithoutInternals;
 }
-	? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+	? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'][TableName] extends {
 			Insert: infer I;
 		}
 		? I
 		: never
-	: DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
-		? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+	: DefaultSchemaTableNameOrOptions extends keyof DefaultSchema['Tables']
+		? DefaultSchema['Tables'][DefaultSchemaTableNameOrOptions] extends {
 				Insert: infer I;
 			}
 			? I
@@ -1391,23 +1354,23 @@ export type TablesInsert<
 
 export type TablesUpdate<
 	DefaultSchemaTableNameOrOptions extends
-		| keyof DefaultSchema["Tables"]
+		| keyof DefaultSchema['Tables']
 		| { schema: keyof DatabaseWithoutInternals },
 	TableName extends DefaultSchemaTableNameOrOptions extends {
 		schema: keyof DatabaseWithoutInternals;
 	}
-		? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-		: never = never,
+		? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables']
+		: never = never
 > = DefaultSchemaTableNameOrOptions extends {
 	schema: keyof DatabaseWithoutInternals;
 }
-	? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+	? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions['schema']]['Tables'][TableName] extends {
 			Update: infer U;
 		}
 		? U
 		: never
-	: DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
-		? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+	: DefaultSchemaTableNameOrOptions extends keyof DefaultSchema['Tables']
+		? DefaultSchema['Tables'][DefaultSchemaTableNameOrOptions] extends {
 				Update: infer U;
 			}
 			? U
@@ -1416,97 +1379,78 @@ export type TablesUpdate<
 
 export type Enums<
 	DefaultSchemaEnumNameOrOptions extends
-		| keyof DefaultSchema["Enums"]
+		| keyof DefaultSchema['Enums']
 		| { schema: keyof DatabaseWithoutInternals },
 	EnumName extends DefaultSchemaEnumNameOrOptions extends {
 		schema: keyof DatabaseWithoutInternals;
 	}
-		? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-		: never = never,
+		? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions['schema']]['Enums']
+		: never = never
 > = DefaultSchemaEnumNameOrOptions extends {
 	schema: keyof DatabaseWithoutInternals;
 }
-	? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
-	: DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
-		? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+	? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions['schema']]['Enums'][EnumName]
+	: DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema['Enums']
+		? DefaultSchema['Enums'][DefaultSchemaEnumNameOrOptions]
 		: never;
 
 export type CompositeTypes<
 	PublicCompositeTypeNameOrOptions extends
-		| keyof DefaultSchema["CompositeTypes"]
+		| keyof DefaultSchema['CompositeTypes']
 		| { schema: keyof DatabaseWithoutInternals },
 	CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
 		schema: keyof DatabaseWithoutInternals;
 	}
-		? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-		: never = never,
+		? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions['schema']]['CompositeTypes']
+		: never = never
 > = PublicCompositeTypeNameOrOptions extends {
 	schema: keyof DatabaseWithoutInternals;
 }
-	? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
-	: PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
-		? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+	? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions['schema']]['CompositeTypes'][CompositeTypeName]
+	: PublicCompositeTypeNameOrOptions extends keyof DefaultSchema['CompositeTypes']
+		? DefaultSchema['CompositeTypes'][PublicCompositeTypeNameOrOptions]
 		: never;
 
 export const Constants = {
 	graphql_public: {
-		Enums: {},
+		Enums: {}
 	},
 	public: {
 		Enums: {
-			club_activity_status: ["planned", "published", "finished", "cancelled"],
-			gender: [
-				"man (cis)",
-				"woman (cis)",
-				"non-binary",
-				"man (trans)",
-				"woman (trans)",
-				"other",
-			],
-			inventory_action: [
-				"created",
-				"moved",
-				"updated",
-				"maintenance_out",
-				"maintenance_in",
-			],
-			invitation_status: ["pending", "accepted", "expired", "revoked"],
-			preferred_weapon: ["longsword", "sword_and_buckler"],
-			refund_status: [
-				"pending",
-				"processing",
-				"completed",
-				"failed",
-				"cancelled",
-			],
-			registration_status: ["pending", "confirmed", "cancelled", "refunded"],
+			club_activity_status: ['planned', 'published', 'finished', 'cancelled'],
+			gender: ['man (cis)', 'woman (cis)', 'non-binary', 'man (trans)', 'woman (trans)', 'other'],
+			inventory_action: ['created', 'moved', 'updated', 'maintenance_out', 'maintenance_in'],
+			invitation_status: ['pending', 'accepted', 'expired', 'revoked'],
+			preferred_weapon: ['longsword', 'sword_and_buckler'],
+			refund_status: ['pending', 'processing', 'completed', 'failed', 'cancelled'],
+			registration_status: ['pending', 'confirmed', 'cancelled', 'refunded'],
 			role_type: [
-				"admin",
-				"president",
-				"treasurer",
-				"committee_coordinator",
-				"sparring_coordinator",
-				"workshop_coordinator",
-				"beginners_coordinator",
-				"quartermaster",
-				"pr_manager",
-				"volunteer_coordinator",
-				"research_coordinator",
-				"coach",
-				"member",
+				'admin',
+				'president',
+				'treasurer',
+				'committee_coordinator',
+				'sparring_coordinator',
+				'workshop_coordinator',
+				'beginners_coordinator',
+				'quartermaster',
+				'pr_manager',
+				'volunteer_coordinator',
+				'research_coordinator',
+				'coach',
+				'member'
 			],
-			setting_type: ["text", "boolean"],
-			social_media_consent: ["no", "yes_recognizable", "yes_unrecognizable"],
+			setting_type: ['text', 'boolean'],
+			social_media_consent: ['no', 'yes_recognizable', 'yes_unrecognizable'],
 			waitlist_status: [
-				"waiting",
-				"invited",
-				"paid",
-				"deferred",
-				"cancelled",
-				"completed",
-				"no_reply",
-				"joined",
-			],
-		},
-	},
+				'waiting',
+				'invited',
+				'paid',
+				'deferred',
+				'cancelled',
+				'completed',
+				'no_reply',
+				'joined'
+			]
+		}
+	}
 } as const;

@@ -2,15 +2,7 @@
 	import { Button, buttonVariants } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
 	import * as Popover from '$lib/components/ui/popover';
-	import {
-		Calendar,
-		Users,
-		MapPin,
-		Group,
-		Loader2,
-		AlertTriangle,
-		CheckCircle
-	} from 'lucide-svelte';
+	import { Calendar, Users, MapPin, Loader2, AlertTriangle, CheckCircle } from 'lucide-svelte';
 	import { createMutation, useQueryClient } from '@tanstack/svelte-query';
 	import { toast } from 'svelte-sonner';
 	import dayjs from 'dayjs';
