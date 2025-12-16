@@ -145,7 +145,7 @@ $effect(() => {
 									{/if}
 								</Select.Trigger>
 								<Select.Content>
-									{#each data.genders as gender}
+									{#each data.genders as gender (gender)}
 										<Select.Item class="capitalize" value={gender} label={gender} />
 									{/each}
 								</Select.Content>

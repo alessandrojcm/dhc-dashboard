@@ -1,14 +1,21 @@
 <script lang="ts">
-const { data } = $props();
-const { container } = data;
+	/* eslint-disable @typescript-eslint/no-explicit-any */
+	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
+	import { Button } from '$lib/components/ui/button';
+	import { Badge } from '$lib/components/ui/badge';
+	import { ArrowLeft, FolderOpen, Edit, Plus, Package, Folder, AlertTriangle } from 'lucide-svelte';
+	import dayjs from 'dayjs';
 
-const _getItemDisplayName = (item: any) => {
-	if (item.attributes?.name) return item.attributes.name;
-	if (item.attributes?.brand && item.attributes?.type) {
-		return `${item.attributes.brand} ${item.attributes.type}`;
-	}
-	return `${item.category?.name || "Item"} #${item.id.slice(-8)}`;
-};
+	let { data } = $props();
+	const { container } = data;
+
+	const getItemDisplayName = (item: any) => {
+		if (item.attributes?.name) return item.attributes.name;
+		if (item.attributes?.brand && item.attributes?.type) {
+			return `${item.attributes.brand} ${item.attributes.type}`;
+		}
+		return `${item.category?.name || 'Item'} #${item.id.slice(-8)}`;
+	};
 </script>
 
 <div class="p-6">
@@ -101,7 +108,7 @@ const _getItemDisplayName = (item: any) => {
 					</CardHeader>
 					<CardContent>
 						<div class="space-y-2">
-							{#each container.child_containers as child}
+							{#each container.child_containers as child (child.id)}
 								<div
 									class="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 transition-colors"
 								>
@@ -158,7 +165,7 @@ const _getItemDisplayName = (item: any) => {
 						</div>
 					{:else}
 						<div class="space-y-2">
-							{#each container.items as item}
+							{#each container.items as item (item.id)}
 								<div
 									class="flex items-center justify-between p-3 rounded-lg border hover:bg-muted/50 transition-colors"
 								>

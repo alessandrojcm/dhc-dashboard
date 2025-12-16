@@ -1,131 +1,147 @@
 <script lang="ts">
-import dayjs from "dayjs";
-import relativeTime from "dayjs/plugin/relativeTime";
-import { Clock, Package, Plus } from "lucide-svelte";
-import { toast } from "svelte-sonner";
-import { superForm } from "sveltekit-superforms";
-import { buildContainerHierarchy } from "$lib/utils/inventory-form";
+	import {
+		Card,
+		CardContent,
+		CardDescription,
+		CardHeader,
+		CardTitle
+	} from '$lib/components/ui/card';
+	import { Button } from '$lib/components/ui/button';
+	import { Badge } from '$lib/components/ui/badge';
+	import * as Form from '$lib/components/ui/form';
+	import { Input } from '$lib/components/ui/input';
+	import { Textarea } from '$lib/components/ui/textarea';
+	import { Checkbox } from '$lib/components/ui/checkbox';
+	import { Select, SelectContent, SelectItem, SelectTrigger } from '$lib/components/ui/select';
+	import { Label } from '$lib/components/ui/label';
+	import SuperDebug, { superForm } from 'sveltekit-superforms';
+	import { toast } from 'svelte-sonner';
+	import { ArrowLeft, Package, Edit, X, FolderOpen, Tags, Clock, Plus } from 'lucide-svelte';
+	import dayjs from 'dayjs';
+	import relativeTime from 'dayjs/plugin/relativeTime';
+	import { buildContainerHierarchy } from '$lib/utils/inventory-form';
+	import { dev } from '$app/environment';
 
-dayjs.extend(relativeTime);
-const { data } = $props();
-const { item: initialItem, containers, canEdit } = data;
+	dayjs.extend(relativeTime);
+	let { data } = $props();
+	const { item: initialItem, containers, canEdit } = data;
 
-// Track the current item state (will be updated after successful edits)
-let currentItem = $state(initialItem);
+	// Track the current item state (will be updated after successful edits)
+	let currentItem = $state(initialItem);
 
-// Make history reactive so it updates after invalidateAll
-const _currentHistory = $derived(data.history);
+	// Make history reactive so it updates after invalidateAll
+	const currentHistory = $derived(data.history);
 
-let _isEditMode = $state(false);
-let attributeErrors = $state<Record<string, string>>({});
+	let isEditMode = $state(false);
+	let attributeErrors = $state<Record<string, string>>({});
 
-// Use current item for display
-const displayItem = $derived(currentItem);
-const hierarchicalContainers = buildContainerHierarchy(containers);
+	// Use current item for display
+	const displayItem = $derived(currentItem);
+	const hierarchicalContainers = buildContainerHierarchy(containers);
 
-const form = superForm(data.form, {
-	dataType: "json",
-	resetForm: false,
-	invalidateAll: true,
-	onResult({ result }) {
-		// Check if the action succeeded (not just form validation)
-		if (result.type === "success") {
-			// Update the current item with the returned data
-			if (result.data?.item) {
-				currentItem = result.data.item;
+	const form = superForm(data.form, {
+		dataType: 'json',
+		resetForm: false,
+		invalidateAll: true,
+		onResult({ result }) {
+			// Check if the action succeeded (not just form validation)
+			if (result.type === 'success') {
+				// Update the current item with the returned data
+				if (result.data?.item) {
+					currentItem = result.data.item;
+				}
+				toast.success('Item updated successfully');
+				isEditMode = false;
+			} else if (result.type === 'failure') {
+				toast.error(result.data?.form?.message || 'Failed to update item');
 			}
-			toast.success("Item updated successfully");
-			_isEditMode = false;
-		} else if (result.type === "failure") {
-			toast.error(result.data?.form?.message || "Failed to update item");
-		}
-	},
-	onError({ result }) {
-		console.error("Form submission error:", result);
-		toast.error(result.error?.message || "Failed to update item");
-	},
-});
-
-const { form: formData, enhance, delayed } = form;
-
-// Use the display item's category since it can't be changed
-const categoryAttributes = $derived(
-	displayItem.category?.available_attributes || [],
-);
-const _selectedContainerName = $derived.by(() => {
-	console.log("Looking for container with ID:", $formData.container_id);
-	console.log(
-		"Available containers:",
-		hierarchicalContainers.map((c) => ({ id: c.id, name: c.displayName })),
-	);
-	const container = hierarchicalContainers.find(
-		(c) => c.id === $formData.container_id,
-	);
-	console.log("Found container:", container);
-	return container?.displayName || "Select a container";
-});
-
-const _handleEdit = () => {
-	_isEditMode = true;
-
-	// Ensure all category attributes are initialized in form data
-	if (!$formData.attributes) {
-		$formData.attributes = {};
-	}
-
-	// Initialize any missing category attributes
-	categoryAttributes.forEach((attr) => {
-		if (attr.name && !($formData.attributes?.[attr.name] !== undefined)) {
-			$formData.attributes![attr.name] = attr.default_value ?? undefined;
+		},
+		onError({ result }) {
+			console.error('Form submission error:', result);
+			toast.error(result.error?.message || 'Failed to update item');
 		}
 	});
-};
 
-const _handleCancel = () => {
-	_isEditMode = false;
-};
+	const { form: formData, enhance, delayed } = form;
 
-function _clearAttributeError(attrName: string) {
-	if (attributeErrors[attrName]) {
-		const { [attrName]: _, ...rest } = attributeErrors;
-		attributeErrors = rest;
+	// Use the display item's category since it can't be changed
+	const categoryAttributes = $derived(displayItem.category?.available_attributes || []);
+	const selectedContainerName = $derived.by(() => {
+		console.log('Looking for container with ID:', $formData.container_id);
+		console.log(
+			'Available containers:',
+			hierarchicalContainers.map((c) => ({ id: c.id, name: c.displayName }))
+		);
+		const container = hierarchicalContainers.find((c) => c.id === $formData.container_id);
+		console.log('Found container:', container);
+		return container?.displayName || 'Select a container';
+	});
+
+	const handleEdit = () => {
+		isEditMode = true;
+
+		// Ensure all category attributes are initialized in form data
+		if (!$formData.attributes) {
+			$formData.attributes = {};
+		}
+
+		// Initialize any missing category attributes
+		categoryAttributes.forEach((attr) => {
+			if (attr.name && !($formData.attributes![attr.name] !== undefined)) {
+				$formData.attributes![attr.name] = attr.default_value ?? undefined;
+			}
+		});
+	};
+
+	const handleCancel = () => {
+		isEditMode = false;
+	};
+
+	function clearAttributeError(attrName: string) {
+		if (attributeErrors[attrName]) {
+			// eslint-disable-next-line @typescript-eslint/no-unused-vars
+			const { [attrName]: _removed, ...rest } = attributeErrors;
+			attributeErrors = rest;
+		}
 	}
-}
 
-const _getItemDisplayName = (item: any) => {
-	if (item.attributes?.name) return item.attributes.name;
-	if (item.attributes?.brand && item.attributes?.type) {
-		return `${item.attributes.brand} ${item.attributes.type}`;
-	}
-	return `${item.category?.name || "Item"} #${item.id.slice(-8)}`;
-};
+	const getItemDisplayName = (item: {
+		id: string;
+		attributes?: Record<string, unknown> | null;
+		category?: { name?: string | null } | null;
+	}) => {
+		if (item.attributes?.name) return item.attributes.name;
+		if (item.attributes?.brand && item.attributes?.type) {
+			return `${item.attributes.brand} ${item.attributes.type}`;
+		}
+		return `${item.category?.name || 'Item'} #${item.id.slice(-8)}`;
+	};
 
-const _getActionIcon = (action: string) => {
-	switch (action) {
-		case "created":
-			return Plus;
-		case "moved":
-			return Package;
-		case "updated":
-			return Clock;
-		default:
-			return Clock;
-	}
-};
+	const getActionIcon = (action: string) => {
+		switch (action) {
+			case 'created':
+				return Plus;
+			case 'moved':
+				return Package;
+			case 'updated':
+				return Clock;
+			default:
+				return Clock;
+		}
+	};
 
-const _getActionColor = (action: string) => {
-	switch (action) {
-		case "created":
-			return "text-green-600";
-		case "moved":
-			return "text-blue-600";
-		case "updated":
-			return "text-yellow-600";
-		default:
-			return "text-gray-600";
-	}
-};
-$inspect(categoryAttributes);
+	const getActionColor = (action: string) => {
+		switch (action) {
+			case 'created':
+				return 'text-green-600';
+			case 'moved':
+				return 'text-blue-600';
+			case 'updated':
+				return 'text-yellow-600';
+			default:
+				return 'text-gray-600';
+		}
+	};
 </script>
 
 <div class="p-6 pb-24">
@@ -187,7 +203,7 @@ $inspect(categoryAttributes);
 													{selectedContainerName}
 												</SelectTrigger>
 												<SelectContent>
-													{#each hierarchicalContainers as container}
+													{#each hierarchicalContainers as container (container.id)}
 														<SelectItem value={container.id}>
 															{container.displayName}
 														</SelectItem>
@@ -319,7 +335,7 @@ $inspect(categoryAttributes);
 									<div class="space-y-4">
 										<h3 class="text-lg font-medium">Item Attributes</h3>
 										<div class="grid gap-4 md:grid-cols-2">
-											{#each categoryAttributes as attr}
+											{#each categoryAttributes as attr (attr.name)}
 												{#if attr.type === 'text' || attr.type === 'number'}
 													<div class="space-y-2">
 														<Label
@@ -334,7 +350,7 @@ $inspect(categoryAttributes);
 														{#if attr.type === 'text'}
 															<Input
 																id={attr.name}
-																bind:value={$formData.attributes![attr.name]}
+																bind:value={$formData.attributes[attr.name]}
 																placeholder={attr.label}
 																class={attributeErrors[attr.name]
 																	? 'border-destructive focus-visible:ring-destructive'
@@ -346,7 +362,7 @@ $inspect(categoryAttributes);
 															<Input
 																id={attr.name}
 																type="number"
-																bind:value={$formData.attributes![attr.name]}
+																bind:value={$formData.attributes[attr.name]}
 																placeholder={attr.label}
 																class={attributeErrors[attr.name] ? 'border-destructive' : ''}
 																oninput={() => clearAttributeError(attr.name)}
@@ -371,11 +387,11 @@ $inspect(categoryAttributes);
 														</Label>
 														<Select
 															type="single"
-															value={$formData.attributes![attr.name] || undefined}
+															value={$formData.attributes[attr.name] || undefined}
 															name="attributes.{attr.name}"
 															onValueChange={(value) => {
 																if (value) {
-																	$formData.attributes![attr.name] = value;
+																	$formData.attributes[attr.name] = value;
 																}
 																clearAttributeError(attr.name);
 															}}
@@ -383,11 +399,11 @@ $inspect(categoryAttributes);
 															<SelectTrigger
 																class={attributeErrors[attr.name] ? 'border-destructive' : ''}
 															>
-																{$formData.attributes![attr.name] ||
+																{$formData.attributes[attr.name] ||
 																	`Select ${attr.label.toLowerCase()}`}
 															</SelectTrigger>
 															<SelectContent>
-																{#each attr.options as option}
+																{#each attr.options as option (option)}
 																	<SelectItem value={option}>{option}</SelectItem>
 																{/each}
 															</SelectContent>
@@ -413,7 +429,7 @@ $inspect(categoryAttributes);
 															<Checkbox
 																id={attr.name}
 																name="attributes.{attr.name}"
-																bind:checked={$formData.attributes![attr.name]}
+																bind:checked={$formData.attributes[attr.name]}
 																onCheckedChange={() => clearAttributeError(attr.name)}
 															/>
 															<Label for={attr.name} class="text-sm font-normal">
@@ -439,9 +455,9 @@ $inspect(categoryAttributes);
 								<!-- View Mode -->
 								<div class="grid gap-4 md:grid-cols-2">
 									{#if Array.isArray(displayItem.category.available_attributes)}
-										{#each displayItem.category.available_attributes as attr}
+										{#each displayItem.category.available_attributes as attr (attr.name)}
 											{@const attrValue = displayItem.attributes
-												? (displayItem.attributes)[attr.name]
+												? displayItem.attributes[attr.name]
 												: undefined}
 											<div>
 												<h3 class="font-medium">{attr.label || attr.name}</h3>
@@ -501,7 +517,7 @@ $inspect(categoryAttributes);
 							<p class="text-sm text-muted-foreground">No history available</p>
 						{:else}
 							<div class="space-y-3">
-								{#each currentHistory as entry}
+								{#each currentHistory as entry (entry.id)}
 									{@const ActionIcon = getActionIcon(entry.action)}
 									<div class="flex items-start gap-3">
 										<div class="flex h-8 w-8 items-center justify-center rounded-full bg-muted">

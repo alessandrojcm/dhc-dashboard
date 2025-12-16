@@ -1,11 +1,14 @@
 <script lang="ts">
-import { goto } from "$app/navigation";
+	import WorkshopForm from '$lib/components/workshop-form.svelte';
+	import { Button } from '$lib/components/ui/button';
+	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 
-const { data } = $props();
+	const { data } = $props();
 
-function _handleSuccess() {
-	setTimeout(() => goto("/dashboard/workshops"), 2000);
-}
+	function handleSuccess() {
+		setTimeout(() => goto(resolve('/dashboard/workshops')), 2000);
+	}
 </script>
 
 <div class="max-w-4xl mx-auto p-6 space-y-8">

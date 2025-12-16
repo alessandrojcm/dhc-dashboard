@@ -1,208 +1,213 @@
 <script lang="ts">
-import {
-	loadStripe,
-	type StripeElements,
-	type StripeElementsOptions,
-	type StripePaymentElement,
-} from "@stripe/stripe-js";
-import {
-	createMutation,
-	createQuery,
-	keepPreviousData,
-	useQueryClient,
-} from "@tanstack/svelte-query";
-import { parsePhoneNumberFromString } from "libphonenumber-js/min";
-import { onMount } from "svelte";
-import { toast } from "svelte-sonner";
-import { superForm } from "sveltekit-superforms";
-import { valibotClient } from "sveltekit-superforms/adapters";
-import { page } from "$app/state";
-import { PUBLIC_STRIPE_KEY } from "$env/static/public";
-import { memberSignupSchema } from "$lib/schemas/membersSignup";
-import type { PlanPricing } from "$lib/types.js";
-import type { PageServerData } from "./$types";
+	import * as Form from '$lib/components/ui/form';
+	import dayjs from 'dayjs';
+	import { Input } from '$lib/components/ui/input';
+	import { Button } from '$lib/components/ui/button';
+	import { superForm } from 'sveltekit-superforms';
+	import { valibotClient } from 'sveltekit-superforms/adapters';
+	import { memberSignupSchema } from '$lib/schemas/membersSignup';
+	import { parsePhoneNumberFromString } from 'libphonenumber-js/min';
+	import { ArrowRightIcon } from 'lucide-svelte';
+	import {
+		loadStripe,
+		type StripeElements,
+		type StripeElementsOptions,
+		type StripePaymentElement
+	} from '@stripe/stripe-js';
+	import { PUBLIC_STRIPE_KEY } from '$env/static/public';
+	import { toast } from 'svelte-sonner';
+	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
+	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
+	import * as Alert from '$lib/components/ui/alert';
+	import PhoneInput from '$lib/components/ui/phone-input.svelte';
+	import {
+		createMutation,
+		createQuery,
+		keepPreviousData,
+		useQueryClient
+	} from '@tanstack/svelte-query';
+	import type { PlanPricing } from '$lib/types.js';
+	import PricingDisplay from './pricing-display.svelte';
+	import type { PageServerData } from './$types';
+	import { page } from '$app/state';
 
-const props: PageServerData = $props();
-let currentCoupon = $state("");
+	const props: PageServerData = $props();
+	let currentCoupon = $state('');
 
-const { nextMonthlyBillingDate, nextAnnualBillingDate } = props;
-let stripe: Awaited<ReturnType<typeof loadStripe>> | null = $state(null);
-let elements: StripeElements | null | undefined = $state(null);
-let paymentElement: StripePaymentElement | null | undefined = $state(null);
-let _showThanks = $state(false);
-// Initialize coupon code state, will be set inside await block from resolved data
-const _couponCode = $state("");
+	const { nextMonthlyBillingDate, nextAnnualBillingDate } = props;
+	let stripe: Awaited<ReturnType<typeof loadStripe>> | null = $state(null);
+	let elements: StripeElements | null | undefined = $state(null);
+	let paymentElement: StripePaymentElement | null | undefined = $state(null);
+	let showThanks = $state(false);
+	// Initialize coupon code state, will be set inside await block from resolved data
+	let couponCode = $state('');
 
-const stripeElementsOptions: StripeElementsOptions = {
-	mode: "setup",
-	payment_method_types: ["sepa_debit"],
-	currency: "eur",
-	paymentMethodCreation: "manual",
-	appearance: {
-		theme: "flat",
-		variables: {
-			colorPrimary: "221.2 83.2% 53.3%",
-			borderRadius: ".5rem",
-			fontFamily: "Inter, sans-serif",
-			fontSizeBase: "1rem",
-			fontSizeSm: "0.875rem",
-		},
-		rules: {
-			".Label": {
-				fontWeight: "500",
+	const stripeElementsOptions: StripeElementsOptions = {
+		mode: 'setup',
+		payment_method_types: ['sepa_debit'],
+		currency: 'eur',
+		paymentMethodCreation: 'manual',
+		appearance: {
+			theme: 'flat',
+			variables: {
+				colorPrimary: '221.2 83.2% 53.3%',
+				borderRadius: '.5rem',
+				fontFamily: 'Inter, sans-serif',
+				fontSizeBase: '1rem',
+				fontSizeSm: '0.875rem'
 			},
-			".Input": {
-				marginTop: ".5rem",
-				backgroundColor: "transparent",
-				border: "hsl(214.3 31.8% 91.4%) 1px solid",
-				borderRadius: "calc(var(--borderRadius) - 2px)",
-				fontSize: "var(--fontSizeSm)",
-				padding: "0.5rem 0.75rem",
-			},
-		},
-	},
-};
-
-const form = superForm(props.form, {
-	validators: valibotClient(memberSignupSchema),
-	resetForm: false,
-	validationMethod: "onblur",
-	scrollToError: true,
-	autoFocusOnError: true,
-	invalidateAll: false,
-	onSubmit: async ({ cancel, customRequest }) => {
-		const { valid } = await form.validateForm({
-			focusOnError: true,
-			update: true,
-		});
-		if (!valid) {
-			scrollTo({ top: 0, behavior: "smooth" });
-			cancel();
-		}
-		if (!stripe || !elements) {
-			toast.error("Payment system not initialized");
-			cancel();
-			return;
-		}
-
-		const { error: elementsError } = await elements.submit();
-		if (elementsError?.message) {
-			toast.error(elementsError.message);
-			cancel();
-			return;
-		}
-		// Create the payment method directly
-		const { error: paymentMethodError, confirmationToken } =
-			await stripe.createConfirmationToken({
-				elements,
-				params: {
-					return_url: `${window.location.href}/members/signup`,
+			rules: {
+				'.Label': {
+					fontWeight: '500'
 				},
-			});
-
-		if (paymentMethodError?.message) {
-			toast.error(paymentMethodError.message);
-			return;
+				'.Input': {
+					marginTop: '.5rem',
+					backgroundColor: 'transparent',
+					border: 'hsl(214.3 31.8% 91.4%) 1px solid',
+					borderRadius: 'calc(var(--borderRadius) - 2px)',
+					fontSize: 'var(--fontSizeSm)',
+					padding: '0.5rem 0.75rem'
+				}
+			}
 		}
-		$formData.stripeConfirmationToken = JSON.stringify(confirmationToken);
-		customRequest(({ controller, action, formData }) => {
-			formData.set(
-				"stripeConfirmationToken",
-				JSON.stringify(confirmationToken),
-			);
-			formData.set("couponCode", currentCoupon);
-			return fetch(action, {
-				signal: controller.signal,
-				method: "POST",
-				body: formData,
-			});
-		});
-	},
-	onResult: async ({ result }) => {
-		if (result.type === "error") {
-			toast.error(result.error.message);
-			return;
-		}
+	};
 
-		if (result.type === "failure") {
-			if (result.data?.paymentFailed) {
-				toast.error(result.data.errorMessage || "Payment failed");
+	const form = superForm(props.form, {
+		validators: valibotClient(memberSignupSchema),
+		resetForm: false,
+		validationMethod: 'onblur',
+		scrollToError: true,
+		autoFocusOnError: true,
+		invalidateAll: false,
+		onSubmit: async ({ cancel, customRequest }) => {
+			const { valid } = await form.validateForm({
+				focusOnError: true,
+				update: true
+			});
+			if (!valid) {
+				scrollTo({ top: 0, behavior: 'smooth' });
+				cancel();
+			}
+			if (!stripe || !elements) {
+				toast.error('Payment system not initialized');
+				cancel();
 				return;
 			}
-			toast.error(
-				"Something has gone wrong with your payment, we have been notified and are working on it.",
-			);
-		}
 
-		if (result.type === "success") {
-			_showThanks = true;
-		}
-	},
-});
-const { form: formData, enhance, submitting } = form;
-const _formatedPhone = $derived.by(() =>
-	parsePhoneNumberFromString(props.userData.phoneNumber!),
-);
-const queryKey = $derived(["plan-pricing"]);
-const queryClient = useQueryClient();
-
-// Keep planData query for coupon updates, but initial display uses streamed data
-const _planData = createQuery(() => ({
-	queryKey,
-	refetchOnMount: true,
-	placeholderData: keepPreviousData,
-	refetchOnWindowFocus: false,
-	queryFn: async () => {
-		const res = await fetch(
-			`/api/signup/plan-pricing/${page.params.invitationId}`,
-		);
-		if (!res.ok) {
-			throw new Error("Failed to fetch pricing");
-		}
-		return (await res.json()) as PlanPricing;
-	},
-}));
-
-const _applyCoupon = createMutation(() => ({
-	mutationFn: (code: string) =>
-		fetch(`/api/signup/plan-pricing/${page.params.invitationId}`, {
-			method: "POST",
-			body: JSON.stringify({ code }),
-		}).then(async (res) => {
-			if (!res.ok) {
-				const { message } = (await res.json()) as unknown as {
-					message: string;
-				};
-
-				throw new Error(message, {
-					cause: message,
-				});
+			const { error: elementsError } = await elements.submit();
+			if (elementsError?.message) {
+				toast.error(elementsError.message);
+				cancel();
+				return;
 			}
-			return [(await res.json()) as PlanPricing, code] as [PlanPricing, string];
-		}),
-	onSuccess: (res: [PlanPricing, string]) => {
-		const [planPricing, code] = res;
-		queryClient.setQueryData(queryKey, planPricing);
-		currentCoupon = code;
-	},
-}));
+			// Create the payment method directly
+			const { error: paymentMethodError, confirmationToken } = await stripe.createConfirmationToken(
+				{
+					elements,
+					params: {
+						return_url: window.location.href + '/members/signup'
+					}
+				}
+			);
 
-onMount(() => {
-	loadStripe(PUBLIC_STRIPE_KEY).then((result) => {
-		stripe = result;
-		elements = stripe?.elements(stripeElementsOptions);
-		paymentElement = elements?.create("payment", {
-			defaultValues: {
-				billingDetails: {
-					name: `${props.userData.firstName} ${props.userData.lastName}`,
-					email: props.userData.email,
-					phone: props.userData.phoneNumber,
-				},
-			},
-		});
-		paymentElement?.mount("#payment-element");
+			if (paymentMethodError?.message) {
+				toast.error(paymentMethodError.message);
+				return;
+			}
+			$formData.stripeConfirmationToken = JSON.stringify(confirmationToken);
+			customRequest(({ controller, action, formData }) => {
+				formData.set('stripeConfirmationToken', JSON.stringify(confirmationToken));
+				formData.set('couponCode', currentCoupon);
+				return fetch(action, {
+					signal: controller.signal,
+					method: 'POST',
+					body: formData
+				});
+			});
+		},
+		onResult: async ({ result }) => {
+			if (result.type === 'error') {
+				toast.error(result.error.message);
+				return;
+			}
+
+			if (result.type === 'failure') {
+				if (result.data?.paymentFailed) {
+					toast.error(result.data.errorMessage || 'Payment failed');
+					return;
+				}
+				toast.error(
+					'Something has gone wrong with your payment, we have been notified and are working on it.'
+				);
+			}
+
+			if (result.type === 'success') {
+				showThanks = true;
+			}
+		}
 	});
-});
+	const { form: formData, enhance, submitting } = form;
+	const formatedPhone = $derived.by(() => parsePhoneNumberFromString(props.userData.phoneNumber!));
+	const queryKey = $derived(['plan-pricing']);
+	const queryClient = useQueryClient();
+
+	// Keep planData query for coupon updates, but initial display uses streamed data
+	const planData = createQuery(() => ({
+		queryKey,
+		refetchOnMount: true,
+		placeholderData: keepPreviousData,
+		refetchOnWindowFocus: false,
+		queryFn: async () => {
+			const res = await fetch(`/api/signup/plan-pricing/${page.params.invitationId}`);
+			if (!res.ok) {
+				throw new Error('Failed to fetch pricing');
+			}
+			return (await res.json()) as PlanPricing;
+		}
+	}));
+
+	const applyCoupon = createMutation(() => ({
+		mutationFn: (code: string) =>
+			fetch(`/api/signup/plan-pricing/${page.params.invitationId}`, {
+				method: 'POST',
+				body: JSON.stringify({ code })
+			}).then(async (res) => {
+				if (!res.ok) {
+					const { message } = (await res.json()) as unknown as {
+						message: string;
+					};
+
+					throw new Error(message, {
+						cause: message
+					});
+				}
+				return [(await res.json()) as PlanPricing, code] as [PlanPricing, string];
+			}),
+		onSuccess: (res: [PlanPricing, string]) => {
+			const [planPricing, code] = res;
+			queryClient.setQueryData(queryKey, planPricing);
+			currentCoupon = code;
+		}
+	}));
+
+	onMount(() => {
+		loadStripe(PUBLIC_STRIPE_KEY).then((result) => {
+			stripe = result;
+			elements = stripe?.elements(stripeElementsOptions);
+			paymentElement = elements?.create('payment', {
+				defaultValues: {
+					billingDetails: {
+						name: `${props.userData.firstName} ${props.userData.lastName}`,
+						email: props.userData.email,
+						phone: props.userData.phoneNumber
+					}
+				}
+			});
+			paymentElement?.mount('#payment-element');
+		});
+	});
 </script>
 
 {#snippet thanksAlert()}
@@ -212,7 +217,7 @@ onMount(() => {
 			Your membership has been successfully processed. Welcome to Dublin Hema Club! You will receive
 			a Discord invite by email shortly.
 		</Alert.Description>
-		<Button onclick={() => goto('/dashboard')} class="mt-2 w-fit">Go to Dashboard</Button>
+		<Button onclick={() => goto(resolve('/dashboard'))} class="mt-2 w-fit">Go to Dashboard</Button>
 	</Alert.Root>
 {/snippet}
 {#if showThanks}

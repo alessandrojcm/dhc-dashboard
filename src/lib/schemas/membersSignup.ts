@@ -1,24 +1,25 @@
-import * as v from "valibot";
-import beginnersWaitlist from "./beginnersWaitlist";
-import { phoneNumberValidator } from "./commonValidators";
+import * as v from 'valibot';
+import beginnersWaitlist from './beginnersWaitlist';
+import { phoneNumberValidator } from './commonValidators';
 
 export const memberSignupSchema = v.object({
-	nextOfKin: v.pipe(v.string(), v.nonEmpty("Please enter your next of kin.")),
-	nextOfKinNumber: phoneNumberValidator(
-		"Phone number of your next of kin is required.",
-	),
+	nextOfKin: v.pipe(v.string(), v.nonEmpty('Please enter your next of kin.')),
+	nextOfKinNumber: phoneNumberValidator('Phone number of your next of kin is required.'),
 	insuranceFormSubmitted: v.optional(v.boolean()),
 	stripeConfirmationToken: v.pipe(
 		v.string(),
-		v.nonEmpty("Something has gone wrong with your payment, please try again."),
+		v.nonEmpty('Something has gone wrong with your payment, please try again.')
 	),
-	couponCode: v.optional(v.string()),
+	couponCode: v.optional(v.string())
 });
 
 const formSchema = v.object({
 	...beginnersWaitlist.entries,
-	...v.omit(memberSignupSchema, ["stripeConfirmationToken"]).entries,
-	weapon: v.array(v.string("Please select your preferred weapon.")),
+	...v.omit(memberSignupSchema, ['stripeConfirmationToken']).entries,
+	weapon: v.pipe(
+		v.array(v.string('Please select your preferred weapon.')),
+		v.transform((w) => w.filter((v) => v !== ''))
+	)
 });
 
 export default formSchema;

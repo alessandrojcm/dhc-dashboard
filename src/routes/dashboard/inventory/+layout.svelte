@@ -1,7 +1,7 @@
 <script lang="ts">
-import type { LayoutProps } from "./$types";
+	import type { LayoutProps } from './$types';
 
-const { children, data }: LayoutProps = $props();
+	let { children }: LayoutProps = $props();
 </script>
 
 <div class="flex h-full">

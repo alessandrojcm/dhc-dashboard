@@ -1,261 +1,239 @@
 <script lang="ts">
-import type { SupabaseClient } from "@supabase/supabase-js";
-import {
-	createInfiniteQuery,
-	createMutation,
-	useQueryClient,
-} from "@tanstack/svelte-query";
-import dayjs from "dayjs";
-import relativeTime from "dayjs/plugin/relativeTime";
-import { onMount } from "svelte";
-import type { Database } from "$database";
+	import { onMount } from 'svelte';
+	import dayjs from 'dayjs';
+	import relativeTime from 'dayjs/plugin/relativeTime';
+	import type { SupabaseClient } from '@supabase/supabase-js';
+	import { createInfiniteQuery, createMutation, useQueryClient } from '@tanstack/svelte-query';
+	import type { Database } from '$database';
+	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
+	import { Bell } from 'lucide-svelte';
 
-// Initialize dayjs plugins
-dayjs.extend(relativeTime);
+	// Initialize dayjs plugins
+	dayjs.extend(relativeTime);
 
-const {
-	supabase,
-}: {
-	supabase: SupabaseClient<Database>;
-} = $props();
+	const {
+		supabase
+	}: {
+		supabase: SupabaseClient<Database>;
+	} = $props();
 
-type Notification = Database["public"]["Tables"]["notifications"]["Row"];
+	type Notification = Database['public']['Tables']['notifications']['Row'];
 
-// Pagination parameters
-const PAGE_SIZE = 10;
+	// Pagination parameters
+	const PAGE_SIZE = 10;
 
-// Create infinite query for notifications
-const notificationsQuery = createInfiniteQuery(() => ({
-	queryKey: ["notifications"],
-	initialData: {
-		pages: [],
-		pageParams: [],
-	},
-	queryFn: async ({ pageParam = 0, signal }) => {
-		// Get total count for unread notifications
-		const { count, error: countError } = await supabase
-			.from("notifications")
-			.select("*", { count: "exact", head: true })
-			.is("read_at", null)
-			.abortSignal(signal);
+	// Create infinite query for notifications
+	const notificationsQuery = createInfiniteQuery(() => ({
+		queryKey: ['notifications'],
+		initialData: {
+			pages: [],
+			pageParams: []
+		},
+		queryFn: async ({ pageParam = 0, signal }) => {
+			// Get total count for unread notifications
+			const { count, error: countError } = await supabase
+				.from('notifications')
+				.select('*', { count: 'exact', head: true })
+				.is('read_at', null)
+				.abortSignal(signal);
 
-		if (countError) throw countError;
+			if (countError) throw countError;
 
-		// Fetch paginated notifications
-		const { data, error } = await supabase
-			.from("notifications")
-			.select("*")
-			.order("created_at", { ascending: false })
-			.range(pageParam, pageParam + PAGE_SIZE - 1)
-			.abortSignal(signal);
+			// Fetch paginated notifications
+			const { data, error } = await supabase
+				.from('notifications')
+				.select('*')
+				.order('created_at', { ascending: false })
+				.range(pageParam, pageParam + PAGE_SIZE - 1)
+				.abortSignal(signal);
 
-		if (error) throw error;
+			if (error) throw error;
 
-		// Determine if there are more pages
-		const nextCursor =
-			data && data.length === PAGE_SIZE ? pageParam + PAGE_SIZE : null;
+			// Determine if there are more pages
+			const nextCursor = data && data.length === PAGE_SIZE ? pageParam + PAGE_SIZE : null;
 
-		return {
-			data: data || [],
-			nextCursor,
-			count: count || 0,
-		};
-	},
-	getNextPageParam: (lastPage) => lastPage.nextCursor,
-	initialPageParam: 0,
-}));
+			return {
+				data: data || [],
+				nextCursor,
+				count: count || 0
+			};
+		},
+		getNextPageParam: (lastPage) => lastPage.nextCursor,
+		initialPageParam: 0
+	}));
 
-const _markAsRead = createMutation(() => ({
-	mutationFn: async (notificationId: string) => {
-		const { error } = await supabase.rpc("mark_notification_as_read", {
-			notification_id: notificationId,
-		});
+	const markAsRead = createMutation(() => ({
+		mutationFn: async (notificationId: string) => {
+			const { error } = await supabase.rpc('mark_notification_as_read', {
+				notification_id: notificationId
+			});
 
-		if (error) throw error;
-	},
-	onMutate: async (notificationId) => {
-		const previousData = queryClient.getQueryData<Notification[]>([
-			"notifications",
-		]);
-		queryClient.setQueryData(
-			["notifications"],
-			(oldData: (typeof notificationsQuery)["data"]) => {
-				// Find if the notification being marked as read is currently unread
-				const targetNotification = oldData?.pages
-					.flatMap((page) => page.data)
-					.find((notification) => notification.id === notificationId);
+			if (error) throw error;
+		},
+		onMutate: async (notificationId) => {
+			const previousData = queryClient.getQueryData<Notification[]>(['notifications']);
+			queryClient.setQueryData(
+				['notifications'],
+				(oldData: (typeof notificationsQuery)['data']) => {
+					// Find if the notification being marked as read is currently unread
+					const targetNotification = oldData?.pages
+						.flatMap((page) => page.data)
+						.find((notification) => notification.id === notificationId);
 
-				// Only decrease count if the notification was previously unread
-				const shouldDecreaseCount =
-					targetNotification && !targetNotification.read_at;
+					// Only decrease count if the notification was previously unread
+					const shouldDecreaseCount = targetNotification && !targetNotification.read_at;
 
-				// Calculate new count if needed
-				const newCount =
-					shouldDecreaseCount && oldData?.pages[0]?.count !== undefined
-						? Math.max(0, oldData.pages[0].count - 1) // Ensure count doesn't go below 0
-						: oldData?.pages[0]?.count;
+					// Calculate new count if needed
+					const newCount =
+						shouldDecreaseCount && oldData?.pages[0]?.count !== undefined
+							? Math.max(0, oldData.pages[0].count - 1) // Ensure count doesn't go below 0
+							: oldData?.pages[0]?.count;
 
-				return {
+					return {
+						...oldData,
+						pages: oldData?.pages.map((page, index) => ({
+							...page,
+							// Update count in the first page
+							...(index === 0 && newCount !== undefined ? { count: newCount } : {}),
+							data: page.data
+								.map((notification) =>
+									notification.id === notificationId
+										? { ...notification, read_at: new Date().toISOString() }
+										: notification
+								)
+								.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+						}))
+					};
+				}
+			);
+			return { previousData };
+		},
+		onError: async (_, __, context) => {
+			await queryClient.setQueryData(['notifications'], context?.previousData);
+		}
+	}));
+
+	const markAllAsRead = createMutation(() => ({
+		mutationFn: async () => {
+			return supabase
+				.from('notifications')
+				.update({ read_at: new Date().toISOString() })
+				.eq('user_id', (await supabase.auth.getUser())?.data.user!.id)
+				.throwOnError();
+		},
+		onMutate: async () => {
+			const previousData = queryClient.getQueryData<Notification[]>(['notifications']);
+			queryClient.setQueryData(
+				['notifications'],
+				(oldData: (typeof notificationsQuery)['data']) => ({
 					...oldData,
 					pages: oldData?.pages.map((page, index) => ({
 						...page,
-						// Update count in the first page
-						...(index === 0 && newCount !== undefined
-							? { count: newCount }
-							: {}),
+						// Set count to 0 in the first page since all notifications will be read
+						...(index === 0 ? { count: 0 } : {}),
 						data: page.data
-							.map((notification) =>
-								notification.id === notificationId
-									? { ...notification, read_at: new Date().toISOString() }
-									: notification,
-							)
-							.sort(
-								(a, b) =>
-									new Date(b.created_at).getTime() -
-									new Date(a.created_at).getTime(),
-							),
-					})),
-				};
-			},
-		);
-		return { previousData };
-	},
-	onError: async (_, __, context) => {
-		await queryClient.setQueryData(["notifications"], context?.previousData);
-	},
-}));
+							.map((notification) => ({
+								...notification,
+								read_at: new Date().toISOString()
+							}))
+							.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+					}))
+				})
+			);
+			return { previousData };
+		},
+		onError: async (_, __, context) => {
+			await queryClient.setQueryData(['notifications'], context?.previousData);
+		}
+	}));
 
-const _markAllAsRead = createMutation(() => ({
-	mutationFn: async () => {
-		return supabase
-			.from("notifications")
-			.update({ read_at: new Date().toISOString() })
-			.eq("user_id", (await supabase.auth.getUser())?.data.user?.id)
-			.throwOnError();
-	},
-	onMutate: async () => {
-		const previousData = queryClient.getQueryData<Notification[]>([
-			"notifications",
-		]);
-		queryClient.setQueryData(
-			["notifications"],
-			(oldData: (typeof notificationsQuery)["data"]) => ({
-				...oldData,
-				pages: oldData?.pages.map((page, index) => ({
-					...page,
-					// Set count to 0 in the first page since all notifications will be read
-					...(index === 0 ? { count: 0 } : {}),
-					data: page.data
-						.map((notification) => ({
-							...notification,
-							read_at: new Date().toISOString(),
-						}))
-						.sort(
-							(a, b) =>
-								new Date(b.created_at).getTime() -
-								new Date(a.created_at).getTime(),
-						),
-				})),
-			}),
-		);
-		return { previousData };
-	},
-	onError: async (_, __, context) => {
-		await queryClient.setQueryData(["notifications"], context?.previousData);
-	},
-}));
+	const queryClient = useQueryClient();
 
-const queryClient = useQueryClient();
+	onMount(() => {
+		const subscription = supabase
+			.channel('notifications')
+			.on(
+				'postgres_changes',
+				{
+					event: 'INSERT',
+					schema: 'public',
+					table: 'notifications'
+				},
+				(payload: { new: Notification }) => {
+					queryClient.setQueryData(
+						['notifications'],
+						(oldData: (typeof notificationsQuery)['data']) => {
+							// Increase the count for unread notifications if this is a new unread notification
+							const newCount =
+								!payload.new.read_at && oldData?.pages[0]?.count !== undefined
+									? oldData.pages[0].count + 1
+									: oldData?.pages[0]?.count;
 
-onMount(() => {
-	const subscription = supabase
-		.channel("notifications")
-		.on(
-			"postgres_changes",
-			{
-				event: "INSERT",
-				schema: "public",
-				table: "notifications",
-			},
-			(payload: { new: Notification }) => {
-				queryClient.setQueryData(
-					["notifications"],
-					(oldData: (typeof notificationsQuery)["data"]) => {
-						// Increase the count for unread notifications if this is a new unread notification
-						const newCount =
-							!payload.new.read_at && oldData?.pages[0]?.count !== undefined
-								? oldData.pages[0].count + 1
-								: oldData?.pages[0]?.count;
-
-						return {
+							return {
+								...oldData,
+								pages: oldData?.pages.map((page, index) => ({
+									...page,
+									// Update count in the first page
+									...(index === 0 && newCount !== undefined ? { count: newCount } : {}),
+									data: page.data
+										.concat(payload.new)
+										.sort(
+											(a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+										)
+								}))
+							};
+						}
+					);
+				}
+			)
+			.on(
+				'postgres_changes',
+				{
+					event: 'UPDATE',
+					schema: 'public',
+					table: 'notifications'
+				},
+				(payload: { new: Notification }) => {
+					queryClient.setQueryData(
+						['notifications'],
+						(oldData: (typeof notificationsQuery)['data']) => ({
 							...oldData,
-							pages: oldData?.pages.map((page, index) => ({
+							pages: oldData?.pages.map((page) => ({
 								...page,
-								// Update count in the first page
-								...(index === 0 && newCount !== undefined
-									? { count: newCount }
-									: {}),
-								data: page.data
-									.concat(payload.new)
-									.sort(
-										(a, b) =>
-											new Date(b.created_at).getTime() -
-											new Date(a.created_at).getTime(),
-									),
-							})),
-						};
-					},
-				);
-			},
-		)
-		.on(
-			"postgres_changes",
-			{
-				event: "UPDATE",
-				schema: "public",
-				table: "notifications",
-			},
-			(payload: { new: Notification }) => {
-				queryClient.setQueryData(
-					["notifications"],
-					(oldData: (typeof notificationsQuery)["data"]) => ({
-						...oldData,
-						pages: oldData?.pages.map((page) => ({
-							...page,
-							data: page.data.map((notification) =>
-								notification.id === payload.new.id ? payload.new : notification,
-							),
-						})),
-					}),
-				);
-			},
-		)
-		.subscribe();
+								data: page.data.map((notification) =>
+									notification.id === payload.new.id ? payload.new : notification
+								)
+							}))
+						})
+					);
+				}
+			)
+			.subscribe();
 
-	return () => {
+		return () => {
+			try {
+				subscription.unsubscribe();
+			} catch (e) {
+				console.warn(e);
+			}
+		};
+	});
+
+	function formatTime(timestamp: string): string {
 		try {
-			subscription.unsubscribe();
-		} catch (e) {
-			console.warn(e);
-		}
-	};
-});
+			const date = dayjs(timestamp);
+			const now = dayjs();
+			const diffInHours = now.diff(date, 'hour');
 
-function _formatTime(timestamp: string): string {
-	try {
-		const date = dayjs(timestamp);
-		const now = dayjs();
-		const diffInHours = now.diff(date, "hour");
-
-		if (diffInHours < 24) {
-			return date.fromNow();
-		} else {
-			return date.format("MMM D, YYYY");
+			if (diffInHours < 24) {
+				return date.fromNow();
+			} else {
+				return date.format('MMM D, YYYY');
+			}
+		} catch {
+			return timestamp;
 		}
-	} catch (_e) {
-		return timestamp;
 	}
-}
 </script>
 
 <DropdownMenu.Root>

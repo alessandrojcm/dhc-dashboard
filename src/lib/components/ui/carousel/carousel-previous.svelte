@@ -1,17 +1,19 @@
 <script lang="ts">
-import type { WithoutChildren } from "bits-ui";
-import type { Props } from "$lib/components/ui/button/index.js";
-import { getEmblaContext } from "./context.js";
+	import ArrowLeftIcon from '@lucide/svelte/icons/arrow-left';
+	import type { WithoutChildren } from 'bits-ui';
+	import { getEmblaContext } from './context.js';
+	import { cn } from '$lib/utils.js';
+	import { Button, type Props } from '$lib/components/ui/button/index.js';
 
-const {
-	ref = $bindable(null),
-	class: className,
-	variant = "outline",
-	size = "icon",
-	...restProps
-}: WithoutChildren<Props> = $props();
+	let {
+		ref = $bindable(null),
+		class: className,
+		variant = 'outline',
+		size = 'icon',
+		...restProps
+	}: WithoutChildren<Props> = $props();
 
-const _emblaCtx = getEmblaContext("<Carousel.Previous/>");
+	const emblaCtx = getEmblaContext('<Carousel.Previous/>');
 </script>
 
 <Button
@@ -20,10 +22,10 @@ const _emblaCtx = getEmblaContext("<Carousel.Previous/>");
 	{size}
 	aria-disabled={!emblaCtx.canScrollPrev}
 	class={cn(
-		"absolute size-8 rounded-full",
-		emblaCtx.orientation === "horizontal"
-			? "-left-12 top-1/2 -translate-y-1/2"
-			: "-top-12 left-1/2 -translate-x-1/2 rotate-90",
+		'absolute size-8 rounded-full',
+		emblaCtx.orientation === 'horizontal'
+			? '-left-12 top-1/2 -translate-y-1/2'
+			: '-top-12 left-1/2 -translate-x-1/2 rotate-90',
 		className
 	)}
 	onclick={emblaCtx.scrollPrev}

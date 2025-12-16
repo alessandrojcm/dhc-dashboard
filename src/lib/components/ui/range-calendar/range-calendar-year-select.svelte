@@ -1,18 +1,19 @@
 <script lang="ts">
-import type { RangeCalendar as RangeCalendarPrimitive } from "bits-ui";
-import type { WithoutChildrenOrChild } from "$lib/utils.js";
+	import { RangeCalendar as RangeCalendarPrimitive } from 'bits-ui';
+	import { cn, type WithoutChildrenOrChild } from '$lib/utils.js';
+	import ChevronDownIcon from '@lucide/svelte/icons/chevron-down';
 
-const {
-	ref = $bindable(null),
-	class: className,
-	value,
-	...restProps
-}: WithoutChildrenOrChild<RangeCalendarPrimitive.YearSelectProps> = $props();
+	let {
+		ref = $bindable(null),
+		class: className,
+		value,
+		...restProps
+	}: WithoutChildrenOrChild<RangeCalendarPrimitive.YearSelectProps> = $props();
 </script>
 
 <span
 	class={cn(
-		"has-focus:border-ring border-input shadow-xs has-focus:ring-ring/50 has-focus:ring-[3px] relative flex rounded-md border",
+		'has-focus:border-ring border-input shadow-xs has-focus:ring-ring/50 has-focus:ring-[3px] relative flex rounded-md border',
 		className
 	)}
 >

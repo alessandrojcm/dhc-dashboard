@@ -1,42 +1,35 @@
-import * as Sentry from "@sentry/sveltekit";
-import { fail } from "@sveltejs/kit";
-import dayjs from "dayjs";
-import Dinero from "dinero.js";
-import { message, superValidate } from "sveltekit-superforms";
-import { valibot } from "sveltekit-superforms/adapters";
-import { CreateWorkshopSchema } from "$lib/schemas/workshops";
-import { authorize } from "$lib/server/auth";
-import { WORKSHOP_ROLES } from "$lib/server/roles";
-import { coerceToCreateWorkshopSchema } from "$lib/server/workshop-generator";
-import { createWorkshop } from "$lib/server/workshops";
-import type { Actions, PageServerLoad } from "./$types";
+import * as Sentry from '@sentry/sveltekit';
+import { fail } from '@sveltejs/kit';
+import dayjs from 'dayjs';
+import Dinero from 'dinero.js';
+import { message, superValidate } from 'sveltekit-superforms';
+import { valibot } from 'sveltekit-superforms/adapters';
+import { authorize } from '$lib/server/auth';
+import { WORKSHOP_ROLES } from '$lib/server/roles';
+import { coerceToCreateWorkshopSchema } from '$lib/server/workshop-generator';
+import { createWorkshopService, CreateWorkshopSchema } from '$lib/server/services/workshops';
+import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals, url }) => {
 	await authorize(locals, WORKSHOP_ROLES);
 
 	// Check if this is a generated workshop (from quick create)
-	const generatedParam = url.searchParams.get("generated");
+	const generatedParam = url.searchParams.get('generated');
 	let generatedData = null;
 
-	if (generatedParam && generatedParam !== "true") {
+	if (generatedParam && generatedParam !== 'true') {
 		try {
 			generatedData =
-				coerceToCreateWorkshopSchema(
-					JSON.parse(decodeURIComponent(generatedParam)),
-				)?.output ?? {};
+				coerceToCreateWorkshopSchema(JSON.parse(decodeURIComponent(generatedParam)))?.output ?? {};
 		} catch (error) {
-			console.error("Failed to parse generated data:", error);
+			console.error('Failed to parse generated data:', error);
 		}
 	}
 	return {
-		form: await superValidate(
-			generatedData || {},
-			valibot(CreateWorkshopSchema),
-			{
-				errors: false,
-			},
-		),
-		isGenerated: !!generatedData,
+		form: await superValidate(generatedData || {}, valibot(CreateWorkshopSchema), {
+			errors: false
+		}),
+		isGenerated: !!generatedData
 	};
 };
 
@@ -58,13 +51,13 @@ export const actions: Actions = {
 			// Convert euro prices to cents
 			const memberPriceCents = Dinero({
 				amount: form.data.price_member * 100,
-				currency: "EUR",
+				currency: 'EUR'
 			}).getAmount();
 			const nonMemberPriceCents =
 				form.data.is_public && form.data.price_non_member
 					? Dinero({
 							amount: form.data.price_non_member * 100,
-							currency: "EUR",
+							currency: 'EUR'
 						}).getAmount()
 					: memberPriceCents;
 
@@ -80,24 +73,25 @@ export const actions: Actions = {
 				is_public: form.data.is_public || false,
 				refund_days: form.data.refund_deadline_days,
 				announce_discord: form.data.announce_discord || false,
-				announce_email: form.data.announce_email || false,
+				announce_email: form.data.announce_email || false
 			};
 
-			const workshop = await createWorkshop(workshopData, session, platform!);
+			const workshopService = createWorkshopService(platform!, session);
+			const workshop = await workshopService.create(workshopData);
 
 			return message(form, {
-				success: `Workshop "${workshop.title}" created successfully!`,
+				success: `Workshop "${workshop.title}" created successfully!`
 			});
 		} catch (error) {
 			Sentry.captureException(error);
-			console.error("Create workshop error:", error);
+			console.error('Create workshop error:', error);
 			return message(
 				form,
 				{
-					error: "Failed to create workshop. Please try again.",
+					error: 'Failed to create workshop. Please try again.'
 				},
-				{ status: 500 },
+				{ status: 500 }
 			);
 		}
-	},
+	}
 };

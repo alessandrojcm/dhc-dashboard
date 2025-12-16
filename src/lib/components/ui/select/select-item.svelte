@@ -1,15 +1,16 @@
 <script lang="ts">
-import type { Select as SelectPrimitive } from "bits-ui";
-import type { WithoutChild } from "$lib/utils.js";
+	import CheckIcon from '@lucide/svelte/icons/check';
+	import { Select as SelectPrimitive } from 'bits-ui';
+	import { cn, type WithoutChild } from '$lib/utils.js';
 
-const {
-	ref = $bindable(null),
-	class: className,
-	value,
-	label,
-	children: childrenProp,
-	...restProps
-}: WithoutChild<SelectPrimitive.ItemProps> = $props();
+	let {
+		ref = $bindable(null),
+		class: className,
+		value,
+		label,
+		children: childrenProp,
+		...restProps
+	}: WithoutChild<SelectPrimitive.ItemProps> = $props();
 </script>
 
 <SelectPrimitive.Item
@@ -22,14 +23,14 @@ const {
 	)}
 	{...restProps}
 >
-	{#snippet children({ selected, highlighted })}
+	{#snippet children({ selected })}
 		<span class="absolute right-2 flex size-3.5 items-center justify-center">
 			{#if selected}
 				<CheckIcon class="size-4" />
 			{/if}
 		</span>
 		{#if childrenProp}
-			{@render childrenProp({ selected, highlighted })}
+			{@render childrenProp({ selected, highlighted: false })}
 		{:else}
 			{label || value}
 		{/if}

@@ -1,47 +1,41 @@
 <script lang="ts">
-import {
-	type DateValue,
-	fromDate,
-	getLocalTimeZone,
-} from "@internationalized/date";
-import dayjs from "dayjs";
+	import { Button } from '$lib/components/ui/button';
+	import * as Dialog from '$lib/components/ui/dialog';
+	import { Label } from '$lib/components/ui/label';
+	import DatePicker from '$lib/components/ui/date-picker.svelte';
+	import dayjs from 'dayjs';
+	import { type DateValue, fromDate, getLocalTimeZone } from '@internationalized/date';
 
-const {
-	open = $bindable(),
-	onConfirm,
-	isPending,
-	extend = false,
-	pausedUntil,
-}: {
-	open: boolean;
-	onConfirm: ({ pauseUntil }: { pauseUntil: string }) => void;
-	isPending: boolean;
-	extend?: boolean;
-	pausedUntil?: dayjs.Dayjs;
-} = $props();
+	let {
+		open = $bindable(),
+		onConfirm,
+		isPending,
+		extend = false,
+		pausedUntil
+	}: {
+		open: boolean;
+		onConfirm: ({ pauseUntil }: { pauseUntil: string }) => void;
+		isPending: boolean;
+		extend?: boolean;
+		pausedUntil?: dayjs.Dayjs;
+	} = $props();
 
-const minDate = $derived(
-	fromDate((pausedUntil ?? dayjs().add(1, "day")).toDate(), getLocalTimeZone()),
-);
-const _maxDate = $derived(
-	fromDate(dayjs().add(6, "months").toDate(), getLocalTimeZone()),
-);
-let selectedDate = $state<DateValue | undefined>();
+	const minDate = $derived(
+		fromDate((pausedUntil ?? dayjs().add(1, 'day')).toDate(), getLocalTimeZone())
+	);
+	const maxDate = $derived(fromDate(dayjs().add(6, 'months').toDate(), getLocalTimeZone()));
+	let selectedDate = $state<DateValue | undefined>(minDate);
 
-$effect(() => {
-	selectedDate = minDate;
-});
-
-function _handleConfirm(event: Event) {
-	event.preventDefault();
-	event.stopPropagation();
-	if (!selectedDate) {
-		return;
+	function handleConfirm(event: Event) {
+		event.preventDefault();
+		event.stopPropagation();
+		if (!selectedDate) {
+			return;
+		}
+		onConfirm({
+			pauseUntil: selectedDate.toDate(getLocalTimeZone()).toISOString()
+		});
 	}
-	onConfirm({
-		pauseUntil: selectedDate.toDate(getLocalTimeZone()).toISOString(),
-	});
-}
 </script>
 
 <Dialog.Root bind:open>

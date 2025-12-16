@@ -1,26 +1,31 @@
 <script lang="ts">
-import { DateFormatter, type DateValue } from "@internationalized/date";
+	import CalendarIcon from 'lucide-svelte/icons/calendar';
+	import { type DateValue, DateFormatter, getLocalTimeZone } from '@internationalized/date';
+	import { cn } from '$lib/utils.js';
+	import { Button } from '$lib/components/ui/button/index.js';
+	import { Calendar } from '$lib/components/ui/calendar';
+	import * as Popover from '$lib/components/ui/popover/index.js';
 
-type Props = {
-	value: DateValue | undefined;
-	onDateChange: (date: Date) => void;
-	minValue?: DateValue;
-	maxValue?: DateValue;
-	name: string;
-	id: string;
-	"data-fs-error": string | undefined;
-	"aria-describedby": string | undefined;
-	"aria-invalid": "true" | undefined;
-	"aria-required": "true" | undefined;
-	"data-fs-control": string;
-};
+	type Props = {
+		value: DateValue | undefined;
+		onDateChange: (date: Date) => void;
+		minValue?: DateValue;
+		maxValue?: DateValue;
+		name: string;
+		id: string;
+		'data-fs-error': string | undefined;
+		'aria-describedby': string | undefined;
+		'aria-invalid': 'true' | undefined;
+		'aria-required': 'true' | undefined;
+		'data-fs-control': string;
+	};
 
-const _df = new DateFormatter("en-US", {
-	dateStyle: "long",
-});
+	const df = new DateFormatter('en-US', {
+		dateStyle: 'long'
+	});
 
-const { value, onDateChange, minValue, maxValue, ...rest }: Props = $props();
-const _open = $state(false);
+	let { value, onDateChange, minValue, maxValue, ...rest }: Props = $props();
+	let open = $state(false);
 </script>
 
 <Popover.Root bind:open>
@@ -41,10 +46,13 @@ const _open = $state(false);
 			bind:value
 			type="single"
 			initialFocus
+			captionLayout="dropdown"
 			{minValue}
 			{maxValue}
 			onValueChange={(date: DateValue | undefined) => {
-				date && onDateChange(date.toDate(getLocalTimeZone()));
+				if (date) {
+					onDateChange(date.toDate(getLocalTimeZone()));
+				}
 				open = false;
 			}}
 		/>
