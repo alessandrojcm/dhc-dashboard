@@ -37,6 +37,9 @@ This is a SvelteKit application for managing a Historical European Martial Arts 
 - `pnpm format` - Format code with Prettier
 - `pnpm check` - Run Svelte type checking
 
+**IMPORTANT**: when type checking ALWAYS use pnpm:check as that runs the type checker throuch Sveltekit's compiler,
+otherwise we will get a lot of unrelated type errors.
+
 ### Build & Deploy
 
 - `pnpm build` - Build for production
