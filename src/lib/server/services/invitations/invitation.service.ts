@@ -56,10 +56,22 @@ export class InvitationService {
 
 	constructor(
 		private kysely: Kysely<KyselyDatabase>,
-		private session: Session,
+		private session: Session | null,
 		logger?: Logger
 	) {
 		this.logger = logger ?? console;
+	}
+
+	/**
+	 * Throws if session is required but not present
+	 */
+	private requireSession(): Session {
+		if (!this.session) {
+			throw new Error('Session required for this operation', {
+				cause: { context: 'InvitationService.requireSession' }
+			});
+		}
+		return this.session;
 	}
 
 	// ========================================================================
@@ -96,7 +108,8 @@ export class InvitationService {
 	async findById(invitationId: string): Promise<Invitation> {
 		this.logger.info('Fetching invitation by ID', { invitationId });
 
-		return executeWithRLS(this.kysely, { claims: this.session }, async (trx) => {
+		const session = this.requireSession();
+		return executeWithRLS(this.kysely, { claims: session }, async (trx) => {
 			return this._findById(trx, invitationId);
 		});
 	}
@@ -112,7 +125,8 @@ export class InvitationService {
 	}): Promise<Invitation[]> {
 		this.logger.info('Fetching invitations', { filters });
 
-		return executeWithRLS(this.kysely, { claims: this.session }, async (trx) => {
+		const session = this.requireSession();
+		return executeWithRLS(this.kysely, { claims: session }, async (trx) => {
 			let query = trx.selectFrom('invitations').selectAll();
 
 			if (filters?.status) {
@@ -143,7 +157,8 @@ export class InvitationService {
 	async create(input: InvitationCreateInput): Promise<string> {
 		this.logger.info('Creating invitation', { email: input.email });
 
-		return executeWithRLS(this.kysely, { claims: this.session }, async (trx) => {
+		const session = this.requireSession();
+		return executeWithRLS(this.kysely, { claims: session }, async (trx) => {
 			return this._create(trx, input);
 		});
 	}
@@ -154,7 +169,8 @@ export class InvitationService {
 	async updateStatus(invitationId: string, status: InvitationStatus): Promise<boolean> {
 		this.logger.info('Updating invitation status', { invitationId, status });
 
-		return executeWithRLS(this.kysely, { claims: this.session }, async (trx) => {
+		const session = this.requireSession();
+		return executeWithRLS(this.kysely, { claims: session }, async (trx) => {
 			return this._updateStatus(trx, invitationId, status);
 		});
 	}
@@ -172,6 +188,50 @@ export class InvitationService {
 			this.logger.warn('Invitation validation failed', { invitationId, error });
 			return false;
 		}
+	}
+
+	/**
+	 * Process invitation acceptance within an existing transaction
+	 * This method handles the complete member registration flow without requiring a session
+	 * 
+	 * @param trx - Active database transaction
+	 * @param invitationId - ID of the invitation to process
+	 * @param nextOfKinName - Next of kin name
+	 * @param nextOfKinPhone - Next of kin phone number
+	 * @returns InvitationInfo for the processed invitation
+	 */
+	async processInvitationAcceptance(
+		trx: Transaction<KyselyDatabase>,
+		invitationId: string,
+		nextOfKinName: string,
+		nextOfKinPhone: string
+	): Promise<InvitationInfo> {
+		this.logger.info('Processing invitation acceptance', { invitationId });
+
+		// Get invitation info first
+		const invitationData = await this.getInvitationInfo(invitationId);
+
+		// Update invitation status to accepted
+		await this._updateStatus(trx, invitationData.invitation_id, 'accepted');
+
+		// Complete member registration and update waitlist in parallel
+		await Promise.all([
+			sql<string>`
+				select * from complete_member_registration(
+					${invitationData.user_id}::uuid,
+					${nextOfKinName}::text,
+					${nextOfKinPhone}::text,
+					${true}
+				)
+			`.execute(trx),
+			trx
+				.updateTable('waitlist')
+				.set({ status: 'joined' })
+				.where('email', '=', invitationData.email)
+				.execute()
+		]);
+
+		return invitationData;
 	}
 
 	// ========================================================================

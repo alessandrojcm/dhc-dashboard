@@ -38,7 +38,7 @@ export const actions: Actions = {
 		const { session } = await locals.safeGetSession();
 		invariant(session === null, 'Unauthorized');
 		const roles = getRolesFromSession(session!);
-		invariant(roles.intersection(SETTINGS_ROLES).size > 0, 'Unauthorized', 403);
+		invariant(roles.intersection(SETTINGS_ROLES).size === 0, 'Unauthorized', 403);
 
 		const form = await superValidate(request, valibot(InsuranceFormLinkSchema));
 		if (!form.valid) {

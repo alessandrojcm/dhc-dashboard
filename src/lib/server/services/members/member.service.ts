@@ -206,9 +206,7 @@ export class MemberService {
 		trx: Transaction<KyselyDatabase>,
 		args: UpdateMemberDataArgs
 	): Promise<MemberData> {
-		const result = await sql<{
-			update_member_data: MemberData;
-		}>`
+		const result = await sql<MemberData>`
 			select * from update_member_data(
 				${args.user_uuid}::uuid,
 				${args.p_first_name ?? null}::text,
@@ -231,8 +229,8 @@ export class MemberService {
 			)
 		`
 			.execute(trx)
-			.then((r) => r.rows[0].update_member_data);
-
+			.then((r) => r.rows[0]);
+// TODO: this broken now why?
 		if (!result) {
 			throw new Error('Failed to update member data', {
 				cause: {

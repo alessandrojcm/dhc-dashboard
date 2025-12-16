@@ -1,5 +1,7 @@
 import type { KyselifyDatabase } from 'kysely-supabase';
 import type { Database } from '$database';
+import type { Pathname, RouteId } from '$app/types';
+
 // Removed Schedule-X import - using vkurko/calendar now
 
 export type UserData = {
@@ -13,14 +15,14 @@ export type UserData = {
 
 export type NavigationItem = {
 	title: string;
-	url: string;
+	url: RouteId | Pathname;
 	isActive?: boolean;
 	role: Set<string>;
 };
 
 export type NavigationGroup = {
 	title: string;
-	url: string;
+	url: RouteId | Pathname;
 	items?: NavigationItem[];
 	role: Set<string>;
 };

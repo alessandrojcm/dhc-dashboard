@@ -50,7 +50,7 @@ export class AttendanceService {
 				.where('status', '=', 'confirmed')
 				.execute();
 
-			return results;
+			return results as AttendanceResult[];
 		});
 	}
 
@@ -132,7 +132,7 @@ export class AttendanceService {
 				.executeTakeFirst();
 
 			if (result) {
-				results.push(result);
+				results.push(result as AttendanceResult);
 			}
 		}
 

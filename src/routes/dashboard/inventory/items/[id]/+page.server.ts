@@ -24,10 +24,10 @@ export const load: PageServerLoad = async ({ params, locals, platform }) => {
 	}
 
 	// Get history for the item
-	const history = await historyService.getByItemId(params.id, 20);
-
-	// Get filter options for the form
-	const filterOptions = await itemService.getFilterOptions();
+	const [history, filterOptions] = await Promise.all([
+		historyService.getByItem(params.id, 20),
+		itemService.getFilterOptions()
+	]);
 
 	// Initialize all category attributes, preserving existing values
 	const initialAttributes: InventoryAttributes = {};

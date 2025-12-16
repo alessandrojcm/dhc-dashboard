@@ -33,19 +33,24 @@ export type {
  * Create an InvitationService instance
  *
  * @param platform - App platform with Hyperdrive connection
- * @param session - User session for RLS
+ * @param session - User session for RLS (optional for public methods like getInvitationInfo)
  * @param logger - Optional logger (defaults to sentryLogger)
  * @returns InvitationService instance
  *
  * @example
  * ```typescript
+ * // With session (for protected methods)
  * const invitationService = createInvitationService(platform, session);
+ * const invitations = await invitationService.findMany();
+ * 
+ * // Without session (for public methods)
+ * const invitationService = createInvitationService(platform, null);
  * const info = await invitationService.getInvitationInfo(invitationId);
  * ```
  */
 export function createInvitationService(
 	platform: App.Platform,
-	session: Session,
+	session: Session | null = null,
 	logger?: Logger
 ): InvitationService {
 	return new InvitationService(

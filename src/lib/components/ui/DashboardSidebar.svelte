@@ -77,7 +77,7 @@
 												onclick={toggleSidebar}
 												class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
 											>
-												<a href={resolve(`/dashboard/${item.url}`)}>{item.title}</a>
+												<a href={resolve(item.url)}>{item.title}</a>
 											</Sidebar.MenuButton>
 										</Sidebar.MenuItem>
 									{/if}
@@ -89,7 +89,7 @@
 							onclick={toggleSidebar}
 							class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
 						>
-							<a href={resolve(`/dashboard/${group.url}`)}>{group.title}</a>
+							<a href={resolve(group.url)}>{group.title}</a>
 						</Sidebar.MenuButton>
 					{/if}
 				</Sidebar.Group>
@@ -128,9 +128,6 @@
 						</DropdownMenu.Trigger>
 
 						<DropdownMenu.Content strategy="fixed" {customAnchor} class="w-56">
-							<DropdownMenu.Item>
-								<a href={resolve(`/dashboard/members/${user?.id}`)}>My Profile</a>
-							</DropdownMenu.Item>
 							{#if roles.size > 1}
 								<DropdownMenu.Item>
 									<a href={resolve(`/dashboard/members/${user?.id}`)}>My Profile</a>

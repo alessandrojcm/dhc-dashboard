@@ -7,40 +7,21 @@ import { env } from '$env/dynamic/public';
 import { memberSignupSchema } from '$lib/schemas/membersSignup';
 import { invariant } from '$lib/server/invariant';
 import { getKyselyClient } from '$lib/server/kysely';
-import { completeMemberRegistration } from '$lib/server/kyselyRPCFunctions';
 import { getNextBillingDates, getPriceIds } from '$lib/server/pricingUtils';
 import { createInvitationService } from '$lib/server/services/invitations';
 import { stripeClient } from '$lib/server/stripe';
 import type { Actions, PageServerLoad } from './$types';
 
 const DASHBOARD_MIGRATION_CODE = env.PUBLIC_DASHBOARD_MIGRATION_CODE ?? 'DHCDASHBOARD';
-
+// TODO: all of this broken now
 // need to normalize medical_conditions
-export const load: PageServerLoad = async ({ params, platform, cookies, locals }) => {
+export const load: PageServerLoad = async ({ params, platform, cookies }) => {
 	const invitationId = params.invitationId;
 	const isConfirmed = Boolean(cookies.get(`invite-confirmed-${invitationId}`));
 
 	try {
-		// Create a minimal session for the invitation service
-		// This is a public route, so we use a service-level session
-		const { session } = await locals.safeGetSession();
-		const invitationService = createInvitationService(
-			platform!,
-			session ?? {
-				user: {
-					id: '',
-					app_metadata: {},
-					user_metadata: {},
-					aud: '',
-					created_at: new Date().toISOString()
-				},
-				access_token: '',
-				refresh_token: '',
-				expires_at: undefined,
-				expires_in: 3600,
-				token_type: 'bearer'
-			}
-		);
+		// Create invitation service without session (public route)
+		const invitationService = createInvitationService(platform!);
 
 		// Get invitation data first (essential for page rendering)
 		const invitationData = await invitationService.getInvitationInfo(invitationId);
@@ -90,32 +71,21 @@ export const actions: Actions = {
 			form.data.stripeConfirmationToken
 		);
 
-		// Create invitation service with a minimal session for public route
-		const { session } = await event.locals.safeGetSession();
-		const invitationService = createInvitationService(
-			event.platform!,
-			session ?? {
-				user: {
-					id: '',
-					app_metadata: {},
-					user_metadata: {},
-					aud: '',
-					created_at: new Date().toISOString()
-				},
-				access_token: '',
-				refresh_token: '',
-				expires_at: undefined,
-				expires_in: 3600,
-				token_type: 'bearer'
-			}
-		);
+		// Create invitation service without session (public route)
+		const invitationService = createInvitationService(event.platform!);
 
 		return kysely
 			.transaction()
 			.execute(async (trx) => {
-				// Get invitation info using the service
-				const invitationData = await invitationService.getInvitationInfo(event.params.invitationId);
+				// Process invitation acceptance (handles status update, registration, waitlist)
+				const invitationData = await invitationService.processInvitationAcceptance(
+					trx,
+					event.params.invitationId,
+					form.data.nextOfKin,
+					form.data.nextOfKinNumber
+				);
 
+				// Get customer ID
 				const customerId = await trx
 					.selectFrom('user_profiles')
 					.select('customer_id')
@@ -124,28 +94,6 @@ export const actions: Actions = {
 				if (!customerId) {
 					throw error(404, 'No customer ID found for this user.');
 				}
-
-				// First get the invitation info and update its status to accepted
-				if (invitationData?.invitation_id) {
-					await invitationService.updateStatus(invitationData.invitation_id, 'accepted');
-				}
-
-				await Promise.all([
-					completeMemberRegistration(
-						{
-							v_user_id: invitationData.user_id,
-							p_next_of_kin_name: form.data.nextOfKin,
-							p_next_of_kin_phone: form.data.nextOfKinNumber,
-							p_insurance_form_submitted: true
-						},
-						trx
-					),
-					trx
-						.updateTable('waitlist')
-						.set({ status: 'joined' })
-						.where('email', '=', invitationData.email)
-						.execute()
-				]);
 
 				const intent = await stripeClient.setupIntents.create({
 					confirm: true,

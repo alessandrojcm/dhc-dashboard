@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { makeAuthenticatedRequest, type TestRegistration } from './attendee-test-helpers';
 import { createMember, getSupabaseServiceClient } from './setupFunctions';
 import { loginAsUser } from './supabaseLogin';
+import dayjs from 'dayjs';
 
 test.describe('Attendance Management', () => {
 	let adminData: Awaited<ReturnType<typeof createMember>>;
@@ -29,8 +30,8 @@ test.describe('Attendance Management', () => {
 		const randomSuffix = Math.random().toString(36).substring(2, 15);
 
 		// Create test workshop directly in database
-		const workshopStartDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-		const workshopEndDate = new Date(workshopStartDate.getTime() + 2 * 60 * 60 * 1000);
+		const workshopStartDate = dayjs();
+		const workshopEndDate = workshopStartDate.add(7, 'day');
 
 		const { data: workshop, error: workshopError } = await supabase
 			.from('club_activities')

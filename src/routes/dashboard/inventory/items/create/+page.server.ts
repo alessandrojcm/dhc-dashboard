@@ -5,15 +5,12 @@ import { valibot } from 'sveltekit-superforms/adapters';
 import { authorize } from '$lib/server/auth';
 import { INVENTORY_ROLES } from '$lib/server/roles';
 import { createItemService, ItemCreateSchema } from '$lib/server/services/inventory';
+import type { Actions, PageServerLoad } from './$types';
 
-export const load = async ({
+export const load: PageServerLoad = async ({
 	url,
 	locals,
 	platform
-}: {
-	url: URL;
-	locals: App.Locals;
-	platform: App.Platform;
 }) => {
 	const session = await authorize(locals, INVENTORY_ROLES);
 
@@ -45,15 +42,11 @@ export const load = async ({
 	};
 };
 
-export const actions = {
+export const actions: Actions = {
 	default: async ({
 		request,
 		locals,
 		platform
-	}: {
-		request: Request;
-		locals: App.Locals;
-		platform: App.Platform;
 	}) => {
 		const session = await authorize(locals, INVENTORY_ROLES);
 		const form = await superValidate(request, valibot(ItemCreateSchema));

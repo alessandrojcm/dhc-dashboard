@@ -34,7 +34,6 @@ export const load: PageServerLoad = async ({ params, locals, platform }) => {
 			message: 'Workshop not found'
 		});
 	}
-
 	return {
 		workshop,
 		attendees,

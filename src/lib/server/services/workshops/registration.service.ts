@@ -85,6 +85,11 @@ export class RegistrationService {
 					'car.stripe_checkout_session_id',
 					'car.created_at',
 					'car.updated_at',
+					'car.cancelled_at',
+					'car.confirmed_at',
+					'car.currency',
+					'car.registered_at',
+					'car.registration_notes',
 					'up.first_name as member_first_name',
 					'up.last_name as member_last_name',
 					'eu.first_name as external_first_name',
@@ -97,34 +102,42 @@ export class RegistrationService {
 				.execute();
 
 			// Transform to include user profile data
-			return attendees.map((attendee) => ({
-				id: attendee.id,
-				club_activity_id: attendee.club_activity_id,
-				member_user_id: attendee.member_user_id,
-				external_user_id: attendee.external_user_id,
-				status: attendee.status,
-				attendance_status: attendee.attendance_status,
-				attendance_marked_at: attendee.attendance_marked_at,
-				attendance_marked_by: attendee.attendance_marked_by,
-				attendance_notes: attendee.attendance_notes,
-				amount_paid: attendee.amount_paid,
-				stripe_checkout_session_id: attendee.stripe_checkout_session_id,
-				created_at: attendee.created_at,
-				updated_at: attendee.updated_at,
-				user_profiles: attendee.member_first_name
-					? {
-							first_name: attendee.member_first_name,
-							last_name: attendee.member_last_name
-						}
-					: null,
-				external_users: attendee.external_first_name
-					? {
-							first_name: attendee.external_first_name,
-							last_name: attendee.external_last_name,
-							email: attendee.external_email!
-						}
-					: null
-			}));
+			return attendees.map(
+				(attendee) =>
+					({
+						id: attendee.id,
+						club_activity_id: attendee.club_activity_id,
+						member_user_id: attendee.member_user_id,
+						external_user_id: attendee.external_user_id,
+						status: attendee.status,
+						cancelled_at: attendee.cancelled_at,
+						currency: attendee.currency,
+						registration_notes: attendee.registration_notes,
+						confirmed_at: attendee.confirmed_at,
+						registered_at: attendee.registered_at,
+						attendance_status: attendee.attendance_status,
+						attendance_marked_at: attendee.attendance_marked_at,
+						attendance_marked_by: attendee.attendance_marked_by,
+						attendance_notes: attendee.attendance_notes,
+						amount_paid: attendee.amount_paid,
+						stripe_checkout_session_id: attendee.stripe_checkout_session_id,
+						created_at: attendee.created_at,
+						updated_at: attendee.updated_at,
+						user_profiles: attendee.member_first_name
+							? {
+									first_name: attendee.member_first_name,
+									last_name: attendee.member_last_name!
+								}
+							: null,
+						external_users: attendee.external_first_name
+							? {
+									first_name: attendee.external_first_name,
+									last_name: attendee.external_last_name!,
+									email: attendee.external_email!
+								}
+							: null
+					}) satisfies RegistrationWithUser
+			);
 		});
 	}
 
