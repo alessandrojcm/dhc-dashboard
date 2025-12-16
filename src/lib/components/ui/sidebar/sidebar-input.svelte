@@ -1,13 +1,14 @@
 <script lang="ts">
-import type { ComponentProps } from "svelte";
-import type { Input } from "$lib/components/ui/input/index.js";
+	import type { ComponentProps } from 'svelte';
+	import { Input } from '$lib/components/ui/input/index.js';
+	import { cn } from '$lib/utils.js';
 
-const {
-	ref = $bindable(null),
-	value = $bindable(""),
-	class: className,
-	...restProps
-}: ComponentProps<typeof Input> = $props();
+	let {
+		ref = $bindable(null),
+		value = $bindable(''),
+		class: className,
+		...restProps
+	}: ComponentProps<typeof Input> = $props();
 </script>
 
 <Input
@@ -15,6 +16,6 @@ const {
 	bind:value
 	data-slot="sidebar-input"
 	data-sidebar="input"
-	class={cn("bg-background h-8 w-full shadow-none", className)}
+	class={cn('bg-background h-8 w-full shadow-none', className)}
 	{...restProps}
 />

@@ -1,45 +1,42 @@
 <script lang="ts">
-import { Scale, Scatter } from "@unovis/ts";
-import { schemeTableau10 } from "d3-scale-chromatic";
+	import { Scale, Scatter } from '@unovis/ts';
+	import { VisXYContainer, VisScatter, VisAxis, VisTooltip } from '@unovis/svelte';
+	import { schemeTableau10 } from 'd3-scale-chromatic';
 
-type AgeValue = string | number | null;
-type AgeDistribution = { age: AgeValue; value: number };
-// Accept different age data formats from different sources
-const {
-	ageDistribution,
-}: { ageDistribution: Array<{ age: AgeValue; value: number }> } = $props();
+	type AgeValue = string | number | null;
+	type AgeDistribution = { age: AgeValue; value: number };
+	// Accept different age data formats from different sources
+	const { ageDistribution }: { ageDistribution: Array<{ age: AgeValue; value: number }> } =
+		$props();
 
-// Format number for display
-const _formatNumber = Intl.NumberFormat("en").format;
+	// Scatter props
+	const x = (d: { age: AgeValue; value: number }) => {
+		// Handle different age formats
+		if (d.age === null) return 0;
+		return typeof d.age === 'string' ? Number(d.age) : d.age;
+	};
+	const y = (d: { age: AgeValue; value: number }) => d.value;
+	const size = (d: AgeDistribution) => d.value; // Fixed size for all points
 
-// Scatter props
-const _x = (d: { age: AgeValue; value: number }) => {
-	// Handle different age formats
-	if (d.age === null) return 0;
-	return typeof d.age === "string" ? Number(d.age) : d.age;
-};
-const _y = (d: { age: AgeValue; value: number }) => d.value;
-const _size = (d: AgeDistribution) => d.value; // Fixed size for all points
+	// Create a color scale similar to the original
+	const colorScale = Scale.scaleOrdinal(schemeTableau10).domain(
+		[
+			...new Set(
+				ageDistribution
+					.map((a) => a.age)
+					.filter((age) => age !== null)
+					.map((age) => String(age))
+			)
+		].sort()
+	);
+	const color = (d: AgeDistribution) => colorScale(d.age?.toString() ?? '');
 
-// Create a color scale similar to the original
-const colorScale = Scale.scaleOrdinal(schemeTableau10).domain(
-	[
-		...new Set(
-			ageDistribution
-				.map((a) => a.age)
-				.filter((age) => age !== null)
-				.map((age) => String(age)),
-		),
-	].sort(),
-);
-const _color = (d: AgeDistribution) => colorScale(d.age?.toString() ?? "");
-
-// Tooltip configuration
-const _triggers = {
-	[Scatter.selectors.point]: (d: AgeDistribution) => `
+	// Tooltip configuration
+	const triggers = {
+		[Scatter.selectors.point]: (d: AgeDistribution) => `
       ${d.age} years old<br/>Number of members: ${d.value.toLocaleString()}
-    `,
-};
+    `
+	};
 </script>
 
 <h3 class="mb-4">Age groups</h3>

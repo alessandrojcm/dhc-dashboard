@@ -1,72 +1,75 @@
 <script lang="ts">
-import { fromDate, getLocalTimeZone } from "@internationalized/date";
-import dayjs from "dayjs";
-import { toast } from "svelte-sonner";
-import { dateProxy, superForm } from "sveltekit-superforms";
-import { valibotClient } from "sveltekit-superforms/adapters";
-import { goto } from "$app/navigation";
-import { page } from "$app/state";
-import { inviteValidationSchema } from "$lib/schemas/inviteValidationSchema";
+	import * as Form from '$lib/components/ui/form';
+	import { Input } from '$lib/components/ui/input';
+	import { Button } from '$lib/components/ui/button';
+	import { dateProxy, superForm } from 'sveltekit-superforms';
+	import { valibotClient } from 'sveltekit-superforms/adapters';
+	import { inviteValidationSchema } from '$lib/schemas/inviteValidationSchema';
+	import { ArrowRightIcon } from 'lucide-svelte';
+	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
+	import { toast } from 'svelte-sonner';
+	import { page } from '$app/state';
+	import * as Alert from '$lib/components/ui/alert';
+	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
+	import dayjs from 'dayjs';
+	import { fromDate, getLocalTimeZone } from '@internationalized/date';
+	import DatePicker from '$lib/components/ui/date-picker.svelte';
 
-const invitationId = $derived(page.params.invitationId);
+	const invitationId = $derived(page.params.invitationId);
 
-let { isVerified = $bindable(false) } = $props();
+	let { isVerified = $bindable(false) } = $props();
 
-// Create a form with the invite validation schema
-const form = superForm(
-	{
-		dateOfBirth: page.url.searchParams.get("dateOfBirth") || "",
-		email: page.url.searchParams.get("email") || "",
-	},
-	{
-		validators: valibotClient(inviteValidationSchema),
-		resetForm: false,
-		validationMethod: "onblur",
-		SPA: true,
-		onUpdate: async ({ form, cancel }) => {
-			try {
-				const response = await fetch(`/api/invite/${invitationId}`, {
-					method: "POST",
-					headers: {
-						"Content-Type": "application/json",
-					},
-					body: JSON.stringify({
-						email: form.data.email,
-						dateOfBirth: form.data.dateOfBirth,
-					}),
-				});
-
-				if (response.ok) {
-					isVerified = true;
-					goto(`/members/signup/${invitationId}`, {
-						replaceState: true,
+	// Create a form with the invite validation schema
+	const form = superForm(
+		{
+			dateOfBirth: page.url.searchParams.get('dateOfBirth') || '',
+			email: page.url.searchParams.get('email') || ''
+		},
+		{
+			validators: valibotClient(inviteValidationSchema),
+			resetForm: false,
+			validationMethod: 'onblur',
+			SPA: true,
+			onUpdate: async ({ form, cancel }) => {
+				try {
+					const response = await fetch(`/api/invite/${invitationId}`, {
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json'
+						},
+						body: JSON.stringify({
+							email: form.data.email,
+							dateOfBirth: form.data.dateOfBirth
+						})
 					});
-				} else {
-					toast.error(
-						"Invalid invitation details. Please check your email and date of birth.",
-					);
+
+					if (response.ok) {
+						isVerified = true;
+						goto(resolve(`/members/signup/${invitationId}`), {
+							replaceState: true
+						});
+					} else {
+						toast.error('Invalid invitation details. Please check your email and date of birth.');
+						cancel();
+					}
+				} catch (error) {
+					toast.error('An error occurred. Please try again.');
+					console.error('Error verifying invitation:', error);
 					cancel();
 				}
-			} catch (error) {
-				toast.error("An error occurred. Please try again.");
-				console.error("Error verifying invitation:", error);
-				cancel();
 			}
-		},
-	},
-);
+		}
+	);
 
-const { form: formData, enhance, submitting } = form;
-const _dobProxy = dateProxy(form, "dateOfBirth", { format: `date` });
-const _dobValue = $derived.by(() => {
-	if (
-		!dayjs($formData.dateOfBirth).isValid() ||
-		dayjs($formData.dateOfBirth).isSame(dayjs())
-	) {
-		return undefined;
-	}
-	return fromDate(dayjs($formData.dateOfBirth).toDate(), getLocalTimeZone());
-});
+	const { form: formData, enhance, submitting } = form;
+	const dobProxy = dateProxy(form, 'dateOfBirth', { format: `date` });
+	const dobValue = $derived.by(() => {
+		if (!dayjs($formData.dateOfBirth).isValid() || dayjs($formData.dateOfBirth).isSame(dayjs())) {
+			return undefined;
+		}
+		return fromDate(dayjs($formData.dateOfBirth).toDate(), getLocalTimeZone());
+	});
 </script>
 
 {#if isVerified}

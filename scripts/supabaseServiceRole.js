@@ -1,21 +1,19 @@
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { createClient } from "@supabase/supabase-js";
-import dotenv from "dotenv";
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { createClient } from '@supabase/supabase-js';
+import dotenv from 'dotenv';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // Load env file from project root
-dotenv.config({ path: join(__dirname, "..", ".env") });
+dotenv.config({ path: join(__dirname, '..', '.env') });
 
 const supabaseUrl = process.env.PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SERVICE_ROLE_KEY;
 
 if (!supabaseUrl || !serviceRoleKey) {
-	throw new Error(
-		"Missing SUPABASE_URL or SERVICE_ROLE_KEY in environment variables",
-	);
+	throw new Error('Missing SUPABASE_URL or SERVICE_ROLE_KEY in environment variables');
 }
 /**
  *

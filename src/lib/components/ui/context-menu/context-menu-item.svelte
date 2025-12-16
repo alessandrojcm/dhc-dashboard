@@ -1,16 +1,17 @@
 <script lang="ts">
-import type { ContextMenu as ContextMenuPrimitive } from "bits-ui";
+	import { ContextMenu as ContextMenuPrimitive } from 'bits-ui';
+	import { cn } from '$lib/utils.js';
 
-const {
-	ref = $bindable(null),
-	class: className,
-	inset,
-	variant = "default",
-	...restProps
-}: ContextMenuPrimitive.ItemProps & {
-	inset?: boolean;
-	variant?: "default" | "destructive";
-} = $props();
+	let {
+		ref = $bindable(null),
+		class: className,
+		inset,
+		variant = 'default',
+		...restProps
+	}: ContextMenuPrimitive.ItemProps & {
+		inset?: boolean;
+		variant?: 'default' | 'destructive';
+	} = $props();
 </script>
 
 <ContextMenuPrimitive.Item

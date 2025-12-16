@@ -1,42 +1,37 @@
 <script lang="ts">
-import { StackedBar } from "@unovis/ts";
-import { schemeTableau10 } from "d3-scale-chromatic";
+	import { VisXYContainer, VisStackedBar, VisAxis, VisTooltip } from '@unovis/svelte';
+	import { StackedBar } from '@unovis/ts';
+	import { schemeTableau10 } from 'd3-scale-chromatic';
 
-type GenderDistribution = { gender: string; value: number };
+	type GenderDistribution = { gender: string; value: number };
 
-// Use Svelte 5 props syntax
-const {
-	genderDistributionData = [],
-}: { genderDistributionData?: Array<GenderDistribution> } = $props();
+	// Use Svelte 5 props syntax
+	const { genderDistributionData = [] }: { genderDistributionData?: Array<GenderDistribution> } =
+		$props();
 
-// Format number for display
-const formatNumber = Intl.NumberFormat("en").format;
+	// Format number for display
+	const formatNumber = Intl.NumberFormat('en').format;
 
-// Bar chart props
-// Map gender strings to indices for x-axis positioning
-const genderIndices = new Map(
-	genderDistributionData.map((item, index) => [item.gender, index]),
-);
+	// Bar chart props
+	// Map gender strings to indices for x-axis positioning
+	const genderIndices = new Map(genderDistributionData.map((item, index) => [item.gender, index]));
 
-const _x = (d: GenderDistribution) => genderIndices.get(d.gender) || 0;
-const _y = (d: GenderDistribution) => d.value;
-const _color = (d: GenderDistribution) => {
-	// Use the index in the data array to determine color
-	const index = genderDistributionData.findIndex(
-		(item) => item.gender === d.gender,
-	);
-	return schemeTableau10[index % schemeTableau10.length];
-};
+	const x = (d: GenderDistribution) => genderIndices.get(d.gender) || 0;
+	const color = (d: GenderDistribution) => {
+		// Use the index in the data array to determine color
+		const index = genderDistributionData.findIndex((item) => item.gender === d.gender);
+		return schemeTableau10[index % schemeTableau10.length];
+	};
 
-// Tooltip configuration
-const _triggers = {
-	[StackedBar.selectors.bar]: (d: GenderDistribution) => `
+	// Tooltip configuration
+	const triggers = {
+		[StackedBar.selectors.bar]: (d: GenderDistribution) => `
 			<div>
 				<div style="font-weight: bold; margin-bottom: 4px; text-transform: capitalize;">${d.gender}</div>
 				<div>Members: ${formatNumber(d.value)}</div>
 			</div>
-		`,
-};
+		`
+	};
 </script>
 
 <h3>Gender demographics</h3>

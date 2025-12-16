@@ -1,37 +1,45 @@
 <script lang="ts">
-import dayjs from "dayjs";
-import relativeTime from "dayjs/plugin/relativeTime";
-import { Clock, Package, Plus } from "lucide-svelte";
+	import {
+		Card,
+		CardContent,
+		CardDescription,
+		CardHeader,
+		CardTitle
+	} from '$lib/components/ui/card';
+	import { Button } from '$lib/components/ui/button';
+	import { Package, FolderOpen, Tags, AlertTriangle, Plus, Clock } from 'lucide-svelte';
+	import dayjs from 'dayjs';
+	import relativeTime from 'dayjs/plugin/relativeTime';
 
-dayjs.extend(relativeTime);
+	dayjs.extend(relativeTime);
 
-const { data } = $props();
+	let { data } = $props();
 
-const _getActionIcon = (action: string) => {
-	switch (action) {
-		case "created":
-			return Plus;
-		case "moved":
-			return Package;
-		case "updated":
-			return Clock;
-		default:
-			return Clock;
-	}
-};
+	const getActionIcon = (action: string) => {
+		switch (action) {
+			case 'created':
+				return Plus;
+			case 'moved':
+				return Package;
+			case 'updated':
+				return Clock;
+			default:
+				return Clock;
+		}
+	};
 
-const _getActionColor = (action: string) => {
-	switch (action) {
-		case "created":
-			return "text-green-600";
-		case "moved":
-			return "text-blue-600";
-		case "updated":
-			return "text-yellow-600";
-		default:
-			return "text-gray-600";
-	}
-};
+	const getActionColor = (action: string) => {
+		switch (action) {
+			case 'created':
+				return 'text-green-600';
+			case 'moved':
+				return 'text-blue-600';
+			case 'updated':
+				return 'text-yellow-600';
+			default:
+				return 'text-gray-600';
+		}
+	};
 </script>
 
 <div class="p-6">
@@ -129,13 +137,11 @@ const _getActionColor = (action: string) => {
 					<p class="text-sm text-muted-foreground">No recent activity</p>
 				{:else}
 					<div class="space-y-3">
-						{#each data.recentActivity.slice(0, 5) as activity}
-                            {@const ActionIcon = getActionIcon(activity.action)}
+						{#each data.recentActivity.slice(0, 5) as activity (activity.id)}
+							{@const ActionIcon = getActionIcon(activity.action)}
 							<div class="flex items-start gap-3">
 								<div class="flex h-8 w-8 items-center justify-center rounded-full bg-muted">
-									<ActionIcon
-										class="h-4 w-4 {getActionColor(activity.action)}"
-									/>
+									<ActionIcon class="h-4 w-4 {getActionColor(activity.action)}" />
 								</div>
 								<div class="flex-1 space-y-1">
 									<p class="text-sm">

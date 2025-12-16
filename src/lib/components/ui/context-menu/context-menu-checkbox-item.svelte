@@ -1,18 +1,19 @@
 <script lang="ts">
-import type { ContextMenu as ContextMenuPrimitive } from "bits-ui";
-import type { Snippet } from "svelte";
-import type { WithoutChildrenOrChild } from "$lib/utils.js";
+	import { ContextMenu as ContextMenuPrimitive } from 'bits-ui';
+	import CheckIcon from '@lucide/svelte/icons/check';
+	import { cn, type WithoutChildrenOrChild } from '$lib/utils.js';
+	import type { Snippet } from 'svelte';
 
-const {
-	ref = $bindable(null),
-	checked = $bindable(false),
-	indeterminate = $bindable(false),
-	class: className,
-	children: childrenProp,
-	...restProps
-}: WithoutChildrenOrChild<ContextMenuPrimitive.CheckboxItemProps> & {
-	children?: Snippet;
-} = $props();
+	let {
+		ref = $bindable(null),
+		checked = $bindable(false),
+		indeterminate = $bindable(false),
+		class: className,
+		children: childrenProp,
+		...restProps
+	}: WithoutChildrenOrChild<ContextMenuPrimitive.CheckboxItemProps> & {
+		children?: Snippet;
+	} = $props();
 </script>
 
 <ContextMenuPrimitive.CheckboxItem

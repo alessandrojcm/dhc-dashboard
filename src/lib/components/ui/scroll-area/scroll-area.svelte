@@ -1,28 +1,29 @@
 <script lang="ts">
-import type { ScrollArea as ScrollAreaPrimitive } from "bits-ui";
-import type { WithoutChild } from "$lib/utils.js";
+	import { ScrollArea as ScrollAreaPrimitive } from 'bits-ui';
+	import { Scrollbar } from './index.js';
+	import { cn, type WithoutChild } from '$lib/utils.js';
 
-const {
-	ref = $bindable(null),
-	viewportRef = $bindable(null),
-	class: className,
-	orientation = "vertical",
-	scrollbarXClasses = "",
-	scrollbarYClasses = "",
-	children,
-	...restProps
-}: WithoutChild<ScrollAreaPrimitive.RootProps> & {
-	orientation?: "vertical" | "horizontal" | "both" | undefined;
-	scrollbarXClasses?: string | undefined;
-	scrollbarYClasses?: string | undefined;
-	viewportRef?: HTMLElement | null;
-} = $props();
+	let {
+		ref = $bindable(null),
+		viewportRef = $bindable(null),
+		class: className,
+		orientation = 'vertical',
+		scrollbarXClasses = '',
+		scrollbarYClasses = '',
+		children,
+		...restProps
+	}: WithoutChild<ScrollAreaPrimitive.RootProps> & {
+		orientation?: 'vertical' | 'horizontal' | 'both' | undefined;
+		scrollbarXClasses?: string | undefined;
+		scrollbarYClasses?: string | undefined;
+		viewportRef?: HTMLElement | null;
+	} = $props();
 </script>
 
 <ScrollAreaPrimitive.Root
 	bind:ref
 	data-slot="scroll-area"
-	class={cn("relative", className)}
+	class={cn('relative', className)}
 	{...restProps}
 >
 	<ScrollAreaPrimitive.Viewport
@@ -32,10 +33,10 @@ const {
 	>
 		{@render children?.()}
 	</ScrollAreaPrimitive.Viewport>
-	{#if orientation === "vertical" || orientation === "both"}
+	{#if orientation === 'vertical' || orientation === 'both'}
 		<Scrollbar orientation="vertical" class={scrollbarYClasses} />
 	{/if}
-	{#if orientation === "horizontal" || orientation === "both"}
+	{#if orientation === 'horizontal' || orientation === 'both'}
 		<Scrollbar orientation="horizontal" class={scrollbarXClasses} />
 	{/if}
 	<ScrollAreaPrimitive.Corner />

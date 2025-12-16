@@ -1,39 +1,42 @@
 <script lang="ts">
-import type { SupabaseClient } from "@supabase/supabase-js";
-import { createQuery } from "@tanstack/svelte-query";
-import type { Database } from "$database";
+	/* eslint-disable @typescript-eslint/no-explicit-any */
+	import type { Database } from '$database';
+	import type { SupabaseClient } from '@supabase/supabase-js';
+	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
+	import { Button } from '$lib/components/ui/button';
+	import { Badge } from '$lib/components/ui/badge';
+	import { Tags, Plus, Edit, Package, AlertTriangle } from 'lucide-svelte';
+	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
+	import { createQuery } from '@tanstack/svelte-query';
 
-const { data } = $props();
-const supabase: SupabaseClient<Database> = data.supabase;
+	let { data } = $props();
+	const supabase: SupabaseClient<Database> = data.supabase;
 
-// Fetch categories with TanStack Query
-const _categoriesQuery = createQuery(() => ({
-	queryKey: ["inventory-categories"],
-	queryFn: async ({ signal }) => {
-		const { data: categories, error } = await supabase
-			.from("equipment_categories")
-			.select(
-				"id, name, description, available_attributes, item_count:equipment_items(count)",
-				{
-					count: "exact",
-				},
-			)
-			.order("name")
-			.abortSignal(signal);
+	// Fetch categories with TanStack Query
+	const categoriesQuery = createQuery(() => ({
+		queryKey: ['inventory-categories'],
+		queryFn: async ({ signal }) => {
+			const { data: categories, error } = await supabase
+				.from('equipment_categories')
+				.select('id, name, description, available_attributes, item_count:equipment_items(count)', {
+					count: 'exact'
+				})
+				.order('name')
+				.abortSignal(signal);
 
-		if (error) throw error;
+			if (error) throw error;
 
-		return categories || [];
-	},
-}));
+			return categories || [];
+		}
+	}));
 
-const _getAttributeCount = (category: any) => {
-	return Object.keys(category.available_attributes || {}).length;
-};
+	const getAttributeCount = (category: any) => {
+		return Object.keys(category.available_attributes || {}).length;
+	};
 
-const _getItemCount = (category: any) => {
-	return category.item_count?.[0]?.count || 0;
-};
+	const getItemCount = (category: any) => {
+		return category.item_count?.[0]?.count || 0;
+	};
 </script>
 
 <div class="p-6">
@@ -122,7 +125,7 @@ const _getItemCount = (category: any) => {
 							<div class="space-y-2">
 								<h4 class="text-sm font-medium">Attributes:</h4>
 								<div class="flex flex-wrap gap-1">
-									{#each Object.entries(category.available_attributes || {}) as [key, attr]}
+									{#each Object.entries(category.available_attributes || {}) as [key, attr] (key)}
 										<Badge variant="outline" class="text-xs">
 											{attr.label || key}
 											{#if attr.required}

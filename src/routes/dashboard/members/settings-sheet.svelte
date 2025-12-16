@@ -1,26 +1,35 @@
 <script lang="ts">
-import { toast } from "svelte-sonner";
-import { valibotClient } from "sveltekit-superforms/adapters";
-import { type SuperValidated, superForm } from "sveltekit-superforms/client";
-import type { MemberSettingsOutput } from "$lib/schemas/membersSettings";
-import memberSettingsSchema from "$lib/schemas/membersSettings";
+	import * as Sheet from '$lib/components/ui/sheet/index.js';
+	import * as Form from '$lib/components/ui/form';
+	import { Button } from '$lib/components/ui/button';
+	import { Input } from '$lib/components/ui/input';
+	import { Lock } from 'lucide-svelte';
+	import { superForm, type SuperValidated } from 'sveltekit-superforms/client';
+	import type { MemberSettingsOutput } from '$lib/schemas/membersSettings';
+	import memberSettingsSchema from '$lib/schemas/membersSettings';
+	import { valibotClient } from 'sveltekit-superforms/adapters';
+	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
+	import { toast } from 'svelte-sonner';
 
-const props: {
-	form: SuperValidated<MemberSettingsOutput, any, MemberSettingsOutput>;
-} = $props();
-const _isOpen = $state(false);
+	const props: {
+		form: SuperValidated<MemberSettingsOutput, string, MemberSettingsOutput>;
+	} = $props();
+	let isOpen = $state(false);
 
-const form = superForm(props.form, {
-	resetForm: false,
-	validators: valibotClient(memberSettingsSchema),
-	onResult: ({ result }) => {
-		result.type === "error" && toast.error(result.error.message);
-		result.type === "success" &&
-			toast.success(result.data?.message || "Settings updated successfully");
-	},
-});
+	const form = superForm(props.form, {
+		resetForm: false,
+		validators: valibotClient(memberSettingsSchema),
+		onResult: ({ result }) => {
+			if (result.type === 'error') {
+				toast.error(result.error.message);
+			}
+			if (result.type === 'success') {
+				toast.success(result.data?.message || 'Settings updated successfully');
+			}
+		}
+	});
 
-const { form: formData, enhance, submitting } = form;
+	const { form: formData, enhance, submitting } = form;
 </script>
 
 <Button variant="outline" class="fixed right-4 top-4" onclick={() => (isOpen = true)}>

@@ -40,9 +40,9 @@ const _stripeClass = $derived(
 			</div>
 		</Card.Content>
 	</Card.Root>
-{:else if !(planPricingData as CreateQueryResult<PlanPricing, Error>).isError}
+{:else if !planPricingData.isError && planPricingData?.data}
 	<!-- Handle QueryResult -->
-	{@const planPricing = (planPricingData as CreateQueryResult<PlanPricing, Error>).data!}
+	{@const planPricing = planPricingData.data}
 	{@const proratedPriceDinero = Dinero(planPricing.proratedPrice)}
 	{@const monthlyFeeDinero = Dinero(planPricing.monthlyFee)}
 	{@const annualFeeDinero = Dinero(planPricing.annualFee)}
@@ -197,7 +197,7 @@ const _stripeClass = $derived(
 			</div>
 		</Card.Content>
 	</Card.Root>
-{:else if (planPricingData as CreateQueryResult<PlanPricing, Error>).isLoading}
+{:else if planPricingData.isLoading}
 	<!-- Loading state for QueryResult -->
 	<Card.Root class="bg-muted">
 		<Card.Content class="pt-6">
@@ -207,7 +207,7 @@ const _stripeClass = $derived(
 			</div>
 		</Card.Content>
 	</Card.Root>
-{:else if (planPricingData as CreateQueryResult<PlanPricing, Error>).isError}
+{:else if planPricingData.isError}
 	<!-- Error state for QueryResult -->
 	<Card.Root class="bg-destructive/10 border-destructive">
 		<Card.Content class="pt-6">

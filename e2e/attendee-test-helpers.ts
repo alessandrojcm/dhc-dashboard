@@ -1,6 +1,6 @@
-import type { Page } from "@playwright/test";
-import type { Database } from "../database.types.js";
-import { createMember, getSupabaseServiceClient } from "./setupFunctions";
+import type { Page } from '@playwright/test';
+import type { Database } from '../database.types.js';
+import { createMember, getSupabaseServiceClient } from './setupFunctions';
 
 /**
  * Helper functions for attendee management and refund E2E tests
@@ -52,14 +52,14 @@ export async function makeAuthenticatedRequest(
 		data?: unknown;
 		headers?: Record<string, string>;
 		body?: string;
-	} = {},
+	} = {}
 ) {
 	const response = await page.request.fetch(url, {
 		...options,
 		headers: {
-			"Content-Type": "application/json",
-			...options.headers,
-		},
+			'Content-Type': 'application/json',
+			...options.headers
+		}
 	});
 	return response;
 }
@@ -69,21 +69,19 @@ export async function makeAuthenticatedRequest(
  */
 export async function createTestWorkshop(
 	_page: Page,
-	overrides: Partial<Omit<TestWorkshop, "id">> = {},
+	overrides: Partial<Omit<TestWorkshop, 'id'>> = {}
 ): Promise<TestWorkshop> {
 	const timestamp = Date.now();
 	const randomSuffix = Math.random().toString(36).substring(2, 15);
 	const supabase = getSupabaseServiceClient();
 
 	const workshopStartDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days from now
-	const workshopEndDate = new Date(
-		workshopStartDate.getTime() + 2 * 60 * 60 * 1000,
-	); // 2 hours later
+	const workshopEndDate = new Date(workshopStartDate.getTime() + 2 * 60 * 60 * 1000); // 2 hours later
 
 	const defaultWorkshop = {
 		title: `Test Workshop ${timestamp}-${randomSuffix}`,
-		description: "Test workshop for E2E testing",
-		location: "Test Location",
+		description: 'Test workshop for E2E testing',
+		location: 'Test Location',
 		start_date: workshopStartDate.toISOString(),
 		end_date: workshopEndDate.toISOString(),
 		max_capacity: 10,
@@ -91,12 +89,12 @@ export async function createTestWorkshop(
 		price_non_member: 3500, // 35.00 in cents
 		is_public: true,
 		refund_days: 3,
-		status: "published" as const,
-		...overrides,
+		status: 'published' as const,
+		...overrides
 	};
 
 	const { data: workshop, error } = await supabase
-		.from("club_activities")
+		.from('club_activities')
 		.insert(defaultWorkshop)
 		.select()
 		.single();
@@ -107,16 +105,16 @@ export async function createTestWorkshop(
 
 	return {
 		id: workshop.id,
-		title: workshop.title || "",
-		description: workshop.description || "",
-		location: workshop.location || "",
+		title: workshop.title || '',
+		description: workshop.description || '',
+		location: workshop.location || '',
 		workshop_date: workshop.start_date,
-		workshop_time: "14:00", // Default time
+		workshop_time: '14:00', // Default time
 		max_capacity: workshop.max_capacity || 0,
 		price_member: (workshop.price_member || 0) / 100, // Convert back to dollars
 		price_non_member: (workshop.price_non_member || 0) / 100,
 		is_public: workshop.is_public || false,
-		refund_deadline_days: workshop.refund_days || 0,
+		refund_deadline_days: workshop.refund_days || 0
 	};
 }
 
@@ -127,7 +125,7 @@ export async function createTestRegistration(
 	_page: Page,
 	workshopId: string,
 	userId: string,
-	overrides: Partial<Omit<TestRegistration, "id" | "workshop_id">> = {},
+	overrides: Partial<Omit<TestRegistration, 'id' | 'workshop_id'>> = {}
 ): Promise<TestRegistration> {
 	const supabase = getSupabaseServiceClient();
 
@@ -135,15 +133,15 @@ export async function createTestRegistration(
 		club_activity_id: workshopId,
 		member_user_id: userId,
 		amount_paid: 2500, // 25.00 in cents
-		status: "confirmed" as const,
-		currency: "EUR",
-		...overrides,
+		status: 'confirmed' as const,
+		currency: 'EUR',
+		...overrides
 	};
 
 	const { data: registration, error } = await supabase
-		.from("club_activity_registrations")
+		.from('club_activity_registrations')
 		.insert(
-			defaultRegistration as Database["public"]["Tables"]["club_activity_registrations"]["Insert"],
+			defaultRegistration as Database['public']['Tables']['club_activity_registrations']['Insert']
 		)
 		.select()
 		.single();
@@ -155,11 +153,11 @@ export async function createTestRegistration(
 	return {
 		id: registration.id,
 		workshop_id: workshopId,
-		member_user_id: registration.member_user_id || "",
+		member_user_id: registration.member_user_id || '',
 		amount_paid: registration.amount_paid,
 		status: registration.status,
 		attendance_status: registration.attendance_status || undefined,
-		attendance_notes: registration.attendance_notes || undefined,
+		attendance_notes: registration.attendance_notes || undefined
 	};
 }
 
@@ -170,17 +168,12 @@ export async function createMultipleTestRegistrations(
 	page: Page,
 	workshopId: string,
 	userIds: string[],
-	overrides: Partial<Omit<TestRegistration, "id" | "workshop_id">> = {},
+	overrides: Partial<Omit<TestRegistration, 'id' | 'workshop_id'>> = {}
 ): Promise<TestRegistration[]> {
 	const registrations: TestRegistration[] = [];
 
 	for (const userId of userIds) {
-		const registration = await createTestRegistration(
-			page,
-			workshopId,
-			userId,
-			overrides,
-		);
+		const registration = await createTestRegistration(page, workshopId, userId, overrides);
 		registrations.push(registration);
 	}
 
@@ -194,19 +187,15 @@ export async function createTestRefund(
 	page: Page,
 	workshopId: string,
 	registrationId: string,
-	reason: string = "Test refund reason",
+	reason: string = 'Test refund reason'
 ): Promise<TestRefund> {
-	const response = await makeAuthenticatedRequest(
-		page,
-		`/api/workshops/${workshopId}/refunds`,
-		{
-			method: "POST",
-			data: {
-				registration_id: registrationId,
-				reason,
-			},
-		},
-	);
+	const response = await makeAuthenticatedRequest(page, `/api/workshops/${workshopId}/refunds`, {
+		method: 'POST',
+		data: {
+			registration_id: registrationId,
+			reason
+		}
+	});
 
 	if (!response.ok) {
 		throw new Error(`Failed to create refund: ${response.status}`);
@@ -224,18 +213,14 @@ export async function updateTestAttendance(
 	workshopId: string,
 	attendanceUpdates: Array<{
 		registration_id: string;
-		attendance_status: "attended" | "no_show" | "excused";
+		attendance_status: 'attended' | 'no_show' | 'excused';
 		notes?: string;
-	}>,
+	}>
 ): Promise<TestRegistration[]> {
-	const response = await makeAuthenticatedRequest(
-		page,
-		`/api/workshops/${workshopId}/attendance`,
-		{
-			method: "PUT",
-			data: { attendance_updates: attendanceUpdates },
-		},
-	);
+	const response = await makeAuthenticatedRequest(page, `/api/workshops/${workshopId}/attendance`, {
+		method: 'PUT',
+		data: { attendance_updates: attendanceUpdates }
+	});
 
 	if (!response.ok) {
 		throw new Error(`Failed to update attendance: ${response.status}`);
@@ -250,15 +235,11 @@ export async function updateTestAttendance(
  */
 export async function getWorkshopAttendance(
 	page: Page,
-	workshopId: string,
+	workshopId: string
 ): Promise<TestRegistration[]> {
-	const response = await makeAuthenticatedRequest(
-		page,
-		`/api/workshops/${workshopId}/attendance`,
-		{
-			method: "GET",
-		},
-	);
+	const response = await makeAuthenticatedRequest(page, `/api/workshops/${workshopId}/attendance`, {
+		method: 'GET'
+	});
 
 	if (!response.ok) {
 		throw new Error(`Failed to fetch attendance: ${response.status}`);
@@ -271,17 +252,10 @@ export async function getWorkshopAttendance(
 /**
  * Fetches workshop refunds data
  */
-export async function getWorkshopRefunds(
-	page: Page,
-	workshopId: string,
-): Promise<TestRefund[]> {
-	const response = await makeAuthenticatedRequest(
-		page,
-		`/api/workshops/${workshopId}/refunds`,
-		{
-			method: "GET",
-		},
-	);
+export async function getWorkshopRefunds(page: Page, workshopId: string): Promise<TestRefund[]> {
+	const response = await makeAuthenticatedRequest(page, `/api/workshops/${workshopId}/refunds`, {
+		method: 'GET'
+	});
 
 	if (!response.ok) {
 		throw new Error(`Failed to fetch refunds: ${response.status}`);
@@ -294,29 +268,25 @@ export async function getWorkshopRefunds(
 /**
  * Creates a workshop with past refund deadline for testing deadline validation
  */
-export async function createPastDeadlineWorkshop(
-	page: Page,
-): Promise<TestWorkshop> {
+export async function createPastDeadlineWorkshop(page: Page): Promise<TestWorkshop> {
 	return createTestWorkshop(page, {
 		workshop_date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // Tomorrow
-		refund_deadline_days: 7, // 7 days before (already passed)
+		refund_deadline_days: 7 // 7 days before (already passed)
 	});
 }
 
 /**
  * Creates a finished workshop for testing refund restrictions
  */
-export async function createFinishedWorkshop(
-	page: Page,
-): Promise<TestWorkshop> {
+export async function createFinishedWorkshop(page: Page): Promise<TestWorkshop> {
 	const workshop = await createTestWorkshop(page, {
-		workshop_date: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), // Yesterday
+		workshop_date: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString() // Yesterday
 	});
 
 	// Mark workshop as finished
 	await makeAuthenticatedRequest(page, `/api/workshops/${workshop.id}/finish`, {
-		method: "POST",
-		data: {},
+		method: 'POST',
+		data: {}
 	});
 
 	return workshop;
@@ -332,16 +302,16 @@ export async function createTestUsers() {
 	const [adminUser, coordinatorUser, memberUser] = await Promise.all([
 		createMember({
 			email: `admin-test-${timestamp}-${randomSuffix}@test.com`,
-			roles: new Set(["admin"]),
+			roles: new Set(['admin'])
 		}),
 		createMember({
 			email: `coordinator-test-${timestamp}-${randomSuffix}@test.com`,
-			roles: new Set(["workshop_coordinator"]),
+			roles: new Set(['workshop_coordinator'])
 		}),
 		createMember({
 			email: `member-test-${timestamp}-${randomSuffix}@test.com`,
-			roles: new Set(["member"]),
-		}),
+			roles: new Set(['member'])
+		})
 	]);
 
 	return {
@@ -352,100 +322,74 @@ export async function createTestUsers() {
 			await Promise.all([
 				adminUser.cleanUp?.(),
 				coordinatorUser.cleanUp?.(),
-				memberUser.cleanUp?.(),
+				memberUser.cleanUp?.()
 			]);
-		},
+		}
 	};
 }
 
 /**
  * Waits for an element to be visible with a custom timeout
  */
-export async function waitForElement(
-	page: Page,
-	selector: string,
-	timeout: number = 10000,
-) {
-	return page.waitForSelector(selector, { state: "visible", timeout });
+export async function waitForElement(page: Page, selector: string, timeout: number = 10000) {
+	return page.waitForSelector(selector, { state: 'visible', timeout });
 }
 
 /**
  * Waits for loading to complete (no loading spinners visible)
  */
-export async function waitForLoadingComplete(
-	page: Page,
-	timeout: number = 15000,
-) {
-	await page.waitForSelector(".animate-spin", { state: "hidden", timeout });
+export async function waitForLoadingComplete(page: Page, timeout: number = 15000) {
+	await page.waitForSelector('.animate-spin', { state: 'hidden', timeout });
 }
 
 /**
  * Fills a form field and waits for it to be updated
  */
-export async function fillFormField(
-	page: Page,
-	selector: string,
-	value: string,
-) {
+export async function fillFormField(page: Page, selector: string, value: string) {
 	await page.fill(selector, value);
 	await page.waitForFunction(
 		({ selector, value }) => {
-			const element = document.querySelector(selector) as
-				| HTMLInputElement
-				| HTMLTextAreaElement;
+			const element = document.querySelector(selector) as HTMLInputElement | HTMLTextAreaElement;
 			return element && element.value === value;
 		},
-		{ selector, value },
+		{ selector, value }
 	);
 }
 
 /**
  * Selects an option from a dropdown and waits for it to be selected
  */
-export async function selectDropdownOption(
-	page: Page,
-	selector: string,
-	value: string,
-) {
+export async function selectDropdownOption(page: Page, selector: string, value: string) {
 	await page.selectOption(selector, value);
 	await page.waitForFunction(
 		({ selector, value }) => {
 			const element = document.querySelector(selector);
 			return element && (element as HTMLSelectElement).value === value;
 		},
-		{ selector, value },
+		{ selector, value }
 	);
 }
 
 /**
  * Clicks a button and waits for the action to complete
  */
-export async function clickAndWait(
-	page: Page,
-	selector: string,
-	waitForSelector?: string,
-) {
+export async function clickAndWait(page: Page, selector: string, waitForSelector?: string) {
 	await page.click(selector);
 	if (waitForSelector) {
-		await page.waitForSelector(waitForSelector, { state: "visible" });
+		await page.waitForSelector(waitForSelector, { state: 'visible' });
 	}
 }
 
 /**
  * Validates that an API response has the expected success format
  */
-export function validateApiResponse(
-	data: Record<string, unknown>,
-	expectedResource?: string,
-) {
+export function validateApiResponse(data: Record<string, unknown>, expectedResource?: string) {
 	if (!data.success) {
-		throw new Error(`API request failed: ${data.error || "Unknown error"}`);
+		throw new Error(`API request failed: ${data.error || 'Unknown error'}`);
 	}
 
 	if (expectedResource && !data[expectedResource]) {
-		throw new Error(
-			`Expected resource '${expectedResource}' not found in response`,
-		);
+		throw new Error(`Expected resource '${expectedResource}' not found in response`);
 	}
 
 	return data;
@@ -454,7 +398,7 @@ export function validateApiResponse(
 /**
  * Generates unique test data to avoid conflicts
  */
-export function generateUniqueTestData(prefix: string = "test") {
+export function generateUniqueTestData(prefix: string = 'test') {
 	const timestamp = Date.now();
 	const randomSuffix = Math.random().toString(36).substring(2, 15);
 	return `${prefix}-${timestamp}-${randomSuffix}`;

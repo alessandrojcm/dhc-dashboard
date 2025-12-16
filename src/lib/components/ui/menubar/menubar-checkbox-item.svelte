@@ -1,18 +1,20 @@
 <script lang="ts">
-import type { Menubar as MenubarPrimitive } from "bits-ui";
-import type { Snippet } from "svelte";
-import type { WithoutChildrenOrChild } from "$lib/utils.js";
+	import { Menubar as MenubarPrimitive } from 'bits-ui';
+	import CheckIcon from '@lucide/svelte/icons/check';
+	import MinusIcon from '@lucide/svelte/icons/minus';
+	import { cn, type WithoutChildrenOrChild } from '$lib/utils.js';
+	import type { Snippet } from 'svelte';
 
-const {
-	ref = $bindable(null),
-	class: className,
-	checked = $bindable(false),
-	indeterminate = $bindable(false),
-	children: childrenProp,
-	...restProps
-}: WithoutChildrenOrChild<MenubarPrimitive.CheckboxItemProps> & {
-	children?: Snippet;
-} = $props();
+	let {
+		ref = $bindable(null),
+		class: className,
+		checked = $bindable(false),
+		indeterminate = $bindable(false),
+		children: childrenProp,
+		...restProps
+	}: WithoutChildrenOrChild<MenubarPrimitive.CheckboxItemProps> & {
+		children?: Snippet;
+	} = $props();
 </script>
 
 <MenubarPrimitive.CheckboxItem
@@ -31,7 +33,7 @@ const {
 			{#if indeterminate}
 				<MinusIcon class="size-4" />
 			{:else}
-				<CheckIcon class={cn("size-4", !checked && "text-transparent")} />
+				<CheckIcon class={cn('size-4', !checked && 'text-transparent')} />
 			{/if}
 		</span>
 		{@render childrenProp?.()}

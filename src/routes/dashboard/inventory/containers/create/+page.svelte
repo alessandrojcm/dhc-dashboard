@@ -1,86 +1,96 @@
 <script lang="ts">
-import { superForm } from "sveltekit-superforms";
-import { valibot } from "sveltekit-superforms/adapters";
-import { containerSchema } from "$lib/schemas/inventory";
-import type { InventoryContainer } from "$lib/types";
+	import { superForm } from 'sveltekit-superforms';
+	import { valibot } from 'sveltekit-superforms/adapters';
+	import { containerSchema } from '$lib/schemas/inventory';
+	import {
+		Card,
+		CardContent,
+		CardDescription,
+		CardHeader,
+		CardTitle
+	} from '$lib/components/ui/card';
+	import { Button } from '$lib/components/ui/button';
+	import { Input } from '$lib/components/ui/input';
+	import { Textarea } from '$lib/components/ui/textarea';
+	import { Select, SelectContent, SelectItem, SelectTrigger } from '$lib/components/ui/select';
+	import * as Form from '$lib/components/ui/form';
+	import { ArrowLeft, FolderOpen } from 'lucide-svelte';
+	import type { InventoryContainer } from '$lib/types';
 
-interface ContainerWithChildren extends InventoryContainer {
-	children: ContainerWithChildren[];
-}
+	interface ContainerWithChildren extends InventoryContainer {
+		children: ContainerWithChildren[];
+	}
 
-interface HierarchicalContainer extends ContainerWithChildren {
-	displayName: string;
-	level: number;
-}
+	interface HierarchicalContainer extends ContainerWithChildren {
+		displayName: string;
+		level: number;
+	}
 
-const { data } = $props();
+	let { data } = $props();
 
-const form = superForm(data.form, {
-	validators: valibot(containerSchema),
-	resetForm: true,
-});
-
-const { form: formData, enhance, submitting } = form;
-
-// Build hierarchy display for parent selection
-const buildHierarchyDisplay = (
-	containers: InventoryContainer[],
-): HierarchicalContainer[] => {
-	const containerMap = new Map<string, ContainerWithChildren>();
-	const rootContainers: ContainerWithChildren[] = [];
-
-	// First pass: create all containers with empty children arrays
-	containers.forEach((container) => {
-		containerMap.set(container.id, { ...container, children: [] });
+	const form = superForm(data.form, {
+		validators: valibot(containerSchema),
+		resetForm: true
 	});
 
-	// Second pass: build the hierarchy
-	containers.forEach((container) => {
-		if (container.parent_container_id) {
-			const parent = containerMap.get(container.parent_container_id);
-			const child = containerMap.get(container.id);
-			if (parent && child) {
-				parent.children.push(child);
-			}
-		} else {
-			const rootContainer = containerMap.get(container.id);
-			if (rootContainer) {
-				rootContainers.push(rootContainer);
-			}
-		}
-	});
+	const { form: formData, enhance, submitting } = form;
 
-	// Flatten with indentation for display
-	const flattenWithIndent = (
-		containers: ContainerWithChildren[],
-		level = 0,
-	): HierarchicalContainer[] => {
-		const result: HierarchicalContainer[] = [];
+	// Build hierarchy display for parent selection
+	const buildHierarchyDisplay = (containers: InventoryContainer[]): HierarchicalContainer[] => {
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
+		const containerMap = new Map<string, ContainerWithChildren>();
+		const rootContainers: ContainerWithChildren[] = [];
+
+		// First pass: create all containers with empty children arrays
 		containers.forEach((container) => {
-			result.push({
-				...container,
-				displayName: "  ".repeat(level) + container.name,
-				level,
-			});
-			if (container.children.length > 0) {
-				result.push(...flattenWithIndent(container.children, level + 1));
+			containerMap.set(container.id, { ...container, children: [] });
+		});
+
+		// Second pass: build the hierarchy
+		containers.forEach((container) => {
+			if (container.parent_container_id) {
+				const parent = containerMap.get(container.parent_container_id);
+				const child = containerMap.get(container.id);
+				if (parent && child) {
+					parent.children.push(child);
+				}
+			} else {
+				const rootContainer = containerMap.get(container.id);
+				if (rootContainer) {
+					rootContainers.push(rootContainer);
+				}
 			}
 		});
-		return result;
+
+		// Flatten with indentation for display
+		const flattenWithIndent = (
+			containers: ContainerWithChildren[],
+			level = 0
+		): HierarchicalContainer[] => {
+			const result: HierarchicalContainer[] = [];
+			containers.forEach((container) => {
+				result.push({
+					...container,
+					displayName: '  '.repeat(level) + container.name,
+					level
+				});
+				if (container.children.length > 0) {
+					result.push(...flattenWithIndent(container.children, level + 1));
+				}
+			});
+			return result;
+		};
+
+		return flattenWithIndent(rootContainers);
 	};
 
-	return flattenWithIndent(rootContainers);
-};
+	const hierarchicalContainers = buildHierarchyDisplay(data.containers);
 
-const hierarchicalContainers = buildHierarchyDisplay(data.containers);
-
-// Find the selected container for display
-const _selectedContainer = $derived.by(() => {
-	if (!$formData.parent_container_id) return null;
-	return hierarchicalContainers.find(
-		(c) => c.id === $formData.parent_container_id,
-	);
-});
+	// Find the selected container for display
+	const selectedContainer = $derived.by(() => {
+		if (!$formData.parent_container_id) return null;
+		return hierarchicalContainers.find((c) => c.id === $formData.parent_container_id);
+	});
 </script>
 
 <div class="p-6">
@@ -149,7 +159,7 @@ const _selectedContainer = $derived.by(() => {
 									</SelectTrigger>
 									<SelectContent>
 										<SelectItem value="">No parent container (root level)</SelectItem>
-										{#each hierarchicalContainers as container}
+										{#each hierarchicalContainers as container (container.id)}
 											<SelectItem value={container.id}>
 												{container.displayName}
 											</SelectItem>

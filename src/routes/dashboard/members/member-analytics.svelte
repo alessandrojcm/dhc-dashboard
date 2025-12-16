@@ -1,145 +1,143 @@
 <script lang="ts">
-import type { SupabaseClient } from "@supabase/supabase-js";
-import { createQuery } from "@tanstack/svelte-query";
-import { onMount } from "svelte";
-import { browser } from "$app/environment";
-import type { Database } from "$database";
+	import type { SupabaseClient } from '@supabase/supabase-js';
+	import type { Database } from '$database';
+	import * as Card from '$lib/components/ui/card/index.js';
+	import * as Resizable from '$lib/components/ui/resizable/index.js';
+	import { Skeleton } from '$lib/components/ui/skeleton/index.js';
+	import { createQuery } from '@tanstack/svelte-query';
+	import { onMount } from 'svelte';
+	import { browser } from '$app/environment';
 
-const _WeaponPieChart:
-	| typeof import("$lib/components/weapon-pie-chart.svelte").default
-	| null = $state(null);
-const _GenderBarChart:
-	| typeof import("$lib/components/gender-bar-chart.svelte").default
-	| null = $state(null);
-const _AgeScatterChart:
-	| typeof import("$lib/components/age-scatter-chart.svelte").default
-	| null = $state(null);
+	let WeaponPieChart: typeof import('$lib/components/weapon-pie-chart.svelte').default | null =
+		$state(null);
+	let GenderBarChart: typeof import('$lib/components/gender-bar-chart.svelte').default | null =
+		$state(null);
+	let AgeScatterChart: typeof import('$lib/components/age-scatter-chart.svelte').default | null =
+		$state(null);
 
-onMount(async () => {
-	if (browser) {
-		// WeaponPieChart = (await import('$lib/components/weapon-pie-chart.svelte')).default;
-		// GenderBarChart = (await import('$lib/components/gender-bar-chart.svelte')).default;
-		// AgeScatterChart = (await import('$lib/components/age-scatter-chart.svelte')).default;
-	}
-});
+	onMount(async () => {
+		if (browser) {
+			// WeaponPieChart = (await import('$lib/components/weapon-pie-chart.svelte')).default;
+			// GenderBarChart = (await import('$lib/components/gender-bar-chart.svelte')).default;
+			// AgeScatterChart = (await import('$lib/components/age-scatter-chart.svelte')).default;
+		}
+	});
 
-const { supabase }: { supabase: SupabaseClient<Database> } = $props();
-const _totalCountQuery = createQuery(() => ({
-	queryKey: ["members", "totalCount"],
-	queryFn: ({ signal }) =>
-		supabase
-			.from("member_management_view")
-			.select("id", { count: "exact", head: true })
-			.eq("is_active", true)
-			.abortSignal(signal)
-			.throwOnError()
-			.then((r) => r.count ?? 0) as Promise<number>,
-}));
-const _averageAge = createQuery<number>(() => ({
-	queryKey: ["members", "avgAge"],
-	queryFn: ({ signal }) =>
-		supabase
-			.from("member_management_view")
-			.select("avg_age:age.avg()")
-			.eq("is_active", true)
-			.abortSignal(signal)
-			.single()
-			.throwOnError()
-			.then((res) => res.data?.avg_age ?? 0) as Promise<number>,
-}));
+	const { supabase }: { supabase: SupabaseClient<Database> } = $props();
+	const totalCountQuery = createQuery(() => ({
+		queryKey: ['members', 'totalCount'],
+		queryFn: ({ signal }) =>
+			supabase
+				.from('member_management_view')
+				.select('id', { count: 'exact', head: true })
+				.eq('is_active', true)
+				.abortSignal(signal)
+				.throwOnError()
+				.then((r) => r.count ?? 0) as Promise<number>
+	}));
+	const averageAge = createQuery<number>(() => ({
+		queryKey: ['members', 'avgAge'],
+		queryFn: ({ signal }) =>
+			supabase
+				.from('member_management_view')
+				.select('avg_age:age.avg()')
+				.eq('is_active', true)
+				.abortSignal(signal)
+				.single()
+				.throwOnError()
+				.then((res) => res.data?.avg_age ?? 0) as Promise<number>
+	}));
 
-const genderDistribution = createQuery(() => ({
-	queryKey: ["members", "genderDistribution"],
-	queryFn: ({ signal }) =>
-		supabase
-			.from("member_management_view")
-			.select("gender,count:gender.count()")
-			.eq("is_active", true)
-			.abortSignal(signal)
-			.throwOnError()
-			.then((r) => r.data ?? []) as Promise<
-			{
-				gender:
-					| "man (cis)"
-					| "woman (cis)"
-					| "non-binary"
-					| "man (trans)"
-					| "woman (trans)"
-					| "other"
-					| null;
+	const genderDistribution = createQuery(() => ({
+		queryKey: ['members', 'genderDistribution'],
+		queryFn: ({ signal }) =>
+			supabase
+				.from('member_management_view')
+				.select('gender,count:gender.count()')
+				.eq('is_active', true)
+				.abortSignal(signal)
+				.throwOnError()
+				.then((r) => r.data ?? []) as Promise<
+				{
+					gender:
+						| 'man (cis)'
+						| 'woman (cis)'
+						| 'non-binary'
+						| 'man (trans)'
+						| 'woman (trans)'
+						| 'other'
+						| null;
+					count: number;
+				}[]
+			>
+	}));
+	const ageDistributionQuery = createQuery(() => ({
+		queryKey: ['members', 'ageDistribution'],
+		queryFn: ({ signal }) =>
+			supabase
+				.from('member_management_view')
+				.select('age,value:age.count()')
+				.eq('is_active', true)
+				.order('age', { ascending: true })
+				.abortSignal(signal)
+				.throwOnError()
+				.then((r) => r.data ?? []) as Promise<
+				{
+					age: number | null;
+					value: number;
+				}[]
+			>
+	}));
+	const weaponPreferencesDistribution = createQuery<{ weapon: string; count: number }[]>(() => ({
+		queryKey: ['members', 'weaponPreferencesDistribution'],
+		queryFn: async ({ signal }) => {
+			const { data } = await supabase
+				.from('member_management_view')
+				.select('preferred_weapon')
+				.eq('is_active', true)
+				.abortSignal(signal)
+				.throwOnError();
+
+			// Process the data in JavaScript
+			const weapons = data?.flatMap((d) => d.preferred_weapon) ?? [];
+			const counts = weapons.reduce(
+				(acc, weapon) => {
+					if (weapon !== null) {
+						acc[weapon] = (acc[weapon] || 0) + 1;
+					}
+					return acc;
+				},
+				{} as Record<string, number>
+			);
+
+			return Object.entries(counts)
+				.map(([weapon, count]) => ({
+					weapon,
+					count
+				}))
+				.sort((a, b) => a.weapon.localeCompare(b.weapon)) as Array<{
+				weapon: string;
 				count: number;
-			}[]
-		>,
-}));
-const ageDistributionQuery = createQuery(() => ({
-	queryKey: ["members", "ageDistribution"],
-	queryFn: ({ signal }) =>
-		supabase
-			.from("member_management_view")
-			.select("age,value:age.count()")
-			.eq("is_active", true)
-			.order("age", { ascending: true })
-			.abortSignal(signal)
-			.throwOnError()
-			.then((r) => r.data ?? []) as Promise<
-			{
-				age: number | null;
-				value: number;
-			}[]
-		>,
-}));
-const weaponPreferencesDistribution = createQuery<
-	{ weapon: string; count: number }[]
->(() => ({
-	queryKey: ["members", "weaponPreferencesDistribution"],
-	queryFn: async ({ signal }) => {
-		const { data } = await supabase
-			.from("member_management_view")
-			.select("preferred_weapon")
-			.eq("is_active", true)
-			.abortSignal(signal)
-			.throwOnError();
+			}>;
+		}
+	}));
 
-		// Process the data in JavaScript
-		const weapons = data?.flatMap((d) => d.preferred_weapon) ?? [];
-		const counts = weapons.reduce(
-			(acc, weapon) => {
-				if (weapon !== null) {
-					acc[weapon] = (acc[weapon] || 0) + 1;
-				}
-				return acc;
-			},
-			{} as Record<string, number>,
-		);
+	const genderDistributionData = $derived.by(() => {
+		return genderDistribution.data
+			? genderDistribution.data.map((row: { gender: string | null; count: number }) => ({
+					gender: row.gender,
+					value: row.count
+				}))
+			: [];
+	});
 
-		return Object.entries(counts)
-			.map(([weapon, count]) => ({
-				weapon,
-				count,
-			}))
-			.sort((a, b) => a.weapon.localeCompare(b.weapon)) as Array<{
-			weapon: string;
-			count: number;
-		}>;
-	},
-}));
+	const ageDistributionData = $derived.by(() => {
+		return ageDistributionQuery.data ?? [];
+	});
 
-const _genderDistributionData = $derived.by(() => {
-	return genderDistribution.data
-		? genderDistribution.data.map((row: any) => ({
-				gender: row.gender,
-				value: row.count,
-			}))
-		: [];
-});
-
-const _ageDistributionData = $derived.by(() => {
-	return ageDistributionQuery.data ?? [];
-});
-
-const _weaponPreferencesDistributionData = $derived.by(() => {
-	return weaponPreferencesDistribution.data ?? [];
-});
+	const weaponPreferencesDistributionData = $derived.by(() => {
+		return weaponPreferencesDistribution.data ?? [];
+	});
 </script>
 
 <h2 class="prose prose-h2 text-lg mb-2">Members analytics</h2>

@@ -1,8 +1,8 @@
-import { fail, redirect } from "@sveltejs/kit";
-import { message, setError, superValidate } from "sveltekit-superforms";
-import { valibot } from "sveltekit-superforms/adapters";
-import authSchema from "$lib/schemas/authSchema";
-import type { Actions, PageServerLoad } from "./$types";
+import { fail, redirect } from '@sveltejs/kit';
+import { message, setError, superValidate } from 'sveltekit-superforms';
+import { valibot } from 'sveltekit-superforms/adapters';
+import authSchema from '$lib/schemas/authSchema';
+import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async () => {
 	const form = await superValidate(valibot(authSchema));
@@ -20,46 +20,46 @@ export const actions: Actions = {
 		const authMethod = form.data.auth_method;
 
 		// Handle Discord authentication
-		if (authMethod === "discord") {
+		if (authMethod === 'discord') {
 			const { data, error } = await supabase.auth.signInWithOAuth({
-				provider: "discord",
+				provider: 'discord',
 				options: {
-					redirectTo: `${url.origin}/auth/callback?next=/dashboard`,
-				},
+					redirectTo: `${url.origin}/auth/callback?next=/dashboard`
+				}
 			});
 			if (!error) {
 				redirect(303, data.url);
 			}
 
-			setError(form, "auth_method", error.message);
+			setError(form, 'auth_method', error.message);
 			return fail(403, { form });
 		}
 		// Handle Magic Link authentication
-		if (authMethod === "magic_link") {
+		if (authMethod === 'magic_link') {
 			if (!form.data.email) {
-				setError(form, "email", "Email is required");
+				setError(form, 'email', 'Email is required');
 				return fail(400, { form });
 			}
 
 			const { error } = await supabase.auth.signInWithOtp({
 				email: form.data.email,
 				options: {
-					emailRedirectTo: `${url.origin}/auth/callback?next=/dashboard`,
-				},
+					emailRedirectTo: `${url.origin}/auth/callback?next=/dashboard`
+				}
 			});
 
 			if (error) {
-				setError(form, "email", error.message);
+				setError(form, 'email', error.message);
 				return fail(400, { form });
 			}
 
 			return message(form, {
-				success: "Check your email for the magic link",
+				success: 'Check your email for the magic link'
 			});
 		}
 
 		// If no auth method is specified, return an error
-		setError(form, "auth_method", "Invalid authentication method");
+		setError(form, 'auth_method', 'Invalid authentication method');
 		return fail(400, { form });
-	},
+	}
 };
