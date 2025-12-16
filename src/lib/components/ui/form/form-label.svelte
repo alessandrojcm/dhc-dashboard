@@ -1,19 +1,19 @@
 <script lang="ts">
-import { cn } from "$lib/utils.js";
-import type { HTMLLabelAttributes } from "svelte/elements";
+	import { cn } from '$lib/utils.js';
+	import type { HTMLLabelAttributes } from 'svelte/elements';
 
-interface Props extends HTMLLabelAttributes {
-	ref?: HTMLLabelElement | null;
-	hasError?: boolean;
-}
+	interface Props extends HTMLLabelAttributes {
+		ref?: HTMLLabelElement | null;
+		hasError?: boolean;
+	}
 
-let {
-	ref = $bindable(null),
-	children,
-	class: className,
-	hasError = false,
-	...restProps
-}: Props = $props();
+	let {
+		ref = $bindable(null),
+		children,
+		class: className,
+		hasError = false,
+		...restProps
+	}: Props = $props();
 </script>
 
 <label

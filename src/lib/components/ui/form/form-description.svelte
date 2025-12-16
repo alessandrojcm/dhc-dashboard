@@ -1,17 +1,17 @@
 <script lang="ts">
-import { cn } from "$lib/utils.js";
-import type { HTMLAttributes } from "svelte/elements";
+	import { cn } from '$lib/utils.js';
+	import type { HTMLAttributes } from 'svelte/elements';
 
-interface Props extends HTMLAttributes<HTMLParagraphElement> {
-	ref?: HTMLParagraphElement | null;
-}
+	interface Props extends HTMLAttributes<HTMLParagraphElement> {
+		ref?: HTMLParagraphElement | null;
+	}
 
-let {
-	ref = $bindable(null),
-	class: className,
-	children,
-	...restProps
-}: Props = $props();
+	let {
+		ref = $bindable(null),
+		class: className,
+		children,
+		...restProps
+	}: Props = $props();
 </script>
 
 <p

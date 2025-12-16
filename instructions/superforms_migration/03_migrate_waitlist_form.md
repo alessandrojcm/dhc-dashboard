@@ -147,48 +147,52 @@ export const load: PageServerLoad = async () => {
 
 ### 3. Update `src/routes/(public)/waitlist/+page.svelte`
 
-Using the new `Field` component from shadcn-svelte:
-
 ```svelte
 <script lang="ts">
   import { fromDate, getLocalTimeZone } from '@internationalized/date';
   import dayjs from 'dayjs';
+  import { toast } from 'svelte-sonner';
   import { submitWaitlist } from './data.remote';
-  import { beginnersWaitlistClientSchema, isMinor } from '$lib/schemas/beginnersWaitlist';
-
+  import beginnersWaitlist, { isMinor } from '$lib/schemas/beginnersWaitlist';
+  
+  // UI Components
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
   import { Textarea } from '$lib/components/ui/textarea';
   import * as Card from '$lib/components/ui/card';
   import * as Alert from '$lib/components/ui/alert';
-  import * as Field from '$lib/components/ui/field';
+  import * as Form from '$lib/components/ui/form';
   import * as Select from '$lib/components/ui/select';
   import * as RadioGroup from '$lib/components/ui/radio-group';
   import { CheckCircled } from 'svelte-radix';
+  import { Loader } from 'lucide-svelte';
   import DatePicker from '$lib/components/ui/date-picker.svelte';
   import PhoneInput from '$lib/components/ui/phone-input.svelte';
 
   let { data } = $props();
 
-  const dateOfBirthValue = $derived(submitWaitlist.fields.dateOfBirth.value() as string);
+  // Derive if user is under 18 based on current date of birth value
+  const dateOfBirthValue = $derived(submitWaitlist.fields.dateOfBirth.value() as Date | undefined);
   const isUnderAge = $derived.by(() => {
-    if (!dateOfBirthValue) return false;
-    const date = new Date(dateOfBirthValue);
-    if (!dayjs(date).isValid()) return false;
-    return isMinor(date);
+    if (!dateOfBirthValue || !dayjs(dateOfBirthValue).isValid()) {
+      return false;
+    }
+    return isMinor(dateOfBirthValue);
   });
 
+  // Date picker value conversion
   const dobPickerValue = $derived.by(() => {
-    if (!dateOfBirthValue) return undefined;
-    const date = new Date(dateOfBirthValue);
-    if (!dayjs(date).isValid()) return undefined;
-    return fromDate(date, getLocalTimeZone());
+    if (!dateOfBirthValue || !dayjs(dateOfBirthValue).isValid()) {
+      return undefined;
+    }
+    return fromDate(dayjs(dateOfBirthValue).toDate(), getLocalTimeZone());
   });
-</script>
 
-{#snippet whyThisField(text: string)}
-  <p class="text-muted-foreground text-xs">{text}</p>
-{/snippet}
+  // Helper snippet for field explanations
+  {#snippet whyThisField(text: string)}
+    <p class="text-muted-foreground text-xs">{text}</p>
+  {/snippet}
+</script>
 
 <svelte:head>
   <title>Dublin Hema Club - Waitlist Registration</title>
@@ -203,365 +207,214 @@ Using the new `Field` component from shadcn-svelte:
     </Card.Description>
   </Card.Header>
   <Card.Content class="overflow-auto max-h-[85svh]">
-    {#if submitWaitlist.result?.success}
-      <Alert.Root variant="success">
-        <CheckCircled class="h-4 w-4" />
-        <Alert.Description>{submitWaitlist.result.success}</Alert.Description>
-      </Alert.Root>
-    {:else}
-      <form
-        {...submitWaitlist.preflight(beginnersWaitlistClientSchema)}
-        class="flex flex-col gap-4 items-stretch"
-      >
-        <Field.Group>
-          <!-- Name Fields -->
-          <div class="flex gap-4 w-full justify-stretch">
-            <Field.Field class="flex-1">
-              {@const fieldProps = submitWaitlist.fields.firstName.as('text')}
-              <Field.Label for={fieldProps.name}>First name</Field.Label>
-              <Input {...fieldProps} id={fieldProps.name} placeholder="Enter your first name" />
-              {#each submitWaitlist.fields.firstName.issues() as issue}
-                <Field.Error>{issue.message}</Field.Error>
-              {/each}
-            </Field.Field>
+    <!-- Use preflight for client-side validation -->
+    <form {...submitWaitlist.preflight(beginnersWaitlist)} class="flex flex-col gap-4 items-stretch">
+      
+      <!-- Name Fields -->
+      <div class="flex gap-4 w-full justify-stretch">
+        <Form.Field field={submitWaitlist.fields.firstName} label="First name" class="flex-1">
+          {#snippet children(field)}
+            <Input {...field.as('text')} placeholder="Enter your first name" />
+          {/snippet}
+        </Form.Field>
 
-            <Field.Field class="flex-1">
-              {@const fieldProps = submitWaitlist.fields.lastName.as('text')}
-              <Field.Label for={fieldProps.name}>Last name</Field.Label>
-              <Input {...fieldProps} id={fieldProps.name} placeholder="Enter your last name" />
-              {#each submitWaitlist.fields.lastName.issues() as issue}
-                <Field.Error>{issue.message}</Field.Error>
+        <Form.Field field={submitWaitlist.fields.lastName} label="Last name" class="flex-1">
+          {#snippet children(field)}
+            <Input {...field.as('text')} placeholder="Enter your last name" />
+          {/snippet}
+        </Form.Field>
+      </div>
+
+      <!-- Email -->
+      <Form.Field field={submitWaitlist.fields.email} label="Email">
+        {#snippet children(field)}
+          <Input {...field.as('email')} placeholder="Enter your email" />
+        {/snippet}
+      </Form.Field>
+
+      <!-- Phone Number -->
+      <Form.Field field={submitWaitlist.fields.phoneNumber} label="Phone number">
+        {#snippet children(field)}
+          <PhoneInput
+            {...field.as('tel')}
+            placeholder="Enter your phone number"
+            phoneNumber={field.value() as string}
+            onPhoneNumberChange={(value) => field.set(value)}
+          />
+        {/snippet}
+      </Form.Field>
+
+      <!-- Gender -->
+      <Form.Field field={submitWaitlist.fields.gender} label="Gender">
+        {#snippet children(field)}
+          {@render whyThisField('This helps us maintain a balanced and inclusive training environment')}
+          <Select.Root 
+            type="single" 
+            value={field.value() as string}
+            onValueChange={(v) => field.set(v)}
+          >
+            <Select.Trigger {...field.as('text')}>
+              {#if field.value()}
+                <p class="capitalize">{field.value()}</p>
+              {:else}
+                Select your gender
+              {/if}
+            </Select.Trigger>
+            <Select.Content>
+              {#each data.genders as gender (gender)}
+                <Select.Item class="capitalize" value={gender} label={gender} />
               {/each}
-            </Field.Field>
+            </Select.Content>
+          </Select.Root>
+        {/snippet}
+      </Form.Field>
+
+      <!-- Pronouns -->
+      <Form.Field field={submitWaitlist.fields.pronouns} label="Pronouns">
+        {#snippet children(field)}
+          {@render whyThisField('This helps us maintain a balanced and inclusive training environment')}
+          <Input {...field.as('text')} placeholder="Enter your pronouns" />
+          <Form.Description>Please separate with slashes (e.g. they/them).</Form.Description>
+        {/snippet}
+      </Form.Field>
+
+      <!-- Date of Birth -->
+      <Form.Field field={submitWaitlist.fields.dateOfBirth} label="Date of birth">
+        {#snippet children(field)}
+          {@render whyThisField('For insurance reasons, HEMA practitioners need to be at least 16 years old')}
+          <DatePicker
+            value={dobPickerValue}
+            onDateChange={(date) => {
+              if (date) {
+                field.set(date);
+              }
+            }}
+          />
+          <!-- Hidden input for form submission -->
+          <input type="hidden" name="dateOfBirth" value={dateOfBirthValue?.toISOString() ?? ''} />
+        {/snippet}
+      </Form.Field>
+
+      <!-- Social Media Consent -->
+      <Form.Fieldset>
+        <span class="flex items-center gap-2">
+          <p class="text-sm font-medium">Social media consent</p>
+          {@render whyThisField('We sometimes take pictures for our social media')}
+        </span>
+        <RadioGroup.Root
+          value={submitWaitlist.fields.socialMediaConsent.value() as string}
+          onValueChange={(v) => submitWaitlist.fields.socialMediaConsent.set(v)}
+          class="flex justify-start"
+        >
+          <div class="flex items-center space-x-3">
+            <RadioGroup.Item value="no" />
+            <Form.Label>No</Form.Label>
+          </div>
+          <div class="flex items-center space-x-3">
+            <RadioGroup.Item value="yes_unrecognizable" />
+            <Form.Label>If not recognizable (wearing a mask)</Form.Label>
+          </div>
+          <div class="flex items-center space-x-3">
+            <RadioGroup.Item value="yes_recognizable" />
+            <Form.Label>Yes</Form.Label>
+          </div>
+        </RadioGroup.Root>
+        <Form.FieldErrors issues={submitWaitlist.fields.socialMediaConsent.issues()} />
+      </Form.Fieldset>
+
+      <!-- Medical Conditions -->
+      <Form.Field field={submitWaitlist.fields.medicalConditions} label="Any medical condition?">
+        {#snippet children(field)}
+          <Textarea {...field.as('text')} placeholder="Enter any medical conditions" />
+        {/snippet}
+      </Form.Field>
+
+      <!-- Guardian Fields (conditional) -->
+      {#if isUnderAge}
+        <div class="mt-4 p-4 bg-gray-50 rounded-md border border-gray-200">
+          <h3 class="text-lg font-medium mb-4">Guardian Information (Required for under 18)</h3>
+
+          <div class="flex gap-4 w-full justify-stretch">
+            <Form.Field field={submitWaitlist.fields.guardianFirstName} label="Guardian First Name" class="flex-1">
+              {#snippet children(field)}
+                <Input {...field.as('text')} placeholder="Enter guardian's first name" />
+              {/snippet}
+            </Form.Field>
+
+            <Form.Field field={submitWaitlist.fields.guardianLastName} label="Guardian Last Name" class="flex-1">
+              {#snippet children(field)}
+                <Input {...field.as('text')} placeholder="Enter guardian's last name" />
+              {/snippet}
+            </Form.Field>
           </div>
 
-          <!-- Email -->
-          <Field.Field>
-            {@const fieldProps = submitWaitlist.fields.email.as('email')}
-            <Field.Label for={fieldProps.name}>Email</Field.Label>
-            <Input {...fieldProps} id={fieldProps.name} placeholder="Enter your email" />
-            {#each submitWaitlist.fields.email.issues() as issue}
-              <Field.Error>{issue.message}</Field.Error>
-            {/each}
-          </Field.Field>
+          <Form.Field field={submitWaitlist.fields.guardianPhoneNumber} label="Guardian Phone Number">
+            {#snippet children(field)}
+              <PhoneInput
+                {...field.as('tel')}
+                placeholder="Enter guardian's phone number"
+                phoneNumber={field.value() as string}
+                onPhoneNumberChange={(value) => field.set(value)}
+              />
+            {/snippet}
+          </Form.Field>
+        </div>
+      {/if}
 
-          <!-- Phone Number -->
-          <Field.Field>
-            {@const fieldProps = submitWaitlist.fields.phoneNumber.as('tel')}
-            <Field.Label for={fieldProps.name}>Phone number</Field.Label>
-            <PhoneInput
-              {...fieldProps}
-              id={fieldProps.name}
-              placeholder="Enter your phone number"
-              onChange={(value) => submitWaitlist.fields.phoneNumber.set(String(value))}
-            />
-            {#each submitWaitlist.fields.phoneNumber.issues() as issue}
-              <Field.Error>{issue.message}</Field.Error>
-            {/each}
-          </Field.Field>
-
-          <!-- Gender -->
-          <Field.Field>
-            {@const fieldProps = submitWaitlist.fields.gender.as('select')}
-            <Field.Label for={fieldProps.name}>Gender</Field.Label>
-            {@render whyThisField('This helps us maintain a balanced and inclusive training environment')}
-            <Select.Root
-              type="single"
-              value={submitWaitlist.fields.gender.value() as string}
-              onValueChange={(v) => submitWaitlist.fields.gender.set(v)}
-            >
-              <Select.Trigger id={fieldProps.name}>
-                {#if submitWaitlist.fields.gender.value()}
-                  <p class="capitalize">{submitWaitlist.fields.gender.value()}</p>
-                {:else}
-                  Select your gender
-                {/if}
-              </Select.Trigger>
-              <Select.Content>
-                {#each data.genders as gender (gender)}
-                  <Select.Item class="capitalize" value={gender} label={gender} />
-                {/each}
-              </Select.Content>
-            </Select.Root>
-            <input type="hidden" name={fieldProps.name} value={submitWaitlist.fields.gender.value() ?? ''} />
-            {#each submitWaitlist.fields.gender.issues() as issue}
-              <Field.Error>{issue.message}</Field.Error>
-            {/each}
-          </Field.Field>
-
-          <!-- Pronouns -->
-          <Field.Field>
-            {@const fieldProps = submitWaitlist.fields.pronouns.as('text')}
-            <Field.Label for={fieldProps.name}>Pronouns</Field.Label>
-            {@render whyThisField('This helps us maintain a balanced and inclusive training environment')}
-            <Input {...fieldProps} id={fieldProps.name} placeholder="Enter your pronouns" />
-            <Field.Description>Please separate with slashes (e.g. they/them).</Field.Description>
-            {#each submitWaitlist.fields.pronouns.issues() as issue}
-              <Field.Error>{issue.message}</Field.Error>
-            {/each}
-          </Field.Field>
-
-          <!-- Date of Birth -->
-          <Field.Field>
-            {@const { value, ...fieldProps } = submitWaitlist.fields.dateOfBirth.as('date')}
-            <Field.Label for={fieldProps.name}>Date of birth</Field.Label>
-            {@render whyThisField('For insurance reasons, HEMA practitioners need to be at least 16 years old')}
-            <DatePicker
-              {...fieldProps}
-              id={fieldProps.name}
-              value={dobPickerValue}
-              onDateChange={(date) => {
-                if (date) {
-                  submitWaitlist.fields.dateOfBirth.set(date.toISOString());
-                }
-              }}
-            />
-            {#each submitWaitlist.fields.dateOfBirth.issues() as issue}
-              <Field.Error>{issue.message}</Field.Error>
-            {/each}
-          </Field.Field>
-
-          <!-- Medical Conditions -->
-          <Field.Field>
-            {@const fieldProps = submitWaitlist.fields.medicalConditions.as('text')}
-            <Field.Label for={fieldProps.name}>Any medical condition?</Field.Label>
-            <Textarea {...fieldProps} id={fieldProps.name} placeholder="Enter any medical conditions" />
-            {#each submitWaitlist.fields.medicalConditions.issues() as issue}
-              <Field.Error>{issue.message}</Field.Error>
-            {/each}
-          </Field.Field>
-        </Field.Group>
-
-        <!-- Social Media Consent -->
-        <Field.Set>
-          <span class="flex items-center gap-2">
-            <Field.Legend>Social media consent</Field.Legend>
-            {@render whyThisField('We sometimes take pictures for our social media')}
-          </span>
-          <RadioGroup.Root
-            value={submitWaitlist.fields.socialMediaConsent.value() as string | undefined}
-            onValueChange={(v) => submitWaitlist.fields.socialMediaConsent.set(v)}
-            class="flex justify-start"
-          >
-            <div class="flex items-center space-x-3">
-              <RadioGroup.Item value="no" id="no" />
-              <Field.Label for="no">No</Field.Label>
-            </div>
-            <div class="flex items-center space-x-3">
-              <RadioGroup.Item id="yes_unrecognizable" value="yes_unrecognizable" />
-              <Field.Label for="yes_unrecognizable">If not recognizable (wearing a mask)</Field.Label>
-            </div>
-            <div class="flex items-center space-x-3">
-              <RadioGroup.Item id="yes_recognizable" value="yes_recognizable" />
-              <Field.Label for="yes_recognizable">Yes</Field.Label>
-            </div>
-          </RadioGroup.Root>
-          {#each submitWaitlist.fields.socialMediaConsent.issues() as issue}
-            <Field.Error>{issue.message}</Field.Error>
-          {/each}
-        </Field.Set>
-
-        <!-- Guardian Fields (conditional) -->
-        {#if isUnderAge}
-          <Field.Set class="mt-4 p-4 bg-gray-50 rounded-md border border-gray-200">
-            <Field.Legend>Guardian Information (Required for under 18)</Field.Legend>
-            <Field.Group>
-              <div class="flex gap-4 w-full justify-stretch">
-                <Field.Field class="flex-1">
-                  {@const fieldProps = submitWaitlist.fields.guardianFirstName.as('text')}
-                  <Field.Label for={fieldProps.name}>Guardian First Name</Field.Label>
-                  <Input {...fieldProps} id={fieldProps.name} placeholder="Enter guardian's first name" />
-                  {#each submitWaitlist.fields.guardianFirstName.issues() as issue}
-                    <Field.Error>{issue.message}</Field.Error>
-                  {/each}
-                </Field.Field>
-
-                <Field.Field class="flex-1">
-                  {@const fieldProps = submitWaitlist.fields.guardianLastName.as('text')}
-                  <Field.Label for={fieldProps.name}>Guardian Last Name</Field.Label>
-                  <Input {...fieldProps} id={fieldProps.name} placeholder="Enter guardian's last name" />
-                  {#each submitWaitlist.fields.guardianLastName.issues() as issue}
-                    <Field.Error>{issue.message}</Field.Error>
-                  {/each}
-                </Field.Field>
-              </div>
-
-              <Field.Field>
-                {@const fieldProps = submitWaitlist.fields.guardianPhoneNumber.as('tel')}
-                <Field.Label for={fieldProps.name}>Guardian Phone Number</Field.Label>
-                <PhoneInput
-                  {...fieldProps}
-                  id={fieldProps.name}
-                  placeholder="Enter guardian's phone number"
-                  onChange={(value) => submitWaitlist.fields.guardianPhoneNumber.set(String(value))}
-                />
-                {#each submitWaitlist.fields.guardianPhoneNumber.issues() as issue}
-                  <Field.Error>{issue.message}</Field.Error>
-                {/each}
-              </Field.Field>
-            </Field.Group>
-          </Field.Set>
-        {/if}
-
-        <Button type="submit">Submit</Button>
-      </form>
-    {/if}
+      <Button type="submit">
+        Submit
+      </Button>
+    </form>
   </Card.Content>
 </Card.Root>
 ```
 
 ## Key Migration Points
 
-### 1. Field Component Structure
+### 1. Date Handling
 
-The new `Field` component from shadcn-svelte uses this pattern:
-
-```svelte
-<Field.Field>
-  {@const fieldProps = myForm.fields.fieldName.as('text')}
-  <Field.Label for={fieldProps.name}>Label</Field.Label>
-  <Input {...fieldProps} id={fieldProps.name} />
-  <Field.Description>Helper text</Field.Description>
-  {#each myForm.fields.fieldName.issues() as issue}
-    <Field.Error>{issue.message}</Field.Error>
-  {/each}
-</Field.Field>
-```
+Superforms had `dateProxy` helper. With Remote Functions:
+- Use `field.value()` to get current value
+- Use `field.set(value)` to update
+- Handle date conversion manually with dayjs
 
 ### 2. Phone Input Integration
 
-The custom `PhoneInput` component works with Remote Functions:
-
+The custom `PhoneInput` component needs to work with Remote Functions:
 ```svelte
-<Field.Field>
-  {@const fieldProps = submitWaitlist.fields.phoneNumber.as('tel')}
-  <Field.Label for={fieldProps.name}>Phone number</Field.Label>
-  <PhoneInput
-    {...fieldProps}
-    id={fieldProps.name}
-    placeholder="Enter your phone number"
-    onChange={(value) => submitWaitlist.fields.phoneNumber.set(String(value))}
-  />
-  {#each submitWaitlist.fields.phoneNumber.issues() as issue}
-    <Field.Error>{issue.message}</Field.Error>
-  {/each}
-</Field.Field>
+<PhoneInput
+  {...field.as('tel')}
+  phoneNumber={field.value() as string}
+  onPhoneNumberChange={(value) => field.set(value)}
+/>
 ```
 
-### 3. Select Field Integration
+### 3. Select/RadioGroup Integration
 
-For shadcn Select components, use a hidden input for form submission:
-
+For shadcn Select and RadioGroup components:
 ```svelte
-<Field.Field>
-  {@const fieldProps = submitWaitlist.fields.gender.as('select')}
-  <Field.Label for={fieldProps.name}>Gender</Field.Label>
-  <Select.Root
-    type="single"
-    value={submitWaitlist.fields.gender.value() as string}
-    onValueChange={(v) => submitWaitlist.fields.gender.set(v)}
-  >
-    <Select.Trigger id={fieldProps.name}>
-      {#if submitWaitlist.fields.gender.value()}
-        <p class="capitalize">{submitWaitlist.fields.gender.value()}</p>
-      {:else}
-        Select your gender
-      {/if}
-    </Select.Trigger>
-    <Select.Content>
-      {#each data.genders as gender (gender)}
-        <Select.Item class="capitalize" value={gender} label={gender} />
-      {/each}
-    </Select.Content>
-  </Select.Root>
-  <input type="hidden" name={fieldProps.name} value={submitWaitlist.fields.gender.value() ?? ''} />
-  {#each submitWaitlist.fields.gender.issues() as issue}
-    <Field.Error>{issue.message}</Field.Error>
-  {/each}
-</Field.Field>
+<Select.Root 
+  value={field.value() as string}
+  onValueChange={(v) => field.set(v)}
+>
 ```
 
-### 4. Date Picker Integration
+### 4. Conditional Fields
 
-```svelte
-<script lang="ts">
-  import { fromDate, getLocalTimeZone } from '@internationalized/date';
-  import dayjs from 'dayjs';
-
-  const dateOfBirthValue = $derived(submitWaitlist.fields.dateOfBirth.value() as string);
-
-  const dobPickerValue = $derived.by(() => {
-    if (!dateOfBirthValue) return undefined;
-    const date = new Date(dateOfBirthValue);
-    if (!dayjs(date).isValid()) return undefined;
-    return fromDate(date, getLocalTimeZone());
-  });
-</script>
-
-<Field.Field>
-  {@const { value, ...fieldProps } = submitWaitlist.fields.dateOfBirth.as('date')}
-  <Field.Label for={fieldProps.name}>Date of birth</Field.Label>
-  <DatePicker
-    {...fieldProps}
-    id={fieldProps.name}
-    value={dobPickerValue}
-    onDateChange={(date) => {
-      if (date) {
-        submitWaitlist.fields.dateOfBirth.set(date.toISOString());
-      }
-    }}
-  />
-  {#each submitWaitlist.fields.dateOfBirth.issues() as issue}
-    <Field.Error>{issue.message}</Field.Error>
-  {/each}
-</Field.Field>
-```
-
-### 5. Radio Group with Field.Set
-
-Use `Field.Set` for grouping related fields like radio groups:
-
-```svelte
-<Field.Set>
-  <Field.Legend>Social media consent</Field.Legend>
-  <Field.Description>We sometimes take pictures for our social media</Field.Description>
-  <RadioGroup.Root
-    value={submitWaitlist.fields.socialMediaConsent.value() as string | undefined}
-    onValueChange={(v) => submitWaitlist.fields.socialMediaConsent.set(v)}
-    class="flex justify-start"
-  >
-    <div class="flex items-center space-x-3">
-      <RadioGroup.Item value="no" id="no" />
-      <Field.Label for="no">No</Field.Label>
-    </div>
-    <!-- more options -->
-  </RadioGroup.Root>
-  {#each submitWaitlist.fields.socialMediaConsent.issues() as issue}
-    <Field.Error>{issue.message}</Field.Error>
-  {/each}
-</Field.Set>
-```
-
-### 6. Conditional Fields
-
-The `isUnderAge` derived value reads from `field.value()`:
-
+The `isUnderAge` derived value works the same way, but reads from `field.value()` instead of `$formData`:
 ```typescript
-const dateOfBirthValue = $derived(submitWaitlist.fields.dateOfBirth.value() as string);
+const dateOfBirthValue = $derived(submitWaitlist.fields.dateOfBirth.value() as Date | undefined);
 const isUnderAge = $derived.by(() => {
   if (!dateOfBirthValue) return false;
-  const date = new Date(dateOfBirthValue);
-  if (!dayjs(date).isValid()) return false;
-  return isMinor(date);
+  return isMinor(dateOfBirthValue);
 });
 ```
 
-### 7. Client-Side Validation
+### 5. Client-Side Validation
 
 Use `.preflight(schema)` to enable client-side validation:
-
 ```svelte
-<form {...submitWaitlist.preflight(beginnersWaitlistClientSchema)}>
+<form {...submitWaitlist.preflight(beginnersWaitlist)}>
 ```
 
 ## Testing
