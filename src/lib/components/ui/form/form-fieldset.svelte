@@ -1,17 +1,17 @@
 <script lang="ts">
-import { cn } from "$lib/utils.js";
-import type { HTMLFieldsetAttributes } from "svelte/elements";
+	import { cn } from '$lib/utils.js';
+	import type { HTMLFieldsetAttributes } from 'svelte/elements';
 
-interface Props extends HTMLFieldsetAttributes {
-	ref?: HTMLFieldSetElement | null;
-}
+	interface Props extends HTMLFieldsetAttributes {
+		ref?: HTMLFieldSetElement | null;
+	}
 
-let {
-	ref = $bindable(null),
-	class: className,
-	children,
-	...restProps
-}: Props = $props();
+	let {
+		ref = $bindable(null),
+		class: className,
+		children,
+		...restProps
+	}: Props = $props();
 </script>
 
 <fieldset

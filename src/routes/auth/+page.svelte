@@ -1,18 +1,20 @@
 <script lang="ts">
-import { page } from "$app/state";
-import { Button } from "$lib/components/ui/button";
-import { Card } from "$lib/components/ui/card";
-import { DiscordLogo, ExclamationTriangle } from "svelte-radix";
-import { Input } from "$lib/components/ui/input";
-import { Separator } from "$lib/components/ui/separator";
-import * as Alert from "$lib/components/ui/alert/index.js";
-import * as Field from "$lib/components/ui/field";
-import DHCLogo from "/src/assets/images/dhc-logo.png?enhanced";
-import { magicLinkAuth, discordAuth } from "./data.remote";
+	import { page } from "$app/state";
+	import { Button } from "$lib/components/ui/button";
+	import { Card } from "$lib/components/ui/card";
+	import { DiscordLogo, ExclamationTriangle } from "svelte-radix";
+	import { Input } from "$lib/components/ui/input";
+	import { Separator } from "$lib/components/ui/separator";
+	import * as Alert from "$lib/components/ui/alert/index.js";
+	import * as Form from "$lib/components/ui/form";
+	import DHCLogo from "/src/assets/images/dhc-logo.png?enhanced";
+	import { magicLinkAuth, discordAuth } from "./data.remote";
 
-const hash = $derived(page.url.hash.split("#")[1] as string);
-let errorMessage = $derived(new URLSearchParams(hash).get("error_description"));
-const urlMessage = $derived(page.url.searchParams.get("message"));
+	const hash = $derived(page.url.hash.split("#")[1] as string);
+	let errorMessage = $derived(
+		new URLSearchParams(hash).get("error_description"),
+	);
+	const urlMessage = $derived(page.url.searchParams.get("message"));
 </script>
 
 <Card
@@ -54,18 +56,16 @@ const urlMessage = $derived(page.url.searchParams.get("message"));
 
 	<!-- Magic Link Form -->
 	<form {...magicLinkAuth} class="w-full max-w-xs space-y-4">
-		<Field.Field>
-			{@const fieldProps = magicLinkAuth.fields.email.as("email")}
-			<Field.Label for={fieldProps.name}>Email</Field.Label>
-			<Input
-				{...fieldProps}
-				id={fieldProps.name}
-				placeholder="your@email.com"
-			/>
-			{#each magicLinkAuth.fields.email.issues() as issue}
-				<Field.Error>{issue.message}</Field.Error>
-			{/each}
-		</Field.Field>
+		<Form.Field field={magicLinkAuth.fields.email}>
+			{#snippet children(field)}
+				<label for="email" class="text-sm font-medium">Email</label>
+				<Input
+					{...field.as("email")}
+					id="email"
+					placeholder="your@email.com"
+				/>
+			{/snippet}
+		</Form.Field>
 
 		<Button type="submit" class="w-full">Send Magic Link</Button>
 	</form>

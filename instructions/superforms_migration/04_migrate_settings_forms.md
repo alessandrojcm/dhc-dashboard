@@ -86,16 +86,17 @@ export const updateMemberSettings = form(
 );
 ```
 
-Update `settings-sheet.svelte` using the new `Field` component:
+Update `settings-sheet.svelte`:
 
 ```svelte
 <script lang="ts">
   import { updateMemberSettings } from './data.remote';
   import * as Sheet from '$lib/components/ui/sheet/index.js';
-  import * as Field from '$lib/components/ui/field';
+  import * as Form from '$lib/components/ui/form';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
   import { Lock } from 'lucide-svelte';
+  import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
   import { toast } from 'svelte-sonner';
 
   let isOpen = $state(false);
@@ -114,18 +115,14 @@ Update `settings-sheet.svelte` using the new `Field` component:
     </Sheet.Header>
     
     <form {...updateMemberSettings} class="space-y-4 mt-4 p-8">
-      <Field.Field>
-        {@const fieldProps = updateMemberSettings.fields.insuranceFormLink.as('url')}
-        <Field.Label for={fieldProps.name}>HEMA Insurance Form Link</Field.Label>
-        <Input
-          {...fieldProps}
-          id={fieldProps.name}
-          placeholder="https://example.com/insurance-form"
-        />
-        {#each updateMemberSettings.fields.insuranceFormLink.issues() as issue}
-          <Field.Error>{issue.message}</Field.Error>
-        {/each}
-      </Field.Field>
+      <Form.Field field={updateMemberSettings.fields.insuranceFormLink} label="HEMA Insurance Form Link">
+        {#snippet children(field)}
+          <Input
+            {...field.as('url')}
+            placeholder="https://example.com/insurance-form"
+          />
+        {/snippet}
+      </Form.Field>
       
       <Button type="submit" class="w-full">
         Save Settings
@@ -174,51 +171,43 @@ export const createCategory = form(
 );
 ```
 
-Update `create/+page.svelte` using the new `Field` component:
+Update `create/+page.svelte`:
 
 ```svelte
 <script lang="ts">
   import { createCategory } from '../data.remote';
-  import * as Field from '$lib/components/ui/field';
+  import * as Form from '$lib/components/ui/form';
   import { Input } from '$lib/components/ui/input';
   import { Textarea } from '$lib/components/ui/textarea';
   import { Button } from '$lib/components/ui/button';
-  import * as Card from '$lib/components/ui/card';
+  import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
 </script>
 
-<Card.Root>
-  <Card.Header>
-    <Card.Title>Create Category</Card.Title>
-  </Card.Header>
-  <Card.Content>
+<Card>
+  <CardHeader>
+    <CardTitle>Create Category</CardTitle>
+  </CardHeader>
+  <CardContent>
     <form {...createCategory} class="space-y-4">
-      <Field.Group>
-        <Field.Field>
-          {@const fieldProps = createCategory.fields.name.as('text')}
-          <Field.Label for={fieldProps.name}>Name</Field.Label>
-          <Input {...fieldProps} id={fieldProps.name} placeholder="Category name" />
-          {#each createCategory.fields.name.issues() as issue}
-            <Field.Error>{issue.message}</Field.Error>
-          {/each}
-        </Field.Field>
-        
-        <Field.Field>
-          {@const fieldProps = createCategory.fields.description.as('text')}
-          <Field.Label for={fieldProps.name}>Description</Field.Label>
-          <Textarea {...fieldProps} id={fieldProps.name} placeholder="Category description" />
-          {#each createCategory.fields.description.issues() as issue}
-            <Field.Error>{issue.message}</Field.Error>
-          {/each}
-        </Field.Field>
-      </Field.Group>
+      <Form.Field field={createCategory.fields.name} label="Name">
+        {#snippet children(field)}
+          <Input {...field.as('text')} placeholder="Category name" />
+        {/snippet}
+      </Form.Field>
+      
+      <Form.Field field={createCategory.fields.description} label="Description">
+        {#snippet children(field)}
+          <Textarea {...field.as('text')} placeholder="Category description" />
+        {/snippet}
+      </Form.Field>
       
       <div class="flex gap-2">
         <Button type="submit">Create</Button>
         <Button href="/dashboard/inventory/categories" variant="outline">Cancel</Button>
       </div>
     </form>
-  </Card.Content>
-</Card.Root>
+  </CardContent>
+</Card>
 ```
 
 ## Pattern: Inventory Edit Form
@@ -290,15 +279,11 @@ export const load = async ({ params, platform, locals }) => {
 };
 ```
 
-The form uses `field.set()` to populate initial values. Using the new `Field` component:
+The form uses `field.set()` to populate initial values:
 
 ```svelte
 <script lang="ts">
   import { updateCategory, deleteCategory } from './data.remote';
-  import * as Field from '$lib/components/ui/field';
-  import { Input } from '$lib/components/ui/input';
-  import { Textarea } from '$lib/components/ui/textarea';
-  import { Button } from '$lib/components/ui/button';
   import { onMount } from 'svelte';
   
   let { data } = $props();
@@ -313,25 +298,13 @@ The form uses `field.set()` to populate initial values. Using the new `Field` co
 </script>
 
 <form {...updateCategory} class="space-y-4">
-  <Field.Group>
-    <Field.Field>
-      {@const fieldProps = updateCategory.fields.name.as('text')}
-      <Field.Label for={fieldProps.name}>Name</Field.Label>
-      <Input {...fieldProps} id={fieldProps.name} />
-      {#each updateCategory.fields.name.issues() as issue}
-        <Field.Error>{issue.message}</Field.Error>
-      {/each}
-    </Field.Field>
-    
-    <Field.Field>
-      {@const fieldProps = updateCategory.fields.description.as('text')}
-      <Field.Label for={fieldProps.name}>Description</Field.Label>
-      <Textarea {...fieldProps} id={fieldProps.name} />
-      {#each updateCategory.fields.description.issues() as issue}
-        <Field.Error>{issue.message}</Field.Error>
-      {/each}
-    </Field.Field>
-  </Field.Group>
+  <Form.Field field={updateCategory.fields.name} label="Name">
+    {#snippet children(field)}
+      <Input {...field.as('text')} />
+    {/snippet}
+  </Form.Field>
+  
+  <!-- ... other fields ... -->
   
   <div class="flex gap-2">
     <Button type="submit">Save</Button>
@@ -349,14 +322,9 @@ The items create form has dynamic attributes based on category selection. This r
 1. Using `field.value()` to track category selection
 2. Dynamically rendering attribute fields
 
-Using the new `Field` component:
-
 ```svelte
 <script lang="ts">
   import { createItem } from '../data.remote';
-  import * as Field from '$lib/components/ui/field';
-  import * as Select from '$lib/components/ui/select';
-  import { Input } from '$lib/components/ui/input';
   
   let { data } = $props();
   
@@ -372,56 +340,33 @@ Using the new `Field` component:
 
 <form {...createItem}>
   <!-- Category select -->
-  <Field.Field>
-    {@const fieldProps = createItem.fields.category_id.as('select')}
-    <Field.Label for={fieldProps.name}>Category</Field.Label>
-    <Select.Root 
-      type="single"
-      value={createItem.fields.category_id.value() as string}
-      onValueChange={(v) => {
-        createItem.fields.category_id.set(v);
-        // Reset attributes when category changes
-        createItem.fields.attributes.set({});
-      }}
-    >
-      <Select.Trigger id={fieldProps.name}>
-        {#if selectedCategory}
-          {selectedCategory.name}
-        {:else}
-          Select a category
-        {/if}
-      </Select.Trigger>
-      <Select.Content>
-        {#each data.categories as category (category.id)}
-          <Select.Item value={category.id} label={category.name} />
-        {/each}
-      </Select.Content>
-    </Select.Root>
-    <input type="hidden" name={fieldProps.name} value={createItem.fields.category_id.value() ?? ''} />
-    {#each createItem.fields.category_id.issues() as issue}
-      <Field.Error>{issue.message}</Field.Error>
-    {/each}
-  </Field.Field>
+  <Form.Field field={createItem.fields.category_id} label="Category">
+    {#snippet children(field)}
+      <Select.Root 
+        value={field.value() as string}
+        onValueChange={(v) => {
+          field.set(v);
+          // Reset attributes when category changes
+          createItem.fields.attributes.set({});
+        }}
+      >
+        <!-- options -->
+      </Select.Root>
+    {/snippet}
+  </Form.Field>
   
   <!-- Dynamic attributes -->
   {#if selectedCategory}
-    <Field.Set>
-      <Field.Legend>Attributes</Field.Legend>
-      <Field.Group>
-        {#each categoryAttributes as attr (attr.name)}
-          {#if attr.type === 'text'}
-            <Field.Field>
-              {@const fieldProps = createItem.fields.attributes[attr.name].as('text')}
-              <Field.Label for={fieldProps.name}>{attr.label}</Field.Label>
-              <Input {...fieldProps} id={fieldProps.name} />
-              {#each createItem.fields.attributes[attr.name].issues() as issue}
-                <Field.Error>{issue.message}</Field.Error>
-              {/each}
-            </Field.Field>
-          {/if}
-        {/each}
-      </Field.Group>
-    </Field.Set>
+    {#each categoryAttributes as attr (attr.name)}
+      <!-- Render attribute field based on attr.type -->
+      {#if attr.type === 'text'}
+        <Form.Field field={createItem.fields.attributes[attr.name]} label={attr.label}>
+          {#snippet children(field)}
+            <Input {...field.as('text')} />
+          {/snippet}
+        </Form.Field>
+      {/if}
+    {/each}
   {/if}
 </form>
 ```
