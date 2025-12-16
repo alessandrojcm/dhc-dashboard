@@ -1,15 +1,10 @@
 <script lang="ts">
-	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
-	import { Button } from '$lib/components/ui/button';
-	import { SendIcon, Trash2 } from 'lucide-svelte';
-	import CopyButton from '$lib/components/ui/copy-button.svelte';
-
-	type Props = {
-		resendInvitation: () => void;
-		invitationLink: string;
-		deleteInvitation: () => void;
-	};
-	let { resendInvitation, invitationLink, deleteInvitation }: Props = $props();
+type Props = {
+	resendInvitation: () => void;
+	invitationLink: string;
+	deleteInvitation: () => void;
+};
+const { resendInvitation, invitationLink, deleteInvitation }: Props = $props();
 </script>
 
 <div class="flex gap-1">
