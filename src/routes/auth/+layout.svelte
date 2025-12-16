@@ -1,5 +1,6 @@
 <script lang="ts">
-const { children } = $props();
+	import DHCLogo from '/src/assets/images/dhc-logo.png?enhanced';	
+	const { children } = $props();
 </script>
 
 <svelte:head>
