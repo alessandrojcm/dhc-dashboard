@@ -43,12 +43,10 @@ test.describe('Invitation System', () => {
 		const dateOfBirth = dayjs().subtract(25, 'year'); // 25 years ago
 
 		// Interact with the date picker properly
-		await page.getByLabel(/date of birth/i).click();
-		await page.getByLabel('Select year').click();
-		await page.getByRole('option', { name: dateOfBirth.year().toString() }).click();
-		await page.getByLabel('Select month').click();
-		await page.getByRole('option', { name: dateOfBirth.format('MMMM') }).dblclick();
-		await page.getByLabel(dateOfBirth.format('dddd, MMMM D,')).click();
+		await page.getByLabel('Date of birth').click();
+		await page.getByLabel('Select a year').selectOption(dateOfBirth.year().toString());
+		await page.getByLabel('Select a month').selectOption(dateOfBirth.format('M'));
+		await page.getByRole('button', { name: dateOfBirth.format('dddd, MMMM D,') }).click();
 
 		// Fill phone number
 		await page.getByLabel('Phone Number').fill('123456789');
@@ -105,12 +103,10 @@ test.describe('Invitation System', () => {
 		const dateOfBirth = dayjs().subtract(25, 'year');
 
 		// Interact with the date picker properly
-		await page.getByLabel(/date of birth/i).click();
-		await page.getByLabel('Select year').click();
-		await page.getByRole('option', { name: dateOfBirth.year().toString() }).click();
-		await page.getByLabel('Select month').click();
-		await page.getByRole('option', { name: dateOfBirth.format('MMMM') }).dblclick();
-		await page.getByLabel(dateOfBirth.format('dddd, MMMM D,')).click();
+		await page.getByLabel('Date of birth').click();
+		await page.getByLabel('Select a year').selectOption(dateOfBirth.year().toString());
+		await page.getByLabel('Select a month').selectOption(dateOfBirth.format('M'));
+		await page.getByRole('button', { name: dateOfBirth.format('dddd, MMMM D,') }).click();
 
 		await page.getByLabel('Phone Number').fill('123456789');
 
@@ -130,12 +126,10 @@ test.describe('Invitation System', () => {
 		const dateOfBirth2 = dayjs().subtract(30, 'year');
 
 		// Interact with the date picker properly
-		await page.getByLabel(/date of birth/i).click();
-		await page.getByLabel('Select year').click();
-		await page.getByRole('option', { name: dateOfBirth2.year().toString() }).click();
-		await page.getByLabel('Select month').click();
-		await page.getByRole('option', { name: dateOfBirth2.format('MMMM') }).dblclick();
-		await page.getByLabel(dateOfBirth2.format('dddd, MMMM D,')).click();
+		await page.getByLabel('Date of birth').click();
+		await page.getByLabel('Select a year').selectOption(dateOfBirth2.year().toString());
+		await page.getByLabel('Select a month').selectOption(dateOfBirth2.format('M'));
+		await page.getByRole('button', { name: dateOfBirth2.format('dddd, MMMM D,') }).click();
 
 		await page.getByLabel('Phone Number').fill('987654321');
 
@@ -178,12 +172,10 @@ test.describe('Invitation System', () => {
 		const dateOfBirth = dayjs().subtract(25, 'year');
 
 		// Interact with the date picker properly
-		await page.getByLabel(/date of birth/i).click();
-		await page.getByLabel('Select year').click();
-		await page.getByRole('option', { name: dateOfBirth.year().toString() }).click();
-		await page.getByLabel('Select month').click();
-		await page.getByRole('option', { name: dateOfBirth.format('MMMM') }).dblclick();
-		await page.getByLabel(dateOfBirth.format('dddd, MMMM D,')).click();
+		await page.getByLabel('Date of birth').click();
+		await page.getByLabel('Select a year').selectOption(dateOfBirth.year().toString());
+		await page.getByLabel('Select a month').selectOption(dateOfBirth.format('M'));
+		await page.getByRole('button', { name: dateOfBirth.format('dddd, MMMM D,') }).click();
 
 		await page.getByLabel('Phone Number').fill('123456789');
 
@@ -200,14 +192,10 @@ test.describe('Invitation System', () => {
 		const dateOfBirth2 = dayjs().subtract(30, 'year');
 
 		// Interact with the date picker properly
-		await page.getByLabel(/date of birth/i).click();
-		await page.getByLabel('Select year').click();
-		await page.getByRole('option', { name: dateOfBirth2.year().toString() }).click();
-		await page.getByLabel('Select month').click();
-		await page.getByRole('option', { name: dateOfBirth2.format('MMMM') }).dblclick();
-		await page.getByLabel(dateOfBirth2.format('dddd, MMMM D,')).click();
-		await expect(page.getByLabel('Phone Number')).toBeVisible();
-		await page.getByLabel('Phone Number').fill('987654321');
+		await page.getByLabel('Date of birth').click();
+		await page.getByLabel('Select a year').selectOption(dateOfBirth2.year().toString());
+		await page.getByLabel('Select a month').selectOption(dateOfBirth2.format('M'));
+		await page.getByRole('button', { name: dateOfBirth2.format('dddd, MMMM D,') }).click();
 
 		// Click "Add to List" button
 		await page.getByRole('button', { name: 'Add to List' }).click();
@@ -248,12 +236,10 @@ test.describe('Invitation System', () => {
 		const dateOfBirth = dayjs().subtract(25, 'year');
 
 		// Interact with the date picker properly
-		await page.getByLabel(/date of birth/i).click();
-		await page.getByLabel('Select year').click();
-		await page.getByRole('option', { name: dateOfBirth.year().toString() }).click();
-		await page.getByLabel('Select month').click();
-		await page.getByRole('option', { name: dateOfBirth.format('MMMM') }).dblclick();
-		await page.getByLabel(dateOfBirth.format('dddd, MMMM D,')).click();
+		await page.getByLabel('Date of birth').click();
+		await page.getByLabel('Select a year').selectOption(dateOfBirth.year().toString());
+		await page.getByLabel('Select a month').selectOption(dateOfBirth.format('M'));
+		await page.getByRole('button', { name: dateOfBirth.format('dddd, MMMM D,') }).click();
 
 		await page.getByLabel('Phone Number').fill('123456789');
 
@@ -318,12 +304,10 @@ test.describe('Invitation System', () => {
 			const dateOfBirth = dayjs().subtract(25, 'year');
 
 			// Interact with the date picker properly
-			await page.getByLabel(/date of birth/i).click();
-			await page.getByLabel('Select year').click();
-			await page.getByRole('option', { name: dateOfBirth.year().toString() }).click();
-			await page.getByLabel('Select month').click();
-			await page.getByRole('option', { name: dateOfBirth.format('MMMM') }).dblclick();
-			await page.getByLabel(dateOfBirth.format('dddd, MMMM D,')).click();
+			await page.getByLabel('Date of birth').click();
+			await page.getByLabel('Select a year').selectOption(dateOfBirth.year().toString());
+			await page.getByLabel('Select a month').selectOption(dateOfBirth.format('M'));
+			await page.getByRole('button', { name: dateOfBirth.format('dddd, MMMM D,') }).click();
 
 			await page.getByLabel('Phone Number').fill('123456789');
 

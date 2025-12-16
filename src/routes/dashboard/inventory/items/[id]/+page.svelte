@@ -350,7 +350,7 @@
 														{#if attr.type === 'text'}
 															<Input
 																id={attr.name}
-																bind:value={$formData.attributes![attr.name]}
+																bind:value={$formData.attributes[attr.name]}
 																placeholder={attr.label}
 																class={attributeErrors[attr.name]
 																	? 'border-destructive focus-visible:ring-destructive'
@@ -362,7 +362,7 @@
 															<Input
 																id={attr.name}
 																type="number"
-																bind:value={$formData.attributes![attr.name]}
+																bind:value={$formData.attributes[attr.name]}
 																placeholder={attr.label}
 																class={attributeErrors[attr.name] ? 'border-destructive' : ''}
 																oninput={() => clearAttributeError(attr.name)}
@@ -387,11 +387,11 @@
 														</Label>
 														<Select
 															type="single"
-															value={$formData.attributes![attr.name] || undefined}
+															value={$formData.attributes[attr.name] || undefined}
 															name="attributes.{attr.name}"
 															onValueChange={(value) => {
 																if (value) {
-																	$formData.attributes![attr.name] = value;
+																	$formData.attributes[attr.name] = value;
 																}
 																clearAttributeError(attr.name);
 															}}
@@ -399,7 +399,7 @@
 															<SelectTrigger
 																class={attributeErrors[attr.name] ? 'border-destructive' : ''}
 															>
-																{$formData.attributes![attr.name] ||
+																{$formData.attributes[attr.name] ||
 																	`Select ${attr.label.toLowerCase()}`}
 															</SelectTrigger>
 															<SelectContent>
@@ -429,7 +429,7 @@
 															<Checkbox
 																id={attr.name}
 																name="attributes.{attr.name}"
-																bind:checked={$formData.attributes![attr.name]}
+																bind:checked={$formData.attributes[attr.name]}
 																onCheckedChange={() => clearAttributeError(attr.name)}
 															/>
 															<Label for={attr.name} class="text-sm font-normal">

@@ -3,6 +3,7 @@
 	import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import AttendeeManager from '$lib/components/workshops/attendee-manager.svelte';
+	import type {RefundWithUser, RegistrationWithUser} from "$lib/server/services/workshops";
 
 	let { data } = $props();
 	const supabase = data.supabase;
@@ -42,9 +43,9 @@
 				.order('created_at', { ascending: true });
 
 			if (error) throw error;
-			return data;
+			return data as RegistrationWithUser[];
 		},
-		initialData: data.attendees
+		initialData: data?.attendees ?? []
 	}));
 
 	const refundsQuery = createQuery(() => ({
@@ -91,7 +92,7 @@
 					user_profiles: refund.club_activity_registrations?.user_profiles || null,
 					external_users: refund.club_activity_registrations?.external_users || null
 				})) || []
-			);
+			) as RefundWithUser[];
 		},
 		initialData: data.refunds // Use preloaded data
 	}));

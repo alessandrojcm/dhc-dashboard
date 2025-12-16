@@ -16,7 +16,9 @@ import type {
 	InventoryAttributes,
 	InventoryAttributeDefinition,
 	InventoryItemWithRelations,
-	ItemFilters
+	ItemFilters,
+	InventoryContainer,
+	InventoryCategory
 } from './types';
 
 // Export validation schemas for reuse in forms
@@ -497,20 +499,20 @@ export class ItemService {
 	 * Get filter options (categories and containers)
 	 */
 	async getFilterOptions(): Promise<{
-		categories: Array<{ id: string; name: string }>;
-		containers: Array<{ id: string; name: string }>;
+		categories: InventoryCategory[];
+		containers: InventoryContainer[];
 	}> {
 		this.logger.info('Getting filter options');
 
 		try {
 			return await executeWithRLS(this.kysely, { claims: this.session }, async (trx) => {
 				const [categories, containers] = await Promise.all([
-					trx.selectFrom('equipment_categories').select(['id', 'name']).orderBy('name').execute(),
-					trx.selectFrom('containers').select(['id', 'name']).orderBy('name').execute()
+					trx.selectFrom('equipment_categories').selectAll().orderBy('name').execute(),
+					trx.selectFrom('containers').selectAll().orderBy('name').execute()
 				]);
 
 				return {
-					categories: categories || [],
+					categories: (categories || []) as InventoryCategory[],
 					containers: containers || []
 				};
 			});

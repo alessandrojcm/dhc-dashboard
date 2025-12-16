@@ -5,12 +5,12 @@ const data: NavData = {
 	navMain: [
 		{
 			title: 'Beginners Workshop',
-			url: 'beginners-workshop',
+			url: '/dashboard/beginners-workshop',
 			role: new Set(['admin', 'coach', 'beginners_coordinator', 'president'])
 		},
 		{
 			title: 'Members',
-			url: 'members',
+			url: '/dashboard/members',
 			role: new Set([
 				'admin',
 				'president',
@@ -28,37 +28,37 @@ const data: NavData = {
 		},
 		{
 			title: 'Workshops',
-			url: 'workshops',
+			url: '/dashboard/workshops',
 			role: WORKSHOP_ROLES
 		},
 		{
 			title: 'My Workshops',
-			url: 'my-workshops',
+			url: '/dashboard/my-workshops',
 			role: new Set(['member']) // All authenticated users have member role
 		},
 		{
 			title: 'Inventory',
-			url: 'inventory',
+			url: '/dashboard/inventory',
 			role: INVENTORY_ROLES,
 			items: [
 				{
 					title: 'Overview',
-					url: 'inventory',
+					url: '/dashboard/inventory',
 					role: INVENTORY_ROLES
 				},
 				{
 					title: 'Containers',
-					url: 'inventory/containers',
+					url: '/dashboard/inventory/containers',
 					role: INVENTORY_ROLES
 				},
 				{
 					title: 'Categories',
-					url: 'inventory/categories',
+					url: '/dashboard/inventory/categories',
 					role: INVENTORY_ROLES
 				},
 				{
 					title: 'Items',
-					url: 'inventory/items',
+					url: '/dashboard/inventory/items',
 					role: INVENTORY_ROLES
 				}
 			]
@@ -68,7 +68,7 @@ const data: NavData = {
 
 export function canAccessUrl(url: string, roles: Set<string>): boolean {
 	return data.navMain.some(
-		(group) => group.url.includes(url) && group.role.intersection(roles).size > 0
+		(group) => url.includes(group.url) && group.role.intersection(roles).size > 0
 	);
 }
 

@@ -435,7 +435,9 @@ export async function setupInvitedUser(
 
 	// Calculate expiration date (24 hours from now)
 	const expiresAt = new Date();
-	expiresAt.setHours(expiresAt.getHours() + 24);
+	if (overrides.invitationStatus !== 'expired') {
+		expiresAt.setHours(expiresAt.getHours() + 24);
+	}
 
 	// Create invitation using the stored procedure
 	// This will also create the user profile

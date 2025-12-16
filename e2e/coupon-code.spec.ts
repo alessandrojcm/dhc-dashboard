@@ -98,33 +98,51 @@ test.describe('Member Signup - Coupon Codes', () => {
 			migrationPromotion
 		] = await Promise.all([
 			stripeClient.promotionCodes.create({
-				coupon: annualCoupon.id,
+				promotion: {
+					coupon: annualCoupon.id,
+					type: 'coupon'
+				},
 				code: `ANNUAL-${Date.now().toString().slice(-6)}`,
 				max_redemptions: 5
 			}),
 			stripeClient.promotionCodes.create({
-				coupon: monthlyCoupon.id,
+				promotion: {
+					coupon: monthlyCoupon.id,
+					type: 'coupon'
+				},
 				code: `MONTHLY-${Date.now().toString().slice(-6)}`,
 				max_redemptions: 5
 			}),
 			stripeClient.promotionCodes.create({
-				coupon: combinedCoupon.id,
+				promotion: {
+					coupon: combinedCoupon.id,
+					type: 'coupon'
+				},
 				code: `COMBINED-${Date.now().toString().slice(-6)}`,
 				max_redemptions: 5
 			}),
 			stripeClient.promotionCodes.create({
-				coupon: onceCoupon.id,
+				promotion: {
+					coupon: onceCoupon.id,
+					type: 'coupon'
+				},
 				code: `ONCE-${Date.now().toString().slice(-6)}`,
 				max_redemptions: 5
 			}),
 			stripeClient.promotionCodes.create({
-				coupon: once100Coupon.id,
+				promotion: {
+					coupon: once100Coupon.id,
+					type: 'coupon'
+				},
 				code: `ONCE100OFF-${Date.now().toString().slice(-6)}`,
 				max_redemptions: 5
 			}),
 			// Create the migration code with the exact name from the environment variable
 			stripeClient.promotionCodes.create({
-				coupon: migrationCoupon.id,
+				promotion: {
+					coupon: migrationCoupon.id,
+					type: 'coupon'
+				},
 				code: process.env.PUBLIC_DASHBOARD_MIGRATION_CODE || 'DHCDASHBOARD',
 				max_redemptions: 5
 			})
@@ -159,8 +177,8 @@ test.describe('Member Signup - Coupon Codes', () => {
 				});
 
 				// Also clean up the associated coupon
-				if (promotion.coupon) {
-					await stripeClient.coupons.del(promotion.coupon.id);
+				if (promotion.code) {
+					await stripeClient.coupons.del(promotion.id);
 				}
 			} catch (error) {
 				console.error(`Error cleaning up promotion code ${promotionId}:`, error);
@@ -178,6 +196,7 @@ test.describe('Member Signup - Coupon Codes', () => {
 				testData.date_of_birth.format('YYYY-MM-DD')
 			)}`
 		);
+		await page.getByText('verify invitation/i').click()
 		// Wait for the form to be visible
 		await page.waitForSelector('form');
 	});

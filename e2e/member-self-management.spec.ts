@@ -25,7 +25,6 @@ test.describe('Member Self-Management', () => {
 		await expect(page.getByText(/member information/i)).toBeVisible();
 		await page.getByLabel(/first name/i).fill('Updated name');
 		await page.getByLabel(/preferred weapon/i).click();
-		await page.pause();
 
 		await page.getByRole('option', { name: 'Longsword' }).click();
 		await page.getByRole('button', { name: /save changes/i }).click();
@@ -45,7 +44,7 @@ test.describe('Member Self-Management', () => {
 	test('it should not show other options when user is only member', async ({ page }) => {
 		await page.goto('/dashboard');
 		expect(page.url()).toContain(`/dashboard/members/${testData.userId}`);
-		await expect(page.getByTestId('sidebar')).toHaveText('');
+		await expect(page.getByTestId('sidebar')).toHaveText('My Workshops');
 	});
 });
 

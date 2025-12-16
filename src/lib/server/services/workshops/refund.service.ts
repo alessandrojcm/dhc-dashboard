@@ -53,6 +53,7 @@ export class RefundService {
 					'car.processed_by',
 					'car.created_at',
 					'car.updated_at',
+					'car.stripe_payment_intent_id',
 					'up.first_name as member_first_name',
 					'up.last_name as member_last_name',
 					'eu.first_name as external_first_name',
@@ -78,20 +79,21 @@ export class RefundService {
 				processed_by: refund.processed_by,
 				created_at: refund.created_at,
 				updated_at: refund.updated_at,
+				stripe_payment_intent_id: refund.stripe_payment_intent_id,
 				user_profiles: refund.member_first_name
 					? {
 							first_name: refund.member_first_name,
-							last_name: refund.member_last_name
+							last_name: refund.member_last_name!
 						}
 					: null,
 				external_users: refund.external_first_name
 					? {
 							first_name: refund.external_first_name,
-							last_name: refund.external_last_name,
+							last_name: refund.external_last_name!,
 							email: refund.external_email!
 						}
 					: null
-			}));
+			} satisfies RefundWithUser));
 		});
 	}
 
@@ -177,7 +179,7 @@ export class RefundService {
 			workshop: {
 				start_date: result.start_date,
 				refund_days: result.refund_days,
-				status: result.workshop_status
+				status: result.workshop_status!
 			}
 		};
 	}
