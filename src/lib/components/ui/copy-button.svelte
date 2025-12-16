@@ -1,40 +1,42 @@
 <script lang="ts">
-	import { Check, Copy, X } from 'lucide-svelte';
-	import { Button } from '$lib/components/ui/button';
-	import * as Tooltip from '$lib/components/ui/tooltip';
-	import { fade } from 'svelte/transition';
+const {
+	text,
+	label = "Copy",
+	size = "icon",
+	variant = "ghost",
+} = $props<{
+	text: string;
+	label?: string;
+	size?: "sm" | "default" | "lg" | "icon" | null;
+	variant?:
+		| "ghost"
+		| "outline"
+		| "link"
+		| "default"
+		| "destructive"
+		| "secondary"
+		| null;
+}>();
 
-	const {
-		text,
-		label = 'Copy',
-		size = 'icon',
-		variant = 'ghost'
-	} = $props<{
-		text: string;
-		label?: string;
-		size?: 'sm' | 'default' | 'lg' | 'icon' | null;
-		variant?: 'ghost' | 'outline' | 'link' | 'default' | 'destructive' | 'secondary' | null;
-	}>();
+let _isCopied: "copied" | "not-copied" | "error" = $state("not-copied");
 
-	let isCopied: 'copied' | 'not-copied' | 'error' = $state('not-copied');
+async function _copyToClipboard() {
+	try {
+		await navigator.clipboard.writeText(text);
+		_isCopied = "copied";
 
-	async function copyToClipboard() {
-		try {
-			await navigator.clipboard.writeText(text);
-			isCopied = 'copied';
+		// Reset the copied state after 2 seconds
+		setTimeout(() => {
+			_isCopied = "not-copied";
+		}, 2000);
 
-			// Reset the copied state after 2 seconds
-			setTimeout(() => {
-				isCopied = 'not-copied';
-			}, 2000);
-
-			return true;
-		} catch (error) {
-			console.error('Failed to copy text:', error);
-			isCopied = 'error';
-			return false;
-		}
+		return true;
+	} catch (error) {
+		console.error("Failed to copy text:", error);
+		_isCopied = "error";
+		return false;
 	}
+}
 </script>
 
 <Tooltip.Tooltip>
