@@ -1,16 +1,23 @@
 <script lang="ts">
-	import * as FormPrimitive from 'formsnap';
-	import { cn, type WithoutChild } from '$lib/utils.js';
+	import { cn } from '$lib/utils.js';
+	import type { HTMLAttributes } from 'svelte/elements';
+
+	interface Props extends HTMLAttributes<HTMLLegendElement> {
+		ref?: HTMLLegendElement | null;
+	}
 
 	let {
 		ref = $bindable(null),
 		class: className,
+		children,
 		...restProps
-	}: WithoutChild<FormPrimitive.LegendProps> = $props();
+	}: Props = $props();
 </script>
 
-<FormPrimitive.Legend
-	bind:ref
-	class={cn('data-[fs-error]:text-destructive text-sm font-medium leading-none', className)}
+<legend
+	bind:this={ref}
+	class={cn('text-sm font-medium leading-none', className)}
 	{...restProps}
-/>
+>
+	{@render children?.()}
+</legend>

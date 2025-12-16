@@ -1,24 +1,30 @@
 <script lang="ts">
-	import * as FormPrimitive from 'formsnap';
-	import { Label } from '$lib/components/ui/label/index.js';
-	import { cn, type WithoutChild } from '$lib/utils.js';
+	import { cn } from '$lib/utils.js';
+	import type { HTMLLabelAttributes } from 'svelte/elements';
+
+	interface Props extends HTMLLabelAttributes {
+		ref?: HTMLLabelElement | null;
+		hasError?: boolean;
+	}
 
 	let {
 		ref = $bindable(null),
 		children,
 		class: className,
+		hasError = false,
 		...restProps
-	}: WithoutChild<FormPrimitive.LabelProps> = $props();
+	}: Props = $props();
 </script>
 
-<FormPrimitive.Label {...restProps} bind:ref>
-	{#snippet child({ props })}
-		<Label
-			{...props}
-			data-slot="form-label"
-			class={cn('data-[fs-error]:text-destructive', className)}
-		>
-			{@render children?.()}
-		</Label>
-	{/snippet}
-</FormPrimitive.Label>
+<label
+	bind:this={ref}
+	data-slot="form-label"
+	class={cn(
+		'text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70',
+		hasError && 'text-destructive',
+		className
+	)}
+	{...restProps}
+>
+	{@render children?.()}
+</label>
