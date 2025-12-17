@@ -212,6 +212,8 @@ export const load: PageServerLoad = async () => {
 
 ### 3. Update `src/routes/auth/+page.svelte`
 
+Using the new `Field` component from shadcn-svelte:
+
 ```svelte
 <script lang="ts">
   import { page } from '$app/state';
@@ -221,16 +223,13 @@ export const load: PageServerLoad = async () => {
   import { Input } from '$lib/components/ui/input';
   import { Separator } from '$lib/components/ui/separator';
   import * as Alert from '$lib/components/ui/alert/index.js';
-  import * as Form from '$lib/components/ui/form';
+  import * as Field from '$lib/components/ui/field';
   import DHCLogo from '/src/assets/images/dhc-logo.png?enhanced';
   import { magicLinkAuth, discordAuth } from './data.remote';
 
   const hash = $derived(page.url.hash.split('#')[1] as string);
   let errorMessage = $derived(new URLSearchParams(hash).get('error_description'));
   const urlMessage = $derived(page.url.searchParams.get('message'));
-
-  // Get success message from magic link form if available
-  // Remote Functions return data is accessible via the form's return
 </script>
 
 <Card
@@ -245,6 +244,13 @@ export const load: PageServerLoad = async () => {
     <Alert.Root variant="success" class="max-w-md mt-4">
       <Alert.Title>Success</Alert.Title>
       <Alert.Description>{urlMessage}</Alert.Description>
+    </Alert.Root>
+  {/if}
+  
+  {#if magicLinkAuth.result?.success}
+    <Alert.Root variant="success" class="max-w-md mt-4">
+      <Alert.Title>Success</Alert.Title>
+      <Alert.Description>{magicLinkAuth.result.success}</Alert.Description>
     </Alert.Root>
   {/if}
   
@@ -272,14 +278,18 @@ export const load: PageServerLoad = async () => {
 
   <!-- Magic Link Form -->
   <form {...magicLinkAuth} class="w-full space-y-4">
-    <Form.Field field={magicLinkAuth.fields.email} label="Email">
-      {#snippet children(field)}
-        <Input
-          {...field.as('email')}
-          placeholder="Enter your email"
-        />
-      {/snippet}
-    </Form.Field>
+    <Field.Field>
+      {@const fieldProps = magicLinkAuth.fields.email.as('email')}
+      <Field.Label for={fieldProps.name}>Email</Field.Label>
+      <Input
+        {...fieldProps}
+        id={fieldProps.name}
+        placeholder="Enter your email"
+      />
+      {#each magicLinkAuth.fields.email.issues() as issue}
+        <Field.Error>{issue.message}</Field.Error>
+      {/each}
+    </Field.Field>
     
     <Button type="submit" class="w-full">
       Send Magic Link
@@ -290,34 +300,40 @@ export const load: PageServerLoad = async () => {
 
 ## Key Differences
 
-| Aspect | Superforms | Remote Functions |
-|--------|------------|------------------|
+| Aspect | Superforms | Remote Functions + Field |
+|--------|------------|--------------------------|
 | Form initialization | `superForm(data.form, {...})` | Import from `.remote.ts` |
 | Form binding | `use:enhance` | `{...formObject}` spread |
+| Field wrapper | `Form.Field {form} name="email"` | `Field.Field` (no binding) |
 | Field props | `{...props}` from snippet | `field.as('type')` |
-| Errors | `$errors.fieldName` | `field.issues()` |
+| Label | `Form.Label` inside `Form.Control` | `Field.Label for={id}` |
+| Errors | `Form.FieldErrors` | `{#each field.issues()}` + `Field.Error` |
+| Description | `Form.Description` | `Field.Description` |
 | Submitting state | `$submitting` | TBD - check docs |
 | Server validation | `superValidate()` + `setError()` | `invalid(issue.field())` |
 | Success messages | `message(form, {...})` | Return object from handler |
 
-## Handling Success Messages
+## Field Component Pattern
 
-Remote Functions return values can be accessed. Check the Svelte MCP for the exact API, but typically:
+The new `Field` component from shadcn-svelte is purely presentational. Here's the pattern:
 
 ```svelte
-<script>
-  import { magicLinkAuth } from './data.remote';
-  
-  // The form may have a way to access the last return value
-  // Check MCP docs for: form return values, success state
-</script>
-
-{#if magicLinkAuth.result?.success}
-  <Alert.Root variant="success">
-    <Alert.Description>{magicLinkAuth.result.success}</Alert.Description>
-  </Alert.Root>
-{/if}
+<Field.Field>
+  {@const fieldProps = myForm.fields.fieldName.as('text')}
+  <Field.Label for={fieldProps.name}>Label Text</Field.Label>
+  <Input {...fieldProps} id={fieldProps.name} placeholder="..." />
+  <Field.Description>Optional helper text</Field.Description>
+  {#each myForm.fields.fieldName.issues() as issue}
+    <Field.Error>{issue.message}</Field.Error>
+  {/each}
+</Field.Field>
 ```
+
+Key points:
+- Use `{@const fieldProps = ...}` to get field attributes
+- Always set `id={fieldProps.name}` for accessibility
+- Iterate over `issues()` to display errors
+- `Field.Description` is optional
 
 ## Testing
 

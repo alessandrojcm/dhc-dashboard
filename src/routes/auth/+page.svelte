@@ -6,7 +6,7 @@
 	import { Input } from "$lib/components/ui/input";
 	import { Separator } from "$lib/components/ui/separator";
 	import * as Alert from "$lib/components/ui/alert/index.js";
-	import * as Form from "$lib/components/ui/form";
+	import * as Field from "$lib/components/ui/field";
 	import DHCLogo from "/src/assets/images/dhc-logo.png?enhanced";
 	import { magicLinkAuth, discordAuth } from "./data.remote";
 
@@ -56,16 +56,18 @@
 
 	<!-- Magic Link Form -->
 	<form {...magicLinkAuth} class="w-full max-w-xs space-y-4">
-		<Form.Field field={magicLinkAuth.fields.email}>
-			{#snippet children(field)}
-				<label for="email" class="text-sm font-medium">Email</label>
-				<Input
-					{...field.as("email")}
-					id="email"
-					placeholder="your@email.com"
-				/>
-			{/snippet}
-		</Form.Field>
+		<Field.Field>
+			{@const fieldProps = magicLinkAuth.fields.email.as("email")}
+			<Field.Label for={fieldProps.name}>Email</Field.Label>
+			<Input
+				{...fieldProps}
+				id={fieldProps.name}
+				placeholder="your@email.com"
+			/>
+			{#each magicLinkAuth.fields.email.issues() as issue}
+				<Field.Error>{issue.message}</Field.Error>
+			{/each}
+		</Field.Field>
 
 		<Button type="submit" class="w-full">Send Magic Link</Button>
 	</form>

@@ -11,50 +11,52 @@
 		onDateChange: (date: Date) => void;
 		minValue?: DateValue;
 		maxValue?: DateValue;
-		name: string;
-		id: string;
-		'data-fs-error': string | undefined;
-		'aria-describedby': string | undefined;
-		'aria-invalid': 'true' | undefined;
-		'aria-required': 'true' | undefined;
-		'data-fs-control': string;
+		name?: string;
+		id?: string;
 	};
 
 	const df = new DateFormatter('en-US', {
 		dateStyle: 'long'
 	});
 
-	let { value, onDateChange, minValue, maxValue, ...rest }: Props = $props();
+	let { value, onDateChange, minValue, maxValue, name, id, ...rest }: Props = $props();
 	let open = $state(false);
+
+	// Derive the ISO string value for form submission
+	const formValue = $derived(value ? value.toDate(getLocalTimeZone()).toISOString() : '');
 </script>
 
-<Popover.Root bind:open>
-	<Popover.Trigger {...rest}>
-		{#snippet child({ props })}
-			<Button
-				variant="outline"
-				class={cn('w-full justify-start text-left font-normal', !value && 'text-muted-foreground')}
-				{...props}
-			>
-				<CalendarIcon class="mr-2 size-4" />
-				{value ? df.format(value.toDate(getLocalTimeZone())) : 'Select a date'}
-			</Button>
-		{/snippet}
-	</Popover.Trigger>
-	<Popover.Content class="w-auto p-0">
-		<Calendar
-			bind:value
-			type="single"
-			initialFocus
-			captionLayout="dropdown"
-			{minValue}
-			{maxValue}
-			onValueChange={(date: DateValue | undefined) => {
-				if (date) {
-					onDateChange(date.toDate(getLocalTimeZone()));
-				}
-				open = false;
-			}}
-		/>
-	</Popover.Content>
-</Popover.Root>
+<div>
+	<Popover.Root bind:open>
+		<Popover.Trigger {...rest}>
+			{#snippet child({ props })}
+				<Button
+					variant="outline"
+					class={cn('w-full justify-start text-left font-normal', !value && 'text-muted-foreground')}
+					{...props}
+					{id}
+				>
+					<CalendarIcon class="mr-2 size-4" />
+					{value ? df.format(value.toDate(getLocalTimeZone())) : 'Select a date'}
+				</Button>
+			{/snippet}
+		</Popover.Trigger>
+		<Popover.Content class="w-auto p-0">
+			<Calendar
+				bind:value
+				type="single"
+				initialFocus
+				captionLayout="dropdown"
+				{minValue}
+				{maxValue}
+				onValueChange={(date: DateValue | undefined) => {
+					if (date) {
+						onDateChange(date.toDate(getLocalTimeZone()));
+					}
+					open = false;
+				}}
+			/>
+		</Popover.Content>
+	</Popover.Root>
+	<input type="hidden" {name} value={formValue} />
+</div>

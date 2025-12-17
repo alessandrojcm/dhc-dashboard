@@ -54,7 +54,7 @@ test('fills out the waitlist form and asserts no errors', async ({ page }) => {
 	await page.getByLabel('Select a year').selectOption(testData.dateOfBirth.year().toString());
 	await page.getByLabel('Select a month').selectOption(testData.dateOfBirth.format('M'));
 	await page.getByRole('button', { name: testData.dateOfBirth.format('dddd, MMMM D,') }).click();
-
+	await page.getByRole('radio', { name: 'No', exact: true }).scrollIntoViewIfNeeded();
 	await page.getByRole('radio', { name: 'No', exact: true }).click();
 
 	await page.getByLabel(/any medical condition/i).fill(testData.medicalConditions);
@@ -75,8 +75,7 @@ test('it should not allow people under 16 to sign up', async ({ page }) => {
 	await page.getByLabel('Date of birth').click();
 	await page.getByLabel('Select a year').selectOption(dateOfBirth.year().toString());
 	await page.getByLabel('Select a month').selectOption(dateOfBirth.format('M'));
-	await page.getByRole('button', { name: dateOfBirth.format('dddd, MMMM D,') }).click();
-
+await page.getByRole('button', { name: dateOfBirth.format('dddd, MMMM D,') }).click();
 	// Submit the form
 	await page.click('button[type="submit"]');
 	await expect(await page.getByText(/you must be at least 16 years old/i)).toBeInViewport();
