@@ -1,7 +1,9 @@
 <script lang="ts">
-import * as Sentry from "@sentry/sveltekit";
+	import { page } from "$app/state";
+	import * as Alert from "$lib/components/ui/alert";
+	import * as Sentry from "@sentry/sveltekit";
 
-Sentry.captureMessage(`Error page loaded: ${$page.error?.message}`, "error");
+	Sentry.captureMessage(`Error page loaded: ${page.error?.message}`, "error");
 </script>
 
 <svelte:head>
@@ -12,7 +14,7 @@ Sentry.captureMessage(`Error page loaded: ${$page.error?.message}`, "error");
 	<Alert.Root variant="destructive" class="max-w-md h-fit">
 		<Alert.Title>Error</Alert.Title>
 		<Alert.Description>
-			{$page.error?.message || 'An unexpected error occurred.'}
+			{page.error?.message || "An unexpected error occurred."}
 		</Alert.Description>
 	</Alert.Root>
 </div>

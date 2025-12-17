@@ -15,39 +15,43 @@
 	import { parseIncompletePhoneNumber } from 'libphonenumber-js';
 	import { ChevronDown, ChevronUp } from 'lucide-svelte';
 
+
 	const countryCodes = $state(countryCodesList.all());
+	$inspect(countryCodes);
 	let open = $state(false);
 	let triggerRef = $state<HTMLButtonElement>(null!);
 
 	let {
-		phoneNumber = $bindable(''),
+		value: initialValue = '',
+		onChange,
 		placeholder = 'Enter your phone number',
+		name,
+		id,
 		...props
 	}: {
-		placeholder: string;
-		phoneNumber: string;
-		name: string;
-		id: string;
-		'data-fs-error': string | undefined;
-		'aria-describedby': string | undefined;
-		'aria-invalid': 'true' | undefined;
-		'aria-required': 'true' | undefined;
-		'data-fs-control': string;
+		placeholder?: string;
+		value?: string | number;
+		onChange?: (value: string) => void;
+		name?: string;
+		id?: string;
 	} = $props();
 
-	let { nationalNumber, value } = $derived.by(() => {
+	// Internal state for the phone number value - synced with initialValue
+	let phoneNumber = $derived(String(initialValue));
+
+	let { nationalNumber, value: countryValue } = $derived.by(() => {
 		return parseIncomingPhoneNumber(phoneNumber);
 	});
 
 	const selectedValue = $derived.by(() => {
-		if (!value) return null;
-		return countryCodesList.findOne('countryCode', value)?.countryCallingCode ?? null;
+		if (!countryValue) return null;
+		return countryCodesList.findOne('countryCode', countryValue)?.countryCallingCode ?? null;
 	});
 
 	// Format the national number for display in the input field
 	const formatedPhone = $derived.by(() => {
-		if (!value) return new AsYouType().input(nationalNumber);
-		return new AsYouType(value as CountryCode).input(nationalNumber);
+		if (!countryValue) return new AsYouType().input(nationalNumber);
+		return new AsYouType(countryValue as CountryCode).input(nationalNumber);
 	});
 
 	// Parse an incoming phone number to extract country code and national number
@@ -111,12 +115,14 @@
 		// Parse the input to remove any formatting
 		nationalNumber = parseIncompletePhoneNumber(inputValue);
 		// Update the parent with the full international format
+		let newPhoneNumber = '';
 		if (selectedValue && nationalNumber) {
-			phoneNumber = `+${selectedValue}${nationalNumber}`;
+			newPhoneNumber = `+${selectedValue}${nationalNumber}`;
 		} else if (nationalNumber) {
-			phoneNumber = nationalNumber;
-		} else {
-			phoneNumber = '';
+			newPhoneNumber = nationalNumber;
+		}
+		if (onChange) {
+			onChange(newPhoneNumber);
 		}
 	}
 </script>
@@ -139,7 +145,7 @@
 						<ChevronDown class="h-4 w-4" />
 					{/if}
 					{#if selectedValue}
-						{`${getUnicodeFlagIcon(value)} +${selectedValue}`}
+						{`${getUnicodeFlagIcon(countryValue)} +${selectedValue}`}
 					{:else}
 						Select a country...
 					{/if}
@@ -152,13 +158,16 @@
 				<Command.List>
 					<Command.Empty>No country found.</Command.Empty>
 					<Command.Group>
-						{#each countryCodes as country (country.countryCode)}
+						{#each countryCodes as country (country.countryNameEn)}
 							<Command.Item
 								value={country.countryNameEn}
 								onSelect={() => {
-									phoneNumber = formatIncompletePhoneNumber(
+									const newPhoneNumber = formatIncompletePhoneNumber(
 										`+${country.countryCallingCode}${nationalNumber}`
 									);
+									if (onChange) {
+										onChange(newPhoneNumber);
+									}
 									closeAndFocusTrigger();
 								}}
 							>
@@ -180,5 +189,5 @@
 		}}
 		{placeholder}
 	/>
-	<input type="hidden" {...props} bind:value={phoneNumber} />
+	<input type="hidden" {name} {id} value={phoneNumber} />
 </div>

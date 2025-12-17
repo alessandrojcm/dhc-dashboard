@@ -112,18 +112,22 @@ export const submitBulkInvites = form(
 );
 ```
 
-Update `invite-drawer.svelte`:
+Update `invite-drawer.svelte` using the new `Field` component:
 
 ```svelte
 <script lang="ts">
   import { validateSingleInvite, submitBulkInvites } from './data.remote';
   import { adminInviteSchema } from '$lib/schemas/adminInvite';
-  import * as Form from '$lib/components/ui/form';
+  import * as Field from '$lib/components/ui/field';
+  import * as Sheet from '$lib/components/ui/sheet';
+  import * as Card from '$lib/components/ui/card';
   import { Button } from '$lib/components/ui/button';
   import { Input } from '$lib/components/ui/input';
+  import { Separator } from '$lib/components/ui/separator';
+  import { ScrollArea } from '$lib/components/ui/scroll-area';
   import DatePicker from '$lib/components/ui/date-picker.svelte';
   import PhoneInput from '$lib/components/ui/phone-input.svelte';
-  import { Plus, Trash2, Loader } from 'lucide-svelte';
+  import { Plus, Trash2 } from 'lucide-svelte';
   import { fromDate, getLocalTimeZone } from '@internationalized/date';
   import dayjs from 'dayjs';
 
@@ -204,44 +208,64 @@ Update `invite-drawer.svelte`:
         onsubmit={(e) => { e.preventDefault(); addInviteToList(); }}
         class="space-y-4 p-4"
       >
-        <div class="grid grid-cols-2 gap-4">
-          <Form.Field field={validateSingleInvite.fields.firstName} label="First Name">
-            {#snippet children(field)}
-              <Input {...field.as('text')} placeholder="First name" />
-            {/snippet}
-          </Form.Field>
-          
-          <Form.Field field={validateSingleInvite.fields.lastName} label="Last Name">
-            {#snippet children(field)}
-              <Input {...field.as('text')} placeholder="Last name" />
-            {/snippet}
-          </Form.Field>
-        </div>
+        <Field.Group>
+          <div class="grid grid-cols-2 gap-4">
+            <Field.Field>
+              {@const fieldProps = validateSingleInvite.fields.firstName.as('text')}
+              <Field.Label for={fieldProps.name}>First Name</Field.Label>
+              <Input {...fieldProps} id={fieldProps.name} placeholder="First name" />
+              {#each validateSingleInvite.fields.firstName.issues() as issue}
+                <Field.Error>{issue.message}</Field.Error>
+              {/each}
+            </Field.Field>
+            
+            <Field.Field>
+              {@const fieldProps = validateSingleInvite.fields.lastName.as('text')}
+              <Field.Label for={fieldProps.name}>Last Name</Field.Label>
+              <Input {...fieldProps} id={fieldProps.name} placeholder="Last name" />
+              {#each validateSingleInvite.fields.lastName.issues() as issue}
+                <Field.Error>{issue.message}</Field.Error>
+              {/each}
+            </Field.Field>
+          </div>
 
-        <Form.Field field={validateSingleInvite.fields.email} label="Email">
-          {#snippet children(field)}
-            <Input {...field.as('email')} placeholder="Email address" />
-          {/snippet}
-        </Form.Field>
+          <Field.Field>
+            {@const fieldProps = validateSingleInvite.fields.email.as('email')}
+            <Field.Label for={fieldProps.name}>Email</Field.Label>
+            <Input {...fieldProps} id={fieldProps.name} placeholder="Email address" />
+            {#each validateSingleInvite.fields.email.issues() as issue}
+              <Field.Error>{issue.message}</Field.Error>
+            {/each}
+          </Field.Field>
 
-        <Form.Field field={validateSingleInvite.fields.phoneNumber} label="Phone Number">
-          {#snippet children(field)}
+          <Field.Field>
+            {@const fieldProps = validateSingleInvite.fields.phoneNumber.as('tel')}
+            <Field.Label for={fieldProps.name}>Phone Number</Field.Label>
             <PhoneInput
-              {...field.as('tel')}
-              phoneNumber={field.value() as string}
-              onPhoneNumberChange={(v) => field.set(v)}
+              {...fieldProps}
+              id={fieldProps.name}
+              placeholder="Phone number"
+              onChange={(v) => validateSingleInvite.fields.phoneNumber.set(String(v))}
             />
-          {/snippet}
-        </Form.Field>
+            {#each validateSingleInvite.fields.phoneNumber.issues() as issue}
+              <Field.Error>{issue.message}</Field.Error>
+            {/each}
+          </Field.Field>
 
-        <Form.Field field={validateSingleInvite.fields.dateOfBirth} label="Date of Birth">
-          {#snippet children(field)}
+          <Field.Field>
+            {@const { value, ...fieldProps } = validateSingleInvite.fields.dateOfBirth.as('date')}
+            <Field.Label for={fieldProps.name}>Date of Birth</Field.Label>
             <DatePicker
+              {...fieldProps}
+              id={fieldProps.name}
               value={dobValue}
-              onDateChange={(date) => date && field.set(date)}
+              onDateChange={(date) => date && validateSingleInvite.fields.dateOfBirth.set(date)}
             />
-          {/snippet}
-        </Form.Field>
+            {#each validateSingleInvite.fields.dateOfBirth.issues() as issue}
+              <Field.Error>{issue.message}</Field.Error>
+            {/each}
+          </Field.Field>
+        </Field.Group>
 
         <Button type="submit" variant="outline" class="w-full">
           <Plus class="mr-2 h-4 w-4" />
@@ -262,7 +286,7 @@ Update `invite-drawer.svelte`:
           </div>
           
           {#each invitesList as invite, index (invite.email)}
-            <Card class="p-3">
+            <Card.Root class="p-3">
               <div class="flex justify-between items-center">
                 <div>
                   <p class="font-medium">{invite.firstName} {invite.lastName}</p>
@@ -272,7 +296,7 @@ Update `invite-drawer.svelte`:
                   <Trash2 class="h-4 w-4" />
                 </Button>
               </div>
-            </Card>
+            </Card.Root>
           {/each}
         </div>
 
@@ -349,16 +373,15 @@ export const updateWorkshop = form(
 );
 ```
 
-Update `workshop-form.svelte`:
+Update `workshop-form.svelte` using the new `Field` component:
 
 ```svelte
 <script lang="ts">
   import { createWorkshop, updateWorkshop } from './workshop-form.remote';
   import { CreateWorkshopSchema, UpdateWorkshopSchema } from '$lib/server/services/workshops';
-  import * as Form from '$lib/components/ui/form';
+  import * as Field from '$lib/components/ui/field';
   import { Input } from '$lib/components/ui/input';
   import { Textarea } from '$lib/components/ui/textarea';
-  import { Switch } from '$lib/components/ui/switch';
   import { Button } from '$lib/components/ui/button';
   import Calendar25 from '$lib/components/calendar-25.svelte';
   import { 
@@ -486,80 +509,112 @@ Update `workshop-form.svelte`:
 </script>
 
 <form {...formObj.preflight(schema)} class="space-y-6">
-  <Form.Field field={formObj.fields.title} label="Workshop Title">
-    {#snippet children(field)}
+  <Field.Group>
+    <Field.Field>
+      {@const fieldProps = formObj.fields.title.as('text')}
+      <Field.Label for={fieldProps.name}>Workshop Title</Field.Label>
       <Input 
-        {...field.as('text')} 
+        {...fieldProps}
+        id={fieldProps.name}
         disabled={!isWorkshopEditable}
         placeholder="Enter workshop title" 
       />
-    {/snippet}
-  </Form.Field>
+      {#each formObj.fields.title.issues() as issue}
+        <Field.Error>{issue.message}</Field.Error>
+      {/each}
+    </Field.Field>
 
-  <Form.Field field={formObj.fields.description} label="Description">
-    {#snippet children(field)}
+    <Field.Field>
+      {@const fieldProps = formObj.fields.description.as('text')}
+      <Field.Label for={fieldProps.name}>Description</Field.Label>
       <Textarea 
-        {...field.as('text')} 
+        {...fieldProps}
+        id={fieldProps.name}
         disabled={!isWorkshopEditable}
         placeholder="Workshop description" 
       />
-    {/snippet}
-  </Form.Field>
+      {#each formObj.fields.description.issues() as issue}
+        <Field.Error>{issue.message}</Field.Error>
+      {/each}
+    </Field.Field>
+  </Field.Group>
 
   <!-- Date and Time -->
-  <div class="grid grid-cols-2 gap-4">
-    <Form.Field field={formObj.fields.workshop_date} label="Date">
-      {#snippet children(field)}
+  <Field.Set>
+    <Field.Legend>Date and Time</Field.Legend>
+    <div class="grid grid-cols-2 gap-4">
+      <Field.Field>
+        {@const { value, ...fieldProps } = formObj.fields.workshop_date.as('date')}
+        <Field.Label for={fieldProps.name}>Date</Field.Label>
         <Calendar25
           value={workshopDateValue}
           onValueChange={(date) => updateWorkshopDates(date, 'date')}
           disabled={!isWorkshopEditable}
         />
-      {/snippet}
-    </Form.Field>
+        {#each formObj.fields.workshop_date.issues() as issue}
+          <Field.Error>{issue.message}</Field.Error>
+        {/each}
+      </Field.Field>
 
-    <div class="space-y-4">
-      <div>
-        <Form.Label>Start Time</Form.Label>
-        <Input
-          type="time"
-          value={startTime}
-          oninput={(e) => updateWorkshopDates(e.currentTarget.value, 'start')}
-          disabled={!isWorkshopEditable}
-        />
-      </div>
-      <div>
-        <Form.Label>End Time</Form.Label>
-        <Input
-          type="time"
-          value={endTime}
-          oninput={(e) => updateWorkshopDates(e.currentTarget.value, 'end')}
-          disabled={!isWorkshopEditable}
-        />
+      <div class="space-y-4">
+        <Field.Field>
+          <Field.Label for="start-time">Start Time</Field.Label>
+          <Input
+            id="start-time"
+            type="time"
+            value={startTime}
+            oninput={(e) => updateWorkshopDates(e.currentTarget.value, 'start')}
+            disabled={!isWorkshopEditable}
+          />
+        </Field.Field>
+        <Field.Field>
+          <Field.Label for="end-time">End Time</Field.Label>
+          <Input
+            id="end-time"
+            type="time"
+            value={endTime}
+            oninput={(e) => updateWorkshopDates(e.currentTarget.value, 'end')}
+            disabled={!isWorkshopEditable}
+          />
+          {#each formObj.fields.workshop_end_date.issues() as issue}
+            <Field.Error>{issue.message}</Field.Error>
+          {/each}
+        </Field.Field>
       </div>
     </div>
-  </div>
+  </Field.Set>
 
   <!-- Pricing -->
-  <div class="grid grid-cols-2 gap-4">
-    <Form.Field field={formObj.fields.member_price} label="Member Price">
-      {#snippet children(field)}
+  <Field.Set>
+    <Field.Legend>Pricing</Field.Legend>
+    <div class="grid grid-cols-2 gap-4">
+      <Field.Field>
+        {@const fieldProps = formObj.fields.member_price.as('number')}
+        <Field.Label for={fieldProps.name}>Member Price</Field.Label>
         <Input 
-          {...field.as('number')} 
+          {...fieldProps}
+          id={fieldProps.name}
           disabled={!canEditPricing}
         />
-      {/snippet}
-    </Form.Field>
+        {#each formObj.fields.member_price.issues() as issue}
+          <Field.Error>{issue.message}</Field.Error>
+        {/each}
+      </Field.Field>
 
-    <Form.Field field={formObj.fields.non_member_price} label="Non-Member Price">
-      {#snippet children(field)}
+      <Field.Field>
+        {@const fieldProps = formObj.fields.non_member_price.as('number')}
+        <Field.Label for={fieldProps.name}>Non-Member Price</Field.Label>
         <Input 
-          {...field.as('number')} 
+          {...fieldProps}
+          id={fieldProps.name}
           disabled={!canEditPricing}
         />
-      {/snippet}
-    </Form.Field>
-  </div>
+        {#each formObj.fields.non_member_price.issues() as issue}
+          <Field.Error>{issue.message}</Field.Error>
+        {/each}
+      </Field.Field>
+    </div>
+  </Field.Set>
 
   <Button type="submit">
     {mode === 'create' ? 'Create Workshop' : 'Update Workshop'}

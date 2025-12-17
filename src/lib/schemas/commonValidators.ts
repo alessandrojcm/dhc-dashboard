@@ -21,5 +21,6 @@ export const phoneNumberValidator = (nomEmptyMessage: string = 'Phone number is 
 
 export const dobValidator = v.pipe(
 	v.date('Date of birth is required.'),
-	v.check((input) => dayjs().diff(input, 'years') >= 16, 'You must be at least 16 years old.')
+	v.check((input) => dayjs().diff(input, 'years') >= 16, 'You must be at least 16 years old.'),
+	v.transform((input) => input)
 );
