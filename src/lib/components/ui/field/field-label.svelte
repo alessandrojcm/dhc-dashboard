@@ -1,4 +1,5 @@
 <script lang="ts">
+<<<<<<< HEAD
 import { Label } from "$lib/components/ui/label/index.js";
 import { cn } from "$lib/utils.js";
 import type { ComponentProps } from "svelte";
@@ -9,6 +10,18 @@ let {
 	children,
 	...restProps
 }: ComponentProps<typeof Label> = $props();
+=======
+	import { Label } from "$lib/components/ui/label/index.js";
+	import { cn } from "$lib/utils.js";
+	import type { ComponentProps } from "svelte";
+
+	let {
+		ref = $bindable(null),
+		class: className,
+		children,
+		...restProps
+	}: ComponentProps<typeof Label> = $props();
+>>>>>>> d5cb40b (feat: migrated auth and waitlist form to svelte form action)
 </script>
 
 <Label

@@ -1,5 +1,5 @@
 import { form, getRequestEvent } from '$app/server';
-import { redirect } from '@sveltejs/kit';
+import { invalid, redirect } from '@sveltejs/kit';
 import * as v from 'valibot';
 
 const magicLinkSchema = v.object({
@@ -25,7 +25,7 @@ export const magicLinkAuth = form(magicLinkSchema, async (data, issue) => {
 	});
 
 	if (error) {
-		throw issue.email(error.message);
+		return invalid(issue.email(error.message));
 	}
 
 	return { success: 'Check your email for the magic link' };

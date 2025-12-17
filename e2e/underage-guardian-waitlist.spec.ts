@@ -45,6 +45,7 @@ test("underage user (16-17) should see guardian fields", async ({ page }) => {
 	// Fill out the date of birth for an underage user
 	await page.getByLabel(/date of birth/i).scrollIntoViewIfNeeded();
 	await page.getByLabel(/date of birth/i).click();
+<<<<<<< HEAD
 	await page
 		.getByLabel("Select a year")
 		.selectOption(underageTestData.dateOfBirth.year().toString());
@@ -56,6 +57,11 @@ test("underage user (16-17) should see guardian fields", async ({ page }) => {
 			name: underageTestData.dateOfBirth.format("dddd, MMMM D,"),
 		})
 		.click();
+=======
+	await page.getByLabel('Select a year').selectOption(underageTestData.dateOfBirth.year().toString());
+	await page.getByLabel('Select a month').selectOption(underageTestData.dateOfBirth.format('M'));
+	await page.getByRole('button', { name: underageTestData.dateOfBirth.format('dddd, MMMM D,') }).click();
+>>>>>>> d5cb40b (feat: migrated auth and waitlist form to svelte form action)
 
 	// Verify that guardian fields are visible
 	await expect(
@@ -73,6 +79,7 @@ test("adult user (18+) should not see guardian fields", async ({ page }) => {
 	// Fill out the date of birth for an adult user
 	await page.getByLabel(/date of birth/i).scrollIntoViewIfNeeded();
 	await page.getByLabel(/date of birth/i).click();
+<<<<<<< HEAD
 	await page
 		.getByLabel("Select a year")
 		.selectOption(adultTestData.dateOfBirth.year().toString());
@@ -84,6 +91,11 @@ test("adult user (18+) should not see guardian fields", async ({ page }) => {
 			name: adultTestData.dateOfBirth.format("dddd, MMMM D,"),
 		})
 		.click();
+=======
+	await page.getByLabel('Select a year').selectOption(adultTestData.dateOfBirth.year().toString());
+	await page.getByLabel('Select a month').selectOption(adultTestData.dateOfBirth.format('M'));
+	await page.getByRole('button', { name: adultTestData.dateOfBirth.format('dddd, MMMM D,') }).click();
+>>>>>>> d5cb40b (feat: migrated auth and waitlist form to svelte form action)
 
 	// Verify that guardian fields are not visible
 	await expect(
@@ -112,8 +124,13 @@ test("underage user (16-17) should be required to fill guardian fields", async (
 		delay: 50,
 	});
 	await phoneInputField.blur();
+<<<<<<< HEAD
 	await page.getByPlaceholder("Enter your pronouns").scrollIntoViewIfNeeded();
 	await page.getByPlaceholder("Enter your pronouns").fill("he/him");
+=======
+	await page.getByPlaceholder('Enter your pronouns').scrollIntoViewIfNeeded();
+	await page.getByPlaceholder('Enter your pronouns').fill('he/him');
+>>>>>>> d5cb40b (feat: migrated auth and waitlist form to svelte form action)
 	await page.getByLabel(/gender/i).scrollIntoViewIfNeeded();
 	await page.getByLabel(/gender/i).click();
 	await page.getByRole("option", { name: "man (cis)", exact: true }).click();
@@ -121,6 +138,7 @@ test("underage user (16-17) should be required to fill guardian fields", async (
 	// Fill out the date of birth for an underage user
 	await page.getByLabel(/date of birth/i).scrollIntoViewIfNeeded();
 	await page.getByLabel(/date of birth/i).click();
+<<<<<<< HEAD
 	await page
 		.getByLabel("Select a year")
 		.selectOption(underageTestData.dateOfBirth.year().toString());
@@ -141,6 +159,16 @@ test("underage user (16-17) should be required to fill guardian fields", async (
 	await page
 		.getByLabel(/any medical condition/i)
 		.fill(underageTestData.medicalConditions);
+=======
+	await page.getByLabel('Select a year').selectOption(underageTestData.dateOfBirth.year().toString());
+	await page.getByLabel('Select a month').selectOption(underageTestData.dateOfBirth.format('M'));
+	await page.getByRole('button', { name: underageTestData.dateOfBirth.format('dddd, MMMM D,') }).click();
+	await page.getByRole('radio', { name: 'No', exact: true }).scrollIntoViewIfNeeded();
+	await page.getByRole('radio', { name: 'No', exact: true }).click();
+
+	await page.getByLabel(/any medical condition/i).scrollIntoViewIfNeeded();
+	await page.getByLabel(/any medical condition/i).fill(underageTestData.medicalConditions);
+>>>>>>> d5cb40b (feat: migrated auth and waitlist form to svelte form action)
 
 	// Submit the form without filling guardian fields
 	await page.locator('button[type="submit"]').scrollIntoViewIfNeeded();
@@ -175,8 +203,13 @@ test("underage user (16-17) should be able to submit with guardian information",
 		delay: 50,
 	});
 	await phoneInputField.blur();
+<<<<<<< HEAD
 	await page.getByPlaceholder("Enter your pronouns").scrollIntoViewIfNeeded();
 	await page.getByPlaceholder("Enter your pronouns").fill("he/him");
+=======
+	await page.getByPlaceholder('Enter your pronouns').scrollIntoViewIfNeeded();
+	await page.getByPlaceholder('Enter your pronouns').fill('he/him');
+>>>>>>> d5cb40b (feat: migrated auth and waitlist form to svelte form action)
 	await page.getByLabel(/gender/i).scrollIntoViewIfNeeded();
 	await page.getByLabel(/gender/i).click();
 	await page.getByRole("option", { name: "man (cis)", exact: true }).click();
@@ -184,6 +217,7 @@ test("underage user (16-17) should be able to submit with guardian information",
 	// Fill out the date of birth for an underage user
 	await page.getByLabel(/date of birth/i).scrollIntoViewIfNeeded();
 	await page.getByLabel(/date of birth/i).click();
+<<<<<<< HEAD
 	await page
 		.getByLabel("Select a year")
 		.selectOption(underageTestData.dateOfBirth.year().toString());
@@ -228,6 +262,29 @@ test("underage user (16-17) should be able to submit with guardian information",
 			delay: 50,
 		},
 	);
+=======
+	await page.getByLabel('Select a year').selectOption(underageTestData.dateOfBirth.year().toString());
+	await page.getByLabel('Select a month').selectOption(underageTestData.dateOfBirth.format('M'));
+	await page.getByRole('button', { name: underageTestData.dateOfBirth.format('dddd, MMMM D,') }).click();
+	await page.getByRole('radio', { name: 'No', exact: true }).scrollIntoViewIfNeeded();
+	await page.getByRole('radio', { name: 'No', exact: true }).click();
+
+	await page.getByLabel(/any medical condition/i).scrollIntoViewIfNeeded();
+	await page.getByLabel(/any medical condition/i).fill(underageTestData.medicalConditions);
+
+	// Fill out guardian information
+	await page.locator('input[name="guardianFirstName"]').scrollIntoViewIfNeeded();
+	await page.fill('input[name="guardianFirstName"]', underageTestData.guardianFirstName);
+	await page.locator('input[name="guardianLastName"]').scrollIntoViewIfNeeded();
+	await page.fill('input[name="guardianLastName"]', underageTestData.guardianLastName);
+
+	// Find the guardian phone input field
+	const guardianPhoneInputField = page.getByLabel('Guardian Phone Number');
+	await guardianPhoneInputField.scrollIntoViewIfNeeded();
+	await guardianPhoneInputField.pressSequentially(underageTestData.guardianPhoneNumber, {
+		delay: 50
+	});
+>>>>>>> d5cb40b (feat: migrated auth and waitlist form to svelte form action)
 	await guardianPhoneInputField.blur();
 
 	// Submit the form
@@ -262,14 +319,20 @@ test("adult user (18+) should be able to submit without guardian information", a
 		delay: 50,
 	});
 	await phoneInputField.blur();
+<<<<<<< HEAD
 	await page.getByPlaceholder("Enter your pronouns").scrollIntoViewIfNeeded();
 	await page.getByPlaceholder("Enter your pronouns").fill("he/him");
+=======
+	await page.getByPlaceholder('Enter your pronouns').scrollIntoViewIfNeeded();
+	await page.getByPlaceholder('Enter your pronouns').fill('he/him');
+>>>>>>> d5cb40b (feat: migrated auth and waitlist form to svelte form action)
 	await page.getByLabel(/gender/i).scrollIntoViewIfNeeded();
 	await page.getByLabel(/gender/i).click();
 	await page.getByRole("option", { name: "man (cis)", exact: true }).click();
 
 	// Fill out the date of birth for an adult user
 	await page.getByLabel(/date of birth/i).click();
+<<<<<<< HEAD
 	await page
 		.getByLabel("Select a year")
 		.selectOption(adultTestData.dateOfBirth.year().toString());
@@ -285,6 +348,13 @@ test("adult user (18+) should be able to submit without guardian information", a
 		.getByRole("radio", { name: "No", exact: true })
 		.scrollIntoViewIfNeeded();
 	await page.getByRole("radio", { name: "No", exact: true }).click();
+=======
+	await page.getByLabel('Select a year').selectOption(adultTestData.dateOfBirth.year().toString());
+	await page.getByLabel('Select a month').selectOption(adultTestData.dateOfBirth.format('M'));
+	await page.getByRole('button', { name: adultTestData.dateOfBirth.format('dddd, MMMM D,') }).click();
+	await page.getByRole('radio', { name: 'No', exact: true }).scrollIntoViewIfNeeded();
+	await page.getByRole('radio', { name: 'No', exact: true }).click();
+>>>>>>> d5cb40b (feat: migrated auth and waitlist form to svelte form action)
 
 	await page
 		.getByLabel(/any medical condition/i)

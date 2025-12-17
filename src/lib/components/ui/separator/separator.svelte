@@ -1,4 +1,5 @@
 <script lang="ts">
+<<<<<<< HEAD
 import { Separator as SeparatorPrimitive } from "bits-ui";
 import { cn } from "$lib/utils.js";
 
@@ -8,6 +9,17 @@ let {
 	"data-slot": dataSlot = "separator",
 	...restProps
 }: SeparatorPrimitive.RootProps = $props();
+=======
+	import { Separator as SeparatorPrimitive } from "bits-ui";
+	import { cn } from "$lib/utils.js";
+
+	let {
+		ref = $bindable(null),
+		class: className,
+		"data-slot": dataSlot = "separator",
+		...restProps
+	}: SeparatorPrimitive.RootProps = $props();
+>>>>>>> d5cb40b (feat: migrated auth and waitlist form to svelte form action)
 </script>
 
 <SeparatorPrimitive.Root

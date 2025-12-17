@@ -34,7 +34,7 @@ compilerOptions: {
 
 | Step | File | Description |
 |------|------|-------------|
-| 1 | `01_refactor_form_components.md` | Refactor form components to remove formsnap dependency |
+| 1 | `01_refactor_form_components.md` | Install new shadcn-svelte Field component and learn usage patterns |
 | 2 | `02_migrate_auth_form.md` | Migrate the auth login form (simplest form) |
 | 3 | `03_migrate_waitlist_form.md` | Migrate the waitlist form (medium complexity) |
 | 4 | `04_migrate_settings_forms.md` | Migrate settings and simple CRUD forms |
@@ -70,22 +70,41 @@ compilerOptions: {
 </form>
 ```
 
-### After (Remote Functions)
+### After (Remote Functions + New Field Component)
 
 ```svelte
 <script>
   import { submitForm } from './data.remote';
-  import * as Form from '$lib/components/ui/form';
+  import * as Field from '$lib/components/ui/field';
+  import { Input } from '$lib/components/ui/input';
   
   // No setup needed - form is ready to use
 </script>
 
 <form {...submitForm}>
-  <Form.Field field={submitForm.fields.email} label="Email">
-    <Input {...submitForm.fields.email.as('email')} />
-  </Form.Field>
+  <Field.Field>
+    {@const fieldProps = submitForm.fields.email.as('email')}
+    <Field.Label for={fieldProps.name}>Email</Field.Label>
+    <Input {...fieldProps} id={fieldProps.name} placeholder="Enter your email" />
+    {#each submitForm.fields.email.issues() as issue}
+      <Field.Error>{issue.message}</Field.Error>
+    {/each}
+  </Field.Field>
 </form>
 ```
+
+### New Field Component Structure
+
+The new shadcn-svelte `Field` component provides:
+- `Field.Set` - Groups related fields with a legend (replaces `Form.Fieldset`)
+- `Field.Group` - Groups fields together
+- `Field.Field` - Individual field wrapper (replaces `Form.Field`)
+- `Field.Label` - Accessible label (replaces `Form.Label`)
+- `Field.Description` - Helper text (replaces `Form.Description`)
+- `Field.Error` - Error message display (replaces `Form.FieldErrors`)
+- `Field.Separator` - Visual separator
+- `Field.Content` - Content wrapper for responsive layouts
+- `Field.Legend` - Legend for field sets (replaces `Form.Legend`)
 
 ## MCP Server Available
 

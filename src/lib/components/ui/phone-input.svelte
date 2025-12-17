@@ -15,6 +15,7 @@ import {
 import { parseIncompletePhoneNumber } from "libphonenumber-js";
 import { ChevronDown, ChevronUp } from "lucide-svelte";
 
+<<<<<<< HEAD
 const countryCodes = $state(countryCodesList.all());
 let open = $state(false);
 let triggerRef = $state<HTMLButtonElement>(null!);
@@ -48,6 +49,46 @@ const selectedValue = $derived.by(() => {
 		null
 	);
 });
+=======
+
+	const countryCodes = $state(countryCodesList.all());
+	$inspect(countryCodes);
+	let open = $state(false);
+	let triggerRef = $state<HTMLButtonElement>(null!);
+
+	let {
+		value: initialValue = '',
+		onChange,
+		placeholder = 'Enter your phone number',
+		name,
+		id,
+		...props
+	}: {
+		placeholder?: string;
+		value?: string | number;
+		onChange?: (value: string) => void;
+		name?: string;
+		id?: string;
+	} = $props();
+
+	// Internal state for the phone number value - synced with initialValue
+	let phoneNumber = $derived(String(initialValue));
+
+	let { nationalNumber, value: countryValue } = $derived.by(() => {
+		return parseIncomingPhoneNumber(phoneNumber);
+	});
+
+	const selectedValue = $derived.by(() => {
+		if (!countryValue) return null;
+		return countryCodesList.findOne('countryCode', countryValue)?.countryCallingCode ?? null;
+	});
+
+	// Format the national number for display in the input field
+	const formatedPhone = $derived.by(() => {
+		if (!countryValue) return new AsYouType().input(nationalNumber);
+		return new AsYouType(countryValue as CountryCode).input(nationalNumber);
+	});
+>>>>>>> d5cb40b (feat: migrated auth and waitlist form to svelte form action)
 
 // Format the national number for display in the input field
 const formatedPhone = $derived.by(() => {
@@ -111,6 +152,7 @@ function closeAndFocusTrigger() {
 	});
 }
 
+<<<<<<< HEAD
 // Update the phone number when the input changes
 function updatePhoneNumber(inputValue: string) {
 	// Parse the input to remove any formatting
@@ -121,6 +163,22 @@ function updatePhoneNumber(inputValue: string) {
 		newPhoneNumber = `+${selectedValue}${nationalNumber}`;
 	} else if (nationalNumber) {
 		newPhoneNumber = nationalNumber;
+=======
+	// Update the phone number when the input changes
+	function updatePhoneNumber(inputValue: string) {
+		// Parse the input to remove any formatting
+		nationalNumber = parseIncompletePhoneNumber(inputValue);
+		// Update the parent with the full international format
+		let newPhoneNumber = '';
+		if (selectedValue && nationalNumber) {
+			newPhoneNumber = `+${selectedValue}${nationalNumber}`;
+		} else if (nationalNumber) {
+			newPhoneNumber = nationalNumber;
+		}
+		if (onChange) {
+			onChange(newPhoneNumber);
+		}
+>>>>>>> d5cb40b (feat: migrated auth and waitlist form to svelte form action)
 	}
 	if (onChange) {
 		onChange(newPhoneNumber);
@@ -163,10 +221,16 @@ function updatePhoneNumber(inputValue: string) {
 							<Command.Item
 								value={country.countryNameEn}
 								onSelect={() => {
+<<<<<<< HEAD
 									const newPhoneNumber =
 										formatIncompletePhoneNumber(
 											`+${country.countryCallingCode}${nationalNumber}`,
 										);
+=======
+									const newPhoneNumber = formatIncompletePhoneNumber(
+										`+${country.countryCallingCode}${nationalNumber}`
+									);
+>>>>>>> d5cb40b (feat: migrated auth and waitlist form to svelte form action)
 									if (onChange) {
 										onChange(newPhoneNumber);
 									}

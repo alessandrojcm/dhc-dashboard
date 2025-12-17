@@ -1,4 +1,5 @@
 <script lang="ts">
+<<<<<<< HEAD
 import { cn, type WithElementRef } from "$lib/utils.js";
 import type { HTMLAttributes } from "svelte/elements";
 
@@ -8,6 +9,17 @@ let {
 	children,
 	...restProps
 }: WithElementRef<HTMLAttributes<HTMLParagraphElement>> = $props();
+=======
+	import { cn, type WithElementRef } from "$lib/utils.js";
+	import type { HTMLAttributes } from "svelte/elements";
+
+	let {
+		ref = $bindable(null),
+		class: className,
+		children,
+		...restProps
+	}: WithElementRef<HTMLAttributes<HTMLParagraphElement>> = $props();
+>>>>>>> d5cb40b (feat: migrated auth and waitlist form to svelte form action)
 </script>
 
 <p

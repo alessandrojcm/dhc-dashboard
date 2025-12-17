@@ -1,4 +1,5 @@
 <script lang="ts">
+<<<<<<< HEAD
 import { cn, type WithElementRef } from "$lib/utils.js";
 import type { HTMLAttributes } from "svelte/elements";
 import type { Snippet } from "svelte";
@@ -33,6 +34,40 @@ const isMultipleErrors = $derived(errors && errors.length > 1);
 const singleErrorMessage = $derived(
 	errors && errors.length === 1 && errors[0]?.message,
 );
+=======
+	import { cn, type WithElementRef } from "$lib/utils.js";
+	import type { HTMLAttributes } from "svelte/elements";
+	import type { Snippet } from "svelte";
+
+	let {
+		ref = $bindable(null),
+		class: className,
+		children,
+		errors,
+		...restProps
+	}: WithElementRef<HTMLAttributes<HTMLDivElement>> & {
+		children?: Snippet;
+		errors?: { message?: string }[];
+	} = $props();
+
+	const hasContent = $derived.by(() => {
+		// has slotted error
+		if (children) return true;
+
+		// no errors
+		if (!errors) return false;
+
+		// has an error but no message
+		if (errors.length === 1 && !errors[0]?.message) {
+			return false;
+		}
+
+		return true;
+	});
+
+	const isMultipleErrors = $derived(errors && errors.length > 1);
+	const singleErrorMessage = $derived(errors && errors.length === 1 && errors[0]?.message);
+>>>>>>> d5cb40b (feat: migrated auth and waitlist form to svelte form action)
 </script>
 
 {#if hasContent}

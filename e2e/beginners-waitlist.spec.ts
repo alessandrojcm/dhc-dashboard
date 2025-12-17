@@ -46,6 +46,7 @@ test("fills out the waitlist form and asserts no errors", async ({ page }) => {
 	await phoneInputField.blur();
 	await page.getByPlaceholder("Enter your pronouns").fill("he/him");
 	await page.getByLabel(/gender/i).click();
+<<<<<<< HEAD
 	await page.getByRole("option", { name: "man (cis)", exact: true }).click();
 	await page.getByPlaceholder("Enter your pronouns").fill("he/him");
 	await page.getByLabel("Date of birth").click();
@@ -66,6 +67,18 @@ test("fills out the waitlist form and asserts no errors", async ({ page }) => {
 	await page
 		.getByLabel(/any medical condition/i)
 		.fill(testData.medicalConditions);
+=======
+	await page.getByRole('option', { name: 'man (cis)', exact: true }).click();
+	await page.getByPlaceholder('Enter your pronouns').fill('he/him');
+	await page.getByLabel('Date of birth').click();
+	await page.getByLabel('Select a year').selectOption(testData.dateOfBirth.year().toString());
+	await page.getByLabel('Select a month').selectOption(testData.dateOfBirth.format('M'));
+	await page.getByRole('button', { name: testData.dateOfBirth.format('dddd, MMMM D,') }).click();
+	await page.getByRole('radio', { name: 'No', exact: true }).scrollIntoViewIfNeeded();
+	await page.getByRole('radio', { name: 'No', exact: true }).click();
+
+	await page.getByLabel(/any medical condition/i).fill(testData.medicalConditions);
+>>>>>>> d5cb40b (feat: migrated auth and waitlist form to svelte form action)
 	// Submit the form
 	await page.click('button[type="submit"]');
 	await expect(
@@ -82,6 +95,7 @@ test("it should not allow people under 16 to sign up", async ({ page }) => {
 	await page.goto("/waitlist");
 	const dateOfBirth = dayjs();
 	await page.getByLabel(/date of birth/i).click();
+<<<<<<< HEAD
 	await page.getByLabel("Date of birth").click();
 	await page
 		.getByLabel("Select a year")
@@ -90,6 +104,12 @@ test("it should not allow people under 16 to sign up", async ({ page }) => {
 	await page
 		.getByRole("button", { name: dateOfBirth.format("dddd, MMMM D,") })
 		.click();
+=======
+	await page.getByLabel('Date of birth').click();
+	await page.getByLabel('Select a year').selectOption(dateOfBirth.year().toString());
+	await page.getByLabel('Select a month').selectOption(dateOfBirth.format('M'));
+await page.getByRole('button', { name: dateOfBirth.format('dddd, MMMM D,') }).click();
+>>>>>>> d5cb40b (feat: migrated auth and waitlist form to svelte form action)
 	// Submit the form
 	await page.click('button[type="submit"]');
 	await expect(
