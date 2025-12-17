@@ -1,4 +1,5 @@
 <script lang="ts">
+<<<<<<< HEAD
 import { Separator } from "$lib/components/ui/separator/index.js";
 import { cn, type WithElementRef } from "$lib/utils.js";
 import type { HTMLAttributes } from "svelte/elements";
@@ -14,6 +15,23 @@ let {
 } = $props();
 
 const hasContent = $derived(!!children);
+=======
+	import { Separator } from "$lib/components/ui/separator/index.js";
+	import { cn, type WithElementRef } from "$lib/utils.js";
+	import type { HTMLAttributes } from "svelte/elements";
+	import type { Snippet } from "svelte";
+
+	let {
+		ref = $bindable(null),
+		class: className,
+		children,
+		...restProps
+	}: WithElementRef<HTMLAttributes<HTMLDivElement>> & {
+		children?: Snippet;
+	} = $props();
+
+	const hasContent = $derived(!!children);
+>>>>>>> d5cb40b (feat: migrated auth and waitlist form to svelte form action)
 </script>
 
 <div
