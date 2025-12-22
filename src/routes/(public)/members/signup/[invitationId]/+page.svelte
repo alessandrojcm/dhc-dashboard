@@ -3,11 +3,11 @@ import ConfirmInvitation from './confirm-invitation.svelte';
 import PaymentForm from './payment-form.svelte';
 
 const { data } = $props();
-const _isVerified = $state(data.isConfirmed);
+let isVerified = $state(data.isConfirmed);
 </script>
 
-{#if !_isVerified}
-	<ConfirmInvitation bind:isVerified={_isVerified} />
+{#if !isVerified}
+	<ConfirmInvitation bind:isVerified={isVerified} />
 {:else}
 	<PaymentForm {...data} />
 {/if}
