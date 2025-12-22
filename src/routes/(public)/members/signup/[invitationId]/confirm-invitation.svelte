@@ -1,10 +1,7 @@
 <script lang="ts">
-	import * as Form from '$lib/components/ui/form';
+	import * as Field from '$lib/components/ui/field';
 	import { Input } from '$lib/components/ui/input';
 	import { Button } from '$lib/components/ui/button';
-	import { dateProxy, superForm } from 'sveltekit-superforms';
-	import { valibotClient } from 'sveltekit-superforms/adapters';
-	import { inviteValidationSchema } from '$lib/schemas/inviteValidationSchema';
 	import { ArrowRightIcon } from 'lucide-svelte';
 	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
 	import { toast } from 'svelte-sonner';
@@ -15,60 +12,47 @@
 	import dayjs from 'dayjs';
 	import { fromDate, getLocalTimeZone } from '@internationalized/date';
 	import DatePicker from '$lib/components/ui/date-picker.svelte';
+	import { validateInvitation, inviteValidationRemoteSchema } from './data.remote';
 
 	const invitationId = $derived(page.params.invitationId);
 
 	let { isVerified = $bindable(false) } = $props();
 
-	// Create a form with the invite validation schema
-	const form = superForm(
-		{
-			dateOfBirth: page.url.searchParams.get('dateOfBirth') || '',
-			email: page.url.searchParams.get('email') || ''
-		},
-		{
-			validators: valibotClient(inviteValidationSchema),
-			resetForm: false,
-			validationMethod: 'onblur',
-			SPA: true,
-			onUpdate: async ({ form, cancel }) => {
-				try {
-					const response = await fetch(`/api/invite/${invitationId}`, {
-						method: 'POST',
-						headers: {
-							'Content-Type': 'application/json'
-						},
-						body: JSON.stringify({
-							email: form.data.email,
-							dateOfBirth: form.data.dateOfBirth
-						})
-					});
-
-					if (response.ok) {
-						isVerified = true;
-						goto(resolve(`/members/signup/${invitationId}`), {
-							replaceState: true
-						});
-					} else {
-						toast.error('Invalid invitation details. Please check your email and date of birth.');
-						cancel();
-					}
-				} catch (error) {
-					toast.error('An error occurred. Please try again.');
-					console.error('Error verifying invitation:', error);
-					cancel();
-				}
-			}
+	// Initialize form with URL params
+	$effect(() => {
+		const email = page.url.searchParams.get('email') || '';
+		const dateOfBirth = page.url.searchParams.get('dateOfBirth') || '';
+		if (email || dateOfBirth) {
+			validateInvitation.fields.set({ email, dateOfBirth });
 		}
-	);
+	});
 
-	const { form: formData, enhance, submitting } = form;
-	const dobProxy = dateProxy(form, 'dateOfBirth', { format: `date` });
+	// Date picker value
 	const dobValue = $derived.by(() => {
-		if (!dayjs($formData.dateOfBirth).isValid() || dayjs($formData.dateOfBirth).isSame(dayjs())) {
+		const dob = validateInvitation.fields.dateOfBirth.value();
+		if (!dob || !dayjs(dob).isValid() || dayjs(dob).isSame(dayjs())) {
 			return undefined;
 		}
-		return fromDate(dayjs($formData.dateOfBirth).toDate(), getLocalTimeZone());
+		return fromDate(dayjs(dob).toDate(), getLocalTimeZone());
+	});
+
+	// Watch for form success
+	$effect(() => {
+		const result = validateInvitation.result;
+		if (result?.verified) {
+			isVerified = true;
+			goto(resolve(`/members/signup/${invitationId}`), {
+				replaceState: true
+			});
+		}
+	});
+
+	// Watch for form errors
+	$effect(() => {
+		const issues = validateInvitation.fields.allIssues();
+		if (issues && issues.length > 0) {
+			toast.error(issues[0].message);
+		}
 	});
 </script>
 
@@ -89,44 +73,41 @@
 			Please enter your email and date of birth to verify your invitation.
 		</p>
 
-		<form method="POST" class="space-y-6" use:enhance>
-			<Form.Field {form} name="email">
-				<Form.Control>
-					{#snippet children({ props })}
-						<Form.Label>Email</Form.Label>
-						<Input
-							{...props}
-							type="email"
-							bind:value={$formData.email}
-							placeholder="Enter your email address"
-						/>
-					{/snippet}
-				</Form.Control>
-				<Form.FieldErrors />
-			</Form.Field>
+		<form {...validateInvitation.preflight(inviteValidationRemoteSchema)} class="space-y-6">
+			<Field.Group>
+				<Field.Field>
+					{@const fieldProps = validateInvitation.fields.email.as('email')}
+					<Field.Label for={fieldProps.name}>Email</Field.Label>
+					<Input
+						{...fieldProps}
+						id={fieldProps.name}
+						placeholder="Enter your email address"
+					/>
+					{#each validateInvitation.fields.email.issues() as issue}
+						<Field.Error>{issue.message}</Field.Error>
+					{/each}
+				</Field.Field>
 
-			<Form.Field {form} name="dateOfBirth">
-				<Form.Control>
-					{#snippet children({ props })}
-						<Form.Label>Date of birth</Form.Label>
-						<DatePicker
-							{...props}
-							value={dobValue}
-							onDateChange={(date) => {
-								if (!date) {
-									return;
-								}
-								$formData.dateOfBirth = dayjs(date).format('YYYY-MM-DD');
-							}}
-						/>
-						<input id="dobInput" type="date" hidden value={$dobProxy} name={props.name} />
-					{/snippet}
-				</Form.Control>
-				<Form.FieldErrors />
-			</Form.Field>
+				<Field.Field>
+					{@const { value, ...fieldProps } = validateInvitation.fields.dateOfBirth.as('text')}
+					<Field.Label for={fieldProps.name}>Date of birth</Field.Label>
+					<DatePicker
+						{...fieldProps}
+						id={fieldProps.name}
+						value={dobValue}
+						onDateChange={(date) => {
+							if (!date) return;
+							validateInvitation.fields.dateOfBirth.set(dayjs(date).format('YYYY-MM-DD'));
+						}}
+					/>
+					{#each validateInvitation.fields.dateOfBirth.issues() as issue}
+						<Field.Error>{issue.message}</Field.Error>
+					{/each}
+				</Field.Field>
+			</Field.Group>
 
-			<Button type="submit" class="w-full" disabled={$submitting}>
-				{#if $submitting}
+			<Button type="submit" class="w-full" disabled={!!validateInvitation.pending}>
+				{#if validateInvitation.pending}
 					<LoaderCircle />
 				{:else}
 					Verify Invitation
