@@ -1,8 +1,8 @@
 <script lang="ts">
-import { page } from "$app/state";
-import { Alert, AlertTitle, AlertDescription } from "$lib/components/ui/alert";
-import { Button } from "$lib/components/ui/button";
-import { CheckCircle } from "lucide-svelte";
+import { page } from '$app/state';
+import { Alert, AlertTitle, AlertDescription } from '$lib/components/ui/alert';
+import { Button } from '$lib/components/ui/button';
+import { CheckCircle } from 'lucide-svelte';
 
 const sessionId = page.url.searchParams.get("session_id");
 </script>

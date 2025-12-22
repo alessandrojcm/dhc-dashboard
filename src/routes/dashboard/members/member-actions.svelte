@@ -1,13 +1,13 @@
 <script lang="ts">
-import { Button } from "$lib/components/ui/button";
-import * as Tooltip from "$lib/components/ui/tooltip";
-import { ChevronDown, ChevronUp, Edit } from "lucide-svelte";
-type Props = {
-	memberId: string;
-	isExpanded?: boolean;
-	onToggleExpand?: () => void;
-};
-const { memberId, isExpanded = false, onToggleExpand }: Props = $props();
+	import { Button } from "$lib/components/ui/button";
+	import * as Tooltip from "$lib/components/ui/tooltip";
+    import { ChevronDown, ChevronUp, Edit } from "lucide-svelte";
+	type Props = {
+		memberId: string;
+		isExpanded?: boolean;
+		onToggleExpand?: () => void;
+	};
+	const { memberId, isExpanded = false, onToggleExpand }: Props = $props();
 </script>
 
 <div class="flex gap-1">

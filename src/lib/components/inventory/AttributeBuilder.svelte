@@ -1,19 +1,14 @@
 <script lang="ts">
-import type { AttributeDefinition } from "$lib/schemas/inventory";
-import {
-	Card,
-	CardContent,
-	CardHeader,
-	CardTitle,
-} from "$lib/components/ui/card";
-import { Button } from "$lib/components/ui/button";
-import { Input } from "$lib/components/ui/input";
-import { Label } from "$lib/components/ui/label";
-import { Checkbox } from "$lib/components/ui/checkbox";
-import { Badge } from "$lib/components/ui/badge";
-import * as Select from "$lib/components/ui/select";
-import * as Field from "$lib/components/ui/field";
-import { Plus, Settings, Trash2 } from "lucide-svelte";
+import type { AttributeDefinition } from '$lib/schemas/inventory';
+import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
+import { Button } from '$lib/components/ui/button';
+import { Input } from '$lib/components/ui/input';
+import { Label } from '$lib/components/ui/label';
+import { Checkbox } from '$lib/components/ui/checkbox';
+import { Badge } from '$lib/components/ui/badge';
+import * as Select from '$lib/components/ui/select';
+import * as Field from '$lib/components/ui/field';
+import { Plus, Settings, Trash2 } from 'lucide-svelte';
 
 interface AttributeBuilderProps {
 	/** Current attributes array value */
@@ -24,19 +19,15 @@ interface AttributeBuilderProps {
 	issues?: Array<{ message: string }>;
 }
 
-const {
-	attributes,
-	onAttributesChange,
-	issues = [],
-}: AttributeBuilderProps = $props();
+const { attributes, onAttributesChange, issues = [] }: AttributeBuilderProps = $props();
 
 const attributeCount = $derived(attributes.length);
 const hasAttributes = $derived(attributeCount > 0);
 
 let newAttribute = $state<AttributeDefinition>({
-	type: "text",
-	label: "",
-	required: false,
+	type: 'text',
+	label: '',
+	required: false
 });
 
 const addAttribute = () => {
@@ -45,16 +36,16 @@ const addAttribute = () => {
 		...attributes,
 		{
 			...newAttribute,
-			...(newAttribute.type === "select" && { options: [] }),
-			name: newAttribute.label.toLowerCase().replaceAll(/ /g, "-"),
-		},
+			...(newAttribute.type === 'select' && { options: [] }),
+			name: newAttribute.label.toLowerCase().replaceAll(/ /g, '-')
+		}
 	]);
 	// Reset form
 	newAttribute = {
-		type: "text",
-		label: "",
+		type: 'text',
+		label: '',
 		required: false,
-		name: "",
+		name: ''
 	};
 };
 
@@ -62,11 +53,7 @@ const removeAttribute = (index: number) => {
 	onAttributesChange(attributes.filter((_, i) => i !== index));
 };
 
-const updateAttribute = (
-	index: number,
-	field: keyof AttributeDefinition,
-	value: unknown,
-) => {
+const updateAttribute = (index: number, field: keyof AttributeDefinition, value: unknown) => {
 	const updated = [...attributes];
 	updated[index] = { ...updated[index], [field]: value };
 	onAttributesChange(updated);
@@ -77,16 +64,12 @@ const addOption = (attrIndex: number) => {
 	const attr = updated[attrIndex];
 	updated[attrIndex] = {
 		...attr,
-		options: [...(attr.options ?? []), ""],
+		options: [...(attr.options ?? []), '']
 	};
 	onAttributesChange(updated);
 };
 
-const updateOption = (
-	attrIndex: number,
-	optionIndex: number,
-	value: string,
-) => {
+const updateOption = (attrIndex: number, optionIndex: number, value: string) => {
 	const updated = [...attributes];
 	const attr = updated[attrIndex];
 	const options = [...(attr.options ?? [])];
@@ -100,7 +83,7 @@ const removeOption = (attrIndex: number, optionIndex: number) => {
 	const attr = updated[attrIndex];
 	updated[attrIndex] = {
 		...attr,
-		options: attr.options?.filter((_, i) => i !== optionIndex),
+		options: attr.options?.filter((_, i) => i !== optionIndex)
 	};
 	onAttributesChange(updated);
 };

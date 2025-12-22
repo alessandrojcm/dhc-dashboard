@@ -1,46 +1,43 @@
 <script lang="ts">
-import {
-	Card,
-	CardContent,
-	CardDescription,
-	CardHeader,
-	CardTitle,
-} from "$lib/components/ui/card";
-import { Button } from "$lib/components/ui/button";
-import { Input } from "$lib/components/ui/input";
-import { Textarea } from "$lib/components/ui/textarea";
-import * as Field from "$lib/components/ui/field";
-import { ArrowLeft, Tags, Trash2 } from "lucide-svelte";
-import AttributeBuilder from "$lib/components/inventory/AttributeBuilder.svelte";
-import { updateCategory, deleteCategory } from "../../data.remote";
-import { onMount } from "svelte";
-import type { AttributeDefinition } from "$lib/schemas/inventory";
+	import {
+		Card,
+		CardContent,
+		CardDescription,
+		CardHeader,
+		CardTitle
+	} from '$lib/components/ui/card';
+	import { Button } from '$lib/components/ui/button';
+	import { Input } from '$lib/components/ui/input';
+	import { Textarea } from '$lib/components/ui/textarea';
+	import * as Field from '$lib/components/ui/field';
+	import { ArrowLeft, Tags, Trash2 } from 'lucide-svelte';
+	import AttributeBuilder from '$lib/components/inventory/AttributeBuilder.svelte';
+	import { updateCategory, deleteCategory } from '../../data.remote';
+	import { onMount } from 'svelte';
+	import type { AttributeDefinition } from '$lib/schemas/inventory';
 
-let { data } = $props();
+	let { data } = $props();
 
-onMount(() => {
-	updateCategory.fields.set({
-		name: data.category.name,
-		description: data.category.description ?? undefined,
-		available_attributes: data.category
-			.available_attributes as AttributeDefinition[],
+	onMount(() => {
+		updateCategory.fields.set({
+			name: data.category.name,
+			description: data.category.description ?? undefined,
+			available_attributes: data.category.available_attributes as AttributeDefinition[]
+		});
 	});
-});
 
-// Get current attributes value reactively
-const attributes = $derived(
-	(updateCategory.fields.available_attributes.value() as
-		| AttributeDefinition[]
-		| undefined) ??
-		(data.category.available_attributes as AttributeDefinition[]),
-);
+	// Get current attributes value reactively
+	const attributes = $derived(
+		(updateCategory.fields.available_attributes.value() as AttributeDefinition[] | undefined) ??
+			(data.category.available_attributes as AttributeDefinition[])
+	);
 
-// Callback to update attributes
-const handleAttributesChange = (newAttributes: AttributeDefinition[]) => {
-	updateCategory.fields.available_attributes.set(newAttributes);
-};
+	// Callback to update attributes
+	const handleAttributesChange = (newAttributes: AttributeDefinition[]) => {
+		updateCategory.fields.available_attributes.set(newAttributes);
+	};
 
-let showDeleteConfirm = $state(false);
+	let showDeleteConfirm = $state(false);
 </script>
 
 <div class="p-6">

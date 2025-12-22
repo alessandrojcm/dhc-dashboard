@@ -1,13 +1,13 @@
-import { form, getRequestEvent } from "$app/server";
-import { redirect } from "@sveltejs/kit";
-import * as v from "valibot";
-import { authorize } from "$lib/server/auth";
-import { INVENTORY_ROLES } from "$lib/server/roles";
+import { form, getRequestEvent } from '$app/server';
+import { redirect } from '@sveltejs/kit';
+import * as v from 'valibot';
+import { authorize } from '$lib/server/auth';
+import { INVENTORY_ROLES } from '$lib/server/roles';
 import {
 	createContainerService,
 	ContainerCreateSchema,
-	ContainerUpdateSchema,
-} from "$lib/server/services/inventory";
+	ContainerUpdateSchema
+} from '$lib/server/services/inventory';
 
 export const createContainer = form(ContainerCreateSchema, async (data) => {
 	const event = getRequestEvent();
@@ -36,14 +36,13 @@ export const deleteContainer = form(v.object({}), async () => {
 	const containerId = event.params.id!;
 	const containerService = createContainerService(event.platform!, session);
 
-	const containerWithCount =
-		await containerService.getWithItemCount(containerId);
+	const containerWithCount = await containerService.getWithItemCount(containerId);
 
 	if (containerWithCount.itemCount > 0) {
-		throw new Error("Cannot delete a container that contains items.");
+		throw new Error('Cannot delete a container that contains items.');
 	}
 
 	await containerService.delete(containerId);
 
-	redirect(303, "/dashboard/inventory/containers");
+	redirect(303, '/dashboard/inventory/containers');
 });
