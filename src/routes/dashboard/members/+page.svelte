@@ -10,13 +10,13 @@
 	import InvitationsTable from './invitations-table.svelte';
 	import SettingsSheet from './settings-sheet.svelte';
 	import * as Select from '$lib/components/ui/select';
+    import { SvelteURLSearchParams } from 'svelte/reactivity';
 
 	const { data } = $props();
 	let value = $derived(page.url.searchParams.get('tab') || 'dashboard');
 
 	function onTabChange(value: string) {
-		// eslint-disable-next-line svelte/prefer-svelte-reactivity
-		const newParams = new URLSearchParams(page.url.searchParams);
+		const newParams = new SvelteURLSearchParams(page.url.searchParams);
 		newParams.set('tab', value);
 		const url = `/dashboard/members?${newParams.toString()}`;
 		goto(resolve(url as any));
@@ -40,12 +40,12 @@
 
 <div class="relative">
 	{#if data.canEditSettings}
-		{#await data.form}
+		{#await data.insuranceFormLink}
 			<div class="fixed right-4 top-4">
 				<LoaderCircle />
 			</div>
-		{:then form}
-			<SettingsSheet {form} />
+		{:then initialValue}
+			<SettingsSheet {initialValue} />
 		{/await}
 	{/if}
 

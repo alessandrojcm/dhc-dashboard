@@ -1,5 +1,10 @@
 <script lang="ts">
-const _sessionId = $page.url.searchParams.get("session_id");
+import { page } from '$app/state';
+import { Alert, AlertTitle, AlertDescription } from '$lib/components/ui/alert';
+import { Button } from '$lib/components/ui/button';
+import { CheckCircle } from 'lucide-svelte';
+
+const sessionId = page.url.searchParams.get("session_id");
 </script>
 
 <div class="container mx-auto px-4 py-8">

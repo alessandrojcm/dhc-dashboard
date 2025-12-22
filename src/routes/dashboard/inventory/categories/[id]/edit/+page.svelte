@@ -1,7 +1,4 @@
 <script lang="ts">
-	import { superForm } from 'sveltekit-superforms';
-	import { valibot } from 'sveltekit-superforms/adapters';
-	import { categorySchema } from '$lib/schemas/inventory';
 	import {
 		Card,
 		CardContent,
@@ -12,28 +9,33 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
 	import { Textarea } from '$lib/components/ui/textarea';
-	import * as Form from '$lib/components/ui/form';
+	import * as Field from '$lib/components/ui/field';
 	import { ArrowLeft, Tags, Trash2 } from 'lucide-svelte';
-	import { enhance } from '$app/forms';
 	import AttributeBuilder from '$lib/components/inventory/AttributeBuilder.svelte';
-	import { toast } from 'svelte-sonner';
-	import { goto } from '$app/navigation';
-	import { resolve } from '$app/paths';
+	import { updateCategory, deleteCategory } from '../../data.remote';
+	import { onMount } from 'svelte';
+	import type { AttributeDefinition } from '$lib/schemas/inventory';
 
 	let { data } = $props();
 
-	const form = superForm(data.form, {
-		validators: valibot(categorySchema),
-		dataType: 'json',
-		onUpdated: ({ form }) => {
-			if (form.message?.success) {
-				toast.success(form.message.success);
-				setTimeout(() => goto(resolve('/dashboard/inventory/categories')), 1500);
-			}
-		}
+	onMount(() => {
+		updateCategory.fields.set({
+			name: data.category.name,
+			description: data.category.description ?? undefined,
+			available_attributes: data.category.available_attributes as AttributeDefinition[]
+		});
 	});
 
-	const { form: formData, enhance: formEnhance, submitting } = form;
+	// Get current attributes value reactively
+	const attributes = $derived(
+		(updateCategory.fields.available_attributes.value() as AttributeDefinition[] | undefined) ??
+			(data.category.available_attributes as AttributeDefinition[])
+	);
+
+	// Callback to update attributes
+	const handleAttributesChange = (newAttributes: AttributeDefinition[]) => {
+		updateCategory.fields.available_attributes.set(newAttributes);
+	};
 
 	let showDeleteConfirm = $state(false);
 </script>
@@ -49,7 +51,7 @@
 		<p class="text-muted-foreground">Update category information and attributes</p>
 	</div>
 
-	<form method="POST" action="?/update" use:formEnhance class="space-y-6">
+	<form {...updateCategory} class="space-y-6">
 		<!-- Basic Information -->
 		<Card>
 			<CardHeader>
@@ -60,34 +62,32 @@
 				<CardDescription>Basic details about the equipment category</CardDescription>
 			</CardHeader>
 			<CardContent class="space-y-4">
-				<Form.Field {form} name="name">
-					<Form.Control>
-						{#snippet children({ props })}
-							<Form.Label>Category Name *</Form.Label>
-							<Input
-								{...props}
-								bind:value={$formData.name}
-								placeholder="e.g., Masks, Jackets, Swords"
-							/>
-						{/snippet}
-					</Form.Control>
-					<Form.FieldErrors />
-				</Form.Field>
+				<Field.Field>
+					{@const fieldProps = updateCategory.fields.name.as('text')}
+					<Field.Label for={fieldProps.name}>Category Name *</Field.Label>
+					<Input
+						{...fieldProps}
+						id={fieldProps.name}
+						placeholder="e.g., Masks, Jackets, Swords"
+					/>
+					{#each updateCategory.fields.name.issues() as issue}
+						<Field.Error>{issue.message}</Field.Error>
+					{/each}
+				</Field.Field>
 
-				<Form.Field {form} name="description">
-					<Form.Control>
-						{#snippet children({ props })}
-							<Form.Label>Description</Form.Label>
-							<Textarea
-								{...props}
-								bind:value={$formData.description}
-								placeholder="Optional description of this equipment category"
-								rows={3}
-							/>
-						{/snippet}
-					</Form.Control>
-					<Form.FieldErrors />
-				</Form.Field>
+				<Field.Field>
+					{@const fieldProps = updateCategory.fields.description.as('text')}
+					<Field.Label for={fieldProps.name}>Description</Field.Label>
+					<Textarea
+						{...fieldProps}
+						id={fieldProps.name}
+						placeholder="Optional description of this equipment category"
+						rows={3}
+					/>
+					{#each updateCategory.fields.description.issues() as issue}
+						<Field.Error>{issue.message}</Field.Error>
+					{/each}
+				</Field.Field>
 			</CardContent>
 		</Card>
 
@@ -101,15 +101,19 @@
 				</CardDescription>
 			</CardHeader>
 			<CardContent>
-				<AttributeBuilder {form} />
+				<AttributeBuilder
+					attributes={attributes}
+					onAttributesChange={handleAttributesChange}
+					issues={updateCategory.fields.available_attributes.issues()}
+				/>
 			</CardContent>
 		</Card>
 
 		<!-- Actions -->
 		<div class="flex gap-3">
-			<Form.Button type="submit" disabled={$submitting}>
-				{$submitting ? 'Updating...' : 'Update Category'}
-			</Form.Button>
+			<Button type="submit" disabled={!!updateCategory.pending}>
+				{updateCategory.pending ? 'Updating...' : 'Update Category'}
+			</Button>
 			<Button href="/dashboard/inventory/categories" variant="outline">Cancel</Button>
 		</div>
 	</form>
@@ -138,8 +142,10 @@
 						category. This action cannot be undone.
 					</p>
 					<div class="flex gap-3">
-						<form method="POST" action="?/delete" use:enhance>
-							<Button type="submit" variant="destructive">Yes, Delete Category</Button>
+						<form {...deleteCategory}>
+							<Button type="submit" variant="destructive" disabled={!!deleteCategory.pending}>
+								{deleteCategory.pending ? 'Deleting...' : 'Yes, Delete Category'}
+							</Button>
 						</form>
 						<Button variant="outline" onclick={() => (showDeleteConfirm = false)}>Cancel</Button>
 					</div>

@@ -1,10 +1,13 @@
 <script lang="ts">
-type Props = {
-	memberId: string;
-	isExpanded?: boolean;
-	onToggleExpand?: () => void;
-};
-const { memberId, isExpanded = false, onToggleExpand }: Props = $props();
+	import { Button } from "$lib/components/ui/button";
+	import * as Tooltip from "$lib/components/ui/tooltip";
+    import { ChevronDown, ChevronUp, Edit } from "lucide-svelte";
+	type Props = {
+		memberId: string;
+		isExpanded?: boolean;
+		onToggleExpand?: () => void;
+	};
+	const { memberId, isExpanded = false, onToggleExpand }: Props = $props();
 </script>
 
 <div class="flex gap-1">
@@ -26,7 +29,11 @@ const { memberId, isExpanded = false, onToggleExpand }: Props = $props();
 					{/if}
 				</Button>
 			</Tooltip.Trigger>
-			<Tooltip.Content>{isExpanded ? 'Collapse details' : 'Expand details'}</Tooltip.Content>
+			<Tooltip.Content
+				>{isExpanded
+					? "Collapse details"
+					: "Expand details"}</Tooltip.Content
+			>
 		</Tooltip.Root>
 	{/if}
 	<Tooltip.Root>
