@@ -1,38 +1,59 @@
 <script lang="ts">
-import * as Field from "$lib/components/ui/field";
-import { Input } from "$lib/components/ui/input";
-import { Button } from "$lib/components/ui/button";
-import { ArrowRightIcon } from "lucide-svelte";
-import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
-import { toast } from "svelte-sonner";
-import { page } from "$app/state";
-import * as Alert from "$lib/components/ui/alert";
-import { goto } from "$app/navigation";
-import { resolve } from "$app/paths";
-import dayjs from "dayjs";
-import { fromDate, getLocalTimeZone } from "@internationalized/date";
-import DatePicker from "$lib/components/ui/date-picker.svelte";
-import { validateInvitation } from "./data.remote";
-import { inviteValidationSchema } from "$lib/schemas/inviteValidationSchema";
-import { initForm } from "$lib/utils/init-form.svelte";
+	import * as Field from '$lib/components/ui/field';
+	import { Input } from '$lib/components/ui/input';
+	import { Button } from '$lib/components/ui/button';
+	import { ArrowRightIcon } from 'lucide-svelte';
+	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
+	import { toast } from 'svelte-sonner';
+	import { page } from '$app/state';
+	import * as Alert from '$lib/components/ui/alert';
+	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
+	import dayjs from 'dayjs';
+	import { fromDate, getLocalTimeZone } from '@internationalized/date';
+	import DatePicker from '$lib/components/ui/date-picker.svelte';
+	import { validateInvitation, inviteValidationRemoteSchema } from './data.remote';
 
-const invitationId = $derived(page.params.invitationId);
+	const invitationId = $derived(page.params.invitationId);
 
-let { isVerified = $bindable(false) } = $props();
-initForm(validateInvitation, () => {
-	return {
-		email: page.url.searchParams.get("email") || "",
-		dateOfBirth: page.url.searchParams.get("dateOfBirth") || "",
-	};
-});
-// Date picker value
-const dobValue = $derived.by(() => {
-	const dob = validateInvitation.fields.dateOfBirth.value();
-	if (!dob || !dayjs(dob).isValid() || dayjs(dob).isSame(dayjs())) {
-		return undefined;
-	}
-	return fromDate(dayjs(dob).toDate(), getLocalTimeZone());
-});
+	let { isVerified = $bindable(false) } = $props();
+
+	// Initialize form with URL params
+	$effect(() => {
+		const email = page.url.searchParams.get('email') || '';
+		const dateOfBirth = page.url.searchParams.get('dateOfBirth') || '';
+		if (email || dateOfBirth) {
+			validateInvitation.fields.set({ email, dateOfBirth });
+		}
+	});
+
+	// Date picker value
+	const dobValue = $derived.by(() => {
+		const dob = validateInvitation.fields.dateOfBirth.value();
+		if (!dob || !dayjs(dob).isValid() || dayjs(dob).isSame(dayjs())) {
+			return undefined;
+		}
+		return fromDate(dayjs(dob).toDate(), getLocalTimeZone());
+	});
+
+	// Watch for form success
+	$effect(() => {
+		const result = validateInvitation.result;
+		if (result?.verified) {
+			isVerified = true;
+			goto(resolve(`/members/signup/${invitationId}`), {
+				replaceState: true
+			});
+		}
+	});
+
+	// Watch for form errors
+	$effect(() => {
+		const issues = validateInvitation.fields.allIssues();
+		if (issues && issues.length > 0) {
+			toast.error(issues[0].message);
+		}
+	});
 </script>
 
 {#if isVerified}
@@ -40,8 +61,8 @@ const dobValue = $derived.by(() => {
 		<Alert.Root variant="success" class="w-full mb-6">
 			<Alert.Title>Invitation Verified!</Alert.Title>
 			<Alert.Description>
-				Your invitation has been successfully verified. Please complete
-				your membership signup below.
+				Your invitation has been successfully verified. Please complete your membership signup
+				below.
 			</Alert.Description>
 		</Alert.Root>
 	</div>
@@ -52,25 +73,10 @@ const dobValue = $derived.by(() => {
 			Please enter your email and date of birth to verify your invitation.
 		</p>
 
-		<form
-			{...validateInvitation
-				.preflight(inviteValidationSchema)
-				.enhance(({ submit }) => {
-					submit().then(() => {
-						if (validateInvitation.result?.success) {
-							isVerified = true;
-							goto(resolve(`/members/signup/${invitationId}`), {
-								replaceState: true,
-							});
-						}
-					});
-				})}
-			class="space-y-6"
-		>
+		<form {...validateInvitation.preflight(inviteValidationRemoteSchema)} class="space-y-6">
 			<Field.Group>
 				<Field.Field>
-					{@const fieldProps =
-						validateInvitation.fields.email.as("email")}
+					{@const fieldProps = validateInvitation.fields.email.as('email')}
 					<Field.Label for={fieldProps.name}>Email</Field.Label>
 					<Input
 						{...fieldProps}
@@ -83,20 +89,15 @@ const dobValue = $derived.by(() => {
 				</Field.Field>
 
 				<Field.Field>
-					{@const { value, ...fieldProps } =
-						validateInvitation.fields.dateOfBirth.as("text")}
-					<Field.Label for={fieldProps.name}
-						>Date of birth</Field.Label
-					>
+					{@const { value, ...fieldProps } = validateInvitation.fields.dateOfBirth.as('text')}
+					<Field.Label for={fieldProps.name}>Date of birth</Field.Label>
 					<DatePicker
 						{...fieldProps}
 						id={fieldProps.name}
 						value={dobValue}
 						onDateChange={(date) => {
 							if (!date) return;
-							validateInvitation.fields.dateOfBirth.set(
-								dayjs(date).format("YYYY-MM-DD"),
-							);
+							validateInvitation.fields.dateOfBirth.set(dayjs(date).format('YYYY-MM-DD'));
 						}}
 					/>
 					{#each validateInvitation.fields.dateOfBirth.issues() as issue}
@@ -105,11 +106,7 @@ const dobValue = $derived.by(() => {
 				</Field.Field>
 			</Field.Group>
 
-			<Button
-				type="submit"
-				class="w-full"
-				disabled={!!validateInvitation.pending}
-			>
+			<Button type="submit" class="w-full" disabled={!!validateInvitation.pending}>
 				{#if validateInvitation.pending}
 					<LoaderCircle />
 				{:else}
