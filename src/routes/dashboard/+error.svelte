@@ -1,6 +1,6 @@
 <script lang="ts">
 import { page } from "$app/state";
-import * as Alert from "$lib/components/ui/alert";
+import * as Alert from '$lib/components/ui/alert';
 
 console.error(page.error);
 </script>

@@ -1,430 +1,413 @@
 <script lang="ts">
-import type { SupabaseClient } from "@supabase/supabase-js";
-import { createQuery, keepPreviousData } from "@tanstack/svelte-query";
-import {
-	getCoreRowModel,
-	getExpandedRowModel,
-	getPaginationRowModel,
-	getSortedRowModel,
-	type PaginationState,
-	type SortingState,
-	type TableOptions,
-} from "@tanstack/table-core";
-import dayjs from "dayjs";
-import { createRawSnippet } from "svelte";
-import { Cross2 } from "svelte-radix";
-import { goto } from "$app/navigation";
-import { resolve } from "$app/paths";
-import { page } from "$app/state";
-import type { Database, Tables } from "$database";
-import { Badge } from "$lib/components/ui/badge";
-import { Button } from "$lib/components/ui/button";
-import {
-	createSvelteTable,
-	FlexRender,
-	renderComponent,
-	renderSnippet,
-} from "$lib/components/ui/data-table/index.js";
-import { Input } from "$lib/components/ui/input";
-import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
-import * as Pagination from "$lib/components/ui/pagination/index.js";
-import * as Select from "$lib/components/ui/select";
-import * as Table from "$lib/components/ui/table/index.js";
-import SortHeader from "$lib/components/ui/table/sort-header.svelte";
-import MemberActions from "./member-actions.svelte";
+	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
+	import { page } from '$app/state';
+	import type { Database, Tables } from '$database';
+	import { Badge } from '$lib/components/ui/badge';
+	import { Button } from '$lib/components/ui/button';
+	import {
+		createSvelteTable,
+		FlexRender,
+		renderComponent,
+		renderSnippet
+	} from '$lib/components/ui/data-table/index.js';
+	import { Input } from '$lib/components/ui/input';
+	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
+	import * as Pagination from '$lib/components/ui/pagination/index.js';
+	import * as Select from '$lib/components/ui/select';
+	import * as Table from '$lib/components/ui/table/index.js';
+	import SortHeader from '$lib/components/ui/table/sort-header.svelte';
+	import type { SupabaseClient } from '@supabase/supabase-js';
+	import { createQuery, keepPreviousData } from '@tanstack/svelte-query';
+	import {
+		getCoreRowModel,
+		getPaginationRowModel,
+		getSortedRowModel,
+		getExpandedRowModel,
+		type PaginationState,
+		type SortingState,
+		type TableOptions
+	} from '@tanstack/table-core';
+	import dayjs from 'dayjs';
+	import { createRawSnippet } from 'svelte';
+	import { Cross2 } from 'svelte-radix';
+	import MemberActions from './member-actions.svelte';
 
-const columns =
-	"id,first_name,last_name,email,phone_number,gender,pronouns,is_active,preferred_weapon,membership_start_date,membership_end_date,last_payment_date,insurance_form_submitted,roles,age,social_media_consent,next_of_kin_name,next_of_kin_phone,guardian_first_name,guardian_last_name,guardian_phone_number,medical_conditions,additional_data,created_at,updated_at,from_waitlist_id,search_text,user_profile_id,waitlist_registration_date,subscription_paused_until";
+	const columns =
+		'id,first_name,last_name,email,phone_number,gender,pronouns,is_active,preferred_weapon,membership_start_date,membership_end_date,last_payment_date,insurance_form_submitted,roles,age,social_media_consent,next_of_kin_name,next_of_kin_phone,guardian_first_name,guardian_last_name,guardian_phone_number,medical_conditions,additional_data,created_at,updated_at,from_waitlist_id,search_text,user_profile_id,waitlist_registration_date,subscription_paused_until';
 
-let pageSizeOptions = [10, 25, 50, 100];
+	let pageSizeOptions = [10, 25, 50, 100];
 
-const { supabase }: { supabase: SupabaseClient<Database> } = $props();
+	const { supabase }: { supabase: SupabaseClient<Database> } = $props();
 
-const currentPage = $derived(Number(page.url.searchParams.get("page")) || 0);
-const pageSize = $derived(Number(page.url.searchParams.get("pageSize")) || 10);
-const searchQuery = $derived(page.url.searchParams.get("q") || "");
-const rangeStart = $derived(currentPage * pageSize);
-const rangeEnd = $derived(rangeStart + pageSize - 1);
-const sortingState: SortingState = $derived.by(() => {
-	const sortColumn = page.url.searchParams.get("sort");
-	const sortDirection = page.url.searchParams.get("direction");
-	if (!sortColumn) return [];
-	return [
-		{
-			id: sortColumn,
-			desc: sortDirection === "desc",
-		},
-	];
-});
+	const currentPage = $derived(Number(page.url.searchParams.get('page')) || 0);
+	const pageSize = $derived(Number(page.url.searchParams.get('pageSize')) || 10);
+	const searchQuery = $derived(page.url.searchParams.get('q') || '');
+	const rangeStart = $derived(currentPage * pageSize);
+	const rangeEnd = $derived(rangeStart + pageSize - 1);
+	const sortingState: SortingState = $derived.by(() => {
+		const sortColumn = page.url.searchParams.get('sort');
+		const sortDirection = page.url.searchParams.get('direction');
+		if (!sortColumn) return [];
+		return [
+			{
+				id: sortColumn,
+				desc: sortDirection === 'desc'
+			}
+		];
+	});
 
-const membersQuery = createQuery(() => ({
-	queryKey: [
-		"members",
-		pageSize,
-		currentPage,
-		rangeStart,
-		sortingState,
-		searchQuery,
-	],
-	placeholderData: keepPreviousData,
-	initialData: { data: [], count: 0 },
-	queryFn: async ({ signal }) => {
-		let query = supabase
-			.from("member_management_view")
-			.select(columns, { count: "exact" });
-		if (searchQuery.length > 0) {
-			query = query.textSearch("search_text", `'${searchQuery}'`, {
-				type: "websearch",
-			});
-		}
-		if (sortingState.length > 0) {
-			query = query.order(sortingState[0].id, {
-				ascending: !sortingState[0].desc,
-			});
-		}
-		const { data, error, count } = await query
-			.range(rangeStart, rangeEnd)
-			.abortSignal(signal)
-			.throwOnError();
-		if (error) {
-			throw error;
-		}
-		return { data, count: count ?? 0 };
-	},
-}));
-
-function onPaginationChange(newPagination: Partial<PaginationState>) {
-	const paginationState: PaginationState = {
-		pageIndex: currentPage,
-		pageSize,
-		...newPagination,
-	};
-	// eslint-disable-next-line svelte/prefer-svelte-reactivity
-	const newParams = new URLSearchParams(page.url.searchParams);
-	newParams.set("page", paginationState.pageIndex.toString());
-	newParams.set("pageSize", paginationState.pageSize.toString());
-	const url = `/dashboard/members?${newParams.toString()}`;
-	goto(resolve(url as any));
-}
-
-function onSortingChange(newSorting: SortingState) {
-	const [sortingState] = newSorting;
-	// eslint-disable-next-line svelte/prefer-svelte-reactivity
-	const newParams = new URLSearchParams(page.url.searchParams);
-	newParams.set("sort", sortingState.id);
-	newParams.set("direction", sortingState.desc ? "desc" : "asc");
-	const url = `/dashboard/members?${newParams.toString()}`;
-	goto(resolve(url as any));
-}
-
-function onSearchChange(newSearch: string) {
-	// eslint-disable-next-line svelte/prefer-svelte-reactivity
-	const newParams = new URLSearchParams(page.url.searchParams);
-	newParams.set("q", newSearch);
-	newParams.set("page", "0"); // Reset to first page on search
-	const url = `/dashboard/members?${newParams.toString()}`;
-	goto(resolve(url as any));
-}
-
-// State for expanded rows
-let expandedState = $state({});
-
-const tableOptions = $state<
-	TableOptions<Omit<Tables<"member_management_view">, "customer_id">>
->({
-	autoResetPageIndex: false,
-	manualPagination: true,
-	manualSorting: true,
-	getExpandedRowModel: getExpandedRowModel(),
-	columns: [
-		{
-			id: "actions",
-			header: "Actions",
-			cell: ({ row }) => {
-				return renderComponent(MemberActions, {
-					memberId: row.original.id!,
-					isExpanded: row.getIsExpanded(),
-					onToggleExpand: () => row.toggleExpanded(),
+	const membersQuery = createQuery(() => ({
+		queryKey: ['members', pageSize, currentPage, rangeStart, sortingState, searchQuery],
+		placeholderData: keepPreviousData,
+		initialData: { data: [], count: 0 },
+		queryFn: async ({ signal }) => {
+			let query = supabase.from('member_management_view').select(columns, { count: 'exact' });
+			if (searchQuery.length > 0) {
+				query = query.textSearch('search_text', `'${searchQuery}'`, {
+					type: 'websearch'
 				});
-			},
-		},
-		{
-			accessorKey: "first_name",
-			header: ({ column }) =>
-				renderComponent(SortHeader, {
-					onclick: () => column.toggleSorting(column.getIsSorted() === "asc"),
-					header: "First Name",
-					class: "p-2",
-					sortDirection: column.getIsSorted(),
-				}),
-			cell: ({ getValue }) => {
-				return renderSnippet(
-					createRawSnippet((value) => ({
-						render: () =>
-							`<div class="w-[100px] md:w-[120px] whitespace-break-spaces break-words">${value()}</div>`,
-					})),
-					getValue(),
-				);
-			},
-		},
-		{
-			accessorKey: "last_name",
-			header: ({ column }) =>
-				renderComponent(SortHeader, {
-					onclick: () => column.toggleSorting(column.getIsSorted() === "asc"),
-					header: "Last Name",
-					class: "p-2",
-					sortDirection: column.getIsSorted(),
-				}),
-			cell: ({ getValue }) => {
-				return renderSnippet(
-					createRawSnippet((value) => ({
-						render: () =>
-							`<div class="w-[100px] md:w-[120px] whitespace-break-spaces break-words">${value()}</div>`,
-					})),
-					getValue(),
-				);
-			},
-		},
-		{
-			accessorKey: "email",
-			header: "Email",
-			cell: ({ getValue }) => {
-				return renderSnippet(
-					createRawSnippet((value) => ({
-						render: () =>
-							`<a href="mailto:${value()}" class="w-[150px] md:w-[200px] whitespace-break-spaces break-words">${value()}</a>`,
-					})),
-					getValue(),
-				);
-			},
-		},
-		{
-			accessorKey: "phone_number",
-			header: "Phone Number",
-			cell: ({ getValue }) => {
-				return renderSnippet(
-					createRawSnippet((value) => ({
-						render: () => `<div class="w-[120px]">${value()}</div>`,
-					})),
-					getValue(),
-				);
-			},
-		},
-		{
-			accessorKey: "is_active",
-			header: "Status",
-			cell: ({ getValue }) => {
-				return renderComponent(Badge, {
-					variant: getValue() ? "default" : "destructive",
-					class: "h-6",
-					children: createRawSnippet(() => ({
-						render: () =>
-							`<p class="capitalize">${getValue() ? "Active" : "Inactive"}</p>`,
-					})),
+			}
+			if (sortingState.length > 0) {
+				query = query.order(sortingState[0].id, {
+					ascending: !sortingState[0].desc
 				});
-			},
-		},
-		{
-			accessorKey: "subscription_paused_until",
-			header: "Subscription",
-			cell: ({ row }) => {
-				const pausedUntil = row.original.subscription_paused_until;
-				const isActive = row.original.is_active;
+			}
+			const { data, error, count } = await query
+				.range(rangeStart, rangeEnd)
+				.abortSignal(signal)
+				.throwOnError();
+			if (error) {
+				throw error;
+			}
+			return { data, count: count ?? 0 };
+		}
+	}));
 
-				if (!isActive) {
-					return renderComponent(Badge, {
-						variant: "destructive",
-						class: "h-6",
-						children: createRawSnippet(() => ({ render: () => "Inactive" })),
+	function onPaginationChange(newPagination: Partial<PaginationState>) {
+		const paginationState: PaginationState = {
+			pageIndex: currentPage,
+			pageSize,
+			...newPagination
+		};
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
+		const newParams = new URLSearchParams(page.url.searchParams);
+		newParams.set('page', paginationState.pageIndex.toString());
+		newParams.set('pageSize', paginationState.pageSize.toString());
+		const url = `/dashboard/members?${newParams.toString()}`;
+		goto(resolve(url as any));
+	}
+
+	function onSortingChange(newSorting: SortingState) {
+		const [sortingState] = newSorting;
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
+		const newParams = new URLSearchParams(page.url.searchParams);
+		newParams.set('sort', sortingState.id);
+		newParams.set('direction', sortingState.desc ? 'desc' : 'asc');
+		const url = `/dashboard/members?${newParams.toString()}`;
+		goto(resolve(url as any));
+	}
+
+	function onSearchChange(newSearch: string) {
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
+		const newParams = new URLSearchParams(page.url.searchParams);
+		newParams.set('q', newSearch);
+		const url = `/dashboard/members?${newParams.toString()}`;
+		goto(resolve(url as any));
+	}
+
+	// State for expanded rows
+	let expandedState = $state({});
+
+	const tableOptions = $state<TableOptions<Omit<Tables<'member_management_view'>, 'customer_id'>>>({
+		autoResetPageIndex: false,
+		manualPagination: true,
+		manualSorting: true,
+		getExpandedRowModel: getExpandedRowModel(),
+		columns: [
+			{
+				id: 'actions',
+				header: 'Actions',
+				cell: ({ row }) => {
+					return renderComponent(MemberActions, {
+						memberId: row.original.id!,
+						isExpanded: row.getIsExpanded(),
+						onToggleExpand: () => row.toggleExpanded()
 					});
 				}
-
-				if (pausedUntil && dayjs(pausedUntil).isAfter(dayjs())) {
+			},
+			{
+				accessorKey: 'first_name',
+				header: ({ column }) =>
+					renderComponent(SortHeader, {
+						onclick: () => column.toggleSorting(column.getIsSorted() === 'asc'),
+						header: 'First Name',
+						class: 'p-2',
+						sortDirection: column.getIsSorted()
+					}),
+				cell: ({ getValue }) => {
+					return renderSnippet(
+						createRawSnippet((value) => ({
+							render: () =>
+								`<div class="w-[100px] md:w-[120px] whitespace-break-spaces break-words">${value()}</div>`
+						})),
+						getValue()
+					);
+				}
+			},
+			{
+				accessorKey: 'last_name',
+				header: ({ column }) =>
+					renderComponent(SortHeader, {
+						onclick: () => column.toggleSorting(column.getIsSorted() === 'asc'),
+						header: 'Last Name',
+						class: 'p-2',
+						sortDirection: column.getIsSorted()
+					}),
+				cell: ({ getValue }) => {
+					return renderSnippet(
+						createRawSnippet((value) => ({
+							render: () =>
+								`<div class="w-[100px] md:w-[120px] whitespace-break-spaces break-words">${value()}</div>`
+						})),
+						getValue()
+					);
+				}
+			},
+			{
+				accessorKey: 'email',
+				header: 'Email',
+				cell: ({ getValue }) => {
+					return renderSnippet(
+						createRawSnippet((value) => ({
+							render: () =>
+								`<a href="mailto:${value()}" class="w-[150px] md:w-[200px] whitespace-break-spaces break-words">${value()}</a>`
+						})),
+						getValue()
+					);
+				}
+			},
+			{
+				accessorKey: 'phone_number',
+				header: 'Phone Number',
+				cell: ({ getValue }) => {
+					return renderSnippet(
+						createRawSnippet((value) => ({
+							render: () => `<div class="w-[120px]">${value()}</div>`
+						})),
+						getValue()
+					);
+				}
+			},
+			{
+				accessorKey: 'is_active',
+				header: 'Status',
+				cell: ({ getValue }) => {
 					return renderComponent(Badge, {
-						variant: "secondary",
-						class: "h-6",
+						variant: getValue() ? 'default' : 'destructive',
+						class: 'h-6',
+						children: createRawSnippet(() => ({
+							render: () => `<p class="capitalize">${getValue() ? 'Active' : 'Inactive'}</p>`
+						}))
+					});
+				}
+			},
+			{
+				accessorKey: 'subscription_paused_until',
+				header: 'Subscription',
+				cell: ({ row }) => {
+					const pausedUntil = row.original.subscription_paused_until;
+					const isActive = row.original.is_active;
+
+					if (!isActive) {
+						return renderComponent(Badge, {
+							variant: 'destructive',
+							class: 'h-6',
+							children: createRawSnippet(() => ({ render: () => 'Inactive' }))
+						});
+					}
+
+					if (pausedUntil && dayjs(pausedUntil).isAfter(dayjs())) {
+						return renderComponent(Badge, {
+							variant: 'secondary',
+							class: 'h-6',
+							children: createRawSnippet(() => ({
+								render: () => `Paused until ${dayjs(pausedUntil).format('MMM D, YYYY')}`
+							}))
+						});
+					}
+
+					return renderComponent(Badge, {
+						variant: 'default',
+						class: 'h-6',
+						children: createRawSnippet(() => ({ render: () => 'Active' }))
+					});
+				}
+			},
+			{
+				accessorKey: 'age',
+				header: ({ column }) =>
+					renderComponent(SortHeader, {
+						onclick: () => column.toggleSorting(column.getIsSorted() === 'asc'),
+						header: 'Age',
+						class: 'p-2',
+						sortDirection: column.getIsSorted()
+					}),
+				cell: ({ getValue }) => {
+					return renderSnippet(
+						createRawSnippet((value) => ({
+							render: () => {
+								return `<div class="w-[120px] ${value() < 18 ? 'text-red-800' : ''}">${value() < 18 ? value() + '(👶)' : value()}</div>`;
+							}
+						})),
+						getValue()
+					);
+				}
+			},
+			{
+				accessorKey: 'social_media_consent',
+				header: 'Social  Consent',
+				cell: ({ getValue }) => {
+					return renderComponent(Badge, {
+						variant:
+							getValue() !== 'no'
+								? getValue() === 'yes_recognizable'
+									? 'default'
+									: 'secondary'
+								: 'destructive',
+						class: 'h-8',
 						children: createRawSnippet(() => ({
 							render: () =>
-								`Paused until ${dayjs(pausedUntil).format("MMM D, YYYY")}`,
-						})),
+								`<p class="first-letter:capitalize">${getValue().replace('_', ', ')}</p>`
+						}))
 					});
 				}
-
-				return renderComponent(Badge, {
-					variant: "default",
-					class: "h-6",
-					children: createRawSnippet(() => ({ render: () => "Active" })),
-				});
 			},
+			{
+				accessorKey: 'preferred_weapon',
+				header: 'Weapons',
+				cell: ({ getValue }) => {
+					const weapons = getValue() as string[];
+					return renderSnippet(
+						createRawSnippet(() => ({
+							render: () =>
+								`<div class="flex gap-1 flex-wrap">${weapons
+									.map(
+										(w) =>
+											`<span class="bg-primary/10 text-primary rounded px-2 py-1 text-sm first-letter:capitalize">${w.replace(
+												/[-_]/g,
+												' '
+											)}</span>`
+									)
+									.join('')}</div>`
+						})),
+						weapons
+					);
+				}
+			},
+			{
+				accessorKey: 'membership_start_date',
+				header: ({ column }) =>
+					renderComponent(SortHeader, {
+						onclick: () => column.toggleSorting(column.getIsSorted() === 'asc'),
+						header: 'Member Since',
+						class: 'p-2',
+						sortDirection: column.getIsSorted()
+					}),
+				cell: ({ getValue }) => {
+					const date = getValue() as string;
+					return renderSnippet(
+						createRawSnippet((value) => ({
+							render: () => `<p>${dayjs(value()).format('MMM D, YYYY')}</p>`
+						})),
+						date
+					);
+				}
+			},
+			{
+				accessorKey: 'last_payment_date',
+				header: ({ column }) =>
+					renderComponent(SortHeader, {
+						onclick: () => column.toggleSorting(column.getIsSorted() === 'asc'),
+						header: 'Last Payment',
+						class: 'p-2',
+						sortDirection: column.getIsSorted()
+					}),
+				cell: ({ getValue }) => {
+					const date = getValue() as string;
+					return renderSnippet(
+						createRawSnippet((value) => ({
+							render: () => `<p>${value() ? dayjs(value()).format('MMM D, YYYY') : 'Never'}</p>`
+						})),
+						date
+					);
+				}
+			}
+		],
+		get data() {
+			return membersQuery?.data?.data ?? [];
 		},
-		{
-			accessorKey: "age",
-			header: ({ column }) =>
-				renderComponent(SortHeader, {
-					onclick: () => column.toggleSorting(column.getIsSorted() === "asc"),
-					header: "Age",
-					class: "p-2",
-					sortDirection: column.getIsSorted(),
-				}),
-			cell: ({ getValue }) => {
-				return renderSnippet(
-					createRawSnippet((value) => ({
-						render: () => {
-							return `<div class="w-[120px] ${value() < 18 ? "text-red-800" : ""}">${value() < 18 ? value() + "(👶)" : value()}</div>`;
-						},
-					})),
-					getValue(),
+		onPaginationChange: (updater) => {
+			if (typeof updater === 'function') {
+				onPaginationChange(
+					updater({
+						pageIndex: currentPage,
+						pageSize
+					})
 				);
-			},
+			} else {
+				onPaginationChange(updater);
+			}
 		},
-		{
-			accessorKey: "social_media_consent",
-			header: "Social  Consent",
-			cell: ({ getValue }) => {
-				return renderComponent(Badge, {
-					variant:
-						getValue() !== "no"
-							? getValue() === "yes_recognizable"
-								? "default"
-								: "secondary"
-							: "destructive",
-					class: "h-8",
-					children: createRawSnippet(() => ({
-						render: () =>
-							`<p class="first-letter:capitalize">${getValue().replace("_", ", ")}</p>`,
-					})),
-				});
-			},
+		onSortingChange: (updater) => {
+			if (typeof updater === 'function') {
+				onSortingChange(updater(sortingState));
+			} else {
+				onSortingChange(updater);
+			}
 		},
-		{
-			accessorKey: "preferred_weapon",
-			header: "Weapons",
-			cell: ({ getValue }) => {
-				const weapons = getValue() as string[];
-				return renderSnippet(
-					createRawSnippet(() => ({
-						render: () =>
-							`<div class="flex gap-1 flex-wrap">${weapons
-								.map(
-									(w) =>
-										`<span class="bg-primary/10 text-primary rounded px-2 py-1 text-sm first-letter:capitalize">${w.replace(
-											/[-_]/g,
-											" ",
-										)}</span>`,
-								)
-								.join("")}</div>`,
-					})),
-					weapons,
-				);
+		getRowId: (row) => row.id!,
+		state: {
+			get expanded() {
+				return expandedState;
 			},
-		},
-		{
-			accessorKey: "membership_start_date",
-			header: ({ column }) =>
-				renderComponent(SortHeader, {
-					onclick: () => column.toggleSorting(column.getIsSorted() === "asc"),
-					header: "Member Since",
-					class: "p-2",
-					sortDirection: column.getIsSorted(),
-				}),
-			cell: ({ getValue }) => {
-				const date = getValue() as string;
-				return renderSnippet(
-					createRawSnippet((value) => ({
-						render: () => `<p>${dayjs(value()).format("MMM D, YYYY")}</p>`,
-					})),
-					date,
-				);
-			},
-		},
-		{
-			accessorKey: "last_payment_date",
-			header: ({ column }) =>
-				renderComponent(SortHeader, {
-					onclick: () => column.toggleSorting(column.getIsSorted() === "asc"),
-					header: "Last Payment",
-					class: "p-2",
-					sortDirection: column.getIsSorted(),
-				}),
-			cell: ({ getValue }) => {
-				const date = getValue() as string;
-				return renderSnippet(
-					createRawSnippet((value) => ({
-						render: () =>
-							`<p>${value() ? dayjs(value()).format("MMM D, YYYY") : "Never"}</p>`,
-					})),
-					date,
-				);
-			},
-		},
-	],
-	get data() {
-		return membersQuery?.data?.data ?? [];
-	},
-	onPaginationChange: (updater) => {
-		if (typeof updater === "function") {
-			onPaginationChange(
-				updater({
+			get pagination() {
+				return {
 					pageIndex: currentPage,
-					pageSize,
-				}),
-			);
-		} else {
-			onPaginationChange(updater);
-		}
-	},
-	onSortingChange: (updater) => {
-		if (typeof updater === "function") {
-			onSortingChange(updater(sortingState));
-		} else {
-			onSortingChange(updater);
-		}
-	},
-	getRowId: (row) => row.id!,
-	state: {
-		get expanded() {
-			return expandedState;
+					pageSize
+				} as PaginationState;
+			},
+			get sorting() {
+				return sortingState;
+			}
 		},
-		get pagination() {
-			return {
-				pageIndex: currentPage,
-				pageSize,
-			} as PaginationState;
+		onExpandedChange: (updater) => {
+			if (typeof updater === 'function') {
+				expandedState = updater(expandedState);
+			} else {
+				expandedState = updater;
+			}
 		},
-		get sorting() {
-			return sortingState;
-		},
-	},
-	onExpandedChange: (updater) => {
-		if (typeof updater === "function") {
-			expandedState = updater(expandedState);
-		} else {
-			expandedState = updater;
-		}
-	},
-	get rowCount() {
-		return membersQuery?.data?.count ?? 0;
-	},
-	getCoreRowModel: getCoreRowModel(),
-	getPaginationRowModel: getPaginationRowModel(),
-	getSortedRowModel: getSortedRowModel(),
-});
+		rowCount: membersQuery?.data?.count ?? 0,
+		getCoreRowModel: getCoreRowModel(),
+		getPaginationRowModel: getPaginationRowModel(),
+		getSortedRowModel: getSortedRowModel()
+	});
 
-const table = createSvelteTable(tableOptions);
+	const table = createSvelteTable(tableOptions);
 </script>
 
 <div class="flex w-full max-w-sm items-center space-x-2 mb-2 p-2">
 	<Input
 		value={searchQuery}
-		oninput={(t: Event & { currentTarget: EventTarget & HTMLInputElement }) =>
+		onchange={(t: Event & { currentTarget: EventTarget & HTMLInputElement }) =>
 			onSearchChange(t.currentTarget.value)}
 		placeholder="Search members"
 		class="max-w-md"
 	/>
 
 	{#if searchQuery !== ''}
-		<Button variant="ghost" type="button" aria-label="Clear search" onclick={() => onSearchChange('')}>
+		<Button variant="ghost" type="button" onclick={() => onSearchChange('')}>
 			<Cross2 />
 		</Button>
 	{/if}
@@ -694,9 +677,7 @@ const table = createSvelteTable(tableOptions);
 			value={pageSize.toString()}
 			onValueChange={(value) => onPaginationChange({ pageSize: Number(value) })}
 		>
-			<Select.Trigger class="w-16 h-8" aria-label="Members elements per page">
-				{pageSize}
-			</Select.Trigger>
+			<Select.Trigger class="w-16 h-8">{pageSize}</Select.Trigger>
 			<Select.Content>
 				{#each pageSizeOptions as pageSizeOption (pageSizeOption)}
 					<Select.Item value={pageSizeOption.toString()}>

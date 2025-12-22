@@ -1,17 +1,10 @@
 <script lang="ts">
-import { Button } from "$lib/components/ui/button";
-import * as Tooltip from "$lib/components/ui/tooltip";
-import {
-	ChevronUp,
-	ChevronDown,
-	SendIcon,
-	Edit,
-	NotebookPen,
-	Trash2,
-} from "lucide-svelte";
-import * as Popover from "$lib/components/ui/popover";
-import { Label } from "$lib/components/ui/label";
-import { Textarea } from "$lib/components/ui/textarea";
+import { Button } from '$lib/components/ui/button';
+import * as Tooltip from '$lib/components/ui/tooltip';
+import { ChevronUp, ChevronDown, SendIcon, Edit, NotebookPen, Trash2 } from 'lucide-svelte';
+import * as Popover from '$lib/components/ui/popover';
+import { Label } from '$lib/components/ui/label';
+import { Textarea } from '$lib/components/ui/textarea';
 
 type Props = {
 	adminNotes: string;

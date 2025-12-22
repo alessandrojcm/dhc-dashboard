@@ -1,29 +1,29 @@
 <script lang="ts">
-import * as Sheet from "$lib/components/ui/sheet/index.js";
-import * as Field from "$lib/components/ui/field";
-import { Button } from "$lib/components/ui/button";
-import { Input } from "$lib/components/ui/input";
-import { Lock } from "lucide-svelte";
-import { toast } from "svelte-sonner";
-import { updateMemberSettings } from "./data.remote";
-import { initForm } from "$lib/utils/init-form.svelte";
+	import * as Sheet from '$lib/components/ui/sheet/index.js';
+	import * as Field from '$lib/components/ui/field';
+	import { Button } from '$lib/components/ui/button';
+	import { Input } from '$lib/components/ui/input';
+	import { Lock } from 'lucide-svelte';
+	import { toast } from 'svelte-sonner';
+	import { updateMemberSettings } from './data.remote';
+    import { initForm } from '$lib/utils/init-form.svelte';
+	
+	const props: {
+		initialValue: string;
+	} = $props();
+	let isOpen = $state(false);
 
-const props: {
-	initialValue: string;
-} = $props();
-let isOpen = $state(false);
+	initForm(updateMemberSettings, () => ({
+		insuranceFormLink: props.initialValue,
+	}));
 
-initForm(updateMemberSettings, () => ({
-	insuranceFormLink: props.initialValue,
-}));
-
-$effect(() => {
-	const result = updateMemberSettings.result;
-	if (result?.success) {
-		toast.success(result.success);
-		isOpen = false;
-	}
-});
+	$effect(() => {
+		const result = updateMemberSettings.result;
+		if (result?.success) {
+			toast.success(result.success);
+			isOpen = false;
+		}
+	});
 </script>
 
 <Button variant="outline" class="fixed right-4 top-4" onclick={() => (isOpen = true)}>
