@@ -1,7 +1,4 @@
 <script lang="ts">
-	import { superForm } from 'sveltekit-superforms';
-	import { valibot } from 'sveltekit-superforms/adapters';
-	import { containerSchema } from '$lib/schemas/inventory';
 	import {
 		Card,
 		CardContent,
@@ -13,9 +10,11 @@
 	import { Input } from '$lib/components/ui/input';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import { Select, SelectContent, SelectItem, SelectTrigger } from '$lib/components/ui/select';
-	import * as Form from '$lib/components/ui/form';
+	import * as Field from '$lib/components/ui/field';
 	import { ArrowLeft, FolderOpen } from 'lucide-svelte';
 	import type { InventoryContainer } from '$lib/types';
+	import { createContainer } from '../data.remote';
+	import { onMount } from 'svelte';
 
 	interface ContainerWithChildren extends InventoryContainer {
 		children: ContainerWithChildren[];
@@ -28,12 +27,15 @@
 
 	let { data } = $props();
 
-	const form = superForm(data.form, {
-		validators: valibot(containerSchema),
-		resetForm: true
+	onMount(() => {
+		createContainer.fields.set({
+			name: '',
+			description: '',
+			parent_container_id: ''
+		});
 	});
 
-	const { form: formData, enhance, submitting } = form;
+	const parentContainerId = $derived(createContainer.fields.parent_container_id.value() ?? '');
 
 	// Build hierarchy display for parent selection
 	const buildHierarchyDisplay = (containers: InventoryContainer[]): HierarchicalContainer[] => {
@@ -88,8 +90,8 @@
 
 	// Find the selected container for display
 	const selectedContainer = $derived.by(() => {
-		if (!$formData.parent_container_id) return null;
-		return hierarchicalContainers.find((c) => c.id === $formData.parent_container_id);
+		if (!parentContainerId) return null;
+		return hierarchicalContainers.find((c) => c.id === parentContainerId);
 	});
 </script>
 
@@ -117,68 +119,69 @@
 				</CardDescription>
 			</CardHeader>
 			<CardContent>
-				<form method="POST" use:enhance class="space-y-6">
-					<Form.Field {form} name="name">
-						<Form.Control>
-							{#snippet children({ props })}
-								<Form.Label>Container Name *</Form.Label>
-								<Input
-									{...props}
-									bind:value={$formData.name}
-									placeholder="e.g., Main Storage Room, Black Duffel Bag #1"
-								/>
-							{/snippet}
-						</Form.Control>
-						<Form.FieldErrors />
-					</Form.Field>
+				<form {...createContainer} class="space-y-6">
+					<Field.Field>
+						{@const fieldProps = createContainer.fields.name.as('text')}
+						<Field.Label for={fieldProps.name}>Container Name *</Field.Label>
+						<Input
+							{...fieldProps}
+							id={fieldProps.name}
+							placeholder="e.g., Main Storage Room, Black Duffel Bag #1"
+						/>
+						{#each createContainer.fields.name.issues() as issue}
+							<Field.Error>{issue.message}</Field.Error>
+						{/each}
+					</Field.Field>
 
-					<Form.Field {form} name="description">
-						<Form.Control>
-							{#snippet children({ props })}
-								<Form.Label>Description</Form.Label>
-								<Textarea
-									{...props}
-									bind:value={$formData.description}
-									placeholder="Optional description of the container and its purpose"
-									rows={3}
-								/>
-							{/snippet}
-						</Form.Control>
-						<Form.FieldErrors />
-					</Form.Field>
+					<Field.Field>
+						{@const fieldProps = createContainer.fields.description.as('text')}
+						<Field.Label for={fieldProps.name}>Description</Field.Label>
+						<Textarea
+							{...fieldProps}
+							id={fieldProps.name}
+							placeholder="Optional description of the container and its purpose"
+							rows={3}
+						/>
+						{#each createContainer.fields.description.issues() as issue}
+							<Field.Error>{issue.message}</Field.Error>
+						{/each}
+					</Field.Field>
 
-					<Form.Field {form} name="parent_container_id">
-						<Form.Control>
-							{#snippet children({ props })}
-								<Form.Label>Parent Container</Form.Label>
-								<Select type="single" bind:value={$formData.parent_container_id} name={props.name}>
-									<SelectTrigger {...props}>
-										{selectedContainer
-											? selectedContainer.displayName
-											: 'No parent container (root level)'}
-									</SelectTrigger>
-									<SelectContent>
-										<SelectItem value="">No parent container (root level)</SelectItem>
-										{#each hierarchicalContainers as container (container.id)}
-											<SelectItem value={container.id}>
-												{container.displayName}
-											</SelectItem>
-										{/each}
-									</SelectContent>
-								</Select>
-							{/snippet}
-						</Form.Control>
-						<Form.Description>
+					<Field.Field>
+						<Field.Label>Parent Container</Field.Label>
+						<Select
+							type="single"
+							value={parentContainerId}
+							onValueChange={(v) => createContainer.fields.parent_container_id.set(v)}
+							name="parent_container_id"
+						>
+							<SelectTrigger>
+								{selectedContainer
+									? selectedContainer.displayName
+									: 'No parent container (root level)'}
+							</SelectTrigger>
+							<SelectContent>
+								<SelectItem value="">No parent container (root level)</SelectItem>
+								{#each hierarchicalContainers as container (container.id)}
+									<SelectItem value={container.id}>
+										{container.displayName}
+									</SelectItem>
+								{/each}
+							</SelectContent>
+						</Select>
+						<Field.Description>
 							Choose a parent container to create a hierarchy. Leave empty to create a root-level
 							container.
-						</Form.Description>
-						<Form.FieldErrors />
-					</Form.Field>
+						</Field.Description>
+						{#each createContainer.fields.parent_container_id.issues() as issue}
+							<Field.Error>{issue.message}</Field.Error>
+						{/each}
+					</Field.Field>
 
 					<div class="flex gap-3 pt-4">
-						<Form.Button type="submit" disabled={$submitting}>
-							{$submitting ? 'Creating...' : 'Create Container'}
-						</Form.Button>
+						<Button type="submit" disabled={!!createContainer.pending}>
+							{createContainer.pending ? 'Creating...' : 'Create Container'}
+						</Button>
 						<Button href="/dashboard/inventory/containers" variant="outline">Cancel</Button>
 					</div>
 				</form>

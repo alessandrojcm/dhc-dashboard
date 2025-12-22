@@ -1,15 +1,9 @@
-import { error, fail } from '@sveltejs/kit';
-import { superValidate } from 'sveltekit-superforms';
-import { valibot } from 'sveltekit-superforms/adapters';
+import { error } from '@sveltejs/kit';
 import { authorize } from '$lib/server/auth';
 import { INVENTORY_ROLES } from '$lib/server/roles';
-import {
-	createItemService,
-	createHistoryService,
-	ItemUpdateSchema
-} from '$lib/server/services/inventory';
+import { createItemService, createHistoryService } from '$lib/server/services/inventory';
 import type { InventoryAttributeDefinition, InventoryAttributes } from '$lib/types';
-import type { Action, PageServerLoad } from './$types';
+import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ params, locals, platform }) => {
 	const session = await authorize(locals, INVENTORY_ROLES);
@@ -44,44 +38,18 @@ export const load: PageServerLoad = async ({ params, locals, platform }) => {
 		});
 	}
 
-	const form = await superValidate(
-		{
+	return {
+		item,
+		history,
+		categories: filterOptions.categories,
+		containers: filterOptions.containers,
+		initialFormData: {
 			container_id: item.container.id!,
 			category_id: item.category.id!,
 			quantity: item.quantity,
 			notes: item.notes || '',
 			out_for_maintenance: item.out_for_maintenance || false,
 			attributes: initialAttributes
-		},
-		valibot(ItemUpdateSchema)
-	);
-
-	return {
-		item,
-		history,
-		categories: filterOptions.categories,
-		containers: filterOptions.containers,
-		form
+		}
 	};
-};
-
-export const actions: { [key: string]: Action } = {
-	default: async ({ request, params, locals, platform }) => {
-		const form = await superValidate(request, valibot(ItemUpdateSchema));
-
-		if (!form.valid) {
-			return fail(400, { form });
-		}
-		const session = await authorize(locals, INVENTORY_ROLES);
-
-		try {
-			const itemService = createItemService(platform!, session);
-			const item = await itemService.update(params.id, form.data);
-
-			return { form, item };
-		} catch (err) {
-			console.error('Failed to update item:', err);
-			return fail(500, { form });
-		}
-	}
 };

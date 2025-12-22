@@ -1,4 +1,11 @@
 <script lang="ts">
+import { Button } from '$lib/components/ui/button';
+import * as Tooltip from '$lib/components/ui/tooltip';
+import { ChevronUp, ChevronDown, SendIcon, Edit, NotebookPen, Trash2 } from 'lucide-svelte';
+import * as Popover from '$lib/components/ui/popover';
+import { Label } from '$lib/components/ui/label';
+import { Textarea } from '$lib/components/ui/textarea';
+
 type Props = {
 	adminNotes: string;
 	onEdit: (newValue: string) => void;
@@ -6,15 +13,15 @@ type Props = {
 	onToggleExpand?: () => void;
 	inviteMember: () => void;
 };
-const _isEdit = $state(false);
-const {
+let isEdit = $state(false);
+let {
 	adminNotes,
 	onEdit,
 	isExpanded = false,
 	onToggleExpand,
 	inviteMember,
 }: Props = $props();
-const _value = $state(adminNotes);
+let value = $state(adminNotes);
 </script>
 
 <div class="flex gap-w">
@@ -54,14 +61,15 @@ const _value = $state(adminNotes);
 				</Button>
 			</Label>
 			{#if isEdit}
-				<Textarea class="min-h-[5ch]" bind:value />
+				<Textarea class="min-h-[5ch]" bind:value={value} />
 				<Button
 					class="self-start"
 					onclick={() => {
 						onEdit(value);
 						isEdit = false;
 					}}
-					>Save
+				>
+					Save
 				</Button>
 			{:else}
 				<p class="border border-solid border-black-200 rounded-md p-2 min-h-[5ch]">

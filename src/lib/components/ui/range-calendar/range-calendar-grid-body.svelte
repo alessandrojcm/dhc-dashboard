@@ -1,7 +1,8 @@
 <script lang="ts">
-import type { RangeCalendar as RangeCalendarPrimitive } from "bits-ui";
+import { RangeCalendar as RangeCalendarPrimitive } from "bits-ui";
+import { cn } from "$lib/utils";
 
-const {
+let {
 	ref = $bindable(null),
 	class: className,
 	...restProps

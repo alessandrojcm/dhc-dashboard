@@ -56,10 +56,29 @@ export const MemberUpdateSchema = v.object({
 export type MemberUpdateInput = v.InferOutput<typeof MemberUpdateSchema>;
 
 /**
- * Member profile update arguments (derived from database function)
- * Maps to update_member_data() function args
+ * Member profile update arguments
+ * Used for updating both user_profiles and member_profiles tables
  */
-export type UpdateMemberDataArgs = Database['public']['Functions']['update_member_data']['Args'];
+export interface UpdateMemberDataArgs {
+	user_uuid: string;
+	p_first_name?: string | null;
+	p_last_name?: string | null;
+	p_is_active?: boolean | null;
+	p_medical_conditions?: string | null;
+	p_phone_number?: string | null;
+	p_gender?: Database['public']['Enums']['gender'] | null;
+	p_pronouns?: string | null;
+	p_date_of_birth?: string | null;
+	p_next_of_kin_name?: string | null;
+	p_next_of_kin_phone?: string | null;
+	p_preferred_weapon?: Database['public']['Enums']['preferred_weapon'][] | null;
+	p_membership_start_date?: string | null;
+	p_membership_end_date?: string | null;
+	p_last_payment_date?: string | null;
+	p_insurance_form_submitted?: boolean | null;
+	p_additional_data?: Record<string, unknown> | null;
+	p_social_media_consent?: Database['public']['Enums']['social_media_consent'] | null;
+}
 
 // ============================================================================
 // Member Service
@@ -201,42 +220,81 @@ export class MemberService {
 
 	/**
 	 * Internal transactional method for updating member with full args
+	 * Replaces the update_member_data stored procedure with pure Kysely
 	 */
 	async _updateWithArgs(
 		trx: Transaction<KyselyDatabase>,
 		args: UpdateMemberDataArgs
 	): Promise<MemberData> {
+		const userProfile = await trx
+			.selectFrom('user_profiles')
+			.select('id')
+			.where('supabase_user_id', '=', args.user_uuid)
+			.executeTakeFirst();
+
+		if (!userProfile) {
+			throw new Error(`User with UUID ${args.user_uuid} not found`, {
+				cause: { userId: args.user_uuid, context: 'MemberService._updateWithArgs' }
+			});
+		}
+
+		// Update user_profiles
+		await trx
+			.updateTable('user_profiles')
+			.set((eb) => ({
+				updated_at: eb.val(new Date().toISOString()),
+				...(args.p_first_name != null && { first_name: eb.val(args.p_first_name) }),
+				...(args.p_last_name != null && { last_name: eb.val(args.p_last_name) }),
+				...(args.p_is_active != null && { is_active: eb.val(args.p_is_active) }),
+				...(args.p_medical_conditions != null && { medical_conditions: eb.val(args.p_medical_conditions) }),
+				...(args.p_phone_number != null && { phone_number: eb.val(args.p_phone_number) }),
+				...(args.p_gender != null && { gender: eb.val(args.p_gender) }),
+				...(args.p_pronouns != null && { pronouns: eb.val(args.p_pronouns) }),
+				...(args.p_date_of_birth != null && { date_of_birth: eb.val(args.p_date_of_birth) }),
+				...(args.p_social_media_consent != null && { social_media_consent: eb.val(args.p_social_media_consent) })
+			}))
+			.where('id', '=', userProfile.id)
+			.execute();
+
+		// Update member_profiles - use raw SQL for preferred_weapon enum array
+		if (args.p_preferred_weapon != null && args.p_preferred_weapon.length > 0) {
+			const weaponArray = `{${args.p_preferred_weapon.join(',')}}`;
+			await sql`
+				UPDATE member_profiles 
+				SET preferred_weapon = ${weaponArray}::preferred_weapon[],
+				    updated_at = NOW()
+				WHERE user_profile_id = ${userProfile.id}
+			`.execute(trx);
+		}
+
+		// Update other member_profiles fields
+		const memberUpdate = {
+			updated_at: new Date().toISOString(),
+			...(args.p_next_of_kin_name != null && { next_of_kin_name: args.p_next_of_kin_name }),
+			...(args.p_next_of_kin_phone != null && { next_of_kin_phone: args.p_next_of_kin_phone }),
+			...(args.p_membership_start_date != null && { membership_start_date: args.p_membership_start_date }),
+			...(args.p_membership_end_date != null && { membership_end_date: args.p_membership_end_date }),
+			...(args.p_last_payment_date != null && { last_payment_date: args.p_last_payment_date }),
+			...(args.p_insurance_form_submitted != null && { insurance_form_submitted: args.p_insurance_form_submitted }),
+			...(args.p_additional_data != null && { additional_data: JSON.stringify(args.p_additional_data) })
+		};
+
+		await trx
+			.updateTable('member_profiles')
+			.set(memberUpdate)
+			.where('user_profile_id', '=', userProfile.id)
+			.execute();
+
+		// Return the updated data
 		const result = await sql<MemberData>`
-			select * from update_member_data(
-				${args.user_uuid}::uuid,
-				${args.p_first_name ?? null}::text,
-				${args.p_last_name ?? null}::text,
-				${args.p_is_active ?? null}::boolean,
-				${args.p_medical_conditions ?? null}::text,
-				${args.p_phone_number ?? null}::text,
-				${args.p_gender ?? null}::gender,
-				${args.p_pronouns ?? null}::text,
-				${args.p_date_of_birth ?? null}::date,
-				${args.p_next_of_kin_name ?? null}::text,
-				${args.p_next_of_kin_phone ?? null}::text,
-				${args.p_preferred_weapon ?? null}::preferred_weapon[],
-				${args.p_membership_start_date ?? null}::timestamptz,
-				${args.p_membership_end_date ?? null}::timestamptz,
-				${args.p_last_payment_date ?? null}::timestamptz,
-				${args.p_insurance_form_submitted ?? null}::boolean,
-				${args.p_additional_data ? JSON.stringify(args.p_additional_data) : null}::jsonb,
-				${args.p_social_media_consent ?? 'no'}::social_media_consent
-			)
+			select * from get_member_data(${args.user_uuid}::uuid)
 		`
 			.execute(trx)
 			.then((r) => r.rows[0]);
-// TODO: this broken now why?
+
 		if (!result) {
-			throw new Error('Failed to update member data', {
-				cause: {
-					userId: args.user_uuid,
-					context: 'MemberService._updateWithArgs'
-				}
+			throw new Error('Failed to fetch updated member data', {
+				cause: { userId: args.user_uuid, context: 'MemberService._updateWithArgs' }
 			});
 		}
 

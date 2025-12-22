@@ -1,4 +1,7 @@
 <script lang="ts">
+import * as Card from '$lib/components/ui/card';
+import DHCLogo from '/src/assets/images/dhc-logo.png';
+
 const { children } = $props();
 </script>
 

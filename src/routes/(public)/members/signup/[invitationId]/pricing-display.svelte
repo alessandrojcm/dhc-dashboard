@@ -6,6 +6,11 @@ import type {
 import dayjs from "dayjs";
 import advancedFormat from "dayjs/plugin/advancedFormat";
 import type { PlanPricing } from "$lib/types.js";
+import * as Card from '$lib/components/ui/card';
+import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
+import * as Accordion from '$lib/components/ui/accordion';
+import { Input } from '$lib/components/ui/input';
+import { Button } from '$lib/components/ui/button';
 
 dayjs.extend(advancedFormat);
 
@@ -25,7 +30,7 @@ const {
 	nextAnnualBillingDate: Date;
 } = $props();
 
-const _stripeClass = $derived(
+const stripeClass = $derived(
 	`mt-4 ${planPricingData.isLoading ? "hidden" : ""}`,
 );
 </script>

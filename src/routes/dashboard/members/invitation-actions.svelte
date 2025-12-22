@@ -1,4 +1,9 @@
 <script lang="ts">
+import CopyButton from '$lib/components/ui/copy-button.svelte';
+import * as Tooltip from '$lib/components/ui/tooltip';
+import { Button } from '$lib/components/ui/button';
+import { SendIcon, Trash2 } from 'lucide-svelte';
+
 type Props = {
 	resendInvitation: () => void;
 	invitationLink: string;

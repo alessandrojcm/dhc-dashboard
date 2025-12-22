@@ -17,7 +17,6 @@
 
 
 	const countryCodes = $state(countryCodesList.all());
-	$inspect(countryCodes);
 	let open = $state(false);
 	let triggerRef = $state<HTMLButtonElement>(null!);
 
