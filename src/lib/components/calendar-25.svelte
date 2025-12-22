@@ -1,5 +1,12 @@
 <script lang="ts">
 import type { CalendarDate } from "@internationalized/date";
+import { Label } from '$lib/components/ui/label';
+import * as Popover from '$lib/components/ui/popover';
+import { Button } from '$lib/components/ui/button';
+import {Calendar} from '$lib/components/ui/calendar';
+import { Input } from '$lib/components/ui/input';
+import { getLocalTimeZone } from '@internationalized/date';
+import { ChevronDownIcon } from 'lucide-svelte';
 
 interface Props {
 	id: string;
@@ -23,19 +30,19 @@ let {
 	disabled,
 }: Props = $props();
 
-const _open = $state(false);
+let open = $state(false);
 
-function _handleDateChange(newDate: CalendarDate | undefined) {
+function handleDateChange(newDate: CalendarDate | undefined) {
 	date = newDate;
 	onDateChange?.(newDate);
 }
 
-function _handleStartTimeChange(newTime: string) {
+function handleStartTimeChange(newTime: string) {
 	startTime = newTime;
 	onStartTimeChange?.(newTime);
 }
 
-function _handleEndTimeChange(newTime: string) {
+function handleEndTimeChange(newTime: string) {
 	endTime = newTime;
 	onEndTimeChange?.(newTime);
 }
@@ -44,7 +51,7 @@ function _handleEndTimeChange(newTime: string) {
 <div class="flex flex-col gap-6">
 	<div class="flex flex-col gap-3">
 		<Label for="{id}-date" class="px-1">Date</Label>
-		<Popover.Root bind:open>
+		<Popover.Root bind:open={open}>
 			<Popover.Trigger id="{id}-date">
 				{#snippet child({ props })}
 					<Button

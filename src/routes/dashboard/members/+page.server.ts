@@ -5,7 +5,7 @@ import { valibot } from 'sveltekit-superforms/adapters';
 import { bulkInviteSchema } from '$lib/schemas/adminInvite';
 import { invariant } from '$lib/server/invariant';
 import { getRolesFromSession, SETTINGS_ROLES } from '$lib/server/roles';
-import { createSettingsService, InsuranceFormLinkSchema } from '$lib/server/services/settings';
+import { createSettingsService } from '$lib/server/services/settings';
 import { supabaseServiceClient } from '$lib/server/supabaseServiceClient';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -19,47 +19,13 @@ export const load: PageServerLoad = async ({ locals, platform }) => {
 	const settingsService = createSettingsService(platform!, session!);
 	const insuranceLinkSetting = await settingsService.findByKey('hema_insurance_form_link');
 
-	const form = await superValidate(
-		{
-			insuranceFormLink: canEditSettings && insuranceLinkSetting ? insuranceLinkSetting.value : ''
-		},
-		valibot(InsuranceFormLinkSchema),
-		{ errors: false }
-	);
-
 	return {
 		canEditSettings,
-		form
+		insuranceFormLink: canEditSettings && insuranceLinkSetting ? insuranceLinkSetting.value : ''
 	};
 };
 
 export const actions: Actions = {
-	updateSettings: async ({ request, locals, platform }) => {
-		const { session } = await locals.safeGetSession();
-		invariant(session === null, 'Unauthorized');
-		const roles = getRolesFromSession(session!);
-		invariant(roles.intersection(SETTINGS_ROLES).size === 0, 'Unauthorized', 403);
-
-		const form = await superValidate(request, valibot(InsuranceFormLinkSchema));
-		if (!form.valid) {
-			return fail(400, { form });
-		}
-
-		try {
-			const settingsService = createSettingsService(platform!, session!);
-			await settingsService.updateInsuranceFormLink(form.data.insuranceFormLink);
-
-			return message(form, {
-				success: 'Settings updated successfully'
-			});
-		} catch (error) {
-			Sentry.captureMessage(`Error updating settings: ${error}`, 'error');
-			return fail(500, {
-				form,
-				message: { failure: 'Failed to update settings' }
-			});
-		}
-	},
 	createBulkInvites: async ({ request, locals }) => {
 		const { session } = await locals.safeGetSession();
 		invariant(session === null, 'Unauthorized');

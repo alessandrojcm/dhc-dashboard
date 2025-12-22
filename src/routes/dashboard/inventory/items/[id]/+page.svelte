@@ -8,19 +8,20 @@
 	} from '$lib/components/ui/card';
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
-	import * as Form from '$lib/components/ui/form';
+	import * as Field from '$lib/components/ui/field';
 	import { Input } from '$lib/components/ui/input';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { Select, SelectContent, SelectItem, SelectTrigger } from '$lib/components/ui/select';
 	import { Label } from '$lib/components/ui/label';
-	import SuperDebug, { superForm } from 'sveltekit-superforms';
 	import { toast } from 'svelte-sonner';
 	import { ArrowLeft, Package, Edit, X, FolderOpen, Tags, Clock, Plus } from 'lucide-svelte';
 	import dayjs from 'dayjs';
 	import relativeTime from 'dayjs/plugin/relativeTime';
 	import { buildContainerHierarchy } from '$lib/utils/inventory-form';
-	import { dev } from '$app/environment';
+	import { updateItem } from '../data.remote';
+	import { onMount } from 'svelte';
+	import type { InventoryAttributeDefinition } from '$lib/types';
 
 	dayjs.extend(relativeTime);
 	let { data } = $props();
@@ -35,71 +36,76 @@
 	let isEditMode = $state(false);
 	let attributeErrors = $state<Record<string, string>>({});
 
+	// Local state for form fields
+	let containerId = $state(data.initialFormData.container_id);
+	let quantity = $state(data.initialFormData.quantity);
+	let notes = $state(data.initialFormData.notes);
+	let outForMaintenance = $state(data.initialFormData.out_for_maintenance);
+	let attributes = $state<Record<string, unknown>>(data.initialFormData.attributes);
+
+	onMount(() => {
+		updateItem.fields.set({
+			container_id: data.initialFormData.container_id,
+			category_id: data.initialFormData.category_id,
+			quantity: data.initialFormData.quantity,
+			notes: data.initialFormData.notes,
+			out_for_maintenance: data.initialFormData.out_for_maintenance,
+			attributes: data.initialFormData.attributes
+		});
+	});
+
+	// Handle success from form submission
+	$effect(() => {
+		const result = updateItem.result;
+		if (result?.success) {
+			toast.success(result.success, { position: 'top-right' });
+			isEditMode = false;
+		}
+	});
+
 	// Use current item for display
 	const displayItem = $derived(currentItem);
 	const hierarchicalContainers = buildContainerHierarchy(containers);
 
-	const form = superForm(data.form, {
-		dataType: 'json',
-		resetForm: false,
-		invalidateAll: true,
-		onResult({ result }) {
-			// Check if the action succeeded (not just form validation)
-			if (result.type === 'success') {
-				// Update the current item with the returned data
-				if (result.data?.item) {
-					currentItem = result.data.item;
-				}
-				toast.success('Item updated successfully');
-				isEditMode = false;
-			} else if (result.type === 'failure') {
-				toast.error(result.data?.form?.message || 'Failed to update item');
-			}
-		},
-		onError({ result }) {
-			console.error('Form submission error:', result);
-			toast.error(result.error?.message || 'Failed to update item');
-		}
-	});
-
-	const { form: formData, enhance, delayed } = form;
-
 	// Use the display item's category since it can't be changed
-	const categoryAttributes = $derived(displayItem.category?.available_attributes || []);
+	const categoryAttributes = $derived(
+		(displayItem.category?.available_attributes as InventoryAttributeDefinition[]) || []
+	);
 	const selectedContainerName = $derived.by(() => {
-		console.log('Looking for container with ID:', $formData.container_id);
-		console.log(
-			'Available containers:',
-			hierarchicalContainers.map((c) => ({ id: c.id, name: c.displayName }))
-		);
-		const container = hierarchicalContainers.find((c) => c.id === $formData.container_id);
-		console.log('Found container:', container);
+		const container = hierarchicalContainers.find((c) => c.id === containerId);
 		return container?.displayName || 'Select a container';
 	});
 
 	const handleEdit = () => {
 		isEditMode = true;
 
-		// Ensure all category attributes are initialized in form data
-		if (!$formData.attributes) {
-			$formData.attributes = {};
-		}
-
 		// Initialize any missing category attributes
 		categoryAttributes.forEach((attr) => {
-			if (attr.name && !($formData.attributes![attr.name] !== undefined)) {
-				$formData.attributes![attr.name] = attr.default_value ?? undefined;
+			if (attr.name && attributes[attr.name] === undefined) {
+				attributes[attr.name] = attr.default_value ?? undefined;
 			}
 		});
+		updateItem.fields.attributes.set({ ...attributes });
 	};
 
 	const handleCancel = () => {
 		isEditMode = false;
+		// Reset to original values
+		containerId = data.initialFormData.container_id;
+		quantity = data.initialFormData.quantity;
+		notes = data.initialFormData.notes;
+		outForMaintenance = data.initialFormData.out_for_maintenance;
+		attributes = { ...data.initialFormData.attributes };
 	};
+
+	function updateAttribute(attrName: string, value: unknown) {
+		attributes[attrName] = value;
+		updateItem.fields.attributes.set({ ...attributes });
+		clearAttributeError(attrName);
+	}
 
 	function clearAttributeError(attrName: string) {
 		if (attributeErrors[attrName]) {
-			// eslint-disable-next-line @typescript-eslint/no-unused-vars
 			const { [attrName]: _removed, ...rest } = attributeErrors;
 			attributeErrors = rest;
 		}
@@ -166,9 +172,12 @@
 		<p class="text-muted-foreground">Item details and history</p>
 	</div>
 
-	<form method="POST" use:enhance>
+	<form {...updateItem}>
 		<!-- Hidden field to preserve category_id since it's not editable -->
-		<input type="hidden" name="category_id" bind:value={$formData.category_id} />
+		<input type="hidden" name="category_id" value={data.initialFormData.category_id} />
+		<!-- Hidden field for attributes JSON -->
+		<input type="hidden" name="attributes" value={JSON.stringify(attributes)} />
+
 		<div class="grid gap-6 lg:grid-cols-3">
 			<!-- Item Information -->
 			<div class="lg:col-span-2 space-y-6">
@@ -194,64 +203,81 @@
 									</p>
 								</div>
 
-								<Form.Field {form} name="container_id">
-									<Form.Control>
-										{#snippet children({ props })}
-											<Form.Label>Container *</Form.Label>
-											<Select type="single" bind:value={$formData.container_id} name={props.name}>
-												<SelectTrigger {...props}>
-													{selectedContainerName}
-												</SelectTrigger>
-												<SelectContent>
-													{#each hierarchicalContainers as container (container.id)}
-														<SelectItem value={container.id}>
-															{container.displayName}
-														</SelectItem>
-													{/each}
-												</SelectContent>
-											</Select>
-										{/snippet}
-									</Form.Control>
-									<Form.FieldErrors />
-								</Form.Field>
+								<Field.Field>
+									<Field.Label>Container *</Field.Label>
+									<Select
+										type="single"
+										value={containerId}
+										onValueChange={(v) => {
+											containerId = v;
+											updateItem.fields.container_id.set(v);
+										}}
+										name="container_id"
+									>
+										<SelectTrigger>
+											{selectedContainerName}
+										</SelectTrigger>
+										<SelectContent>
+											{#each hierarchicalContainers as container (container.id)}
+												<SelectItem value={container.id}>
+													{container.displayName}
+												</SelectItem>
+											{/each}
+										</SelectContent>
+									</Select>
+									{#each updateItem.fields.container_id.issues() as issue}
+										<Field.Error>{issue.message}</Field.Error>
+									{/each}
+								</Field.Field>
 
-								<Form.Field {form} name="quantity">
-									<Form.Control>
-										{#snippet children({ props })}
-											<Form.Label>Quantity *</Form.Label>
-											<Input {...props} type="number" min="1" bind:value={$formData.quantity} />
-										{/snippet}
-									</Form.Control>
-									<Form.FieldErrors />
-								</Form.Field>
+								<Field.Field>
+									<Field.Label>Quantity *</Field.Label>
+									<Input
+										type="number"
+										min="1"
+										name="quantity"
+										value={quantity}
+										oninput={(e) => {
+											quantity = parseInt(e.currentTarget.value) || 1;
+											updateItem.fields.quantity.set(quantity);
+										}}
+									/>
+									{#each updateItem.fields.quantity.issues() as issue}
+										<Field.Error>{issue.message}</Field.Error>
+									{/each}
+								</Field.Field>
 
-								<Form.Field {form} name="out_for_maintenance">
-									<Form.Control>
-										{#snippet children({ props })}
-											<div class="flex items-center space-x-2 pt-6">
-												<Checkbox {...props} bind:checked={$formData.out_for_maintenance} />
-												<Form.Label>Out for maintenance</Form.Label>
-											</div>
-										{/snippet}
-									</Form.Control>
-									<Form.FieldErrors />
-								</Form.Field>
+								<Field.Field>
+									<div class="flex items-center space-x-2 pt-6">
+										<Checkbox
+											name="out_for_maintenance"
+											checked={outForMaintenance}
+											onCheckedChange={(checked) => {
+												outForMaintenance = !!checked;
+												updateItem.fields.out_for_maintenance.set(outForMaintenance);
+											}}
+										/>
+										<Label>Out for maintenance</Label>
+									</div>
+								</Field.Field>
 							</div>
 
-							<Form.Field {form} name="notes">
-								<Form.Control>
-									{#snippet children({ props })}
-										<Form.Label>Notes</Form.Label>
-										<Textarea
-											{...props}
-											bind:value={$formData.notes}
-											placeholder="Optional notes about this item"
-											rows={3}
-										/>
-									{/snippet}
-								</Form.Control>
-								<Form.FieldErrors />
-							</Form.Field>
+							<Field.Field>
+								<Field.Label>Notes</Field.Label>
+								<Textarea
+									name="notes"
+									value={notes}
+									oninput={(e) => {
+										notes = e.currentTarget.value;
+										updateItem.fields.notes.set(notes);
+									}}
+									placeholder="Optional notes about this item"
+									rows={3}
+								/>
+								{#each updateItem.fields.notes.issues() as issue}
+									<Field.Error>{issue.message}</Field.Error>
+								{/each}
+							</Field.Field>
 						{:else}
 							<div class="grid gap-4 md:grid-cols-2">
 								<div>
@@ -350,22 +376,22 @@
 														{#if attr.type === 'text'}
 															<Input
 																id={attr.name}
-																bind:value={$formData.attributes[attr.name]}
+																value={attributes[attr.name] as string || ''}
 																placeholder={attr.label}
 																class={attributeErrors[attr.name]
 																	? 'border-destructive focus-visible:ring-destructive'
 																	: ''}
-																oninput={() => clearAttributeError(attr.name)}
+																oninput={(e) => updateAttribute(attr.name, e.currentTarget.value)}
 																aria-invalid={attributeErrors[attr.name] ? 'true' : undefined}
 															/>
 														{:else if attr.type === 'number'}
 															<Input
 																id={attr.name}
 																type="number"
-																bind:value={$formData.attributes[attr.name]}
+																value={attributes[attr.name] as number || ''}
 																placeholder={attr.label}
 																class={attributeErrors[attr.name] ? 'border-destructive' : ''}
-																oninput={() => clearAttributeError(attr.name)}
+																oninput={(e) => updateAttribute(attr.name, parseFloat(e.currentTarget.value))}
 															/>
 														{/if}
 														{#if attributeErrors[attr.name]}
@@ -387,20 +413,14 @@
 														</Label>
 														<Select
 															type="single"
-															value={$formData.attributes[attr.name] || undefined}
+															value={attributes[attr.name] as string || undefined}
 															name="attributes.{attr.name}"
-															onValueChange={(value) => {
-																if (value) {
-																	$formData.attributes[attr.name] = value;
-																}
-																clearAttributeError(attr.name);
-															}}
+															onValueChange={(value) => updateAttribute(attr.name, value)}
 														>
 															<SelectTrigger
 																class={attributeErrors[attr.name] ? 'border-destructive' : ''}
 															>
-																{$formData.attributes[attr.name] ||
-																	`Select ${attr.label.toLowerCase()}`}
+																{attributes[attr.name] || `Select ${attr.label.toLowerCase()}`}
 															</SelectTrigger>
 															<SelectContent>
 																{#each attr.options as option (option)}
@@ -429,8 +449,8 @@
 															<Checkbox
 																id={attr.name}
 																name="attributes.{attr.name}"
-																bind:checked={$formData.attributes[attr.name]}
-																onCheckedChange={() => clearAttributeError(attr.name)}
+																checked={!!attributes[attr.name]}
+																onCheckedChange={(checked) => updateAttribute(attr.name, !!checked)}
 															/>
 															<Label for={attr.name} class="text-sm font-normal">
 																{attr.label}
@@ -551,12 +571,12 @@
 				<div class="container flex h-16 items-center justify-between max-w-7xl mx-auto px-6">
 					<p class="text-sm text-muted-foreground">Make changes to the item details above</p>
 					<div class="flex gap-3">
-						<Button type="button" variant="outline" onclick={handleCancel} disabled={$delayed}>
+						<Button type="button" variant="outline" onclick={handleCancel} disabled={!!updateItem.pending}>
 							<X class="mr-2 h-4 w-4" />
 							Cancel
 						</Button>
-						<Button type="submit" disabled={$delayed}>
-							{$delayed ? 'Saving...' : 'Save Changes'}
+						<Button type="submit" disabled={!!updateItem.pending}>
+							{updateItem.pending ? 'Saving...' : 'Save Changes'}
 						</Button>
 					</div>
 				</div>
@@ -564,6 +584,3 @@
 		{/if}
 	</form>
 </div>
-{#if dev}
-	<SuperDebug data={$formData} />
-{/if}
