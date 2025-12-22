@@ -5,4 +5,5 @@ const inviteValidationSchema = v.object({
 	email: v.pipe(v.string(), v.email()),
 });
 
+
 export { inviteValidationSchema };

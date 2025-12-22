@@ -1,5 +1,5 @@
-import type { KyselifyDatabase } from "kysely-supabase";
-import type { Database } from "../database.types.ts";
+import type { KyselifyDatabase } from 'kysely-supabase';
+import type { Database } from '../database.types.ts';
 
 // Removed Schedule-X import - using vkurko/calendar now
 
@@ -30,22 +30,19 @@ export type NavData = {
 	navMain: NavigationGroup[];
 };
 export type FetchAndCountResult<
-	T extends keyof (Database["public"]["Tables"] | Database["public"]["Views"]),
+	T extends keyof (Database['public']['Tables'] | Database['public']['Views'])
 > = {
-	data: (
-		| Database["public"]["Tables"]
-		| Database["public"]["Views"]
-	)[T]["Row"][];
+	data: (Database['public']['Tables'] | Database['public']['Views'])[T]['Row'][];
 	count: number;
 };
 
-export type MutationPayload<T extends keyof Database["public"]["Tables"]> =
-	Database["public"]["Tables"][T]["Update"];
+export type MutationPayload<T extends keyof Database['public']['Tables']> =
+	Database['public']['Tables'][T]['Update'];
 
 export enum SocialMediaConsent {
-	no = "no",
-	yes_recognizable = "yes_recognizable",
-	yes_unrecognizable = "yes_unrecognizable",
+	no = 'no',
+	yes_recognizable = 'yes_recognizable',
+	yes_unrecognizable = 'yes_unrecognizable'
 }
 
 export type KyselyDatabase = KyselifyDatabase<Database>;
@@ -90,28 +87,28 @@ type BaseInventoryAttribute = {
 };
 
 type TextAttribute = BaseInventoryAttribute & {
-	type: "text";
+	type: 'text';
 	default_value?: string;
 };
 
 type SelectAttribute = BaseInventoryAttribute & {
-	type: "select";
+	type: 'select';
 	options: string[];
 	default_value?: string;
 };
 
 type NumberAttribute = BaseInventoryAttribute & {
-	type: "number";
+	type: 'number';
 	default_value?: number;
 };
 
 type DateAttribute = BaseInventoryAttribute & {
-	type: "date";
+	type: 'date';
 	default_value?: string;
 };
 
 type BooleanAttribute = BaseInventoryAttribute & {
-	type: "boolean";
+	type: 'boolean';
 	default_value?: boolean;
 };
 
@@ -122,21 +119,15 @@ export type InventoryAttributeDefinition =
 	| DateAttribute
 	| BooleanAttribute;
 
-export type InventoryAttributes = Record<
-	string,
-	InventoryAttributeDefinition["default_value"]
->;
+export type InventoryAttributes = Record<string, InventoryAttributeDefinition['default_value']>;
 
-export type InventoryCategory =
-	Database["public"]["Tables"]["equipment_categories"]["Row"] & {
-		available_attributes: InventoryAttributeDefinition[];
-	};
+export type InventoryCategory = Database['public']['Tables']['equipment_categories']['Row'] & {
+	available_attributes: InventoryAttributeDefinition[];
+};
 
-export type InventoryContainer =
-	Database["public"]["Tables"]["containers"]["Row"];
+export type InventoryContainer = Database['public']['Tables']['containers']['Row'];
 
-export type InventoryItem =
-	Database["public"]["Tables"]["inventory_items"]["Row"];
+export type InventoryItem = Database['public']['Tables']['inventory_items']['Row'];
 
 export type InventoryItemWithRelations = InventoryItem & {
 	attributes: InventoryAttributes;
@@ -149,7 +140,7 @@ export type InventoryItemWithRelations = InventoryItem & {
 		id: string | null;
 		name: string | null;
 		available_attributes: InventoryAttributeDefinition[];
-		attribute_schema: Database["public"]["Tables"]["equipment_categories"]["Row"]["attribute_schema"];
+		attribute_schema: Database['public']['Tables']['equipment_categories']['Row']['attribute_schema'];
 		description: string | null;
 		created_at: string | null;
 		updated_at: string | null;
@@ -157,7 +148,7 @@ export type InventoryItemWithRelations = InventoryItem & {
 };
 
 export type InventoryHistoryWithRelations =
-	Database["public"]["Tables"]["inventory_history"]["Row"] & {
+	Database['public']['Tables']['inventory_history']['Row'] & {
 		item: {
 			id: string;
 			attributes: InventoryAttributes;
@@ -170,13 +161,10 @@ export type InventoryHistoryWithRelations =
 		} | null;
 	};
 
-export type ClubActivity =
-	Database["public"]["Tables"]["club_activities"]["Row"];
+export type ClubActivity = Database['public']['Tables']['club_activities']['Row'];
 
-export type ClubActivityInsert =
-	Database["public"]["Tables"]["club_activities"]["Insert"];
-export type ClubActivityUpdate =
-	Database["public"]["Tables"]["club_activities"]["Update"];
+export type ClubActivityInsert = Database['public']['Tables']['club_activities']['Insert'];
+export type ClubActivityUpdate = Database['public']['Tables']['club_activities']['Update'];
 
 export type ClubActivityWithInterest = ClubActivity & {
 	interest_count?: { interest_count: number }[];
@@ -184,11 +172,10 @@ export type ClubActivityWithInterest = ClubActivity & {
 	attendee_count?: { id: string; member_user_id: string; status: string }[];
 };
 
-export type ClubActivityWithRegistrations =
-	Database["public"]["Tables"]["club_activities"]["Row"] &
-		Omit<ClubActivityWithInterest, "attendee_count"> & {
-			user_registrations: {
-				member_user_id: number | null;
-				status: Database["public"]["Enums"]["registration_status"];
-			}[];
-		};
+export type ClubActivityWithRegistrations = Database['public']['Tables']['club_activities']['Row'] &
+	Omit<ClubActivityWithInterest, 'attendee_count'> & {
+		user_registrations: {
+			member_user_id: number | null;
+			status: Database['public']['Enums']['registration_status'];
+		}[];
+	};
