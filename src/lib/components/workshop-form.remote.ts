@@ -1,56 +1,11 @@
 import { form, getRequestEvent } from '$app/server';
-import { redirect } from '@sveltejs/kit';
-import * as v from 'valibot';
-import dayjs from 'dayjs';
 import Dinero from 'dinero.js';
 import { authorize } from '$lib/server/auth';
 import { WORKSHOP_ROLES } from '$lib/server/roles';
 import { createWorkshopService, type WorkshopUpdate } from '$lib/server/services/workshops';
+import { CreateWorkshopRemoteSchema, UpdateWorkshopRemoteSchema } from '$lib/schemas/workshop';
+import dayjs from 'dayjs';
 
-// ============================================================================
-// Remote-compatible schemas using string dates
-// (Remote Functions don't support Date objects or null values in schemas)
-// Cross-field validation (e.g., end time after start time) is done in handlers
-// ============================================================================
-
-// Simple schema without cross-field validation (validation done in handler)
-const CreateWorkshopRemoteSchema = v.object({
-	title: v.pipe(v.string(), v.minLength(1, 'Title is required'), v.maxLength(255)),
-	description: v.optional(v.string(), ''),
-	location: v.pipe(v.string(), v.minLength(1, 'Location is required')),
-	workshop_date: v.pipe(v.string(), v.nonEmpty('Workshop date is required')),
-	workshop_end_date: v.pipe(v.string(), v.nonEmpty('Workshop end date is required')),
-	max_capacity: v.pipe(v.number(), v.minValue(1, 'Capacity must be at least 1')),
-	price_member: v.pipe(v.number(), v.minValue(0, 'Price cannot be negative')),
-	price_non_member: v.optional(v.pipe(v.number(), v.minValue(0, 'Price cannot be negative'))),
-	is_public: v.optional(v.boolean(), false),
-	refund_deadline_days: v.optional(
-		v.pipe(v.number(), v.minValue(0, 'Refund deadline cannot be negative'))
-	),
-	announce_discord: v.optional(v.boolean(), false),
-	announce_email: v.optional(v.boolean(), false)
-});
-
-const UpdateWorkshopRemoteSchema = v.partial(
-	v.object({
-		title: v.pipe(v.string(), v.minLength(1, 'Title is required'), v.maxLength(255)),
-		description: v.optional(v.string(), ''),
-		location: v.pipe(v.string(), v.minLength(1, 'Location is required')),
-		workshop_date: v.pipe(v.string(), v.nonEmpty('Workshop date is required')),
-		workshop_end_date: v.pipe(v.string(), v.nonEmpty('Workshop end date is required')),
-		max_capacity: v.pipe(v.number(), v.minValue(1, 'Capacity must be at least 1')),
-		price_member: v.pipe(v.number(), v.minValue(0, 'Price cannot be negative')),
-		price_non_member: v.optional(v.pipe(v.number(), v.minValue(0, 'Price cannot be negative'))),
-		is_public: v.optional(v.boolean(), false),
-		refund_deadline_days: v.optional(
-			v.pipe(v.number(), v.minValue(0, 'Refund deadline cannot be negative'))
-		)
-	})
-);
-
-// ============================================================================
-// Remote Form Functions
-// ============================================================================
 
 export const createWorkshop = form(CreateWorkshopRemoteSchema, async (data) => {
 	const event = getRequestEvent();
@@ -103,7 +58,7 @@ export const createWorkshop = form(CreateWorkshopRemoteSchema, async (data) => {
 	const workshopService = createWorkshopService(event.platform!, session);
 	const workshop = await workshopService.create(workshopData);
 
-	redirect(303, `/dashboard/workshops/${workshop.id}`);
+	return { success: `Workshop "${workshop.title}" created successfully!` };
 });
 
 export const updateWorkshop = form(UpdateWorkshopRemoteSchema, async (data) => {

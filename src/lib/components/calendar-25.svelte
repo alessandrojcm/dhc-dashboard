@@ -36,16 +36,6 @@ function handleDateChange(newDate: CalendarDate | undefined) {
 	date = newDate;
 	onDateChange?.(newDate);
 }
-
-function handleStartTimeChange(newTime: string) {
-	startTime = newTime;
-	onStartTimeChange?.(newTime);
-}
-
-function handleEndTimeChange(newTime: string) {
-	endTime = newTime;
-	onEndTimeChange?.(newTime);
-}
 </script>
 
 <div class="flex flex-col gap-6">
@@ -86,10 +76,10 @@ function handleEndTimeChange(newTime: string) {
 				type="time"
 				id="{id}-time-from"
 				step="1"
-				value={startTime || '10:30'}
+				bind:value={startTime}
 				{disabled}
-				oninput={(e: Event) => {
-					handleStartTimeChange((e.currentTarget as HTMLInputElement).value);
+				onchange={(e: Event) => {
+					onStartTimeChange?.((e.currentTarget as HTMLInputElement).value);
 				}}
 				class="bg-background appearance-none [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
 			/>
@@ -100,10 +90,10 @@ function handleEndTimeChange(newTime: string) {
 				type="time"
 				id="{id}-time-to"
 				step="1"
-				value={endTime || '12:30'}
+				bind:value={endTime}
 				{disabled}
-				oninput={(e: Event) => {
-					handleEndTimeChange((e.currentTarget as HTMLInputElement).value);
+				onchange={(e: Event) => {
+					onEndTimeChange?.((e.currentTarget as HTMLInputElement).value);
 				}}
 				class="bg-background appearance-none [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
 			/>
