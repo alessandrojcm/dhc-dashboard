@@ -26,10 +26,7 @@ test.describe("Workshop Edit Feature", () => {
 		});
 	});
 
-	test("should allow editing a planned workshop through UI", async ({
-		page,
-		context,
-	}) => {
+	test("should allow editing a planned workshop through UI", async ({ page, context }) => {
 		await loginAsUser(context, adminData.email);
 
 		const timestamp = Date.now();
@@ -50,16 +47,15 @@ test.describe("Workshop Edit Feature", () => {
 
 		// Update the workshop status to 'planned' so it can be edited
 		const supabase = getSupabaseServiceClient();
-		await supabase
-			.from("club_activities")
-			.update({ status: "planned" })
-			.eq("id", workshopId);
+		await supabase.from("club_activities").update({ status: "planned" }).eq(
+			"id",
+			workshopId,
+		);
 
 		// Navigate to workshops page
 		await page.goto("/dashboard/workshops");
-		await expect(
-			page.getByRole("heading", { name: "Workshops" }),
-		).toBeVisible();
+		await expect(page.getByRole("heading", { name: "Workshops" }))
+			.toBeVisible();
 
 		// Find and click on the created workshop to open modal
 		await page.getByText(originalTitle).click();
@@ -70,50 +66,49 @@ test.describe("Workshop Edit Feature", () => {
 
 		// Should navigate to edit page
 		await expect(page).toHaveURL(`/dashboard/workshops/${workshopId}/edit`);
-		await expect(
-			page.getByRole("heading", { name: "Edit Workshop" }),
-		).toBeVisible();
+		await expect(page.getByRole("heading", { name: "Edit Workshop" }))
+			.toBeVisible();
 
 		// Verify form is pre-populated with existing data
 		await expect(page.getByRole("textbox", { name: /title/i })).toHaveValue(
 			originalTitle,
 		);
-		await expect(
-			page.getByRole("textbox", { name: /description/i }),
-		).toHaveValue("Original description");
-		await expect(page.getByRole("textbox", { name: /location/i })).toHaveValue(
-			"Original Location",
-		);
+		await expect(page.getByRole("textbox", { name: /description/i }))
+			.toHaveValue(
+				"Original description",
+			);
+		await expect(page.getByRole("textbox", { name: /location/i }))
+			.toHaveValue("Original Location");
 		await expect(
 			page.getByRole("spinbutton", { name: /maximum capacity/i }),
 		).toHaveValue("10");
 		await expect(
 			page.getByRole("spinbutton", { name: "Member Price", exact: true }),
-		).toHaveValue("15");
+		).toHaveValue(
+			"15",
+		);
 		await expect(
 			page.getByRole("spinbutton", { name: /non-member price/i }),
 		).toHaveValue("25");
 
 		// Update the workshop details
 		await page.getByRole("textbox", { name: /title/i }).fill(updatedTitle);
-		await page
-			.getByRole("textbox", { name: /description/i })
-			.fill("Updated description");
-		await page
-			.getByRole("textbox", { name: /location/i })
-			.fill("Updated Location");
-		await page
-			.getByRole("spinbutton", { name: /maximum capacity/i })
-			.fill("15");
-		await page
-			.getByRole("spinbutton", {
-				name: "Member Price",
-				exact: true,
-			})
-			.fill("20");
-		await page
-			.getByRole("spinbutton", { name: /non-member price/i })
-			.fill("30");
+		await page.getByRole("textbox", { name: /description/i }).fill(
+			"Updated description",
+		);
+		await page.getByRole("textbox", { name: /location/i }).fill(
+			"Updated Location",
+		);
+		await page.getByRole("spinbutton", { name: /maximum capacity/i }).fill(
+			"15",
+		);
+		await page.getByRole("spinbutton", {
+			name: "Member Price",
+			exact: true,
+		}).fill("20");
+		await page.getByRole("spinbutton", { name: /non-member price/i }).fill(
+			"30",
+		);
 
 		// Submit the form
 		await page.getByRole("button", { name: "Update Workshop" }).click();
@@ -129,10 +124,7 @@ test.describe("Workshop Edit Feature", () => {
 		await expect(page.getByText(updatedTitle)).toBeVisible();
 	});
 
-	test("should prevent editing published workshops", async ({
-		page,
-		context,
-	}) => {
+	test("should prevent editing published workshops", async ({ page, context }) => {
 		await loginAsUser(context, adminData.email);
 
 		const timestamp = Date.now();
@@ -160,24 +152,19 @@ test.describe("Workshop Edit Feature", () => {
 		).toBeVisible();
 
 		// Form fields should be disabled
-		await expect(page.getByRole("textbox", { name: /title/i })).toBeDisabled();
-		await expect(
-			page.getByRole("textbox", { name: /description/i }),
-		).toBeDisabled();
-		await expect(
-			page.getByRole("textbox", { name: /location/i }),
-		).toBeDisabled();
+		await expect(page.getByRole("textbox", { name: /title/i }))
+			.toBeDisabled();
+		await expect(page.getByRole("textbox", { name: /description/i }))
+			.toBeDisabled();
+		await expect(page.getByRole("textbox", { name: /location/i }))
+			.toBeDisabled();
 
 		// Submit button should be disabled
-		await expect(
-			page.getByRole("button", { name: "Update Workshop" }),
-		).toBeDisabled();
+		await expect(page.getByRole("button", { name: "Update Workshop" }))
+			.toBeDisabled();
 	});
 
-	test("should prevent pricing changes when attendees are registered", async ({
-		page,
-		context,
-	}) => {
+	test("should prevent pricing changes when attendees are registered", async ({page,context,}) => {
 		await loginAsUser(context, adminData.email);
 
 		const timestamp = Date.now();
@@ -199,11 +186,9 @@ test.describe("Workshop Edit Feature", () => {
 
 		// Navigate to edit page
 		await page.goto(`/dashboard/workshops/${workshopId}/edit`);
-		await page
-			.getByText(
-				"Pricing cannot be changed because there are already registered attendees.",
-			)
-			.scrollIntoViewIfNeeded();
+		await page.getByText(
+			"Pricing cannot be changed because there are already registered attendees.",
+		).scrollIntoViewIfNeeded();
 		// Should show warning about pricing restrictions
 		await expect(
 			page.getByText(
@@ -212,15 +197,11 @@ test.describe("Workshop Edit Feature", () => {
 		).toBeVisible();
 
 		// Pricing fields should be disabled
-		await expect(
-			page.getByRole("spinbutton", { name: /member price/i }),
-		).toBeDisabled();
+		await expect(page.getByRole("spinbutton", { name: /member price/i }))
+			.toBeDisabled();
 	});
 
-	test("should show validation errors for invalid data", async ({
-		page,
-		context,
-	}) => {
+	test("should show validation errors for invalid data", async ({ page, context }) => {
 		await loginAsUser(context, adminData.email);
 
 		const timestamp = Date.now();
@@ -239,10 +220,10 @@ test.describe("Workshop Edit Feature", () => {
 
 		// Update the workshop status to 'planned' so it can be edited
 		const supabase = getSupabaseServiceClient();
-		await supabase
-			.from("club_activities")
-			.update({ status: "planned" })
-			.eq("id", workshopId);
+		await supabase.from("club_activities").update({ status: "planned" }).eq(
+			"id",
+			workshopId,
+		);
 
 		// Navigate to edit page
 		await page.goto(`/dashboard/workshops/${workshopId}/edit`);
@@ -260,10 +241,7 @@ test.describe("Workshop Edit Feature", () => {
 		await expect(page.getByText("Title is required.")).toBeVisible();
 	});
 
-	test("should allow workshop coordinator to edit workshops", async ({
-		page,
-		context,
-	}) => {
+	test("should allow workshop coordinator to edit workshops", async ({ page, context }) => {
 		await loginAsUser(context, workshopCoordinatorData.email);
 
 		const timestamp = Date.now();
@@ -282,18 +260,17 @@ test.describe("Workshop Edit Feature", () => {
 
 		// Update the workshop status to 'planned' so it can be edited
 		const supabase = getSupabaseServiceClient();
-		await supabase
-			.from("club_activities")
-			.update({ status: "planned" })
-			.eq("id", workshopId);
+		await supabase.from("club_activities").update({ status: "planned" }).eq(
+			"id",
+			workshopId,
+		);
 
 		// Navigate to edit page
 		await page.goto(`/dashboard/workshops/${workshopId}/edit`);
 
 		// Should be able to access edit page
-		await expect(
-			page.getByRole("heading", { name: "Edit Workshop" }),
-		).toBeVisible();
+		await expect(page.getByRole("heading", { name: "Edit Workshop" }))
+			.toBeVisible();
 
 		// Should be able to edit the workshop
 		const updatedTitle = `Updated ${workshopTitle}`;
