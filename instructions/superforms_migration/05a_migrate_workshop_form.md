@@ -148,76 +148,128 @@ Keep remote functions in each route's `data.remote.ts`
 **File**: `src/lib/components/workshop-form.remote.ts`
 
 ```typescript
-import { command, getRequestEvent } from '$app/server';
-import { redirect } from '@sveltejs/kit';
+import { form, getRequestEvent } from '$app/server';
 import * as Sentry from '@sentry/sveltekit';
 import dayjs from 'dayjs';
 import Dinero from 'dinero.js';
 import * as v from 'valibot';
 import { authorize } from '$lib/server/auth';
 import { WORKSHOP_ROLES } from '$lib/server/roles';
-import { createWorkshopService } from '$lib/server/services/workshops';
+import {
+	createWorkshopService,
+	CreateWorkshopSchema,
+	UpdateWorkshopSchema,
+	type CreateWorkshopInput,
+	type UpdateWorkshopInput
+} from '$lib/server/services/workshops';
 import {
 	CreateWorkshopRemoteSchema,
 	UpdateWorkshopRemoteSchema
 } from '$lib/schemas/workshop';
+import type { WorkshopInsert, WorkshopUpdate } from '$lib/server/services/workshops/types';
 
 // ============================================================================
-// Helper: Transform form data to database format
+// Helper: Parse ISO strings to Date objects for schema validation
 // ============================================================================
 
-interface TransformOptions {
-	checkPricingPermission?: boolean;
-	currentPriceMember?: number;
+function parseCreateInput(data: v.InferOutput<typeof CreateWorkshopRemoteSchema>): CreateWorkshopInput {
+	return {
+		...data,
+		workshop_date: new Date(data.workshop_date),
+		workshop_end_date: new Date(data.workshop_end_date)
+	};
 }
 
-function transformWorkshopData(
-	data: v.InferOutput<typeof CreateWorkshopRemoteSchema>,
-	options: TransformOptions = {}
-) {
-	const startDateTime = dayjs(data.workshop_date).toISOString();
-	const endDateTime = dayjs(data.workshop_end_date).toISOString();
-
-	// Convert euro prices to cents
-	const memberPriceCents = Dinero({
-		amount: Math.round((data.price_member ?? 0) * 100),
-		currency: 'EUR'
-	}).getAmount();
-
-	const nonMemberPriceCents =
-		data.is_public && data.price_non_member
-			? Dinero({
-					amount: Math.round(data.price_non_member * 100),
-					currency: 'EUR'
-				}).getAmount()
-			: options.currentPriceMember ?? memberPriceCents;
-
+function parseUpdateInput(data: v.InferOutput<typeof UpdateWorkshopRemoteSchema>): UpdateWorkshopInput {
 	return {
-		title: data.title,
-		description: data.description,
-		location: data.location,
-		start_date: startDateTime,
-		end_date: endDateTime,
-		max_capacity: data.max_capacity,
-		price_member: memberPriceCents,
-		price_non_member: nonMemberPriceCents,
-		is_public: data.is_public ?? false,
-		refund_days: data.refund_deadline_days,
-		announce_discord: data.announce_discord ?? false,
-		announce_email: data.announce_email ?? false
+		...data,
+		workshop_date: data.workshop_date ? new Date(data.workshop_date) : undefined,
+		workshop_end_date: data.workshop_end_date ? new Date(data.workshop_end_date) : undefined
 	};
 }
 
 // ============================================================================
-// Create Workshop Command
+// Helper: Convert validated input to database format (prices in cents)
 // ============================================================================
 
-export const createWorkshop = command(CreateWorkshopRemoteSchema, async (data) => {
+function toWorkshopInsert(input: CreateWorkshopInput): Omit<WorkshopInsert, 'created_by'> {
+	const memberPriceCents = Dinero({ amount: Math.round(input.price_member * 100), currency: 'EUR' }).getAmount();
+	const nonMemberPriceCents = input.is_public && input.price_non_member
+		? Dinero({ amount: Math.round(input.price_non_member * 100), currency: 'EUR' }).getAmount()
+		: memberPriceCents;
+
+	return {
+		title: input.title,
+		description: input.description ?? '',
+		location: input.location,
+		start_date: input.workshop_date.toISOString(),
+		end_date: input.workshop_end_date.toISOString(),
+		max_capacity: input.max_capacity,
+		price_member: memberPriceCents,
+		price_non_member: nonMemberPriceCents,
+		is_public: input.is_public ?? false,
+		refund_days: input.refund_deadline_days ?? null,
+		announce_discord: input.announce_discord ?? false,
+		announce_email: input.announce_email ?? false
+	};
+}
+
+function toWorkshopUpdate(
+	input: UpdateWorkshopInput,
+	currentWorkshop: { start_date: string; price_member: number },
+	pricingEditable: boolean
+): WorkshopUpdate {
+	const update: WorkshopUpdate = {
+		title: input.title,
+		description: input.description,
+		location: input.location,
+		max_capacity: input.max_capacity,
+		is_public: input.is_public,
+		refund_days: input.refund_deadline_days
+	};
+
+	// Handle dates
+	if (input.workshop_date) {
+		update.start_date = input.workshop_date.toISOString();
+	}
+	if (input.workshop_end_date) {
+		const baseDate = input.workshop_date ?? new Date(currentWorkshop.start_date);
+		update.end_date = dayjs(baseDate)
+			.hour(input.workshop_end_date.getHours())
+			.minute(input.workshop_end_date.getMinutes())
+			.toISOString();
+	}
+
+	// Handle pricing only if editable
+	if (pricingEditable) {
+		if (input.price_member !== undefined) {
+			update.price_member = Dinero({ amount: Math.round(input.price_member * 100), currency: 'EUR' }).getAmount();
+		}
+		if (input.price_non_member !== undefined) {
+			update.price_non_member = input.is_public && input.price_non_member
+				? Dinero({ amount: Math.round(input.price_non_member * 100), currency: 'EUR' }).getAmount()
+				: update.price_member ?? currentWorkshop.price_member;
+		}
+	}
+
+	return update;
+}
+
+// ============================================================================
+// Create Workshop Form
+// ============================================================================
+
+export const createWorkshop = form(CreateWorkshopRemoteSchema, async (data) => {
 	const event = getRequestEvent();
 	const session = await authorize(event.locals, WORKSHOP_ROLES);
 
 	try {
-		const workshopData = transformWorkshopData(data);
+		// Parse ISO strings to Date objects and validate with server schema
+		const parsed = parseCreateInput(data);
+		const validated = v.parse(CreateWorkshopSchema, parsed);
+
+		// Convert to database format and create
+		const workshopData = toWorkshopInsert(validated);
 		const workshopService = createWorkshopService(event.platform!, session);
 		const workshop = await workshopService.create(workshopData);
 
@@ -233,18 +285,15 @@ export const createWorkshop = command(CreateWorkshopRemoteSchema, async (data) =
 });
 
 // ============================================================================
-// Update Workshop Command
+// Update Workshop Form
 // ============================================================================
 
-/**
- * Extended schema for update that includes workshopId
- */
 const UpdateWorkshopWithIdSchema = v.object({
 	...UpdateWorkshopRemoteSchema.entries,
 	workshopId: v.pipe(v.string(), v.uuid())
 });
 
-export const updateWorkshop = command(UpdateWorkshopWithIdSchema, async (data) => {
+export const updateWorkshop = form(UpdateWorkshopWithIdSchema, async (data) => {
 	const event = getRequestEvent();
 	const session = await authorize(event.locals, WORKSHOP_ROLES);
 
@@ -252,84 +301,32 @@ export const updateWorkshop = command(UpdateWorkshopWithIdSchema, async (data) =
 
 	try {
 		const workshopService = createWorkshopService(event.platform!, session);
-
-		// Fetch current workshop to validate edit permissions
 		const currentWorkshop = await workshopService.findById(workshopId);
 
-		// Check if workshop can be edited
+		// Permission checks
 		const workshopEditable = await workshopService.canEdit(workshopId);
 		if (!workshopEditable) {
 			throw new Error('Only planned workshops can be edited');
 		}
 
-		// Check if pricing changes are allowed
 		const pricingEditable = await workshopService.canEditPricing(workshopId);
-		if (
-			!pricingEditable &&
-			(formData.price_member !== undefined || formData.price_non_member !== undefined)
-		) {
+		if (!pricingEditable && (formData.price_member !== undefined || formData.price_non_member !== undefined)) {
 			throw new Error('Cannot change pricing when there are already registered attendees');
 		}
 
-		// Build update data
-		const updateData: Record<string, unknown> = {};
+		// Parse ISO strings to Date objects and validate with server schema
+		const parsed = parseUpdateInput(formData);
+		const validated = v.parse(UpdateWorkshopSchema, parsed);
 
-		if (formData.title !== undefined) updateData.title = formData.title;
-		if (formData.description !== undefined) updateData.description = formData.description;
-		if (formData.location !== undefined) updateData.location = formData.location;
-		if (formData.max_capacity !== undefined) updateData.max_capacity = formData.max_capacity;
-		if (formData.is_public !== undefined) updateData.is_public = formData.is_public;
-		if (formData.refund_deadline_days !== undefined) {
-			updateData.refund_days = formData.refund_deadline_days;
-		}
-
-		// Handle dates
-		if (formData.workshop_date !== undefined) {
-			updateData.start_date = dayjs(formData.workshop_date).toISOString();
-		}
-		if (formData.workshop_end_date !== undefined) {
-			const endDate = dayjs(formData.workshop_end_date);
-			const baseDate = formData.workshop_date
-				? dayjs(formData.workshop_date)
-				: dayjs(currentWorkshop.start_date);
-			updateData.end_date = baseDate
-				.set('hour', endDate.hour())
-				.set('minute', endDate.minute())
-				.toISOString();
-		}
-
-		// Handle pricing (only if editable)
-		if (pricingEditable) {
-			if (typeof formData.price_member === 'number') {
-				updateData.price_member = Dinero({
-					amount: Math.round(formData.price_member * 100),
-					currency: 'EUR'
-				}).getAmount();
-			}
-
-			if (typeof formData.price_non_member === 'number') {
-				updateData.price_non_member =
-					formData.is_public && formData.price_non_member
-						? Dinero({
-								amount: Math.round(formData.price_non_member * 100),
-								currency: 'EUR'
-							}).getAmount()
-						: (updateData.price_member as number) ?? currentWorkshop.price_member;
-			}
-		}
-
+		// Convert to database format and update
+		const updateData = toWorkshopUpdate(validated, currentWorkshop, pricingEditable);
 		const workshop = await workshopService.update(workshopId, updateData);
 
-		return {
-			success: `Workshop "${workshop.title}" updated successfully!`
-		};
+		return { success: `Workshop "${workshop.title}" updated successfully!` };
 	} catch (error) {
 		Sentry.captureException(error);
 		console.error('Update workshop error:', error);
-		if (error instanceof Error) {
-			throw error;
-		}
-		throw new Error('Failed to update workshop. Please try again.');
+		throw error instanceof Error ? error : new Error('Failed to update workshop. Please try again.');
 	}
 });
 ```
@@ -347,6 +344,7 @@ export const updateWorkshop = command(UpdateWorkshopWithIdSchema, async (data) =
 		CreateWorkshopClientSchema,
 		UpdateWorkshopClientSchema
 	} from '$lib/schemas/workshop';
+	import { initForm } from '$lib/utils/init-form.svelte';
 	import * as Field from '$lib/components/ui/field';
 	import { Button } from '$lib/components/ui/button';
 	import { Input } from '$lib/components/ui/input';
@@ -404,88 +402,93 @@ export const updateWorkshop = command(UpdateWorkshopWithIdSchema, async (data) =
 		workshopEditable
 	}: Props = $props();
 
-	// Select the appropriate command based on mode
-	const formCommand = mode === 'create' ? createWorkshop : updateWorkshop;
+	// Select the appropriate form based on mode
+	const remoteForm = mode === 'create' ? createWorkshop : updateWorkshop;
 	const schema = mode === 'create' ? CreateWorkshopClientSchema : UpdateWorkshopClientSchema;
 
-	// Local state for form values (needed for controlled inputs)
-	let title = $state(initialData?.title ?? '');
-	let description = $state(initialData?.description ?? '');
-	let location = $state(initialData?.location ?? '');
-	let workshopDate = $state<Date | undefined>(initialData?.workshop_date);
-	let workshopEndDate = $state<Date | undefined>(initialData?.workshop_end_date);
-	let maxCapacity = $state(initialData?.max_capacity ?? 1);
-	let priceMember = $state(initialData?.price_member ?? 0);
-	let priceNonMember = $state(initialData?.price_non_member ?? 0);
-	let isPublic = $state(initialData?.is_public ?? false);
-	let refundDeadlineDays = $state<number | null>(initialData?.refund_deadline_days ?? null);
-	let announceDiscord = $state(initialData?.announce_discord ?? false);
-	let announceEmail = $state(initialData?.announce_email ?? false);
+	// Initialize form with initial data (for edit mode)
+	// SvelteKit automatically reloads form values on submission
+	initForm(remoteForm, () => ({
+		title: initialData?.title ?? '',
+		description: initialData?.description ?? '',
+		location: initialData?.location ?? '',
+		workshop_date: initialData?.workshop_date ? dayjs(initialData.workshop_date).toISOString() : '',
+		workshop_end_date: initialData?.workshop_end_date ? dayjs(initialData.workshop_end_date).toISOString() : '',
+		max_capacity: initialData?.max_capacity ?? 1,
+		price_member: initialData?.price_member ?? 0,
+		price_non_member: initialData?.price_non_member ?? 0,
+		is_public: initialData?.is_public ?? false,
+		refund_deadline_days: initialData?.refund_deadline_days ?? null,
+		announce_discord: initialData?.announce_discord ?? false,
+		announce_email: initialData?.announce_email ?? false,
+		...(mode === 'edit' && workshopId ? { workshopId } : {})
+	}));
 
-	// Message state
-	let successMessage = $state<string | null>(null);
-	let errorMessage = $state<string | null>(null);
-
-	// Derived date values for Calendar25
+	// Derived date values for Calendar25 (read from form fields)
 	const workshopDateValue = $derived.by(() => {
-		if (!workshopDate || !dayjs(workshopDate).isValid()) {
-			return undefined;
-		}
-		return toCalendarDate(fromDate(workshopDate, getLocalTimeZone()));
+		const dateStr = remoteForm.fields.workshop_date.value;
+		if (!dateStr) return undefined;
+		const date = dayjs(dateStr);
+		if (!date.isValid()) return undefined;
+		return toCalendarDate(fromDate(date.toDate(), getLocalTimeZone()));
 	});
 
 	const startTime = $derived.by(() => {
-		if (!workshopDate || !dayjs(workshopDate).isValid()) return '';
-		return dayjs(workshopDate).format('HH:mm');
+		const dateStr = remoteForm.fields.workshop_date.value;
+		if (!dateStr) return '';
+		const date = dayjs(dateStr);
+		return date.isValid() ? date.format('HH:mm') : '';
 	});
 
 	const endTime = $derived.by(() => {
-		if (!workshopEndDate || !dayjs(workshopEndDate).isValid()) return '';
-		return dayjs(workshopEndDate).format('HH:mm');
+		const dateStr = remoteForm.fields.workshop_end_date.value;
+		if (!dateStr) return '';
+		const date = dayjs(dateStr);
+		return date.isValid() ? date.format('HH:mm') : '';
 	});
 
-	// Date update helper
+	// Date update helper - updates form fields directly
 	function updateWorkshopDates(
 		date?: CalendarDate | string,
 		op: 'start' | 'end' | 'date' = 'date'
 	) {
 		if (!date) return;
 
+		const currentStart = remoteForm.fields.workshop_date.value;
+		const currentEnd = remoteForm.fields.workshop_end_date.value;
+
 		if (typeof date === 'string' && op === 'start') {
 			const [hour, minute] = date.split(':').map(Number);
-			const currentDate = dayjs(workshopDate);
-			const baseDate = currentDate.isValid() ? currentDate : dayjs();
-			workshopDate = baseDate.hour(hour).minute(minute).toDate();
+			const baseDate = currentStart ? dayjs(currentStart) : dayjs();
+			remoteForm.fields.workshop_date.set(baseDate.hour(hour).minute(minute).toISOString());
 			return;
 		}
 
 		if (typeof date === 'string' && op === 'end') {
 			const [hour, minute] = date.split(':').map(Number);
-			let baseDate = dayjs(workshopEndDate);
-			if (!baseDate.isValid()) {
-				baseDate = dayjs(workshopDate);
-			}
-			if (!baseDate.isValid()) {
-				baseDate = dayjs();
-			}
-			workshopEndDate = baseDate.hour(hour).minute(minute).toDate();
+			const baseDate = currentEnd ? dayjs(currentEnd) : currentStart ? dayjs(currentStart) : dayjs();
+			remoteForm.fields.workshop_end_date.set(baseDate.hour(hour).minute(minute).toISOString());
 			return;
 		}
 
 		// Handle date change (CalendarDate) - preserve existing times or use defaults
 		if (typeof date !== 'string') {
-			const startDateDayjs = dayjs(workshopDate);
-			const startTimeVal = startDateDayjs.isValid()
+			const startDateDayjs = currentStart ? dayjs(currentStart) : null;
+			const startTimeVal = startDateDayjs?.isValid()
 				? { hour: startDateDayjs.hour(), minute: startDateDayjs.minute() }
 				: { hour: 10, minute: 0 };
 
-			const endDateDayjs = dayjs(workshopEndDate);
-			const endTimeVal = endDateDayjs.isValid()
+			const endDateDayjs = currentEnd ? dayjs(currentEnd) : null;
+			const endTimeVal = endDateDayjs?.isValid()
 				? { hour: endDateDayjs.hour(), minute: endDateDayjs.minute() }
 				: { hour: 12, minute: 0 };
 
-			workshopDate = toCalendarDateTime(date).set(startTimeVal).toDate(getLocalTimeZone());
-			workshopEndDate = toCalendarDateTime(date).set(endTimeVal).toDate(getLocalTimeZone());
+			remoteForm.fields.workshop_date.set(
+				toCalendarDateTime(date).set(startTimeVal).toDate(getLocalTimeZone()).toISOString()
+			);
+			remoteForm.fields.workshop_end_date.set(
+				toCalendarDateTime(date).set(endTimeVal).toDate(getLocalTimeZone()).toISOString()
+			);
 		}
 	}
 
@@ -503,49 +506,22 @@ export const updateWorkshop = command(UpdateWorkshopWithIdSchema, async (data) =
 		return !priceEditingDisabled;
 	});
 
-	// Form submission
-	async function handleSubmit(event: SubmitEvent) {
-		event.preventDefault();
-		successMessage = null;
-		errorMessage = null;
-
-		// Build form data with ISO string dates for serialization
-		const formData: Record<string, unknown> = {
-			title,
-			description,
-			location,
-			workshop_date: workshopDate ? dayjs(workshopDate).toISOString() : '',
-			workshop_end_date: workshopEndDate ? dayjs(workshopEndDate).toISOString() : '',
-			max_capacity: maxCapacity,
-			price_member: priceMember,
-			price_non_member: isPublic ? priceNonMember : undefined,
-			is_public: isPublic,
-			refund_deadline_days: refundDeadlineDays,
-			announce_discord: announceDiscord,
-			announce_email: announceEmail
-		};
-
-		// Add workshopId for updates
-		if (mode === 'edit' && workshopId) {
-			formData.workshopId = workshopId;
-		}
-
-		try {
-			const result = await formCommand.run(formData);
-
-			if (result.success) {
-				successMessage = result.success;
-				window?.scrollTo({ top: 0, behavior: 'smooth' });
-
-				if (onSuccess) {
-					onSuccess(result);
-				}
-			}
-		} catch (error) {
-			errorMessage = error instanceof Error ? error.message : 'An error occurred';
+	// Handle form result
+	$effect(() => {
+		const result = remoteForm.result;
+		if (result?.success) {
 			window?.scrollTo({ top: 0, behavior: 'smooth' });
+			if (onSuccess) {
+				onSuccess(result);
+			}
 		}
-	}
+	});
+
+	// Handle errors from form issues
+	const formError = $derived.by(() => {
+		const issues = remoteForm.allIssues?.() ?? [];
+		return issues.length > 0 ? issues[0]?.message : null;
+	});
 </script>
 
 <div class="space-y-8">
@@ -579,7 +555,7 @@ export const updateWorkshop = command(UpdateWorkshopWithIdSchema, async (data) =
 	{/if}
 
 	<form
-		onsubmit={handleSubmit}
+		{...remoteForm}
 		class="space-y-8 rounded-lg border bg-white p-6 shadow-sm"
 	>
 		<!-- Basic Information Section -->
@@ -819,10 +795,10 @@ export const updateWorkshop = command(UpdateWorkshopWithIdSchema, async (data) =
 		<div class="border-t pt-6">
 			<Button
 				type="submit"
-				disabled={formCommand.pending || !isWorkshopEditable}
+				disabled={remoteForm.pending || !isWorkshopEditable}
 				class="h-12 w-full text-lg"
 			>
-				{#if formCommand.pending}
+				{#if remoteForm.pending}
 					<LoaderCircle class="mr-2 h-5 w-5" />
 					{mode === 'create' ? 'Creating' : 'Updating'} Workshop...
 				{:else}
@@ -1070,11 +1046,11 @@ export {
 
 | Before | After |
 |--------|-------|
-| `superForm` with `valibotClient` | `command` from Remote Functions |
-| `$formData` store | Local `$state` variables |
-| `use:enhance` | `onsubmit` handler with `command.run()` |
-| `$submitting` store | `command.pending` |
-| `$message` store | Local `successMessage`/`errorMessage` state |
+| `superForm` with `valibotClient` | `form` from Remote Functions |
+| `$formData` store | Local `$state` variables + `$effect` sync to `form.fields` |
+| `use:enhance` | `{...remoteForm}` spread on form element |
+| `$submitting` store | `form.pending` |
+| `$message` store | `form.result` + local state |
 | `data.form` from loader | `initialData` prop |
 | Actions in `+page.server.ts` | Remote functions in `.remote.ts` |
 
@@ -1088,6 +1064,6 @@ export {
 
 3. **Validation**: Client-side validation happens via the schema. Server-side validation happens in the remote function.
 
-4. **Error Handling**: Errors thrown in remote functions are caught in the `handleSubmit` try/catch.
+4. **Error Handling**: Errors thrown in remote functions surface via `form.allIssues()` or the `result`.
 
-5. **Pending State**: Use `command.pending` to show loading indicators.
+5. **Pending State**: Use `form.pending` to show loading indicators.
