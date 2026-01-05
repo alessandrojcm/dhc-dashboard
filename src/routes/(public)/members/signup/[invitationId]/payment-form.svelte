@@ -1,11 +1,8 @@
 <script lang="ts">
-	import * as Form from '$lib/components/ui/form';
+	import * as Field from '$lib/components/ui/field';
 	import dayjs from 'dayjs';
 	import { Input } from '$lib/components/ui/input';
 	import { Button } from '$lib/components/ui/button';
-	import { superForm } from 'sveltekit-superforms';
-	import { valibotClient } from 'sveltekit-superforms/adapters';
-	import { memberSignupSchema } from '$lib/schemas/membersSignup';
 	import { parsePhoneNumberFromString } from 'libphonenumber-js/min';
 	import { ArrowRightIcon } from 'lucide-svelte';
 	import {
@@ -32,11 +29,14 @@
 	import PricingDisplay from './pricing-display.svelte';
 	import type { PageServerData } from './$types';
 	import { page } from '$app/state';
+	import { processPayment } from './data.remote';
+	import { initForm } from '$lib/utils/init-form.svelte';
 
-	const props: PageServerData = $props();
+	const { data }: { data: PageServerData } = $props();
 	let currentCoupon = $state('');
 
-	const { nextMonthlyBillingDate, nextAnnualBillingDate } = props;
+	const nextMonthlyBillingDate = $derived(data.nextMonthlyBillingDate);
+	const nextAnnualBillingDate = $derived(data.nextAnnualBillingDate);
 	let stripe: Awaited<ReturnType<typeof loadStripe>> | null = $state(null);
 	let elements: StripeElements | null | undefined = $state(null);
 	let paymentElement: StripePaymentElement | null | undefined = $state(null);
@@ -74,82 +74,25 @@
 		}
 	};
 
-	const form = superForm(props.form, {
-		validators: valibotClient(memberSignupSchema),
-		resetForm: false,
-		validationMethod: 'onblur',
-		scrollToError: true,
-		autoFocusOnError: true,
-		invalidateAll: false,
-		onSubmit: async ({ cancel, customRequest }) => {
-			const { valid } = await form.validateForm({
-				focusOnError: true,
-				update: true
-			});
-			if (!valid) {
-				scrollTo({ top: 0, behavior: 'smooth' });
-				cancel();
-			}
-			if (!stripe || !elements) {
-				toast.error('Payment system not initialized');
-				cancel();
-				return;
-			}
+	// Initialize form with empty values
+	initForm(processPayment, () => ({
+		nextOfKin: '',
+		nextOfKinNumber: '',
+		stripeConfirmationToken: '',
+		couponCode: ''
+	}));
 
-			const { error: elementsError } = await elements.submit();
-			if (elementsError?.message) {
-				toast.error(elementsError.message);
-				cancel();
-				return;
-			}
-			// Create the payment method directly
-			const { error: paymentMethodError, confirmationToken } = await stripe.createConfirmationToken(
-				{
-					elements,
-					params: {
-						return_url: window.location.href + '/members/signup'
-					}
-				}
-			);
-
-			if (paymentMethodError?.message) {
-				toast.error(paymentMethodError.message);
-				return;
-			}
-			$formData.stripeConfirmationToken = JSON.stringify(confirmationToken);
-			customRequest(({ controller, action, formData }) => {
-				formData.set('stripeConfirmationToken', JSON.stringify(confirmationToken));
-				formData.set('couponCode', currentCoupon);
-				return fetch(action, {
-					signal: controller.signal,
-					method: 'POST',
-					body: formData
-				});
-			});
-		},
-		onResult: async ({ result }) => {
-			if (result.type === 'error') {
-				toast.error(result.error.message);
-				return;
-			}
-
-			if (result.type === 'failure') {
-				if (result.data?.paymentFailed) {
-					toast.error(result.data.errorMessage || 'Payment failed');
-					return;
-				}
-				toast.error(
-					'Something has gone wrong with your payment, we have been notified and are working on it.'
-				);
-			}
-
-			if (result.type === 'success') {
-				showThanks = true;
-			}
+	// Handle form results
+	$effect(() => {
+		const result = processPayment.result;
+		if (result?.paymentFailed === false) {
+			showThanks = true;
+		} else if (result?.paymentFailed && 'error' in result) {
+			toast.error(result.error || 'Payment failed');
 		}
 	});
-	const { form: formData, enhance, submitting } = form;
-	const formatedPhone = $derived.by(() => parsePhoneNumberFromString(props.userData.phoneNumber!));
+
+	const formatedPhone = $derived.by(() => parsePhoneNumberFromString(data.userData.phoneNumber!));
 	const queryKey = $derived(['plan-pricing']);
 	const queryClient = useQueryClient();
 
@@ -199,15 +142,16 @@
 			paymentElement = elements?.create('payment', {
 				defaultValues: {
 					billingDetails: {
-						name: `${props.userData.firstName} ${props.userData.lastName}`,
-						email: props.userData.email,
-						phone: props.userData.phoneNumber
+						name: `${data.userData.firstName} ${data.userData.lastName}`,
+						email: data.userData.email,
+						phone: data.userData.phoneNumber
 					}
 				}
 			});
 			paymentElement?.mount('#payment-element');
 		});
 	});
+
 </script>
 
 {#snippet thanksAlert()}
@@ -223,33 +167,73 @@
 {#if showThanks}
 	{@render thanksAlert()}
 {:else}
-	<form method="POST" class="space-y-6" use:enhance>
+	<form
+		{...processPayment.enhance(async ({ submit }) => {
+			// Validate Stripe is ready
+			if (!stripe || !elements) {
+				toast.error('Payment system not initialized');
+				return;
+			}
+
+			const { error: elementsError } = await elements.submit();
+			if (elementsError?.message) {
+				toast.error(elementsError.message);
+				return;
+			}
+
+			// Create the confirmation token
+			const { error: paymentMethodError, confirmationToken } =
+				await stripe.createConfirmationToken({
+					elements,
+					params: {
+						return_url: window.location.href + '/members/signup'
+					}
+				});
+
+			if (paymentMethodError?.message) {
+				toast.error(paymentMethodError.message);
+				return;
+			}
+
+			// Set the token and coupon in form data before submission
+			processPayment.fields.stripeConfirmationToken.set(JSON.stringify(confirmationToken));
+			processPayment.fields.couponCode.set(currentCoupon);
+
+			// Submit the form
+			try {
+				await submit();
+			} catch (error) {
+				toast.error('Something went wrong with your payment');
+			}
+		})}
+		class="space-y-6"
+	>
 		<div class="grid grid-cols-2 gap-4">
 			<div>
 				<p>First Name</p>
-				<p class="text-sm text-gray-600">{props.userData.firstName}</p>
+				<p class="text-sm text-gray-600">{data.userData.firstName}</p>
 			</div>
 			<div>
 				<p>Last Name</p>
-				<p class="text-sm text-gray-600">{props.userData.lastName}</p>
+				<p class="text-sm text-gray-600">{data.userData.lastName}</p>
 			</div>
 			<div>
 				<p>Email</p>
-				<p class="text-sm text-gray-600 break-words">{props.userData.email}</p>
+				<p class="text-sm text-gray-600 break-words">{data.userData.email}</p>
 			</div>
 			<div>
 				<p>Date of Birth</p>
 				<p class="text-sm text-gray-600">
-					{dayjs(props.userData.dateOfBirth).format('DD/MM/YYYY')}
+					{dayjs(data.userData.dateOfBirth).format('DD/MM/YYYY')}
 				</p>
 			</div>
 			<div>
 				<p>Gender</p>
-				<p class="text-sm text-gray-600 capitalize">{props.userData.gender}</p>
+				<p class="text-sm text-gray-600 capitalize">{data.userData.gender}</p>
 			</div>
 			<div>
 				<p>Pronouns</p>
-				<p class="text-sm text-gray-600 capitalize">{props.userData.pronouns}</p>
+				<p class="text-sm text-gray-600 capitalize">{data.userData.pronouns}</p>
 			</div>
 			<div>
 				<p>Phone Number</p>
@@ -258,37 +242,35 @@
 			<div>
 				<p>Medical Conditions</p>
 				<p class="text-sm text-gray-600">
-					{!props.userData.medicalConditions ? 'N/A' : props.userData.medicalConditions}
+					{!data.userData.medicalConditions ? 'N/A' : data.userData.medicalConditions}
 				</p>
 			</div>
 		</div>
 		<div class="space-y-4">
-			<Form.Field {form} name="nextOfKin">
-				<Form.Control>
-					{#snippet children({ props })}
-						<Form.Label>Next of Kin</Form.Label>
-						<Input
-							{...props}
-							bind:value={$formData.nextOfKin}
-							placeholder="Full name of your next of kin"
-						/>
-					{/snippet}
-				</Form.Control>
-				<Form.FieldErrors />
-			</Form.Field>
-			<Form.Field {form} name="nextOfKinNumber">
-				<Form.Control>
-					{#snippet children({ props })}
-						<Form.Label>Next of Kin Phone Number</Form.Label>
-						<PhoneInput
-							placeholder="Enter your next of kin's phone number"
-							{...props}
-							bind:phoneNumber={$formData.nextOfKinNumber}
-						/>
-					{/snippet}
-				</Form.Control>
-				<Form.FieldErrors />
-			</Form.Field>
+			<Field.Field>
+				{@const fieldProps = processPayment.fields.nextOfKin.as('text')}
+				<Field.Label for={fieldProps.name}>Next of Kin</Field.Label>
+				<Input
+					{...fieldProps}
+					id={fieldProps.name}
+					placeholder="Full name of your next of kin"
+				/>
+				{#each processPayment.fields.nextOfKin.issues() as issue}
+					<Field.Error>{issue.message}</Field.Error>
+				{/each}
+			</Field.Field>
+			<Field.Field>
+				{@const fieldProps = processPayment.fields.nextOfKinNumber.as('tel')}
+				<Field.Label for={fieldProps.name}>Next of Kin Phone Number</Field.Label>
+				<PhoneInput
+					{...fieldProps}
+					id={fieldProps.name}
+					placeholder="Enter your next of kin's phone number"
+				/>
+				{#each processPayment.fields.nextOfKinNumber.issues() as issue}
+					<Field.Error>{issue.message}</Field.Error>
+				{/each}
+			</Field.Field>
 			<p class="prose text-lg text-black">Payment details</p>
 			<PricingDisplay
 				planPricingData={planData}
@@ -300,8 +282,8 @@
 			/>
 		</div>
 		<div class="flex justify-between">
-			<Button type="submit" class="ml-auto" disabled={$submitting}>
-				{#if $submitting}
+			<Button type="submit" class="ml-auto" disabled={!!processPayment.pending}>
+				{#if processPayment.pending}
 					<LoaderCircle />
 				{:else}
 					Sign up
