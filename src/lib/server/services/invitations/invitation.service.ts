@@ -13,6 +13,7 @@ import type {
 	InvitationStatus,
 	InvitationType
 } from './types';
+import dayjs from 'dayjs';
 
 // ============================================================================
 // Validation Schemas (exported for reuse in forms/APIs)
@@ -188,6 +189,30 @@ export class InvitationService {
 			this.logger.warn('Invitation validation failed', { invitationId, error });
 			return false;
 		}
+	}
+
+	/**
+	 * Validate invitation credentials by checking email and date of birth
+	 * Returns true if the invitation exists, is pending, and credentials match
+	 */
+	async validateCredentials(
+		invitationId: string,
+		email: string,
+		dateOfBirth: string
+	): Promise<boolean> {
+		this.logger.info('Validating invitation credentials', { invitationId, email });
+
+		const result = await this.kysely
+			.selectFrom('invitations')
+			.leftJoin('user_profiles', 'user_profiles.supabase_user_id', 'invitations.user_id')
+			.select(['invitations.id'])
+			.where('invitations.id', '=', invitationId)
+			.where('email', '=', email)
+			.where('status', '=', 'pending')
+			.where('user_profiles.date_of_birth', '=', dayjs(dateOfBirth).format('YYYY-MM-DD'))
+			.executeTakeFirst();
+
+		return !!result?.id;
 	}
 
 	/**

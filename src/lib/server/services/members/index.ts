@@ -5,23 +5,20 @@
  * - MemberService: Member data CRUD operations
  * - ProfileService: Profile updates with Stripe integration
  *
- * @example Basic usage in page.server.ts
+ * @example Basic usage in data.remote.ts
  * ```typescript
+ * import { form, getRequestEvent } from '$app/server';
  * import { createMemberService, MemberUpdateSchema } from '$lib/server/services/members';
  *
- * export const actions = {
- *   'update-profile': async ({ request, platform, locals }) => {
- *     const { session } = await locals.safeGetSession();
- *     const form = await superValidate(request, valibot(MemberUpdateSchema));
+ * export const updateProfile = form(MemberUpdateSchema, async (data) => {
+ *   const event = getRequestEvent();
+ *   const { session } = await event.locals.safeGetSession();
  *
- *     if (!form.valid) return fail(422, { form });
+ *   const memberService = createMemberService(event.platform!, session!);
+ *   const member = await memberService.update(userId, data);
  *
- *     const memberService = createMemberService(platform, session);
- *     const member = await memberService.update(userId, form.data);
- *
- *     return message(form, { success: 'Profile updated!' });
- *   }
- * };
+ *   return { success: 'Profile updated!' };
+ * });
  * ```
  *
  * @example Using ProfileService with Stripe sync
@@ -33,29 +30,29 @@
  * ```
  */
 
-import type { Session } from '@supabase/supabase-js';
-import type Stripe from 'stripe';
-import type { Logger } from '../shared';
-import { getKyselyClient, sentryLogger } from '../shared';
-import { MemberService } from './member.service';
-import { ProfileService } from './profile.service';
-import { WaitlistService } from './waitlist.service';
-import { stripeClient } from '$lib/server/stripe';
+import type { Session } from "@supabase/supabase-js";
+import type Stripe from "stripe";
+import type { Logger } from "../shared";
+import { getKyselyClient, sentryLogger } from "../shared";
+import { MemberService } from "./member.service";
+import { ProfileService } from "./profile.service";
+import { WaitlistService } from "./waitlist.service";
+import { stripeClient } from "$lib/server/stripe";
 
 // Re-export services
-export { MemberService } from './member.service';
-export { ProfileService } from './profile.service';
-export { WaitlistService } from './waitlist.service';
+export { MemberService } from "./member.service";
+export { ProfileService } from "./profile.service";
+export { WaitlistService } from "./waitlist.service";
 
 // Re-export types and schemas
 export type {
 	MemberData,
 	MemberWithSubscription,
 	MemberUpdateInput,
-	UpdateMemberDataArgs
-} from './member.service';
+	UpdateMemberDataArgs,
+} from "./member.service";
 
-export { MemberUpdateSchema } from './member.service';
+export { MemberUpdateSchema } from "./member.service";
 
 export type {
 	WaitlistEntry,
@@ -65,15 +62,15 @@ export type {
 	WaitlistGuardian,
 	WaitlistGuardianInsert,
 	WaitlistGuardianUpdate,
-	InsertWaitlistEntryResult
-} from './waitlist-types';
+	InsertWaitlistEntryResult,
+} from "./waitlist-types";
 
 export {
 	WaitlistEntrySchema,
 	type WaitlistEntryInput,
 	calculateAge,
-	isMinor
-} from './waitlist.service';
+	isMinor,
+} from "./waitlist.service";
 
 // ============================================================================
 // Factory Functions
@@ -96,12 +93,12 @@ export {
 export function createMemberService(
 	platform: App.Platform,
 	session: Session,
-	logger?: Logger
+	logger?: Logger,
 ): MemberService {
 	return new MemberService(
 		getKyselyClient(platform.env.HYPERDRIVE),
 		session,
-		logger ?? sentryLogger
+		logger ?? sentryLogger,
 	);
 }
 
@@ -124,7 +121,7 @@ export function createProfileService(
 	platform: App.Platform,
 	session: Session,
 	stripe?: Stripe,
-	logger?: Logger
+	logger?: Logger,
 ): ProfileService {
 	const kysely = getKyselyClient(platform.env.HYPERDRIVE);
 	const effectiveLogger = logger ?? sentryLogger;
@@ -135,7 +132,7 @@ export function createProfileService(
 		session,
 		effectiveStripe,
 		effectiveLogger,
-		new MemberService(kysely, session, effectiveLogger)
+		new MemberService(kysely, session, effectiveLogger),
 	);
 }
 
@@ -152,6 +149,12 @@ export function createProfileService(
  * const result = await waitlistService.create(waitlistData);
  * ```
  */
-export function createWaitlistService(platform: App.Platform, logger?: Logger): WaitlistService {
-	return new WaitlistService(getKyselyClient(platform.env.HYPERDRIVE), logger ?? sentryLogger);
+export function createWaitlistService(
+	platform: App.Platform,
+	logger?: Logger,
+): WaitlistService {
+	return new WaitlistService(
+		getKyselyClient(platform.env.HYPERDRIVE),
+		logger ?? sentryLogger,
+	);
 }
