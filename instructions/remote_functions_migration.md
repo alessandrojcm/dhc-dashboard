@@ -1,7 +1,7 @@
 # Remote Functions Migration Plan
 
 **Created**: 2026-01-05  
-**Status**: In Progress (Phase 1, 2, 3, 4, 6 complete)  
+**Status**: Planning  
 **Related**: Post-Superforms migration, Service Layer Pattern
 
 ## Executive Summary
@@ -559,17 +559,16 @@ src/lib/server/services/
 │   ├── workshop.service.ts         # Existing service class
 │   ├── attendance.service.ts       # Existing service class
 │   ├── refund.service.ts           # Existing service class
-│   ├── workshops.remote.ts         # Coordinator actions
-│   ├── registration.remote.ts      # Member registration
-│   └── generate.remote.ts          # AI generation
+│   ├── workshops.remote.ts         # NEW: Coordinator actions
+│   ├── registration.remote.ts      # NEW: Member registration
+│   └── generate.remote.ts          # NEW: AI generation
 ├── members/
 │   ├── index.ts
 │   ├── member.service.ts
-│   ├── subscription.service.ts     # Subscription pause/resume service
-│   └── subscription.remote.ts      # Pause/resume remote functions
+│   └── subscription.remote.ts      # NEW: Pause/resume
 ├── invitations/
 │   ├── index.ts
-│   └── admin.remote.ts             # Resend invitations, delete invitations
+│   └── admin.remote.ts             # NEW: Resend invitations
 
 src/routes/(public)/members/signup/[invitationId]/
 ├── +page.svelte
@@ -583,13 +582,13 @@ src/routes/(public)/members/signup/[invitationId]/
 ## Migration Checklist
 
 | Phase | Remote File | Replaces | Priority | Status |
-|-------|-------------|----------|----------|------|
-| 1 | `workshops.remote.ts` | `/api/workshops/[id]`, `/publish`, `/cancel`, `/attendance`, `/refunds` | High | [x]  |
-| 2 | `registration.remote.ts` | `/interest`, `/register/*` | High | [x]  |
-| 3 | `admin.remote.ts` | `/api/admin/invite-link` | Medium | [x]  |
-| 4 | `subscription.remote.ts` | `/api/members/[memberId]/subscription/pause` | Medium | [x]  |
-| 5 | `pricing.remote.ts` | `/api/signup/plan-pricing/[invitationId]` | Medium | [x]  |
-| 6 | `generate.remote.ts` | `/api/workshops/generate` | Low | [x]  |
+|-------|-------------|----------|----------|--------|
+| 1 | `workshops.remote.ts` | `/api/workshops/[id]`, `/publish`, `/cancel`, `/attendance`, `/refunds` | High | [ ] |
+| 2 | `registration.remote.ts` | `/interest`, `/register/*` | High | [ ] |
+| 3 | `admin.remote.ts` | `/api/admin/invite-link` | Medium | [ ] |
+| 4 | `subscription.remote.ts` | `/api/members/[memberId]/subscription/pause` | Medium | [ ] |
+| 5 | `pricing.remote.ts` | `/api/signup/plan-pricing/[invitationId]` | Medium | [ ] |
+| 6 | `generate.remote.ts` | `/api/workshops/generate` | Low | [x] |
 
 ---
 
