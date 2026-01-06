@@ -11,43 +11,31 @@ import {
 import { createMutation } from "@tanstack/svelte-query";
 import { toast } from "svelte-sonner";
 import { Sparkles, Loader2 } from "lucide-svelte";
+import { generateWorkshop } from "$lib/server/services/workshops/generate.remote";
 
 let prompt = $state("");
 let open = $state(false);
 
 const generateWorkshopMutation = createMutation(() => ({
-	mutationFn: async (prompt: string) => {
-		const response = await fetch("/api/workshops/generate", {
-			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-			},
-			body: JSON.stringify({ prompt }),
-		});
-
-		if (!response.ok) {
-			throw new Error("Failed to generate workshop");
-		}
-
-		return response.json();
+	mutationFn: async (promptText: string) => {
+		return generateWorkshop({ prompt: promptText });
 	},
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	onSuccess: (data: any) => {
+	onSuccess: (data) => {
 		if (data.success === false) {
 			toast.error(data.error || "Failed to generate workshop");
 			return;
 		}
 
-		// Encode the generated data as URL parameter
 		const encodedData = encodeURIComponent(JSON.stringify(data.data));
 
-		// Close popover and redirect
 		open = false;
 		prompt = "";
 		goto(resolve(`/dashboard/workshops/create?generated=${encodedData}`));
 	},
 	onError: (error) => {
-		toast.error(error.message || "Failed to generate workshop");
+		toast.error(
+			error instanceof Error ? error.message : "Failed to generate workshop",
+		);
 	},
 }));
 
