@@ -34,11 +34,8 @@ vite.config.ts.timestamp-*
 
 
 dist
-
 .cloudflare
-
 .dev.vars
-
 .wrangler
-
 .idea
+.pampa
