@@ -11,7 +11,7 @@ import {
 import { createMutation } from "@tanstack/svelte-query";
 import { toast } from "svelte-sonner";
 import { Sparkles, Loader2 } from "lucide-svelte";
-import { generateWorkshop } from "$lib/server/services/workshops/generate.remote";
+import { generateWorkshop } from "../../../routes/dashboard/my-workshops/generate.remote";
 
 let prompt = $state("");
 let open = $state(false);
