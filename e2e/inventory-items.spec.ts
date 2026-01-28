@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
-import type { Json } from "../database.types";
 import { createMember, getSupabaseServiceClient } from "./setupFunctions";
 import { loginAsUser } from "./supabaseLogin";
+import type { Json } from "../database.types";
 
 // Helper functions for creating test data
 const createContainer = async (data: {
@@ -316,7 +316,7 @@ test.describe("Inventory Items Management", () => {
 	});
 
 	test.describe("Access Control", () => {
-		test("should allow quartermaster full access to items (basic access)", async ({
+		test("should allow quartermaster full access to items", async ({
 			page,
 			context,
 		}) => {
@@ -332,7 +332,7 @@ test.describe("Inventory Items Management", () => {
 			).toBeVisible();
 		});
 
-		test("should allow members read-only access to available items (basic access)", async ({
+		test("should allow members read-only access to available items", async ({
 			page,
 			context,
 		}) => {
@@ -350,7 +350,7 @@ test.describe("Inventory Items Management", () => {
 			).toBeVisible();
 		});
 
-		test("should allow admin full access to items (basic access)", async ({
+		test("should allow admin full access to items", async ({
 			page,
 			context,
 		}) => {
@@ -782,66 +782,11 @@ test.describe("Inventory Items Management", () => {
 	});
 
 	test.describe("Access Control", () => {
-		test("should allow quartermaster full access to items", async ({
+		test("should allow quartermaster to create items via UI", async ({
 			page,
 			context,
 		}) => {
 			await loginAsUser(context, quartermasterData.email);
-			await page.goto("/dashboard/inventory/items");
-
-			// Should see the "Add Item" link (not button)
-			await expect(page.getByRole("link", { name: /add item/i })).toBeVisible();
-
-			// Should be able to access items page
-			await expect(
-				page.getByRole("heading", { name: /inventory items/i }),
-			).toBeVisible();
-
-			// Should be able to access create page
-			await page.getByRole("link", { name: /add item/i }).click();
-			await expect(page).toHaveURL("/dashboard/inventory/items/create");
-		});
-
-		test("should allow members read-only access to available items (access checks)", async ({
-			page,
-			context,
-		}) => {
-			await loginAsUser(context, memberData.email);
-			await page.goto("/dashboard/inventory/items");
-
-			// Should be able to view items page
-			await expect(
-				page.getByRole("heading", { name: /inventory items/i }),
-			).toBeVisible();
-
-			// Should NOT see the "Add Item" link (members have read-only access)
-			await expect(
-				page.getByRole("link", { name: /add item/i }),
-			).not.toBeVisible();
-
-			// Should be able to see available items but not maintenance items
-			// This is based on RLS policies in the database
-		});
-
-		test("should deny member access to create item page", async ({
-			page,
-			context,
-		}) => {
-			await loginAsUser(context, memberData.email);
-
-			// Try to access create page directly
-			await page.goto("/dashboard/inventory/items/create");
-
-			// Should be redirected or show access denied
-			// Based on server-side authorization, this should redirect back or show 403
-			await expect(page).not.toHaveURL("/dashboard/inventory/items/create");
-		});
-
-		test("should allow admin full access to items (access checks)", async ({
-			page,
-			context,
-		}) => {
-			await loginAsUser(context, adminData.email);
 			await page.goto("/dashboard/inventory/items");
 
 			// Should see "Add Item" link

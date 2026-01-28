@@ -61,6 +61,13 @@ export type {
 	AttendanceStatus,
 	AttendanceUpdate,
 	AttendanceResult,
+	Interest,
+	InterestInsert,
+	ToggleInterestResult,
+	CreatePaymentIntentInput,
+	CreatePaymentIntentResult,
+	CompleteRegistrationInput,
+	CancelRegistrationResult,
 } from "./types";
 
 // ============================================================================

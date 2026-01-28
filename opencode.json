@@ -6,7 +6,7 @@
     "supabase": {
       "type": "local",
       "command": [
-        "npx",
+        "pnpx",
         "-y",
         "@modelcontextprotocol/server-postgres",
         "postgresql://postgres:postgres@localhost:54322/postgres"
@@ -16,6 +16,13 @@
       "type": "remote",
       "url": "https://mcp.svelte.dev/mcp",
       "enabled": true
+    },
+    "playwriter": {
+      "type": "local",
+      "command": ["pnpx","playwriter@latest"],
+      "environment": {
+        "PLAYWRITER_AUTO_ENABLE": "1"
+      }
     }
   }
 }

@@ -187,9 +187,9 @@
 		id={id}
 		type="tel"
 		value={formatedPhone}
-		onchange={(event: Event) => {
+		onchange={(event) => {
 			if (!event.target) return;
-			updatePhoneNumber((event.target as HTMLInputElement).value);
+			updatePhoneNumber(event.target.value);
 		}}
 		{placeholder}
 	/>

@@ -23,7 +23,9 @@ test.describe("Member Signup - Negative test cases", () => {
 			await setupInvitedUser(override);
 		});
 
-		test(`should show correct error page when the invitation is invalid ${JSON.stringify(override)}`, async ({page,}) => {
+		test(`should show correct error page when the invitation is invalid ${JSON.stringify(override)}`, async ({
+			page,
+		}) => {
 			// Use a non-existent invitationId for invalid cases
 			const invalidInvitationId = "00000000-0000-0000-0000-000000000000";
 			await page.goto(`/members/signup/${invalidInvitationId}`);
@@ -31,6 +33,7 @@ test.describe("Member Signup - Negative test cases", () => {
 		});
 	});
 });
+
 test.describe("Member Signup - Valid invitation", () => {
 	// Test data generated once for all tests
 	let testData: Awaited<ReturnType<typeof setupInvitedUser>>;
@@ -42,13 +45,11 @@ test.describe("Member Signup - Valid invitation", () => {
 	test.beforeEach(async ({ page }) => {
 		// Start from the signup page with invitationId in the URL
 		await page.goto(
-			`/members/signup/${testData.invitationId}?email=${
-				encodeURIComponent(testData.email)
-			}&dateOfBirth=${
-				encodeURIComponent(
-					testData.date_of_birth.format("YYYY-MM-DD"),
-				)
-			}`,
+			`/members/signup/${testData.invitationId}?email=${encodeURIComponent(
+				testData.email,
+			)}&dateOfBirth=${encodeURIComponent(
+				testData.date_of_birth.format("YYYY-MM-DD"),
+			)}`,
 		);
 		await page.getByText(/verify invitation/i).click();
 
@@ -66,9 +67,8 @@ test.describe("Member Signup - Valid invitation", () => {
 		await expect(page.getByText("Email")).toBeVisible();
 		await expect(page.getByText("Date of Birth")).toBeVisible();
 
-		await expect(page.getByText("Phone Number")).toBeVisible();
-		await expect(page.getByLabel("Next of Kin", { exact: true }))
-			.toBeVisible();
+		await expect(page.getByLabel("Phone Number")).toBeVisible();
+		await expect(page.getByLabel("Next of Kin", { exact: true })).toBeVisible();
 		await expect(page.getByLabel("Next of Kin Phone Number")).toBeVisible();
 
 		await expect(page.getByText("Medical Conditions")).toBeVisible();
@@ -78,8 +78,9 @@ test.describe("Member Signup - Valid invitation", () => {
 		// Try to proceed without filling required fields
 		await page.getByRole("button", { name: "Sign Up" }).click();
 		// Check for validation messages
-		await expect(page.getByPlaceholder(/full name of your next of kin/i))
-			.toBeVisible();
+		await expect(
+			page.getByPlaceholder(/full name of your next of kin/i),
+		).toBeVisible();
 		await expect(
 			page.getByPlaceholder(/enter your next of kin's phone number/i),
 		).toBeVisible();
@@ -89,7 +90,7 @@ test.describe("Member Signup - Valid invitation", () => {
 		// Test phone number formatting for both fields
 		const raw_phone_number = "0838774532";
 		// The new phone input component formats differently - it removes the leading 0
-		const expected_format = "838774532";
+		const expected_format = "083 877 4532";
 
 		// Find the phone input field (it's now inside the phone input component)
 		// The new component has a div wrapper with an Input of type tel inside
@@ -118,19 +119,17 @@ test.describe("Member Signup - Valid invitation", () => {
 
 		await phoneInputField.pressSequentially("0838774532", { delay: 50 });
 		await phoneInputField.press("Tab");
-		const stripeFrame = await page.locator(".__PrivateStripeElement")
+		const stripeFrame = await page
+			.locator(".__PrivateStripeElement")
 			.frameLocator("iframe");
 		// Stripe's succesful IBAN number
 		await stripeFrame.getByLabel("IBAN").fill("IE29AIBK93115212345678");
 		await stripeFrame.getByLabel("Address line 1").fill("123 Main Street");
 		await stripeFrame.getByLabel("Address line 2").fill("Apt 4B");
-		await stripeFrame.getByLabel("Country or region").selectOption(
-			"Ireland",
-		);
+		await stripeFrame.getByLabel("Country or region").selectOption("Ireland");
 		await stripeFrame.getByLabel("City").fill("Dublin");
 		await stripeFrame.getByLabel("Eircode").fill("K45 HR22");
-		await stripeFrame.getByLabel("County").selectOption("County Dublin");
-		await page.pause();
+		await stripeFrame.getByLabel("County").selectOption("Dublin");
 		await page.getByRole("button", { name: /sign up/i }).click();
 		await expect(
 			page.getByText(
@@ -139,7 +138,9 @@ test.describe("Member Signup - Valid invitation", () => {
 		).toBeVisible({ timeout: 30000 });
 	});
 
-	test("should show error when payment exceeds weekly limit", async ({ page }) => {
+	test("should show error when payment exceeds weekly limit", async ({
+		page,
+	}) => {
 		// Fill in the form
 		await page.getByLabel("Next of Kin", { exact: true }).fill("John Doe");
 
@@ -153,7 +154,8 @@ test.describe("Member Signup - Valid invitation", () => {
 		await phoneInputField.pressSequentially("0838774532", { delay: 50 });
 		await phoneInputField.press("Tab");
 
-		const stripeFrame = await page.locator(".__PrivateStripeElement")
+		const stripeFrame = await page
+			.locator(".__PrivateStripeElement")
 			.frameLocator("iframe");
 		// Stripe IBAN that triggers weekly limit exceeded error
 		await stripeFrame.getByLabel("IBAN").fill("IE69AIBK93115200121212");
@@ -161,7 +163,7 @@ test.describe("Member Signup - Valid invitation", () => {
 		await stripeFrame.getByLabel("Address line 2").fill("Apt 4B");
 		await stripeFrame.getByLabel("City").fill("Dublin");
 		await stripeFrame.getByLabel("Eircode").fill("K45 HR22");
-		await stripeFrame.getByLabel("County").selectOption("County Dublin");
+		await stripeFrame.getByLabel("County").selectOption("Dublin");
 
 		await page.getByRole("button", { name: /sign up/i }).click();
 		await expect(
@@ -171,7 +173,9 @@ test.describe("Member Signup - Valid invitation", () => {
 		).toBeVisible({ timeout: 5000 });
 	});
 
-	test("should show error when payment source limit is exceeded", async ({ page }) => {
+	test("should show error when payment source limit is exceeded", async ({
+		page,
+	}) => {
 		// Fill in the form
 		await page.getByLabel("Next of Kin", { exact: true }).fill("John Doe");
 
@@ -185,7 +189,8 @@ test.describe("Member Signup - Valid invitation", () => {
 		await phoneInputField.pressSequentially("0838774532", { delay: 50 });
 		await phoneInputField.press("Tab");
 
-		const stripeFrame = await page.locator(".__PrivateStripeElement")
+		const stripeFrame = await page
+			.locator(".__PrivateStripeElement")
 			.frameLocator("iframe");
 		// Stripe IBAN that triggers source limit exceeded error
 		await stripeFrame.getByLabel("IBAN").fill("IE10AIBK93115200343434");
@@ -193,7 +198,7 @@ test.describe("Member Signup - Valid invitation", () => {
 		await stripeFrame.getByLabel("Address line 2").fill("Apt 4B");
 		await stripeFrame.getByLabel("City").fill("Dublin");
 		await stripeFrame.getByLabel("Eircode").fill("K45 HR22");
-		await stripeFrame.getByLabel("County").selectOption("County Dublin");
+		await stripeFrame.getByLabel("County").selectOption("Dublin");
 		await page.getByRole("button", { name: /sign up/i }).click();
 		await expect(
 			page.getByText(

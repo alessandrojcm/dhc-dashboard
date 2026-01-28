@@ -104,9 +104,52 @@ const service = new EntityService(
 
 **Extend existing**: New operations on same entities, related queries, optimizations
 
+## REMOTE FUNCTIONS INTEGRATION
+
+Remote functions (`.remote.ts` files) **MUST** use the service layer:
+
+```typescript
+// CORRECT: Use service layer
+import { command, getRequestEvent } from '$app/server';
+import { authorize } from '$lib/server/auth';
+import { createWorkshopService } from '$lib/server/services/workshops';
+
+export const publishWorkshop = command(
+  v.pipe(v.string(), v.uuid()),
+  async (workshopId) => {
+    const { locals, platform } = getRequestEvent();
+    const session = await authorize(locals, WORKSHOP_ROLES);
+    const service = createWorkshopService(platform!, session);
+    return await service.publish(workshopId);  // Use service method
+  }
+);
+
+// WRONG: Direct Kysely access
+export const publishWorkshop = command(
+  v.pipe(v.string(), v.uuid()),
+  async (workshopId) => {
+    const { locals, platform } = getRequestEvent();
+    const session = await authorize(locals, WORKSHOP_ROLES);
+    const kysely = getKyselyClient(platform.env.HYPERDRIVE);
+    // DON'T DO THIS - use service instead
+    return executeWithRLS(kysely, { claims: session }, (db) => 
+      db.updateTable('club_activities')...
+    );
+  }
+);
+```
+
+**Key Rules**:
+1. Instantiate service via factory: `createXxxService(platform, session)`
+2. Call service public methods (not private `_transactional` methods)
+3. Let service handle `executeWithRLS` internally
+4. If method doesn't exist, add it to the service first
+
 ## ANTI-PATTERNS
 
 - Direct Kysely in `+page.server.ts` - use service
+- Direct Kysely in `.remote.ts` - use service (CRITICAL)
 - Skipping `executeWithRLS()` - security violation
 - Global service instances - use factory functions
 - Validation in service - validate at form layer, services receive clean data
+- Calling `_transactional` methods from routes - use public methods only

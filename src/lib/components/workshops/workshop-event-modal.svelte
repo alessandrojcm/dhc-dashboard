@@ -15,6 +15,11 @@ import { toast } from "svelte-sonner";
 import dayjs from "dayjs";
 import type { WorkshopCalendarEvent } from "$lib/types";
 import Dinero from "dinero.js";
+import {
+	deleteWorkshop,
+	publishWorkshop,
+	cancelWorkshop,
+} from "$lib/functions/workshops.remote";
 
 let {
 	calendarEvent: event,
@@ -39,15 +44,8 @@ const interestCount = $derived.by(() => {
 	return 0;
 });
 
-// Mutations for workshop actions with proper loading states
 const deleteMutation = createMutation(() => ({
-	mutationFn: async (workshopId: string) => {
-		const response = await fetch(`/api/workshops/${workshopId}`, {
-			method: "DELETE",
-		});
-		if (!response.ok) throw new Error("Failed to delete workshop");
-		return response.json();
-	},
+	mutationFn: deleteWorkshop,
 	onSuccess: () => {
 		queryClient.invalidateQueries({ queryKey: ["workshops"] });
 		toast.success("Workshop deleted successfully");
@@ -59,13 +57,7 @@ const deleteMutation = createMutation(() => ({
 }));
 
 const publishMutation = createMutation(() => ({
-	mutationFn: async (workshopId: string) => {
-		const response = await fetch(`/api/workshops/${workshopId}/publish`, {
-			method: "POST",
-		});
-		if (!response.ok) throw new Error("Failed to publish workshop");
-		return response.json();
-	},
+	mutationFn: publishWorkshop,
 	onSuccess: () => {
 		queryClient.invalidateQueries({ queryKey: ["workshops"] });
 		toast.success("Workshop published successfully");
@@ -77,13 +69,7 @@ const publishMutation = createMutation(() => ({
 }));
 
 const cancelMutation = createMutation(() => ({
-	mutationFn: async (workshopId: string) => {
-		const response = await fetch(`/api/workshops/${workshopId}/cancel`, {
-			method: "POST",
-		});
-		if (!response.ok) throw new Error("Failed to cancel workshop");
-		return response.json();
-	},
+	mutationFn: cancelWorkshop,
 	onSuccess: () => {
 		queryClient.invalidateQueries({ queryKey: ["workshops"] });
 		toast.success("Workshop cancelled successfully");

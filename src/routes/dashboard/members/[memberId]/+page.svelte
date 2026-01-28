@@ -17,14 +17,17 @@
 	import { toast } from "svelte-sonner";
 	import { Badge } from "$lib/components/ui/badge";
 	import PauseSubscriptionModal from "$lib/components/ui/pause-subscription-modal.svelte";
-	import type Stripe from "stripe";
 	import * as ButtonGroup from "$lib/components/ui/button-group";
 	import { updateProfile } from "./data.remote";
 	import { Label } from "$lib/components/ui/label";
 	import { initForm } from "$lib/utils/init-form.svelte";
 	import { whyThisField } from "$lib/components/ui/why-this-field.svelte";
-    import FormDebug from "$lib/components/form-debug.svelte";
-    import { memberProfileClientSchema } from "$lib/schemas/membersSignup";
+	import FormDebug from "$lib/components/form-debug.svelte";
+	import { memberProfileClientSchema } from "$lib/schemas/membersSignup";
+	import {
+		pauseSubscription,
+		resumeSubscription,
+	} from "./subscription.remote";
 
 	const { data } = $props();
 
@@ -93,35 +96,12 @@
 
 	const pauseMutation = createMutation(() => ({
 		mutationFn: async (pauseData: { pauseUntil: string }) => {
-			const response = await fetch(
-				`/api/members/${page.params.memberId}/subscription/pause`,
-				{
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify(pauseData),
-				},
-			);
-
-			const responseData: {
-				subscription: Stripe.Response<Stripe.Subscription>;
-				error?: string;
-			} = await response.json();
-
-			if (!response.ok) {
-				throw new Error(
-					responseData?.error ||
-						`HTTP error! status: ${response.status}`,
-				);
-			}
-			return responseData as {
-				subscription: Stripe.Response<Stripe.Subscription>;
-			};
+			return pauseSubscription({
+				memberId: page.params.memberId!,
+				pauseUntil: pauseData.pauseUntil,
+			});
 		},
-		onSuccess: ({
-			subscription,
-		}: {
-			subscription: Stripe.Response<Stripe.Subscription>;
-		}) => {
+		onSuccess: ({ subscription }) => {
 			showPauseModal = false;
 			pausedUntil = dayjs.unix(
 				subscription.pause_collection!.resumes_at!,
@@ -133,17 +113,7 @@
 	}));
 
 	const resumeMutation = createMutation(() => ({
-		mutationFn: () =>
-			fetch(`/api/members/${page.params.memberId}/subscription/pause`, {
-				method: "DELETE",
-			})
-				.then((r) => {
-					if (!r.ok) {
-						throw new Error(`HTTP error! status: ${r.status}`);
-					}
-					return r;
-				})
-				.then((r) => r.json()),
+		mutationFn: () => resumeSubscription(page.params.memberId!),
 		onSuccess: () => {
 			pausedUntil = null;
 		},
