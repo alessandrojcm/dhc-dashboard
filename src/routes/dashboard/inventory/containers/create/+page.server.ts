@@ -1,10 +1,10 @@
-import { authorize } from '$lib/server/auth';
-import { INVENTORY_ROLES } from '$lib/server/roles';
-import { createContainerService } from '$lib/server/services/inventory';
+import { authorize } from "$lib/server/auth";
+import { INVENTORY_ROLES } from "$lib/server/roles";
+import { createContainerService } from "$lib/server/services/inventory";
 
 export const load = async ({
 	locals,
-	platform
+	platform,
 }: {
 	locals: App.Locals;
 	platform: App.Platform;
@@ -16,6 +16,6 @@ export const load = async ({
 	const containers = await containerService.findMany();
 
 	return {
-		containers: containers || []
+		containers: containers || [],
 	};
 };

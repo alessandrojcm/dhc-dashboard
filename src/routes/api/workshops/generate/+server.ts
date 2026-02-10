@@ -1,33 +1,39 @@
-import { json } from '@sveltejs/kit';
-import * as v from 'valibot';
-import { authorize } from '$lib/server/auth';
-import { WORKSHOP_ROLES } from '$lib/server/roles';
-import { coerceToCreateWorkshopSchema, generateWorkshopData } from '$lib/server/workshop-generator';
-import type { RequestHandler } from './$types';
+import { json } from "@sveltejs/kit";
+import * as v from "valibot";
+import { authorize } from "$lib/server/auth";
+import { WORKSHOP_ROLES } from "$lib/server/roles";
+import {
+	coerceToCreateWorkshopSchema,
+	generateWorkshopData,
+} from "$lib/server/workshop-generator";
+import type { RequestHandler } from "./$types";
 
 export const POST: RequestHandler = async ({ request, locals }) => {
 	await authorize(locals, WORKSHOP_ROLES);
 	const body = await request.json();
 	const output = v.safeParse(
 		v.object({
-			prompt: v.pipe(v.string(), v.nonEmpty())
+			prompt: v.pipe(v.string(), v.nonEmpty()),
 		}),
-		body
+		body,
 	);
 
 	if (!output.success) {
 		return json(
 			{
 				success: false,
-				error: 'No prompt sent'
+				error: "No prompt sent",
 			},
 			{
-				status: 400
-			}
+				status: 400,
+			},
 		);
 	}
 	try {
-		const result = await generateWorkshopData(output.output.prompt, request.signal);
+		const result = await generateWorkshopData(
+			output.output.prompt,
+			request.signal,
+		);
 		// Coerce the generated data to the correct format for the form
 		const coerced = coerceToCreateWorkshopSchema(result.object);
 
@@ -35,23 +41,23 @@ export const POST: RequestHandler = async ({ request, locals }) => {
 			return json(
 				{
 					success: false,
-					error: 'Generated data is invalid'
+					error: "Generated data is invalid",
 				},
-				{ status: 400 }
+				{ status: 400 },
 			);
 		}
 
 		return json({
 			success: true,
-			data: coerced.output
+			data: coerced.output,
 		});
 	} catch {
 		return json(
 			{
 				success: false,
-				error: 'Failed to generate workshop data'
+				error: "Failed to generate workshop data",
 			},
-			{ status: 500 }
+			{ status: 500 },
 		);
 	}
 };

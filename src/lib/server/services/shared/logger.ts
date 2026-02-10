@@ -35,7 +35,7 @@ export const sentryLogger: Logger = {
 
 	error(message: string, context?: Record<string, unknown>) {
 		// Only import Sentry when needed to avoid server-side bundling issues
-		import('@sentry/sveltekit').then((Sentry) => {
+		import("@sentry/sveltekit").then((Sentry) => {
 			Sentry.captureException(new Error(message), { extra: context });
 		});
 		console.error(message, context);
@@ -43,15 +43,15 @@ export const sentryLogger: Logger = {
 
 	warn(message: string, context?: Record<string, unknown>) {
 		// Only import Sentry when needed to avoid server-side bundling issues
-		import('@sentry/sveltekit').then((Sentry) => {
-			Sentry.captureMessage(message, { level: 'warning', extra: context });
+		import("@sentry/sveltekit").then((Sentry) => {
+			Sentry.captureMessage(message, { level: "warning", extra: context });
 		});
 		console.warn(message, context);
 	},
 
 	debug(message: string, context?: Record<string, unknown>) {
 		console.debug(message, context);
-	}
+	},
 };
 
 /**
@@ -73,5 +73,5 @@ export const consoleLogger: Logger = {
 
 	debug(message: string, context?: Record<string, unknown>) {
 		console.debug(message, context);
-	}
+	},
 };

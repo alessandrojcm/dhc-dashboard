@@ -1,147 +1,140 @@
 <script lang="ts">
-	import {
-		Card,
-		CardContent,
-		CardDescription,
-		CardHeader,
-		CardTitle,
-	} from "$lib/components/ui/card";
-	import { Button } from "$lib/components/ui/button";
-	import { Input } from "$lib/components/ui/input";
-	import { Textarea } from "$lib/components/ui/textarea";
-	import {
-		Select,
-		SelectContent,
-		SelectItem,
-		SelectTrigger,
-	} from "$lib/components/ui/select";
-	import * as Field from "$lib/components/ui/field";
-	import {
-		AlertCircleIcon,
-		ArrowLeft,
-		FolderOpen,
-		Trash2,
-	} from "lucide-svelte";
-	import * as Alert from "$lib/components/ui/alert";
-	import type { Database } from "$database";
-	import { updateContainer, deleteContainer } from "../../data.remote";
-	import { onMount } from "svelte";
-	import { SvelteMap } from "svelte/reactivity";
-	import { initForm } from "$lib/utils/init-form.svelte";
+import {
+	Card,
+	CardContent,
+	CardDescription,
+	CardHeader,
+	CardTitle,
+} from "$lib/components/ui/card";
+import { Button } from "$lib/components/ui/button";
+import { Input } from "$lib/components/ui/input";
+import { Textarea } from "$lib/components/ui/textarea";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+} from "$lib/components/ui/select";
+import * as Field from "$lib/components/ui/field";
+import { AlertCircleIcon, ArrowLeft, FolderOpen, Trash2 } from "lucide-svelte";
+import * as Alert from "$lib/components/ui/alert";
+import type { Database } from "$database";
+import { updateContainer, deleteContainer } from "../../data.remote";
+import { onMount } from "svelte";
+import { SvelteMap } from "svelte/reactivity";
+import { initForm } from "$lib/utils/init-form.svelte";
 
-	type Container = Database["public"]["Tables"]["containers"]["Row"];
+type Container = Database["public"]["Tables"]["containers"]["Row"];
 
-	interface ContainerWithChildren extends Container {
-		children: ContainerWithChildren[];
-	}
+interface ContainerWithChildren extends Container {
+	children: ContainerWithChildren[];
+}
 
-	interface HierarchicalContainer extends ContainerWithChildren {
-		displayName: string;
-		level: number;
-	}
+interface HierarchicalContainer extends ContainerWithChildren {
+	displayName: string;
+	level: number;
+}
 
-	let { data } = $props();
+let { data } = $props();
 
-	initForm(updateContainer, () => ({
-		name: data.containerData.name,
-		description: data.containerData.description,
-		parent_container_id: data.containerData.parent_container_id,
-	}));
+initForm(updateContainer, () => ({
+	name: data.containerData.name,
+	description: data.containerData.description,
+	parent_container_id: data.containerData.parent_container_id,
+}));
 
-	const parentContainerId = $derived(
-		updateContainer.fields.parent_container_id.value() ?? "",
-	);
+const parentContainerId = $derived(
+	updateContainer.fields.parent_container_id.value() ?? "",
+);
 
-	// Build hierarchy display for parent selection
-	const buildHierarchyDisplay = (
-		containers: Container[],
+// Build hierarchy display for parent selection
+const buildHierarchyDisplay = (
+	containers: Container[],
+): HierarchicalContainer[] => {
+	const containerMap = new SvelteMap<string, ContainerWithChildren>();
+	const rootContainers: ContainerWithChildren[] = [];
+
+	// First pass: create all containers with empty children arrays
+	containers.forEach((container) => {
+		containerMap.set(container.id, { ...container, children: [] });
+	});
+
+	// Second pass: build the hierarchy
+	containers.forEach((container) => {
+		if (container.parent_container_id) {
+			const parent = containerMap.get(container.parent_container_id);
+			const child = containerMap.get(container.id);
+			if (parent && child) {
+				parent.children.push(child);
+			}
+		} else {
+			const rootContainer = containerMap.get(container.id);
+			if (rootContainer) {
+				rootContainers.push(rootContainer);
+			}
+		}
+	});
+
+	// Flatten with indentation for display
+	const flattenWithIndent = (
+		containers: ContainerWithChildren[],
+		level = 0,
 	): HierarchicalContainer[] => {
-		const containerMap = new SvelteMap<string, ContainerWithChildren>();
-		const rootContainers: ContainerWithChildren[] = [];
-
-		// First pass: create all containers with empty children arrays
+		const result: HierarchicalContainer[] = [];
 		containers.forEach((container) => {
-			containerMap.set(container.id, { ...container, children: [] });
-		});
-
-		// Second pass: build the hierarchy
-		containers.forEach((container) => {
-			if (container.parent_container_id) {
-				const parent = containerMap.get(container.parent_container_id);
-				const child = containerMap.get(container.id);
-				if (parent && child) {
-					parent.children.push(child);
-				}
-			} else {
-				const rootContainer = containerMap.get(container.id);
-				if (rootContainer) {
-					rootContainers.push(rootContainer);
-				}
+			result.push({
+				...container,
+				displayName: "  ".repeat(level) + container.name,
+				level,
+			});
+			if (container.children.length > 0) {
+				result.push(...flattenWithIndent(container.children, level + 1));
 			}
 		});
-
-		// Flatten with indentation for display
-		const flattenWithIndent = (
-			containers: ContainerWithChildren[],
-			level = 0,
-		): HierarchicalContainer[] => {
-			const result: HierarchicalContainer[] = [];
-			containers.forEach((container) => {
-				result.push({
-					...container,
-					displayName: "  ".repeat(level) + container.name,
-					level,
-				});
-				if (container.children.length > 0) {
-					result.push(
-						...flattenWithIndent(container.children, level + 1),
-					);
-				}
-			});
-			return result;
-		};
-
-		return flattenWithIndent(rootContainers);
+		return result;
 	};
 
-	// Filter out the current container and its descendants to prevent circular references
-	const getDescendantIds = (
-		containerId: string,
-		containers: Container[],
-	): Set<string> => {
-		// eslint-disable-next-line svelte/prefer-svelte-reactivity
-		const descendants = new Set<string>();
-		descendants.add(containerId);
+	return flattenWithIndent(rootContainers);
+};
 
-		const addDescendants = (parentId: string) => {
-			containers.forEach((container) => {
-				if (
-					container.parent_container_id === parentId &&
-					!descendants.has(container.id)
-				) {
-					descendants.add(container.id);
-					addDescendants(container.id);
-				}
-			});
-		};
+// Filter out the current container and its descendants to prevent circular references
+const getDescendantIds = (
+	containerId: string,
+	containers: Container[],
+): Set<string> => {
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity
+	const descendants = new Set<string>();
+	descendants.add(containerId);
 
-		addDescendants(containerId);
-		return descendants;
+	const addDescendants = (parentId: string) => {
+		containers.forEach((container) => {
+			if (
+				container.parent_container_id === parentId &&
+				!descendants.has(container.id)
+			) {
+				descendants.add(container.id);
+				addDescendants(container.id);
+			}
+		});
 	};
 
-	const excludedIds = getDescendantIds(data.container.id, data.containers);
-	const availableContainers = data.containers.filter(
-		(c) => !excludedIds.has(c.id),
-	);
-	const hierarchicalContainers = buildHierarchyDisplay(availableContainers);
-	const selectedContainer = $derived(
-		hierarchicalContainers.find(
-			(container) => container.id === parentContainerId,
-		),
-	);
+	addDescendants(containerId);
+	return descendants;
+};
 
-	let showDeleteConfirm = $state(false);
-	let deleteError = $state<string | null>(null);
+const excludedIds = getDescendantIds(data.container.id, data.containers);
+const availableContainers = data.containers.filter(
+	(c) => !excludedIds.has(c.id),
+);
+const hierarchicalContainers = buildHierarchyDisplay(availableContainers);
+const selectedContainer = $derived(
+	hierarchicalContainers.find(
+		(container) => container.id === parentContainerId,
+	),
+);
+
+let showDeleteConfirm = $state(false);
+let deleteError = $state<string | null>(null);
 </script>
 
 <div class="p-6">

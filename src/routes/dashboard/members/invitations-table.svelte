@@ -1,370 +1,392 @@
 <script lang="ts">
-	/* eslint-disable @typescript-eslint/no-explicit-any */
-	import { goto } from '$app/navigation';
-	import { resolve } from '$app/paths';
-	import { page } from '$app/state';
-	import type { Database } from '$database';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Button } from '$lib/components/ui/button';
-	import { Checkbox } from '$lib/components/ui/checkbox';
-	import {
-		createSvelteTable,
-		FlexRender,
-		renderComponent,
-		renderSnippet
-	} from '$lib/components/ui/data-table/index.js';
-	import * as Pagination from '$lib/components/ui/pagination/index.js';
-	import * as Select from '$lib/components/ui/select';
-	import * as Table from '$lib/components/ui/table/index.js';
-	import type { SupabaseClient } from '@supabase/supabase-js';
-	import { createMutation, createQuery, keepPreviousData } from '@tanstack/svelte-query';
-	import {
-		getCoreRowModel,
-		getPaginationRowModel,
-		getSortedRowModel,
-		getExpandedRowModel,
-		type PaginationState,
-		type SortingState
-	} from '@tanstack/table-core';
-	import dayjs from 'dayjs';
-	import { createRawSnippet } from 'svelte';
-	import { toast } from 'svelte-sonner';
-	import InvitationActions from './invitation-actions.svelte';
-	import { SendIcon, Trash2 } from 'lucide-svelte';
-	import { getInvitationLink } from '$lib/utils/invitation';
-	import { deleteInvitations } from '$lib/services/members.remote';
-	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
-	import { Input } from '$lib/components/ui/input';
-	import { Cross2 } from 'svelte-radix';
-	import * as ButtonGroup from '$lib/components/ui/button-group';
+/* eslint-disable @typescript-eslint/no-explicit-any */
 
-	const columns = 'id,email,status,expires_at,created_at';
+import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+	createMutation,
+	createQuery,
+	keepPreviousData,
+} from "@tanstack/svelte-query";
+import {
+	getCoreRowModel,
+	getExpandedRowModel,
+	getPaginationRowModel,
+	getSortedRowModel,
+	type PaginationState,
+	type SortingState,
+} from "@tanstack/table-core";
+import dayjs from "dayjs";
+import { SendIcon, Trash2 } from "lucide-svelte";
+import { createRawSnippet } from "svelte";
+import { Cross2 } from "svelte-radix";
+import { toast } from "svelte-sonner";
+import { goto } from "$app/navigation";
+import { resolve } from "$app/paths";
+import { page } from "$app/state";
+import type { Database } from "$database";
+import { Badge } from "$lib/components/ui/badge";
+import { Button } from "$lib/components/ui/button";
+import * as ButtonGroup from "$lib/components/ui/button-group";
+import { Checkbox } from "$lib/components/ui/checkbox";
+import {
+	createSvelteTable,
+	FlexRender,
+	renderComponent,
+	renderSnippet,
+} from "$lib/components/ui/data-table/index.js";
+import { Input } from "$lib/components/ui/input";
+import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
+import * as Pagination from "$lib/components/ui/pagination/index.js";
+import * as Select from "$lib/components/ui/select";
+import * as Table from "$lib/components/ui/table/index.js";
+import { deleteInvitations } from "$lib/services/members.remote";
+import { getInvitationLink } from "$lib/utils/invitation";
+import InvitationActions from "./invitation-actions.svelte";
 
-	let pageSizeOptions = [10, 25, 50, 100];
+const columns = "id,email,status,expires_at,created_at";
 
-	const { supabase }: { supabase: SupabaseClient<Database> } = $props();
+let pageSizeOptions = [10, 25, 50, 100];
 
-	const currentPage = $derived.by(() => Number(page.url.searchParams.get('invitePage')) || 0);
-	const pageSize = $derived.by(() => Number(page.url.searchParams.get('invitePageSize')) || 10);
-	const searchQuery = $derived.by(() => page.url.searchParams.get('inviteQ') || '');
-	const rangeStart = $derived.by(() => currentPage * pageSize);
-	const rangeEnd = $derived.by(() => rangeStart + pageSize);
-	const sortingState: SortingState = $derived.by(() => {
-		const sortColumn = page.url.searchParams.get('inviteSort');
-		const sortDirection = page.url.searchParams.get('inviteDirection');
-		if (!sortColumn) return [];
-		return [
-			{
-				id: sortColumn,
-				desc: sortDirection === 'desc'
-			}
-		];
-	});
+const { supabase }: { supabase: SupabaseClient<Database> } = $props();
 
-	const invitationsQueryKey = $derived([
-		'invitations',
+const currentPage = $derived.by(
+	() => Number(page.url.searchParams.get("invitePage")) || 0,
+);
+const pageSize = $derived.by(
+	() => Number(page.url.searchParams.get("invitePageSize")) || 10,
+);
+const searchQuery = $derived.by(
+	() => page.url.searchParams.get("inviteQ") || "",
+);
+const rangeStart = $derived.by(() => currentPage * pageSize);
+const rangeEnd = $derived.by(() => rangeStart + pageSize - 1);
+const sortingState: SortingState = $derived.by(() => {
+	const sortColumn = page.url.searchParams.get("inviteSort");
+	const sortDirection = page.url.searchParams.get("inviteDirection");
+	if (!sortColumn) return [];
+	return [
+		{
+			id: sortColumn,
+			desc: sortDirection === "desc",
+		},
+	];
+});
+
+const invitationsQueryKey = $derived([
+	"invitations",
+	pageSize,
+	currentPage,
+	rangeStart,
+	sortingState,
+	searchQuery,
+]);
+
+// Query to fetch invitations
+const invitationsQuery = createQuery(() => ({
+	queryKey: invitationsQueryKey,
+	placeholderData: keepPreviousData,
+	initialData: { data: [], count: 0 },
+	queryFn: async ({ signal }) => {
+		let query = supabase
+			.from("invitations")
+			.select(columns, { count: "exact" });
+
+		// Filter by status (pending or expired)
+		query = query.in("status", ["pending", "expired"]);
+		if (searchQuery.length > 0) {
+			query = query.textSearch("search_text", `'${searchQuery}'`, {
+				type: "websearch",
+			});
+		}
+		// Add sorting if provided
+		if (sortingState.length > 0) {
+			query = query.order(sortingState[0].id, {
+				ascending: !sortingState[0].desc,
+			});
+		} else {
+			// Default sort by created_at descending
+			query = query.order("created_at", { ascending: false });
+		}
+
+		const { data, error, count } = await query
+			.range(rangeStart, rangeEnd)
+			.abortSignal(signal)
+			.throwOnError();
+
+		if (error) {
+			throw error;
+		}
+
+		return { data, count: count || data.length };
+	},
+}));
+
+let selectedRows = $state<Set<string>>(new Set());
+
+// Derived state for bulk operations
+const selectedRowsArray = $derived(Array.from(selectedRows));
+
+function onPaginationChange(newPagination: Partial<PaginationState>) {
+	const paginationState: PaginationState = {
+		pageIndex: currentPage,
 		pageSize,
-		currentPage,
-		rangeStart,
-		sortingState,
-		searchQuery
-	]);
+		...newPagination,
+	};
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity
+	const newParams = new URLSearchParams(page.url.searchParams);
+	newParams.set("invitePage", paginationState.pageIndex.toString());
+	newParams.set("invitePageSize", paginationState.pageSize.toString());
+	const url = `/dashboard/members?${newParams.toString()}`;
+	goto(resolve(url as any));
+}
 
-	// Query to fetch invitations
-	const invitationsQuery = createQuery(() => ({
-		queryKey: invitationsQueryKey,
-		placeholderData: keepPreviousData,
-		initialData: { data: [], count: 0 },
-		queryFn: async ({ signal }) => {
-			let query = supabase.from('invitations').select(columns, { count: 'estimated' });
+function onSortingChange(newSorting: SortingState) {
+	const [sortingState] = newSorting;
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity
+	const newParams = new URLSearchParams(page.url.searchParams);
+	newParams.set("inviteSort", sortingState.id);
+	newParams.set("inviteDirection", sortingState.desc ? "desc" : "asc");
+	const url = `/dashboard/members?${newParams.toString()}`;
+	goto(resolve(url as any));
+}
 
-			// Filter by status (pending or expired)
-			query = query.in('status', ['pending', 'expired']);
-			if (searchQuery.length > 0) {
-				query = query.textSearch('search_text', `'${searchQuery}'`, {
-					type: 'websearch'
+function onSearchChange(newSearch: string) {
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity
+	const newParams = new URLSearchParams(page.url.searchParams);
+	newParams.set("inviteQ", newSearch);
+	newParams.set("invitePage", "0"); // Reset to first page on search
+	const url = `/dashboard/members?${newParams.toString()}`;
+	goto(resolve(url as any));
+}
+
+const resendInvitationLink = createMutation(() => ({
+	mutationFn: async (data: { email: string; invitationId: string }[]) => {
+		return fetch(`/api/admin/invite-link`, {
+			method: "POST",
+			body: JSON.stringify({
+				emails: data.map((e) => e.email),
+			}),
+		}).then((res) => {
+			if (!res.ok) {
+				throw new Error("Failed to resend invitation link");
+			}
+		});
+	},
+	onSuccess: () => {
+		toast.success("Invitation link resent");
+	},
+	onError: () => {
+		toast.error("Failed to resend invitation link");
+	},
+}));
+
+// Bulk resend mutation
+const bulkResendInvitations = createMutation(() => ({
+	mutationFn: async (selectedIds: string[]) => {
+		const selectedInvitations =
+			invitationsQuery.data?.data?.filter((invitation) =>
+				selectedIds.includes(invitation.id!),
+			) || [];
+
+		return fetch(`/api/admin/invite-link`, {
+			method: "POST",
+			body: JSON.stringify({
+				emails: selectedInvitations.map((invitation) => invitation.email),
+			}),
+		}).then((res) => {
+			if (!res.ok) {
+				throw new Error("Failed to resend invitation links");
+			}
+		});
+	},
+	onSuccess: () => {
+		toast.success("Invitation links resent successfully");
+		selectedRows = new Set(); // Clear selection
+	},
+	onError: () => {
+		toast.error("Failed to resend invitation links");
+	},
+}));
+
+// Bulk delete mutation
+const bulkDeleteInvitations = createMutation(() => ({
+	mutationFn: async (selectedIds: string[]) => {
+		await deleteInvitations(selectedIds);
+	},
+	onSuccess: () => {
+		toast.success("Invitations deleted successfully");
+		selectedRows = new Set(); // Clear selection
+		invitationsQuery.refetch(); // Refresh data
+	},
+	onError: () => {
+		toast.error("Failed to delete invitations");
+	},
+}));
+
+// Create table
+const table = createSvelteTable({
+	autoResetPageIndex: false,
+	manualPagination: true,
+	manualSorting: true,
+	enableRowSelection: true,
+	get data() {
+		return invitationsQuery.data?.data || [];
+	},
+	columns: [
+		{
+			id: "select",
+			header: () =>
+				renderComponent(Checkbox, {
+					checked: table.getIsAllRowsSelected(),
+					indeterminate: table.getIsSomeRowsSelected(),
+					onCheckedChange: (state: boolean) => {
+						table.toggleAllRowsSelected(state);
+					},
+				}),
+			cell: ({ row }) =>
+				renderComponent(Checkbox, {
+					checked: row.getIsSelected(),
+					onCheckedChange: (state: boolean) => row.toggleSelected(state),
+				}),
+		},
+		{
+			id: "actions",
+			header: "Actions",
+			cell: ({ row }) => {
+				return renderComponent(InvitationActions, {
+					resendInvitation: () =>
+						resendInvitationLink.mutate([
+							{
+								email: row.original.email,
+								invitationId: row.original.id!,
+							},
+						]),
+					invitationLink: getInvitationLink(
+						row.original.id!,
+						row.original.email,
+					),
+					deleteInvitation: () =>
+						deleteInvitations([row.original.id!]).then(() => {
+							toast.success("Invitation deleted");
+							invitationsQuery.refetch();
+						}),
 				});
-			}
-			// Add sorting if provided
-			if (sortingState.length > 0) {
-				query = query.order(sortingState[0].id, {
-					ascending: !sortingState[0].desc
+			},
+		},
+		{
+			id: "email",
+			header: "Email",
+			accessorKey: "email",
+			cell: (info) => info.getValue(),
+		},
+		{
+			id: "status",
+			header: "Status",
+			accessorKey: "status",
+			cell: (info) => {
+				const status = info.getValue() as string;
+				return renderComponent(Badge, {
+					children: createRawSnippet(() => ({
+						render: () => status,
+					})),
+					variant: status === "pending" ? "default" : "destructive",
+					class: "capitalize",
 				});
-			} else {
-				// Default sort by created_at descending
-				query = query.order('created_at', { ascending: false });
-			}
-
-			const { data, error, count } = await query
-				.range(rangeStart, rangeEnd)
-				.abortSignal(signal)
-				.throwOnError();
-
-			if (error) {
-				throw error;
-			}
-
-			return { data, count: count || data.length };
-		}
-	}));
-
-	let selectedRows = $state<Set<string>>(new Set());
-
-	// Derived state for bulk operations
-	const selectedRowsArray = $derived(Array.from(selectedRows));
-
-	function onPaginationChange(newPagination: Partial<PaginationState>) {
-		const paginationState: PaginationState = {
-			pageIndex: currentPage,
-			pageSize,
-			...newPagination
-		};
-		// eslint-disable-next-line svelte/prefer-svelte-reactivity
-		const newParams = new URLSearchParams(page.url.searchParams);
-		newParams.set('invitePage', paginationState.pageIndex.toString());
-		newParams.set('invitePageSize', paginationState.pageSize.toString());
-		const url = `/dashboard/members?${newParams.toString()}`;
-		goto(resolve(url as any));
-	}
-
-	function onSortingChange(newSorting: SortingState) {
-		const [sortingState] = newSorting;
-		// eslint-disable-next-line svelte/prefer-svelte-reactivity
-		const newParams = new URLSearchParams(page.url.searchParams);
-		newParams.set('inviteSort', sortingState.id);
-		newParams.set('inviteDirection', sortingState.desc ? 'desc' : 'asc');
-		const url = `/dashboard/members?${newParams.toString()}`;
-		goto(resolve(url as any));
-	}
-
-	function onSearchChange(newSearch: string) {
-		// eslint-disable-next-line svelte/prefer-svelte-reactivity
-		const newParams = new URLSearchParams(page.url.searchParams);
-		newParams.set('inviteQ', newSearch);
-		const url = `/dashboard/members?${newParams.toString()}`;
-		goto(resolve(url as any));
-	}
-
-	const resendInvitationLink = createMutation(() => ({
-		mutationFn: async (data: { email: string; invitationId: string }[]) => {
-			return fetch(`/api/admin/invite-link`, {
-				method: 'POST',
-				body: JSON.stringify({
-					emails: data.map((e) => e.email)
-				})
-			}).then((res) => {
-				if (!res.ok) {
-					throw new Error('Failed to resend invitation link');
-				}
-			});
-		},
-		onSuccess: () => {
-			toast.success('Invitation link resent');
-		},
-		onError: () => {
-			toast.error('Failed to resend invitation link');
-		}
-	}));
-
-	// Bulk resend mutation
-	const bulkResendInvitations = createMutation(() => ({
-		mutationFn: async (selectedIds: string[]) => {
-			const selectedInvitations =
-				invitationsQuery.data?.data?.filter((invitation) => selectedIds.includes(invitation.id!)) ||
-				[];
-
-			return fetch(`/api/admin/invite-link`, {
-				method: 'POST',
-				body: JSON.stringify({
-					emails: selectedInvitations.map((invitation) => invitation.email)
-				})
-			}).then((res) => {
-				if (!res.ok) {
-					throw new Error('Failed to resend invitation links');
-				}
-			});
-		},
-		onSuccess: () => {
-			toast.success('Invitation links resent successfully');
-			selectedRows = new Set(); // Clear selection
-		},
-		onError: () => {
-			toast.error('Failed to resend invitation links');
-		}
-	}));
-
-	// Bulk delete mutation
-	const bulkDeleteInvitations = createMutation(() => ({
-		mutationFn: async (selectedIds: string[]) => {
-			await deleteInvitations(selectedIds);
-		},
-		onSuccess: () => {
-			toast.success('Invitations deleted successfully');
-			selectedRows = new Set(); // Clear selection
-			invitationsQuery.refetch(); // Refresh data
-		},
-		onError: () => {
-			toast.error('Failed to delete invitations');
-		}
-	}));
-
-	// Create table
-	const table = createSvelteTable({
-		autoResetPageIndex: false,
-		manualPagination: true,
-		manualSorting: true,
-		enableRowSelection: true,
-		get data() {
-			return invitationsQuery.data?.data || [];
-		},
-		columns: [
-			{
-				id: 'select',
-				header: () =>
-					renderComponent(Checkbox, {
-						checked: table.getIsAllRowsSelected(),
-						indeterminate: table.getIsSomeRowsSelected(),
-						onCheckedChange: (state: boolean) => {
-							table.toggleAllRowsSelected(state);
-						}
-					}),
-				cell: ({ row }) =>
-					renderComponent(Checkbox, {
-						checked: row.getIsSelected(),
-						onCheckedChange: (state: boolean) => row.toggleSelected(state)
-					})
 			},
-			{
-				id: 'actions',
-				header: 'Actions',
-				cell: ({ row }) => {
-					return renderComponent(InvitationActions, {
-						resendInvitation: () =>
-							resendInvitationLink.mutate([
-								{
-									email: row.original.email,
-									invitationId: row.original.id!
-								}
-							]),
-						invitationLink: getInvitationLink(row.original.id!, row.original.email),
-						deleteInvitation: () =>
-							deleteInvitations([row.original.id!]).then(() => {
-								toast.success('Invitation deleted');
-								invitationsQuery.refetch();
-							})
-					});
-				}
-			},
-			{
-				id: 'email',
-				header: 'Email',
-				accessorKey: 'email',
-				cell: (info) => info.getValue()
-			},
-			{
-				id: 'status',
-				header: 'Status',
-				accessorKey: 'status',
-				cell: (info) => {
-					const status = info.getValue() as string;
-					return renderComponent(Badge, {
-						children: createRawSnippet(() => ({
-							render: () => status
-						})),
-						variant: status === 'pending' ? 'default' : 'destructive',
-						class: 'capitalize'
-					});
-				}
-			},
-			{
-				id: 'expires_at',
-				header: () => 'Expires',
-				accessorKey: 'expires_at',
-				cell: (info) => {
-					const expiresAt = info.getValue() as string;
-					const isExpired = dayjs(expiresAt).isBefore(dayjs());
-					return renderSnippet(
-						createRawSnippet((value) => ({
-							render: () => `
+		},
+		{
+			id: "expires_at",
+			header: () => "Expires",
+			accessorKey: "expires_at",
+			cell: (info) => {
+				const expiresAt = info.getValue() as string;
+				const isExpired = dayjs(expiresAt).isBefore(dayjs());
+				return renderSnippet(
+					createRawSnippet((value) => ({
+						render: () => `
 						<div class="flex items-center">
-							<span class="${isExpired ? 'text-destructive' : ''}">
-								${dayjs(value()).format('MMM D, YYYY')}
+							<span class="${isExpired ? "text-destructive" : ""}">
+								${dayjs(value()).format("MMM D, YYYY")}
 							</span>
 						</div>
-					`
-						})),
-						expiresAt
-					);
-				}
-			}
-		],
-		state: {
-			get sorting() {
-				return sortingState;
+					`,
+					})),
+					expiresAt,
+				);
 			},
-			get rowSelection() {
-				return Array.from(selectedRows).reduce(
-					(prv, curr) => ({
-						...prv,
-						[curr]: true
-					}),
-					{}
-				);
-			}
 		},
-		onPaginationChange: (updater) => {
-			if (typeof updater === 'function') {
-				onPaginationChange(
-					updater({
-						pageIndex: currentPage,
-						pageSize
-					})
-				);
-			} else {
-				onPaginationChange(updater);
-			}
+	],
+	state: {
+		get sorting() {
+			return sortingState;
 		},
-		onSortingChange: (updater) => {
-			if (typeof updater === 'function') {
-				onSortingChange(updater(sortingState));
-			} else {
-				onSortingChange(updater);
-			}
+		get rowSelection() {
+			return Array.from(selectedRows).reduce(
+				(prv, curr) => ({
+					...prv,
+					[curr]: true,
+				}),
+				{},
+			);
 		},
-		getCoreRowModel: getCoreRowModel(),
-		getSortedRowModel: getSortedRowModel(),
-		getPaginationRowModel: getPaginationRowModel(),
-		getExpandedRowModel: getExpandedRowModel(),
-		getRowId: (row) => row.id,
-		onRowSelectionChange: (updater) => {
-			if (typeof updater === 'function') {
-				const currentSelection = Array.from(selectedRows).reduce(
-					(prv, curr) => ({
-						...prv,
-						[curr]: true
-					}),
-					{}
-				);
-				const newSelection = updater(currentSelection);
-				selectedRows = new Set(Object.keys(newSelection).filter((key) => newSelection[key]));
-			} else {
-				selectedRows = new Set(Object.keys(updater).filter((key) => updater[key]));
-			}
+	},
+	onPaginationChange: (updater) => {
+		if (typeof updater === "function") {
+			onPaginationChange(
+				updater({
+					pageIndex: currentPage,
+					pageSize,
+				}),
+			);
+		} else {
+			onPaginationChange(updater);
 		}
-	});
+	},
+	onSortingChange: (updater) => {
+		if (typeof updater === "function") {
+			onSortingChange(updater(sortingState));
+		} else {
+			onSortingChange(updater);
+		}
+	},
+	getCoreRowModel: getCoreRowModel(),
+	getSortedRowModel: getSortedRowModel(),
+	getPaginationRowModel: getPaginationRowModel(),
+	getExpandedRowModel: getExpandedRowModel(),
+	getRowId: (row) => row.id,
+	onRowSelectionChange: (updater) => {
+		if (typeof updater === "function") {
+			const currentSelection = Array.from(selectedRows).reduce(
+				(prv, curr) => ({
+					...prv,
+					[curr]: true,
+				}),
+				{},
+			);
+			const newSelection = updater(currentSelection);
+			selectedRows = new Set(
+				Object.keys(newSelection).filter((key) => newSelection[key]),
+			);
+		} else {
+			selectedRows = new Set(
+				Object.keys(updater).filter((key) => updater[key]),
+			);
+		}
+	},
+});
 </script>
 
 <div class="flex w-full items-center space-x-2 mb-2 p-2">
 	<Input
 		value={searchQuery}
-		onchange={(t: Event & { currentTarget: EventTarget & HTMLInputElement }) =>
+		oninput={(t: Event & { currentTarget: EventTarget & HTMLInputElement }) =>
 			onSearchChange(t.currentTarget.value)}
-		placeholder="Search members"
+		placeholder="Search invitations"
 		class="max-w-md"
 	/>
 
 	{#if searchQuery !== ''}
-		<Button variant="ghost" type="button" onclick={() => onSearchChange('')}>
+		<Button variant="ghost" type="button" aria-label="Clear search" onclick={() => onSearchChange('')}>
 			<Cross2 />
 		</Button>
 	{/if}
@@ -527,7 +549,9 @@
 			value={pageSize.toString()}
 			onValueChange={(value) => onPaginationChange({ pageSize: Number(value) })}
 		>
-			<Select.Trigger class="w-16 h-8">{pageSize}</Select.Trigger>
+			<Select.Trigger class="w-16 h-8" aria-label="Invitations elements per page">
+				{pageSize}
+			</Select.Trigger>
 			<Select.Content>
 				{#each pageSizeOptions as pageSizeOption (pageSizeOption)}
 					<Select.Item value={pageSizeOption.toString()}>

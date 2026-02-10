@@ -1,20 +1,24 @@
-import dayjs from 'dayjs';
-import { parsePhoneNumber } from 'libphonenumber-js/min';
-import * as v from 'valibot';
-import { SocialMediaConsent } from '$lib/types';
-import { dobValidator, phoneNumberValidator } from './commonValidators';
+import dayjs from "dayjs";
+import { parsePhoneNumber } from "libphonenumber-js/min";
+import * as v from "valibot";
+import { SocialMediaConsent } from "$lib/types";
+import { dobValidator, phoneNumberValidator } from "./commonValidators";
 
-const calculateAge = (dateOfBirth: Date) => dayjs().diff(dateOfBirth, 'years');
+const calculateAge = (dateOfBirth: Date) => dayjs().diff(dateOfBirth, "years");
 const isMinor = (dateOfBirth: Date) => calculateAge(dateOfBirth) < 18;
 
 const guardianDataSchema = v.partial(
 	v.object({
 		guardianFirstName: v.optional(
-			v.pipe(v.string(), v.nonEmpty('Guardian first name is required.'))
+			v.pipe(v.string(), v.nonEmpty("Guardian first name is required.")),
 		),
-		guardianLastName: v.optional(v.pipe(v.string(), v.nonEmpty('Guardian last name is required.'))),
-		guardianPhoneNumber: v.optional(phoneNumberValidator('Guardian phone number is required.'))
-	})
+		guardianLastName: v.optional(
+			v.pipe(v.string(), v.nonEmpty("Guardian last name is required.")),
+		),
+		guardianPhoneNumber: v.optional(
+			phoneNumberValidator("Guardian phone number is required."),
+		),
+	}),
 );
 
 /**
@@ -24,49 +28,49 @@ const guardianDataSchema = v.partial(
  * Use this for Remote Functions form() to get proper TypeScript types.
  */
 export const beginnersWaitlistClientSchema = v.object({
-	firstName: v.pipe(v.string(), v.nonEmpty('First name is required.')),
-	lastName: v.pipe(v.string(), v.nonEmpty('Last name is required.')),
+	firstName: v.pipe(v.string(), v.nonEmpty("First name is required.")),
+	lastName: v.pipe(v.string(), v.nonEmpty("Last name is required.")),
 	email: v.pipe(
 		v.string(),
-		v.nonEmpty('Please enter your email.'),
-		v.email('Email is invalid.')
+		v.nonEmpty("Please enter your email."),
+		v.email("Email is invalid."),
 	),
 	phoneNumber: v.pipe(
 		v.string(),
-		v.nonEmpty('Phone number is required.'),
+		v.nonEmpty("Phone number is required."),
 		v.check((input) => {
-			if (input === '') return false;
+			if (input === "") return false;
 			try {
-				return Boolean(parsePhoneNumber(input ?? '', 'IE')?.isValid());
+				return Boolean(parsePhoneNumber(input ?? "", "IE")?.isValid());
 			} catch {
 				return false;
 			}
-		}, 'Invalid phone number')
+		}, "Invalid phone number"),
 	),
 	dateOfBirth: v.pipe(
 		v.string(),
-		v.nonEmpty('Date of birth is required.'),
+		v.nonEmpty("Date of birth is required."),
 		v.check((input) => {
 			const date = new Date(input);
-			return !isNaN(date.getTime()) && dayjs().diff(date, 'years') >= 16;
-		}, 'You must be at least 16 years old.')
+			return !isNaN(date.getTime()) && dayjs().diff(date, "years") >= 16;
+		}, "You must be at least 16 years old."),
 	),
 	medicalConditions: v.pipe(v.string()),
 	pronouns: v.pipe(
 		v.string(),
 		v.check(
 			(input) => /^\/?[\w-]+(\/[\w-]+)*\/?$/.test(input),
-			'Pronouns must be written between slashes (e.g., he/him/they).'
-		)
+			"Pronouns must be written between slashes (e.g., he/him/they).",
+		),
 	),
-	gender: v.pipe(v.string(), v.nonEmpty('Please select your gender.')),
+	gender: v.pipe(v.string(), v.nonEmpty("Please select your gender.")),
 	socialMediaConsent: v.optional(
-		v.enum(SocialMediaConsent, 'Please select an option'),
-		SocialMediaConsent.no
+		v.enum(SocialMediaConsent, "Please select an option"),
+		SocialMediaConsent.no,
 	),
 	guardianFirstName: v.optional(v.pipe(v.string())),
 	guardianLastName: v.optional(v.pipe(v.string())),
-	guardianPhoneNumber: v.optional(v.pipe(v.string()))
+	guardianPhoneNumber: v.optional(v.pipe(v.string())),
 });
 
 /**
@@ -80,51 +84,60 @@ const formValidation = v.pipe(
 		// Override fields that need server-specific transformations
 		email: v.pipe(
 			v.string(),
-			v.nonEmpty('Please enter your email.'),
-			v.email('Email is invalid.'),
-			v.transform((input) => input.toLowerCase())
+			v.nonEmpty("Please enter your email."),
+			v.email("Email is invalid."),
+			v.transform((input) => input.toLowerCase()),
 		),
 		phoneNumber: phoneNumberValidator(),
-		dateOfBirth: dobValidator
+		dateOfBirth: dobValidator,
 	}),
 	v.forward(
 		v.partialCheck(
-			[['dateOfBirth'], ['guardianFirstName']],
+			[["dateOfBirth"], ["guardianFirstName"]],
 			({ dateOfBirth, guardianFirstName }) => {
 				if (!isMinor(dateOfBirth)) return true;
-				return v.safeParse(v.required(guardianDataSchema, ['guardianFirstName']), {
-					guardianFirstName
-				}).success;
+				return v.safeParse(
+					v.required(guardianDataSchema, ["guardianFirstName"]),
+					{
+						guardianFirstName,
+					},
+				).success;
 			},
-			'Guardian first name is required for under 18s.'
+			"Guardian first name is required for under 18s.",
 		),
-		['guardianFirstName']
+		["guardianFirstName"],
 	),
 	v.forward(
 		v.partialCheck(
-			[['dateOfBirth'], ['guardianLastName']],
+			[["dateOfBirth"], ["guardianLastName"]],
 			({ dateOfBirth, guardianLastName }) => {
 				if (!isMinor(dateOfBirth)) return true;
-				return v.safeParse(v.required(guardianDataSchema, ['guardianLastName']), {
-					guardianLastName
-				}).success;
+				return v.safeParse(
+					v.required(guardianDataSchema, ["guardianLastName"]),
+					{
+						guardianLastName,
+					},
+				).success;
 			},
-			'Guardian last name is required for under 18s.'
+			"Guardian last name is required for under 18s.",
 		),
-		['guardianLastName']
+		["guardianLastName"],
 	),
 	v.forward(
 		v.partialCheck(
-			[['dateOfBirth'], ['guardianPhoneNumber']],
+			[["dateOfBirth"], ["guardianPhoneNumber"]],
 			({ dateOfBirth, guardianPhoneNumber }) => {
 				if (!isMinor(dateOfBirth)) return true;
-				return v.safeParse(v.required(guardianDataSchema, ['guardianPhoneNumber']), {
-					guardianPhoneNumber
-				}).success;
+				return v.safeParse(
+					v.required(guardianDataSchema, ["guardianPhoneNumber"]),
+					{
+						guardianPhoneNumber,
+					},
+				).success;
 			},
-			'Guardian phone number is required for under 18s.'
+			"Guardian phone number is required for under 18s.",
 		),
-		['guardianPhoneNumber']
+		["guardianPhoneNumber"],
 	),
 	v.transform((input) => {
 		if (!isMinor(input.dateOfBirth)) {
@@ -134,7 +147,7 @@ const formValidation = v.pipe(
 			return input;
 		}
 		return input;
-	})
+	}),
 );
 
 export default formValidation;

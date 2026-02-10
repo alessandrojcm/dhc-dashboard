@@ -4,17 +4,31 @@
  * Public API for the settings domain.
  */
 
-import { getKyselyClient, sentryLogger, type Logger, type Session } from '../shared';
-import { SettingsService } from './settings.service';
+import {
+	getKyselyClient,
+	sentryLogger,
+	type Logger,
+	type Session,
+} from "../shared";
+import { SettingsService } from "./settings.service";
 
 // Re-export service class
-export { SettingsService } from './settings.service';
+export { SettingsService } from "./settings.service";
 
 // Re-export types
-export type { Setting, SettingInsert, SettingUpdate, SettingKey, SettingType } from './types';
+export type {
+	Setting,
+	SettingInsert,
+	SettingUpdate,
+	SettingKey,
+	SettingType,
+} from "./types";
 
 // Re-export validation schemas
-export { InsuranceFormLinkSchema, type InsuranceFormLinkInput } from './settings.service';
+export {
+	InsuranceFormLinkSchema,
+	type InsuranceFormLinkInput,
+} from "./settings.service";
 
 /**
  * Factory function to create a SettingsService instance
@@ -33,11 +47,11 @@ export { InsuranceFormLinkSchema, type InsuranceFormLinkInput } from './settings
 export function createSettingsService(
 	platform: App.Platform,
 	session: Session,
-	logger?: Logger
+	logger?: Logger,
 ): SettingsService {
 	return new SettingsService(
 		getKyselyClient(platform.env.HYPERDRIVE),
 		session,
-		logger ?? sentryLogger
+		logger ?? sentryLogger,
 	);
 }

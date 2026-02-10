@@ -5,16 +5,16 @@
  * and toggling boolean settings.
  */
 
-import * as v from 'valibot';
+import * as v from "valibot";
 import {
 	executeWithRLS,
 	type Kysely,
 	type KyselyDatabase,
 	type Logger,
 	type Session,
-	type Transaction
-} from '../shared';
-import type { Setting, SettingKey, SettingUpdate } from './types';
+	type Transaction,
+} from "../shared";
+import type { Setting, SettingKey, SettingUpdate } from "./types";
 
 /**
  * Validation schema for insurance form link setting
@@ -22,12 +22,14 @@ import type { Setting, SettingKey, SettingUpdate } from './types';
 export const InsuranceFormLinkSchema = v.object({
 	insuranceFormLink: v.pipe(
 		v.string(),
-		v.nonEmpty('Please enter the HEMA Insurance Form link.'),
-		v.url('Please enter a valid URL.')
-	)
+		v.nonEmpty("Please enter the HEMA Insurance Form link."),
+		v.url("Please enter a valid URL."),
+	),
 });
 
-export type InsuranceFormLinkInput = v.InferOutput<typeof InsuranceFormLinkSchema>;
+export type InsuranceFormLinkInput = v.InferOutput<
+	typeof InsuranceFormLinkSchema
+>;
 
 /**
  * Service for managing system settings
@@ -38,7 +40,7 @@ export class SettingsService {
 	constructor(
 		private kysely: Kysely<KyselyDatabase>,
 		private session: Session,
-		logger?: Logger
+		logger?: Logger,
 	) {
 		this.logger = logger ?? console;
 	}
@@ -50,20 +52,20 @@ export class SettingsService {
 	 * @returns The setting or null if not found
 	 */
 	async findByKey(key: SettingKey): Promise<Setting | null> {
-		this.logger.debug('Finding setting by key', { key });
+		this.logger.debug("Finding setting by key", { key });
 
 		try {
 			const setting = await this.kysely
-				.selectFrom('settings')
+				.selectFrom("settings")
 				.selectAll()
-				.where('key', '=', key)
+				.where("key", "=", key)
 				.executeTakeFirst();
 
 			return setting ?? null;
 		} catch (error) {
-			this.logger.error('Failed to find setting by key', { key, error });
-			throw new Error('Failed to find setting', {
-				cause: { key, originalError: error }
+			this.logger.error("Failed to find setting by key", { key, error });
+			throw new Error("Failed to find setting", {
+				cause: { key, originalError: error },
 			});
 		}
 	}
@@ -75,20 +77,20 @@ export class SettingsService {
 	 * @returns Array of found settings
 	 */
 	async findMany(keys?: SettingKey[]): Promise<Setting[]> {
-		this.logger.debug('Finding multiple settings', { keys });
+		this.logger.debug("Finding multiple settings", { keys });
 
 		try {
-			let query = this.kysely.selectFrom('settings').selectAll();
+			let query = this.kysely.selectFrom("settings").selectAll();
 
 			if (keys && keys.length > 0) {
-				query = query.where('key', 'in', keys);
+				query = query.where("key", "in", keys);
 			}
 
 			return query.execute();
 		} catch (error) {
-			this.logger.error('Failed to find settings', { keys, error });
-			throw new Error('Failed to find settings', {
-				cause: { keys, originalError: error }
+			this.logger.error("Failed to find settings", { keys, error });
+			throw new Error("Failed to find settings", {
+				cause: { keys, originalError: error },
 			});
 		}
 	}
@@ -101,16 +103,20 @@ export class SettingsService {
 	 * @returns The updated setting
 	 */
 	async update(key: SettingKey, update: SettingUpdate): Promise<Setting> {
-		this.logger.info('Updating setting', { key, update });
+		this.logger.info("Updating setting", { key, update });
 
 		try {
-			return await executeWithRLS(this.kysely, { claims: this.session }, async (trx) => {
-				return this._update(trx, key, update);
-			});
+			return await executeWithRLS(
+				this.kysely,
+				{ claims: this.session },
+				async (trx) => {
+					return this._update(trx, key, update);
+				},
+			);
 		} catch (error) {
-			this.logger.error('Failed to update setting', { key, error });
-			throw new Error('Failed to update setting', {
-				cause: { key, originalError: error }
+			this.logger.error("Failed to update setting", { key, error });
+			throw new Error("Failed to update setting", {
+				cause: { key, originalError: error },
 			});
 		}
 	}
@@ -122,9 +128,9 @@ export class SettingsService {
 	 * @returns The updated setting
 	 */
 	async updateInsuranceFormLink(url: string): Promise<Setting> {
-		this.logger.info('Updating insurance form link', { url });
+		this.logger.info("Updating insurance form link", { url });
 
-		return this.update('hema_insurance_form_link', { value: url });
+		return this.update("hema_insurance_form_link", { value: url });
 	}
 
 	/**
@@ -134,27 +140,31 @@ export class SettingsService {
 	 * @returns The updated setting with the new value
 	 */
 	async toggle(key: SettingKey): Promise<Setting> {
-		this.logger.info('Toggling setting', { key });
+		this.logger.info("Toggling setting", { key });
 
 		try {
-			return await executeWithRLS(this.kysely, { claims: this.session }, async (trx) => {
-				// Get current value
-				const currentSetting = await trx
-					.selectFrom('settings')
-					.select('value')
-					.where('key', '=', key)
-					.executeTakeFirstOrThrow();
+			return await executeWithRLS(
+				this.kysely,
+				{ claims: this.session },
+				async (trx) => {
+					// Get current value
+					const currentSetting = await trx
+						.selectFrom("settings")
+						.select("value")
+						.where("key", "=", key)
+						.executeTakeFirstOrThrow();
 
-				// Toggle the boolean value
-				const newValue = currentSetting.value === 'true' ? 'false' : 'true';
+					// Toggle the boolean value
+					const newValue = currentSetting.value === "true" ? "false" : "true";
 
-				// Update with new value
-				return this._update(trx, key, { value: newValue });
-			});
+					// Update with new value
+					return this._update(trx, key, { value: newValue });
+				},
+			);
 		} catch (error) {
-			this.logger.error('Failed to toggle setting', { key, error });
-			throw new Error('Failed to toggle setting', {
-				cause: { key, originalError: error }
+			this.logger.error("Failed to toggle setting", { key, error });
+			throw new Error("Failed to toggle setting", {
+				cause: { key, originalError: error },
 			});
 		}
 	}
@@ -165,9 +175,9 @@ export class SettingsService {
 	 * @returns The updated setting with the new value
 	 */
 	async toggleWaitlist(): Promise<Setting> {
-		this.logger.info('Toggling waitlist status');
+		this.logger.info("Toggling waitlist status");
 
-		return this.toggle('waitlist_open');
+		return this.toggle("waitlist_open");
 	}
 
 	/**
@@ -176,15 +186,15 @@ export class SettingsService {
 	 * @returns True if waitlist is open, false otherwise
 	 */
 	async isWaitlistOpen(): Promise<boolean> {
-		this.logger.debug('Checking waitlist status');
+		this.logger.debug("Checking waitlist status");
 
 		try {
-			const setting = await this.findByKey('waitlist_open');
-			return setting?.value === 'true';
+			const setting = await this.findByKey("waitlist_open");
+			return setting?.value === "true";
 		} catch (error) {
-			this.logger.error('Failed to check waitlist status', { error });
-			throw new Error('Failed to check waitlist status', {
-				cause: { originalError: error }
+			this.logger.error("Failed to check waitlist status", { error });
+			throw new Error("Failed to check waitlist status", {
+				cause: { originalError: error },
 			});
 		}
 	}
@@ -201,12 +211,12 @@ export class SettingsService {
 	async _update(
 		trx: Transaction<KyselyDatabase>,
 		key: SettingKey,
-		update: SettingUpdate
+		update: SettingUpdate,
 	): Promise<Setting> {
 		return trx
-			.updateTable('settings')
+			.updateTable("settings")
 			.set(update)
-			.where('key', '=', key)
+			.where("key", "=", key)
 			.returningAll()
 			.executeTakeFirstOrThrow();
 	}

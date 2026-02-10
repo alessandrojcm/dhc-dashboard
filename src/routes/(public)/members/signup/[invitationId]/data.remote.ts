@@ -12,8 +12,8 @@ import { stripeClient } from "$lib/server/stripe";
 import { env } from "$env/dynamic/public";
 import { dev } from "$app/environment";
 
-const DASHBOARD_MIGRATION_CODE = env.PUBLIC_DASHBOARD_MIGRATION_CODE ??
-	"DHCDASHBOARD";
+const DASHBOARD_MIGRATION_CODE =
+	env.PUBLIC_DASHBOARD_MIGRATION_CODE ?? "DHCDASHBOARD";
 
 /**
  * Validates an invitation by checking email and date of birth
@@ -67,8 +67,8 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 	try {
 		return await kysely.transaction().execute(async (trx) => {
 			// Process invitation acceptance (handles status update, registration, waitlist)
-			const invitationData = await invitationService
-				.processInvitationAcceptance(
+			const invitationData =
+				await invitationService.processInvitationAcceptance(
 					trx,
 					invitationId,
 					data.nextOfKin,
@@ -97,25 +97,20 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 				intent.status === "requires_payment_method",
 				"payment_intent_requires_payment_method",
 			);
-			invariant(
-				intent.payment_method == null,
-				"payment_method_not_found",
-			);
+			invariant(intent.payment_method == null, "payment_method_not_found");
 
-			const paymentMethodId = typeof intent.payment_method === "string"
-				? intent.payment_method
-				: (intent.payment_method! as Stripe.PaymentMethod).id;
+			const paymentMethodId =
+				typeof intent.payment_method === "string"
+					? intent.payment_method
+					: (intent.payment_method! as Stripe.PaymentMethod).id;
 
 			// Fetch base Stripe prices
 			const { monthly, annual } = await getPriceIds(kysely);
 
 			if (!monthly || !annual) {
-				Sentry.captureMessage(
-					"Base prices not found for membership products",
-					{
-						extra: { userId: invitationData.user_id },
-					},
-				);
+				Sentry.captureMessage("Base prices not found for membership products", {
+					extra: { userId: invitationData.user_id },
+				});
 				throw error(500, "Could not retrieve base product prices.");
 			}
 
@@ -132,7 +127,7 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 				}
 				if (
 					data.couponCode.toLowerCase().trim() ===
-						DASHBOARD_MIGRATION_CODE.toLowerCase().trim()
+					DASHBOARD_MIGRATION_CODE.toLowerCase().trim()
 				) {
 					isMigration = true;
 				} else {
@@ -155,42 +150,36 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 						expand: ["latest_invoice.payments"],
 						collection_method: "charge_automatically",
 						default_payment_method: paymentMethodId,
-						discounts: !isMigration && promotionCodeId
-							? [{ promotion_code: promotionCodeId }]
-							: undefined,
+						discounts:
+							!isMigration && promotionCodeId
+								? [{ promotion_code: promotionCodeId }]
+								: undefined,
 					})
 					.then(async (subscription) => {
 						if (
-							(subscription.latest_invoice as Stripe.Invoice)
-								.payments?.data.length === 0
+							(subscription.latest_invoice as Stripe.Invoice).payments?.data
+								.length === 0
 						) {
 							return;
 						}
 						if (isMigration) {
 							return stripeClient.creditNotes.create({
-								invoice:
-									(subscription
-										.latest_invoice as Stripe.Invoice).id!,
-								amount:
-									(subscription
-										.latest_invoice as Stripe.Invoice)
-										.amount_due,
+								invoice: (subscription.latest_invoice as Stripe.Invoice).id!,
+								amount: (subscription.latest_invoice as Stripe.Invoice)
+									.amount_due,
 							});
 						}
 						return stripeClient.paymentIntents.confirm(
-							(subscription.latest_invoice as Stripe.Invoice)
-								.payments?.data[0].payment
-								.payment_intent as string,
+							(subscription.latest_invoice as Stripe.Invoice).payments?.data[0]
+								.payment.payment_intent as string,
 							{
 								payment_method: paymentMethodId,
 								mandate_data: {
 									customer_acceptance: {
 										type: "online",
 										online: {
-											ip_address: event
-												.getClientAddress(),
-											user_agent: event.request.headers
-												.get("user-agent")!,
+											ip_address: event.getClientAddress(),
+											user_agent: event.request.headers.get("user-agent")!,
 										},
 									},
 								},
@@ -212,42 +201,36 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 						expand: ["latest_invoice.payments"],
 						collection_method: "charge_automatically",
 						default_payment_method: paymentMethodId,
-						discounts: !isMigration && promotionCodeId
-							? [{ promotion_code: promotionCodeId }]
-							: undefined,
+						discounts:
+							!isMigration && promotionCodeId
+								? [{ promotion_code: promotionCodeId }]
+								: undefined,
 					})
 					.then(async (subscription) => {
 						if (
-							(subscription.latest_invoice as Stripe.Invoice)
-								.payments?.data.length === 0
+							(subscription.latest_invoice as Stripe.Invoice).payments?.data
+								.length === 0
 						) {
 							return;
 						}
 						if (isMigration) {
 							return stripeClient.creditNotes.create({
-								invoice:
-									(subscription
-										.latest_invoice as Stripe.Invoice).id!,
-								amount:
-									(subscription
-										.latest_invoice as Stripe.Invoice)
-										.amount_due,
+								invoice: (subscription.latest_invoice as Stripe.Invoice).id!,
+								amount: (subscription.latest_invoice as Stripe.Invoice)
+									.amount_due,
 							});
 						}
 						return stripeClient.paymentIntents.confirm(
-							(subscription.latest_invoice as Stripe.Invoice)
-								.payments?.data[0].payment
-								.payment_intent as string,
+							(subscription.latest_invoice as Stripe.Invoice).payments?.data[0]
+								.payment.payment_intent as string,
 							{
 								payment_method: paymentMethodId,
 								mandate_data: {
 									customer_acceptance: {
 										type: "online",
 										online: {
-											ip_address: event
-												.getClientAddress(),
-											user_agent: event.request.headers
-												.get("user-agent")!,
+											ip_address: event.getClientAddress(),
+											user_agent: event.request.headers.get("user-agent")!,
 										},
 									},
 								},
@@ -286,8 +269,7 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 					errorMessage = "The payment attempt failed";
 					break;
 				default:
-					errorMessage =
-						"An error occurred with the payment processor";
+					errorMessage = "An error occurred with the payment processor";
 					break;
 			}
 		}

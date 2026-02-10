@@ -3,30 +3,37 @@
  * Exports services, types, and factory functions
  */
 
-import { getKyselyClient } from '../shared';
-import { sentryLogger } from '../shared/logger';
-import type { Logger, Session } from '../shared';
-import { WorkshopService } from './workshop.service';
-import { AttendanceService } from './attendance.service';
-import { RefundService } from './refund.service';
-import { RegistrationService } from './registration.service';
+import { getKyselyClient } from "../shared";
+import { sentryLogger } from "../shared/logger";
+import type { Logger, Session } from "../shared";
+import { WorkshopService } from "./workshop.service";
+import { AttendanceService } from "./attendance.service";
+import { RefundService } from "./refund.service";
+import { RegistrationService } from "./registration.service";
 
 // ============================================================================
 // Service Exports
 // ============================================================================
 
-export { WorkshopService } from './workshop.service';
-export { AttendanceService } from './attendance.service';
-export { RefundService } from './refund.service';
-export { RegistrationService } from './registration.service';
+export { WorkshopService } from "./workshop.service";
+export { AttendanceService } from "./attendance.service";
+export { RefundService } from "./refund.service";
+export { RegistrationService } from "./registration.service";
 
 // ============================================================================
 // Validation Schema Exports
 // ============================================================================
 
-export { BaseWorkshopSchema, CreateWorkshopSchema, UpdateWorkshopSchema } from './workshop.service';
+export {
+	BaseWorkshopSchema,
+	CreateWorkshopSchema,
+	UpdateWorkshopSchema,
+} from "./workshop.service";
 
-export type { CreateWorkshopInput, UpdateWorkshopInput } from './workshop.service';
+export type {
+	CreateWorkshopInput,
+	UpdateWorkshopInput,
+} from "./workshop.service";
 
 // ============================================================================
 // Type Exports
@@ -53,8 +60,8 @@ export type {
 	RefundWithUser,
 	AttendanceStatus,
 	AttendanceUpdate,
-	AttendanceResult
-} from './types';
+	AttendanceResult,
+} from "./types";
 
 // ============================================================================
 // Factory Functions
@@ -77,12 +84,12 @@ export type {
 export function createWorkshopService(
 	platform: App.Platform,
 	session: Session,
-	logger?: Logger
+	logger?: Logger,
 ): WorkshopService {
 	return new WorkshopService(
 		getKyselyClient(platform.env.HYPERDRIVE),
 		session,
-		logger ?? sentryLogger
+		logger ?? sentryLogger,
 	);
 }
 
@@ -103,12 +110,12 @@ export function createWorkshopService(
 export function createAttendanceService(
 	platform: App.Platform,
 	session: Session,
-	logger?: Logger
+	logger?: Logger,
 ): AttendanceService {
 	return new AttendanceService(
 		getKyselyClient(platform.env.HYPERDRIVE),
 		session,
-		logger ?? sentryLogger
+		logger ?? sentryLogger,
 	);
 }
 
@@ -129,12 +136,12 @@ export function createAttendanceService(
 export function createRefundService(
 	platform: App.Platform,
 	session: Session,
-	logger?: Logger
+	logger?: Logger,
 ): RefundService {
 	return new RefundService(
 		getKyselyClient(platform.env.HYPERDRIVE),
 		session,
-		logger ?? sentryLogger
+		logger ?? sentryLogger,
 	);
 }
 
@@ -155,11 +162,11 @@ export function createRefundService(
 export function createRegistrationService(
 	platform: App.Platform,
 	session: Session,
-	logger?: Logger
+	logger?: Logger,
 ): RegistrationService {
 	return new RegistrationService(
 		getKyselyClient(platform.env.HYPERDRIVE),
 		session,
-		logger ?? sentryLogger
+		logger ?? sentryLogger,
 	);
 }
