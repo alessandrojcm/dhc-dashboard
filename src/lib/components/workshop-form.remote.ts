@@ -1,11 +1,16 @@
-import { form, getRequestEvent } from '$app/server';
-import Dinero from 'dinero.js';
-import { authorize } from '$lib/server/auth';
-import { WORKSHOP_ROLES } from '$lib/server/roles';
-import { createWorkshopService, type WorkshopUpdate } from '$lib/server/services/workshops';
-import { CreateWorkshopRemoteSchema, UpdateWorkshopRemoteSchema } from '$lib/schemas/workshop';
-import dayjs from 'dayjs';
-
+import { form, getRequestEvent } from "$app/server";
+import Dinero from "dinero.js";
+import { authorize } from "$lib/server/auth";
+import { WORKSHOP_ROLES } from "$lib/server/roles";
+import {
+	createWorkshopService,
+	type WorkshopUpdate,
+} from "$lib/server/services/workshops";
+import {
+	CreateWorkshopRemoteSchema,
+	UpdateWorkshopRemoteSchema,
+} from "$lib/schemas/workshop";
+import dayjs from "dayjs";
 
 export const createWorkshop = form(CreateWorkshopRemoteSchema, async (data) => {
 	const event = getRequestEvent();
@@ -15,12 +20,12 @@ export const createWorkshop = form(CreateWorkshopRemoteSchema, async (data) => {
 	const startDate = dayjs(data.workshop_date);
 	const endDate = dayjs(data.workshop_end_date);
 
-	if (startDate.isSame(dayjs(), 'day')) {
-		throw new Error('Workshop cannot be scheduled for today');
+	if (startDate.isSame(dayjs(), "day")) {
+		throw new Error("Workshop cannot be scheduled for today");
 	}
 
 	if (!endDate.isAfter(startDate)) {
-		throw new Error('End time cannot be before start time');
+		throw new Error("End time cannot be before start time");
 	}
 
 	// Transform string dates to ISO strings and prices to cents
@@ -29,14 +34,14 @@ export const createWorkshop = form(CreateWorkshopRemoteSchema, async (data) => {
 
 	const memberPriceCents = Dinero({
 		amount: Math.round(data.price_member * 100),
-		currency: 'EUR'
+		currency: "EUR",
 	}).getAmount();
 
 	const nonMemberPriceCents =
 		data.is_public && data.price_non_member
 			? Dinero({
 					amount: Math.round(data.price_non_member * 100),
-					currency: 'EUR'
+					currency: "EUR",
 				}).getAmount()
 			: memberPriceCents;
 
@@ -52,7 +57,7 @@ export const createWorkshop = form(CreateWorkshopRemoteSchema, async (data) => {
 		is_public: data.is_public || false,
 		refund_days: data.refund_deadline_days,
 		announce_discord: data.announce_discord || false,
-		announce_email: data.announce_email || false
+		announce_email: data.announce_email || false,
 	};
 
 	const workshopService = createWorkshopService(event.platform!, session);
@@ -67,7 +72,7 @@ export const updateWorkshop = form(UpdateWorkshopRemoteSchema, async (data) => {
 	const workshopId = event.params.id;
 
 	if (!workshopId) {
-		throw new Error('Workshop ID is required');
+		throw new Error("Workshop ID is required");
 	}
 
 	const workshopService = createWorkshopService(event.platform!, session);
@@ -75,13 +80,18 @@ export const updateWorkshop = form(UpdateWorkshopRemoteSchema, async (data) => {
 	// Check if workshop can be edited
 	const workshopEditable = await workshopService.canEdit(workshopId);
 	if (!workshopEditable) {
-		throw new Error('Only planned workshops can be edited');
+		throw new Error("Only planned workshops can be edited");
 	}
 
 	// Check if pricing changes are allowed
 	const pricingEditable = await workshopService.canEditPricing(workshopId);
-	if (!pricingEditable && (data.price_member !== undefined || data.price_non_member !== undefined)) {
-		throw new Error('Cannot change pricing when there are already registered attendees');
+	if (
+		!pricingEditable &&
+		(data.price_member !== undefined || data.price_non_member !== undefined)
+	) {
+		throw new Error(
+			"Cannot change pricing when there are already registered attendees",
+		);
 	}
 
 	// Fetch current workshop for price fallback
@@ -90,20 +100,22 @@ export const updateWorkshop = form(UpdateWorkshopRemoteSchema, async (data) => {
 	// Transform form data to database format
 	const updateData: WorkshopUpdate = {
 		...data,
-		start_date: data.workshop_date ? dayjs(data.workshop_date).toISOString() : undefined,
+		start_date: data.workshop_date
+			? dayjs(data.workshop_date).toISOString()
+			: undefined,
 		end_date: data.workshop_end_date
 			? (() => {
 					const endDate = dayjs(data.workshop_end_date);
 					if (data.workshop_date) {
 						return dayjs(data.workshop_date)
-							.set('hour', endDate.hour())
-							.set('minute', endDate.minute())
+							.set("hour", endDate.hour())
+							.set("minute", endDate.minute())
 							.toISOString();
 					}
 					return endDate.toISOString();
 				})()
 			: undefined,
-		refund_days: data.refund_deadline_days
+		refund_days: data.refund_deadline_days,
 	};
 
 	// Remove the string date fields from update data
@@ -113,19 +125,19 @@ export const updateWorkshop = form(UpdateWorkshopRemoteSchema, async (data) => {
 
 	// Convert euro prices to cents only if pricing changes are allowed
 	if (pricingEditable) {
-		if (typeof data.price_member === 'number') {
+		if (typeof data.price_member === "number") {
 			updateData.price_member = Dinero({
 				amount: Math.round(data.price_member * 100),
-				currency: 'EUR'
+				currency: "EUR",
 			}).getAmount();
 		}
 
-		if (typeof data.price_non_member === 'number') {
+		if (typeof data.price_non_member === "number") {
 			updateData.price_non_member =
 				data.is_public && data.price_non_member
 					? Dinero({
 							amount: Math.round(data.price_non_member * 100),
-							currency: 'EUR'
+							currency: "EUR",
 						}).getAmount()
 					: updateData.price_member || currentWorkshop.price_member;
 		}

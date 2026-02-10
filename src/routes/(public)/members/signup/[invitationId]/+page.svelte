@@ -1,6 +1,6 @@
 <script lang="ts">
-import ConfirmInvitation from './confirm-invitation.svelte';
-import PaymentForm from './payment-form.svelte';
+import ConfirmInvitation from "./confirm-invitation.svelte";
+import PaymentForm from "./payment-form.svelte";
 
 const { data } = $props();
 let isVerified = $derived(data.isConfirmed);

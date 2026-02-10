@@ -3,34 +3,44 @@
  * Type definitions for workshop-related entities
  */
 
-import type { Database } from '$database';
+import type { Database } from "$database";
 
 // ============================================================================
 // Database Table Types
 // ============================================================================
 
-export type Workshop = Database['public']['Tables']['club_activities']['Row'];
-export type WorkshopInsert = Database['public']['Tables']['club_activities']['Insert'];
-export type WorkshopUpdate = Database['public']['Tables']['club_activities']['Update'];
+export type Workshop = Database["public"]["Tables"]["club_activities"]["Row"];
+export type WorkshopInsert =
+	Database["public"]["Tables"]["club_activities"]["Insert"];
+export type WorkshopUpdate =
+	Database["public"]["Tables"]["club_activities"]["Update"];
 
-export type Registration = Database['public']['Tables']['club_activity_registrations']['Row'];
+export type Registration =
+	Database["public"]["Tables"]["club_activity_registrations"]["Row"];
 export type RegistrationInsert =
-	Database['public']['Tables']['club_activity_registrations']['Insert'];
+	Database["public"]["Tables"]["club_activity_registrations"]["Insert"];
 export type RegistrationUpdate =
-	Database['public']['Tables']['club_activity_registrations']['Update'];
+	Database["public"]["Tables"]["club_activity_registrations"]["Update"];
 
-export type Refund = Database['public']['Tables']['club_activity_refunds']['Row'];
-export type RefundInsert = Database['public']['Tables']['club_activity_refunds']['Insert'];
-export type RefundUpdate = Database['public']['Tables']['club_activity_refunds']['Update'];
+export type Refund =
+	Database["public"]["Tables"]["club_activity_refunds"]["Row"];
+export type RefundInsert =
+	Database["public"]["Tables"]["club_activity_refunds"]["Insert"];
+export type RefundUpdate =
+	Database["public"]["Tables"]["club_activity_refunds"]["Update"];
 
 // ============================================================================
 // Enums
 // ============================================================================
 
-export type WorkshopStatus = 'planned' | 'published' | 'cancelled' | 'finished';
-export type RegistrationStatus = 'pending' | 'confirmed' | 'cancelled' | 'refunded';
-export type AttendanceStatus = 'attended' | 'no_show' | 'excused' | null;
-export type RefundStatus = 'pending' | 'processing' | 'completed' | 'failed';
+export type WorkshopStatus = "planned" | "published" | "cancelled" | "finished";
+export type RegistrationStatus =
+	| "pending"
+	| "confirmed"
+	| "cancelled"
+	| "refunded";
+export type AttendanceStatus = "attended" | "no_show" | "excused" | null;
+export type RefundStatus = "pending" | "processing" | "completed" | "failed";
 
 // ============================================================================
 // Service Input/Output Types
@@ -79,7 +89,7 @@ export interface RefundWithUser extends Refund {
  */
 export interface AttendanceUpdate {
 	registration_id: string;
-	attendance_status: 'attended' | 'no_show' | 'excused';
+	attendance_status: "attended" | "no_show" | "excused";
 	notes?: string;
 }
 

@@ -1,12 +1,12 @@
 <script lang="ts">
 import type { CalendarDate } from "@internationalized/date";
-import { Label } from '$lib/components/ui/label';
-import * as Popover from '$lib/components/ui/popover';
-import { Button } from '$lib/components/ui/button';
-import {Calendar} from '$lib/components/ui/calendar';
-import { Input } from '$lib/components/ui/input';
-import { getLocalTimeZone } from '@internationalized/date';
-import { ChevronDownIcon } from 'lucide-svelte';
+import { Label } from "$lib/components/ui/label";
+import * as Popover from "$lib/components/ui/popover";
+import { Button } from "$lib/components/ui/button";
+import { Calendar } from "$lib/components/ui/calendar";
+import { Input } from "$lib/components/ui/input";
+import { getLocalTimeZone } from "@internationalized/date";
+import { ChevronDownIcon } from "lucide-svelte";
 
 interface Props {
 	id: string;

@@ -1,243 +1,236 @@
 <script lang="ts">
-    import { createWorkshop, updateWorkshop } from "./workshop-form.remote";
-    import { initForm } from "$lib/utils/init-form.svelte";
-    import { Button } from "$lib/components/ui/button";
-    import { Input } from "$lib/components/ui/input";
-    import { Textarea } from "$lib/components/ui/textarea";
-    import { Switch } from "$lib/components/ui/switch";
-    import { Alert, AlertDescription } from "$lib/components/ui/alert";
-    import * as Field from "$lib/components/ui/field";
-    import Calendar25 from "$lib/components/calendar-25.svelte";
-    import { CheckCircle } from "lucide-svelte";
-    import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
-    import {
-        type CalendarDate,
-        fromDate,
-        getLocalTimeZone,
-        toCalendarDate,
-        toCalendarDateTime,
-    } from "@internationalized/date";
-    import utc from "dayjs/plugin/utc";
-    import timezone from "dayjs/plugin/timezone";
-    import dayjs from "dayjs";
+import { createWorkshop, updateWorkshop } from "./workshop-form.remote";
+import { initForm } from "$lib/utils/init-form.svelte";
+import { Button } from "$lib/components/ui/button";
+import { Input } from "$lib/components/ui/input";
+import { Textarea } from "$lib/components/ui/textarea";
+import { Switch } from "$lib/components/ui/switch";
+import { Alert, AlertDescription } from "$lib/components/ui/alert";
+import * as Field from "$lib/components/ui/field";
+import Calendar25 from "$lib/components/calendar-25.svelte";
+import { CheckCircle } from "lucide-svelte";
+import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
+import {
+	type CalendarDate,
+	fromDate,
+	getLocalTimeZone,
+	toCalendarDate,
+	toCalendarDateTime,
+} from "@internationalized/date";
+import utc from "dayjs/plugin/utc";
+import timezone from "dayjs/plugin/timezone";
+import dayjs from "dayjs";
 
-    dayjs.extend(utc);
-    dayjs.extend(timezone);
-    dayjs.tz.setDefault(dayjs.tz.guess());
+dayjs.extend(utc);
+dayjs.extend(timezone);
+dayjs.tz.setDefault(dayjs.tz.guess());
 
-    interface Props {
-        mode: "create" | "edit";
-        initialData?: Partial<{
-            title: string;
-            description: string;
-            location: string;
-            workshop_date: Date;
-            workshop_end_date: Date;
-            max_capacity: number;
-            price_member: number;
-            price_non_member: number;
-            is_public: boolean;
-            refund_deadline_days: number | null;
-            announce_discord: boolean;
-            announce_email: boolean;
-        }>;
-        onSuccess?: (result: { success: string; workshopId?: string }) => void;
-        priceEditingDisabled?: boolean;
-        workshopStatus?: string | null;
-        workshopEditable?: boolean;
-    }
+interface Props {
+	mode: "create" | "edit";
+	initialData?: Partial<{
+		title: string;
+		description: string;
+		location: string;
+		workshop_date: Date;
+		workshop_end_date: Date;
+		max_capacity: number;
+		price_member: number;
+		price_non_member: number;
+		is_public: boolean;
+		refund_deadline_days: number | null;
+		announce_discord: boolean;
+		announce_email: boolean;
+	}>;
+	onSuccess?: (result: { success: string; workshopId?: string }) => void;
+	priceEditingDisabled?: boolean;
+	workshopStatus?: string | null;
+	workshopEditable?: boolean;
+}
 
-    let {
-        mode,
-        initialData,
-        onSuccess,
-        priceEditingDisabled = false,
-        workshopStatus,
-        workshopEditable,
-    }: Props = $props();
+let {
+	mode,
+	initialData,
+	onSuccess,
+	priceEditingDisabled = false,
+	workshopStatus,
+	workshopEditable,
+}: Props = $props();
 
-    // Select the appropriate form based on mode
-    const remoteForm = $derived(mode === "create" ? createWorkshop : updateWorkshop);
-    const initialFormValue = $derived.by(() => {
-        if (mode === "create") {
-            return {
-                title: initialData?.title ?? "",
-                description: initialData?.description ?? "",
-                location: initialData?.location ?? "",
-                workshop_date: initialData?.workshop_date
-                    ? dayjs(initialData.workshop_date).toISOString()
-                    : "",
-                workshop_end_date: initialData?.workshop_end_date
-                    ? dayjs(initialData.workshop_end_date).toISOString()
-                    : "",
-                max_capacity: initialData?.max_capacity ?? 1,
-                price_member: initialData?.price_member ?? 0,
-                price_non_member: initialData?.price_non_member ?? 0,
-                is_public: initialData?.is_public ?? false,
-                refund_deadline_days:
-                    initialData?.refund_deadline_days ?? undefined,
-                announce_discord: initialData?.announce_discord ?? false,
-                announce_email: initialData?.announce_email ?? false,
-            };
-        }
-        return {
-            title: initialData?.title ?? "",
-            description: initialData?.description ?? "",
-            location: initialData?.location ?? "",
-            workshop_date: initialData?.workshop_date
-                ? dayjs(initialData.workshop_date).toISOString()
-                : "",
-            workshop_end_date: initialData?.workshop_end_date
-                ? dayjs(initialData.workshop_end_date).toISOString()
-                : "",
-            max_capacity: initialData?.max_capacity ?? 1,
-            price_member: initialData?.price_member ?? 0,
-            price_non_member: initialData?.price_non_member ?? 0,
-            is_public: initialData?.is_public ?? false,
-            refund_deadline_days:
-                initialData?.refund_deadline_days ?? undefined,
-        };
-    });
+// Select the appropriate form based on mode
+const remoteForm = $derived(
+	mode === "create" ? createWorkshop : updateWorkshop,
+);
+const initialFormValue = $derived.by(() => {
+	if (mode === "create") {
+		return {
+			title: initialData?.title ?? "",
+			description: initialData?.description ?? "",
+			location: initialData?.location ?? "",
+			workshop_date: initialData?.workshop_date
+				? dayjs(initialData.workshop_date).toISOString()
+				: "",
+			workshop_end_date: initialData?.workshop_end_date
+				? dayjs(initialData.workshop_end_date).toISOString()
+				: "",
+			max_capacity: initialData?.max_capacity ?? 1,
+			price_member: initialData?.price_member ?? 0,
+			price_non_member: initialData?.price_non_member ?? 0,
+			is_public: initialData?.is_public ?? false,
+			refund_deadline_days: initialData?.refund_deadline_days ?? undefined,
+			announce_discord: initialData?.announce_discord ?? false,
+			announce_email: initialData?.announce_email ?? false,
+		};
+	}
+	return {
+		title: initialData?.title ?? "",
+		description: initialData?.description ?? "",
+		location: initialData?.location ?? "",
+		workshop_date: initialData?.workshop_date
+			? dayjs(initialData.workshop_date).toISOString()
+			: "",
+		workshop_end_date: initialData?.workshop_end_date
+			? dayjs(initialData.workshop_end_date).toISOString()
+			: "",
+		max_capacity: initialData?.max_capacity ?? 1,
+		price_member: initialData?.price_member ?? 0,
+		price_non_member: initialData?.price_non_member ?? 0,
+		is_public: initialData?.is_public ?? false,
+		refund_deadline_days: initialData?.refund_deadline_days ?? undefined,
+	};
+});
 
-    // Initialize the appropriate form based on mode
-    if (mode === "create") {
-        initForm(createWorkshop, () => initialFormValue);
-    } else {
-        initForm(updateWorkshop, () => initialFormValue);
-    }
+// Initialize the appropriate form based on mode
+if (mode === "create") {
+	initForm(createWorkshop, () => initialFormValue);
+} else {
+	initForm(updateWorkshop, () => initialFormValue);
+}
 
-    // Derived values for reading form state
-    const workshopDate = $derived(
-        remoteForm.fields.workshop_date.value(),
-    );
-    const workshopEndDate = $derived(
-        remoteForm.fields.workshop_end_date.value(),
-    );
-    const isPublic = $derived(Boolean(remoteForm.fields.is_public.value()));
+// Derived values for reading form state
+const workshopDate = $derived(remoteForm.fields.workshop_date.value());
+const workshopEndDate = $derived(remoteForm.fields.workshop_end_date.value());
+const isPublic = $derived(Boolean(remoteForm.fields.is_public.value()));
 
-    // Derived date values for Calendar25
-    const workshopDateValue = $derived.by(() => {
-        if (!workshopDate) return undefined;
-        const date = dayjs(workshopDate);
-        if (!date.isValid()) return undefined;
-        return toCalendarDate(fromDate(date.toDate(), getLocalTimeZone()));
-    });
+// Derived date values for Calendar25
+const workshopDateValue = $derived.by(() => {
+	if (!workshopDate) return undefined;
+	const date = dayjs(workshopDate);
+	if (!date.isValid()) return undefined;
+	return toCalendarDate(fromDate(date.toDate(), getLocalTimeZone()));
+});
 
-    const startTime = $derived.by(() => {
-        if (!workshopDate) return "";
-        const date = dayjs(workshopDate);
-        return date.isValid() ? date.format("HH:mm") : "";
-    });
+const startTime = $derived.by(() => {
+	if (!workshopDate) return "";
+	const date = dayjs(workshopDate);
+	return date.isValid() ? date.format("HH:mm") : "";
+});
 
-    const endTime = $derived.by(() => {
-        if (!workshopEndDate) return "";
-        const date = dayjs(workshopEndDate);
-        return date.isValid() ? date.format("HH:mm") : "";
-    });
+const endTime = $derived.by(() => {
+	if (!workshopEndDate) return "";
+	const date = dayjs(workshopEndDate);
+	return date.isValid() ? date.format("HH:mm") : "";
+});
 
-    // Date update helper - updates form fields
-    function updateWorkshopDates(
-        date?: CalendarDate | string,
-        op: "start" | "end" | "date" = "date",
-    ) {
-        if (!date) return;
+// Date update helper - updates form fields
+function updateWorkshopDates(
+	date?: CalendarDate | string,
+	op: "start" | "end" | "date" = "date",
+) {
+	if (!date) return;
 
-        if (typeof date === "string" && op === "start") {
-            const [hour, minute] = date.split(":").map(Number);
-            const baseDate = workshopDate ? dayjs(workshopDate) : dayjs();
-            remoteForm.fields.workshop_date.set(
-                baseDate.hour(hour).minute(minute).toISOString(),
-            );
-            return;
-        }
+	if (typeof date === "string" && op === "start") {
+		const [hour, minute] = date.split(":").map(Number);
+		const baseDate = workshopDate ? dayjs(workshopDate) : dayjs();
+		remoteForm.fields.workshop_date.set(
+			baseDate.hour(hour).minute(minute).toISOString(),
+		);
+		return;
+	}
 
-        if (typeof date === "string" && op === "end") {
-            const [hour, minute] = date.split(":").map(Number);
-            const baseDate = workshopEndDate
-                ? dayjs(workshopEndDate)
-                : workshopDate
-                  ? dayjs(workshopDate)
-                  : dayjs();
-            remoteForm.fields.workshop_end_date.set(
-                baseDate.hour(hour).minute(minute).toISOString(),
-            );
-            return;
-        }
+	if (typeof date === "string" && op === "end") {
+		const [hour, minute] = date.split(":").map(Number);
+		const baseDate = workshopEndDate
+			? dayjs(workshopEndDate)
+			: workshopDate
+				? dayjs(workshopDate)
+				: dayjs();
+		remoteForm.fields.workshop_end_date.set(
+			baseDate.hour(hour).minute(minute).toISOString(),
+		);
+		return;
+	}
 
-        // Handle date change (CalendarDate) - preserve existing times or use defaults
-        if (typeof date !== "string") {
-            const startDateDayjs = workshopDate ? dayjs(workshopDate) : null;
-            const startTimeVal = startDateDayjs?.isValid()
-                ? {
-                      hour: startDateDayjs.hour(),
-                      minute: startDateDayjs.minute(),
-                  }
-                : { hour: 10, minute: 0 };
+	// Handle date change (CalendarDate) - preserve existing times or use defaults
+	if (typeof date !== "string") {
+		const startDateDayjs = workshopDate ? dayjs(workshopDate) : null;
+		const startTimeVal = startDateDayjs?.isValid()
+			? {
+					hour: startDateDayjs.hour(),
+					minute: startDateDayjs.minute(),
+				}
+			: { hour: 10, minute: 0 };
 
-            const endDateDayjs = workshopEndDate
-                ? dayjs(workshopEndDate)
-                : null;
-            const endTimeVal = endDateDayjs?.isValid()
-                ? { hour: endDateDayjs.hour(), minute: endDateDayjs.minute() }
-                : { hour: 12, minute: 0 };
+		const endDateDayjs = workshopEndDate ? dayjs(workshopEndDate) : null;
+		const endTimeVal = endDateDayjs?.isValid()
+			? { hour: endDateDayjs.hour(), minute: endDateDayjs.minute() }
+			: { hour: 12, minute: 0 };
 
-            remoteForm.fields.workshop_date.set(
-                toCalendarDateTime(date)
-                    .set(startTimeVal)
-                    .toDate(getLocalTimeZone())
-                    .toISOString(),
-            );
+		remoteForm.fields.workshop_date.set(
+			toCalendarDateTime(date)
+				.set(startTimeVal)
+				.toDate(getLocalTimeZone())
+				.toISOString(),
+		);
 
-            remoteForm.fields.workshop_end_date.set(
-                toCalendarDateTime(date)
-                    .set(endTimeVal)
-                    .toDate(getLocalTimeZone())
-                    .toISOString(),
-            );
-        }
-    }
+		remoteForm.fields.workshop_end_date.set(
+			toCalendarDateTime(date)
+				.set(endTimeVal)
+				.toDate(getLocalTimeZone())
+				.toISOString(),
+		);
+	}
+}
 
-    // Edit permissions
-    const isWorkshopEditable = $derived.by(() => {
-        if (mode === "create") return true;
-        if (workshopStatus === "published") return false;
-        if (workshopEditable !== undefined) return workshopEditable;
-        return workshopStatus === "planned";
-    });
+// Edit permissions
+const isWorkshopEditable = $derived.by(() => {
+	if (mode === "create") return true;
+	if (workshopStatus === "published") return false;
+	if (workshopEditable !== undefined) return workshopEditable;
+	return workshopStatus === "planned";
+});
 
-    const canEditPricing = $derived.by(() => {
-        if (mode === "create") return true;
-        if (workshopStatus === "planned") return true;
-        return !priceEditingDisabled;
-    });
+const canEditPricing = $derived.by(() => {
+	if (mode === "create") return true;
+	if (workshopStatus === "planned") return true;
+	return !priceEditingDisabled;
+});
 
-    // Handle form result
-    $effect(() => {
-        const result = remoteForm.result;
-        if (result?.success) {
-            window?.scrollTo({ top: 0, behavior: "smooth" });
-            if (onSuccess) {
-                onSuccess(result);
-            }
-        }
-    });
+// Handle form result
+$effect(() => {
+	const result = remoteForm.result;
+	if (result?.success) {
+		window?.scrollTo({ top: 0, behavior: "smooth" });
+		if (onSuccess) {
+			onSuccess(result);
+		}
+	}
+});
 
-    // Success and error messages from form result
-    const successMessage = $derived(remoteForm.result?.success);
-    const errorMessage = $derived.by(() => {
-        // Check for error in result
-        if (remoteForm.result && "error" in remoteForm.result) {
-            return (remoteForm.result as { error: string }).error;
-        }
-        // Check for issues array in result
-        if (remoteForm.result && "issues" in remoteForm.result) {
-            const issues = (
-                remoteForm.result as { issues: Array<{ message: string }> }
-            ).issues;
-            if (issues?.length > 0) return issues[0]?.message;
-        }
-        return null;
-    });
+// Success and error messages from form result
+const successMessage = $derived(remoteForm.result?.success);
+const errorMessage = $derived.by(() => {
+	// Check for error in result
+	if (remoteForm.result && "error" in remoteForm.result) {
+		return (remoteForm.result as { error: string }).error;
+	}
+	// Check for issues array in result
+	if (remoteForm.result && "issues" in remoteForm.result) {
+		const issues = (remoteForm.result as { issues: Array<{ message: string }> })
+			.issues;
+		if (issues?.length > 0) return issues[0]?.message;
+	}
+	return null;
+});
 </script>
 
 <div class="space-y-8">
