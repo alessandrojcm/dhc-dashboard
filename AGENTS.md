@@ -1,8 +1,8 @@
 # PROJECT KNOWLEDGE BASE
 
-**Generated:** 2026-01-05  
-**Commit:** e8e5183  
-**Branch:** feature/ale-75-refactor-to-use-tanstack-forms
+**Generated:** 2026-02-10  
+**Commit:** 4b44a4c  
+**Branch:** feature/ale-79-migrate-charts-to-shadcn-charts
 
 ## OVERVIEW
 
