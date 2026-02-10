@@ -1,12 +1,12 @@
 <script lang="ts">
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createQuery } from "@tanstack/svelte-query";
-import { onMount } from "svelte";
-import { browser } from "$app/environment";
 import type { Database } from "$database";
 import * as Card from "$lib/components/ui/card/index.js";
 import * as Resizable from "$lib/components/ui/resizable/index.js";
 import { Skeleton } from "$lib/components/ui/skeleton/index.js";
+import { createQuery } from "@tanstack/svelte-query";
+import { onMount } from "svelte";
+import { browser } from "$app/environment";
 
 let WeaponPieChart:
 	| typeof import("$lib/components/weapon-pie-chart.svelte").default
@@ -20,12 +20,9 @@ let AgeScatterChart:
 
 onMount(async () => {
 	if (browser) {
-		WeaponPieChart = (await import("$lib/components/weapon-pie-chart.svelte"))
-			.default;
-		GenderBarChart = (await import("$lib/components/gender-bar-chart.svelte"))
-			.default;
-		AgeScatterChart = (await import("$lib/components/age-scatter-chart.svelte"))
-			.default;
+		// WeaponPieChart = (await import('$lib/components/weapon-pie-chart.svelte')).default;
+		// GenderBarChart = (await import('$lib/components/gender-bar-chart.svelte')).default;
+		// AgeScatterChart = (await import('$lib/components/age-scatter-chart.svelte')).default;
 	}
 });
 
@@ -130,15 +127,16 @@ const weaponPreferencesDistribution = createQuery<
 	},
 }));
 
-const genderDistributionData = $derived.by(
-	(): Array<{ gender: string; value: number }> => {
-		if (!genderDistribution.data) return [];
-		return genderDistribution.data.map((row) => ({
-			gender: row.gender ?? "Unknown",
-			value: row.count,
-		}));
-	},
-);
+const genderDistributionData = $derived.by(() => {
+	return genderDistribution.data
+		? genderDistribution.data.map(
+				(row: { gender: string | null; count: number }) => ({
+					gender: row.gender,
+					value: row.count,
+				}),
+			)
+		: [];
+});
 
 const ageDistributionData = $derived.by(() => {
 	return ageDistributionQuery.data ?? [];
@@ -187,7 +185,7 @@ const weaponPreferencesDistributionData = $derived.by(() => {
 	<Resizable.Pane class="min-h-[400px] p-4 border rounded">
 		<h3 class="text-lg font-medium mb-4">Gender Demographics</h3>
 		{#if GenderBarChart && genderDistributionData && genderDistributionData.length > 0}
-			<GenderBarChart {genderDistributionData} />
+			<!--			<GenderBarChart {genderDistributionData} />-->
 		{/if}
 	</Resizable.Pane>
 
@@ -198,13 +196,13 @@ const weaponPreferencesDistributionData = $derived.by(() => {
 	<Resizable.Pane class="min-h-[400px] p-4 border rounded">
 		<h3 class="text-lg font-medium mb-4">Preferred Weapons</h3>
 		{#if WeaponPieChart && weaponPreferencesDistributionData}
-			<WeaponPieChart weaponDistributionData={weaponPreferencesDistributionData} />
+			<!--			<WeaponPieChart weaponDistributionData={weaponPreferencesDistributionData} />-->
 		{/if}
 	</Resizable.Pane>
 	<Resizable.Handle />
 	<Resizable.Pane class="min-h-[400px] p-4 border rounded">
 		{#if AgeScatterChart && ageDistributionData}
-			<AgeScatterChart ageDistribution={ageDistributionData} />
+			<!--			<AgeScatterChart ageDistribution={ageDistributionData} />-->
 		{/if}
 	</Resizable.Pane>
 </Resizable.PaneGroup>

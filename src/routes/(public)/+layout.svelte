@@ -1,11 +1,6 @@
 <script lang="ts">
-<<<<<<< HEAD
 import DHCLogo from "/src/assets/images/dhc-logo.png?enhanced";
 const { children } = $props();
-=======
-	import DHCLogo from "/src/assets/images/dhc-logo.png?enhanced";
-	const { children } = $props();
->>>>>>> d5cb40b (feat: migrated auth and waitlist form to svelte form action)
 </script>
 
 <svelte:head>

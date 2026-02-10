@@ -10,7 +10,6 @@ import { Button } from "$lib/components/ui/button/index.js";
 import { Calendar } from "$lib/components/ui/calendar";
 import * as Popover from "$lib/components/ui/popover/index.js";
 
-<<<<<<< HEAD
 type Props = {
 	value: DateValue | undefined;
 	onDateChange: (date: Date) => void;
@@ -19,22 +18,11 @@ type Props = {
 	name?: string;
 	id?: string;
 };
-=======
-	type Props = {
-		value: DateValue | undefined;
-		onDateChange: (date: Date) => void;
-		minValue?: DateValue;
-		maxValue?: DateValue;
-		name?: string;
-		id?: string;
-	};
->>>>>>> d5cb40b (feat: migrated auth and waitlist form to svelte form action)
 
 const df = new DateFormatter("en-US", {
 	dateStyle: "long",
 });
 
-<<<<<<< HEAD
 let { value, onDateChange, minValue, maxValue, name, id, ...rest }: Props =
 	$props();
 let open = $state(false);
@@ -43,13 +31,6 @@ let open = $state(false);
 const formValue = $derived(
 	value ? value.toDate(getLocalTimeZone()).toISOString() : "",
 );
-=======
-	let { value, onDateChange, minValue, maxValue, name, id, ...rest }: Props = $props();
-	let open = $state(false);
-
-	// Derive the ISO string value for form submission
-	const formValue = $derived(value ? value.toDate(getLocalTimeZone()).toISOString() : '');
->>>>>>> d5cb40b (feat: migrated auth and waitlist form to svelte form action)
 </script>
 
 <div>

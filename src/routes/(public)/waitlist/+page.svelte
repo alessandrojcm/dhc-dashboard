@@ -1,51 +1,51 @@
 <script lang="ts">
-	import { fromDate, getLocalTimeZone } from "@internationalized/date";
-	import dayjs from "dayjs";
-	import { submitWaitlist } from "./data.remote";
-	import {
-		beginnersWaitlistClientSchema,
-		isMinor,
-	} from "$lib/schemas/beginnersWaitlist";
+import { fromDate, getLocalTimeZone } from "@internationalized/date";
+import dayjs from "dayjs";
+import { submitWaitlist } from "./data.remote";
+import {
+	beginnersWaitlistClientSchema,
+	isMinor,
+} from "$lib/schemas/beginnersWaitlist";
 
-	import { Button } from "$lib/components/ui/button";
-	import { Input } from "$lib/components/ui/input";
-	import { Textarea } from "$lib/components/ui/textarea";
-	import * as Card from "$lib/components/ui/card";
-	import * as Alert from "$lib/components/ui/alert";
-	import * as Field from "$lib/components/ui/field";
-	import * as Select from "$lib/components/ui/select";
-	import * as RadioGroup from "$lib/components/ui/radio-group";
-	import { CheckCircled } from "svelte-radix";
-	import DatePicker from "$lib/components/ui/date-picker.svelte";
-	import PhoneInput from "$lib/components/ui/phone-input.svelte";
-	import { SocialMediaConsent } from "$lib/types";
+import { Button } from "$lib/components/ui/button";
+import { Input } from "$lib/components/ui/input";
+import { Textarea } from "$lib/components/ui/textarea";
+import * as Card from "$lib/components/ui/card";
+import * as Alert from "$lib/components/ui/alert";
+import * as Field from "$lib/components/ui/field";
+import * as Select from "$lib/components/ui/select";
+import * as RadioGroup from "$lib/components/ui/radio-group";
+import { CheckCircled } from "svelte-radix";
+import DatePicker from "$lib/components/ui/date-picker.svelte";
+import PhoneInput from "$lib/components/ui/phone-input.svelte";
+import { SocialMediaConsent } from "$lib/types";
 
-	let { data } = $props();
+let { data } = $props();
 
-	const dateOfBirthValue = $derived(
-		submitWaitlist.fields.dateOfBirth.value() as string,
-	);
-	const isUnderAge = $derived.by(() => {
-		if (!dateOfBirthValue) {
-			return false;
-		}
-		const date = new Date(dateOfBirthValue);
-		if (!dayjs(date).isValid()) {
-			return false;
-		}
-		return isMinor(date);
-	});
+const dateOfBirthValue = $derived(
+	submitWaitlist.fields.dateOfBirth.value() as string,
+);
+const isUnderAge = $derived.by(() => {
+	if (!dateOfBirthValue) {
+		return false;
+	}
+	const date = new Date(dateOfBirthValue);
+	if (!dayjs(date).isValid()) {
+		return false;
+	}
+	return isMinor(date);
+});
 
-	const dobPickerValue = $derived.by(() => {
-		if (!dateOfBirthValue) {
-			return undefined;
-		}
-		const date = new Date(dateOfBirthValue);
-		if (!dayjs(date).isValid()) {
-			return undefined;
-		}
-		return fromDate(date, getLocalTimeZone());
-	});
+const dobPickerValue = $derived.by(() => {
+	if (!dateOfBirthValue) {
+		return undefined;
+	}
+	const date = new Date(dateOfBirthValue);
+	if (!dayjs(date).isValid()) {
+		return undefined;
+	}
+	return fromDate(date, getLocalTimeZone());
+});
 </script>
 
 {#snippet whyThisField(text: string)}

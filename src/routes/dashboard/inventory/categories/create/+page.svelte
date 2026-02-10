@@ -1,38 +1,40 @@
 <script lang="ts">
-	import { createCategory } from '../data.remote';
-	import {
-		Card,
-		CardContent,
-		CardDescription,
-		CardHeader,
-		CardTitle
-	} from '$lib/components/ui/card';
-	import { Button } from '$lib/components/ui/button';
-	import { Input } from '$lib/components/ui/input';
-	import { Textarea } from '$lib/components/ui/textarea';
-	import * as Field from '$lib/components/ui/field';
-	import { ArrowLeft, Tags } from 'lucide-svelte';
-	import AttributeBuilder from '$lib/components/inventory/AttributeBuilder.svelte';
-	import { onMount } from 'svelte';
-	import type { AttributeDefinition } from '$lib/schemas/inventory';
+import { createCategory } from "../data.remote";
+import {
+	Card,
+	CardContent,
+	CardDescription,
+	CardHeader,
+	CardTitle,
+} from "$lib/components/ui/card";
+import { Button } from "$lib/components/ui/button";
+import { Input } from "$lib/components/ui/input";
+import { Textarea } from "$lib/components/ui/textarea";
+import * as Field from "$lib/components/ui/field";
+import { ArrowLeft, Tags } from "lucide-svelte";
+import AttributeBuilder from "$lib/components/inventory/AttributeBuilder.svelte";
+import { onMount } from "svelte";
+import type { AttributeDefinition } from "$lib/schemas/inventory";
 
-	onMount(() => {
-		createCategory.fields.set({
-			name: '',
-			description: '',
-			available_attributes: []
-		});
+onMount(() => {
+	createCategory.fields.set({
+		name: "",
+		description: "",
+		available_attributes: [],
 	});
+});
 
-	// Get current attributes value reactively
-	const attributes = $derived(
-		(createCategory.fields.available_attributes.value() as AttributeDefinition[] | undefined) ?? []
-	);
+// Get current attributes value reactively
+const attributes = $derived(
+	(createCategory.fields.available_attributes.value() as
+		| AttributeDefinition[]
+		| undefined) ?? [],
+);
 
-	// Callback to update attributes
-	const handleAttributesChange = (newAttributes: AttributeDefinition[]) => {
-		createCategory.fields.available_attributes.set(newAttributes);
-	};
+// Callback to update attributes
+const handleAttributesChange = (newAttributes: AttributeDefinition[]) => {
+	createCategory.fields.available_attributes.set(newAttributes);
+};
 </script>
 
 <div class="p-6">
