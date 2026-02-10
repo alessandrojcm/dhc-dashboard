@@ -1,54 +1,66 @@
 <script lang="ts">
-import { VisBulletLegend, VisDonut, VisSingleContainer } from "@unovis/svelte";
-import { schemeTableau10 } from "d3-scale-chromatic";
+import { PieChart } from "layerchart";
+import * as Chart from "$lib/components/ui/chart/index.js";
+import {
+	formatLabel,
+	formatNumber,
+	getChartColor,
+} from "./chart-conventions.js";
 
 type WeaponDistribution = { weapon: string; count: number };
 
-// Use Svelte 5 props syntax
 const {
 	weaponDistributionData = [],
 }: { weaponDistributionData?: Array<WeaponDistribution> } = $props();
 
-// Format number for display
-const formatNumber = Intl.NumberFormat("en").format;
-
-// Generate legend items from the data
-const legendItems = $derived(
-	weaponDistributionData.map((item) => ({
-		name:
-			item.weapon.charAt(0).toUpperCase() +
-			item.weapon.slice(1).replaceAll(/[_-]/g, " "),
-		color:
-			schemeTableau10[
-				weaponDistributionData.indexOf(item) % schemeTableau10.length
-			],
+// Normalize data: format weapon labels and assign colors
+const normalizedData = $derived(
+	weaponDistributionData.map((item, index) => ({
+		weapon: formatLabel(item.weapon),
+		count: item.count,
+		color: getChartColor(index),
 	})),
 );
 
-// Configure tooltip content
-const tooltipConfig = {
-	content: (d: WeaponDistribution) => `
-			<div>
-				<div style="font-weight: bold; margin-bottom: 4px; text-transform: capitalize;">${d.weapon.replaceAll(/[_-]/g, " ")}</div>
-				<div>Count: ${formatNumber(d.count)}</div>
-			</div>
-		`,
-};
+// Build chart config from data for theming
+const chartConfig = $derived.by(() => {
+	const config: Record<string, { label: string; color: string }> = {};
+	normalizedData.forEach((item, index) => {
+		const key = item.weapon.toLowerCase().replace(/\s+/g, "_");
+		config[key] = {
+			label: item.weapon,
+			color: item.color,
+		};
+	});
+	return config satisfies Chart.ChartConfig;
+});
 </script>
 
 <h3>Preferred weapon</h3>
-<div class="mt-2">
-	<VisBulletLegend items={legendItems} />
-</div>
 <div class="h-[300px] mt-4">
-	<VisSingleContainer data={weaponDistributionData} height={250}>
-		<VisDonut
-			value={(d: WeaponDistribution) => d.count}
-			color={(d: WeaponDistribution, i: number) => schemeTableau10[i % schemeTableau10.length]}
-			showEmptySegments={false}
+	<Chart.Container config={chartConfig} class="h-full w-full">
+		<PieChart
+			data={normalizedData}
+			key="weapon"
+			value="count"
+			c="color"
+			innerRadius={60}
 			padAngle={0.01}
-			arcWidth={60}
-			tooltip={tooltipConfig}
-		/>
-	</VisSingleContainer>
+			cornerRadius={4}
+			legend
+			props={{
+				pie: {
+					motion: "tween",
+				},
+				legend: {
+					placement: "top",
+					orientation: "horizontal",
+				},
+			}}
+		>
+			{#snippet tooltip()}
+				<Chart.Tooltip />
+			{/snippet}
+		</PieChart>
+	</Chart.Container>
 </div>
