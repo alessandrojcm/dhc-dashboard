@@ -28,16 +28,10 @@ export const phoneNumberValidator = (
 	);
 
 export const dobValidator = v.pipe(
-<<<<<<< HEAD
 	v.date("Date of birth is required."),
 	v.check(
 		(input) => dayjs().diff(input, "years") >= 16,
 		"You must be at least 16 years old.",
 	),
 	v.transform((input) => input),
-=======
-	v.date('Date of birth is required.'),
-	v.check((input) => dayjs().diff(input, 'years') >= 16, 'You must be at least 16 years old.'),
-	v.transform((input) => input)
->>>>>>> d5cb40b (feat: migrated auth and waitlist form to svelte form action)
 );

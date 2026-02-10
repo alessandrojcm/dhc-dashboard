@@ -1,5 +1,5 @@
 <script lang="ts">
-    import { VisBulletLegend, VisDonut, VisSingleContainer } from "@unovis/svelte";
+import { VisBulletLegend, VisDonut, VisSingleContainer } from "@unovis/svelte";
 import { schemeTableau10 } from "d3-scale-chromatic";
 
 type WeaponDistribution = { weapon: string; count: number };

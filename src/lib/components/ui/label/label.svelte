@@ -1,11 +1,6 @@
 <script lang="ts">
-<<<<<<< HEAD
 import { Label as LabelPrimitive } from "bits-ui";
 import { cn } from "$lib/utils.js";
-=======
-	import { Label as LabelPrimitive } from "bits-ui";
-	import { cn } from "$lib/utils.js";
->>>>>>> d5cb40b (feat: migrated auth and waitlist form to svelte form action)
 
 let {
 	ref = $bindable(null),

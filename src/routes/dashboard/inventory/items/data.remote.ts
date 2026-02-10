@@ -1,12 +1,12 @@
-import { form, getRequestEvent } from '$app/server';
-import { redirect } from '@sveltejs/kit';
-import { authorize } from '$lib/server/auth';
-import { INVENTORY_ROLES } from '$lib/server/roles';
+import { form, getRequestEvent } from "$app/server";
+import { redirect } from "@sveltejs/kit";
+import { authorize } from "$lib/server/auth";
+import { INVENTORY_ROLES } from "$lib/server/roles";
 import {
 	createItemService,
 	ItemCreateSchema,
-	ItemUpdateSchema
-} from '$lib/server/services/inventory';
+	ItemUpdateSchema,
+} from "$lib/server/services/inventory";
 
 export const createItem = form(ItemCreateSchema, async (data) => {
 	const event = getRequestEvent();
@@ -26,5 +26,5 @@ export const updateItem = form(ItemUpdateSchema, async (data) => {
 
 	await itemService.update(itemId, data);
 
-	return { success: 'Item updated successfully' };
+	return { success: "Item updated successfully" };
 });

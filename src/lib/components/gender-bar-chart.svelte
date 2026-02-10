@@ -1,76 +1,66 @@
 <script lang="ts">
-import { scaleBand } from "d3-scale";
-import { BarChart } from "layerchart";
-import * as Chart from "$lib/components/ui/chart/index.js";
 import {
-	formatLabel,
-	formatNumber,
-	getChartColor,
-} from "./chart-conventions.js";
+	VisXYContainer,
+	VisStackedBar,
+	VisAxis,
+	VisTooltip,
+} from "@unovis/svelte";
+import { StackedBar } from "@unovis/ts";
+import { schemeTableau10 } from "d3-scale-chromatic";
 
-interface GenderDistribution {
-	gender: string;
-	value: number;
-}
+type GenderDistribution = { gender: string; value: number };
 
-// Accept raw data with null gender values
-
+// Use Svelte 5 props syntax
 const {
 	genderDistributionData = [],
 }: { genderDistributionData?: Array<GenderDistribution> } = $props();
 
-// Normalize data: convert null gender to "Unknown" and format labels
-const normalizedData = $derived(
-	genderDistributionData.map((item, index) => ({
-		gender: formatLabel(item.gender),
-		value: item.value,
-		color: getChartColor(index),
-	})),
+// Format number for display
+const formatNumber = Intl.NumberFormat("en").format;
+
+// Bar chart props
+// Map gender strings to indices for x-axis positioning
+const genderIndices = new Map(
+	genderDistributionData.map((item, index) => [item.gender, index]),
 );
 
-const chartConfig = $derived.by(() => {
-	const config: Record<string, { label: string; color: string }> = {};
-	normalizedData.forEach((item, index) => {
-		const key = `gender_${index}`;
-		config[key] = {
-			label: item.gender,
-			color: item.color,
-		};
-	});
-	return config satisfies Chart.ChartConfig;
-});
+const x = (d: GenderDistribution) => genderIndices.get(d.gender) || 0;
+const color = (d: GenderDistribution) => {
+	// Use the index in the data array to determine color
+	const index = genderDistributionData.findIndex(
+		(item) => item.gender === d.gender,
+	);
+	return schemeTableau10[index % schemeTableau10.length];
+};
+
+// Tooltip configuration
+const triggers = {
+	[StackedBar.selectors.bar]: (d: GenderDistribution) => `
+			<div>
+				<div style="font-weight: bold; margin-bottom: 4px; text-transform: capitalize;">${d.gender}</div>
+				<div>Members: ${formatNumber(d.value)}</div>
+			</div>
+		`,
+};
 </script>
 
 <h3>Gender demographics</h3>
 <div class="h-[300px] mt-4">
-	<Chart.Container config={chartConfig} class="h-full w-full">
-		<BarChart
-			data={normalizedData}
-			x="gender"
-			y="value"
-			c="color"
-			xScale={scaleBand().padding(0.25)}
-			axis={true}
-			grid={true}
-			series={[
-				{
-					key: "value",
-					label: "Members",
-					color: "hsl(var(--chart-1))",
-				},
-			]}
-			props={{
-				xAxis: {
-					format: (d: string) => d,
-				},
-				yAxis: {
-					format: (d: number) => formatNumber(d),
-				},
+	<VisXYContainer data={genderDistributionData} height={300}>
+		<VisStackedBar {x} y={[(d: GenderDistribution) => d.value]} {color} cursor="pointer" />
+		<VisAxis
+			type="x"
+			label="Gender"
+			gridVisible={false}
+			tickFormat={(value: number) => {
+				// Convert numeric indices back to gender labels
+				for (const [gender, index] of genderIndices.entries()) {
+					if (index === value) return gender;
+				}
+				return '';
 			}}
-		>
-			{#snippet tooltip()}
-				<Chart.Tooltip />
-			{/snippet}
-		</BarChart>
-	</Chart.Container>
+		/>
+		<VisAxis type="y" label="Members" gridVisible={true} domain={[0, null]} nice={true} />
+		<VisTooltip {triggers} />
+	</VisXYContainer>
 </div>
