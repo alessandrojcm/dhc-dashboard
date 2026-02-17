@@ -1,25 +1,6 @@
 <script lang="ts">
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { goto, pushState } from "$app/navigation";
-import { resolve } from "$app/paths";
-import { page } from "$app/state";
-import type { Database, Tables } from "$database";
-import { Badge } from "$lib/components/ui/badge";
-import { Button } from "$lib/components/ui/button";
-import {
-	createSvelteTable,
-	FlexRender,
-	renderComponent,
-	renderSnippet,
-} from "$lib/components/ui/data-table/index.js";
-import { Input } from "$lib/components/ui/input";
-import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
-import * as Pagination from "$lib/components/ui/pagination/index.js";
-import * as Select from "$lib/components/ui/select";
-import * as Table from "$lib/components/ui/table/index.js";
-import * as Checkbox from "$lib/components/ui/checkbox/index.js";
-import SortHeader from "$lib/components/ui/table/sort-header.svelte";
-import type { MutationPayload } from "$lib/types";
+
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
 	createMutation,
@@ -38,11 +19,31 @@ import {
 	type TableOptions,
 } from "@tanstack/table-core";
 import dayjs from "dayjs";
+import { Loader2, SendIcon } from "lucide-svelte";
 import { createRawSnippet } from "svelte";
 import { Cross2 } from "svelte-radix";
-import ActionButtons from "./actions-buttons.svelte";
 import { toast } from "svelte-sonner";
-import { Loader2, SendIcon } from "lucide-svelte";
+import { goto } from "$app/navigation";
+import { resolve } from "$app/paths";
+import { page } from "$app/state";
+import type { Database, Tables } from "$database";
+import { Badge } from "$lib/components/ui/badge";
+import { Button } from "$lib/components/ui/button";
+import * as Checkbox from "$lib/components/ui/checkbox/index.js";
+import {
+	createSvelteTable,
+	FlexRender,
+	renderComponent,
+	renderSnippet,
+} from "$lib/components/ui/data-table/index.js";
+import { Input } from "$lib/components/ui/input";
+import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
+import * as Pagination from "$lib/components/ui/pagination/index.js";
+import * as Select from "$lib/components/ui/select";
+import * as Table from "$lib/components/ui/table/index.js";
+import SortHeader from "$lib/components/ui/table/sort-header.svelte";
+import type { MutationPayload } from "$lib/types";
+import ActionButtons from "./actions-buttons.svelte";
 import { resendInvitations } from "./admin.remote";
 
 const columns =
@@ -230,7 +231,7 @@ function onPaginationChange(newPagination: Partial<PaginationState>) {
 	newParams.set("page", paginationState.pageIndex.toString());
 	newParams.set("pageSize", paginationState.pageSize.toString());
 	const url = `/dashboard/beginners-workshop?${newParams.toString()}`;
-	pushState(url, {});
+	goto(resolve(url as any), { keepFocus: true, noScroll: true });
 }
 
 function onSortingChange(newSorting: SortingState) {
@@ -240,7 +241,7 @@ function onSortingChange(newSorting: SortingState) {
 	newParams.set("sort", sortingState.id);
 	newParams.set("direction", sortingState.desc ? "desc" : "asc");
 	const url = `/dashboard/beginners-workshop?${newParams.toString()}`;
-	pushState(url, {});
+	goto(resolve(url as any), { keepFocus: true, noScroll: true });
 }
 
 function onSearchChange(newSearch: string) {
@@ -248,7 +249,7 @@ function onSearchChange(newSearch: string) {
 	const newParams = new URLSearchParams(page.url.searchParams);
 	newParams.set("q", newSearch);
 	const url = `/dashboard/beginners-workshop?${newParams.toString()}`;
-	pushState(url, {});
+	goto(resolve(url as any), { keepFocus: true, noScroll: true });
 }
 
 // State for expanded rows
