@@ -46,14 +46,6 @@ jobs:
     runs-on: ubuntu-latest
     name: Deploy Worker
 
-    env:
-      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-      PUBLIC_SITE_URL: ${{ env.PUBLIC_SITE_URL }}
-      PUBLIC_SUPABASE_ANON_KEY: ${{ env.PUBLIC_SUPABASE_ANON_KEY }}
-      PUBLIC_SUPABASE_URL: ${{ env.PUBLIC_SUPABASE_URL }}
-      SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
-      PUBLIC_STRIPE_KEY: ${{ env.PUBLIC_STRIPE_KEY }}
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -88,6 +80,13 @@ jobs:
 
       - name: Build & Deploy Worker
         uses: cloudflare/wrangler-action@v3.14.1
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          PUBLIC_SITE_URL: ${{ env.PUBLIC_SITE_URL }}
+          PUBLIC_SUPABASE_ANON_KEY: ${{ env.PUBLIC_SUPABASE_ANON_KEY }}
+          PUBLIC_SUPABASE_URL: ${{ env.PUBLIC_SUPABASE_URL }}
+          SUPABASE_PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID }}
+          PUBLIC_STRIPE_KEY: ${{ env.PUBLIC_STRIPE_KEY }}
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
