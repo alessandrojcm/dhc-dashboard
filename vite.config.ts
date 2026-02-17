@@ -11,16 +11,13 @@ export default defineConfig({
 		sentrySvelteKit({
 			debug: true,
 			autoUploadSourceMaps: true,
-			sourceMapsUploadOptions: {
-				org: 'dublin-hema-club',
-				project: 'dhc-dashboard',
-				authToken: process.env.SENTRY_AUTH_TOKEN,
-				sourcemaps: {
-					filesToDeleteAfterUpload: ['./svelte-kit/output/**/*.map'],
-					assets: ['./svelte-kit/output/**/*.map']
-				}
+			org: 'dublin-hema-club',
+			project: 'dhc-dashboard',
+			authToken: process.env.SENTRY_AUTH_TOKEN,
+			sourcemaps: {
+				filesToDeleteAfterUpload: ['./svelte-kit/output/**/*.map'],
+				assets: ['./svelte-kit/output/**/*.map']
 			},
-
 			adapter: 'cloudflare'
 		}),
 		enhancedImages(),
