@@ -221,7 +221,7 @@ importers:
         version: 3.0.0(kysely@0.28.8)(postgres@3.4.7)
       kysely-supabase:
         specifier: ^0.2.1
-        version: 0.2.1(kysely@0.28.8)(supabase@2.58.5)
+        version: 0.2.1(kysely@0.28.8)(supabase@2.76.9)
       layerchart:
         specifier: 2.0.0-next.27
         version: 2.0.0-next.27(svelte@5.46.0)
@@ -241,8 +241,8 @@ importers:
         specifier: ^19.3.0
         version: 19.3.0(@types/node@24.10.1)
       supabase:
-        specifier: ^2.58.5
-        version: 2.58.5
+        specifier: ^2.76.9
+        version: 2.76.9
       svelte:
         specifier: ^5.46.0
         version: 5.46.0
@@ -4617,8 +4617,8 @@ packages:
     resolution: {integrity: sha512-vkcDPrRZo1QZLbn5RLGPpg/WmIQ65qoWWhcGKf/b5eplkkarX0m9z8ppCat4mlOqUsWpyNuYgO3VRyrYHSzX5g==}
     engines: {node: '>= 0.8.0'}
 
-  proc-log@6.0.0:
-    resolution: {integrity: sha512-KG/XsTDN901PNfPfAMmj6N/Ywg9tM+bHK8pAz+27fS4N4Pcr+4zoYBOcGSBu6ceXYNPxkLpa4ohtfxV1XcLAfA==}
+  proc-log@6.1.0:
+    resolution: {integrity: sha512-iG+GYldRf2BQ0UDUAd6JQ/RwzaQy6mXmsk/IzlYyal4A4SNFw54MeH4/tLkF4I5WoWG9SQwuqWzS99jaFQHBuQ==}
     engines: {node: ^20.17.0 || >=22.9.0}
 
   process-warning@4.0.1:
@@ -5017,8 +5017,8 @@ packages:
   stylis@4.2.0:
     resolution: {integrity: sha512-Orov6g6BB1sDfYgzWfTHDOxamtX1bE/zo104Dh9e6fqJ3PooipYyfJ0pUmrZO2wAvO8YbEyeFrkV91XTsGMSrw==}
 
-  supabase@2.58.5:
-    resolution: {integrity: sha512-mYZSkUIePTdmwlHd26Pff8wpmjfre8gcuWzrc5QqhZgZvCXugVzAQQhcjaQisw5kusbPQWNIjUwcHYEKmejhPw==}
+  supabase@2.76.9:
+    resolution: {integrity: sha512-BHQ9kSetU7QUm9eLUzGtzlIvkktVnQZ8ypar8Bck9PQZdRE/ugXLLHBg/qqlWTxYRS7QV7Vn/rGLVhWclVMm+g==}
     engines: {npm: '>=8'}
     hasBin: true
 
@@ -5142,9 +5142,10 @@ packages:
   tar@6.2.1:
     resolution: {integrity: sha512-DZ4yORTwrbTj/7MZYq2w+/ZFdI6OZ/f9SFHR+71gIVUZhOQPHzVCLpvRnPgyaMpfWxxk/4ONva3GQSyNIKRv6A==}
     engines: {node: '>=10'}
+    deprecated: Old versions of tar are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
 
-  tar@7.5.2:
-    resolution: {integrity: sha512-7NyxrTE4Anh8km8iEy7o0QYPs+0JKBTj5ZaqHg6B39erLg0qYXN3BijtShwbsNSvQ+LN75+KV+C4QR/f6Gwnpg==}
+  tar@7.5.7:
+    resolution: {integrity: sha512-fov56fJiRuThVFXD6o6/Q354S7pnWMJIVlDBYijsTNx6jKSE4pvrDTs6lUnmGvNyfJwFQQwWy3owKz1ucIhveQ==}
     engines: {node: '>=18'}
 
   terminal-link@3.0.0:
@@ -8145,7 +8146,7 @@ snapshots:
     dependencies:
       cmd-shim: 8.0.0
       npm-normalize-package-bin: 5.0.0
-      proc-log: 6.0.0
+      proc-log: 6.1.0
       read-cmd-shim: 6.0.0
       write-file-atomic: 7.0.0
 
@@ -9435,10 +9436,10 @@ snapshots:
     optionalDependencies:
       postgres: 3.4.7
 
-  kysely-supabase@0.2.1(kysely@0.28.8)(supabase@2.58.5):
+  kysely-supabase@0.2.1(kysely@0.28.8)(supabase@2.76.9):
     dependencies:
       kysely: 0.28.8
-      supabase: 2.58.5
+      supabase: 2.76.9
 
   kysely@0.28.8: {}
 
@@ -10136,7 +10137,7 @@ snapshots:
 
   prelude-ls@1.2.1: {}
 
-  proc-log@6.0.0: {}
+  proc-log@6.1.0: {}
 
   process-warning@4.0.1: {}
 
@@ -10591,12 +10592,12 @@ snapshots:
 
   stylis@4.2.0: {}
 
-  supabase@2.58.5:
+  supabase@2.76.9:
     dependencies:
       bin-links: 6.0.0
       https-proxy-agent: 7.0.6
       node-fetch: 3.3.2
-      tar: 7.5.2
+      tar: 7.5.7
     transitivePeerDependencies:
       - supports-color
 
@@ -10748,7 +10749,7 @@ snapshots:
       mkdirp: 1.0.4
       yallist: 4.0.0
 
-  tar@7.5.2:
+  tar@7.5.7:
     dependencies:
       '@isaacs/fs-minipass': 4.0.1
       chownr: 3.0.0
