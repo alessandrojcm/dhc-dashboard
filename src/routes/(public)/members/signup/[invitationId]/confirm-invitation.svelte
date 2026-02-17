@@ -58,6 +58,7 @@
 				.enhance(({ submit }) => {
 					submit().then(() => {
 						if (validateInvitation.result?.success) {
+							isVerified = true;
 							goto(resolve(`/members/signup/${invitationId}`), {
 								replaceState: true,
 							});
