@@ -12,7 +12,7 @@ const config = {
 		// See https://svelte.dev/docs/kit/adapters for more information about adapters.
 		adapter: adapter(),
 		experimental: {
-			remoteFunctions: true
+			remoteFunctions: true,
 		},
 		alias: {
 			$database: './src/database.types.ts',

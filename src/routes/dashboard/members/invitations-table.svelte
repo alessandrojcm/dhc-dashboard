@@ -1,5 +1,7 @@
 <script lang="ts">
+	/* eslint-disable @typescript-eslint/no-explicit-any */
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import type { Database } from '$database';
 	import { Badge } from '$lib/components/ui/badge';
@@ -30,7 +32,7 @@
 	import InvitationActions from './invitation-actions.svelte';
 	import { SendIcon, Trash2 } from 'lucide-svelte';
 	import { getInvitationLink } from '$lib/utils/invitation';
-	import { deleteInvitations } from '$lib/services/members.remote';
+	import { deleteInvitations, resendInvitations } from '../beginners-workshop/admin.remote';
 	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
 	import { Input } from '$lib/components/ui/input';
 	import { Cross2 } from 'svelte-radix';
@@ -85,7 +87,9 @@
 			}
 			// Add sorting if provided
 			if (sortingState.length > 0) {
-				query = query.order(sortingState[0].id, { ascending: !sortingState[0].desc });
+				query = query.order(sortingState[0].id, {
+					ascending: !sortingState[0].desc
+				});
 			} else {
 				// Default sort by created_at descending
 				query = query.order('created_at', { ascending: false });
@@ -107,7 +111,6 @@
 	let selectedRows = $state<Set<string>>(new Set());
 
 	// Derived state for bulk operations
-	const hasSelectedRows = $derived(selectedRows.size > 0);
 	const selectedRowsArray = $derived(Array.from(selectedRows));
 
 	function onPaginationChange(newPagination: Partial<PaginationState>) {
@@ -116,38 +119,35 @@
 			pageSize,
 			...newPagination
 		};
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const newParams = new URLSearchParams(page.url.searchParams);
 		newParams.set('invitePage', paginationState.pageIndex.toString());
 		newParams.set('invitePageSize', paginationState.pageSize.toString());
-		goto(`/dashboard/members?${newParams.toString()}`);
+		const url = `/dashboard/members?${newParams.toString()}`;
+		goto(resolve(url as any));
 	}
 
 	function onSortingChange(newSorting: SortingState) {
 		const [sortingState] = newSorting;
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const newParams = new URLSearchParams(page.url.searchParams);
 		newParams.set('inviteSort', sortingState.id);
 		newParams.set('inviteDirection', sortingState.desc ? 'desc' : 'asc');
-		goto(`/dashboard/members?${newParams.toString()}`);
+		const url = `/dashboard/members?${newParams.toString()}`;
+		goto(resolve(url as any));
 	}
 
 	function onSearchChange(newSearch: string) {
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const newParams = new URLSearchParams(page.url.searchParams);
 		newParams.set('inviteQ', newSearch);
-		goto(`/dashboard/members?${newParams.toString()}`);
+		const url = `/dashboard/members?${newParams.toString()}`;
+		goto(resolve(url as any));
 	}
 
 	const resendInvitationLink = createMutation(() => ({
 		mutationFn: async (data: { email: string; invitationId: string }[]) => {
-			return fetch(`/api/admin/invite-link`, {
-				method: 'POST',
-				body: JSON.stringify({
-					emails: data.map((e) => e.email)
-				})
-			}).then((res) => {
-				if (!res.ok) {
-					throw new Error('Failed to resend invitation link');
-				}
-			});
+			return resendInvitations({ emails: data.map((e) => e.email) });
 		},
 		onSuccess: () => {
 			toast.success('Invitation link resent');
@@ -157,27 +157,16 @@
 		}
 	}));
 
-	// Bulk resend mutation
 	const bulkResendInvitations = createMutation(() => ({
 		mutationFn: async (selectedIds: string[]) => {
 			const selectedInvitations =
 				invitationsQuery.data?.data?.filter((invitation) => selectedIds.includes(invitation.id!)) ||
 				[];
-
-			return fetch(`/api/admin/invite-link`, {
-				method: 'POST',
-				body: JSON.stringify({
-					emails: selectedInvitations.map((invitation) => invitation.email)
-				})
-			}).then((res) => {
-				if (!res.ok) {
-					throw new Error('Failed to resend invitation links');
-				}
-			});
+			return resendInvitations({ emails: selectedInvitations.map((invitation) => invitation.email) });
 		},
 		onSuccess: () => {
 			toast.success('Invitation links resent successfully');
-			selectedRows = new Set(); // Clear selection
+			selectedRows = new Set();
 		},
 		onError: () => {
 			toast.error('Failed to resend invitation links');
@@ -363,7 +352,6 @@
 		<LoaderCircle />
 	{/if}
 
-
 	<div class="flex items-center justify-between ml-auto">
 		<ButtonGroup.Root>
 			<!-- Bulk Resend Button -->
@@ -376,7 +364,9 @@
 			>
 				<SendIcon class="h-4 w-4" />
 				<span class="hidden sm:inline">
-					{bulkResendInvitations.isPending ? 'Sending...' : `Resend${selectedRows.size === 0 ? '' : ` ${selectedRows.size}`}`}
+					{bulkResendInvitations.isPending
+						? 'Sending...'
+						: `Resend${selectedRows.size === 0 ? '' : ` ${selectedRows.size}`}`}
 				</span>
 			</Button>
 
@@ -390,7 +380,9 @@
 			>
 				<Trash2 class="h-4 w-4" />
 				<span class="hidden sm:inline">
-					{bulkDeleteInvitations.isPending ? 'Deleting...' : `Delete${selectedRows.size === 0 ? '' : ` ${selectedRows.size}`}`}
+					{bulkDeleteInvitations.isPending
+						? 'Deleting...'
+						: `Delete${selectedRows.size === 0 ? '' : ` ${selectedRows.size}`}`}
 				</span>
 			</Button>
 		</ButtonGroup.Root>
@@ -517,7 +509,7 @@
 		>
 			<Select.Trigger class="w-16 h-8">{pageSize}</Select.Trigger>
 			<Select.Content>
-				{#each pageSizeOptions as pageSizeOption}
+				{#each pageSizeOptions as pageSizeOption (pageSizeOption)}
 					<Select.Item value={pageSizeOption.toString()}>
 						{pageSizeOption}
 					</Select.Item>

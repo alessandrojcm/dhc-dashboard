@@ -1,18 +1,20 @@
 {
-  "tasks": {
-    "dev": "deno run --watch main.ts"
-  },
-  "imports": {
-    "std/": "https://deno.land/std@0.210.0/",
-    "std/http/server": "https://deno.land/std@0.168.0/http/server.ts",
-    "@supabase/supabase-js": "jsr:@supabase/supabase-js",
-    "@sentry/deno": "npm:@sentry/deno",
-    "dayjs": "npm:dayjs",
-    "stripe": "npm:stripe",
-    "postgres": "https://deno.land/x/postgres@v0.17.0/mod.ts",
-    "kysely": "npm:kysely@^0.28.1",
-    "$shared": "../_shared",
-    "jwt-decode": "npm:jwt-decode",
-    "nodemailer": "npm:nodemailer"
-  }
+	"tasks": {
+		"dev": "deno run --watch main.ts"
+	},
+	"imports": {
+		"@supabase/auth-js": "npm:@supabase/auth-js@^2.89.0",
+		"std/": "https://deno.land/std@0.210.0/",
+		"std/http/server": "https://deno.land/std@0.168.0/http/server.ts",
+		"@supabase/supabase-js": "jsr:@supabase/supabase-js@2.89.0",
+		"@sentry/deno": "npm:@sentry/deno@10.32.1",
+		"dayjs": "npm:dayjs@1.11.19",
+		"stripe": "npm:stripe@20.1.0",
+		"postgres": "https://deno.land/x/postgres@v0.17.0/mod.ts",
+		"kysely": "npm:kysely@^0.28.9",
+		"$shared": "../_shared",
+		"jwt-decode": "npm:jwt-decode@4.0.0",
+		"nodemailer": "npm:nodemailer@7.0.12",
+		"kysely-supabase": "npm:kysely-supabase@^0.2.1"
+	}
 }

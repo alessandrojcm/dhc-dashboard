@@ -31,13 +31,10 @@ vite.config.ts.timestamp-*
 # Sentry Config File
 .env.sentry-build-plugin
 
-
 dist
-
 .cloudflare
-
 .dev.vars
-
 .wrangler
-
 .idea
+test-results
+.pampa

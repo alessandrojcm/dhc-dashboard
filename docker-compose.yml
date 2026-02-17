@@ -2,13 +2,13 @@ services:
   dev:
     env_file:
       - .env
-    build: 
+    build:
       context: .
       dockerfile: Dockerfile.dev
     command: pnpm dev
     working_dir: /workspace
     ports:
-      - "5173:5173"
+      - '5173:5173'
     restart: unless-stopped
     develop:
       watch:

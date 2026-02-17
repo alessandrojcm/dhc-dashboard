@@ -1,14 +1,13 @@
 <script lang="ts">
-	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
-	import { Button } from '$lib/components/ui/button';
-	import { Edit, ChevronDown, ChevronUp } from 'lucide-svelte';
-
-	type Props = {
-		memberId: string;
-		isExpanded?: boolean;
-		onToggleExpand?: () => void;
-	};
-	let { memberId, isExpanded = false, onToggleExpand }: Props = $props();
+import { Button } from "$lib/components/ui/button";
+import * as Tooltip from "$lib/components/ui/tooltip";
+import { ChevronDown, ChevronUp, Edit } from "lucide-svelte";
+type Props = {
+	memberId: string;
+	isExpanded?: boolean;
+	onToggleExpand?: () => void;
+};
+const { memberId, isExpanded = false, onToggleExpand }: Props = $props();
 </script>
 
 <div class="flex gap-1">
@@ -16,7 +15,13 @@
 	{#if onToggleExpand}
 		<Tooltip.Root>
 			<Tooltip.Trigger>
-				<Button variant="ghost" size="icon" class="h-8 w-8" onclick={onToggleExpand} aria-label="Expand row">
+				<Button
+					variant="ghost"
+					size="icon"
+					class="h-8 w-8"
+					onclick={onToggleExpand}
+					aria-label="Expand row"
+				>
 					{#if isExpanded}
 						<ChevronUp class="h-4 w-4" />
 					{:else}
@@ -24,7 +29,11 @@
 					{/if}
 				</Button>
 			</Tooltip.Trigger>
-			<Tooltip.Content>{isExpanded ? 'Collapse details' : 'Expand details'}</Tooltip.Content>
+			<Tooltip.Content
+				>{isExpanded
+					? "Collapse details"
+					: "Expand details"}</Tooltip.Content
+			>
 		</Tooltip.Root>
 	{/if}
 	<Tooltip.Root>

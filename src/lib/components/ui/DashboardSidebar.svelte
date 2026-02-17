@@ -1,51 +1,51 @@
 <script lang="ts">
-	import type { ComponentProps } from 'svelte';
-	import * as Sidebar from '$lib/components/ui/sidebar/index.js';
-	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
-	import * as Avatar from '$lib/components/ui/avatar';
-	import { Skeleton } from '$lib/components/ui/skeleton';
-	import { Button } from '$lib/components/ui/button';
-	import type { NavData, UserData } from '$lib/types';
-	import DHCLogo from '/src/assets/images/dhc-logo.png?enhanced';
-	import NotificationCenter from '$lib/components/notifications/NotificationCenter.svelte';
-	import type { SupabaseClient } from '@supabase/supabase-js';
-	import { Menu } from 'lucide-svelte';
-	import { useSidebar } from '$lib/components/ui/sidebar/context.svelte.js';
-	import * as Sheet from '$lib/components/ui/sheet/index.js';
-	import { browser } from '$app/environment';
+import type { ComponentProps } from "svelte";
+import * as Sidebar from "$lib/components/ui/sidebar/index.js";
+import * as DropdownMenu from "$lib/components/ui/dropdown-menu";
+import * as Avatar from "$lib/components/ui/avatar";
+import { Skeleton } from "$lib/components/ui/skeleton";
+import { Button } from "$lib/components/ui/button";
+import type { NavData, UserData } from "$lib/types";
+import DHCLogo from "/src/assets/images/dhc-logo.png?enhanced";
+import NotificationCenter from "$lib/components/notifications/NotificationCenter.svelte";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { Menu } from "lucide-svelte";
+import { useSidebar } from "$lib/components/ui/sidebar/context.svelte.js";
+import { browser } from "$app/environment";
+import { resolve } from "$app/paths";
 
-	type Props = {
-		className?: string | undefined | null;
-		logout: () => void;
-		userData: Promise<Partial<UserData>>;
-		roles: Set<string>;
-		navData: NavData;
-		supabase: SupabaseClient;
-	};
+type Props = {
+	className?: string | undefined | null;
+	logout: () => void;
+	userData: Promise<Partial<UserData>>;
+	roles: Set<string>;
+	navData: NavData;
+	supabase: SupabaseClient;
+};
 
-	// Get the sidebar context
-	const sidebar = useSidebar();
+// Get the sidebar context
+const sidebar = useSidebar();
 
-	// Function to toggle the sidebar on mobile
-	function toggleSidebar() {
-		if (!browser) return;
-		// We only want to toggle the sidebar on mobile
-		if (window.innerWidth < 768) {
-			sidebar.toggle();
-		}
+// Function to toggle the sidebar on mobile
+function toggleSidebar() {
+	if (!browser) return;
+	// We only want to toggle the sidebar on mobile
+	if (window.innerWidth < 768) {
+		sidebar.toggle();
 	}
+}
 
-	let {
-		ref = $bindable(null),
-		collapsible = 'offcanvas',
-		userData,
-		logout,
-		roles,
-		navData: data,
-		supabase,
-		...restProps
-	}: ComponentProps<typeof Sidebar.Root> & Props = $props();
-	let customAnchor = $state<HTMLElement>(null!);
+let {
+	ref = $bindable(null),
+	collapsible = "offcanvas",
+	userData,
+	logout,
+	roles,
+	navData: data,
+	supabase,
+	...restProps
+}: ComponentProps<typeof Sidebar.Root> & Props = $props();
+let customAnchor = $state<HTMLElement>(null!);
 </script>
 
 <div class="md:hidden fixed top-4 left-4 z-50">
@@ -77,7 +77,7 @@
 												onclick={toggleSidebar}
 												class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
 											>
-												<a href={`/dashboard/${item.url}`}>{item.title}</a>
+												<a href={resolve(item.url)}>{item.title}</a>
 											</Sidebar.MenuButton>
 										</Sidebar.MenuItem>
 									{/if}
@@ -89,7 +89,7 @@
 							onclick={toggleSidebar}
 							class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
 						>
-							<a href={`/dashboard/${group.url}`}>{group.title}</a>
+							<a href={resolve(group.url)}>{group.title}</a>
 						</Sidebar.MenuButton>
 					{/if}
 				</Sidebar.Group>
@@ -128,12 +128,9 @@
 						</DropdownMenu.Trigger>
 
 						<DropdownMenu.Content strategy="fixed" {customAnchor} class="w-56">
-							<DropdownMenu.Item>
-								<a href={`/dashboard/members/${user?.id}`}>My Profile</a>
-							</DropdownMenu.Item>
 							{#if roles.size > 1}
 								<DropdownMenu.Item>
-									<a href={`/dashboard/members/${user?.id}`}>My Profile</a>
+									<a href={resolve(`/dashboard/members/${user?.id}`)}>My Profile</a>
 								</DropdownMenu.Item>
 							{/if}
 							<DropdownMenu.Item onclick={logout}>Log out</DropdownMenu.Item>

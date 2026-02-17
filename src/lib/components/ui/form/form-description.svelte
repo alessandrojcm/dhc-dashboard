@@ -1,17 +1,24 @@
 <script lang="ts">
-	import * as FormPrimitive from "formsnap";
-	import { cn, type WithoutChild } from "$lib/utils.js";
+import { cn } from "$lib/utils.js";
+import type { HTMLAttributes } from "svelte/elements";
 
-	let {
-		ref = $bindable(null),
-		class: className,
-		...restProps
-	}: WithoutChild<FormPrimitive.DescriptionProps> = $props();
+interface Props extends HTMLAttributes<HTMLParagraphElement> {
+	ref?: HTMLParagraphElement | null;
+}
+
+let {
+	ref = $bindable(null),
+	class: className,
+	children,
+	...restProps
+}: Props = $props();
 </script>
 
-<FormPrimitive.Description
-	bind:ref
+<p
+	bind:this={ref}
 	data-slot="form-description"
-	class={cn("text-muted-foreground text-sm", className)}
+	class={cn('text-muted-foreground text-sm', className)}
 	{...restProps}
-/>
+>
+	{@render children?.()}
+</p>

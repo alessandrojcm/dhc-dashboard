@@ -3,6 +3,7 @@
 ## What Has Been Done
 
 ### 1. Database Schema
+
 - Created `invitation_status` enum with values: 'pending', 'accepted', 'expired', 'revoked'
 - Created `invitations` table with necessary fields:
   - id (UUID, primary key)
@@ -23,6 +24,7 @@
   - "Users can see their own invitations"
 
 ### 2. Database Functions
+
 - Created `create_invitation` function:
   - Checks if caller has admin role or is a service role
   - Checks if user exists
@@ -41,11 +43,13 @@
   - Returns count of updated invitations
 
 ### 3. Cron Job
+
 - Set up a pg_cron job to run daily at 1:00 AM
 - Job calls the `mark_expired_invitations` function
 - Granted necessary permissions for execution
 
 ### 4. TypeScript Integration
+
 - Added TypeScript functions in `kyselyRPCFunctions.ts`:
   - `getInvitationInfo` with proper type definitions
   - `createInvitation`
@@ -53,6 +57,7 @@
 - These functions call the corresponding Supabase RPC functions
 
 ### 5. Signup Process Refactoring
+
 - Inverted the order of operations in the signup process:
   - First update the invitation status to "accepted"
   - Then complete the member registration
@@ -60,12 +65,14 @@
 - Fixed field name discrepancies (using `invitation_id` instead of `id`)
 
 ### 6. Testing
+
 - Updated test cases to verify both positive and negative scenarios
 - Fixed issues with test data setup to ensure proper invitation handling
 - Added proper error handling for various edge cases
 - Modified database tests to use fully qualified names (public.invitations, etc.)
 
 ### 7. Frontend Invite System Refactoring
+
 - Updated Invite Drawer Component:
   - Refactored to use Svelte 5 syntax with $state and $derived
   - Improved form handling with superForm for better validation and error handling
@@ -88,6 +95,7 @@
   - Improved error handling and user feedback
 
 ### 8. Form Validation Fix
+
 - Fixed form validation in the invite drawer component:
   - Updated the bulk invite form submission to properly prevent default form submission
   - Added explicit event.preventDefault() in the submitBulkInvites function
@@ -96,6 +104,7 @@
   - Added aria-label to the remove invite button for better accessibility and testing
 
 ### 9. End-to-End Testing Improvements
+
 - Updated the Playwright tests to use proper UI interactions:
   - Replaced direct DOM manipulation with proper date picker interactions
   - Used dayjs for better date handling in tests
@@ -107,6 +116,7 @@
 ## What Needs To Be Done
 
 ### 1. Complete Testing
+
 - ✅ Run and verify all test cases pass with the new implementation
 - ✅ Fix remaining lint errors in the setupFunctions.ts file
 - ✅ Add more comprehensive test coverage for edge cases:
@@ -170,22 +180,27 @@ To address these edge cases, we will implement a structured testing approach:
 Each test category should include both positive test cases (expected to succeed) and negative test cases (expected to fail with specific error messages).
 
 ### 2. Frontend Integration
+
 - ✅ Create UI components for invitation management:
   - ✅ Admin panel to create and manage invitations
 
 ### 3. Additional Features
+
 - ✅ Implement bulk invitation creation
 
 ### 4. Security Review
+
 - ✅ Conduct a comprehensive security review
 - ✅ Ensure proper error handling
 - ✅ Validate all inputs thoroughly
 
 ## Known Issues
+
 - ✅ Some lint errors remain in the setupFunctions.ts file
 - ✅ TypeScript errors in the +page.server.ts file related to implicit 'any[]' type for results variable
 
 ## Next Steps
+
 - ✅ Complete all remaining test cases
 - ✅ Fix remaining lint errors
 - ✅ Address TypeScript errors

@@ -1,30 +1,40 @@
 <script lang="ts">
-	import * as FormPrimitive from "formsnap";
-	import { cn, type WithoutChild } from "$lib/utils.js";
+import { cn } from "$lib/utils.js";
+import type { HTMLAttributes } from "svelte/elements";
 
-	let {
-		ref = $bindable(null),
-		class: className,
-		errorClasses,
-		children: childrenProp,
-		...restProps
-	}: WithoutChild<FormPrimitive.FieldErrorsProps> & {
-		errorClasses?: string | undefined | null;
-	} = $props();
+interface Issue {
+	message: string;
+}
+
+interface Props extends HTMLAttributes<HTMLDivElement> {
+	ref?: HTMLDivElement | null;
+	/**
+	 * Array of validation issues to display
+	 */
+	issues?: Issue[];
+	/**
+	 * Additional classes for each error message
+	 */
+	errorClasses?: string | undefined | null;
+}
+
+let {
+	ref = $bindable(null),
+	class: className,
+	issues = [],
+	errorClasses,
+	...restProps
+}: Props = $props();
 </script>
 
-<FormPrimitive.FieldErrors
-	bind:ref
-	class={cn("text-destructive text-sm font-medium", className)}
-	{...restProps}
->
-	{#snippet children({ errors, errorProps })}
-		{#if childrenProp}
-			{@render childrenProp({ errors, errorProps })}
-		{:else}
-			{#each errors as error (error)}
-				<div {...errorProps} class={cn(errorClasses)}>{error}</div>
-			{/each}
-		{/if}
-	{/snippet}
-</FormPrimitive.FieldErrors>
+{#if issues.length > 0}
+	<div
+		bind:this={ref}
+		class={cn('text-destructive text-sm font-medium', className)}
+		{...restProps}
+	>
+		{#each issues as issue (issue.message)}
+			<div class={cn(errorClasses)}>{issue.message}</div>
+		{/each}
+	</div>
+{/if}

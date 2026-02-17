@@ -1,31 +1,29 @@
 <script lang="ts">
-	import * as Sheet from '$lib/components/ui/sheet/index.js';
-	import * as Form from '$lib/components/ui/form';
-	import { Button } from '$lib/components/ui/button';
-	import { Input } from '$lib/components/ui/input';
-	import { Lock } from 'lucide-svelte';
-	import { superForm, type SuperValidated } from 'sveltekit-superforms/client';
-	import type { MemberSettingsOutput } from '$lib/schemas/membersSettings';
-	import memberSettingsSchema from '$lib/schemas/membersSettings';
-	import { valibotClient } from 'sveltekit-superforms/adapters';
-	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
-	import { toast } from 'svelte-sonner';
+import * as Sheet from "$lib/components/ui/sheet/index.js";
+import * as Field from "$lib/components/ui/field";
+import { Button } from "$lib/components/ui/button";
+import { Input } from "$lib/components/ui/input";
+import { Lock } from "lucide-svelte";
+import { toast } from "svelte-sonner";
+import { updateMemberSettings } from "./data.remote";
+import { initForm } from "$lib/utils/init-form.svelte";
 
-	const props: {
-		form: SuperValidated<MemberSettingsOutput, any, MemberSettingsOutput>;
-	} = $props();
-	let isOpen = $state(false);
+const props: {
+	initialValue: string;
+} = $props();
+let isOpen = $state(false);
 
-	const form = superForm(props.form, {
-		resetForm: false,
-		validators: valibotClient(memberSettingsSchema),
-		onResult: ({ result }) => {
-			result.type === 'error' && toast.error(result.error.message);
-			result.type === 'success' && toast.success(result.data?.message || 'Settings updated successfully');
-		}
-	});
+initForm(updateMemberSettings, () => ({
+	insuranceFormLink: props.initialValue,
+}));
 
-	const { form: formData, enhance, submitting } = form;
+$effect(() => {
+	const result = updateMemberSettings.result;
+	if (result?.success) {
+		toast.success(result.success);
+		isOpen = false;
+	}
+});
 </script>
 
 <Button variant="outline" class="fixed right-4 top-4" onclick={() => (isOpen = true)}>
@@ -39,27 +37,21 @@
 			<Sheet.Title>Settings</Sheet.Title>
 			<Sheet.Description>Configure your members settings here.</Sheet.Description>
 		</Sheet.Header>
-		<form method="POST" action="?/updateSettings" use:enhance class="space-y-4 mt-4 p-8">
-			<Form.Field {form} name="insuranceFormLink">
-				<Form.Control>
-					{#snippet children({ props })}
-						<Form.Label>HEMA Insurance Form Link</Form.Label>
-						<Input
-							{...props}
-							type="url"
-							bind:value={$formData.insuranceFormLink}
-							placeholder="https://example.com/insurance-form"
-						/>
-					{/snippet}
-				</Form.Control>
-				<Form.FieldErrors />
-			</Form.Field>
-			<Button type="submit" class="w-full" disabled={$submitting}>
-				{#if $submitting}
-					<LoaderCircle />
-				{:else}
-					Save Settings
-				{/if}
+		<form {...updateMemberSettings} class="space-y-4 mt-4 p-8">
+			<Field.Field>
+				{@const fieldProps = updateMemberSettings.fields.insuranceFormLink.as('url')}
+				<Field.Label for={fieldProps.name}>HEMA Insurance Form Link</Field.Label>
+				<Input
+					{...fieldProps}
+					id={fieldProps.name}
+					placeholder="https://example.com/insurance-form"
+				/>
+				{#each updateMemberSettings.fields.insuranceFormLink.issues() as issue}
+					<Field.Error>{issue.message}</Field.Error>
+				{/each}
+			</Field.Field>
+			<Button type="submit" class="w-full">
+				Save Settings
 			</Button>
 		</form>
 	</Sheet.Content>

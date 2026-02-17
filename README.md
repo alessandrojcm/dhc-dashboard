@@ -40,6 +40,7 @@ You can preview the production build with `npm run preview`.
 To run this project, you need to configure the following environment variables:
 
 ### SvelteKit (Frontend)
+
 - `SENTRY_AUTH_TOKEN`: Auth token for Sentry error tracking (enables Sentry integration on the server).
 - `VITE_PUBLIC_SENTRY_ENABLED`: Set to `'true'` to enable Sentry error tracking in the client app.
 - `PUBLIC_SUPABASE_URL`: The public URL of your Supabase project (used to connect the frontend to your Supabase backend).
@@ -47,10 +48,10 @@ To run this project, you need to configure the following environment variables:
 - `PUBLIC_SITE_URL`: The public URL of your deployed site (used for redirects, emails, etc.).
 - `STRIPE_SECRET_KEY`: Secret API key for Stripe, used to authenticate server-side Stripe API requests.
 
-
 Set these in your `.env` or `.env.local` file at the project root. Variables prefixed with `PUBLIC_` are exposed to the client.
 
 ### Supabase Functions (Deno)
+
 - `STRIPE_SECRET_KEY`: Secret API key for Stripe, used to authenticate server-side Stripe API requests.
 - `STRIPE_WEBHOOK_SIGNING_SECRET`: Secret used to verify incoming Stripe webhook signatures.
 - `SENTRY_DSN`: Data Source Name for Sentry, used to report errors from Deno functions.
@@ -65,10 +66,10 @@ Set these in your `.env` or `.env.local` file at the project root. Variables pre
 - `LOOPS_API_KEY`: Loops API key
 
 Supabase vault items:
+
 - `project_url`: The URL of your Supabase project (used for server-side access in functions).
 - `service_role_key`: Supabase service role key (provides elevated privileges for backend operations).
 
 These must be configured in your Supabase project's function environment or set in the deployment environment for Deno functions.
-
 
 > To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.

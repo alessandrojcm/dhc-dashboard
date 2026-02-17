@@ -1,63 +1,56 @@
 <script lang="ts">
-	import Calendar from "$lib/components/ui/calendar/calendar.svelte";
-	import * as Popover from "$lib/components/ui/popover/index.js";
-	import { Button } from "$lib/components/ui/button/index.js";
-	import { Label } from "$lib/components/ui/label/index.js";
-	import { Input } from "$lib/components/ui/input/index.js";
-	import ChevronDownIcon from "@lucide/svelte/icons/chevron-down";
-	import { getLocalTimeZone } from "@internationalized/date";
-	import type { CalendarDate } from "@internationalized/date";
+import type { CalendarDate } from "@internationalized/date";
+import { Label } from "$lib/components/ui/label";
+import * as Popover from "$lib/components/ui/popover";
+import { Button } from "$lib/components/ui/button";
+import { Calendar } from "$lib/components/ui/calendar";
+import { Input } from "$lib/components/ui/input";
+import { getLocalTimeZone } from "@internationalized/date";
+import { ChevronDownIcon } from "lucide-svelte";
 
-	interface Props {
-		id: string;
-		date?: CalendarDate;
-		startTime?: string;
-		endTime?: string;
-		onDateChange?: (date: CalendarDate | undefined) => void;
-		onStartTimeChange?: (time: string) => void;
-		onEndTimeChange?: (time: string) => void;
-		disabled?: boolean;
-	}
+interface Props {
+	id: string;
+	date?: CalendarDate;
+	startTime?: string;
+	endTime?: string;
+	onDateChange?: (date: CalendarDate | undefined) => void;
+	onStartTimeChange?: (time: string) => void;
+	onEndTimeChange?: (time: string) => void;
+	disabled?: boolean;
+}
 
-	let { 
-		id, 
-		date = $bindable(),
-		startTime = $bindable(),
-		endTime = $bindable(),
-		onDateChange,
-		onStartTimeChange,
-		onEndTimeChange,
-		disabled,
-	}: Props = $props();
+let {
+	id,
+	date = $bindable(),
+	startTime = $bindable(),
+	endTime = $bindable(),
+	onDateChange,
+	onStartTimeChange,
+	onEndTimeChange,
+	disabled,
+}: Props = $props();
 
-	let open = $state(false);
+let open = $state(false);
 
-	function handleDateChange(newDate: CalendarDate | undefined) {
-		date = newDate;
-		onDateChange?.(newDate);
-	}
-
-	function handleStartTimeChange(newTime: string) {
-		startTime = newTime;
-		onStartTimeChange?.(newTime);
-	}
-
-	function handleEndTimeChange(newTime: string) {
-		endTime = newTime;
-		onEndTimeChange?.(newTime);
-	}
+function handleDateChange(newDate: CalendarDate | undefined) {
+	date = newDate;
+	onDateChange?.(newDate);
+}
 </script>
 
 <div class="flex flex-col gap-6">
 	<div class="flex flex-col gap-3">
 		<Label for="{id}-date" class="px-1">Date</Label>
-		<Popover.Root bind:open>
+		<Popover.Root bind:open={open}>
 			<Popover.Trigger id="{id}-date">
 				{#snippet child({ props })}
-					<Button disabled={disabled} {...props} variant="outline" class="w-full justify-between font-normal">
-						{date
-							? date.toDate(getLocalTimeZone()).toLocaleDateString()
-							: "Select date"}
+					<Button
+						{disabled}
+						{...props}
+						variant="outline"
+						class="w-full justify-between font-normal"
+					>
+						{date ? date.toDate(getLocalTimeZone()).toLocaleDateString() : 'Select date'}
 						<ChevronDownIcon />
 					</Button>
 				{/snippet}
@@ -67,8 +60,8 @@
 					type="single"
 					value={date}
 					captionLayout="dropdown"
-					disabled={disabled}
-					onValueChange={(newDate) => {
+					{disabled}
+					onValueChange={(newDate?: CalendarDate) => {
 						handleDateChange(newDate);
 						open = false;
 					}}
@@ -83,10 +76,10 @@
 				type="time"
 				id="{id}-time-from"
 				step="1"
-				value={startTime || "10:30"}
-				disabled={disabled}
-				oninput={(e) => {
-					handleStartTimeChange(e.currentTarget.value);
+				bind:value={startTime}
+				{disabled}
+				onchange={(e: Event) => {
+					onStartTimeChange?.((e.currentTarget as HTMLInputElement).value);
 				}}
 				class="bg-background appearance-none [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
 			/>
@@ -97,10 +90,10 @@
 				type="time"
 				id="{id}-time-to"
 				step="1"
-				value={endTime || "12:30"}
-				disabled={disabled}
-				oninput={(e) => {
-					handleEndTimeChange(e.currentTarget.value);
+				bind:value={endTime}
+				{disabled}
+				onchange={(e: Event) => {
+					onEndTimeChange?.((e.currentTarget as HTMLInputElement).value);
 				}}
 				class="bg-background appearance-none [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
 			/>

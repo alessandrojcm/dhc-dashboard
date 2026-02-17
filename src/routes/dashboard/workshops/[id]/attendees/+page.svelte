@@ -1,23 +1,33 @@
 <script lang="ts">
-	import { page } from '$app/state';
-	import { createQuery, useQueryClient } from '@tanstack/svelte-query';
-	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
-	import AttendeeManager from '$lib/components/workshops/attendee-manager.svelte';
-	import { toast } from 'svelte-sonner';
+import { page } from "$app/state";
+import { createQuery, useQueryClient } from "@tanstack/svelte-query";
+import {
+	Card,
+	CardContent,
+	CardHeader,
+	CardTitle,
+} from "$lib/components/ui/card";
+import AttendeeManager from "$lib/components/workshops/attendee-manager.svelte";
+import type {
+	RefundWithUser,
+	RegistrationWithUser,
+} from "$lib/server/services/workshops";
 
-	let { data } = $props();
-	const supabase = data.supabase;
-	const workshopId = page.params.id;
-	const queryClient = useQueryClient();
+let { data } = $props();
+const supabase = data.supabase;
+const workshopId = page.params.id;
+const queryClient = useQueryClient();
 
-	// Use preloaded data with TanStack Query for cache management and refetching
-	const attendeesQuery = createQuery(() => ({
-		queryKey: ['workshop-attendees', workshopId],
-		queryFn: async () => {
-			// Refetch from server if needed
-			const { data, error } = await supabase
-				.from('club_activity_registrations')
-				.select(`
+// Use preloaded data with TanStack Query for cache management and refetching
+const attendeesQuery = createQuery(() => ({
+	queryKey: ["workshop-attendees", workshopId],
+	enabled: !!workshopId,
+	queryFn: async () => {
+		// Refetch from server if needed
+		const { data, error } = await supabase
+			.from("club_activity_registrations")
+			.select(
+				`
 					id,
 					club_activity_id,
 					status,
@@ -34,24 +44,27 @@
 						last_name,
 						email
 					)
-				`)
-				.eq('club_activity_id', workshopId)
-				.in('status', ['confirmed', 'pending'])
-				.order('created_at', { ascending: true });
+				`,
+			)
+			.eq("club_activity_id", workshopId!)
+			.in("status", ["confirmed", "pending"])
+			.order("created_at", { ascending: true });
 
-			if (error) throw error;
-			return data;
-		},
-		initialData: data.attendees
-	}));
+		if (error) throw error;
+		return data as RegistrationWithUser[];
+	},
+	initialData: data?.attendees ?? [],
+}));
 
-	const refundsQuery = createQuery(() => ({
-		queryKey: ['workshop-refunds', workshopId],
-		queryFn: async () => {
-			// Refetch from server if needed - transform to match server loader structure
-			const { data: refundsData, error } = await supabase
-				.from('club_activity_refunds')
-				.select(`
+const refundsQuery = createQuery(() => ({
+	queryKey: ["workshop-refunds", workshopId],
+	enabled: !!workshopId,
+	queryFn: async () => {
+		// Refetch from server if needed - transform to match server loader structure
+		const { data: refundsData, error } = await supabase
+			.from("club_activity_refunds")
+			.select(
+				`
 					id,
 					registration_id,
 					refund_amount,
@@ -70,24 +83,26 @@
 							email
 						)
 					)
-				`)
-				.eq('club_activity_registrations.club_activity_id', workshopId)
-				.order('created_at', { ascending: false });
+				`,
+			)
+			.eq("club_activity_registrations.club_activity_id", workshopId!)
+			.order("created_at", { ascending: false });
 
-			if (error) throw error;
-			return refundsData?.map(refund => ({
-				id: refund.id,
-				registration_id: refund.registration_id,
-				refund_amount: refund.refund_amount,
-				refund_reason: refund.refund_reason,
-				status: refund.status,
-				created_at: refund.created_at,
-				user_profiles: refund.club_activity_registrations?.user_profiles || null,
-				external_users: refund.club_activity_registrations?.external_users || null
-			})) || [];
-		},
-		initialData: data.refunds // Use preloaded data
-	}));
+		if (error) throw error;
+		return (refundsData?.map((refund) => ({
+			id: refund.id,
+			registration_id: refund.registration_id,
+			refund_amount: refund.refund_amount,
+			refund_reason: refund.refund_reason,
+			status: refund.status,
+			created_at: refund.created_at,
+			user_profiles: refund.club_activity_registrations?.user_profiles || null,
+			external_users:
+				refund.club_activity_registrations?.external_users || null,
+		})) || []) as RefundWithUser[];
+	},
+	initialData: data.refunds, // Use preloaded data
+}));
 </script>
 
 <div class="container mx-auto py-6">
@@ -106,12 +121,10 @@
 					<div class="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
 				</div>
 			{:else if attendeesQuery.error || refundsQuery.error}
-				<div class="text-center py-8 text-destructive">
-					Failed to load data
-				</div>
+				<div class="text-center py-8 text-destructive">Failed to load data</div>
 			{:else}
-				<AttendeeManager 
-					attendees={attendeesQuery.data || []} 
+				<AttendeeManager
+					attendees={attendeesQuery.data || []}
 					refunds={refundsQuery.data || []}
 					workshop={data.workshop}
 					{workshopId}
