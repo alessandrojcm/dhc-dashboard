@@ -1,124 +1,129 @@
 <script lang="ts">
-	/* eslint-disable @typescript-eslint/no-explicit-any */
-	import { goto } from '$app/navigation';
-	import { resolve } from '$app/paths';
-	import { page } from '$app/state';
-	import type { Database, Tables } from '$database';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Button } from '$lib/components/ui/button';
-	import {
-		createSvelteTable,
-		FlexRender,
-		renderComponent,
-		renderSnippet
-	} from '$lib/components/ui/data-table/index.js';
-	import { Input } from '$lib/components/ui/input';
-	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
-	import * as Pagination from '$lib/components/ui/pagination/index.js';
-	import * as Select from '$lib/components/ui/select';
-	import * as Table from '$lib/components/ui/table/index.js';
-	import * as Checkbox from '$lib/components/ui/checkbox/index.js';
-	import SortHeader from '$lib/components/ui/table/sort-header.svelte';
-	import type { MutationPayload } from '$lib/types';
-	import type { SupabaseClient } from '@supabase/supabase-js';
-	import {
-		createMutation,
-		createQuery,
-		keepPreviousData,
-		useQueryClient
-	} from '@tanstack/svelte-query';
-	import {
-		getCoreRowModel,
-		getExpandedRowModel,
-		getPaginationRowModel,
-		getSortedRowModel,
-		type PaginationState,
-		type RowSelectionState,
-		type SortingState,
-		type TableOptions
-	} from '@tanstack/table-core';
-	import dayjs from 'dayjs';
-	import { createRawSnippet } from 'svelte';
-	import { Cross2 } from 'svelte-radix';
-	import ActionButtons from './actions-buttons.svelte';
-	import { toast } from 'svelte-sonner';
-	import { Loader2, SendIcon } from 'lucide-svelte';
-	import { resendInvitations } from './admin.remote';
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { goto, pushState } from "$app/navigation";
+import { resolve } from "$app/paths";
+import { page } from "$app/state";
+import type { Database, Tables } from "$database";
+import { Badge } from "$lib/components/ui/badge";
+import { Button } from "$lib/components/ui/button";
+import {
+	createSvelteTable,
+	FlexRender,
+	renderComponent,
+	renderSnippet,
+} from "$lib/components/ui/data-table/index.js";
+import { Input } from "$lib/components/ui/input";
+import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
+import * as Pagination from "$lib/components/ui/pagination/index.js";
+import * as Select from "$lib/components/ui/select";
+import * as Table from "$lib/components/ui/table/index.js";
+import * as Checkbox from "$lib/components/ui/checkbox/index.js";
+import SortHeader from "$lib/components/ui/table/sort-header.svelte";
+import type { MutationPayload } from "$lib/types";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+	createMutation,
+	createQuery,
+	keepPreviousData,
+	useQueryClient,
+} from "@tanstack/svelte-query";
+import {
+	getCoreRowModel,
+	getExpandedRowModel,
+	getPaginationRowModel,
+	getSortedRowModel,
+	type PaginationState,
+	type RowSelectionState,
+	type SortingState,
+	type TableOptions,
+} from "@tanstack/table-core";
+import dayjs from "dayjs";
+import { createRawSnippet } from "svelte";
+import { Cross2 } from "svelte-radix";
+import ActionButtons from "./actions-buttons.svelte";
+import { toast } from "svelte-sonner";
+import { Loader2, SendIcon } from "lucide-svelte";
+import { resendInvitations } from "./admin.remote";
 
-	const columns =
-		'id,current_position,full_name,email,phone_number,status,age,initial_registration_date,last_contacted,medical_conditions,admin_notes,social_media_consent,guardian_first_name,guardian_last_name,guardian_phone_number,insurance_form_submitted,last_status_change,search_text';
+const columns =
+	"id,current_position,full_name,email,phone_number,status,age,initial_registration_date,last_contacted,medical_conditions,admin_notes,social_media_consent,guardian_first_name,guardian_last_name,guardian_phone_number,insurance_form_submitted,last_status_change,search_text";
 
-	let pageSizeOptions = [10, 25, 50, 100];
+let pageSizeOptions = [10, 25, 50, 100];
 
-	const { supabase }: { supabase: SupabaseClient<Database> } = $props();
+const { supabase }: { supabase: SupabaseClient<Database> } = $props();
 
-	function getBadgeVariant(status: string) {
-		switch (status) {
-			case 'invited':
-				return 'default';
-			case 'joined':
-				return 'secondary';
-			case 'declined':
-				return 'destructive';
-			default:
-				return 'default';
-		}
+function getBadgeVariant(status: string) {
+	switch (status) {
+		case "invited":
+			return "default";
+		case "joined":
+			return "secondary";
+		case "declined":
+			return "destructive";
+		default:
+			return "default";
 	}
+}
 
-	const currentPage = $derived(Number(page.url.searchParams.get('page')) || 0);
-	const pageSize = $derived(Number(page.url.searchParams.get('pageSize')) || 10);
-	const searchQuery = $derived(page.url.searchParams.get('q') || '');
-	const rangeStart = $derived(currentPage * pageSize);
-	const rangeEnd = $derived(rangeStart + pageSize - 1);
-	const sortingState: SortingState = $derived.by(() => {
-		const sortColumn = page.url.searchParams.get('sort');
-		const sortDirection = page.url.searchParams.get('direction');
-		if (!sortColumn) return [];
-		return [
-			{
-				id: sortColumn,
-				desc: sortDirection === 'desc'
-			}
-		];
-	});
+const currentPage = $derived(Number(page.url.searchParams.get("page")) || 0);
+const pageSize = $derived(Number(page.url.searchParams.get("pageSize")) || 10);
+const searchQuery = $derived(page.url.searchParams.get("q") || "");
+const rangeStart = $derived(currentPage * pageSize);
+const rangeEnd = $derived(rangeStart + pageSize - 1);
+const sortingState: SortingState = $derived.by(() => {
+	const sortColumn = page.url.searchParams.get("sort");
+	const sortDirection = page.url.searchParams.get("direction");
+	if (!sortColumn) return [];
+	return [
+		{
+			id: sortColumn,
+			desc: sortDirection === "desc",
+		},
+	];
+});
 
-	async function getWaitlistQuery({
-		searchQuery,
-		sortingState,
-		rangeStart,
-		rangeEnd,
-		signal
-	}: {
-		searchQuery: string;
-		sortingState: SortingState;
-		rangeStart: number;
-		rangeEnd: number;
-		signal: AbortSignal;
-	}) {
-		let query = supabase.from('waitlist_management_view').select(columns, { count: 'exact' });
-		if (searchQuery.length > 0) {
-			query = query.textSearch('search_text', `'${searchQuery}'`, {
-				type: 'websearch'
-			});
-		}
-		if (sortingState.length > 0) {
-			query = query.order(sortingState[0].id, {
-				ascending: !sortingState[0].desc
-			});
-		}
-		query = query.neq('status', 'joined');
-		const { data, count, error } = await query.range(rangeStart, rangeEnd).abortSignal(signal);
-		if (error) {
-			throw error;
-		}
-		return { data, count: count ?? 0 };
+async function getWaitlistQuery({
+	searchQuery,
+	sortingState,
+	rangeStart,
+	rangeEnd,
+	signal,
+}: {
+	searchQuery: string;
+	sortingState: SortingState;
+	rangeStart: number;
+	rangeEnd: number;
+	signal: AbortSignal;
+}) {
+	let query = supabase
+		.from("waitlist_management_view")
+		.select(columns, { count: "exact" });
+	if (searchQuery.length > 0) {
+		query = query.textSearch("search_text", `'${searchQuery}'`, {
+			type: "websearch",
+		});
 	}
+	if (sortingState.length > 0) {
+		query = query.order(sortingState[0].id, {
+			ascending: !sortingState[0].desc,
+		});
+	}
+	query = query.neq("status", "joined");
+	const { data, count, error } = await query
+		.range(rangeStart, rangeEnd)
+		.abortSignal(signal);
+	if (error) {
+		throw error;
+	}
+	return { data, count: count ?? 0 };
+}
 
-	const waitlistQueryKey = $derived([
-		'waitlist',
-		{ rangeStart, rangeEnd, sortingState, searchQuery }
-	]);
-	const waitlistQuery = createQuery<Awaited<ReturnType<typeof getWaitlistQuery>>>(() => ({
+const waitlistQueryKey = $derived([
+	"waitlist",
+	{ rangeStart, rangeEnd, sortingState, searchQuery },
+]);
+const waitlistQuery = createQuery<Awaited<ReturnType<typeof getWaitlistQuery>>>(
+	() => ({
 		queryKey: waitlistQueryKey,
 		placeholderData: keepPreviousData,
 		queryFn: ({ signal, queryKey }) => {
@@ -129,355 +134,363 @@
 				searchQuery: string;
 			};
 			return getWaitlistQuery({ ...params, signal });
-		}
-	}));
-	const queryClient = useQueryClient();
-	const inviteMember = createMutation(() => ({
-		mutationFn: async (waitlistIds: string[]) =>
-			supabase.functions
-				.invoke('bulk_invite_with_subscription', {
-					body: waitlistIds,
-					method: 'POST'
-				})
-				.then((r) => {
-					if (r.error) {
-						throw r.error;
-					}
-				}),
-		onMutate: (waitlistIds) => {
-			const oldData = queryClient.getQueryData(waitlistQueryKey);
-			queryClient.setQueryData(
-				waitlistQueryKey,
-				(oldData: Awaited<(typeof waitlistQuery)['data']>) => ({
-					...oldData,
-					data: oldData?.data?.map((d) => ({
-						...d,
-						...(d.id && waitlistIds.includes(d.id) ? { status: 'invited' } : {})
-					}))
-				})
-			);
-			return { oldData };
 		},
-		onSuccess: () => {
-			selectedState = {};
-			toast.success('Invitations are being processed in the background.');
-		},
-		onError: (oldData) => {
-			toast.error('Something has gone wrong inviting members.');
-			queryClient.setQueryData(waitlistQueryKey, oldData);
-		}
-	}));
-
-	const resendInvitationLink = createMutation(() => ({
-		mutationFn: async (emails: string[]) => resendInvitations({ emails }),
-		onMutate: (emails) => {
-			const oldData = queryClient.getQueryData(waitlistQueryKey);
-			queryClient.setQueryData(
-				waitlistQueryKey,
-				(oldData: Awaited<(typeof waitlistQuery)['data']>) => ({
-					...oldData,
-					data: oldData?.data?.map((d) => ({
-						...d,
-						...(d.email && emails.includes(d.email) ? { status: 'invited' } : {})
-					}))
-				})
-			);
-			return { oldData };
-		},
-		onSuccess: () => {
-			toast.success('Invitation link resent.');
-		},
-		onError: (oldData) => {
-			toast.error('Something has gone wrong inviting members.');
-			queryClient.setQueryData(waitlistQueryKey, oldData);
-		}
-	}));
-
-	const updateWaitlistEntry = createMutation<
-		void,
-		Error,
-		MutationPayload<'waitlist'> & { email: string }
-	>(() => ({
-		mutationFn: async ({ email, ...rest }) => {
-			const { error } = await supabase.from('waitlist').update(rest).eq('email', email);
-			if (error) throw error;
-		},
-		onSuccess: () => {
-			waitlistQuery.refetch();
-		},
-		onSettled: () => {
-			waitlistQuery.refetch();
-		}
-	}));
-
-	function onPaginationChange(newPagination: Partial<PaginationState>) {
-		const paginationState: PaginationState = {
-			pageIndex: currentPage,
-			pageSize,
-			...newPagination
-		};
-		// eslint-disable-next-line svelte/prefer-svelte-reactivity
-		const newParams = new URLSearchParams(page.url.searchParams);
-		newParams.set('page', paginationState.pageIndex.toString());
-		newParams.set('pageSize', paginationState.pageSize.toString());
-		const url = `/dashboard/beginners-workshop?${newParams.toString()}`;
-		goto(resolve(url as any));
-	}
-
-	function onSortingChange(newSorting: SortingState) {
-		const [sortingState] = newSorting;
-		// eslint-disable-next-line svelte/prefer-svelte-reactivity
-		const newParams = new URLSearchParams(page.url.searchParams);
-		newParams.set('sort', sortingState.id);
-		newParams.set('direction', sortingState.desc ? 'desc' : 'asc');
-		const url = `/dashboard/beginners-workshop?${newParams.toString()}`;
-		goto(resolve(url as any));
-	}
-
-	function onSearchChange(newSearch: string) {
-		// eslint-disable-next-line svelte/prefer-svelte-reactivity
-		const newParams = new URLSearchParams(page.url.searchParams);
-		newParams.set('q', newSearch);
-		const url = `/dashboard/beginners-workshop?${newParams.toString()}`;
-		goto(resolve(url as any));
-	}
-
-	// State for expanded rows
-	let expandedState = $state({});
-	let selectedState = $state<RowSelectionState>({});
-	let inviteCount = $derived(Object.values(selectedState).filter(Boolean).length);
-
-	const tableOptions = $state<TableOptions<Tables<'waitlist_management_view'>>>({
-		autoResetPageIndex: false,
-		manualPagination: true,
-		manualSorting: true,
-		getExpandedRowModel: getExpandedRowModel(),
-		state: {
-			get expanded() {
-				return expandedState;
-			},
-			get pagination() {
-				return {
-					pageIndex: currentPage,
-					pageSize
-				} as PaginationState;
-			},
-			get sorting() {
-				return sortingState;
-			}
-		},
-		onExpandedChange: (updater) => {
-			if (typeof updater === 'function') {
-				expandedState = updater(expandedState);
-			} else {
-				expandedState = updater;
-			}
-		},
-		onRowSelectionChange: (updater) => {
-			if (typeof updater === 'function') {
-				selectedState = updater(selectedState);
-			} else {
-				selectedState = updater;
-			}
-		},
-		columns: [
-			{
-				header: '',
-				id: 'selection',
-				cell: ({ row }) => {
-					return renderComponent(Checkbox.Checkbox, {
-						checked: row.getIsSelected(),
-						onCheckedChange: (value: boolean | 'indeterminate') => row.toggleSelected(!!value),
-						disabled: row.original.status === 'invited'
-					});
+	}),
+);
+const queryClient = useQueryClient();
+const inviteMember = createMutation(() => ({
+	mutationFn: async (waitlistIds: string[]) =>
+		supabase.functions
+			.invoke("bulk_invite_with_subscription", {
+				body: waitlistIds,
+				method: "POST",
+			})
+			.then((r) => {
+				if (r.error) {
+					throw r.error;
 				}
+			}),
+	onMutate: (waitlistIds) => {
+		const oldData = queryClient.getQueryData(waitlistQueryKey);
+		queryClient.setQueryData(
+			waitlistQueryKey,
+			(oldData: Awaited<(typeof waitlistQuery)["data"]>) => ({
+				...oldData,
+				data: oldData?.data?.map((d) => ({
+					...d,
+					...(d.id && waitlistIds.includes(d.id) ? { status: "invited" } : {}),
+				})),
+			}),
+		);
+		return { oldData };
+	},
+	onSuccess: () => {
+		selectedState = {};
+		toast.success("Invitations are being processed in the background.");
+	},
+	onError: (oldData) => {
+		toast.error("Something has gone wrong inviting members.");
+		queryClient.setQueryData(waitlistQueryKey, oldData);
+	},
+}));
+
+const resendInvitationLink = createMutation(() => ({
+	mutationFn: async (emails: string[]) => resendInvitations({ emails }),
+	onMutate: (emails) => {
+		const oldData = queryClient.getQueryData(waitlistQueryKey);
+		queryClient.setQueryData(
+			waitlistQueryKey,
+			(oldData: Awaited<(typeof waitlistQuery)["data"]>) => ({
+				...oldData,
+				data: oldData?.data?.map((d) => ({
+					...d,
+					...(d.email && emails.includes(d.email) ? { status: "invited" } : {}),
+				})),
+			}),
+		);
+		return { oldData };
+	},
+	onSuccess: () => {
+		toast.success("Invitation link resent.");
+	},
+	onError: (oldData) => {
+		toast.error("Something has gone wrong inviting members.");
+		queryClient.setQueryData(waitlistQueryKey, oldData);
+	},
+}));
+
+const updateWaitlistEntry = createMutation<
+	void,
+	Error,
+	MutationPayload<"waitlist"> & { email: string }
+>(() => ({
+	mutationFn: async ({ email, ...rest }) => {
+		const { error } = await supabase
+			.from("waitlist")
+			.update(rest)
+			.eq("email", email);
+		if (error) throw error;
+	},
+	onSuccess: () => {
+		waitlistQuery.refetch();
+	},
+	onSettled: () => {
+		waitlistQuery.refetch();
+	},
+}));
+
+function onPaginationChange(newPagination: Partial<PaginationState>) {
+	const paginationState: PaginationState = {
+		pageIndex: currentPage,
+		pageSize,
+		...newPagination,
+	};
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity
+	const newParams = new URLSearchParams(page.url.searchParams);
+	newParams.set("page", paginationState.pageIndex.toString());
+	newParams.set("pageSize", paginationState.pageSize.toString());
+	const url = `/dashboard/beginners-workshop?${newParams.toString()}`;
+	pushState(url, {});
+}
+
+function onSortingChange(newSorting: SortingState) {
+	const [sortingState] = newSorting;
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity
+	const newParams = new URLSearchParams(page.url.searchParams);
+	newParams.set("sort", sortingState.id);
+	newParams.set("direction", sortingState.desc ? "desc" : "asc");
+	const url = `/dashboard/beginners-workshop?${newParams.toString()}`;
+	pushState(url, {});
+}
+
+function onSearchChange(newSearch: string) {
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity
+	const newParams = new URLSearchParams(page.url.searchParams);
+	newParams.set("q", newSearch);
+	const url = `/dashboard/beginners-workshop?${newParams.toString()}`;
+	pushState(url, {});
+}
+
+// State for expanded rows
+let expandedState = $state({});
+let selectedState = $state<RowSelectionState>({});
+let inviteCount = $derived(Object.values(selectedState).filter(Boolean).length);
+
+const tableOptions = $state<TableOptions<Tables<"waitlist_management_view">>>({
+	autoResetPageIndex: false,
+	manualPagination: true,
+	manualSorting: true,
+	getExpandedRowModel: getExpandedRowModel(),
+	state: {
+		get expanded() {
+			return expandedState;
+		},
+		get pagination() {
+			return {
+				pageIndex: currentPage,
+				pageSize,
+			} as PaginationState;
+		},
+		get sorting() {
+			return sortingState;
+		},
+	},
+	onExpandedChange: (updater) => {
+		if (typeof updater === "function") {
+			expandedState = updater(expandedState);
+		} else {
+			expandedState = updater;
+		}
+	},
+	onRowSelectionChange: (updater) => {
+		if (typeof updater === "function") {
+			selectedState = updater(selectedState);
+		} else {
+			selectedState = updater;
+		}
+	},
+	columns: [
+		{
+			header: "",
+			id: "selection",
+			cell: ({ row }) => {
+				return renderComponent(Checkbox.Checkbox, {
+					checked: row.getIsSelected(),
+					onCheckedChange: (value: boolean | "indeterminate") =>
+						row.toggleSelected(!!value),
+					disabled: row.original.status === "invited",
+				});
 			},
-			{
-				header: 'Actions',
-				cell: ({ row }) => {
-					return renderComponent(ActionButtons, {
-						adminNotes: row.original.admin_notes ?? 'N/A',
-						isExpanded: row.getIsExpanded(),
-						onToggleExpand: () => row.toggleExpanded(),
-						inviteMember: () => {
-							if (row.original.status !== 'invited') {
-								inviteMember.mutate([row.original.id!]);
-							} else {
-								resendInvitationLink.mutate([row.original.email!]);
-							}
-						},
-						onEdit(newValue) {
-							updateWaitlistEntry.mutate({
-								email: row.original.email!,
-								admin_notes: newValue
-							});
+		},
+		{
+			header: "Actions",
+			cell: ({ row }) => {
+				return renderComponent(ActionButtons, {
+					adminNotes: row.original.admin_notes ?? "N/A",
+					isExpanded: row.getIsExpanded(),
+					onToggleExpand: () => row.toggleExpanded(),
+					inviteMember: () => {
+						if (row.original.status !== "invited") {
+							inviteMember.mutate([row.original.id!]);
+						} else {
+							resendInvitationLink.mutate([row.original.email!]);
 						}
-					});
-				}
+					},
+					onEdit(newValue) {
+						updateWaitlistEntry.mutate({
+							email: row.original.email!,
+							admin_notes: newValue,
+						});
+					},
+				});
 			},
-			{
-				accessorKey: 'current_position',
-				header: ({ column }) =>
-					renderComponent(SortHeader, {
-						onclick: () => column.toggleSorting(column.getIsSorted() === 'asc'),
-						header: 'Position',
-						class: 'p-2',
-						sortDirection: column.getIsSorted()
-					})
-			},
-			{
-				accessorKey: 'full_name',
-				header: 'Full Name',
-				footer: ({ table }) => `Total ${table.getRowCount() ?? 0} people on the waitlist`,
-				cell: ({ getValue }) => {
-					return renderSnippet(
-						createRawSnippet((value) => ({
-							render: () =>
-								`<div class="w-[100px] md:w-[120px] whitespace-break-spaces break-words">${value()}</div>`
-						})),
-						getValue()
-					);
-				}
-			},
-			{
-				accessorKey: 'email',
-				header: 'Email',
-				cell: ({ getValue }) => {
-					return renderSnippet(
-						createRawSnippet((value) => ({
-							render: () =>
-								`<a href="mailto:${value()}" class="w-[150px] md:w-[200px] whitespace-break-spaces break-words">${value()}</a>`
-						})),
-						getValue()
-					);
-				}
-			},
-			{
-				accessorKey: 'phone_number',
-				header: 'Phone Number',
-				cell: ({ getValue }) => {
-					return renderSnippet(
-						createRawSnippet((value) => ({
-							render: () => `<div class="w-[120px]">${value()}</div>`
-						})),
-						getValue()
-					);
-				}
-			},
-			{
-				accessorKey: 'social_media_consent',
-				header: 'Social  Consent',
-				cell: ({ getValue }) => {
-					return renderComponent(Badge, {
-						variant:
-							getValue() !== 'no'
-								? getValue() === 'yes_recognizable'
-									? 'default'
-									: 'secondary'
-								: 'destructive',
-						class: 'h-8',
-						children: createRawSnippet(() => ({
-							render: () =>
-								`<p class="first-letter:capitalize">${getValue().replace('_', ', ')}</p>`
-						}))
-					});
-				}
-			},
-			{
-				accessorKey: 'status',
-				header: 'Status',
-				cell: ({ getValue }) => {
-					return renderComponent(Badge, {
-						variant: getValue(),
-						class: 'h-8',
-						children: createRawSnippet(() => ({
-							render: () => `<p class="capitalize">${getValue().replace('-', ' ')}</p>`
-						}))
-					});
-				}
-			},
-			{
-				accessorKey: 'age',
-				header: ({ column }) =>
-					renderComponent(SortHeader, {
-						onclick: () => column.toggleSorting(column.getIsSorted() === 'asc'),
-						header: 'Age',
-						class: 'p-2',
-						sortDirection: column.getIsSorted()
-					}),
-				cell: ({ getValue }) => {
-					return renderSnippet(
-						createRawSnippet((value) => ({
-							render: () => {
-								return `<div class="w-[120px] ${value() < 18 ? 'text-red-800' : ''}">${value() < 18 ? value() + '(👶)' : value()}</div>`;
-							}
-						})),
-						getValue()
-					);
-				}
-			},
-			{
-				accessorKey: 'initial_registration_date',
-				header: ({ column }) =>
-					renderComponent(SortHeader, {
-						onclick: () => column.toggleSorting(column.getIsSorted() === 'asc'),
-						header: 'Initial Registration',
-						class: 'p-2',
-						sortDirection: column.getIsSorted()
-					}),
-				cell: ({ getValue }) => {
-					return renderSnippet(
-						createRawSnippet(() => ({
-							render: () => `<div class="w-[120px]">${dayjs(getValue()).format('DD/MM/YYYY')}</div>`
-						})),
-						getValue()
-					);
-				}
-			},
-			{
-				accessorKey: 'last_contacted',
-				header: 'Last Contacted',
-				cell: ({ getValue }) => {
-					return renderSnippet(
-						createRawSnippet((value) => ({
-							render: () => `<div class="w-[120px]">${value()}</div>`
-						})),
-						getValue() ?? 'N/A'
-					);
-				}
-			}
-		],
-		get data() {
-			return waitlistQuery?.data?.data ?? [];
 		},
-		onPaginationChange: (updater) => {
-			if (typeof updater === 'function') {
-				onPaginationChange(
-					updater({
-						pageIndex: currentPage,
-						pageSize
-					})
+		{
+			accessorKey: "current_position",
+			header: ({ column }) =>
+				renderComponent(SortHeader, {
+					onclick: () => column.toggleSorting(column.getIsSorted() === "asc"),
+					header: "Position",
+					class: "p-2",
+					sortDirection: column.getIsSorted(),
+				}),
+		},
+		{
+			accessorKey: "full_name",
+			header: "Full Name",
+			footer: ({ table }) =>
+				`Total ${table.getRowCount() ?? 0} people on the waitlist`,
+			cell: ({ getValue }) => {
+				return renderSnippet(
+					createRawSnippet((value) => ({
+						render: () =>
+							`<div class="w-[100px] md:w-[120px] whitespace-break-spaces break-words">${value()}</div>`,
+					})),
+					getValue(),
 				);
-			} else {
-				onPaginationChange(updater);
-			}
+			},
 		},
-		onSortingChange: (updater) => {
-			if (typeof updater === 'function') {
-				onSortingChange(updater(sortingState));
-			} else {
-				onSortingChange(updater);
-			}
+		{
+			accessorKey: "email",
+			header: "Email",
+			cell: ({ getValue }) => {
+				return renderSnippet(
+					createRawSnippet((value) => ({
+						render: () =>
+							`<a href="mailto:${value()}" class="w-[150px] md:w-[200px] whitespace-break-spaces break-words">${value()}</a>`,
+					})),
+					getValue(),
+				);
+			},
 		},
-		get rowCount() {
-			return waitlistQuery?.data?.count ?? 0;
+		{
+			accessorKey: "phone_number",
+			header: "Phone Number",
+			cell: ({ getValue }) => {
+				return renderSnippet(
+					createRawSnippet((value) => ({
+						render: () => `<div class="w-[120px]">${value()}</div>`,
+					})),
+					getValue(),
+				);
+			},
 		},
-		getRowId: (row) => row.id!,
-		getCoreRowModel: getCoreRowModel(),
-		getPaginationRowModel: getPaginationRowModel(),
-		getSortedRowModel: getSortedRowModel()
-	});
-	const table = createSvelteTable(tableOptions);
+		{
+			accessorKey: "social_media_consent",
+			header: "Social  Consent",
+			cell: ({ getValue }) => {
+				return renderComponent(Badge, {
+					variant:
+						getValue() !== "no"
+							? getValue() === "yes_recognizable"
+								? "default"
+								: "secondary"
+							: "destructive",
+					class: "h-8",
+					children: createRawSnippet(() => ({
+						render: () =>
+							`<p class="first-letter:capitalize">${getValue().replace("_", ", ")}</p>`,
+					})),
+				});
+			},
+		},
+		{
+			accessorKey: "status",
+			header: "Status",
+			cell: ({ getValue }) => {
+				return renderComponent(Badge, {
+					variant: getValue(),
+					class: "h-8",
+					children: createRawSnippet(() => ({
+						render: () =>
+							`<p class="capitalize">${getValue().replace("-", " ")}</p>`,
+					})),
+				});
+			},
+		},
+		{
+			accessorKey: "age",
+			header: ({ column }) =>
+				renderComponent(SortHeader, {
+					onclick: () => column.toggleSorting(column.getIsSorted() === "asc"),
+					header: "Age",
+					class: "p-2",
+					sortDirection: column.getIsSorted(),
+				}),
+			cell: ({ getValue }) => {
+				return renderSnippet(
+					createRawSnippet((value) => ({
+						render: () => {
+							return `<div class="w-[120px] ${value() < 18 ? "text-red-800" : ""}">${value() < 18 ? value() + "(👶)" : value()}</div>`;
+						},
+					})),
+					getValue(),
+				);
+			},
+		},
+		{
+			accessorKey: "initial_registration_date",
+			header: ({ column }) =>
+				renderComponent(SortHeader, {
+					onclick: () => column.toggleSorting(column.getIsSorted() === "asc"),
+					header: "Initial Registration",
+					class: "p-2",
+					sortDirection: column.getIsSorted(),
+				}),
+			cell: ({ getValue }) => {
+				return renderSnippet(
+					createRawSnippet(() => ({
+						render: () =>
+							`<div class="w-[120px]">${dayjs(getValue()).format("DD/MM/YYYY")}</div>`,
+					})),
+					getValue(),
+				);
+			},
+		},
+		{
+			accessorKey: "last_contacted",
+			header: "Last Contacted",
+			cell: ({ getValue }) => {
+				return renderSnippet(
+					createRawSnippet((value) => ({
+						render: () => `<div class="w-[120px]">${value()}</div>`,
+					})),
+					getValue() ?? "N/A",
+				);
+			},
+		},
+	],
+	get data() {
+		return waitlistQuery?.data?.data ?? [];
+	},
+	onPaginationChange: (updater) => {
+		if (typeof updater === "function") {
+			onPaginationChange(
+				updater({
+					pageIndex: currentPage,
+					pageSize,
+				}),
+			);
+		} else {
+			onPaginationChange(updater);
+		}
+	},
+	onSortingChange: (updater) => {
+		if (typeof updater === "function") {
+			onSortingChange(updater(sortingState));
+		} else {
+			onSortingChange(updater);
+		}
+	},
+	get rowCount() {
+		return waitlistQuery?.data?.count ?? 0;
+	},
+	getRowId: (row) => row.id!,
+	getCoreRowModel: getCoreRowModel(),
+	getPaginationRowModel: getPaginationRowModel(),
+	getSortedRowModel: getSortedRowModel(),
+});
+const table = createSvelteTable(tableOptions);
 </script>
 
 <div
