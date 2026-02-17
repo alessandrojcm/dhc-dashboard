@@ -33,6 +33,7 @@ test.describe("Member Signup - Negative test cases", () => {
 		});
 	});
 });
+
 test.describe("Member Signup - Valid invitation", () => {
 	// Test data generated once for all tests
 	let testData: Awaited<ReturnType<typeof setupInvitedUser>>;
@@ -66,7 +67,7 @@ test.describe("Member Signup - Valid invitation", () => {
 		await expect(page.getByText("Email")).toBeVisible();
 		await expect(page.getByText("Date of Birth")).toBeVisible();
 
-		await expect(page.getByText("Phone Number")).toBeVisible();
+		await expect(page.getByLabel("Phone Number")).toBeVisible();
 		await expect(page.getByLabel("Next of Kin", { exact: true })).toBeVisible();
 		await expect(page.getByLabel("Next of Kin Phone Number")).toBeVisible();
 
@@ -89,7 +90,7 @@ test.describe("Member Signup - Valid invitation", () => {
 		// Test phone number formatting for both fields
 		const raw_phone_number = "0838774532";
 		// The new phone input component formats differently - it removes the leading 0
-		const expected_format = "838774532";
+		const expected_format = "083 877 4532";
 
 		// Find the phone input field (it's now inside the phone input component)
 		// The new component has a div wrapper with an Input of type tel inside
@@ -128,8 +129,7 @@ test.describe("Member Signup - Valid invitation", () => {
 		await stripeFrame.getByLabel("Country or region").selectOption("Ireland");
 		await stripeFrame.getByLabel("City").fill("Dublin");
 		await stripeFrame.getByLabel("Eircode").fill("K45 HR22");
-		await stripeFrame.getByLabel("County").selectOption("County Dublin");
-		await page.pause();
+		await stripeFrame.getByLabel("County").selectOption("Dublin");
 		await page.getByRole("button", { name: /sign up/i }).click();
 		await expect(
 			page.getByText(
@@ -163,7 +163,7 @@ test.describe("Member Signup - Valid invitation", () => {
 		await stripeFrame.getByLabel("Address line 2").fill("Apt 4B");
 		await stripeFrame.getByLabel("City").fill("Dublin");
 		await stripeFrame.getByLabel("Eircode").fill("K45 HR22");
-		await stripeFrame.getByLabel("County").selectOption("County Dublin");
+		await stripeFrame.getByLabel("County").selectOption("Dublin");
 
 		await page.getByRole("button", { name: /sign up/i }).click();
 		await expect(
@@ -198,7 +198,7 @@ test.describe("Member Signup - Valid invitation", () => {
 		await stripeFrame.getByLabel("Address line 2").fill("Apt 4B");
 		await stripeFrame.getByLabel("City").fill("Dublin");
 		await stripeFrame.getByLabel("Eircode").fill("K45 HR22");
-		await stripeFrame.getByLabel("County").selectOption("County Dublin");
+		await stripeFrame.getByLabel("County").selectOption("Dublin");
 		await page.getByRole("button", { name: /sign up/i }).click();
 		await expect(
 			page.getByText(

@@ -11,6 +11,10 @@ import { createMutation, useQueryClient } from "@tanstack/svelte-query";
 import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
 import * as Alert from "$lib/components/ui/alert";
 import { Button } from "$lib/components/ui/button";
+import {
+	createPaymentIntent as createPaymentIntentRPC,
+	completeRegistration as completeRegistrationRPC,
+} from "../../../routes/dashboard/my-workshops/registration.remote";
 
 interface Props {
 	workshopId: string;
@@ -69,33 +73,16 @@ let currentPaymentIntentId = $state<string | null>(null);
 
 const queryClient = useQueryClient();
 
-// Create payment intent mutation
 const createPaymentIntent = createMutation(() => ({
 	mutationFn: async () => {
-		const response = await fetch(
-			`/api/workshops/${workshopId}/register/payment-intent`,
-			{
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({
-					amount,
-					currency,
-					...(customerId ? { customerId } : {}),
-				}),
-			},
-		);
-
-		if (!response.ok) {
-			const errorData = (await response.json()) as { error?: string };
-			throw new Error(errorData.error || "Failed to create payment intent");
-		}
-
-		return response.json() as Promise<{
-			clientSecret: string;
-			paymentIntentId: string;
-		}>;
+		return createPaymentIntentRPC({
+			workshopId,
+			amount,
+			currency,
+			...(customerId ? { customerId } : {}),
+		});
 	},
-	onSuccess: (data: { clientSecret: string; paymentIntentId: string }) => {
+	onSuccess: (data) => {
 		initializeCheckout(data);
 	},
 	onError: (err) => {
@@ -103,30 +90,12 @@ const createPaymentIntent = createMutation(() => ({
 	},
 }));
 
-// Complete registration mutation
 const completeRegistration = createMutation(() => ({
 	mutationFn: async (paymentIntentId: string) => {
-		const response = await fetch(
-			`/api/workshops/${workshopId}/register/complete`,
-			{
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({
-					paymentIntentId,
-				}),
-			},
-		);
-
-		if (!response.ok) {
-			const errorData = (await response.json()) as { error?: string };
-			throw new Error(errorData.error || "Failed to complete registration");
-		}
-
-		return response.json();
+		return completeRegistrationRPC({ workshopId, paymentIntentId });
 	},
 	onSuccess: () => {
 		success = true;
-		// Invalidate workshop queries to refresh UI
 		queryClient.invalidateQueries({ queryKey: ["workshops"] });
 		onSuccess?.();
 	},

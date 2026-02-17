@@ -38,6 +38,7 @@ export const load: PageServerLoad = async ({ params, platform, cookies }) => {
 			...getNextBillingDates(),
 		};
 	} catch (err) {
+		console.error("[+page.server.ts] Load error:", err);
 		Sentry.captureException(err);
 		error(404, {
 			message: "Something went wrong",

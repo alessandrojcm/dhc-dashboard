@@ -16,6 +16,15 @@ export const memberSignupSchema = v.object({
 	couponCode: v.optional(v.string()),
 });
 
+export const memberSignupClientSchema = v.object({
+	nextOfKin: v.pipe(v.string(), v.nonEmpty("Please enter your next of kin.")),
+	nextOfKinNumber: phoneNumberValidator(
+		"Phone number of your next of kin is required.",
+	),
+	stripeConfirmationToken: v.optional(v.string()),
+	couponCode: v.optional(v.string()),
+});
+
 const formSchema = v.object({
 	...beginnersWaitlist.entries,
 	...v.omit(memberSignupSchema, ["stripeConfirmationToken"]).entries,

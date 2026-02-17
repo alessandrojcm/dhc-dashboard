@@ -1,8 +1,3 @@
-/**
- * Registration Service
- * Handles workshop registration queries and management
- */
-
 import type {
 	Kysely,
 	KyselyDatabase,
@@ -11,15 +6,18 @@ import type {
 	Transaction,
 } from "../shared";
 import { executeWithRLS } from "../shared";
+import { stripeClient } from "$lib/server/stripe";
 import type {
 	Registration,
 	RegistrationFilters,
 	RegistrationWithUser,
+	Interest,
+	ToggleInterestResult,
+	CreatePaymentIntentInput,
+	CreatePaymentIntentResult,
+	CompleteRegistrationInput,
+	CancelRegistrationResult,
 } from "./types";
-
-// ============================================================================
-// Registration Service
-// ============================================================================
 
 export class RegistrationService {
 	private logger: Logger;
@@ -32,13 +30,6 @@ export class RegistrationService {
 		this.logger = logger ?? console;
 	}
 
-	// ========================================================================
-	// Query Methods
-	// ========================================================================
-
-	/**
-	 * Find registration by ID
-	 */
 	async findById(id: string): Promise<Registration> {
 		this.logger.info("Fetching registration by ID", { registrationId: id });
 
@@ -51,9 +42,6 @@ export class RegistrationService {
 		);
 	}
 
-	/**
-	 * Find multiple registrations with optional filters
-	 */
 	async findMany(filters?: RegistrationFilters): Promise<Registration[]> {
 		this.logger.info("Fetching registrations", { filters });
 
@@ -78,9 +66,6 @@ export class RegistrationService {
 		);
 	}
 
-	/**
-	 * Get workshop attendees with user profile data
-	 */
 	async getWorkshopAttendees(
 		workshopId: string,
 	): Promise<RegistrationWithUser[]> {
@@ -128,7 +113,6 @@ export class RegistrationService {
 					.orderBy("car.created_at", "asc")
 					.execute();
 
-				// Transform to include user profile data
 				return attendees.map(
 					(attendee) =>
 						({
@@ -169,13 +153,271 @@ export class RegistrationService {
 		);
 	}
 
-	// ========================================================================
-	// Private Transactional Methods (for cross-service coordination)
-	// ========================================================================
+	async toggleInterest(workshopId: string): Promise<ToggleInterestResult> {
+		this.logger.info("Toggling interest", {
+			workshopId,
+			userId: this.session.user.id,
+		});
 
-	/**
-	 * Internal transactional method for finding registration by ID
-	 */
+		return executeWithRLS(
+			this.kysely,
+			{ claims: this.session },
+			async (trx) => {
+				const workshop = await trx
+					.selectFrom("club_activities")
+					.select(["id", "status"])
+					.where("id", "=", workshopId)
+					.executeTakeFirst();
+
+				if (!workshop) {
+					throw new Error("Workshop not found", {
+						cause: {
+							workshopId,
+							context: "RegistrationService.toggleInterest",
+						},
+					});
+				}
+
+				if (workshop.status !== "planned") {
+					throw new Error("Can only express interest in planned workshops", {
+						cause: {
+							workshopId,
+							status: workshop.status,
+							context: "RegistrationService.toggleInterest",
+						},
+					});
+				}
+
+				const existing = await trx
+					.selectFrom("club_activity_interest")
+					.selectAll()
+					.where("club_activity_id", "=", workshopId)
+					.where("user_id", "=", this.session.user.id)
+					.executeTakeFirst();
+
+				if (existing) {
+					await trx
+						.deleteFrom("club_activity_interest")
+						.where("id", "=", existing.id)
+						.execute();
+					return {
+						interest: null,
+						message: "Interest withdrawn successfully",
+						action: "withdrawn",
+					};
+				}
+
+				const newInterest = await trx
+					.insertInto("club_activity_interest")
+					.values({
+						club_activity_id: workshopId,
+						user_id: this.session.user.id,
+					})
+					.returningAll()
+					.executeTakeFirstOrThrow();
+
+				return {
+					interest: newInterest as Interest,
+					message: "Interest expressed successfully",
+					action: "expressed",
+				};
+			},
+		);
+	}
+
+	async createPaymentIntent(
+		input: CreatePaymentIntentInput,
+	): Promise<CreatePaymentIntentResult> {
+		const { workshopId, amount, currency = "eur", customerId } = input;
+		this.logger.info("Creating payment intent", {
+			workshopId,
+			amount,
+			userId: this.session.user.id,
+		});
+
+		return executeWithRLS(
+			this.kysely,
+			{ claims: this.session },
+			async (trx) => {
+				const workshop = await trx
+					.selectFrom("club_activities")
+					.select(["id", "title", "status", "max_capacity"])
+					.where("id", "=", workshopId)
+					.executeTakeFirst();
+
+				if (!workshop) {
+					throw new Error("Workshop not found", {
+						cause: {
+							workshopId,
+							context: "RegistrationService.createPaymentIntent",
+						},
+					});
+				}
+
+				if (workshop.status !== "published") {
+					throw new Error("Workshop not available for registration", {
+						cause: {
+							workshopId,
+							status: workshop.status,
+							context: "RegistrationService.createPaymentIntent",
+						},
+					});
+				}
+
+				const existingRegistration = await trx
+					.selectFrom("club_activity_registrations")
+					.select(["id"])
+					.where("club_activity_id", "=", workshopId)
+					.where("member_user_id", "=", this.session.user.id)
+					.where("status", "in", ["pending", "confirmed"])
+					.executeTakeFirst();
+
+				if (existingRegistration) {
+					throw new Error("Already registered for this workshop", {
+						cause: {
+							workshopId,
+							context: "RegistrationService.createPaymentIntent",
+						},
+					});
+				}
+
+				if (workshop.max_capacity) {
+					const registrationCount = await trx
+						.selectFrom("club_activity_registrations")
+						.select((eb) => eb.fn.count("id").as("count"))
+						.where("club_activity_id", "=", workshopId)
+						.where("status", "in", ["pending", "confirmed"])
+						.executeTakeFirst();
+
+					if (Number(registrationCount?.count) >= workshop.max_capacity) {
+						throw new Error("Workshop is full", {
+							cause: {
+								workshopId,
+								context: "RegistrationService.createPaymentIntent",
+							},
+						});
+					}
+				}
+
+				const paymentIntent = await stripeClient.paymentIntents.create({
+					amount,
+					currency,
+					metadata: {
+						workshop_id: workshopId,
+						workshop_title: workshop.title,
+						user_id: this.session.user.id,
+						type: "workshop_registration",
+					},
+					automatic_payment_methods: { enabled: false },
+					payment_method_types: ["card", "link"],
+					...(customerId ? { customer: customerId } : {}),
+				});
+
+				return {
+					clientSecret: paymentIntent.client_secret!,
+					paymentIntentId: paymentIntent.id,
+				};
+			},
+		);
+	}
+
+	async completeRegistration(
+		input: CompleteRegistrationInput,
+	): Promise<Registration> {
+		const { workshopId, paymentIntentId } = input;
+		this.logger.info("Completing registration", {
+			workshopId,
+			paymentIntentId,
+			userId: this.session.user.id,
+		});
+
+		const paymentIntent =
+			await stripeClient.paymentIntents.retrieve(paymentIntentId);
+
+		if (paymentIntent.status !== "succeeded") {
+			throw new Error("Payment not completed", {
+				cause: {
+					paymentIntentId,
+					status: paymentIntent.status,
+					context: "RegistrationService.completeRegistration",
+				},
+			});
+		}
+
+		if (paymentIntent.metadata.workshop_id !== workshopId) {
+			throw new Error("Payment intent does not match workshop", {
+				cause: {
+					paymentIntentId,
+					workshopId,
+					context: "RegistrationService.completeRegistration",
+				},
+			});
+		}
+
+		return executeWithRLS(
+			this.kysely,
+			{ claims: this.session },
+			async (trx) => {
+				return await trx
+					.insertInto("club_activity_registrations")
+					.values({
+						club_activity_id: workshopId,
+						member_user_id: this.session.user.id,
+						status: "confirmed",
+						stripe_checkout_session_id: paymentIntentId,
+						amount_paid: paymentIntent.amount,
+						currency: paymentIntent.currency,
+						confirmed_at: new Date().toISOString(),
+						registered_at: new Date().toISOString(),
+					})
+					.returningAll()
+					.executeTakeFirstOrThrow();
+			},
+		);
+	}
+
+	async cancelRegistration(
+		workshopId: string,
+	): Promise<CancelRegistrationResult> {
+		this.logger.info("Cancelling registration", {
+			workshopId,
+			userId: this.session.user.id,
+		});
+
+		return executeWithRLS(
+			this.kysely,
+			{ claims: this.session },
+			async (trx) => {
+				const registration = await trx
+					.selectFrom("club_activity_registrations")
+					.selectAll()
+					.where("club_activity_id", "=", workshopId)
+					.where("member_user_id", "=", this.session.user.id)
+					.where("status", "in", ["pending", "confirmed"])
+					.executeTakeFirst();
+
+				if (!registration) {
+					throw new Error("Registration not found", {
+						cause: {
+							workshopId,
+							userId: this.session.user.id,
+							context: "RegistrationService.cancelRegistration",
+						},
+					});
+				}
+
+				const updated = await trx
+					.updateTable("club_activity_registrations")
+					.set({ status: "cancelled", cancelled_at: new Date().toISOString() })
+					.where("id", "=", registration.id)
+					.returningAll()
+					.executeTakeFirstOrThrow();
+
+				return { registration: updated, refundProcessed: false };
+			},
+		);
+	}
+
 	async _findById(
 		trx: Transaction<KyselyDatabase>,
 		id: string,

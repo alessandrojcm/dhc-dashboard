@@ -22,6 +22,7 @@ import {
 import { toast } from "svelte-sonner";
 import { CalendarDays } from "lucide-svelte";
 import type { ClubActivityWithInterest } from "$lib/types";
+import { toggleInterest } from "./registration.remote";
 
 let { data } = $props();
 let supabase = data.supabase;
@@ -71,27 +72,18 @@ const publishedWorkshopsQuery = createQuery(() => ({
 	},
 }));
 
-// Express/withdraw interest mutation (using thunk pattern)
 const interestMutation = createMutation(() => ({
 	mutationFn: async (workshopId: string) => {
-		const response = await fetch(`/api/workshops/${workshopId}/interest`, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-		});
-
-		if (!response.ok) {
-			const error = (await response.json()) as { message?: string };
-			throw new Error(error.message || "Failed to manage interest");
-		}
-
-		return response.json() as Promise<{ message: string }>;
+		return await toggleInterest(workshopId);
 	},
-	onSuccess: (data: { message: string }) => {
+	onSuccess: (data) => {
 		queryClient.invalidateQueries({ queryKey: ["workshops", "planned"] });
 		toast.success(data.message);
 	},
 	onError: (error) => {
-		toast.error(error.message);
+		toast.error(
+			error instanceof Error ? error.message : "Failed to manage interest",
+		);
 	},
 }));
 

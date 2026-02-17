@@ -397,4 +397,92 @@ export class InvitationService {
 
 		return result;
 	}
+
+	// ========================================================================
+	// Admin Methods
+	// ========================================================================
+
+	async resendInvitations(
+		emails: string[],
+		siteUrl: string,
+	): Promise<{ succeeded: number; failed: number }> {
+		this.logger.info("Resending invitations", { emailCount: emails.length });
+
+		const session = this.requireSession();
+
+		return executeWithRLS(this.kysely, { claims: session }, async (trx) => {
+			const inviteData = await trx
+				.selectFrom("invitations")
+				.select(["email", "invitations.id"])
+				.leftJoin(
+					"user_profiles",
+					"user_profiles.supabase_user_id",
+					"invitations.user_id",
+				)
+				.select(["first_name", "last_name", "date_of_birth"])
+				.where("email", "in", emails)
+				.execute();
+
+			if (inviteData.length === 0) {
+				return { succeeded: 0, failed: emails.length };
+			}
+
+			const payload = inviteData.map((i) => {
+				const invitationLink = new URL(`/members/signup/${i.id}`, siteUrl);
+				invitationLink.searchParams.set(
+					"dateOfBirth",
+					dayjs(i.date_of_birth).format("YYYY-MM-DD"),
+				);
+				invitationLink.searchParams.set("email", i.email);
+
+				return {
+					transactionalId: "inviteMember",
+					email: i.email,
+					dataVariables: {
+						firstName: i.first_name,
+						lastName: i.last_name,
+						invitationLink: invitationLink.toString(),
+					},
+				};
+			});
+
+			await sql`
+				select *
+				from pgmq.send_batch(
+					'email_queue',
+					${payload}::jsonb[]
+				)
+			`.execute(trx);
+
+			const foundEmails = inviteData.map((i) => i.email);
+			await trx
+				.updateTable("invitations")
+				.set({
+					status: "pending",
+					expires_at: dayjs().add(1, "day").toISOString(),
+				})
+				.where("email", "in", foundEmails)
+				.execute();
+
+			return {
+				succeeded: inviteData.length,
+				failed: emails.length - inviteData.length,
+			};
+		});
+	}
+
+	async bulkDelete(invitationIds: string[]): Promise<void> {
+		this.logger.info("Bulk deleting invitations", {
+			count: invitationIds.length,
+		});
+
+		const session = this.requireSession();
+
+		return executeWithRLS(this.kysely, { claims: session }, async (trx) => {
+			await trx
+				.deleteFrom("invitations")
+				.where("id", "in", invitationIds)
+				.execute();
+		});
+	}
 }

@@ -248,7 +248,6 @@ async function processInvitations(
 						},
 					});
 					console.log(`Created Stripe customer for ${inviteData.email}`);
-					console.log(`Creating subscription for ${inviteData.email}`);
 					// Create the user directly instead of using inviteUserByEmail
 					const { data: authData, error: authError } =
 						await supabaseAdmin.auth.admin.createUser({

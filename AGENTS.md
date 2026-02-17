@@ -65,6 +65,33 @@ const result = await service.create(validatedData);
 | Server queries | Kysely + RLS | `executeWithRLS(db, {claims: session}, ...)` |
 | Server mutations | Service layer | Via service class methods |
 
+### Remote Functions (`.remote.ts`)
+
+Remote functions MUST delegate to the service layer:
+
+```typescript
+// In *.remote.ts file
+import { command, getRequestEvent } from '$app/server';
+import { authorize } from '$lib/server/auth';
+import { createWorkshopService } from '$lib/server/services/workshops';
+
+export const deleteWorkshop = command(
+  v.pipe(v.string(), v.uuid()),
+  async (workshopId) => {
+    const { locals, platform } = getRequestEvent();
+    const session = await authorize(locals, WORKSHOP_ROLES);
+    const service = createWorkshopService(platform!, session);
+    await service.delete(workshopId);  // MUST use service
+    return { success: true };
+  }
+);
+```
+
+- **NEVER** use raw Kysely/`executeWithRLS` in remote functions
+- **ALWAYS** instantiate service via factory function
+- Validation handled by Valibot schema (first arg to `command`/`query`)
+- Authorization via `authorize()` or `locals.safeGetSession()`
+
 ### Forms
 
 ALWAYS use Superforms + our form components:
@@ -93,6 +120,7 @@ ALWAYS use Superforms + our form components:
 | `as any`, `@ts-ignore` | Type safety required |
 | Direct Kysely in loaders | Must use `executeWithRLS()` |
 | Skip service layer | ALL mutations through services |
+| Direct Kysely in `.remote.ts` | MUST use service layer |
 | Empty catch blocks | Log to Sentry |
 | `$effect` when `$derived` works | Prefer derived runes |
 
