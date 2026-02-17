@@ -12,6 +12,7 @@
 		"postgres": "https://deno.land/x/postgres@v0.17.0/mod.ts",
 		"kysely": "npm:kysely@^0.28.1",
 		"$shared": "../_shared",
-		"jwt-decode": "npm:jwt-decode"
+		"jwt-decode": "npm:jwt-decode",
+		"kysely-supabase": "npm:kysely-supabase@^0.2.1"
 	}
 }
