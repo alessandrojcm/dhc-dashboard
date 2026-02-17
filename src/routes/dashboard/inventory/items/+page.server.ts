@@ -1,10 +1,10 @@
-import { authorize } from '$lib/server/auth';
-import { INVENTORY_ROLES } from '$lib/server/roles';
-import { createItemService } from '$lib/server/services/inventory';
+import { authorize } from "$lib/server/auth";
+import { INVENTORY_ROLES } from "$lib/server/roles";
+import { createItemService } from "$lib/server/services/inventory";
 
 export const load = async ({
 	locals,
-	platform
+	platform,
 }: {
 	locals: App.Locals;
 	platform: App.Platform;
@@ -17,6 +17,6 @@ export const load = async ({
 
 	return {
 		categories: filterOptions.categories || [],
-		containers: filterOptions.containers || []
+		containers: filterOptions.containers || [],
 	};
 };

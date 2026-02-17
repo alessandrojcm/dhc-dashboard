@@ -5,8 +5,8 @@
 import type {
 	InventoryContainer,
 	InventoryAttributeDefinition,
-	InventoryAttributes
-} from '$lib/types';
+	InventoryAttributes,
+} from "$lib/types";
 
 type ContainerWithChildren = InventoryContainer & {
 	children: ContainerWithChildren[];
@@ -20,7 +20,9 @@ type ContainerWithDisplay = ContainerWithChildren & {
 /**
  * Builds a hierarchical display for container selection with indentation
  */
-export function buildContainerHierarchy(containers: InventoryContainer[]): ContainerWithDisplay[] {
+export function buildContainerHierarchy(
+	containers: InventoryContainer[],
+): ContainerWithDisplay[] {
 	const containerMap = new Map<string, ContainerWithChildren>();
 	const rootContainers: ContainerWithChildren[] = [];
 
@@ -45,14 +47,14 @@ export function buildContainerHierarchy(containers: InventoryContainer[]): Conta
 
 	const flattenWithIndent = (
 		containers: ContainerWithChildren[],
-		level = 0
+		level = 0,
 	): ContainerWithDisplay[] => {
 		const result: ContainerWithDisplay[] = [];
 		containers.forEach((container) => {
 			result.push({
 				...container,
-				displayName: '  '.repeat(level) + container.name,
-				level
+				displayName: "  ".repeat(level) + container.name,
+				level,
 			});
 			if (container.children.length > 0) {
 				result.push(...flattenWithIndent(container.children, level + 1));
@@ -70,7 +72,7 @@ export function buildContainerHierarchy(containers: InventoryContainer[]): Conta
  */
 export function validateCategoryAttributes(
 	categoryAttributes: InventoryAttributeDefinition[],
-	formDataAttributes: InventoryAttributes
+	formDataAttributes: InventoryAttributes,
 ): { errors: Record<string, string>; hasErrors: boolean } {
 	const errors: Record<string, string> = {};
 	let hasErrors = false;
@@ -78,7 +80,7 @@ export function validateCategoryAttributes(
 	categoryAttributes.forEach((attr) => {
 		if (attr.required) {
 			const value = formDataAttributes?.[attr.name];
-			if (!value || value === '' || value === null || value === undefined) {
+			if (!value || value === "" || value === null || value === undefined) {
 				errors[attr.name] = `${attr.label} is required`;
 				hasErrors = true;
 			}
@@ -91,11 +93,13 @@ export function validateCategoryAttributes(
 /**
  * Cleans attributes to only include non-empty values
  */
-export function cleanAttributes(attributes: InventoryAttributes): InventoryAttributes {
+export function cleanAttributes(
+	attributes: InventoryAttributes,
+): InventoryAttributes {
 	const cleaned: InventoryAttributes = {};
 
 	Object.entries(attributes).forEach(([key, value]) => {
-		if (value !== null && value !== undefined && value !== '') {
+		if (value !== null && value !== undefined && value !== "") {
 			cleaned[key] = value;
 		}
 	});
@@ -108,12 +112,18 @@ export function cleanAttributes(attributes: InventoryAttributes): InventoryAttri
  * and initializing new ones with defaults
  */
 export function resetAttributesForCategory(
-	newCategory: { available_attributes?: InventoryAttributeDefinition[] } | null | undefined,
-	currentAttributes: InventoryAttributes
+	newCategory:
+		| { available_attributes?: InventoryAttributeDefinition[] }
+		| null
+		| undefined,
+	currentAttributes: InventoryAttributes,
 ): InventoryAttributes {
 	const newAttributes: InventoryAttributes = {};
 
-	if (newCategory?.available_attributes && Array.isArray(newCategory.available_attributes)) {
+	if (
+		newCategory?.available_attributes &&
+		Array.isArray(newCategory.available_attributes)
+	) {
 		newCategory.available_attributes.forEach((attr) => {
 			// Preserve existing value if it exists
 			if (currentAttributes[attr.name] !== undefined) {

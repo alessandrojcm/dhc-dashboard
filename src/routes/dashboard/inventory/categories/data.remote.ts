@@ -1,13 +1,13 @@
-import { form, getRequestEvent } from '$app/server';
-import { redirect } from '@sveltejs/kit';
-import * as v from 'valibot';
-import { authorize } from '$lib/server/auth';
-import { INVENTORY_ROLES } from '$lib/server/roles';
+import { form, getRequestEvent } from "$app/server";
+import { redirect } from "@sveltejs/kit";
+import * as v from "valibot";
+import { authorize } from "$lib/server/auth";
+import { INVENTORY_ROLES } from "$lib/server/roles";
 import {
 	createCategoryService,
 	CategoryCreateSchema,
-	CategoryUpdateSchema
-} from '$lib/server/services/inventory';
+	CategoryUpdateSchema,
+} from "$lib/server/services/inventory";
 
 export const createCategory = form(CategoryCreateSchema, async (data) => {
 	const event = getRequestEvent();
@@ -16,7 +16,7 @@ export const createCategory = form(CategoryCreateSchema, async (data) => {
 
 	await categoryService.create(data);
 
-	redirect(303, '/dashboard/inventory/categories');
+	redirect(303, "/dashboard/inventory/categories");
 });
 
 export const updateCategory = form(CategoryUpdateSchema, async (data) => {
@@ -27,7 +27,7 @@ export const updateCategory = form(CategoryUpdateSchema, async (data) => {
 
 	await categoryService.update(categoryId!, data);
 
-	redirect(303, '/dashboard/inventory/categories');
+	redirect(303, "/dashboard/inventory/categories");
 });
 
 export const deleteCategory = form(v.object({}), async () => {
@@ -38,5 +38,5 @@ export const deleteCategory = form(v.object({}), async () => {
 
 	await categoryService.delete(categoryId!);
 
-	redirect(303, '/dashboard/inventory/categories');
+	redirect(303, "/dashboard/inventory/categories");
 });

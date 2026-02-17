@@ -23,7 +23,9 @@ test.describe("Invitation System", () => {
 
 	test.afterAll(() => adminData?.cleanUp());
 
-	test("should be able to add an invitation to the list and send it", async ({ page }) => {
+	test("should be able to add an invitation to the list and send it", async ({
+		page,
+	}) => {
 		// Navigate to members page
 		await page.goto("/dashboard/members");
 
@@ -44,15 +46,17 @@ test.describe("Invitation System", () => {
 
 		// Interact with the date picker properly
 		await page.getByLabel("Date of birth").click();
-		await page.getByLabel("Select a year").selectOption(
-			dateOfBirth.year().toString(),
-		);
-		await page.getByLabel("Select a month").selectOption(
-			dateOfBirth.format("M"),
-		);
-		await page.getByRole("button", {
-			name: dateOfBirth.format("dddd, MMMM D,"),
-		}).click();
+		await page
+			.getByLabel("Select a year")
+			.selectOption(dateOfBirth.year().toString());
+		await page
+			.getByLabel("Select a month")
+			.selectOption(dateOfBirth.format("M"));
+		await page
+			.getByRole("button", {
+				name: dateOfBirth.format("dddd, MMMM D,"),
+			})
+			.click();
 
 		// Fill phone number
 		await page.getByLabel("Phone Number").fill("123456789");
@@ -76,7 +80,9 @@ test.describe("Invitation System", () => {
 		).toBeVisible({ timeout: 10000 });
 	});
 
-	test("should validate required fields when adding to list", async ({ page }) => {
+	test("should validate required fields when adding to list", async ({
+		page,
+	}) => {
 		// Navigate to members page
 		await page.goto("/dashboard/members");
 
@@ -91,7 +97,9 @@ test.describe("Invitation System", () => {
 		await expect(page.getByText("Phone Number is required")).toBeVisible();
 	});
 
-	test("should be able to add multiple invitations to the list and send them", async ({ page }) => {
+	test("should be able to add multiple invitations to the list and send them", async ({
+		page,
+	}) => {
 		// Navigate to members page
 		await page.goto("/dashboard/members");
 
@@ -109,15 +117,17 @@ test.describe("Invitation System", () => {
 
 		// Interact with the date picker properly
 		await page.getByLabel("Date of birth").click();
-		await page.getByLabel("Select a year").selectOption(
-			dateOfBirth.year().toString(),
-		);
-		await page.getByLabel("Select a month").selectOption(
-			dateOfBirth.format("M"),
-		);
-		await page.getByRole("button", {
-			name: dateOfBirth.format("dddd, MMMM D,"),
-		}).click();
+		await page
+			.getByLabel("Select a year")
+			.selectOption(dateOfBirth.year().toString());
+		await page
+			.getByLabel("Select a month")
+			.selectOption(dateOfBirth.format("M"));
+		await page
+			.getByRole("button", {
+				name: dateOfBirth.format("dddd, MMMM D,"),
+			})
+			.click();
 
 		await page.getByLabel("Phone Number").fill("123456789");
 
@@ -138,15 +148,17 @@ test.describe("Invitation System", () => {
 
 		// Interact with the date picker properly
 		await page.getByLabel("Date of birth").click();
-		await page.getByLabel("Select a year").selectOption(
-			dateOfBirth2.year().toString(),
-		);
-		await page.getByLabel("Select a month").selectOption(
-			dateOfBirth2.format("M"),
-		);
-		await page.getByRole("button", {
-			name: dateOfBirth2.format("dddd, MMMM D,"),
-		}).click();
+		await page
+			.getByLabel("Select a year")
+			.selectOption(dateOfBirth2.year().toString());
+		await page
+			.getByLabel("Select a month")
+			.selectOption(dateOfBirth2.format("M"));
+		await page
+			.getByRole("button", {
+				name: dateOfBirth2.format("dddd, MMMM D,"),
+			})
+			.click();
 
 		await page.getByLabel("Phone Number").fill("987654321");
 
@@ -172,7 +184,9 @@ test.describe("Invitation System", () => {
 		).toBeVisible({ timeout: 10000 });
 	});
 
-	test("should be able to remove invitations from the list", async ({ page }) => {
+	test("should be able to remove invitations from the list", async ({
+		page,
+	}) => {
 		// Navigate to members page
 		await page.goto("/dashboard/members");
 
@@ -190,15 +204,17 @@ test.describe("Invitation System", () => {
 
 		// Interact with the date picker properly
 		await page.getByLabel("Date of birth").click();
-		await page.getByLabel("Select a year").selectOption(
-			dateOfBirth.year().toString(),
-		);
-		await page.getByLabel("Select a month").selectOption(
-			dateOfBirth.format("M"),
-		);
-		await page.getByRole("button", {
-			name: dateOfBirth.format("dddd, MMMM D,"),
-		}).click();
+		await page
+			.getByLabel("Select a year")
+			.selectOption(dateOfBirth.year().toString());
+		await page
+			.getByLabel("Select a month")
+			.selectOption(dateOfBirth.format("M"));
+		await page
+			.getByRole("button", {
+				name: dateOfBirth.format("dddd, MMMM D,"),
+			})
+			.click();
 
 		await page.getByLabel("Phone Number").fill("123456789");
 
@@ -216,15 +232,17 @@ test.describe("Invitation System", () => {
 
 		// Interact with the date picker properly
 		await page.getByLabel("Date of birth").click();
-		await page.getByLabel("Select a year").selectOption(
-			dateOfBirth2.year().toString(),
-		);
-		await page.getByLabel("Select a month").selectOption(
-			dateOfBirth2.format("M"),
-		);
-		await page.getByRole("button", {
-			name: dateOfBirth2.format("dddd, MMMM D,"),
-		}).click();
+		await page
+			.getByLabel("Select a year")
+			.selectOption(dateOfBirth2.year().toString());
+		await page
+			.getByLabel("Select a month")
+			.selectOption(dateOfBirth2.format("M"));
+		await page
+			.getByRole("button", {
+				name: dateOfBirth2.format("dddd, MMMM D,"),
+			})
+			.click();
 		await page.getByLabel("Phone Number").fill("123456789");
 		// Click "Add to List" button
 		await page.getByRole("button", { name: "Add to List" }).click();
@@ -259,24 +277,24 @@ test.describe("Invitation System", () => {
 		// Fill out the invitation form with invalid email
 		await page.getByLabel("First Name").fill(faker.person.firstName());
 		await page.getByLabel("Last Name").fill(faker.person.lastName());
-		await page.getByRole("textbox", { name: "Email" }).fill(
-			"invalid-email",
-		);
+		await page.getByRole("textbox", { name: "Email" }).fill("invalid-email");
 
 		// Set date of birth
 		const dateOfBirth = dayjs().subtract(25, "year");
 
 		// Interact with the date picker properly
 		await page.getByLabel("Date of birth").click();
-		await page.getByLabel("Select a year").selectOption(
-			dateOfBirth.year().toString(),
-		);
-		await page.getByLabel("Select a month").selectOption(
-			dateOfBirth.format("M"),
-		);
-		await page.getByRole("button", {
-			name: dateOfBirth.format("dddd, MMMM D,"),
-		}).click();
+		await page
+			.getByLabel("Select a year")
+			.selectOption(dateOfBirth.year().toString());
+		await page
+			.getByLabel("Select a month")
+			.selectOption(dateOfBirth.format("M"));
+		await page
+			.getByRole("button", {
+				name: dateOfBirth.format("dddd, MMMM D,"),
+			})
+			.click();
 
 		await page.getByLabel("Phone Number").fill("123456789");
 
@@ -287,7 +305,10 @@ test.describe("Invitation System", () => {
 		await expect(page.getByText(/email is invalid/i)).toBeVisible();
 	});
 
-	test("should test permissions - regular member cannot invite", async ({ page, context }) => {
+	test("should test permissions - regular member cannot invite", async ({
+		page,
+		context,
+	}) => {
 		// Create a regular member with unique email
 		const uniqueEmail = `regular-member-${Date.now()}@test.com`;
 		const memberData = await createMember({
@@ -303,15 +324,19 @@ test.describe("Invitation System", () => {
 			await page.goto("/dashboard/members");
 
 			// Verify the invite button is not visible
-			await expect(page.getByRole("button", { name: "Invite Members" }))
-				.not.toBeVisible();
+			await expect(
+				page.getByRole("button", { name: "Invite Members" }),
+			).not.toBeVisible();
 		} finally {
 			// Clean up the test member
 			await memberData.cleanUp();
 		}
 	});
 
-	test("should test permissions - committee coordinator can invite", async ({ page, context }) => {
+	test("should test permissions - committee coordinator can invite", async ({
+		page,
+		context,
+	}) => {
 		// Create a committee coordinator with unique email
 		const uniqueEmail = `coordinator-${Date.now()}@test.com`;
 		const coordinatorData = await createMember({
@@ -327,8 +352,9 @@ test.describe("Invitation System", () => {
 			await page.goto("/dashboard/members");
 
 			// Verify the invite button is visible
-			await expect(page.getByRole("button", { name: "Invite Members" }))
-				.toBeVisible();
+			await expect(
+				page.getByRole("button", { name: "Invite Members" }),
+			).toBeVisible();
 
 			// Test basic invite functionality
 			await page.getByRole("button", { name: "Invite Members" }).click();
@@ -344,15 +370,17 @@ test.describe("Invitation System", () => {
 
 			// Interact with the date picker properly
 			await page.getByLabel("Date of birth").click();
-			await page.getByLabel("Select a year").selectOption(
-				dateOfBirth.year().toString(),
-			);
-			await page.getByLabel("Select a month").selectOption(
-				dateOfBirth.format("M"),
-			);
-			await page.getByRole("button", {
-				name: dateOfBirth.format("dddd, MMMM D,"),
-			}).click();
+			await page
+				.getByLabel("Select a year")
+				.selectOption(dateOfBirth.year().toString());
+			await page
+				.getByLabel("Select a month")
+				.selectOption(dateOfBirth.format("M"));
+			await page
+				.getByRole("button", {
+					name: dateOfBirth.format("dddd, MMMM D,"),
+				})
+				.click();
 
 			await page.getByLabel("Phone Number").fill("123456789");
 

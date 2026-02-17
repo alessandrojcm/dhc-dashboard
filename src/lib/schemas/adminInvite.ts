@@ -16,7 +16,7 @@ const adminInviteSchema = v.object({
 
 const adminInviteRemoteSchema = v.object({
 	...adminInviteSchema.entries,
-	dateOfBirth: v.pipe(v.string(), v.nonEmpty('Date of birth is required.'))
+	dateOfBirth: v.pipe(v.string(), v.nonEmpty("Date of birth is required.")),
 });
 
 const bulkInviteSchema = v.object({
@@ -24,10 +24,15 @@ const bulkInviteSchema = v.object({
 });
 
 const bulkInviteRemoteSchema = v.object({
-	invites: v.pipe(v.array(adminInviteRemoteSchema), v.minLength(1))
+	invites: v.pipe(v.array(adminInviteRemoteSchema), v.minLength(1)),
 });
 
-export { adminInviteSchema, adminInviteRemoteSchema, bulkInviteSchema, bulkInviteRemoteSchema };
+export {
+	adminInviteSchema,
+	adminInviteRemoteSchema,
+	bulkInviteSchema,
+	bulkInviteRemoteSchema,
+};
 export type BulkInviteSchema = v.InferInput<typeof bulkInviteSchema>;
 export type BulkInviteSchemaOutput = v.InferOutput<typeof bulkInviteSchema>;
 export type AdminInviteSchema = v.InferInput<typeof adminInviteSchema>;

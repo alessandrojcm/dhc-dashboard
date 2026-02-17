@@ -1,14 +1,14 @@
 <script lang="ts">
-	import WorkshopForm from '$lib/components/workshop-form.svelte';
-	import { Button } from '$lib/components/ui/button';
-	import { goto } from '$app/navigation';
-	import { resolve } from '$app/paths';
+import WorkshopForm from "$lib/components/workshop-form.svelte";
+import { Button } from "$lib/components/ui/button";
+import { goto } from "$app/navigation";
+import { resolve } from "$app/paths";
 
-	const { data } = $props();
+const { data } = $props();
 
-	function handleSuccess() {
-		setTimeout(() => goto(resolve('/dashboard/workshops')), 2000);
-	}
+function handleSuccess() {
+	setTimeout(() => goto(resolve("/dashboard/workshops")), 2000);
+}
 </script>
 
 <div class="mx-auto max-w-4xl space-y-8 p-6">

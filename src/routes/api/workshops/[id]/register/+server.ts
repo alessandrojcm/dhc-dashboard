@@ -1,47 +1,58 @@
-import * as Sentry from '@sentry/sveltekit';
-import { json } from '@sveltejs/kit';
-import { safeParse } from 'valibot';
-import { registrationSchema } from '$lib/schemas/workshop-registration';
-import { getKyselyClient } from '$lib/server/kysely';
-import { stripeClient } from '$lib/server/stripe';
-import { checkRefundEligibility } from '$lib/utils/refund-eligibility';
-import type { RequestHandler } from './$types';
-import { invariant } from '$lib/server/invariant';
+import * as Sentry from "@sentry/sveltekit";
+import { json } from "@sveltejs/kit";
+import { safeParse } from "valibot";
+import { registrationSchema } from "$lib/schemas/workshop-registration";
+import { getKyselyClient } from "$lib/server/kysely";
+import { stripeClient } from "$lib/server/stripe";
+import { checkRefundEligibility } from "$lib/utils/refund-eligibility";
+import type { RequestHandler } from "./$types";
+import { invariant } from "$lib/server/invariant";
 
-export const POST: RequestHandler = async ({ request, params, platform, locals }) => {
+export const POST: RequestHandler = async ({
+	request,
+	params,
+	platform,
+	locals,
+}) => {
 	try {
 		const { id: workshopId } = params;
 		const body = await request.json();
 		const validatedData = safeParse(registrationSchema, body);
 		if (!validatedData.success) {
-			return json({ success: false, error: 'Session required' }, { status: 401 });
+			return json(
+				{ success: false, error: "Session required" },
+				{ status: 401 },
+			);
 		}
 
 		if (!platform?.env?.HYPERDRIVE) {
-			return json({ success: false, error: 'Platform configuration missing' }, { status: 500 });
+			return json(
+				{ success: false, error: "Platform configuration missing" },
+				{ status: 500 },
+			);
 		}
 		const { session } = await locals.safeGetSession();
-		invariant(Boolean(session?.user), 'Unauthorized');
+		invariant(Boolean(session?.user), "Unauthorized");
 
 		const kysely = getKyselyClient(platform.env.HYPERDRIVE);
 		// Handle everything in a single transaction (using superuser permissions to bypass RLS)
 		const result = await kysely.transaction().execute(async (trx) => {
 			// Get registration and workshop details
 			const registrationData = (await trx
-				.selectFrom('club_activity_registrations as car')
-				.innerJoin('club_activities as ca', 'car.club_activity_id', 'ca.id')
+				.selectFrom("club_activity_registrations as car")
+				.innerJoin("club_activities as ca", "car.club_activity_id", "ca.id")
 				.select([
-					'car.id',
-					'car.status as registration_status',
-					'car.stripe_checkout_session_id',
-					'car.amount_paid',
-					'ca.start_date',
-					'ca.refund_days',
-					'ca.status as workshop_status'
+					"car.id",
+					"car.status as registration_status",
+					"car.stripe_checkout_session_id",
+					"car.amount_paid",
+					"ca.start_date",
+					"ca.refund_days",
+					"ca.status as workshop_status",
 				])
-				.where('car.club_activity_id', '=', workshopId)
-				.where('car.member_user_id', '=', session!.user.id)
-				.where('car.status', 'in', ['pending', 'confirmed'])
+				.where("car.club_activity_id", "=", workshopId)
+				.where("car.member_user_id", "=", session!.user.id)
+				.where("car.status", "in", ["pending", "confirmed"])
 				.executeTakeFirst()) as
 				| {
 						id: string;
@@ -55,7 +66,7 @@ export const POST: RequestHandler = async ({ request, params, platform, locals }
 				| undefined;
 
 			if (!registrationData) {
-				throw new Error('Registration not found');
+				throw new Error("Registration not found");
 			}
 
 			// Check refund eligibility
@@ -63,35 +74,35 @@ export const POST: RequestHandler = async ({ request, params, platform, locals }
 				registrationData.start_date,
 				registrationData.refund_days,
 				registrationData.workshop_status,
-				registrationData.registration_status
+				registrationData.registration_status,
 			);
 
 			let refundData = null;
-			let finalStatus: 'cancelled' | 'refunded' = 'cancelled';
+			let finalStatus: "cancelled" | "refunded" = "cancelled";
 
 			if (refundEligibility.isEligible) {
 				// Process refund within the same transaction
-				finalStatus = 'refunded';
+				finalStatus = "refunded";
 
 				// Check if refund already exists
 				const existingRefund = await trx
-					.selectFrom('club_activity_refunds')
-					.select('id')
-					.where('registration_id', '=', registrationData.id)
+					.selectFrom("club_activity_refunds")
+					.select("id")
+					.where("registration_id", "=", registrationData.id)
 					.executeTakeFirst();
 
 				if (existingRefund) {
-					throw new Error('Refund already requested for this registration');
+					throw new Error("Refund already requested for this registration");
 				}
 
 				const refund = await trx
-					.insertInto('club_activity_refunds')
+					.insertInto("club_activity_refunds")
 					.values({
 						registration_id: registrationData.id,
 						refund_amount: registrationData.amount_paid,
-						refund_reason: 'Requested by attendee',
-						status: 'pending',
-						requested_by: session!.user.id
+						refund_reason: "Requested by attendee",
+						status: "pending",
+						requested_by: session!.user.id,
 					})
 					.returningAll()
 					.executeTakeFirstOrThrow();
@@ -101,48 +112,48 @@ export const POST: RequestHandler = async ({ request, params, platform, locals }
 					try {
 						// Get the payment intent from the checkout session
 						const paymentIntent = await stripeClient.paymentIntents.retrieve(
-							registrationData.stripe_checkout_session_id
+							registrationData.stripe_checkout_session_id,
 						);
 
 						if (!paymentIntent) {
-							throw new Error('No payment intent found for checkout session');
+							throw new Error("No payment intent found for checkout session");
 						}
 
 						// Create the refund
 						const stripeRefund = await stripeClient.refunds.create({
 							payment_intent: paymentIntent.id,
 							amount: registrationData.amount_paid,
-							reason: 'requested_by_customer'
+							reason: "requested_by_customer",
 						});
 
 						// Update refund record with Stripe details
 						await trx
-							.updateTable('club_activity_refunds')
+							.updateTable("club_activity_refunds")
 							.set({
 								stripe_refund_id: stripeRefund.id,
-								status: 'processing',
+								status: "processing",
 								processed_at: new Date().toISOString(),
-								processed_by: session!.user.id
+								processed_by: session!.user.id,
 							})
-							.where('id', '=', refund.id)
+							.where("id", "=", refund.id)
 							.execute();
 
 						refundData = {
 							...refund,
 							stripe_refund_id: stripeRefund.id,
-							status: 'processing'
+							status: "processing",
 						};
 					} catch (stripeError) {
 						// Mark refund as failed but don't throw - we'll still cancel the registration
 						await trx
-							.updateTable('club_activity_refunds')
-							.set({ status: 'failed' })
-							.where('id', '=', refund.id)
+							.updateTable("club_activity_refunds")
+							.set({ status: "failed" })
+							.where("id", "=", refund.id)
 							.execute();
 
-						console.error('Stripe refund failed:', stripeError);
+						console.error("Stripe refund failed:", stripeError);
 						Sentry.captureException(stripeError);
-						refundData = { ...refund, status: 'failed' };
+						refundData = { ...refund, status: "failed" };
 						// Continue with cancellation even if Stripe refund fails
 					}
 				} else {
@@ -152,19 +163,19 @@ export const POST: RequestHandler = async ({ request, params, platform, locals }
 
 			// Update registration status (either cancelled or refunded)
 			const updatedRegistration = await trx
-				.updateTable('club_activity_registrations')
+				.updateTable("club_activity_registrations")
 				.set({
 					status: finalStatus,
 					cancelled_at: new Date().toISOString(),
-					updated_at: new Date().toISOString()
+					updated_at: new Date().toISOString(),
 				})
-				.where('id', '=', registrationData.id)
-				.returning(['id'])
+				.where("id", "=", registrationData.id)
+				.returning(["id"])
 				.executeTakeFirst();
 
 			return {
 				registration: { id: updatedRegistration?.id, status: finalStatus },
-				refund: refundData
+				refund: refundData,
 			};
 		});
 
@@ -174,7 +185,7 @@ export const POST: RequestHandler = async ({ request, params, platform, locals }
 			refund?: typeof result.refund;
 		} = {
 			success: true,
-			registration: result.registration
+			registration: result.registration,
 		};
 
 		if (result.refund) {
@@ -184,9 +195,10 @@ export const POST: RequestHandler = async ({ request, params, platform, locals }
 		return json(response);
 	} catch (error) {
 		Sentry.captureException(error);
-		console.error('Registration cancellation error:', error);
+		console.error("Registration cancellation error:", error);
 
-		const errorMessage = error instanceof Error ? error.message : 'Cancellation failed';
+		const errorMessage =
+			error instanceof Error ? error.message : "Cancellation failed";
 		return json({ success: false, error: errorMessage }, { status: 500 });
 	}
 };

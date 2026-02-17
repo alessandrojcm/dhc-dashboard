@@ -1,162 +1,170 @@
 <script lang="ts">
-    import {createMutation} from '@tanstack/svelte-query';
-    import {Button} from '$lib/components/ui/button';
-    import * as ButtonGroup from '$lib/components/ui/button-group';
-    import {Badge} from '$lib/components/ui/badge';
-    import {Checkbox} from '$lib/components/ui/checkbox';
-    import * as Popover from '$lib/components/ui/popover';
-    import {toast} from 'svelte-sonner';
-    import {Check, DollarSign, User, CheckCheck} from 'lucide-svelte';
-    import {checkRefundEligibility} from '$lib/utils/refund-eligibility';
+import { createMutation } from "@tanstack/svelte-query";
+import { Button } from "$lib/components/ui/button";
+import * as ButtonGroup from "$lib/components/ui/button-group";
+import { Badge } from "$lib/components/ui/badge";
+import { Checkbox } from "$lib/components/ui/checkbox";
+import * as Popover from "$lib/components/ui/popover";
+import { toast } from "svelte-sonner";
+import { Check, DollarSign, User, CheckCheck } from "lucide-svelte";
+import { checkRefundEligibility } from "$lib/utils/refund-eligibility";
 
-    interface Props {
-        attendees: any[]; // eslint-disable-line @typescript-eslint/no-explicit-any
-        refunds: any[]; // eslint-disable-line @typescript-eslint/no-explicit-any
-        workshop: any; // eslint-disable-line @typescript-eslint/no-explicit-any
-        workshopId?: string;
-        onAttendanceUpdated?: () => void;
-        onRefundProcessed?: () => void;
-    }
+interface Props {
+	attendees: any[]; // eslint-disable-line @typescript-eslint/no-explicit-any
+	refunds: any[]; // eslint-disable-line @typescript-eslint/no-explicit-any
+	workshop: any; // eslint-disable-line @typescript-eslint/no-explicit-any
+	workshopId?: string;
+	onAttendanceUpdated?: () => void;
+	onRefundProcessed?: () => void;
+}
 
-    let {attendees, refunds, workshop, workshopId, onAttendanceUpdated, onRefundProcessed}: Props =
-        $props();
+let {
+	attendees,
+	refunds,
+	workshop,
+	workshopId,
+	onAttendanceUpdated,
+	onRefundProcessed,
+}: Props = $props();
 
-    let refundPopoverOpen = $state(false);
-    let attendeeIdForRefund = $state('');
-    let selectedAttendees = $state<string[]>([]);
+let refundPopoverOpen = $state(false);
+let attendeeIdForRefund = $state("");
+let selectedAttendees = $state<string[]>([]);
 
-    const unattendedAttendees = $derived(attendees.filter((a) => a.attendance_status !== 'attended'));
+const unattendedAttendees = $derived(
+	attendees.filter((a) => a.attendance_status !== "attended"),
+);
 
-    const allSelected = $derived(
-        unattendedAttendees.length > 0 &&
-        unattendedAttendees.every((a) => selectedAttendees.includes(a.id))
-    );
+const allSelected = $derived(
+	unattendedAttendees.length > 0 &&
+		unattendedAttendees.every((a) => selectedAttendees.includes(a.id)),
+);
 
-    function toggleSelectAll() {
-        if (allSelected) {
-            selectedAttendees = [];
-        } else {
-            selectedAttendees = unattendedAttendees.map((a) => a.id);
-        }
-    }
+function toggleSelectAll() {
+	if (allSelected) {
+		selectedAttendees = [];
+	} else {
+		selectedAttendees = unattendedAttendees.map((a) => a.id);
+	}
+}
 
-    function toggleAttendee(id: string) {
-        if (selectedAttendees.includes(id)) {
-            selectedAttendees = selectedAttendees.filter((sid) => sid !== id);
-        } else {
-            selectedAttendees = [...selectedAttendees, id];
-        }
-    }
+function toggleAttendee(id: string) {
+	if (selectedAttendees.includes(id)) {
+		selectedAttendees = selectedAttendees.filter((sid) => sid !== id);
+	} else {
+		selectedAttendees = [...selectedAttendees, id];
+	}
+}
 
-    const markAttendedMutation = createMutation(() => ({
-        mutationFn: async (registrationIds: string[]) => {
-            const response = await fetch(`/api/workshops/${workshopId}/attendance`, {
-                method: 'PUT',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    attendance_updates: registrationIds.map((id) => ({
-                        registration_id: id,
-                        attendance_status: 'attended',
-                        notes: ''
-                    }))
-                })
-            });
+const markAttendedMutation = createMutation(() => ({
+	mutationFn: async (registrationIds: string[]) => {
+		const response = await fetch(`/api/workshops/${workshopId}/attendance`, {
+			method: "PUT",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				attendance_updates: registrationIds.map((id) => ({
+					registration_id: id,
+					attendance_status: "attended",
+					notes: "",
+				})),
+			}),
+		});
 
-            if (!response.ok) {
-                const error = (await response.json()) as { error?: string };
-                throw new Error(error.error || 'Failed to mark attendance');
-            }
+		if (!response.ok) {
+			const error = (await response.json()) as { error?: string };
+			throw new Error(error.error || "Failed to mark attendance");
+		}
 
-            return response.json();
-        },
-        onSuccess: () => {
-            selectedAttendees = [];
-            onAttendanceUpdated?.();
-            toast.success('Marked as attended');
-        },
-        onError: (error: Error) => {
-            toast.error(error.message);
-        }
-    }));
+		return response.json();
+	},
+	onSuccess: () => {
+		selectedAttendees = [];
+		onAttendanceUpdated?.();
+		toast.success("Marked as attended");
+	},
+	onError: (error: Error) => {
+		toast.error(error.message);
+	},
+}));
 
-    const processRefundMutation = createMutation(() => ({
-        mutationFn: async (registrationId: string) => {
-            const response = await fetch(`/api/workshops/${workshopId}/refunds`, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    registration_id: registrationId,
-                    reason: 'Requested by user'
-                })
-            });
+const processRefundMutation = createMutation(() => ({
+	mutationFn: async (registrationId: string) => {
+		const response = await fetch(`/api/workshops/${workshopId}/refunds`, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				registration_id: registrationId,
+				reason: "Requested by user",
+			}),
+		});
 
-            if (!response.ok) {
-                const error = (await response.json()) as { error?: string };
-                throw new Error(error.error || 'Failed to process refund');
-            }
+		if (!response.ok) {
+			const error = (await response.json()) as { error?: string };
+			throw new Error(error.error || "Failed to process refund");
+		}
 
-            return response.json();
-        },
-        onSuccess: () => {
-            attendeeIdForRefund = '';
-            refundPopoverOpen = false;
-            onRefundProcessed?.();
-            toast.success('Refund processed');
-        },
-        onError: (error: Error) => {
-            toast.error(error.message);
-        }
-    }));
+		return response.json();
+	},
+	onSuccess: () => {
+		attendeeIdForRefund = "";
+		refundPopoverOpen = false;
+		onRefundProcessed?.();
+		toast.success("Refund processed");
+	},
+	onError: (error: Error) => {
+		toast.error(error.message);
+	},
+}));
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    function getAttendeeDisplayName(attendee: any) {
-        return attendee.user_profiles?.first_name
-            ? `${attendee.user_profiles.first_name} ${attendee.user_profiles.last_name}`
-            : `${attendee.external_users?.first_name} ${attendee.external_users?.last_name}`;
-    }
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function getAttendeeDisplayName(attendee: any) {
+	return attendee.user_profiles?.first_name
+		? `${attendee.user_profiles.first_name} ${attendee.user_profiles.last_name}`
+		: `${attendee.external_users?.first_name} ${attendee.external_users?.last_name}`;
+}
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    function getAttendeeEmail(attendee: any) {
-        return attendee.user_profiles?.email || attendee.external_users?.email;
-    }
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function getAttendeeEmail(attendee: any) {
+	return attendee.user_profiles?.email || attendee.external_users?.email;
+}
 
-    function getStatusBadgeVariant(status: string) {
-        switch (status) {
-            case 'attended':
-                return 'default';
-            case 'no_show':
-                return 'destructive';
-            case 'excused':
-                return 'secondary';
-            default:
-                return 'outline';
-        }
-    }
+function getStatusBadgeVariant(status: string) {
+	switch (status) {
+		case "attended":
+			return "default";
+		case "no_show":
+			return "destructive";
+		case "excused":
+			return "secondary";
+		default:
+			return "outline";
+	}
+}
 
-    function getRefund(attendeeId: string) {
-        return refunds.find((refund) => refund.registration_id === attendeeId);
-    }
+function getRefund(attendeeId: string) {
+	return refunds.find((refund) => refund.registration_id === attendeeId);
+}
 
-    function formatCurrency(amount: number) {
-        return new Intl.NumberFormat('en-IE', {
-            style: 'currency',
-            currency: 'EUR'
-        }).format(amount);
-    }
+function formatCurrency(amount: number) {
+	return new Intl.NumberFormat("en-IE", {
+		style: "currency",
+		currency: "EUR",
+	}).format(amount);
+}
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    function getRefundEligibility(attendee: any) {
-        return checkRefundEligibility(
-            workshop.start_date,
-            workshop.refund_days,
-            workshop.status,
-            attendee.status
-        );
-    }
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function getRefundEligibility(attendee: any) {
+	return checkRefundEligibility(
+		workshop.start_date,
+		workshop.refund_days,
+		workshop.status,
+		attendee.status,
+	);
+}
 
-    function confirmRefund() {
-        processRefundMutation.mutate(attendeeIdForRefund);
-    }
+function confirmRefund() {
+	processRefundMutation.mutate(attendeeIdForRefund);
+}
 </script>
 
 <div class="space-y-3">

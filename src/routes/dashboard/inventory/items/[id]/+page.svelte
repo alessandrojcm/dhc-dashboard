@@ -1,153 +1,170 @@
 <script lang="ts">
-	import {
-		Card,
-		CardContent,
-		CardDescription,
-		CardHeader,
-		CardTitle
-	} from '$lib/components/ui/card';
-	import { Button } from '$lib/components/ui/button';
-	import { Badge } from '$lib/components/ui/badge';
-	import * as Field from '$lib/components/ui/field';
-	import { Input } from '$lib/components/ui/input';
-	import { Textarea } from '$lib/components/ui/textarea';
-	import { Checkbox } from '$lib/components/ui/checkbox';
-	import { Select, SelectContent, SelectItem, SelectTrigger } from '$lib/components/ui/select';
-	import { Label } from '$lib/components/ui/label';
-	import { toast } from 'svelte-sonner';
-	import { ArrowLeft, Package, Edit, X, FolderOpen, Tags, Clock, Plus } from 'lucide-svelte';
-	import dayjs from 'dayjs';
-	import relativeTime from 'dayjs/plugin/relativeTime';
-	import { buildContainerHierarchy } from '$lib/utils/inventory-form';
-	import { updateItem } from '../data.remote';
-	import { onMount } from 'svelte';
-	import type { InventoryAttributeDefinition } from '$lib/types';
+import {
+	Card,
+	CardContent,
+	CardDescription,
+	CardHeader,
+	CardTitle,
+} from "$lib/components/ui/card";
+import { Button } from "$lib/components/ui/button";
+import { Badge } from "$lib/components/ui/badge";
+import * as Field from "$lib/components/ui/field";
+import { Input } from "$lib/components/ui/input";
+import { Textarea } from "$lib/components/ui/textarea";
+import { Checkbox } from "$lib/components/ui/checkbox";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+} from "$lib/components/ui/select";
+import { Label } from "$lib/components/ui/label";
+import { toast } from "svelte-sonner";
+import {
+	ArrowLeft,
+	Package,
+	Edit,
+	X,
+	FolderOpen,
+	Tags,
+	Clock,
+	Plus,
+} from "lucide-svelte";
+import dayjs from "dayjs";
+import relativeTime from "dayjs/plugin/relativeTime";
+import { buildContainerHierarchy } from "$lib/utils/inventory-form";
+import { updateItem } from "../data.remote";
+import { onMount } from "svelte";
+import type { InventoryAttributeDefinition } from "$lib/types";
 
-	dayjs.extend(relativeTime);
-	let { data } = $props();
-	const { item: initialItem, containers, canEdit } = data;
+dayjs.extend(relativeTime);
+let { data } = $props();
+const { item: initialItem, containers, canEdit } = data;
 
-	// Track the current item state (will be updated after successful edits)
-	let currentItem = $state(initialItem);
+// Track the current item state (will be updated after successful edits)
+let currentItem = $state(initialItem);
 
-	// Make history reactive so it updates after invalidateAll
-	const currentHistory = $derived(data.history);
+// Make history reactive so it updates after invalidateAll
+const currentHistory = $derived(data.history);
 
-	let isEditMode = $state(false);
-	let attributeErrors = $state<Record<string, string>>({});
+let isEditMode = $state(false);
+let attributeErrors = $state<Record<string, string>>({});
 
-	// Local state for form fields
-	let containerId = $state(data.initialFormData.container_id);
-	let quantity = $state(data.initialFormData.quantity);
-	let notes = $state(data.initialFormData.notes);
-	let outForMaintenance = $state(data.initialFormData.out_for_maintenance);
-	let attributes = $state<Record<string, unknown>>(data.initialFormData.attributes);
+// Local state for form fields
+let containerId = $state(data.initialFormData.container_id);
+let quantity = $state(data.initialFormData.quantity);
+let notes = $state(data.initialFormData.notes);
+let outForMaintenance = $state(data.initialFormData.out_for_maintenance);
+let attributes = $state<Record<string, unknown>>(
+	data.initialFormData.attributes,
+);
 
-	onMount(() => {
-		updateItem.fields.set({
-			container_id: data.initialFormData.container_id,
-			category_id: data.initialFormData.category_id,
-			quantity: data.initialFormData.quantity,
-			notes: data.initialFormData.notes,
-			out_for_maintenance: data.initialFormData.out_for_maintenance,
-			attributes: data.initialFormData.attributes
-		});
+onMount(() => {
+	updateItem.fields.set({
+		container_id: data.initialFormData.container_id,
+		category_id: data.initialFormData.category_id,
+		quantity: data.initialFormData.quantity,
+		notes: data.initialFormData.notes,
+		out_for_maintenance: data.initialFormData.out_for_maintenance,
+		attributes: data.initialFormData.attributes,
 	});
+});
 
-	// Handle success from form submission
-	$effect(() => {
-		const result = updateItem.result;
-		if (result?.success) {
-			toast.success(result.success, { position: 'top-right' });
-			isEditMode = false;
-		}
-	});
-
-	// Use current item for display
-	const displayItem = $derived(currentItem);
-	const hierarchicalContainers = buildContainerHierarchy(containers);
-
-	// Use the display item's category since it can't be changed
-	const categoryAttributes = $derived(
-		(displayItem.category?.available_attributes as InventoryAttributeDefinition[]) || []
-	);
-	const selectedContainerName = $derived.by(() => {
-		const container = hierarchicalContainers.find((c) => c.id === containerId);
-		return container?.displayName || 'Select a container';
-	});
-
-	const handleEdit = () => {
-		isEditMode = true;
-
-		// Initialize any missing category attributes
-		categoryAttributes.forEach((attr) => {
-			if (attr.name && attributes[attr.name] === undefined) {
-				attributes[attr.name] = attr.default_value ?? undefined;
-			}
-		});
-		updateItem.fields.attributes.set({ ...attributes });
-	};
-
-	const handleCancel = () => {
+// Handle success from form submission
+$effect(() => {
+	const result = updateItem.result;
+	if (result?.success) {
+		toast.success(result.success, { position: "top-right" });
 		isEditMode = false;
-		// Reset to original values
-		containerId = data.initialFormData.container_id;
-		quantity = data.initialFormData.quantity;
-		notes = data.initialFormData.notes;
-		outForMaintenance = data.initialFormData.out_for_maintenance;
-		attributes = { ...data.initialFormData.attributes };
-	};
-
-	function updateAttribute(attrName: string, value: unknown) {
-		attributes[attrName] = value;
-		updateItem.fields.attributes.set({ ...attributes });
-		clearAttributeError(attrName);
 	}
+});
 
-	function clearAttributeError(attrName: string) {
-		if (attributeErrors[attrName]) {
-			const { [attrName]: _removed, ...rest } = attributeErrors;
-			attributeErrors = rest;
+// Use current item for display
+const displayItem = $derived(currentItem);
+const hierarchicalContainers = buildContainerHierarchy(containers);
+
+// Use the display item's category since it can't be changed
+const categoryAttributes = $derived(
+	(displayItem.category
+		?.available_attributes as InventoryAttributeDefinition[]) || [],
+);
+const selectedContainerName = $derived.by(() => {
+	const container = hierarchicalContainers.find((c) => c.id === containerId);
+	return container?.displayName || "Select a container";
+});
+
+const handleEdit = () => {
+	isEditMode = true;
+
+	// Initialize any missing category attributes
+	categoryAttributes.forEach((attr) => {
+		if (attr.name && attributes[attr.name] === undefined) {
+			attributes[attr.name] = attr.default_value ?? undefined;
 		}
+	});
+	updateItem.fields.attributes.set({ ...attributes });
+};
+
+const handleCancel = () => {
+	isEditMode = false;
+	// Reset to original values
+	containerId = data.initialFormData.container_id;
+	quantity = data.initialFormData.quantity;
+	notes = data.initialFormData.notes;
+	outForMaintenance = data.initialFormData.out_for_maintenance;
+	attributes = { ...data.initialFormData.attributes };
+};
+
+function updateAttribute(attrName: string, value: unknown) {
+	attributes[attrName] = value;
+	updateItem.fields.attributes.set({ ...attributes });
+	clearAttributeError(attrName);
+}
+
+function clearAttributeError(attrName: string) {
+	if (attributeErrors[attrName]) {
+		const { [attrName]: _removed, ...rest } = attributeErrors;
+		attributeErrors = rest;
 	}
+}
 
-	const getItemDisplayName = (item: {
-		id: string;
-		attributes?: Record<string, unknown> | null;
-		category?: { name?: string | null } | null;
-	}) => {
-		if (item.attributes?.name) return item.attributes.name;
-		if (item.attributes?.brand && item.attributes?.type) {
-			return `${item.attributes.brand} ${item.attributes.type}`;
-		}
-		return `${item.category?.name || 'Item'} #${item.id.slice(-8)}`;
-	};
+const getItemDisplayName = (item: {
+	id: string;
+	attributes?: Record<string, unknown> | null;
+	category?: { name?: string | null } | null;
+}) => {
+	if (item.attributes?.name) return item.attributes.name;
+	if (item.attributes?.brand && item.attributes?.type) {
+		return `${item.attributes.brand} ${item.attributes.type}`;
+	}
+	return `${item.category?.name || "Item"} #${item.id.slice(-8)}`;
+};
 
-	const getActionIcon = (action: string) => {
-		switch (action) {
-			case 'created':
-				return Plus;
-			case 'moved':
-				return Package;
-			case 'updated':
-				return Clock;
-			default:
-				return Clock;
-		}
-	};
+const getActionIcon = (action: string) => {
+	switch (action) {
+		case "created":
+			return Plus;
+		case "moved":
+			return Package;
+		case "updated":
+			return Clock;
+		default:
+			return Clock;
+	}
+};
 
-	const getActionColor = (action: string) => {
-		switch (action) {
-			case 'created':
-				return 'text-green-600';
-			case 'moved':
-				return 'text-blue-600';
-			case 'updated':
-				return 'text-yellow-600';
-			default:
-				return 'text-gray-600';
-		}
-	};
+const getActionColor = (action: string) => {
+	switch (action) {
+		case "created":
+			return "text-green-600";
+		case "moved":
+			return "text-blue-600";
+		case "updated":
+			return "text-yellow-600";
+		default:
+			return "text-gray-600";
+	}
+};
 </script>
 
 <div class="p-6 pb-24">

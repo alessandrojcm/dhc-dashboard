@@ -1,20 +1,18 @@
 <script lang="ts">
-	import { page } from "$app/state";
-	import { Button } from "$lib/components/ui/button";
-	import { Card } from "$lib/components/ui/card";
-	import { DiscordLogo, ExclamationTriangle } from "svelte-radix";
-	import { Input } from "$lib/components/ui/input";
-	import { Separator } from "$lib/components/ui/separator";
-	import * as Alert from "$lib/components/ui/alert/index.js";
-	import * as Field from "$lib/components/ui/field";
-	import DHCLogo from "/src/assets/images/dhc-logo.png?enhanced";
-	import { magicLinkAuth, discordAuth } from "./data.remote";
+import { page } from "$app/state";
+import { Button } from "$lib/components/ui/button";
+import { Card } from "$lib/components/ui/card";
+import { DiscordLogo, ExclamationTriangle } from "svelte-radix";
+import { Input } from "$lib/components/ui/input";
+import { Separator } from "$lib/components/ui/separator";
+import * as Alert from "$lib/components/ui/alert/index.js";
+import * as Field from "$lib/components/ui/field";
+import DHCLogo from "/src/assets/images/dhc-logo.png?enhanced";
+import { magicLinkAuth, discordAuth } from "./data.remote";
 
-	const hash = $derived(page.url.hash.split("#")[1] as string);
-	let errorMessage = $derived(
-		new URLSearchParams(hash).get("error_description"),
-	);
-	const urlMessage = $derived(page.url.searchParams.get("message"));
+const hash = $derived(page.url.hash.split("#")[1] as string);
+let errorMessage = $derived(new URLSearchParams(hash).get("error_description"));
+const urlMessage = $derived(page.url.searchParams.get("message"));
 </script>
 
 <Card

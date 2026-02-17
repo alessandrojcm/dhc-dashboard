@@ -1,100 +1,106 @@
 <script lang="ts">
-	import * as AlertDialog from '$lib/components/ui/alert-dialog';
-	import { createMutation } from '@tanstack/svelte-query';
-	import {
-		checkRefundEligibility,
-		type RefundEligibilityResult
-	} from '$lib/utils/refund-eligibility';
-	import type { Database } from '$database';
-	import { toast } from 'svelte-sonner';
+import * as AlertDialog from "$lib/components/ui/alert-dialog";
+import { createMutation } from "@tanstack/svelte-query";
+import {
+	checkRefundEligibility,
+	type RefundEligibilityResult,
+} from "$lib/utils/refund-eligibility";
+import type { Database } from "$database";
+import { toast } from "svelte-sonner";
 
-	type ClubActivity = Database['public']['Tables']['club_activities']['Row'];
+type ClubActivity = Database["public"]["Tables"]["club_activities"]["Row"];
 
-	interface Props {
-		workshop: ClubActivity;
-		registrationId: string;
-		registrationStatus: string;
-		open: boolean;
-		onOpenChange: (open: boolean) => void;
-		onSuccess: () => void;
+interface Props {
+	workshop: ClubActivity;
+	registrationId: string;
+	registrationStatus: string;
+	open: boolean;
+	onOpenChange: (open: boolean) => void;
+	onSuccess: () => void;
+}
+
+let {
+	workshop,
+	registrationId,
+	registrationStatus,
+	open,
+	onOpenChange,
+	onSuccess,
+}: Props = $props();
+
+const refundEligibility: RefundEligibilityResult = $derived(
+	checkRefundEligibility(
+		workshop.start_date,
+		workshop.refund_days,
+		workshop.status ?? "planned",
+		registrationStatus,
+	),
+);
+
+const cancelRegistrationMutation = createMutation(() => ({
+	mutationFn: async () => {
+		const response = await fetch(`/api/workshops/${workshop.id}/register`, {
+			method: "DELETE",
+		});
+
+		if (!response.ok) {
+			const error = (await response.json()) as { error?: string };
+			throw new Error(error.error || "Failed to cancel registration");
+		}
+
+		return response.json();
+	},
+	onSuccess: () => {
+		toast.success("Registration cancelled successfully");
+		onSuccess();
+		onOpenChange(false);
+	},
+	onError: (error) => {
+		toast.error(error.message || "Failed to cancel registration");
+	},
+}));
+
+const requestRefundMutation = createMutation(() => ({
+	mutationFn: async () => {
+		const response = await fetch(`/api/workshops/${workshop.id}/refunds`, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify({
+				registration_id: registrationId,
+				reason: "Requested by attendee",
+			}),
+		});
+
+		if (!response.ok) {
+			const error = (await response.json()) as { error?: string };
+			throw new Error(error.error || "Failed to process refund");
+		}
+
+		return response.json();
+	},
+	onSuccess: () => {
+		toast.success("Refund requested successfully");
+		onSuccess();
+		onOpenChange(false);
+	},
+	onError: (error) => {
+		toast.error(error.message || "Failed to process refund");
+	},
+}));
+
+function handleConfirm() {
+	if (refundEligibility.isEligible) {
+		requestRefundMutation.mutate();
+	} else {
+		cancelRegistrationMutation.mutate();
 	}
+}
 
-	let { workshop, registrationId, registrationStatus, open, onOpenChange, onSuccess }: Props =
-		$props();
-
-	const refundEligibility: RefundEligibilityResult = $derived(
-		checkRefundEligibility(
-			workshop.start_date,
-			workshop.refund_days,
-			workshop.status ?? 'planned',
-			registrationStatus
-		)
-	);
-
-	const cancelRegistrationMutation = createMutation(() => ({
-		mutationFn: async () => {
-			const response = await fetch(`/api/workshops/${workshop.id}/register`, {
-				method: 'DELETE'
-			});
-
-			if (!response.ok) {
-				const error = (await response.json()) as { error?: string };
-				throw new Error(error.error || 'Failed to cancel registration');
-			}
-
-			return response.json();
-		},
-		onSuccess: () => {
-			toast.success('Registration cancelled successfully');
-			onSuccess();
-			onOpenChange(false);
-		},
-		onError: (error) => {
-			toast.error(error.message || 'Failed to cancel registration');
-		}
-	}));
-
-	const requestRefundMutation = createMutation(() => ({
-		mutationFn: async () => {
-			const response = await fetch(`/api/workshops/${workshop.id}/refunds`, {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json'
-				},
-				body: JSON.stringify({
-					registration_id: registrationId,
-					reason: 'Requested by attendee'
-				})
-			});
-
-			if (!response.ok) {
-				const error = (await response.json()) as { error?: string };
-				throw new Error(error.error || 'Failed to process refund');
-			}
-
-			return response.json();
-		},
-		onSuccess: () => {
-			toast.success('Refund requested successfully');
-			onSuccess();
-			onOpenChange(false);
-		},
-		onError: (error) => {
-			toast.error(error.message || 'Failed to process refund');
-		}
-	}));
-
-	function handleConfirm() {
-		if (refundEligibility.isEligible) {
-			requestRefundMutation.mutate();
-		} else {
-			cancelRegistrationMutation.mutate();
-		}
-	}
-
-	const isLoading = $derived(
-		cancelRegistrationMutation.isPending || requestRefundMutation.isPending
-	);
+const isLoading = $derived(
+	cancelRegistrationMutation.isPending || requestRefundMutation.isPending,
+);
 </script>
 
 <AlertDialog.Root {open} {onOpenChange}>
