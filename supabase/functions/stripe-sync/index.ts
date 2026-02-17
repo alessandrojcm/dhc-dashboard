@@ -18,6 +18,7 @@ const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") ?? "", {
 
 const MEMBERSHIP_LOOKUP_KEY = "standard_membership_fee";
 const MONTHLY_PRICE_SETTING_KEY = "stripe_monthly_price_id";
+const STRIPE_SYNC_DEBUG = Deno.env.get("STRIPE_SYNC_DEBUG") === "true";
 const INACTIVE_STATUSES = new Set<Stripe.Subscription.Status>([
 	"canceled",
 	"incomplete_expired",
@@ -44,6 +45,26 @@ type SyncAction = "inactive" | "paused" | "active" | "unchanged";
 
 type StripeSyncExecutor = Pick<typeof db, "updateTable" | "selectFrom">;
 
+function logInfo(message: string, context?: Record<string, unknown>) {
+	if (context) {
+		console.log(`[stripe-sync] ${message}`, context);
+		return;
+	}
+
+	console.log(`[stripe-sync] ${message}`);
+}
+
+function logDebug(message: string, context?: Record<string, unknown>) {
+	if (!STRIPE_SYNC_DEBUG) return;
+
+	if (context) {
+		console.log(`[stripe-sync:debug] ${message}`, context);
+		return;
+	}
+
+	console.log(`[stripe-sync:debug] ${message}`);
+}
+
 async function setUserInactive(
 	executor: StripeSyncExecutor,
 	customerId: string,
@@ -59,16 +80,31 @@ async function getTargetCustomerIds(
 	requestCustomerIds?: string[],
 ): Promise<string[]> {
 	if (requestCustomerIds && requestCustomerIds.length > 0) {
-		return Array.from(
+		const deduped = Array.from(
 			new Set(
 				requestCustomerIds
 					.map((customerId) => customerId.trim())
 					.filter((customerId) => customerId.length > 0),
 			),
 		);
+
+		logInfo("Using manually provided customer IDs", {
+			inputCount: requestCustomerIds.length,
+			targetCount: deduped.length,
+		});
+
+		logDebug("Manual customer IDs", {
+			customerIds: deduped,
+		});
+
+		return deduped;
 	}
 
 	const staleBefore = dayjs().subtract(1, "day").toDate();
+	logDebug("Selecting stale customers", {
+		staleBefore: staleBefore.toISOString(),
+	});
+
 	const rows = await db
 		.selectFrom("user_profiles as up")
 		.innerJoin("member_profiles as mp", "mp.user_profile_id", "up.id")
@@ -77,11 +113,16 @@ async function getTargetCustomerIds(
 		.where("up.customer_id", "!=", "")
 		.where((eb) =>
 			eb.or([
-				eb("mp.updated_at", "is", null),
-				eb("mp.updated_at", "<", staleBefore),
+				eb("mp.last_payment_date", "is", null),
+				eb("mp.last_payment_date", "<", staleBefore),
 			]),
 		)
 		.execute();
+
+	logInfo("Resolved stale customer IDs", {
+		targetCount: rows.length,
+		staleBefore: staleBefore.toISOString(),
+	});
 
 	return rows
 		.map((row) => row.customer_id)
@@ -98,8 +139,16 @@ async function getMembershipPriceId(): Promise<string> {
 	if (cached?.value && cached.updated_at) {
 		const isFresh = dayjs().diff(dayjs(cached.updated_at), "hour") <= 24;
 		if (isFresh) {
+			logDebug("Using cached Stripe membership price ID", {
+				priceId: cached.value,
+				updatedAt: cached.updated_at,
+			});
 			return cached.value;
 		}
+
+		logInfo("Stripe membership price cache is stale", {
+			updatedAt: cached.updated_at,
+		});
 	}
 
 	const prices = await stripe.prices.list({
@@ -115,6 +164,8 @@ async function getMembershipPriceId(): Promise<string> {
 	}
 
 	const priceId = prices.data[0].id;
+	logInfo("Fetched Stripe membership price ID", { priceId });
+
 	await db.transaction().execute(async (trx) => {
 		await trx
 			.updateTable("settings")
@@ -139,16 +190,30 @@ async function getLatestMembershipSubscriptionByCustomer(
 	const latestByCustomer = new Map<string, Stripe.Subscription>();
 	let scanned = 0;
 	let startingAfter: string | undefined;
+	let pageNumber = 0;
+
+	logInfo("Fetching Stripe subscriptions for target customers", {
+		targetCustomers: targetCustomerIds.size,
+		priceId,
+	});
 
 	while (true) {
+		pageNumber += 1;
 		const page = await stripe.subscriptions.list({
 			status: "all",
 			price: priceId,
+			expand: ["data.latest_invoice"],
 			limit: 100,
 			starting_after: startingAfter,
 		});
 
 		scanned += page.data.length;
+		logDebug("Processed Stripe subscriptions page", {
+			pageNumber,
+			pageSize: page.data.length,
+			hasMore: page.has_more,
+			scanned,
+		});
 
 		for (const subscription of page.data) {
 			const customerId =
@@ -176,7 +241,25 @@ async function getLatestMembershipSubscriptionByCustomer(
 		}
 	}
 
+	logInfo("Completed Stripe subscription scan", {
+		scanned,
+		matchedCustomers: latestByCustomer.size,
+	});
+
 	return { latestByCustomer, scanned };
+}
+
+function resolveLastPaymentDate(subscription: Stripe.Subscription): Date {
+	const latestInvoice =
+		typeof subscription.latest_invoice === "string" ||
+		subscription.latest_invoice === null
+			? null
+			: subscription.latest_invoice;
+
+	const paidAt = latestInvoice?.status_transitions?.paid_at ?? null;
+	const paymentTimestamp = paidAt ?? subscription.start_date;
+
+	return dayjs.unix(paymentTimestamp).toDate();
 }
 
 async function syncCustomer(
@@ -189,6 +272,10 @@ async function syncCustomer(
 			INACTIVE_STATUSES.has(standardMembershipSub.status)
 		) {
 			await setUserInactive(trx, customerId);
+			logDebug("Marked customer inactive", {
+				customerId,
+				subscriptionStatus: standardMembershipSub?.status ?? "missing",
+			});
 			return "inactive";
 		}
 
@@ -213,18 +300,22 @@ async function syncCustomer(
 			console.log(
 				`Subscription paused for customer: ${customerId} until ${resumeDate}`,
 			);
+			logDebug("Marked customer as paused", {
+				customerId,
+				resumeDate: resumeDate?.toISOString() ?? null,
+			});
 			return "paused";
 		}
 
 		if (standardMembershipSub.status === "active") {
+			const lastPaymentDate = resolveLastPaymentDate(standardMembershipSub);
+
 			await Promise.all([
 				trx
 					.updateTable("member_profiles")
 					.set({
 						subscription_paused_until: null,
-						last_payment_date: dayjs
-							.unix(standardMembershipSub.start_date)
-							.toDate(),
+						last_payment_date: lastPaymentDate,
 						membership_end_date: standardMembershipSub.ended_at
 							? dayjs.unix(standardMembershipSub.ended_at).toDate()
 							: null,
@@ -244,8 +335,17 @@ async function syncCustomer(
 					.where("customer_id", "=", customerId)
 					.execute(),
 			]);
+			logDebug("Marked customer as active", {
+				customerId,
+				lastPaymentDate: lastPaymentDate.toISOString(),
+			});
 			return "active";
 		}
+
+		logDebug("No customer updates applied", {
+			customerId,
+			subscriptionStatus: standardMembershipSub.status,
+		});
 
 		return "unchanged";
 	});
@@ -264,8 +364,15 @@ async function syncStripeDataToKV(
 	requestCustomerIds?: string[],
 ): Promise<SyncSummary> {
 	try {
+		logInfo("Starting stripe sync batch", {
+			manualCustomerIdsProvided: Boolean(requestCustomerIds?.length),
+			manualCustomerCount: requestCustomerIds?.length ?? 0,
+		});
+
 		const targetCustomerIds = await getTargetCustomerIds(requestCustomerIds);
 		if (targetCustomerIds.length === 0) {
+			logInfo("No target customers found for sync");
+
 			return {
 				targetCustomers: 0,
 				stripeSubscriptionsScanned: 0,
@@ -316,6 +423,18 @@ async function syncStripeDataToKV(
 			}
 		}
 
+		logInfo("Completed stripe sync batch", {
+			targetCustomers: summary.targetCustomers,
+			stripeSubscriptionsScanned: summary.stripeSubscriptionsScanned,
+			processed: summary.processed,
+			updated: summary.updated,
+			failed: summary.failed,
+			inactive: summary.inactive,
+			paused: summary.paused,
+			active: summary.active,
+			unchanged: summary.unchanged,
+		});
+
 		return summary;
 	} catch (error) {
 		console.error("Error syncing Stripe data batch:", error);
@@ -342,7 +461,15 @@ Deno.serve(async (req) => {
 	}
 
 	try {
+		const requestId = crypto.randomUUID();
+		logInfo("Received stripe sync request", {
+			requestId,
+			method: req.method,
+		});
+
 		if (!(await verifyBearerToken(req.headers.get("Authorization")))) {
+			logInfo("Unauthorized stripe sync request", { requestId });
+
 			return new Response(JSON.stringify({ error: "Unauthorized" }), {
 				status: 401,
 				headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -385,6 +512,10 @@ Deno.serve(async (req) => {
 
 		const summary = syncStripeDataToKV(payload.customer_ids);
 		EdgeRuntime.waitUntil(summary);
+		logInfo("Stripe sync request accepted", {
+			requestId,
+			manualCustomerCount: payload.customer_ids?.length ?? 0,
+		});
 
 		return new Response(JSON.stringify({ success: true, summary }), {
 			headers: { ...corsHeaders, "Content-Type": "application/json" },
