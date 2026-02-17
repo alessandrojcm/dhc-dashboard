@@ -13,8 +13,8 @@
 	}
 </script>
 
-<div class="max-w-4xl mx-auto p-6 space-y-8">
-	<div class="flex justify-between items-center">
+<div class="mx-auto max-w-4xl space-y-8 p-6">
+	<div class="flex items-center justify-between">
 		<h1 class="text-3xl font-bold">Create Workshop</h1>
 		<Button variant="outline" href="/dashboard/workshops">Back to Workshops</Button>
 	</div>
@@ -29,5 +29,9 @@
 		</Alert>
 	{/if}
 
-	<WorkshopForm {data} mode="create" onSuccess={handleSuccess} />
+	<WorkshopForm
+		mode="create"
+		initialData={data.initialData}
+		onSuccess={handleSuccess}
+	/>
 </div>

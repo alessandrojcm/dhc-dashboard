@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { VisBulletLegend, VisDonut, VisSingleContainer } from "@unovis/svelte";
 import { schemeTableau10 } from "d3-scale-chromatic";
 
 type WeaponDistribution = { weapon: string; count: number };
@@ -12,7 +13,7 @@ const {
 const formatNumber = Intl.NumberFormat("en").format;
 
 // Generate legend items from the data
-const _legendItems = $derived(
+const legendItems = $derived(
 	weaponDistributionData.map((item) => ({
 		name:
 			item.weapon.charAt(0).toUpperCase() +
@@ -25,7 +26,7 @@ const _legendItems = $derived(
 );
 
 // Configure tooltip content
-const _tooltipConfig = {
+const tooltipConfig = {
 	content: (d: WeaponDistribution) => `
 			<div>
 				<div style="font-weight: bold; margin-bottom: 4px; text-transform: capitalize;">${d.weapon.replaceAll(/[_-]/g, " ")}</div>

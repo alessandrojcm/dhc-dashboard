@@ -365,6 +365,69 @@ export async function createStripeCustomerWithSubscription(email: string) {
 	};
 }
 
+export async function createWorkshop({
+	title,
+	description = '',
+	location,
+	start_date,
+	end_date,
+	max_capacity,
+	price_member,
+	price_non_member,
+	is_public = false,
+	refund_days = null,
+	created_by,
+	status = 'planned'
+}: {
+	title: string;
+	description?: string;
+	location: string;
+	start_date: Date;
+	end_date: Date;
+	max_capacity: number;
+	price_member: number;
+	price_non_member?: number;
+	is_public?: boolean;
+	refund_days?: number | null;
+	created_by: string;
+	status?: Database['public']['Enums']['club_activity_status'];
+}) {
+	const supabaseServiceClient = getSupabaseServiceClient();
+
+	const { data } = await supabaseServiceClient
+		.from('club_activities')
+		.insert({
+			title,
+			description,
+			location,
+			start_date: start_date.toISOString(),
+			end_date: end_date.toISOString(),
+			max_capacity,
+			price_member,
+			price_non_member: price_non_member ?? price_member,
+			is_public,
+			refund_days,
+			created_by,
+			status
+		})
+		.select()
+		.single()
+		.throwOnError();
+
+	const workshop = data!;
+	const workshopId = workshop.id;
+
+	async function cleanUp() {
+		const client = getSupabaseServiceClient();
+		await client.from('club_activities').delete().eq('id', workshopId).throwOnError();
+	}
+
+	return {
+		...data,
+		cleanUp
+	};
+}
+
 export async function setupInvitedUser(
 	params: Partial<{
 		addInvitation: boolean;

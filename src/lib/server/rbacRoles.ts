@@ -6,7 +6,7 @@ const data: NavData = {
 		{
 			title: 'Beginners Workshop',
 			url: '/dashboard/beginners-workshop',
-			role: new Set(['admin', 'coach', 'beginners_coordinator', 'president'])
+			role: new Set(['admin', 'committee_coordinator', 'coach', 'beginners_coordinator', 'president'])
 		},
 		{
 			title: 'Members',

@@ -1,8 +1,11 @@
 <script lang="ts">
 import * as Sentry from "@sentry/sveltekit";
+import { page } from "$app/state";
+import { Button } from '$lib/components/ui/button';
+import * as Alert from '$lib/components/ui/alert';
 
 Sentry.captureMessage(
-	`Signup error page loaded: ${$page.error?.message}`,
+	`Signup error page loaded: ${page.error?.message}`,
 	"error",
 );
 </script>
@@ -15,7 +18,7 @@ Sentry.captureMessage(
 	<Alert.Root variant="destructive" class="max-w-md h-fit">
 		<Alert.Title>Something has gone wrong, please try again</Alert.Title>
 		<Alert.Description>
-			{$page.error?.message}
+			{page.error?.message}
 		</Alert.Description>
 		<Button onclick={() => document.location.reload()}>Try again</Button>
 	</Alert.Root>

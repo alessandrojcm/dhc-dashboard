@@ -1,0 +1,1895 @@
+
+> dhc-dashboard@0.0.1 check /Users/alessandrojcm/repos/dhc-dashboard
+> svelte-kit sync && svelte-check --tsconfig ./tsconfig.json
+
+Loading svelte-check in workspace: /Users/alessandrojcm/repos/dhc-dashboard
+Getting Svelte diagnostics...
+
+[sentry-vite-plugin] Info: Using environment variables configured in ".env.sentry-build-plugin".
+[Sentry SvelteKit] Global values: { __sentry_sveltekit_output_dir: '.svelte-kit/cloudflare' }
+[sentry-vite-plugin] Info: Using environment variables configured in ".env.sentry-build-plugin".
+[Sentry] We discovered `build.sourcemap` is set to `true`. Sentry will keep this source map setting. This will un-minify the code snippet on the Sentry Issue page.
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/server/services/shared/test-utils.ts:83:3
+Error: Type '{ create: Mock<Procedure>; update: Mock<Procedure>; retrieve: Mock<Procedure>; del: Mock<Procedure>; list: Mock<Procedure>; }' is missing the following properties from type 'CustomersResource': createBalanceTransaction, createFundingInstructions, createSource, createTaxId, and 19 more. 
+	return {
+		customers: {
+			create: vi.fn(),
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/server/services/shared/test-utils.ts:90:3
+Error: Type '{ create: Mock<Procedure>; update: Mock<Procedure>; retrieve: Mock<Procedure>; cancel: Mock<Procedure>; list: Mock<...>; }' is missing the following properties from type 'SubscriptionsResource': deleteDiscount, migrate, resume, search 
+		},
+		subscriptions: {
+			create: vi.fn(),
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/ui/calendar/calendar.svelte:25:5
+Error: Expression produces a union type that is too complex to represent. (ts)
+		...restProps
+	}: WithoutChildrenOrChild<CalendarPrimitive.RootProps> & {
+		buttonVariant?: ButtonVariant;
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/ui/calendar/calendar.svelte:46:23
+Error: Type '{ children: (this: void, { months, weekdays }: CalendarRootSnippetProps) => any; value: never; ref: any; placeholder: any; weekdayFormat: any; disableDaysOutsideMonth: any; class: string; locale: any; monthFormat: "numeric" | ... 4 more ... | ((month: number) => string); yearFormat: "numeric" | ... 1 more ... | ((ye...' is not assignable to type 'CalendarRootProps | undefined'.
+  Type '{ children: (this: void, { months, weekdays }: CalendarRootSnippetProps) => any; value: never; ref: any; placeholder: any; weekdayFormat: any; disableDaysOutsideMonth: any; class: string; locale: any; monthFormat: "numeric" | ... 4 more ... | ((month: number) => string); yearFormat: "numeric" | ... 1 more ... | ((ye...' is not assignable to type 'CalendarBaseRootPropsWithoutHTML & Omit<CalendarMultipleRootPropsWithoutHTML, "children" | "child"> & { ...; } & Without<...>'.
+    Property 'type' is missing in type '{ children: (this: void, { months, weekdays }: CalendarRootSnippetProps) => any; value: never; ref: any; placeholder: any; weekdayFormat: any; disableDaysOutsideMonth: any; class: string; locale: any; monthFormat: "numeric" | ... 4 more ... | ((month: number) => string); yearFormat: "numeric" | ... 1 more ... | ((ye...' but required in type 'Omit<CalendarMultipleRootPropsWithoutHTML, "children" | "child">'. (ts)
+-->
+<CalendarPrimitive.Root
+	bind:value={value as never}
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/ui/carousel/carousel.svelte:25:3
+Warn: This reference only captures the initial value of `orientation`. Did you mean to reference it inside a derived instead?
+https://svelte.dev/e/state_referenced_locally (svelte)
+		scrollNext,
+		orientation,
+		canScrollNext: false,
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/ui/carousel/carousel.svelte:29:12
+Warn: This reference only captures the initial value of `opts`. Did you mean to reference it inside a derived instead?
+https://svelte.dev/e/state_referenced_locally (svelte)
+		handleKeyDown,
+		options: opts,
+		plugins,
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/ui/carousel/carousel.svelte:30:3
+Warn: This reference only captures the initial value of `plugins`. Did you mean to reference it inside a derived instead?
+https://svelte.dev/e/state_referenced_locally (svelte)
+		options: opts,
+		plugins,
+		onInit,
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/ui/chart/chart-container.svelte:20:27
+Warn: This reference only captures the initial value of `id`. Did you mean to reference it inside a closure instead?
+https://svelte.dev/e/state_referenced_locally (svelte)
+
+	const chartId = `chart-${id || uid.replace(/:/g, '')}`;
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/ui/form/index.ts:9:21
+Error: Cannot find module './form-control.svelte' or its corresponding type declarations. 
+import Button from './form-button.svelte';
+import Control from './form-control.svelte';
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/ui/slider/slider.svelte:18:21
+Error: Expression produces a union type that is too complex to represent. (ts)
+-->
+<SliderPrimitive.Root
+	bind:ref
+	bind:value={value as never}
+	data-slot="slider"
+	{orientation}
+	class={cn(
+		'relative flex w-full touch-none select-none items-center data-[orientation=vertical]:h-full data-[orientation=vertical]:min-h-44 data-[orientation=vertical]:w-auto data-[orientation=vertical]:flex-col data-[disabled]:opacity-50',
+		className
+	)}
+	{...restProps}
+>
+	{#snippet children({ thumbs })}
+		<span
+			data-orientation={orientation}
+			data-slot="slider-track"
+			class={cn(
+				'bg-muted relative grow overflow-hidden rounded-full data-[orientation=horizontal]:h-1.5 data-[orientation=vertical]:h-full data-[orientation=horizontal]:w-full data-[orientation=vertical]:w-1.5'
+			)}
+		>
+			<SliderPrimitive.Range
+				data-slot="slider-range"
+				class={cn(
+					'bg-primary absolute data-[orientation=horizontal]:h-full data-[orientation=vertical]:w-full'
+				)}
+			/>
+		</span>
+		{#each thumbs as thumb (thumb)}
+			<SliderPrimitive.Thumb
+				data-slot="slider-thumb"
+				index={thumb}
+				class="border-primary bg-background ring-ring/50 focus-visible:outline-hidden block size-4 shrink-0 rounded-full border shadow-sm transition-[color,box-shadow] hover:ring-4 focus-visible:ring-4 disabled:pointer-events-none disabled:opacity-50"
+			/>
+		{/each}
+	{/snippet}
+</SliderPrimitive.Root>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/ui/slider/slider.svelte:18:21
+Error: Type '{ children: (this: void, { thumbs }: SliderRootSnippetProps) => any; id?: string | undefined; type: "single" | "multiple"; title?: string | null | undefined; max?: number | undefined; ... 439 more ...; class: string; }' is not assignable to type 'SliderRootProps | undefined'.
+  Type '{ children: (this: void, { thumbs }: SliderRootSnippetProps) => any; id?: string | undefined; type: "single" | "multiple"; title?: string | null | undefined; max?: number | undefined; ... 439 more ...; class: string; }' is not assignable to type '(Omit<SliderSingleRootPropsWithoutHTML, "children" | "child"> & { child?: Snippet<[SliderRootSnippetProps & { ...; }]> | undefined; children?: Snippet<...> | undefined; style?: string | ... 2 more ... | undefined; ref?: HTMLElement | ... 1 more ... | undefined; } & Without<...>) | (Omit<...> & ... 1 more ... & Witho...'. (ts)
+-->
+<SliderPrimitive.Root
+	bind:ref
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/ui/toggle-group/toggle-group.svelte:27:3
+Warn: This reference only captures the initial value of `variant`. Did you mean to reference it inside a closure instead?
+https://svelte.dev/e/state_referenced_locally (svelte)
+	setToggleGroupCtx({
+		variant,
+		size
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/ui/toggle-group/toggle-group.svelte:28:3
+Warn: This reference only captures the initial value of `size`. Did you mean to reference it inside a closure instead?
+https://svelte.dev/e/state_referenced_locally (svelte)
+		variant,
+		size
+	});
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/age-scatter-chart.svelte:25:5
+Warn: This reference only captures the initial value of `ageDistribution`. Did you mean to reference it inside a closure instead?
+https://svelte.dev/e/state_referenced_locally (svelte)
+			...new Set(
+				ageDistribution
+					.map((a) => a.age)
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/gender-bar-chart.svelte:17:32
+Warn: This reference only captures the initial value of `genderDistributionData`. Did you mean to reference it inside a closure instead?
+https://svelte.dev/e/state_referenced_locally (svelte)
+	// Map gender strings to indices for x-axis positioning
+	const genderIndices = new Map(genderDistributionData.map((item, index) => [item.gender, index]));
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/workshop-form.svelte:50:20
+Warn: This reference only captures the initial value of `mode`. Did you mean to reference it inside a closure instead?
+https://svelte.dev/e/state_referenced_locally (svelte)
+
+    const schema = mode === 'create' ? CreateWorkshopSchema : UpdateWorkshopSchema;
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/workshop-form.svelte:52:28
+Warn: This reference only captures the initial value of `data`. Did you mean to reference it inside a closure instead?
+https://svelte.dev/e/state_referenced_locally (svelte)
+
+    const form = superForm(data.form, {
+        validators: valibotClient(schema),
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/workshop-form.svelte:198:30
+Error: Object literal may only specify known properties, and 'form' does not exist in type '$$render<RemoteFormFieldValue>.Props'. (ts)
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <Form.Field {form} name="title">
+                    <Form.Control>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/workshop-form.svelte:200:45
+Error: Binding element 'props' implicitly has an 'any' type. (ts)
+                    <Form.Control>
+                        {#snippet children({props})}
+                            <Form.Label>Title</Form.Label>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/workshop-form.svelte:213:30
+Error: Object literal may only specify known properties, and 'form' does not exist in type '$$render<RemoteFormFieldValue>.Props'. (ts)
+
+                <Form.Field {form} name="location">
+                    <Form.Control>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/workshop-form.svelte:215:45
+Error: Binding element 'props' implicitly has an 'any' type. (ts)
+                    <Form.Control>
+                        {#snippet children({props})}
+                            <Form.Label>Location</Form.Label>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/workshop-form.svelte:229:26
+Error: Object literal may only specify known properties, and 'form' does not exist in type '$$render<RemoteFormFieldValue>.Props'. (ts)
+
+            <Form.Field {form} name="description">
+                <Form.Control>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/workshop-form.svelte:231:41
+Error: Binding element 'props' implicitly has an 'any' type. (ts)
+                <Form.Control>
+                    {#snippet children({props})}
+                        <Form.Label>Description</Form.Label>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/workshop-form.svelte:250:26
+Error: Object literal may only specify known properties, and 'form' does not exist in type '$$render<RemoteFormFieldValue>.Props'. (ts)
+
+            <Form.Field {form} name="workshop_date">
+                <Form.Control>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/workshop-form.svelte:252:41
+Error: Binding element 'props' implicitly has an 'any' type. (ts)
+                <Form.Control>
+                    {#snippet children({props})}
+                        <Form.Label>Workshop Date & Time</Form.Label>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/workshop-form.svelte:293:26
+Error: Object literal may only specify known properties, and 'form' does not exist in type '$$render<RemoteFormFieldValue>.Props'. (ts)
+            <!-- Hidden field to capture workshop_end_date validation errors -->
+            <Form.Field {form} name="workshop_end_date">
+                <Form.Control>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/workshop-form.svelte:306:30
+Error: Object literal may only specify known properties, and 'form' does not exist in type '$$render<RemoteFormFieldValue>.Props'. (ts)
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <Form.Field {form} name="max_capacity">
+                    <Form.Control>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/workshop-form.svelte:308:45
+Error: Binding element 'props' implicitly has an 'any' type. (ts)
+                    <Form.Control>
+                        {#snippet children({props})}
+                            <Form.Label>Maximum Capacity</Form.Label>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/workshop-form.svelte:323:30
+Error: Object literal may only specify known properties, and 'form' does not exist in type '$$render<RemoteFormFieldValue>.Props'. (ts)
+
+                <Form.Field {form} name="refund_deadline_days">
+                    <Form.Control>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/workshop-form.svelte:325:45
+Error: Binding element 'props' implicitly has an 'any' type. (ts)
+                    <Form.Control>
+                        {#snippet children({props})}
+                            <Form.Label>Refund Deadline (days)</Form.Label>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/workshop-form.svelte:356:38
+Error: Object literal may only specify known properties, and 'form' does not exist in type '$$render<RemoteFormFieldValue>.Props'. (ts)
+                    <div class="space-y-4">
+                        <Form.Field {form} name="announce_discord">
+                            <Form.Control>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/workshop-form.svelte:358:53
+Error: Binding element 'props' implicitly has an 'any' type. (ts)
+                            <Form.Control>
+                                {#snippet children({props})}
+                                    <div class="flex items-center space-x-3">
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/workshop-form.svelte:380:38
+Error: Object literal may only specify known properties, and 'form' does not exist in type '$$render<RemoteFormFieldValue>.Props'. (ts)
+
+                        <Form.Field {form} name="announce_email">
+                            <Form.Control>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/workshop-form.svelte:382:53
+Error: Binding element 'props' implicitly has an 'any' type. (ts)
+                            <Form.Control>
+                                {#snippet children({props})}
+                                    <div class="flex items-center space-x-3">
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/workshop-form.svelte:420:26
+Error: Object literal may only specify known properties, and 'form' does not exist in type '$$render<RemoteFormFieldValue>.Props'. (ts)
+
+            <Form.Field {form} name="is_public">
+                <Form.Control>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/workshop-form.svelte:422:41
+Error: Binding element 'props' implicitly has an 'any' type. (ts)
+                <Form.Control>
+                    {#snippet children({props})}
+                        <div
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/workshop-form.svelte:448:30
+Error: Object literal may only specify known properties, and 'form' does not exist in type '$$render<RemoteFormFieldValue>.Props'. (ts)
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <Form.Field {form} name="price_member">
+                    <Form.Control>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/workshop-form.svelte:450:45
+Error: Binding element 'props' implicitly has an 'any' type. (ts)
+                    <Form.Control>
+                        {#snippet children({props})}
+                            <Form.Label>Member Price</Form.Label>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/workshop-form.svelte:474:34
+Error: Object literal may only specify known properties, and 'form' does not exist in type '$$render<RemoteFormFieldValue>.Props'. (ts)
+                {#if $formData.is_public}
+                    <Form.Field {form} name="price_non_member">
+                        <Form.Control>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/workshop-form.svelte:476:49
+Error: Binding element 'props' implicitly has an 'any' type. (ts)
+                        <Form.Control>
+                            {#snippet children({props})}
+                                <Form.Label>Non-Member Price</Form.Label>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/ui/copy-button.svelte:42:2
+Error: Cannot find name 'Tooltip'. (ts)
+
+<Tooltip.Tooltip>
+	<Tooltip.Trigger>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/ui/copy-button.svelte:43:3
+Error: Cannot find name 'Tooltip'. (ts)
+<Tooltip.Tooltip>
+	<Tooltip.Trigger>
+		<Button
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/ui/copy-button.svelte:44:4
+Error: Cannot find name 'Button'. (ts)
+	<Tooltip.Trigger>
+		<Button
+			type="button"
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/ui/copy-button.svelte:48:13
+Error: Cannot find name 'copyToClipboard'. Did you mean '_copyToClipboard'? (ts)
+			{variant}
+			onclick={copyToClipboard}
+			class="relative"
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/ui/copy-button.svelte:52:9
+Error: Cannot find name 'isCopied'. Did you mean '_isCopied'? (ts)
+		>
+			{#if isCopied === 'copied'}
+				<span in:fade={{ duration: 150 }} class="flex items-center gap-2">
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/ui/copy-button.svelte:53:14
+Error: Cannot find name 'fade'. (ts)
+			{#if isCopied === 'copied'}
+				<span in:fade={{ duration: 150 }} class="flex items-center gap-2">
+					<Check class="h-4 w-4 text-green-500" />
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/ui/copy-button.svelte:54:7
+Error: Cannot find name 'Check'. (ts)
+				<span in:fade={{ duration: 150 }} class="flex items-center gap-2">
+					<Check class="h-4 w-4 text-green-500" />
+					<span class="sr-only">Copied!</span>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/ui/copy-button.svelte:57:14
+Error: Cannot find name 'isCopied'. Did you mean '_isCopied'? (ts)
+				</span>
+			{:else if isCopied === 'error'}
+				<span in:fade={{ duration: 150 }} class="flex items-center gap-2">
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/ui/copy-button.svelte:58:14
+Error: Cannot find name 'fade'. (ts)
+			{:else if isCopied === 'error'}
+				<span in:fade={{ duration: 150 }} class="flex items-center gap-2">
+					<X class="h-4 w-4 text-red-500" />
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/ui/copy-button.svelte:59:7
+Error: Cannot find name 'X'. (ts)
+				<span in:fade={{ duration: 150 }} class="flex items-center gap-2">
+					<X class="h-4 w-4 text-red-500" />
+					<span class="sr-only">Failed to copy</span>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/ui/copy-button.svelte:63:14
+Error: Cannot find name 'fade'. (ts)
+			{:else}
+				<span in:fade={{ duration: 150 }} class="flex items-center gap-2">
+					<Copy class="h-4 w-4" />
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/ui/copy-button.svelte:64:7
+Error: Cannot find name 'Copy'. (ts)
+				<span in:fade={{ duration: 150 }} class="flex items-center gap-2">
+					<Copy class="h-4 w-4" />
+					<span class="sr-only">{label}</span>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/ui/copy-button.svelte:71:6
+Error: Cannot find name 'Tooltip'. (ts)
+
+				<Tooltip.Content side="top">
+					{label}
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/ui/copy-button.svelte:73:7
+Error: Cannot find name 'Tooltip'. (ts)
+					{label}
+				</Tooltip.Content>
+			{/if}
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/ui/copy-button.svelte:75:5
+Error: Cannot find name 'Button'. (ts)
+			{/if}
+		</Button>
+	</Tooltip.Trigger>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/ui/copy-button.svelte:76:4
+Error: Cannot find name 'Tooltip'. (ts)
+		</Button>
+	</Tooltip.Trigger>
+</Tooltip.Tooltip>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/ui/copy-button.svelte:77:3
+Error: Cannot find name 'Tooltip'. (ts)
+	</Tooltip.Trigger>
+</Tooltip.Tooltip>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/ui/pause-subscription-modal.svelte:27:51
+Warn: This reference only captures the initial value of `minDate`. Did you mean to reference it inside a closure instead?
+https://svelte.dev/e/state_referenced_locally (svelte)
+	const maxDate = $derived(fromDate(dayjs().add(6, 'months').toDate(), getLocalTimeZone()));
+	let selectedDate = $state<DateValue | undefined>(minDate);
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/ui/pause-subscription-modal.svelte:61:5
+Error: Object literal may only specify known properties, and '"data-fs-error"' does not exist in type 'Props'. (ts)
+				id="pauseUntil"
+				data-fs-error={undefined}
+				aria-describedby={undefined}
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/ui/accordion/accordion-root.svelte:12:2
+Error: Cannot bind to constant
+https://svelte.dev/e/constant_binding (svelte)
+<AccordionPrimitive.Root
+	bind:ref
+	bind:value={value as never}
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/ui/accordion/accordion-root.svelte:11:2
+Error: 'AccordionPrimitive' cannot be used as a value because it was imported using 'import type'. (ts)
+
+<AccordionPrimitive.Root
+	bind:ref
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/ui/range-calendar/range-calendar-grid-body.svelte:11:34
+Error: Cannot bind to constant
+https://svelte.dev/e/constant_binding (svelte)
+
+<RangeCalendarPrimitive.GridBody bind:ref class={cn(className)} {...restProps} />
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/ui/range-calendar/range-calendar-grid-body.svelte:11:2
+Error: 'RangeCalendarPrimitive' cannot be used as a value because it was imported using 'import type'. (ts)
+
+<RangeCalendarPrimitive.GridBody bind:ref class={cn(className)} {...restProps} />
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/ui/range-calendar/range-calendar-grid-body.svelte:11:50
+Error: Cannot find name 'cn'. (ts)
+
+<RangeCalendarPrimitive.GridBody bind:ref class={cn(className)} {...restProps} />
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/ui/range-calendar/range-calendar-grid-head.svelte:11:34
+Error: Cannot bind to constant
+https://svelte.dev/e/constant_binding (svelte)
+
+<RangeCalendarPrimitive.GridHead bind:ref class={cn(className)} {...restProps} />
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/ui/range-calendar/range-calendar-grid-head.svelte:11:2
+Error: 'RangeCalendarPrimitive' cannot be used as a value because it was imported using 'import type'. (ts)
+
+<RangeCalendarPrimitive.GridHead bind:ref class={cn(className)} {...restProps} />
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/ui/range-calendar/range-calendar-grid-head.svelte:11:50
+Error: Cannot find name 'cn'. (ts)
+
+<RangeCalendarPrimitive.GridHead bind:ref class={cn(className)} {...restProps} />
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/lib/components/workshops/workshop-event-modal.svelte:22:19
+Warn: This reference only captures the initial value of `event`. Did you mean to reference it inside a closure instead?
+https://svelte.dev/e/state_referenced_locally (svelte)
+	const queryClient = useQueryClient();
+	const workshop = event.workshop;
+	const interestCount = $derived.by(() => {
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/+error.svelte:5:31
+Error: `$page` is an illegal variable name. To reference a global variable called `$page`, use `globalThis.$page`
+https://svelte.dev/e/global_reference_invalid (svelte)
+Sentry.captureMessage(
+	`Signup error page loaded: ${$page.error?.message}`,
+	"error",
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/+error.svelte:5:31
+Error: Cannot find name '$page'. (ts)
+Sentry.captureMessage(
+	`Signup error page loaded: ${$page.error?.message}`,
+	"error",
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/+error.svelte:15:3
+Error: Cannot find name 'Alert'. (ts)
+<div class="flex items-center justify-center w-2/3">
+	<Alert.Root variant="destructive" class="max-w-md h-fit">
+		<Alert.Title>Something has gone wrong, please try again</Alert.Title>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/+error.svelte:16:4
+Error: Cannot find name 'Alert'. (ts)
+	<Alert.Root variant="destructive" class="max-w-md h-fit">
+		<Alert.Title>Something has gone wrong, please try again</Alert.Title>
+		<Alert.Description>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/+error.svelte:16:60
+Error: Cannot find name 'Alert'. (ts)
+	<Alert.Root variant="destructive" class="max-w-md h-fit">
+		<Alert.Title>Something has gone wrong, please try again</Alert.Title>
+		<Alert.Description>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/+error.svelte:17:4
+Error: Cannot find name 'Alert'. (ts)
+		<Alert.Title>Something has gone wrong, please try again</Alert.Title>
+		<Alert.Description>
+			{$page.error?.message}
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/+error.svelte:18:5
+Error: Cannot find name '$page'. (ts)
+		<Alert.Description>
+			{$page.error?.message}
+		</Alert.Description>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/+error.svelte:19:5
+Error: Cannot find name 'Alert'. (ts)
+			{$page.error?.message}
+		</Alert.Description>
+		<Button onclick={() => document.location.reload()}>Try again</Button>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/+error.svelte:20:4
+Error: Cannot find name 'Button'. (ts)
+		</Alert.Description>
+		<Button onclick={() => document.location.reload()}>Try again</Button>
+	</Alert.Root>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/+error.svelte:20:65
+Error: Cannot find name 'Button'. (ts)
+		</Alert.Description>
+		<Button onclick={() => document.location.reload()}>Try again</Button>
+	</Alert.Root>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/+error.svelte:21:4
+Error: Cannot find name 'Alert'. (ts)
+		<Button onclick={() => document.location.reload()}>Try again</Button>
+	</Alert.Root>
+</div>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/+error.svelte:16:3
+Error: Cannot find name 'Alert'. (ts)
+<div class="flex items-center justify-center w-2/3">
+	<Alert.Root variant="destructive" class="max-w-md h-fit">
+		<Alert.Title>Something has gone wrong, please try again</Alert.Title>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/+error.svelte:17:4
+Error: Cannot find name 'Alert'. (ts)
+	<Alert.Root variant="destructive" class="max-w-md h-fit">
+		<Alert.Title>Something has gone wrong, please try again</Alert.Title>
+		<Alert.Description>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/+error.svelte:17:60
+Error: Cannot find name 'Alert'. (ts)
+	<Alert.Root variant="destructive" class="max-w-md h-fit">
+		<Alert.Title>Something has gone wrong, please try again</Alert.Title>
+		<Alert.Description>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/+error.svelte:18:4
+Error: Cannot find name 'Alert'. (ts)
+		<Alert.Title>Something has gone wrong, please try again</Alert.Title>
+		<Alert.Description>
+			{page.error?.message}
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/+error.svelte:20:5
+Error: Cannot find name 'Alert'. (ts)
+			{page.error?.message}
+		</Alert.Description>
+		<Button class="w-fit" onclick={() => document.location.reload()}>Try again</Button>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/+error.svelte:21:4
+Error: Cannot find name 'Button'. (ts)
+		</Alert.Description>
+		<Button class="w-fit" onclick={() => document.location.reload()}>Try again</Button>
+	</Alert.Root>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/+error.svelte:21:79
+Error: Cannot find name 'Button'. (ts)
+		</Alert.Description>
+		<Button class="w-fit" onclick={() => document.location.reload()}>Try again</Button>
+	</Alert.Root>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/+error.svelte:22:4
+Error: Cannot find name 'Alert'. (ts)
+		<Button class="w-fit" onclick={() => document.location.reload()}>Try again</Button>
+	</Alert.Root>
+</div>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/+layout.svelte:9:2
+Error: Cannot find name 'Card'. (ts)
+
+<Card.Root class="w-full max-w-2xl max-h-[90vh]">
+	<Card.Header>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/+layout.svelte:10:3
+Error: Cannot find name 'Card'. (ts)
+<Card.Root class="w-full max-w-2xl max-h-[90vh]">
+	<Card.Header>
+		<div class="md:hidden flex justify-center mb-4">
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/+layout.svelte:12:23
+Error: Cannot find name 'DHCLogo'. (ts)
+		<div class="md:hidden flex justify-center mb-4">
+			<enhanced:img src={DHCLogo} alt="Dublin Hema Club Logo" class="w-24 h-24" />
+		</div>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/+layout.svelte:14:4
+Error: Cannot find name 'Card'. (ts)
+		</div>
+		<Card.Title>Join Dublin Hema Club</Card.Title>
+		<Card.Description
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/+layout.svelte:14:38
+Error: Cannot find name 'Card'. (ts)
+		</div>
+		<Card.Title>Join Dublin Hema Club</Card.Title>
+		<Card.Description
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/+layout.svelte:15:4
+Error: Cannot find name 'Card'. (ts)
+		<Card.Title>Join Dublin Hema Club</Card.Title>
+		<Card.Description
+			>We are glad you decided to join us! These are the personal details we have from you, if
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/+layout.svelte:19:5
+Error: Cannot find name 'Card'. (ts)
+			data and the payment info below.
+		</Card.Description>
+	</Card.Header>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/+layout.svelte:20:4
+Error: Cannot find name 'Card'. (ts)
+		</Card.Description>
+	</Card.Header>
+	<Card.Content class="h-auto md:max-h-[72svh] max-h-[60svh] overflow-y-auto">
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/+layout.svelte:21:3
+Error: Cannot find name 'Card'. (ts)
+	</Card.Header>
+	<Card.Content class="h-auto md:max-h-[72svh] max-h-[60svh] overflow-y-auto">
+		{@render children()}
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/+layout.svelte:23:4
+Error: Cannot find name 'Card'. (ts)
+		{@render children()}
+	</Card.Content>
+</Card.Root>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/+layout.svelte:24:3
+Error: Cannot find name 'Card'. (ts)
+	</Card.Content>
+</Card.Root>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/+page.svelte:7:26
+Error: Can only bind to state or props
+https://svelte.dev/e/bind_invalid_value (svelte)
+{#if !isVerified}
+	<ConfirmInvitation bind:isVerified />
+{:else}
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/+page.svelte:6:7
+Error: Cannot find name 'isVerified'. (ts)
+
+{#if !isVerified}
+	<ConfirmInvitation bind:isVerified />
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/+page.svelte:7:3
+Error: Cannot find name 'ConfirmInvitation'. (ts)
+{#if !isVerified}
+	<ConfirmInvitation bind:isVerified />
+{:else}
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/+page.svelte:7:26
+Error: No value exists in scope for the shorthand property 'isVerified'. Either declare one or provide an initializer. (ts)
+{#if !isVerified}
+	<ConfirmInvitation bind:isVerified />
+{:else}
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/+page.svelte:9:3
+Error: Cannot find name 'PaymentForm'. (ts)
+{:else}
+	<PaymentForm {...data} />
+{/if}
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/confirm-invitation.svelte:93:17
+Error: Object literal may only specify known properties, and 'form' does not exist in type '$$render<RemoteFormFieldValue>.Props'. (ts)
+		<form method="POST" class="space-y-6" use:enhance>
+			<Form.Field {form} name="email">
+				<Form.Control>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/confirm-invitation.svelte:95:27
+Error: Binding element 'props' implicitly has an 'any' type. (ts)
+				<Form.Control>
+					{#snippet children({ props })}
+						<Form.Label>Email</Form.Label>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/confirm-invitation.svelte:108:17
+Error: Object literal may only specify known properties, and 'form' does not exist in type '$$render<RemoteFormFieldValue>.Props'. (ts)
+
+			<Form.Field {form} name="dateOfBirth">
+				<Form.Control>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/confirm-invitation.svelte:110:27
+Error: Binding element 'props' implicitly has an 'any' type. (ts)
+				<Form.Control>
+					{#snippet children({ props })}
+						<Form.Label>Date of birth</Form.Label>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:177:10
+Error: Cannot bind to constant
+https://svelte.dev/e/constant_binding (svelte)
+										: 'w-full bg-white'}
+									bind:value={couponCode}
+								/>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:35:3
+Error: Cannot find name 'Card'. (ts)
+	<!-- Loading state -->
+	<Card.Root class="bg-muted">
+		<Card.Content class="pt-6">
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:36:4
+Error: Cannot find name 'Card'. (ts)
+	<Card.Root class="bg-muted">
+		<Card.Content class="pt-6">
+			<div class="flex items-center justify-center h-48">
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:38:6
+Error: Cannot find name 'LoaderCircle'. (ts)
+			<div class="flex items-center justify-center h-48">
+				<LoaderCircle class="text-primary animate-spin" />
+				<span class="ml-2">Loading pricing information...</span>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:41:5
+Error: Cannot find name 'Card'. (ts)
+			</div>
+		</Card.Content>
+	</Card.Root>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:42:4
+Error: Cannot find name 'Card'. (ts)
+		</Card.Content>
+	</Card.Root>
+{:else if !planPricingData.isError && planPricingData?.data}
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:46:32
+Error: 'Dinero' refers to a UMD global, but the current file is a module. Consider adding an import instead. (ts)
+	{@const planPricing = planPricingData.data}
+	{@const proratedPriceDinero = Dinero(planPricing.proratedPrice)}
+	{@const monthlyFeeDinero = Dinero(planPricing.monthlyFee)}
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:47:29
+Error: 'Dinero' refers to a UMD global, but the current file is a module. Consider adding an import instead. (ts)
+	{@const proratedPriceDinero = Dinero(planPricing.proratedPrice)}
+	{@const monthlyFeeDinero = Dinero(planPricing.monthlyFee)}
+	{@const annualFeeDinero = Dinero(planPricing.annualFee)}
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:48:28
+Error: 'Dinero' refers to a UMD global, but the current file is a module. Consider adding an import instead. (ts)
+	{@const monthlyFeeDinero = Dinero(planPricing.monthlyFee)}
+	{@const annualFeeDinero = Dinero(planPricing.annualFee)}
+	{@const discountedMonthlyFeeDinero = planPricing.discountedMonthlyFee
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:50:5
+Error: 'Dinero' refers to a UMD global, but the current file is a module. Consider adding an import instead. (ts)
+	{@const discountedMonthlyFeeDinero = planPricing.discountedMonthlyFee
+		? Dinero(planPricing.discountedMonthlyFee)
+		: null}
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:53:5
+Error: 'Dinero' refers to a UMD global, but the current file is a module. Consider adding an import instead. (ts)
+	{@const discountedAnnualFeeDinero = planPricing.discountedAnnualFee
+		? Dinero(planPricing.discountedAnnualFee)
+		: null}
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:56:33
+Error: 'Dinero' refers to a UMD global, but the current file is a module. Consider adding an import instead. (ts)
+	{@const discountPercentage = planPricing.discountPercentage}
+	{@const proratedMonthlyPrice = Dinero(planPricing.proratedMonthlyPrice)}
+	{@const proratedAnnualPrice = Dinero(planPricing.proratedAnnualPrice)}
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:57:32
+Error: 'Dinero' refers to a UMD global, but the current file is a module. Consider adding an import instead. (ts)
+	{@const proratedMonthlyPrice = Dinero(planPricing.proratedMonthlyPrice)}
+	{@const proratedAnnualPrice = Dinero(planPricing.proratedAnnualPrice)}
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:64:6
+Error: 'Dinero' refers to a UMD global, but the current file is a module. Consider adding an import instead. (ts)
+		discountedAnnualFeeDinero === null
+			? Dinero({
+					amount: Math.round(
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:72:3
+Error: Cannot find name 'Card'. (ts)
+
+	<Card.Root class="bg-muted">
+		<Card.Content class="pt-6">
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:73:4
+Error: Cannot find name 'Card'. (ts)
+	<Card.Root class="bg-muted">
+		<Card.Content class="pt-6">
+			<div class="space-y-4">
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:166:6
+Error: Cannot find name 'Accordion'. (ts)
+
+				<Accordion.Root class="mt-2" type="single">
+					<Accordion.Item value="promo-code">
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:167:7
+Error: Cannot find name 'Accordion'. (ts)
+				<Accordion.Root class="mt-2" type="single">
+					<Accordion.Item value="promo-code">
+						<Accordion.Trigger>Have a promotional code?</Accordion.Trigger>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:168:8
+Error: Cannot find name 'Accordion'. (ts)
+					<Accordion.Item value="promo-code">
+						<Accordion.Trigger>Have a promotional code?</Accordion.Trigger>
+						<Accordion.Content>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:168:52
+Error: Cannot find name 'Accordion'. (ts)
+					<Accordion.Item value="promo-code">
+						<Accordion.Trigger>Have a promotional code?</Accordion.Trigger>
+						<Accordion.Content>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:169:8
+Error: Cannot find name 'Accordion'. (ts)
+						<Accordion.Trigger>Have a promotional code?</Accordion.Trigger>
+						<Accordion.Content>
+							<div class="pt-2 px-2">
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:171:10
+Error: Cannot find name 'Input'. (ts)
+							<div class="pt-2 px-2">
+								<Input
+									type="text"
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:182:10
+Error: Cannot find name 'Button'. (ts)
+								{/if}
+								<Button
+									disabled={couponCode === '' || applyCoupon.isPending}
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:190:12
+Error: Cannot find name 'LoaderCircle'. (ts)
+									{#if applyCoupon.isPending}
+										<LoaderCircle class="animate-spin ml-2 h-4 w-4" />
+									{/if}
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:192:11
+Error: Cannot find name 'Button'. (ts)
+									{/if}
+								</Button>
+							</div>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:194:9
+Error: Cannot find name 'Accordion'. (ts)
+							</div>
+						</Accordion.Content>
+					</Accordion.Item>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:195:8
+Error: Cannot find name 'Accordion'. (ts)
+						</Accordion.Content>
+					</Accordion.Item>
+				</Accordion.Root>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:196:7
+Error: Cannot find name 'Accordion'. (ts)
+					</Accordion.Item>
+				</Accordion.Root>
+			</div>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:198:5
+Error: Cannot find name 'Card'. (ts)
+			</div>
+		</Card.Content>
+	</Card.Root>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:199:4
+Error: Cannot find name 'Card'. (ts)
+		</Card.Content>
+	</Card.Root>
+{:else if planPricingData.isLoading}
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:202:3
+Error: Cannot find name 'Card'. (ts)
+	<!-- Loading state for QueryResult -->
+	<Card.Root class="bg-muted">
+		<Card.Content class="pt-6">
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:203:4
+Error: Cannot find name 'Card'. (ts)
+	<Card.Root class="bg-muted">
+		<Card.Content class="pt-6">
+			<div class="flex items-center justify-center h-48">
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:205:6
+Error: Cannot find name 'LoaderCircle'. (ts)
+			<div class="flex items-center justify-center h-48">
+				<LoaderCircle class="text-primary animate-spin" />
+				<span class="ml-2">Loading pricing information...</span>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:208:5
+Error: Cannot find name 'Card'. (ts)
+			</div>
+		</Card.Content>
+	</Card.Root>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:209:4
+Error: Cannot find name 'Card'. (ts)
+		</Card.Content>
+	</Card.Root>
+{:else if planPricingData.isError}
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:212:3
+Error: Cannot find name 'Card'. (ts)
+	<!-- Error state for QueryResult -->
+	<Card.Root class="bg-destructive/10 border-destructive">
+		<Card.Content class="pt-6">
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:213:4
+Error: Cannot find name 'Card'. (ts)
+	<Card.Root class="bg-destructive/10 border-destructive">
+		<Card.Content class="pt-6">
+			<div class="flex flex-col items-center justify-center h-48 text-destructive">
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:215:6
+Error: Cannot find name 'AlertTriangle'. (ts)
+			<div class="flex flex-col items-center justify-center h-48 text-destructive">
+				<AlertTriangle class="h-8 w-8 mb-2" />
+				<span class="font-semibold">Error loading pricing information</span>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:220:5
+Error: Cannot find name 'Card'. (ts)
+			</div>
+		</Card.Content>
+	</Card.Root>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:221:4
+Error: Cannot find name 'Card'. (ts)
+		</Card.Content>
+	</Card.Root>
+{:else}
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:224:3
+Error: Cannot find name 'Card'. (ts)
+	<!-- Fallback for other cases -->
+	<Card.Root class="bg-muted">
+		<Card.Content class="pt-6">
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:225:4
+Error: Cannot find name 'Card'. (ts)
+	<Card.Root class="bg-muted">
+		<Card.Content class="pt-6">
+			<div class="flex items-center justify-center h-48">
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:229:5
+Error: Cannot find name 'Card'. (ts)
+			</div>
+		</Card.Content>
+	</Card.Root>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:230:4
+Error: Cannot find name 'Card'. (ts)
+		</Card.Content>
+	</Card.Root>
+{/if}
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/pricing-display.svelte:232:13
+Error: Cannot find name 'stripeClass'. (ts)
+{/if}
+<div class={stripeClass} id="payment-element"></div>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/payment-form.svelte:266:17
+Error: Object literal may only specify known properties, and 'form' does not exist in type '$$render<RemoteFormFieldValue>.Props'. (ts)
+		<div class="space-y-4">
+			<Form.Field {form} name="nextOfKin">
+				<Form.Control>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/payment-form.svelte:268:27
+Error: Binding element 'props' implicitly has an 'any' type. (ts)
+				<Form.Control>
+					{#snippet children({ props })}
+						<Form.Label>Next of Kin</Form.Label>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/payment-form.svelte:279:17
+Error: Object literal may only specify known properties, and 'form' does not exist in type '$$render<RemoteFormFieldValue>.Props'. (ts)
+			</Form.Field>
+			<Form.Field {form} name="nextOfKinNumber">
+				<Form.Control>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/payment-form.svelte:281:27
+Error: Binding element 'props' implicitly has an 'any' type. (ts)
+				<Form.Control>
+					{#snippet children({ props })}
+						<Form.Label>Next of Kin Phone Number</Form.Label>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/members/signup/[invitationId]/payment-form.svelte:286:8
+Error: Cannot use 'bind:' with this property. It is declared as non-bindable inside the component.
+To mark a property as bindable: 'let { phoneNumber = $bindable() } = $props()' (ts)
+							{...props}
+							bind:phoneNumber={$formData.nextOfKinNumber}
+						/>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/workshops/[id]/confirmation/+page.svelte:2:20
+Error: `$page` is an illegal variable name. To reference a global variable called `$page`, use `globalThis.$page`
+https://svelte.dev/e/global_reference_invalid (svelte)
+<script lang="ts">
+const _sessionId = $page.url.searchParams.get("session_id");
+</script>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/workshops/[id]/confirmation/+page.svelte:2:20
+Error: Cannot find name '$page'. (ts)
+<script lang="ts">
+const _sessionId = $page.url.searchParams.get("session_id");
+</script>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/workshops/[id]/confirmation/+page.svelte:7:4
+Error: Cannot find name 'Alert'. (ts)
+	<div class="max-w-md mx-auto">
+		<Alert class="border-green-200 bg-green-50">
+			<CheckCircle class="h-4 w-4 text-green-600" />
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/workshops/[id]/confirmation/+page.svelte:8:5
+Error: Cannot find name 'CheckCircle'. (ts)
+		<Alert class="border-green-200 bg-green-50">
+			<CheckCircle class="h-4 w-4 text-green-600" />
+			<AlertTitle class="text-green-800">Registration Successful!</AlertTitle>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/workshops/[id]/confirmation/+page.svelte:9:5
+Error: Cannot find name 'AlertTitle'. (ts)
+			<CheckCircle class="h-4 w-4 text-green-600" />
+			<AlertTitle class="text-green-800">Registration Successful!</AlertTitle>
+			<AlertDescription class="text-green-700">
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/workshops/[id]/confirmation/+page.svelte:9:65
+Error: Cannot find name 'AlertTitle'. (ts)
+			<CheckCircle class="h-4 w-4 text-green-600" />
+			<AlertTitle class="text-green-800">Registration Successful!</AlertTitle>
+			<AlertDescription class="text-green-700">
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/workshops/[id]/confirmation/+page.svelte:10:5
+Error: Cannot find name 'AlertDescription'. (ts)
+			<AlertTitle class="text-green-800">Registration Successful!</AlertTitle>
+			<AlertDescription class="text-green-700">
+				Thank you for registering for the workshop. You will receive a confirmation email shortly
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/workshops/[id]/confirmation/+page.svelte:13:6
+Error: Cannot find name 'AlertDescription'. (ts)
+				with all the details.
+			</AlertDescription>
+		</Alert>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/workshops/[id]/confirmation/+page.svelte:14:5
+Error: Cannot find name 'Alert'. (ts)
+			</AlertDescription>
+		</Alert>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/workshops/[id]/confirmation/+page.svelte:17:5
+Error: Cannot find name 'Button'. (ts)
+		<div class="mt-6 text-center">
+			<Button onclick={() => (window.location.href = '/')}>Return to Home</Button>
+		</div>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/workshops/[id]/confirmation/+page.svelte:17:73
+Error: Cannot find name 'Button'. (ts)
+		<div class="mt-6 text-center">
+			<Button onclick={() => (window.location.href = '/')}>Return to Home</Button>
+		</div>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/workshops/[id]/confirmation/+page.svelte:20:8
+Error: Cannot find name 'sessionId'. (ts)
+
+		{#if sessionId}
+			<p class="text-sm text-gray-500 mt-4 text-center">
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/(public)/workshops/[id]/confirmation/+page.svelte:22:17
+Error: Cannot find name 'sessionId'. (ts)
+			<p class="text-sm text-gray-500 mt-4 text-center">
+				Reference: {sessionId}
+			</p>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/+error.svelte:8:3
+Error: Cannot find name 'Alert'. (ts)
+<div class="flex items-center justify-center min-h-screen">
+	<Alert.Root variant="destructive" class="max-w-md">
+		<Alert.Title>Error</Alert.Title>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/+error.svelte:9:4
+Error: Cannot find name 'Alert'. (ts)
+	<Alert.Root variant="destructive" class="max-w-md">
+		<Alert.Title>Error</Alert.Title>
+		<Alert.Description>{page.error?.message}</Alert.Description>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/+error.svelte:9:23
+Error: Cannot find name 'Alert'. (ts)
+	<Alert.Root variant="destructive" class="max-w-md">
+		<Alert.Title>Error</Alert.Title>
+		<Alert.Description>{page.error?.message}</Alert.Description>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/+error.svelte:10:4
+Error: Cannot find name 'Alert'. (ts)
+		<Alert.Title>Error</Alert.Title>
+		<Alert.Description>{page.error?.message}</Alert.Description>
+	</Alert.Root>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/+error.svelte:10:45
+Error: Cannot find name 'Alert'. (ts)
+		<Alert.Title>Error</Alert.Title>
+		<Alert.Description>{page.error?.message}</Alert.Description>
+	</Alert.Root>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/+error.svelte:11:4
+Error: Cannot find name 'Alert'. (ts)
+		<Alert.Description>{page.error?.message}</Alert.Description>
+	</Alert.Root>
+</div>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/actions-buttons.svelte:57:40
+Error: Can only bind to state or props
+https://svelte.dev/e/bind_invalid_value (svelte)
+			{#if isEdit}
+				<Textarea class="min-h-[5ch]" bind:value />
+				<Button
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/actions-buttons.svelte:23:4
+Error: Cannot find name 'Button'. (ts)
+	{#if onToggleExpand}
+		<Button variant="ghost" size="icon" onclick={onToggleExpand} aria-label="Expand row">
+			{#if isExpanded}
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/actions-buttons.svelte:25:6
+Error: Cannot find name 'ChevronUp'. (ts)
+			{#if isExpanded}
+				<ChevronUp class="h-4 w-4" />
+			{:else}
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/actions-buttons.svelte:27:6
+Error: Cannot find name 'ChevronDown'. (ts)
+			{:else}
+				<ChevronDown class="h-4 w-4" />
+			{/if}
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/actions-buttons.svelte:29:5
+Error: Cannot find name 'Button'. (ts)
+			{/if}
+		</Button>
+	{/if}
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/actions-buttons.svelte:31:3
+Error: Cannot find name 'Tooltip'. (ts)
+	{/if}
+	<Tooltip.Root>
+		<Tooltip.Trigger>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/actions-buttons.svelte:32:4
+Error: Cannot find name 'Tooltip'. (ts)
+	<Tooltip.Root>
+		<Tooltip.Trigger>
+			<Button variant="ghost" aria-label="Invite Member" onclick={() => inviteMember()}>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/actions-buttons.svelte:33:5
+Error: Cannot find name 'Button'. (ts)
+		<Tooltip.Trigger>
+			<Button variant="ghost" aria-label="Invite Member" onclick={() => inviteMember()}>
+				<SendIcon class="h-4 w-4" />
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/actions-buttons.svelte:34:6
+Error: Cannot find name 'SendIcon'. (ts)
+			<Button variant="ghost" aria-label="Invite Member" onclick={() => inviteMember()}>
+				<SendIcon class="h-4 w-4" />
+			</Button>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/actions-buttons.svelte:35:6
+Error: Cannot find name 'Button'. (ts)
+				<SendIcon class="h-4 w-4" />
+			</Button>
+		</Tooltip.Trigger>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/actions-buttons.svelte:36:5
+Error: Cannot find name 'Tooltip'. (ts)
+			</Button>
+		</Tooltip.Trigger>
+		<Tooltip.Content class="flex flex-col gap-y-2">
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/actions-buttons.svelte:37:4
+Error: Cannot find name 'Tooltip'. (ts)
+		</Tooltip.Trigger>
+		<Tooltip.Content class="flex flex-col gap-y-2">
+			<Label>Invite member</Label>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/actions-buttons.svelte:38:5
+Error: Cannot find name 'Label'. (ts)
+		<Tooltip.Content class="flex flex-col gap-y-2">
+			<Label>Invite member</Label>
+		</Tooltip.Content>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/actions-buttons.svelte:38:26
+Error: Cannot find name 'Label'. (ts)
+		<Tooltip.Content class="flex flex-col gap-y-2">
+			<Label>Invite member</Label>
+		</Tooltip.Content>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/actions-buttons.svelte:39:5
+Error: Cannot find name 'Tooltip'. (ts)
+			<Label>Invite member</Label>
+		</Tooltip.Content>
+	</Tooltip.Root>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/actions-buttons.svelte:40:4
+Error: Cannot find name 'Tooltip'. (ts)
+		</Tooltip.Content>
+	</Tooltip.Root>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/actions-buttons.svelte:43:3
+Error: Cannot find name 'Popover'. (ts)
+	<!-- Admin Notes -->
+	<Popover.Root onOpenChange={(open) => !open && (isEdit = false)}>
+		<Popover.Trigger>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/actions-buttons.svelte:43:31
+Error: Parameter 'open' implicitly has an 'any' type. (ts)
+	<!-- Admin Notes -->
+	<Popover.Root onOpenChange={(open) => !open && (isEdit = false)}>
+		<Popover.Trigger>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/actions-buttons.svelte:43:50
+Error: Cannot find name 'isEdit'. (ts)
+	<!-- Admin Notes -->
+	<Popover.Root onOpenChange={(open) => !open && (isEdit = false)}>
+		<Popover.Trigger>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/actions-buttons.svelte:44:4
+Error: Cannot find name 'Popover'. (ts)
+	<Popover.Root onOpenChange={(open) => !open && (isEdit = false)}>
+		<Popover.Trigger>
+			<Button variant="ghost" aria-label="Admin notes">
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/actions-buttons.svelte:45:5
+Error: Cannot find name 'Button'. (ts)
+		<Popover.Trigger>
+			<Button variant="ghost" aria-label="Admin notes">
+				<NotebookPen />
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/actions-buttons.svelte:46:6
+Error: Cannot find name 'NotebookPen'. (ts)
+			<Button variant="ghost" aria-label="Admin notes">
+				<NotebookPen />
+			</Button>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/actions-buttons.svelte:47:6
+Error: Cannot find name 'Button'. (ts)
+				<NotebookPen />
+			</Button>
+		</Popover.Trigger>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/actions-buttons.svelte:48:5
+Error: Cannot find name 'Popover'. (ts)
+			</Button>
+		</Popover.Trigger>
+		<Popover.Content class="flex flex-col gap-y-2">
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/actions-buttons.svelte:49:4
+Error: Cannot find name 'Popover'. (ts)
+		</Popover.Trigger>
+		<Popover.Content class="flex flex-col gap-y-2">
+			<Label
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/actions-buttons.svelte:50:5
+Error: Cannot find name 'Label'. (ts)
+		<Popover.Content class="flex flex-col gap-y-2">
+			<Label
+				>Admin notes
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/actions-buttons.svelte:52:6
+Error: Cannot find name 'Button'. (ts)
+				>Admin notes
+				<Button variant="ghost" onclick={() => (isEdit = !isEdit)}>
+					<Edit class="h-4 w-4" />
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/actions-buttons.svelte:52:45
+Error: Cannot find name 'isEdit'. (ts)
+				>Admin notes
+				<Button variant="ghost" onclick={() => (isEdit = !isEdit)}>
+					<Edit class="h-4 w-4" />
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/actions-buttons.svelte:52:55
+Error: Cannot find name 'isEdit'. (ts)
+				>Admin notes
+				<Button variant="ghost" onclick={() => (isEdit = !isEdit)}>
+					<Edit class="h-4 w-4" />
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/actions-buttons.svelte:53:7
+Error: Cannot find name 'Edit'. (ts)
+				<Button variant="ghost" onclick={() => (isEdit = !isEdit)}>
+					<Edit class="h-4 w-4" />
+				</Button>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/actions-buttons.svelte:54:7
+Error: Cannot find name 'Button'. (ts)
+					<Edit class="h-4 w-4" />
+				</Button>
+			</Label>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/actions-buttons.svelte:55:6
+Error: Cannot find name 'Label'. (ts)
+				</Button>
+			</Label>
+			{#if isEdit}
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/actions-buttons.svelte:56:9
+Error: Cannot find name 'isEdit'. (ts)
+			</Label>
+			{#if isEdit}
+				<Textarea class="min-h-[5ch]" bind:value />
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/actions-buttons.svelte:57:6
+Error: Cannot find name 'Textarea'. (ts)
+			{#if isEdit}
+				<Textarea class="min-h-[5ch]" bind:value />
+				<Button
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/actions-buttons.svelte:57:40
+Error: No value exists in scope for the shorthand property 'value'. Either declare one or provide an initializer. (ts)
+			{#if isEdit}
+				<Textarea class="min-h-[5ch]" bind:value />
+				<Button
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/actions-buttons.svelte:58:6
+Error: Cannot find name 'Button'. (ts)
+				<Textarea class="min-h-[5ch]" bind:value />
+				<Button
+					class="self-start"
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/actions-buttons.svelte:61:14
+Error: Cannot find name 'value'. (ts)
+					onclick={() => {
+						onEdit(value);
+						isEdit = false;
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/actions-buttons.svelte:62:7
+Error: Cannot find name 'isEdit'. (ts)
+						onEdit(value);
+						isEdit = false;
+					}}
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/actions-buttons.svelte:65:7
+Error: Cannot find name 'Button'. (ts)
+					>Save
+				</Button>
+			{:else}
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/actions-buttons.svelte:68:7
+Error: Cannot find name 'value'. (ts)
+				<p class="border border-solid border-black-200 rounded-md p-2 min-h-[5ch]">
+					{value ?? 'N/A'}
+				</p>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/actions-buttons.svelte:71:5
+Error: Cannot find name 'Popover'. (ts)
+			{/if}
+		</Popover.Content>
+	</Popover.Root>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/actions-buttons.svelte:72:4
+Error: Cannot find name 'Popover'. (ts)
+		</Popover.Content>
+	</Popover.Root>
+</div>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/waitlist-table.svelte:535:20
+Error: Type 'ColumnDefTemplate<HeaderContext<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown>> | undefi...' is not assignable to type 'string | ((props: HeaderContext<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; ... 11 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown>) => any) | ((props: CellContext<...>) => any...'.
+  Type '(props: HeaderContext<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown>) => any' is not assignable to type 'string | ((props: HeaderContext<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; ... 11 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown>) => any) | ((props: CellContext<...>) => any...'.
+    Type '(props: import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@8.21.3/node_modules/@tanstack/table-core/build/lib/core/headers").HeaderContext<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_...' is not assignable to type '(props: import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@9.0.0-alpha.10/node_modules/@tanstack/table-core/dist/esm/core/headers").HeaderContext<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; gu...'.
+      Types of parameters 'props' and 'props' are incompatible.
+        Type 'import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@9.0.0-alpha.10/node_modules/@tanstack/table-core/dist/esm/core/headers").HeaderContext<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_f...' is not assignable to type 'import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@8.21.3/node_modules/@tanstack/table-core/build/lib/core/headers").HeaderContext<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_na...'.
+          The types of 'column.columnDef' are incompatible between these types.
+            Type 'import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@9.0.0-alpha.10/node_modules/@tanstack/table-core/dist/esm/types").ColumnDef<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: ...' is not assignable to type 'import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@8.21.3/node_modules/@tanstack/table-core/build/lib/types").ColumnDef<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string ...'.
+              Type 'ColumnDefBase<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown> & StringHeaderIdentifier' is not assignable to type 'ColumnDef<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown>'.
+                Type 'ColumnDefBase<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown> & StringHeaderIdentifier' is not assignable to type 'AccessorFnColumnDefBase<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown> & IdIdentifier<...>'.
+                  Property 'accessorFn' is missing in type 'ColumnDefBase<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown> & StringHeaderIdentifier' but required in type 'AccessorFnColumnDefBase<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown>'. (ts)
+						<Table.Head class="text-black prose prose-p text-xs md:text-sm font-medium p-2">
+							<FlexRender content={header.column.columnDef.header} context={header.getContext()} />
+						</Table.Head>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/waitlist-table.svelte:535:61
+Error: Type 'HeaderContext<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown>' is not assignable to type 'HeaderContext<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown> | CellContext<...>'.
+  Type 'import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@8.21.3/node_modules/@tanstack/table-core/build/lib/core/headers").HeaderContext<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_na...' is not assignable to type 'import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@9.0.0-alpha.10/node_modules/@tanstack/table-core/dist/esm/core/headers").HeaderContext<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_f...'.
+    The types of 'column.columnDef' are incompatible between these types.
+      Type 'import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@8.21.3/node_modules/@tanstack/table-core/build/lib/types").ColumnDef<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string ...' is not assignable to type 'import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@9.0.0-alpha.10/node_modules/@tanstack/table-core/dist/esm/types").ColumnDef<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: ...'.
+        Type 'ColumnDefBase<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown> & StringHeaderIdentifier' is not assignable to type 'ColumnDef<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown>'.
+          Type 'ColumnDefBase<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown> & StringHeaderIdentifier' is not assignable to type 'AccessorFnColumnDefBase<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown> & IdIdentifier<...>'.
+            Property 'accessorFn' is missing in type 'ColumnDefBase<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown> & StringHeaderIdentifier' but required in type 'AccessorFnColumnDefBase<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown>'. (ts)
+						<Table.Head class="text-black prose prose-p text-xs md:text-sm font-medium p-2">
+							<FlexRender content={header.column.columnDef.header} context={header.getContext()} />
+						</Table.Head>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/waitlist-table.svelte:548:20
+Error: Type 'ColumnDefTemplate<CellContext<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown>> | undefined' is not assignable to type 'string | ((props: HeaderContext<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; ... 11 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown>) => any) | ((props: CellContext<...>) => any...'.
+  Type '(props: CellContext<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown>) => any' is not assignable to type 'string | ((props: HeaderContext<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; ... 11 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown>) => any) | ((props: CellContext<...>) => any...'.
+    Type '(props: CellContext<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown>) => any' is not assignable to type '(props: HeaderContext<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown>) => any'.
+      Types of parameters 'props' and 'props' are incompatible.
+        Type 'HeaderContext<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown>' is missing the following properties from type 'CellContext<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown>': cell, getValue, renderValue, row (ts)
+						>
+							<FlexRender content={cell.column.columnDef.cell} context={cell.getContext()} />
+						</Table.Cell>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/waitlist-table.svelte:548:57
+Error: Type 'CellContext<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown>' is not assignable to type 'HeaderContext<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown> | CellContext<...>'.
+  Type 'import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@8.21.3/node_modules/@tanstack/table-core/build/lib/core/cell").CellContext<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: s...' is not assignable to type 'import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@9.0.0-alpha.10/node_modules/@tanstack/table-core/dist/esm/core/cell").CellContext<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_...'.
+    The types of 'cell.column.columnDef' are incompatible between these types.
+      Type 'import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@8.21.3/node_modules/@tanstack/table-core/build/lib/types").ColumnDef<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string ...' is not assignable to type 'import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@9.0.0-alpha.10/node_modules/@tanstack/table-core/dist/esm/types").ColumnDef<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: ...'.
+        Type 'ColumnDefBase<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown> & StringHeaderIdentifier' is not assignable to type 'ColumnDef<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown>'.
+          Type 'ColumnDefBase<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown> & StringHeaderIdentifier' is not assignable to type 'AccessorFnColumnDefBase<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown> & IdIdentifier<...>'.
+            Property 'accessorFn' is missing in type 'ColumnDefBase<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown> & StringHeaderIdentifier' but required in type 'AccessorFnColumnDefBase<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown>'. (ts)
+						>
+							<FlexRender content={cell.column.columnDef.cell} context={cell.getContext()} />
+						</Table.Cell>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/waitlist-table.svelte:597:10
+Error: Type 'ColumnDefTemplate<HeaderContext<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown>> | undefi...' is not assignable to type 'string | ((props: HeaderContext<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; ... 11 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown>) => any) | ((props: CellContext<...>) => any...'.
+  Type '(props: HeaderContext<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown>) => any' is not assignable to type 'string | ((props: HeaderContext<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; ... 11 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown>) => any) | ((props: CellContext<...>) => any...'.
+    Type '(props: import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@8.21.3/node_modules/@tanstack/table-core/build/lib/core/headers").HeaderContext<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_...' is not assignable to type '(props: import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@9.0.0-alpha.10/node_modules/@tanstack/table-core/dist/esm/core/headers").HeaderContext<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; gu...'.
+      Types of parameters 'props' and 'props' are incompatible.
+        Type 'import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@9.0.0-alpha.10/node_modules/@tanstack/table-core/dist/esm/core/headers").HeaderContext<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_f...' is not assignable to type 'import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@8.21.3/node_modules/@tanstack/table-core/build/lib/core/headers").HeaderContext<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_na...'.
+          The types of 'column.columnDef' are incompatible between these types.
+            Type 'import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@9.0.0-alpha.10/node_modules/@tanstack/table-core/dist/esm/types").ColumnDef<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: ...' is not assignable to type 'import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@8.21.3/node_modules/@tanstack/table-core/build/lib/types").ColumnDef<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string ...'.
+              Type 'ColumnDefBase<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown> & StringHeaderIdentifier' is not assignable to type 'ColumnDef<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown>'.
+                Type 'ColumnDefBase<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown> & StringHeaderIdentifier' is not assignable to type 'AccessorFnColumnDefBase<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown> & IdIdentifier<...>'.
+                  Property 'accessorFn' is missing in type 'ColumnDefBase<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown> & StringHeaderIdentifier' but required in type 'AccessorFnColumnDefBase<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown>'. (ts)
+								<FlexRender
+									content={header.column.columnDef.footer}
+									context={header.getContext()}
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/waitlist-table.svelte:598:10
+Error: Type 'HeaderContext<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown>' is not assignable to type 'HeaderContext<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown> | CellContext<...>'.
+  Type 'import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@8.21.3/node_modules/@tanstack/table-core/build/lib/core/headers").HeaderContext<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_na...' is not assignable to type 'import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@9.0.0-alpha.10/node_modules/@tanstack/table-core/dist/esm/core/headers").HeaderContext<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_f...'.
+    The types of 'column.columnDef' are incompatible between these types.
+      Type 'import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@8.21.3/node_modules/@tanstack/table-core/build/lib/types").ColumnDef<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string ...' is not assignable to type 'import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@9.0.0-alpha.10/node_modules/@tanstack/table-core/dist/esm/types").ColumnDef<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: ...'.
+        Type 'ColumnDefBase<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown> & StringHeaderIdentifier' is not assignable to type 'ColumnDef<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown>'.
+          Type 'ColumnDefBase<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown> & StringHeaderIdentifier' is not assignable to type 'AccessorFnColumnDefBase<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown> & IdIdentifier<...>'.
+            Property 'accessorFn' is missing in type 'ColumnDefBase<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown> & StringHeaderIdentifier' but required in type 'AccessorFnColumnDefBase<{ admin_notes: string | null; age: number | null; current_position: number | null; email: string | null; full_name: string | null; guardian_first_name: string | null; guardian_last_name: string | null; ... 10 more ...; status: "cancelled" | ... 7 more ... | null; }, unknown>'. (ts)
+									content={header.column.columnDef.footer}
+									context={header.getContext()}
+								/>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/beginners-workshop/+page.svelte:18:19
+Warn: This reference only captures the initial value of `data`. Did you mean to reference it inside a closure instead?
+https://svelte.dev/e/state_referenced_locally (svelte)
+	const { data } = $props();
+	const supabase = data.supabase;
+	let dialogOpen = $state(false);
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/inventory/categories/+page.svelte:13:45
+Warn: This reference only captures the initial value of `data`. Did you mean to reference it inside a closure instead?
+https://svelte.dev/e/state_referenced_locally (svelte)
+	let { data } = $props();
+	const supabase: SupabaseClient<Database> = data.supabase;
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/inventory/containers/+page.svelte:13:45
+Warn: This reference only captures the initial value of `data`. Did you mean to reference it inside a closure instead?
+https://svelte.dev/e/state_referenced_locally (svelte)
+	let { data } = $props();
+	const supabase: SupabaseClient<Database> = data.supabase;
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/inventory/containers/[id]/+page.svelte:10:24
+Warn: This reference only captures the initial value of `data`. Did you mean to reference it inside a closure instead?
+https://svelte.dev/e/state_referenced_locally (svelte)
+	let { data } = $props();
+	const { container } = data;
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/inventory/containers/[id]/edit/+page.svelte:132:39
+Warn: This reference only captures the initial value of `data`. Did you mean to reference it inside a closure instead?
+https://svelte.dev/e/state_referenced_locally (svelte)
+
+	const excludedIds = getDescendantIds(data.container.id, data.containers);
+	const availableContainers = data.containers.filter(
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/inventory/containers/[id]/edit/+page.svelte:132:58
+Warn: This reference only captures the initial value of `data`. Did you mean to reference it inside a closure instead?
+https://svelte.dev/e/state_referenced_locally (svelte)
+
+	const excludedIds = getDescendantIds(data.container.id, data.containers);
+	const availableContainers = data.containers.filter(
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/inventory/containers/[id]/edit/+page.svelte:133:30
+Warn: This reference only captures the initial value of `data`. Did you mean to reference it inside a closure instead?
+https://svelte.dev/e/state_referenced_locally (svelte)
+	const excludedIds = getDescendantIds(data.container.id, data.containers);
+	const availableContainers = data.containers.filter(
+		(c) => !excludedIds.has(c.id),
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/inventory/containers/create/+page.svelte:89:55
+Warn: This reference only captures the initial value of `data`. Did you mean to reference it inside a closure instead?
+https://svelte.dev/e/state_referenced_locally (svelte)
+
+	const hierarchicalContainers = buildHierarchyDisplay(data.containers);
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/inventory/items/+page.svelte:20:45
+Warn: This reference only captures the initial value of `data`. Did you mean to reference it inside a closure instead?
+https://svelte.dev/e/state_referenced_locally (svelte)
+	let { data } = $props();
+	const supabase: SupabaseClient<Database> = data.supabase;
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/inventory/items/[id]/+page.svelte:28:53
+Warn: This reference only captures the initial value of `data`. Did you mean to reference it inside a closure instead?
+https://svelte.dev/e/state_referenced_locally (svelte)
+	let { data } = $props();
+	const { item: initialItem, containers, canEdit } = data;
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/inventory/items/[id]/+page.svelte:40:27
+Warn: This reference only captures the initial value of `data`. Did you mean to reference it inside a derived instead?
+https://svelte.dev/e/state_referenced_locally (svelte)
+	// Local state for form fields
+	let containerId = $state(data.initialFormData.container_id);
+	let quantity = $state(data.initialFormData.quantity);
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/inventory/items/[id]/+page.svelte:41:24
+Warn: This reference only captures the initial value of `data`. Did you mean to reference it inside a derived instead?
+https://svelte.dev/e/state_referenced_locally (svelte)
+	let containerId = $state(data.initialFormData.container_id);
+	let quantity = $state(data.initialFormData.quantity);
+	let notes = $state(data.initialFormData.notes);
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/inventory/items/[id]/+page.svelte:42:21
+Warn: This reference only captures the initial value of `data`. Did you mean to reference it inside a derived instead?
+https://svelte.dev/e/state_referenced_locally (svelte)
+	let quantity = $state(data.initialFormData.quantity);
+	let notes = $state(data.initialFormData.notes);
+	let outForMaintenance = $state(data.initialFormData.out_for_maintenance);
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/inventory/items/[id]/+page.svelte:43:33
+Warn: This reference only captures the initial value of `data`. Did you mean to reference it inside a derived instead?
+https://svelte.dev/e/state_referenced_locally (svelte)
+	let notes = $state(data.initialFormData.notes);
+	let outForMaintenance = $state(data.initialFormData.out_for_maintenance);
+	let attributes = $state<Record<string, unknown>>(data.initialFormData.attributes);
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/inventory/items/[id]/+page.svelte:44:51
+Warn: This reference only captures the initial value of `data`. Did you mean to reference it inside a derived instead?
+https://svelte.dev/e/state_referenced_locally (svelte)
+	let outForMaintenance = $state(data.initialFormData.out_for_maintenance);
+	let attributes = $state<Record<string, unknown>>(data.initialFormData.attributes);
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/inventory/items/create/+page.svelte:31:26
+Warn: This reference only captures the initial value of `data`. Did you mean to reference it inside a derived instead?
+https://svelte.dev/e/state_referenced_locally (svelte)
+	let attributes = $state<Record<string, unknown>>({});
+	let categoryId = $state(data.initialData.category_id);
+	let containerId = $state(data.initialData.container_id);
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/inventory/items/create/+page.svelte:32:27
+Warn: This reference only captures the initial value of `data`. Did you mean to reference it inside a derived instead?
+https://svelte.dev/e/state_referenced_locally (svelte)
+	let categoryId = $state(data.initialData.category_id);
+	let containerId = $state(data.initialData.container_id);
+	let quantity = $state(data.initialData.quantity);
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/inventory/items/create/+page.svelte:33:24
+Warn: This reference only captures the initial value of `data`. Did you mean to reference it inside a derived instead?
+https://svelte.dev/e/state_referenced_locally (svelte)
+	let containerId = $state(data.initialData.container_id);
+	let quantity = $state(data.initialData.quantity);
+	let notes = $state(data.initialData.notes);
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/inventory/items/create/+page.svelte:34:21
+Warn: This reference only captures the initial value of `data`. Did you mean to reference it inside a derived instead?
+https://svelte.dev/e/state_referenced_locally (svelte)
+	let quantity = $state(data.initialData.quantity);
+	let notes = $state(data.initialData.notes);
+	let outForMaintenance = $state(data.initialData.out_for_maintenance);
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/inventory/items/create/+page.svelte:35:33
+Warn: This reference only captures the initial value of `data`. Did you mean to reference it inside a derived instead?
+https://svelte.dev/e/state_referenced_locally (svelte)
+	let notes = $state(data.initialData.notes);
+	let outForMaintenance = $state(data.initialData.out_for_maintenance);
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/inventory/items/create/+page.svelte:48:57
+Warn: This reference only captures the initial value of `data`. Did you mean to reference it inside a closure instead?
+https://svelte.dev/e/state_referenced_locally (svelte)
+
+	const hierarchicalContainers = buildContainerHierarchy(data.containers);
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/members/invite-drawer.svelte:159:19
+Error: Object literal may only specify known properties, and 'form' does not exist in type '$$render<RemoteFormFieldValue>.Props'. (ts)
+					<!-- First Name -->
+					<Form.Field {form} name="firstName">
+						<Form.Control>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/members/invite-drawer.svelte:161:29
+Error: Binding element 'props' implicitly has an 'any' type. (ts)
+						<Form.Control>
+							{#snippet children({ props })}
+								<Form.Label>First Name</Form.Label>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/members/invite-drawer.svelte:170:19
+Error: Object literal may only specify known properties, and 'form' does not exist in type '$$render<RemoteFormFieldValue>.Props'. (ts)
+					<!-- Last Name -->
+					<Form.Field {form} name="lastName">
+						<Form.Control>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/members/invite-drawer.svelte:172:29
+Error: Binding element 'props' implicitly has an 'any' type. (ts)
+						<Form.Control>
+							{#snippet children({ props })}
+								<Form.Label>Last Name</Form.Label>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/members/invite-drawer.svelte:182:18
+Error: Object literal may only specify known properties, and 'form' does not exist in type '$$render<RemoteFormFieldValue>.Props'. (ts)
+				<!-- Email -->
+				<Form.Field {form} name="email">
+					<Form.Control>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/members/invite-drawer.svelte:184:28
+Error: Binding element 'props' implicitly has an 'any' type. (ts)
+					<Form.Control>
+						{#snippet children({ props })}
+							<Form.Label>Email</Form.Label>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/members/invite-drawer.svelte:192:18
+Error: Object literal may only specify known properties, and 'form' does not exist in type '$$render<RemoteFormFieldValue>.Props'. (ts)
+
+				<Form.Field {form} name="dateOfBirth">
+					<Form.Control>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/members/invite-drawer.svelte:194:28
+Error: Binding element 'props' implicitly has an 'any' type. (ts)
+					<Form.Control>
+						{#snippet children({ props })}
+							<Form.Label>Date of birth</Form.Label>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/members/invite-drawer.svelte:213:18
+Error: Object literal may only specify known properties, and 'form' does not exist in type '$$render<RemoteFormFieldValue>.Props'. (ts)
+				<!-- Phone Number -->
+				<Form.Field {form} name="phoneNumber">
+					<Form.Control>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/members/invite-drawer.svelte:215:28
+Error: Binding element 'props' implicitly has an 'any' type. (ts)
+					<Form.Control>
+						{#snippet children({ props })}
+							<Form.Label>Phone Number</Form.Label>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/members/invite-drawer.svelte:220:9
+Error: Cannot use 'bind:' with this property. It is declared as non-bindable inside the component.
+To mark a property as bindable: 'let { phoneNumber = $bindable() } = $props()' (ts)
+								{...props}
+								bind:phoneNumber={$formData.phoneNumber}
+							/>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/members/member-actions.svelte:47:6
+Error: Cannot find name 'Edit'. (ts)
+			>
+				<Edit class="h-4 w-4" />
+			</Button>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/members/members-table.svelte:427:20
+Error: Type 'ColumnDefTemplate<HeaderContext<Omit<{ additional_data: Json; age: number | null; created_at: string | null; customer_id: string | null; email: string | null; first_name: string | null; from_waitlist_id: string | null; ... 23 more ...; waitlist_registration_date: string | null; }, "customer_id">, unknown>> | undefined' is not assignable to type 'string | ((props: HeaderContext<Omit<{ additional_data: Json; age: number | null; created_at: string | null; customer_id: string | null; email: string | null; first_name: string | null; from_waitlist_id: string | null; ... 23 more ...; waitlist_registration_date: string | null; }, "customer_id">, unknown>) => any) |...'.
+  Type '(props: HeaderContext<Omit<{ additional_data: Json; age: number | null; created_at: string | null; customer_id: string | null; email: string | null; first_name: string | null; from_waitlist_id: string | null; ... 23 more ...; waitlist_registration_date: string | null; }, "customer_id">, unknown>) => any' is not assignable to type 'string | ((props: HeaderContext<Omit<{ additional_data: Json; age: number | null; created_at: string | null; customer_id: string | null; email: string | null; first_name: string | null; from_waitlist_id: string | null; ... 23 more ...; waitlist_registration_date: string | null; }, "customer_id">, unknown>) => any) |...'.
+    Type '(props: import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@8.21.3/node_modules/@tanstack/table-core/build/lib/core/headers").HeaderContext<Omit<{ additional_data: import("/Users/alessandrojcm/repos/dhc-dashboard/src/database.types").Json; age: number | null; created_at: string |...' is not assignable to type '(props: import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@9.0.0-alpha.10/node_modules/@tanstack/table-core/dist/esm/core/headers").HeaderContext<Omit<{ additional_data: import("/Users/alessandrojcm/repos/dhc-dashboard/src/database.types").Json; age: number | null; created_at: s...'.
+      Types of parameters 'props' and 'props' are incompatible.
+        Type 'import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@9.0.0-alpha.10/node_modules/@tanstack/table-core/dist/esm/core/headers").HeaderContext<Omit<{ additional_data: import("/Users/alessandrojcm/repos/dhc-dashboard/src/database.types").Json; age: number | null; created_at: string | ...' is not assignable to type 'import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@8.21.3/node_modules/@tanstack/table-core/build/lib/core/headers").HeaderContext<Omit<{ additional_data: import("/Users/alessandrojcm/repos/dhc-dashboard/src/database.types").Json; age: number | null; created_at: string | null; c...'.
+          The types of 'column.columnDef' are incompatible between these types.
+            Type 'import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@9.0.0-alpha.10/node_modules/@tanstack/table-core/dist/esm/types").ColumnDef<Omit<{ additional_data: import("/Users/alessandrojcm/repos/dhc-dashboard/src/database.types").Json; age: number | null; created_at: string | null; custo...' is not assignable to type 'import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@8.21.3/node_modules/@tanstack/table-core/build/lib/types").ColumnDef<Omit<{ additional_data: import("/Users/alessandrojcm/repos/dhc-dashboard/src/database.types").Json; age: number | null; created_at: string | null; customer_id:...'.
+              Type 'ColumnDefBase<Omit<{ additional_data: Json; age: number | null; created_at: string | null; customer_id: string | null; email: string | null; first_name: string | null; from_waitlist_id: string | null; ... 23 more ...; waitlist_registration_date: string | null; }, "customer_id">, unknown> & StringHeaderIdentifier' is not assignable to type 'ColumnDef<Omit<{ additional_data: Json; age: number | null; created_at: string | null; customer_id: string | null; email: string | null; first_name: string | null; from_waitlist_id: string | null; ... 23 more ...; waitlist_registration_date: string | null; }, "customer_id">, unknown>'.
+                Type 'ColumnDefBase<Omit<{ additional_data: Json; age: number | null; created_at: string | null; customer_id: string | null; email: string | null; first_name: string | null; from_waitlist_id: string | null; ... 23 more ...; waitlist_registration_date: string | null; }, "customer_id">, unknown> & StringHeaderIdentifier' is not assignable to type 'AccessorFnColumnDefBase<Omit<{ additional_data: Json; age: number | null; created_at: string | null; customer_id: string | null; email: string | null; first_name: string | null; from_waitlist_id: string | null; ... 23 more ...; waitlist_registration_date: string | null; }, "customer_id">, unknown> & IdIdentifier<...>'.
+                  Property 'accessorFn' is missing in type 'ColumnDefBase<Omit<{ additional_data: Json; age: number | null; created_at: string | null; customer_id: string | null; email: string | null; first_name: string | null; from_waitlist_id: string | null; ... 23 more ...; waitlist_registration_date: string | null; }, "customer_id">, unknown> & StringHeaderIdentifier' but required in type 'AccessorFnColumnDefBase<Omit<{ additional_data: Json; age: number | null; created_at: string | null; customer_id: string | null; email: string | null; first_name: string | null; from_waitlist_id: string | null; ... 23 more ...; waitlist_registration_date: string | null; }, "customer_id">, unknown>'. (ts)
+						<Table.Head class="text-black prose prose-p text-xs md:text-sm font-medium p-2">
+							<FlexRender content={header.column.columnDef.header} context={header.getContext()} />
+						</Table.Head>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/members/members-table.svelte:427:61
+Error: Type 'HeaderContext<Omit<{ additional_data: Json; age: number | null; created_at: string | null; customer_id: string | null; email: string | null; first_name: string | null; from_waitlist_id: string | null; ... 23 more ...; waitlist_registration_date: string | null; }, "customer_id">, unknown>' is not assignable to type 'HeaderContext<Omit<{ additional_data: Json; age: number | null; created_at: string | null; customer_id: string | null; email: string | null; first_name: string | null; from_waitlist_id: string | null; ... 23 more ...; waitlist_registration_date: string | null; }, "customer_id">, unknown> | CellContext<...>'.
+  Type 'import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@8.21.3/node_modules/@tanstack/table-core/build/lib/core/headers").HeaderContext<Omit<{ additional_data: import("/Users/alessandrojcm/repos/dhc-dashboard/src/database.types").Json; age: number | null; created_at: string | null; c...' is not assignable to type 'import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@9.0.0-alpha.10/node_modules/@tanstack/table-core/dist/esm/core/headers").HeaderContext<Omit<{ additional_data: import("/Users/alessandrojcm/repos/dhc-dashboard/src/database.types").Json; age: number | null; created_at: string | ...'.
+    The types of 'column.columnDef' are incompatible between these types.
+      Type 'import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@8.21.3/node_modules/@tanstack/table-core/build/lib/types").ColumnDef<Omit<{ additional_data: import("/Users/alessandrojcm/repos/dhc-dashboard/src/database.types").Json; age: number | null; created_at: string | null; customer_id:...' is not assignable to type 'import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@9.0.0-alpha.10/node_modules/@tanstack/table-core/dist/esm/types").ColumnDef<Omit<{ additional_data: import("/Users/alessandrojcm/repos/dhc-dashboard/src/database.types").Json; age: number | null; created_at: string | null; custo...'.
+        Type 'ColumnDefBase<Omit<{ additional_data: Json; age: number | null; created_at: string | null; customer_id: string | null; email: string | null; first_name: string | null; from_waitlist_id: string | null; ... 23 more ...; waitlist_registration_date: string | null; }, "customer_id">, unknown> & StringHeaderIdentifier' is not assignable to type 'ColumnDef<Omit<{ additional_data: Json; age: number | null; created_at: string | null; customer_id: string | null; email: string | null; first_name: string | null; from_waitlist_id: string | null; ... 23 more ...; waitlist_registration_date: string | null; }, "customer_id">, unknown>'.
+          Type 'ColumnDefBase<Omit<{ additional_data: Json; age: number | null; created_at: string | null; customer_id: string | null; email: string | null; first_name: string | null; from_waitlist_id: string | null; ... 23 more ...; waitlist_registration_date: string | null; }, "customer_id">, unknown> & StringHeaderIdentifier' is not assignable to type 'AccessorFnColumnDefBase<Omit<{ additional_data: Json; age: number | null; created_at: string | null; customer_id: string | null; email: string | null; first_name: string | null; from_waitlist_id: string | null; ... 23 more ...; waitlist_registration_date: string | null; }, "customer_id">, unknown> & IdIdentifier<...>'.
+            Property 'accessorFn' is missing in type 'ColumnDefBase<Omit<{ additional_data: Json; age: number | null; created_at: string | null; customer_id: string | null; email: string | null; first_name: string | null; from_waitlist_id: string | null; ... 23 more ...; waitlist_registration_date: string | null; }, "customer_id">, unknown> & StringHeaderIdentifier' but required in type 'AccessorFnColumnDefBase<Omit<{ additional_data: Json; age: number | null; created_at: string | null; customer_id: string | null; email: string | null; first_name: string | null; from_waitlist_id: string | null; ... 23 more ...; waitlist_registration_date: string | null; }, "customer_id">, unknown>'. (ts)
+						<Table.Head class="text-black prose prose-p text-xs md:text-sm font-medium p-2">
+							<FlexRender content={header.column.columnDef.header} context={header.getContext()} />
+						</Table.Head>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/members/members-table.svelte:440:20
+Error: Type 'ColumnDefTemplate<CellContext<Omit<{ additional_data: Json; age: number | null; created_at: string | null; customer_id: string | null; email: string | null; first_name: string | null; from_waitlist_id: string | null; ... 23 more ...; waitlist_registration_date: string | null; }, "customer_id">, unknown>> | undefined' is not assignable to type 'string | ((props: HeaderContext<Omit<{ additional_data: Json; age: number | null; created_at: string | null; customer_id: string | null; email: string | null; first_name: string | null; from_waitlist_id: string | null; ... 23 more ...; waitlist_registration_date: string | null; }, "customer_id">, unknown>) => any) |...'.
+  Type '(props: CellContext<Omit<{ additional_data: Json; age: number | null; created_at: string | null; customer_id: string | null; email: string | null; first_name: string | null; from_waitlist_id: string | null; ... 23 more ...; waitlist_registration_date: string | null; }, "customer_id">, unknown>) => any' is not assignable to type 'string | ((props: HeaderContext<Omit<{ additional_data: Json; age: number | null; created_at: string | null; customer_id: string | null; email: string | null; first_name: string | null; from_waitlist_id: string | null; ... 23 more ...; waitlist_registration_date: string | null; }, "customer_id">, unknown>) => any) |...'.
+    Type '(props: CellContext<Omit<{ additional_data: Json; age: number | null; created_at: string | null; customer_id: string | null; email: string | null; first_name: string | null; from_waitlist_id: string | null; ... 23 more ...; waitlist_registration_date: string | null; }, "customer_id">, unknown>) => any' is not assignable to type '(props: HeaderContext<Omit<{ additional_data: Json; age: number | null; created_at: string | null; customer_id: string | null; email: string | null; first_name: string | null; from_waitlist_id: string | null; ... 23 more ...; waitlist_registration_date: string | null; }, "customer_id">, unknown>) => any'.
+      Types of parameters 'props' and 'props' are incompatible.
+        Type 'HeaderContext<Omit<{ additional_data: Json; age: number | null; created_at: string | null; customer_id: string | null; email: string | null; first_name: string | null; from_waitlist_id: string | null; ... 23 more ...; waitlist_registration_date: string | null; }, "customer_id">, unknown>' is missing the following properties from type 'CellContext<Omit<{ additional_data: Json; age: number | null; created_at: string | null; customer_id: string | null; email: string | null; first_name: string | null; from_waitlist_id: string | null; ... 23 more ...; waitlist_registration_date: string | null; }, "customer_id">, unknown>': cell, getValue, renderValue, row (ts)
+						>
+							<FlexRender content={cell.column.columnDef.cell} context={cell.getContext()} />
+						</Table.Cell>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/members/members-table.svelte:440:57
+Error: Type 'CellContext<Omit<{ additional_data: Json; age: number | null; created_at: string | null; customer_id: string | null; email: string | null; first_name: string | null; from_waitlist_id: string | null; ... 23 more ...; waitlist_registration_date: string | null; }, "customer_id">, unknown>' is not assignable to type 'HeaderContext<Omit<{ additional_data: Json; age: number | null; created_at: string | null; customer_id: string | null; email: string | null; first_name: string | null; from_waitlist_id: string | null; ... 23 more ...; waitlist_registration_date: string | null; }, "customer_id">, unknown> | CellContext<...>'.
+  Type 'import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@8.21.3/node_modules/@tanstack/table-core/build/lib/core/cell").CellContext<Omit<{ additional_data: import("/Users/alessandrojcm/repos/dhc-dashboard/src/database.types").Json; age: number | null; created_at: string | null; custom...' is not assignable to type 'import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@9.0.0-alpha.10/node_modules/@tanstack/table-core/dist/esm/core/cell").CellContext<Omit<{ additional_data: import("/Users/alessandrojcm/repos/dhc-dashboard/src/database.types").Json; age: number | null; created_at: string | null;...'.
+    The types of 'cell.column.columnDef' are incompatible between these types.
+      Type 'import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@8.21.3/node_modules/@tanstack/table-core/build/lib/types").ColumnDef<Omit<{ additional_data: import("/Users/alessandrojcm/repos/dhc-dashboard/src/database.types").Json; age: number | null; created_at: string | null; customer_id:...' is not assignable to type 'import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@9.0.0-alpha.10/node_modules/@tanstack/table-core/dist/esm/types").ColumnDef<Omit<{ additional_data: import("/Users/alessandrojcm/repos/dhc-dashboard/src/database.types").Json; age: number | null; created_at: string | null; custo...'.
+        Type 'ColumnDefBase<Omit<{ additional_data: Json; age: number | null; created_at: string | null; customer_id: string | null; email: string | null; first_name: string | null; from_waitlist_id: string | null; ... 23 more ...; waitlist_registration_date: string | null; }, "customer_id">, unknown> & StringHeaderIdentifier' is not assignable to type 'ColumnDef<Omit<{ additional_data: Json; age: number | null; created_at: string | null; customer_id: string | null; email: string | null; first_name: string | null; from_waitlist_id: string | null; ... 23 more ...; waitlist_registration_date: string | null; }, "customer_id">, unknown>'.
+          Type 'ColumnDefBase<Omit<{ additional_data: Json; age: number | null; created_at: string | null; customer_id: string | null; email: string | null; first_name: string | null; from_waitlist_id: string | null; ... 23 more ...; waitlist_registration_date: string | null; }, "customer_id">, unknown> & StringHeaderIdentifier' is not assignable to type 'AccessorFnColumnDefBase<Omit<{ additional_data: Json; age: number | null; created_at: string | null; customer_id: string | null; email: string | null; first_name: string | null; from_waitlist_id: string | null; ... 23 more ...; waitlist_registration_date: string | null; }, "customer_id">, unknown> & IdIdentifier<...>'.
+            Property 'accessorFn' is missing in type 'ColumnDefBase<Omit<{ additional_data: Json; age: number | null; created_at: string | null; customer_id: string | null; email: string | null; first_name: string | null; from_waitlist_id: string | null; ... 23 more ...; waitlist_registration_date: string | null; }, "customer_id">, unknown> & StringHeaderIdentifier' but required in type 'AccessorFnColumnDefBase<Omit<{ additional_data: Json; age: number | null; created_at: string | null; customer_id: string | null; email: string | null; first_name: string | null; from_waitlist_id: string | null; ... 23 more ...; waitlist_registration_date: string | null; }, "customer_id">, unknown>'. (ts)
+						>
+							<FlexRender content={cell.column.columnDef.cell} context={cell.getContext()} />
+						</Table.Cell>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/members/invitation-actions.svelte:11:3
+Error: Cannot find name 'CopyButton'. (ts)
+<div class="flex gap-1">
+	<CopyButton text={invitationLink} label="Copy invitation link" />
+	<Tooltip.Root>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/members/invitation-actions.svelte:12:3
+Error: Cannot find name 'Tooltip'. (ts)
+	<CopyButton text={invitationLink} label="Copy invitation link" />
+	<Tooltip.Root>
+		<Tooltip.Trigger>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/members/invitation-actions.svelte:13:4
+Error: Cannot find name 'Tooltip'. (ts)
+	<Tooltip.Root>
+		<Tooltip.Trigger>
+			<Button
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/members/invitation-actions.svelte:14:5
+Error: Cannot find name 'Button'. (ts)
+		<Tooltip.Trigger>
+			<Button
+				variant="ghost"
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/members/invitation-actions.svelte:20:6
+Error: Cannot find name 'SendIcon'. (ts)
+			>
+				<SendIcon class="h-4 w-4" />
+			</Button>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/members/invitation-actions.svelte:21:6
+Error: Cannot find name 'Button'. (ts)
+				<SendIcon class="h-4 w-4" />
+			</Button>
+		</Tooltip.Trigger>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/members/invitation-actions.svelte:22:5
+Error: Cannot find name 'Tooltip'. (ts)
+			</Button>
+		</Tooltip.Trigger>
+		<Tooltip.Content>Resend invitation email</Tooltip.Content>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/members/invitation-actions.svelte:23:4
+Error: Cannot find name 'Tooltip'. (ts)
+		</Tooltip.Trigger>
+		<Tooltip.Content>Resend invitation email</Tooltip.Content>
+	</Tooltip.Root>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/members/invitation-actions.svelte:23:45
+Error: Cannot find name 'Tooltip'. (ts)
+		</Tooltip.Trigger>
+		<Tooltip.Content>Resend invitation email</Tooltip.Content>
+	</Tooltip.Root>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/members/invitation-actions.svelte:24:4
+Error: Cannot find name 'Tooltip'. (ts)
+		<Tooltip.Content>Resend invitation email</Tooltip.Content>
+	</Tooltip.Root>
+	<Tooltip.Root>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/members/invitation-actions.svelte:25:3
+Error: Cannot find name 'Tooltip'. (ts)
+	</Tooltip.Root>
+	<Tooltip.Root>
+		<Tooltip.Trigger>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/members/invitation-actions.svelte:26:4
+Error: Cannot find name 'Tooltip'. (ts)
+	<Tooltip.Root>
+		<Tooltip.Trigger>
+			<Button
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/members/invitation-actions.svelte:27:5
+Error: Cannot find name 'Button'. (ts)
+		<Tooltip.Trigger>
+			<Button
+				variant="ghost"
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/members/invitation-actions.svelte:33:6
+Error: Cannot find name 'Trash2'. (ts)
+			>
+				<Trash2 class="h-4 w-4" />
+			</Button>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/members/invitation-actions.svelte:34:6
+Error: Cannot find name 'Button'. (ts)
+				<Trash2 class="h-4 w-4" />
+			</Button>
+		</Tooltip.Trigger>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/members/invitation-actions.svelte:35:5
+Error: Cannot find name 'Tooltip'. (ts)
+			</Button>
+		</Tooltip.Trigger>
+		<Tooltip.Content>Delete invitation</Tooltip.Content>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/members/invitation-actions.svelte:36:4
+Error: Cannot find name 'Tooltip'. (ts)
+		</Tooltip.Trigger>
+		<Tooltip.Content>Delete invitation</Tooltip.Content>
+	</Tooltip.Root>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/members/invitation-actions.svelte:36:39
+Error: Cannot find name 'Tooltip'. (ts)
+		</Tooltip.Trigger>
+		<Tooltip.Content>Delete invitation</Tooltip.Content>
+	</Tooltip.Root>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/members/invitation-actions.svelte:37:4
+Error: Cannot find name 'Tooltip'. (ts)
+		<Tooltip.Content>Delete invitation</Tooltip.Content>
+	</Tooltip.Root>
+</div>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/members/invitations-table.svelte:421:9
+Error: Type 'ColumnDefTemplate<HeaderContext<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown>>' is not assignable to type 'string | ((props: HeaderContext<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown>) => any) | ((props: CellContext<...>) => any) | undefined'.
+  Type '(props: HeaderContext<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown>) => any' is not assignable to type 'string | ((props: HeaderContext<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown>) => any) | ((props: CellContext<...>) => any) | undefined'.
+    Type '(props: import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@8.21.3/node_modules/@tanstack/table-core/build/lib/core/headers").HeaderContext<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown>) =>...' is not assignable to type '(props: import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@9.0.0-alpha.10/node_modules/@tanstack/table-core/dist/esm/core/headers").HeaderContext<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unkno...'.
+      Types of parameters 'props' and 'props' are incompatible.
+        Type 'import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@9.0.0-alpha.10/node_modules/@tanstack/table-core/dist/esm/core/headers").HeaderContext<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown>' is not assignable to type 'import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@8.21.3/node_modules/@tanstack/table-core/build/lib/core/headers").HeaderContext<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown>'.
+          The types of 'column.columnDef' are incompatible between these types.
+            Type 'import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@9.0.0-alpha.10/node_modules/@tanstack/table-core/dist/esm/types").ColumnDef<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown>' is not assignable to type 'import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@8.21.3/node_modules/@tanstack/table-core/build/lib/types").ColumnDef<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown>'.
+              Type 'ColumnDefBase<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown> & StringHeaderIdentifier' is not assignable to type 'ColumnDef<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown>'.
+                Type 'ColumnDefBase<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown> & StringHeaderIdentifier' is not assignable to type 'AccessorFnColumnDefBase<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown> & IdIdentifier<...>'.
+                  Property 'accessorFn' is missing in type 'ColumnDefBase<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown> & StringHeaderIdentifier' but required in type 'AccessorFnColumnDefBase<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown>'. (ts)
+							<FlexRender
+								content={header.column.columnDef.header ?? ''}
+								context={header.getContext() ?? {}}
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/members/invitations-table.svelte:422:9
+Error: Type 'HeaderContext<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown>' is not assignable to type 'HeaderContext<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown> | CellContext<{ id: string; email: string; status: "pending" | ... 2 more ... | "revoked"; expires_at: string; created_at: string; }, unknown>'.
+  Type 'import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@8.21.3/node_modules/@tanstack/table-core/build/lib/core/headers").HeaderContext<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown>' is not assignable to type 'import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@9.0.0-alpha.10/node_modules/@tanstack/table-core/dist/esm/core/headers").HeaderContext<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown>'.
+    The types of 'column.columnDef' are incompatible between these types.
+      Type 'import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@8.21.3/node_modules/@tanstack/table-core/build/lib/types").ColumnDef<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown>' is not assignable to type 'import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@9.0.0-alpha.10/node_modules/@tanstack/table-core/dist/esm/types").ColumnDef<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown>'.
+        Type 'ColumnDefBase<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown> & StringHeaderIdentifier' is not assignable to type 'ColumnDef<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown>'.
+          Type 'ColumnDefBase<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown> & StringHeaderIdentifier' is not assignable to type 'AccessorFnColumnDefBase<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown> & IdIdentifier<...>'.
+            Property 'accessorFn' is missing in type 'ColumnDefBase<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown> & StringHeaderIdentifier' but required in type 'AccessorFnColumnDefBase<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown>'. (ts)
+								content={header.column.columnDef.header ?? ''}
+								context={header.getContext() ?? {}}
+							/>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/members/invitations-table.svelte:436:20
+Error: Type 'ColumnDefTemplate<CellContext<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown>> | undefined' is not assignable to type 'string | ((props: HeaderContext<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown>) => any) | ((props: CellContext<...>) => any) | undefined'.
+  Type '(props: CellContext<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown>) => any' is not assignable to type 'string | ((props: HeaderContext<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown>) => any) | ((props: CellContext<...>) => any) | undefined'.
+    Type '(props: CellContext<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown>) => any' is not assignable to type '(props: HeaderContext<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown>) => any'.
+      Types of parameters 'props' and 'props' are incompatible.
+        Type 'HeaderContext<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown>' is missing the following properties from type 'CellContext<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown>': cell, getValue, renderValue, row (ts)
+						>
+							<FlexRender content={cell.column.columnDef.cell} context={cell.getContext()} />
+						</Table.Cell>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/members/invitations-table.svelte:436:57
+Error: Type 'CellContext<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown>' is not assignable to type 'HeaderContext<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown> | CellContext<{ id: string; email: string; status: "pending" | ... 2 more ... | "revoked"; expires_at: string; created_at: string; }, unknown>'.
+  Type 'import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@8.21.3/node_modules/@tanstack/table-core/build/lib/core/cell").CellContext<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown>' is not assignable to type 'import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@9.0.0-alpha.10/node_modules/@tanstack/table-core/dist/esm/core/cell").CellContext<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown>'.
+    The types of 'cell.column.columnDef' are incompatible between these types.
+      Type 'import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@8.21.3/node_modules/@tanstack/table-core/build/lib/types").ColumnDef<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown>' is not assignable to type 'import("/Users/alessandrojcm/repos/dhc-dashboard/node_modules/.pnpm/@tanstack+table-core@9.0.0-alpha.10/node_modules/@tanstack/table-core/dist/esm/types").ColumnDef<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown>'.
+        Type 'ColumnDefBase<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown> & StringHeaderIdentifier' is not assignable to type 'ColumnDef<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown>'.
+          Type 'ColumnDefBase<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown> & StringHeaderIdentifier' is not assignable to type 'AccessorFnColumnDefBase<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown> & IdIdentifier<...>'.
+            Property 'accessorFn' is missing in type 'ColumnDefBase<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown> & StringHeaderIdentifier' but required in type 'AccessorFnColumnDefBase<{ id: string; email: string; status: "pending" | "accepted" | "expired" | "revoked"; expires_at: string; created_at: string; }, unknown>'. (ts)
+						>
+							<FlexRender content={cell.column.columnDef.cell} context={cell.getContext()} />
+						</Table.Cell>
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/my-workshops/+page.svelte:18:17
+Warn: This reference only captures the initial value of `data`. Did you mean to reference it inside a closure instead?
+https://svelte.dev/e/state_referenced_locally (svelte)
+	let { data } = $props();
+	let supabase = data.supabase;
+	const userId = data.user!.id;
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/my-workshops/+page.svelte:19:17
+Warn: This reference only captures the initial value of `data`. Did you mean to reference it inside a closure instead?
+https://svelte.dev/e/state_referenced_locally (svelte)
+	let supabase = data.supabase;
+	const userId = data.user!.id;
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/workshops/+page.svelte:13:19
+Warn: This reference only captures the initial value of `data`. Did you mean to reference it inside a closure instead?
+https://svelte.dev/e/state_referenced_locally (svelte)
+	let { data } = $props();
+	const supabase = data.supabase;
+	const userId = data!.user!.id;
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/workshops/+page.svelte:14:17
+Warn: This reference only captures the initial value of `data`. Did you mean to reference it inside a closure instead?
+https://svelte.dev/e/state_referenced_locally (svelte)
+	const supabase = data.supabase;
+	const userId = data!.user!.id;
+	const workshopsQuery = createQuery(() => ({
+
+/Users/alessandrojcm/repos/dhc-dashboard/src/routes/dashboard/workshops/[id]/attendees/+page.svelte:9:19
+Warn: This reference only captures the initial value of `data`. Did you mean to reference it inside a closure instead?
+https://svelte.dev/e/state_referenced_locally (svelte)
+	let { data } = $props();
+	const supabase = data.supabase;
+	const workshopId = page.params.id;
+
+====================================
+svelte-check found 251 errors and 38 warnings in 44 files
+ ELIFECYCLE  Command failed with exit code 1.
