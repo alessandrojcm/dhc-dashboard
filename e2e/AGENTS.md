@@ -143,3 +143,10 @@ test.describe('Workshop Management', () => {
 - `table-pagesize-comprehensive.spec.ts` is most stable when asserting URL query params + page-size trigger value (not raw `table tbody tr` counts, which vary with responsive rendering and row structure).
 - Cleanup in page-size comprehensive runs should be best-effort; Snaplet-backed helper cleanups can fail intermittently in CI/local and should not fail the whole suite.
 - Search inputs depend on callback props wired through the shared `Input` component; if URL params do not update after `fill(...)`, confirm `oninput`/`onchange` handlers are forwarded in `src/lib/components/ui/input/input.svelte`.
+
+## STRIPE MANUAL E2E
+
+- `e2e/stripe-sync-manual.spec.ts` is manual-only and gated by `RUN_STRIPE_SYNC_MANUAL_E2E=true`.
+- The spec validates batch sync behavior by updating Stripe subscription state directly and invoking `/functions/v1/stripe-sync`.
+- Invoke `stripe-sync` via `supabaseServiceClient.functions.invoke("stripe-sync", { body })` instead of raw `fetch` to keep auth/base URL behavior aligned with the E2E service client.
+- `stripe-sync` responds before background sync completes (`EdgeRuntime.waitUntil`); assert DB mutations with polling instead of a single immediate read.
