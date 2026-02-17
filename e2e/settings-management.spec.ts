@@ -6,12 +6,12 @@ test.describe('Settings Management - Admin', () => {
 	let adminData: Awaited<ReturnType<typeof createMember>>;
 	test.beforeAll(async () => {
 		adminData = await createMember({
-			email: 'admin@test.com',
+			email: `admin-${Date.now()}@test.com`,
 			roles: new Set(['admin'])
 		});
 	});
 	test.beforeEach(async ({ context }) => {
-		await loginAsUser(context, 'admin@test.com');
+		await loginAsUser(context, adminData.email);
 	});
 	test.afterAll(() => adminData?.cleanUp());
 
@@ -43,12 +43,12 @@ test.describe('Settings Management - Committee Coordinator', () => {
 	let coordinatorData: Awaited<ReturnType<typeof createMember>>;
 	test.beforeAll(async () => {
 		coordinatorData = await createMember({
-			email: 'coordinator@test.com',
+			email: `coordinator-${Date.now()}@test.com`,
 			roles: new Set(['committee_coordinator'])
 		});
 	});
 	test.beforeEach(async ({ context }) => {
-		await loginAsUser(context, 'coordinator@test.com');
+		await loginAsUser(context, coordinatorData.email);
 	});
 	test.afterAll(() => coordinatorData?.cleanUp());
 
@@ -80,12 +80,12 @@ test.describe('Settings Management - President', () => {
 	let presidentData: Awaited<ReturnType<typeof createMember>>;
 	test.beforeAll(async () => {
 		presidentData = await createMember({
-			email: 'president@test.com',
+			email: `president-${Date.now()}@test.com`,
 			roles: new Set(['president'])
 		});
 	});
 	test.beforeEach(async ({ context }) => {
-		await loginAsUser(context, 'president@test.com');
+		await loginAsUser(context, presidentData.email);
 	});
 	test.afterAll(() => presidentData?.cleanUp());
 
@@ -117,12 +117,12 @@ test.describe('Settings Management - Quartermaster', () => {
 	let quartermasterData: Awaited<ReturnType<typeof createMember>>;
 	test.beforeAll(async () => {
 		quartermasterData = await createMember({
-			email: 'quartermaster@test.com',
+			email: `quartermaster-${Date.now()}@test.com`,
 			roles: new Set(['quartermaster', 'member'])
 		});
 	});
 	test.beforeEach(async ({ context }) => {
-		await loginAsUser(context, 'quartermaster@test.com');
+		await loginAsUser(context, quartermasterData.email);
 	});
 	test.afterAll(() => quartermasterData?.cleanUp());
 

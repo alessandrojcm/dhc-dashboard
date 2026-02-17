@@ -1,24 +1,29 @@
-<script lang="ts" generics="T extends Record<string, unknown>, U extends FormPathLeaves<T>">
-	import * as FormPrimitive from 'formsnap';
-	import type { FormPathLeaves } from 'sveltekit-superforms';
-	import type { HTMLAttributes } from 'svelte/elements';
+<script lang="ts" generics="T extends RemoteFormFieldValue = RemoteFormFieldValue">
 	import { cn, type WithElementRef, type WithoutChildren } from '$lib/utils.js';
+	import type { HTMLAttributes } from 'svelte/elements';
+	import type { Snippet } from 'svelte';
+	import type { RemoteFormField, RemoteFormFieldValue } from '@sveltejs/kit';
+
+	interface Props extends WithoutChildren<WithElementRef<HTMLAttributes<HTMLDivElement>>> {
+		field: RemoteFormField<T>;
+		children?: Snippet<[RemoteFormField<T>]>;
+	}
 
 	let {
 		ref = $bindable(null),
 		class: className,
-		form,
-		name,
+		field,
 		children: childrenProp,
 		...restProps
-	}: WithoutChildren<WithElementRef<HTMLAttributes<HTMLDivElement>>> &
-		FormPrimitive.ElementFieldProps<T, U> = $props();
+	}: Props = $props();
 </script>
 
-<FormPrimitive.ElementField {form} {name}>
-	{#snippet children({ constraints, errors, tainted, value })}
-		<div bind:this={ref} class={cn('space-y-2', className)} {...restProps}>
-			{@render childrenProp?.({ constraints, errors, tainted, value: value as T[U] })}
-		</div>
-	{/snippet}
-</FormPrimitive.ElementField>
+<div bind:this={ref} class={cn('space-y-2', className)} {...restProps}>
+	{#if childrenProp}
+		{@render childrenProp(field)}
+	{/if}
+	
+	{#each field.issues() as issue}
+		<p class="text-destructive text-sm font-medium">{issue.message}</p>
+	{/each}
+</div>

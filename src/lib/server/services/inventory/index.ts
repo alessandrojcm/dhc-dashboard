@@ -10,55 +10,55 @@
  * ## Usage Example
  *
  * ```typescript
+ * // data.remote.ts
+ * import { form, getRequestEvent } from '$app/server';
  * import { createItemService, ItemCreateSchema } from '$lib/server/services/inventory';
  *
- * export const actions = {
- *   create: async ({ request, locals, platform }) => {
- *     const form = await superValidate(request, valibot(ItemCreateSchema));
- *     if (!form.valid) return fail(400, { form });
+ * export const createItem = form(ItemCreateSchema, async (data) => {
+ *   const event = getRequestEvent();
+ *   const { session } = await event.locals.safeGetSession();
  *
- *     const itemService = createItemService(platform, locals.session);
- *     const item = await itemService.create(form.data);
+ *   const itemService = createItemService(event.platform!, session!);
+ *   const item = await itemService.create(data);
  *
- *     return message(form, 'Item created successfully!');
- *   }
- * };
+ *   return { success: true, item };
+ * });
  * ```
  */
 
-import { getKyselyClient } from '../shared';
-import { sentryLogger } from '../shared/logger';
-import type { Logger, Session } from '../shared';
-import { ItemService } from './item.service';
-import { ContainerService } from './container.service';
-import { CategoryService } from './category.service';
-import { HistoryService } from './history.service';
+import { getKyselyClient } from "../shared";
+import { sentryLogger } from "../shared/logger";
+import type { Logger, Session } from "../shared";
+import { ItemService } from "./item.service";
+import { ContainerService } from "./container.service";
+import { CategoryService } from "./category.service";
+import { HistoryService } from "./history.service";
 
 // Service exports
-export { ItemService } from './item.service';
-export { ContainerService } from './container.service';
-export { CategoryService } from './category.service';
-export { HistoryService } from './history.service';
+export { ItemService } from "./item.service";
+export { ContainerService } from "./container.service";
+export { CategoryService } from "./category.service";
+export { HistoryService } from "./history.service";
 
 // Schema exports
 export {
 	ItemCreateSchema,
 	ItemUpdateSchema,
 	type ItemCreateInput,
-	type ItemUpdateInput
-} from './item.service';
+	type ItemUpdateInput,
+} from "./item.service";
 export {
 	ContainerCreateSchema,
 	ContainerUpdateSchema,
 	type ContainerCreateInput,
-	type ContainerUpdateInput
-} from './container.service';
+	type ContainerUpdateInput,
+} from "./container.service";
 export {
 	CategoryCreateSchema,
 	CategoryUpdateSchema,
 	type CategoryCreateInput,
-	type CategoryUpdateInput
-} from './category.service';
+	type CategoryUpdateInput,
+} from "./category.service";
 
 // Type exports
 export type {
@@ -72,8 +72,8 @@ export type {
 	ItemFilters,
 	ContainerWithItemCount,
 	CategoryWithItemCount,
-	HistoryAction
-} from './types';
+	HistoryAction,
+} from "./types";
 
 /**
  * Create an ItemService instance
@@ -86,9 +86,13 @@ export type {
 export function createItemService(
 	platform: App.Platform,
 	session: Session,
-	logger?: Logger
+	logger?: Logger,
 ): ItemService {
-	return new ItemService(getKyselyClient(platform.env.HYPERDRIVE), session, logger ?? sentryLogger);
+	return new ItemService(
+		getKyselyClient(platform.env.HYPERDRIVE),
+		session,
+		logger ?? sentryLogger,
+	);
 }
 
 /**
@@ -102,12 +106,12 @@ export function createItemService(
 export function createContainerService(
 	platform: App.Platform,
 	session: Session,
-	logger?: Logger
+	logger?: Logger,
 ): ContainerService {
 	return new ContainerService(
 		getKyselyClient(platform.env.HYPERDRIVE),
 		session,
-		logger ?? sentryLogger
+		logger ?? sentryLogger,
 	);
 }
 
@@ -122,12 +126,12 @@ export function createContainerService(
 export function createCategoryService(
 	platform: App.Platform,
 	session: Session,
-	logger?: Logger
+	logger?: Logger,
 ): CategoryService {
 	return new CategoryService(
 		getKyselyClient(platform.env.HYPERDRIVE),
 		session,
-		logger ?? sentryLogger
+		logger ?? sentryLogger,
 	);
 }
 
@@ -142,12 +146,12 @@ export function createCategoryService(
 export function createHistoryService(
 	platform: App.Platform,
 	session: Session,
-	logger?: Logger
+	logger?: Logger,
 ): HistoryService {
 	return new HistoryService(
 		getKyselyClient(platform.env.HYPERDRIVE),
 		session,
-		logger ?? sentryLogger
+		logger ?? sentryLogger,
 	);
 }
 
@@ -159,7 +163,11 @@ export function createHistoryService(
  * @param logger - Optional logger (defaults to sentryLogger)
  * @returns Object containing all inventory services
  */
-export function createInventoryServices(platform: App.Platform, session: Session, logger?: Logger) {
+export function createInventoryServices(
+	platform: App.Platform,
+	session: Session,
+	logger?: Logger,
+) {
 	const loggerInstance = logger ?? sentryLogger;
 	const kysely = getKyselyClient(platform.env.HYPERDRIVE);
 
@@ -167,6 +175,6 @@ export function createInventoryServices(platform: App.Platform, session: Session
 		itemService: new ItemService(kysely, session, loggerInstance),
 		containerService: new ContainerService(kysely, session, loggerInstance),
 		categoryService: new CategoryService(kysely, session, loggerInstance),
-		historyService: new HistoryService(kysely, session, loggerInstance)
+		historyService: new HistoryService(kysely, session, loggerInstance),
 	};
 }

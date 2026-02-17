@@ -9,7 +9,7 @@ import {
 import { PostgresDriver } from "./kyselyDriver.ts";
 import type { KyselyDatabase } from "../../../src/lib/types.ts";
 
-const pool = new Pool(Deno.env.get("POSTGRES_CONNECTION_STRING"), 1);
+const pool = new Pool(Deno.env.get("SUPABASE_DB_URL"), 1);
 
 const db = new Kysely<KyselyDatabase>({
 	dialect: {

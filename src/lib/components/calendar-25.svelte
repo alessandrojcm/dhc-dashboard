@@ -1,5 +1,12 @@
 <script lang="ts">
 import type { CalendarDate } from "@internationalized/date";
+import { Label } from '$lib/components/ui/label';
+import * as Popover from '$lib/components/ui/popover';
+import { Button } from '$lib/components/ui/button';
+import {Calendar} from '$lib/components/ui/calendar';
+import { Input } from '$lib/components/ui/input';
+import { getLocalTimeZone } from '@internationalized/date';
+import { ChevronDownIcon } from 'lucide-svelte';
 
 interface Props {
 	id: string;
@@ -23,28 +30,18 @@ let {
 	disabled,
 }: Props = $props();
 
-const _open = $state(false);
+let open = $state(false);
 
-function _handleDateChange(newDate: CalendarDate | undefined) {
+function handleDateChange(newDate: CalendarDate | undefined) {
 	date = newDate;
 	onDateChange?.(newDate);
-}
-
-function _handleStartTimeChange(newTime: string) {
-	startTime = newTime;
-	onStartTimeChange?.(newTime);
-}
-
-function _handleEndTimeChange(newTime: string) {
-	endTime = newTime;
-	onEndTimeChange?.(newTime);
 }
 </script>
 
 <div class="flex flex-col gap-6">
 	<div class="flex flex-col gap-3">
 		<Label for="{id}-date" class="px-1">Date</Label>
-		<Popover.Root bind:open>
+		<Popover.Root bind:open={open}>
 			<Popover.Trigger id="{id}-date">
 				{#snippet child({ props })}
 					<Button
@@ -79,10 +76,10 @@ function _handleEndTimeChange(newTime: string) {
 				type="time"
 				id="{id}-time-from"
 				step="1"
-				value={startTime || '10:30'}
+				bind:value={startTime}
 				{disabled}
-				oninput={(e: Event) => {
-					handleStartTimeChange((e.currentTarget as HTMLInputElement).value);
+				onchange={(e: Event) => {
+					onStartTimeChange?.((e.currentTarget as HTMLInputElement).value);
 				}}
 				class="bg-background appearance-none [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
 			/>
@@ -93,10 +90,10 @@ function _handleEndTimeChange(newTime: string) {
 				type="time"
 				id="{id}-time-to"
 				step="1"
-				value={endTime || '12:30'}
+				bind:value={endTime}
 				{disabled}
-				oninput={(e: Event) => {
-					handleEndTimeChange((e.currentTarget as HTMLInputElement).value);
+				onchange={(e: Event) => {
+					onEndTimeChange?.((e.currentTarget as HTMLInputElement).value);
 				}}
 				class="bg-background appearance-none [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
 			/>

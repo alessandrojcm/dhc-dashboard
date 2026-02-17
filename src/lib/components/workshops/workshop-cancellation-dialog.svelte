@@ -150,6 +150,8 @@
 				onclick={handleConfirm}
 				disabled={isLoading}
 				class="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+				role={isLoading ? "button" : "spinbutton"}
+				aria-busy={isLoading}
 			>
 				{#if isLoading}
 					Processing...

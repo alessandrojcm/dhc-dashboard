@@ -16,13 +16,6 @@
       "type": "remote",
       "url": "https://mcp.svelte.dev/mcp",
       "enabled": true
-    },
-    "stripe": {
-      "type": "remote",
-      "url": "https://mcp.stripe.com",
-      "headers": {
-        "Authorization": "Bearer sk_test_51QYFGRAmVQaYb9lqDRAvb4JtYHTxHLOSU85824ojPNnQOE06imCJbMbwySma1zOz2RexfAJS1aXhm67dtb7j582j00lCiGoVHT"
-      }
     }
   }
 }

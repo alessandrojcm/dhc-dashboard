@@ -58,11 +58,6 @@
 				}}
 				name="pauseUntil"
 				id="pauseUntil"
-				data-fs-error={undefined}
-				aria-describedby={undefined}
-				aria-invalid={undefined}
-				aria-required={undefined}
-				data-fs-control="pauseUntil"
 			/>
 		</div>
 

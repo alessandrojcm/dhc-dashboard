@@ -1,4 +1,9 @@
 <script lang="ts">
+import { Button } from '$lib/components/ui/button';
+import * as Tooltip from '$lib/components/ui/tooltip';
+import { Check, Copy, X } from 'lucide-svelte';
+import { fade } from 'svelte/transition';
+
 const {
 	text,
 	label = "Copy",
@@ -45,16 +50,16 @@ async function _copyToClipboard() {
 			type="button"
 			{size}
 			{variant}
-			onclick={copyToClipboard}
+			onclick={_copyToClipboard}
 			class="relative"
 			aria-label={label}
 		>
-			{#if isCopied === 'copied'}
+			{#if _isCopied === 'copied'}
 				<span in:fade={{ duration: 150 }} class="flex items-center gap-2">
 					<Check class="h-4 w-4 text-green-500" />
 					<span class="sr-only">Copied!</span>
 				</span>
-			{:else if isCopied === 'error'}
+			{:else if _isCopied === 'error'}
 				<span in:fade={{ duration: 150 }} class="flex items-center gap-2">
 					<X class="h-4 w-4 text-red-500" />
 					<span class="sr-only">Failed to copy</span>

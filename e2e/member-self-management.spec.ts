@@ -32,6 +32,7 @@ test.describe('Member Self-Management', () => {
 		await expect(page.getByText(/profile has been updated/i)).toBeVisible();
 		await page.reload();
 		await expect(page.getByLabel(/first name/i)).toHaveValue('Updated name');
+		await expect(page.getByText(/Longsword/i).first()).toBeVisible();
 	});
 
 	test('it should show manage subscription button', async ({ page }) => {
@@ -71,7 +72,7 @@ test.describe('Member Management - Admin', () => {
 
 	test('it should show other options when user is admin', async ({ page }) => {
 		await page.goto('/dashboard');
-		await page.getByText(adminData.email).click();
+		await page.getByRole('button', { name: new RegExp(adminData.email, 'i') }).first().click();
 		await page.getByText('My profile').click();
 		await expect(page.getByTestId('sidebar')).not.toHaveText('');
 	});
@@ -79,6 +80,9 @@ test.describe('Member Management - Admin', () => {
 	test('admin should be able to navigate to a specific member profile', async ({ page }) => {
 		await page.goto(`/dashboard/members/${memberData.userId}`);
 		await page.getByLabel(/first name/i).fill('Updated name');
+		await page.getByLabel(/preferred weapon/i).click();
+		await page.getByRole('option', { name: 'Longsword' }).click();
+		await page.getByRole('button', { name: /save changes/i }).click();
 		await page.getByRole('button', { name: /save changes/i }).click();
 		await expect(page.getByText(/profile has been updated/i)).toBeVisible();
 		await page.reload();
@@ -113,6 +117,6 @@ test.describe('Member management - cross member role check', () => {
 		page
 	}) => {
 		await page.goto(`/dashboard/members/${memberTwo.userId}`);
-		await expect(page.getByText(memberOne.first_name)).toBeVisible();
+		await expect(page.getByText(memberOne.first_name).first()).toBeVisible();
 	});
 });
