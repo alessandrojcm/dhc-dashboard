@@ -1,8 +1,8 @@
 <script lang="ts">
-	import * as Card from "$lib/components/ui/card";
-	import DHCLogo from "/src/assets/images/dhc-logo.png?enhanced";
+import * as Card from "$lib/components/ui/card";
+import DHCLogo from "/src/assets/images/dhc-logo.png?enhanced";
 
-	const { children } = $props();
+const { children } = $props();
 </script>
 
 <svelte:head>

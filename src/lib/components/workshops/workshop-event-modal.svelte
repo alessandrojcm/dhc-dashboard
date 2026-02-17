@@ -1,116 +1,126 @@
 <script lang="ts">
-	import { Button, buttonVariants } from '$lib/components/ui/button';
-	import { Badge } from '$lib/components/ui/badge';
-	import * as Popover from '$lib/components/ui/popover';
-	import { Calendar, Users, MapPin, Loader2, AlertTriangle, CheckCircle } from 'lucide-svelte';
-	import { createMutation, useQueryClient } from '@tanstack/svelte-query';
-	import { toast } from 'svelte-sonner';
-	import dayjs from 'dayjs';
-	import type { WorkshopCalendarEvent } from '$lib/types';
-	import Dinero from 'dinero.js';
+import { Button, buttonVariants } from "$lib/components/ui/button";
+import { Badge } from "$lib/components/ui/badge";
+import * as Popover from "$lib/components/ui/popover";
+import {
+	Calendar,
+	Users,
+	MapPin,
+	Loader2,
+	AlertTriangle,
+	CheckCircle,
+} from "lucide-svelte";
+import { createMutation, useQueryClient } from "@tanstack/svelte-query";
+import { toast } from "svelte-sonner";
+import dayjs from "dayjs";
+import type { WorkshopCalendarEvent } from "$lib/types";
+import Dinero from "dinero.js";
 
-	let {
-		calendarEvent: event,
-		onClose
-	}: {
-		calendarEvent: WorkshopCalendarEvent;
-		onInterestToggle?: (workshopId: string) => void;
-		onClose?: () => void;
-	} = $props();
+let {
+	calendarEvent: event,
+	onClose,
+}: {
+	calendarEvent: WorkshopCalendarEvent;
+	onInterestToggle?: (workshopId: string) => void;
+	onClose?: () => void;
+} = $props();
 
-	const queryClient = useQueryClient();
-	const workshop = event.workshop;
-	const interestCount = $derived.by(() => {
-		if (event.workshop.status === 'published') {
-			return workshop.user_registrations?.filter((r) => r.status !== 'refunded')?.length ?? 0;
-		} else if (event.workshop.status === 'planned') {
-			return workshop?.interest_count?.at(0)?.interest_count ?? 0;
-		}
-		return 0;
-	});
-
-	// Mutations for workshop actions with proper loading states
-	const deleteMutation = createMutation(() => ({
-		mutationFn: async (workshopId: string) => {
-			const response = await fetch(`/api/workshops/${workshopId}`, {
-				method: 'DELETE'
-			});
-			if (!response.ok) throw new Error('Failed to delete workshop');
-			return response.json();
-		},
-		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ['workshops'] });
-			toast.success('Workshop deleted successfully');
-			onClose?.();
-		},
-		onError: (error) => {
-			toast.error(`Failed to delete workshop: ${error.message}`);
-		}
-	}));
-
-	const publishMutation = createMutation(() => ({
-		mutationFn: async (workshopId: string) => {
-			const response = await fetch(`/api/workshops/${workshopId}/publish`, {
-				method: 'POST'
-			});
-			if (!response.ok) throw new Error('Failed to publish workshop');
-			return response.json();
-		},
-		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ['workshops'] });
-			toast.success('Workshop published successfully');
-			onClose?.();
-		},
-		onError: (error) => {
-			toast.error(`Failed to publish workshop: ${error.message}`);
-		}
-	}));
-
-	const cancelMutation = createMutation(() => ({
-		mutationFn: async (workshopId: string) => {
-			const response = await fetch(`/api/workshops/${workshopId}/cancel`, {
-				method: 'POST'
-			});
-			if (!response.ok) throw new Error('Failed to cancel workshop');
-			return response.json();
-		},
-		onSuccess: () => {
-			queryClient.invalidateQueries({ queryKey: ['workshops'] });
-			toast.success('Workshop cancelled successfully');
-			onClose?.();
-		},
-		onError: (error) => {
-			toast.error(`Failed to cancel workshop: ${error.message}`);
-		}
-	}));
-
-	function formatPrice(price: number) {
-		return Dinero({ amount: price, currency: 'EUR' }).toFormat();
+const queryClient = useQueryClient();
+const workshop = event.workshop;
+const interestCount = $derived.by(() => {
+	if (event.workshop.status === "published") {
+		return (
+			workshop.user_registrations?.filter((r) => r.status !== "refunded")
+				?.length ?? 0
+		);
+	} else if (event.workshop.status === "planned") {
+		return workshop?.interest_count?.at(0)?.interest_count ?? 0;
 	}
+	return 0;
+});
 
-	function handleEdit() {
-		event.handleEdit?.(workshop);
+// Mutations for workshop actions with proper loading states
+const deleteMutation = createMutation(() => ({
+	mutationFn: async (workshopId: string) => {
+		const response = await fetch(`/api/workshops/${workshopId}`, {
+			method: "DELETE",
+		});
+		if (!response.ok) throw new Error("Failed to delete workshop");
+		return response.json();
+	},
+	onSuccess: () => {
+		queryClient.invalidateQueries({ queryKey: ["workshops"] });
+		toast.success("Workshop deleted successfully");
 		onClose?.();
-	}
+	},
+	onError: (error) => {
+		toast.error(`Failed to delete workshop: ${error.message}`);
+	},
+}));
 
-	function handlePublish() {
-		publishMutation.mutate(workshop.id);
-	}
+const publishMutation = createMutation(() => ({
+	mutationFn: async (workshopId: string) => {
+		const response = await fetch(`/api/workshops/${workshopId}/publish`, {
+			method: "POST",
+		});
+		if (!response.ok) throw new Error("Failed to publish workshop");
+		return response.json();
+	},
+	onSuccess: () => {
+		queryClient.invalidateQueries({ queryKey: ["workshops"] });
+		toast.success("Workshop published successfully");
+		onClose?.();
+	},
+	onError: (error) => {
+		toast.error(`Failed to publish workshop: ${error.message}`);
+	},
+}));
 
-	function handleCancel() {
-		cancelMutation.mutate(workshop.id);
-	}
+const cancelMutation = createMutation(() => ({
+	mutationFn: async (workshopId: string) => {
+		const response = await fetch(`/api/workshops/${workshopId}/cancel`, {
+			method: "POST",
+		});
+		if (!response.ok) throw new Error("Failed to cancel workshop");
+		return response.json();
+	},
+	onSuccess: () => {
+		queryClient.invalidateQueries({ queryKey: ["workshops"] });
+		toast.success("Workshop cancelled successfully");
+		onClose?.();
+	},
+	onError: (error) => {
+		toast.error(`Failed to cancel workshop: ${error.message}`);
+	},
+}));
 
-	function handleDelete() {
-		deleteMutation.mutate(workshop.id);
-	}
+function formatPrice(price: number) {
+	return Dinero({ amount: price, currency: "EUR" }).toFormat();
+}
 
-	// State for popover controls
-	let deletePopoverOpen = $state(false);
-	let cancelPopoverOpen = $state(false);
+function handleEdit() {
+	event.handleEdit?.(workshop);
+	onClose?.();
+}
 
-	// Check if actions are actually provided
-	const hasEditAction = $derived(!!event.handleEdit);
+function handlePublish() {
+	publishMutation.mutate(workshop.id);
+}
+
+function handleCancel() {
+	cancelMutation.mutate(workshop.id);
+}
+
+function handleDelete() {
+	deleteMutation.mutate(workshop.id);
+}
+
+// State for popover controls
+let deletePopoverOpen = $state(false);
+let cancelPopoverOpen = $state(false);
+
+// Check if actions are actually provided
+const hasEditAction = $derived(!!event.handleEdit);
 </script>
 
 <div class="workshop-event-modal">

@@ -1,110 +1,124 @@
 <script lang="ts">
-	import type { InventoryCategory, InventoryAttributeDefinition } from '$lib/types';
-	import {
-		Card,
-		CardContent,
-		CardDescription,
-		CardHeader,
-		CardTitle
-	} from '$lib/components/ui/card';
-	import { Button } from '$lib/components/ui/button';
-	import { Input } from '$lib/components/ui/input';
-	import { Textarea } from '$lib/components/ui/textarea';
-	import { Select, SelectContent, SelectItem, SelectTrigger } from '$lib/components/ui/select';
-	import { Checkbox } from '$lib/components/ui/checkbox';
-	import * as Field from '$lib/components/ui/field';
-	import { ArrowLeft, Package, AlertCircle } from 'lucide-svelte';
-	import { Label } from '$lib/components/ui/label';
-	import { Alert, AlertDescription } from '$lib/components/ui/alert';
-	import { buildContainerHierarchy } from '$lib/utils/inventory-form';
-	import { createItem } from '../data.remote';
-	import { onMount } from 'svelte';
+import type {
+	InventoryCategory,
+	InventoryAttributeDefinition,
+} from "$lib/types";
+import {
+	Card,
+	CardContent,
+	CardDescription,
+	CardHeader,
+	CardTitle,
+} from "$lib/components/ui/card";
+import { Button } from "$lib/components/ui/button";
+import { Input } from "$lib/components/ui/input";
+import { Textarea } from "$lib/components/ui/textarea";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+} from "$lib/components/ui/select";
+import { Checkbox } from "$lib/components/ui/checkbox";
+import * as Field from "$lib/components/ui/field";
+import { ArrowLeft, Package, AlertCircle } from "lucide-svelte";
+import { Label } from "$lib/components/ui/label";
+import { Alert, AlertDescription } from "$lib/components/ui/alert";
+import { buildContainerHierarchy } from "$lib/utils/inventory-form";
+import { createItem } from "../data.remote";
+import { onMount } from "svelte";
 
-	let { data } = $props();
+let { data } = $props();
 
-	// Track validation errors for attributes
-	let attributeErrors = $state<Record<string, string>>({});
-	let formError = $state<string | null>(null);
+// Track validation errors for attributes
+let attributeErrors = $state<Record<string, string>>({});
+let formError = $state<string | null>(null);
 
-	// Local state for attributes (since they're dynamic)
-	let attributes = $state<Record<string, unknown>>({});
-	let categoryId = $state(data.initialData.category_id);
-	let containerId = $state(data.initialData.container_id);
-	let quantity = $state(data.initialData.quantity);
-	let notes = $state(data.initialData.notes);
-	let outForMaintenance = $state(data.initialData.out_for_maintenance);
+// Local state for attributes (since they're dynamic)
+let attributes = $state<Record<string, unknown>>({});
+let categoryId = $state(data.initialData.category_id);
+let containerId = $state(data.initialData.container_id);
+let quantity = $state(data.initialData.quantity);
+let notes = $state(data.initialData.notes);
+let outForMaintenance = $state(data.initialData.out_for_maintenance);
 
-	onMount(() => {
-		createItem.fields.set({
-			container_id: data.initialData.container_id,
-			category_id: data.initialData.category_id,
-			attributes: data.initialData.attributes,
-			quantity: data.initialData.quantity,
-			notes: data.initialData.notes,
-			out_for_maintenance: data.initialData.out_for_maintenance
-		});
+onMount(() => {
+	createItem.fields.set({
+		container_id: data.initialData.container_id,
+		category_id: data.initialData.category_id,
+		attributes: data.initialData.attributes,
+		quantity: data.initialData.quantity,
+		notes: data.initialData.notes,
+		out_for_maintenance: data.initialData.out_for_maintenance,
 	});
+});
 
-	const hierarchicalContainers = buildContainerHierarchy(data.containers);
+const hierarchicalContainers = buildContainerHierarchy(data.containers);
 
-	// Reactive category selection for dynamic attributes
-	const selectedCategory = $derived(
-		data.categories.find((c) => c.id === categoryId) as InventoryCategory | undefined
-	);
-	const categoryAttributes = $derived(
-		(selectedCategory?.available_attributes as InventoryAttributeDefinition[]) || []
-	);
+// Reactive category selection for dynamic attributes
+const selectedCategory = $derived(
+	data.categories.find((c) => c.id === categoryId) as
+		| InventoryCategory
+		| undefined,
+);
+const categoryAttributes = $derived(
+	(selectedCategory?.available_attributes as InventoryAttributeDefinition[]) ||
+		[],
+);
 
-	// Display names for selected items
-	const selectedCategoryName = $derived(selectedCategory?.name || 'Select a category');
-	const selectedContainerName = $derived.by(() => {
-		const container = hierarchicalContainers.find((c) => c.id === containerId);
-		return container?.displayName || 'Select a container';
-	});
+// Display names for selected items
+const selectedCategoryName = $derived(
+	selectedCategory?.name || "Select a category",
+);
+const selectedContainerName = $derived.by(() => {
+	const container = hierarchicalContainers.find((c) => c.id === containerId);
+	return container?.displayName || "Select a container";
+});
 
-	function updateCategory(newCategoryId: string) {
-		categoryId = newCategoryId;
-		createItem.fields.category_id.set(newCategoryId);
+function updateCategory(newCategoryId: string) {
+	categoryId = newCategoryId;
+	createItem.fields.category_id.set(newCategoryId);
 
-		// Clear attribute errors
-		attributeErrors = {};
+	// Clear attribute errors
+	attributeErrors = {};
 
-		// Reset attributes when category changes
-		attributes = {};
-		createItem.fields.attributes.set({});
+	// Reset attributes when category changes
+	attributes = {};
+	createItem.fields.attributes.set({});
 
-		// Find the selected category
-		const category = data.categories.find((c) => c.id === newCategoryId);
-		if (!category) return;
+	// Find the selected category
+	const category = data.categories.find((c) => c.id === newCategoryId);
+	if (!category) return;
 
-		// Initialize only required attributes or those with default values
-		const availableAttrs = (category.available_attributes as InventoryAttributeDefinition[]) || [];
-		availableAttrs.forEach((attr) => {
-			// Only set default value if explicitly provided
-			if (attr.default_value !== undefined) {
-				attributes[attr.name] = attr.default_value;
-			}
-		});
-		createItem.fields.attributes.set(attributes);
-	}
-
-	function updateContainer(newContainerId: string) {
-		containerId = newContainerId;
-		createItem.fields.container_id.set(newContainerId);
-	}
-
-	function updateAttribute(attrName: string, value: unknown) {
-		attributes[attrName] = value;
-		createItem.fields.attributes.set({ ...attributes });
-		clearAttributeError(attrName);
-	}
-
-	function clearAttributeError(attrName: string) {
-		if (attributeErrors[attrName]) {
-			const { [attrName]: _removed, ...rest } = attributeErrors;
-			attributeErrors = rest;
+	// Initialize only required attributes or those with default values
+	const availableAttrs =
+		(category.available_attributes as InventoryAttributeDefinition[]) || [];
+	availableAttrs.forEach((attr) => {
+		// Only set default value if explicitly provided
+		if (attr.default_value !== undefined) {
+			attributes[attr.name] = attr.default_value;
 		}
+	});
+	createItem.fields.attributes.set(attributes);
+}
+
+function updateContainer(newContainerId: string) {
+	containerId = newContainerId;
+	createItem.fields.container_id.set(newContainerId);
+}
+
+function updateAttribute(attrName: string, value: unknown) {
+	attributes[attrName] = value;
+	createItem.fields.attributes.set({ ...attributes });
+	clearAttributeError(attrName);
+}
+
+function clearAttributeError(attrName: string) {
+	if (attributeErrors[attrName]) {
+		const { [attrName]: _removed, ...rest } = attributeErrors;
+		attributeErrors = rest;
 	}
+}
 </script>
 
 <div class="p-6">

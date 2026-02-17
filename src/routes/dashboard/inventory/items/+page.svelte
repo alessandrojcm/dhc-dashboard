@@ -1,137 +1,160 @@
 <script lang="ts">
-	/* eslint-disable @typescript-eslint/no-explicit-any */
-	import type { Database } from '$database';
-	import type { SupabaseClient } from '@supabase/supabase-js';
-	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
-	import { Button } from '$lib/components/ui/button';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Input } from '$lib/components/ui/input';
-	import { Select, SelectContent, SelectItem, SelectTrigger } from '$lib/components/ui/select';
-	import { Package, Plus, Search, Filter, AlertTriangle, FolderOpen, Tags } from 'lucide-svelte';
-	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
-	import { goto } from '$app/navigation';
-	import { resolve } from '$app/paths';
-	import { page } from '$app/state';
-	import { Label } from '$lib/components/ui/label';
-	import { createQuery, keepPreviousData } from '@tanstack/svelte-query';
-	import type { InventoryItem, InventoryItemWithRelations } from '$lib/types';
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import type { Database } from "$database";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+	Card,
+	CardContent,
+	CardHeader,
+	CardTitle,
+} from "$lib/components/ui/card";
+import { Button } from "$lib/components/ui/button";
+import { Badge } from "$lib/components/ui/badge";
+import { Input } from "$lib/components/ui/input";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+} from "$lib/components/ui/select";
+import {
+	Package,
+	Plus,
+	Search,
+	Filter,
+	AlertTriangle,
+	FolderOpen,
+	Tags,
+} from "lucide-svelte";
+import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
+import { goto } from "$app/navigation";
+import { resolve } from "$app/paths";
+import { page } from "$app/state";
+import { Label } from "$lib/components/ui/label";
+import { createQuery, keepPreviousData } from "@tanstack/svelte-query";
+import type { InventoryItem, InventoryItemWithRelations } from "$lib/types";
 
-	let { data } = $props();
-	const supabase: SupabaseClient<Database> = data.supabase;
+let { data } = $props();
+const supabase: SupabaseClient<Database> = data.supabase;
 
-	const PAGE_SIZE = 20;
+const PAGE_SIZE = 20;
 
-	// Parse URL params
-	const currentPage = $derived(Number(page.url.searchParams.get('page')) || 1);
-	let searchInput = $derived(page.url.searchParams.get('search') || '');
-	let categoryInput = $derived(page.url.searchParams.get('category') || '');
-	let containerInput = $derived(page.url.searchParams.get('container') || '');
-	let maintenanceInput = $derived(page.url.searchParams.get('maintenance') || '');
+// Parse URL params
+const currentPage = $derived(Number(page.url.searchParams.get("page")) || 1);
+let searchInput = $derived(page.url.searchParams.get("search") || "");
+let categoryInput = $derived(page.url.searchParams.get("category") || "");
+let containerInput = $derived(page.url.searchParams.get("container") || "");
+let maintenanceInput = $derived(page.url.searchParams.get("maintenance") || "");
 
-	type InventoryItem = Pick<
-		InventoryItemWithRelations,
-		'id' | 'quantity' | 'out_for_maintenance' | 'attributes' | 'category' | 'container'
-	>;
+type InventoryItem = Pick<
+	InventoryItemWithRelations,
+	| "id"
+	| "quantity"
+	| "out_for_maintenance"
+	| "attributes"
+	| "category"
+	| "container"
+>;
 
-	async function getItems(signal: AbortSignal) {
-		let query = supabase
-			.from('inventory_items')
-			.select(
-				'id, quantity, out_for_maintenance, attributes, category:equipment_categories(id, name), container:containers(id, name)',
-				{ count: 'exact' }
-			);
-		// Apply filters
-		if (searchInput) {
-			// Search in attributes->name, category name, or container name
-			query = query.or(
-				`attributes->name.ilike.%${searchInput}%,equipment_categories.name.ilike.%${searchInput}%,containers.name.ilike.%${searchInput}%`
-			);
-		}
-		if (categoryInput) {
-			query = query.eq('category_id', categoryInput);
-		}
-		if (containerInput) {
-			query = query.eq('container_id', containerInput);
-		}
-		if (maintenanceInput) {
-			query = query.eq('out_for_maintenance', maintenanceInput === 'true');
-		}
-
-		// Pagination
-		const rangeStart = (currentPage - 1) * PAGE_SIZE;
-		const rangeEnd = rangeStart + PAGE_SIZE - 1;
-
-		const {
-			data: items,
-			error,
-			count
-		} = await query
-			.range(rangeStart, rangeEnd)
-			.order('created_at', { ascending: false })
-			.throwOnError()
-			.abortSignal(signal);
-
-		if (error) throw error;
-
-		return {
-			items: (items || []) as InventoryItem[],
-			total: count || 0,
-			totalPages: Math.ceil((count || 0) / PAGE_SIZE)
-		};
+async function getItems(signal: AbortSignal) {
+	let query = supabase
+		.from("inventory_items")
+		.select(
+			"id, quantity, out_for_maintenance, attributes, category:equipment_categories(id, name), container:containers(id, name)",
+			{ count: "exact" },
+		);
+	// Apply filters
+	if (searchInput) {
+		// Search in attributes->name, category name, or container name
+		query = query.or(
+			`attributes->name.ilike.%${searchInput}%,equipment_categories.name.ilike.%${searchInput}%,containers.name.ilike.%${searchInput}%`,
+		);
+	}
+	if (categoryInput) {
+		query = query.eq("category_id", categoryInput);
+	}
+	if (containerInput) {
+		query = query.eq("container_id", containerInput);
+	}
+	if (maintenanceInput) {
+		query = query.eq("out_for_maintenance", maintenanceInput === "true");
 	}
 
-	// Fetch items with TanStack Query
-	const itemsQuery = createQuery(() => ({
-		queryKey: [
-			'inventory-items',
-			currentPage,
-			searchInput,
-			categoryInput,
-			containerInput,
-			maintenanceInput
-		],
-		placeholderData: keepPreviousData,
-		queryFn: async ({ signal }) => {
-			return getItems(signal);
-		}
-	}));
+	// Pagination
+	const rangeStart = (currentPage - 1) * PAGE_SIZE;
+	const rangeEnd = rangeStart + PAGE_SIZE - 1;
 
-	const applyFilters = () => {
-		// eslint-disable-next-line svelte/prefer-svelte-reactivity
-		const params = new URLSearchParams();
-		if (searchInput) params.set('search', searchInput);
-		if (categoryInput) params.set('category', categoryInput);
-		if (containerInput) params.set('container', containerInput);
-		if (maintenanceInput) params.set('maintenance', maintenanceInput);
-		params.set('page', '1'); // Reset to page 1 on filter change
+	const {
+		data: items,
+		error,
+		count,
+	} = await query
+		.range(rangeStart, rangeEnd)
+		.order("created_at", { ascending: false })
+		.throwOnError()
+		.abortSignal(signal);
 
-		const url = `/dashboard/inventory/items?${params.toString()}`;
-		goto(resolve(url as any));
+	if (error) throw error;
+
+	return {
+		items: (items || []) as InventoryItem[],
+		total: count || 0,
+		totalPages: Math.ceil((count || 0) / PAGE_SIZE),
 	};
+}
 
-	const clearFilters = () => {
-		goto(resolve('/dashboard/inventory/items'));
-	};
+// Fetch items with TanStack Query
+const itemsQuery = createQuery(() => ({
+	queryKey: [
+		"inventory-items",
+		currentPage,
+		searchInput,
+		categoryInput,
+		containerInput,
+		maintenanceInput,
+	],
+	placeholderData: keepPreviousData,
+	queryFn: async ({ signal }) => {
+		return getItems(signal);
+	},
+}));
 
-	const goToPage = (pageNum: number) => {
-		// eslint-disable-next-line svelte/prefer-svelte-reactivity
-		const params = new URLSearchParams(page.url.searchParams);
-		params.set('page', pageNum.toString());
-		const url = `/dashboard/inventory/items?${params.toString()}`;
-		goto(resolve(url as any));
-	};
+const applyFilters = () => {
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity
+	const params = new URLSearchParams();
+	if (searchInput) params.set("search", searchInput);
+	if (categoryInput) params.set("category", categoryInput);
+	if (containerInput) params.set("container", containerInput);
+	if (maintenanceInput) params.set("maintenance", maintenanceInput);
+	params.set("page", "1"); // Reset to page 1 on filter change
 
-	const getItemDisplayName = (item: InventoryItem) => {
-		if (item.attributes?.name) return item.attributes.name;
-		if (item.attributes?.brand && item.attributes?.type) {
-			return `${item.attributes.brand} ${item.attributes.type}`;
-		}
-		return `${item.category?.name || 'Item'} #${item.id.slice(-8)}`;
-	};
+	const url = `/dashboard/inventory/items?${params.toString()}`;
+	goto(resolve(url as any));
+};
 
-	const hasActiveFilters = $derived(
-		searchInput || categoryInput || containerInput || maintenanceInput
-	);
+const clearFilters = () => {
+	goto(resolve("/dashboard/inventory/items"));
+};
+
+const goToPage = (pageNum: number) => {
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity
+	const params = new URLSearchParams(page.url.searchParams);
+	params.set("page", pageNum.toString());
+	const url = `/dashboard/inventory/items?${params.toString()}`;
+	goto(resolve(url as any));
+};
+
+const getItemDisplayName = (item: InventoryItem) => {
+	if (item.attributes?.name) return item.attributes.name;
+	if (item.attributes?.brand && item.attributes?.type) {
+		return `${item.attributes.brand} ${item.attributes.type}`;
+	}
+	return `${item.category?.name || "Item"} #${item.id.slice(-8)}`;
+};
+
+const hasActiveFilters = $derived(
+	searchInput || categoryInput || containerInput || maintenanceInput,
+);
 </script>
 
 <div class="p-6">

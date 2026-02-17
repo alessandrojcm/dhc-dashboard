@@ -1,29 +1,36 @@
 <script lang="ts">
-	import CalendarIcon from 'lucide-svelte/icons/calendar';
-	import { type DateValue, DateFormatter, getLocalTimeZone } from '@internationalized/date';
-	import { cn } from '$lib/utils.js';
-	import { Button } from '$lib/components/ui/button/index.js';
-	import { Calendar } from '$lib/components/ui/calendar';
-	import * as Popover from '$lib/components/ui/popover/index.js';
+import CalendarIcon from "lucide-svelte/icons/calendar";
+import {
+	type DateValue,
+	DateFormatter,
+	getLocalTimeZone,
+} from "@internationalized/date";
+import { cn } from "$lib/utils.js";
+import { Button } from "$lib/components/ui/button/index.js";
+import { Calendar } from "$lib/components/ui/calendar";
+import * as Popover from "$lib/components/ui/popover/index.js";
 
-	type Props = {
-		value: DateValue | undefined;
-		onDateChange: (date: Date) => void;
-		minValue?: DateValue;
-		maxValue?: DateValue;
-		name?: string;
-		id?: string;
-	};
+type Props = {
+	value: DateValue | undefined;
+	onDateChange: (date: Date) => void;
+	minValue?: DateValue;
+	maxValue?: DateValue;
+	name?: string;
+	id?: string;
+};
 
-	const df = new DateFormatter('en-US', {
-		dateStyle: 'long'
-	});
+const df = new DateFormatter("en-US", {
+	dateStyle: "long",
+});
 
-	let { value, onDateChange, minValue, maxValue, name, id, ...rest }: Props = $props();
-	let open = $state(false);
+let { value, onDateChange, minValue, maxValue, name, id, ...rest }: Props =
+	$props();
+let open = $state(false);
 
-	// Derive the ISO string value for form submission
-	const formValue = $derived(value ? value.toDate(getLocalTimeZone()).toISOString() : '');
+// Derive the ISO string value for form submission
+const formValue = $derived(
+	value ? value.toDate(getLocalTimeZone()).toISOString() : "",
+);
 </script>
 
 <div>

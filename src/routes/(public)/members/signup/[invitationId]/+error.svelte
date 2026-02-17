@@ -1,8 +1,8 @@
 <script lang="ts">
 import * as Sentry from "@sentry/sveltekit";
 import { page } from "$app/state";
-import { Button } from '$lib/components/ui/button';
-import * as Alert from '$lib/components/ui/alert';
+import { Button } from "$lib/components/ui/button";
+import * as Alert from "$lib/components/ui/alert";
 
 Sentry.captureMessage(
 	`Signup error page loaded: ${page.error?.message}`,

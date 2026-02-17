@@ -1,111 +1,105 @@
 <script lang="ts">
-	import {
-		Alert,
-		AlertDescription,
-		AlertTitle,
-	} from "$lib/components/ui/alert";
-	import { Button } from "$lib/components/ui/button";
-	import { Card } from "$lib/components/ui/card";
-	import DatePicker from "$lib/components/ui/date-picker.svelte";
-	import * as Field from "$lib/components/ui/field";
-	import { Input } from "$lib/components/ui/input";
-	import PhoneInput from "$lib/components/ui/phone-input.svelte";
-	import { ScrollArea } from "$lib/components/ui/scroll-area";
-	import { Separator } from "$lib/components/ui/separator";
-	import * as Sheet from "$lib/components/ui/sheet/index.js";
-	import { fromDate, getLocalTimeZone } from "@internationalized/date";
-	import dayjs from "dayjs";
-	import { Info, Loader, Plus, Trash2 } from "lucide-svelte";
-	import { submitBulkInvites, validateSingleInvite } from "./data.remote";
-	import { adminInviteRemoteSchema } from "$lib/schemas/adminInvite";
+import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
+import { Button } from "$lib/components/ui/button";
+import { Card } from "$lib/components/ui/card";
+import DatePicker from "$lib/components/ui/date-picker.svelte";
+import * as Field from "$lib/components/ui/field";
+import { Input } from "$lib/components/ui/input";
+import PhoneInput from "$lib/components/ui/phone-input.svelte";
+import { ScrollArea } from "$lib/components/ui/scroll-area";
+import { Separator } from "$lib/components/ui/separator";
+import * as Sheet from "$lib/components/ui/sheet/index.js";
+import { fromDate, getLocalTimeZone } from "@internationalized/date";
+import dayjs from "dayjs";
+import { Info, Loader, Plus, Trash2 } from "lucide-svelte";
+import { submitBulkInvites, validateSingleInvite } from "./data.remote";
+import { adminInviteRemoteSchema } from "$lib/schemas/adminInvite";
 
-	let isOpen = $state(false);
+let isOpen = $state(false);
 
-	// Local state for the invite list (since we're building it client-side)
-	let invitesList = $state<
-		Array<{
-			firstName: string;
-			lastName: string;
-			email: string;
-			phoneNumber: string;
-			dateOfBirth: string;
-		}>
-	>([]);
+// Local state for the invite list (since we're building it client-side)
+let invitesList = $state<
+	Array<{
+		firstName: string;
+		lastName: string;
+		email: string;
+		phoneNumber: string;
+		dateOfBirth: string;
+	}>
+>([]);
 
-	// Success/error message state
-	let formMessage = $state<{ success?: string; failure?: string } | null>(
-		null,
-	);
+// Success/error message state
+let formMessage = $state<{ success?: string; failure?: string } | null>(null);
 
-	// Date picker value for single invite form
-	const dobValue = $derived.by(() => {
-		const dob = validateSingleInvite.fields.dateOfBirth.value();
-		if (!dob || !dayjs(dob).isValid()) return undefined;
-		return fromDate(dayjs(dob).toDate(), getLocalTimeZone());
+// Date picker value for single invite form
+const dobValue = $derived.by(() => {
+	const dob = validateSingleInvite.fields.dateOfBirth.value();
+	if (!dob || !dayjs(dob).isValid()) return undefined;
+	return fromDate(dayjs(dob).toDate(), getLocalTimeZone());
+});
+
+// Add current invite to the list
+async function addInviteToList() {
+	// Trigger validation
+	validateSingleInvite.validate({ includeUntouched: true });
+	if (
+		validateSingleInvite.fields.allIssues() &&
+		validateSingleInvite.fields.allIssues()!.length > 0
+	)
+		return;
+
+	// Get values and add to list
+	const values = validateSingleInvite.fields.value();
+	invitesList = [
+		...invitesList,
+		{
+			firstName: values.firstName || "",
+			lastName: values.lastName || "",
+			email: values.email,
+			phoneNumber: values.phoneNumber || "",
+			dateOfBirth: values.dateOfBirth || "",
+		},
+	];
+	// Reset single invite form
+	validateSingleInvite.fields.set({
+		firstName: "",
+		lastName: "",
+		email: "",
+		phoneNumber: "",
+		dateOfBirth: "",
 	});
+}
 
-	// Add current invite to the list
-	async function addInviteToList() {
-		// Trigger validation
-		validateSingleInvite.validate({ includeUntouched: true });
-		if (
-			validateSingleInvite.fields.allIssues() &&
-			validateSingleInvite.fields.allIssues()!.length > 0
-		)
-			return;
+// Remove an invite from the list
+function removeInvite(index: number) {
+	invitesList = invitesList.filter((_, i) => i !== index);
+}
 
-		// Get values and add to list
-		const values = validateSingleInvite.fields.value();
-		invitesList = [
-			...invitesList,
-			{
-				firstName: values.firstName || "",
-				lastName: values.lastName || "",
-				email: values.email,
-				phoneNumber: values.phoneNumber || "",
-				dateOfBirth: values.dateOfBirth || "",
-			},
-		];
-		// Reset single invite form
-		validateSingleInvite.fields.set({
-			firstName: "",
-			lastName: "",
-			email: "",
-			phoneNumber: "",
-			dateOfBirth: "",
+// Clear all invites
+function clearAllInvites() {
+	invitesList = [];
+}
+
+// Handle bulk form submission
+function handleBulkSubmit() {
+	// Sync invites list to bulk form before submission
+	submitBulkInvites({ invites: invitesList })
+		.then((response) => {
+			// Clear the list after successful submission
+			invitesList = [];
+			formMessage = {
+				success:
+					response?.success ||
+					"Invitations are being processed in the background. You will be notified when completed.",
+			};
+		})
+		.catch((error) => {
+			console.error("Bulk invite error:", error);
+			formMessage = {
+				failure: "Failed to process invitations. Please try again.",
+			};
 		});
-	}
-
-	// Remove an invite from the list
-	function removeInvite(index: number) {
-		invitesList = invitesList.filter((_, i) => i !== index);
-	}
-
-	// Clear all invites
-	function clearAllInvites() {
-		invitesList = [];
-	}
-
-	// Handle bulk form submission
-	function handleBulkSubmit() {
-		// Sync invites list to bulk form before submission
-		submitBulkInvites({ invites: invitesList })
-			.then((response) => {
-				// Clear the list after successful submission
-				invitesList = [];
-				formMessage = {
-					success:
-						response?.success ||
-						"Invitations are being processed in the background. You will be notified when completed.",
-				};
-			})
-			.catch((error) => {
-				console.error("Bulk invite error:", error);
-				formMessage = {
-					failure: "Failed to process invitations. Please try again.",
-				};
-			});
-	}
+}
 </script>
 
 <Button variant="outline" onclick={() => (isOpen = true)}>Invite Members</Button

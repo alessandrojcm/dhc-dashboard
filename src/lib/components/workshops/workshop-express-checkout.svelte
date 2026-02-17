@@ -1,213 +1,220 @@
 <script lang="ts">
-	import {
-		loadStripe,
-		type StripeElements,
-		type StripeElementsOptionsClientSecret,
-		type StripePaymentElement
-	} from '@stripe/stripe-js';
-	import { PUBLIC_STRIPE_KEY } from '$env/static/public';
-	import { onMount } from 'svelte';
-	import { createMutation, useQueryClient } from '@tanstack/svelte-query';
-	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
-	import * as Alert from '$lib/components/ui/alert';
-	import { Button } from '$lib/components/ui/button';
+import {
+	loadStripe,
+	type StripeElements,
+	type StripeElementsOptionsClientSecret,
+	type StripePaymentElement,
+} from "@stripe/stripe-js";
+import { PUBLIC_STRIPE_KEY } from "$env/static/public";
+import { onMount } from "svelte";
+import { createMutation, useQueryClient } from "@tanstack/svelte-query";
+import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
+import * as Alert from "$lib/components/ui/alert";
+import { Button } from "$lib/components/ui/button";
 
-	interface Props {
-		workshopId: string;
-		workshopTitle: string;
-		amount: number; // in cents
-		currency?: string;
-		customerId?: string;
-		onSuccess?: () => void;
-		onCancel?: () => void;
-	}
+interface Props {
+	workshopId: string;
+	workshopTitle: string;
+	amount: number; // in cents
+	currency?: string;
+	customerId?: string;
+	onSuccess?: () => void;
+	onCancel?: () => void;
+}
 
-	let {
-		workshopId,
-		workshopTitle,
-		amount,
-		currency = 'eur',
-		customerId,
-		onSuccess,
-		onCancel
-	}: Props = $props();
+let {
+	workshopId,
+	workshopTitle,
+	amount,
+	currency = "eur",
+	customerId,
+	onSuccess,
+	onCancel,
+}: Props = $props();
 
-	const stripeElementsOptions: StripeElementsOptionsClientSecret = $derived({
-		appearance: {
-			theme: 'flat',
-			variables: {
-				colorPrimary: '221.2 83.2% 53.3%',
-				borderRadius: '.5rem',
-				fontFamily: 'Inter, sans-serif',
-				fontSizeBase: '1rem',
-				fontSizeSm: '0.875rem'
+const stripeElementsOptions: StripeElementsOptionsClientSecret = $derived({
+	appearance: {
+		theme: "flat",
+		variables: {
+			colorPrimary: "221.2 83.2% 53.3%",
+			borderRadius: ".5rem",
+			fontFamily: "Inter, sans-serif",
+			fontSizeBase: "1rem",
+			fontSizeSm: "0.875rem",
+		},
+		rules: {
+			".Label": {
+				fontWeight: "500",
 			},
-			rules: {
-				'.Label': {
-					fontWeight: '500'
-				},
-				'.Input': {
-					marginTop: '.5rem',
-					backgroundColor: 'transparent',
-					border: 'hsl(214.3 31.8% 91.4%) 1px solid',
-					borderRadius: 'calc(var(--borderRadius) - 2px)',
-					fontSize: 'var(--fontSizeSm)',
-					padding: '0.5rem 0.75rem'
-				}
-			}
-		}
-	});
+			".Input": {
+				marginTop: ".5rem",
+				backgroundColor: "transparent",
+				border: "hsl(214.3 31.8% 91.4%) 1px solid",
+				borderRadius: "calc(var(--borderRadius) - 2px)",
+				fontSize: "var(--fontSizeSm)",
+				padding: "0.5rem 0.75rem",
+			},
+		},
+	},
+});
 
-	let stripe: Awaited<ReturnType<typeof loadStripe>> | null = $state(null);
-	let elements: StripeElements | null = $state(null);
-	let paymentElement: StripePaymentElement | null = $state(null);
-	let isLoading = $state(false);
-	let error = $state<string | null>(null);
-	let success = $state(false);
-	let paymentElementContainer: HTMLDivElement | null = $state(null);
-	let currentPaymentIntentId = $state<string | null>(null);
+let stripe: Awaited<ReturnType<typeof loadStripe>> | null = $state(null);
+let elements: StripeElements | null = $state(null);
+let paymentElement: StripePaymentElement | null = $state(null);
+let isLoading = $state(false);
+let error = $state<string | null>(null);
+let success = $state(false);
+let paymentElementContainer: HTMLDivElement | null = $state(null);
+let currentPaymentIntentId = $state<string | null>(null);
 
-	const queryClient = useQueryClient();
+const queryClient = useQueryClient();
 
-	// Create payment intent mutation
-	const createPaymentIntent = createMutation(() => ({
-		mutationFn: async () => {
-			const response = await fetch(`/api/workshops/${workshopId}/register/payment-intent`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
+// Create payment intent mutation
+const createPaymentIntent = createMutation(() => ({
+	mutationFn: async () => {
+		const response = await fetch(
+			`/api/workshops/${workshopId}/register/payment-intent`,
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({
 					amount,
 					currency,
-					...(customerId ? { customerId } : {})
-				})
-			});
+					...(customerId ? { customerId } : {}),
+				}),
+			},
+		);
 
-			if (!response.ok) {
-				const errorData = (await response.json()) as { error?: string };
-				throw new Error(errorData.error || 'Failed to create payment intent');
-			}
-
-			return response.json() as Promise<{
-				clientSecret: string;
-				paymentIntentId: string;
-			}>;
-		},
-		onSuccess: (data: { clientSecret: string; paymentIntentId: string }) => {
-			initializeCheckout(data);
-		},
-		onError: (err) => {
-			error = err instanceof Error ? err.message : 'Failed to initialize payment';
+		if (!response.ok) {
+			const errorData = (await response.json()) as { error?: string };
+			throw new Error(errorData.error || "Failed to create payment intent");
 		}
-	}));
 
-	// Complete registration mutation
-	const completeRegistration = createMutation(() => ({
-		mutationFn: async (paymentIntentId: string) => {
-			const response = await fetch(`/api/workshops/${workshopId}/register/complete`, {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
+		return response.json() as Promise<{
+			clientSecret: string;
+			paymentIntentId: string;
+		}>;
+	},
+	onSuccess: (data: { clientSecret: string; paymentIntentId: string }) => {
+		initializeCheckout(data);
+	},
+	onError: (err) => {
+		error = err instanceof Error ? err.message : "Failed to initialize payment";
+	},
+}));
+
+// Complete registration mutation
+const completeRegistration = createMutation(() => ({
+	mutationFn: async (paymentIntentId: string) => {
+		const response = await fetch(
+			`/api/workshops/${workshopId}/register/complete`,
+			{
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({
-					paymentIntentId
-				})
-			});
+					paymentIntentId,
+				}),
+			},
+		);
 
-			if (!response.ok) {
-				const errorData = (await response.json()) as { error?: string };
-				throw new Error(errorData.error || 'Failed to complete registration');
-			}
-
-			return response.json();
-		},
-		onSuccess: () => {
-			success = true;
-			// Invalidate workshop queries to refresh UI
-			queryClient.invalidateQueries({ queryKey: ['workshops'] });
-			onSuccess?.();
-		},
-		onError: (err) => {
-			error = err instanceof Error ? err.message : 'Registration failed';
+		if (!response.ok) {
+			const errorData = (await response.json()) as { error?: string };
+			throw new Error(errorData.error || "Failed to complete registration");
 		}
-	}));
 
-	async function handlePaymentConfirmation(paymentIntentId: string) {
-		try {
-			isLoading = true;
-			const { error: confirmError } = await stripe!.confirmPayment({
-				elements: elements!,
-				confirmParams: {
-					return_url: `${window.location.origin}/dashboard/my-workshops`
-				},
-				redirect: 'if_required'
-			});
+		return response.json();
+	},
+	onSuccess: () => {
+		success = true;
+		// Invalidate workshop queries to refresh UI
+		queryClient.invalidateQueries({ queryKey: ["workshops"] });
+		onSuccess?.();
+	},
+	onError: (err) => {
+		error = err instanceof Error ? err.message : "Registration failed";
+	},
+}));
 
-			if (confirmError) {
-				throw new Error(confirmError.message);
-			}
-
-			await completeRegistration.mutateAsync(paymentIntentId);
-		} catch (err) {
-			error = err instanceof Error ? err.message : 'Payment failed';
-		} finally {
-			isLoading = false;
-		}
-	}
-
-	async function initializeCheckout({
-		clientSecret,
-		paymentIntentId
-	}: {
-		clientSecret: string;
-		paymentIntentId: string;
-	}) {
-		if (!stripe) return;
-
-		currentPaymentIntentId = paymentIntentId;
-
-		try {
-			elements = stripe.elements({
-				...stripeElementsOptions,
-				clientSecret: clientSecret
-			});
-
-			// Create regular Payment element for card/revolut_pay
-			paymentElement = elements.create('payment', {
-				layout: 'tabs'
-			});
-
-			// Always show both payment methods for now
-			// The Express Checkout will hide itself if no express methods are available
-		} catch (err) {
-			error = err instanceof Error ? err.message : 'Failed to initialize payment';
-		}
-	}
-
-	// Effect to mount the Payment element
-	$effect(() => {
-		if (paymentElement && paymentElementContainer) {
-			paymentElement.mount(paymentElementContainer);
-
-			return () => {
-				if (paymentElement) {
-					paymentElement.unmount();
-				}
-			};
-		}
-	});
-
-	onMount(() => {
-		loadStripe(PUBLIC_STRIPE_KEY).then((loadedStripe) => {
-			try {
-				if (!loadedStripe) {
-					throw new Error('Failed to load Stripe');
-				}
-				stripe = loadedStripe;
-				// Create payment intent when component mounts
-				createPaymentIntent.mutate();
-			} catch (err) {
-				error = err instanceof Error ? err.message : 'Failed to initialize Stripe';
-			}
+async function handlePaymentConfirmation(paymentIntentId: string) {
+	try {
+		isLoading = true;
+		const { error: confirmError } = await stripe!.confirmPayment({
+			elements: elements!,
+			confirmParams: {
+				return_url: `${window.location.origin}/dashboard/my-workshops`,
+			},
+			redirect: "if_required",
 		});
+
+		if (confirmError) {
+			throw new Error(confirmError.message);
+		}
+
+		await completeRegistration.mutateAsync(paymentIntentId);
+	} catch (err) {
+		error = err instanceof Error ? err.message : "Payment failed";
+	} finally {
+		isLoading = false;
+	}
+}
+
+async function initializeCheckout({
+	clientSecret,
+	paymentIntentId,
+}: {
+	clientSecret: string;
+	paymentIntentId: string;
+}) {
+	if (!stripe) return;
+
+	currentPaymentIntentId = paymentIntentId;
+
+	try {
+		elements = stripe.elements({
+			...stripeElementsOptions,
+			clientSecret: clientSecret,
+		});
+
+		// Create regular Payment element for card/revolut_pay
+		paymentElement = elements.create("payment", {
+			layout: "tabs",
+		});
+
+		// Always show both payment methods for now
+		// The Express Checkout will hide itself if no express methods are available
+	} catch (err) {
+		error = err instanceof Error ? err.message : "Failed to initialize payment";
+	}
+}
+
+// Effect to mount the Payment element
+$effect(() => {
+	if (paymentElement && paymentElementContainer) {
+		paymentElement.mount(paymentElementContainer);
+
+		return () => {
+			if (paymentElement) {
+				paymentElement.unmount();
+			}
+		};
+	}
+});
+
+onMount(() => {
+	loadStripe(PUBLIC_STRIPE_KEY).then((loadedStripe) => {
+		try {
+			if (!loadedStripe) {
+				throw new Error("Failed to load Stripe");
+			}
+			stripe = loadedStripe;
+			// Create payment intent when component mounts
+			createPaymentIntent.mutate();
+		} catch (err) {
+			error =
+				err instanceof Error ? err.message : "Failed to initialize Stripe";
+		}
 	});
+});
 </script>
 
 {#if success}

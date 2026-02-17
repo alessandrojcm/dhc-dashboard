@@ -15,7 +15,7 @@
 		{
 			"binding": "HYPERDRIVE",
 			"id": "f652ff1ad83c46eeae1cf84d1539e147",
-			"localConnectionString": "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+			"localConnectionString": "postgresql://postgres.pooler-dev:postgres@localhost:54329/postgres"
 		}
 	],
 	"observability": {

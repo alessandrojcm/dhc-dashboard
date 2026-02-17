@@ -1,21 +1,34 @@
 <script lang="ts">
-	/* eslint-disable @typescript-eslint/no-explicit-any */
-	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
-	import { Button } from '$lib/components/ui/button';
-	import { Badge } from '$lib/components/ui/badge';
-	import { ArrowLeft, FolderOpen, Edit, Plus, Package, Folder, AlertTriangle } from 'lucide-svelte';
-	import dayjs from 'dayjs';
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import {
+	Card,
+	CardContent,
+	CardHeader,
+	CardTitle,
+} from "$lib/components/ui/card";
+import { Button } from "$lib/components/ui/button";
+import { Badge } from "$lib/components/ui/badge";
+import {
+	ArrowLeft,
+	FolderOpen,
+	Edit,
+	Plus,
+	Package,
+	Folder,
+	AlertTriangle,
+} from "lucide-svelte";
+import dayjs from "dayjs";
 
-	let { data } = $props();
-	const { container } = data;
+let { data } = $props();
+const { container } = data;
 
-	const getItemDisplayName = (item: any) => {
-		if (item.attributes?.name) return item.attributes.name;
-		if (item.attributes?.brand && item.attributes?.type) {
-			return `${item.attributes.brand} ${item.attributes.type}`;
-		}
-		return `${item.category?.name || 'Item'} #${item.id.slice(-8)}`;
-	};
+const getItemDisplayName = (item: any) => {
+	if (item.attributes?.name) return item.attributes.name;
+	if (item.attributes?.brand && item.attributes?.type) {
+		return `${item.attributes.brand} ${item.attributes.type}`;
+	}
+	return `${item.category?.name || "Item"} #${item.id.slice(-8)}`;
+};
 </script>
 
 <div class="p-6">
