@@ -13,12 +13,13 @@ import {
 import dayjs from "dayjs";
 import { createRawSnippet } from "svelte";
 import { Cross2 } from "svelte-radix";
-import { goto, pushState } from "$app/navigation";
+import { goto } from "$app/navigation";
 import { resolve } from "$app/paths";
 import { page } from "$app/state";
 import type { Database, Tables } from "$database";
 import { Badge } from "$lib/components/ui/badge";
 import { Button } from "$lib/components/ui/button";
+import { Checkbox } from "$lib/components/ui/checkbox";
 import {
 	createSvelteTable,
 	FlexRender,
@@ -39,10 +40,26 @@ const columns =
 let pageSizeOptions = [10, 25, 50, 100];
 
 const { supabase }: { supabase: SupabaseClient<Database> } = $props();
+const statusOptions = ["active", "inactive"] as const;
+type MemberStatusFilter = (typeof statusOptions)[number];
 
 const currentPage = $derived(Number(page.url.searchParams.get("page")) || 0);
 const pageSize = $derived(Number(page.url.searchParams.get("pageSize")) || 10);
 const searchQuery = $derived(page.url.searchParams.get("q") || "");
+const statusFilter = $derived.by(() => {
+	const raw = page.url.searchParams.get("status") || "";
+	const selected = raw
+		.split(",")
+		.map((status) => status.trim())
+		.filter(
+			(status): status is MemberStatusFilter =>
+				status === "active" || status === "inactive",
+		);
+	if (selected.length === 0) {
+		return [...statusOptions];
+	}
+	return statusOptions.filter((status) => selected.includes(status));
+});
 const rangeStart = $derived(currentPage * pageSize);
 const rangeEnd = $derived(rangeStart + pageSize - 1);
 const sortingState: SortingState = $derived.by(() => {
@@ -65,6 +82,7 @@ const membersQuery = createQuery(() => ({
 		rangeStart,
 		sortingState,
 		searchQuery,
+		statusFilter,
 	],
 	placeholderData: keepPreviousData,
 	initialData: { data: [], count: 0 },
@@ -76,6 +94,9 @@ const membersQuery = createQuery(() => ({
 			query = query.textSearch("search_text", `'${searchQuery}'`, {
 				type: "websearch",
 			});
+		}
+		if (statusFilter.length === 1) {
+			query = query.eq("is_active", statusFilter[0] === "active");
 		}
 		if (sortingState.length > 0) {
 			query = query.order(sortingState[0].id, {
@@ -104,7 +125,7 @@ function onPaginationChange(newPagination: Partial<PaginationState>) {
 	newParams.set("page", paginationState.pageIndex.toString());
 	newParams.set("pageSize", paginationState.pageSize.toString());
 	const url = `/dashboard/members?${newParams.toString()}`;
-	pushState(url, {});
+	goto(resolve(url as any), { keepFocus: true, noScroll: true });
 }
 
 function onSortingChange(newSorting: SortingState) {
@@ -114,7 +135,7 @@ function onSortingChange(newSorting: SortingState) {
 	newParams.set("sort", sortingState.id);
 	newParams.set("direction", sortingState.desc ? "desc" : "asc");
 	const url = `/dashboard/members?${newParams.toString()}`;
-	pushState(url, {});
+	goto(resolve(url as any), { keepFocus: true, noScroll: true });
 }
 
 function onSearchChange(newSearch: string) {
@@ -123,7 +144,35 @@ function onSearchChange(newSearch: string) {
 	newParams.set("q", newSearch);
 	newParams.set("page", "0"); // Reset to first page on search
 	const url = `/dashboard/members?${newParams.toString()}`;
-	pushState(url, {});
+	goto(resolve(url as any), { keepFocus: true, noScroll: true });
+}
+
+function onStatusFilterChange(
+	status: MemberStatusFilter,
+	checked: boolean | "indeterminate",
+) {
+	const next = checked
+		? statusOptions.filter(
+				(value) => value === status || statusFilter.includes(value),
+			)
+		: statusFilter.filter((value) => value !== status);
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity
+	const newParams = new URLSearchParams(page.url.searchParams);
+	if (next.length === 0) {
+		newParams.delete("status");
+		newParams.set("page", "0");
+		const resetUrl = `/dashboard/members?${newParams.toString()}`;
+		goto(resolve(resetUrl as any), { keepFocus: true, noScroll: true });
+		return;
+	}
+	if (next.length === statusOptions.length) {
+		newParams.delete("status");
+	} else {
+		newParams.set("status", next.join(","));
+	}
+	newParams.set("page", "0");
+	const url = `/dashboard/members?${newParams.toString()}`;
+	goto(resolve(url as any), { keepFocus: true, noScroll: true });
 }
 
 // State for expanded rows
@@ -414,7 +463,7 @@ const tableOptions = $state<
 const table = createSvelteTable(tableOptions);
 </script>
 
-<div class="flex w-full max-w-sm items-center space-x-2 mb-2 p-2">
+<div class="flex w-full items-center gap-2 mb-2 p-2 flex-wrap">
 	<Input
 		value={searchQuery}
 		oninput={(t: Event & { currentTarget: EventTarget & HTMLInputElement }) =>
@@ -422,6 +471,19 @@ const table = createSvelteTable(tableOptions);
 		placeholder="Search members"
 		class="max-w-md"
 	/>
+
+	<div class="flex items-center gap-3 rounded-md border px-3 py-2">
+		<p class="text-sm text-muted-foreground">Status</p>
+		{#each statusOptions as status (status)}
+			<label class="flex items-center gap-2 text-sm capitalize">
+				<Checkbox
+					checked={statusFilter.includes(status)}
+					onCheckedChange={(checked) => onStatusFilterChange(status, checked)}
+				/>
+				{status}
+			</label>
+		{/each}
+	</div>
 
 	{#if searchQuery !== ''}
 		<Button variant="ghost" type="button" aria-label="Clear search" onclick={() => onSearchChange('')}>

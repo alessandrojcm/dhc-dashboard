@@ -1,21 +1,6 @@
 <script lang="ts">
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { goto, pushState } from "$app/navigation";
-import { resolve } from "$app/paths";
-import { page } from "$app/state";
-import type { Database } from "$database";
-import { Badge } from "$lib/components/ui/badge";
-import { Button } from "$lib/components/ui/button";
-import { Checkbox } from "$lib/components/ui/checkbox";
-import {
-	createSvelteTable,
-	FlexRender,
-	renderComponent,
-	renderSnippet,
-} from "$lib/components/ui/data-table/index.js";
-import * as Pagination from "$lib/components/ui/pagination/index.js";
-import * as Select from "$lib/components/ui/select";
-import * as Table from "$lib/components/ui/table/index.js";
+
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
 	createMutation,
@@ -24,26 +9,42 @@ import {
 } from "@tanstack/svelte-query";
 import {
 	getCoreRowModel,
+	getExpandedRowModel,
 	getPaginationRowModel,
 	getSortedRowModel,
-	getExpandedRowModel,
 	type PaginationState,
 	type SortingState,
 } from "@tanstack/table-core";
 import dayjs from "dayjs";
-import { createRawSnippet } from "svelte";
-import { toast } from "svelte-sonner";
-import InvitationActions from "./invitation-actions.svelte";
 import { SendIcon, Trash2 } from "lucide-svelte";
+import { createRawSnippet } from "svelte";
+import { Cross2 } from "svelte-radix";
+import { toast } from "svelte-sonner";
+import { goto } from "$app/navigation";
+import { resolve } from "$app/paths";
+import { page } from "$app/state";
+import type { Database } from "$database";
+import { Badge } from "$lib/components/ui/badge";
+import { Button } from "$lib/components/ui/button";
+import * as ButtonGroup from "$lib/components/ui/button-group";
+import { Checkbox } from "$lib/components/ui/checkbox";
+import {
+	createSvelteTable,
+	FlexRender,
+	renderComponent,
+	renderSnippet,
+} from "$lib/components/ui/data-table/index.js";
+import { Input } from "$lib/components/ui/input";
+import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
+import * as Pagination from "$lib/components/ui/pagination/index.js";
+import * as Select from "$lib/components/ui/select";
+import * as Table from "$lib/components/ui/table/index.js";
 import { getInvitationLink } from "$lib/utils/invitation";
 import {
 	deleteInvitations,
 	resendInvitations,
 } from "../beginners-workshop/admin.remote";
-import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
-import { Input } from "$lib/components/ui/input";
-import { Cross2 } from "svelte-radix";
-import * as ButtonGroup from "$lib/components/ui/button-group";
+import InvitationActions from "./invitation-actions.svelte";
 
 const columns = "id,email,status,expires_at,created_at";
 
@@ -139,7 +140,7 @@ function onPaginationChange(newPagination: Partial<PaginationState>) {
 	newParams.set("invitePage", paginationState.pageIndex.toString());
 	newParams.set("invitePageSize", paginationState.pageSize.toString());
 	const url = `/dashboard/members?${newParams.toString()}`;
-	pushState(url, {});
+	goto(resolve(url as any), { keepFocus: true, noScroll: true });
 }
 
 function onSortingChange(newSorting: SortingState) {
@@ -149,7 +150,7 @@ function onSortingChange(newSorting: SortingState) {
 	newParams.set("inviteSort", sortingState.id);
 	newParams.set("inviteDirection", sortingState.desc ? "desc" : "asc");
 	const url = `/dashboard/members?${newParams.toString()}`;
-	pushState(url, {});
+	goto(resolve(url as any), { keepFocus: true, noScroll: true });
 }
 
 function onSearchChange(newSearch: string) {
@@ -157,7 +158,7 @@ function onSearchChange(newSearch: string) {
 	const newParams = new URLSearchParams(page.url.searchParams);
 	newParams.set("inviteQ", newSearch);
 	const url = `/dashboard/members?${newParams.toString()}`;
-	pushState(url, {});
+	goto(resolve(url as any), { keepFocus: true, noScroll: true });
 }
 
 const resendInvitationLink = createMutation(() => ({
