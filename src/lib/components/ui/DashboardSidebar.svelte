@@ -11,8 +11,8 @@
 	import type { SupabaseClient } from '@supabase/supabase-js';
 	import { Menu } from 'lucide-svelte';
 	import { useSidebar } from '$lib/components/ui/sidebar/context.svelte.js';
-	import * as Sheet from '$lib/components/ui/sheet/index.js';
 	import { browser } from '$app/environment';
+	import { resolve } from '$app/paths';
 
 	type Props = {
 		className?: string | undefined | null;
@@ -77,7 +77,7 @@
 												onclick={toggleSidebar}
 												class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
 											>
-												<a href={`/dashboard/${item.url}`}>{item.title}</a>
+												<a href={resolve(item.url)}>{item.title}</a>
 											</Sidebar.MenuButton>
 										</Sidebar.MenuItem>
 									{/if}
@@ -89,7 +89,7 @@
 							onclick={toggleSidebar}
 							class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
 						>
-							<a href={`/dashboard/${group.url}`}>{group.title}</a>
+							<a href={resolve(group.url)}>{group.title}</a>
 						</Sidebar.MenuButton>
 					{/if}
 				</Sidebar.Group>
@@ -128,12 +128,9 @@
 						</DropdownMenu.Trigger>
 
 						<DropdownMenu.Content strategy="fixed" {customAnchor} class="w-56">
-							<DropdownMenu.Item>
-								<a href={`/dashboard/members/${user?.id}`}>My Profile</a>
-							</DropdownMenu.Item>
 							{#if roles.size > 1}
 								<DropdownMenu.Item>
-									<a href={`/dashboard/members/${user?.id}`}>My Profile</a>
+									<a href={resolve(`/dashboard/members/${user?.id}`)}>My Profile</a>
 								</DropdownMenu.Item>
 							{/if}
 							<DropdownMenu.Item onclick={logout}>Log out</DropdownMenu.Item>

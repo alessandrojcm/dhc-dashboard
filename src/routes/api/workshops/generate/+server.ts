@@ -1,9 +1,9 @@
+import { json } from '@sveltejs/kit';
 import * as v from 'valibot';
-import type { RequestHandler } from './$types';
 import { authorize } from '$lib/server/auth';
 import { WORKSHOP_ROLES } from '$lib/server/roles';
-import { json } from '@sveltejs/kit';
-import { generateWorkshopData, coerceToCreateWorkshopSchema } from '$lib/server/workshop-generator';
+import { coerceToCreateWorkshopSchema, generateWorkshopData } from '$lib/server/workshop-generator';
+import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ request, locals }) => {
 	await authorize(locals, WORKSHOP_ROLES);

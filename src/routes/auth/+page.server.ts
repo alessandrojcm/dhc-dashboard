@@ -1,8 +1,8 @@
-import type { Actions, PageServerLoad } from './$types';
 import { fail, redirect } from '@sveltejs/kit';
-import authSchema from '$lib/schemas/authSchema';
 import { message, setError, superValidate } from 'sveltekit-superforms';
 import { valibot } from 'sveltekit-superforms/adapters';
+import authSchema from '$lib/schemas/authSchema';
+import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async () => {
 	const form = await superValidate(valibot(authSchema));

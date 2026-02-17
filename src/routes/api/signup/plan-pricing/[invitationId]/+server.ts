@@ -1,12 +1,14 @@
-import { error, json, type RequestHandler } from '@sveltejs/kit';
-import { getKyselyClient } from '$lib/server/kysely';
-import { generatePricingInfo, getPriceIds } from '$lib/server/pricingUtils';
 import * as Sentry from '@sentry/sveltekit';
-import { stripeClient } from '$lib/server/stripe';
-import { env } from '$env/dynamic/private';
+import { error, json, type RequestHandler } from '@sveltejs/kit';
 import dayjs from 'dayjs';
 import isSameOrAfter from 'dayjs/plugin/isSameOrAfter';
+import { env } from '$env/dynamic/private';
+import { getKyselyClient } from '$lib/server/kysely';
+import { generatePricingInfo, getPriceIds } from '$lib/server/pricingUtils';
+import { stripeClient } from '$lib/server/stripe';
+
 dayjs.extend(isSameOrAfter);
+
 import * as v from 'valibot';
 
 // Special migration code constant
@@ -209,8 +211,17 @@ export const POST: RequestHandler = async ({ request, params, platform }) => {
 
 			return json(generatePricingInfo(migrationPricing));
 		}
-
-		const couponDetails = await stripeClient.coupons.retrieve(promotionCodes.data[0].coupon.id, {
+		const couponId =
+			typeof promotionCodes.data[0].promotion.coupon === 'string' &&
+			promotionCodes.data[0].promotion.coupon !== null
+				? promotionCodes.data[0].promotion.coupon
+				: promotionCodes.data[0].promotion.coupon !== null
+					? promotionCodes.data[0].promotion.coupon.id
+					: null;
+		if (couponId === null) {
+			throw error(400, 'Coupon not valid.');
+		}
+		const couponDetails = await stripeClient.coupons.retrieve(couponId, {
 			expand: ['applies_to']
 		});
 

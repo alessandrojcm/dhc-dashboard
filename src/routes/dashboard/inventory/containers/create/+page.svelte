@@ -15,11 +15,9 @@
 	import { Select, SelectContent, SelectItem, SelectTrigger } from '$lib/components/ui/select';
 	import * as Form from '$lib/components/ui/form';
 	import { ArrowLeft, FolderOpen } from 'lucide-svelte';
-	import type { Database } from '$lib/../database.types';
+	import type { InventoryContainer } from '$lib/types';
 
-	type Container = Database['public']['Tables']['containers']['Row'];
-
-	interface ContainerWithChildren extends Container {
+	interface ContainerWithChildren extends InventoryContainer {
 		children: ContainerWithChildren[];
 	}
 
@@ -38,7 +36,8 @@
 	const { form: formData, enhance, submitting } = form;
 
 	// Build hierarchy display for parent selection
-	const buildHierarchyDisplay = (containers: Container[]): HierarchicalContainer[] => {
+	const buildHierarchyDisplay = (containers: InventoryContainer[]): HierarchicalContainer[] => {
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const containerMap = new Map<string, ContainerWithChildren>();
 		const rootContainers: ContainerWithChildren[] = [];
 
@@ -160,7 +159,7 @@
 									</SelectTrigger>
 									<SelectContent>
 										<SelectItem value="">No parent container (root level)</SelectItem>
-										{#each hierarchicalContainers as container}
+										{#each hierarchicalContainers as container (container.id)}
 											<SelectItem value={container.id}>
 												{container.displayName}
 											</SelectItem>

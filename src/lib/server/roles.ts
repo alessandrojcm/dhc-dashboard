@@ -1,6 +1,6 @@
+import * as Sentry from '@sentry/sveltekit';
 import type { Session } from '@supabase/supabase-js';
 import { jwtDecode } from 'jwt-decode';
-import * as Sentry from '@sentry/sveltekit';
 
 export function getRolesFromSession(session: Session) {
 	try {

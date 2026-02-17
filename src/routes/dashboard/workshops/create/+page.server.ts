@@ -1,16 +1,14 @@
-import { superValidate } from 'sveltekit-superforms';
-import { valibot } from 'sveltekit-superforms/adapters';
+import * as Sentry from '@sentry/sveltekit';
 import { fail } from '@sveltejs/kit';
-import { CreateWorkshopSchema } from '$lib/schemas/workshops';
-import { createWorkshop } from '$lib/server/workshops';
+import dayjs from 'dayjs';
+import Dinero from 'dinero.js';
+import { message, superValidate } from 'sveltekit-superforms';
+import { valibot } from 'sveltekit-superforms/adapters';
 import { authorize } from '$lib/server/auth';
 import { WORKSHOP_ROLES } from '$lib/server/roles';
-import { message } from 'sveltekit-superforms';
-import dayjs from 'dayjs';
-import * as Sentry from '@sentry/sveltekit';
-import type { PageServerLoad, Actions } from './$types';
-import Dinero from 'dinero.js';
 import { coerceToCreateWorkshopSchema } from '$lib/server/workshop-generator';
+import { createWorkshopService, CreateWorkshopSchema } from '$lib/server/services/workshops';
+import type { Actions, PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async ({ locals, url }) => {
 	await authorize(locals, WORKSHOP_ROLES);
@@ -57,7 +55,10 @@ export const actions: Actions = {
 			}).getAmount();
 			const nonMemberPriceCents =
 				form.data.is_public && form.data.price_non_member
-					? Dinero({ amount: form.data.price_non_member * 100, currency: 'EUR' }).getAmount()
+					? Dinero({
+							amount: form.data.price_non_member * 100,
+							currency: 'EUR'
+						}).getAmount()
 					: memberPriceCents;
 
 			const workshopData = {
@@ -75,7 +76,8 @@ export const actions: Actions = {
 				announce_email: form.data.announce_email || false
 			};
 
-			const workshop = await createWorkshop(workshopData, session, platform!);
+			const workshopService = createWorkshopService(platform!, session);
+			const workshop = await workshopService.create(workshopData);
 
 			return message(form, {
 				success: `Workshop "${workshop.title}" created successfully!`

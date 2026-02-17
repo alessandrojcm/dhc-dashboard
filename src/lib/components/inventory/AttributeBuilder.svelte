@@ -1,49 +1,43 @@
 <script lang="ts">
-	import { Button } from '$lib/components/ui/button';
-	import { Input } from '$lib/components/ui/input';
-	import { Label } from '$lib/components/ui/label';
-	import { Select, SelectContent, SelectItem, SelectTrigger } from '$lib/components/ui/select';
-	import { Checkbox } from '$lib/components/ui/checkbox';
-	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
-	import { Badge } from '$lib/components/ui/badge';
-	import { Plus, Trash2, Settings } from 'lucide-svelte';
-	import type { SuperForm } from 'sveltekit-superforms/client';
-	import type { AttributeDefinition, CategorySchema } from '$lib/schemas/inventory';
-	import * as Form from '$lib/components/ui/form';
+import type { SuperForm } from "sveltekit-superforms/client";
+import type {
+	AttributeDefinition,
+	CategorySchema,
+} from "$lib/schemas/inventory";
 
-	let {
-		form
-	}: {
-		form: SuperForm<CategorySchema>;
-	} = $props();
-	const { form: formData } = form;
-	const attributeCount = $derived($formData.available_attributes.length);
-	const hasAttributes = $derived(attributeCount > 0);
+const {
+	form,
+}: {
+	form: SuperForm<CategorySchema>;
+} = $props();
+const { form: formData } = form;
+const attributeCount = $derived($formData.available_attributes.length);
+const _hasAttributes = $derived(attributeCount > 0);
 
-	let newAttribute = $state<AttributeDefinition>({
-		type: 'text',
-		label: '',
-		required: false
-	});
+let newAttribute = $state<AttributeDefinition>({
+	type: "text",
+	label: "",
+	required: false,
+});
 
-	const addAttribute = () => {
-		if (!newAttribute.label) return;
-		$formData.available_attributes = [
-			...$formData.available_attributes,
-			{
-				...newAttribute,
-				...(newAttribute.type === 'select' && { options: [] }),
-				name: newAttribute.label.toLowerCase().replaceAll(/ /g, '-')
-			}
-		];
-		// Reset form
-		newAttribute = {
-			type: 'text',
-			label: '',
-			required: false,
-			name: ''
-		};
+const _addAttribute = () => {
+	if (!newAttribute.label) return;
+	$formData.available_attributes = [
+		...$formData.available_attributes,
+		{
+			...newAttribute,
+			...(newAttribute.type === "select" && { options: [] }),
+			name: newAttribute.label.toLowerCase().replaceAll(/ /g, "-"),
+		},
+	];
+	// Reset form
+	newAttribute = {
+		type: "text",
+		label: "",
+		required: false,
+		name: "",
 	};
+};
 </script>
 
 <div class="space-y-6">
@@ -103,7 +97,7 @@
 				</CardTitle>
 			</CardHeader>
 			<CardContent class="space-y-4">
-				{#each $formData.available_attributes as attr, index}
+				{#each $formData.available_attributes as attr, index (attr.name ?? '' + index)}
 					<div class="border rounded-lg p-4 space-y-4">
 						<div class="flex items-center justify-between">
 							<div class="flex items-center gap-2">
@@ -160,7 +154,7 @@
 										/>
 										<Form.Label>Options</Form.Label>
 										<div class="space-y-2">
-											{#each attr.options ?? [] as value, i}
+											{#each attr.options ?? [] as value, i (value + i)}
 												{#if $formData.available_attributes[index].options}
 													<Form.Field {form} name="available_attributes[{index}].options[{i}]">
 														<Form.Control>
@@ -176,7 +170,7 @@
 																	size="sm"
 																	aria-label={`Remove option ${value}`}
 																	onclick={() =>
-																		($formData.available_attributes[index].options[i] =
+																		($formData.available_attributes[index].options =
 																			attr.options?.filter((v) => v !== value))}
 																>
 																	<Trash2 class="h-4 w-4" />

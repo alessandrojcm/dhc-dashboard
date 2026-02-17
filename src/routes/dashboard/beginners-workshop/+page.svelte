@@ -1,4 +1,5 @@
 <script lang="ts">
+	/* eslint-disable @typescript-eslint/no-explicit-any */
 	import WaitlistTable from './waitlist-table.svelte';
 	import Analytics from './workshop-analytics.svelte';
 	import { Root, List, Trigger, Content } from '$lib/components/ui/tabs/index.js';
@@ -8,6 +9,7 @@
 	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
 	import { createMutation } from '@tanstack/svelte-query';
 	import { goto, invalidate } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { toast } from 'svelte-sonner';
 	import { page } from '$app/state';
 	import * as Select from '$lib/components/ui/select';
@@ -22,7 +24,10 @@
 			const response = await fetch('/dashboard/beginners-workshop', {
 				method: 'POST'
 			});
-			const result = await response.json();
+			const result = (await response.json()) as {
+				success: boolean;
+				error?: string;
+			};
 			if (!result.success) {
 				throw new Error(result.error || 'Failed to toggle waitlist');
 			}
@@ -34,15 +39,19 @@
 			dialogOpen = false;
 		},
 		onError: (error) => {
-			toast.error(error.message || 'Error updating waitlist status', { position: 'top-center' });
+			toast.error(error.message || 'Error updating waitlist status', {
+				position: 'top-center'
+			});
 			dialogOpen = false;
 		}
 	}));
 
 	function onTabChange(value: string) {
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const newParams = new URLSearchParams(page.url.searchParams);
 		newParams.set('tab', value);
-		goto(`/dashboard/beginners-workshop?${newParams.toString()}`);
+		const url = `/dashboard/beginners-workshop?${newParams.toString()}`;
+		goto(resolve(url as any));
 	}
 	let views = [
 		{

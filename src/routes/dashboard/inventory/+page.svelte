@@ -6,9 +6,8 @@
 		CardHeader,
 		CardTitle
 	} from '$lib/components/ui/card';
-	import { Badge } from '$lib/components/ui/badge';
 	import { Button } from '$lib/components/ui/button';
-	import { Package, FolderOpen, Tags, AlertTriangle, Plus, Clock, User } from 'lucide-svelte';
+	import { Package, FolderOpen, Tags, AlertTriangle, Plus, Clock } from 'lucide-svelte';
 	import dayjs from 'dayjs';
 	import relativeTime from 'dayjs/plugin/relativeTime';
 
@@ -138,13 +137,11 @@
 					<p class="text-sm text-muted-foreground">No recent activity</p>
 				{:else}
 					<div class="space-y-3">
-						{#each data.recentActivity.slice(0, 5) as activity}
+						{#each data.recentActivity.slice(0, 5) as activity (activity.id)}
+							{@const ActionIcon = getActionIcon(activity.action)}
 							<div class="flex items-start gap-3">
 								<div class="flex h-8 w-8 items-center justify-center rounded-full bg-muted">
-									<svelte:component
-										this={getActionIcon(activity.action)}
-										class="h-4 w-4 {getActionColor(activity.action)}"
-									/>
+									<ActionIcon class="h-4 w-4 {getActionColor(activity.action)}" />
 								</div>
 								<div class="flex-1 space-y-1">
 									<p class="text-sm">

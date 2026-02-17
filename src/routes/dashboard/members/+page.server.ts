@@ -1,39 +1,31 @@
-import { bulkInviteSchema } from '$lib/schemas/adminInvite';
-import settingsSchema from '$lib/schemas/membersSettings';
-import { executeWithRLS, getKyselyClient } from '$lib/server/kysely';
-import { getRolesFromSession, SETTINGS_ROLES } from '$lib/server/roles';
+import * as Sentry from '@sentry/sveltekit';
+import type { Session } from '@supabase/supabase-js';
 import { fail, message, superValidate } from 'sveltekit-superforms';
 import { valibot } from 'sveltekit-superforms/adapters';
-import type { Actions, PageServerLoad } from './$types';
-import * as Sentry from '@sentry/sveltekit';
+import { bulkInviteSchema } from '$lib/schemas/adminInvite';
 import { invariant } from '$lib/server/invariant';
+import { getRolesFromSession, SETTINGS_ROLES } from '$lib/server/roles';
+import { createSettingsService, InsuranceFormLinkSchema } from '$lib/server/services/settings';
 import { supabaseServiceClient } from '$lib/server/supabaseServiceClient';
-import type { Session } from '@supabase/supabase-js';
+import type { Actions, PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async ({ locals }) => {
+export const load: PageServerLoad = async ({ locals, platform }) => {
 	const { session } = await locals.safeGetSession();
 	invariant(session === null, 'Unauthorized');
 	const roles = getRolesFromSession(session!);
 	const canEditSettings = roles.intersection(SETTINGS_ROLES).size > 0;
 
-	const { data } = await locals.supabase
-		.from('settings')
-		.select('value')
-		.eq('key', 'hema_insurance_form_link')
-		.single();
+	// Use SettingsService to fetch insurance form link
+	const settingsService = createSettingsService(platform!, session!);
+	const insuranceLinkSetting = await settingsService.findByKey('hema_insurance_form_link');
+
 	const form = await superValidate(
 		{
-			insuranceFormLink: canEditSettings && data ? data.value : ''
+			insuranceFormLink: canEditSettings && insuranceLinkSetting ? insuranceLinkSetting.value : ''
 		},
-		valibot(settingsSchema),
+		valibot(InsuranceFormLinkSchema),
 		{ errors: false }
 	);
-	if (!canEditSettings) {
-		return {
-			canEditSettings,
-			form
-		};
-	}
 
 	return {
 		canEditSettings,
@@ -46,38 +38,27 @@ export const actions: Actions = {
 		const { session } = await locals.safeGetSession();
 		invariant(session === null, 'Unauthorized');
 		const roles = getRolesFromSession(session!);
-		invariant(roles.intersection(SETTINGS_ROLES).size > 0, 'Unauthorized', 403);
+		invariant(roles.intersection(SETTINGS_ROLES).size === 0, 'Unauthorized', 403);
 
-		const form = await superValidate(request, valibot(settingsSchema));
+		const form = await superValidate(request, valibot(InsuranceFormLinkSchema));
 		if (!form.valid) {
 			return fail(400, { form });
 		}
-		const kysely = getKyselyClient(platform.env.HYPERDRIVE);
-		return executeWithRLS(
-			kysely,
-			{
-				claims: locals.session!
-			},
-			async (trx) => {
-				return trx
-					.updateTable('settings')
-					.set({ value: form.data.insuranceFormLink })
-					.where('key', '=', 'hema_insurance_form_link')
-					.execute()
-					.then(() => {
-						return message(form, {
-							success: 'Settings updated successfully'
-						});
-					})
-					.catch((error) => {
-						Sentry.captureMessage(`Error updating settings: ${error}}`, 'error');
-						return fail(500, {
-							form,
-							message: { failure: 'Failed to update settings' }
-						});
-					});
-			}
-		);
+
+		try {
+			const settingsService = createSettingsService(platform!, session!);
+			await settingsService.updateInsuranceFormLink(form.data.insuranceFormLink);
+
+			return message(form, {
+				success: 'Settings updated successfully'
+			});
+		} catch (error) {
+			Sentry.captureMessage(`Error updating settings: ${error}`, 'error');
+			return fail(500, {
+				form,
+				message: { failure: 'Failed to update settings' }
+			});
+		}
 	},
 	createBulkInvites: async ({ request, locals }) => {
 		const { session } = await locals.safeGetSession();

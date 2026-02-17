@@ -1,8 +1,8 @@
 import type { RequestHandler } from '@sveltejs/kit';
-import * as v from 'valibot';
-import { getKyselyClient } from '$lib/server/kysely';
-import { inviteValidationSchema } from '$lib/schemas/inviteValidationSchema';
 import dayjs from 'dayjs';
+import * as v from 'valibot';
+import { inviteValidationSchema } from '$lib/schemas/inviteValidationSchema';
+import { getKyselyClient } from '$lib/server/kysely';
 
 export const POST: RequestHandler = async ({ request, params, platform, cookies }) => {
 	const invitationId = v.safeParse(v.pipe(v.string(), v.nonEmpty(), v.uuid()), params.invitationId);
@@ -10,7 +10,7 @@ export const POST: RequestHandler = async ({ request, params, platform, cookies 
 		return new Response(null, { status: 404 });
 	}
 
-	const kysely = getKyselyClient(platform.env.HYPERDRIVE);
+	const kysely = getKyselyClient(platform?.env.HYPERDRIVE);
 	const invitationPayload = v.safeParse(inviteValidationSchema, await request.json());
 
 	if (!invitationPayload.success) {

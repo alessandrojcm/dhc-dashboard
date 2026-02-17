@@ -91,9 +91,6 @@
 				$formData.attributes![attr.name] = attr.default_value ?? undefined;
 			}
 		});
-
-		console.log('Entering edit mode with form data:', $formData);
-		console.log('Selected container name should be:', selectedContainerName);
 	};
 
 	const handleCancel = () => {
@@ -102,12 +99,17 @@
 
 	function clearAttributeError(attrName: string) {
 		if (attributeErrors[attrName]) {
-			const { [attrName]: _, ...rest } = attributeErrors;
+			// eslint-disable-next-line @typescript-eslint/no-unused-vars
+			const { [attrName]: _removed, ...rest } = attributeErrors;
 			attributeErrors = rest;
 		}
 	}
 
-	const getItemDisplayName = (item: any) => {
+	const getItemDisplayName = (item: {
+		id: string;
+		attributes?: Record<string, unknown> | null;
+		category?: { name?: string | null } | null;
+	}) => {
 		if (item.attributes?.name) return item.attributes.name;
 		if (item.attributes?.brand && item.attributes?.type) {
 			return `${item.attributes.brand} ${item.attributes.type}`;
@@ -140,7 +142,6 @@
 				return 'text-gray-600';
 		}
 	};
-	$inspect(categoryAttributes);
 </script>
 
 <div class="p-6 pb-24">
@@ -202,7 +203,7 @@
 													{selectedContainerName}
 												</SelectTrigger>
 												<SelectContent>
-													{#each hierarchicalContainers as container}
+													{#each hierarchicalContainers as container (container.id)}
 														<SelectItem value={container.id}>
 															{container.displayName}
 														</SelectItem>
@@ -334,7 +335,7 @@
 									<div class="space-y-4">
 										<h3 class="text-lg font-medium">Item Attributes</h3>
 										<div class="grid gap-4 md:grid-cols-2">
-											{#each categoryAttributes as attr}
+											{#each categoryAttributes as attr (attr.name)}
 												{#if attr.type === 'text' || attr.type === 'number'}
 													<div class="space-y-2">
 														<Label
@@ -349,7 +350,7 @@
 														{#if attr.type === 'text'}
 															<Input
 																id={attr.name}
-																bind:value={$formData.attributes![attr.name]}
+																bind:value={$formData.attributes[attr.name]}
 																placeholder={attr.label}
 																class={attributeErrors[attr.name]
 																	? 'border-destructive focus-visible:ring-destructive'
@@ -361,7 +362,7 @@
 															<Input
 																id={attr.name}
 																type="number"
-																bind:value={$formData.attributes![attr.name]}
+																bind:value={$formData.attributes[attr.name]}
 																placeholder={attr.label}
 																class={attributeErrors[attr.name] ? 'border-destructive' : ''}
 																oninput={() => clearAttributeError(attr.name)}
@@ -386,11 +387,11 @@
 														</Label>
 														<Select
 															type="single"
-															value={$formData.attributes![attr.name] || undefined}
+															value={$formData.attributes[attr.name] || undefined}
 															name="attributes.{attr.name}"
 															onValueChange={(value) => {
 																if (value) {
-																	$formData.attributes![attr.name] = value;
+																	$formData.attributes[attr.name] = value;
 																}
 																clearAttributeError(attr.name);
 															}}
@@ -398,11 +399,11 @@
 															<SelectTrigger
 																class={attributeErrors[attr.name] ? 'border-destructive' : ''}
 															>
-																{$formData.attributes![attr.name] ||
+																{$formData.attributes[attr.name] ||
 																	`Select ${attr.label.toLowerCase()}`}
 															</SelectTrigger>
 															<SelectContent>
-																{#each attr.options as option}
+																{#each attr.options as option (option)}
 																	<SelectItem value={option}>{option}</SelectItem>
 																{/each}
 															</SelectContent>
@@ -428,7 +429,7 @@
 															<Checkbox
 																id={attr.name}
 																name="attributes.{attr.name}"
-																bind:checked={$formData.attributes![attr.name]}
+																bind:checked={$formData.attributes[attr.name]}
 																onCheckedChange={() => clearAttributeError(attr.name)}
 															/>
 															<Label for={attr.name} class="text-sm font-normal">
@@ -454,16 +455,15 @@
 								<!-- View Mode -->
 								<div class="grid gap-4 md:grid-cols-2">
 									{#if Array.isArray(displayItem.category.available_attributes)}
-										{#each displayItem.category.available_attributes as attr}
-											{@const attrDef = attr as any}
+										{#each displayItem.category.available_attributes as attr (attr.name)}
 											{@const attrValue = displayItem.attributes
-												? (displayItem.attributes as any)[attrDef.name]
+												? displayItem.attributes[attr.name]
 												: undefined}
 											<div>
-												<h3 class="font-medium">{attrDef.label || attrDef.name}</h3>
+												<h3 class="font-medium">{attr.label || attr.name}</h3>
 												<p class="text-sm text-muted-foreground mt-1">
 													{#if attrValue !== undefined && attrValue !== null && attrValue !== ''}
-														{#if attrDef.type === 'boolean'}
+														{#if attr.type === 'boolean'}
 															{attrValue ? 'Yes' : 'No'}
 														{:else}
 															{attrValue}
@@ -517,10 +517,8 @@
 							<p class="text-sm text-muted-foreground">No history available</p>
 						{:else}
 							<div class="space-y-3">
-								{#each currentHistory as entry}
+								{#each currentHistory as entry (entry.id)}
 									{@const ActionIcon = getActionIcon(entry.action)}
-									{@const oldContainer = entry.old_container as any}
-									{@const newContainer = entry.new_container as any}
 									<div class="flex items-start gap-3">
 										<div class="flex h-8 w-8 items-center justify-center rounded-full bg-muted">
 											<ActionIcon class="h-4 w-4 {getActionColor(entry.action)}" />
@@ -528,8 +526,8 @@
 										<div class="flex-1 space-y-1">
 											<p class="text-sm">
 												<span class="font-medium capitalize">{entry.action}</span>
-												{#if entry.action === 'moved' && oldContainer && newContainer}
-													from {oldContainer.name} to {newContainer.name}
+												{#if entry.action === 'moved' && entry.old_container && entry.new_container}
+													from {entry.old_container.name} to {entry.new_container.name}
 												{/if}
 											</p>
 											<p class="text-xs text-muted-foreground">

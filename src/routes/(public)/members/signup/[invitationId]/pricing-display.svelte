@@ -1,35 +1,33 @@
 <script lang="ts">
-	import Dinero from 'dinero.js';
-	import type { PlanPricing } from '$lib/types.js';
-	import * as Card from '$lib/components/ui/card';
-	import * as Accordion from '$lib/components/ui/accordion';
-	import { Input } from '$lib/components/ui/input';
-	import { Button } from '$lib/components/ui/button';
-	import { AlertTriangle } from 'lucide-svelte';
-	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
-	import dayjs from 'dayjs';
-	import advancedFormat from 'dayjs/plugin/advancedFormat';
-	import type { CreateMutationResult, CreateQueryResult } from '@tanstack/svelte-query';
+import type {
+	CreateMutationResult,
+	CreateQueryResult,
+} from "@tanstack/svelte-query";
+import dayjs from "dayjs";
+import advancedFormat from "dayjs/plugin/advancedFormat";
+import type { PlanPricing } from "$lib/types.js";
 
-	dayjs.extend(advancedFormat);
+dayjs.extend(advancedFormat);
 
-	let {
-		planPricingData,
-		couponCode = $bindable(''),
-		currentCoupon,
-		applyCoupon,
-		nextMonthlyBillingDate,
-		nextAnnualBillingDate
-	}: {
-		planPricingData: CreateQueryResult<PlanPricing, Error>;
-		couponCode: string | undefined;
-		currentCoupon: string | undefined;
-		applyCoupon: CreateMutationResult<PlanPricing, Error, string>;
-		nextMonthlyBillingDate: Date;
-		nextAnnualBillingDate: Date;
-	} = $props();
+const {
+	planPricingData,
+	couponCode = $bindable(""),
+	currentCoupon,
+	applyCoupon,
+	nextMonthlyBillingDate,
+	nextAnnualBillingDate,
+}: {
+	planPricingData: CreateQueryResult<PlanPricing, Error>;
+	couponCode: string | undefined;
+	currentCoupon: string | undefined;
+	applyCoupon: CreateMutationResult<[PlanPricing, string], Error, string>;
+	nextMonthlyBillingDate: Date;
+	nextAnnualBillingDate: Date;
+} = $props();
 
-	let stripeClass = $derived(`mt-4 ${planPricingData.isLoading ? 'hidden' : ''}`);
+const _stripeClass = $derived(
+	`mt-4 ${planPricingData.isLoading ? "hidden" : ""}`,
+);
 </script>
 
 {#if planPricingData.isLoading}
@@ -42,9 +40,9 @@
 			</div>
 		</Card.Content>
 	</Card.Root>
-{:else if !(planPricingData as CreateQueryResult<PlanPricing, Error>).isError}
+{:else if !planPricingData.isError && planPricingData?.data}
 	<!-- Handle QueryResult -->
-	{@const planPricing = (planPricingData as CreateQueryResult<PlanPricing, Error>).data!}
+	{@const planPricing = planPricingData.data}
 	{@const proratedPriceDinero = Dinero(planPricing.proratedPrice)}
 	{@const monthlyFeeDinero = Dinero(planPricing.monthlyFee)}
 	{@const annualFeeDinero = Dinero(planPricing.annualFee)}
@@ -199,7 +197,7 @@
 			</div>
 		</Card.Content>
 	</Card.Root>
-{:else if (planPricingData as CreateQueryResult<PlanPricing, Error>).isLoading}
+{:else if planPricingData.isLoading}
 	<!-- Loading state for QueryResult -->
 	<Card.Root class="bg-muted">
 		<Card.Content class="pt-6">
@@ -209,7 +207,7 @@
 			</div>
 		</Card.Content>
 	</Card.Root>
-{:else if (planPricingData as CreateQueryResult<PlanPricing, Error>).isError}
+{:else if planPricingData.isError}
 	<!-- Error state for QueryResult -->
 	<Card.Root class="bg-destructive/10 border-destructive">
 		<Card.Content class="pt-6">

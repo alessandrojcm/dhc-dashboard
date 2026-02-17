@@ -1,6 +1,6 @@
-import { Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
+import type { Database } from '../database.types.js';
 import { createMember, getSupabaseServiceClient } from './setupFunctions';
-import type { Database } from '../database.types';
 
 /**
  * Helper functions for attendee management and refund E2E tests
@@ -28,6 +28,8 @@ export interface TestRegistration {
 	status: string;
 	attendance_status?: string;
 	attendance_notes?: string;
+	attendance_marked_at?: string;
+	attendance_marked_by?: string;
 }
 
 export interface TestRefund {
@@ -42,7 +44,16 @@ export interface TestRefund {
 /**
  * Makes an authenticated API request using Playwright's request context
  */
-export async function makeAuthenticatedRequest(page: Page, url: string, options: any = {}) {
+export async function makeAuthenticatedRequest(
+	page: Page,
+	url: string,
+	options: {
+		method?: string;
+		data?: unknown;
+		headers?: Record<string, string>;
+		body?: string;
+	} = {}
+) {
 	const response = await page.request.fetch(url, {
 		...options,
 		headers: {
@@ -57,7 +68,7 @@ export async function makeAuthenticatedRequest(page: Page, url: string, options:
  * Creates a test workshop with default values using direct database access
  */
 export async function createTestWorkshop(
-	page: Page,
+	_page: Page,
 	overrides: Partial<Omit<TestWorkshop, 'id'>> = {}
 ): Promise<TestWorkshop> {
 	const timestamp = Date.now();
@@ -111,7 +122,7 @@ export async function createTestWorkshop(
  * Creates a test registration for a workshop using direct database access
  */
 export async function createTestRegistration(
-	page: Page,
+	_page: Page,
 	workshopId: string,
 	userId: string,
 	overrides: Partial<Omit<TestRegistration, 'id' | 'workshop_id'>> = {}
@@ -129,7 +140,9 @@ export async function createTestRegistration(
 
 	const { data: registration, error } = await supabase
 		.from('club_activity_registrations')
-		.insert(defaultRegistration as any)
+		.insert(
+			defaultRegistration as Database['public']['Tables']['club_activity_registrations']['Insert']
+		)
 		.select()
 		.single();
 
@@ -203,7 +216,7 @@ export async function updateTestAttendance(
 		attendance_status: 'attended' | 'no_show' | 'excused';
 		notes?: string;
 	}>
-): Promise<any[]> {
+): Promise<TestRegistration[]> {
 	const response = await makeAuthenticatedRequest(page, `/api/workshops/${workshopId}/attendance`, {
 		method: 'PUT',
 		data: { attendance_updates: attendanceUpdates }
@@ -220,7 +233,10 @@ export async function updateTestAttendance(
 /**
  * Fetches workshop attendance data
  */
-export async function getWorkshopAttendance(page: Page, workshopId: string): Promise<any[]> {
+export async function getWorkshopAttendance(
+	page: Page,
+	workshopId: string
+): Promise<TestRegistration[]> {
 	const response = await makeAuthenticatedRequest(page, `/api/workshops/${workshopId}/attendance`, {
 		method: 'GET'
 	});
@@ -367,7 +383,7 @@ export async function clickAndWait(page: Page, selector: string, waitForSelector
 /**
  * Validates that an API response has the expected success format
  */
-export function validateApiResponse(data: any, expectedResource?: string) {
+export function validateApiResponse(data: Record<string, unknown>, expectedResource?: string) {
 	if (!data.success) {
 		throw new Error(`API request failed: ${data.error || 'Unknown error'}`);
 	}

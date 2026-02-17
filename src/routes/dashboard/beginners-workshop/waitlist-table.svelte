@@ -1,5 +1,7 @@
 <script lang="ts">
+	/* eslint-disable @typescript-eslint/no-explicit-any */
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import type { Database, Tables } from '$database';
 	import { Badge } from '$lib/components/ui/badge';
@@ -49,6 +51,19 @@
 
 	const { supabase }: { supabase: SupabaseClient<Database> } = $props();
 
+	function getBadgeVariant(status: string) {
+		switch (status) {
+			case 'invited':
+				return 'default';
+			case 'joined':
+				return 'secondary';
+			case 'declined':
+				return 'destructive';
+			default:
+				return 'default';
+		}
+	}
+
 	const currentPage = $derived(Number(page.url.searchParams.get('page')) || 0);
 	const pageSize = $derived(Number(page.url.searchParams.get('pageSize')) || 10);
 	const searchQuery = $derived(page.url.searchParams.get('q') || '');
@@ -86,7 +101,9 @@
 			});
 		}
 		if (sortingState.length > 0) {
-			query = query.order(sortingState[0].id, { ascending: !sortingState[0].desc });
+			query = query.order(sortingState[0].id, {
+				ascending: !sortingState[0].desc
+			});
 		}
 		query = query.neq('status', 'joined');
 		const { data, count, error } = await query.range(rangeStart, rangeEnd).abortSignal(signal);
@@ -208,24 +225,30 @@
 			pageSize,
 			...newPagination
 		};
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const newParams = new URLSearchParams(page.url.searchParams);
 		newParams.set('page', paginationState.pageIndex.toString());
 		newParams.set('pageSize', paginationState.pageSize.toString());
-		goto(`/dashboard/beginners-workshop?${newParams.toString()}`);
+		const url = `/dashboard/beginners-workshop?${newParams.toString()}`;
+		goto(resolve(url as any));
 	}
 
 	function onSortingChange(newSorting: SortingState) {
 		const [sortingState] = newSorting;
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const newParams = new URLSearchParams(page.url.searchParams);
 		newParams.set('sort', sortingState.id);
 		newParams.set('direction', sortingState.desc ? 'desc' : 'asc');
-		goto(`/dashboard/beginners-workshop?${newParams.toString()}`);
+		const url = `/dashboard/beginners-workshop?${newParams.toString()}`;
+		goto(resolve(url as any));
 	}
 
 	function onSearchChange(newSearch: string) {
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const newParams = new URLSearchParams(page.url.searchParams);
 		newParams.set('q', newSearch);
-		goto(`/dashboard/beginners-workshop?${newParams.toString()}`);
+		const url = `/dashboard/beginners-workshop?${newParams.toString()}`;
+		goto(resolve(url as any));
 	}
 
 	// State for expanded rows
@@ -286,9 +309,11 @@
 						isExpanded: row.getIsExpanded(),
 						onToggleExpand: () => row.toggleExpanded(),
 						inviteMember: () => {
-							row.original.status !== 'invited'
-								? inviteMember.mutate([row.original.id!])
-								: resendInvitationLink.mutate([row.original.email!]);
+							if (row.original.status !== 'invited') {
+								inviteMember.mutate([row.original.id!]);
+							} else {
+								resendInvitationLink.mutate([row.original.email!]);
+							}
 						},
 						onEdit(newValue) {
 							updateWaitlistEntry.mutate({
@@ -411,7 +436,7 @@
 					}),
 				cell: ({ getValue }) => {
 					return renderSnippet(
-						createRawSnippet((value) => ({
+						createRawSnippet(() => ({
 							render: () => `<div class="w-[120px]">${dayjs(getValue()).format('DD/MM/YYYY')}</div>`
 						})),
 						getValue()
@@ -563,9 +588,9 @@
 			{/each}
 		</Table.Body>
 		<Table.Footer class="sticky bottom-0 z-1 bg-white">
-			{#each table.getFooterGroups() as footerGroup}
+			{#each table.getFooterGroups() as footerGroup (footerGroup.id)}
 				<Table.Row>
-					{#each footerGroup.headers as header}
+					{#each footerGroup.headers as header (header.id)}
 						<Table.Cell>
 							{#if !header.isPlaceholder}
 								<FlexRender
@@ -602,9 +627,11 @@
 					<div>
 						<ActionButtons
 							inviteMember={() => {
-								row.original.status !== 'invited'
-									? inviteMember.mutate([row.original.id!])
-									: resendInvitationLink.mutate([row.original.email!]);
+								if (row.original.status !== 'invited') {
+									inviteMember.mutate([row.original.id!]);
+								} else {
+									resendInvitationLink.mutate([row.original.email!]);
+								}
 							}}
 							adminNotes={row.original.admin_notes ?? 'N/A'}
 							isExpanded={row.getIsExpanded()}
@@ -624,17 +651,7 @@
 				<!-- Status Badge -->
 				<div class="mb-3">
 					{#if row.original.status}
-						<Badge
-							variant={row.original.status as
-								| 'waiting'
-								| 'invited'
-								| 'paid'
-								| 'deferred'
-								| 'cancelled'
-								| 'completed'
-								| 'no_reply'}
-							class="h-8"
-						>
+						<Badge variant={getBadgeVariant(row.original.status)} class="h-8">
 							<p class="capitalize">{row.original.status.replace('-', ' ')}</p>
 						</Badge>
 					{:else}
@@ -735,7 +752,7 @@
 		>
 			<Select.Trigger class="w-16 h-8">{pageSize}</Select.Trigger>
 			<Select.Content>
-				{#each pageSizeOptions as pageSizeOption}
+				{#each pageSizeOptions as pageSizeOption (pageSizeOption)}
 					<Select.Item value={pageSizeOption.toString()}>
 						{pageSizeOption}
 					</Select.Item>

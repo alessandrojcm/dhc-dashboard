@@ -32,7 +32,9 @@
 		if (!selectedDate) {
 			return;
 		}
-		onConfirm({ pauseUntil: selectedDate.toDate(getLocalTimeZone()).toISOString() });
+		onConfirm({
+			pauseUntil: selectedDate.toDate(getLocalTimeZone()).toISOString()
+		});
 	}
 </script>
 
@@ -54,6 +56,13 @@
 				onDateChange={(date) => {
 					selectedDate = fromDate(date, getLocalTimeZone());
 				}}
+				name="pauseUntil"
+				id="pauseUntil"
+				data-fs-error={undefined}
+				aria-describedby={undefined}
+				aria-invalid={undefined}
+				aria-required={undefined}
+				data-fs-control="pauseUntil"
 			/>
 		</div>
 

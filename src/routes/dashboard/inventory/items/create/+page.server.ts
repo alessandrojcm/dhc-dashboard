@@ -1,24 +1,26 @@
-import { authorize } from '$lib/server/auth';
-import { INVENTORY_ROLES } from '$lib/server/roles';
-import { itemSchema } from '$lib/schemas/inventory';
+import * as Sentry from '@sentry/sveltekit';
+import { fail, isRedirect, redirect } from '@sveltejs/kit';
 import { setMessage, superValidate } from 'sveltekit-superforms';
 import { valibot } from 'sveltekit-superforms/adapters';
-import { fail, isRedirect, redirect } from '@sveltejs/kit';
-import { executeWithRLS, getKyselyClient } from '$lib/server/kysely';
-import * as Sentry from '@sentry/sveltekit';
+import { authorize } from '$lib/server/auth';
+import { INVENTORY_ROLES } from '$lib/server/roles';
+import { createItemService, ItemCreateSchema } from '$lib/server/services/inventory';
+import type { Actions, PageServerLoad } from './$types';
 
-export const load = async ({ url, locals }: { url: URL; locals: App.Locals }) => {
-	await authorize(locals, INVENTORY_ROLES);
+export const load: PageServerLoad = async ({
+	url,
+	locals,
+	platform
+}) => {
+	const session = await authorize(locals, INVENTORY_ROLES);
 
 	// Get pre-selected container or category from URL params
 	const preselectedContainer = url.searchParams.get('container');
 	const preselectedCategory = url.searchParams.get('category');
 
-	// Load categories and containers
-	const [categoriesResult, containersResult] = await Promise.all([
-		locals.supabase.from('equipment_categories').select('*').order('name'),
-		locals.supabase.from('containers').select('id, name, parent_container_id').order('name')
-	]);
+	// Load filter options using ItemService
+	const itemService = createItemService(platform!, session);
+	const filterOptions = await itemService.getFilterOptions();
 
 	return {
 		form: await superValidate(
@@ -30,54 +32,34 @@ export const load = async ({ url, locals }: { url: URL; locals: App.Locals }) =>
 				notes: '',
 				out_for_maintenance: false
 			},
-			valibot(itemSchema),
+			valibot(ItemCreateSchema),
 			{
 				errors: false
 			}
 		),
-		categories: categoriesResult.data || [],
-		containers: containersResult.data || []
+		categories: filterOptions.categories,
+		containers: filterOptions.containers
 	};
 };
 
-export const actions = {
+export const actions: Actions = {
 	default: async ({
 		request,
 		locals,
 		platform
-	}: {
-		request: Request;
-		locals: App.Locals;
-		platform: any;
 	}) => {
 		const session = await authorize(locals, INVENTORY_ROLES);
-		const form = await superValidate(request, valibot(itemSchema));
+		const form = await superValidate(request, valibot(ItemCreateSchema));
 
 		if (!form.valid) {
 			return fail(400, { form });
 		}
 
 		try {
-			const db = getKyselyClient(platform.env.HYPERDRIVE);
-			const result = await executeWithRLS(db, { claims: session }, async (trx) => {
-				return await trx
-					.insertInto('inventory_items')
-					.values({
-						container_id: form.data.container_id,
-						category_id: form.data.category_id,
-						attributes: form.data.attributes,
-						quantity: form.data.quantity,
-						notes: form.data.notes || null,
-						out_for_maintenance: form.data.out_for_maintenance || false,
-						created_at: new Date().toISOString(),
-						updated_at: new Date().toISOString(),
-						created_by: session.user.id
-					})
-					.returningAll()
-					.execute();
-			});
+			const itemService = createItemService(platform!, session);
+			const item = await itemService.create(form.data);
 
-			redirect(303, `/dashboard/inventory/items/${result[0].id}`);
+			redirect(303, `/dashboard/inventory/items/${item.id}`);
 		} catch (error) {
 			if (isRedirect(error)) {
 				throw error;

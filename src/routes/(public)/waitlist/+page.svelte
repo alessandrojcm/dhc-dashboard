@@ -1,63 +1,53 @@
 <script lang="ts">
-	import * as Alert from '$lib/components/ui/alert';
-	import { Button } from '$lib/components/ui/button';
-	import * as Card from '$lib/components/ui/card';
-	import DatePicker from '$lib/components/ui/date-picker.svelte';
-	import * as Form from '$lib/components/ui/form';
-	import { Input } from '$lib/components/ui/input';
-	import PhoneInput from '$lib/components/ui/phone-input.svelte';
-	import * as RadioGroup from '$lib/components/ui/radio-group/index.js';
-	import * as Select from '$lib/components/ui/select';
-	import Textarea from '$lib/components/ui/textarea/textarea.svelte';
-	import { whyThisField } from '$lib/components/ui/why-this-field.svelte';
-	import beginnersWaitlist from '$lib/schemas/beginnersWaitlist';
-	import { fromDate, getLocalTimeZone } from '@internationalized/date';
-	import dayjs from 'dayjs';
-	import { CheckCircled } from 'svelte-radix';
-	import { toast } from 'svelte-sonner';
-	import { dateProxy, superForm } from 'sveltekit-superforms';
-	import { valibotClient } from 'sveltekit-superforms/adapters';
-	import { LoaderCircle } from 'lucide-svelte';
+import { fromDate, getLocalTimeZone } from "@internationalized/date";
+import dayjs from "dayjs";
+import { toast } from "svelte-sonner";
+import { dateProxy, superForm } from "sveltekit-superforms";
+import { valibotClient } from "sveltekit-superforms/adapters";
+import beginnersWaitlist from "$lib/schemas/beginnersWaitlist";
 
-	const { data } = $props();
-	const form = superForm(data.form, {
-		validators: valibotClient(beginnersWaitlist),
-		validationMethod: 'onblur'
-	});
-	const { form: formData, enhance, errors, submitting, message } = form;
-	const dobProxy = dateProxy(form, 'dateOfBirth', { format: `date` });
-	const dobValue = $derived.by(() => {
-		if (!dayjs($formData.dateOfBirth).isValid() || dayjs($formData.dateOfBirth).isSame(dayjs())) {
-			return undefined;
+const { data } = $props();
+const form = superForm(data.form, {
+	validators: valibotClient(beginnersWaitlist),
+	validationMethod: "onblur",
+});
+const { form: formData, enhance, errors, submitting, message } = form;
+const _dobProxy = dateProxy(form, "dateOfBirth", { format: `date` });
+const _dobValue = $derived.by(() => {
+	if (
+		!dayjs($formData.dateOfBirth).isValid() ||
+		dayjs($formData.dateOfBirth).isSame(dayjs())
+	) {
+		return undefined;
+	}
+	return fromDate(dayjs($formData.dateOfBirth).toDate(), getLocalTimeZone());
+});
+
+// Derived store to check if user is under 18
+const _isUnderAge = $derived.by(() => {
+	if (!$formData.dateOfBirth) {
+		return false;
+	}
+	if (!dayjs($formData.dateOfBirth).isValid()) {
+		return false;
+	}
+	return dayjs().diff($formData.dateOfBirth, "year") < 18;
+});
+
+$effect(() => {
+	const unsubscribe = message.subscribe((message) => {
+		if (message?.error) {
+			toast.error(
+				"There was an error with your submission. We have been notified. Please try again later.",
+				{
+					position: "top-right",
+				},
+			);
 		}
-		return fromDate(dayjs($formData.dateOfBirth).toDate(), getLocalTimeZone());
 	});
 
-	// Derived store to check if user is under 18
-	const isUnderAge = $derived.by(() => {
-		if (!$formData.dateOfBirth) {
-			return false;
-		}
-		if (!dayjs($formData.dateOfBirth).isValid()) {
-			return false;
-		}
-		return dayjs().diff($formData.dateOfBirth, 'year') < 18;
-	});
-
-	$effect(() => {
-		const unsubscribe = message.subscribe((message) => {
-			if (message?.error) {
-				toast.error(
-					'There was an error with your submission. We have been notified. Please try again later.',
-					{
-						position: 'top-right'
-					}
-				);
-			}
-		});
-
-		return unsubscribe;
-	});
+	return unsubscribe;
+});
 </script>
 
 <svelte:head>
@@ -84,7 +74,7 @@
 					<Form.Field {form} name="firstName" class="flex-1">
 						<Form.Control>
 							{#snippet children({ props })}
-								<Form.Label required>First name</Form.Label>
+								<Form.Label>First name</Form.Label>
 								<Input
 									{...props}
 									bind:value={$formData.firstName}
@@ -98,7 +88,7 @@
 					<Form.Field {form} name="lastName" class="flex-1">
 						<Form.Control>
 							{#snippet children({ props })}
-								<Form.Label required>Last name</Form.Label>
+								<Form.Label>Last name</Form.Label>
 								<Input
 									{...props}
 									bind:value={$formData.lastName}
@@ -113,7 +103,7 @@
 				<Form.Field {form} name="email">
 					<Form.Control>
 						{#snippet children({ props })}
-							<Form.Label required>Email</Form.Label>
+							<Form.Label>Email</Form.Label>
 							<Input
 								type="email"
 								{...props}
@@ -128,7 +118,7 @@
 				<Form.Field {form} name="phoneNumber">
 					<Form.Control>
 						{#snippet children({ props })}
-							<Form.Label required>Phone number</Form.Label>
+							<Form.Label>Phone number</Form.Label>
 							<PhoneInput
 								placeholder="Enter your phone number"
 								{...props}
@@ -142,7 +132,7 @@
 				<Form.Field {form} name="gender">
 					<Form.Control>
 						{#snippet children({ props })}
-							<Form.Label required>Gender</Form.Label>
+							<Form.Label>Gender</Form.Label>
 							{@render whyThisField(
 								'This helps us maintain a balanced and inclusive training environment'
 							)}
@@ -155,7 +145,7 @@
 									{/if}
 								</Select.Trigger>
 								<Select.Content>
-									{#each data.genders as gender}
+									{#each data.genders as gender (gender)}
 										<Select.Item class="capitalize" value={gender} label={gender} />
 									{/each}
 								</Select.Content>
@@ -167,7 +157,7 @@
 				<Form.Field {form} name="pronouns">
 					<Form.Control>
 						{#snippet children({ props })}
-							<Form.Label required>Pronouns</Form.Label>
+							<Form.Label>Pronouns</Form.Label>
 							{@render whyThisField(
 								'This helps us maintain a balanced and inclusive training environment'
 							)}
@@ -182,7 +172,7 @@
 				<Form.Field {form} name="dateOfBirth">
 					<Form.Control>
 						{#snippet children({ props })}
-							<Form.Label required>Date of birth</Form.Label>
+							<Form.Label>Date of birth</Form.Label>
 							{@render whyThisField(
 								'For insurance reasons, HEMA practitioners need to be at least 16 years old'
 							)}
@@ -263,7 +253,7 @@
 							<Form.Field {form} name="guardianFirstName" class="flex-1">
 								<Form.Control>
 									{#snippet children({ props })}
-										<Form.Label required>Guardian First Name</Form.Label>
+										<Form.Label>Guardian First Name</Form.Label>
 										<Input
 											{...props}
 											bind:value={$formData.guardianFirstName}
@@ -277,7 +267,7 @@
 							<Form.Field {form} name="guardianLastName" class="flex-1">
 								<Form.Control>
 									{#snippet children({ props })}
-										<Form.Label required>Guardian Last Name</Form.Label>
+										<Form.Label>Guardian Last Name</Form.Label>
 										<Input
 											{...props}
 											bind:value={$formData.guardianLastName}
@@ -292,7 +282,7 @@
 						<Form.Field {form} name="guardianPhoneNumber">
 							<Form.Control>
 								{#snippet children({ props })}
-									<Form.Label required>Guardian Phone Number</Form.Label>
+									<Form.Label>Guardian Phone Number</Form.Label>
 									<PhoneInput
 										placeholder="Enter guardian's phone number"
 										{...props}

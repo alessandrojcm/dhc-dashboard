@@ -3,11 +3,11 @@
 	import { type DateValue, DateFormatter, getLocalTimeZone } from '@internationalized/date';
 	import { cn } from '$lib/utils.js';
 	import { Button } from '$lib/components/ui/button/index.js';
-	import { Calendar } from '$lib/components/ui/calendar/index.js';
+	import { Calendar } from '$lib/components/ui/calendar';
 	import * as Popover from '$lib/components/ui/popover/index.js';
 
 	type Props = {
-		value: DateValue;
+		value: DateValue | undefined;
 		onDateChange: (date: Date) => void;
 		minValue?: DateValue;
 		maxValue?: DateValue;
@@ -46,10 +46,13 @@
 			bind:value
 			type="single"
 			initialFocus
+			captionLayout="dropdown"
 			{minValue}
 			{maxValue}
-			onValueChange={(date) => {
-				date && onDateChange(date.toDate(getLocalTimeZone()));
+			onValueChange={(date: DateValue | undefined) => {
+				if (date) {
+					onDateChange(date.toDate(getLocalTimeZone()));
+				}
 				open = false;
 			}}
 		/>

@@ -1,16 +1,17 @@
-import { json } from '@sveltejs/kit';
-import { authorize } from '$lib/server/auth';
-import { WORKSHOP_ROLES } from '$lib/server/roles';
-import { processRefund, getWorkshopRefunds } from '$lib/server/refunds';
-import { ProcessRefundSchema } from '$lib/schemas/refunds';
-import { safeParse } from 'valibot';
-import type { RequestHandler } from '@sveltejs/kit';
 import * as Sentry from '@sentry/sveltekit';
+import type { RequestHandler } from '@sveltejs/kit';
+import { json } from '@sveltejs/kit';
+import { safeParse } from 'valibot';
+import { ProcessRefundSchema } from '$lib/schemas/refunds';
+import { authorize } from '$lib/server/auth';
+import { createRefundService } from '$lib/server/services/workshops';
+import { WORKSHOP_ROLES } from '$lib/server/roles';
 
 export const GET: RequestHandler = async ({ locals, params, platform }) => {
 	try {
 		const session = await authorize(locals, WORKSHOP_ROLES);
-		const refunds = await getWorkshopRefunds(params.id!, session, platform!);
+		const refundService = createRefundService(platform!, session);
+		const refunds = await refundService.getWorkshopRefunds(params.id!);
 		return json({ success: true, refunds });
 	} catch (error) {
 		Sentry.captureException(error);
@@ -37,7 +38,7 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
 		}
 
 		const { getKyselyClient, executeWithRLS } = await import('$lib/server/kysely');
-		const kysely = getKyselyClient(platform!.env.HYPERDRIVE);
+		const kysely = getKyselyClient(platform?.env.HYPERDRIVE);
 
 		const registration = await executeWithRLS(kysely, { claims: session }, async (trx) => {
 			return await trx
@@ -59,17 +60,19 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
 				await authorize(locals, WORKSHOP_ROLES);
 			} catch {
 				return json(
-					{ success: false, error: 'You can only request refunds for your own registrations' },
+					{
+						success: false,
+						error: 'You can only request refunds for your own registrations'
+					},
 					{ status: 403 }
 				);
 			}
 		}
 
-		const refund = await processRefund(
+		const refundService = createRefundService(platform!, session);
+		const refund = await refundService.processRefund(
 			result.output.registration_id,
-			result.output.reason,
-			session,
-			platform!
+			result.output.reason
 		);
 
 		return json({ success: true, refund });

@@ -1,32 +1,30 @@
-import { memberSignupSchema } from '$lib/schemas/membersSignup';
+import * as Sentry from '@sentry/sveltekit';
 import { error } from '@sveltejs/kit';
+import type Stripe from 'stripe';
 import { fail, message, superValidate } from 'sveltekit-superforms';
 import { valibot } from 'sveltekit-superforms/adapters';
-import { invariant } from '$lib/server/invariant';
-import { stripeClient } from '$lib/server/stripe';
-import { getKyselyClient } from '$lib/server/kysely';
-import Stripe from 'stripe';
-import {
-	completeMemberRegistration,
-	getInvitationInfo,
-	updateInvitationStatus
-} from '$lib/server/kyselyRPCFunctions';
-import * as Sentry from '@sentry/sveltekit';
-import { getNextBillingDates, getPriceIds } from '$lib/server/pricingUtils';
-import type { Actions, PageServerLoad } from './$types';
 import { env } from '$env/dynamic/public';
+import { memberSignupSchema } from '$lib/schemas/membersSignup';
+import { invariant } from '$lib/server/invariant';
+import { getKyselyClient } from '$lib/server/kysely';
+import { getNextBillingDates, getPriceIds } from '$lib/server/pricingUtils';
+import { createInvitationService } from '$lib/server/services/invitations';
+import { stripeClient } from '$lib/server/stripe';
+import type { Actions, PageServerLoad } from './$types';
 
 const DASHBOARD_MIGRATION_CODE = env.PUBLIC_DASHBOARD_MIGRATION_CODE ?? 'DHCDASHBOARD';
-
+// TODO: all of this broken now
 // need to normalize medical_conditions
 export const load: PageServerLoad = async ({ params, platform, cookies }) => {
 	const invitationId = params.invitationId;
-	const kysely = getKyselyClient(platform?.env.HYPERDRIVE);
 	const isConfirmed = Boolean(cookies.get(`invite-confirmed-${invitationId}`));
 
 	try {
+		// Create invitation service without session (public route)
+		const invitationService = createInvitationService(platform!);
+
 		// Get invitation data first (essential for page rendering)
-		const invitationData = await getInvitationInfo(invitationId, kysely);
+		const invitationData = await invitationService.getInvitationInfo(invitationId);
 
 		if (!invitationData) {
 			return error(404, 'Invitation not found');
@@ -73,10 +71,21 @@ export const actions: Actions = {
 			form.data.stripeConfirmationToken
 		);
 
+		// Create invitation service without session (public route)
+		const invitationService = createInvitationService(event.platform!);
+
 		return kysely
 			.transaction()
 			.execute(async (trx) => {
-				const invitationData = await getInvitationInfo(event.params.invitationId, trx);
+				// Process invitation acceptance (handles status update, registration, waitlist)
+				const invitationData = await invitationService.processInvitationAcceptance(
+					trx,
+					event.params.invitationId,
+					form.data.nextOfKin,
+					form.data.nextOfKinNumber
+				);
+
+				// Get customer ID
 				const customerId = await trx
 					.selectFrom('user_profiles')
 					.select('customer_id')
@@ -86,28 +95,6 @@ export const actions: Actions = {
 					throw error(404, 'No customer ID found for this user.');
 				}
 
-				// First get the invitation info and update its status to accepted
-				if (invitationData && invitationData.invitation_id) {
-					await updateInvitationStatus(invitationData.invitation_id, 'accepted', trx);
-				}
-
-				await Promise.all([
-					completeMemberRegistration(
-						{
-							v_user_id: invitationData.user_id,
-							p_next_of_kin_name: form.data.nextOfKin,
-							p_next_of_kin_phone: form.data.nextOfKinNumber,
-							p_insurance_form_submitted: true
-						},
-						trx
-					),
-					trx
-						.updateTable('waitlist')
-						.set({ status: 'joined' })
-						.where('email', '=', invitationData.email)
-						.execute()
-				]);
-
 				const intent = await stripeClient.setupIntents.create({
 					confirm: true,
 					customer: customerId.customer_id!,
@@ -116,7 +103,7 @@ export const actions: Actions = {
 				});
 
 				invariant(
-					intent.status == 'requires_payment_method',
+					intent.status === 'requires_payment_method',
 					'payment_intent_requires_payment_method'
 				);
 				invariant(intent.payment_method == null, 'payment_method_not_found');
@@ -173,7 +160,7 @@ export const actions: Actions = {
 								!isMigration && promotionCodeId ? [{ promotion_code: promotionCodeId }] : undefined
 						})
 						.then(async (subscription) => {
-							if ((subscription.latest_invoice as Stripe.Invoice).payments!.data.length === 0) {
+							if ((subscription.latest_invoice as Stripe.Invoice).payments?.data.length === 0) {
 								return;
 							}
 							if (isMigration) {
@@ -183,7 +170,7 @@ export const actions: Actions = {
 								});
 							}
 							return stripeClient.paymentIntents.confirm(
-								(subscription.latest_invoice as Stripe.Invoice).payments!.data[0].payment
+								(subscription.latest_invoice as Stripe.Invoice).payments?.data[0].payment
 									.payment_intent as string,
 								{
 									payment_method: paymentMethodId,
@@ -218,7 +205,7 @@ export const actions: Actions = {
 								!isMigration && promotionCodeId ? [{ promotion_code: promotionCodeId }] : undefined
 						})
 						.then(async (subscription) => {
-							if ((subscription.latest_invoice as Stripe.Invoice).payments!.data.length === 0) {
+							if ((subscription.latest_invoice as Stripe.Invoice).payments?.data.length === 0) {
 								return;
 							}
 							if (isMigration) {
@@ -228,7 +215,7 @@ export const actions: Actions = {
 								});
 							}
 							return stripeClient.paymentIntents.confirm(
-								(subscription.latest_invoice as Stripe.Invoice).payments!.data[0].payment
+								(subscription.latest_invoice as Stripe.Invoice).payments?.data[0].payment
 									.payment_intent as string,
 								{
 									payment_method: paymentMethodId,

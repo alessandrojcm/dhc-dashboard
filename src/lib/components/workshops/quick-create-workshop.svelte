@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { Button } from '$lib/components/ui/button';
-	import { Input } from '$lib/components/ui/input';
 	import { Textarea } from '$lib/components/ui/textarea';
 	import { Popover, PopoverContent, PopoverTrigger } from '$lib/components/ui/popover';
 	import { createMutation } from '@tanstack/svelte-query';
@@ -27,7 +27,8 @@
 
 			return response.json();
 		},
-		onSuccess: (data) => {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		onSuccess: (data: any) => {
 			if (data.success === false) {
 				toast.error(data.error || 'Failed to generate workshop');
 				return;
@@ -39,7 +40,7 @@
 			// Close popover and redirect
 			open = false;
 			prompt = '';
-			goto(`/dashboard/workshops/create?generated=${encodedData}`);
+			goto(resolve(`/dashboard/workshops/create?generated=${encodedData}`));
 		},
 		onError: (error) => {
 			toast.error(error.message || 'Failed to generate workshop');

@@ -2,12 +2,27 @@
  * Shared utilities for inventory item forms
  */
 
+import type {
+	InventoryContainer,
+	InventoryAttributeDefinition,
+	InventoryAttributes
+} from '$lib/types';
+
+type ContainerWithChildren = InventoryContainer & {
+	children: ContainerWithChildren[];
+};
+
+type ContainerWithDisplay = ContainerWithChildren & {
+	displayName: string;
+	level: number;
+};
+
 /**
  * Builds a hierarchical display for container selection with indentation
  */
-export function buildContainerHierarchy(containers: any[]) {
-	const containerMap = new Map();
-	const rootContainers: any[] = [];
+export function buildContainerHierarchy(containers: InventoryContainer[]): ContainerWithDisplay[] {
+	const containerMap = new Map<string, ContainerWithChildren>();
+	const rootContainers: ContainerWithChildren[] = [];
 
 	containers.forEach((container) => {
 		containerMap.set(container.id, { ...container, children: [] });
@@ -16,16 +31,23 @@ export function buildContainerHierarchy(containers: any[]) {
 	containers.forEach((container) => {
 		if (container.parent_container_id) {
 			const parent = containerMap.get(container.parent_container_id);
-			if (parent) {
-				parent.children.push(containerMap.get(container.id));
+			const child = containerMap.get(container.id);
+			if (parent && child) {
+				parent.children.push(child);
 			}
 		} else {
-			rootContainers.push(containerMap.get(container.id));
+			const rootContainer = containerMap.get(container.id);
+			if (rootContainer) {
+				rootContainers.push(rootContainer);
+			}
 		}
 	});
 
-	const flattenWithIndent = (containers: any[], level = 0): any[] => {
-		const result: any[] = [];
+	const flattenWithIndent = (
+		containers: ContainerWithChildren[],
+		level = 0
+	): ContainerWithDisplay[] => {
+		const result: ContainerWithDisplay[] = [];
 		containers.forEach((container) => {
 			result.push({
 				...container,
@@ -47,8 +69,8 @@ export function buildContainerHierarchy(containers: any[]) {
  * Returns errors object and hasErrors flag
  */
 export function validateCategoryAttributes(
-	categoryAttributes: any[],
-	formDataAttributes: Record<string, any>
+	categoryAttributes: InventoryAttributeDefinition[],
+	formDataAttributes: InventoryAttributes
 ): { errors: Record<string, string>; hasErrors: boolean } {
 	const errors: Record<string, string> = {};
 	let hasErrors = false;
@@ -69,8 +91,8 @@ export function validateCategoryAttributes(
 /**
  * Cleans attributes to only include non-empty values
  */
-export function cleanAttributes(attributes: Record<string, any>): Record<string, any> {
-	const cleaned: Record<string, any> = {};
+export function cleanAttributes(attributes: InventoryAttributes): InventoryAttributes {
+	const cleaned: InventoryAttributes = {};
 
 	Object.entries(attributes).forEach(([key, value]) => {
 		if (value !== null && value !== undefined && value !== '') {
@@ -86,13 +108,13 @@ export function cleanAttributes(attributes: Record<string, any>): Record<string,
  * and initializing new ones with defaults
  */
 export function resetAttributesForCategory(
-	newCategory: any,
-	currentAttributes: Record<string, any>
-): Record<string, any> {
-	const newAttributes: Record<string, any> = {};
+	newCategory: { available_attributes?: InventoryAttributeDefinition[] } | null | undefined,
+	currentAttributes: InventoryAttributes
+): InventoryAttributes {
+	const newAttributes: InventoryAttributes = {};
 
 	if (newCategory?.available_attributes && Array.isArray(newCategory.available_attributes)) {
-		newCategory.available_attributes.forEach((attr: any) => {
+		newCategory.available_attributes.forEach((attr) => {
 			// Preserve existing value if it exists
 			if (currentAttributes[attr.name] !== undefined) {
 				newAttributes[attr.name] = currentAttributes[attr.name];

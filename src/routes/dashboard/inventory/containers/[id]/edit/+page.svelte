@@ -36,10 +36,11 @@
 		validators: valibot(containerSchema)
 	});
 
-	const { form: formData, errors, enhance: formEnhance, submitting, message } = form;
+	const { form: formData, enhance: formEnhance, submitting, message } = form;
 
 	// Build hierarchy display for parent selection
 	const buildHierarchyDisplay = (containers: Container[]): HierarchicalContainer[] => {
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const containerMap = new Map<string, ContainerWithChildren>();
 		const rootContainers: ContainerWithChildren[] = [];
 
@@ -88,6 +89,7 @@
 
 	// Filter out the current container and its descendants to prevent circular references
 	const getDescendantIds = (containerId: string, containers: Container[]): Set<string> => {
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const descendants = new Set<string>();
 		descendants.add(containerId);
 
@@ -186,7 +188,7 @@
 									</SelectTrigger>
 									<SelectContent>
 										<SelectItem value="">No parent container (root level)</SelectItem>
-										{#each hierarchicalContainers as container}
+										{#each hierarchicalContainers as container (container.id)}
 											<SelectItem value={container.id}>
 												{container.displayName}
 											</SelectItem>

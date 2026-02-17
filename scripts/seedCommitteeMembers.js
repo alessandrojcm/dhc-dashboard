@@ -1,5 +1,5 @@
+import fs from 'node:fs';
 import { parse } from 'csv-parse/sync';
-import fs from 'fs';
 import dayjs from 'dayjs';
 import customParseFormat from 'dayjs/plugin/customParseFormat.js';
 import { supabase } from './supabaseServiceRole.js';

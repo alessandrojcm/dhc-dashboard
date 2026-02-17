@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
+import dayjs from 'dayjs';
 import { createMember } from './setupFunctions';
 import { loginAsUser } from './supabaseLogin';
-import dayjs from 'dayjs';
 
 test.describe('Workshop UI', () => {
 	let adminData: Awaited<ReturnType<typeof createMember>>;
@@ -114,9 +114,7 @@ test.describe('Workshop UI', () => {
 		await page.getByRole('button', { name: 'Create Workshop' }).click();
 
 		// Should show success message
-		await expect(
-			page.getByText('Workshop "' + workshopTitle + '" created successfully!')
-		).toBeVisible();
+		await expect(page.getByText(`Workshop "${workshopTitle}" created successfully!`)).toBeVisible();
 
 		// Should redirect to workshops list after a moment
 		await page.waitForTimeout(3000);

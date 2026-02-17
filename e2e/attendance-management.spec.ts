@@ -1,6 +1,8 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import { makeAuthenticatedRequest, type TestRegistration } from './attendee-test-helpers';
 import { createMember, getSupabaseServiceClient } from './setupFunctions';
 import { loginAsUser } from './supabaseLogin';
+import dayjs from 'dayjs';
 
 test.describe('Attendance Management', () => {
 	let adminData: Awaited<ReturnType<typeof createMember>>;
@@ -19,17 +21,6 @@ test.describe('Attendance Management', () => {
 		});
 	});
 
-	async function makeAuthenticatedRequest(page: any, url: string, options: any = {}) {
-		const response = await page.request.fetch(url, {
-			...options,
-			headers: {
-				'Content-Type': 'application/json',
-				...options.headers
-			}
-		});
-		return response;
-	}
-
 	test.beforeEach(async ({ page, context }) => {
 		await loginAsUser(context, adminData.email);
 		await page.goto('/dashboard');
@@ -39,8 +30,8 @@ test.describe('Attendance Management', () => {
 		const randomSuffix = Math.random().toString(36).substring(2, 15);
 
 		// Create test workshop directly in database
-		const workshopStartDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-		const workshopEndDate = new Date(workshopStartDate.getTime() + 2 * 60 * 60 * 1000);
+		const workshopStartDate = dayjs();
+		const workshopEndDate = workshopStartDate.add(7, 'day');
 
 		const { data: workshop, error: workshopError } = await supabase
 			.from('club_activities')
@@ -114,7 +105,7 @@ test.describe('Attendance Management', () => {
 		expect(attendanceData.attendance.length).toBe(3);
 
 		// Check default attendance status
-		attendanceData.attendance.forEach((attendee: any) => {
+		attendanceData.attendance.forEach((attendee: TestRegistration) => {
 			expect(attendee.attendance_status).toBe('pending');
 		});
 	});
@@ -159,21 +150,26 @@ test.describe('Attendance Management', () => {
 		// Verify updates
 		const updatedRegistrations = updateData.registrations;
 		expect(
-			updatedRegistrations.find((r: any) => r.id === registrationIds[0]).attendance_status
+			updatedRegistrations.find((r: TestRegistration) => r.id === registrationIds[0])
+				?.attendance_status
 		).toBe('attended');
 		expect(
-			updatedRegistrations.find((r: any) => r.id === registrationIds[1]).attendance_status
+			updatedRegistrations.find((r: TestRegistration) => r.id === registrationIds[1])
+				?.attendance_status
 		).toBe('no_show');
 		expect(
-			updatedRegistrations.find((r: any) => r.id === registrationIds[2]).attendance_status
+			updatedRegistrations.find((r: TestRegistration) => r.id === registrationIds[2])
+				?.attendance_status
 		).toBe('excused');
 
 		// Verify notes
 		expect(
-			updatedRegistrations.find((r: any) => r.id === registrationIds[0]).attendance_notes
+			updatedRegistrations.find((r: TestRegistration) => r.id === registrationIds[0])
+				?.attendance_notes
 		).toBe('Present and participated');
 		expect(
-			updatedRegistrations.find((r: any) => r.id === registrationIds[2]).attendance_notes
+			updatedRegistrations.find((r: TestRegistration) => r.id === registrationIds[2])
+				?.attendance_notes
 		).toBe('Family emergency');
 	});
 
@@ -375,18 +371,18 @@ test.describe('Attendance Management', () => {
 
 		// Verify all updates were applied
 		const registrations = updateData.registrations;
-		expect(registrations.find((r: any) => r.id === registrationIds[0]).attendance_status).toBe(
-			'attended'
-		);
-		expect(registrations.find((r: any) => r.id === registrationIds[1]).attendance_status).toBe(
-			'no_show'
-		);
-		expect(registrations.find((r: any) => r.id === registrationIds[2]).attendance_status).toBe(
-			'excused'
-		);
+		expect(
+			registrations.find((r: TestRegistration) => r.id === registrationIds[0])?.attendance_status
+		).toBe('attended');
+		expect(
+			registrations.find((r: TestRegistration) => r.id === registrationIds[1])?.attendance_status
+		).toBe('no_show');
+		expect(
+			registrations.find((r: TestRegistration) => r.id === registrationIds[2])?.attendance_status
+		).toBe('excused');
 
 		// Verify all have marked timestamps and user
-		registrations.forEach((registration: any) => {
+		registrations.forEach((registration: TestRegistration) => {
 			expect(registration.attendance_marked_at).toBeDefined();
 			expect(registration.attendance_marked_by).toBe(adminData.userId);
 		});

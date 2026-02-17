@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import 'dotenv/config';
-import { setupInvitedUser, stripeClient } from './setupFunctions';
 import { ANNUAL_FEE_LOOKUP, MEMBERSHIP_FEE_LOOKUP_NAME } from '../src/lib/server/constants';
+import { setupInvitedUser, stripeClient } from './setupFunctions';
 
 test.describe('Member Signup - Coupon Codes', () => {
 	// Test data generated once for all tests
@@ -98,33 +98,51 @@ test.describe('Member Signup - Coupon Codes', () => {
 			migrationPromotion
 		] = await Promise.all([
 			stripeClient.promotionCodes.create({
-				coupon: annualCoupon.id,
+				promotion: {
+					coupon: annualCoupon.id,
+					type: 'coupon'
+				},
 				code: `ANNUAL-${Date.now().toString().slice(-6)}`,
 				max_redemptions: 5
 			}),
 			stripeClient.promotionCodes.create({
-				coupon: monthlyCoupon.id,
+				promotion: {
+					coupon: monthlyCoupon.id,
+					type: 'coupon'
+				},
 				code: `MONTHLY-${Date.now().toString().slice(-6)}`,
 				max_redemptions: 5
 			}),
 			stripeClient.promotionCodes.create({
-				coupon: combinedCoupon.id,
+				promotion: {
+					coupon: combinedCoupon.id,
+					type: 'coupon'
+				},
 				code: `COMBINED-${Date.now().toString().slice(-6)}`,
 				max_redemptions: 5
 			}),
 			stripeClient.promotionCodes.create({
-				coupon: onceCoupon.id,
+				promotion: {
+					coupon: onceCoupon.id,
+					type: 'coupon'
+				},
 				code: `ONCE-${Date.now().toString().slice(-6)}`,
 				max_redemptions: 5
 			}),
 			stripeClient.promotionCodes.create({
-				coupon: once100Coupon.id,
+				promotion: {
+					coupon: once100Coupon.id,
+					type: 'coupon'
+				},
 				code: `ONCE100OFF-${Date.now().toString().slice(-6)}`,
 				max_redemptions: 5
 			}),
 			// Create the migration code with the exact name from the environment variable
 			stripeClient.promotionCodes.create({
-				coupon: migrationCoupon.id,
+				promotion: {
+					coupon: migrationCoupon.id,
+					type: 'coupon'
+				},
 				code: process.env.PUBLIC_DASHBOARD_MIGRATION_CODE || 'DHCDASHBOARD',
 				max_redemptions: 5
 			})
@@ -159,8 +177,8 @@ test.describe('Member Signup - Coupon Codes', () => {
 				});
 
 				// Also clean up the associated coupon
-				if (promotion.coupon) {
-					await stripeClient.coupons.del(promotion.coupon.id);
+				if (promotion.code) {
+					await stripeClient.coupons.del(promotion.id);
 				}
 			} catch (error) {
 				console.error(`Error cleaning up promotion code ${promotionId}:`, error);
@@ -178,6 +196,7 @@ test.describe('Member Signup - Coupon Codes', () => {
 				testData.date_of_birth.format('YYYY-MM-DD')
 			)}`
 		);
+		await page.getByText('verify invitation/i').click()
 		// Wait for the form to be visible
 		await page.waitForSelector('form');
 	});
@@ -308,10 +327,10 @@ test.describe('Member Signup - Coupon Codes', () => {
 		await expect(page.locator('text=Applies to all future payments')).toBeVisible();
 
 		// Verify that the discounted prices are less than the original prices
-		const originalMonthlyValue = parseFloat(originalMonthlyPrice!.replace(/[^0-9.]/g, ''));
-		const discountedMonthlyValue = parseFloat(discountedMonthlyPrice!.replace(/[^0-9.]/g, ''));
-		const originalAnnualValue = parseFloat(originalAnnualPrice!.replace(/[^0-9.]/g, ''));
-		const discountedAnnualValue = parseFloat(discountedAnnualPrice!.replace(/[^0-9.]/g, ''));
+		const originalMonthlyValue = parseFloat(originalMonthlyPrice?.replace(/[^0-9.]/g, ''));
+		const discountedMonthlyValue = parseFloat(discountedMonthlyPrice?.replace(/[^0-9.]/g, ''));
+		const originalAnnualValue = parseFloat(originalAnnualPrice?.replace(/[^0-9.]/g, ''));
+		const discountedAnnualValue = parseFloat(discountedAnnualPrice?.replace(/[^0-9.]/g, ''));
 
 		expect(discountedMonthlyValue).toBeLessThan(originalMonthlyValue);
 		expect(discountedAnnualValue).toBeLessThan(originalAnnualValue);
@@ -428,8 +447,8 @@ test.describe('Member Signup - Coupon Codes', () => {
 		);
 
 		// Verify that the discounted first payment is less than the original
-		const originalFirstPaymentValue = parseFloat(originalFirstPayment!.replace(/[^0-9.]/g, ''));
-		const discountedFirstPaymentValue = parseFloat(discountedFirstPayment!.replace(/[^0-9.]/g, ''));
+		const originalFirstPaymentValue = parseFloat(originalFirstPayment?.replace(/[^0-9.]/g, ''));
+		const discountedFirstPaymentValue = parseFloat(discountedFirstPayment?.replace(/[^0-9.]/g, ''));
 		expect(discountedFirstPaymentValue).toBeLessThan(originalFirstPaymentValue);
 
 		// Verify the discount percentage is approximately 15% (for one-time coupon)

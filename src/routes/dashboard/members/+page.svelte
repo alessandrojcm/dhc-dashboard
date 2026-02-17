@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
 	import { Root, List, Trigger, Content } from '$lib/components/ui/tabs/index.js';
@@ -14,9 +15,11 @@
 	let value = $derived(page.url.searchParams.get('tab') || 'dashboard');
 
 	function onTabChange(value: string) {
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const newParams = new URLSearchParams(page.url.searchParams);
 		newParams.set('tab', value);
-		goto(`/dashboard/members?${newParams.toString()}`);
+		const url = `/dashboard/members?${newParams.toString()}`;
+		goto(resolve(url as any));
 	}
 	let views = [
 		{

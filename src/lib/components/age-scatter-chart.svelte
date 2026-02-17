@@ -9,9 +9,6 @@
 	const { ageDistribution }: { ageDistribution: Array<{ age: AgeValue; value: number }> } =
 		$props();
 
-	// Format number for display
-	const formatNumber = Intl.NumberFormat('en').format;
-
 	// Scatter props
 	const x = (d: { age: AgeValue; value: number }) => {
 		// Handle different age formats

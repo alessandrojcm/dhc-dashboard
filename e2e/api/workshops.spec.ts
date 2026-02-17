@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
 import { createMember } from '../setupFunctions';
 import { loginAsUser } from '../supabaseLogin';
 
@@ -22,7 +22,19 @@ test.describe('Workshop API', () => {
 		});
 	});
 
-	async function makeAuthenticatedRequest(page: any, url: string, options: any = {}) {
+	async function makeAuthenticatedRequest(
+		page: Page,
+		url: string,
+		options: {
+			data?: Record<string, unknown>;
+			headers?: Record<string, string>;
+			method?: string;
+		} = {
+			headers: {},
+			data: {},
+			method: 'GET'
+		}
+	) {
 		const response = await page.request.fetch(url, {
 			...options,
 			headers: {

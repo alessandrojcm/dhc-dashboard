@@ -27,7 +27,6 @@
 	});
 
 	const { form: formData, enhance, submitting, errors, message } = form;
-	$inspect($errors);
 </script>
 
 <Card

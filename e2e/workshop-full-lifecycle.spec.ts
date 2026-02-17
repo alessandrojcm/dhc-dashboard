@@ -1,7 +1,7 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
+import { createTestWorkshop, makeAuthenticatedRequest } from './attendee-test-helpers';
 import { createMember, getSupabaseServiceClient } from './setupFunctions';
 import { loginAsUser } from './supabaseLogin';
-import { makeAuthenticatedRequest, createTestWorkshop } from './attendee-test-helpers';
 
 test.describe('Workshop Full Lifecycle E2E', () => {
 	let adminData: Awaited<ReturnType<typeof createMember>>;
@@ -131,7 +131,7 @@ test.describe('Workshop Full Lifecycle E2E', () => {
 		}
 
 		expect(registrations).toHaveLength(3);
-		expect(registrations.every((reg: any) => reg.status === 'confirmed')).toBe(true);
+		expect(registrations.every((reg: { status: string }) => reg.status === 'confirmed')).toBe(true);
 
 		// Step 3: Member 1 cancels and gets a refund (self-service)
 		// Login as member 1 and request refund
@@ -230,10 +230,10 @@ test.describe('Workshop Full Lifecycle E2E', () => {
 
 		// Verify refund details
 		const member1Refund = refundsData.refunds.find(
-			(r: any) => r.registration_id === registration1Id
+			(r: { registration_id: string }) => r.registration_id === registration1Id
 		);
 		const member2Refund = refundsData.refunds.find(
-			(r: any) => r.registration_id === registration2Id
+			(r: { registration_id: string }) => r.registration_id === registration2Id
 		);
 
 		expect(member1Refund).toBeDefined();
@@ -260,7 +260,7 @@ test.describe('Workshop Full Lifecycle E2E', () => {
 
 		// Find member 3's attendance record
 		const member3Attendance = finalAttendanceData.attendance.find(
-			(a: any) => a.registration_id === registration3Id
+			(a: { registration_id: string }) => a.registration_id === registration3Id
 		);
 		expect(member3Attendance).toBeDefined();
 		expect(member3Attendance.attendance_status).toBe('attended');
@@ -270,10 +270,10 @@ test.describe('Workshop Full Lifecycle E2E', () => {
 
 		// Verify refunded members have different statuses
 		const member1Attendance = finalAttendanceData.attendance.find(
-			(a: any) => a.registration_id === registration1Id
+			(a: { registration_id: string }) => a.registration_id === registration1Id
 		);
 		const member2Attendance = finalAttendanceData.attendance.find(
-			(a: any) => a.registration_id === registration2Id
+			(a: { registration_id: string }) => a.registration_id === registration2Id
 		);
 
 		// These should still exist but with pending attendance status since they were refunded

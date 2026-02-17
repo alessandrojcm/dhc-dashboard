@@ -1,116 +1,29 @@
+import * as Sentry from '@sentry/sveltekit';
 import { json } from '@sveltejs/kit';
 import { safeParse } from 'valibot';
-import * as Sentry from '@sentry/sveltekit';
-
-import type { RequestHandler } from './$types';
-import { executeWithRLS, getKyselyClient } from '$lib/server/kysely';
-import { env } from '$env/dynamic/private';
-import { stripeClient } from '$lib/server/stripe';
 import { registrationSchema } from '$lib/schemas/workshop-registration';
+import { getKyselyClient } from '$lib/server/kysely';
+import { stripeClient } from '$lib/server/stripe';
 import { checkRefundEligibility } from '$lib/utils/refund-eligibility';
+import type { RequestHandler } from './$types';
+import { invariant } from '$lib/server/invariant';
 
-export const POST: RequestHandler = async ({ request, params, locals, platform }) => {
+export const POST: RequestHandler = async ({ request, params, platform, locals }) => {
 	try {
 		const { id: workshopId } = params;
 		const body = await request.json();
 		const validatedData = safeParse(registrationSchema, body);
 		if (!validatedData.success) {
-			return json(
-				{ success: false, error: 'Invalid input data', issues: validatedData.issues },
-				{ status: 400 }
-			);
-		}
-		const { session } = await locals.safeGetSession();
-		const isAuthenticated = !!session?.user;
-
-		if (!session) {
 			return json({ success: false, error: 'Session required' }, { status: 401 });
 		}
 
-		const kysely = getKyselyClient(platform!.env.HYPERDRIVE!);
-
-		// Get workshop details for pricing
-		const workshop = await executeWithRLS(kysely, { claims: session }, async (trx) =>
-			trx.selectFrom('club_activities').selectAll().where('id', '=', workshopId).executeTakeFirst()
-		);
-
-		if (!workshop) {
-			return json({ success: false, error: 'Workshop not found' }, { status: 404 });
+		if (!platform?.env?.HYPERDRIVE) {
+			return json({ success: false, error: 'Platform configuration missing' }, { status: 500 });
 		}
-
-		// Determine pricing
-		const isMember = isAuthenticated && !workshop.is_public;
-		const amount = isMember ? workshop.price_member : workshop.price_non_member;
-
-		// Prepare user data
-		const memberUserId = isAuthenticated ? session.user.id : null;
-		const externalUserData = !isAuthenticated
-			? {
-					first_name: validatedData.output.firstName,
-					last_name: validatedData.output.lastName,
-					email: validatedData.output.email,
-					phone_number: validatedData.output.phoneNumber
-				}
-			: null;
-
-		// Create Stripe checkout session
-		const checkoutSession = await stripeClient.checkout.sessions.create({
-			payment_method_types: ['card', 'sepa_debit'],
-			line_items: [
-				{
-					price_data: {
-						currency: 'eur',
-						product_data: {
-							name: workshop.title,
-							description: workshop.description || 'Workshop registration'
-						},
-						unit_amount: amount
-					},
-					quantity: 1
-				}
-			],
-			mode: 'payment',
-			success_url: `${env.PUBLIC_SITE_URL}/workshops/${workshopId}/confirmation?session_id={CHECKOUT_SESSION_ID}`,
-			cancel_url: `${env.PUBLIC_SITE_URL}/workshops/${workshopId}`,
-			customer_email: isAuthenticated ? session.user.email : validatedData.output.email,
-			metadata: {
-				workshop_id: workshopId,
-				user_id: session?.user?.id || 'external',
-				is_member: isMember.toString(),
-				registration_data: JSON.stringify({
-					memberUserId,
-					externalUserData
-				})
-			}
-		});
-
-		return json({
-			success: true,
-			checkout_url: checkoutSession.url,
-			session_id: checkoutSession.id
-		});
-	} catch (error) {
-		Sentry.captureException(error);
-		console.error('Registration error:', error);
-
-		if (error instanceof Error && error.message?.includes('capacity')) {
-			return json({ success: false, error: 'Workshop is at full capacity' }, { status: 409 });
-		}
-
-		return json({ success: false, error: 'Registration failed' }, { status: 500 });
-	}
-};
-
-export const DELETE: RequestHandler = async ({ params, locals, platform }) => {
-	try {
-		const { id: workshopId } = params;
 		const { session } = await locals.safeGetSession();
+		invariant(Boolean(session?.user), 'Unauthorized');
 
-		if (!session?.user) {
-			return json({ success: false, error: 'Authentication required' }, { status: 401 });
-		}
-
-		const kysely = getKyselyClient(platform!.env.HYPERDRIVE!);
+		const kysely = getKyselyClient(platform.env.HYPERDRIVE);
 		// Handle everything in a single transaction (using superuser permissions to bypass RLS)
 		const result = await kysely.transaction().execute(async (trx) => {
 			// Get registration and workshop details
@@ -127,7 +40,7 @@ export const DELETE: RequestHandler = async ({ params, locals, platform }) => {
 					'ca.status as workshop_status'
 				])
 				.where('car.club_activity_id', '=', workshopId)
-				.where('car.member_user_id', '=', session.user.id)
+				.where('car.member_user_id', '=', session!.user.id)
 				.where('car.status', 'in', ['pending', 'confirmed'])
 				.executeTakeFirst()) as
 				| {
@@ -178,7 +91,7 @@ export const DELETE: RequestHandler = async ({ params, locals, platform }) => {
 						refund_amount: registrationData.amount_paid,
 						refund_reason: 'Requested by attendee',
 						status: 'pending',
-						requested_by: session.user.id
+						requested_by: session!.user.id
 					})
 					.returningAll()
 					.executeTakeFirstOrThrow();
@@ -209,12 +122,16 @@ export const DELETE: RequestHandler = async ({ params, locals, platform }) => {
 								stripe_refund_id: stripeRefund.id,
 								status: 'processing',
 								processed_at: new Date().toISOString(),
-								processed_by: session.user.id
+								processed_by: session!.user.id
 							})
 							.where('id', '=', refund.id)
 							.execute();
 
-						refundData = { ...refund, stripe_refund_id: stripeRefund.id, status: 'processing' };
+						refundData = {
+							...refund,
+							stripe_refund_id: stripeRefund.id,
+							status: 'processing'
+						};
 					} catch (stripeError) {
 						// Mark refund as failed but don't throw - we'll still cancel the registration
 						await trx
@@ -246,7 +163,7 @@ export const DELETE: RequestHandler = async ({ params, locals, platform }) => {
 				.executeTakeFirst();
 
 			return {
-				registration: { id: updatedRegistration!.id, status: finalStatus },
+				registration: { id: updatedRegistration?.id, status: finalStatus },
 				refund: refundData
 			};
 		});

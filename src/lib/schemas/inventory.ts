@@ -1,21 +1,21 @@
 import {
-	object,
-	string,
-	optional,
-	pipe,
-	minLength,
-	maxLength,
-	number,
-	minValue,
-	maxValue,
-	boolean,
-	record,
 	any,
 	array,
-	union,
+	boolean,
+	type InferOutput,
 	literal,
+	maxLength,
+	maxValue,
+	minLength,
+	minValue,
 	nonEmpty,
-	type InferOutput
+	number,
+	object,
+	optional,
+	pipe,
+	record,
+	string,
+	union
 } from 'valibot';
 
 export const containerSchema = object({

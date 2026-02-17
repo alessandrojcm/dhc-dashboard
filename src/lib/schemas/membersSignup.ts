@@ -1,6 +1,5 @@
-import beginnersWaitlist from './beginnersWaitlist';
-
 import * as v from 'valibot';
+import beginnersWaitlist from './beginnersWaitlist';
 import { phoneNumberValidator } from './commonValidators';
 
 export const memberSignupSchema = v.object({
@@ -17,7 +16,10 @@ export const memberSignupSchema = v.object({
 const formSchema = v.object({
 	...beginnersWaitlist.entries,
 	...v.omit(memberSignupSchema, ['stripeConfirmationToken']).entries,
-	weapon: v.array(v.string('Please select your preferred weapon.'))
+	weapon: v.pipe(
+		v.array(v.string('Please select your preferred weapon.')),
+		v.transform((w) => w.filter((v) => v !== ''))
+	)
 });
 
 export default formSchema;

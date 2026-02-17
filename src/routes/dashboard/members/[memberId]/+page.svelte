@@ -43,12 +43,12 @@
 	let pausedUntil: dayjs.Dayjs | null = $derived(
 		data.member.subscription_paused_until ? dayjs(data.member.subscription_paused_until) : null
 	);
-	const openBillinPortal = createMutation(() => ({
+	const openBillingPortal = createMutation(() => ({
 		mutationFn: () =>
 			fetch(`/dashboard/members/${page.params.memberId}`, {
 				method: 'POST'
-			}).then((res) => res.json()),
-		onSuccess: (data) => {
+			}).then((res) => res.json()) as Promise<{ portalURL: string }>,
+		onSuccess: (data: { portalURL: string }) => {
 			window.open(data.portalURL, '_blank');
 		}
 	}));
@@ -57,17 +57,19 @@
 
 	const pauseMutation = createMutation(() => ({
 		mutationFn: async (pauseData: { pauseUntil: string }) => {
-			console.log('Sending pause request:', pauseData);
 			const response = await fetch(`/api/members/${page.params.memberId}/subscription/pause`, {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify(pauseData)
 			});
 
-			const data = await response.json();
+			const data: {
+				subscription: Stripe.Response<Stripe.Subscription>;
+				error?: string;
+			} = await response.json();
 
 			if (!response.ok) {
-				throw new Error(data.error || `HTTP error! status: ${response.status}`);
+				throw new Error(data?.error || `HTTP error! status: ${response.status}`);
 			}
 			return data as { subscription: Stripe.Response<Stripe.Subscription> };
 		},
@@ -162,7 +164,7 @@
 					<Form.Field {form} name="phoneNumber">
 						<Form.Control>
 							{#snippet children({ props })}
-								<Form.Label required>Phone Number</Form.Label>
+								<Form.Label>Phone Number</Form.Label>
 								<PhoneInput
 									placeholder="Enter your phone number"
 									{...props}
@@ -198,13 +200,13 @@
 					</Form.Field>
 					{#if data.canUpdate}
 						<Button
-							disabled={openBillinPortal.isPending}
+							disabled={openBillingPortal.isPending}
 							variant="outline"
 							type="button"
-							onclick={() => openBillinPortal.mutate()}
+							onclick={() => openBillingPortal.mutate()}
 							class="w-full"
 						>
-							{#if openBillinPortal.isPending}
+							{#if openBillingPortal.isPending}
 								<LoaderCircle class="ml-2 h-4 w-4" />
 							{/if}
 							Manage payment settings
@@ -264,7 +266,7 @@
 								<Form.Label for="gender">Gender</Form.Label>
 								<Select.Root type="single" bind:value={$formData.gender} name={props.name}>
 									{#await data.genders}
-										<Select.Trigger class="w-full capitalize" {...props} loading>
+										<Select.Trigger class="w-full capitalize" {...props}>
 											{$formData.gender ? $formData.gender : 'Select your gender'}
 										</Select.Trigger>
 									{:then genders}
@@ -272,7 +274,7 @@
 											{$formData.gender ? $formData.gender : 'Select your gender'}
 										</Select.Trigger>
 										<Select.Content>
-											{#each genders as gender}
+											{#each genders as gender (gender)}
 												<Select.Item value={gender} class="capitalize">{gender}</Select.Item>
 											{/each}
 										</Select.Content>
@@ -302,7 +304,7 @@
 								<Form.Label for="weapon">Preferred Weapon</Form.Label>
 								<Select.Root type="multiple" bind:value={$formData.weapon} name={props.name}>
 									{#await data.weapons}
-										<Select.Trigger class="capitalize" {...props} loading>
+										<Select.Trigger class="capitalize" {...props}>
 											{$formData.weapon?.length > 0
 												? $formData.weapon.join(', ')
 												: 'Select your preferred weapon(s)'}
@@ -314,7 +316,7 @@
 												: 'Select your preferred weapon(s)'}
 										</Select.Trigger>
 										<Select.Content>
-											{#each weapons as weapon}
+											{#each weapons as weapon (weapon)}
 												<Select.Item class="capitalize" value={weapon}
 													>{weapon.replace(/[_-]/g, ' ')}</Select.Item
 												>
@@ -399,7 +401,7 @@
 					<Form.Field {form} name="nextOfKinNumber">
 						<Form.Control>
 							{#snippet children({ props })}
-								<Form.Label required>Next of Kin Phone Number</Form.Label>
+								<Form.Label>Next of Kin Phone Number</Form.Label>
 								<PhoneInput
 									placeholder="Enter your next of kin's phone number"
 									{...props}
@@ -429,6 +431,6 @@
 		}}
 		isPending={pauseMutation.isPending}
 		extend={pausedUntil?.isAfter(dayjs())}
-		{pausedUntil}
+		pausedUntil={pausedUntil ?? undefined}
 	/>
 {/if}

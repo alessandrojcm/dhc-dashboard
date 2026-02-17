@@ -1,7 +1,8 @@
 <script lang="ts">
 	import SuperDebug, { superForm } from 'sveltekit-superforms';
 	import { valibot } from 'sveltekit-superforms/adapters';
-	import { type CategorySchema, itemSchema } from '$lib/schemas/inventory';
+	import { itemSchema } from '$lib/schemas/inventory';
+	import type { InventoryCategory, InventoryAttributeDefinition } from '$lib/types';
 	import {
 		Card,
 		CardContent,
@@ -36,7 +37,9 @@
 			let hasErrors = false;
 
 			if (selectedCategory) {
-				selectedCategory.available_attributes.forEach((attr) => {
+				const attributes =
+					(selectedCategory.available_attributes as InventoryAttributeDefinition[]) || [];
+				attributes.forEach((attr) => {
 					if (attr.required) {
 						const value = $formData.attributes?.[attr.name];
 						if (!value || value === '' || value === null || value === undefined) {
@@ -57,7 +60,7 @@
 			// Clean attributes to only include non-empty values
 			const attributesRaw = submitData.get('attributes');
 			const attributes = attributesRaw ? JSON.parse(attributesRaw as string) : {};
-			const cleanedAttributes: Record<string, any> = {};
+			const cleanedAttributes: Record<string, unknown> = {};
 
 			Object.entries(attributes).forEach(([key, value]) => {
 				// Only include attributes that have actual values (not null, undefined, or empty string)
@@ -75,10 +78,12 @@
 	const hierarchicalContainers = buildContainerHierarchy(data.containers);
 
 	// Reactive category selection for dynamic attributes
-	const selectedCategory: CategorySchema = $derived(
-		data.categories.find((c) => c.id === $formData.category_id) as unknown as CategorySchema
+	const selectedCategory = $derived(
+		data.categories.find((c) => c.id === $formData.category_id) as InventoryCategory | undefined
 	);
-	const categoryAttributes = $derived(selectedCategory?.available_attributes || []);
+	const categoryAttributes = $derived(
+		(selectedCategory?.available_attributes as InventoryAttributeDefinition[]) || []
+	);
 
 	// Display names for selected items
 	const selectedCategoryName = $derived(selectedCategory?.name || 'Select a category');
@@ -101,9 +106,10 @@
 		if (!category) return;
 
 		// Initialize only required attributes or those with default values
-		category.available_attributes?.forEach((attr) => {
+		const attributes = (category.available_attributes as InventoryAttributeDefinition[]) || [];
+		attributes.forEach((attr) => {
 			// Only set default value if explicitly provided, don't initialize with null
-			if (attr.default_value !== undefined) {
+			if (attr.default_value !== undefined && $formData.attributes) {
 				$formData.attributes[attr.name] = attr.default_value;
 			}
 		});
@@ -111,7 +117,8 @@
 
 	function clearAttributeError(attrName: string) {
 		if (attributeErrors[attrName]) {
-			const { [attrName]: _, ...rest } = attributeErrors;
+			// eslint-disable-next-line @typescript-eslint/no-unused-vars
+			const { [attrName]: _removed, ...rest } = attributeErrors;
 			attributeErrors = rest;
 		}
 	}
@@ -157,7 +164,7 @@
 										{selectedCategoryName}
 									</SelectTrigger>
 									<SelectContent>
-										{#each data.categories as category}
+										{#each data.categories as category (category.id)}
 											<SelectItem value={category.id}>{category.name}</SelectItem>
 										{/each}
 									</SelectContent>
@@ -176,7 +183,7 @@
 										{selectedContainerName}
 									</SelectTrigger>
 									<SelectContent>
-										{#each hierarchicalContainers as container}
+										{#each hierarchicalContainers as container (container.id)}
 											<SelectItem value={container.id}>
 												{container.displayName}
 											</SelectItem>
@@ -244,7 +251,7 @@
 						<div class="space-y-4">
 							<h3 class="text-lg font-medium">Item Attributes</h3>
 							<div class="grid gap-4 md:grid-cols-2">
-								{#each categoryAttributes as attr}
+								{#each categoryAttributes as attr (attr.name)}
 									{#if attr.name}
 										<div class="space-y-2">
 											<Label
@@ -279,10 +286,10 @@
 											{:else if attr.type === 'select' && attr.options}
 												<Select
 													type="single"
-													value={$formData.attributes[attr.name] || undefined}
+													value={$formData.attributes?.[attr.name] || undefined}
 													name="attributes.{attr.name}"
 													onValueChange={(value) => {
-														if (value) {
+														if (value && $formData.attributes) {
 															$formData.attributes[attr.name] = value;
 														}
 														clearAttributeError(attr.name);
@@ -291,11 +298,11 @@
 													<SelectTrigger
 														class={attributeErrors[attr.name] ? 'border-destructive' : ''}
 													>
-														{$formData.attributes[attr.name] ||
+														{$formData.attributes?.[attr.name] ||
 															`Select ${attr.label.toLowerCase()}`}
 													</SelectTrigger>
 													<SelectContent>
-														{#each attr.options as option}
+														{#each attr.options as option (option)}
 															<SelectItem value={option}>{option}</SelectItem>
 														{/each}
 													</SelectContent>

@@ -3,7 +3,7 @@
 	import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import AttendeeManager from '$lib/components/workshops/attendee-manager.svelte';
-	import { toast } from 'svelte-sonner';
+	import type {RefundWithUser, RegistrationWithUser} from "$lib/server/services/workshops";
 
 	let { data } = $props();
 	const supabase = data.supabase;
@@ -13,6 +13,7 @@
 	// Use preloaded data with TanStack Query for cache management and refetching
 	const attendeesQuery = createQuery(() => ({
 		queryKey: ['workshop-attendees', workshopId],
+		enabled: !!workshopId,
 		queryFn: async () => {
 			// Refetch from server if needed
 			const { data, error } = await supabase
@@ -37,18 +38,19 @@
 					)
 				`
 				)
-				.eq('club_activity_id', workshopId)
+				.eq('club_activity_id', workshopId!)
 				.in('status', ['confirmed', 'pending'])
 				.order('created_at', { ascending: true });
 
 			if (error) throw error;
-			return data;
+			return data as RegistrationWithUser[];
 		},
-		initialData: data.attendees
+		initialData: data?.attendees ?? []
 	}));
 
 	const refundsQuery = createQuery(() => ({
 		queryKey: ['workshop-refunds', workshopId],
+		enabled: !!workshopId,
 		queryFn: async () => {
 			// Refetch from server if needed - transform to match server loader structure
 			const { data: refundsData, error } = await supabase
@@ -75,7 +77,7 @@
 					)
 				`
 				)
-				.eq('club_activity_registrations.club_activity_id', workshopId)
+				.eq('club_activity_registrations.club_activity_id', workshopId!)
 				.order('created_at', { ascending: false });
 
 			if (error) throw error;
@@ -90,7 +92,7 @@
 					user_profiles: refund.club_activity_registrations?.user_profiles || null,
 					external_users: refund.club_activity_registrations?.external_users || null
 				})) || []
-			);
+			) as RefundWithUser[];
 		},
 		initialData: data.refunds // Use preloaded data
 	}));

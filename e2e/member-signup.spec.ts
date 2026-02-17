@@ -65,7 +65,7 @@ test.describe('Member Signup - Valid invitation', () => {
 		await expect(page.getByText('Email')).toBeVisible();
 		await expect(page.getByText('Date of Birth')).toBeVisible();
 
-		await expect(page.getByLabel('Phone Number')).toBeVisible();
+		await expect(page.getByText('Phone Number')).toBeVisible();
 		await expect(page.getByLabel('Next of Kin', { exact: true })).toBeVisible();
 		await expect(page.getByLabel('Next of Kin Phone Number')).toBeVisible();
 

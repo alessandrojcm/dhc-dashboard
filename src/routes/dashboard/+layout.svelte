@@ -1,4 +1,5 @@
 <script lang="ts">
+	/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-non-null-asserted-optional-chain */
 	import type { LayoutData } from './$types';
 	import type { UserData } from '$lib/types';
 	import { SidebarProvider } from '$lib/components/ui/sidebar';
@@ -8,6 +9,7 @@
 	import { Separator } from '$lib/components/ui/separator';
 	import { createQuery } from '@tanstack/svelte-query';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 
 	let { children, data }: { data: LayoutData; children: any } = $props();
 	let supabase = $derived(data.supabase);
@@ -65,7 +67,7 @@
 		{roles}
 		logout={async () => {
 			await supabase.auth.signOut();
-			goto('/auth', {
+			goto(resolve('/auth'), {
 				replaceState: true,
 				invalidateAll: true
 			});
