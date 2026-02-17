@@ -145,5 +145,7 @@ pnpm supabase:types          # Generate TypeScript types
 
 - `functions/stripe-sync` is batch-based: it paginates Stripe subscriptions filtered by `standard_membership_fee` and applies the newest subscription per customer.
 - `functions/stripe-sync` should reuse `settings.stripe_monthly_price_id` when cache age is <=24h; refresh from Stripe and update settings when stale/missing.
-- Default sync scope is stale members only (`member_profiles.updated_at` older than 24h); manual runs can pass `customer_ids` payload to force targeted sync.
+- Default sync scope is stale members only (`member_profiles.last_payment_date` older than 24h); manual runs can pass `customer_ids` payload to force targeted sync.
+- For active subscriptions, `last_payment_date` should come from Stripe's latest invoice `paid_at` (fallback: subscription `start_date` when invoice payment timestamp is unavailable).
+- `functions/stripe-sync` now emits structured lifecycle logs (`[stripe-sync] ...`) for request start/auth, target resolution, Stripe scan progress, and batch completion; enable verbose per-customer/page logs with `STRIPE_SYNC_DEBUG=true`.
 - Cron scheduling for stripe sync should be a single daily invocation (`0 0 * * *` UTC) calling `/functions/v1/stripe-sync` once.
