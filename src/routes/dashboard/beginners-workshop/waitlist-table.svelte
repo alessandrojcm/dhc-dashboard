@@ -1,5 +1,7 @@
 <script lang="ts">
+	/* eslint-disable @typescript-eslint/no-explicit-any */
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import type { Database, Tables } from '$database';
 	import { Badge } from '$lib/components/ui/badge';
@@ -19,12 +21,19 @@
 	import SortHeader from '$lib/components/ui/table/sort-header.svelte';
 	import type { MutationPayload } from '$lib/types';
 	import type { SupabaseClient } from '@supabase/supabase-js';
-	import { createMutation, createQuery, keepPreviousData, useQueryClient } from '@tanstack/svelte-query';
 	import {
-		getCoreRowModel, getExpandedRowModel,
+		createMutation,
+		createQuery,
+		keepPreviousData,
+		useQueryClient
+	} from '@tanstack/svelte-query';
+	import {
+		getCoreRowModel,
+		getExpandedRowModel,
 		getPaginationRowModel,
 		getSortedRowModel,
-		type PaginationState, type RowSelectionState,
+		type PaginationState,
+		type RowSelectionState,
 		type SortingState,
 		type TableOptions
 	} from '@tanstack/table-core';
@@ -34,6 +43,7 @@
 	import ActionButtons from './actions-buttons.svelte';
 	import { toast } from 'svelte-sonner';
 	import { Loader2, SendIcon } from 'lucide-svelte';
+	import { resendInvitations } from './admin.remote';
 
 	const columns =
 		'id,current_position,full_name,email,phone_number,status,age,initial_registration_date,last_contacted,medical_conditions,admin_notes,social_media_consent,guardian_first_name,guardian_last_name,guardian_phone_number,insurance_form_submitted,last_status_change,search_text';
@@ -41,6 +51,19 @@
 	let pageSizeOptions = [10, 25, 50, 100];
 
 	const { supabase }: { supabase: SupabaseClient<Database> } = $props();
+
+	function getBadgeVariant(status: string) {
+		switch (status) {
+			case 'invited':
+				return 'default';
+			case 'joined':
+				return 'secondary';
+			case 'declined':
+				return 'destructive';
+			default:
+				return 'default';
+		}
+	}
 
 	const currentPage = $derived(Number(page.url.searchParams.get('page')) || 0);
 	const pageSize = $derived(Number(page.url.searchParams.get('pageSize')) || 10);
@@ -79,7 +102,9 @@
 			});
 		}
 		if (sortingState.length > 0) {
-			query = query.order(sortingState[0].id, { ascending: !sortingState[0].desc });
+			query = query.order(sortingState[0].id, {
+				ascending: !sortingState[0].desc
+			});
 		}
 		query = query.neq('status', 'joined');
 		const { data, count, error } = await query.range(rangeStart, rangeEnd).abortSignal(signal);
@@ -108,19 +133,22 @@
 	}));
 	const queryClient = useQueryClient();
 	const inviteMember = createMutation(() => ({
-		mutationFn: async (waitlistIds: string[]) => supabase.functions.invoke('bulk_invite_with_subscription', {
-			body: waitlistIds,
-			method: 'POST'
-		}).then(r => {
-			if (r.error) {
-				throw r.error;
-			}
-		}),
+		mutationFn: async (waitlistIds: string[]) =>
+			supabase.functions
+				.invoke('bulk_invite_with_subscription', {
+					body: waitlistIds,
+					method: 'POST'
+				})
+				.then((r) => {
+					if (r.error) {
+						throw r.error;
+					}
+				}),
 		onMutate: (waitlistIds) => {
 			const oldData = queryClient.getQueryData(waitlistQueryKey);
 			queryClient.setQueryData(
 				waitlistQueryKey,
-				(oldData: Awaited<typeof waitlistQuery['data']>) => ({
+				(oldData: Awaited<(typeof waitlistQuery)['data']>) => ({
 					...oldData,
 					data: oldData?.data?.map((d) => ({
 						...d,
@@ -141,21 +169,12 @@
 	}));
 
 	const resendInvitationLink = createMutation(() => ({
-		mutationFn: async (emails: string[]) => fetch(`/api/admin/invite-link`, {
-			method: 'POST',
-			body: JSON.stringify({
-				emails
-			})
-		}).then(res => {
-			if (!res.ok) {
-				throw new Error('Failed to resend invitation link');
-			}
-		}),
+		mutationFn: async (emails: string[]) => resendInvitations({ emails }),
 		onMutate: (emails) => {
 			const oldData = queryClient.getQueryData(waitlistQueryKey);
 			queryClient.setQueryData(
 				waitlistQueryKey,
-				(oldData: Awaited<typeof waitlistQuery['data']>) => ({
+				(oldData: Awaited<(typeof waitlistQuery)['data']>) => ({
 					...oldData,
 					data: oldData?.data?.map((d) => ({
 						...d,
@@ -197,24 +216,30 @@
 			pageSize,
 			...newPagination
 		};
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const newParams = new URLSearchParams(page.url.searchParams);
 		newParams.set('page', paginationState.pageIndex.toString());
 		newParams.set('pageSize', paginationState.pageSize.toString());
-		goto(`/dashboard/beginners-workshop?${newParams.toString()}`);
+		const url = `/dashboard/beginners-workshop?${newParams.toString()}`;
+		goto(resolve(url as any));
 	}
 
 	function onSortingChange(newSorting: SortingState) {
 		const [sortingState] = newSorting;
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const newParams = new URLSearchParams(page.url.searchParams);
 		newParams.set('sort', sortingState.id);
 		newParams.set('direction', sortingState.desc ? 'desc' : 'asc');
-		goto(`/dashboard/beginners-workshop?${newParams.toString()}`);
+		const url = `/dashboard/beginners-workshop?${newParams.toString()}`;
+		goto(resolve(url as any));
 	}
 
 	function onSearchChange(newSearch: string) {
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const newParams = new URLSearchParams(page.url.searchParams);
 		newParams.set('q', newSearch);
-		goto(`/dashboard/beginners-workshop?${newParams.toString()}`);
+		const url = `/dashboard/beginners-workshop?${newParams.toString()}`;
+		goto(resolve(url as any));
 	}
 
 	// State for expanded rows
@@ -275,7 +300,11 @@
 						isExpanded: row.getIsExpanded(),
 						onToggleExpand: () => row.toggleExpanded(),
 						inviteMember: () => {
-							row.original.status !== 'invited' ? inviteMember.mutate([row.original.id!]) : resendInvitationLink.mutate([row.original.email!]);
+							if (row.original.status !== 'invited') {
+								inviteMember.mutate([row.original.id!]);
+							} else {
+								resendInvitationLink.mutate([row.original.email!]);
+							}
 						},
 						onEdit(newValue) {
 							updateWaitlistEntry.mutate({
@@ -398,7 +427,7 @@
 					}),
 				cell: ({ getValue }) => {
 					return renderSnippet(
-						createRawSnippet((value) => ({
+						createRawSnippet(() => ({
 							render: () => `<div class="w-[120px]">${dayjs(getValue()).format('DD/MM/YYYY')}</div>`
 						})),
 						getValue()
@@ -451,8 +480,10 @@
 	const table = createSvelteTable(tableOptions);
 </script>
 
-<div class="flex flex-col md:flex-row w-full max-w-auto items-stretch md:items-center space-x-2 mb-2 p-2">
-<span class="flex flex-nowrap items-center gap-2">
+<div
+	class="flex flex-col md:flex-row w-full max-w-auto items-stretch md:items-center space-x-2 mb-2 p-2"
+>
+	<span class="flex flex-nowrap items-center gap-2">
 		<Input
 			value={searchQuery}
 			onchange={(t: Event & { currentTarget: EventTarget & HTMLInputElement }) =>
@@ -461,18 +492,21 @@
 			class="w-full md:max-w-md"
 		/>
 
-	{#if searchQuery !== ''}
-		<Button variant="ghost" type="button" onclick={() => onSearchChange('')}>
-			<Cross2 />
-		</Button>
-	{/if}
-	{#if waitlistQuery.isFetching}
-		<LoaderCircle />
-	{/if}
-</span>
+		{#if searchQuery !== ''}
+			<Button variant="ghost" type="button" onclick={() => onSearchChange('')}>
+				<Cross2 />
+			</Button>
+		{/if}
+		{#if waitlistQuery.isFetching}
+			<LoaderCircle />
+		{/if}
+	</span>
 
-	<Button class="md:ml-auto" disabled={inviteCount === 0 || inviteMember.isPending}
-					onclick={() => inviteMember.mutate(Object.keys(selectedState))}>
+	<Button
+		class="md:ml-auto"
+		disabled={inviteCount === 0 || inviteMember.isPending}
+		onclick={() => inviteMember.mutate(Object.keys(selectedState))}
+	>
 		{#if inviteMember.isPending}
 			<Loader2 class="mr-2 h-4 w-4 animate-spin" />
 		{:else}
@@ -517,7 +551,8 @@
 										<div class="grid grid-cols-3 gap-2">
 											<div class="text-xs font-medium text-muted-foreground">Name</div>
 											<div class="col-span-2 text-xs">
-												{row.original.guardian_first_name || ''} {row.original.guardian_last_name || ''}
+												{row.original.guardian_first_name || ''}
+												{row.original.guardian_last_name || ''}
 											</div>
 
 											<div class="text-xs font-medium text-muted-foreground">Phone</div>
@@ -544,9 +579,9 @@
 			{/each}
 		</Table.Body>
 		<Table.Footer class="sticky bottom-0 z-1 bg-white">
-			{#each table.getFooterGroups() as footerGroup}
+			{#each table.getFooterGroups() as footerGroup (footerGroup.id)}
 				<Table.Row>
-					{#each footerGroup.headers as header}
+					{#each footerGroup.headers as header (header.id)}
 						<Table.Cell>
 							{#if !header.isPlaceholder}
 								<FlexRender
@@ -583,8 +618,12 @@
 					<div>
 						<ActionButtons
 							inviteMember={() => {
-							row.original.status !== 'invited' ? inviteMember.mutate([row.original.id!]) : resendInvitationLink.mutate([row.original.email!]);
-						}}
+								if (row.original.status !== 'invited') {
+									inviteMember.mutate([row.original.id!]);
+								} else {
+									resendInvitationLink.mutate([row.original.email!]);
+								}
+							}}
 							adminNotes={row.original.admin_notes ?? 'N/A'}
 							isExpanded={row.getIsExpanded()}
 							onToggleExpand={() => row.toggleExpanded()}
@@ -603,10 +642,7 @@
 				<!-- Status Badge -->
 				<div class="mb-3">
 					{#if row.original.status}
-						<Badge
-							variant={row.original.status as "waiting" | "invited" | "paid" | "deferred" | "cancelled" | "completed" | "no_reply"}
-							class="h-8"
-						>
+						<Badge variant={getBadgeVariant(row.original.status)} class="h-8">
 							<p class="capitalize">{row.original.status.replace('-', ' ')}</p>
 						</Badge>
 					{:else}
@@ -670,7 +706,8 @@
 								<div class="grid grid-cols-3 gap-2">
 									<div class="text-xs font-medium text-muted-foreground">Name</div>
 									<div class="col-span-2 text-xs">
-										{row.original.guardian_first_name || ''} {row.original.guardian_last_name || ''}
+										{row.original.guardian_first_name || ''}
+										{row.original.guardian_last_name || ''}
 									</div>
 
 									<div class="text-xs font-medium text-muted-foreground">Phone</div>
@@ -706,7 +743,7 @@
 		>
 			<Select.Trigger class="w-16 h-8">{pageSize}</Select.Trigger>
 			<Select.Content>
-				{#each pageSizeOptions as pageSizeOption}
+				{#each pageSizeOptions as pageSizeOption (pageSizeOption)}
 					<Select.Item value={pageSizeOption.toString()}>
 						{pageSizeOption}
 					</Select.Item>
@@ -734,7 +771,12 @@
 							</Pagination.Item>
 						{:else}
 							<Pagination.Item
-								class={page.value !== currentPage && page.value !== currentPage - 1 && page.value !== currentPage + 1 ? 'hidden sm:block' : ''}>
+								class={page.value !== currentPage &&
+								page.value !== currentPage - 1 &&
+								page.value !== currentPage + 1
+									? 'hidden sm:block'
+									: ''}
+							>
 								<Pagination.Link {page} isActive={currentPage === page.value}>
 									{page.value}
 								</Pagination.Link>

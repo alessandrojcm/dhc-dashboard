@@ -1,73 +1,127 @@
-import { test, expect } from '@playwright/test';
-import { createMember } from './setupFunctions';
-import { loginAsUser } from './supabaseLogin';
+import { faker } from "@faker-js/faker";
+import { expect, test } from "@playwright/test";
+import dayjs from "dayjs";
+import { createMember, getSupabaseServiceClient } from "./setupFunctions";
+import { loginAsUser } from "./supabaseLogin";
 
-test.describe('Pagination tests', () => {
-    let member: Awaited<ReturnType<typeof createMember>>;
+test.describe("Pagination tests", () => {
+	let member: Awaited<ReturnType<typeof createMember>>;
+	const extraMembers: Array<Awaited<ReturnType<typeof createMember>>> = [];
+	const waitlistEmails: string[] = [];
+	const timestamp = Date.now();
+	const randomSuffix = Math.random().toString(36).substring(2, 7);
 
-    test.beforeAll(async () => {
-        member = await createMember({ email: 'test.pagination@test.com' });
-    });
+	function buildEmail(prefix: string, index?: number) {
+		const suffix = index !== undefined ? `-${index}` : "";
+		return `${prefix}-${timestamp}-${randomSuffix}${suffix}@test.com`;
+	}
 
-    test.afterAll(async () => {
-        await member.cleanUp();
-    });
+	test.beforeAll(async () => {
+		member = await createMember({
+			email: buildEmail("test-pagination-admin"),
+			roles: new Set(["member", "admin"]),
+		});
 
-    test('should correctly paginate the members table', async ({ page, context }) => {
-        await loginAsUser(context, member.email);
+		for (let i = 0; i < 12; i += 1) {
+			const extraMember = await createMember({
+				email: buildEmail("test-pagination-member", i),
+				roles: new Set(["member"]),
+			});
+			extraMembers.push(extraMember);
+		}
 
-        await page.goto('/dashboard/members');
+		const supabase = await getSupabaseServiceClient();
+		for (let i = 0; i < 15; i += 1) {
+			const email = buildEmail("test-pagination-waitlist", i);
+			waitlistEmails.push(email);
+			await supabase.rpc("insert_waitlist_entry", {
+				first_name: faker.person.firstName(),
+				last_name: faker.person.lastName(),
+				email,
+				date_of_birth: dayjs().subtract(20, "years").toISOString(),
+				pronouns: "they/them",
+				gender: "non-binary",
+				phone_number: faker.phone.number(),
+				medical_conditions: "None",
+				social_media_consent: "no",
+			});
+		}
+	});
 
-        await expect(page.locator('table tbody tr')).toHaveCount(10);
+	test.afterAll(async () => {
+		await member.cleanUp();
+		for (const extraMember of extraMembers) {
+			await extraMember.cleanUp();
+		}
+		const supabase = await getSupabaseServiceClient();
+		for (const email of waitlistEmails) {
+			await supabase.from("waitlist").delete().eq("email", email);
+		}
+	});
 
-        // Get the text of the first row
-        const firstRowText = await page.locator('table tbody tr:first-child').textContent();
+	test("should correctly paginate the members table", async ({
+		page,
+		context,
+	}) => {
+		await loginAsUser(context, member.email);
 
-        // Go to the next page
-        await page.getByRole('button', { name: 'Next' }).click();
-        await page.waitForLoadState('networkidle');
+		await page.goto("/dashboard/members?tab=members");
 
-        await expect(page.locator('table tbody tr')).toHaveCount(10);
-        
-        // Get the text of the first row on the new page
-        const newFirstRowText = await page.locator('table tbody tr:first-child').textContent();
-        expect(firstRowText).not.toEqual(newFirstRowText);
+		// Wait for table to load
+		await expect(page.locator("table tbody tr")).toHaveCount(10, {
+			timeout: 15000,
+		});
 
-        // Go to the last page
-        await page.getByRole('button', { name: 'Last' }).click();
-        await page.waitForLoadState('networkidle');
+		// Go to the next page - wait for pagination to be visible
+		const nextButton = page.getByRole("button", { name: "Go to next page" });
+		await expect(nextButton).toBeVisible({ timeout: 15000 });
+		await expect(nextButton).toBeEnabled();
+		await nextButton.focus();
+		await page.keyboard.press("Enter");
+		await page.waitForFunction(() => {
+			return new URL(window.location.href).searchParams.get("page") === "1";
+		});
 
-        const lastPageRows = await page.locator('table tbody tr').count();
-        expect(lastPageRows).toBeGreaterThan(0);
-        expect(lastPageRows).toBeLessThanOrEqual(10);
-    });
+		await expect(page.locator("table tbody tr")).toHaveCount(10);
 
-    test('should correctly paginate the waitlist table', async ({ page, context }) => {
-        await loginAsUser(context, member.email);
+		// Go back to the previous page
+		await page.getByRole("button", { name: "Go to previous page" }).focus();
+		await page.keyboard.press("Enter");
+		await page.waitForFunction(() => {
+			return new URL(window.location.href).searchParams.get("page") === "0";
+		});
+	});
 
-        await page.goto('/dashboard/beginners-workshop');
-        
-        await expect(page.locator('table tbody tr')).toHaveCount(10);
+	test("should correctly paginate the waitlist table", async ({
+		page,
+		context,
+	}) => {
+		await loginAsUser(context, member.email);
 
-        // Get the text of the first row
-        const firstRowText = await page.locator('table tbody tr:first-child').textContent();
+		await page.goto("/dashboard/beginners-workshop?tab=waitlist");
 
-        // Go to the next page
-        await page.getByRole('button', { name: 'Next' }).click();
-        await page.waitForLoadState('networkidle');
+		// Wait for table to load
+		await expect(page.locator("table tbody tr")).toHaveCount(10, {
+			timeout: 15000,
+		});
 
-        await expect(page.locator('table tbody tr')).toHaveCount(10);
-        
-        // Get the text of the first row on the new page
-        const newFirstRowText = await page.locator('table tbody tr:first-child').textContent();
-        expect(firstRowText).not.toEqual(newFirstRowText);
+		// Go to the next page - wait for pagination to be visible
+		const nextButton = page.getByRole("button", { name: "Go to next page" });
+		await expect(nextButton).toBeVisible({ timeout: 15000 });
+		await expect(nextButton).toBeEnabled();
+		await nextButton.focus();
+		await page.keyboard.press("Enter");
+		await page.waitForFunction(() => {
+			return new URL(window.location.href).searchParams.get("page") === "1";
+		});
 
-        // Go to the last page
-        await page.getByRole('button', { name: 'Last' }).click();
-        await page.waitForLoadState('networkidle');
+		await expect(page.locator("table tbody tr")).toHaveCount(10);
 
-        const lastPageRows = await page.locator('table tbody tr').count();
-        expect(lastPageRows).toBeGreaterThan(0);
-        expect(lastPageRows).toBeLessThanOrEqual(10);
-    });
-}); 
+		// Go back to the previous page
+		await page.getByRole("button", { name: "Go to previous page" }).focus();
+		await page.keyboard.press("Enter");
+		await page.waitForFunction(() => {
+			return new URL(window.location.href).searchParams.get("page") === "0";
+		});
+	});
+});

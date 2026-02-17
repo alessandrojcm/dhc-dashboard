@@ -1,30 +1,36 @@
-import { serve } from 'std/http/server';
-import * as Sentry from '@sentry/deno';
-import { db, sql } from '../_shared/db.ts';
-import { corsHeaders } from '../_shared/cors.ts';
-import * as v from 'valibot';
-import { LoopsClient } from 'loops';
+import { serve } from "std/http/server";
+import * as Sentry from "@sentry/deno";
+import { db, sql } from "../_shared/db.ts";
+import { corsHeaders } from "../_shared/cors.ts";
+import * as v from "valibot";
+import { LoopsClient } from "loops";
 
-const transactionalEnumTitles = ['inviteMember', 'workshopAnnouncement'] as const;
+const transactionalEnumTitles = [
+	"inviteMember",
+	"workshopAnnouncement",
+] as const;
 
 export const transactionalIds: Record<string, string> = {
-	inviteMember: Deno.env.get('INVITE_MEMBER_TRANSACTIONAL_ID') ?? 'invite_member',
-	workshopAnnouncement: Deno.env.get('WORKSHOP_ANNOUNCEMENT_TRANSACTIONAL_ID') ?? 'workshop_announcement'
+	inviteMember:
+		Deno.env.get("INVITE_MEMBER_TRANSACTIONAL_ID") ?? "invite_member",
+	workshopAnnouncement:
+		Deno.env.get("WORKSHOP_ANNOUNCEMENT_TRANSACTIONAL_ID") ??
+		"workshop_announcement",
 } as const;
 
-const loops = new LoopsClient(Deno.env.get('LOOPS_API_KEY')!);
-const isDevelopment = Deno.env.get('ENVIRONMENT') === 'development';
+const loops = new LoopsClient(Deno.env.get("LOOPS_API_KEY")!);
+const isDevelopment = Deno.env.get("ENVIRONMENT") === "development";
 
 const payloadSchema = v.object({
 	transactionalId: v.picklist(transactionalEnumTitles),
 	email: v.pipe(v.string(), v.email()),
-	dataVariables: v.record(v.string(), v.string())
+	dataVariables: v.record(v.string(), v.string()),
 });
 
 // Initialize Sentry for error tracking
 Sentry.init({
-	dsn: Deno.env.get('SENTRY_DSN'),
-	environment: Deno.env.get('ENVIRONMENT') || 'development'
+	dsn: Deno.env.get("SENTRY_DSN"),
+	environment: Deno.env.get("ENVIRONMENT") || "development",
 });
 
 // Maximum number of messages to process in a single run
@@ -36,7 +42,7 @@ const BATCH_SIZE = 10;
  * @returns A boolean indicating if the token is valid
  */
 async function verifyBearerToken(authHeader: string | null): Promise<boolean> {
-	if (!authHeader || !authHeader.startsWith('Bearer ')) {
+	if (!authHeader || !authHeader.startsWith("Bearer ")) {
 		return false;
 	}
 
@@ -51,7 +57,7 @@ async function verifyBearerToken(authHeader: string | null): Promise<boolean> {
 		`.execute(db);
 
 		if (result.rows.length === 0) {
-			console.error('Service role key not found in vault');
+			console.error("Service role key not found in vault");
 			return false;
 		}
 
@@ -65,7 +71,7 @@ async function verifyBearerToken(authHeader: string | null): Promise<boolean> {
 }
 
 async function processEmailQueue() {
-	console.log('Processing email queue...');
+	console.log("Processing email queue...");
 
 	try {
 		// Read up to BATCH_SIZE messages from the queue
@@ -95,11 +101,13 @@ async function processEmailQueue() {
 				if (!payload.success) {
 					Sentry.captureMessage(
 						`Invalid email queue message: ${JSON.stringify(msg)}, errors: ${JSON.stringify(
-							payload.issues
+							payload.issues,
 						)}`,
-						'error'
+						"error",
 					);
-					await sql`SELECT * FROM pgmq.archive('email_queue', ${msgId}::bigint)`.execute(db);
+					await sql`SELECT * FROM pgmq.archive('email_queue', ${msgId}::bigint)`.execute(
+						db,
+					);
 					continue;
 				}
 
@@ -110,20 +118,28 @@ async function processEmailQueue() {
 				const transactionalId = payload.output.transactionalId;
 				const dataVariables = payload.output.dataVariables;
 				if (isDevelopment) {
-					console.log(`Skipping email send in development mode: ${JSON.stringify(msg)}`);
-					console.log(`Payload that would have been sent is: ${JSON.stringify(dataVariables)}`);
+					console.log(
+						`Skipping email send in development mode: ${JSON.stringify(msg)}`,
+					);
+					console.log(
+						`Payload that would have been sent is: ${JSON.stringify(dataVariables)}`,
+					);
 				} else {
 					// Send the email
 					await loops.sendTransactionalEmail({
 						transactionalId: transactionalIds[transactionalId],
 						email: email,
-						dataVariables
+						dataVariables,
 					});
-					console.log(`Email sent to ${email} with transactional ID ${transactionalId}`);
+					console.log(
+						`Email sent to ${email} with transactional ID ${transactionalId}`,
+					);
 				}
 
 				// Delete the message after successful processing
-				await sql`SELECT * FROM pgmq.archive('email_queue', ${msgId}::bigint)`.execute(db);
+				await sql`SELECT * FROM pgmq.archive('email_queue', ${msgId}::bigint)`.execute(
+					db,
+				);
 			} catch (error) {
 				console.error(`Error processing message: ${error}`);
 				Sentry.captureException(error);
@@ -141,24 +157,26 @@ async function processEmailQueue() {
 
 serve(async (req) => {
 	// Handle CORS preflight requests
-	if (req.method === 'OPTIONS') {
-		return new Response('ok', { headers: corsHeaders });
+	if (req.method === "OPTIONS") {
+		return new Response("ok", { headers: corsHeaders });
 	}
 
-	if (req.method !== 'POST') {
-		return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+	if (req.method !== "POST") {
+		return new Response(JSON.stringify({ error: "Method not allowed" }), {
 			status: 405,
-			headers: { 'Content-Type': 'application/json', ...corsHeaders }
+			headers: { "Content-Type": "application/json", ...corsHeaders },
 		});
 	}
 
 	try {
 		// Verify the bearer token
-		const isAuthorized = await verifyBearerToken(req.headers.get('Authorization'));
+		const isAuthorized = await verifyBearerToken(
+			req.headers.get("Authorization"),
+		);
 		if (!isAuthorized) {
-			return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+			return new Response(JSON.stringify({ error: "Unauthorized" }), {
 				status: 401,
-				headers: { 'Content-Type': 'application/json', ...corsHeaders }
+				headers: { "Content-Type": "application/json", ...corsHeaders },
 			});
 		}
 
@@ -168,20 +186,20 @@ serve(async (req) => {
 		return new Response(JSON.stringify(result), {
 			headers: {
 				...corsHeaders,
-				'Content-Type': 'application/json'
+				"Content-Type": "application/json",
 			},
-			status: 200
+			status: 200,
 		});
 	} catch (error) {
 		console.error(`Unhandled error: ${error}`);
 		Sentry.captureException(error);
 
-		return new Response(JSON.stringify({ error: 'Internal server error' }), {
+		return new Response(JSON.stringify({ error: "Internal server error" }), {
 			headers: {
 				...corsHeaders,
-				'Content-Type': 'application/json'
+				"Content-Type": "application/json",
 			},
-			status: 500
+			status: 500,
 		});
 	}
 });

@@ -1,31 +1,47 @@
 <script lang="ts">
-	import { Button } from '$lib/components/ui/button';
-	import * as Dialog from '$lib/components/ui/dialog';
-	import { Label } from '$lib/components/ui/label';
-	import DatePicker from '$lib/components/ui/date-picker.svelte';
-	import dayjs from 'dayjs';
-	import { type DateValue, fromDate, getLocalTimeZone } from '@internationalized/date';
+import { Button } from "$lib/components/ui/button";
+import * as Dialog from "$lib/components/ui/dialog";
+import { Label } from "$lib/components/ui/label";
+import DatePicker from "$lib/components/ui/date-picker.svelte";
+import dayjs from "dayjs";
+import {
+	type DateValue,
+	fromDate,
+	getLocalTimeZone,
+} from "@internationalized/date";
 
-	let { open = $bindable(), onConfirm, isPending, extend = false, pausedUntil }: {
-		open: boolean;
-		onConfirm: ({ pauseUntil }: { pauseUntil: string }) => void;
-		isPending: boolean;
-		extend?: boolean;
-		pausedUntil?: dayjs.Dayjs;
-	} = $props();
+let {
+	open = $bindable(),
+	onConfirm,
+	isPending,
+	extend = false,
+	pausedUntil,
+}: {
+	open: boolean;
+	onConfirm: ({ pauseUntil }: { pauseUntil: string }) => void;
+	isPending: boolean;
+	extend?: boolean;
+	pausedUntil?: dayjs.Dayjs;
+} = $props();
 
-	const minDate = $derived(fromDate((pausedUntil ?? dayjs().add(1, 'day')).toDate(), getLocalTimeZone()));
-	const maxDate = $derived(fromDate(dayjs().add(6, 'months').toDate(), getLocalTimeZone()));
-	let selectedDate = $state<DateValue | undefined>(minDate);
+const minDate = $derived(
+	fromDate((pausedUntil ?? dayjs().add(1, "day")).toDate(), getLocalTimeZone()),
+);
+const maxDate = $derived(
+	fromDate(dayjs().add(6, "months").toDate(), getLocalTimeZone()),
+);
+let selectedDate = $state<DateValue | undefined>(minDate);
 
-	function handleConfirm(event: Event) {
-		event.preventDefault();
-		event.stopPropagation();
-		if (!selectedDate) {
-			return;
-		}
-		onConfirm({ pauseUntil: selectedDate.toDate(getLocalTimeZone()).toISOString() });
+function handleConfirm(event: Event) {
+	event.preventDefault();
+	event.stopPropagation();
+	if (!selectedDate) {
+		return;
 	}
+	onConfirm({
+		pauseUntil: selectedDate.toDate(getLocalTimeZone()).toISOString(),
+	});
+}
 </script>
 
 <Dialog.Root bind:open>
@@ -46,19 +62,17 @@
 				onDateChange={(date) => {
 					selectedDate = fromDate(date, getLocalTimeZone());
 				}}
+				name="pauseUntil"
+				id="pauseUntil"
 			/>
 		</div>
 
 		<Dialog.Footer>
-			<Button type="button" variant="outline" onclick={() => open = false}>Cancel</Button>
-			<Button
-				type="button"
-				onclick={handleConfirm}
-				disabled={!selectedDate || isPending}
-			>
+			<Button type="button" variant="outline" onclick={() => (open = false)}>Cancel</Button>
+			<Button type="button" onclick={handleConfirm} disabled={!selectedDate || isPending}>
 				{#if extend}
 					{isPending ? 'Extending...' : 'Extend subscription pause'}
-				{:else }
+				{:else}
 					{isPending ? 'Pausing...' : 'Pause subscription'}
 				{/if}
 			</Button>

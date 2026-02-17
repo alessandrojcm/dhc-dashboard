@@ -1,11 +1,11 @@
-import { dev } from '$app/environment';
-import { handleErrorWithSentry, replayIntegration } from '@sentry/sveltekit';
-import * as Sentry from '@sentry/sveltekit';
-import posthog from 'posthog-js';
+import * as Sentry from "@sentry/sveltekit";
+import { handleErrorWithSentry, replayIntegration } from "@sentry/sveltekit";
+import posthog from "posthog-js";
+import { dev } from "$app/environment";
 
 Sentry.init({
 	enabled: !dev,
-	dsn: 'https://410c1b65794005c22ea5e8c794ddac10@o4509135535079424.ingest.de.sentry.io/4509135536783440',
+	dsn: "https://410c1b65794005c22ea5e8c794ddac10@o4509135535079424.ingest.de.sentry.io/4509135536783440",
 	tracesSampleRate: 1.0,
 
 	// This sets the sample rate to be 10%. You may want this to be 100% while
@@ -20,11 +20,11 @@ Sentry.init({
 	integrations: [
 		replayIntegration(),
 		posthog.sentryIntegration({
-			organization: 'dublin-hema-club',
+			organization: "dublin-hema-club",
 			projectId: 4509135536783440,
-			severityAllowList: ['error', 'info']
-		})
-	]
+			severityAllowList: ["error", "info"],
+		}),
+	],
 });
 
 // If you have a custom error handler, pass it to `handleErrorWithSentry`

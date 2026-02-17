@@ -2,7 +2,7 @@
 
 The goal is **not** to touch the existing Postgres function `insert_waitlist_entry`.  
 Instead we wrap it in a Kysely transaction and insert the guardian data in a new
-`waitlist_guardians` table.  Everything is TypeScript-typed and resides entirely
+`waitlist_guardians` table. Everything is TypeScript-typed and resides entirely
 in the SvelteKit layer.
 
 ---
@@ -37,36 +37,38 @@ supabase db:reset
 ## 2. Kysely setup (if not already present)
 
 Dependencies:
+
 ```bash
 pnpm add kysely pg @types/pg
 ```
 
 Create `src/lib/server/db.ts`:
+
 ```ts
 import { Kysely, PostgresDialect } from 'kysely';
 import pg from 'pg';
 
 export interface DB {
-  waitlist: {
-    id: string;
-    email: string;
-    created_at: string;
-  };
-  waitlist_guardians: {
-    id: string;
-    waitlist_id: string;
-    first_name: string;
-    last_name: string;
-    phone_number: string;
-    created_at: string;
-  };
-  // …other tables we might need later
+	waitlist: {
+		id: string;
+		email: string;
+		created_at: string;
+	};
+	waitlist_guardians: {
+		id: string;
+		waitlist_id: string;
+		first_name: string;
+		last_name: string;
+		phone_number: string;
+		created_at: string;
+	};
+	// …other tables we might need later
 }
 
 export const db = new Kysely<DB>({
-  dialect: new PostgresDialect({
-    pool: new pg.Pool({ connectionString: process.env.DATABASE_URL })
-  })
+	dialect: new PostgresDialect({
+		pool: new pg.Pool({ connectionString: process.env.DATABASE_URL })
+	})
 });
 ```
 
@@ -78,25 +80,21 @@ server side in SvelteKit; **never** expose it to the client!).
 ## 3. Extend validation schema `beginnersWaitlist`
 
 Using valibot conditional rules:
+
 ```ts
 import { object, string, minLength, when } from 'valibot';
 
 export const beginnersWaitlist = object({
-  /* existing fields */
-  guardianFirstName: when(
-    (data) => age(data.dateOfBirth) < 18,
-    string([minLength(1, 'Required')])
-  ),
-  guardianLastName: when(
-    (data) => age(data.dateOfBirth) < 18,
-    string([minLength(1, 'Required')])
-  ),
-  guardianPhoneNumber: when(
-    (data) => age(data.dateOfBirth) < 18,
-    string([minLength(6, 'Required')])
-  )
+	/* existing fields */
+	guardianFirstName: when((data) => age(data.dateOfBirth) < 18, string([minLength(1, 'Required')])),
+	guardianLastName: when((data) => age(data.dateOfBirth) < 18, string([minLength(1, 'Required')])),
+	guardianPhoneNumber: when(
+		(data) => age(data.dateOfBirth) < 18,
+		string([minLength(6, 'Required')])
+	)
 });
 ```
+
 Helper `age()` can live in a util file.
 
 ---
@@ -110,7 +108,7 @@ Helper `age()` can live in a util file.
 2. Wrap the new inputs in `{#if isUnderAge}`:
    ```svelte
    <Form.Field {form} name="guardianFirstName">
-     <!-- same pattern as others -->
+   	<!-- same pattern as others -->
    </Form.Field>
    <Form.Field {form} name="guardianLastName">…</Form.Field>
    <Form.Field {form} name="guardianPhoneNumber">…</Form.Field>
@@ -127,21 +125,20 @@ import { db } from '$lib/server/db';
 import { sql } from 'kysely';
 
 export const actions: Actions = {
-  default: async (event) => {
-    const form = await superValidate(event, valibot(beginnersWaitlist));
-    if (!form.valid) return fail(422, { form });
+	default: async (event) => {
+		const form = await superValidate(event, valibot(beginnersWaitlist));
+		if (!form.valid) return fail(422, { form });
 
-    const data = form.data;
-    const age = dayjs().diff(data.dateOfBirth, 'year');
+		const data = form.data;
+		const age = dayjs().diff(data.dateOfBirth, 'year');
 
-    if (age >= 16 && age < 18) {
-      // ----- under-age path (transaction) -----
-      try {
-        await db.transaction().execute(async (trx) => {
-          // 1. call existing function and capture the waitlist row
-          const [row] = await trx
-            .executeQuery(
-              sql`select * from insert_waitlist_entry(
+		if (age >= 16 && age < 18) {
+			// ----- under-age path (transaction) -----
+			try {
+				await db.transaction().execute(async (trx) => {
+					// 1. call existing function and capture the waitlist row
+					const [row] = await trx.executeQuery(
+						sql`select * from insert_waitlist_entry(
                     ${data.firstName},
                     ${data.lastName},
                     ${data.email},
@@ -152,51 +149,64 @@ export const actions: Actions = {
                     ${data.medicalConditions},
                     ${data.socialMediaConsent}
                   )`.compile()
-            );
+					);
 
-          const waitlistId = row.waitlist_id as string;
+					const waitlistId = row.waitlist_id as string;
 
-          // 2. insert guardian row
-          await trx
-            .insertInto('waitlist_guardians')
-            .values({
-              waitlist_id: waitlistId,
-              first_name: data.guardianFirstName!,
-              last_name: data.guardianLastName!,
-              phone_number: data.guardianPhoneNumber!
-            })
-            .execute();
-        });
-      } catch (err) {
-        console.error(err);
-        return message(form, { error: 'Something has gone wrong, please try again later.' }, { status: 500 });
-      }
-    } else {
-      // ----- adult path: keep old RPC call -----
-      const { error } = await supabaseServiceClient.rpc('insert_waitlist_entry', {
-        first_name: data.firstName,
-        last_name: data.lastName,
-        email: data.email,
-        date_of_birth: data.dateOfBirth.toISOString(),
-        phone_number: data.phoneNumber,
-        pronouns: data.pronouns.toLowerCase(),
-        gender: data.gender,
-        medical_conditions: data.medicalConditions,
-        social_media_consent: data.socialMediaConsent
-      });
-      if (error?.code === '23505') return setError(form, 'email', 'You are already on the waitlist!');
-      if (error) return message(form, { error: 'Something has gone wrong, please try again later.' }, { status: 500 });
-    }
+					// 2. insert guardian row
+					await trx
+						.insertInto('waitlist_guardians')
+						.values({
+							waitlist_id: waitlistId,
+							first_name: data.guardianFirstName!,
+							last_name: data.guardianLastName!,
+							phone_number: data.guardianPhoneNumber!
+						})
+						.execute();
+				});
+			} catch (err) {
+				console.error(err);
+				return message(
+					form,
+					{ error: 'Something has gone wrong, please try again later.' },
+					{ status: 500 }
+				);
+			}
+		} else {
+			// ----- adult path: keep old RPC call -----
+			const { error } = await supabaseServiceClient.rpc('insert_waitlist_entry', {
+				first_name: data.firstName,
+				last_name: data.lastName,
+				email: data.email,
+				date_of_birth: data.dateOfBirth.toISOString(),
+				phone_number: data.phoneNumber,
+				pronouns: data.pronouns.toLowerCase(),
+				gender: data.gender,
+				medical_conditions: data.medicalConditions,
+				social_media_consent: data.socialMediaConsent
+			});
+			if (error?.code === '23505')
+				return setError(form, 'email', 'You are already on the waitlist!');
+			if (error)
+				return message(
+					form,
+					{ error: 'Something has gone wrong, please try again later.' },
+					{ status: 500 }
+				);
+		}
 
-    return message(form, { success: 'You have been added to the waitlist, we will be in contact soon!' });
-  }
+		return message(form, {
+			success: 'You have been added to the waitlist, we will be in contact soon!'
+		});
+	}
 };
 ```
 
 Key points:
-* `trx.executeQuery(sql\`…\`)` allows invoking the existing Postgres function
+
+- `trx.executeQuery(sql\`…\`)` allows invoking the existing Postgres function
   inside the same transaction.
-* Any error inside the callback automatically rolls back.
+- Any error inside the callback automatically rolls back.
 
 ---
 
@@ -209,9 +219,9 @@ Kysely’s `DB` interface above for stronger typing.
 
 ## 7. Tests
 
-* Add unit test for the validation logic (age gating & required guardian
+- Add unit test for the validation logic (age gating & required guardian
   fields).
-* Add an integration test that mocks the DB and checks both adult and under-age
+- Add an integration test that mocks the DB and checks both adult and under-age
   paths.
 
 ---

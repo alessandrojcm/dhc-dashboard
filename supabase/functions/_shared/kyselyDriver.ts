@@ -1,172 +1,180 @@
 import {
-  CompiledQuery,
-  DatabaseConnection,
-  Driver,
-  PostgresCursorConstructor,
-  QueryResult,
-  TransactionSettings,
+	CompiledQuery,
+	type DatabaseConnection,
+	type Driver,
+	type PostgresCursorConstructor,
+	type QueryResult,
+	type TransactionSettings,
 } from "kysely";
-import { Pool, PoolClient } from "postgres";
+import type { Pool, PoolClient } from "postgres";
 
 export interface PostgresDialectConfig {
-  pool: Pool | (() => Promise<Pool>);
-  cursor?: PostgresCursorConstructor;
-  onCreateConnection?: (connection: DatabaseConnection) => Promise<void>;
+	pool: Pool | (() => Promise<Pool>);
+	cursor?: PostgresCursorConstructor;
+	onCreateConnection?: (connection: DatabaseConnection) => Promise<void>;
 }
 
 const PRIVATE_RELEASE_METHOD = Symbol();
 
 export class PostgresDriver implements Driver {
-  readonly #config: PostgresDialectConfig;
-  readonly #connections = new WeakMap<PoolClient, DatabaseConnection>();
-  #pool?: Pool;
+	readonly #config: PostgresDialectConfig;
+	readonly #connections = new WeakMap<PoolClient, DatabaseConnection>();
+	#pool?: Pool;
 
-  constructor(config: PostgresDialectConfig) {
-    this.#config = Object.freeze({ ...config });
-  }
+	constructor(config: PostgresDialectConfig) {
+		this.#config = Object.freeze({ ...config });
+	}
 
-  async init(): Promise<void> {
-    this.#pool = typeof this.#config.pool === "function"
-      ? await this.#config.pool()
-      : this.#config.pool;
-  }
+	async init(): Promise<void> {
+		this.#pool =
+			typeof this.#config.pool === "function"
+				? await this.#config.pool()
+				: this.#config.pool;
+	}
 
-  async acquireConnection(): Promise<DatabaseConnection> {
-    const client = await this.#pool!.connect();
-    let connection = this.#connections.get(client);
+	async acquireConnection(): Promise<DatabaseConnection> {
+		const client = await this.#pool?.connect();
+		let connection = this.#connections.get(client);
 
-    if (!connection) {
-      connection = new PostgresConnection(client, {
-        cursor: this.#config.cursor ?? null,
-      });
-      this.#connections.set(client, connection);
+		if (!connection) {
+			connection = new PostgresConnection(client, {
+				cursor: this.#config.cursor ?? null,
+			});
+			this.#connections.set(client, connection);
 
-      // The driver must take care of calling `onCreateConnection` when a new
-      // connection is created. The `pg` module doesn't provide an async hook
-      // for the connection creation. We need to call the method explicitly.
-      if (this.#config?.onCreateConnection) {
-        await this.#config.onCreateConnection(connection);
-      }
-    }
+			// The driver must take care of calling `onCreateConnection` when a new
+			// connection is created. The `pg` module doesn't provide an async hook
+			// for the connection creation. We need to call the method explicitly.
+			if (this.#config?.onCreateConnection) {
+				await this.#config.onCreateConnection(connection);
+			}
+		}
 
-    return connection;
-  }
+		return connection;
+	}
 
-  async beginTransaction(
-    connection: DatabaseConnection,
-    settings: TransactionSettings,
-  ): Promise<void> {
-    if (settings.isolationLevel) {
-      await connection.executeQuery(
-        CompiledQuery.raw(
-          `start transaction isolation level ${settings.isolationLevel}`,
-        ),
-      );
-    } else {
-      await connection.executeQuery(CompiledQuery.raw("begin"));
-    }
-  }
+	async beginTransaction(
+		connection: DatabaseConnection,
+		settings: TransactionSettings,
+	): Promise<void> {
+		if (settings.isolationLevel) {
+			await connection.executeQuery(
+				CompiledQuery.raw(
+					`start transaction isolation level ${settings.isolationLevel}`,
+				),
+			);
+		} else {
+			await connection.executeQuery(CompiledQuery.raw("begin"));
+		}
+	}
 
-  async commitTransaction(connection: DatabaseConnection): Promise<void> {
-    await connection.executeQuery(CompiledQuery.raw("commit"));
-  }
+	async commitTransaction(connection: DatabaseConnection): Promise<void> {
+		await connection.executeQuery(CompiledQuery.raw("commit"));
+	}
 
-  async rollbackTransaction(connection: DatabaseConnection): Promise<void> {
-    await connection.executeQuery(CompiledQuery.raw("rollback"));
-  }
+	async rollbackTransaction(connection: DatabaseConnection): Promise<void> {
+		await connection.executeQuery(CompiledQuery.raw("rollback"));
+	}
 
-  async releaseConnection(connection: PostgresConnection): Promise<void> {
-    connection[PRIVATE_RELEASE_METHOD]();
-  }
+	async releaseConnection(connection: PostgresConnection): Promise<void> {
+		connection[PRIVATE_RELEASE_METHOD]();
+	}
 
-  async destroy(): Promise<void> {
-    if (this.#pool) {
-      const pool = this.#pool;
-      this.#pool = undefined;
-      await pool.end();
-    }
-  }
+	async destroy(): Promise<void> {
+		if (this.#pool) {
+			const pool = this.#pool;
+			this.#pool = undefined;
+			await pool.end();
+		}
+	}
 }
 
 interface PostgresConnectionOptions {
-  cursor: PostgresCursorConstructor | null;
+	cursor: PostgresCursorConstructor | null;
 }
 
 class PostgresConnection implements DatabaseConnection {
-  #client: PoolClient;
-  #options: PostgresConnectionOptions;
+	#client: PoolClient;
+	#options: PostgresConnectionOptions;
 
-  constructor(client: PoolClient, options: PostgresConnectionOptions) {
-    this.#client = client;
-    this.#options = options;
-  }
+	constructor(client: PoolClient, options: PostgresConnectionOptions) {
+		this.#client = client;
+		this.#options = options;
+	}
 
-  async executeQuery<O>(compiledQuery: CompiledQuery): Promise<QueryResult<O>> {
-    try {
-      const result = await this.#client.queryObject<O>(compiledQuery.sql, [
-        ...compiledQuery.parameters,
-      ]);
+	async executeQuery<O>(compiledQuery: CompiledQuery): Promise<QueryResult<O>> {
+		try {
+			const result = await this.#client.queryObject<O>(compiledQuery.sql, [
+				...compiledQuery.parameters,
+			]);
 
-      if (
-        result.command === "INSERT" ||
-        result.command === "UPDATE" ||
-        result.command === "DELETE"
-      ) {
-        const numAffectedRows = BigInt(result.rowCount || 0);
+			if (
+				result.command === "INSERT" ||
+				result.command === "UPDATE" ||
+				result.command === "DELETE"
+			) {
+				const numAffectedRows = BigInt(result.rowCount || 0);
 
-        return {
-          numAffectedRows,
-          rows: result.rows ?? [],
-        };
-      }
+				return {
+					numAffectedRows,
+					rows: result.rows ?? [],
+				};
+			}
 
-      return {
-        rows: result.rows ?? [],
-      };
-    } catch (err) {
-      throw extendStackTrace(err, new Error());
-    }
-  }
+			return {
+				rows: result.rows ?? [],
+			};
+		} catch (err) {
+			throw extendStackTrace(err, new Error());
+		}
+	}
 
-  async *streamQuery<O>(
-    _compiledQuery: CompiledQuery,
-    chunkSize: number,
-  ): AsyncIterableIterator<QueryResult<O>> {
-    if (!this.#options.cursor) {
-      throw new Error(
-        "'cursor' is not present in your postgres dialect config. It's required to make streaming work in postgres.",
-      );
-    }
+	async *streamQuery<O>(
+		_compiledQuery: CompiledQuery,
+		chunkSize: number,
+	): AsyncIterableIterator<QueryResult<O>> {
+		if (!this.#options.cursor) {
+			throw new Error(
+				"'cursor' is not present in your postgres dialect config. It's required to make streaming work in postgres.",
+			);
+		}
 
-    if (!Number.isInteger(chunkSize) || chunkSize <= 0) {
-      throw new Error("chunkSize must be a positive integer");
-    }
+		if (!Number.isInteger(chunkSize) || chunkSize <= 0) {
+			throw new Error("chunkSize must be a positive integer");
+		}
 
-    // stream not available
-    return null;
-  }
+		// stream not available
+		return null;
+	}
 
-  [PRIVATE_RELEASE_METHOD](): void {
-    this.#client.release();
-  }
+	[PRIVATE_RELEASE_METHOD](): void {
+		this.#client.release();
+	}
 }
 
 export function extendStackTrace(err: unknown, stackError: Error): unknown {
-  if (isStackHolder(err) && stackError.stack) {
-    // Remove the first line that just says `Error`.
-    const stackExtension = stackError.stack.split('\n').slice(1).join('\n')
+	if (isStackHolder(err) && stackError.stack) {
+		// Remove the first line that just says `Error`.
+		const stackExtension = stackError.stack.split("\n").slice(1).join("\n");
 
-    err.stack += `\n${stackExtension}`
-    return err
-  }
+		err.stack += `\n${stackExtension}`;
+		return err;
+	}
 
-  return err
+	return err;
 }
 
 interface StackHolder {
-  stack: string
+	stack: string;
 }
 
 function isStackHolder(obj: unknown): obj is StackHolder {
-  return typeof obj === 'object' && obj !== null && 'stack' in obj && obj.stack !== undefined && obj.stack !== null && typeof obj.stack === 'string'
+	return (
+		typeof obj === "object" &&
+		obj !== null &&
+		"stack" in obj &&
+		obj.stack !== undefined &&
+		obj.stack !== null &&
+		typeof obj.stack === "string"
+	);
 }

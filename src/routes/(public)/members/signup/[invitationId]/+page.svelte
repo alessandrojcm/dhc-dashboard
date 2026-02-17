@@ -1,14 +1,13 @@
 <script lang="ts">
-	import PaymentForm from './payment-form.svelte';
-	import ConfirmInvitation from './confirm-invitation.svelte';
+import ConfirmInvitation from "./confirm-invitation.svelte";
+import PaymentForm from "./payment-form.svelte";
 
-	const { data } = $props();
-	let isVerified = $state(data.isConfirmed);
-
+const { data } = $props();
+let isVerified = $derived(data.isConfirmed);
 </script>
 
 {#if !isVerified}
-	<ConfirmInvitation bind:isVerified />
+	<ConfirmInvitation bind:isVerified={isVerified} />
 {:else}
-	<PaymentForm {...data} />
+	<PaymentForm {data} />
 {/if}

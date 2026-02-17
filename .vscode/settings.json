@@ -1,22 +1,20 @@
 {
-    "sqltools.connections": [
-        {
-            "previewLimit": 50,
-            "server": "localhost",
-            "port": 54322,
-            "driver": "PostgreSQL",
-            "name": "supabase",
-            "database": "postgres",
-            "username": "postgres",
-            "password": "postgres"
-        }
-    ],
-    "deno.enable": true,
-    "deno.enablePaths": [
-        "./supabase/functions"
-    ],
-    "deno.importMap": "./supabase/functions/import_map.json",
-    "deno.cacheOnSave": true,
-    "deno.envFile": ".env",
-    "deno.config": "deno.json",
+	"sqltools.connections": [
+		{
+			"previewLimit": 50,
+			"server": "localhost",
+			"port": 54322,
+			"driver": "PostgreSQL",
+			"name": "supabase",
+			"database": "postgres",
+			"username": "postgres",
+			"password": "postgres"
+		}
+	],
+	"deno.enable": true,
+	"deno.enablePaths": ["./supabase/functions"],
+	"deno.importMap": "./supabase/functions/import_map.json",
+	"deno.cacheOnSave": true,
+	"deno.envFile": ".env",
+	"deno.config": "deno.json",
 }

@@ -1,48 +1,53 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
-	import { page } from '$app/state';
-	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
-	import { Root, List, Trigger, Content } from '$lib/components/ui/tabs/index.js';
-	import InviteDrawer from './invite-drawer.svelte';
-	import Analytics from './member-analytics.svelte';
-	import MembersTable from './members-table.svelte';
-	import InvitationsTable from './invitations-table.svelte';
-	import SettingsSheet from './settings-sheet.svelte';
-	import * as Select from '$lib/components/ui/select';
+import { goto } from "$app/navigation";
+import { resolve } from "$app/paths";
+import { page } from "$app/state";
+import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
+import { Root, List, Trigger, Content } from "$lib/components/ui/tabs/index.js";
+import InviteDrawer from "./invite-drawer.svelte";
+import Analytics from "./member-analytics.svelte";
+import MembersTable from "./members-table.svelte";
+import InvitationsTable from "./invitations-table.svelte";
+import SettingsSheet from "./settings-sheet.svelte";
+import * as Select from "$lib/components/ui/select";
+import { SvelteURLSearchParams } from "svelte/reactivity";
 
-	const { data } = $props();
-	let value = $derived(page.url.searchParams.get('tab') || 'dashboard');
+const { data } = $props();
+let value = $derived(page.url.searchParams.get("tab") || "dashboard");
 
-	function onTabChange(value: string) {
-		const newParams = new URLSearchParams(page.url.searchParams);
-		newParams.set('tab', value);
-		goto(`/dashboard/members?${newParams.toString()}`);
-	}
-	let views = [
-		{
-			id: "dashboard",
-			label: "Dashboard",
-		},
-		{
-			id: "members",
-			label: "Members list",
-		},
-		{
-			id: "invitations",
-			label: "Invitations",
-		},
-	];
-	let viewLabel = $derived(views.find((view) => view.id === value)?.label || "Dashboard");
+function onTabChange(value: string) {
+	const newParams = new SvelteURLSearchParams(page.url.searchParams);
+	newParams.set("tab", value);
+	const url = `/dashboard/members?${newParams.toString()}`;
+	goto(resolve(url as any));
+}
+let views = [
+	{
+		id: "dashboard",
+		label: "Dashboard",
+	},
+	{
+		id: "members",
+		label: "Members list",
+	},
+	{
+		id: "invitations",
+		label: "Invitations",
+	},
+];
+let viewLabel = $derived(
+	views.find((view) => view.id === value)?.label || "Dashboard",
+);
 </script>
 
 <div class="relative">
 	{#if data.canEditSettings}
-		{#await data.form}
+		{#await data.insuranceFormLink}
 			<div class="fixed right-4 top-4">
 				<LoaderCircle />
 			</div>
-		{:then form}
-			<SettingsSheet {form} />
+		{:then initialValue}
+			<SettingsSheet {initialValue} />
 		{/await}
 	{/if}
 

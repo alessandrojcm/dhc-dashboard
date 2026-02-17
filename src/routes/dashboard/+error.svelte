@@ -1,7 +1,8 @@
 <script lang="ts">
-	import { page } from '$app/state';
-    import * as Alert from '$lib/components/ui/alert';
-		console.error(page.error);
+import { page } from "$app/state";
+import * as Alert from "$lib/components/ui/alert";
+
+console.error(page.error);
 </script>
 
 <div class="flex items-center justify-center min-h-screen">

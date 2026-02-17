@@ -1,21 +1,34 @@
 <script lang="ts">
-	import * as Popover from '$lib/components/ui/popover/index.js';
-	import { Button } from '$lib/components/ui/button';
-	import { NotebookPen, Edit, ChevronDown, ChevronUp, SendIcon } from 'lucide-svelte';
-	import { Label } from '$lib/components/ui/label';
-	import { Textarea } from '$lib/components/ui/textarea';
-	import * as Tooltip from '$lib/components/ui/tooltip/index.js';
+import { Button } from "$lib/components/ui/button";
+import * as Tooltip from "$lib/components/ui/tooltip";
+import {
+	ChevronUp,
+	ChevronDown,
+	SendIcon,
+	Edit,
+	NotebookPen,
+	Trash2,
+} from "lucide-svelte";
+import * as Popover from "$lib/components/ui/popover";
+import { Label } from "$lib/components/ui/label";
+import { Textarea } from "$lib/components/ui/textarea";
 
-	type Props = {
-		adminNotes: string;
-		onEdit: (newValue: string) => void;
-		isExpanded?: boolean;
-		onToggleExpand?: () => void;
-		inviteMember: () => void
-	};
-	let isEdit = $state(false);
-	const { adminNotes, onEdit, isExpanded = false, onToggleExpand, inviteMember }: Props = $props();
-	let value = $state(adminNotes);
+type Props = {
+	adminNotes: string;
+	onEdit: (newValue: string) => void;
+	isExpanded?: boolean;
+	onToggleExpand?: () => void;
+	inviteMember: () => void;
+};
+let isEdit = $state(false);
+let {
+	adminNotes,
+	onEdit,
+	isExpanded = false,
+	onToggleExpand,
+	inviteMember,
+}: Props = $props();
+let value = $state(adminNotes);
 </script>
 
 <div class="flex gap-w">
@@ -49,23 +62,22 @@
 		</Popover.Trigger>
 		<Popover.Content class="flex flex-col gap-y-2">
 			<Label
-			>Admin notes
+				>Admin notes
 				<Button variant="ghost" onclick={() => (isEdit = !isEdit)}>
 					<Edit class="h-4 w-4" />
-				</Button
-				>
-			</Label
-			>
+				</Button>
+			</Label>
 			{#if isEdit}
-				<Textarea class="min-h-[5ch]" bind:value />
+				<Textarea class="min-h-[5ch]" bind:value={value} />
 				<Button
 					class="self-start"
 					onclick={() => {
 						onEdit(value);
 						isEdit = false;
-					}}>Save
-				</Button
+					}}
 				>
+					Save
+				</Button>
 			{:else}
 				<p class="border border-solid border-black-200 rounded-md p-2 min-h-[5ch]">
 					{value ?? 'N/A'}

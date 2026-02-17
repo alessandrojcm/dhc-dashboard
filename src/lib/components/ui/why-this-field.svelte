@@ -1,8 +1,7 @@
 <script lang="ts" module>
-    import * as Tooltip from '$lib/components/ui/tooltip';
-    import { HelpCircle } from 'lucide-svelte';
-
-    export { whyThisField };
+import * as Tooltip from "$lib/components/ui/tooltip/index.js";
+import { HelpCircle } from "lucide-svelte";
+export { whyThisField };
 </script>
 
 {#snippet whyThisField(message: string)}
