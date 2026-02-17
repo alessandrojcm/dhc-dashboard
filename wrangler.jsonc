@@ -14,7 +14,7 @@
 	"hyperdrive": [
 		{
 			"binding": "HYPERDRIVE",
-			"id": "f652ff1ad83c46eeae1cf84d1539e147",
+			"id": "d6f9232b82c64c59a0d9f8226138f1e0",
 			"localConnectionString": "postgresql://postgres.pooler-dev:postgres@localhost:54329/postgres"
 		}
 	],
