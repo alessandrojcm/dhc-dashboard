@@ -14,7 +14,12 @@ export const stripeClient = new stripe(process.env.STRIPE_SECRET_KEY || "", {
 	apiVersion: "2025-10-29.clover",
 });
 
+let _supabaseClient: ReturnType<typeof createClient<Database>> | null = null;
+
 export function getSupabaseServiceClient() {
+	if (_supabaseClient) {
+		return _supabaseClient;
+	}
 	const supabaseUrl = process.env.PUBLIC_SUPABASE_URL;
 	const serviceRoleKey = process.env.SERVICE_ROLE_KEY;
 	if (!supabaseUrl || !serviceRoleKey) {
@@ -22,7 +27,8 @@ export function getSupabaseServiceClient() {
 			"Missing SUPABASE_URL or SERVICE_ROLE_KEY in environment variables",
 		);
 	}
-	return createClient<Database>(supabaseUrl, serviceRoleKey);
+	_supabaseClient = createClient<Database>(supabaseUrl, serviceRoleKey);
+	return _supabaseClient;
 }
 
 const defaultValues = {
@@ -30,6 +36,122 @@ const defaultValues = {
 	addSupabaseId: true,
 	setWaitlistNotCompleted: false,
 };
+
+export async function setupWaitlistedUser(
+	params: Partial<{
+		addWaitlist: boolean;
+		addSupabaseId: boolean;
+		setWaitlistNotCompleted: boolean;
+		email: string;
+	}> = {},
+) {
+	const overrides = {
+		...defaultValues,
+		...params,
+		email: faker.internet.email().toLowerCase(),
+	};
+	const { addSupabaseId, addWaitlist, setWaitlistNotCompleted, email } =
+		overrides;
+	const supabaseServiceClient = getSupabaseServiceClient();
+	const testData = {
+		first_name: faker.person.firstName(),
+		last_name: faker.person.lastName(),
+		email,
+		date_of_birth: faker.date.birthdate({ min: 16, max: 65, mode: "age" }),
+		pronouns: faker.helpers.arrayElement(["he/him", "she/her", "they/them"]),
+		gender: faker.helpers.arrayElement([
+			"man (cis)",
+			"woman (cis)",
+			"non-binary",
+		] as Database["public"]["Enums"]["gender"][]),
+		weapon: faker.helpers.arrayElement(["longsword", "rapier", "sabre"]),
+		phone_number: faker.phone.number({ style: "international" }),
+		next_of_kin: {
+			name: faker.person.fullName(),
+			phone_number: faker.phone.number({ style: "international" }),
+		},
+		medical_conditions: faker.helpers.arrayElement([
+			"None",
+			"Asthma",
+			"Previous knee injury",
+		]),
+	};
+	const waitlisEntry = await supabaseServiceClient
+		.rpc("insert_waitlist_entry", {
+			first_name: testData.first_name,
+			last_name: testData.last_name,
+			email: testData.email,
+			date_of_birth: testData.date_of_birth.toISOString(),
+			phone_number: testData.phone_number,
+			pronouns: testData.pronouns,
+			gender: testData.gender as Database["public"]["Enums"]["gender"],
+			medical_conditions: testData.medical_conditions,
+		})
+		.single();
+	if (waitlisEntry.error) {
+		throw new Error(waitlisEntry.error.message);
+	}
+	const inviteLink = await supabaseServiceClient.auth.admin.createUser({
+		email: testData.email,
+		password: "password",
+		email_confirm: true,
+	});
+	if (inviteLink.error) {
+		throw new Error(inviteLink.error.message);
+	}
+
+	await supabaseServiceClient
+		.from("user_profiles")
+		.update({
+			supabase_user_id: addSupabaseId ? inviteLink.data.user.id : null,
+			waitlist_id: addWaitlist ? waitlisEntry.data.waitlist_id : null,
+		})
+		.eq("id", waitlisEntry.data.profile_id)
+		.select()
+		.throwOnError();
+
+	await supabaseServiceClient
+		.from("waitlist")
+		.update({
+			status: setWaitlistNotCompleted ? "cancelled" : "completed",
+		})
+		.eq("email", testData.email)
+		.throwOnError();
+	const verifyOtp = await supabaseServiceClient.auth.signInWithPassword({
+		email: testData.email,
+		password: "password",
+	});
+	if (verifyOtp.error) {
+		throw new Error(verifyOtp.error.message);
+	}
+	await supabaseServiceClient.auth.signOut();
+
+	function cleanUp() {
+		// We need to create another client because when we use verifyOtp, we are effectively
+		// logging as the user we are verifying the token for, hence we lose the service role privileges
+		const client = getSupabaseServiceClient();
+		return Promise.all([
+			waitlisEntry?.data?.profile_id
+				? client
+						.from("user_profiles")
+						.delete()
+						.eq("id", waitlisEntry.data.profile_id)
+						.throwOnError()
+				: Promise.resolve(),
+			inviteLink.data.user?.id
+				? client.auth.admin.deleteUser(inviteLink.data.user.id)
+				: Promise.resolve(),
+		]);
+	}
+
+	return Promise.resolve({
+		...testData,
+		waitlistId: waitlisEntry.data.waitlist_id,
+		profileId: waitlisEntry.data.profile_id,
+		token: verifyOtp.data.session?.access_token,
+		cleanUp,
+	});
+}
 
 export async function createMember({
 	email = faker.internet.email().toLowerCase(),
@@ -134,33 +256,35 @@ export async function createMember({
 		.select()
 		.throwOnError();
 
-	// Run these independent operations in parallel
-	await Promise.all([
-		supabaseServiceClient
-			.from("user_roles")
-			.insert(
-				Array.from(roles)
-					.filter((role) => role !== "member")
-					.map((role) => ({
-						user_id: inviteLink.data.user.id,
-						role,
-					})),
-			)
-			.throwOnError(),
-		// Update user metadata to include roles in JWT token
-		supabaseServiceClient.auth.admin.updateUserById(inviteLink.data.user.id, {
+	await supabaseServiceClient
+		.from("user_roles")
+		.insert(
+			Array.from(roles)
+				.filter((role) => role !== "member")
+				.map((role) => ({
+					user_id: inviteLink.data.user.id,
+					role,
+				})),
+		)
+		.throwOnError();
+
+	// Update user metadata to include roles in JWT token
+	await supabaseServiceClient.auth.admin.updateUserById(
+		inviteLink.data.user.id,
+		{
 			app_metadata: {
 				roles: Array.from(roles),
 			},
-		}),
-		supabaseServiceClient
-			.from("waitlist")
-			.update({
-				status: "completed",
-			})
-			.eq("email", testData.email)
-			.throwOnError(),
-	]);
+		},
+	);
+
+	await supabaseServiceClient
+		.from("waitlist")
+		.update({
+			status: "completed",
+		})
+		.eq("email", testData.email)
+		.throwOnError();
 
 	const { data } = await supabaseServiceClient
 		.rpc("complete_member_registration", {
@@ -335,18 +459,6 @@ export async function createWorkshop({
 	};
 }
 
-export function createUniqueEmail(
-	prefix: string,
-	index?: number,
-	retry?: number,
-) {
-	const timestamp = Date.now();
-	const randomSuffix = Math.random().toString(36).substring(2, 7);
-	const indexPart = index === undefined ? "" : `-${index}`;
-	const retryPart = retry === undefined ? "" : `-r${retry}`;
-	return `${prefix}-${timestamp}${indexPart}-${randomSuffix}${retryPart}@test.com`;
-}
-
 export async function setupInvitedUser(
 	params: Partial<{
 		addInvitation: boolean;
@@ -354,7 +466,6 @@ export async function setupInvitedUser(
 		email: string;
 		invitationStatus: Database["public"]["Enums"]["invitation_status"];
 		token: string;
-		useFakeCustomerId?: boolean;
 	}> = {},
 ) {
 	const defaultInviteValues = {
@@ -362,7 +473,6 @@ export async function setupInvitedUser(
 		addSupabaseId: true,
 		invitationStatus:
 			"pending" as Database["public"]["Enums"]["invitation_status"],
-		useFakeCustomerId: false,
 	};
 	const overrides = {
 		...defaultInviteValues,
@@ -370,7 +480,7 @@ export async function setupInvitedUser(
 		email: params.email || faker.internet.email().toLowerCase(),
 	};
 
-	const { email, useFakeCustomerId } = overrides;
+	const { email } = overrides;
 	const supabaseServiceClient = getSupabaseServiceClient();
 
 	// Create test user data
@@ -413,21 +523,15 @@ export async function setupInvitedUser(
 	if (authError) {
 		throw new Error(`Error creating user: ${authError.message}`);
 	}
-	let customerId: string | null = null;
 
-	if (!useFakeCustomerId) {
-		// Create a Stripe customer for the invited user
-		const customer = await stripeClient.customers.create({
-			name: `${testData.first_name} ${testData.last_name}`,
-			email: testData.email,
-			metadata: {
-				invited_by: "e2e-test",
-			},
-		});
-		customerId = customer.id;
-	} else {
-		customerId = crypto.randomUUID();
-	}
+	// Create a Stripe customer for the invited user
+	const customer = await stripeClient.customers.create({
+		name: `${testData.first_name} ${testData.last_name}`,
+		email: testData.email,
+		metadata: {
+			invited_by: "e2e-test",
+		},
+	});
 
 	// Calculate expiration date (24 hours from now)
 	const expiresAt = new Date();
@@ -458,66 +562,31 @@ export async function setupInvitedUser(
 	// Update user profile with customer ID directly
 	const { error: profileError } = await supabaseServiceClient
 		.from("user_profiles")
-		.update({ customer_id: customerId })
+		.update({ customer_id: customer.id })
 		.eq("supabase_user_id", authData.user.id);
 
 	if (profileError) {
 		throw new Error(`Error updating user profile: ${profileError.message}`);
 	}
 
-	// User profile already has customer_id from the upsert operation above
-
-	if (!useFakeCustomerId) {
-		// Get price IDs for subscriptions
-		const [monthlyPrices, annualPrices] = await Promise.all([
-			stripeClient.prices.search({
-				query: `lookup_key:'${MEMBERSHIP_FEE_LOOKUP_NAME}'`,
-			}),
-			stripeClient.prices.search({
-				query: `lookup_key:'${ANNUAL_FEE_LOOKUP}'`,
-			}),
-		]);
-
-		if (!monthlyPrices.data.length || !annualPrices.data.length) {
-			throw new Error("Failed to retrieve price IDs from Stripe");
-		}
-
-		// Create new subscriptions using Promise.all like in the Deno function
-		await Promise.all([
-			stripeClient.subscriptions.create({
-				customer: customerId,
-				items: [{ price: monthlyPrices.data[0].id }],
-				billing_cycle_anchor_config: {
-					day_of_month: 1,
-				},
-				payment_behavior: "default_incomplete",
-				payment_settings: {
-					payment_method_types: ["sepa_debit"],
-				},
-				expand: ["latest_invoice.payments"],
-				collection_method: "charge_automatically",
-			}),
-			stripeClient.subscriptions.create({
-				customer: customerId,
-				items: [{ price: annualPrices.data[0].id }],
-				payment_behavior: "default_incomplete",
-				payment_settings: {
-					payment_method_types: ["sepa_debit"],
-				},
-				billing_cycle_anchor_config: {
-					month: 1,
-					day_of_month: 7,
-				},
-				expand: ["latest_invoice.payments"],
-				collection_method: "charge_automatically",
-			}),
-		]);
-	}
-
-	// Cleanup function
 	async function cleanUp() {
-		const client = await createSeedClient();
-		await client.$resetDatabase(["public.user_profiles", "public.invitations"]);
+		await supabaseServiceClient
+			.from("invitations")
+			.delete()
+			.eq("id", invitationData!);
+
+		await supabaseServiceClient
+			.from("user_profiles")
+			.delete()
+			.eq("supabase_user_id", authData.user!.id);
+
+		await supabaseServiceClient.auth.admin.deleteUser(authData.user!.id);
+
+		try {
+			await stripeClient.customers.del(customer.id);
+		} catch {
+			// Stripe customer may already be deleted
+		}
 	}
 
 	return Promise.resolve({

@@ -145,3 +145,59 @@ export interface RefundEligibility {
 		status: string;
 	};
 }
+
+// ============================================================================
+// Interest Types
+// ============================================================================
+
+export type Interest =
+	Database["public"]["Tables"]["club_activity_interest"]["Row"];
+export type InterestInsert =
+	Database["public"]["Tables"]["club_activity_interest"]["Insert"];
+
+/**
+ * Result of toggling interest on a workshop
+ */
+export interface ToggleInterestResult {
+	interest: Interest | null;
+	message: string;
+	action: "expressed" | "withdrawn";
+}
+
+// ============================================================================
+// Payment Intent Types
+// ============================================================================
+
+/**
+ * Input for creating a payment intent
+ */
+export interface CreatePaymentIntentInput {
+	workshopId: string;
+	amount: number;
+	currency?: string;
+	customerId?: string;
+}
+
+/**
+ * Result of creating a payment intent
+ */
+export interface CreatePaymentIntentResult {
+	clientSecret: string;
+	paymentIntentId: string;
+}
+
+/**
+ * Input for completing a registration
+ */
+export interface CompleteRegistrationInput {
+	workshopId: string;
+	paymentIntentId: string;
+}
+
+/**
+ * Result of cancelling a registration
+ */
+export interface CancelRegistrationResult {
+	registration: Registration;
+	refundProcessed: boolean;
+}

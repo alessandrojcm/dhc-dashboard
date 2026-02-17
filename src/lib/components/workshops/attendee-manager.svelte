@@ -8,6 +8,10 @@ import * as Popover from "$lib/components/ui/popover";
 import { toast } from "svelte-sonner";
 import { Check, DollarSign, User, CheckCheck } from "lucide-svelte";
 import { checkRefundEligibility } from "$lib/utils/refund-eligibility";
+import {
+	updateAttendance,
+	processRefund,
+} from "$lib/functions/workshops.remote";
 
 interface Props {
 	attendees: any[]; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -58,24 +62,15 @@ function toggleAttendee(id: string) {
 
 const markAttendedMutation = createMutation(() => ({
 	mutationFn: async (registrationIds: string[]) => {
-		const response = await fetch(`/api/workshops/${workshopId}/attendance`, {
-			method: "PUT",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({
-				attendance_updates: registrationIds.map((id) => ({
-					registration_id: id,
-					attendance_status: "attended",
-					notes: "",
-				})),
-			}),
+		if (!workshopId) throw new Error("Workshop ID is required");
+		return updateAttendance({
+			workshopId,
+			attendance_updates: registrationIds.map((id) => ({
+				registration_id: id,
+				attendance_status: "attended" as const,
+				notes: "",
+			})),
 		});
-
-		if (!response.ok) {
-			const error = (await response.json()) as { error?: string };
-			throw new Error(error.error || "Failed to mark attendance");
-		}
-
-		return response.json();
 	},
 	onSuccess: () => {
 		selectedAttendees = [];
@@ -87,23 +82,12 @@ const markAttendedMutation = createMutation(() => ({
 	},
 }));
 
-const processRefundMutation = createMutation(() => ({
+const refundMutation = createMutation(() => ({
 	mutationFn: async (registrationId: string) => {
-		const response = await fetch(`/api/workshops/${workshopId}/refunds`, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({
-				registration_id: registrationId,
-				reason: "Requested by user",
-			}),
+		return processRefund({
+			registration_id: registrationId,
+			reason: "Requested by user",
 		});
-
-		if (!response.ok) {
-			const error = (await response.json()) as { error?: string };
-			throw new Error(error.error || "Failed to process refund");
-		}
-
-		return response.json();
 	},
 	onSuccess: () => {
 		attendeeIdForRefund = "";
@@ -163,7 +147,7 @@ function getRefundEligibility(attendee: any) {
 }
 
 function confirmRefund() {
-	processRefundMutation.mutate(attendeeIdForRefund);
+	refundMutation.mutate(attendeeIdForRefund);
 }
 </script>
 
@@ -270,7 +254,7 @@ function confirmRefund() {
 									refundPopoverOpen = true;
 									attendeeIdForRefund = attendee.id;
 								}}
-                                    disabled={processRefundMutation.isPending}
+                                    disabled={refundMutation.isPending}
                                     class="gap-1"
                             >
                                 <DollarSign class="w-4 h-4"/>
@@ -316,9 +300,9 @@ function confirmRefund() {
                                     <Button
                                             size="sm"
                                             onclick={confirmRefund}
-                                            disabled={processRefundMutation.isPending}
+                                            disabled={refundMutation.isPending}
                                     >
-                                        {#if processRefundMutation.isPending}
+                                        {#if refundMutation.isPending}
                                             Processing...
                                         {:else}
                                             Confirm

@@ -1,150 +1,126 @@
 <script lang="ts">
-import { page } from "$app/state";
-import { Button } from "$lib/components/ui/button";
-import * as Card from "$lib/components/ui/card";
-import dayjs from "dayjs";
-import DatePicker from "$lib/components/ui/date-picker.svelte";
-import * as Field from "$lib/components/ui/field";
-import { Input } from "$lib/components/ui/input";
-import PhoneInput from "$lib/components/ui/phone-input.svelte";
-import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
-import * as RadioGroup from "$lib/components/ui/radio-group/index.js";
-import * as Select from "$lib/components/ui/select";
-import { Textarea } from "$lib/components/ui/textarea";
-import { fromDate, getLocalTimeZone } from "@internationalized/date";
-import { createMutation } from "@tanstack/svelte-query";
-import { ExternalLink } from "lucide-svelte";
-import { toast } from "svelte-sonner";
-import { Badge } from "$lib/components/ui/badge";
-import PauseSubscriptionModal from "$lib/components/ui/pause-subscription-modal.svelte";
-import type Stripe from "stripe";
-import * as ButtonGroup from "$lib/components/ui/button-group";
-import { updateProfile } from "./data.remote";
-import { Label } from "$lib/components/ui/label";
-import { initForm } from "$lib/utils/init-form.svelte";
-import { whyThisField } from "$lib/components/ui/why-this-field.svelte";
-import FormDebug from "$lib/components/form-debug.svelte";
-import { memberProfileClientSchema } from "$lib/schemas/membersSignup";
+	import { page } from "$app/state";
+	import { Button } from "$lib/components/ui/button";
+	import * as Card from "$lib/components/ui/card";
+	import dayjs from "dayjs";
+	import DatePicker from "$lib/components/ui/date-picker.svelte";
+	import * as Field from "$lib/components/ui/field";
+	import { Input } from "$lib/components/ui/input";
+	import PhoneInput from "$lib/components/ui/phone-input.svelte";
+	import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
+	import * as RadioGroup from "$lib/components/ui/radio-group/index.js";
+	import * as Select from "$lib/components/ui/select";
+	import { Textarea } from "$lib/components/ui/textarea";
+	import { fromDate, getLocalTimeZone } from "@internationalized/date";
+	import { createMutation } from "@tanstack/svelte-query";
+	import { ExternalLink } from "lucide-svelte";
+	import { toast } from "svelte-sonner";
+	import { Badge } from "$lib/components/ui/badge";
+	import PauseSubscriptionModal from "$lib/components/ui/pause-subscription-modal.svelte";
+	import * as ButtonGroup from "$lib/components/ui/button-group";
+	import { updateProfile } from "./data.remote";
+	import { Label } from "$lib/components/ui/label";
+	import { initForm } from "$lib/utils/init-form.svelte";
+	import { whyThisField } from "$lib/components/ui/why-this-field.svelte";
+	import FormDebug from "$lib/components/form-debug.svelte";
+	import { memberProfileClientSchema } from "$lib/schemas/membersSignup";
+	import {
+		pauseSubscription,
+		resumeSubscription,
+	} from "./subscription.remote";
 
-const { data } = $props();
+	const { data } = $props();
 
-initForm(updateProfile, () => ({
-	firstName: data.profileData.firstName ?? "",
-	lastName: data.profileData.lastName ?? "",
-	email: data.profileData.email ?? "",
-	phoneNumber: data.profileData.phoneNumber ?? "",
-	dateOfBirth: data.profileData.dateOfBirth ?? "",
-	pronouns: data.profileData.pronouns ?? "",
-	gender: data.profileData.gender ?? "",
-	medicalConditions: data.profileData.medicalConditions ?? "",
-	nextOfKin: data.profileData.nextOfKin ?? "",
-	nextOfKinNumber: data.profileData.nextOfKinNumber ?? "",
-	weapon: data.profileData.weapon ?? [],
-	insuranceFormSubmitted: data.profileData.insuranceFormSubmitted ?? false,
-	socialMediaConsent: data.profileData.socialMediaConsent,
-}));
+	initForm(updateProfile, () => ({
+		firstName: data.profileData.firstName ?? "",
+		lastName: data.profileData.lastName ?? "",
+		email: data.profileData.email ?? "",
+		phoneNumber: data.profileData.phoneNumber ?? "",
+		dateOfBirth: data.profileData.dateOfBirth ?? "",
+		pronouns: data.profileData.pronouns ?? "",
+		gender: data.profileData.gender ?? "",
+		medicalConditions: data.profileData.medicalConditions ?? "",
+		nextOfKin: data.profileData.nextOfKin ?? "",
+		nextOfKinNumber: data.profileData.nextOfKinNumber ?? "",
+		weapon: data.profileData.weapon ?? [],
+		insuranceFormSubmitted:
+			data.profileData.insuranceFormSubmitted ?? false,
+		socialMediaConsent: data.profileData.socialMediaConsent,
+	}));
 
-// Handle success/error from form submission
-$effect(() => {
-	const result = updateProfile.result;
-	if (result?.success) {
-		toast.success(result.success, { position: "top-right" });
-	} else if (result?.error) {
-		toast.error(result.error, { position: "top-right" });
-	}
-});
-
-// Reactive form field values
-const dateOfBirth = $derived(updateProfile.fields.dateOfBirth.value() ?? "");
-const gender = $derived(updateProfile.fields.gender.value() ?? "");
-const weapon = $derived(updateProfile.fields.weapon.value() ?? []);
-const socialMediaConsent = $derived(
-	updateProfile.fields.socialMediaConsent.value(),
-);
-
-// Date picker value conversion
-const dobValue = $derived.by(() => {
-	if (!dateOfBirth || !dayjs(dateOfBirth).isValid()) {
-		return undefined;
-	}
-	return fromDate(dayjs(dateOfBirth).toDate(), getLocalTimeZone());
-});
-
-let pausedUntil: dayjs.Dayjs | null = $derived(
-	data.member.subscription_paused_until
-		? dayjs(data.member.subscription_paused_until)
-		: null,
-);
-
-const openBillingPortal = createMutation(() => ({
-	mutationFn: () =>
-		fetch(`/dashboard/members/${page.params.memberId}`, {
-			method: "POST",
-		}).then((res) => res.json()) as Promise<{ portalURL: string }>,
-	onSuccess: (portalData: { portalURL: string }) => {
-		window.open(portalData.portalURL, "_blank");
-	},
-}));
-
-let showPauseModal = $state(false);
-
-const pauseMutation = createMutation(() => ({
-	mutationFn: async (pauseData: { pauseUntil: string }) => {
-		const response = await fetch(
-			`/api/members/${page.params.memberId}/subscription/pause`,
-			{
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify(pauseData),
-			},
-		);
-
-		const responseData: {
-			subscription: Stripe.Response<Stripe.Subscription>;
-			error?: string;
-		} = await response.json();
-
-		if (!response.ok) {
-			throw new Error(
-				responseData?.error || `HTTP error! status: ${response.status}`,
-			);
+	// Handle success/error from form submission
+	$effect(() => {
+		const result = updateProfile.result;
+		if (result?.success) {
+			toast.success(result.success, { position: "top-right" });
+		} else if(result?.error){
+			toast.error(result.error, { position: "top-right" });
 		}
-		return responseData as {
-			subscription: Stripe.Response<Stripe.Subscription>;
-		};
-	},
-	onSuccess: ({
-		subscription,
-	}: {
-		subscription: Stripe.Response<Stripe.Subscription>;
-	}) => {
-		showPauseModal = false;
-		pausedUntil = dayjs.unix(subscription.pause_collection!.resumes_at!);
-	},
-	onError: (error) => {
-		toast.error(`Failed to pause subscription: ${error.message}`);
-	},
-}));
+	});
 
-const resumeMutation = createMutation(() => ({
-	mutationFn: () =>
-		fetch(`/api/members/${page.params.memberId}/subscription/pause`, {
-			method: "DELETE",
-		})
-			.then((r) => {
-				if (!r.ok) {
-					throw new Error(`HTTP error! status: ${r.status}`);
-				}
-				return r;
-			})
-			.then((r) => r.json()),
-	onSuccess: () => {
-		pausedUntil = null;
-	},
-	onError: (error) => {
-		toast.error(`Failed to resume subscription: ${error.message}`);
-	},
-}));
+	// Reactive form field values
+	const dateOfBirth = $derived(
+		updateProfile.fields.dateOfBirth.value() ?? "",
+	);
+	const gender = $derived(updateProfile.fields.gender.value() ?? "");
+	const weapon = $derived(updateProfile.fields.weapon.value() ?? []);
+	const socialMediaConsent = $derived(
+		updateProfile.fields.socialMediaConsent.value(),
+	);
+
+	// Date picker value conversion
+	const dobValue = $derived.by(() => {
+		if (!dateOfBirth || !dayjs(dateOfBirth).isValid()) {
+			return undefined;
+		}
+		return fromDate(dayjs(dateOfBirth).toDate(), getLocalTimeZone());
+	});
+
+	let pausedUntil: dayjs.Dayjs | null = $derived(
+		data.member.subscription_paused_until
+			? dayjs(data.member.subscription_paused_until)
+			: null,
+	);
+
+	const openBillingPortal = createMutation(() => ({
+		mutationFn: () =>
+			fetch(`/dashboard/members/${page.params.memberId}`, {
+				method: "POST",
+			}).then((res) => res.json()) as Promise<{ portalURL: string }>,
+		onSuccess: (portalData: { portalURL: string }) => {
+			window.open(portalData.portalURL, "_blank");
+		},
+	}));
+
+	let showPauseModal = $state(false);
+
+	const pauseMutation = createMutation(() => ({
+		mutationFn: async (pauseData: { pauseUntil: string }) => {
+			return pauseSubscription({
+				memberId: page.params.memberId!,
+				pauseUntil: pauseData.pauseUntil,
+			});
+		},
+		onSuccess: ({ subscription }) => {
+			showPauseModal = false;
+			pausedUntil = dayjs.unix(
+				subscription.pause_collection!.resumes_at!,
+			);
+		},
+		onError: (error) => {
+			toast.error(`Failed to pause subscription: ${error.message}`);
+		},
+	}));
+
+	const resumeMutation = createMutation(() => ({
+		mutationFn: () => resumeSubscription(page.params.memberId!),
+		onSuccess: () => {
+			pausedUntil = null;
+		},
+		onError: (error) => {
+			toast.error(`Failed to resume subscription: ${error.message}`);
+		},
+	}));
 </script>
 
 <Card.Root class="w-full max-w-4xl mx-auto">

@@ -14,7 +14,6 @@ import { dev } from "$app/environment";
 
 const DASHBOARD_MIGRATION_CODE =
 	env.PUBLIC_DASHBOARD_MIGRATION_CODE ?? "DHCDASHBOARD";
-
 /**
  * Validates an invitation by checking email and date of birth
  */
@@ -54,18 +53,29 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 	const event = getRequestEvent();
 	const invitationId = event.params.invitationId;
 
+	console.log(
+		"[processPayment] Starting payment processing for invitation:",
+		invitationId,
+	);
+	console.log("[processPayment] Received data:", {
+		nextOfKin: data.nextOfKin,
+		nextOfKinNumber: data.nextOfKinNumber,
+		stripeConfirmationToken: data.stripeConfirmationToken
+			? `${data.stripeConfirmationToken.substring(0, 10)}...`
+			: "MISSING",
+		couponCode: data.couponCode || "none",
+	});
+
 	if (!invitationId) {
 		throw error(400, "Invitation ID is required");
 	}
 
 	const kysely = getKyselyClient(event.platform?.env.HYPERDRIVE);
-	const confirmationToken: Stripe.ConfirmationToken = JSON.parse(
-		data.stripeConfirmationToken,
-	);
 	const invitationService = createInvitationService(event.platform!);
 
 	try {
 		return await kysely.transaction().execute(async (trx) => {
+			console.log("[processPayment] Processing invitation acceptance...");
 			// Process invitation acceptance (handles status update, registration, waitlist)
 			const invitationData =
 				await invitationService.processInvitationAcceptance(
@@ -74,6 +84,10 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 					data.nextOfKin,
 					data.nextOfKinNumber,
 				);
+			console.log(
+				"[processPayment] Invitation accepted for user:",
+				invitationData.user_id,
+			);
 
 			// Get customer ID
 			const customerId = await trx
@@ -83,21 +97,42 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 				.executeTakeFirst();
 
 			if (!customerId) {
+				console.error(
+					"[processPayment] No customer ID found for user:",
+					invitationData.user_id,
+				);
 				throw error(404, "No customer ID found for this user.");
 			}
+			console.log(
+				"[processPayment] Customer ID found:",
+				customerId.customer_id,
+			);
 
+			console.log("[processPayment] Creating Stripe setup intent...");
 			const intent = await stripeClient.setupIntents.create({
 				confirm: true,
 				customer: customerId.customer_id!,
-				confirmation_token: confirmationToken.id,
+				confirmation_token: data.stripeConfirmationToken,
 				payment_method_types: ["sepa_debit"],
 			});
+			console.log("[processPayment] Setup intent created:", {
+				id: intent.id,
+				status: intent.status,
+				payment_method: intent.payment_method ? "present" : "null",
+			});
 
+			// Validate setup intent - SEPA can be "succeeded" or "processing" (async)
+			// invariant throws when condition is TRUE (non-standard behavior)
+			const isValidStatus =
+				intent.status === "succeeded" || intent.status === "processing";
 			invariant(
-				intent.status === "requires_payment_method",
-				"payment_intent_requires_payment_method",
+				!isValidStatus,
+				`Setup intent failed with status: ${intent.status}`,
 			);
-			invariant(intent.payment_method == null, "payment_method_not_found");
+			invariant(
+				!intent.payment_method,
+				"Payment method not attached to setup intent",
+			);
 
 			const paymentMethodId =
 				typeof intent.payment_method === "string"
@@ -116,7 +151,7 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 
 			let isMigration = false;
 			let promotionCodeId: string | undefined;
-			if (data.couponCode) {
+			if (data.couponCode && data.couponCode.trim().length > 0) {
 				const promotionCodes = await stripeClient.promotionCodes.list({
 					active: true,
 					code: data.couponCode,
@@ -144,9 +179,6 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 							day_of_month: 1,
 						},
 						payment_behavior: "default_incomplete",
-						payment_settings: {
-							payment_method_types: ["sepa_debit"],
-						},
 						expand: ["latest_invoice.payments"],
 						collection_method: "charge_automatically",
 						default_payment_method: paymentMethodId,
@@ -191,9 +223,6 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 						customer: customerId.customer_id!,
 						items: [{ price: annual }],
 						payment_behavior: "default_incomplete",
-						payment_settings: {
-							payment_method_types: ["sepa_debit"],
-						},
 						billing_cycle_anchor_config: {
 							month: 1,
 							day_of_month: 7,
@@ -240,15 +269,30 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 			]);
 
 			// Success! Delete the access token cookie
+			console.log("[processPayment] Payment processing completed successfully");
 			event.cookies.delete("access-token", { path: "/" });
 			return { paymentFailed: false };
 		});
 	} catch (err) {
+		console.error("[processPayment] Payment processing error:", err);
+		console.error("[processPayment] Error details:", {
+			name: err instanceof Error ? err.name : "unknown",
+			message: err instanceof Error ? err.message : String(err),
+			code:
+				err instanceof Error && "code" in err
+					? (err as { code: string }).code
+					: "none",
+			type:
+				err instanceof Error && "type" in err
+					? (err as { type: string }).type
+					: "none",
+		});
 		Sentry.captureException(err);
 		let errorMessage = "An unexpected error occurred";
 
 		if (err instanceof Error && "code" in err) {
 			const stripeError = err as { code: string };
+			console.error("[processPayment] Stripe error code:", stripeError.code);
 			switch (stripeError.code) {
 				case "charge_exceeds_source_limit":
 				case "charge_exceeds_transaction_limit":
@@ -269,11 +313,12 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 					errorMessage = "The payment attempt failed";
 					break;
 				default:
-					errorMessage = "An error occurred with the payment processor";
+					errorMessage = `An error occurred with the payment processor (${stripeError.code})`;
 					break;
 			}
 		}
 
+		console.error("[processPayment] Returning error to client:", errorMessage);
 		return { paymentFailed: true, error: errorMessage };
 	}
 });

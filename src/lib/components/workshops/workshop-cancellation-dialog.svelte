@@ -7,6 +7,8 @@ import {
 } from "$lib/utils/refund-eligibility";
 import type { Database } from "$database";
 import { toast } from "svelte-sonner";
+import { cancelRegistration } from "../../../routes/dashboard/my-workshops/registration.remote";
+import { processRefund } from "$lib/functions/workshops.remote";
 
 type ClubActivity = Database["public"]["Tables"]["club_activities"]["Row"];
 
@@ -39,16 +41,7 @@ const refundEligibility: RefundEligibilityResult = $derived(
 
 const cancelRegistrationMutation = createMutation(() => ({
 	mutationFn: async () => {
-		const response = await fetch(`/api/workshops/${workshop.id}/register`, {
-			method: "DELETE",
-		});
-
-		if (!response.ok) {
-			const error = (await response.json()) as { error?: string };
-			throw new Error(error.error || "Failed to cancel registration");
-		}
-
-		return response.json();
+		return cancelRegistration(workshop.id);
 	},
 	onSuccess: () => {
 		toast.success("Registration cancelled successfully");
@@ -56,29 +49,18 @@ const cancelRegistrationMutation = createMutation(() => ({
 		onOpenChange(false);
 	},
 	onError: (error) => {
-		toast.error(error.message || "Failed to cancel registration");
+		toast.error(
+			error instanceof Error ? error.message : "Failed to cancel registration",
+		);
 	},
 }));
 
 const requestRefundMutation = createMutation(() => ({
 	mutationFn: async () => {
-		const response = await fetch(`/api/workshops/${workshop.id}/refunds`, {
-			method: "POST",
-			headers: {
-				"Content-Type": "application/json",
-			},
-			body: JSON.stringify({
-				registration_id: registrationId,
-				reason: "Requested by attendee",
-			}),
+		return processRefund({
+			registration_id: registrationId,
+			reason: "Requested by attendee",
 		});
-
-		if (!response.ok) {
-			const error = (await response.json()) as { error?: string };
-			throw new Error(error.error || "Failed to process refund");
-		}
-
-		return response.json();
 	},
 	onSuccess: () => {
 		toast.success("Refund requested successfully");
