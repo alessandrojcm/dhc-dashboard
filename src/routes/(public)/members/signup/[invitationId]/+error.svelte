@@ -1,10 +1,11 @@
 <script lang="ts">
-	import * as Alert from '$lib/components/ui/alert';
-	import { page } from '$app/state';
-	import { Button } from '$lib/components/ui/button';
-	import * as Sentry from '@sentry/sveltekit';
+import * as Sentry from "@sentry/sveltekit";
+import { page } from "$app/state";
 
-	Sentry.captureMessage(`Signup error page loaded: ${page.error?.message}`, 'error');
+Sentry.captureMessage(
+	`Signup error page loaded: ${page.error?.message}`,
+	"error",
+);
 </script>
 
 <svelte:head>

@@ -57,7 +57,19 @@
 				.eq('is_active', true)
 				.abortSignal(signal)
 				.throwOnError()
-				.then((r) => r.data ?? [])
+				.then((r) => r.data ?? []) as Promise<
+				{
+					gender:
+						| 'man (cis)'
+						| 'woman (cis)'
+						| 'non-binary'
+						| 'man (trans)'
+						| 'woman (trans)'
+						| 'other'
+						| null;
+					count: number;
+				}[]
+			>
 	}));
 	const ageDistributionQuery = createQuery(() => ({
 		queryKey: ['members', 'ageDistribution'],
@@ -112,7 +124,10 @@
 
 	const genderDistributionData = $derived.by(() => {
 		return genderDistribution.data
-			? genderDistribution.data.map((row) => ({ gender: row.gender, value: row.count }))
+			? genderDistribution.data.map((row: { gender: string | null; count: number }) => ({
+					gender: row.gender,
+					value: row.count
+				}))
 			: [];
 	});
 
@@ -163,7 +178,7 @@
 	<Resizable.Pane class="min-h-[400px] p-4 border rounded">
 		<h3 class="text-lg font-medium mb-4">Gender Demographics</h3>
 		{#if GenderBarChart && genderDistributionData && genderDistributionData.length > 0}
-<!--			<GenderBarChart {genderDistributionData} />-->
+			<!--			<GenderBarChart {genderDistributionData} />-->
 		{/if}
 	</Resizable.Pane>
 
@@ -174,13 +189,13 @@
 	<Resizable.Pane class="min-h-[400px] p-4 border rounded">
 		<h3 class="text-lg font-medium mb-4">Preferred Weapons</h3>
 		{#if WeaponPieChart && weaponPreferencesDistributionData}
-<!--			<WeaponPieChart weaponDistributionData={weaponPreferencesDistributionData} />-->
+			<!--			<WeaponPieChart weaponDistributionData={weaponPreferencesDistributionData} />-->
 		{/if}
 	</Resizable.Pane>
 	<Resizable.Handle />
 	<Resizable.Pane class="min-h-[400px] p-4 border rounded">
 		{#if AgeScatterChart && ageDistributionData}
-<!--			<AgeScatterChart ageDistribution={ageDistributionData} />-->
+			<!--			<AgeScatterChart ageDistribution={ageDistributionData} />-->
 		{/if}
 	</Resizable.Pane>
 </Resizable.PaneGroup>

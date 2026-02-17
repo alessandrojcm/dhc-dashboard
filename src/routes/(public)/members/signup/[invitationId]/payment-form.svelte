@@ -19,6 +19,7 @@
 	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import * as Alert from '$lib/components/ui/alert';
 	import PhoneInput from '$lib/components/ui/phone-input.svelte';
 	import {
@@ -80,8 +81,11 @@
 		scrollToError: true,
 		autoFocusOnError: true,
 		invalidateAll: false,
-		onSubmit: async function ({ cancel, customRequest }) {
-			const { valid } = await form.validateForm({ focusOnError: true, update: true });
+		onSubmit: async ({ cancel, customRequest }) => {
+			const { valid } = await form.validateForm({
+				focusOnError: true,
+				update: true
+			});
 			if (!valid) {
 				scrollTo({ top: 0, behavior: 'smooth' });
 				cancel();
@@ -171,13 +175,15 @@
 				body: JSON.stringify({ code })
 			}).then(async (res) => {
 				if (!res.ok) {
-					const { message } = (await res.json()) as unknown as { message: string };
+					const { message } = (await res.json()) as unknown as {
+						message: string;
+					};
 
 					throw new Error(message, {
 						cause: message
 					});
 				}
-				return [(await res.json()) as PlanPricing, code];
+				return [(await res.json()) as PlanPricing, code] as [PlanPricing, string];
 			}),
 		onSuccess: (res: [PlanPricing, string]) => {
 			const [planPricing, code] = res;
@@ -211,7 +217,7 @@
 			Your membership has been successfully processed. Welcome to Dublin Hema Club! You will receive
 			a Discord invite by email shortly.
 		</Alert.Description>
-		<Button onclick={() => goto('/dashboard')} class="mt-2 w-fit">Go to Dashboard</Button>
+		<Button onclick={() => goto(resolve('/dashboard'))} class="mt-2 w-fit">Go to Dashboard</Button>
 	</Alert.Root>
 {/snippet}
 {#if showThanks}
@@ -260,7 +266,7 @@
 			<Form.Field {form} name="nextOfKin">
 				<Form.Control>
 					{#snippet children({ props })}
-						<Form.Label required>Next of Kin</Form.Label>
+						<Form.Label>Next of Kin</Form.Label>
 						<Input
 							{...props}
 							bind:value={$formData.nextOfKin}
@@ -273,7 +279,7 @@
 			<Form.Field {form} name="nextOfKinNumber">
 				<Form.Control>
 					{#snippet children({ props })}
-						<Form.Label required>Next of Kin Phone Number</Form.Label>
+						<Form.Label>Next of Kin Phone Number</Form.Label>
 						<PhoneInput
 							placeholder="Enter your next of kin's phone number"
 							{...props}

@@ -1,13 +1,38 @@
 <script lang="ts">
+	/* eslint-disable @typescript-eslint/no-explicit-any */
+	import type { Database } from '$database';
+	import type { SupabaseClient } from '@supabase/supabase-js';
 	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
-	import { FolderOpen, Plus, Edit, Trash2, Package } from 'lucide-svelte';
+	import { FolderOpen, Plus, Edit, Package, AlertTriangle } from 'lucide-svelte';
+	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
+	import { createQuery } from '@tanstack/svelte-query';
 
 	let { data } = $props();
+	const supabase: SupabaseClient<Database> = data.supabase;
+
+	// Fetch containers with TanStack Query
+	const containersQuery = createQuery(() => ({
+		queryKey: ['inventory-containers'],
+		queryFn: async ({ signal }) => {
+			const { data: containers, error } = await supabase
+				.from('containers')
+				.select(
+					'id, name, description, parent_container_id, parent_container:containers!containers_parent_container_id_fkey(id, name), item_count:equipment_items(count)'
+				)
+				.order('name')
+				.abortSignal(signal);
+
+			if (error) throw error;
+
+			return containers || [];
+		}
+	}));
 
 	// Build hierarchy tree
 	const buildHierarchy = (containers: any[]) => {
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const containerMap = new Map();
 		const rootContainers: any[] = [];
 
@@ -30,8 +55,6 @@
 
 		return rootContainers;
 	};
-
-	const hierarchy = buildHierarchy(data.containers);
 
 	const renderContainer = (container: any, level = 0) => {
 		const itemCount = container.item_count?.[0]?.count || 0;
@@ -56,7 +79,8 @@
 		return result;
 	};
 
-	const flatContainers = flattenHierarchy(hierarchy);
+	const hierarchy = $derived(containersQuery.data ? buildHierarchy(containersQuery.data) : []);
+	const flatContainers = $derived(flattenHierarchy(hierarchy));
 </script>
 
 <div class="p-6">
@@ -73,7 +97,23 @@
 		{/if}
 	</div>
 
-	{#if flatContainers.length === 0 && data.canEdit}
+	{#if containersQuery.isPending}
+		<Card>
+			<CardContent class="flex flex-col items-center justify-center py-12">
+				<LoaderCircle />
+				<p class="text-muted-foreground mt-4">Loading containers...</p>
+			</CardContent>
+		</Card>
+	{:else if containersQuery.isError}
+		<Card>
+			<CardContent class="flex flex-col items-center justify-center py-12">
+				<AlertTriangle class="h-12 w-12 text-destructive mb-4" />
+				<h3 class="text-lg font-semibold mb-2">Error loading containers</h3>
+				<p class="text-muted-foreground mb-4">{containersQuery.error.message}</p>
+				<Button onclick={() => containersQuery.refetch()} variant="outline">Retry</Button>
+			</CardContent>
+		</Card>
+	{:else if flatContainers.length === 0 && data.canEdit}
 		<Card>
 			<CardContent class="flex flex-col items-center justify-center py-12">
 				<FolderOpen class="h-12 w-12 text-muted-foreground mb-4" />
@@ -94,7 +134,7 @@
 			</CardHeader>
 			<CardContent>
 				<div class="space-y-2">
-					{#each flatContainers as { container, level, itemCount, hasChildren }}
+					{#each flatContainers as { container, level, itemCount, hasChildren } (container.id)}
 						<div
 							class="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted/50 transition-colors"
 						>

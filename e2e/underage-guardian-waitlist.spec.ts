@@ -1,6 +1,7 @@
 // playwright.test.ts
-import { expect, test } from '@playwright/test';
+
 import { faker } from '@faker-js/faker';
+import { expect, test } from '@playwright/test';
 import dayjs from 'dayjs';
 import { getSupabaseServiceClient } from './setupFunctions';
 
@@ -46,7 +47,11 @@ test('underage user (16-17) should see guardian fields', async ({ page }) => {
 	// Fill out the date of birth for an underage user
 	await page.getByLabel(/date of birth/i).click();
 	await page.getByLabel('Select year').click();
-	await page.getByRole('option', { name: underageTestData.dateOfBirth.year().toString() }).click();
+	await page
+		.getByRole('option', {
+			name: underageTestData.dateOfBirth.year().toString()
+		})
+		.click();
 	await page.getByLabel('Select month').click();
 	await page.getByRole('option', { name: underageTestData.dateOfBirth.format('MMMM') }).dblclick();
 	await page.getByLabel(underageTestData.dateOfBirth.format('dddd, MMMM D,')).click();
@@ -89,7 +94,9 @@ test('underage user (16-17) should be required to fill guardian fields', async (
 		.filter({ hasText: /phone number/i })
 		.locator('input[type="tel"]');
 
-	await phoneInputField.pressSequentially(underageTestData.phoneNumber, { delay: 50 });
+	await phoneInputField.pressSequentially(underageTestData.phoneNumber, {
+		delay: 50
+	});
 	await phoneInputField.blur();
 	await page.getByPlaceholder('Enter your pronouns').fill('he/him');
 	await page.getByLabel(/gender/i).click();
@@ -98,7 +105,11 @@ test('underage user (16-17) should be required to fill guardian fields', async (
 	// Fill out the date of birth for an underage user
 	await page.getByLabel(/date of birth/i).click();
 	await page.getByLabel('Select year').click();
-	await page.getByRole('option', { name: underageTestData.dateOfBirth.year().toString() }).click();
+	await page
+		.getByRole('option', {
+			name: underageTestData.dateOfBirth.year().toString()
+		})
+		.click();
 	await page.getByLabel('Select month').click();
 	await page.getByRole('option', { name: underageTestData.dateOfBirth.format('MMMM') }).dblclick();
 	await page.getByLabel(underageTestData.dateOfBirth.format('dddd, MMMM D,')).click();
@@ -132,7 +143,9 @@ test('underage user (16-17) should be able to submit with guardian information',
 		.filter({ hasText: /phone number/i })
 		.locator('input[type="tel"]');
 
-	await phoneInputField.pressSequentially(underageTestData.phoneNumber, { delay: 50 });
+	await phoneInputField.pressSequentially(underageTestData.phoneNumber, {
+		delay: 50
+	});
 	await phoneInputField.blur();
 	await page.getByPlaceholder('Enter your pronouns').fill('he/him');
 	await page.getByLabel(/gender/i).click();
@@ -141,7 +154,11 @@ test('underage user (16-17) should be able to submit with guardian information',
 	// Fill out the date of birth for an underage user
 	await page.getByLabel(/date of birth/i).click();
 	await page.getByLabel('Select year').click();
-	await page.getByRole('option', { name: underageTestData.dateOfBirth.year().toString() }).click();
+	await page
+		.getByRole('option', {
+			name: underageTestData.dateOfBirth.year().toString()
+		})
+		.click();
 	await page.getByLabel('Select month').click();
 	await page.getByRole('option', { name: underageTestData.dateOfBirth.format('MMMM') }).dblclick();
 	await page.getByLabel(underageTestData.dateOfBirth.format('dddd, MMMM D,')).click();
@@ -185,7 +202,9 @@ test('adult user (18+) should be able to submit without guardian information', a
 		.filter({ hasText: /phone number/i })
 		.locator('input[type="tel"]');
 
-	await phoneInputField.pressSequentially(adultTestData.phoneNumber, { delay: 50 });
+	await phoneInputField.pressSequentially(adultTestData.phoneNumber, {
+		delay: 50
+	});
 	await phoneInputField.blur();
 	await page.getByPlaceholder('Enter your pronouns').fill('he/him');
 	await page.getByLabel(/gender/i).click();

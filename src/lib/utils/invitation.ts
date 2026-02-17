@@ -1,5 +1,5 @@
-import { PUBLIC_SITE_URL } from '$env/static/public';
 import dayjs from 'dayjs';
+import { PUBLIC_SITE_URL } from '$env/static/public';
 
 export function getInvitationLink(
 	invitationId: string,

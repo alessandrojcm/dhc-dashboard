@@ -1,15 +1,14 @@
 import { faker } from '@faker-js/faker/locale/en_IE';
 import { createClient } from '@supabase/supabase-js';
 import 'dotenv/config';
-import stripe from 'stripe';
-
-import type { Database } from '../src/database.types';
-import { ANNUAL_FEE_LOOKUP, MEMBERSHIP_FEE_LOOKUP_NAME } from '../src/lib/server/constants';
 import { createSeedClient } from '@snaplet/seed';
 import dayjs from 'dayjs';
+import stripe from 'stripe';
+import type { Database } from '../src/database.types';
+import { ANNUAL_FEE_LOOKUP, MEMBERSHIP_FEE_LOOKUP_NAME } from '../src/lib/server/constants';
 
 export const stripeClient = new stripe(process.env.STRIPE_SECRET_KEY || '', {
-	apiVersion: '2025-05-28.basil'
+	apiVersion: '2025-10-29.clover'
 });
 
 export function getSupabaseServiceClient() {
@@ -386,7 +385,7 @@ export async function setupInvitedUser(
 		email: params.email || faker.internet.email().toLowerCase()
 	};
 
-	const { addSupabaseId, addInvitation, invitationStatus, email } = overrides;
+	const { email } = overrides;
 	const supabaseServiceClient = getSupabaseServiceClient();
 
 	// Create test user data
@@ -436,7 +435,9 @@ export async function setupInvitedUser(
 
 	// Calculate expiration date (24 hours from now)
 	const expiresAt = new Date();
-	expiresAt.setHours(expiresAt.getHours() + 24);
+	if (overrides.invitationStatus !== 'expired') {
+		expiresAt.setHours(expiresAt.getHours() + 24);
+	}
 
 	// Create invitation using the stored procedure
 	// This will also create the user profile
@@ -487,7 +488,7 @@ export async function setupInvitedUser(
 	}
 
 	// Create new subscriptions using Promise.all like in the Deno function
-	const [monthlySubscription, annualSubscription] = await Promise.all([
+	await Promise.all([
 		stripeClient.subscriptions.create({
 			customer: customer.id,
 			items: [{ price: monthlyPrices.data[0].id }],
@@ -516,16 +517,6 @@ export async function setupInvitedUser(
 			collection_method: 'charge_automatically'
 		})
 	]);
-
-	// Extract payment intents exactly as in the Deno function
-	const monthlyInvoice = monthlySubscription.latest_invoice as stripe.Invoice;
-	const annualInvoice = annualSubscription.latest_invoice as stripe.Invoice;
-	const monthlyPayment = monthlyInvoice.payments?.data?.[0]?.payment!;
-	const annualPayment = annualInvoice.payments?.data?.[0]?.payment!;
-
-	// Extract payment intent IDs
-	const monthlyPaymentIntent = monthlyPayment.payment_intent! as string;
-	const annualPaymentIntent = annualPayment.payment_intent! as string;
 
 	// Cleanup function
 	async function cleanUp() {

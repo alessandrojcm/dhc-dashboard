@@ -1,9 +1,9 @@
-import type { KyselyDatabase } from '$lib/types';
-import { type Session } from '@supabase/supabase-js';
+import type { Session } from '@supabase/supabase-js';
 import { jwtDecode } from 'jwt-decode';
-import { Kysely, sql, Transaction } from 'kysely';
+import { Kysely, sql, type Transaction } from 'kysely';
 import { PostgresJSDialect } from 'kysely-postgres-js';
 import postgres from 'postgres';
+import type { KyselyDatabase } from '$lib/types';
 
 interface RLSData {
 	/**

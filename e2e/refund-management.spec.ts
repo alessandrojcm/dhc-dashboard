@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 import { createMember, getSupabaseServiceClient } from './setupFunctions';
 import { loginAsUser } from './supabaseLogin';
 
@@ -18,7 +18,16 @@ test.describe('Refund Management', () => {
 		});
 	});
 
-	async function makeAuthenticatedRequest(page: any, url: string, options: any = {}) {
+	async function makeAuthenticatedRequest(
+		page: Page,
+		url: string,
+		options: {
+			method?: string;
+			data?: unknown;
+			headers?: Record<string, string>;
+			body?: string;
+		} = {}
+	) {
 		const response = await page.request.fetch(url, {
 			...options,
 			headers: {
@@ -98,7 +107,7 @@ test.describe('Refund Management', () => {
 			}
 		);
 
-		expect(refundResponse.ok).toBeTruthy();
+		expect(refundResponse.ok()).toBeTruthy();
 		const refundData = await refundResponse.json();
 
 		expect(refundData.success).toBe(true);
@@ -126,7 +135,7 @@ test.describe('Refund Management', () => {
 			}
 		);
 
-		expect(firstRefundResponse.ok).toBeTruthy();
+		expect(firstRefundResponse.ok()).toBeTruthy();
 
 		// Attempt second refund
 		const secondRefundResponse = await makeAuthenticatedRequest(
@@ -210,7 +219,7 @@ test.describe('Refund Management', () => {
 			}
 		);
 
-		expect(refundResponse.ok).toBeFalsy();
+		expect(refundResponse.ok()).toBeFalsy();
 		const errorData = await refundResponse.json();
 		expect(errorData.success).toBe(false);
 		expect(errorData.error).toContain('deadline');
@@ -242,7 +251,7 @@ test.describe('Refund Management', () => {
 			}
 		);
 
-		expect(refundsResponse.ok).toBeTruthy();
+		expect(refundsResponse.ok()).toBeTruthy();
 		const refundsData = await refundsResponse.json();
 
 		expect(refundsData.success).toBe(true);
@@ -269,7 +278,7 @@ test.describe('Refund Management', () => {
 			}
 		);
 
-		expect(invalidIdResponse.ok).toBeFalsy();
+		expect(invalidIdResponse.ok()).toBeFalsy();
 		const invalidIdData = await invalidIdResponse.json();
 		expect(invalidIdData.success).toBe(false);
 		expect(invalidIdData.issues).toBeDefined();
@@ -287,7 +296,7 @@ test.describe('Refund Management', () => {
 			}
 		);
 
-		expect(missingReasonResponse.ok).toBeFalsy();
+		expect(missingReasonResponse.ok()).toBeFalsy();
 		const missingReasonData = await missingReasonResponse.json();
 		expect(missingReasonData.success).toBe(false);
 		expect(missingReasonData.issues).toBeDefined();
@@ -311,7 +320,7 @@ test.describe('Refund Management', () => {
 			}
 		);
 
-		expect(refundResponse.ok).toBeFalsy();
+		expect(refundResponse.ok()).toBeFalsy();
 		const errorData = await refundResponse.json();
 		expect(errorData.success).toBe(false);
 		expect(errorData.error).toContain('not found');

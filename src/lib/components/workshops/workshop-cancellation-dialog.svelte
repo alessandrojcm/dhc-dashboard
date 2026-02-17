@@ -1,6 +1,5 @@
 <script lang="ts">
 	import * as AlertDialog from '$lib/components/ui/alert-dialog';
-	import { Button } from '$lib/components/ui/button';
 	import { createMutation } from '@tanstack/svelte-query';
 	import {
 		checkRefundEligibility,
@@ -39,7 +38,7 @@
 			});
 
 			if (!response.ok) {
-				const error = await response.json();
+				const error = (await response.json()) as { error?: string };
 				throw new Error(error.error || 'Failed to cancel registration');
 			}
 
@@ -69,7 +68,7 @@
 			});
 
 			if (!response.ok) {
-				const error = await response.json();
+				const error = (await response.json()) as { error?: string };
 				throw new Error(error.error || 'Failed to process refund');
 			}
 

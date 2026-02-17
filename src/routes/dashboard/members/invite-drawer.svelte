@@ -53,7 +53,9 @@
 					method: 'POST'
 				});
 				if (response.error) {
-					setMessage(form, { failure: 'Failed to process invitations. Please try again later.' });
+					setMessage(form, {
+						failure: 'Failed to process invitations. Please try again later.'
+					});
 					return;
 				}
 				setMessage(form, {
@@ -61,7 +63,7 @@
 						'Invitations are being processed in the background. You will be notified when completed.'
 				});
 				resetBulkForm();
-			} catch (err) {
+			} catch {
 				setMessage(form, { failure: 'Failed to create invitations.' });
 			}
 		}
@@ -110,7 +112,7 @@
 
 	// Remove an invite from the list
 	function removeInvite(index: number) {
-		$bulkFormData.invites = $bulkFormData.invites.filter((_: any, i: number) => i !== index);
+		$bulkFormData.invites = $bulkFormData.invites.filter((_item, i: number) => i !== index);
 	}
 
 	// Clear all invites
@@ -190,7 +192,7 @@
 				<Form.Field {form} name="dateOfBirth">
 					<Form.Control>
 						{#snippet children({ props })}
-							<Form.Label required>Date of birth</Form.Label>
+							<Form.Label>Date of birth</Form.Label>
 							<DatePicker
 								{...props}
 								value={dobValue}
@@ -211,7 +213,7 @@
 				<Form.Field {form} name="phoneNumber">
 					<Form.Control>
 						{#snippet children({ props })}
-							<Form.Label required>Phone Number</Form.Label>
+							<Form.Label>Phone Number</Form.Label>
 							<PhoneInput
 								placeholder="Enter your phone number"
 								{...props}
@@ -273,7 +275,7 @@
 				{:else}
 					<ScrollArea class="h-[300px]">
 						<div class="space-y-3 pr-2">
-							{#each $bulkFormData.invites as invite, index}
+							{#each $bulkFormData.invites as invite, index (invite.email + index)}
 								<Card class="p-3">
 									<div class="flex justify-between items-start">
 										<div>

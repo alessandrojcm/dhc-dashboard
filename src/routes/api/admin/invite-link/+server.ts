@@ -1,10 +1,10 @@
-import { invariant } from '$lib/server/invariant';
-import { getRolesFromSession, SETTINGS_ROLES } from '$lib/server/roles';
-import { getKyselyClient, sql } from '$lib/server/kysely';
+import type { RequestHandler } from '@sveltejs/kit';
 import dayjs from 'dayjs';
 import * as v from 'valibot';
-import type { RequestHandler } from '@sveltejs/kit';
 import { PUBLIC_SITE_URL } from '$env/static/public';
+import { invariant } from '$lib/server/invariant';
+import { getKyselyClient, sql } from '$lib/server/kysely';
+import { getRolesFromSession, SETTINGS_ROLES } from '$lib/server/roles';
 
 const resendInviteSchema = v.object({
 	emails: v.pipe(v.array(v.pipe(v.string(), v.email())), v.minLength(1))
@@ -19,7 +19,7 @@ export const POST: RequestHandler = async ({ request, locals, platform }) => {
 
 	const { emails } = v.parse(resendInviteSchema, await request.json());
 
-	const kysely = getKyselyClient(platform.env.HYPERDRIVE);
+	const kysely = getKyselyClient(platform?.env.HYPERDRIVE);
 	// We have gotten the current user with SafeGetSession, so we know there are admins
 	// we do not execute with RLS here as pgmq has no RLS enabled
 	await kysely.transaction().execute(async (trx) => {

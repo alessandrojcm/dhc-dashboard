@@ -1,40 +1,127 @@
 <script lang="ts">
+	/* eslint-disable @typescript-eslint/no-explicit-any */
+	import type { Database } from '$database';
+	import type { SupabaseClient } from '@supabase/supabase-js';
 	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Input } from '$lib/components/ui/input';
 	import { Select, SelectContent, SelectItem, SelectTrigger } from '$lib/components/ui/select';
 	import { Package, Plus, Search, Filter, AlertTriangle, FolderOpen, Tags } from 'lucide-svelte';
+	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
-	import { Label } from '$lib/components/ui/Label';
+	import { Label } from '$lib/components/ui/label';
+	import { createQuery, keepPreviousData } from '@tanstack/svelte-query';
+	import type { InventoryItem, InventoryItemWithRelations } from '$lib/types';
 
 	let { data } = $props();
+	const supabase: SupabaseClient<Database> = data.supabase;
 
-	let searchTerm = $state(data.filters.search || '');
-	let selectedCategory = $state(data.filters.category || '');
-	let selectedContainer = $state(data.filters.container || '');
-	let selectedMaintenance = $state(data.filters.maintenance || '');
+	const PAGE_SIZE = 20;
+
+	// Parse URL params
+	const currentPage = $derived(Number(page.url.searchParams.get('page')) || 1);
+	let searchInput = $derived(page.url.searchParams.get('search') || '');
+	let categoryInput = $derived(page.url.searchParams.get('category') || '');
+	let containerInput = $derived(page.url.searchParams.get('container') || '');
+	let maintenanceInput = $derived(page.url.searchParams.get('maintenance') || '');
+
+	type InventoryItem = Pick<
+		InventoryItemWithRelations,
+		'id' | 'quantity' | 'out_for_maintenance' | 'attributes' | 'category' | 'container'
+	>;
+
+	async function getItems(signal: AbortSignal) {
+		let query = supabase
+			.from('inventory_items')
+			.select(
+				'id, quantity, out_for_maintenance, attributes, category:equipment_categories(id, name), container:containers(id, name)',
+				{ count: 'exact' }
+			);
+		// Apply filters
+		if (searchInput) {
+			// Search in attributes->name, category name, or container name
+			query = query.or(
+				`attributes->name.ilike.%${searchInput}%,equipment_categories.name.ilike.%${searchInput}%,containers.name.ilike.%${searchInput}%`
+			);
+		}
+		if (categoryInput) {
+			query = query.eq('category_id', categoryInput);
+		}
+		if (containerInput) {
+			query = query.eq('container_id', containerInput);
+		}
+		if (maintenanceInput) {
+			query = query.eq('out_for_maintenance', maintenanceInput === 'true');
+		}
+
+		// Pagination
+		const rangeStart = (currentPage - 1) * PAGE_SIZE;
+		const rangeEnd = rangeStart + PAGE_SIZE - 1;
+
+		const {
+			data: items,
+			error,
+			count
+		} = await query
+			.range(rangeStart, rangeEnd)
+			.order('created_at', { ascending: false })
+			.throwOnError()
+			.abortSignal(signal);
+
+		if (error) throw error;
+
+		return {
+			items: (items || []) as InventoryItem[],
+			total: count || 0,
+			totalPages: Math.ceil((count || 0) / PAGE_SIZE)
+		};
+	}
+
+	// Fetch items with TanStack Query
+	const itemsQuery = createQuery(() => ({
+		queryKey: [
+			'inventory-items',
+			currentPage,
+			searchInput,
+			categoryInput,
+			containerInput,
+			maintenanceInput
+		],
+		placeholderData: keepPreviousData,
+		queryFn: async ({ signal }) => {
+			return getItems(signal);
+		}
+	}));
 
 	const applyFilters = () => {
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const params = new URLSearchParams();
-		if (searchTerm) params.set('search', searchTerm);
-		if (selectedCategory) params.set('category', selectedCategory);
-		if (selectedContainer) params.set('container', selectedContainer);
-		if (selectedMaintenance) params.set('maintenance', selectedMaintenance);
+		if (searchInput) params.set('search', searchInput);
+		if (categoryInput) params.set('category', categoryInput);
+		if (containerInput) params.set('container', containerInput);
+		if (maintenanceInput) params.set('maintenance', maintenanceInput);
+		params.set('page', '1'); // Reset to page 1 on filter change
 
-		goto(`/dashboard/inventory/items?${params.toString()}`);
+		const url = `/dashboard/inventory/items?${params.toString()}`;
+		goto(resolve(url as any));
 	};
 
 	const clearFilters = () => {
-		searchTerm = '';
-		selectedCategory = '';
-		selectedContainer = '';
-		selectedMaintenance = '';
-		goto('/dashboard/inventory/items');
+		goto(resolve('/dashboard/inventory/items'));
 	};
 
-	const getItemDisplayName = (item: any) => {
+	const goToPage = (pageNum: number) => {
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
+		const params = new URLSearchParams(page.url.searchParams);
+		params.set('page', pageNum.toString());
+		const url = `/dashboard/inventory/items?${params.toString()}`;
+		goto(resolve(url as any));
+	};
+
+	const getItemDisplayName = (item: InventoryItem) => {
 		if (item.attributes?.name) return item.attributes.name;
 		if (item.attributes?.brand && item.attributes?.type) {
 			return `${item.attributes.brand} ${item.attributes.type}`;
@@ -42,8 +129,9 @@
 		return `${item.category?.name || 'Item'} #${item.id.slice(-8)}`;
 	};
 
-	const hasActiveFilters =
-		searchTerm || selectedCategory || selectedContainer || selectedMaintenance;
+	const hasActiveFilters = $derived(
+		searchInput || categoryInput || containerInput || maintenanceInput
+	);
 </script>
 
 <div class="p-6">
@@ -75,25 +163,25 @@
 							class="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground"
 						/>
 						<Input
-							bind:value={searchTerm}
+							bind:value={searchInput}
 							placeholder="Search items..."
 							class="pl-10"
-							onkeydown={(e) => e.key === 'Enter' && applyFilters()}
+							onkeydown={(e: KeyboardEvent) => e.key === 'Enter' && applyFilters()}
 						/>
 					</div>
 				</div>
 
 				<div class="space-y-2">
 					<Label class="text-sm font-medium">Category</Label>
-					<Select type="single" bind:value={selectedCategory}>
+					<Select type="single" bind:value={categoryInput}>
 						<SelectTrigger>
-							{selectedCategory
-								? data.categories.find((c) => c.id === selectedCategory)?.name
+							{categoryInput
+								? data.categories.find((c) => c.id === categoryInput)?.name
 								: 'All categories'}
 						</SelectTrigger>
 						<SelectContent>
 							<SelectItem value="">All categories</SelectItem>
-							{#each data.categories as category}
+							{#each data.categories as category (category.id)}
 								<SelectItem value={category.id}>{category.name}</SelectItem>
 							{/each}
 						</SelectContent>
@@ -102,15 +190,15 @@
 
 				<div class="space-y-2">
 					<Label class="text-sm font-medium">Container</Label>
-					<Select type="single" bind:value={selectedContainer}>
+					<Select type="single" bind:value={containerInput}>
 						<SelectTrigger>
-							{selectedContainer
-								? data.containers.find((c) => c.id === selectedContainer)?.name
+							{containerInput
+								? data.containers.find((c) => c.id === containerInput)?.name
 								: 'All containers'}
 						</SelectTrigger>
 						<SelectContent>
 							<SelectItem value="">All containers</SelectItem>
-							{#each data.containers as container}
+							{#each data.containers as container (container.id)}
 								<SelectItem value={container.id}>{container.name}</SelectItem>
 							{/each}
 						</SelectContent>
@@ -119,11 +207,11 @@
 
 				<div class="space-y-2">
 					<Label class="text-sm font-medium">Maintenance</Label>
-					<Select type="single" bind:value={selectedMaintenance}>
+					<Select type="single" bind:value={maintenanceInput}>
 						<SelectTrigger>
-							{selectedMaintenance === 'true'
+							{maintenanceInput === 'true'
 								? 'Out for maintenance'
-								: selectedMaintenance === 'false'
+								: maintenanceInput === 'false'
 									? 'Available items'
 									: 'All items'}
 						</SelectTrigger>
@@ -149,7 +237,23 @@
 	</Card>
 
 	<!-- Results -->
-	{#if data.items.length === 0}
+	{#if itemsQuery.isPending}
+		<Card>
+			<CardContent class="flex flex-col items-center justify-center py-12">
+				<LoaderCircle />
+				<p class="text-muted-foreground mt-4">Loading items...</p>
+			</CardContent>
+		</Card>
+	{:else if itemsQuery.isError}
+		<Card>
+			<CardContent class="flex flex-col items-center justify-center py-12">
+				<AlertTriangle class="h-12 w-12 text-destructive mb-4" />
+				<h3 class="text-lg font-semibold mb-2">Error loading items</h3>
+				<p class="text-muted-foreground mb-4">{itemsQuery.error.message}</p>
+				<Button onclick={() => itemsQuery.refetch()} variant="outline">Retry</Button>
+			</CardContent>
+		</Card>
+	{:else if itemsQuery.data.items.length === 0}
 		<Card>
 			<CardContent class="flex flex-col items-center justify-center py-12">
 				<Package class="h-12 w-12 text-muted-foreground mb-4" />
@@ -174,16 +278,19 @@
 	{:else}
 		<Card>
 			<CardHeader>
-				<CardTitle>
-					Items ({data.pagination.total})
+				<CardTitle class="flex items-center gap-2">
+					Items ({itemsQuery.data.total})
 					{#if hasActiveFilters}
 						<Badge variant="secondary" class="ml-2">Filtered</Badge>
+					{/if}
+					{#if itemsQuery.isFetching}
+						<LoaderCircle />
 					{/if}
 				</CardTitle>
 			</CardHeader>
 			<CardContent>
 				<div class="space-y-3">
-					{#each data.items as item}
+					{#each itemsQuery.data.items as item (item.id)}
 						<div
 							class="flex items-center justify-between p-4 rounded-lg border hover:bg-muted/50 transition-colors"
 						>
@@ -229,37 +336,23 @@
 				</div>
 
 				<!-- Pagination -->
-				{#if data.pagination.totalPages > 1}
+				{#if itemsQuery.data.totalPages > 1}
 					<div class="flex items-center justify-between mt-6">
 						<p class="text-sm text-muted-foreground">
-							Showing {(data.pagination.page - 1) * data.pagination.limit + 1}
-							to {Math.min(data.pagination.page * data.pagination.limit, data.pagination.total)}
-							of {data.pagination.total} items
+							Showing {(currentPage - 1) * PAGE_SIZE + 1}
+							to {Math.min(currentPage * PAGE_SIZE, itemsQuery.data.total)}
+							of {itemsQuery.data.total} items
 						</p>
 
 						<div class="flex gap-2">
-							{#if data.pagination.page > 1}
-								<Button
-									href="?{new URLSearchParams({
-										...page.url.searchParams,
-										page: (data.pagination.page - 1).toString()
-									}).toString()}"
-									variant="outline"
-									size="sm"
-								>
+							{#if currentPage > 1}
+								<Button onclick={() => goToPage(currentPage - 1)} variant="outline" size="sm">
 									Previous
 								</Button>
 							{/if}
 
-							{#if data.pagination.page < data.pagination.totalPages}
-								<Button
-									href="?{new URLSearchParams({
-										...page.url.searchParams,
-										page: (data.pagination.page + 1).toString()
-									}).toString()}"
-									variant="outline"
-									size="sm"
-								>
+							{#if currentPage < itemsQuery.data.totalPages}
+								<Button onclick={() => goToPage(currentPage + 1)} variant="outline" size="sm">
 									Next
 								</Button>
 							{/if}

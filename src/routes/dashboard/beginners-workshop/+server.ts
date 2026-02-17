@@ -1,10 +1,9 @@
-import { json } from '@sveltejs/kit';
 import * as Sentry from '@sentry/sveltekit';
-
-import type { RequestHandler } from './$types';
-import { getRolesFromSession, allowedToggleRoles } from '$lib/server/roles';
-import { executeWithRLS, getKyselyClient } from '$lib/server/kysely';
+import { json } from '@sveltejs/kit';
 import { invariant } from '$lib/server/invariant';
+import { allowedToggleRoles, getRolesFromSession } from '$lib/server/roles';
+import { createSettingsService } from '$lib/server/services/settings';
+import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ locals, platform }) => {
 	try {
@@ -16,32 +15,13 @@ export const POST: RequestHandler = async ({ locals, platform }) => {
 		if (!canToggleWaitlist) {
 			return json({ success: false }, { status: 403 });
 		}
-		const kysely = getKyselyClient(platform.env.HYPERDRIVE);
-		const currentValue = await kysely
-			.selectFrom('settings')
-			.select('value')
-			.where('key', '=', 'waitlist_open')
-			.executeTakeFirstOrThrow();
 
-		const newValue = currentValue.value === 'true' ? 'false' : 'true';
-
-		await executeWithRLS(
-			kysely,
-			{
-				claims: session!
-			},
-			async (trx) => {
-				await trx
-					.updateTable('settings')
-					.set({ value: newValue })
-					.where('key', '=', 'waitlist_open')
-					.execute();
-			}
-		);
+		const settingsService = createSettingsService(platform!, session!);
+		await settingsService.toggleWaitlist();
 
 		return json({ success: true });
 	} catch (error) {
-		Sentry.captureMessage(`Error toggling waitlist: ${error}}`, 'error');
+		Sentry.captureMessage(`Error toggling waitlist: ${error}`, 'error');
 		return json({ success: false, error: 'Internal server error' }, { status: 500 });
 	}
 };

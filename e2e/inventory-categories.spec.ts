@@ -1,8 +1,22 @@
-import { expect, test } from '@playwright/test';
+import { expect, type Page, test } from '@playwright/test';
+import type { Database } from '../database.types';
+import { supabaseServiceClient } from '../src/lib/server/supabaseServiceClient';
+import { makeAuthenticatedRequest as baseRequest } from './attendee-test-helpers';
 import { createMember } from './setupFunctions';
 import { loginAsUser } from './supabaseLogin';
-import type { Database } from '$database';
-import { supabaseServiceClient } from '../src/lib/server/supabaseServiceClient';
+
+async function makeAuthenticatedRequest(
+	page: Page,
+	url: string,
+	options: {
+		method?: string;
+		data?: unknown;
+		headers?: Record<string, string>;
+	} = {}
+) {
+	const response = await baseRequest(page, url, options);
+	return await response.json();
+}
 
 test.describe('Inventory Categories Management', () => {
 	let quartermasterData: Awaited<ReturnType<typeof createMember>>;
@@ -36,17 +50,6 @@ test.describe('Inventory Categories Management', () => {
 		await memberData.cleanUp();
 		await adminData.cleanUp();
 	});
-
-	async function makeAuthenticatedRequest(page: any, url: string, options: any = {}) {
-		const response = await page.request.fetch(url, {
-			...options,
-			headers: {
-				'Content-Type': 'application/json',
-				...options.headers
-			}
-		});
-		return await response.json();
-	}
 
 	function createCategory(cat: Database['public']['Tables']['equipment_categories']['Insert']) {
 		return supabaseServiceClient

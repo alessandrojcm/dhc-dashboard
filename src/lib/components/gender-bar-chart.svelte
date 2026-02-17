@@ -17,7 +17,6 @@
 	const genderIndices = new Map(genderDistributionData.map((item, index) => [item.gender, index]));
 
 	const x = (d: GenderDistribution) => genderIndices.get(d.gender) || 0;
-	const y = (d: GenderDistribution) => d.value;
 	const color = (d: GenderDistribution) => {
 		// Use the index in the data array to determine color
 		const index = genderDistributionData.findIndex((item) => item.gender === d.gender);
@@ -43,7 +42,7 @@
 			type="x"
 			label="Gender"
 			gridVisible={false}
-			tickFormat={(value) => {
+			tickFormat={(value: number) => {
 				// Convert numeric indices back to gender labels
 				for (const [gender, index] of genderIndices.entries()) {
 					if (index === value) return gender;

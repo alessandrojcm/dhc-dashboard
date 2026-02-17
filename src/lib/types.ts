@@ -1,6 +1,7 @@
-import type { Database } from '$database';
 import type { KyselifyDatabase } from 'kysely-supabase';
-import type Stripe from 'stripe';
+import type { Database } from '$database';
+import type { Pathname, RouteId } from '$app/types';
+
 // Removed Schedule-X import - using vkurko/calendar now
 
 export type UserData = {
@@ -14,14 +15,14 @@ export type UserData = {
 
 export type NavigationItem = {
 	title: string;
-	url: string;
+	url: RouteId | Pathname;
 	isActive?: boolean;
 	role: Set<string>;
 };
 
 export type NavigationGroup = {
 	title: string;
-	url: string;
+	url: RouteId | Pathname;
 	items?: NavigationItem[];
 	role: Set<string>;
 };
@@ -67,27 +68,115 @@ export type PlanPricing = {
 	discountPercentage?: number;
 };
 
-export type SubscriptionWithPlan = Stripe.Subscription & {
-	plan: Stripe.Plan;
-};
-
-export type Workshop = Database['public']['Tables']['club_activities']['Row'] & {
-	user_interest: { user_id: string }[];
-	interest_count: { interest_count: number | null }[];
-	user_registrations: {
-		member_user_id: number | null;
-		status: Database['public']['Enums']['registration_status'];
-	}[];
-};
-
 export type WorkshopCalendarEvent = {
 	id: string;
 	title: string;
 	start: string;
 	end: string;
-	workshop: Workshop;
+	workshop: ClubActivityWithRegistrations;
 	isInterested: boolean;
 	isLoading: boolean;
 	userId: string;
-	handleEdit?: (workshop: Workshop) => void;
+	handleEdit?: (workshop: ClubActivityWithRegistrations) => void;
 };
+
+// Inventory attribute types - using discriminated unions for type-safe attribute definitions
+type BaseInventoryAttribute = {
+	name: string;
+	label: string;
+	required: boolean;
+};
+
+type TextAttribute = BaseInventoryAttribute & {
+	type: 'text';
+	default_value?: string;
+};
+
+type SelectAttribute = BaseInventoryAttribute & {
+	type: 'select';
+	options: string[];
+	default_value?: string;
+};
+
+type NumberAttribute = BaseInventoryAttribute & {
+	type: 'number';
+	default_value?: number;
+};
+
+type DateAttribute = BaseInventoryAttribute & {
+	type: 'date';
+	default_value?: string;
+};
+
+type BooleanAttribute = BaseInventoryAttribute & {
+	type: 'boolean';
+	default_value?: boolean;
+};
+
+export type InventoryAttributeDefinition =
+	| TextAttribute
+	| SelectAttribute
+	| NumberAttribute
+	| DateAttribute
+	| BooleanAttribute;
+
+export type InventoryAttributes = Record<string, InventoryAttributeDefinition['default_value']>;
+
+export type InventoryCategory = Database['public']['Tables']['equipment_categories']['Row'] & {
+	available_attributes: InventoryAttributeDefinition[];
+};
+
+export type InventoryContainer = Database['public']['Tables']['containers']['Row'];
+
+export type InventoryItem = Database['public']['Tables']['inventory_items']['Row'];
+
+export type InventoryItemWithRelations = InventoryItem & {
+	attributes: InventoryAttributes;
+	container: {
+		id: string | null;
+		name: string | null;
+		parent_container_id: string | null;
+	};
+	category: {
+		id: string | null;
+		name: string | null;
+		available_attributes: InventoryAttributeDefinition[];
+		attribute_schema: Database['public']['Tables']['equipment_categories']['Row']['attribute_schema'];
+		description: string | null;
+		created_at: string | null;
+		updated_at: string | null;
+	};
+};
+
+export type InventoryHistoryWithRelations =
+	Database['public']['Tables']['inventory_history']['Row'] & {
+		item: {
+			id: string;
+			attributes: InventoryAttributes;
+		} | null;
+		old_container: {
+			name: string;
+		} | null;
+		new_container: {
+			name: string;
+		} | null;
+	};
+
+export type ClubActivity = Database['public']['Tables']['club_activities']['Row'];
+
+export type ClubActivityInsert = Database['public']['Tables']['club_activities']['Insert'];
+export type ClubActivityUpdate = Database['public']['Tables']['club_activities']['Update'];
+
+export type ClubActivityWithInterest = ClubActivity & {
+	interest_count?: { interest_count: number }[];
+	user_interest?: { user_id: string }[];
+	attendee_count?: { id: string; member_user_id: string; status: string }[];
+};
+
+export type ClubActivityWithRegistrations = Database['public']['Tables']['club_activities']['Row'] &
+	Omit<ClubActivityWithInterest, 'attendee_count'> & {
+		user_registrations: {
+			member_user_id: number | null;
+			status: Database['public']['Enums']['registration_status'];
+		}[];
+	};

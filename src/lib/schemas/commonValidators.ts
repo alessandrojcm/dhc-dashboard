@@ -1,7 +1,7 @@
+import * as Sentry from '@sentry/sveltekit';
 import dayjs from 'dayjs';
 import { formatIncompletePhoneNumber, parsePhoneNumber } from 'libphonenumber-js/min';
 import * as v from 'valibot';
-import * as Sentry from '@sentry/sveltekit';
 
 export const phoneNumberValidator = (nomEmptyMessage: string = 'Phone number is required.') =>
 	v.pipe(

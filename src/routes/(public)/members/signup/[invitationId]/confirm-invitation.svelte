@@ -11,6 +11,7 @@
 	import { page } from '$app/state';
 	import * as Alert from '$lib/components/ui/alert';
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import dayjs from 'dayjs';
 	import { fromDate, getLocalTimeZone } from '@internationalized/date';
 	import DatePicker from '$lib/components/ui/date-picker.svelte';
@@ -45,7 +46,7 @@
 
 					if (response.ok) {
 						isVerified = true;
-						goto(`/members/signup/${invitationId}`, {
+						goto(resolve(`/members/signup/${invitationId}`), {
 							replaceState: true
 						});
 					} else {
@@ -92,7 +93,7 @@
 			<Form.Field {form} name="email">
 				<Form.Control>
 					{#snippet children({ props })}
-						<Form.Label required>Email</Form.Label>
+						<Form.Label>Email</Form.Label>
 						<Input
 							{...props}
 							type="email"
@@ -107,7 +108,7 @@
 			<Form.Field {form} name="dateOfBirth">
 				<Form.Control>
 					{#snippet children({ props })}
-						<Form.Label required>Date of birth</Form.Label>
+						<Form.Label>Date of birth</Form.Label>
 						<DatePicker
 							{...props}
 							value={dobValue}

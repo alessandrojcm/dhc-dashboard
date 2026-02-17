@@ -1,10 +1,9 @@
-import { json } from '@sveltejs/kit';
-import type { RequestHandler } from './$types';
-import { executeWithRLS, getKyselyClient } from '$lib/server/kysely';
-import { env } from '$env/dynamic/private';
-import { stripeClient } from '$lib/server/stripe';
 import * as Sentry from '@sentry/sveltekit';
+import { json } from '@sveltejs/kit';
 import * as v from 'valibot';
+import { executeWithRLS, getKyselyClient } from '$lib/server/kysely';
+import { stripeClient } from '$lib/server/stripe';
+import type { RequestHandler } from './$types';
 
 const completeRegistrationSchema = v.object({
 	paymentIntentId: v.string()
@@ -24,10 +23,14 @@ export const POST: RequestHandler = async ({ request, params, locals, platform }
 
 		const { session } = await locals.safeGetSession();
 		if (!session?.user) {
-			return json({ success: false, error: 'Authentication required' }, { status: 401 });
+			return json({ success: false, error: 'Session required' }, { status: 401 });
 		}
 
-		const kysely = getKyselyClient(platform!.env.HYPERDRIVE!);
+		if (!platform?.env?.HYPERDRIVE) {
+			return json({ success: false, error: 'Platform configuration missing' }, { status: 500 });
+		}
+
+		const kysely = getKyselyClient(platform.env.HYPERDRIVE);
 
 		// Verify payment intent was successful
 		const paymentIntent = await stripeClient.paymentIntents.retrieve(paymentIntentId);

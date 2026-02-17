@@ -2,12 +2,11 @@ import { handleErrorWithSentry, initCloudflareSentryHandle, sentryHandle } from 
 import { createServerClient } from '@supabase/ssr';
 import { type Handle, redirect } from '@sveltejs/kit';
 import { sequence } from '@sveltejs/kit/hooks';
-
-import { env } from '$env/dynamic/public';
-import { getRolesFromSession } from '$lib/server/roles';
-import type { Database } from './database.types';
 import { dev } from '$app/environment';
+import { env } from '$env/dynamic/public';
 import { canAccessUrl } from '$lib/server/rbacRoles';
+import { getRolesFromSession } from '$lib/server/roles';
+import type { Database } from '$database';
 
 const supabase: Handle = async ({ event, resolve }) => {
 	/**
@@ -101,28 +100,23 @@ const authGuard: Handle = async ({ event, resolve }) => {
 };
 
 const roleGuard: Handle = async ({ event, resolve }) => {
-	if (event.route.id?.includes('public') || event.url.pathname.includes('installHook.js.map')) {
+	if (
+		event.route.id?.includes('public') ||
+		event.url.pathname.includes('installHook.js.map') ||
+		event.url.pathname.includes('api')
+	) {
 		return resolve(event);
 	}
 	const { session } = await event.locals.safeGetSession();
 	if (!session?.access_token) {
 		return resolve(event);
 	}
-	const roles = getRolesFromSession(session);
-	if (event.url.pathname.includes('/api') || canAccessUrl(event.url.pathname, roles)) {
-		return redirect(303, `/dashboard/members/${session.user.id}`);
+	if (event.url.pathname === `/dashboard/members/${session.user.id}`) {
+		return resolve(event);
 	}
-	if (
-		event.url.pathname.includes('beginners-workshop') &&
-		![
-			roles.has('beginners_coordinator'),
-			roles.has('president'),
-			roles.has('admin'),
-			roles.has('coach'),
-			roles.has('committee_coordinator')
-		].some(Boolean)
-	) {
-		redirect(303, '/dashboard');
+	const roles = getRolesFromSession(session);
+	if (!canAccessUrl(event.url.pathname, roles)) {
+		return redirect(303, `/dashboard/members/${session.user.id}`);
 	}
 
 	return resolve(event);

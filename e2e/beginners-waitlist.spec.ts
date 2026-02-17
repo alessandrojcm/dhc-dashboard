@@ -1,6 +1,7 @@
 // playwright.test.ts
-import { expect, test } from '@playwright/test';
+
 import { faker } from '@faker-js/faker';
+import { expect, test } from '@playwright/test';
 import dayjs from 'dayjs';
 import { getSupabaseServiceClient } from './setupFunctions';
 
@@ -9,7 +10,7 @@ const testData = {
 	lastName: faker.person.lastName(),
 	email: faker.internet.email(),
 	phoneNumber: '0840997863',
-	dateOfBirth: dayjs().subtract(16, 'years'), // Ensure date format is YYYY-MM-DD
+	dateOfBirth: dayjs().subtract(20, 'years'), // Ensure date format is YYYY-MM-DD
 	medicalConditions: faker.lorem.sentence()
 };
 
@@ -49,13 +50,11 @@ test('fills out the waitlist form and asserts no errors', async ({ page }) => {
 	await page.getByLabel(/gender/i).click();
 	await page.getByRole('option', { name: 'man (cis)', exact: true }).click();
 	await page.getByPlaceholder('Enter your pronouns').fill('he/him');
-
 	await page.getByLabel('Date of birth').click();
-	await page.getByLabel('Select year').click();
-	await page.getByRole('option', { name: testData.dateOfBirth.year().toString() }).click();
-	await page.getByLabel('Select month').click();
-	await page.getByRole('option', { name: testData.dateOfBirth.format('MMMM') }).dblclick();
-	await page.getByLabel(testData.dateOfBirth.format('dddd, MMMM D,')).click();
+	await page.getByLabel('Select a year').selectOption(testData.dateOfBirth.year().toString());
+	await page.getByLabel('Select a month').selectOption(testData.dateOfBirth.format('M'));
+	await page.getByRole('button', { name: testData.dateOfBirth.format('dddd, MMMM D,') }).click();
+
 	await page.getByRole('radio', { name: 'No', exact: true }).click();
 
 	await page.getByLabel(/any medical condition/i).fill(testData.medicalConditions);
@@ -73,11 +72,10 @@ test('it should not allow people under 16 to sign up', async ({ page }) => {
 	await page.goto('/waitlist');
 	const dateOfBirth = dayjs();
 	await page.getByLabel(/date of birth/i).click();
-	await page.getByLabel('Select year').click();
-	await page.getByRole('option', { name: dateOfBirth.year().toString() }).click();
-	await page.getByLabel('Select month').click();
-	await page.getByRole('option', { name: dateOfBirth.format('MMMM') }).dblclick();
-	await page.getByLabel(dateOfBirth.format('dddd, MMMM D,')).click();
+	await page.getByLabel('Date of birth').click();
+	await page.getByLabel('Select a year').selectOption(dateOfBirth.year().toString());
+	await page.getByLabel('Select a month').selectOption(dateOfBirth.format('M'));
+	await page.getByRole('button', { name: dateOfBirth.format('dddd, MMMM D,') }).click();
 
 	// Submit the form
 	await page.click('button[type="submit"]');

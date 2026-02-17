@@ -2,7 +2,7 @@
 	import {
 		loadStripe,
 		type StripeElements,
-		type StripeElementsOptions,
+		type StripeElementsOptionsClientSecret,
 		type StripePaymentElement
 	} from '@stripe/stripe-js';
 	import { PUBLIC_STRIPE_KEY } from '$env/static/public';
@@ -32,7 +32,7 @@
 		onCancel
 	}: Props = $props();
 
-	const stripeElementsOptions: StripeElementsOptions = $derived({
+	const stripeElementsOptions: StripeElementsOptionsClientSecret = $derived({
 		appearance: {
 			theme: 'flat',
 			variables: {
@@ -83,13 +83,16 @@
 			});
 
 			if (!response.ok) {
-				const errorData = await response.json();
+				const errorData = (await response.json()) as { error?: string };
 				throw new Error(errorData.error || 'Failed to create payment intent');
 			}
 
-			return response.json();
+			return response.json() as Promise<{
+				clientSecret: string;
+				paymentIntentId: string;
+			}>;
 		},
-		onSuccess: (data) => {
+		onSuccess: (data: { clientSecret: string; paymentIntentId: string }) => {
 			initializeCheckout(data);
 		},
 		onError: (err) => {
@@ -109,7 +112,7 @@
 			});
 
 			if (!response.ok) {
-				const errorData = await response.json();
+				const errorData = (await response.json()) as { error?: string };
 				throw new Error(errorData.error || 'Failed to complete registration');
 			}
 

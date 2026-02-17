@@ -1,9 +1,9 @@
+import * as Sentry from '@sentry/sveltekit';
 import { json } from '@sveltejs/kit';
-import type { RequestHandler } from './$types';
+import * as v from 'valibot';
 import { executeWithRLS, getKyselyClient } from '$lib/server/kysely';
 import { stripeClient } from '$lib/server/stripe';
-import * as Sentry from '@sentry/sveltekit';
-import * as v from 'valibot';
+import type { RequestHandler } from './$types';
 
 const paymentIntentSchema = v.object({
 	amount: v.number(),
@@ -25,10 +25,14 @@ export const POST: RequestHandler = async ({ request, params, locals, platform }
 
 		const { session } = await locals.safeGetSession();
 		if (!session?.user) {
-			return json({ success: false, error: 'Authentication required' }, { status: 401 });
+			return json({ success: false, error: 'Session required' }, { status: 401 });
 		}
 
-		const kysely = getKyselyClient(platform!.env.HYPERDRIVE!);
+		if (!platform?.env?.HYPERDRIVE) {
+			return json({ success: false, error: 'Platform configuration missing' }, { status: 500 });
+		}
+
+		const kysely = getKyselyClient(platform.env.HYPERDRIVE);
 
 		// Get workshop details and verify it exists
 		const workshop = await executeWithRLS(kysely, { claims: session }, async (trx) =>
@@ -63,7 +67,10 @@ export const POST: RequestHandler = async ({ request, params, locals, platform }
 
 		if (existingRegistration) {
 			return json(
-				{ success: false, error: 'You are already registered for this workshop' },
+				{
+					success: false,
+					error: 'You are already registered for this workshop'
+				},
 				{ status: 409 }
 			);
 		}

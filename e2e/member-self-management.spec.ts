@@ -25,7 +25,6 @@ test.describe('Member Self-Management', () => {
 		await expect(page.getByText(/member information/i)).toBeVisible();
 		await page.getByLabel(/first name/i).fill('Updated name');
 		await page.getByLabel(/preferred weapon/i).click();
-		await page.pause();
 
 		await page.getByRole('option', { name: 'Longsword' }).click();
 		await page.getByRole('button', { name: /save changes/i }).click();
@@ -45,7 +44,7 @@ test.describe('Member Self-Management', () => {
 	test('it should not show other options when user is only member', async ({ page }) => {
 		await page.goto('/dashboard');
 		expect(page.url()).toContain(`/dashboard/members/${testData.userId}`);
-		await expect(page.getByTestId('sidebar')).toHaveText('');
+		await expect(page.getByTestId('sidebar')).toHaveText('My Workshops');
 	});
 });
 
@@ -55,7 +54,10 @@ test.describe('Member Management - Admin', () => {
 	let adminEmail: string;
 	test.beforeAll(async () => {
 		adminEmail = `admin-${Date.now()}@test.com`;
-		adminData = await createMember({ email: adminEmail, roles: new Set(['admin']) });
+		adminData = await createMember({
+			email: adminEmail,
+			roles: new Set(['admin'])
+		});
 		memberData = await createMember({
 			email: `member-${Date.now()}@test.com`,
 			roles: new Set(['member']),
@@ -93,8 +95,14 @@ test.describe('Member management - cross member role check', () => {
 	test.beforeAll(async () => {
 		member1Email = `member1-${Date.now()}@member.com`;
 		member2Email = `member2-${Date.now()}@member.com`;
-		memberTwo = await createMember({ email: member2Email, roles: new Set(['member']) });
-		memberOne = await createMember({ email: member1Email, roles: new Set(['member']) });
+		memberTwo = await createMember({
+			email: member2Email,
+			roles: new Set(['member'])
+		});
+		memberOne = await createMember({
+			email: member1Email,
+			roles: new Set(['member'])
+		});
 	});
 	test.beforeEach(async ({ context }) => {
 		await loginAsUser(context, member1Email);

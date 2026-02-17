@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { createMember } from './setupFunctions';
 import { loginAsUser } from './supabaseLogin';
 

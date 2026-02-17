@@ -1,8 +1,7 @@
+import dayjs from 'dayjs';
 import * as v from 'valibot';
 import { SocialMediaConsent } from '$lib/types';
 import { dobValidator, phoneNumberValidator } from './commonValidators';
-
-import dayjs from 'dayjs';
 
 const calculateAge = (dateOfBirth: Date) => dayjs().diff(dateOfBirth, 'years');
 const isMinor = (dateOfBirth: Date) => calculateAge(dateOfBirth) < 18;

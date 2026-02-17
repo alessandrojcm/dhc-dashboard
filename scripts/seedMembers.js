@@ -1,7 +1,7 @@
 import { faker } from '@faker-js/faker';
-import { supabase } from './supabaseServiceRole.js';
-import { stripeClient } from './stripeClient.js';
 import dayjs from 'dayjs';
+import { stripeClient } from './stripeClient.js';
+import { supabase } from './supabaseServiceRole.js';
 
 const PREFERRED_WEAPONS = ['longsword', 'sword_and_buckler'];
 const GENDERS = ['man (cis)', 'woman (cis)', 'non-binary', 'man (trans)', 'woman (trans)', 'other'];
@@ -106,7 +106,10 @@ async function seedMembers(count = 10) {
 		user_profile_id: createdProfiles[index].id,
 		next_of_kin_name: faker.person.fullName(),
 		next_of_kin_phone: faker.phone.number({ format: 'international' }),
-		preferred_weapon: faker.helpers.arrayElements(PREFERRED_WEAPONS, { min: 1, max: 2 }),
+		preferred_weapon: faker.helpers.arrayElements(PREFERRED_WEAPONS, {
+			min: 1,
+			max: 2
+		}),
 		membership_start_date: faker.date.past({ years: 2 }),
 		last_payment_date: faker.date.recent({ days: 30 }),
 		insurance_form_submitted: faker.datatype.boolean(),
@@ -171,5 +174,5 @@ async function seedMembers(count = 10) {
 }
 
 // Run with default 10 members if no argument provided
-const count = process.argv[2] ? parseInt(process.argv[2]) : 10;
+const count = process.argv[2] ? parseInt(process.argv[2], 10) : 10;
 seedMembers(count).catch(console.error);

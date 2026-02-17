@@ -1,7 +1,7 @@
-import { dev } from '$app/environment';
-import { handleErrorWithSentry, replayIntegration } from '@sentry/sveltekit';
 import * as Sentry from '@sentry/sveltekit';
+import { handleErrorWithSentry, replayIntegration } from '@sentry/sveltekit';
 import posthog from 'posthog-js';
+import { dev } from '$app/environment';
 
 Sentry.init({
 	enabled: !dev,

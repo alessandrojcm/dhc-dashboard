@@ -1,14 +1,18 @@
-import { json, type RequestHandler } from '@sveltejs/kit';
+import * as Sentry from '@sentry/sveltekit';
+import { error, json, type RequestHandler } from '@sveltejs/kit';
 import { authorize } from '$lib/server/auth.js';
 import { executeWithRLS, getKyselyClient } from '$lib/server/kysely.js';
-import { error } from '@sveltejs/kit';
-import * as Sentry from '@sentry/sveltekit';
 
 export const POST: RequestHandler = async ({ locals, params, platform }) => {
 	try {
 		// All authenticated users are members and can express interest
 		const session = await authorize(locals, new Set(['member']));
-		const kysely = getKyselyClient(platform!.env.HYPERDRIVE!);
+
+		if (!platform?.env?.HYPERDRIVE) {
+			throw error(500, 'Platform configuration missing');
+		}
+
+		const kysely = getKyselyClient(platform.env.HYPERDRIVE);
 
 		const workshopId = params.id;
 
@@ -73,7 +77,7 @@ export const POST: RequestHandler = async ({ locals, params, platform }) => {
 		Sentry.captureException(err);
 		console.error('Error managing workshop interest:', err);
 
-		if (err.status) {
+		if (err && typeof err === 'object' && 'status' in err) {
 			throw err;
 		}
 

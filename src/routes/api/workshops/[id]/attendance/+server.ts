@@ -1,17 +1,18 @@
+import * as Sentry from '@sentry/sveltekit';
+import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
+import { safeParse } from 'valibot';
+import { UpdateAttendanceSchema } from '$lib/schemas/attendance';
+import { createAttendanceService } from '$lib/server/services/workshops';
 import { authorize } from '$lib/server/auth';
 import { WORKSHOP_ROLES } from '$lib/server/roles';
-import { updateAttendance, getWorkshopAttendance } from '$lib/server/attendance';
-import { UpdateAttendanceSchema } from '$lib/schemas/attendance';
-import { safeParse } from 'valibot';
-import type { RequestHandler } from '@sveltejs/kit';
-import * as Sentry from '@sentry/sveltekit';
 
 export const GET: RequestHandler = async ({ locals, params, platform }) => {
 	try {
 		const session = await authorize(locals, WORKSHOP_ROLES);
 
-		const attendance = await getWorkshopAttendance(params.id!, session, platform!);
+		const attendanceService = createAttendanceService(platform!, session);
+		const attendance = await attendanceService.getWorkshopAttendance(params.id!);
 
 		return json({ success: true, attendance });
 	} catch (error) {
@@ -34,11 +35,10 @@ export const PUT: RequestHandler = async ({ request, locals, params, platform })
 			);
 		}
 
-		const updatedRegistrations = await updateAttendance(
+		const attendanceService = createAttendanceService(platform!, session);
+		const updatedRegistrations = await attendanceService.updateAttendance(
 			params.id!,
-			result.output.attendance_updates,
-			session,
-			platform!
+			result.output.attendance_updates
 		);
 
 		return json({ success: true, registrations: updatedRegistrations });

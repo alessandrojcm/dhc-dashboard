@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
+import { createTestWorkshop } from './attendee-test-helpers';
 import { createMember, getSupabaseServiceClient } from './setupFunctions';
 import { loginAsUser } from './supabaseLogin';
-import { createTestWorkshop } from './attendee-test-helpers';
 
 test.describe('Workshop Edit Feature', () => {
 	let adminData: Awaited<ReturnType<typeof createMember>>;

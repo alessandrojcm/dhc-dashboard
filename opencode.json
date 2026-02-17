@@ -1,22 +1,28 @@
 {
-	"$schema": "https://opencode.ai/config.json",
-	"theme": "opencode",
-	"model": "anthropic/claude-sonnet-4-20250514",
-	"autoupdate": true,
-	"mcp": {
-		"supabase": {
-			"type": "local",
-			"command": [
-				"npx",
-				"-y",
-				"@modelcontextprotocol/server-postgres",
-				"postgresql://postgres:postgres@localhost:54322/postgres"
-			]
-		},
-		"svelte": {
-			"type": "remote",
-			"url": "https://mcp.svelte.dev/mcp",
-			"enabled": true
-		}
-	}
+  "$schema": "https://opencode.ai/config.json",
+  "theme": "opencode",
+  "autoupdate": true,
+  "mcp": {
+    "supabase": {
+      "type": "local",
+      "command": [
+        "npx",
+        "-y",
+        "@modelcontextprotocol/server-postgres",
+        "postgresql://postgres:postgres@localhost:54322/postgres"
+      ]
+    },
+    "svelte": {
+      "type": "remote",
+      "url": "https://mcp.svelte.dev/mcp",
+      "enabled": true
+    },
+    "stripe": {
+      "type": "remote",
+      "url": "https://mcp.stripe.com",
+      "headers": {
+        "Authorization": "Bearer sk_test_51QYFGRAmVQaYb9lqDRAvb4JtYHTxHLOSU85824ojPNnQOE06imCJbMbwySma1zOz2RexfAJS1aXhm67dtb7j582j00lCiGoVHT"
+      }
+    }
+  }
 }

@@ -1,6 +1,6 @@
 import { faker } from '@faker-js/faker';
-import { supabase } from './supabaseServiceRole.js';
 import dayjs from 'dayjs';
+import { supabase } from './supabaseServiceRole.js';
 
 const SOCIAL_MEDIA_CONSENT = ['no', 'yes_recognizable', 'yes_unrecognizable'];
 async function seedWaitlist(count = 10) {
@@ -54,7 +54,7 @@ async function seedWaitlist(count = 10) {
 	console.log(`Successfully inserted ${entries.length} waitlist entries`);
 }
 
-const count = process.argv[2] ? parseInt(process.argv[2]) : 10;
+const count = process.argv[2] ? parseInt(process.argv[2], 10) : 10;
 
 seedWaitlist(count)
 	.then(() => process.exit(0))

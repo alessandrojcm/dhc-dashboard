@@ -1,13 +1,13 @@
-import { json } from '@sveltejs/kit';
-import type { RequestHandler } from './$types';
-import { getKyselyClient } from '$lib/server/kysely';
-import { stripeClient } from '$lib/server/stripe';
-import { MEMBERSHIP_FEE_LOOKUP_NAME } from '$lib/server/constants';
-import { authorize } from '$lib/server/auth';
-import { SETTINGS_ROLES } from '$lib/server/roles';
 import * as Sentry from '@sentry/sveltekit';
-import * as v from 'valibot';
+import { json } from '@sveltejs/kit';
 import dayjs from 'dayjs';
+import * as v from 'valibot';
+import { authorize } from '$lib/server/auth';
+import { MEMBERSHIP_FEE_LOOKUP_NAME } from '$lib/server/constants';
+import { getKyselyClient } from '$lib/server/kysely';
+import { SETTINGS_ROLES } from '$lib/server/roles';
+import { stripeClient } from '$lib/server/stripe';
+import type { RequestHandler } from './$types';
 
 const pauseRequestSchema = v.object({
 	pauseUntil: v.pipe(
@@ -43,7 +43,11 @@ export const POST: RequestHandler = async ({ request, params, locals, platform }
 		const { pauseUntil } = validatedData.output;
 		const pauseDate = dayjs(pauseUntil);
 
-		const kysely = getKyselyClient(platform!.env.HYPERDRIVE!);
+		if (!platform?.env?.HYPERDRIVE) {
+			return json({ success: false, error: 'Platform configuration missing' }, { status: 500 });
+		}
+
+		const kysely = getKyselyClient(platform.env.HYPERDRIVE);
 
 		// Get customer ID from database
 		const member = await kysely
@@ -113,7 +117,12 @@ export const DELETE: RequestHandler = async ({ params, locals, platform }) => {
 		if (session?.user?.id !== memberId) {
 			await authorize(locals, SETTINGS_ROLES);
 		}
-		const kysely = getKyselyClient(platform!.env.HYPERDRIVE!);
+
+		if (!platform?.env?.HYPERDRIVE) {
+			return json({ success: false, error: 'Platform configuration missing' }, { status: 500 });
+		}
+
+		const kysely = getKyselyClient(platform.env.HYPERDRIVE);
 
 		// Get customer ID and current pause status
 		const member = await kysely

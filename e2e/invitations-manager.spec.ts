@@ -46,12 +46,8 @@ test.describe('Invitations Manager', () => {
 
 		// Click on the invitations tab
 		await page.getByRole('tab', { name: 'Invitations' }).click();
-
 		// Check if the invitations table is displayed
-		await expect(page.getByPlaceholder('Search by email...')).toBeVisible();
-
-		// Wait for the table to load
-		await page.waitForSelector('table');
+		await expect(page.getByRole('textbox', { name: 'Search members' })).toBeVisible();
 	});
 
 	test('should be able to resend an expired invitation link', async ({ page }) => {
@@ -62,7 +58,7 @@ test.describe('Invitations Manager', () => {
 		await page.getByRole('tab', { name: 'Invitations' }).click();
 
 		// Search for the expired invitation
-		await page.getByPlaceholder('Search by email...').fill(expiredInvitation.email);
+		await page.getByRole('textbox', { name: 'Search members' }).fill(expiredInvitation.email);
 
 		// Wait for the search results
 		await page.waitForTimeout(1000);
@@ -100,7 +96,7 @@ test.describe('Invitations Manager', () => {
 		});
 
 		// Search for the expired invitation
-		await page.getByPlaceholder('Search by email...').fill(expiredInvitation.email);
+		await page.getByRole('textbox', { name: 'Search members' }).fill(expiredInvitation.email);
 
 		// Wait for the search results
 		await page.waitForTimeout(1000);
@@ -117,7 +113,7 @@ test.describe('Invitations Manager', () => {
 		await page.goto('/dashboard/members');
 
 		// Click on the invitations tab
-		await page.getByRole('tab', { name: 'Invitations' }).click();
+		await page.getByRole('textbox', { name: 'Search members' }).click();
 
 		// Check if pagination controls are visible
 		await expect(page.getByText('Rows per page')).toBeVisible();
@@ -135,7 +131,7 @@ test.describe('Invitations Manager', () => {
 		await page.goto('/dashboard/members');
 
 		// Click on the invitations tab
-		await page.getByRole('tab', { name: 'Invitations' }).click();
+		await page.getByRole('textbox', { name: 'Search members' }).click();
 
 		// Sort by email
 		await page.getByRole('columnheader', { name: 'Email' }).click();

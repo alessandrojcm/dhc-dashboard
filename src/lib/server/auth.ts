@@ -1,5 +1,5 @@
-import { getRolesFromSession } from './roles';
 import { invariant } from './invariant';
+import { getRolesFromSession } from './roles';
 
 export async function authorize(locals: App.Locals, allowedRoles: Set<string>) {
 	const { session } = await locals.safeGetSession();

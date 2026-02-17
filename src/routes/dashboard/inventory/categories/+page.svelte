@@ -1,10 +1,34 @@
 <script lang="ts">
+	/* eslint-disable @typescript-eslint/no-explicit-any */
+	import type { Database } from '$database';
+	import type { SupabaseClient } from '@supabase/supabase-js';
 	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import { Button } from '$lib/components/ui/button';
 	import { Badge } from '$lib/components/ui/badge';
-	import { Tags, Plus, Edit, Package } from 'lucide-svelte';
+	import { Tags, Plus, Edit, Package, AlertTriangle } from 'lucide-svelte';
+	import LoaderCircle from '$lib/components/ui/loader-circle.svelte';
+	import { createQuery } from '@tanstack/svelte-query';
 
 	let { data } = $props();
+	const supabase: SupabaseClient<Database> = data.supabase;
+
+	// Fetch categories with TanStack Query
+	const categoriesQuery = createQuery(() => ({
+		queryKey: ['inventory-categories'],
+		queryFn: async ({ signal }) => {
+			const { data: categories, error } = await supabase
+				.from('equipment_categories')
+				.select('id, name, description, available_attributes, item_count:equipment_items(count)', {
+					count: 'exact'
+				})
+				.order('name')
+				.abortSignal(signal);
+
+			if (error) throw error;
+
+			return categories || [];
+		}
+	}));
 
 	const getAttributeCount = (category: any) => {
 		return Object.keys(category.available_attributes || {}).length;
@@ -27,7 +51,23 @@
 		</Button>
 	</div>
 
-	{#if data.categories.length === 0}
+	{#if categoriesQuery.isPending}
+		<Card>
+			<CardContent class="flex flex-col items-center justify-center py-12">
+				<LoaderCircle />
+				<p class="text-muted-foreground mt-4">Loading categories...</p>
+			</CardContent>
+		</Card>
+	{:else if categoriesQuery.isError}
+		<Card>
+			<CardContent class="flex flex-col items-center justify-center py-12">
+				<AlertTriangle class="h-12 w-12 text-destructive mb-4" />
+				<h3 class="text-lg font-semibold mb-2">Error loading categories</h3>
+				<p class="text-muted-foreground mb-4">{categoriesQuery.error.message}</p>
+				<Button onclick={() => categoriesQuery.refetch()} variant="outline">Retry</Button>
+			</CardContent>
+		</Card>
+	{:else if categoriesQuery.data.length === 0}
 		<Card>
 			<CardContent class="flex flex-col items-center justify-center py-12">
 				<Tags class="h-12 w-12 text-muted-foreground mb-4" />
@@ -43,7 +83,7 @@
 		</Card>
 	{:else}
 		<div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-			{#each data.categories as category}
+			{#each categoriesQuery.data as category (category.id)}
 				<Card class="hover:shadow-md transition-shadow">
 					<CardHeader>
 						<CardTitle class="flex items-center justify-between">
@@ -85,7 +125,7 @@
 							<div class="space-y-2">
 								<h4 class="text-sm font-medium">Attributes:</h4>
 								<div class="flex flex-wrap gap-1">
-									{#each Object.entries(category.available_attributes || {}) as [key, attr]}
+									{#each Object.entries(category.available_attributes || {}) as [key, attr] (key)}
 										<Badge variant="outline" class="text-xs">
 											{attr.label || key}
 											{#if attr.required}

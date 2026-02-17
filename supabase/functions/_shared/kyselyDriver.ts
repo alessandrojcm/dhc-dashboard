@@ -1,12 +1,12 @@
 import {
 	CompiledQuery,
-	DatabaseConnection,
-	Driver,
-	PostgresCursorConstructor,
-	QueryResult,
-	TransactionSettings
+	type DatabaseConnection,
+	type Driver,
+	type PostgresCursorConstructor,
+	type QueryResult,
+	type TransactionSettings
 } from 'kysely';
-import { Pool, PoolClient } from 'postgres';
+import type { Pool, PoolClient } from 'postgres';
 
 export interface PostgresDialectConfig {
 	pool: Pool | (() => Promise<Pool>);
@@ -31,7 +31,7 @@ export class PostgresDriver implements Driver {
 	}
 
 	async acquireConnection(): Promise<DatabaseConnection> {
-		const client = await this.#pool!.connect();
+		const client = await this.#pool?.connect();
 		let connection = this.#connections.get(client);
 
 		if (!connection) {

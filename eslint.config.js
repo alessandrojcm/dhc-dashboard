@@ -28,6 +28,12 @@ export default ts.config(
 		}
 	},
 	{
-		ignores: ['build/', '.svelte-kit/', 'dist/']
+		files: ['**/*.svelte.ts'],
+		languageOptions: {
+			parser: ts.parser
+		}
+	},
+	{
+		ignores: ['build/', '.svelte-kit/', 'dist/', '.cloudflare/', 'supabase/', 'scripts']
 	}
 );

@@ -1,5 +1,7 @@
 <script lang="ts">
+	/* eslint-disable @typescript-eslint/no-explicit-any */
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import type { Database, Tables } from '$database';
 	import { Badge } from '$lib/components/ui/badge';
@@ -68,7 +70,9 @@
 				});
 			}
 			if (sortingState.length > 0) {
-				query = query.order(sortingState[0].id, { ascending: !sortingState[0].desc });
+				query = query.order(sortingState[0].id, {
+					ascending: !sortingState[0].desc
+				});
 			}
 			const { data, error, count } = await query
 				.range(rangeStart, rangeEnd)
@@ -87,30 +91,36 @@
 			pageSize,
 			...newPagination
 		};
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const newParams = new URLSearchParams(page.url.searchParams);
 		newParams.set('page', paginationState.pageIndex.toString());
 		newParams.set('pageSize', paginationState.pageSize.toString());
-		goto(`/dashboard/members?${newParams.toString()}`);
+		const url = `/dashboard/members?${newParams.toString()}`;
+		goto(resolve(url as any));
 	}
 
 	function onSortingChange(newSorting: SortingState) {
 		const [sortingState] = newSorting;
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const newParams = new URLSearchParams(page.url.searchParams);
 		newParams.set('sort', sortingState.id);
 		newParams.set('direction', sortingState.desc ? 'desc' : 'asc');
-		goto(`/dashboard/members?${newParams.toString()}`);
+		const url = `/dashboard/members?${newParams.toString()}`;
+		goto(resolve(url as any));
 	}
 
 	function onSearchChange(newSearch: string) {
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const newParams = new URLSearchParams(page.url.searchParams);
 		newParams.set('q', newSearch);
-		goto(`/dashboard/members?${newParams.toString()}`);
+		const url = `/dashboard/members?${newParams.toString()}`;
+		goto(resolve(url as any));
 	}
 
 	// State for expanded rows
 	let expandedState = $state({});
 
-	const tableOptions = $state<TableOptions<Tables<'member_management_view'>>>({
+	const tableOptions = $state<TableOptions<Omit<Tables<'member_management_view'>, 'customer_id'>>>({
 		autoResetPageIndex: false,
 		manualPagination: true,
 		manualSorting: true,
@@ -504,11 +514,13 @@
 						{row.original.last_name}
 					</div>
 					<div>
-						<MemberActions
-							memberId={row.original.id!}
-							isExpanded={row.getIsExpanded()}
-							onToggleExpand={() => row.toggleExpanded()}
-						/>
+						{#if row.original.id !== null}
+							<MemberActions
+								memberId={row.original.id}
+								isExpanded={row.getIsExpanded()}
+								onToggleExpand={() => row.toggleExpanded()}
+							/>
+						{/if}
 					</div>
 				</div>
 
@@ -581,7 +593,7 @@
 					<div class="text-sm font-medium text-muted-foreground">Weapons</div>
 					<div class="col-span-2 text-sm">
 						{#if row.original.preferred_weapon}
-							{#each row.original.preferred_weapon as weapon}
+							{#each row.original.preferred_weapon as weapon (weapon)}
 								<Badge variant="outline" class="mr-1 mb-1 capitalize">
 									{weapon.replace(/_/g, ' ')}
 								</Badge>
@@ -668,7 +680,7 @@
 		>
 			<Select.Trigger class="w-16 h-8">{pageSize}</Select.Trigger>
 			<Select.Content>
-				{#each pageSizeOptions as pageSizeOption}
+				{#each pageSizeOptions as pageSizeOption (pageSizeOption)}
 					<Select.Item value={pageSizeOption.toString()}>
 						{pageSizeOption}
 					</Select.Item>

@@ -5,7 +5,10 @@ import { loginAsUser } from './supabaseLogin';
 test.describe('Settings Management - Admin', () => {
 	let adminData: Awaited<ReturnType<typeof createMember>>;
 	test.beforeAll(async () => {
-		adminData = await createMember({ email: 'admin@test.com', roles: new Set(['admin']) });
+		adminData = await createMember({
+			email: 'admin@test.com',
+			roles: new Set(['admin'])
+		});
 	});
 	test.beforeEach(async ({ context }) => {
 		await loginAsUser(context, 'admin@test.com');

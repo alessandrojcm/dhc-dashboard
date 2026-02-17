@@ -1,18 +1,15 @@
-import type { Database } from '$database';
-import signupSchema from '$lib/schemas/membersSignup';
-import { getMemberData, updateMemberData } from '$lib/server/kyselyRPCFunctions';
-import { getRolesFromSession, SETTINGS_ROLES } from '$lib/server/roles';
-import { stripeClient } from '$lib/server/stripe';
-import { supabaseServiceClient } from '$lib/server/supabaseServiceClient';
+import * as Sentry from '@sentry/sveltekit';
 import { type Actions, error, type ServerLoadEvent } from '@sveltejs/kit';
 import { fail, message, setMessage, superValidate } from 'sveltekit-superforms';
 import { valibot } from 'sveltekit-superforms/adapters';
+import signupSchema from '$lib/schemas/membersSignup';
+import { invariant } from '$lib/server/invariant';
+import { getRolesFromSession, SETTINGS_ROLES } from '$lib/server/roles';
+import { supabaseServiceClient } from '$lib/server/supabaseServiceClient';
+import type { SocialMediaConsent } from '$lib/types.ts';
 import type { RequestEvent } from '../$types';
 import type { PageServerLoad } from './$types';
-import type { SocialMediaConsent } from '$lib/types.ts';
-import { getKyselyClient } from '$lib/server/kysely';
-import * as Sentry from '@sentry/sveltekit';
-import { invariant } from '$lib/server/invariant';
+import { createMemberService, createProfileService } from '$lib/server/services/members';
 
 async function canUpdateSettings(event: RequestEvent | ServerLoadEvent) {
 	const { session } = await event.locals.safeGetSession();
@@ -33,24 +30,30 @@ async function canUpdateSettings(event: RequestEvent | ServerLoadEvent) {
 }
 
 export const load: PageServerLoad = async (event) => {
-	const { params, locals } = event;
-	const kysely = getKyselyClient(event.platform.env.HYPERDRIVE);
+	const { params, locals, platform } = event;
+	const { session } = await locals.safeGetSession();
+
+	if (!session || !platform?.env.HYPERDRIVE) {
+		return error(401, 'Unauthorized');
+	}
+
 	try {
 		const canUpdate = await canUpdateSettings(event);
-		const memberProfile = await getMemberData(params.memberId, kysely);
+		const memberService = createMemberService(platform, session);
+
+		// Get member data
+		const memberProfile = await memberService.findById(params.memberId);
+
 		if (!canUpdate && (!memberProfile || params.memberId !== locals.session?.user.id)) {
 			return error(404, 'Member not found');
 		}
+
 		const email = await supabaseServiceClient.auth.admin
 			.getUserById(params.memberId)
 			.then((r) => r.data.user?.email ?? '');
 
-		// Get member data from member_management_view for subscription info
-		const memberData = await kysely
-			.selectFrom('member_management_view')
-			.select(['id', 'customer_id', 'subscription_paused_until'])
-			.where('id', '=', params.memberId)
-			.executeTakeFirst();
+		// Get member data with subscription info
+		const memberData = await memberService.findByIdWithSubscription(params.memberId);
 
 		return {
 			form: await superValidate(
@@ -109,72 +112,47 @@ export const actions: Actions = {
 		if (!canUpdate) {
 			return fail(403, { message: 'Unauthorized' });
 		}
+
 		const form = await superValidate(event, valibot(signupSchema));
 		if (!form.valid) {
-			return fail(422, {
-				form
-			});
+			return fail(422, { form });
 		}
-		const kysely = getKyselyClient(event.platform.env.HYPERDRIVE);
+
+		const { session } = await event.locals.safeGetSession();
+		if (!session || !event.platform?.env.HYPERDRIVE) {
+			return fail(401, { form, message: 'Unauthorized' });
+		}
+
 		try {
-			await kysely.transaction().execute(async (trx) => {
-				// Get current user data for comparison
-				const currentUser = await trx
-					.selectFrom('user_profiles')
-					.select(['first_name', 'last_name', 'phone_number', 'customer_id'])
-					.where('supabase_user_id', '=', event.params.memberId!)
-					.limit(1)
-					.execute()
-					.then((result) => result[0]);
+			const profileService = createProfileService(event.platform, session);
 
-				if (!currentUser?.customer_id) {
-					throw new Error('Customer ID not found');
-				}
-
-				// Update member data
-				await updateMemberData(
-					{
-						user_uuid: event.params.memberId!,
-						p_first_name: form.data.firstName,
-						p_last_name: form.data.lastName,
-						p_phone_number: form.data.phoneNumber,
-						p_date_of_birth: form.data.dateOfBirth.toISOString(),
-						p_pronouns: form.data.pronouns,
-						p_gender: form.data.gender as Database['public']['Enums']['gender'],
-						p_medical_conditions: form.data.medicalConditions,
-						p_next_of_kin_name: form.data.nextOfKin,
-						p_next_of_kin_phone: form.data.nextOfKinNumber,
-						p_preferred_weapon: form.data
-							.weapon as Database['public']['Enums']['preferred_weapon'][],
-						p_insurance_form_submitted: form.data.insuranceFormSubmitted,
-						p_social_media_consent: form.data
-							.socialMediaConsent as Database['public']['Enums']['social_media_consent']
-					},
-					trx
-				);
-
-				// Check if name or phone number changed
-				const currentName = `${currentUser.first_name} ${currentUser.last_name}`.trim();
-				const newName = `${form.data.firstName} ${form.data.lastName}`.trim();
-				const nameChanged = currentName !== newName;
-				const phoneChanged = currentUser.phone_number !== form.data.phoneNumber;
-
-				// Only update Stripe if necessary
-				if (nameChanged || phoneChanged) {
-					await stripeClient.customers.update(currentUser.customer_id, {
-						...(nameChanged && { name: newName }),
-						...(phoneChanged && { phone: form.data.phoneNumber })
-					});
-				}
+			// Update profile with Stripe sync
+			await profileService.updateProfile(event.params.memberId!, {
+				firstName: form.data.firstName,
+				lastName: form.data.lastName,
+				phoneNumber: form.data.phoneNumber,
+				dateOfBirth: form.data.dateOfBirth,
+				pronouns: form.data.pronouns,
+				gender: form.data.gender as
+					| 'male'
+					| 'female'
+					| 'non_binary'
+					| 'prefer_not_to_say'
+					| 'other'
+					| undefined,
+				medicalConditions: form.data.medicalConditions,
+				nextOfKin: form.data.nextOfKin,
+				nextOfKinNumber: form.data.nextOfKinNumber,
+				preferredWeapon: form.data.weapon as string[] | undefined,
+				insuranceFormSubmitted: form.data.insuranceFormSubmitted,
+				socialMediaConsent: form.data.socialMediaConsent as 'yes' | 'no' | 'ask_me' | undefined
 			});
 
 			return message(form, { success: 'Profile has been updated!' });
 		} catch (err) {
 			Sentry.captureMessage(`Error updating member profile: ${err}`, 'error');
 			setMessage(form, { failure: 'Failed to update profile' });
-			return fail(500, {
-				form
-			});
+			return fail(500, { form });
 		}
 	}
 };

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import type { Json } from '../database.types';
 import { createMember, getSupabaseServiceClient } from './setupFunctions';
 import { loginAsUser } from './supabaseLogin';
 
@@ -30,7 +31,7 @@ test.describe('Inventory Management Full Lifecycle', () => {
 	async function createCategory(
 		name: string,
 		description: string,
-		available_attributes: any[] = []
+		available_attributes: Json[] = []
 	) {
 		const supabaseServiceClient = getSupabaseServiceClient();
 		const { data: categoryData, error: categoryError } = await supabaseServiceClient
@@ -76,7 +77,7 @@ test.describe('Inventory Management Full Lifecycle', () => {
 		categoryId: string,
 		containerId: string,
 		quantity: number = 1,
-		attributes: Record<string, any> = {}
+		attributes: Record<string, Json> = {}
 	) {
 		const supabaseServiceClient = getSupabaseServiceClient();
 		const { data: itemData, error: itemError } = await supabaseServiceClient
@@ -527,8 +528,8 @@ test.describe('Inventory Management Full Lifecycle', () => {
 			await createItem(
 				`Invalid Item 1 ${timestamp}`,
 				'Missing required attributes',
-				categoryData!.id,
-				containerData!.id,
+				categoryData?.id,
+				containerData?.id,
 				1,
 				{
 					optionalNumber: 42
@@ -545,8 +546,8 @@ test.describe('Inventory Management Full Lifecycle', () => {
 			await createItem(
 				`Invalid Item 2 ${timestamp}`,
 				'Invalid select option',
-				categoryData!.id,
-				containerData!.id,
+				categoryData?.id,
+				containerData?.id,
 				1,
 				{
 					requiredText: 'Valid text',
@@ -563,8 +564,8 @@ test.describe('Inventory Management Full Lifecycle', () => {
 		const validItem = await createItem(
 			`Valid Item ${timestamp}`,
 			'All attributes valid',
-			categoryData!.id,
-			containerData!.id,
+			categoryData?.id,
+			containerData?.id,
 			1,
 			{
 				requiredText: 'Valid text',
@@ -573,9 +574,9 @@ test.describe('Inventory Management Full Lifecycle', () => {
 			}
 		);
 
-		expect((validItem!.attributes as any).requiredText).toBe('Valid text');
-		expect((validItem!.attributes as any).selectWithOptions).toBe('Option2');
-		expect((validItem!.attributes as any).optionalNumber).toBe(42);
+		expect((validItem?.attributes as Record<string, Json>).requiredText).toBe('Valid text');
+		expect((validItem?.attributes as Record<string, Json>).selectWithOptions).toBe('Option2');
+		expect((validItem?.attributes as Record<string, Json>).optionalNumber).toBe(42);
 	});
 
 	test('should maintain data integrity across operations', async ({ page, context }) => {
@@ -606,8 +607,8 @@ test.describe('Inventory Management Full Lifecycle', () => {
 		const itemData = await createItem(
 			`Integrity Item ${timestamp}`,
 			'Item for integrity testing',
-			categoryData!.id,
-			containerData!.id,
+			categoryData?.id,
+			containerData?.id,
 			5,
 			{
 				testAttribute: 'Original value'
@@ -615,28 +616,28 @@ test.describe('Inventory Management Full Lifecycle', () => {
 		);
 
 		// Test 1: Cannot delete container with items
-		const deleteContainerResponse = await deleteContainer(containerData!.id);
+		const deleteContainerResponse = await deleteContainer(containerData?.id);
 
 		expect(deleteContainerResponse.success).toBe(false);
 		expect(deleteContainerResponse.error).toContain('contains items');
 
 		// Test 2: Cannot delete category with items
-		const deleteCategoryResponse = await deleteCategory(categoryData!.id);
+		const deleteCategoryResponse = await deleteCategory(categoryData?.id);
 
 		expect(deleteCategoryResponse.success).toBe(false);
 		expect(deleteCategoryResponse.error).toContain('has items');
 
 		// Test 3: Can delete item, then container and category
-		const deleteItemResponse = await deleteItem(itemData!.id);
+		const deleteItemResponse = await deleteItem(itemData?.id);
 
 		expect(deleteItemResponse.success).toBe(true);
 
 		// Now container and category can be deleted
-		const deleteContainerResponse2 = await deleteContainer(containerData!.id);
+		const deleteContainerResponse2 = await deleteContainer(containerData?.id);
 
 		expect(deleteContainerResponse2.success).toBe(true);
 
-		const deleteCategoryResponse2 = await deleteCategory(categoryData!.id);
+		const deleteCategoryResponse2 = await deleteCategory(categoryData?.id);
 
 		expect(deleteCategoryResponse2.success).toBe(true);
 	});

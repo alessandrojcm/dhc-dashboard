@@ -1,5 +1,7 @@
 <script lang="ts">
+	/* eslint-disable @typescript-eslint/no-explicit-any */
 	import { goto } from '$app/navigation';
+	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import type { Database } from '$database';
 	import { Badge } from '$lib/components/ui/badge';
@@ -85,7 +87,9 @@
 			}
 			// Add sorting if provided
 			if (sortingState.length > 0) {
-				query = query.order(sortingState[0].id, { ascending: !sortingState[0].desc });
+				query = query.order(sortingState[0].id, {
+					ascending: !sortingState[0].desc
+				});
 			} else {
 				// Default sort by created_at descending
 				query = query.order('created_at', { ascending: false });
@@ -107,7 +111,6 @@
 	let selectedRows = $state<Set<string>>(new Set());
 
 	// Derived state for bulk operations
-	const hasSelectedRows = $derived(selectedRows.size > 0);
 	const selectedRowsArray = $derived(Array.from(selectedRows));
 
 	function onPaginationChange(newPagination: Partial<PaginationState>) {
@@ -116,24 +119,30 @@
 			pageSize,
 			...newPagination
 		};
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const newParams = new URLSearchParams(page.url.searchParams);
 		newParams.set('invitePage', paginationState.pageIndex.toString());
 		newParams.set('invitePageSize', paginationState.pageSize.toString());
-		goto(`/dashboard/members?${newParams.toString()}`);
+		const url = `/dashboard/members?${newParams.toString()}`;
+		goto(resolve(url as any));
 	}
 
 	function onSortingChange(newSorting: SortingState) {
 		const [sortingState] = newSorting;
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const newParams = new URLSearchParams(page.url.searchParams);
 		newParams.set('inviteSort', sortingState.id);
 		newParams.set('inviteDirection', sortingState.desc ? 'desc' : 'asc');
-		goto(`/dashboard/members?${newParams.toString()}`);
+		const url = `/dashboard/members?${newParams.toString()}`;
+		goto(resolve(url as any));
 	}
 
 	function onSearchChange(newSearch: string) {
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const newParams = new URLSearchParams(page.url.searchParams);
 		newParams.set('inviteQ', newSearch);
-		goto(`/dashboard/members?${newParams.toString()}`);
+		const url = `/dashboard/members?${newParams.toString()}`;
+		goto(resolve(url as any));
 	}
 
 	const resendInvitationLink = createMutation(() => ({
@@ -520,7 +529,7 @@
 		>
 			<Select.Trigger class="w-16 h-8">{pageSize}</Select.Trigger>
 			<Select.Content>
-				{#each pageSizeOptions as pageSizeOption}
+				{#each pageSizeOptions as pageSizeOption (pageSizeOption)}
 					<Select.Item value={pageSizeOption.toString()}>
 						{pageSizeOption}
 					</Select.Item>

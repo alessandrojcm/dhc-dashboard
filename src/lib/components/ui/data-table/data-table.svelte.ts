@@ -3,6 +3,7 @@ import {
 	type TableOptions,
 	type TableOptionsResolved,
 	type TableState,
+	type Updater,
 	createTable
 } from '@tanstack/table-core';
 
@@ -56,9 +57,8 @@ export function createSvelteTable<TData extends RowData>(options: TableOptions<T
 			return mergeObjects(prev, options, {
 				state: mergeObjects(state, options.state || {}),
 
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
-				onStateChange: (updater: any) => {
-					if (updater instanceof Function) state = updater(state);
+				onStateChange: (updater: Updater<TableState>) => {
+					if (updater instanceof Function) state = updater(state as TableState);
 					else state = mergeObjects(state, updater);
 
 					options.onStateChange?.(updater);
@@ -84,9 +84,8 @@ function mergeObjects<T>(source: T): T;
 function mergeObjects<T, U>(source: T, source1: U): T & U;
 function mergeObjects<T, U, V>(source: T, source1: U, source2: V): T & U & V;
 function mergeObjects<T, U, V, W>(source: T, source1: U, source2: V, source3: W): T & U & V & W;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function mergeObjects(...sources: any): any {
-	const target = {};
+function mergeObjects(...sources: unknown[]): unknown {
+	const target: Record<string, unknown> = {};
 	for (let i = 0; i < sources.length; i++) {
 		let source = sources[i];
 		if (typeof source === 'function') source = source();
@@ -100,7 +99,7 @@ function mergeObjects(...sources: any): any {
 						for (let i = sources.length - 1; i >= 0; i--) {
 							let s = sources[i];
 							if (typeof s === 'function') s = s();
-							const v = (s || {})[key];
+							const v = ((s as Record<string, unknown>) || {})[key];
 							if (v !== undefined) return v;
 						}
 					}

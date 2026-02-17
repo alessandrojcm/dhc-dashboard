@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { createMember, getSupabaseServiceClient } from './setupFunctions';
 import { loginAsUser } from './supabaseLogin';
+import type { Json } from '../database.types';
 
 // Helper functions for creating test data
 const createContainer = async (data: { name: string; description: string; created_by: string }) => {
@@ -8,7 +9,11 @@ const createContainer = async (data: { name: string; description: string; create
 	return await supabase.from('containers').insert(data).select().single();
 };
 
-async function createCategory(name: string, description: string, available_attributes: any[] = []) {
+async function createCategory(
+	name: string,
+	description: string,
+	available_attributes: Json[] = []
+) {
 	const supabaseServiceClient = getSupabaseServiceClient();
 	const { data: categoryData, error: categoryError } = await supabaseServiceClient
 		.from('equipment_categories')
@@ -61,14 +66,14 @@ test.describe('Inventory Items Management', () => {
 			description: 'Container for test items',
 			created_by: quartermasterData.userId!
 		});
-		testContainerId = containerResponse.data!.id;
+		testContainerId = containerResponse.data?.id;
 
 		// Create basic test category
 		const categoryData = await createCategory(
 			`Test Category ${timestamp}`,
 			'Basic category for testing'
 		);
-		testCategoryId = categoryData!.id;
+		testCategoryId = categoryData?.id;
 
 		// Create weapons category with attributes
 		const weaponsData = await createCategory(`Weapons ${timestamp}`, 'Weapons category', [
@@ -102,7 +107,7 @@ test.describe('Inventory Items Management', () => {
 				default_value: false
 			}
 		]);
-		weaponsCategoryId = weaponsData!.id;
+		weaponsCategoryId = weaponsData?.id;
 	});
 
 	test.afterAll(async () => {
@@ -140,7 +145,7 @@ test.describe('Inventory Items Management', () => {
 			await page.getByRole('button', { name: /create item/i }).click();
 
 			// Should redirect to item detail page
-			await expect(page).toHaveURL(new RegExp(`/dashboard/inventory/items/[a-f0-9-]+$`));
+			await expect(page).toHaveURL(/\/dashboard\/inventory\/items\/[a-f0-9-]+$/);
 
 			// Verify item was created by checking page loaded
 			await expect(page.getByText(/item information/i)).toBeVisible();
@@ -189,7 +194,7 @@ test.describe('Inventory Items Management', () => {
 			await page.getByRole('button', { name: /create item/i }).click();
 
 			// Should redirect to item detail page
-			await expect(page).toHaveURL(new RegExp(`/dashboard/inventory/items/[a-f0-9-]+$`));
+			await expect(page).toHaveURL(/\/dashboard\/inventory\/items\/[a-f0-9-]+$/);
 
 			// Verify the item was created with attributes
 			await expect(page.getByText('Longsword')).toBeVisible();
@@ -197,26 +202,17 @@ test.describe('Inventory Items Management', () => {
 			await expect(page.getByText('1.5')).toBeVisible();
 		});
 
-		test.skip('should edit item and update attributes - Edit routes not implemented yet', async ({
-			page,
-			context
-		}) => {
+		test.skip('should edit item and update attributes - Edit routes not implemented yet', async () => {
 			// This test is skipped because edit routes (/dashboard/inventory/items/{id}/edit) don't exist yet
 			// The UI shows edit buttons but they link to non-existent routes
 		});
 
-		test.skip('should delete item - Delete functionality not implemented in UI yet', async ({
-			page,
-			context
-		}) => {
+		test.skip('should delete item - Delete functionality not implemented in UI yet', async () => {
 			// This test is skipped because there's no delete functionality in the item detail page
 			// The UI only shows "Edit Item" and "View Container" buttons, no delete option
 		});
 
-		test.skip('should update item quantity - Edit functionality not implemented yet', async ({
-			page,
-			context
-		}) => {
+		test.skip('should update item quantity - Edit functionality not implemented yet', async () => {
 			// This test is skipped because edit functionality doesn't exist yet
 			// Would require either edit routes or direct quantity update controls
 		});
@@ -254,10 +250,7 @@ test.describe('Inventory Items Management', () => {
 			await expect(page).toHaveURL('/dashboard/inventory/items/create');
 		});
 
-		test.skip('should reject invalid attribute values - UI prevents invalid select values', async ({
-			page,
-			context
-		}) => {
+		test.skip('should reject invalid attribute values - UI prevents invalid select values', async () => {
 			// This test is skipped because the UI Select components prevent invalid values
 			// from being entered in the first place, so this scenario doesn't apply to UI testing
 		});
@@ -289,20 +282,14 @@ test.describe('Inventory Items Management', () => {
 	});
 
 	test.describe('Item Status Management', () => {
-		test.skip('should mark item as out for maintenance - Maintenance toggle not implemented in UI yet', async ({
-			page,
-			context
-		}) => {
+		test.skip('should mark item as out for maintenance - Maintenance toggle not implemented in UI yet', async () => {
 			// This test is skipped because:
 			// 1. The create form has maintenance checkbox, but there's no toggle in item detail page
 			// 2. No /api/inventory/items/{id}/maintenance endpoints exist
 			// 3. Edit functionality needed to change maintenance status doesn't exist yet
 		});
 
-		test.skip('should return item from maintenance - Maintenance toggle not implemented in UI yet', async ({
-			page,
-			context
-		}) => {
+		test.skip('should return item from maintenance - Maintenance toggle not implemented in UI yet', async () => {
 			// This test is skipped because:
 			// 1. No UI controls exist to toggle maintenance status after creation
 			// 2. No /api/inventory/items/{id}/maintenance endpoints exist
@@ -351,7 +338,7 @@ test.describe('Inventory Items Management', () => {
 		category_id: string;
 		container_id: string;
 		quantity: number;
-		attributes?: any;
+		attributes?: Json;
 		out_for_maintenance?: boolean;
 	}) => {
 		const supabase = getSupabaseServiceClient();
@@ -424,7 +411,10 @@ test.describe('Inventory Items Management', () => {
 				category_id: weaponsCategoryId,
 				container_id: testContainerId,
 				quantity: 1,
-				attributes: { name: `Weapon Item ${timestamp}`, weaponType: 'Longsword' }
+				attributes: {
+					name: `Weapon Item ${timestamp}`,
+					weaponType: 'Longsword'
+				}
 			});
 
 			await createTestItem({
@@ -478,7 +468,7 @@ test.describe('Inventory Items Management', () => {
 			await createTestItem({
 				name: `Second Container Item ${timestamp}`,
 				category_id: testCategoryId,
-				container_id: secondContainer.data!.id,
+				container_id: secondContainer.data?.id,
 				quantity: 1
 			});
 
@@ -614,7 +604,10 @@ test.describe('Inventory Items Management', () => {
 				category_id: weaponsCategoryId,
 				container_id: testContainerId,
 				quantity: 1,
-				attributes: { name: `Multi Weapon ${timestamp}`, weaponType: 'Longsword' },
+				attributes: {
+					name: `Multi Weapon ${timestamp}`,
+					weaponType: 'Longsword'
+				},
 				out_for_maintenance: false
 			});
 
@@ -631,7 +624,10 @@ test.describe('Inventory Items Management', () => {
 				category_id: weaponsCategoryId,
 				container_id: testContainerId,
 				quantity: 1,
-				attributes: { name: `Multi Maintenance Weapon ${timestamp}`, weaponType: 'Dagger' },
+				attributes: {
+					name: `Multi Maintenance Weapon ${timestamp}`,
+					weaponType: 'Dagger'
+				},
 				out_for_maintenance: true
 			});
 
@@ -648,9 +644,7 @@ test.describe('Inventory Items Management', () => {
 
 			// Verify URL has all parameters
 			await expect(page).toHaveURL(
-				new RegExp(
-					'/dashboard/inventory/items\\?.*search=Multi\\+Weapon.*category=.*maintenance=false'
-				)
+				/\/dashboard\/inventory\/items\?.*search=Multi\+Weapon.*category=.*maintenance=false/
 			);
 
 			// Only the available weapon with "Multi Weapon" in name should be visible
@@ -669,7 +663,10 @@ test.describe('Inventory Items Management', () => {
 				category_id: weaponsCategoryId,
 				container_id: testContainerId,
 				quantity: 1,
-				attributes: { name: `Persistent Item ${timestamp}`, weaponType: 'Spear' }
+				attributes: {
+					name: `Persistent Item ${timestamp}`,
+					weaponType: 'Spear'
+				}
 			});
 
 			await page.goto('/dashboard/inventory/items');
@@ -767,7 +764,7 @@ test.describe('Inventory Items Management', () => {
 			await page.getByRole('button', { name: /create item/i }).click();
 
 			// Should successfully create and redirect to item detail
-			await expect(page).toHaveURL(new RegExp('/dashboard/inventory/items/[a-f0-9-]+$'));
+			await expect(page).toHaveURL(/\/dashboard\/inventory\/items\/[a-f0-9-]+$/);
 		});
 
 		test('should show different actions for different roles', async ({ page, context }) => {
@@ -826,7 +823,7 @@ test.describe('Inventory Items Management', () => {
 			await page.getByRole('button', { name: /create item/i }).click();
 
 			// Should redirect to item detail page
-			await expect(page).toHaveURL(new RegExp(`/dashboard/inventory/items/[a-f0-9-]+$`));
+			await expect(page).toHaveURL(/\/dashboard\/inventory\/items\/[a-f0-9-]+$/);
 
 			// Should show history section
 			await expect(page.getByRole('heading', { name: /history/i })).toBeVisible();
@@ -853,7 +850,7 @@ test.describe('Inventory Items Management', () => {
 			});
 
 			// Navigate to item detail page
-			await page.goto(`/dashboard/inventory/items/${createdItem!.id}`);
+			await page.goto(`/dashboard/inventory/items/${createdItem?.id}`);
 
 			// Should show history section
 			await expect(page.getByRole('heading', { name: /history/i })).toBeVisible();
