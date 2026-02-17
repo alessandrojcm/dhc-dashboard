@@ -13,7 +13,7 @@ import {
 import dayjs from "dayjs";
 import { createRawSnippet } from "svelte";
 import { Cross2 } from "svelte-radix";
-import { goto, pushState } from "$app/navigation";
+import { goto } from "$app/navigation";
 import { resolve } from "$app/paths";
 import { page } from "$app/state";
 import type { Database, Tables } from "$database";
@@ -104,7 +104,7 @@ function onPaginationChange(newPagination: Partial<PaginationState>) {
 	newParams.set("page", paginationState.pageIndex.toString());
 	newParams.set("pageSize", paginationState.pageSize.toString());
 	const url = `/dashboard/members?${newParams.toString()}`;
-	pushState(url, {});
+	goto(resolve(url as any));
 }
 
 function onSortingChange(newSorting: SortingState) {
@@ -114,7 +114,7 @@ function onSortingChange(newSorting: SortingState) {
 	newParams.set("sort", sortingState.id);
 	newParams.set("direction", sortingState.desc ? "desc" : "asc");
 	const url = `/dashboard/members?${newParams.toString()}`;
-	pushState(url, {});
+	goto(resolve(url as any));
 }
 
 function onSearchChange(newSearch: string) {
@@ -123,7 +123,7 @@ function onSearchChange(newSearch: string) {
 	newParams.set("q", newSearch);
 	newParams.set("page", "0"); // Reset to first page on search
 	const url = `/dashboard/members?${newParams.toString()}`;
-	pushState(url, {});
+	goto(resolve(url as any));
 }
 
 // State for expanded rows
