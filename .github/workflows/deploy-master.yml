@@ -75,11 +75,6 @@ jobs:
       - name: Install Dependencies
         run: pnpm install
 
-      - name: Build Worker
-        env:
-          NODE_ENV: production
-        run: pnpm build
-
       - name: Build & Deploy Worker
         uses: cloudflare/wrangler-action@v3.14.1
         with:
