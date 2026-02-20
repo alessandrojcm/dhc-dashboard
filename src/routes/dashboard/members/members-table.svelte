@@ -35,12 +35,12 @@ import SortHeader from "$lib/components/ui/table/sort-header.svelte";
 import MemberActions from "./member-actions.svelte";
 
 const columns =
-	"id,first_name,last_name,email,phone_number,gender,pronouns,is_active,preferred_weapon,membership_start_date,membership_end_date,last_payment_date,insurance_form_submitted,roles,age,social_media_consent,next_of_kin_name,next_of_kin_phone,guardian_first_name,guardian_last_name,guardian_phone_number,medical_conditions,additional_data,created_at,updated_at,from_waitlist_id,search_text,user_profile_id,waitlist_registration_date,subscription_paused_until";
+	"id,first_name,last_name,email,phone_number,gender,pronouns,is_active,preferred_weapon,membership_start_date,membership_end_date,last_payment_date,insurance_form_submitted,roles,age,social_media_consent,next_of_kin_name,next_of_kin_phone,guardian_first_name,guardian_last_name,guardian_phone_number,medical_conditions,additional_data,created_at,updated_at,from_waitlist_id,search_text,user_profile_id,waitlist_registration_date,subscription_paused_until,membership_status";
 
 let pageSizeOptions = [10, 25, 50, 100];
 
 const { supabase }: { supabase: SupabaseClient<Database> } = $props();
-const statusOptions = ["active", "inactive"] as const;
+const statusOptions = ["active", "inactive", "paused"] as const;
 type MemberStatusFilter = (typeof statusOptions)[number];
 
 const currentPage = $derived(Number(page.url.searchParams.get("page")) || 0);
@@ -53,7 +53,7 @@ const statusFilter = $derived.by(() => {
 		.map((status) => status.trim())
 		.filter(
 			(status): status is MemberStatusFilter =>
-				status === "active" || status === "inactive",
+				status === "active" || status === "inactive" || status === "paused",
 		);
 	if (selected.length === 0) {
 		return [...statusOptions];
@@ -95,8 +95,8 @@ const membersQuery = createQuery(() => ({
 				type: "websearch",
 			});
 		}
-		if (statusFilter.length === 1) {
-			query = query.eq("is_active", statusFilter[0] === "active");
+		if (statusFilter.length > 0 && statusFilter.length < statusOptions.length) {
+			query = query.in("membership_status", statusFilter);
 		}
 		if (sortingState.length > 0) {
 			query = query.order(sortingState[0].id, {
@@ -263,7 +263,20 @@ const tableOptions = $state<
 		{
 			accessorKey: "is_active",
 			header: "Status",
-			cell: ({ getValue }) => {
+			cell: ({ row, getValue }) => {
+				const pausedUntil = row.original.subscription_paused_until;
+				const isPaused = pausedUntil && dayjs(pausedUntil).isAfter(dayjs());
+
+				if (getValue() && isPaused) {
+					return renderComponent(Badge, {
+						variant: "secondary",
+						class: "h-6",
+						children: createRawSnippet(() => ({
+							render: () => "Paused",
+						})),
+					});
+				}
+
 				return renderComponent(Badge, {
 					variant: getValue() ? "default" : "destructive",
 					class: "h-6",
