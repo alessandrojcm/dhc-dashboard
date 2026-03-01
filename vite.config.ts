@@ -4,6 +4,7 @@ import { defineConfig } from 'vitest/config';
 import tailwindcss from '@tailwindcss/vite';
 import { enhancedImages } from '@sveltejs/enhanced-img';
 import { sentryVitePlugin } from '@sentry/vite-plugin';
+import mkcert from "vite-plugin-mkcert";
 
 export default defineConfig({
 	assetsInclude: ['src/assets/**/*'],
@@ -27,7 +28,8 @@ export default defineConfig({
 			org: 'dublin-hema-club',
 			project: 'dhc-dashboard',
 			authToken: process.env.SENTRY_AUTH_TOKEN
-		})
+		}),
+		mkcert()
 	],
 	build: {
 		rollupOptions: {
