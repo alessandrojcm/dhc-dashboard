@@ -16,6 +16,9 @@ Sentry.init({
 	// sessions when an error occurs.
 	replaysOnErrorSampleRate: 1.0,
 
+	enableLogs: true,
+	enableMetrics: true,
+
 	// If you don't want to use Session Replay, just remove the line below:
 	integrations: [
 		replayIntegration(),
