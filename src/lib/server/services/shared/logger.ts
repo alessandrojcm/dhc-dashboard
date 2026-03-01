@@ -1,4 +1,5 @@
 import { dev } from "$app/environment";
+import * as Sentry from "@sentry/sveltekit";
 
 /**
  * Logger interface for service-layer logging
@@ -32,27 +33,19 @@ export interface Logger {
  */
 export const sentryLogger: Logger = {
 	info(message: string, context?: Record<string, unknown>) {
-		console.info(message, context);
+		Sentry.logger.info(message, context);
 	},
 
 	error(message: string, context?: Record<string, unknown>) {
-		// Only import Sentry when needed to avoid server-side bundling issues
-		import("@sentry/sveltekit").then((Sentry) => {
-			Sentry.captureException(new Error(message), { extra: context });
-		});
-		console.error(message, context);
+		Sentry.captureException(new Error(message), { extra: context });
 	},
 
 	warn(message: string, context?: Record<string, unknown>) {
-		// Only import Sentry when needed to avoid server-side bundling issues
-		import("@sentry/sveltekit").then((Sentry) => {
-			Sentry.captureMessage(message, { level: "warning", extra: context });
-		});
-		console.warn(message, context);
+		Sentry.logger.warn(message, { level: "warning", extra: context });
 	},
 
 	debug(message: string, context?: Record<string, unknown>) {
-		console.debug(message, context);
+		Sentry.logger.debug(message, { level: "warning", extra: context });
 	},
 };
 
