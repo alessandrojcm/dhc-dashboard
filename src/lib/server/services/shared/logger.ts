@@ -1,3 +1,5 @@
+import { dev } from "$app/environment";
+
 /**
  * Logger interface for service-layer logging
  * Services accept an optional logger dependency that defaults to console if not provided
@@ -75,3 +77,5 @@ export const consoleLogger: Logger = {
 		console.debug(message, context);
 	},
 };
+
+export default dev ? consoleLogger : sentryLogger;

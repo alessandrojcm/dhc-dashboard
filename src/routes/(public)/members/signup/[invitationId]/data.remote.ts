@@ -1,6 +1,5 @@
 import { form, getRequestEvent } from "$app/server";
 import { error } from "@sveltejs/kit";
-import * as Sentry from "@sentry/sveltekit";
 import type Stripe from "stripe";
 import { inviteValidationSchema } from "$lib/schemas/inviteValidationSchema";
 import { memberSignupSchema } from "$lib/schemas/membersSignup";
@@ -11,6 +10,7 @@ import { createInvitationService } from "$lib/server/services/invitations";
 import { stripeClient } from "$lib/server/stripe";
 import { env } from "$env/dynamic/public";
 import { dev } from "$app/environment";
+import logger from "$lib/server/services/shared/logger";
 
 const DASHBOARD_MIGRATION_CODE =
 	env.PUBLIC_DASHBOARD_MIGRATION_CODE ?? "DHCDASHBOARD";
@@ -53,11 +53,10 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 	const event = getRequestEvent();
 	const invitationId = event.params.invitationId;
 
-	console.log(
-		"[processPayment] Starting payment processing for invitation:",
-		invitationId,
+	logger.debug(
+		`[processPayment] Starting payment processing for invitation: ${invitationId}`,
 	);
-	console.log("[processPayment] Received data:", {
+	logger.debug("[processPayment] Received data:", {
 		nextOfKin: data.nextOfKin,
 		nextOfKinNumber: data.nextOfKinNumber,
 		stripeConfirmationToken: data.stripeConfirmationToken
@@ -75,7 +74,7 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 
 	try {
 		return await kysely.transaction().execute(async (trx) => {
-			console.log("[processPayment] Processing invitation acceptance...");
+			logger.debug("[processPayment] Processing invitation acceptance...");
 			// Process invitation acceptance (handles status update, registration, waitlist)
 			const invitationData =
 				await invitationService.processInvitationAcceptance(
@@ -84,9 +83,8 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 					data.nextOfKin,
 					data.nextOfKinNumber,
 				);
-			console.log(
-				"[processPayment] Invitation accepted for user:",
-				invitationData.user_id,
+			logger.debug(
+				`[processPayment] Invitation accepted for user: ${invitationData.user_id}`,
 			);
 
 			// Get customer ID
@@ -103,19 +101,18 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 				);
 				throw error(404, "No customer ID found for this user.");
 			}
-			console.log(
-				"[processPayment] Customer ID found:",
-				customerId.customer_id,
+			logger.debug(
+				`[processPayment] Customer ID found: ${customerId.customer_id}`,
 			);
 
-			console.log("[processPayment] Creating Stripe setup intent...");
+			logger.debug("[processPayment] Creating Stripe setup intent...");
 			const intent = await stripeClient.setupIntents.create({
 				confirm: true,
 				customer: customerId.customer_id!,
 				confirmation_token: data.stripeConfirmationToken,
 				payment_method_types: ["sepa_debit"],
 			});
-			console.log("[processPayment] Setup intent created:", {
+			logger.debug("[processPayment] Setup intent created:", {
 				id: intent.id,
 				status: intent.status,
 				payment_method: intent.payment_method ? "present" : "null",
@@ -143,7 +140,7 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 			const { monthly, annual } = await getPriceIds(kysely);
 
 			if (!monthly || !annual) {
-				Sentry.captureMessage("Base prices not found for membership products", {
+				logger.debug("Base prices not found for membership products", {
 					extra: { userId: invitationData.user_id },
 				});
 				throw error(500, "Could not retrieve base product prices.");
@@ -269,7 +266,9 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 			]);
 
 			// Success! Delete the access token cookie
-			console.log("[processPayment] Payment processing completed successfully");
+			logger.debug(
+				"[processPayment] Payment processing completed successfully",
+			);
 			event.cookies.delete("access-token", { path: "/" });
 			return { paymentFailed: false };
 		});
@@ -287,7 +286,7 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 					? (err as { type: string }).type
 					: "none",
 		});
-		Sentry.captureException(err);
+		logger.error(err as string);
 		let errorMessage = "An unexpected error occurred";
 
 		if (err instanceof Error && "code" in err) {
@@ -318,7 +317,7 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 			}
 		}
 
-		console.error("[processPayment] Returning error to client:", errorMessage);
+		logger.error(`[processPayment] Returning error to client: ${errorMessage}`);
 		return { paymentFailed: true, error: errorMessage };
 	}
 });
