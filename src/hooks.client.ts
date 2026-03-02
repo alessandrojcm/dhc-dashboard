@@ -4,7 +4,6 @@ import {
 	replayIntegration,
 	browserApiErrorsIntegration,
 	browserTracingIntegration,
-	consoleIntegration,
 	consoleLoggingIntegration,
 } from "@sentry/sveltekit";
 import posthog from "posthog-js";
