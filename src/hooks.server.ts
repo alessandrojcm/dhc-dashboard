@@ -1,9 +1,4 @@
-import {
-	consoleLoggingIntegration,
-	handleErrorWithSentry,
-	initCloudflareSentryHandle,
-	sentryHandle,
-} from "@sentry/sveltekit";
+import * as Sentry from "@sentry/sveltekit";
 import { createServerClient } from "@supabase/ssr";
 import { type Handle, redirect } from "@sveltejs/kit";
 import { sequence } from "@sveltejs/kit/hooks";
@@ -128,7 +123,7 @@ const roleGuard: Handle = async ({ event, resolve }) => {
 };
 
 export const handle: Handle = sequence(
-	initCloudflareSentryHandle({
+	Sentry.initCloudflareSentryHandle({
 		enabled: !dev,
 		dsn: "https://410c1b65794005c22ea5e8c794ddac10@o4509135535079424.ingest.de.sentry.io/4509135536783440",
 		tracesSampleRate: 1,
@@ -136,14 +131,14 @@ export const handle: Handle = sequence(
 		enableMetrics: true,
 		sendDefaultPii: true,
 		integrations: [
-			consoleLoggingIntegration({
+			Sentry.consoleLoggingIntegration({
 				levels: ["error", "warn", "log"],
 			}),
 		],
 	}),
-	sentryHandle(),
+	Sentry.sentryHandle(),
 	supabase,
 	authGuard,
 	roleGuard,
 );
-export const handleError = handleErrorWithSentry();
+export const handleError = Sentry.handleErrorWithSentry();
