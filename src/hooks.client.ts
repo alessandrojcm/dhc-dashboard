@@ -1,5 +1,10 @@
 import * as Sentry from "@sentry/sveltekit";
-import { handleErrorWithSentry, replayIntegration } from "@sentry/sveltekit";
+import {
+	handleErrorWithSentry,
+	replayIntegration,
+	browserApiErrorsIntegration,
+	browserTracingIntegration,
+} from "@sentry/sveltekit";
 import posthog from "posthog-js";
 import { dev } from "$app/environment";
 
@@ -22,11 +27,20 @@ Sentry.init({
 	// If you don't want to use Session Replay, just remove the line below:
 	integrations: [
 		replayIntegration(),
+		browserApiErrorsIntegration(),
+		browserTracingIntegration(),
 		posthog.sentryIntegration({
 			organization: "dublin-hema-club",
 			projectId: 4509135536783440,
 			severityAllowList: ["error", "info"],
 		}),
+	],
+	sendDefaultPii: true,
+	tracePropagationTargets: [
+		"localhost",
+		/^\/api\//,
+		/^\/__app\//,
+		"https://otaiiiecsnikwdcyruuq.supabase.co",
 	],
 });
 

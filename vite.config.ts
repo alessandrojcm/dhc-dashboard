@@ -6,11 +6,11 @@ import { enhancedImages } from '@sveltejs/enhanced-img';
 import { sentryVitePlugin } from '@sentry/vite-plugin';
 import mkcert from "vite-plugin-mkcert";
 
-export default defineConfig({
+export default defineConfig(({command}) => ({
 	assetsInclude: ['src/assets/**/*'],
 	plugins: [
 		sentrySvelteKit({
-			debug: true,
+			debug: command === 'serve',
 			autoUploadSourceMaps: true,
 			org: 'dublin-hema-club',
 			project: 'dhc-dashboard',
@@ -45,4 +45,4 @@ export default defineConfig({
 			ignored: ['**/supabase/**']
 		}
 	}
-});
+}));
