@@ -1,4 +1,5 @@
 import {
+	consoleLoggingIntegration,
 	handleErrorWithSentry,
 	initCloudflareSentryHandle,
 	sentryHandle,
@@ -134,6 +135,11 @@ export const handle: Handle = sequence(
 		enableLogs: true,
 		enableMetrics: true,
 		sendDefaultPii: true,
+		integrations: [
+			consoleLoggingIntegration({
+				levels: ["error", "warn", "log"],
+			}),
+		],
 	}),
 	sentryHandle(),
 	supabase,

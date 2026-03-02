@@ -21,8 +21,8 @@ export default defineConfig(({command}) => ({
 			},
 			adapter: 'cloudflare'
 		}),
-		enhancedImages(),
 		sveltekit(),
+		enhancedImages(),
 		tailwindcss(),
 		sentryVitePlugin({
 			org: 'dublin-hema-club',
