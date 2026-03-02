@@ -222,7 +222,6 @@ export class InvitationService {
 		email: string,
 		dateOfBirth: string,
 	): Promise<boolean> {
-
 		const result = await this.kysely
 			.selectFrom("invitations")
 			.leftJoin(
