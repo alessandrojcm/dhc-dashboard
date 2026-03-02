@@ -130,13 +130,10 @@ export const handle: Handle = sequence(
 		enableLogs: true,
 		enableMetrics: true,
 		sendDefaultPii: true,
-		integrations: [
-			Sentry.consoleLoggingIntegration({
-				levels: ["error", "warn", "log"],
-			}),
-		],
 	}),
-	Sentry.sentryHandle(),
+	Sentry.sentryHandle({
+		injectFetchProxyScript: true
+	}),
 	supabase,
 	authGuard,
 	roleGuard,
