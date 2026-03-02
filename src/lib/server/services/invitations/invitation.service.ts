@@ -222,10 +222,6 @@ export class InvitationService {
 		email: string,
 		dateOfBirth: string,
 	): Promise<boolean> {
-		this.logger.info("Validating invitation credentials", {
-			invitationId,
-			email,
-		});
 
 		const result = await this.kysely
 			.selectFrom("invitations")
@@ -244,6 +240,12 @@ export class InvitationService {
 				dayjs(dateOfBirth).format("YYYY-MM-DD"),
 			)
 			.executeTakeFirst();
+
+		this.logger.info("Validating invitation credentials", {
+			invitationId,
+			email,
+			valid: !!result?.id,
+		});
 
 		return !!result?.id;
 	}
