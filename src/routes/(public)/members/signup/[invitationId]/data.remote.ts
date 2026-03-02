@@ -1,5 +1,5 @@
 import { form, getRequestEvent } from "$app/server";
-import { error } from "@sveltejs/kit";
+import { error, isRedirect, redirect } from "@sveltejs/kit";
 import type Stripe from "stripe";
 import { inviteValidationSchema } from "$lib/schemas/inviteValidationSchema";
 import { memberSignupSchema } from "$lib/schemas/membersSignup";
@@ -86,7 +86,6 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 			logger.debug(
 				`[processPayment] Invitation accepted for user: ${invitationData.user_id}`,
 			);
-
 			// Get customer ID
 			const customerId = await trx
 				.selectFrom("user_profiles")
@@ -95,9 +94,8 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 				.executeTakeFirst();
 
 			if (!customerId) {
-				console.error(
-					"[processPayment] No customer ID found for user:",
-					invitationData.user_id,
+				logger.error(
+					`[processPayment] No customer ID found for user: ${invitationData.user_id}`,
 				);
 				throw error(404, "No customer ID found for this user.");
 			}
@@ -270,11 +268,14 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 				"[processPayment] Payment processing completed successfully",
 			);
 			event.cookies.delete("access-token", { path: "/" });
-			return { paymentFailed: false };
+			throw redirect(301, `/members/signup/${invitationId}/success`);
 		});
 	} catch (err) {
-		console.error("[processPayment] Payment processing error:", err);
-		console.error("[processPayment] Error details:", {
+		if (isRedirect(err)) {
+			throw err;
+		}
+		logger.error(`[processPayment] Payment processing error: ${err}`);
+		logger.error("[processPayment] Error details:", {
 			name: err instanceof Error ? err.name : "unknown",
 			message: err instanceof Error ? err.message : String(err),
 			code:
@@ -291,7 +292,7 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 
 		if (err instanceof Error && "code" in err) {
 			const stripeError = err as { code: string };
-			console.error("[processPayment] Stripe error code:", stripeError.code);
+			logger.error(`[processPayment] Stripe error code: ${stripeError.code}`);
 			switch (stripeError.code) {
 				case "charge_exceeds_source_limit":
 				case "charge_exceeds_transaction_limit":
