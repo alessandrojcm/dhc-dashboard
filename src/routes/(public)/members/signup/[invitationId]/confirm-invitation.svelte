@@ -1,20 +1,23 @@
 <script lang="ts">
-import * as Field from "$lib/components/ui/field";
-import { Input } from "$lib/components/ui/input";
-import { Button } from "$lib/components/ui/button";
+import { fromDate } from "@internationalized/date";
+import dayjs from "dayjs";
+import utc from "dayjs/plugin/utc";
 import { ArrowRightIcon } from "lucide-svelte";
-import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
 import { toast } from "svelte-sonner";
-import { page } from "$app/state";
-import * as Alert from "$lib/components/ui/alert";
 import { goto } from "$app/navigation";
 import { resolve } from "$app/paths";
-import dayjs from "dayjs";
-import { fromDate, getLocalTimeZone } from "@internationalized/date";
+import { page } from "$app/state";
+import * as Alert from "$lib/components/ui/alert";
+import { Button } from "$lib/components/ui/button";
 import DatePicker from "$lib/components/ui/date-picker.svelte";
-import { validateInvitation } from "./data.remote";
+import * as Field from "$lib/components/ui/field";
+import { Input } from "$lib/components/ui/input";
+import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
 import { inviteValidationSchema } from "$lib/schemas/inviteValidationSchema";
 import { initForm } from "$lib/utils/init-form.svelte";
+import { validateInvitation } from "./data.remote";
+
+dayjs.extend(utc);
 
 const invitationId = $derived(page.params.invitationId);
 
@@ -25,13 +28,17 @@ initForm(validateInvitation, () => {
 		dateOfBirth: page.url.searchParams.get("dateOfBirth") || "",
 	};
 });
-// Date picker value
+// Date picker value — force UTC to avoid ±1 day timezone drift
 const dobValue = $derived.by(() => {
 	const dob = validateInvitation.fields.dateOfBirth.value();
-	if (!dob || !dayjs(dob).isValid() || dayjs(dob).isSame(dayjs())) {
+	if (
+		!dob ||
+		!dayjs(dob).isValid() ||
+		dayjs.utc(dob).isSame(dayjs.utc(), "day")
+	) {
 		return undefined;
 	}
-	return fromDate(dayjs(dob).toDate(), getLocalTimeZone());
+	return fromDate(dayjs.utc(dob).toDate(), "UTC");
 });
 </script>
 
@@ -104,9 +111,12 @@ const dobValue = $derived.by(() => {
                             value={dobValue}
                             onDateChange={(date) => {
 							if (!date) return;
-							validateInvitation.fields.dateOfBirth.set(
-								dayjs(date).format("YYYY-MM-DD"),
-							);
+							// The DatePicker produces a Date in local time via toDate(getLocalTimeZone()),
+							// so we extract local date parts to get the correct calendar date
+							const y = date.getFullYear();
+							const m = String(date.getMonth() + 1).padStart(2, "0");
+							const d = String(date.getDate()).padStart(2, "0");
+							validateInvitation.fields.dateOfBirth.set(`${y}-${m}-${d}`);
 						}}
                     />
                     {#each validateInvitation.fields.dateOfBirth.issues() as issue}
