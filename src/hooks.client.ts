@@ -4,6 +4,8 @@ import {
 	replayIntegration,
 	browserApiErrorsIntegration,
 	browserTracingIntegration,
+	consoleIntegration,
+	consoleLoggingIntegration,
 } from "@sentry/sveltekit";
 import posthog from "posthog-js";
 import { dev } from "$app/environment";
@@ -29,6 +31,9 @@ Sentry.init({
 		replayIntegration(),
 		browserApiErrorsIntegration(),
 		browserTracingIntegration(),
+		consoleLoggingIntegration({
+			levels: ["error", "warn", "log"],
+		}),
 		posthog.sentryIntegration({
 			organization: "dublin-hema-club",
 			projectId: 4509135536783440,
