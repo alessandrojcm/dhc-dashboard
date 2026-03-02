@@ -133,6 +133,7 @@ export const handle: Handle = sequence(
 		tracesSampleRate: 1,
 		enableLogs: true,
 		enableMetrics: true,
+		sendDefaultPii: true,
 	}),
 	sentryHandle(),
 	supabase,

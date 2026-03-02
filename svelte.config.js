@@ -13,6 +13,12 @@ const config = {
 		adapter: adapter(),
 		experimental: {
 			remoteFunctions: true,
+			instrumentation: {
+				server: true
+			},
+			tracing: {
+				server: true
+			}
 		},
 		alias: {
 			$database: './src/database.types.ts',
