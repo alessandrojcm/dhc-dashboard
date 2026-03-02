@@ -14,8 +14,7 @@ import {
 import { PUBLIC_STRIPE_KEY } from "$env/static/public";
 import { toast } from "svelte-sonner";
 import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
-import { onMount, tick } from "svelte";
-import { goto } from "$app/navigation";
+import { onMount } from "svelte";
 import { resolve } from "$app/paths";
 import * as Alert from "$lib/components/ui/alert";
 import PhoneInput from "$lib/components/ui/phone-input.svelte";
@@ -26,7 +25,6 @@ import { processPayment } from "./data.remote";
 import { initForm } from "$lib/utils/init-form.svelte";
 import { dev } from "$app/environment";
 import FormDebug from "$lib/components/form-debug.svelte";
-import type { MouseEventHandler } from "svelte/elements";
 
 const { data }: { data: PageServerData } = $props();
 let currentCoupon = $state("");
@@ -122,12 +120,11 @@ const handleSubmit: ButtonProps["onclick"] = async (e) => {
 		return;
 	}
 
-	// Create the confirmation token
 	const { error: paymentMethodError, confirmationToken } =
 		await stripe.createConfirmationToken({
 			elements,
 			params: {
-				return_url: window.location.href + "/members/signup",
+				return_url: page.url.toString(),
 			},
 		});
 
@@ -146,18 +143,15 @@ const handleSubmit: ButtonProps["onclick"] = async (e) => {
 		return;
 	}
 
-	console.log(
-		"[PaymentForm] Confirmation token created:",
-		confirmationToken.id,
-	);
-
 	// Update the hidden input element directly in the DOM
 	// This ensures the value is available when the form serializes for submission
 	processPayment.fields.stripeConfirmationToken.set(confirmationToken.id);
 	await processPayment.validate();
-	// eslint-ignore
-	const form = e.target?.form as HTMLFormElement;
-	form.requestSubmit();
+	const button = e.target as HTMLButtonElement | null;
+	const form = button?.form;
+	if (form) {
+		form.requestSubmit();
+	}
 };
 </script>
 
@@ -265,7 +259,7 @@ const handleSubmit: ButtonProps["onclick"] = async (e) => {
                 <Alert.Root variant="destructive" class="w-full mb-4">
                     <Alert.Title>Error loading pricing information</Alert.Title>
                     <Alert.Description>
-                        {error}
+                        {error instanceof Error ? error.message : String(error)}
                     </Alert.Description>
                     <Button onclick={reset} variant="outline" class="mt-2 w-fit">Try Again</Button>
                 </Alert.Root>
