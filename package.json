@@ -89,7 +89,7 @@
 		"vite-bundle-analyzer": "^1.2.3",
 		"vite-plugin-mkcert": "^1.17.10",
 		"vitest": "^4.0.8",
-		"wrangler": "^4.66.0"
+		"wrangler": "^4.69.0"
 	},
 	"dependencies": {
 		"@ai-sdk/groq": "^2.0.29",
