@@ -2,7 +2,7 @@
 import dayjs from "dayjs";
 import advancedFormat from "dayjs/plugin/advancedFormat";
 import Dinero from "dinero.js";
-import { AlertTriangle } from "lucide-svelte";
+import * as Alert from "$lib/components/ui/alert";
 import * as Accordion from "$lib/components/ui/accordion";
 import { Button } from "$lib/components/ui/button";
 import * as Card from "$lib/components/ui/card";
@@ -226,24 +226,6 @@ let applyCouponError: string | null = $state(null);
                         </Accordion.Content>
                     </Accordion.Item>
                 </Accordion.Root>
-            </div>
-        </Card.Content>
-    </Card.Root>
-{:catch error}
-    <Card.Root class="bg-destructive/10 border-destructive">
-        <Card.Content class="pt-6">
-            <div
-                    class="flex flex-col items-center justify-center h-48 text-destructive"
-            >
-                <AlertTriangle class="h-8 w-8 mb-2"/>
-                <span class="font-semibold"
-                >Error loading pricing information</span
-                >
-                <span class="text-sm mt-1"
-                >{error?.message}</span
-                >
-                <span class="text-xs mt-2">Please try refreshing the page.</span
-                >
             </div>
         </Card.Content>
     </Card.Root>

@@ -132,7 +132,7 @@ export const handle: Handle = sequence(
 		sendDefaultPii: true,
 	}),
 	Sentry.sentryHandle({
-		injectFetchProxyScript: true
+		injectFetchProxyScript: true,
 	}),
 	supabase,
 	authGuard,
