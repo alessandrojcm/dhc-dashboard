@@ -3,36 +3,37 @@
  * Exports services, types, and factory functions
  */
 
+import type { Stripe } from "stripe";
+import { stripeClient } from "$lib/server/stripe";
+import type { Logger, Session } from "../shared";
 import { getKyselyClient } from "../shared";
 import { sentryLogger } from "../shared/logger";
-import type { Logger, Session } from "../shared";
-import { WorkshopService } from "./workshop.service";
 import { AttendanceService } from "./attendance.service";
 import { RefundService } from "./refund.service";
 import { RegistrationService } from "./registration.service";
+import { WorkshopService } from "./workshop.service";
 
 // ============================================================================
 // Service Exports
 // ============================================================================
 
-export { WorkshopService } from "./workshop.service";
 export { AttendanceService } from "./attendance.service";
 export { RefundService } from "./refund.service";
 export { RegistrationService } from "./registration.service";
+export { WorkshopService } from "./workshop.service";
 
 // ============================================================================
 // Validation Schema Exports
 // ============================================================================
 
+export type {
+	CreateWorkshopInput,
+	UpdateWorkshopInput,
+} from "./workshop.service";
 export {
 	BaseWorkshopSchema,
 	CreateWorkshopSchema,
 	UpdateWorkshopSchema,
-} from "./workshop.service";
-
-export type {
-	CreateWorkshopInput,
-	UpdateWorkshopInput,
 } from "./workshop.service";
 
 // ============================================================================
@@ -40,34 +41,34 @@ export type {
 // ============================================================================
 
 export type {
-	Workshop,
-	WorkshopInsert,
-	WorkshopUpdate,
-	WorkshopStatus,
-	WorkshopFilters,
-	WorkshopWithRelations,
-	Registration,
-	RegistrationInsert,
-	RegistrationUpdate,
-	RegistrationStatus,
-	RegistrationFilters,
-	RegistrationWithUser,
-	Refund,
-	RefundInsert,
-	RefundUpdate,
-	RefundStatus,
-	RefundEligibility,
-	RefundWithUser,
+	AttendanceResult,
 	AttendanceStatus,
 	AttendanceUpdate,
-	AttendanceResult,
-	Interest,
-	InterestInsert,
-	ToggleInterestResult,
+	CancelRegistrationResult,
+	CompleteRegistrationInput,
 	CreatePaymentIntentInput,
 	CreatePaymentIntentResult,
-	CompleteRegistrationInput,
-	CancelRegistrationResult,
+	Interest,
+	InterestInsert,
+	Refund,
+	RefundEligibility,
+	RefundInsert,
+	RefundStatus,
+	RefundUpdate,
+	RefundWithUser,
+	Registration,
+	RegistrationFilters,
+	RegistrationInsert,
+	RegistrationStatus,
+	RegistrationUpdate,
+	RegistrationWithUser,
+	ToggleInterestResult,
+	Workshop,
+	WorkshopFilters,
+	WorkshopInsert,
+	WorkshopStatus,
+	WorkshopUpdate,
+	WorkshopWithRelations,
 } from "./types";
 
 // ============================================================================
@@ -91,11 +92,13 @@ export type {
 export function createWorkshopService(
 	platform: App.Platform,
 	session: Session,
+	stripe: Stripe = stripeClient,
 	logger?: Logger,
 ): WorkshopService {
 	return new WorkshopService(
 		getKyselyClient(platform.env.HYPERDRIVE),
 		session,
+		stripe,
 		logger ?? sentryLogger,
 	);
 }
@@ -143,11 +146,13 @@ export function createAttendanceService(
 export function createRefundService(
 	platform: App.Platform,
 	session: Session,
+	stripe: Stripe = stripeClient,
 	logger?: Logger,
 ): RefundService {
 	return new RefundService(
 		getKyselyClient(platform.env.HYPERDRIVE),
 		session,
+		stripe,
 		logger ?? sentryLogger,
 	);
 }
@@ -169,11 +174,13 @@ export function createRefundService(
 export function createRegistrationService(
 	platform: App.Platform,
 	session: Session,
+	stripe: Stripe = stripeClient,
 	logger?: Logger,
 ): RegistrationService {
 	return new RegistrationService(
 		getKyselyClient(platform.env.HYPERDRIVE),
 		session,
+		stripe,
 		logger ?? sentryLogger,
 	);
 }

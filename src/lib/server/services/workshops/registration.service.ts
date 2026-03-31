@@ -1,3 +1,4 @@
+import type { Stripe } from "stripe";
 import type {
 	Kysely,
 	KyselyDatabase,
@@ -6,17 +7,16 @@ import type {
 	Transaction,
 } from "../shared";
 import { executeWithRLS } from "../shared";
-import { stripeClient } from "$lib/server/stripe";
 import type {
+	CancelRegistrationResult,
+	CompleteRegistrationInput,
+	CreatePaymentIntentInput,
+	CreatePaymentIntentResult,
+	Interest,
 	Registration,
 	RegistrationFilters,
 	RegistrationWithUser,
-	Interest,
 	ToggleInterestResult,
-	CreatePaymentIntentInput,
-	CreatePaymentIntentResult,
-	CompleteRegistrationInput,
-	CancelRegistrationResult,
 } from "./types";
 
 export class RegistrationService {
@@ -25,6 +25,7 @@ export class RegistrationService {
 	constructor(
 		private kysely: Kysely<KyselyDatabase>,
 		private session: Session,
+		private stripeClient: Stripe,
 		logger?: Logger,
 	) {
 		this.logger = logger ?? console;
@@ -299,7 +300,7 @@ export class RegistrationService {
 					}
 				}
 
-				const paymentIntent = await stripeClient.paymentIntents.create({
+				const paymentIntent = await this.stripeClient.paymentIntents.create({
 					amount,
 					currency,
 					metadata: {
@@ -332,7 +333,7 @@ export class RegistrationService {
 		});
 
 		const paymentIntent =
-			await stripeClient.paymentIntents.retrieve(paymentIntentId);
+			await this.stripeClient.paymentIntents.retrieve(paymentIntentId);
 
 		if (paymentIntent.status !== "succeeded") {
 			throw new Error("Payment not completed", {
