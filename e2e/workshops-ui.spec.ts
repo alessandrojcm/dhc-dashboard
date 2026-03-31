@@ -134,7 +134,7 @@ test.describe("Workshop UI", () => {
 		await page.getByRole("button", { name: "Date" }).click();
 
 		// Interact with the date picker properly
-		await page.getByRole("button", { name: "Date" }).click();
+		await expect(page.getByLabel("Select a year")).toBeVisible();
 		await page
 			.getByLabel("Select a year")
 			.selectOption(workshopDate.year().toString());
@@ -153,8 +153,10 @@ test.describe("Workshop UI", () => {
 			.getByRole("textbox", { name: "To" })
 			.fill(workshopDate.add(1, "hour").format("HH:mm:ss"));
 
-		await page.getByText(/maximum capacity/i).fill("15");
-		await page.getByText(/member price/i).fill("15");
+		await page
+			.getByRole("spinbutton", { name: /maximum capacity/i })
+			.fill("15");
+		await page.getByRole("spinbutton", { name: /member price/i }).fill("15");
 
 		// Submit the form
 		await page.getByRole("button", { name: "Create Workshop" }).click();
@@ -194,31 +196,35 @@ test.describe("Workshop UI", () => {
 		// Now visit workshops page
 		await page.goto("/dashboard/workshops");
 
-		// Should see the workshop in the list
-		await expect(page.getByText(workshopTitle)).toBeVisible();
+		// Workshop is rendered as a calendar event; open it before asserting details
+		const workshopEvent = page.getByRole("button", { name: workshopTitle });
+		await expect(workshopEvent).toBeVisible();
+		await workshopEvent.click();
+
+		const workshopDialog = page.getByRole("dialog");
+		await expect(workshopDialog).toBeVisible();
+
+		await expect(workshopDialog.getByText(workshopTitle)).toBeVisible();
 		await expect(
-			page.getByText("Test workshop for list display"),
+			workshopDialog.getByText("Test workshop for list display"),
 		).toBeVisible();
-		await expect(page.getByText("Test Location")).toBeVisible();
+		await expect(workshopDialog.getByText("Test Location")).toBeVisible();
 
 		// Should see status badge
-		await expect(page.getByText("planned")).toBeVisible();
+		await expect(workshopDialog.getByText("planned")).toBeVisible();
 
-		// Should see action buttons for planned workshop - find them within the workshop's container
-		const workshopCard = page.locator("article").filter({
-			hasText: workshopTitle,
-		});
+		// Should see action buttons for planned workshop within the event details dialog
 		await expect(
-			workshopCard.getByRole("button", { name: "Edit" }),
+			workshopDialog.getByRole("button", { name: "Edit" }),
 		).toBeVisible();
 		await expect(
-			workshopCard.getByRole("button", { name: "Publish" }),
+			workshopDialog.getByRole("button", { name: "Publish" }),
 		).toBeVisible();
 		await expect(
-			workshopCard.getByRole("button", { name: "Cancel" }),
+			workshopDialog.getByRole("button", { name: "Cancel" }),
 		).toBeVisible();
 		await expect(
-			workshopCard.getByRole("button", { name: "Delete" }),
+			workshopDialog.getByRole("button", { name: "Delete" }),
 		).toBeVisible();
 	});
 
@@ -423,11 +429,14 @@ test.describe("Workshop UI", () => {
 		// Visit workshops page
 		await page.goto("/dashboard/workshops");
 
-		// Check that prices are formatted correctly (from cents to euros)
-		const workshopCard = page.locator("article").filter({
-			hasText: workshopTitle,
-		});
-		await expect(workshopCard.getByText("€12.50")).toBeVisible();
-		await expect(workshopCard.getByText("€20.75")).toBeVisible();
+		// Workshops render as calendar events by default; open details before checking prices
+		const workshopEvent = page.getByRole("button", { name: workshopTitle });
+		await expect(workshopEvent).toBeVisible();
+		await workshopEvent.click();
+
+		const workshopDialog = page.getByRole("dialog");
+		await expect(workshopDialog).toBeVisible();
+		await expect(workshopDialog.getByText("€12.50")).toBeVisible();
+		await expect(workshopDialog.getByText("€20.75")).toBeVisible();
 	});
 });

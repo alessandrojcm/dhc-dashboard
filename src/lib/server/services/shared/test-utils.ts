@@ -1,9 +1,9 @@
-import { vi, type MockedFunction } from "vitest";
-import type { Logger } from "./logger";
 import type { Session } from "@supabase/supabase-js";
 import type { Kysely } from "kysely";
 import type Stripe from "stripe";
+import { type MockedFunction, vi } from "vitest";
 import type { KyselyDatabase } from "$lib/types";
+import type { Logger } from "./logger";
 
 /**
  * Creates a mock logger for testing
@@ -95,7 +95,7 @@ export function createMockStripe(): Partial<Stripe> {
 			list: vi.fn(),
 		},
 		// Add more Stripe resources as needed
-	};
+	} as unknown as Partial<Stripe>;
 }
 
 /**
