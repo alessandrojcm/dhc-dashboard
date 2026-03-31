@@ -195,6 +195,7 @@ Check with `authorize(locals, ROLES)` in API routes or `has_any_role()` in SQL.
 - Members dashboard status filtering supports three states: `active`, `inactive`, `paused`; `paused` means `is_active = true` and `subscription_paused_until` is in the future.
 - `member_management_view` now exposes computed `membership_status` (`active`/`inactive`/`paused`) plus `paused_until` aliasing `member_profiles.subscription_paused_until` for member list filtering.
 - Tailwind theme tokens consumed through `hsl(var(--token))` must stay as HSL channel values, not raw color keywords or `oklch(...)`; invalid `--popover`/`--sidebar-*` values make `bg-popover` and `bg-sidebar` render transparent in dropdowns, sheets, and similar modal surfaces.
+- `supabase/functions/process-emails` validates `dataVariables` as `Record<string, string>`; edge functions that enqueue transactional emails must stringify numeric template variables (for example `workshop_count` in `process-workshop-announcements`).
 
 ---
 
