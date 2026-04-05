@@ -3,6 +3,7 @@ import type {
 	Kysely,
 	KyselyDatabase,
 	Logger,
+	RegistrationActor,
 	Session,
 	Transaction,
 } from "../shared";
@@ -19,20 +20,75 @@ import type {
 	ToggleInterestResult,
 } from "./types";
 
+/**
+ * Service for managing workshop registrations.
+ *
+ * Supports two actor contexts:
+ * - `member`: Authenticated member performing actions on their own behalf
+ * - `system`: System/service-level operations (e.g., public registration flow)
+ *
+ * The session is used for RLS claims (executeWithRLS), while the actor
+ * determines identity for logging and business logic.
+ */
 export class RegistrationService {
 	private logger: Logger;
 
+	/**
+	 * @param kysely - Database client
+	 * @param session - Session for RLS claims (used by executeWithRLS)
+	 * @param actor - Who is performing the operation (member or system)
+	 * @param stripeClient - Stripe client for payment operations
+	 * @param logger - Optional logger
+	 */
 	constructor(
 		private kysely: Kysely<KyselyDatabase>,
 		private session: Session,
+		private actor: RegistrationActor,
 		private stripeClient: Stripe,
 		logger?: Logger,
 	) {
 		this.logger = logger ?? console;
 	}
 
+	// ============================================================================
+	// Private Helpers
+	// ============================================================================
+
+	/**
+	 * Returns the member user ID, or throws if the actor is not a member.
+	 * Use this to guard member-only operations.
+	 *
+	 * @param context - Description of the operation for error messages
+	 * @throws Error if actor is not a member
+	 */
+	private requireMemberUserId(context: string): string {
+		if (this.actor.kind !== "member") {
+			throw new Error(
+				`Operation "${context}" requires a member context, but actor is "${this.actor.kind}"`,
+			);
+		}
+		return this.actor.memberUserId;
+	}
+
+	/**
+	 * Returns logging context based on actor type.
+	 */
+	private getActorLogContext(): Record<string, unknown> {
+		if (this.actor.kind === "member") {
+			return { actorKind: "member", userId: this.actor.memberUserId };
+		}
+		return { actorKind: "system" };
+	}
+
+	// ============================================================================
+	// Query Methods
+	// ============================================================================
+
 	async findById(id: string): Promise<Registration> {
-		this.logger.info("Fetching registration by ID", { registrationId: id });
+		this.logger.info("Fetching registration by ID", {
+			registrationId: id,
+			...this.getActorLogContext(),
+		});
 
 		return executeWithRLS(
 			this.kysely,
@@ -44,7 +100,10 @@ export class RegistrationService {
 	}
 
 	async findMany(filters?: RegistrationFilters): Promise<Registration[]> {
-		this.logger.info("Fetching registrations", { filters });
+		this.logger.info("Fetching registrations", {
+			filters,
+			...this.getActorLogContext(),
+		});
 
 		return executeWithRLS(
 			this.kysely,
@@ -70,7 +129,10 @@ export class RegistrationService {
 	async getWorkshopAttendees(
 		workshopId: string,
 	): Promise<RegistrationWithUser[]> {
-		this.logger.info("Fetching workshop attendees", { workshopId });
+		this.logger.info("Fetching workshop attendees", {
+			workshopId,
+			...this.getActorLogContext(),
+		});
 
 		return executeWithRLS(
 			this.kysely,
@@ -154,10 +216,21 @@ export class RegistrationService {
 		);
 	}
 
+	// ============================================================================
+	// Member-Only Operations
+	// ============================================================================
+
+	/**
+	 * Toggle interest in a workshop (member-only operation).
+	 */
 	async toggleInterest(workshopId: string): Promise<ToggleInterestResult> {
+		const memberUserId = this.requireMemberUserId(
+			"RegistrationService.toggleInterest",
+		);
+
 		this.logger.info("Toggling interest", {
 			workshopId,
-			userId: this.session.user.id,
+			...this.getActorLogContext(),
 		});
 
 		return executeWithRLS(
@@ -193,7 +266,7 @@ export class RegistrationService {
 					.selectFrom("club_activity_interest")
 					.selectAll()
 					.where("club_activity_id", "=", workshopId)
-					.where("user_id", "=", this.session.user.id)
+					.where("user_id", "=", memberUserId)
 					.executeTakeFirst();
 
 				if (existing) {
@@ -212,7 +285,7 @@ export class RegistrationService {
 					.insertInto("club_activity_interest")
 					.values({
 						club_activity_id: workshopId,
-						user_id: this.session.user.id,
+						user_id: memberUserId,
 					})
 					.returningAll()
 					.executeTakeFirstOrThrow();
@@ -226,14 +299,21 @@ export class RegistrationService {
 		);
 	}
 
+	/**
+	 * Create a payment intent for member workshop registration (member-only operation).
+	 */
 	async createPaymentIntent(
 		input: CreatePaymentIntentInput,
 	): Promise<CreatePaymentIntentResult> {
+		const memberUserId = this.requireMemberUserId(
+			"RegistrationService.createPaymentIntent",
+		);
+
 		const { workshopId, amount, currency = "eur", customerId } = input;
 		this.logger.info("Creating payment intent", {
 			workshopId,
 			amount,
-			userId: this.session.user.id,
+			...this.getActorLogContext(),
 		});
 
 		return executeWithRLS(
@@ -269,7 +349,7 @@ export class RegistrationService {
 					.selectFrom("club_activity_registrations")
 					.select(["id"])
 					.where("club_activity_id", "=", workshopId)
-					.where("member_user_id", "=", this.session.user.id)
+					.where("member_user_id", "=", memberUserId)
 					.where("status", "in", ["pending", "confirmed"])
 					.executeTakeFirst();
 
@@ -306,8 +386,9 @@ export class RegistrationService {
 					metadata: {
 						workshop_id: workshopId,
 						workshop_title: workshop.title,
-						user_id: this.session.user.id,
+						user_id: memberUserId,
 						type: "workshop_registration",
+						actor_type: "member",
 					},
 					automatic_payment_methods: { enabled: false },
 					payment_method_types: ["card", "link"],
@@ -322,14 +403,21 @@ export class RegistrationService {
 		);
 	}
 
+	/**
+	 * Complete a member registration after payment (member-only operation).
+	 */
 	async completeRegistration(
 		input: CompleteRegistrationInput,
 	): Promise<Registration> {
+		const memberUserId = this.requireMemberUserId(
+			"RegistrationService.completeRegistration",
+		);
+
 		const { workshopId, paymentIntentId } = input;
 		this.logger.info("Completing registration", {
 			workshopId,
 			paymentIntentId,
-			userId: this.session.user.id,
+			...this.getActorLogContext(),
 		});
 
 		const paymentIntent =
@@ -363,7 +451,7 @@ export class RegistrationService {
 					.insertInto("club_activity_registrations")
 					.values({
 						club_activity_id: workshopId,
-						member_user_id: this.session.user.id,
+						member_user_id: memberUserId,
 						status: "confirmed",
 						stripe_checkout_session_id: paymentIntentId,
 						amount_paid: paymentIntent.amount,
@@ -377,12 +465,19 @@ export class RegistrationService {
 		);
 	}
 
+	/**
+	 * Cancel a member's registration (member-only operation).
+	 */
 	async cancelRegistration(
 		workshopId: string,
 	): Promise<CancelRegistrationResult> {
+		const memberUserId = this.requireMemberUserId(
+			"RegistrationService.cancelRegistration",
+		);
+
 		this.logger.info("Cancelling registration", {
 			workshopId,
-			userId: this.session.user.id,
+			...this.getActorLogContext(),
 		});
 
 		return executeWithRLS(
@@ -393,7 +488,7 @@ export class RegistrationService {
 					.selectFrom("club_activity_registrations")
 					.selectAll()
 					.where("club_activity_id", "=", workshopId)
-					.where("member_user_id", "=", this.session.user.id)
+					.where("member_user_id", "=", memberUserId)
 					.where("status", "in", ["pending", "confirmed"])
 					.executeTakeFirst();
 
@@ -401,7 +496,7 @@ export class RegistrationService {
 					throw new Error("Registration not found", {
 						cause: {
 							workshopId,
-							userId: this.session.user.id,
+							userId: memberUserId,
 							context: "RegistrationService.cancelRegistration",
 						},
 					});
@@ -418,6 +513,10 @@ export class RegistrationService {
 			},
 		);
 	}
+
+	// ============================================================================
+	// Transactional Methods (for cross-service coordination)
+	// ============================================================================
 
 	async _findById(
 		trx: Transaction<KyselyDatabase>,

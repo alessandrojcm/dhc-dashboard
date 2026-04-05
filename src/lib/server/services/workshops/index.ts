@@ -3,10 +3,11 @@
  * Exports services, types, and factory functions
  */
 
+import { env } from "$env/dynamic/private";
 import type { Stripe } from "stripe";
 import { stripeClient } from "$lib/server/stripe";
-import type { Logger, Session } from "../shared";
-import { getKyselyClient } from "../shared";
+import type { Logger, PublicServiceOptions, Session } from "../shared";
+import { buildServiceRoleSession, getKyselyClient } from "../shared";
 import { sentryLogger } from "../shared/logger";
 import { AttendanceService } from "./attendance.service";
 import { RefundService } from "./refund.service";
@@ -158,12 +159,16 @@ export function createRefundService(
 }
 
 /**
- * Create a RegistrationService instance
+ * Create a RegistrationService instance for authenticated member operations.
+ *
+ * This factory creates a service with a `member` actor context, where the
+ * member's identity is derived from the session's user ID.
  *
  * @param platform - App platform with Hyperdrive connection
- * @param session - User session for RLS
+ * @param session - User session for RLS and member identity
+ * @param stripe - Optional Stripe client (defaults to stripeClient)
  * @param logger - Optional logger (defaults to sentryLogger)
- * @returns RegistrationService instance
+ * @returns RegistrationService instance configured for member operations
  *
  * @example
  * ```typescript
@@ -180,6 +185,48 @@ export function createRegistrationService(
 	return new RegistrationService(
 		getKyselyClient(platform.env.HYPERDRIVE),
 		session,
+		{ kind: "member", memberUserId: session.user.id },
+		stripe,
+		logger ?? sentryLogger,
+	);
+}
+
+/**
+ * Create a RegistrationService instance for public/system operations.
+ *
+ * This factory creates a service with a `system` actor context, using
+ * service-role credentials for RLS. Use this for public registration flows
+ * where no authenticated member session exists.
+ *
+ * @param platform - App platform with Hyperdrive connection
+ * @param stripe - Optional Stripe client (defaults to stripeClient)
+ * @param logger - Optional logger (defaults to sentryLogger)
+ * @param opts - Optional configuration (e.g., override claims session for testing)
+ * @returns RegistrationService instance configured for system/public operations
+ *
+ * @example
+ * ```typescript
+ * // In a public route handler
+ * const registrationService = createPublicRegistrationService(platform);
+ * const result = await registrationService.createExternalPaymentIntent({
+ *   workshopId: 'uuid',
+ *   externalUser: { firstName: 'John', lastName: 'Doe', email: 'john@example.com' }
+ * });
+ * ```
+ */
+export function createPublicRegistrationService(
+	platform: App.Platform,
+	stripe: Stripe = stripeClient,
+	logger?: Logger,
+	opts?: PublicServiceOptions,
+): RegistrationService {
+	const claimsSession =
+		opts?.claimsSession ?? buildServiceRoleSession(env.SERVICE_ROLE_KEY);
+
+	return new RegistrationService(
+		getKyselyClient(platform.env.HYPERDRIVE),
+		claimsSession,
+		{ kind: "system" },
 		stripe,
 		logger ?? sentryLogger,
 	);
