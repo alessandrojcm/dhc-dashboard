@@ -201,3 +201,70 @@ export interface CancelRegistrationResult {
 	registration: Registration;
 	refundProcessed: boolean;
 }
+
+// ============================================================================
+// External Registration Types (Stage 2)
+// ============================================================================
+
+/**
+ * External user data for registration
+ */
+export interface ExternalUserInput {
+	firstName: string;
+	lastName: string;
+	email: string;
+	phoneNumber?: string | null;
+}
+
+/**
+ * Input for creating an external payment intent
+ */
+export interface CreateExternalPaymentIntentInput {
+	workshopId: string;
+	externalUser: ExternalUserInput;
+	currency?: string;
+}
+
+/**
+ * Result of creating an external payment intent
+ */
+export interface CreateExternalPaymentIntentResult {
+	clientSecret: string;
+	paymentIntentId: string;
+	amount: number;
+	currency: string;
+}
+
+/**
+ * Input for completing an external registration
+ */
+export interface CompleteExternalRegistrationInput {
+	workshopId: string;
+	paymentIntentId: string;
+	externalUser: ExternalUserInput;
+}
+
+/**
+ * Domain error codes for external registration
+ */
+export type ExternalRegistrationErrorCode =
+	| "WORKSHOP_NOT_FOUND"
+	| "WORKSHOP_FULL"
+	| "ALREADY_REGISTERED"
+	| "PAYMENT_NOT_COMPLETED"
+	| "PAYMENT_METADATA_MISMATCH";
+
+/**
+ * Domain error for external registration operations
+ */
+export class ExternalRegistrationError extends Error {
+	constructor(
+		public readonly code: ExternalRegistrationErrorCode,
+		message: string,
+		public readonly context?: Record<string, unknown>,
+	) {
+		super(message);
+		this.name = "ExternalRegistrationError";
+		this.cause = code;
+	}
+}

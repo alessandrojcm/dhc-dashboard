@@ -46,9 +46,14 @@ export type {
 	AttendanceStatus,
 	AttendanceUpdate,
 	CancelRegistrationResult,
+	CompleteExternalRegistrationInput,
 	CompleteRegistrationInput,
+	CreateExternalPaymentIntentInput,
+	CreateExternalPaymentIntentResult,
 	CreatePaymentIntentInput,
 	CreatePaymentIntentResult,
+	ExternalRegistrationErrorCode,
+	ExternalUserInput,
 	Interest,
 	InterestInsert,
 	Refund,
@@ -71,6 +76,8 @@ export type {
 	WorkshopUpdate,
 	WorkshopWithRelations,
 } from "./types";
+
+export { ExternalRegistrationError } from "./types";
 
 // ============================================================================
 // Factory Functions
