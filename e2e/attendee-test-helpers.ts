@@ -148,6 +148,11 @@ function getWorkshopServiceKysely() {
 
 export function createWorkshopTestServices(session: Session) {
 	const kysely = getWorkshopServiceKysely();
+	// For E2E tests, we use a member actor context derived from the session
+	const memberActor = {
+		kind: "member" as const,
+		memberUserId: session.user.id,
+	};
 
 	return {
 		workshopService: new WorkshopService(
@@ -161,6 +166,7 @@ export function createWorkshopTestServices(session: Session) {
 		registrationService: new RegistrationService(
 			kysely,
 			session,
+			memberActor,
 			stripeClient,
 			testLogger,
 		),

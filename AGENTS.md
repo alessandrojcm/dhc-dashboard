@@ -196,6 +196,9 @@ Check with `authorize(locals, ROLES)` in API routes or `has_any_role()` in SQL.
 - `member_management_view` now exposes computed `membership_status` (`active`/`inactive`/`paused`) plus `paused_until` aliasing `member_profiles.subscription_paused_until` for member list filtering.
 - Tailwind theme tokens consumed through `hsl(var(--token))` must stay as HSL channel values, not raw color keywords or `oklch(...)`; invalid `--popover`/`--sidebar-*` values make `bg-popover` and `bg-sidebar` render transparent in dropdowns, sheets, and similar modal surfaces.
 - `supabase/functions/process-emails` validates `dataVariables` as `Record<string, string>`; edge functions that enqueue transactional emails must stringify numeric template variables (for example `workshop_count` in `process-workshop-announcements`).
+- `RegistrationService` now supports two actor contexts: `member` (authenticated user) and `system` (public/service-role operations). Use `createRegistrationService(platform, session)` for member flows and `createPublicRegistrationService(platform)` for public registration flows. The actor context is set internally by the factory functions.
+- Public registration flows use `buildServiceRoleSession()` from `src/lib/server/services/shared/service-auth.ts` to create a service-role backed session for RLS execution without requiring an authenticated user.
+- When instantiating `RegistrationService` directly (e.g., in E2E helpers), pass the actor context as the third constructor parameter: `new RegistrationService(kysely, session, { kind: "member", memberUserId: session.user.id }, stripe, logger)`.
 
 ---
 
