@@ -217,6 +217,45 @@ export interface ExternalUserInput {
 }
 
 /**
+ * Reason codes for registration gate rejection
+ */
+export type RegistrationGateReason =
+	| "NOT_FOUND"
+	| "NOT_PUBLISHED"
+	| "NOT_PUBLIC"
+	| "NO_EXTERNAL_PRICE"
+	| "FULL";
+
+/**
+ * Workshop details exposed for external registration
+ */
+export type ExternalRegistrationWorkshop = Pick<
+	Workshop,
+	| "id"
+	| "title"
+	| "description"
+	| "start_date"
+	| "end_date"
+	| "location"
+	| "price_non_member"
+	| "max_capacity"
+>;
+
+/**
+ * Result of checking external registration gate status
+ */
+export type ExternalRegistrationGateResult =
+	| {
+			canRegister: true;
+			workshop: ExternalRegistrationWorkshop;
+	  }
+	| {
+			canRegister: false;
+			reason: RegistrationGateReason;
+			workshop?: never;
+	  };
+
+/**
  * Input for creating an external payment intent
  */
 export interface CreateExternalPaymentIntentInput {

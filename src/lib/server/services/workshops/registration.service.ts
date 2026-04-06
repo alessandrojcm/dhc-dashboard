@@ -16,6 +16,7 @@ import type {
 	CreateExternalPaymentIntentResult,
 	CreatePaymentIntentInput,
 	CreatePaymentIntentResult,
+	ExternalRegistrationGateResult,
 	ExternalUserInput,
 	Interest,
 	Registration,
@@ -647,6 +648,98 @@ export class RegistrationService {
 	// ============================================================================
 	// External Registration Operations (for public/system flows)
 	// ============================================================================
+
+	/**
+	 * Get registration gate status for a workshop (public route gating).
+	 *
+	 * This method checks workshop eligibility for external registration without
+	 * creating any payment or registration records. It's used by public routes
+	 * to determine whether to show the registration form.
+	 *
+	 * @param workshopId - Workshop UUID
+	 * @returns Gate status object with eligibility info and workshop details
+	 */
+	async getExternalRegistrationGate(
+		workshopId: string,
+	): Promise<ExternalRegistrationGateResult> {
+		this.logger.info("Checking external registration gate", {
+			workshopId,
+			...this.getActorLogContext(),
+		});
+
+		return executeWithRLS(
+			this.kysely,
+			{ claims: this.session },
+			async (trx) => {
+				// Fetch workshop with all eligibility checks
+				const workshop = await trx
+					.selectFrom("club_activities")
+					.select([
+						"id",
+						"title",
+						"description",
+						"start_date",
+						"end_date",
+						"location",
+						"price_non_member",
+						"max_capacity",
+						"status",
+						"is_public",
+					])
+					.where("id", "=", workshopId)
+					.executeTakeFirst();
+
+				// Workshop not found
+				if (!workshop) {
+					return { canRegister: false, reason: "NOT_FOUND" };
+				}
+
+				// Workshop not published
+				if (workshop.status !== "published") {
+					return { canRegister: false, reason: "NOT_PUBLISHED" };
+				}
+
+				// Workshop not public
+				if (!workshop.is_public) {
+					return { canRegister: false, reason: "NOT_PUBLIC" };
+				}
+
+				// No external price set
+				if (
+					workshop.price_non_member === null ||
+					workshop.price_non_member < 0
+				) {
+					return { canRegister: false, reason: "NO_EXTERNAL_PRICE" };
+				}
+
+				// Check capacity
+				const hasCapacity = await this.checkWorkshopCapacity(
+					trx,
+					workshopId,
+					workshop.max_capacity,
+				);
+
+				if (!hasCapacity) {
+					return { canRegister: false, reason: "FULL" };
+				}
+
+				// Workshop is eligible for registration
+				return {
+					canRegister: true,
+					workshop: {
+						id: workshop.id,
+						title: workshop.title,
+						description: workshop.description,
+						start_date: workshop.start_date,
+						end_date: workshop.end_date,
+						location: workshop.location,
+						price_non_member: workshop.price_non_member,
+						max_capacity: workshop.max_capacity,
+					},
+				};
+			},
+		);
+	}
 
 	/**
 	 * Create a payment intent for external (non-member) workshop registration.

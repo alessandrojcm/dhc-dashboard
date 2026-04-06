@@ -300,23 +300,91 @@ Decisions for Stage 2:
 ## Stage 3 — Public route backend surface (serial)
 
 ### Objective
-Expose public registration/payment handlers using service layer only.
+Expose public registration/payment handlers using service layer only, with deterministic route contracts for Stage 4 UI.
 
 ### Deliverables
 
 - Implement:
   - `src/routes/(public)/workshops/[id]/register/+page.server.ts`
-  - `src/routes/(public)/workshops/[id]/register/data.remote.ts` (or equivalent remote file)
+  - `src/routes/(public)/workshops/[id]/register/data.remote.ts`
+- Add a public read query method in `RegistrationService` for page gating/loading (same domain as external registration logic).
 - Public handlers should:
-  - load workshop + gating state
+  - load gating state
   - create external payment intent
   - complete external registration
-- Gating rule: only allow when workshop is both `published` and `is_public = true`.
+
+### Stage 3A — Service-layer ownership for gating query
+
+The query should live in:
+- `src/lib/server/services/workshops/registration.service.ts`
+
+Reason:
+- External registration eligibility rules already live there (`published`, `is_public`, external price checks, capacity logic).
+
+Implementation direction:
+- Add a public read method (e.g. `getExternalRegistrationGate(workshopId)`), reusing existing internal helpers where possible.
+- Route load must call this method through `createPublicRegistrationService(platform)`.
+
+### Stage 3B — Load behavior (`+page.server.ts`)
+
+Load flow:
+1. Validate `params.id` as UUID.
+2. Instantiate public registration service.
+3. Fetch gate state from service.
+4. Apply route response policy:
+
+- `NOT_FOUND`, `NOT_PUBLISHED`, `NOT_PUBLIC`, `NO_EXTERNAL_PRICE`:
+  - return `404`
+- `FULL`:
+  - return `200` with generic message only:
+    - `"This workshop is full"`
+  - do not return workshop details
+  - registration UI must stay disabled
+- eligible:
+  - return `200` with workshop display payload and `canRegister: true`
+
+### Stage 3C — Create payment intent (`data.remote.ts`)
+
+Command:
+- `createExternalPaymentIntent`
+
+Input:
+- `workshopId`
+- `externalUser: { firstName, lastName, email, phoneNumber? }`
+- optional `currency`
+
+Rules:
+- Validate with Valibot.
+- Enforce route/body match (`input.workshopId === params.id`).
+- Call `createPublicRegistrationService(platform).createExternalPaymentIntent(input)`.
+- Success shape:
+  - `{ success: true, clientSecret, paymentIntentId, amount, currency }`
+- Error shape:
+  - `{ success: false, error: string, code?: string }`
+
+### Stage 3D — Complete registration (`data.remote.ts`)
+
+Command:
+- `completeExternalRegistration`
+
+Input:
+- `workshopId`
+- `paymentIntentId`
+- `externalUser`
+
+Rules:
+- Validate with Valibot.
+- Enforce route/body match.
+- Call service completion method.
+- Success shape:
+  - `{ success: true, redirectTo: "/workshops/[id]/confirmation" }`
+- Error shape:
+  - `{ success: false, error: string, code?: string }`
 
 ### Response Conventions
 
 - Success shape: `{ success: true, ... }`
-- Error shape: `{ success: false, error: string }`
+- Error shape: `{ success: false, error: string, code?: string }`
 
 ---
 
@@ -390,19 +458,12 @@ Before rendering payment-capable UI, page load must validate:
 1. workshop exists
 2. workshop status is `published`
 3. workshop `is_public = true`
-4. optional soft capacity check for UX messaging
+4. soft capacity check
 
-Return load flags (example):
-
-```ts
-{
-  canRegister: boolean,
-  gateReason?: "NOT_FOUND" | "NOT_PUBLISHED" | "NOT_PUBLIC" | "FULL",
-  workshop: {...displayData}
-}
-```
-
-UI rule: if `canRegister` is false, render gated informational state and do not mount Stripe.
+Route behavior:
+- unavailable workshop (`NOT_FOUND` / `NOT_PUBLISHED` / `NOT_PUBLIC` / `NO_EXTERNAL_PRICE`) => `404`
+- full workshop => `200` with generic message only (`"This workshop is full"`), no workshop detail payload, no Stripe mount
+- eligible workshop => return workshop display payload and `canRegister: true`
 
 ### Stage 4E — UI state model
 
@@ -528,17 +589,19 @@ Cover `+page.server.ts` and `data.remote.ts` contracts for the public route.
 
 `+page.server.ts` load cases:
 
-- workshop not found → `canRegister: false`, `gateReason: "NOT_FOUND"`
-- workshop planned/unpublished → `canRegister: false`, `gateReason: "NOT_PUBLISHED"`
-- workshop non-public → `canRegister: false`, `gateReason: "NOT_PUBLIC"`
-- workshop eligible → `canRegister: true` and expected display payload
+- workshop not found -> `404`
+- workshop planned/unpublished -> `404`
+- workshop non-public -> `404`
+- workshop missing external price -> `404`
+- workshop full -> `200` with generic full message only, no workshop detail payload, `canRegister: false`
+- workshop eligible -> `200` with workshop payload, `canRegister: true`
 
 Remote action cases:
 
 - create intent success shape: `{ success: true, clientSecret, paymentIntentId, amount, currency }`
-- create intent failure shape: `{ success: false, error }`
-- completion success shape: `{ success: true, registration }` (or agreed payload)
-- completion failure shape: `{ success: false, error }`
+- create intent failure shape: `{ success: false, error, code }`
+- completion success shape: `{ success: true, redirectTo }`
+- completion failure shape: `{ success: false, error, code }`
 
 ### Stage 5D — Focused E2E cases (expanded)
 
