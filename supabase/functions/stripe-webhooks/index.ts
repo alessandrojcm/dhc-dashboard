@@ -279,20 +279,27 @@ async function completeExternalRegistrationFromCheckoutSessionTx(
 		.executeTakeFirst();
 
 	if (Number(registrationCount?.count ?? 0) >= workshop.max_capacity) {
-		const paymentIntent =
+		const paymentIntentId =
 			typeof checkoutSession.payment_intent === "string"
-				? null
-				: checkoutSession.payment_intent;
-		const latestCharge = paymentIntent?.latest_charge;
-		const chargeId =
-			typeof latestCharge === "string" ? latestCharge : latestCharge?.id;
+				? checkoutSession.payment_intent
+				: checkoutSession.payment_intent?.id;
 
-		if (chargeId) {
-			await stripe.refunds.create({
-				charge: chargeId,
-				reason: "duplicate",
-			});
+		if (!paymentIntentId) {
+			throw new Error(
+				"Unable to refund checkout session without a payment intent",
+				{
+					cause: {
+						checkoutSessionId: checkoutSession.id,
+						workshopId,
+					},
+				},
+			);
 		}
+
+		await stripe.refunds.create({
+			payment_intent: paymentIntentId,
+			reason: "duplicate",
+		});
 
 		throw new WorkshopRegistrationUserError(
 			"the workshop reaching maximum capacity",
