@@ -2,9 +2,9 @@
 // https://deno.land/manual/getting_started/setup_your_environment
 // This enables autocomplete, go to definition, etc.
 
-import { Stripe } from "stripe";
+import Stripe from "stripe";
 import dayjs from "npm:dayjs";
-import { db } from "../_shared/db.ts";
+import { db, sql } from "../_shared/db.ts";
 import { corsHeaders } from "../_shared/cors.ts";
 
 const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") ?? "", {
@@ -15,6 +15,7 @@ const stripe = new Stripe(Deno.env.get("STRIPE_SECRET_KEY") ?? "", {
 });
 
 const allowedEvents: Stripe.Event.Type[] = [
+	"checkout.session.completed",
 	"charge.succeeded",
 	"charge.expired",
 	"charge.refunded",
@@ -37,6 +38,36 @@ const allowedEvents: Stripe.Event.Type[] = [
 	"payment_intent.canceled",
 ];
 
+const WORKSHOP_REGISTRATION_TRANSACTIONAL_ID = "workshopRegistration";
+const WORKSHOP_REGISTRATION_ERROR_TRANSACTIONAL_ID =
+	"workshopRegistrationError";
+const DEFAULT_WORKSHOP_EMAIL_VARIABLES: Record<string, string> = {
+	name: "Workshop",
+	date: "TBC",
+	location: "TBC",
+};
+const WORKSHOP_REGISTRATION_TECHNICAL_ERROR_MESSAGE =
+	"Registration could not be completed due to technical reasons.";
+
+class WorkshopRegistrationUserError extends Error {
+	constructor(message: string) {
+		super(message);
+		this.name = "WorkshopRegistrationUserError";
+	}
+}
+
+function getWorkshopRegistrationErrorMessage(error: unknown): string {
+	if (error instanceof WorkshopRegistrationUserError) {
+		return error.message;
+	}
+
+	return WORKSHOP_REGISTRATION_TECHNICAL_ERROR_MESSAGE;
+}
+
+type DbTransaction = Parameters<
+	Parameters<ReturnType<typeof db.transaction>["execute"]>[0]
+>[0];
+
 async function setUserInactive(customerId: string) {
 	await db
 		.updateTable("user_profiles")
@@ -46,46 +77,366 @@ async function setUserInactive(customerId: string) {
 		.then(console.log);
 }
 
-async function handleWorkshopCheckoutCompleted(session: Stripe.Charge) {
-	try {
-		if (session.metadata?.workshop_id && session.metadata?.registration_data) {
-			const registrationData = JSON.parse(session.metadata.registration_data);
+async function queueWorkshopRegistrationEmail(input: {
+	transactionalId:
+		| typeof WORKSHOP_REGISTRATION_TRANSACTIONAL_ID
+		| typeof WORKSHOP_REGISTRATION_ERROR_TRANSACTIONAL_ID;
+	email: string;
+	dataVariables: Record<string, string>;
+}) {
+	const payload = {
+		transactionalId: input.transactionalId,
+		email: input.email,
+		dataVariables: input.dataVariables,
+	};
 
-			// Create the registration record now that payment is complete
-			await db
-				.selectFrom(
-					db
-						.fn("register_for_workshop_checkout", [
-							session.metadata.workshop_id,
-							session.amount || 0,
-							session.id,
-							registrationData.memberUserId || null,
-							registrationData.externalUserData
-								? JSON.stringify(registrationData.externalUserData)
-								: null,
-						])
-						.as("registration_id"),
-				)
-				.select("registration_id")
-				.executeTakeFirst();
+	await sql`
+		SELECT pgmq.send('email_queue', ${JSON.stringify(payload)}::jsonb)
+	`.execute(db);
+}
 
-			// Update status to confirmed since payment is complete
-			await db
-				.updateTable("club_activity_registrations")
-				.set({
-					status: "confirmed",
-					confirmed_at: new Date(),
-				})
-				.where("stripe_checkout_session_id", "=", session.id)
-				.execute();
+async function loadExternalCheckoutContext(input: {
+	workshopId: string;
+	session: Stripe.Checkout.Session;
+}) {
+	const { workshopId, session } = input;
+	const checkoutSession = session;
 
-			console.log(
-				`Workshop registration confirmed for checkout session: ${session.id}`,
+	if (
+		checkoutSession.status !== "complete" ||
+		checkoutSession.payment_status !== "paid"
+	) {
+		throw new Error("Payment has not been completed");
+	}
+
+	const metadata = checkoutSession.metadata ?? {};
+	if (
+		metadata.type !== "workshop_registration" ||
+		metadata.actor_type !== "external" ||
+		metadata.workshop_id !== workshopId
+	) {
+		throw new Error("Checkout session does not match the registration request");
+	}
+
+	const customerEmail =
+		checkoutSession.customer_details?.email ?? checkoutSession.customer_email;
+	const customerName = checkoutSession.customer_details?.name?.trim() ?? "";
+	const customerPhone = checkoutSession.customer_details?.phone ?? null;
+
+	if (!customerEmail || customerName.length === 0) {
+		throw new Error("Missing customer details from checkout session");
+	}
+
+	const paymentIntentId =
+		typeof checkoutSession.payment_intent === "string"
+			? checkoutSession.payment_intent
+			: checkoutSession.payment_intent?.id;
+
+	if (paymentIntentId) {
+		try {
+			await stripe.paymentIntents.update(paymentIntentId, {
+				receipt_email: customerEmail,
+			});
+		} catch (error) {
+			console.warn("Failed to set receipt email on payment intent", {
+				paymentIntentId,
+				checkoutSessionId: checkoutSession.id,
+				workshopId,
+				error: error instanceof Error ? error.message : String(error),
+			});
+		}
+	}
+
+	if (checkoutSession.amount_total === null) {
+		throw new Error("Checkout session amount is missing");
+	}
+
+	const [firstName = "", ...lastNameParts] = customerName.split(/\s+/);
+	if (firstName.length === 0) {
+		throw new Error("Missing customer name from checkout session");
+	}
+	const lastName = lastNameParts.join(" ");
+
+	return {
+		checkoutSession,
+		customerEmail,
+		firstName,
+		lastName,
+		customerPhone,
+	};
+}
+
+async function completeExternalRegistrationFromCheckoutSessionTx(
+	trx: DbTransaction,
+	input: {
+		workshopId: string;
+		workshop: {
+			status: string | null;
+			is_public: boolean | null;
+			max_capacity: number;
+			price_non_member: number | null;
+		};
+		checkoutSession: Stripe.Checkout.Session;
+		customerEmail: string;
+		firstName: string;
+		lastName: string;
+		customerPhone: string | null;
+	},
+) {
+	const {
+		workshopId,
+		workshop,
+		checkoutSession,
+		customerEmail,
+		firstName,
+		lastName,
+		customerPhone,
+	} = input;
+
+	if (
+		workshop.status !== "published" ||
+		!workshop.is_public ||
+		workshop.price_non_member === null ||
+		workshop.price_non_member < 0
+	) {
+		throw new Error("Workshop not found or not available for registration");
+	}
+
+	if (checkoutSession.amount_total !== Number(workshop.price_non_member)) {
+		throw new Error("Checkout amount does not match workshop price");
+	}
+
+	const existingByCheckoutSession = await trx
+		.selectFrom("club_activity_registrations")
+		.selectAll()
+		.where("stripe_checkout_session_id", "=", checkoutSession.id)
+		.executeTakeFirst();
+
+	if (existingByCheckoutSession) {
+		return existingByCheckoutSession;
+	}
+
+	const normalizedEmail = customerEmail.trim().toLowerCase();
+	const existingExternalUser = await trx
+		.selectFrom("external_users")
+		.select(["id"])
+		.where("email", "=", normalizedEmail)
+		.executeTakeFirst();
+
+	let externalUserId: string;
+	if (existingExternalUser) {
+		await trx
+			.updateTable("external_users")
+			.set({
+				first_name: firstName,
+				last_name: lastName,
+				phone_number: customerPhone,
+				updated_at: dayjs().toISOString(),
+			})
+			.where("id", "=", existingExternalUser.id)
+			.execute();
+
+		externalUserId = existingExternalUser.id;
+	} else {
+		const createdExternalUser = await trx
+			.insertInto("external_users")
+			.values({
+				email: normalizedEmail,
+				first_name: firstName,
+				last_name: lastName,
+				phone_number: customerPhone,
+			})
+			.returning(["id"])
+			.executeTakeFirstOrThrow();
+
+		externalUserId = createdExternalUser.id;
+	}
+
+	const existingRegistration = await trx
+		.selectFrom("club_activity_registrations")
+		.selectAll()
+		.where("club_activity_id", "=", workshopId)
+		.where("external_user_id", "=", externalUserId)
+		.where("status", "in", ["pending", "confirmed"])
+		.executeTakeFirst();
+
+	if (existingRegistration) {
+		if (
+			existingRegistration.stripe_checkout_session_id !== checkoutSession.id
+		) {
+			throw new WorkshopRegistrationUserError(
+				"this email already being registered for this workshop",
 			);
 		}
+		return existingRegistration;
+	}
+
+	const registrationCount = await trx
+		.selectFrom("club_activity_registrations")
+		.select((eb) => eb.fn.count("id").as("count"))
+		.where("club_activity_id", "=", workshopId)
+		.where("status", "in", ["pending", "confirmed"])
+		.executeTakeFirst();
+
+	if (Number(registrationCount?.count ?? 0) >= workshop.max_capacity) {
+		const paymentIntent =
+			typeof checkoutSession.payment_intent === "string"
+				? null
+				: checkoutSession.payment_intent;
+		const latestCharge = paymentIntent?.latest_charge;
+		const chargeId =
+			typeof latestCharge === "string" ? latestCharge : latestCharge?.id;
+
+		if (chargeId) {
+			await stripe.refunds.create({
+				charge: chargeId,
+				reason: "duplicate",
+			});
+		}
+
+		throw new WorkshopRegistrationUserError(
+			"the workshop reaching maximum capacity",
+		);
+	}
+
+	const now = dayjs().toISOString();
+
+	return trx
+		.insertInto("club_activity_registrations")
+		.values({
+			club_activity_id: workshopId,
+			external_user_id: externalUserId,
+			member_user_id: null,
+			status: "confirmed",
+			stripe_checkout_session_id: checkoutSession.id,
+			amount_paid: checkoutSession.amount_total,
+			currency: checkoutSession.currency ?? "eur",
+			confirmed_at: now,
+			registered_at: now,
+		})
+		.returningAll()
+		.executeTakeFirstOrThrow();
+}
+
+async function handleWorkshopCheckoutCompleted(
+	session: Stripe.Checkout.Session,
+) {
+	const metadata = session.metadata ?? {};
+	if (
+		metadata.type !== "workshop_registration" ||
+		metadata.actor_type !== "external" ||
+		!metadata.workshop_id
+	) {
+		console.log(
+			`Ignoring checkout.session.completed ${session.id} - not an external workshop registration session`,
+		);
+		return;
+	}
+
+	const workshopId = metadata.workshop_id;
+
+	const fallbackRecipientEmail =
+		session.customer_details?.email ?? session.customer_email ?? null;
+
+	let dataVariables: Record<string, string> = {
+		...DEFAULT_WORKSHOP_EMAIL_VARIABLES,
+	};
+
+	try {
+		const checkoutContext = await loadExternalCheckoutContext({
+			workshopId,
+			session,
+		});
+
+		const { recipientEmail, emailDataVariables } = await db
+			.transaction()
+			.execute(async (trx) => {
+				const workshop = await trx
+					.selectFrom("club_activities")
+					.select([
+						"title",
+						"start_date",
+						"location",
+						"status",
+						"is_public",
+						"max_capacity",
+						"price_non_member",
+					])
+					.where("id", "=", workshopId)
+					.executeTakeFirst();
+
+				if (!workshop) {
+					throw new Error(
+						`Workshop not found for checkout session ${session.id}`,
+					);
+				}
+
+				const registration =
+					await completeExternalRegistrationFromCheckoutSessionTx(trx, {
+						workshopId,
+						workshop,
+						...checkoutContext,
+					});
+
+				const registrationRecipient = await trx
+					.selectFrom("club_activity_registrations as car")
+					.innerJoin("external_users as eu", "car.external_user_id", "eu.id")
+					.select(["eu.email as email"])
+					.where("car.id", "=", registration.id)
+					.executeTakeFirst();
+
+				return {
+					recipientEmail:
+						registrationRecipient?.email ?? fallbackRecipientEmail,
+					emailDataVariables: {
+						name: workshop.title,
+						date: dayjs(workshop.start_date).format("DD MMM YYYY HH:mm"),
+						location: workshop.location ?? "TBC",
+					},
+				};
+			});
+
+		if (!recipientEmail) {
+			throw new Error(
+				`Registration email not found for checkout session ${session.id}`,
+			);
+		}
+
+		dataVariables = emailDataVariables;
+
+		await queueWorkshopRegistrationEmail({
+			transactionalId: WORKSHOP_REGISTRATION_TRANSACTIONAL_ID,
+			email: recipientEmail,
+			dataVariables: emailDataVariables,
+		});
+
+		console.log(
+			`Queued workshop registration success email for checkout session: ${session.id}`,
+		);
 	} catch (error) {
-		console.error("Error handling workshop checkout completion:", error);
-		throw error;
+		const recipientEmail = fallbackRecipientEmail;
+
+		if (!recipientEmail) {
+			console.error(
+				`Unable to queue workshop registration error email for checkout session ${session.id}: recipient email unavailable`,
+				error,
+			);
+			return;
+		}
+
+		await queueWorkshopRegistrationEmail({
+			transactionalId: WORKSHOP_REGISTRATION_ERROR_TRANSACTIONAL_ID,
+			email: recipientEmail,
+			dataVariables: {
+				...dataVariables,
+				error: getWorkshopRegistrationErrorMessage(error),
+			},
+		});
+
+		console.error(
+			`Queued workshop registration error email for checkout session: ${session.id}`,
+			error,
+		);
 	}
 }
 
@@ -97,7 +448,7 @@ async function handleWorkshopCheckoutExpired(session: Stripe.Charge) {
 				.updateTable("club_activity_registrations")
 				.set({
 					status: "cancelled",
-					cancelled_at: new Date(),
+					cancelled_at: dayjs().toISOString(),
 				})
 				.where("stripe_checkout_session_id", "=", session.id)
 				.where("status", "=", "pending")
@@ -145,7 +496,7 @@ async function handleChargeRefunded(charge: Stripe.Charge) {
 			// Update refund status in database
 			const updateData: { status: string; completed_at?: string } = { status };
 			if (completed_at) {
-				updateData.completed_at = completed_at;
+				updateData.completed_at = completed_at.toISOString();
 			}
 
 			await db
@@ -287,11 +638,9 @@ Deno.serve(async (req) => {
 		}
 
 		// Handle workshop registration checkout sessions
-		if (event.type === "charge.succeeded") {
-			const session = event.data.object as Stripe.Charge;
-			if (session.metadata?.workshop_id) {
-				EdgeRuntime.waitUntil(handleWorkshopCheckoutCompleted(session));
-			}
+		if (event.type === "checkout.session.completed") {
+			const session = event.data.object as Stripe.Checkout.Session;
+			EdgeRuntime.waitUntil(handleWorkshopCheckoutCompleted(session));
 		} else if (event.type === "charge.expired") {
 			const session = event.data.object as Stripe.Charge;
 			if (session.metadata?.workshop_id) {

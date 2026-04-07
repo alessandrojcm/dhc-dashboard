@@ -12,12 +12,10 @@
       "url": "https://mcp.svelte.dev/mcp",
       "enabled": true
     },
-    "playwriter": {
-      "type": "local",
-      "command": ["pnpx","playwriter@latest"],
-      "environment": {
-        "PLAYWRITER_AUTO_ENABLE": "1"
-      }
+    "supabase": {
+      "type": "remote",
+      "url": "http://localhost:54321/mcp?features=docs%2Cdatabase%2Cdebugging%2Cdevelopment",
+      "enabled": true
     }
   }
 }
