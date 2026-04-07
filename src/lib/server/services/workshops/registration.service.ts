@@ -1020,17 +1020,33 @@ export class RegistrationService {
 				);
 
 				if (!hasCapacity) {
+					const paymentIntentId =
+						typeof checkoutSession.payment_intent === "string"
+							? checkoutSession.payment_intent
+							: checkoutSession.payment_intent?.id;
+
+					if (!paymentIntentId) {
+						throw new Error(
+							"Unable to refund checkout session without a payment intent",
+							{
+								cause: {
+									checkoutSessionId,
+									workshopId,
+									context:
+										"RegistrationService.completeExternalRegistrationFromCheckoutSession",
+								},
+							},
+						);
+					}
+
 					await this.stripeClient.refunds.create({
-						charge: (checkoutSession.payment_intent as Stripe.PaymentIntent)
-							.latest_charge as string,
+						payment_intent: paymentIntentId,
 						reason: "duplicate",
 					});
 					this.logger.warn(
 						`Refunded payment for workshop ${workshopId} due to capacity reached`,
 						{
-							paymentIntentId: (
-								checkoutSession.payment_intent as Stripe.PaymentIntent
-							).id,
+							paymentIntentId,
 						},
 					);
 					throw new ExternalRegistrationError(
