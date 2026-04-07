@@ -256,31 +256,28 @@ export type ExternalRegistrationGateResult =
 	  };
 
 /**
- * Input for creating an external payment intent
+ * Input for creating an external checkout session.
  */
-export interface CreateExternalPaymentIntentInput {
+export interface CreateExternalCheckoutSessionInput {
 	workshopId: string;
-	externalUser: ExternalUserInput;
-	currency?: string;
+	returnUrl: string;
 }
 
 /**
- * Result of creating an external payment intent
+ * Result of creating an external checkout session.
  */
-export interface CreateExternalPaymentIntentResult {
-	clientSecret: string;
-	paymentIntentId: string;
-	amount: number;
-	currency: string;
+export interface CreateExternalCheckoutSessionResult {
+	checkoutSessionId: string;
+	checkoutClientSecret: string;
+	checkoutUrl: string | null;
 }
 
 /**
- * Input for completing an external registration
+ * Input for completing an external registration from checkout session.
  */
-export interface CompleteExternalRegistrationInput {
+export interface CompleteExternalRegistrationFromCheckoutSessionInput {
 	workshopId: string;
-	paymentIntentId: string;
-	externalUser: ExternalUserInput;
+	checkoutSessionId: string;
 }
 
 /**
@@ -290,6 +287,9 @@ export type ExternalRegistrationErrorCode =
 	| "WORKSHOP_NOT_FOUND"
 	| "WORKSHOP_FULL"
 	| "ALREADY_REGISTERED"
+	| "INVALID_INPUT"
+	| "CHECKOUT_SESSION_NOT_FOUND"
+	| "CUSTOMER_DETAILS_MISSING"
 	| "PAYMENT_NOT_COMPLETED"
 	| "PAYMENT_METADATA_MISMATCH";
 

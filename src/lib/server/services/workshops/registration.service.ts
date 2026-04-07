@@ -10,10 +10,10 @@ import type {
 import { executeWithRLS } from "../shared";
 import type {
 	CancelRegistrationResult,
-	CompleteExternalRegistrationInput,
+	CompleteExternalRegistrationFromCheckoutSessionInput,
 	CompleteRegistrationInput,
-	CreateExternalPaymentIntentInput,
-	CreateExternalPaymentIntentResult,
+	CreateExternalCheckoutSessionInput,
+	CreateExternalCheckoutSessionResult,
 	CreatePaymentIntentInput,
 	CreatePaymentIntentResult,
 	ExternalRegistrationGateResult,
@@ -742,28 +742,23 @@ export class RegistrationService {
 	}
 
 	/**
-	 * Create a payment intent for external (non-member) workshop registration.
-	 *
-	 * This method:
-	 * - Validates the workshop exists, is published, and is public
-	 * - Derives the amount server-side from workshop's price_non_member (never trusts client amount)
-	 * - Performs soft capacity check (fast reject if full)
-	 * - Creates/updates the external user record
-	 * - Creates a Stripe payment intent with appropriate metadata
-	 *
-	 * @param input - Workshop ID and external user details
-	 * @returns Payment intent details including client secret and server-derived amount
-	 * @throws ExternalRegistrationError for business rule violations
+	 * Create a checkout session for external (non-member) workshop registration.
 	 */
-	async createExternalPaymentIntent(
-		input: CreateExternalPaymentIntentInput,
-	): Promise<CreateExternalPaymentIntentResult> {
-		const { workshopId, externalUser, currency = "eur" } = input;
-		const normalizedEmail = externalUser.email.trim().toLowerCase();
+	async createExternalCheckoutSession(
+		input: CreateExternalCheckoutSessionInput,
+	): Promise<CreateExternalCheckoutSessionResult> {
+		const { workshopId, returnUrl } = input;
 
-		this.logger.info("Creating external payment intent", {
+		if (!returnUrl.includes("{CHECKOUT_SESSION_ID}")) {
+			throw new ExternalRegistrationError(
+				"INVALID_INPUT",
+				"returnUrl must include {CHECKOUT_SESSION_ID} placeholder",
+				{ workshopId, returnUrl },
+			);
+		}
+
+		this.logger.info("Creating external checkout session", {
 			workshopId,
-			externalEmail: normalizedEmail,
 			...this.getActorLogContext(),
 		});
 
@@ -771,13 +766,11 @@ export class RegistrationService {
 			this.kysely,
 			{ claims: this.session },
 			async (trx) => {
-				// Validate workshop eligibility
 				const workshop = await this.validateWorkshopForExternalRegistration(
 					trx,
 					workshopId,
 				);
 
-				// Soft capacity check
 				const hasCapacity = await this.checkWorkshopCapacity(
 					trx,
 					workshopId,
@@ -792,111 +785,172 @@ export class RegistrationService {
 					);
 				}
 
-				// Upsert external user
-				const externalUserId = await this.upsertExternalUser(trx, externalUser);
+				const checkoutSession =
+					await this.stripeClient.checkout.sessions.create({
+						mode: "payment",
+						ui_mode: "embedded",
+						return_url: returnUrl,
+						customer_creation: "always",
+						name_collection: {
+							individual: {
+								enabled: true,
+								optional: false,
+							},
+						},
+						invoice_creation: { enabled: true },
+						payment_method_types: ["card", "link", "sepa_debit"],
+						phone_number_collection: { enabled: true },
+						line_items: [
+							{
+								quantity: 1,
+								price_data: {
+									currency: "eur",
+									unit_amount: workshop.price_non_member,
+									product_data: {
+										name: workshop.title,
+									},
+								},
+							},
+						],
+						metadata: {
+							type: "workshop_registration",
+							actor_type: "external",
+							workshop_id: workshopId,
+						},
+					});
 
-				// Check for existing registration
-				const existingRegistration =
-					await this.findExistingExternalRegistration(
-						trx,
-						workshopId,
-						externalUserId,
-					);
-
-				if (existingRegistration) {
+				if (!checkoutSession.client_secret) {
 					throw new ExternalRegistrationError(
-						"ALREADY_REGISTERED",
-						"This email is already registered for this workshop",
-						{ workshopId, externalEmail: normalizedEmail },
+						"PAYMENT_NOT_COMPLETED",
+						"Stripe checkout client secret was not returned",
+						{ workshopId, checkoutSessionId: checkoutSession.id },
 					);
 				}
 
-				// Server-derived amount from workshop price_non_member (in cents)
-				const amount = workshop.price_non_member;
-
-				// Create Stripe payment intent
-				const paymentIntent = await this.stripeClient.paymentIntents.create({
-					amount,
-					currency,
-					receipt_email: normalizedEmail,
-					metadata: {
-						type: "workshop_registration",
-						actor_type: "external",
-						workshop_id: workshopId,
-						workshop_title: workshop.title,
-						external_user_id: externalUserId,
-						external_email_normalized: normalizedEmail,
-					},
-					automatic_payment_methods: { enabled: false },
-					payment_method_types: ["card", "link"],
-				});
-
 				return {
-					clientSecret: paymentIntent.client_secret!,
-					paymentIntentId: paymentIntent.id,
-					amount,
-					currency,
+					checkoutSessionId: checkoutSession.id,
+					checkoutClientSecret: checkoutSession.client_secret,
+					checkoutUrl: checkoutSession.url ?? null,
 				};
 			},
 		);
 	}
 
 	/**
-	 * Complete an external registration after payment success.
-	 *
-	 * This method:
-	 * - Validates the payment intent succeeded and metadata matches
-	 * - Performs hard capacity check with row-level consideration
-	 * - Creates or updates the registration record
-	 * - Is idempotent: retrying with the same payment intent returns existing registration
-	 *
-	 * @param input - Workshop ID, payment intent ID, and external user details
-	 * @returns The created or existing registration
-	 * @throws ExternalRegistrationError for business rule violations
+	 * Complete external registration by validating a Stripe Checkout Session.
 	 */
-	async completeExternalRegistration(
-		input: CompleteExternalRegistrationInput,
+	async completeExternalRegistrationFromCheckoutSession(
+		input: CompleteExternalRegistrationFromCheckoutSessionInput,
 	): Promise<Registration> {
-		const { workshopId, paymentIntentId, externalUser } = input;
-		const normalizedEmail = externalUser.email.trim().toLowerCase();
+		const { workshopId, checkoutSessionId } = input;
 
-		this.logger.info("Completing external registration", {
+		this.logger.info("Completing external registration from checkout session", {
 			workshopId,
-			paymentIntentId,
-			externalEmail: normalizedEmail,
+			checkoutSessionId,
 			...this.getActorLogContext(),
 		});
 
-		// Retrieve and validate payment intent
-		const paymentIntent =
-			await this.stripeClient.paymentIntents.retrieve(paymentIntentId);
-
-		if (paymentIntent.status !== "succeeded") {
+		let checkoutSession: Stripe.Checkout.Session;
+		try {
+			checkoutSession = await this.stripeClient.checkout.sessions.retrieve(
+				checkoutSessionId,
+				{ expand: ["payment_intent"] },
+			);
+		} catch (error) {
 			throw new ExternalRegistrationError(
-				"PAYMENT_NOT_COMPLETED",
-				"Payment has not been completed",
-				{ paymentIntentId, status: paymentIntent.status },
+				"CHECKOUT_SESSION_NOT_FOUND",
+				"Checkout session not found",
+				{
+					checkoutSessionId,
+					workshopId,
+					error: error instanceof Error ? error.message : String(error),
+				},
 			);
 		}
 
-		// Validate payment intent metadata matches the request
-		const metadata = paymentIntent.metadata;
+		if (
+			checkoutSession.status !== "complete" ||
+			checkoutSession.payment_status !== "paid"
+		) {
+			throw new ExternalRegistrationError(
+				"PAYMENT_NOT_COMPLETED",
+				"Payment has not been completed",
+				{
+					checkoutSessionId,
+					status: checkoutSession.status,
+					paymentStatus: checkoutSession.payment_status,
+				},
+			);
+		}
+
+		const metadata = checkoutSession.metadata ?? {};
 		if (
 			metadata.type !== "workshop_registration" ||
 			metadata.actor_type !== "external" ||
-			metadata.workshop_id !== workshopId ||
-			metadata.external_email_normalized !== normalizedEmail
+			metadata.workshop_id !== workshopId
 		) {
 			throw new ExternalRegistrationError(
 				"PAYMENT_METADATA_MISMATCH",
-				"Payment intent does not match the registration request",
+				"Checkout session does not match the registration request",
 				{
-					paymentIntentId,
+					checkoutSessionId,
 					workshopId,
-					externalEmail: normalizedEmail,
+					metadataType: metadata.type,
+					metadataActorType: metadata.actor_type,
 					metadataWorkshopId: metadata.workshop_id,
-					metadataEmail: metadata.external_email_normalized,
 				},
+			);
+		}
+
+		const customerEmail =
+			checkoutSession.customer_details?.email ?? checkoutSession.customer_email;
+		const customerName = checkoutSession.customer_details?.name?.trim() ?? "";
+		const customerPhone = checkoutSession.customer_details?.phone ?? null;
+
+		if (!customerEmail || customerName.length === 0) {
+			throw new ExternalRegistrationError(
+				"CUSTOMER_DETAILS_MISSING",
+				"Missing customer details from checkout session",
+				{ checkoutSessionId, hasEmail: !!customerEmail, customerName },
+			);
+		}
+
+		const paymentIntentId =
+			typeof checkoutSession.payment_intent === "string"
+				? checkoutSession.payment_intent
+				: checkoutSession.payment_intent?.id;
+
+		if (paymentIntentId && customerEmail) {
+			try {
+				await this.stripeClient.paymentIntents.update(paymentIntentId, {
+					receipt_email: customerEmail,
+				});
+			} catch (error) {
+				this.logger.warn("Failed to set receipt email on payment intent", {
+					paymentIntentId,
+					checkoutSessionId,
+					workshopId,
+					error: error instanceof Error ? error.message : String(error),
+					...this.getActorLogContext(),
+				});
+			}
+		}
+
+		const [firstName = "", ...lastNameParts] = customerName.split(/\s+/);
+		if (firstName.length === 0) {
+			throw new ExternalRegistrationError(
+				"CUSTOMER_DETAILS_MISSING",
+				"Missing customer name from checkout session",
+				{ checkoutSessionId, customerName },
+			);
+		}
+		const lastName = lastNameParts.join(" ");
+
+		if (checkoutSession.amount_total === null) {
+			throw new ExternalRegistrationError(
+				"PAYMENT_METADATA_MISMATCH",
+				"Checkout session amount is missing",
+				{ checkoutSessionId, workshopId },
 			);
 		}
 
@@ -904,27 +958,31 @@ export class RegistrationService {
 			this.kysely,
 			{ claims: this.session },
 			async (trx) => {
-				// Upsert external user (may have changed name/phone since intent creation)
-				const externalUserId = await this.upsertExternalUser(trx, externalUser);
+				const externalUserId = await this.upsertExternalUser(trx, {
+					firstName,
+					lastName,
+					email: customerEmail,
+					phoneNumber: customerPhone,
+				});
 
-				// Check if registration already exists for this payment intent (idempotent success)
-				const existingByPaymentIntent = await trx
+				const existingByCheckoutSession = await trx
 					.selectFrom("club_activity_registrations")
 					.selectAll()
-					.where("stripe_checkout_session_id", "=", paymentIntentId)
+					.where("stripe_checkout_session_id", "=", checkoutSessionId)
 					.executeTakeFirst();
 
-				if (existingByPaymentIntent) {
-					// Idempotent: return existing registration
-					this.logger.info("Returning existing registration (idempotent)", {
-						registrationId: existingByPaymentIntent.id,
-						paymentIntentId,
-						...this.getActorLogContext(),
-					});
-					return existingByPaymentIntent;
+				if (existingByCheckoutSession) {
+					this.logger.info(
+						"Returning existing registration (idempotent checkout completion)",
+						{
+							registrationId: existingByCheckoutSession.id,
+							checkoutSessionId,
+							...this.getActorLogContext(),
+						},
+					);
+					return existingByCheckoutSession;
 				}
 
-				// Check for existing active registration by external user
 				const existingRegistration =
 					await this.findExistingExternalRegistration(
 						trx,
@@ -933,31 +991,28 @@ export class RegistrationService {
 					);
 
 				if (existingRegistration) {
-					// If existing registration has different payment intent, it's a duplicate attempt
 					if (
-						existingRegistration.stripe_checkout_session_id !== paymentIntentId
+						existingRegistration.stripe_checkout_session_id !==
+						checkoutSessionId
 					) {
 						throw new ExternalRegistrationError(
 							"ALREADY_REGISTERED",
 							"This email is already registered for this workshop",
 							{
 								workshopId,
-								externalEmail: normalizedEmail,
+								externalEmail: customerEmail,
 								existingRegistrationId: existingRegistration.id,
 							},
 						);
 					}
-					// Same payment intent - return existing (idempotent)
 					return existingRegistration;
 				}
 
-				// Re-validate workshop for completion (hard check)
 				const workshop = await this.validateWorkshopForExternalRegistration(
 					trx,
 					workshopId,
 				);
 
-				// Hard capacity check
 				const hasCapacity = await this.checkWorkshopCapacity(
 					trx,
 					workshopId,
@@ -972,9 +1027,21 @@ export class RegistrationService {
 					);
 				}
 
-				const now = dayjs().toISOString();
+				if (checkoutSession.amount_total !== workshop.price_non_member) {
+					throw new ExternalRegistrationError(
+						"PAYMENT_METADATA_MISMATCH",
+						"Checkout amount does not match workshop price",
+						{
+							checkoutSessionId,
+							amountTotal: checkoutSession.amount_total,
+							workshopPrice: workshop.price_non_member,
+						},
+					);
+				}
 
-				// Create new registration
+				const now = dayjs().toISOString();
+				const amountPaid = checkoutSession.amount_total;
+
 				const registration = await trx
 					.insertInto("club_activity_registrations")
 					.values({
@@ -982,9 +1049,9 @@ export class RegistrationService {
 						external_user_id: externalUserId,
 						member_user_id: null,
 						status: "confirmed",
-						stripe_checkout_session_id: paymentIntentId,
-						amount_paid: paymentIntent.amount,
-						currency: paymentIntent.currency,
+						stripe_checkout_session_id: checkoutSessionId,
+						amount_paid: amountPaid,
+						currency: checkoutSession.currency ?? "eur",
 						confirmed_at: now,
 						registered_at: now,
 					})
@@ -995,6 +1062,7 @@ export class RegistrationService {
 					registrationId: registration.id,
 					workshopId,
 					externalUserId,
+					checkoutSessionId,
 					...this.getActorLogContext(),
 				});
 

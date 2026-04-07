@@ -1,6 +1,7 @@
-import { error } from "@sveltejs/kit";
+import { error, redirect } from "@sveltejs/kit";
 import * as v from "valibot";
 import { createPublicRegistrationService } from "$lib/server/services/workshops";
+import type { ExternalRegistrationError } from "$lib/server/services/workshops";
 import type { PageServerLoad } from "./$types";
 
 /**
@@ -10,10 +11,10 @@ import type { PageServerLoad } from "./$types";
  * - Validates workshop ID as UUID
  * - Fetches gate state from registration service
  * - Returns 404 for unavailable workshops
- * - Returns 200 with generic message for full workshops (no details)
- * - Returns 200 with workshop payload for eligible workshops
+ * - Redirects full workshops to /workshops/[id]/full
+ * - Returns workshop payload for eligible workshops
  */
-export const load: PageServerLoad = async ({ params, platform }) => {
+export const load: PageServerLoad = async ({ params, platform, url }) => {
 	// Validate workshop ID
 	const workshopIdResult = v.safeParse(v.pipe(v.string(), v.uuid()), params.id);
 
@@ -40,17 +41,37 @@ export const load: PageServerLoad = async ({ params, platform }) => {
 				break;
 
 			case "FULL":
-				// Full workshop returns 200 with generic message only, no details
-				return {
-					canRegister: false,
-					message: "This workshop is full",
-				};
+				redirect(303, `/workshops/${workshopId}/full`);
 		}
 	}
 
-	// Workshop is eligible - return full details
-	return {
-		canRegister: true,
-		workshop: gateStatus.workshop!,
-	};
+	const returnUrl = `${url.origin}/workshops/${workshopId}/confirmation?session_id={CHECKOUT_SESSION_ID}`;
+
+	try {
+		const checkoutSession =
+			await registrationService.createExternalCheckoutSession({
+				workshopId,
+				returnUrl,
+			});
+
+		return {
+			workshop: gateStatus.workshop!,
+			checkoutSessionId: checkoutSession.checkoutSessionId,
+			checkoutClientSecret: checkoutSession.checkoutClientSecret,
+		};
+	} catch (err) {
+		const domainError = err as ExternalRegistrationError;
+
+		if (domainError.name === "ExternalRegistrationError") {
+			if (domainError.code === "WORKSHOP_FULL") {
+				redirect(303, `/workshops/${workshopId}/full`);
+			}
+
+			if (domainError.code === "WORKSHOP_NOT_FOUND") {
+				error(404, "Workshop not found");
+			}
+		}
+
+		throw err;
+	}
 };

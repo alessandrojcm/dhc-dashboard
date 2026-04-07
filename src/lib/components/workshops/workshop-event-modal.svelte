@@ -6,6 +6,7 @@ import {
 	Calendar,
 	Users,
 	MapPin,
+	Copy,
 	Loader2,
 	AlertTriangle,
 	CheckCircle,
@@ -31,7 +32,7 @@ let {
 } = $props();
 
 const queryClient = useQueryClient();
-const workshop = event.workshop;
+const workshop = $derived(event.workshop);
 const interestCount = $derived.by(() => {
 	if (event.workshop.status === "published") {
 		return (
@@ -101,9 +102,37 @@ function handleDelete() {
 	deleteMutation.mutate(workshop.id);
 }
 
+async function handleCopyPublicRegisterLink() {
+	const publicRegisterUrl = new URL(
+		`/workshops/${workshop.id}/register`,
+		window.location.origin,
+	).toString();
+
+	try {
+		isCopyingLink = true;
+		hasCopyError = false;
+		await navigator.clipboard.writeText(publicRegisterUrl);
+		hasCopiedLink = true;
+
+		window.setTimeout(() => {
+			hasCopiedLink = false;
+		}, 2000);
+	} catch {
+		hasCopyError = true;
+		window.setTimeout(() => {
+			hasCopyError = false;
+		}, 2000);
+	} finally {
+		isCopyingLink = false;
+	}
+}
+
 // State for popover controls
 let deletePopoverOpen = $state(false);
 let cancelPopoverOpen = $state(false);
+let isCopyingLink = $state(false);
+let hasCopiedLink = $state(false);
+let hasCopyError = $state(false);
 
 // Check if actions are actually provided
 const hasEditAction = $derived(!!event.handleEdit);
@@ -173,6 +202,32 @@ const hasEditAction = $derived(!!event.handleEdit);
 				{workshop.status === 'planned' ? 'interested' : 'registered'}</span
 			>
 		</div>
+
+		{#if workshop.is_public && workshop.status === 'published'}
+			<div class="ml-8">
+				<Button
+					variant="ghost"
+					size="sm"
+					onclick={handleCopyPublicRegisterLink}
+					disabled={isCopyingLink}
+					class="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+				>
+					{#if isCopyingLink}
+						<Loader2 class="w-3.5 h-3.5 mr-1.5 animate-spin" />
+						Copying…
+					{:else if hasCopiedLink}
+						<CheckCircle class="w-3.5 h-3.5 mr-1.5" />
+						Copied
+					{:else if hasCopyError}
+						<AlertTriangle class="w-3.5 h-3.5 mr-1.5" />
+						Couldn’t copy
+					{:else}
+						<Copy class="w-3.5 h-3.5 mr-1.5" />
+						Copy public registration link
+					{/if}
+				</Button>
+			</div>
+		{/if}
 
 		<!-- Description -->
 		{#if workshop?.description}
