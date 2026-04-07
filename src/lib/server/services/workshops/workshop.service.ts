@@ -3,8 +3,9 @@
  * Handles workshop CRUD operations and business logic
  */
 
-import * as v from "valibot";
 import dayjs from "dayjs";
+import type { Stripe } from "stripe";
+import * as v from "valibot";
 import type {
 	Kysely,
 	KyselyDatabase,
@@ -13,13 +14,11 @@ import type {
 	Transaction,
 } from "../shared";
 import { executeWithRLS } from "../shared";
-import { stripeClient } from "$lib/server/stripe";
-import type { Stripe } from "stripe";
 import type {
 	Workshop,
+	WorkshopFilters,
 	WorkshopInsert,
 	WorkshopUpdate,
-	WorkshopFilters,
 } from "./types";
 
 // ============================================================================
@@ -86,6 +85,7 @@ export class WorkshopService {
 	constructor(
 		private kysely: Kysely<KyselyDatabase>,
 		private session: Session,
+		private stripeClient: Stripe,
 		logger?: Logger,
 	) {
 		this.logger = logger ?? console;
@@ -250,13 +250,14 @@ export class WorkshopService {
 				// Process refunds for all paid registrations
 				await Promise.all(
 					registrations.map(async (registration) => {
-						const paymentIntent = await stripeClient.paymentIntents.retrieve(
-							registration.stripe_checkout_session_id!,
-						);
+						const paymentIntent =
+							await this.stripeClient.paymentIntents.retrieve(
+								registration.stripe_checkout_session_id!,
+							);
 						if (!paymentIntent) {
 							return Promise.resolve();
 						}
-						return stripeClient.refunds
+						return this.stripeClient.refunds
 							.create({
 								payment_intent: paymentIntent.id,
 								amount: registration.amount_paid,

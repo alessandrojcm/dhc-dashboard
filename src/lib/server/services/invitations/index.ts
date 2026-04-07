@@ -3,33 +3,33 @@
  * Exports services, types, and factory functions
  */
 
+import type { Stripe } from "stripe";
+import { stripeClient } from "$lib/server/stripe";
+import type { Logger, Session } from "../shared";
 import { getKyselyClient } from "../shared";
 import { sentryLogger } from "../shared/logger";
-import type { Logger, Session } from "../shared";
 import { InvitationService } from "./invitation.service";
 import { PricingService } from "./pricing.service";
-
-// Export service class
-export { InvitationService } from "./invitation.service";
-
-// Export validation schemas
-export {
-	InvitationCreateSchema,
-	InvitationStatusUpdateSchema,
-} from "./invitation.service";
 
 // Export types
 export type {
 	InvitationCreateInput,
 	InvitationStatusUpdateInput,
 } from "./invitation.service";
+// Export service class
+// Export validation schemas
+export {
+	InvitationCreateSchema,
+	InvitationService,
+	InvitationStatusUpdateSchema,
+} from "./invitation.service";
 
 export type {
+	CreateInvitationArgs,
 	Invitation,
 	InvitationInfo,
 	InvitationStatus,
 	InvitationType,
-	CreateInvitationArgs,
 } from "./types";
 
 // ============================================================================
@@ -86,11 +86,13 @@ export function createInvitationService(
  */
 export function createPricingService(
 	platform: App.Platform,
+	stripe: Stripe = stripeClient,
 	migrationCode?: string,
 	logger?: Logger,
 ): PricingService {
 	return new PricingService(
 		getKyselyClient(platform.env.HYPERDRIVE),
+		stripe,
 		migrationCode,
 		logger ?? sentryLogger,
 	);

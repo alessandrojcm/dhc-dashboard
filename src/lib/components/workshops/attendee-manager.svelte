@@ -137,6 +137,11 @@ function formatCurrency(amount: number) {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
+function isExternalAttendee(attendee: any) {
+	return Boolean(attendee.external_user_id || attendee.external_users);
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function getRefundEligibility(attendee: any) {
 	return checkRefundEligibility(
 		workshop.start_date,
@@ -216,19 +221,27 @@ function confirmRefund() {
                 </div>
             </div>
 
-            <div class="flex items-center gap-2">
-                <Badge
-                        variant={getStatusBadgeVariant(attendee.attendance_status)}
-                        class="text-xs capitalize"
-                >
-                    {attendee.attendance_status || 'pending'}
-                </Badge>
-                {#if refund}
-                    <Badge variant="secondary" class="text-xs">
-                        Refunded {formatCurrency(refund.refund_amount / 100)}
-                    </Badge>
-                {/if}
-            </div>
+			<div class="flex flex-col items-start gap-1">
+				<div class="flex items-center gap-2">
+					<Badge
+						variant={getStatusBadgeVariant(attendee.attendance_status)}
+						class="text-xs capitalize"
+					>
+						{attendee.attendance_status || 'pending'}
+					</Badge>
+					{#if refund}
+						<Badge variant="secondary" class="text-xs">
+							Refunded {formatCurrency(refund.refund_amount / 100)}
+						</Badge>
+					{/if}
+				</div>
+
+				{#if isExternalAttendee(attendee)}
+					<Badge variant="outline" class="text-[10px] uppercase tracking-wide">
+						External
+					</Badge>
+				{/if}
+			</div>
 
             <div class="flex items-center gap-2">
                 {#if attendee.attendance_status !== 'attended'}
