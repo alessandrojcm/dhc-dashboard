@@ -46,10 +46,10 @@ export type {
 	AttendanceStatus,
 	AttendanceUpdate,
 	CancelRegistrationResult,
-	CompleteExternalRegistrationInput,
+	CompleteExternalRegistrationFromCheckoutSessionInput,
 	CompleteRegistrationInput,
-	CreateExternalPaymentIntentInput,
-	CreateExternalPaymentIntentResult,
+	CreateExternalCheckoutSessionInput,
+	CreateExternalCheckoutSessionResult,
 	CreatePaymentIntentInput,
 	CreatePaymentIntentResult,
 	ExternalRegistrationErrorCode,
@@ -218,9 +218,10 @@ export function createRegistrationService(
  * ```typescript
  * // In a public route handler
  * const registrationService = createPublicRegistrationService(platform);
- * const result = await registrationService.createExternalPaymentIntent({
+ * const result = await registrationService.createExternalCheckoutSession({
  *   workshopId: 'uuid',
- *   externalUser: { firstName: 'John', lastName: 'Doe', email: 'john@example.com' }
+ *   successUrl: 'https://app.test/workshops/uuid/confirmation?session_id={CHECKOUT_SESSION_ID}',
+ *   cancelUrl: 'https://app.test/workshops/uuid/register'
  * });
  * ```
  */

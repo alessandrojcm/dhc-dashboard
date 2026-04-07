@@ -1,121 +1,56 @@
 import { command, getRequestEvent } from "$app/server";
 import { createPublicRegistrationService } from "$lib/server/services/workshops";
 import type { ExternalRegistrationError } from "$lib/server/services/workshops";
-import {
-	CreateExternalPaymentIntentSchema,
-	CompleteExternalRegistrationSchema,
-} from "$lib/schemas/workshop-registration";
+import { CreateExternalCheckoutSessionCommandSchema } from "$lib/schemas/workshop-registration";
 
 /**
- * Create a payment intent for external (non-member) workshop registration.
+ * Creates a Stripe Checkout Session for external registration.
  *
- * This command:
- * - Validates input with Valibot
- * - Ensures workshopId in input matches route params
- * - Calls public registration service to create payment intent
- * - Returns success with clientSecret, paymentIntentId, amount, currency
- * - Returns error with code on failure
- *
- * Stage 3C contract compliance:
- * - Success: { success: true, clientSecret, paymentIntentId, amount, currency }
- * - Error: { success: false, error: string, code?: string }
+ * Success: { success: true, checkoutSessionId: string, checkoutClientSecret: string, checkoutUrl: string | null }
+ * Error:   { success: false, error: string, code?: string }
  */
-export const createExternalPaymentIntent = command(
-	CreateExternalPaymentIntentSchema,
+export const createExternalCheckoutSession = command(
+	CreateExternalCheckoutSessionCommandSchema,
 	async (input) => {
-		const { params, platform } = getRequestEvent();
+		const { params, platform, url } = getRequestEvent();
 
-		// Enforce route/body match
 		if (input.workshopId !== params.id) {
 			return {
-				success: false,
+				success: false as const,
 				error: "Workshop ID mismatch",
 				code: "INVALID_INPUT",
 			};
 		}
 
+		const returnUrl = `${url.origin}/workshops/${input.workshopId}/confirmation?session_id={CHECKOUT_SESSION_ID}`;
+
 		try {
 			const service = createPublicRegistrationService(platform!);
-			const result = await service.createExternalPaymentIntent(input);
+			const result = await service.createExternalCheckoutSession({
+				workshopId: input.workshopId,
+				returnUrl,
+			});
 
 			return {
-				success: true,
-				...result,
+				success: true as const,
+				checkoutSessionId: result.checkoutSessionId,
+				checkoutClientSecret: result.checkoutClientSecret,
+				checkoutUrl: result.checkoutUrl,
 			};
 		} catch (err) {
 			const error = err as ExternalRegistrationError;
 
-			// Map domain errors to response format
 			if (error.name === "ExternalRegistrationError") {
 				return {
-					success: false,
+					success: false as const,
 					error: error.message,
 					code: error.code,
 				};
 			}
 
-			// Generic error fallback
 			return {
-				success: false,
-				error: "Failed to create payment intent",
-				code: "UNKNOWN_ERROR",
-			};
-		}
-	},
-);
-
-/**
- * Complete external workshop registration after payment confirmation.
- *
- * This command:
- * - Validates input with Valibot
- * - Ensures workshopId in input matches route params
- * - Calls public registration service to complete registration
- * - Returns success with redirectTo path
- * - Returns error with code on failure
- *
- * Stage 3D contract compliance:
- * - Success: { success: true, redirectTo: "/workshops/[id]/confirmation" }
- * - Error: { success: false, error: string, code?: string }
- */
-export const completeExternalRegistration = command(
-	CompleteExternalRegistrationSchema,
-	async (input) => {
-		const { params, platform } = getRequestEvent();
-
-		// Enforce route/body match
-		if (input.workshopId !== params.id) {
-			return {
-				success: false,
-				error: "Workshop ID mismatch",
-				code: "INVALID_INPUT",
-			};
-		}
-
-		try {
-			const service = createPublicRegistrationService(platform!);
-			await service.completeExternalRegistration(input);
-
-			return {
-				success: true,
-				redirectTo: `/workshops/${input.workshopId}/confirmation`,
-			};
-		} catch (err) {
-			const error = err as ExternalRegistrationError;
-
-			// Map domain errors to response format
-			if (error.name === "ExternalRegistrationError") {
-				return {
-					success: false,
-					error: error.message,
-					code: error.code,
-				};
-			}
-
-			// Generic error fallback
-			return {
-				success: false,
-				error: "Failed to complete registration",
+				success: false as const,
+				error: "Failed to create checkout session",
 				code: "UNKNOWN_ERROR",
 			};
 		}

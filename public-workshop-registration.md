@@ -8,51 +8,45 @@
 
 ## Goal
 
-Enable external (non-authenticated) users to register and pay for public workshops via a public route, while keeping the existing member registration flow and interfaces backward-compatible.
+Enable external (non-authenticated) users to register and pay for public workshops via a public route, while keeping the existing member registration flow backward-compatible.
 
 ## Constraints and Current Reality
 
 - Existing member flow lives under `src/routes/dashboard/my-workshops/` and uses `RegistrationService`.
-- `RegistrationService` currently assumes member session usage in key methods (e.g. `session.user.id`).
 - DB already supports external registration:
   - `club_activity_registrations` has both `member_user_id` and `external_user_id`
   - `external_users` table exists
   - check constraint enforces one actor type per registration
-- Public scaffold exists at `src/routes/(public)/workshops/[id]/register/` (currently empty).
+- Public routes exist under `src/routes/(public)/workshops/[id]/`.
 
 ## Core Design Direction
 
 1. Keep existing member-facing interfaces unchanged.
 2. Add explicit public/external registration entry points in the service layer.
-3. Use a system/service auth context for RLS execution in public routes (session-like context backed by service role JWT), without changing existing member caller contracts.
-4. Derive external pricing server-side from workshop data (never trust client amount).
+3. Use a system/service auth context for RLS execution in public routes (session-like context backed by service role JWT).
+4. Move external payment to **Stripe Checkout Session** (hosted/embedded compatible backend contract), not PaymentIntent + inline confirmation.
+5. Complete registration by verifying Checkout Session server-side on confirmation return (optionally mirrored by webhook).
 
 ---
 
 ## Stage 1 — Service auth context + non-breaking entry points (serial)
 
 ### Objective
+
 Support external/public flows without breaking existing member code paths.
 
 ### Deliverables
 
 - Keep `createRegistrationService(platform, session, ...)` unchanged.
-- Add a public/system factory (e.g. `createPublicRegistrationService(platform, ...)`) that supplies a service-role-backed session-like auth context internally.
-- Refactor internals to prevent external methods from depending on `session.user.id`.
+- Add public/system factory `createPublicRegistrationService(platform, ...)` that supplies service-role-backed claims.
+- Refactor internals so external methods do not depend on `session.user.id`.
 
-### Stage 1A — Auth model we will introduce
+### Stage 1A — Auth model
 
-`RegistrationService` will stop treating constructor `session` as both:
+`RegistrationService` should treat constructor inputs as:
 
-1. RLS claims source
-2. actor identity source
-
-Instead, we split these concerns conceptually:
-
-- **RLS claims context**: only needed for `executeWithRLS(..., { claims })`
-- **Actor context**: who is performing the operation (`member` vs `system`)
-
-Proposed internal shape:
+- **RLS claims context** (for `executeWithRLS`)
+- **Actor context** (`member` vs `system`)
 
 ```ts
 type RegistrationActor =
@@ -60,9 +54,7 @@ type RegistrationActor =
   | { kind: "system" };
 ```
 
-This lets us keep member methods unchanged externally while making external/public methods independent from `session.user.id`.
-
-### Stage 1B — Factory design (non-breaking)
+### Stage 1B — Factory design
 
 #### Existing factory (unchanged signature)
 
@@ -79,588 +71,281 @@ createRegistrationService(platform, session, stripe?, logger?)
 createPublicRegistrationService(platform, stripe?, logger?, opts?)
 ```
 
-- Creates `RegistrationService` with actor context `{ kind: "system" }`.
+- Creates service with actor context `{ kind: "system" }`.
 - Uses service-role JWT as claims for `executeWithRLS`.
-- Supports optional override in tests (e.g. `opts.claimsSession`) to avoid hard-coupling tests to runtime env.
+- Supports optional claims override for tests.
 
-Implementation note:
+### Stage 1C — Internal refactor checklist
 
-- Add a helper like `buildServiceRoleSession()` in service/shared layer.
-- It should construct a valid session-like object from `SERVICE_ROLE_KEY` (or throw clearly if missing).
-- This helper is only for server-side internal service usage.
-
-### Stage 1C — How we replace session-derived identity
-
-We do **not** use `session.user.id` as identity in external/public flow.
-
-Identity source by flow:
-
-- **Member flow**: `memberUserId` comes from actor context (initialized from authenticated session in existing factory).
-- **External flow**: identity comes from explicit input (`firstName`, `lastName`, `email`, optional `phone`) and DB `external_users.id` linkage.
-- **System/public execution**: uses service-role claims for DB execution authority, but actor kind remains `system`.
-
-### Stage 1D — Internal refactor checklist
-
-1. Add private helper for member-only identity:
+1. Add private helper:
 
 ```ts
 private requireMemberUserId(context: string): string
 ```
 
-- Throws with clear error if called under `system` actor.
+2. Replace direct `this.session.user.id` reads in member-only methods.
+3. Keep `executeWithRLS(this.kysely, { claims: this.session }, ...)` unchanged.
+4. Add/keep reusable helpers:
+   - workshop eligibility lookup
+   - capacity check
+   - external user upsert
+5. Logging should include actor kind (`member` / `system`).
 
-2. Replace all direct `this.session.user.id` reads in `RegistrationService` with:
+### Stage 1D — Compatibility guarantees
 
-- `const memberUserId = this.requireMemberUserId("...")` for member-only methods.
-
-3. Keep DB transaction pattern unchanged:
-
-- `executeWithRLS(this.kysely, { claims: this.session }, ...)` remains the execution wrapper.
-
-4. Prepare shared helper methods for Stage 2 (so new external methods can reuse logic without member-session assumptions):
-
-- workshop lookup + publish/public checks
-- capacity check
-- duplicate registration check by actor type
-
-5. Logging update:
-
-- Log actor kind (`member`/`system`) instead of always logging `userId`.
-
-### Stage 1E — Compatibility guarantees
-
-- No route-level signature changes required for existing dashboard member registration.
-- Existing `.remote.ts` member flows continue to call `createRegistrationService(platform, session)`.
-- New public routes use `createPublicRegistrationService(platform, ...)`.
-- Existing member method signatures (`createPaymentIntent`, `completeRegistration`, etc.) remain unchanged during Stage 1.
-
-### Notes
-
-- Preserve compatibility with all existing dashboard and remote function callers.
-- Keep all DB mutations inside service methods.
+- No route-level signature changes for existing dashboard member registration.
+- Existing `.remote.ts` member flows continue using `createRegistrationService(platform, session)`.
+- Public routes use `createPublicRegistrationService(platform)`.
 
 ---
 
-## Stage 2 — External registration methods in `RegistrationService` (serial)
+## Stage 2 — External service methods with Checkout Session (serial)
 
 ### Objective
-Implement explicit external flow logic (payment intent + completion).
+
+Implement external flow around **Stripe Checkout Session** and server-side completion.
 
 ### Deliverables
 
-- Add external-specific service methods:
+- Add external service methods:
+  - `createExternalCheckoutSession(...)`
+  - `completeExternalRegistrationFromCheckoutSession(...)`
+- Remove legacy PaymentIntent-based external methods (now unneeded):
   - `createExternalPaymentIntent(...)`
   - `completeExternalRegistration(...)`
-- Introduce shared validation helpers for:
-  - workshop existence
-  - workshop `status = published`
-  - workshop `is_public = true` (for external flow)
+- Keep/extend shared validation helpers:
+  - workshop existence / published / public / external price
   - capacity checks
-  - duplicate registration checks
-- Enforce **server-derived external amount** from `price_non_member`.
-- Stripe metadata must encode actor type and workshop id for safe completion validation.
+  - external user upsert from Stripe customer details
+- Enforce server-derived amount from `price_non_member`.
+- Validate Stripe Checkout session data server-side before DB write.
 
-### Stage 2A — Payment intent contract (external flow)
+### Stage 2A — Create Checkout Session contract
 
-We will use a **Payment Intent + Payment Element** flow (not Checkout Session).
-
-Proposed service input:
+Proposed input:
 
 ```ts
-type CreateExternalPaymentIntentInput = {
+type CreateExternalCheckoutSessionInput = {
   workshopId: string;
-  externalUser: {
-    firstName: string;
-    lastName: string;
-    email: string;
-    phoneNumber?: string | null;
-  };
-  currency?: string; // defaults to workshop currency / "eur"
+  successUrl: string; // must include ?session_id={CHECKOUT_SESSION_ID}
+  cancelUrl: string;
 };
 ```
 
-What data we need to create the Payment Intent:
-
-1. `workshopId`
-2. workshop title/status/public flag/max capacity
-3. workshop external price (`price_non_member`) as the source of truth
-4. canonical external identity (normalized email + resolved `external_user_id`)
-5. currency (server default if omitted)
-
-What the server returns:
+Proposed result:
 
 ```ts
-type CreateExternalPaymentIntentResult = {
-  clientSecret: string;
-  paymentIntentId: string;
-  amount: number;   // server-derived cents
-  currency: string;
+type CreateExternalCheckoutSessionResult = {
+  checkoutSessionId: string;
+  checkoutUrl: string;
 };
 ```
 
-Client **must not send amount** for external flow.
+Method behavior:
 
-### Stage 2B — Stripe integration and checkout type
+1. Validate workshop eligibility.
+2. Soft capacity check (fast reject if full).
+3. Create Stripe Checkout Session with server-derived amount.
+4. Store metadata at minimum:
+   - `type = workshop_registration`
+   - `actor_type = external`
+   - `workshop_id`
 
-- We will integrate with **Stripe Elements (Payment Element)**, consistent with the current member checkout component pattern.
-- Confirmation path uses `stripe.confirmPayment({ elements, redirect: "if_required" })` and then calls `completeExternalRegistration(...)`.
-- We are **not** introducing Stripe Checkout Session in this stage.
-- Metadata to include on Payment Intent (minimum):
-  - `type = workshop_registration`
-  - `actor_type = external`
-  - `workshop_id`
-  - `external_user_id`
-  - `external_email_normalized`
+### Stage 2B — Complete from Checkout Session contract
 
-Note: DB column name is currently `stripe_checkout_session_id`; in current code it stores Payment Intent IDs. We keep this behavior for compatibility in this phase.
+Proposed input:
 
-### Stage 2C — Capacity checks (expanded)
+```ts
+type CompleteExternalRegistrationFromCheckoutSessionInput = {
+  workshopId: string;
+  checkoutSessionId: string;
+};
+```
 
-We apply capacity validation in **two places**:
+Method behavior:
 
-1. **Pre-intent soft check** in `createExternalPaymentIntent(...)`
-   - fast reject if already full (count `pending` + `confirmed` against `max_capacity`)
-2. **Completion hard check** in `completeExternalRegistration(...)`
-   - inside transaction, re-check capacity immediately before insert
-   - this is the authoritative gate
+1. Retrieve Checkout Session from Stripe by `checkoutSessionId`.
+2. Verify payment status is complete/paid.
+3. Verify metadata (`type`, `actor_type`, `workshop_id`) matches request.
+4. Extract customer details from Stripe session (email/name/phone).
+5. Upsert external user (email normalized).
+6. Idempotency check by `stripe_checkout_session_id`.
+7. Hard capacity check just before insert.
+8. Insert confirmed registration (or return existing idempotent row).
 
-Implementation guidance for hard check:
+### Stage 2C — Duplicate policy and idempotency
 
-- Lock workshop row (`FOR UPDATE`) (if kysely allows, check docs) before counting/inserting to reduce race overbooking.
-- Treat `pending` + `confirmed` as occupied seats.
-- If full at completion, return a deterministic domain error (`WORKSHOP_FULL`).
+- We accept that duplicate attempts can occur pre-payment.
+- Completion path must still be safe:
+  - idempotent by `checkoutSessionId`
+  - deterministic handling when an external user already has active registration for the same workshop
+- Keep DB constraints as final race-safety boundary.
 
-Important: payment intent creation does **not** reserve a seat. The completion check is what guarantees final seat allocation.
+### Stage 2D — Security requirements
 
-### Stage 2D — Duplicate checks (expanded)
-
-There are two duplicate layers:
-
-1. **Identity-level dedupe** in `external_users`
-   - `external_users.email` is unique
-   - we will normalize email (`trim().toLowerCase()`) before lookup/upsert
-2. **Registration-level dedupe** in `club_activity_registrations`
-   - `UNIQUE (club_activity_id, external_user_id)` already exists
-   - service pre-check for `status IN ('pending','confirmed')`
-   - DB unique constraint remains final race-safe guard
-
-### Stage 2E — External identity clashes and insert-vs-update rules
-
-`external_users` has no auth user FK by design. For external flow, **email is the identity key**.
-
-Rules:
-
-- If normalized email does not exist: **INSERT** new `external_users` row.
-- If normalized email exists: **UPDATE** profile fields (name/phone) and reuse existing `external_user_id`.
-- Then create registration row tied to that `external_user_id`.
-
-Consequences:
-
-- Same external person can register for multiple workshops (allowed), because uniqueness is per `(workshop, external_user)`.
-- Same email cannot register twice for the same workshop (blocked by service + DB constraint).
-- If two different people share an email address, system will treat them as one external identity (acceptable constraint for unauthenticated flow; document in UX copy).
-
-### Stage 2F — Completion idempotency and duplicate retries
-
-`completeExternalRegistration(...)` should be retry-safe:
-
-- If a registration already exists for `(workshop_id, external_user_id)` with `status = confirmed`, return existing row (idempotent success).
-- If payment intent metadata does not match input workshop/external user, reject.
-- If duplicate insert race occurs (unique violation), fetch existing row and return it when compatible.
-
-### Stage 2G — Registration lifecycle rule (insert vs update) + email normalization
-
-Because `club_activity_registrations` has `UNIQUE (club_activity_id, external_user_id)`, we cannot create multiple rows for the same external user/workshop pair.
-
-Decisions for Stage 2:
-
-1. **External identity normalization**
-   - Always canonicalize email before dedupe/upsert:
-     - trim whitespace
-     - lowercase
-   - Follow-up migration recommended: enforce case-insensitive uniqueness (e.g. `UNIQUE (lower(email))` or `citext`) to align DB with service behavior.
-
-2. **Registration row behavior**
-   - First-time registration for workshop + external user: **INSERT**.
-   - Retry/duplicate completion for same successful payment: **return existing** row (idempotent success).
-   - If a row already exists in `pending` or `confirmed`: treat as duplicate (or idempotent success if same payment intent).
-   - If a row exists in `cancelled` or `refunded` and re-registration is allowed, do **UPDATE lifecycle reset** on the same row (`status`, payment fields, timestamps) instead of insert.
-
-3. **Same external user across different workshops**
-   - Allowed: one `external_users` identity can be linked to many workshop registrations.
-   - Constraint only blocks duplicates per workshop, not across workshops.
-
-### Safety Requirements
-
-- Idempotent completion behavior (retry-safe for duplicate callback/submission).
-- Reject mismatched payment metadata.
+- Never trust query params alone; always retrieve Stripe session server-side.
+- Never trust client amount/workshop; always derive from DB.
+- Registration persistence only after successful Stripe verification.
 
 ---
 
-## Stage 3 — Public route backend surface (serial)
+## Stage 3 — Public route + UI Checkout flow (merged backend + frontend)
+
+> This stage merges the previous “Stage 3 backend surface” and “Stage 4 UI payment flow”.
 
 ### Objective
-Expose public registration/payment handlers using service layer only, with deterministic route contracts for Stage 4 UI.
+
+Ship a simpler, deterministic public flow:
+
+1. Open register page
+2. Create Checkout Session on server
+3. Redirect to Stripe Checkout
+4. Return to confirmation route with `session_id`
+5. Complete registration server-side from Stripe session
 
 ### Deliverables
 
-- Implement:
-  - `src/routes/(public)/workshops/[id]/register/+page.server.ts`
-  - `src/routes/(public)/workshops/[id]/register/data.remote.ts`
-- Add a public read query method in `RegistrationService` for page gating/loading (same domain as external registration logic).
-- Public handlers should:
-  - load gating state
-  - create external payment intent
-  - complete external registration
+- `src/routes/(public)/workshops/[id]/register/+page.server.ts`
+- `src/routes/(public)/workshops/[id]/register/+page.svelte`
+- `src/routes/(public)/workshops/[id]/register/data.remote.ts`
+- `src/routes/(public)/workshops/[id]/confirmation/+page.server.ts`
+- Keep `src/routes/(public)/workshops/[id]/confirmation/+page.svelte` as display page
+- Route for full workshops: `src/routes/(public)/workshops/[id]/full/+page.svelte`
 
-### Stage 3A — Service-layer ownership for gating query
-
-The query should live in:
-- `src/lib/server/services/workshops/registration.service.ts`
-
-Reason:
-- External registration eligibility rules already live there (`published`, `is_public`, external price checks, capacity logic).
-
-Implementation direction:
-- Add a public read method (e.g. `getExternalRegistrationGate(workshopId)`), reusing existing internal helpers where possible.
-- Route load must call this method through `createPublicRegistrationService(platform)`.
-
-### Stage 3B — Load behavior (`+page.server.ts`)
+### Stage 3A — Load gating (`register/+page.server.ts`)
 
 Load flow:
-1. Validate `params.id` as UUID.
-2. Instantiate public registration service.
-3. Fetch gate state from service.
-4. Apply route response policy:
 
-- `NOT_FOUND`, `NOT_PUBLISHED`, `NOT_PUBLIC`, `NO_EXTERNAL_PRICE`:
-  - return `404`
-- `FULL`:
-  - return `200` with generic message only:
-    - `"This workshop is full"`
-  - do not return workshop details
-  - registration UI must stay disabled
-- eligible:
-  - return `200` with workshop display payload and `canRegister: true`
+1. Validate `params.id` UUID.
+2. Call `createPublicRegistrationService(platform).getExternalRegistrationGate(workshopId)`.
+3. Apply route policy:
 
-### Stage 3C — Create payment intent (`data.remote.ts`)
+- `NOT_FOUND`, `NOT_PUBLISHED`, `NOT_PUBLIC`, `NO_EXTERNAL_PRICE` → `404`
+- `FULL` → redirect to `/workshops/[id]/full`
+- eligible → return workshop payload for summary UI
 
-Command:
-- `createExternalPaymentIntent`
+### Stage 3B — Register page UI (`register/+page.svelte`)
 
-Input:
-- `workshopId`
-- `externalUser: { firstName, lastName, email, phoneNumber? }`
-- optional `currency`
+Simplified UI:
 
-Rules:
-- Validate with Valibot.
-- Enforce route/body match (`input.workshopId === params.id`).
-- Call `createPublicRegistrationService(platform).createExternalPaymentIntent(input)`.
-- Success shape:
-  - `{ success: true, clientSecret, paymentIntentId, amount, currency }`
-- Error shape:
-  - `{ success: false, error: string, code?: string }`
+- Show workshop summary (title/date/location/price).
+- Primary action: **Continue to payment**.
+- Optional: lightweight pre-checkout fields for UX only (not required by checkout creation).
+- No inline Stripe Payment Element state machine.
 
-### Stage 3D — Complete registration (`data.remote.ts`)
+### Stage 3C — Create Checkout Session command (`register/data.remote.ts`)
 
 Command:
-- `completeExternalRegistration`
 
-Input:
-- `workshopId`
-- `paymentIntentId`
-- `externalUser`
+- `createExternalCheckoutSession`
 
 Rules:
-- Validate with Valibot.
-- Enforce route/body match.
-- Call service completion method.
-- Success shape:
-  - `{ success: true, redirectTo: "/workshops/[id]/confirmation" }`
-- Error shape:
-  - `{ success: false, error: string, code?: string }`
 
-### Response Conventions
+1. Validate input with Valibot.
+2. Enforce route/body workshop id match.
+3. Construct `successUrl` with `{CHECKOUT_SESSION_ID}` placeholder and `cancelUrl` back to register page.
+4. Call `createPublicRegistrationService(platform).createExternalCheckoutSession(input)`.
+5. Success shape:
+   - `{ success: true, checkoutUrl: string }`
+6. Error shape:
+   - `{ success: false, error: string, code?: string }`
 
-- Success shape: `{ success: true, ... }`
-- Error shape: `{ success: false, error: string, code?: string }`
+Client behavior:
+
+- On success, redirect browser to `checkoutUrl`.
+
+### Stage 3D — Confirmation completion (`confirmation/+page.server.ts`)
+
+Load flow:
+
+1. Validate workshop id.
+2. Read `session_id` from query params.
+3. Call `createPublicRegistrationService(platform).completeExternalRegistrationFromCheckoutSession({ workshopId, checkoutSessionId: session_id })`.
+4. Return confirmation payload (or throw deterministic error).
+
+Success semantics:
+
+- First completion creates registration.
+- Re-load/retry is idempotent and returns existing registration.
+
+### Stage 3E — Optional webhook reliability path
+
+Optional but recommended:
+
+- Add Stripe webhook endpoint listening to `checkout.session.completed`.
+- Reuse same service completion method (or shared transactional helper).
+- Keep idempotent behavior to tolerate both webhook and return-page completion.
+
+### Response conventions
+
+- Success: `{ success: true, ... }`
+- Error: `{ success: false, error: string, code?: string }`
 
 ---
 
-## Stage 4 — Public UI payment flow (serial after Stage 3 contracts)
+## Stage 4 — Tests (service + route + focused E2E)
 
 ### Objective
-Provide a complete external registration UI at `/workshops/[id]/register` using a **one-step progressive form**.
 
-### Deliverables
+Cover critical behavior with pragmatic depth for the new Checkout-based flow.
 
-- Build a single-page form layout:
-  1. **Top:** workshop summary (title/date/location/price)
-  2. **Middle:** external user details
-     - first name (required)
-     - last name (required)
-     - email (required)
-     - phone (optional)
-  3. **Bottom:** Stripe payment area (progressively enabled)
-- Integrate Stripe Payment Element in the same page (no separate step/screen).
-- Handle success redirect to existing confirmation route:
-  - `src/routes/(public)/workshops/[id]/confirmation/+page.svelte`
-- Clear UX for common failures:
-  - full capacity
-  - already registered
-  - payment failure
-
-### Stage 4A — One-step progressive interaction model
-
-This is still one visual form, but with progressive activation:
-
-1. User enters contact details.
-2. Once details are valid, create external payment intent.
-3. Mount Payment Element inline.
-4. User confirms payment.
-5. Call registration completion and redirect.
-
-This keeps UX simple while preserving server-side authority for pricing and registration checks.
-
-### Stage 4B — Stripe loading timing (one-step flow)
-
-We will follow existing project patterns (`payment-form.svelte`, `workshop-express-checkout.svelte`):
-
-1. **On mount:** load Stripe.js (`loadStripe(PUBLIC_STRIPE_KEY)`).
-2. **Do not** create Elements immediately.
-3. Create payment intent only when details are valid.
-4. After server returns `clientSecret`, create `elements(...)` and mount Payment Element.
-5. If identity fields change after intent creation, invalidate payment section and regenerate intent (unmount + recreate) before allowing submit.
-
-Implementation guardrails:
-
-- Prevent intent spam while typing (debounce + in-flight lock).
-- Track a normalized identity signature (`firstName|lastName|email|phone|workshopId`) and only recreate intent when signature changes.
-- Keep a deterministic loading/error state for payment area.
-
-### Stage 4C — Svelte form compatibility
-
-Yes, this flow is compatible with Svelte remote forms.
-
-- Keep one visual `<form>`.
-- Use normal field-level validation/errors for contact inputs.
-- Use async side effect (remote command/mutation) to create intent when form becomes valid.
-- On submit:
-  - `stripe.confirmPayment({ elements, redirect: "if_required" })`
-  - then call `completeExternalRegistration(...)`
-  - then redirect to confirmation route.
-
-### Stage 4D — Route/layout-level gating checks
-
-Before rendering payment-capable UI, page load must validate:
-
-1. workshop exists
-2. workshop status is `published`
-3. workshop `is_public = true`
-4. soft capacity check
-
-Route behavior:
-- unavailable workshop (`NOT_FOUND` / `NOT_PUBLISHED` / `NOT_PUBLIC` / `NO_EXTERNAL_PRICE`) => `404`
-- full workshop => `200` with generic message only (`"This workshop is full"`), no workshop detail payload, no Stripe mount
-- eligible workshop => return workshop display payload and `canRegister: true`
-
-### Stage 4E — UI state model
-
-Use an explicit state machine for predictability and race-safety in the one-step flow.
-
-States:
-
-- `idle`: user edits details; payment section not ready
-- `intent_loading`: creating/recreating external payment intent
-- `intent_ready`: client secret is current; Payment Element mounted
-- `confirming_payment`: running Stripe confirmation
-- `completing_registration`: persisting registration after successful payment
-- `success`: terminal success; redirect to confirmation page
-- `error`: recoverable failure state with typed source/reason
-
-Operational rules:
-
-1. **Single in-flight transition**
-   - Only one async action should run at a time for intent creation/confirmation/completion.
-   - Prevent duplicate click/double-submit transitions.
-
-2. **Identity signature drives intent freshness**
-   - Track normalized signature: `firstName|lastName|email|phone|workshopId`.
-   - Reuse current intent only when signature matches.
-   - If signature changes after intent is ready, invalidate payment section and regenerate intent.
-
-3. **Intent creation guardrails**
-   - Debounce while typing to avoid excessive intent creation.
-   - Ignore stale async responses that do not match the latest requested signature.
-
-4. **Payment/submit gate**
-   - Allow pay action only in `intent_ready`.
-   - While `confirming_payment` or `completing_registration`, keep actions locked.
-
-5. **Idempotent recovery**
-   - Retries from `error` are allowed and should route to the correct prior step.
-   - Completion retries remain safe because Stage 2 completion behavior is idempotent.
-
-#### State transition table
-
-| Current state | Event / condition | Next state | Notes |
-|---|---|---|---|
-| `idle` | Details invalid or incomplete | `idle` | Keep payment section disabled/unmounted |
-| `idle` | Details become valid | `intent_loading` | Start debounced create-intent request |
-| `intent_loading` | Intent created for latest signature | `intent_ready` | Mount Payment Element with returned client secret |
-| `intent_loading` | Intent request fails | `error` | Store typed error source = `intent` |
-| `intent_loading` | User changes details before response | `intent_loading` (latest only) | Older responses are ignored as stale |
-| `intent_ready` | User edits identity fields | `intent_loading` (or `idle` until valid) | Invalidate/unmount current payment element and regenerate intent |
-| `intent_ready` | User clicks Pay | `confirming_payment` | Lock UI actions |
-| `confirming_payment` | Stripe returns confirmation error | `error` | Error source = `payment` |
-| `confirming_payment` | Stripe confirms payment | `completing_registration` | Continue with backend completion call |
-| `completing_registration` | Completion succeeds (or idempotent compatible duplicate) | `success` | Redirect to confirmation route |
-| `completing_registration` | Domain/business failure (e.g. full) | `error` | Error source = `completion`; show mapped message |
-| `error` | User retries setup | `intent_loading` | Recreate intent for latest valid signature |
-| `error` | User retries pay with valid mounted element | `confirming_payment` | Only when intent is still current and ready |
-
-Error mapping for user-facing messages:
-
-- `WORKSHOP_FULL` → workshop full message
-- `ALREADY_REGISTERED` → already registered message
-- Stripe confirmation errors → payment failed message
-- Unknown errors → generic retry guidance
-
----
-
-## Stage 5 — Tests (service + route + focused E2E)
-
-### Objective
-Cover critical behavior with pragmatic depth.
-
-### Stage 5A — Test process sanity checks (pre-flight)
-
-Before running this stage, verify:
-
-1. Local services are running (in order):
-
-```bash
-pnpm supabase:start
-pnpm supabase:functions:serve
-pnpm dev
-```
-
-2. Test data is unique per run (timestamp + random suffix where needed).
-3. Public registration tests do **not** introduce deprecated `/api/workshops/*` test transport patterns.
-4. Assertions follow existing E2E stability patterns from `e2e/workshops-ui.spec.ts`:
-   - use role-based selectors
-   - for workshop detail assertions, click calendar event first and scope checks to dialog
-5. Keep service and route tests deterministic (no real Stripe network side effects in unit/service tests unless explicitly marked integration).
-
-### Stage 5B — Service tests (expanded)
-
-Test `RegistrationService` external methods directly with explicit fixtures.
+### Stage 4A — Service tests
 
 Core cases:
 
-1. **External happy path**
-   - `createExternalPaymentIntent(...)` returns `clientSecret`, `paymentIntentId`, server-derived `amount`, `currency`.
-   - `completeExternalRegistration(...)` creates confirmed registration with `external_user_id` set and `member_user_id = null`.
+1. `createExternalCheckoutSession(...)` happy path:
+   - returns `checkoutSessionId` and `checkoutUrl`
+   - amount derived from workshop server-side
+2. Eligibility failures:
+   - not found / unpublished / non-public / missing external price
+3. Capacity:
+   - soft reject at session creation when full
+   - hard reject at completion when seat is consumed before completion
+4. Completion from session:
+   - verifies Stripe session paid/complete
+   - verifies metadata matches workshop
+   - upserts external user from session customer details
+   - creates confirmed registration
+5. Idempotency:
+   - repeated completion with same checkout session returns existing row
 
-2. **Gating and eligibility**
-   - reject workshop not found
-   - reject `status != published`
-   - reject `is_public = false`
+### Stage 4B — Route tests
 
-3. **Capacity behavior**
-   - soft reject when full at intent step
-   - hard reject at completion when capacity is consumed between intent and completion (`WORKSHOP_FULL`)
+`register/+page.server.ts`:
 
-4. **Duplicate behavior**
-   - reject duplicate when existing pending/confirmed registration exists for same `(workshop, external_user)`
-   - idempotent success when retrying compatible completion for same payment intent
+- unavailable states -> `404`
+- full -> redirect `/workshops/[id]/full`
+- eligible -> workshop payload
 
-5. **Metadata safety**
-   - reject payment intent whose metadata actor/workshop/external identity does not match completion input
+`register/data.remote.ts` command:
 
-6. **Identity normalization**
-   - email normalization (`trim().toLowerCase()`) reuses same `external_users` row
-   - completion is still scoped by normalized identity
+- success shape `{ success: true, checkoutUrl }`
+- failure shape `{ success: false, error, code }`
 
-### Stage 5C — Route tests (expanded)
+`confirmation/+page.server.ts`:
 
-Cover `+page.server.ts` and `data.remote.ts` contracts for the public route.
+- missing/invalid `session_id` handling
+- valid paid session -> completion success
+- invalid/unpaid/mismatched session -> deterministic failure
 
-`+page.server.ts` load cases:
+### Stage 4C — Focused E2E
 
-- workshop not found -> `404`
-- workshop planned/unpublished -> `404`
-- workshop non-public -> `404`
-- workshop missing external price -> `404`
-- workshop full -> `200` with generic full message only, no workshop detail payload, `canRegister: false`
-- workshop eligible -> `200` with workshop payload, `canRegister: true`
+1. Happy path:
+   - open register page for eligible workshop
+   - continue to Stripe Checkout
+   - complete payment
+   - return to confirmation page
+2. Full path:
+   - full workshop redirects to `/workshops/[id]/full`
+3. Retry/idempotency:
+   - re-open confirmation URL with same `session_id`
+   - still shows success, no duplicate registration side effects
 
-Remote action cases:
+### Stage 4D — Test hygiene
 
-- create intent success shape: `{ success: true, clientSecret, paymentIntentId, amount, currency }`
-- create intent failure shape: `{ success: false, error, code }`
-- completion success shape: `{ success: true, redirectTo }`
-- completion failure shape: `{ success: false, error, code }`
-
-### Stage 5D — Focused E2E cases (expanded)
-
-Start with a minimal but representative matrix:
-
-1. **Happy path (external registrant)**
-   - open `/workshops/[id]/register` for published public workshop
-   - enter valid identity data
-   - confirm payment
-   - redirect to `/workshops/[id]/confirmation`
-   - confirmation shows expected workshop/registrant summary
-
-2. **Failure path (business rule)**
-   - complete flow until completion step
-   - simulate/seed workshop becoming full before final completion
-   - verify user sees full-capacity error and no duplicate/phantom success redirect
-
-Optional third case if time permits:
-
-3. **Duplicate retry / already-registered UX**
-   - second attempt with same normalized email/workshop
-   - assert mapped `ALREADY_REGISTERED` message
-
-### Stage 5E — Tear-up and teardown strategy
-
-Use the same test hygiene patterns already used in `e2e/workshops-ui.spec.ts`, but tighten cleanup discipline.
-
-#### Tear-up (test setup)
-
-- In `beforeAll`:
-  - create stable role-based fixtures (e.g. admin/coordinator) via `createMember(...)`
-  - store returned fixture handles (`email`, `userId`, `cleanUp`)
-- Per test:
-  - create workshop fixtures with `createWorkshop(...)` and unique titles
-  - login with `loginAsUser(context, email)` where auth is needed
-
-#### Teardown (cleanup)
-
-- In `afterEach` or `afterAll`:
-  - execute collected cleanup functions from `createMember`/`createWorkshop`
-  - prefer `Promise.allSettled(cleanups)` for best-effort cleanup so one failure does not hide others
-- Keep global baseline reset in `e2e/global-setup.ts` as safety net, but do **not** rely on it as the only cleanup layer.
-
-Suggested cleanup pattern:
-
-```ts
-const cleanups: Array<() => Promise<unknown>> = [];
-
-test.beforeAll(async () => {
-  const admin = await createMember({ email: `admin-${Date.now()}@test.com`, roles: new Set(["admin"]) });
-  cleanups.push(admin.cleanUp);
-});
-
-test.afterAll(async () => {
-  await Promise.allSettled(cleanups.map((fn) => fn()));
-});
-```
-
-This keeps E2E runs reproducible and prevents fixture leakage across runs.
+- Keep unique fixture data per run.
+- Keep cleanup with `Promise.allSettled`.
+- Avoid deprecated `/api/workshops/*` transport usage in tests.
 
 ---
 

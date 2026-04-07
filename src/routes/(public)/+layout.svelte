@@ -7,7 +7,7 @@ const { children } = $props();
 	<title>Dublin Hema Club - Join</title>
 </svelte:head>
 
-<div class="flex flex-col md:flex-row h-[100vh]">
+<div class="flex flex-col md:flex-row h-screen">
 	<div
 		class="hidden md:flex flex-1 md:basis-1/4 bg-blue-500 px-2 items-center justify-center"
 	>
