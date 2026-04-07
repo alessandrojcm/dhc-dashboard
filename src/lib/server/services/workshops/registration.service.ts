@@ -790,7 +790,7 @@ export class RegistrationService {
 						mode: "payment",
 						ui_mode: "embedded",
 						return_url: returnUrl,
-						customer_creation: "always",
+						customer_creation: "if_required",
 						name_collection: {
 							individual: {
 								enabled: true,
@@ -1021,12 +1021,18 @@ export class RegistrationService {
 
 				if (!hasCapacity) {
 					await this.stripeClient.refunds.create({
-						charge: (checkoutSession.payment_intent as Stripe.PaymentIntent).latest_charge as string,
+						charge: (checkoutSession.payment_intent as Stripe.PaymentIntent)
+							.latest_charge as string,
 						reason: "duplicate",
 					});
-					this.logger.warn(`Refunded payment for workshop ${workshopId} due to capacity reached`, {
-						paymentIntentId: (checkoutSession.payment_intent as Stripe.PaymentIntent).id,
-					})
+					this.logger.warn(
+						`Refunded payment for workshop ${workshopId} due to capacity reached`,
+						{
+							paymentIntentId: (
+								checkoutSession.payment_intent as Stripe.PaymentIntent
+							).id,
+						},
+					);
 					throw new ExternalRegistrationError(
 						"WORKSHOP_FULL",
 						"Workshop has reached maximum capacity, your payment has been refunded.",
