@@ -1,9 +1,9 @@
-import { serve } from "std/http/server";
 import * as Sentry from "@sentry/deno";
-import { db, sql } from "../_shared/db.ts";
-import { corsHeaders } from "../_shared/cors.ts";
-import * as v from "valibot";
 import dayjs from "dayjs";
+import { serve } from "std/http/server";
+import * as v from "valibot";
+import { corsHeaders } from "../_shared/cors.ts";
+import { db, sql } from "../_shared/db.ts";
 
 // Initialize Sentry for error tracking
 Sentry.init({
@@ -169,22 +169,21 @@ async function processWorkshopAnnouncementQueue() {
 			}
 		}
 
-		// Create batched Discord message if there are workshops to announce
+		// Create individual Discord messages for each workshop if there are workshops to announce
 		if (discordWorkshops.length > 0) {
-			const batchedMessage = createBatchedMessage(discordWorkshops);
-			const discordMessage = {
-				message: batchedMessage,
-				workshop_count: discordWorkshops.length,
-				announcement_type: "batched",
-			};
+			for (const { workshop, announcement_type } of discordWorkshops) {
+				const discordMessage = {
+					message: createBatchedMessage([{ workshop, announcement_type }]),
+					workshop_id: workshop.id,
+					announcement_type: announcement_type,
+				};
 
-			await sql`
-				SELECT pgmq.send('discord_queue', ${JSON.stringify(discordMessage)})
-			`.execute(db);
+				await sql`
+					SELECT pgmq.send('discord_queue', ${JSON.stringify(discordMessage)})
+				`.execute(db);
 
-			console.log(
-				`Queued batched Discord message for ${discordWorkshops.length} workshops`,
-			);
+				console.log(`Queued Discord message for workshop ${workshop.id}`);
+			}
 		}
 
 		// Create batched email messages if there are workshops to announce
@@ -220,7 +219,7 @@ async function processWorkshopAnnouncementQueue() {
 						first_name: user.first_name,
 						last_name: user.last_name,
 						message: batchedMessage,
-						workshop_count: emailWorkshops.length,
+						workshop_count: emailWorkshops.length.toString(),
 					},
 				};
 				emailQueue.push(emailMessage);

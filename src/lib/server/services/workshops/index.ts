@@ -3,36 +3,38 @@
  * Exports services, types, and factory functions
  */
 
-import { getKyselyClient } from "../shared";
+import { env } from "$env/dynamic/private";
+import type { Stripe } from "stripe";
+import { stripeClient } from "$lib/server/stripe";
+import type { Logger, PublicServiceOptions, Session } from "../shared";
+import { buildServiceRoleSession, getKyselyClient } from "../shared";
 import { sentryLogger } from "../shared/logger";
-import type { Logger, Session } from "../shared";
-import { WorkshopService } from "./workshop.service";
 import { AttendanceService } from "./attendance.service";
 import { RefundService } from "./refund.service";
 import { RegistrationService } from "./registration.service";
+import { WorkshopService } from "./workshop.service";
 
 // ============================================================================
 // Service Exports
 // ============================================================================
 
-export { WorkshopService } from "./workshop.service";
 export { AttendanceService } from "./attendance.service";
 export { RefundService } from "./refund.service";
 export { RegistrationService } from "./registration.service";
+export { WorkshopService } from "./workshop.service";
 
 // ============================================================================
 // Validation Schema Exports
 // ============================================================================
 
+export type {
+	CreateWorkshopInput,
+	UpdateWorkshopInput,
+} from "./workshop.service";
 export {
 	BaseWorkshopSchema,
 	CreateWorkshopSchema,
 	UpdateWorkshopSchema,
-} from "./workshop.service";
-
-export type {
-	CreateWorkshopInput,
-	UpdateWorkshopInput,
 } from "./workshop.service";
 
 // ============================================================================
@@ -40,35 +42,45 @@ export type {
 // ============================================================================
 
 export type {
-	Workshop,
-	WorkshopInsert,
-	WorkshopUpdate,
-	WorkshopStatus,
-	WorkshopFilters,
-	WorkshopWithRelations,
-	Registration,
-	RegistrationInsert,
-	RegistrationUpdate,
-	RegistrationStatus,
-	RegistrationFilters,
-	RegistrationWithUser,
-	Refund,
-	RefundInsert,
-	RefundUpdate,
-	RefundStatus,
-	RefundEligibility,
-	RefundWithUser,
+	AttendanceResult,
 	AttendanceStatus,
 	AttendanceUpdate,
-	AttendanceResult,
-	Interest,
-	InterestInsert,
-	ToggleInterestResult,
+	CancelRegistrationResult,
+	CompleteExternalRegistrationFromCheckoutSessionInput,
+	CompleteRegistrationInput,
+	CreateExternalCheckoutSessionInput,
+	CreateExternalCheckoutSessionResult,
 	CreatePaymentIntentInput,
 	CreatePaymentIntentResult,
-	CompleteRegistrationInput,
-	CancelRegistrationResult,
+	ExternalRegistrationErrorCode,
+	ExternalRegistrationGateResult,
+	ExternalRegistrationWorkshop,
+	ExternalUserInput,
+	Interest,
+	InterestInsert,
+	Refund,
+	RefundEligibility,
+	RefundInsert,
+	RefundStatus,
+	RefundUpdate,
+	RefundWithUser,
+	Registration,
+	RegistrationFilters,
+	RegistrationGateReason,
+	RegistrationInsert,
+	RegistrationStatus,
+	RegistrationUpdate,
+	RegistrationWithUser,
+	ToggleInterestResult,
+	Workshop,
+	WorkshopFilters,
+	WorkshopInsert,
+	WorkshopStatus,
+	WorkshopUpdate,
+	WorkshopWithRelations,
 } from "./types";
+
+export { ExternalRegistrationError } from "./types";
 
 // ============================================================================
 // Factory Functions
@@ -91,11 +103,13 @@ export type {
 export function createWorkshopService(
 	platform: App.Platform,
 	session: Session,
+	stripe: Stripe = stripeClient,
 	logger?: Logger,
 ): WorkshopService {
 	return new WorkshopService(
 		getKyselyClient(platform.env.HYPERDRIVE),
 		session,
+		stripe,
 		logger ?? sentryLogger,
 	);
 }
@@ -143,22 +157,28 @@ export function createAttendanceService(
 export function createRefundService(
 	platform: App.Platform,
 	session: Session,
+	stripe: Stripe = stripeClient,
 	logger?: Logger,
 ): RefundService {
 	return new RefundService(
 		getKyselyClient(platform.env.HYPERDRIVE),
 		session,
+		stripe,
 		logger ?? sentryLogger,
 	);
 }
 
 /**
- * Create a RegistrationService instance
+ * Create a RegistrationService instance for authenticated member operations.
+ *
+ * This factory creates a service with a `member` actor context, where the
+ * member's identity is derived from the session's user ID.
  *
  * @param platform - App platform with Hyperdrive connection
- * @param session - User session for RLS
+ * @param session - User session for RLS and member identity
+ * @param stripe - Optional Stripe client (defaults to stripeClient)
  * @param logger - Optional logger (defaults to sentryLogger)
- * @returns RegistrationService instance
+ * @returns RegistrationService instance configured for member operations
  *
  * @example
  * ```typescript
@@ -169,11 +189,56 @@ export function createRefundService(
 export function createRegistrationService(
 	platform: App.Platform,
 	session: Session,
+	stripe: Stripe = stripeClient,
 	logger?: Logger,
 ): RegistrationService {
 	return new RegistrationService(
 		getKyselyClient(platform.env.HYPERDRIVE),
 		session,
+		{ kind: "member", memberUserId: session.user.id },
+		stripe,
+		logger ?? sentryLogger,
+	);
+}
+
+/**
+ * Create a RegistrationService instance for public/system operations.
+ *
+ * This factory creates a service with a `system` actor context, using
+ * service-role credentials for RLS. Use this for public registration flows
+ * where no authenticated member session exists.
+ *
+ * @param platform - App platform with Hyperdrive connection
+ * @param stripe - Optional Stripe client (defaults to stripeClient)
+ * @param logger - Optional logger (defaults to sentryLogger)
+ * @param opts - Optional configuration (e.g., override claims session for testing)
+ * @returns RegistrationService instance configured for system/public operations
+ *
+ * @example
+ * ```typescript
+ * // In a public route handler
+ * const registrationService = createPublicRegistrationService(platform);
+ * const result = await registrationService.createExternalCheckoutSession({
+ *   workshopId: 'uuid',
+ *   successUrl: 'https://app.test/workshops/uuid/confirmation?session_id={CHECKOUT_SESSION_ID}',
+ *   cancelUrl: 'https://app.test/workshops/uuid/register'
+ * });
+ * ```
+ */
+export function createPublicRegistrationService(
+	platform: App.Platform,
+	stripe: Stripe = stripeClient,
+	logger?: Logger,
+	opts?: PublicServiceOptions,
+): RegistrationService {
+	const claimsSession =
+		opts?.claimsSession ?? buildServiceRoleSession(env.SERVICE_ROLE_KEY);
+
+	return new RegistrationService(
+		getKyselyClient(platform.env.HYPERDRIVE),
+		claimsSession,
+		{ kind: "system" },
+		stripe,
 		logger ?? sentryLogger,
 	);
 }

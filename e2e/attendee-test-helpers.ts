@@ -1,6 +1,24 @@
 import type { Page } from "@playwright/test";
-import type { Database } from "../database.types.js";
-import { createMember, getSupabaseServiceClient } from "./setupFunctions";
+import type { Session } from "@supabase/supabase-js";
+import * as v from "valibot";
+import type { Database } from "../src/database.types";
+import { getKyselyClient } from "../src/lib/server/kysely";
+import { AttendanceService } from "../src/lib/server/services/workshops/attendance.service";
+import { RefundService } from "../src/lib/server/services/workshops/refund.service";
+import { RegistrationService } from "../src/lib/server/services/workshops/registration.service";
+import type {
+	AttendanceResult,
+	AttendanceUpdate,
+	RefundWithUser,
+	ToggleInterestResult,
+	Workshop,
+} from "../src/lib/server/services/workshops/types";
+import { WorkshopService } from "../src/lib/server/services/workshops/workshop.service";
+import {
+	createMember,
+	getSupabaseServiceClient,
+	stripeClient,
+} from "./setupFunctions";
 
 /**
  * Helper functions for attendee management and refund E2E tests
@@ -41,27 +59,254 @@ export interface TestRefund {
 	requested_at: string;
 }
 
-/**
- * Makes an authenticated API request using Playwright's request context
- */
-export async function makeAuthenticatedRequest(
-	page: Page,
-	url: string,
-	options: {
-		method?: string;
-		data?: unknown;
-		headers?: Record<string, string>;
-		body?: string;
-	} = {},
-) {
-	const response = await page.request.fetch(url, {
-		...options,
-		headers: {
-			"Content-Type": "application/json",
-			...options.headers,
-		},
+type ServiceResult<T> =
+	| ({ success: true } & T)
+	| {
+			success: false;
+			error?: string;
+			issues?: unknown;
+	  };
+
+type CreateTestWorkshopOverrides = Partial<
+	Database["public"]["Tables"]["club_activities"]["Insert"]
+>;
+
+type CreateTestRegistrationOverrides = Partial<
+	Omit<
+		Database["public"]["Tables"]["club_activity_registrations"]["Insert"],
+		"club_activity_id" | "member_user_id"
+	>
+>;
+
+type RoleType = Database["public"]["Enums"]["role_type"];
+
+const testLogger = {
+	info(message: string, context?: Record<string, unknown>) {
+		console.info(message, context);
+	},
+	error(message: string, context?: Record<string, unknown>) {
+		console.error(message, context);
+	},
+	warn(message: string, context?: Record<string, unknown>) {
+		console.warn(message, context);
+	},
+	debug(message: string, context?: Record<string, unknown>) {
+		console.debug(message, context);
+	},
+};
+
+const RefundRequestSchema = v.object({
+	registration_id: v.pipe(v.string(), v.uuid()),
+	reason: v.pipe(
+		v.string(),
+		v.minLength(1, "Reason is required"),
+		v.maxLength(500, "Reason must be less than 500 characters"),
+	),
+});
+
+const AttendanceUpdatesSchema = v.object({
+	attendance_updates: v.pipe(
+		v.array(
+			v.object({
+				registration_id: v.pipe(v.string(), v.uuid()),
+				attendance_status: v.picklist(["attended", "no_show", "excused"]),
+				notes: v.optional(
+					v.pipe(
+						v.string(),
+						v.maxLength(500, "Notes must be less than 500 characters"),
+					),
+				),
+			}),
+		),
+		v.minLength(1, "At least one attendance update required"),
+	),
+});
+
+let _kysely: ReturnType<typeof getKyselyClient> | null = null;
+
+function getWorkshopServiceConnectionString() {
+	const connectionString =
+		process.env.HYPERDRIVE ?? process.env.POSTGRES_CONNECTION_STRING;
+
+	if (!connectionString) {
+		throw new Error(
+			"Missing HYPERDRIVE or POSTGRES_CONNECTION_STRING for service-backed workshop E2E helpers",
+		);
+	}
+
+	return connectionString;
+}
+
+function getWorkshopServiceKysely() {
+	if (_kysely) {
+		return _kysely;
+	}
+
+	_kysely = getKyselyClient(getWorkshopServiceConnectionString());
+	return _kysely;
+}
+
+export function createWorkshopTestServices(session: Session) {
+	const kysely = getWorkshopServiceKysely();
+	// For E2E tests, we use a member actor context derived from the session
+	const memberActor = {
+		kind: "member" as const,
+		memberUserId: session.user.id,
+	};
+
+	return {
+		workshopService: new WorkshopService(
+			kysely,
+			session,
+			stripeClient,
+			testLogger,
+		),
+		attendanceService: new AttendanceService(kysely, session, testLogger),
+		refundService: new RefundService(kysely, session, stripeClient, testLogger),
+		registrationService: new RegistrationService(
+			kysely,
+			session,
+			memberActor,
+			stripeClient,
+			testLogger,
+		),
+	};
+}
+
+export async function publishWorkshopForTest(
+	session: Session,
+	workshopId: string,
+): Promise<ServiceResult<{ workshop: Workshop }>> {
+	try {
+		const { workshopService } = createWorkshopTestServices(session);
+		const workshop = await workshopService.publish(workshopId);
+		return { success: true, workshop };
+	} catch (error) {
+		return {
+			success: false,
+			error:
+				error instanceof Error ? error.message : "Failed to publish workshop",
+		};
+	}
+}
+
+export async function toggleWorkshopInterestForTest(
+	session: Session,
+	workshopId: string,
+): Promise<ServiceResult<ToggleInterestResult>> {
+	try {
+		const { registrationService } = createWorkshopTestServices(session);
+		const result = await registrationService.toggleInterest(workshopId);
+		return { success: true, ...result };
+	} catch (error) {
+		return {
+			success: false,
+			error:
+				error instanceof Error
+					? error.message
+					: "Failed to toggle workshop interest",
+		};
+	}
+}
+
+export async function processWorkshopRefundForTest(
+	session: Session,
+	input: { registration_id: string; reason: string },
+): Promise<ServiceResult<{ refund: TestRefund }>> {
+	const validatedInput = v.safeParse(RefundRequestSchema, input);
+
+	if (!validatedInput.success) {
+		return { success: false, issues: validatedInput.issues };
+	}
+
+	try {
+		const { refundService } = createWorkshopTestServices(session);
+		const refund = await refundService.processRefund(
+			validatedInput.output.registration_id,
+			validatedInput.output.reason,
+		);
+
+		return {
+			success: true,
+			refund: {
+				id: refund.id,
+				registration_id: refund.registration_id,
+				refund_amount: refund.refund_amount,
+				refund_reason: refund.refund_reason,
+				status: refund.status,
+				requested_at: refund.requested_at,
+			},
+		};
+	} catch (error) {
+		return {
+			success: false,
+			error:
+				error instanceof Error ? error.message : "Failed to process refund",
+		};
+	}
+}
+
+export async function getWorkshopRefundsForTest(
+	session: Session,
+	workshopId: string,
+): Promise<ServiceResult<{ refunds: RefundWithUser[] }>> {
+	try {
+		const { refundService } = createWorkshopTestServices(session);
+		const refunds = await refundService.getWorkshopRefunds(workshopId);
+		return { success: true, refunds };
+	} catch (error) {
+		return {
+			success: false,
+			error: error instanceof Error ? error.message : "Failed to fetch refunds",
+		};
+	}
+}
+
+export async function updateWorkshopAttendanceForTest(
+	session: Session,
+	workshopId: string,
+	attendanceUpdates: AttendanceUpdate[],
+): Promise<ServiceResult<{ registrations: AttendanceResult[] }>> {
+	const validatedInput = v.safeParse(AttendanceUpdatesSchema, {
+		attendance_updates: attendanceUpdates,
 	});
-	return response;
+
+	if (!validatedInput.success) {
+		return { success: false, issues: validatedInput.issues };
+	}
+
+	try {
+		const { attendanceService } = createWorkshopTestServices(session);
+		const registrations = await attendanceService.updateAttendance(
+			workshopId,
+			validatedInput.output.attendance_updates,
+		);
+		return { success: true, registrations };
+	} catch (error) {
+		return {
+			success: false,
+			error:
+				error instanceof Error ? error.message : "Failed to update attendance",
+		};
+	}
+}
+
+export async function getWorkshopAttendanceForTest(
+	session: Session,
+	workshopId: string,
+): Promise<ServiceResult<{ attendance: AttendanceResult[] }>> {
+	try {
+		const { attendanceService } = createWorkshopTestServices(session);
+		const attendance =
+			await attendanceService.getWorkshopAttendance(workshopId);
+		return { success: true, attendance };
+	} catch (error) {
+		return {
+			success: false,
+			error:
+				error instanceof Error ? error.message : "Failed to fetch attendance",
+		};
+	}
 }
 
 /**
@@ -69,7 +314,7 @@ export async function makeAuthenticatedRequest(
  */
 export async function createTestWorkshop(
 	_page: Page,
-	overrides: Partial<Omit<TestWorkshop, "id">> = {},
+	overrides: CreateTestWorkshopOverrides = {},
 ): Promise<TestWorkshop> {
 	const timestamp = Date.now();
 	const randomSuffix = Math.random().toString(36).substring(2, 15);
@@ -127,24 +372,23 @@ export async function createTestRegistration(
 	_page: Page,
 	workshopId: string,
 	userId: string,
-	overrides: Partial<Omit<TestRegistration, "id" | "workshop_id">> = {},
+	overrides: CreateTestRegistrationOverrides = {},
 ): Promise<TestRegistration> {
 	const supabase = getSupabaseServiceClient();
 
-	const defaultRegistration = {
-		club_activity_id: workshopId,
-		member_user_id: userId,
-		amount_paid: 2500, // 25.00 in cents
-		status: "confirmed" as const,
-		currency: "EUR",
-		...overrides,
-	};
+	const defaultRegistration: Database["public"]["Tables"]["club_activity_registrations"]["Insert"] =
+		{
+			club_activity_id: workshopId,
+			member_user_id: userId,
+			amount_paid: 2500, // 25.00 in cents
+			status: "confirmed" as const,
+			currency: "EUR",
+			...overrides,
+		};
 
 	const { data: registration, error } = await supabase
 		.from("club_activity_registrations")
-		.insert(
-			defaultRegistration as Database["public"]["Tables"]["club_activity_registrations"]["Insert"],
-		)
+		.insert(defaultRegistration)
 		.select()
 		.single();
 
@@ -170,7 +414,7 @@ export async function createMultipleTestRegistrations(
 	page: Page,
 	workshopId: string,
 	userIds: string[],
-	overrides: Partial<Omit<TestRegistration, "id" | "workshop_id">> = {},
+	overrides: CreateTestRegistrationOverrides = {},
 ): Promise<TestRegistration[]> {
 	const registrations: TestRegistration[] = [];
 
@@ -191,104 +435,82 @@ export async function createMultipleTestRegistrations(
  * Creates a test refund for a registration
  */
 export async function createTestRefund(
-	page: Page,
-	workshopId: string,
+	_page: Page,
+	session: Session,
+	_workshopId: string,
 	registrationId: string,
 	reason: string = "Test refund reason",
 ): Promise<TestRefund> {
-	const response = await makeAuthenticatedRequest(
-		page,
-		`/api/workshops/${workshopId}/refunds`,
-		{
-			method: "POST",
-			data: {
-				registration_id: registrationId,
-				reason,
-			},
-		},
-	);
+	const response = await processWorkshopRefundForTest(session, {
+		registration_id: registrationId,
+		reason,
+	});
 
-	if (!response.ok) {
-		throw new Error(`Failed to create refund: ${response.status}`);
+	if (!response.success) {
+		throw new Error(response.error || "Failed to create refund");
 	}
 
-	const data = await response.json();
-	return data.refund;
+	return response.refund;
 }
 
 /**
  * Updates attendance for multiple registrations
  */
 export async function updateTestAttendance(
-	page: Page,
+	_page: Page,
+	session: Session,
 	workshopId: string,
 	attendanceUpdates: Array<{
 		registration_id: string;
 		attendance_status: "attended" | "no_show" | "excused";
 		notes?: string;
 	}>,
-): Promise<TestRegistration[]> {
-	const response = await makeAuthenticatedRequest(
-		page,
-		`/api/workshops/${workshopId}/attendance`,
-		{
-			method: "PUT",
-			data: { attendance_updates: attendanceUpdates },
-		},
+): Promise<AttendanceResult[]> {
+	const response = await updateWorkshopAttendanceForTest(
+		session,
+		workshopId,
+		attendanceUpdates,
 	);
 
-	if (!response.ok) {
-		throw new Error(`Failed to update attendance: ${response.status}`);
+	if (!response.success) {
+		throw new Error(response.error || "Failed to update attendance");
 	}
 
-	const data = await response.json();
-	return data.registrations;
+	return response.registrations;
 }
 
 /**
  * Fetches workshop attendance data
  */
 export async function getWorkshopAttendance(
-	page: Page,
+	_page: Page,
+	session: Session,
 	workshopId: string,
-): Promise<TestRegistration[]> {
-	const response = await makeAuthenticatedRequest(
-		page,
-		`/api/workshops/${workshopId}/attendance`,
-		{
-			method: "GET",
-		},
-	);
+): Promise<AttendanceResult[]> {
+	const response = await getWorkshopAttendanceForTest(session, workshopId);
 
-	if (!response.ok) {
-		throw new Error(`Failed to fetch attendance: ${response.status}`);
+	if (!response.success) {
+		throw new Error(response.error || "Failed to fetch attendance");
 	}
 
-	const data = await response.json();
-	return data.attendance;
+	return response.attendance;
 }
 
 /**
  * Fetches workshop refunds data
  */
 export async function getWorkshopRefunds(
-	page: Page,
+	_page: Page,
+	session: Session,
 	workshopId: string,
-): Promise<TestRefund[]> {
-	const response = await makeAuthenticatedRequest(
-		page,
-		`/api/workshops/${workshopId}/refunds`,
-		{
-			method: "GET",
-		},
-	);
+): Promise<RefundWithUser[]> {
+	const response = await getWorkshopRefundsForTest(session, workshopId);
 
-	if (!response.ok) {
-		throw new Error(`Failed to fetch refunds: ${response.status}`);
+	if (!response.success) {
+		throw new Error(response.error || "Failed to fetch refunds");
 	}
 
-	const data = await response.json();
-	return data.refunds;
+	return response.refunds;
 }
 
 /**
@@ -298,8 +520,8 @@ export async function createPastDeadlineWorkshop(
 	page: Page,
 ): Promise<TestWorkshop> {
 	return createTestWorkshop(page, {
-		workshop_date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), // Tomorrow
-		refund_deadline_days: 7, // 7 days before (already passed)
+		start_date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+		refund_days: 7,
 	});
 }
 
@@ -309,17 +531,11 @@ export async function createPastDeadlineWorkshop(
 export async function createFinishedWorkshop(
 	page: Page,
 ): Promise<TestWorkshop> {
-	const workshop = await createTestWorkshop(page, {
-		workshop_date: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), // Yesterday
+	return createTestWorkshop(page, {
+		start_date: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+		end_date: new Date(Date.now() - 22 * 60 * 60 * 1000).toISOString(),
+		status: "finished",
 	});
-
-	// Mark workshop as finished
-	await makeAuthenticatedRequest(page, `/api/workshops/${workshop.id}/finish`, {
-		method: "POST",
-		data: {},
-	});
-
-	return workshop;
 }
 
 /**
@@ -332,15 +548,15 @@ export async function createTestUsers() {
 	const [adminUser, coordinatorUser, memberUser] = await Promise.all([
 		createMember({
 			email: `admin-test-${timestamp}-${randomSuffix}@test.com`,
-			roles: new Set(["admin"]),
+			roles: new Set<RoleType>(["admin"]),
 		}),
 		createMember({
 			email: `coordinator-test-${timestamp}-${randomSuffix}@test.com`,
-			roles: new Set(["workshop_coordinator"]),
+			roles: new Set<RoleType>(["workshop_coordinator"]),
 		}),
 		createMember({
 			email: `member-test-${timestamp}-${randomSuffix}@test.com`,
-			roles: new Set(["member"]),
+			roles: new Set<RoleType>(["member"]),
 		}),
 	]);
 

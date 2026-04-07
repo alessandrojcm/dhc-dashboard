@@ -3,7 +3,6 @@ import {
 	createTestRegistration,
 	createTestWorkshop,
 	generateUniqueTestData,
-	makeAuthenticatedRequest,
 } from "./attendee-test-helpers";
 import { createMember, getSupabaseServiceClient } from "./setupFunctions";
 import { loginAsUser } from "./supabaseLogin";
