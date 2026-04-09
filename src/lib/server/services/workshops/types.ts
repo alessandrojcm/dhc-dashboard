@@ -39,8 +39,18 @@ export type RegistrationStatus =
 	| "confirmed"
 	| "cancelled"
 	| "refunded";
-export type AttendanceStatus = "attended" | "no_show" | "excused" | null;
-export type RefundStatus = "pending" | "processing" | "completed" | "failed";
+export type AttendanceStatus =
+	| "pending"
+	| "attended"
+	| "no_show"
+	| "excused"
+	| null;
+export type RefundStatus =
+	| "pending"
+	| "processing"
+	| "completed"
+	| "failed"
+	| "cancelled";
 
 // ============================================================================
 // Service Input/Output Types

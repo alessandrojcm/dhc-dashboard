@@ -1,7 +1,6 @@
 <script lang="ts">
 import { createMutation } from "@tanstack/svelte-query";
 import { Button } from "$lib/components/ui/button";
-import * as ButtonGroup from "$lib/components/ui/button-group";
 import { Badge } from "$lib/components/ui/badge";
 import { Checkbox } from "$lib/components/ui/checkbox";
 import * as Popover from "$lib/components/ui/popover";
@@ -75,7 +74,7 @@ const markAttendedMutation = createMutation(() => ({
 	onSuccess: () => {
 		selectedAttendees = [];
 		onAttendanceUpdated?.();
-		toast.success("Marked as attended");
+		toast.success("Marked as checked in");
 	},
 	onError: (error: Error) => {
 		toast.error(error.message);
@@ -112,8 +111,10 @@ function getAttendeeEmail(attendee: any) {
 	return attendee.user_profiles?.email || attendee.external_users?.email;
 }
 
-function getStatusBadgeVariant(status: string) {
+function getAttendanceBadgeVariant(status: string | null | undefined) {
 	switch (status) {
+		case "pending":
+			return "outline";
 		case "attended":
 			return "default";
 		case "no_show":
@@ -122,6 +123,82 @@ function getStatusBadgeVariant(status: string) {
 			return "secondary";
 		default:
 			return "outline";
+	}
+}
+
+function getAttendanceStatusLabel(status: string | null | undefined) {
+	switch (status) {
+		case "attended":
+			return "Checked In";
+		case "no_show":
+			return "No Show";
+		case "excused":
+			return "Excused";
+		case "pending":
+		default:
+			return "Not Checked In";
+	}
+}
+
+function getPaymentBadgeVariant(
+	registrationStatus: string | null | undefined,
+	refund?: { status?: string } | null,
+) {
+	if (refund?.status === "completed" || registrationStatus === "refunded") {
+		return "secondary";
+	}
+
+	if (refund?.status === "failed") {
+		return "destructive";
+	}
+
+	switch (registrationStatus) {
+		case "confirmed":
+			return "default";
+		case "cancelled":
+			return "destructive";
+		case "pending":
+			return "outline";
+		default:
+			return "outline";
+	}
+}
+
+function getPaymentStatusLabel(
+	registrationStatus: string | null | undefined,
+	refund?: { status?: string; refund_amount?: number } | null,
+) {
+	if (refund?.status === "completed" || registrationStatus === "refunded") {
+		if (typeof refund?.refund_amount === "number") {
+			return `Refunded ${formatCurrency(refund.refund_amount / 100)}`;
+		}
+
+		return "Refunded";
+	}
+
+	if (refund?.status === "processing" || refund?.status === "pending") {
+		return "Refund Processing";
+	}
+
+	if (refund?.status === "failed") {
+		return "Refund Failed";
+	}
+
+	if (refund?.status === "cancelled") {
+		return "Refund Cancelled";
+	}
+
+	switch (registrationStatus) {
+		case "confirmed":
+			return "Paid";
+		case "pending":
+			return "Payment Pending";
+		case "cancelled":
+			return "Cancelled";
+		case "refunded":
+			return "Refunded";
+		default:
+			return "Unknown";
 	}
 }
 
@@ -159,18 +236,19 @@ function confirmRefund() {
 <div class="space-y-3">
     {#if unattendedAttendees.length > 0}
         <div
-                class="flex items-center justify-between p-3 border rounded-lg bg-primary/5 border-primary/20"
+                class="flex flex-col gap-3 rounded-lg border border-primary/20 bg-primary/5 p-3 sm:flex-row sm:items-center sm:justify-between"
         >
 			<span class="text-sm font-medium">
 				{#if selectedAttendees.length > 0}
 					{selectedAttendees.length} attendee{selectedAttendees.length > 1 ? 's' : ''} selected
 				{:else}
-					Select attendees to mark as attended
+					Select attendees to mark as checked in
 				{/if}
 			</span>
-            <ButtonGroup.Root>
+            <div class="flex w-full flex-wrap gap-2 sm:w-auto sm:justify-end">
                 <Button
                         size="sm"
+                        class="flex-1 sm:flex-none"
                         onclick={() => {
 						toggleSelectAll();
 						markAttendedMutation.mutate([...selectedAttendees]);
@@ -178,103 +256,106 @@ function confirmRefund() {
                         disabled={markAttendedMutation.isPending || allSelected}
                 >
                     <CheckCheck class="w-4 h-4"/>
-                    Mark all as Attended
+                    Mark all as Checked In
                 </Button>
 
                 <Button
                         size="sm"
+                        class="flex-1 sm:flex-none"
                         onclick={() => markAttendedMutation.mutate([...selectedAttendees])}
                         disabled={markAttendedMutation.isPending || selectedAttendees.length === 0}
                 >
                     <Check class="w-4 h-4"/>
-                    Mark as Attended
+                    Mark as Checked In
                 </Button>
-            </ButtonGroup.Root>
+            </div>
         </div>
     {/if}
 
     {#each attendees as attendee (attendee.id)}
         {@const refund = getRefund(attendee.id)}
         <div
-                class="flex items-center gap-3 p-4 border rounded-lg bg-card hover:bg-accent/50 transition-colors"
+                class="rounded-lg border bg-card p-4 transition-colors hover:bg-accent/50"
         >
-            {#if attendee.attendance_status !== 'attended'}
-                <Checkbox
-                        id={`${getAttendeeDisplayName(attendee)}-select`}
-                        checked={selectedAttendees.includes(attendee.id)}
-                        onCheckedChange={() => toggleAttendee(attendee.id)}
-                />
-            {:else}
-                <div class="w-5"></div>
-            {/if}
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div class="flex min-w-0 flex-1 items-start gap-3">
+                    {#if attendee.attendance_status !== 'attended'}
+                        <Checkbox
+                                id={`${getAttendeeDisplayName(attendee)}-select`}
+                                checked={selectedAttendees.includes(attendee.id)}
+                                onCheckedChange={() => toggleAttendee(attendee.id)}
+                        />
+                    {:else}
+                        <div class="w-5"></div>
+                    {/if}
 
-            <div class="flex-shrink-0">
-                <div class="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
-                    <User class="w-5 h-5 text-muted-foreground"/>
-                </div>
-            </div>
+                    <div class="flex-shrink-0">
+                        <div class="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
+							<User class="w-5 h-5 text-muted-foreground"/>
+						</div>
+					</div>
 
-            <div class="flex-1 min-w-0">
-                <div class="font-medium text-sm">{getAttendeeDisplayName(attendee)}</div>
-                <div class="text-xs text-muted-foreground truncate">
-                    {getAttendeeEmail(attendee)}
-                </div>
-            </div>
+					<div class="min-w-0 flex-1">
+						<div class="font-medium text-sm">{getAttendeeDisplayName(attendee)}</div>
+						<div class="text-xs text-muted-foreground truncate">
+							{getAttendeeEmail(attendee)}
+						</div>
 
-			<div class="flex flex-col items-start gap-1">
-				<div class="flex items-center gap-2">
-					<Badge
-						variant={getStatusBadgeVariant(attendee.attendance_status)}
-						class="text-xs capitalize"
-					>
-						{attendee.attendance_status || 'pending'}
-					</Badge>
-					{#if refund}
-						<Badge variant="secondary" class="text-xs">
-							Refunded {formatCurrency(refund.refund_amount / 100)}
-						</Badge>
-					{/if}
+						<div class="mt-2 flex flex-wrap items-center gap-2">
+							<Badge
+								variant={getAttendanceBadgeVariant(attendee.attendance_status)}
+								class="text-xs"
+							>
+								{getAttendanceStatusLabel(attendee.attendance_status)}
+							</Badge>
+							<Badge
+								variant={getPaymentBadgeVariant(attendee.status, refund)}
+								class="text-xs"
+							>
+								{getPaymentStatusLabel(attendee.status, refund)}
+							</Badge>
+
+							{#if isExternalAttendee(attendee)}
+								<Badge variant="outline" class="text-[10px] uppercase tracking-wide">
+									External
+								</Badge>
+							{/if}
+						</div>
+					</div>
 				</div>
 
-				{#if isExternalAttendee(attendee)}
-					<Badge variant="outline" class="text-[10px] uppercase tracking-wide">
-						External
-					</Badge>
-				{/if}
-			</div>
+                <div class="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+                    {#if attendee.attendance_status !== 'attended'}
+                        <Button
+                                size="sm"
+                                variant="outline"
+                                onclick={() => markAttendedMutation.mutate([attendee.id])}
+                                disabled={markAttendedMutation.isPending}
+                                class="flex-1 gap-1 sm:flex-none"
+                        >
+                            <Check class="w-4 h-4"/>
+                            Mark Checked In
+                        </Button>
+                    {/if}
 
-            <div class="flex items-center gap-2">
-                {#if attendee.attendance_status !== 'attended'}
-                    <Button
-                            size="sm"
-                            variant="outline"
-                            onclick={() => markAttendedMutation.mutate([attendee.id])}
-                            disabled={markAttendedMutation.isPending}
-                            class="gap-1"
-                    >
-                        <Check class="w-4 h-4"/>
-                        Mark Attended
-                    </Button>
-                {/if}
-
-                {#if !refund}
-                    <Popover.Root open={refundPopoverOpen}>
-                        <Popover.Trigger>
-                            <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onclick={() => {
-									refundPopoverOpen = true;
-									attendeeIdForRefund = attendee.id;
-								}}
-                                    disabled={refundMutation.isPending}
-                                    class="gap-1"
-                            >
-                                <DollarSign class="w-4 h-4"/>
-                                Refund
-                            </Button>
-                        </Popover.Trigger>
-                        <Popover.Content class="w-80">
+                    {#if !refund}
+                        <Popover.Root open={refundPopoverOpen}>
+                            <Popover.Trigger>
+                                <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onclick={() => {
+										refundPopoverOpen = true;
+										attendeeIdForRefund = attendee.id;
+									}}
+                                        disabled={refundMutation.isPending}
+                                        class="w-full flex-1 gap-1 sm:w-auto sm:flex-none"
+                                >
+                                    <DollarSign class="w-4 h-4"/>
+                                    Refund
+                                </Button>
+                            </Popover.Trigger>
+                            <Popover.Content class="w-80">
                             {@const eligibility = getRefundEligibility(attendee)}
                             <div class="space-y-3">
                                 <h4 class="font-medium">Confirm Refund</h4>
@@ -323,9 +404,10 @@ function confirmRefund() {
                                     </Button>
                                 </div>
                             </div>
-                        </Popover.Content>
-                    </Popover.Root>
-                {/if}
+                            </Popover.Content>
+                        </Popover.Root>
+                    {/if}
+                </div>
             </div>
         </div>
     {/each}
