@@ -4,6 +4,7 @@
  */
 
 import type { Stripe } from "stripe";
+import { getSupabaseServiceClient } from "$lib/server/supabaseServiceClient";
 import { stripeClient } from "$lib/server/stripe";
 import type { Logger, Session } from "../shared";
 import { getKyselyClient } from "../shared";
@@ -63,6 +64,7 @@ export function createInvitationService(
 	return new InvitationService(
 		getKyselyClient(platform.env.HYPERDRIVE),
 		session,
+		getSupabaseServiceClient(),
 		logger ?? sentryLogger,
 	);
 }
@@ -71,6 +73,7 @@ export function createInvitationService(
  * Create an PricingService instance
  *
  * @param platform - App platform with Hyperdrive connection
+ * @param stripe
  * @param migrationCode - Migration code for discounts (optional for public methods like getPricing)
  * @param logger - Optional logger (defaults to sentryLogger)
  * @returns InvitationService instance
