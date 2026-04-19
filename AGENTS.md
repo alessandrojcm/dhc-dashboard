@@ -221,6 +221,7 @@ Check with `authorize(locals, ROLES)` in API routes or `has_any_role()` in SQL.
 - Workshop registration error emails from `supabase/functions/stripe-webhooks` only expose user-safe reasons for `WORKSHOP_FULL` and duplicate-registration outcomes; all other failures now use the generic message "Registration could not be completed due to technical reasons."
 - Supabase Edge functions should not import `src/lib/server/services/*` directly (Svelte/Node-oriented import graph and extensionless module paths can fail worker bootstrap in Deno runtime); keep webhook/shared logic runtime-neutral or Deno-native.
 - `supabase/functions/process-emails` now supports `transactionalId: "workshopRegistration"` (success) and `transactionalId: "workshopRegistrationError"` (failure), mapped via `WORKSHOP_REGISTRATION_TRANSACTIONAL_ID` and `WORKSHOP_REGISTRATION_ERROR_TRANSACTIONAL_ID` env vars.
+- Server-side queue writes that need Supabase privileges should use the service-role Supabase client with `supabase.schema("pgmq_public").rpc(...)` (for example `send` / `send_batch`) instead of raw SQL `pgmq.*` calls through app-role Kysely connections.
 
 ---
 

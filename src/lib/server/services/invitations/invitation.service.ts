@@ -4,6 +4,8 @@
  */
 
 import * as v from "valibot";
+import type { Database, Json } from "$database";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
 	Kysely,
 	KyselyDatabase,
@@ -20,6 +22,35 @@ import type {
 	InvitationType,
 } from "./types";
 import dayjs from "dayjs";
+
+type InvitationEmailPayload = {
+	transactionalId: "inviteMember";
+	email: string;
+	dataVariables: {
+		firstName: string | null;
+		lastName: string | null;
+		invitationLink: string;
+	};
+};
+
+type InvitationQueueDatabase = Database & {
+	pgmq_public: {
+		Tables: Record<string, never>;
+		Views: Record<string, never>;
+		Functions: {
+			send_batch: {
+				Args: {
+					queue_name: string;
+					messages: Json[];
+					sleep_seconds?: number;
+				};
+				Returns: number[];
+			};
+		};
+		Enums: Record<string, never>;
+		CompositeTypes: Record<string, never>;
+	};
+};
 
 // ============================================================================
 // Validation Schemas (exported for reuse in forms/APIs)
@@ -77,6 +108,7 @@ export class InvitationService {
 	constructor(
 		private kysely: Kysely<KyselyDatabase>,
 		private session: Session | null,
+		private supabaseClient: SupabaseClient<InvitationQueueDatabase>,
 		logger?: Logger,
 	) {
 		this.logger = logger ?? console;
@@ -428,7 +460,7 @@ export class InvitationService {
 				return { succeeded: 0, failed: emails.length };
 			}
 
-			const payload = inviteData.map((i) => {
+			const payload: InvitationEmailPayload[] = inviteData.map((i) => {
 				const invitationLink = new URL(`/members/signup/${i.id}`, siteUrl);
 				invitationLink.searchParams.set(
 					"dateOfBirth",
@@ -447,14 +479,6 @@ export class InvitationService {
 				};
 			});
 
-			await sql`
-				select *
-				from pgmq.send_batch(
-					'email_queue',
-					${payload}::jsonb[]
-				)
-			`.execute(trx);
-
 			const foundEmails = inviteData.map((i) => i.email);
 			await trx
 				.updateTable("invitations")
@@ -465,11 +489,33 @@ export class InvitationService {
 				.where("email", "in", foundEmails)
 				.execute();
 
+			await this.enqueueInvitationEmails(payload);
+
 			return {
 				succeeded: inviteData.length,
 				failed: emails.length - inviteData.length,
 			};
 		});
+	}
+
+	private async enqueueInvitationEmails(
+		payload: InvitationEmailPayload[],
+	): Promise<void> {
+		const { error } = await this.supabaseClient
+			.schema("pgmq_public")
+			.rpc("send_batch", {
+				queue_name: "email_queue",
+				messages: payload,
+			});
+
+		if (error) {
+			throw new Error("Failed to enqueue invitation emails", {
+				cause: {
+					error,
+					context: "InvitationService.enqueueInvitationEmails",
+				},
+			});
+		}
 	}
 
 	async bulkDelete(invitationIds: string[]): Promise<void> {
