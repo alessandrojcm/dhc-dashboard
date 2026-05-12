@@ -15,18 +15,16 @@ Dublin Hema Club dashboard: currently SvelteKit 2.x + Svelte 5 + Supabase + Stri
 
 ```
 dhc-dashboard/
-├── apps/                      # (planned) Phoenix app via monorepo
+├── apps/                      # Phoenix app (active)
 │   └── phoenix/
-│       ├── lib/dhc/           # Ecto contexts + Oban workers
-│       │   ├── accounts/      # Members, profiles, auth schemas
-│       │   ├── workshops/     # Activities, registrations, refunds
-│       │   ├── inventory/     # Items, containers, categories
-│       │   ├── payments/      # Stripe sync, subscriptions
-│       │   ├── invitations/   # Invitations, waitlist, bulk processing
+│       ├── config/            # Ecto + Oban config per env
+│       ├── lib/dhc/           # Ecto repo + contexts + Oban workers
+│       │   ├── repo.ex        # Ecto Repo (connects to shared Postgres)
 │       │   └── ...
+│       ├── lib/dhc_web/       # Phoenix web layer (JSON API)
 │       └── priv/
-│           ├── repo/migrations/  # Ecto migrations (new source of truth)
-│           └── api/openapi.yaml  # OpenAPI spec (contract)
+│           ├── repo/migrations/  # 11 baseline Ecto migrations (new source of truth)
+│           └── api/              # OpenAPI spec (contract) — pending
 ├── packages/
 │   └── api-client/            # Generated TypeScript client from OpenAPI spec
 ├── src/                       # Existing SvelteKit app (unchanged)
@@ -56,6 +54,7 @@ dhc-dashboard/
 | Update OpenAPI spec | `apps/phoenix/priv/api/openapi.yaml` | NEW — spec is the contract |
 | Generate TS client | Run `make api-gen` | NEW — from OpenAPI spec |
 | Add E2E test | `e2e/` | Use helpers from `setupFunctions.ts` |
+| Configure Sentry | `config/runtime.exs` (prod block) | Set `SENTRY_DSN` env var; integrates Phoenix, Oban, Logger |
 | View ADRs | `docs/adr/` | Key architectural decisions |
 | View domain glossary | `CONTEXT.md` | Domain language reference |
 
