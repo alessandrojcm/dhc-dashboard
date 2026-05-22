@@ -1,0 +1,35 @@
+openapi: 3.0.3
+info:
+  title: DHC Dashboard API
+  description: |
+    Dublin Hema Club dashboard API.
+
+    **Auth**: Phoenix validates Supabase JWT. Pass as `Authorization: Bearer <token>`.
+  version: 0.1.0
+
+servers:
+  - url: /api
+    description: Relative path (same origin)
+
+paths:
+  /health:
+    get:
+      operationId: health.index
+      tags:
+        - Health
+      summary: Health check
+      description: Returns a static status response. Used to verify the API is reachable.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                        example: ok
