@@ -1,0 +1,254 @@
+openapi: 3.0.3
+info:
+  title: DHC Dashboard API (CRUD test fixture)
+  version: 0.1.0
+
+servers:
+  - url: /api
+
+paths:
+  # ── Widgets CRUD + non‑REST ────────────────────────────────────────
+  /widgets:
+    get:
+      operationId: widgets.index
+      tags:
+        - Widgets
+      summary: List widgets
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Widget"
+
+    post:
+      operationId: widgets.create
+      tags:
+        - Widgets
+      summary: Create a widget
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WidgetCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Widget"
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: object
+
+  /widgets/{id}:
+    get:
+      operationId: widgets.show
+      tags:
+        - Widgets
+      summary: Show a widget
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Widget"
+        "404":
+          description: Not Found
+
+    put:
+      operationId: widgets.update
+      tags:
+        - Widgets
+      summary: Update a widget
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WidgetUpdate"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Widget"
+        "422":
+          description: Unprocessable Entity
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  errors:
+                    type: object
+
+    delete:
+      operationId: widgets.delete
+      tags:
+        - Widgets
+      summary: Delete a widget
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Widget"
+        "404":
+          description: Not Found
+
+  /widgets/{id}/renew:
+    post:
+      operationId: widgets.renew
+      tags:
+        - Widgets
+      summary: Renew a widget
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WidgetRenew"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Widget"
+
+  # ── Gadgets (list‑only, second tag) ────────────────────────────────
+  /gadgets:
+    get:
+      operationId: gadgets.index
+      tags:
+        - Gadgets
+      summary: List gadgets
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Gadget"
+
+components:
+  schemas:
+    Widget:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        description:
+          type: string
+        is_active:
+          type: boolean
+
+    WidgetCreate:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        is_active:
+          type: boolean
+
+    WidgetUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        is_active:
+          type: boolean
+
+    WidgetRenew:
+      type: object
+      required:
+        - duration_days
+      properties:
+        duration_days:
+          type: integer
+
+    Gadget:
+      type: object
+      required:
+        - id
+        - code
+      properties:
+        id:
+          type: integer
+        code:
+          type: string
+        label:
+          type: string

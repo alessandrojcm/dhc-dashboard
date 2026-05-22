@@ -9,7 +9,8 @@ config :dhc, Dhc.Repo,
   username: "postgres",
   password: "postgres",
   hostname: "localhost",
-  database: "dhc_test#{System.get_env("MIX_TEST_PARTITION")}",
+  port: 54322,
+  database: "postgres",
   pool: Ecto.Adapters.SQL.Sandbox,
   pool_size: System.schedulers_online() * 2
 
