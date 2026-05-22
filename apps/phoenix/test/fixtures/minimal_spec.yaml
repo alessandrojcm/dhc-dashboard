@@ -1,0 +1,50 @@
+openapi: 3.0.3
+info:
+  title: DHC Dashboard API (test fixture)
+  version: 0.1.0
+
+servers:
+  - url: /api
+
+paths:
+  /health:
+    get:
+      operationId: health.index
+      tags:
+        - Health
+      summary: Health check
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+
+  /health/detailed:
+    get:
+      operationId: health.show
+      tags:
+        - Health
+      summary: Detailed health check
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      status:
+                        type: string
+                      uptime:
+                        type: integer
