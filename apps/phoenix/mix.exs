@@ -51,7 +51,9 @@ defmodule Dhc.MixProject do
       {:oban, "~> 2.19"},
       {:sentry, "~> 13.0"},
       {:hackney, "~> 1.8"},
-      {:finch, "~> 0.22.0"}
+      {:finch, "~> 0.22.0"},
+      {:yaml_elixir, "~> 2.11"},
+      {:open_api_spex, "~> 3.22"}
     ]
   end
 

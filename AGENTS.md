@@ -22,9 +22,11 @@ dhc-dashboard/
 │       │   ├── repo.ex        # Ecto Repo (connects to shared Postgres)
 │       │   └── ...
 │       ├── lib/dhc_web/       # Phoenix web layer (JSON API)
+│       ├── lib/mix/            # Custom Mix tasks
+│       │   └── tasks/          # gen.controllers, etc.
 │       └── priv/
 │           ├── repo/migrations/  # 11 baseline Ecto migrations (new source of truth)
-│           └── api/              # OpenAPI spec (contract) — pending
+│           └── api/              # OpenAPI spec (contract) — active
 ├── packages/
 │   └── api-client/            # Generated TypeScript client from OpenAPI spec
 ├── src/                       # Existing SvelteKit app (unchanged)
@@ -52,6 +54,7 @@ dhc-dashboard/
 | Add Oban worker | `apps/phoenix/lib/dhc/<domain>/workers/` | NEW — use `Oban.Worker` |
 | Add Phoenix API endpoint | `apps/phoenix/lib/dhc_web/controllers/` | NEW — write spec first, generate stub |
 | Update OpenAPI spec | `apps/phoenix/priv/api/openapi.yaml` | NEW — spec is the contract |
+| Generate controllers from spec | Run `mix gen.controllers` in `apps/phoenix` | NEW — generates controller + JSON renderer per tag |
 | Generate TS client | Run `make api-gen` | NEW — from OpenAPI spec |
 | Add E2E test | `e2e/` | Use helpers from `setupFunctions.ts` |
 | Configure Sentry | `config/runtime.exs` (prod block) | Set `SENTRY_DSN` env var; integrates Phoenix, Oban, Logger |
