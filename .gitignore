@@ -39,3 +39,6 @@ dist
 test-results
 .pampa
 .expert
+
+# Generated API client
+packages/api-client/src/client/
