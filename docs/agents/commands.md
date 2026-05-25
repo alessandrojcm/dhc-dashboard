@@ -67,6 +67,16 @@ Sentry captures:
 - `Logger.error/1` calls and process crashes (via `Sentry.LoggerHandler`)
 - Oban cron check-ins (optional, for cron monitoring)
 
+## API Contract (full pipeline)
+
+Regenerate **both** sides of the API contract — Phoenix controller stubs and TypeScript client — in one step:
+
+```bash
+make api-gen               # Runs mix gen.controllers then pnpm --filter @dhc/api-client api:generate
+```
+
+Fails fast: if either step exits non-zero, `make` stops immediately and does not proceed.
+
 ## API Client (TypeScript)
 
 ```bash

@@ -15,6 +15,12 @@ export default defineConfig({
       name: "@hey-api/sdk",
       validator: true,
     },
-    "@tanstack/svelte-query",
+    {
+      name: "@tanstack/svelte-query",
+      queryKeys: true,
+      queryOptions: true,
+      mutationKeys: true,
+      mutationOptions: true,
+    },
   ],
 });
