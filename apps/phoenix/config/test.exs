@@ -28,6 +28,10 @@ config :dhc, Oban,
   plugins: false,
   queues: false
 
+# Discord worker — skip sending in test
+config :dhc, :discord_webhook_url, "https://discord.example.com/webhook/test"
+config :dhc, :environment, :test
+
 # Print only warnings and errors during test
 config :logger, level: :warning
 
