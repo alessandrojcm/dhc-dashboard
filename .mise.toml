@@ -102,6 +102,13 @@ run = [
     "pnpm --filter @dhc/api-client api:generate",
 ]
 
+# ── Stripe API client ──────────────────────────────
+
+[tasks."stripe-gen"]
+description = "Download Stripe spec, trim to our operations, and regenerate typed Elixir client"
+dir = "apps/phoenix"
+run = "MIX_ENV=dev mix stripe.gen"
+
 # ── Testing ────────────────────────────────────────
 
 [tasks.test]

@@ -32,6 +32,10 @@ config :dhc, Oban,
 config :dhc, :discord_webhook_url, "https://discord.example.com/webhook/test"
 # Email worker — skip sending in test
 config :dhc, :loops_api_key, "test-loops-api-key"
+# Stripe sync — skip API calls in test
+config :dhc, :stripe_secret_key, "sk_test_stub_key"
+config :dhc, :stripe_api_url, "https://stripe.example.com"
+config :dhc, :stripe_api_version, "2025-10-29.clover"
 config :dhc, :environment, :test
 
 # Print only warnings and errors during test
