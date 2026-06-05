@@ -33,3 +33,114 @@ paths:
                       status:
                         type: string
                         example: ok
+
+  /webhooks/stripe:
+    post:
+      operationId: stripeWebhooks.create
+      tags:
+        - StripeWebhooks
+      summary: Handle Stripe webhook events
+      description: |
+        Receives Stripe webhook events, validates the Stripe-Signature header
+        using HMAC-SHA256, and enqueues an Oban job for background processing.
+
+        This endpoint is unauthenticated — Stripe sends webhooks without auth tokens.
+        Signature verification is the authentication mechanism.
+
+        Returns 200 immediately after validation + enqueue (Stripe requires fast responses).
+        Returns 400 for invalid or missing signatures.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id:
+                  type: string
+                  description: Stripe event ID (e.g. evt_1abc)
+                object:
+                  type: string
+                  example: event
+                type:
+                  type: string
+                  description: Stripe event type (e.g. charge.succeeded)
+                  enum:
+                    - charge.succeeded
+                    - charge.expired
+                    - charge.refunded
+                    - customer.subscription.created
+                    - customer.subscription.updated
+                    - customer.subscription.deleted
+                    - customer.subscription.paused
+                    - customer.subscription.resumed
+                    - customer.subscription.pending_update_applied
+                    - customer.subscription.pending_update_expired
+                    - customer.subscription.trial_will_end
+                    - invoice.paid
+                    - invoice.payment_failed
+                    - invoice.payment_action_required
+                    - invoice.upcoming
+                    - invoice.marked_uncollectible
+                    - invoice.payment_succeeded
+                    - payment_intent.succeeded
+                    - payment_intent.payment_failed
+                    - payment_intent.canceled
+                data:
+                  type: object
+                  description: Event payload
+                created:
+                  type: integer
+                  description: Unix timestamp when the event was created
+                livemode:
+                  type: boolean
+                  description: Whether the event was in live mode
+                pending_webhooks:
+                  type: integer
+                  description: Number of pending webhooks
+                request:
+                  type: object
+                  description: Request details (id and idempotency_key)
+                api_version:
+                  type: string
+                  description: Stripe API version
+      responses:
+        "200":
+          description: Event validated and enqueued for processing
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      received:
+                        type: boolean
+                        example: true
+                      event_id:
+                        type: string
+                        description: Oban job ID
+        "400":
+          description: Invalid or missing Stripe signature
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Signature verification failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+components:
+  schemas:
+    Error:
+      type: object
+      properties:
+        errors:
+          type: object
+          properties:
+            detail:
+              type: string

@@ -36,6 +36,7 @@ config :dhc, :loops_api_key, "test-loops-api-key"
 config :dhc, :stripe_secret_key, "sk_test_stub_key"
 config :dhc, :stripe_api_url, "https://stripe.example.com"
 config :dhc, :stripe_api_version, "2025-10-29.clover"
+config :dhc, :stripe_webhook_secret, "whsec_test_signing_key_for_webhook_verification"
 config :dhc, :environment, :test
 
 # Print only warnings and errors during test

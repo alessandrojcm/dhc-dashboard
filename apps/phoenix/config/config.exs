@@ -50,6 +50,10 @@ config :phoenix, :json_library, Jason
 # when Stripe releases a new API version.
 config :dhc, :stripe_api_version, "2025-10-29.clover"
 
+# Stripe webhook signing secret — set STRIPE_WEBHOOK_SIGNING_SECRET in runtime.
+# Supports a single string or a list of strings for secret rotation.
+config :dhc, :stripe_webhook_secret, System.get_env("STRIPE_WEBHOOK_SIGNING_SECRET")
+
 # OpenAPI code generator profile for Stripe (dev-only dependency).
 # Used by `mix api.gen stripe` (triggered via `mise run stripe-gen`).
 # The processor filters to only the operations we need.
