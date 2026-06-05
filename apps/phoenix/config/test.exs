@@ -30,6 +30,8 @@ config :dhc, Oban,
 
 # Discord worker — skip sending in test
 config :dhc, :discord_webhook_url, "https://discord.example.com/webhook/test"
+# Email worker — skip sending in test
+config :dhc, :loops_api_key, "test-loops-api-key"
 config :dhc, :environment, :test
 
 # Print only warnings and errors during test
