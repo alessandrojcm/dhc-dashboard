@@ -45,7 +45,8 @@ dhc-dashboard/
 │   ├── adr/                   # Architecture Decision Records
 │   └── agents/                # Agent documentation
 ├── CONTEXT.md                 # Domain glossary & architecture
-└── Makefile                   # Root orchestration
+├── .mise.toml                 # Tool versions + task runner (replaces Makefile)
+└── .mise.local.toml           # Local mise overrides (gitignored)
 ```
 
 ## WHERE TO LOOK
@@ -60,7 +61,7 @@ dhc-dashboard/
 | Add Oban worker | `apps/phoenix/lib/dhc/<domain>/workers/` | NEW — use `Oban.Worker` |
 | Add Phoenix API endpoint | `apps/phoenix/lib/dhc_web/controllers/` | NEW — write spec first, generate stub |
 | Update OpenAPI spec | `apps/phoenix/priv/api/openapi.yaml` | NEW — spec is the contract |
-| Regenerate full API contract | Run `make api-gen` from repo root | Runs `mix gen.controllers` then TS client generator. Fails fast if either step errors. See `docs/agents/commands.md`. |
+| Regenerate full API contract | Run `mise run api-gen` from repo root | Runs `mix gen.controllers` then TS client generator. Fails fast if either step errors. See `docs/agents/commands.md`. |
 | Generate controllers from spec | Run `mix gen.controllers` in `apps/phoenix` | Generates controller + JSON renderer + contract test per tag. REST mapping from HTTP method + path. `--force` overwrites all, `--force=<path>` overwrites specific file. |
 | Generate TS client | Run `pnpm api-gen` (or `pnpm --filter @dhc/api-client api:generate`) | NEW — from OpenAPI spec via `@hey-api/openapi-ts`. Output: `packages/api-client/src/client/` (gitignored, auto-generated on `pnpm install` via postinstall). |
 | Add E2E test | `e2e/` | Use helpers from `setupFunctions.ts` |

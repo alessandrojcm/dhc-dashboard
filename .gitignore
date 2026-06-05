@@ -42,3 +42,6 @@ test-results
 
 # Generated API client
 packages/api-client/src/client/
+
+# mise local overrides
+.mise.local.toml
