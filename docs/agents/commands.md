@@ -1,55 +1,70 @@
 # Commands
 
+All tasks are defined in `.mise.toml`. Run `mise tasks` to list them all.
+
+## Setup
+
+```bash
+# First time: install all pinned tools (Node, Erlang, Elixir, pnpm)
+mise install
+
+# Activate mise in your shell (one-time, add to your shell rc)
+eval "$(mise activate bash)"    # bash
+eval "$(mise activate zsh)"     # zsh
+mise activate fish | source     # fish
+```
+
+After activation, `node`, `elixir`, `mix`, `pnpm` etc. resolve to the versions pinned in `.mise.toml` on every `cd`.
+
 ## SvelteKit (current)
 
 ```bash
 # Dev (start in order)
-pnpm supabase:start        # 1. Start Supabase
-pnpm supabase:functions:serve  # 2. Edge functions
-pnpm dev                   # 3. SvelteKit dev
+mise run sb-start           # 1. Start Supabase
+mise run sb-functions       # 2. Edge functions
+mise run dev                # 3. SvelteKit dev
 
 # Database
-pnpm supabase:types        # Generate types after schema changes
-pnpm supabase:reset        # Reset + seed local DB
+mise run sb-types           # Generate Supabase TypeScript types
+mise run sb-reset           # Reset + seed local DB
 
 # Testing
-pnpm test:unit             # Vitest
-pnpm test:e2e              # Playwright (requires all 3 services)
-pnpm check                 # Svelte type check (NOT raw tsc)
+mise run test-unit          # Vitest
+mise run test-e2e           # Playwright (requires all 3 services)
+mise run check              # Svelte type check (NOT raw tsc)
+
+# Lint & format
+mise run lint               # ESLint + Prettier check
+mise run format             # Auto-format with Biome
 ```
 
 ## Phoenix (in progress)
 
 ```bash
-# All commands run from apps/phoenix/
-cd apps/phoenix
-
 # Setup (first time)
-mix deps.get               # Install Elixir dependencies
-mix ecto.create            # Create database
-mix ecto.migrate           # Run pending migrations
-mix setup                  # Shorthand: deps.get + ecto.create + ecto.migrate
+mise run phx-setup          # deps.get + ecto.create + ecto.migrate
 
 # Server
-mix phx.server             # Start dev server (hot-reload) on :4000
-iex -S mix phx.server      # Start server inside IEx interactive shell
+mise run phx-server         # Start dev server (hot-reload) on :4000
+mise run phx-console        # Start server inside IEx interactive shell
 
 # Database
-mix ecto.migrations        # Show migration status (up/down)
-mix ecto.gen.migration description  # Generate a new migration
-mix ecto.rollback          # Rollback last migration
-mix ecto.rollback --step 3 # Rollback 3 migrations
+mise run phx-migrate        # Run pending migrations
+mise run phx-rollback       # Rollback last migration
+mise run phx-gen-migration NAME  # Generate a new migration
 
 # Code quality
-mix format                 # Format all Elixir files
-mix format --check-formatted  # Check formatting (CI)
-mix compile                 # Compile project
-mix precommit              # Full check: compile + deps.unlock + format + test
+mise run phx-format         # Format all Elixir files
+mise run phx-format-check   # Check formatting (CI)
+mise run phx-precommit      # Full check: compile + deps.unlock + format + test
 
 # Testing
-mix test                   # Run all tests
-mix test test/some_test.exs  # Run specific test file
-mix test --failed          # Re-run only failed tests
+mise run phx-test           # Run all Phoenix tests
+
+# For specific test files, run directly:
+cd apps/phoenix && mix test test/some_test.exs
+cd apps/phoenix && mix test --failed     # Re-run only failed tests
+cd apps/phoenix && mix ecto.migrations   # Show migration status
 ```
 
 ### Sentry (production error tracking)
@@ -72,19 +87,19 @@ Sentry captures:
 Regenerate **both** sides of the API contract — Phoenix controller stubs and TypeScript client — in one step:
 
 ```bash
-make api-gen               # Runs mix gen.controllers then pnpm --filter @dhc/api-client api:generate
+mise run api-gen
 ```
 
-Fails fast: if either step exits non-zero, `make` stops immediately and does not proceed.
+Fails fast: if either step exits non-zero, mise stops immediately and does not proceed.
 
 ## API Client (TypeScript)
 
 ```bash
 # Generate client from OpenAPI spec (from project root)
-pnpm api-gen
+mise run api-gen
 
-# Or run from within the package
-pnpm --filter @dhc/api-client api:generate
+# Or run just the TS side
+pnpm api-gen
 
 # Watch mode (regenerate on spec changes)
 pnpm --filter @dhc/api-client api:generate:watch
@@ -107,4 +122,18 @@ configureClient({
 
 // Then use SDK functions
 const { data, error } = await healthIndex();
+```
+
+## Seeds
+
+```bash
+mise run seed-committee    # Seed committee members from CSV
+mise run seed-waitlist     # Seed waitlist entries
+mise run seed-members      # Seed member records
+```
+
+## CI (full check)
+
+```bash
+mise run ci                 # lint + format-check + type-check + unit tests
 ```
