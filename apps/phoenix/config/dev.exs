@@ -61,5 +61,9 @@ config :logger, :default_formatter, format: "[$level] $message\n"
 # in production as building large stacktraces may be expensive.
 config :phoenix, :stacktrace_depth, 20
 
+# Discord webhook URL (not sent in dev — messages are logged instead)
+config :dhc, :discord_webhook_url, System.get_env("DISCORD_WEBHOOK_URL")
+config :dhc, :environment, :development
+
 # Initialize plugs at runtime for faster development compilation
 config :phoenix, :plug_init_mode, :runtime
