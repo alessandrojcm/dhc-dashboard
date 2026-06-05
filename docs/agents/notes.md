@@ -20,3 +20,4 @@
 - **Sentry integrations**: `Sentry.PlugContext` in the endpoint (request context on errors), Oban integration (failed job capture + cron monitoring), `Sentry.LoggerHandler` (forwards `Logger.error/1` and crashes to Sentry).
 - **All 11 Ecto baseline migrations** are marked "up" on the shared Supabase Postgres. The tables already existed from Supabase migrations; Ecto migration versions were inserted into `schema_migrations` to mark them as run.
 - **First-time Phoenix setup** on a fresh database: `mix setup` (deps.get + ecto.create + ecto.migrate).
+- **Workshop Announcements Worker** (`Dhc.WorkshopAnnouncements.Worker`): Migrated from `process-workshop-announcements` Deno edge function. Fan-out pattern: one incoming Oban job produces downstream `Dhc.Discord.Worker` and `Dhc.Email.Worker` jobs. Context module (`Dhc.WorkshopAnnouncements`) handles DB queries and message formatting, keeping the worker focused on job orchestration.
