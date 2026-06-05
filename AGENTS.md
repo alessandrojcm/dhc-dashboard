@@ -64,6 +64,9 @@ dhc-dashboard/
 | Add Stripe API endpoint | `apps/phoenix/dev/dhc/stripe/processor.ex` → add operation ID to `@allowed_operations` → `mise run stripe-gen` | NEW — generated from Stripe OpenAPI spec |
 | Stripe API adapter | `apps/phoenix/lib/dhc/stripe/client.ex` | Hand-written Req HTTP adapter |
 | Stripe sync worker | `apps/phoenix/lib/dhc/stripe_sync/` | NEW — scheduled Oban cron job |
+| Stripe webhook handler | `apps/phoenix/lib/dhc/stripe_webhooks/` | NEW — Phoenix controller + Oban worker pipeline |
+| Stripe signature verification | `apps/phoenix/lib/dhc/stripe/webhook.ex` | Hand-rolled HMAC-SHA256 verification via `Dhc.Stripe.Webhook` |
+| Webhook raw body plug | `apps/phoenix/lib/dhc_web/cache_body_reader.ex` | Caches raw body in `conn.assigns[:raw_body]` for signature verification |
 | Update OpenAPI spec | `apps/phoenix/priv/api/openapi.yaml` | NEW — spec is the contract |
 | Regenerate full API contract | Run `mise run api-gen` from repo root | Runs `mix gen.controllers` then TS client generator. Fails fast if either step errors. See `docs/agents/commands.md`. |
 | Generate controllers from spec | Run `mix gen.controllers` in `apps/phoenix` | Generates controller + JSON renderer + contract test per tag. REST mapping from HTTP method + path. `--force` overwrites all, `--force=<path>` overwrites specific file. |
@@ -81,6 +84,7 @@ dhc-dashboard/
 - **Queues**: pgmq → Oban. Big-bang per-queue cutover. Discord → Email → Announcements → Stripe → Bulk Invite.
 - **API design**: Spec-first with OpenAPI. Custom Mix task generates Phoenix controller stubs. TypeScript client generated from spec.
 - **Stripe API**: Generated from Stripe OpenAPI spec via `oapi_generator`. Custom processor allows only needed endpoints. Regenerate with `mise run stripe-gen`. Hand-written `Dhc.Stripe.Client` adapter delegates to `Req`. API version pinned in `:stripe_api_version` config (default `"2025-10-29.clover"`) and sent as `Stripe-Version` header — must match `src/lib/server/stripe.ts`.
+- **Stripe webhooks**: Phoenix controller validates Stripe-Signature header (HMAC-SHA256 via `Dhc.Stripe.Webhook`) then enqueues `Dhc.StripeWebhooks.Worker`. Raw body required — `DhcWeb.CacheBodyReader` caches `conn.assigns[:raw_body]` before JSON parsing. Webhook signing secret via `STRIPE_WEBHOOK_SIGNING_SECRET` env var (supports list for rotation). Endpoint is unauthenticated (`POST /api/webhooks/stripe`).
 - **`.remote.ts` files**: The swap point. Rewrite from `executeWithRLS()` to `fetch(apiClient)` per domain.
 
 ## CRITICAL PATTERNS

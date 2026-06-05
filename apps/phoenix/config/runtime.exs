@@ -72,6 +72,7 @@ if config_env() == :prod do
   config :dhc, :stripe_secret_key, System.get_env("STRIPE_SECRET_KEY")
   config :dhc, :stripe_api_url, "https://api.stripe.com"
   config :dhc, :stripe_api_version, "2025-10-29.clover"
+  config :dhc, :stripe_webhook_secret, System.get_env("STRIPE_WEBHOOK_SIGNING_SECRET")
   config :dhc, :environment, :prod
 
   # Sentry error tracking (DSN read automatically from SENTRY_DSN env var)

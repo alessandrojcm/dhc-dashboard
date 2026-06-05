@@ -40,7 +40,8 @@ defmodule DhcWeb.Endpoint do
   plug Plug.Parsers,
     parsers: [:urlencoded, :multipart, :json],
     pass: ["*/*"],
-    json_decoder: Phoenix.json_library()
+    json_decoder: Phoenix.json_library(),
+    body_reader: {DhcWeb.CacheBodyReader, :read_body, []}
 
   plug Sentry.PlugContext
 

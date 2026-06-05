@@ -9,5 +9,6 @@ defmodule DhcWeb.Router do
     pipe_through :api
 
     get "/health", HealthController, :index
+    post "/webhooks/stripe", StripeWebhooksController, :create
   end
 end
