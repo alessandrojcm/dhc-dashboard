@@ -21,6 +21,13 @@
 - **API Style**: JSON API via Phoenix controllers, spec-first with OpenAPI
 - **Error Tracking**: Sentry 13.0.1 via `sentry` package + `hackney`
 
+## Tooling & Task Runner
+
+- **Tool version manager**: mise (`.mise.toml` pins Node, Erlang, Elixir, pnpm)
+- **Task runner**: mise tasks (replaces Makefile — `mise run <task>`)
+- **Package manager**: pnpm (workspaces)
+- **API contract generation**: `mise run api-gen` (Phoenix stubs + TS client)
+
 ## Experimental Features (SvelteKit)
 
 - **Remote Functions**: `remoteFunctions: true` in svelte.config.js
