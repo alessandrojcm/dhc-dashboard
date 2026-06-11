@@ -7,14 +7,11 @@ defmodule Dhc.StripeSync do
   job orchestration while the context handles domain logic.
   """
 
-  import Ecto.Query
-
   require Logger
 
-  alias Dhc.Repo
+  alias Dhc.StripeSync.Repository
 
   @membership_lookup_key "standard_membership_fee"
-  @monthly_price_setting_key "stripe_monthly_price_id"
   @price_cache_ttl_hours 24
 
   @inactive_statuses ~w(canceled incomplete_expired unpaid)
@@ -64,15 +61,7 @@ defmodule Dhc.StripeSync do
   defp get_stale_customer_ids do
     stale_before = DateTime.add(DateTime.utc_now(), -24, :hour)
 
-    query =
-      from up in "user_profiles",
-        join: mp in "member_profiles",
-        on: mp.user_profile_id == up.id,
-        where: not is_nil(up.customer_id) and up.customer_id != "",
-        where: is_nil(mp.last_payment_date) or mp.last_payment_date < ^stale_before,
-        select: up.customer_id
-
-    rows = Repo.all(query)
+    rows = Repository.get_stale_customer_ids(stale_before)
 
     Logger.info("[stripe-sync] Resolved stale customer IDs",
       target_count: length(rows),
@@ -92,22 +81,13 @@ defmodule Dhc.StripeSync do
   """
   @spec get_membership_price_id() :: {:ok, String.t()} | {:error, term()}
   def get_membership_price_id do
-    cached = fetch_cached_price_id()
+    cached = Repository.fetch_cached_price_id()
 
     if fresh_cache?(cached) do
       {:ok, cached.value}
     else
       fetch_price_id_from_stripe()
     end
-  end
-
-  defp fetch_cached_price_id do
-    query =
-      from s in "settings",
-        where: s.key == ^@monthly_price_setting_key,
-        select: %{value: s.value, updated_at: s.updated_at}
-
-    Repo.one(query)
   end
 
   defp fresh_cache?(nil), do: false
@@ -126,7 +106,7 @@ defmodule Dhc.StripeSync do
           price_id: price_id
         )
 
-        :ok = upsert_price_id_cache(price_id)
+        :ok = Repository.upsert_price_id_cache(price_id)
         {:ok, price_id}
 
       {:ok, []} ->
@@ -139,29 +119,6 @@ defmodule Dhc.StripeSync do
       {:error, reason} ->
         {:error, reason}
     end
-  end
-
-  defp upsert_price_id_cache(price_id) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
-
-    query =
-      from s in "settings",
-        where: s.key == ^@monthly_price_setting_key
-
-    case Repo.one(query) do
-      nil ->
-        Repo.insert_all("settings", [
-          [key: @monthly_price_setting_key, value: price_id, updated_at: now]
-        ])
-
-      _ ->
-        Repo.update_all(
-          from(s in "settings", where: s.key == ^@monthly_price_setting_key),
-          set: [value: price_id, updated_at: now]
-        )
-    end
-
-    :ok
   end
 
   # ── Stripe API calls ────────────────────────────────────────────────
@@ -366,11 +323,7 @@ defmodule Dhc.StripeSync do
 
   defp mark_inactive(customer_id) do
     try do
-      query =
-        from up in "user_profiles",
-          where: up.customer_id == ^customer_id
-
-      Repo.update_all(query, set: [is_active: false])
+      :ok = Repository.mark_customer_inactive(customer_id)
 
       Logger.debug("[stripe-sync] Marked customer inactive",
         customer_id: customer_id
@@ -394,19 +347,7 @@ defmodule Dhc.StripeSync do
     resume_date = parse_unix_timestamp(resumes_at)
 
     try do
-      user_profile_ids =
-        from(up in "user_profiles",
-          where: up.customer_id == ^customer_id,
-          select: up.id
-        )
-        |> Repo.all()
-
-      unless user_profile_ids == [] do
-        from(mp in "member_profiles",
-          where: mp.user_profile_id in ^user_profile_ids
-        )
-        |> Repo.update_all(set: [subscription_paused_until: resume_date])
-      end
+      :ok = Repository.mark_customer_paused(customer_id, resume_date)
 
       Logger.debug("[stripe-sync] Marked customer as paused",
         customer_id: customer_id,
@@ -430,30 +371,7 @@ defmodule Dhc.StripeSync do
     ended_at = parse_unix_timestamp(Map.get(subscription, "ended_at"))
 
     try do
-      user_profile_ids =
-        from(up in "user_profiles",
-          where: up.customer_id == ^customer_id,
-          select: up.id
-        )
-        |> Repo.all()
-
-      unless user_profile_ids == [] do
-        from(mp in "member_profiles",
-          where: mp.user_profile_id in ^user_profile_ids
-        )
-        |> Repo.update_all(
-          set: [
-            subscription_paused_until: nil,
-            last_payment_date: last_payment_date,
-            membership_end_date: ended_at
-          ]
-        )
-      end
-
-      from(up in "user_profiles",
-        where: up.customer_id == ^customer_id
-      )
-      |> Repo.update_all(set: [is_active: true])
+      :ok = Repository.mark_customer_active(customer_id, last_payment_date, ended_at)
 
       Logger.debug("[stripe-sync] Marked customer as active",
         customer_id: customer_id,
