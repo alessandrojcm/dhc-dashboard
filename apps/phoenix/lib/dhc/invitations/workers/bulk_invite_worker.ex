@@ -19,11 +19,10 @@ defmodule Dhc.Invitations.BulkInviteWorker do
 
   use Oban.Worker, queue: :invitations, max_attempts: 3
 
-  import Ecto.Query
-
   require Logger
 
   alias Dhc.Email.Worker, as: EmailWorker
+  alias Dhc.Invitations.Repository
   alias Dhc.Repo
   alias Dhc.Stripe.Client, as: StripeClient
 
@@ -95,8 +94,8 @@ defmodule Dhc.Invitations.BulkInviteWorker do
 
     results = Enum.map(invites, &process_one_invite(&1, created_by_id))
 
-    with :ok <- store_processing_results(results, created_by_id),
-         :ok <- create_notification(results, created_by_id) do
+    with :ok <- Repository.store_processing_results(results, created_by_id),
+         :ok <- Repository.create_processing_notification(results, created_by_id) do
       processing_time_ms = System.monotonic_time(:millisecond) - start_time
 
       Logger.info("[bulk-invite-worker] Stored invitation processing results",
@@ -131,23 +130,7 @@ defmodule Dhc.Invitations.BulkInviteWorker do
   end
 
   defp resolve_invite_data(waitlist_id) when is_binary(waitlist_id) do
-    query =
-      from up in "user_profiles",
-        join: w in "waitlist",
-        on: w.id == up.waitlist_id,
-        where: up.waitlist_id == type(^waitlist_id, Ecto.UUID),
-        select: %{
-          "firstName" => up.first_name,
-          "lastName" => up.last_name,
-          "email" => w.email,
-          "dateOfBirth" => up.date_of_birth,
-          "phoneNumber" => up.phone_number
-        }
-
-    case Repo.one(query) do
-      nil -> {:error, {:waitlist_not_found, waitlist_id}}
-      invite_data -> {:ok, invite_data}
-    end
+    Repository.get_waitlist_invite_data(waitlist_id)
   end
 
   defp resolve_invite_data(invite) when is_map(invite) do
@@ -164,7 +147,7 @@ defmodule Dhc.Invitations.BulkInviteWorker do
       with {:ok, customer} <- create_stripe_customer(invite_data, created_by_id),
            {:ok, auth_user} <- create_supabase_user(invite_data),
            {:ok, invitation_id} <-
-             create_invitation_record(
+             Repository.create_invitation_record(
                original_invite,
                invite_data,
                auth_user["id"],
@@ -237,106 +220,6 @@ defmodule Dhc.Invitations.BulkInviteWorker do
     end
   end
 
-  defp create_invitation_record(original_invite, invite_data, user_id, customer_id, created_by_id) do
-    waitlist_id =
-      if is_binary(original_invite), do: original_invite, else: Map.get(invite_data, "waitlistId")
-
-    expires_at = DateTime.add(DateTime.utc_now(), 7, :day)
-
-    sql = """
-    with expired_existing as (
-      update invitations
-      set status = 'expired', updated_at = now()
-      where email = $2::text and status = 'pending'
-    ), profile as (
-      insert into user_profiles (
-        supabase_user_id,
-        first_name,
-        last_name,
-        date_of_birth,
-        phone_number,
-        customer_id,
-        is_active,
-        waitlist_id
-      ) values (
-        $1::uuid,
-        $3::text,
-        $4::text,
-        $5::date,
-        $6::text,
-        $7::text,
-        false,
-        $8::uuid
-      )
-      on conflict (supabase_user_id)
-      do update set
-        first_name = excluded.first_name,
-        last_name = excluded.last_name,
-        date_of_birth = excluded.date_of_birth,
-        phone_number = excluded.phone_number,
-        customer_id = excluded.customer_id,
-        waitlist_id = coalesce(excluded.waitlist_id, user_profiles.waitlist_id),
-        updated_at = now()
-    ), invitation as (
-      insert into invitations (
-        email,
-        user_id,
-        waitlist_id,
-        status,
-        expires_at,
-        created_by,
-        invitation_type,
-        metadata
-      ) values (
-        $2::text,
-        $1::uuid,
-        $8::uuid,
-        'pending',
-        $9::timestamptz,
-        $10::uuid,
-        $11::text,
-        $12::jsonb
-      )
-      returning id
-    )
-    select id from invitation
-    """
-
-    params = [
-      user_id,
-      invite_data["email"],
-      invite_data["firstName"],
-      invite_data["lastName"],
-      date_string(invite_data["dateOfBirth"]),
-      invite_data["phoneNumber"],
-      customer_id,
-      waitlist_id,
-      expires_at,
-      created_by_id,
-      Map.get(invite_data, "invitationType", "admin"),
-      maybe_json(Map.get(invite_data, "metadata"))
-    ]
-
-    case Ecto.Adapters.SQL.query(Repo, sql, params) do
-      {:ok, %{rows: [[invitation_id]]}} -> {:ok, invitation_id}
-      {:error, reason} -> {:error, {:create_invitation, reason}}
-    end
-  end
-
-  defp maybe_json(nil), do: nil
-  defp maybe_json(value), do: Jason.encode!(value)
-
-  defp date_string(%Date{} = date), do: Date.to_iso8601(date)
-  defp date_string(%DateTime{} = date_time), do: DateTime.to_date(date_time) |> Date.to_iso8601()
-
-  defp date_string(value) when is_binary(value) do
-    value
-    |> String.split("T")
-    |> List.first()
-  end
-
-  defp date_string(value), do: to_string(value)
-
   defp enqueue_invitation_email(invite_data, invitation_id) do
     invitation_link = invitation_link(invite_data, invitation_id)
 
@@ -357,55 +240,10 @@ defmodule Dhc.Invitations.BulkInviteWorker do
   end
 
   defp maybe_update_waitlist(waitlist_id) when is_binary(waitlist_id) do
-    from(w in "waitlist", where: w.id == type(^waitlist_id, Ecto.UUID))
-    |> Repo.update_all(set: [status: "invited", last_status_change: DateTime.utc_now()])
-
-    :ok
+    Repository.mark_waitlist_invited(waitlist_id)
   end
 
   defp maybe_update_waitlist(_invite), do: :ok
-
-  defp store_processing_results(results, created_by_id) do
-    success_count = Enum.count(results, & &1.success)
-    failure_count = length(results) - success_count
-
-    sql = """
-    insert into invitation_processing_logs (user_id, total_count, success_count, failure_count, results)
-    values ($1::uuid, $2::integer, $3::integer, $4::integer, $5::jsonb)
-    """
-
-    case Ecto.Adapters.SQL.query(Repo, sql, [
-           created_by_id,
-           length(results),
-           success_count,
-           failure_count,
-           Jason.encode!(results)
-         ]) do
-      {:ok, _} -> :ok
-      {:error, reason} -> {:error, {:processing_log, reason}}
-    end
-  end
-
-  defp create_notification(results, created_by_id) do
-    success_count = Enum.count(results, & &1.success)
-    failure_count = length(results) - success_count
-
-    body =
-      if failure_count == 0 do
-        "Successfully processed #{success_count} invitations out of #{length(results)}"
-      else
-        "Successfully processed #{success_count} invitations out of #{length(results)}, failed to process #{failure_count} invitations"
-      end
-
-    case Ecto.Adapters.SQL.query(
-           Repo,
-           "insert into notifications (user_id, body) values ($1::uuid, $2::text)",
-           [created_by_id, body]
-         ) do
-      {:ok, _} -> :ok
-      {:error, reason} -> {:error, {:notification, reason}}
-    end
-  end
 
   defp invitation_link(invite_data, invitation_id) do
     app_url = Application.get_env(:dhc, :app_url, @default_app_url)
@@ -415,7 +253,7 @@ defmodule Dhc.Invitations.BulkInviteWorker do
     |> Map.put(
       :query,
       URI.encode_query(%{
-        "dateOfBirth" => date_string(invite_data["dateOfBirth"]),
+        "dateOfBirth" => Repository.date_string(invite_data["dateOfBirth"]),
         "email" => invite_data["email"]
       })
     )
