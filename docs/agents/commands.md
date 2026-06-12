@@ -40,6 +40,8 @@ mise run format             # Auto-format with Biome
 
 ## Phoenix (in progress)
 
+Phoenix mise tasks override the root Supabase Docker `.env` database host and connect to host-local Supabase Postgres at `localhost:54322`.
+
 ```bash
 # Setup (first time)
 mise run phx-setup          # deps.get + ecto.create + ecto.migrate

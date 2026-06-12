@@ -46,27 +46,27 @@ run = "pnpm check"
 [tasks.phx-setup]
 description = "Install Elixir deps, create DB, run migrations"
 dir = "apps/phoenix"
-run = "mix setup"
+run = "POSTGRES_HOST=localhost POSTGRES_PORT=54322 POSTGRES_PASSWORD=postgres mix setup"
 
 [tasks.phx-server]
 description = "Start Phoenix dev server (hot-reload on :4000)"
 dir = "apps/phoenix"
-run = "mix phx.server"
+run = "POSTGRES_HOST=localhost POSTGRES_PORT=54322 POSTGRES_PASSWORD=postgres mix phx.server"
 
 [tasks.phx-console]
 description = "Start IEx with Phoenix server"
 dir = "apps/phoenix"
-run = "iex -S mix phx.server"
+run = "POSTGRES_HOST=localhost POSTGRES_PORT=54322 POSTGRES_PASSWORD=postgres iex -S mix phx.server"
 
 [tasks.phx-migrate]
 description = "Run pending Ecto migrations"
 dir = "apps/phoenix"
-run = "mix ecto.migrate"
+run = "POSTGRES_HOST=localhost POSTGRES_PORT=54322 POSTGRES_PASSWORD=postgres mix ecto.migrate"
 
 [tasks.phx-rollback]
 description = "Rollback last Ecto migration"
 dir = "apps/phoenix"
-run = "mix ecto.rollback"
+run = "POSTGRES_HOST=localhost POSTGRES_PORT=54322 POSTGRES_PASSWORD=postgres mix ecto.rollback"
 
 [tasks.phx-gen-migration]
 description = "Generate a new Ecto migration (pass NAME arg)"
@@ -81,7 +81,7 @@ run = "mix test"
 [tasks.phx-precommit]
 description = "Full Phoenix check: compile + unlock + format + test"
 dir = "apps/phoenix"
-run = "mix precommit"
+run = "POSTGRES_HOST=localhost POSTGRES_PORT=54322 POSTGRES_PASSWORD=postgres mix precommit"
 
 [tasks.phx-format]
 description = "Format Elixir files"

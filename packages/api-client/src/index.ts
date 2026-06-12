@@ -4,27 +4,72 @@
 // Use `configureClient()` to set base URL and auth token.
 
 // Generated SDK functions & types
-export { healthIndex, type Options } from './client/sdk.gen';
+export {
+	healthIndex,
+	invitationsCreate,
+	invitationsResend,
+	stripeWebhooksCreate,
+	type Options,
+} from "./client/sdk.gen";
 export type {
-  ClientOptions,
-  HealthIndexData,
-  HealthIndexResponse,
-  HealthIndexResponses,
-} from './client/types.gen';
+	ClientOptions,
+	HealthIndexData,
+	HealthIndexResponse,
+	HealthIndexResponses,
+	InvitationCreateInvite,
+	InvitationCreateRequest,
+	InvitationCreateResponse,
+	InvitationResendCreateRequest,
+	InvitationResendCreateResponse,
+	InvitationsCreateData,
+	InvitationsCreateError,
+	InvitationsCreateErrors,
+	InvitationsCreateResponse,
+	InvitationsCreateResponses,
+	InvitationsResendData,
+	InvitationsResendError,
+	InvitationsResendErrors,
+	InvitationsResendResponse,
+	InvitationsResendResponses,
+	StripeWebhooksCreateData,
+	StripeWebhooksCreateError,
+	StripeWebhooksCreateErrors,
+	StripeWebhooksCreateResponse,
+	StripeWebhooksCreateResponses,
+} from "./client/types.gen";
 
 // Valibot schemas (runtime validation)
-export { vHealthIndexResponse } from './client/valibot.gen';
+export {
+	vHealthIndexResponse,
+	vInvitationCreateInvite,
+	vInvitationCreateRequest,
+	vInvitationCreateResponse,
+	vInvitationResendCreateRequest,
+	vInvitationResendCreateResponse,
+	vInvitationsCreateBody,
+	vInvitationsCreateResponse,
+	vInvitationsResendBody,
+	vInvitationsResendResponse,
+	vStripeWebhooksCreateBody,
+	vStripeWebhooksCreateResponse,
+} from "./client/valibot.gen";
 
 // TanStack Svelte Query helpers
 export {
-  healthIndexOptions,
-  healthIndexQueryKey,
-  type QueryKey,
-} from './client/@tanstack/svelte-query.gen';
+	healthIndexOptions,
+	healthIndexQueryKey,
+	invitationsCreateMutation,
+	invitationsCreateMutationKey,
+	invitationsResendMutation,
+	invitationsResendMutationKey,
+	stripeWebhooksCreateMutation,
+	stripeWebhooksCreateMutationKey,
+	type QueryKey,
+} from "./client/@tanstack/svelte-query.gen";
 
 // Client configuration
-export { configureClient, getClient } from './config';
-export type { ClientConfig, SupabaseJwtGetter } from './config';
+export { configureClient, getClient } from "./config";
+export type { ClientConfig, SupabaseJwtGetter } from "./config";
 
 // Low-level client (for interceptors, custom requests)
-export { client } from './client/client.gen';
+export { client } from "./client/client.gen";
