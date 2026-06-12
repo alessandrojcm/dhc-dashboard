@@ -134,8 +134,170 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /invitations:
+    post:
+      operationId: invitations.create
+      tags:
+        - Invitations
+      summary: Enqueue bulk member invitations
+      description: |
+        Enqueues a Phoenix/Oban bulk invitation job. This replaces the
+        `bulk_invite_with_subscription` Supabase edge function invocation.
+
+        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
+        `president`, `admin`, or `committee_coordinator`.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvitationCreateRequest"
+      responses:
+        "202":
+          description: Bulk invitation job accepted for background processing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationCreateResponse"
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks an invitation admin role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /invitations/resend:
+    post:
+      operationId: invitations.resend
+      tags:
+        - Invitations
+      summary: Resend existing member invitations
+      description: |
+        Re-enqueues invite-member emails through the Phoenix Email Oban worker.
+        This replaces the SvelteKit service-layer `pgmq.send_batch('email_queue', ...)`
+        producer used by invitation resend actions.
+
+        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
+        `president`, `admin`, or `committee_coordinator`.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvitationResendCreateRequest"
+      responses:
+        "202":
+          description: Resend emails accepted for background processing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationResendCreateResponse"
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks an invitation admin role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
   schemas:
+    InvitationCreateRequest:
+      type: object
+      required:
+        - invites
+      properties:
+        invites:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/InvitationCreateInvite"
+    InvitationCreateInvite:
+      type: object
+      required:
+        - firstName
+        - lastName
+        - email
+        - phoneNumber
+        - dateOfBirth
+      properties:
+        firstName:
+          type: string
+        lastName:
+          type: string
+        email:
+          type: string
+          format: email
+        phoneNumber:
+          type: string
+        dateOfBirth:
+          type: string
+          format: date
+    InvitationCreateResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            queued:
+              type: boolean
+              example: true
+            job_id:
+              type: integer
+              description: Oban job ID
+    InvitationResendCreateRequest:
+      type: object
+      required:
+        - emails
+      properties:
+        emails:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            format: email
+    InvitationResendCreateResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            succeeded:
+              type: integer
+            failed:
+              type: integer
     Error:
       type: object
       properties:

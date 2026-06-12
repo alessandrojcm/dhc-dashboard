@@ -51,6 +51,8 @@ defmodule Dhc.MixProject do
       {:bandit, "~> 1.5"},
       {:oban, "~> 2.19"},
       {:sentry, "~> 13.0"},
+      {:supabase_potion, "~> 0.7"},
+      {:supabase_auth, "~> 1.0"},
       {:hackney, "~> 1.8"},
       {:finch, "~> 0.22.0"},
       {:req, "~> 0.5"},

@@ -70,6 +70,24 @@ config :dhc, :stripe_secret_key, System.get_env("STRIPE_SECRET_KEY")
 config :dhc, :stripe_api_url, "https://api.stripe.com"
 config :dhc, :stripe_api_version, "2025-10-29.clover"
 config :dhc, :stripe_webhook_secret, System.get_env("STRIPE_WEBHOOK_SIGNING_SECRET")
+
+config :dhc,
+       :supabase_url,
+       System.get_env("SUPABASE_URL") || System.get_env("PUBLIC_SUPABASE_URL")
+
+config :dhc,
+       :supabase_anon_key,
+       System.get_env("SUPABASE_ANON_KEY") || System.get_env("PUBLIC_SUPABASE_ANON_KEY")
+
+config :dhc,
+       :supabase_service_role_key,
+       System.get_env("SUPABASE_SERVICE_ROLE_KEY") || System.get_env("SERVICE_ROLE_KEY")
+
+config :dhc,
+       :app_url,
+       System.get_env("APP_URL") || System.get_env("PUBLIC_SITE_URL") ||
+         System.get_env("SITE_URL") || "http://localhost:5173"
+
 config :dhc, :environment, :development
 
 # Initialize plugs at runtime for faster development compilation
