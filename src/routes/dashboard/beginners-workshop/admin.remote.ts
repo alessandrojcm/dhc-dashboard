@@ -1,6 +1,7 @@
 import { command, getRequestEvent } from "$app/server";
-import { PUBLIC_SITE_URL } from "$env/static/public";
+import { invitationsResend } from "@dhc/api-client";
 import * as v from "valibot";
+import { apiClientOptions } from "$lib/server/api-client";
 import { authorize } from "$lib/server/auth";
 import { SETTINGS_ROLES } from "$lib/server/roles";
 import { createInvitationService } from "$lib/server/services/invitations";
@@ -13,12 +14,22 @@ export const resendInvitations = command(
 		),
 	}),
 	async ({ emails }) => {
-		const { locals, platform } = getRequestEvent();
+		const { locals } = getRequestEvent();
 		const session = await authorize(locals, SETTINGS_ROLES);
 
-		const service = createInvitationService(platform!, session);
-		const siteUrl = PUBLIC_SITE_URL ?? "http://localhost:5173";
-		const result = await service.resendInvitations(emails, siteUrl);
+		const response = await invitationsResend({
+			...apiClientOptions(session),
+			body: { emails },
+		});
+
+		if (response.error) {
+			throw new Error("Failed to resend invitations. Please try again later.");
+		}
+
+		const result = response.data.data ?? {
+			succeeded: 0,
+			failed: emails.length,
+		};
 
 		return { success: true as const, ...result };
 	},
