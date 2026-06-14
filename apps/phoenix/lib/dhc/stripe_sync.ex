@@ -276,7 +276,7 @@ defmodule Dhc.StripeSync do
   end
 
   defp list_stripe_prices do
-    params = %{lookup_keys: @membership_lookup_key, active: "true", limit: 1}
+    params = %{"lookup_keys[]" => @membership_lookup_key, active: "true", limit: 1}
 
     case req_stripe_prices(params) do
       {:ok, %{"data" => data}} ->

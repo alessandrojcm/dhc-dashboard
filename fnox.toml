@@ -1,0 +1,18 @@
+default_provider = "1Password"
+
+[providers.1Password]
+type = "1password"
+vault = "Production-phoenix-api"
+account = "my.1password.com"
+
+[profiles.production.secrets]
+DATABASE_URL = { provider = "1Password", value = "DATABASE_URL" }
+SECRET_KEY_BASE = { provider = "1Password", value = "SECRET_KEY_BASE" }
+DISCORD_WEBHOOK_URL = { provider = "1Password", value = "DISCORD_WEBHOOK_URL" }
+LOOPS_API_KEY = { provider = "1Password", value = "LOOPS_API_KEY" }
+STRIPE_SECRET_KEY = { provider = "1Password", value = "STRIPE_SECRET_KEY" }
+STRIPE_WEBHOOK_SIGNING_SECRET = { provider = "1Password", value = "STRIPE_WEBHOOK_SIGNING_SECRET" }
+SUPABASE_URL = { provider = "1Password", value = "SUPABASE_URL" }
+SUPABASE_ANON_KEY = { provider = "1Password", value = "SUPABASE_ANON_KEY" }
+SUPABASE_SERVICE_ROLE_KEY = { provider = "1Password", value = "SUPABASE_SERVICE_ROLE_KEY" }
+SENTRY_DSN = { provider = "1Password", value = "SENTRY_DSN" }

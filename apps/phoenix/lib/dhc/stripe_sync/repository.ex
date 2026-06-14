@@ -52,12 +52,19 @@ defmodule Dhc.StripeSync.Repository do
 
     query =
       from s in "settings",
-        where: s.key == ^@monthly_price_setting_key
+        where: s.key == @monthly_price_setting_key,
+        select: s.id
 
     case Repo.one(query) do
       nil ->
         Repo.insert_all("settings", [
-          [key: @monthly_price_setting_key, value: price_id, updated_at: now]
+          [
+            key: @monthly_price_setting_key,
+            value: price_id,
+            type: "text",
+            created_at: now,
+            updated_at: now
+          ]
         ])
 
       _ ->
