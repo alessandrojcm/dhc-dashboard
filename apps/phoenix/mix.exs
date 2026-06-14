@@ -56,8 +56,11 @@ defmodule Dhc.MixProject do
       {:hackney, "~> 1.8"},
       {:finch, "~> 0.22.0"},
       {:req, "~> 0.5"},
-      {:yaml_elixir, "~> 2.11", only: [:dev, :test], runtime: false},
-      {:open_api_spex, "~> 3.22", only: [:dev, :test], runtime: false},
+      # Mix tasks live under lib/mix/tasks and are compiled as part of releases.
+      # Keep their compile-time dependencies available in prod, but out of the
+      # runtime application list.
+      {:yaml_elixir, "~> 2.11", runtime: false},
+      {:open_api_spex, "~> 3.22", runtime: false},
       {:oapi_generator, "~> 0.4.0", only: :dev, runtime: false},
       {:bypass, "~> 2.1", only: :test}
     ]

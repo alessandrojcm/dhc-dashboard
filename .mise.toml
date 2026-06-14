@@ -14,6 +14,7 @@ node = "24"          # SvelteKit + Cloudflare Workers
 erlang = "29"              # OTP 27 for Elixir
 elixir = "1.20"   # Phoenix (mix.exs requires ~> 1.15), matched to OTP 27
 pnpm = "11"      # must match packageManager in package.json
+fnox = "latest"
 
 # ── Environment ────────────────────────────────────────────────
 # These vars are available in every task and via `mise exec`.
@@ -87,6 +88,10 @@ run = "POSTGRES_HOST=localhost POSTGRES_PORT=54322 POSTGRES_PASSWORD=postgres mi
 description = "Format Elixir files"
 dir = "apps/phoenix"
 run = "mix format"
+
+[tasks."phx-fly-deploy"]
+description = "Deploy the Phoenix API release to Fly.io"
+run = "fly deploy --app ${FLY_APP:-dhc-dashboard} --remote-only"
 
 [tasks."phx-format-check"]
 description = "Check Elixir formatting (CI)"
