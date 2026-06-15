@@ -29,6 +29,12 @@ dhc-dashboard/
 │           └── api/              # OpenAPI spec (contract) — active
 ├── packages/
 │   └── api-client/            # Generated TypeScript client from OpenAPI spec
+│       ├── openapi-ts.config.ts  # Config: reads spec, outputs src/client/
+│       ├── src/
+│       │   ├── index.ts          # Public API: SDK functions, types, config
+│       │   ├── config.ts         # configureClient() + JWT getter setup
+│       │   └── client/           # Auto-generated on pnpm install (gitignored)
+│       └── package.json          # @dhc/api-client workspace package
 ├── src/                       # Existing SvelteKit app (unchanged)
 ├── supabase/
 │   ├── functions/             # Deno edge functions (BEING MIGRATED to Oban)
@@ -54,8 +60,9 @@ dhc-dashboard/
 | Add Oban worker | `apps/phoenix/lib/dhc/<domain>/workers/` | NEW — use `Oban.Worker` |
 | Add Phoenix API endpoint | `apps/phoenix/lib/dhc_web/controllers/` | NEW — write spec first, generate stub |
 | Update OpenAPI spec | `apps/phoenix/priv/api/openapi.yaml` | NEW — spec is the contract |
+| Regenerate full API contract | Run `make api-gen` from repo root | Runs `mix gen.controllers` then TS client generator. Fails fast if either step errors. See `docs/agents/commands.md`. |
 | Generate controllers from spec | Run `mix gen.controllers` in `apps/phoenix` | Generates controller + JSON renderer + contract test per tag. REST mapping from HTTP method + path. `--force` overwrites all, `--force=<path>` overwrites specific file. |
-| Generate TS client | Run `make api-gen` | NEW — from OpenAPI spec |
+| Generate TS client | Run `pnpm api-gen` (or `pnpm --filter @dhc/api-client api:generate`) | NEW — from OpenAPI spec via `@hey-api/openapi-ts`. Output: `packages/api-client/src/client/` (gitignored, auto-generated on `pnpm install` via postinstall). |
 | Add E2E test | `e2e/` | Use helpers from `setupFunctions.ts` |
 | Configure Sentry | `config/runtime.exs` (prod block) | Set `SENTRY_DSN` env var; integrates Phoenix, Oban, Logger |
 | View ADRs | `docs/adr/` | Key architectural decisions |
