@@ -52,8 +52,10 @@ defmodule Dhc.MixProject do
       {:sentry, "~> 13.0"},
       {:hackney, "~> 1.8"},
       {:finch, "~> 0.22.0"},
+      {:req, "~> 0.5"},
       {:yaml_elixir, "~> 2.11", only: [:dev, :test], runtime: false},
-      {:open_api_spex, "~> 3.22", only: [:dev, :test], runtime: false}
+      {:open_api_spex, "~> 3.22", only: [:dev, :test], runtime: false},
+      {:bypass, "~> 2.1", only: :test}
     ]
   end
 
