@@ -66,3 +66,45 @@ Sentry captures:
 - Failed Oban jobs (via Oban integration)
 - `Logger.error/1` calls and process crashes (via `Sentry.LoggerHandler`)
 - Oban cron check-ins (optional, for cron monitoring)
+
+## API Contract (full pipeline)
+
+Regenerate **both** sides of the API contract — Phoenix controller stubs and TypeScript client — in one step:
+
+```bash
+make api-gen               # Runs mix gen.controllers then pnpm --filter @dhc/api-client api:generate
+```
+
+Fails fast: if either step exits non-zero, `make` stops immediately and does not proceed.
+
+## API Client (TypeScript)
+
+```bash
+# Generate client from OpenAPI spec (from project root)
+pnpm api-gen
+
+# Or run from within the package
+pnpm --filter @dhc/api-client api:generate
+
+# Watch mode (regenerate on spec changes)
+pnpm --filter @dhc/api-client api:generate:watch
+```
+
+Generated output: `packages/api-client/src/client/` (gitignored — auto-regenerated on `pnpm install` via postinstall, do not manually edit)
+
+Usage in SvelteKit:
+```ts
+import { configureClient, healthIndex } from '@dhc/api-client';
+
+// Configure once at app startup (e.g., +layout.svelte or hooks)
+configureClient({
+  baseUrl: 'http://localhost:4000/api',
+  getAuthToken: async () => {
+    const { data } = await supabase.auth.getSession();
+    return data.session?.access_token;
+  },
+});
+
+// Then use SDK functions
+const { data, error } = await healthIndex();
+```
