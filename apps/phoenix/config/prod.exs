@@ -7,7 +7,9 @@ config :dhc, DhcWeb.Endpoint,
   force_ssl: [
     rewrite_on: [:x_forwarded_proto],
     exclude: [
-      # paths: ["/health"],
+      # Fly.io performs internal HTTP checks against this route on PORT.
+      # Do not redirect it to HTTPS, otherwise Fly marks the Machine unhealthy.
+      paths: ["/api/health"],
       hosts: ["localhost", "127.0.0.1"]
     ]
   ]

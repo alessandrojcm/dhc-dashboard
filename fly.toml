@@ -16,9 +16,8 @@ kill_signal = "SIGTERM"
   FNOX_PROFILE = "production"
   PHX_HOST = "dhc-dashboard.fly.dev"
   PHX_SERVER = "true"
-  POOL_SIZE = "10"
+  POOL_SIZE = "5"
   PORT = "8080"
-  SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im90YWlpaWVjc25pa3dkY3lydXVxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDU0MjI2NDMsImV4cCI6MjA2MDk5ODY0M30.B08UPmHPlKfSzywFXIoOGug2gKsNBLysBu2pVegDKQQ"
 
 [http_service]
   internal_port = 8080
