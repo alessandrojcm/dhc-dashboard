@@ -58,6 +58,7 @@ RUN mix deps.compile
 
 COPY apps/phoenix/priv priv
 COPY apps/phoenix/lib lib
+COPY apps/phoenix/rel rel
 
 RUN mix compile
 

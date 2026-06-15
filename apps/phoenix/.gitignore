@@ -28,6 +28,7 @@ dhc-*.tar
 # Generated Stripe client (regenerate with `mise run stripe-gen`)
 /lib/dhc/stripe/generated/
 
-# Release overlays are intentionally not committed in this repo. Use direct
-# release commands in Docker/Fly config instead.
-/rel/
+# Release build output is ignored, but release env templates are source files
+# used by Docker/Fly before `mix release`.
+/rel/*
+!/rel/env.sh.eex
