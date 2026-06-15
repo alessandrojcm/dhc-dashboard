@@ -14,6 +14,12 @@ config :dhc, DhcWeb.Endpoint,
     ]
   ]
 
+config :sentry,
+  dsn: "https://7c84fc19bc35624e3ff99ecefa7a8b9c@o4509135535079424.ingest.de.sentry.io/4511571585597520",
+  environment_name: Mix.env(),
+  enable_source_code_context: true,
+  root_source_code_paths: [File.cwd!()]
+
 # Do not print debug messages in production
 config :logger, level: :info
 
