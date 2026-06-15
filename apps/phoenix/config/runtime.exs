@@ -68,6 +68,7 @@ if config_env() == :prod do
     secret_key_base: secret_key_base
 
   config :dhc, :discord_webhook_url, System.get_env("DISCORD_WEBHOOK_URL")
+  config :dhc, :loops_api_key, System.get_env("LOOPS_API_KEY")
   config :dhc, :environment, :prod
 
   # Sentry error tracking (DSN read automatically from SENTRY_DSN env var)
