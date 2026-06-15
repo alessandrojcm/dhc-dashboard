@@ -1,5 +1,5 @@
 app = "dhc-dashboard"
-primary_region = "dub"
+primary_region = "lhr"
 kill_signal = "SIGTERM"
 
 [build]
