@@ -54,7 +54,7 @@ dhc-dashboard/
 | Add Oban worker | `apps/phoenix/lib/dhc/<domain>/workers/` | NEW — use `Oban.Worker` |
 | Add Phoenix API endpoint | `apps/phoenix/lib/dhc_web/controllers/` | NEW — write spec first, generate stub |
 | Update OpenAPI spec | `apps/phoenix/priv/api/openapi.yaml` | NEW — spec is the contract |
-| Generate controllers from spec | Run `mix gen.controllers` in `apps/phoenix` | NEW — generates controller + JSON renderer per tag |
+| Generate controllers from spec | Run `mix gen.controllers` in `apps/phoenix` | Generates controller + JSON renderer + contract test per tag. REST mapping from HTTP method + path. `--force` overwrites all, `--force=<path>` overwrites specific file. |
 | Generate TS client | Run `make api-gen` | NEW — from OpenAPI spec |
 | Add E2E test | `e2e/` | Use helpers from `setupFunctions.ts` |
 | Configure Sentry | `config/runtime.exs` (prod block) | Set `SENTRY_DSN` env var; integrates Phoenix, Oban, Logger |
