@@ -3,6 +3,7 @@ import { resolve } from 'path';
 
 export default defineConfig({
 	use: {
+		ignoreHTTPSErrors: true,
 		launchOptions: {
 			args: ['--start-maximized']
 		}

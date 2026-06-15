@@ -1,4 +1,6 @@
 import { command, form, getRequestEvent } from "$app/server";
+import { invitationsCreate } from "@dhc/api-client";
+import { apiClientOptions } from "$lib/server/api-client";
 import {
 	InsuranceFormLinkSchema,
 	createSettingsService,
@@ -30,7 +32,7 @@ export const validateSingleInvite = form(
 );
 
 /**
- * Submits bulk invites to the edge function
+ * Submits bulk invites to the API
  */
 export const submitBulkInvites = command(
 	bulkInviteRemoteSchema,
@@ -67,15 +69,18 @@ export const submitBulkInvites = command(
 			throw new Error("No invites to send");
 		}
 
-		const supabase = event.locals.supabase;
-
-		const response = await supabase.functions.invoke(
-			"bulk_invite_with_subscription",
-			{
-				body: { invites: validatedData.invites },
-				method: "POST",
+		const response = await invitationsCreate({
+			...apiClientOptions(session!),
+			body: {
+				invites: validatedData.invites.map((invite) => ({
+					firstName: invite.firstName,
+					lastName: invite.lastName,
+					email: invite.email,
+					phoneNumber: invite.phoneNumber,
+					dateOfBirth: invite.dateOfBirth.toISOString().slice(0, 10),
+				})),
 			},
-		);
+		});
 
 		if (response.error) {
 			throw new Error("Failed to process invitations. Please try again later.");

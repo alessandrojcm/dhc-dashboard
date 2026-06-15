@@ -236,7 +236,6 @@ select to supabase_auth_admin using (true);
 -- Enable RLS
 alter table user_profiles enable row level security;
 alter table user_audit_log enable row level security;
-alter table auth.users enable row level security;
 alter table user_roles enable row level security;
 -- Grant service role access to user_profiles
 grant all on user_profiles to service_role;

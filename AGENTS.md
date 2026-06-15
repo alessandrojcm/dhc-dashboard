@@ -1,228 +1,131 @@
 # PROJECT KNOWLEDGE BASE
 
-**Generated:** 2026-02-10  
-**Commit:** 4b44a4c  
-**Branch:** feature/ale-79-migrate-charts-to-shadcn-charts
+**Generated:** 2026-05-12  
+**Commit:** (latest)  
+**Status:** Active migration from SvelteKit + Supabase to Phoenix + Ecto + Oban
 
 ## OVERVIEW
 
-Dublin Hema Club dashboard: SvelteKit 2.x + Svelte 5 + Supabase + Stripe. Member management, workshops, payments, inventory.
+Dublin Hema Club dashboard: currently SvelteKit 2.x + Svelte 5 + Supabase + Stripe. Progressive migration to Phoenix + Ecto + Oban underway. Member management, workshops, payments, inventory.
+
+**Phase 1**: Edge functions → Oban, then service layer → Phoenix API. SvelteKit consumes Phoenix via typed OpenAPI client.
+**Phase 2** (future): Evaluate LiveView migration.
 
 ## STRUCTURE
 
 ```
 dhc-dashboard/
-├── src/
-│   ├── routes/           # SvelteKit routes (public, dashboard, api, auth)
-│   ├── lib/
-│   │   ├── server/       # Server utilities, Kysely, auth
-│   │   │   └── services/ # Domain-driven service layer (CRITICAL)
-│   │   ├── components/   # UI components (shadcn-svelte)
-│   │   └── schemas/      # Valibot validation schemas
-│   └── database.types.ts # Auto-generated Supabase types
+├── apps/                      # Phoenix app (active)
+│   └── phoenix/
+│       ├── config/            # Ecto + Oban config per env
+│       ├── lib/dhc/           # Ecto repo + contexts + Oban workers
+│       │   ├── repo.ex        # Ecto Repo (connects to shared Postgres)
+│       │   └── ...
+│       ├── lib/dhc_web/       # Phoenix web layer (JSON API)
+│       ├── lib/mix/            # Custom Mix tasks
+│       │   └── tasks/          # gen.controllers, etc.
+│       └── priv/
+│           ├── repo/migrations/  # 11 baseline Ecto migrations (new source of truth)
+│           └── api/              # OpenAPI spec (contract) — active
+├── packages/
+│   └── api-client/            # Generated TypeScript client from OpenAPI spec
+│       ├── openapi-ts.config.ts  # Config: reads spec, outputs src/client/
+│       ├── src/
+│       │   ├── index.ts          # Public API: SDK functions, types, config
+│       │   ├── config.ts         # configureClient() + JWT getter setup
+│       │   └── client/           # Auto-generated on pnpm install (gitignored)
+│       └── package.json          # @dhc/api-client workspace package
+├── src/                       # Existing SvelteKit app (unchanged)
 ├── supabase/
-│   ├── functions/        # Deno edge functions
-│   ├── migrations/       # SQL migrations (timestamped)
-│   └── tests/            # pgTAP database tests
-├── e2e/                  # Playwright E2E tests
-└── instructions/         # Architecture docs & migration plans
+│   ├── functions/             # Deno edge functions (BEING MIGRATED to Oban)
+│   ├── migrations/            # SQL migrations (FROZEN — no new ones)
+│   └── tests/                 # pgTAP database tests
+├── e2e/                       # Playwright E2E tests
+├── docs/
+│   ├── adr/                   # Architecture Decision Records
+│   └── agents/                # Agent documentation
+├── CONTEXT.md                 # Domain glossary & architecture
+├── .mise.toml                 # Tool versions + task runner (replaces Makefile)
+└── .mise.local.toml           # Local mise overrides (gitignored)
 ```
 
 ## WHERE TO LOOK
 
 | Task | Location | Notes |
 |------|----------|-------|
-| Add DB mutation | `src/lib/server/services/` | MUST use service layer |
-| Add API endpoint | `src/routes/api/` | Delegate to service, use `authorize()` |
-| Add form | Use Superforms + Valibot | Components in `src/lib/components/ui/form` |
-| Add dashboard page | `src/routes/dashboard/` | Check RBAC in layout |
-| Add edge function | `supabase/functions/` | Deno runtime, use `_shared/` |
-| Add migration | `supabase/migrations/` | Run `pnpm supabase:types` after |
+| Add DB mutation | `src/lib/server/services/` | CURRENT system — MUST use service layer |
+| Add API endpoint | `src/routes/api/` | CURRENT system — uses `authorize()` |
+| Add edge function | `supabase/functions/` | DEPRECATED — migrate to Oban instead |
+| Add Supabase migration | `supabase/migrations/` | FROZEN — no new migrations |
+| Add Phoenix Ecto context | `apps/phoenix/lib/dhc/<domain>/` | NEW — use Ecto schemas + changesets |
+| Add Oban worker | `apps/phoenix/lib/dhc/<domain>/workers/` | NEW — use `Oban.Worker` |
+| Add Phoenix API endpoint | `apps/phoenix/lib/dhc_web/controllers/` | NEW — write spec first, generate stub |
+| Update OpenAPI spec | `apps/phoenix/priv/api/openapi.yaml` | NEW — spec is the contract |
+| Add Stripe API endpoint | `apps/phoenix/dev/dhc/stripe/processor.ex` → add operation ID to `@allowed_operations` → `mise run stripe-gen` | NEW — generated from Stripe OpenAPI spec |
+| Deploy Phoenix API | `fly.toml`, `apps/phoenix/Dockerfile`, `.github/workflows/deploy-phoenix-fly.yml`, `fnox.toml` | Fly.io release deploy; fnox + 1Password provide runtime secrets |
+| Stripe API adapter | `apps/phoenix/lib/dhc/stripe/client.ex` | Hand-written Req HTTP adapter |
+| Stripe sync worker | `apps/phoenix/lib/dhc/stripe_sync/` | NEW — scheduled Oban cron job |
+| Stripe webhook handler | `apps/phoenix/lib/dhc/stripe_webhooks/` | NEW — Phoenix controller + Oban worker pipeline |
+| Stripe signature verification | `apps/phoenix/lib/dhc/stripe/webhook.ex` | Hand-rolled HMAC-SHA256 verification via `Dhc.Stripe.Webhook` |
+| Webhook raw body plug | `apps/phoenix/lib/dhc_web/cache_body_reader.ex` | Caches raw body in `conn.assigns[:raw_body]` for signature verification |
+| Update OpenAPI spec | `apps/phoenix/priv/api/openapi.yaml` | NEW — spec is the contract |
+| Regenerate full API contract | Run `mise run api-gen` from repo root | Runs `mix gen.controllers` then TS client generator. Fails fast if either step errors. See `docs/agents/commands.md`. |
+| Generate controllers from spec | Run `mix gen.controllers` in `apps/phoenix` | Generates controller + JSON renderer + contract test per tag. REST mapping from HTTP method + path. `--force` overwrites all, `--force=<path>` overwrites specific file. |
+| Generate TS client | Run `pnpm api-gen` (or `pnpm --filter @dhc/api-client api:generate`) | NEW — from OpenAPI spec via `@hey-api/openapi-ts`. Output: `packages/api-client/src/client/` (gitignored, auto-generated on `pnpm install` via postinstall). |
 | Add E2E test | `e2e/` | Use helpers from `setupFunctions.ts` |
+| Configure Sentry | `config/runtime.exs` (prod block) | Set `SENTRY_DSN` env var; integrates Phoenix, Oban, Logger |
+| View ADRs | `docs/adr/` | Key architectural decisions |
+| View domain glossary | `CONTEXT.md` | Domain language reference |
+
+## MIGRATION NOTES
+
+- **Database**: Ecto owns all schema changes. Supabase migrations frozen. Baseline migrations model current schema in Elixir code. Before first Phoenix/Fly release migration on an existing Supabase DB, run `bridge.sql` once to seed Ecto `schema_migrations` for the Supabase-backed baseline only; leave Oban/new cutover migrations pending.
+- **Auth**: Supabase Auth stays forever. Phoenix validates Supabase JWT. SvelteKit forwards JWT to Phoenix.
+- **RLS**: No new policies. Existing ones removed when PostgREST is disabled.
+- **Queues**: pgmq → Oban. Big-bang per-queue cutover. Discord → Email → Announcements → Stripe → Bulk Invite.
+- **API design**: Spec-first with OpenAPI. Custom Mix task generates Phoenix controller stubs. TypeScript client generated from spec.
+- **Stripe API**: Generated from Stripe OpenAPI spec via `oapi_generator`. Custom processor allows only needed endpoints. Regenerate with `mise run stripe-gen`. Hand-written `Dhc.Stripe.Client` adapter delegates to `Req`. API version pinned in `:stripe_api_version` config (default `"2025-10-29.clover"`) and sent as `Stripe-Version` header — must match `src/lib/server/stripe.ts`.
+- **Stripe webhooks**: Phoenix controller validates Stripe-Signature header (HMAC-SHA256 via `Dhc.Stripe.Webhook`) then enqueues `Dhc.StripeWebhooks.Worker`. Raw body required — `DhcWeb.CacheBodyReader` caches `conn.assigns[:raw_body]` before JSON parsing. Webhook signing secret via `STRIPE_WEBHOOK_SIGNING_SECRET` env var (supports list for rotation). Endpoint is unauthenticated (`POST /api/webhooks/stripe`).
+- **`.remote.ts` files**: The swap point. Rewrite from `executeWithRLS()` to `fetch(apiClient)` per domain.
 
 ## CRITICAL PATTERNS
 
-### Service Layer (MANDATORY)
-
-ALL database mutations go through services in `src/lib/server/services/`.
-
-```typescript
-// In +page.server.ts
-const service = createEntityService(platform!, session);
-const result = await service.create(validatedData);
-```
-
-- Factory functions for instantiation
-- `executeWithRLS()` wrapper for all Kysely mutations
-- Valibot schemas exported for form validation
-- Private `_transactional` methods for cross-service coordination
-
-### Database Access
-
-| Context | Tool | Pattern |
-|---------|------|---------|
-| Client queries | Supabase client | `supabase.from().select()` |
-| Server queries | Kysely + RLS | `executeWithRLS(db, {claims: session}, ...)` |
-| Server mutations | Service layer | Via service class methods |
-
-### Remote Functions (`.remote.ts`)
-
-Remote functions MUST delegate to the service layer:
-
-```typescript
-// In *.remote.ts file
-import { command, getRequestEvent } from '$app/server';
-import { authorize } from '$lib/server/auth';
-import { createWorkshopService } from '$lib/server/services/workshops';
-
-export const deleteWorkshop = command(
-  v.pipe(v.string(), v.uuid()),
-  async (workshopId) => {
-    const { locals, platform } = getRequestEvent();
-    const session = await authorize(locals, WORKSHOP_ROLES);
-    const service = createWorkshopService(platform!, session);
-    await service.delete(workshopId);  // MUST use service
-    return { success: true };
-  }
-);
-```
-
-- **NEVER** use raw Kysely/`executeWithRLS` in remote functions
-- **ALWAYS** instantiate service via factory function
-- Validation handled by Valibot schema (first arg to `command`/`query`)
-- Authorization via `authorize()` or `locals.safeGetSession()`
-
-### Forms
-
-ALWAYS use Superforms + our form components:
-
-```svelte
-<Form.Field>
-  <Form.Control><Form.Label />{input}</Form.Control>
-  <Form.FieldErrors />
-</Form.Field>
-```
-
-### API Response Format
-
-```typescript
-// Success
-{ success: true, [resourceName]: data }
-
-// Error  
-{ success: false, error: string }
-```
+See [docs/agents/critical-patterns.md](docs/agents/critical-patterns.md).
 
 ## ANTI-PATTERNS (FORBIDDEN)
 
-| Pattern | Why |
-|---------|-----|
-| `as any`, `@ts-ignore` | Type safety required |
-| Direct Kysely in loaders | Must use `executeWithRLS()` |
-| Skip service layer | ALL mutations through services |
-| Direct Kysely in `.remote.ts` | MUST use service layer |
-| Empty catch blocks | Log to Sentry |
-| `$effect` when `$derived` works | Prefer derived runes |
+See [docs/agents/anti-patterns.md](docs/agents/anti-patterns.md).
 
 ## COMMANDS
 
-```bash
-# Dev (start in order)
-pnpm supabase:start        # 1. Start Supabase
-pnpm supabase:functions:serve  # 2. Edge functions
-pnpm dev                   # 3. SvelteKit dev
-
-# Database
-pnpm supabase:types        # Generate types after schema changes
-pnpm supabase:reset        # Reset + seed local DB
-
-# Testing
-pnpm test:unit             # Vitest
-pnpm test:e2e              # Playwright (requires all 3 services)
-pnpm check                 # Svelte type check (NOT raw tsc)
-```
+See [docs/agents/commands.md](docs/agents/commands.md).
 
 ## TECH STACK
 
-- **Frontend**: SvelteKit 2.x, Svelte 5 (runes), Tailwind CSS, shadcn-svelte
-- **Backend**: Supabase (Postgres + Auth + Edge Functions)
-- **ORM**: Kysely (mutations), Supabase client (queries)
-- **State**: TanStack Query (`createQuery(() => ({}))` thunk pattern)
-- **Payments**: Stripe
-- **Validation**: Valibot
-- **Forms**: Superforms
-- **Deployment**: Cloudflare (adapter-cloudflare + Hyperdrive)
-- **Monitoring**: Sentry
+See [docs/agents/tech-stack.md](docs/agents/tech-stack.md).
 
-## EXPERIMENTAL FEATURES
+## SERVICES & ROLES
 
-- **Remote Functions**: `remoteFunctions: true` in svelte.config.js
-- **Async Components**: `async: true` compiler option
-- Uses `.remote.ts` files for server functions callable from client
-
-## SERVICE DOMAINS
-
-| Domain | Services | Purpose |
-|--------|----------|---------|
-| `members/` | MemberService, ProfileService, WaitlistService | Membership management |
-| `workshops/` | WorkshopService, AttendanceService, RefundService, RegistrationService | Event coordination |
-| `inventory/` | ItemService, ContainerService, CategoryService, HistoryService | Equipment tracking |
-| `invitations/` | InvitationService | Member onboarding |
-| `settings/` | SettingsService | App configuration |
-
-## ROLES (RBAC)
-
-```typescript
-WORKSHOP_ROLES: ['workshop_coordinator', 'president', 'admin']
-SETTINGS_ROLES: ['president', 'committee_coordinator', 'admin']
-INVENTORY_ROLES: ['quartermaster', 'admin', 'president']
-```
-
-Check with `authorize(locals, ROLES)` in API routes or `has_any_role()` in SQL.
+See [docs/agents/services-and-roles.md](docs/agents/services-and-roles.md).
 
 ## NOTES
 
-- Type check with `pnpm check` not `tsc` (Svelte compiler required)
-- E2E tests need unique data: `test-${Date.now()}-${randomSuffix}@example.com`
-- Use `dinero.js` for money, `day.js` for dates
-- TanStack Query uses thunk pattern: `createQuery(() => ({...}))`
-- For Playwright-side setup/helpers, prefer importing service classes directly over runtime-aware factories when you need portable test wiring; inject dependencies like Stripe explicitly instead of relying on transitive `$env/dynamic/private` imports.
-- Workshop E2E helpers in `e2e/attendee-test-helpers.ts` are now service-backed; do not add new deprecated `/api/workshops/*` transport usage in tests.
-- `supabase/functions/stripe-sync` now runs in batch mode: it fetches all `standard_membership_fee` subscriptions via Stripe pagination and syncs only customer IDs where `member_profiles.updated_at` is older than 24h.
-- `supabase/functions/stripe-sync` reuses cached Stripe monthly price ID from `settings.stripe_monthly_price_id` when it is <=24h old, and refreshes cache from Stripe when stale/missing.
-- Stripe sync cron should call the edge function once daily (UTC midnight) instead of one HTTP request per customer; migration `20260217103000_refactor_stripe_sync_cron_batch.sql` handles unschedule/reschedule.
-- Manual Stripe sync E2E is gated by `RUN_STRIPE_SYNC_MANUAL_E2E=true` in `e2e/stripe-sync-manual.spec.ts` and validates sync by seeding data, mutating Stripe state, then invoking `/functions/v1/stripe-sync` directly.
-- Members dashboard status filtering supports three states: `active`, `inactive`, `paused`; `paused` means `is_active = true` and `subscription_paused_until` is in the future.
-- `member_management_view` now exposes computed `membership_status` (`active`/`inactive`/`paused`) plus `paused_until` aliasing `member_profiles.subscription_paused_until` for member list filtering.
-- Tailwind theme tokens consumed through `hsl(var(--token))` must stay as HSL channel values, not raw color keywords or `oklch(...)`; invalid `--popover`/`--sidebar-*` values make `bg-popover` and `bg-sidebar` render transparent in dropdowns, sheets, and similar modal surfaces.
-- `supabase/functions/process-emails` validates `dataVariables` as `Record<string, string>`; edge functions that enqueue transactional emails must stringify numeric template variables (for example `workshop_count` in `process-workshop-announcements`).
-- `RegistrationService` now supports two actor contexts: `member` (authenticated user) and `system` (public/service-role operations). Use `createRegistrationService(platform, session)` for member flows and `createPublicRegistrationService(platform)` for public registration flows. The actor context is set internally by the factory functions.
-- Public registration flows use `buildServiceRoleSession()` from `src/lib/server/services/shared/service-auth.ts` to create a service-role backed session for RLS execution without requiring an authenticated user.
-- When instantiating `RegistrationService` directly (e.g., in E2E helpers), pass the actor context as the third constructor parameter: `new RegistrationService(kysely, session, { kind: "member", memberUserId: session.user.id }, stripe, logger)`.
-- External registration now uses Stripe Checkout Session methods (`createExternalCheckoutSession`, `completeExternalRegistrationFromCheckoutSession`) rather than PaymentIntents. Amount is always derived server-side from `workshop.price_non_member`; client-provided amounts are never trusted.
-- External user identity is normalized by email (lowercase, trimmed). The `upsertExternalUser` helper either creates a new `external_users` row or updates the existing one's profile fields (name, phone) on each registration attempt.
-- `completeExternalRegistrationFromCheckoutSession` is idempotent by `checkoutSessionId` (`club_activity_registrations.stripe_checkout_session_id`): re-calling with the same session returns the existing registration.
-- Public workshop registration route contract: `+page.server.ts` should return `404` for unavailable workshops (`NOT_FOUND`/`NOT_PUBLISHED`/`NOT_PUBLIC`/missing external price) and redirect full workshops to `/workshops/[id]/full`; checkout completion is handled in `confirmation/+page.server.ts` via `session_id` query param.
-- `createExternalCheckoutSession` now creates an embedded Checkout Session (`ui_mode: "embedded"`) and returns `checkoutClientSecret`; `returnUrl` must include `{CHECKOUT_SESSION_ID}` for post-payment completion routing.
-- External embedded checkout now explicitly enables required individual name capture via `name_collection.individual` in `RegistrationService.createExternalCheckoutSession(...)` so public registration completion always receives a customer name.
-- Embedded external checkout sessions now set `customer_creation: "always"` and `invoice_creation.enabled = true`; completion flow attempts to set `payment_intent.receipt_email` from `checkoutSession.customer_details.email` to ensure receipt delivery.
-- Public register route server load (`src/routes/(public)/workshops/[id]/register/+page.server.ts`) now creates the checkout session up front and returns `checkoutClientSecret` with workshop data.
-- Public register page (`src/routes/(public)/workshops/[id]/register/+page.svelte`) loads Stripe.js on mount and mounts embedded checkout via `stripe.initEmbeddedCheckout({ clientSecret })` into `#workshop-checkout` (no extra "continue" button).
-- Public workshop register page now uses a single responsive card layout with workshop details and embedded checkout side-by-side on desktop and stacked on mobile.
-- Public workshop register checkout container now uses a fixed viewport-based height with `overflow-y-auto` to prevent embedded checkout growth from overflowing the surrounding card.
-- Confirmation route server load exists at `src/routes/(public)/workshops/[id]/confirmation/+page.server.ts` and finalizes registration by calling `completeExternalRegistrationFromCheckoutSession(...)` using `session_id` from query params.
-- Public workshop confirmation page UI (`src/routes/(public)/workshops/[id]/confirmation/+page.svelte`) now wraps success messaging/actions in a card and no longer displays the raw checkout session reference.
-- Public workshop confirmation page primary action is now a `Close` button that calls `window.close()` (instead of navigating back home).
-- Public workshop registration full-state UX now redirects `src/routes/(public)/workshops/[id]/register/+page.server.ts` to `/workshops/[id]/full` when `getExternalRegistrationGate()` returns `FULL`; the register page assumes an eligible workshop payload and no longer renders an inline unavailable/full branch.
-- Workshop admin modal (`src/lib/components/workshops/workshop-event-modal.svelte`) now shows a "Copy public registration link" button under attendee count when a workshop is both `is_public` and `published`, copying `/workshops/[id]/register` to clipboard for sharing.
-- Workshop attendee manager (`src/lib/components/workshops/attendee-manager.svelte`) now shows an `External` pill under each attendee status badge when the attendee is an external/public registrant (`external_user_id` present).
-- Workshop attendee manager now treats `attendance_status` and payment/registration state as separate badges: attendance copy uses `Not Checked In`/`Checked In`/`No Show`/`Excused` (mapping DB values including `pending`), and payment copy is derived from `club_activity_registrations.status` plus refund state (`Paid`, `Payment Pending`, `Refund Processing`, `Refunded`, etc.).
-- `supabase/functions/stripe-webhooks` now listens to `checkout.session.completed` for external workshop checkout metadata (`type=workshop_registration`, `actor_type=external`, `workshop_id`), completes registrations with a Deno-native implementation (single DB transaction in webhook flow), uses the incoming event `checkout.session` payload as source of truth (no session re-fetch), and queues success/error emails to `email_queue` with `dataVariables` keys `name`, `date`, `location` (plus `error` on failures).
-- Workshop registration error emails from `supabase/functions/stripe-webhooks` only expose user-safe reasons for `WORKSHOP_FULL` and duplicate-registration outcomes; all other failures now use the generic message "Registration could not be completed due to technical reasons."
-- Supabase Edge functions should not import `src/lib/server/services/*` directly (Svelte/Node-oriented import graph and extensionless module paths can fail worker bootstrap in Deno runtime); keep webhook/shared logic runtime-neutral or Deno-native.
-- `supabase/functions/process-emails` now supports `transactionalId: "workshopRegistration"` (success) and `transactionalId: "workshopRegistrationError"` (failure), mapped via `WORKSHOP_REGISTRATION_TRANSACTIONAL_ID` and `WORKSHOP_REGISTRATION_ERROR_TRANSACTIONAL_ID` env vars.
-- Server-side queue writes that need Supabase privileges should use the service-role Supabase client with `supabase.schema("pgmq_public").rpc(...)` (for example `send` / `send_batch`) instead of raw SQL `pgmq.*` calls through app-role Kysely connections.
+See [docs/agents/notes.md](docs/agents/notes.md).
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues (uses `gh` CLI). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default canonical labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context monorepo with `CONTEXT.md` at root and `docs/adr/` for ADRs. See `docs/agents/domain.md`.
 
 ---
 
-**See Also**: `src/lib/server/services/AGENTS.md`, `supabase/AGENTS.md`, `e2e/AGENTS.md`
+**See Also**: `CONTEXT.md`, `docs/adr/`, `src/lib/server/services/AGENTS.md`, `supabase/AGENTS.md`, `e2e/AGENTS.md`
