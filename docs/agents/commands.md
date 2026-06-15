@@ -142,6 +142,8 @@ pnpm --filter @dhc/api-client api:generate:watch
 
 Generated output: `packages/api-client/src/client/` (gitignored — auto-regenerated on `pnpm install` via postinstall, do not manually edit)
 
+`packages/api-client/openapi-ts.config.ts` explicitly points `output.tsConfigPath` at `packages/api-client/tsconfig.json` so postinstall generation works in deployment environments that do not expose the repo-root SvelteKit `tsconfig.json`.
+
 Usage in SvelteKit:
 ```ts
 import { configureClient, healthIndex } from '@dhc/api-client';

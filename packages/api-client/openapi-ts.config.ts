@@ -1,8 +1,14 @@
 import { defineConfig } from "@hey-api/openapi-ts";
+import { fileURLToPath } from "node:url";
+
+const packageTsConfigPath = fileURLToPath(new URL("./tsconfig.json", import.meta.url));
 
 export default defineConfig({
   input: "../../apps/phoenix/priv/api/openapi.yaml",
-  output: "src/client",
+  output: {
+    path: "src/client",
+    tsConfigPath: packageTsConfigPath,
+  },
   plugins: [
     "@hey-api/client-ky",
     "valibot",
