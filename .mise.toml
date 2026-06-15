@@ -1,0 +1,173 @@
+# mise configuration for dhc-dashboard
+# https://mise.jdx.dev
+#
+# Run `mise tasks` to list all tasks.
+# Run `mise run <task>` to execute one.
+# Tool versions are pinned here — `mise install` sets up everything.
+
+# ── Tool versions ──────────────────────────────────────────────
+# Pin versions here so `mise install` gives everyone the same runtime.
+# mise activates these on cd — no nvm/asdf shims required.
+
+[tools]
+node = "24"          # SvelteKit + Cloudflare Workers
+erlang = "29"              # OTP 27 for Elixir
+elixir = "1.20"   # Phoenix (mix.exs requires ~> 1.15), matched to OTP 27
+pnpm = "11"      # must match packageManager in package.json
+
+# ── Environment ────────────────────────────────────────────────
+# These vars are available in every task and via `mise exec`.
+
+[env]
+_.file = ".env"      # auto-load .env if it exists (no dotenv-cli needed)
+
+# ── Tasks ──────────────────────────────────────────────────────
+# Run with:  mise run <task>
+# List with: mise tasks
+#
+# Replaces the Makefile. Task names with colons must be quoted in TOML.
+
+# ── SvelteKit ─────────────────────────────────────
+
+[tasks.dev]
+description = "Start SvelteKit dev server"
+run = "pnpm dev"
+
+[tasks.build]
+description = "Production build (SvelteKit)"
+run = "pnpm build"
+
+[tasks.check]
+description = "Svelte type-check"
+run = "pnpm check"
+
+# ── Phoenix ────────────────────────────────────────
+
+[tasks.phx-setup]
+description = "Install Elixir deps, create DB, run migrations"
+dir = "apps/phoenix"
+run = "mix setup"
+
+[tasks.phx-server]
+description = "Start Phoenix dev server (hot-reload on :4000)"
+dir = "apps/phoenix"
+run = "mix phx.server"
+
+[tasks.phx-console]
+description = "Start IEx with Phoenix server"
+dir = "apps/phoenix"
+run = "iex -S mix phx.server"
+
+[tasks.phx-migrate]
+description = "Run pending Ecto migrations"
+dir = "apps/phoenix"
+run = "mix ecto.migrate"
+
+[tasks.phx-rollback]
+description = "Rollback last Ecto migration"
+dir = "apps/phoenix"
+run = "mix ecto.rollback"
+
+[tasks.phx-gen-migration]
+description = "Generate a new Ecto migration (pass NAME arg)"
+dir = "apps/phoenix"
+run = "mix ecto.gen.migration $@"
+
+[tasks.phx-test]
+description = "Run Phoenix tests (creates DB, migrates, runs)"
+dir = "apps/phoenix"
+run = "mix test"
+
+[tasks.phx-precommit]
+description = "Full Phoenix check: compile + unlock + format + test"
+dir = "apps/phoenix"
+run = "mix precommit"
+
+[tasks.phx-format]
+description = "Format Elixir files"
+dir = "apps/phoenix"
+run = "mix format"
+
+[tasks."phx-format-check"]
+description = "Check Elixir formatting (CI)"
+dir = "apps/phoenix"
+run = "mix format --check-formatted"
+
+# ── API contract (replaces make api-gen) ───────────
+
+[tasks.api-gen]
+description = "Regenerate both sides of API contract (Phoenix stubs + TS client)"
+run = [
+    "cd apps/phoenix && mix gen.controllers",
+    "pnpm --filter @dhc/api-client api:generate",
+]
+
+# ── Testing ────────────────────────────────────────
+
+[tasks.test]
+description = "Run all tests (unit + e2e)"
+run = "pnpm test"
+
+[tasks."test-unit"]
+description = "Run Vitest unit tests"
+run = "pnpm test:unit"
+
+[tasks."test-e2e"]
+description = "Run Playwright e2e tests"
+run = "pnpm test:e2e"
+
+# ── Linting & formatting ──────────────────────────
+
+[tasks.lint]
+description = "Lint JS/TS/Svelte (ESLint + Prettier check)"
+run = "pnpm lint"
+
+[tasks.format]
+description = "Auto-format JS/TS/Svelte (Biome)"
+run = "pnpm format"
+
+[tasks."format-check"]
+description = "Check formatting without writing (CI)"
+run = "pnpm format --check 2>/dev/null || pnpm biome check --formatter-enabled=true ./src ./e2e"
+
+# ── Supabase ──────────────────────────────────────
+
+[tasks."sb-start"]
+description = "Start local Supabase stack"
+run = "pnpm supabase start"
+
+[tasks."sb-stop"]
+description = "Stop local Supabase stack"
+run = "pnpm supabase stop"
+
+[tasks."sb-reset"]
+description = "Reset local Supabase (drops + recreates + seeds)"
+run = "pnpm supabase:reset"
+
+[tasks."sb-types"]
+description = "Regenerate Supabase TypeScript types"
+run = "pnpm supabase:types"
+
+[tasks."sb-functions"]
+description = "Serve Supabase edge functions locally"
+run = "pnpm supabase:functions:serve"
+
+# ── Seeds ─────────────────────────────────────────
+
+[tasks."seed-committee"]
+description = "Seed committee members from CSV"
+run = "node ./scripts/seedCommitteeMembers.js ./scripts/users.csv"
+
+[tasks."seed-waitlist"]
+description = "Seed waitlist entries"
+run = "node ./scripts/seedWaitlist.js"
+
+[tasks."seed-members"]
+description = "Seed member records"
+run = "node ./scripts/seedMembers.js"
+
+# ── Composed / CI tasks ───────────────────────────
+
+[tasks.ci]
+description = "Run full CI check (lint + format-check + type-check + unit tests)"
+depends = ["lint", "format-check", "check", "test-unit"]
