@@ -1,0 +1,36 @@
+app = "dhc-dashboard"
+primary_region = "dub"
+kill_signal = "SIGTERM"
+
+[build]
+  dockerfile = "apps/phoenix/Dockerfile"
+
+[deploy]
+  release_command = "fnox exec --profile production -- /app/bin/dhc eval 'Dhc.Release.migrate()'"
+
+[env]
+  APP_URL = "https://dashboard.dublinhemaclub.com"
+  DNS_CLUSTER_QUERY = "dhc-dashboard.internal"
+  ECTO_IPV6 = "true"
+  FNOX_IF_MISSING = "error"
+  FNOX_PROFILE = "production"
+  PHX_HOST = "dhc-dashboard.fly.dev"
+  PHX_SERVER = "true"
+  POOL_SIZE = "10"
+  PORT = "8080"
+  SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im90YWlpaWVjc25pa3dkY3lydXVxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDU0MjI2NDMsImV4cCI6MjA2MDk5ODY0M30.B08UPmHPlKfSzywFXIoOGug2gKsNBLysBu2pVegDKQQ"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "15s"
+    method = "GET"
+    timeout = "2s"
+    path = "/api/health"

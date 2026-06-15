@@ -40,6 +40,8 @@ mise run format             # Auto-format with Biome
 
 ## Phoenix (in progress)
 
+Phoenix mise tasks override the root Supabase Docker `.env` database host and connect to host-local Supabase Postgres at `localhost:54322`.
+
 ```bash
 # Setup (first time)
 mise run phx-setup          # deps.get + ecto.create + ecto.migrate
@@ -59,12 +61,24 @@ mise run phx-format-check   # Check formatting (CI)
 mise run phx-precommit      # Full check: compile + deps.unlock + format + test
 
 # Testing
-mise run phx-test           # Run all Phoenix tests
+mise run phx-test           # Run all Phoenix tests (excludes :integration tests)
 
 # For specific test files, run directly:
 cd apps/phoenix && mix test test/some_test.exs
 cd apps/phoenix && mix test --failed     # Re-run only failed tests
 cd apps/phoenix && mix ecto.migrations   # Show migration status
+
+# Integration tests are excluded by default. Run with:
+cd apps/phoenix && mix test --include integration
+cd apps/phoenix && mix test test/dhc/stripe_sync/workers/worker_integration_test.exs --include integration
+
+# Stripe sync integration test hits Stripe test mode and creates its own
+# customers/subscriptions. Required: STRIPE_SECRET_KEY. STRIPE_SYNC_TEST_PRICE_ID
+# is optional when lookup_key=standard_membership_fee exists in Stripe test mode.
+cd apps/phoenix && \
+  STRIPE_SECRET_KEY=sk_test_... \
+  STRIPE_SYNC_TEST_PRICE_ID=price_... \
+  mix test test/dhc/stripe_sync/workers/worker_integration_test.exs --include integration
 ```
 
 ### Sentry (production error tracking)
@@ -81,6 +95,27 @@ Sentry captures:
 - Failed Oban jobs (via Oban integration)
 - `Logger.error/1` calls and process crashes (via `Sentry.LoggerHandler`)
 - Oban cron check-ins (optional, for cron monitoring)
+
+### Fly.io deployment (Phoenix API)
+
+Phoenix deploys to Fly.io as an Elixir release built by `apps/phoenix/Dockerfile`, with `fly.toml` at the repo root.
+
+```bash
+# Required locally/CI: flyctl and FLY_API_TOKEN
+mise run phx-fly-deploy        # fly deploy --remote-only
+```
+
+The container runs Phoenix through `fnox exec --profile production -- /app/bin/dhc start`, and the Fly release command runs migrations through the same fnox profile. `fnox.toml` uses the `production` profile and 1Password vault `Production-phoenix-api`. Create one 1Password item per runtime env var (for example `DATABASE_URL`, `SECRET_KEY_BASE`, `STRIPE_SECRET_KEY`) with the value in the item's password field.
+
+The only runtime bootstrap secret stored in Fly should be `OP_SERVICE_ACCOUNT_TOKEN`, scoped to the 1Password production vault:
+
+```bash
+fly secrets set OP_SERVICE_ACCOUNT_TOKEN=ops_... --app dhc-dashboard
+```
+
+Rotating app secrets in 1Password does not require `fly secrets set` or a new image; restart Machines to reload them through `fnox exec`. Only rotate the Fly secret when the 1Password service account token itself changes.
+
+GitHub Actions workflow: `.github/workflows/deploy-phoenix-fly.yml`. Required GitHub secret: `FLY_API_TOKEN`. Optional GitHub variable: `FLY_PHOENIX_APP` (defaults to `dhc-dashboard`).
 
 ## API Contract (full pipeline)
 
@@ -148,7 +183,11 @@ The Stripe API version is pinned in app config (`:stripe_api_version`, default `
 ```bash
 mise run seed-committee    # Seed committee members from CSV
 mise run seed-waitlist     # Seed waitlist entries
-mise run seed-members      # Seed member records
+mise run seed-members      # Seed member records (JS script)
+
+# Elixir equivalent: creates Supabase auth users, DB records, and Stripe customers
+cd apps/phoenix && mix dhc.seed_members
+cd apps/phoenix && mix dhc.seed_members 25
 ```
 
 ## CI (full check)

@@ -54,6 +54,12 @@ config :dhc, :stripe_api_version, "2025-10-29.clover"
 # Supports a single string or a list of strings for secret rotation.
 config :dhc, :stripe_webhook_secret, System.get_env("STRIPE_WEBHOOK_SIGNING_SECRET")
 
+# Supabase Auth. Phoenix API endpoints validate Supabase JWTs and read roles
+# from app_metadata.roles.
+config :dhc, :supabase_url, System.get_env("SUPABASE_URL")
+config :dhc, :supabase_anon_key, System.get_env("SUPABASE_ANON_KEY")
+config :dhc, :auth_verifier, Dhc.Auth.SupabaseJwt
+
 # OpenAPI code generator profile for Stripe (dev-only dependency).
 # Used by `mix api.gen stripe` (triggered via `mise run stripe-gen`).
 # The processor filters to only the operations we need.

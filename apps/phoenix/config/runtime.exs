@@ -70,10 +70,11 @@ if config_env() == :prod do
   config :dhc, :discord_webhook_url, System.get_env("DISCORD_WEBHOOK_URL")
   config :dhc, :loops_api_key, System.get_env("LOOPS_API_KEY")
   config :dhc, :stripe_secret_key, System.get_env("STRIPE_SECRET_KEY")
-  config :dhc, :stripe_api_url, "https://api.stripe.com"
+  config :dhc, :stripe_api_url, System.get_env("STRIPE_API_URL", "https://api.stripe.com")
   config :dhc, :stripe_api_version, "2025-10-29.clover"
   config :dhc, :stripe_webhook_secret, System.get_env("STRIPE_WEBHOOK_SIGNING_SECRET")
   config :dhc, :supabase_url, System.get_env("SUPABASE_URL")
+  config :dhc, :supabase_anon_key, System.get_env("SUPABASE_ANON_KEY")
   config :dhc, :supabase_service_role_key, System.get_env("SUPABASE_SERVICE_ROLE_KEY")
   config :dhc, :app_url, System.get_env("APP_URL", "https://dublinhemaclub.com")
   config :dhc, :environment, :prod

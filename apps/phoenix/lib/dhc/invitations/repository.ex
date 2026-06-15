@@ -103,7 +103,7 @@ defmodule Dhc.Invitations.Repository do
       user_id: user_id,
       waitlist_id: waitlist_id,
       status: "pending",
-      expires_at: DateTime.add(DateTime.utc_now(), 7, :day),
+      expires_at: DateTime.utc_now() |> DateTime.add(7, :day) |> DateTime.truncate(:second),
       created_by: created_by_id,
       invitation_type: Map.get(invite_data, "invitationType", "admin"),
       metadata: Map.get(invite_data, "metadata")
@@ -138,7 +138,7 @@ defmodule Dhc.Invitations.Repository do
       total_count: length(results),
       success_count: success_count,
       failure_count: failure_count,
-      results: results,
+      results: %{"items" => results},
       created_at: DateTime.utc_now() |> DateTime.truncate(:second)
     }
 
