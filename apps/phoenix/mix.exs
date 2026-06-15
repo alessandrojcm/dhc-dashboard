@@ -32,6 +32,7 @@ defmodule Dhc.MixProject do
 
   # Specifies which paths to compile per environment.
   defp elixirc_paths(:test), do: ["lib", "test/support"]
+  defp elixirc_paths(:dev), do: ["lib", "dev"]
   defp elixirc_paths(_), do: ["lib"]
 
   # Specifies your project dependencies.
@@ -55,6 +56,7 @@ defmodule Dhc.MixProject do
       {:req, "~> 0.5"},
       {:yaml_elixir, "~> 2.11", only: [:dev, :test], runtime: false},
       {:open_api_spex, "~> 3.22", only: [:dev, :test], runtime: false},
+      {:oapi_generator, "~> 0.4.0", only: :dev, runtime: false},
       {:bypass, "~> 2.1", only: :test}
     ]
   end

@@ -124,6 +124,25 @@ configureClient({
 const { data, error } = await healthIndex();
 ```
 
+## Stripe API Client (Elixir, generated)
+
+```bash
+# Regenerate from Stripe OpenAPI spec (downloads spec, trims, generates)
+mise run stripe-gen
+```
+
+Generated output: `apps/phoenix/lib/dhc/stripe/generated/` (gitignored — do not manually edit).
+
+To add new Stripe endpoints:
+1. Add the operation ID to `@allowed_operations` in `apps/phoenix/lib/mix/tasks/stripe.gen.ex`
+2. Also add it to `@allowed_operations` in `apps/phoenix/dev/dhc/stripe/processor.ex` (the oapi_generator filter)
+3. Run `mise run stripe-gen` (or `cd apps/phoenix && MIX_ENV=dev mix stripe.gen`)
+4. Use the generated functions via `Dhc.Stripe.Operations.*` with `Dhc.Stripe.Client`
+
+Hand-written modules: `Dhc.Stripe.Client` (Req adapter), `Dhc.Stripe.Processor` (allowlist filter), `Dhc.StripeSync` (sync business logic), `Dhc.StripeSync.Worker` (Oban worker).
+
+The Stripe API version is pinned in app config (`:stripe_api_version`, default `"2025-10-29.clover"`) and sent as the `Stripe-Version` header on every request. This matches the version used by the existing Deno edge functions (`src/lib/server/stripe.ts`). When updating, change the config value in all three env configs (`config.exs`, `dev.exs`, `test.exs`, `runtime.exs`), update `src/lib/server/stripe.ts`, and re-run `mise run stripe-gen`.
+
 ## Seeds
 
 ```bash
