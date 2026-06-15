@@ -40,4 +40,4 @@ jobs:
         uses: superfly/flyctl-actions/setup-flyctl@master
 
       - name: Deploy Phoenix release
-        run: fly deploy --app "${FLY_APP}" --remote-only
+        run: flyctl deploy --app "${FLY_APP}" --remote-only
