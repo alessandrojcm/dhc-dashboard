@@ -1,0 +1,52 @@
+# CONTEXT: DHC Dashboard
+
+**Last updated:** 2026-05-12  
+**Status:** Active migration from SvelteKit + Supabase + Deno edge functions to Phoenix + Ecto + Oban
+
+## Domain Language
+
+| Term | Definition |
+|------|-----------|
+| **Member** | A person with a club membership. Has a `user_profiles` record linked to `auth.users` via Supabase Auth. |
+| **Membership** | A recurring subscription managed via Stripe. Can be active, inactive, or paused. |
+| **Paused** | A membership status where `member_profiles.subscription_paused_until` is in the future and `is_active = true` — member retains access but isn't charged. |
+| **Workshop** | A club activity/club activity with date, capacity, pricing, and registration. |
+| **Registration** | A member's sign-up for a workshop. Has statuses (confirmed, cancelled, waitlisted) and links to payment. |
+| **Refund** | A cancellation-triggered repayment. Tracked in `club_activity_refunds`. |
+| **Inventory** | Club equipment (swords, masks, etc.) tracked in containers/categories with movement history. |
+| **Invitation** | A pending or processed invite for a prospective member. Can be sent with or without a Stripe subscription. |
+| **Waitlist** | Prospective members awaiting invitation. |
+| **Settings** | System-wide key/value configuration (e.g. Stripe price ID cache, membership fee lookup names). |
+| **Role** | An authorization level assigned to a user. Drawn from `role_type` enum (admin, president, member, committee roles). |
+
+## Active ADRs
+
+| # | Title | Status |
+|---|-------|--------|
+| 0001 | Phoenix Takes Over Database Ownership | Accepted |
+| 0002 | RLS Removal Strategy | Accepted |
+| 0003 | API-First Design with OpenAPI Spec | Accepted |
+| 0004 | Migrate Deno Edge Functions to Oban | Accepted |
+
+## Architecture (Target State)
+
+```
+SvelteKit (Cloudflare Pages)
+    │
+    │ HTTP (JSON, typed via generated OpenAPI client)
+    ▼
+Phoenix (Fly.io)
+    │
+    ├── Ecto → Postgres (Supabase-hosted)
+    ├── Oban → Postgres (same instance, separate tables)
+    ├── Supabase Auth (GoTrue) → validates JWT tokens
+    └── Stripe API (outbound webhook calls, inbound webhook handling)
+```
+
+## Migration State
+
+- **Phase 1a**: Edge functions → Oban (in progress)
+- **Phase 1b**: Service layer → Phoenix API (next)
+- **Phase 2**: LiveView migration (future evaluation)
+
+Supabase Auth, Postgres, and Storage remain in place throughout Phase 1. PostgREST and RLS policies are removed when all data access is proxied through Phoenix.
