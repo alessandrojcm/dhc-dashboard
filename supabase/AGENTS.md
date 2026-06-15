@@ -25,6 +25,8 @@ supabase/
 
 **Naming**: `YYYYMMDDHHMMSS_description.sql`
 
+**Supabase-managed schemas**: Do not alter Supabase-owned auth/storage internals such as `auth.users` in project migrations. Current Supabase CLI resets replay migrations with a role that is not owner of `auth.users`; configure application access through public tables/functions/policies instead.
+
 **Security Pattern**:
 ```sql
 CREATE OR REPLACE FUNCTION my_function()
