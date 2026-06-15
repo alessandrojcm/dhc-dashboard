@@ -1,0 +1,43 @@
+name: Deploy Phoenix API to Fly.io
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/phoenix/**"
+      - "fnox.toml"
+      - "fly.toml"
+      - ".github/workflows/deploy-phoenix-fly.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-phoenix-fly
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  FLY_APP: ${{ vars.FLY_PHOENIX_APP || 'dhc-dashboard' }}
+  FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup mise tools
+        uses: jdx/mise-action@v3
+        with:
+          install: true
+
+      - name: Setup flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy Phoenix release
+        run: fly deploy --app "${FLY_APP}" --remote-only

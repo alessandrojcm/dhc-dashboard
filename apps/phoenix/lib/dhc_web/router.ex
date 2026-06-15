@@ -1,0 +1,25 @@
+defmodule DhcWeb.Router do
+  use DhcWeb, :router
+
+  pipeline :api do
+    plug :accepts, ["json"]
+  end
+
+  pipeline :invitation_admin_api do
+    plug DhcWeb.Plugs.RequireAuth, roles: ~w(president admin committee_coordinator)
+  end
+
+  scope "/api", DhcWeb do
+    pipe_through :api
+
+    get "/health", HealthController, :index
+    post "/webhooks/stripe", StripeWebhooksController, :create
+  end
+
+  scope "/api", DhcWeb do
+    pipe_through [:api, :invitation_admin_api]
+
+    post "/invitations", InvitationsController, :create
+    post "/invitations/resend", InvitationsController, :resend
+  end
+end

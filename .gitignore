@@ -38,3 +38,10 @@ dist
 .idea
 test-results
 .pampa
+.expert
+
+# Generated API client
+packages/api-client/src/client/
+
+# mise local overrides
+.mise.local.toml
