@@ -13,6 +13,13 @@
 export { sentryLogger, consoleLogger } from "./logger";
 export type { Logger } from "./logger";
 
+// Service auth utilities
+export { buildServiceRoleSession } from "./service-auth";
+export type {
+	RegistrationActor,
+	PublicServiceOptions,
+} from "./service-auth";
+
 // Kysely utilities
 export { getKyselyClient, executeWithRLS, sql } from "$lib/server/kysely";
 

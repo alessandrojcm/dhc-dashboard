@@ -1,4 +1,8 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+import {
+	getWorkshopRefundsForTest,
+	processWorkshopRefundForTest,
+} from "./attendee-test-helpers";
 import { createMember, getSupabaseServiceClient } from "./setupFunctions";
 import { loginAsUser } from "./supabaseLogin";
 
@@ -17,26 +21,6 @@ test.describe("Refund Management", () => {
 			roles: new Set(["admin"]),
 		});
 	});
-
-	async function makeAuthenticatedRequest(
-		page: Page,
-		url: string,
-		options: {
-			method?: string;
-			data?: unknown;
-			headers?: Record<string, string>;
-			body?: string;
-		} = {},
-	) {
-		const response = await page.request.fetch(url, {
-			...options,
-			headers: {
-				"Content-Type": "application/json",
-				...options.headers,
-			},
-		});
-		return response;
-	}
 
 	test.beforeEach(async ({ page, context }) => {
 		await loginAsUser(context, adminData.email);
@@ -99,22 +83,15 @@ test.describe("Refund Management", () => {
 		await loginAsUser(context, adminData.email);
 		await page.goto("/dashboard");
 
-		const refundResponse = await makeAuthenticatedRequest(
-			page,
-			`/api/workshops/${workshopId}/refunds`,
-			{
-				method: "POST",
-				data: {
-					registration_id: registrationId,
-					reason: "Test refund reason",
-				},
-			},
-		);
-
-		expect(refundResponse.ok()).toBeTruthy();
-		const refundData = await refundResponse.json();
+		const refundData = await processWorkshopRefundForTest(adminData.session, {
+			registration_id: registrationId,
+			reason: "Test refund reason",
+		});
 
 		expect(refundData.success).toBe(true);
+		if (!refundData.success) {
+			throw new Error(refundData.error || "Refund request failed");
+		}
 		expect(refundData.refund).toBeDefined();
 		expect(refundData.refund.registration_id).toBe(registrationId);
 		expect(refundData.refund.refund_reason).toBe("Test refund reason");
@@ -127,36 +104,26 @@ test.describe("Refund Management", () => {
 		await page.goto("/dashboard");
 
 		// Process first refund
-		const firstRefundResponse = await makeAuthenticatedRequest(
-			page,
-			`/api/workshops/${workshopId}/refunds`,
+		const firstRefundResponse = await processWorkshopRefundForTest(
+			adminData.session,
 			{
-				method: "POST",
-				data: {
-					registration_id: registrationId,
-					reason: "First refund",
-				},
+				registration_id: registrationId,
+				reason: "First refund",
 			},
 		);
 
-		expect(firstRefundResponse.ok()).toBeTruthy();
+		expect(firstRefundResponse.success).toBe(true);
 
 		// Attempt second refund
-		const secondRefundResponse = await makeAuthenticatedRequest(
-			page,
-			`/api/workshops/${workshopId}/refunds`,
-			{
-				method: "POST",
-				data: {
-					registration_id: registrationId,
-					reason: "Second refund attempt",
-				},
-			},
-		);
+		const errorData = await processWorkshopRefundForTest(adminData.session, {
+			registration_id: registrationId,
+			reason: "Second refund attempt",
+		});
 
-		expect(secondRefundResponse.ok).toBeFalsy();
-		const errorData = await secondRefundResponse.json();
 		expect(errorData.success).toBe(false);
+		if (errorData.success) {
+			throw new Error("Expected duplicate refund request to fail");
+		}
 		expect(errorData.error).toContain("already requested");
 	});
 
@@ -218,21 +185,15 @@ test.describe("Refund Management", () => {
 		}
 
 		// Attempt refund
-		const refundResponse = await makeAuthenticatedRequest(
-			page,
-			`/api/workshops/${pastWorkshop.id}/refunds`,
-			{
-				method: "POST",
-				data: {
-					registration_id: pastRegistration.id,
-					reason: "Late refund attempt",
-				},
-			},
-		);
+		const errorData = await processWorkshopRefundForTest(adminData.session, {
+			registration_id: pastRegistration.id,
+			reason: "Late refund attempt",
+		});
 
-		expect(refundResponse.ok()).toBeFalsy();
-		const errorData = await refundResponse.json();
 		expect(errorData.success).toBe(false);
+		if (errorData.success) {
+			throw new Error("Expected deadline validation to fail");
+		}
 		expect(errorData.error).toContain("deadline");
 
 		// Cleanup
@@ -248,36 +209,43 @@ test.describe("Refund Management", () => {
 		await page.goto("/dashboard");
 
 		// First create a refund
-		await makeAuthenticatedRequest(
-			page,
-			`/api/workshops/${workshopId}/refunds`,
-			{
-				method: "POST",
-				data: {
-					registration_id: registrationId,
-					reason: "Test refund for fetching",
-				},
-			},
-		);
+		await processWorkshopRefundForTest(adminData.session, {
+			registration_id: registrationId,
+			reason: "Test refund for fetching",
+		});
 
 		// Fetch refunds
-		const refundsResponse = await makeAuthenticatedRequest(
-			page,
-			`/api/workshops/${workshopId}/refunds`,
-			{
-				method: "GET",
-			},
+		const refundsData = await getWorkshopRefundsForTest(
+			adminData.session,
+			workshopId,
 		);
 
-		expect(refundsResponse.ok()).toBeTruthy();
-		const refundsData = await refundsResponse.json();
-
 		expect(refundsData.success).toBe(true);
+		if (!refundsData.success) {
+			throw new Error(refundsData.error || "Expected refunds fetch to succeed");
+		}
 		expect(refundsData.refunds).toBeDefined();
 		expect(refundsData.refunds.length).toBe(1);
-		expect(refundsData.refunds[0].registration_id).toBe(registrationId);
-		expect(refundsData.refunds[0].refund_reason).toBe(
-			"Test refund for fetching",
+
+		const { data: persistedRefunds, error: persistedRefundsError } =
+			await getSupabaseServiceClient()
+				.from("club_activity_refunds")
+				.select("registration_id, refund_reason")
+				.eq("registration_id", registrationId);
+
+		if (persistedRefundsError) {
+			throw new Error(
+				`Failed to verify refund fetch results: ${persistedRefundsError.message}`,
+			);
+		}
+
+		expect(persistedRefunds).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					registration_id: registrationId,
+					refund_reason: "Test refund for fetching",
+				}),
+			]),
 		);
 	});
 
@@ -286,39 +254,31 @@ test.describe("Refund Management", () => {
 		await page.goto("/dashboard");
 
 		// Test invalid registration ID
-		const invalidIdResponse = await makeAuthenticatedRequest(
-			page,
-			`/api/workshops/${workshopId}/refunds`,
+		const invalidIdData = await processWorkshopRefundForTest(
+			adminData.session,
 			{
-				method: "POST",
-				data: {
-					registration_id: "invalid-uuid",
-					reason: "Test reason",
-				},
+				registration_id: "invalid-uuid",
+				reason: "Test reason",
 			},
 		);
-
-		expect(invalidIdResponse.ok()).toBeFalsy();
-		const invalidIdData = await invalidIdResponse.json();
 		expect(invalidIdData.success).toBe(false);
+		if (invalidIdData.success) {
+			throw new Error("Expected invalid registration ID validation to fail");
+		}
 		expect(invalidIdData.issues).toBeDefined();
 
 		// Test missing reason
-		const missingReasonResponse = await makeAuthenticatedRequest(
-			page,
-			`/api/workshops/${workshopId}/refunds`,
+		const missingReasonData = await processWorkshopRefundForTest(
+			adminData.session,
 			{
-				method: "POST",
-				data: {
-					registration_id: registrationId,
-					reason: "",
-				},
+				registration_id: registrationId,
+				reason: "",
 			},
 		);
-
-		expect(missingReasonResponse.ok()).toBeFalsy();
-		const missingReasonData = await missingReasonResponse.json();
 		expect(missingReasonData.success).toBe(false);
+		if (missingReasonData.success) {
+			throw new Error("Expected missing reason validation to fail");
+		}
 		expect(missingReasonData.issues).toBeDefined();
 	});
 
@@ -331,21 +291,14 @@ test.describe("Refund Management", () => {
 
 		const fakeRegistrationId = "00000000-0000-0000-0000-000000000000";
 
-		const refundResponse = await makeAuthenticatedRequest(
-			page,
-			`/api/workshops/${workshopId}/refunds`,
-			{
-				method: "POST",
-				data: {
-					registration_id: fakeRegistrationId,
-					reason: "Test refund for non-existent registration",
-				},
-			},
-		);
-
-		expect(refundResponse.ok()).toBeFalsy();
-		const errorData = await refundResponse.json();
+		const errorData = await processWorkshopRefundForTest(adminData.session, {
+			registration_id: fakeRegistrationId,
+			reason: "Test refund for non-existent registration",
+		});
 		expect(errorData.success).toBe(false);
+		if (errorData.success) {
+			throw new Error("Expected missing registration refund to fail");
+		}
 		expect(errorData.error).toContain("not found");
 	});
 

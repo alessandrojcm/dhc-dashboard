@@ -3,6 +3,7 @@
  * Handles workshop refund processing and management
  */
 
+import type { Stripe } from "stripe";
 import type {
 	Kysely,
 	KyselyDatabase,
@@ -11,7 +12,6 @@ import type {
 	Transaction,
 } from "../shared";
 import { executeWithRLS } from "../shared";
-import { stripeClient } from "$lib/server/stripe";
 import type { Refund, RefundEligibility, RefundWithUser } from "./types";
 
 // ============================================================================
@@ -24,6 +24,7 @@ export class RefundService {
 	constructor(
 		private kysely: Kysely<KyselyDatabase>,
 		private session: Session,
+		private stripeClient: Stripe,
 		logger?: Logger,
 	) {
 		this.logger = logger ?? console;
@@ -275,7 +276,7 @@ export class RefundService {
 		if (eligibility.registration!.stripe_checkout_session_id) {
 			try {
 				// Get the payment intent from the checkout session
-				const paymentIntent = await stripeClient.paymentIntents.retrieve(
+				const paymentIntent = await this.stripeClient.paymentIntents.retrieve(
 					eligibility.registration!.stripe_checkout_session_id,
 				);
 
@@ -284,7 +285,7 @@ export class RefundService {
 				}
 
 				// Create the refund
-				const stripeRefund = await stripeClient.refunds.create({
+				const stripeRefund = await this.stripeClient.refunds.create({
 					payment_intent: paymentIntent.id,
 					amount: eligibility.registration!.amount_paid,
 					reason: "requested_by_customer",

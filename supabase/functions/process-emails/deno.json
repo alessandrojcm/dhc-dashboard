@@ -13,6 +13,7 @@
 		"valibot": "npm:valibot@1.2.0",
 		"loops": "npm:loops@6.0.1"
 	},
+	"nodeModulesDir": "auto",
 	"tasks": {
 		"dev": "deno run --watch main.ts",
 		"start": "deno run --allow-net --allow-env --allow-read index.ts"

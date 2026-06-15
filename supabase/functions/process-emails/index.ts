@@ -8,6 +8,8 @@ import { LoopsClient } from "loops";
 const transactionalEnumTitles = [
 	"inviteMember",
 	"workshopAnnouncement",
+	"workshopRegistration",
+	"workshopRegistrationError",
 ] as const;
 
 export const transactionalIds: Record<string, string> = {
@@ -16,6 +18,12 @@ export const transactionalIds: Record<string, string> = {
 	workshopAnnouncement:
 		Deno.env.get("WORKSHOP_ANNOUNCEMENT_TRANSACTIONAL_ID") ??
 		"workshop_announcement",
+	workshopRegistration:
+		Deno.env.get("WORKSHOP_REGISTRATION_TRANSACTIONAL_ID") ??
+		"cmnok76cq02tq0ix92oeoi1kk",
+	workshopRegistrationError:
+		Deno.env.get("WORKSHOP_REGISTRATION_ERROR_TRANSACTIONAL_ID") ??
+		"workshopRegistrationError",
 } as const;
 
 const loops = new LoopsClient(Deno.env.get("LOOPS_API_KEY")!);
@@ -151,7 +159,9 @@ async function processEmailQueue() {
 	} catch (error) {
 		console.error(`Error reading from queue: ${error}`);
 		Sentry.captureException(error);
-		return { error: error.message };
+		return {
+			error: error instanceof Error ? error.message : String(error),
+		};
 	}
 }
 

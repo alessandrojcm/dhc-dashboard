@@ -33,16 +33,26 @@ import { supabaseLogin } from './supabaseLogin';
 await supabaseLogin(page, 'user@example.com', 'password');
 ```
 
-### API Requests (Authenticated)
+### Workshop Service-backed Helpers
 
 ```typescript
-import { makeAuthenticatedRequest } from './attendee-test-helpers';
+import {
+  publishWorkshopForTest,
+  processWorkshopRefundForTest,
+  updateWorkshopAttendanceForTest,
+  toggleWorkshopInterestForTest
+} from './attendee-test-helpers';
 
-const response = await makeAuthenticatedRequest(page, '/api/workshops/123/publish', {
-  method: 'POST',
-  data: { ... }
+const result = await processWorkshopRefundForTest(session, {
+  registration_id,
+  reason: 'Member requested cancellation'
 });
 ```
+
+- Workshop E2E helpers now call service classes directly with explicit Kysely/session/logger/Stripe wiring.
+- Do not add new `/api/workshops/*` test transport usage; prefer the service-backed helpers in `attendee-test-helpers.ts`.
+- In `e2e/attendee-test-helpers.ts`, import `Database` from `src/database.types` (not the repo-root duplicate file) to avoid cross-module type identity mismatches in helper signatures.
+- Registration seeding overrides in `attendee-test-helpers.ts` should follow `club_activity_registrations` insert-column names (`club_activity_id`, `member_user_id`, etc.), not the simplified `TestRegistration` view model.
 
 ### Database Setup
 
@@ -123,7 +133,7 @@ test.describe('Workshop Management', () => {
 ## ANTI-PATTERNS
 
 - Hardcoded test emails - causes conflicts
-- Direct authorization headers - use `makeAuthenticatedRequest`
+- New workshop E2E coverage should not reintroduce deprecated `/api/workshops/*` helper calls
 - Missing cleanup - leaks test data
 - Running without edge functions - Stripe webhooks fail
 
@@ -143,6 +153,8 @@ test.describe('Workshop Management', () => {
 - `table-pagesize-comprehensive.spec.ts` is most stable when asserting URL query params + page-size trigger value (not raw `table tbody tr` counts, which vary with responsive rendering and row structure).
 - Cleanup in page-size comprehensive runs should be best-effort; Snaplet-backed helper cleanups can fail intermittently in CI/local and should not fail the whole suite.
 - Search inputs depend on callback props wired through the shared `Input` component; if URL params do not update after `fill(...)`, confirm `oninput`/`onchange` handlers are forwarded in `src/lib/components/ui/input/input.svelte`.
+- Calendar/date-picker interactions are most stable when you open the picker once, wait for the `Select a year` / `Select a month` controls to become visible, then choose the day button; avoid clicking the trigger twice or you may close the popover before selecting the date.
+- `/dashboard/workshops` renders workshops as calendar events by default, not expanded cards; when asserting description/location/action buttons in E2E, click the workshop event first and scope assertions to the opened details dialog.
 
 ## STRIPE MANUAL E2E
 

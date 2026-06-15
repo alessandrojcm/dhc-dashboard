@@ -1,4 +1,8 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+import {
+	publishWorkshopForTest,
+	toggleWorkshopInterestForTest,
+} from "./attendee-test-helpers";
 import { createMember, getSupabaseServiceClient } from "./setupFunctions";
 import { loginAsUser } from "./supabaseLogin";
 
@@ -23,35 +27,6 @@ test.describe("Workshop Interest System", () => {
 			roles: new Set(["admin"]),
 		});
 	});
-
-	async function makeAuthenticatedRequest(
-		page: Page,
-		url: string,
-		options: {
-			method?: string;
-			data?: unknown;
-			headers?: Record<string, string>;
-			body?: string;
-		} = {},
-	) {
-		const response = await page.request.fetch(url, {
-			...options,
-			headers: {
-				"Content-Type": "application/json",
-				...options.headers,
-			},
-		});
-
-		if (!response.ok()) {
-			const errorText = await response.text();
-			console.error(`API Error ${response.status()}: ${errorText}`);
-			throw new Error(
-				`HTTP ${response.status()}: ${response.statusText()} - ${errorText}`,
-			);
-		}
-
-		return await response.json();
-	}
 
 	test.beforeEach(async () => {
 		// Create a test workshop directly in the database to bypass API validation issues
@@ -110,7 +85,7 @@ test.describe("Workshop Interest System", () => {
 		);
 
 		// Check if there are any console errors
-		const errors = [];
+		const errors: string[] = [];
 		page.on("console", (msg) => {
 			if (msg.type() === "error") {
 				errors.push(msg.text());
@@ -161,13 +136,11 @@ test.describe("Workshop Interest System", () => {
 		await page.goto("/dashboard");
 
 		// First express interest
-		await makeAuthenticatedRequest(
-			page,
-			`/api/workshops/${workshopId}/interest`,
-			{
-				method: "POST",
-			},
+		const response = await toggleWorkshopInterestForTest(
+			memberData.session,
+			workshopId,
 		);
+		expect(response.success).toBe(true);
 
 		await page.goto("/dashboard/my-workshops");
 
@@ -194,24 +167,23 @@ test.describe("Workshop Interest System", () => {
 		await page.goto("/dashboard");
 
 		// Express interest via API
-		const response1 = await makeAuthenticatedRequest(
-			page,
-			`/api/workshops/${workshopId}/interest`,
-			{
-				method: "POST",
-			},
+		const response1 = await toggleWorkshopInterestForTest(
+			memberData.session,
+			workshopId,
 		);
 		expect(response1.success).toBe(true);
 
 		// Try to express interest again - should withdraw instead
-		const response2 = await makeAuthenticatedRequest(
-			page,
-			`/api/workshops/${workshopId}/interest`,
-			{
-				method: "POST",
-			},
+		const response2 = await toggleWorkshopInterestForTest(
+			memberData.session,
+			workshopId,
 		);
 		expect(response2.success).toBe(true);
+		if (!response2.success) {
+			throw new Error(
+				response2.error || "Expected second interest toggle to succeed",
+			);
+		}
 		expect(response2.interest).toBe(null);
 		expect(response2.message).toBe("Interest withdrawn successfully");
 	});
@@ -224,29 +196,22 @@ test.describe("Workshop Interest System", () => {
 		await page.goto("/dashboard");
 
 		// Publish the workshop
-		await makeAuthenticatedRequest(
-			page,
-			`/api/workshops/${workshopId}/publish`,
-			{
-				method: "POST",
-			},
+		const publishResponse = await publishWorkshopForTest(
+			adminData.session,
+			workshopId,
 		);
+		expect(publishResponse.success).toBe(true);
 
 		// Try to express interest - this should fail
-		try {
-			const response = await makeAuthenticatedRequest(
-				page,
-				`/api/workshops/${workshopId}/interest`,
-				{
-					method: "POST",
-				},
-			);
-			// If we get here, the request didn't fail as expected
-			expect(response.success).toBe(false);
-		} catch (error) {
-			// The API call should throw an error for this case
-			expect(error.message).toContain("400");
+		const response = await toggleWorkshopInterestForTest(
+			memberData.session,
+			workshopId,
+		);
+		expect(response.success).toBe(false);
+		if (response.success) {
+			throw new Error("Expected interest toggle on published workshop to fail");
 		}
+		expect(response.error).toContain("planned");
 	});
 
 	test("should show interest counts to coordinators", async ({
@@ -258,13 +223,11 @@ test.describe("Workshop Interest System", () => {
 		await page.goto("/dashboard");
 
 		// Express interest as regular user
-		await makeAuthenticatedRequest(
-			page,
-			`/api/workshops/${workshopId}/interest`,
-			{
-				method: "POST",
-			},
+		const response = await toggleWorkshopInterestForTest(
+			memberData.session,
+			workshopId,
 		);
+		expect(response.success).toBe(true);
 
 		// Switch back to admin (coordinator) to view interest counts
 		await loginAsUser(context, adminData.email);
