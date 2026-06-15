@@ -7,5 +7,7 @@ defmodule DhcWeb.Router do
 
   scope "/api", DhcWeb do
     pipe_through :api
+
+    get "/health", HealthController, :index
   end
 end
