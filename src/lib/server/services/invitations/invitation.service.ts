@@ -4,6 +4,8 @@
  */
 
 import * as v from "valibot";
+import type { Database, Json } from "$database";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
 	Kysely,
 	KyselyDatabase,
@@ -20,6 +22,35 @@ import type {
 	InvitationType,
 } from "./types";
 import dayjs from "dayjs";
+
+type InvitationEmailPayload = {
+	transactionalId: "inviteMember";
+	email: string;
+	dataVariables: {
+		firstName: string | null;
+		lastName: string | null;
+		invitationLink: string;
+	};
+};
+
+type InvitationQueueDatabase = Database & {
+	pgmq_public: {
+		Tables: Record<string, never>;
+		Views: Record<string, never>;
+		Functions: {
+			send_batch: {
+				Args: {
+					queue_name: string;
+					messages: Json[];
+					sleep_seconds?: number;
+				};
+				Returns: number[];
+			};
+		};
+		Enums: Record<string, never>;
+		CompositeTypes: Record<string, never>;
+	};
+};
 
 // ============================================================================
 // Validation Schemas (exported for reuse in forms/APIs)
@@ -77,6 +108,7 @@ export class InvitationService {
 	constructor(
 		private kysely: Kysely<KyselyDatabase>,
 		private session: Session | null,
+		private supabaseClient: SupabaseClient<InvitationQueueDatabase>,
 		logger?: Logger,
 	) {
 		this.logger = logger ?? console;

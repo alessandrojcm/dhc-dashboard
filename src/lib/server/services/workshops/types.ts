@@ -39,8 +39,18 @@ export type RegistrationStatus =
 	| "confirmed"
 	| "cancelled"
 	| "refunded";
-export type AttendanceStatus = "attended" | "no_show" | "excused" | null;
-export type RefundStatus = "pending" | "processing" | "completed" | "failed";
+export type AttendanceStatus =
+	| "pending"
+	| "attended"
+	| "no_show"
+	| "excused"
+	| null;
+export type RefundStatus =
+	| "pending"
+	| "processing"
+	| "completed"
+	| "failed"
+	| "cancelled";
 
 // ============================================================================
 // Service Input/Output Types
@@ -200,4 +210,110 @@ export interface CompleteRegistrationInput {
 export interface CancelRegistrationResult {
 	registration: Registration;
 	refundProcessed: boolean;
+}
+
+// ============================================================================
+// External Registration Types (Stage 2)
+// ============================================================================
+
+/**
+ * External user data for registration
+ */
+export interface ExternalUserInput {
+	firstName: string;
+	lastName: string;
+	email: string;
+	phoneNumber?: string | null;
+}
+
+/**
+ * Reason codes for registration gate rejection
+ */
+export type RegistrationGateReason =
+	| "NOT_FOUND"
+	| "NOT_PUBLISHED"
+	| "NOT_PUBLIC"
+	| "NO_EXTERNAL_PRICE"
+	| "FULL";
+
+/**
+ * Workshop details exposed for external registration
+ */
+export type ExternalRegistrationWorkshop = Pick<
+	Workshop,
+	| "id"
+	| "title"
+	| "description"
+	| "start_date"
+	| "end_date"
+	| "location"
+	| "price_non_member"
+	| "max_capacity"
+>;
+
+/**
+ * Result of checking external registration gate status
+ */
+export type ExternalRegistrationGateResult =
+	| {
+			canRegister: true;
+			workshop: ExternalRegistrationWorkshop;
+	  }
+	| {
+			canRegister: false;
+			reason: RegistrationGateReason;
+			workshop?: never;
+	  };
+
+/**
+ * Input for creating an external checkout session.
+ */
+export interface CreateExternalCheckoutSessionInput {
+	workshopId: string;
+	returnUrl: string;
+}
+
+/**
+ * Result of creating an external checkout session.
+ */
+export interface CreateExternalCheckoutSessionResult {
+	checkoutSessionId: string;
+	checkoutClientSecret: string;
+	checkoutUrl: string | null;
+}
+
+/**
+ * Input for completing an external registration from checkout session.
+ */
+export interface CompleteExternalRegistrationFromCheckoutSessionInput {
+	workshopId: string;
+	checkoutSessionId: string;
+}
+
+/**
+ * Domain error codes for external registration
+ */
+export type ExternalRegistrationErrorCode =
+	| "WORKSHOP_NOT_FOUND"
+	| "WORKSHOP_FULL"
+	| "ALREADY_REGISTERED"
+	| "INVALID_INPUT"
+	| "CHECKOUT_SESSION_NOT_FOUND"
+	| "CUSTOMER_DETAILS_MISSING"
+	| "PAYMENT_NOT_COMPLETED"
+	| "PAYMENT_METADATA_MISMATCH";
+
+/**
+ * Domain error for external registration operations
+ */
+export class ExternalRegistrationError extends Error {
+	constructor(
+		public readonly code: ExternalRegistrationErrorCode,
+		message: string,
+		public readonly context?: Record<string, unknown>,
+	) {
+		super(message);
+		this.name = "ExternalRegistrationError";
+		this.cause = code;
+	}
 }

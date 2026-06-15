@@ -1,7 +1,10 @@
 import { expect, test } from "@playwright/test";
 import {
 	createTestWorkshop,
-	makeAuthenticatedRequest,
+	getWorkshopAttendanceForTest,
+	getWorkshopRefundsForTest,
+	processWorkshopRefundForTest,
+	updateWorkshopAttendanceForTest,
 } from "./attendee-test-helpers";
 import { createMember, getSupabaseServiceClient } from "./setupFunctions";
 import { loginAsUser } from "./supabaseLogin";
@@ -146,27 +149,17 @@ test.describe("Workshop Full Lifecycle E2E", () => {
 		await page.goto("/dashboard");
 
 		// Request refund via API (simulating user-initiated refund)
-		const refund1Response = await makeAuthenticatedRequest(
-			page,
-			`/api/workshops/${workshopId}/refunds`,
+		const refund1Data = await processWorkshopRefundForTest(
+			member1Data.session,
 			{
-				method: "POST",
-				data: {
-					registration_id: registration1Id,
-					reason: "Personal scheduling conflict",
-				},
+				registration_id: registration1Id,
+				reason: "Personal scheduling conflict",
 			},
 		);
-
-		if (!refund1Response.ok()) {
-			const errorText = await refund1Response.text();
-			console.error("Refund 1 failed:", refund1Response.status(), errorText);
-			throw new Error(
-				`Refund 1 failed: ${refund1Response.status()} - ${errorText}`,
-			);
-		}
-		const refund1Data = await refund1Response.json();
 		expect(refund1Data.success).toBe(true);
+		if (!refund1Data.success) {
+			throw new Error(refund1Data.error || "Refund 1 failed");
+		}
 		expect(refund1Data.refund.registration_id).toBe(registration1Id);
 		expect(refund1Data.refund.refund_reason).toBe(
 			"Personal scheduling conflict",
@@ -177,21 +170,14 @@ test.describe("Workshop Full Lifecycle E2E", () => {
 		await loginAsUser(context, adminData.email);
 		await page.goto("/dashboard");
 
-		const refund2Response = await makeAuthenticatedRequest(
-			page,
-			`/api/workshops/${workshopId}/refunds`,
-			{
-				method: "POST",
-				data: {
-					registration_id: registration2Id,
-					reason: "Admin-initiated refund due to injury",
-				},
-			},
-		);
-
-		expect(refund2Response.ok()).toBeTruthy();
-		const refund2Data = await refund2Response.json();
+		const refund2Data = await processWorkshopRefundForTest(adminData.session, {
+			registration_id: registration2Id,
+			reason: "Admin-initiated refund due to injury",
+		});
 		expect(refund2Data.success).toBe(true);
+		if (!refund2Data.success) {
+			throw new Error(refund2Data.error || "Refund 2 failed");
+		}
 		expect(refund2Data.refund.registration_id).toBe(registration2Id);
 		expect(refund2Data.refund.refund_reason).toBe(
 			"Admin-initiated refund due to injury",
@@ -199,26 +185,21 @@ test.describe("Workshop Full Lifecycle E2E", () => {
 		expect(refund2Data.refund.status).toBe("pending");
 
 		// Step 5: Admin marks member 3 as attended
-		const attendanceResponse = await makeAuthenticatedRequest(
-			page,
-			`/api/workshops/${workshopId}/attendance`,
-			{
-				method: "PUT",
-				data: {
-					attendance_updates: [
-						{
-							registration_id: registration3Id,
-							attendance_status: "attended",
-							notes: "Excellent participation and technique improvement",
-						},
-					],
+		const attendanceData = await updateWorkshopAttendanceForTest(
+			adminData.session,
+			workshopId,
+			[
+				{
+					registration_id: registration3Id,
+					attendance_status: "attended",
+					notes: "Excellent participation and technique improvement",
 				},
-			},
+			],
 		);
-
-		expect(attendanceResponse.ok()).toBeTruthy();
-		const attendanceData = await attendanceResponse.json();
 		expect(attendanceData.success).toBe(true);
+		if (!attendanceData.success) {
+			throw new Error(attendanceData.error || "Attendance update failed");
+		}
 		expect(attendanceData.registrations).toHaveLength(1);
 		expect(attendanceData.registrations[0].attendance_status).toBe("attended");
 		expect(attendanceData.registrations[0].attendance_notes).toBe(
@@ -230,74 +211,87 @@ test.describe("Workshop Full Lifecycle E2E", () => {
 
 		// Step 6: Verify final state
 		// Check refunds were created
-		const refundsResponse = await makeAuthenticatedRequest(
-			page,
-			`/api/workshops/${workshopId}/refunds`,
-			{
-				method: "GET",
-			},
+		const refundsData = await getWorkshopRefundsForTest(
+			adminData.session,
+			workshopId,
 		);
-
-		expect(refundsResponse.ok()).toBeTruthy();
-		const refundsData = await refundsResponse.json();
 		expect(refundsData.success).toBe(true);
+		if (!refundsData.success) {
+			throw new Error(refundsData.error || "Failed to fetch refunds");
+		}
 		expect(refundsData.refunds).toHaveLength(2);
 
-		// Verify refund details
-		const member1Refund = refundsData.refunds.find(
-			(r: { registration_id: string }) => r.registration_id === registration1Id,
-		);
-		const member2Refund = refundsData.refunds.find(
-			(r: { registration_id: string }) => r.registration_id === registration2Id,
-		);
+		const { data: persistedRefunds, error: persistedRefundsError } =
+			await supabase
+				.from("club_activity_refunds")
+				.select("registration_id, refund_reason, refund_amount")
+				.in("registration_id", [registration1Id, registration2Id]);
 
-		expect(member1Refund).toBeDefined();
-		expect(member1Refund.refund_reason).toBe("Personal scheduling conflict");
-		expect(member1Refund.refund_amount).toBe(2500);
+		if (persistedRefundsError) {
+			throw new Error(
+				`Failed to verify persisted refunds: ${persistedRefundsError.message}`,
+			);
+		}
 
-		expect(member2Refund).toBeDefined();
-		expect(member2Refund.refund_reason).toBe(
-			"Admin-initiated refund due to injury",
+		expect(persistedRefunds).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({
+					registration_id: registration1Id,
+					refund_reason: "Personal scheduling conflict",
+					refund_amount: 2500,
+				}),
+				expect.objectContaining({
+					registration_id: registration2Id,
+					refund_reason: "Admin-initiated refund due to injury",
+					refund_amount: 2500,
+				}),
+			]),
 		);
-		expect(member2Refund.refund_amount).toBe(2500);
 
 		// Check attendance was recorded
-		const finalAttendanceResponse = await makeAuthenticatedRequest(
-			page,
-			`/api/workshops/${workshopId}/attendance`,
-			{
-				method: "GET",
-			},
+		const finalAttendanceData = await getWorkshopAttendanceForTest(
+			adminData.session,
+			workshopId,
 		);
-
-		expect(finalAttendanceResponse.ok()).toBeTruthy();
-		const finalAttendanceData = await finalAttendanceResponse.json();
 		expect(finalAttendanceData.success).toBe(true);
-		expect(finalAttendanceData.attendance).toHaveLength(3);
+		if (!finalAttendanceData.success) {
+			throw new Error(
+				finalAttendanceData.error || "Failed to fetch attendance",
+			);
+		}
+		expect(finalAttendanceData.attendance).toHaveLength(1);
 
 		// Find member 3's attendance record
 		const member3Attendance = finalAttendanceData.attendance.find(
-			(a: { registration_id: string }) => a.registration_id === registration3Id,
+			(a: { id: string }) => a.id === registration3Id,
 		);
 		expect(member3Attendance).toBeDefined();
+		if (!member3Attendance) {
+			throw new Error("Expected member 3 attendance record to exist");
+		}
 		expect(member3Attendance.attendance_status).toBe("attended");
 		expect(member3Attendance.attendance_notes).toBe(
 			"Excellent participation and technique improvement",
 		);
 
-		// Verify refunded members have different statuses
-		const member1Attendance = finalAttendanceData.attendance.find(
-			(a: { registration_id: string }) => a.registration_id === registration1Id,
-		);
-		const member2Attendance = finalAttendanceData.attendance.find(
-			(a: { registration_id: string }) => a.registration_id === registration2Id,
-		);
+		const { data: refundedRegistrations, error: refundedRegistrationsError } =
+			await supabase
+				.from("club_activity_registrations")
+				.select("id, status")
+				.in("id", [registration1Id, registration2Id]);
 
-		// These should still exist but with pending attendance status since they were refunded
-		expect(member1Attendance).toBeDefined();
-		expect(member2Attendance).toBeDefined();
-		expect(member1Attendance.attendance_status).toBe("pending");
-		expect(member2Attendance.attendance_status).toBe("pending");
+		if (refundedRegistrationsError) {
+			throw new Error(
+				`Failed to verify refunded registrations: ${refundedRegistrationsError.message}`,
+			);
+		}
+
+		expect(refundedRegistrations).toEqual(
+			expect.arrayContaining([
+				expect.objectContaining({ id: registration1Id, status: "refunded" }),
+				expect.objectContaining({ id: registration2Id, status: "refunded" }),
+			]),
+		);
 
 		// Step 7: Verify workshop statistics
 		// The workshop should show:

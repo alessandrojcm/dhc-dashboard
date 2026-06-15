@@ -1,8 +1,8 @@
 import * as Sentry from "@sentry/sveltekit";
 import { error } from "@sveltejs/kit";
 import dayjs from "dayjs";
+import type { Stripe } from "stripe";
 import { generatePricingInfo, getPriceIds } from "$lib/server/pricingUtils";
-import { stripeClient } from "$lib/server/stripe";
 import type { PlanPricing } from "$lib/types";
 import type { Kysely, KyselyDatabase, Logger } from "../shared";
 
@@ -13,6 +13,7 @@ export class PricingService {
 
 	constructor(
 		private kysely: Kysely<KyselyDatabase>,
+		private stripeClient: Stripe,
 		private migrationCode: string = DASHBOARD_MIGRATION_CODE,
 		logger?: Logger,
 	) {
@@ -68,7 +69,7 @@ export class PricingService {
 				nextMonthInvoice,
 				nextJanuaryInvoice,
 			] = await Promise.all([
-				stripeClient.invoices.createPreview({
+				this.stripeClient.invoices.createPreview({
 					customer: customerId,
 					subscription_details: {
 						items: [{ price: monthly, quantity: 1 }],
@@ -78,7 +79,7 @@ export class PricingService {
 						? { discounts: [{ promotion_code: couponCode }] }
 						: {}),
 				}),
-				stripeClient.invoices.createPreview({
+				this.stripeClient.invoices.createPreview({
 					customer: customerId,
 					subscription_details: {
 						items: [{ price: annual, quantity: 1 }],
@@ -88,7 +89,7 @@ export class PricingService {
 						? { discounts: [{ promotion_code: couponCode }] }
 						: {}),
 				}),
-				stripeClient.invoices.createPreview({
+				this.stripeClient.invoices.createPreview({
 					customer: customerId,
 					subscription_details: {
 						items: [{ price: monthly, quantity: 1 }],
@@ -98,7 +99,7 @@ export class PricingService {
 						? { discounts: [{ promotion_code: couponCode }] }
 						: {}),
 				}),
-				stripeClient.invoices.createPreview({
+				this.stripeClient.invoices.createPreview({
 					customer: customerId,
 					subscription_details: {
 						items: [{ price: annual, quantity: 1 }],
@@ -207,7 +208,7 @@ export class PricingService {
 			return generatePricingInfo(pricingInfo);
 		}
 
-		const promotionCodes = await stripeClient.promotionCodes.list({
+		const promotionCodes = await this.stripeClient.promotionCodes.list({
 			active: true,
 			code: couponCode,
 			limit: 1,
@@ -236,7 +237,7 @@ export class PricingService {
 		if (typeof couponId !== "string")
 			throw error(400, "Invalid or inactive promotion code.");
 
-		const couponDetails = await stripeClient.coupons.retrieve(couponId, {
+		const couponDetails = await this.stripeClient.coupons.retrieve(couponId, {
 			expand: ["applies_to"],
 		});
 

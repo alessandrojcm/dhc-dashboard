@@ -1,11 +1,12 @@
 import { expect, test } from "@playwright/test";
+import dayjs from "dayjs";
+import type { AttendanceUpdate } from "../src/lib/server/services/workshops/types";
 import {
-	makeAuthenticatedRequest,
-	type TestRegistration,
+	getWorkshopAttendanceForTest,
+	updateWorkshopAttendanceForTest,
 } from "./attendee-test-helpers";
 import { createMember, getSupabaseServiceClient } from "./setupFunctions";
 import { loginAsUser } from "./supabaseLogin";
-import dayjs from "dayjs";
 
 test.describe("Attendance Management", () => {
 	let adminData: Awaited<ReturnType<typeof createMember>>;
@@ -94,23 +95,20 @@ test.describe("Attendance Management", () => {
 		await loginAsUser(context, adminData.email);
 		await page.goto("/dashboard");
 
-		const attendanceResponse = await makeAuthenticatedRequest(
-			page,
-			`/api/workshops/${workshopId}/attendance`,
-			{
-				method: "GET",
-			},
+		const attendanceData = await getWorkshopAttendanceForTest(
+			adminData.session,
+			workshopId,
 		);
 
-		expect(attendanceResponse.ok()).toBeTruthy();
-		const attendanceData = await attendanceResponse.json();
-
 		expect(attendanceData.success).toBe(true);
+		if (!attendanceData.success) {
+			throw new Error(attendanceData.error || "Failed to fetch attendance");
+		}
 		expect(attendanceData.attendance).toBeDefined();
 		expect(attendanceData.attendance.length).toBe(3);
 
 		// Check default attendance status
-		attendanceData.attendance.forEach((attendee: TestRegistration) => {
+		attendanceData.attendance.forEach((attendee) => {
 			expect(attendee.attendance_status).toBe("pending");
 		});
 	});
@@ -134,21 +132,18 @@ test.describe("Attendance Management", () => {
 				attendance_status: "excused",
 				notes: "Family emergency",
 			},
-		];
+		] satisfies AttendanceUpdate[];
 
-		const updateResponse = await makeAuthenticatedRequest(
-			page,
-			`/api/workshops/${workshopId}/attendance`,
-			{
-				method: "PUT",
-				data: { attendance_updates: attendanceUpdates },
-			},
+		const updateData = await updateWorkshopAttendanceForTest(
+			adminData.session,
+			workshopId,
+			attendanceUpdates,
 		);
 
-		expect(updateResponse.ok()).toBeTruthy();
-		const updateData = await updateResponse.json();
-
 		expect(updateData.success).toBe(true);
+		if (!updateData.success) {
+			throw new Error(updateData.error || "Failed to update attendance");
+		}
 		expect(updateData.registrations).toBeDefined();
 		expect(updateData.registrations.length).toBe(3);
 
@@ -156,29 +151,29 @@ test.describe("Attendance Management", () => {
 		const updatedRegistrations = updateData.registrations;
 		expect(
 			updatedRegistrations.find(
-				(r: TestRegistration) => r.id === registrationIds[0],
+				(registration) => registration.id === registrationIds[0],
 			)?.attendance_status,
 		).toBe("attended");
 		expect(
 			updatedRegistrations.find(
-				(r: TestRegistration) => r.id === registrationIds[1],
+				(registration) => registration.id === registrationIds[1],
 			)?.attendance_status,
 		).toBe("no_show");
 		expect(
 			updatedRegistrations.find(
-				(r: TestRegistration) => r.id === registrationIds[2],
+				(registration) => registration.id === registrationIds[2],
 			)?.attendance_status,
 		).toBe("excused");
 
 		// Verify notes
 		expect(
 			updatedRegistrations.find(
-				(r: TestRegistration) => r.id === registrationIds[0],
+				(registration) => registration.id === registrationIds[0],
 			)?.attendance_notes,
 		).toBe("Present and participated");
 		expect(
 			updatedRegistrations.find(
-				(r: TestRegistration) => r.id === registrationIds[2],
+				(registration) => registration.id === registrationIds[2],
 			)?.attendance_notes,
 		).toBe("Family emergency");
 	});
@@ -194,18 +189,15 @@ test.describe("Attendance Management", () => {
 			},
 		];
 
-		const updateResponse = await makeAuthenticatedRequest(
-			page,
-			`/api/workshops/${workshopId}/attendance`,
-			{
-				method: "PUT",
-				data: { attendance_updates: invalidUpdates },
-			},
+		const errorData = await updateWorkshopAttendanceForTest(
+			adminData.session,
+			workshopId,
+			invalidUpdates as unknown as AttendanceUpdate[],
 		);
-
-		expect(updateResponse.ok()).toBeFalsy();
-		const errorData = await updateResponse.json();
 		expect(errorData.success).toBe(false);
+		if (errorData.success) {
+			throw new Error("Expected invalid attendance payload to fail");
+		}
 		expect(errorData.issues).toBeDefined();
 	});
 
@@ -223,18 +215,15 @@ test.describe("Attendance Management", () => {
 			},
 		];
 
-		const updateResponse = await makeAuthenticatedRequest(
-			page,
-			`/api/workshops/${workshopId}/attendance`,
-			{
-				method: "PUT",
-				data: { attendance_updates: invalidStatusUpdates },
-			},
+		const errorData = await updateWorkshopAttendanceForTest(
+			adminData.session,
+			workshopId,
+			invalidStatusUpdates as unknown as AttendanceUpdate[],
 		);
-
-		expect(updateResponse.ok()).toBeFalsy();
-		const errorData = await updateResponse.json();
 		expect(errorData.success).toBe(false);
+		if (errorData.success) {
+			throw new Error("Expected invalid attendance status validation to fail");
+		}
 		expect(errorData.issues).toBeDefined();
 	});
 
@@ -242,18 +231,15 @@ test.describe("Attendance Management", () => {
 		await loginAsUser(context, adminData.email);
 		await page.goto("/dashboard");
 
-		const updateResponse = await makeAuthenticatedRequest(
-			page,
-			`/api/workshops/${workshopId}/attendance`,
-			{
-				method: "PUT",
-				data: { attendance_updates: [] },
-			},
+		const errorData = await updateWorkshopAttendanceForTest(
+			adminData.session,
+			workshopId,
+			[],
 		);
-
-		expect(updateResponse.ok()).toBeFalsy();
-		const errorData = await updateResponse.json();
 		expect(errorData.success).toBe(false);
+		if (errorData.success) {
+			throw new Error("Expected empty attendance update validation to fail");
+		}
 		expect(errorData.issues).toBeDefined();
 	});
 
@@ -270,21 +256,18 @@ test.describe("Attendance Management", () => {
 				attendance_status: "attended",
 				notes: "Excellent participation and technique",
 			},
-		];
+		] satisfies AttendanceUpdate[];
 
-		const updateResponse = await makeAuthenticatedRequest(
-			page,
-			`/api/workshops/${workshopId}/attendance`,
-			{
-				method: "PUT",
-				data: { attendance_updates: attendanceUpdates },
-			},
+		const updateData = await updateWorkshopAttendanceForTest(
+			adminData.session,
+			workshopId,
+			attendanceUpdates,
 		);
 
-		expect(updateResponse.ok()).toBeTruthy();
-		const updateData = await updateResponse.json();
-
 		expect(updateData.success).toBe(true);
+		if (!updateData.success) {
+			throw new Error(updateData.error || "Failed to update attendance");
+		}
 		expect(updateData.registrations).toBeDefined();
 		expect(updateData.registrations.length).toBe(1);
 		expect(updateData.registrations[0].attendance_notes).toBe(
@@ -310,21 +293,18 @@ test.describe("Attendance Management", () => {
 				attendance_status: "attended",
 				notes: longNotes,
 			},
-		];
+		] satisfies AttendanceUpdate[];
 
-		const updateResponse = await makeAuthenticatedRequest(
-			page,
-			`/api/workshops/${workshopId}/attendance`,
-			{
-				method: "PUT",
-				data: { attendance_updates: attendanceUpdates },
-			},
+		const updateData = await updateWorkshopAttendanceForTest(
+			adminData.session,
+			workshopId,
+			attendanceUpdates,
 		);
 
-		expect(updateResponse.ok()).toBeTruthy();
-		const updateData = await updateResponse.json();
-
 		expect(updateData.success).toBe(true);
+		if (!updateData.success) {
+			throw new Error(updateData.error || "Failed to update attendance");
+		}
 		expect(updateData.registrations[0].attendance_notes).toBe(longNotes);
 	});
 
@@ -342,20 +322,17 @@ test.describe("Attendance Management", () => {
 				attendance_status: "attended",
 				notes: tooLongNotes,
 			},
-		];
+		] satisfies AttendanceUpdate[];
 
-		const updateResponse = await makeAuthenticatedRequest(
-			page,
-			`/api/workshops/${workshopId}/attendance`,
-			{
-				method: "PUT",
-				data: { attendance_updates: attendanceUpdates },
-			},
+		const errorData = await updateWorkshopAttendanceForTest(
+			adminData.session,
+			workshopId,
+			attendanceUpdates,
 		);
-
-		expect(updateResponse.ok()).toBeFalsy();
-		const errorData = await updateResponse.json();
 		expect(errorData.success).toBe(false);
+		if (errorData.success) {
+			throw new Error("Expected long notes validation to fail");
+		}
 		expect(errorData.issues).toBeDefined();
 	});
 
@@ -379,40 +356,40 @@ test.describe("Attendance Management", () => {
 				registration_id: registrationIds[2],
 				attendance_status: "excused",
 			},
-		];
+		] satisfies AttendanceUpdate[];
 
-		const updateResponse = await makeAuthenticatedRequest(
-			page,
-			`/api/workshops/${workshopId}/attendance`,
-			{
-				method: "PUT",
-				data: { attendance_updates: attendanceUpdates },
-			},
+		const updateData = await updateWorkshopAttendanceForTest(
+			adminData.session,
+			workshopId,
+			attendanceUpdates,
 		);
 
-		expect(updateResponse.ok()).toBeTruthy();
-		const updateData = await updateResponse.json();
-
 		expect(updateData.success).toBe(true);
+		if (!updateData.success) {
+			throw new Error(updateData.error || "Failed to update attendance");
+		}
 		expect(updateData.registrations.length).toBe(3);
 
 		// Verify all updates were applied
 		const registrations = updateData.registrations;
 		expect(
-			registrations.find((r: TestRegistration) => r.id === registrationIds[0])
-				?.attendance_status,
+			registrations.find(
+				(registration) => registration.id === registrationIds[0],
+			)?.attendance_status,
 		).toBe("attended");
 		expect(
-			registrations.find((r: TestRegistration) => r.id === registrationIds[1])
-				?.attendance_status,
+			registrations.find(
+				(registration) => registration.id === registrationIds[1],
+			)?.attendance_status,
 		).toBe("no_show");
 		expect(
-			registrations.find((r: TestRegistration) => r.id === registrationIds[2])
-				?.attendance_status,
+			registrations.find(
+				(registration) => registration.id === registrationIds[2],
+			)?.attendance_status,
 		).toBe("excused");
 
 		// Verify all have marked timestamps and user
-		registrations.forEach((registration: TestRegistration) => {
+		registrations.forEach((registration) => {
 			expect(registration.attendance_marked_at).toBeDefined();
 			expect(registration.attendance_marked_by).toBe(adminData.userId);
 		});

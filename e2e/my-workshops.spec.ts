@@ -1,4 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+import { toggleWorkshopInterestForTest } from "./attendee-test-helpers";
 import { createMember, getSupabaseServiceClient } from "./setupFunctions";
 import { loginAsUser } from "./supabaseLogin";
 
@@ -88,35 +89,6 @@ test.describe("My Workshops Page", () => {
 		}
 		publishedWorkshopId = publishedWorkshop.id;
 	});
-
-	async function makeAuthenticatedRequest(
-		page: Page,
-		url: string,
-		options: {
-			method?: string;
-			data?: unknown;
-			headers?: Record<string, string>;
-			body?: string;
-		} = {},
-	) {
-		const response = await page.request.fetch(url, {
-			...options,
-			headers: {
-				"Content-Type": "application/json",
-				...options.headers,
-			},
-		});
-
-		if (!response.ok()) {
-			const errorText = await response.text();
-			console.error(`API Error ${response.status()}: ${errorText}`);
-			throw new Error(
-				`HTTP ${response.status()}: ${response.statusText()} - ${errorText}`,
-			);
-		}
-
-		return await response.json();
-	}
 
 	test("should load my-workshops page with correct structure", async ({
 		page,
@@ -232,13 +204,11 @@ test.describe("My Workshops Page", () => {
 		await page.goto("/dashboard/my-workshops");
 
 		// First express interest via API
-		await makeAuthenticatedRequest(
-			page,
-			`/api/workshops/${plannedWorkshopId}/interest`,
-			{
-				method: "POST",
-			},
+		const response = await toggleWorkshopInterestForTest(
+			memberData.session,
+			plannedWorkshopId,
 		);
+		expect(response.success).toBe(true);
 
 		// Switch to planned tab
 		await page.click('button[data-value="planned"]');
