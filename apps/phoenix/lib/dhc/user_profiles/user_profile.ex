@@ -20,6 +20,6 @@ defmodule Dhc.UserProfiles.UserProfile do
     field :customer_id, :string
     field :waitlist_id, Ecto.UUID
 
-    timestamps(type: :utc_datetime)
+    timestamps(inserted_at: :created_at, type: :utc_datetime)
   end
 end
