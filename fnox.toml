@@ -2,7 +2,7 @@ default_provider = "1Password"
 
 [providers.1Password]
 type = "1password"
-vault = "Production-phoenix-api"
+vault = "xelibksfzlrthste2s2zkbgz3a"
 account = "my.1password.com"
 
 [profiles.production.secrets]
