@@ -168,15 +168,27 @@ run = "pnpm supabase:functions:serve"
 
 [tasks."seed-committee"]
 description = "Seed committee members from CSV"
-run = "node ./scripts/seedCommitteeMembers.js ./scripts/users.csv"
+dir = "apps/phoenix"
+usage = '''
+arg "[users]" help="CSV containing committee user data" default="../../scripts/users.csv"
+'''
+run = 'mix seed.committee_members "${usage_users?}"'
 
 [tasks."seed-waitlist"]
 description = "Seed waitlist entries"
-run = "node ./scripts/seedWaitlist.js"
+dir = "apps/phoenix"
+usage = '''
+arg "[count]" help="Number of waitlist entries to seed" default="10"
+'''
+run = 'mix seed.waitlist "${usage_count?}"'
 
 [tasks."seed-members"]
 description = "Seed member records"
-run = "node ./scripts/seedMembers.js"
+dir = "apps/phoenix"
+usage = '''
+arg "[count]" help="Number of members to seed" default="10"
+'''
+run = 'mix seed.members "${usage_count?}"'
 
 # ── Composed / CI tasks ───────────────────────────
 
