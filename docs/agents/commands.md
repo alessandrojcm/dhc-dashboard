@@ -183,14 +183,21 @@ The Stripe API version is pinned in app config (`:stripe_api_version`, default `
 ## Seeds
 
 ```bash
-mise run seed-committee    # Seed committee members from CSV
-mise run seed-waitlist     # Seed waitlist entries
-mise run seed-members      # Seed member records (JS script)
+# Phoenix Mix tasks replacing legacy scripts/seed*.js
+mise run seed-waitlist
+mise run seed-waitlist 50
+mise run seed-members
+mise run seed-members 25
+mise run seed-committee
+mise run seed-committee ./scripts/users.csv
 
-# Elixir equivalent: creates Supabase auth users, DB records, and Stripe customers
-cd apps/phoenix && mix dhc.seed_members
-cd apps/phoenix && mix dhc.seed_members 25
+# Or run directly from Phoenix app
+cd apps/phoenix && mix seed.waitlist 50
+cd apps/phoenix && mix seed.members 25
+cd apps/phoenix && mix seed.committee_members ../../scripts/users.csv
 ```
+
+`mise` loads `.env` automatically; the seed Mix tasks do not load dotenv themselves. Keep `.env` up to date with the same Phoenix DB connection convention used by the app (`DATABASE_URL`, preferred), plus `PUBLIC_SUPABASE_URL`/`SUPABASE_URL` and `SERVICE_ROLE_KEY`/`SUPABASE_SERVICE_ROLE_KEY`. `seed.members` and `seed.committee_members` create Supabase auth users through the Supabase Admin API, then insert app DB rows. `seed.members` only creates Stripe customers when `STRIPE_SECRET_KEY` is set.
 
 ## CI (full check)
 
