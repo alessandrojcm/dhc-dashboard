@@ -13,6 +13,7 @@ defmodule DhcWeb.Router do
     pipe_through :api
 
     get "/health", HealthController, :index
+    get "/waitlist/status", WaitlistController, :index
     post "/webhooks/stripe", StripeWebhooksController, :create
   end
 
