@@ -23,6 +23,19 @@ const result = await service.create(validatedData);
 | Server queries | Kysely + RLS | `executeWithRLS(db, {claims: session}, ...)` |
 | Server mutations | Service layer | Via service class methods |
 
+## Ecto + Transaction Pooler (PgBouncer)
+
+Production connects to Supabase via a transaction-mode connection pooler (PgBouncer). **This invalidates named prepared statements between transactions.** Ecto must use unnamed prepared statements:
+
+```elixir
+# In apps/phoenix/config/runtime.exs (prod block)
+config :dhc, Dhc.Repo,
+  url: database_url,
+  prepare: :unnamed   # REQUIRED for transaction poolers
+```
+
+**Symptoms if missing:** `invalid_sql_statement_name` (prepared statement "ecto_X" does not exist) or `protocol_violation` (bind message supplies N parameters, but prepared statement requires M). These errors cascade into Oban crashes, Stripe sync failures, and general API instability.
+
 ## Remote Functions (`.remote.ts`)
 
 Remote functions MUST delegate to the service layer:
