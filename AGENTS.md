@@ -84,6 +84,7 @@ dhc-dashboard/
 - **RLS**: No new policies. Existing ones removed when PostgREST is disabled.
 - **Queues**: pgmq → Oban. Big-bang per-queue cutover. Discord → Email → Announcements → Stripe → Bulk Invite.
 - **API design**: Spec-first with OpenAPI. Custom Mix task generates Phoenix controller stubs. TypeScript client generated from spec.
+- **PostgREST read migration**: Replace SvelteKit `supabase.from(...).select(...)` reads with domain-shaped Phoenix APIs, not table/view proxies. Track remaining call sites in `docs/agents/postgrest-read-migration.md`; first slice is Waitlist per ADR 0005.
 - **Stripe API**: Generated from Stripe OpenAPI spec via `oapi_generator`. Custom processor allows only needed endpoints. Regenerate with `mise run stripe-gen`. Hand-written `Dhc.Stripe.Client` adapter delegates to `Req`. API version pinned in `:stripe_api_version` config (default `"2025-10-29.clover"`) and sent as `Stripe-Version` header — must match `src/lib/server/stripe.ts`.
 - **Stripe webhooks**: Phoenix controller validates Stripe-Signature header (HMAC-SHA256 via `Dhc.Stripe.Webhook`) then enqueues `Dhc.StripeWebhooks.Worker`. Raw body required — `DhcWeb.CacheBodyReader` caches `conn.assigns[:raw_body]` before JSON parsing. Webhook signing secret via `STRIPE_WEBHOOK_SIGNING_SECRET` env var (supports list for rotation). Endpoint is unauthenticated (`POST /api/webhooks/stripe`).
 - **`.remote.ts` files**: The swap point. Rewrite from `executeWithRLS()` to `fetch(apiClient)` per domain.
