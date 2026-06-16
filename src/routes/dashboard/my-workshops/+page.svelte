@@ -129,7 +129,7 @@ const handleInterestToggle = (workshopId: string) => {
 					<CardContent>
 						<WorkshopList
 							{userId}
-							workshops={publishedWorkshopsQuery.data ?? []}
+							workshops={[...publishedWorkshopsQuery.data].reverse() ?? []}
 							onInterestToggle={handleInterestToggle}
 							isLoading={interestMutation.isPending}
 						/>
@@ -161,7 +161,7 @@ const handleInterestToggle = (workshopId: string) => {
 					<CardContent>
 						<WorkshopList
 							{userId}
-							workshops={workshopsQuery.data ?? []}
+							workshops={[...workshopsQuery.data].reverse() ?? []}
 							onInterestToggle={handleInterestToggle}
 							isLoading={interestMutation.isPending}
 						/>
