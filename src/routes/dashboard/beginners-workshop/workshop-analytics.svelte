@@ -1,12 +1,11 @@
 <script lang="ts">
-import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Database } from "$database";
 import * as Card from "$lib/components/ui/card/index.js";
 import * as Resizable from "$lib/components/ui/resizable/index.js";
 import { Skeleton } from "$lib/components/ui/skeleton/index.js";
 import { createQuery } from "@tanstack/svelte-query";
 import { browser } from "$app/environment";
 import { onMount } from "svelte";
+import { getWaitlistAnalytics } from "./admin.remote";
 
 let GenderBarChart:
 	| typeof import("$lib/components/gender-bar-chart.svelte").default
@@ -24,70 +23,22 @@ onMount(async () => {
 	}
 });
 
-const { supabase }: { supabase: SupabaseClient<Database> } = $props();
-const totalCountQuery = createQuery<number>(() => ({
-	queryKey: ["waitlist", "totalCount"],
-	queryFn: async ({ signal }) =>
-		supabase
-			.from("waitlist_management_view")
-			.select("id", { count: "exact", head: true })
-			.neq("status", "joined")
-			.abortSignal(signal)
-			.throwOnError()
-			.then((r) => r.count ?? 0),
-}));
-const averageAge = createQuery<number>(() => ({
-	queryKey: ["waitlist", "avgAge"],
-	queryFn: async ({ signal }) =>
-		supabase
-			.from("waitlist_management_view")
-			.select("avg_age:age.avg()")
-			.neq("status", "joined")
-			.abortSignal(signal)
-			.single()
-			.throwOnError()
-			.then((res) => res.data?.avg_age ?? 0),
-}));
-// Define the type for gender distribution data
 type GenderDistributionItem = { gender: string; value: number };
 
-const genderDistribution = createQuery(() => ({
-	queryKey: ["waitlist", "genderDistribution"],
-	queryFn: async ({ signal }) =>
-		supabase
-			.from("user_profiles")
-			.select("gender,count:gender.count()")
-			.is("is_active", false)
-			.not("waitlist_id", "is", null)
-			.is("supabase_user_id", null)
-			.abortSignal(signal)
-			.throwOnError()
-			.then((r) => r.data || []),
+const analyticsQuery = createQuery(() => ({
+	queryKey: ["waitlist", "analytics"],
+	queryFn: () => getWaitlistAnalytics(),
 }));
 
-// Transform the gender distribution data to match the expected format for GenderBarChart
 const genderDistributionData = $derived.by(() => {
-	if (!genderDistribution.data) return [];
-	return genderDistribution.data.map((row) => ({
+	if (!analyticsQuery.data) return [];
+	return analyticsQuery.data.genderDistribution.map((row) => ({
 		gender: row.gender,
-		value: row.count,
+		value: row.value,
 	})) as GenderDistributionItem[];
 });
-const ageDistributionQuery = createQuery(() => ({
-	queryKey: ["waitlist", "ageDistribution"],
-	queryFn: async ({ signal }) =>
-		supabase
-			.from("waitlist_management_view")
-			.select("age,value:age.count()")
-			.neq("status", "joined")
-			.order("age", { ascending: true })
-			.abortSignal(signal)
-			.throwOnError()
-			.then((r) => r.data),
-}));
 const ageDistribution = $derived.by(() => {
-	const result = ageDistributionQuery.data ?? [];
-	// Transform the data to match the expected format for AgeScatterChart
+	const result = analyticsQuery.data?.ageDistribution ?? [];
 	return result.map((row) => ({
 		age: row.age,
 		value: row.value,
@@ -103,11 +54,11 @@ const ageDistribution = $derived.by(() => {
 			<Card.Description class="text-black">Total waitlist</Card.Description>
 		</Card.Header>
 		<Card.Content>
-			{#if totalCountQuery.isLoading}
+			{#if analyticsQuery.isLoading}
 				<Skeleton class="h-[2.5rem] w-[5rem]" />
 			{:else}
 				<p class="text-black text-4xl">
-					{totalCountQuery.data ?? 0}
+					{analyticsQuery.data?.totalCount ?? 0}
 				</p>
 			{/if}
 		</Card.Content>
@@ -117,11 +68,11 @@ const ageDistribution = $derived.by(() => {
 			<Card.Description class="text-black">Average age</Card.Description>
 		</Card.Header>
 		<Card.Content>
-			{#if averageAge.isLoading}
+			{#if analyticsQuery.isLoading}
 				<Skeleton class="h-[2.5rem] w-[5rem]" />
 			{:else}
 				<p class="text-black text-4xl">
-					{(averageAge.data ?? 0).toLocaleString('en-UK', { maximumFractionDigits: 2 })}
+					{(analyticsQuery.data?.averageAge ?? 0).toLocaleString('en-UK', { maximumFractionDigits: 2 })}
 				</p>
 			{/if}
 		</Card.Content>

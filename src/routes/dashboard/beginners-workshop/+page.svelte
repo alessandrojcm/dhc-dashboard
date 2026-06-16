@@ -128,7 +128,7 @@ let viewLabel = $derived(
 		</div>
 
 		<Content value="dashboard">
-			<Analytics {supabase} />
+			<Analytics />
 		</Content>
 		<Content value="waitlist">
 			<WaitlistTable {supabase} />
