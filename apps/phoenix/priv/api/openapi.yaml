@@ -246,6 +246,39 @@ paths:
               schema:
                 $ref: "#/components/schemas/WaitlistStatusResponse"
 
+  /waitlist/analytics:
+    get:
+      operationId: waitlist.analytics
+      tags:
+        - Waitlist
+      summary: Read waitlist analytics
+      description: |
+        Returns dashboard analytics for current beginners workshop waitlist entries.
+
+        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
+        `admin`, `president`, `committee_coordinator`, `beginners_coordinator`, or `coach`.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Waitlist analytics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WaitlistAnalyticsResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a waitlist admin role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -330,6 +363,57 @@ components:
             isOpen:
               type: boolean
               description: Whether the public waitlist accepts registrations.
+    WaitlistAnalyticsResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - totalCount
+            - averageAge
+            - genderDistribution
+            - ageDistribution
+          properties:
+            totalCount:
+              type: integer
+              minimum: 0
+            averageAge:
+              type: number
+              format: double
+              minimum: 0
+            genderDistribution:
+              type: array
+              items:
+                $ref: "#/components/schemas/WaitlistGenderDistributionItem"
+            ageDistribution:
+              type: array
+              items:
+                $ref: "#/components/schemas/WaitlistAgeDistributionItem"
+    WaitlistGenderDistributionItem:
+      type: object
+      required:
+        - gender
+        - value
+      properties:
+        gender:
+          type: string
+        value:
+          type: integer
+          minimum: 0
+    WaitlistAgeDistributionItem:
+      type: object
+      required:
+        - age
+        - value
+      properties:
+        age:
+          type: integer
+          minimum: 0
+        value:
+          type: integer
+          minimum: 0
     Error:
       type: object
       properties:
