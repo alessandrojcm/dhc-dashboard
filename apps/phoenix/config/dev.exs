@@ -1,16 +1,27 @@
 import Config
 
-# Configure your database
-# Points to the local Supabase Postgres instance (exposed on port 54322 by default)
+# Configure your database. Prefer DATABASE_URL so dev, seeds, and production
+# use the same connection convention. Fall back to the local Supabase Postgres
+# defaults only when DATABASE_URL is absent.
+repo_config =
+  if database_url = System.get_env("DATABASE_URL") do
+    [url: database_url]
+  else
+    [
+      username: System.get_env("POSTGRES_USER", "postgres"),
+      password: System.get_env("POSTGRES_PASSWORD", "postgres"),
+      hostname: System.get_env("POSTGRES_HOST", "localhost"),
+      port: String.to_integer(System.get_env("POSTGRES_PORT", "54322")),
+      database: System.get_env("POSTGRES_DB", "postgres")
+    ]
+  end
+
 config :dhc, Dhc.Repo,
-  username: System.get_env("POSTGRES_USER", "postgres"),
-  password: System.get_env("POSTGRES_PASSWORD", "postgres"),
-  hostname: System.get_env("POSTGRES_HOST", "localhost"),
-  port: String.to_integer(System.get_env("POSTGRES_PORT", "54322")),
-  database: System.get_env("POSTGRES_DB", "postgres"),
   stacktrace: true,
   show_sensitive_data_on_connection_error: true,
   pool_size: 10
+
+config :dhc, Dhc.Repo, repo_config
 
 # For development, we disable any cache and enable
 # debugging and code reloading.
