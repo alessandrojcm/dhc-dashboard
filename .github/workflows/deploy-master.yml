@@ -1,4 +1,4 @@
-name: Deploy Function
+name: Deploy
 
 on:
   push:
@@ -6,8 +6,46 @@ on:
       - main
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      supabase: ${{ steps.filter.outputs.supabase }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Check for changes
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            supabase:
+              - 'supabase/**'
+              - '.github/workflows/deploy-master.yml'
+            frontend:
+              - 'src/**'
+              - 'packages/api-client/src/**'
+              - 'static/**'
+              - 'svelte.config.js'
+              - 'vite.config.ts'
+              - 'tailwind.config.js'
+              - 'tsconfig.json'
+              - 'package.json'
+              - 'pnpm-lock.yaml'
+              - '.github/workflows/deploy-master.yml'
+
   deploy-functions:
+    needs: changes
+    if: needs.changes.outputs.supabase == 'true'
     runs-on: ubuntu-latest
 
     env:
@@ -23,7 +61,10 @@ jobs:
           version: latest
 
       - run: supabase functions deploy --project-ref $PROJECT_ID
+
   run-migrations:
+    needs: changes
+    if: needs.changes.outputs.supabase == 'true'
     runs-on: ubuntu-latest
 
     env:
@@ -43,6 +84,8 @@ jobs:
       - run: supabase db push
 
   deploy:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     name: Deploy Worker
 
