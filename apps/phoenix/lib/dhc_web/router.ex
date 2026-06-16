@@ -33,5 +33,6 @@ defmodule DhcWeb.Router do
     pipe_through [:api, :waitlist_admin_api]
 
     get "/waitlist/analytics", WaitlistController, :analytics
+    get "/waitlist/entries", WaitlistController, :entries
   end
 end
