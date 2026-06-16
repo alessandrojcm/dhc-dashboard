@@ -1,2 +1,24 @@
 packages:
   - 'packages/*'
+
+onlyBuiltDependencies:
+  - "@parcel/watcher"
+  - "@prisma/engines"
+  - "@sentry/cli"
+  - "@snaplet/seed"
+  - "@tailwindcss/oxide"
+  - better-sqlite3
+  - core-js
+  - esbuild
+  - maplibre-gl
+  - protobufjs
+  - sharp
+  - supabase
+  - unix-dgram
+  - workerd
+
+ignoredBuiltDependencies:
+  - netlify-cli
+
+engineStrict: true
+strictPeerDependencies: false
