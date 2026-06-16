@@ -2,6 +2,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { WaitlistEntry } from "@dhc/api-client";
 import {
 	createMutation,
 	createQuery,
@@ -26,7 +27,7 @@ import { toast } from "svelte-sonner";
 import { goto } from "$app/navigation";
 import { resolve } from "$app/paths";
 import { page } from "$app/state";
-import type { Database, Tables } from "$database";
+import type { Database } from "$database";
 import { Badge } from "$lib/components/ui/badge";
 import { Button } from "$lib/components/ui/button";
 import * as Checkbox from "$lib/components/ui/checkbox/index.js";
@@ -38,18 +39,44 @@ import {
 } from "$lib/components/ui/data-table/index.js";
 import { Input } from "$lib/components/ui/input";
 import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
-import * as Pagination from "$lib/components/ui/pagination/index.js";
 import * as Select from "$lib/components/ui/select";
 import * as Table from "$lib/components/ui/table/index.js";
 import SortHeader from "$lib/components/ui/table/sort-header.svelte";
 import type { MutationPayload } from "$lib/types";
 import ActionButtons from "./actions-buttons.svelte";
-import { resendInvitations } from "./admin.remote";
+import { getWaitlistEntries, resendInvitations } from "./admin.remote";
 
-const columns =
-	"id,current_position,full_name,email,phone_number,status,age,initial_registration_date,last_contacted,medical_conditions,admin_notes,social_media_consent,guardian_first_name,guardian_last_name,guardian_phone_number,insurance_form_submitted,last_status_change,search_text";
+type WaitlistTableRow = {
+	id: string;
+	current_position: number;
+	full_name: string;
+	email: string;
+	phone_number: string;
+	status: WaitlistEntry["status"];
+	age: number;
+	initial_registration_date: string;
+	last_contacted?: string | null;
+	medical_conditions?: string | null;
+	admin_notes?: string | null;
+	social_media_consent: WaitlistEntry["socialMediaConsent"];
+	guardian_first_name?: string | null;
+	guardian_last_name?: string | null;
+	guardian_phone_number?: string | null;
+	insurance_form_submitted: boolean;
+	last_status_change: string;
+};
 
-let pageSizeOptions = [10, 25, 50, 100];
+const pageSizeOptions = [10, 25, 50, 100] as const;
+
+const waitlistEntrySortFields = [
+	"current_position",
+	"full_name",
+	"status",
+	"age",
+	"initial_registration_date",
+	"last_contacted",
+	"last_status_change",
+] as const;
 
 const { supabase }: { supabase: SupabaseClient<Database> } = $props();
 
@@ -66,15 +93,22 @@ function getBadgeVariant(status: string) {
 	}
 }
 
-const currentPage = $derived(Number(page.url.searchParams.get("page")) || 0);
-const pageSize = $derived(Number(page.url.searchParams.get("pageSize")) || 10);
+const pageSize = $derived.by(() => {
+	const requestedPageSize = Number(page.url.searchParams.get("pageSize")) || 10;
+	return pageSizeOptions.includes(requestedPageSize as 10 | 25 | 50 | 100)
+		? requestedPageSize
+		: 10;
+});
 const searchQuery = $derived(page.url.searchParams.get("q") || "");
-const rangeStart = $derived(currentPage * pageSize);
-const rangeEnd = $derived(rangeStart + pageSize - 1);
+const cursor = $derived(page.url.searchParams.get("cursor"));
 const sortingState: SortingState = $derived.by(() => {
-	const sortColumn = page.url.searchParams.get("sort");
+	const requestedSortColumn = page.url.searchParams.get("sort");
+	const sortColumn = waitlistEntrySortFields.includes(
+		requestedSortColumn as (typeof waitlistEntrySortFields)[number],
+	)
+		? requestedSortColumn!
+		: "current_position";
 	const sortDirection = page.url.searchParams.get("direction");
-	if (!sortColumn) return [];
 	return [
 		{
 			id: sortColumn,
@@ -86,42 +120,57 @@ const sortingState: SortingState = $derived.by(() => {
 async function getWaitlistQuery({
 	searchQuery,
 	sortingState,
-	rangeStart,
-	rangeEnd,
-	signal,
+	pageSize,
+	cursor,
 }: {
 	searchQuery: string;
 	sortingState: SortingState;
-	rangeStart: number;
-	rangeEnd: number;
-	signal: AbortSignal;
+	pageSize: number;
+	cursor: string | null;
 }) {
-	let query = supabase
-		.from("waitlist_management_view")
-		.select(columns, { count: "exact" });
-	if (searchQuery.length > 0) {
-		query = query.textSearch("search_text", `'${searchQuery}'`, {
-			type: "websearch",
-		});
-	}
-	if (sortingState.length > 0) {
-		query = query.order(sortingState[0].id, {
-			ascending: !sortingState[0].desc,
-		});
-	}
-	query = query.neq("status", "joined");
-	const { data, count, error } = await query
-		.range(rangeStart, rangeEnd)
-		.abortSignal(signal);
-	if (error) {
-		throw error;
-	}
-	return { data, count: count ?? 0 };
+	const sort = sortingState[0];
+	const result = await getWaitlistEntries({
+		limit: pageSize as 10 | 25 | 50 | 100,
+		cursor,
+		q: searchQuery,
+		sort: (sort?.id ??
+			"current_position") as (typeof waitlistEntrySortFields)[number],
+		direction: sort?.desc ? "desc" : "asc",
+	});
+
+	return {
+		data: result.entries.map(toTableRow),
+		count: result.totalCount,
+		nextCursor: result.nextCursor,
+		previousCursor: result.previousCursor,
+	};
+}
+
+function toTableRow(entry: WaitlistEntry): WaitlistTableRow {
+	return {
+		id: entry.id,
+		current_position: entry.position,
+		full_name: entry.fullName,
+		email: entry.email,
+		phone_number: entry.phoneNumber,
+		status: entry.status,
+		age: entry.age,
+		initial_registration_date: entry.initialRegistrationDate,
+		last_contacted: entry.lastContacted,
+		medical_conditions: entry.medicalConditions,
+		admin_notes: entry.adminNotes,
+		social_media_consent: entry.socialMediaConsent,
+		guardian_first_name: entry.guardianFirstName,
+		guardian_last_name: entry.guardianLastName,
+		guardian_phone_number: entry.guardianPhoneNumber,
+		insurance_form_submitted: entry.insuranceFormSubmitted,
+		last_status_change: entry.lastStatusChange,
+	};
 }
 
 const waitlistQueryKey = $derived([
 	"waitlist",
-	{ rangeStart, rangeEnd, sortingState, searchQuery },
+	{ cursor, pageSize, sortingState, searchQuery },
 ]);
 const waitlistQuery = createQuery<Awaited<ReturnType<typeof getWaitlistQuery>>>(
 	() => ({
@@ -129,12 +178,13 @@ const waitlistQuery = createQuery<Awaited<ReturnType<typeof getWaitlistQuery>>>(
 		placeholderData: keepPreviousData,
 		queryFn: ({ signal, queryKey }) => {
 			const params = queryKey[1] as {
-				rangeStart: number;
-				rangeEnd: number;
+				cursor: string | null;
+				pageSize: number;
 				sortingState: SortingState;
 				searchQuery: string;
 			};
-			return getWaitlistQuery({ ...params, signal });
+			signal.throwIfAborted();
+			return getWaitlistQuery(params);
 		},
 	}),
 );
@@ -222,14 +272,23 @@ const updateWaitlistEntry = createMutation<
 
 function onPaginationChange(newPagination: Partial<PaginationState>) {
 	const paginationState: PaginationState = {
-		pageIndex: currentPage,
+		pageIndex: 0,
 		pageSize,
 		...newPagination,
 	};
 	// eslint-disable-next-line svelte/prefer-svelte-reactivity
 	const newParams = new URLSearchParams(page.url.searchParams);
-	newParams.set("page", paginationState.pageIndex.toString());
 	newParams.set("pageSize", paginationState.pageSize.toString());
+	newParams.delete("cursor");
+	const url = `/dashboard/beginners-workshop?${newParams.toString()}`;
+	goto(resolve(url as any), { keepFocus: true, noScroll: true });
+}
+
+function onCursorChange(newCursor: string | null | undefined) {
+	if (!newCursor) return;
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity
+	const newParams = new URLSearchParams(page.url.searchParams);
+	newParams.set("cursor", newCursor);
 	const url = `/dashboard/beginners-workshop?${newParams.toString()}`;
 	goto(resolve(url as any), { keepFocus: true, noScroll: true });
 }
@@ -240,6 +299,7 @@ function onSortingChange(newSorting: SortingState) {
 	const newParams = new URLSearchParams(page.url.searchParams);
 	newParams.set("sort", sortingState.id);
 	newParams.set("direction", sortingState.desc ? "desc" : "asc");
+	newParams.delete("cursor");
 	const url = `/dashboard/beginners-workshop?${newParams.toString()}`;
 	goto(resolve(url as any), { keepFocus: true, noScroll: true });
 }
@@ -248,6 +308,7 @@ function onSearchChange(newSearch: string) {
 	// eslint-disable-next-line svelte/prefer-svelte-reactivity
 	const newParams = new URLSearchParams(page.url.searchParams);
 	newParams.set("q", newSearch);
+	newParams.delete("cursor");
 	const url = `/dashboard/beginners-workshop?${newParams.toString()}`;
 	goto(resolve(url as any), { keepFocus: true, noScroll: true });
 }
@@ -257,7 +318,7 @@ let expandedState = $state({});
 let selectedState = $state<RowSelectionState>({});
 let inviteCount = $derived(Object.values(selectedState).filter(Boolean).length);
 
-const tableOptions = $state<TableOptions<Tables<"waitlist_management_view">>>({
+const tableOptions = $state<TableOptions<WaitlistTableRow>>({
 	autoResetPageIndex: false,
 	manualPagination: true,
 	manualSorting: true,
@@ -268,7 +329,7 @@ const tableOptions = $state<TableOptions<Tables<"waitlist_management_view">>>({
 		},
 		get pagination() {
 			return {
-				pageIndex: currentPage,
+				pageIndex: 0,
 				pageSize,
 			} as PaginationState;
 		},
@@ -468,7 +529,7 @@ const tableOptions = $state<TableOptions<Tables<"waitlist_management_view">>>({
 		if (typeof updater === "function") {
 			onPaginationChange(
 				updater({
-					pageIndex: currentPage,
+					pageIndex: 0,
 					pageSize,
 				}),
 			);
@@ -537,7 +598,10 @@ const table = createSvelteTable(tableOptions);
 				<Table.Row>
 					{#each headerGroup.headers as header (header.id)}
 						<Table.Head class="text-black prose prose-p text-xs md:text-sm font-medium p-2">
-							<FlexRender content={header.column.columnDef.header} context={header.getContext()} />
+							<FlexRender
+								content={header.column.columnDef.header as any}
+								context={header.getContext() as any}
+							/>
 						</Table.Head>
 					{/each}
 				</Table.Row>
@@ -550,7 +614,10 @@ const table = createSvelteTable(tableOptions);
 						<Table.Cell
 							class="whitespace-normal md:whitespace-nowrap py-2 md:py-4 px-2 md:px-3 text-xs md:text-sm prose prose-p"
 						>
-							<FlexRender content={cell.column.columnDef.cell} context={cell.getContext()} />
+							<FlexRender
+								content={cell.column.columnDef.cell as any}
+								context={cell.getContext() as any}
+							/>
 						</Table.Cell>
 					{/each}
 				</Table.Row>
@@ -599,8 +666,8 @@ const table = createSvelteTable(tableOptions);
 						<Table.Cell>
 							{#if !header.isPlaceholder}
 								<FlexRender
-									content={header.column.columnDef.footer}
-									context={header.getContext()}
+									content={header.column.columnDef.footer as any}
+									context={header.getContext() as any}
 								/>
 							{/if}
 						</Table.Cell>
@@ -765,43 +832,23 @@ const table = createSvelteTable(tableOptions);
 			</Select.Content>
 		</Select.Root>
 	</div>
-	<div class="w-full md:w-auto flex justify-center md:justify-end">
-		<Pagination.Root
-			count={waitlistQuery?.data?.count ?? 0}
-			perPage={pageSize}
-			page={currentPage + 1}
-			onPageChange={(page) => table.setPageIndex(page - 1)}
-			class="m-0"
+	<div class="w-full md:w-auto flex items-center justify-center md:justify-end gap-2">
+		<Button
+			variant="outline"
+			disabled={!waitlistQuery?.data?.previousCursor || waitlistQuery.isFetching}
+			onclick={() => onCursorChange(waitlistQuery?.data?.previousCursor)}
 		>
-			{#snippet children({ pages, currentPage })}
-				<Pagination.Content>
-					<Pagination.Item>
-						<Pagination.PrevButton />
-					</Pagination.Item>
-					{#each pages as page (page.key)}
-						{#if page.type === 'ellipsis'}
-							<Pagination.Item class="hidden sm:block">
-								<Pagination.Ellipsis />
-							</Pagination.Item>
-						{:else}
-							<Pagination.Item
-								class={page.value !== currentPage &&
-								page.value !== currentPage - 1 &&
-								page.value !== currentPage + 1
-									? 'hidden sm:block'
-									: ''}
-							>
-								<Pagination.Link {page} isActive={currentPage === page.value}>
-									{page.value}
-								</Pagination.Link>
-							</Pagination.Item>
-						{/if}
-					{/each}
-					<Pagination.Item>
-						<Pagination.NextButton />
-					</Pagination.Item>
-				</Pagination.Content>
-			{/snippet}
-		</Pagination.Root>
+			Previous
+		</Button>
+		<p class="text-sm text-muted-foreground">
+			{waitlistQuery?.data?.count ?? 0} total
+		</p>
+		<Button
+			variant="outline"
+			disabled={!waitlistQuery?.data?.nextCursor || waitlistQuery.isFetching}
+			onclick={() => onCursorChange(waitlistQuery?.data?.nextCursor)}
+		>
+			Next
+		</Button>
 	</div>
 </div>
