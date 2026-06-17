@@ -105,7 +105,7 @@
 		"@supabase/supabase-js": "2.81.1",
 		"@tanstack/svelte-query": "^6.0.6",
 		"@tanstack/svelte-query-devtools": "^6.0.0",
-		"@tanstack/svelte-table": "9.0.0-alpha.10",
+		"@tanstack/svelte-table": "^8.21.3",
 		"@tanstack/table-core": "^8.21.3",
 		"ai": "5.0.92",
 		"country-codes-list": "^2.0.0",
@@ -121,26 +121,5 @@
 		"posthog-js": "^1.357.0",
 		"svelte-radix": "^3.0.0"
 	},
-	"packageManager": "pnpm@10.18.3",
-	"pnpm": {
-		"onlyBuiltDependencies": [
-			"@parcel/watcher",
-			"@prisma/engines",
-			"@sentry/cli",
-			"@snaplet/seed",
-			"@tailwindcss/oxide",
-			"better-sqlite3",
-			"core-js",
-			"esbuild",
-			"maplibre-gl",
-			"protobufjs",
-			"sharp",
-			"supabase",
-			"unix-dgram",
-			"workerd"
-		],
-		"ignoredBuiltDependencies": [
-			"netlify-cli"
-		]
-	}
+	"packageManager": "pnpm@10.18.3"
 }
