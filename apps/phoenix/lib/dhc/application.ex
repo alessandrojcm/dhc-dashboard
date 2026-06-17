@@ -10,6 +10,13 @@ defmodule Dhc.Application do
     # Add Sentry logger handler (only takes effect if SENTRY_DSN is configured)
     Logger.add_handlers(:dhc)
 
+    # OpenTelemetry trace propagation and instrumentation
+    # Sentry.OpenTelemetry.SpanProcessor turns OTel spans into Sentry transactions/spans.
+    OpentelemetryLoggerMetadata.setup()
+    OpentelemetryBandit.setup()
+    OpentelemetryPhoenix.setup(adapter: :bandit)
+    OpentelemetryEcto.setup([:dhc, :repo], db_statement: :enabled)
+
     children = [
       DhcWeb.Telemetry,
       Dhc.Repo,
