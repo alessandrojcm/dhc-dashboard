@@ -1,10 +1,10 @@
 <script lang="ts">
-import type { SupabaseClient } from "@supabase/supabase-js";
 import {
 	type WaitlistEntriesSortField,
 	type WaitlistEntry,
 	waitlistEntries,
 } from "@dhc/api-client";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import {
 	createMutation,
 	createQuery,
@@ -12,10 +12,13 @@ import {
 	useQueryClient,
 } from "@tanstack/svelte-query";
 import {
+	type CellContext,
+	type ColumnDefTemplate,
 	getCoreRowModel,
 	getExpandedRowModel,
 	getPaginationRowModel,
 	getSortedRowModel,
+	type HeaderContext,
 	type PaginationState,
 	type RowSelectionState,
 	type SortingState,
@@ -305,6 +308,14 @@ const updateWaitlistEntry = createMutation<
 	},
 }));
 
+type BeginnersWorkshopUrl = `/dashboard/beginners-workshop?${string}`;
+
+function navigateToBeginnersWorkshop(searchParams: SvelteURLSearchParams) {
+	const url =
+		`/dashboard/beginners-workshop?${searchParams.toString()}` as BeginnersWorkshopUrl;
+	goto(resolve(url), { keepFocus: true, noScroll: true });
+}
+
 function onPaginationChange(newPagination: Partial<PaginationState>) {
 	const paginationState: PaginationState = {
 		pageIndex: 0,
@@ -314,16 +325,14 @@ function onPaginationChange(newPagination: Partial<PaginationState>) {
 	const newParams = new SvelteURLSearchParams(page.url.searchParams);
 	newParams.set("pageSize", paginationState.pageSize.toString());
 	newParams.delete("cursor");
-	const url = `/dashboard/beginners-workshop?${newParams.toString()}`;
-	goto(resolve(url as any), { keepFocus: true, noScroll: true });
+	navigateToBeginnersWorkshop(newParams);
 }
 
 function onCursorChange(newCursor: string | null | undefined) {
 	if (!newCursor) return;
 	const newParams = new SvelteURLSearchParams(page.url.searchParams);
 	newParams.set("cursor", newCursor);
-	const url = `/dashboard/beginners-workshop?${newParams.toString()}`;
-	goto(resolve(url as any), { keepFocus: true, noScroll: true });
+	navigateToBeginnersWorkshop(newParams);
 }
 
 function onSortingChange(newSorting: SortingState) {
@@ -332,16 +341,14 @@ function onSortingChange(newSorting: SortingState) {
 	newParams.set("sort", sortingState.id);
 	newParams.set("direction", sortingState.desc ? "desc" : "asc");
 	newParams.delete("cursor");
-	const url = `/dashboard/beginners-workshop?${newParams.toString()}`;
-	goto(resolve(url as any), { keepFocus: true, noScroll: true });
+	navigateToBeginnersWorkshop(newParams);
 }
 
 function onSearchChange(newSearch: string) {
 	const newParams = new SvelteURLSearchParams(page.url.searchParams);
 	newParams.set("q", newSearch);
 	newParams.delete("cursor");
-	const url = `/dashboard/beginners-workshop?${newParams.toString()}`;
-	goto(resolve(url as any), { keepFocus: true, noScroll: true });
+	navigateToBeginnersWorkshop(newParams);
 }
 
 // State for expanded rows
@@ -637,8 +644,8 @@ const table = createSvelteTable(tableOptions);
                             class="text-black prose prose-p text-xs md:text-sm font-medium p-2"
                         >
                             <FlexRender
-                                content={header.column.columnDef.header as any}
-                                context={header.getContext() as any}
+                                content={header.column.columnDef.header}
+                                context={header.getContext()}
                             />
                         </Table.Head>
                     {/each}
@@ -653,8 +660,8 @@ const table = createSvelteTable(tableOptions);
                             class="whitespace-normal md:whitespace-nowrap py-2 md:py-4 px-2 md:px-3 text-xs md:text-sm prose prose-p"
                         >
                             <FlexRender
-                                content={cell.column.columnDef.cell as any}
-                                context={cell.getContext() as any}
+                                content={cell.column.columnDef.cell}
+                                context={cell.getContext()}
                             />
                         </Table.Cell>
                     {/each}
@@ -728,9 +735,8 @@ const table = createSvelteTable(tableOptions);
                         <Table.Cell>
                             {#if !header.isPlaceholder}
                                 <FlexRender
-                                    content={header.column.columnDef
-                                        .footer as any}
-                                    context={header.getContext() as any}
+                                    content={header.column.columnDef.footer}
+                                    context={header.getContext()}
                                 />
                             {/if}
                         </Table.Cell>

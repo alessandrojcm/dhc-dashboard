@@ -41,6 +41,7 @@ config :dhc, :supabase_url, "https://supabase.example.com"
 config :dhc, :supabase_service_role_key, "test-service-role-key"
 config :dhc, :app_url, "http://localhost:5173"
 config :dhc, :environment, :test
+config :dhc, :cors_allowed_origins, ["http://localhost:5173"]
 
 # Print only warnings and errors during test
 config :logger, level: :warning
