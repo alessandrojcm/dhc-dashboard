@@ -45,7 +45,7 @@ const workshopsQuery = createQuery(() => ({
 			)
 			.abortSignal(signal)
 			.eq("status", "planned")
-			.order("start_date", { ascending: true });
+			.order("start_date", { ascending: false });
 
 		if (error) throw error;
 		return workshops as ClubActivityWithInterest[];
@@ -65,7 +65,7 @@ const publishedWorkshopsQuery = createQuery(() => ({
 			)
 			.abortSignal(signal)
 			.eq("status", "published")
-			.order("start_date", { ascending: true });
+			.order("start_date", { ascending: false });
 
 		if (error) throw error;
 		return workshops as ClubActivityWithInterest[];
@@ -129,7 +129,7 @@ const handleInterestToggle = (workshopId: string) => {
 					<CardContent>
 						<WorkshopList
 							{userId}
-							workshops={[...publishedWorkshopsQuery.data].reverse() ?? []}
+							workshops={publishedWorkshopsQuery.data ?? []}
 							onInterestToggle={handleInterestToggle}
 							isLoading={interestMutation.isPending}
 						/>
@@ -161,7 +161,7 @@ const handleInterestToggle = (workshopId: string) => {
 					<CardContent>
 						<WorkshopList
 							{userId}
-							workshops={[...workshopsQuery.data].reverse() ?? []}
+							workshops={workshopsQuery.data ?? []}
 							onInterestToggle={handleInterestToggle}
 							isLoading={interestMutation.isPending}
 						/>
