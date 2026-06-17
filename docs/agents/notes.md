@@ -15,7 +15,8 @@
 
 ## Phoenix (in progress)
 
-- **Dev database** defaults to Supabase local Postgres (Docker on `localhost:54322`, user `postgres`, password `postgres`, database `postgres`). Override via `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_DB` env vars.
+- **Dev database** prefers `DATABASE_URL`; if absent it falls back to local Supabase Postgres (`localhost:54322`, user `postgres`, password `postgres`, database `postgres`). Use `POSTGRES_*` env vars only when `DATABASE_URL` is not set.
+- **Phoenix CORS dev origins** must include both `localhost` and `127.0.0.1` forms (e.g. `https://127.0.0.1:5173`) because the Vite dev server may bind to `127.0.0.1` and browsers treat that as a separate origin from `localhost`.
 - **Sentry** is configured in `config/runtime.exs` under the `config_env() == :prod` block. It reads `SENTRY_DSN` env var automatically. If unset, no events are sent.
 - **Sentry integrations**: `Sentry.PlugContext` in the endpoint (request context on errors), Oban integration (failed job capture + cron monitoring), `Sentry.LoggerHandler` (forwards `Logger.error/1` and crashes to Sentry).
 - **All 11 Ecto baseline migrations** are marked "up" on the shared Supabase Postgres. The tables already existed from Supabase migrations; Ecto migration versions were inserted into `schema_migrations` to mark them as run.
