@@ -22,6 +22,16 @@ end
 
 config :dhc, DhcWeb.Endpoint, http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
+cors_allowed_origins =
+  case System.get_env("CORS_ALLOWED_ORIGINS") do
+    nil -> []
+    origins -> String.split(origins, ",", trim: true)
+  end
+
+if cors_allowed_origins != [] do
+  config :dhc, :cors_allowed_origins, cors_allowed_origins
+end
+
 if config_env() == :prod do
   database_url =
     System.get_env("DATABASE_URL") ||
@@ -81,6 +91,10 @@ if config_env() == :prod do
   config :dhc, :supabase_service_role_key, System.get_env("SUPABASE_SERVICE_ROLE_KEY")
   config :dhc, :app_url, System.get_env("APP_URL", "https://dublinhemaclub.com")
   config :dhc, :environment, :prod
+
+  if cors_allowed_origins == [] do
+    config :dhc, :cors_allowed_origins, [System.get_env("APP_URL", "https://dublinhemaclub.com")]
+  end
 
   # Sentry error tracking (DSN read automatically from SENTRY_DSN env var)
   config :sentry,

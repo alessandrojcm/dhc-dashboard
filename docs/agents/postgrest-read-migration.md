@@ -28,7 +28,7 @@ Purpose: track SvelteKit Supabase PostgREST reads (`supabase.from(...).select(..
 - `waitlist_guardians` ALL policy allows broad committee-style roles plus `coach`; or the profile owner.
 - `settings` SELECT: any authenticated user. Current public waitlist page reads `settings.waitlist_open` server-side with the service role, so public availability is an explicit existing exception to authenticated-only PostgREST access.
 
-- `src/routes/dashboard/beginners-workshop/waitlist-table.svelte`
+- `src/routes/dashboard/beginners-workshop/waitlist-table.svelte` (migrated)
   - Resource: `waitlist_management_view`
   - Shape: paginated table with exact count
   - Fields: `id,current_position,full_name,email,phone_number,status,age,initial_registration_date,last_contacted,medical_conditions,admin_notes,social_media_consent,guardian_first_name,guardian_last_name,guardian_phone_number,insurance_form_submitted,last_status_change,search_text`
@@ -36,8 +36,8 @@ Purpose: track SvelteKit Supabase PostgREST reads (`supabase.from(...).select(..
   - Status vocabulary: `waiting`, `invited`, `paid`, `deferred`, `cancelled`, `completed`, `no_reply`, `joined`.
   - UI note: component currently has a stale `declined` badge case; canonical status is the database enum above.
   - Sorting: caller-selected column/direction
-  - Pagination: range start/end
-  - Note: same component also updates `waitlist.admin_notes` and invokes invitation functions; those are writes/actions, not read migration targets for this slice.
+  - Pagination: cursor-based previous/next via `cursor` URL param; no random page jumps.
+  - Note: same component still updates `waitlist.admin_notes` and invokes invitation functions; those are writes/actions, not read migration targets for this slice.
 
 - `src/routes/dashboard/beginners-workshop/workshop-analytics.svelte`
   - Resource: `waitlist_management_view`
@@ -126,3 +126,5 @@ Purpose: track SvelteKit Supabase PostgREST reads (`supabase.from(...).select(..
 ## Migration note
 
 When designing Phoenix APIs, prefer domain endpoints over raw table/view/config endpoints. For example, expose waitlist availability and waitlist entries rather than `settings` or `waitlist_management_view` directly.
+
+For Phoenix reads that are safe to expose to authenticated browsers, prefer direct browser → Phoenix calls through `@dhc/api-client`. The root SvelteKit layout configures the generated HeyAPI client with `configureClient({ baseUrl, getAuthToken })`, loading the current Supabase JWT on every request. Keep `.remote.ts` for SvelteKit-only orchestration, legacy service-layer calls, or commands that still need a SvelteKit server boundary. Cross-origin browser calls require Phoenix CORS origins configured via `CORS_ALLOWED_ORIGINS`; local dev defaults include `http://localhost:5173`.
