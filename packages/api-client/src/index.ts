@@ -9,6 +9,7 @@ export {
 	invitationsCreate,
 	invitationsResend,
 	stripeWebhooksCreate,
+	waitlistStatus,
 	type Options,
 } from "./client/sdk.gen";
 export type {
@@ -36,6 +37,10 @@ export type {
 	StripeWebhooksCreateErrors,
 	StripeWebhooksCreateResponse,
 	StripeWebhooksCreateResponses,
+	WaitlistStatusData,
+	WaitlistStatusResponse,
+	WaitlistStatusResponse2,
+	WaitlistStatusResponses,
 } from "./client/types.gen";
 
 // Valibot schemas (runtime validation)
@@ -52,6 +57,8 @@ export {
 	vInvitationsResendResponse,
 	vStripeWebhooksCreateBody,
 	vStripeWebhooksCreateResponse,
+	vWaitlistStatusResponse,
+	vWaitlistStatusResponse2,
 } from "./client/valibot.gen";
 
 // TanStack Svelte Query helpers
@@ -64,6 +71,8 @@ export {
 	invitationsResendMutationKey,
 	stripeWebhooksCreateMutation,
 	stripeWebhooksCreateMutationKey,
+	waitlistStatusOptions,
+	waitlistStatusQueryKey,
 	type QueryKey,
 } from "./client/@tanstack/svelte-query.gen";
 
