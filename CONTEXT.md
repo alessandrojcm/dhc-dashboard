@@ -16,6 +16,7 @@
 | **Inventory** | Club equipment (swords, masks, etc.) tracked in containers/categories with movement history. |
 | **Invitation** | A pending or processed invite for a prospective member. Can be sent with or without a Stripe subscription. |
 | **Waitlist** | Prospective members awaiting invitation. |
+| **Waitlist Status** | The stage of a prospective member on the waitlist: waiting, invited, paid, deferred, cancelled, completed, no_reply, or joined. |
 | **Settings** | System-wide key/value configuration (e.g. Stripe price ID cache, membership fee lookup names). |
 | **Role** | An authorization level assigned to a user. Drawn from `role_type` enum (admin, president, member, committee roles). |
 
