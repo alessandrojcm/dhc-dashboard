@@ -1,18 +1,17 @@
 <script lang="ts">
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import WaitlistTable from "./waitlist-table.svelte";
-import Analytics from "./workshop-analytics.svelte";
-import { Root, List, Trigger, Content } from "$lib/components/ui/tabs/index.js";
+import { createMutation } from "@tanstack/svelte-query";
 import { Lock, LockOpen } from "lucide-svelte";
+import { toast } from "svelte-sonner";
+import { goto, invalidate } from "$app/navigation";
+import { resolve } from "$app/paths";
+import { page } from "$app/state";
 import * as AlertDialog from "$lib/components/ui/alert-dialog/index.js";
 import Button from "$lib/components/ui/button/button.svelte";
 import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
-import { createMutation } from "@tanstack/svelte-query";
-import { goto, invalidate } from "$app/navigation";
-import { resolve } from "$app/paths";
-import { toast } from "svelte-sonner";
-import { page } from "$app/state";
 import * as Select from "$lib/components/ui/select";
+import { Content, List, Root, Trigger } from "$lib/components/ui/tabs/index.js";
+import WaitlistTable from "./waitlist-table.svelte";
+import Analytics from "./workshop-analytics.svelte";
 
 const { data } = $props();
 const supabase = data.supabase;
@@ -46,12 +45,15 @@ const toggleWaitlistMutation = createMutation(() => ({
 	},
 }));
 
+type BeginnersWorkshopUrl = `/dashboard/beginners-workshop?${string}`;
+
 function onTabChange(value: string) {
 	// eslint-disable-next-line svelte/prefer-svelte-reactivity
 	const newParams = new URLSearchParams(page.url.searchParams);
 	newParams.set("tab", value);
-	const url = `/dashboard/beginners-workshop?${newParams.toString()}`;
-	goto(resolve(url as any));
+	const url =
+		`/dashboard/beginners-workshop?${newParams.toString()}` as BeginnersWorkshopUrl;
+	goto(resolve(url));
 }
 let views = [
 	{

@@ -11,6 +11,8 @@ config :dhc,
   ecto_repos: [Dhc.Repo],
   generators: [timestamp_type: :utc_datetime]
 
+config :dhc, :cors_allowed_origins, []
+
 # Configure Oban for background job processing
 config :dhc, Oban,
   repo: Dhc.Repo,

@@ -105,7 +105,7 @@
 		"@supabase/supabase-js": "2.81.1",
 		"@tanstack/svelte-query": "^6.0.6",
 		"@tanstack/svelte-query-devtools": "^6.0.0",
-		"@tanstack/svelte-table": "9.0.0-alpha.10",
+		"@tanstack/svelte-table": "^8.21.3",
 		"@tanstack/table-core": "^8.21.3",
 		"ai": "5.0.92",
 		"country-codes-list": "^2.0.0",
