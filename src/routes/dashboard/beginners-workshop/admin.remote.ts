@@ -15,7 +15,9 @@ export const getWaitlistAnalytics = query(async () => {
 	});
 
 	if (response.error) {
-		throw new Error("Failed to load waitlist analytics. Please try again later.");
+		throw new Error(
+			"Failed to load waitlist analytics. Please try again later.",
+		);
 	}
 
 	return response.data.data;

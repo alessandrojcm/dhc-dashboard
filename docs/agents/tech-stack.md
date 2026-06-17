@@ -6,6 +6,7 @@
 - **Backend**: Supabase (Postgres + Auth + Edge Functions)
 - **ORM**: Kysely (mutations), Supabase client (queries)
 - **State**: TanStack Query (`createQuery(() => ({}))` thunk pattern)
+- **Table**: `@tanstack/svelte-table` and `@tanstack/table-core` must stay on the same major version (currently `^8.21.x`). Mismatched versions (e.g. v9 alpha svelte-table with v8 table-core) cause subtle type errors in `FlexRender` and column definitions.
 - **Payments**: Stripe
 - **Validation**: Valibot
 - **Forms**: Superforms
