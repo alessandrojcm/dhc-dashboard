@@ -21,6 +21,7 @@ const queryClient = new QueryClient();
 if (browser) {
 	configureClient({
 		baseUrl: env.PUBLIC_API_BASE_URL || "/api",
+		retry: 0,
 		getAuthToken: async () => {
 			const { data } = await supabase.auth.getSession();
 			return data.session?.access_token;

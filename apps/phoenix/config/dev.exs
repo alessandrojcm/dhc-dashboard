@@ -16,6 +16,24 @@ repo_config =
     ]
   end
 
+cors_allowed_origins =
+  case System.get_env("CORS_ALLOWED_ORIGINS") do
+    nil ->
+      [
+        "http://localhost:5173",
+        "http://localhost:4173",
+        "http://localhost:3000",
+        "https://localhost:5173",
+        "http://127.0.0.1:5173",
+        "https://127.0.0.1:5173",
+        "http://127.0.0.1:4173",
+        "https://127.0.0.1:4173"
+      ]
+
+    origins ->
+      String.split(origins, ",", trim: true)
+  end
+
 config :dhc, Dhc.Repo,
   stacktrace: true,
   show_sensitive_data_on_connection_error: true,
@@ -100,6 +118,7 @@ config :dhc,
          System.get_env("SITE_URL") || "http://localhost:5173"
 
 config :dhc, :environment, :development
+config :dhc, :cors_allowed_origins, cors_allowed_origins
 
 # Initialize plugs at runtime for faster development compilation
 config :phoenix, :plug_init_mode, :runtime

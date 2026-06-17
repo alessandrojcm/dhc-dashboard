@@ -13,18 +13,21 @@
 //   import { healthIndex } from '@dhc/api-client';
 //   const { data } = await healthIndex();
 
-import { client } from './client/client.gen';
+import { client } from "./client/client.gen";
+import type { Config } from "./client/client/types.gen";
 
 export type SupabaseJwtGetter = () =>
-  | Promise<string | undefined>
-  | string
-  | undefined;
+	| Promise<string | undefined>
+	| string
+	| undefined;
 
 export interface ClientConfig {
-  /** Base URL for the Phoenix API (e.g. "http://localhost:4000/api") */
-  baseUrl: string;
-  /** Optional getter that returns a Supabase JWT. Called on every request. */
-  getAuthToken?: SupabaseJwtGetter;
+	/** Base URL for the Phoenix API (e.g. "http://localhost:4000/api") */
+	baseUrl: string;
+	/** Optional getter that returns a Supabase JWT. Called on every request. */
+	getAuthToken?: SupabaseJwtGetter;
+	/** Optional request retry configuration passed through to the generated client. */
+	retry?: Config["retry"];
 }
 
 /**
@@ -32,15 +35,16 @@ export interface ClientConfig {
  * Call this once at app startup before making any API calls.
  */
 export function configureClient(config: ClientConfig): void {
-  client.setConfig({
-    baseUrl: config.baseUrl,
-    auth: config.getAuthToken
-      ? async () => {
-          const token = await config.getAuthToken?.();
-          return token ?? undefined;
-        }
-      : undefined,
-  });
+	client.setConfig({
+		baseUrl: config.baseUrl,
+		retry: config.retry,
+		auth: config.getAuthToken
+			? async () => {
+					const token = await config.getAuthToken?.();
+					return token ?? undefined;
+				}
+			: undefined,
+	});
 }
 
 /**
@@ -48,5 +52,5 @@ export function configureClient(config: ClientConfig): void {
  * Useful for interceptors or advanced use cases.
  */
 export function getClient() {
-  return client;
+	return client;
 }
