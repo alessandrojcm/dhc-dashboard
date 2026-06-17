@@ -28,7 +28,7 @@ Purpose: track SvelteKit Supabase PostgREST reads (`supabase.from(...).select(..
 - `waitlist_guardians` ALL policy allows broad committee-style roles plus `coach`; or the profile owner.
 - `settings` SELECT: any authenticated user. Current public waitlist page reads `settings.waitlist_open` server-side with the service role, so public availability is an explicit existing exception to authenticated-only PostgREST access.
 
-- `src/routes/dashboard/beginners-workshop/waitlist-table.svelte` (migrated)
+- `src/routes/dashboard/beginners-workshop/waitlist-table.svelte` ✅ migrated
   - Resource: `waitlist_management_view`
   - Shape: paginated table with exact count
   - Fields: `id,current_position,full_name,email,phone_number,status,age,initial_registration_date,last_contacted,medical_conditions,admin_notes,social_media_consent,guardian_first_name,guardian_last_name,guardian_phone_number,insurance_form_submitted,last_status_change,search_text`
@@ -39,7 +39,7 @@ Purpose: track SvelteKit Supabase PostgREST reads (`supabase.from(...).select(..
   - Pagination: cursor-based previous/next via `cursor` URL param; no random page jumps.
   - Note: same component still updates `waitlist.admin_notes` and invokes invitation functions; those are writes/actions, not read migration targets for this slice.
 
-- `src/routes/dashboard/beginners-workshop/workshop-analytics.svelte`
+- `src/routes/dashboard/beginners-workshop/workshop-analytics.svelte` ✅ migrated
   - Resource: `waitlist_management_view`
   - Reads:
     - total waitlist count: `id`, exact count, `status != joined`, head-only
@@ -49,7 +49,7 @@ Purpose: track SvelteKit Supabase PostgREST reads (`supabase.from(...).select(..
   - Reads:
     - gender distribution: `gender,count:gender.count()` where `is_active = false`, `waitlist_id IS NOT NULL`, `supabase_user_id IS NULL`
 
-- `src/routes/(public)/waitlist/+page.server.ts`
+- `src/routes/(public)/waitlist/+page.server.ts` ✅ migrated
   - Resource: `settings`
   - Read: `value` where `key = waitlist_open`
   - Domain meaning: whether the public waitlist accepts new entries.
