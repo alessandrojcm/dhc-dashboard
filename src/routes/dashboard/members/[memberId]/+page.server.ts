@@ -62,6 +62,7 @@ export const load: PageServerLoad = async (event) => {
 			profileData: {
 				firstName: memberProfile.first_name ?? "",
 				lastName: memberProfile.last_name ?? "",
+				isActive: memberProfile.is_active ?? false,
 				email,
 				phoneNumber: memberProfile.phone_number ?? "",
 				dateOfBirth: memberProfile.date_of_birth

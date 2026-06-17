@@ -45,3 +45,6 @@ packages/api-client/src/client/
 
 # mise local overrides
 .mise.local.toml
+
+*.swp
+*.swo

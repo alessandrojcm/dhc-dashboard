@@ -32,6 +32,7 @@ const { data } = $props();
 initForm(updateProfile, () => ({
 	firstName: data.profileData.firstName ?? "",
 	lastName: data.profileData.lastName ?? "",
+	isActive: data.profileData.isActive ?? false,
 	email: data.profileData.email ?? "",
 	phoneNumber: data.profileData.phoneNumber ?? "",
 	dateOfBirth: data.profileData.dateOfBirth ?? "",
@@ -239,7 +240,9 @@ const resumeMutation = createMutation(() => ({
                                         "MMM D, YYYY",
                                     )}
                                     </Badge>
-                                {:else}
+                                {:else if data.profileData.is_active }
+									<Badge variant="descructive">Inactive</Badge>
+								{:else}
                                     <Badge variant="default">Active</Badge>
                                 {/if}
                             </div>
