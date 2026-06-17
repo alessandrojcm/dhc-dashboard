@@ -11,6 +11,8 @@ config :dhc,
   ecto_repos: [Dhc.Repo],
   generators: [timestamp_type: :utc_datetime]
 
+config :dhc, :cors_allowed_origins, []
+
 # Configure Oban for background job processing
 config :dhc, Oban,
   repo: Dhc.Repo,
@@ -42,8 +44,26 @@ config :logger, :default_formatter,
   format: "$time $metadata[$level] $message\n",
   metadata: [:request_id]
 
+# Sentry baseline config (DSN/secrets are loaded in config/runtime.exs).
+# The SDK is enabled only when SENTRY_DSN is present.
+config :sentry,
+  dsn: System.get_env("SENTRY_DSN"),
+  environment_name: config_env(),
+  enable_source_code_context: true,
+  root_source_code_paths: [File.cwd!()],
+  in_app_otp_apps: [:dhc],
+  sample_rate: 1.0,
+  enable_logs: true,
+  logs: [level: :info, metadata: [:request_id]]
+
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
+
+# OpenTelemetry: route spans to Sentry's span processor and sampler.
+# See lib/dhc/application.ex for the instrumentation setup calls.
+config :opentelemetry,
+  span_processor: {Sentry.OpenTelemetry.SpanProcessor, []},
+  sampler: {Sentry.OpenTelemetry.Sampler, []}
 
 # Stripe API — pinned to match the version used by the Deno edge functions
 # and the generated OpenAPI client. Update this + re-run `mise run stripe-gen`

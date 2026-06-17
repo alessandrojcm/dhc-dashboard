@@ -227,6 +227,131 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /waitlist/status:
+    get:
+      operationId: waitlist.status
+      tags:
+        - Waitlist
+      summary: Read public waitlist status
+      description: |
+        Returns whether the public beginners workshop waitlist is currently open.
+
+        This endpoint is public and intentionally exposes only the domain-shaped
+        waitlist status, not the generic settings table.
+      responses:
+        "200":
+          description: Waitlist status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WaitlistStatusResponse"
+
+  /waitlist/analytics:
+    get:
+      operationId: waitlist.analytics
+      tags:
+        - Waitlist
+      summary: Read waitlist analytics
+      description: |
+        Returns dashboard analytics for current beginners workshop waitlist entries.
+
+        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
+        `admin`, `president`, `committee_coordinator`, `beginners_coordinator`, or `coach`.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Waitlist analytics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WaitlistAnalyticsResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a waitlist admin role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /waitlist/entries:
+    get:
+      operationId: waitlist.entries
+      tags:
+        - Waitlist
+      summary: List waitlist entries
+      description: |
+        Returns a domain-shaped, cursor-paginated list of beginners workshop
+        waitlist entries for the dashboard table.
+
+        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
+        `admin`, `president`, `committee_coordinator`, `beginners_coordinator`, or `coach`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            enum: [10, 25, 50, 100]
+            default: 10
+        - name: cursor
+          in: query
+          schema:
+            type: string
+          description: Opaque cursor returned by a previous response.
+        - name: q
+          in: query
+          schema:
+            type: string
+          description: Websearch-style full text query.
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/WaitlistStatus"
+          description: Defaults to all statuses except `joined`; pass `joined` explicitly to include joined entries only.
+        - name: sort
+          in: query
+          schema:
+            $ref: "#/components/schemas/WaitlistEntriesSortField"
+            default: position
+        - name: direction
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
+      responses:
+        "200":
+          description: Cursor-paginated waitlist entries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WaitlistEntriesResponse"
+        "400":
+          description: Invalid query parameter or mismatched cursor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a waitlist admin role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -298,6 +423,184 @@ components:
               type: integer
             failed:
               type: integer
+    WaitlistStatusResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - isOpen
+          properties:
+            isOpen:
+              type: boolean
+              description: Whether the public waitlist accepts registrations.
+    WaitlistAnalyticsResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - totalCount
+            - averageAge
+            - genderDistribution
+            - ageDistribution
+          properties:
+            totalCount:
+              type: integer
+              minimum: 0
+            averageAge:
+              type: number
+              format: double
+              minimum: 0
+            genderDistribution:
+              type: array
+              items:
+                $ref: "#/components/schemas/WaitlistGenderDistributionItem"
+            ageDistribution:
+              type: array
+              items:
+                $ref: "#/components/schemas/WaitlistAgeDistributionItem"
+    WaitlistGenderDistributionItem:
+      type: object
+      required:
+        - gender
+        - value
+      properties:
+        gender:
+          type: string
+        value:
+          type: integer
+          minimum: 0
+    WaitlistAgeDistributionItem:
+      type: object
+      required:
+        - age
+        - value
+      properties:
+        age:
+          type: integer
+          minimum: 0
+        value:
+          type: integer
+          minimum: 0
+    WaitlistStatus:
+      type: string
+      enum:
+        - waiting
+        - invited
+        - paid
+        - deferred
+        - cancelled
+        - completed
+        - no_reply
+        - joined
+    WaitlistEntriesSortField:
+      type: string
+      enum:
+        - position
+        - fullName
+        - status
+        - age
+        - initialRegistrationDate
+        - lastContacted
+        - lastStatusChange
+    WaitlistEntriesResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - entries
+            - totalCount
+            - limit
+            - nextCursor
+            - previousCursor
+          properties:
+            entries:
+              type: array
+              items:
+                $ref: "#/components/schemas/WaitlistEntry"
+            totalCount:
+              type: integer
+              minimum: 0
+            limit:
+              type: integer
+              enum: [10, 25, 50, 100]
+            nextCursor:
+              type: string
+              nullable: true
+            previousCursor:
+              type: string
+              nullable: true
+    WaitlistEntry:
+      type: object
+      required:
+        - id
+        - position
+        - fullName
+        - email
+        - phoneNumber
+        - status
+        - age
+        - initialRegistrationDate
+        - socialMediaConsent
+        - insuranceFormSubmitted
+        - lastStatusChange
+      properties:
+        id:
+          type: string
+          format: uuid
+        position:
+          type: integer
+          minimum: 1
+        fullName:
+          type: string
+        email:
+          type: string
+          format: email
+        phoneNumber:
+          type: string
+        status:
+          $ref: "#/components/schemas/WaitlistStatus"
+        age:
+          type: integer
+          minimum: 0
+        initialRegistrationDate:
+          type: string
+          format: date-time
+        lastContacted:
+          type: string
+          format: date-time
+          nullable: true
+        medicalConditions:
+          type: string
+          nullable: true
+        adminNotes:
+          type: string
+          nullable: true
+        socialMediaConsent:
+          type: string
+          enum: [no, yes_recognizable, yes_unrecognizable]
+        guardianFirstName:
+          type: string
+          nullable: true
+        guardianLastName:
+          type: string
+          nullable: true
+        guardianPhoneNumber:
+          type: string
+          nullable: true
+        insuranceFormSubmitted:
+          type: boolean
+        lastStatusChange:
+          type: string
+          format: date-time
     Error:
       type: object
       properties:

@@ -22,6 +22,16 @@ end
 
 config :dhc, DhcWeb.Endpoint, http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
+cors_allowed_origins =
+  case System.get_env("CORS_ALLOWED_ORIGINS") do
+    nil -> []
+    origins -> String.split(origins, ",", trim: true)
+  end
+
+if cors_allowed_origins != [] do
+  config :dhc, :cors_allowed_origins, cors_allowed_origins
+end
+
 if config_env() == :prod do
   database_url =
     System.get_env("DATABASE_URL") ||
@@ -38,7 +48,10 @@ if config_env() == :prod do
     pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
     # For machines with several cores, consider starting multiple pools of `pool_size`
     # pool_count: 4,
-    socket_options: maybe_ipv6
+    socket_options: maybe_ipv6,
+    # Required for transaction-mode connection poolers (e.g. Supabase PgBouncer)
+    # which invalidate named prepared statements between transactions.
+    prepare: :unnamed
 
   # The secret key base is used to sign/encrypt cookies and other secrets.
   # A default value is used in config/dev.exs and config/test.exs but you
@@ -79,12 +92,45 @@ if config_env() == :prod do
   config :dhc, :app_url, System.get_env("APP_URL", "https://dublinhemaclub.com")
   config :dhc, :environment, :prod
 
+  if cors_allowed_origins == [] do
+    config :dhc, :cors_allowed_origins, [System.get_env("APP_URL", "https://dublinhemaclub.com")]
+  end
+
   # Sentry error tracking (DSN read automatically from SENTRY_DSN env var)
+  traces_sample_rate =
+    case System.get_env("SENTRY_TRACES_SAMPLE_RATE") do
+      nil ->
+        0.1
+
+      value ->
+        case Float.parse(value) do
+          {rate, ""} when rate >= 0.0 and rate <= 1.0 -> rate
+          _ -> 0.1
+        end
+    end
+
+  logs_level =
+    case System.get_env("SENTRY_LOGS_LEVEL") do
+      nil -> :info
+      "debug" -> :debug
+      "info" -> :info
+      "warning" -> :warning
+      "warn" -> :warning
+      "error" -> :error
+      _ -> :info
+    end
+
   config :sentry,
     environment_name: "production",
     enable_source_code_context: true,
     root_source_code_paths: [File.cwd!()],
     tags: %{app: "dhc-dashboard"},
+    traces_sample_rate: traces_sample_rate,
+    enable_logs: true,
+    logs: [
+      level: logs_level,
+      metadata: [:request_id, :file, :line]
+    ],
     integrations: [
       oban: [
         capture_errors: true,
@@ -92,7 +138,13 @@ if config_env() == :prod do
       ]
     ]
 
-  # Logger handler to forward Elixir log messages and process crashes to Sentry
+  # Route OpenTelemetry spans to Sentry for distributed tracing.
+  config :opentelemetry,
+    span_processor: {Sentry.OpenTelemetry.SpanProcessor, []},
+    sampler: {Sentry.OpenTelemetry.Sampler, []}
+
+  # Logger handler to forward Elixir log messages and process crashes to Sentry.
+  # Also enables structured Sentry logs from the Elixir Logger.
   config :dhc, :logger, [
     {:handler, :sentry_handler, Sentry.LoggerHandler,
      %{
@@ -100,7 +152,7 @@ if config_env() == :prod do
          capture_log_messages: true,
          level: :error,
          metadata: [:file, :line, :request_id],
-         excluded_domains: [:cowboy],
+         excluded_domains: [:cowboy, :bandit],
          rate_limiting: [max_events: 10, interval: 1_000]
        }
      }}
