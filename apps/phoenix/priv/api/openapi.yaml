@@ -227,6 +227,25 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /waitlist/status:
+    get:
+      operationId: waitlist.status
+      tags:
+        - Waitlist
+      summary: Read public waitlist status
+      description: |
+        Returns whether the public beginners workshop waitlist is currently open.
+
+        This endpoint is public and intentionally exposes only the domain-shaped
+        waitlist status, not the generic settings table.
+      responses:
+        "200":
+          description: Waitlist status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WaitlistStatusResponse"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -298,6 +317,19 @@ components:
               type: integer
             failed:
               type: integer
+    WaitlistStatusResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - isOpen
+          properties:
+            isOpen:
+              type: boolean
+              description: Whether the public waitlist accepts registrations.
     Error:
       type: object
       properties:
