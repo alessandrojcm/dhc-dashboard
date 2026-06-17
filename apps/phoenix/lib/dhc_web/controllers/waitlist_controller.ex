@@ -11,4 +11,13 @@ defmodule DhcWeb.WaitlistController do
     |> put_view(json: DhcWeb.WaitlistJSON)
     |> render(:status, status: Waitlist.status())
   end
+
+  @doc """
+  GET /waitlist/analytics
+  """
+  def analytics(conn, _params) do
+    conn
+    |> put_view(json: DhcWeb.WaitlistJSON)
+    |> render(:analytics, analytics: Waitlist.analytics())
+  end
 end
