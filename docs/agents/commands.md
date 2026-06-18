@@ -142,6 +142,8 @@ pnpm --filter @dhc/api-client api:generate:watch
 
 Generated output: `packages/api-client/src/client/` (gitignored — auto-regenerated on `pnpm install` via postinstall, do not manually edit)
 
+**Manual step after `mise run api-gen`**: `packages/api-client/src/index.ts` is hand-maintained (tracked, not generated). `openapi-ts` only writes to `src/client/`; it does not update the public re-exports in `src/index.ts`. After adding a new operation, manually add the generated SDK function plus its `types.gen` / `valibot.gen` / `@tanstack/svelte-query.gen` exports to the four `export` blocks in `src/index.ts` (mirror how `waitlistStatus` / `membersInsuranceForm` are exposed). Without this, the function exists in `src/client/` but is not importable from `@dhc/api-client`.
+
 `packages/api-client/openapi-ts.config.ts` explicitly points `output.tsConfigPath` at `packages/api-client/tsconfig.json` so postinstall generation works in deployment environments that do not expose the repo-root SvelteKit `tsconfig.json`.
 
 Usage in SvelteKit:
