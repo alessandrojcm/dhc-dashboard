@@ -35,6 +35,7 @@ defmodule DhcWeb.Router do
   scope "/api", DhcWeb do
     pipe_through [:api, :invitation_admin_api]
 
+    get "/invitations", InvitationsController, :list
     post "/invitations", InvitationsController, :create
     post "/invitations/resend", InvitationsController, :resend
   end

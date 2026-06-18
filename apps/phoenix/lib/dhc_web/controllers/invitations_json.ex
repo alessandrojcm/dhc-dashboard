@@ -1,6 +1,18 @@
 defmodule DhcWeb.InvitationsJSON do
   @moduledoc false
 
+  def render("list.json", %{result: result}) do
+    %{
+      data: %{
+        invitations: Enum.map(result.invitations, &invitation/1),
+        totalCount: result.total_count,
+        limit: result.limit,
+        nextCursor: result.next_cursor,
+        previousCursor: result.previous_cursor
+      }
+    }
+  end
+
   def render("show.json", %{invitation: invitation}) do
     %{data: render_invitation(invitation)}
   end
@@ -24,6 +36,17 @@ defmodule DhcWeb.InvitationsJSON do
     %{
       failed: invitation_resend.failed,
       succeeded: invitation_resend.succeeded
+    }
+  end
+
+  # Only the fields the UI consumes — see Invitation DTO in the OpenAPI spec.
+  defp invitation(invitation) do
+    %{
+      id: invitation.id,
+      email: invitation.email,
+      status: invitation.status,
+      expiresAt: invitation.expires_at,
+      createdAt: invitation.created_at
     }
   end
 end
