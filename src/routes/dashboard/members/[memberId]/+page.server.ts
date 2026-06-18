@@ -1,6 +1,8 @@
+import { membersInsuranceForm } from "@dhc/api-client";
 import * as Sentry from "@sentry/sveltekit";
 import { error, type ServerLoadEvent } from "@sveltejs/kit";
 import dayjs from "dayjs";
+import { apiClientOptions } from "$lib/server/api-client";
 import { invariant } from "$lib/server/invariant";
 import { getRolesFromSession, SETTINGS_ROLES } from "$lib/server/roles";
 import { supabaseServiceClient } from "$lib/server/supabaseServiceClient";
@@ -84,13 +86,11 @@ export const load: PageServerLoad = async (event) => {
 			weapons: locals.supabase
 				.rpc("get_weapons_options")
 				.then((r) => r.data ?? []) as Promise<string[]>,
-			insuranceFormLink: supabaseServiceClient
-				.from("settings")
-				.select("value")
-				.eq("key", "insurance_form_link")
-				.limit(1)
-				.single()
-				.then((result) => result.data?.value),
+			insuranceFormLink: membersInsuranceForm({
+				...apiClientOptions(session),
+			})
+				.then((response) => response.data?.data.link ?? null)
+				.catch(() => null),
 			member: {
 				id: params.memberId,
 				customer_id: memberData?.customer_id,

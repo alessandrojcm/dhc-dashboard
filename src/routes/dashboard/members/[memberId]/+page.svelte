@@ -500,6 +500,32 @@ const resumeMutation = createMutation(() => ({
                 </div>
             </div>
 
+            <div class="space-y-2">
+                <h3 class="text-lg font-semibold">Insurance Form</h3>
+                {#await data.insuranceFormLink}
+                    <LoaderCircle class="h-4 w-4" />
+                {:then link}
+                    {#if link}
+                        <Button
+                            type="button"
+                            variant="link"
+                            class="h-auto w-fit p-0"
+                            onclick={() => window.open(link, "_blank", "noopener,noreferrer")}
+                        >
+                            Open insurance form
+                        </Button>
+                    {:else}
+                        <span class="text-gray-500">
+                            No insurance form link configured
+                        </span>
+                    {/if}
+                {:catch}
+                    <span class="text-red-500">
+                        Error loading insurance form link
+                    </span>
+                {/await}
+            </div>
+
             <Button
                     type="submit"
                     class="w-full"
