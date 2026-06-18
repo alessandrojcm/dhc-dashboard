@@ -297,13 +297,13 @@ defmodule Dhc.StripeSync do
   """
   @spec sync_customer(String.t(), map() | nil) :: {:ok, sync_action()} | {:error, term()}
   def sync_customer(customer_id, nil) do
-    mark_inactive(customer_id)
+    mark_inactive(customer_id, :no_membership_subscription, nil)
   end
 
   def sync_customer(customer_id, %{"status" => status} = subscription) do
     cond do
       status in @inactive_statuses ->
-        mark_inactive(customer_id)
+        mark_inactive(customer_id, {:subscription_status, status}, subscription)
 
       Map.get(subscription, "pause_collection") != nil ->
         mark_paused(customer_id, subscription)
@@ -321,12 +321,13 @@ defmodule Dhc.StripeSync do
     end
   end
 
-  defp mark_inactive(customer_id) do
+  defp mark_inactive(customer_id, reason, subscription) do
     try do
-      :ok = Repository.mark_customer_inactive(customer_id)
+      {:ok, updated_count} = Repository.mark_customer_inactive(customer_id)
 
-      Logger.debug("[stripe-sync] Marked customer inactive",
-        customer_id: customer_id
+      Logger.info(
+        "[stripe-sync] Marked customer inactive",
+        inactive_log_metadata(customer_id, reason, subscription, updated_count)
       )
 
       {:ok, :inactive}
@@ -334,11 +335,40 @@ defmodule Dhc.StripeSync do
       e ->
         Logger.error("[stripe-sync] Failed to mark customer inactive",
           customer_id: customer_id,
+          inactive_reason: format_inactive_reason(reason),
           error: inspect(e)
         )
 
         {:error, {:db_error, e}}
     end
+  end
+
+  defp inactive_log_metadata(customer_id, reason, subscription, updated_count) do
+    %{
+      customer_id: customer_id,
+      stripe_customer_id: customer_id,
+      inactive_reason: format_inactive_reason(reason),
+      inactive_updated_count: updated_count,
+      subscription_id: subscription && Map.get(subscription, "id"),
+      subscription_status: subscription && Map.get(subscription, "status"),
+      subscription_created_at: subscription_created_at(subscription)
+    }
+    |> Enum.reject(fn {_key, value} -> value in [nil, [], ""] end)
+  end
+
+  defp format_inactive_reason(:no_membership_subscription), do: "no_membership_subscription"
+  defp format_inactive_reason({:subscription_status, status}), do: "subscription_status:#{status}"
+
+  defp subscription_created_at(nil), do: nil
+
+  defp subscription_created_at(subscription) do
+    subscription
+    |> Map.get("created")
+    |> parse_unix_timestamp()
+    |> then(fn
+      nil -> nil
+      created_at -> DateTime.to_iso8601(created_at)
+    end)
   end
 
   defp mark_paused(customer_id, subscription) do
