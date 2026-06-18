@@ -352,6 +352,51 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /notifications:
+    get:
+      operationId: notifications.list
+      tags:
+        - Notifications
+      summary: List current user notifications
+      description: |
+        Returns the authenticated user's in-app notifications in newest-first
+        order plus the unread notification count. This endpoint mirrors the
+        old `notifications.user_id = auth.uid()` RLS boundary: users can only
+        read notifications generated for their own Supabase Auth user id.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            enum: [10, 25, 50]
+            default: 10
+        - name: cursor
+          in: query
+          schema:
+            type: string
+          description: Opaque cursor returned by a previous response.
+      responses:
+        "200":
+          description: Cursor-paginated notifications for the authenticated user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationsListResponse"
+        "400":
+          description: Invalid query parameter or mismatched cursor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -601,6 +646,48 @@ components:
         lastStatusChange:
           type: string
           format: date-time
+    NotificationsListResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - notifications
+            - unreadCount
+            - nextCursor
+          properties:
+            notifications:
+              type: array
+              items:
+                $ref: "#/components/schemas/Notification"
+            unreadCount:
+              type: integer
+              minimum: 0
+            nextCursor:
+              type: string
+              nullable: true
+    Notification:
+      type: object
+      required:
+        - id
+        - body
+        - createdAt
+        - readAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        body:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        readAt:
+          type: string
+          format: date-time
+          nullable: true
     Error:
       type: object
       properties:
