@@ -74,6 +74,22 @@ ALWAYS use Superforms + our form components:
 </Form.Field>
 ```
 
+## Phoenix Read-Migration API Conventions (ADR 0005)
+
+Conventions established by the Waitlist migration (#105–#107) and reinforced by the Members migration (#122). Apply to all remaining PostgREST read-migration slices (Workshops, Inventory).
+
+- **Spec-first**: write the OpenAPI contract in `apps/phoenix/priv/api/openapi.yaml` before implementation. Generate Phoenix controller stubs via `mix gen.controllers`, then the TypeScript client via `pnpm api-gen`.
+- **One domain = one tag = one URL root**: keep all endpoints for a domain under one tag and one URL root. Do not split a domain's reads and commands across different tags/roots (e.g. invitation reads live under `GET /api/invitations` alongside `POST /api/invitations`, not nested under `/api/members/invitations`).
+- **Domain endpoints, not table/view proxies**: expose domain concepts, not storage shapes. `GET /api/waitlist/status` (not `settings`), `GET /api/members/insurance-form` (not `settings`), `GET /api/members` (not `member_management_view`).
+- **Response envelope**: all endpoints use `{ data: ... }`. Error responses use `{ errors: { detail: string } }`.
+- **camelCase DTOs**: all response fields are camelCase. Omit internal/leaky fields (search indexes, internal FKs, timestamps the UI doesn't use) — add fields back when a real consumer appears.
+- **Cursor pagination for list endpoints**: opaque Base64 cursor, prev/next only (no random page jumps). Cursor binds to request params (limit, sort, direction, filters, q); mismatched cursors return `400`. `id` as deterministic tiebreaker. Exact `COUNT(*)` for `totalCount` (never `estimated`).
+- **Multi-value filters**: comma-separated single param (e.g. `?membershipStatus=active,paused`). Absent or empty = all values (no filter).
+- **Websearch**: `websearch_to_tsquery('english', ?)` on the underlying `search_text` column, exposed as `q` query param.
+- **RBAC via `RequireAuth` plug**: role lists mirror the existing RLS policies. Self-read (where applicable) is endpoint-specific, not a blanket rule.
+- **`auth.users` access**: use a read-only Ecto schema (`Dhc.Auth.AuthUser`) to join email; do not call PostgREST-era helper functions like `get_email_from_auth_users`.
+- **Computed view columns reproduced in Ecto**: when a view computes a domain field (e.g. `membership_status` CASE), reproduce the computation in the Phoenix context query rather than depending on the view.
+
 ## API Response Format
 
 ```typescript
