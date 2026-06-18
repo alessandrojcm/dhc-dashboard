@@ -5,7 +5,7 @@ import { Skeleton } from "$lib/components/ui/skeleton/index.js";
 import { createQuery } from "@tanstack/svelte-query";
 import { browser } from "$app/environment";
 import { onMount } from "svelte";
-import { getWaitlistAnalytics } from "./admin.remote";
+import { waitlistAnalyticsOptions } from "@dhc/api-client";
 
 let GenderBarChart:
 	| typeof import("$lib/components/gender-bar-chart.svelte").default
@@ -25,20 +25,23 @@ onMount(async () => {
 
 type GenderDistributionItem = { gender: string; value: number };
 
-const analyticsQuery = createQuery(() => ({
-	queryKey: ["waitlist", "analytics"],
-	queryFn: () => getWaitlistAnalytics(),
-}));
+// Browser-side Phoenix read (`GET /api/waitlist/analytics`) via the generated
+// TanStack Query options. The Supabase JWT is attached by `configureClient`'s
+// `getAuthToken` hook; authz is enforced by Phoenix's `waitlist_admin_api`
+// pipeline, so no SvelteKit `authorize()` gate is needed.
+const analyticsQuery = createQuery(() => waitlistAnalyticsOptions());
+
+const analytics = $derived(analyticsQuery.data?.data);
 
 const genderDistributionData = $derived.by(() => {
-	if (!analyticsQuery.data) return [];
-	return analyticsQuery.data.genderDistribution.map((row) => ({
+	if (!analytics) return [];
+	return analytics.genderDistribution.map((row) => ({
 		gender: row.gender,
 		value: row.value,
 	})) as GenderDistributionItem[];
 });
 const ageDistribution = $derived.by(() => {
-	const result = analyticsQuery.data?.ageDistribution ?? [];
+	const result = analytics?.ageDistribution ?? [];
 	return result.map((row) => ({
 		age: row.age,
 		value: row.value,
@@ -58,7 +61,7 @@ const ageDistribution = $derived.by(() => {
 				<Skeleton class="h-[2.5rem] w-[5rem]" />
 			{:else}
 				<p class="text-black text-4xl">
-					{analyticsQuery.data?.totalCount ?? 0}
+					{analytics?.totalCount ?? 0}
 				</p>
 			{/if}
 		</Card.Content>
@@ -72,7 +75,7 @@ const ageDistribution = $derived.by(() => {
 				<Skeleton class="h-[2.5rem] w-[5rem]" />
 			{:else}
 				<p class="text-black text-4xl">
-					{(analyticsQuery.data?.averageAge ?? 0).toLocaleString('en-UK', { maximumFractionDigits: 2 })}
+					{(analytics?.averageAge ?? 0).toLocaleString('en-UK', { maximumFractionDigits: 2 })}
 				</p>
 			{/if}
 		</Card.Content>

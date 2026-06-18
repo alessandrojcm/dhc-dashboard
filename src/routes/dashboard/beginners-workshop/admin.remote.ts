@@ -1,27 +1,10 @@
-import { command, getRequestEvent, query } from "$app/server";
-import { invitationsResend, waitlistAnalytics } from "@dhc/api-client";
+import { command, getRequestEvent } from "$app/server";
+import { invitationsResend } from "@dhc/api-client";
 import * as v from "valibot";
 import { apiClientOptions } from "$lib/server/api-client";
 import { authorize } from "$lib/server/auth";
-import { SETTINGS_ROLES, WAITLIST_ADMIN_ROLES } from "$lib/server/roles";
+import { SETTINGS_ROLES } from "$lib/server/roles";
 import { createInvitationService } from "$lib/server/services/invitations";
-
-export const getWaitlistAnalytics = query(async () => {
-	const { locals } = getRequestEvent();
-	const session = await authorize(locals, WAITLIST_ADMIN_ROLES);
-
-	const response = await waitlistAnalytics({
-		...apiClientOptions(session),
-	});
-
-	if (response.error) {
-		throw new Error(
-			"Failed to load waitlist analytics. Please try again later.",
-		);
-	}
-
-	return response.data.data;
-});
 
 export const resendInvitations = command(
 	v.object({

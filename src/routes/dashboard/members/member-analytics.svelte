@@ -2,10 +2,10 @@
 import { createQuery } from "@tanstack/svelte-query";
 import { onMount } from "svelte";
 import { browser } from "$app/environment";
+import { membersAnalyticsOptions } from "@dhc/api-client";
 import * as Card from "$lib/components/ui/card/index.js";
 import * as Resizable from "$lib/components/ui/resizable/index.js";
 import { Skeleton } from "$lib/components/ui/skeleton/index.js";
-import { getMembersAnalytics } from "./data.remote";
 
 let WeaponPieChart:
 	| typeof import("$lib/components/weapon-pie-chart.svelte").default
@@ -28,33 +28,35 @@ onMount(async () => {
 	}
 });
 
-// Single Phoenix read (`GET /api/members/analytics`) replaces the five
-// browser-side PostgREST aggregates over `member_management_view`.
-const analyticsQuery = createQuery(() => ({
-	queryKey: ["members", "analytics"],
-	queryFn: () => getMembersAnalytics(),
-}));
+// Single browser-side Phoenix read (`GET /api/members/analytics`) via the
+// generated TanStack Query options. The Supabase JWT is attached by
+// `configureClient`'s `getAuthToken` hook; authz is enforced by Phoenix's
+// `members_admin_api` pipeline, so no SvelteKit `authorize()` gate is needed.
+// Replaces the five browser-side PostgREST aggregates over
+// `member_management_view`.
+const analyticsQuery = createQuery(() => membersAnalyticsOptions());
 
-const totalCount = $derived(analyticsQuery.data?.totalCount ?? 0);
-const averageAge = $derived(analyticsQuery.data?.averageAge ?? 0);
+const analytics = $derived(analyticsQuery.data?.data);
+const totalCount = $derived(analytics?.totalCount ?? 0);
+const averageAge = $derived(analytics?.averageAge ?? 0);
 const genderDistributionData = $derived.by(() => {
-	if (!analyticsQuery.data) return [];
-	return analyticsQuery.data.genderDistribution.map((row) => ({
+	if (!analytics) return [];
+	return analytics.genderDistribution.map((row) => ({
 		gender: row.gender,
 		value: row.value,
 	}));
 });
 const ageDistributionData = $derived.by(() => {
-	if (!analyticsQuery.data) return [];
-	return analyticsQuery.data.ageDistribution.map((row) => ({
+	if (!analytics) return [];
+	return analytics.ageDistribution.map((row) => ({
 		age: row.age,
 		value: row.value,
 	}));
 });
 const weaponDistributionData = $derived.by(() => {
-	if (!analyticsQuery.data) return [];
+	if (!analytics) return [];
 	// Weapon items use the `{ weapon, value }` shape (renamed from `count`).
-	return analyticsQuery.data.weaponDistribution.map((row) => ({
+	return analytics.weaponDistribution.map((row) => ({
 		weapon: row.weapon,
 		value: row.value,
 	}));

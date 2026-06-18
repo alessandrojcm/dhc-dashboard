@@ -1,7 +1,6 @@
-import { command, form, getRequestEvent, query } from "$app/server";
-import { invitationsCreate, membersAnalytics } from "@dhc/api-client";
+import { command, form, getRequestEvent } from "$app/server";
+import { invitationsCreate } from "@dhc/api-client";
 import { apiClientOptions } from "$lib/server/api-client";
-import { authorize } from "$lib/server/auth";
 import {
 	InsuranceFormLinkSchema,
 	createSettingsService,
@@ -11,7 +10,6 @@ import {
 	getRolesFromSession,
 	SETTINGS_ROLES,
 	allowedToggleRoles,
-	MEMBERS_ADMIN_ROLES,
 } from "$lib/server/roles";
 import {
 	adminInviteRemoteSchema,
@@ -19,29 +17,6 @@ import {
 	bulkInviteSchema,
 } from "$lib/schemas/adminInvite";
 import * as v from "valibot";
-
-/**
- * Members dashboard analytics, served by Phoenix (`GET /api/members/analytics`).
- * Replaces the five browser-side PostgREST aggregates over
- * `member_management_view` with a single server-side read. The browser no
- * longer downloads every active member's weapon array to count it in JS.
- */
-export const getMembersAnalytics = query(async () => {
-	const { locals } = getRequestEvent();
-	const session = await authorize(locals, MEMBERS_ADMIN_ROLES);
-
-	const response = await membersAnalytics({
-		...apiClientOptions(session),
-	});
-
-	if (response.error) {
-		throw new Error(
-			"Failed to load members analytics. Please try again later.",
-		);
-	}
-
-	return response.data.data;
-});
 
 /**
  * Validates a single invite entry (used for adding to the bulk list)
