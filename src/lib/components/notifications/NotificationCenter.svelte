@@ -1,5 +1,9 @@
 <script lang="ts">
 import { onMount } from "svelte";
+import {
+	notificationsList,
+	type Notification as ApiNotification,
+} from "@dhc/api-client";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -23,6 +27,17 @@ const {
 
 type Notification = Database["public"]["Tables"]["notifications"]["Row"];
 
+type NotificationsPage = {
+	data: Notification[];
+	nextCursor: string | null;
+	count: number;
+};
+
+type NotificationsInfiniteData = {
+	pages: NotificationsPage[];
+	pageParams: (string | null)[];
+};
+
 // Pagination parameters
 const PAGE_SIZE = 10;
 
@@ -30,42 +45,41 @@ const PAGE_SIZE = 10;
 const notificationsQuery = createInfiniteQuery(() => ({
 	queryKey: ["notifications"],
 	initialData: {
-		pages: [],
-		pageParams: [],
+		pages: [] as NotificationsPage[],
+		pageParams: [] as (string | null)[],
 	},
-	queryFn: async ({ pageParam = 0, signal }) => {
-		// Get total count for unread notifications
-		const { count, error: countError } = await supabase
-			.from("notifications")
-			.select("*", { count: "exact", head: true })
-			.is("read_at", null)
-			.abortSignal(signal);
+	queryFn: async ({ pageParam, signal }): Promise<NotificationsPage> => {
+		const response = await notificationsList({
+			query: {
+				limit: PAGE_SIZE,
+				cursor: typeof pageParam === "string" ? pageParam : undefined,
+			},
+			signal,
+		});
 
-		if (countError) throw countError;
+		if (response.error) throw response.error;
 
-		// Fetch paginated notifications
-		const { data, error } = await supabase
-			.from("notifications")
-			.select("*")
-			.order("created_at", { ascending: false })
-			.range(pageParam, pageParam + PAGE_SIZE - 1)
-			.abortSignal(signal);
-
-		if (error) throw error;
-
-		// Determine if there are more pages
-		const nextCursor =
-			data && data.length === PAGE_SIZE ? pageParam + PAGE_SIZE : null;
+		const result = response.data.data;
 
 		return {
-			data: data || [],
-			nextCursor,
-			count: count || 0,
+			data: result.notifications.map(toNotificationRow),
+			nextCursor: result.nextCursor,
+			count: result.unreadCount,
 		};
 	},
+	initialPageParam: null as string | null,
 	getNextPageParam: (lastPage) => lastPage.nextCursor,
-	initialPageParam: 0,
 }));
+
+function toNotificationRow(notification: ApiNotification): Notification {
+	return {
+		id: notification.id,
+		body: notification.body,
+		created_at: notification.createdAt,
+		read_at: notification.readAt,
+		user_id: "",
+	};
+}
 
 const markAsRead = createMutation(() => ({
 	mutationFn: async (notificationId: string) => {
@@ -76,14 +90,16 @@ const markAsRead = createMutation(() => ({
 		if (error) throw error;
 	},
 	onMutate: async (notificationId) => {
-		const previousData = queryClient.getQueryData<Notification[]>([
+		const previousData = queryClient.getQueryData<NotificationsInfiniteData>([
 			"notifications",
 		]);
-		queryClient.setQueryData(
+		queryClient.setQueryData<NotificationsInfiniteData>(
 			["notifications"],
-			(oldData: (typeof notificationsQuery)["data"]) => {
+			(oldData) => {
+				if (!oldData) return oldData;
+
 				// Find if the notification being marked as read is currently unread
-				const targetNotification = oldData?.pages
+				const targetNotification = oldData.pages
 					.flatMap((page) => page.data)
 					.find((notification) => notification.id === notificationId);
 
@@ -93,9 +109,9 @@ const markAsRead = createMutation(() => ({
 
 				// Calculate new count if needed
 				const newCount =
-					shouldDecreaseCount && oldData?.pages[0]?.count !== undefined
+					shouldDecreaseCount && oldData.pages[0]?.count !== undefined
 						? Math.max(0, oldData.pages[0].count - 1) // Ensure count doesn't go below 0
-						: oldData?.pages[0]?.count;
+						: oldData.pages[0]?.count;
 
 				return {
 					...oldData,
@@ -136,29 +152,33 @@ const markAllAsRead = createMutation(() => ({
 			.throwOnError();
 	},
 	onMutate: async () => {
-		const previousData = queryClient.getQueryData<Notification[]>([
+		const previousData = queryClient.getQueryData<NotificationsInfiniteData>([
 			"notifications",
 		]);
-		queryClient.setQueryData(
+		queryClient.setQueryData<NotificationsInfiniteData>(
 			["notifications"],
-			(oldData: (typeof notificationsQuery)["data"]) => ({
-				...oldData,
-				pages: oldData?.pages.map((page, index) => ({
-					...page,
-					// Set count to 0 in the first page since all notifications will be read
-					...(index === 0 ? { count: 0 } : {}),
-					data: page.data
-						.map((notification) => ({
-							...notification,
-							read_at: new Date().toISOString(),
-						}))
-						.sort(
-							(a, b) =>
-								new Date(b.created_at).getTime() -
-								new Date(a.created_at).getTime(),
-						),
-				})),
-			}),
+			(oldData) => {
+				if (!oldData) return oldData;
+
+				return {
+					...oldData,
+					pages: oldData.pages.map((page, index) => ({
+						...page,
+						// Set count to 0 in the first page since all notifications will be read
+						...(index === 0 ? { count: 0 } : {}),
+						data: page.data
+							.map((notification) => ({
+								...notification,
+								read_at: new Date().toISOString(),
+							}))
+							.sort(
+								(a, b) =>
+									new Date(b.created_at).getTime() -
+									new Date(a.created_at).getTime(),
+							),
+					})),
+				};
+			},
 		);
 		return { previousData };
 	},
@@ -182,12 +202,14 @@ onMount(() => {
 			(payload: { new: Notification }) => {
 				queryClient.setQueryData(
 					["notifications"],
-					(oldData: (typeof notificationsQuery)["data"]) => {
+					(oldData: NotificationsInfiniteData | undefined) => {
+						if (!oldData) return oldData;
+
 						// Increase the count for unread notifications if this is a new unread notification
 						const newCount =
-							!payload.new.read_at && oldData?.pages[0]?.count !== undefined
+							!payload.new.read_at && oldData.pages[0]?.count !== undefined
 								? oldData.pages[0].count + 1
-								: oldData?.pages[0]?.count;
+								: oldData.pages[0]?.count;
 
 						return {
 							...oldData,
@@ -220,15 +242,21 @@ onMount(() => {
 			(payload: { new: Notification }) => {
 				queryClient.setQueryData(
 					["notifications"],
-					(oldData: (typeof notificationsQuery)["data"]) => ({
-						...oldData,
-						pages: oldData?.pages.map((page) => ({
-							...page,
-							data: page.data.map((notification) =>
-								notification.id === payload.new.id ? payload.new : notification,
-							),
-						})),
-					}),
+					(oldData: NotificationsInfiniteData | undefined) => {
+						if (!oldData) return oldData;
+
+						return {
+							...oldData,
+							pages: oldData.pages.map((page) => ({
+								...page,
+								data: page.data.map((notification) =>
+									notification.id === payload.new.id
+										? payload.new
+										: notification,
+								),
+							})),
+						};
+					},
 				);
 			},
 		)

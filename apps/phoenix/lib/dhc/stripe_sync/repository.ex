@@ -80,12 +80,13 @@ defmodule Dhc.StripeSync.Repository do
   @doc """
   Marks all profiles for the Stripe customer inactive.
   """
-  @spec mark_customer_inactive(String.t()) :: :ok
+  @spec mark_customer_inactive(String.t()) :: {:ok, non_neg_integer()}
   def mark_customer_inactive(customer_id) do
-    from(up in "user_profiles", where: up.customer_id == ^customer_id)
-    |> Repo.update_all(set: [is_active: false])
+    {updated_count, _} =
+      from(up in "user_profiles", where: up.customer_id == ^customer_id)
+      |> Repo.update_all(set: [is_active: false])
 
-    :ok
+    {:ok, updated_count}
   end
 
   @doc """
