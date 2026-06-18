@@ -156,9 +156,6 @@ test.describe('Workshop Management', () => {
 - Calendar/date-picker interactions are most stable when you open the picker once, wait for the `Select a year` / `Select a month` controls to become visible, then choose the day button; avoid clicking the trigger twice or you may close the popover before selecting the date.
 - `/dashboard/workshops` renders workshops as calendar events by default, not expanded cards; when asserting description/location/action buttons in E2E, click the workshop event first and scope assertions to the opened details dialog.
 
-## STRIPE MANUAL E2E
+## STRIPE SYNC E2E
 
-- `e2e/stripe-sync-manual.spec.ts` is manual-only and gated by `RUN_STRIPE_SYNC_MANUAL_E2E=true`.
-- The spec validates batch sync behavior by updating Stripe subscription state directly and invoking `/functions/v1/stripe-sync`.
-- Invoke `stripe-sync` via `supabaseServiceClient.functions.invoke("stripe-sync", { body })` instead of raw `fetch` to keep auth/base URL behavior aligned with the E2E service client.
-- `stripe-sync` responds before background sync completes (`EdgeRuntime.waitUntil`); assert DB mutations with polling instead of a single immediate read.
+- Legacy Supabase `stripe-sync` manual E2E coverage was removed with the edge function. Stripe sync behavior is covered in Phoenix tests under `apps/phoenix/test/dhc/stripe_sync/`.

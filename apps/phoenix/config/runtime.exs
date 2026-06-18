@@ -129,7 +129,26 @@ if config_env() == :prod do
     enable_logs: true,
     logs: [
       level: logs_level,
-      metadata: [:request_id, :file, :line]
+      metadata: [
+        :request_id,
+        :file,
+        :line,
+        :customer_id,
+        :stripe_customer_id,
+        :inactive_reason,
+        :inactive_updated_count,
+        :subscription_id,
+        :subscription_status,
+        :subscription_created_at,
+        :target_customers,
+        :processed,
+        :updated,
+        :failed,
+        :inactive,
+        :paused,
+        :active,
+        :unchanged
+      ]
     ],
     integrations: [
       oban: [
@@ -151,7 +170,18 @@ if config_env() == :prod do
        config: %{
          capture_log_messages: true,
          level: :error,
-         metadata: [:file, :line, :request_id],
+         metadata: [
+           :file,
+           :line,
+           :request_id,
+           :customer_id,
+           :stripe_customer_id,
+           :inactive_reason,
+           :inactive_updated_count,
+           :subscription_id,
+           :subscription_status,
+           :subscription_created_at
+         ],
          excluded_domains: [:cowboy, :bandit],
          rate_limiting: [max_events: 10, interval: 1_000]
        }
