@@ -54,7 +54,27 @@ config :sentry,
   in_app_otp_apps: [:dhc],
   sample_rate: 1.0,
   enable_logs: true,
-  logs: [level: :info, metadata: [:request_id]]
+  logs: [
+    level: :info,
+    metadata: [
+      :request_id,
+      :customer_id,
+      :stripe_customer_id,
+      :inactive_reason,
+      :inactive_updated_count,
+      :subscription_id,
+      :subscription_status,
+      :subscription_created_at,
+      :target_customers,
+      :processed,
+      :updated,
+      :failed,
+      :inactive,
+      :paused,
+      :active,
+      :unchanged
+    ]
+  ]
 
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason

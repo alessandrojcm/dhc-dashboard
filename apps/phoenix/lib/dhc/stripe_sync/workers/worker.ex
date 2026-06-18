@@ -47,7 +47,11 @@ defmodule Dhc.StripeSync.Worker do
             target_customers: summary.target_customers,
             processed: summary.processed,
             updated: summary.updated,
-            failed: summary.failed
+            failed: summary.failed,
+            inactive: summary.inactive,
+            paused: summary.paused,
+            active: summary.active,
+            unchanged: summary.unchanged
           )
 
           :ok
