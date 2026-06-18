@@ -41,6 +41,24 @@ export const WAITLIST_ADMIN_ROLES = new Set([
 	"coach",
 ]);
 
+// Broad committee role set mirroring the `user_profiles` SELECT RLS policy
+// and the Phoenix `members_admin_api` pipeline. Used by the members analytics
+// read (issue #124).
+export const MEMBERS_ADMIN_ROLES = new Set([
+	"admin",
+	"president",
+	"treasurer",
+	"committee_coordinator",
+	"sparring_coordinator",
+	"workshop_coordinator",
+	"beginners_coordinator",
+	"quartermaster",
+	"pr_manager",
+	"volunteer_coordinator",
+	"research_coordinator",
+	"coach",
+]);
+
 export const INVENTORY_ROLES = new Set(["quartermaster", "admin", "president"]);
 
 export const INVENTORY_READ_ROLES = new Set([...INVENTORY_ROLES, "member"]);
