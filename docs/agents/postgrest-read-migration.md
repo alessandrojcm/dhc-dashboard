@@ -113,9 +113,12 @@ Purpose: track SvelteKit Supabase PostgREST reads (`supabase.from(...).select(..
 ### Notifications
 
 - `src/lib/components/notifications/NotificationCenter.svelte`
+  - Tracking issue: #118
   - Resource: `notifications`
   - Shape: unread count and paginated notifications ordered by creation date.
+  - Status: reads migrated to `GET /api/notifications`; remaining Supabase usage is command/realtime only.
   - Note: component also marks one/all notifications as read; those are writes/actions.
+  - Agreed slice boundary: migrate reads only via `GET /api/notifications`; leave mark-as-read actions and Supabase realtime subscription for later command/realtime slices.
 
 ### Authorization / session support
 
