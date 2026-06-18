@@ -429,6 +429,52 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /members/analytics:
+    get:
+      operationId: members.analytics
+      tags:
+        - Members
+      summary: Read members analytics
+      description: |
+        Returns dashboard analytics for active members, computed server-side
+        over `member_profiles` joined to `user_profiles` where `is_active = true`.
+
+        Replaces the five browser-side PostgREST aggregate queries over
+        `member_management_view` with a single domain-shaped read. The
+        `preferred_weapon[]` array is unnested and counted in SQL so the
+        browser no longer downloads every active member's weapon array to
+        count it in JavaScript. Raw enum strings are returned for weapons;
+        the UI keeps doing display prettification.
+
+        Requires a Supabase JWT whose `app_metadata.roles` includes one of the
+        broad committee roles: `admin`, `president`, `treasurer`,
+        `committee_coordinator`, `sparring_coordinator`, `workshop_coordinator`,
+        `beginners_coordinator`, `quartermaster`, `pr_manager`,
+        `volunteer_coordinator`, `research_coordinator`, or `coach`. This
+        mirrors the `user_profiles` SELECT RLS policy for broad committee
+        roles. A `member` role 403s; a missing token 401s.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Members analytics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MembersAnalyticsResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a broad committee role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -734,6 +780,76 @@ components:
               type: string
               nullable: true
               description: URL of the HEMA insurance form, or null when not configured.
+    MembersAnalyticsResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - totalCount
+            - averageAge
+            - genderDistribution
+            - ageDistribution
+            - weaponDistribution
+          properties:
+            totalCount:
+              type: integer
+              minimum: 0
+              description: Count of active members.
+            averageAge:
+              type: number
+              format: double
+              minimum: 0
+              description: Average age of active members with a known date of birth (0 when none).
+            genderDistribution:
+              type: array
+              items:
+                $ref: "#/components/schemas/MembersGenderDistributionItem"
+            ageDistribution:
+              type: array
+              items:
+                $ref: "#/components/schemas/MembersAgeDistributionItem"
+            weaponDistribution:
+              type: array
+              items:
+                $ref: "#/components/schemas/MembersWeaponDistributionItem"
+    MembersGenderDistributionItem:
+      type: object
+      required:
+        - gender
+        - value
+      properties:
+        gender:
+          type: string
+        value:
+          type: integer
+          minimum: 0
+    MembersAgeDistributionItem:
+      type: object
+      required:
+        - age
+        - value
+      properties:
+        age:
+          type: integer
+          minimum: 0
+        value:
+          type: integer
+          minimum: 0
+    MembersWeaponDistributionItem:
+      type: object
+      required:
+        - weapon
+        - value
+      properties:
+        weapon:
+          type: string
+          description: Raw preferred_weapon enum string (the UI prettifies for display).
+        value:
+          type: integer
+          minimum: 0
     Error:
       type: object
       properties:
