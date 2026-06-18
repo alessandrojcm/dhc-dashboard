@@ -14,6 +14,12 @@ defmodule DhcWeb.Router do
       roles: ~w(admin president committee_coordinator beginners_coordinator coach)
   end
 
+  pipeline :members_admin_api do
+    plug DhcWeb.Plugs.RequireAuth,
+      roles:
+        ~w(admin president treasurer committee_coordinator sparring_coordinator workshop_coordinator beginners_coordinator quartermaster pr_manager volunteer_coordinator research_coordinator coach)
+  end
+
   pipeline :authenticated_api do
     plug DhcWeb.Plugs.RequireAuth
   end
@@ -38,6 +44,12 @@ defmodule DhcWeb.Router do
 
     get "/waitlist/analytics", WaitlistController, :analytics
     get "/waitlist/entries", WaitlistController, :entries
+  end
+
+  scope "/api", DhcWeb do
+    pipe_through [:api, :members_admin_api]
+
+    get "/members/analytics", MembersController, :analytics
   end
 
   scope "/api", DhcWeb do
