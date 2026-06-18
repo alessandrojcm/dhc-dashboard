@@ -6,11 +6,12 @@ import { loginAsUser } from "./supabaseLogin";
 // API (GET /api/members/analytics) after the PostgREST read migration (#124).
 //
 // The panel previously issued five browser-side Supabase aggregates over
-// `member_management_view`; it now issues a single `getMembersAnalytics`
-// remote call backed by the typed `membersAnalytics` client. The `{ weapon,
-// value }` distribution shape (renamed from `count`) is asserted at the
-// Phoenix contract level in `members_controller_test.exs`; this spec guards
-// the end-to-end render path.
+// `member_management_view`; it now issues a single browser-side TanStack Query
+// backed by the typed `membersAnalytics` client (authz enforced by Phoenix's
+// `members_admin_api` pipeline, no SvelteKit `authorize()` gate). The
+// `{ weapon, value }` distribution shape (renamed from `count`) is asserted at
+// the Phoenix contract level in `members_controller_test.exs`; this spec
+// guards the end-to-end render path.
 //
 // Requires the Phoenix dev server (`mise run phx-server`) at the configured
 // API_BASE_URL alongside the SvelteKit dev server.
