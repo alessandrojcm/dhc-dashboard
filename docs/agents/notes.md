@@ -6,10 +6,7 @@
 - E2E tests need unique data: `test-${Date.now()}-${randomSuffix}@example.com`
 - Use `dinero.js` for money, `day.js` for dates
 - TanStack Query uses thunk pattern: `createQuery(() => ({...}))`
-- `supabase/functions/stripe-sync` now runs in batch mode: it fetches all `standard_membership_fee` subscriptions via Stripe pagination and syncs only customer IDs where `member_profiles.updated_at` is older than 24h.
-- `supabase/functions/stripe-sync` reuses cached Stripe monthly price ID from `settings.stripe_monthly_price_id` when it is <=24h old, and refreshes cache from Stripe when stale/missing.
-- Stripe sync scheduling is Phoenix/Oban-owned. Do not add pg_cron triggers that call the old Supabase `stripe-sync` edge function; Ecto migrations should remove/deactivate legacy pg_cron jobs during cutover.
-- Manual Stripe sync E2E is gated by `RUN_STRIPE_SYNC_MANUAL_E2E=true` in `e2e/stripe-sync-manual.spec.ts` and validates sync by seeding data, mutating Stripe state, then invoking `/functions/v1/stripe-sync` directly.
+- Stripe sync scheduling is Phoenix/Oban-owned through `Dhc.StripeSync.Worker`; the legacy Supabase `functions/stripe-sync` edge function and its manual E2E spec have been removed.
 - Members dashboard status filtering supports three states: `active`, `inactive`, `paused`; `paused` means `is_active = true` and `subscription_paused_until` is in the future.
 - `member_management_view` now exposes computed `membership_status` (`active`/`inactive`/`paused`) plus `paused_until` aliasing `member_profiles.subscription_paused_until` for member list filtering.
 
@@ -18,6 +15,7 @@
 - **Dev database** prefers `DATABASE_URL`; if absent it falls back to local Supabase Postgres (`localhost:54322`, user `postgres`, password `postgres`, database `postgres`). Use `POSTGRES_*` env vars only when `DATABASE_URL` is not set.
 - **Phoenix CORS dev origins** must include both `localhost` and `127.0.0.1` forms (e.g. `https://127.0.0.1:5173`) because the Vite dev server may bind to `127.0.0.1` and browsers treat that as a separate origin from `localhost`.
 - **Sentry** is configured in `config/runtime.exs` under the `config_env() == :prod` block. It reads `SENTRY_DSN` env var automatically. If unset, no events are sent.
+- **Sentry Logs metadata** is allowlisted in `config :sentry, logs: [metadata: ...]`; adding `Logger.info/2` metadata is not enough for it to appear in Sentry. Add new structured log keys to both baseline `config/config.exs` and prod `config/runtime.exs` when introducing operational metadata.
 - **Sentry integrations**: `Sentry.PlugContext` in the endpoint (request context on errors), Oban integration (failed job capture + cron monitoring), `Sentry.LoggerHandler` (forwards `Logger.error/1` and crashes to Sentry).
 - **All 11 Ecto baseline migrations** are marked "up" on the shared Supabase Postgres. The tables already existed from Supabase migrations; Ecto migration versions were inserted into `schema_migrations` to mark them as run.
 - If `mix test`/`mix ecto.migrate` reports duplicate baseline objects such as `type "role_type" already exists` against local Supabase, the database has Supabase schema objects but missing Ecto `schema_migrations` rows; do not add duplicate migrations to fix this. Restore/mark the baseline migration versions or use the documented shared Supabase Postgres state.
