@@ -79,7 +79,7 @@ dhc-dashboard/
 
 ## MIGRATION NOTES
 
-- **Database**: Ecto owns all schema changes. Supabase migrations frozen. Baseline migrations model current schema in Elixir code. Before first Phoenix/Fly release migration on an existing Supabase DB, run `bridge.sql` once to seed Ecto `schema_migrations` for the Supabase-backed baseline only; leave Oban/new cutover migrations pending.
+- **Database**: Ecto owns all schema changes. Supabase migrations frozen. Baseline migrations model current schema in Elixir code. Before first Phoenix/Fly release migration on an existing Supabase DB, run `bridge.sql` once to seed Ecto `schema_migrations` for the Supabase-backed baseline only; leave Oban/new cutover migrations pending. The bridge is mirrored into `supabase/seed.sql` so a local `pnpm supabase:reset` auto-seeds `schema_migrations` and leaves the DB ready for `mix ecto.migrate` (which then runs only the cutover migrations: `20260512000001` Oban + `20260611224011` pg_cron removal). The standalone `scripts/bridge.sql` remains for one-shot production use via `psql "$DATABASE_URL" -f scripts/bridge.sql`.
 - **Auth**: Supabase Auth stays forever. Phoenix validates Supabase JWT. SvelteKit forwards JWT to Phoenix.
 - **RLS**: No new policies. Existing ones removed when PostgREST is disabled.
 - **Queues**: pgmq → Oban. Big-bang per-queue cutover. Discord → Email → Announcements → Stripe → Bulk Invite.
