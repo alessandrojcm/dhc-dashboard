@@ -7,9 +7,9 @@
 
 | Term | Definition |
 |------|-----------|
-| **Member** | A person with a club membership. Has a `user_profiles` record linked to `auth.users` via Supabase Auth. |
-| **Membership** | A recurring subscription managed via Stripe. Can be active, inactive, or paused. |
-| **Paused** | A membership status where `member_profiles.subscription_paused_until` is in the future and `is_active = true` — member retains access but isn't charged. |
+| **Member** | A person with a club membership. Has a `user_profiles` record linked to `auth.users` via Supabase Auth. A Member has an `isActive` profile flag independent of their Membership status. |
+| **Membership** | A recurring subscription managed via Stripe. Has a status of `active`, `inactive`, or `paused`. An inactive Membership means the member has no active subscription. Membership status is distinct from the Member's `isActive` flag. |
+| **Paused** | A Membership status where `subscription_paused_until` is in the future. The Member retains access (`isActive = true`) but is not charged. |
 | **Workshop** | A club activity/club activity with date, capacity, pricing, and registration. |
 | **Registration** | A member's sign-up for a workshop. Has statuses (confirmed, cancelled, waitlisted) and links to payment. |
 | **Refund** | A cancellation-triggered repayment. Tracked in `club_activity_refunds`. |
