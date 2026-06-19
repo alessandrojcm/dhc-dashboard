@@ -764,6 +764,23 @@ components:
         - completed
         - no_reply
         - joined
+    MembershipStatus:
+      type: string
+      enum:
+        - active
+        - inactive
+        - paused
+      description: |
+        Membership lifecycle state for a member profile.
+
+        - `active`: the membership is currently in good standing.
+        - `inactive`: the membership has lapsed or been ended.
+        - `paused`: the membership is temporarily suspended (e.g. via
+          `subscription_paused_until`). Mirrors the paused-subscription case
+          in the legacy `member_management_view` `membership_status` column.
+
+        Referenced later by the members-list DTO `membershipStatus` field and
+        the `membershipStatus` query parameter of the members-list endpoint.
     WaitlistEntriesSortField:
       type: string
       enum:
