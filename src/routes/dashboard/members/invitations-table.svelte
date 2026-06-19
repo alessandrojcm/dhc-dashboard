@@ -1,6 +1,4 @@
 <script lang="ts">
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
 	createMutation,
@@ -10,20 +8,24 @@ import {
 import {
 	getCoreRowModel,
 	getExpandedRowModel,
-	getPaginationRowModel,
 	getSortedRowModel,
-	type PaginationState,
 	type SortingState,
 } from "@tanstack/table-core";
 import dayjs from "dayjs";
 import { SendIcon, Trash2 } from "lucide-svelte";
 import { createRawSnippet } from "svelte";
+import { SvelteURLSearchParams } from "svelte/reactivity";
 import { Cross2 } from "svelte-radix";
 import { toast } from "svelte-sonner";
 import { goto } from "$app/navigation";
 import { resolve } from "$app/paths";
 import { page } from "$app/state";
 import type { Database } from "$database";
+import {
+	type Invitation,
+	type InvitationListSortField,
+	invitationsList,
+} from "@dhc/api-client";
 import { Badge } from "$lib/components/ui/badge";
 import { Button } from "$lib/components/ui/button";
 import * as ButtonGroup from "$lib/components/ui/button-group";
@@ -36,7 +38,6 @@ import {
 } from "$lib/components/ui/data-table/index.js";
 import { Input } from "$lib/components/ui/input";
 import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
-import * as Pagination from "$lib/components/ui/pagination/index.js";
 import * as Select from "$lib/components/ui/select";
 import * as Table from "$lib/components/ui/table/index.js";
 import { getInvitationLink } from "$lib/utils/invitation";
@@ -46,81 +47,141 @@ import {
 } from "../beginners-workshop/admin.remote";
 import InvitationActions from "./invitation-actions.svelte";
 
-const columns = "id,email,status,expires_at,created_at";
+const pageSizeOptions = [10, 25, 50, 100] as const;
 
-let pageSizeOptions = [10, 25, 50, 100];
+// The table sorts on DB column names (snake_case) to stay compatible with the
+// existing column ids; these map to the camelCase sort fields the API expects.
+const invitationSortFields = [
+	"email",
+	"status",
+	"expires_at",
+	"created_at",
+] as const;
+
+type InvitationTableSortField = (typeof invitationSortFields)[number];
+
+const invitationSortMap: Record<
+	InvitationTableSortField,
+	InvitationListSortField
+> = {
+	email: "email",
+	status: "status",
+	expires_at: "expiresAt",
+	created_at: "createdAt",
+};
+
+type InvitationTableRow = {
+	id: string;
+	email: string;
+	status: Invitation["status"];
+	expires_at: string;
+	created_at: string;
+};
+
+type InvitationTablePage = {
+	data: InvitationTableRow[];
+	count: number;
+	nextCursor: string | null;
+	previousCursor: string | null;
+};
 
 const { supabase }: { supabase: SupabaseClient<Database> } = $props();
 
-const currentPage = $derived.by(
-	() => Number(page.url.searchParams.get("invitePage")) || 0,
-);
-const pageSize = $derived.by(
-	() => Number(page.url.searchParams.get("invitePageSize")) || 10,
-);
-const searchQuery = $derived.by(
-	() => page.url.searchParams.get("inviteQ") || "",
-);
-const rangeStart = $derived.by(() => currentPage * pageSize);
-const rangeEnd = $derived.by(() => rangeStart + pageSize);
-const sortingState: SortingState = $derived.by(() => {
-	const sortColumn = page.url.searchParams.get("inviteSort");
+const pageSize = $derived.by(() => {
+	const requestedPageSize =
+		Number(page.url.searchParams.get("invitePageSize")) || 10;
+	return pageSizeOptions.includes(
+		requestedPageSize as (typeof pageSizeOptions)[number],
+	)
+		? (requestedPageSize as (typeof pageSizeOptions)[number])
+		: (10 as (typeof pageSizeOptions)[number]);
+});
+const searchQuery = $derived(page.url.searchParams.get("inviteQ") || "");
+const cursor = $derived(page.url.searchParams.get("inviteCursor"));
+const activeSort = $derived.by(() => {
+	const requestedSortColumn = page.url.searchParams.get("inviteSort");
+	const sortColumn = invitationSortFields.includes(
+		requestedSortColumn as (typeof invitationSortFields)[number],
+	)
+		? (requestedSortColumn as InvitationTableSortField)
+		: "created_at";
 	const sortDirection = page.url.searchParams.get("inviteDirection");
-	if (!sortColumn) return [];
+
+	return {
+		sort: sortColumn,
+		direction: sortDirection === "asc" ? ("asc" as const) : ("desc" as const),
+	} as const;
+});
+const sortingState: SortingState = $derived.by(() => {
 	return [
 		{
-			id: sortColumn,
-			desc: sortDirection === "desc",
+			id: activeSort.sort,
+			desc: activeSort.direction === "desc",
 		},
 	];
 });
 
-const invitationsQueryKey = $derived([
-	"invitations",
-	pageSize,
-	currentPage,
-	rangeStart,
-	sortingState,
-	searchQuery,
-]);
+type InvitationTableQueryParams = {
+	pageSize: (typeof pageSizeOptions)[number];
+	searchQuery: string;
+	sort: InvitationTableSortField;
+	direction: "asc" | "desc";
+	cursor: string | null;
+};
 
-// Query to fetch invitations
-const invitationsQuery = createQuery(() => ({
+const invitationsQueryParams = $derived<InvitationTableQueryParams>({
+	pageSize,
+	searchQuery,
+	sort: activeSort.sort,
+	direction: activeSort.direction,
+	cursor,
+});
+
+async function loadInvitationsPage(
+	params: InvitationTableQueryParams,
+): Promise<InvitationTablePage> {
+	const response = await invitationsList({
+		query: {
+			limit: params.pageSize,
+			cursor: params.cursor ?? undefined,
+			q: params.searchQuery || undefined,
+			sort: invitationSortMap[params.sort],
+			direction: params.direction,
+		},
+	});
+
+	if (response.error) {
+		throw new Error("Failed to load invitations. Please try again later.");
+	}
+
+	const result = response.data.data;
+
+	return {
+		data: result.invitations.map(toTableRow),
+		count: result.totalCount,
+		nextCursor: result.nextCursor,
+		previousCursor: result.previousCursor,
+	};
+}
+
+function toTableRow(invitation: Invitation): InvitationTableRow {
+	return {
+		id: invitation.id,
+		email: invitation.email,
+		status: invitation.status,
+		expires_at: invitation.expiresAt,
+		created_at: invitation.createdAt,
+	};
+}
+
+const invitationsQueryKey = $derived(["invitations", invitationsQueryParams]);
+const invitationsQuery = createQuery<InvitationTablePage>(() => ({
 	queryKey: invitationsQueryKey,
 	placeholderData: keepPreviousData,
-	initialData: { data: [], count: 0 },
-	queryFn: async ({ signal }) => {
-		let query = supabase
-			.from("invitations")
-			.select(columns, { count: "estimated" });
-
-		// Filter by status (pending or expired)
-		query = query.in("status", ["pending", "expired"]);
-		if (searchQuery.length > 0) {
-			query = query.textSearch("search_text", `'${searchQuery}'`, {
-				type: "websearch",
-			});
-		}
-		// Add sorting if provided
-		if (sortingState.length > 0) {
-			query = query.order(sortingState[0].id, {
-				ascending: !sortingState[0].desc,
-			});
-		} else {
-			// Default sort by created_at descending
-			query = query.order("created_at", { ascending: false });
-		}
-
-		const { data, error, count } = await query
-			.range(rangeStart, rangeEnd)
-			.abortSignal(signal)
-			.throwOnError();
-
-		if (error) {
-			throw error;
-		}
-
-		return { data, count: count || data.length };
+	initialData: { data: [], count: 0, nextCursor: null, previousCursor: null },
+	queryFn: ({ signal, queryKey }) => {
+		signal.throwIfAborted();
+		return loadInvitationsPage(queryKey[1] as InvitationTableQueryParams);
 	},
 }));
 
@@ -129,36 +190,47 @@ let selectedRows = $state<Set<string>>(new Set());
 // Derived state for bulk operations
 const selectedRowsArray = $derived(Array.from(selectedRows));
 
-function onPaginationChange(newPagination: Partial<PaginationState>) {
-	const paginationState: PaginationState = {
-		pageIndex: currentPage,
-		pageSize,
-		...newPagination,
-	};
-	// eslint-disable-next-line svelte/prefer-svelte-reactivity
-	const newParams = new URLSearchParams(page.url.searchParams);
-	newParams.set("invitePage", paginationState.pageIndex.toString());
-	newParams.set("invitePageSize", paginationState.pageSize.toString());
-	const url = `/dashboard/members?${newParams.toString()}`;
+type MembersUrl = `/dashboard/members?${string}`;
+
+function navigateToMembers(searchParams: SvelteURLSearchParams) {
+	const url = `/dashboard/members?${searchParams.toString()}` as MembersUrl;
 	goto(resolve(url as any), { keepFocus: true, noScroll: true });
+}
+
+function onPaginationChange(newPageSize: (typeof pageSizeOptions)[number]) {
+	const newParams = new SvelteURLSearchParams(page.url.searchParams);
+	newParams.set("invitePageSize", newPageSize.toString());
+	// Changing page size resets the cursor (the old cursor bound the prior limit).
+	newParams.delete("inviteCursor");
+	navigateToMembers(newParams);
+}
+
+function onCursorChange(newCursor: string | null | undefined) {
+	const newParams = new SvelteURLSearchParams(page.url.searchParams);
+	if (newCursor) {
+		newParams.set("inviteCursor", newCursor);
+	} else {
+		newParams.delete("inviteCursor");
+	}
+	navigateToMembers(newParams);
 }
 
 function onSortingChange(newSorting: SortingState) {
-	const [sortingState] = newSorting;
-	// eslint-disable-next-line svelte/prefer-svelte-reactivity
-	const newParams = new URLSearchParams(page.url.searchParams);
-	newParams.set("inviteSort", sortingState.id);
-	newParams.set("inviteDirection", sortingState.desc ? "desc" : "asc");
-	const url = `/dashboard/members?${newParams.toString()}`;
-	goto(resolve(url as any), { keepFocus: true, noScroll: true });
+	const [sorting] = newSorting;
+	const newParams = new SvelteURLSearchParams(page.url.searchParams);
+	newParams.set("inviteSort", sorting.id);
+	newParams.set("inviteDirection", sorting.desc ? "desc" : "asc");
+	// Re-sorting invalidates the cursor (it bound the prior sort field/direction).
+	newParams.delete("inviteCursor");
+	navigateToMembers(newParams);
 }
 
 function onSearchChange(newSearch: string) {
-	// eslint-disable-next-line svelte/prefer-svelte-reactivity
-	const newParams = new URLSearchParams(page.url.searchParams);
+	const newParams = new SvelteURLSearchParams(page.url.searchParams);
 	newParams.set("inviteQ", newSearch);
-	const url = `/dashboard/members?${newParams.toString()}`;
-	goto(resolve(url as any), { keepFocus: true, noScroll: true });
+	// Re-searching invalidates the cursor (it bound the prior query).
+	newParams.delete("inviteCursor");
+	navigateToMembers(newParams);
 }
 
 const resendInvitationLink = createMutation(() => ({
@@ -177,7 +249,7 @@ const bulkResendInvitations = createMutation(() => ({
 	mutationFn: async (selectedIds: string[]) => {
 		const selectedInvitations =
 			invitationsQuery.data?.data?.filter((invitation) =>
-				selectedIds.includes(invitation.id!),
+				selectedIds.includes(invitation.id),
 			) || [];
 		return resendInvitations({
 			emails: selectedInvitations.map((invitation) => invitation.email),
@@ -242,15 +314,15 @@ const table = createSvelteTable({
 						resendInvitationLink.mutate([
 							{
 								email: row.original.email,
-								invitationId: row.original.id!,
+								invitationId: row.original.id,
 							},
 						]),
 					invitationLink: getInvitationLink(
-						row.original.id!,
+						row.original.id,
 						row.original.email,
 					),
 					deleteInvitation: () =>
-						deleteInvitations([row.original.id!]).then(() => {
+						deleteInvitations([row.original.id]).then(() => {
 							toast.success("Invitation deleted");
 							invitationsQuery.refetch();
 						}),
@@ -314,18 +386,6 @@ const table = createSvelteTable({
 			);
 		},
 	},
-	onPaginationChange: (updater) => {
-		if (typeof updater === "function") {
-			onPaginationChange(
-				updater({
-					pageIndex: currentPage,
-					pageSize,
-				}),
-			);
-		} else {
-			onPaginationChange(updater);
-		}
-	},
 	onSortingChange: (updater) => {
 		if (typeof updater === "function") {
 			onSortingChange(updater(sortingState));
@@ -335,7 +395,6 @@ const table = createSvelteTable({
 	},
 	getCoreRowModel: getCoreRowModel(),
 	getSortedRowModel: getSortedRowModel(),
-	getPaginationRowModel: getPaginationRowModel(),
 	getExpandedRowModel: getExpandedRowModel(),
 	getRowId: (row) => row.id,
 	onRowSelectionChange: (updater) => {
@@ -365,7 +424,7 @@ const table = createSvelteTable({
 		value={searchQuery}
 		onchange={(t: Event & { currentTarget: EventTarget & HTMLInputElement }) =>
 			onSearchChange(t.currentTarget.value)}
-		placeholder="Search members"
+		placeholder="Search invitations"
 		class="max-w-md"
 	/>
 
@@ -531,9 +590,12 @@ const table = createSvelteTable({
 		<Select.Root
 			type="single"
 			value={pageSize.toString()}
-			onValueChange={(value) => onPaginationChange({ pageSize: Number(value) })}
+			onValueChange={(value) =>
+				onPaginationChange(Number(value) as (typeof pageSizeOptions)[number])}
 		>
-			<Select.Trigger class="w-16 h-8">{pageSize}</Select.Trigger>
+			<Select.Trigger class="w-16 h-8" aria-label="Invitations elements per page">
+				{pageSize}
+			</Select.Trigger>
 			<Select.Content>
 				{#each pageSizeOptions as pageSizeOption (pageSizeOption)}
 					<Select.Item value={pageSizeOption.toString()}>
@@ -543,43 +605,23 @@ const table = createSvelteTable({
 			</Select.Content>
 		</Select.Root>
 	</div>
-	<div class="w-full md:w-auto flex justify-center md:justify-end">
-		<Pagination.Root
-			count={invitationsQuery?.data?.count ?? 0}
-			perPage={pageSize}
-			page={currentPage + 1}
-			onPageChange={(page) => table.setPageIndex(page - 1)}
-			class="m-0"
+	<div class="w-full md:w-auto flex items-center justify-center md:justify-end gap-2">
+		<Button
+			variant="outline"
+			disabled={!invitationsQuery.data?.previousCursor || invitationsQuery.isFetching}
+			onclick={() => onCursorChange(invitationsQuery.data?.previousCursor)}
 		>
-			{#snippet children({ pages, currentPage })}
-				<Pagination.Content>
-					<Pagination.Item>
-						<Pagination.PrevButton />
-					</Pagination.Item>
-					{#each pages as page (page.key)}
-						{#if page.type === 'ellipsis'}
-							<Pagination.Item class="hidden sm:block">
-								<Pagination.Ellipsis />
-							</Pagination.Item>
-						{:else}
-							<Pagination.Item
-								class={page.value !== currentPage &&
-								page.value !== currentPage - 1 &&
-								page.value !== currentPage + 1
-									? 'hidden sm:block'
-									: ''}
-							>
-								<Pagination.Link {page} isActive={currentPage === page.value}>
-									{page.value}
-								</Pagination.Link>
-							</Pagination.Item>
-						{/if}
-					{/each}
-					<Pagination.Item>
-						<Pagination.NextButton />
-					</Pagination.Item>
-				</Pagination.Content>
-			{/snippet}
-		</Pagination.Root>
+			Previous
+		</Button>
+		<p class="text-sm text-muted-foreground">
+			{invitationsQuery.data?.count ?? 0} total
+		</p>
+		<Button
+			variant="outline"
+			disabled={!invitationsQuery.data?.nextCursor || invitationsQuery.isFetching}
+			onclick={() => onCursorChange(invitationsQuery.data?.nextCursor)}
+		>
+			Next
+		</Button>
 	</div>
 </div>

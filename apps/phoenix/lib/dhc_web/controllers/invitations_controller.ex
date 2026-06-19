@@ -7,6 +7,24 @@ defmodule DhcWeb.InvitationsController do
   alias Dhc.Invitations.BulkInviteWorker
 
   @doc """
+  GET /invitations
+  """
+  def list(conn, params) do
+    case Invitations.list(params) do
+      {:ok, result} ->
+        conn
+        |> put_view(json: DhcWeb.InvitationsJSON)
+        |> render(:list, result: result)
+
+      {:error, :bad_cursor} ->
+        bad_request(conn, "Invalid or mismatched cursor")
+
+      {:error, _reason} ->
+        bad_request(conn, "Invalid invitations query")
+    end
+  end
+
+  @doc """
   POST /invitations
   """
   def create(conn, %{"invites" => invites}) when is_list(invites) and length(invites) > 0 do
@@ -69,5 +87,11 @@ defmodule DhcWeb.InvitationsController do
     |> put_status(:bad_request)
     |> put_view(json: DhcWeb.InvitationsJSON)
     |> render(:error, detail: "emails must be a non-empty list")
+  end
+
+  defp bad_request(conn, detail) do
+    conn
+    |> put_status(:bad_request)
+    |> json(%{errors: %{detail: detail}})
   end
 end
