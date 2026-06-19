@@ -50,6 +50,7 @@ defmodule DhcWeb.Router do
   scope "/api", DhcWeb do
     pipe_through [:api, :members_admin_api]
 
+    get "/members", MembersController, :index
     get "/members/analytics", MembersController, :analytics
   end
 

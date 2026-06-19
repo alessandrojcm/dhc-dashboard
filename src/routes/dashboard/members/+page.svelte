@@ -77,7 +77,7 @@ let viewLabel = $derived(
 			<Analytics />
 		</Content>
 		<Content value="members">
-			<MembersTable supabase={data.supabase} />
+			<MembersTable />
 		</Content>
 		<Content value="invitations">
 			<InvitationsTable supabase={data.supabase} />
