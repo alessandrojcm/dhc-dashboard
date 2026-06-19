@@ -12,7 +12,7 @@ defmodule Dhc.StripeSync.Repository do
 
   alias Dhc.Repo
 
-  @monthly_price_setting_key "stripe_monthly_price_id"
+  @price_setting_key "stripe_membership_price_ids"
 
   @doc """
   Returns Stripe customer IDs for Members whose payment data is stale.
@@ -37,7 +37,7 @@ defmodule Dhc.StripeSync.Repository do
   def fetch_cached_price_id do
     query =
       from s in "settings",
-        where: s.key == ^@monthly_price_setting_key,
+        where: s.key == ^@price_setting_key,
         select: %{value: s.value, updated_at: s.updated_at}
 
     Repo.one(query)
@@ -52,14 +52,14 @@ defmodule Dhc.StripeSync.Repository do
 
     query =
       from s in "settings",
-        where: s.key == @monthly_price_setting_key,
+        where: s.key == @price_setting_key,
         select: s.id
 
     case Repo.one(query) do
       nil ->
         Repo.insert_all("settings", [
           [
-            key: @monthly_price_setting_key,
+            key: @price_setting_key,
             value: price_id,
             type: "text",
             created_at: now,
@@ -69,7 +69,7 @@ defmodule Dhc.StripeSync.Repository do
 
       _ ->
         Repo.update_all(
-          from(s in "settings", where: s.key == ^@monthly_price_setting_key),
+          from(s in "settings", where: s.key == ^@price_setting_key),
           set: [value: price_id, updated_at: now]
         )
     end
