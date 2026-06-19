@@ -1,9 +1,8 @@
 <script lang="ts">
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { createQuery } from "@tanstack/svelte-query";
 import { onMount } from "svelte";
 import { browser } from "$app/environment";
-import type { Database } from "$database";
+import { membersAnalyticsOptions } from "@dhc/api-client";
 import * as Card from "$lib/components/ui/card/index.js";
 import * as Resizable from "$lib/components/ui/resizable/index.js";
 import { Skeleton } from "$lib/components/ui/skeleton/index.js";
@@ -29,123 +28,38 @@ onMount(async () => {
 	}
 });
 
-const { supabase }: { supabase: SupabaseClient<Database> } = $props();
-const totalCountQuery = createQuery(() => ({
-	queryKey: ["members", "totalCount"],
-	queryFn: ({ signal }) =>
-		supabase
-			.from("member_management_view")
-			.select("id", { count: "exact", head: true })
-			.eq("is_active", true)
-			.abortSignal(signal)
-			.throwOnError()
-			.then((r) => r.count ?? 0) as Promise<number>,
-}));
-const averageAge = createQuery<number>(() => ({
-	queryKey: ["members", "avgAge"],
-	queryFn: ({ signal }) =>
-		supabase
-			.from("member_management_view")
-			.select("avg_age:age.avg()")
-			.eq("is_active", true)
-			.abortSignal(signal)
-			.single()
-			.throwOnError()
-			.then((res) => res.data?.avg_age ?? 0) as Promise<number>,
-}));
+// Single browser-side Phoenix read (`GET /api/members/analytics`) via the
+// generated TanStack Query options. The Supabase JWT is attached by
+// `configureClient`'s `getAuthToken` hook; authz is enforced by Phoenix's
+// `members_admin_api` pipeline, so no SvelteKit `authorize()` gate is needed.
+// Replaces the five browser-side PostgREST aggregates over
+// `member_management_view`.
+const analyticsQuery = createQuery(() => membersAnalyticsOptions());
 
-const genderDistribution = createQuery(() => ({
-	queryKey: ["members", "genderDistribution"],
-	queryFn: ({ signal }) =>
-		supabase
-			.from("member_management_view")
-			.select("gender,count:gender.count()")
-			.eq("is_active", true)
-			.abortSignal(signal)
-			.throwOnError()
-			.then((r) => r.data ?? []) as Promise<
-			{
-				gender:
-					| "man (cis)"
-					| "woman (cis)"
-					| "non-binary"
-					| "man (trans)"
-					| "woman (trans)"
-					| "other"
-					| null;
-				count: number;
-			}[]
-		>,
-}));
-const ageDistributionQuery = createQuery(() => ({
-	queryKey: ["members", "ageDistribution"],
-	queryFn: ({ signal }) =>
-		supabase
-			.from("member_management_view")
-			.select("age,value:age.count()")
-			.eq("is_active", true)
-			.order("age", { ascending: true })
-			.abortSignal(signal)
-			.throwOnError()
-			.then((r) => r.data ?? []) as Promise<
-			{
-				age: number | null;
-				value: number;
-			}[]
-		>,
-}));
-const weaponPreferencesDistribution = createQuery<
-	{ weapon: string; count: number }[]
->(() => ({
-	queryKey: ["members", "weaponPreferencesDistribution"],
-	queryFn: async ({ signal }) => {
-		const { data } = await supabase
-			.from("member_management_view")
-			.select("preferred_weapon")
-			.eq("is_active", true)
-			.abortSignal(signal)
-			.throwOnError();
-
-		// Process the data in JavaScript
-		const weapons = data?.flatMap((d) => d.preferred_weapon) ?? [];
-		const counts = weapons.reduce(
-			(acc, weapon) => {
-				if (weapon !== null) {
-					acc[weapon] = (acc[weapon] || 0) + 1;
-				}
-				return acc;
-			},
-			{} as Record<string, number>,
-		);
-
-		return Object.entries(counts)
-			.map(([weapon, count]) => ({
-				weapon,
-				count,
-			}))
-			.sort((a, b) => a.weapon.localeCompare(b.weapon)) as Array<{
-			weapon: string;
-			count: number;
-		}>;
-	},
-}));
-
-const genderDistributionData = $derived.by(
-	(): Array<{ gender: string; value: number }> => {
-		if (!genderDistribution.data) return [];
-		return genderDistribution.data.map((row) => ({
-			gender: row.gender ?? "Unknown",
-			value: row.count,
-		}));
-	},
-);
-
-const ageDistributionData = $derived.by(() => {
-	return ageDistributionQuery.data ?? [];
+const analytics = $derived(analyticsQuery.data?.data);
+const totalCount = $derived(analytics?.totalCount ?? 0);
+const averageAge = $derived(analytics?.averageAge ?? 0);
+const genderDistributionData = $derived.by(() => {
+	if (!analytics) return [];
+	return analytics.genderDistribution.map((row) => ({
+		gender: row.gender,
+		value: row.value,
+	}));
 });
-
-const weaponPreferencesDistributionData = $derived.by(() => {
-	return weaponPreferencesDistribution.data ?? [];
+const ageDistributionData = $derived.by(() => {
+	if (!analytics) return [];
+	return analytics.ageDistribution.map((row) => ({
+		age: row.age,
+		value: row.value,
+	}));
+});
+const weaponDistributionData = $derived.by(() => {
+	if (!analytics) return [];
+	// Weapon items use the `{ weapon, value }` shape (renamed from `count`).
+	return analytics.weaponDistribution.map((row) => ({
+		weapon: row.weapon,
+		value: row.value,
+	}));
 });
 </script>
 
@@ -157,11 +71,11 @@ const weaponPreferencesDistributionData = $derived.by(() => {
 			<Card.Description class="text-black">Total Members</Card.Description>
 		</Card.Header>
 		<Card.Content>
-			{#if totalCountQuery.isLoading}
+			{#if analyticsQuery.isLoading}
 				<Skeleton class="h-[2.5rem] w-[5rem]" />
 			{:else}
 				<p class="text-black text-4xl">
-					{totalCountQuery.data ?? 0}
+					{totalCount}
 				</p>
 			{/if}
 		</Card.Content>
@@ -171,11 +85,11 @@ const weaponPreferencesDistributionData = $derived.by(() => {
 			<Card.Description class="text-black">Average age</Card.Description>
 		</Card.Header>
 		<Card.Content>
-			{#if averageAge.isLoading}
+			{#if analyticsQuery.isLoading}
 				<Skeleton class="h-[2.5rem] w-[5rem]" />
 			{:else}
 				<p class="text-black text-4xl">
-					{(averageAge.data ?? 0).toLocaleString('en-UK', { maximumFractionDigits: 2 })}
+					{averageAge.toLocaleString('en-UK', { maximumFractionDigits: 2 })}
 				</p>
 			{/if}
 		</Card.Content>
@@ -197,8 +111,8 @@ const weaponPreferencesDistributionData = $derived.by(() => {
 	<!-- Preferred Weapons Card -->
 	<Resizable.Pane class="min-h-[400px] p-4 border rounded">
 		<h3 class="text-lg font-medium mb-4">Preferred Weapons</h3>
-		{#if WeaponPieChart && weaponPreferencesDistributionData}
-			<WeaponPieChart weaponDistributionData={weaponPreferencesDistributionData} />
+		{#if WeaponPieChart && weaponDistributionData}
+			<WeaponPieChart {weaponDistributionData} />
 		{/if}
 	</Resizable.Pane>
 	<Resizable.Handle />

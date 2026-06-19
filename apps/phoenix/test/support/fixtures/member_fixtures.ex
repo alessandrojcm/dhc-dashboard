@@ -16,6 +16,9 @@ defmodule Dhc.MemberFixtures do
     * `:customer_id` - override the Stripe customer id (default: auto-generated)
     * `:last_payment_date` - set the member profile's last payment date
     * `:is_active` - set the user profile's active flag
+    * `:gender` - set the user profile's gender (default: `"man (cis)"`)
+    * `:date_of_birth` - set the user profile's date of birth (default: `~D[1990-01-01]`)
+    * `:preferred_weapon` - set the member profile's weapon array (default: `["longsword"]`)
   """
   def member_fixture(attrs \\ %{}) do
     attrs = Enum.into(attrs, %{})
@@ -51,8 +54,8 @@ defmodule Dhc.MemberFixtures do
         first_name: "Test",
         last_name: "Member",
         phone_number: "+353810000000",
-        date_of_birth: ~D[1990-01-01],
-        gender: "man (cis)",
+        date_of_birth: Map.get(attrs, :date_of_birth, ~D[1990-01-01]),
+        gender: Map.get(attrs, :gender, "man (cis)"),
         pronouns: "he/him",
         is_active: Map.get(attrs, :is_active, true),
         customer_id: customer_id,
@@ -69,7 +72,7 @@ defmodule Dhc.MemberFixtures do
         user_profile_id: profile_id,
         next_of_kin_name: "Next of Kin",
         next_of_kin_phone: "+353820000000",
-        preferred_weapon: ["longsword"],
+        preferred_weapon: Map.get(attrs, :preferred_weapon, ["longsword"]),
         membership_start_date: now,
         last_payment_date: Map.get(attrs, :last_payment_date),
         insurance_form_submitted: false,

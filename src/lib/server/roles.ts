@@ -33,14 +33,6 @@ export const WORKSHOP_ROLES = new Set([
 	"admin",
 ]);
 
-export const WAITLIST_ADMIN_ROLES = new Set([
-	"admin",
-	"president",
-	"committee_coordinator",
-	"beginners_coordinator",
-	"coach",
-]);
-
 export const INVENTORY_ROLES = new Set(["quartermaster", "admin", "president"]);
 
 export const INVENTORY_READ_ROLES = new Set([...INVENTORY_ROLES, "member"]);

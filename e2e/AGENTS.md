@@ -23,7 +23,7 @@ pnpm dev
 mise run phx-server
 ```
 
-`mise run phx-server` (Phoenix on `:4000`) is required because migrated PostgREST reads (waitlist status, notifications, members insurance-form) are served by Phoenix. SvelteKit calls these via `@dhc/api-client` using `API_BASE_URL` (default `http://localhost:4000/api`); without Phoenix, those reads fail and the pages degrade (e.g. `/waitlist` returns 503).
+`mise run phx-server` (Phoenix on `:4000`) is required because migrated PostgREST reads (waitlist status, notifications, members insurance-form, members analytics) are served by Phoenix. SvelteKit calls these via `@dhc/api-client` using `API_BASE_URL` (default `http://localhost:4000/api`); without Phoenix, those reads fail and the pages degrade (e.g. `/waitlist` returns 503).
 
 ## KEY HELPERS
 
