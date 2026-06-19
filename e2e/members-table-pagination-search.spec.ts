@@ -25,7 +25,9 @@ test.describe("Members table pagination and search", () => {
 		await loginAsUser(context, adminMember.email);
 	});
 
-	test("should paginate members table correctly", async ({ page }) => {
+	test("should paginate members table correctly via cursor prev/next", async ({
+		page,
+	}) => {
 		await page.goto("/dashboard/members?tab=members");
 
 		// Wait for table rows to be attached in DOM
@@ -48,7 +50,7 @@ test.describe("Members table pagination and search", () => {
 		const isNextButtonDisabled = await nextButton.isDisabled();
 
 		if (!isNextButtonDisabled) {
-			// Go to the next page
+			// Go to the next page (cursor-based navigation)
 			await nextButton.click();
 			await page.waitForLoadState("networkidle");
 
@@ -60,8 +62,23 @@ test.describe("Members table pagination and search", () => {
 			// Verify we're on a different page
 			expect(firstRowText).not.toEqual(newFirstRowText);
 
-			// Verify URL has page parameter
-			expect(page.url()).toContain("page=1");
+			// Verify URL has a cursor parameter (cursor-based pagination, not page index)
+			expect(page.url()).toContain("cursor=");
+
+			// Verify the Previous button is enabled (we moved off the first page)
+			const previousButton = page.getByRole("button", { name: "Previous" });
+			await expect(previousButton).toBeEnabled();
+
+			// Go back to the previous page (cursor round-trip)
+			await previousButton.click();
+			await page.waitForLoadState("networkidle");
+
+			// Verify we returned to the first page (cursor cleared on first page)
+			await expect
+				.poll(() => new URL(page.url()).searchParams.get("cursor") ?? "", {
+					timeout: 10000,
+				})
+				.toBe("");
 		}
 	});
 
@@ -177,6 +194,29 @@ test.describe("Members table pagination and search", () => {
 		const currentUrl = new URL(page.url());
 		const qParam = currentUrl.searchParams.get("q");
 		expect(qParam === null || qParam === "").toBe(true);
+	});
+
+	test("should filter members by membershipStatus URL param", async ({
+		page,
+	}) => {
+		// Navigate with the membershipStatus filter applied (renamed from `status`).
+		await page.goto("/dashboard/members?tab=members&membershipStatus=active");
+
+		// Wait for table rows to be attached in DOM
+		await page.locator("table tbody tr").first().waitFor({
+			state: "attached",
+			timeout: 10000,
+		});
+
+		// Verify the URL carries the membershipStatus param
+		expect(page.url()).toContain("membershipStatus=active");
+
+		// The "active" checkbox in the status filter should be checked
+		const activeCheckbox = page
+			.getByRole("checkbox")
+			.filter({ hasText: "active" })
+			.first();
+		await expect(activeCheckbox).toBeChecked();
 	});
 
 	test("should display correct total count for pagination", async ({

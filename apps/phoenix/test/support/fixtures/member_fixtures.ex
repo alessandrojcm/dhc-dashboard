@@ -19,6 +19,15 @@ defmodule Dhc.MemberFixtures do
     * `:gender` - set the user profile's gender (default: `"man (cis)"`)
     * `:date_of_birth` - set the user profile's date of birth (default: `~D[1990-01-01]`)
     * `:preferred_weapon` - set the member profile's weapon array (default: `["longsword"]`)
+    * `:first_name` - override the user profile's first name (default: `"Test"`)
+    * `:last_name` - override the user profile's last name (default: `"Member"`)
+    * `:pronouns` - override the user profile's pronouns (default: `"he/him"`)
+    * `:phone_number` - override the user profile's phone number
+    * `:medical_conditions` - override the user profile's medical conditions
+    * `:social_media_consent` - override the user profile's consent (default: `"no"`)
+    * `:membership_start_date` - override the member profile's membership start date
+    * `:membership_end_date` - override the member profile's membership end date
+    * `:subscription_paused_until` - set the member profile's pause-until timestamp
   """
   def member_fixture(attrs \\ %{}) do
     attrs = Enum.into(attrs, %{})
@@ -51,15 +60,16 @@ defmodule Dhc.MemberFixtures do
       %{
         id: profile_id,
         supabase_user_id: auth_user_id,
-        first_name: "Test",
-        last_name: "Member",
-        phone_number: "+353810000000",
+        first_name: Map.get(attrs, :first_name, "Test"),
+        last_name: Map.get(attrs, :last_name, "Member"),
+        phone_number: Map.get(attrs, :phone_number, "+353810000000"),
         date_of_birth: Map.get(attrs, :date_of_birth, ~D[1990-01-01]),
         gender: Map.get(attrs, :gender, "man (cis)"),
-        pronouns: "he/him",
+        pronouns: Map.get(attrs, :pronouns, "he/him"),
         is_active: Map.get(attrs, :is_active, true),
         customer_id: customer_id,
-        social_media_consent: "no",
+        social_media_consent: Map.get(attrs, :social_media_consent, "no"),
+        medical_conditions: Map.get(attrs, :medical_conditions),
         created_at: now,
         updated_at: now
       }
@@ -73,10 +83,12 @@ defmodule Dhc.MemberFixtures do
         next_of_kin_name: "Next of Kin",
         next_of_kin_phone: "+353820000000",
         preferred_weapon: Map.get(attrs, :preferred_weapon, ["longsword"]),
-        membership_start_date: now,
+        membership_start_date: Map.get(attrs, :membership_start_date, now),
+        membership_end_date: Map.get(attrs, :membership_end_date),
         last_payment_date: Map.get(attrs, :last_payment_date),
         insurance_form_submitted: false,
         additional_data: %{},
+        subscription_paused_until: Map.get(attrs, :subscription_paused_until),
         created_at: now,
         updated_at: now
       }
