@@ -43,6 +43,7 @@ defmodule DhcWeb.Router do
   scope "/api", DhcWeb do
     pipe_through [:api, :authenticated_api]
 
+    get "/members/insurance-form", MembersController, :insurance_form
     get "/notifications", NotificationsController, :index
   end
 end
