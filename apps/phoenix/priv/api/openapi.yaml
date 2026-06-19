@@ -135,6 +135,77 @@ paths:
                 $ref: "#/components/schemas/Error"
 
   /invitations:
+    get:
+      operationId: invitations.list
+      tags:
+        - Invitations
+      summary: List member invitations
+      description: |
+        Returns a domain-shaped, cursor-paginated list of member invitations
+        for the dashboard table.
+
+        The server always filters to `pending` and `expired` invitations,
+        matching the previous hardcoded client filter. The `status` field is
+        still returned in the DTO so the UI can render the badge, but there is
+        no `status` query param — `accepted`/`revoked` rows are never returned.
+
+        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
+        `admin`, `president`, or `committee_coordinator`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            enum: [10, 25, 50, 100]
+            default: 10
+        - name: cursor
+          in: query
+          schema:
+            type: string
+          description: Opaque cursor returned by a previous response.
+        - name: q
+          in: query
+          schema:
+            type: string
+          description: Websearch-style full text query over `invitations.search_text`.
+        - name: sort
+          in: query
+          schema:
+            $ref: "#/components/schemas/InvitationListSortField"
+            default: createdAt
+        - name: direction
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        "200":
+          description: Cursor-paginated member invitations
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationListResponse"
+        "400":
+          description: Invalid query parameter or mismatched cursor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks an invitation admin role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
     post:
       operationId: invitations.create
       tags:
@@ -546,6 +617,78 @@ components:
               type: integer
             failed:
               type: integer
+    InvitationStatus:
+      type: string
+      enum:
+        - pending
+        - accepted
+        - expired
+        - revoked
+      description: |
+        Invitation lifecycle status. The list endpoint always filters to
+        `pending` and `expired`; `accepted`/`revoked` rows are never returned.
+        The field is still present in the DTO for UI badge rendering.
+    InvitationListSortField:
+      type: string
+      enum:
+        - email
+        - status
+        - expiresAt
+        - createdAt
+    InvitationListResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - invitations
+            - totalCount
+            - limit
+            - nextCursor
+            - previousCursor
+          properties:
+            invitations:
+              type: array
+              items:
+                $ref: "#/components/schemas/Invitation"
+            totalCount:
+              type: integer
+              minimum: 0
+              description: Exact `COUNT(*)`, not estimated.
+            limit:
+              type: integer
+              enum: [10, 25, 50, 100]
+            nextCursor:
+              type: string
+              nullable: true
+            previousCursor:
+              type: string
+              nullable: true
+    Invitation:
+      type: object
+      required:
+        - id
+        - email
+        - status
+        - expiresAt
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        status:
+          $ref: "#/components/schemas/InvitationStatus"
+        expiresAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
     WaitlistStatusResponse:
       type: object
       required:
