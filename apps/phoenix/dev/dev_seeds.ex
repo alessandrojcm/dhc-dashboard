@@ -3,24 +3,55 @@ defmodule Dhc.DevSeeds do
 
   import Ecto.Query
 
+  alias Dhc.Auth.UserRole
+  alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.Repo
+  alias Dhc.UserProfiles.UserProfile
+  alias Dhc.Waitlist.WaitlistEntry
+  alias Dhc.Waitlist.WaitlistGuardian
 
   @preferred_weapons ~w(longsword sword_and_buckler)
   @genders ["man (cis)", "woman (cis)", "non-binary", "man (trans)", "woman (trans)", "other"]
   @pronouns ["he/him", "she/her", "they/them"]
   @social_media_consent ~w(no yes_recognizable yes_unrecognizable)
-  @first_names ~w(Aoife Cian Niamh Oisin Saoirse Fionn Roisin Eoin Caoimhe Sean Orla Liam)
-  @last_names ~w(Byrne Kelly Murphy Walsh OBrien Ryan Doyle McCarthy Gallagher Kennedy Murray Nolan)
+
+  # Fakerer maintains a per-process sampler store, so each concurrent task
+  # gets its own. `Application.ensure_all_started/1` cascades to transitive
+  # deps (:makeup etc.) and is idempotent if :faker is already running.
+  # Seed tasks call `Mix.Task.run("app.start")` first, so :faker is normally
+  # already started by the time we get here — this is a defensive fallback.
+  @spec ensure_faker_started :: :ok
+  defp ensure_faker_started do
+    case Application.ensure_all_started(:faker) do
+      {:ok, _} -> :ok
+      {:error, _} -> Faker.start()
+    end
+  end
 
   @type auth_user :: %{id: String.t(), email: String.t()}
 
   @spec seed_members(pos_integer()) :: :ok
   def seed_members(count) do
-    rows = Enum.map(1..count, fn _ -> fake_member() end)
+    ensure_faker_started()
 
-    rows
-    |> Enum.map(&create_member/1)
-    |> Enum.reject(&is_nil/1)
+    1..count
+    |> Task.async_stream(
+      fn _ -> fake_member() |> create_member() end,
+      max_concurrency: System.schedulers_online() * 2,
+      timeout: :infinity,
+      on_timeout: :kill_task
+    )
+    |> Enum.reduce([], fn
+      {:ok, nil}, acc ->
+        acc
+
+      {:ok, created}, acc ->
+        [created | acc]
+
+      {:exit, reason}, acc ->
+        Mix.shell().error("Member task exited: #{inspect(reason)}")
+        acc
+    end)
     |> maybe_create_stripe_customers()
 
     :ok
@@ -28,9 +59,20 @@ defmodule Dhc.DevSeeds do
 
   @spec seed_waitlist(pos_integer()) :: :ok
   def seed_waitlist(count) do
+    ensure_faker_started()
+
     1..count
-    |> Enum.map(fn _ -> fake_waitlist_entry() end)
-    |> Enum.each(&create_waitlist_entry/1)
+    |> Task.async_stream(
+      fn _ -> fake_waitlist_entry() |> create_waitlist_entry() end,
+      max_concurrency: System.schedulers_online() * 2,
+      timeout: :infinity,
+      on_timeout: :kill_task
+    )
+    |> Enum.each(fn
+      {:ok, :ok} -> :ok
+      {:ok, {:error, _}} -> :ok
+      {:exit, reason} -> Mix.shell().error("Waitlist task exited: #{inspect(reason)}")
+    end)
 
     :ok
   end
@@ -48,8 +90,8 @@ defmodule Dhc.DevSeeds do
   defp create_member(attrs) do
     with {:ok, auth_user} <-
            create_auth_user(attrs.email, attrs.first_name, attrs.last_name, "password123"),
-         {:ok, waitlist_id} <- insert_waitlist(attrs.email, "completed"),
-         {:ok, profile} <- insert_user_profile(attrs, auth_user.id, waitlist_id, true),
+         {:ok, waitlist} <- insert_waitlist(attrs.email, "completed"),
+         {:ok, profile} <- insert_user_profile(attrs, auth_user.id, waitlist.id, true),
          :ok <- insert_member_profile(auth_user.id, profile.id, attrs),
          :ok <- insert_user_roles(auth_user.id, ["member"]),
          :ok <- maybe_insert_guardian(profile.id, attrs.date_of_birth) do
@@ -62,13 +104,14 @@ defmodule Dhc.DevSeeds do
   end
 
   defp create_waitlist_entry(attrs) do
-    with {:ok, waitlist_id} <- insert_waitlist(attrs.email, "waiting"),
-         {:ok, profile} <- insert_user_profile(attrs, nil, waitlist_id, false),
+    with {:ok, waitlist} <- insert_waitlist(attrs.email, "waiting"),
+         {:ok, profile} <- insert_user_profile(attrs, nil, waitlist.id, false),
          :ok <- maybe_insert_guardian(profile.id, attrs.date_of_birth) do
       :ok
     else
       {:error, reason} ->
         Mix.shell().error("Skipping waitlist entry #{attrs.email}: #{inspect(reason)}")
+        {:error, reason}
     end
   end
 
@@ -138,6 +181,8 @@ defmodule Dhc.DevSeeds do
     end
   end
 
+  # `auth.users` is Supabase-owned (no Ecto schema), so keep this as a raw
+  # query. Postgrex expects a binary UUID for the `id` column.
   defp existing_auth_user(email) do
     case Repo.query!("SELECT id::text, email FROM auth.users WHERE lower(email) = $1 LIMIT 1", [
            email
@@ -147,22 +192,25 @@ defmodule Dhc.DevSeeds do
     end
   end
 
+  # ── Schema-backed inserts ──────────────────────────────────────
+  #
+  # All five application tables now go through their Ecto schemas instead of
+  # `Repo.insert_all/2` with raw maps + string table names. Benefits:
+  #   * Ecto autodumps `:binary_id` from string UUIDs (no manual `dump_uuid`).
+  #   * `timestamps/1` in the schemas fills `created_at`/`updated_at`.
+  #   * Field types are validated before hitting the DB.
+  #   * The `preferred_weapon[]` enum cast works via Postgres's implicit
+  #     `text → preferred_weapon` cast (same path the test fixtures use).
+
   defp insert_waitlist(email, status) do
-    case Repo.insert_all("waitlist", [%{email: String.downcase(email), status: status}],
-           returning: [:id]
-         ) do
-      {1, [%{id: id}]} -> {:ok, id}
-      result -> {:error, {:insert_waitlist, result}}
-    end
+    %WaitlistEntry{email: String.downcase(email), status: status}
+    |> Repo.insert()
   rescue
     exception -> {:error, exception}
   end
 
   defp insert_user_profile(attrs, auth_user_id, waitlist_id, active?, id \\ nil) do
-    auth_user_id = dump_uuid(auth_user_id)
-    id = dump_uuid(id)
-
-    row = %{
+    profile = %UserProfile{
       supabase_user_id: auth_user_id,
       first_name: attrs.first_name,
       last_name: attrs.last_name,
@@ -173,80 +221,76 @@ defmodule Dhc.DevSeeds do
       is_active: active?,
       waitlist_id: waitlist_id,
       medical_conditions: attrs.medical_conditions,
-      social_media_consent: attrs.social_media_consent,
-      created_at: now(),
-      updated_at: now()
+      social_media_consent: attrs.social_media_consent
     }
 
-    row = if id, do: Map.put(row, :id, id), else: row
+    profile = if id, do: %{profile | id: id}, else: profile
 
-    insert_opts = [returning: [:id, :date_of_birth]] ++ user_profile_conflict_opts(id)
+    # Committee members re-run seeds against existing rows (idempotent upsert
+    # on the primary key). For new members `id` is nil and Ecto autogenerates
+    # the `:binary_id` PK, so no conflict opts are needed.
+    insert_opts = user_profile_conflict_opts(id)
 
-    case Repo.insert_all("user_profiles", [row], insert_opts) do
-      {1, [profile]} ->
-        refresh_profile_search_text(profile.id, attrs.email)
+    case Repo.insert(profile, insert_opts) do
+      {:ok, profile} ->
+        refresh_profile_search_text_if_needed(profile.id, attrs.email)
         {:ok, profile}
 
-      result ->
-        {:error, {:insert_user_profile, result}}
+      {:error, _} = error ->
+        error
     end
   rescue
     exception -> {:error, exception}
   end
 
   defp insert_member_profile(auth_user_id, profile_id, attrs) do
-    auth_user_id = dump_uuid(auth_user_id)
-
-    Repo.query!(
-      """
-      INSERT INTO member_profiles (
-        id,
-        user_profile_id,
-        next_of_kin_name,
-        next_of_kin_phone,
-        preferred_weapon,
-        membership_start_date,
-        last_payment_date,
-        insurance_form_submitted,
-        additional_data,
-        created_at,
-        updated_at
-      )
-      VALUES ($1, $2, $3, $4, $5::preferred_weapon[], $6, $7, $8, $9::jsonb, $10, $11)
-      ON CONFLICT (id) DO UPDATE SET
-        user_profile_id = EXCLUDED.user_profile_id,
-        next_of_kin_name = EXCLUDED.next_of_kin_name,
-        next_of_kin_phone = EXCLUDED.next_of_kin_phone,
-        preferred_weapon = EXCLUDED.preferred_weapon,
-        insurance_form_submitted = EXCLUDED.insurance_form_submitted,
-        additional_data = EXCLUDED.additional_data,
-        updated_at = EXCLUDED.updated_at
-      """,
-      [
-        auth_user_id,
-        profile_id,
-        Map.get(attrs, :next_of_kin_name, full_name()),
-        Map.get(attrs, :next_of_kin_phone, phone_number()),
-        Map.get(attrs, :preferred_weapon, random_weapons()),
-        random_datetime_days_ago(730),
-        random_datetime_days_ago(30),
-        :rand.uniform(2) == 1,
-        Jason.encode!(Map.get(attrs, :additional_data, %{})),
-        now(),
-        now()
-      ]
+    %MemberProfile{
+      # `MemberProfile` has `@primary_key {:id, :binary_id, autogenerate: false}`
+      # — the id IS the auth user id (FK to auth.users), so set it explicitly.
+      id: auth_user_id,
+      user_profile_id: profile_id,
+      next_of_kin_name: Map.get(attrs, :next_of_kin_name, full_name()),
+      next_of_kin_phone: Map.get(attrs, :next_of_kin_phone, phone_number()),
+      preferred_weapon: Map.get(attrs, :preferred_weapon, random_weapons()),
+      membership_start_date: random_datetime_days_ago(730),
+      last_payment_date: random_datetime_days_ago(30),
+      insurance_form_submitted: :rand.uniform(2) == 1,
+      additional_data: Map.get(attrs, :additional_data, %{})
+    }
+    |> Repo.insert(
+      # Idempotent: committee re-runs upsert on the PK (auth user id).
+      conflict_target: [:id],
+      on_conflict:
+        {:replace,
+         [
+           :user_profile_id,
+           :next_of_kin_name,
+           :next_of_kin_phone,
+           :preferred_weapon,
+           :insurance_form_submitted,
+           :additional_data,
+           :updated_at
+         ]}
     )
-
-    :ok
+    |> case do
+      {:ok, _} -> :ok
+      {:error, _} = error -> error
+    end
   rescue
     exception -> {:error, exception}
   end
 
   defp insert_user_roles(user_id, roles) do
-    user_id = dump_uuid(user_id)
-    rows = Enum.map(roles, &%{user_id: user_id, role: &1})
-    Repo.insert_all("user_roles", rows, on_conflict: :nothing)
-    :ok
+    # Insert one row per role. `user_roles` has a `UNIQUE (user_id, role)`
+    # constraint, so `on_conflict: :nothing` makes re-runs idempotent.
+    Enum.reduce_while(roles, :ok, fn role, :ok ->
+      %UserRole{user_id: user_id, role: role}
+      |> Repo.insert(on_conflict: :nothing, conflict_target: [:user_id, :role])
+      |> case do
+        {:ok, _} -> {:cont, :ok}
+        {:error, _} = error -> {:halt, error}
+      end
+    end)
   rescue
     exception -> {:error, exception}
   end
@@ -277,18 +321,20 @@ defmodule Dhc.DevSeeds do
 
   defp maybe_insert_guardian(profile_id, date_of_birth) do
     if underage?(date_of_birth) do
-      Repo.insert_all("waitlist_guardians", [
-        %{
-          profile_id: profile_id,
-          first_name: first_name(),
-          last_name: last_name(),
-          phone_number: phone_number(),
-          created_at: now()
-        }
-      ])
+      %WaitlistGuardian{
+        profile_id: profile_id,
+        first_name: first_name(),
+        last_name: last_name(),
+        phone_number: phone_number()
+      }
+      |> Repo.insert()
+      |> case do
+        {:ok, _} -> :ok
+        {:error, _} = error -> error
+      end
+    else
+      :ok
     end
-
-    :ok
   rescue
     exception -> {:error, exception}
   end
@@ -317,9 +363,7 @@ defmodule Dhc.DevSeeds do
       {:ok, %Req.Response{status: status, body: %{"id" => customer_id}}}
       when status in 200..299 ->
         Repo.update_all(
-          from(p in "user_profiles",
-            where: field(p, :supabase_user_id) == ^dump_uuid(auth_user.id)
-          ),
+          from(p in UserProfile, where: p.supabase_user_id == ^auth_user.id),
           set: [customer_id: customer_id]
         )
 
@@ -328,7 +372,12 @@ defmodule Dhc.DevSeeds do
     end
   end
 
-  defp refresh_profile_search_text(profile_id, email) do
+  # `search_text` is a `GENERATED ALWAYS AS` tsvector in the baseline Ecto
+  # migration (auto-populated from first_name/last_name), so the UserProfile
+  # schema doesn't declare it and inserts skip it — no refresh needed. This
+  # fallback only fires for legacy Supabase DBs where the column is NOT
+  # generated (the old raw-SQL seeds included email in the tsvector there).
+  defp refresh_profile_search_text_if_needed(profile_id, email) do
     unless generated_search_text?() do
       Repo.query!(
         """
@@ -428,27 +477,39 @@ defmodule Dhc.DevSeeds do
     fake_member()
   end
 
-  defp first_name, do: Enum.random(@first_names)
-  defp last_name, do: Enum.random(@last_names)
+  # Fakerer-backed fake-data generators. Faker maintains per-process sampler
+  # state, so these are safe to call from concurrent tasks.
+  defp first_name, do: Faker.Person.first_name()
+  defp last_name, do: Faker.Person.last_name()
   defp full_name, do: "#{first_name()} #{last_name()}"
-  defp phone_number, do: "+353#{:rand.uniform(899_999_999) + 100_000_000}"
 
-  defp dump_uuid(nil), do: nil
-  defp dump_uuid(<<_::128>> = uuid), do: uuid
-  defp dump_uuid(uuid) when is_binary(uuid), do: Ecto.UUID.dump!(uuid)
+  # Fakerer ships no Irish phone locale; use EnGb and force the +353 country
+  # code so seeded numbers look locally plausible.
+  defp phone_number do
+    Faker.Phone.EnGb.cell_number()
+    |> String.replace(~r/^(\+?44|0)/, "+353")
+    |> String.replace(" ", "")
+  end
 
   defp email(first_name, last_name) do
+    # Fakerer's Faker.Internet.email/0 ignores the caller's chosen name, so
+    # build the local-part ourselves from the fake name and keep the domain
+    # from Faker for variety.
     suffix = System.unique_integer([:positive])
-    "#{String.downcase(first_name)}.#{String.downcase(last_name)}.#{suffix}@example.test"
+    local = "#{String.downcase(first_name)}.#{String.downcase(last_name)}.#{suffix}"
+    "#{local}@#{Faker.Internet.domain_name()}"
   end
 
-  defp random_date_of_birth do
-    days_ago = :rand.uniform((65 - 16) * 365) + 16 * 365
-    Date.utc_today() |> Date.add(-days_ago)
-  end
+  # 16–65 years old, consistent with the previous hand-rolled generator.
+  defp random_date_of_birth, do: Faker.Date.date_of_birth(16..65)
 
   defp random_datetime_days_ago(days) do
-    DateTime.utc_now() |> DateTime.add(-:rand.uniform(days * 86_400), :second)
+    # Truncate to seconds: MemberProfile's `:utc_datetime` fields reject
+    # microseconds. The old raw SQL didn't care (Postgres timestamptz accepts
+    # them), but the schema enforces second precision.
+    DateTime.utc_now()
+    |> DateTime.add(-:rand.uniform(days * 86_400), :second)
+    |> DateTime.truncate(:second)
   end
 
   defp random_weapons, do: Enum.take_random(@preferred_weapons, :rand.uniform(2))
@@ -468,5 +529,4 @@ defmodule Dhc.DevSeeds do
   defp blank_to_nil(nil), do: nil
   defp blank_to_nil(""), do: nil
   defp blank_to_nil(value), do: value
-  defp now, do: DateTime.utc_now() |> DateTime.truncate(:second)
 end
