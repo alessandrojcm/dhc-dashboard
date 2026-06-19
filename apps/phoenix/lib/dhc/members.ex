@@ -193,8 +193,8 @@ defmodule Dhc.Members do
 
   defp active_members_base do
     from p in UserProfile,
-      join: m in "member_profiles",
-      on: field(m, :user_profile_id) == p.id,
+      join: m in MemberProfile,
+      on: m.user_profile_id == p.id,
       where: p.is_active == true
   end
 

@@ -4,6 +4,7 @@ defmodule Dhc.MemberFixtures do
   Stripe-sync integration tests.
   """
 
+  alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.Repo
 
   @doc """
@@ -78,22 +79,29 @@ defmodule Dhc.MemberFixtures do
 
     member_attrs =
       %{
-        id: auth_user_id,
-        user_profile_id: profile_id,
+        # The `MemberProfile` schema has `:binary_id` primary/foreign keys,
+        # which Ecto autodumps from string UUIDs — pass the string forms here
+        # (the raw-string `users`/`user_profiles` inserts above still need
+        # the pre-dumped binaries, since they bypass the schema). Datetime
+        # values are truncated to seconds to satisfy the schema's
+        # `:utc_datetime` type, which rejects microseconds (the prior
+        # raw-string insert silently coerced them).
+        id: auth_user_id_str,
+        user_profile_id: profile_id_str,
         next_of_kin_name: "Next of Kin",
         next_of_kin_phone: "+353820000000",
         preferred_weapon: Map.get(attrs, :preferred_weapon, ["longsword"]),
         membership_start_date: Map.get(attrs, :membership_start_date, now),
-        membership_end_date: Map.get(attrs, :membership_end_date),
-        last_payment_date: Map.get(attrs, :last_payment_date),
+        membership_end_date: truncate_dt(Map.get(attrs, :membership_end_date)),
+        last_payment_date: truncate_dt(Map.get(attrs, :last_payment_date)),
         insurance_form_submitted: false,
         additional_data: %{},
-        subscription_paused_until: Map.get(attrs, :subscription_paused_until),
+        subscription_paused_until: truncate_dt(Map.get(attrs, :subscription_paused_until)),
         created_at: now,
         updated_at: now
       }
 
-    Repo.insert_all("member_profiles", [member_attrs])
+    Repo.insert_all(MemberProfile, [member_attrs])
 
     %{
       auth_user_id: auth_user_id_str,
@@ -101,6 +109,10 @@ defmodule Dhc.MemberFixtures do
       customer_id: customer_id
     }
   end
+
+  defp truncate_dt(nil), do: nil
+  defp truncate_dt(%DateTime{} = dt), do: DateTime.truncate(dt, :second)
+  defp truncate_dt(value), do: value
 
   defp unique_email do
     "member-#{System.unique_integer([:positive])}@example.com"
