@@ -226,7 +226,7 @@ defmodule Dhc.StripeSyncTest do
         )
       end)
 
-      params = %{lookup_keys: "standard_membership_fee", active: "true", limit: 1}
+      params = "lookup_keys[]=standard_membership_fee&active=true&limit=1"
 
       assert {:ok, %{"data" => [_ | _]}} = StripeSync.req_stripe_prices(params)
     end
@@ -238,7 +238,7 @@ defmodule Dhc.StripeSyncTest do
         |> Plug.Conn.send_resp(403, Jason.encode!(%{"error" => %{"message" => "Forbidden"}}))
       end)
 
-      params = %{lookup_keys: "standard_membership_fee", active: "true", limit: 1}
+      params = "lookup_keys[]=standard_membership_fee&active=true&limit=1"
 
       assert {:error, {:stripe_api, 403}} = StripeSync.req_stripe_prices(params)
     end
@@ -246,7 +246,7 @@ defmodule Dhc.StripeSyncTest do
     test "returns error when Stripe key is not configured" do
       Application.put_env(:dhc, :stripe_secret_key, nil)
 
-      params = %{lookup_keys: "standard_membership_fee", active: "true", limit: 1}
+      params = "lookup_keys[]=standard_membership_fee&active=true&limit=1"
 
       assert {:error, :stripe_key_not_configured} = StripeSync.req_stripe_prices(params)
     after
