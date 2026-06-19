@@ -30,6 +30,7 @@
 | 0003 | API-First Design with OpenAPI Spec | Accepted |
 | 0004 | Migrate Deno Edge Functions to Oban | Accepted |
 | 0005 | Migrate PostgREST Reads to Domain Phoenix APIs | Accepted |
+| 0006 | Testcontainers-Driven Phoenix Test Harness | Accepted |
 
 ## Architecture (Target State)
 
@@ -45,6 +46,23 @@ Phoenix (Fly.io)
     ├── Supabase Auth (GoTrue) → validates JWT tokens
     └── Stripe API (outbound webhook calls, inbound webhook handling)
 ```
+
+## Test Harness Language
+
+| Term | Definition |
+|------|-----------|
+| **Test Harness** | The automated execution environment for a given suite. Distinct from the data it runs against. Two harnesses exist: the Phoenix (Elixir) harness and the Playwright (E2E) harness. |
+| **Test Fixture** | The per-test setup data. Inserted and torn down by the test itself, not the harness. |
+| **Postgres Surface** | The minimal dependency for the Phoenix harness: a Postgres container plus a seeded `auth` schema (GoTrue-owned tables such as `auth.users`). No HTTP services. |
+| **Supabase Surface** | The full dependency for the E2E harness: Kong + GoTrue + PostgREST + Postgres. Required because E2E seeds/teardowns via the Supabase HTTP API and derives the auth cookie name from the project ref host. |
+| **Auth Schema Bootstrap** | The `auth` schema DDL the Phoenix harness relies on. The `supabase/postgres:17.6.1.136` image already ships `00000000000001-auth-schema.sql` at container init, creating the full `auth.users` table, `auth.schema_migrations`, and the `supabase_auth_admin` role. No bespoke bootstrap file is needed; the image is the bootstrap. GoTrue's own migrations run `CREATE TABLE IF NOT EXISTS`, so in the `supabase` profile GoTrue boots cleanly against the image-seeded table. |
+| **Shared Container** | A single testcontainer started once per `mix test` run (in `test_helper.exs`) and shared across all test cases via the Ecto SQL Sandbox. Distinct from per-test isolation (which the sandbox provides) and from per-test-case containers (rejected as too slow). |
+| **Compose-Driven Harness** | Both test harnesses drive the same stripped Supabase `docker-compose.yml` via `Testcontainers.DockerCompose` (Phoenix) and `docker compose` CLI (E2E). The compose file is the single source of truth for the stack shape; profiles gate which services each harness starts. |
+| **Per-Run Lifecycle** | The Phoenix harness does a full compose `up` at `mix test` start and `down -v` on `System.at_exit`. No cross-run reuse — every run starts from a freshly migrated DB with the Auth Schema Bootstrap applied. Deterministic at the cost of ~2-4s cold start; reuse is a deferred optimization. |
+| **E2E Deferral** | The Playwright harness E2E migration is out of scope for the current work. Only Phoenix is being reworked now. The compose file shape must support E2E later (profiles, Kong/GoTrue/PostgREST), but E2E's fixed-port and cookie-derivation concerns are deferred. |
+| **Uniform Profiles** | Every service in the stripped compose file carries a `profiles:` entry — `db` for Postgres (+ Auth Schema Bootstrap), `supabase` for GoTrue/Kong/PostgREST. No default-always services. Phoenix starts with `with_profile("db")`; E2E will later start with `with_profile("supabase")` (and `with_profile("db")` if it needs the DB too).
+| **Ephemeral DB Volume** | The Phoenix harness runs the `db` service with no persistent `PGDATA` volume — `down -v` on `System.at_exit` destroys all data. Fresh container, fresh migration, fresh `auth` schema per `mix test` run. No upstream Supabase init-SQL mounts are needed; the `supabase/postgres` image already ships `auth.users` and `pg_jsonschema`. |
+| **Root Compose File** | The stripped Supabase `docker-compose.yml` lives at the repo root next to the existing root `.env`. This lets Compose's built-in `.env` resolution interpolate `${POSTGRES_PASSWORD}` etc. without plumbing env vars through `DockerCompose.with_env/3` or duplicating the env file. testcontainers-elixir's `DockerCompose.new/1` sets `cd` to the compose file's directory, so a root-level file means `cd: repo_root` where `.env` already sits. | |
 
 ## Migration State
 
