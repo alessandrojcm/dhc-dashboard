@@ -397,6 +397,38 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /members/insurance-form:
+    get:
+      operationId: members.insuranceForm
+      tags:
+        - Members
+      summary: Read the member insurance form link
+      description: |
+        Returns the URL of the HEMA insurance form link configured for members.
+
+        Exposes a specific domain read, not a generic settings proxy: the
+        `Dhc.Members` context owns the `hema_insurance_form_link` settings read.
+
+        Any authenticated user (valid Supabase JWT) may read this; no committee
+        role is required, mirroring the `settings` SELECT RLS policy
+        (`USING (true)` for authenticated). A member can read the insurance
+        form link on their own profile.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Insurance form link
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MembersInsuranceFormResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -688,6 +720,20 @@ components:
           type: string
           format: date-time
           nullable: true
+    MembersInsuranceFormResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - link
+          properties:
+            link:
+              type: string
+              nullable: true
+              description: URL of the HEMA insurance form, or null when not configured.
     Error:
       type: object
       properties:
