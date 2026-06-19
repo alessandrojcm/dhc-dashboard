@@ -1,22 +1,24 @@
 <script lang="ts">
-import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+	type Member,
+	type MembersListSortField,
+	membersList,
+} from "@dhc/api-client";
 import { createQuery, keepPreviousData } from "@tanstack/svelte-query";
 import {
 	getCoreRowModel,
 	getExpandedRowModel,
-	getPaginationRowModel,
 	getSortedRowModel,
-	type PaginationState,
 	type SortingState,
 	type TableOptions,
 } from "@tanstack/table-core";
 import dayjs from "dayjs";
 import { createRawSnippet } from "svelte";
+import { SvelteURLSearchParams } from "svelte/reactivity";
 import { Cross2 } from "svelte-radix";
 import { goto } from "$app/navigation";
 import { resolve } from "$app/paths";
 import { page } from "$app/state";
-import type { Database, Tables } from "$database";
 import { Badge } from "$lib/components/ui/badge";
 import { Button } from "$lib/components/ui/button";
 import { Checkbox } from "$lib/components/ui/checkbox";
@@ -28,26 +30,101 @@ import {
 } from "$lib/components/ui/data-table/index.js";
 import { Input } from "$lib/components/ui/input";
 import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
-import * as Pagination from "$lib/components/ui/pagination/index.js";
 import * as Select from "$lib/components/ui/select";
 import * as Table from "$lib/components/ui/table/index.js";
 import SortHeader from "$lib/components/ui/table/sort-header.svelte";
 import MemberActions from "./member-actions.svelte";
 
-const columns =
-	"id,first_name,last_name,email,phone_number,gender,pronouns,is_active,preferred_weapon,membership_start_date,membership_end_date,last_payment_date,insurance_form_submitted,roles,age,social_media_consent,next_of_kin_name,next_of_kin_phone,guardian_first_name,guardian_last_name,guardian_phone_number,medical_conditions,additional_data,created_at,updated_at,from_waitlist_id,search_text,user_profile_id,waitlist_registration_date,subscription_paused_until,membership_status";
+type MemberTableRow = {
+	id: string;
+	first_name: string;
+	last_name: string;
+	email: string;
+	phone_number: string | null;
+	gender: string | null;
+	pronouns: string | null;
+	is_active: boolean;
+	preferred_weapon: string[];
+	membership_start_date: string | null;
+	membership_end_date: string | null;
+	last_payment_date: string | null;
+	insurance_form_submitted: boolean;
+	age: number | null;
+	social_media_consent: "no" | "yes_recognizable" | "yes_unrecognizable";
+	next_of_kin_name: string | null;
+	next_of_kin_phone: string | null;
+	guardian_first_name: string | null;
+	guardian_last_name: string | null;
+	guardian_phone_number: string | null;
+	medical_conditions: string | null;
+	subscription_paused_until: string | null;
+	membership_status: "active" | "inactive" | "paused";
+};
 
-let pageSizeOptions = [10, 25, 50, 100];
+type MemberTableQueryParams = {
+	searchQuery: string;
+	sort: MemberTableSortField;
+	direction: "asc" | "desc";
+	pageSize: (typeof pageSizeOptions)[number];
+	membershipStatus: readonly MemberStatusFilter[] | null;
+	cursor: string | null;
+};
 
-const { supabase }: { supabase: SupabaseClient<Database> } = $props();
+type MemberTablePage = {
+	data: MemberTableRow[];
+	count: number;
+	nextCursor: string | null;
+	previousCursor: string | null;
+};
+
+const pageSizeOptions = [10, 25, 50, 100] as const;
+
+const memberSortFields = [
+	"first_name",
+	"last_name",
+	"email",
+	"phone_number",
+	"age",
+	"membership_start_date",
+	"last_payment_date",
+	"subscription_paused_until",
+	"is_active",
+] as const;
+
+type MemberTableSortField = (typeof memberSortFields)[number];
+
+const memberSortMap: Record<MemberTableSortField, MembersListSortField> = {
+	first_name: "firstName",
+	last_name: "lastName",
+	email: "email",
+	phone_number: "phoneNumber",
+	age: "age",
+	membership_start_date: "membershipStartDate",
+	last_payment_date: "lastPaymentDate",
+	subscription_paused_until: "subscriptionPausedUntil",
+	is_active: "isActive",
+};
+
 const statusOptions = ["active", "inactive", "paused"] as const;
 type MemberStatusFilter = (typeof statusOptions)[number];
 
-const currentPage = $derived(Number(page.url.searchParams.get("page")) || 0);
-const pageSize = $derived(Number(page.url.searchParams.get("pageSize")) || 10);
+type MembersUrl = `/dashboard/members?${string}`;
+
+function navigateToMembers(searchParams: URLSearchParams) {
+	const url = `/dashboard/members?${searchParams.toString()}` as MembersUrl;
+	goto(resolve(url), { keepFocus: true, noScroll: true });
+}
+
+const pageSize = $derived.by(() => {
+	const requestedPageSize = Number(page.url.searchParams.get("pageSize")) || 10;
+	return pageSizeOptions.includes(requestedPageSize as 10 | 25 | 50 | 100)
+		? requestedPageSize
+		: 10;
+});
 const searchQuery = $derived(page.url.searchParams.get("q") || "");
-const statusFilter = $derived.by(() => {
-	const raw = page.url.searchParams.get("status") || "";
+const cursor = $derived(page.url.searchParams.get("cursor"));
+const membershipStatusFilter = $derived.by(() => {
+	const raw = page.url.searchParams.get("membershipStatus") || "";
 	const selected = raw
 		.split(",")
 		.map((status) => status.trim())
@@ -56,131 +133,165 @@ const statusFilter = $derived.by(() => {
 				status === "active" || status === "inactive" || status === "paused",
 		);
 	if (selected.length === 0) {
-		return [...statusOptions];
+		return null;
 	}
 	return statusOptions.filter((status) => selected.includes(status));
 });
-const rangeStart = $derived(currentPage * pageSize);
-const rangeEnd = $derived(rangeStart + pageSize - 1);
-const sortingState: SortingState = $derived.by(() => {
-	const sortColumn = page.url.searchParams.get("sort");
+const activeSort = $derived.by(() => {
+	const requestedSortColumn = page.url.searchParams.get("sort");
+	const sortColumn = memberSortFields.includes(
+		requestedSortColumn as (typeof memberSortFields)[number],
+	)
+		? requestedSortColumn!
+		: "last_name";
 	const sortDirection = page.url.searchParams.get("direction");
-	if (!sortColumn) return [];
+
+	return {
+		sort: sortColumn as MemberTableSortField,
+		direction: sortDirection === "desc" ? "desc" : "asc",
+	} as const;
+});
+const sortingState: SortingState = $derived.by(() => {
 	return [
 		{
-			id: sortColumn,
-			desc: sortDirection === "desc",
+			id: activeSort.sort,
+			desc: activeSort.direction === "desc",
 		},
 	];
 });
 
-const membersQuery = createQuery(() => ({
-	queryKey: [
-		"members",
-		pageSize,
-		currentPage,
-		rangeStart,
-		sortingState,
-		searchQuery,
-		statusFilter,
-	],
+const membersQueryParams = $derived<MemberTableQueryParams>({
+	searchQuery,
+	sort: activeSort.sort,
+	direction: activeSort.direction,
+	pageSize: pageSize as (typeof pageSizeOptions)[number],
+	membershipStatus: membershipStatusFilter,
+	cursor,
+});
+
+async function loadMembersTablePage(
+	params: MemberTableQueryParams,
+): Promise<MemberTablePage> {
+	const response = await membersList({
+		query: {
+			limit: params.pageSize,
+			cursor: params.cursor ?? undefined,
+			q: params.searchQuery || undefined,
+			membershipStatus:
+				params.membershipStatus && params.membershipStatus.length > 0
+					? params.membershipStatus.join(",")
+					: undefined,
+			sort: memberSortMap[params.sort],
+			direction: params.direction,
+		},
+	});
+
+	if (response.error) {
+		throw new Error("Failed to load members. Please try again later.");
+	}
+
+	const result = response.data.data;
+
+	return {
+		data: result.members.map(toTableRow),
+		count: result.totalCount,
+		nextCursor: result.nextCursor,
+		previousCursor: result.previousCursor,
+	};
+}
+
+function toTableRow(member: Member): MemberTableRow {
+	return {
+		id: member.id,
+		first_name: member.firstName,
+		last_name: member.lastName,
+		email: member.email,
+		phone_number: member.phoneNumber,
+		gender: member.gender,
+		pronouns: member.pronouns,
+		is_active: member.isActive,
+		preferred_weapon: member.preferredWeapon,
+		membership_start_date: member.membershipStartDate,
+		membership_end_date: member.membershipEndDate,
+		last_payment_date: member.lastPaymentDate,
+		insurance_form_submitted: member.insuranceFormSubmitted,
+		age: member.age,
+		social_media_consent: member.socialMediaConsent,
+		next_of_kin_name: member.nextOfKinName,
+		next_of_kin_phone: member.nextOfKinPhone,
+		guardian_first_name: member.guardianFirstName,
+		guardian_last_name: member.guardianLastName,
+		guardian_phone_number: member.guardianPhoneNumber,
+		medical_conditions: member.medicalConditions,
+		subscription_paused_until: member.subscriptionPausedUntil,
+		membership_status: member.membershipStatus,
+	};
+}
+
+const membersQueryKey = $derived(["members", membersQueryParams]);
+const membersQuery = createQuery<MemberTablePage>(() => ({
+	queryKey: membersQueryKey,
 	placeholderData: keepPreviousData,
-	initialData: { data: [], count: 0 },
-	queryFn: async ({ signal }) => {
-		let query = supabase
-			.from("member_management_view")
-			.select(columns, { count: "exact" });
-		if (searchQuery.length > 0) {
-			query = query.textSearch("search_text", `'${searchQuery}'`, {
-				type: "websearch",
-			});
-		}
-		if (statusFilter.length > 0 && statusFilter.length < statusOptions.length) {
-			query = query.in("membership_status", statusFilter);
-		}
-		if (sortingState.length > 0) {
-			query = query.order(sortingState[0].id, {
-				ascending: !sortingState[0].desc,
-			});
-		}
-		const { data, error, count } = await query
-			.range(rangeStart, rangeEnd)
-			.abortSignal(signal)
-			.throwOnError();
-		if (error) {
-			throw error;
-		}
-		return { data, count: count ?? 0 };
+	queryFn: ({ signal, queryKey }) => {
+		signal.throwIfAborted();
+		return loadMembersTablePage(queryKey[1] as MemberTableQueryParams);
 	},
 }));
 
-function onPaginationChange(newPagination: Partial<PaginationState>) {
-	const paginationState: PaginationState = {
-		pageIndex: currentPage,
-		pageSize,
-		...newPagination,
-	};
-	// eslint-disable-next-line svelte/prefer-svelte-reactivity
-	const newParams = new URLSearchParams(page.url.searchParams);
-	newParams.set("page", paginationState.pageIndex.toString());
-	newParams.set("pageSize", paginationState.pageSize.toString());
-	const url = `/dashboard/members?${newParams.toString()}`;
-	goto(resolve(url as any), { keepFocus: true, noScroll: true });
+function onPaginationChange(newPageSize: number) {
+	const newParams = new SvelteURLSearchParams(page.url.searchParams);
+	newParams.set("pageSize", newPageSize.toString());
+	newParams.delete("cursor");
+	navigateToMembers(newParams);
+}
+
+function onCursorChange(newCursor: string | null | undefined) {
+	if (!newCursor) return;
+	const newParams = new SvelteURLSearchParams(page.url.searchParams);
+	newParams.set("cursor", newCursor);
+	navigateToMembers(newParams);
 }
 
 function onSortingChange(newSorting: SortingState) {
 	const [sortingState] = newSorting;
-	// eslint-disable-next-line svelte/prefer-svelte-reactivity
-	const newParams = new URLSearchParams(page.url.searchParams);
+	const newParams = new SvelteURLSearchParams(page.url.searchParams);
 	newParams.set("sort", sortingState.id);
 	newParams.set("direction", sortingState.desc ? "desc" : "asc");
-	const url = `/dashboard/members?${newParams.toString()}`;
-	goto(resolve(url as any), { keepFocus: true, noScroll: true });
+	newParams.delete("cursor");
+	navigateToMembers(newParams);
 }
 
 function onSearchChange(newSearch: string) {
-	// eslint-disable-next-line svelte/prefer-svelte-reactivity
-	const newParams = new URLSearchParams(page.url.searchParams);
+	const newParams = new SvelteURLSearchParams(page.url.searchParams);
 	newParams.set("q", newSearch);
-	newParams.set("page", "0"); // Reset to first page on search
-	const url = `/dashboard/members?${newParams.toString()}`;
-	goto(resolve(url as any), { keepFocus: true, noScroll: true });
+	newParams.delete("cursor");
+	navigateToMembers(newParams);
 }
 
 function onStatusFilterChange(
 	status: MemberStatusFilter,
 	checked: boolean | "indeterminate",
 ) {
+	const current = membershipStatusFilter ?? [...statusOptions];
 	const next = checked
 		? statusOptions.filter(
-				(value) => value === status || statusFilter.includes(value),
+				(value) => value === status || current.includes(value),
 			)
-		: statusFilter.filter((value) => value !== status);
-	// eslint-disable-next-line svelte/prefer-svelte-reactivity
-	const newParams = new URLSearchParams(page.url.searchParams);
-	if (next.length === 0) {
-		newParams.delete("status");
-		newParams.set("page", "0");
-		const resetUrl = `/dashboard/members?${newParams.toString()}`;
-		goto(resolve(resetUrl as any), { keepFocus: true, noScroll: true });
-		return;
-	}
-	if (next.length === statusOptions.length) {
-		newParams.delete("status");
+		: current.filter((value) => value !== status);
+	const newParams = new SvelteURLSearchParams(page.url.searchParams);
+	if (next.length === 0 || next.length === statusOptions.length) {
+		newParams.delete("membershipStatus");
 	} else {
-		newParams.set("status", next.join(","));
+		newParams.set("membershipStatus", next.join(","));
 	}
-	newParams.set("page", "0");
-	const url = `/dashboard/members?${newParams.toString()}`;
-	goto(resolve(url as any), { keepFocus: true, noScroll: true });
+	newParams.delete("cursor");
+	navigateToMembers(newParams);
 }
 
 // State for expanded rows
 let expandedState = $state({});
 
-const tableOptions = $state<
-	TableOptions<Omit<Tables<"member_management_view">, "customer_id">>
->({
+const tableOptions = $state<TableOptions<MemberTableRow>>({
 	autoResetPageIndex: false,
 	manualPagination: true,
 	manualSorting: true,
@@ -191,7 +302,7 @@ const tableOptions = $state<
 			header: "Actions",
 			cell: ({ row }) => {
 				return renderComponent(MemberActions, {
-					memberId: row.original.id!,
+					memberId: row.original.id,
 					isExpanded: row.getIsExpanded(),
 					onToggleExpand: () => row.toggleExpanded(),
 				});
@@ -254,7 +365,7 @@ const tableOptions = $state<
 			cell: ({ getValue }) => {
 				return renderSnippet(
 					createRawSnippet((value) => ({
-						render: () => `<div class="w-[120px]">${value()}</div>`,
+						render: () => `<div class="w-[120px]">${value() ?? "N/A"}</div>`,
 					})),
 					getValue(),
 				);
@@ -264,10 +375,7 @@ const tableOptions = $state<
 			accessorKey: "is_active",
 			header: "Status",
 			cell: ({ row, getValue }) => {
-				const pausedUntil = row.original.subscription_paused_until;
-				const isPaused = pausedUntil && dayjs(pausedUntil).isAfter(dayjs());
-
-				if (getValue() && isPaused) {
+				if (row.original.membership_status === "paused") {
 					return renderComponent(Badge, {
 						variant: "secondary",
 						class: "h-6",
@@ -333,7 +441,8 @@ const tableOptions = $state<
 				return renderSnippet(
 					createRawSnippet((value) => ({
 						render: () => {
-							return `<div class="w-[120px] ${value() < 18 ? "text-red-800" : ""}">${value() < 18 ? value() + "(👶)" : value()}</div>`;
+							const age = value();
+							return `<div class="w-[120px] ${age !== null && age < 18 ? "text-red-800" : ""}">${age === null ? "N/A" : age < 18 ? age + "(👶)" : age}</div>`;
 						},
 					})),
 					getValue(),
@@ -391,10 +500,11 @@ const tableOptions = $state<
 					sortDirection: column.getIsSorted(),
 				}),
 			cell: ({ getValue }) => {
-				const date = getValue() as string;
+				const date = getValue() as string | null;
 				return renderSnippet(
 					createRawSnippet((value) => ({
-						render: () => `<p>${dayjs(value()).format("MMM D, YYYY")}</p>`,
+						render: () =>
+							`<p>${value() ? dayjs(value()).format("MMM D, YYYY") : "Never"}</p>`,
 					})),
 					date,
 				);
@@ -410,7 +520,7 @@ const tableOptions = $state<
 					sortDirection: column.getIsSorted(),
 				}),
 			cell: ({ getValue }) => {
-				const date = getValue() as string;
+				const date = getValue() as string | null;
 				return renderSnippet(
 					createRawSnippet((value) => ({
 						render: () =>
@@ -424,18 +534,6 @@ const tableOptions = $state<
 	get data() {
 		return membersQuery?.data?.data ?? [];
 	},
-	onPaginationChange: (updater) => {
-		if (typeof updater === "function") {
-			onPaginationChange(
-				updater({
-					pageIndex: currentPage,
-					pageSize,
-				}),
-			);
-		} else {
-			onPaginationChange(updater);
-		}
-	},
 	onSortingChange: (updater) => {
 		if (typeof updater === "function") {
 			onSortingChange(updater(sortingState));
@@ -443,16 +541,10 @@ const tableOptions = $state<
 			onSortingChange(updater);
 		}
 	},
-	getRowId: (row) => row.id!,
+	getRowId: (row) => row.id,
 	state: {
 		get expanded() {
 			return expandedState;
-		},
-		get pagination() {
-			return {
-				pageIndex: currentPage,
-				pageSize,
-			} as PaginationState;
 		},
 		get sorting() {
 			return sortingState;
@@ -465,11 +557,7 @@ const tableOptions = $state<
 			expandedState = updater;
 		}
 	},
-	get rowCount() {
-		return membersQuery?.data?.count ?? 0;
-	},
 	getCoreRowModel: getCoreRowModel(),
-	getPaginationRowModel: getPaginationRowModel(),
 	getSortedRowModel: getSortedRowModel(),
 });
 
@@ -490,7 +578,7 @@ const table = createSvelteTable(tableOptions);
 		{#each statusOptions as status (status)}
 			<label class="flex items-center gap-2 text-sm capitalize">
 				<Checkbox
-					checked={statusFilter.includes(status)}
+					checked={(membershipStatusFilter ?? [...statusOptions]).includes(status)}
 					onCheckedChange={(checked) => onStatusFilterChange(status, checked)}
 				/>
 				{status}
@@ -605,13 +693,11 @@ const table = createSvelteTable(tableOptions);
 						{row.original.last_name}
 					</div>
 					<div>
-						{#if row.original.id !== null}
-							<MemberActions
-								memberId={row.original.id}
-								isExpanded={row.getIsExpanded()}
-								onToggleExpand={() => row.toggleExpanded()}
-							/>
-						{/if}
+						<MemberActions
+							memberId={row.original.id}
+							isExpanded={row.getIsExpanded()}
+							onToggleExpand={() => row.toggleExpanded()}
+						/>
 					</div>
 				</div>
 
@@ -636,7 +722,7 @@ const table = createSvelteTable(tableOptions);
 				<!-- Age -->
 				<div class="grid grid-cols-3 py-1 border-b">
 					<div class="text-sm font-medium text-muted-foreground">Age</div>
-					<div class="col-span-2 text-sm">{row.original.age || 'N/A'}</div>
+					<div class="col-span-2 text-sm">{row.original.age ?? 'N/A'}</div>
 				</div>
 
 				<!-- Social Media Consent -->
@@ -767,7 +853,7 @@ const table = createSvelteTable(tableOptions);
 		<Select.Root
 			type="single"
 			value={pageSize.toString()}
-			onValueChange={(value) => onPaginationChange({ pageSize: Number(value) })}
+			onValueChange={(value) => onPaginationChange(Number(value))}
 		>
 			<Select.Trigger class="w-16 h-8" aria-label="Members elements per page">
 				{pageSize}
@@ -781,43 +867,23 @@ const table = createSvelteTable(tableOptions);
 			</Select.Content>
 		</Select.Root>
 	</div>
-	<div class="w-full md:w-auto flex justify-center md:justify-end">
-		<Pagination.Root
-			count={membersQuery?.data?.count ?? 0}
-			perPage={pageSize}
-			page={currentPage + 1}
-			onPageChange={(page) => table.setPageIndex(page - 1)}
-			class="m-0"
+	<div class="w-full md:w-auto flex items-center justify-center md:justify-end gap-2">
+		<Button
+			variant="outline"
+			disabled={!membersQuery?.data?.previousCursor || membersQuery.isFetching}
+			onclick={() => onCursorChange(membersQuery?.data?.previousCursor)}
 		>
-			{#snippet children({ pages, currentPage })}
-				<Pagination.Content>
-					<Pagination.Item>
-						<Pagination.PrevButton />
-					</Pagination.Item>
-					{#each pages as page (page.key)}
-						{#if page.type === 'ellipsis'}
-							<Pagination.Item class="hidden sm:block">
-								<Pagination.Ellipsis />
-							</Pagination.Item>
-						{:else}
-							<Pagination.Item
-								class={page.value !== currentPage &&
-								page.value !== currentPage - 1 &&
-								page.value !== currentPage + 1
-									? 'hidden sm:block'
-									: ''}
-							>
-								<Pagination.Link {page} isActive={currentPage === page.value}>
-									{page.value}
-								</Pagination.Link>
-							</Pagination.Item>
-						{/if}
-					{/each}
-					<Pagination.Item>
-						<Pagination.NextButton />
-					</Pagination.Item>
-				</Pagination.Content>
-			{/snippet}
-		</Pagination.Root>
+			Previous
+		</Button>
+		<p class="text-sm text-muted-foreground">
+			{membersQuery?.data?.count ?? 0} total
+		</p>
+		<Button
+			variant="outline"
+			disabled={!membersQuery?.data?.nextCursor || membersQuery.isFetching}
+			onclick={() => onCursorChange(membersQuery?.data?.nextCursor)}
+		>
+			Next
+		</Button>
 	</div>
 </div>
