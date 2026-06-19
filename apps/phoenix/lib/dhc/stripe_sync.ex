@@ -11,10 +11,8 @@ defmodule Dhc.StripeSync do
 
   alias Dhc.StripeSync.Repository
 
-  @membership_lookup_key "standard_membership_fee"
+  @membership_lookup_keys ["standard_membership_fee", "annual_membership_fee_revised"]
   @price_cache_ttl_hours 24
-
-  @inactive_statuses ~w(canceled incomplete_expired unpaid)
 
   @type sync_summary :: %{
           target_customers: non_neg_integer(),
@@ -74,19 +72,20 @@ defmodule Dhc.StripeSync do
   # ── Price ID caching ────────────────────────────────────────────────
 
   @doc """
-  Retrieves the Stripe membership price ID, using a 24-hour cache
+  Retrieves all Stripe membership price IDs, using a 24-hour cache
   from the `settings` table.
 
-  Returns `{:ok, price_id}` on success, `{:error, reason}` on failure.
+  Returns `{:ok, [price_id]}` on success, `{:error, reason}` on failure.
   """
-  @spec get_membership_price_id() :: {:ok, String.t()} | {:error, term()}
-  def get_membership_price_id do
+  @spec get_membership_price_ids() :: {:ok, [String.t()]} | {:error, term()}
+  def get_membership_price_ids do
     cached = Repository.fetch_cached_price_id()
 
     if fresh_cache?(cached) do
-      {:ok, cached.value}
+      price_ids = String.split(cached.value, ",", trim: true)
+      {:ok, price_ids}
     else
-      fetch_price_id_from_stripe()
+      fetch_price_ids_from_stripe()
     end
   end
 
@@ -99,19 +98,22 @@ defmodule Dhc.StripeSync do
 
   defp fresh_cache?(_), do: false
 
-  defp fetch_price_id_from_stripe do
+  defp fetch_price_ids_from_stripe do
     case list_stripe_prices() do
-      {:ok, [%{"id" => price_id} | _]} ->
-        Logger.info("[stripe-sync] Fetched Stripe membership price ID",
-          price_id: price_id
+      {:ok, prices} when prices != [] ->
+        price_ids = Enum.map(prices, & &1["id"])
+
+        Logger.info("[stripe-sync] Fetched Stripe membership price IDs",
+          price_ids: price_ids,
+          lookup_keys: @membership_lookup_keys
         )
 
-        :ok = Repository.upsert_price_id_cache(price_id)
-        {:ok, price_id}
+        :ok = Repository.upsert_price_id_cache(Enum.join(price_ids, ","))
+        {:ok, price_ids}
 
       {:ok, []} ->
-        Logger.error("[stripe-sync] No Stripe price found for lookup key",
-          lookup_key: @membership_lookup_key
+        Logger.error("[stripe-sync] No Stripe prices found for lookup keys",
+          lookup_keys: @membership_lookup_keys
         )
 
         {:error, :price_not_found}
@@ -124,23 +126,28 @@ defmodule Dhc.StripeSync do
   # ── Stripe API calls ────────────────────────────────────────────────
 
   @doc """
-  Fetches the latest membership subscription for each target customer
-  from the Stripe API.
+  Fetches all membership subscriptions for each target customer
+  from the Stripe API across all membership price IDs.
 
   Returns `{:ok, %{subscriptions: map(), scanned: non_neg_integer()}}`
-  where `subscriptions` maps `customer_id` → most recent subscription,
+  where `subscriptions` maps `customer_id` → list of subscriptions,
   or `{:error, reason}`.
   """
-  @spec fetch_latest_subscriptions(String.t(), MapSet.t(String.t())) ::
-          {:ok, %{subscriptions: %{String.t() => map()}, scanned: non_neg_integer()}}
+  @spec fetch_latest_subscriptions([String.t()], MapSet.t(String.t())) ::
+          {:ok, %{subscriptions: %{String.t() => [map()]}, scanned: non_neg_integer()}}
           | {:error, term()}
-  def fetch_latest_subscriptions(price_id, target_customer_ids) do
+  def fetch_latest_subscriptions(price_ids, target_customer_ids) do
     Logger.info("[stripe-sync] Fetching Stripe subscriptions for target customers",
       target_customers: MapSet.size(target_customer_ids),
-      price_id: price_id
+      price_ids: price_ids
     )
 
-    paginate_subscriptions(price_id, target_customer_ids, %{}, 0, nil)
+    Enum.reduce_while(price_ids, {:ok, %{subscriptions: %{}, scanned: 0}}, fn price_id, {:ok, %{subscriptions: acc, scanned: scanned}} ->
+      case paginate_subscriptions(price_id, target_customer_ids, acc, scanned, nil) do
+        {:ok, result} -> {:cont, {:ok, result}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
   end
 
   defp paginate_subscriptions(price_id, target_customer_ids, acc, scanned, starting_after) do
@@ -153,13 +160,8 @@ defmodule Dhc.StripeSync do
             customer_id = extract_customer_id(sub)
 
             if MapSet.member?(target_customer_ids, customer_id) do
-              existing = Map.get(inner_acc, customer_id)
-
-              if is_nil(existing) or sub["created"] > existing["created"] do
-                Map.put(inner_acc, customer_id, sub)
-              else
-                inner_acc
-              end
+              existing = Map.get(inner_acc, customer_id, [])
+              Map.put(inner_acc, customer_id, [sub | existing])
             else
               inner_acc
             end
@@ -171,7 +173,7 @@ defmodule Dhc.StripeSync do
           last_id = List.last(data)["id"]
           paginate_subscriptions(price_id, target_customer_ids, new_acc, new_scanned, last_id)
         else
-          Logger.info("[stripe-sync] Completed Stripe subscription scan",
+          Logger.info("[stripe-sync] Completed Stripe subscription scan for price #{price_id}",
             scanned: new_scanned,
             matched_customers: map_size(new_acc)
           )
@@ -240,16 +242,14 @@ defmodule Dhc.StripeSync do
   @doc """
   Makes a GET request to the Stripe API to list prices.
   """
-  @spec req_stripe_prices(map()) :: {:ok, map()} | {:error, term()}
-  def req_stripe_prices(params) do
+  @spec req_stripe_prices(String.t()) :: {:ok, map()} | {:error, term()}
+  def req_stripe_prices(query_string) do
     stripe_api_url = stripe_api_url()
     stripe_secret_key = stripe_secret_key()
 
     if is_nil(stripe_secret_key) or stripe_secret_key == "" do
       {:error, :stripe_key_not_configured}
     else
-      query_string = URI.encode_query(params)
-
       case Req.get("#{stripe_api_url}/v1/prices?#{query_string}",
              headers: stripe_headers(stripe_secret_key),
              decode_body: true,
@@ -276,9 +276,14 @@ defmodule Dhc.StripeSync do
   end
 
   defp list_stripe_prices do
-    params = %{"lookup_keys[]" => @membership_lookup_key, active: "true", limit: 1}
+    lookup_keys_query =
+      @membership_lookup_keys
+      |> Enum.map(&"lookup_keys[]=#{URI.encode_www_form(&1)}")
+      |> Enum.join("&")
 
-    case req_stripe_prices(params) do
+    query_string = "#{lookup_keys_query}&active=true&limit=10"
+
+    case req_stripe_prices(query_string) do
       {:ok, %{"data" => data}} ->
         {:ok, data}
 
@@ -290,35 +295,62 @@ defmodule Dhc.StripeSync do
   # ── Customer sync ───────────────────────────────────────────────────
 
   @doc """
-  Syncs a single customer's membership status against their Stripe subscription.
+  Syncs a single customer's membership status against their Stripe subscriptions.
+
+  The customer must have at least one active subscription for EACH expected
+  membership price. If any price is missing an active subscription, the
+  customer is marked inactive.
 
   Returns `{:ok, action}` where action is `:inactive`, `:paused`, `:active`,
   or `:unchanged`. Returns `{:error, reason}` if the database write fails.
   """
-  @spec sync_customer(String.t(), map() | nil) :: {:ok, sync_action()} | {:error, term()}
-  def sync_customer(customer_id, nil) do
+  @spec sync_customer(String.t(), [map()] | nil, [String.t()]) ::
+          {:ok, sync_action()} | {:error, term()}
+  def sync_customer(customer_id, nil, _price_ids) do
+    Logger.info("[stripe-sync] No subscriptions found for customer — marking inactive",
+      customer_id: customer_id,
+      reason: :no_membership_subscription
+    )
+
     mark_inactive(customer_id, :no_membership_subscription, nil)
   end
 
-  def sync_customer(customer_id, %{"status" => status} = subscription) do
+  def sync_customer(customer_id, subscriptions, price_ids) when is_list(subscriptions) do
+    active_subs = Enum.filter(subscriptions, &(&1["status"] == "active"))
+    active_price_ids =
+      active_subs
+      |> Enum.map(&subscription_price_id/1)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
+
+    missing_price_ids = price_ids -- active_price_ids
+
+    has_paused = Enum.any?(subscriptions, &(Map.get(&1, "pause_collection") != nil))
+
     cond do
-      status in @inactive_statuses ->
-        mark_inactive(customer_id, {:subscription_status, status}, subscription)
-
-      Map.get(subscription, "pause_collection") != nil ->
-        mark_paused(customer_id, subscription)
-
-      status == "active" ->
-        mark_active(customer_id, subscription)
-
-      true ->
-        Logger.debug("[stripe-sync] No customer updates applied",
+      missing_price_ids != [] ->
+        Logger.info("[stripe-sync] Customer missing active subscription for price(s) — marking inactive",
           customer_id: customer_id,
-          subscription_status: status
+          missing_price_ids: missing_price_ids,
+          active_price_ids: active_price_ids,
+          expected_price_ids: price_ids
         )
 
-        {:ok, :unchanged}
+        mark_inactive(customer_id, {:missing_active_subscriptions, missing_price_ids}, List.first(subscriptions))
+
+      has_paused ->
+        paused_sub = Enum.find(subscriptions, &(Map.get(&1, "pause_collection") != nil))
+        mark_paused(customer_id, paused_sub)
+
+      true ->
+        best_active = List.first(active_subs)
+        mark_active(customer_id, best_active)
     end
+  end
+
+  defp subscription_price_id(subscription) do
+    subscription
+    |> get_in(["items", "data", Access.at(0), "price", "id"])
   end
 
   defp mark_inactive(customer_id, reason, subscription) do
@@ -358,6 +390,7 @@ defmodule Dhc.StripeSync do
 
   defp format_inactive_reason(:no_membership_subscription), do: "no_membership_subscription"
   defp format_inactive_reason({:subscription_status, status}), do: "subscription_status:#{status}"
+  defp format_inactive_reason({:missing_active_subscriptions, price_ids}), do: "missing_active_subscriptions:#{Enum.join(price_ids, ",")}"
 
   defp subscription_created_at(nil), do: nil
 
@@ -473,11 +506,11 @@ defmodule Dhc.StripeSync do
 
     with target_ids <- get_target_customer_ids(customer_ids),
          :ok <- verify_targets(target_ids),
-         {:ok, price_id} <- get_membership_price_id(),
+         {:ok, price_ids} <- get_membership_price_ids(),
          target_set <- MapSet.new(target_ids),
          {:ok, %{subscriptions: subscriptions, scanned: scanned}} <-
-           fetch_latest_subscriptions(price_id, target_set) do
-      summary = sync_all_customers(target_ids, subscriptions, scanned)
+           fetch_latest_subscriptions(price_ids, target_set) do
+      summary = sync_all_customers(target_ids, subscriptions, scanned, price_ids)
       {:ok, summary}
     else
       {:error, reason} = error ->
@@ -494,7 +527,17 @@ defmodule Dhc.StripeSync do
 
   defp verify_targets(_), do: :ok
 
-  defp sync_all_customers(target_ids, subscriptions, scanned) do
+  defp sync_all_customers(target_ids, subscriptions, scanned, price_ids) do
+    found_customer_ids = Map.keys(subscriptions)
+    missing_customer_ids = target_ids -- found_customer_ids
+
+    Logger.info("[stripe-sync] Subscription scan results",
+      target_count: length(target_ids),
+      found_count: length(found_customer_ids),
+      missing_count: length(missing_customer_ids),
+      missing_customer_ids: missing_customer_ids
+    )
+
     initial_summary = %{
       target_customers: length(target_ids),
       stripe_subscriptions_scanned: scanned,
@@ -509,15 +552,12 @@ defmodule Dhc.StripeSync do
 
     summary =
       Enum.reduce(target_ids, initial_summary, fn customer_id, acc ->
-        sub = Map.get(subscriptions, customer_id)
+        subs = Map.get(subscriptions, customer_id)
 
-        case sync_customer(customer_id, sub) do
+        case sync_customer(customer_id, subs, price_ids) do
           {:ok, action} when action in [:inactive, :paused, :active] ->
             %{acc | processed: acc.processed + 1, updated: acc.updated + 1}
             |> Map.update!(action, &(&1 + 1))
-
-          {:ok, :unchanged} ->
-            %{acc | processed: acc.processed + 1, unchanged: acc.unchanged + 1}
 
           {:error, reason} ->
             Logger.error(
