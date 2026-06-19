@@ -127,6 +127,8 @@ mise run api-gen
 
 Fails fast: if either step exits non-zero, mise stops immediately and does not proceed.
 
+**`mix gen.controllers` clobber caveat**: the task maps every operation under a tag to a REST action derived from HTTP method + path (or `operationId`), and regenerates the *whole* controller + JSON renderer + contract test for that tag. When a tag carries multiple non-REST operations (e.g. `Members` has `members.list`, `members.analytics`, `members.insuranceForm`), `--force=<path>` will overwrite the controller with stubs that map *all three* to `index` and call a non-existent `Members.list_members()` — clobbering any hand-written action bodies. After regenerating, restore the hand-written controller (keep your real action names + bodies) and never re-run `--force` on a tag whose controller you've fleshed out unless you're prepared to restore it from git. The JSON renderer and contract test are likewise tag-scoped, so extend them by hand for non-REST operations.
+
 ## API Client (TypeScript)
 
 ```bash

@@ -4,6 +4,24 @@ defmodule DhcWeb.MembersController do
   alias Dhc.Members
 
   @doc """
+  GET /members
+  """
+  def index(conn, params) do
+    case Members.list_members(params) do
+      {:ok, result} ->
+        conn
+        |> put_view(json: DhcWeb.MembersJSON)
+        |> render(:index, result: result)
+
+      {:error, :bad_cursor} ->
+        bad_request(conn, "Invalid or mismatched cursor")
+
+      {:error, _reason} ->
+        bad_request(conn, "Invalid members query")
+    end
+  end
+
+  @doc """
   GET /members/insurance-form
   """
   def insurance_form(conn, _params) do
@@ -19,5 +37,11 @@ defmodule DhcWeb.MembersController do
     conn
     |> put_view(json: DhcWeb.MembersJSON)
     |> render(:analytics, analytics: Members.analytics())
+  end
+
+  defp bad_request(conn, detail) do
+    conn
+    |> put_status(:bad_request)
+    |> json(%{errors: %{detail: detail}})
   end
 end
