@@ -3,6 +3,7 @@ defmodule DhcWeb.InvitationsControllerTest do
 
   use Oban.Testing, repo: Dhc.Repo
 
+  alias Dhc.Invitations.Invitation
   alias Dhc.Repo
 
   defmodule Verifier do
@@ -338,27 +339,27 @@ defmodule DhcWeb.InvitationsControllerTest do
   # deterministic newest-first ordering without relying on insertion timing.
   defp insert_invitation(attrs) do
     id = Ecto.UUID.generate()
-    dumped_id = Ecto.UUID.dump!(id)
     now = DateTime.utc_now() |> DateTime.truncate(:second)
     created_at = DateTime.add(now, Keyword.get(attrs, :seconds, 0), :second)
     expires_at = DateTime.add(created_at, 7, :day)
 
-    {1, _} =
-      Repo.insert_all(
-        "invitations",
-        [
-          %{
-            id: dumped_id,
-            email: Keyword.get(attrs, :email, "test#{:rand.uniform(1_000_000)}@example.com"),
-            status: Keyword.get(attrs, :status, "pending"),
-            expires_at: expires_at,
-            created_at: created_at,
-            updated_at: now,
-            invitation_type: Keyword.get(attrs, :invitation_type, "member")
-          }
-        ],
-        prefixes: ["public"]
-      )
+    # invitations via the Invitation schema — Ecto handles the `created_at`
+    # timestamp mapping (the schema declares `timestamps(inserted_at: :created_at)`),
+    # autodumps the :binary_id PK, and skips the generated `search_text` column
+    # (not a schema field; Postgres auto-populates it from `email`). Set
+    # `created_at` explicitly so the `seconds` offset gives deterministic
+    # newest-first ordering for cursor pagination — Ecto only auto-fills
+    # `inserted_at`/`created_at` when it's nil.
+    {:ok, _invitation} =
+      %Invitation{
+        id: id,
+        email: Keyword.get(attrs, :email, "test#{:rand.uniform(1_000_000)}@example.com"),
+        status: Keyword.get(attrs, :status, "pending"),
+        expires_at: expires_at,
+        created_at: created_at,
+        invitation_type: Keyword.get(attrs, :invitation_type, "member")
+      }
+      |> Repo.insert()
 
     id
   end

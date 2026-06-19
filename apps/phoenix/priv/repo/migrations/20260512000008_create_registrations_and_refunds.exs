@@ -58,7 +58,9 @@ defmodule Dhc.Repo.Migrations.CreateRegistrationsAndRefunds do
     create index(:club_activity_registrations, [:club_activity_id])
     create index(:club_activity_registrations, [:member_user_id])
     create index(:club_activity_registrations, [:external_user_id])
-    create index(:club_activity_registrations, [:stripe_checkout_session_id])
+    # The unique_index on :stripe_checkout_session_id above already serves
+    # lookups; a duplicate non-unique index on the same column collides on the
+    # generated index name.
     create index(:club_activity_registrations, [:status])
     create index(:club_activity_registrations, [:attendance_status])
     create index(:club_activity_registrations, [:attendance_marked_at])
@@ -91,11 +93,12 @@ defmodule Dhc.Repo.Migrations.CreateRegistrationsAndRefunds do
       timestamps(type: :timestamptz)
     end
 
+    # The unique_indexes on :registration_id and :stripe_refund_id already
+    # serve lookups; duplicate non-unique indexes on the same columns collide
+    # on the generated index names.
     create unique_index(:club_activity_refunds, [:registration_id])
     create unique_index(:club_activity_refunds, [:stripe_refund_id])
-    create index(:club_activity_refunds, [:registration_id])
     create index(:club_activity_refunds, [:status])
-    create index(:club_activity_refunds, [:stripe_refund_id])
     create index(:club_activity_refunds, [:requested_at])
 
     execute "ALTER TABLE club_activity_refunds ADD CONSTRAINT refund_amount_positive CHECK (refund_amount > 0)"

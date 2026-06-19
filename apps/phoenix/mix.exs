@@ -70,12 +70,22 @@ defmodule Dhc.MixProject do
       {:yaml_elixir, "~> 2.11", runtime: false},
       {:open_api_spex, "~> 3.22", runtime: false},
       {:oapi_generator, "~> 0.4.0", only: :dev, runtime: false},
-      {:bypass, "~> 2.1", only: :test}
+      # Bypass must be present in test for HTTP stubbing; --no-start in the
+      # test alias disables its autostart, so test_helper.exs starts it
+      # explicitly via Application.ensure_all_started(:bypass) before any
+      # Bypass.open() call. See ADR 0006.
+      {:bypass, "~> 2.1", only: :test},
+      # testcontainers-elixir drives the Docker Compose test harness. The
+      # compose module (Testcontainers.DockerCompose +
+      # Testcontainers.Compose.ComposeEnvironment) landed in 2.3.x (PR #247).
+      # See ADR 0006 for the lifecycle: test_helper.exs starts the db profile,
+      # reads the dynamic port, then starts the app + runs migrations.
+      {:testcontainers, "~> 2.3", only: :test}
     ]
   end
 
   # Aliases are shortcuts or tasks specific to the current project.
-  # For example, to install project dependencies and perform other setup tasks, run:
+  # For example, to install dependencies and perform other setup tasks, run:
   #
   #     $ mix setup
   #
@@ -85,7 +95,14 @@ defmodule Dhc.MixProject do
       setup: ["deps.get", "ecto.setup"],
       "ecto.setup": ["ecto.create", "ecto.migrate", "run priv/repo/seeds.exs"],
       "ecto.reset": ["ecto.drop", "ecto.setup"],
-      test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
+      # --no-start is the critical seam for the testcontainers harness: it
+      # stops Mix from auto-starting :dhc (and :bypass) before test_helper.exs
+      # runs, so test_helper.exs can start compose, read the dynamic DB port,
+      # and put_env it BEFORE Application.ensure_all_started(:dhc) starts the
+      # Repo. ecto.create/ecto.migrate are deliberately NOT in the test alias
+      # — test_helper.exs owns the full compose→migrate→sandbox lifecycle now
+      # (ADR 0006). `mix test path/to/file.exs` still routes through here.
+      test: ["test --no-start"],
       precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "test"]
     ]
   end
