@@ -21,6 +21,7 @@ defmodule Mix.Tasks.Dhc.SeedMembers do
 
   import Ecto.Query
 
+  alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.Repo
   alias Dhc.Stripe.Client, as: StripeClient
 
@@ -214,7 +215,7 @@ defmodule Mix.Tasks.Dhc.SeedMembers do
         }
       end)
 
-    Repo.insert_all("member_profiles", rows)
+    Repo.insert_all(MemberProfile, rows)
   end
 
   defp insert_user_roles(members) do

@@ -127,6 +127,8 @@ mise run api-gen
 
 Fails fast: if either step exits non-zero, mise stops immediately and does not proceed.
 
+**`mix gen.controllers` clobber caveat**: the task maps every operation under a tag to a REST action derived from HTTP method + path (or `operationId`), and regenerates the *whole* controller + JSON renderer + contract test for that tag. When a tag carries multiple non-REST operations (e.g. `Members` has `members.list`, `members.analytics`, `members.insuranceForm`), `--force=<path>` will overwrite the controller with stubs that map *all three* to `index` and call a non-existent `Members.list_members()` — clobbering any hand-written action bodies. After regenerating, restore the hand-written controller (keep your real action names + bodies) and never re-run `--force` on a tag whose controller you've fleshed out unless you're prepared to restore it from git. The JSON renderer and contract test are likewise tag-scoped, so extend them by hand for non-REST operations.
+
 ## API Client (TypeScript)
 
 ```bash
@@ -141,6 +143,8 @@ pnpm --filter @dhc/api-client api:generate:watch
 ```
 
 Generated output: `packages/api-client/src/client/` (gitignored — auto-regenerated on `pnpm install` via postinstall, do not manually edit)
+
+**Manual step after `mise run api-gen`**: `packages/api-client/src/index.ts` is hand-maintained (tracked, not generated). `openapi-ts` only writes to `src/client/`; it does not update the public re-exports in `src/index.ts`. After adding a new operation, manually add the generated SDK function plus its `types.gen` / `valibot.gen` / `@tanstack/svelte-query.gen` exports to the four `export` blocks in `src/index.ts` (mirror how `waitlistStatus` / `membersInsuranceForm` are exposed). Without this, the function exists in `src/client/` but is not importable from `@dhc/api-client`.
 
 `packages/api-client/openapi-ts.config.ts` explicitly points `output.tsConfigPath` at `packages/api-client/tsconfig.json` so postinstall generation works in deployment environments that do not expose the repo-root SvelteKit `tsconfig.json`.
 

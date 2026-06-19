@@ -135,6 +135,77 @@ paths:
                 $ref: "#/components/schemas/Error"
 
   /invitations:
+    get:
+      operationId: invitations.list
+      tags:
+        - Invitations
+      summary: List member invitations
+      description: |
+        Returns a domain-shaped, cursor-paginated list of member invitations
+        for the dashboard table.
+
+        The server always filters to `pending` and `expired` invitations,
+        matching the previous hardcoded client filter. The `status` field is
+        still returned in the DTO so the UI can render the badge, but there is
+        no `status` query param — `accepted`/`revoked` rows are never returned.
+
+        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
+        `admin`, `president`, or `committee_coordinator`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            enum: [10, 25, 50, 100]
+            default: 10
+        - name: cursor
+          in: query
+          schema:
+            type: string
+          description: Opaque cursor returned by a previous response.
+        - name: q
+          in: query
+          schema:
+            type: string
+          description: Websearch-style full text query over `invitations.search_text`.
+        - name: sort
+          in: query
+          schema:
+            $ref: "#/components/schemas/InvitationListSortField"
+            default: createdAt
+        - name: direction
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: desc
+      responses:
+        "200":
+          description: Cursor-paginated member invitations
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationListResponse"
+        "400":
+          description: Invalid query parameter or mismatched cursor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks an invitation admin role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
     post:
       operationId: invitations.create
       tags:
@@ -397,6 +468,178 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /members:
+    get:
+      operationId: members.list
+      tags:
+        - Members
+      summary: List members
+      description: |
+        Returns a domain-shaped, cursor-paginated list of members for the
+        dashboard table, replacing the browser-side PostgREST read over
+        `member_management_view`.
+
+        `membershipStatus` is computed server-side, reproducing the legacy
+        view's CASE: `inactive` when `user_profiles.is_active = false`;
+        `paused` when `member_profiles.subscription_paused_until` is not null
+        and greater than `now()`; otherwise `active`. This is distinct from
+        the Member's `isActive` flag — a paused member has
+        `isActive: true, membershipStatus: "paused"`.
+
+        Member email is read directly from `auth.users` via the `AuthUser`
+        schema (no PostgREST-era helper function). Internal/leaky fields
+        (`searchText`, `userProfileId`, `createdAt`, `updatedAt`, `roles`,
+        `additionalData`, `fromWaitlistId`, `waitlistRegistrationDate`) are
+        not exposed.
+
+        Requires a Supabase JWT whose `app_metadata.roles` includes one of the
+        broad committee roles: `admin`, `president`, `treasurer`,
+        `committee_coordinator`, `sparring_coordinator`, `workshop_coordinator`,
+        `beginners_coordinator`, `quartermaster`, `pr_manager`,
+        `volunteer_coordinator`, `research_coordinator`, or `coach`. A `member`
+        role 403s; a missing token 401s.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            enum: [10, 25, 50, 100]
+            default: 10
+        - name: cursor
+          in: query
+          schema:
+            type: string
+          description: Opaque cursor returned by a previous response. Binds to the query params (limit, sort, direction, membershipStatus, q); a mismatched cursor returns 400.
+        - name: q
+          in: query
+          schema:
+            type: string
+          description: Websearch-style full text query over `user_profiles.search_text`.
+        - name: membershipStatus
+          in: query
+          schema:
+            type: string
+          description: |
+            Comma-separated list of membership statuses to include. Absent or
+            empty returns all statuses (no filter). Example: `active,paused`.
+            Valid values: `active`, `inactive`, `paused`.
+        - name: sort
+          in: query
+          schema:
+            $ref: "#/components/schemas/MembersListSortField"
+            default: lastName
+        - name: direction
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
+      responses:
+        "200":
+          description: Cursor-paginated members
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MembersListResponse"
+        "400":
+          description: Invalid query parameter or mismatched cursor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a broad committee role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /members/insurance-form:
+    get:
+      operationId: members.insuranceForm
+      tags:
+        - Members
+      summary: Read the member insurance form link
+      description: |
+        Returns the URL of the HEMA insurance form link configured for members.
+
+        Exposes a specific domain read, not a generic settings proxy: the
+        `Dhc.Members` context owns the `hema_insurance_form_link` settings read.
+
+        Any authenticated user (valid Supabase JWT) may read this; no committee
+        role is required, mirroring the `settings` SELECT RLS policy
+        (`USING (true)` for authenticated). A member can read the insurance
+        form link on their own profile.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Insurance form link
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MembersInsuranceFormResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /members/analytics:
+    get:
+      operationId: members.analytics
+      tags:
+        - Members
+      summary: Read members analytics
+      description: |
+        Returns dashboard analytics for active members, computed server-side
+        over `member_profiles` joined to `user_profiles` where `is_active = true`.
+
+        Replaces the five browser-side PostgREST aggregate queries over
+        `member_management_view` with a single domain-shaped read. The
+        `preferred_weapon[]` array is unnested and counted in SQL so the
+        browser no longer downloads every active member's weapon array to
+        count it in JavaScript. Raw enum strings are returned for weapons;
+        the UI keeps doing display prettification.
+
+        Requires a Supabase JWT whose `app_metadata.roles` includes one of the
+        broad committee roles: `admin`, `president`, `treasurer`,
+        `committee_coordinator`, `sparring_coordinator`, `workshop_coordinator`,
+        `beginners_coordinator`, `quartermaster`, `pr_manager`,
+        `volunteer_coordinator`, `research_coordinator`, or `coach`. This
+        mirrors the `user_profiles` SELECT RLS policy for broad committee
+        roles. A `member` role 403s; a missing token 401s.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Members analytics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MembersAnalyticsResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a broad committee role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -468,6 +711,78 @@ components:
               type: integer
             failed:
               type: integer
+    InvitationStatus:
+      type: string
+      enum:
+        - pending
+        - accepted
+        - expired
+        - revoked
+      description: |
+        Invitation lifecycle status. The list endpoint always filters to
+        `pending` and `expired`; `accepted`/`revoked` rows are never returned.
+        The field is still present in the DTO for UI badge rendering.
+    InvitationListSortField:
+      type: string
+      enum:
+        - email
+        - status
+        - expiresAt
+        - createdAt
+    InvitationListResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - invitations
+            - totalCount
+            - limit
+            - nextCursor
+            - previousCursor
+          properties:
+            invitations:
+              type: array
+              items:
+                $ref: "#/components/schemas/Invitation"
+            totalCount:
+              type: integer
+              minimum: 0
+              description: Exact `COUNT(*)`, not estimated.
+            limit:
+              type: integer
+              enum: [10, 25, 50, 100]
+            nextCursor:
+              type: string
+              nullable: true
+            previousCursor:
+              type: string
+              nullable: true
+    Invitation:
+      type: object
+      required:
+        - id
+        - email
+        - status
+        - expiresAt
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        status:
+          $ref: "#/components/schemas/InvitationStatus"
+        expiresAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
     WaitlistStatusResponse:
       type: object
       required:
@@ -543,6 +858,163 @@ components:
         - completed
         - no_reply
         - joined
+    MembershipStatus:
+      type: string
+      enum:
+        - active
+        - inactive
+        - paused
+      description: |
+        Membership lifecycle state for a member profile.
+
+        - `active`: the membership is currently in good standing.
+        - `inactive`: the membership has lapsed or been ended.
+        - `paused`: the membership is temporarily suspended (e.g. via
+          `subscription_paused_until`). Mirrors the paused-subscription case
+          in the legacy `member_management_view` `membership_status` column.
+
+        Referenced later by the members-list DTO `membershipStatus` field and
+        the `membershipStatus` query parameter of the members-list endpoint.
+    MembersListSortField:
+      type: string
+      enum:
+        - firstName
+        - lastName
+        - email
+        - phoneNumber
+        - age
+        - membershipStartDate
+        - lastPaymentDate
+        - subscriptionPausedUntil
+        - isActive
+    MembersListResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - members
+            - totalCount
+            - limit
+            - nextCursor
+            - previousCursor
+          properties:
+            members:
+              type: array
+              items:
+                $ref: "#/components/schemas/Member"
+            totalCount:
+              type: integer
+              minimum: 0
+            limit:
+              type: integer
+              enum: [10, 25, 50, 100]
+            nextCursor:
+              type: string
+              nullable: true
+            previousCursor:
+              type: string
+              nullable: true
+    Member:
+      type: object
+      required:
+        - id
+        - firstName
+        - lastName
+        - email
+        - phoneNumber
+        - gender
+        - pronouns
+        - isActive
+        - preferredWeapon
+        - membershipStartDate
+        - membershipEndDate
+        - lastPaymentDate
+        - insuranceFormSubmitted
+        - age
+        - socialMediaConsent
+        - nextOfKinName
+        - nextOfKinPhone
+        - guardianFirstName
+        - guardianLastName
+        - guardianPhoneNumber
+        - medicalConditions
+        - subscriptionPausedUntil
+        - membershipStatus
+      properties:
+        id:
+          type: string
+          format: uuid
+        firstName:
+          type: string
+        lastName:
+          type: string
+        email:
+          type: string
+          format: email
+        phoneNumber:
+          type: string
+          nullable: true
+        gender:
+          type: string
+          nullable: true
+        pronouns:
+          type: string
+          nullable: true
+        isActive:
+          type: boolean
+        preferredWeapon:
+          type: array
+          items:
+            type: string
+          description: Raw enum strings (the UI prettifies for display).
+        membershipStartDate:
+          type: string
+          format: date-time
+          nullable: true
+        membershipEndDate:
+          type: string
+          format: date-time
+          nullable: true
+        lastPaymentDate:
+          type: string
+          format: date-time
+          nullable: true
+        insuranceFormSubmitted:
+          type: boolean
+        age:
+          type: integer
+          minimum: 0
+          nullable: true
+        socialMediaConsent:
+          type: string
+          enum: [no, yes_recognizable, yes_unrecognizable]
+        nextOfKinName:
+          type: string
+          nullable: true
+        nextOfKinPhone:
+          type: string
+          nullable: true
+        guardianFirstName:
+          type: string
+          nullable: true
+        guardianLastName:
+          type: string
+          nullable: true
+        guardianPhoneNumber:
+          type: string
+          nullable: true
+        medicalConditions:
+          type: string
+          nullable: true
+        subscriptionPausedUntil:
+          type: string
+          format: date-time
+          nullable: true
+        membershipStatus:
+          $ref: "#/components/schemas/MembershipStatus"
     WaitlistEntriesSortField:
       type: string
       enum:
@@ -688,6 +1160,90 @@ components:
           type: string
           format: date-time
           nullable: true
+    MembersInsuranceFormResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - link
+          properties:
+            link:
+              type: string
+              nullable: true
+              description: URL of the HEMA insurance form, or null when not configured.
+    MembersAnalyticsResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - totalCount
+            - averageAge
+            - genderDistribution
+            - ageDistribution
+            - weaponDistribution
+          properties:
+            totalCount:
+              type: integer
+              minimum: 0
+              description: Count of active members.
+            averageAge:
+              type: number
+              format: double
+              minimum: 0
+              description: Average age of active members with a known date of birth (0 when none).
+            genderDistribution:
+              type: array
+              items:
+                $ref: "#/components/schemas/MembersGenderDistributionItem"
+            ageDistribution:
+              type: array
+              items:
+                $ref: "#/components/schemas/MembersAgeDistributionItem"
+            weaponDistribution:
+              type: array
+              items:
+                $ref: "#/components/schemas/MembersWeaponDistributionItem"
+    MembersGenderDistributionItem:
+      type: object
+      required:
+        - gender
+        - value
+      properties:
+        gender:
+          type: string
+        value:
+          type: integer
+          minimum: 0
+    MembersAgeDistributionItem:
+      type: object
+      required:
+        - age
+        - value
+      properties:
+        age:
+          type: integer
+          minimum: 0
+        value:
+          type: integer
+          minimum: 0
+    MembersWeaponDistributionItem:
+      type: object
+      required:
+        - weapon
+        - value
+      properties:
+        weapon:
+          type: string
+          description: Raw preferred_weapon enum string (the UI prettifies for display).
+        value:
+          type: integer
+          minimum: 0
     Error:
       type: object
       properties:

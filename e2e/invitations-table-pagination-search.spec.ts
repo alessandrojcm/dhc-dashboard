@@ -68,10 +68,19 @@ test.describe("Invitations table pagination and search", () => {
 
 		if (!isNextButtonDisabled) {
 			await nextButton.click();
-			await expectQueryParam(page, "invitePage", "1");
 
+			// Cursor pagination: Next sets an opaque `inviteCursor` param
+			// (bound to limit/sort/direction/q), not a page index.
+			await expect
+				.poll(
+					() => new URL(page.url()).searchParams.get("inviteCursor") ?? "",
+					{ timeout: 10000 },
+				)
+				.not.toBe("");
+
+			// The Previous button is enabled once we move off the first page.
 			await expect(
-				page.getByRole("button", { name: "Go to previous page" }),
+				page.getByRole("button", { name: "Previous" }),
 			).toBeEnabled();
 		}
 	});
@@ -151,7 +160,9 @@ test.describe("Invitations table pagination and search", () => {
 
 		await expectQueryParam(page, "page", "2");
 		await expectQueryParam(page, "pageSize", "25");
+		// Invitations use cursor pagination; no page-index param leaks in.
 		expect(page.url()).not.toContain("invitePage=2");
+		expect(page.url()).not.toContain("inviteCursor=");
 
 		const nextButton = page.getByRole("button", { name: "Next" });
 		const isNextButtonDisabled = await nextButton.isDisabled();
@@ -159,7 +170,14 @@ test.describe("Invitations table pagination and search", () => {
 		if (!isNextButtonDisabled) {
 			await nextButton.click();
 
-			await expectQueryParam(page, "invitePage", "1");
+			// Invitations Next sets its own cursor; the members page index is
+			// untouched (separate pagination state per table).
+			await expect
+				.poll(
+					() => new URL(page.url()).searchParams.get("inviteCursor") ?? "",
+					{ timeout: 10000 },
+				)
+				.not.toBe("");
 			await expectQueryParam(page, "page", "2");
 		}
 	});

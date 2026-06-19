@@ -7,7 +7,7 @@ import {
 	getChartColor,
 } from "./chart-conventions.js";
 
-type WeaponDistribution = { weapon: string; count: number };
+type WeaponDistribution = { weapon: string; value: number };
 
 const {
 	weaponDistributionData = [],
@@ -17,7 +17,7 @@ const {
 const normalizedData = $derived(
 	weaponDistributionData.map((item, index) => ({
 		weapon: formatLabel(item.weapon),
-		count: item.count,
+		value: item.value,
 		color: getChartColor(index),
 	})),
 );
@@ -42,7 +42,7 @@ const chartConfig = $derived.by(() => {
 		<PieChart
 			data={normalizedData}
 			key="weapon"
-			value="count"
+			value="value"
 			c="color"
 			innerRadius={60}
 			padAngle={0.01}
