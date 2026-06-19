@@ -48,7 +48,9 @@ defmodule Dhc.Repo.Migrations.CreateClubActivities do
     create unique_index(:club_activity_interest, [:club_activity_id, :user_id])
     create index(:club_activity_interest, [:club_activity_id])
     create index(:club_activity_interest, [:user_id])
-    create index(:club_activity_interest, [:created_at])
+    # `timestamps/1` adds `inserted_at`/`updated_at`, not `created_at` — index
+    # the actual column name.
+    create index(:club_activity_interest, [:inserted_at])
   end
 
   def down do

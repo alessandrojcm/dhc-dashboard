@@ -19,7 +19,11 @@ defmodule Dhc.Repo.Migrations.CreateMemberProfiles do
       add :additional_data, :map, default: fragment("'{}'::jsonb")
       add :subscription_paused_until, :timestamptz
 
-      timestamps(type: :timestamptz)
+      # Match the original Supabase schema (20241126152537_add_members_schema.sql):
+      # `created_at`/`updated_at`, NOT Ecto's default `inserted_at`. The
+      # `MemberProfile` schema declares `timestamps(inserted_at: :created_at)`,
+      # so the DB column must be `created_at` for the schema to read it.
+      timestamps(type: :timestamptz, inserted_at: :created_at)
     end
 
     create index(:member_profiles, [:user_profile_id])

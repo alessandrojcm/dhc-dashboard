@@ -5,12 +5,20 @@ import Config
 # The MIX_TEST_PARTITION environment variable can be used
 # to provide built-in test partitioning in CI environment.
 # Run `mix help test` for more information.
+#
+# hostname + port set dynamically by test_helper.exs from the compose
+# environment (testcontainers-elixir allocates a dynamic host port per run;
+# test_helper.exs reads it via ComposeEnvironment.get_service_port/3 and
+# merges it into this config before the app starts). See ADR 0006.
+#
+# username/password/database are read from the same .env that interpolates the
+# root docker-compose.yml `db` service (loaded by mise via [env] _.file = ".env"
+# and by the compose file's ${POSTGRES_PASSWORD}/${POSTGRES_DB}). Defaults match
+# the old hardcoded values so a bare `mix test` without .env still works.
 config :dhc, Dhc.Repo,
-  username: "postgres",
-  password: "postgres",
-  hostname: "localhost",
-  port: 54322,
-  database: "postgres",
+  username: System.get_env("POSTGRES_USER", "postgres"),
+  password: System.get_env("POSTGRES_PASSWORD", "postgres"),
+  database: System.get_env("POSTGRES_DB", "postgres"),
   pool: Ecto.Adapters.SQL.Sandbox,
   pool_size: System.schedulers_online() * 2
 

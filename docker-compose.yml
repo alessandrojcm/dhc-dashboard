@@ -1,70 +1,110 @@
+# Docker Compose for the project.
+#
+# Uniform-profile: every service carries a `profiles:` entry, so a bare
+# `docker compose up` starts nothing. Use `--profile <name>` to select a set:
+#
+#   Test harness (Phoenix):     docker compose --profile db up -d --wait
+#   E2E / full Supabase stack:  docker compose --profile supabase up -d --wait
+#
+# See docs/adr/0006-testcontainers-driven-phoenix-test-harness.md for why the
+# `db` profile is driven by testcontainers-elixir for `mix test`, and why the
+# `supabase` profile (auth/kong/rest) is reserved for a future E2E migration.
+
+name: dhc-dashboard
+
 services:
-  dev:
-    env_file:
-      - .env
-    build:
-      context: .
-      dockerfile: Dockerfile.dev
-    command: pnpm dev
-    working_dir: /workspace
+  # ── Postgres (test harness + E2E shared surface) ─────────────
+  # supabase/postgres ships pg_jsonschema in the `extensions` schema and the
+  # full auth schema (auth.users, supabase_auth_admin role) at init via the
+  # image's built-in 00000000000001-auth-schema.sql. No bespoke init SQL is
+  # mounted — that was a deliberate decision (ADR 0006, Considered Options).
+  # The `db` profile is the only one exercised by the Phoenix test harness.
+  db:
+    image: supabase/postgres:17.6.1.136
+    profiles: ["db", "supabase"]
     ports:
-      - '5173:5173'
-    restart: unless-stopped
-    develop:
-      watch:
-        - action: sync
-          path: ./src
-          target: /workspace/src
-        - action: sync
-          path: ./static
-          target: /workspace/static
-        - action: sync
-          path: ./e2e
-          target: /workspace/e2e
-        - action: sync+restart
-          path: ./package.json
-          target: /workspace/package.json
+      - "5432" # string form → dynamic allocation by testcontainers; --wait resolves the mapped port
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    command:
+      - postgres
+      - -c
+      - config_file=/etc/postgresql/postgresql.conf
+      - -c
+      - log_min_messages=fatal
 
-  open_hands_runtime:
-    image: 'ghcr.io/all-hands-ai/runtime:main-nikolaik'
-  smtp_server:
-    image: 'rnwood/smtp4dev'
-    ports:
-      - '5001:80'
-      - '4654:465'
-    volumes:
-      - smtp4dev-data:/smtp4dev
-    environment:
-      - RELAYOPTIONS__LOGIN=smtp4dev
-      - RELAYOPTIONS__PASSWORD=smtp4dev
-      - SERVEROPTIONS__HOSTNAME=smtp_server
-      - RelayOptions__SmtpPort=465
-    networks:
-      - supabase_network_dhc-dashboard
-  open_hands:
-    stdin_open: true
-    tty: true
-    environment:
-      - SANDBOX_RUNTIME_CONTAINER_IMAGE=ghcr.io/all-hands-ai/runtime:main-nikolaik
-      - LOG_ALL_EVENTS=true
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - openhands-state:/.openhands-state
-    ports:
-      - 3000:3000
-    extra_hosts:
-      - host.docker.internal:host-gateway
-    container_name: openhands-app
-    image: ghcr.io/all-hands-ai/openhands:main
+  # ── GoTrue (auth) — E2E only ──────────────────────────────────
+  # The Phoenix test harness stubs auth at the :auth_verifier seam, so
+  # GoTrue is not exercised by `mix test`. It lives under the `supabase`
+  # profile so the same compose file can drive E2E later. Requires
+  # additional env vars (JWT_SECRET, SITE_URL, SMTP_*, etc.) supplied by
+  # the E2E wiring — left stub-shaped here so the file is reusable.
+  auth:
+    image: supabase/gotrue:v2.189.0
+    profiles: ["supabase"]
     depends_on:
-      - open_hands_runtime
-    profiles:
-      - open_hands
+      db:
+        condition: service_healthy
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      # Wire these up when E2E lands; placeholders keep the file valid.
+      API_EXTERNAL_URL: ${API_EXTERNAL_URL:-http://localhost:8000}
+      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      GOTRUE_JWT_SECRET: ${JWT_SECRET}
+      GOTRUE_SITE_URL: ${SITE_URL:-http://localhost:5173}
 
-volumes:
-  smtp4dev-data:
-  openhands-state:
+  # ── Kong (API gateway) — E2E only ─────────────────────────────
+  # Declarative config + entrypoint stub live under volumes/api/ so the
+  # service definition is complete; full routing config is filled out when
+  # E2E is wired (ADR 0006, Consequences: E2E deferred).
+  kong:
+    image: kong/kong:3.9.1
+    profiles: ["supabase"]
+    depends_on:
+      - auth
+      - rest
+    # Dynamic host-port allocation (string form). E2E will pin these to fixed
+    # host ports when it wires the `supabase` profile — left dynamic here so a
+    # malformed KONG_HTTP_PORT/KONG_HTTPS_PORT in .env doesn't break compose
+    # validation for the (unused-for-now) supabase profile.
+    ports:
+      - "8000"
+      - "8443"
+    volumes:
+      - ./volumes/api/kong.yml:/home/kong/temp.yml:ro
+      - ./volumes/api/kong-entrypoint.sh:/home/kong/kong-entrypoint.sh:ro
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /usr/local/kong/kong.yml
+      KONG_DNS_ORDER: LAST,A,CNAME
+      KONG_DNS_NOT_FOUND_TTL: 1
+      KONG_PLUGINS: request-transformer,cors,key-auth,acl,basic-auth,request-termination,ip-restriction,post-function
+      KONG_NGINX_PROXY_PROXY_BUFFER_SIZE: 160k
+      KONG_NGINX_PROXY_PROXY_BUFFERS: 64 160k
+      KONG_PROXY_ACCESS_LOG: /dev/stdout combined
+      SUPABASE_ANON_KEY: ${ANON_KEY}
+      SUPABASE_SERVICE_KEY: ${SERVICE_ROLE_KEY}
+    entrypoint: ["/bin/sh", "/home/kong/kong-entrypoint.sh"]
 
-networks:
-  supabase_network_dhc-dashboard:
-    external: true
+  # ── PostgREST — E2E only ──────────────────────────────────────
+  # Not exercised by Phoenix tests (RLS read migration replaces
+  # PostgREST reads with Phoenix APIs). Kept for future E2E parity.
+  rest:
+    image: postgrest/postgrest:v14.12
+    profiles: ["supabase"]
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      PGRST_DB_SCHEMAS: ${PGRST_DB_SCHEMAS:-public}
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: ${JWT_SECRET}
+    command: ["postgrest"]

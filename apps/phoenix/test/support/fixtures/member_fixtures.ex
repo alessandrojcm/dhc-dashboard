@@ -6,6 +6,7 @@ defmodule Dhc.MemberFixtures do
 
   alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.Repo
+  alias Dhc.UserProfiles.UserProfile
 
   @doc """
   Inserts an auth user, a user profile, and a member profile.
@@ -33,22 +34,19 @@ defmodule Dhc.MemberFixtures do
   def member_fixture(attrs \\ %{}) do
     attrs = Enum.into(attrs, %{})
 
-    auth_user_id_str = Ecto.UUID.generate()
-    profile_id_str = Ecto.UUID.generate()
-
-    # Postgrex expects binary UUIDs when inserting into string-named tables.
-    auth_user_id = Ecto.UUID.dump!(auth_user_id_str)
-    profile_id = Ecto.UUID.dump!(profile_id_str)
-
+    auth_user_id = Ecto.UUID.generate()
+    profile_id = Ecto.UUID.generate()
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
     customer_id = Map.get(attrs, :customer_id, "cus_#{System.unique_integer([:positive])}")
 
+    # `auth.users` is Supabase-owned (no Ecto schema); insert raw. Postgrex
+    # expects binary UUIDs when bypassing the schema.
     Repo.insert_all(
       "users",
       [
         [
-          id: auth_user_id,
+          id: Ecto.UUID.dump!(auth_user_id),
           aud: "authenticated",
           role: "authenticated",
           email: unique_email()
@@ -57,8 +55,13 @@ defmodule Dhc.MemberFixtures do
       prefix: "auth"
     )
 
-    profile_attrs =
-      %{
+    # user_profiles via the UserProfile schema — Ecto handles the `created_at`
+    # timestamp mapping (the schema declares `timestamps(inserted_at: :created_at)`)
+    # and autodumps the `:binary_id` PK/FKs from string UUIDs. `search_text` is a
+    # generated column, so the schema deliberately doesn't declare it and the
+    # insert skips it (Postgres auto-populates it from first_name/last_name).
+    {:ok, _profile} =
+      %UserProfile{
         id: profile_id,
         supabase_user_id: auth_user_id,
         first_name: Map.get(attrs, :first_name, "Test"),
@@ -70,24 +73,18 @@ defmodule Dhc.MemberFixtures do
         is_active: Map.get(attrs, :is_active, true),
         customer_id: customer_id,
         social_media_consent: Map.get(attrs, :social_media_consent, "no"),
-        medical_conditions: Map.get(attrs, :medical_conditions),
-        created_at: now,
-        updated_at: now
+        medical_conditions: Map.get(attrs, :medical_conditions)
       }
+      |> Repo.insert()
 
-    Repo.insert_all("user_profiles", [profile_attrs])
-
-    member_attrs =
-      %{
-        # The `MemberProfile` schema has `:binary_id` primary/foreign keys,
-        # which Ecto autodumps from string UUIDs — pass the string forms here
-        # (the raw-string `users`/`user_profiles` inserts above still need
-        # the pre-dumped binaries, since they bypass the schema). Datetime
-        # values are truncated to seconds to satisfy the schema's
-        # `:utc_datetime` type, which rejects microseconds (the prior
-        # raw-string insert silently coerced them).
-        id: auth_user_id_str,
-        user_profile_id: profile_id_str,
+    # member_profiles via the MemberProfile schema. The schema has
+    # `:binary_id` primary/foreign keys (autogenerate: false), so pass the
+    # string UUIDs explicitly. Datetime values are truncated to seconds to
+    # satisfy the schema's `:utc_datetime` type, which rejects microseconds.
+    {:ok, _member} =
+      %MemberProfile{
+        id: auth_user_id,
+        user_profile_id: profile_id,
         next_of_kin_name: "Next of Kin",
         next_of_kin_phone: "+353820000000",
         preferred_weapon: Map.get(attrs, :preferred_weapon, ["longsword"]),
@@ -96,16 +93,13 @@ defmodule Dhc.MemberFixtures do
         last_payment_date: truncate_dt(Map.get(attrs, :last_payment_date)),
         insurance_form_submitted: false,
         additional_data: %{},
-        subscription_paused_until: truncate_dt(Map.get(attrs, :subscription_paused_until)),
-        created_at: now,
-        updated_at: now
+        subscription_paused_until: truncate_dt(Map.get(attrs, :subscription_paused_until))
       }
-
-    Repo.insert_all(MemberProfile, [member_attrs])
+      |> Repo.insert()
 
     %{
-      auth_user_id: auth_user_id_str,
-      profile_id: profile_id_str,
+      auth_user_id: auth_user_id,
+      profile_id: profile_id,
       customer_id: customer_id
     }
   end

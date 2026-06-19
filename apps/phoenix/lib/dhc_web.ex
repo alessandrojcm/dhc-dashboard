@@ -40,11 +40,16 @@ defmodule DhcWeb do
       use Phoenix.Controller, formats: [:html, :json]
 
       import Plug.Conn
-
-      unquote(verified_routes())
     end
   end
 
+  # NOTE: `verified_routes/0` is deliberately NOT injected into `controller/0`.
+  # Injecting `use Phoenix.VerifiedRoutes, router: DhcWeb.Router, endpoint: DhcWeb.Endpoint`
+  # into every controller creates a compile-time edge controller → router →
+  # controller (and controller → endpoint → router), which forces a full
+  # `dhc_web` recompile whenever any one controller changes. Call this from
+  # `html/0` / liveview code only, where `~p` is actually used. No controller
+  # here uses `~p` (this is a JSON API), so controllers get nothing.
   def verified_routes do
     quote do
       use Phoenix.VerifiedRoutes,
