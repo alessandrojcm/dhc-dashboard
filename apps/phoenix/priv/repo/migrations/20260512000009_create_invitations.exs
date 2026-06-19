@@ -17,10 +17,25 @@ defmodule Dhc.Repo.Migrations.CreateInvitations do
       add :created_by, references(:users, prefix: "auth", type: :uuid, on_delete: :nothing)
       add :invitation_type, :text, null: false
       add :metadata, :map
-      add :search_text, :tsvector
 
-      timestamps(type: :timestamptz)
+      # Match the original Supabase schema (20250316135748_invitation_system.sql):
+      # `created_at`/`updated_at`, NOT Ecto's default `inserted_at`. The
+      # `Invitation` schema declares `timestamps(inserted_at: :created_at)`,
+      # so the DB column must be `created_at` for the schema to read it.
+      timestamps(type: :timestamptz, inserted_at: :created_at)
     end
+
+    # search_text is a GENERATED ALWAYS AS STORED tsvector (matching Supabase's
+    # 20251021100656_invitations_search_vector.sql). Ecto's `add/3` can't express
+    # generated columns, so use raw SQL. Auto-populated from `email`; the
+    # Invitation schema doesn't declare `search_text`, so inserts skip it.
+    execute """
+    ALTER TABLE invitations
+    ADD COLUMN search_text tsvector
+      GENERATED ALWAYS AS (
+        setweight(to_tsvector('english', coalesce(email, '')), 'B')
+      ) STORED
+    """
 
     create unique_index(:invitations, [:email, :status])
     create unique_index(:invitations, [:user_id])

@@ -75,23 +75,24 @@ defmodule Dhc.Repo.Migrations.CreateInventory do
     create index(:inventory_history, [:action])
     create index(:inventory_history, [:changed_by])
 
-    # Seed default equipment categories
+    # Seed default equipment categories. The table has NOT NULL
+    # `inserted_at`/`updated_at` from `timestamps/1`, so populate them.
     execute """
-    INSERT INTO equipment_categories (name, description, available_attributes) VALUES
+    INSERT INTO equipment_categories (name, description, available_attributes, inserted_at, updated_at) VALUES
     ('Masks', 'Protective masks for HEMA practice',
-      '[{"name": "brand", "type": "text", "required": true, "label": "Brand"}, {"name": "size", "type": "select", "options": ["XS", "S", "M", "L", "XL"], "required": false, "label": "Size"}, {"name": "colour", "type": "text", "required": false, "label": "Colour"}]'::jsonb),
+      '[{"name": "brand", "type": "text", "required": true, "label": "Brand"}, {"name": "size", "type": "select", "options": ["XS", "S", "M", "L", "XL"], "required": false, "label": "Size"}, {"name": "colour", "type": "text", "required": false, "label": "Colour"}]'::jsonb, NOW(), NOW()),
     ('Gorgets', 'Throat protection for HEMA practice',
-      '[{"name": "brand", "type": "text", "required": true, "label": "Brand"}]'::jsonb),
+      '[{"name": "brand", "type": "text", "required": true, "label": "Brand"}]'::jsonb, NOW(), NOW()),
     ('Gloves', 'Hand protection for HEMA practice',
-      '[{"name": "brand", "type": "text", "required": true, "label": "Brand"}, {"name": "colour", "type": "text", "required": false, "label": "Colour"}, {"name": "model", "type": "text", "required": false, "label": "Model"}]'::jsonb),
+      '[{"name": "brand", "type": "text", "required": true, "label": "Brand"}, {"name": "colour", "type": "text", "required": false, "label": "Colour"}, {"name": "model", "type": "text", "required": false, "label": "Model"}]'::jsonb, NOW(), NOW()),
     ('Plastrons', 'Chest protection for HEMA practice',
-      '[{"name": "size", "type": "select", "options": ["XS", "S", "M", "L", "XL"], "required": false, "label": "Size"}, {"name": "type", "type": "select", "options": ["female", "male"], "required": false, "label": "Type"}]'::jsonb),
+      '[{"name": "size", "type": "select", "options": ["XS", "S", "M", "L", "XL"], "required": false, "label": "Size"}, {"name": "type", "type": "select", "options": ["female", "male"], "required": false, "label": "Type"}]'::jsonb, NOW(), NOW()),
     ('Jackets', 'Protective jackets for HEMA practice',
-      '[{"name": "brand", "type": "text", "required": true, "label": "Brand"}, {"name": "colour", "type": "text", "required": false, "label": "Colour"}, {"name": "size", "type": "select", "options": ["XS", "S", "M", "L", "XL"], "required": false, "label": "Size"}]'::jsonb),
+      '[{"name": "brand", "type": "text", "required": true, "label": "Brand"}, {"name": "colour", "type": "text", "required": false, "label": "Colour"}, {"name": "size", "type": "select", "options": ["XS", "S", "M", "L", "XL"], "required": false, "label": "Size"}]'::jsonb, NOW(), NOW()),
     ('Arming Swords', 'Single-handed swords for HEMA practice',
-      '[{"name": "brand", "type": "text", "required": true, "label": "Brand"}, {"name": "model", "type": "text", "required": false, "label": "Model"}]'::jsonb),
+      '[{"name": "brand", "type": "text", "required": true, "label": "Brand"}, {"name": "model", "type": "text", "required": false, "label": "Model"}]'::jsonb, NOW(), NOW()),
     ('Longswords', 'Two-handed swords for HEMA practice',
-      '[{"name": "brand", "type": "text", "required": true, "label": "Brand"}, {"name": "model", "type": "text", "required": false, "label": "Model"}]'::jsonb)
+      '[{"name": "brand", "type": "text", "required": true, "label": "Brand"}, {"name": "model", "type": "text", "required": false, "label": "Model"}]'::jsonb, NOW(), NOW())
     """
   end
 

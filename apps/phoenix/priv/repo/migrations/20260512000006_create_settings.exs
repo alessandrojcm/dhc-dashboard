@@ -13,8 +13,9 @@ defmodule Dhc.Repo.Migrations.CreateSettings do
       timestamps(type: :timestamptz)
     end
 
+    # Unique index on :key also serves lookups — a second non-unique index on
+    # the same column is redundant and collides on the generated index name.
     create unique_index(:settings, [:key])
-    create index(:settings, [:key])
 
     execute """
     ALTER TABLE settings
@@ -23,13 +24,14 @@ defmodule Dhc.Repo.Migrations.CreateSettings do
     )
     """
 
-    # Seed default settings
+    # Seed default settings. The table has NOT NULL `inserted_at`/`updated_at`
+    # from `timestamps/1`, so the seed must populate them explicitly.
     execute """
-    INSERT INTO settings (key, value, type, description) VALUES
-      ('waitlist_open', 'false', 'boolean', 'Controls whether the waitlist is currently accepting new members'),
-      ('hema_insurance_form_link', '', 'text', 'Link to the HEMA insurance form for members'),
-      ('subscription_max_pause_months', '6', 'text', 'Maximum months a subscription can be paused'),
-      ('subscription_min_pause_days', '1', 'text', 'Minimum days a subscription can be paused')
+    INSERT INTO settings (key, value, type, description, inserted_at, updated_at) VALUES
+      ('waitlist_open', 'false', 'boolean', 'Controls whether the waitlist is currently accepting new members', NOW(), NOW()),
+      ('hema_insurance_form_link', '', 'text', 'Link to the HEMA insurance form for members', NOW(), NOW()),
+      ('subscription_max_pause_months', '6', 'text', 'Maximum months a subscription can be paused', NOW(), NOW()),
+      ('subscription_min_pause_days', '1', 'text', 'Minimum days a subscription can be paused', NOW(), NOW())
     """
   end
 
