@@ -10,6 +10,7 @@ defmodule Dhc.StripeSync.Repository do
 
   import Ecto.Query
 
+  alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.Repo
 
   @price_setting_key "stripe_membership_price_ids"
@@ -21,7 +22,7 @@ defmodule Dhc.StripeSync.Repository do
   def get_stale_customer_ids(stale_before) do
     query =
       from up in "user_profiles",
-        join: mp in "member_profiles",
+        join: mp in MemberProfile,
         on: mp.user_profile_id == up.id,
         where: not is_nil(up.customer_id) and up.customer_id != "",
         where: is_nil(mp.last_payment_date) or mp.last_payment_date < ^stale_before,
@@ -133,7 +134,7 @@ defmodule Dhc.StripeSync.Repository do
   defp update_member_profiles([], _updates), do: :ok
 
   defp update_member_profiles(user_profile_ids, updates) do
-    from(mp in "member_profiles",
+    from(mp in MemberProfile,
       where: mp.user_profile_id in ^user_profile_ids
     )
     |> Repo.update_all(updates)

@@ -59,6 +59,17 @@ Purpose: track SvelteKit Supabase PostgREST reads (`supabase.from(...).select(..
 
 ### Members
 
+- Tracking issue: #122 (umbrella). #121 closed as a duplicate. Sliced into tracer-bullet issues (one per endpoint + prefactor + cleanup + raw-string follow-up), mirroring the Waitlist #105–#108 pattern:
+  - #123 — Migrate member insurance-form read to Phoenix (`GET /api/members/insurance-form`)
+  - #124 — Migrate Members analytics read to Phoenix (`GET /api/members/analytics`)
+  - #125 — Migrate Invitations list read to Phoenix (`GET /api/invitations`)
+  - #126 — Prefactor: `MemberProfile` + `AuthUser` schemas + `MembershipStatus` enum
+  - #127 — Migrate Members list read to Phoenix (`GET /api/members`) — blocked by #126
+  - #128 — Replace raw `member_profiles` string access with `MemberProfile` schema — blocked by #126
+  - #129 — Clean up migrated Members PostgREST reads — blocked by #123, #124, #125, #127
+- Slice boundary: migrate the Members dashboard reads (`member_management_view`, `invitations`, and the insurance form profile config) together; do not bundle Auth/session support from the dashboard layout into this slice.
+- Follow-up: once the `MemberProfile` Ecto schema exists (built in #126), replace the remaining raw `"member_profiles"` string-based access with the schema. Tracked as #128. Known call sites: `apps/phoenix/lib/dhc/stripe_sync/repository.ex` (joins + updates), `apps/phoenix/lib/mix/tasks/dhc/seed_members.ex` (`insert_all`).
+
 - `src/routes/dashboard/members/members-table.svelte`
   - Resource: `member_management_view`
   - Shape: paginated member table with exact count, search, status filters, sorting.
@@ -122,6 +133,8 @@ Purpose: track SvelteKit Supabase PostgREST reads (`supabase.from(...).select(..
 
 ### Authorization / session support
 
+- Slice boundary: handle as its own dedicated vertical slice, separate from Members/Workshops/Inventory.
+
 - `src/routes/dashboard/+layout.server.ts`
   - Resource: `user_roles`
   - Shape: current user's roles for dashboard navigation filtering.
@@ -131,3 +144,5 @@ Purpose: track SvelteKit Supabase PostgREST reads (`supabase.from(...).select(..
 When designing Phoenix APIs, prefer domain endpoints over raw table/view/config endpoints. For example, expose waitlist availability and waitlist entries rather than `settings` or `waitlist_management_view` directly.
 
 For Phoenix reads that are safe to expose to authenticated browsers, prefer direct browser → Phoenix calls through `@dhc/api-client`. The root SvelteKit layout configures the generated HeyAPI client with `configureClient({ baseUrl, getAuthToken })`, loading the current Supabase JWT on every request. Keep `.remote.ts` for SvelteKit-only orchestration, legacy service-layer calls, or commands that still need a SvelteKit server boundary. Cross-origin browser calls require Phoenix CORS origins configured via `CORS_ALLOWED_ORIGINS`; local dev defaults include `http://localhost:5173`.
+
+In practice this means analytics/aggregate reads call the generated `*AnalyticsOptions()` helper from a Svelte component via `createQuery(() => membersAnalyticsOptions())` — no `.remote.ts` `query`, no SvelteKit `authorize()`. Authz for these reads is enforced once, by the Phoenix `RequireAuth` plug on the route's pipeline (e.g. `members_admin_api`, `waitlist_admin_api`). The waitlist analytics (#106) and members analytics (#124) slices both follow this browser-direct pattern. Do **not** re-introduce a redundant server-side `authorize()` gate for reads whose only job is to call a Phoenix endpoint that already enforces RBAC.

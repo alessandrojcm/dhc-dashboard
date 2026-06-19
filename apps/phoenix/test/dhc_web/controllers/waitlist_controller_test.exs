@@ -2,6 +2,8 @@ defmodule DhcWeb.WaitlistControllerTest do
   use DhcWeb.ConnCase, async: false
 
   alias Dhc.Repo
+  alias Dhc.UserProfiles.UserProfile
+  alias Dhc.Waitlist.WaitlistEntry
 
   defmodule Verifier do
     @waitlist_admin_roles ~w(admin president committee_coordinator beginners_coordinator coach)
@@ -309,51 +311,50 @@ defmodule DhcWeb.WaitlistControllerTest do
   defp insert_waitlist_profile(attrs) do
     waitlist_id = Ecto.UUID.generate()
     profile_id = Ecto.UUID.generate()
-    dumped_waitlist_id = Ecto.UUID.dump!(waitlist_id)
-    dumped_profile_id = Ecto.UUID.dump!(profile_id)
     now = DateTime.utc_now() |> DateTime.truncate(:second)
     registration_date = DateTime.add(now, Keyword.get(attrs, :seconds, 0), :second)
     today = Date.utc_today()
     date_of_birth = %{today | year: today.year - Keyword.get(attrs, :age, 20)}
-    first_name = Keyword.get(attrs, :first_name, "Test")
-    last_name = Keyword.get(attrs, :last_name, "Waitlist")
 
-    {1, _} =
-      Repo.insert_all("waitlist", [
-        %{
-          id: dumped_waitlist_id,
-          email: "#{waitlist_id}@example.com",
-          status: Keyword.get(attrs, :status, "waiting"),
-          initial_registration_date: registration_date,
-          last_contacted: Keyword.get(attrs, :last_contacted),
-          last_status_change: registration_date,
-          admin_notes: "Initial note"
-        }
-      ])
+    # waitlist via the WaitlistEntry schema — Ecto autodumps the :binary_id PK.
+    {:ok, _waitlist} =
+      %WaitlistEntry{
+        id: waitlist_id,
+        email: "#{waitlist_id}@example.com",
+        status: Keyword.get(attrs, :status, "waiting"),
+        initial_registration_date: registration_date,
+        last_contacted: Keyword.get(attrs, :last_contacted),
+        last_status_change: registration_date,
+        admin_notes: "Initial note"
+      }
+      |> Repo.insert()
 
-    {1, _} =
-      Repo.insert_all("user_profiles", [
-        %{
-          id: dumped_profile_id,
-          first_name: first_name,
-          last_name: last_name,
-          is_active: false,
-          date_of_birth: date_of_birth,
-          gender: Keyword.get(attrs, :gender, "man (cis)"),
-          medical_conditions: "None",
-          phone_number: "+353 1 000 0000",
-          social_media_consent: "no",
-          waitlist_id: dumped_waitlist_id,
-          created_at: now,
-          updated_at: now
-        }
-      ])
+    # user_profiles via the UserProfile schema — Ecto handles the `created_at`
+    # timestamp mapping and autodumps the :binary_id PK/FKs. `search_text` is a
+    # generated column (not a schema field), so Postgres auto-populates it from
+    # first_name/last_name — the websearch tests rely on this.
+    {:ok, _profile} =
+      %UserProfile{
+        id: profile_id,
+        first_name: Keyword.get(attrs, :first_name, "Test"),
+        last_name: Keyword.get(attrs, :last_name, "Waitlist"),
+        is_active: false,
+        date_of_birth: date_of_birth,
+        gender: Keyword.get(attrs, :gender, "man (cis)"),
+        medical_conditions: "None",
+        phone_number: "+353 1 000 0000",
+        social_media_consent: "no",
+        waitlist_id: waitlist_id
+      }
+      |> Repo.insert()
 
+    # waitlist_guardians has no Ecto schema; insert raw. Postgrex expects
+    # binary UUIDs when bypassing the schema.
     {1, _} =
       Repo.insert_all("waitlist_guardians", [
         %{
           id: Ecto.UUID.dump!(Ecto.UUID.generate()),
-          profile_id: dumped_profile_id,
+          profile_id: Ecto.UUID.dump!(profile_id),
           first_name: "Parent",
           last_name: "Guardian",
           phone_number: "+353 1 111 1111",

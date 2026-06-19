@@ -11,6 +11,7 @@ defmodule Dhc.StripeSync.WorkerIntegrationTest do
 
   use Dhc.DataCase, async: false
 
+  alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.Repo
   alias Dhc.Stripe.Client, as: StripeClient
   alias Dhc.StripeSync.Worker
@@ -288,7 +289,7 @@ defmodule Dhc.StripeSync.WorkerIntegrationTest do
 
   defp member_profile(fixture) do
     Repo.one!(
-      from(mp in "member_profiles",
+      from(mp in MemberProfile,
         where: mp.user_profile_id == type(^fixture.profile_id, Ecto.UUID),
         select: %{
           last_payment_date: mp.last_payment_date,
