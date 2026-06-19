@@ -23,7 +23,10 @@ dhc-dashboard/
 │       │   └── ...
 │       ├── lib/dhc_web/       # Phoenix web layer (JSON API)
 │       ├── lib/mix/            # Custom Mix tasks
-│       │   └── tasks/          # gen.controllers, etc.
+│       │   └── tasks/          # gen.controllers, dhc.seed_members, etc.
+│       ├── dev/                # Dev-only compile path (elixirc_paths(:dev))
+│       │   ├── dev_seeds.ex    # Faker-backed seed runner (concurrent)
+│       │   └── mix/tasks/      # seed.members, seed.waitlist, seed.committee_members
 │       └── priv/
 │           ├── repo/migrations/  # 11 baseline Ecto migrations (new source of truth)
 │           └── api/              # OpenAPI spec (contract) — active
@@ -73,6 +76,7 @@ dhc-dashboard/
 | Generate controllers from spec | Run `mix gen.controllers` in `apps/phoenix` | Generates controller + JSON renderer + contract test per tag. REST mapping from HTTP method + path. `--force` overwrites all, `--force=<path>` overwrites specific file. |
 | Generate TS client | Run `pnpm api-gen` (or `pnpm --filter @dhc/api-client api:generate`) | NEW — from OpenAPI spec via `@hey-api/openapi-ts`. Output: `packages/api-client/src/client/` (gitignored, auto-generated on `pnpm install` via postinstall). |
 | Add E2E test | `e2e/` | Use helpers from `setupFunctions.ts` |
+| Seed dev data | `apps/phoenix/dev/dev_seeds.ex` + `dev/mix/tasks/seed.*.ex` | Dev-only. `mise run seed-members [count]`, `seed-waitlist [count]`, `seed-committee [csv]`. Uses [fakerer](https://github.com/artkay/fakerer) (`:faker` OTP app, Hex `:fakerer`, dev-only dep). Rows created concurrently via `Task.async_stream`. Inserts go through Ecto schemas (`WaitlistEntry`, `UserProfile`, `MemberProfile`, `Dhc.Auth.UserRole`, `Dhc.Waitlist.WaitlistGuardian`). `auth.users` stays raw SQL (Supabase-owned). |
 | Run Phoenix tests | `mise run phx-test` | Testcontainers-elixir starts the `db` profile of the root `docker-compose.yml` per run, migrates, runs tests, tears down. No `supabase start` needed. See ADR 0006. |
 | Configure Sentry | `config/runtime.exs` (prod block) + `config/config.exs` + `lib/dhc/application.ex` | Set `SENTRY_DSN` env var; integrates Phoenix, Oban, Logger, OpenTelemetry tracing (Bandit/Phoenix/Ecto), and Sentry Logs |
 | View ADRs | `docs/adr/` | Key architectural decisions |
@@ -87,6 +91,7 @@ dhc-dashboard/
 - **Queues**: pgmq → Oban. Big-bang per-queue cutover. Discord → Email → Announcements → Stripe → Bulk Invite.
 - **API design**: Spec-first with OpenAPI. Custom Mix task generates Phoenix controller stubs. TypeScript client generated from spec.
 - **PostgREST read migration**: Replace SvelteKit `supabase.from(...).select(...)` reads with domain-shaped Phoenix APIs, not table/view proxies. Track remaining call sites in `docs/agents/postgrest-read-migration.md`; first slice is Waitlist per ADR 0005.
+- **Ecto schema inserts vs raw SQL**: The seed tasks and test fixtures insert via the Ecto schemas (`MemberProfile`, `UserProfile`, etc.), not `Repo.insert_all` with raw maps. Two gotchas surfaced by this: (1) `member_profiles.preferred_weapon` is a Postgres `preferred_weapon[]` enum array, but the schema declares it `{:array, :string}` — inserts work because Postgres implicitly casts `text[]` → `preferred_weapon[]` at the column boundary (no custom Ecto type needed). (2) `MemberProfile`'s `:utc_datetime` fields reject microseconds; any computed `DateTime` must be `DateTime.truncate(dt, :second)` before insert (Postgres `timestamptz` accepts microseconds, so the old raw SQL didn't need this).
 - **Stripe API**: Generated from Stripe OpenAPI spec via `oapi_generator`. Custom processor allows only needed endpoints. Regenerate with `mise run stripe-gen`. Hand-written `Dhc.Stripe.Client` adapter delegates to `Req`. API version pinned in `:stripe_api_version` config (default `"2025-10-29.clover"`) and sent as `Stripe-Version` header — must match `src/lib/server/stripe.ts`.
 - **Stripe webhooks**: Phoenix controller validates Stripe-Signature header (HMAC-SHA256 via `Dhc.Stripe.Webhook`) then enqueues `Dhc.StripeWebhooks.Worker`. Raw body required — `DhcWeb.CacheBodyReader` caches `conn.assigns[:raw_body]` before JSON parsing. Webhook signing secret via `STRIPE_WEBHOOK_SIGNING_SECRET` env var (supports list for rotation). Endpoint is unauthenticated (`POST /api/webhooks/stripe`).
 - **`.remote.ts` files**: The swap point. Rewrite from `executeWithRLS()` to `fetch(apiClient)` per domain.
