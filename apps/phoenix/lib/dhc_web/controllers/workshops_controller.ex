@@ -3,15 +3,23 @@ defmodule DhcWeb.WorkshopsController do
 
   alias Dhc.Workshops
 
+  @moduledoc """
+  Workshop management reads.
+
+  `calendar/2` and `attendees/2` are protected by the `:workshop_coordinator_api`
+  pipeline (`workshop_coordinator`, `president`, `admin`). `list/2` is
+  authenticated-only.
+
+  See `Dhc.Workshops` for the historical `beginners_coordinator`
+  registration-visibility drift that the coordinator endpoints deliberately
+  do not reproduce.
+  """
+
   @doc """
   GET /workshops/calendar
 
   Returns non-cancelled Workshops for the coordinator management calendar,
-  with interest and pending/confirmed registration counts. RBAC is enforced
-  by the `:workshop_coordinator_api` pipeline (`workshop_coordinator`,
-  `president`, `admin`) — see the `Dhc.Workshops` moduledoc for the
-  historical `beginners_coordinator` registration-visibility drift that this
-  endpoint deliberately does not reproduce.
+  with interest and pending/confirmed registration counts.
 
   The DTO carries no current-user registration or interest state; those were
   PostgREST join artifacts (PRD #142). Month/date-window pagination is out of
@@ -38,5 +46,26 @@ defmodule DhcWeb.WorkshopsController do
     conn
     |> put_view(json: DhcWeb.WorkshopsJSON)
     |> render(:list, workshops: workshops)
+  end
+
+  @doc """
+  GET /workshops/{id}/attendees
+
+  Returns the combined coordinator attendee/refund management payload for a
+  single Workshop: Workshop summary, active attendees (pending/confirmed),
+  and refunds. Returns 404 when no Workshop exists for the given id.
+  """
+  def attendees(conn, %{"id" => id}) do
+    case Workshops.workshop_attendees_and_refunds(id) do
+      %{workshop: nil} ->
+        conn
+        |> put_status(:not_found)
+        |> json(%{errors: %{detail: "Workshop not found"}})
+
+      %{workshop: workshop, attendees: attendees, refunds: refunds} ->
+        conn
+        |> put_view(json: DhcWeb.WorkshopsJSON)
+        |> render(:attendees, workshop: workshop, attendees: attendees, refunds: refunds)
+    end
   end
 end
