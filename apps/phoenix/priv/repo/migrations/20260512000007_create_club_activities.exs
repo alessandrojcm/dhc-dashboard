@@ -20,7 +20,13 @@ defmodule Dhc.Repo.Migrations.CreateClubActivities do
       add :announce_email, :boolean, default: false
       add :created_by, references(:users, prefix: "auth", type: :uuid, on_delete: :nothing)
 
-      timestamps(type: :timestamptz)
+      # The `Dhc.Workshops.Workshop` schema declares
+      # `timestamps(inserted_at: :created_at)` — the production `club_activities`
+      # table (created by the frozen Supabase migration
+      # `20250711204000_create_club_activities.sql`) names the column `created_at`,
+      # not `inserted_at`. Mirror that here so Ecto query helpers that order by
+      # `created_at` (e.g. the Workshop attendee read) match runtime behavior.
+      timestamps(type: :timestamptz, inserted_at: :created_at)
     end
 
     execute "ALTER TABLE club_activities ADD CONSTRAINT max_capacity_positive CHECK (max_capacity > 0)"
@@ -42,15 +48,18 @@ defmodule Dhc.Repo.Migrations.CreateClubActivities do
       add :user_id, references(:users, prefix: "auth", type: :uuid, on_delete: :delete_all),
         null: false
 
-      timestamps(type: :timestamptz)
+      # `club_activity_interest` also uses `created_at` in production (frozen
+      # Supabase migration `20250714102710_create_club_activity_interest.sql`),
+      # so mirror the column name — see the `club_activities` note above.
+      timestamps(type: :timestamptz, inserted_at: :created_at)
     end
 
     create unique_index(:club_activity_interest, [:club_activity_id, :user_id])
     create index(:club_activity_interest, [:club_activity_id])
     create index(:club_activity_interest, [:user_id])
-    # `timestamps/1` adds `inserted_at`/`updated_at`, not `created_at` — index
-    # the actual column name.
-    create index(:club_activity_interest, [:inserted_at])
+    # `timestamps/1` adds `created_at`/`updated_at` (we rename `inserted_at` →
+    # `created_at` above to match production), so index the actual column name.
+    create index(:club_activity_interest, [:created_at])
   end
 
   def down do
