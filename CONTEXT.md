@@ -10,7 +10,7 @@
 | **Member** | A person with a club membership. Has a `user_profiles` record linked to `auth.users` via Supabase Auth. A Member has an `isActive` profile flag independent of their Membership status. |
 | **Membership** | A recurring subscription managed via Stripe. Has a status of `active`, `inactive`, or `paused`. An inactive Membership means the member has no active subscription. Membership status is distinct from the Member's `isActive` flag. |
 | **Paused** | A Membership status where `subscription_paused_until` is in the future. The Member retains access (`isActive = true`) but is not charged. |
-| **Workshop** | A club activity/club activity with date, capacity, pricing, and registration. |
+| **Workshop** | A scheduled club activity with date, capacity, pricing, and registration. Use Workshop in domain/API language; `club_activity_*` is persistence vocabulary. |
 | **Registration** | A member's sign-up for a workshop. Has statuses (confirmed, cancelled, waitlisted) and links to payment. |
 | **Refund** | A cancellation-triggered repayment. Tracked in `club_activity_refunds`. |
 | **Inventory** | Club equipment (swords, masks, etc.) tracked in containers/categories with movement history. |
