@@ -104,6 +104,23 @@ defmodule Dhc.Workshops do
   @spec member_visible_statuses() :: [String.t()]
   def member_visible_statuses, do: @member_visible_statuses
 
+  @doc """
+  Lists the authenticated member's Workshop collection.
+
+  The optional `status` query parameter is a comma-separated list that is
+  constrained to the member-safe statuses (`planned`, `published`). Missing or
+  empty `status` returns both visible statuses; unsafe/unknown statuses are
+  dropped rather than rejected.
+  """
+  @spec list_member_workshops(binary(), map()) :: [map()]
+  def list_member_workshops(user_id, params \\ %{}) when is_binary(user_id) and is_map(params) do
+    statuses = member_status_filter(Map.get(params, "status"))
+
+    [statuses: statuses]
+    |> list_workshop_summaries()
+    |> Enum.map(&with_current_user_state(&1, user_id))
+  end
+
   # ── Workshop summaries ────────────────────────────────────────────────
 
   @doc """
@@ -381,6 +398,25 @@ defmodule Dhc.Workshops do
   # `summary_query/0`.
   defp apply_order(query, field, :asc), do: order_by(query, [w], asc: field(w, ^field))
   defp apply_order(query, field, :desc), do: order_by(query, [w], desc: field(w, ^field))
+
+  defp member_status_filter(nil), do: @member_visible_statuses
+  defp member_status_filter(""), do: @member_visible_statuses
+
+  defp member_status_filter(status) when is_binary(status) do
+    status
+    |> String.split(",")
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.filter(&(&1 in @member_visible_statuses))
+    |> Enum.uniq()
+  end
+
+  defp with_current_user_state(workshop, user_id) do
+    Map.merge(workshop, %{
+      current_user_interest: current_user_interest?(workshop.id, user_id),
+      current_user_registration: current_user_registration(workshop.id, user_id)
+    })
+  end
 
   # ── Private: participant normalization ────────────────────────────────
 

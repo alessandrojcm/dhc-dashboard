@@ -61,7 +61,8 @@ dhc-dashboard/
 | Add edge function | `supabase/functions/` | DEPRECATED — migrate to Oban instead |
 | Add Supabase migration | `supabase/migrations/` | FROZEN — no new migrations |
 | Add Phoenix Ecto context | `apps/phoenix/lib/dhc/<domain>/` | NEW — use Ecto schemas + changesets |
-| Add Phoenix Workshop read model/API | `apps/phoenix/lib/dhc/workshops.ex` (context) + `apps/phoenix/lib/dhc/workshops/` (schemas) + `apps/phoenix/lib/dhc_web/controllers/workshops_controller.ex` | NEW — Workshop read-model helpers (issue #143 prefactor). Schemas map `club_activity*` persistence vocab; context returns Workshop-vocabulary DTOs. `GET /api/workshops/calendar` is the first Phoenix Workshop endpoint (issue #145), protected by `workshop_coordinator`/`president`/`admin` only and consumed by the dashboard coordinator calendar through the generated TS client. |
+| Add Phoenix Workshop read model/API | `apps/phoenix/lib/dhc/workshops.ex` (context) + `apps/phoenix/lib/dhc/workshops/` (schemas) + `apps/phoenix/lib/dhc_web/controllers/workshops_controller.ex` | NEW — Workshop read-model helpers. Schemas map `club_activity*` persistence vocab; context/controllers return Workshop-vocabulary DTOs. `GET /api/workshops/calendar` (issue #145) is coordinator-only (`workshop_coordinator`/`president`/`admin`). `GET /api/workshops` (issue #144) is the member-safe collection consumed by the dashboard My Workshops screen through the generated TS client. |
+| Add Oban worker | `apps/phoenix/lib/dhc/<domain>/workers/` | NEW — use `Oban.Worker` |
 | Add Oban worker | `apps/phoenix/lib/dhc/<domain>/workers/` | NEW — use `Oban.Worker` |
 | Add Phoenix API endpoint | `apps/phoenix/lib/dhc_web/controllers/` | NEW — write spec first, generate stub |
 | Update OpenAPI spec | `apps/phoenix/priv/api/openapi.yaml` | NEW — spec is the contract |
@@ -90,6 +91,7 @@ dhc-dashboard/
 - **Auth**: Supabase Auth stays forever. Phoenix validates Supabase JWT. SvelteKit forwards JWT to Phoenix.
 - **RLS**: No new policies. Existing ones removed when PostgREST is disabled.
 - **Workshop RBAC drift**: The original `club_activity_registrations` RLS policy granted `beginners_coordinator` full registration visibility (carried forward in the combined `20250804190122` policy), corrected to `workshop_coordinator` by `20250923100806_fix_workshops_rls.sql`. Phoenix coordinator Workshop reads (calendar, attendees/refunds) must use `workshop_coordinator`/`president`/`admin` and must NOT reproduce the old `beginners_coordinator` policy. See the `Dhc.Workshops` moduledoc.
+- **Member Workshop API**: `GET /api/workshops` is the member-facing Workshop collection. It is authenticated-only, defaults/constrains `status` to `planned,published`, returns counts plus current-user interest/registration state, and intentionally does not expose attendee identities or `club_activity*` join shapes. `src/routes/dashboard/my-workshops/+page.svelte` consumes it through `@dhc/api-client` rather than browser Supabase PostgREST.
 - **Queues**: pgmq → Oban. Big-bang per-queue cutover. Discord → Email → Announcements → Stripe → Bulk Invite.
 - **API design**: Spec-first with OpenAPI. Custom Mix task generates Phoenix controller stubs. TypeScript client generated from spec.
 - **PostgREST read migration**: Replace SvelteKit `supabase.from(...).select(...)` reads with domain-shaped Phoenix APIs, not table/view proxies. Track remaining call sites in `docs/agents/postgrest-read-migration.md`; first slice is Waitlist per ADR 0005.
