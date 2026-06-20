@@ -69,5 +69,6 @@ defmodule DhcWeb.Router do
 
     get "/members/insurance-form", MembersController, :insurance_form
     get "/notifications", NotificationsController, :index
+    get "/workshops", WorkshopsController, :list
   end
 end

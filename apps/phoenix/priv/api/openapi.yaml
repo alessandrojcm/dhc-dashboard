@@ -687,6 +687,78 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /workshops:
+    get:
+      operationId: workshops.list
+      tags:
+        - Workshops
+      summary: List member-safe Workshops
+      description: |
+        Returns the member-safe Workshop collection, replacing the browser-side
+        PostgREST reads over `club_activities` (with `club_activity_interest`
+        and `club_activity_registrations` joins) on the member-facing My
+        Workshops screen.
+
+        The collection defaults to the member-visible active statuses —
+        `planned` and `published` — so members see Workshops they can express
+        interest in or register for. `finished` and `cancelled` Workshops are
+        never returned to members.
+
+        Any `status` filter is **constrained to member-safe statuses**: the
+        endpoint intersects the requested statuses with `{planned, published}`,
+        so a member can never craft a query that returns `finished` or
+        `cancelled` Workshops. Unknown statuses are dropped (no `400`).
+
+        Each Workshop DTO carries availability counts and the current user's
+        state, computed server-side from the Supabase JWT `sub`:
+
+          * `interestCount` — number of members who expressed interest
+            (meaningful for `planned` Workshops).
+          * `pendingRegistrationCount` / `confirmedRegistrationCount` —
+            registrations counted toward availability (PRD #142 corrects the
+            old `attendee_count` length, which counted every row including
+            `cancelled`/`refunded`, to pending/confirmed only).
+          * `currentUserInterest` — whether the authenticated member expressed
+            interest in this Workshop.
+          * `currentUserRegistration` — the authenticated member's registration
+            (`{id, status}`) for this Workshop, or `null`. Returned regardless
+            of status so the UI can derive "am I registered" and "was I
+            refunded" state.
+
+        Member-safe Workshop DTOs do **not** expose other attendee identities
+        or storage-shaped join details (no `participant`, no `attendees`, no
+        `member_user_id` lists). Those live behind the coordinator
+        attendee/refund read.
+
+        Any authenticated user (valid Supabase JWT) may read this; no committee
+        role is required. A missing token returns `401`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+          description: |
+            Comma-separated list of Workshop statuses to include, constrained to
+            the member-safe set `{planned, published}`. Absent or empty returns
+            both `planned` and `published`. Any requested status outside the
+            member-safe set is dropped (e.g. `?status=finished` returns no
+            Workshops). Example: `planned`, `published`, `planned,published`.
+      responses:
+        "200":
+          description: Member-safe Workshop collection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkshopsListResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1300,7 +1372,33 @@ components:
         - cancelled
       description: |
         Workshop lifecycle status (persistence: `club_activity_status` enum).
-        The coordinator calendar returns non-cancelled Workshops only.
+        The coordinator calendar returns non-cancelled Workshops only; the
+        member-safe collection only ever returns `planned` and `published`.
+    RegistrationStatus:
+      type: string
+      enum:
+        - pending
+        - confirmed
+        - cancelled
+        - refunded
+      description: |
+        Workshop registration lifecycle state. `pending` and `confirmed` count
+        toward availability; `cancelled` and `refunded` do not.
+    WorkshopRegistration:
+      type: object
+      required:
+        - id
+        - status
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          $ref: "#/components/schemas/RegistrationStatus"
+      description: |
+        The authenticated member's own registration for a Workshop. Exposed only
+        as the current user's state (`currentUserRegistration`) on the
+        member-safe collection — never as a list of other members' registrations.
     WorkshopCalendarItem:
       type: object
       required:
@@ -1394,6 +1492,98 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/WorkshopCalendarItem"
+    Workshop:
+      type: object
+      required:
+        - id
+        - title
+        - location
+        - startDate
+        - endDate
+        - maxCapacity
+        - priceMember
+        - priceNonMember
+        - isPublic
+        - refundDays
+        - status
+        - interestCount
+        - pendingRegistrationCount
+        - confirmedRegistrationCount
+        - currentUserInterest
+        - currentUserRegistration
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        location:
+          type: string
+        startDate:
+          type: string
+          format: date-time
+        endDate:
+          type: string
+          format: date-time
+        maxCapacity:
+          type: integer
+          minimum: 1
+        priceMember:
+          type: number
+          description: Member price in cents (minor units).
+        priceNonMember:
+          type: number
+          description: Non-member price in cents (minor units).
+        isPublic:
+          type: boolean
+        refundDays:
+          type: integer
+          minimum: 0
+        status:
+          $ref: "#/components/schemas/WorkshopStatus"
+        interestCount:
+          type: integer
+          minimum: 0
+          description: Number of members who expressed interest (meaningful for planned Workshops).
+        pendingRegistrationCount:
+          type: integer
+          minimum: 0
+          description: Pending registrations counted toward availability.
+        confirmedRegistrationCount:
+          type: integer
+          minimum: 0
+          description: Confirmed registrations counted toward availability.
+        currentUserInterest:
+          type: boolean
+          description: Whether the authenticated member expressed interest in this Workshop.
+        currentUserRegistration:
+          allOf:
+            - $ref: "#/components/schemas/WorkshopRegistration"
+          nullable: true
+          description: The authenticated member's registration for this Workshop, or null.
+      description: |
+        Member-safe Workshop DTO. Exposes availability counts and the current
+        user's interest/registration state, but never other attendees'
+        identities or storage-shaped join details. Internal fields
+        (`announceDiscord`, `announceEmail`, `createdBy`, timestamps) are
+        omitted.
+    WorkshopsListResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - workshops
+          properties:
+            workshops:
+              type: array
+              items:
+                $ref: "#/components/schemas/Workshop"
     Error:
       type: object
       properties:

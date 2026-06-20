@@ -21,55 +21,36 @@ import {
 } from "$lib/components/ui/tabs/index.js";
 import { toast } from "svelte-sonner";
 import { CalendarDays } from "lucide-svelte";
-import type { ClubActivityWithInterest } from "$lib/types";
+import { workshopsList } from "@dhc/api-client";
 import { toggleInterest } from "./registration.remote";
-
-let { data } = $props();
-let supabase = data.supabase;
-const userId = data.user!.id;
 
 const queryClient = useQueryClient();
 let activeTab = $state("published");
 
+async function loadWorkshops(
+	status: "planned" | "published",
+	signal: AbortSignal,
+) {
+	const response = await workshopsList({
+		query: { status },
+		signal,
+	});
+
+	if (response.error) {
+		throw new Error("Failed to load workshops. Please try again later.");
+	}
+
+	return response.data.data.workshops;
+}
+
 const workshopsQuery = createQuery(() => ({
 	queryKey: ["workshops", "planned"],
-	queryFn: async ({ signal }) => {
-		const { data: workshops, error } = await supabase
-			.from("club_activities")
-			.select(
-				`
-					*,
-					interest_count:club_activity_interest_counts(interest_count),
-					user_interest:club_activity_interest(user_id)
-				`,
-			)
-			.abortSignal(signal)
-			.eq("status", "planned")
-			.order("start_date", { ascending: true });
-
-		if (error) throw error;
-		return workshops as ClubActivityWithInterest[];
-	},
+	queryFn: ({ signal }) => loadWorkshops("planned", signal),
 }));
 
 const publishedWorkshopsQuery = createQuery(() => ({
 	queryKey: ["workshops", "published"],
-	queryFn: async ({ signal }) => {
-		const { data: workshops, error } = await supabase
-			.from("club_activities")
-			.select(
-				`
-					*,
-					attendee_count:club_activity_registrations(id, member_user_id, status)
-				`,
-			)
-			.abortSignal(signal)
-			.eq("status", "published")
-			.order("start_date", { ascending: true });
-
-		if (error) throw error;
-		return workshops as ClubActivityWithInterest[];
-	},
+	queryFn: ({ signal }) => loadWorkshops("published", signal),
 }));
 
 const interestMutation = createMutation(() => ({
@@ -78,6 +59,7 @@ const interestMutation = createMutation(() => ({
 	},
 	onSuccess: (data) => {
 		queryClient.invalidateQueries({ queryKey: ["workshops", "planned"] });
+		queryClient.invalidateQueries({ queryKey: ["workshops", "published"] });
 		toast.success(data.message);
 	},
 	onError: (error) => {
@@ -128,7 +110,6 @@ const handleInterestToggle = (workshopId: string) => {
 					</CardHeader>
 					<CardContent>
 						<WorkshopList
-							{userId}
 							workshops={publishedWorkshopsQuery.data ?? []}
 							onInterestToggle={handleInterestToggle}
 							isLoading={interestMutation.isPending}
@@ -160,7 +141,6 @@ const handleInterestToggle = (workshopId: string) => {
 					</CardHeader>
 					<CardContent>
 						<WorkshopList
-							{userId}
 							workshops={workshopsQuery.data ?? []}
 							onInterestToggle={handleInterestToggle}
 							isLoading={interestMutation.isPending}
