@@ -5,10 +5,8 @@ import "@event-calendar/core/index.css";
 import * as Dialog from "$lib/components/ui/dialog";
 import dayjs from "dayjs";
 import WorkshopEventModal from "./workshop-event-modal.svelte";
-import type {
-	ClubActivityWithRegistrations,
-	WorkshopCalendarEvent,
-} from "$lib/types";
+import type { WorkshopCalendarEvent } from "$lib/types";
+import type { WorkshopCalendarItem } from "@dhc/api-client";
 
 // Event Calendar types
 interface CalendarEvent {
@@ -19,7 +17,7 @@ interface CalendarEvent {
 	backgroundColor?: string;
 	textColor?: string;
 	extendedProps?: {
-		workshop: ClubActivityWithRegistrations;
+		workshop: WorkshopCalendarItem;
 		description?: string;
 		location?: string;
 		interestCount: number;
@@ -39,10 +37,10 @@ let {
 	handleEdit,
 	onInterestToggle,
 }: {
-	workshops: ClubActivityWithRegistrations[];
+	workshops: WorkshopCalendarItem[];
 	userId?: string;
 	isLoading: boolean;
-	handleEdit?: (workshop: ClubActivityWithRegistrations) => void;
+	handleEdit?: (workshop: WorkshopCalendarItem) => void;
 	onInterestToggle?: (workshopId: string) => void;
 } = $props();
 
@@ -82,17 +80,18 @@ const events: CalendarEvent[] = $derived(
 		return {
 			id: workshop.id,
 			title: workshop.title,
-			start: dayjs(workshop.start_date).format("YYYY-MM-DD HH:mm"),
-			end: dayjs(workshop.end_date).format("YYYY-MM-DD HH:mm"),
+			start: dayjs(workshop.startDate).format("YYYY-MM-DD HH:mm"),
+			end: dayjs(workshop.endDate).format("YYYY-MM-DD HH:mm"),
 			backgroundColor: colors.backgroundColor,
 			textColor: colors.textColor,
 			extendedProps: {
 				workshop: workshop,
 				description: workshop.description || undefined,
-				location: workshop.location,
-				interestCount: workshop.interest_count?.[0]?.interest_count || 0,
-				registrationCount: workshop?.user_registrations?.length || 0,
-				isInterested: (workshop.user_interest?.length ?? 0) > 0,
+				location: workshop.location || undefined,
+				interestCount: workshop.interestCount,
+				registrationCount:
+					workshop.pendingRegistrationCount + workshop.confirmedRegistrationCount,
+				isInterested: false,
 			},
 		};
 	}),
@@ -101,7 +100,7 @@ const events: CalendarEvent[] = $derived(
 const handleEventClick = (info: {
 	event: {
 		extendedProps?: {
-			workshop?: ClubActivityWithRegistrations;
+			workshop?: WorkshopCalendarItem;
 			isInterested?: boolean;
 		};
 	};
@@ -114,8 +113,8 @@ const handleEventClick = (info: {
 	selectedEvent = {
 		id: workshop.id,
 		title: workshop.title,
-		start: workshop.start_date,
-		end: workshop.end_date,
+		start: workshop.startDate,
+		end: workshop.endDate,
 		workshop: workshop,
 		isInterested: isInterested || false,
 		isLoading: isLoading,
@@ -138,8 +137,7 @@ const options = $derived({
 	height: "600px",
 	eventClick: handleEventClick,
 	eventContent: (info: any) => {
-		const workshop: ClubActivityWithRegistrations =
-			info.event.extendedProps?.workshop;
+		const workshop = info.event.extendedProps?.workshop;
 		const interestCount = info.event.extendedProps?.interestCount || 0;
 		const registrationCount = info.event.extendedProps?.registrationCount || 0;
 
@@ -158,7 +156,7 @@ const options = $derived({
 						<div class="workshop-event-info text-xs opacity-90 mt-1">
 							<div class="flex items-center justify-between">
 								<span>${workshop.status === "planned" ? `${interestCount} interested` : `${registrationCount} registered`}</span>
-								<span class="text-xs opacity-75">${dayjs(workshop.start_date).format("HH:mm")}</span>
+								<span class="text-xs opacity-75">${dayjs(workshop.startDate).format("HH:mm")}</span>
 							</div>
 						</div>
 					</div>
