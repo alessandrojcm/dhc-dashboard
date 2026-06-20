@@ -17,6 +17,7 @@ export {
   waitlistAnalytics,
   waitlistEntries,
   waitlistStatus,
+  workshopsCalendar,
   type Options,
 } from "./client/sdk.gen";
 export type {
@@ -104,6 +105,13 @@ export type {
   WaitlistStatusResponse,
   WaitlistStatusResponse2,
   WaitlistStatusResponses,
+  WorkshopCalendarItem,
+  WorkshopsCalendarData,
+  WorkshopsCalendarError,
+  WorkshopsCalendarErrors,
+  WorkshopsCalendarResponse,
+  WorkshopsCalendarResponses,
+  WorkshopStatus,
 } from "./client/types.gen";
 
 // Valibot schemas (runtime validation)
@@ -154,6 +162,10 @@ export {
   vWaitlistStatus,
   vWaitlistStatusResponse,
   vWaitlistStatusResponse2,
+  vWorkshopCalendarItem,
+  vWorkshopCalendarResponse,
+  vWorkshopsCalendarResponse,
+  vWorkshopStatus,
 } from "./client/valibot.gen";
 
 // TanStack Svelte Query helpers
@@ -188,6 +200,8 @@ export {
   waitlistEntriesQueryKey,
   waitlistStatusOptions,
   waitlistStatusQueryKey,
+  workshopsCalendarOptions,
+  workshopsCalendarQueryKey,
   type QueryKey,
 } from "./client/@tanstack/svelte-query.gen";
 

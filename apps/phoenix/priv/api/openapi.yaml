@@ -640,6 +640,53 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /workshops/calendar:
+    get:
+      operationId: workshops.calendar
+      tags:
+        - Workshops
+      summary: Read the coordinator Workshop calendar
+      description: |
+        Returns non-cancelled Workshops for the coordinator management
+        calendar, replacing the browser-side PostgREST read over
+        `club_activities` joined to `club_activity_interest_counts` and
+        `club_activity_registrations`.
+
+        Each Workshop carries scheduling, pricing, and status fields, the
+        interest count, and total pending/confirmed registration counts —
+        the demand and attendance signals a coordinator needs. The DTO does
+        NOT carry current-user registration or interest state: the old
+        `user_interest` / `user_registrations` PostgREST joins were
+        current-user artifacts that leaked into the management view and are
+        intentionally dropped (PRD #142).
+
+        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
+        `workshop_coordinator`, `president`, or `admin`. This mirrors the
+        corrected `club_activity_registrations` RLS policy
+        (`20250923100806_fix_workshops_rls.sql`) and does NOT reproduce the
+        historical `beginners_coordinator` registration-visibility drift.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Coordinator Workshop calendar
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkshopCalendarResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a workshop coordinator role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1244,6 +1291,109 @@ components:
         value:
           type: integer
           minimum: 0
+    WorkshopStatus:
+      type: string
+      enum:
+        - planned
+        - published
+        - finished
+        - cancelled
+      description: |
+        Workshop lifecycle status (persistence: `club_activity_status` enum).
+        The coordinator calendar returns non-cancelled Workshops only.
+    WorkshopCalendarItem:
+      type: object
+      required:
+        - id
+        - title
+        - description
+        - location
+        - startDate
+        - endDate
+        - maxCapacity
+        - priceMember
+        - priceNonMember
+        - isPublic
+        - refundDays
+        - status
+        - announceDiscord
+        - announceEmail
+        - createdBy
+        - interestCount
+        - pendingRegistrationCount
+        - confirmedRegistrationCount
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        location:
+          type: string
+          nullable: true
+        startDate:
+          type: string
+          format: date-time
+        endDate:
+          type: string
+          format: date-time
+        maxCapacity:
+          type: integer
+          minimum: 0
+          nullable: true
+        priceMember:
+          type: number
+          description: "Member price in cents (persistence: `price_member`)."
+          nullable: true
+        priceNonMember:
+          type: number
+          description: "Non-member price in cents (persistence: `price_non_member`)."
+          nullable: true
+        isPublic:
+          type: boolean
+        refundDays:
+          type: integer
+          minimum: 0
+        status:
+          $ref: "#/components/schemas/WorkshopStatus"
+        announceDiscord:
+          type: boolean
+        announceEmail:
+          type: boolean
+        createdBy:
+          type: string
+          format: uuid
+          nullable: true
+          description: Supabase auth user id of the Workshop creator, or null.
+        interestCount:
+          type: integer
+          minimum: 0
+          description: Number of members who have expressed interest in the Workshop.
+        pendingRegistrationCount:
+          type: integer
+          minimum: 0
+          description: Total pending registrations (counts toward availability).
+        confirmedRegistrationCount:
+          type: integer
+          minimum: 0
+          description: Total confirmed registrations (counts toward availability).
+    WorkshopCalendarResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - workshops
+          properties:
+            workshops:
+              type: array
+              items:
+                $ref: "#/components/schemas/WorkshopCalendarItem"
     Error:
       type: object
       properties:
