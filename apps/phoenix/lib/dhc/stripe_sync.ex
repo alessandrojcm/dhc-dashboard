@@ -142,7 +142,13 @@ defmodule Dhc.StripeSync do
       price_ids: price_ids
     )
 
-    Enum.reduce_while(price_ids, {:ok, %{subscriptions: %{}, scanned: 0}}, fn price_id, {:ok, %{subscriptions: acc, scanned: scanned}} ->
+    Enum.reduce_while(price_ids, {:ok, %{subscriptions: %{}, scanned: 0}}, fn price_id,
+                                                                              {:ok,
+                                                                               %{
+                                                                                 subscriptions:
+                                                                                   acc,
+                                                                                 scanned: scanned
+                                                                               }} ->
       case paginate_subscriptions(price_id, target_customer_ids, acc, scanned, nil) do
         {:ok, result} -> {:cont, {:ok, result}}
         {:error, reason} -> {:halt, {:error, reason}}
@@ -317,6 +323,7 @@ defmodule Dhc.StripeSync do
 
   def sync_customer(customer_id, subscriptions, price_ids) when is_list(subscriptions) do
     active_subs = Enum.filter(subscriptions, &(&1["status"] == "active"))
+
     active_price_ids =
       active_subs
       |> Enum.map(&subscription_price_id/1)
@@ -329,14 +336,19 @@ defmodule Dhc.StripeSync do
 
     cond do
       missing_price_ids != [] ->
-        Logger.info("[stripe-sync] Customer missing active subscription for price(s) — marking inactive",
+        Logger.info(
+          "[stripe-sync] Customer missing active subscription for price(s) — marking inactive",
           customer_id: customer_id,
           missing_price_ids: missing_price_ids,
           active_price_ids: active_price_ids,
           expected_price_ids: price_ids
         )
 
-        mark_inactive(customer_id, {:missing_active_subscriptions, missing_price_ids}, List.first(subscriptions))
+        mark_inactive(
+          customer_id,
+          {:missing_active_subscriptions, missing_price_ids},
+          List.first(subscriptions)
+        )
 
       has_paused ->
         paused_sub = Enum.find(subscriptions, &(Map.get(&1, "pause_collection") != nil))
@@ -390,7 +402,9 @@ defmodule Dhc.StripeSync do
 
   defp format_inactive_reason(:no_membership_subscription), do: "no_membership_subscription"
   defp format_inactive_reason({:subscription_status, status}), do: "subscription_status:#{status}"
-  defp format_inactive_reason({:missing_active_subscriptions, price_ids}), do: "missing_active_subscriptions:#{Enum.join(price_ids, ",")}"
+
+  defp format_inactive_reason({:missing_active_subscriptions, price_ids}),
+    do: "missing_active_subscriptions:#{Enum.join(price_ids, ",")}"
 
   defp subscription_created_at(nil), do: nil
 
