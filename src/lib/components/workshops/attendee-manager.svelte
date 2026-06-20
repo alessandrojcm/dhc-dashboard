@@ -11,11 +11,16 @@ import {
 	updateAttendance,
 	processRefund,
 } from "$lib/functions/workshops.remote";
+import type {
+	WorkshopAttendee,
+	WorkshopRefund,
+	WorkshopSummary,
+} from "@dhc/api-client";
 
 interface Props {
-	attendees: any[]; // eslint-disable-line @typescript-eslint/no-explicit-any
-	refunds: any[]; // eslint-disable-line @typescript-eslint/no-explicit-any
-	workshop: any; // eslint-disable-line @typescript-eslint/no-explicit-any
+	attendees: WorkshopAttendee[];
+	refunds: WorkshopRefund[];
+	workshop: WorkshopSummary;
 	workshopId?: string;
 	onAttendanceUpdated?: () => void;
 	onRefundProcessed?: () => void;
@@ -35,7 +40,7 @@ let attendeeIdForRefund = $state("");
 let selectedAttendees = $state<string[]>([]);
 
 const unattendedAttendees = $derived(
-	attendees.filter((a) => a.attendance_status !== "attended"),
+	attendees.filter((a) => a.attendanceStatus !== "attended"),
 );
 
 const allSelected = $derived(
@@ -99,16 +104,20 @@ const refundMutation = createMutation(() => ({
 	},
 }));
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function getAttendeeDisplayName(attendee: any) {
-	return attendee.user_profiles?.first_name
-		? `${attendee.user_profiles.first_name} ${attendee.user_profiles.last_name}`
-		: `${attendee.external_users?.first_name} ${attendee.external_users?.last_name}`;
+// Participant identity is normalized server-side into a single `participant`
+// DTO (`type` `member` | `external`, `displayName`, `email`) by
+// `GET /api/workshops/{id}/attendees`, so the storage join shapes
+// (`user_profiles` / `external_users`) no longer leak into the UI.
+function getAttendeeDisplayName(attendee: WorkshopAttendee) {
+	return attendee.participant.displayName;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function getAttendeeEmail(attendee: any) {
-	return attendee.user_profiles?.email || attendee.external_users?.email;
+function getAttendeeEmail(attendee: WorkshopAttendee) {
+	return attendee.participant.email ?? "";
+}
+
+function isExternalAttendee(attendee: WorkshopAttendee) {
+	return attendee.participant.type === "external";
 }
 
 function getAttendanceBadgeVariant(status: string | null | undefined) {
@@ -166,11 +175,11 @@ function getPaymentBadgeVariant(
 
 function getPaymentStatusLabel(
 	registrationStatus: string | null | undefined,
-	refund?: { status?: string; refund_amount?: number } | null,
+	refund?: { status?: string; refundAmount?: number } | null,
 ) {
 	if (refund?.status === "completed" || registrationStatus === "refunded") {
-		if (typeof refund?.refund_amount === "number") {
-			return `Refunded ${formatCurrency(refund.refund_amount / 100)}`;
+		if (typeof refund?.refundAmount === "number") {
+			return `Refunded ${formatCurrency(refund.refundAmount / 100)}`;
 		}
 
 		return "Refunded";
@@ -203,7 +212,7 @@ function getPaymentStatusLabel(
 }
 
 function getRefund(attendeeId: string) {
-	return refunds.find((refund) => refund.registration_id === attendeeId);
+	return refunds.find((refund) => refund.registrationId === attendeeId);
 }
 
 function formatCurrency(amount: number) {
@@ -213,16 +222,10 @@ function formatCurrency(amount: number) {
 	}).format(amount);
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function isExternalAttendee(attendee: any) {
-	return Boolean(attendee.external_user_id || attendee.external_users);
-}
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function getRefundEligibility(attendee: any) {
+function getRefundEligibility(attendee: WorkshopAttendee) {
 	return checkRefundEligibility(
-		workshop.start_date,
-		workshop.refund_days,
+		workshop.startDate,
+		workshop.refundDays,
 		workshop.status,
 		attendee.status,
 	);
@@ -279,7 +282,7 @@ function confirmRefund() {
         >
             <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
                 <div class="flex min-w-0 flex-1 items-start gap-3">
-                    {#if attendee.attendance_status !== 'attended'}
+                    {#if attendee.attendanceStatus !== 'attended'}
                         <Checkbox
                                 id={`${getAttendeeDisplayName(attendee)}-select`}
                                 checked={selectedAttendees.includes(attendee.id)}
@@ -303,10 +306,10 @@ function confirmRefund() {
 
 						<div class="mt-2 flex flex-wrap items-center gap-2">
 							<Badge
-								variant={getAttendanceBadgeVariant(attendee.attendance_status)}
+								variant={getAttendanceBadgeVariant(attendee.attendanceStatus)}
 								class="text-xs"
 							>
-								{getAttendanceStatusLabel(attendee.attendance_status)}
+								{getAttendanceStatusLabel(attendee.attendanceStatus)}
 							</Badge>
 							<Badge
 								variant={getPaymentBadgeVariant(attendee.status, refund)}
@@ -325,7 +328,7 @@ function confirmRefund() {
 				</div>
 
                 <div class="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
-                    {#if attendee.attendance_status !== 'attended'}
+                    {#if attendee.attendanceStatus !== 'attended'}
                         <Button
                                 size="sm"
                                 variant="outline"
