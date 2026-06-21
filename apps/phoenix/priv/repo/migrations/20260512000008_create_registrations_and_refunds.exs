@@ -10,7 +10,10 @@ defmodule Dhc.Repo.Migrations.CreateRegistrationsAndRefunds do
       add :email, :text, null: false
       add :phone_number, :text
 
-      timestamps(type: :timestamptz)
+      # `external_users` uses `created_at` in production (frozen Supabase
+      # migration `20250715094450_workshop_registration_system.sql`); mirror the
+      # column name so the Workshop read models match runtime behavior.
+      timestamps(type: :timestamptz, inserted_at: :created_at)
     end
 
     create unique_index(:external_users, [:email])
@@ -49,7 +52,10 @@ defmodule Dhc.Repo.Migrations.CreateRegistrationsAndRefunds do
 
       add :attendance_notes, :text
 
-      timestamps(type: :timestamptz)
+      # `club_activity_registrations` uses `created_at` in production (frozen
+      # Supabase migration `20250715094450_workshop_registration_system.sql`);
+      # the attendee read orders by `created_at`, so mirror the column name.
+      timestamps(type: :timestamptz, inserted_at: :created_at)
     end
 
     create unique_index(:club_activity_registrations, [:stripe_checkout_session_id])
@@ -90,7 +96,11 @@ defmodule Dhc.Repo.Migrations.CreateRegistrationsAndRefunds do
       add :requested_by, references(:users, prefix: "auth", type: :uuid, on_delete: :nothing)
       add :processed_by, references(:users, prefix: "auth", type: :uuid, on_delete: :nothing)
 
-      timestamps(type: :timestamptz)
+      # `club_activity_refunds` uses `created_at` in production (frozen Supabase
+      # migration `20250719120000_add_refunds_and_attendance.sql`); the refund
+      # read orders by `requested_at`, but `created_at` is still part of the
+      # production column set, so mirror it for schema accuracy.
+      timestamps(type: :timestamptz, inserted_at: :created_at)
     end
 
     # The unique_indexes on :registration_id and :stripe_refund_id already
