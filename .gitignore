@@ -43,5 +43,8 @@ test-results
 # Generated API client
 packages/api-client/src/client/
 
+# Elixir/Erlang crash dumps (e.g. from a failed `mix` boot)
+erl_crash.dump
+
 # mise local overrides
 .mise.local.toml

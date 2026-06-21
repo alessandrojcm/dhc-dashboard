@@ -687,6 +687,69 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /workshops/{id}/attendees:
+    get:
+      operationId: workshops.attendees
+      tags:
+        - Workshops
+      summary: Read Workshop attendees and refunds
+      description: |
+        Returns the combined coordinator attendee/refund management payload for
+        a single Workshop: the Workshop summary, the active attendees
+        (registrations with status `confirmed` or `pending`, ordered by
+        `registeredAt` ascending), and the refund records (ordered by
+        `requestedAt` descending).
+
+        Attendee and refund participants are normalized into a single domain
+        `participant` DTO (`type` `member` | `external`, `displayName`,
+        `email`) so member and external registrations are displayed
+        consistently and the storage join shapes (`user_profiles` /
+        `external_users`) do not leak into the contract.
+
+        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
+        `workshop_coordinator`, `president`, or `admin`. This mirrors the
+        corrected registration RLS policy
+        (`20250923100806_fix_workshops_rls.sql`) and deliberately does NOT
+        reproduce the historical `beginners_coordinator` registration
+        visibility drift (see the `Dhc.Workshops` moduledoc). A
+        `beginners_coordinator` token 403s; a missing token 401s; an unknown
+        Workshop id 404s.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The Workshop id.
+      responses:
+        "200":
+          description: Workshop attendees and refunds
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkshopAttendeesResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a Workshop coordinator management role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No Workshop exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /workshops:
     get:
       operationId: workshops.list
@@ -1399,6 +1462,86 @@ components:
         The authenticated member's own registration for a Workshop. Exposed only
         as the current user's state (`currentUserRegistration`) on the
         member-safe collection — never as a list of other members' registrations.
+    WorkshopAttendeesResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - workshop
+            - attendees
+            - refunds
+          properties:
+            workshop:
+              $ref: "#/components/schemas/WorkshopSummary"
+            attendees:
+              type: array
+              items:
+                $ref: "#/components/schemas/WorkshopAttendee"
+            refunds:
+              type: array
+              items:
+                $ref: "#/components/schemas/WorkshopRefund"
+    WorkshopSummary:
+      type: object
+      required:
+        - id
+        - title
+        - isPublic
+        - status
+        - interestCount
+        - pendingRegistrationCount
+        - confirmedRegistrationCount
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        location:
+          type: string
+          nullable: true
+        startDate:
+          type: string
+          format: date-time
+          nullable: true
+        endDate:
+          type: string
+          format: date-time
+          nullable: true
+        maxCapacity:
+          type: integer
+          minimum: 0
+          nullable: true
+        priceMember:
+          type: number
+          nullable: true
+        priceNonMember:
+          type: number
+          nullable: true
+        isPublic:
+          type: boolean
+        refundDays:
+          type: integer
+          minimum: 0
+          nullable: true
+        status:
+          type: string
+          enum: [planned, published, cancelled, finished]
+        interestCount:
+          type: integer
+          minimum: 0
+        pendingRegistrationCount:
+          type: integer
+          minimum: 0
+        confirmedRegistrationCount:
+          type: integer
+          minimum: 0
     WorkshopCalendarItem:
       type: object
       required:
@@ -1584,6 +1727,119 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/Workshop"
+    WorkshopAttendee:
+      type: object
+      required:
+        - id
+        - status
+        - attendanceStatus
+        - amountPaid
+        - currency
+        - registeredAt
+        - participant
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending, confirmed]
+          description: Only `pending` and `confirmed` registrations are returned as attendees.
+        attendanceStatus:
+          type: string
+          enum: [pending, attended, no_show, excused]
+          nullable: true
+        attendanceMarkedAt:
+          type: string
+          format: date-time
+          nullable: true
+        attendanceMarkedBy:
+          type: string
+          format: uuid
+          nullable: true
+        attendanceNotes:
+          type: string
+          nullable: true
+        amountPaid:
+          type: integer
+          description: Amount paid in the smallest currency unit (cents).
+          nullable: true
+        currency:
+          type: string
+          nullable: true
+        registeredAt:
+          type: string
+          format: date-time
+        confirmedAt:
+          type: string
+          format: date-time
+          nullable: true
+        cancelledAt:
+          type: string
+          format: date-time
+          nullable: true
+        registrationNotes:
+          type: string
+          nullable: true
+        participant:
+          $ref: "#/components/schemas/WorkshopParticipant"
+    WorkshopRefund:
+      type: object
+      required:
+        - id
+        - registrationId
+        - refundAmount
+        - status
+        - requestedAt
+        - participant
+      properties:
+        id:
+          type: string
+          format: uuid
+        registrationId:
+          type: string
+          format: uuid
+        refundAmount:
+          type: integer
+          description: Refund amount in the smallest currency unit (cents).
+        refundReason:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [pending, processing, completed, failed, cancelled]
+        stripeRefundId:
+          type: string
+          nullable: true
+        requestedAt:
+          type: string
+          format: date-time
+        processedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        participant:
+          $ref: "#/components/schemas/WorkshopParticipant"
+    WorkshopParticipant:
+      type: object
+      required:
+        - type
+        - displayName
+        - email
+      properties:
+        type:
+          type: string
+          enum: [member, external]
+        displayName:
+          type: string
+        email:
+          type: string
+          format: email
+          nullable: true
     Error:
       type: object
       properties:
