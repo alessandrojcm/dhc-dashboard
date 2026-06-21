@@ -61,7 +61,7 @@ dhc-dashboard/
 | Add edge function | `supabase/functions/` | DEPRECATED — migrate to Oban instead |
 | Add Supabase migration | `supabase/migrations/` | FROZEN — no new migrations |
 | Add Phoenix Ecto context | `apps/phoenix/lib/dhc/<domain>/` | NEW — use Ecto schemas + changesets |
-| Add Phoenix Workshop read model | `apps/phoenix/lib/dhc/workshops.ex` (context) + `apps/phoenix/lib/dhc/workshops/` (schemas) | NEW — Workshop read-model helpers (issue #143 prefactor). Schemas map `club_activity*` persistence vocab; context returns Workshop-vocabulary DTOs. No endpoints yet. |
+| Add Phoenix Workshop read model/API | `apps/phoenix/lib/dhc/workshops.ex` (context) + `apps/phoenix/lib/dhc/workshops/` (schemas) + `apps/phoenix/lib/dhc_web/controllers/workshops_controller.ex` | NEW — Workshop read-model helpers (issue #143 prefactor). Schemas map `club_activity*` persistence vocab; context returns Workshop-vocabulary DTOs. `GET /api/workshops/calendar` is the first Phoenix Workshop endpoint (issue #145), protected by `workshop_coordinator`/`president`/`admin` only and consumed by the dashboard coordinator calendar through the generated TS client. |
 | Add Oban worker | `apps/phoenix/lib/dhc/<domain>/workers/` | NEW — use `Oban.Worker` |
 | Add Phoenix API endpoint | `apps/phoenix/lib/dhc_web/controllers/` | NEW — write spec first, generate stub |
 | Update OpenAPI spec | `apps/phoenix/priv/api/openapi.yaml` | NEW — spec is the contract |

@@ -1,4 +1,5 @@
 import type { KyselifyDatabase } from "kysely-supabase";
+import type { WorkshopCalendarItem } from "@dhc/api-client";
 import type { Database } from "../database.types.ts";
 
 // Removed Schedule-X import - using vkurko/calendar now
@@ -75,11 +76,11 @@ export type WorkshopCalendarEvent = {
 	title: string;
 	start: string;
 	end: string;
-	workshop: ClubActivityWithRegistrations;
+	workshop: WorkshopCalendarItem;
 	isInterested: boolean;
 	isLoading: boolean;
 	userId: string;
-	handleEdit?: (workshop: ClubActivityWithRegistrations) => void;
+	handleEdit?: (workshop: WorkshopCalendarItem) => void;
 };
 
 // Inventory attribute types - using discriminated unions for type-safe attribute definitions

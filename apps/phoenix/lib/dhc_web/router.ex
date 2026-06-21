@@ -20,6 +20,10 @@ defmodule DhcWeb.Router do
         ~w(admin president treasurer committee_coordinator sparring_coordinator workshop_coordinator beginners_coordinator quartermaster pr_manager volunteer_coordinator research_coordinator coach)
   end
 
+  pipeline :workshop_coordinator_api do
+    plug DhcWeb.Plugs.RequireAuth, roles: Dhc.Workshops.coordinator_management_roles()
+  end
+
   pipeline :authenticated_api do
     plug DhcWeb.Plugs.RequireAuth
   end
@@ -52,6 +56,12 @@ defmodule DhcWeb.Router do
 
     get "/members", MembersController, :index
     get "/members/analytics", MembersController, :analytics
+  end
+
+  scope "/api", DhcWeb do
+    pipe_through [:api, :workshop_coordinator_api]
+
+    get "/workshops/calendar", WorkshopsController, :calendar
   end
 
   scope "/api", DhcWeb do
