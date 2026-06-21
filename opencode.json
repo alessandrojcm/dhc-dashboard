@@ -1,21 +1,4 @@
 {
   "$schema": "https://opencode.ai/config.json",
-  "autoupdate": true,
-  "mcp": {
-    "sentry": {
-      "type": "remote",
-      "url": "https://mcp.sentry.dev/mcp",
-      "oauth": {}
-    },
-    "svelte": {
-      "type": "remote",
-      "url": "https://mcp.svelte.dev/mcp",
-      "enabled": true
-    },
-    "supabase": {
-      "type": "remote",
-      "url": "http://localhost:54321/mcp?features=database%2Cdebugging%2Cdevelopment",
-      "enabled": true
-    }
-  }
+  "plugin": ["./.opencode/plugins/git-guardian.ts"]
 }
