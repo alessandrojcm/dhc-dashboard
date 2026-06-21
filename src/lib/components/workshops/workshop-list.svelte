@@ -13,23 +13,18 @@ import WorkshopCancellationDialog from "./workshop-cancellation-dialog.svelte";
 import dayjs from "dayjs";
 import Dinero from "dinero.js";
 import { useQueryClient } from "@tanstack/svelte-query";
-import type { ClubActivityWithInterest, UserData } from "$lib/types";
+import type { UserData } from "$lib/types";
+import type { Workshop } from "@dhc/api-client";
 
 interface Props {
-	workshops: ClubActivityWithInterest[];
+	workshops: Workshop[];
 	onInterestToggle?: (workshopId: string) => void;
 	isLoading?: boolean;
-	userId: string;
 }
 
-let {
-	workshops,
-	onInterestToggle,
-	isLoading = false,
-	userId,
-}: Props = $props();
+let { workshops, onInterestToggle, isLoading = false }: Props = $props();
 
-let selectedWorkshop: ClubActivityWithInterest | null = $state(null);
+let selectedWorkshop: Workshop | null = $state(null);
 let showCancellationDialog = $state(false);
 let selectedRegistration: { id: string; status: string } | null = $state(null);
 const queryClient = useQueryClient();
@@ -61,52 +56,35 @@ function formatPrice(price: number) {
 	return Dinero({ amount: price, currency: "EUR" }).toFormat();
 }
 
-function hasUserInterest(workshop: ClubActivityWithInterest): boolean {
+function hasUserInterest(workshop: Workshop): boolean {
 	if (workshop.status === "published") {
-		return (
-			workshop?.attendee_count?.some((i) => i.member_user_id === userId) ??
-			false
-		);
+		return workshop.currentUserRegistration !== null;
 	}
-	return (
-		workshop?.user_interest?.map((i) => i.user_id).includes(userId) ?? false
-	);
+	return workshop.currentUserInterest;
 }
 
 function getUserRegistration(
-	workshop: ClubActivityWithInterest,
+	workshop: Workshop,
 ): { id: string; status: string } | null {
-	if (workshop.status === "published") {
-		const registration = workshop?.attendee_count?.find(
-			(i) => i.member_user_id === userId,
-		);
-		return registration
-			? { id: registration.id, status: registration.status }
-			: null;
-	}
-	return null;
+	return workshop.currentUserRegistration;
 }
 
-function getInterestCount(workshop: ClubActivityWithInterest): number {
+function getInterestCount(workshop: Workshop): number {
 	return workshop.status === "published"
-		? (workshop.attendee_count?.length ?? 0)
-		: (workshop.interest_count?.[0]?.interest_count ?? 0);
+		? workshop.pendingRegistrationCount + workshop.confirmedRegistrationCount
+		: workshop.interestCount;
 }
 
-function getWorkshopPrice(workshop: ClubActivityWithInterest): number {
+function getWorkshopPrice(workshop: Workshop): number {
 	// For now, assume all users are members - you can enhance this logic
-	return workshop.price_member;
+	return workshop.priceMember;
 }
 
-function isRefunded(workshop: ClubActivityWithInterest): boolean {
-	return (
-		workshop.attendee_count?.some(
-			(i) => i.status === "refunded" && i.member_user_id === userId,
-		) ?? false
-	);
+function isRefunded(workshop: Workshop): boolean {
+	return workshop.currentUserRegistration?.status === "refunded";
 }
 
-function handleCancelRegistration(workshop: ClubActivityWithInterest) {
+function handleCancelRegistration(workshop: Workshop) {
 	const registration = getUserRegistration(workshop);
 	if (registration) {
 		selectedWorkshop = workshop;
@@ -152,11 +130,11 @@ function handleRegistrationSuccess() {
 						<div class="grid grid-cols-2 gap-4 text-sm">
 							<div>
 								<strong>Start:</strong>
-								{formatDateTime(workshop.start_date)}
+								{formatDateTime(workshop.startDate)}
 							</div>
 							<div>
 								<strong>End:</strong>
-								{formatDateTime(workshop.end_date)}
+								{formatDateTime(workshop.endDate)}
 							</div>
 							<div>
 								<strong>Location:</strong>
@@ -164,16 +142,16 @@ function handleRegistrationSuccess() {
 							</div>
 							<div>
 								<strong>Capacity:</strong>
-								{workshop.max_capacity}
+								{workshop.maxCapacity}
 							</div>
 							<div>
 								<strong>Member Price:</strong>
-								{formatPrice(workshop.price_member)}
+								{formatPrice(workshop.priceMember)}
 							</div>
-							{#if workshop.is_public}
+							{#if workshop.isPublic}
 								<div>
 									<strong>Non-Member Price:</strong>
-									{formatPrice(workshop.price_non_member)}
+									{formatPrice(workshop.priceNonMember)}
 								</div>
 							{/if}
 							{#if workshop.status === 'planned'}
@@ -189,7 +167,7 @@ function handleRegistrationSuccess() {
 								</div>
 							{/if}
 						</div>
-						{#if workshop.status === 'published' && userId}
+						{#if workshop.status === 'published'}
 							<div class="flex justify-end pt-4">
 								{#if !hasUserInterest(workshop)}
 									<Dialog.Root>

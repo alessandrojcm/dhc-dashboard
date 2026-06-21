@@ -20,6 +20,15 @@ defmodule DhcWeb.Router do
         ~w(admin president treasurer committee_coordinator sparring_coordinator workshop_coordinator beginners_coordinator quartermaster pr_manager volunteer_coordinator research_coordinator coach)
   end
 
+  pipeline :workshop_coordinator_api do
+    # Mirrors the corrected registration RLS policy
+    # (`20250923100806_fix_workshops_rls.sql`) and the canonical
+    # `Dhc.Workshops.coordinator_management_roles/0`. Deliberately excludes
+    # `beginners_coordinator` — the historical registration visibility drift
+    # (see the `Dhc.Workshops` moduledoc) must not be reproduced.
+    plug DhcWeb.Plugs.RequireAuth, roles: Dhc.Workshops.coordinator_management_roles()
+  end
+
   pipeline :authenticated_api do
     plug DhcWeb.Plugs.RequireAuth
   end
@@ -55,9 +64,17 @@ defmodule DhcWeb.Router do
   end
 
   scope "/api", DhcWeb do
+    pipe_through [:api, :workshop_coordinator_api]
+
+    get "/workshops/calendar", WorkshopsController, :calendar
+    get "/workshops/:id/attendees", WorkshopsController, :attendees
+  end
+
+  scope "/api", DhcWeb do
     pipe_through [:api, :authenticated_api]
 
     get "/members/insurance-form", MembersController, :insurance_form
     get "/notifications", NotificationsController, :index
+    get "/workshops", WorkshopsController, :list
   end
 end

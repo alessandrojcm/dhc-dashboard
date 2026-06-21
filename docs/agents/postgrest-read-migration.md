@@ -93,6 +93,17 @@ Purpose: track SvelteKit Supabase PostgREST reads (`supabase.from(...).select(..
 
 ### Workshops
 
+- PRD issue: #142 — Migrate Workshop PostgREST reads to Phoenix APIs.
+- Canonical API/domain term: Workshop. `club_activity_*` is persistence vocabulary only.
+- Agreed slice boundary: create one Workshop prefactor issue, then three independently demoable read endpoint issues.
+- API-driven design applies: write/update the OpenAPI contract before implementation, then generate Phoenix stubs and the TypeScript client.
+- Planned endpoints:
+  - `GET /api/workshops` — member-safe Workshop collection. Defaults to `planned,published`; optional status filter is constrained to member-safe statuses. Planned DTOs include `interestCount` and `currentUserInterest`; published DTOs include total pending/confirmed `registrationCount` and nullable `currentUserRegistration`. Do not expose other attendee identities.
+  - `GET /api/workshops/calendar` — coordinator calendar read. Returns non-cancelled Workshops, preserving current behavior; month/date-window pagination is deferred. DTO includes total `interestCount` and total pending/confirmed `registrationCount`; do not port current-user registration join artifacts.
+  - `GET /api/workshops/{id}/attendees` — coordinator attendee/refund management read. Returns one combined payload with Workshop summary, attendees, and refunds. Normalize member/external identities into a domain participant DTO rather than exposing storage joins.
+- Workshop coordinator read RBAC: `workshop_coordinator`, `president`, `admin`. Existing registration RLS that grants all-registration visibility to `beginners_coordinator` is confirmed drift; do not mirror it in Phoenix.
+- Publish Workshop prefactor and endpoint slices as `ready-for-agent`; the RBAC correction has human confirmation.
+
 - `src/routes/dashboard/workshops/+page.svelte`
   - Resource: `club_activities`
   - Shape: non-cancelled workshops with interest counts, current user's interest, and registration status summaries.

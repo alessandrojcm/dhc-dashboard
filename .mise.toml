@@ -190,6 +190,14 @@ arg "[count]" help="Number of members to seed" default="10"
 '''
 run = 'mix seed.members "${usage_count?}"'
 
+[tasks."seed-workshops"]
+description = "Seed workshop records with interest, registrations, and refunds"
+dir = "apps/phoenix"
+usage = '''
+arg "[count]" help="Number of workshops to seed" default="5"
+'''
+run = 'mix seed.workshops "${usage_count?}"'
+
 # ── Composed / CI tasks ───────────────────────────
 
 [tasks.ci]
