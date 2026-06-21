@@ -5,15 +5,13 @@ import {
 	checkRefundEligibility,
 	type RefundEligibilityResult,
 } from "$lib/utils/refund-eligibility";
-import type { Database } from "$database";
+import type { Workshop } from "@dhc/api-client";
 import { toast } from "svelte-sonner";
 import { cancelRegistration } from "../../../routes/dashboard/my-workshops/registration.remote";
 import { processRefund } from "$lib/functions/workshops.remote";
 
-type ClubActivity = Database["public"]["Tables"]["club_activities"]["Row"];
-
 interface Props {
-	workshop: ClubActivity;
+	workshop: Workshop;
 	registrationId: string;
 	registrationStatus: string;
 	open: boolean;
@@ -32,8 +30,8 @@ let {
 
 const refundEligibility: RefundEligibilityResult = $derived(
 	checkRefundEligibility(
-		workshop.start_date,
-		workshop.refund_days,
+		workshop.startDate,
+		workshop.refundDays,
 		workshop.status ?? "planned",
 		registrationStatus,
 	),
