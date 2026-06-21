@@ -18,6 +18,7 @@ export {
   waitlistEntries,
   waitlistStatus,
   workshopsCalendar,
+  workshopsList,
   type Options,
 } from "./client/sdk.gen";
 export type {
@@ -105,12 +106,21 @@ export type {
   WaitlistStatusResponse,
   WaitlistStatusResponse2,
   WaitlistStatusResponses,
+  RegistrationStatus,
+  Workshop,
   WorkshopCalendarItem,
+  WorkshopRegistration,
   WorkshopsCalendarData,
   WorkshopsCalendarError,
   WorkshopsCalendarErrors,
   WorkshopsCalendarResponse,
   WorkshopsCalendarResponses,
+  WorkshopsListData,
+  WorkshopsListError,
+  WorkshopsListErrors,
+  WorkshopsListResponse,
+  WorkshopsListResponse2,
+  WorkshopsListResponses,
   WorkshopStatus,
 } from "./client/types.gen";
 
@@ -162,9 +172,15 @@ export {
   vWaitlistStatus,
   vWaitlistStatusResponse,
   vWaitlistStatusResponse2,
+  vRegistrationStatus,
+  vWorkshop,
   vWorkshopCalendarItem,
   vWorkshopCalendarResponse,
+  vWorkshopRegistration,
   vWorkshopsCalendarResponse,
+  vWorkshopsListQuery,
+  vWorkshopsListResponse,
+  vWorkshopsListResponse2,
   vWorkshopStatus,
 } from "./client/valibot.gen";
 
@@ -202,6 +218,8 @@ export {
   waitlistStatusQueryKey,
   workshopsCalendarOptions,
   workshopsCalendarQueryKey,
+  workshopsListOptions,
+  workshopsListQueryKey,
   type QueryKey,
 } from "./client/@tanstack/svelte-query.gen";
 

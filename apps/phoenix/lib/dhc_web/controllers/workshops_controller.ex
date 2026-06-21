@@ -24,4 +24,19 @@ defmodule DhcWeb.WorkshopsController do
     |> put_view(json: DhcWeb.WorkshopsJSON)
     |> render(:calendar, workshops: workshops)
   end
+
+  @doc """
+  GET /workshops
+
+  Returns the member-safe Workshop collection. Status is constrained to
+  `planned` and `published`, and each Workshop includes the current user's
+  interest and registration state.
+  """
+  def list(conn, params) do
+    workshops = Workshops.list_member_workshops(conn.assigns.current_user.sub, params)
+
+    conn
+    |> put_view(json: DhcWeb.WorkshopsJSON)
+    |> render(:list, workshops: workshops)
+  end
 end
