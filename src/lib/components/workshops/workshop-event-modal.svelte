@@ -35,12 +35,9 @@ const queryClient = useQueryClient();
 const workshop = $derived(event.workshop);
 const interestCount = $derived.by(() => {
 	if (event.workshop.status === "published") {
-		return (
-			workshop.user_registrations?.filter((r) => r.status !== "refunded")
-				?.length ?? 0
-		);
+		return workshop.pendingRegistrationCount + workshop.confirmedRegistrationCount;
 	} else if (event.workshop.status === "planned") {
-		return workshop?.interest_count?.at(0)?.interest_count ?? 0;
+		return workshop.interestCount;
 	}
 	return 0;
 });
@@ -160,7 +157,7 @@ const hasEditAction = $derived(!!event.handleEdit);
 								? 'Published'
 								: 'Cancelled'}
 					</Badge>
-					{#if workshop.is_public}
+					{#if workshop.isPublic}
 						<Badge variant="outline" class="text-xs">Public</Badge>
 					{/if}
 				</div>
@@ -176,11 +173,11 @@ const hasEditAction = $derived(!!event.handleEdit);
 			</div>
 			<div class="space-y-1">
 				<div class="font-medium text-foreground">
-					{dayjs(workshop?.start_date || event?.start).format('dddd, MMM DD, YYYY')}
+					{dayjs(workshop?.startDate || event?.start).format('dddd, MMM DD, YYYY')}
 				</div>
 				<div class="text-sm text-muted-foreground">
-					{dayjs(workshop?.start_date || event?.start).format('h:mm A')}
-					- {dayjs(workshop?.end_date || event?.end).format('h:mm A')}
+					{dayjs(workshop?.startDate || event?.start).format('h:mm A')}
+					- {dayjs(workshop?.endDate || event?.end).format('h:mm A')}
 				</div>
 			</div>
 		</div>
@@ -203,7 +200,7 @@ const hasEditAction = $derived(!!event.handleEdit);
 			>
 		</div>
 
-		{#if workshop.is_public && workshop.status === 'published'}
+		{#if workshop.isPublic && workshop.status === 'published'}
 			<div class="ml-8">
 				<Button
 					variant="ghost"
@@ -240,13 +237,13 @@ const hasEditAction = $derived(!!event.handleEdit);
 		<div class="bg-gradient-to-r from-muted/30 to-muted/20 p-4 rounded-lg border space-y-3">
 			<div class="flex items-center justify-between">
 				<span class="text-sm font-medium text-foreground">Member Price:</span>
-				<span class="text-lg font-bold text-foreground">{formatPrice(workshop.price_member)}</span>
+				<span class="text-lg font-bold text-foreground">{formatPrice(workshop.priceMember ?? 0)}</span>
 			</div>
-			{#if workshop.is_public}
+			{#if workshop.isPublic}
 				<div class="flex items-center justify-between">
 					<span class="text-sm font-medium text-foreground">Non-Member Price:</span>
 					<span class="text-lg font-bold text-foreground"
-						>{formatPrice(workshop.price_non_member)}</span
+						>{formatPrice(workshop.priceNonMember ?? 0)}</span
 					>
 				</div>
 			{/if}

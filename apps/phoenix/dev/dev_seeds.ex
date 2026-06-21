@@ -9,11 +9,15 @@ defmodule Dhc.DevSeeds do
   alias Dhc.UserProfiles.UserProfile
   alias Dhc.Waitlist.WaitlistEntry
   alias Dhc.Waitlist.WaitlistGuardian
+  alias Dhc.Workshops.{ExternalUser, Refund, Registration, Workshop, WorkshopInterest}
 
   @preferred_weapons ~w(longsword sword_and_buckler)
   @genders ["man (cis)", "woman (cis)", "non-binary", "man (trans)", "woman (trans)", "other"]
   @pronouns ["he/him", "she/her", "they/them"]
   @social_media_consent ~w(no yes_recognizable yes_unrecognizable)
+  @workshop_statuses ~w(planned published finished cancelled)
+  @refund_statuses ~w(pending processing completed failed cancelled)
+  @attendance_statuses ~w(pending attended no_show excused)
 
   # Fakerer maintains a per-process sampler store, so each concurrent task
   # gets its own. `Application.ensure_all_started/1` cascades to transitive
@@ -87,6 +91,45 @@ defmodule Dhc.DevSeeds do
     :ok
   end
 
+  @doc """
+  Seeds Workshops with realistic fake data.
+
+  Each Workshop gets:
+    * a coordinator-style creator user profile (required `created_by` FK to auth.users)
+    * random interest from seeded/existing members
+    * a mix of pending and confirmed member registrations
+    * a handful of external registrations
+    * a few refunds on some registrations
+
+  ## Usage
+
+      mix seed.workshops
+      mix seed.workshops 5
+
+  Run via `mise run seed-workshops` so repo-root `.env` is loaded before Mix
+  starts.
+  """
+  @spec seed_workshops(pos_integer()) :: :ok
+  def seed_workshops(count) do
+    ensure_faker_started()
+
+    created_by = ensure_workshop_creator()
+
+    1..count
+    |> Task.async_stream(
+      fn _ -> create_workshop(created_by) end,
+      max_concurrency: System.schedulers_online() * 2,
+      timeout: :infinity,
+      on_timeout: :kill_task
+    )
+    |> Enum.each(fn
+      {:ok, :ok} -> :ok
+      {:exit, reason} -> Mix.shell().error("Workshop task exited: #{inspect(reason)}")
+    end)
+
+    :ok
+  end
+
   defp create_member(attrs) do
     with {:ok, auth_user} <-
            create_auth_user(attrs.email, attrs.first_name, attrs.last_name, "password123"),
@@ -145,6 +188,246 @@ defmodule Dhc.DevSeeds do
       {:error, reason} ->
         Mix.shell().error("Skipping committee member #{attrs.email}: #{inspect(reason)}")
     end
+  end
+
+  # ── Workshop seeding helpers ─────────────────────────────────────
+
+  # Creates a minimal auth user + user profile + member profile to satisfy the
+  # `club_activities.created_by` FK. Returns the auth user id. If auth fails
+  # (e.g. Supabase not running), falls back to a random existing `auth.users` id
+  # so the seed can still run against a local `supabase start` DB.
+  defp ensure_workshop_creator do
+    roles = ["workshop_coordinator"]
+    email = "seed.workshops+#{System.unique_integer([:positive])}@example.com"
+    first_name = "Workshop"
+    last_name = "Seeder"
+
+    case create_auth_user(email, first_name, last_name, nil, roles) do
+      {:ok, %{id: id}} ->
+        attrs = %{
+          email: email,
+          first_name: first_name,
+          last_name: last_name,
+          phone_number: "+353800000000",
+          date_of_birth: ~D[1980-01-01],
+          pronouns: "they/them",
+          gender: "non-binary",
+          medical_conditions: nil,
+          social_media_consent: "no"
+        }
+
+        with {:ok, profile} <-
+               insert_user_profile(attrs, id, nil, true, id),
+             :ok <- insert_member_profile(id, profile.id, attrs),
+             :ok <- insert_user_roles(id, roles) do
+          id
+        else
+          {:error, reason} ->
+            Mix.shell().error("Could not persist workshop creator profile: #{inspect(reason)}")
+            fallback_creator()
+        end
+
+      {:error, _} ->
+        fallback_creator()
+    end
+  end
+
+  defp fallback_creator do
+    case Repo.query!("SELECT id::text FROM auth.users ORDER BY created_at DESC LIMIT 1", []) do
+      %Postgrex.Result{rows: [[id]]} -> id
+      %Postgrex.Result{rows: []} -> Mix.raise("No auth.users row available for workshop creator")
+    end
+  end
+
+  defp create_workshop(created_by) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    start_offset = :rand.uniform(60) - 30
+    start_date = DateTime.add(now, start_offset * 24 * 60 * 60, :second)
+    end_date = DateTime.add(start_date, :rand.uniform(8) * 60 * 60, :second)
+
+    max_capacity = Enum.random([10, 15, 20, 25, 30])
+    price_member = Enum.random([1000, 1500, 2000, 2500, 3000])
+    price_non_member = trunc(price_member * 1.5)
+
+    workshop_attrs = %{
+      title: Faker.Lorem.sentence(3),
+      description: Faker.Lorem.paragraph(2),
+      location: Enum.random(["Dublin", "Cork", "Galway", "Limerick"]),
+      start_date: start_date,
+      end_date: end_date,
+      max_capacity: max_capacity,
+      price_member: price_member / 1,
+      price_non_member: price_non_member / 1,
+      is_public: :rand.uniform(3) != 1,
+      refund_days: Enum.random([3, 7, 14]),
+      status: Enum.random(@workshop_statuses),
+      announce_discord: false,
+      announce_email: false,
+      created_by: created_by
+    }
+
+    with {:ok, workshop} <- insert_workshop(workshop_attrs),
+         members <- fetch_or_seed_members(max_capacity),
+         :ok <- seed_interests(workshop.id, members),
+         :ok <- seed_registrations(workshop.id, members, price_member, price_non_member),
+         :ok <- maybe_seed_external_registrations(workshop.id, price_non_member) do
+      :ok
+    else
+      {:error, reason} ->
+        Mix.shell().error("Skipping workshop #{workshop_attrs.title}: #{inspect(reason)}")
+        :ok
+    end
+  end
+
+  defp insert_workshop(attrs) do
+    %Workshop{
+      title: attrs.title,
+      description: attrs.description,
+      location: attrs.location,
+      start_date: attrs.start_date,
+      end_date: attrs.end_date,
+      max_capacity: attrs.max_capacity,
+      price_member: attrs.price_member,
+      price_non_member: attrs.price_non_member,
+      is_public: attrs.is_public,
+      refund_days: attrs.refund_days,
+      status: attrs.status,
+      announce_discord: attrs.announce_discord,
+      announce_email: attrs.announce_email,
+      created_by: attrs.created_by
+    }
+    |> Repo.insert()
+  rescue
+    exception -> {:error, exception}
+  end
+
+  # Fetches existing member auth user ids from `user_profiles`. Falls back to
+  # seeding new members if fewer than 5 exist, so the task is self-contained.
+  defp fetch_or_seed_members(capacity) do
+    limit = max(capacity, 20)
+
+    member_ids =
+      Repo.all(
+        from(p in UserProfile,
+          where: not is_nil(p.supabase_user_id),
+          select: p.supabase_user_id,
+          limit: ^limit
+        )
+      )
+
+    if length(member_ids) < 5 do
+      extra = 10 - length(member_ids)
+
+      seed_members(extra)
+      |> Enum.map(fn %{auth_user: auth_user} -> auth_user.id end)
+      |> Enum.concat(member_ids)
+    else
+      member_ids
+    end
+  end
+
+  defp seed_interests(workshop_id, member_ids) do
+    interest_count = Enum.random(0..min(length(member_ids), 5))
+
+    member_ids
+    |> Enum.take(interest_count)
+    |> Enum.each(fn user_id ->
+      %WorkshopInterest{club_activity_id: workshop_id, user_id: user_id}
+      |> Repo.insert(on_conflict: :nothing, conflict_target: [:club_activity_id, :user_id])
+    end)
+
+    :ok
+  end
+
+  defp seed_registrations(workshop_id, member_ids, price_member, _price_non_member) do
+    registration_count = Enum.random(2..min(length(member_ids), 10))
+
+    member_ids
+    |> Enum.take(registration_count)
+    |> Enum.each(fn user_id ->
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      status = weighted_registration_status()
+      confirmed_at = if status == "confirmed", do: now, else: nil
+
+      {:ok, registration} =
+        %Registration{
+          club_activity_id: workshop_id,
+          member_user_id: user_id,
+          amount_paid: price_member,
+          currency: "eur",
+          status: status,
+          registered_at: now,
+          confirmed_at: confirmed_at,
+          attendance_status: Enum.random(@attendance_statuses)
+        }
+        |> Repo.insert()
+
+      maybe_seed_refund(registration)
+    end)
+
+    :ok
+  end
+
+  defp maybe_seed_external_registrations(workshop_id, price_non_member) do
+    external_count = Enum.random(0..3)
+
+    1..external_count
+    |> Enum.each(fn _ ->
+      external_user = insert_external_user()
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      {:ok, registration} =
+        %Registration{
+          club_activity_id: workshop_id,
+          external_user_id: external_user.id,
+          amount_paid: price_non_member,
+          currency: "eur",
+          status: weighted_registration_status(),
+          registered_at: now,
+          attendance_status: Enum.random(@attendance_statuses)
+        }
+        |> Repo.insert()
+
+      maybe_seed_refund(registration)
+    end)
+
+    :ok
+  end
+
+  defp insert_external_user do
+    {:ok, external_user} =
+      %ExternalUser{
+        first_name: Faker.Person.first_name(),
+        last_name: Faker.Person.last_name(),
+        email: Faker.Internet.email(),
+        phone_number: phone_number()
+      }
+      |> Repo.insert()
+
+    external_user
+  end
+
+  defp maybe_seed_refund(%Registration{id: registration_id, status: status}) do
+    if status in ["cancelled", "refunded"] or :rand.uniform(5) == 1 do
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      %Refund{
+        registration_id: registration_id,
+        refund_amount: Enum.random([500, 1000, 1500]),
+        refund_reason:
+          Enum.random(["No longer attending", "Schedule conflict", "Requested by member"]),
+        status: Enum.random(@refund_statuses),
+        requested_at: now
+      }
+      |> Repo.insert(on_conflict: :nothing, conflict_target: [:id])
+    end
+
+    :ok
+  end
+
+  defp weighted_registration_status do
+    # Bias toward active registrations so seed data feels realistic.
+    Enum.random(~w(pending pending confirmed confirmed confirmed cancelled refunded))
   end
 
   defp create_auth_user(email, first_name, last_name, password, roles \\ []) do
