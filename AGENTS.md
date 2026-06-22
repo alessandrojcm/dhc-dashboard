@@ -128,7 +128,7 @@ See [docs/agents/notes.md](docs/agents/notes.md).
 
 ### Issue tracker
 
-GitHub Issues (uses `gh` CLI). See `docs/agents/issue-tracker.md`.
+Linear (use `linctl` CLI). See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
