@@ -16,6 +16,15 @@
       "type": "remote",
       "url": "http://localhost:54321/mcp?features=database%2Cdebugging%2Cdevelopment",
       "enabled": true
+    },
+    "graymatter": {
+      "command": [
+        "graymatter",
+        "mcp",
+        "serve"
+      ],
+      "enabled": true,
+      "type": "local"
     }
   }
 }

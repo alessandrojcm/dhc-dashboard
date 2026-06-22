@@ -1,0 +1,3 @@
+graymatter daemon ready: dir=/Users/alessandrojcm/repos/dhc-dashboard/.graymatter addr=unix:///Users/alessandrojcm/repos/dhc-dashboard/.graymatter/graymatter.sock pid=85592 idle-exit=2m0s
+daemon: signal received, shutting down
+daemon: stopped
