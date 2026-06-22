@@ -40,6 +40,17 @@ config :dhc, Oban,
 config :dhc, :discord_webhook_url, "https://discord.example.com/webhook/test"
 # Email worker — skip sending in test
 config :dhc, :loops_api_key, "test-loops-api-key"
+# Friendly name -> real Loops transactional ID mapping (test stubs).
+# The worker resolves this in prod-env tests (the describe block that flips
+# :environment to :prod and hits Bypass). Test env proper skips the send
+# before resolving, so these stubs only matter for the prod-env tests.
+config :dhc, :loops_transactional_ids, %{
+  "inviteMember" => "test-loops-id-inviteMember",
+  "workshopAnnouncement" => "test-loops-id-workshopAnnouncement",
+  "workshopRegistration" => "test-loops-id-workshopRegistration",
+  "workshopRegistrationError" => "test-loops-id-workshopRegistrationError"
+}
+
 # Stripe sync — skip API calls in test
 config :dhc, :stripe_secret_key, "sk_test_stub_key"
 config :dhc, :stripe_api_url, "https://stripe.example.com"

@@ -94,6 +94,21 @@ config :phoenix, :stacktrace_depth, 20
 config :dhc, :discord_webhook_url, System.get_env("DISCORD_WEBHOOK_URL")
 # Loops API key (not sent in dev — payloads are logged instead)
 config :dhc, :loops_api_key, System.get_env("LOOPS_API_KEY")
+
+# Friendly name -> real Loops transactional ID mapping.
+# Mirrors the edge function's env-var lookup. In dev the worker skips the
+# actual send, but the mapping is still resolved so the skip log shows the
+# real Loops ID. Defaults match the edge function fallbacks.
+config :dhc, :loops_transactional_ids, %{
+  "inviteMember" => System.get_env("INVITE_MEMBER_TRANSACTIONAL_ID", "invite_member"),
+  "workshopAnnouncement" =>
+    System.get_env("WORKSHOP_ANNOUNCEMENT_TRANSACTIONAL_ID", "workshop_announcement"),
+  "workshopRegistration" =>
+    System.get_env("WORKSHOP_REGISTRATION_TRANSACTIONAL_ID", "cmnok76cq02tq0ix92oeoi1kk"),
+  "workshopRegistrationError" =>
+    System.get_env("WORKSHOP_REGISTRATION_ERROR_TRANSACTIONAL_ID", "workshopRegistrationError")
+}
+
 # Stripe API (not called in dev — sync logs and returns :ok)
 config :dhc, :stripe_secret_key, System.get_env("STRIPE_SECRET_KEY")
 config :dhc, :stripe_api_url, "https://api.stripe.com"
