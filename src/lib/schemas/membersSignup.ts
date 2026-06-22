@@ -27,7 +27,8 @@ export const memberSignupClientSchema = v.object({
 
 const formSchema = v.object({
 	...beginnersWaitlist.entries,
-	...v.omit(memberSignupSchema, ["stripeConfirmationToken"]).entries,
+	...v.omit(memberSignupSchema, ["stripeConfirmationToken", "couponCode"])
+		.entries,
 	weapon: v.pipe(
 		v.array(v.string("Please select your preferred weapon.")),
 		v.transform((w) => w.filter((v) => v !== "")),
