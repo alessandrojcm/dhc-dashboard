@@ -30,5 +30,6 @@
     "PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im90YWlpaWVjc25pa3dkY3lydXVxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDU0MjI2NDMsImV4cCI6MjA2MDk5ODY0M30.B08UPmHPlKfSzywFXIoOGug2gKsNBLysBu2pVegDKQQ",
     "PUBLIC_SUPABASE_URL": "https://otaiiiecsnikwdcyruuq.supabase.co",
     "PUBLIC_API_BASE_URL": "https://api.dublinhemaclub.com/api",
+    "API_BASE_URL": "https://api.dublinhemaclub.com/api"
   },
 }
