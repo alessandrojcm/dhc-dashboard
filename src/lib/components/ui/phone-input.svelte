@@ -129,69 +129,69 @@ function updatePhoneNumber(inputValue: string) {
 </script>
 
 <div class="flex gap-2">
-	<Popover.Root bind:open>
-		<Popover.Trigger bind:ref={triggerRef}>
-			{#snippet child({ props })}
-				<Button
-					aria-label="Country code"
-					variant="outline"
-					class="w-[16ch] justify-between"
-					{...props}
-					role="combobox"
-					aria-expanded={open}
-				>
-					{#if open}
-						<ChevronUp class="h-4 w-4" />
-					{:else}
-						<ChevronDown class="h-4 w-4" />
-					{/if}
-					{#if selectedValue}
-						{`${getUnicodeFlagIcon(countryValue)} +${selectedValue}`}
-					{:else}
-						Select a country...
-					{/if}
-				</Button>
-			{/snippet}
-		</Popover.Trigger>
-		<Popover.Content class="w-[200px] p-0">
-			<Command.Root>
-				<Command.Input placeholder="Search country..." />
-				<Command.List>
-					<Command.Empty>No country found.</Command.Empty>
-					<Command.Group>
-						{#each countryCodes as country (country.countryNameEn)}
-							<Command.Item
-								value={country.countryNameEn}
-								onSelect={() => {
-									const newPhoneNumber =
-										formatIncompletePhoneNumber(
-											`+${country.countryCallingCode}${nationalNumber}`,
-										);
-									if (onChange) {
-										onChange(newPhoneNumber);
-									}
-									closeAndFocusTrigger();
-								}}
-							>
-								{getUnicodeFlagIcon(country.countryCode)}
-								&nbsp;+{country.countryCallingCode}
-							</Command.Item>
-						{/each}
-					</Command.Group>
-				</Command.List>
-			</Command.Root>
-		</Popover.Content>
-	</Popover.Root>
-	<Input
-		{...props}
-		id={id}
-		type="tel"
-		value={formatedPhone}
-		onchange={(event) => {
-			if (!event.target) return;
-			updatePhoneNumber(event.target.value);
-		}}
-		{placeholder}
-	/>
-	<input type="hidden" {name} {id} value={phoneNumber} />
+    <Popover.Root bind:open>
+        <Popover.Trigger bind:ref={triggerRef}>
+            {#snippet child({ props })}
+                <Button
+                    aria-label="Country code"
+                    variant="outline"
+                    class="w-[16ch] justify-between"
+                    {...props}
+                    role="combobox"
+                    aria-expanded={open}
+                >
+                    {#if open}
+                        <ChevronUp class="h-4 w-4" />
+                    {:else}
+                        <ChevronDown class="h-4 w-4" />
+                    {/if}
+                    {#if selectedValue}
+                        {`${getUnicodeFlagIcon(countryValue)} +${selectedValue}`}
+                    {:else}
+                        Select a country...
+                    {/if}
+                </Button>
+            {/snippet}
+        </Popover.Trigger>
+        <Popover.Content class="w-[200px] p-0">
+            <Command.Root>
+                <Command.Input placeholder="Search country..." />
+                <Command.List>
+                    <Command.Empty>No country found.</Command.Empty>
+                    <Command.Group>
+                        {#each countryCodes as country (country.countryNameEn)}
+                            <Command.Item
+                                value={country.countryNameEn}
+                                onSelect={() => {
+                                    const newPhoneNumber =
+                                        formatIncompletePhoneNumber(
+                                            `+${country.countryCallingCode}${nationalNumber}`,
+                                        );
+                                    if (onChange) {
+                                        onChange(newPhoneNumber);
+                                    }
+                                    closeAndFocusTrigger();
+                                }}
+                            >
+                                {getUnicodeFlagIcon(country.countryCode)}
+                                &nbsp;+{country.countryCallingCode}
+                            </Command.Item>
+                        {/each}
+                    </Command.Group>
+                </Command.List>
+            </Command.Root>
+        </Popover.Content>
+    </Popover.Root>
+    <Input
+        {...props}
+        {id}
+        type="tel"
+        value={formatedPhone}
+        onchange={(event) => {
+            if (!event.target) return;
+            updatePhoneNumber(event.target.value);
+        }}
+        {placeholder}
+    />
+    <input type="hidden" {name} {id} value={phoneNumber} />
 </div>

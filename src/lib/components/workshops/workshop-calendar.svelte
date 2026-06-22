@@ -90,7 +90,8 @@ const events: CalendarEvent[] = $derived(
 				location: workshop.location || undefined,
 				interestCount: workshop.interestCount,
 				registrationCount:
-					workshop.pendingRegistrationCount + workshop.confirmedRegistrationCount,
+					workshop.pendingRegistrationCount +
+					workshop.confirmedRegistrationCount,
 				isInterested: false,
 			},
 		};

@@ -35,7 +35,9 @@ const queryClient = useQueryClient();
 const workshop = $derived(event.workshop);
 const interestCount = $derived.by(() => {
 	if (event.workshop.status === "published") {
-		return workshop.pendingRegistrationCount + workshop.confirmedRegistrationCount;
+		return (
+			workshop.pendingRegistrationCount + workshop.confirmedRegistrationCount
+		);
 	} else if (event.workshop.status === "planned") {
 		return workshop.interestCount;
 	}
