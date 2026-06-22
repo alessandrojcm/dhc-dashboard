@@ -75,9 +75,9 @@ dir = "apps/phoenix"
 run = "mix ecto.gen.migration $@"
 
 [tasks.phx-test]
-description = "Run Phoenix tests (creates DB, migrates, runs)"
+description = "Run Phoenix tests (creates DB, migrates, runs). Pass test file paths as args to scope."
 dir = "apps/phoenix"
-run = "mix test"
+run = "mix test $@"
 
 [tasks.phx-precommit]
 description = "Full Phoenix check: compile + unlock + format + test"
@@ -100,10 +100,15 @@ run = "mix format --check-formatted"
 
 # ── API contract (replaces make api-gen) ───────────
 
+[tasks.gen-controllers]
+description = "Generate Phoenix controllers, JSON renderers, and contract tests from the OpenAPI spec"
+dir = "apps/phoenix"
+run = "mix gen.controllers $@"
+
 [tasks.api-gen]
 description = "Regenerate both sides of API contract (Phoenix stubs + TS client)"
 run = [
-    "cd apps/phoenix && mix gen.controllers",
+    "mise run gen-controllers",
     "pnpm --filter @dhc/api-client api:generate",
 ]
 

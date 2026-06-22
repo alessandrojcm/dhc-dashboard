@@ -63,23 +63,26 @@ mise run phx-precommit      # Full check: compile + deps.unlock + format + test
 # Testing
 mise run phx-test           # Run all Phoenix tests (excludes :integration tests)
 
-# For specific test files, run directly:
-cd apps/phoenix && mix test test/some_test.exs
-cd apps/phoenix && mix test --failed     # Re-run only failed tests
-cd apps/phoenix && mix ecto.migrations   # Show migration status
-
-# Integration tests are excluded by default. Run with:
-cd apps/phoenix && mix test --include integration
-cd apps/phoenix && mix test test/dhc/stripe_sync/workers/worker_integration_test.exs --include integration
+# For specific test files, pass paths as args (env vars load via mise, never
+# run bare `mix test` — .env vars like POSTGRES_PASSWORD won't be set):
+mise run phx-test -- test/dhc_web/controllers/inventory_controller_test.exs
+mise run phx-test -- --failed     # Re-run only failed tests
+mise run phx-test -- --include integration  # Integration tests (excluded by default)
 
 # Stripe sync integration test hits Stripe test mode and creates its own
 # customers/subscriptions. Required: STRIPE_SECRET_KEY. STRIPE_SYNC_TEST_PRICE_ID
 # is optional when lookup_key=standard_membership_fee exists in Stripe test mode.
-cd apps/phoenix && \
-  STRIPE_SECRET_KEY=sk_test_... \
-  STRIPE_SYNC_TEST_PRICE_ID=price_... \
-  mix test test/dhc/stripe_sync/workers/worker_integration_test.exs --include integration
+STRIPE_SECRET_KEY=sk_test_... STRIPE_SYNC_TEST_PRICE_ID=price_... \
+  mise run phx-test -- test/dhc/stripe_sync/workers/worker_integration_test.exs --include integration
 ```
+
+> **Always run Phoenix commands through `mise run`.** The `.env` file
+> (loaded by mise via `[env] _.file = ".env"` in `.mise.toml`) supplies
+> `POSTGRES_PASSWORD`, `POSTGRES_DB`, and other env vars that the test
+> harness and config rely on. Bare `mix test` / `mix ecto.*` will fail with
+> password/auth errors because those env vars won't be set. The same applies
+> to seed tasks and any other `mix` invocation — use the matching `mise run`
+> task (or add a new one) rather than `cd apps/phoenix && mix ...`.
 
 ### Sentry (production error tracking)
 
@@ -194,14 +197,9 @@ mise run seed-members
 mise run seed-members 25
 mise run seed-committee
 mise run seed-committee ./scripts/users.csv
-
-# Or run directly from Phoenix app
-cd apps/phoenix && mix seed.waitlist 50
-cd apps/phoenix && mix seed.members 25
-cd apps/phoenix && mix seed.committee_members ../../scripts/users.csv
 ```
 
-`mise` loads `.env` automatically; the seed Mix tasks do not load dotenv themselves. Keep `.env` up to date with the same Phoenix DB connection convention used by the app (`DATABASE_URL`, preferred), plus `PUBLIC_SUPABASE_URL`/`SUPABASE_URL` and `SERVICE_ROLE_KEY`/`SUPABASE_SERVICE_ROLE_KEY`. `seed.members` and `seed.committee_members` create Supabase auth users through the Supabase Admin API, then insert app DB rows. `seed.members` only creates Stripe customers when `STRIPE_SECRET_KEY` is set.
+`mise` loads `.env` automatically; the seed Mix tasks do not load dotenv themselves. Keep `.env` up to date with the same Phoenix DB connection convention used by the app (`DATABASE_URL`, preferred), plus `PUBLIC_SUPABASE_URL`/`SUPABASE_URL` and `SERVICE_ROLE_KEY`/`SUPABASE_SERVICE_ROLE_KEY`. `seed.members` and `seed.committee_members` create Supabase auth users through the Supabase Admin API, then insert app DB rows. `seed.members` only creates Stripe customers when `STRIPE_SECRET_KEY` is set. Never run the seed tasks via bare `cd apps/phoenix && mix seed.*` — env vars won't be set; always use `mise run`.
 
 ## CI (full check)
 

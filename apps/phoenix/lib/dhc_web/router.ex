@@ -29,6 +29,14 @@ defmodule DhcWeb.Router do
     plug DhcWeb.Plugs.RequireAuth, roles: Dhc.Workshops.coordinator_management_roles()
   end
 
+  pipeline :inventory_admin_api do
+    # Mirrors the canonical `Dhc.Inventory.inventory_management_roles/0` and
+    # the existing dashboard Inventory gate (`INVENTORY_ROLES` in
+    # `src/lib/server/roles.ts`). Members without an Inventory privilege
+    # must not read Inventory management data.
+    plug DhcWeb.Plugs.RequireAuth, roles: Dhc.Inventory.inventory_management_roles()
+  end
+
   pipeline :authenticated_api do
     plug DhcWeb.Plugs.RequireAuth
   end
@@ -68,6 +76,12 @@ defmodule DhcWeb.Router do
 
     get "/workshops/calendar", WorkshopsController, :calendar
     get "/workshops/:id/attendees", WorkshopsController, :attendees
+  end
+
+  scope "/api", DhcWeb do
+    pipe_through [:api, :inventory_admin_api]
+
+    get "/inventory/overview", InventoryController, :overview
   end
 
   scope "/api", DhcWeb do
