@@ -42,7 +42,21 @@ config :dhc, DhcWeb.Endpoint,
 # Configure Elixir's Logger
 config :logger, :default_formatter,
   format: "$time $metadata[$level] $message\n",
-  metadata: [:request_id]
+  metadata: [
+    :request_id,
+    :oban_job_id,
+    :oban_attempt,
+    :oban_queue,
+    :oban_worker,
+    :email,
+    :transactional_id,
+    :loops_id,
+    :loops_status,
+    :workshop_id,
+    :announcement_type,
+    :created_by,
+    :invitation_id
+  ]
 
 # Sentry baseline config (DSN/secrets are loaded in config/runtime.exs).
 # The SDK is enabled only when SENTRY_DSN is present.
@@ -72,7 +86,34 @@ config :sentry,
       :inactive,
       :paused,
       :active,
-      :unchanged
+      :unchanged,
+      # Email worker
+      :email,
+      :transactional_id,
+      :loops_id,
+      :loops_status,
+      :loops_body,
+      :loops_url,
+      :reason,
+      :validation_errors,
+      :http_error,
+      # Oban job context
+      :oban_job_id,
+      :oban_attempt,
+      :oban_queue,
+      :oban_worker,
+      # Bulk invite worker
+      :created_by,
+      :total_count,
+      :success_count,
+      :failure_count,
+      :invitation_id,
+      :processing_time_ms,
+      # Workshop announcements worker
+      :workshop_id,
+      :announcement_type,
+      :discord_jobs,
+      :email_jobs
     ]
   ]
 

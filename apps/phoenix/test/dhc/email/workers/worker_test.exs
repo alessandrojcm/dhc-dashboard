@@ -123,12 +123,14 @@ defmodule Dhc.Email.WorkerTest do
     setup do
       original_env = Application.get_env(:dhc, :environment)
       original_key = Application.get_env(:dhc, :loops_api_key)
+      original_map = Application.get_env(:dhc, :loops_transactional_ids)
 
       Application.put_env(:dhc, :environment, :prod)
 
       on_exit(fn ->
         Application.put_env(:dhc, :environment, original_env)
         Application.put_env(:dhc, :loops_api_key, original_key)
+        Application.put_env(:dhc, :loops_transactional_ids, original_map)
       end)
 
       :ok
@@ -223,12 +225,15 @@ defmodule Dhc.Email.WorkerTest do
         payload = Jason.decode!(body)
 
         assert payload["email"] == "user@example.com"
-        assert payload["transactionalId"] == "inviteMember"
+        # The worker translates the friendly name "inviteMember" to the mapped
+        # Loops ID from :loops_transactional_ids (configured in test.exs).
+        assert payload["transactionalId"] == "test-loops-id-inviteMember"
         assert payload["dataVariables"]["name"] == "Alice"
 
         Plug.Conn.send_resp(conn, 200, "{\"success\": true}")
       end)
 
+      # Temporarily override the API URL to point to Bypass
       original_url = Application.get_env(:dhc, :loops_api_url)
 
       Application.put_env(
@@ -293,6 +298,79 @@ defmodule Dhc.Email.WorkerTest do
       assert {:error, {:http_error, _}} = Worker.perform(%Oban.Job{args: args})
     after
       Application.delete_env(:dhc, :loops_api_url)
+    end
+
+    test "translates each friendly name to its mapped Loops ID" do
+      bypass = Bypass.open()
+      Application.put_env(:dhc, :loops_api_key, "test-api-key")
+
+      seen_ids = :ets.new(:seen_ids, [:set, :public])
+
+      Bypass.expect(bypass, "POST", "/api/v1/transactional", fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        payload = Jason.decode!(body)
+        :ets.insert(seen_ids, {payload["transactionalId"], true})
+        Plug.Conn.send_resp(conn, 200, "{\"success\": true}")
+      end)
+
+      original_url = Application.get_env(:dhc, :loops_api_url)
+
+      Application.put_env(
+        :dhc,
+        :loops_api_url,
+        "http://localhost:#{bypass.port}/api/v1/transactional"
+      )
+
+      for friendly <- [
+            "inviteMember",
+            "workshopAnnouncement",
+            "workshopRegistration",
+            "workshopRegistrationError"
+          ] do
+        args = %{"email" => "user@example.com", "transactional_id" => friendly}
+        assert Worker.perform(%Oban.Job{args: args}) == :ok
+      end
+
+      # Each friendly name was translated to its test-exs stub ID, not sent as-is
+      assert :ets.member(seen_ids, "test-loops-id-inviteMember")
+      assert :ets.member(seen_ids, "test-loops-id-workshopAnnouncement")
+      assert :ets.member(seen_ids, "test-loops-id-workshopRegistration")
+      assert :ets.member(seen_ids, "test-loops-id-workshopRegistrationError")
+      refute :ets.member(seen_ids, "inviteMember")
+      refute :ets.member(seen_ids, "workshopAnnouncement")
+
+      :ets.delete(seen_ids)
+    after
+      Application.delete_env(:dhc, :loops_api_url)
+    end
+
+    test "fails fast when a friendly name has no mapped Loops ID" do
+      # Remove the mapping entirely so resolve_loops_id/2 can't translate
+      Application.put_env(:dhc, :loops_api_key, "test-api-key")
+      Application.put_env(:dhc, :loops_transactional_ids, %{})
+
+      args = %{
+        "email" => "user@example.com",
+        "transactional_id" => "inviteMember"
+      }
+
+      # The worker must NOT send the friendly name to Loops (that 404s).
+      # Instead it returns a clear configuration error.
+      assert {:error, {:transactional_id_not_configured, "inviteMember"}} =
+               Worker.perform(%Oban.Job{args: args})
+    end
+
+    test "fails fast when a friendly name maps to an empty string" do
+      Application.put_env(:dhc, :loops_api_key, "test-api-key")
+      Application.put_env(:dhc, :loops_transactional_ids, %{"inviteMember" => ""})
+
+      args = %{
+        "email" => "user@example.com",
+        "transactional_id" => "inviteMember"
+      }
+
+      assert {:error, {:transactional_id_not_configured, "inviteMember"}} =
+               Worker.perform(%Oban.Job{args: args})
     end
   end
 end

@@ -10,6 +10,14 @@ DATABASE_URL = { provider = "1Password", value = "DATABASE_URL" }
 SECRET_KEY_BASE = { provider = "1Password", value = "SECRET_KEY_BASE" }
 DISCORD_WEBHOOK_URL = { provider = "1Password", value = "DISCORD_WEBHOOK_URL" }
 LOOPS_API_KEY = { provider = "1Password", value = "LOOPS_API_KEY" }
+# Friendly-name -> real Loops transactional ID mapping. Each var holds the
+# dashboard-generated Loops ID for one template. Required in production —
+# the email worker fails fast with {:error, {:transactional_id_not_configured, name}}
+# if any is missing, rather than sending the friendly name to Loops (404).
+INVITE_MEMBER_TRANSACTIONAL_ID = { provider = "1Password", value = "INVITE_MEMBER_TRANSACTIONAL_ID" }
+WORKSHOP_ANNOUNCEMENT_TRANSACTIONAL_ID = { provider = "1Password", value = "WORKSHOP_ANNOUNCEMENT_TRANSACTIONAL_ID" }
+WORKSHOP_REGISTRATION_TRANSACTIONAL_ID = { provider = "1Password", value = "WORKSHOP_REGISTRATION_TRANSACTIONAL_ID" }
+WORKSHOP_REGISTRATION_ERROR_TRANSACTIONAL_ID = { provider = "1Password", value = "WORKSHOP_REGISTRATION_ERROR_TRANSACTIONAL_ID" }
 STRIPE_SECRET_KEY = { provider = "1Password", value = "STRIPE_SECRET_KEY" }
 STRIPE_WEBHOOK_SIGNING_SECRET = { provider = "1Password", value = "STRIPE_WEBHOOK_SIGNING_SECRET" }
 SUPABASE_URL = { provider = "1Password", value = "SUPABASE_URL" }
