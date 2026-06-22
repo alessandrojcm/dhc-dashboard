@@ -1,23 +1,11 @@
 # Issue tracker
 
-Issues are tracked in **GitHub Issues** using the `gh` CLI.
+Issues are tracked in **Linear** using the `linctl` CLI.
 
-## Creating an issue
+Issue identifiers follow the format `DHC-123`.
 
-```bash
-gh issue create --title "Title" --body "Body" --label "enhancement"
-```
+When referencing work back to an issue, use the issue URL.
 
-## Listing issues
+## CLI usage
 
-```bash
-gh issue list
-```
-
-## Viewing an issue
-
-```bash
-gh issue view <number>
-```
-
-Repository: `alessandrojcm/dhc-dashboard`
+Run `linctl -h` for available commands.
