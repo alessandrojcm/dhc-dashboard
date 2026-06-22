@@ -124,7 +124,7 @@ defmodule Dhc.StripeSync.Repository do
   end
 
   defp user_profile_ids_for_customer(customer_id) do
-    from(up in "user_profiles",
+    from(up in Dhc.UserProfiles.UserProfile,
       where: up.customer_id == ^customer_id,
       select: up.id
     )
