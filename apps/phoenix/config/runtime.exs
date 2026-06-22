@@ -82,6 +82,23 @@ if config_env() == :prod do
 
   config :dhc, :discord_webhook_url, System.get_env("DISCORD_WEBHOOK_URL")
   config :dhc, :loops_api_key, System.get_env("LOOPS_API_KEY")
+
+  # Friendly name -> real Loops transactional ID mapping.
+  # Mirrors the edge function's env-var lookup (supabase/functions/process-emails).
+  # Only workshopRegistration has a real Loops ID as its fallback default; the
+  # other three MUST be set via env vars in production or the email worker fails
+  # fast with {:error, {:transactional_id_not_configured, name}} rather than
+  # sending the friendly name to Loops (which 404s after 5 retries).
+  config :dhc, :loops_transactional_ids, %{
+    "inviteMember" => System.get_env("INVITE_MEMBER_TRANSACTIONAL_ID", "invite_member"),
+    "workshopAnnouncement" =>
+      System.get_env("WORKSHOP_ANNOUNCEMENT_TRANSACTIONAL_ID", "workshop_announcement"),
+    "workshopRegistration" =>
+      System.get_env("WORKSHOP_REGISTRATION_TRANSACTIONAL_ID", "cmnok76cq02tq0ix92oeoi1kk"),
+    "workshopRegistrationError" =>
+      System.get_env("WORKSHOP_REGISTRATION_ERROR_TRANSACTIONAL_ID", "workshopRegistrationError")
+  }
+
   config :dhc, :stripe_secret_key, System.get_env("STRIPE_SECRET_KEY")
   config :dhc, :stripe_api_url, System.get_env("STRIPE_API_URL", "https://api.stripe.com")
   config :dhc, :stripe_api_version, "2025-10-29.clover"
@@ -147,7 +164,35 @@ if config_env() == :prod do
         :inactive,
         :paused,
         :active,
-        :unchanged
+        :unchanged,
+        # Email worker (Dhc.Email.Worker)
+        :email,
+        :transactional_id,
+        :loops_id,
+        :loops_status,
+        :loops_body,
+        :loops_url,
+        :data_variables,
+        :reason,
+        :validation_errors,
+        :http_error,
+        # Oban job context (shared across all workers)
+        :oban_job_id,
+        :oban_attempt,
+        :oban_queue,
+        :oban_worker,
+        # Bulk invite worker
+        :created_by,
+        :total_count,
+        :success_count,
+        :failure_count,
+        :invitation_id,
+        :processing_time_ms,
+        # Workshop announcements worker
+        :workshop_id,
+        :announcement_type,
+        :discord_jobs,
+        :email_jobs
       ]
     ],
     integrations: [
@@ -180,7 +225,28 @@ if config_env() == :prod do
            :inactive_updated_count,
            :subscription_id,
            :subscription_status,
-           :subscription_created_at
+           :subscription_created_at,
+           # Email worker
+           :email,
+           :transactional_id,
+           :loops_id,
+           :loops_status,
+           :loops_body,
+           :loops_url,
+           :reason,
+           :validation_errors,
+           :http_error,
+           # Oban job context
+           :oban_job_id,
+           :oban_attempt,
+           :oban_queue,
+           :oban_worker,
+           # Bulk invite worker
+           :created_by,
+           :invitation_id,
+           # Workshop announcements worker
+           :workshop_id,
+           :announcement_type
          ],
          excluded_domains: [:cowboy, :bandit],
          rate_limiting: [max_events: 10, interval: 1_000]
