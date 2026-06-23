@@ -872,6 +872,101 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /inventory/activity:
+    get:
+      operationId: inventory.activity
+      tags:
+        - Inventory
+      summary: Read the Inventory Activity feed
+      description: |
+        Returns the Inventory Activity feed (the `inventory_history` table),
+        newest-first, cursor-paginated with no total count.
+
+        Each Inventory Activity entry carries the action (`created`, `moved`,
+        `updated`, `maintenance_out`, `maintenance_in`), the acting user
+        (`changedBy`), the affected Inventory Item (`itemId` + the nested
+        `item` object with `id` and `attributes`), the optional old/new
+        Container ids and the nested `oldContainer`/`newContainer` objects
+        (each `{ id, name }` or `null`), freeform `notes`, and `createdAt`.
+
+        Replaces the SvelteKit server-side PostgREST/Kysely read over
+        `inventory_history` joined to `inventory_items` and `containers` on
+        the Inventory dashboard overview
+        (`src/routes/dashboard/inventory/+page.server.ts`).
+
+        The feed is ordered by `createdAt desc, id desc` (deterministic
+        tie-break). Pagination is forward-only via an opaque `cursor`: the
+        response carries `nextCursor` (or `null` when there is no next page)
+        and intentionally omits a total count — the overview counts already
+        provide the summary totals, and the activity feed is an open-ended
+        log, not a paginated table.
+
+        Optional filters:
+
+          * `itemId` — constrain the feed to a single Inventory Item
+            (matches `inventory_history.item_id`).
+          * `containerId` — constrain the feed to activities whose
+            `oldContainerId` or `newContainerId` equals the given Container id.
+
+        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
+        `quartermaster`, `president`, or `admin` (the `inventory_admin_api`
+        pipeline, mirroring the existing dashboard Inventory read gate). A
+        member without an Inventory privilege receives `403`; a missing token
+        returns `401`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            enum: [10, 25, 50, 100]
+            default: 10
+        - name: cursor
+          in: query
+          schema:
+            type: string
+          description: Opaque cursor returned by a previous response. Binds to the query params (limit, itemId, containerId); a mismatched cursor returns 400.
+        - name: itemId
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Filter the feed to a single Inventory Item.
+        - name: containerId
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: |
+            Filter the feed to activities touching the given Container
+            (matches either `oldContainerId` or `newContainerId`).
+      responses:
+        "200":
+          description: Cursor-paginated Inventory Activity feed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryActivityListResponse"
+        "400":
+          description: Invalid query parameter or mismatched cursor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks an Inventory management role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -933,6 +1028,126 @@ components:
         maintenanceCount:
           type: integer
           minimum: 0
+    InventoryActivityListResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - activity
+            - limit
+            - nextCursor
+          properties:
+            activity:
+              type: array
+              items:
+                $ref: "#/components/schemas/InventoryActivity"
+            limit:
+              type: integer
+              enum: [10, 25, 50, 100]
+            nextCursor:
+              type: string
+              nullable: true
+              description: Opaque cursor for the next page, or null when there is no next page.
+    InventoryActivity:
+      type: object
+      required:
+        - id
+        - action
+        - changedBy
+        - createdAt
+        - itemId
+        - oldContainerId
+        - newContainerId
+        - notes
+        - item
+        - oldContainer
+        - newContainer
+      description: |
+        A single Inventory Activity entry. `item`, `oldContainer`, and
+        `newContainer` are nullable: an `item` is null only if the Inventory
+        Item row was deleted (cascading history is kept), and the container
+        objects are null when the action did not involve that side of a move.
+      properties:
+        id:
+          type: string
+          format: uuid
+        action:
+          $ref: "#/components/schemas/InventoryAction"
+        changedBy:
+          type: string
+          format: uuid
+          description: Supabase auth user id of the user who performed the action.
+        createdAt:
+          type: string
+          format: date-time
+        itemId:
+          type: string
+          format: uuid
+        oldContainerId:
+          type: string
+          format: uuid
+          nullable: true
+        newContainerId:
+          type: string
+          format: uuid
+          nullable: true
+        notes:
+          type: string
+          nullable: true
+        item:
+          allOf:
+            - $ref: "#/components/schemas/InventoryActivityItem"
+          nullable: true
+        oldContainer:
+          allOf:
+            - $ref: "#/components/schemas/InventoryActivityContainer"
+          nullable: true
+        newContainer:
+          allOf:
+            - $ref: "#/components/schemas/InventoryActivityContainer"
+          nullable: true
+    InventoryActivityItem:
+      type: object
+      required:
+        - id
+        - attributes
+      properties:
+        id:
+          type: string
+          format: uuid
+        attributes:
+          type: object
+          additionalProperties: true
+          description: Per-item attribute values (e.g. brand, size). May be empty.
+    InventoryActivityContainer:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+    InventoryAction:
+      type: string
+      enum:
+        - created
+        - moved
+        - updated
+        - maintenance_out
+        - maintenance_in
+      description: |
+        Inventory Activity action (persistence: `inventory_action` Postgres
+        enum). `created` is the item-creation event; `moved` records a
+        container change (carries `oldContainerId`/`newContainerId`);
+        `updated` is a generic attribute/quantity update; `maintenance_out`
+        / `maintenance_in` mark an item leaving for / returning from
+        maintenance.
     InvitationCreateRequest:
       type: object
       required:

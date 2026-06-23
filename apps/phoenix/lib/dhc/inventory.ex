@@ -32,14 +32,15 @@ defmodule Dhc.Inventory do
 
   ## Scope of this slice
 
-  This slice covers the overview counts only (`GET /api/inventory/overview`).
-  Inventory Activity (the `inventory_history` feed) is intentionally split
-  into a separate endpoint (PRD #93, ALE-95) so the overview stays light.
+  This module covers both the overview counts (`GET /api/inventory/overview`,
+  ALE-94) and the Inventory Activity feed (`GET /api/inventory/activity`,
+  ALE-95). Later endpoint slices (categories, containers, items — see PRD #93)
+  can build on these schemas without re-deriving them.
   """
 
   import Ecto.Query
 
-  alias Dhc.Inventory.{Container, EquipmentCategory, InventoryItem}
+  alias Dhc.Inventory.{Container, EquipmentCategory, InventoryActivity, InventoryItem}
   alias Dhc.Repo
 
   # The canonical Phoenix RBAC for Inventory management reads. Mirrors the
@@ -110,5 +111,215 @@ defmodule Dhc.Inventory do
         maintenance_count: maintenance || 0
       }
     end)
+  end
+
+  # ── Inventory Activity feed (ALE-95) ─────────────────────────────────
+  #
+  # Cursor-paginated, newest-first (`created_at desc, id desc`), with no total
+  # count. Mirrors the Notifications cursor pattern: forward-only pagination
+  # via an opaque base64url-encoded JSON cursor binding `{limit, id, createdAt,
+  # itemId, containerId}`; the response carries `nextCursor` (or `nil`).
+  #
+  # `limit + 1` is fetched so a non-nil `nextCursor` signals another page
+  # without a separate `COUNT(*)`. The DTO joins `inventory_items` (for the
+  # nested `item` object) and `containers` twice (old/new) for the nested
+  # container objects, matching the legacy SvelteKit Kysely read shape in
+  # `src/routes/dashboard/inventory/+page.server.ts`.
+
+  @allowed_limits [10, 25, 50, 100]
+
+  @doc """
+  Returns cursor-paginated, domain-shaped Inventory Activity entries.
+
+  Newest-first, ordered by `created_at desc, id desc` (deterministic
+  tie-break). No total count is returned: the overview counts already provide
+  the summary totals, and the activity feed is an open-ended log, not a
+  paginated table.
+
+  ## Options
+
+    * `"limit"` (default `10`) — one of `10`, `25`, `50`, `100`.
+    * `"cursor"` — opaque cursor from a previous response.
+    * `"itemId"` — constrain the feed to a single Inventory Item.
+    * `"containerId"` — constrain the feed to activities whose
+      `oldContainerId` or `newContainerId` equals the given Container id.
+
+  ## Returns
+
+    * `{:ok, %{activity: [map], limit: integer, next_cursor: binary | nil}}`
+    * `{:error, :invalid_limit}` / `{:error, :bad_item_id}` /
+      `{:error, :bad_container_id}` / `{:error, :bad_cursor}`
+  """
+  @spec list_activity(map()) ::
+          {:ok, %{activity: [map()], limit: integer, next_cursor: binary | nil}}
+          | {:error, :invalid_limit | :bad_item_id | :bad_container_id | :bad_cursor}
+  def list_activity(params \\ %{}) do
+    with {:ok, opts} <- parse_activity_options(params),
+         {:ok, cursor} <- parse_activity_cursor(opts) do
+      rows = activity_rows(opts, cursor)
+      visible_rows = Enum.take(rows, opts.limit)
+
+      {:ok,
+       %{
+         activity: visible_rows,
+         limit: opts.limit,
+         next_cursor: next_activity_cursor(visible_rows, rows, opts)
+       }}
+    end
+  end
+
+  defp parse_activity_options(params) do
+    limit = parse_integer(Map.get(params, "limit", "10"))
+    item_id = blank_to_nil(Map.get(params, "itemId"))
+    container_id = blank_to_nil(Map.get(params, "containerId"))
+
+    cond do
+      limit not in @allowed_limits ->
+        {:error, :invalid_limit}
+
+      item_id != nil and not valid_uuid?(item_id) ->
+        {:error, :bad_item_id}
+
+      container_id != nil and not valid_uuid?(container_id) ->
+        {:error, :bad_container_id}
+
+      true ->
+        {:ok,
+         %{
+           limit: limit,
+           item_id: item_id,
+           container_id: container_id,
+           cursor: blank_to_nil(Map.get(params, "cursor"))
+         }}
+    end
+  end
+
+  defp valid_uuid?(value), do: match?({:ok, _}, Ecto.UUID.cast(value))
+
+  defp parse_integer(value) when is_integer(value), do: value
+
+  defp parse_integer(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {int, ""} -> int
+      _ -> nil
+    end
+  end
+
+  defp parse_integer(_value), do: nil
+
+  defp blank_to_nil(value) when value in [nil, ""], do: nil
+  defp blank_to_nil(value), do: value
+
+  defp parse_activity_cursor(%{cursor: nil}), do: {:ok, nil}
+
+  defp parse_activity_cursor(opts) do
+    with {:ok, json} <- Base.url_decode64(opts.cursor, padding: false),
+         {:ok, cursor} <- Jason.decode(json),
+         true <- cursor["limit"] == opts.limit,
+         true <- cursor["itemId"] == opts.item_id,
+         true <- cursor["containerId"] == opts.container_id,
+         {:ok, _id} <- Ecto.UUID.cast(cursor["id"]),
+         {:ok, _created_at, _offset} <- DateTime.from_iso8601(cursor["createdAt"]) do
+      {:ok, cursor}
+    else
+      _ -> {:error, :bad_cursor}
+    end
+  end
+
+  defp activity_rows(opts, cursor) do
+    base =
+      from h in InventoryActivity,
+        left_join: item in InventoryItem,
+        on: item.id == h.item_id,
+        left_join: old_c in Container,
+        on: old_c.id == h.old_container_id,
+        left_join: new_c in Container,
+        on: new_c.id == h.new_container_id,
+        select: %{
+          id: h.id,
+          action: h.action,
+          changed_by: h.changed_by,
+          created_at: h.created_at,
+          item_id: h.item_id,
+          old_container_id: h.old_container_id,
+          new_container_id: h.new_container_id,
+          notes: h.notes,
+          item:
+            fragment(
+              "CASE WHEN ? IS NOT NULL THEN json_build_object('id', ?, 'attributes', ?) ELSE NULL END",
+              item.id,
+              item.id,
+              item.attributes
+            ),
+          old_container:
+            fragment(
+              "CASE WHEN ? IS NOT NULL THEN json_build_object('id', ?, 'name', ?) ELSE NULL END",
+              old_c.id,
+              old_c.id,
+              old_c.name
+            ),
+          new_container:
+            fragment(
+              "CASE WHEN ? IS NOT NULL THEN json_build_object('id', ?, 'name', ?) ELSE NULL END",
+              new_c.id,
+              new_c.id,
+              new_c.name
+            )
+        }
+
+    base
+    |> filter_item_id(opts.item_id)
+    |> filter_container_id(opts.container_id)
+    |> apply_activity_cursor(cursor)
+    |> order_by([h], desc: h.created_at, desc: h.id)
+    |> limit(^opts.limit + 1)
+    |> Repo.all()
+  end
+
+  defp filter_item_id(query, nil), do: query
+
+  defp filter_item_id(query, item_id),
+    do: where(query, [h], h.item_id == ^item_id)
+
+  defp filter_container_id(query, nil), do: query
+
+  defp filter_container_id(query, container_id),
+    do:
+      where(
+        query,
+        [h],
+        h.old_container_id == ^container_id or h.new_container_id == ^container_id
+      )
+
+  defp apply_activity_cursor(query, nil), do: query
+
+  defp apply_activity_cursor(query, cursor) do
+    where(
+      query,
+      [h],
+      h.created_at < type(^cursor["createdAt"], :utc_datetime) or
+        (h.created_at == type(^cursor["createdAt"], :utc_datetime) and h.id < ^cursor["id"])
+    )
+  end
+
+  defp next_activity_cursor([], _rows, _opts), do: nil
+
+  defp next_activity_cursor(visible_rows, rows, opts) do
+    if length(rows) > opts.limit,
+      do: visible_rows |> List.last() |> encode_activity_cursor(opts)
+  end
+
+  defp encode_activity_cursor(nil, _opts), do: nil
+
+  defp encode_activity_cursor(row, opts) do
+    %{
+      limit: opts.limit,
+      itemId: opts.item_id,
+      containerId: opts.container_id,
+      id: row.id,
+      createdAt: DateTime.to_iso8601(row.created_at)
+    }
+    |> Jason.encode!()
+    |> Base.url_encode64(padding: false)
   end
 end

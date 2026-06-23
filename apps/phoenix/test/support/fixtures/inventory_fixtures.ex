@@ -10,7 +10,7 @@ defmodule Dhc.InventoryFixtures do
   Use `auth_user_fixture/0` to create one, or pass `:created_by` explicitly.
   """
 
-  alias Dhc.Inventory.{Container, EquipmentCategory, InventoryItem}
+  alias Dhc.Inventory.{Container, EquipmentCategory, InventoryActivity, InventoryItem}
   alias Dhc.Repo
 
   @doc """
@@ -127,5 +127,44 @@ defmodule Dhc.InventoryFixtures do
       |> Repo.insert()
 
     item
+  end
+
+  @doc """
+  Inserts an Inventory Activity row (an `inventory_history` row).
+
+  Requires an `:item_id` and a `:changed_by` auth user id (both NOT NULL).
+  `:created_at` defaults to a deterministic value so tests can assert
+  ordering; pass `:created_at` explicitly to control the order.
+
+  ## Options
+
+    * `:item_id` (required)
+    * `:changed_by` (required; use `auth_user_fixture/0`)
+    * `:action` (default `"updated"`; one of `created`, `moved`, `updated`,
+      `maintenance_out`, `maintenance_in`)
+    * `:old_container_id` (default `nil`)
+    * `:new_container_id` (default `nil`)
+    * `:notes` (default `nil`)
+    * `:created_at` (default a fixed `~U[2026-01-01 00:00:00Z]`)
+
+  Returns the inserted `InventoryActivity` struct.
+  """
+  def activity_fixture(attrs) do
+    attrs = Enum.into(attrs, %{})
+
+    {:ok, activity} =
+      %InventoryActivity{
+        id: Map.get(attrs, :id, Ecto.UUID.generate()),
+        item_id: Map.fetch!(attrs, :item_id),
+        action: Map.get(attrs, :action, "updated"),
+        old_container_id: Map.get(attrs, :old_container_id),
+        new_container_id: Map.get(attrs, :new_container_id),
+        changed_by: Map.fetch!(attrs, :changed_by),
+        notes: Map.get(attrs, :notes),
+        created_at: Map.get(attrs, :created_at, ~U[2026-01-01 00:00:00Z])
+      }
+      |> Repo.insert()
+
+    activity
   end
 end

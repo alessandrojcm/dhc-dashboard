@@ -14,6 +14,7 @@ defmodule DhcWeb.InventoryControllerTest do
 
   use DhcWeb.ConnCase, async: false
 
+  alias Dhc.Inventory.{Container, EquipmentCategory, InventoryActivity, InventoryItem}
   alias Dhc.InventoryFixtures
   alias Dhc.Repo
 
@@ -243,5 +244,437 @@ defmodule DhcWeb.InventoryControllerTest do
       refute Map.has_key?(body, "inventory_items")
       refute Map.has_key?(body, "equipment_categories")
     end
+  end
+
+  # ── Activity feed (ALE-95) ───────────────────────────────────────────
+
+  describe "activity — RBAC" do
+    test "allows quartermaster, president, and admin", %{conn: _conn} do
+      for role <- @allowed_roles do
+        conn =
+          build_conn()
+          |> auth_conn(role)
+          |> get("/api/inventory/activity")
+
+        assert %{"data" => %{"activity" => _}} = json_response(conn, 200)
+      end
+    end
+
+    test "returns 401 without a bearer token", %{conn: conn} do
+      conn = get(conn, "/api/inventory/activity")
+
+      assert %{"errors" => %{"detail" => "Unauthorized"}} = json_response(conn, 401)
+    end
+
+    test "returns 401 with an invalid bearer token", %{conn: conn} do
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer bad-token")
+        |> get("/api/inventory/activity")
+
+      assert %{"errors" => %{"detail" => "Unauthorized"}} = json_response(conn, 401)
+    end
+
+    test "returns 403 for members without an Inventory privilege", %{conn: _conn} do
+      for role <- @rejected_roles do
+        conn =
+          build_conn()
+          |> auth_conn(role)
+          |> get("/api/inventory/activity")
+
+        assert %{"errors" => %{"detail" => "Insufficient role"}} = json_response(conn, 403)
+      end
+    end
+  end
+
+  describe "activity — feed" do
+    setup :seed_activity_fixture
+
+    test "returns newest-first activity ordered by createdAt desc, id desc", %{
+      conn: conn,
+      activity: activity
+    } do
+      conn =
+        conn
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/activity")
+
+      assert %{
+               "data" => %{
+                 "activity" => [first | _rest],
+                 "limit" => 10,
+                 "nextCursor" => nil
+               }
+             } = json_response(conn, 200)
+
+      # Newest created_at wins; ties break on id desc. `newest` has the latest
+      # created_at, so it must come first.
+      assert first["id"] == activity.newest.id
+
+      # No total count is returned — the feed is an open-ended log.
+      body = json_response(conn, 200)
+      refute Map.has_key?(body["data"], "totalCount")
+      refute Map.has_key?(body["data"], "total_count")
+    end
+
+    test "preserves the agreed camelCase fields and nested objects", %{
+      conn: conn,
+      activity: activity
+    } do
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> get("/api/inventory/activity")
+
+      assert %{"data" => %{"activity" => entries}} = json_response(conn, 200)
+
+      # The moved fixture carries item + old/new containers, so all nested
+      # objects are populated on that row.
+      moved = activity.moved
+      entry = Enum.find(entries, &(&1["id"] == moved.id))
+
+      assert entry["id"] == moved.id
+      assert entry["action"] == "moved"
+      assert entry["changedBy"] == moved.changed_by
+      assert entry["createdAt"] == DateTime.to_iso8601(moved.created_at)
+      assert entry["itemId"] == moved.item_id
+      assert entry["oldContainerId"] == moved.old_container_id
+      assert entry["newContainerId"] == moved.new_container_id
+      assert entry["notes"] == moved.notes
+
+      assert entry["item"] == %{
+               "id" => activity.item.id,
+               "attributes" => %{"name" => "Longsword"}
+             }
+
+      assert entry["oldContainer"] == %{
+               "id" => activity.old_container.id,
+               "name" => activity.old_container.name
+             }
+
+      assert entry["newContainer"] == %{
+               "id" => activity.new_container.id,
+               "name" => activity.new_container.name
+             }
+
+      # Storage vocabulary must not leak.
+      refute Map.has_key?(entry, "changed_by")
+      refute Map.has_key?(entry, "item_id")
+      refute Map.has_key?(entry, "old_container_id")
+      refute Map.has_key?(entry, "new_container_id")
+      refute Map.has_key?(entry, "created_at")
+    end
+
+    test "nested item/containers are null when the join misses", %{conn: conn, activity: activity} do
+      # The `newest` fixture (an `updated` action) has no old/new container, so
+      # those nested objects must be null while `item` is populated.
+      conn =
+        conn
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/activity")
+
+      assert %{"data" => %{"activity" => entries}} = json_response(conn, 200)
+
+      updated_entry = Enum.find(entries, &(&1["id"] == activity.newest.id))
+
+      assert updated_entry["item"] == %{
+               "id" => activity.item.id,
+               "attributes" => %{"name" => "Longsword"}
+             }
+
+      assert updated_entry["oldContainer"] == nil
+      assert updated_entry["newContainer"] == nil
+      assert updated_entry["oldContainerId"] == nil
+      assert updated_entry["newContainerId"] == nil
+    end
+  end
+
+  describe "activity — pagination" do
+    setup :seed_paginated_activity
+
+    test "paginates forward via cursor and stops with a null nextCursor", %{
+      conn: conn,
+      rows: rows
+    } do
+      first_page =
+        conn
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/activity", limit: 10)
+
+      assert %{
+               "data" => %{
+                 "activity" => first_activity,
+                 "nextCursor" => next_cursor
+               }
+             } = json_response(first_page, 200)
+
+      assert length(first_activity) == 10
+
+      # The first page is the 10 newest rows.
+      expected_first_ids =
+        rows
+        |> Enum.sort_by(&{DateTime.to_iso8601(&1.created_at), &1.id}, :desc)
+        |> Enum.take(10)
+        |> Enum.map(& &1.id)
+
+      assert Enum.map(first_activity, & &1["id"]) == expected_first_ids
+
+      assert is_binary(next_cursor)
+
+      second_page =
+        build_conn()
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/activity", limit: 10, cursor: next_cursor)
+
+      assert %{
+               "data" => %{
+                 "activity" => second_activity,
+                 "nextCursor" => nil
+               }
+             } = json_response(second_page, 200)
+
+      assert length(second_activity) == 5
+
+      all_ids = Enum.map(first_activity, & &1["id"]) ++ Enum.map(second_activity, & &1["id"])
+      assert length(all_ids) == 15
+      assert Enum.uniq(all_ids) == all_ids
+    end
+
+    test "returns 400 for an invalid cursor", %{conn: conn} do
+      conn =
+        conn
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/activity", cursor: "not-a-cursor")
+
+      assert %{"errors" => %{"detail" => "Invalid or mismatched cursor"}} =
+               json_response(conn, 400)
+    end
+
+    test "returns 400 when the cursor was minted with a different limit", %{
+      conn: conn,
+      rows: _rows
+    } do
+      cursor =
+        conn
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/activity", limit: 10)
+        |> json_response(200)
+        |> get_in(["data", "nextCursor"])
+
+      # Reuse the limit=10 cursor with limit=25 — must be rejected.
+      conn =
+        build_conn()
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/activity", limit: 25, cursor: cursor)
+
+      assert %{"errors" => %{"detail" => "Invalid or mismatched cursor"}} =
+               json_response(conn, 400)
+    end
+
+    test "returns 400 for an invalid limit", %{conn: conn} do
+      conn =
+        conn
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/activity", limit: 7)
+
+      assert %{"errors" => %{"detail" => "Invalid limit"}} = json_response(conn, 400)
+    end
+  end
+
+  describe "activity — filters" do
+    setup :seed_filterable_activity
+
+    test "filters by itemId", %{conn: conn, activity: activity} do
+      conn =
+        conn
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/activity", itemId: activity.item_b.id)
+
+      assert %{"data" => %{"activity" => entries}} = json_response(conn, 200)
+
+      assert Enum.all?(entries, &(&1["itemId"] == activity.item_b.id))
+    end
+
+    test "filters by containerId (matches old or new container)", %{
+      conn: conn,
+      activity: activity
+    } do
+      conn =
+        conn
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/activity", containerId: activity.container_b.id)
+
+      assert %{"data" => %{"activity" => entries}} = json_response(conn, 200)
+
+      # Both rows touching container B (moved-from-B and moved-to-B) appear.
+      ids = Enum.map(entries, & &1["id"]) |> MapSet.new()
+
+      assert MapSet.member?(ids, activity.moved_from_b.id)
+      assert MapSet.member?(ids, activity.moved_to_b.id)
+    end
+
+    test "returns 400 for an invalid itemId", %{conn: conn} do
+      conn =
+        conn
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/activity", itemId: "not-a-uuid")
+
+      assert %{"errors" => %{"detail" => "Invalid itemId"}} = json_response(conn, 400)
+    end
+
+    test "returns 400 for an invalid containerId", %{conn: conn} do
+      conn =
+        conn
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/activity", containerId: "not-a-uuid")
+
+      assert %{"errors" => %{"detail" => "Invalid containerId"}} = json_response(conn, 400)
+    end
+  end
+
+  # ── Fixtures ─────────────────────────────────────────────────────────
+
+  defp seed_activity_fixture(_context) do
+    # Clear seeded equipment categories so counts/rows are deterministic, and
+    # wipe any leftover history from prior tests.
+    Repo.delete_all(InventoryActivity)
+    Repo.delete_all(InventoryItem)
+    Repo.delete_all(Container)
+    Repo.delete_all(EquipmentCategory)
+
+    changed_by = InventoryFixtures.auth_user_fixture()
+    category = InventoryFixtures.category_fixture(name: "Longswords")
+
+    old_container = InventoryFixtures.container_fixture(name: "Locker A")
+    new_container = InventoryFixtures.container_fixture(name: "Locker B")
+
+    item =
+      InventoryFixtures.item_fixture(
+        container_id: new_container.id,
+        category_id: category.id,
+        attributes: %{"name" => "Longsword"}
+      )
+
+    created =
+      InventoryFixtures.activity_fixture(
+        item_id: item.id,
+        changed_by: changed_by,
+        action: "created",
+        new_container_id: new_container.id,
+        notes: "Initial creation",
+        created_at: ~U[2026-01-01 00:00:00Z]
+      )
+
+    moved =
+      InventoryFixtures.activity_fixture(
+        item_id: item.id,
+        changed_by: changed_by,
+        action: "moved",
+        old_container_id: old_container.id,
+        new_container_id: new_container.id,
+        notes: "Moved A → B",
+        created_at: ~U[2026-01-02 00:00:00Z]
+      )
+
+    newest =
+      InventoryFixtures.activity_fixture(
+        item_id: item.id,
+        changed_by: changed_by,
+        action: "updated",
+        notes: "Attribute refresh",
+        created_at: ~U[2026-01-03 00:00:00Z]
+      )
+
+    {:ok,
+     activity: %{
+       item: item,
+       old_container: old_container,
+       new_container: new_container,
+       created: created,
+       moved: moved,
+       newest: newest
+     }}
+  end
+
+  defp seed_paginated_activity(_context) do
+    Repo.delete_all(InventoryActivity)
+    Repo.delete_all(InventoryItem)
+    Repo.delete_all(Container)
+    Repo.delete_all(EquipmentCategory)
+
+    changed_by = InventoryFixtures.auth_user_fixture()
+    category = InventoryFixtures.category_fixture()
+    container = InventoryFixtures.container_fixture()
+    item = InventoryFixtures.item_fixture(container_id: container.id, category_id: category.id)
+
+    rows =
+      for index <- 1..15 do
+        InventoryFixtures.activity_fixture(
+          item_id: item.id,
+          changed_by: changed_by,
+          action: "updated",
+          notes: "Update #{index}",
+          created_at: DateTime.add(~U[2026-01-01 00:00:00Z], index, :second)
+        )
+      end
+
+    {:ok, rows: rows}
+  end
+
+  defp seed_filterable_activity(_context) do
+    Repo.delete_all(InventoryActivity)
+    Repo.delete_all(InventoryItem)
+    Repo.delete_all(Container)
+    Repo.delete_all(EquipmentCategory)
+
+    changed_by = InventoryFixtures.auth_user_fixture()
+    category = InventoryFixtures.category_fixture()
+
+    container_a = InventoryFixtures.container_fixture(name: "Container A")
+    container_b = InventoryFixtures.container_fixture(name: "Container B")
+
+    item_a =
+      InventoryFixtures.item_fixture(
+        container_id: container_a.id,
+        category_id: category.id,
+        attributes: %{"name" => "Item A"}
+      )
+
+    item_b =
+      InventoryFixtures.item_fixture(
+        container_id: container_b.id,
+        category_id: category.id,
+        attributes: %{"name" => "Item B"}
+      )
+
+    moved_from_b =
+      InventoryFixtures.activity_fixture(
+        item_id: item_b.id,
+        changed_by: changed_by,
+        action: "moved",
+        old_container_id: container_b.id,
+        new_container_id: container_a.id,
+        created_at: ~U[2026-01-02 00:00:00Z]
+      )
+
+    moved_to_b =
+      InventoryFixtures.activity_fixture(
+        item_id: item_a.id,
+        changed_by: changed_by,
+        action: "moved",
+        old_container_id: container_a.id,
+        new_container_id: container_b.id,
+        created_at: ~U[2026-01-03 00:00:00Z]
+      )
+
+    {:ok,
+     activity: %{
+       item_a: item_a,
+       item_b: item_b,
+       container_a: container_a,
+       container_b: container_b,
+       moved_from_b: moved_from_b,
+       moved_to_b: moved_to_b
+     }}
   end
 end

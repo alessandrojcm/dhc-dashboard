@@ -1,5 +1,8 @@
 <script lang="ts">
-import { inventoryOverviewOptions } from "@dhc/api-client";
+import {
+	inventoryActivityOptions,
+	inventoryOverviewOptions,
+} from "@dhc/api-client";
 import { createQuery } from "@tanstack/svelte-query";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
@@ -22,8 +25,6 @@ import {
 
 dayjs.extend(relativeTime);
 
-let { data } = $props();
-
 // Inventory overview counts come from Phoenix (`GET /api/inventory/overview`,
 // issue ALE-94) via the generated TanStack Query options. The Supabase JWT is
 // attached by `configureClient`'s `getAuthToken` hook; authz is enforced by
@@ -35,6 +36,18 @@ let { data } = $props();
 const overviewQuery = createQuery(() => inventoryOverviewOptions());
 
 const stats = $derived(overviewQuery.data?.data.summary);
+
+// Inventory Activity feed comes from Phoenix (`GET /api/inventory/activity`,
+// issue ALE-95) via the generated TanStack Query options. Replaces the
+// server-side Kysely read over `inventory_history` joined to `inventory_items`
+// and `containers` in `+page.server.ts`. The feed is newest-first and
+// limited to the first 10 entries for the overview card (the Phoenix
+// endpoint supports cursor pagination for a dedicated activity view).
+const activityQuery = createQuery(() =>
+	inventoryActivityOptions({ query: { limit: 10 } }),
+);
+
+const recentActivity = $derived(activityQuery.data?.data.activity ?? []);
 
 const getActionIcon = (action: string) => {
 	switch (action) {
@@ -156,11 +169,11 @@ const getActionColor = (action: string) => {
 				<CardDescription>Latest inventory changes</CardDescription>
 			</CardHeader>
 			<CardContent>
-				{#if data.recentActivity.length === 0}
+				{#if recentActivity.length === 0}
 					<p class="text-sm text-muted-foreground">No recent activity</p>
 				{:else}
 					<div class="space-y-3">
-						{#each data.recentActivity.slice(0, 5) as activity (activity.id)}
+						{#each recentActivity.slice(0, 5) as activity (activity.id)}
 							{@const ActionIcon = getActionIcon(activity.action)}
 							<div class="flex items-start gap-3">
 								<div class="flex h-8 w-8 items-center justify-center rounded-full bg-muted">
@@ -174,12 +187,12 @@ const getActionColor = (action: string) => {
 										{:else}
 											item
 										{/if}
-										{#if activity.action === 'moved' && activity.old_container && activity.new_container}
-											from {activity.old_container.name} to {activity.new_container.name}
+										{#if activity.action === 'moved' && activity.oldContainer && activity.newContainer}
+											from {activity.oldContainer.name} to {activity.newContainer.name}
 										{/if}
 									</p>
 									<p class="text-xs text-muted-foreground">
-										{dayjs(activity.created_at).fromNow()}
+										{dayjs(activity.createdAt).fromNow()}
 									</p>
 								</div>
 							</div>
