@@ -930,6 +930,130 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /inventory/items:
+    get:
+      operationId: inventory.items
+      tags:
+        - Inventory
+      summary: Read the Inventory Item list
+      description: |
+        Returns the domain-shaped, cursor-paginated Inventory Item list with a
+        total count, replacing the SvelteKit client-side Supabase/PostgREST
+        read over `inventory_items` (joined to `equipment_categories` and
+        `containers`) on the Inventory items dashboard
+        (`src/routes/dashboard/inventory/items/+page.svelte`).
+
+        Each Inventory Item carries `id`, `quantity`, `maintenanceStatus`
+        (`available` or `inMaintenance` — the domain term for the persistence
+        `out_for_maintenance` boolean), `attributes` (the per-item JSONB
+        attribute values), and the nested `category` and `container` objects
+        (each `{ id, name }`, or `null` when the item has no category/container).
+        Internal auth-user refs (`created_by`/`updated_by`) and timestamps
+        (`created_at`/`updated_at`) are not exposed: the items table only
+        renders identity, quantity, maintenance state, and the category /
+        container names.
+
+        The list is ordered by `createdAt desc, id desc` (deterministic
+        tie-break) — the current default sort only. No caller-selected sort
+        is exposed in this first slice (PRD #93, ALE-99).
+
+        Pagination is bidirectional via an opaque `cursor` (mirrors the
+        Members/Waitlist table pattern): the response carries `nextCursor`
+        and `previousCursor` (each `null` when there is no page in that
+        direction) plus a `totalCount` for the table footer. The cursor binds
+        to the query params (limit, q, categoryId, containerId,
+        maintenanceStatus); a mismatched cursor returns `400`.
+
+        Optional filters:
+
+          * `q` — case-insensitive search across the item's
+            `attributes->name`, the Equipment Category name, and the
+            Container name (mirrors the previous Supabase `or(...ilike...)`
+            behaviour).
+          * `categoryId` — constrain to items in a single Equipment Category.
+          * `containerId` — constrain to items in a single Container.
+          * `maintenanceStatus` — one of `all` (default), `inMaintenance`
+            (`out_for_maintenance = true`), or `available`
+            (`out_for_maintenance = false`).
+
+        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
+        `quartermaster`, `president`, or `admin` (the `inventory_admin_api`
+        pipeline, mirroring the existing dashboard Inventory read gate). A
+        member without an Inventory privilege receives `403`; a missing token
+        returns `401`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            enum: [10, 25, 50, 100]
+            default: 10
+        - name: cursor
+          in: query
+          schema:
+            type: string
+          description: |
+            Opaque cursor returned by a previous response. Binds to the query
+            params (limit, q, categoryId, containerId, maintenanceStatus); a
+            mismatched cursor returns 400. Carries a `pageDirection` of
+            `next` or `previous`.
+        - name: q
+          in: query
+          schema:
+            type: string
+          description: |
+            Case-insensitive search across the item's `attributes->name`, the
+            Equipment Category name, and the Container name.
+        - name: categoryId
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Filter to items in a single Equipment Category.
+        - name: containerId
+          in: query
+          schema:
+            type: string
+            format: uuid
+          description: Filter to items in a single Container.
+        - name: maintenanceStatus
+          in: query
+          schema:
+            type: string
+            enum: [all, inMaintenance, available]
+            default: all
+          description: |
+            Filter by maintenance state. `all` (default) returns every item;
+            `inMaintenance` returns items with `out_for_maintenance = true`;
+            `available` returns items with `out_for_maintenance = false`.
+      responses:
+        "200":
+          description: Cursor-paginated Inventory Item list with total count
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryItemListResponse"
+        "400":
+          description: Invalid query parameter or mismatched cursor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks an Inventory management role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /inventory/activity:
     get:
       operationId: inventory.activity
@@ -1514,6 +1638,139 @@ components:
           format: uuid
         name:
           type: string
+    InventoryItemListResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - items
+            - limit
+            - totalCount
+            - nextCursor
+            - previousCursor
+          properties:
+            items:
+              type: array
+              description: >
+                Inventory Items ordered by `createdAt desc, id desc` (the
+                current default sort only). Replaces the previous
+                `inventory_items` Supabase/PostgREST read (joined to
+                `equipment_categories` and `containers`) on the Inventory
+                items dashboard, camelCased and domain-shaped.
+              items:
+                $ref: "#/components/schemas/InventoryItem"
+            limit:
+              type: integer
+              enum: [10, 25, 50, 100]
+            totalCount:
+              type: integer
+              minimum: 0
+              description: >
+                Exact `COUNT(*)` of Inventory Items matching the current
+                filters (q, categoryId, containerId, maintenanceStatus). Used
+                by the table footer; unaffected by cursor position.
+            nextCursor:
+              type: string
+              nullable: true
+              description: >
+                Opaque cursor for the next page (newer items), or `null` when
+                there is no next page. Forward pagination: pass this back as
+                the `cursor` query param to fetch the page after the last item
+                in this response.
+            previousCursor:
+              type: string
+              nullable: true
+              description: >
+                Opaque cursor for the previous page (older items), or `null`
+                when there is no previous page (the first page). Backward
+                pagination: pass this back as the `cursor` query param to
+                fetch the page before the first item in this response.
+    InventoryItem:
+      type: object
+      required:
+        - id
+        - quantity
+        - maintenanceStatus
+        - attributes
+        - category
+        - container
+      description: |
+        A single Inventory Item row. `maintenanceStatus` is the domain term
+        for the persistence `out_for_maintenance` boolean (`available` when
+        `false`, `inMaintenance` when `true`). `category` and `container` are
+        the nested `{ id, name }` objects, or `null` when the item has no
+        category/container. Internal auth-user refs and timestamps are not
+        exposed.
+      properties:
+        id:
+          type: string
+          format: uuid
+        quantity:
+          type: integer
+          minimum: 0
+        maintenanceStatus:
+          $ref: "#/components/schemas/InventoryMaintenanceStatus"
+        attributes:
+          type: object
+          additionalProperties: true
+          description: Per-item attribute values (e.g. brand, size, name). May be empty.
+        category:
+          description: |
+            The nested Equipment Category object (`{ id, name }`), or `null`
+            when the item has no category.
+          allOf:
+            - $ref: "#/components/schemas/InventoryItemCategory"
+          nullable: true
+        container:
+          description: |
+            The nested Container object (`{ id, name }`), or `null` when the
+            item has no container.
+          allOf:
+            - $ref: "#/components/schemas/InventoryItemContainer"
+          nullable: true
+    InventoryItemCategory:
+      type: object
+      required:
+        - id
+        - name
+      description: >
+        The minimal Equipment Category object nested inside
+        `InventoryItem.category`. Mirrors the previous
+        `category:equipment_categories(id, name)` join shape, camelCased.
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+    InventoryItemContainer:
+      type: object
+      required:
+        - id
+        - name
+      description: >
+        The minimal Container object nested inside `InventoryItem.container`.
+        Mirrors the previous `container:containers(id, name)` join shape,
+        camelCased.
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+    InventoryMaintenanceStatus:
+      type: string
+      enum:
+        - available
+        - inMaintenance
+      description: |
+        Inventory Item maintenance state (domain term for the persistence
+        `out_for_maintenance` boolean). `available` when
+        `out_for_maintenance = false`; `inMaintenance` when
+        `out_for_maintenance = true`.
     InventoryAction:
       type: string
       enum:

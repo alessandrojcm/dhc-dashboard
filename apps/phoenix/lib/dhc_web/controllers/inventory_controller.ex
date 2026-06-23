@@ -13,8 +13,8 @@ defmodule DhcWeb.InventoryController do
 
   This slice covers the overview counts (ALE-94), the Inventory Activity
   feed (ALE-95), the Inventory Item filter options (ALE-98), the Equipment
-  Category list (ALE-96), and the Container list (ALE-97). Later Inventory
-  endpoint slices (items — see PRD #93) will extend this controller.
+  Category list (ALE-96), the Container list (ALE-97), and the Inventory
+  Item list (ALE-99).
   """
 
   @doc """
@@ -119,6 +119,46 @@ defmodule DhcWeb.InventoryController do
     conn
     |> put_view(json: DhcWeb.InventoryJSON)
     |> render(:containers, result: result)
+  end
+
+  @doc """
+  GET /inventory/items
+
+  Returns the cursor-paginated Inventory Item list with a total count,
+  replacing the SvelteKit client-side Supabase/PostgREST read over
+  `inventory_items` (joined to `equipment_categories` and `containers`) on
+  the Inventory items dashboard. Ordered by `createdAt desc, id desc` (the
+  current default sort only — no caller-selected sort in this slice).
+  Supports `q` (search across item `attributes.name`, Equipment Category
+  name, and Container name), `categoryId`, `containerId`, and
+  `maintenanceStatus=all|inMaintenance|available` filters. Bidirectional
+  cursor pagination mirrors the Members/Waitlist table pattern.
+  """
+  def items(conn, params) do
+    case Inventory.list_items(params) do
+      {:ok, result} ->
+        conn
+        |> put_view(json: DhcWeb.InventoryJSON)
+        |> render(:items, result: result)
+
+      {:error, :bad_cursor} ->
+        bad_request(conn, "Invalid or mismatched cursor")
+
+      {:error, :invalid_limit} ->
+        bad_request(conn, "Invalid limit")
+
+      {:error, :bad_category_id} ->
+        bad_request(conn, "Invalid categoryId")
+
+      {:error, :bad_container_id} ->
+        bad_request(conn, "Invalid containerId")
+
+      {:error, :invalid_maintenance_status} ->
+        bad_request(conn, "Invalid maintenanceStatus")
+
+      {:error, _reason} ->
+        bad_request(conn, "Invalid inventory items query")
+    end
   end
 
   defp bad_request(conn, detail) do

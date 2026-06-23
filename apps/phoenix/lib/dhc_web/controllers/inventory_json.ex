@@ -154,6 +154,40 @@ defmodule DhcWeb.InventoryJSON do
     }
   end
 
+  @doc """
+  GET /inventory/items — Inventory Item list with total count.
+
+  Renders the cursor-paginated Inventory Items as a camelCase `items` array
+  inside `data`, plus `limit`, `totalCount`, `nextCursor`, and
+  `previousCursor`, matching the OpenAPI contract (`InventoryItemListResponse`).
+  Each item carries `id`, `quantity`, `maintenanceStatus` (`available` or
+  `inMaintenance` — the domain term for the persistence `out_for_maintenance`
+  boolean), `attributes`, and the nested `category`/`container` `{ id, name }`
+  objects (or `null`). Internal auth-user refs and timestamps are not exposed.
+  """
+  def render("items.json", %{result: result}) do
+    %{
+      data: %{
+        items: Enum.map(result.items, &item_entry/1),
+        limit: result.limit,
+        totalCount: result.total_count,
+        nextCursor: result.next_cursor,
+        previousCursor: result.previous_cursor
+      }
+    }
+  end
+
+  defp item_entry(item) do
+    %{
+      id: item.id,
+      quantity: item.quantity,
+      maintenanceStatus: item.maintenance_status,
+      attributes: item.attributes,
+      category: item.category,
+      container: item.container
+    }
+  end
+
   # Expose the canonical Inventory management roles so controllers/tests can
   # reference the same source of truth as the context (see Dhc.Inventory).
   defdelegate inventory_management_roles, to: Inventory

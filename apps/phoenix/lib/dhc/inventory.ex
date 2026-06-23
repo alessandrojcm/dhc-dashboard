@@ -36,9 +36,10 @@ defmodule Dhc.Inventory do
   ALE-94), the Inventory Activity feed (`GET /api/inventory/activity`,
   ALE-95), the Inventory Item filter options
   (`GET /api/inventory/items/filters`, ALE-98), the Equipment Category list
-  (`GET /api/inventory/categories`, ALE-96), and the Container list
-  (`GET /api/inventory/containers`, ALE-97). Later endpoint slices
-  (items — see PRD #93) can build on these schemas without re-deriving them.
+  (`GET /api/inventory/categories`, ALE-96), the Container list
+  (`GET /api/inventory/containers`, ALE-97), and the Inventory Item list
+  (`GET /api/inventory/items`, ALE-99). Later endpoint slices can build on
+  these schemas without re-deriving them.
   """
 
   import Ecto.Query
@@ -509,5 +510,363 @@ defmodule Dhc.Inventory do
       end)
 
     %{containers: containers}
+  end
+
+  # ── Inventory Item list (ALE-99) ─────────────────────────────────────
+  #
+  # Returns the domain-shaped, cursor-paginated Inventory Item list with a
+  # total count, replacing the SvelteKit client-side Supabase/PostgREST read
+  # over `inventory_items` (joined to `equipment_categories` and
+  # `containers`) on the Inventory items dashboard
+  # (`src/routes/dashboard/inventory/items/+page.svelte`).
+  #
+  # The list is ordered by `created_at desc, id desc` (deterministic
+  # tie-break). The `inventory_items` table uses `created_at`/`updated_at`
+  # (the baseline migration uses `timestamps(inserted_at: :created_at)`),
+  # matching production — see AGENTS.md `created_at` vs `inserted_at`
+  # divergence note. No caller-selected sort is exposed in this first slice.
+  #
+  # Pagination mirrors the Members/Waitlist table pattern: bidirectional
+  # cursor pagination with `totalCount` (an exact `COUNT(*)` matching the
+  # current filters), `nextCursor`, and `previousCursor`. The cursor is an
+  # opaque base64url-encoded JSON blob binding `{limit, q, categoryId,
+  # containerId, maintenanceStatus, id, createdAt, pageDirection}`; a
+  # mismatched cursor (different filters/limit) is rejected with
+  # `{:error, :bad_cursor}`. `limit + 1` detects the next/previous page
+  # without a separate boundary query.
+  #
+  # `maintenanceStatus` is the domain term for the persistence
+  # `out_for_maintenance` boolean: `available` when `false`,
+  # `inMaintenance` when `true`. The filter accepts `all` (default, no
+  # filter), `inMaintenance` (`out_for_maintenance = true`), or `available`
+  # (`out_for_maintenance = false`).
+  #
+  # `q` is a case-insensitive search across the item's `attributes->>name`,
+  # the Equipment Category name, and the Container name — mirrors the
+  # previous Supabase `or(attributes->name.ilike..., equipment_categories.name.ilike..., containers.name.ilike...)`
+  # behaviour. The `attributes->>name` text extraction (vs `attributes->name`
+  # jsonb path) returns the scalar string for `ilike`, matching the
+  # Supabase semantics.
+  #
+  # The DTO carries `id`, `quantity`, `maintenance_status` (string:
+  # `available`/`inMaintenance`), `attributes` (the per-item JSONB), and
+  # the nested `category`/`container` `{id, name}` objects (or `nil` when
+  # the item has no category/container — though the schema marks the FKs
+  # NOT NULL, the left join keeps the shape defensive). Internal auth-user
+  # refs (`created_by`/`updated_by`) and timestamps (`inserted_at`/
+  # `updated_at`) are not exposed.
+
+  @item_allowed_limits [10, 25, 50, 100]
+  @item_allowed_maintenance_statuses ~w(all inMaintenance available)
+
+  @doc """
+  Returns cursor-paginated, domain-shaped Inventory Items with a total count.
+
+  Ordered by `createdAt desc, id desc` (the current default sort only — no
+  caller-selected sort in this first slice). The response carries
+  `totalCount` (an exact `COUNT(*)` matching the current filters, for the
+  table footer), `nextCursor`, and `previousCursor` for bidirectional
+  cursor pagination.
+
+  ## Options
+
+    * `"limit"` (default `10`) — one of `10`, `25`, `50`, `100`.
+    * `"cursor"` — opaque cursor from a previous response.
+    * `"q"` — case-insensitive search across item `attributes.name`,
+      Equipment Category name, and Container name.
+    * `"categoryId"` — constrain to items in a single Equipment Category.
+    * `"containerId"` — constrain to items in a single Container.
+    * `"maintenanceStatus"` — one of `all` (default), `inMaintenance`,
+      `available`.
+
+  ## Returns
+
+    * `{:ok, %{items: [map], limit: integer, total_count: non_neg_integer,
+    *   next_cursor: binary | nil, previous_cursor: binary | nil}}`
+    * `{:error, :invalid_limit | :bad_category_id | :bad_container_id |
+    *   :invalid_maintenance_status | :bad_cursor}`
+  """
+  @spec list_items(map()) ::
+          {:ok,
+           %{
+             items: [map()],
+             limit: integer,
+             total_count: non_neg_integer,
+             next_cursor: binary | nil,
+             previous_cursor: binary | nil
+           }}
+          | {:error,
+             :invalid_limit
+             | :bad_category_id
+             | :bad_container_id
+             | :invalid_maintenance_status
+             | :bad_cursor}
+  def list_items(params \\ %{}) do
+    with {:ok, opts} <- parse_item_options(params),
+         {:ok, cursor} <- parse_item_cursor(opts) do
+      total_count = item_total_count(opts)
+      rows = item_rows(opts, cursor)
+      visible_rows = Enum.take(rows, opts.limit)
+
+      {:ok,
+       %{
+         # Drop the `created_at` sort helper from the public DTO (timestamps
+         # are not exposed per the slice contract). Cursors are encoded from
+         # the raw rows below before the helper is dropped.
+         items: Enum.map(visible_rows, &drop_sort_key/1),
+         limit: opts.limit,
+         total_count: total_count,
+         next_cursor: next_item_cursor(visible_rows, rows, opts, cursor),
+         previous_cursor: previous_item_cursor(visible_rows, rows, opts, cursor)
+       }}
+    end
+  end
+
+  defp parse_item_options(params) do
+    limit = parse_integer(Map.get(params, "limit", "10"))
+    category_id = blank_to_nil(Map.get(params, "categoryId"))
+    container_id = blank_to_nil(Map.get(params, "containerId"))
+    maintenance_status = blank_to_nil(Map.get(params, "maintenanceStatus")) || "all"
+    q = blank_to_nil(Map.get(params, "q"))
+
+    cond do
+      limit not in @item_allowed_limits ->
+        {:error, :invalid_limit}
+
+      category_id != nil and not valid_uuid?(category_id) ->
+        {:error, :bad_category_id}
+
+      container_id != nil and not valid_uuid?(container_id) ->
+        {:error, :bad_container_id}
+
+      maintenance_status not in @item_allowed_maintenance_statuses ->
+        {:error, :invalid_maintenance_status}
+
+      true ->
+        {:ok,
+         %{
+           limit: limit,
+           category_id: category_id,
+           container_id: container_id,
+           maintenance_status: maintenance_status,
+           q: q,
+           cursor: blank_to_nil(Map.get(params, "cursor"))
+         }}
+    end
+  end
+
+  defp parse_item_cursor(%{cursor: nil}), do: {:ok, nil}
+
+  defp parse_item_cursor(opts) do
+    with {:ok, json} <- Base.url_decode64(opts.cursor, padding: false),
+         {:ok, cursor} <- Jason.decode(json),
+         true <- item_cursor_matches?(cursor, opts),
+         true <- cursor["pageDirection"] in ["next", "previous"],
+         true <- is_binary(cursor["id"]),
+         true <- Map.has_key?(cursor, "createdAt") do
+      {:ok, cursor}
+    else
+      _ -> {:error, :bad_cursor}
+    end
+  end
+
+  defp item_cursor_matches?(cursor, opts) do
+    cursor["limit"] == opts.limit and cursor["q"] == opts.q and
+      cursor["categoryId"] == opts.category_id and
+      cursor["containerId"] == opts.container_id and
+      cursor["maintenanceStatus"] == opts.maintenance_status
+  end
+
+  defp item_total_count(opts) do
+    opts
+    |> base_item_query()
+    |> filter_item_category(opts.category_id)
+    |> filter_item_container(opts.container_id)
+    |> filter_item_maintenance(opts.maintenance_status)
+    |> filter_item_search(opts.q)
+    |> select([i], count(i.id))
+    |> Repo.one()
+  end
+
+  defp item_rows(opts, cursor) do
+    # The sort is fixed (`createdAt desc, id desc`). When paginating
+    # backwards (`pageDirection: "previous"`), flip the order to `asc` so
+    # the LIMIT captures the page boundary, then reverse in Elixir —
+    # mirrors the Members/Waitlist `query_direction` pattern.
+    query_direction =
+      if cursor && cursor["pageDirection"] == "previous",
+        do: "asc",
+        else: "desc"
+
+    opts
+    |> positioned_item_query()
+    |> apply_item_cursor(cursor, query_direction)
+    |> order_item(query_direction)
+    |> limit(^opts.limit + 1)
+    |> Repo.all()
+    |> maybe_reverse_items(cursor)
+  end
+
+  defp base_item_query(opts) do
+    from i in InventoryItem,
+      left_join: c in EquipmentCategory,
+      on: c.id == i.category_id,
+      left_join: k in Container,
+      on: k.id == i.container_id
+  end
+
+  defp positioned_item_query(opts) do
+    opts
+    |> base_item_query()
+    |> filter_item_category(opts.category_id)
+    |> filter_item_container(opts.container_id)
+    |> filter_item_maintenance(opts.maintenance_status)
+    |> filter_item_search(opts.q)
+    |> select(
+      [i, c, k],
+      %{
+        id: i.id,
+        quantity: i.quantity,
+        maintenance_status:
+          fragment(
+            "CASE WHEN ? = true THEN 'inMaintenance' ELSE 'available' END",
+            i.out_for_maintenance
+          ),
+        attributes: i.attributes,
+        category:
+          fragment(
+            "CASE WHEN ? IS NOT NULL THEN json_build_object('id', ?, 'name', ?) ELSE NULL END",
+            c.id,
+            c.id,
+            c.name
+          ),
+        container:
+          fragment(
+            "CASE WHEN ? IS NOT NULL THEN json_build_object('id', ?, 'name', ?) ELSE NULL END",
+            k.id,
+            k.id,
+            k.name
+          ),
+        # Sort key — `created_at` (the column is `created_at`, not
+        # `inserted_at`; the baseline migration uses
+        # `timestamps(inserted_at: :created_at)`). Used for cursor comparison
+        # only; not returned in the DTO.
+        created_at: i.created_at
+      }
+    )
+    |> subquery()
+  end
+
+  defp filter_item_category(query, nil), do: query
+
+  defp filter_item_category(query, category_id),
+    do: where(query, [i, _c, _k], i.category_id == ^category_id)
+
+  defp filter_item_container(query, nil), do: query
+
+  defp filter_item_container(query, container_id),
+    do: where(query, [i, _c, _k], i.container_id == ^container_id)
+
+  defp filter_item_maintenance(query, "all"), do: query
+
+  defp filter_item_maintenance(query, "inMaintenance"),
+    do: where(query, [i, _c, _k], i.out_for_maintenance == true)
+
+  defp filter_item_maintenance(query, "available"),
+    do: where(query, [i, _c, _k], i.out_for_maintenance == false)
+
+  defp filter_item_search(query, nil), do: query
+
+  defp filter_item_search(query, q) do
+    pattern = "%#{q}%"
+
+    where(
+      query,
+      [i, c, k],
+      fragment("(? ->> 'name') ILIKE ?", i.attributes, ^pattern) or
+        fragment("? ILIKE ?", c.name, ^pattern) or
+        fragment("? ILIKE ?", k.name, ^pattern)
+    )
+  end
+
+  defp apply_item_cursor(query, nil, _query_direction), do: query
+
+  defp apply_item_cursor(query, cursor, "desc") do
+    # Forward pagination: rows strictly before the cursor (older createdAt,
+    # tie-break older id).
+    where(
+      query,
+      [e],
+      e.created_at < type(^cursor["createdAt"], :utc_datetime) or
+        (e.created_at == type(^cursor["createdAt"], :utc_datetime) and e.id < ^cursor["id"])
+    )
+  end
+
+  defp apply_item_cursor(query, cursor, "asc") do
+    # Backward pagination (pageDirection: "previous"): the query orders asc
+    # and selects rows strictly after the cursor (newer createdAt, tie-break
+    # newer id), then reverses in Elixir to restore desc order.
+    where(
+      query,
+      [e],
+      e.created_at > type(^cursor["createdAt"], :utc_datetime) or
+        (e.created_at == type(^cursor["createdAt"], :utc_datetime) and e.id > ^cursor["id"])
+    )
+  end
+
+  defp order_item(query, "desc"), do: order_by(query, [e], desc: e.created_at, desc: e.id)
+  defp order_item(query, "asc"), do: order_by(query, [e], asc: e.created_at, asc: e.id)
+
+  defp maybe_reverse_items(rows, %{"pageDirection" => "previous"}), do: Enum.reverse(rows)
+  defp maybe_reverse_items(rows, _cursor), do: rows
+
+  # The `created_at` sort helper is only used for cursor comparison; it is
+  # not part of the public DTO (timestamps are not exposed per the slice
+  # contract). Drop it from the visible rows.
+  defp drop_sort_key(row), do: Map.delete(row, :created_at)
+
+  defp next_item_cursor([], _rows, _opts, _cursor), do: nil
+
+  defp next_item_cursor(visible_rows, _rows, opts, %{"pageDirection" => "previous"}) do
+    # Paginating backwards: the next page is the items after the last row
+    # of this (now-desc-ordered) page.
+    encode_item_cursor(List.last(visible_rows), opts, "next")
+  end
+
+  defp next_item_cursor(visible_rows, rows, opts, _cursor) do
+    if length(rows) > opts.limit,
+      do: encode_item_cursor(List.last(visible_rows), opts, "next")
+  end
+
+  defp previous_item_cursor([], _rows, _opts, _cursor), do: nil
+
+  defp previous_item_cursor(_visible_rows, _rows, _opts, nil), do: nil
+
+  defp previous_item_cursor(visible_rows, rows, opts, %{"pageDirection" => "previous"}) do
+    if length(rows) > opts.limit,
+      do: encode_item_cursor(List.first(visible_rows), opts, "previous")
+  end
+
+  defp previous_item_cursor(visible_rows, _rows, opts, _cursor) do
+    # Forward pagination from page > 1: the previous page is the items
+    # before the first row of this page.
+    encode_item_cursor(List.first(visible_rows), opts, "previous")
+  end
+
+  defp encode_item_cursor(nil, _opts, _page_direction), do: nil
+
+  defp encode_item_cursor(row, opts, page_direction) do
+    %{
+      limit: opts.limit,
+      q: opts.q,
+      categoryId: opts.category_id,
+      containerId: opts.container_id,
+      maintenanceStatus: opts.maintenance_status,
+      id: row.id,
+      createdAt: DateTime.to_iso8601(row.created_at),
+      pageDirection: page_direction
+    }
+    |> Jason.encode!()
+    |> Base.url_encode64(padding: false)
   end
 end

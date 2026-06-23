@@ -106,6 +106,9 @@ defmodule Dhc.InventoryFixtures do
     * `:quantity` (default `1`)
     * `:out_for_maintenance` (default `false`)
     * `:notes` (default `nil`)
+    * `:created_at` / `:updated_at` (default `nil`; Ecto autogenerates via
+      `timestamps(inserted_at: :created_at)`. Pass `:created_at` explicitly
+      to control `createdAt desc, id desc` ordering in list tests.)
     * `:created_by` / `:updated_by` (default `nil`)
 
   Returns the inserted `InventoryItem` struct.
@@ -121,6 +124,8 @@ defmodule Dhc.InventoryFixtures do
         quantity: Map.get(attrs, :quantity, 1),
         out_for_maintenance: Map.get(attrs, :out_for_maintenance, false),
         notes: Map.get(attrs, :notes),
+        created_at: Map.get(attrs, :created_at),
+        updated_at: Map.get(attrs, :updated_at),
         created_by: Map.get(attrs, :created_by),
         updated_by: Map.get(attrs, :updated_by)
       }

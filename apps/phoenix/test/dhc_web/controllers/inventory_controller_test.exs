@@ -1,12 +1,13 @@
 defmodule DhcWeb.InventoryControllerTest do
   @moduledoc """
   Request/contract tests for the Inventory read endpoints
-  (issues ALE-94 / ALE-95 / ALE-98 / ALE-96, PRD #93).
+  (issues ALE-94 / ALE-95 / ALE-98 / ALE-96 / ALE-97 / ALE-99, PRD #93).
 
   Covers the overview counts, the Inventory Activity feed, the Inventory
-  Item filter options, and the Equipment Category list, plus the Inventory
-  RBAC: `quartermaster`, `president`, and `admin` can read; a member without
-  an Inventory privilege receives `403`; a missing token returns `401`.
+  Item filter options, the Equipment Category list, the Container list, and
+  the Inventory Item list, plus the Inventory RBAC: `quartermaster`,
+  `president`, and `admin` can read; a member without an Inventory
+  privilege receives `403`; a missing token returns `401`.
 
   The underlying read-model behavior (query mechanics) is covered by
   `Dhc.InventoryTest`. These tests assert external contract behavior only.
@@ -1080,6 +1081,426 @@ defmodule DhcWeb.InventoryControllerTest do
     end
   end
 
+  # ── Inventory Item list (ALE-99) ─────────────────────────────────────
+
+  describe "items — RBAC" do
+    test "allows quartermaster, president, and admin", %{conn: _conn} do
+      for role <- @allowed_roles do
+        conn =
+          build_conn()
+          |> auth_conn(role)
+          |> get("/api/inventory/items")
+
+        assert %{"data" => %{"items" => _}} = json_response(conn, 200)
+      end
+    end
+
+    test "returns 401 without a bearer token", %{conn: conn} do
+      conn = get(conn, "/api/inventory/items")
+
+      assert %{"errors" => %{"detail" => "Unauthorized"}} = json_response(conn, 401)
+    end
+
+    test "returns 401 with an invalid bearer token", %{conn: conn} do
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer bad-token")
+        |> get("/api/inventory/items")
+
+      assert %{"errors" => %{"detail" => "Unauthorized"}} = json_response(conn, 401)
+    end
+
+    test "returns 403 for members without an Inventory privilege", %{conn: _conn} do
+      for role <- @rejected_roles do
+        conn =
+          build_conn()
+          |> auth_conn(role)
+          |> get("/api/inventory/items")
+
+        assert %{"errors" => %{"detail" => "Insufficient role"}} = json_response(conn, 403)
+      end
+    end
+  end
+
+  describe "items — payload" do
+    setup do
+      Repo.delete_all(InventoryItem)
+      Repo.delete_all(Container)
+      Repo.delete_all(EquipmentCategory)
+      :ok
+    end
+
+    test "returns an empty item array with zero totalCount when nothing is seeded",
+         %{conn: conn} do
+      conn =
+        conn
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/items")
+
+      assert json_response(conn, 200) == %{
+               "data" => %{
+                 "items" => [],
+                 "limit" => 10,
+                 "totalCount" => 0,
+                 "nextCursor" => nil,
+                 "previousCursor" => nil
+               }
+             }
+    end
+
+    test "returns items ordered by createdAt desc, id desc (newest first)", %{conn: conn} do
+      category = InventoryFixtures.category_fixture(name: "Masks")
+      container = InventoryFixtures.container_fixture(name: "Locker A")
+
+      older =
+        InventoryFixtures.item_fixture(
+          container_id: container.id,
+          category_id: category.id,
+          inserted_at: ~U[2026-01-01 00:00:00Z]
+        )
+
+      newer =
+        InventoryFixtures.item_fixture(
+          container_id: container.id,
+          category_id: category.id,
+          inserted_at: ~U[2026-01-02 00:00:00Z]
+        )
+
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> get("/api/inventory/items")
+
+      assert %{"data" => %{"items" => items}} = json_response(conn, 200)
+
+      assert Enum.map(items, & &1["id"]) == [newer.id, older.id]
+    end
+
+    test "preserves the agreed camelCase fields and no storage-vocab leak", %{conn: conn} do
+      category = InventoryFixtures.category_fixture(name: "Masks")
+      container = InventoryFixtures.container_fixture(name: "Locker A")
+
+      InventoryFixtures.item_fixture(
+        container_id: container.id,
+        category_id: category.id,
+        attributes: %{"name" => "Mask A", "brand" => "SPES"}
+      )
+
+      conn =
+        conn
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/items")
+
+      assert %{"data" => %{"items" => [item]}} = json_response(conn, 200)
+
+      assert item["id"] != nil
+      assert item["quantity"] == 1
+      assert item["maintenanceStatus"] == "available"
+      assert item["attributes"] == %{"name" => "Mask A", "brand" => "SPES"}
+
+      assert item["category"] == %{"id" => category.id, "name" => "Masks"}
+      assert item["container"] == %{"id" => container.id, "name" => "Locker A"}
+
+      # Storage vocabulary must not leak into the contract.
+      refute Map.has_key?(item, "out_for_maintenance")
+      refute Map.has_key?(item, "maintenance_status")
+      refute Map.has_key?(item, "inserted_at")
+      refute Map.has_key?(item, "updated_at")
+      refute Map.has_key?(item, "created_by")
+      refute Map.has_key?(item, "updated_by")
+      refute Map.has_key?(item, "category_id")
+      refute Map.has_key?(item, "container_id")
+    end
+
+    test "maintenanceStatus is the domain term (available / inMaintenance)", %{conn: conn} do
+      category = InventoryFixtures.category_fixture(name: "Masks")
+      container = InventoryFixtures.container_fixture(name: "Locker A")
+
+      InventoryFixtures.item_fixture(
+        container_id: container.id,
+        category_id: category.id,
+        out_for_maintenance: false
+      )
+
+      InventoryFixtures.item_fixture(
+        container_id: container.id,
+        category_id: category.id,
+        out_for_maintenance: true
+      )
+
+      conn =
+        conn
+        |> auth_conn("president")
+        |> get("/api/inventory/items")
+
+      assert %{"data" => %{"items" => items}} = json_response(conn, 200)
+
+      statuses = Enum.map(items, & &1["maintenanceStatus"]) |> Enum.sort()
+
+      assert statuses == ["available", "inMaintenance"]
+    end
+
+    test "totalCount counts every item matching the current filters", %{conn: conn} do
+      category = InventoryFixtures.category_fixture(name: "Masks")
+      container = InventoryFixtures.container_fixture(name: "Locker A")
+
+      for _ <- 1..3 do
+        InventoryFixtures.item_fixture(container_id: container.id, category_id: category.id)
+      end
+
+      conn =
+        conn
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/items")
+
+      assert %{"data" => %{"items" => items, "totalCount" => total}} = json_response(conn, 200)
+
+      assert length(items) == 3
+      assert total == 3
+    end
+
+    test "uses the data envelope and does not leak storage vocabulary", %{conn: conn} do
+      InventoryFixtures.category_fixture(name: "Masks")
+
+      conn =
+        conn
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/items")
+
+      body = json_response(conn, 200)
+
+      assert %{"data" => %{"items" => _}} = body
+
+      refute Map.has_key?(body, "inventory_items")
+      refute Map.has_key?(body["data"], "inventory_items")
+      refute Map.has_key?(body["data"], "equipment_categories")
+    end
+  end
+
+  describe "items — pagination" do
+    setup :seed_paginated_items
+
+    test "paginates forward via cursor and stops with a null nextCursor", %{
+      conn: conn,
+      items: items
+    } do
+      first_page =
+        conn
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/items", limit: 10)
+
+      assert %{
+               "data" => %{
+                 "items" => first_items,
+                 "totalCount" => 15,
+                 "nextCursor" => next_cursor,
+                 "previousCursor" => nil
+               }
+             } = json_response(first_page, 200)
+
+      assert length(first_items) == 10
+      assert is_binary(next_cursor)
+
+      expected_first_ids =
+        items
+        |> Enum.sort_by(&{&1.inserted_at, &1.id}, :desc)
+        |> Enum.take(10)
+        |> Enum.map(& &1.id)
+
+      assert Enum.map(first_items, & &1["id"]) == expected_first_ids
+
+      second_page =
+        build_conn()
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/items", limit: 10, cursor: next_cursor)
+
+      assert %{
+               "data" => %{
+                 "items" => second_items,
+                 "totalCount" => 15,
+                 "nextCursor" => nil,
+                 "previousCursor" => previous_cursor
+               }
+             } = json_response(second_page, 200)
+
+      assert length(second_items) == 5
+      assert is_binary(previous_cursor)
+
+      all_ids = Enum.map(first_items, & &1["id"]) ++ Enum.map(second_items, & &1["id"])
+      assert length(all_ids) == 15
+      assert Enum.uniq(all_ids) == all_ids
+    end
+
+    test "returns 400 for an invalid cursor", %{conn: conn} do
+      conn =
+        conn
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/items", cursor: "not-a-cursor")
+
+      assert %{"errors" => %{"detail" => "Invalid or mismatched cursor"}} =
+               json_response(conn, 400)
+    end
+
+    test "returns 400 when the cursor was minted with a different limit", %{
+      conn: conn,
+      items: _items
+    } do
+      cursor =
+        conn
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/items", limit: 10)
+        |> json_response(200)
+        |> get_in(["data", "nextCursor"])
+
+      conn =
+        build_conn()
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/items", limit: 25, cursor: cursor)
+
+      assert %{"errors" => %{"detail" => "Invalid or mismatched cursor"}} =
+               json_response(conn, 400)
+    end
+
+    test "returns 400 for an invalid limit", %{conn: conn} do
+      conn =
+        conn
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/items", limit: 7)
+
+      assert %{"errors" => %{"detail" => "Invalid limit"}} = json_response(conn, 400)
+    end
+  end
+
+  describe "items — filters" do
+    setup :seed_filterable_items
+
+    test "filters by categoryId", %{conn: conn, items: items} do
+      masks_id = items.masks.id
+
+      conn =
+        conn
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/items", categoryId: masks_id)
+
+      assert %{"data" => %{"items" => items_response, "totalCount" => total}} =
+               json_response(conn, 200)
+
+      # Three Masks items (longsword, in_b, in_maintenance).
+      assert length(items_response) == 3
+      assert total == 3
+      assert Enum.all?(items_response, &(&1["category"]["id"] == masks_id))
+    end
+
+    test "filters by containerId", %{conn: conn, items: items} do
+      locker_a_id = items.locker_a.id
+
+      conn =
+        conn
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/items", containerId: locker_a_id)
+
+      assert %{"data" => %{"items" => items_response, "totalCount" => total}} =
+               json_response(conn, 200)
+
+      # Two items in Locker A (longsword, gloves_item).
+      assert length(items_response) == 2
+      assert total == 2
+      assert Enum.all?(items_response, &(&1["container"]["id"] == locker_a_id))
+    end
+
+    test "filters by maintenanceStatus=inMaintenance", %{conn: conn} do
+      conn =
+        conn
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/items", maintenanceStatus: "inMaintenance")
+
+      assert %{"data" => %{"items" => items, "totalCount" => total}} = json_response(conn, 200)
+
+      assert length(items) == 1
+      assert total == 1
+      assert hd(items)["maintenanceStatus"] == "inMaintenance"
+    end
+
+    test "filters by maintenanceStatus=available", %{conn: conn} do
+      conn =
+        conn
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/items", maintenanceStatus: "available")
+
+      assert %{"data" => %{"items" => items, "totalCount" => total}} = json_response(conn, 200)
+
+      # Three available items (longsword, gloves_item, in_b).
+      assert length(items) == 3
+      assert total == 3
+      assert Enum.all?(items, &(&1["maintenanceStatus"] == "available"))
+    end
+
+    test "searches across item attributes.name, category name, and container name", %{
+      conn: conn,
+      items: items
+    } do
+      # attributes.name match
+      conn =
+        conn
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/items", q: "longsword")
+
+      assert %{"data" => %{"items" => found, "totalCount" => 1}} = json_response(conn, 200)
+
+      assert hd(found)["id"] == items.longsword.id
+
+      # category name match
+      conn =
+        build_conn()
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/items", q: "gloves")
+
+      assert %{"data" => %{"items" => found, "totalCount" => 1}} = json_response(conn, 200)
+
+      assert hd(found)["id"] == items.gloves_item.id
+
+      # container name match — both Locker B items (in_b, in_maintenance).
+      conn =
+        build_conn()
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/items", q: "locker b")
+
+      assert %{"data" => %{"items" => found, "totalCount" => 2}} = json_response(conn, 200)
+
+      found_ids = Enum.map(found, & &1["id"]) |> MapSet.new()
+
+      assert MapSet.member?(found_ids, items.in_b.id)
+      assert MapSet.member?(found_ids, items.in_maintenance.id)
+    end
+
+    test "returns 400 for an invalid categoryId", %{conn: conn} do
+      conn =
+        conn
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/items", categoryId: "not-a-uuid")
+
+      assert %{"errors" => %{"detail" => "Invalid categoryId"}} = json_response(conn, 400)
+    end
+
+    test "returns 400 for an invalid containerId", %{conn: conn} do
+      conn =
+        conn
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/items", containerId: "not-a-uuid")
+
+      assert %{"errors" => %{"detail" => "Invalid containerId"}} = json_response(conn, 400)
+    end
+
+    test "returns 400 for an invalid maintenanceStatus", %{conn: conn} do
+      conn =
+        conn
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/items", maintenanceStatus: "broken")
+
+      assert %{"errors" => %{"detail" => "Invalid maintenanceStatus"}} = json_response(conn, 400)
+    end
+  end
+
   # ── Fixtures ─────────────────────────────────────────────────────────
 
   defp seed_activity_fixture(_context) do
@@ -1223,6 +1644,84 @@ defmodule DhcWeb.InventoryControllerTest do
        container_b: container_b,
        moved_from_b: moved_from_b,
        moved_to_b: moved_to_b
+     }}
+  end
+
+  defp seed_paginated_items(_context) do
+    Repo.delete_all(InventoryActivity)
+    Repo.delete_all(InventoryItem)
+    Repo.delete_all(Container)
+    Repo.delete_all(EquipmentCategory)
+
+    category = InventoryFixtures.category_fixture(name: "Masks")
+    container = InventoryFixtures.container_fixture(name: "Locker A")
+
+    items =
+      for index <- 1..15 do
+        InventoryFixtures.item_fixture(
+          container_id: container.id,
+          category_id: category.id,
+          inserted_at: DateTime.add(~U[2026-01-01 00:00:00Z], index, :second)
+        )
+      end
+
+    {:ok, items: items}
+  end
+
+  defp seed_filterable_items(_context) do
+    Repo.delete_all(InventoryActivity)
+    Repo.delete_all(InventoryItem)
+    Repo.delete_all(Container)
+    Repo.delete_all(EquipmentCategory)
+
+    masks = InventoryFixtures.category_fixture(name: "Masks")
+    gloves = InventoryFixtures.category_fixture(name: "Gloves")
+    locker_a = InventoryFixtures.container_fixture(name: "Locker A")
+    locker_b = InventoryFixtures.container_fixture(name: "Locker B")
+
+    # attributes.name match ("longsword")
+    longsword =
+      InventoryFixtures.item_fixture(
+        container_id: locker_a.id,
+        category_id: masks.id,
+        attributes: %{"name" => "Longsword Premium"}
+      )
+
+    # category name match ("gloves")
+    gloves_item =
+      InventoryFixtures.item_fixture(
+        container_id: locker_a.id,
+        category_id: gloves.id,
+        attributes: %{"name" => "Generic Item"}
+      )
+
+    # container name match ("locker b")
+    in_b =
+      InventoryFixtures.item_fixture(
+        container_id: locker_b.id,
+        category_id: masks.id,
+        attributes: %{"name" => "Other Item"}
+      )
+
+    # no match — in maintenance, used by the maintenance filter tests too
+    in_maintenance =
+      InventoryFixtures.item_fixture(
+        container_id: locker_b.id,
+        category_id: masks.id,
+        attributes: %{"name" => "Maintenance Item"},
+        out_for_maintenance: true
+      )
+
+    {:ok,
+     items: %{
+       masks: masks,
+       gloves: gloves,
+       locker_a: locker_a,
+       locker_b: locker_b,
+       longsword: longsword,
+       gloves_item: gloves_item,
+       in_b: in_b,
+       in_maintenance: in_maintenance
      }}
   end
 end

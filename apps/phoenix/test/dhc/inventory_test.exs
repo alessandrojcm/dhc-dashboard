@@ -4,11 +4,12 @@ defmodule Dhc.InventoryTest do
 
   Covers the read-model behavior for the Inventory read slices: the
   canonical Inventory management roles, the overview counts (ALE-94), the
-  Inventory Item filter options (ALE-98), and the Equipment Category list
-  with item counts (ALE-96). Controller-layer authorization is verified by
-  `DhcWeb.InventoryControllerTest`; these tests assert external read-model
-  behavior (shape, counts, ordering, role list) — not internal query
-  mechanics.
+  Inventory Item filter options (ALE-98), the Equipment Category list
+  with item counts (ALE-96), the Container list (ALE-97), and the
+  Inventory Item list (ALE-99). Controller-layer authorization is verified
+  by `DhcWeb.InventoryControllerTest`; these tests assert external
+  read-model behavior (shape, counts, ordering, role list) — not internal
+  query mechanics.
   """
 
   use Dhc.DataCase, async: false
@@ -422,6 +423,430 @@ defmodule Dhc.InventoryTest do
       %{containers: [shelf, _storage_room]} = Inventory.list_containers()
 
       assert shelf.parent_container == %{"id" => storage_room.id, "name" => "Storage Room"}
+    end
+  end
+
+  # ── Inventory Item list (ALE-99) ──────────────────────────────────────
+
+  describe "list_items/1" do
+    # Clear all inventory rows so assertions are deterministic.
+    setup do
+      Repo.delete_all(Dhc.Inventory.InventoryItem)
+      Repo.delete_all(Dhc.Inventory.Container)
+      Repo.delete_all(Dhc.Inventory.EquipmentCategory)
+      :ok
+    end
+
+    test "returns an empty item list with zero total count when nothing is seeded" do
+      assert {:ok, result} = Inventory.list_items(%{})
+
+      assert result.items == []
+      assert result.total_count == 0
+      assert result.limit == 10
+      assert result.next_cursor == nil
+      assert result.previous_cursor == nil
+    end
+
+    test "returns items ordered by createdAt desc, id desc (newest first)" do
+      category = InventoryFixtures.category_fixture(name: "Masks")
+      container = InventoryFixtures.container_fixture(name: "Locker A")
+
+      older =
+        InventoryFixtures.item_fixture(
+          container_id: container.id,
+          category_id: category.id,
+          created_at: ~U[2026-01-01 00:00:00Z]
+        )
+
+      newer =
+        InventoryFixtures.item_fixture(
+          container_id: container.id,
+          category_id: category.id,
+          created_at: ~U[2026-01-02 00:00:00Z]
+        )
+
+      {:ok, result} = Inventory.list_items(%{})
+
+      assert Enum.map(result.items, & &1.id) == [newer.id, older.id]
+    end
+
+    test "selects only the contract fields, not timestamps or auth-user refs" do
+      category = InventoryFixtures.category_fixture(name: "Masks")
+      container = InventoryFixtures.container_fixture(name: "Locker A")
+
+      InventoryFixtures.item_fixture(
+        container_id: container.id,
+        category_id: category.id,
+        attributes: %{"name" => "Mask A"}
+      )
+
+      {:ok, result} = Inventory.list_items(%{})
+
+      [item] = result.items
+
+      # Snake_case here; the renderer camelCases. `category`/`container` are
+      # the nested `{id, name}` maps (built in SQL via json_build_object).
+      assert Map.keys(item) |> Enum.sort() == [
+               :attributes,
+               :category,
+               :container,
+               :id,
+               :maintenance_status,
+               :quantity
+             ]
+
+      refute Map.has_key?(item, :inserted_at)
+      refute Map.has_key?(item, :updated_at)
+      refute Map.has_key?(item, :created_by)
+      refute Map.has_key?(item, :updated_by)
+      refute Map.has_key?(item, :out_for_maintenance)
+    end
+
+    test "maintenance_status is the domain term (available / inMaintenance)" do
+      category = InventoryFixtures.category_fixture(name: "Masks")
+      container = InventoryFixtures.container_fixture(name: "Locker A")
+
+      available =
+        InventoryFixtures.item_fixture(
+          container_id: container.id,
+          category_id: category.id,
+          out_for_maintenance: false
+        )
+
+      in_maintenance =
+        InventoryFixtures.item_fixture(
+          container_id: container.id,
+          category_id: category.id,
+          out_for_maintenance: true
+        )
+
+      {:ok, result} = Inventory.list_items(%{})
+
+      by_id = Map.new(result.items, &{&1.id, &1.maintenance_status})
+
+      assert by_id[available.id] == "available"
+      assert by_id[in_maintenance.id] == "inMaintenance"
+    end
+
+    test "category and container are the nested {id, name} objects" do
+      category = InventoryFixtures.category_fixture(name: "Masks")
+      container = InventoryFixtures.container_fixture(name: "Locker A")
+
+      InventoryFixtures.item_fixture(
+        container_id: container.id,
+        category_id: category.id,
+        attributes: %{"name" => "Mask A"}
+      )
+
+      {:ok, result} = Inventory.list_items(%{})
+
+      [item] = result.items
+
+      assert item.category == %{"id" => category.id, "name" => "Masks"}
+      assert item.container == %{"id" => container.id, "name" => "Locker A"}
+    end
+
+    test "total_count counts every item matching the current filters" do
+      category = InventoryFixtures.category_fixture(name: "Masks")
+      container = InventoryFixtures.container_fixture(name: "Locker A")
+
+      for _ <- 1..3 do
+        InventoryFixtures.item_fixture(container_id: container.id, category_id: category.id)
+      end
+
+      {:ok, result} = Inventory.list_items(%{})
+
+      assert result.total_count == 3
+      # Default limit is 10, so all three are on the first page.
+      assert length(result.items) == 3
+    end
+
+    test "paginates forward via cursor and stops with a null next_cursor" do
+      category = InventoryFixtures.category_fixture(name: "Masks")
+      container = InventoryFixtures.container_fixture(name: "Locker A")
+
+      items =
+        for index <- 1..15 do
+          InventoryFixtures.item_fixture(
+            container_id: container.id,
+            category_id: category.id,
+            inserted_at: DateTime.add(~U[2026-01-01 00:00:00Z], index, :second)
+          )
+        end
+
+      {:ok, first_page} = Inventory.list_items(%{"limit" => "10"})
+
+      assert length(first_page.items) == 10
+      assert first_page.total_count == 15
+      assert is_binary(first_page.next_cursor)
+      # Forward pagination from page 1: no previous page.
+      assert first_page.previous_cursor == nil
+
+      # The first page is the 10 newest items.
+      expected_first_ids =
+        items
+        |> Enum.sort_by(&{&1.inserted_at, &1.id}, :desc)
+        |> Enum.take(10)
+        |> Enum.map(& &1.id)
+
+      assert Enum.map(first_page.items, & &1.id) == expected_first_ids
+
+      {:ok, second_page} =
+        Inventory.list_items(%{"limit" => "10", "cursor" => first_page.next_cursor})
+
+      assert length(second_page.items) == 5
+      assert second_page.total_count == 15
+      assert second_page.next_cursor == nil
+      # Paginating forward from page 2: a previous page exists.
+      assert is_binary(second_page.previous_cursor)
+
+      all_ids = Enum.map(first_page.items, & &1.id) ++ Enum.map(second_page.items, & &1.id)
+      assert length(all_ids) == 15
+      assert Enum.uniq(all_ids) == all_ids
+    end
+
+    test "paginates backward via previous_cursor" do
+      category = InventoryFixtures.category_fixture(name: "Masks")
+      container = InventoryFixtures.container_fixture(name: "Locker A")
+
+      for index <- 1..15 do
+        InventoryFixtures.item_fixture(
+          container_id: container.id,
+          category_id: category.id,
+          inserted_at: DateTime.add(~U[2026-01-01 00:00:00Z], index, :second)
+        )
+      end
+
+      {:ok, first_page} = Inventory.list_items(%{"limit" => "10"})
+
+      {:ok, second_page} =
+        Inventory.list_items(%{"limit" => "10", "cursor" => first_page.next_cursor})
+
+      # second_page.previous_cursor points at the page before the first item
+      # of the second page. Paginating backwards from there returns the
+      # first page in desc order.
+      {:ok, back_page} =
+        Inventory.list_items(%{"limit" => "10", "cursor" => second_page.previous_cursor})
+
+      assert Enum.map(back_page.items, & &1.id) == Enum.map(first_page.items, & &1.id)
+    end
+
+    test "searches across item attributes.name, category name, and container name" do
+      masks = InventoryFixtures.category_fixture(name: "Masks")
+      gloves = InventoryFixtures.category_fixture(name: "Gloves")
+      locker_a = InventoryFixtures.container_fixture(name: "Locker A")
+      locker_b = InventoryFixtures.container_fixture(name: "Locker B")
+
+      # attributes.name match
+      InventoryFixtures.item_fixture(
+        container_id: locker_a.id,
+        category_id: masks.id,
+        attributes: %{"name" => "Longsword Premium"}
+      )
+
+      # category name match
+      InventoryFixtures.item_fixture(
+        container_id: locker_a.id,
+        category_id: gloves.id,
+        attributes: %{"name" => "Item X"}
+      )
+
+      # container name match — both Locker B items match "locker b".
+      InventoryFixtures.item_fixture(
+        container_id: locker_b.id,
+        category_id: masks.id,
+        attributes: %{"name" => "Item Y"}
+      )
+
+      InventoryFixtures.item_fixture(
+        container_id: locker_b.id,
+        category_id: masks.id,
+        attributes: %{"name" => "Item W"}
+      )
+
+      # no match — in Locker A, generic name, category Masks.
+      InventoryFixtures.item_fixture(
+        container_id: locker_a.id,
+        category_id: masks.id,
+        attributes: %{"name" => "Item Z"}
+      )
+
+      {:ok, result} = Inventory.list_items(%{"q" => "sword"})
+      assert Enum.map(result.items, & &1.attributes["name"]) == ["Longsword Premium"]
+
+      {:ok, result} = Inventory.list_items(%{"q" => "gloves"})
+      assert Enum.map(result.items, & &1.attributes["name"]) == ["Item X"]
+
+      {:ok, result} = Inventory.list_items(%{"q" => "locker b"})
+
+      assert Enum.map(result.items, & &1.attributes["name"]) |> Enum.sort() ==
+               ["Item W", "Item Y"]
+
+      # total_count reflects the filtered set, not the full set.
+      assert result.total_count == 2
+    end
+
+    test "filters by categoryId" do
+      masks = InventoryFixtures.category_fixture(name: "Masks")
+      gloves = InventoryFixtures.category_fixture(name: "Gloves")
+      container = InventoryFixtures.container_fixture(name: "Locker A")
+
+      InventoryFixtures.item_fixture(container_id: container.id, category_id: masks.id)
+      InventoryFixtures.item_fixture(container_id: container.id, category_id: masks.id)
+      InventoryFixtures.item_fixture(container_id: container.id, category_id: gloves.id)
+
+      {:ok, result} = Inventory.list_items(%{"categoryId" => masks.id})
+
+      assert length(result.items) == 2
+      assert result.total_count == 2
+      assert Enum.all?(result.items, &(&1.category["id"] == masks.id))
+    end
+
+    test "filters by containerId" do
+      category = InventoryFixtures.category_fixture(name: "Masks")
+      locker_a = InventoryFixtures.container_fixture(name: "Locker A")
+      locker_b = InventoryFixtures.container_fixture(name: "Locker B")
+
+      InventoryFixtures.item_fixture(container_id: locker_a.id, category_id: category.id)
+      InventoryFixtures.item_fixture(container_id: locker_a.id, category_id: category.id)
+      InventoryFixtures.item_fixture(container_id: locker_b.id, category_id: category.id)
+
+      {:ok, result} = Inventory.list_items(%{"containerId" => locker_a.id})
+
+      assert length(result.items) == 2
+      assert result.total_count == 2
+      assert Enum.all?(result.items, &(&1.container["id"] == locker_a.id))
+    end
+
+    test "filters by maintenanceStatus=inMaintenance" do
+      category = InventoryFixtures.category_fixture(name: "Masks")
+      container = InventoryFixtures.container_fixture(name: "Locker A")
+
+      InventoryFixtures.item_fixture(
+        container_id: container.id,
+        category_id: category.id,
+        out_for_maintenance: false
+      )
+
+      InventoryFixtures.item_fixture(
+        container_id: container.id,
+        category_id: category.id,
+        out_for_maintenance: true
+      )
+
+      {:ok, result} = Inventory.list_items(%{"maintenanceStatus" => "inMaintenance"})
+
+      assert length(result.items) == 1
+      assert result.total_count == 1
+      assert hd(result.items).maintenance_status == "inMaintenance"
+    end
+
+    test "filters by maintenanceStatus=available" do
+      category = InventoryFixtures.category_fixture(name: "Masks")
+      container = InventoryFixtures.container_fixture(name: "Locker A")
+
+      InventoryFixtures.item_fixture(
+        container_id: container.id,
+        category_id: category.id,
+        out_for_maintenance: false
+      )
+
+      InventoryFixtures.item_fixture(
+        container_id: container.id,
+        category_id: category.id,
+        out_for_maintenance: true
+      )
+
+      {:ok, result} = Inventory.list_items(%{"maintenanceStatus" => "available"})
+
+      assert length(result.items) == 1
+      assert result.total_count == 1
+      assert hd(result.items).maintenance_status == "available"
+    end
+
+    test "maintenanceStatus=all returns every item regardless of maintenance state" do
+      category = InventoryFixtures.category_fixture(name: "Masks")
+      container = InventoryFixtures.container_fixture(name: "Locker A")
+
+      InventoryFixtures.item_fixture(
+        container_id: container.id,
+        category_id: category.id,
+        out_for_maintenance: false
+      )
+
+      InventoryFixtures.item_fixture(
+        container_id: container.id,
+        category_id: category.id,
+        out_for_maintenance: true
+      )
+
+      {:ok, result} = Inventory.list_items(%{"maintenanceStatus" => "all"})
+
+      assert length(result.items) == 2
+      assert result.total_count == 2
+    end
+
+    test "returns {:error, :invalid_limit} for a limit outside the allowed set" do
+      assert {:error, :invalid_limit} = Inventory.list_items(%{"limit" => "7"})
+    end
+
+    test "returns {:error, :bad_category_id} for a non-uuid categoryId" do
+      assert {:error, :bad_category_id} = Inventory.list_items(%{"categoryId" => "nope"})
+    end
+
+    test "returns {:error, :bad_container_id} for a non-uuid containerId" do
+      assert {:error, :bad_container_id} = Inventory.list_items(%{"containerId" => "nope"})
+    end
+
+    test "returns {:error, :invalid_maintenance_status} for an unknown maintenanceStatus" do
+      assert {:error, :invalid_maintenance_status} =
+               Inventory.list_items(%{"maintenanceStatus" => "broken"})
+    end
+
+    test "returns {:error, :bad_cursor} for an undecodable cursor" do
+      assert {:error, :bad_cursor} = Inventory.list_items(%{"cursor" => "not-a-cursor"})
+    end
+
+    test "returns {:error, :bad_cursor} when the cursor was minted with a different limit" do
+      category = InventoryFixtures.category_fixture(name: "Masks")
+      container = InventoryFixtures.container_fixture(name: "Locker A")
+
+      for index <- 1..15 do
+        InventoryFixtures.item_fixture(
+          container_id: container.id,
+          category_id: category.id,
+          inserted_at: DateTime.add(~U[2026-01-01 00:00:00Z], index, :second)
+        )
+      end
+
+      {:ok, first_page} = Inventory.list_items(%{"limit" => "10"})
+
+      assert {:error, :bad_cursor} =
+               Inventory.list_items(%{"limit" => "25", "cursor" => first_page.next_cursor})
+    end
+
+    test "returns {:error, :bad_cursor} when the cursor was minted with a different filter" do
+      category = InventoryFixtures.category_fixture(name: "Masks")
+      container = InventoryFixtures.container_fixture(name: "Locker A")
+
+      # Seed enough items to produce a non-nil next_cursor under limit=10.
+      for index <- 1..12 do
+        InventoryFixtures.item_fixture(
+          container_id: container.id,
+          category_id: category.id,
+          inserted_at: DateTime.add(~U[2026-01-01 00:00:00Z], index, :second)
+        )
+      end
+
+      {:ok, first_page} = Inventory.list_items(%{"limit" => "10"})
+
+      # Reuse the cursor with a maintenanceStatus filter — must be rejected.
+      assert {:error, :bad_cursor} =
+               Inventory.list_items(%{
+                 "limit" => "10",
+                 "maintenanceStatus" => "inMaintenance",
+                 "cursor" => first_page.next_cursor
+               })
     end
   end
 end
