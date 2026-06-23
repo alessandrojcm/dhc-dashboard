@@ -33,6 +33,7 @@ import { page } from "$app/state";
 import { Label } from "$lib/components/ui/label";
 import { createQuery, keepPreviousData } from "@tanstack/svelte-query";
 import type { InventoryItem, InventoryItemWithRelations } from "$lib/types";
+import { inventoryFiltersOptions } from "@dhc/api-client";
 
 let { data } = $props();
 const supabase: SupabaseClient<Database> = data.supabase;
@@ -45,6 +46,14 @@ let searchInput = $derived(page.url.searchParams.get("search") || "");
 let categoryInput = $derived(page.url.searchParams.get("category") || "");
 let containerInput = $derived(page.url.searchParams.get("container") || "");
 let maintenanceInput = $derived(page.url.searchParams.get("maintenance") || "");
+
+// Filter dropdown options (categories + containers) come from Phoenix via
+// `@dhc/api-client` (issue ALE-98). Browser-direct, mirroring the overview
+// counts + activity feed pattern; authz is enforced by Phoenix's
+// `inventory_admin_api` pipeline.
+const filtersQuery = createQuery(() => inventoryFiltersOptions());
+const categories = $derived(filtersQuery.data?.data.categories ?? []);
+const containers = $derived(filtersQuery.data?.data.containers ?? []);
 
 type InventoryItem = Pick<
 	InventoryItemWithRelations,
@@ -198,13 +207,13 @@ const hasActiveFilters = $derived(
 					<Label class="text-sm font-medium">Category</Label>
 					<Select type="single" bind:value={categoryInput}>
 						<SelectTrigger>
-							{categoryInput
-								? data.categories.find((c) => c.id === categoryInput)?.name
-								: 'All categories'}
-						</SelectTrigger>
-						<SelectContent>
-							<SelectItem value="">All categories</SelectItem>
-							{#each data.categories as category (category.id)}
+					{categoryInput
+						? categories.find((c) => c.id === categoryInput)?.name
+						: 'All categories'}
+					</SelectTrigger>
+					<SelectContent>
+						<SelectItem value="">All categories</SelectItem>
+						{#each categories as category (category.id)}
 								<SelectItem value={category.id}>{category.name}</SelectItem>
 							{/each}
 						</SelectContent>
@@ -215,13 +224,13 @@ const hasActiveFilters = $derived(
 					<Label class="text-sm font-medium">Container</Label>
 					<Select type="single" bind:value={containerInput}>
 						<SelectTrigger>
-							{containerInput
-								? data.containers.find((c) => c.id === containerInput)?.name
-								: 'All containers'}
-						</SelectTrigger>
-						<SelectContent>
-							<SelectItem value="">All containers</SelectItem>
-							{#each data.containers as container (container.id)}
+					{containerInput
+						? containers.find((c) => c.id === containerInput)?.name
+						: 'All containers'}
+					</SelectTrigger>
+					<SelectContent>
+						<SelectItem value="">All containers</SelectItem>
+						{#each containers as container (container.id)}
 								<SelectItem value={container.id}>{container.name}</SelectItem>
 							{/each}
 						</SelectContent>

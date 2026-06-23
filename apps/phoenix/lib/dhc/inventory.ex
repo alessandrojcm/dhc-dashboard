@@ -32,10 +32,12 @@ defmodule Dhc.Inventory do
 
   ## Scope of this slice
 
-  This module covers both the overview counts (`GET /api/inventory/overview`,
-  ALE-94) and the Inventory Activity feed (`GET /api/inventory/activity`,
-  ALE-95). Later endpoint slices (categories, containers, items — see PRD #93)
-  can build on these schemas without re-deriving them.
+  This module covers the overview counts (`GET /api/inventory/overview`,
+  ALE-94), the Inventory Activity feed (`GET /api/inventory/activity`,
+  ALE-95), and the Inventory Item filter options
+  (`GET /api/inventory/items/filters`, ALE-98). Later endpoint slices
+  (categories, containers, items — see PRD #93) can build on these schemas
+  without re-deriving them.
   """
 
   import Ecto.Query
@@ -321,5 +323,62 @@ defmodule Dhc.Inventory do
     }
     |> Jason.encode!()
     |> Base.url_encode64(padding: false)
+  end
+
+  # ── Inventory Item filter options (ALE-98) ───────────────────────────
+  #
+  # Returns the Equipment Category and Container options used to populate the
+  # Inventory Item list filter dropdowns. Replaces the SvelteKit server-side
+  # `getFilterOptions()` read (`item.service.ts`), which ran `selectAll()` over
+  # `equipment_categories` and `containers` ordered by `name`.
+  #
+  # The DTO is intentionally minimal: dropdowns only need `id` + `name`, plus
+  # the category attribute definitions (`availableAttributes`/`attributeSchema`)
+  # for any future attribute-driven filter UI, and `parentContainerId` for
+  # hierarchical container display. Internal timestamps and auth-user refs
+  # (`created_by`) are not exposed — the `inserted_at`/`created_at` baseline
+  # divergence (see AGENTS.md) is out of scope for this slice, and the
+  # dropdowns never consumed those fields anyway.
+
+  @doc """
+  Returns the Equipment Category and Container options for the Inventory
+  Item list filter dropdowns.
+
+  Both lists are ordered by `name` ascending, mirroring the previous
+  `orderBy("name")` behaviour. The result is a domain-shaped map with
+  snake_case keys; the controller JSON renderer converts them to the
+  camelCase contract (`categories`, `containers`).
+  """
+  @spec filter_options() :: %{
+          categories: [map()],
+          containers: [map()]
+        }
+  def filter_options do
+    categories =
+      Repo.all(
+        from c in EquipmentCategory,
+          order_by: [asc: c.name],
+          select: %{
+            id: c.id,
+            name: c.name,
+            description: c.description,
+            available_attributes: c.available_attributes,
+            attribute_schema: c.attribute_schema
+          }
+      )
+
+    containers =
+      Repo.all(
+        from c in Container,
+          order_by: [asc: c.name],
+          select: %{
+            id: c.id,
+            name: c.name,
+            description: c.description,
+            parent_container_id: c.parent_container_id
+          }
+      )
+
+    %{categories: categories, containers: containers}
   end
 end

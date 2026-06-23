@@ -11,9 +11,10 @@ defmodule DhcWeb.InventoryController do
   canonical Inventory management roles and the rationale for mirroring the
   existing dashboard Inventory gate.
 
-  This slice covers the overview counts (ALE-94) and the Inventory Activity
-  feed (ALE-95). Later Inventory endpoint slices (categories, containers,
-  items — see PRD #93) will extend this controller.
+  This slice covers the overview counts (ALE-94), the Inventory Activity
+  feed (ALE-95), and the Inventory Item filter options (ALE-98). Later
+  Inventory endpoint slices (categories, containers, items — see PRD #93)
+  will extend this controller.
   """
 
   @doc """
@@ -65,6 +66,23 @@ defmodule DhcWeb.InventoryController do
       {:error, _reason} ->
         bad_request(conn, "Invalid inventory activity query")
     end
+  end
+
+  @doc """
+  GET /inventory/items/filters
+
+  Returns the Equipment Category and Container options used to populate the
+  Inventory Item list filter dropdowns, replacing the SvelteKit server-side
+  `getFilterOptions()` read (`item.service.ts`). Both lists are ordered by
+  `name` ascending. The item rows themselves remain on the existing read
+  until the item-list slice (PRD #93) lands.
+  """
+  def filters(conn, _params) do
+    options = Inventory.filter_options()
+
+    conn
+    |> put_view(json: DhcWeb.InventoryJSON)
+    |> render(:filters, options: options)
   end
 
   defp bad_request(conn, detail) do
