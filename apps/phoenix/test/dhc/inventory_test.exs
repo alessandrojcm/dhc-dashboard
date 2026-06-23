@@ -313,4 +313,115 @@ defmodule Dhc.InventoryTest do
              ]
     end
   end
+
+  # ── Container list (ALE-97) ───────────────────────────────────────────
+
+  describe "list_containers/0" do
+    # The baseline migration seeds no default containers, but clear all
+    # inventory rows so assertions are deterministic.
+    setup do
+      Repo.delete_all(Dhc.Inventory.InventoryItem)
+      Repo.delete_all(Dhc.Inventory.Container)
+      Repo.delete_all(Dhc.Inventory.EquipmentCategory)
+      :ok
+    end
+
+    test "returns an empty container list when nothing is seeded" do
+      assert Inventory.list_containers() == %{containers: []}
+    end
+
+    test "returns containers ordered by name asc" do
+      InventoryFixtures.container_fixture(name: "Locker Z")
+      InventoryFixtures.container_fixture(name: "Locker A")
+      InventoryFixtures.container_fixture(name: "Locker M")
+
+      %{containers: containers} = Inventory.list_containers()
+
+      assert Enum.map(containers, & &1.name) == ["Locker A", "Locker M", "Locker Z"]
+    end
+
+    test "selects only the list fields, not timestamps or auth-user refs" do
+      InventoryFixtures.container_fixture(name: "Locker A")
+
+      %{containers: [container]} = Inventory.list_containers()
+
+      # Container fields mirror the camelCase contract (snake_case here; the
+      # renderer camelCases).
+      assert Map.keys(container) |> Enum.sort() == [
+               :description,
+               :id,
+               :item_count,
+               :name,
+               :parent_container,
+               :parent_container_id
+             ]
+
+      refute Map.has_key?(container, :created_by)
+      refute Map.has_key?(container, :inserted_at)
+      refute Map.has_key?(container, :created_at)
+      refute Map.has_key?(container, :updated_at)
+      refute Map.has_key?(container, :created_at)
+    end
+
+    test "item_count is zero for a container with no Inventory Items" do
+      InventoryFixtures.container_fixture(name: "Locker A")
+
+      %{containers: [container]} = Inventory.list_containers()
+
+      assert container.item_count == 0
+    end
+
+    test "item_count counts the Inventory Items directly in each container" do
+      locker_a = InventoryFixtures.container_fixture(name: "Locker A")
+      locker_b = InventoryFixtures.container_fixture(name: "Locker B")
+      category = InventoryFixtures.category_fixture()
+
+      # Three items in Locker A, one item in Locker B.
+      InventoryFixtures.item_fixture(container_id: locker_a.id, category_id: category.id)
+      InventoryFixtures.item_fixture(container_id: locker_a.id, category_id: category.id)
+      InventoryFixtures.item_fixture(container_id: locker_a.id, category_id: category.id)
+      InventoryFixtures.item_fixture(container_id: locker_b.id, category_id: category.id)
+
+      %{containers: containers} = Inventory.list_containers()
+
+      by_name = Map.new(containers, &{&1.name, &1.item_count})
+
+      assert by_name["Locker A"] == 3
+      assert by_name["Locker B"] == 1
+    end
+
+    test "parent_container_id is nil for top-level containers" do
+      InventoryFixtures.container_fixture(name: "Locker A")
+
+      %{containers: [container]} = Inventory.list_containers()
+
+      assert container.parent_container_id == nil
+    end
+
+    test "parent_container_id is populated for nested containers" do
+      storage_room = InventoryFixtures.container_fixture(name: "Storage Room")
+      InventoryFixtures.container_fixture(name: "Shelf", parent_container_id: storage_room.id)
+
+      %{containers: [shelf, _storage_room]} = Inventory.list_containers()
+
+      assert shelf.parent_container_id == storage_room.id
+    end
+
+    test "parent_container is nil for top-level containers" do
+      InventoryFixtures.container_fixture(name: "Locker A")
+
+      %{containers: [container]} = Inventory.list_containers()
+
+      assert container.parent_container == nil
+    end
+
+    test "parent_container is the nested {id, name} object for nested containers" do
+      storage_room = InventoryFixtures.container_fixture(name: "Storage Room")
+      InventoryFixtures.container_fixture(name: "Shelf", parent_container_id: storage_room.id)
+
+      %{containers: [shelf, _storage_room]} = Inventory.list_containers()
+
+      assert shelf.parent_container == %{"id" => storage_room.id, "name" => "Storage Room"}
+    end
+  end
 end

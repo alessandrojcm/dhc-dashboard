@@ -35,10 +35,10 @@ defmodule Dhc.Inventory do
   This module covers the overview counts (`GET /api/inventory/overview`,
   ALE-94), the Inventory Activity feed (`GET /api/inventory/activity`,
   ALE-95), the Inventory Item filter options
-  (`GET /api/inventory/items/filters`, ALE-98), and the Equipment Category
-  list (`GET /api/inventory/categories`, ALE-96). Later endpoint slices
-  (containers, items — see PRD #93) can build on these schemas without
-  re-deriving them.
+  (`GET /api/inventory/items/filters`, ALE-98), the Equipment Category list
+  (`GET /api/inventory/categories`, ALE-96), and the Container list
+  (`GET /api/inventory/containers`, ALE-97). Later endpoint slices
+  (items — see PRD #93) can build on these schemas without re-deriving them.
   """
 
   import Ecto.Query
@@ -426,5 +426,88 @@ defmodule Dhc.Inventory do
       )
 
     %{categories: categories}
+  end
+
+  # ── Container list (ALE-97) ───────────────────────────────────────────
+  #
+  # Returns the flat, domain-shaped Container list, each with its parent
+  # Container (the nested `{ id, name }` object, or `nil` for a top-level
+  # Container) and the number of Inventory Items directly in it, ordered by
+  # `name` ascending. Replaces the SvelteKit client-side Supabase/PostgREST
+  # read over `containers` (with a `parent_container:containers!fk(id, name)`
+  # join and an `equipment_items(count)` aggregate) on the Inventory
+  # containers dashboard (`src/routes/dashboard/inventory/containers/+page.svelte`).
+  #
+  # The response is intentionally a flat array; the dashboard derives its
+  # hierarchy tree client-side from `parentContainerId`/`parentContainer`.
+  #
+  # The item count is a left-joined `count(i.id)` over `inventory_items`
+  # (constrained to `i.container_id == c.id`) so containers with no Inventory
+  # Items still appear with `item_count: 0`. `count(i.id)` counts non-null
+  # `inventory_items.id` rows, so an empty container yields `0` rather than
+  # the `1` a bare `count(*)` over the left join would produce.
+  #
+  # The parent Container object is built in Elixir from the same flat list
+  # (the list is the source of truth for the hierarchy) rather than via a
+  # second self-join. This keeps the `count(i.id)` GROUP BY free of parent
+  # columns (a self-join would force the parent's `id`/`name` into the GROUP
+  # BY, or require a subquery), and it gracefully yields `nil` for a missing
+  # parent (e.g. a stale `parent_container_id` after a parent delete).
+
+  @doc """
+  Returns the flat, domain-shaped Container list with parent Container data
+  and Inventory Item counts, ordered by `name` ascending.
+
+  The result is a domain-shaped map with snake_case keys; the controller JSON
+  renderer converts them to the camelCase contract (`containers`). Each
+  container carries `id`, `name`, `description`, `parent_container_id`,
+  `parent_container` (the nested `%{id, name}` map, or `nil`), and
+  `item_count`. Internal timestamps and auth-user refs are not exposed.
+
+  The response is a flat array; the dashboard derives its hierarchy tree
+  client-side from `parent_container_id`/`parent_container`. The
+  `parent_container` object is built in Elixir from the same list — the list
+  is the source of truth for the hierarchy — so a missing parent yields
+  `nil` rather than raising.
+  """
+  @spec list_containers() :: %{containers: [map()]}
+  def list_containers do
+    rows =
+      Repo.all(
+        from c in Container,
+          left_join: i in InventoryItem,
+          on: i.container_id == c.id,
+          order_by: [asc: c.name],
+          group_by: c.id,
+          select: %{
+            id: c.id,
+            name: c.name,
+            description: c.description,
+            parent_container_id: c.parent_container_id,
+            parent_container: nil,
+            item_count: count(i.id)
+          }
+      )
+
+    # Build the nested parent_container object from the same flat list. The
+    # list is the source of truth for the hierarchy: a container's parent is
+    # another row in this list, so a single pass builds a `%{id => %{id,
+    # name}}` lookup and attaches it to each container. A missing parent
+    # (stale `parent_container_id`) stays `nil`.
+    parent_by_id =
+      Map.new(rows, fn row -> {row.id, %{"id" => row.id, "name" => row.name}} end)
+
+    containers =
+      Enum.map(rows, fn row ->
+        parent =
+          case row.parent_container_id do
+            nil -> nil
+            parent_id -> Map.get(parent_by_id, parent_id)
+          end
+
+        %{row | parent_container: parent}
+      end)
+
+    %{containers: containers}
   end
 end

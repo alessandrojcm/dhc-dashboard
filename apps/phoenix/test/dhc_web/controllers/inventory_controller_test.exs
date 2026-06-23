@@ -897,6 +897,189 @@ defmodule DhcWeb.InventoryControllerTest do
     end
   end
 
+  # ── Container list (ALE-97) ───────────────────────────────────────────
+
+  describe "containers — RBAC" do
+    test "allows quartermaster, president, and admin", %{conn: _conn} do
+      for role <- @allowed_roles do
+        conn =
+          build_conn()
+          |> auth_conn(role)
+          |> get("/api/inventory/containers")
+
+        assert %{"data" => %{"containers" => _}} = json_response(conn, 200)
+      end
+    end
+
+    test "returns 401 without a bearer token", %{conn: conn} do
+      conn = get(conn, "/api/inventory/containers")
+
+      assert %{"errors" => %{"detail" => "Unauthorized"}} = json_response(conn, 401)
+    end
+
+    test "returns 401 with an invalid bearer token", %{conn: conn} do
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer bad-token")
+        |> get("/api/inventory/containers")
+
+      assert %{"errors" => %{"detail" => "Unauthorized"}} = json_response(conn, 401)
+    end
+
+    test "returns 403 for members without an Inventory privilege", %{conn: _conn} do
+      for role <- @rejected_roles do
+        conn =
+          build_conn()
+          |> auth_conn(role)
+          |> get("/api/inventory/containers")
+
+        assert %{"errors" => %{"detail" => "Insufficient role"}} =
+                 json_response(conn, 403)
+      end
+    end
+  end
+
+  describe "containers — payload" do
+    # Clear all inventory rows so assertions are deterministic.
+    setup do
+      Repo.delete_all(InventoryItem)
+      Repo.delete_all(Container)
+      Repo.delete_all(EquipmentCategory)
+      :ok
+    end
+
+    test "returns an empty container array when nothing is seeded", %{conn: conn} do
+      conn =
+        conn
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/containers")
+
+      assert json_response(conn, 200) == %{"data" => %{"containers" => []}}
+    end
+
+    test "returns containers ordered by name asc, camelCased", %{conn: conn} do
+      # Containers inserted out of order; the response must be name-sorted.
+      InventoryFixtures.container_fixture(name: "Locker Z")
+      InventoryFixtures.container_fixture(name: "Locker A")
+      InventoryFixtures.container_fixture(name: "Locker M")
+
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> get("/api/inventory/containers")
+
+      assert %{"data" => %{"containers" => containers}} = json_response(conn, 200)
+
+      assert Enum.map(containers, & &1["name"]) == ["Locker A", "Locker M", "Locker Z"]
+    end
+
+    test "preserves the agreed camelCase fields and no storage-vocab leak for a top-level container",
+         %{conn: conn} do
+      InventoryFixtures.container_fixture(name: "Locker A")
+
+      conn =
+        conn
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/containers")
+
+      assert %{"data" => %{"containers" => [container]}} = json_response(conn, 200)
+
+      assert container["id"] != nil
+      assert container["name"] == "Locker A"
+      assert container["description"] != nil
+
+      # A top-level container has no parent.
+      assert container["parentContainerId"] == nil
+      assert container["parentContainer"] == nil
+
+      # itemCount is present (zero here — no items seeded).
+      assert container["itemCount"] == 0
+
+      # Storage vocabulary must not leak into the contract.
+      refute Map.has_key?(container, "parent_container_id")
+      refute Map.has_key?(container, "parent_container")
+      refute Map.has_key?(container, "item_count")
+      refute Map.has_key?(container, "inserted_at")
+      refute Map.has_key?(container, "updated_at")
+      refute Map.has_key?(container, "created_at")
+      refute Map.has_key?(container, "created_by")
+    end
+
+    test "parentContainer is the nested {id, name} object for a nested container",
+         %{conn: conn} do
+      parent = InventoryFixtures.container_fixture(name: "Storage Room")
+      InventoryFixtures.container_fixture(name: "Shelf", parent_container_id: parent.id)
+
+      conn =
+        conn
+        |> auth_conn("president")
+        |> get("/api/inventory/containers")
+
+      assert %{"data" => %{"containers" => containers}} = json_response(conn, 200)
+
+      shelf =
+        Enum.find(containers, &(&1["name"] == "Shelf"))
+
+      assert shelf["parentContainerId"] == parent.id
+      assert shelf["parentContainer"] == %{"id" => parent.id, "name" => "Storage Room"}
+    end
+
+    test "itemCount counts the Inventory Items directly in each container", %{conn: conn} do
+      locker_a = InventoryFixtures.container_fixture(name: "Locker A")
+      locker_b = InventoryFixtures.container_fixture(name: "Locker B")
+      category = InventoryFixtures.category_fixture()
+
+      # Three items in Locker A, one item in Locker B.
+      InventoryFixtures.item_fixture(container_id: locker_a.id, category_id: category.id)
+      InventoryFixtures.item_fixture(container_id: locker_a.id, category_id: category.id)
+      InventoryFixtures.item_fixture(container_id: locker_a.id, category_id: category.id)
+      InventoryFixtures.item_fixture(container_id: locker_b.id, category_id: category.id)
+
+      conn =
+        conn
+        |> auth_conn("president")
+        |> get("/api/inventory/containers")
+
+      assert %{"data" => %{"containers" => containers}} = json_response(conn, 200)
+
+      by_name = Map.new(containers, &{&1["name"], &1["itemCount"]})
+
+      assert by_name["Locker A"] == 3
+      assert by_name["Locker B"] == 1
+    end
+
+    test "itemCount is zero for a container with no Inventory Items", %{conn: conn} do
+      InventoryFixtures.container_fixture(name: "Locker A")
+
+      conn =
+        conn
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/containers")
+
+      assert %{"data" => %{"containers" => [container]}} = json_response(conn, 200)
+
+      assert container["itemCount"] == 0
+    end
+
+    test "uses the data envelope and does not leak storage vocabulary", %{conn: conn} do
+      InventoryFixtures.container_fixture(name: "Locker A")
+
+      conn =
+        conn
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/containers")
+
+      body = json_response(conn, 200)
+
+      assert %{"data" => %{"containers" => _}} = body
+
+      # Storage vocabulary must not leak into the contract.
+      refute Map.has_key?(body, "containers_rows")
+      refute Map.has_key?(body["data"], "inventory_items")
+      refute Map.has_key?(body["data"], "equipment_categories")
+    end
+  end
+
   # ── Fixtures ─────────────────────────────────────────────────────────
 
   defp seed_activity_fixture(_context) do

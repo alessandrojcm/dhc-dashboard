@@ -1,93 +1,89 @@
 <script lang="ts">
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import type { Database } from "$database";
-import type { SupabaseClient } from "@supabase/supabase-js";
-import {
-	Card,
-	CardContent,
-	CardHeader,
-	CardTitle,
-} from "$lib/components/ui/card";
-import { Button } from "$lib/components/ui/button";
-import { Badge } from "$lib/components/ui/badge";
-import { FolderOpen, Plus, Edit, Package, AlertTriangle } from "lucide-svelte";
-import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
-import { createQuery } from "@tanstack/svelte-query";
+	import { inventoryContainersOptions } from "@dhc/api-client";
+	import type { InventoryContainer } from "@dhc/api-client";
+	import { createQuery } from "@tanstack/svelte-query";
+	import {
+		Card,
+		CardContent,
+		CardHeader,
+		CardTitle,
+	} from "$lib/components/ui/card";
+	import { Button } from "$lib/components/ui/button";
+	import { Badge } from "$lib/components/ui/badge";
+	import { FolderOpen, Plus, Edit, Package, AlertTriangle } from "lucide-svelte";
+	import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
 
-let { data } = $props();
-const supabase: SupabaseClient<Database> = data.supabase;
+	let { data } = $props();
 
-// Fetch containers with TanStack Query
-const containersQuery = createQuery(() => ({
-	queryKey: ["inventory-containers"],
-	queryFn: async ({ signal }) => {
-		const { data: containers, error } = await supabase
-			.from("containers")
-			.select(
-				"id, name, description, parent_container_id, parent_container:containers!containers_parent_container_id_fkey(id, name), item_count:equipment_items(count)",
-			)
-			.order("name")
-			.abortSignal(signal);
+	// Containers come from Phoenix (`GET /api/inventory/containers`, issue
+	// ALE-97) via the generated TanStack Query options. The Supabase JWT is
+	// attached by `configureClient`'s `getAuthToken` hook; authz is enforced
+	// by Phoenix's `inventory_admin_api` pipeline, so no redundant SvelteKit
+	// `authorize()` gate is needed for the read (the layout's
+	// `authorize(INVENTORY_ROLES)` still gates page access). Replaces the
+	// client-side Supabase/PostgREST read over `containers` (with a
+	// `parent_container:containers!fk(id, name)` join and an
+	// `equipment_items(count)` aggregate).
+	const containersQuery = createQuery(() => inventoryContainersOptions());
 
-		if (error) throw error;
+	const containers = $derived(containersQuery.data?.data.containers ?? []);
 
-		return containers || [];
-	},
-}));
+	type ContainerNode = InventoryContainer & { children: ContainerNode[] };
 
-// Build hierarchy tree
-const buildHierarchy = (containers: any[]) => {
-	// eslint-disable-next-line svelte/prefer-svelte-reactivity
-	const containerMap = new Map();
-	const rootContainers: any[] = [];
+	// Build hierarchy tree client-side from the flat list. The response is
+	// flat (ALE-97 contract); the dashboard derives parent/child relationships
+	// from `parentContainerId`.
+	function buildHierarchy(list: InventoryContainer[]): ContainerNode[] {
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
+		const containerMap = new Map<string, ContainerNode>();
 
-	// First pass: create map of all containers
-	containers.forEach((container) => {
-		containerMap.set(container.id, { ...container, children: [] });
-	});
+		// First pass: create map of all containers.
+		for (const container of list) {
+			containerMap.set(container.id, { ...container, children: [] });
+		}
 
-	// Second pass: build hierarchy
-	containers.forEach((container) => {
-		if (container.parent_container_id) {
-			const parent = containerMap.get(container.parent_container_id);
-			if (parent) {
-				parent.children.push(containerMap.get(container.id));
+		// Second pass: build hierarchy.
+		const rootContainers: ContainerNode[] = [];
+		for (const container of list) {
+			const node = containerMap.get(container.id)!;
+			if (container.parentContainerId) {
+				const parent = containerMap.get(container.parentContainerId);
+				if (parent) {
+					parent.children.push(node);
+					continue;
+				}
 			}
-		} else {
-			rootContainers.push(containerMap.get(container.id));
+			rootContainers.push(node);
 		}
-	});
 
-	return rootContainers;
-};
+		return rootContainers;
+	}
 
-const renderContainer = (container: any, level = 0) => {
-	const itemCount = container.item_count?.[0]?.count || 0;
-	const hasChildren = container.children.length > 0;
-
-	return {
-		container,
-		level,
-		itemCount,
-		hasChildren,
+	type FlatNode = {
+		container: ContainerNode;
+		level: number;
+		itemCount: number;
+		hasChildren: boolean;
 	};
-};
 
-const flattenHierarchy = (containers: any[], level = 0): any[] => {
-	const result: any[] = [];
-	containers.forEach((container) => {
-		result.push(renderContainer(container, level));
-		if (container.children.length > 0) {
-			result.push(...flattenHierarchy(container.children, level + 1));
+	function flattenHierarchy(nodes: ContainerNode[], level = 0): FlatNode[] {
+		const result: FlatNode[] = [];
+		for (const node of nodes) {
+			result.push({
+				container: node,
+				level,
+				itemCount: node.itemCount,
+				hasChildren: node.children.length > 0,
+			});
+			if (node.children.length > 0) {
+				result.push(...flattenHierarchy(node.children, level + 1));
+			}
 		}
-	});
-	return result;
-};
+		return result;
+	}
 
-const hierarchy = $derived(
-	containersQuery.data ? buildHierarchy(containersQuery.data) : [],
-);
-const flatContainers = $derived(flattenHierarchy(hierarchy));
+	const hierarchy = $derived(buildHierarchy(containers));
+	const flatContainers = $derived(flattenHierarchy(hierarchy));
 </script>
 
 <div class="p-6">
@@ -169,9 +165,9 @@ const flatContainers = $derived(flattenHierarchy(hierarchy));
 									{#if container.description}
 										<p class="text-sm text-muted-foreground">{container.description}</p>
 									{/if}
-									{#if container.parent_container}
+									{#if container.parentContainer}
 										<p class="text-xs text-muted-foreground">
-											Parent: {container.parent_container.name}
+											Parent: {container.parentContainer.name}
 										</p>
 									{/if}
 								</div>
