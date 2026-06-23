@@ -1001,6 +1001,7 @@ defmodule DhcWeb.InventoryControllerTest do
       refute Map.has_key?(container, "parent_container")
       refute Map.has_key?(container, "item_count")
       refute Map.has_key?(container, "inserted_at")
+      refute Map.has_key?(container, "created_at")
       refute Map.has_key?(container, "updated_at")
       refute Map.has_key?(container, "created_at")
       refute Map.has_key?(container, "created_by")
@@ -1156,14 +1157,14 @@ defmodule DhcWeb.InventoryControllerTest do
         InventoryFixtures.item_fixture(
           container_id: container.id,
           category_id: category.id,
-          inserted_at: ~U[2026-01-01 00:00:00Z]
+          created_at: ~U[2026-01-01 00:00:00Z]
         )
 
       newer =
         InventoryFixtures.item_fixture(
           container_id: container.id,
           category_id: category.id,
-          inserted_at: ~U[2026-01-02 00:00:00Z]
+          created_at: ~U[2026-01-02 00:00:00Z]
         )
 
       conn =
@@ -1205,6 +1206,7 @@ defmodule DhcWeb.InventoryControllerTest do
       refute Map.has_key?(item, "out_for_maintenance")
       refute Map.has_key?(item, "maintenance_status")
       refute Map.has_key?(item, "inserted_at")
+      refute Map.has_key?(item, "created_at")
       refute Map.has_key?(item, "updated_at")
       refute Map.has_key?(item, "created_by")
       refute Map.has_key?(item, "updated_by")
@@ -1303,7 +1305,7 @@ defmodule DhcWeb.InventoryControllerTest do
 
       expected_first_ids =
         items
-        |> Enum.sort_by(&{&1.inserted_at, &1.id}, :desc)
+        |> Enum.sort_by(&{&1.created_at, &1.id}, :desc)
         |> Enum.take(10)
         |> Enum.map(& &1.id)
 
@@ -1661,7 +1663,7 @@ defmodule DhcWeb.InventoryControllerTest do
         InventoryFixtures.item_fixture(
           container_id: container.id,
           category_id: category.id,
-          inserted_at: DateTime.add(~U[2026-01-01 00:00:00Z], index, :second)
+          created_at: DateTime.add(~U[2026-01-01 00:00:00Z], index, :second)
         )
       end
 

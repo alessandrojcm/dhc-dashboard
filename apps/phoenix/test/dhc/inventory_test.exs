@@ -496,6 +496,7 @@ defmodule Dhc.InventoryTest do
              ]
 
       refute Map.has_key?(item, :inserted_at)
+      refute Map.has_key?(item, :created_at)
       refute Map.has_key?(item, :updated_at)
       refute Map.has_key?(item, :created_by)
       refute Map.has_key?(item, :updated_by)
@@ -570,7 +571,7 @@ defmodule Dhc.InventoryTest do
           InventoryFixtures.item_fixture(
             container_id: container.id,
             category_id: category.id,
-            inserted_at: DateTime.add(~U[2026-01-01 00:00:00Z], index, :second)
+            created_at: DateTime.add(~U[2026-01-01 00:00:00Z], index, :second)
           )
         end
 
@@ -585,7 +586,7 @@ defmodule Dhc.InventoryTest do
       # The first page is the 10 newest items.
       expected_first_ids =
         items
-        |> Enum.sort_by(&{&1.inserted_at, &1.id}, :desc)
+        |> Enum.sort_by(&{&1.created_at, &1.id}, :desc)
         |> Enum.take(10)
         |> Enum.map(& &1.id)
 
