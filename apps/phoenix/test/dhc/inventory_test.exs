@@ -1,13 +1,14 @@
 defmodule Dhc.InventoryTest do
   @moduledoc """
-  Context-level read-model tests for `Dhc.Inventory` (issue ALE-94 / PRD #93).
+  Context-level read-model tests for `Dhc.Inventory` (PRD #93).
 
-  Covers the read-model behavior needed by the overview endpoint slice:
-  the canonical Inventory management roles, and the four overview counts
-  (Containers, Equipment Categories, Inventory Items, and Items out for
-  maintenance). Controller-layer authorization is verified by
+  Covers the read-model behavior for the Inventory read slices: the
+  canonical Inventory management roles, the overview counts (ALE-94), the
+  Inventory Item filter options (ALE-98), and the Equipment Category list
+  with item counts (ALE-96). Controller-layer authorization is verified by
   `DhcWeb.InventoryControllerTest`; these tests assert external read-model
-  behavior (shape, counts, role list) — not internal query mechanics.
+  behavior (shape, counts, ordering, role list) — not internal query
+  mechanics.
   """
 
   use Dhc.DataCase, async: false
@@ -217,6 +218,99 @@ defmodule Dhc.InventoryTest do
       %{containers: [shelf, _storage_room]} = Inventory.filter_options()
 
       assert shelf.parent_container_id == parent.id
+    end
+  end
+
+  # ── Equipment Category list (ALE-96) ──────────────────────────────────
+
+  describe "list_categories/0" do
+    # The baseline migration seeds 7 default equipment categories; clear them
+    # plus containers/items so assertions are deterministic.
+    setup do
+      Repo.delete_all(Dhc.Inventory.InventoryItem)
+      Repo.delete_all(Dhc.Inventory.Container)
+      Repo.delete_all(Dhc.Inventory.EquipmentCategory)
+      :ok
+    end
+
+    test "returns an empty category list when nothing is seeded" do
+      assert Inventory.list_categories() == %{categories: []}
+    end
+
+    test "returns categories ordered by name asc" do
+      InventoryFixtures.category_fixture(name: "Zweihänder")
+      InventoryFixtures.category_fixture(name: "Axes")
+      InventoryFixtures.category_fixture(name: "Masks")
+
+      %{categories: categories} = Inventory.list_categories()
+
+      assert Enum.map(categories, & &1.name) == ["Axes", "Masks", "Zweihänder"]
+    end
+
+    test "selects only the list fields, not timestamps or auth-user refs" do
+      InventoryFixtures.category_fixture(
+        name: "Masks",
+        available_attributes: [%{"name" => "brand", "type" => "text"}]
+      )
+
+      %{categories: [category]} = Inventory.list_categories()
+
+      # Category fields mirror the camelCase contract (snake_case here; the
+      # renderer camelCases).
+      assert Map.keys(category) |> Enum.sort() == [
+               :available_attributes,
+               :description,
+               :id,
+               :item_count,
+               :name
+             ]
+
+      refute Map.has_key?(category, :inserted_at)
+      refute Map.has_key?(category, :created_at)
+      refute Map.has_key?(category, :updated_at)
+      refute Map.has_key?(category, :created_by)
+    end
+
+    test "item_count is zero for a category with no Inventory Items" do
+      InventoryFixtures.category_fixture(name: "Masks")
+
+      %{categories: [category]} = Inventory.list_categories()
+
+      assert category.item_count == 0
+    end
+
+    test "item_count counts the Inventory Items in each category" do
+      masks = InventoryFixtures.category_fixture(name: "Masks")
+      gloves = InventoryFixtures.category_fixture(name: "Gloves")
+      container = InventoryFixtures.container_fixture()
+
+      # Three Masks items, one Gloves item.
+      InventoryFixtures.item_fixture(container_id: container.id, category_id: masks.id)
+      InventoryFixtures.item_fixture(container_id: container.id, category_id: masks.id)
+      InventoryFixtures.item_fixture(container_id: container.id, category_id: masks.id)
+      InventoryFixtures.item_fixture(container_id: container.id, category_id: gloves.id)
+
+      %{categories: categories} = Inventory.list_categories()
+
+      by_name = Map.new(categories, &{&1.name, &1.item_count})
+
+      assert by_name["Masks"] == 3
+      assert by_name["Gloves"] == 1
+    end
+
+    test "preserves available_attributes as the jsonb array shape" do
+      InventoryFixtures.category_fixture(
+        name: "Masks",
+        available_attributes: [
+          %{"name" => "brand", "type" => "text", "required" => true, "label" => "Brand"}
+        ]
+      )
+
+      %{categories: [category]} = Inventory.list_categories()
+
+      assert category.available_attributes == [
+               %{"name" => "brand", "type" => "text", "required" => true, "label" => "Brand"}
+             ]
     end
   end
 end

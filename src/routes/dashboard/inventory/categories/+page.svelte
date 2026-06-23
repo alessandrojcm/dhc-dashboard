@@ -1,7 +1,7 @@
 <script lang="ts">
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import type { Database } from "$database";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import { inventoryCategoriesOptions } from "@dhc/api-client";
+import type { InventoryCategory } from "@dhc/api-client";
+import { createQuery } from "@tanstack/svelte-query";
 import {
 	Card,
 	CardContent,
@@ -12,38 +12,21 @@ import { Button } from "$lib/components/ui/button";
 import { Badge } from "$lib/components/ui/badge";
 import { Tags, Plus, Edit, Package, AlertTriangle } from "lucide-svelte";
 import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
-import { createQuery } from "@tanstack/svelte-query";
 
-let { data } = $props();
-const supabase: SupabaseClient<Database> = data.supabase;
+// Equipment Categories come from Phoenix (`GET /api/inventory/categories`,
+// issue ALE-96) via the generated TanStack Query options. The Supabase JWT is
+// attached by `configureClient`'s `getAuthToken` hook; authz is enforced by
+// Phoenix's `inventory_admin_api` pipeline, so no redundant SvelteKit
+// `authorize()` gate is needed for the read (the layout's
+// `authorize(INVENTORY_ROLES)` still gates page access). Replaces the
+// client-side Supabase/PostgREST read over `equipment_categories` (with an
+// `equipment_items(count)` aggregate).
+const categoriesQuery = createQuery(() => inventoryCategoriesOptions());
 
-// Fetch categories with TanStack Query
-const categoriesQuery = createQuery(() => ({
-	queryKey: ["inventory-categories"],
-	queryFn: async ({ signal }) => {
-		const { data: categories, error } = await supabase
-			.from("equipment_categories")
-			.select(
-				"id, name, description, available_attributes, item_count:equipment_items(count)",
-				{
-					count: "exact",
-				},
-			)
-			.order("name")
-			.abortSignal(signal);
+const categories = $derived(categoriesQuery.data?.data.categories ?? []);
 
-		if (error) throw error;
-
-		return categories || [];
-	},
-}));
-
-const getAttributeCount = (category: any) => {
-	return Object.keys(category.available_attributes || {}).length;
-};
-
-const getItemCount = (category: any) => {
-	return category.item_count?.[0]?.count || 0;
+const getAttributeCount = (category: InventoryCategory) => {
+	return category.availableAttributes.length;
 };
 </script>
 
@@ -75,7 +58,7 @@ const getItemCount = (category: any) => {
 				<Button onclick={() => categoriesQuery.refetch()} variant="outline">Retry</Button>
 			</CardContent>
 		</Card>
-	{:else if categoriesQuery.data.length === 0}
+	{:else if categories.length === 0}
 		<Card>
 			<CardContent class="flex flex-col items-center justify-center py-12">
 				<Tags class="h-12 w-12 text-muted-foreground mb-4" />
@@ -91,7 +74,7 @@ const getItemCount = (category: any) => {
 		</Card>
 	{:else}
 		<div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-			{#each categoriesQuery.data as category (category.id)}
+			{#each categories as category (category.id)}
 				<Card class="hover:shadow-md transition-shadow">
 					<CardHeader>
 						<CardTitle class="flex items-center justify-between">
@@ -124,7 +107,7 @@ const getItemCount = (category: any) => {
 							<div class="flex items-center gap-1">
 								<Badge variant="outline" class="text-xs flex items-center gap-1">
 									<Package class="h-3 w-3" />
-									{getItemCount(category)} item{getItemCount(category) !== 1 ? 's' : ''}
+									{category.itemCount} item{category.itemCount !== 1 ? 's' : ''}
 								</Badge>
 							</div>
 						</div>
@@ -133,9 +116,9 @@ const getItemCount = (category: any) => {
 							<div class="space-y-2">
 								<h4 class="text-sm font-medium">Attributes:</h4>
 								<div class="flex flex-wrap gap-1">
-									{#each Object.entries(category.available_attributes || {}) as [key, attr] (key)}
+									{#each category.availableAttributes as attr, i (i)}
 										<Badge variant="outline" class="text-xs">
-											{attr.label || key}
+											{attr.label || attr.name}
 											{#if attr.required}
 												<span class="text-destructive">*</span>
 											{/if}

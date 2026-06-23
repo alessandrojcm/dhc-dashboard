@@ -34,10 +34,11 @@ defmodule Dhc.Inventory do
 
   This module covers the overview counts (`GET /api/inventory/overview`,
   ALE-94), the Inventory Activity feed (`GET /api/inventory/activity`,
-  ALE-95), and the Inventory Item filter options
-  (`GET /api/inventory/items/filters`, ALE-98). Later endpoint slices
-  (categories, containers, items — see PRD #93) can build on these schemas
-  without re-deriving them.
+  ALE-95), the Inventory Item filter options
+  (`GET /api/inventory/items/filters`, ALE-98), and the Equipment Category
+  list (`GET /api/inventory/categories`, ALE-96). Later endpoint slices
+  (containers, items — see PRD #93) can build on these schemas without
+  re-deriving them.
   """
 
   import Ecto.Query
@@ -380,5 +381,50 @@ defmodule Dhc.Inventory do
       )
 
     %{categories: categories, containers: containers}
+  end
+
+  # ── Equipment Category list (ALE-96) ──────────────────────────────────
+  #
+  # Returns the domain-shaped Equipment Category list, each with its
+  # Inventory Item count, ordered by `name` ascending. Replaces the
+  # SvelteKit client-side Supabase/PostgREST read over `equipment_categories`
+  # (with an `equipment_items(count)` aggregate) on the Inventory categories
+  # dashboard (`src/routes/dashboard/inventory/categories/+page.svelte`).
+  #
+  # The item count is a left-joined aggregate so categories with no Inventory
+  # Items still appear (with `item_count: 0`), mirroring the previous
+  # `equipment_items(count)` PostgREST aggregate. `count(i.id)` counts
+  # non-null `inventory_items.id` rows, so a category with no items yields
+  # `0` rather than `1` (a bare `count(*)` over the left join would produce
+  # `1` for the synthetic null row).
+
+  @doc """
+  Returns the domain-shaped Equipment Category list with Inventory Item
+  counts, ordered by `name` ascending.
+
+  The result is a domain-shaped map with snake_case keys; the controller JSON
+  renderer converts them to the camelCase contract (`categories`). Each
+  category carries `id`, `name`, `description`, `available_attributes`, and
+  `item_count`. Internal timestamps and auth-user refs are not exposed.
+  """
+  @spec list_categories() :: %{categories: [map()]}
+  def list_categories do
+    categories =
+      Repo.all(
+        from c in EquipmentCategory,
+          left_join: i in InventoryItem,
+          on: i.category_id == c.id,
+          order_by: [asc: c.name],
+          group_by: c.id,
+          select: %{
+            id: c.id,
+            name: c.name,
+            description: c.description,
+            available_attributes: c.available_attributes,
+            item_count: count(i.id)
+          }
+      )
+
+    %{categories: categories}
   end
 end
