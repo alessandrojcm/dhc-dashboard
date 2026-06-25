@@ -22,7 +22,6 @@ import type {
 	InventoryAttributes,
 	InventoryAttributeDefinition,
 	InventoryItemWithRelations,
-	ItemFilters,
 	InventoryContainer,
 	InventoryCategory,
 } from "./types";
@@ -215,142 +214,6 @@ export class ItemService {
 	}
 
 	/**
-	 * Find many items with optional filters
-	 */
-	async findMany(filters?: ItemFilters): Promise<InventoryItemWithRelations[]> {
-		this.logger.info("Finding inventory items", { filters });
-
-		try {
-			return await executeWithRLS(
-				this.kysely,
-				{ claims: this.session },
-				async (trx) => {
-					let query = trx
-						.selectFrom("inventory_items")
-						.leftJoin(
-							"containers",
-							"inventory_items.container_id",
-							"containers.id",
-						)
-						.leftJoin(
-							"equipment_categories",
-							"inventory_items.category_id",
-							"equipment_categories.id",
-						)
-						.select([
-							"inventory_items.id",
-							"inventory_items.container_id",
-							"inventory_items.category_id",
-							"inventory_items.quantity",
-							"inventory_items.notes",
-							"inventory_items.out_for_maintenance",
-							"inventory_items.attributes",
-							"inventory_items.photo_url",
-							"inventory_items.created_at",
-							"inventory_items.updated_at",
-							"inventory_items.created_by",
-							"inventory_items.updated_by",
-							"containers.id as container_id_joined",
-							"containers.name as container_name",
-							"containers.parent_container_id as container_parent_id",
-							"equipment_categories.id as category_id_joined",
-							"equipment_categories.name as category_name",
-							"equipment_categories.available_attributes as category_available_attributes",
-							"equipment_categories.attribute_schema as category_attribute_schema",
-							"equipment_categories.description as category_description",
-							"equipment_categories.created_at as category_created_at",
-							"equipment_categories.updated_at as category_updated_at",
-						]);
-
-					// Apply filters
-					if (filters?.categoryId) {
-						query = query.where(
-							"inventory_items.category_id",
-							"=",
-							filters.categoryId,
-						);
-					}
-					if (filters?.containerId) {
-						query = query.where(
-							"inventory_items.container_id",
-							"=",
-							filters.containerId,
-						);
-					}
-					if (filters?.outForMaintenance !== undefined) {
-						query = query.where(
-							"inventory_items.out_for_maintenance",
-							"=",
-							filters.outForMaintenance,
-						);
-					}
-					if (filters?.search) {
-						// Search in attributes (JSONB) using text operator
-						query = query.where((eb) =>
-							eb.or([
-								eb("inventory_items.notes", "ilike", `%${filters.search}%`),
-								eb("equipment_categories.name", "ilike", `%${filters.search}%`),
-								eb("containers.name", "ilike", `%${filters.search}%`),
-							]),
-						);
-					}
-
-					// Pagination
-					const page = filters?.page ?? 1;
-					const limit = filters?.limit ?? 50;
-					const offset = (page - 1) * limit;
-
-					const items = await query
-						.orderBy("inventory_items.created_at", "desc")
-						.limit(limit)
-						.offset(offset)
-						.execute();
-
-					// Transform to expected structure
-					return items.map((item) => ({
-						id: item.id,
-						container_id: item.container_id,
-						category_id: item.category_id,
-						quantity: item.quantity,
-						notes: item.notes,
-						out_for_maintenance: item.out_for_maintenance,
-						attributes: item.attributes as InventoryAttributes,
-						photo_url: item.photo_url,
-						created_at: item.created_at,
-						updated_at: item.updated_at,
-						created_by: item.created_by,
-						updated_by: item.updated_by,
-						container: {
-							id: item.container_id_joined,
-							name: item.container_name,
-							parent_container_id: item.container_parent_id,
-						},
-						category: {
-							id: item.category_id_joined,
-							name: item.category_name,
-							available_attributes:
-								(item.category_available_attributes as InventoryAttributeDefinition[]) ||
-								[],
-							attribute_schema: item.category_attribute_schema,
-							description: item.category_description,
-							created_at: item.category_created_at,
-							updated_at: item.category_updated_at,
-						},
-					}));
-				},
-			);
-		} catch (error) {
-			this.logger.error("Failed to find inventory items", {
-				error,
-				filters,
-			});
-			throw new Error("Failed to find inventory items", {
-				cause: { originalError: error, filters },
-			});
-		}
-	}
-
-	/**
 	 * Update an inventory item
 	 */
 	async update(
@@ -537,24 +400,6 @@ export class ItemService {
 				cause: { itemId, outForMaintenance, originalError: error },
 			});
 		}
-	}
-
-	/**
-	 * Get items by container
-	 */
-	async getByContainer(
-		containerId: string,
-	): Promise<InventoryItemWithRelations[]> {
-		return this.findMany({ containerId });
-	}
-
-	/**
-	 * Get items by category
-	 */
-	async getByCategory(
-		categoryId: string,
-	): Promise<InventoryItemWithRelations[]> {
-		return this.findMany({ categoryId });
 	}
 
 	/**

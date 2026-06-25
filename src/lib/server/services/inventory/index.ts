@@ -69,7 +69,6 @@ export type {
 	InventoryItem,
 	InventoryItemWithRelations,
 	InventoryHistoryWithRelations,
-	ItemFilters,
 	ContainerWithItemCount,
 	CategoryWithItemCount,
 	HistoryAction,

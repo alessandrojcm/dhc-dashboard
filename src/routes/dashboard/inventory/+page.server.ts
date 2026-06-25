@@ -9,7 +9,7 @@ export const load = async ({ locals }: { locals: App.Locals }) => {
 	// The Supabase JWT is attached by `configureClient`'s `getAuthToken` hook;
 	// authz is enforced by Phoenix's `inventory_admin_api` pipeline, so no
 	// redundant server-side read is needed here. The layout's
-	// `authorize(INVENTORY_ROLES)` still gates page access.
+	// `authorize(INVENTORY_READ_ROLES)` still gates page access.
 	await authorize(locals, INVENTORY_ROLES);
 	return {};
 };

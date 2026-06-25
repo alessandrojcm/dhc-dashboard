@@ -135,34 +135,6 @@ export class CategoryService {
 	}
 
 	/**
-	 * Find all categories
-	 */
-	async findMany(): Promise<InventoryCategory[]> {
-		this.logger.info("Finding all categories");
-
-		try {
-			return await executeWithRLS(
-				this.kysely,
-				{ claims: this.session },
-				async (trx) => {
-					const categories = await trx
-						.selectFrom("equipment_categories")
-						.selectAll()
-						.orderBy("name")
-						.execute();
-
-					return categories as InventoryCategory[];
-				},
-			);
-		} catch (error) {
-			this.logger.error("Failed to find categories", { error });
-			throw new Error("Failed to find categories", {
-				cause: { originalError: error },
-			});
-		}
-	}
-
-	/**
 	 * Update a category
 	 */
 	async update(
