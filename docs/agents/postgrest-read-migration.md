@@ -120,6 +120,25 @@ Purpose: track SvelteKit Supabase PostgREST reads (`supabase.from(...).select(..
 
 ### Inventory
 
+- Planned API/domain terms: Inventory Item, Equipment Category, Container, and Inventory Activity. `inventory_items`, `equipment_categories`, `containers`, and `inventory_history` are persistence vocabulary.
+- API-driven design applies: write/update the OpenAPI contract before implementation, then generate Phoenix stubs and the TypeScript client.
+- Initial Inventory read RBAC mirrors the current dashboard gate: `quartermaster`, `admin`, `president`.
+- Payload/features migration rule: preserve existing read payload fields and behavior unless changing them for consistency with established Phoenix API patterns (for example cursor pagination), domain-model clarity, or more RESTful URI design.
+- Agreed slice boundary: create separate, independently demoable endpoint issues plus a cleanup issue, not one large Inventory implementation issue.
+- Planned endpoints:
+  - `GET /api/inventory/overview` — summary counts only: `summary.containerCount`, `summary.categoryCount`, `summary.itemCount`, `summary.maintenanceCount`. Activity is intentionally split out. ✅ migrated (issue ALE-94): Phoenix `Dhc.Inventory.overview_counts/0` + `DhcWeb.InventoryController.overview/2` behind `:inventory_admin_api`; SvelteKit overview consumes `inventoryOverviewOptions()` via TanStack Query; the four PostgREST count reads were dropped from `src/routes/dashboard/inventory/+page.server.ts` (recent activity stays server-side pending the ALE-95 activity slice).
+  - `GET /api/inventory/activity` — Inventory Activity feed, cursor-paginated newest-first by `createdAt desc, id desc`, no total count. Supports `itemId` and `containerId` filters only. Preserves current activity information camelCased: `id`, `action`, `changedBy`, `createdAt`, `itemId`, `oldContainerId`, `newContainerId`, `notes`, `item`, `oldContainer`, `newContainer`.
+  - `GET /api/inventory/categories` — preserves current category list fields, camelCased: `id`, `name`, `description`, `availableAttributes`, `itemCount`.
+  - `GET /api/inventory/containers` — preserves current flat container list fields, camelCased: `id`, `name`, `description`, `parentContainerId`, `parentContainer`, `itemCount`. Do not return a nested tree in the first slice.
+  - `GET /api/inventory/items/filters` — replaces the current separate item filter-options server read. Mirrors current `getFilterOptions()` category/container `selectAll()` payloads, camelCased, rather than bundling filter data into the item list.
+  - `GET /api/inventory/items` — Inventory Item list with cursor pagination for consistency with Phoenix read APIs and `totalCount` for the table. Default/current sort only: `createdAt desc, id desc`; no caller-selected sort in the first slice. Preserve current filters and search: `q` searches item `attributes.name`, Equipment Category name, and Container name; `categoryId`; `containerId`; `maintenanceStatus=all|inMaintenance|available`. Preserve current list fields only, camelCased/domain-shaped: `id`, `quantity`, `maintenanceStatus`, `attributes`, `category`, `container`.
+- Endpoint slices can be marked `ready-for-agent`; no remaining human blockers were identified in the design session. Prefactor work should inspect existing baseline migrations/schemas/context support and avoid schema migrations unless the existing DB contract is proven insufficient.
+
+- `src/routes/dashboard/inventory/+page.svelte` ✅ overview counts migrated (ALE-94)
+  - Resource: `containers`, `equipment_categories`, `inventory_items` (four count reads)
+  - Shape: overview stat cards (Containers, Categories, Items, Maintenance) + recent activity feed
+  - Status: count reads replaced by `inventoryOverviewOptions()` from `@dhc/api-client` (browser-direct via TanStack Query). The recent activity feed (`inventory_history`) stays server-side in `+page.server.ts` pending the ALE-95 activity slice.
+
 - `src/routes/dashboard/inventory/categories/+page.svelte`
   - Resource: `equipment_categories`
   - Shape: categories with available attributes and item count.

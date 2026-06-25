@@ -1,4 +1,17 @@
 <script lang="ts">
+import { inventoryOverviewOptions } from "@dhc/api-client";
+import { createQuery } from "@tanstack/svelte-query";
+import dayjs from "dayjs";
+import relativeTime from "dayjs/plugin/relativeTime";
+import {
+	AlertTriangle,
+	Clock,
+	FolderOpen,
+	Package,
+	Plus,
+	Tags,
+} from "lucide-svelte";
+import { Button } from "$lib/components/ui/button";
 import {
 	Card,
 	CardContent,
@@ -6,21 +19,22 @@ import {
 	CardHeader,
 	CardTitle,
 } from "$lib/components/ui/card";
-import { Button } from "$lib/components/ui/button";
-import {
-	Package,
-	FolderOpen,
-	Tags,
-	AlertTriangle,
-	Plus,
-	Clock,
-} from "lucide-svelte";
-import dayjs from "dayjs";
-import relativeTime from "dayjs/plugin/relativeTime";
 
 dayjs.extend(relativeTime);
 
 let { data } = $props();
+
+// Inventory overview counts come from Phoenix (`GET /api/inventory/overview`,
+// issue ALE-94) via the generated TanStack Query options. The Supabase JWT is
+// attached by `configureClient`'s `getAuthToken` hook; authz is enforced by
+// Phoenix's `inventory_admin_api` pipeline, so no redundant SvelteKit
+// `authorize()` gate is needed for the counts read (the layout's
+// `authorize(INVENTORY_READ_ROLES)` still gates page access). Replaces the
+// four server-side PostgREST count reads over `containers`,
+// `equipment_categories`, and `inventory_items`.
+const overviewQuery = createQuery(() => inventoryOverviewOptions());
+
+const stats = $derived(overviewQuery.data?.data.summary);
 
 const getActionIcon = (action: string) => {
 	switch (action) {
@@ -63,7 +77,7 @@ const getActionColor = (action: string) => {
 				<FolderOpen class="h-4 w-4 text-muted-foreground" />
 			</CardHeader>
 			<CardContent>
-				<div class="text-2xl font-bold">{data.stats.containers}</div>
+				<div class="text-2xl font-bold">{stats?.containerCount ?? 0}</div>
 				<p class="text-xs text-muted-foreground">Storage locations</p>
 			</CardContent>
 		</Card>
@@ -74,7 +88,7 @@ const getActionColor = (action: string) => {
 				<Tags class="h-4 w-4 text-muted-foreground" />
 			</CardHeader>
 			<CardContent>
-				<div class="text-2xl font-bold">{data.stats.categories}</div>
+				<div class="text-2xl font-bold">{stats?.categoryCount ?? 0}</div>
 				<p class="text-xs text-muted-foreground">Equipment types</p>
 			</CardContent>
 		</Card>
@@ -85,7 +99,7 @@ const getActionColor = (action: string) => {
 				<Package class="h-4 w-4 text-muted-foreground" />
 			</CardHeader>
 			<CardContent>
-				<div class="text-2xl font-bold">{data.stats.items}</div>
+				<div class="text-2xl font-bold">{stats?.itemCount ?? 0}</div>
 				<p class="text-xs text-muted-foreground">Equipment pieces</p>
 			</CardContent>
 		</Card>
@@ -96,7 +110,9 @@ const getActionColor = (action: string) => {
 				<AlertTriangle class="h-4 w-4 text-muted-foreground" />
 			</CardHeader>
 			<CardContent>
-				<div class="text-2xl font-bold text-orange-600">{data.stats.maintenance}</div>
+				<div class="text-2xl font-bold text-orange-600">
+					{stats?.maintenanceCount ?? 0}
+				</div>
 				<p class="text-xs text-muted-foreground">Items out for maintenance</p>
 			</CardContent>
 		</Card>
