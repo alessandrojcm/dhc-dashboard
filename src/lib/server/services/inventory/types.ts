@@ -29,15 +29,6 @@ export type CategoryWithItemCount = InventoryCategory & {
 };
 
 // Item types
-export type ItemFilters = {
-	search?: string;
-	categoryId?: string;
-	containerId?: string;
-	outForMaintenance?: boolean;
-	page?: number;
-	limit?: number;
-};
-
 export type ItemMovement = {
 	itemId: string;
 	fromContainerId: string | null;
