@@ -130,11 +130,11 @@ See [docs/agents/notes.md](docs/agents/notes.md).
 
 ### Issue tracker
 
-Linear (use `linctl` CLI). See `docs/agents/issue-tracker.md`.
+Linear issues (uses the `linctl` CLI). See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
-Default canonical labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+Default canonical labels/status strings: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
 
 ### Domain docs
 
