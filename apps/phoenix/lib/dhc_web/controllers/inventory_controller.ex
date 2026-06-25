@@ -11,8 +11,9 @@ defmodule DhcWeb.InventoryController do
   canonical Inventory management roles and the rationale for mirroring the
   existing dashboard Inventory gate.
 
-  This slice covers the overview counts only. Inventory Activity (the
-  `inventory_history` feed) is a separate endpoint (PRD #93, ALE-95).
+  This slice covers the overview counts (ALE-94) and the Inventory Activity
+  feed (ALE-95). Later Inventory endpoint slices (categories, containers,
+  items — see PRD #93) will extend this controller.
   """
 
   @doc """
@@ -30,5 +31,45 @@ defmodule DhcWeb.InventoryController do
     conn
     |> put_view(json: DhcWeb.InventoryJSON)
     |> render(:overview, summary: summary)
+  end
+
+  @doc """
+  GET /inventory/activity
+
+  Returns the cursor-paginated Inventory Activity feed (the
+  `inventory_history` table), newest-first, with no total count. Supports
+  `itemId` and `containerId` filters and an opaque `cursor`. Replaces the
+  SvelteKit server-side PostgREST/Kysely read over `inventory_history`
+  joined to `inventory_items` and `containers` on the Inventory dashboard
+  overview (`src/routes/dashboard/inventory/+page.server.ts`).
+  """
+  def activity(conn, params) do
+    case Inventory.list_activity(params) do
+      {:ok, result} ->
+        conn
+        |> put_view(json: DhcWeb.InventoryJSON)
+        |> render(:activity, result: result)
+
+      {:error, :bad_cursor} ->
+        bad_request(conn, "Invalid or mismatched cursor")
+
+      {:error, :invalid_limit} ->
+        bad_request(conn, "Invalid limit")
+
+      {:error, :bad_item_id} ->
+        bad_request(conn, "Invalid itemId")
+
+      {:error, :bad_container_id} ->
+        bad_request(conn, "Invalid containerId")
+
+      {:error, _reason} ->
+        bad_request(conn, "Invalid inventory activity query")
+    end
+  end
+
+  defp bad_request(conn, detail) do
+    conn
+    |> put_status(:bad_request)
+    |> json(%{errors: %{detail: detail}})
   end
 end

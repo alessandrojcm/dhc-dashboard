@@ -82,6 +82,7 @@ defmodule DhcWeb.Router do
     pipe_through [:api, :inventory_admin_api]
 
     get "/inventory/overview", InventoryController, :overview
+    get "/inventory/activity", InventoryController, :activity
   end
 
   scope "/api", DhcWeb do
