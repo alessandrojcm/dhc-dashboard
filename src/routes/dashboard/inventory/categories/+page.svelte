@@ -18,7 +18,7 @@ import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
 // attached by `configureClient`'s `getAuthToken` hook; authz is enforced by
 // Phoenix's `inventory_admin_api` pipeline, so no redundant SvelteKit
 // `authorize()` gate is needed for the read (the layout's
-// `authorize(INVENTORY_ROLES)` still gates page access). Replaces the
+// `authorize(INVENTORY_READ_ROLES)` still gates page access). Replaces the
 // client-side Supabase/PostgREST read over `equipment_categories` (with an
 // `equipment_items(count)` aggregate).
 const categoriesQuery = createQuery(() => inventoryCategoriesOptions());
