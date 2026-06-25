@@ -1,7 +1,10 @@
 <script lang="ts">
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import type { Database } from "$database";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+	type InventoryItem,
+	inventoryFiltersOptions,
+	inventoryItemsOptions,
+} from "@dhc/api-client";
 import {
 	Card,
 	CardContent,
@@ -32,20 +35,20 @@ import { resolve } from "$app/paths";
 import { page } from "$app/state";
 import { Label } from "$lib/components/ui/label";
 import { createQuery, keepPreviousData } from "@tanstack/svelte-query";
-import type { InventoryItem, InventoryItemWithRelations } from "$lib/types";
-import { inventoryFiltersOptions } from "@dhc/api-client";
 
-let { data } = $props();
-const supabase: SupabaseClient<Database> = data.supabase;
+// PAGE_SIZE must be one of the OpenAPI limit enum values (10/25/50/100).
+// The previous Supabase read used 20; 25 is the closest allowed value.
+const PAGE_SIZE = 25 as const;
 
-const PAGE_SIZE = 20;
-
-// Parse URL params
-const currentPage = $derived(Number(page.url.searchParams.get("page")) || 1);
+// Parse URL params. `cursor` is the opaque forward/backward pagination
+// token returned by Phoenix; the page reset on filter change drops it.
+const cursorInput = $derived(page.url.searchParams.get("cursor") || "");
 let searchInput = $derived(page.url.searchParams.get("search") || "");
 let categoryInput = $derived(page.url.searchParams.get("category") || "");
 let containerInput = $derived(page.url.searchParams.get("container") || "");
-let maintenanceInput = $derived(page.url.searchParams.get("maintenance") || "");
+let maintenanceInput = $derived(
+	page.url.searchParams.get("maintenance") || "",
+);
 
 // Filter dropdown options (categories + containers) come from Phoenix via
 // `@dhc/api-client` (issue ALE-98). Browser-direct, mirroring the overview
@@ -55,78 +58,48 @@ const filtersQuery = createQuery(() => inventoryFiltersOptions());
 const categories = $derived(filtersQuery.data?.data.categories ?? []);
 const containers = $derived(filtersQuery.data?.data.containers ?? []);
 
-type InventoryItem = Pick<
-	InventoryItemWithRelations,
-	| "id"
-	| "quantity"
-	| "out_for_maintenance"
-	| "attributes"
-	| "category"
-	| "container"
->;
-
-async function getItems(signal: AbortSignal) {
-	let query = supabase
-		.from("inventory_items")
-		.select(
-			"id, quantity, out_for_maintenance, attributes, category:equipment_categories(id, name), container:containers(id, name)",
-			{ count: "exact" },
-		);
-	// Apply filters
-	if (searchInput) {
-		// Search in attributes->name, category name, or container name
-		query = query.or(
-			`attributes->name.ilike.%${searchInput}%,equipment_categories.name.ilike.%${searchInput}%,containers.name.ilike.%${searchInput}%`,
-		);
-	}
-	if (categoryInput) {
-		query = query.eq("category_id", categoryInput);
-	}
-	if (containerInput) {
-		query = query.eq("container_id", containerInput);
-	}
-	if (maintenanceInput) {
-		query = query.eq("out_for_maintenance", maintenanceInput === "true");
-	}
-
-	// Pagination
-	const rangeStart = (currentPage - 1) * PAGE_SIZE;
-	const rangeEnd = rangeStart + PAGE_SIZE - 1;
-
-	const {
-		data: items,
-		error,
-		count,
-	} = await query
-		.range(rangeStart, rangeEnd)
-		.order("created_at", { ascending: false })
-		.throwOnError()
-		.abortSignal(signal);
-
-	if (error) throw error;
-
-	return {
-		items: (items || []) as InventoryItem[],
-		total: count || 0,
-		totalPages: Math.ceil((count || 0) / PAGE_SIZE),
-	};
-}
-
-// Fetch items with TanStack Query
+// Inventory Item rows come from Phoenix (`GET /api/inventory/items`, issue
+// ALE-99) via the generated TanStack Query options. Browser-direct,
+// mirroring the overview/activity/filters/categories/containers pattern;
+// authz is enforced by Phoenix's `inventory_admin_api` pipeline. Replaces
+// the client-side Supabase/PostgREST read over `inventory_items` (joined to
+// `equipment_categories` and `containers`).
+//
+// The endpoint is cursor-paginated (`createdAt desc, id desc`) with a
+// `totalCount`; the query key binds the active filters + cursor so cache
+// invalidation tracks filter/page changes.
 const itemsQuery = createQuery(() => ({
-	queryKey: [
-		"inventory-items",
-		currentPage,
-		searchInput,
-		categoryInput,
-		containerInput,
-		maintenanceInput,
-	],
+	...inventoryItemsOptions({
+		query: {
+			limit: PAGE_SIZE,
+			cursor: cursorInput || undefined,
+			q: searchInput || undefined,
+			categoryId: categoryInput || undefined,
+			containerId: containerInput || undefined,
+			// The UI uses "" / "true" / "false"; map to the domain terms.
+			maintenanceStatus: maintenanceToApi(maintenanceInput),
+		},
+	}),
 	placeholderData: keepPreviousData,
-	queryFn: async ({ signal }) => {
-		return getItems(signal);
-	},
 }));
+
+const items = $derived(itemsQuery.data?.data.items ?? []);
+const total = $derived(itemsQuery.data?.data.totalCount ?? 0);
+const nextCursor = $derived(itemsQuery.data?.data.nextCursor ?? null);
+const previousCursor = $derived(
+	itemsQuery.data?.data.previousCursor ?? null,
+);
+
+// The old page count is no longer known (cursor pagination), but the
+// footer can show a windowed count from the current page + total.
+const pageStart = $derived(items.length === 0 ? 0 : 1);
+const pageEnd = $derived(items.length);
+
+function maintenanceToApi(value: string): "all" | "inMaintenance" | "available" | undefined {
+	if (value === "true") return "inMaintenance";
+	if (value === "false") return "available";
+	return undefined;
+}
 
 const applyFilters = () => {
 	// eslint-disable-next-line svelte/prefer-svelte-reactivity
@@ -135,8 +108,7 @@ const applyFilters = () => {
 	if (categoryInput) params.set("category", categoryInput);
 	if (containerInput) params.set("container", containerInput);
 	if (maintenanceInput) params.set("maintenance", maintenanceInput);
-	params.set("page", "1"); // Reset to page 1 on filter change
-
+	// Filter change resets to the first page (no cursor).
 	const url = `/dashboard/inventory/items?${params.toString()}`;
 	goto(resolve(url as any));
 };
@@ -145,18 +117,41 @@ const clearFilters = () => {
 	goto(resolve("/dashboard/inventory/items"));
 };
 
-const goToPage = (pageNum: number) => {
+const goToNext = () => {
 	// eslint-disable-next-line svelte/prefer-svelte-reactivity
-	const params = new URLSearchParams(page.url.searchParams);
-	params.set("page", pageNum.toString());
+	const params = buildParamsFromCurrent();
+	if (nextCursor) params.set("cursor", nextCursor);
 	const url = `/dashboard/inventory/items?${params.toString()}`;
 	goto(resolve(url as any));
 };
 
+const goToPrevious = () => {
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity
+	const params = buildParamsFromCurrent();
+	if (previousCursor) params.set("cursor", previousCursor);
+	const url = `/dashboard/inventory/items?${params.toString()}`;
+	goto(resolve(url as any));
+};
+
+function buildParamsFromCurrent(): URLSearchParams {
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity
+	const params = new URLSearchParams();
+	if (searchInput) params.set("search", searchInput);
+	if (categoryInput) params.set("category", categoryInput);
+	if (containerInput) params.set("container", containerInput);
+	if (maintenanceInput) params.set("maintenance", maintenanceInput);
+	return params;
+}
+
 const getItemDisplayName = (item: InventoryItem) => {
-	if (item.attributes?.name) return item.attributes.name;
-	if (item.attributes?.brand && item.attributes?.type) {
-		return `${item.attributes.brand} ${item.attributes.type}`;
+	if (item.attributes?.name) return item.attributes.name as string;
+	if (
+		item.attributes?.brand &&
+		item.attributes?.type
+	) {
+		return `${item.attributes.brand as string} ${
+			item.attributes.type as string
+		}`;
 	}
 	return `${item.category?.name || "Item"} #${item.id.slice(-8)}`;
 };
@@ -276,16 +271,18 @@ const hasActiveFilters = $derived(
 				<p class="text-muted-foreground mt-4">Loading items...</p>
 			</CardContent>
 		</Card>
-	{:else if itemsQuery.isError}
+			{:else if itemsQuery.isError}
 		<Card>
 			<CardContent class="flex flex-col items-center justify-center py-12">
 				<AlertTriangle class="h-12 w-12 text-destructive mb-4" />
 				<h3 class="text-lg font-semibold mb-2">Error loading items</h3>
-				<p class="text-muted-foreground mb-4">{itemsQuery.error.message}</p>
+				<p class="text-muted-foreground mb-4">
+					{(itemsQuery.error as Error)?.message ?? "Unknown error"}
+				</p>
 				<Button onclick={() => itemsQuery.refetch()} variant="outline">Retry</Button>
 			</CardContent>
 		</Card>
-	{:else if itemsQuery.data.items.length === 0}
+	{:else if items.length === 0}
 		<Card>
 			<CardContent class="flex flex-col items-center justify-center py-12">
 				<Package class="h-12 w-12 text-muted-foreground mb-4" />
@@ -311,7 +308,7 @@ const hasActiveFilters = $derived(
 		<Card>
 			<CardHeader>
 				<CardTitle class="flex items-center gap-2">
-					Items ({itemsQuery.data.total})
+					Items ({total})
 					{#if hasActiveFilters}
 						<Badge variant="secondary" class="ml-2">Filtered</Badge>
 					{/if}
@@ -322,7 +319,7 @@ const hasActiveFilters = $derived(
 			</CardHeader>
 			<CardContent>
 				<div class="space-y-3">
-					{#each itemsQuery.data.items as item (item.id)}
+					{#each items as item (item.id)}
 						<div
 							class="flex items-center justify-between p-4 rounded-lg border hover:bg-muted/50 transition-colors"
 						>
@@ -334,7 +331,7 @@ const hasActiveFilters = $derived(
 								<div class="flex-1">
 									<div class="flex items-center gap-2 mb-1">
 										<h3 class="font-medium">{getItemDisplayName(item)}</h3>
-										{#if item.out_for_maintenance}
+										{#if item.maintenanceStatus === 'inMaintenance'}
 											<Badge variant="destructive" class="text-xs flex items-center gap-1">
 												<AlertTriangle class="h-3 w-3" />
 												Maintenance
@@ -367,29 +364,32 @@ const hasActiveFilters = $derived(
 					{/each}
 				</div>
 
-				<!-- Pagination -->
-				{#if itemsQuery.data.totalPages > 1}
+				<!-- Pagination (cursor-based) -->
+				{#if nextCursor || previousCursor}
 					<div class="flex items-center justify-between mt-6">
 						<p class="text-sm text-muted-foreground">
-							Showing {(currentPage - 1) * PAGE_SIZE + 1}
-							to {Math.min(currentPage * PAGE_SIZE, itemsQuery.data.total)}
-							of {itemsQuery.data.total} items
+							Showing {pageStart} to {pageEnd} of {total} items
 						</p>
 
 						<div class="flex gap-2">
-							{#if currentPage > 1}
-								<Button onclick={() => goToPage(currentPage - 1)} variant="outline" size="sm">
+							{#if previousCursor}
+								<Button onclick={goToPrevious} variant="outline" size="sm">
 									Previous
 								</Button>
 							{/if}
 
-							{#if currentPage < itemsQuery.data.totalPages}
-								<Button onclick={() => goToPage(currentPage + 1)} variant="outline" size="sm">
+							{#if nextCursor}
+								<Button onclick={goToNext} variant="outline" size="sm">
 									Next
 								</Button>
 							{/if}
 						</div>
 					</div>
+				{:else if total > items.length}
+					<!-- Cursorless single page that still has more: unlikely but defensive. -->
+					<p class="text-sm text-muted-foreground mt-6">
+						Showing {pageStart} to {pageEnd} of {total} items
+					</p>
 				{/if}
 			</CardContent>
 		</Card>
