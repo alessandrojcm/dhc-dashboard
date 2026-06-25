@@ -130,7 +130,7 @@ Purpose: track SvelteKit Supabase PostgREST reads (`supabase.from(...).select(..
   - `GET /api/inventory/activity` — Inventory Activity feed, cursor-paginated newest-first by `createdAt desc, id desc`, no total count. Supports `itemId` and `containerId` filters only. Preserves current activity information camelCased: `id`, `action`, `changedBy`, `createdAt`, `itemId`, `oldContainerId`, `newContainerId`, `notes`, `item`, `oldContainer`, `newContainer`. ✅ migrated (issue ALE-95): Phoenix `Dhc.Inventory.list_activity/1` + `DhcWeb.InventoryController.activity/2` behind `:inventory_admin_api`; SvelteKit overview consumes `inventoryActivityOptions()` via TanStack Query; the server-side Kysely read over `inventory_history` was dropped from `src/routes/dashboard/inventory/+page.server.ts`. Cursor pattern mirrors Notifications (forward-only, opaque base64url JSON binding `{limit, itemId, containerId, id, createdAt}`).
   - `GET /api/inventory/categories` — preserves current category list fields, camelCased: `id`, `name`, `description`, `availableAttributes`, `itemCount`.
   - `GET /api/inventory/containers` — preserves current flat container list fields, camelCased: `id`, `name`, `description`, `parentContainerId`, `parentContainer`, `itemCount`. Do not return a nested tree in the first slice.
-  - `GET /api/inventory/items/filters` — replaces the current separate item filter-options server read. Mirrors current `getFilterOptions()` category/container `selectAll()` payloads, camelCased, rather than bundling filter data into the item list.
+  - `GET /api/inventory/items/filters` — replaces the current separate item filter-options server read. Mirrors current `getFilterOptions()` category/container `selectAll()` payloads, camelCased, rather than bundling filter data into the item list. ✅ migrated (issue ALE-98): Phoenix `Dhc.Inventory.filter_options/0` + `DhcWeb.InventoryController.filters/2` behind `:inventory_admin_api`; SvelteKit items page consumes `inventoryFiltersOptions()` via TanStack Query (browser-direct); the server-side `getFilterOptions()` call was dropped from `src/routes/dashboard/inventory/items/+page.server.ts`. Returns `{ data: { categories, containers } }`; each category carries `id`, `name`, `description`, `availableAttributes`, `attributeSchema`; each container carries `id`, `name`, `description`, `parentContainerId`. Both ordered by `name` asc. Internal timestamps and `created_by` auth-user refs are not exposed (the `inserted_at`/`created_at` baseline divergence is out of scope for this slice).
   - `GET /api/inventory/items` — Inventory Item list with cursor pagination for consistency with Phoenix read APIs and `totalCount` for the table. Default/current sort only: `createdAt desc, id desc`; no caller-selected sort in the first slice. Preserve current filters and search: `q` searches item `attributes.name`, Equipment Category name, and Container name; `categoryId`; `containerId`; `maintenanceStatus=all|inMaintenance|available`. Preserve current list fields only, camelCased/domain-shaped: `id`, `quantity`, `maintenanceStatus`, `attributes`, `category`, `container`.
 - Endpoint slices can be marked `ready-for-agent`; no remaining human blockers were identified in the design session. Prefactor work should inspect existing baseline migrations/schemas/context support and avoid schema migrations unless the existing DB contract is proven insufficient.
 
@@ -143,9 +143,11 @@ Purpose: track SvelteKit Supabase PostgREST reads (`supabase.from(...).select(..
   - Resource: `equipment_categories`
   - Shape: categories with available attributes and item count.
 
-- `src/routes/dashboard/inventory/items/+page.svelte`
-  - Resource: `inventory_items`
-  - Shape: paginated inventory item list with category/container joins, search, category/container/maintenance filters.
+- `src/routes/dashboard/inventory/items/+page.svelte` ✅ filter options migrated (ALE-98)
+  - Resource: `inventory_items` (item rows still on Supabase PostgREST read pending the item-list slice)
+  - Filter options resource: `equipment_categories`, `containers` (via the old `getFilterOptions()` service read)
+  - Shape: paginated inventory item list with category/container joins, search, category/container/maintenance filters; category + container dropdown options loaded via `inventoryFiltersOptions()` from `@dhc/api-client` (browser-direct via TanStack Query).
+  - Status: the `getFilterOptions()` server-side read was dropped from `+page.server.ts`; item rows remain on the existing Supabase `supabase.from("inventory_items").select(...)` read until the item-list slice (PRD #93) lands.
 
 - `src/routes/dashboard/inventory/containers/+page.svelte`
   - Resource: `containers`

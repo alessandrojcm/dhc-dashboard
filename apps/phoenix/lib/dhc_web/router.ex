@@ -83,6 +83,7 @@ defmodule DhcWeb.Router do
 
     get "/inventory/overview", InventoryController, :overview
     get "/inventory/activity", InventoryController, :activity
+    get "/inventory/items/filters", InventoryController, :filters
   end
 
   scope "/api", DhcWeb do

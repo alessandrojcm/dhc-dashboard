@@ -60,6 +60,43 @@ defmodule DhcWeb.InventoryJSON do
     }
   end
 
+  @doc """
+  GET /inventory/items/filters — Inventory Item filter options.
+
+  Renders the Equipment Category and Container dropdown options as
+  camelCase `categories` and `containers` arrays inside `data`, matching
+  the OpenAPI contract (`InventoryItemFiltersResponse`). Mirrors the
+  previous `getFilterOptions()` `selectAll()` payloads, camelCased;
+  internal timestamps and auth-user refs are not exposed.
+  """
+  def render("filters.json", %{options: options}) do
+    %{
+      data: %{
+        categories: Enum.map(options.categories, &filter_category/1),
+        containers: Enum.map(options.containers, &filter_container/1)
+      }
+    }
+  end
+
+  defp filter_category(category) do
+    %{
+      id: category.id,
+      name: category.name,
+      description: category.description,
+      availableAttributes: category.available_attributes,
+      attributeSchema: category.attribute_schema
+    }
+  end
+
+  defp filter_container(container) do
+    %{
+      id: container.id,
+      name: container.name,
+      description: container.description,
+      parentContainerId: container.parent_container_id
+    }
+  end
+
   # Expose the canonical Inventory management roles so controllers/tests can
   # reference the same source of truth as the context (see Dhc.Inventory).
   defdelegate inventory_management_roles, to: Inventory

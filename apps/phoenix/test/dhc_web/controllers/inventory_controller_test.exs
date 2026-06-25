@@ -532,6 +532,204 @@ defmodule DhcWeb.InventoryControllerTest do
     end
   end
 
+  # ── Item filter options (ALE-98) ─────────────────────────────────────
+
+  describe "filters — RBAC" do
+    test "allows quartermaster, president, and admin", %{conn: _conn} do
+      for role <- @allowed_roles do
+        conn =
+          build_conn()
+          |> auth_conn(role)
+          |> get("/api/inventory/items/filters")
+
+        assert %{"data" => %{"categories" => _, "containers" => _}} =
+                 json_response(conn, 200)
+      end
+    end
+
+    test "returns 401 without a bearer token", %{conn: conn} do
+      conn = get(conn, "/api/inventory/items/filters")
+
+      assert %{"errors" => %{"detail" => "Unauthorized"}} = json_response(conn, 401)
+    end
+
+    test "returns 401 with an invalid bearer token", %{conn: conn} do
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer bad-token")
+        |> get("/api/inventory/items/filters")
+
+      assert %{"errors" => %{"detail" => "Unauthorized"}} = json_response(conn, 401)
+    end
+
+    test "returns 403 for members without an Inventory privilege", %{conn: _conn} do
+      for role <- @rejected_roles do
+        conn =
+          build_conn()
+          |> auth_conn(role)
+          |> get("/api/inventory/items/filters")
+
+        assert %{"errors" => %{"detail" => "Insufficient role"}} =
+                 json_response(conn, 403)
+      end
+    end
+  end
+
+  describe "filters — payload" do
+    # The baseline migration (`20260512000010_create_inventory`) seeds 7
+    # default equipment categories (Masks, Gorgets, …). Clear them so the
+    # category list assertion is deterministic.
+    setup do
+      Repo.delete_all(InventoryItem)
+      Repo.delete_all(Container)
+      Repo.delete_all(EquipmentCategory)
+      :ok
+    end
+
+    test "returns empty category and container arrays when nothing is seeded",
+         %{conn: conn} do
+      conn =
+        conn
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/items/filters")
+
+      assert json_response(conn, 200) == %{
+               "data" => %{"categories" => [], "containers" => []}
+             }
+    end
+
+    test "returns categories and containers ordered by name asc, camelCased",
+         %{conn: conn} do
+      # Categories inserted out of order; the response must be name-sorted.
+      InventoryFixtures.category_fixture(name: "Zweihänder")
+      InventoryFixtures.category_fixture(name: "Axes")
+      InventoryFixtures.category_fixture(name: "Masks")
+
+      # Containers inserted out of order; the response must be name-sorted.
+      parent = InventoryFixtures.container_fixture(name: "Storage Room")
+      InventoryFixtures.container_fixture(name: "Shelf Z")
+      InventoryFixtures.container_fixture(name: "Shelf A")
+      InventoryFixtures.container_fixture(name: "Shelf M", parent_container_id: parent.id)
+
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> get("/api/inventory/items/filters")
+
+      assert %{
+               "data" => %{
+                 "categories" => categories,
+                 "containers" => containers
+               }
+             } = json_response(conn, 200)
+
+      assert Enum.map(categories, & &1["name"]) == ["Axes", "Masks", "Zweihänder"]
+
+      assert Enum.map(containers, & &1["name"]) == [
+               "Shelf A",
+               "Shelf M",
+               "Shelf Z",
+               "Storage Room"
+             ]
+
+      # Spot-check the camelCase shape on one category + one container.
+      [axes | _] = categories
+
+      assert axes["id"] != nil
+      assert axes["description"] != nil
+      assert axes["availableAttributes"] == []
+      assert axes["attributeSchema"] == %{}
+      # Storage vocabulary must not leak.
+      refute Map.has_key?(axes, "available_attributes")
+      refute Map.has_key?(axes, "attribute_schema")
+      refute Map.has_key?(axes, "inserted_at")
+      refute Map.has_key?(axes, "created_at")
+      refute Map.has_key?(axes, "updated_at")
+
+      shelf_m =
+        Enum.find(containers, &(&1["name"] == "Shelf M"))
+
+      assert shelf_m["id"] != nil
+      assert shelf_m["description"] != nil
+      assert shelf_m["parentContainerId"] == parent.id
+      refute Map.has_key?(shelf_m, "parent_container_id")
+      refute Map.has_key?(shelf_m, "created_by")
+      refute Map.has_key?(shelf_m, "inserted_at")
+      refute Map.has_key?(shelf_m, "created_at")
+      refute Map.has_key?(shelf_m, "updated_at")
+    end
+
+    test "preserves availableAttributes definition shapes round-tripped from jsonb",
+         %{conn: conn} do
+      InventoryFixtures.category_fixture(
+        name: "Masks",
+        available_attributes: [
+          %{"name" => "brand", "type" => "text", "required" => true, "label" => "Brand"},
+          %{
+            "name" => "size",
+            "type" => "select",
+            "options" => ["XS", "S", "M", "L", "XL"],
+            "required" => false,
+            "label" => "Size"
+          }
+        ],
+        attribute_schema: %{"type" => "object"}
+      )
+
+      conn =
+        conn
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/items/filters")
+
+      assert %{"data" => %{"categories" => [category]}} = json_response(conn, 200)
+
+      assert category["availableAttributes"] == [
+               %{"name" => "brand", "type" => "text", "required" => true, "label" => "Brand"},
+               %{
+                 "name" => "size",
+                 "type" => "select",
+                 "options" => ["XS", "S", "M", "L", "XL"],
+                 "required" => false,
+                 "label" => "Size"
+               }
+             ]
+
+      assert category["attributeSchema"] == %{"type" => "object"}
+    end
+
+    test "container parentContainerId is null for top-level containers", %{conn: conn} do
+      InventoryFixtures.container_fixture(name: "Locker A")
+
+      conn =
+        conn
+        |> auth_conn("president")
+        |> get("/api/inventory/items/filters")
+
+      assert %{"data" => %{"containers" => [container]}} = json_response(conn, 200)
+
+      assert container["parentContainerId"] == nil
+    end
+
+    test "uses the data envelope and does not leak storage vocabulary", %{conn: conn} do
+      InventoryFixtures.category_fixture(name: "Masks")
+      InventoryFixtures.container_fixture(name: "Locker A")
+
+      conn =
+        conn
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/items/filters")
+
+      body = json_response(conn, 200)
+
+      assert %{"data" => %{"categories" => _, "containers" => _}} = body
+
+      # Storage vocabulary must not leak into the contract.
+      refute Map.has_key?(body, "equipment_categories")
+      refute Map.has_key?(body, "containers_rows")
+      refute Map.has_key?(body["data"], "equipment_categories")
+    end
+  end
+
   # ── Fixtures ─────────────────────────────────────────────────────────
 
   defp seed_activity_fixture(_context) do
