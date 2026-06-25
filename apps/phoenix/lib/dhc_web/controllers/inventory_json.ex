@@ -97,6 +97,33 @@ defmodule DhcWeb.InventoryJSON do
     }
   end
 
+  @doc """
+  GET /inventory/categories — Equipment Category list with item counts.
+
+  Renders the Equipment Categories as a camelCase `categories` array inside
+  `data`, matching the OpenAPI contract (`InventoryCategoryListResponse`).
+  Each category carries `id`, `name`, `description`, `availableAttributes`,
+  and `itemCount`. Categories with no Inventory Items still appear with
+  `itemCount: 0`. Internal timestamps and auth-user refs are not exposed.
+  """
+  def render("categories.json", %{result: result}) do
+    %{
+      data: %{
+        categories: Enum.map(result.categories, &category_entry/1)
+      }
+    }
+  end
+
+  defp category_entry(category) do
+    %{
+      id: category.id,
+      name: category.name,
+      description: category.description,
+      availableAttributes: category.available_attributes,
+      itemCount: category.item_count
+    }
+  end
+
   # Expose the canonical Inventory management roles so controllers/tests can
   # reference the same source of truth as the context (see Dhc.Inventory).
   defdelegate inventory_management_roles, to: Inventory

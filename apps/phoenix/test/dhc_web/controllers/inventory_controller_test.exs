@@ -1,14 +1,14 @@
 defmodule DhcWeb.InventoryControllerTest do
   @moduledoc """
-  Request/contract tests for the Inventory overview counts endpoint
-  (issue ALE-94 / PRD #93).
+  Request/contract tests for the Inventory read endpoints
+  (issues ALE-94 / ALE-95 / ALE-98 / ALE-96, PRD #93).
 
-  Covers the four counts (`summary.containerCount`, `summary.categoryCount`,
-  `summary.itemCount`, `summary.maintenanceCount`) and the Inventory RBAC:
-  `quartermaster`, `president`, and `admin` can read; a member without an
-  Inventory privilege receives `403`; a missing token returns `401`.
+  Covers the overview counts, the Inventory Activity feed, the Inventory
+  Item filter options, and the Equipment Category list, plus the Inventory
+  RBAC: `quartermaster`, `president`, and `admin` can read; a member without
+  an Inventory privilege receives `403`; a missing token returns `401`.
 
-  The underlying read-model behavior (count query mechanics) is covered by
+  The underlying read-model behavior (query mechanics) is covered by
   `Dhc.InventoryTest`. These tests assert external contract behavior only.
   """
 
@@ -726,6 +726,173 @@ defmodule DhcWeb.InventoryControllerTest do
       # Storage vocabulary must not leak into the contract.
       refute Map.has_key?(body, "equipment_categories")
       refute Map.has_key?(body, "containers_rows")
+      refute Map.has_key?(body["data"], "equipment_categories")
+    end
+  end
+
+  # ── Equipment Category list (ALE-96) ──────────────────────────────────
+
+  describe "categories — RBAC" do
+    test "allows quartermaster, president, and admin", %{conn: _conn} do
+      for role <- @allowed_roles do
+        conn =
+          build_conn()
+          |> auth_conn(role)
+          |> get("/api/inventory/categories")
+
+        assert %{"data" => %{"categories" => _}} = json_response(conn, 200)
+      end
+    end
+
+    test "returns 401 without a bearer token", %{conn: conn} do
+      conn = get(conn, "/api/inventory/categories")
+
+      assert %{"errors" => %{"detail" => "Unauthorized"}} = json_response(conn, 401)
+    end
+
+    test "returns 401 with an invalid bearer token", %{conn: conn} do
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer bad-token")
+        |> get("/api/inventory/categories")
+
+      assert %{"errors" => %{"detail" => "Unauthorized"}} = json_response(conn, 401)
+    end
+
+    test "returns 403 for members without an Inventory privilege", %{conn: _conn} do
+      for role <- @rejected_roles do
+        conn =
+          build_conn()
+          |> auth_conn(role)
+          |> get("/api/inventory/categories")
+
+        assert %{"errors" => %{"detail" => "Insufficient role"}} =
+                 json_response(conn, 403)
+      end
+    end
+  end
+
+  describe "categories — payload" do
+    # The baseline migration (`20260512000010_create_inventory`) seeds 7
+    # default equipment categories (Masks, Gorgets, …). Clear them plus
+    # containers/items so the category list assertion is deterministic.
+    setup do
+      Repo.delete_all(InventoryItem)
+      Repo.delete_all(Container)
+      Repo.delete_all(EquipmentCategory)
+      :ok
+    end
+
+    test "returns an empty category array when nothing is seeded", %{conn: conn} do
+      conn =
+        conn
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/categories")
+
+      assert json_response(conn, 200) == %{"data" => %{"categories" => []}}
+    end
+
+    test "returns categories ordered by name asc, camelCased", %{conn: conn} do
+      # Categories inserted out of order; the response must be name-sorted.
+      InventoryFixtures.category_fixture(name: "Zweihänder")
+      InventoryFixtures.category_fixture(name: "Axes")
+      InventoryFixtures.category_fixture(name: "Masks")
+
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> get("/api/inventory/categories")
+
+      assert %{"data" => %{"categories" => categories}} = json_response(conn, 200)
+
+      assert Enum.map(categories, & &1["name"]) == ["Axes", "Masks", "Zweihänder"]
+    end
+
+    test "preserves the agreed camelCase fields and no storage-vocab leak", %{conn: conn} do
+      InventoryFixtures.category_fixture(
+        name: "Masks",
+        available_attributes: [%{"name" => "brand", "type" => "text", "label" => "Brand"}]
+      )
+
+      conn =
+        conn
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/categories")
+
+      assert %{"data" => %{"categories" => [category]}} = json_response(conn, 200)
+
+      assert category["id"] != nil
+      assert category["name"] == "Masks"
+      assert category["description"] != nil
+
+      assert category["availableAttributes"] == [
+               %{"name" => "brand", "type" => "text", "label" => "Brand"}
+             ]
+
+      # itemCount is present (zero here — no items seeded).
+      assert category["itemCount"] == 0
+
+      # Storage vocabulary must not leak into the contract.
+      refute Map.has_key?(category, "available_attributes")
+      refute Map.has_key?(category, "item_count")
+      refute Map.has_key?(category, "inserted_at")
+      refute Map.has_key?(category, "created_at")
+      refute Map.has_key?(category, "updated_at")
+      refute Map.has_key?(category, "created_at")
+      refute Map.has_key?(category, "created_by")
+    end
+
+    test "itemCount counts the Inventory Items in each category", %{conn: conn} do
+      masks = InventoryFixtures.category_fixture(name: "Masks")
+      gloves = InventoryFixtures.category_fixture(name: "Gloves")
+      container = InventoryFixtures.container_fixture()
+
+      # Three Masks items, one Gloves item.
+      InventoryFixtures.item_fixture(container_id: container.id, category_id: masks.id)
+      InventoryFixtures.item_fixture(container_id: container.id, category_id: masks.id)
+      InventoryFixtures.item_fixture(container_id: container.id, category_id: masks.id)
+      InventoryFixtures.item_fixture(container_id: container.id, category_id: gloves.id)
+
+      conn =
+        conn
+        |> auth_conn("president")
+        |> get("/api/inventory/categories")
+
+      assert %{"data" => %{"categories" => categories}} = json_response(conn, 200)
+
+      by_name = Map.new(categories, &{&1["name"], &1["itemCount"]})
+
+      assert by_name["Masks"] == 3
+      assert by_name["Gloves"] == 1
+    end
+
+    test "itemCount is zero for a category with no Inventory Items", %{conn: conn} do
+      InventoryFixtures.category_fixture(name: "Masks")
+
+      conn =
+        conn
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/categories")
+
+      assert %{"data" => %{"categories" => [category]}} = json_response(conn, 200)
+
+      assert category["itemCount"] == 0
+    end
+
+    test "uses the data envelope and does not leak storage vocabulary", %{conn: conn} do
+      InventoryFixtures.category_fixture(name: "Masks")
+
+      conn =
+        conn
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/categories")
+
+      body = json_response(conn, 200)
+
+      assert %{"data" => %{"categories" => _}} = body
+
+      # Storage vocabulary must not leak into the contract.
+      refute Map.has_key?(body, "equipment_categories")
       refute Map.has_key?(body["data"], "equipment_categories")
     end
   end

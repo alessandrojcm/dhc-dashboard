@@ -12,9 +12,9 @@ defmodule DhcWeb.InventoryController do
   existing dashboard Inventory gate.
 
   This slice covers the overview counts (ALE-94), the Inventory Activity
-  feed (ALE-95), and the Inventory Item filter options (ALE-98). Later
-  Inventory endpoint slices (categories, containers, items — see PRD #93)
-  will extend this controller.
+  feed (ALE-95), the Inventory Item filter options (ALE-98), and the
+  Equipment Category list (ALE-96). Later Inventory endpoint slices
+  (containers, items — see PRD #93) will extend this controller.
   """
 
   @doc """
@@ -83,6 +83,23 @@ defmodule DhcWeb.InventoryController do
     conn
     |> put_view(json: DhcWeb.InventoryJSON)
     |> render(:filters, options: options)
+  end
+
+  @doc """
+  GET /inventory/categories
+
+  Returns the domain-shaped Equipment Category list with Inventory Item
+  counts, ordered by `name` ascending. Replaces the SvelteKit client-side
+  Supabase/PostgREST read over `equipment_categories`
+  (with an `equipment_items(count)` aggregate) on the Inventory categories
+  dashboard (`src/routes/dashboard/inventory/categories/+page.svelte`).
+  """
+  def categories(conn, _params) do
+    result = Inventory.list_categories()
+
+    conn
+    |> put_view(json: DhcWeb.InventoryJSON)
+    |> render(:categories, result: result)
   end
 
   defp bad_request(conn, detail) do

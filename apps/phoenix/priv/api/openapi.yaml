@@ -1025,6 +1025,57 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /inventory/categories:
+    get:
+      operationId: inventory.categories
+      tags:
+        - Inventory
+      summary: Read the Equipment Category list
+      description: |
+        Returns the domain-shaped Equipment Category list, replacing the
+        SvelteKit client-side Supabase/PostgREST read over `equipment_categories`
+        (with an `equipment_items(count)` aggregate) on the Inventory
+        categories dashboard
+        (`src/routes/dashboard/inventory/categories/+page.svelte`).
+
+        Each Equipment Category carries `id`, `name`, `description`,
+        `availableAttributes` (the per-category attribute definition array),
+        and `itemCount` (the number of Inventory Items in that category). The
+        list is ordered by `name` ascending, matching the previous
+        `.order("name")` behaviour.
+
+        Internal auth-user refs (`created_by`) and timestamps are not exposed
+        here: the categories management page only renders identity, metadata,
+        and the item count. The `inserted_at`/`created_at` baseline divergence
+        (see AGENTS.md) is outside this slice's scope.
+
+        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
+        `quartermaster`, `president`, or `admin` (the `inventory_admin_api`
+        pipeline, mirroring the existing dashboard Inventory read gate). A
+        member without an Inventory privilege receives `403`; a missing token
+        returns `401`.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Equipment Category list with item counts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryCategoryListResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks an Inventory management role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1278,6 +1329,60 @@ components:
           format: uuid
           nullable: true
           description: Parent Container id for hierarchical display, or null for a top-level Container.
+    InventoryCategoryListResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - categories
+          properties:
+            categories:
+              type: array
+              description: >
+                Equipment Categories ordered by `name` ascending. Replaces the
+                previous `equipment_categories` Supabase/PostgREST read
+                (with an `equipment_items(count)` aggregate) on the Inventory
+                categories dashboard, camelCased.
+              items:
+                $ref: "#/components/schemas/InventoryCategory"
+    InventoryCategory:
+      type: object
+      required:
+        - id
+        - name
+        - description
+        - availableAttributes
+        - itemCount
+      description: |
+        A single Equipment Category with its Inventory Item count. Carries
+        the fields the categories management page renders (identity, metadata,
+        and the item count); internal timestamps and auth-user refs are not
+        exposed.
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        availableAttributes:
+          type: array
+          description: >
+            Per-category attribute definitions (e.g. brand, size). Matches
+            the `InventoryAttributeDefinition[]` shape consumed by the
+            SvelteKit form helpers. May be empty.
+          items:
+            type: object
+            additionalProperties: true
+        itemCount:
+          type: integer
+          minimum: 0
+          description: Number of Inventory Items in this Equipment Category.
     InventoryAction:
       type: string
       enum:
