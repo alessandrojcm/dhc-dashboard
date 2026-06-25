@@ -1076,6 +1076,59 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /inventory/containers:
+    get:
+      operationId: inventory.containers
+      tags:
+        - Inventory
+      summary: Read the Container list
+      description: |
+        Returns the flat, domain-shaped Container list, replacing the
+        SvelteKit client-side Supabase/PostgREST read over `containers`
+        (with a `parent_container:containers!fk(id, name)` join and an
+        `equipment_items(count)` aggregate) on the Inventory containers
+        dashboard (`src/routes/dashboard/inventory/containers/+page.svelte`).
+
+        Each Container carries `id`, `name`, `description`,
+        `parentContainerId`, `parentContainer` (the nested `{ id, name }`
+        object for the parent Container, or `null` for a top-level
+        Container), and `itemCount` (the number of Inventory Items directly
+        in that Container). The list is ordered by `name` ascending, matching
+        the previous `.order("name")` behaviour. The response is a flat array;
+        the dashboard derives its hierarchy tree client-side.
+
+        Internal auth-user refs (`created_by`) and timestamps are not exposed
+        here: the containers management page only renders identity, parent
+        Container, and the item count. The `inserted_at`/`created_at` baseline
+        divergence (see AGENTS.md) is outside this slice's scope.
+
+        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
+        `quartermaster`, `president`, or `admin` (the `inventory_admin_api`
+        pipeline, mirroring the existing dashboard Inventory read gate). A
+        member without an Inventory privilege receives `403`; a missing token
+        returns `401`.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Flat Container list with parent and item counts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryContainerListResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks an Inventory management role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1383,6 +1436,84 @@ components:
           type: integer
           minimum: 0
           description: Number of Inventory Items in this Equipment Category.
+    InventoryContainerListResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - containers
+          properties:
+            containers:
+              type: array
+              description: >
+                Containers ordered by `name` ascending. Replaces the previous
+                `containers` Supabase/PostgREST read (with a
+                `parent_container:containers!fk(id, name)` join and an
+                `equipment_items(count)` aggregate) on the Inventory containers
+                dashboard, camelCased. The response is a flat array; the
+                dashboard derives its hierarchy tree client-side.
+              items:
+                $ref: "#/components/schemas/InventoryContainer"
+    InventoryContainer:
+      type: object
+      required:
+        - id
+        - name
+        - description
+        - parentContainerId
+        - parentContainer
+        - itemCount
+      description: |
+        A single Container with its parent Container (or `null` for a
+        top-level Container) and the number of Inventory Items directly in
+        it. Carries the fields the containers management page renders
+        (identity, parent, and the item count); internal timestamps and
+        auth-user refs are not exposed.
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        parentContainerId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Parent Container id, or null for a top-level Container.
+        parentContainer:
+          description: >
+            The nested parent Container object (`{ id, name }`), or `null`
+            for a top-level Container. The dashboard uses this for direct
+            parent-name display; the hierarchy tree is derived client-side
+            from the flat list.
+          allOf:
+            - $ref: "#/components/schemas/InventoryContainerParent"
+          nullable: true
+        itemCount:
+          type: integer
+          minimum: 0
+          description: Number of Inventory Items directly in this Container.
+    InventoryContainerParent:
+      type: object
+      required:
+        - id
+        - name
+      description: >
+        The minimal parent Container object (`{ id, name }`) nested inside
+        `InventoryContainer.parentContainer`. Mirrors the previous
+        `parent_container:containers!fk(id, name)` join shape, camelCased.
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
     InventoryAction:
       type: string
       enum:

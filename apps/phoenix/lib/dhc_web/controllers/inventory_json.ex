@@ -124,6 +124,36 @@ defmodule DhcWeb.InventoryJSON do
     }
   end
 
+  @doc """
+  GET /inventory/containers — flat Container list with parent and item counts.
+
+  Renders the Containers as a camelCase `containers` array inside `data`,
+  matching the OpenAPI contract (`InventoryContainerListResponse`). Each
+  container carries `id`, `name`, `description`, `parentContainerId`,
+  `parentContainer` (the nested `%{id, name}` object, or `nil` for a
+  top-level Container), and `itemCount`. Containers with no Inventory Items
+  still appear with `itemCount: 0`. Internal timestamps and auth-user refs are
+  not exposed.
+  """
+  def render("containers.json", %{result: result}) do
+    %{
+      data: %{
+        containers: Enum.map(result.containers, &container_entry/1)
+      }
+    }
+  end
+
+  defp container_entry(container) do
+    %{
+      id: container.id,
+      name: container.name,
+      description: container.description,
+      parentContainerId: container.parent_container_id,
+      parentContainer: container.parent_container,
+      itemCount: container.item_count
+    }
+  end
+
   # Expose the canonical Inventory management roles so controllers/tests can
   # reference the same source of truth as the context (see Dhc.Inventory).
   defdelegate inventory_management_roles, to: Inventory
