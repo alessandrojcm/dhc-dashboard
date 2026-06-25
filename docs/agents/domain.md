@@ -13,6 +13,6 @@ Single-context monorepo. One global `CONTEXT.md` at the repo root plus `docs/adr
 ## Consumer rules
 
 When working on this codebase:
-1. Read `CONTEXT.md` first to understand domain language
-2. Check `docs/adr/` for decisions that constrain the area you're touching
-3. Follow `docs/agents/critical-patterns.md` and `docs/agents/anti-patterns.md`
+1. Read `CONTEXT.md` first to understand domain language.
+2. Check `docs/adr/` for decisions that constrain the area you're touching.
+3. Follow `docs/agents/critical-patterns.md` and `docs/agents/anti-patterns.md`.
