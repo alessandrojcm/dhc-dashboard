@@ -838,7 +838,11 @@ components:
           type: array
           minItems: 1
           items:
-            $ref: "#/components/schemas/InvitationCreateInvite"
+            oneOf:
+              - $ref: "#/components/schemas/InvitationCreateInvite"
+              - type: string
+                format: uuid
+                description: Waitlist entry ID to convert into an invitation.
     InvitationCreateInvite:
       type: object
       required:
