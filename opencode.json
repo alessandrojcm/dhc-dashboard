@@ -26,6 +26,6 @@
       "enabled": true,
       "type": "local"
     }
-  }
+  },
   "plugin": ["./.opencode/plugins/git-guardian.ts"]
 }
