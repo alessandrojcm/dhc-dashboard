@@ -60,6 +60,24 @@ defmodule DhcWeb.InvitationsControllerTest do
       assert_enqueued(worker: Dhc.Invitations.BulkInviteWorker)
     end
 
+    test "accepts waitlist entry ids and enqueues them for worker resolution", %{conn: conn} do
+      waitlist_id = Ecto.UUID.generate()
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> post("/api/invitations", %{"invites" => [waitlist_id]})
+
+      response = json_response(conn, 202)
+      assert response["data"]["queued"] == true
+      assert is_integer(response["data"]["job_id"])
+
+      assert [%Oban.Job{args: args}] = all_enqueued(worker: Dhc.Invitations.BulkInviteWorker)
+      assert args["invites"] == [waitlist_id]
+      assert args["user"]["email"] == "admin@example.com"
+      assert Ecto.UUID.cast(args["user"]["id"]) == {:ok, args["user"]["id"]}
+    end
+
     test "returns 401 without a bearer token", %{conn: conn} do
       conn = post(conn, "/api/invitations", %{"invites" => []})
 
