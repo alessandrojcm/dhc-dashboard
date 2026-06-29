@@ -94,6 +94,8 @@ dhc-dashboard/
 - **Queues**: pgmq → Oban. Big-bang per-queue cutover. Discord → Email → Announcements → Stripe → Bulk Invite.
 - **API design**: Spec-first with OpenAPI. Custom Mix task generates Phoenix controller stubs. TypeScript client generated from spec.
 - **PostgREST read migration**: Replace SvelteKit `supabase.from(...).select(...)` reads with domain-shaped Phoenix APIs, not table/view proxies. Track remaining call sites in `docs/agents/postgrest-read-migration.md`; first slice is Waitlist per ADR 0005.
+- **Edge function invocation migration**: Active source code should not call `supabase.functions.invoke(...)`. `bulk_invite_with_subscription` is replaced by `POST /api/invitations` via the generated HeyAPI client (`invitationsCreate` on the server or `invitationsCreateMutation` in Svelte Query components); the request body remains `{ invites: [...] }`, where each item may be either a direct invite map or a waitlist entry UUID string (the `Dhc.Invitations.BulkInviteWorker` resolves string IDs from the Waitlist). `process-*` functions are internal Oban workers only, `stripe-sync` is Oban cron, and only Stripe webhooks remain externally exposed at `POST /api/webhooks/stripe`.
+- **GitHub deployment workflows**: `.github/workflows/deploy-master.yml` no longer deploys Supabase Edge Functions. Do not reintroduce `supabase functions deploy`; edge-function replacements live in Phoenix/Oban. The remaining Supabase CLI job is only for `supabase/migrations/**` changes.
 - **Ecto schema inserts vs raw SQL**: The seed tasks and test fixtures insert via the Ecto schemas (`MemberProfile`, `UserProfile`, etc.), not `Repo.insert_all` with raw maps. Two gotchas surfaced by this: (1) `member_profiles.preferred_weapon` is a Postgres `preferred_weapon[]` enum array, but the schema declares it `{:array, :string}` — inserts work because Postgres implicitly casts `text[]` → `preferred_weapon[]` at the column boundary (no custom Ecto type needed). (2) `MemberProfile`'s `:utc_datetime` fields reject microseconds; any computed `DateTime` must be `DateTime.truncate(dt, :second)` before insert (Postgres `timestamptz` accepts microseconds, so the old raw SQL didn't need this).
 - **Stripe API**: Generated from Stripe OpenAPI spec via `oapi_generator`. Custom processor allows only needed endpoints. Regenerate with `mise run stripe-gen`. Hand-written `Dhc.Stripe.Client` adapter delegates to `Req`. API version pinned in `:stripe_api_version` config (default `"2025-10-29.clover"`) and sent as `Stripe-Version` header — must match `src/lib/server/stripe.ts`.
 - **Stripe webhooks**: Phoenix controller validates Stripe-Signature header (HMAC-SHA256 via `Dhc.Stripe.Webhook`) then enqueues `Dhc.StripeWebhooks.Worker`. Raw body required — `DhcWeb.CacheBodyReader` caches `conn.assigns[:raw_body]` before JSON parsing. Webhook signing secret via `STRIPE_WEBHOOK_SIGNING_SECRET` env var (supports list for rotation). Endpoint is unauthenticated (`POST /api/webhooks/stripe`).
@@ -130,11 +132,11 @@ See [docs/agents/notes.md](docs/agents/notes.md).
 
 ### Issue tracker
 
-Linear (use `linctl` CLI). See `docs/agents/issue-tracker.md`.
+Linear issues (uses the `linctl` CLI). See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
-Default canonical labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+Default canonical labels/status strings: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
 
 ### Domain docs
 
