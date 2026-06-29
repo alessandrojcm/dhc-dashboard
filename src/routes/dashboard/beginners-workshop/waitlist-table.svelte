@@ -1,5 +1,8 @@
 <script lang="ts">
 import {
+	invitationsCreateMutation,
+	type InvitationsCreateData,
+	type Options,
 	type WaitlistEntriesSortField,
 	type WaitlistEntry,
 	waitlistEntries,
@@ -12,13 +15,10 @@ import {
 	useQueryClient,
 } from "@tanstack/svelte-query";
 import {
-	type CellContext,
-	type ColumnDefTemplate,
 	getCoreRowModel,
 	getExpandedRowModel,
 	getPaginationRowModel,
 	getSortedRowModel,
-	type HeaderContext,
 	type PaginationState,
 	type RowSelectionState,
 	type SortingState,
@@ -88,6 +88,8 @@ type WaitlistTablePage = {
 	nextCursor: string | null;
 	previousCursor: string | null;
 };
+
+type InvitationsCreateOptions = Options<InvitationsCreateData>;
 
 const pageSizeOptions = [10, 25, 50, 100] as const;
 
@@ -227,19 +229,17 @@ const waitlistQuery = createQuery<WaitlistTablePage>(() => ({
 	},
 }));
 const queryClient = useQueryClient();
+
+function getWaitlistIds(options: InvitationsCreateOptions) {
+	return options.body.invites.filter(
+		(invite): invite is string => typeof invite === "string",
+	);
+}
+
 const inviteMember = createMutation(() => ({
-	mutationFn: async (waitlistIds: string[]) =>
-		supabase.functions
-			.invoke("bulk_invite_with_subscription", {
-				body: waitlistIds,
-				method: "POST",
-			})
-			.then((r) => {
-				if (r.error) {
-					throw r.error;
-				}
-			}),
-	onMutate: (waitlistIds) => {
+	...invitationsCreateMutation(),
+	onMutate: (options) => {
+		const waitlistIds = getWaitlistIds(options);
 		const oldData = queryClient.getQueryData(waitlistQueryKey);
 		queryClient.setQueryData(
 			waitlistQueryKey,
@@ -257,11 +257,15 @@ const inviteMember = createMutation(() => ({
 		selectedState = {};
 		toast.success("Invitations are being processed in the background.");
 	},
-	onError: (oldData) => {
+	onError: (_error, _options, context) => {
 		toast.error("Something has gone wrong inviting members.");
-		queryClient.setQueryData(waitlistQueryKey, oldData);
+		queryClient.setQueryData(waitlistQueryKey, context?.oldData);
 	},
 }));
+
+function inviteWaitlistMembers(waitlistIds: string[]) {
+	inviteMember.mutate({ body: { invites: waitlistIds } });
+}
 
 const resendInvitationLink = createMutation(() => ({
 	mutationFn: async (emails: string[]) => resendInvitations({ emails }),
@@ -411,7 +415,7 @@ const tableOptions = $state<TableOptions<WaitlistTableRow>>({
 					onToggleExpand: () => row.toggleExpanded(),
 					inviteMember: () => {
 						if (row.original.status !== "invited") {
-							inviteMember.mutate([row.original.id!]);
+							inviteWaitlistMembers([row.original.id!]);
 						} else {
 							resendInvitationLink.mutate([row.original.email!]);
 						}
@@ -623,7 +627,7 @@ const table = createSvelteTable(tableOptions);
     <Button
         class="md:ml-auto"
         disabled={inviteCount === 0 || inviteMember.isPending}
-        onclick={() => inviteMember.mutate(Object.keys(selectedState))}
+        onclick={() => inviteWaitlistMembers(Object.keys(selectedState))}
     >
         {#if inviteMember.isPending}
             <Loader2 class="mr-2 h-4 w-4 animate-spin" />
@@ -773,7 +777,7 @@ const table = createSvelteTable(tableOptions);
                         <ActionButtons
                             inviteMember={() => {
                                 if (row.original.status !== "invited") {
-                                    inviteMember.mutate([row.original.id!]);
+                                    inviteWaitlistMembers([row.original.id!]);
                                 } else {
                                     resendInvitationLink.mutate([
                                         row.original.email!,
