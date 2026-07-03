@@ -33,6 +33,14 @@ defmodule DhcWeb.Router do
     plug DhcWeb.Plugs.RequireAuth, roles: ~w(president committee_coordinator admin)
   end
 
+  # ALE-105 inventory category management. Mirrors the existing SvelteKit
+  # `INVENTORY_ROLES` (`quartermaster`, `admin`, `president`). Reads of
+  # categories are any authenticated member — the existing Svelte category
+  # list view is member-readable; writes require the inventory write roles.
+  pipeline :inventory_admin_api do
+    plug DhcWeb.Plugs.RequireAuth, roles: ~w(quartermaster admin president)
+  end
+
   pipeline :authenticated_api do
     plug DhcWeb.Plugs.RequireAuth
   end
@@ -87,5 +95,17 @@ defmodule DhcWeb.Router do
     get "/members/insurance-form", MembersController, :insurance_form
     get "/notifications", NotificationsController, :index
     get "/workshops", WorkshopsController, :list
+    # ALE-105: any authenticated member may read equipment categories.
+    get "/inventory/categories", InventoryCategoriesController, :index
+    get "/inventory/categories/:id", InventoryCategoriesController, :show
+  end
+
+  scope "/api", DhcWeb do
+    pipe_through [:api, :inventory_admin_api]
+
+    # ALE-105: write roles only.
+    post "/inventory/categories", InventoryCategoriesController, :create
+    patch "/inventory/categories/:id", InventoryCategoriesController, :update
+    delete "/inventory/categories/:id", InventoryCategoriesController, :delete
   end
 end

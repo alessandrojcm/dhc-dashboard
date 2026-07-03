@@ -50,7 +50,7 @@ erl_crash.dump
 .mise.local.toml
 
 # GrayMatter runtime state
-.graymatter/
+.graymatter/*
 
 # Logs
 *.log
