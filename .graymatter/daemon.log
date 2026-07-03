@@ -2,3 +2,15 @@ graymatter daemon ready: dir=/Users/alessandrojcm/repos/dhc-dashboard/.graymatte
 daemon: signal received, shutting down
 daemon: stopped
 graymatter daemon ready: dir=/Users/alessandrojcm/repos/dhc-dashboard/.graymatter addr=unix:///Users/alessandrojcm/repos/dhc-dashboard/.graymatter/graymatter.sock pid=89610 idle-exit=2m0s
+<<<<<<< HEAD
+graymatter daemon ready: dir=/Users/alessandrojcm/repos/dhc-dashboard/.graymatter addr=unix:///Users/alessandrojcm/repos/dhc-dashboard/.graymatter/graymatter.sock pid=88100 idle-exit=2m0s
+daemon: signal received, shutting down
+daemon: stopped
+daemon: signal received, shutting down
+daemon: stopped
+graymatter daemon ready: dir=/Users/alessandrojcm/repos/dhc-dashboard/.graymatter addr=unix:///Users/alessandrojcm/repos/dhc-dashboard/.graymatter/graymatter.sock pid=92958 idle-exit=2m0s
+daemon: signal received, shutting down
+daemon: stopped
+graymatter daemon ready: dir=/Users/alessandrojcm/repos/dhc-dashboard/.graymatter addr=unix:///Users/alessandrojcm/repos/dhc-dashboard/.graymatter/graymatter.sock pid=15526 idle-exit=2m0s
+=======
+>>>>>>> main
