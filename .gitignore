@@ -48,8 +48,9 @@ erl_crash.dump
 
 # mise local overrides
 .mise.local.toml
-.graymatter
-<<<<<<< HEAD
+
+# GrayMatter runtime state
+.graymatter/
+
+# Logs
 *.log
-=======
->>>>>>> main
