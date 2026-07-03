@@ -10,7 +10,7 @@
 # mise activates these on cd — no nvm/asdf shims required.
 
 [tools]
-node = "24"          # SvelteKit + Cloudflare Workers
+node = "26"          # SvelteKit + Cloudflare Workers
 erlang = "29"              # OTP 27 for Elixir
 elixir = "1.20"   # Phoenix (mix.exs requires ~> 1.15), matched to OTP 27
 pnpm = "11"      # must match packageManager in package.json
