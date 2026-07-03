@@ -3,7 +3,11 @@ import { invitationsCreate, settingsUpdate } from "@dhc/api-client";
 import { apiClientOptions } from "$lib/server/api-client";
 import { InsuranceFormLinkSchema } from "$lib/server/services/settings";
 import { invariant } from "$lib/server/invariant";
-import { getRolesFromSession, SETTINGS_ROLES, allowedToggleRoles } from "$lib/server/roles";
+import {
+	getRolesFromSession,
+	SETTINGS_ROLES,
+	allowedToggleRoles,
+} from "$lib/server/roles";
 import {
 	adminInviteRemoteSchema,
 	bulkInviteRemoteSchema,
@@ -108,7 +112,8 @@ export const updateMemberSettings = form(
 
 		if (response.error) {
 			throw new Error(
-				response.error.errors?.detail ?? "Failed to update settings. Please try again later.",
+				response.error.errors?.detail ??
+					"Failed to update settings. Please try again later.",
 			);
 		}
 

@@ -1,47 +1,45 @@
 <script lang="ts">
-    import {
-        Card,
-        CardContent,
-        CardHeader,
-        CardTitle,
-    } from "$lib/components/ui/card";
-    import { Button } from "$lib/components/ui/button";
-    import { Badge } from "$lib/components/ui/badge";
-    import { Tags, Plus, Edit, Package, AlertTriangle } from "lucide-svelte";
-    import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
-    import { createQuery } from "@tanstack/svelte-query";
-    import {
-        inventoryCategoriesIndex,
-        type InventoryCategory,
-    } from "@dhc/api-client";
+import {
+	Card,
+	CardContent,
+	CardHeader,
+	CardTitle,
+} from "$lib/components/ui/card";
+import { Button } from "$lib/components/ui/button";
+import { Badge } from "$lib/components/ui/badge";
+import { Tags, Plus, Edit, Package, AlertTriangle } from "lucide-svelte";
+import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
+import { createQuery } from "@tanstack/svelte-query";
+import {
+	inventoryCategoriesIndex,
+	type InventoryCategory,
+} from "@dhc/api-client";
 
-    let { data } = $props();
+let { data } = $props();
 
-    const categoriesQuery = createQuery(() => ({
-        queryKey: ["inventory-categories"],
-        queryFn: async ({ signal }) => {
-            const { data: sessionData, error } =
-                await data.supabase.auth.getSession();
-            if (error) throw error;
+const categoriesQuery = createQuery(() => ({
+	queryKey: ["inventory-categories"],
+	queryFn: async ({ signal }) => {
+		const { data: sessionData, error } = await data.supabase.auth.getSession();
+		if (error) throw error;
 
-            const accessToken = sessionData.session?.access_token;
-            if (!accessToken) throw new Error("Authentication required");
+		const accessToken = sessionData.session?.access_token;
+		if (!accessToken) throw new Error("Authentication required");
 
-            const response = await inventoryCategoriesIndex({
-                auth: accessToken,
-                signal,
-                throwOnError: true,
-            });
+		const response = await inventoryCategoriesIndex({
+			auth: accessToken,
+			signal,
+			throwOnError: true,
+		});
 
-            return response.data.data.categories;
-        },
-    }));
+		return response.data.data.categories;
+	},
+}));
 
-    const getAttributeCount = (category: InventoryCategory) =>
-        category.availableAttributes?.length ?? 0;
+const getAttributeCount = (category: InventoryCategory) =>
+	category.availableAttributes?.length ?? 0;
 
-    const getItemCount = (category: InventoryCategory) =>
-        category.itemCount ?? 0;
+const getItemCount = (category: InventoryCategory) => category.itemCount ?? 0;
 </script>
 
 <div class="p-6">

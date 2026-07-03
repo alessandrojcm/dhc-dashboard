@@ -17,11 +17,20 @@ import {
 } from "$lib/components/ui/select";
 import * as Field from "$lib/components/ui/field";
 import { ArrowLeft, FolderOpen } from "lucide-svelte";
-import type { InventoryContainer } from "$lib/types";
 import { createContainer } from "../data.remote";
 import { onMount } from "svelte";
 
-interface ContainerWithChildren extends InventoryContainer {
+// Minimal container row the create-load returns (ALE-106 switched the source
+// to `inventoryContainersIndex`; only `id`/`name`/`parent_container_id` feed
+// the parent-select hierarchy). Narrowing here keeps the page independent of
+// the legacy full Supabase `containers` row type.
+interface ContainerRow {
+	id: string;
+	name: string;
+	parent_container_id: string | null;
+}
+
+interface ContainerWithChildren extends ContainerRow {
 	children: ContainerWithChildren[];
 }
 
@@ -46,7 +55,7 @@ const parentContainerId = $derived(
 
 // Build hierarchy display for parent selection
 const buildHierarchyDisplay = (
-	containers: InventoryContainer[],
+	containers: ContainerRow[],
 ): HierarchicalContainer[] => {
 	// eslint-disable-next-line svelte/prefer-svelte-reactivity
 	const containerMap = new Map<string, ContainerWithChildren>();

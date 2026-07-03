@@ -16,6 +16,10 @@ tags:
     description: Equipment category management (quartermaster)
     x-context: Dhc.Inventory
     x-resource: EquipmentCategory
+  - name: InventoryContainers
+    description: Inventory container (storage location) management with parent/child hierarchy (quartermaster)
+    x-context: Dhc.Inventory
+    x-resource: Container
 
 paths:
   /health:
@@ -1093,6 +1097,238 @@ paths:
                 $ref: "#/components/schemas/Error"
         "409":
           description: The category is still referenced by inventory items
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /inventory/containers:
+    get:
+      operationId: inventoryContainers.index
+      tags:
+        - InventoryContainers
+      summary: List inventory containers
+      description: |
+        Returns inventory containers as a flat list ordered by name, each
+        annotated with its `itemCount` (the number of `inventory_items` rows
+        directly in it) and a `parentContainer` summary (`{id, name}` or null).
+        The UI rebuilds the parent/child hierarchy client-side from
+        `parentContainerId`.
+
+        Requires a valid Supabase JWT (any authenticated member).
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Inventory containers ordered by name
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryContainerListResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      operationId: inventoryContainers.create
+      tags:
+        - InventoryContainers
+      summary: Create an inventory container
+      description: |
+        Creates a new inventory container. Optionally nest it under a parent
+        container via `parentContainerId`. `createdBy` is derived from the
+        caller's Supabase JWT `sub`.
+
+        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
+        `quartermaster`, `president`, or `admin`.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryContainerCreateRequest"
+      responses:
+        "201":
+          description: The created container
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryContainerListItemResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a write role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Invalid container payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /inventory/containers/{id}:
+    get:
+      operationId: inventoryContainers.show
+      tags:
+        - InventoryContainers
+      summary: Get one inventory container with relations
+      description: |
+        Returns a single inventory container by id with its `parentContainer`
+        summary, `childContainers` (`[{id, name}]`), and the `items` directly
+        in it — each item carrying a `category` summary (`{id, name}`) and
+        `quantity`/`outForMaintenance`. Item-level history is not embedded.
+
+        Requires a valid Supabase JWT (any authenticated member).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The container id.
+      responses:
+        "200":
+          description: The inventory container with relations
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryContainerDetailResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No container exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    patch:
+      operationId: inventoryContainers.update
+      tags:
+        - InventoryContainers
+      summary: Update an inventory container
+      description: |
+        Updates a single inventory container. Accepts the same writable
+        fields as create (`name`, `description`, `parentContainerId`).
+
+        Setting `parentContainerId` to the container itself or one of its
+        descendants is rejected with `422` (circular-parent prevention); the
+        UI also filters available parents client-side, but the server enforces
+        the invariant for safety.
+
+        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
+        `quartermaster`, `president`, or `admin`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The container id.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryContainerCreateRequest"
+      responses:
+        "200":
+          description: The updated container
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryContainerListItemResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a write role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No container exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Invalid payload, or `parentContainerId` would create a cycle
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      operationId: inventoryContainers.delete
+      tags:
+        - InventoryContainers
+      summary: Delete an inventory container
+      description: |
+        Deletes an inventory container. The delete is rejected with `409` when
+        the container still directly contains inventory items; remove or move
+        those items first. Child containers cascade-delete per the
+        `containers.parent_container_id` `on_delete: :delete_all` foreign key;
+        a child that itself holds items will surface as `409` via that cascade.
+
+        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
+        `quartermaster`, `president`, or `admin`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The container id.
+      responses:
+        "204":
+          description: The container was deleted
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a write role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No container exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: The container still contains inventory items
           content:
             application/json:
               schema:
@@ -2358,6 +2594,204 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/InventoryCategoryAttributeDefinition"
+    InventoryContainer:
+      type: object
+      description: |
+        Flat inventory container summary — the shape used by both the list
+        endpoint and the create/update responses.
+      required:
+        - id
+        - name
+        - description
+        - parentContainerId
+        - parentContainer
+        - itemCount
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        parentContainerId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Parent container id, or null for a root container.
+        parentContainer:
+          type: object
+          nullable: true
+          description: |
+            Summary of the parent container `{id, name}`, or null when this
+            is a root container. The UI renders the parent name.
+          properties:
+            id:
+              type: string
+              format: uuid
+            name:
+              type: string
+          required:
+            - id
+            - name
+        itemCount:
+          type: integer
+          description: Number of inventory items directly in this container.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    InventoryContainerListResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - containers
+          properties:
+            containers:
+              type: array
+              items:
+                $ref: "#/components/schemas/InventoryContainer"
+    InventoryContainerListItemResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: "#/components/schemas/InventoryContainer"
+    InventoryContainerCreateRequest:
+      type: object
+      required:
+        - name
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+        description:
+          type: string
+          nullable: true
+          maxLength: 500
+        parentContainerId:
+          type: string
+          format: uuid
+          nullable: true
+          description: |
+            Parent container id, or null/omitted for a root container. Must
+            not be the container itself or one of its descendants (enforced
+            on update).
+    InventoryContainerChild:
+      type: object
+      description: Minimal child container reference `{id, name}`.
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+    InventoryContainerItem:
+      type: object
+      description: |
+        Minimal inventory item summary shown on the container detail page:
+        identity, `category` summary, quantity, and maintenance flag. Item
+        attributes are not embedded (full item detail lives in the items slice).
+      required:
+        - id
+        - quantity
+        - outForMaintenance
+        - category
+      properties:
+        id:
+          type: string
+          format: uuid
+        quantity:
+          type: integer
+        outForMaintenance:
+          type: boolean
+        category:
+          type: object
+          nullable: true
+          description: Summary of the item's equipment category, or null.
+          properties:
+            id:
+              type: string
+              format: uuid
+            name:
+              type: string
+    InventoryContainerDetail:
+      type: object
+      description: Container detail with parent, child containers, and direct items.
+      required:
+        - id
+        - name
+        - description
+        - parentContainerId
+        - parentContainer
+        - childContainers
+        - items
+        - itemCount
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        parentContainerId:
+          type: string
+          format: uuid
+          nullable: true
+        parentContainer:
+          type: object
+          nullable: true
+          properties:
+            id:
+              type: string
+              format: uuid
+            name:
+              type: string
+          required:
+            - id
+            - name
+        childContainers:
+          type: array
+          items:
+            $ref: "#/components/schemas/InventoryContainerChild"
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/InventoryContainerItem"
+        itemCount:
+          type: integer
+          description: Number of inventory items directly in this container.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    InventoryContainerDetailResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: "#/components/schemas/InventoryContainerDetail"
     Error:
       type: object
       properties:
