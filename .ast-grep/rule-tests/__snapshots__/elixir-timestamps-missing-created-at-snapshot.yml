@@ -1,0 +1,14 @@
+id: elixir-timestamps-missing-created-at
+snapshots:
+  timestamps():
+    labels:
+    - source: timestamps()
+      style: primary
+      start: 0
+      end: 12
+  'timestamps(type: :timestamptz)':
+    labels:
+    - source: 'timestamps(type: :timestamptz)'
+      style: primary
+      start: 0
+      end: 30

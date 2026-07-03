@@ -1,6 +1,25 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "autoupdate": true,
+  "lsp": {
+    "ast-grep": {
+      "command": ["ast-grep", "lsp"],
+      "extensions": [
+        ".ts",
+        ".js",
+        ".mjs",
+        ".cjs",
+        ".svelte",
+        ".ex",
+        ".exs",
+        ".yml",
+        ".yaml",
+        ".json",
+        ".css",
+        ".html"
+      ]
+    }
+  },
   "mcp": {
     "sentry": {
       "type": "remote",
