@@ -5,11 +5,23 @@ defmodule Mix.Tasks.Gen.ControllersTest do
 
   @minimal_fixture "test/fixtures/minimal_spec.yaml"
   @crud_fixture "test/fixtures/crud_spec.yaml"
+  @multi_resource_fixture "test/fixtures/multi_resource_spec.yaml"
 
   setup do
     minimal_spec = parse_fixture!(@minimal_fixture)
     crud_spec = parse_fixture!(@crud_fixture)
-    %{spec: minimal_spec, crud_spec: crud_spec}
+    multi_resource_spec = parse_fixture!(@multi_resource_fixture)
+
+    # `tag_extension/2` reads the stashed spec from the process dictionary,
+    # exactly as `run/1` does. Stash each spec under test so the private
+    # naming helpers resolve overrides the same way they do in production.
+    Process.put(:gen_controllers_spec, multi_resource_spec)
+
+    %{
+      spec: minimal_spec,
+      crud_spec: crud_spec,
+      multi_resource_spec: multi_resource_spec
+    }
   end
 
   # ── Parsing ──────────────────────────────────────────────────────────
@@ -177,6 +189,153 @@ defmodule Mix.Tasks.Gen.ControllersTest do
     end
   end
 
+  # ── singularize/1 ────────────────────────────────────────────────────
+
+  describe "singularize/1" do
+    test "ies → y rule" do
+      assert Controllers.singularize("categories") == "category"
+      assert Controllers.singularize("entries") == "entry"
+      assert Controllers.singularize("properties") == "property"
+      assert Controllers.singularize("inventory_categories") == "inventory_category"
+    end
+
+    test "trivial s trim" do
+      assert Controllers.singularize("widgets") == "widget"
+      assert Controllers.singularize("members") == "member"
+      assert Controllers.singularize("invitations") == "invitation"
+    end
+
+    test "ses → s (e.g. classes)" do
+      assert Controllers.singularize("classes") == "class"
+      assert Controllers.singularize("lenses") == "lens"
+    end
+
+    test "passes already-singular and non-plural names through" do
+      assert Controllers.singularize("health") == "health"
+      assert Controllers.singularize("waitlist") == "waitlist"
+      assert Controllers.singularize("inventory") == "inventory"
+    end
+  end
+
+  # ── Tag extensions (x-context / x-resource) ──────────────────────────
+
+  describe "tag extensions" do
+    test "tag_definition/2 returns the OpenApiSpex.Tag for a declared tag", %{
+      multi_resource_spec: spec
+    } do
+      assert %OpenApiSpex.Tag{name: "InventoryCategories"} =
+               Controllers.tag_definition(spec, "InventoryCategories")
+
+      assert Controllers.tag_definition(spec, "DoesNotExist") == nil
+    end
+
+    test "tag_extension/2 reads x-context and x-resource from the stashed spec" do
+      # The setup callback stashes the multi-resource spec.
+      assert Controllers.tag_extension("InventoryCategories", "x-context") == "Dhc.Inventory"
+
+      assert Controllers.tag_extension("InventoryCategories", "x-resource") ==
+               "EquipmentCategory"
+
+      assert Controllers.tag_extension("InventoryContainers", "x-resource") == "Container"
+    end
+
+    test "tag_extension/2 returns nil when the tag declares no extension", %{
+      crud_spec: spec
+    } do
+      Process.put(:gen_controllers_spec, spec)
+
+      assert Controllers.tag_extension("Widgets", "x-context") == nil
+      assert Controllers.tag_extension("Widgets", "x-resource") == nil
+    end
+
+    test "tag_extension/2 returns nil when no spec is stashed" do
+      Process.delete(:gen_controllers_spec)
+
+      assert Controllers.tag_extension("InventoryCategories", "x-context") == nil
+    after
+      # Restore for subsequent tests — the setup block re-stashes, but be
+      # defensive so test ordering never matters.
+      Process.put(:gen_controllers_spec, parse_fixture!(@multi_resource_fixture))
+    end
+  end
+
+  # ── Naming helpers with x-context / x-resource overrides ─────────────
+  #
+  # These exercise the private helpers via the public `tag_extension/2`
+  # path. Because the helpers are private, we call them indirectly through
+  # `controller_module/1`-equivalent public surface where possible and
+  # assert on the generated controller content otherwise.
+
+  describe "x-context / x-resource override resolution" do
+    test "controller_module uses the tag name (not x-context) — only the alias changes" do
+      # The controller module is always derived from the tag, so multiple
+      # resources under one context get distinct controllers.
+      assert Controllers.controller_module("InventoryCategories") ==
+               "DhcWeb.InventoryCategoriesController"
+
+      assert Controllers.controller_module("InventoryContainers") ==
+               "DhcWeb.InventoryContainersController"
+    end
+
+    test "generated controller aliases the x-context module, not Dhc.<Tag>", %{
+      multi_resource_spec: spec
+    } do
+      # Run the private content builder by invoking the public task entry
+      # point indirectly: `controller_content/3` is private, so drive the
+      # whole pipeline and read the generated controller text from disk
+      # via the task's own file path.
+      tag = "InventoryCategories"
+      operations = Controllers.operations_for_tag(spec, tag)
+      assert Enum.any?(operations, &(&1.operation_id == "inventoryCategories.create"))
+
+      # The generated controller must `alias Dhc.Inventory` (x-context),
+      # NOT `alias Dhc.InventoryCategories` (derived).
+      content = controller_module_text!(spec, tag)
+
+      assert content =~ ~S|alias Dhc.Inventory|
+      refute content =~ ~S|alias Dhc.InventoryCategories|
+
+      # The context function calls use the singularized resource name
+      # (`inventory_category` from x-resource `EquipmentCategory`), not
+      # the broken `inventory_categorie` the old `s`-trim produced.
+      assert content =~ "list_equipment_categories()"
+      assert content =~ "create_equipment_category("
+      assert content =~ "get_equipment_category!(id)"
+
+      # The struct reference in the changeset/JSON path must point at
+      # `Dhc.Inventory.EquipmentCategory`.
+      assert content =~ "Dhc.Inventory.EquipmentCategory"
+      # Word-boundary so the legitimate module name `InventoryCategories`
+      # (which contains `InventoryCategorie` as a substring) does not match.
+      refute content =~ ~r/\bInventoryCategorie\b/
+    end
+
+    test "generated JSON renderer structs ref the x-context schema module", %{
+      multi_resource_spec: spec
+    } do
+      content = json_renderer_module_text!(spec, "InventoryCategories")
+
+      assert content =~ "Dhc.Inventory.EquipmentCategory"
+      # Word-boundary so the legitimate module name `InventoryCategories`
+      # (which contains `InventoryCategorie` as a substring) does not match.
+      refute content =~ ~r/\bInventoryCategorie\b/
+      refute content =~ "InventoryCategorys"
+    end
+
+    test "tags without x-context fall back to Dhc.<Tag> (backward compatible)", %{
+      crud_spec: spec
+    } do
+      Process.put(:gen_controllers_spec, spec)
+
+      content = controller_module_text!(spec, "Widgets")
+
+      assert content =~ ~S|alias Dhc.Widgets|
+      # `widgets` → `widget` (singularize trivial s-trim, unchanged).
+      assert content =~ "list_widgets()"
+      assert content =~ "create_widget("
+    end
+  end
+
   # ── Helpers ──────────────────────────────────────────────────────────
 
   defp parse_fixture!(path) do
@@ -190,5 +349,21 @@ defmodule Mix.Tasks.Gen.ControllersTest do
       end
 
     OpenApiSpex.OpenApi.Decode.decode(raw_map)
+  end
+
+  # Drives the public content builders (exposed as `@doc false`) to produce
+  # the same controller/JSON module text that `run/1` would write to disk.
+  # We stash `spec` into the process dictionary so the private naming helpers
+  # that call `tag_extension/2` resolve overrides exactly as in production.
+  defp controller_module_text!(spec, tag) do
+    Process.put(:gen_controllers_spec, spec)
+    module_name = Controllers.controller_module(tag)
+    Controllers.controller_content(module_name, tag, spec)
+  end
+
+  defp json_renderer_module_text!(spec, tag) do
+    Process.put(:gen_controllers_spec, spec)
+    module_name = Controllers.json_module(tag)
+    Controllers.json_renderer_content(module_name, tag, spec)
   end
 end
