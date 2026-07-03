@@ -11,6 +11,12 @@ servers:
   - url: /api
     description: Relative path (same origin)
 
+tags:
+  - name: InventoryCategories
+    description: Equipment category management (quartermaster)
+    x-context: Dhc.Inventory
+    x-resource: EquipmentCategory
+
 paths:
   /health:
     get:
@@ -855,6 +861,238 @@ paths:
                 $ref: "#/components/schemas/Error"
         "403":
           description: Authenticated user lacks a settings admin role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /inventory/categories:
+    get:
+      operationId: inventoryCategories.index
+      tags:
+        - InventoryCategories
+      summary: List equipment categories
+      description: |
+        Returns equipment categories ordered by name, each with an `itemCount`
+        of inventory items in that category.
+
+        Requires a valid Supabase JWT (any authenticated member).
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Equipment categories ordered by name
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryCategoryListResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      operationId: inventoryCategories.create
+      tags:
+        - InventoryCategories
+      summary: Create an equipment category
+      description: |
+        Creates a new equipment category. The `availableAttributes` array
+        defines the dynamic attribute definitions items in this category may
+        carry. Supported attribute `type` values: `text`, `select`, `number`,
+        `boolean`. Select attributes must include `options`.
+
+        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
+        `quartermaster`, `president`, or `admin`.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryCategoryCreateRequest"
+      responses:
+        "201":
+          description: The created category
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryCategoryResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a write role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Invalid category payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: A category with that name already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /inventory/categories/{id}:
+    get:
+      operationId: inventoryCategories.show
+      tags:
+        - InventoryCategories
+      summary: Get one equipment category
+      description: |
+        Returns a single equipment category by id, including its `itemCount`.
+
+        Requires a valid Supabase JWT (any authenticated member).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The category id.
+      responses:
+        "200":
+          description: The equipment category
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryCategoryResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No category exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    patch:
+      operationId: inventoryCategories.update
+      tags:
+        - InventoryCategories
+      summary: Update an equipment category
+      description: |
+        Updates a single equipment category. Accepts the same writable fields
+        as create (`name`, `description`, `availableAttributes`).
+
+        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
+        `quartermaster`, `president`, or `admin`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The category id.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryCategoryCreateRequest"
+      responses:
+        "200":
+          description: The updated category
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryCategoryResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a write role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No category exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: A category with the new name already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Invalid category payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      operationId: inventoryCategories.delete
+      tags:
+        - InventoryCategories
+      summary: Delete an equipment category
+      description: |
+        Deletes an equipment category. The delete is rejected with `409` when
+        any inventory items still reference the category; remove or reassign
+        those items first.
+
+        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
+        `quartermaster`, `president`, or `admin`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The category id.
+      responses:
+        "204":
+          description: The category was deleted
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a write role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No category exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: The category is still referenced by inventory items
           content:
             application/json:
               schema:
@@ -2012,6 +2250,114 @@ components:
       properties:
         data:
           $ref: "#/components/schemas/SettingsItem"
+    InventoryCategoryAttributeDefinition:
+      type: object
+      required:
+        - type
+        - label
+      properties:
+        name:
+          type: string
+          description: |
+            Machine key for the attribute. The UI derives this from the label
+            (lowercased, spaces → hyphens); when omitted the API preserves the
+            stored value (categories seeded pre-API may carry keys).
+        label:
+          type: string
+          description: Human-readable label shown in the UI.
+        type:
+          type: string
+          enum:
+            - text
+            - select
+            - number
+            - boolean
+          description: UI input kind for the attribute.
+        required:
+          type: boolean
+          description: Whether items must populate this attribute.
+        options:
+          type: array
+          items:
+            type: string
+          description: Allowed values for `select` attributes.
+        defaultValue:
+          description: Default value for the attribute (type depends on `type`).
+          oneOf:
+            - type: string
+            - type: number
+            - type: boolean
+    InventoryCategory:
+      type: object
+      required:
+        - id
+        - name
+        - description
+        - availableAttributes
+        - itemCount
+        - createdAt
+        - updatedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        availableAttributes:
+          type: array
+          items:
+            $ref: "#/components/schemas/InventoryCategoryAttributeDefinition"
+        itemCount:
+          type: integer
+          description: Number of inventory items in this category.
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+    InventoryCategoryListResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - categories
+          properties:
+            categories:
+              type: array
+              items:
+                $ref: "#/components/schemas/InventoryCategory"
+    InventoryCategoryResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: "#/components/schemas/InventoryCategory"
+    InventoryCategoryCreateRequest:
+      type: object
+      required:
+        - name
+        - availableAttributes
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+        description:
+          type: string
+          nullable: true
+          maxLength: 500
+        availableAttributes:
+          type: array
+          items:
+            $ref: "#/components/schemas/InventoryCategoryAttributeDefinition"
     Error:
       type: object
       properties:
