@@ -1,0 +1,7 @@
+id: elixir-timestamps-missing-created-at
+language: elixir
+valid:
+  - "timestamps(type: :timestamptz, inserted_at: :created_at)"
+invalid:
+  - "timestamps(type: :timestamptz)"
+  - "timestamps()"

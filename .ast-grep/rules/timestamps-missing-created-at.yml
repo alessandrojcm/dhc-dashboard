@@ -1,0 +1,25 @@
+# Forbid plain `timestamps/1` in Ecto migrations that port Supabase tables.
+#
+# Production Supabase tables use `created_at`/`updated_at`. Ecto's default
+# `timestamps/1` produces `inserted_at`/`updated_at`, which diverges from
+# production and breaks code paths that write `created_at:` (e.g.
+# `stripe_sync/repository.ex`). Baselines must use
+# `timestamps(type: :timestamptz, inserted_at: :created_at)`.
+#
+# See docs/agents/critical-patterns.md "Timestamp column names" and
+# docs/agents/anti-patterns.md for the forbidden inverse.
+#
+# Known remaining offenders (fix when first touched): the `inventory_*`
+# tables in `apps/phoenix/priv/repo/migrations/20260512000010_create_inventory.exs`.
+id: elixir-timestamps-missing-created-at
+language: elixir
+severity: error
+rule:
+  pattern: timestamps($$$ARGS)
+  not:
+    regex: "inserted_at: :created_at"
+message: |
+  Ecto migration uses plain `timestamps/1` without `inserted_at: :created_at`.
+  Production Supabase tables use `created_at`/`updated_at`. Use
+  `timestamps(type: :timestamptz, inserted_at: :created_at)` to match production
+  column names. See docs/agents/critical-patterns.md "Timestamp column names".

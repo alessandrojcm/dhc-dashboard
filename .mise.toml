@@ -93,10 +93,22 @@ run = "mix format"
 description = "Deploy the Phoenix API release to Fly.io"
 run = "fly deploy --app ${FLY_APP:-dhc-dashboard} --remote-only"
 
-[tasks."phx-format-check"]
+[tasks.phx-format-check]
 description = "Check Elixir formatting (CI)"
 dir = "apps/phoenix"
 run = "mix format --check-formatted"
+
+# ── Structural lint (ast-grep) ─────────────────────
+# Rules live in .ast-grep/rules/, config in sgconfig.yml at repo root.
+# The LSP is wired in opencode.json; this task is for CI/precommit.
+
+[tasks."ast-lint"]
+description = "Run ast-grep structural lint rules (fails on violations)"
+run = "ast-grep scan -c sgconfig.yml apps/phoenix/priv/repo/migrations/"
+
+[tasks."ast-test"]
+description = "Run ast-grep rule test fixtures"
+run = "ast-grep test -c sgconfig.yml"
 
 # ── API contract (replaces make api-gen) ───────────
 
