@@ -36,6 +36,23 @@ config :dhc, Dhc.Repo,
 
 **Symptoms if missing:** `invalid_sql_statement_name` (prepared statement "ecto_X" does not exist) or `protocol_violation` (bind message supplies N parameters, but prepared statement requires M). These errors cascade into Oban crashes, Stripe sync failures, and general API instability.
 
+## Timestamp column names: `created_at`, not `inserted_at`
+
+Production Supabase tables use `created_at`/`updated_at`. Ecto's default `timestamps/1` produces `inserted_at`/`updated_at`. When porting a Supabase table to an Ecto baseline migration, **always** align the baseline with production:
+
+```elixir
+# CORRECT — matches production column names
+timestamps(type: :timestamptz, inserted_at: :created_at)
+```
+
+Then the Ecto schema must declare `field :created_at, :utc_datetime` (not `inserted_at`), and any `Repo.insert_all`/raw writes must set `created_at:`.
+
+This mirrors the `member_profiles`/`user_profiles`/`invitations`/workshop-tables/`settings`/`inventory_*` baseline pattern. All ported baselines now use `created_at`.
+
+**Enforced structurally:** the `elixir-timestamps-missing-created-at` ast-grep rule (in `.ast-grep/rules/`, wired via `sgconfig.yml` + the `mise run ast-lint` task + the opencode.json LSP) fails on any `timestamps/1` call in `apps/phoenix/priv/repo/migrations/` that lacks `inserted_at: :created_at`. Run `mise run ast-test` to validate rule fixtures.
+
+**Source of truth is production, not the baseline.** When a code path (e.g. `stripe_sync/repository.ex`) uses `created_at:` and the testcontainers harness fails because the baseline produced `inserted_at`, the fix is the baseline, not the code.
+
 ## Remote Functions (`.remote.ts`)
 
 Remote functions MUST delegate to the service layer:

@@ -1,0 +1,7 @@
+# ast-grep project config.
+# Rules live under .ast-grep/rules/. Run via `mise run ast-lint`.
+# The ast-grep LSP (wired in opencode.json) reads this file for rule discovery.
+ruleDirs:
+  - .ast-grep/rules
+testConfigs:
+  - testDir: .ast-grep/rule-tests

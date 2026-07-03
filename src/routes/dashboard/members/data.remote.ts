@@ -1,16 +1,9 @@
 import { command, form, getRequestEvent } from "$app/server";
-import { invitationsCreate } from "@dhc/api-client";
+import { invitationsCreate, settingsUpdate } from "@dhc/api-client";
 import { apiClientOptions } from "$lib/server/api-client";
-import {
-	InsuranceFormLinkSchema,
-	createSettingsService,
-} from "$lib/server/services/settings";
+import { InsuranceFormLinkSchema } from "$lib/server/services/settings";
 import { invariant } from "$lib/server/invariant";
-import {
-	getRolesFromSession,
-	SETTINGS_ROLES,
-	allowedToggleRoles,
-} from "$lib/server/roles";
+import { getRolesFromSession, SETTINGS_ROLES, allowedToggleRoles } from "$lib/server/roles";
 import {
 	adminInviteRemoteSchema,
 	bulkInviteRemoteSchema,
@@ -107,8 +100,17 @@ export const updateMemberSettings = form(
 			403,
 		);
 
-		const settingsService = createSettingsService(event.platform!, session!);
-		await settingsService.updateInsuranceFormLink(data.insuranceFormLink);
+		const response = await settingsUpdate({
+			...apiClientOptions(session!),
+			path: { key: "hema_insurance_form_link" },
+			body: { value: data.insuranceFormLink },
+		});
+
+		if (response.error) {
+			throw new Error(
+				response.error.errors?.detail ?? "Failed to update settings. Please try again later.",
+			);
+		}
 
 		return { success: "Settings updated successfully" };
 	},

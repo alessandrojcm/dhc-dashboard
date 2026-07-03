@@ -822,6 +822,110 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /settings:
+    get:
+      operationId: settings.index
+      tags:
+        - Settings
+      summary: List allowlisted generic settings
+      description: |
+        Returns the generic admin-managed settings allowlisted for the
+        generic Settings API: `hema_insurance_form_link`,
+        `subscription_max_pause_months`, and `subscription_min_pause_days`.
+
+        Domain-owned settings (e.g. `waitlist_open`) are intentionally not
+        exposed here; they belong to their owning capability's API.
+
+        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
+        `president`, `committee_coordinator`, or `admin`.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Allowlisted generic settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SettingsListResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a settings admin role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /settings/{key}:
+    patch:
+      operationId: settings.update
+      tags:
+        - Settings
+      summary: Update one allowlisted generic setting
+      description: |
+        Updates a single allowlisted generic setting by key. The request body
+        is `{ "value": ... }` where the value type depends on the key:
+
+        - `hema_insurance_form_link`: non-empty http/https URL string
+        - `subscription_max_pause_months`: integer, valid range 1..24
+        - `subscription_min_pause_days`: integer, valid range 1..365
+
+        Unknown or non-allowlisted keys return `404`. Invalid values return
+        `422`. The `type` column is not part of the public contract.
+
+        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
+        `president`, `committee_coordinator`, or `admin`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The setting key (must be allowlisted).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SettingsUpdateRequest"
+      responses:
+        "200":
+          description: The updated setting
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SettingsUpdateResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a settings admin role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Unknown or non-allowlisted setting key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Invalid value for the given key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1844,6 +1948,70 @@ components:
           type: string
           format: email
           nullable: true
+    SettingsItem:
+      type: object
+      required:
+        - key
+        - value
+        - description
+        - updatedAt
+      properties:
+        key:
+          type: string
+          description: The setting key.
+        value:
+          description: |
+            The setting value. Type depends on the key:
+            `hema_insurance_form_link` is a string URL (nullable when not
+            configured); `subscription_max_pause_months` and
+            `subscription_min_pause_days` are integers.
+          oneOf:
+            - type: string
+            - type: integer
+            - type: "null"
+        description:
+          type: string
+          nullable: true
+          description: Human-readable description of the setting.
+        updatedAt:
+          type: string
+          format: date-time
+          description: When the setting was last updated.
+    SettingsListResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - settings
+          properties:
+            settings:
+              type: array
+              items:
+                $ref: "#/components/schemas/SettingsItem"
+    SettingsUpdateRequest:
+      type: object
+      required:
+        - value
+      properties:
+        value:
+          description: |
+            The new value. Type depends on the key:
+            `hema_insurance_form_link` is a string URL;
+            `subscription_max_pause_months` and `subscription_min_pause_days`
+            are integers.
+          oneOf:
+            - type: string
+            - type: integer
+    SettingsUpdateResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: "#/components/schemas/SettingsItem"
     Error:
       type: object
       properties:
