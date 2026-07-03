@@ -52,15 +52,13 @@ function toApiBody(
 	return {
 		name: data.name,
 		...(data.description ? { description: data.description } : {}),
-		availableAttributes: (data.available_attributes ?? []).map(
-			(attr) => {
-				const { default_value, ...rest } = attr as Record<string, unknown>;
-				return {
-					...rest,
-					...(default_value !== undefined ? { defaultValue: default_value } : {}),
-				} as InventoryCategoryCreateRequest["availableAttributes"][number];
-			},
-		),
+		availableAttributes: (data.available_attributes ?? []).map((attr) => {
+			const { default_value, ...rest } = attr as Record<string, unknown>;
+			return {
+				...rest,
+				...(default_value !== undefined ? { defaultValue: default_value } : {}),
+			} as InventoryCategoryCreateRequest["availableAttributes"][number];
+		}),
 	};
 }
 

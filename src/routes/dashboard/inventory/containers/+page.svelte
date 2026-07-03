@@ -1,6 +1,5 @@
 <script lang="ts">
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import type { Database } from "$database";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
 	Card,
@@ -13,81 +12,95 @@ import { Badge } from "$lib/components/ui/badge";
 import { FolderOpen, Plus, Edit, Package, AlertTriangle } from "lucide-svelte";
 import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
 import { createQuery } from "@tanstack/svelte-query";
+import {
+	inventoryContainersIndex,
+	type InventoryContainer,
+} from "@dhc/api-client";
 
 let { data } = $props();
-const supabase: SupabaseClient<Database> = data.supabase;
+const supabase: SupabaseClient<any> = data.supabase;
 
-// Fetch containers with TanStack Query
+// Fetch containers with TanStack Query through the generated Phoenix client
+// (ALE-106). The `inventoryContainersIndex` endpoint returns a flat list
+// ordered by name, each with `parentContainerId`, a `parentContainer` summary,
+// and `itemCount`; the hierarchy is rebuilt client-side below.
 const containersQuery = createQuery(() => ({
 	queryKey: ["inventory-containers"],
 	queryFn: async ({ signal }) => {
-		const { data: containers, error } = await supabase
-			.from("containers")
-			.select(
-				"id, name, description, parent_container_id, parent_container:containers!containers_parent_container_id_fkey(id, name), item_count:equipment_items(count)",
-			)
-			.order("name")
-			.abortSignal(signal);
-
+		const { data: sessionData, error } = await supabase.auth.getSession();
 		if (error) throw error;
 
-		return containers || [];
+		const accessToken = sessionData.session?.access_token;
+		if (!accessToken) throw new Error("Authentication required");
+
+		const response = await inventoryContainersIndex({
+			auth: accessToken,
+			signal,
+			throwOnError: true,
+		});
+
+		return response.data.data.containers;
 	},
 }));
 
-// Build hierarchy tree
-const buildHierarchy = (containers: any[]) => {
+interface ContainerNode extends InventoryContainer {
+	children: ContainerNode[];
+}
+
+// Build a parent/child tree from the flat list using `parentContainerId`.
+const buildHierarchy = (containers: InventoryContainer[]): ContainerNode[] => {
 	// eslint-disable-next-line svelte/prefer-svelte-reactivity
-	const containerMap = new Map();
-	const rootContainers: any[] = [];
+	const containerMap = new Map<string, ContainerNode>();
+	const rootContainers: ContainerNode[] = [];
 
-	// First pass: create map of all containers
-	containers.forEach((container) => {
+	// First pass: create map of all containers.
+	for (const container of containers) {
 		containerMap.set(container.id, { ...container, children: [] });
-	});
+	}
 
-	// Second pass: build hierarchy
-	containers.forEach((container) => {
-		if (container.parent_container_id) {
-			const parent = containerMap.get(container.parent_container_id);
+	// Second pass: attach each container to its parent (or to the root list).
+	for (const container of containers) {
+		const node = containerMap.get(container.id)!;
+		if (container.parentContainerId) {
+			const parent = containerMap.get(container.parentContainerId);
 			if (parent) {
-				parent.children.push(containerMap.get(container.id));
+				parent.children.push(node);
+				continue;
 			}
-		} else {
-			rootContainers.push(containerMap.get(container.id));
 		}
-	});
+		rootContainers.push(node);
+	}
 
 	return rootContainers;
 };
 
-const renderContainer = (container: any, level = 0) => {
-	const itemCount = container.item_count?.[0]?.count || 0;
-	const hasChildren = container.children.length > 0;
-
-	return {
-		container,
-		level,
-		itemCount,
-		hasChildren,
-	};
-};
-
-const flattenHierarchy = (containers: any[], level = 0): any[] => {
-	const result: any[] = [];
-	containers.forEach((container) => {
-		result.push(renderContainer(container, level));
+const flattenHierarchy = (
+	containers: ContainerNode[],
+	level = 0,
+): { container: ContainerNode; level: number; hasChildren: boolean }[] => {
+	const result: {
+		container: ContainerNode;
+		level: number;
+		hasChildren: boolean;
+	}[] = [];
+	for (const container of containers) {
+		result.push({
+			container,
+			level,
+			hasChildren: container.children.length > 0,
+		});
 		if (container.children.length > 0) {
 			result.push(...flattenHierarchy(container.children, level + 1));
 		}
-	});
+	}
 	return result;
 };
 
-const hierarchy = $derived(
-	containersQuery.data ? buildHierarchy(containersQuery.data) : [],
+const flatContainers = $derived(
+	containersQuery.data
+		? flattenHierarchy(buildHierarchy(containersQuery.data))
+		: [],
 );
-const flatContainers = $derived(flattenHierarchy(hierarchy));
 </script>
 
 <div class="p-6">
@@ -134,14 +147,14 @@ const flatContainers = $derived(flattenHierarchy(hierarchy));
 				</Button>
 			</CardContent>
 		</Card>
-	{:else}
+	{:else if flatContainers.length > 0}
 		<Card>
 			<CardHeader>
 				<CardTitle>Container Hierarchy</CardTitle>
 			</CardHeader>
 			<CardContent>
 				<div class="space-y-2">
-					{#each flatContainers as { container, level, itemCount, hasChildren } (container.id)}
+					{#each flatContainers as { container, level, hasChildren } (container.id)}
 						<div
 							class="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted/50 transition-colors"
 						>
@@ -169,9 +182,9 @@ const flatContainers = $derived(flattenHierarchy(hierarchy));
 									{#if container.description}
 										<p class="text-sm text-muted-foreground">{container.description}</p>
 									{/if}
-									{#if container.parent_container}
+									{#if container.parentContainer}
 										<p class="text-xs text-muted-foreground">
-											Parent: {container.parent_container.name}
+											Parent: {container.parentContainer.name}
 										</p>
 									{/if}
 								</div>
@@ -179,7 +192,7 @@ const flatContainers = $derived(flattenHierarchy(hierarchy));
 								<div class="flex items-center gap-2">
 									<Badge variant="outline" class="flex items-center gap-1">
 										<Package class="h-3 w-3" />
-										{itemCount} item{itemCount !== 1 ? 's' : ''}
+										{container.itemCount} item{container.itemCount !== 1 ? 's' : ''}
 									</Badge>
 
 									<Button

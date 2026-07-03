@@ -98,6 +98,9 @@ defmodule DhcWeb.Router do
     # ALE-105: any authenticated member may read equipment categories.
     get "/inventory/categories", InventoryCategoriesController, :index
     get "/inventory/categories/:id", InventoryCategoriesController, :show
+    # ALE-106: any authenticated member may read inventory containers.
+    get "/inventory/containers", InventoryContainersController, :index
+    get "/inventory/containers/:id", InventoryContainersController, :show
   end
 
   scope "/api", DhcWeb do
@@ -107,5 +110,9 @@ defmodule DhcWeb.Router do
     post "/inventory/categories", InventoryCategoriesController, :create
     patch "/inventory/categories/:id", InventoryCategoriesController, :update
     delete "/inventory/categories/:id", InventoryCategoriesController, :delete
+    # ALE-106: write roles only.
+    post "/inventory/containers", InventoryContainersController, :create
+    patch "/inventory/containers/:id", InventoryContainersController, :update
+    delete "/inventory/containers/:id", InventoryContainersController, :delete
   end
 end
