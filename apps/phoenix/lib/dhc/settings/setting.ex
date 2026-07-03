@@ -11,7 +11,10 @@ defmodule Dhc.Settings.Setting do
     field :type, :string
     field :description, :string
     field :updated_by, :binary_id
-    field :inserted_at, :utc_datetime
+    # Production Supabase uses `created_at` (see the original
+    # `20241213134629_create_settings_table.sql`). The Ecto baseline migration
+    # mirrors this via `timestamps(inserted_at: :created_at)`.
+    field :created_at, :utc_datetime
     field :updated_at, :utc_datetime
   end
 end
