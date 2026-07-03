@@ -23,7 +23,11 @@ linctl issue list
 ## Viewing an issue
 
 ```bash
+<<<<<<< HEAD
 linctl issue get <issue-id>
+=======
+linctl issue view <issue-id>
+>>>>>>> main
 ```
 
 ## Updating triage state
