@@ -63,7 +63,7 @@ defmodule Dhc.StripeSync.Repository do
             key: @price_setting_key,
             value: price_id,
             type: "text",
-            created_at: now,
+            inserted_at: now,
             updated_at: now
           ]
         ])
