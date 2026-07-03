@@ -420,6 +420,7 @@ defmodule Mix.Tasks.Gen.Controllers do
     r_singular = resource_singular(tag)
     r_var = resource_var(tag)
     r_plural = resource_plural(tag)
+
     templates =
       operations
       |> Enum.map(fn op ->
@@ -701,7 +702,9 @@ defmodule Mix.Tasks.Gen.Controllers do
   """
   def tag_extension(tag, key) do
     case Process.get(:gen_controllers_spec) do
-      nil -> nil
+      nil ->
+        nil
+
       spec ->
         case tag_definition(spec, tag) do
           nil -> nil
