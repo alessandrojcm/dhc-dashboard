@@ -10,7 +10,11 @@ defmodule Dhc.Repo.Migrations.CreateSettings do
       add :description, :text
       add :updated_by, references(:users, prefix: "auth", type: :uuid, on_delete: :nothing)
 
-      timestamps(type: :timestamptz)
+      # Production Supabase uses `created_at`/`updated_at` (see the original
+      # `20241213134629_create_settings_table.sql`). Mirror that here rather
+      # than the default `inserted_at` so the Ecto schema and downstream reads
+      # align with production column names.
+      timestamps(type: :timestamptz, inserted_at: :created_at)
     end
 
     # Unique index on :key also serves lookups — a second non-unique index on
@@ -24,10 +28,10 @@ defmodule Dhc.Repo.Migrations.CreateSettings do
     )
     """
 
-    # Seed default settings. The table has NOT NULL `inserted_at`/`updated_at`
+    # Seed default settings. The table has NOT NULL `created_at`/`updated_at`
     # from `timestamps/1`, so the seed must populate them explicitly.
     execute """
-    INSERT INTO settings (key, value, type, description, inserted_at, updated_at) VALUES
+    INSERT INTO settings (key, value, type, description, created_at, updated_at) VALUES
       ('waitlist_open', 'false', 'boolean', 'Controls whether the waitlist is currently accepting new members', NOW(), NOW()),
       ('hema_insurance_form_link', '', 'text', 'Link to the HEMA insurance form for members', NOW(), NOW()),
       ('subscription_max_pause_months', '6', 'text', 'Maximum months a subscription can be paused', NOW(), NOW()),
