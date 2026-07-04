@@ -310,11 +310,11 @@ const getActionColor = (action: string) => {
 									<div class="flex items-center gap-2 mt-1">
 										<FolderOpen class="h-4 w-4 text-muted-foreground" />
 										<Button
-											href="/dashboard/inventory/containers/{displayItem.container.id}"
+											href="/dashboard/inventory/containers/{displayItem.container?.id ?? ''}"
 											variant="link"
 											class="p-0 h-auto text-sm"
 										>
-											{displayItem.container.name}
+											{displayItem.container?.name ?? 'No container'}
 										</Button>
 									</div>
 								</div>
@@ -491,8 +491,8 @@ const getActionColor = (action: string) => {
 							{:else}
 								<!-- View Mode -->
 								<div class="grid gap-4 md:grid-cols-2">
-									{#if Array.isArray(displayItem.category.available_attributes)}
-										{#each displayItem.category.available_attributes as attr (attr.name)}
+									{#if categoryAttributes.length > 0}
+										{#each categoryAttributes as attr (attr.name)}
 											{@const attrValue = displayItem.attributes
 												? displayItem.attributes[attr.name]
 												: undefined}
@@ -529,7 +529,7 @@ const getActionColor = (action: string) => {
 						</CardHeader>
 						<CardContent class="space-y-3">
 							<Button
-								href="/dashboard/inventory/containers/{displayItem.container.id}"
+								href="/dashboard/inventory/containers/{displayItem.container?.id ?? ''}"
 								variant="outline"
 								class="w-full"
 							>

@@ -53,10 +53,14 @@ defmodule Dhc.Inventory do
 
   alias Dhc.Inventory.Container
   alias Dhc.Inventory.EquipmentCategory
+  alias Dhc.Inventory.InventoryHistory
+  alias Dhc.Inventory.Item
   alias Dhc.Repo
 
   @type category :: EquipmentCategory.t()
   @type container :: Container.t()
+  @type item :: Item.t()
+  @type history :: InventoryHistory.t()
 
   @doc """
   Lists equipment categories ordered by `name` ascending, each annotated with
@@ -779,4 +783,685 @@ defmodule Dhc.Inventory do
         parent_container: parent_summary(container.parent_container_id)
     }
   end
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # Items — ALE-107
+  # ═══════════════════════════════════════════════════════════════════════
+  #
+  # Implements the **Item** slice of the Inventory capability migration.
+  # The persistence table is `inventory_items` (NOT NULL `container_id` and
+  # `category_id` FKs, nullable `created_by`/`updated_by` FKs → `auth.users`,
+  # positive-quantity CHECK, free-form jsonb `attributes`); the public API
+  # contract (see `apps/phoenix/priv/api/openapi.yaml`) exposes these as
+  # **Inventory Items** with camelCase payload keys (`containerId`,
+  # `categoryId`, `outForMaintenance`, `photoUrl`, `createdAt`, `updatedAt`,
+  # `createdBy`, `updatedBy`) plus `container`/`category` summaries. The
+  # `DhcWeb.InventoryItemsController` / `DhcWeb.InventoryItemsJSON` pair
+  # renders that mapping.
+  #
+  # ## RBAC
+  #
+  # As with categories and containers, authorization is enforced at the router
+  # layer:
+  #
+  #   * Reads (`index`, `show`, `history`) — any authenticated member
+  #     (`:authenticated_api`).
+  #   * Writes (`create`, `update`, `delete`) — `quartermaster`, `president`,
+  #     or `admin` (the ALE-104 inventory REST contract; mirrors the existing
+  #     SvelteKit `INVENTORY_ROLES`).
+  #
+  # This module trusts the caller.
+  #
+  # ## History recording
+  #
+  # Per the ALE-107 design decision: the slice records a `created`
+  # `inventory_history` row on insert and an `updated` row on patch (each
+  # inside the same transaction as the item write, with `changed_by` = the
+  # caller's JWT `sub`). When `update_item/3` changes `container_id`, a
+  # `moved` row is recorded first — preserving the SvelteKit
+  # `ItemService.moveToContainer` history behavior inside the unified update
+  # path. On delete, no dedicated history row is written: the
+  # `inventory_history.item_id` FK is `on_delete: :delete_all`, so a "deleted"
+  # row would be cascade-wiped alongside the item and is pointless; the
+  # item's prior history rows are removed by the same cascade.
+  #
+  # ## Preserved behavior
+  #
+  # Mirrors the existing SvelteKit `ItemService`:
+  #
+  #   * `list_items/1` returns items newest-first (by `created_at` desc, `id`
+  #     desc tiebreaker), each carrying a `container` (`{id, name,
+  #     parent_container_id}`) and `category` (`{id, name}`) summary. Filters:
+  #     `categoryId`, `containerId`, `outForMaintenance`, `search`
+  #     (case-insensitive partial match across notes, category name, and
+  #     container name). Cursor pagination over `(created_at, id)`.
+  #   * `get_item/1` returns the item with the same `container`/`category`
+  #     summaries.
+  #   * `create_item/2` derives `created_by` from the caller's JWT `sub`
+  #     (never user-writable).
+  #   * `update_item/3` accepts the same writable fields as create, all
+  #     optional on update (PATCH semantics). `updated_by` is set from the
+  #     caller's JWT `sub`.
+  #   * `delete_item/1` hard-deletes the item (cascading history).
+  #   * `list_item_history/2` returns the most recent `inventory_history`
+  #     rows for one item, newest first, with `old_container`/`new_container`
+  #     name summaries.
+  #   * A missing item returns `{:error, :not_found}` (callers translate to
+  #     `404`); it does not raise.
+  #   * Unknown `container_id` / `category_id` on create or update surface as
+  #     changeset errors via `foreign_key_constraint/3` (callers translate to
+  #     `422`).
+
+  @item_allowed_limits [10, 25, 50, 100]
+  @item_default_limit 50
+
+  @doc """
+  Lists inventory items, newest first, with `container` and `category`
+  summaries. Cursor-paginated over `(created_at, id)` (newest first).
+
+  ## Options
+
+    * `:limit` — one of `10, 25, 50, 100` (defaults to `50`).
+    * `:cursor` — opaque cursor returned by a previous response, or `nil`.
+    * `:category_id` — filter by category id (binary UUID).
+    * `:container_id` — filter by container id (binary UUID).
+    * `:out_for_maintenance` — `true`/`false` filter on the maintenance flag.
+    * `:search` — case-insensitive partial match across item notes, category
+      name, and container name.
+
+  ## Returns
+
+    * `{:ok, %{items: [...], limit: pos_integer, next_cursor: binary | nil}}`
+      — the page plus the cursor for the next page (`nil` when this is the
+      last page).
+    * `{:error, :invalid_limit}` — `:limit` is outside `@item_allowed_limits`.
+    * `{:error, :bad_cursor}` — `:cursor` is malformed or stale (filters
+      changed since it was issued).
+  """
+  @spec list_items(keyword() | map()) ::
+          {:ok, %{items: [item()], limit: pos_integer, next_cursor: binary | nil}}
+          | {:error, :invalid_limit | :bad_cursor}
+  def list_items(opts \\ %{}) when is_map(opts) or is_list(opts) do
+    opts = normalize_list_opts(opts)
+
+    with :ok <- validate_limit(opts.limit),
+         {:ok, cursor} <- parse_item_cursor(opts.cursor, opts) do
+      rows =
+        item_base_query(opts)
+        |> apply_cursor(cursor)
+        |> limit(^Enum.min([opts.limit + 1, 101]))
+        |> Repo.all()
+
+      visible = Enum.take(rows, opts.limit)
+
+      {:ok,
+       %{
+         items: Enum.map(visible, &load_item_aggregates/1),
+         limit: opts.limit,
+         next_cursor: next_item_cursor(visible, rows, opts)
+       }}
+    end
+  end
+
+  @doc """
+  Fetches a single inventory item by id with `container` and `category`
+  summaries.
+
+  ## Returns
+
+    * `{:ok, item}` — the item with virtual aggregates populated.
+    * `{:error, :not_found}` — callers translate to `404`.
+  """
+  @spec get_item(String.t()) :: {:ok, item()} | {:error, :not_found}
+  def get_item(id) when is_binary(id) do
+    case Repo.get(Item, id) do
+      nil -> {:error, :not_found}
+      %Item{} = item -> {:ok, load_item_aggregates(item)}
+    end
+  end
+
+  @doc """
+  Creates a new inventory item and records a `created` `inventory_history`
+  row in the same transaction.
+
+  Accepts a map with string or atom keys (the camelCase request body, e.g.
+  `%{"containerId" => ..., "categoryId" => ..., "quantity" => ...}`).
+  `containerId` and `categoryId` are required; `quantity` is required and
+  must be positive (DB CHECK). `created_by` is set programmatically from
+  `actor_id` (the caller's Supabase JWT `sub`); it is never taken from the
+  request body.
+
+  ## Returns
+
+    * `{:ok, item}` — the created item with `container`/`category` populated.
+    * `{:error, changeset}` — validation failed (callers translate to `422`).
+      Foreign-key failures (`containerId`/`categoryId` refers to a missing
+      row, or the actor user does not exist) surface as changeset errors via
+      `foreign_key_constraint/3` rather than raising.
+  """
+  @spec create_item(map(), String.t()) ::
+          {:ok, item()} | {:error, Ecto.Changeset.t()}
+  def create_item(attrs, actor_id) when is_map(attrs) and is_binary(actor_id) do
+    normalized = normalize_item_attrs(attrs)
+
+    item_changeset =
+      %Item{created_by: actor_id}
+      |> item_changeset(normalized)
+      # Ensure the changeset carries the FK guards so DB-level failures
+      # surface as changeset errors (422) rather than raising.
+      |> Ecto.Changeset.foreign_key_constraint(:container_id,
+        name: :inventory_items_container_id_fkey
+      )
+      |> Ecto.Changeset.foreign_key_constraint(:category_id,
+        name: :inventory_items_category_id_fkey
+      )
+      |> Ecto.Changeset.foreign_key_constraint(:created_by,
+        name: :inventory_items_created_by_fkey
+      )
+
+    Ecto.Multi.new()
+    |> Ecto.Multi.insert(:item, item_changeset)
+    |> Ecto.Multi.insert(:history, fn %{item: %Item{} = item} ->
+      record_created_history(item, actor_id, Map.get(normalized, "notes"))
+    end)
+    |> Repo.transaction()
+    |> case do
+      {:ok, %{item: %Item{} = item}} ->
+        {:ok, load_item_aggregates(item)}
+
+      {:error, :item, %Ecto.Changeset{} = changeset, _changes} ->
+        {:error, changeset}
+
+      {:error, :history, _changeset, _changes} ->
+        # The history insert failed after the item inserted; the whole
+        # transaction rolled back, so there is no orphan item. Surface a
+        # generic changeset so the caller maps to 422.
+        {:error, %Ecto.Changeset{errors: [history: {"could not record history", []}]}}
+
+      {:error, _step, reason, _changes} ->
+        {:error, reason}
+    end
+  end
+
+  @doc """
+  Updates an existing inventory item and records history side-effects in the
+  same transaction.
+
+  Accepts the same writable fields as `create_item/2` (`containerId`,
+  `categoryId`, `quantity`, `attributes`, `notes`, `outForMaintenance`,
+  `photoUrl`), all optional on update (PATCH semantics). `updated_by` is set
+  from the caller's JWT `sub`.
+
+  When `containerId` changes, a `moved` `inventory_history` row is recorded
+  first (with the old/new container ids), then an `updated` row is recorded
+  — preserving the SvelteKit `ItemService.moveToContainer` history behavior
+  inside the unified update path.
+
+  ## Returns
+
+    * `{:ok, item}` — the updated item with `container`/`category` populated.
+    * `{:error, :not_found}` — no item exists for the given id (`404`).
+    * `{:error, changeset}` — validation failed (`422`), e.g. a missing
+      container or category.
+  """
+  @spec update_item(String.t(), map(), String.t()) ::
+          {:ok, item()} | {:error, :not_found} | {:error, Ecto.Changeset.t()}
+  def update_item(id, attrs, actor_id)
+      when is_binary(id) and is_map(attrs) and is_binary(actor_id) do
+    case Repo.get(Item, id) do
+      nil ->
+        {:error, :not_found}
+
+      %Item{} = item ->
+        normalized = normalize_item_attrs(attrs)
+        old_container_id = item.container_id
+        new_container_id = Map.get(normalized, "container_id", old_container_id)
+
+        changeset =
+          item
+          |> item_changeset(normalized)
+          |> Ecto.Changeset.put_change(:updated_by, actor_id)
+          |> Ecto.Changeset.foreign_key_constraint(:container_id,
+            name: :inventory_items_container_id_fkey
+          )
+          |> Ecto.Changeset.foreign_key_constraint(:category_id,
+            name: :inventory_items_category_id_fkey
+          )
+          |> Ecto.Changeset.foreign_key_constraint(:updated_by,
+            name: :inventory_items_updated_by_fkey
+          )
+
+        multi =
+          Ecto.Multi.new()
+          |> Ecto.Multi.update(:item, changeset)
+
+        multi =
+          if container_changed?(old_container_id, new_container_id) do
+            Ecto.Multi.insert(
+              multi,
+              :history_moved,
+              record_moved_history(
+                item.id,
+                old_container_id,
+                new_container_id,
+                actor_id,
+                Map.get(normalized, "notes")
+              )
+            )
+          else
+            multi
+          end
+
+        multi =
+          Ecto.Multi.insert(multi, :history_updated, fn %{item: %Item{}} ->
+            record_updated_history(item.id, actor_id, Map.get(normalized, "notes"))
+          end)
+
+        multi
+        |> Repo.transaction()
+        |> case do
+          {:ok, %{item: %Item{} = updated}} ->
+            {:ok, load_item_aggregates(updated)}
+
+          {:error, :item, %Ecto.Changeset{} = err, _changes} ->
+            {:error, err}
+
+          {:error, _step, %Ecto.Changeset{} = err, _changes} ->
+            {:error, err}
+
+          {:error, _step, reason, _changes} ->
+            {:error, reason}
+        end
+    end
+  end
+
+  @doc """
+  Deletes an inventory item. `inventory_history.item_id` is `on_delete:
+  :delete_all`, so the item's history rows are cascade-removed with it; no
+  dedicated `deleted` history row is recorded (it would be cascade-wiped and
+  is pointless).
+
+  ## Returns
+
+    * `{:ok, item}` — the deleted item (for renderer use).
+    * `{:error, :not_found}` — no item exists for the given id (`404`).
+  """
+  @spec delete_item(String.t()) :: {:ok, item()} | {:error, :not_found}
+  def delete_item(id) when is_binary(id) do
+    case Repo.get(Item, id) do
+      nil ->
+        {:error, :not_found}
+
+      %Item{} = item ->
+        case Repo.delete(item) do
+          {:ok, deleted} -> {:ok, deleted}
+          {:error, _changeset} -> {:error, :not_found}
+        end
+    end
+  end
+
+  @doc """
+  Lists the most recent `inventory_history` rows for one item, newest first,
+  with `old_container`/`new_container` name summaries.
+
+  Returns `{:error, :not_found}` when the item id does not exist (callers
+  translate to `404`). `limit` is clamped to `1..100` and defaults to `20`.
+  """
+  @spec list_item_history(String.t(), keyword() | map()) ::
+          {:ok, [history()]} | {:error, :not_found}
+  def list_item_history(id, opts \\ %{}) when is_binary(id) do
+    case Repo.get(Item, id) do
+      nil ->
+        {:error, :not_found}
+
+      %Item{} ->
+        limit = history_limit(opts)
+
+        rows =
+          from(h in InventoryHistory,
+            left_join: old in Container,
+            on: old.id == h.old_container_id,
+            left_join: new in Container,
+            on: new.id == h.new_container_id,
+            where: h.item_id == ^id,
+            order_by: [desc: h.created_at, desc: h.id],
+            limit: ^limit,
+            select_merge: %{
+              old_container:
+                fragment(
+                  "CASE WHEN ? IS NOT NULL THEN json_build_object('id', ?::text, 'name', ?) ELSE NULL END",
+                  old.id,
+                  old.id,
+                  old.name
+                ),
+              new_container:
+                fragment(
+                  "CASE WHEN ? IS NOT NULL THEN json_build_object('id', ?::text, 'name', ?) ELSE NULL END",
+                  new.id,
+                  new.id,
+                  new.name
+                )
+            }
+          )
+          |> Repo.all()
+
+        {:ok, rows}
+    end
+  end
+
+  # ── Item list query ──────────────────────────────────────────────────────
+
+  defp item_base_query(opts) do
+    from(i in Item,
+      order_by: [desc: i.created_at, desc: i.id],
+      select: i
+    )
+    |> maybe_filter(:category_id, opts.category_id)
+    |> maybe_filter(:container_id, opts.container_id)
+    |> maybe_filter_maintenance(opts.out_for_maintenance)
+    |> maybe_search(opts.search)
+  end
+
+  defp maybe_filter(query, _field, nil), do: query
+
+  defp maybe_filter(query, field, value) do
+    where(query, [i], field(i, ^field) == ^value)
+  end
+
+  defp maybe_filter_maintenance(query, nil), do: query
+
+  defp maybe_filter_maintenance(query, value) when is_boolean(value) do
+    where(query, [i], i.out_for_maintenance == ^value)
+  end
+
+  defp maybe_search(query, nil), do: query
+  defp maybe_search(query, ""), do: query
+
+  defp maybe_search(query, search) when is_binary(search) do
+    pattern = "%#{String.downcase(search)}%"
+
+    from(i in query,
+      left_join: c in Container,
+      on: c.id == i.container_id,
+      left_join: cat in EquipmentCategory,
+      on: cat.id == i.category_id,
+      where:
+        fragment("COALESCE(LOWER(?), '') ILIKE ?", i.notes, ^pattern) or
+          fragment("COALESCE(LOWER(?), '') ILIKE ?", cat.name, ^pattern) or
+          fragment("COALESCE(LOWER(?), '') ILIKE ?", c.name, ^pattern)
+    )
+  end
+
+  # Apply the cursor to the base query. The cursor carries the last
+  # `(created_at, id)` of the previous page; this page starts strictly after
+  # it (newest first).
+  defp apply_cursor(query, nil), do: query
+
+  defp apply_cursor(query, %{created_at: created_at, id: id}) do
+    where(
+      query,
+      [i],
+      i.created_at < ^created_at or (i.created_at == ^created_at and i.id < ^id)
+    )
+  end
+
+  # ── Item list option normalization ───────────────────────────────────────
+
+  defp normalize_list_opts(opts) when is_map(opts) do
+    %{
+      limit: parse_integer(Map.get(opts, "limit"), @item_default_limit),
+      cursor: blank_to_nil(Map.get(opts, "cursor")),
+      category_id: blank_to_nil(Map.get(opts, "categoryId") || Map.get(opts, "category_id")),
+      container_id: blank_to_nil(Map.get(opts, "containerId") || Map.get(opts, "container_id")),
+      out_for_maintenance:
+        parse_bool(Map.get(opts, "outForMaintenance") || Map.get(opts, "out_for_maintenance")),
+      search: blank_to_nil(Map.get(opts, "search"))
+    }
+  end
+
+  defp normalize_list_opts(opts) when is_list(opts) do
+    normalize_list_opts(Map.new(opts))
+  end
+
+  defp parse_integer(nil, default), do: default
+  defp parse_integer(value, _default) when is_integer(value), do: value
+
+  defp parse_integer(value, default) when is_binary(value) do
+    case Integer.parse(value) do
+      {n, ""} -> n
+      _ -> default
+    end
+  end
+
+  defp parse_bool(nil), do: nil
+  defp parse_bool(true), do: true
+  defp parse_bool(false), do: false
+
+  defp parse_bool(value) when is_binary(value) do
+    case String.downcase(value) do
+      "true" -> true
+      "false" -> false
+      _ -> nil
+    end
+  end
+
+  defp blank_to_nil(nil), do: nil
+  defp blank_to_nil(""), do: nil
+  defp blank_to_nil(value), do: value
+
+  defp validate_limit(limit) when limit in @item_allowed_limits, do: :ok
+  defp validate_limit(_), do: {:error, :invalid_limit}
+
+  # ── Item cursor encoding ──────────────────────────────────────────────────
+  #
+  # The cursor is an opaque, URL-safe-base64 JSON object carrying the last
+  # `(created_at, id)` of the previous page plus the filter signature (so a
+  # stale cursor from a different filter set is rejected as `:bad_cursor`
+  # rather than silently serving the wrong page).
+
+  defp parse_item_cursor(nil, _opts), do: {:ok, nil}
+
+  defp parse_item_cursor(cursor, opts) when is_binary(cursor) do
+    with {:ok, json} <- Base.url_decode64(cursor, padding: false),
+         {:ok, decoded} <- Jason.decode(json),
+         %{"createdAt" => created_at, "id" => id, "filters" => filters} <- decoded,
+         true <- filters == item_cursor_filters(opts) do
+      with {:ok, dt, _} <- DateTime.from_iso8601(created_at) do
+        {:ok, %{created_at: dt, id: id}}
+      else
+        _ -> {:error, :bad_cursor}
+      end
+    else
+      _ -> {:error, :bad_cursor}
+    end
+  end
+
+  defp next_item_cursor(visible, rows, opts) do
+    # If we did not fetch the lookahead row, this is the last page → no cursor.
+    if length(rows) <= opts.limit do
+      nil
+    else
+      %Item{} = last = List.last(visible)
+      encode_item_cursor(last, opts)
+    end
+  end
+
+  defp encode_item_cursor(%Item{} = item, opts) do
+    Jason.encode!(%{
+      "createdAt" => serialize_dt(item.created_at),
+      "id" => item.id,
+      "filters" => item_cursor_filters(opts)
+    })
+    |> Base.url_encode64(padding: false)
+  end
+
+  defp item_cursor_filters(opts) do
+    %{
+      "limit" => opts.limit,
+      "categoryId" => opts.category_id,
+      "containerId" => opts.container_id,
+      "outForMaintenance" => opts.out_for_maintenance,
+      "search" => opts.search
+    }
+  end
+
+  defp history_limit(opts) when is_map(opts) do
+    opts
+    |> Map.get("limit")
+    |> parse_integer(20)
+    |> max(1)
+    |> min(100)
+  end
+
+  defp history_limit(opts) when is_list(opts) do
+    opts
+    |> Map.new()
+    |> history_limit()
+  end
+
+  # ── Item aggregates ──────────────────────────────────────────────────────
+
+  defp load_item_aggregates(%Item{} = item) do
+    %Item{
+      item
+      | container: container_summary(item.container_id),
+        category: category_summary(item.category_id)
+    }
+  end
+
+  # `{id, name, parent_container_id}` — matches the `InventoryItem.container`
+  # contract shape. `parent_container_id` lets the UI render the parent
+  # without a second round-trip.
+  defp container_summary(nil), do: nil
+
+  defp container_summary(container_id) do
+    from(c in Container,
+      where: c.id == ^container_id,
+      select: %{"id" => c.id, "name" => c.name, "parent_container_id" => c.parent_container_id}
+    )
+    |> Repo.one()
+  end
+
+  defp category_summary(nil), do: nil
+
+  defp category_summary(category_id) do
+    from(c in EquipmentCategory,
+      where: c.id == ^category_id,
+      select: %{"id" => c.id, "name" => c.name}
+    )
+    |> Repo.one()
+  end
+
+  # ── Item changeset ───────────────────────────────────────────────────────
+
+  defp item_changeset(%Item{} = item, attrs) do
+    item
+    |> Ecto.Changeset.cast(attrs, [
+      :container_id,
+      :category_id,
+      :attributes,
+      :quantity,
+      :notes,
+      :out_for_maintenance,
+      :photo_url
+    ])
+    |> Ecto.Changeset.validate_required([:container_id, :category_id, :quantity])
+    |> Ecto.Changeset.validate_number(:quantity, greater_than: 0)
+    |> Ecto.Changeset.validate_length(:notes, max: 1000)
+  end
+
+  # ── Item request body normalization ──────────────────────────────────────
+  #
+  # The OpenAPI contract uses camelCase payload keys (`containerId`,
+  # `categoryId`, `outForMaintenance`, `photoUrl`); the persistence layer (and
+  # `cast/2`) uses snake_case (`container_id`, `category_id`,
+  # `out_for_maintenance`, `photo_url`). Accept either form so the controller
+  # can hand raw params through. Only keys present in the request are included
+  # in the normalized map: a missing key leaves the field unchanged on update
+  # (PATCH semantics).
+
+  defp normalize_item_attrs(attrs) when is_map(attrs) do
+    [
+      {"container_id", ["containerId", "container_id", :container_id, :containerId]},
+      {"category_id", ["categoryId", "category_id", :category_id, :categoryId]},
+      {"quantity", ["quantity", :quantity]},
+      {"notes", ["notes", :notes]},
+      {"out_for_maintenance",
+       ["outForMaintenance", "out_for_maintenance", :out_for_maintenance, :outForMaintenance]},
+      {"photo_url", ["photoUrl", "photo_url", :photo_url, :photoUrl]},
+      {"attributes", ["attributes", :attributes]}
+    ]
+    |> Enum.reduce(%{}, fn {dest, sources}, acc ->
+      case take_index_value(attrs, sources) do
+        :absent -> acc
+        value -> Map.put(acc, dest, value)
+      end
+    end)
+  end
+
+  # ── History recording helpers ────────────────────────────────────────────
+
+  defp record_created_history(%Item{} = item, actor_id, notes) do
+    %InventoryHistory{
+      item_id: item.id,
+      action: :created,
+      old_container_id: nil,
+      new_container_id: item.container_id,
+      changed_by: actor_id,
+      notes: notes,
+      created_at: DateTime.utc_now()
+    }
+    |> Ecto.Changeset.change()
+    |> Ecto.Changeset.foreign_key_constraint(:item_id, name: :inventory_history_item_id_fkey)
+    |> Ecto.Changeset.foreign_key_constraint(:changed_by,
+      name: :inventory_history_changed_by_fkey
+    )
+  end
+
+  defp record_moved_history(item_id, old_container_id, new_container_id, actor_id, notes) do
+    %InventoryHistory{
+      item_id: item_id,
+      action: :moved,
+      old_container_id: old_container_id,
+      new_container_id: new_container_id,
+      changed_by: actor_id,
+      notes: notes,
+      created_at: DateTime.utc_now()
+    }
+    |> Ecto.Changeset.change()
+    |> Ecto.Changeset.foreign_key_constraint(:item_id, name: :inventory_history_item_id_fkey)
+    |> Ecto.Changeset.foreign_key_constraint(:old_container_id,
+      name: :inventory_history_old_container_id_fkey
+    )
+    |> Ecto.Changeset.foreign_key_constraint(:new_container_id,
+      name: :inventory_history_new_container_id_fkey
+    )
+    |> Ecto.Changeset.foreign_key_constraint(:changed_by,
+      name: :inventory_history_changed_by_fkey
+    )
+  end
+
+  defp record_updated_history(item_id, actor_id, notes) do
+    %InventoryHistory{
+      item_id: item_id,
+      action: :updated,
+      old_container_id: nil,
+      new_container_id: nil,
+      changed_by: actor_id,
+      notes: notes,
+      created_at: DateTime.utc_now()
+    }
+    |> Ecto.Changeset.change()
+    |> Ecto.Changeset.foreign_key_constraint(:item_id, name: :inventory_history_item_id_fkey)
+    |> Ecto.Changeset.foreign_key_constraint(:changed_by,
+      name: :inventory_history_changed_by_fkey
+    )
+  end
+
+  defp container_changed?(nil, nil), do: false
+  defp container_changed?(a, b) when a == b, do: false
+  defp container_changed?(_old, _new), do: true
+
+  defp serialize_dt(%DateTime{} = dt), do: DateTime.to_iso8601(dt)
+  defp serialize_dt(%NaiveDateTime{} = dt), do: NaiveDateTime.to_iso8601(dt)
 end
