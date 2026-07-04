@@ -1,18 +1,36 @@
 import { authorize } from "$lib/server/auth";
+import { apiClientOptions } from "$lib/server/api-client";
 import { INVENTORY_ROLES } from "$lib/server/roles";
-import { createItemService } from "$lib/server/services/inventory";
+import { inventoryCategoriesIndex, inventoryContainersIndex } from "@dhc/api-client";
 import type { PageServerLoad } from "./$types";
 
-export const load: PageServerLoad = async ({ url, locals, platform }) => {
-	const session = await authorize(locals, INVENTORY_ROLES);
+function toLegacyCategory(c: any) {
+	return {
+		id: c.id,
+		name: c.name,
+		description: c.description ?? null,
+		available_attributes: (c.availableAttributes ?? []).map((attr: any) => {
+			const { defaultValue, ...rest } = attr;
+			return {
+				...rest,
+				...(defaultValue !== undefined ? { default_value: defaultValue } : {}),
+			};
+		}),
+	};
+}
 
-	// Get pre-selected container or category from URL params
+export const load: PageServerLoad = async ({ url, locals }) => {
+	const session = await authorize(locals, INVENTORY_ROLES);
 	const preselectedContainer = url.searchParams.get("container");
 	const preselectedCategory = url.searchParams.get("category");
 
-	// Load filter options using ItemService
-	const itemService = createItemService(platform!, session);
-	const filterOptions = await itemService.getFilterOptions();
+	const [categoriesResponse, containersResponse] = await Promise.all([
+		inventoryCategoriesIndex(apiClientOptions(session)),
+		inventoryContainersIndex(apiClientOptions(session)),
+	]);
+
+	if (categoriesResponse.error) throw new Error("Failed to load categories");
+	if (containersResponse.error) throw new Error("Failed to load containers");
 
 	return {
 		initialData: {
@@ -23,7 +41,15 @@ export const load: PageServerLoad = async ({ url, locals, platform }) => {
 			notes: "",
 			out_for_maintenance: false,
 		},
-		categories: filterOptions.categories,
-		containers: filterOptions.containers,
+		categories: categoriesResponse.data.data.categories.map(toLegacyCategory),
+		containers: containersResponse.data.data.containers.map((c) => ({
+			id: c.id,
+			name: c.name,
+			description: c.description ?? null,
+			parent_container_id: c.parentContainerId ?? null,
+			created_by: "",
+			created_at: c.createdAt ?? null,
+			updated_at: c.updatedAt ?? null,
+		})),
 	};
 };

@@ -1,32 +1,70 @@
 import { error } from "@sveltejs/kit";
 import { authorize } from "$lib/server/auth";
 import { INVENTORY_ROLES } from "$lib/server/roles";
-import { createContainerService } from "$lib/server/services/inventory";
+import { apiClientOptions } from "$lib/server/api-client";
+import {
+	inventoryContainersIndex,
+	inventoryContainersShow,
+} from "@dhc/api-client";
 import type { PageServerLoad } from "./$types";
 
-export const load: PageServerLoad = async ({ params, locals, platform }) => {
+// The edit page consumes the legacy `findById` + `getAvailableParents`
+// snake_case shapes: `containerData` (`{name, description,
+// parent_container_id}`), a flat `containers` list for the parent-select
+// (the page filters descendants client-side to preserve circular-parent
+// prevention), and a `container` row (used for its id + back-link). ALE-106
+// switches the source to the Phoenix `inventoryContainersShow` +
+// `inventoryContainersIndex` endpoints and maps the camelCase API payloads
+// back to those snake_case shapes so the page template is unchanged.
+export const load: PageServerLoad = async ({ params, locals }) => {
 	const session = await authorize(locals, INVENTORY_ROLES);
-	const containerService = createContainerService(platform!, session);
 
-	// Get container by ID
-	const container = await containerService.findById(params.id);
+	const showResponse = await inventoryContainersShow({
+		...apiClientOptions(session),
+		path: { id: params.id },
+	});
 
-	if (!container) {
-		throw error(404, "Container not found");
+	if (showResponse.error) {
+		if (showResponse.response?.status === 404) {
+			throw error(404, "Container not found");
+		}
+		throw error(
+			500,
+			showResponse.error.errors?.detail ?? "Failed to load container",
+		);
 	}
 
-	// Get available parent containers (excluding self and descendants)
-	const availableContainers = await containerService.getAvailableParents(
-		params.id,
+	const detail = showResponse.data.data;
+
+	const listResponse = await inventoryContainersIndex(
+		apiClientOptions(session),
 	);
+
+	if (listResponse.error) {
+		throw new Error(
+			listResponse.error.errors?.detail ?? "Failed to load containers",
+		);
+	}
+
+	const containers = listResponse.data.data.containers.map((c) => ({
+		id: c.id,
+		name: c.name,
+		description: c.description ?? null,
+		parent_container_id: c.parentContainerId ?? null,
+	}));
 
 	return {
 		containerData: {
-			name: container.name,
-			description: container.description || "",
-			parent_container_id: container.parent_container_id || "",
+			name: detail.name,
+			description: detail.description ?? "",
+			parent_container_id: detail.parentContainerId ?? "",
 		},
-		containers: availableContainers,
-		container,
+		containers,
+		container: {
+			id: detail.id,
+			name: detail.name,
+			description: detail.description ?? null,
+			parent_container_id: detail.parentContainerId ?? null,
+		},
 	};
 };

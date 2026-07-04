@@ -29,12 +29,16 @@ import {
 	Tags,
 	Clock,
 	Plus,
+	Wrench,
+	ArrowRightLeft,
 } from "lucide-svelte";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import { buildContainerHierarchy } from "$lib/utils/inventory-form";
-import { updateItem } from "../data.remote";
+import { moveItem, setMaintenance, updateItem } from "../data.remote";
 import { onMount } from "svelte";
+import { invalidateAll } from "$app/navigation";
+import { createMutation } from "@tanstack/svelte-query";
 import type { InventoryAttributeDefinition } from "$lib/types";
 
 dayjs.extend(relativeTime);
@@ -78,6 +82,68 @@ $effect(() => {
 		isEditMode = false;
 	}
 });
+
+// ── ALE-108: dedicated move/maintenance command handlers ─────────────
+// These call the dedicated Phoenix endpoints (POST /move, POST /maintenance)
+// which record moved / maintenance_out / maintenance_in history rows. Wrapped
+// in createMutation for pending/success/error state (command() returns a plain
+// async function, unlike form() which exposes .result/.pending).
+
+let isMoveDialogOpen = $state(false);
+let moveTargetContainerId = $state("");
+let moveNotes = $state("");
+
+const moveMutation = createMutation(() => ({
+	mutationFn: async (input: { containerId: string; notes?: string }) => {
+		return await moveItem(input);
+	},
+	onSuccess: (data) => {
+		toast.success(data.success, { position: "top-right" });
+		isMoveDialogOpen = false;
+		moveTargetContainerId = "";
+		moveNotes = "";
+		invalidateAll();
+	},
+	onError: (error: unknown) => {
+		toast.error(
+			error instanceof Error ? error.message : "Failed to move item.",
+			{ position: "top-right" },
+		);
+	},
+}));
+
+const maintenanceMutation = createMutation(() => ({
+	mutationFn: async (input: { outForMaintenance: boolean; notes?: string }) => {
+		return await setMaintenance(input);
+	},
+	onSuccess: (data) => {
+		toast.success(data.success, { position: "top-right" });
+		invalidateAll();
+	},
+	onError: (error: unknown) => {
+		toast.error(
+			error instanceof Error ? error.message : "Failed to update maintenance.",
+			{ position: "top-right" },
+		);
+	},
+}));
+
+const openMoveDialog = () => {
+	moveTargetContainerId = displayItem.container?.id ?? "";
+	moveNotes = "";
+	isMoveDialogOpen = true;
+};
+
+const handleMove = () => {
+	moveMutation.mutate({
+		containerId: moveTargetContainerId,
+		...(moveNotes ? { notes: moveNotes } : {}),
+	});
+};
+
+const handleToggleMaintenance = () => {
+	maintenanceMutation.mutate({ outForMaintenance: !displayItem.out_for_maintenance });
+};
 
 // Use current item for display
 const displayItem = $derived(currentItem);
@@ -148,6 +214,10 @@ const getActionIcon = (action: string) => {
 			return Package;
 		case "updated":
 			return Clock;
+		case "maintenance_out":
+			return Wrench;
+		case "maintenance_in":
+			return Wrench;
 		default:
 			return Clock;
 	}
@@ -161,8 +231,23 @@ const getActionColor = (action: string) => {
 			return "text-blue-600";
 		case "updated":
 			return "text-yellow-600";
+		case "maintenance_out":
+			return "text-orange-600";
+		case "maintenance_in":
+			return "text-green-600";
 		default:
 			return "text-gray-600";
+	}
+};
+
+const formatActionLabel = (action: string) => {
+	switch (action) {
+		case "maintenance_out":
+			return "Marked out for maintenance";
+		case "maintenance_in":
+			return "Returned from maintenance";
+		default:
+			return action.replace(/_/g, " ");
 	}
 };
 </script>
@@ -310,11 +395,11 @@ const getActionColor = (action: string) => {
 									<div class="flex items-center gap-2 mt-1">
 										<FolderOpen class="h-4 w-4 text-muted-foreground" />
 										<Button
-											href="/dashboard/inventory/containers/{displayItem.container.id}"
+											href="/dashboard/inventory/containers/{displayItem.container?.id ?? ''}"
 											variant="link"
 											class="p-0 h-auto text-sm"
 										>
-											{displayItem.container.name}
+											{displayItem.container?.name ?? 'No container'}
 										</Button>
 									</div>
 								</div>
@@ -491,8 +576,8 @@ const getActionColor = (action: string) => {
 							{:else}
 								<!-- View Mode -->
 								<div class="grid gap-4 md:grid-cols-2">
-									{#if Array.isArray(displayItem.category.available_attributes)}
-										{#each displayItem.category.available_attributes as attr (attr.name)}
+									{#if categoryAttributes.length > 0}
+										{#each categoryAttributes as attr (attr.name)}
 											{@const attrValue = displayItem.attributes
 												? displayItem.attributes[attr.name]
 												: undefined}
@@ -528,8 +613,27 @@ const getActionColor = (action: string) => {
 							<CardTitle>Actions</CardTitle>
 						</CardHeader>
 						<CardContent class="space-y-3">
+							{#if canEdit}
+								<Button
+									onclick={openMoveDialog}
+									variant="outline"
+									class="w-full"
+								>
+									<ArrowRightLeft class="mr-2 h-4 w-4" />
+									Move to Container
+								</Button>
+								<Button
+									onclick={handleToggleMaintenance}
+									variant={displayItem.out_for_maintenance ? "default" : "outline"}
+									class="w-full"
+									disabled={maintenanceMutation.isPending}
+								>
+									<Wrench class="mr-2 h-4 w-4" />
+									{maintenanceMutation.isPending ? "Updating..." : displayItem.out_for_maintenance ? "Mark Available" : "Mark Out for Maintenance"}
+								</Button>
+							{/if}
 							<Button
-								href="/dashboard/inventory/containers/{displayItem.container.id}"
+								href="/dashboard/inventory/containers/{displayItem.container?.id ?? ''}"
 								variant="outline"
 								class="w-full"
 							>
@@ -538,6 +642,64 @@ const getActionColor = (action: string) => {
 							</Button>
 						</CardContent>
 					</Card>
+				{/if}
+
+				<!-- Move Dialog (ALE-108) -->
+				{#if isMoveDialogOpen}
+					<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+						<Card class="w-full max-w-md mx-4">
+							<CardHeader>
+								<CardTitle>Move Item</CardTitle>
+							</CardHeader>
+							<CardContent class="space-y-4">
+								<div class="space-y-2">
+									<Label class="text-sm font-medium">Target Container *</Label>
+									<Select
+										type="single"
+										value={moveTargetContainerId}
+										onValueChange={(v) => (moveTargetContainerId = v)}
+									>
+										<SelectTrigger>
+											{hierarchicalContainers.find((c) => c.id === moveTargetContainerId)?.displayName || "Select a container"}
+										</SelectTrigger>
+										<SelectContent>
+											{#each hierarchicalContainers as container (container.id)}
+												<SelectItem value={container.id}>
+													{container.displayName}
+												</SelectItem>
+											{/each}
+										</SelectContent>
+									</Select>
+								</div>
+								<div class="space-y-2">
+									<Label class="text-sm font-medium">Notes (optional)</Label>
+									<Textarea
+										value={moveNotes}
+										oninput={(e) => (moveNotes = e.currentTarget.value)}
+										placeholder="Reason for move..."
+										rows={2}
+									/>
+								</div>
+								<div class="flex justify-end gap-2 pt-2">
+									<Button
+										type="button"
+										variant="outline"
+										onclick={() => { isMoveDialogOpen = false; }}
+										disabled={moveMutation.isPending}
+									>
+										Cancel
+									</Button>
+									<Button
+										type="button"
+										onclick={handleMove}
+										disabled={!moveTargetContainerId || moveMutation.isPending}
+									>
+										{moveMutation.isPending ? "Moving..." : "Move Item"}
+									</Button>
+								</div>
+							</CardContent>
+						</Card>
+					</div>
 				{/if}
 
 				<!-- History -->
@@ -560,17 +722,20 @@ const getActionColor = (action: string) => {
 										<div class="flex h-8 w-8 items-center justify-center rounded-full bg-muted">
 											<ActionIcon class="h-4 w-4 {getActionColor(entry.action)}" />
 										</div>
-										<div class="flex-1 space-y-1">
-											<p class="text-sm">
-												<span class="font-medium capitalize">{entry.action}</span>
-												{#if entry.action === 'moved' && entry.old_container && entry.new_container}
-													from {entry.old_container.name} to {entry.new_container.name}
-												{/if}
-											</p>
-											<p class="text-xs text-muted-foreground">
-												{dayjs(entry.created_at).fromNow()}
-											</p>
-										</div>
+									<div class="flex-1 space-y-1">
+										<p class="text-sm">
+											<span class="font-medium">{formatActionLabel(entry.action)}</span>
+											{#if entry.action === 'moved' && entry.old_container && entry.new_container}
+												from {entry.old_container.name} to {entry.new_container.name}
+											{/if}
+										</p>
+										{#if entry.notes}
+											<p class="text-xs text-muted-foreground italic">{entry.notes}</p>
+										{/if}
+										<p class="text-xs text-muted-foreground">
+											{dayjs(entry.created_at).fromNow()}
+										</p>
+									</div>
 									</div>
 								{/each}
 							</div>
