@@ -42,10 +42,6 @@ defmodule DhcWeb.SettingsController do
     end
   end
 
-  def update(conn, %{"key" => _key}) do
-    unprocessable(conn, "value is required")
-  end
-
   defp not_found(conn, detail) do
     conn
     |> put_status(:not_found)

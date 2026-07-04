@@ -53,6 +53,11 @@ defmodule Mix.Tasks.Gen.Controllers do
     opts = parse_args(args)
     spec = parse_spec!(@spec_file)
 
+    # Stash the spec so the naming helpers (context_module/1,
+    # resource_singular/1, …) can resolve `x-context` / `x-resource` tag
+    # extensions without threading `spec` through every call site.
+    Process.put(:gen_controllers_spec, spec)
+
     tags = unique_tags(spec)
 
     if Enum.empty?(tags) do
@@ -224,7 +229,8 @@ defmodule Mix.Tasks.Gen.Controllers do
 
   # ── Controller module content ────────────────────────────────────────
 
-  defp controller_content(module_name, tag, spec) do
+  @doc false
+  def controller_content(module_name, tag, spec) do
     operations = operations_for_tag(spec, tag)
     aliases = controller_aliases(operations, spec, tag)
     action_defs = Enum.map(operations, &controller_action(&1, tag, spec))
@@ -270,8 +276,19 @@ defmodule Mix.Tasks.Gen.Controllers do
     end
   end
 
-  defp schema_module_name(%OpenApiSpex.Reference{"$ref": "#/components/schemas/" <> name}, _tag) do
-    context_module_from_schema(name)
+  defp schema_module_name(%OpenApiSpex.Reference{"$ref": "#/components/schemas/" <> name}, tag) do
+    # Prefer the tag-derived context (`x-context` override or `Dhc.<Tag>`)
+    # so a spec whose response schema is named e.g. `InventoryCategory`
+    # still resolves to `Dhc.Inventory.EquipmentCategory` when the tag
+    # declares `x-context: Dhc.Inventory` / `x-resource: EquipmentCategory`.
+    # Fall back to the schema-name-derived context only when the tag has
+    # no override (preserves the historical `Widget` → `Dhc.Widgets.Widget`
+    # behavior for tags that match their schema name).
+    if tag_extension(tag, "x-context") || tag_extension(tag, "x-resource") do
+      "#{context_module(tag)}.#{Macro.camelize(resource_singular(tag))}"
+    else
+      context_module_from_schema(name)
+    end
   end
 
   defp schema_module_name(_schema, tag) do
@@ -305,7 +322,7 @@ defmodule Mix.Tasks.Gen.Controllers do
           \"\"\"
           def index(conn, _params) do
             #{r_plural} = #{ctx}.list_#{r_plural}()
-            render(conn, :index, #{r_var}s: #{r_plural})
+            render(conn, :index, #{r_plural}: #{r_plural})
           end
         """
 
@@ -397,12 +414,13 @@ defmodule Mix.Tasks.Gen.Controllers do
 
   # ── JSON renderer module content ─────────────────────────────────────
 
-  defp json_renderer_content(module_name, tag, spec) do
+  @doc false
+  def json_renderer_content(module_name, tag, spec) do
     operations = operations_for_tag(spec, tag)
     r_singular = resource_singular(tag)
     r_var = resource_var(tag)
+    r_plural = resource_plural(tag)
 
-    # Collect unique template names used by controller actions
     templates =
       operations
       |> Enum.map(fn op ->
@@ -416,8 +434,8 @@ defmodule Mix.Tasks.Gen.Controllers do
       |> Enum.map(fn template ->
         if template == "index" do
           """
-            def render("index.json", %{#{r_var}s: #{r_var}s}) do
-              %{data: Enum.map(#{r_var}s, &render_#{r_singular}/1)}
+            def render("index.json", %{#{r_plural}: #{r_plural}}) do
+              %{data: Enum.map(#{r_plural}, &render_#{r_singular}/1)}
             end
           """
         else
@@ -648,28 +666,135 @@ defmodule Mix.Tasks.Gen.Controllers do
     end
   end
 
+  # ── Tag extensions ───────────────────────────────────────────────────
+  #
+  # The spec may declare a top-level `tags:` array with vendor extensions
+  # that override the derived context/resource names for a tag:
+  #
+  #     tags:
+  #       - name: InventoryCategories
+  #         x-context: Dhc.Inventory          # → context module
+  #         x-resource: EquipmentCategory      # → singular schema module
+  #
+  # Without `x-context`, the context is derived from the tag
+  # (`Dhc.InventoryCategories`). Without `x-resource`, the singular is
+  # derived via `singularize/1` (`inventory_categories` → `inventory_category`).
+  #
+  # This lets one Phoenix context own multiple OpenAPI tags (e.g. an
+  # `Inventory` capability owning `InventoryCategories`, `InventoryContainers`,
+  # `InventoryItems`) without hand-editing the generated controller aliases.
+
+  @doc """
+  Returns the `%OpenApiSpex.Tag{}` for the given tag name, or `nil`.
+  Exposed for testing.
+  """
+  def tag_definition(spec, tag) do
+    case spec.tags do
+      nil -> nil
+      tags -> Enum.find(tags, &(&1.name == tag))
+    end
+  end
+
+  @doc """
+  Reads an `x-*` extension from the tag definition in the stashed spec.
+  Returns `nil` when the tag has no such extension (including when no
+  top-level `tags:` array exists).
+  """
+  def tag_extension(tag, key) do
+    case Process.get(:gen_controllers_spec) do
+      nil ->
+        nil
+
+      spec ->
+        case tag_definition(spec, tag) do
+          nil -> nil
+          %OpenApiSpex.Tag{extensions: ext} when is_map(ext) -> Map.get(ext, key)
+          _ -> nil
+        end
+    end
+  end
+
   # ── Context helpers ──────────────────────────────────────────────────
 
-  defp context_module(tag), do: "Dhc.#{Macro.camelize(tag)}"
+  defp context_module(tag) do
+    case tag_extension(tag, "x-context") do
+      nil -> "Dhc.#{Macro.camelize(tag)}"
+      ctx -> ctx
+    end
+  end
 
-  defp short_context_module(tag), do: Macro.camelize(tag)
+  defp short_context_module(tag) do
+    case tag_extension(tag, "x-context") do
+      nil -> Macro.camelize(tag)
+      ctx -> ctx |> String.split(".") |> List.last()
+    end
+  end
 
+  # The singular schema module name (CamelCase), used for
+  # `Dhc.<Context>.<Singular>` struct refs and context function names like
+  # `list_<plural>/0`, `create_<singular>/1`.
   defp resource_singular(tag) do
-    tag
-    |> Macro.underscore()
-    |> String.trim_trailing("s")
-    |> then(fn
-      "" -> Macro.underscore(tag)
-      s -> s
-    end)
+    case tag_extension(tag, "x-resource") do
+      nil ->
+        tag |> Macro.underscore() |> singularize()
+
+      resource ->
+        resource |> Macro.underscore()
+    end
   end
 
   defp resource_plural(tag) do
-    tag |> Macro.underscore()
+    resource_singular(tag) |> pluralize()
   end
 
   defp resource_var(tag) do
-    tag |> Macro.underscore() |> String.trim_trailing("s")
+    resource_singular(tag)
+  end
+
+  @doc """
+  Singularizes an underscored plural noun.
+
+  Handles the common English inflections the generator's tags use:
+  `categories` → `category`, `entries` → `entry`, `properties` → `property`
+  (the `ies` → `y` rule), plus the trivial `s` trim for the rest
+  (`widgets` → `widget`, `members` → `member`). Returns the input unchanged
+  when it is not a recognizable plural, so already-singular names pass
+  through.
+
+  Exposed for testing.
+  """
+  def singularize(underscored) do
+    cond do
+      String.ends_with?(underscored, "ies") ->
+        String.trim_trailing(underscored, "ies") <> "y"
+
+      String.ends_with?(underscored, "ses") ->
+        String.trim_trailing(underscored, "es")
+
+      String.ends_with?(underscored, "s") ->
+        String.trim_trailing(underscored, "s")
+
+      true ->
+        underscored
+    end
+  end
+
+  @doc """
+  Pluralizes an underscored singular noun.
+
+  Inverse of `singularize/1`: `category` → `categories`, `entry` → `entries`
+  (consonant + `y` → `ies`), otherwise appends `s` (`widget` → `widgets`).
+
+  Exposed for testing.
+  """
+  def pluralize(underscored) do
+    cond do
+      Regex.match?(~r/[^aeiou]y$/, underscored) ->
+        String.replace(underscored, ~r/y$/, "ies")
+
+      true ->
+        underscored <> "s"
+    end
   end
 
   # ── File path helpers ────────────────────────────────────────────────

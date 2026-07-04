@@ -18,13 +18,20 @@ import {
 import * as Field from "$lib/components/ui/field";
 import { AlertCircleIcon, ArrowLeft, FolderOpen, Trash2 } from "lucide-svelte";
 import * as Alert from "$lib/components/ui/alert";
-import type { Database } from "$database";
 import { updateContainer, deleteContainer } from "../../data.remote";
-import { onMount } from "svelte";
 import { SvelteMap } from "svelte/reactivity";
 import { initForm } from "$lib/utils/init-form.svelte";
 
-type Container = Database["public"]["Tables"]["containers"]["Row"];
+// Minimal container row the edit-load returns (ALE-106 switched the source to
+// `inventoryContainersIndex`/`inventoryContainersShow`; only `id`/`name`/
+// `parent_container_id` feed the parent-select hierarchy + descendant filter).
+// Narrowing here keeps the page independent of the legacy full Supabase
+// `containers` row type.
+interface Container {
+	id: string;
+	name: string;
+	parent_container_id: string | null;
+}
 
 interface ContainerWithChildren extends Container {
 	children: ContainerWithChildren[];

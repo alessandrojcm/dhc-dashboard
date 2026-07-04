@@ -5,6 +5,7 @@ defmodule Dhc.Waitlist do
 
   import Ecto.Query
 
+  alias Dhc.CursorPagination
   alias Dhc.Waitlist.WaitlistEntry
   alias Dhc.UserProfiles.UserProfile
   alias Dhc.Repo
@@ -15,6 +16,27 @@ defmodule Dhc.Waitlist do
   @allowed_statuses ~w(waiting invited paid deferred cancelled completed no_reply joined)
   @allowed_sort_fields ~w(position fullName status age initialRegistrationDate lastContacted lastStatusChange)
   @allowed_directions ~w(asc desc)
+  @entry_sort_specs %{
+    "position" => %{field: :position},
+    "fullName" => %{field: :full_name_sort},
+    "status" => %{field: :status},
+    "age" => %{field: :age},
+    "initialRegistrationDate" => %{
+      field: :initial_registration_date,
+      type: :utc_datetime,
+      encode: &DateTime.to_iso8601/1
+    },
+    "lastContacted" => %{
+      field: :last_contacted_sort,
+      type: :utc_datetime,
+      encode: &DateTime.to_iso8601/1
+    },
+    "lastStatusChange" => %{
+      field: :last_status_change,
+      type: :utc_datetime,
+      encode: &DateTime.to_iso8601/1
+    }
+  }
 
   @doc """
   Returns the public waitlist status.
@@ -59,18 +81,20 @@ defmodule Dhc.Waitlist do
   @spec entries(map()) :: {:ok, map()} | {:error, atom()}
   def entries(params \\ %{}) do
     with {:ok, opts} <- parse_entry_options(params),
-         {:ok, cursor} <- parse_cursor(opts) do
+         {:ok, cursor} <- CursorPagination.parse_cursor(opts, &entry_cursor_context/1) do
       total_count = entries_total_count(opts)
       rows = entries_rows(opts, cursor)
-      visible_rows = Enum.take(rows, opts.limit)
+
+      page =
+        CursorPagination.page(rows, opts, cursor, &entry_cursor_context/1, &entry_cursor_value/2)
 
       {:ok,
        %{
-         entries: visible_rows,
+         entries: page.visible_rows,
          total_count: total_count,
          limit: opts.limit,
-         next_cursor: next_cursor(visible_rows, rows, opts, cursor),
-         previous_cursor: previous_cursor(visible_rows, rows, opts, cursor)
+         next_cursor: page.next_cursor,
+         previous_cursor: page.previous_cursor
        }}
     end
   end
@@ -185,25 +209,14 @@ defmodule Dhc.Waitlist do
   defp blank_to_nil(value) when value in [nil, ""], do: nil
   defp blank_to_nil(value), do: value
 
-  defp parse_cursor(%{cursor: nil}), do: {:ok, nil}
-
-  defp parse_cursor(opts) do
-    with {:ok, json} <- Base.url_decode64(opts.cursor, padding: false),
-         {:ok, cursor} <- Jason.decode(json),
-         true <- cursor_matches?(cursor, opts),
-         true <- cursor["pageDirection"] in ["next", "previous"],
-         true <- is_binary(cursor["id"]),
-         true <- Map.has_key?(cursor, "value") do
-      {:ok, cursor}
-    else
-      _ -> {:error, :bad_cursor}
-    end
-  end
-
-  defp cursor_matches?(cursor, opts) do
-    cursor["limit"] == opts.limit and cursor["sort"] == opts.sort and
-      cursor["direction"] == opts.direction and cursor["status"] == opts.status and
-      cursor["q"] == opts.q
+  defp entry_cursor_context(opts) do
+    %{
+      "limit" => opts.limit,
+      "sort" => opts.sort,
+      "direction" => opts.direction,
+      "status" => opts.status,
+      "q" => opts.q
+    }
   end
 
   defp entries_total_count(opts) do
@@ -214,18 +227,15 @@ defmodule Dhc.Waitlist do
   end
 
   defp entries_rows(opts, cursor) do
-    query_direction =
-      if cursor && cursor["pageDirection"] == "previous",
-        do: flip(opts.direction),
-        else: opts.direction
+    query_direction = CursorPagination.query_direction(opts, cursor)
 
     opts
     |> positioned_entries_query()
-    |> apply_cursor(cursor, opts, query_direction)
-    |> apply_entries_order(opts.sort, query_direction)
+    |> CursorPagination.apply_cursor(cursor, opts, @entry_sort_specs)
+    |> CursorPagination.apply_order(entry_order_field(opts.sort), query_direction)
     |> limit(^opts.limit + 1)
     |> Repo.all()
-    |> maybe_reverse(cursor)
+    |> CursorPagination.maybe_reverse(cursor)
   end
 
   defp base_entries_query(opts) do
@@ -288,105 +298,6 @@ defmodule Dhc.Waitlist do
     |> subquery()
   end
 
-  defp apply_cursor(query, nil, _opts, _query_direction), do: query
-
-  defp apply_cursor(query, cursor, opts, query_direction) do
-    op = comparator(opts.direction, query_direction)
-    id = cursor["id"]
-    value = cursor["value"]
-
-    apply_cursor_comparison(query, opts.sort, op, value, id)
-  end
-
-  defp apply_cursor_comparison(query, "position", :after, value, id),
-    do: where(query, [e], e.position > ^value or (e.position == ^value and e.id > ^id))
-
-  defp apply_cursor_comparison(query, "position", :before, value, id),
-    do: where(query, [e], e.position < ^value or (e.position == ^value and e.id < ^id))
-
-  defp apply_cursor_comparison(query, "fullName", :after, value, id),
-    do:
-      where(query, [e], e.full_name_sort > ^value or (e.full_name_sort == ^value and e.id > ^id))
-
-  defp apply_cursor_comparison(query, "fullName", :before, value, id),
-    do:
-      where(query, [e], e.full_name_sort < ^value or (e.full_name_sort == ^value and e.id < ^id))
-
-  defp apply_cursor_comparison(query, "status", :after, value, id),
-    do: where(query, [e], e.status > ^value or (e.status == ^value and e.id > ^id))
-
-  defp apply_cursor_comparison(query, "status", :before, value, id),
-    do: where(query, [e], e.status < ^value or (e.status == ^value and e.id < ^id))
-
-  defp apply_cursor_comparison(query, "age", :after, value, id),
-    do: where(query, [e], e.age > ^value or (e.age == ^value and e.id > ^id))
-
-  defp apply_cursor_comparison(query, "age", :before, value, id),
-    do: where(query, [e], e.age < ^value or (e.age == ^value and e.id < ^id))
-
-  defp apply_cursor_comparison(query, "initialRegistrationDate", :after, value, id),
-    do:
-      where(
-        query,
-        [e],
-        e.initial_registration_date > type(^value, :utc_datetime) or
-          (e.initial_registration_date == type(^value, :utc_datetime) and e.id > ^id)
-      )
-
-  defp apply_cursor_comparison(query, "initialRegistrationDate", :before, value, id),
-    do:
-      where(
-        query,
-        [e],
-        e.initial_registration_date < type(^value, :utc_datetime) or
-          (e.initial_registration_date == type(^value, :utc_datetime) and e.id < ^id)
-      )
-
-  defp apply_cursor_comparison(query, "lastContacted", :after, value, id),
-    do:
-      where(
-        query,
-        [e],
-        e.last_contacted_sort > type(^value, :utc_datetime) or
-          (e.last_contacted_sort == type(^value, :utc_datetime) and e.id > ^id)
-      )
-
-  defp apply_cursor_comparison(query, "lastContacted", :before, value, id),
-    do:
-      where(
-        query,
-        [e],
-        e.last_contacted_sort < type(^value, :utc_datetime) or
-          (e.last_contacted_sort == type(^value, :utc_datetime) and e.id < ^id)
-      )
-
-  defp apply_cursor_comparison(query, "lastStatusChange", :after, value, id),
-    do:
-      where(
-        query,
-        [e],
-        e.last_status_change > type(^value, :utc_datetime) or
-          (e.last_status_change == type(^value, :utc_datetime) and e.id > ^id)
-      )
-
-  defp apply_cursor_comparison(query, "lastStatusChange", :before, value, id),
-    do:
-      where(
-        query,
-        [e],
-        e.last_status_change < type(^value, :utc_datetime) or
-          (e.last_status_change == type(^value, :utc_datetime) and e.id < ^id)
-      )
-
-  defp apply_entries_order(query, sort, direction) do
-    order_field = entry_order_field(sort)
-
-    case direction do
-      "asc" -> order_by(query, [e], asc: field(e, ^order_field), asc: e.id)
-      "desc" -> order_by(query, [e], desc: field(e, ^order_field), desc: e.id)
-    end
-  end
-
   defp entry_order_field("position"), do: :position
   defp entry_order_field("fullName"), do: :full_name_sort
   defp entry_order_field("status"), do: :status
@@ -395,67 +306,12 @@ defmodule Dhc.Waitlist do
   defp entry_order_field("lastContacted"), do: :last_contacted_sort
   defp entry_order_field("lastStatusChange"), do: :last_status_change
 
-  defp comparator("asc", "asc"), do: :after
-  defp comparator("asc", "desc"), do: :before
-  defp comparator("desc", "desc"), do: :before
-  defp comparator("desc", "asc"), do: :after
+  defp entry_cursor_value(row, %{sort: "fullName"}), do: String.downcase(row.full_name)
 
-  defp flip("asc"), do: "desc"
-  defp flip("desc"), do: "asc"
+  defp entry_cursor_value(row, opts) do
+    spec = Map.fetch!(@entry_sort_specs, opts.sort)
+    value = Map.fetch!(row, spec.field)
 
-  defp maybe_reverse(rows, %{"pageDirection" => "previous"}), do: Enum.reverse(rows)
-  defp maybe_reverse(rows, _cursor), do: rows
-
-  defp next_cursor([], _rows, _opts, _cursor), do: nil
-
-  defp next_cursor(visible_rows, _rows, opts, %{"pageDirection" => "previous"}) do
-    visible_rows |> List.last() |> encode_cursor(opts, "next")
+    if encode = Map.get(spec, :encode), do: encode.(value), else: value
   end
-
-  defp next_cursor(visible_rows, rows, opts, _cursor) do
-    if length(rows) > opts.limit, do: visible_rows |> List.last() |> encode_cursor(opts, "next")
-  end
-
-  defp previous_cursor([], _rows, _opts, _cursor), do: nil
-  defp previous_cursor(_visible_rows, _rows, _opts, nil), do: nil
-
-  defp previous_cursor(visible_rows, rows, opts, %{"pageDirection" => "previous"}) do
-    if length(rows) > opts.limit,
-      do: visible_rows |> List.first() |> encode_cursor(opts, "previous")
-  end
-
-  defp previous_cursor(visible_rows, _rows, opts, _cursor) do
-    visible_rows |> List.first() |> encode_cursor(opts, "previous")
-  end
-
-  defp encode_cursor(nil, _opts, _page_direction), do: nil
-
-  defp encode_cursor(row, opts, page_direction) do
-    %{
-      limit: opts.limit,
-      sort: opts.sort,
-      direction: opts.direction,
-      status: opts.status,
-      q: opts.q,
-      id: row.id,
-      value: cursor_value(row, opts.sort),
-      pageDirection: page_direction
-    }
-    |> Jason.encode!()
-    |> Base.url_encode64(padding: false)
-  end
-
-  defp cursor_value(row, "position"), do: row.position
-  defp cursor_value(row, "fullName"), do: String.downcase(row.full_name)
-  defp cursor_value(row, "status"), do: row.status
-  defp cursor_value(row, "age"), do: row.age
-
-  defp cursor_value(row, "initialRegistrationDate"),
-    do: DateTime.to_iso8601(row.initial_registration_date)
-
-  defp cursor_value(row, "lastContacted"), do: row.last_contacted |> date_cursor_value()
-  defp cursor_value(row, "lastStatusChange"), do: DateTime.to_iso8601(row.last_status_change)
-
-  defp date_cursor_value(nil), do: "1970-01-01T00:00:00Z"
-  defp date_cursor_value(value), do: DateTime.to_iso8601(value)
 end
