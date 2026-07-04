@@ -33,6 +33,14 @@ defmodule DhcWeb.Router do
     plug DhcWeb.Plugs.RequireAuth, roles: ~w(president committee_coordinator admin)
   end
 
+  # ALE-105 inventory category management. Mirrors the existing SvelteKit
+  # `INVENTORY_ROLES` (`quartermaster`, `admin`, `president`). Reads of
+  # categories are any authenticated member — the existing Svelte category
+  # list view is member-readable; writes require the inventory write roles.
+  pipeline :inventory_admin_api do
+    plug DhcWeb.Plugs.RequireAuth, roles: ~w(quartermaster admin president)
+  end
+
   pipeline :authenticated_api do
     plug DhcWeb.Plugs.RequireAuth
   end
@@ -87,5 +95,37 @@ defmodule DhcWeb.Router do
     get "/members/insurance-form", MembersController, :insurance_form
     get "/notifications", NotificationsController, :index
     get "/workshops", WorkshopsController, :list
+    # ALE-105: any authenticated member may read equipment categories.
+    get "/inventory/categories", InventoryCategoriesController, :index
+    get "/inventory/categories/:id", InventoryCategoriesController, :show
+    # ALE-106: any authenticated member may read inventory containers.
+    get "/inventory/containers", InventoryContainersController, :index
+    get "/inventory/containers/:id", InventoryContainersController, :show
+    # ALE-107: any authenticated member may read inventory items + history.
+    get "/inventory/items", InventoryItemsController, :index
+    get "/inventory/items/:id", InventoryItemsController, :show
+    get "/inventory/items/:id/history", InventoryItemsController, :history
+    # ALE-108: any authenticated member may read the global inventory activity feed.
+    get "/inventory/history", InventoryHistoryController, :index
+  end
+
+  scope "/api", DhcWeb do
+    pipe_through [:api, :inventory_admin_api]
+
+    # ALE-105: write roles only.
+    post "/inventory/categories", InventoryCategoriesController, :create
+    patch "/inventory/categories/:id", InventoryCategoriesController, :update
+    delete "/inventory/categories/:id", InventoryCategoriesController, :delete
+    # ALE-106: write roles only.
+    post "/inventory/containers", InventoryContainersController, :create
+    patch "/inventory/containers/:id", InventoryContainersController, :update
+    delete "/inventory/containers/:id", InventoryContainersController, :delete
+    # ALE-107: write roles only.
+    post "/inventory/items", InventoryItemsController, :create
+    patch "/inventory/items/:id", InventoryItemsController, :update
+    delete "/inventory/items/:id", InventoryItemsController, :delete
+    # ALE-108: dedicated movement/maintenance command endpoints, write roles only.
+    post "/inventory/items/:id/move", InventoryItemsController, :move
+    post "/inventory/items/:id/maintenance", InventoryItemsController, :maintenance
   end
 end

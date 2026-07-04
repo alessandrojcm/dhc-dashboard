@@ -1,0 +1,171 @@
+openapi: 3.0.3
+info:
+  title: DHC Dashboard API (multi-resource domain fixture)
+  version: 0.1.0
+
+servers:
+  - url: /api
+
+# A top-level `tags:` array declares the Inventory capability as the
+# owning context for two distinct tags (`InventoryCategories`,
+# `InventoryContainers`) via the `x-context` / `x-resource` extensions.
+# This models the ALE-104 Inventory design where one Phoenix context
+# (`Dhc.Inventory`) owns multiple OpenAPI resources.
+tags:
+  - name: InventoryCategories
+    x-context: Dhc.Inventory
+    x-resource: EquipmentCategory
+  - name: InventoryContainers
+    x-context: Dhc.Inventory
+    x-resource: Container
+
+paths:
+  /inventory/categories:
+    get:
+      operationId: inventoryCategories.index
+      tags:
+        - InventoryCategories
+      summary: List equipment categories
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      categories:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/InventoryCategory"
+
+    post:
+      operationId: inventoryCategories.create
+      tags:
+        - InventoryCategories
+      summary: Create an equipment category
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryCategoryCreate"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/InventoryCategory"
+        "422":
+          description: Unprocessable Entity
+
+  /inventory/categories/{id}:
+    get:
+      operationId: inventoryCategories.show
+      tags:
+        - InventoryCategories
+      summary: Show one equipment category
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/InventoryCategory"
+        "404":
+          description: Not Found
+
+    delete:
+      operationId: inventoryCategories.delete
+      tags:
+        - InventoryCategories
+      summary: Delete an equipment category
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Deleted
+        "409":
+          description: Conflict
+
+  /inventory/containers:
+    get:
+      operationId: inventoryContainers.index
+      tags:
+        - InventoryContainers
+      summary: List containers
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Container"
+
+components:
+  schemas:
+    InventoryCategory:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        itemCount:
+          type: integer
+
+    InventoryCategoryCreate:
+      type: object
+      required:
+        - name
+        - availableAttributes
+      properties:
+        name:
+          type: string
+        availableAttributes:
+          type: array
+          items:
+            type: object
+
+    Container:
+      type: object
+      required:
+        - id
+        - name
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
