@@ -170,6 +170,135 @@ defmodule Dhc.Inventory.Items do
     end
   end
 
+  @doc """
+  Move an item to a different container — ALE-108 dedicated command.
+
+  Updates `container_id` and `updated_by`, records a `moved` history row with
+  old/new container ids and optional notes. General edits (quantity, notes,
+  attributes, maintenance) are not part of this command; use `update_item/3`.
+  """
+  @spec move_item(String.t(), map(), String.t()) ::
+          {:ok, item()}
+          | {:error, :not_found}
+          | {:error, :invalid_container}
+          | {:error, Ecto.Changeset.t()}
+  def move_item(id, attrs, actor_id)
+      when is_binary(id) and is_map(attrs) and is_binary(actor_id) do
+    case Repo.get(Item, id) do
+      nil ->
+        {:error, :not_found}
+
+      %Item{} = item ->
+        new_container_id = parse_container_id(attrs)
+
+        changeset =
+          item
+          |> Ecto.Changeset.cast(%{container_id: new_container_id}, [:container_id])
+          |> Ecto.Changeset.validate_required([:container_id])
+          |> Ecto.Changeset.put_change(:updated_by, actor_id)
+          |> Ecto.Changeset.foreign_key_constraint(:container_id,
+            name: :inventory_items_container_id_fkey
+          )
+          |> Ecto.Changeset.foreign_key_constraint(:updated_by,
+            name: :inventory_items_updated_by_fkey
+          )
+
+        notes = parse_notes(attrs)
+
+        Ecto.Multi.new()
+        |> Ecto.Multi.update(:item, changeset)
+        |> Ecto.Multi.insert(
+          :history_moved,
+          ItemHistory.record_moved_history(
+            item.id,
+            item.container_id,
+            new_container_id,
+            actor_id,
+            notes
+          )
+        )
+        |> Repo.transaction()
+        |> case do
+          {:ok, %{item: %Item{} = updated}} ->
+            {:ok, load_item_aggregates(updated)}
+
+          {:error, :item, %Ecto.Changeset{errors: [{:container_id, _} | _]}, _changes} ->
+            {:error, :invalid_container}
+
+          {:error, :item, %Ecto.Changeset{} = err, _changes} ->
+            {:error, err}
+
+          {:error, _step, %Ecto.Changeset{} = err, _changes} ->
+            {:error, err}
+
+          {:error, _step, reason, _changes} ->
+            {:error, reason}
+        end
+    end
+  end
+
+  @doc """
+  Toggle an item's maintenance flag — ALE-108 dedicated command.
+
+  Sets `out_for_maintenance`, sets `updated_by`, and records a `maintenance_out`
+  (when the flag goes to `true`) or `maintenance_in` (when `false`) history row
+  with optional notes.
+  """
+  @spec set_item_maintenance(String.t(), map(), String.t()) ::
+          {:ok, item()} | {:error, :not_found} | {:error, Ecto.Changeset.t()}
+  def set_item_maintenance(id, attrs, actor_id)
+      when is_binary(id) and is_map(attrs) and is_binary(actor_id) do
+    case Repo.get(Item, id) do
+      nil ->
+        {:error, :not_found}
+
+      %Item{} = item ->
+        case parse_maintenance_flag(attrs) do
+          {:ok, out_for_maintenance} ->
+            notes = parse_notes(attrs)
+
+            changeset =
+              item
+              |> Ecto.Changeset.cast(%{out_for_maintenance: out_for_maintenance}, [
+                :out_for_maintenance
+              ])
+              |> Ecto.Changeset.put_change(:updated_by, actor_id)
+              |> Ecto.Changeset.foreign_key_constraint(:updated_by,
+                name: :inventory_items_updated_by_fkey
+              )
+
+            Ecto.Multi.new()
+            |> Ecto.Multi.update(:item, changeset)
+            |> Ecto.Multi.insert(
+              :history_maintenance,
+              ItemHistory.record_maintenance_history(
+                item.id,
+                out_for_maintenance,
+                actor_id,
+                notes
+              )
+            )
+            |> Repo.transaction()
+            |> case do
+              {:ok, %{item: %Item{} = updated}} ->
+                {:ok, load_item_aggregates(updated)}
+
+              {:error, :item, %Ecto.Changeset{} = err, _changes} ->
+                {:error, err}
+
+              {:error, _step, %Ecto.Changeset{} = err, _changes} ->
+                {:error, err}
+
+              {:error, _step, reason, _changes} ->
+                {:error, reason}
+            end
+
+          :invalid ->
+            {:error, %Ecto.Changeset{errors: [out_for_maintenance: {"is invalid", []}]}}
+        end
+    end
+  end
+
   defp item_base_query(opts) do
     from(i in Item,
       order_by: [desc: i.created_at, desc: i.id],
@@ -342,4 +471,41 @@ defmodule Dhc.Inventory.Items do
   defp container_changed?(nil, nil), do: false
   defp container_changed?(a, b) when a == b, do: false
   defp container_changed?(_old, _new), do: true
+
+  # ── move/maintenance command body parsing (ALE-108) ─────────────────
+
+  defp parse_container_id(attrs) do
+    take_first(attrs, ["containerId", "container_id"])
+  end
+
+  defp parse_notes(attrs) do
+    case take_first(attrs, ["notes"]) do
+      value when is_binary(value) -> value
+      _ -> nil
+    end
+  end
+
+  defp parse_maintenance_flag(attrs) do
+    # `outForMaintenance` is contract-required on the maintenance body; nil
+    # (missing or null) maps to :invalid → 422. Don't use `||` — `false` is
+    # falsy in Elixir and would wrongly fall through.
+    case take_first(attrs, ["outForMaintenance", "out_for_maintenance"]) do
+      true -> {:ok, true}
+      false -> {:ok, false}
+      _ -> :invalid
+    end
+  end
+
+  defp take_first(attrs, keys) do
+    Enum.find_value(keys, fn key ->
+      case Map.fetch(attrs, key) do
+        {:ok, value} -> {:ok, value}
+        :error -> nil
+      end
+    end)
+    |> case do
+      {:ok, value} -> value
+      nil -> nil
+    end
+  end
 end

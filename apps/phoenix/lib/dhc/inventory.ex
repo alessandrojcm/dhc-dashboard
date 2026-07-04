@@ -38,6 +38,9 @@ defmodule Dhc.Inventory do
   defdelegate create_item(attrs, actor_id), to: Items
   defdelegate update_item(id, attrs, actor_id), to: Items
   defdelegate delete_item(id), to: Items
+  defdelegate move_item(id, attrs, actor_id), to: Items
+  defdelegate set_item_maintenance(id, attrs, actor_id), to: Items
 
   defdelegate list_item_history(id, opts \\ %{}), to: ItemHistory
+  defdelegate list_history(opts \\ %{}), to: ItemHistory
 end

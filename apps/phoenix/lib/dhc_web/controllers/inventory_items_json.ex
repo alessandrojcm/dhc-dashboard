@@ -66,6 +66,7 @@ defmodule DhcWeb.InventoryItemsJSON do
       newContainerId: h.new_container_id,
       oldContainer: h.old_container,
       newContainer: h.new_container,
+      item: h.item,
       notes: h.notes,
       changedBy: h.changed_by,
       createdAt: serialize_datetime(h.created_at)

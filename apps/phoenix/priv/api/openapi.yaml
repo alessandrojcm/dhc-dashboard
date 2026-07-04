@@ -24,6 +24,10 @@ tags:
     description: Inventory item CRUD with audit history recording (quartermaster)
     x-context: Dhc.Inventory
     x-resource: Item
+  - name: InventoryHistory
+    description: Global inventory activity/history feed (quartermaster)
+    x-context: Dhc.Inventory
+    x-resource: InventoryHistory
 
 paths:
   /health:
@@ -1650,6 +1654,188 @@ paths:
                 $ref: "#/components/schemas/Error"
         "404":
           description: No item exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /inventory/items/{id}/move:
+    post:
+      operationId: inventoryItems.move
+      tags:
+        - InventoryItems
+      summary: Move an inventory item to a different container
+      description: |
+        Moves a single inventory item to a different container in one transaction
+        and records an `inventory_history` row with action `moved` carrying the
+        old/new container ids and the optional `notes` (preserves the prior
+        SvelteKit `ItemService.moveToContainer` behavior as a dedicated command
+        endpoint — ALE-108).
+
+        `updatedBy` is set from the caller's JWT `sub`. The item's other fields
+        (quantity, category, attributes, maintenance flag) are left untouched; use
+        `PATCH /inventory/items/{id}` for general edits.
+
+        Setting `containerId` to the item's current container is a no-op move
+        (still records a `moved` history row with identical old/new container,
+        mirroring the standalone move command's contract). Setting `containerId`
+        to a missing container returns `422`.
+
+        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
+        `quartermaster`, `president`, or `admin`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The item id.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryItemMoveRequest"
+      responses:
+        "200":
+          description: The moved item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryItemResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a write role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No item exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Invalid move payload or unknown container
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /inventory/items/{id}/maintenance:
+    post:
+      operationId: inventoryItems.maintenance
+      tags:
+        - InventoryItems
+      summary: Toggle an inventory item's maintenance state
+      description: |
+        Sets an inventory item's `outForMaintenance` flag and records an
+        `inventory_history` row in the same transaction: action
+        `maintenance_out` when the flag is set to `true`, action `maintenance_in`
+        when set to `false` (ALE-108). `updatedBy` is set from the caller's JWT
+        `sub`; the optional `notes` is stored on the history row.
+
+        The previous SvelteKit `ItemService.markMaintenance` toggled the flag
+        without recording history; this command endpoint preserves the toggle
+        and adds the audit side effect required by the Inventory contract.
+
+        Sending the same value the item already holds is allowed and still
+        records a `maintenance_out`/`maintenance_in` row (explicit command
+        semantics — the caller chose to mark it).
+
+        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
+        `quartermaster`, `president`, or `admin`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The item id.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryItemMaintenanceRequest"
+      responses:
+        "200":
+          description: The updated item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryItemResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a write role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No item exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Invalid maintenance payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /inventory/history:
+    get:
+      operationId: inventoryHistory.index
+      tags:
+        - InventoryHistory
+      summary: List recent global inventory activity
+      description: |
+        Returns the most recent `inventory_history` rows across all inventory
+        items, newest first, each carrying `oldContainer`/`newContainer` name
+        summaries and an `item` summary (`{ id, attributes }`) so the UI can
+        render the affected item's display name without a second lookup. The
+        per-item `GET /inventory/items/{id}/history` endpoint leaves `item` null
+        because the caller already knows the item.
+
+        Requires a valid Supabase JWT (any authenticated member).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        "200":
+          description: Recent global inventory activity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryItemHistoryListResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
           content:
             application/json:
               schema:
@@ -3283,7 +3469,9 @@ components:
       description: |
         One `inventory_history` row for an item. `oldContainer` and
         `newContainer` are name summaries (nullable when the action did not
-        involve a container move).
+        involve a container move). `item` is the affected item summary — only
+        populated by the global `GET /inventory/history` endpoint; the per-item
+        history endpoint leaves it null.
       required:
         - id
         - itemId
@@ -3292,6 +3480,7 @@ components:
         - newContainerId
         - oldContainer
         - newContainer
+        - item
         - notes
         - changedBy
         - createdAt
@@ -3342,6 +3531,22 @@ components:
           required:
             - id
             - name
+        item:
+          type: object
+          nullable: true
+          description: |
+            Summary of the affected item, populated only by the global history
+            endpoint. `attributes` is the free-form attribute map so the UI can
+            derive a display name without a second lookup.
+          properties:
+            id:
+              type: string
+              format: uuid
+            attributes:
+              type: object
+          required:
+            - id
+            - attributes
         notes:
           type: string
           nullable: true
@@ -3353,6 +3558,37 @@ components:
         createdAt:
           type: string
           format: date-time
+    InventoryItemMoveRequest:
+      type: object
+      description: Body for `POST /inventory/items/{id}/move`.
+      required:
+        - containerId
+      properties:
+        containerId:
+          type: string
+          format: uuid
+          description: The container to move the item into.
+        notes:
+          type: string
+          nullable: true
+          maxLength: 1000
+          description: Optional note stored on the `moved` history row.
+    InventoryItemMaintenanceRequest:
+      type: object
+      description: Body for `POST /inventory/items/{id}/maintenance`.
+      required:
+        - outForMaintenance
+      properties:
+        outForMaintenance:
+          type: boolean
+          description: |
+            `true` records a `maintenance_out` history row; `false` records a
+            `maintenance_in` history row.
+        notes:
+          type: string
+          nullable: true
+          maxLength: 1000
+          description: Optional note stored on the maintenance history row.
     InventoryItemHistoryListResponse:
       type: object
       required:
