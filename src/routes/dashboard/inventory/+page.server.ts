@@ -1,107 +1,79 @@
 /* eslint-disable @typescript-eslint/no-non-null-asserted-optional-chain */
 import { authorize } from "$lib/server/auth";
+import { apiClientOptions } from "$lib/server/api-client";
 import { executeWithRLS, getKyselyClient, sql } from "$lib/server/kysely";
-import { INVENTORY_ROLES } from "$lib/server/roles";
-import type {
-	InventoryAttributes,
-	InventoryHistoryWithRelations,
-} from "$lib/types";
+import { INVENTORY_READ_ROLES, INVENTORY_ROLES } from "$lib/server/roles";
+import { inventoryHistoryIndex } from "@dhc/api-client";
+import type { PageServerLoad } from "./$types";
 
-export const load = async ({
-	locals,
-	platform,
-}: {
-	locals: App.Locals;
-	platform: App.Platform;
-}) => {
-	await authorize(locals, INVENTORY_ROLES);
+export const load: PageServerLoad = async ({ locals, platform }) => {
+	const session = await authorize(locals, INVENTORY_READ_ROLES);
+	const options = apiClientOptions(session);
 
-	const kysely = getKyselyClient(platform.env?.HYPERDRIVE!);
-	const { session } = await locals.safeGetSession();
+	// Stats counts still come from direct Kysely queries (pre-existing; not in
+	// ALE-108 scope — the migration is progressively replacing these). The
+	// recent activity feed now comes from the Phoenix global history endpoint
+	// (ALE-108: GET /inventory/history) instead of a hand-rolled Kysely join.
+	const kysely = getKyselyClient(platform!.env.HYPERDRIVE);
+	const { session: supabaseSession } = await locals.safeGetSession();
 
-	if (!session) {
+	if (!supabaseSession) {
 		throw new Error("No session found");
 	}
 
-	// Get inventory statistics with RLS
-	const [
-		containersCount,
-		categoriesCount,
-		itemsCount,
-		maintenanceCount,
-		recentActivity,
-	] = await executeWithRLS(kysely, { claims: session }, async (trx) => {
-		return Promise.all([
-			// Count containers
-			trx
-				.selectFrom("containers")
-				.select(sql<number>`count(*)`.as("count"))
-				.executeTakeFirstOrThrow(),
+	const [containersCount, categoriesCount, itemsCount, maintenanceCount] =
+		await executeWithRLS(kysely, { claims: supabaseSession }, async (trx) => {
+			return Promise.all([
+				trx
+					.selectFrom("containers")
+					.select(sql<number>`count(*)`.as("count"))
+					.executeTakeFirstOrThrow(),
+				trx
+					.selectFrom("equipment_categories")
+					.select(sql<number>`count(*)`.as("count"))
+					.executeTakeFirstOrThrow(),
+				trx
+					.selectFrom("inventory_items")
+					.select(sql<number>`count(*)`.as("count"))
+					.executeTakeFirstOrThrow(),
+				trx
+					.selectFrom("inventory_items")
+					.select(sql<number>`count(*)`.as("count"))
+					.where("out_for_maintenance", "=", true)
+					.executeTakeFirstOrThrow(),
+			]);
+		});
 
-			// Count categories
-			trx
-				.selectFrom("equipment_categories")
-				.select(sql<number>`count(*)`.as("count"))
-				.executeTakeFirstOrThrow(),
-
-			// Count items
-			trx
-				.selectFrom("inventory_items")
-				.select(sql<number>`count(*)`.as("count"))
-				.executeTakeFirstOrThrow(),
-
-			// Count items out for maintenance
-			trx
-				.selectFrom("inventory_items")
-				.select(sql<number>`count(*)`.as("count"))
-				.where("out_for_maintenance", "=", true)
-				.executeTakeFirstOrThrow(),
-
-			// Get recent activity with relations
-			trx
-				.selectFrom("inventory_history as ih")
-				.leftJoin("inventory_items as item", "item.id", "ih.item_id")
-				.leftJoin("containers as old_c", "old_c.id", "ih.old_container_id")
-				.leftJoin("containers as new_c", "new_c.id", "ih.new_container_id")
-				.select([
-					"ih.id",
-					"ih.action",
-					"ih.changed_by",
-					"ih.created_at",
-					"ih.item_id",
-					"ih.new_container_id",
-					"ih.notes",
-					"ih.old_container_id",
-					sql<{ id: string; attributes: InventoryAttributes } | null>`
-							CASE 
-								WHEN item.id IS NOT NULL THEN
-									json_build_object(
-										'id', item.id,
-										'attributes', item.attributes
-									)
-								ELSE NULL
-							END
-						`.as("item"),
-					sql<{ name: string } | null>`
-							CASE 
-								WHEN old_c.name IS NOT NULL THEN
-									json_build_object('name', old_c.name)
-								ELSE NULL
-							END
-						`.as("old_container"),
-					sql<{ name: string } | null>`
-							CASE 
-								WHEN new_c.name IS NOT NULL THEN
-									json_build_object('name', new_c.name)
-								ELSE NULL
-							END
-						`.as("new_container"),
-				])
-				.orderBy("ih.created_at", "desc")
-				.limit(10)
-				.execute(),
-		]);
+	const historyResponse = await inventoryHistoryIndex({
+		...options,
+		query: { limit: 10 },
 	});
+
+	if (historyResponse.error) {
+		throw new Error(
+			historyResponse.error.errors?.detail ??
+				"Failed to load inventory activity.",
+		);
+	}
+
+	const recentActivity = historyResponse.data.data.history.map((h) => ({
+		id: h.id,
+		action: h.action,
+		changed_by: h.changedBy ?? null,
+		created_at: h.createdAt,
+		item_id: h.itemId,
+		new_container_id: h.newContainerId ?? null,
+		notes: h.notes ?? null,
+		old_container_id: h.oldContainerId ?? null,
+		item: h.item
+			? {
+					id: h.item.id,
+					attributes: h.item.attributes ?? {},
+				}
+			: null,
+		old_container: h.oldContainer,
+		new_container: h.newContainer,
+	}));
 
 	return {
 		stats: {
@@ -110,6 +82,6 @@ export const load = async ({
 			items: Number(itemsCount.count) || 0,
 			maintenance: Number(maintenanceCount.count) || 0,
 		},
-		recentActivity: recentActivity as InventoryHistoryWithRelations[],
+		recentActivity,
 	};
 };

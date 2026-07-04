@@ -1,5 +1,5 @@
 /**
- * Inventory Item management remote forms — ALE-107.
+ * Inventory Item management remote forms — ALE-107 + ALE-108.
  *
  * These forms previously routed through the Kysely `ItemService` (Supabase
  * RLS). They now POST/PATCH through the generated `@dhc/api-client` Phoenix
@@ -8,13 +8,20 @@
  * pipeline enforces the write-role check (`quartermaster`/`president`/`admin`);
  * `authorize()` is still called here so the SvelteKit layer 403s before
  * reaching the network when the role is missing.
+ *
+ * ALE-108 adds dedicated `moveItem` and `setMaintenance` commands that hit
+ * `POST /inventory/items/{id}/move` and `POST /inventory/items/{id}/maintenance`,
+ * preserving the `moved` / `maintenance_out` / `maintenance_in` audit history
+ * side effects as required by the Inventory REST contract.
  */
 
-import { form, getRequestEvent } from "$app/server";
+import { command, form, getRequestEvent } from "$app/server";
 import { redirect } from "@sveltejs/kit";
 import * as v from "valibot";
 import {
 	inventoryItemsCreate,
+	inventoryItemsMaintenance,
+	inventoryItemsMove,
 	inventoryItemsUpdate,
 	type InventoryItemCreateRequest,
 } from "@dhc/api-client";
@@ -96,4 +103,66 @@ export const updateItem = form(ItemUpdateSchema, async (data) => {
 	}
 
 	return { success: "Item updated successfully" };
+});
+
+// ── ALE-108: dedicated movement/maintenance command endpoints ─────────
+// These preserve the moved / maintenance_out / maintenance_in audit history
+// side effects as dedicated commands, separate from the general PATCH update.
+
+const MoveItemSchema = v.object({
+	containerId: v.pipe(v.string(), v.uuid()),
+	notes: v.optional(v.pipe(v.string(), v.maxLength(1000))),
+});
+
+const MaintenanceItemSchema = v.object({
+	outForMaintenance: v.boolean(),
+	notes: v.optional(v.pipe(v.string(), v.maxLength(1000))),
+});
+
+export const moveItem = command(MoveItemSchema, async (input) => {
+	const event = getRequestEvent();
+	const session = await authorize(event.locals, INVENTORY_ROLES);
+	const itemId = event.params.id!;
+
+	const response = await inventoryItemsMove({
+		...apiClientOptions(session),
+		path: { id: itemId },
+		body: {
+			containerId: input.containerId,
+			...(input.notes ? { notes: input.notes } : {}),
+		},
+	});
+
+	if (response.error) {
+		throw new Error(
+			response.error.errors?.detail ??
+				"Failed to move item. Please try again later.",
+		);
+	}
+
+	return { success: "Item moved successfully" };
+});
+
+export const setMaintenance = command(MaintenanceItemSchema, async (input) => {
+	const event = getRequestEvent();
+	const session = await authorize(event.locals, INVENTORY_ROLES);
+	const itemId = event.params.id!;
+
+	const response = await inventoryItemsMaintenance({
+		...apiClientOptions(session),
+		path: { id: itemId },
+		body: {
+			outForMaintenance: input.outForMaintenance,
+			...(input.notes ? { notes: input.notes } : {}),
+		},
+	});
+
+	if (response.error) {
+		throw new Error(
+			response.error.errors?.detail ??
+				"Failed to update maintenance status. Please try again later.",
+		);
+	}
+
+	return { success: "Maintenance status updated successfully" };
 });

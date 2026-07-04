@@ -129,6 +129,49 @@ defmodule DhcWeb.InventoryItemsController do
     end
   end
 
+  @doc """
+  POST /inventory/items/{id}/move — ALE-108 dedicated move command.
+  """
+  def move(conn, %{"id" => id} = params) do
+    actor_id = conn.assigns.current_user.sub
+
+    case Inventory.move_item(id, params, actor_id) do
+      {:ok, item} ->
+        conn
+        |> put_view(json: DhcWeb.InventoryItemsJSON)
+        |> render(:item, item: item)
+
+      {:error, :not_found} ->
+        not_found(conn, "Item not found")
+
+      {:error, :invalid_container} ->
+        unprocessable(conn, "container_id unknown container")
+
+      {:error, changeset} ->
+        unprocessable(conn, changeset)
+    end
+  end
+
+  @doc """
+  POST /inventory/items/{id}/maintenance — ALE-108 dedicated maintenance command.
+  """
+  def maintenance(conn, %{"id" => id} = params) do
+    actor_id = conn.assigns.current_user.sub
+
+    case Inventory.set_item_maintenance(id, params, actor_id) do
+      {:ok, item} ->
+        conn
+        |> put_view(json: DhcWeb.InventoryItemsJSON)
+        |> render(:item, item: item)
+
+      {:error, :not_found} ->
+        not_found(conn, "Item not found")
+
+      {:error, changeset} ->
+        unprocessable(conn, changeset)
+    end
+  end
+
   # ── Error helpers ─────────────────────────────────────────────────────
 
   defp not_found(conn, detail) do
@@ -151,6 +194,10 @@ defmodule DhcWeb.InventoryItemsController do
       |> Ecto.Changeset.traverse_errors(fn {msg, _opts} -> msg end)
       |> render_error_detail()
 
+    unprocessable_detail(conn, detail)
+  end
+
+  defp unprocessable(conn, detail) when is_binary(detail) do
     unprocessable_detail(conn, detail)
   end
 

@@ -105,6 +105,8 @@ defmodule DhcWeb.Router do
     get "/inventory/items", InventoryItemsController, :index
     get "/inventory/items/:id", InventoryItemsController, :show
     get "/inventory/items/:id/history", InventoryItemsController, :history
+    # ALE-108: any authenticated member may read the global inventory activity feed.
+    get "/inventory/history", InventoryHistoryController, :index
   end
 
   scope "/api", DhcWeb do
@@ -122,5 +124,8 @@ defmodule DhcWeb.Router do
     post "/inventory/items", InventoryItemsController, :create
     patch "/inventory/items/:id", InventoryItemsController, :update
     delete "/inventory/items/:id", InventoryItemsController, :delete
+    # ALE-108: dedicated movement/maintenance command endpoints, write roles only.
+    post "/inventory/items/:id/move", InventoryItemsController, :move
+    post "/inventory/items/:id/maintenance", InventoryItemsController, :maintenance
   end
 end

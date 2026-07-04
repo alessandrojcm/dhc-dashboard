@@ -35,6 +35,10 @@ defmodule Dhc.Inventory.InventoryHistory do
 
   @type action :: :created | :moved | :updated | :maintenance_out | :maintenance_in
 
+  # `:maintenance_out` is recorded when an item is flagged out for maintenance;
+  # `:maintenance_in` when it returns. Both use nil old/new container ids
+  # (maintenance is not a container move).
+
   schema "inventory_history" do
     field :item_id, :binary_id
     # `inventory_action` Postgres enum. Ecto stores the atom/string verbatim;
@@ -51,6 +55,12 @@ defmodule Dhc.Inventory.InventoryHistory do
     # Virtual aggregates populated by `Dhc.Inventory` read helpers.
     field :old_container, :map, virtual: true
     field :new_container, :map, virtual: true
+
+    # Virtual item summary `%{id, attributes}` — populated only by the global
+    # history read helper (`Dhc.Inventory.ItemHistory.list_history/1`); the
+    # per-item history helper leaves it nil because the caller already holds
+    # the item id from the path.
+    field :item, :map, virtual: true
 
     # The migration declares only `created_at` (no `updated_at`); mirror that
     # here so Ecto does not try to write/read an `updated_at` column.

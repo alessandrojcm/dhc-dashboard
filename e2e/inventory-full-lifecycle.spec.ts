@@ -443,12 +443,10 @@ test.describe("Inventory Management Full Lifecycle", () => {
 		).not.toBeVisible();
 
 		// Step 4: Test item management operations
-		// Find the longsword and mark it for maintenance
+		// Find the longsword and mark it for maintenance (ALE-108 dedicated command)
 		await page.getByText(`Training Longsword ${timestamp}`).click();
-		await page.getByRole("button", { name: /maintenance/i }).click();
-		await page.getByLabel(/maintenance notes/i).fill("Blade needs sharpening");
-		await page.getByRole("button", { name: /mark for maintenance/i }).click();
-		await expect(page.getByText(/marked for maintenance/i)).toBeVisible();
+		await page.getByRole("button", { name: /mark out for maintenance/i }).click();
+		await expect(page.getByText(/maintenance status updated/i)).toBeVisible();
 
 		// Step 5: Test search and filtering
 		// Search for longsword
@@ -512,16 +510,10 @@ test.describe("Inventory Management Full Lifecycle", () => {
 			page.getByText(`Training Longsword ${timestamp}`),
 		).toBeVisible();
 
-		// Return item from maintenance
+		// Return item from maintenance (ALE-108 dedicated command)
 		await page.getByText(`Training Longsword ${timestamp}`).click();
-		await page
-			.getByRole("button", { name: /return from maintenance/i })
-			.click();
-		await page
-			.getByLabel(/maintenance notes/i)
-			.fill("Blade sharpened, ready for use");
-		await page.getByRole("button", { name: /return to service/i }).click();
-		await expect(page.getByText(/returned to service/i)).toBeVisible();
+		await page.getByRole("button", { name: /mark available/i }).click();
+		await expect(page.getByText(/maintenance status updated/i)).toBeVisible();
 
 		// Step 8: Verify complete inventory overview
 		await page.goto("/dashboard/inventory");
