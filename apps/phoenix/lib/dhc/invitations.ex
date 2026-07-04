@@ -6,6 +6,7 @@ defmodule Dhc.Invitations do
   import Ecto.Query
 
   alias Dhc.Email.Worker, as: EmailWorker
+  alias Dhc.CursorPagination
   alias Dhc.Invitations.Invitation
   alias Dhc.Invitations.Repository
   alias Dhc.Repo
@@ -22,6 +23,12 @@ defmodule Dhc.Invitations do
   @allowed_sort_fields ~w(email status expiresAt createdAt)
   @allowed_directions ~w(asc desc)
   @visible_statuses ~w(pending expired)
+  @list_sort_specs %{
+    "email" => %{field: :email},
+    "status" => %{field: :status},
+    "expiresAt" => %{field: :expires_at, type: :utc_datetime, encode: &DateTime.to_iso8601/1},
+    "createdAt" => %{field: :created_at, type: :utc_datetime, encode: &DateTime.to_iso8601/1}
+  }
 
   @doc """
   Returns cursor-paginated, domain-shaped member invitations for the dashboard.
@@ -37,18 +44,20 @@ defmodule Dhc.Invitations do
   @spec list(map()) :: {:ok, map()} | {:error, atom()}
   def list(params \\ %{}) do
     with {:ok, opts} <- parse_list_options(params),
-         {:ok, cursor} <- parse_cursor(opts) do
+         {:ok, cursor} <- CursorPagination.parse_cursor(opts, &list_cursor_context/1) do
       total_count = list_total_count(opts)
       rows = list_rows(opts, cursor)
-      visible_rows = Enum.take(rows, opts.limit)
+
+      page =
+        CursorPagination.page(rows, opts, cursor, &list_cursor_context/1, &list_cursor_value/2)
 
       {:ok,
        %{
-         invitations: visible_rows,
+         invitations: page.visible_rows,
          total_count: total_count,
          limit: opts.limit,
-         next_cursor: next_cursor(visible_rows, rows, opts, cursor),
-         previous_cursor: previous_cursor(visible_rows, rows, opts, cursor)
+         next_cursor: page.next_cursor,
+         previous_cursor: page.previous_cursor
        }}
     end
   end
@@ -176,24 +185,8 @@ defmodule Dhc.Invitations do
   defp blank_to_nil(value) when value in [nil, ""], do: nil
   defp blank_to_nil(value), do: value
 
-  defp parse_cursor(%{cursor: nil}), do: {:ok, nil}
-
-  defp parse_cursor(opts) do
-    with {:ok, json} <- Base.url_decode64(opts.cursor, padding: false),
-         {:ok, cursor} <- Jason.decode(json),
-         true <- cursor_matches?(cursor, opts),
-         true <- cursor["pageDirection"] in ["next", "previous"],
-         true <- is_binary(cursor["id"]),
-         true <- Map.has_key?(cursor, "value") do
-      {:ok, cursor}
-    else
-      _ -> {:error, :bad_cursor}
-    end
-  end
-
-  defp cursor_matches?(cursor, opts) do
-    cursor["limit"] == opts.limit and cursor["sort"] == opts.sort and
-      cursor["direction"] == opts.direction and cursor["q"] == opts.q
+  defp list_cursor_context(opts) do
+    %{"limit" => opts.limit, "sort" => opts.sort, "direction" => opts.direction, "q" => opts.q}
   end
 
   defp list_total_count(opts) do
@@ -204,18 +197,15 @@ defmodule Dhc.Invitations do
   end
 
   defp list_rows(opts, cursor) do
-    query_direction =
-      if cursor && cursor["pageDirection"] == "previous",
-        do: flip(opts.direction),
-        else: opts.direction
+    query_direction = CursorPagination.query_direction(opts, cursor)
 
     opts
     |> base_list_query()
-    |> apply_cursor(cursor, opts, query_direction)
-    |> apply_list_order(opts.sort, query_direction)
+    |> CursorPagination.apply_cursor(cursor, opts, @list_sort_specs)
+    |> CursorPagination.apply_order(list_order_field(opts.sort), query_direction)
     |> limit(^opts.limit + 1)
     |> Repo.all()
-    |> maybe_reverse(cursor)
+    |> CursorPagination.maybe_reverse(cursor)
   end
 
   defp base_list_query(opts) do
@@ -239,146 +229,15 @@ defmodule Dhc.Invitations do
     )
   end
 
-  defp apply_cursor(query, nil, _opts, _query_direction), do: query
-
-  defp apply_cursor(query, cursor, opts, query_direction) do
-    op = comparator(opts.direction, query_direction)
-    id = cursor["id"]
-    value = cursor["value"]
-
-    apply_cursor_comparison(query, opts.sort, op, value, id)
-  end
-
-  # The cursor stores the sort field's value at the anchor row. We page
-  # strictly past (next) or before (previous) that row, breaking ties with
-  # the immutable `id` so pagination is stable across concurrent writes.
-  defp apply_cursor_comparison(query, "email", :after, value, id),
-    do:
-      where(
-        query,
-        [i],
-        i.email > ^value or (i.email == ^value and i.id > ^id)
-      )
-
-  defp apply_cursor_comparison(query, "email", :before, value, id),
-    do:
-      where(
-        query,
-        [i],
-        i.email < ^value or (i.email == ^value and i.id < ^id)
-      )
-
-  defp apply_cursor_comparison(query, "status", :after, value, id),
-    do: where(query, [i], i.status > ^value or (i.status == ^value and i.id > ^id))
-
-  defp apply_cursor_comparison(query, "status", :before, value, id),
-    do: where(query, [i], i.status < ^value or (i.status == ^value and i.id < ^id))
-
-  defp apply_cursor_comparison(query, "expiresAt", :after, value, id),
-    do:
-      where(
-        query,
-        [i],
-        i.expires_at > type(^value, :utc_datetime) or
-          (i.expires_at == type(^value, :utc_datetime) and i.id > ^id)
-      )
-
-  defp apply_cursor_comparison(query, "expiresAt", :before, value, id),
-    do:
-      where(
-        query,
-        [i],
-        i.expires_at < type(^value, :utc_datetime) or
-          (i.expires_at == type(^value, :utc_datetime) and i.id < ^id)
-      )
-
-  defp apply_cursor_comparison(query, "createdAt", :after, value, id),
-    do:
-      where(
-        query,
-        [i],
-        i.created_at > type(^value, :utc_datetime) or
-          (i.created_at == type(^value, :utc_datetime) and i.id > ^id)
-      )
-
-  defp apply_cursor_comparison(query, "createdAt", :before, value, id),
-    do:
-      where(
-        query,
-        [i],
-        i.created_at < type(^value, :utc_datetime) or
-          (i.created_at == type(^value, :utc_datetime) and i.id < ^id)
-      )
-
-  defp apply_list_order(query, sort, direction) do
-    order_field = list_order_field(sort)
-
-    case direction do
-      "asc" -> order_by(query, [i], asc: field(i, ^order_field), asc: i.id)
-      "desc" -> order_by(query, [i], desc: field(i, ^order_field), desc: i.id)
-    end
-  end
-
   defp list_order_field("email"), do: :email
   defp list_order_field("status"), do: :status
   defp list_order_field("expiresAt"), do: :expires_at
   defp list_order_field("createdAt"), do: :created_at
 
-  defp comparator("asc", "asc"), do: :after
-  defp comparator("asc", "desc"), do: :before
-  defp comparator("desc", "desc"), do: :before
-  defp comparator("desc", "asc"), do: :after
+  defp list_cursor_value(row, opts) do
+    spec = Map.fetch!(@list_sort_specs, opts.sort)
+    value = Map.fetch!(row, spec.field)
 
-  defp flip("asc"), do: "desc"
-  defp flip("desc"), do: "asc"
-
-  defp maybe_reverse(rows, %{"pageDirection" => "previous"}), do: Enum.reverse(rows)
-  defp maybe_reverse(rows, _cursor), do: rows
-
-  defp next_cursor([], _rows, _opts, _cursor), do: nil
-
-  defp next_cursor(visible_rows, _rows, opts, %{"pageDirection" => "previous"}) do
-    visible_rows |> List.last() |> encode_cursor(opts, "next")
+    if encode = Map.get(spec, :encode), do: encode.(value), else: value
   end
-
-  defp next_cursor(visible_rows, rows, opts, _cursor) do
-    if length(rows) > opts.limit, do: visible_rows |> List.last() |> encode_cursor(opts, "next")
-  end
-
-  defp previous_cursor([], _rows, _opts, _cursor), do: nil
-  defp previous_cursor(_visible_rows, _rows, _opts, nil), do: nil
-
-  defp previous_cursor(visible_rows, rows, opts, %{"pageDirection" => "previous"}) do
-    if length(rows) > opts.limit,
-      do: visible_rows |> List.first() |> encode_cursor(opts, "previous")
-  end
-
-  defp previous_cursor(visible_rows, _rows, opts, _cursor) do
-    visible_rows |> List.first() |> encode_cursor(opts, "previous")
-  end
-
-  defp encode_cursor(nil, _opts, _page_direction), do: nil
-
-  defp encode_cursor(row, opts, page_direction) do
-    %{
-      limit: opts.limit,
-      sort: opts.sort,
-      direction: opts.direction,
-      q: opts.q,
-      id: row.id,
-      value: cursor_value(row, opts.sort),
-      pageDirection: page_direction
-    }
-    |> Jason.encode!()
-    |> Base.url_encode64(padding: false)
-  end
-
-  defp cursor_value(row, "email"), do: row.email
-  defp cursor_value(row, "status"), do: row.status
-
-  defp cursor_value(row, "expiresAt"),
-    do: DateTime.to_iso8601(row.expires_at)
-
-  defp cursor_value(row, "createdAt"),
-    do: DateTime.to_iso8601(row.created_at)
 end
