@@ -36,6 +36,7 @@ ENV MISE_YES="1"
 ENV LANG="en_US.UTF-8"
 ENV LANGUAGE="en_US:en"
 ENV LC_ALL="en_US.UTF-8"
+ENV MISE_GITHUB_ATTESTATIONS=true
 
 RUN curl https://mise.run | sh
 
@@ -95,7 +96,8 @@ ENV LANG="en_US.UTF-8" \
     MISE_STATE_DIR="/mise/state" \
     MISE_INSTALL_PATH="/usr/local/bin/mise" \
     PATH="/mise/shims:${PATH}" \
-    MISE_YES="1"
+    MISE_YES="1" \
+    MISE_GITHUB_ATTESTATIONS=true
 
 RUN curl https://mise.run | sh
 
