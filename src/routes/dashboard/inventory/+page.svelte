@@ -14,6 +14,7 @@ import {
 	AlertTriangle,
 	Plus,
 	Clock,
+	Wrench,
 } from "lucide-svelte";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
@@ -30,6 +31,10 @@ const getActionIcon = (action: string) => {
 			return Package;
 		case "updated":
 			return Clock;
+		case "maintenance_out":
+			return Wrench;
+		case "maintenance_in":
+			return Wrench;
 		default:
 			return Clock;
 	}
@@ -43,6 +48,10 @@ const getActionColor = (action: string) => {
 			return "text-blue-600";
 		case "updated":
 			return "text-yellow-600";
+		case "maintenance_out":
+			return "text-orange-600";
+		case "maintenance_in":
+			return "text-green-600";
 		default:
 			return "text-gray-600";
 	}
