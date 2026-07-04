@@ -5,10 +5,14 @@ defmodule Dhc.Notifications do
 
   import Ecto.Query
 
+  alias Dhc.CursorPagination
   alias Dhc.Notifications.Notification
   alias Dhc.Repo
 
   @allowed_limits [10, 25, 50]
+  @sort_specs %{
+    "createdAt" => %{field: :created_at, type: :utc_datetime, encode: &DateTime.to_iso8601/1}
+  }
 
   @doc """
   Returns cursor-paginated, domain-shaped notifications for a single user.
@@ -22,16 +26,16 @@ defmodule Dhc.Notifications do
 
   def list_for_user(user_id, params) when is_binary(user_id) do
     with {:ok, opts} <- parse_options(params),
-         {:ok, cursor} <- parse_cursor(opts) do
+         {:ok, cursor} <- CursorPagination.parse_cursor(opts, &cursor_context/1) do
       unread_count = unread_count(user_id)
       rows = notification_rows(user_id, opts, cursor)
-      visible_rows = Enum.take(rows, opts.limit)
+      page = CursorPagination.forward_page(rows, opts, &cursor_context/1, &cursor_value/2)
 
       {:ok,
        %{
-         notifications: visible_rows,
+         notifications: page.visible_rows,
          unread_count: unread_count,
-         next_cursor: next_cursor(visible_rows, rows, opts)
+         next_cursor: page.next_cursor
        }}
     end
   end
@@ -62,19 +66,8 @@ defmodule Dhc.Notifications do
   defp blank_to_nil(value) when value in [nil, ""], do: nil
   defp blank_to_nil(value), do: value
 
-  defp parse_cursor(%{cursor: nil}), do: {:ok, nil}
-
-  defp parse_cursor(opts) do
-    with {:ok, json} <- Base.url_decode64(opts.cursor, padding: false),
-         {:ok, cursor} <- Jason.decode(json),
-         true <- cursor["limit"] == opts.limit,
-         {:ok, _id} <- Ecto.UUID.cast(cursor["id"]),
-         {:ok, _created_at, _offset} <- DateTime.from_iso8601(cursor["createdAt"]) do
-      {:ok, cursor}
-    else
-      _ -> {:error, :bad_cursor}
-    end
-  end
+  defp cursor_context(opts),
+    do: %{"limit" => opts.limit, "sort" => "createdAt", "direction" => "desc"}
 
   defp unread_count(user_id) do
     Notification
@@ -86,38 +79,15 @@ defmodule Dhc.Notifications do
   defp notification_rows(user_id, opts, cursor) do
     Notification
     |> where([n], n.user_id == ^user_id)
-    |> apply_cursor(cursor)
-    |> order_by([n], desc: n.created_at, desc: n.id)
+    |> CursorPagination.apply_cursor(
+      cursor,
+      Map.merge(opts, %{sort: "createdAt", direction: "desc"}),
+      @sort_specs
+    )
+    |> CursorPagination.apply_order(:created_at, "desc")
     |> limit(^opts.limit + 1)
     |> Repo.all()
   end
 
-  defp apply_cursor(query, nil), do: query
-
-  defp apply_cursor(query, cursor) do
-    where(
-      query,
-      [n],
-      n.created_at < type(^cursor["createdAt"], :utc_datetime) or
-        (n.created_at == type(^cursor["createdAt"], :utc_datetime) and n.id < ^cursor["id"])
-    )
-  end
-
-  defp next_cursor([], _rows, _opts), do: nil
-
-  defp next_cursor(visible_rows, rows, opts) do
-    if length(rows) > opts.limit, do: visible_rows |> List.last() |> encode_cursor(opts)
-  end
-
-  defp encode_cursor(nil, _opts), do: nil
-
-  defp encode_cursor(row, opts) do
-    %{
-      limit: opts.limit,
-      id: row.id,
-      createdAt: DateTime.to_iso8601(row.created_at)
-    }
-    |> Jason.encode!()
-    |> Base.url_encode64(padding: false)
-  end
+  defp cursor_value(row, _opts), do: DateTime.to_iso8601(row.created_at)
 end

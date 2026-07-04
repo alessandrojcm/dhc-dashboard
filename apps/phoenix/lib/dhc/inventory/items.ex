@@ -3,10 +3,10 @@ defmodule Dhc.Inventory.Items do
 
   import Ecto.Query
 
+  alias Dhc.CursorPagination
   alias Dhc.Inventory.Container
   alias Dhc.Inventory.EquipmentCategory
   alias Dhc.Inventory.Item
-  alias Dhc.Inventory.ItemCursor
   alias Dhc.Inventory.ItemHistory
   alias Dhc.Repo
 
@@ -14,6 +14,9 @@ defmodule Dhc.Inventory.Items do
 
   @item_allowed_limits [10, 25, 50, 100]
   @item_default_limit 50
+  @item_sort_specs %{
+    "createdAt" => %{field: :created_at, type: :utc_datetime, encode: &DateTime.to_iso8601/1}
+  }
 
   @spec list_items(keyword() | map()) ::
           {:ok, %{items: [item()], limit: pos_integer, next_cursor: binary | nil}}
@@ -22,20 +25,26 @@ defmodule Dhc.Inventory.Items do
     opts = normalize_list_opts(opts)
 
     with :ok <- validate_limit(opts.limit),
-         {:ok, cursor} <- ItemCursor.parse(opts.cursor, opts) do
+         {:ok, cursor} <- CursorPagination.parse_cursor(opts, &item_cursor_context/1) do
       rows =
         item_base_query(opts)
-        |> apply_cursor(cursor)
+        |> CursorPagination.apply_cursor(
+          cursor,
+          Map.merge(opts, %{sort: "createdAt", direction: "desc"}),
+          @item_sort_specs
+        )
+        |> CursorPagination.apply_order(:created_at, "desc")
         |> limit(^Enum.min([opts.limit + 1, 101]))
         |> Repo.all()
 
-      visible = Enum.take(rows, opts.limit)
+      page =
+        CursorPagination.forward_page(rows, opts, &item_cursor_context/1, &item_cursor_value/2)
 
       {:ok,
        %{
-         items: Enum.map(visible, &load_item_aggregates/1),
+         items: Enum.map(page.visible_rows, &load_item_aggregates/1),
          limit: opts.limit,
-         next_cursor: ItemCursor.next(visible, rows, opts)
+         next_cursor: page.next_cursor
        }}
     end
   end
@@ -301,7 +310,6 @@ defmodule Dhc.Inventory.Items do
 
   defp item_base_query(opts) do
     from(i in Item,
-      order_by: [desc: i.created_at, desc: i.id],
       select: i
     )
     |> maybe_filter(:category_id, opts.category_id)
@@ -337,16 +345,6 @@ defmodule Dhc.Inventory.Items do
         fragment("COALESCE(LOWER(?), '') ILIKE ?", i.notes, ^pattern) or
           fragment("COALESCE(LOWER(?), '') ILIKE ?", cat.name, ^pattern) or
           fragment("COALESCE(LOWER(?), '') ILIKE ?", c.name, ^pattern)
-    )
-  end
-
-  defp apply_cursor(query, nil), do: query
-
-  defp apply_cursor(query, %{created_at: created_at, id: id}) do
-    where(
-      query,
-      [i],
-      i.created_at < ^created_at or (i.created_at == ^created_at and i.id < ^id)
     )
   end
 
@@ -394,6 +392,20 @@ defmodule Dhc.Inventory.Items do
 
   defp validate_limit(limit) when limit in @item_allowed_limits, do: :ok
   defp validate_limit(_), do: {:error, :invalid_limit}
+
+  defp item_cursor_context(opts) do
+    %{
+      "limit" => opts.limit,
+      "sort" => "createdAt",
+      "direction" => "desc",
+      "categoryId" => opts.category_id,
+      "containerId" => opts.container_id,
+      "outForMaintenance" => opts.out_for_maintenance,
+      "search" => opts.search
+    }
+  end
+
+  defp item_cursor_value(row, _opts), do: DateTime.to_iso8601(row.created_at)
 
   defp load_item_aggregates(%Item{} = item) do
     %Item{
