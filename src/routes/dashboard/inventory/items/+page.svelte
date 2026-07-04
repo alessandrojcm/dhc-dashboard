@@ -1,7 +1,5 @@
 <script lang="ts">
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import type { Database } from "$database";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import {
 	Card,
 	CardContent,
@@ -32,91 +30,77 @@ import { resolve } from "$app/paths";
 import { page } from "$app/state";
 import { Label } from "$lib/components/ui/label";
 import { createQuery, keepPreviousData } from "@tanstack/svelte-query";
-import type { InventoryItem, InventoryItemWithRelations } from "$lib/types";
+import { inventoryItemsIndex, type InventoryItem as ApiInventoryItem } from "@dhc/api-client";
 
 let { data } = $props();
-const supabase: SupabaseClient<Database> = data.supabase;
 
-const PAGE_SIZE = 20;
-
-// Parse URL params
-const currentPage = $derived(Number(page.url.searchParams.get("page")) || 1);
+const PAGE_SIZE = 50;
+const currentCursor = $derived(page.url.searchParams.get("cursor") || "");
 let searchInput = $derived(page.url.searchParams.get("search") || "");
 let categoryInput = $derived(page.url.searchParams.get("category") || "");
 let containerInput = $derived(page.url.searchParams.get("container") || "");
 let maintenanceInput = $derived(page.url.searchParams.get("maintenance") || "");
 
-type InventoryItem = Pick<
-	InventoryItemWithRelations,
-	| "id"
-	| "quantity"
-	| "out_for_maintenance"
-	| "attributes"
-	| "category"
-	| "container"
->;
+type InventoryItem = {
+	id: string;
+	quantity: number;
+	out_for_maintenance: boolean;
+	attributes: Record<string, unknown>;
+	category: { id?: string | null; name?: string | null } | null;
+	container: { id?: string | null; name?: string | null } | null;
+};
 
-async function getItems(signal: AbortSignal) {
-	let query = supabase
-		.from("inventory_items")
-		.select(
-			"id, quantity, out_for_maintenance, attributes, category:equipment_categories(id, name), container:containers(id, name)",
-			{ count: "exact" },
-		);
-	// Apply filters
-	if (searchInput) {
-		// Search in attributes->name, category name, or container name
-		query = query.or(
-			`attributes->name.ilike.%${searchInput}%,equipment_categories.name.ilike.%${searchInput}%,containers.name.ilike.%${searchInput}%`,
-		);
-	}
-	if (categoryInput) {
-		query = query.eq("category_id", categoryInput);
-	}
-	if (containerInput) {
-		query = query.eq("container_id", containerInput);
-	}
-	if (maintenanceInput) {
-		query = query.eq("out_for_maintenance", maintenanceInput === "true");
-	}
-
-	// Pagination
-	const rangeStart = (currentPage - 1) * PAGE_SIZE;
-	const rangeEnd = rangeStart + PAGE_SIZE - 1;
-
-	const {
-		data: items,
-		error,
-		count,
-	} = await query
-		.range(rangeStart, rangeEnd)
-		.order("created_at", { ascending: false })
-		.throwOnError()
-		.abortSignal(signal);
-
-	if (error) throw error;
-
+function toLegacyItem(item: ApiInventoryItem): InventoryItem {
 	return {
-		items: (items || []) as InventoryItem[],
-		total: count || 0,
-		totalPages: Math.ceil((count || 0) / PAGE_SIZE),
+		id: item.id,
+		quantity: item.quantity,
+		out_for_maintenance: item.outForMaintenance,
+		attributes: (item.attributes ?? {}) as Record<string, unknown>,
+		category: item.category,
+		container: item.container,
 	};
 }
 
-// Fetch items with TanStack Query
+async function getItems(signal: AbortSignal) {
+	const { data: sessionData, error } = await data.supabase.auth.getSession();
+	if (error) throw error;
+
+	const accessToken = sessionData.session?.access_token;
+	if (!accessToken) throw new Error("Authentication required");
+
+	const response = await inventoryItemsIndex({
+		auth: accessToken,
+		signal,
+		throwOnError: true,
+		query: {
+			limit: PAGE_SIZE,
+			...(currentCursor ? { cursor: currentCursor } : {}),
+			...(searchInput ? { search: searchInput } : {}),
+			...(categoryInput ? { categoryId: categoryInput } : {}),
+			...(containerInput ? { containerId: containerInput } : {}),
+			...(maintenanceInput
+				? { outForMaintenance: maintenanceInput === "true" }
+				: {}),
+		},
+	});
+
+	return {
+		items: response.data.data.items.map(toLegacyItem),
+		nextCursor: response.data.data.nextCursor,
+	};
+}
+
 const itemsQuery = createQuery(() => ({
 	queryKey: [
 		"inventory-items",
-		currentPage,
+		currentCursor,
 		searchInput,
 		categoryInput,
 		containerInput,
 		maintenanceInput,
 	],
 	placeholderData: keepPreviousData,
-	queryFn: async ({ signal }) => {
-		return getItems(signal);
-	},
+	queryFn: async ({ signal }) => getItems(signal),
 }));
 
 const applyFilters = () => {
@@ -126,7 +110,6 @@ const applyFilters = () => {
 	if (categoryInput) params.set("category", categoryInput);
 	if (containerInput) params.set("container", containerInput);
 	if (maintenanceInput) params.set("maintenance", maintenanceInput);
-	params.set("page", "1"); // Reset to page 1 on filter change
 
 	const url = `/dashboard/inventory/items?${params.toString()}`;
 	goto(resolve(url as any));
@@ -136,10 +119,19 @@ const clearFilters = () => {
 	goto(resolve("/dashboard/inventory/items"));
 };
 
-const goToPage = (pageNum: number) => {
+const goToNextPage = () => {
+	if (!itemsQuery.data?.nextCursor) return;
 	// eslint-disable-next-line svelte/prefer-svelte-reactivity
 	const params = new URLSearchParams(page.url.searchParams);
-	params.set("page", pageNum.toString());
+	params.set("cursor", itemsQuery.data.nextCursor);
+	const url = `/dashboard/inventory/items?${params.toString()}`;
+	goto(resolve(url as any));
+};
+
+const goToFirstPage = () => {
+	// eslint-disable-next-line svelte/prefer-svelte-reactivity
+	const params = new URLSearchParams(page.url.searchParams);
+	params.delete("cursor");
 	const url = `/dashboard/inventory/items?${params.toString()}`;
 	goto(resolve(url as any));
 };
@@ -302,7 +294,7 @@ const hasActiveFilters = $derived(
 		<Card>
 			<CardHeader>
 				<CardTitle class="flex items-center gap-2">
-					Items ({itemsQuery.data.total})
+					Items ({itemsQuery.data.items.length})
 					{#if hasActiveFilters}
 						<Badge variant="secondary" class="ml-2">Filtered</Badge>
 					{/if}
@@ -358,24 +350,22 @@ const hasActiveFilters = $derived(
 					{/each}
 				</div>
 
-				<!-- Pagination -->
-				{#if itemsQuery.data.totalPages > 1}
+				<!-- Cursor pagination -->
+				{#if currentCursor || itemsQuery.data.nextCursor}
 					<div class="flex items-center justify-between mt-6">
 						<p class="text-sm text-muted-foreground">
-							Showing {(currentPage - 1) * PAGE_SIZE + 1}
-							to {Math.min(currentPage * PAGE_SIZE, itemsQuery.data.total)}
-							of {itemsQuery.data.total} items
+							Showing up to {PAGE_SIZE} items per page
 						</p>
 
 						<div class="flex gap-2">
-							{#if currentPage > 1}
-								<Button onclick={() => goToPage(currentPage - 1)} variant="outline" size="sm">
-									Previous
+							{#if currentCursor}
+								<Button onclick={goToFirstPage} variant="outline" size="sm">
+									First page
 								</Button>
 							{/if}
 
-							{#if currentPage < itemsQuery.data.totalPages}
-								<Button onclick={() => goToPage(currentPage + 1)} variant="outline" size="sm">
+							{#if itemsQuery.data.nextCursor}
+								<Button onclick={goToNextPage} variant="outline" size="sm">
 									Next
 								</Button>
 							{/if}
