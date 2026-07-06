@@ -10,10 +10,10 @@
  * `authorize()` is still called here so the SvelteKit layer 403s before
  * reaching the network when the role is missing.
  *
- * The form schemas (`ContainerCreateSchema` / `ContainerUpdateSchema`)
- * validate the snake_case shape the UI emits (`parent_container_id`). The
- * OpenAPI contract uses a camelCase payload key (`parentContainerId`); the
- * `toApiBody` helper performs that translation before calling the SDK.
+ * The form schema (`containerSchema` from `$lib/schemas/inventory`) validates
+ * the snake_case shape the UI emits (`parent_container_id`). The OpenAPI
+ * contract uses a camelCase payload key (`parentContainerId`); the `toApiBody`
+ * helper performs that translation before calling the SDK.
  *
  * `delete_container` previously checked `itemCount` client-side and threw;
  * the Phoenix API now returns `409` when the container still contains items,
@@ -40,11 +40,6 @@ import { apiClientOptions } from "$lib/server/api-client";
 import { INVENTORY_ROLES } from "$lib/server/roles";
 import { containerSchema } from "$lib/schemas/inventory";
 
-// Re-export the schemas the create/edit pages bind to, preserving the
-// historical names so those pages don't need import changes.
-export const ContainerCreateSchema = containerSchema;
-export const ContainerUpdateSchema = containerSchema;
-
 type ContainerFormData = v.InferOutput<typeof containerSchema>;
 
 /**
@@ -69,7 +64,7 @@ function toApiBody(data: ContainerFormData): InventoryContainerCreateRequest {
 	};
 }
 
-export const createContainer = form(ContainerCreateSchema, async (data) => {
+export const createContainer = form(containerSchema, async (data) => {
 	const event = getRequestEvent();
 	const session = await authorize(event.locals, INVENTORY_ROLES);
 
@@ -88,7 +83,7 @@ export const createContainer = form(ContainerCreateSchema, async (data) => {
 	redirect(303, `/dashboard/inventory/containers/${response.data.data.id}`);
 });
 
-export const updateContainer = form(ContainerUpdateSchema, async (data) => {
+export const updateContainer = form(containerSchema, async (data) => {
 	const event = getRequestEvent();
 	const containerId = event.params.id;
 	const session = await authorize(event.locals, INVENTORY_ROLES);
