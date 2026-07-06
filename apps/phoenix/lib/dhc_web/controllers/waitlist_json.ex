@@ -28,6 +28,33 @@ defmodule DhcWeb.WaitlistJSON do
     }
   end
 
+  def render("create.json", %{entry: entry}) do
+    %{
+      data: %{
+        id: entry.id,
+        status: entry.status
+      }
+    }
+  end
+
+  def render("show.json", %{entry: entry}) do
+    %{data: entry(entry)}
+  end
+
+  def render("guardian.json", %{guardian: nil}) do
+    %{data: nil}
+  end
+
+  def render("guardian.json", %{guardian: guardian}) do
+    %{
+      data: %{
+        firstName: guardian.first_name,
+        lastName: guardian.last_name,
+        phoneNumber: guardian.phone_number
+      }
+    }
+  end
+
   defp entry(entry) do
     %{
       id: entry.id,
