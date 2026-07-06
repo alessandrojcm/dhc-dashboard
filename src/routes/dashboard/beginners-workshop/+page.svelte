@@ -14,7 +14,6 @@ import WaitlistTable from "./waitlist-table.svelte";
 import Analytics from "./workshop-analytics.svelte";
 
 const { data } = $props();
-const supabase = data.supabase;
 let dialogOpen = $state(false);
 let value = $derived(page.url.searchParams.get("tab") || "dashboard");
 
@@ -133,7 +132,7 @@ let viewLabel = $derived(
 			<Analytics />
 		</Content>
 		<Content value="waitlist">
-			<WaitlistTable {supabase} />
+			<WaitlistTable />
 		</Content>
 	</Root>
 </div>

@@ -67,6 +67,9 @@ defmodule DhcWeb.Router do
 
     get "/waitlist/analytics", WaitlistController, :analytics
     get "/waitlist/entries", WaitlistController, :entries
+    get "/waitlist/entries/:id", WaitlistController, :show
+    patch "/waitlist/entries/:id", WaitlistController, :update
+    get "/waitlist/entries/:id/guardian", WaitlistController, :guardian
   end
 
   scope "/api", DhcWeb do
