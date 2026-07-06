@@ -27,4 +27,14 @@ defmodule Dhc.Waitlist.WaitlistEntry do
     )
     |> unique_constraint(:email)
   end
+
+  @doc false
+  def admin_update_changeset(entry, attrs) do
+    entry
+    |> cast(attrs, [:status, :admin_notes, :last_status_change])
+    |> validate_inclusion(
+      :status,
+      ~w(waiting invited paid deferred cancelled completed no_reply joined)
+    )
+  end
 end

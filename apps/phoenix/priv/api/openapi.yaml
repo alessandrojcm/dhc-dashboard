@@ -482,6 +482,157 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /waitlist/entries/{id}:
+    get:
+      operationId: waitlist.showEntry
+      tags:
+        - Waitlist
+      summary: Read one waitlist entry
+      description: |
+        Returns one domain-shaped waitlist entry for admin inspection.
+
+        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
+        `admin`, `president`, `committee_coordinator`, `beginners_coordinator`, or `coach`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Waitlist entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WaitlistEntryResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a waitlist admin role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Waitlist entry not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    patch:
+      operationId: waitlist.updateEntry
+      tags:
+        - Waitlist
+      summary: Update waitlist entry admin fields
+      description: |
+        Updates admin-owned Waitlist entry fields. Status updates refresh the
+        `lastStatusChange` timestamp. `adminNotes` is included to keep the
+        existing admin-notes workflow off direct Supabase table mutation.
+
+        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
+        `admin`, `president`, `committee_coordinator`, `beginners_coordinator`, or `coach`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WaitlistEntryUpdateRequest"
+      responses:
+        "200":
+          description: Updated waitlist entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WaitlistEntryResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a waitlist admin role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Waitlist entry not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /waitlist/entries/{id}/guardian:
+    get:
+      operationId: waitlist.entryGuardian
+      tags:
+        - Waitlist
+      summary: Read waitlist entry guardian details
+      description: |
+        Returns guardian contact details for a minor waitlist applicant, or
+        `data: null` when the entry exists but has no guardian details.
+
+        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
+        `admin`, `president`, `committee_coordinator`, `beginners_coordinator`, or `coach`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Waitlist guardian details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WaitlistGuardianResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a waitlist admin role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Waitlist entry not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /notifications:
     get:
       operationId: notifications.list
@@ -2437,6 +2588,45 @@ components:
             previousCursor:
               type: string
               nullable: true
+    WaitlistEntryResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: "#/components/schemas/WaitlistEntry"
+    WaitlistEntryUpdateRequest:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        status:
+          $ref: "#/components/schemas/WaitlistStatus"
+        adminNotes:
+          type: string
+          nullable: true
+    WaitlistGuardianResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          nullable: true
+          oneOf:
+            - $ref: "#/components/schemas/WaitlistGuardian"
+    WaitlistGuardian:
+      type: object
+      required:
+        - firstName
+        - lastName
+        - phoneNumber
+      properties:
+        firstName:
+          type: string
+        lastName:
+          type: string
+        phoneNumber:
+          type: string
     WaitlistEntry:
       type: object
       required:

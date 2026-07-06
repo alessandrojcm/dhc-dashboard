@@ -304,6 +304,115 @@ defmodule DhcWeb.WaitlistControllerTest do
     end
   end
 
+  describe "show" do
+    test "returns one waitlist entry by id", %{conn: conn} do
+      id = insert_waitlist_profile(first_name: "Ada", last_name: "Lovelace")
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> get("/api/waitlist/entries/#{id}")
+
+      assert %{"data" => %{"id" => ^id, "fullName" => "Ada Lovelace"}} =
+               json_response(conn, 200)
+    end
+
+    test "returns 404 for missing waitlist entry", %{conn: conn} do
+      missing_id = Ecto.UUID.generate()
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> get("/api/waitlist/entries/#{missing_id}")
+
+      assert %{"errors" => %{"detail" => "Waitlist entry not found"}} = json_response(conn, 404)
+    end
+
+    test "preserves waitlist admin authorization", %{conn: conn} do
+      id = insert_waitlist_profile()
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer member-token")
+        |> get("/api/waitlist/entries/#{id}")
+
+      assert %{"errors" => %{"detail" => "Insufficient role"}} = json_response(conn, 403)
+    end
+  end
+
+  describe "update" do
+    test "updates waitlist status and last status change", %{conn: conn} do
+      id = insert_waitlist_profile(status: "waiting")
+      before_update = Repo.get!(WaitlistEntry, id).last_status_change
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> patch("/api/waitlist/entries/#{id}", %{status: "deferred"})
+
+      assert %{"data" => %{"id" => ^id, "status" => "deferred", "lastStatusChange" => changed_at}} =
+               json_response(conn, 200)
+
+      assert DateTime.compare(DateTime.from_iso8601(changed_at) |> elem(1), before_update) in [
+               :gt,
+               :eq
+             ]
+    end
+
+    test "updates admin notes through Phoenix", %{conn: conn} do
+      id = insert_waitlist_profile()
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> patch("/api/waitlist/entries/#{id}", %{adminNotes: "Call after grading"})
+
+      assert %{"data" => %{"adminNotes" => "Call after grading"}} = json_response(conn, 200)
+      assert Repo.get!(WaitlistEntry, id).admin_notes == "Call after grading"
+    end
+
+    test "returns 422 for invalid status", %{conn: conn} do
+      id = insert_waitlist_profile()
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> patch("/api/waitlist/entries/#{id}", %{status: "declined"})
+
+      assert %{"errors" => %{"detail" => "Invalid waitlist status"}} = json_response(conn, 422)
+    end
+  end
+
+  describe "guardian" do
+    test "returns guardian details for a waitlist entry", %{conn: conn} do
+      id = insert_waitlist_profile()
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> get("/api/waitlist/entries/#{id}/guardian")
+
+      assert %{
+               "data" => %{
+                 "firstName" => "Parent",
+                 "lastName" => "Guardian",
+                 "phoneNumber" => "+353 1 111 1111"
+               }
+             } = json_response(conn, 200)
+    end
+
+    test "returns null guardian data when entry has no guardian", %{conn: conn} do
+      id = insert_waitlist_profile(guardian?: false)
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> get("/api/waitlist/entries/#{id}/guardian")
+
+      assert %{"data" => nil} = json_response(conn, 200)
+    end
+  end
+
   describe "create" do
     test "creates an adult waitlist entry through the public endpoint", %{conn: conn} do
       set_waitlist_open(true)
@@ -376,7 +485,7 @@ defmodule DhcWeb.WaitlistControllerTest do
     assert result.num_rows == 1
   end
 
-  defp insert_waitlist_profile(attrs) do
+  defp insert_waitlist_profile(attrs \\ []) do
     waitlist_id = Ecto.UUID.generate()
     profile_id = Ecto.UUID.generate()
     now = DateTime.utc_now() |> DateTime.truncate(:second)
@@ -416,19 +525,21 @@ defmodule DhcWeb.WaitlistControllerTest do
       }
       |> Repo.insert()
 
-    # waitlist_guardians has no Ecto schema; insert raw. Postgrex expects
-    # binary UUIDs when bypassing the schema.
-    {1, _} =
-      Repo.insert_all("waitlist_guardians", [
-        %{
-          id: Ecto.UUID.dump!(Ecto.UUID.generate()),
-          profile_id: Ecto.UUID.dump!(profile_id),
-          first_name: "Parent",
-          last_name: "Guardian",
-          phone_number: "+353 1 111 1111",
-          created_at: now
-        }
-      ])
+    if Keyword.get(attrs, :guardian?, true) do
+      # waitlist_guardians has no Ecto schema; insert raw. Postgrex expects
+      # binary UUIDs when bypassing the schema.
+      {1, _} =
+        Repo.insert_all("waitlist_guardians", [
+          %{
+            id: Ecto.UUID.dump!(Ecto.UUID.generate()),
+            profile_id: Ecto.UUID.dump!(profile_id),
+            first_name: "Parent",
+            last_name: "Guardian",
+            phone_number: "+353 1 111 1111",
+            created_at: now
+          }
+        ])
+    end
 
     waitlist_id
   end
