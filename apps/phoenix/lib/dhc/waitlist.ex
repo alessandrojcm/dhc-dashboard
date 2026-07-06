@@ -6,6 +6,7 @@ defmodule Dhc.Waitlist do
   import Ecto.Query
 
   alias Dhc.CursorPagination
+  alias Dhc.Waitlist.WaitlistGuardian
   alias Dhc.Waitlist.WaitlistEntry
   alias Dhc.UserProfiles.UserProfile
   alias Dhc.Repo
@@ -14,6 +15,7 @@ defmodule Dhc.Waitlist do
   @age_years_sql "EXTRACT(YEAR FROM AGE(CURRENT_DATE, ?))::int"
   @allowed_limits [10, 25, 50, 100]
   @allowed_statuses ~w(waiting invited paid deferred cancelled completed no_reply joined)
+  @social_media_consent_values ~w(no yes_recognizable yes_unrecognizable)
   @allowed_sort_fields ~w(position fullName status age initialRegistrationDate lastContacted lastStatusChange)
   @allowed_directions ~w(asc desc)
   @entry_sort_specs %{
@@ -96,6 +98,57 @@ defmodule Dhc.Waitlist do
          next_cursor: page.next_cursor,
          previous_cursor: page.previous_cursor
        }}
+    end
+  end
+
+  @doc """
+  Creates a public waitlist entry and its inactive profile atomically.
+
+  This absorbs the legacy `insert_waitlist_entry` stored procedure behavior into
+  Phoenix: normalize email/pronouns, insert the waitlist row with initial status
+  `waiting`, insert the inactive `user_profiles` row, and attach one guardian
+  row for minors.
+  """
+  @spec create_entry(map()) :: {:ok, map()} | {:error, atom()} | {:error, Ecto.Changeset.t()}
+  def create_entry(attrs) when is_map(attrs) do
+    with :ok <- ensure_open(),
+         {:ok, normalized} <- normalize_create_attrs(attrs) do
+      entry_changeset =
+        WaitlistEntry.create_changeset(%WaitlistEntry{}, %{
+          email: normalized.email,
+          status: "waiting"
+        })
+
+      Ecto.Multi.new()
+      |> Ecto.Multi.insert(:waitlist_entry, entry_changeset)
+      |> Ecto.Multi.insert(:user_profile, fn %{waitlist_entry: entry} ->
+        UserProfile.waitlist_intake_changeset(%UserProfile{}, %{
+          first_name: normalized.first_name,
+          last_name: normalized.last_name,
+          is_active: false,
+          medical_conditions: normalized.medical_conditions,
+          date_of_birth: normalized.date_of_birth,
+          gender: normalized.gender,
+          pronouns: normalized.pronouns,
+          phone_number: normalized.phone_number,
+          social_media_consent: normalized.social_media_consent,
+          waitlist_id: entry.id
+        })
+      end)
+      |> maybe_insert_guardian(normalized)
+      |> Repo.transaction()
+      |> case do
+        {:ok, %{waitlist_entry: entry, user_profile: profile}} ->
+          {:ok, %{id: entry.id, profile_id: profile.id, status: entry.status}}
+
+        {:error, :waitlist_entry, changeset, _changes} ->
+          if duplicate_email_changeset?(changeset),
+            do: {:error, :duplicate_email},
+            else: {:error, changeset}
+
+        {:error, _operation, %Ecto.Changeset{} = changeset, _changes} ->
+          {:error, changeset}
+      end
     end
   end
 
@@ -193,6 +246,120 @@ defmodule Dhc.Waitlist do
            cursor: blank_to_nil(Map.get(params, "cursor"))
          }}
     end
+  end
+
+  defp ensure_open do
+    if open?(), do: :ok, else: {:error, :waitlist_closed}
+  end
+
+  defp normalize_create_attrs(attrs) do
+    with {:ok, date_of_birth} <- parse_date(required(attrs, "dateOfBirth")),
+         :ok <- validate_minimum_age(date_of_birth),
+         {:ok, social_media_consent} <- social_media_consent(attrs) do
+      normalized = %{
+        first_name: trim(required(attrs, "firstName")),
+        last_name: trim(required(attrs, "lastName")),
+        email: attrs |> required("email") |> trim() |> String.downcase(),
+        phone_number: trim(required(attrs, "phoneNumber")),
+        date_of_birth: date_of_birth,
+        pronouns: attrs |> required("pronouns") |> trim() |> String.downcase(),
+        gender: required(attrs, "gender"),
+        medical_conditions: Map.get(attrs, "medicalConditions", ""),
+        social_media_consent: social_media_consent
+      }
+
+      cond do
+        Enum.any?(
+          [
+            normalized.first_name,
+            normalized.last_name,
+            normalized.email,
+            normalized.phone_number,
+            normalized.pronouns,
+            normalized.gender
+          ],
+          &(&1 == "")
+        ) ->
+          {:error, :invalid_payload}
+
+        minor?(date_of_birth) ->
+          normalize_guardian_attrs(normalized, attrs)
+
+        true ->
+          {:ok, normalized}
+      end
+    end
+  end
+
+  defp required(attrs, key), do: Map.get(attrs, key, "")
+
+  defp trim(value) when is_binary(value), do: String.trim(value)
+  defp trim(_value), do: ""
+
+  defp parse_date(value) when is_binary(value) do
+    case Date.from_iso8601(value) do
+      {:ok, date} -> {:ok, date}
+      {:error, _reason} -> {:error, :invalid_payload}
+    end
+  end
+
+  defp parse_date(_value), do: {:error, :invalid_payload}
+
+  defp validate_minimum_age(date_of_birth) do
+    if age(date_of_birth) >= 16, do: :ok, else: {:error, :invalid_payload}
+  end
+
+  defp social_media_consent(attrs) do
+    value = Map.get(attrs, "socialMediaConsent", "no")
+
+    if value in @social_media_consent_values,
+      do: {:ok, value},
+      else: {:error, :invalid_payload}
+  end
+
+  defp normalize_guardian_attrs(normalized, attrs) do
+    guardian = %{
+      first_name: trim(Map.get(attrs, "guardianFirstName")),
+      last_name: trim(Map.get(attrs, "guardianLastName")),
+      phone_number: trim(Map.get(attrs, "guardianPhoneNumber"))
+    }
+
+    if Enum.any?(Map.values(guardian), &(&1 == "")) do
+      {:error, :invalid_payload}
+    else
+      {:ok, Map.put(normalized, :guardian, guardian)}
+    end
+  end
+
+  defp age(date_of_birth) do
+    today = Date.utc_today()
+    years = today.year - date_of_birth.year
+    birthday_this_year = %{date_of_birth | year: today.year}
+
+    if Date.compare(birthday_this_year, today) == :gt do
+      years - 1
+    else
+      years
+    end
+  end
+
+  defp minor?(date_of_birth), do: age(date_of_birth) < 18
+
+  defp maybe_insert_guardian(multi, %{guardian: guardian}) do
+    Ecto.Multi.insert(multi, :waitlist_guardian, fn %{user_profile: profile} ->
+      WaitlistGuardian.create_changeset(%WaitlistGuardian{}, %{
+        profile_id: profile.id,
+        first_name: guardian.first_name,
+        last_name: guardian.last_name,
+        phone_number: guardian.phone_number
+      })
+    end)
+  end
+
+  defp maybe_insert_guardian(multi, _normalized), do: multi
+
+  defp duplicate_email_changeset?(changeset) do
+    Keyword.has_key?(changeset.errors, :email)
   end
 
   defp parse_integer(value) when is_integer(value), do: value
