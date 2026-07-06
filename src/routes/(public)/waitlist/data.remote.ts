@@ -1,10 +1,20 @@
-import { form, getRequestEvent } from "$app/server";
+import { form } from "$app/server";
 import { invalid } from "@sveltejs/kit";
 import * as v from "valibot";
 import beginnersWaitlist, {
 	beginnersWaitlistClientSchema,
 } from "$lib/schemas/beginnersWaitlist";
-import { createWaitlistService } from "$lib/server/services/members";
+import { waitlistCreateEntry } from "@dhc/api-client";
+import { apiBaseUrl } from "$lib/server/api-client";
+
+function apiErrorDetail(error: unknown): string | undefined {
+	if (error && typeof error === "object" && "errors" in error) {
+		const errors = error.errors;
+		if (errors && typeof errors === "object" && "detail" in errors) {
+			return typeof errors.detail === "string" ? errors.detail : undefined;
+		}
+	}
+}
 
 /**
  * Waitlist submission form
@@ -14,8 +24,6 @@ import { createWaitlistService } from "$lib/server/services/members";
 export const submitWaitlist = form(
 	beginnersWaitlistClientSchema,
 	async (data, issue) => {
-		const event = getRequestEvent();
-
 		// Transform client data (string dateOfBirth) to server types (Date) for complex schema validation
 		const transformedData = {
 			...data,
@@ -46,8 +54,23 @@ export const submitWaitlist = form(
 		}
 
 		try {
-			const waitlistService = createWaitlistService(event.platform!);
-			await waitlistService.create(result.output);
+			const { error } = await waitlistCreateEntry({
+				baseUrl: apiBaseUrl(),
+				body: {
+					...result.output,
+					dateOfBirth: result.output.dateOfBirth.toISOString().slice(0, 10),
+				},
+			});
+
+			if (error) {
+				const detail = apiErrorDetail(error);
+
+				if (detail?.includes("already on the waitlist")) {
+					invalid(issue.email("This email is already on the waitlist"));
+				}
+
+				throw new Error(detail ?? "Waitlist submission failed");
+			}
 		} catch (err) {
 			console.error("Waitlist submission error:", err);
 
