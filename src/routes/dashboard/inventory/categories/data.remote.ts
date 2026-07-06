@@ -10,7 +10,7 @@
  * here so the SvelteKit layer 403s before reaching the network when the role
  * is missing.
  *
- * The form schemas (`CategoryCreateSchema` / `CategoryUpdateSchema`) validate
+ * The form schema (`categorySchema` from `$lib/schemas/inventory`) validates
  * the snake_case shape the UI/`AttributeBuilder` emits
  * (`available_attributes`, `default_value`). The OpenAPI contract uses
  * camelCase payload keys (`availableAttributes`, `defaultValue`); the
@@ -33,11 +33,6 @@ import { authorize } from "$lib/server/auth";
 import { apiClientOptions } from "$lib/server/api-client";
 import { INVENTORY_ROLES } from "$lib/server/roles";
 import { categorySchema } from "$lib/schemas/inventory";
-
-// Re-export the schemas the create/edit pages bind to, preserving the
-// historical names so those pages don't need import changes.
-export const CategoryCreateSchema = categorySchema;
-export const CategoryUpdateSchema = categorySchema;
 
 /**
  * Translate a valibot-validated form payload (snake_case, the shape
@@ -62,7 +57,7 @@ function toApiBody(
 	};
 }
 
-export const createCategory = form(CategoryCreateSchema, async (data) => {
+export const createCategory = form(categorySchema, async (data) => {
 	const event = getRequestEvent();
 	const session = await authorize(event.locals, INVENTORY_ROLES);
 
@@ -81,7 +76,7 @@ export const createCategory = form(CategoryCreateSchema, async (data) => {
 	redirect(303, "/dashboard/inventory/categories");
 });
 
-export const updateCategory = form(CategoryUpdateSchema, async (data) => {
+export const updateCategory = form(categorySchema, async (data) => {
 	const event = getRequestEvent();
 	const categoryId = event.params.id;
 	const session = await authorize(event.locals, INVENTORY_ROLES);
