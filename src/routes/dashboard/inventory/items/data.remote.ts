@@ -30,9 +30,6 @@ import { apiClientOptions } from "$lib/server/api-client";
 import { INVENTORY_ROLES } from "$lib/server/roles";
 import { itemSchema } from "$lib/schemas/inventory";
 
-export const ItemCreateSchema = itemSchema;
-export const ItemUpdateSchema = itemSchema;
-
 type ItemFormData = v.InferOutput<typeof itemSchema>;
 
 function normalizeAttributes(value: unknown): Record<string, unknown> {
@@ -65,7 +62,7 @@ function toApiBody(data: ItemFormData): InventoryItemCreateRequest {
 	};
 }
 
-export const createItem = form(ItemCreateSchema, async (data) => {
+export const createItem = form(itemSchema, async (data) => {
 	const event = getRequestEvent();
 	const session = await authorize(event.locals, INVENTORY_ROLES);
 
@@ -84,7 +81,7 @@ export const createItem = form(ItemCreateSchema, async (data) => {
 	redirect(303, `/dashboard/inventory/items/${response.data.data.id}`);
 });
 
-export const updateItem = form(ItemUpdateSchema, async (data) => {
+export const updateItem = form(itemSchema, async (data) => {
 	const event = getRequestEvent();
 	const session = await authorize(event.locals, INVENTORY_ROLES);
 	const itemId = event.params.id!;
