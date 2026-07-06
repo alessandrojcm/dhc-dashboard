@@ -2,6 +2,7 @@ defmodule Dhc.Waitlist.WaitlistGuardian do
   @moduledoc false
 
   use Ecto.Schema
+  import Ecto.Changeset
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
@@ -17,6 +18,17 @@ defmodule Dhc.Waitlist.WaitlistGuardian do
     field :first_name, :string
     field :last_name, :string
     field :phone_number, :string
-    field :created_at, :utc_datetime, autogenerate: {DateTime, :utc_now, []}
+    field :created_at, :utc_datetime, autogenerate: {__MODULE__, :utc_now_seconds, []}
+  end
+
+  def utc_now_seconds do
+    DateTime.utc_now() |> DateTime.truncate(:second)
+  end
+
+  @doc false
+  def create_changeset(guardian, attrs) do
+    guardian
+    |> cast(attrs, [:profile_id, :first_name, :last_name, :phone_number])
+    |> validate_required([:profile_id, :first_name, :last_name, :phone_number])
   end
 end

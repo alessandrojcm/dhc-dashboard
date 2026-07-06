@@ -369,6 +369,47 @@ paths:
                 $ref: "#/components/schemas/Error"
 
   /waitlist/entries:
+    post:
+      operationId: waitlist.createEntry
+      tags:
+        - Waitlist
+      summary: Submit a public waitlist entry
+      description: |
+        Public beginners workshop intake endpoint. Phoenix validates the payload,
+        enforces waitlist-open server-side, normalizes email/pronouns, creates
+        the waitlist row and inactive profile, and records guardian details for
+        16–17 year old applicants.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WaitlistEntryCreateRequest"
+      responses:
+        "201":
+          description: Waitlist entry created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WaitlistEntryCreateResponse"
+        "403":
+          description: Waitlist is closed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Duplicate waitlist email
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
     get:
       operationId: waitlist.entries
       tags:
@@ -436,6 +477,157 @@ paths:
                 $ref: "#/components/schemas/Error"
         "403":
           description: Authenticated user lacks a waitlist admin role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /waitlist/entries/{id}:
+    get:
+      operationId: waitlist.showEntry
+      tags:
+        - Waitlist
+      summary: Read one waitlist entry
+      description: |
+        Returns one domain-shaped waitlist entry for admin inspection.
+
+        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
+        `admin`, `president`, `committee_coordinator`, `beginners_coordinator`, or `coach`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Waitlist entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WaitlistEntryResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a waitlist admin role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Waitlist entry not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    patch:
+      operationId: waitlist.updateEntry
+      tags:
+        - Waitlist
+      summary: Update waitlist entry admin fields
+      description: |
+        Updates admin-owned Waitlist entry fields. Status updates refresh the
+        `lastStatusChange` timestamp. `adminNotes` is included to keep the
+        existing admin-notes workflow off direct Supabase table mutation.
+
+        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
+        `admin`, `president`, `committee_coordinator`, `beginners_coordinator`, or `coach`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WaitlistEntryUpdateRequest"
+      responses:
+        "200":
+          description: Updated waitlist entry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WaitlistEntryResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a waitlist admin role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Waitlist entry not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /waitlist/entries/{id}/guardian:
+    get:
+      operationId: waitlist.entryGuardian
+      tags:
+        - Waitlist
+      summary: Read waitlist entry guardian details
+      description: |
+        Returns guardian contact details for a minor waitlist applicant, or
+        `data: null` when the entry exists but has no guardian details.
+
+        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
+        `admin`, `president`, `committee_coordinator`, `beginners_coordinator`, or `coach`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Waitlist guardian details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WaitlistGuardianResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a waitlist admin role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Waitlist entry not found
           content:
             application/json:
               schema:
@@ -2129,6 +2321,76 @@ components:
         - completed
         - no_reply
         - joined
+    SocialMediaConsent:
+      type: string
+      enum:
+        - no
+        - yes_recognizable
+        - yes_unrecognizable
+    WaitlistEntryCreateRequest:
+      type: object
+      required:
+        - firstName
+        - lastName
+        - email
+        - phoneNumber
+        - dateOfBirth
+        - pronouns
+        - gender
+        - medicalConditions
+      properties:
+        firstName:
+          type: string
+          minLength: 1
+        lastName:
+          type: string
+          minLength: 1
+        email:
+          type: string
+          format: email
+        phoneNumber:
+          type: string
+          minLength: 1
+        dateOfBirth:
+          type: string
+          format: date
+          description: Applicant date of birth. Applicants must be at least 16.
+        pronouns:
+          type: string
+          minLength: 1
+        gender:
+          type: string
+        medicalConditions:
+          type: string
+          description: Required by the form, but may be an empty string.
+        socialMediaConsent:
+          $ref: "#/components/schemas/SocialMediaConsent"
+          default: no
+        guardianFirstName:
+          type: string
+          description: Required for applicants under 18; ignored for adults.
+        guardianLastName:
+          type: string
+          description: Required for applicants under 18; ignored for adults.
+        guardianPhoneNumber:
+          type: string
+          description: Required for applicants under 18; ignored for adults.
+    WaitlistEntryCreateResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - id
+            - status
+          properties:
+            id:
+              type: string
+              format: uuid
+            status:
+              $ref: "#/components/schemas/WaitlistStatus"
     MembershipStatus:
       type: string
       enum:
@@ -2326,6 +2588,45 @@ components:
             previousCursor:
               type: string
               nullable: true
+    WaitlistEntryResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: "#/components/schemas/WaitlistEntry"
+    WaitlistEntryUpdateRequest:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        status:
+          $ref: "#/components/schemas/WaitlistStatus"
+        adminNotes:
+          type: string
+          nullable: true
+    WaitlistGuardianResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          nullable: true
+          oneOf:
+            - $ref: "#/components/schemas/WaitlistGuardian"
+    WaitlistGuardian:
+      type: object
+      required:
+        - firstName
+        - lastName
+        - phoneNumber
+      properties:
+        firstName:
+          type: string
+        lastName:
+          type: string
+        phoneNumber:
+          type: string
     WaitlistEntry:
       type: object
       required:
