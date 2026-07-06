@@ -5,9 +5,10 @@ import {
 	type Options,
 	type WaitlistEntriesSortField,
 	type WaitlistEntry,
+	type WaitlistStatus,
 	waitlistEntries,
+	waitlistUpdateEntry,
 } from "@dhc/api-client";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import {
 	createMutation,
 	createQuery,
@@ -33,7 +34,6 @@ import { toast } from "svelte-sonner";
 import { goto } from "$app/navigation";
 import { resolve } from "$app/paths";
 import { page } from "$app/state";
-import type { Database } from "$database";
 import { Badge } from "$lib/components/ui/badge";
 import { Button } from "$lib/components/ui/button";
 import * as Checkbox from "$lib/components/ui/checkbox/index.js";
@@ -48,9 +48,9 @@ import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
 import * as Select from "$lib/components/ui/select";
 import * as Table from "$lib/components/ui/table/index.js";
 import SortHeader from "$lib/components/ui/table/sort-header.svelte";
-import type { MutationPayload } from "$lib/types";
 import ActionButtons from "./actions-buttons.svelte";
 import { resendInvitations } from "./admin.remote";
+import WaitlistStatusSelect from "./waitlist-status-select.svelte";
 
 type WaitlistTableRow = {
 	id: string;
@@ -115,21 +115,6 @@ const waitlistEntrySortMap: Record<
 	last_contacted: "lastContacted",
 	last_status_change: "lastStatusChange",
 };
-
-const { supabase }: { supabase: SupabaseClient<Database> } = $props();
-
-function getBadgeVariant(status: string) {
-	switch (status) {
-		case "invited":
-			return "default";
-		case "joined":
-			return "secondary";
-		case "declined":
-			return "destructive";
-		default:
-			return "default";
-	}
-}
 
 const pageSize = $derived.by(() => {
 	const requestedPageSize = Number(page.url.searchParams.get("pageSize")) || 10;
@@ -293,19 +278,28 @@ const resendInvitationLink = createMutation(() => ({
 }));
 
 const updateWaitlistEntry = createMutation<
-	void,
+	WaitlistEntry,
 	Error,
-	MutationPayload<"waitlist"> & { email: string }
+	{ id: string; status?: WaitlistStatus; adminNotes?: string | null }
 >(() => ({
-	mutationFn: async ({ email, ...rest }) => {
-		const { error } = await supabase
-			.from("waitlist")
-			.update(rest)
-			.eq("email", email);
-		if (error) throw error;
+	mutationFn: async ({ id, ...body }) => {
+		const response = await waitlistUpdateEntry({
+			path: { id },
+			body,
+		});
+
+		if (response.error) {
+			throw new Error("Failed to update waitlist entry.");
+		}
+
+		return response.data.data;
 	},
 	onSuccess: () => {
+		toast.success("Waitlist entry updated.");
 		waitlistQuery.refetch();
+	},
+	onError: (error) => {
+		toast.error(error.message || "Failed to update waitlist entry.");
 	},
 	onSettled: () => {
 		waitlistQuery.refetch();
@@ -422,8 +416,8 @@ const tableOptions = $state<TableOptions<WaitlistTableRow>>({
 					},
 					onEdit(newValue) {
 						updateWaitlistEntry.mutate({
-							email: row.original.email!,
-							admin_notes: newValue,
+							id: row.original.id,
+							adminNotes: newValue,
 						});
 					},
 				});
@@ -501,14 +495,14 @@ const tableOptions = $state<TableOptions<WaitlistTableRow>>({
 		{
 			accessorKey: "status",
 			header: "Status",
-			cell: ({ getValue }) => {
-				return renderComponent(Badge, {
-					variant: getValue(),
-					class: "h-8",
-					children: createRawSnippet(() => ({
-						render: () =>
-							`<p class="capitalize">${getValue().replace("-", " ")}</p>`,
-					})),
+			cell: ({ row }) => {
+				return renderComponent(WaitlistStatusSelect, {
+					status: row.original.status,
+					disabled: updateWaitlistEntry.isPending,
+					onChange: (status: WaitlistStatus) => {
+						if (status === row.original.status) return;
+						updateWaitlistEntry.mutate({ id: row.original.id, status });
+					},
 				});
 			},
 		},
@@ -789,32 +783,26 @@ const table = createSvelteTable(tableOptions);
                             onToggleExpand={() => row.toggleExpanded()}
                             onEdit={(newValue) => {
                                 if (row.original.email) {
-                                    updateWaitlistEntry.mutate({
-                                        email: row.original.email,
-                                        admin_notes: newValue,
-                                    });
+									updateWaitlistEntry.mutate({
+										id: row.original.id,
+										adminNotes: newValue,
+									});
                                 }
                             }}
                         />
                     </div>
                 </div>
 
-                <!-- Status Badge -->
+                <!-- Status -->
                 <div class="mb-3">
-                    {#if row.original.status}
-                        <Badge
-                            variant={getBadgeVariant(row.original.status)}
-                            class="h-8"
-                        >
-                            <p class="capitalize">
-                                {row.original.status.replace("-", " ")}
-                            </p>
-                        </Badge>
-                    {:else}
-                        <Badge variant="default" class="h-8">
-                            <p>Unknown</p>
-                        </Badge>
-                    {/if}
+                    <WaitlistStatusSelect
+                        status={row.original.status}
+                        disabled={updateWaitlistEntry.isPending}
+                        onChange={(status) => {
+                            if (status === row.original.status) return;
+                            updateWaitlistEntry.mutate({ id: row.original.id, status });
+                        }}
+                    />
                 </div>
 
                 <!-- Email -->

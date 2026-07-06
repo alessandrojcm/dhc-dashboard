@@ -152,6 +152,66 @@ defmodule Dhc.Waitlist do
     end
   end
 
+  @doc """
+  Returns one domain-shaped waitlist entry for admin inspection.
+  """
+  @spec get_entry(Ecto.UUID.t()) :: {:ok, map()} | {:error, :not_found}
+  def get_entry(id) do
+    case entry_by_id_query(id) |> Repo.one() do
+      nil -> {:error, :not_found}
+      entry -> {:ok, entry}
+    end
+  end
+
+  @doc """
+  Updates admin-owned waitlist entry fields.
+
+  Status changes refresh `last_status_change`; admin note edits preserve the
+  existing status timestamp.
+  """
+  @spec update_entry(Ecto.UUID.t(), map()) ::
+          {:ok, map()} | {:error, :not_found} | {:error, atom()} | {:error, Ecto.Changeset.t()}
+  def update_entry(id, attrs) when is_map(attrs) do
+    with {:ok, normalized} <- normalize_update_attrs(attrs) do
+      case Repo.get(WaitlistEntry, id) do
+        nil ->
+          {:error, :not_found}
+
+        entry ->
+          entry
+          |> WaitlistEntry.admin_update_changeset(normalized)
+          |> Repo.update()
+          |> case do
+            {:ok, _entry} -> get_entry(id)
+            {:error, changeset} -> {:error, changeset}
+          end
+      end
+    end
+  end
+
+  @doc """
+  Returns guardian details for a waitlist entry, when present.
+  """
+  @spec get_guardian(Ecto.UUID.t()) :: {:ok, map() | nil} | {:error, :not_found}
+  def get_guardian(entry_id) do
+    query =
+      from p in UserProfile,
+        left_join: wg in WaitlistGuardian,
+        on: wg.profile_id == p.id,
+        where: p.waitlist_id == ^entry_id,
+        select: %{
+          first_name: wg.first_name,
+          last_name: wg.last_name,
+          phone_number: wg.phone_number
+        }
+
+    case Repo.one(query) do
+      nil -> {:error, :not_found}
+      %{first_name: nil, last_name: nil, phone_number: nil} -> {:ok, nil}
+      guardian -> {:ok, guardian}
+    end
+  end
+
   @spec open?() :: boolean()
   def open? do
     from(s in "settings",
@@ -362,6 +422,43 @@ defmodule Dhc.Waitlist do
     Keyword.has_key?(changeset.errors, :email)
   end
 
+  defp normalize_update_attrs(attrs) do
+    status = blank_to_nil(Map.get(attrs, "status"))
+    admin_notes = Map.get(attrs, "adminNotes", :missing)
+
+    cond do
+      is_nil(status) and admin_notes == :missing ->
+        {:error, :invalid_payload}
+
+      not is_nil(status) and status not in @allowed_statuses ->
+        {:error, :invalid_status}
+
+      admin_notes != :missing and not (is_binary(admin_notes) or is_nil(admin_notes)) ->
+        {:error, :invalid_payload}
+
+      true ->
+        normalized = %{}
+        normalized = if is_nil(status), do: normalized, else: Map.put(normalized, :status, status)
+
+        normalized =
+          if admin_notes == :missing,
+            do: normalized,
+            else: Map.put(normalized, :admin_notes, admin_notes)
+
+        normalized =
+          if is_nil(status),
+            do: normalized,
+            else:
+              Map.put(
+                normalized,
+                :last_status_change,
+                DateTime.utc_now() |> DateTime.truncate(:second)
+              )
+
+        {:ok, normalized}
+    end
+  end
+
   defp parse_integer(value) when is_integer(value), do: value
 
   defp parse_integer(value) when is_binary(value) do
@@ -462,6 +559,45 @@ defmodule Dhc.Waitlist do
       insurance_form_submitted: fragment("false"),
       last_status_change: w.last_status_change
     })
+    |> subquery()
+  end
+
+  defp entry_by_id_query(id) do
+    from entry in all_positioned_entries_query(), where: entry.id == ^id
+  end
+
+  defp all_positioned_entries_query do
+    from(w in WaitlistEntry,
+      join: p in UserProfile,
+      on: p.waitlist_id == w.id,
+      left_join: wg in WaitlistGuardian,
+      on: wg.profile_id == p.id,
+      where: p.is_active == false and is_nil(p.supabase_user_id),
+      select: %{
+        id: w.id,
+        position:
+          fragment(
+            "row_number() OVER (ORDER BY ? ASC, ? ASC)::int",
+            w.initial_registration_date,
+            w.id
+          ),
+        full_name: fragment("concat(?, ' ', ?)", p.first_name, p.last_name),
+        email: w.email,
+        phone_number: p.phone_number,
+        status: type(w.status, :string),
+        age: fragment(@age_years_sql, p.date_of_birth),
+        initial_registration_date: w.initial_registration_date,
+        last_contacted: w.last_contacted,
+        medical_conditions: p.medical_conditions,
+        admin_notes: w.admin_notes,
+        social_media_consent: type(p.social_media_consent, :string),
+        guardian_first_name: wg.first_name,
+        guardian_last_name: wg.last_name,
+        guardian_phone_number: wg.phone_number,
+        insurance_form_submitted: fragment("false"),
+        last_status_change: w.last_status_change
+      }
+    )
     |> subquery()
   end
 
