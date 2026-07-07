@@ -1,14 +1,15 @@
 # CONTEXT: DHC Dashboard
 
-**Last updated:** 2026-06-18
+**Last updated:** 2026-07-07
 **Status:** Active migration from SvelteKit + Supabase + Deno edge functions to Phoenix + Ecto + Oban
 
 ## Domain Language
 
 | Term | Definition |
 |------|-----------|
-| **Member** | A person with a club membership. Owns club profile facts such as identity, contact data, active flag, and preferred weapon. Has a `user_profiles` record linked to `auth.users` via Supabase Auth. A Member has an `isActive` profile flag independent of their Membership status. |
-| **Membership** | A recurring subscription/access relationship managed via Stripe. Owns subscription and access state such as `active`, `inactive`, or `paused`, pause-until dates, and Stripe customer/subscription linkage. An inactive Membership means the member has no active subscription. Membership status is distinct from the Member's `isActive` flag. |
+| **Member** | A person with a club membership. Owns club profile facts such as identity, contact data, and preferred weapon. Has a `user_profiles` record linked to `auth.users` via Supabase Auth. |
+| **Membership** | A recurring subscription/access relationship managed via Stripe. Owns subscription and access state such as `active`, `inactive`, or `paused`, pause-until dates, and Stripe customer/subscription linkage. An inactive Membership means the member has no active subscription. |
+| **isActive** | A projection of Membership subscription state onto `user_profiles.is_active`, written by the Stripe webhook — a member is active iff they have an active Stripe subscription. It is NOT independently admin-settable; there is no API endpoint that writes it. Stripe is the source of truth; a missed webhook leaves the projection stale (drift risk). Distinct from `membershipStatus`, which also encodes `paused`. |
 | **Paused** | A Membership status where `subscription_paused_until` is in the future. The Member retains access (`isActive = true`) but is not charged. |
 | **Workshop** | A scheduled club activity with date, capacity, pricing, and registration. Use Workshop in domain/API language; `club_activity_*` is persistence vocabulary. |
 | **Registration** | A member's sign-up for a workshop. Has statuses (confirmed, cancelled, waitlisted) and links to payment. |
@@ -33,6 +34,8 @@
 | 0004 | Migrate Deno Edge Functions to Oban | Accepted |
 | 0005 | Migrate PostgREST Reads to Domain Phoenix APIs | Accepted |
 | 0006 | Testcontainers-Driven Phoenix Test Harness | Accepted |
+| 0007 | Members and Membership share storage but expose separate API boundaries | Accepted |
+| 0008 | Stripe owns Membership state; DHC owns Member profile facts | Accepted |
 
 ## Architecture (Target State)
 
