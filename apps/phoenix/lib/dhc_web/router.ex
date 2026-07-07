@@ -49,6 +49,7 @@ defmodule DhcWeb.Router do
     pipe_through :api
 
     get "/health", HealthController, :index
+    get "/options", MembersController, :options
     get "/waitlist/status", WaitlistController, :index
     post "/waitlist/entries", WaitlistController, :create
     post "/webhooks/stripe", StripeWebhooksController, :create
@@ -97,6 +98,8 @@ defmodule DhcWeb.Router do
     pipe_through [:api, :authenticated_api]
 
     get "/members/insurance-form", MembersController, :insurance_form
+    get "/members/:memberId", MembersController, :show
+    patch "/members/:memberId", MembersController, :update
     get "/notifications", NotificationsController, :index
     get "/workshops", WorkshopsController, :list
     # ALE-105: any authenticated member may read equipment categories.

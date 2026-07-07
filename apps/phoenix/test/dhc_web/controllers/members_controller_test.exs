@@ -31,6 +31,16 @@ defmodule DhcWeb.MembersControllerTest do
        }}
     end
 
+    def verify("self-token") do
+      {:ok,
+       %{
+         sub: "11111111-1111-1111-1111-111111111111",
+         email: "self@example.com",
+         roles: [],
+         raw: %{}
+       }}
+    end
+
     def verify(_token), do: {:error, :invalid_token}
   end
 
@@ -378,6 +388,145 @@ defmodule DhcWeb.MembersControllerTest do
     end
   end
 
+  describe "show" do
+    test "allows a member to read their own profile without a committee role", %{conn: conn} do
+      insert_member(
+        auth_user_id: "11111111-1111-1111-1111-111111111111",
+        email: "self@example.com",
+        first_name: "Self",
+        last_name: "Member"
+      )
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer self-token")
+        |> get("/api/members/11111111-1111-1111-1111-111111111111")
+
+      assert %{"data" => member} = json_response(conn, 200)
+      assert member["id"] == "11111111-1111-1111-1111-111111111111"
+      assert member["firstName"] == "Self"
+      assert member["email"] == "self@example.com"
+      assert member["dateOfBirth"] =~ ~r/^\d{4}-\d{2}-\d{2}$/
+    end
+
+    test "allows broad committee roles to read any member", %{conn: conn} do
+      %{auth_user_id: member_id} = insert_member(first_name: "Any", last_name: "Member")
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> get("/api/members/#{member_id}")
+
+      assert %{"data" => %{"firstName" => "Any"}} = json_response(conn, 200)
+    end
+
+    test "returns 403 when a non-admin reads another member", %{conn: conn} do
+      %{auth_user_id: member_id} = insert_member([])
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer member-token")
+        |> get("/api/members/#{member_id}")
+
+      assert %{"errors" => %{"detail" => "Insufficient role"}} = json_response(conn, 403)
+    end
+
+    test "returns 404 for an unknown member visible to an admin", %{conn: conn} do
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> get("/api/members/22222222-2222-2222-2222-222222222222")
+
+      assert %{"errors" => %{"detail" => "Member not found"}} = json_response(conn, 404)
+    end
+  end
+
+  describe "update" do
+    test "partially updates member profile facts and returns the full member", %{conn: conn} do
+      member_id = "11111111-1111-1111-1111-111111111111"
+
+      insert_member(
+        auth_user_id: member_id,
+        first_name: "Before",
+        last_name: "Member",
+        phone_number: "+353811111111",
+        preferred_weapon: ["longsword"],
+        customer_id: nil
+      )
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer self-token")
+        |> patch("/api/members/#{member_id}", %{
+          "firstName" => "After",
+          "phoneNumber" => "+353822222222",
+          "dateOfBirth" => "1992-03-04",
+          "medicalConditions" => nil,
+          "nextOfKinName" => "Emergency Contact",
+          "preferredWeapon" => ["sword_and_buckler"],
+          "insuranceFormSubmitted" => true,
+          "socialMediaConsent" => "yes_unrecognizable"
+        })
+
+      assert %{"data" => member} = json_response(conn, 200)
+      assert member["firstName"] == "After"
+      assert member["lastName"] == "Member"
+      assert member["phoneNumber"] == "+353822222222"
+      assert member["dateOfBirth"] == "1992-03-04"
+      assert member["medicalConditions"] == nil
+      assert member["nextOfKinName"] == "Emergency Contact"
+      assert member["preferredWeapon"] == ["sword_and_buckler"]
+      assert member["insuranceFormSubmitted"] == true
+      assert member["socialMediaConsent"] == "yes_unrecognizable"
+      assert member["isActive"] == true
+    end
+
+    test "allows an admin to update another member", %{conn: conn} do
+      %{auth_user_id: member_id} = insert_member(first_name: "Before", customer_id: nil)
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> patch("/api/members/#{member_id}", %{"firstName" => "AdminUpdated"})
+
+      assert %{"data" => %{"firstName" => "AdminUpdated"}} = json_response(conn, 200)
+    end
+
+    test "rejects attempts to write isActive", %{conn: conn} do
+      member_id = "11111111-1111-1111-1111-111111111111"
+      insert_member(auth_user_id: member_id)
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer self-token")
+        |> patch("/api/members/#{member_id}", %{"isActive" => false})
+
+      assert %{"errors" => %{"detail" => "Invalid member update payload"}} =
+               json_response(conn, 422)
+    end
+
+    test "returns 403 when a non-admin updates another member", %{conn: conn} do
+      %{auth_user_id: member_id} = insert_member([])
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer member-token")
+        |> patch("/api/members/#{member_id}", %{"firstName" => "Nope"})
+
+      assert %{"errors" => %{"detail" => "Insufficient role"}} = json_response(conn, 403)
+    end
+  end
+
+  describe "options" do
+    test "returns public enum option labels", %{conn: conn} do
+      conn = get(conn, "/api/options")
+
+      assert %{"data" => %{"genders" => genders, "weapons" => weapons}} = json_response(conn, 200)
+      assert "man (cis)" in genders
+      assert "longsword" in weapons
+    end
+  end
+
   describe "analytics" do
     test "returns members analytics in the dashboard chart shape, active-only, with unnested weapons",
          %{conn: conn} do
@@ -483,7 +632,7 @@ defmodule DhcWeb.MembersControllerTest do
     assert result.num_rows == 1
   end
 
-  defp insert_member(attrs) do
+  defp insert_member(attrs \\ []) do
     today = Date.utc_today()
     date_of_birth = %{today | year: today.year - Keyword.get(attrs, :age, 20)}
 
@@ -494,7 +643,11 @@ defmodule DhcWeb.MembersControllerTest do
       is_active: Keyword.get(attrs, :is_active, true),
       first_name: Keyword.get(attrs, :first_name, "Test"),
       last_name: Keyword.get(attrs, :last_name, "Member"),
-      subscription_paused_until: Keyword.get(attrs, :subscription_paused_until)
+      subscription_paused_until: Keyword.get(attrs, :subscription_paused_until),
+      auth_user_id: Keyword.get(attrs, :auth_user_id),
+      email: Keyword.get(attrs, :email),
+      phone_number: Keyword.get(attrs, :phone_number),
+      customer_id: Keyword.get(attrs, :customer_id)
     )
   end
 end
