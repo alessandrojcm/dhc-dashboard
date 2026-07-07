@@ -13,6 +13,7 @@ defmodule Dhc.MemberProfiles.MemberProfile do
   """
 
   use Ecto.Schema
+  import Ecto.Changeset
 
   @primary_key {:id, :binary_id, autogenerate: false}
   @foreign_key_type :binary_id
@@ -31,5 +32,16 @@ defmodule Dhc.MemberProfiles.MemberProfile do
     field :subscription_paused_until, :utc_datetime
 
     timestamps(type: :utc_datetime, inserted_at: :created_at)
+  end
+
+  @doc false
+  def member_profile_changeset(profile, attrs) do
+    profile
+    |> cast(attrs, [
+      :next_of_kin_name,
+      :next_of_kin_phone,
+      :preferred_weapon,
+      :insurance_form_submitted
+    ])
   end
 end

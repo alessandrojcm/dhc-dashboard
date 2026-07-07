@@ -14,6 +14,8 @@ defmodule Dhc.Members do
   alias Dhc.Repo
   alias Dhc.UserProfiles.UserProfile
 
+  require Logger
+
   @insurance_form_link_key "hema_insurance_form_link"
   # Mirrors `member_management_view.age` (`EXTRACT(year FROM AGE(date_of_birth))`)
   # so analytics match the prior client-side aggregates exactly.
@@ -22,6 +24,7 @@ defmodule Dhc.Members do
   @allowed_sort_fields ~w(firstName lastName email phoneNumber age membershipStartDate lastPaymentDate subscriptionPausedUntil isActive)
   @allowed_directions ~w(asc desc)
   @allowed_membership_statuses ~w(active inactive paused)
+  @profile_update_fields ~w(firstName lastName phoneNumber dateOfBirth pronouns gender medicalConditions nextOfKinName nextOfKinPhone preferredWeapon insuranceFormSubmitted socialMediaConsent)
   @epoch_datetime ~U[1970-01-01 00:00:00Z]
   @member_sort_specs %{
     "firstName" => %{field: :first_name},
@@ -144,12 +147,184 @@ defmodule Dhc.Members do
     end
   end
 
+  @doc """
+  Returns one domain-shaped member DTO by Supabase auth user id.
+
+  This absorbs the read side of the legacy `get_member_data` RPC while keeping
+  the API DTO aligned with the member list shape.
+  """
+  @spec get_member(String.t()) :: {:ok, map()} | {:error, :not_found}
+  def get_member(member_id) do
+    case member_query(member_id) |> Repo.one() do
+      nil -> {:error, :not_found}
+      member -> {:ok, member}
+    end
+  end
+
+  @doc """
+  Partially updates member profile facts for one Supabase auth user id.
+
+  `isActive` is intentionally not accepted: Stripe/webhooks own that projection.
+  When name or phone changes, Stripe customer fields are echoed best-effort after
+  the database write; Stripe failures are logged but do not fail the API call.
+  """
+  @spec update_member(String.t(), map()) ::
+          {:ok, map()} | {:error, :not_found | :invalid_payload | Ecto.Changeset.t()}
+  def update_member(member_id, attrs) when is_map(attrs) do
+    cond do
+      Map.has_key?(attrs, "isActive") ->
+        {:error, :invalid_payload}
+
+      Enum.any?(Map.keys(attrs), &(&1 not in @profile_update_fields)) ->
+        {:error, :invalid_payload}
+
+      map_size(attrs) == 0 ->
+        {:error, :invalid_payload}
+
+      true ->
+        do_update_member(member_id, attrs)
+    end
+  end
+
+  @doc """
+  Returns cross-cutting enum labels used by profile and waitlist forms.
+  """
+  @spec options() :: %{genders: [String.t()], weapons: [String.t()]}
+  def options do
+    %{
+      genders: enum_labels("gender"),
+      weapons: enum_labels("preferred_weapon")
+    }
+  end
+
   @doc false
   def decode_datetime_cursor(value) do
     case DateTime.from_iso8601(value) do
       {:ok, datetime, _offset} -> datetime
       _ -> @epoch_datetime
     end
+  end
+
+  defp do_update_member(member_id, attrs) do
+    Repo.transaction(fn ->
+      case load_profile_pair(member_id) do
+        nil ->
+          Repo.rollback(:not_found)
+
+        {user_profile, member_profile} ->
+          current = %{
+            first_name: user_profile.first_name,
+            last_name: user_profile.last_name,
+            phone_number: user_profile.phone_number,
+            customer_id: user_profile.customer_id
+          }
+
+          with {:ok, _user_profile} <- update_user_profile(user_profile, attrs),
+               {:ok, _member_profile} <- update_member_profile(member_profile, attrs),
+               {:ok, member} <- get_member(member_id) do
+            maybe_echo_customer_to_stripe(current, member, attrs)
+            member
+          else
+            {:error, %Ecto.Changeset{} = changeset} -> Repo.rollback(changeset)
+            {:error, :not_found} -> Repo.rollback(:not_found)
+          end
+      end
+    end)
+    |> case do
+      {:ok, member} -> {:ok, member}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp load_profile_pair(member_id) do
+    from(m in MemberProfile,
+      join: p in UserProfile,
+      on: p.id == m.user_profile_id,
+      where: m.id == ^member_id,
+      select: {p, m}
+    )
+    |> Repo.one()
+  end
+
+  defp update_user_profile(user_profile, attrs) do
+    attrs =
+      %{}
+      |> put_if_present(:first_name, attrs, "firstName")
+      |> put_if_present(:last_name, attrs, "lastName")
+      |> put_if_present(:phone_number, attrs, "phoneNumber")
+      |> put_if_present(:date_of_birth, attrs, "dateOfBirth")
+      |> put_if_present(:pronouns, attrs, "pronouns")
+      |> put_if_present(:gender, attrs, "gender")
+      |> put_if_present(:medical_conditions, attrs, "medicalConditions")
+      |> put_if_present(:social_media_consent, attrs, "socialMediaConsent")
+
+    user_profile
+    |> UserProfile.member_profile_changeset(attrs)
+    |> Repo.update()
+  end
+
+  defp update_member_profile(member_profile, attrs) do
+    attrs =
+      %{}
+      |> put_if_present(:next_of_kin_name, attrs, "nextOfKinName")
+      |> put_if_present(:next_of_kin_phone, attrs, "nextOfKinPhone")
+      |> put_if_present(:preferred_weapon, attrs, "preferredWeapon")
+      |> put_if_present(:insurance_form_submitted, attrs, "insuranceFormSubmitted")
+
+    member_profile
+    |> MemberProfile.member_profile_changeset(attrs)
+    |> Repo.update()
+  end
+
+  defp put_if_present(result, atom_key, source, string_key) do
+    if Map.has_key?(source, string_key) do
+      Map.put(result, atom_key, Map.get(source, string_key))
+    else
+      result
+    end
+  end
+
+  defp maybe_echo_customer_to_stripe(current, member, attrs) do
+    name_present? = Map.has_key?(attrs, "firstName") or Map.has_key?(attrs, "lastName")
+    phone_present? = Map.has_key?(attrs, "phoneNumber")
+
+    current_name = "#{current.first_name || ""} #{current.last_name || ""}" |> String.trim()
+    new_name = "#{member.first_name || ""} #{member.last_name || ""}" |> String.trim()
+    name_changed? = name_present? and current_name != new_name
+    phone_changed? = phone_present? and current.phone_number != member.phone_number
+
+    if current.customer_id && (name_changed? or phone_changed?) do
+      body = %{}
+      body = if name_changed?, do: Map.put(body, :name, new_name), else: body
+      body = if phone_changed?, do: Map.put(body, :phone, member.phone_number), else: body
+
+      case Dhc.Stripe.Client.request(
+             method: :post,
+             url: "/v1/customers/#{URI.encode(current.customer_id)}",
+             body: body
+           ) do
+        {:ok, _body} ->
+          :ok
+
+        {:error, reason} ->
+          Logger.warning("[members] Stripe customer echo failed; leaving DB update committed",
+            member_id: member.id,
+            customer_id: current.customer_id,
+            reason: inspect(reason)
+          )
+      end
+    end
+  end
+
+  defp enum_labels(type_name) do
+    from(e in "pg_enum",
+      join: t in "pg_type",
+      on: field(t, :oid) == field(e, :enumtypid),
+      where: field(t, :typname) == ^type_name,
+      order_by: field(e, :enumsortorder),
+      select: field(e, :enumlabel)
+    )
+    |> Repo.all()
   end
 
   @spec insurance_form_link() :: String.t() | nil
@@ -413,6 +588,7 @@ defmodule Dhc.Members do
         last_name: p.last_name,
         email: u.email,
         phone_number: p.phone_number,
+        date_of_birth: p.date_of_birth,
         gender: p.gender,
         pronouns: p.pronouns,
         is_active: p.is_active,
@@ -445,6 +621,12 @@ defmodule Dhc.Members do
       }
     )
     |> subquery()
+  end
+
+  defp member_query(member_id) do
+    %{sort: "lastName", q: nil, membership_status: nil}
+    |> positioned_list_query()
+    |> where([m], m.id == ^member_id)
   end
 
   defp list_order_field("firstName"), do: :first_name

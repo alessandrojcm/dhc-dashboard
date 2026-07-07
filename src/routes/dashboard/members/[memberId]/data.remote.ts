@@ -1,11 +1,12 @@
 import { form, getRequestEvent } from "$app/server";
+import { membersUpdate } from "@dhc/api-client";
 import * as v from "valibot";
 import formSchema, {
 	memberProfileClientSchema,
 } from "$lib/schemas/membersSignup";
 import { invariant } from "$lib/server/invariant";
-import { getRolesFromSession, SETTINGS_ROLES } from "$lib/server/roles";
-import { createProfileService } from "$lib/server/services/members";
+import { getRolesFromSession, MEMBERS_ADMIN_ROLES } from "$lib/server/roles";
+import { apiClientOptions } from "$lib/server/api-client";
 import { invalid } from "@sveltejs/kit";
 
 async function canUpdateSettings() {
@@ -13,7 +14,7 @@ async function canUpdateSettings() {
 	const { session } = await event.locals.safeGetSession();
 	invariant(session === null, "Unauthorized");
 	const roles = getRolesFromSession(session!);
-	if (roles.intersection(SETTINGS_ROLES).size > 0) {
+	if (roles.intersection(MEMBERS_ADMIN_ROLES).size > 0) {
 		return true;
 	}
 	const {
@@ -39,7 +40,7 @@ export const updateProfile = form(
 		}
 
 		const { session } = await event.locals.safeGetSession();
-		if (!session || !event.platform?.env.HYPERDRIVE) {
+		if (!session) {
 			throw new Error("Unauthorized");
 		}
 
@@ -72,35 +73,25 @@ export const updateProfile = form(
 			return;
 		}
 
-		const profileService = createProfileService(event.platform, session);
-
-		// Convert dateOfBirth string to Date (required field)
-		const dateOfBirth = new Date(data.dateOfBirth);
-
 		try {
-			await profileService.updateProfile(memberId, {
-				firstName: data.firstName,
-				lastName: data.lastName,
-				phoneNumber: data.phoneNumber,
-				dateOfBirth,
-				pronouns: data.pronouns,
-				gender: data.gender as
-					| "male"
-					| "female"
-					| "non_binary"
-					| "prefer_not_to_say"
-					| "other"
-					| undefined,
-				medicalConditions: data.medicalConditions,
-				nextOfKin: data.nextOfKin,
-				nextOfKinNumber: data.nextOfKinNumber,
-				preferredWeapon: data.weapon,
-				insuranceFormSubmitted: data.insuranceFormSubmitted,
-				socialMediaConsent: data.socialMediaConsent as
-					| "yes"
-					| "no"
-					| "ask_me"
-					| undefined,
+			await membersUpdate({
+				...apiClientOptions(session),
+				path: { memberId },
+				body: {
+					firstName: data.firstName,
+					lastName: data.lastName,
+					phoneNumber: data.phoneNumber,
+					dateOfBirth: data.dateOfBirth,
+					pronouns: data.pronouns,
+					gender: data.gender,
+					medicalConditions: data.medicalConditions,
+					nextOfKinName: data.nextOfKin,
+					nextOfKinPhone: data.nextOfKinNumber,
+					preferredWeapon: data.weapon,
+					insuranceFormSubmitted: data.insuranceFormSubmitted,
+					socialMediaConsent: data.socialMediaConsent,
+				},
+				throwOnError: true,
 			});
 
 			return { success: "Profile has been updated!" };

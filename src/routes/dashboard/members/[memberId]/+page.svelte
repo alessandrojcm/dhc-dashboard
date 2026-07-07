@@ -58,7 +58,11 @@ $effect(() => {
 // Reactive form field values
 const dateOfBirth = $derived(updateProfile.fields.dateOfBirth.value() ?? "");
 const gender = $derived(updateProfile.fields.gender.value() ?? "");
-const weapon = $derived(updateProfile.fields.weapon.value() ?? []);
+const weapon = $derived(
+	(updateProfile.fields.weapon.value() ?? []).filter(
+		(value): value is string => typeof value === "string",
+	),
+);
 const socialMediaConsent = $derived(
 	updateProfile.fields.socialMediaConsent.value(),
 );
