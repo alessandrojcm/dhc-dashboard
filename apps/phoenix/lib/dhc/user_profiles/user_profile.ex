@@ -63,4 +63,27 @@ defmodule Dhc.UserProfiles.UserProfile do
       "yes_unrecognizable"
     ])
   end
+
+  @doc false
+  def member_profile_changeset(profile, attrs) do
+    profile
+    |> cast(attrs, [
+      :first_name,
+      :last_name,
+      :medical_conditions,
+      :date_of_birth,
+      :gender,
+      :pronouns,
+      :phone_number,
+      :social_media_consent
+    ])
+    |> validate_required([:first_name, :last_name], message: "can't be blank")
+    |> validate_length(:first_name, min: 1)
+    |> validate_length(:last_name, min: 1)
+    |> validate_inclusion(:social_media_consent, [
+      "no",
+      "yes_recognizable",
+      "yes_unrecognizable"
+    ])
+  end
 end

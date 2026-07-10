@@ -37,14 +37,12 @@ import { getKyselyClient, sentryLogger } from "../shared";
 import { MemberService } from "./member.service";
 import { ProfileService } from "./profile.service";
 import { WaitlistService } from "./waitlist.service";
-import { SubscriptionService } from "./subscription.service";
 import { stripeClient } from "$lib/server/stripe";
 
 // Re-export services
 export { MemberService } from "./member.service";
 export { ProfileService } from "./profile.service";
 export { WaitlistService } from "./waitlist.service";
-export { SubscriptionService } from "./subscription.service";
 
 // Re-export types and schemas
 export type {
@@ -161,16 +159,4 @@ export function createWaitlistService(
 	);
 }
 
-export function createSubscriptionService(
-	platform: App.Platform,
-	session: Session,
-	stripe?: Stripe,
-	logger?: Logger,
-): SubscriptionService {
-	return new SubscriptionService(
-		getKyselyClient(platform.env.HYPERDRIVE),
-		session,
-		stripe ?? stripeClient,
-		logger ?? sentryLogger,
-	);
-}
+
