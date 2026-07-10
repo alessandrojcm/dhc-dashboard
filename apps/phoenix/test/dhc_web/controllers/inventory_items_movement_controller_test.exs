@@ -191,6 +191,24 @@ defmodule DhcWeb.InventoryItemsMovementControllerTest do
 
       assert json_response(conn, 403)
     end
+
+    test "move to the same container is a no-op — no spurious moved history", %{conn: conn} do
+      category = insert_category!("ALE108 Same Container")
+      container = create_container!(%{"name" => "Same Box"})
+      item = create_item!(item_payload(container, category))
+
+      conn =
+        conn
+        |> auth_conn("quartermaster")
+        |> post("/api/inventory/items/#{to_uuid(item.id)}/move", %{
+          "containerId" => to_uuid(container.id)
+        })
+
+      assert %{"data" => payload} = json_response(conn, 200)
+      assert payload["containerId"] == to_uuid(container.id)
+      # Only the original "created" row — no "moved".
+      assert history_actions(payload["id"]) == ["created"]
+    end
   end
 
   describe "maintenance" do
@@ -295,6 +313,26 @@ defmodule DhcWeb.InventoryItemsMovementControllerTest do
         })
 
       assert json_response(conn, 403)
+    end
+
+    test "maintenance flip to same state is a no-op — no spurious maintenance history", %{
+      conn: conn
+    } do
+      category = insert_category!("ALE108 Same Maint")
+      container = create_container!(%{"name" => "Box"})
+      item = create_item!(item_payload(container, category, %{"outForMaintenance" => true}))
+
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> post("/api/inventory/items/#{to_uuid(item.id)}/maintenance", %{
+          "outForMaintenance" => true
+        })
+
+      assert %{"data" => payload} = json_response(conn, 200)
+      assert payload["outForMaintenance"] == true
+      # Only the original "created" row — no "maintenance_out".
+      assert history_actions(payload["id"]) == ["created"]
     end
   end
 
