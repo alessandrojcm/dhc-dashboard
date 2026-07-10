@@ -235,7 +235,7 @@ defmodule Dhc.Members do
       {:error, reason} -> {:error, reason}
     end
   rescue
-    e in Postgrex.Error -> {:error, :invalid_payload}
+    _e in Postgrex.Error -> {:error, :invalid_payload}
   end
 
   defp load_profile_pair(member_id) do
