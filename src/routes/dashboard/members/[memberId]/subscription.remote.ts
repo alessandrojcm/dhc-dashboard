@@ -4,7 +4,8 @@ import dayjs from "dayjs";
 import * as v from "valibot";
 import { authorize } from "$lib/server/auth";
 import { SETTINGS_ROLES } from "$lib/server/roles";
-import { createSubscriptionService } from "$lib/server/services/members";
+import { apiBaseUrl, apiClientOptions } from "$lib/server/api-client";
+import { membershipPause, membershipResume } from "@dhc/api-client";
 
 export const pauseSubscription = command(
 	v.object({
@@ -22,7 +23,7 @@ export const pauseSubscription = command(
 		),
 	}),
 	async ({ memberId, pauseUntil }) => {
-		const { locals, platform } = getRequestEvent();
+		const { locals } = getRequestEvent();
 		const { session } = await locals.safeGetSession();
 
 		if (!session) {
@@ -33,17 +34,25 @@ export const pauseSubscription = command(
 			await authorize(locals, SETTINGS_ROLES);
 		}
 
-		const service = createSubscriptionService(platform!, session);
-		const subscription = await service.pause(memberId, pauseUntil);
+		const response = await membershipPause({
+			...apiClientOptions(session),
+			path: { memberId },
+			body: { pauseUntil: pauseUntil.toISOString() },
+			throwOnError: false,
+		});
 
-		return { success: true as const, subscription };
+		if (response.error) {
+			error(response.response?.status ?? 500, "Failed to pause membership");
+		}
+
+		return { success: true as const, member: response.data!.data };
 	},
 );
 
 export const resumeSubscription = command(
 	v.pipe(v.string(), v.uuid()),
 	async (memberId) => {
-		const { locals, platform } = getRequestEvent();
+		const { locals } = getRequestEvent();
 		const { session } = await locals.safeGetSession();
 
 		if (!session) {
@@ -54,9 +63,16 @@ export const resumeSubscription = command(
 			await authorize(locals, SETTINGS_ROLES);
 		}
 
-		const service = createSubscriptionService(platform!, session);
-		const subscription = await service.resume(memberId);
+		const response = await membershipResume({
+			...apiClientOptions(session),
+			path: { memberId },
+			throwOnError: false,
+		});
 
-		return { success: true as const, subscription };
+		if (response.error) {
+			error(response.response?.status ?? 500, "Failed to resume membership");
+		}
+
+		return { success: true as const, member: response.data!.data };
 	},
 );

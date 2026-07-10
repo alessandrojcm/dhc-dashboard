@@ -1,4 +1,4 @@
-import { membersInsuranceForm, membersShow, optionsIndex } from "@dhc/api-client";
+import { membersInsuranceForm, membersOptions, membersShow } from "@dhc/api-client";
 import * as Sentry from "@sentry/sveltekit";
 import { error, type ServerLoadEvent } from "@sveltejs/kit";
 import { apiBaseUrl, apiClientOptions } from "$lib/server/api-client";
@@ -51,7 +51,7 @@ export const load: PageServerLoad = async (event) => {
 			return error(404, "Member not found");
 		}
 
-		const options = optionsIndex({ baseUrl: apiBaseUrl() }).then(
+		const options = membersOptions({ baseUrl: apiBaseUrl() }).then(
 			(response) => response.data?.data ?? { genders: [], weapons: [] },
 		);
 		const preferredWeapon = (memberProfile.preferredWeapon ?? []).filter(

@@ -55,6 +55,8 @@ defmodule Dhc.Stripe.Client do
   Returns `{:ok, decoded_body}` on success or `{:error, term()}` on failure.
   """
   @spec request(keyword()) :: {:ok, map()} | {:error, term()}
+  def request(opts) when is_map(opts), do: opts |> Map.to_list() |> request()
+
   def request(opts) do
     method = Keyword.get(opts, :method, :get)
     url = Keyword.get(opts, :url, "")

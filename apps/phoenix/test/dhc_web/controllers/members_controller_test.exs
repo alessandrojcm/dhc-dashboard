@@ -515,6 +515,156 @@ defmodule DhcWeb.MembersControllerTest do
 
       assert %{"errors" => %{"detail" => "Insufficient role"}} = json_response(conn, 403)
     end
+
+    test "updates preferredWeapon with multiple weapon types", %{conn: conn} do
+      member_id = "11111111-1111-1111-1111-111111111111"
+
+      insert_member(
+        auth_user_id: member_id,
+        preferred_weapon: ["longsword"],
+        customer_id: nil
+      )
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer self-token")
+        |> patch("/api/members/#{member_id}", %{
+          "preferredWeapon" => ["longsword", "sword_and_buckler"]
+        })
+
+      assert %{"data" => member} = json_response(conn, 200)
+      assert member["preferredWeapon"] == ["longsword", "sword_and_buckler"]
+    end
+
+    test "rejects an invalid preferred_weapon enum value", %{conn: conn} do
+      member_id = "11111111-1111-1111-1111-111111111111"
+
+      insert_member(auth_user_id: member_id, customer_id: nil)
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer self-token")
+        |> patch("/api/members/#{member_id}", %{
+          "preferredWeapon" => ["lightsaber"]
+        })
+
+      assert %{"errors" => %{"detail" => "Invalid member update payload"}} =
+               json_response(conn, 422)
+    end
+  end
+
+  describe "membership pause/resume" do
+    setup do
+      bypass = Bypass.open()
+      original_url = Application.get_env(:dhc, :stripe_api_url)
+      original_key = Application.get_env(:dhc, :stripe_secret_key)
+
+      Application.put_env(:dhc, :stripe_api_url, "http://localhost:#{bypass.port}")
+      Application.put_env(:dhc, :stripe_secret_key, "sk_test_123")
+
+      on_exit(fn ->
+        Application.put_env(:dhc, :stripe_api_url, original_url)
+        Application.put_env(:dhc, :stripe_secret_key, original_key)
+      end)
+
+      {:ok, bypass: bypass}
+    end
+
+    test "pauses a member subscription after Stripe confirms", %{conn: conn, bypass: bypass} do
+      member_id = "11111111-1111-1111-1111-111111111111"
+      insert_member(auth_user_id: member_id, customer_id: "cus_pause")
+      pause_until = DateTime.utc_now() |> DateTime.add(7, :day) |> DateTime.truncate(:second)
+
+      expect_subscription_list(bypass, "cus_pause", [active_membership_subscription()])
+
+      Bypass.expect(bypass, "POST", "/v1/subscriptions/sub_membership", fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        params = URI.decode_query(body)
+
+        assert params["pause_collection[behavior]"] == "void"
+        assert params["pause_collection[resumes_at]"] == to_string(DateTime.to_unix(pause_until))
+
+        stripe_json(conn, %{
+          "id" => "sub_membership",
+          "pause_collection" => %{
+            "behavior" => "void",
+            "resumes_at" => DateTime.to_unix(pause_until)
+          }
+        })
+      end)
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer self-token")
+        |> post("/api/members/#{member_id}/membership/pause", %{
+          "pauseUntil" => DateTime.to_iso8601(pause_until)
+        })
+
+      assert %{"data" => member} = json_response(conn, 200)
+      assert member["subscriptionPausedUntil"] == DateTime.to_iso8601(pause_until)
+      assert member["membershipStatus"] == "paused"
+    end
+
+    test "resumes a paused member subscription after Stripe confirms", %{
+      conn: conn,
+      bypass: bypass
+    } do
+      member_id = "11111111-1111-1111-1111-111111111111"
+      paused_until = DateTime.utc_now() |> DateTime.add(7, :day) |> DateTime.truncate(:second)
+
+      insert_member(
+        auth_user_id: member_id,
+        customer_id: "cus_resume",
+        subscription_paused_until: paused_until
+      )
+
+      expect_subscription_list(bypass, "cus_resume", [paused_membership_subscription()])
+
+      Bypass.expect(bypass, "POST", "/v1/subscriptions/sub_membership", fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        params = URI.decode_query(body)
+
+        assert params["pause_collection"] == ""
+
+        stripe_json(conn, %{"id" => "sub_membership", "pause_collection" => nil})
+      end)
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer self-token")
+        |> post("/api/members/#{member_id}/membership/resume")
+
+      assert %{"data" => member} = json_response(conn, 200)
+      assert member["subscriptionPausedUntil"] == nil
+      assert member["membershipStatus"] == "active"
+    end
+
+    test "rejects out-of-range pause dates", %{conn: conn} do
+      member_id = "11111111-1111-1111-1111-111111111111"
+      insert_member(auth_user_id: member_id, customer_id: "cus_invalid")
+
+      too_soon = DateTime.utc_now() |> DateTime.add(12, :hour) |> DateTime.to_iso8601()
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer self-token")
+        |> post("/api/members/#{member_id}/membership/pause", %{"pauseUntil" => too_soon})
+
+      assert %{"errors" => %{"detail" => "Invalid membership pause payload"}} =
+               json_response(conn, 422)
+    end
+
+    test "returns 403 when a non-admin pauses another member", %{conn: conn} do
+      %{auth_user_id: member_id} = insert_member([])
+      pause_until = DateTime.utc_now() |> DateTime.add(7, :day) |> DateTime.to_iso8601()
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer member-token")
+        |> post("/api/members/#{member_id}/membership/pause", %{"pauseUntil" => pause_until})
+
+      assert %{"errors" => %{"detail" => "Insufficient role"}} = json_response(conn, 403)
+    end
   end
 
   describe "options" do
@@ -630,6 +780,43 @@ defmodule DhcWeb.MembersControllerTest do
       Repo.query!("UPDATE settings SET value = $1 WHERE key = 'hema_insurance_form_link'", [value])
 
     assert result.num_rows == 1
+  end
+
+  defp expect_subscription_list(bypass, customer_id, subscriptions) do
+    Bypass.expect(bypass, "GET", "/v1/subscriptions", fn conn ->
+      assert conn.query_params["customer"] == customer_id
+      assert conn.query_params["limit"] == "10"
+
+      stripe_json(conn, %{
+        "object" => "list",
+        "data" => subscriptions,
+        "has_more" => false
+      })
+    end)
+  end
+
+  defp active_membership_subscription do
+    %{
+      "id" => "sub_membership",
+      "status" => "active",
+      "pause_collection" => nil,
+      "items" => %{
+        "data" => [
+          %{"price" => %{"lookup_key" => "standard_membership_fee"}}
+        ]
+      }
+    }
+  end
+
+  defp paused_membership_subscription do
+    active_membership_subscription()
+    |> Map.put("pause_collection", %{"behavior" => "void", "resumes_at" => 1_800_000_000})
+  end
+
+  defp stripe_json(conn, body) do
+    conn
+    |> Plug.Conn.put_resp_content_type("application/json")
+    |> Plug.Conn.send_resp(200, Jason.encode!(body))
   end
 
   defp insert_member(attrs \\ []) do
