@@ -505,6 +505,60 @@ defmodule DhcWeb.MembersControllerTest do
                json_response(conn, 422)
     end
 
+    # #9: customerId is the Stripe linkage and NOT in @profile_update_fields.
+    # A self-update that could set it would let a member point their profile
+    # at someone else's Stripe customer.
+    test "rejects writing customerId (Stripe linkage is not allowlisted)", %{conn: conn} do
+      member_id = "11111111-1111-1111-1111-111111111111"
+      insert_member(auth_user_id: member_id, customer_id: "cus_original")
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer self-token")
+        |> patch("/api/members/#{member_id}", %{"customerId" => "cus_attacker"})
+
+      assert %{"errors" => %{"detail" => "Invalid member update payload"}} =
+               json_response(conn, 422)
+    end
+
+    # #10: email, membershipStatus, and roles are all non-allowlisted. A
+    # single parametrized test covers the lot.
+    test "rejects non-allowlisted fields (email, membershipStatus, roles)", %{conn: conn} do
+      member_id = "11111111-1111-1111-1111-111111111111"
+      insert_member(auth_user_id: member_id)
+
+      values = %{
+        "email" => "attacker@example.com",
+        "membershipStatus" => "inactive",
+        "roles" => ["admin"]
+      }
+
+      for field <- Map.keys(values) do
+        conn =
+          build_conn()
+          |> put_req_header("authorization", "Bearer self-token")
+          |> patch("/api/members/#{member_id}", %{field => values[field]})
+
+        assert %{"errors" => %{"detail" => "Invalid member update payload"}} =
+                 json_response(conn, 422),
+               "expected 422 for non-allowlisted field: #{field}"
+      end
+    end
+
+    # #11: empty PATCH body ({}) hits the map_size(attrs) == 0 branch.
+    test "rejects an empty PATCH body", %{conn: conn} do
+      member_id = "11111111-1111-1111-1111-111111111111"
+      insert_member(auth_user_id: member_id)
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer self-token")
+        |> patch("/api/members/#{member_id}", %{})
+
+      assert %{"errors" => %{"detail" => "Invalid member update payload"}} =
+               json_response(conn, 422)
+    end
+
     test "returns 403 when a non-admin updates another member", %{conn: conn} do
       %{auth_user_id: member_id} = insert_member([])
 
@@ -664,6 +718,87 @@ defmodule DhcWeb.MembersControllerTest do
         |> post("/api/members/#{member_id}/membership/pause", %{"pauseUntil" => pause_until})
 
       assert %{"errors" => %{"detail" => "Insufficient role"}} = json_response(conn, 403)
+    end
+
+    # #12: Resume when not currently paused. The existing resume test
+    # always starts paused; this proves a not-paused member gets a defined
+    # 409 (subscription_not_found), not a nil-key crash or Stripe call.
+    test "resume when not currently paused returns 409, not a crash", %{conn: conn} do
+      member_id = "11111111-1111-1111-1111-111111111111"
+      insert_member(auth_user_id: member_id, customer_id: "cus_not_paused")
+
+      # No Stripe stub: ensure_locally_paused/1 fails before any Stripe
+      # call because subscription_paused_until is nil.
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer self-token")
+        |> post("/api/members/#{member_id}/membership/resume")
+
+      assert %{"errors" => %{"detail" => "Membership subscription not found"}} =
+               json_response(conn, 409)
+    end
+
+    # #13: Pause with no active membership subscription. The customer has
+    # no standard_membership_fee subscription — find_membership_subscription
+    # returns :subscription_not_found, not a nil-key crash.
+    test "pause with no active membership subscription returns 409", %{
+      conn: conn,
+      bypass: bypass
+    } do
+      member_id = "11111111-1111-1111-1111-111111111111"
+      insert_member(auth_user_id: member_id, customer_id: "cus_nosub")
+
+      pause_until = DateTime.utc_now() |> DateTime.add(7, :day) |> DateTime.to_iso8601()
+
+      expect_subscription_list(bypass, "cus_nosub", [])
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer self-token")
+        |> post("/api/members/#{member_id}/membership/pause", %{
+          "pauseUntil" => pause_until
+        })
+
+      assert %{"errors" => %{"detail" => "Membership subscription not found"}} =
+               json_response(conn, 409)
+    end
+
+    # #14: Stripe 5xx during pause returns 502 and rolls back the local
+    # subscription_paused_until write. The local DB write must be
+    # conditional on Stripe success — the with chain short-circuits before
+    # write_pause_until is called.
+    test "Stripe 5xx during pause returns 502 and does not write subscription_paused_until", %{
+      conn: conn,
+      bypass: bypass
+    } do
+      member_id = "11111111-1111-1111-1111-111111111111"
+      insert_member(auth_user_id: member_id, customer_id: "cus_5xx")
+
+      pause_until = DateTime.utc_now() |> DateTime.add(7, :day) |> DateTime.truncate(:second)
+
+      expect_subscription_list(bypass, "cus_5xx", [active_membership_subscription()])
+
+      Bypass.expect(bypass, "POST", "/v1/subscriptions/sub_membership", fn conn ->
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(
+          503,
+          Jason.encode!(%{"error" => %{"message" => "Service unavailable"}})
+        )
+      end)
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer self-token")
+        |> post("/api/members/#{member_id}/membership/pause", %{
+          "pauseUntil" => DateTime.to_iso8601(pause_until)
+        })
+
+      assert %{"errors" => %{"detail" => "Stripe membership update failed"}} =
+               json_response(conn, 502)
+
+      # The local subscription_paused_until must not have been written.
+      assert member_subscription_paused_until(member_id) == nil
     end
   end
 
@@ -836,5 +971,18 @@ defmodule DhcWeb.MembersControllerTest do
       phone_number: Keyword.get(attrs, :phone_number),
       customer_id: Keyword.get(attrs, :customer_id)
     )
+  end
+
+  defp member_subscription_paused_until(auth_user_id) do
+    %{rows: rows} =
+      Repo.query!(
+        "SELECT subscription_paused_until FROM member_profiles WHERE id = $1",
+        [Ecto.UUID.dump!(auth_user_id)]
+      )
+
+    case rows do
+      [[value]] -> value
+      [] -> nil
+    end
   end
 end
