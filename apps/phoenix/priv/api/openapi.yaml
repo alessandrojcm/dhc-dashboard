@@ -30,9 +30,13 @@ tags:
     x-resource: InventoryHistory
   - name: Members
     description: |
-      Member profile facts (identity, contact, preferred weapon) and aggregate
-      member reads. Profile facts are owned by the Dhc.Members context; membership
-      state fields on the same DTOs are contributed by Dhc.Membership.
+      Member profile facts (identity, contact, preferred weapon), aggregate
+      member reads, and cross-cutting enum-option reads (gender, preferred
+      weapon) shared by the authenticated member edit form and the public
+      waitlist intake. Profile facts are owned by the Dhc.Members context;
+      membership state fields on the same DTOs are contributed by
+      Dhc.Membership. Enum options are sourced from Postgres enum types at
+      runtime and are public (no auth).
     x-context: Dhc.Members
     x-resource: Member
   - name: Membership
@@ -44,13 +48,6 @@ tags:
       context functions, not in a separate schema (see ADR-0007).
     x-context: Dhc.Membership
     x-resource: Membership
-  - name: Options
-    description: |
-      Cross-cutting enum-option reads (gender, preferred weapon) shared by the
-      authenticated member edit form and the public waitlist intake. Sourced
-      from Postgres enum types at runtime; public (no auth).
-    x-context: Dhc.Members
-    x-resource: Option
 
 paths:
   /health:
@@ -1120,9 +1117,9 @@ paths:
 
   /options:
     get:
-      operationId: options.index
+      operationId: members.options
       tags:
-        - Options
+        - Members
       summary: Read cross-cutting enum options (gender, preferred weapon)
       description: |
         Returns the labels of the `gender` and `preferred_weapon` Postgres

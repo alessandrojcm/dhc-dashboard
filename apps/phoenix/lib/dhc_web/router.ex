@@ -100,6 +100,8 @@ defmodule DhcWeb.Router do
     get "/members/insurance-form", MembersController, :insurance_form
     get "/members/:memberId", MembersController, :show
     patch "/members/:memberId", MembersController, :update
+    post "/members/:memberId/membership/pause", MembershipController, :pause
+    post "/members/:memberId/membership/resume", MembershipController, :resume
     get "/notifications", NotificationsController, :index
     get "/workshops", WorkshopsController, :list
     # ALE-105: any authenticated member may read equipment categories.
