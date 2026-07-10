@@ -17,6 +17,10 @@ defmodule DhcWeb.MembersJSON do
     %{data: %{link: insurance_form.link}}
   end
 
+  def render("show.json", %{member: member}) do
+    %{data: member(member)}
+  end
+
   def render("analytics.json", %{analytics: analytics}) do
     %{
       data: %{
@@ -29,6 +33,10 @@ defmodule DhcWeb.MembersJSON do
     }
   end
 
+  def render("options.json", %{options: options}) do
+    %{data: %{genders: options.genders, weapons: options.weapons}}
+  end
+
   defp member(member) do
     %{
       id: member.id,
@@ -36,6 +44,7 @@ defmodule DhcWeb.MembersJSON do
       lastName: member.last_name,
       email: member.email,
       phoneNumber: member.phone_number,
+      dateOfBirth: member.date_of_birth,
       gender: member.gender,
       pronouns: member.pronouns,
       isActive: member.is_active,

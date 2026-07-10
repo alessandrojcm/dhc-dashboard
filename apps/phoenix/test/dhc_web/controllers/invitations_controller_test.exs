@@ -102,6 +102,35 @@ defmodule DhcWeb.InvitationsControllerTest do
       assert %{"errors" => %{"detail" => "invites must be a non-empty list"}} =
                json_response(conn, 400)
     end
+
+    test "duplicate emails within one batch are accepted and enqueued verbatim",
+         %{conn: conn} do
+      # The controller does NOT dedup — duplicates pass through to the worker,
+      # which processes each invite separately in its own transaction. A
+      # regression that silently dropped duplicates at the controller layer
+      # would change worker semantics (the second invite would no longer fail
+      # at Supabase user creation and surface in the processing log).
+      dup_invite = %{
+        "firstName" => "Ada",
+        "lastName" => "Lovelace",
+        "email" => "ada@example.com",
+        "phoneNumber" => "+353 1 000 0000",
+        "dateOfBirth" => "1990-01-01"
+      }
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> post("/api/invitations", %{"invites" => [dup_invite, dup_invite]})
+
+      assert response = json_response(conn, 202)
+      assert response["data"]["queued"] == true
+      assert is_integer(response["data"]["job_id"])
+
+      assert [%Oban.Job{args: args}] = all_enqueued(worker: Dhc.Invitations.BulkInviteWorker)
+      assert length(args["invites"]) == 2
+      assert args["invites"] == [dup_invite, dup_invite]
+    end
   end
 
   describe "GET /api/invitations" do
@@ -319,6 +348,36 @@ defmodule DhcWeb.InvitationsControllerTest do
         |> post("/api/invitations/resend", %{"emails" => ["missing@example.com"]})
 
       assert %{"data" => %{"succeeded" => 0, "failed" => 1}} = json_response(conn, 202)
+    end
+
+    test "resending a real pending invitation refreshes expiry and enqueues an email",
+         %{conn: conn} do
+      # The only existing resend test sends a non-existent email and asserts
+      # `failed: 1` — the success path is untested, so a regression that
+      # silently no-ops on a real invitation (e.g. the left-join query breaks,
+      # or expire_for_resend stops firing) would stay green.
+      email = "real@example.com"
+      invitation_id = insert_invitation(email: email, status: "pending", seconds: 0)
+      original = Repo.get(Invitation, invitation_id)
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> post("/api/invitations/resend", %{"emails" => [email]})
+
+      assert %{"data" => %{"succeeded" => 1, "failed" => 0}} = json_response(conn, 202)
+
+      # The invite-member email was enqueued for the real invitation.
+      assert [%Oban.Job{args: args}] = all_enqueued(worker: Dhc.Email.Worker)
+      assert args["email"] == email
+      assert args["transactional_id"] == "inviteMember"
+
+      # The resend refreshed the expiry window from +7 days to +1 day.
+      refreshed = Repo.get(Invitation, invitation_id)
+      assert refreshed.expires_at != original.expires_at
+
+      expected = DateTime.add(DateTime.utc_now(), 1, :day) |> DateTime.truncate(:second)
+      assert DateTime.diff(refreshed.expires_at, expected, :second) in -5..5
     end
 
     test "returns 401 without a bearer token", %{conn: conn} do

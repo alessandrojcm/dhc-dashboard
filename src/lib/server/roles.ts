@@ -27,6 +27,21 @@ export const SETTINGS_ROLES = new Set([
 	"admin",
 ]);
 
+export const MEMBERS_ADMIN_ROLES = new Set([
+	"admin",
+	"president",
+	"treasurer",
+	"committee_coordinator",
+	"sparring_coordinator",
+	"workshop_coordinator",
+	"beginners_coordinator",
+	"quartermaster",
+	"pr_manager",
+	"volunteer_coordinator",
+	"research_coordinator",
+	"coach",
+]);
+
 export const WORKSHOP_ROLES = new Set([
 	"workshop_coordinator",
 	"president",
