@@ -166,6 +166,39 @@ defmodule DhcWeb.InventoryItemsControllerTest do
 
       assert %{"data" => %{"nextCursor" => nil}} = paged
     end
+
+    test "rejects invalid limit values with 400, defaults on non-numeric", %{conn: conn} do
+      category = insert_category!("Limit Edge")
+      container = create_container!(%{"name" => "Limit Box"})
+      _item = create_item!(item_payload(container, category))
+
+      # limit=0 → 400 (not in allowed list)
+      conn0 =
+        build_conn() |> auth_conn("member") |> get("/api/inventory/items", %{"limit" => "0"})
+
+      assert %{"errors" => %{"detail" => detail0}} = json_response(conn0, 400)
+      assert detail0 =~ "limit"
+
+      # limit=-1 → 400
+      conn_neg =
+        build_conn() |> auth_conn("member") |> get("/api/inventory/items", %{"limit" => "-1"})
+
+      assert %{"errors" => %{"detail" => detail_neg}} = json_response(conn_neg, 400)
+      assert detail_neg =~ "limit"
+
+      # limit=10000 → 400 (not in allowed list; capped is not supported)
+      conn_big =
+        build_conn() |> auth_conn("member") |> get("/api/inventory/items", %{"limit" => "10000"})
+
+      assert %{"errors" => %{"detail" => detail_big}} = json_response(conn_big, 400)
+      assert detail_big =~ "limit"
+
+      # limit=abc → defaults to 50 (200 OK)
+      conn_abc =
+        build_conn() |> auth_conn("member") |> get("/api/inventory/items", %{"limit" => "abc"})
+
+      assert %{"data" => %{"limit" => 50}} = json_response(conn_abc, 200)
+    end
   end
 
   describe "create" do
@@ -207,6 +240,42 @@ defmodule DhcWeb.InventoryItemsControllerTest do
       assert %{"errors" => %{"detail" => detail}} = json_response(conn, 422)
       assert detail =~ "container_id"
       assert detail =~ "quantity"
+    end
+
+    test "rejects negative, float, and huge integer quantities with 422", %{conn: conn} do
+      category = insert_category!("ALE107 Qty Edge")
+      container = create_container!(%{"name" => "Qty Box"})
+
+      for bad_qty <- [-1, 2.5, 1_000_001] do
+        conn =
+          build_conn()
+          |> auth_conn("admin")
+          |> post(
+            "/api/inventory/items",
+            item_payload(container, category, %{"quantity" => bad_qty})
+          )
+
+        assert %{"errors" => %{"detail" => detail}} = json_response(conn, 422)
+        assert detail =~ "quantity"
+      end
+    end
+
+    test "rejects non-object attributes (string, array) with 422", %{conn: conn} do
+      category = insert_category!("ALE107 Attr Edge")
+      container = create_container!(%{"name" => "Attr Box"})
+
+      for bad_attrs <- ["not-a-map", [1, 2, 3]] do
+        conn =
+          build_conn()
+          |> auth_conn("admin")
+          |> post(
+            "/api/inventory/items",
+            item_payload(container, category, %{"attributes" => bad_attrs})
+          )
+
+        assert %{"errors" => %{"detail" => detail}} = json_response(conn, 422)
+        assert detail =~ "attributes"
+      end
     end
   end
 
@@ -318,6 +387,20 @@ defmodule DhcWeb.InventoryItemsControllerTest do
       assert {:error, :not_found} = Dhc.Inventory.get_item(to_uuid(item.id))
 
       assert {:error, :not_found} = Dhc.Inventory.list_item_history(to_uuid(item.id), %{})
+    end
+
+    test "deletes an item that is out for maintenance — allowed, returns 204", %{conn: conn} do
+      category = insert_category!("Delete Maint Category")
+      container = create_container!(%{"name" => "Delete Maint Container"})
+      item = create_item!(item_payload(container, category, %{"outForMaintenance" => true}))
+
+      conn =
+        conn
+        |> auth_conn("president")
+        |> delete("/api/inventory/items/#{to_uuid(item.id)}")
+
+      assert response(conn, 204) == ""
+      assert {:error, :not_found} = Dhc.Inventory.get_item(to_uuid(item.id))
     end
   end
 

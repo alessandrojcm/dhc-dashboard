@@ -457,6 +457,44 @@ defmodule DhcWeb.WaitlistControllerTest do
                )
     end
 
+    test "rejects a minor with empty guardian fields with 422", %{conn: conn} do
+      set_waitlist_open(true)
+
+      conn =
+        post(
+          conn,
+          "/api/waitlist/entries",
+          adult_payload(
+            dateOfBirth: minor_birth_date(),
+            guardianFirstName: "",
+            guardianLastName: "",
+            guardianPhoneNumber: ""
+          )
+        )
+
+      assert %{"errors" => _} = json_response(conn, 422)
+
+      # Nothing was persisted — neither the waitlist entry nor the profile.
+      assert Repo.aggregate(WaitlistEntry, :count) == 0
+      assert Repo.aggregate(UserProfile, :count) == 0
+    end
+
+    test "rejects a minor with guardian fields omitted entirely with 422", %{conn: conn} do
+      set_waitlist_open(true)
+
+      conn =
+        post(
+          conn,
+          "/api/waitlist/entries",
+          adult_payload(dateOfBirth: minor_birth_date())
+        )
+
+      assert %{"errors" => _} = json_response(conn, 422)
+
+      assert Repo.aggregate(WaitlistEntry, :count) == 0
+      assert Repo.aggregate(UserProfile, :count) == 0
+    end
+
     test "returns 409 for duplicate email", %{conn: conn} do
       set_waitlist_open(true)
       payload = adult_payload(email: "duplicate@example.com")
@@ -476,6 +514,46 @@ defmodule DhcWeb.WaitlistControllerTest do
       conn = post(conn, "/api/waitlist/entries", adult_payload())
 
       assert %{"errors" => %{"detail" => "Waitlist is closed"}} = json_response(conn, 403)
+    end
+
+    test "rejects an under-16 date of birth with 422", %{conn: conn} do
+      set_waitlist_open(true)
+
+      conn =
+        post(conn, "/api/waitlist/entries", adult_payload(dateOfBirth: underage_birth_date()))
+
+      assert %{"errors" => %{"detail" => "Invalid waitlist entry payload"}} =
+               json_response(conn, 422)
+
+      assert Repo.aggregate(WaitlistEntry, :count) == 0
+      assert Repo.aggregate(UserProfile, :count) == 0
+    end
+
+    test "rejects missing required fields (firstName, email, dateOfBirth) with 422",
+         %{conn: conn} do
+      set_waitlist_open(true)
+
+      for field <- [:firstName, :email, :dateOfBirth] do
+        conn =
+          build_conn()
+          |> post("/api/waitlist/entries", Map.delete(adult_payload(), field))
+
+        assert %{"errors" => %{"detail" => "Invalid waitlist entry payload"}} =
+                 json_response(conn, 422)
+
+        assert Repo.aggregate(WaitlistEntry, :count) == 0
+      end
+    end
+
+    test "rejects an invalid email format with 422", %{conn: conn} do
+      set_waitlist_open(true)
+
+      conn = post(conn, "/api/waitlist/entries", adult_payload(email: "not-an-email"))
+
+      assert %{"errors" => %{"detail" => "email has invalid format"}} =
+               json_response(conn, 422)
+
+      assert Repo.aggregate(WaitlistEntry, :count) == 0
     end
   end
 
@@ -570,6 +648,12 @@ defmodule DhcWeb.WaitlistControllerTest do
   defp minor_birth_date do
     Date.utc_today()
     |> Date.add(-17 * 365)
+    |> Date.to_iso8601()
+  end
+
+  defp underage_birth_date do
+    Date.utc_today()
+    |> Date.add(-15 * 365)
     |> Date.to_iso8601()
   end
 end

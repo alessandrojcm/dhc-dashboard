@@ -26,6 +26,7 @@ import FormDebug from "$lib/components/form-debug.svelte";
 import { memberProfileClientSchema } from "$lib/schemas/membersSignup";
 import { pauseSubscription, resumeSubscription } from "./subscription.remote";
 import { dev } from "$app/environment";
+import { untrack } from "svelte";
 
 const { data } = $props();
 
@@ -58,7 +59,11 @@ $effect(() => {
 // Reactive form field values
 const dateOfBirth = $derived(updateProfile.fields.dateOfBirth.value() ?? "");
 const gender = $derived(updateProfile.fields.gender.value() ?? "");
-const weapon = $derived(updateProfile.fields.weapon.value() ?? []);
+const weapon = $derived(
+	(updateProfile.fields.weapon.value() ?? []).filter(
+		(value): value is string => typeof value === "string",
+	),
+);
 const socialMediaConsent = $derived(
 	updateProfile.fields.socialMediaConsent.value(),
 );
@@ -71,10 +76,12 @@ const dobValue = $derived.by(() => {
 	return fromDate(dayjs(dateOfBirth).toDate(), getLocalTimeZone());
 });
 
-let pausedUntil: dayjs.Dayjs | null = $derived(
-	data.member.subscription_paused_until
-		? dayjs(data.member.subscription_paused_until)
-		: null,
+let pausedUntil: dayjs.Dayjs | null = $state(
+	untrack(() =>
+		data.member.subscription_paused_until
+			? dayjs(data.member.subscription_paused_until)
+			: null,
+	),
 );
 
 const openBillingPortal = createMutation(() => ({
@@ -96,9 +103,11 @@ const pauseMutation = createMutation(() => ({
 			pauseUntil: pauseData.pauseUntil,
 		});
 	},
-	onSuccess: ({ subscription }) => {
+	onSuccess: ({ member }) => {
 		showPauseModal = false;
-		pausedUntil = dayjs.unix(subscription.pause_collection!.resumes_at!);
+		pausedUntil = member.subscriptionPausedUntil
+			? dayjs(member.subscriptionPausedUntil)
+			: null;
 	},
 	onError: (error) => {
 		toast.error(`Failed to pause subscription: ${error.message}`);

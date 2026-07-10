@@ -34,8 +34,8 @@ defmodule Dhc.MemberFixtures do
   def member_fixture(attrs \\ %{}) do
     attrs = Enum.into(attrs, %{})
 
-    auth_user_id = Ecto.UUID.generate()
-    profile_id = Ecto.UUID.generate()
+    auth_user_id = Map.get(attrs, :auth_user_id) || Ecto.UUID.generate()
+    profile_id = Map.get(attrs, :profile_id) || Ecto.UUID.generate()
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
     customer_id = Map.get(attrs, :customer_id, "cus_#{System.unique_integer([:positive])}")
@@ -49,7 +49,7 @@ defmodule Dhc.MemberFixtures do
           id: Ecto.UUID.dump!(auth_user_id),
           aud: "authenticated",
           role: "authenticated",
-          email: unique_email()
+          email: Map.get(attrs, :email) || unique_email()
         ]
       ],
       prefix: "auth"

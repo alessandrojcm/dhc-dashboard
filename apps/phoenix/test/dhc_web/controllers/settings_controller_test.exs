@@ -216,6 +216,20 @@ defmodule DhcWeb.SettingsControllerTest do
       assert %{"errors" => %{"detail" => "must be at most 365"}} = json_response(conn, 422)
     end
 
+    test "returns 422 for subscription_min_pause_days below range", %{conn: _conn} do
+      # Unlike max_pause_months, the min_pause_days below-range branch was
+      # previously untested — a regression that dropped the `n < 1` guard
+      # would let `0` through and silently disable the minimum pause window.
+      for value <- [0, -1] do
+        conn =
+          build_conn()
+          |> put_req_header("authorization", "Bearer admin-token")
+          |> patch("/api/settings/subscription_min_pause_days", %{"value" => value})
+
+        assert %{"errors" => %{"detail" => "must be at least 1"}} = json_response(conn, 422)
+      end
+    end
+
     test "returns 422 for a non-integer integer-typed value", %{conn: conn} do
       conn =
         conn
@@ -223,6 +237,23 @@ defmodule DhcWeb.SettingsControllerTest do
         |> patch("/api/settings/subscription_max_pause_months", %{"value" => "abc"})
 
       assert %{"errors" => %{"detail" => "must be an integer"}} = json_response(conn, 422)
+    end
+
+    test "returns 422 for a float value to an integer-typed key", %{conn: conn} do
+      # String-integer coercion is tested, but floats were not — a regression
+      # that widened coerce_value to accept floats (or truncated them to int)
+      # would let 12.5 silently become 12. A float bypasses the is_binary
+      # coerce clause, then fails the is_integer validate guard, surfacing as
+      # "invalid value type" (422) rather than being stored or truncated.
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> patch("/api/settings/subscription_max_pause_months", %{"value" => 12.5})
+
+      assert %{"errors" => %{"detail" => "invalid value type"}} = json_response(conn, 422)
+
+      # The stored value must be untouched — no silent truncation persisted.
+      refute get_setting("subscription_max_pause_months") == "12"
     end
 
     test "returns 422 when value is missing", %{conn: conn} do

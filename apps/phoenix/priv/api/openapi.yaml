@@ -28,6 +28,26 @@ tags:
     description: Global inventory activity/history feed (quartermaster)
     x-context: Dhc.Inventory
     x-resource: InventoryHistory
+  - name: Members
+    description: |
+      Member profile facts (identity, contact, preferred weapon), aggregate
+      member reads, and cross-cutting enum-option reads (gender, preferred
+      weapon) shared by the authenticated member edit form and the public
+      waitlist intake. Profile facts are owned by the Dhc.Members context;
+      membership state fields on the same DTOs are contributed by
+      Dhc.Membership. Enum options are sourced from Postgres enum types at
+      runtime and are public (no auth).
+    x-context: Dhc.Members
+    x-resource: Member
+  - name: Membership
+    description: |
+      A Member's subscription/access state (active, inactive, paused) and the
+      Stripe-facing pause/resume commands. Owned by the Dhc.Membership context;
+      shares storage with Dhc.Members (`subscription_paused_until` lives in
+      `member_profiles`) — the boundary is expressed in the contract and
+      context functions, not in a separate schema (see ADR-0007).
+    x-context: Dhc.Membership
+    x-resource: Membership
 
 paths:
   /health:
@@ -849,6 +869,274 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+
+  /members/{memberId}:
+    get:
+      operationId: members.show
+      tags:
+        - Members
+      summary: Read a single member
+      description: |
+        Returns the flat Member DTO (same shape as `GET /members`) for one
+        member: Member profile facts plus the Membership state projection
+        fields contributed by `Dhc.Membership`. Replaces the PostgREST-era
+        `get_member_data` RPC. Self-or-broad-committee auth: a member may
+        read their own record (`JWT sub == {memberId}`); any broad committee
+        role may read any member.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: memberId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The Supabase user id (`auth.users.id`) of the member.
+      responses:
+        "200":
+          description: The member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user is neither the member nor a broad committee role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No member exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    patch:
+      operationId: members.update
+      tags:
+        - Members
+      summary: Update a member's profile facts
+      description: |
+        Partial update of Member profile facts (only the fields present in the
+        body are written). Replaces the PostgREST-era `update_member_data`
+        RPC. `isActive` is NOT writable — it is a Stripe-webhook projection
+        (ADR-0008); sending it returns 422. When name or phone changes, a
+        best-effort `customers.update` echoes to Stripe (Member is SoT for
+        customer facts); a Stripe failure still returns 200 and the periodic
+        `Dhc.StripeSync` batch reconciles later. Self-or-broad-committee auth.
+        Returns the full flat Member DTO.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: memberId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The Supabase user id of the member to update.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemberUpdateRequest"
+      responses:
+        "200":
+          description: The updated member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user is neither the member nor a broad committee role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No member exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Invalid update payload (e.g. isActive present, or a field failed validation)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /members/{memberId}/membership/pause:
+    post:
+      operationId: membership.pause
+      tags:
+        - Membership
+      summary: Pause a member's subscription
+      description: |
+        Pauses the member's Stripe membership subscription and writes the
+        confirmed `resumes_at` to `subscription_paused_until`. Stripe is the
+        source of truth (ADR-0008): the DB write only happens after Stripe
+        confirms. 409 if no active membership subscription exists; 404 if the
+        member/customer is missing. Self-or-broad-committee auth (same as
+        `GET /members/{id}`). `pauseUntil` must be 1 day–6 months from now.
+        Returns the full flat Member DTO.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: memberId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The Supabase user id of the member whose subscription to pause.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MembershipPauseRequest"
+      responses:
+        "200":
+          description: Subscription paused; returns the updated member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user is neither the member nor a broad committee role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No member/customer record exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: No active membership subscription found for this customer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Invalid pause payload (e.g. pauseUntil out of range)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: Stripe rejected the pause call
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /members/{memberId}/membership/resume:
+    post:
+      operationId: membership.resume
+      tags:
+        - Membership
+      summary: Resume a member's paused subscription
+      description: |
+        Resumes the member's paused Stripe membership subscription and clears
+        `subscription_paused_until`. Stripe is source of truth (ADR-0008): the
+        DB write only happens after Stripe confirms. 409 if not paused or no
+        paused membership subscription is found. Self-or-broad-committee auth.
+        Returns the full flat Member DTO.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: memberId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The Supabase user id of the member whose subscription to resume.
+      responses:
+        "200":
+          description: Subscription resumed; returns the updated member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user is neither the member nor a broad committee role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No member/customer record exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Subscription is not paused, or no paused membership subscription found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: Stripe rejected the resume call
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /options:
+    get:
+      operationId: members.options
+      tags:
+        - Members
+      summary: Read cross-cutting enum options (gender, preferred weapon)
+      description: |
+        Returns the labels of the `gender` and `preferred_weapon` Postgres
+        enum types as they currently exist in the database. Replaces the
+        PostgREST-era `get_gender_options` and `get_weapons_options` RPCs.
+        Sourced from `pg_enum` at request time so new enum values appear
+        after a migration with no client redeploy.
+
+        Public — no Supabase JWT required (the public waitlist intake and the
+        authenticated member edit form both consume this endpoint).
+      responses:
+        "200":
+          description: Enum options
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OptionsResponse"
 
   /workshops/calendar:
     get:
@@ -2458,6 +2746,7 @@ components:
         - lastName
         - email
         - phoneNumber
+        - dateOfBirth
         - gender
         - pronouns
         - isActive
@@ -2489,6 +2778,10 @@ components:
           format: email
         phoneNumber:
           type: string
+          nullable: true
+        dateOfBirth:
+          type: string
+          format: date
           nullable: true
         gender:
           type: string
@@ -2548,6 +2841,84 @@ components:
           nullable: true
         membershipStatus:
           $ref: "#/components/schemas/MembershipStatus"
+    MemberResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: "#/components/schemas/Member"
+    MemberUpdateRequest:
+      type: object
+      minProperties: 1
+      additionalProperties: false
+      properties:
+        firstName:
+          type: string
+          minLength: 1
+        lastName:
+          type: string
+          minLength: 1
+        phoneNumber:
+          type: string
+          nullable: true
+        dateOfBirth:
+          type: string
+          format: date
+          nullable: true
+        pronouns:
+          type: string
+          nullable: true
+        gender:
+          type: string
+          nullable: true
+        medicalConditions:
+          type: string
+          nullable: true
+        nextOfKinName:
+          type: string
+          nullable: true
+        nextOfKinPhone:
+          type: string
+          nullable: true
+        preferredWeapon:
+          type: array
+          items:
+            type: string
+        insuranceFormSubmitted:
+          type: boolean
+        socialMediaConsent:
+          type: string
+          enum: [no, yes_recognizable, yes_unrecognizable]
+    MembershipPauseRequest:
+      type: object
+      required:
+        - pauseUntil
+      additionalProperties: false
+      properties:
+        pauseUntil:
+          type: string
+          format: date-time
+          description: Must be 1 day–6 months from now.
+    OptionsResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - genders
+            - weapons
+          properties:
+            genders:
+              type: array
+              items:
+                type: string
+            weapons:
+              type: array
+              items:
+                type: string
     WaitlistEntriesSortField:
       type: string
       enum:
