@@ -419,7 +419,10 @@ defmodule Dhc.Waitlist do
   defp maybe_insert_guardian(multi, _normalized), do: multi
 
   defp duplicate_email_changeset?(changeset) do
-    Keyword.has_key?(changeset.errors, :email)
+    Enum.any?(changeset.errors, fn
+      {:email, {_msg, opts}} -> Keyword.get(opts, :constraint) == :unique
+      _ -> false
+    end)
   end
 
   defp normalize_update_attrs(attrs) do

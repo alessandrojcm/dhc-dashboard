@@ -214,18 +214,26 @@ defmodule Dhc.Inventory.Items do
 
         notes = parse_notes(attrs)
 
-        Ecto.Multi.new()
-        |> Ecto.Multi.update(:item, changeset)
-        |> Ecto.Multi.insert(
-          :history_moved,
-          ItemHistory.record_moved_history(
-            item.id,
-            item.container_id,
-            new_container_id,
-            actor_id,
-            notes
-          )
-        )
+        multi = Ecto.Multi.new() |> Ecto.Multi.update(:item, changeset)
+
+        multi =
+          if container_changed?(item.container_id, new_container_id) do
+            Ecto.Multi.insert(
+              multi,
+              :history_moved,
+              ItemHistory.record_moved_history(
+                item.id,
+                item.container_id,
+                new_container_id,
+                actor_id,
+                notes
+              )
+            )
+          else
+            multi
+          end
+
+        multi
         |> Repo.transaction()
         |> case do
           {:ok, %{item: %Item{} = updated}} ->
@@ -276,17 +284,25 @@ defmodule Dhc.Inventory.Items do
                 name: :inventory_items_updated_by_fkey
               )
 
-            Ecto.Multi.new()
-            |> Ecto.Multi.update(:item, changeset)
-            |> Ecto.Multi.insert(
-              :history_maintenance,
-              ItemHistory.record_maintenance_history(
-                item.id,
-                out_for_maintenance,
-                actor_id,
-                notes
-              )
-            )
+            multi = Ecto.Multi.new() |> Ecto.Multi.update(:item, changeset)
+
+            multi =
+              if item.out_for_maintenance != out_for_maintenance do
+                Ecto.Multi.insert(
+                  multi,
+                  :history_maintenance,
+                  ItemHistory.record_maintenance_history(
+                    item.id,
+                    out_for_maintenance,
+                    actor_id,
+                    notes
+                  )
+                )
+              else
+                multi
+              end
+
+            multi
             |> Repo.transaction()
             |> case do
               {:ok, %{item: %Item{} = updated}} ->
@@ -447,7 +463,10 @@ defmodule Dhc.Inventory.Items do
       :photo_url
     ])
     |> Ecto.Changeset.validate_required([:container_id, :category_id, :quantity])
-    |> Ecto.Changeset.validate_number(:quantity, greater_than: 0)
+    |> Ecto.Changeset.validate_number(:quantity,
+      greater_than: 0,
+      less_than_or_equal_to: 1_000_000
+    )
     |> Ecto.Changeset.validate_length(:notes, max: 1000)
   end
 
