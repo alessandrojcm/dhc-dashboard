@@ -1,87 +1,46 @@
-defmodule DhcWeb.MembersController do
+defmodule DhcWeb.MembershipController do
   use DhcWeb, :controller
 
-  alias Dhc.Members
+  alias Dhc.Membership
 
   @members_admin_roles ~w(admin president treasurer committee_coordinator sparring_coordinator workshop_coordinator beginners_coordinator quartermaster pr_manager volunteer_coordinator research_coordinator coach)
 
   @doc """
-  GET /members
+  POST /members/:memberId/membership/pause
   """
-  def index(conn, params) do
-    case Members.list_members(params) do
-      {:ok, result} ->
-        conn
-        |> put_view(json: DhcWeb.MembersJSON)
-        |> render(:index, result: result)
-
-      {:error, :bad_cursor} ->
-        bad_request(conn, "Invalid or mismatched cursor")
-
-      {:error, _reason} ->
-        bad_request(conn, "Invalid members query")
-    end
-  end
-
-  @doc """
-  GET /members/insurance-form
-  """
-  def insurance_form(conn, _params) do
-    conn
-    |> put_view(json: DhcWeb.MembersJSON)
-    |> render(:insurance_form, insurance_form: Members.insurance_form())
-  end
-
-  @doc """
-  GET /members/:memberId
-  """
-  def show(conn, %{"memberId" => member_id}) do
-    with :ok <- authorize_self_or_admin(conn, member_id),
-         {:ok, member} <- Members.get_member(member_id) do
-      conn
-      |> put_view(json: DhcWeb.MembersJSON)
-      |> render(:show, member: member)
-    else
-      {:error, :forbidden} -> forbidden(conn, "Insufficient role")
-      {:error, :not_found} -> not_found(conn, "Member not found")
-    end
-  end
-
-  @doc """
-  PATCH /members/:memberId
-  """
-  def update(conn, %{"memberId" => member_id} = params) do
+  def pause(conn, %{"memberId" => member_id} = params) do
     attrs = Map.delete(params, "memberId")
 
     with :ok <- authorize_self_or_admin(conn, member_id),
-         {:ok, member} <- Members.update_member(member_id, attrs) do
+         {:ok, member} <- Membership.pause(member_id, attrs) do
       conn
       |> put_view(json: DhcWeb.MembersJSON)
       |> render(:show, member: member)
     else
       {:error, :forbidden} -> forbidden(conn, "Insufficient role")
       {:error, :not_found} -> not_found(conn, "Member not found")
-      {:error, :invalid_payload} -> validation_error(conn, "Invalid member update payload")
+      {:error, :subscription_not_found} -> conflict(conn, "Membership subscription not found")
+      {:error, :invalid_payload} -> validation_error(conn, "Invalid membership pause payload")
+      {:error, :stripe_error} -> bad_gateway(conn, "Stripe membership update failed")
       {:error, %Ecto.Changeset{} = changeset} -> validation_error(conn, changeset)
     end
   end
 
   @doc """
-  GET /members/analytics
+  POST /members/:memberId/membership/resume
   """
-  def analytics(conn, _params) do
-    conn
-    |> put_view(json: DhcWeb.MembersJSON)
-    |> render(:analytics, analytics: Members.analytics())
-  end
-
-  @doc """
-  GET /options
-  """
-  def options(conn, _params) do
-    conn
-    |> put_view(json: DhcWeb.MembersJSON)
-    |> render(:options, options: Members.options())
+  def resume(conn, %{"memberId" => member_id}) do
+    with :ok <- authorize_self_or_admin(conn, member_id),
+         {:ok, member} <- Membership.resume(member_id) do
+      conn
+      |> put_view(json: DhcWeb.MembersJSON)
+      |> render(:show, member: member)
+    else
+      {:error, :forbidden} -> forbidden(conn, "Insufficient role")
+      {:error, :not_found} -> not_found(conn, "Member not found")
+      {:error, :subscription_not_found} -> conflict(conn, "Membership subscription not found")
+      {:error, :stripe_error} -> bad_gateway(conn, "Stripe membership update failed")
+    end
   end
 
   defp authorize_self_or_admin(conn, member_id) do
@@ -93,12 +52,6 @@ defmodule DhcWeb.MembersController do
     else
       {:error, :forbidden}
     end
-  end
-
-  defp bad_request(conn, detail) do
-    conn
-    |> put_status(:bad_request)
-    |> json(%{errors: %{detail: detail}})
   end
 
   defp forbidden(conn, detail) do
@@ -113,11 +66,23 @@ defmodule DhcWeb.MembersController do
     |> json(%{errors: %{detail: detail}})
   end
 
+  defp conflict(conn, detail) do
+    conn
+    |> put_status(:conflict)
+    |> json(%{errors: %{detail: detail}})
+  end
+
+  defp bad_gateway(conn, detail) do
+    conn
+    |> put_status(:bad_gateway)
+    |> json(%{errors: %{detail: detail}})
+  end
+
   defp validation_error(conn, %Ecto.Changeset{} = changeset) do
     conn
     |> put_status(:unprocessable_entity)
     |> json(%{
-      errors: %{detail: "Invalid member update payload", fields: changeset_errors(changeset)}
+      errors: %{detail: "Invalid membership pause payload", fields: changeset_errors(changeset)}
     })
   end
 
