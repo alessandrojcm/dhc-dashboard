@@ -57,13 +57,21 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 	const session = await authorize(locals, INVENTORY_ROLES);
 	const options = apiClientOptions(session);
 
-	const [itemResponse, historyResponse, categoriesResponse, containersResponse] =
-		await Promise.all([
-			inventoryItemsShow({ ...options, path: { id: params.id } }),
-			inventoryItemsHistory({ ...options, path: { id: params.id }, query: { limit: 20 } }),
-			inventoryCategoriesIndex(options),
-			inventoryContainersIndex(options),
-		]);
+	const [
+		itemResponse,
+		historyResponse,
+		categoriesResponse,
+		containersResponse,
+	] = await Promise.all([
+		inventoryItemsShow({ ...options, path: { id: params.id } }),
+		inventoryItemsHistory({
+			...options,
+			path: { id: params.id },
+			query: { limit: 20 },
+		}),
+		inventoryCategoriesIndex(options),
+		inventoryContainersIndex(options),
+	]);
 
 	if (itemResponse.error) {
 		throw error(404, itemResponse.error.errors?.detail ?? "Item not found");
@@ -74,8 +82,10 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 	if (categoriesResponse.error) throw new Error("Failed to load categories");
 	if (containersResponse.error) throw new Error("Failed to load containers");
 
-	const categories = categoriesResponse.data.data.categories.map(toLegacyCategory);
-	const containers = containersResponse.data.data.containers.map(toLegacyContainer);
+	const categories =
+		categoriesResponse.data.data.categories.map(toLegacyCategory);
+	const containers =
+		containersResponse.data.data.containers.map(toLegacyContainer);
 	const apiItem = itemResponse.data.data;
 	const fullCategory = categories.find((c) => c.id === apiItem.categoryId);
 
@@ -94,18 +104,19 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 		updated_by: apiItem.updatedBy ?? null,
 		container: apiItem.container
 			? {
-				id: apiItem.container.id,
-				name: apiItem.container.name,
-				parent_container_id: apiItem.container.parentContainerId ?? null,
-			}
+					id: apiItem.container.id,
+					name: apiItem.container.name,
+					parent_container_id: apiItem.container.parentContainerId ?? null,
+				}
 			: null,
-		category: fullCategory ??
+		category:
+			fullCategory ??
 			(apiItem.category
 				? {
-					id: apiItem.category.id,
-					name: apiItem.category.name,
-					available_attributes: [],
-				}
+						id: apiItem.category.id,
+						name: apiItem.category.name,
+						available_attributes: [],
+					}
 				: null),
 	};
 

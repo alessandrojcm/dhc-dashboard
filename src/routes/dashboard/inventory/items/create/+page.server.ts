@@ -1,7 +1,10 @@
 import { authorize } from "$lib/server/auth";
 import { apiClientOptions } from "$lib/server/api-client";
 import { INVENTORY_ROLES } from "$lib/server/roles";
-import { inventoryCategoriesIndex, inventoryContainersIndex } from "@dhc/api-client";
+import {
+	inventoryCategoriesIndex,
+	inventoryContainersIndex,
+} from "@dhc/api-client";
 import type { PageServerLoad } from "./$types";
 
 function toLegacyCategory(c: any) {

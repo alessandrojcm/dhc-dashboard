@@ -158,5 +158,3 @@ export function createWaitlistService(
 		logger ?? sentryLogger,
 	);
 }
-
-
