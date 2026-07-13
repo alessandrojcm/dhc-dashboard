@@ -16,7 +16,6 @@ defmodule Dhc.Invitations do
   alias Dhc.Waitlist.WaitlistEntry
 
   @invite_email_template "inviteMember"
-  @verification_token_salt "invitation-verification"
   @verification_token_max_age_seconds 15 * 60
 
   # ── List (cursor pagination) ─────────────────────────────────────────
@@ -101,7 +100,7 @@ defmodule Dhc.Invitations do
   @spec issue_verification_token(String.t(), String.t(), Date.t()) :: {:ok, String.t()}
   def issue_verification_token(invitation_id, email, %Date{} = date_of_birth) do
     token =
-      Phoenix.Token.sign(DhcWeb.Endpoint, @verification_token_salt, %{
+      Phoenix.Token.sign(DhcWeb.Endpoint, verification_token_salt(), %{
         "invitation_id" => invitation_id,
         "email" => normalize_email(email),
         "date_of_birth" => Date.to_iso8601(date_of_birth)
@@ -113,9 +112,15 @@ defmodule Dhc.Invitations do
   @doc """
   Converts a verified Invitation into a Member in one database transaction.
   """
-  @spec accept(String.t(), String.t(), String.t(), String.t()) ::
+  @spec accept(String.t(), String.t(), String.t(), String.t(), map()) ::
           {:ok, %{member_id: String.t()}} | {:error, term()}
-  def accept(invitation_id, verification_token, next_of_kin_name, next_of_kin_phone) do
+  def accept(
+        invitation_id,
+        verification_token,
+        next_of_kin_name,
+        next_of_kin_phone,
+        payment_attrs
+      ) do
     with {:ok, claims} <- verify_token(verification_token),
          :ok <- token_matches_invitation(claims, invitation_id) do
       Repo.transaction(fn ->
@@ -144,6 +149,16 @@ defmodule Dhc.Invitations do
 
         if Repo.exists?(from(m in MemberProfile, where: m.id == ^invitation.user_id)) do
           Repo.rollback(:invalid_invitation)
+        end
+
+        payment_attrs =
+          payment_attrs
+          |> Map.put(:customer_id, user_profile.customer_id)
+          |> Map.put(:invitation_id, invitation.id)
+
+        case payment_processor().complete(payment_attrs) do
+          :ok -> :ok
+          {:error, reason} -> Repo.rollback({:payment_failed, reason})
         end
 
         member_profile = %MemberProfile{
@@ -187,10 +202,6 @@ defmodule Dhc.Invitations do
 
         %{member_id: invitation.user_id}
       end)
-    else
-      {:error, :invalid_token} -> {:error, :invalid_token}
-      {:error, reason} -> {:error, reason}
-      _ -> {:error, :invalid_token}
     end
   end
 
@@ -237,7 +248,7 @@ defmodule Dhc.Invitations do
   end
 
   defp verify_token(token) when is_binary(token) do
-    Phoenix.Token.verify(DhcWeb.Endpoint, @verification_token_salt, token,
+    Phoenix.Token.verify(DhcWeb.Endpoint, verification_token_salt(), token,
       max_age: @verification_token_max_age_seconds
     )
     |> case do
@@ -247,6 +258,14 @@ defmodule Dhc.Invitations do
   end
 
   defp verify_token(_token), do: {:error, :invalid_token}
+
+  defp verification_token_salt do
+    Application.fetch_env!(:dhc, :invitation_verification_token_salt)
+  end
+
+  defp payment_processor do
+    Application.get_env(:dhc, :invitation_payment_processor, Dhc.Invitations.StripePayment)
+  end
 
   defp token_matches_invitation(%{"invitation_id" => invitation_id}, invitation_id), do: :ok
   defp token_matches_invitation(_claims, _invitation_id), do: {:error, :invalid_token}

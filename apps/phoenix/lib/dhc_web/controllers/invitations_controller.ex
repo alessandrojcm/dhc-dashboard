@@ -70,15 +70,25 @@ defmodule DhcWeb.InvitationsController do
   @doc """
   POST /invitations/:id/accept
   """
-  def accept(conn, %{
-        "id" => id,
-        "verificationToken" => token,
-        "nextOfKinName" => next_of_kin_name,
-        "nextOfKinPhone" => next_of_kin_phone,
-        "stripeConfirmationToken" => _stripe_confirmation_token
-      }) do
+  def accept(
+        conn,
+        %{
+          "id" => id,
+          "verificationToken" => token,
+          "nextOfKinName" => next_of_kin_name,
+          "nextOfKinPhone" => next_of_kin_phone,
+          "stripeConfirmationToken" => stripe_confirmation_token
+        } = params
+      ) do
     with :ok <- validate_acceptance_payload(next_of_kin_name, next_of_kin_phone),
-         {:ok, result} <- Invitations.accept(id, token, next_of_kin_name, next_of_kin_phone) do
+         {:ok, result} <-
+           Invitations.accept(
+             id,
+             token,
+             next_of_kin_name,
+             next_of_kin_phone,
+             payment_attrs(conn, params, stripe_confirmation_token)
+           ) do
       conn
       |> put_view(json: DhcWeb.InvitationsJSON)
       |> render(:accept, result: result)
@@ -97,6 +107,17 @@ defmodule DhcWeb.InvitationsController do
         |> put_status(:unprocessable_entity)
         |> put_view(json: DhcWeb.InvitationsJSON)
         |> render(:error, detail: "Invitation cannot be accepted")
+
+      {:error, {:payment_failed, reason}} ->
+        Logger.warning("[invitations] Stripe payment failed during invitation acceptance",
+          invitation_id: id,
+          reason: inspect(reason)
+        )
+
+        conn
+        |> put_status(:payment_required)
+        |> put_view(json: DhcWeb.InvitationsJSON)
+        |> render(:error, detail: "Payment could not be completed")
 
       {:error, _reason} ->
         conn
@@ -120,6 +141,30 @@ defmodule DhcWeb.InvitationsController do
 
   defp present_string?(value) when is_binary(value), do: String.trim(value) != ""
   defp present_string?(_value), do: false
+
+  defp payment_attrs(conn, params, stripe_confirmation_token) do
+    mandate_context = Map.get(params, "mandateContext", %{})
+
+    %{
+      confirmation_token: stripe_confirmation_token,
+      coupon_code: Map.get(params, "couponCode"),
+      mandate_context: %{
+        ip_address: Map.get(mandate_context, "ipAddress", client_ip(conn)),
+        user_agent:
+          Map.get(
+            mandate_context,
+            "userAgent",
+            get_req_header(conn, "user-agent") |> List.first()
+          )
+      }
+    }
+  end
+
+  defp client_ip(conn) do
+    conn.remote_ip
+    |> Tuple.to_list()
+    |> Enum.join(".")
+  end
 
   defp invalid_acceptance_payload(conn) do
     conn

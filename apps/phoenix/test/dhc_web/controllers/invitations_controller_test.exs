@@ -33,11 +33,34 @@ defmodule DhcWeb.InvitationsControllerTest do
     def verify(_token), do: {:error, :invalid_token}
   end
 
+  defmodule PaymentProcessor do
+    def complete(attrs) do
+      send(Application.fetch_env!(:dhc, :invitation_payment_test_pid), {:stripe_complete, attrs})
+      Application.get_env(:dhc, :invitation_payment_result, :ok)
+    end
+  end
+
   setup do
     original = Application.get_env(:dhc, :auth_verifier)
+    original_payment_processor = Application.get_env(:dhc, :invitation_payment_processor)
+    original_payment_result = Application.get_env(:dhc, :invitation_payment_result)
     Application.put_env(:dhc, :auth_verifier, Verifier)
+    Application.put_env(:dhc, :invitation_payment_processor, PaymentProcessor)
+    Application.put_env(:dhc, :invitation_payment_result, :ok)
+    Application.put_env(:dhc, :invitation_payment_test_pid, self())
 
-    on_exit(fn -> Application.put_env(:dhc, :auth_verifier, original) end)
+    on_exit(fn ->
+      Application.put_env(:dhc, :auth_verifier, original)
+      Application.put_env(:dhc, :invitation_payment_processor, original_payment_processor)
+
+      if original_payment_result do
+        Application.put_env(:dhc, :invitation_payment_result, original_payment_result)
+      else
+        Application.delete_env(:dhc, :invitation_payment_result)
+      end
+
+      Application.delete_env(:dhc, :invitation_payment_test_pid)
+    end)
   end
 
   describe "POST /api/invitations" do
@@ -420,6 +443,15 @@ defmodule DhcWeb.InvitationsControllerTest do
         })
 
       assert %{"data" => %{"accepted" => true, "memberId" => ^user_id}} = json_response(conn, 200)
+
+      assert_receive {:stripe_complete,
+                      %{
+                        customer_id: "cus_accept",
+                        confirmation_token: "ctok_test",
+                        coupon_code: nil,
+                        invitation_id: ^invitation_id
+                      }}
+
       assert Repo.get!(Invitation, invitation_id).status == "accepted"
 
       member = Repo.get!(MemberProfile, user_id)
@@ -437,6 +469,36 @@ defmodule DhcWeb.InvitationsControllerTest do
                  where: w.email == "accept@example.com",
                  select: w.status
              ) == "joined"
+    end
+
+    test "POST /api/invitations/:id/accept rolls back when Stripe payment fails", %{conn: conn} do
+      %{profile_id: profile_id, invitation_id: invitation_id} =
+        insert_invitation_with_profile(email: "stripe-fail@example.com", waitlist: true)
+
+      Application.put_env(:dhc, :invitation_payment_result, {:error, :card_declined})
+
+      {:ok, token} =
+        Dhc.Invitations.issue_verification_token(
+          invitation_id,
+          "stripe-fail@example.com",
+          ~D[1990-01-01]
+        )
+
+      conn =
+        post(conn, "/api/invitations/#{invitation_id}/accept", %{
+          "verificationToken" => token,
+          "nextOfKinName" => "Ada Lovelace",
+          "nextOfKinPhone" => "+353 1 000 0000",
+          "stripeConfirmationToken" => "ctok_declined"
+        })
+
+      assert %{"errors" => %{"detail" => "Payment could not be completed"}} =
+               json_response(conn, 402)
+
+      assert_receive {:stripe_complete, %{confirmation_token: "ctok_declined"}}
+      assert Repo.get!(Invitation, invitation_id).status == "pending"
+      assert Repo.get!(UserProfile, profile_id).is_active == false
+      refute Repo.exists?(from m in MemberProfile, where: m.user_profile_id == ^profile_id)
     end
 
     test "POST /api/invitations/:id/accept rejects blank required fields before mutating", %{
@@ -471,6 +533,8 @@ defmodule DhcWeb.InvitationsControllerTest do
                  where: w.email == "blank-accept@example.com",
                  select: w.status
              ) == "invited"
+
+      refute_receive {:stripe_complete, _attrs}
     end
 
     test "POST /api/invitations/:id/accept rolls back when member creation fails", %{conn: conn} do
@@ -514,6 +578,8 @@ defmodule DhcWeb.InvitationsControllerTest do
                  where: w.email == "rollback@example.com",
                  select: w.status
              ) == "invited"
+
+      refute_receive {:stripe_complete, _attrs}
     end
   end
 
@@ -665,6 +731,7 @@ defmodule DhcWeb.InvitationsControllerTest do
       gender: "woman (cis)",
       pronouns: "she/her",
       is_active: false,
+      customer_id: Keyword.get(attrs, :customer_id, "cus_accept"),
       social_media_consent: "no",
       waitlist_id: waitlist_id
     })
