@@ -24,6 +24,7 @@
     "sentry": {
       "type": "remote",
       "url": "https://mcp.sentry.dev/mcp",
+      "enabled": true,
       "oauth": {}
     },
     "svelte": {
@@ -35,15 +36,19 @@
       "type": "remote",
       "url": "http://localhost:54321/mcp?features=database%2Cdebugging%2Cdevelopment",
       "enabled": true
-    },
-    "graymatter": {
-      "command": [
-        "graymatter",
-        "mcp",
-        "serve"
-      ],
-      "enabled": true,
-      "type": "local"
+    }
+  },
+  "tools": {
+    "sentry_*": false
+  },
+  "agent": {
+    "triaging": {
+      "description": "Triage Sentry production issues using the build agent workflow with Sentry MCP tools enabled.",
+      "mode": "primary",
+      "prompt": "Inherit and follow the same build-task implementation prompt and project instructions as the build agent. You are additionally responsible for triaging Sentry production issues: inspect Sentry issues, events, traces, breadcrumbs, and Seer analysis when relevant; summarize impact, root cause, and recommended code fixes; and only make code changes when the user asks for implementation.",
+      "tools": {
+        "sentry_*": true
+      }
     }
   },
   "plugin": ["./.opencode/plugins/git-guardian.ts"]

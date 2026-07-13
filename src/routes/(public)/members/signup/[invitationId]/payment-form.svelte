@@ -1,9 +1,7 @@
 <script lang="ts">
 import * as Field from "$lib/components/ui/field";
-import dayjs from "dayjs";
 import { Input } from "$lib/components/ui/input";
 import { Button, type ButtonProps } from "$lib/components/ui/button";
-import { parsePhoneNumberFromString } from "libphonenumber-js/min";
 import { ArrowRightIcon } from "lucide-svelte";
 import {
 	loadStripe,
@@ -15,7 +13,6 @@ import { PUBLIC_STRIPE_KEY } from "$env/static/public";
 import { toast } from "svelte-sonner";
 import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
 import { onMount } from "svelte";
-import { resolve } from "$app/paths";
 import * as Alert from "$lib/components/ui/alert";
 import PhoneInput from "$lib/components/ui/phone-input.svelte";
 import PricingDisplay from "./pricing-display.svelte";
@@ -85,23 +82,11 @@ $effect(() => {
 	}
 });
 
-const formatedPhone = $derived.by(() =>
-	parsePhoneNumberFromString(data.userData.phoneNumber!),
-);
-
 onMount(() => {
 	loadStripe(PUBLIC_STRIPE_KEY).then((result) => {
 		stripe = result;
 		elements = stripe?.elements(stripeElementsOptions);
-		paymentElement = elements?.create("payment", {
-			defaultValues: {
-				billingDetails: {
-					name: `${data.userData.firstName} ${data.userData.lastName}`,
-					email: data.userData.email,
-					phone: data.userData.phoneNumber,
-				},
-			},
-		});
+		paymentElement = elements?.create("payment");
 		paymentElement?.mount("#payment-element");
 	});
 });
@@ -168,7 +153,7 @@ const handleSubmit: ButtonProps["onclick"] = async (e) => {
     {@render errorAlert()}
 {/if}
 
-{#each processPayment.fields.stripeConfirmationToken.issues() as issue}
+{#each processPayment.fields.stripeConfirmationToken.issues() as issue (issue.message)}
     <Alert.Root variant="destructive" class="w-full mb-4">
         <Alert.Title>Payment Error</Alert.Title>
         <Alert.Description>
@@ -181,44 +166,6 @@ const handleSubmit: ButtonProps["onclick"] = async (e) => {
         {...processPayment}
         class="space-y-6"
 >
-    <div class="grid grid-cols-2 gap-4">
-        <div>
-            <p>First Name</p>
-            <p class="text-sm text-gray-600">{data.userData.firstName}</p>
-        </div>
-        <div>
-            <p>Last Name</p>
-            <p class="text-sm text-gray-600">{data.userData.lastName}</p>
-        </div>
-        <div>
-            <p>Email</p>
-            <p class="text-sm text-gray-600 break-words">{data.userData.email}</p>
-        </div>
-        <div>
-            <p>Date of Birth</p>
-            <p class="text-sm text-gray-600">
-                {dayjs(data.userData.dateOfBirth).format('DD/MM/YYYY')}
-            </p>
-        </div>
-        <div>
-            <p>Gender</p>
-            <p class="text-sm text-gray-600 capitalize">{data.userData.gender}</p>
-        </div>
-        <div>
-            <p>Pronouns</p>
-            <p class="text-sm text-gray-600 capitalize">{data.userData.pronouns}</p>
-        </div>
-        <div>
-            <p>Phone Number</p>
-            <p class="text-sm text-gray-600">{formatedPhone?.formatInternational()}</p>
-        </div>
-        <div>
-            <p>Medical Conditions</p>
-            <p class="text-sm text-gray-600">
-                {!data.userData.medicalConditions ? 'N/A' : data.userData.medicalConditions}
-            </p>
-        </div>
-    </div>
     <div class="space-y-4">
         <Field.Field>
             {@const fieldProps = processPayment.fields.nextOfKin.as('text')}
@@ -228,7 +175,7 @@ const handleSubmit: ButtonProps["onclick"] = async (e) => {
                     id={fieldProps.name}
                     placeholder="Full name of your next of kin"
             />
-            {#each processPayment.fields.nextOfKin.issues() as issue}
+            {#each processPayment.fields.nextOfKin.issues() as issue (issue.message)}
                 <Field.Error>{issue.message}</Field.Error>
             {/each}
         </Field.Field>
@@ -241,7 +188,7 @@ const handleSubmit: ButtonProps["onclick"] = async (e) => {
                     id={fieldProps.name}
                     placeholder="Enter your next of kin's phone number"
             />
-            {#each processPayment.fields.nextOfKinNumber.issues() as issue}
+            {#each processPayment.fields.nextOfKinNumber.issues() as issue (issue.message)}
                 <Field.Error>{issue.message}</Field.Error>
             {/each}
         </Field.Field>
