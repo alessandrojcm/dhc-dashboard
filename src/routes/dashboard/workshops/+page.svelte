@@ -5,31 +5,15 @@ import { Button } from "$lib/components/ui/button";
 import { Alert, AlertDescription } from "$lib/components/ui/alert";
 import WorkshopCalendar from "$lib/components/workshops/workshop-calendar.svelte";
 import QuickCreateWorkshop from "$lib/components/workshops/quick-create-workshop.svelte";
-import { workshopsCalendar, type WorkshopCalendarItem } from "@dhc/api-client";
+import {
+	workshopsCalendarOptions,
+	type WorkshopCalendarItem,
+} from "@dhc/api-client";
 import { createQuery } from "@tanstack/svelte-query";
 
 // Improvement: add pagination by month
 let { data } = $props();
-const workshopsQuery = createQuery(() => ({
-	queryKey: ["workshops"],
-	refetchOnMount: true,
-	queryFn: async ({ signal }) => {
-		const { data: sessionData, error } = await data.supabase.auth.getSession();
-
-		if (error) throw error;
-		const accessToken = sessionData.session?.access_token;
-
-		if (!accessToken) throw new Error("Authentication required");
-
-		const response = await workshopsCalendar({
-			auth: accessToken,
-			signal,
-			throwOnError: true,
-		});
-
-		return response.data.data.workshops;
-	},
-}));
+const workshopsQuery = createQuery(() => workshopsCalendarOptions());
 
 // Simple handlers - mutations are now handled in the modal component
 
@@ -56,7 +40,7 @@ function handleEdit(workshop: WorkshopCalendarItem) {
 	{#if workshopsQuery.error}
 		<Alert variant="destructive">
 			<AlertDescription
-				>{workshopsQuery.error?.message || String(workshopsQuery.error)}</AlertDescription
+				>{workshopsQuery.error.errors?.detail}</AlertDescription
 			>
 		</Alert>
 	{/if}
@@ -65,7 +49,7 @@ function handleEdit(workshop: WorkshopCalendarItem) {
 	<WorkshopCalendar
 		{handleEdit}
 		isLoading={workshopsQuery.isLoading}
-		workshops={workshopsQuery.data ?? []}
+		workshops={workshopsQuery.data?.data?.workshops ?? []}
 		userId={data.user!.id}
 	/>
 </div>

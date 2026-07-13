@@ -336,6 +336,129 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /invitations/{id}:
+    get:
+      operationId: invitations.showPublic
+      tags:
+        - Invitations
+      summary: Read public invitation state
+      description: |
+        Public-safe invitation lookup for rendering signup state. This response
+        deliberately excludes invitee PII such as email, date of birth, names,
+        and profile facts.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Public invitation state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicInvitationResponse"
+        "404":
+          description: Invitation not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /invitations/{id}/verify:
+    post:
+      operationId: invitations.verify
+      tags:
+        - Invitations
+      summary: Verify public invitation credentials
+      description: |
+        Checks public invitation credentials using email and date of birth. On
+        success returns a short-lived opaque verification token bound to the
+        invitation id and normalized identity.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvitationVerifyRequest"
+      responses:
+        "200":
+          description: Invitation credentials verified
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationVerifyResponse"
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Credentials do not match a pending invitation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /invitations/{id}/accept:
+    post:
+      operationId: invitations.accept
+      tags:
+        - Invitations
+      summary: Accept a verified invitation
+      description: |
+        Converts a verified invitation into a Member in a Phoenix-owned atomic
+        domain operation. The verification token must come from the verify
+        endpoint. Only this endpoint may transition an invitation to accepted.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvitationAcceptRequest"
+      responses:
+        "200":
+          description: Invitation accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationAcceptResponse"
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Invalid token or invitation cannot be accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Invitation acceptance failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /waitlist/status:
     get:
       operationId: waitlist.status
@@ -2534,6 +2657,103 @@ components:
         createdAt:
           type: string
           format: date-time
+    PublicInvitation:
+      type: object
+      required:
+        - id
+        - status
+        - invitationType
+        - expiresAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          $ref: "#/components/schemas/InvitationStatus"
+        invitationType:
+          type: string
+          description: Domain invitation type used by the signup UI.
+        expiresAt:
+          type: string
+          format: date-time
+    PublicInvitationResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: "#/components/schemas/PublicInvitation"
+    InvitationVerifyRequest:
+      type: object
+      required:
+        - email
+        - dateOfBirth
+      properties:
+        email:
+          type: string
+          format: email
+        dateOfBirth:
+          type: string
+          format: date
+    InvitationVerifyResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - verified
+            - verificationToken
+          properties:
+            verified:
+              type: boolean
+              description: Always true when credentials verify successfully.
+            verificationToken:
+              type: string
+              description: Short-lived opaque token bound to invitation and verified identity.
+    InvitationAcceptRequest:
+      type: object
+      required:
+        - verificationToken
+        - nextOfKinName
+        - nextOfKinPhone
+        - stripeConfirmationToken
+      properties:
+        verificationToken:
+          type: string
+        nextOfKinName:
+          type: string
+          minLength: 1
+        nextOfKinPhone:
+          type: string
+          minLength: 1
+        stripeConfirmationToken:
+          type: string
+          minLength: 1
+        couponCode:
+          type: string
+        mandateContext:
+          type: object
+          additionalProperties: true
+          description: Client mandate context needed for Stripe confirmation.
+    InvitationAcceptResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - accepted
+            - memberId
+          properties:
+            accepted:
+              type: boolean
+              description: Always true when the invitation is accepted successfully.
+            memberId:
+              type: string
+              format: uuid
     WaitlistStatusResponse:
       type: object
       required:

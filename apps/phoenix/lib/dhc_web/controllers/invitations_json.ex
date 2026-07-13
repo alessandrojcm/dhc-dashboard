@@ -17,6 +17,18 @@ defmodule DhcWeb.InvitationsJSON do
     %{data: render_invitation(invitation)}
   end
 
+  def render("public_show.json", %{invitation: invitation}) do
+    %{data: render_public_invitation(invitation)}
+  end
+
+  def render("verify.json", %{verification_token: token}) do
+    %{data: %{verified: true, verificationToken: token}}
+  end
+
+  def render("accept.json", %{result: result}) do
+    %{data: %{accepted: true, memberId: result.member_id}}
+  end
+
   def render("resend.json", %{invitation_resend: invitation_resend}) do
     %{data: render_invitation_resend(invitation_resend)}
   end
@@ -36,6 +48,15 @@ defmodule DhcWeb.InvitationsJSON do
     %{
       failed: invitation_resend.failed,
       succeeded: invitation_resend.succeeded
+    }
+  end
+
+  defp render_public_invitation(invitation) do
+    %{
+      id: invitation.id,
+      status: invitation.status,
+      invitationType: invitation.invitation_type,
+      expiresAt: invitation.expires_at
     }
   end
 

@@ -445,7 +445,9 @@ test.describe("Inventory Management Full Lifecycle", () => {
 		// Step 4: Test item management operations
 		// Find the longsword and mark it for maintenance (ALE-108 dedicated command)
 		await page.getByText(`Training Longsword ${timestamp}`).click();
-		await page.getByRole("button", { name: /mark out for maintenance/i }).click();
+		await page
+			.getByRole("button", { name: /mark out for maintenance/i })
+			.click();
 		await expect(page.getByText(/maintenance status updated/i)).toBeVisible();
 
 		// Step 5: Test search and filtering

@@ -142,7 +142,9 @@ const handleMove = () => {
 };
 
 const handleToggleMaintenance = () => {
-	maintenanceMutation.mutate({ outForMaintenance: !displayItem.out_for_maintenance });
+	maintenanceMutation.mutate({
+		outForMaintenance: !displayItem.out_for_maintenance,
+	});
 };
 
 // Use current item for display
