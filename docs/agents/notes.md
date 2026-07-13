@@ -1,5 +1,9 @@
 # Notes
 
+## Opencode config
+
+- Project `opencode.json` disables `sentry_*` MCP tools by default via top-level `tools` and exposes them only through the primary `triaging` agent. Restart opencode after config edits before expecting agent/MCP tool changes to take effect.
+
 ## SvelteKit (current)
 
 - Type check with `pnpm check` not `tsc` (Svelte compiler required)

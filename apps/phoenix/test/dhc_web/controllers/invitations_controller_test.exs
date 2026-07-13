@@ -3,8 +3,12 @@ defmodule DhcWeb.InvitationsControllerTest do
 
   use Oban.Testing, repo: Dhc.Repo
 
+  import Ecto.Query
+
   alias Dhc.Invitations.Invitation
+  alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.Repo
+  alias Dhc.UserProfiles.UserProfile
 
   defmodule Verifier do
     @invitation_admin_roles ~w(admin president committee_coordinator)
@@ -29,11 +33,34 @@ defmodule DhcWeb.InvitationsControllerTest do
     def verify(_token), do: {:error, :invalid_token}
   end
 
+  defmodule PaymentProcessor do
+    def complete(attrs) do
+      send(Application.fetch_env!(:dhc, :invitation_payment_test_pid), {:stripe_complete, attrs})
+      Application.get_env(:dhc, :invitation_payment_result, :ok)
+    end
+  end
+
   setup do
     original = Application.get_env(:dhc, :auth_verifier)
+    original_payment_processor = Application.get_env(:dhc, :invitation_payment_processor)
+    original_payment_result = Application.get_env(:dhc, :invitation_payment_result)
     Application.put_env(:dhc, :auth_verifier, Verifier)
+    Application.put_env(:dhc, :invitation_payment_processor, PaymentProcessor)
+    Application.put_env(:dhc, :invitation_payment_result, :ok)
+    Application.put_env(:dhc, :invitation_payment_test_pid, self())
 
-    on_exit(fn -> Application.put_env(:dhc, :auth_verifier, original) end)
+    on_exit(fn ->
+      Application.put_env(:dhc, :auth_verifier, original)
+      Application.put_env(:dhc, :invitation_payment_processor, original_payment_processor)
+
+      if original_payment_result do
+        Application.put_env(:dhc, :invitation_payment_result, original_payment_result)
+      else
+        Application.delete_env(:dhc, :invitation_payment_result)
+      end
+
+      Application.delete_env(:dhc, :invitation_payment_test_pid)
+    end)
   end
 
   describe "POST /api/invitations" do
@@ -340,6 +367,222 @@ defmodule DhcWeb.InvitationsControllerTest do
     end
   end
 
+  describe "public invitation conversion endpoints" do
+    test "GET /api/invitations/:id returns public-safe invitation state without PII", %{
+      conn: conn
+    } do
+      %{invitation_id: invitation_id} = insert_invitation_with_profile(email: "pii@example.com")
+
+      conn = get(conn, "/api/invitations/#{invitation_id}")
+
+      assert %{
+               "data" => %{
+                 "id" => ^invitation_id,
+                 "status" => "pending",
+                 "invitationType" => "member",
+                 "expiresAt" => _
+               }
+             } = json_response(conn, 200)
+
+      refute Map.has_key?(json_response(conn, 200)["data"], "email")
+      refute Map.has_key?(json_response(conn, 200)["data"], "dateOfBirth")
+      refute Map.has_key?(json_response(conn, 200)["data"], "firstName")
+      refute Map.has_key?(json_response(conn, 200)["data"], "lastName")
+    end
+
+    test "POST /api/invitations/:id/verify returns an opaque token for matching credentials", %{
+      conn: conn
+    } do
+      %{invitation_id: invitation_id} =
+        insert_invitation_with_profile(email: "verify@example.com", date_of_birth: ~D[1990-01-01])
+
+      conn =
+        post(conn, "/api/invitations/#{invitation_id}/verify", %{
+          "email" => " VERIFY@example.com ",
+          "dateOfBirth" => "1990-01-01"
+        })
+
+      assert %{"data" => %{"verified" => true, "verificationToken" => token}} =
+               json_response(conn, 200)
+
+      assert is_binary(token)
+      assert byte_size(token) > 20
+    end
+
+    test "POST /api/invitations/:id/verify rejects mismatched credentials", %{conn: conn} do
+      %{invitation_id: invitation_id} =
+        insert_invitation_with_profile(email: "verify@example.com", date_of_birth: ~D[1990-01-01])
+
+      conn =
+        post(conn, "/api/invitations/#{invitation_id}/verify", %{
+          "email" => "wrong@example.com",
+          "dateOfBirth" => "1990-01-01"
+        })
+
+      assert %{"errors" => %{"detail" => "Invalid invitation credentials"}} =
+               json_response(conn, 422)
+    end
+
+    test "POST /api/invitations/:id/accept atomically creates member state", %{conn: conn} do
+      %{auth_user_id: user_id, profile_id: profile_id, invitation_id: invitation_id} =
+        insert_invitation_with_profile(email: "accept@example.com", waitlist: true)
+
+      {:ok, token} =
+        Dhc.Invitations.issue_verification_token(
+          invitation_id,
+          "accept@example.com",
+          ~D[1990-01-01]
+        )
+
+      conn =
+        post(conn, "/api/invitations/#{invitation_id}/accept", %{
+          "verificationToken" => token,
+          "nextOfKinName" => "Ada Lovelace",
+          "nextOfKinPhone" => "+353 1 000 0000",
+          "stripeConfirmationToken" => "ctok_test"
+        })
+
+      assert %{"data" => %{"accepted" => true, "memberId" => ^user_id}} = json_response(conn, 200)
+
+      assert_receive {:stripe_complete,
+                      %{
+                        customer_id: "cus_accept",
+                        confirmation_token: "ctok_test",
+                        coupon_code: nil,
+                        invitation_id: ^invitation_id
+                      }}
+
+      assert Repo.get!(Invitation, invitation_id).status == "accepted"
+
+      member = Repo.get!(MemberProfile, user_id)
+      assert member.user_profile_id == profile_id
+      assert member.next_of_kin_name == "Ada Lovelace"
+      assert member.insurance_form_submitted == true
+      assert Repo.get!(UserProfile, profile_id).is_active == true
+
+      assert Repo.exists?(
+               from r in Dhc.Auth.UserRole, where: r.user_id == ^user_id and r.role == "member"
+             )
+
+      assert Repo.one!(
+               from w in Dhc.Waitlist.WaitlistEntry,
+                 where: w.email == "accept@example.com",
+                 select: w.status
+             ) == "joined"
+    end
+
+    test "POST /api/invitations/:id/accept rolls back when Stripe payment fails", %{conn: conn} do
+      %{profile_id: profile_id, invitation_id: invitation_id} =
+        insert_invitation_with_profile(email: "stripe-fail@example.com", waitlist: true)
+
+      Application.put_env(:dhc, :invitation_payment_result, {:error, :card_declined})
+
+      {:ok, token} =
+        Dhc.Invitations.issue_verification_token(
+          invitation_id,
+          "stripe-fail@example.com",
+          ~D[1990-01-01]
+        )
+
+      conn =
+        post(conn, "/api/invitations/#{invitation_id}/accept", %{
+          "verificationToken" => token,
+          "nextOfKinName" => "Ada Lovelace",
+          "nextOfKinPhone" => "+353 1 000 0000",
+          "stripeConfirmationToken" => "ctok_declined"
+        })
+
+      assert %{"errors" => %{"detail" => "Payment could not be completed"}} =
+               json_response(conn, 402)
+
+      assert_receive {:stripe_complete, %{confirmation_token: "ctok_declined"}}
+      assert Repo.get!(Invitation, invitation_id).status == "pending"
+      assert Repo.get!(UserProfile, profile_id).is_active == false
+      refute Repo.exists?(from m in MemberProfile, where: m.user_profile_id == ^profile_id)
+    end
+
+    test "POST /api/invitations/:id/accept rejects blank required fields before mutating", %{
+      conn: conn
+    } do
+      %{profile_id: profile_id, invitation_id: invitation_id} =
+        insert_invitation_with_profile(email: "blank-accept@example.com", waitlist: true)
+
+      {:ok, token} =
+        Dhc.Invitations.issue_verification_token(
+          invitation_id,
+          "blank-accept@example.com",
+          ~D[1990-01-01]
+        )
+
+      conn =
+        post(conn, "/api/invitations/#{invitation_id}/accept", %{
+          "verificationToken" => token,
+          "nextOfKinName" => "  ",
+          "nextOfKinPhone" => "+353 1 000 0000",
+          "stripeConfirmationToken" => "ctok_test"
+        })
+
+      assert %{"errors" => %{"detail" => "acceptance payload is invalid"}} =
+               json_response(conn, 400)
+
+      assert Repo.get!(Invitation, invitation_id).status == "pending"
+      assert Repo.get!(UserProfile, profile_id).is_active == false
+
+      assert Repo.one!(
+               from w in Dhc.Waitlist.WaitlistEntry,
+                 where: w.email == "blank-accept@example.com",
+                 select: w.status
+             ) == "invited"
+
+      refute_receive {:stripe_complete, _attrs}
+    end
+
+    test "POST /api/invitations/:id/accept rolls back when member creation fails", %{conn: conn} do
+      %{auth_user_id: user_id, profile_id: profile_id, invitation_id: invitation_id} =
+        insert_invitation_with_profile(email: "rollback@example.com", waitlist: true)
+
+      Repo.insert!(%MemberProfile{
+        id: user_id,
+        user_profile_id: profile_id,
+        next_of_kin_name: "Existing Member",
+        next_of_kin_phone: "+353 1 999 9999",
+        preferred_weapon: [],
+        membership_start_date: DateTime.utc_now() |> DateTime.truncate(:second),
+        insurance_form_submitted: true,
+        additional_data: %{}
+      })
+
+      {:ok, token} =
+        Dhc.Invitations.issue_verification_token(
+          invitation_id,
+          "rollback@example.com",
+          ~D[1990-01-01]
+        )
+
+      conn =
+        post(conn, "/api/invitations/#{invitation_id}/accept", %{
+          "verificationToken" => token,
+          "nextOfKinName" => "Ada Lovelace",
+          "nextOfKinPhone" => "+353 1 000 0000",
+          "stripeConfirmationToken" => "ctok_test"
+        })
+
+      assert %{"errors" => %{"detail" => "Invitation cannot be accepted"}} =
+               json_response(conn, 422)
+
+      assert Repo.get!(Invitation, invitation_id).status == "pending"
+      assert Repo.get!(UserProfile, profile_id).is_active == false
+
+      assert Repo.one!(
+               from w in Dhc.Waitlist.WaitlistEntry,
+                 where: w.email == "rollback@example.com",
+                 select: w.status
+             ) == "invited"
+
+      refute_receive {:stripe_complete, _attrs}
+    end
+  end
+
   describe "POST /api/invitations/resend" do
     test "returns 202 with result counts", %{conn: conn} do
       conn =
@@ -431,6 +674,8 @@ defmodule DhcWeb.InvitationsControllerTest do
       %Invitation{
         id: id,
         email: Keyword.get(attrs, :email, "test#{:rand.uniform(1_000_000)}@example.com"),
+        user_id: Keyword.get(attrs, :user_id),
+        waitlist_id: Keyword.get(attrs, :waitlist_id),
         status: Keyword.get(attrs, :status, "pending"),
         expires_at: expires_at,
         created_at: created_at,
@@ -439,5 +684,67 @@ defmodule DhcWeb.InvitationsControllerTest do
       |> Repo.insert()
 
     id
+  end
+
+  defp insert_invitation_with_profile(attrs) do
+    auth_user_id = Ecto.UUID.generate()
+    profile_id = Ecto.UUID.generate()
+    email = Keyword.fetch!(attrs, :email)
+    date_of_birth = Keyword.get(attrs, :date_of_birth, ~D[1990-01-01])
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    Repo.insert_all(
+      "users",
+      [
+        [
+          id: Ecto.UUID.dump!(auth_user_id),
+          aud: "authenticated",
+          role: "authenticated",
+          email: email
+        ]
+      ],
+      prefix: "auth"
+    )
+
+    waitlist_id =
+      if Keyword.get(attrs, :waitlist, false) do
+        id = Ecto.UUID.generate()
+
+        Repo.insert!(%Dhc.Waitlist.WaitlistEntry{
+          id: id,
+          email: email,
+          status: "invited",
+          initial_registration_date: now,
+          last_status_change: now
+        })
+
+        id
+      end
+
+    Repo.insert!(%UserProfile{
+      id: profile_id,
+      supabase_user_id: auth_user_id,
+      first_name: "Ada",
+      last_name: "Lovelace",
+      date_of_birth: date_of_birth,
+      phone_number: "+353810000000",
+      gender: "woman (cis)",
+      pronouns: "she/her",
+      is_active: false,
+      customer_id: Keyword.get(attrs, :customer_id, "cus_accept"),
+      social_media_consent: "no",
+      waitlist_id: waitlist_id
+    })
+
+    invitation_id =
+      insert_invitation(
+        email: email,
+        status: Keyword.get(attrs, :status, "pending"),
+        user_id: auth_user_id,
+        waitlist_id: waitlist_id,
+        invitation_type: Keyword.get(attrs, :invitation_type, "member")
+      )
+
+    %{auth_user_id: auth_user_id, profile_id: profile_id, invitation_id: invitation_id}
   end
 end

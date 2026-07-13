@@ -103,6 +103,22 @@ if config_env() == :prod do
   config :dhc, :stripe_api_url, System.get_env("STRIPE_API_URL", "https://api.stripe.com")
   config :dhc, :stripe_api_version, "2025-10-29.clover"
   config :dhc, :stripe_webhook_secret, System.get_env("STRIPE_WEBHOOK_SIGNING_SECRET")
+
+  stripe_membership_lookup_keys =
+    [
+      monthly: System.get_env("STRIPE_MEMBERSHIP_MONTHLY_LOOKUP_KEY"),
+      annual: System.get_env("STRIPE_MEMBERSHIP_ANNUAL_LOOKUP_KEY")
+    ]
+    |> Enum.reject(fn {_key, value} -> is_nil(value) or String.trim(value) == "" end)
+
+  if stripe_membership_lookup_keys != [] do
+    config :dhc, :stripe_membership_lookup_keys, stripe_membership_lookup_keys
+  end
+
+  config :dhc,
+         :invitation_verification_token_salt,
+         System.get_env("INVITATION_VERIFICATION_TOKEN_SALT", "invitation-verification-v1")
+
   config :dhc, :supabase_url, System.get_env("SUPABASE_URL")
   config :dhc, :supabase_anon_key, System.get_env("SUPABASE_ANON_KEY")
   config :dhc, :supabase_service_role_key, System.get_env("SUPABASE_SERVICE_ROLE_KEY")

@@ -30,7 +30,10 @@ import { resolve } from "$app/paths";
 import { page } from "$app/state";
 import { Label } from "$lib/components/ui/label";
 import { createQuery, keepPreviousData } from "@tanstack/svelte-query";
-import { inventoryItemsIndex, type InventoryItem as ApiInventoryItem } from "@dhc/api-client";
+import {
+	inventoryItemsIndex,
+	type InventoryItem as ApiInventoryItem,
+} from "@dhc/api-client";
 
 let { data } = $props();
 

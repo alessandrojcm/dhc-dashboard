@@ -13,6 +13,13 @@ config :dhc,
 
 config :dhc, :cors_allowed_origins, []
 
+# Salt namespace for short-lived public invitation verification tokens. The
+# Endpoint secret_key_base remains the signing secret; this salt is configurable
+# so deployments can rotate the token namespace without code changes.
+config :dhc, :invitation_verification_token_salt, "invitation-verification-v1"
+
+config :dhc, :invitation_payment_processor, Dhc.Invitations.StripePayment
+
 # Configure Oban for background job processing
 config :dhc, Oban,
   repo: Dhc.Repo,
