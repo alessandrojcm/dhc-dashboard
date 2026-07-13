@@ -8,9 +8,11 @@ import { getKyselyClient } from "$lib/server/kysely";
 import { getPriceIds } from "$lib/server/pricingUtils";
 import { createInvitationService } from "$lib/server/services/invitations";
 import { stripeClient } from "$lib/server/stripe";
+import { apiBaseUrl } from "$lib/server/api-client";
 import { env } from "$env/dynamic/public";
 import { dev } from "$app/environment";
 import logger from "$lib/server/services/shared/logger";
+import { invitationsAccept, invitationsVerify } from "@dhc/api-client";
 
 const DASHBOARD_MIGRATION_CODE =
 	env.PUBLIC_DASHBOARD_MIGRATION_CODE ?? "DHCDASHBOARD";
@@ -25,16 +27,27 @@ export const validateInvitation = form(inviteValidationSchema, async (data) => {
 		throw new Error("Invitation ID is required");
 	}
 
-	const invitationService = createInvitationService(event.platform!);
-	const isValid = await invitationService.validateCredentials(
-		invitationId,
-		data.email,
-		data.dateOfBirth,
-	);
+	const response = await invitationsVerify({
+		baseUrl: apiBaseUrl(),
+		path: { id: invitationId },
+		body: { email: data.email, dateOfBirth: data.dateOfBirth },
+	});
 
-	if (!isValid) {
+	if (response.error || !response.data?.data.verificationToken) {
 		return { success: false, verified: false };
 	}
+
+	event.cookies.set(
+		`invite-verification-${invitationId}`,
+		response.data.data.verificationToken,
+		{
+			expires: new Date(Date.now() + 60 * 15 * 1000),
+			path: "/",
+			httpOnly: true,
+			secure: !dev,
+			sameSite: "lax",
+		},
+	);
 
 	event.cookies.set(`invite-confirmed-${invitationId}`, "true", {
 		expires: new Date(Date.now() + 60 * 60 * 24 * 30),
@@ -73,21 +86,12 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 	const invitationService = createInvitationService(event.platform!);
 
 	try {
-		return await kysely.transaction().execute(async (trx) => {
-			logger.debug("[processPayment] Processing invitation acceptance...");
-			// Process invitation acceptance (handles status update, registration, waitlist)
-			const invitationData =
-				await invitationService.processInvitationAcceptance(
-					trx,
-					invitationId,
-					data.nextOfKin,
-					data.nextOfKinNumber,
-				);
-			logger.debug(
-				`[processPayment] Invitation accepted for user: ${invitationData.user_id}`,
-			);
-			// Get customer ID
-			const customerId = await trx
+		const invitationData = await invitationService.getInvitationInfo(invitationId);
+		logger.debug(
+			`[processPayment] Processing verified invitation for user: ${invitationData.user_id}`,
+		);
+		// Get customer ID
+		const customerId = await kysely
 				.selectFrom("user_profiles")
 				.select("customer_id")
 				.where("supabase_user_id", "=", invitationData.user_id)
@@ -263,13 +267,41 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 					}),
 			]);
 
-			// Success! Delete the access token cookie
-			logger.debug(
-				"[processPayment] Payment processing completed successfully",
-			);
-			event.cookies.delete("access-token", { path: "/" });
-			throw redirect(301, `/members/signup/${invitationId}/success`);
+
+		const verificationToken = event.cookies.get(
+			`invite-verification-${invitationId}`,
+		);
+
+		if (!verificationToken) {
+			throw error(400, "Invitation verification has expired. Please verify again.");
+		}
+
+		const acceptance = await invitationsAccept({
+			baseUrl: apiBaseUrl(),
+			path: { id: invitationId },
+			body: {
+				verificationToken,
+				nextOfKinName: data.nextOfKin,
+				nextOfKinPhone: data.nextOfKinNumber,
+				stripeConfirmationToken: data.stripeConfirmationToken,
+				couponCode: data.couponCode || undefined,
+				mandateContext: {
+					ipAddress: event.getClientAddress(),
+					userAgent: event.request.headers.get("user-agent") ?? undefined,
+				},
+			},
 		});
+
+		if (acceptance.error || !acceptance.data?.data.accepted) {
+			throw error(500, "Invitation acceptance failed");
+		}
+
+		// Success! Delete temporary invitation cookies.
+		logger.debug("[processPayment] Payment processing completed successfully");
+		event.cookies.delete("access-token", { path: "/" });
+		event.cookies.delete(`invite-verification-${invitationId}`, { path: "/" });
+		event.cookies.delete(`invite-confirmed-${invitationId}`, { path: "/" });
+		throw redirect(301, `/members/signup/${invitationId}/success`);
 	} catch (err) {
 		if (isRedirect(err)) {
 			throw err;

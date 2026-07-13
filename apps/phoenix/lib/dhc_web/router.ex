@@ -50,6 +50,9 @@ defmodule DhcWeb.Router do
 
     get "/health", HealthController, :index
     get "/options", MembersController, :options
+    get "/invitations/:id", InvitationsController, :show
+    post "/invitations/:id/verify", InvitationsController, :verify
+    post "/invitations/:id/accept", InvitationsController, :accept
     get "/waitlist/status", WaitlistController, :index
     post "/waitlist/entries", WaitlistController, :create
     post "/webhooks/stripe", StripeWebhooksController, :create
