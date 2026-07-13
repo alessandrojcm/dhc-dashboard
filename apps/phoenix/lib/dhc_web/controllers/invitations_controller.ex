@@ -25,6 +25,92 @@ defmodule DhcWeb.InvitationsController do
   end
 
   @doc """
+  GET /invitations/:id
+  """
+  def show(conn, %{"id" => id}) do
+    case Invitations.public_lookup(id) do
+      {:ok, invitation} ->
+        conn
+        |> put_view(json: DhcWeb.InvitationsJSON)
+        |> render(:public_show, invitation: invitation)
+
+      {:error, :not_found} ->
+        conn
+        |> put_status(:not_found)
+        |> put_view(json: DhcWeb.InvitationsJSON)
+        |> render(:error, detail: "Invitation not found")
+    end
+  end
+
+  @doc """
+  POST /invitations/:id/verify
+  """
+  def verify(conn, %{"id" => id, "email" => email, "dateOfBirth" => date_of_birth}) do
+    case Invitations.verify_credentials(id, email, date_of_birth) do
+      {:ok, token} ->
+        conn
+        |> put_view(json: DhcWeb.InvitationsJSON)
+        |> render(:verify, verification_token: token)
+
+      {:error, :invalid_credentials} ->
+        conn
+        |> put_status(:unprocessable_entity)
+        |> put_view(json: DhcWeb.InvitationsJSON)
+        |> render(:error, detail: "Invalid invitation credentials")
+    end
+  end
+
+  def verify(conn, _params) do
+    conn
+    |> put_status(:bad_request)
+    |> put_view(json: DhcWeb.InvitationsJSON)
+    |> render(:error, detail: "email and dateOfBirth are required")
+  end
+
+  @doc """
+  POST /invitations/:id/accept
+  """
+  def accept(conn, %{
+        "id" => id,
+        "verificationToken" => token,
+        "nextOfKinName" => next_of_kin_name,
+        "nextOfKinPhone" => next_of_kin_phone,
+        "stripeConfirmationToken" => _stripe_confirmation_token
+      }) do
+    case Invitations.accept(id, token, next_of_kin_name, next_of_kin_phone) do
+      {:ok, result} ->
+        conn
+        |> put_view(json: DhcWeb.InvitationsJSON)
+        |> render(:accept, result: result)
+
+      {:error, :invalid_token} ->
+        conn
+        |> put_status(:unprocessable_entity)
+        |> put_view(json: DhcWeb.InvitationsJSON)
+        |> render(:error, detail: "Invalid verification token")
+
+      {:error, :invalid_invitation} ->
+        conn
+        |> put_status(:unprocessable_entity)
+        |> put_view(json: DhcWeb.InvitationsJSON)
+        |> render(:error, detail: "Invitation cannot be accepted")
+
+      {:error, _reason} ->
+        conn
+        |> put_status(:internal_server_error)
+        |> put_view(json: DhcWeb.InvitationsJSON)
+        |> render(:error, detail: "Invitation acceptance failed")
+    end
+  end
+
+  def accept(conn, _params) do
+    conn
+    |> put_status(:bad_request)
+    |> put_view(json: DhcWeb.InvitationsJSON)
+    |> render(:error, detail: "acceptance payload is invalid")
+  end
+
+  @doc """
   POST /invitations
   """
   def create(conn, %{"invites" => invites}) when is_list(invites) and length(invites) > 0 do

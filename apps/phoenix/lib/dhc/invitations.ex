@@ -6,13 +6,18 @@ defmodule Dhc.Invitations do
   import Ecto.Query
 
   alias Dhc.Email.Worker, as: EmailWorker
+  alias Dhc.Auth.UserRole
   alias Dhc.CursorPagination
   alias Dhc.Invitations.Invitation
   alias Dhc.Invitations.Repository
+  alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.Repo
   alias Dhc.UserProfiles.UserProfile
+  alias Dhc.Waitlist.WaitlistEntry
 
   @invite_email_template "inviteMember"
+  @verification_token_salt "invitation-verification"
+  @verification_token_max_age_seconds 15 * 60
 
   # ── List (cursor pagination) ─────────────────────────────────────────
   # The dashboard invitations table reads only `pending` and `expired` rows,
@@ -63,6 +68,122 @@ defmodule Dhc.Invitations do
   end
 
   @doc """
+  Returns public-safe Invitation state for the signup flow.
+
+  This intentionally excludes PII such as email, date of birth, and names.
+  """
+  @spec public_lookup(String.t()) :: {:ok, Invitation.t()} | {:error, :not_found}
+  def public_lookup(id) when is_binary(id) do
+    case Repo.get(Invitation, id) do
+      nil -> {:error, :not_found}
+      invitation -> {:ok, invitation}
+    end
+  end
+
+  @doc """
+  Verifies public Invitation credentials and returns a short-lived signed token.
+  """
+  @spec verify_credentials(String.t(), String.t(), String.t()) ::
+          {:ok, String.t()} | {:error, :invalid_credentials}
+  def verify_credentials(invitation_id, email, date_of_birth) do
+    with {:ok, date} <- parse_date(date_of_birth),
+         true <- credentials_match?(invitation_id, email, date),
+         {:ok, token} <- issue_verification_token(invitation_id, email, date) do
+      {:ok, token}
+    else
+      _ -> {:error, :invalid_credentials}
+    end
+  end
+
+  @doc """
+  Issues the opaque signed token used by the public accept endpoint.
+  """
+  @spec issue_verification_token(String.t(), String.t(), Date.t()) :: {:ok, String.t()}
+  def issue_verification_token(invitation_id, email, %Date{} = date_of_birth) do
+    token =
+      Phoenix.Token.sign(DhcWeb.Endpoint, @verification_token_salt, %{
+        "invitation_id" => invitation_id,
+        "email" => normalize_email(email),
+        "date_of_birth" => Date.to_iso8601(date_of_birth)
+      })
+
+    {:ok, token}
+  end
+
+  @doc """
+  Converts a verified Invitation into a Member in one database transaction.
+  """
+  @spec accept(String.t(), String.t(), String.t(), String.t()) ::
+          {:ok, %{member_id: String.t()}} | {:error, term()}
+  def accept(invitation_id, verification_token, next_of_kin_name, next_of_kin_phone) do
+    with {:ok, claims} <- verify_token(verification_token),
+         :ok <- token_matches_invitation(claims, invitation_id) do
+      Repo.transaction(fn ->
+        invitation =
+          from(i in Invitation,
+            where: i.id == ^invitation_id and i.status == "pending",
+            lock: "FOR UPDATE"
+          )
+          |> Repo.one()
+
+        if is_nil(invitation) do
+          Repo.rollback(:invalid_invitation)
+        end
+
+        user_profile =
+          from(up in UserProfile, where: up.supabase_user_id == ^invitation.user_id)
+          |> Repo.one()
+
+        if is_nil(user_profile) do
+          Repo.rollback(:invalid_invitation)
+        end
+
+        member_profile = %MemberProfile{
+          id: invitation.user_id,
+          user_profile_id: user_profile.id,
+          next_of_kin_name: next_of_kin_name,
+          next_of_kin_phone: next_of_kin_phone,
+          preferred_weapon: [],
+          membership_start_date: DateTime.utc_now() |> DateTime.truncate(:second),
+          insurance_form_submitted: true,
+          additional_data: %{}
+        }
+
+        {:ok, _member_profile} = Repo.insert(member_profile)
+
+        invitation
+        |> Ecto.Changeset.change(status: "accepted")
+        |> Repo.update!()
+
+        user_profile
+        |> Ecto.Changeset.change(is_active: true)
+        |> Repo.update!()
+
+        Repo.insert_all(
+          UserRole,
+          [[user_id: invitation.user_id, role: "member"]],
+          on_conflict: :nothing,
+          conflict_target: [:user_id, :role]
+        )
+
+        from(w in WaitlistEntry, where: w.email == ^invitation.email)
+        |> Repo.update_all(
+          set: [
+            status: "joined",
+            last_status_change: DateTime.utc_now() |> DateTime.truncate(:second)
+          ]
+        )
+
+        %{member_id: invitation.user_id}
+      end)
+    else
+      {:error, :invalid_token} -> {:error, :invalid_token}
+      {:error, reason} -> {:error, reason}
+      _ -> {:error, :invalid_token}
+    end
+  end
+
+  @doc """
   Re-enqueues invite-member emails for existing invitations.
   """
   @spec resend_invitation_emails([String.t()]) ::
@@ -85,6 +206,56 @@ defmodule Dhc.Invitations do
   end
 
   def resend_invitation_emails(_emails), do: {:ok, %{succeeded: 0, failed: 0}}
+
+  defp credentials_match?(invitation_id, email, %Date{} = date_of_birth) do
+    normalized_email = normalize_email(email)
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    query =
+      from i in Invitation,
+        join: up in UserProfile,
+        on: up.supabase_user_id == i.user_id,
+        where: i.id == ^invitation_id,
+        where: fragment("lower(?)", i.email) == ^normalized_email,
+        where: i.status == "pending",
+        where: i.expires_at > ^now,
+        where: up.date_of_birth == ^date_of_birth,
+        select: i.id
+
+    Repo.exists?(query)
+  end
+
+  defp verify_token(token) when is_binary(token) do
+    Phoenix.Token.verify(DhcWeb.Endpoint, @verification_token_salt, token,
+      max_age: @verification_token_max_age_seconds
+    )
+    |> case do
+      {:ok, claims} -> {:ok, claims}
+      {:error, _reason} -> {:error, :invalid_token}
+    end
+  end
+
+  defp verify_token(_token), do: {:error, :invalid_token}
+
+  defp token_matches_invitation(%{"invitation_id" => invitation_id}, invitation_id), do: :ok
+  defp token_matches_invitation(_claims, _invitation_id), do: {:error, :invalid_token}
+
+  defp normalize_email(email) when is_binary(email) do
+    email
+    |> String.trim()
+    |> String.downcase()
+  end
+
+  defp parse_date(%Date{} = date), do: {:ok, date}
+
+  defp parse_date(value) when is_binary(value) do
+    value
+    |> String.split("T")
+    |> List.first()
+    |> Date.from_iso8601()
+  end
+
+  defp parse_date(_value), do: {:error, :invalid_date}
 
   defp list_invitation_resend_data(emails) do
     from(i in Invitation,
