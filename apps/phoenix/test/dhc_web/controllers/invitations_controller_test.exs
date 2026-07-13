@@ -438,6 +438,83 @@ defmodule DhcWeb.InvitationsControllerTest do
                  select: w.status
              ) == "joined"
     end
+
+    test "POST /api/invitations/:id/accept rejects blank required fields before mutating", %{
+      conn: conn
+    } do
+      %{profile_id: profile_id, invitation_id: invitation_id} =
+        insert_invitation_with_profile(email: "blank-accept@example.com", waitlist: true)
+
+      {:ok, token} =
+        Dhc.Invitations.issue_verification_token(
+          invitation_id,
+          "blank-accept@example.com",
+          ~D[1990-01-01]
+        )
+
+      conn =
+        post(conn, "/api/invitations/#{invitation_id}/accept", %{
+          "verificationToken" => token,
+          "nextOfKinName" => "  ",
+          "nextOfKinPhone" => "+353 1 000 0000",
+          "stripeConfirmationToken" => "ctok_test"
+        })
+
+      assert %{"errors" => %{"detail" => "acceptance payload is invalid"}} =
+               json_response(conn, 400)
+
+      assert Repo.get!(Invitation, invitation_id).status == "pending"
+      assert Repo.get!(UserProfile, profile_id).is_active == false
+
+      assert Repo.one!(
+               from w in Dhc.Waitlist.WaitlistEntry,
+                 where: w.email == "blank-accept@example.com",
+                 select: w.status
+             ) == "invited"
+    end
+
+    test "POST /api/invitations/:id/accept rolls back when member creation fails", %{conn: conn} do
+      %{auth_user_id: user_id, profile_id: profile_id, invitation_id: invitation_id} =
+        insert_invitation_with_profile(email: "rollback@example.com", waitlist: true)
+
+      Repo.insert!(%MemberProfile{
+        id: user_id,
+        user_profile_id: profile_id,
+        next_of_kin_name: "Existing Member",
+        next_of_kin_phone: "+353 1 999 9999",
+        preferred_weapon: [],
+        membership_start_date: DateTime.utc_now() |> DateTime.truncate(:second),
+        insurance_form_submitted: true,
+        additional_data: %{}
+      })
+
+      {:ok, token} =
+        Dhc.Invitations.issue_verification_token(
+          invitation_id,
+          "rollback@example.com",
+          ~D[1990-01-01]
+        )
+
+      conn =
+        post(conn, "/api/invitations/#{invitation_id}/accept", %{
+          "verificationToken" => token,
+          "nextOfKinName" => "Ada Lovelace",
+          "nextOfKinPhone" => "+353 1 000 0000",
+          "stripeConfirmationToken" => "ctok_test"
+        })
+
+      assert %{"errors" => %{"detail" => "Invitation cannot be accepted"}} =
+               json_response(conn, 422)
+
+      assert Repo.get!(Invitation, invitation_id).status == "pending"
+      assert Repo.get!(UserProfile, profile_id).is_active == false
+
+      assert Repo.one!(
+               from w in Dhc.Waitlist.WaitlistEntry,
+                 where: w.email == "rollback@example.com",
+                 select: w.status
+             ) == "invited"
+    end
   end
 
   describe "POST /api/invitations/resend" do
