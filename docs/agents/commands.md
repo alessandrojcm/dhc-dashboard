@@ -148,6 +148,8 @@ Generated output: `packages/api-client/src/client/` (gitignored — auto-regener
 
 `packages/api-client/openapi-ts.config.ts` explicitly points `output.tsConfigPath` at `packages/api-client/tsconfig.json` so postinstall generation works in deployment environments that do not expose the repo-root SvelteKit `tsconfig.json`.
 
+`@hey-api/openapi-ts` + Valibot currently emits invalid TypeScript for boolean schemas expressed as `enum: [true]`/`enum: [false]` (it generates `v.picklist([true])`, but Valibot picklists are typed for string/number/bigint). For response flags that are always true on success, use `type: boolean` plus a description instead of a single-value boolean enum.
+
 Usage in SvelteKit:
 ```ts
 import { configureClient, healthIndex } from '@dhc/api-client';

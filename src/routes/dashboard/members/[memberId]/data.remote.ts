@@ -93,8 +93,8 @@ export const updateProfile = form(
 					socialMediaConsent: data.socialMediaConsent,
 				},
 				throwOnError: true,
-      });
-			invalidate(event.url)
+			});
+			invalidate(event.url);
 
 			return { success: "Profile has been updated!" };
 		} catch (e) {

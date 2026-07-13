@@ -9,9 +9,9 @@ defmodule Dhc.StripeSync do
 
   require Logger
 
+  alias Dhc.Stripe.LookupKeys
   alias Dhc.StripeSync.Repository
 
-  @membership_lookup_keys ["standard_membership_fee", "annual_membership_fee_revised"]
   @price_cache_ttl_hours 24
 
   @type sync_summary :: %{
@@ -99,13 +99,15 @@ defmodule Dhc.StripeSync do
   defp fresh_cache?(_), do: false
 
   defp fetch_price_ids_from_stripe do
+    lookup_keys = LookupKeys.all()
+
     case list_stripe_prices() do
       {:ok, prices} when prices != [] ->
         price_ids = Enum.map(prices, & &1["id"])
 
         Logger.info("[stripe-sync] Fetched Stripe membership price IDs",
           price_ids: price_ids,
-          lookup_keys: @membership_lookup_keys
+          lookup_keys: lookup_keys
         )
 
         :ok = Repository.upsert_price_id_cache(Enum.join(price_ids, ","))
@@ -113,7 +115,7 @@ defmodule Dhc.StripeSync do
 
       {:ok, []} ->
         Logger.error("[stripe-sync] No Stripe prices found for lookup keys",
-          lookup_keys: @membership_lookup_keys
+          lookup_keys: lookup_keys
         )
 
         {:error, :price_not_found}
@@ -283,7 +285,7 @@ defmodule Dhc.StripeSync do
 
   defp list_stripe_prices do
     lookup_keys_query =
-      @membership_lookup_keys
+      LookupKeys.all()
       |> Enum.map(&"lookup_keys[]=#{URI.encode_www_form(&1)}")
       |> Enum.join("&")
 
