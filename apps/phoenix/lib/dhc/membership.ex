@@ -12,12 +12,11 @@ defmodule Dhc.Membership do
   alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.Members
   alias Dhc.Repo
+  alias Dhc.Stripe.LookupKeys
   alias Dhc.Stripe.Operations
   alias Dhc.UserProfiles.UserProfile
 
   require Logger
-
-  @membership_lookup_key "standard_membership_fee"
 
   @type pause_error ::
           :invalid_payload
@@ -141,7 +140,7 @@ defmodule Dhc.Membership do
 
   defp has_membership_price?(%{"items" => %{"data" => items}}) when is_list(items) do
     Enum.any?(items, fn item ->
-      get_in(item, ["price", "lookup_key"]) == @membership_lookup_key
+      get_in(item, ["price", "lookup_key"]) == LookupKeys.monthly()
     end)
   end
 

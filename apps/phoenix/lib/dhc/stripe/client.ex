@@ -71,11 +71,13 @@ defmodule Dhc.Stripe.Client do
     else
       full_url = stripe_api_url() <> url
 
-      headers = [
-        {"authorization", "Bearer #{stripe_key}"},
-        {"stripe-version", stripe_api_version()},
-        {"content-type", "application/x-www-form-urlencoded"}
-      ]
+      headers =
+        [
+          {"authorization", "Bearer #{stripe_key}"},
+          {"stripe-version", stripe_api_version()},
+          {"content-type", "application/x-www-form-urlencoded"}
+        ]
+        |> maybe_add_idempotency_key(opts)
 
       req_opts = [
         decode_body: true,
@@ -85,7 +87,6 @@ defmodule Dhc.Stripe.Client do
 
       req_opts =
         req_opts
-        |> maybe_add_idempotency_key(opts)
         |> maybe_add_form_body(body, method)
 
       result =
@@ -117,14 +118,17 @@ defmodule Dhc.Stripe.Client do
     {:error, {:http_error, exception}}
   end
 
-  defp maybe_add_idempotency_key(opts, call_opts) do
-    case Keyword.get(call_opts, :idempotency_key) do
-      nil -> opts
-      key -> Keyword.put(opts, :headers, [{"idempotency-key", key}])
+  defp maybe_add_idempotency_key(headers, call_opts) do
+    request_opts = Keyword.get(call_opts, :opts, [])
+
+    case Keyword.get(request_opts, :idempotency_key) || Keyword.get(call_opts, :idempotency_key) do
+      nil -> headers
+      key -> [{"idempotency-key", key} | headers]
     end
   end
 
   defp maybe_add_form_body(opts, nil, _method), do: opts
+  defp maybe_add_form_body(opts, body, :get) when body in [[], %{}], do: opts
 
   defp maybe_add_form_body(opts, body, _method) when is_map(body) or is_list(body) do
     Keyword.put(opts, :form, normalize_form_params(body))
@@ -137,7 +141,20 @@ defmodule Dhc.Stripe.Client do
 
   defp format_query(nil), do: []
   defp format_query([]), do: []
-  defp format_query(query) when is_list(query), do: query
+
+  defp format_query(query) when is_list(query) do
+    Enum.flat_map(query, fn
+      {key, values} when is_list(values) ->
+        encoded_key = stripe_array_key(key)
+        Enum.map(values, &{encoded_key, &1})
+
+      {key, value} ->
+        [{key, value}]
+    end)
+  end
+
+  defp stripe_array_key(key) when is_atom(key), do: "#{key}[]"
+  defp stripe_array_key(key) when is_binary(key), do: "#{key}[]"
 
   @spec stripe_api_url() :: String.t()
   defp stripe_api_url do

@@ -35,6 +35,14 @@ defmodule Mix.Tasks.Stripe.Gen do
                         "PostSubscriptionsSubscriptionExposedId",
                         "DeleteSubscriptionsSubscriptionExposedId",
                         "PostSubscriptionsSubscriptionResume",
+                        # Setup intents
+                        "PostSetupIntents",
+                        # Payment intents
+                        "PostPaymentIntentsIntentConfirm",
+                        # Promotion codes
+                        "GetPromotionCodes",
+                        # Credit notes
+                        "PostCreditNotes",
                         # Prices
                         "GetPrices",
                         "GetPricesPrice",
