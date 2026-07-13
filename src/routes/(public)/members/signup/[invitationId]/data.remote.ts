@@ -83,7 +83,10 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 		);
 
 		if (!verificationToken) {
-			throw error(400, "Invitation verification has expired. Please verify again.");
+			throw error(
+				400,
+				"Invitation verification has expired. Please verify again.",
+			);
 		}
 
 		const acceptance = await invitationsAccept({
@@ -136,7 +139,8 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 					: "none",
 		});
 		logger.error(err as string);
-		let errorMessage = err instanceof Error ? err.message : "An unexpected error occurred";
+		let errorMessage =
+			err instanceof Error ? err.message : "An unexpected error occurred";
 
 		if (err instanceof Error && "code" in err) {
 			const stripeError = err as { code: string };
