@@ -77,11 +77,14 @@ defmodule DhcWeb.InvitationsController do
         "nextOfKinPhone" => next_of_kin_phone,
         "stripeConfirmationToken" => _stripe_confirmation_token
       }) do
-    case Invitations.accept(id, token, next_of_kin_name, next_of_kin_phone) do
-      {:ok, result} ->
-        conn
-        |> put_view(json: DhcWeb.InvitationsJSON)
-        |> render(:accept, result: result)
+    with :ok <- validate_acceptance_payload(next_of_kin_name, next_of_kin_phone),
+         {:ok, result} <- Invitations.accept(id, token, next_of_kin_name, next_of_kin_phone) do
+      conn
+      |> put_view(json: DhcWeb.InvitationsJSON)
+      |> render(:accept, result: result)
+    else
+      {:error, :invalid_payload} ->
+        invalid_acceptance_payload(conn)
 
       {:error, :invalid_token} ->
         conn
@@ -104,6 +107,21 @@ defmodule DhcWeb.InvitationsController do
   end
 
   def accept(conn, _params) do
+    invalid_acceptance_payload(conn)
+  end
+
+  defp validate_acceptance_payload(next_of_kin_name, next_of_kin_phone) do
+    if present_string?(next_of_kin_name) and present_string?(next_of_kin_phone) do
+      :ok
+    else
+      {:error, :invalid_payload}
+    end
+  end
+
+  defp present_string?(value) when is_binary(value), do: String.trim(value) != ""
+  defp present_string?(_value), do: false
+
+  defp invalid_acceptance_payload(conn) do
     conn
     |> put_status(:bad_request)
     |> put_view(json: DhcWeb.InvitationsJSON)

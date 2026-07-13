@@ -119,9 +119,13 @@ defmodule Dhc.Invitations do
     with {:ok, claims} <- verify_token(verification_token),
          :ok <- token_matches_invitation(claims, invitation_id) do
       Repo.transaction(fn ->
+        now = DateTime.utc_now() |> DateTime.truncate(:second)
+
         invitation =
           from(i in Invitation,
-            where: i.id == ^invitation_id and i.status == "pending",
+            where:
+              i.id == ^invitation_id and i.status == "pending" and
+                i.expires_at > ^now,
             lock: "FOR UPDATE"
           )
           |> Repo.one()
@@ -138,18 +142,25 @@ defmodule Dhc.Invitations do
           Repo.rollback(:invalid_invitation)
         end
 
+        if Repo.exists?(from(m in MemberProfile, where: m.id == ^invitation.user_id)) do
+          Repo.rollback(:invalid_invitation)
+        end
+
         member_profile = %MemberProfile{
           id: invitation.user_id,
           user_profile_id: user_profile.id,
           next_of_kin_name: next_of_kin_name,
           next_of_kin_phone: next_of_kin_phone,
           preferred_weapon: [],
-          membership_start_date: DateTime.utc_now() |> DateTime.truncate(:second),
+          membership_start_date: now,
           insurance_form_submitted: true,
           additional_data: %{}
         }
 
-        {:ok, _member_profile} = Repo.insert(member_profile)
+        case Repo.insert(member_profile) do
+          {:ok, _member_profile} -> :ok
+          {:error, _changeset} -> Repo.rollback(:invalid_invitation)
+        end
 
         invitation
         |> Ecto.Changeset.change(status: "accepted")
@@ -170,7 +181,7 @@ defmodule Dhc.Invitations do
         |> Repo.update_all(
           set: [
             status: "joined",
-            last_status_change: DateTime.utc_now() |> DateTime.truncate(:second)
+            last_status_change: now
           ]
         )
 
