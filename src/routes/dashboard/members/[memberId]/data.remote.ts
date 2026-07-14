@@ -8,7 +8,6 @@ import { invariant } from "$lib/server/invariant";
 import { getRolesFromSession, MEMBERS_ADMIN_ROLES } from "$lib/server/roles";
 import { apiClientOptions } from "$lib/server/api-client";
 import { invalid } from "@sveltejs/kit";
-import { invalidate } from "$app/navigation";
 
 async function canUpdateSettings() {
 	const event = getRequestEvent();
@@ -94,7 +93,6 @@ export const updateProfile = form(
 				},
 				throwOnError: true,
 			});
-			invalidate(event.url);
 
 			return { success: "Profile has been updated!" };
 		} catch (e) {
