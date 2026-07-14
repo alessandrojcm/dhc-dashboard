@@ -512,6 +512,46 @@ defmodule Dhc.WorkshopsTest do
     end
   end
 
+  describe "toggle_interest/2" do
+    test "expresses interest in a planned Workshop when none exists" do
+      workshop = WorkshopFixtures.workshop_fixture(status: "planned")
+      %{auth_user_id: uid} = WorkshopFixtures.member_fixture()
+
+      assert {:ok, %{interested: true, action: "expressed", message: message}} =
+               Workshops.toggle_interest(workshop.id, uid)
+
+      assert message == "Interest expressed successfully"
+      assert Workshops.current_user_interest?(workshop.id, uid)
+      assert Workshops.interest_count(workshop.id) == 1
+    end
+
+    test "withdraws existing interest in a planned Workshop" do
+      workshop = WorkshopFixtures.workshop_fixture(status: "planned")
+      %{auth_user_id: uid} = WorkshopFixtures.member_fixture()
+      WorkshopFixtures.interest_fixture(workshop.id, uid)
+
+      assert {:ok, %{interested: false, action: "withdrawn", message: message}} =
+               Workshops.toggle_interest(workshop.id, uid)
+
+      assert message == "Interest withdrawn successfully"
+      refute Workshops.current_user_interest?(workshop.id, uid)
+      assert Workshops.interest_count(workshop.id) == 0
+    end
+
+    test "rejects published Workshops" do
+      workshop = WorkshopFixtures.workshop_fixture(status: "published")
+      %{auth_user_id: uid} = WorkshopFixtures.member_fixture()
+
+      assert {:error, :not_planned} = Workshops.toggle_interest(workshop.id, uid)
+    end
+
+    test "returns not_found for a missing Workshop" do
+      %{auth_user_id: uid} = WorkshopFixtures.member_fixture()
+
+      assert {:error, :not_found} = Workshops.toggle_interest(Ecto.UUID.generate(), uid)
+    end
+  end
+
   describe "current_user_registration/2" do
     test "returns the member's registration id and status" do
       workshop = WorkshopFixtures.workshop_fixture()

@@ -138,6 +138,26 @@ defmodule DhcWeb.WorkshopsController do
   end
 
   @doc """
+  POST /workshops/{id}/interest
+
+  Toggles the authenticated member's interest in a planned Workshop.
+  """
+  def toggle_interest(conn, %{"id" => id}) do
+    case Workshops.toggle_interest(id, conn.assigns.current_user.sub) do
+      {:ok, result} ->
+        conn
+        |> put_view(json: DhcWeb.WorkshopsJSON)
+        |> render(:interest, result: result)
+
+      {:error, :not_found} ->
+        not_found(conn)
+
+      {:error, :not_planned} ->
+        unprocessable(conn, "Can only express interest in planned workshops")
+    end
+  end
+
+  @doc """
   GET /workshops/{id}/attendees
 
   Returns the combined coordinator attendee/refund management payload for a

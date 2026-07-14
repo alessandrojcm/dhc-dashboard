@@ -15,6 +15,16 @@ defmodule DhcWeb.WorkshopsJSON do
     %{data: %{workshop: calendar_workshop(workshop)}}
   end
 
+  def render("interest.json", %{result: result}) do
+    %{
+      data: %{
+        interested: result.interested,
+        action: result.action,
+        message: result.message
+      }
+    }
+  end
+
   @doc """
   GET /workshops/{id}/attendees — combined coordinator management payload.
 
