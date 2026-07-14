@@ -1,5 +1,6 @@
 <script lang="ts">
 import { page } from "$app/state";
+import { refreshAll } from "$app/navigation";
 import { Button } from "$lib/components/ui/button";
 import * as Card from "$lib/components/ui/card";
 import dayjs from "dayjs";
@@ -50,6 +51,7 @@ initForm(updateProfile, () => ({
 $effect(() => {
 	const result = updateProfile.result;
 	if (result?.success) {
+		void refreshAll({ includeLoadFunctions: true });
 		toast.success(result.success, { position: "top-right" });
 	} else if (result?.error) {
 		toast.error(result.error, { position: "top-right" });
