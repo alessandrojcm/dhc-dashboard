@@ -367,6 +367,55 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /invitations/{id}/pricing:
+    get:
+      operationId: invitations.pricing
+      tags:
+        - Invitations
+      summary: Read public invitation pricing
+      description: |
+        Returns the signup pricing preview for a pending invitation. When a
+        promotion code is supplied, Stripe validates it and applies it to the
+        invoice previews before the DTO is returned.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: code
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Optional Stripe promotion code entered by the invitee.
+      responses:
+        "200":
+          description: Invitation signup pricing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InvitationPricingResponse"
+        "400":
+          description: Invalid or inactive promotion code
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Invitation not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Pricing calculation failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /invitations/{id}/verify:
     post:
       operationId: invitations.verify
@@ -2683,6 +2732,57 @@ components:
       properties:
         data:
           $ref: "#/components/schemas/PublicInvitation"
+    DineroAmount:
+      type: object
+      required:
+        - amount
+        - currency
+        - precision
+      properties:
+        amount:
+          type: integer
+          description: Amount in minor currency units.
+        currency:
+          type: string
+          example: EUR
+        precision:
+          type: integer
+          example: 2
+    InvitationPricing:
+      type: object
+      required:
+        - proratedPrice
+        - proratedMonthlyPrice
+        - proratedAnnualPrice
+        - monthlyFee
+        - annualFee
+        - discountPercentage
+      properties:
+        proratedPrice:
+          $ref: "#/components/schemas/DineroAmount"
+        proratedMonthlyPrice:
+          $ref: "#/components/schemas/DineroAmount"
+        proratedAnnualPrice:
+          $ref: "#/components/schemas/DineroAmount"
+        monthlyFee:
+          $ref: "#/components/schemas/DineroAmount"
+        annualFee:
+          $ref: "#/components/schemas/DineroAmount"
+        discountedMonthlyFee:
+          $ref: "#/components/schemas/DineroAmount"
+        discountedAnnualFee:
+          $ref: "#/components/schemas/DineroAmount"
+        coupon:
+          type: string
+        discountPercentage:
+          type: number
+    InvitationPricingResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: "#/components/schemas/InvitationPricing"
     InvitationVerifyRequest:
       type: object
       required:
@@ -3579,6 +3679,7 @@ components:
         refundDays:
           type: integer
           minimum: 0
+          nullable: true
         status:
           $ref: "#/components/schemas/WorkshopStatus"
         announceDiscord:
@@ -3666,6 +3767,7 @@ components:
         refundDays:
           type: integer
           minimum: 0
+          nullable: true
         status:
           $ref: "#/components/schemas/WorkshopStatus"
         interestCount:
