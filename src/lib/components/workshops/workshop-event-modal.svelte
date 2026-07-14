@@ -287,7 +287,7 @@ const hasEditAction = $derived(!!event.handleEdit);
 					</Button>
 				{/if}
 
-				{#if workshop.status === 'planned' || workshop.status === 'published'}
+				{#if workshop.status === 'published'}
 					<Popover.Root bind:open={cancelPopoverOpen}>
 						<Popover.Trigger
 							class={buttonVariants({ variant: 'destructive', size: 'sm' })}

@@ -11,6 +11,10 @@ defmodule DhcWeb.WorkshopsJSON do
     %{data: %{workshops: Enum.map(workshops, &workshop/1)}}
   end
 
+  def render("management.json", %{workshop: workshop}) do
+    %{data: %{workshop: calendar_workshop(workshop)}}
+  end
+
   @doc """
   GET /workshops/{id}/attendees — combined coordinator management payload.
 

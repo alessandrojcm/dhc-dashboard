@@ -1,22 +1,44 @@
 import { command, query, getRequestEvent } from "$app/server";
+import {
+	workshopsCancel,
+	workshopsDelete,
+	workshopsPublish,
+	type ApiErrorResponse,
+} from "@dhc/api-client";
 import { error } from "@sveltejs/kit";
 import * as v from "valibot";
 import { authorize } from "$lib/server/auth";
+import { apiClientOptions } from "$lib/server/api-client";
 import { WORKSHOP_ROLES } from "$lib/server/roles";
 import {
-	createWorkshopService,
 	createAttendanceService,
 	createRefundService,
 } from "../server/services/workshops";
 import { executeWithRLS, getKyselyClient } from "../server/services/shared";
 
+function apiErrorMessage(error: unknown, fallback: string) {
+	return (error as ApiErrorResponse | undefined)?.errors?.detail ?? fallback;
+}
+
 export const deleteWorkshop = command(
 	v.pipe(v.string(), v.uuid()),
 	async (workshopId) => {
-		const { locals, platform } = getRequestEvent();
+		const { locals } = getRequestEvent();
 		const session = await authorize(locals, WORKSHOP_ROLES);
-		const service = createWorkshopService(platform!, session);
-		await service.delete(workshopId);
+		const response = await workshopsDelete({
+			...apiClientOptions(session),
+			path: { workshopId },
+		});
+
+		if (response.error) {
+			throw new Error(
+				apiErrorMessage(
+					response.error,
+					"Failed to delete workshop. Please try again later.",
+				),
+			);
+		}
+
 		return { success: true as const };
 	},
 );
@@ -24,10 +46,23 @@ export const deleteWorkshop = command(
 export const publishWorkshop = command(
 	v.pipe(v.string(), v.uuid()),
 	async (workshopId) => {
-		const { locals, platform } = getRequestEvent();
+		const { locals } = getRequestEvent();
 		const session = await authorize(locals, WORKSHOP_ROLES);
-		const service = createWorkshopService(platform!, session);
-		const workshop = await service.publish(workshopId);
+		const response = await workshopsPublish({
+			...apiClientOptions(session),
+			path: { workshopId },
+		});
+
+		if (response.error) {
+			throw new Error(
+				apiErrorMessage(
+					response.error,
+					"Failed to publish workshop. Please try again later.",
+				),
+			);
+		}
+
+		const workshop = response.data.data.workshop;
 		return { success: true as const, workshop };
 	},
 );
@@ -35,10 +70,23 @@ export const publishWorkshop = command(
 export const cancelWorkshop = command(
 	v.pipe(v.string(), v.uuid()),
 	async (workshopId) => {
-		const { locals, platform } = getRequestEvent();
+		const { locals } = getRequestEvent();
 		const session = await authorize(locals, WORKSHOP_ROLES);
-		const service = createWorkshopService(platform!, session);
-		const workshop = await service.cancel(workshopId);
+		const response = await workshopsCancel({
+			...apiClientOptions(session),
+			path: { workshopId },
+		});
+
+		if (response.error) {
+			throw new Error(
+				apiErrorMessage(
+					response.error,
+					"Failed to cancel workshop. Please try again later.",
+				),
+			);
+		}
+
+		const workshop = response.data.data.workshop;
 		return { success: true as const, workshop };
 	},
 );

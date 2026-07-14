@@ -16,6 +16,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
 
   @member_user_id "11111111-1111-1111-1111-111111111111"
   @other_user_id "22222222-2222-2222-2222-222222222222"
+  @coordinator_user_id "33333333-3333-3333-3333-333333333333"
 
   # The canonical coordinator management roles (mirrors
   # `Dhc.Workshops.coordinator_management_roles/0` and the corrected RLS policy).
@@ -31,7 +32,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
         sub =
           case unquote(role) do
             "member" -> "11111111-1111-1111-1111-111111111111"
-            _ -> Ecto.UUID.generate()
+            _ -> "33333333-3333-3333-3333-333333333333"
           end
 
         {:ok,
@@ -53,6 +54,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
     Application.put_env(:dhc, :auth_verifier, Verifier)
     insert_auth_user_and_profile(@member_user_id, "Current", "Member")
     insert_auth_user_and_profile(@other_user_id, "Other", "Member")
+    insert_auth_user_and_profile(@coordinator_user_id, "Workshop", "Coordinator")
 
     on_exit(fn -> Application.put_env(:dhc, :auth_verifier, original) end)
   end
@@ -355,6 +357,157 @@ defmodule DhcWeb.WorkshopsControllerTest do
       refute Map.has_key?(payload, "createdBy")
       refute Map.has_key?(payload, "announceDiscord")
       assert payload["id"] == workshop.id
+    end
+  end
+
+  # ── Management lifecycle ──────────────────────────────────────────────
+
+  describe "management endpoints — RBAC" do
+    test "allows workshop_coordinator, president, and admin to create" do
+      for role <- @allowed_roles do
+        conn =
+          build_conn()
+          |> auth_conn(role)
+          |> post("/api/workshops", valid_workshop_payload(%{"title" => "#{role} Workshop"}))
+
+        assert %{"data" => %{"workshop" => %{"title" => title}}} = json_response(conn, 201)
+        assert title == "#{role} Workshop"
+      end
+    end
+
+    test "rejects unrelated roles and missing tokens" do
+      conn = post(build_conn(), "/api/workshops", valid_workshop_payload())
+      assert %{"errors" => %{"detail" => "Unauthorized"}} = json_response(conn, 401)
+
+      for role <- @rejected_roles do
+        conn =
+          build_conn()
+          |> auth_conn(role)
+          |> post("/api/workshops", valid_workshop_payload())
+
+        assert %{"errors" => %{"detail" => "Insufficient role"}} = json_response(conn, 403)
+      end
+    end
+  end
+
+  describe "management endpoints — create/update/delete/publish/cancel" do
+    test "creates planned Workshops from camelCase input and returns management DTO", %{
+      conn: conn
+    } do
+      conn =
+        conn
+        |> auth_conn("workshop_coordinator")
+        |> post("/api/workshops", valid_workshop_payload())
+
+      assert %{"data" => %{"workshop" => workshop}} = json_response(conn, 201)
+
+      assert workshop["title"] == "API Workshop"
+      assert workshop["status"] == "planned"
+      assert workshop["startDate"] == "2026-09-01T10:00:00Z"
+      assert workshop["maxCapacity"] == 20
+      assert workshop["priceMember"] == 1000.0
+      assert workshop["createdBy"]
+      assert workshop["interestCount"] == 0
+    end
+
+    test "updates planned Workshops but does not allow direct status writes", %{conn: conn} do
+      workshop = WorkshopFixtures.workshop_fixture(status: "planned")
+
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> patch("/api/workshops/#{to_uuid(workshop.id)}", %{
+          "title" => "Updated API Workshop",
+          "status" => "cancelled"
+        })
+
+      assert %{"data" => %{"workshop" => payload}} = json_response(conn, 200)
+      assert payload["title"] == "Updated API Workshop"
+      assert payload["status"] == "planned"
+    end
+
+    test "allows published pricing edits only while there are no active registrations", %{
+      conn: conn
+    } do
+      workshop = WorkshopFixtures.workshop_fixture(status: "published", price_member: 1000.0)
+
+      conn =
+        conn
+        |> auth_conn("workshop_coordinator")
+        |> patch("/api/workshops/#{to_uuid(workshop.id)}", %{"priceMember" => 1200.0})
+
+      assert %{"data" => %{"workshop" => %{"priceMember" => 1200.0}}} = json_response(conn, 200)
+
+      %{auth_user_id: uid} = WorkshopFixtures.member_fixture()
+
+      WorkshopFixtures.registration_fixture(
+        workshop_id: workshop.id,
+        member_user_id: uid,
+        status: "confirmed"
+      )
+
+      conn =
+        build_conn()
+        |> auth_conn("workshop_coordinator")
+        |> patch("/api/workshops/#{to_uuid(workshop.id)}", %{"priceMember" => 1300.0})
+
+      assert %{
+               "errors" => %{
+                 "detail" => "Cannot change pricing when there are active registrations"
+               }
+             } =
+               json_response(conn, 422)
+    end
+
+    test "publishes planned Workshops and cancels published Workshops", %{conn: conn} do
+      workshop = WorkshopFixtures.workshop_fixture(status: "planned")
+
+      publish_conn =
+        conn
+        |> auth_conn("president")
+        |> post("/api/workshops/#{to_uuid(workshop.id)}/publish")
+
+      assert %{"data" => %{"workshop" => %{"status" => "published"}}} =
+               json_response(publish_conn, 200)
+
+      cancel_conn =
+        build_conn()
+        |> auth_conn("president")
+        |> post("/api/workshops/#{to_uuid(workshop.id)}/cancel")
+
+      assert %{"data" => %{"workshop" => %{"status" => "cancelled"}}} =
+               json_response(cancel_conn, 200)
+    end
+
+    test "deletes planned Workshops with 204 and rejects published deletes", %{conn: conn} do
+      planned = WorkshopFixtures.workshop_fixture(status: "planned")
+      published = WorkshopFixtures.workshop_fixture(status: "published")
+
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> delete("/api/workshops/#{to_uuid(planned.id)}")
+
+      assert response(conn, 204) == ""
+
+      conn =
+        build_conn()
+        |> auth_conn("admin")
+        |> delete("/api/workshops/#{to_uuid(published.id)}")
+
+      assert %{"errors" => %{"detail" => "Only planned workshops can be deleted"}} =
+               json_response(conn, 422)
+    end
+
+    test "returns 404 for unknown Workshop ids", %{conn: conn} do
+      missing_id = Ecto.UUID.generate()
+
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> post("/api/workshops/#{missing_id}/publish")
+
+      assert %{"errors" => %{"detail" => "Workshop not found"}} = json_response(conn, 404)
     end
   end
 
@@ -781,6 +934,24 @@ defmodule DhcWeb.WorkshopsControllerTest do
     |> Map.put_new(:end_date, DateTime.add(start_date, 2, :hour))
     |> Map.put(:start_date, start_date)
     |> WorkshopFixtures.workshop_fixture()
+  end
+
+  defp valid_workshop_payload(overrides \\ %{}) do
+    %{
+      "title" => "API Workshop",
+      "description" => "Created through Phoenix",
+      "location" => "Main Hall",
+      "startDate" => "2026-09-01T10:00:00Z",
+      "endDate" => "2026-09-01T12:00:00Z",
+      "maxCapacity" => 20,
+      "priceMember" => 1000.0,
+      "priceNonMember" => 2000.0,
+      "isPublic" => false,
+      "refundDays" => 3,
+      "announceDiscord" => false,
+      "announceEmail" => false
+    }
+    |> Map.merge(overrides)
   end
 
   defp insert_auth_user_and_profile(user_id, first_name, last_name) do

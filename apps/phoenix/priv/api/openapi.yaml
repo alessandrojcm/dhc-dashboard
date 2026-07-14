@@ -48,6 +48,10 @@ tags:
       context functions, not in a separate schema (see ADR-0007).
     x-context: Dhc.Membership
     x-resource: Membership
+  - name: Workshops
+    description: Workshop reads and coordinator management lifecycle commands.
+    x-context: Dhc.Workshops
+    x-resource: Workshop
 
 paths:
   /health:
@@ -1491,6 +1495,265 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+    post:
+      operationId: workshops.create
+      tags:
+        - Workshops
+      summary: Create a planned Workshop
+      description: |
+        Creates a planned Workshop for coordinator management. The server sets
+        `createdBy` from the authenticated Supabase JWT and lifecycle status to
+        `planned`; clients cannot create directly into `published` or
+        `cancelled`.
+
+        Requires `workshop_coordinator`, `president`, or `admin`.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkshopManagementRequest"
+      responses:
+        "201":
+          description: Workshop created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkshopManagementResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a Workshop coordinator management role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Invalid Workshop management payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /workshops/{workshopId}:
+    get:
+      operationId: workshops.show
+      tags:
+        - Workshops
+      summary: Read a Workshop management summary
+      description: Requires `workshop_coordinator`, `president`, or `admin`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/WorkshopId"
+      responses:
+        "200":
+          description: Workshop management summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkshopManagementResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a Workshop coordinator management role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No Workshop exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    patch:
+      operationId: workshops.update
+      tags:
+        - Workshops
+      summary: Update Workshop management fields
+      description: |
+        Updates Workshop management fields. General edits are planned-only.
+        Lifecycle/status is not directly writable here; use publish/cancel
+        command endpoints. Pricing edits preserve the current looser rule:
+        pricing may be changed while planned, or after publish only while there
+        are zero active (`pending`/`confirmed`) registrations.
+
+        Requires `workshop_coordinator`, `president`, or `admin`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/WorkshopId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkshopManagementUpdateRequest"
+      responses:
+        "200":
+          description: Workshop updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkshopManagementResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a Workshop coordinator management role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No Workshop exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Invalid edit for current Workshop lifecycle state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      operationId: workshops.delete
+      tags:
+        - Workshops
+      summary: Delete a planned Workshop
+      description: Deletes planned Workshops only. Requires `workshop_coordinator`, `president`, or `admin`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/WorkshopId"
+      responses:
+        "204":
+          description: Workshop deleted
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a Workshop coordinator management role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No Workshop exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Workshop is not planned and cannot be deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /workshops/{workshopId}/publish:
+    post:
+      operationId: workshops.publish
+      tags:
+        - Workshops
+      summary: Publish a planned Workshop
+      description: Transitions a planned Workshop to published. Requires `workshop_coordinator`, `president`, or `admin`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/WorkshopId"
+      responses:
+        "200":
+          description: Workshop published
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkshopManagementResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a Workshop coordinator management role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No Workshop exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Workshop is not planned and cannot be published
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /workshops/{workshopId}/cancel:
+    post:
+      operationId: workshops.cancel
+      tags:
+        - Workshops
+      summary: Cancel a published Workshop
+      description: Transitions a published Workshop to cancelled. Requires `workshop_coordinator`, `president`, or `admin`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/WorkshopId"
+      responses:
+        "200":
+          description: Workshop cancelled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkshopManagementResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a Workshop coordinator management role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No Workshop exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Workshop is not published and cannot be cancelled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /settings:
     get:
@@ -2565,6 +2828,15 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+  parameters:
+    WorkshopId:
+      name: workshopId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: The Workshop id.
   schemas:
     InvitationCreateRequest:
       type: object
@@ -3565,6 +3837,115 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/WorkshopRefund"
+    WorkshopManagementRequest:
+      type: object
+      required:
+        - title
+        - location
+        - startDate
+        - endDate
+        - maxCapacity
+        - priceMember
+        - priceNonMember
+        - isPublic
+        - refundDays
+        - announceDiscord
+        - announceEmail
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+        location:
+          type: string
+          minLength: 1
+        startDate:
+          type: string
+          format: date-time
+        endDate:
+          type: string
+          format: date-time
+        maxCapacity:
+          type: integer
+          minimum: 1
+        priceMember:
+          type: number
+          minimum: 0
+          description: Member price in cents (minor units).
+        priceNonMember:
+          type: number
+          minimum: 0
+          description: Non-member price in cents (minor units).
+        isPublic:
+          type: boolean
+        refundDays:
+          type: integer
+          minimum: 0
+        announceDiscord:
+          type: boolean
+        announceEmail:
+          type: boolean
+      description: |
+        Coordinator Workshop management input. Lifecycle status and createdBy
+        are server-owned and intentionally absent.
+    WorkshopManagementUpdateRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+        location:
+          type: string
+          minLength: 1
+        startDate:
+          type: string
+          format: date-time
+        endDate:
+          type: string
+          format: date-time
+        maxCapacity:
+          type: integer
+          minimum: 1
+        priceMember:
+          type: number
+          minimum: 0
+          description: Member price in cents (minor units).
+        priceNonMember:
+          type: number
+          minimum: 0
+          description: Non-member price in cents (minor units).
+        isPublic:
+          type: boolean
+        refundDays:
+          type: integer
+          minimum: 0
+        announceDiscord:
+          type: boolean
+        announceEmail:
+          type: boolean
+      description: |
+        Partial Workshop management update. All fields from
+        `WorkshopManagementRequest` are optional at runtime; lifecycle status is
+        still not writable through PATCH.
+    WorkshopManagementResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - workshop
+          properties:
+            workshop:
+              $ref: "#/components/schemas/WorkshopCalendarItem"
     WorkshopSummary:
       type: object
       required:

@@ -346,7 +346,130 @@ defmodule Dhc.Workshops do
     }
   end
 
+  # ── Management lifecycle ──────────────────────────────────────────────
+
+  @doc """
+  Creates a planned Workshop management row.
+
+  `created_by` is always taken from the authenticated coordinator/admin user id,
+  never from client input. Status starts as `planned`; lifecycle transitions use
+  `publish_workshop/1` and `cancel_workshop/1`.
+  """
+  @spec create_workshop(map(), binary()) :: {:ok, Workshop.t()} | {:error, Ecto.Changeset.t()}
+  def create_workshop(attrs, created_by) when is_map(attrs) and is_binary(created_by) do
+    %Workshop{created_by: created_by, status: "planned"}
+    |> Workshop.management_changeset(attrs)
+    |> Repo.insert()
+  end
+
+  @doc """
+  Updates Workshop management fields.
+
+  General edits are planned-only. Pricing-only edits preserve the existing
+  looser rule approved in ALE-118: pricing may also be changed after publish as
+  long as there are zero active (`pending`/`confirmed`) registrations.
+  """
+  @spec update_workshop(binary(), map()) ::
+          {:ok, Workshop.t()}
+          | {:error, :not_found | :not_editable | :pricing_locked | Ecto.Changeset.t()}
+  def update_workshop(workshop_id, attrs) when is_binary(workshop_id) and is_map(attrs) do
+    with %Workshop{} = workshop <- Repo.get(Workshop, workshop_id),
+         :ok <- authorize_update(workshop, attrs) do
+      workshop
+      |> Workshop.management_changeset(attrs)
+      |> Repo.update()
+    else
+      nil -> {:error, :not_found}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc """
+  Deletes a planned Workshop.
+  """
+  @spec delete_workshop(binary()) :: :ok | {:error, :not_found | :not_deletable}
+  def delete_workshop(workshop_id) when is_binary(workshop_id) do
+    case Repo.get(Workshop, workshop_id) do
+      nil ->
+        {:error, :not_found}
+
+      %Workshop{status: "planned"} = workshop ->
+        {:ok, _} = Repo.delete(workshop)
+        :ok
+
+      %Workshop{} ->
+        {:error, :not_deletable}
+    end
+  end
+
+  @doc """
+  Publishes a planned Workshop.
+  """
+  @spec publish_workshop(binary()) ::
+          {:ok, Workshop.t()} | {:error, :not_found | :not_publishable}
+  def publish_workshop(workshop_id) when is_binary(workshop_id) do
+    transition_workshop(workshop_id, "planned", "published", :not_publishable)
+  end
+
+  @doc """
+  Cancels a published Workshop.
+
+  Refund processing/audit records are part of the later cancellation/refunds
+  slice. This endpoint preserves the current management lifecycle transition.
+  """
+  @spec cancel_workshop(binary()) :: {:ok, Workshop.t()} | {:error, :not_found | :not_cancellable}
+  def cancel_workshop(workshop_id) when is_binary(workshop_id) do
+    transition_workshop(workshop_id, "published", "cancelled", :not_cancellable)
+  end
+
   # ── Private: summary query ────────────────────────────────────────────
+
+  defp authorize_update(%Workshop{status: "planned"}, _attrs), do: :ok
+
+  defp authorize_update(%Workshop{} = workshop, attrs) do
+    cond do
+      attrs == %{} ->
+        :ok
+
+      pricing_only?(attrs) && active_registration_count(workshop.id) == 0 ->
+        :ok
+
+      pricing_only?(attrs) ->
+        {:error, :pricing_locked}
+
+      true ->
+        {:error, :not_editable}
+    end
+  end
+
+  defp pricing_only?(attrs) do
+    attrs
+    |> Map.keys()
+    |> Enum.all?(&(&1 in [:price_member, :price_non_member]))
+  end
+
+  defp active_registration_count(workshop_id) do
+    from(r in Registration,
+      where: r.club_activity_id == ^workshop_id and r.status in @counted_registration_statuses,
+      select: count(r.id)
+    )
+    |> Repo.one()
+  end
+
+  defp transition_workshop(workshop_id, from_status, to_status, invalid_reason) do
+    case Repo.get(Workshop, workshop_id) do
+      nil ->
+        {:error, :not_found}
+
+      %Workshop{status: ^from_status} = workshop ->
+        workshop
+        |> Ecto.Changeset.change(status: to_status)
+        |> Repo.update()
+
+      %Workshop{} ->
+        {:error, invalid_reason}
+    end
+  end
 
   defp summary_query do
     from(w in Workshop,
