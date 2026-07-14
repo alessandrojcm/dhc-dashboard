@@ -1,7 +1,6 @@
 <script lang="ts">
 import "../app.css";
-import { configureClient, getClient } from "@dhc/api-client";
-import * as Sentry from "@sentry/sveltekit";
+import { configureClient } from "@dhc/api-client";
 import { QueryClient, QueryClientProvider } from "@tanstack/svelte-query";
 import { SvelteQueryDevtools } from "@tanstack/svelte-query-devtools";
 import { Toaster } from "$lib/components/ui/sonner/index";
@@ -12,9 +11,8 @@ import { browser, dev } from "$app/environment";
 import { goto, invalidate } from "$app/navigation";
 import { resolve } from "$app/paths";
 import { env } from "$env/dynamic/public";
+import { registerApiErrorReporter } from "$lib/api-error-reporter";
 import type { LayoutData } from "./$types";
-
-let apiErrorReporterRegistered = false;
 
 const { children, data }: { children: Snippet; data: LayoutData } = $props();
 const session = $derived(data.session);
@@ -31,29 +29,7 @@ if (browser) {
 		},
 	});
 
-	if (!apiErrorReporterRegistered) {
-		getClient().interceptors.error.use((error, response, request, options) => {
-			Sentry.captureException(error, {
-				tags: {
-					api_client: "hey-api",
-					api_error_name:
-						error instanceof Error ? error.name : typeof error,
-				},
-				contexts: {
-					api: {
-						method: request?.method ?? options.method,
-						url: request?.url ?? options.url,
-						status: response?.status,
-						statusText: response?.statusText,
-					},
-				},
-			});
-
-			return error;
-		});
-
-		apiErrorReporterRegistered = true;
-	}
+	registerApiErrorReporter();
 }
 
 onMount(() => {
