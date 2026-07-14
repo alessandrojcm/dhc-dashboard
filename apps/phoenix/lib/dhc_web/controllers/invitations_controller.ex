@@ -43,6 +43,47 @@ defmodule DhcWeb.InvitationsController do
   end
 
   @doc """
+  GET /invitations/:id/pricing
+  """
+  def pricing(conn, %{"id" => id} = params) do
+    case Invitations.pricing(id, Map.get(params, "code")) do
+      {:ok, pricing} ->
+        conn
+        |> put_view(json: DhcWeb.InvitationsJSON)
+        |> render(:pricing, pricing: pricing)
+
+      {:error, :not_found} ->
+        conn
+        |> put_status(:not_found)
+        |> put_view(json: DhcWeb.InvitationsJSON)
+        |> render(:error, detail: "Invitation not found")
+
+      {:error, :invalid_promotion_code} ->
+        conn
+        |> put_status(:bad_request)
+        |> put_view(json: DhcWeb.InvitationsJSON)
+        |> render(:error, detail: "Invalid or inactive promotion code")
+
+      {:error, :forever_amount_coupon} ->
+        conn
+        |> put_status(:bad_request)
+        |> put_view(json: DhcWeb.InvitationsJSON)
+        |> render(:error, detail: "Forever coupons can only be percentage-based, not amount-based")
+
+      {:error, reason} ->
+        Logger.error("[invitations] Failed to calculate invitation pricing",
+          invitation_id: id,
+          reason: inspect(reason)
+        )
+
+        conn
+        |> put_status(:internal_server_error)
+        |> put_view(json: DhcWeb.InvitationsJSON)
+        |> render(:error, detail: "Failed to get pricing details")
+    end
+  end
+
+  @doc """
   POST /invitations/:id/verify
   """
   def verify(conn, %{"id" => id, "email" => email, "dateOfBirth" => date_of_birth}) do
