@@ -87,7 +87,13 @@ defmodule DhcWeb.Router do
   scope "/api", DhcWeb do
     pipe_through [:api, :workshop_coordinator_api]
 
+    post "/workshops", WorkshopsController, :create
     get "/workshops/calendar", WorkshopsController, :calendar
+    get "/workshops/:id", WorkshopsController, :show
+    patch "/workshops/:id", WorkshopsController, :update
+    delete "/workshops/:id", WorkshopsController, :delete
+    post "/workshops/:id/publish", WorkshopsController, :publish
+    post "/workshops/:id/cancel", WorkshopsController, :cancel
     get "/workshops/:id/attendees", WorkshopsController, :attendees
   end
 
