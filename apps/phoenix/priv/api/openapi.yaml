@@ -3579,6 +3579,7 @@ components:
         refundDays:
           type: integer
           minimum: 0
+          nullable: true
         status:
           $ref: "#/components/schemas/WorkshopStatus"
         announceDiscord:
@@ -3666,6 +3667,7 @@ components:
         refundDays:
           type: integer
           minimum: 0
+          nullable: true
         status:
           $ref: "#/components/schemas/WorkshopStatus"
         interestCount:

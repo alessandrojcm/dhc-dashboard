@@ -1,25 +1,7 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "autoupdate": true,
-  "lsp": {
-    "ast-grep": {
-      "command": ["ast-grep", "lsp"],
-      "extensions": [
-        ".ts",
-        ".js",
-        ".mjs",
-        ".cjs",
-        ".svelte",
-        ".ex",
-        ".exs",
-        ".yml",
-        ".yaml",
-        ".json",
-        ".css",
-        ".html"
-      ]
-    }
-  },
+  "lsp": false,
   "mcp": {
     "sentry": {
       "type": "remote",
@@ -51,5 +33,5 @@
       }
     }
   },
-  "plugin": ["./.opencode/plugins/git-guardian.ts"]
+  "plugin": ["./.opencode/plugins/git-guardian.ts", "./.opencode/plugins/entire.ts"]
 }
