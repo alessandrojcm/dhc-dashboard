@@ -13,7 +13,12 @@ import { createQuery } from "@tanstack/svelte-query";
 
 // Improvement: add pagination by month
 let { data } = $props();
-const workshopsQuery = createQuery(() => workshopsCalendarOptions());
+const workshopsQuery = createQuery(() => ({
+  ...workshopsCalendarOptions(),
+  select: response => {
+    return response.data.workshops
+  }
+}));
 
 // Simple handlers - mutations are now handled in the modal component
 
@@ -37,7 +42,7 @@ function handleEdit(workshop: WorkshopCalendarItem) {
 		</div>
 	</div>
 
-	{#if workshopsQuery.error}
+	{#if workshopsQuery.error?.errors}
 		<Alert variant="destructive">
 			<AlertDescription
 				>{workshopsQuery.error.errors?.detail}</AlertDescription
@@ -49,7 +54,7 @@ function handleEdit(workshop: WorkshopCalendarItem) {
 	<WorkshopCalendar
 		{handleEdit}
 		isLoading={workshopsQuery.isLoading}
-		workshops={workshopsQuery.data?.data?.workshops ?? []}
+		workshops={workshopsQuery.data ?? []}
 		userId={data.user!.id}
 	/>
 </div>
