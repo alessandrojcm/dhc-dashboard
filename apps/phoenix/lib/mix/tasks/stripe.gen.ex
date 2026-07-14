@@ -41,6 +41,10 @@ defmodule Mix.Tasks.Stripe.Gen do
                         "PostPaymentIntentsIntentConfirm",
                         # Promotion codes
                         "GetPromotionCodes",
+                        # Coupons
+                        "GetCouponsCoupon",
+                        # Invoice previews
+                        "PostInvoicesCreatePreview",
                         # Credit notes
                         "PostCreditNotes",
                         # Prices

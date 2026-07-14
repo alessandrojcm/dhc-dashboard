@@ -3,14 +3,11 @@
  * Exports services, types, and factory functions
  */
 
-import type { Stripe } from "stripe";
 import { getSupabaseServiceClient } from "$lib/server/supabaseServiceClient";
-import { stripeClient } from "$lib/server/stripe";
 import type { Logger, Session } from "../shared";
 import { getKyselyClient } from "../shared";
 import { sentryLogger } from "../shared/logger";
 import { InvitationService } from "./invitation.service";
-import { PricingService } from "./pricing.service";
 
 // Export types
 export type {
@@ -65,38 +62,6 @@ export function createInvitationService(
 		getKyselyClient(platform.env.HYPERDRIVE),
 		session,
 		getSupabaseServiceClient(),
-		logger ?? sentryLogger,
-	);
-}
-
-/**
- * Create an PricingService instance
- *
- * @param platform - App platform with Hyperdrive connection
- * @param stripe
- * @param migrationCode - Migration code for discounts (optional for public methods like getPricing)
- * @param logger - Optional logger (defaults to sentryLogger)
- * @returns InvitationService instance
- *
- * @example
- * ```typescript
- * // With session (for protected methods)
- * const pricingService = createPricingService(platform, session);
- *
- * // Without session (for public methods)
- * const pricingService = createPricingService(platform, null);
- * ```
- */
-export function createPricingService(
-	platform: App.Platform,
-	stripe: Stripe = stripeClient,
-	migrationCode?: string,
-	logger?: Logger,
-): PricingService {
-	return new PricingService(
-		getKyselyClient(platform.env.HYPERDRIVE),
-		stripe,
-		migrationCode,
 		logger ?? sentryLogger,
 	);
 }

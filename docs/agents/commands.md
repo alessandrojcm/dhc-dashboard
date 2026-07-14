@@ -182,6 +182,8 @@ To add new Stripe endpoints:
 3. Run `mise run stripe-gen` (or `cd apps/phoenix && MIX_ENV=dev mix stripe.gen`)
 4. Use the generated functions via `Dhc.Stripe.Operations.*` with `Dhc.Stripe.Client`
 
+- Do not hand-roll Stripe endpoint calls with `Dhc.Stripe.Client.request/1` in domain code. If an endpoint exists in Stripe's OpenAPI spec, find the operation ID by the Stripe URL, add that exact ID to both allow-lists above, regenerate, and call the generated `Dhc.Stripe.Operations.*` function. If generation still fails after both allow-lists match the current spec, debug the generator/filter rather than bypassing it.
+
 Hand-written modules: `Dhc.Stripe.Client` (Req adapter), `Dhc.Stripe.Processor` (allowlist filter), `Dhc.StripeSync` (sync business logic), `Dhc.StripeSync.Worker` (Oban worker).
 
 The Stripe API version is pinned in app config (`:stripe_api_version`, default `"2025-10-29.clover"`) and sent as the `Stripe-Version` header on every request. This matches the version used by the existing Deno edge functions (`src/lib/server/stripe.ts`). When updating, change the config value in all three env configs (`config.exs`, `dev.exs`, `test.exs`, `runtime.exs`), update `src/lib/server/stripe.ts`, and re-run `mise run stripe-gen`.

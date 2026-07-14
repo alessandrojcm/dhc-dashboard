@@ -7,8 +7,8 @@ export interface RefundEligibilityResult {
 }
 
 export function checkRefundEligibility(
-	startDate: string,
-	refundDays: number | null,
+	startDate: string | null | undefined,
+	refundDays: number | null | undefined,
 	workshopStatus: string,
 	registrationStatus: string,
 ): RefundEligibilityResult {
@@ -29,7 +29,14 @@ export function checkRefundEligibility(
 	}
 
 	// Check refund deadline if specified
-	if (refundDays !== null) {
+	if (refundDays !== null && refundDays !== undefined) {
+		if (!startDate) {
+			return {
+				isEligible: false,
+				reason: "Workshop start date unavailable",
+			};
+		}
+
 		const refundDeadline = dayjs(startDate).subtract(refundDays, "days");
 		const now = dayjs();
 
