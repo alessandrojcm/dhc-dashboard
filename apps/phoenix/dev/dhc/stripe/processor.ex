@@ -20,36 +20,41 @@ defmodule Dhc.Stripe.Processor do
   # Add new operations here as the Phoenix app needs more Stripe endpoints.
 
   @allowed_operations MapSet.new([
-    # Subscriptions
-    "GetSubscriptions",
-    "PostSubscriptions",
-    "GetSubscriptionsSubscriptionExposedId",
-    "PostSubscriptionsSubscriptionExposedId",
-    "DeleteSubscriptionsSubscriptionExposedId",
-    "PostSubscriptionsSubscriptionResume",
-    # Setup intents
-    "PostSetupIntents",
-    # Payment intents
-    "PostPaymentIntentsIntentConfirm",
-    # Promotion codes
-    "GetPromotionCodes",
-    # Credit notes
-    "PostCreditNotes",
-    # Prices
-    "GetPrices",
-    "GetPricesPrice",
-    "PostPrices",
-    # Customers (needed for sync worker)
-    "GetCustomers",
-    "GetCustomersCustomer",
-    "PostCustomers"
-  ])
+                        # Subscriptions
+                        "GetSubscriptions",
+                        "PostSubscriptions",
+                        "GetSubscriptionsSubscriptionExposedId",
+                        "PostSubscriptionsSubscriptionExposedId",
+                        "DeleteSubscriptionsSubscriptionExposedId",
+                        "PostSubscriptionsSubscriptionResume",
+                        # Setup intents
+                        "PostSetupIntents",
+                        # Payment intents
+                        "PostPaymentIntentsIntentConfirm",
+                        # Promotion codes
+                        "GetPromotionCodes",
+                        # Coupons
+                        "GetCouponsCoupon",
+                        # Invoice previews
+                        "PostInvoicesCreatePreview",
+                        # Credit notes
+                        "PostCreditNotes",
+                        # Prices
+                        "GetPrices",
+                        "GetPricesPrice",
+                        "PostPrices",
+                        # Customers (needed for sync worker)
+                        "GetCustomers",
+                        "GetCustomersCustomer",
+                        "PostCustomers"
+                      ])
 
   # ── Operation filtering ──────────────────────────────────────────────
 
   @impl OpenAPI.Processor
   def ignore_operation?(_state, operation_spec) do
-    operation_id = Map.get(operation_spec, :operation_id) || Map.get(operation_spec, "operationId")
+    operation_id =
+      Map.get(operation_spec, :operation_id) || Map.get(operation_spec, "operationId")
 
     case operation_id do
       nil -> true

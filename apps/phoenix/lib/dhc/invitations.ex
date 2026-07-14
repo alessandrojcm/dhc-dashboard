@@ -9,6 +9,7 @@ defmodule Dhc.Invitations do
   alias Dhc.Auth.UserRole
   alias Dhc.CursorPagination
   alias Dhc.Invitations.Invitation
+  alias Dhc.Invitations.Pricing
   alias Dhc.Invitations.Repository
   alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.Repo
@@ -77,6 +78,14 @@ defmodule Dhc.Invitations do
       nil -> {:error, :not_found}
       invitation -> {:ok, invitation}
     end
+  end
+
+  @doc """
+  Returns public signup pricing for a pending Invitation.
+  """
+  @spec pricing(String.t(), String.t() | nil) :: {:ok, map()} | {:error, term()}
+  def pricing(invitation_id, coupon_code \\ nil) when is_binary(invitation_id) do
+    Pricing.pricing_for_invitation(invitation_id, coupon_code)
   end
 
   @doc """
