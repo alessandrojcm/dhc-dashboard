@@ -114,6 +114,7 @@ defmodule DhcWeb.Router do
     post "/members/:memberId/membership/resume", MembershipController, :resume
     get "/notifications", NotificationsController, :index
     get "/workshops", WorkshopsController, :list
+    post "/workshops/:id/interest", WorkshopsController, :toggle_interest
     # ALE-105: any authenticated member may read equipment categories.
     get "/inventory/categories", InventoryCategoriesController, :index
     get "/inventory/categories/:id", InventoryCategoriesController, :show

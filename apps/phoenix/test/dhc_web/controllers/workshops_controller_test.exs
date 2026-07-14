@@ -360,6 +360,89 @@ defmodule DhcWeb.WorkshopsControllerTest do
     end
   end
 
+  # ── Interest toggle ───────────────────────────────────────────────────
+
+  describe "toggle_interest" do
+    test "returns 401 without a bearer token", %{conn: conn} do
+      workshop = insert_workshop(status: "planned")
+
+      conn = post(conn, "/api/workshops/#{to_uuid(workshop.id)}/interest")
+
+      assert %{"errors" => %{"detail" => "Unauthorized"}} = json_response(conn, 401)
+    end
+
+    test "expresses and withdraws the authenticated member's interest", %{conn: conn} do
+      workshop = insert_workshop(status: "planned")
+
+      express_conn =
+        conn
+        |> auth_conn("member")
+        |> post("/api/workshops/#{to_uuid(workshop.id)}/interest")
+
+      assert %{
+               "data" => %{
+                 "interested" => true,
+                 "action" => "expressed",
+                 "message" => "Interest expressed successfully"
+               }
+             } = json_response(express_conn, 200)
+
+      [payload] =
+        build_conn()
+        |> auth_conn("member")
+        |> get("/api/workshops", status: "planned")
+        |> json_response(200)
+        |> get_in(["data", "workshops"])
+
+      assert payload["currentUserInterest"] == true
+      assert payload["interestCount"] == 1
+
+      withdraw_conn =
+        build_conn()
+        |> auth_conn("member")
+        |> post("/api/workshops/#{to_uuid(workshop.id)}/interest")
+
+      assert %{
+               "data" => %{
+                 "interested" => false,
+                 "action" => "withdrawn",
+                 "message" => "Interest withdrawn successfully"
+               }
+             } = json_response(withdraw_conn, 200)
+
+      [payload] =
+        build_conn()
+        |> auth_conn("member")
+        |> get("/api/workshops", status: "planned")
+        |> json_response(200)
+        |> get_in(["data", "workshops"])
+
+      assert payload["currentUserInterest"] == false
+      assert payload["interestCount"] == 0
+    end
+
+    test "rejects interest in published Workshops", %{conn: conn} do
+      workshop = insert_workshop(status: "published")
+
+      conn =
+        conn
+        |> auth_conn("member")
+        |> post("/api/workshops/#{to_uuid(workshop.id)}/interest")
+
+      assert %{"errors" => %{"detail" => "Can only express interest in planned workshops"}} =
+               json_response(conn, 422)
+    end
+
+    test "returns 404 for an unknown Workshop id", %{conn: conn} do
+      conn =
+        conn
+        |> auth_conn("member")
+        |> post("/api/workshops/#{Ecto.UUID.generate()}/interest")
+
+      assert %{"errors" => %{"detail" => "Workshop not found"}} = json_response(conn, 404)
+    end
+  end
+
   # ── Management lifecycle ──────────────────────────────────────────────
 
   describe "management endpoints — RBAC" do

@@ -217,6 +217,35 @@ defmodule Dhc.Workshops do
   end
 
   @doc """
+  Toggles the current member's interest in a planned Workshop.
+
+  `user_id` is always the Supabase auth user id from the validated JWT. Returns
+  a small command-result DTO for the member UI instead of leaking the underlying
+  `club_activity_interest` row shape.
+  """
+  @spec toggle_interest(binary(), binary()) ::
+          {:ok, %{interested: boolean(), action: String.t(), message: String.t()}}
+          | {:error, :not_found | :not_planned}
+  def toggle_interest(workshop_id, user_id) when is_binary(workshop_id) and is_binary(user_id) do
+    Repo.transaction(fn ->
+      case Repo.get(Workshop, workshop_id) do
+        nil ->
+          Repo.rollback(:not_found)
+
+        %Workshop{status: status} when status != "planned" ->
+          Repo.rollback(:not_planned)
+
+        %Workshop{} ->
+          toggle_planned_interest(workshop_id, user_id)
+      end
+    end)
+    |> case do
+      {:ok, result} -> {:ok, result}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc """
   Returns the current member's registration for a Workshop, or `nil`.
 
   `user_id` is the member's Supabase auth user id (which is what
@@ -468,6 +497,37 @@ defmodule Dhc.Workshops do
 
       %Workshop{} ->
         {:error, invalid_reason}
+    end
+  end
+
+  defp toggle_planned_interest(workshop_id, user_id) do
+    existing =
+      from(i in WorkshopInterest,
+        where: i.club_activity_id == ^workshop_id and i.user_id == ^user_id,
+        limit: 1
+      )
+      |> Repo.one()
+
+    case existing do
+      %WorkshopInterest{} = interest ->
+        {:ok, _} = Repo.delete(interest)
+
+        %{
+          interested: false,
+          action: "withdrawn",
+          message: "Interest withdrawn successfully"
+        }
+
+      nil ->
+        {:ok, _interest} =
+          %WorkshopInterest{club_activity_id: workshop_id, user_id: user_id}
+          |> Repo.insert()
+
+        %{
+          interested: true,
+          action: "expressed",
+          message: "Interest expressed successfully"
+        }
     end
   end
 
