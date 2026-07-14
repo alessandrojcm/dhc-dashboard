@@ -25,6 +25,28 @@ defmodule DhcWeb.WorkshopsJSON do
     }
   end
 
+  def render("registration_payment_intent.json", %{result: result}) do
+    %{
+      data: %{
+        clientSecret: result.client_secret,
+        paymentIntentId: result.payment_intent_id
+      }
+    }
+  end
+
+  def render("registration.json", %{registration: registration}) do
+    %{data: %{registration: registration(registration)}}
+  end
+
+  def render("registration_cancelled.json", %{result: result}) do
+    %{
+      data: %{
+        registration: registration(result.registration),
+        refundProcessed: result.refund_processed
+      }
+    }
+  end
+
   @doc """
   GET /workshops/{id}/attendees — combined coordinator management payload.
 
