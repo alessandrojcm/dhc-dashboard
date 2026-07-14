@@ -1801,6 +1801,157 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /workshops/{workshopId}/registration/payment-intent:
+    post:
+      operationId: workshops.createRegistrationPaymentIntent
+      tags:
+        - Workshops
+      summary: Create current member Workshop registration PaymentIntent
+      description: |
+        Creates a Stripe PaymentIntent for the authenticated member to register
+        for a published Workshop. Phoenix derives the member id from the
+        Supabase JWT `sub`, checks duplicate active registrations, and checks
+        pending/confirmed capacity before calling Stripe.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/WorkshopId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkshopRegistrationPaymentIntentRequest"
+      responses:
+        "200":
+          description: PaymentIntent created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkshopRegistrationPaymentIntentResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No Workshop exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Workshop is full or member already has an active registration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Workshop is not published or request payload is invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: Stripe request failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /workshops/{workshopId}/registration/complete:
+    post:
+      operationId: workshops.completeRegistration
+      tags:
+        - Workshops
+      summary: Complete current member Workshop registration
+      description: |
+        Completes the authenticated member's Workshop registration after Stripe
+        confirms the PaymentIntent. The PaymentIntent must be succeeded and its
+        metadata must match the requested Workshop and member. Completion is
+        idempotent for the same PaymentIntent id. If capacity is exhausted after
+        payment but before insert, Phoenix issues a best-effort refund and
+        returns `409`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/WorkshopId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkshopRegistrationCompleteRequest"
+      responses:
+        "201":
+          description: Registration completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkshopRegistrationResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No Workshop exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Workshop is full or member already has an active registration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Payment is incomplete or does not match this registration request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: Stripe request failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /workshops/{workshopId}/registration:
+    delete:
+      operationId: workshops.cancelRegistration
+      tags:
+        - Workshops
+      summary: Cancel current member Workshop registration
+      description: Cancels the authenticated member's active pending/confirmed Workshop registration.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/WorkshopId"
+      responses:
+        "200":
+          description: Registration cancelled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkshopRegistrationCancelResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No active registration exists for the current member and Workshop
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /settings:
     get:
       operationId: settings.index
@@ -3861,6 +4012,72 @@ components:
         The authenticated member's own registration for a Workshop. Exposed only
         as the current user's state (`currentUserRegistration`) on the
         member-safe collection — never as a list of other members' registrations.
+    WorkshopRegistrationPaymentIntentRequest:
+      type: object
+      required:
+        - amount
+      properties:
+        amount:
+          type: integer
+          minimum: 1
+          description: Payment amount in cents (minor units), matching the member Workshop price shown in the UI.
+        currency:
+          type: string
+          default: eur
+        customerId:
+          type: string
+          description: Optional Stripe customer id to attach to the PaymentIntent.
+    WorkshopRegistrationPaymentIntentResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - clientSecret
+            - paymentIntentId
+          properties:
+            clientSecret:
+              type: string
+            paymentIntentId:
+              type: string
+    WorkshopRegistrationCompleteRequest:
+      type: object
+      required:
+        - paymentIntentId
+      properties:
+        paymentIntentId:
+          type: string
+          minLength: 1
+    WorkshopRegistrationResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - registration
+          properties:
+            registration:
+              $ref: "#/components/schemas/WorkshopRegistration"
+    WorkshopRegistrationCancelResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - registration
+            - refundProcessed
+          properties:
+            registration:
+              $ref: "#/components/schemas/WorkshopRegistration"
+            refundProcessed:
+              type: boolean
+              description: False for this migration slice; refund processing remains a separate flow.
     WorkshopAttendeesResponse:
       type: object
       required:

@@ -158,6 +158,68 @@ defmodule DhcWeb.WorkshopsController do
   end
 
   @doc """
+  POST /workshops/{id}/registration/payment-intent
+
+  Creates a Stripe PaymentIntent for the authenticated member's Workshop
+  registration after duplicate and capacity checks.
+  """
+  def create_registration_payment_intent(conn, %{"id" => id} = params) do
+    case Workshops.create_member_payment_intent(id, conn.assigns.current_user.sub, params) do
+      {:ok, result} ->
+        conn
+        |> put_view(json: DhcWeb.WorkshopsJSON)
+        |> render(:registration_payment_intent, result: result)
+
+      {:error, reason} ->
+        member_registration_error(conn, reason)
+    end
+  end
+
+  @doc """
+  POST /workshops/{id}/registration/complete
+
+  Completes the authenticated member's registration after Stripe confirms the
+  PaymentIntent.
+  """
+  def complete_registration(conn, %{"id" => id, "paymentIntentId" => payment_intent_id}) do
+    case Workshops.complete_member_registration(
+           id,
+           conn.assigns.current_user.sub,
+           payment_intent_id
+         ) do
+      {:ok, registration} ->
+        conn
+        |> put_status(:created)
+        |> put_view(json: DhcWeb.WorkshopsJSON)
+        |> render(:registration, registration: registration)
+
+      {:error, reason} ->
+        member_registration_error(conn, reason)
+    end
+  end
+
+  def complete_registration(conn, _params) do
+    unprocessable(conn, "Payment intent ID required")
+  end
+
+  @doc """
+  DELETE /workshops/{id}/registration
+
+  Cancels the authenticated member's active registration.
+  """
+  def cancel_registration(conn, %{"id" => id}) do
+    case Workshops.cancel_member_registration(id, conn.assigns.current_user.sub) do
+      {:ok, result} ->
+        conn
+        |> put_view(json: DhcWeb.WorkshopsJSON)
+        |> render(:registration_cancelled, result: result)
+
+      {:error, reason} ->
+        member_registration_error(conn, reason)
+    end
+  end
+
+  @doc """
   GET /workshops/{id}/attendees
 
   Returns the combined coordinator attendee/refund management payload for a
@@ -243,6 +305,37 @@ defmodule DhcWeb.WorkshopsController do
 
   defp lifecycle_error(conn, :not_cancellable) do
     unprocessable(conn, "Only published workshops can be cancelled")
+  end
+
+  defp member_registration_error(conn, :not_found), do: not_found(conn)
+
+  defp member_registration_error(conn, :not_published),
+    do: unprocessable(conn, "Workshop not available for registration")
+
+  defp member_registration_error(conn, :already_registered),
+    do: conflict(conn, "Already registered for this workshop")
+
+  defp member_registration_error(conn, :full), do: conflict(conn, "Workshop is full")
+
+  defp member_registration_error(conn, :invalid_amount),
+    do: unprocessable(conn, "Amount must be positive")
+
+  defp member_registration_error(conn, :payment_not_completed),
+    do: unprocessable(conn, "Payment not completed")
+
+  defp member_registration_error(conn, :payment_metadata_mismatch),
+    do: unprocessable(conn, "Payment intent does not match workshop registration")
+
+  defp member_registration_error(conn, :payment_failed),
+    do:
+      conn
+      |> put_status(:bad_gateway)
+      |> json(%{errors: %{detail: "Payment provider request failed"}})
+
+  defp conflict(conn, message) do
+    conn
+    |> put_status(:conflict)
+    |> json(%{errors: %{detail: message}})
   end
 
   defp validation_error(conn, changeset) do

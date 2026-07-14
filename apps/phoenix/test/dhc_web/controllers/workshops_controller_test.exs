@@ -49,14 +49,81 @@ defmodule DhcWeb.WorkshopsControllerTest do
     def verify(_token), do: {:error, :invalid_token}
   end
 
+  defmodule StripeClient do
+    def request(method: :post, url: "/v1/payment_intents", body: body) do
+      Application.put_env(:dhc, :last_workshop_stripe_request, {:create_payment_intent, body})
+
+      case Application.get_env(:dhc, :workshop_stripe_create_response, :ok) do
+        :ok ->
+          {:ok,
+           %{
+             "id" => "pi_test_member",
+             "client_secret" => "pi_test_member_secret",
+             "amount" => form_value(body, :amount),
+             "currency" => form_value(body, :currency),
+             "status" => "requires_payment_method",
+             "metadata" => %{}
+           }}
+
+        other ->
+          other
+      end
+    end
+
+    def request(method: :get, url: "/v1/payment_intents/" <> payment_intent_id) do
+      case Application.get_env(:dhc, :workshop_stripe_retrieve_response) do
+        nil ->
+          {:ok,
+           %{
+             "id" => payment_intent_id,
+             "status" => "succeeded",
+             "amount" => 1000,
+             "currency" => "eur",
+             "metadata" => %{
+               "type" => "workshop_registration",
+               "actor_type" => "member",
+               "workshop_id" => Application.fetch_env!(:dhc, :workshop_stripe_workshop_id),
+               "user_id" => "11111111-1111-1111-1111-111111111111"
+             }
+           }}
+
+        other ->
+          other
+      end
+    end
+
+    def request(method: :post, url: "/v1/refunds", body: body) do
+      Application.put_env(:dhc, :last_workshop_stripe_refund_request, body)
+      {:ok, %{"id" => "re_test_member"}}
+    end
+
+    defp form_value(body, key) do
+      body
+      |> Enum.find_value(fn
+        {^key, value} -> value
+        _ -> nil
+      end)
+    end
+  end
+
   setup do
     original = Application.get_env(:dhc, :auth_verifier)
+    original_stripe = Application.get_env(:dhc, :workshop_stripe_client)
     Application.put_env(:dhc, :auth_verifier, Verifier)
+    Application.put_env(:dhc, :workshop_stripe_client, StripeClient)
     insert_auth_user_and_profile(@member_user_id, "Current", "Member")
     insert_auth_user_and_profile(@other_user_id, "Other", "Member")
     insert_auth_user_and_profile(@coordinator_user_id, "Workshop", "Coordinator")
 
-    on_exit(fn -> Application.put_env(:dhc, :auth_verifier, original) end)
+    on_exit(fn ->
+      Application.put_env(:dhc, :auth_verifier, original)
+      Application.put_env(:dhc, :workshop_stripe_client, original_stripe)
+      Application.delete_env(:dhc, :workshop_stripe_create_response)
+      Application.delete_env(:dhc, :workshop_stripe_retrieve_response)
+      Application.delete_env(:dhc, :workshop_stripe_workshop_id)
+      Application.delete_env(:dhc, :last_workshop_stripe_request)
+      Application.delete_env(:dhc, :last_workshop_stripe_refund_request)
+    end)
   end
 
   # `:binary_id` PKs autogenerate as 16-byte binaries on the inserted struct;
@@ -1002,6 +1069,131 @@ defmodule DhcWeb.WorkshopsControllerTest do
         |> get("/api/workshops/#{to_uuid(workshop.id)}/attendees")
 
       assert %{"data" => %{"attendees" => [], "refunds" => []}} = json_response(conn, 200)
+    end
+  end
+
+  # ── Member registration ───────────────────────────────────────────────
+
+  describe "member registration" do
+    test "creates a PaymentIntent after duplicate and capacity checks", %{conn: conn} do
+      workshop = insert_workshop(status: "published", max_capacity: 2)
+
+      conn =
+        conn
+        |> auth_conn("member")
+        |> post("/api/workshops/#{to_uuid(workshop.id)}/registration/payment-intent", %{
+          "amount" => 1000,
+          "currency" => "eur",
+          "customerId" => "cus_test"
+        })
+
+      assert %{
+               "data" => %{
+                 "clientSecret" => "pi_test_member_secret",
+                 "paymentIntentId" => "pi_test_member"
+               }
+             } = json_response(conn, 200)
+
+      assert {:create_payment_intent, body} =
+               Application.fetch_env!(:dhc, :last_workshop_stripe_request)
+
+      assert {:amount, 1000} in body
+      assert {:currency, "eur"} in body
+      assert {:customer, "cus_test"} in body
+      assert {"metadata[workshop_id]", to_uuid(workshop.id)} in body
+      assert {"metadata[user_id]", @member_user_id} in body
+    end
+
+    test "does not create a PaymentIntent when the Workshop is full", %{conn: conn} do
+      workshop = insert_workshop(status: "published", max_capacity: 1)
+
+      WorkshopFixtures.registration_fixture(
+        workshop_id: workshop.id,
+        member_user_id: @other_user_id,
+        status: "confirmed"
+      )
+
+      conn =
+        conn
+        |> auth_conn("member")
+        |> post("/api/workshops/#{to_uuid(workshop.id)}/registration/payment-intent", %{
+          "amount" => 1000
+        })
+
+      assert %{"errors" => %{"detail" => "Workshop is full"}} = json_response(conn, 409)
+      assert Application.get_env(:dhc, :last_workshop_stripe_request) == nil
+    end
+
+    test "completes a succeeded PaymentIntent into a confirmed registration", %{conn: conn} do
+      workshop = insert_workshop(status: "published", max_capacity: 2)
+      Application.put_env(:dhc, :workshop_stripe_workshop_id, to_uuid(workshop.id))
+
+      conn =
+        conn
+        |> auth_conn("member")
+        |> post("/api/workshops/#{to_uuid(workshop.id)}/registration/complete", %{
+          "paymentIntentId" => "pi_succeeded"
+        })
+
+      assert %{"data" => %{"registration" => registration}} = json_response(conn, 201)
+      assert registration["status"] == "confirmed"
+
+      assert %{status: "confirmed"} =
+               Dhc.Workshops.current_user_registration(to_uuid(workshop.id), @member_user_id)
+    end
+
+    test "rejects completion when PaymentIntent has not succeeded", %{conn: conn} do
+      workshop = insert_workshop(status: "published", max_capacity: 2)
+
+      Application.put_env(:dhc, :workshop_stripe_retrieve_response, {
+        :ok,
+        %{
+          "id" => "pi_processing",
+          "status" => "processing",
+          "amount" => 1000,
+          "currency" => "eur",
+          "metadata" => %{
+            "type" => "workshop_registration",
+            "actor_type" => "member",
+            "workshop_id" => to_uuid(workshop.id),
+            "user_id" => @member_user_id
+          }
+        }
+      })
+
+      conn =
+        conn
+        |> auth_conn("member")
+        |> post("/api/workshops/#{to_uuid(workshop.id)}/registration/complete", %{
+          "paymentIntentId" => "pi_processing"
+        })
+
+      assert %{"errors" => %{"detail" => "Payment not completed"}} = json_response(conn, 422)
+    end
+
+    test "cancels the current member active registration", %{conn: conn} do
+      workshop = insert_workshop(status: "published")
+
+      registration =
+        WorkshopFixtures.registration_fixture(
+          workshop_id: workshop.id,
+          member_user_id: @member_user_id,
+          status: "confirmed"
+        )
+
+      conn =
+        conn
+        |> auth_conn("member")
+        |> delete("/api/workshops/#{to_uuid(workshop.id)}/registration")
+
+      assert %{
+               "data" => %{
+                 "registration" => %{"id" => id, "status" => "cancelled"},
+                 "refundProcessed" => false
+               }
+             } = json_response(conn, 200)
+
+      assert id == to_uuid(registration.id)
     end
   end
 

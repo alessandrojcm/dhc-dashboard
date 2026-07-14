@@ -88,6 +88,9 @@ defmodule Dhc.Workshops do
   # Registration statuses counted toward Workshop availability.
   @counted_registration_statuses ~w(pending confirmed)
 
+  @workshop_registration_metadata_type "workshop_registration"
+  @member_registration_actor_type "member"
+
   @doc """
   Returns the canonical coordinator Workshop management roles.
 
@@ -267,6 +270,140 @@ defmodule Dhc.Workshops do
       limit: 1
     )
     |> Repo.one()
+  end
+
+  @doc """
+  Creates a Stripe PaymentIntent for the authenticated member's Workshop registration.
+
+  The member id is always derived from the Supabase JWT `sub` by the controller.
+  Capacity and duplicate active-registration checks happen before Stripe is
+  called, preserving the existing SvelteKit member-registration gate behavior.
+  """
+  @spec create_member_payment_intent(binary(), binary(), map()) ::
+          {:ok, %{client_secret: String.t(), payment_intent_id: String.t()}}
+          | {:error,
+             :not_found
+             | :not_published
+             | :already_registered
+             | :full
+             | :invalid_amount
+             | :payment_failed}
+  def create_member_payment_intent(workshop_id, user_id, attrs)
+      when is_binary(workshop_id) and is_binary(user_id) and is_map(attrs) do
+    amount = Map.get(attrs, "amount") || Map.get(attrs, :amount)
+    currency = Map.get(attrs, "currency") || Map.get(attrs, :currency) || "eur"
+    customer_id = Map.get(attrs, "customerId") || Map.get(attrs, :customer_id)
+
+    with {:ok, amount} <- normalize_positive_integer(amount),
+         {:ok, workshop} <- member_registration_workshop(workshop_id),
+         :ok <- ensure_no_active_member_registration(workshop_id, user_id),
+         :ok <- ensure_workshop_capacity(workshop_id, workshop.max_capacity),
+         {:ok, payment_intent} <-
+           stripe_create_payment_intent(%{
+             amount: amount,
+             currency: currency,
+             customer_id: customer_id,
+             workshop_id: workshop_id,
+             workshop_title: workshop.title,
+             user_id: user_id
+           }) do
+      {:ok,
+       %{
+         client_secret: Map.fetch!(payment_intent, "client_secret"),
+         payment_intent_id: Map.fetch!(payment_intent, "id")
+       }}
+    else
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc """
+  Completes an authenticated member Workshop registration after Stripe payment.
+
+  Stripe's PaymentIntent must be `succeeded` and must carry metadata tying it to
+  the requested Workshop and member. Completion is idempotent for the same
+  PaymentIntent id. If capacity is exhausted after payment but before insert, a
+  best-effort refund is issued and `:full` is returned.
+  """
+  @spec complete_member_registration(binary(), binary(), binary()) ::
+          {:ok, Registration.t()}
+          | {:error,
+             :not_found
+             | :not_published
+             | :already_registered
+             | :full
+             | :payment_not_completed
+             | :payment_metadata_mismatch
+             | :payment_failed}
+  def complete_member_registration(workshop_id, user_id, payment_intent_id)
+      when is_binary(workshop_id) and is_binary(user_id) and is_binary(payment_intent_id) do
+    with {:ok, payment_intent} <- stripe_retrieve_payment_intent(payment_intent_id),
+         :ok <- validate_member_payment_intent(payment_intent, workshop_id, user_id),
+         {:ok, registration} <-
+           Repo.transaction(fn ->
+             case Repo.get_by(Registration, stripe_checkout_session_id: payment_intent_id) do
+               %Registration{} = registration ->
+                 registration
+
+               nil ->
+                 with {:ok, workshop} <- member_registration_workshop(workshop_id),
+                      :ok <- ensure_no_active_member_registration(workshop_id, user_id),
+                      :ok <- ensure_workshop_capacity(workshop_id, workshop.max_capacity) do
+                   insert_member_registration(workshop_id, user_id, payment_intent)
+                 else
+                   {:error, :full} ->
+                     _ = stripe_refund_payment_intent(payment_intent_id)
+                     Repo.rollback(:full)
+
+                   {:error, reason} ->
+                     Repo.rollback(reason)
+                 end
+             end
+           end) do
+      {:ok, registration}
+    else
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc """
+  Cancels the current member's active Workshop registration.
+  """
+  @spec cancel_member_registration(binary(), binary()) ::
+          {:ok, %{registration: Registration.t(), refund_processed: boolean()}}
+          | {:error, :not_found}
+  def cancel_member_registration(workshop_id, user_id)
+      when is_binary(workshop_id) and is_binary(user_id) do
+    Repo.transaction(fn ->
+      registration =
+        from(r in Registration,
+          where:
+            r.club_activity_id == ^workshop_id and r.member_user_id == ^user_id and
+              r.status in @counted_registration_statuses,
+          limit: 1
+        )
+        |> Repo.one()
+
+      case registration do
+        nil ->
+          Repo.rollback(:not_found)
+
+        %Registration{} = registration ->
+          {:ok, updated} =
+            registration
+            |> Ecto.Changeset.change(
+              status: "cancelled",
+              cancelled_at: DateTime.utc_now() |> DateTime.truncate(:second)
+            )
+            |> Repo.update()
+
+          %{registration: updated, refund_processed: false}
+      end
+    end)
+    |> case do
+      {:ok, result} -> {:ok, result}
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   # ── Attendees & refunds ───────────────────────────────────────────────
@@ -483,6 +620,129 @@ defmodule Dhc.Workshops do
       select: count(r.id)
     )
     |> Repo.one()
+  end
+
+  defp member_registration_workshop(workshop_id) do
+    case Repo.get(Workshop, workshop_id) do
+      nil -> {:error, :not_found}
+      %Workshop{status: status} when status != "published" -> {:error, :not_published}
+      %Workshop{} = workshop -> {:ok, workshop}
+    end
+  end
+
+  defp ensure_no_active_member_registration(workshop_id, user_id) do
+    exists? =
+      from(r in Registration,
+        where:
+          r.club_activity_id == ^workshop_id and r.member_user_id == ^user_id and
+            r.status in @counted_registration_statuses
+      )
+      |> Repo.exists?()
+
+    if exists?, do: {:error, :already_registered}, else: :ok
+  end
+
+  defp ensure_workshop_capacity(workshop_id, max_capacity) do
+    if active_registration_count(workshop_id) >= max_capacity do
+      {:error, :full}
+    else
+      :ok
+    end
+  end
+
+  defp normalize_positive_integer(value) when is_integer(value) and value > 0, do: {:ok, value}
+
+  defp normalize_positive_integer(value) when is_float(value) and value > 0 do
+    {:ok, trunc(value)}
+  end
+
+  defp normalize_positive_integer(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {amount, ""} when amount > 0 -> {:ok, amount}
+      _ -> {:error, :invalid_amount}
+    end
+  end
+
+  defp normalize_positive_integer(_), do: {:error, :invalid_amount}
+
+  defp insert_member_registration(workshop_id, user_id, payment_intent) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    %Registration{
+      club_activity_id: workshop_id,
+      member_user_id: user_id,
+      status: "confirmed",
+      stripe_checkout_session_id: Map.fetch!(payment_intent, "id"),
+      amount_paid: Map.get(payment_intent, "amount"),
+      currency: Map.get(payment_intent, "currency", "eur"),
+      confirmed_at: now,
+      registered_at: now
+    }
+    |> Repo.insert!()
+  end
+
+  defp validate_member_payment_intent(payment_intent, workshop_id, user_id) do
+    metadata = Map.get(payment_intent, "metadata", %{}) || %{}
+
+    cond do
+      Map.get(payment_intent, "status") != "succeeded" ->
+        {:error, :payment_not_completed}
+
+      metadata["type"] != @workshop_registration_metadata_type or
+        metadata["actor_type"] != @member_registration_actor_type or
+        metadata["workshop_id"] != workshop_id or metadata["user_id"] != user_id ->
+        {:error, :payment_metadata_mismatch}
+
+      true ->
+        :ok
+    end
+  end
+
+  defp stripe_create_payment_intent(args) do
+    form =
+      [
+        {:amount, args.amount},
+        {:currency, args.currency},
+        {"metadata[type]", @workshop_registration_metadata_type},
+        {"metadata[workshop_id]", args.workshop_id},
+        {"metadata[workshop_title]", args.workshop_title},
+        {"metadata[user_id]", args.user_id},
+        {"metadata[actor_type]", @member_registration_actor_type},
+        {"automatic_payment_methods[enabled]", "false"},
+        {"payment_method_types[]", "card"},
+        {"payment_method_types[]", "link"}
+      ]
+      |> maybe_put_customer(args.customer_id)
+
+    case stripe_client().request(method: :post, url: "/v1/payment_intents", body: form) do
+      {:ok, %{"id" => _id, "client_secret" => _secret} = body} -> {:ok, body}
+      {:ok, _body} -> {:error, :payment_failed}
+      {:error, _reason} -> {:error, :payment_failed}
+    end
+  end
+
+  defp stripe_retrieve_payment_intent(payment_intent_id) do
+    case stripe_client().request(method: :get, url: "/v1/payment_intents/#{payment_intent_id}") do
+      {:ok, %{"id" => _id} = body} -> {:ok, body}
+      {:ok, _body} -> {:error, :payment_failed}
+      {:error, _reason} -> {:error, :payment_failed}
+    end
+  end
+
+  defp stripe_refund_payment_intent(payment_intent_id) do
+    stripe_client().request(
+      method: :post,
+      url: "/v1/refunds",
+      body: [payment_intent: payment_intent_id, reason: "duplicate"]
+    )
+  end
+
+  defp maybe_put_customer(form, nil), do: form
+  defp maybe_put_customer(form, ""), do: form
+  defp maybe_put_customer(form, customer_id), do: [{:customer, customer_id} | form]
+
+  defp stripe_client do
+    Application.get_env(:dhc, :workshop_stripe_client, Dhc.Stripe.Client)
   end
 
   defp transition_workshop(workshop_id, from_status, to_status, invalid_reason) do
