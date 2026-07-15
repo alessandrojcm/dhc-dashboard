@@ -2007,6 +2007,119 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /workshops/{workshopId}/external-registration:
+    get:
+      operationId: workshops.externalRegistrationGate
+      tags:
+        - Workshops
+      summary: Check whether a Workshop accepts external registration
+      parameters:
+        - $ref: "#/components/parameters/WorkshopId"
+      responses:
+        "200":
+          description: External registration gate state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkshopExternalRegistrationGateResponse"
+
+  /workshops/{workshopId}/external-registration/checkout-session:
+    post:
+      operationId: workshops.createExternalCheckoutSession
+      tags:
+        - Workshops
+      summary: Create an embedded Stripe Checkout Session for an external attendee
+      parameters:
+        - $ref: "#/components/parameters/WorkshopId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkshopExternalCheckoutSessionRequest"
+      responses:
+        "200":
+          description: Embedded Checkout Session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkshopExternalCheckoutSessionResponse"
+        "404":
+          description: Workshop is unavailable for external registration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Workshop is full
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Invalid return URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: Stripe request failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /workshops/{workshopId}/external-registration/complete:
+    post:
+      operationId: workshops.completeExternalRegistration
+      tags:
+        - Workshops
+      summary: Complete an external Workshop registration from Stripe Checkout
+      description: |
+        Validates the paid Checkout Session, upserts the external attendee by
+        normalized email, and creates an idempotent confirmed registration. If
+        capacity is exhausted after payment, Phoenix refunds the PaymentIntent
+        and returns `409`.
+      parameters:
+        - $ref: "#/components/parameters/WorkshopId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkshopExternalRegistrationCompleteRequest"
+      responses:
+        "201":
+          description: External registration completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkshopRegistrationResponse"
+        "404":
+          description: Workshop or Checkout Session not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Workshop is full or the attendee is already registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Payment is incomplete, mismatched, or missing attendee details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: Stripe request failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /workshops/{workshopId}/registrations/{registrationId}/refund:
     post:
       operationId: workshops.refundRegistration
@@ -4253,6 +4366,96 @@ components:
             refundProcessed:
               type: boolean
               description: Whether cancellation created and processed a refund attempt.
+    WorkshopExternalRegistrationGateResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - canRegister
+          properties:
+            canRegister:
+              type: boolean
+            reason:
+              type: string
+              enum: [NOT_FOUND, NOT_PUBLISHED, NOT_PUBLIC, NO_EXTERNAL_PRICE, FULL]
+            workshop:
+              allOf:
+                - $ref: "#/components/schemas/WorkshopExternalRegistrationWorkshop"
+              nullable: true
+    WorkshopExternalRegistrationWorkshop:
+      type: object
+      required:
+        - id
+        - title
+        - startDate
+        - endDate
+        - location
+        - priceNonMember
+        - maxCapacity
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        startDate:
+          type: string
+          format: date-time
+        endDate:
+          type: string
+          format: date-time
+        location:
+          type: string
+        priceNonMember:
+          type: integer
+          minimum: 0
+        maxCapacity:
+          type: integer
+          minimum: 1
+    WorkshopExternalCheckoutSessionRequest:
+      type: object
+      required:
+        - returnUrl
+      additionalProperties: false
+      properties:
+        returnUrl:
+          type: string
+          format: uri
+          description: Must include the literal `{CHECKOUT_SESSION_ID}` placeholder.
+    WorkshopExternalCheckoutSessionResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - checkoutSessionId
+            - checkoutClientSecret
+            - checkoutUrl
+          properties:
+            checkoutSessionId:
+              type: string
+            checkoutClientSecret:
+              type: string
+            checkoutUrl:
+              type: string
+              nullable: true
+    WorkshopExternalRegistrationCompleteRequest:
+      type: object
+      required:
+        - checkoutSessionId
+      additionalProperties: false
+      properties:
+        checkoutSessionId:
+          type: string
+          minLength: 1
     WorkshopAttendeesResponse:
       type: object
       required:
