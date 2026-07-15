@@ -5,7 +5,8 @@ const { workshopsUpdateAttendance } = vi.hoisted(() => ({
 	workshopsUpdateAttendance: vi.fn(),
 }));
 
-vi.mock("@dhc/api-client", () => ({
+vi.mock("@dhc/api-client", async (importOriginal) => ({
+	...(await importOriginal<typeof import("@dhc/api-client")>()),
 	workshopsUpdateAttendance,
 }));
 

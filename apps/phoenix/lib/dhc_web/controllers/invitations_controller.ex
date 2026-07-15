@@ -68,7 +68,9 @@ defmodule DhcWeb.InvitationsController do
         conn
         |> put_status(:bad_request)
         |> put_view(json: DhcWeb.InvitationsJSON)
-        |> render(:error, detail: "Forever coupons can only be percentage-based, not amount-based")
+        |> render(:error,
+          detail: "Forever coupons can only be percentage-based, not amount-based"
+        )
 
       {:error, reason} ->
         Logger.error("[invitations] Failed to calculate invitation pricing",

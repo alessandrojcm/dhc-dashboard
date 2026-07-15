@@ -374,34 +374,114 @@ defmodule Dhc.Workshops do
           | {:error, :not_found}
   def cancel_member_registration(workshop_id, user_id)
       when is_binary(workshop_id) and is_binary(user_id) do
-    Repo.transaction(fn ->
-      registration =
-        from(r in Registration,
-          where:
-            r.club_activity_id == ^workshop_id and r.member_user_id == ^user_id and
-              r.status in @counted_registration_statuses,
-          limit: 1
-        )
-        |> Repo.one()
+    registration =
+      from(r in Registration,
+        where:
+          r.club_activity_id == ^workshop_id and r.member_user_id == ^user_id and
+            r.status in @counted_registration_statuses,
+        limit: 1
+      )
+      |> Repo.one()
 
-      case registration do
-        nil ->
-          Repo.rollback(:not_found)
+    case registration do
+      nil ->
+        {:error, :not_found}
 
-        %Registration{} = registration ->
-          {:ok, updated} =
-            registration
-            |> Ecto.Changeset.change(
-              status: "cancelled",
-              cancelled_at: DateTime.utc_now() |> DateTime.truncate(:second)
-            )
-            |> Repo.update()
+      %Registration{} = registration ->
+        case refund_eligibility(registration.id) do
+          {:ok, _registration} ->
+            case process_refund(
+                   workshop_id,
+                   registration.id,
+                   "Member cancelled registration",
+                   user_id
+                 ) do
+              {:ok, refund} ->
+                {:ok,
+                 %{
+                   registration: Repo.get!(Registration, registration.id),
+                   refund_processed: refund.status in ["processing", "completed", "pending"]
+                 }}
 
-          %{registration: updated, refund_processed: false}
-      end
-    end)
-    |> case do
-      {:ok, result} -> {:ok, result}
+              {:error, reason} ->
+                {:error, reason}
+            end
+
+          {:error, _ineligible_reason} ->
+            {:ok, updated} =
+              registration
+              |> Ecto.Changeset.change(
+                status: "cancelled",
+                cancelled_at: DateTime.utc_now() |> DateTime.truncate(:second)
+              )
+              |> Repo.update()
+
+            {:ok, %{registration: updated, refund_processed: false}}
+        end
+    end
+  end
+
+  @doc """
+  Returns a registration when it is eligible for a refund.
+  """
+  @spec refund_eligibility(binary()) :: {:ok, Registration.t()} | {:error, atom()}
+  def refund_eligibility(registration_id) when is_binary(registration_id) do
+    row =
+      from(r in Registration,
+        join: w in Workshop,
+        on: w.id == r.club_activity_id,
+        where: r.id == ^registration_id,
+        select: %{
+          registration: r,
+          workshop_status: w.status,
+          start_date: w.start_date,
+          refund_days: w.refund_days
+        }
+      )
+      |> Repo.one()
+
+    cond do
+      is_nil(row) ->
+        {:error, :registration_not_found}
+
+      row.registration.status == "refunded" ->
+        {:error, :already_refunded}
+
+      row.workshop_status == "finished" ->
+        {:error, :workshop_finished}
+
+      not is_integer(row.registration.amount_paid) or row.registration.amount_paid <= 0 ->
+        {:error, :not_paid}
+
+      refund_deadline_passed?(row.start_date, row.refund_days) ->
+        {:error, :deadline_passed}
+
+      Repo.exists?(from(rf in Refund, where: rf.registration_id == ^registration_id)) ->
+        {:error, :already_requested}
+
+      true ->
+        {:ok, row.registration}
+    end
+  end
+
+  @doc """
+  Creates a traceable refund attempt and asks Stripe to refund a registration.
+  """
+  @spec process_refund(binary(), binary(), String.t(), binary(), keyword()) ::
+          {:ok, Refund.t()} | {:error, atom()}
+  def process_refund(workshop_id, registration_id, reason, requested_by, opts \\ [])
+      when is_binary(workshop_id) and is_binary(registration_id) and is_binary(reason) and
+             is_binary(requested_by) do
+    eligibility =
+      if Keyword.get(opts, :skip_eligibility, false),
+        do: registration_for_refund(workshop_id, registration_id),
+        else: refund_eligibility(registration_id)
+
+    with {:ok, %Registration{club_activity_id: ^workshop_id} = registration} <- eligibility,
+         {:ok, refund} <- create_refund_attempt(registration, reason, requested_by) do
+      submit_refund(refund, registration, requested_by)
+    else
+      {:ok, %Registration{}} -> {:error, :registration_not_found}
       {:error, reason} -> {:error, reason}
     end
   end
@@ -623,14 +703,31 @@ defmodule Dhc.Workshops do
   end
 
   @doc """
-  Cancels a published Workshop.
-
-  Refund processing/audit records are part of the later cancellation/refunds
-  slice. This endpoint preserves the current management lifecycle transition.
+  Cancels a published Workshop and creates traceable refund attempts for every
+  active paid registration. Refund eligibility deadlines do not apply when the
+  club cancels the Workshop.
   """
   @spec cancel_workshop(binary()) :: {:ok, Workshop.t()} | {:error, :not_found | :not_cancellable}
-  def cancel_workshop(workshop_id) when is_binary(workshop_id) do
-    transition_workshop(workshop_id, "published", "cancelled", :not_cancellable)
+  def cancel_workshop(workshop_id, requested_by \\ nil) when is_binary(workshop_id) do
+    with {:ok, workshop} <-
+           transition_workshop(workshop_id, "published", "cancelled", :not_cancellable) do
+      if is_binary(requested_by) do
+        workshop_id
+        |> active_paid_registrations()
+        |> Enum.each(fn registration ->
+          _ =
+            process_refund(
+              workshop_id,
+              registration.id,
+              "Workshop cancelled",
+              requested_by,
+              skip_eligibility: true
+            )
+        end)
+      end
+
+      {:ok, workshop}
+    end
   end
 
   # ── Private: summary query ────────────────────────────────────────────
@@ -815,6 +912,89 @@ defmodule Dhc.Workshops do
       url: "/v1/refunds",
       body: [payment_intent: payment_intent_id, reason: "duplicate"]
     )
+  end
+
+  defp refund_deadline_passed?(_start_date, nil), do: false
+
+  defp refund_deadline_passed?(start_date, refund_days) do
+    deadline = DateTime.add(start_date, -refund_days, :day)
+    DateTime.compare(DateTime.utc_now(), deadline) == :gt
+  end
+
+  defp registration_for_refund(workshop_id, registration_id) do
+    case Repo.get_by(Registration, id: registration_id, club_activity_id: workshop_id) do
+      nil -> {:error, :registration_not_found}
+      registration -> {:ok, registration}
+    end
+  end
+
+  defp create_refund_attempt(registration, reason, requested_by) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    %Refund{
+      registration_id: registration.id,
+      refund_amount: registration.amount_paid,
+      refund_reason: reason,
+      status: "pending",
+      requested_at: now,
+      requested_by: requested_by,
+      stripe_payment_intent_id: registration.stripe_checkout_session_id
+    }
+    |> Repo.insert()
+  end
+
+  defp submit_refund(refund, %Registration{stripe_checkout_session_id: nil} = registration, _by) do
+    mark_registration_refunded(registration)
+    {:ok, refund}
+  end
+
+  defp submit_refund(refund, registration, processed_by) do
+    body = [
+      payment_intent: registration.stripe_checkout_session_id,
+      amount: registration.amount_paid,
+      reason: "requested_by_customer"
+    ]
+
+    case stripe_client().request(method: :post, url: "/v1/refunds", body: body) do
+      {:ok, %{"id" => stripe_refund_id}} ->
+        now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+        {:ok, updated_refund} =
+          refund
+          |> Ecto.Changeset.change(
+            status: "processing",
+            stripe_refund_id: stripe_refund_id,
+            stripe_payment_intent_id: registration.stripe_checkout_session_id,
+            processed_at: now,
+            processed_by: processed_by
+          )
+          |> Repo.update()
+
+        mark_registration_refunded(registration)
+        {:ok, updated_refund}
+
+      _error ->
+        refund
+        |> Ecto.Changeset.change(status: "failed")
+        |> Repo.update!()
+
+        {:error, :refund_failed}
+    end
+  end
+
+  defp mark_registration_refunded(registration) do
+    registration
+    |> Ecto.Changeset.change(status: "refunded")
+    |> Repo.update!()
+  end
+
+  defp active_paid_registrations(workshop_id) do
+    from(r in Registration,
+      where:
+        r.club_activity_id == ^workshop_id and r.status in @counted_registration_statuses and
+          r.amount_paid > 0
+    )
+    |> Repo.all()
   end
 
   defp maybe_put_customer(form, nil), do: form

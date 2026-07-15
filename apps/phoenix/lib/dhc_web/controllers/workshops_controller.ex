@@ -131,7 +131,7 @@ defmodule DhcWeb.WorkshopsController do
   POST /workshops/{id}/cancel
   """
   def cancel(conn, %{"id" => id}) do
-    case Workshops.cancel_workshop(id) do
+    case Workshops.cancel_workshop(id, conn.assigns.current_user.sub) do
       {:ok, workshop} -> render_management(conn, Workshops.workshop_summary(workshop.id))
       {:error, reason} -> lifecycle_error(conn, reason)
     end
@@ -237,6 +237,68 @@ defmodule DhcWeb.WorkshopsController do
         conn
         |> put_view(json: DhcWeb.WorkshopsJSON)
         |> render(:attendees, workshop: workshop, attendees: attendees, refunds: refunds)
+    end
+  end
+
+  @doc """
+  GET /workshops/{id}/refunds
+
+  Returns coordinator-visible refund records for one Workshop.
+  """
+  def refunds(conn, %{"id" => id}) do
+    case Workshops.workshop_summary(id) do
+      nil ->
+        not_found(conn)
+
+      _workshop ->
+        conn
+        |> put_view(json: DhcWeb.WorkshopsJSON)
+        |> render(:refunds, refunds: Workshops.list_workshop_refunds(id))
+    end
+  end
+
+  @doc """
+  POST /workshops/{id}/registrations/{registration_id}/refund
+
+  Explicitly refunds an eligible Workshop registration. Coordinator identity is
+  derived from the authenticated JWT and recorded on the refund attempt.
+  """
+  def refund_registration(
+        conn,
+        %{"id" => workshop_id, "registration_id" => registration_id, "reason" => reason}
+      )
+      when is_binary(reason) and byte_size(reason) > 0 and byte_size(reason) <= 500 do
+    reason = String.trim(reason)
+
+    if reason == "" do
+      unprocessable(conn, "Refund reason is required")
+    else
+      process_registration_refund(conn, workshop_id, registration_id, reason)
+    end
+  end
+
+  def refund_registration(conn, _params), do: unprocessable(conn, "Refund reason is required")
+
+  defp process_registration_refund(conn, workshop_id, registration_id, reason) do
+    case Workshops.process_refund(
+           workshop_id,
+           registration_id,
+           reason,
+           conn.assigns.current_user.sub
+         ) do
+      {:ok, refund} ->
+        rendered_refund =
+          workshop_id
+          |> Workshops.list_workshop_refunds()
+          |> Enum.find(&(&1.id == refund.id))
+
+        conn
+        |> put_status(:created)
+        |> put_view(json: DhcWeb.WorkshopsJSON)
+        |> render(:refund, refund: rendered_refund)
+
+      {:error, reason} ->
+        refund_error(conn, reason)
     end
   end
 
@@ -383,6 +445,32 @@ defmodule DhcWeb.WorkshopsController do
       conn
       |> put_status(:bad_gateway)
       |> json(%{errors: %{detail: "Payment provider request failed"}})
+
+  defp member_registration_error(conn, :refund_failed), do: refund_provider_error(conn)
+
+  defp refund_error(conn, :registration_not_found), do: not_found(conn)
+
+  defp refund_error(conn, :already_refunded),
+    do: unprocessable(conn, "Registration already refunded")
+
+  defp refund_error(conn, :workshop_finished),
+    do: unprocessable(conn, "Cannot refund finished workshop")
+
+  defp refund_error(conn, :not_paid),
+    do: unprocessable(conn, "Registration has no payment to refund")
+
+  defp refund_error(conn, :deadline_passed), do: unprocessable(conn, "Refund deadline has passed")
+
+  defp refund_error(conn, :already_requested),
+    do: unprocessable(conn, "Refund already requested for this registration")
+
+  defp refund_error(conn, :refund_failed), do: refund_provider_error(conn)
+
+  defp refund_provider_error(conn) do
+    conn
+    |> put_status(:bad_gateway)
+    |> json(%{errors: %{detail: "Refund provider request failed"}})
+  end
 
   defp attendance_error(conn, :not_found), do: not_found(conn)
 

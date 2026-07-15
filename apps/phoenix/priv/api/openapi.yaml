@@ -1424,6 +1424,45 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /workshops/{workshopId}/refunds:
+    get:
+      operationId: workshops.refunds
+      tags:
+        - Workshops
+      summary: List Workshop refund records
+      description: |
+        Returns all traceable refund attempts for a Workshop in newest-first
+        order. Requires `workshop_coordinator`, `president`, or `admin`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/WorkshopId"
+      responses:
+        "200":
+          description: Workshop refund records
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkshopRefundsResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a Workshop coordinator management role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No Workshop exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /workshops:
     get:
       operationId: workshops.list
@@ -1718,7 +1757,13 @@ paths:
       tags:
         - Workshops
       summary: Cancel a published Workshop
-      description: Transitions a published Workshop to cancelled. Requires `workshop_coordinator`, `president`, or `admin`.
+      description: |
+        Transitions a published Workshop to cancelled and creates a traceable
+        refund attempt for every active paid registration. Workshop cancellation
+        refunds are not subject to the member cancellation deadline. Individual
+        Stripe failures are recorded as failed attempts and do not prevent the
+        Workshop cancellation. Requires `workshop_coordinator`, `president`, or
+        `admin`.
       security:
         - bearerAuth: []
       parameters:
@@ -1927,7 +1972,11 @@ paths:
       tags:
         - Workshops
       summary: Cancel current member Workshop registration
-      description: Cancels the authenticated member's active pending/confirmed Workshop registration.
+      description: |
+        Cancels the authenticated member's active pending/confirmed Workshop
+        registration. Phoenix evaluates refund eligibility server-side. Eligible
+        paid registrations are refunded and transition to `refunded`; ineligible
+        registrations transition to `cancelled` without a refund.
       security:
         - bearerAuth: []
       parameters:
@@ -1947,6 +1996,77 @@ paths:
                 $ref: "#/components/schemas/Error"
         "404":
           description: No active registration exists for the current member and Workshop
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: Stripe refund request failed; the failed attempt remains traceable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /workshops/{workshopId}/registrations/{registrationId}/refund:
+    post:
+      operationId: workshops.refundRegistration
+      tags:
+        - Workshops
+      summary: Refund a Workshop registration
+      description: |
+        Explicit coordinator refund command. Phoenix enforces the Workshop's
+        refund eligibility rules, creates the refund record before contacting
+        Stripe, and records Stripe failures as failed attempts. Requires
+        `workshop_coordinator`, `president`, or `admin`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/WorkshopId"
+        - name: registrationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkshopRefundRequest"
+      responses:
+        "201":
+          description: Refund attempt created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkshopRefundResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a Workshop coordinator management role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Workshop registration not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Registration is not eligible for a refund or the reason is invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: Stripe refund request failed; the failed attempt remains traceable
           content:
             application/json:
               schema:
@@ -4132,7 +4252,7 @@ components:
               $ref: "#/components/schemas/WorkshopRegistration"
             refundProcessed:
               type: boolean
-              description: False for this migration slice; refund processing remains a separate flow.
+              description: Whether cancellation created and processed a refund attempt.
     WorkshopAttendeesResponse:
       type: object
       required:
@@ -4693,6 +4813,42 @@ components:
           nullable: true
         participant:
           $ref: "#/components/schemas/WorkshopParticipant"
+    WorkshopRefundRequest:
+      type: object
+      required:
+        - reason
+      additionalProperties: false
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+    WorkshopRefundResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - refund
+          properties:
+            refund:
+              $ref: "#/components/schemas/WorkshopRefund"
+    WorkshopRefundsResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - refunds
+          properties:
+            refunds:
+              type: array
+              items:
+                $ref: "#/components/schemas/WorkshopRefund"
     WorkshopParticipant:
       type: object
       required:
