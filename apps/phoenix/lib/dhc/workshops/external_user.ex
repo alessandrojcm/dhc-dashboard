@@ -1,11 +1,12 @@
 defmodule Dhc.Workshops.ExternalUser do
   @moduledoc """
-  Read-only Ecto schema for the `external_users` table.
+  Ecto schema for the `external_users` table.
 
   Maps the **persistence** vocabulary for non-member Workshop participants
   (external registrations). The public/domain name exposed by `Dhc.Workshops`
   is the normalized "participant" DTO (`type: :external`); keep this schema
-  internal so storage join details do not leak into API responses.
+  internal so storage join details do not leak into API responses. External
+  registration completion upserts this schema by normalized email.
   """
 
   use Ecto.Schema

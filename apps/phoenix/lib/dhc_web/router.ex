@@ -57,6 +57,15 @@ defmodule DhcWeb.Router do
     get "/waitlist/status", WaitlistController, :index
     post "/waitlist/entries", WaitlistController, :create
     post "/webhooks/stripe", StripeWebhooksController, :create
+    get "/workshops/:id/external-registration", WorkshopsController, :external_registration_gate
+
+    post "/workshops/:id/external-registration/checkout-session",
+         WorkshopsController,
+         :create_external_checkout_session
+
+    post "/workshops/:id/external-registration/complete",
+         WorkshopsController,
+         :complete_external_registration
   end
 
   scope "/api", DhcWeb do

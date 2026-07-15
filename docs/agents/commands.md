@@ -38,6 +38,11 @@ mise run lint               # ESLint + Prettier check
 mise run format             # Auto-format with Biome
 ```
 
+ESLint intentionally excludes Phoenix build/dependency artifacts
+(`apps/phoenix/_build/`, `apps/phoenix/deps/`) and the generated OpenAPI client
+(`packages/api-client/src/client/`). Lint handwritten source and the tracked
+`packages/api-client/src/index.ts` export surface instead.
+
 ## Phoenix (in progress)
 
 Phoenix mise tasks override the root Supabase Docker `.env` database host and connect to host-local Supabase Postgres at `localhost:54322`.

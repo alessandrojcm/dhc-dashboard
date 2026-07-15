@@ -34,6 +34,16 @@ export default ts.config(
 		}
 	},
 	{
-		ignores: ['build/', '.svelte-kit/', 'dist/', '.cloudflare/', 'supabase/', 'scripts']
+		ignores: [
+			'build/',
+			'.svelte-kit/',
+			'dist/',
+			'.cloudflare/',
+			'supabase/',
+			'scripts',
+			'apps/phoenix/_build/',
+			'apps/phoenix/deps/',
+			'packages/api-client/src/client/'
+		]
 	}
 );
