@@ -1072,6 +1072,142 @@ defmodule DhcWeb.WorkshopsControllerTest do
     end
   end
 
+  # ── Attendance ──────────────────────────────────────────────────────────
+
+  describe "attendance" do
+    test "atomically marks active attendees after the Workshop has started", %{conn: conn} do
+      workshop =
+        WorkshopFixtures.workshop_fixture(
+          start_date: DateTime.utc_now() |> DateTime.add(-1, :hour) |> DateTime.truncate(:second),
+          end_date: DateTime.utc_now() |> DateTime.add(1, :hour) |> DateTime.truncate(:second)
+        )
+
+      %{auth_user_id: confirmed_user} = WorkshopFixtures.member_fixture()
+      %{auth_user_id: pending_user} = WorkshopFixtures.member_fixture()
+
+      confirmed =
+        WorkshopFixtures.registration_fixture(
+          workshop_id: workshop.id,
+          member_user_id: confirmed_user,
+          status: "confirmed"
+        )
+
+      pending =
+        WorkshopFixtures.registration_fixture(
+          workshop_id: workshop.id,
+          member_user_id: pending_user,
+          status: "pending"
+        )
+
+      conn =
+        conn
+        |> auth_conn("workshop_coordinator")
+        |> patch("/api/workshops/#{to_uuid(workshop.id)}/attendance", %{
+          "updates" => [
+            %{"registrationId" => to_uuid(confirmed.id), "attendanceStatus" => "attended"},
+            %{
+              "registrationId" => to_uuid(pending.id),
+              "attendanceStatus" => "excused",
+              "notes" => "Injured"
+            }
+          ]
+        })
+
+      assert %{"data" => %{"registrations" => registrations}} = json_response(conn, 200)
+
+      assert Enum.map(registrations, & &1["attendanceStatus"]) == ["attended", "excused"]
+      assert Enum.at(registrations, 1)["attendanceNotes"] == "Injured"
+      assert Enum.all?(registrations, &(&1["attendanceMarkedBy"] == @coordinator_user_id))
+    end
+
+    test "rejects the entire batch when it includes a non-active registration", %{conn: conn} do
+      workshop =
+        WorkshopFixtures.workshop_fixture(
+          start_date: DateTime.utc_now() |> DateTime.add(-1, :hour) |> DateTime.truncate(:second),
+          end_date: DateTime.utc_now() |> DateTime.add(1, :hour) |> DateTime.truncate(:second)
+        )
+
+      %{auth_user_id: active_user} = WorkshopFixtures.member_fixture()
+      %{auth_user_id: cancelled_user} = WorkshopFixtures.member_fixture()
+
+      active =
+        WorkshopFixtures.registration_fixture(
+          workshop_id: workshop.id,
+          member_user_id: active_user,
+          status: "confirmed"
+        )
+
+      cancelled =
+        WorkshopFixtures.registration_fixture(
+          workshop_id: workshop.id,
+          member_user_id: cancelled_user,
+          status: "cancelled"
+        )
+
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> patch("/api/workshops/#{to_uuid(workshop.id)}/attendance", %{
+          "updates" => [
+            %{"registrationId" => to_uuid(active.id), "attendanceStatus" => "attended"},
+            %{"registrationId" => to_uuid(cancelled.id), "attendanceStatus" => "noShow"}
+          ]
+        })
+
+      assert %{
+               "errors" => %{
+                 "detail" => "Attendance updates must target active Workshop attendees"
+               }
+             } =
+               json_response(conn, 422)
+
+      assert %{attendance_status: "pending"} = Repo.get(Dhc.Workshops.Registration, active.id)
+    end
+
+    test "rejects attendance updates before the Workshop has started", %{conn: conn} do
+      workshop =
+        WorkshopFixtures.workshop_fixture(
+          start_date: DateTime.utc_now() |> DateTime.add(1, :hour) |> DateTime.truncate(:second)
+        )
+
+      %{auth_user_id: user_id} = WorkshopFixtures.member_fixture()
+
+      registration =
+        WorkshopFixtures.registration_fixture(
+          workshop_id: workshop.id,
+          member_user_id: user_id,
+          status: "confirmed"
+        )
+
+      conn =
+        conn
+        |> auth_conn("president")
+        |> patch("/api/workshops/#{to_uuid(workshop.id)}/attendance", %{
+          "updates" => [
+            %{"registrationId" => to_uuid(registration.id), "attendanceStatus" => "attended"}
+          ]
+        })
+
+      assert %{
+               "errors" => %{
+                 "detail" => "Cannot update attendance before the Workshop has started"
+               }
+             } =
+               json_response(conn, 422)
+    end
+
+    test "requires a Workshop coordinator management role", %{conn: conn} do
+      workshop = WorkshopFixtures.workshop_fixture()
+
+      conn =
+        conn
+        |> auth_conn("beginners_coordinator")
+        |> patch("/api/workshops/#{to_uuid(workshop.id)}/attendance", %{"updates" => []})
+
+      assert %{"errors" => %{"detail" => "Insufficient role"}} = json_response(conn, 403)
+    end
+  end
+
   # ── Member registration ───────────────────────────────────────────────
 
   describe "member registration" do

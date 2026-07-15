@@ -9,11 +9,12 @@ import { error } from "@sveltejs/kit";
 import * as v from "valibot";
 import { authorize } from "$lib/server/auth";
 import { apiClientOptions } from "$lib/server/api-client";
-import { WORKSHOP_ROLES } from "$lib/server/roles";
 import {
-	createAttendanceService,
-	createRefundService,
-} from "../server/services/workshops";
+	submitWorkshopAttendance,
+	type WorkshopAttendanceUpdate,
+} from "$lib/server/api/workshop-attendance";
+import { WORKSHOP_ROLES } from "$lib/server/roles";
+import { createRefundService } from "../server/services/workshops";
 import { executeWithRLS, getKyselyClient } from "../server/services/shared";
 
 function apiErrorMessage(error: unknown, fallback: string) {
@@ -122,13 +123,21 @@ export const updateAttendance = command(
 		),
 	}),
 	async ({ workshopId, attendance_updates }) => {
-		const { locals, platform } = getRequestEvent();
+		const { locals } = getRequestEvent();
 		const session = await authorize(locals, WORKSHOP_ROLES);
-		const service = createAttendanceService(platform!, session);
-		const registrations = await service.updateAttendance(
+		const registrations = await submitWorkshopAttendance(session, {
 			workshopId,
-			attendance_updates,
-		);
+			updates: attendance_updates.map(
+				(update): WorkshopAttendanceUpdate => ({
+					registrationId: update.registration_id,
+					attendanceStatus:
+						update.attendance_status === "no_show"
+							? "noShow"
+							: update.attendance_status,
+					notes: update.notes,
+				}),
+			),
+		});
 		return { success: true as const, registrations };
 	},
 );

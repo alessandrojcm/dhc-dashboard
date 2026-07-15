@@ -240,6 +240,26 @@ defmodule DhcWeb.WorkshopsController do
     end
   end
 
+  @doc """
+  PATCH /workshops/{id}/attendance
+
+  Atomically records attendance for active Workshop attendees after the Workshop
+  start time. The coordinator identity is derived from the authenticated JWT.
+  """
+  def update_attendance(conn, %{"id" => id, "updates" => updates}) when is_list(updates) do
+    with {:ok, updates} <- attendance_updates(updates),
+         {:ok, registrations} <-
+           Workshops.update_workshop_attendance(id, conn.assigns.current_user.sub, updates) do
+      conn
+      |> put_view(json: DhcWeb.WorkshopsJSON)
+      |> render(:attendance, registrations: registrations)
+    else
+      {:error, reason} -> attendance_error(conn, reason)
+    end
+  end
+
+  def update_attendance(conn, _params), do: unprocessable(conn, "Attendance updates are required")
+
   defp render_management(conn, workshop) do
     conn
     |> put_view(json: DhcWeb.WorkshopsJSON)
@@ -261,6 +281,38 @@ defmodule DhcWeb.WorkshopsController do
     |> put_if_present(params, "announceDiscord", :announce_discord)
     |> put_if_present(params, "announceEmail", :announce_email)
   end
+
+  defp attendance_updates(updates) do
+    updates
+    |> Enum.reduce_while({:ok, []}, fn update, {:ok, parsed} ->
+      with registration_id when is_binary(registration_id) <- Map.get(update, "registrationId"),
+           {:ok, registration_id} <- Ecto.UUID.cast(registration_id),
+           attendance_status when attendance_status in ["attended", "noShow", "excused"] <-
+             Map.get(update, "attendanceStatus"),
+           notes when is_nil(notes) or (is_binary(notes) and byte_size(notes) <= 500) <-
+             Map.get(update, "notes") do
+        {:cont,
+         {:ok,
+          [
+            %{
+              registration_id: registration_id,
+              attendance_status: attendance_status_to_persistence(attendance_status),
+              notes: notes
+            }
+            | parsed
+          ]}}
+      else
+        _ -> {:halt, {:error, :invalid_updates}}
+      end
+    end)
+    |> case do
+      {:ok, parsed} -> {:ok, Enum.reverse(parsed)}
+      error -> error
+    end
+  end
+
+  defp attendance_status_to_persistence("noShow"), do: "no_show"
+  defp attendance_status_to_persistence(status), do: status
 
   defp put_if_present(attrs, params, source, target) do
     case Map.fetch(params, source) do
@@ -331,6 +383,19 @@ defmodule DhcWeb.WorkshopsController do
       conn
       |> put_status(:bad_gateway)
       |> json(%{errors: %{detail: "Payment provider request failed"}})
+
+  defp attendance_error(conn, :not_found), do: not_found(conn)
+
+  defp attendance_error(conn, :not_started) do
+    unprocessable(conn, "Cannot update attendance before the Workshop has started")
+  end
+
+  defp attendance_error(conn, :invalid_attendee) do
+    unprocessable(conn, "Attendance updates must target active Workshop attendees")
+  end
+
+  defp attendance_error(conn, :invalid_updates),
+    do: unprocessable(conn, "Invalid attendance updates")
 
   defp conflict(conn, message) do
     conn

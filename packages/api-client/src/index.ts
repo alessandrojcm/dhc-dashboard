@@ -64,6 +64,7 @@ export {
 	workshopsShow,
 	workshopsToggleInterest,
 	workshopsUpdate,
+	workshopsUpdateAttendance,
 	type Options,
 } from "./client/sdk.gen";
 export type {
@@ -367,6 +368,10 @@ export type {
 	WaitlistUpdateEntryResponses,
 	Workshop,
 	WorkshopAttendee,
+	WorkshopAttendanceRecord,
+	WorkshopAttendanceUpdate,
+	WorkshopAttendanceUpdateRequest,
+	WorkshopAttendanceUpdateResponse,
 	WorkshopAttendeesResponse,
 	WorkshopCalendarItem,
 	WorkshopCalendarResponse,
@@ -448,6 +453,11 @@ export type {
 	WorkshopsUpdateErrors,
 	WorkshopsUpdateResponse,
 	WorkshopsUpdateResponses,
+	WorkshopsUpdateAttendanceData,
+	WorkshopsUpdateAttendanceError,
+	WorkshopsUpdateAttendanceErrors,
+	WorkshopsUpdateAttendanceResponse,
+	WorkshopsUpdateAttendanceResponses,
 	WorkshopStatus,
 	WorkshopSummary,
 } from "./client/types.gen";
@@ -586,6 +596,10 @@ export {
 	vWaitlistUpdateEntryResponse,
 	vWorkshop,
 	vWorkshopAttendee,
+	vWorkshopAttendanceRecord,
+	vWorkshopAttendanceUpdate,
+	vWorkshopAttendanceUpdateRequest,
+	vWorkshopAttendanceUpdateResponse,
 	vWorkshopAttendeesResponse,
 	vWorkshopCalendarItem,
 	vWorkshopCalendarResponse,
@@ -630,6 +644,9 @@ export {
 	vWorkshopsUpdateBody,
 	vWorkshopsUpdatePath,
 	vWorkshopsUpdateResponse,
+	vWorkshopsUpdateAttendanceBody,
+	vWorkshopsUpdateAttendancePath,
+	vWorkshopsUpdateAttendanceResponse,
 	vWorkshopStatus,
 	vWorkshopSummary,
 } from "./client/valibot.gen";
@@ -742,6 +759,8 @@ export {
 	workshopsToggleInterestMutationKey,
 	workshopsUpdateMutation,
 	workshopsUpdateMutationKey,
+	workshopsUpdateAttendanceMutation,
+	workshopsUpdateAttendanceMutationKey,
 	type QueryKey,
 } from "./client/@tanstack/svelte-query.gen";
 
