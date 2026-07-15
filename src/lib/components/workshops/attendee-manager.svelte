@@ -88,7 +88,9 @@ const markAttendedMutation = createMutation(() => ({
 
 const refundMutation = createMutation(() => ({
 	mutationFn: async (registrationId: string) => {
+		if (!workshopId) throw new Error("Workshop ID is required");
 		return processRefund({
+			workshopId,
 			registration_id: registrationId,
 			reason: "Requested by user",
 		});

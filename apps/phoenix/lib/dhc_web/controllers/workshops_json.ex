@@ -51,6 +51,14 @@ defmodule DhcWeb.WorkshopsJSON do
     %{data: %{registrations: Enum.map(registrations, &attendance_registration/1)}}
   end
 
+  def render("refunds.json", %{refunds: refunds}) do
+    %{data: %{refunds: Enum.map(refunds, &refund/1)}}
+  end
+
+  def render("refund.json", %{refund: refund}) do
+    %{data: %{refund: refund(refund)}}
+  end
+
   @doc """
   GET /workshops/{id}/attendees — combined coordinator management payload.
 

@@ -95,7 +95,12 @@ defmodule DhcWeb.Router do
     post "/workshops/:id/publish", WorkshopsController, :publish
     post "/workshops/:id/cancel", WorkshopsController, :cancel
     get "/workshops/:id/attendees", WorkshopsController, :attendees
+    get "/workshops/:id/refunds", WorkshopsController, :refunds
     patch "/workshops/:id/attendance", WorkshopsController, :update_attendance
+
+    post "/workshops/:id/registrations/:registration_id/refund",
+         WorkshopsController,
+         :refund_registration
   end
 
   scope "/api", DhcWeb do
