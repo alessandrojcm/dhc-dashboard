@@ -202,6 +202,55 @@ defmodule DhcWeb.WorkshopsController do
     unprocessable(conn, "Payment intent ID required")
   end
 
+  def external_registration_gate(conn, %{"id" => id}) do
+    gate =
+      case Ecto.UUID.cast(id) do
+        {:ok, workshop_id} -> Workshops.external_registration_gate(workshop_id)
+        :error -> %{can_register: false, reason: "NOT_FOUND"}
+      end
+
+    conn
+    |> put_view(json: DhcWeb.WorkshopsJSON)
+    |> render(:external_registration_gate, gate: gate)
+  end
+
+  def create_external_checkout_session(conn, %{"id" => id, "returnUrl" => return_url})
+      when is_binary(return_url) do
+    with {:ok, workshop_id} <- Ecto.UUID.cast(id),
+         {:ok, result} <- Workshops.create_external_checkout_session(workshop_id, return_url) do
+      conn
+      |> put_view(json: DhcWeb.WorkshopsJSON)
+      |> render(:external_checkout_session, result: result)
+    else
+      :error -> not_found(conn)
+      {:error, reason} -> external_registration_error(conn, reason)
+    end
+  end
+
+  def create_external_checkout_session(conn, _params),
+    do: unprocessable(conn, "Return URL is required")
+
+  def complete_external_registration(conn, %{
+        "id" => id,
+        "checkoutSessionId" => checkout_session_id
+      })
+      when is_binary(checkout_session_id) and byte_size(checkout_session_id) > 0 do
+    with {:ok, workshop_id} <- Ecto.UUID.cast(id),
+         {:ok, registration} <-
+           Workshops.complete_external_registration(workshop_id, checkout_session_id) do
+      conn
+      |> put_status(:created)
+      |> put_view(json: DhcWeb.WorkshopsJSON)
+      |> render(:registration, registration: registration)
+    else
+      :error -> not_found(conn)
+      {:error, reason} -> external_registration_error(conn, reason)
+    end
+  end
+
+  def complete_external_registration(conn, _params),
+    do: unprocessable(conn, "Checkout session ID required")
+
   @doc """
   DELETE /workshops/{id}/registration
 
@@ -447,6 +496,40 @@ defmodule DhcWeb.WorkshopsController do
       |> json(%{errors: %{detail: "Payment provider request failed"}})
 
   defp member_registration_error(conn, :refund_failed), do: refund_provider_error(conn)
+
+  defp external_registration_error(conn, :not_found), do: not_found(conn)
+
+  defp external_registration_error(conn, :checkout_session_not_found) do
+    conn
+    |> put_status(:not_found)
+    |> json(%{errors: %{detail: "Checkout session not found"}})
+  end
+
+  defp external_registration_error(conn, :full), do: conflict(conn, "Workshop is full")
+
+  defp external_registration_error(conn, :full_refunded),
+    do: conflict(conn, "Workshop is full; your payment has been refunded")
+
+  defp external_registration_error(conn, :already_registered),
+    do: conflict(conn, "This email is already registered for this workshop")
+
+  defp external_registration_error(conn, :invalid_return_url),
+    do: unprocessable(conn, "Return URL must include the Checkout Session placeholder")
+
+  defp external_registration_error(conn, :payment_not_completed),
+    do: unprocessable(conn, "Payment not completed")
+
+  defp external_registration_error(conn, :payment_metadata_mismatch),
+    do: unprocessable(conn, "Checkout session does not match workshop registration")
+
+  defp external_registration_error(conn, :customer_details_missing),
+    do: unprocessable(conn, "Checkout session is missing attendee details")
+
+  defp external_registration_error(conn, :payment_failed),
+    do:
+      conn
+      |> put_status(:bad_gateway)
+      |> json(%{errors: %{detail: "Payment provider request failed"}})
 
   defp refund_error(conn, :registration_not_found), do: not_found(conn)
 

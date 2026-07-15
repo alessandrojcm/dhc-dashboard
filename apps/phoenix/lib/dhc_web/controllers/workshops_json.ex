@@ -47,6 +47,29 @@ defmodule DhcWeb.WorkshopsJSON do
     }
   end
 
+  def render("external_registration_gate.json", %{gate: gate}) do
+    data = %{canRegister: gate.can_register}
+
+    data =
+      if gate.can_register do
+        Map.put(data, :workshop, external_registration_workshop(gate.workshop))
+      else
+        Map.put(data, :reason, gate.reason)
+      end
+
+    %{data: data}
+  end
+
+  def render("external_checkout_session.json", %{result: result}) do
+    %{
+      data: %{
+        checkoutSessionId: result.checkout_session_id,
+        checkoutClientSecret: result.checkout_client_secret,
+        checkoutUrl: result.checkout_url
+      }
+    }
+  end
+
   def render("attendance.json", %{registrations: registrations}) do
     %{data: %{registrations: Enum.map(registrations, &attendance_registration/1)}}
   end
@@ -96,6 +119,19 @@ defmodule DhcWeb.WorkshopsJSON do
       interestCount: workshop.interest_count,
       pendingRegistrationCount: workshop.pending_registration_count,
       confirmedRegistrationCount: workshop.confirmed_registration_count
+    }
+  end
+
+  defp external_registration_workshop(workshop) do
+    %{
+      id: workshop.id,
+      title: workshop.title,
+      description: workshop.description,
+      startDate: workshop.start_date,
+      endDate: workshop.end_date,
+      location: workshop.location,
+      priceNonMember: workshop.price_non_member,
+      maxCapacity: workshop.max_capacity
     }
   end
 

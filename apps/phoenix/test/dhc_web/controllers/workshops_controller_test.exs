@@ -50,6 +50,56 @@ defmodule DhcWeb.WorkshopsControllerTest do
   end
 
   defmodule StripeClient do
+    def request(%{method: :get, url: url}), do: request(method: :get, url: url)
+
+    def request(%{method: method, url: url, body: body}),
+      do: request(method: method, url: url, body: body)
+
+    def request(method: :post, url: "/v1/checkout/sessions", body: body) do
+      Application.put_env(:dhc, :last_workshop_checkout_request, body)
+
+      case Application.get_env(:dhc, :workshop_stripe_checkout_create_response, :ok) do
+        :ok ->
+          {:ok,
+           %{
+             "id" => "cs_test_external",
+             "client_secret" => "cs_test_external_secret",
+             "url" => nil
+           }}
+
+        other ->
+          other
+      end
+    end
+
+    def request(method: :get, url: "/v1/checkout/sessions/" <> checkout_session_id) do
+      case Application.get_env(:dhc, :workshop_stripe_checkout_retrieve_response) do
+        nil ->
+          {:ok,
+           %{
+             "id" => checkout_session_id,
+             "status" => "complete",
+             "payment_status" => "paid",
+             "amount_total" => 2500,
+             "currency" => "eur",
+             "payment_intent" => "pi_external",
+             "metadata" => %{
+               "type" => "workshop_registration",
+               "actor_type" => "external",
+               "workshop_id" => Application.fetch_env!(:dhc, :workshop_stripe_workshop_id)
+             },
+             "customer_details" => %{
+               "email" => " Guest@Example.com ",
+               "name" => "Grace Hopper",
+               "phone" => "+353123456"
+             }
+           }}
+
+        other ->
+          other
+      end
+    end
+
     def request(method: :post, url: "/v1/payment_intents", body: body) do
       Application.put_env(:dhc, :last_workshop_stripe_request, {:create_payment_intent, body})
 
@@ -101,6 +151,11 @@ defmodule DhcWeb.WorkshopsControllerTest do
       end
     end
 
+    def request(method: :post, url: "/v1/payment_intents/" <> _id, body: body) do
+      Application.put_env(:dhc, :last_workshop_payment_intent_update, body)
+      {:ok, %{"id" => "pi_external"}}
+    end
+
     defp form_value(body, key) do
       body
       |> Enum.find_value(fn
@@ -126,8 +181,12 @@ defmodule DhcWeb.WorkshopsControllerTest do
       Application.delete_env(:dhc, :workshop_stripe_retrieve_response)
       Application.delete_env(:dhc, :workshop_stripe_refund_response)
       Application.delete_env(:dhc, :workshop_stripe_workshop_id)
+      Application.delete_env(:dhc, :workshop_stripe_checkout_create_response)
+      Application.delete_env(:dhc, :workshop_stripe_checkout_retrieve_response)
       Application.delete_env(:dhc, :last_workshop_stripe_request)
       Application.delete_env(:dhc, :last_workshop_stripe_refund_request)
+      Application.delete_env(:dhc, :last_workshop_checkout_request)
+      Application.delete_env(:dhc, :last_workshop_payment_intent_update)
     end)
   end
 
@@ -1406,6 +1465,206 @@ defmodule DhcWeb.WorkshopsControllerTest do
              } = json_response(conn, 200)
 
       assert Dhc.Workshops.list_workshop_refunds(to_uuid(workshop.id)) == []
+    end
+  end
+
+  describe "external registration" do
+    test "treats an invalid Workshop id as an unavailable public gate", %{conn: conn} do
+      conn = get(conn, "/api/workshops/not-a-uuid/external-registration")
+
+      assert %{"data" => %{"canRegister" => false, "reason" => "NOT_FOUND"}} =
+               json_response(conn, 200)
+    end
+
+    test "returns the public registration gate state without authentication", %{conn: conn} do
+      workshop =
+        insert_workshop(
+          title: "Public Workshop",
+          status: "published",
+          is_public: true,
+          price_non_member: 2500.0,
+          max_capacity: 2
+        )
+
+      conn = get(conn, "/api/workshops/#{to_uuid(workshop.id)}/external-registration")
+
+      assert %{
+               "data" => %{
+                 "canRegister" => true,
+                 "workshop" => %{
+                   "id" => id,
+                   "title" => "Public Workshop",
+                   "priceNonMember" => 2500
+                 }
+               }
+             } = json_response(conn, 200)
+
+      assert id == to_uuid(workshop.id)
+    end
+
+    test "returns an ineligible gate reason when a Workshop is not public", %{conn: conn} do
+      workshop = insert_workshop(status: "published", is_public: false)
+
+      conn = get(conn, "/api/workshops/#{to_uuid(workshop.id)}/external-registration")
+
+      assert %{"data" => %{"canRegister" => false, "reason" => "NOT_PUBLIC"}} =
+               json_response(conn, 200)
+    end
+
+    test "creates an embedded Checkout Session using the server-side price", %{conn: conn} do
+      workshop =
+        insert_workshop(
+          title: "Public Workshop",
+          status: "published",
+          is_public: true,
+          price_non_member: 2500.0
+        )
+
+      return_url =
+        "https://example.com/workshops/#{to_uuid(workshop.id)}/confirmation?session_id={CHECKOUT_SESSION_ID}"
+
+      conn =
+        post(
+          conn,
+          "/api/workshops/#{to_uuid(workshop.id)}/external-registration/checkout-session",
+          %{"returnUrl" => return_url}
+        )
+
+      assert %{
+               "data" => %{
+                 "checkoutSessionId" => "cs_test_external",
+                 "checkoutClientSecret" => "cs_test_external_secret",
+                 "checkoutUrl" => nil
+               }
+             } = json_response(conn, 200)
+
+      body = Application.fetch_env!(:dhc, :last_workshop_checkout_request)
+      assert {:mode, "payment"} in body
+      assert {:ui_mode, "embedded"} in body
+      assert {:return_url, return_url} in body
+      assert Keyword.fetch!(body, :"line_items[0][price_data][unit_amount]") == 2500
+    end
+
+    test "completes paid Checkout into an external user and confirmed registration", %{conn: conn} do
+      workshop =
+        insert_workshop(
+          status: "published",
+          is_public: true,
+          price_non_member: 2500.0,
+          max_capacity: 2
+        )
+
+      Application.put_env(:dhc, :workshop_stripe_workshop_id, to_uuid(workshop.id))
+
+      conn =
+        post(
+          conn,
+          "/api/workshops/#{to_uuid(workshop.id)}/external-registration/complete",
+          %{"checkoutSessionId" => "cs_paid_external"}
+        )
+
+      assert %{"data" => %{"registration" => %{"id" => registration_id, "status" => "confirmed"}}} =
+               json_response(conn, 201)
+
+      repeat_conn =
+        post(
+          build_conn(),
+          "/api/workshops/#{to_uuid(workshop.id)}/external-registration/complete",
+          %{"checkoutSessionId" => "cs_paid_external"}
+        )
+
+      assert %{"data" => %{"registration" => %{"id" => ^registration_id}}} =
+               json_response(repeat_conn, 201)
+
+      assert [%{participant: participant}] =
+               Dhc.Workshops.list_workshop_attendees(to_uuid(workshop.id))
+
+      assert participant == %{
+               type: :external,
+               display_name: "Grace Hopper",
+               email: "guest@example.com"
+             }
+    end
+
+    test "upserts an existing external attendee by normalized email", %{conn: conn} do
+      workshop =
+        insert_workshop(
+          status: "published",
+          is_public: true,
+          price_non_member: 2500.0,
+          max_capacity: 2
+        )
+
+      WorkshopFixtures.external_user_fixture(
+        first_name: "Old",
+        last_name: "Name",
+        email: "guest@example.com"
+      )
+
+      Application.put_env(:dhc, :workshop_stripe_workshop_id, to_uuid(workshop.id))
+
+      conn =
+        post(
+          conn,
+          "/api/workshops/#{to_uuid(workshop.id)}/external-registration/complete",
+          %{"checkoutSessionId" => "cs_upsert_external"}
+        )
+
+      assert %{"data" => %{"registration" => %{"status" => "confirmed"}}} =
+               json_response(conn, 201)
+
+      assert [%{participant: %{display_name: "Grace Hopper", email: "guest@example.com"}}] =
+               Dhc.Workshops.list_workshop_attendees(to_uuid(workshop.id))
+    end
+
+    test "refunds a paid Checkout Session when capacity is lost before completion", %{conn: conn} do
+      workshop =
+        insert_workshop(
+          status: "published",
+          is_public: true,
+          price_non_member: 2500.0,
+          max_capacity: 1
+        )
+
+      Application.put_env(:dhc, :workshop_stripe_workshop_id, to_uuid(workshop.id))
+
+      WorkshopFixtures.registration_fixture(
+        workshop_id: workshop.id,
+        member_user_id: @other_user_id,
+        status: "confirmed"
+      )
+
+      conn =
+        post(
+          conn,
+          "/api/workshops/#{to_uuid(workshop.id)}/external-registration/complete",
+          %{"checkoutSessionId" => "cs_capacity_race"}
+        )
+
+      assert %{"errors" => %{"detail" => detail}} = json_response(conn, 409)
+      assert detail =~ "refunded"
+
+      assert [payment_intent: "pi_external", reason: "duplicate"] =
+               Application.fetch_env!(:dhc, :last_workshop_stripe_refund_request)
+    end
+
+    test "returns payment failure when Stripe cannot create Checkout", %{conn: conn} do
+      workshop =
+        insert_workshop(status: "published", is_public: true, price_non_member: 2500.0)
+
+      Application.put_env(:dhc, :workshop_stripe_checkout_create_response, {:error, :timeout})
+
+      conn =
+        post(
+          conn,
+          "/api/workshops/#{to_uuid(workshop.id)}/external-registration/checkout-session",
+          %{
+            "returnUrl" => "https://example.com/confirmation?session_id={CHECKOUT_SESSION_ID}"
+          }
+        )
+
+      assert %{"errors" => %{"detail" => "Payment provider request failed"}} =
+               json_response(conn, 502)
     end
   end
 
