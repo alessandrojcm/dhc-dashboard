@@ -1,15 +1,15 @@
 import { error } from "@sveltejs/kit";
 import * as v from "valibot";
-import { createPublicRegistrationService } from "$lib/server/services/workshops";
-import type { ExternalRegistrationError } from "$lib/server/services/workshops";
+import {
+	completeExternalWorkshopRegistration,
+	ExternalWorkshopRegistrationApiError,
+} from "$lib/server/api/external-workshop-registration";
 
 export const load = async ({
 	params,
-	platform,
 	url,
 }: {
 	params: { id: string };
-	platform: App.Platform | undefined;
 	url: URL;
 }) => {
 	const workshopIdResult = v.safeParse(v.pipe(v.string(), v.uuid()), params.id);
@@ -22,16 +22,14 @@ export const load = async ({
 		error(400, "Missing checkout session");
 	}
 
-	const service = createPublicRegistrationService(platform!);
-
 	try {
-		await service.completeExternalRegistrationFromCheckoutSession({
-			workshopId: workshopIdResult.output,
+		await completeExternalWorkshopRegistration(
+			workshopIdResult.output,
 			checkoutSessionId,
-		});
+		);
 	} catch (err) {
-		const domainError = err as ExternalRegistrationError;
-		if (domainError.name === "ExternalRegistrationError") {
+		const domainError = err as ExternalWorkshopRegistrationApiError;
+		if (domainError.name === "ExternalWorkshopRegistrationApiError") {
 			error(400, domainError.message);
 		}
 
