@@ -512,6 +512,51 @@ defmodule Dhc.Workshops do
     }
   end
 
+  @doc """
+  Atomically records coordinator attendance updates for active Workshop attendees.
+
+  Attendance can only be marked once the Workshop has started. Every update in
+  the batch must target a pending or confirmed registration belonging to that
+  Workshop; otherwise no registrations are changed.
+  """
+  @spec update_workshop_attendance(binary(), binary(), [map()]) ::
+          {:ok, [Registration.t()]}
+          | {:error, :not_found | :not_started | :invalid_attendee | :invalid_updates}
+  def update_workshop_attendance(workshop_id, marked_by, updates)
+      when is_binary(workshop_id) and is_binary(marked_by) and is_list(updates) do
+    Repo.transaction(fn ->
+      with :ok <- ensure_attendance_updates_present(updates),
+           %Workshop{} = workshop <-
+             Repo.one(from(w in Workshop, where: w.id == ^workshop_id, lock: "FOR UPDATE")),
+           :ok <- ensure_workshop_started(workshop),
+           :ok <- ensure_unique_attendance_registration_ids(updates),
+           {:ok, registrations} <- active_attendance_registrations(workshop_id, updates) do
+        now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+        updates
+        |> Enum.map(fn update ->
+          registration = Map.fetch!(registrations, update.registration_id)
+
+          registration
+          |> Ecto.Changeset.change(%{
+            attendance_status: update.attendance_status,
+            attendance_notes: update.notes,
+            attendance_marked_at: now,
+            attendance_marked_by: marked_by
+          })
+          |> Repo.update!()
+        end)
+      else
+        nil -> Repo.rollback(:not_found)
+        {:error, reason} -> Repo.rollback(reason)
+      end
+    end)
+    |> case do
+      {:ok, registrations} -> {:ok, registrations}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
   # ── Management lifecycle ──────────────────────────────────────────────
 
   @doc """
@@ -606,6 +651,41 @@ defmodule Dhc.Workshops do
       true ->
         {:error, :not_editable}
     end
+  end
+
+  defp ensure_attendance_updates_present([]), do: {:error, :invalid_updates}
+  defp ensure_attendance_updates_present(_updates), do: :ok
+
+  defp ensure_workshop_started(%Workshop{start_date: start_date}) do
+    if DateTime.compare(start_date, DateTime.utc_now()) in [:lt, :eq],
+      do: :ok,
+      else: {:error, :not_started}
+  end
+
+  defp ensure_unique_attendance_registration_ids(updates) do
+    registration_ids = Enum.map(updates, & &1.registration_id)
+
+    if length(registration_ids) == length(Enum.uniq(registration_ids)),
+      do: :ok,
+      else: {:error, :invalid_attendee}
+  end
+
+  defp active_attendance_registrations(workshop_id, updates) do
+    registration_ids = Enum.map(updates, & &1.registration_id)
+
+    registrations =
+      from(r in Registration,
+        where:
+          r.club_activity_id == ^workshop_id and r.status in @counted_registration_statuses and
+            r.id in ^registration_ids,
+        lock: "FOR UPDATE"
+      )
+      |> Repo.all()
+      |> Map.new(&{&1.id, &1})
+
+    if map_size(registrations) == length(registration_ids),
+      do: {:ok, registrations},
+      else: {:error, :invalid_attendee}
   end
 
   defp pricing_only?(attrs) do

@@ -47,6 +47,10 @@ defmodule DhcWeb.WorkshopsJSON do
     }
   end
 
+  def render("attendance.json", %{registrations: registrations}) do
+    %{data: %{registrations: Enum.map(registrations, &attendance_registration/1)}}
+  end
+
   @doc """
   GET /workshops/{id}/attendees — combined coordinator management payload.
 
@@ -142,7 +146,7 @@ defmodule DhcWeb.WorkshopsJSON do
     %{
       id: attendee.id,
       status: attendee.status,
-      attendanceStatus: attendee.attendance_status,
+      attendanceStatus: attendance_status(attendee.attendance_status),
       attendanceMarkedAt: attendee.attendance_marked_at,
       attendanceMarkedBy: attendee.attendance_marked_by,
       attendanceNotes: attendee.attendance_notes,
@@ -155,6 +159,19 @@ defmodule DhcWeb.WorkshopsJSON do
       participant: participant(attendee.participant)
     }
   end
+
+  defp attendance_registration(registration) do
+    %{
+      id: registration.id,
+      attendanceStatus: attendance_status(registration.attendance_status),
+      attendanceMarkedAt: registration.attendance_marked_at,
+      attendanceMarkedBy: registration.attendance_marked_by,
+      attendanceNotes: registration.attendance_notes
+    }
+  end
+
+  defp attendance_status("no_show"), do: "noShow"
+  defp attendance_status(status), do: status
 
   defp refund(refund) do
     %{

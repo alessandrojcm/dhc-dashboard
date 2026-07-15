@@ -126,7 +126,7 @@ function getAttendanceBadgeVariant(status: string | null | undefined) {
 			return "outline";
 		case "attended":
 			return "default";
-		case "no_show":
+		case "noShow":
 			return "destructive";
 		case "excused":
 			return "secondary";
@@ -139,7 +139,7 @@ function getAttendanceStatusLabel(status: string | null | undefined) {
 	switch (status) {
 		case "attended":
 			return "Checked In";
-		case "no_show":
+		case "noShow":
 			return "No Show";
 		case "excused":
 			return "Excused";

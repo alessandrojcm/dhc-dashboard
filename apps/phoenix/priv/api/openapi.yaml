@@ -1952,6 +1952,61 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /workshops/{workshopId}/attendance:
+    patch:
+      operationId: workshops.updateAttendance
+      tags:
+        - Workshops
+      summary: Atomically record Workshop attendee attendance
+      description: |
+        Records attendance for a batch of active Workshop attendees. Phoenix
+        derives the marker from the authenticated coordinator JWT, accepts only
+        pending/confirmed registrations belonging to this Workshop, and rejects
+        the entire batch if any update is invalid. Attendance is available only
+        once the Workshop has started. Requires `workshop_coordinator`,
+        `president`, or `admin`; `beginners_coordinator` is not authorized.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/WorkshopId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkshopAttendanceUpdateRequest"
+      responses:
+        "200":
+          description: Attendance batch applied atomically
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkshopAttendanceUpdateResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a Workshop coordinator management role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No Workshop exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Workshop has not started, the batch is invalid, or an update targets a non-active attendee
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /settings:
     get:
       operationId: settings.index
@@ -4495,7 +4550,7 @@ components:
           description: Only `pending` and `confirmed` registrations are returned as attendees.
         attendanceStatus:
           type: string
-          enum: [pending, attended, no_show, excused]
+          enum: [pending, attended, noShow, excused]
           nullable: true
         attendanceMarkedAt:
           type: string
@@ -4531,6 +4586,72 @@ components:
           nullable: true
         participant:
           $ref: "#/components/schemas/WorkshopParticipant"
+    WorkshopAttendanceUpdate:
+      type: object
+      required:
+        - registrationId
+        - attendanceStatus
+      properties:
+        registrationId:
+          type: string
+          format: uuid
+        attendanceStatus:
+          type: string
+          enum: [attended, noShow, excused]
+        notes:
+          type: string
+          maxLength: 500
+          nullable: true
+    WorkshopAttendanceUpdateRequest:
+      type: object
+      required:
+        - updates
+      properties:
+        updates:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/WorkshopAttendanceUpdate"
+    WorkshopAttendanceRecord:
+      type: object
+      required:
+        - id
+        - attendanceStatus
+        - attendanceMarkedAt
+        - attendanceMarkedBy
+        - attendanceNotes
+      properties:
+        id:
+          type: string
+          format: uuid
+        attendanceStatus:
+          type: string
+          enum: [pending, attended, noShow, excused]
+        attendanceMarkedAt:
+          type: string
+          format: date-time
+          nullable: true
+        attendanceMarkedBy:
+          type: string
+          format: uuid
+          nullable: true
+        attendanceNotes:
+          type: string
+          nullable: true
+    WorkshopAttendanceUpdateResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - registrations
+          properties:
+            registrations:
+              type: array
+              items:
+                $ref: "#/components/schemas/WorkshopAttendanceRecord"
     WorkshopRefund:
       type: object
       required:
