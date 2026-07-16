@@ -1830,6 +1830,107 @@ defmodule DhcWeb.WorkshopsControllerTest do
     end
   end
 
+  describe "Phoenix-owned Workshop workflow" do
+    test "runs management, interest, registration, attendance, cancellation, and refund through the API" do
+      start_date =
+        DateTime.utc_now()
+        |> DateTime.add(-1, :hour)
+        |> DateTime.truncate(:second)
+
+      end_date = DateTime.add(start_date, 2, :hour)
+
+      create_conn =
+        build_conn()
+        |> auth_conn("workshop_coordinator")
+        |> post(
+          "/api/workshops",
+          valid_workshop_payload(%{
+            "title" => "Phoenix-owned lifecycle",
+            "startDate" => DateTime.to_iso8601(start_date),
+            "endDate" => DateTime.to_iso8601(end_date),
+            "maxCapacity" => 2
+          })
+        )
+
+      assert %{"data" => %{"workshop" => %{"id" => workshop_id, "status" => "planned"}}} =
+               json_response(create_conn, 201)
+
+      interest_conn =
+        build_conn()
+        |> auth_conn("member")
+        |> post("/api/workshops/#{workshop_id}/interest")
+
+      assert %{"data" => %{"interested" => true}} = json_response(interest_conn, 200)
+
+      publish_conn =
+        build_conn()
+        |> auth_conn("workshop_coordinator")
+        |> post("/api/workshops/#{workshop_id}/publish")
+
+      assert %{"data" => %{"workshop" => %{"status" => "published"}}} =
+               json_response(publish_conn, 200)
+
+      Application.put_env(:dhc, :workshop_stripe_workshop_id, workshop_id)
+
+      payment_conn =
+        build_conn()
+        |> auth_conn("member")
+        |> post("/api/workshops/#{workshop_id}/registration/payment-intent", %{
+          "amount" => 1000,
+          "currency" => "eur"
+        })
+
+      assert %{"data" => %{"paymentIntentId" => payment_intent_id}} =
+               json_response(payment_conn, 200)
+
+      registration_conn =
+        build_conn()
+        |> auth_conn("member")
+        |> post("/api/workshops/#{workshop_id}/registration/complete", %{
+          "paymentIntentId" => payment_intent_id
+        })
+
+      assert %{"data" => %{"registration" => %{"id" => registration_id}}} =
+               json_response(registration_conn, 201)
+
+      attendance_conn =
+        build_conn()
+        |> auth_conn("workshop_coordinator")
+        |> patch("/api/workshops/#{workshop_id}/attendance", %{
+          "updates" => [
+            %{"registrationId" => registration_id, "attendanceStatus" => "attended"}
+          ]
+        })
+
+      assert %{"data" => %{"registrations" => [%{"attendanceStatus" => "attended"}]}} =
+               json_response(attendance_conn, 200)
+
+      cancel_conn =
+        build_conn()
+        |> auth_conn("workshop_coordinator")
+        |> post("/api/workshops/#{workshop_id}/cancel")
+
+      assert %{"data" => %{"workshop" => %{"status" => "cancelled"}}} =
+               json_response(cancel_conn, 200)
+
+      refunds_conn =
+        build_conn()
+        |> auth_conn("workshop_coordinator")
+        |> get("/api/workshops/#{workshop_id}/refunds")
+
+      assert %{
+               "data" => %{
+                 "refunds" => [
+                   %{
+                     "registrationId" => ^registration_id,
+                     "status" => "processing"
+                   }
+                 ]
+               }
+             } = json_response(refunds_conn, 200)
+    end
+  end
+
   defp insert_workshop(attrs) do
     attrs = Enum.into(attrs, %{})
 
