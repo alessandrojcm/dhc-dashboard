@@ -15,6 +15,7 @@ defmodule Dhc.Inventory do
   alias Dhc.Inventory.Item
   alias Dhc.Inventory.ItemHistory
   alias Dhc.Inventory.Items
+  alias Dhc.Inventory.Stats
 
   @type category :: EquipmentCategory.t()
   @type container :: Containers.container()
@@ -43,4 +44,6 @@ defmodule Dhc.Inventory do
 
   defdelegate list_item_history(id, opts \\ %{}), to: ItemHistory
   defdelegate list_history(opts \\ %{}), to: ItemHistory
+
+  defdelegate get_stats(), to: Stats
 end

@@ -71,18 +71,12 @@ importers:
       jwt-decode:
         specifier: ^4.0.0
         version: 4.0.0
-      kysely:
-        specifier: ^0.28.8
-        version: 0.28.8
       libphonenumber-js:
         specifier: ^1.12.26
         version: 1.12.26
       ollama-ai-provider-v2:
         specifier: ^1.5.3
         version: 1.5.3(zod@4.1.12)
-      postgres:
-        specifier: ^3.4.7
-        version: 3.4.7
       posthog-js:
         specifier: ^1.357.0
         version: 1.357.0
@@ -207,12 +201,6 @@ importers:
       globals:
         specifier: ^16.5.0
         version: 16.5.0
-      kysely-postgres-js:
-        specifier: ^3.0.0
-        version: 3.0.0(kysely@0.28.8)(postgres@3.4.7)
-      kysely-supabase:
-        specifier: ^0.2.1
-        version: 0.2.1(kysely@0.28.8)(supabase@2.76.9)
       layerchart:
         specifier: 2.0.0-next.43
         version: 2.0.0-next.43(svelte@5.55.9(@typescript-eslint/types@8.50.0))
@@ -3845,26 +3833,6 @@ packages:
   ky@2.0.2:
     resolution: {integrity: sha512-/GmXpo9F9W+f8n4Ivr2iH+7h7wL7jLbLKWkMlpflcCRb6kGjBfTlASEXaZ9qUgNTn4VgS0P2pwxxzQ4EM6Ulgg==}
     engines: {node: '>=22'}
-
-  kysely-postgres-js@3.0.0:
-    resolution: {integrity: sha512-o2t/xNSYJQDW6rVGGFPXKmZ0BEz2dGn66c2B+cO/k9ZNcU2qPWPycQPQ+B+P2MBXbKYq0xV9BZmFIvkUrmFWAQ==}
-    engines: {bun: '>=1.2', node: '>=20'}
-    peerDependencies:
-      kysely: '>= 0.24.0 < 1'
-      postgres: ^3.4.0
-    peerDependenciesMeta:
-      postgres:
-        optional: true
-
-  kysely-supabase@0.2.1:
-    resolution: {integrity: sha512-3oL6pLXACy4QfoidvwIBc+g+01fAx46sQGlIaEl4cScMskuIC/GbEDjzsSwPHzfw80XX0gYZ9eytXikfzV5oew==}
-    peerDependencies:
-      kysely: '>= 0.24.0 < 1'
-      supabase: '>= 1.0.0 < 3'
-
-  kysely@0.28.8:
-    resolution: {integrity: sha512-QUOgl5ZrS9IRuhq5FvOKFSsD/3+IA6MLE81/bOOTRA/YQpKDza2sFdN5g6JCB9BOpqMJDGefLCQ9F12hRS13TA==}
-    engines: {node: '>=20.0.0'}
 
   langsmith@0.1.68:
     resolution: {integrity: sha512-otmiysWtVAqzMx3CJ4PrtUBhWRG5Co8Z4o7hSZENPjlit9/j3/vm3TSvbaxpDYakZxtMjhkcJTqrdYFipISEiQ==}
@@ -9210,19 +9178,6 @@ snapshots:
 
   ky@2.0.2: {}
 
-  kysely-postgres-js@3.0.0(kysely@0.28.8)(postgres@3.4.7):
-    dependencies:
-      kysely: 0.28.8
-    optionalDependencies:
-      postgres: 3.4.7
-
-  kysely-supabase@0.2.1(kysely@0.28.8)(supabase@2.76.9):
-    dependencies:
-      kysely: 0.28.8
-      supabase: 2.76.9
-
-  kysely@0.28.8: {}
-
   langsmith@0.1.68(openai@4.104.0(ws@8.20.1)(zod@4.1.12)):
     dependencies:
       '@types/uuid': 10.0.0
@@ -9876,7 +9831,8 @@ snapshots:
     dependencies:
       xtend: 4.0.2
 
-  postgres@3.4.7: {}
+  postgres@3.4.7:
+    optional: true
 
   posthog-js@1.357.0:
     dependencies:
