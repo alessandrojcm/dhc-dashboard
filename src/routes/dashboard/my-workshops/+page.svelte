@@ -21,36 +21,20 @@ import {
 } from "$lib/components/ui/tabs/index.js";
 import { toast } from "svelte-sonner";
 import { CalendarDays } from "lucide-svelte";
-import { workshopsList } from "@dhc/api-client";
+import { workshopsListOptions, workshopsListQueryKey } from "@dhc/api-client";
 import { toggleInterest } from "./registration.remote";
 
 const queryClient = useQueryClient();
 let activeTab = $state("published");
 
-async function loadWorkshops(
-	status: "planned" | "published",
-	signal: AbortSignal,
-) {
-	const response = await workshopsList({
-		query: { status },
-		signal,
-	});
-
-	if (response.error) {
-		throw new Error("Failed to load workshops. Please try again later.");
-	}
-
-	return response.data.data.workshops;
-}
-
 const workshopsQuery = createQuery(() => ({
-	queryKey: ["workshops", "planned"],
-	queryFn: ({ signal }) => loadWorkshops("planned", signal),
+	...workshopsListOptions({ query: { status: "planned" } }),
+	select: (response) => response.data.workshops,
 }));
 
 const publishedWorkshopsQuery = createQuery(() => ({
-	queryKey: ["workshops", "published"],
-	queryFn: ({ signal }) => loadWorkshops("published", signal),
+	...workshopsListOptions({ query: { status: "published" } }),
+	select: (response) => response.data.workshops,
 }));
 
 const interestMutation = createMutation(() => ({
@@ -58,8 +42,12 @@ const interestMutation = createMutation(() => ({
 		return await toggleInterest(workshopId);
 	},
 	onSuccess: (data) => {
-		queryClient.invalidateQueries({ queryKey: ["workshops", "planned"] });
-		queryClient.invalidateQueries({ queryKey: ["workshops", "published"] });
+		queryClient.invalidateQueries({
+			queryKey: workshopsListQueryKey({ query: { status: "planned" } }),
+		});
+		queryClient.invalidateQueries({
+			queryKey: workshopsListQueryKey({ query: { status: "published" } }),
+		});
 		toast.success(data.message);
 	},
 	onError: (error) => {
@@ -98,7 +86,7 @@ const handleInterestToggle = (workshopId: string) => {
 				<Card>
 					<CardContent class="pt-6">
 						<p class="text-destructive">
-							Error loading workshops: {publishedWorkshopsQuery.error.message}
+							{publishedWorkshopsQuery.error.errors?.detail || "Failed to load workshops"}
 						</p>
 					</CardContent>
 				</Card>
@@ -130,7 +118,9 @@ const handleInterestToggle = (workshopId: string) => {
 			{:else if workshopsQuery.error}
 				<Card>
 					<CardContent class="pt-6">
-						<p class="text-destructive">Error loading workshops: {workshopsQuery.error.message}</p>
+						<p class="text-destructive">
+							{workshopsQuery.error.errors?.detail || "Failed to load workshops"}
+						</p>
 					</CardContent>
 				</Card>
 			{:else}
