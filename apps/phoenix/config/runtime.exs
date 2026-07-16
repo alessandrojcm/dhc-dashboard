@@ -264,7 +264,10 @@ if config_env() == :prod do
            :workshop_id,
            :announcement_type
          ],
-         excluded_domains: [:cowboy, :bandit],
+         # Bandit emits unhandled request exceptions as crash reports. Keep
+         # that domain enabled so the logger handler creates Sentry issues;
+         # Sentry.PlugContext only enriches those reports with request data.
+         excluded_domains: [:cowboy],
          rate_limiting: [max_events: 10, interval: 1_000]
        }
      }}
