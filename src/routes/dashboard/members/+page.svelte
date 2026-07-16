@@ -71,7 +71,7 @@ let viewLabel = $derived(
 			</List>
 
 			{#if data.canEditSettings}
-				<InviteDrawer supabase={data.supabase} />
+				<InviteDrawer />
 			{/if}
 		</div>
 		<Content value="dashboard">
