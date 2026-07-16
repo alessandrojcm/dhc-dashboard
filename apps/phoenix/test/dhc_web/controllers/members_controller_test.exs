@@ -36,7 +36,7 @@ defmodule DhcWeb.MembersControllerTest do
        %{
          sub: "11111111-1111-1111-1111-111111111111",
          email: "self@example.com",
-         roles: [],
+         roles: ["member"],
          raw: %{}
        }}
     end
@@ -125,7 +125,8 @@ defmodule DhcWeb.MembersControllerTest do
                  "lastName" => "Member",
                  "email" => "self@example.com",
                  "phoneNumber" => "+353871234567",
-                 "customerId" => "cus_current"
+                 "customerId" => "cus_current",
+                 "roles" => ["member"]
                }
              } = json_response(conn, 200)
     end

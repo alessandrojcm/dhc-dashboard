@@ -1,7 +1,6 @@
 import { error } from "@sveltejs/kit";
-import { waitlistStatus } from "@dhc/api-client";
+import { membersOptions, waitlistStatus } from "@dhc/api-client";
 import { apiBaseUrl } from "$lib/server/api-client";
-import { supabaseServiceClient } from "$lib/server/supabaseServiceClient";
 import type { PageServerLoad } from "./$types";
 
 export const load: PageServerLoad = async () => {
@@ -19,9 +18,13 @@ export const load: PageServerLoad = async () => {
 		error(401, "The waitlist is currently closed, please come back later.");
 	}
 
-	return {
-		genders: await supabaseServiceClient
-			.rpc("get_gender_options")
-			.then((res) => (res.data ?? []) as string[]),
-	};
+	const { data: options, error: optionsError } = await membersOptions({
+		baseUrl: apiBaseUrl(),
+	});
+
+	if (optionsError) {
+		error(503, "Unable to load waitlist options, please try again later.");
+	}
+
+	return { genders: options?.data.genders ?? [] };
 };

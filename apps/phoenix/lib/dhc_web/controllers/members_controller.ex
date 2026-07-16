@@ -38,7 +38,7 @@ defmodule DhcWeb.MembersController do
       {:ok, user} ->
         conn
         |> put_view(json: DhcWeb.MembersJSON)
-        |> render(:current_user, user: user)
+        |> render(:current_user, user: user, roles: conn.assigns.current_user.roles)
 
       {:error, :not_found} ->
         not_found(conn, "Member not found")
