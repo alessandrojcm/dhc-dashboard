@@ -12,9 +12,10 @@ import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
 import * as Alert from "$lib/components/ui/alert";
 import { Button } from "$lib/components/ui/button";
 import {
-	createPaymentIntent as createPaymentIntentRPC,
-	completeRegistration as completeRegistrationRPC,
-} from "../../../routes/dashboard/my-workshops/registration.remote";
+	workshopsCompleteRegistrationMutation,
+	workshopsCreateRegistrationPaymentIntentMutation,
+	workshopsListQueryKey,
+} from "@dhc/api-client";
 
 interface Props {
 	workshopId: string;
@@ -74,33 +75,24 @@ let currentPaymentIntentId = $state<string | null>(null);
 const queryClient = useQueryClient();
 
 const createPaymentIntent = createMutation(() => ({
-	mutationFn: async () => {
-		return createPaymentIntentRPC({
-			workshopId,
-			amount,
-			currency,
-			...(customerId ? { customerId } : {}),
-		});
-	},
+	...workshopsCreateRegistrationPaymentIntentMutation(),
 	onSuccess: (data) => {
-		initializeCheckout(data);
+		initializeCheckout(data.data);
 	},
 	onError: (err) => {
-		error = err instanceof Error ? err.message : "Failed to initialize payment";
+		error = err.errors?.detail ?? "Failed to initialize payment";
 	},
 }));
 
 const completeRegistration = createMutation(() => ({
-	mutationFn: async (paymentIntentId: string) => {
-		return completeRegistrationRPC({ workshopId, paymentIntentId });
-	},
+	...workshopsCompleteRegistrationMutation(),
 	onSuccess: () => {
 		success = true;
-		queryClient.invalidateQueries({ queryKey: ["workshops"] });
+		queryClient.invalidateQueries({ queryKey: workshopsListQueryKey() });
 		onSuccess?.();
 	},
 	onError: (err) => {
-		error = err instanceof Error ? err.message : "Registration failed";
+		error = err.errors?.detail ?? "Registration failed";
 	},
 }));
 
@@ -119,7 +111,10 @@ async function handlePaymentConfirmation(paymentIntentId: string) {
 			throw new Error(confirmError.message);
 		}
 
-		await completeRegistration.mutateAsync(paymentIntentId);
+		await completeRegistration.mutateAsync({
+			path: { workshopId },
+			body: { paymentIntentId },
+		});
 	} catch (err) {
 		error = err instanceof Error ? err.message : "Payment failed";
 	} finally {
@@ -177,7 +172,14 @@ onMount(() => {
 			}
 			stripe = loadedStripe;
 			// Create payment intent when component mounts
-			createPaymentIntent.mutate();
+			createPaymentIntent.mutate({
+				path: { workshopId },
+				body: {
+					amount,
+					currency,
+					...(customerId ? { customerId } : {}),
+				},
+			});
 		} catch (err) {
 			error =
 				err instanceof Error ? err.message : "Failed to initialize Stripe";
@@ -204,7 +206,14 @@ onMount(() => {
 				size="sm"
 				onclick={() => {
 					error = null;
-					createPaymentIntent.mutate();
+					createPaymentIntent.mutate({
+						path: { workshopId },
+						body: {
+							amount,
+							currency,
+							...(customerId ? { customerId } : {}),
+						},
+					});
 				}}
 			>
 				Try Again

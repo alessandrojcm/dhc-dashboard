@@ -36,7 +36,7 @@ defmodule DhcWeb.MembersControllerTest do
        %{
          sub: "11111111-1111-1111-1111-111111111111",
          email: "self@example.com",
-         roles: [],
+         roles: ["member"],
          raw: %{}
        }}
     end
@@ -99,6 +99,47 @@ defmodule DhcWeb.MembersControllerTest do
         |> get("/api/members/insurance-form")
 
       assert %{"errors" => %{"detail" => "Unauthorized"}} = json_response(conn, 401)
+    end
+  end
+
+  describe "me" do
+    test "returns the authenticated user's dashboard identity and customer id", %{conn: conn} do
+      insert_member(
+        auth_user_id: "11111111-1111-1111-1111-111111111111",
+        first_name: "Current",
+        last_name: "Member",
+        email: "self@example.com",
+        phone_number: "+353871234567",
+        customer_id: "cus_current"
+      )
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer self-token")
+        |> get("/api/members/me")
+
+      assert %{
+               "data" => %{
+                 "id" => "11111111-1111-1111-1111-111111111111",
+                 "firstName" => "Current",
+                 "lastName" => "Member",
+                 "email" => "self@example.com",
+                 "phoneNumber" => "+353871234567",
+                 "customerId" => "cus_current",
+                 "roles" => ["member"]
+               }
+             } = json_response(conn, 200)
+    end
+
+    test "does not accept another user id from the request", %{conn: conn} do
+      insert_member(auth_user_id: "22222222-2222-2222-2222-222222222222")
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer self-token")
+        |> get("/api/members/me")
+
+      assert %{"errors" => %{"detail" => "Member not found"}} = json_response(conn, 404)
     end
   end
 
@@ -691,6 +732,53 @@ defmodule DhcWeb.MembersControllerTest do
       assert %{"data" => member} = json_response(conn, 200)
       assert member["subscriptionPausedUntil"] == nil
       assert member["membershipStatus"] == "active"
+    end
+
+    test "creates a Stripe billing portal session for the member", %{
+      conn: conn,
+      bypass: bypass
+    } do
+      member_id = "11111111-1111-1111-1111-111111111111"
+      insert_member(auth_user_id: member_id, customer_id: "cus_portal")
+
+      Bypass.expect(bypass, "POST", "/v1/billing_portal/sessions", fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        params = URI.decode_query(body)
+
+        assert params["customer"] == "cus_portal"
+
+        assert params["return_url"] ==
+                 "https://dashboard.example.com/dashboard/members/#{member_id}"
+
+        stripe_json(conn, %{
+          "id" => "bps_123",
+          "object" => "billing_portal.session",
+          "url" => "https://billing.stripe.com/session/test"
+        })
+      end)
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer self-token")
+        |> post("/api/members/#{member_id}/billing-portal", %{
+          "returnUrl" => "https://dashboard.example.com/dashboard/members/#{member_id}"
+        })
+
+      assert %{"data" => %{"url" => "https://billing.stripe.com/session/test"}} =
+               json_response(conn, 200)
+    end
+
+    test "rejects a relative billing portal return URL", %{conn: conn} do
+      member_id = "11111111-1111-1111-1111-111111111111"
+      insert_member(auth_user_id: member_id, customer_id: "cus_portal")
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer self-token")
+        |> post("/api/members/#{member_id}/billing-portal", %{"returnUrl" => "/dashboard"})
+
+      assert %{"errors" => %{"detail" => "Invalid billing portal return URL"}} =
+               json_response(conn, 422)
     end
 
     test "rejects out-of-range pause dates", %{conn: conn} do

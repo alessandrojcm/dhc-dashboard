@@ -42,6 +42,34 @@ defmodule Dhc.Notifications do
 
   def list_for_user(_user_id, _params), do: {:error, :invalid_user}
 
+  @doc "Marks one notification as read when it belongs to the authenticated user."
+  @spec mark_read(String.t(), String.t()) :: {:ok, Notification.t()} | {:error, :not_found}
+  def mark_read(user_id, notification_id)
+      when is_binary(user_id) and is_binary(notification_id) do
+    case Repo.get_by(Notification, id: notification_id, user_id: user_id) do
+      nil ->
+        {:error, :not_found}
+
+      notification ->
+        notification
+        |> Ecto.Changeset.change(
+          read_at: notification.read_at || DateTime.utc_now() |> DateTime.truncate(:second)
+        )
+        |> Repo.update()
+    end
+  end
+
+  @doc "Marks every unread notification belonging to the authenticated user as read."
+  @spec mark_all_read(String.t()) :: {:ok, non_neg_integer()}
+  def mark_all_read(user_id) when is_binary(user_id) do
+    {updated_count, _} =
+      Notification
+      |> where([n], n.user_id == ^user_id and is_nil(n.read_at))
+      |> Repo.update_all(set: [read_at: DateTime.utc_now() |> DateTime.truncate(:second)])
+
+    {:ok, updated_count}
+  end
+
   defp parse_options(params) do
     limit = parse_integer(Map.get(params, "limit", "10"))
 

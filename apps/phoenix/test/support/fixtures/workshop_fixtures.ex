@@ -140,6 +140,7 @@ defmodule Dhc.WorkshopFixtures do
       club_activity_id: Map.fetch!(attrs, :workshop_id),
       member_user_id: Map.get(attrs, :member_user_id),
       external_user_id: Map.get(attrs, :external_user_id),
+      stripe_checkout_session_id: Map.get(attrs, :stripe_checkout_session_id),
       amount_paid: Map.get(attrs, :amount_paid, 1000),
       currency: Map.get(attrs, :currency, "eur"),
       status: Map.get(attrs, :status, "pending"),

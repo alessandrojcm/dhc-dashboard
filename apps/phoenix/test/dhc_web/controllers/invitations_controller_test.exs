@@ -367,6 +367,51 @@ defmodule DhcWeb.InvitationsControllerTest do
     end
   end
 
+  describe "DELETE /api/invitations" do
+    test "deletes the requested invitations", %{conn: conn} do
+      first_id = insert_invitation(email: "first@example.com")
+      second_id = insert_invitation(email: "second@example.com")
+      untouched_id = insert_invitation(email: "untouched@example.com")
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> delete("/api/invitations", %{"invitationIds" => [first_id, second_id]})
+
+      assert response(conn, 204) == ""
+      refute Repo.get(Invitation, first_id)
+      refute Repo.get(Invitation, second_id)
+      assert Repo.get(Invitation, untouched_id)
+    end
+
+    test "returns 401 without a bearer token", %{conn: conn} do
+      conn = delete(conn, "/api/invitations", %{"invitationIds" => [Ecto.UUID.generate()]})
+
+      assert %{"errors" => %{"detail" => "Unauthorized"}} = json_response(conn, 401)
+    end
+
+    test "returns 403 when token lacks an invitation admin role", %{conn: conn} do
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer member-token")
+        |> delete("/api/invitations", %{"invitationIds" => [Ecto.UUID.generate()]})
+
+      assert %{"errors" => %{"detail" => "Insufficient role"}} = json_response(conn, 403)
+    end
+
+    test "returns 400 for an empty or invalid invitation id list", %{conn: conn} do
+      for invitation_ids <- [[], ["not-a-uuid"]] do
+        conn =
+          build_conn()
+          |> put_req_header("authorization", "Bearer admin-token")
+          |> delete("/api/invitations", %{"invitationIds" => invitation_ids})
+
+        assert %{"errors" => %{"detail" => "invitationIds must be a non-empty list of UUIDs"}} =
+                 json_response(conn, 400)
+      end
+    end
+  end
+
   describe "public invitation conversion endpoints" do
     test "GET /api/invitations/:id returns public-safe invitation state without PII", %{
       conn: conn

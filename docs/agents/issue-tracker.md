@@ -23,12 +23,10 @@ linctl issue list
 ## Viewing an issue
 
 ```bash
-<<<<<<< HEAD
 linctl issue get <issue-id>
-=======
-linctl issue view <issue-id>
->>>>>>> main
 ```
+
+This installed `linctl` does not provide `issue view`; use `issue get` for issue details.
 
 ## Updating triage state
 

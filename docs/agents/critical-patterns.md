@@ -107,6 +107,12 @@ Conventions established by the Waitlist migration (#105–#107) and reinforced b
 - **`auth.users` access**: use a read-only Ecto schema (`Dhc.Auth.AuthUser`) to join email; do not call PostgREST-era helper functions like `get_email_from_auth_users`.
 - **Computed view columns reproduced in Ecto**: when a view computes a domain field (e.g. `membership_status` CASE), reproduce the computation in the Phoenix context query rather than depending on the view.
 
+## TanStack Query with the Phoenix API
+
+- In Svelte components, spread the generated Hey API `*Options()` or `*InfiniteOptions()` result into `createQuery`/`createInfiniteQuery`; do not hand-write a `queryFn` around the generated SDK function.
+- Spread generated `*Mutation()` options into `createMutation` whenever the mutation calls the generated Phoenix client directly. Custom SvelteKit remote functions and non-Phoenix operations may keep a manual `mutationFn`.
+- Use generated `*QueryKey()` helpers for invalidation and direct cache updates. Add `select` only for UI-specific response shaping; remember that `queryClient` reads and writes the unselected API response stored in the cache.
+
 ## API Response Format
 
 ```typescript

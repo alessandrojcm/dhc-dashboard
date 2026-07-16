@@ -1,7 +1,6 @@
 <script lang="ts">
-/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-non-null-asserted-optional-chain */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import type { LayoutData } from "./$types";
-import type { UserData } from "$lib/types";
 import { SidebarProvider } from "$lib/components/ui/sidebar";
 import DashboardSidebar from "$lib/components/ui/DashboardSidebar.svelte";
 import { page } from "$app/state";
@@ -10,47 +9,24 @@ import { Separator } from "$lib/components/ui/separator";
 import { createQuery } from "@tanstack/svelte-query";
 import { goto } from "$app/navigation";
 import { resolve } from "$app/paths";
+import { membersMeOptions } from "@dhc/api-client";
 
 let { children, data }: { data: LayoutData; children: any } = $props();
 let supabase = $derived(data.supabase);
-let session = $derived(data.session);
 let roles = $derived.by(() => new Set(data.roles));
 let paths = $derived.by(() => page.url.pathname.split("/"));
-const userDataQuery = createQuery<UserData>(() => ({
-	queryKey: ["logged_in_user_data"],
+const userDataQuery = createQuery(() => ({
+	...membersMeOptions(),
 	experimental_prefetchInRender: true,
 	enabled: true,
-	queryFn: async ({ signal }) =>
-		Promise.all([
-			supabase
-				.from("user_profiles")
-				.select("phone_number, customer_id")
-				.eq("supabase_user_id", session!.user?.id!)
-				.abortSignal(signal)
-				.single()
-				.then(({ data }) => ({
-					phoneNumber: data?.phone_number ?? "",
-					customerId: data?.customer_id,
-				})),
-			supabase
-				.rpc("get_current_user_with_profile")
-				.abortSignal(signal)
-				.then(
-					({ data }) =>
-						data as Omit<UserData, "email" | "phoneNumber" | "customerId">,
-				),
-			supabase.auth.getUser().then(({ data }) => data),
-		]).then(
-			([profileData, userData, sessionData]) =>
-				({
-					firstName: userData.firstName,
-					lastName: userData.lastName,
-					email: sessionData.user?.email!,
-					id: sessionData.user?.id!,
-					phoneNumber: profileData.phoneNumber,
-					customerId: profileData.customerId,
-				}) as UserData,
-		),
+	select: (response) => ({
+		firstName: response.data.firstName,
+		lastName: response.data.lastName,
+		email: response.data.email,
+		id: response.data.id,
+		phoneNumber: response.data.phoneNumber ?? "",
+		customerId: response.data.customerId ?? undefined,
+	}),
 }));
 
 function getLink(item: string): string {

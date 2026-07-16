@@ -1,6 +1,8 @@
 import { command, getRequestEvent } from "$app/server";
-import { createPublicRegistrationService } from "$lib/server/services/workshops";
-import type { ExternalRegistrationError } from "$lib/server/services/workshops";
+import {
+	createExternalWorkshopCheckoutSession,
+	ExternalWorkshopRegistrationApiError,
+} from "$lib/server/api/external-workshop-registration";
 import { CreateExternalCheckoutSessionCommandSchema } from "$lib/schemas/workshop-registration";
 
 /**
@@ -12,7 +14,7 @@ import { CreateExternalCheckoutSessionCommandSchema } from "$lib/schemas/worksho
 export const createExternalCheckoutSession = command(
 	CreateExternalCheckoutSessionCommandSchema,
 	async (input) => {
-		const { params, platform, url } = getRequestEvent();
+		const { params, url } = getRequestEvent();
 
 		if (input.workshopId !== params.id) {
 			return {
@@ -25,11 +27,10 @@ export const createExternalCheckoutSession = command(
 		const returnUrl = `${url.origin}/workshops/${input.workshopId}/confirmation?session_id={CHECKOUT_SESSION_ID}`;
 
 		try {
-			const service = createPublicRegistrationService(platform!);
-			const result = await service.createExternalCheckoutSession({
-				workshopId: input.workshopId,
+			const result = await createExternalWorkshopCheckoutSession(
+				input.workshopId,
 				returnUrl,
-			});
+			);
 
 			return {
 				success: true as const,
@@ -38,9 +39,9 @@ export const createExternalCheckoutSession = command(
 				checkoutUrl: result.checkoutUrl,
 			};
 		} catch (err) {
-			const error = err as ExternalRegistrationError;
+			const error = err as ExternalWorkshopRegistrationApiError;
 
-			if (error.name === "ExternalRegistrationError") {
+			if (error.name === "ExternalWorkshopRegistrationApiError") {
 				return {
 					success: false as const,
 					error: error.message,

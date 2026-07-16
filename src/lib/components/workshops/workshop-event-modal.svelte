@@ -17,10 +17,11 @@ import dayjs from "dayjs";
 import type { WorkshopCalendarEvent } from "$lib/types";
 import Dinero from "dinero.js";
 import {
-	deleteWorkshop,
-	publishWorkshop,
-	cancelWorkshop,
-} from "$lib/functions/workshops.remote";
+	workshopsCalendarQueryKey,
+	workshopsCancelMutation,
+	workshopsDeleteMutation,
+	workshopsPublishMutation,
+} from "@dhc/api-client";
 
 let {
 	calendarEvent: event,
@@ -45,38 +46,38 @@ const interestCount = $derived.by(() => {
 });
 
 const deleteMutation = createMutation(() => ({
-	mutationFn: deleteWorkshop,
+	...workshopsDeleteMutation(),
 	onSuccess: () => {
-		queryClient.invalidateQueries({ queryKey: ["workshops"] });
+		queryClient.invalidateQueries({ queryKey: workshopsCalendarQueryKey() });
 		toast.success("Workshop deleted successfully");
 		onClose?.();
 	},
 	onError: (error) => {
-		toast.error(`Failed to delete workshop: ${error.message}`);
+		toast.error(error.errors?.detail ?? "Failed to delete workshop");
 	},
 }));
 
 const publishMutation = createMutation(() => ({
-	mutationFn: publishWorkshop,
+	...workshopsPublishMutation(),
 	onSuccess: () => {
-		queryClient.invalidateQueries({ queryKey: ["workshops"] });
+		queryClient.invalidateQueries({ queryKey: workshopsCalendarQueryKey() });
 		toast.success("Workshop published successfully");
 		onClose?.();
 	},
 	onError: (error) => {
-		toast.error(`Failed to publish workshop: ${error.message}`);
+		toast.error(error.errors?.detail ?? "Failed to publish workshop");
 	},
 }));
 
 const cancelMutation = createMutation(() => ({
-	mutationFn: cancelWorkshop,
+	...workshopsCancelMutation(),
 	onSuccess: () => {
-		queryClient.invalidateQueries({ queryKey: ["workshops"] });
+		queryClient.invalidateQueries({ queryKey: workshopsCalendarQueryKey() });
 		toast.success("Workshop cancelled successfully");
 		onClose?.();
 	},
 	onError: (error) => {
-		toast.error(`Failed to cancel workshop: ${error.message}`);
+		toast.error(error.errors?.detail ?? "Failed to cancel workshop");
 	},
 }));
 
@@ -90,15 +91,15 @@ function handleEdit() {
 }
 
 function handlePublish() {
-	publishMutation.mutate(workshop.id);
+	publishMutation.mutate({ path: { workshopId: workshop.id } });
 }
 
 function handleCancel() {
-	cancelMutation.mutate(workshop.id);
+	cancelMutation.mutate({ path: { workshopId: workshop.id } });
 }
 
 function handleDelete() {
-	deleteMutation.mutate(workshop.id);
+	deleteMutation.mutate({ path: { workshopId: workshop.id } });
 }
 
 async function handleCopyPublicRegisterLink() {
@@ -203,26 +204,30 @@ const hasEditAction = $derived(!!event.handleEdit);
 		</div>
 
 		{#if workshop.isPublic && workshop.status === 'published'}
-			<div class="ml-8">
+			<div class="flex items-center justify-between gap-4 rounded-lg border bg-muted/30 p-3">
+				<div class="min-w-0">
+					<p class="text-sm font-medium text-foreground">Share public workshop</p>
+					<p class="text-xs text-muted-foreground">Copy the registration link to share it.</p>
+				</div>
 				<Button
-					variant="ghost"
+					variant="outline"
 					size="sm"
 					onclick={handleCopyPublicRegisterLink}
 					disabled={isCopyingLink}
-					class="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+					class="shrink-0"
 				>
 					{#if isCopyingLink}
-						<Loader2 class="w-3.5 h-3.5 mr-1.5 animate-spin" />
+						<Loader2 class="w-4 h-4 mr-2 animate-spin" />
 						Copying…
 					{:else if hasCopiedLink}
-						<CheckCircle class="w-3.5 h-3.5 mr-1.5" />
+						<CheckCircle class="w-4 h-4 mr-2" />
 						Copied
 					{:else if hasCopyError}
-						<AlertTriangle class="w-3.5 h-3.5 mr-1.5" />
+						<AlertTriangle class="w-4 h-4 mr-2" />
 						Couldn’t copy
 					{:else}
-						<Copy class="w-3.5 h-3.5 mr-1.5" />
-						Copy public registration link
+						<Copy class="w-4 h-4 mr-2" />
+						Copy link
 					{/if}
 				</Button>
 			</div>
@@ -287,7 +292,7 @@ const hasEditAction = $derived(!!event.handleEdit);
 					</Button>
 				{/if}
 
-				{#if workshop.status === 'planned' || workshop.status === 'published'}
+				{#if workshop.status === 'published'}
 					<Popover.Root bind:open={cancelPopoverOpen}>
 						<Popover.Trigger
 							class={buttonVariants({ variant: 'destructive', size: 'sm' })}

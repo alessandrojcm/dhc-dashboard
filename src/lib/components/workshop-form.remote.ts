@@ -1,16 +1,24 @@
 import { form, getRequestEvent } from "$app/server";
+import {
+	workshopsCreate,
+	workshopsUpdate,
+	type ApiErrorResponse,
+	type WorkshopManagementRequest,
+	type WorkshopManagementUpdateRequest,
+} from "@dhc/api-client";
 import Dinero from "dinero.js";
 import { authorize } from "$lib/server/auth";
+import { apiClientOptions } from "$lib/server/api-client";
 import { WORKSHOP_ROLES } from "$lib/server/roles";
-import {
-	createWorkshopService,
-	type WorkshopUpdate,
-} from "$lib/server/services/workshops";
 import {
 	CreateWorkshopRemoteSchema,
 	UpdateWorkshopRemoteSchema,
 } from "$lib/schemas/workshop";
 import dayjs from "dayjs";
+
+function apiErrorMessage(error: unknown, fallback: string) {
+	return (error as ApiErrorResponse | undefined)?.errors?.detail ?? fallback;
+}
 
 export const createWorkshop = form(CreateWorkshopRemoteSchema, async (data) => {
 	const event = getRequestEvent();
@@ -45,25 +53,41 @@ export const createWorkshop = form(CreateWorkshopRemoteSchema, async (data) => {
 				}).getAmount()
 			: memberPriceCents;
 
-	const workshopData = {
+	const workshopData: WorkshopManagementRequest = {
 		title: data.title,
-		description: data.description,
+		description: data.description || null,
 		location: data.location,
-		start_date: startDateTime,
-		end_date: endDateTime,
-		max_capacity: data.max_capacity,
-		price_member: memberPriceCents,
-		price_non_member: nonMemberPriceCents,
-		is_public: data.is_public || false,
-		refund_days: data.refund_deadline_days,
-		announce_discord: data.announce_discord || false,
-		announce_email: data.announce_email || false,
+		startDate: startDateTime,
+		endDate: endDateTime,
+		maxCapacity: data.max_capacity,
+		priceMember: memberPriceCents,
+		priceNonMember: nonMemberPriceCents,
+		isPublic: data.is_public || false,
+		refundDays: data.refund_deadline_days ?? 0,
+		announceDiscord: data.announce_discord || false,
+		announceEmail: data.announce_email || false,
 	};
 
-	const workshopService = createWorkshopService(event.platform!, session);
-	const workshop = await workshopService.create(workshopData);
+	const response = await workshopsCreate({
+		...apiClientOptions(session),
+		body: workshopData,
+	});
 
-	return { success: `Workshop "${workshop.title}" created successfully!` };
+	if (response.error) {
+		throw new Error(
+			apiErrorMessage(
+				response.error,
+				"Failed to create workshop. Please try again later.",
+			),
+		);
+	}
+
+	const workshop = response.data.data.workshop;
+
+	return {
+		success: `Workshop "${workshop.title}" created successfully!`,
+		workshopId: workshop.id,
+	};
 });
 
 export const updateWorkshop = form(UpdateWorkshopRemoteSchema, async (data) => {
@@ -75,35 +99,15 @@ export const updateWorkshop = form(UpdateWorkshopRemoteSchema, async (data) => {
 		throw new Error("Workshop ID is required");
 	}
 
-	const workshopService = createWorkshopService(event.platform!, session);
-
-	// Check if workshop can be edited
-	const workshopEditable = await workshopService.canEdit(workshopId);
-	if (!workshopEditable) {
-		throw new Error("Only planned workshops can be edited");
-	}
-
-	// Check if pricing changes are allowed
-	const pricingEditable = await workshopService.canEditPricing(workshopId);
-	if (
-		!pricingEditable &&
-		(data.price_member !== undefined || data.price_non_member !== undefined)
-	) {
-		throw new Error(
-			"Cannot change pricing when there are already registered attendees",
-		);
-	}
-
-	// Fetch current workshop for price fallback
-	const currentWorkshop = await workshopService.findById(workshopId);
-
 	// Transform form data to database format
-	const updateData: WorkshopUpdate = {
-		...data,
-		start_date: data.workshop_date
+	const updateData: WorkshopManagementUpdateRequest = {
+		title: data.title,
+		description: data.description || null,
+		location: data.location,
+		startDate: data.workshop_date
 			? dayjs(data.workshop_date).toISOString()
 			: undefined,
-		end_date: data.workshop_end_date
+		endDate: data.workshop_end_date
 			? (() => {
 					const endDate = dayjs(data.workshop_end_date);
 					if (data.workshop_date) {
@@ -115,35 +119,44 @@ export const updateWorkshop = form(UpdateWorkshopRemoteSchema, async (data) => {
 					return endDate.toISOString();
 				})()
 			: undefined,
-		refund_days: data.refund_deadline_days,
+		maxCapacity: data.max_capacity,
+		isPublic: data.is_public,
+		refundDays: data.refund_deadline_days ?? undefined,
 	};
 
-	// Remove the string date fields from update data
-	delete (updateData as Record<string, unknown>).workshop_date;
-	delete (updateData as Record<string, unknown>).workshop_end_date;
-	delete (updateData as Record<string, unknown>).refund_deadline_days;
-
-	// Convert euro prices to cents only if pricing changes are allowed
-	if (pricingEditable) {
-		if (typeof data.price_member === "number") {
-			updateData.price_member = Dinero({
-				amount: Math.round(data.price_member * 100),
-				currency: "EUR",
-			}).getAmount();
-		}
-
-		if (typeof data.price_non_member === "number") {
-			updateData.price_non_member =
-				data.is_public && data.price_non_member
-					? Dinero({
-							amount: Math.round(data.price_non_member * 100),
-							currency: "EUR",
-						}).getAmount()
-					: updateData.price_member || currentWorkshop.price_member;
-		}
+	if (typeof data.price_member === "number") {
+		updateData.priceMember = Dinero({
+			amount: Math.round(data.price_member * 100),
+			currency: "EUR",
+		}).getAmount();
 	}
 
-	const workshop = await workshopService.update(workshopId, updateData);
+	if (typeof data.price_non_member === "number") {
+		updateData.priceNonMember =
+			data.is_public && data.price_non_member
+				? Dinero({
+						amount: Math.round(data.price_non_member * 100),
+						currency: "EUR",
+					}).getAmount()
+				: updateData.priceMember;
+	}
+
+	const response = await workshopsUpdate({
+		...apiClientOptions(session),
+		path: { workshopId },
+		body: updateData,
+	});
+
+	if (response.error) {
+		throw new Error(
+			apiErrorMessage(
+				response.error,
+				"Failed to update workshop. Please try again later.",
+			),
+		);
+	}
+
+	const workshop = response.data.data.workshop;
 
 	return { success: `Workshop "${workshop.title}" updated successfully!` };
 });

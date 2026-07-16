@@ -55,6 +55,60 @@ defmodule DhcWeb.WaitlistControllerTest do
     end
   end
 
+  describe "PATCH /api/waitlist/status" do
+    test "sets and returns the waitlist status", %{conn: conn} do
+      set_waitlist_open(false)
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> patch("/api/waitlist/status", %{"isOpen" => true})
+
+      assert %{"data" => %{"isOpen" => true}} = json_response(conn, 200)
+      assert Dhc.Waitlist.open?()
+    end
+
+    test "allows all waitlist admin roles", %{conn: _conn} do
+      for role <- ~w(admin president committee_coordinator beginners_coordinator coach) do
+        set_waitlist_open(false)
+
+        conn =
+          build_conn()
+          |> put_req_header("authorization", "Bearer #{role}-token")
+          |> patch("/api/waitlist/status", %{"isOpen" => true})
+
+        assert %{"data" => %{"isOpen" => true}} = json_response(conn, 200)
+      end
+    end
+
+    test "returns 401 without a bearer token", %{conn: conn} do
+      conn = patch(conn, "/api/waitlist/status", %{"isOpen" => true})
+
+      assert %{"errors" => %{"detail" => "Unauthorized"}} = json_response(conn, 401)
+    end
+
+    test "returns 403 when token lacks a waitlist admin role", %{conn: conn} do
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer member-token")
+        |> patch("/api/waitlist/status", %{"isOpen" => true})
+
+      assert %{"errors" => %{"detail" => "Insufficient role"}} = json_response(conn, 403)
+    end
+
+    test "returns 422 when isOpen is missing or not boolean", %{conn: conn} do
+      for payload <- [%{}, %{"isOpen" => "true"}] do
+        conn =
+          build_conn()
+          |> put_req_header("authorization", "Bearer admin-token")
+          |> patch("/api/waitlist/status", payload)
+
+        assert %{"errors" => %{"detail" => "isOpen must be a boolean"}} =
+                 json_response(conn, 422)
+      end
+    end
+  end
+
   describe "analytics" do
     test "returns waitlist analytics in the dashboard chart shape", %{conn: conn} do
       insert_waitlist_profile(status: "waiting", gender: "man (cis)", age: 20)

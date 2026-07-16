@@ -18,6 +18,8 @@ defmodule Dhc.Workshops.Workshop do
 
   use Ecto.Schema
 
+  import Ecto.Changeset
+
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
   @type t :: %__MODULE__{}
@@ -40,5 +42,32 @@ defmodule Dhc.Workshops.Workshop do
     field :created_by, :binary_id
 
     timestamps(type: :utc_datetime, inserted_at: :created_at)
+  end
+
+  @management_fields ~w(title description location start_date end_date max_capacity price_member price_non_member is_public refund_days announce_discord announce_email)a
+  @required_management_fields ~w(title location start_date end_date max_capacity price_member price_non_member is_public refund_days announce_discord announce_email)a
+
+  @doc false
+  def management_changeset(workshop, attrs) do
+    workshop
+    |> cast(attrs, @management_fields)
+    |> validate_required(@required_management_fields)
+    |> validate_length(:title, min: 1, max: 255)
+    |> validate_number(:max_capacity, greater_than: 0)
+    |> validate_number(:price_member, greater_than_or_equal_to: 0)
+    |> validate_number(:price_non_member, greater_than_or_equal_to: 0)
+    |> validate_number(:refund_days, greater_than_or_equal_to: 0)
+    |> validate_end_after_start()
+  end
+
+  defp validate_end_after_start(changeset) do
+    start_date = get_field(changeset, :start_date)
+    end_date = get_field(changeset, :end_date)
+
+    if start_date && end_date && DateTime.compare(end_date, start_date) != :gt do
+      add_error(changeset, :end_date, "must be after start date")
+    else
+      changeset
+    end
   end
 end

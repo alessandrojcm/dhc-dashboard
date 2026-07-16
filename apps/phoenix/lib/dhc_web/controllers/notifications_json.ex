@@ -11,6 +11,14 @@ defmodule DhcWeb.NotificationsJSON do
     }
   end
 
+  def render("show.json", %{notification: notification}) do
+    %{data: notification(notification)}
+  end
+
+  def render("mark_all_read.json", %{updated_count: updated_count}) do
+    %{data: %{updatedCount: updated_count}}
+  end
+
   defp notification(notification) do
     %{
       id: notification.id,

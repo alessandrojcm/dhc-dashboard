@@ -11,6 +11,77 @@ defmodule DhcWeb.WorkshopsJSON do
     %{data: %{workshops: Enum.map(workshops, &workshop/1)}}
   end
 
+  def render("management.json", %{workshop: workshop}) do
+    %{data: %{workshop: calendar_workshop(workshop)}}
+  end
+
+  def render("interest.json", %{result: result}) do
+    %{
+      data: %{
+        interested: result.interested,
+        action: result.action,
+        message: result.message
+      }
+    }
+  end
+
+  def render("registration_payment_intent.json", %{result: result}) do
+    %{
+      data: %{
+        clientSecret: result.client_secret,
+        paymentIntentId: result.payment_intent_id
+      }
+    }
+  end
+
+  def render("registration.json", %{registration: registration}) do
+    %{data: %{registration: registration(registration)}}
+  end
+
+  def render("registration_cancelled.json", %{result: result}) do
+    %{
+      data: %{
+        registration: registration(result.registration),
+        refundProcessed: result.refund_processed
+      }
+    }
+  end
+
+  def render("external_registration_gate.json", %{gate: gate}) do
+    data = %{canRegister: gate.can_register}
+
+    data =
+      if gate.can_register do
+        Map.put(data, :workshop, external_registration_workshop(gate.workshop))
+      else
+        Map.put(data, :reason, gate.reason)
+      end
+
+    %{data: data}
+  end
+
+  def render("external_checkout_session.json", %{result: result}) do
+    %{
+      data: %{
+        checkoutSessionId: result.checkout_session_id,
+        checkoutClientSecret: result.checkout_client_secret,
+        checkoutUrl: result.checkout_url
+      }
+    }
+  end
+
+  def render("attendance.json", %{registrations: registrations}) do
+    %{data: %{registrations: Enum.map(registrations, &attendance_registration/1)}}
+  end
+
+  def render("refunds.json", %{refunds: refunds}) do
+    %{data: %{refunds: Enum.map(refunds, &refund/1)}}
+  end
+
+  def render("refund.json", %{refund: refund}) do
+    %{data: %{refund: refund(refund)}}
+  end
+
   @doc """
   GET /workshops/{id}/attendees — combined coordinator management payload.
 
@@ -48,6 +119,19 @@ defmodule DhcWeb.WorkshopsJSON do
       interestCount: workshop.interest_count,
       pendingRegistrationCount: workshop.pending_registration_count,
       confirmedRegistrationCount: workshop.confirmed_registration_count
+    }
+  end
+
+  defp external_registration_workshop(workshop) do
+    %{
+      id: workshop.id,
+      title: workshop.title,
+      description: workshop.description,
+      startDate: workshop.start_date,
+      endDate: workshop.end_date,
+      location: workshop.location,
+      priceNonMember: workshop.price_non_member,
+      maxCapacity: workshop.max_capacity
     }
   end
 
@@ -106,7 +190,7 @@ defmodule DhcWeb.WorkshopsJSON do
     %{
       id: attendee.id,
       status: attendee.status,
-      attendanceStatus: attendee.attendance_status,
+      attendanceStatus: attendance_status(attendee.attendance_status),
       attendanceMarkedAt: attendee.attendance_marked_at,
       attendanceMarkedBy: attendee.attendance_marked_by,
       attendanceNotes: attendee.attendance_notes,
@@ -119,6 +203,19 @@ defmodule DhcWeb.WorkshopsJSON do
       participant: participant(attendee.participant)
     }
   end
+
+  defp attendance_registration(registration) do
+    %{
+      id: registration.id,
+      attendanceStatus: attendance_status(registration.attendance_status),
+      attendanceMarkedAt: registration.attendance_marked_at,
+      attendanceMarkedBy: registration.attendance_marked_by,
+      attendanceNotes: registration.attendance_notes
+    }
+  end
+
+  defp attendance_status("no_show"), do: "noShow"
+  defp attendance_status(status), do: status
 
   defp refund(refund) do
     %{

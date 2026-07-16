@@ -16,6 +16,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
 
   @member_user_id "11111111-1111-1111-1111-111111111111"
   @other_user_id "22222222-2222-2222-2222-222222222222"
+  @coordinator_user_id "33333333-3333-3333-3333-333333333333"
 
   # The canonical coordinator management roles (mirrors
   # `Dhc.Workshops.coordinator_management_roles/0` and the corrected RLS policy).
@@ -31,7 +32,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
         sub =
           case unquote(role) do
             "member" -> "11111111-1111-1111-1111-111111111111"
-            _ -> Ecto.UUID.generate()
+            _ -> "33333333-3333-3333-3333-333333333333"
           end
 
         {:ok,
@@ -48,13 +49,145 @@ defmodule DhcWeb.WorkshopsControllerTest do
     def verify(_token), do: {:error, :invalid_token}
   end
 
+  defmodule StripeClient do
+    def request(%{method: :get, url: url}), do: request(method: :get, url: url)
+
+    def request(%{method: method, url: url, body: body}),
+      do: request(method: method, url: url, body: body)
+
+    def request(method: :post, url: "/v1/checkout/sessions", body: body) do
+      Application.put_env(:dhc, :last_workshop_checkout_request, body)
+
+      case Application.get_env(:dhc, :workshop_stripe_checkout_create_response, :ok) do
+        :ok ->
+          {:ok,
+           %{
+             "id" => "cs_test_external",
+             "client_secret" => "cs_test_external_secret",
+             "url" => nil
+           }}
+
+        other ->
+          other
+      end
+    end
+
+    def request(method: :get, url: "/v1/checkout/sessions/" <> checkout_session_id) do
+      case Application.get_env(:dhc, :workshop_stripe_checkout_retrieve_response) do
+        nil ->
+          {:ok,
+           %{
+             "id" => checkout_session_id,
+             "status" => "complete",
+             "payment_status" => "paid",
+             "amount_total" => 2500,
+             "currency" => "eur",
+             "payment_intent" => "pi_external",
+             "metadata" => %{
+               "type" => "workshop_registration",
+               "actor_type" => "external",
+               "workshop_id" => Application.fetch_env!(:dhc, :workshop_stripe_workshop_id)
+             },
+             "customer_details" => %{
+               "email" => " Guest@Example.com ",
+               "name" => "Grace Hopper",
+               "phone" => "+353123456"
+             }
+           }}
+
+        other ->
+          other
+      end
+    end
+
+    def request(method: :post, url: "/v1/payment_intents", body: body) do
+      Application.put_env(:dhc, :last_workshop_stripe_request, {:create_payment_intent, body})
+
+      case Application.get_env(:dhc, :workshop_stripe_create_response, :ok) do
+        :ok ->
+          {:ok,
+           %{
+             "id" => "pi_test_member",
+             "client_secret" => "pi_test_member_secret",
+             "amount" => form_value(body, :amount),
+             "currency" => form_value(body, :currency),
+             "status" => "requires_payment_method",
+             "metadata" => %{}
+           }}
+
+        other ->
+          other
+      end
+    end
+
+    def request(method: :get, url: "/v1/payment_intents/" <> payment_intent_id) do
+      case Application.get_env(:dhc, :workshop_stripe_retrieve_response) do
+        nil ->
+          {:ok,
+           %{
+             "id" => payment_intent_id,
+             "status" => "succeeded",
+             "amount" => 1000,
+             "currency" => "eur",
+             "metadata" => %{
+               "type" => "workshop_registration",
+               "actor_type" => "member",
+               "workshop_id" => Application.fetch_env!(:dhc, :workshop_stripe_workshop_id),
+               "user_id" => "11111111-1111-1111-1111-111111111111"
+             }
+           }}
+
+        other ->
+          other
+      end
+    end
+
+    def request(method: :post, url: "/v1/refunds", body: body) do
+      Application.put_env(:dhc, :last_workshop_stripe_refund_request, body)
+
+      case Application.get_env(:dhc, :workshop_stripe_refund_response, :ok) do
+        :ok -> {:ok, %{"id" => "re_test_member"}}
+        other -> other
+      end
+    end
+
+    def request(method: :post, url: "/v1/payment_intents/" <> _id, body: body) do
+      Application.put_env(:dhc, :last_workshop_payment_intent_update, body)
+      {:ok, %{"id" => "pi_external"}}
+    end
+
+    defp form_value(body, key) do
+      body
+      |> Enum.find_value(fn
+        {^key, value} -> value
+        _ -> nil
+      end)
+    end
+  end
+
   setup do
     original = Application.get_env(:dhc, :auth_verifier)
+    original_stripe = Application.get_env(:dhc, :workshop_stripe_client)
     Application.put_env(:dhc, :auth_verifier, Verifier)
+    Application.put_env(:dhc, :workshop_stripe_client, StripeClient)
     insert_auth_user_and_profile(@member_user_id, "Current", "Member")
     insert_auth_user_and_profile(@other_user_id, "Other", "Member")
+    insert_auth_user_and_profile(@coordinator_user_id, "Workshop", "Coordinator")
 
-    on_exit(fn -> Application.put_env(:dhc, :auth_verifier, original) end)
+    on_exit(fn ->
+      Application.put_env(:dhc, :auth_verifier, original)
+      Application.put_env(:dhc, :workshop_stripe_client, original_stripe)
+      Application.delete_env(:dhc, :workshop_stripe_create_response)
+      Application.delete_env(:dhc, :workshop_stripe_retrieve_response)
+      Application.delete_env(:dhc, :workshop_stripe_refund_response)
+      Application.delete_env(:dhc, :workshop_stripe_workshop_id)
+      Application.delete_env(:dhc, :workshop_stripe_checkout_create_response)
+      Application.delete_env(:dhc, :workshop_stripe_checkout_retrieve_response)
+      Application.delete_env(:dhc, :last_workshop_stripe_request)
+      Application.delete_env(:dhc, :last_workshop_stripe_refund_request)
+      Application.delete_env(:dhc, :last_workshop_checkout_request)
+      Application.delete_env(:dhc, :last_workshop_payment_intent_update)
+    end)
   end
 
   # `:binary_id` PKs autogenerate as 16-byte binaries on the inserted struct;
@@ -355,6 +488,240 @@ defmodule DhcWeb.WorkshopsControllerTest do
       refute Map.has_key?(payload, "createdBy")
       refute Map.has_key?(payload, "announceDiscord")
       assert payload["id"] == workshop.id
+    end
+  end
+
+  # ── Interest toggle ───────────────────────────────────────────────────
+
+  describe "toggle_interest" do
+    test "returns 401 without a bearer token", %{conn: conn} do
+      workshop = insert_workshop(status: "planned")
+
+      conn = post(conn, "/api/workshops/#{to_uuid(workshop.id)}/interest")
+
+      assert %{"errors" => %{"detail" => "Unauthorized"}} = json_response(conn, 401)
+    end
+
+    test "expresses and withdraws the authenticated member's interest", %{conn: conn} do
+      workshop = insert_workshop(status: "planned")
+
+      express_conn =
+        conn
+        |> auth_conn("member")
+        |> post("/api/workshops/#{to_uuid(workshop.id)}/interest")
+
+      assert %{
+               "data" => %{
+                 "interested" => true,
+                 "action" => "expressed",
+                 "message" => "Interest expressed successfully"
+               }
+             } = json_response(express_conn, 200)
+
+      [payload] =
+        build_conn()
+        |> auth_conn("member")
+        |> get("/api/workshops", status: "planned")
+        |> json_response(200)
+        |> get_in(["data", "workshops"])
+
+      assert payload["currentUserInterest"] == true
+      assert payload["interestCount"] == 1
+
+      withdraw_conn =
+        build_conn()
+        |> auth_conn("member")
+        |> post("/api/workshops/#{to_uuid(workshop.id)}/interest")
+
+      assert %{
+               "data" => %{
+                 "interested" => false,
+                 "action" => "withdrawn",
+                 "message" => "Interest withdrawn successfully"
+               }
+             } = json_response(withdraw_conn, 200)
+
+      [payload] =
+        build_conn()
+        |> auth_conn("member")
+        |> get("/api/workshops", status: "planned")
+        |> json_response(200)
+        |> get_in(["data", "workshops"])
+
+      assert payload["currentUserInterest"] == false
+      assert payload["interestCount"] == 0
+    end
+
+    test "rejects interest in published Workshops", %{conn: conn} do
+      workshop = insert_workshop(status: "published")
+
+      conn =
+        conn
+        |> auth_conn("member")
+        |> post("/api/workshops/#{to_uuid(workshop.id)}/interest")
+
+      assert %{"errors" => %{"detail" => "Can only express interest in planned workshops"}} =
+               json_response(conn, 422)
+    end
+
+    test "returns 404 for an unknown Workshop id", %{conn: conn} do
+      conn =
+        conn
+        |> auth_conn("member")
+        |> post("/api/workshops/#{Ecto.UUID.generate()}/interest")
+
+      assert %{"errors" => %{"detail" => "Workshop not found"}} = json_response(conn, 404)
+    end
+  end
+
+  # ── Management lifecycle ──────────────────────────────────────────────
+
+  describe "management endpoints — RBAC" do
+    test "allows workshop_coordinator, president, and admin to create" do
+      for role <- @allowed_roles do
+        conn =
+          build_conn()
+          |> auth_conn(role)
+          |> post("/api/workshops", valid_workshop_payload(%{"title" => "#{role} Workshop"}))
+
+        assert %{"data" => %{"workshop" => %{"title" => title}}} = json_response(conn, 201)
+        assert title == "#{role} Workshop"
+      end
+    end
+
+    test "rejects unrelated roles and missing tokens" do
+      conn = post(build_conn(), "/api/workshops", valid_workshop_payload())
+      assert %{"errors" => %{"detail" => "Unauthorized"}} = json_response(conn, 401)
+
+      for role <- @rejected_roles do
+        conn =
+          build_conn()
+          |> auth_conn(role)
+          |> post("/api/workshops", valid_workshop_payload())
+
+        assert %{"errors" => %{"detail" => "Insufficient role"}} = json_response(conn, 403)
+      end
+    end
+  end
+
+  describe "management endpoints — create/update/delete/publish/cancel" do
+    test "creates planned Workshops from camelCase input and returns management DTO", %{
+      conn: conn
+    } do
+      conn =
+        conn
+        |> auth_conn("workshop_coordinator")
+        |> post("/api/workshops", valid_workshop_payload())
+
+      assert %{"data" => %{"workshop" => workshop}} = json_response(conn, 201)
+
+      assert workshop["title"] == "API Workshop"
+      assert workshop["status"] == "planned"
+      assert workshop["startDate"] == "2026-09-01T10:00:00Z"
+      assert workshop["maxCapacity"] == 20
+      assert workshop["priceMember"] == 1000.0
+      assert workshop["createdBy"]
+      assert workshop["interestCount"] == 0
+    end
+
+    test "updates planned Workshops but does not allow direct status writes", %{conn: conn} do
+      workshop = WorkshopFixtures.workshop_fixture(status: "planned")
+
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> patch("/api/workshops/#{to_uuid(workshop.id)}", %{
+          "title" => "Updated API Workshop",
+          "status" => "cancelled"
+        })
+
+      assert %{"data" => %{"workshop" => payload}} = json_response(conn, 200)
+      assert payload["title"] == "Updated API Workshop"
+      assert payload["status"] == "planned"
+    end
+
+    test "allows published pricing edits only while there are no active registrations", %{
+      conn: conn
+    } do
+      workshop = WorkshopFixtures.workshop_fixture(status: "published", price_member: 1000.0)
+
+      conn =
+        conn
+        |> auth_conn("workshop_coordinator")
+        |> patch("/api/workshops/#{to_uuid(workshop.id)}", %{"priceMember" => 1200.0})
+
+      assert %{"data" => %{"workshop" => %{"priceMember" => 1200.0}}} = json_response(conn, 200)
+
+      %{auth_user_id: uid} = WorkshopFixtures.member_fixture()
+
+      WorkshopFixtures.registration_fixture(
+        workshop_id: workshop.id,
+        member_user_id: uid,
+        status: "confirmed"
+      )
+
+      conn =
+        build_conn()
+        |> auth_conn("workshop_coordinator")
+        |> patch("/api/workshops/#{to_uuid(workshop.id)}", %{"priceMember" => 1300.0})
+
+      assert %{
+               "errors" => %{
+                 "detail" => "Cannot change pricing when there are active registrations"
+               }
+             } =
+               json_response(conn, 422)
+    end
+
+    test "publishes planned Workshops and cancels published Workshops", %{conn: conn} do
+      workshop = WorkshopFixtures.workshop_fixture(status: "planned")
+
+      publish_conn =
+        conn
+        |> auth_conn("president")
+        |> post("/api/workshops/#{to_uuid(workshop.id)}/publish")
+
+      assert %{"data" => %{"workshop" => %{"status" => "published"}}} =
+               json_response(publish_conn, 200)
+
+      cancel_conn =
+        build_conn()
+        |> auth_conn("president")
+        |> post("/api/workshops/#{to_uuid(workshop.id)}/cancel")
+
+      assert %{"data" => %{"workshop" => %{"status" => "cancelled"}}} =
+               json_response(cancel_conn, 200)
+    end
+
+    test "deletes planned Workshops with 204 and rejects published deletes", %{conn: conn} do
+      planned = WorkshopFixtures.workshop_fixture(status: "planned")
+      published = WorkshopFixtures.workshop_fixture(status: "published")
+
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> delete("/api/workshops/#{to_uuid(planned.id)}")
+
+      assert response(conn, 204) == ""
+
+      conn =
+        build_conn()
+        |> auth_conn("admin")
+        |> delete("/api/workshops/#{to_uuid(published.id)}")
+
+      assert %{"errors" => %{"detail" => "Only planned workshops can be deleted"}} =
+               json_response(conn, 422)
+    end
+
+    test "returns 404 for unknown Workshop ids", %{conn: conn} do
+      missing_id = Ecto.UUID.generate()
+
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> post("/api/workshops/#{missing_id}/publish")
+
+      assert %{"errors" => %{"detail" => "Workshop not found"}} = json_response(conn, 404)
     end
   end
 
@@ -769,6 +1136,835 @@ defmodule DhcWeb.WorkshopsControllerTest do
     end
   end
 
+  # ── Attendance ──────────────────────────────────────────────────────────
+
+  describe "attendance" do
+    test "atomically marks active attendees after the Workshop has started", %{conn: conn} do
+      workshop =
+        WorkshopFixtures.workshop_fixture(
+          start_date: DateTime.utc_now() |> DateTime.add(-1, :hour) |> DateTime.truncate(:second),
+          end_date: DateTime.utc_now() |> DateTime.add(1, :hour) |> DateTime.truncate(:second)
+        )
+
+      %{auth_user_id: confirmed_user} = WorkshopFixtures.member_fixture()
+      %{auth_user_id: pending_user} = WorkshopFixtures.member_fixture()
+
+      confirmed =
+        WorkshopFixtures.registration_fixture(
+          workshop_id: workshop.id,
+          member_user_id: confirmed_user,
+          status: "confirmed"
+        )
+
+      pending =
+        WorkshopFixtures.registration_fixture(
+          workshop_id: workshop.id,
+          member_user_id: pending_user,
+          status: "pending"
+        )
+
+      conn =
+        conn
+        |> auth_conn("workshop_coordinator")
+        |> patch("/api/workshops/#{to_uuid(workshop.id)}/attendance", %{
+          "updates" => [
+            %{"registrationId" => to_uuid(confirmed.id), "attendanceStatus" => "attended"},
+            %{
+              "registrationId" => to_uuid(pending.id),
+              "attendanceStatus" => "excused",
+              "notes" => "Injured"
+            }
+          ]
+        })
+
+      assert %{"data" => %{"registrations" => registrations}} = json_response(conn, 200)
+
+      assert Enum.map(registrations, & &1["attendanceStatus"]) == ["attended", "excused"]
+      assert Enum.at(registrations, 1)["attendanceNotes"] == "Injured"
+      assert Enum.all?(registrations, &(&1["attendanceMarkedBy"] == @coordinator_user_id))
+    end
+
+    test "rejects the entire batch when it includes a non-active registration", %{conn: conn} do
+      workshop =
+        WorkshopFixtures.workshop_fixture(
+          start_date: DateTime.utc_now() |> DateTime.add(-1, :hour) |> DateTime.truncate(:second),
+          end_date: DateTime.utc_now() |> DateTime.add(1, :hour) |> DateTime.truncate(:second)
+        )
+
+      %{auth_user_id: active_user} = WorkshopFixtures.member_fixture()
+      %{auth_user_id: cancelled_user} = WorkshopFixtures.member_fixture()
+
+      active =
+        WorkshopFixtures.registration_fixture(
+          workshop_id: workshop.id,
+          member_user_id: active_user,
+          status: "confirmed"
+        )
+
+      cancelled =
+        WorkshopFixtures.registration_fixture(
+          workshop_id: workshop.id,
+          member_user_id: cancelled_user,
+          status: "cancelled"
+        )
+
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> patch("/api/workshops/#{to_uuid(workshop.id)}/attendance", %{
+          "updates" => [
+            %{"registrationId" => to_uuid(active.id), "attendanceStatus" => "attended"},
+            %{"registrationId" => to_uuid(cancelled.id), "attendanceStatus" => "noShow"}
+          ]
+        })
+
+      assert %{
+               "errors" => %{
+                 "detail" => "Attendance updates must target active Workshop attendees"
+               }
+             } =
+               json_response(conn, 422)
+
+      assert %{attendance_status: "pending"} = Repo.get(Dhc.Workshops.Registration, active.id)
+    end
+
+    test "rejects attendance updates before the Workshop has started", %{conn: conn} do
+      workshop =
+        WorkshopFixtures.workshop_fixture(
+          start_date: DateTime.utc_now() |> DateTime.add(1, :hour) |> DateTime.truncate(:second)
+        )
+
+      %{auth_user_id: user_id} = WorkshopFixtures.member_fixture()
+
+      registration =
+        WorkshopFixtures.registration_fixture(
+          workshop_id: workshop.id,
+          member_user_id: user_id,
+          status: "confirmed"
+        )
+
+      conn =
+        conn
+        |> auth_conn("president")
+        |> patch("/api/workshops/#{to_uuid(workshop.id)}/attendance", %{
+          "updates" => [
+            %{"registrationId" => to_uuid(registration.id), "attendanceStatus" => "attended"}
+          ]
+        })
+
+      assert %{
+               "errors" => %{
+                 "detail" => "Cannot update attendance before the Workshop has started"
+               }
+             } =
+               json_response(conn, 422)
+    end
+
+    test "requires a Workshop coordinator management role", %{conn: conn} do
+      workshop = WorkshopFixtures.workshop_fixture()
+
+      conn =
+        conn
+        |> auth_conn("beginners_coordinator")
+        |> patch("/api/workshops/#{to_uuid(workshop.id)}/attendance", %{"updates" => []})
+
+      assert %{"errors" => %{"detail" => "Insufficient role"}} = json_response(conn, 403)
+    end
+  end
+
+  # ── Member registration ───────────────────────────────────────────────
+
+  describe "member registration" do
+    test "creates a PaymentIntent after duplicate and capacity checks", %{conn: conn} do
+      workshop = insert_workshop(status: "published", max_capacity: 2)
+
+      conn =
+        conn
+        |> auth_conn("member")
+        |> post("/api/workshops/#{to_uuid(workshop.id)}/registration/payment-intent", %{
+          "amount" => 1000,
+          "currency" => "eur",
+          "customerId" => "cus_test"
+        })
+
+      assert %{
+               "data" => %{
+                 "clientSecret" => "pi_test_member_secret",
+                 "paymentIntentId" => "pi_test_member"
+               }
+             } = json_response(conn, 200)
+
+      assert {:create_payment_intent, body} =
+               Application.fetch_env!(:dhc, :last_workshop_stripe_request)
+
+      assert {:amount, 1000} in body
+      assert {:currency, "eur"} in body
+      assert {:customer, "cus_test"} in body
+      assert {"metadata[workshop_id]", to_uuid(workshop.id)} in body
+      assert {"metadata[user_id]", @member_user_id} in body
+    end
+
+    test "does not create a PaymentIntent when the Workshop is full", %{conn: conn} do
+      workshop = insert_workshop(status: "published", max_capacity: 1)
+
+      WorkshopFixtures.registration_fixture(
+        workshop_id: workshop.id,
+        member_user_id: @other_user_id,
+        status: "confirmed"
+      )
+
+      conn =
+        conn
+        |> auth_conn("member")
+        |> post("/api/workshops/#{to_uuid(workshop.id)}/registration/payment-intent", %{
+          "amount" => 1000
+        })
+
+      assert %{"errors" => %{"detail" => "Workshop is full"}} = json_response(conn, 409)
+      assert Application.get_env(:dhc, :last_workshop_stripe_request) == nil
+    end
+
+    test "completes a succeeded PaymentIntent into a confirmed registration", %{conn: conn} do
+      workshop = insert_workshop(status: "published", max_capacity: 2)
+      Application.put_env(:dhc, :workshop_stripe_workshop_id, to_uuid(workshop.id))
+
+      conn =
+        conn
+        |> auth_conn("member")
+        |> post("/api/workshops/#{to_uuid(workshop.id)}/registration/complete", %{
+          "paymentIntentId" => "pi_succeeded"
+        })
+
+      assert %{"data" => %{"registration" => registration}} = json_response(conn, 201)
+      assert registration["status"] == "confirmed"
+
+      assert %{status: "confirmed"} =
+               Dhc.Workshops.current_user_registration(to_uuid(workshop.id), @member_user_id)
+    end
+
+    test "rejects completion when PaymentIntent has not succeeded", %{conn: conn} do
+      workshop = insert_workshop(status: "published", max_capacity: 2)
+
+      Application.put_env(:dhc, :workshop_stripe_retrieve_response, {
+        :ok,
+        %{
+          "id" => "pi_processing",
+          "status" => "processing",
+          "amount" => 1000,
+          "currency" => "eur",
+          "metadata" => %{
+            "type" => "workshop_registration",
+            "actor_type" => "member",
+            "workshop_id" => to_uuid(workshop.id),
+            "user_id" => @member_user_id
+          }
+        }
+      })
+
+      conn =
+        conn
+        |> auth_conn("member")
+        |> post("/api/workshops/#{to_uuid(workshop.id)}/registration/complete", %{
+          "paymentIntentId" => "pi_processing"
+        })
+
+      assert %{"errors" => %{"detail" => "Payment not completed"}} = json_response(conn, 422)
+    end
+
+    test "cancels the current member active registration", %{conn: conn} do
+      workshop = insert_workshop(status: "published")
+
+      registration =
+        WorkshopFixtures.registration_fixture(
+          workshop_id: workshop.id,
+          member_user_id: @member_user_id,
+          status: "confirmed"
+        )
+
+      conn =
+        conn
+        |> auth_conn("member")
+        |> delete("/api/workshops/#{to_uuid(workshop.id)}/registration")
+
+      assert %{
+               "data" => %{
+                 "registration" => %{"id" => id, "status" => "cancelled"},
+                 "refundProcessed" => false
+               }
+             } = json_response(conn, 200)
+
+      assert id == to_uuid(registration.id)
+    end
+
+    test "cancellation refunds an eligible paid registration", %{conn: conn} do
+      workshop =
+        insert_workshop(
+          status: "published",
+          start_date: DateTime.utc_now() |> DateTime.add(30, :day),
+          refund_days: 3
+        )
+
+      registration =
+        WorkshopFixtures.registration_fixture(
+          workshop_id: workshop.id,
+          member_user_id: @member_user_id,
+          status: "confirmed",
+          amount_paid: 1000,
+          stripe_checkout_session_id: "pi_paid_registration"
+        )
+
+      conn =
+        conn
+        |> auth_conn("member")
+        |> delete("/api/workshops/#{to_uuid(workshop.id)}/registration")
+
+      assert %{
+               "data" => %{
+                 "registration" => %{"status" => "refunded"},
+                 "refundProcessed" => true
+               }
+             } = json_response(conn, 200)
+
+      assert [
+               payment_intent: "pi_paid_registration",
+               amount: 1000,
+               reason: "requested_by_customer"
+             ] =
+               Application.fetch_env!(:dhc, :last_workshop_stripe_refund_request)
+
+      assert [%{registration_id: refund_registration_id, status: "processing"}] =
+               Dhc.Workshops.list_workshop_refunds(to_uuid(workshop.id))
+
+      assert refund_registration_id == to_uuid(registration.id)
+    end
+
+    test "cancellation does not create a refund for a free registration", %{conn: conn} do
+      workshop =
+        insert_workshop(
+          status: "published",
+          start_date: DateTime.utc_now() |> DateTime.add(30, :day)
+        )
+
+      WorkshopFixtures.registration_fixture(
+        workshop_id: workshop.id,
+        member_user_id: @member_user_id,
+        status: "confirmed",
+        amount_paid: 0
+      )
+
+      conn =
+        conn
+        |> auth_conn("member")
+        |> delete("/api/workshops/#{to_uuid(workshop.id)}/registration")
+
+      assert %{
+               "data" => %{
+                 "registration" => %{"status" => "cancelled"},
+                 "refundProcessed" => false
+               }
+             } = json_response(conn, 200)
+
+      assert Dhc.Workshops.list_workshop_refunds(to_uuid(workshop.id)) == []
+    end
+  end
+
+  describe "external registration" do
+    test "treats an invalid Workshop id as an unavailable public gate", %{conn: conn} do
+      conn = get(conn, "/api/workshops/not-a-uuid/external-registration")
+
+      assert %{"data" => %{"canRegister" => false, "reason" => "NOT_FOUND"}} =
+               json_response(conn, 200)
+    end
+
+    test "returns the public registration gate state without authentication", %{conn: conn} do
+      workshop =
+        insert_workshop(
+          title: "Public Workshop",
+          status: "published",
+          is_public: true,
+          price_non_member: 2500.0,
+          max_capacity: 2
+        )
+
+      conn = get(conn, "/api/workshops/#{to_uuid(workshop.id)}/external-registration")
+
+      assert %{
+               "data" => %{
+                 "canRegister" => true,
+                 "workshop" => %{
+                   "id" => id,
+                   "title" => "Public Workshop",
+                   "priceNonMember" => 2500
+                 }
+               }
+             } = json_response(conn, 200)
+
+      assert id == to_uuid(workshop.id)
+    end
+
+    test "returns an ineligible gate reason when a Workshop is not public", %{conn: conn} do
+      workshop = insert_workshop(status: "published", is_public: false)
+
+      conn = get(conn, "/api/workshops/#{to_uuid(workshop.id)}/external-registration")
+
+      assert %{"data" => %{"canRegister" => false, "reason" => "NOT_PUBLIC"}} =
+               json_response(conn, 200)
+    end
+
+    test "creates an embedded Checkout Session using the server-side price", %{conn: conn} do
+      workshop =
+        insert_workshop(
+          title: "Public Workshop",
+          status: "published",
+          is_public: true,
+          price_non_member: 2500.0
+        )
+
+      return_url =
+        "https://example.com/workshops/#{to_uuid(workshop.id)}/confirmation?session_id={CHECKOUT_SESSION_ID}"
+
+      conn =
+        post(
+          conn,
+          "/api/workshops/#{to_uuid(workshop.id)}/external-registration/checkout-session",
+          %{"returnUrl" => return_url}
+        )
+
+      assert %{
+               "data" => %{
+                 "checkoutSessionId" => "cs_test_external",
+                 "checkoutClientSecret" => "cs_test_external_secret",
+                 "checkoutUrl" => nil
+               }
+             } = json_response(conn, 200)
+
+      body = Application.fetch_env!(:dhc, :last_workshop_checkout_request)
+      assert {:mode, "payment"} in body
+      assert {:ui_mode, "embedded"} in body
+      assert {:return_url, return_url} in body
+      assert Keyword.fetch!(body, :"line_items[0][price_data][unit_amount]") == 2500
+    end
+
+    test "completes paid Checkout into an external user and confirmed registration", %{conn: conn} do
+      workshop =
+        insert_workshop(
+          status: "published",
+          is_public: true,
+          price_non_member: 2500.0,
+          max_capacity: 2
+        )
+
+      Application.put_env(:dhc, :workshop_stripe_workshop_id, to_uuid(workshop.id))
+
+      conn =
+        post(
+          conn,
+          "/api/workshops/#{to_uuid(workshop.id)}/external-registration/complete",
+          %{"checkoutSessionId" => "cs_paid_external"}
+        )
+
+      assert %{"data" => %{"registration" => %{"id" => registration_id, "status" => "confirmed"}}} =
+               json_response(conn, 201)
+
+      repeat_conn =
+        post(
+          build_conn(),
+          "/api/workshops/#{to_uuid(workshop.id)}/external-registration/complete",
+          %{"checkoutSessionId" => "cs_paid_external"}
+        )
+
+      assert %{"data" => %{"registration" => %{"id" => ^registration_id}}} =
+               json_response(repeat_conn, 201)
+
+      assert [%{participant: participant}] =
+               Dhc.Workshops.list_workshop_attendees(to_uuid(workshop.id))
+
+      assert participant == %{
+               type: :external,
+               display_name: "Grace Hopper",
+               email: "guest@example.com"
+             }
+    end
+
+    test "upserts an existing external attendee by normalized email", %{conn: conn} do
+      workshop =
+        insert_workshop(
+          status: "published",
+          is_public: true,
+          price_non_member: 2500.0,
+          max_capacity: 2
+        )
+
+      WorkshopFixtures.external_user_fixture(
+        first_name: "Old",
+        last_name: "Name",
+        email: "guest@example.com"
+      )
+
+      Application.put_env(:dhc, :workshop_stripe_workshop_id, to_uuid(workshop.id))
+
+      conn =
+        post(
+          conn,
+          "/api/workshops/#{to_uuid(workshop.id)}/external-registration/complete",
+          %{"checkoutSessionId" => "cs_upsert_external"}
+        )
+
+      assert %{"data" => %{"registration" => %{"status" => "confirmed"}}} =
+               json_response(conn, 201)
+
+      assert [%{participant: %{display_name: "Grace Hopper", email: "guest@example.com"}}] =
+               Dhc.Workshops.list_workshop_attendees(to_uuid(workshop.id))
+    end
+
+    test "refunds a paid Checkout Session when capacity is lost before completion", %{conn: conn} do
+      workshop =
+        insert_workshop(
+          status: "published",
+          is_public: true,
+          price_non_member: 2500.0,
+          max_capacity: 1
+        )
+
+      Application.put_env(:dhc, :workshop_stripe_workshop_id, to_uuid(workshop.id))
+
+      WorkshopFixtures.registration_fixture(
+        workshop_id: workshop.id,
+        member_user_id: @other_user_id,
+        status: "confirmed"
+      )
+
+      conn =
+        post(
+          conn,
+          "/api/workshops/#{to_uuid(workshop.id)}/external-registration/complete",
+          %{"checkoutSessionId" => "cs_capacity_race"}
+        )
+
+      assert %{"errors" => %{"detail" => detail}} = json_response(conn, 409)
+      assert detail =~ "refunded"
+
+      assert [payment_intent: "pi_external", reason: "duplicate"] =
+               Application.fetch_env!(:dhc, :last_workshop_stripe_refund_request)
+    end
+
+    test "returns payment failure when Stripe cannot create Checkout", %{conn: conn} do
+      workshop =
+        insert_workshop(status: "published", is_public: true, price_non_member: 2500.0)
+
+      Application.put_env(:dhc, :workshop_stripe_checkout_create_response, {:error, :timeout})
+
+      conn =
+        post(
+          conn,
+          "/api/workshops/#{to_uuid(workshop.id)}/external-registration/checkout-session",
+          %{
+            "returnUrl" => "https://example.com/confirmation?session_id={CHECKOUT_SESSION_ID}"
+          }
+        )
+
+      assert %{"errors" => %{"detail" => "Payment provider request failed"}} =
+               json_response(conn, 502)
+    end
+  end
+
+  describe "refunds" do
+    test "lists Workshop refunds through the dedicated coordinator endpoint", %{conn: conn} do
+      workshop = insert_workshop(status: "published")
+
+      registration =
+        WorkshopFixtures.registration_fixture(
+          workshop_id: workshop.id,
+          member_user_id: @other_user_id,
+          status: "refunded"
+        )
+
+      WorkshopFixtures.refund_fixture(
+        registration_id: registration.id,
+        refund_reason: "Dedicated read"
+      )
+
+      conn =
+        conn
+        |> auth_conn("workshop_coordinator")
+        |> get("/api/workshops/#{to_uuid(workshop.id)}/refunds")
+
+      assert %{
+               "data" => %{
+                 "refunds" => [
+                   %{"registrationId" => registration_id, "refundReason" => "Dedicated read"}
+                 ]
+               }
+             } = json_response(conn, 200)
+
+      assert registration_id == to_uuid(registration.id)
+    end
+
+    test "coordinator explicitly refunds an eligible registration", %{conn: conn} do
+      workshop =
+        insert_workshop(
+          status: "published",
+          start_date: DateTime.utc_now() |> DateTime.add(30, :day),
+          refund_days: 3
+        )
+
+      registration =
+        WorkshopFixtures.registration_fixture(
+          workshop_id: workshop.id,
+          member_user_id: @other_user_id,
+          status: "confirmed",
+          amount_paid: 1000,
+          stripe_checkout_session_id: "pi_explicit_refund"
+        )
+
+      conn =
+        conn
+        |> auth_conn("workshop_coordinator")
+        |> post(
+          "/api/workshops/#{to_uuid(workshop.id)}/registrations/#{to_uuid(registration.id)}/refund",
+          %{"reason" => "Unable to attend"}
+        )
+
+      assert %{
+               "data" => %{
+                 "refund" => %{
+                   "registrationId" => registration_id,
+                   "refundReason" => "Unable to attend",
+                   "status" => "processing",
+                   "stripeRefundId" => "re_test_member"
+                 }
+               }
+             } = json_response(conn, 201)
+
+      assert registration_id == to_uuid(registration.id)
+    end
+
+    test "rejects an explicit refund after the deadline", %{conn: conn} do
+      workshop =
+        insert_workshop(
+          status: "published",
+          start_date: DateTime.utc_now() |> DateTime.add(1, :day),
+          refund_days: 3
+        )
+
+      registration =
+        WorkshopFixtures.registration_fixture(
+          workshop_id: workshop.id,
+          member_user_id: @other_user_id,
+          status: "confirmed",
+          stripe_checkout_session_id: "pi_late_refund"
+        )
+
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> post(
+          "/api/workshops/#{to_uuid(workshop.id)}/registrations/#{to_uuid(registration.id)}/refund",
+          %{"reason" => "Too late"}
+        )
+
+      assert %{"errors" => %{"detail" => "Refund deadline has passed"}} =
+               json_response(conn, 422)
+    end
+
+    test "keeps a failed refund attempt traceable when Stripe fails", %{conn: conn} do
+      workshop =
+        insert_workshop(
+          status: "published",
+          start_date: DateTime.utc_now() |> DateTime.add(30, :day)
+        )
+
+      registration =
+        WorkshopFixtures.registration_fixture(
+          workshop_id: workshop.id,
+          member_user_id: @other_user_id,
+          status: "confirmed",
+          stripe_checkout_session_id: "pi_stripe_failure"
+        )
+
+      Application.put_env(:dhc, :workshop_stripe_refund_response, {:error, :provider_down})
+
+      conn =
+        conn
+        |> auth_conn("president")
+        |> post(
+          "/api/workshops/#{to_uuid(workshop.id)}/registrations/#{to_uuid(registration.id)}/refund",
+          %{"reason" => "Requested"}
+        )
+
+      assert %{"errors" => %{"detail" => "Refund provider request failed"}} =
+               json_response(conn, 502)
+
+      assert [%{status: "failed"}] =
+               Dhc.Workshops.list_workshop_refunds(to_uuid(workshop.id))
+
+      assert %{status: "confirmed"} = Repo.get(Dhc.Workshops.Registration, registration.id)
+    end
+
+    test "cancelling a Workshop creates refund attempts for active paid registrations", %{
+      conn: conn
+    } do
+      workshop = insert_workshop(status: "published")
+
+      registration =
+        WorkshopFixtures.registration_fixture(
+          workshop_id: workshop.id,
+          member_user_id: @other_user_id,
+          status: "confirmed",
+          amount_paid: 1000,
+          stripe_checkout_session_id: "pi_cancelled_workshop"
+        )
+
+      conn =
+        conn
+        |> auth_conn("workshop_coordinator")
+        |> post("/api/workshops/#{to_uuid(workshop.id)}/cancel")
+
+      assert %{"data" => %{"workshop" => %{"status" => "cancelled"}}} =
+               json_response(conn, 200)
+
+      assert [%{registration_id: registration_id, status: "processing"}] =
+               Dhc.Workshops.list_workshop_refunds(to_uuid(workshop.id))
+
+      assert registration_id == to_uuid(registration.id)
+    end
+
+    test "cancelling a Workshop does not duplicate an existing registration refund", %{
+      conn: conn
+    } do
+      workshop = insert_workshop(status: "published")
+
+      registration =
+        WorkshopFixtures.registration_fixture(
+          workshop_id: workshop.id,
+          member_user_id: @other_user_id,
+          status: "confirmed",
+          amount_paid: 1000,
+          stripe_checkout_session_id: "pi_already_refunded"
+        )
+
+      existing_refund =
+        WorkshopFixtures.refund_fixture(
+          registration_id: registration.id,
+          refund_reason: "Already requested"
+        )
+
+      conn =
+        conn
+        |> auth_conn("workshop_coordinator")
+        |> post("/api/workshops/#{to_uuid(workshop.id)}/cancel")
+
+      assert %{"data" => %{"workshop" => %{"status" => "cancelled"}}} =
+               json_response(conn, 200)
+
+      assert [%{id: refund_id, refund_reason: "Already requested"}] =
+               Dhc.Workshops.list_workshop_refunds(to_uuid(workshop.id))
+
+      assert refund_id == to_uuid(existing_refund.id)
+    end
+  end
+
+  describe "Phoenix-owned Workshop workflow" do
+    test "runs management, interest, registration, attendance, cancellation, and refund through the API" do
+      start_date =
+        DateTime.utc_now()
+        |> DateTime.add(-1, :hour)
+        |> DateTime.truncate(:second)
+
+      end_date = DateTime.add(start_date, 2, :hour)
+
+      create_conn =
+        build_conn()
+        |> auth_conn("workshop_coordinator")
+        |> post(
+          "/api/workshops",
+          valid_workshop_payload(%{
+            "title" => "Phoenix-owned lifecycle",
+            "startDate" => DateTime.to_iso8601(start_date),
+            "endDate" => DateTime.to_iso8601(end_date),
+            "maxCapacity" => 2
+          })
+        )
+
+      assert %{"data" => %{"workshop" => %{"id" => workshop_id, "status" => "planned"}}} =
+               json_response(create_conn, 201)
+
+      interest_conn =
+        build_conn()
+        |> auth_conn("member")
+        |> post("/api/workshops/#{workshop_id}/interest")
+
+      assert %{"data" => %{"interested" => true}} = json_response(interest_conn, 200)
+
+      publish_conn =
+        build_conn()
+        |> auth_conn("workshop_coordinator")
+        |> post("/api/workshops/#{workshop_id}/publish")
+
+      assert %{"data" => %{"workshop" => %{"status" => "published"}}} =
+               json_response(publish_conn, 200)
+
+      Application.put_env(:dhc, :workshop_stripe_workshop_id, workshop_id)
+
+      payment_conn =
+        build_conn()
+        |> auth_conn("member")
+        |> post("/api/workshops/#{workshop_id}/registration/payment-intent", %{
+          "amount" => 1000,
+          "currency" => "eur"
+        })
+
+      assert %{"data" => %{"paymentIntentId" => payment_intent_id}} =
+               json_response(payment_conn, 200)
+
+      registration_conn =
+        build_conn()
+        |> auth_conn("member")
+        |> post("/api/workshops/#{workshop_id}/registration/complete", %{
+          "paymentIntentId" => payment_intent_id
+        })
+
+      assert %{"data" => %{"registration" => %{"id" => registration_id}}} =
+               json_response(registration_conn, 201)
+
+      attendance_conn =
+        build_conn()
+        |> auth_conn("workshop_coordinator")
+        |> patch("/api/workshops/#{workshop_id}/attendance", %{
+          "updates" => [
+            %{"registrationId" => registration_id, "attendanceStatus" => "attended"}
+          ]
+        })
+
+      assert %{"data" => %{"registrations" => [%{"attendanceStatus" => "attended"}]}} =
+               json_response(attendance_conn, 200)
+
+      cancel_conn =
+        build_conn()
+        |> auth_conn("workshop_coordinator")
+        |> post("/api/workshops/#{workshop_id}/cancel")
+
+      assert %{"data" => %{"workshop" => %{"status" => "cancelled"}}} =
+               json_response(cancel_conn, 200)
+
+      refunds_conn =
+        build_conn()
+        |> auth_conn("workshop_coordinator")
+        |> get("/api/workshops/#{workshop_id}/refunds")
+
+      assert %{
+               "data" => %{
+                 "refunds" => [
+                   %{
+                     "registrationId" => ^registration_id,
+                     "status" => "processing"
+                   }
+                 ]
+               }
+             } = json_response(refunds_conn, 200)
+    end
+  end
+
   defp insert_workshop(attrs) do
     attrs = Enum.into(attrs, %{})
 
@@ -781,6 +1977,24 @@ defmodule DhcWeb.WorkshopsControllerTest do
     |> Map.put_new(:end_date, DateTime.add(start_date, 2, :hour))
     |> Map.put(:start_date, start_date)
     |> WorkshopFixtures.workshop_fixture()
+  end
+
+  defp valid_workshop_payload(overrides \\ %{}) do
+    %{
+      "title" => "API Workshop",
+      "description" => "Created through Phoenix",
+      "location" => "Main Hall",
+      "startDate" => "2026-09-01T10:00:00Z",
+      "endDate" => "2026-09-01T12:00:00Z",
+      "maxCapacity" => 20,
+      "priceMember" => 1000.0,
+      "priceNonMember" => 2000.0,
+      "isPublic" => false,
+      "refundDays" => 3,
+      "announceDiscord" => false,
+      "announceEmail" => false
+    }
+    |> Map.merge(overrides)
   end
 
   defp insert_auth_user_and_profile(user_id, first_name, last_name) do

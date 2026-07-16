@@ -1,22 +1,46 @@
 import { command, query, getRequestEvent } from "$app/server";
-import { error } from "@sveltejs/kit";
+import {
+	workshopsCancel,
+	workshopsDelete,
+	workshopsPublish,
+	type ApiErrorResponse,
+} from "@dhc/api-client";
 import * as v from "valibot";
 import { authorize } from "$lib/server/auth";
-import { WORKSHOP_ROLES } from "$lib/server/roles";
+import { apiClientOptions } from "$lib/server/api-client";
 import {
-	createWorkshopService,
-	createAttendanceService,
-	createRefundService,
-} from "../server/services/workshops";
-import { executeWithRLS, getKyselyClient } from "../server/services/shared";
+	submitWorkshopAttendance,
+	type WorkshopAttendanceUpdate,
+} from "$lib/server/api/workshop-attendance";
+import {
+	listWorkshopRefunds,
+	submitWorkshopRefund,
+} from "$lib/server/api/workshop-refunds";
+import { WORKSHOP_ROLES } from "$lib/server/roles";
+
+function apiErrorMessage(error: unknown, fallback: string) {
+	return (error as ApiErrorResponse | undefined)?.errors?.detail ?? fallback;
+}
 
 export const deleteWorkshop = command(
 	v.pipe(v.string(), v.uuid()),
 	async (workshopId) => {
-		const { locals, platform } = getRequestEvent();
+		const { locals } = getRequestEvent();
 		const session = await authorize(locals, WORKSHOP_ROLES);
-		const service = createWorkshopService(platform!, session);
-		await service.delete(workshopId);
+		const response = await workshopsDelete({
+			...apiClientOptions(session),
+			path: { workshopId },
+		});
+
+		if (response.error) {
+			throw new Error(
+				apiErrorMessage(
+					response.error,
+					"Failed to delete workshop. Please try again later.",
+				),
+			);
+		}
+
 		return { success: true as const };
 	},
 );
@@ -24,10 +48,23 @@ export const deleteWorkshop = command(
 export const publishWorkshop = command(
 	v.pipe(v.string(), v.uuid()),
 	async (workshopId) => {
-		const { locals, platform } = getRequestEvent();
+		const { locals } = getRequestEvent();
 		const session = await authorize(locals, WORKSHOP_ROLES);
-		const service = createWorkshopService(platform!, session);
-		const workshop = await service.publish(workshopId);
+		const response = await workshopsPublish({
+			...apiClientOptions(session),
+			path: { workshopId },
+		});
+
+		if (response.error) {
+			throw new Error(
+				apiErrorMessage(
+					response.error,
+					"Failed to publish workshop. Please try again later.",
+				),
+			);
+		}
+
+		const workshop = response.data.data.workshop;
 		return { success: true as const, workshop };
 	},
 );
@@ -35,22 +72,24 @@ export const publishWorkshop = command(
 export const cancelWorkshop = command(
 	v.pipe(v.string(), v.uuid()),
 	async (workshopId) => {
-		const { locals, platform } = getRequestEvent();
+		const { locals } = getRequestEvent();
 		const session = await authorize(locals, WORKSHOP_ROLES);
-		const service = createWorkshopService(platform!, session);
-		const workshop = await service.cancel(workshopId);
-		return { success: true as const, workshop };
-	},
-);
+		const response = await workshopsCancel({
+			...apiClientOptions(session),
+			path: { workshopId },
+		});
 
-export const getWorkshopAttendance = query(
-	v.pipe(v.string(), v.uuid()),
-	async (workshopId) => {
-		const { locals, platform } = getRequestEvent();
-		const session = await authorize(locals, WORKSHOP_ROLES);
-		const service = createAttendanceService(platform!, session);
-		const attendance = await service.getWorkshopAttendance(workshopId);
-		return { success: true as const, attendance };
+		if (response.error) {
+			throw new Error(
+				apiErrorMessage(
+					response.error,
+					"Failed to cancel workshop. Please try again later.",
+				),
+			);
+		}
+
+		const workshop = response.data.data.workshop;
+		return { success: true as const, workshop };
 	},
 );
 
@@ -74,13 +113,21 @@ export const updateAttendance = command(
 		),
 	}),
 	async ({ workshopId, attendance_updates }) => {
-		const { locals, platform } = getRequestEvent();
+		const { locals } = getRequestEvent();
 		const session = await authorize(locals, WORKSHOP_ROLES);
-		const service = createAttendanceService(platform!, session);
-		const registrations = await service.updateAttendance(
+		const registrations = await submitWorkshopAttendance(session, {
 			workshopId,
-			attendance_updates,
-		);
+			updates: attendance_updates.map(
+				(update): WorkshopAttendanceUpdate => ({
+					registrationId: update.registration_id,
+					attendanceStatus:
+						update.attendance_status === "no_show"
+							? "noShow"
+							: update.attendance_status,
+					notes: update.notes,
+				}),
+			),
+		});
 		return { success: true as const, registrations };
 	},
 );
@@ -88,16 +135,16 @@ export const updateAttendance = command(
 export const getWorkshopRefunds = query(
 	v.pipe(v.string(), v.uuid()),
 	async (workshopId) => {
-		const { locals, platform } = getRequestEvent();
+		const { locals } = getRequestEvent();
 		const session = await authorize(locals, WORKSHOP_ROLES);
-		const service = createRefundService(platform!, session);
-		const refunds = await service.getWorkshopRefunds(workshopId);
+		const refunds = await listWorkshopRefunds(session, workshopId);
 		return { success: true as const, refunds };
 	},
 );
 
 export const processRefund = command(
 	v.object({
+		workshopId: v.pipe(v.string(), v.uuid()),
 		registration_id: v.pipe(v.string(), v.uuid()),
 		reason: v.pipe(
 			v.string(),
@@ -105,43 +152,14 @@ export const processRefund = command(
 			v.maxLength(500, "Reason must be less than 500 characters"),
 		),
 	}),
-	async ({ registration_id, reason }) => {
-		const { locals, platform } = getRequestEvent();
-		const { session } = await locals.safeGetSession();
-
-		if (!session) {
-			error(401, "Authentication required");
-		}
-
-		const kysely = getKyselyClient(platform!.env.HYPERDRIVE);
-		const registration = await executeWithRLS(
-			kysely,
-			{ claims: session },
-			async (trx) => {
-				return await trx
-					.selectFrom("club_activity_registrations")
-					.select(["member_user_id"])
-					.where("id", "=", registration_id)
-					.executeTakeFirst();
-			},
-		);
-
-		if (!registration) {
-			error(404, "Registration not found");
-		}
-
-		const isOwner = registration.member_user_id === session.user.id;
-
-		if (!isOwner) {
-			try {
-				await authorize(locals, WORKSHOP_ROLES);
-			} catch {
-				error(403, "You can only request refunds for your own registrations");
-			}
-		}
-
-		const service = createRefundService(platform!, session);
-		const refund = await service.processRefund(registration_id, reason);
+	async ({ workshopId, registration_id, reason }) => {
+		const { locals } = getRequestEvent();
+		const session = await authorize(locals, WORKSHOP_ROLES);
+		const refund = await submitWorkshopRefund(session, {
+			workshopId,
+			registrationId: registration_id,
+			reason,
+		});
 		return { success: true as const, refund };
 	},
 );

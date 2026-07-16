@@ -223,22 +223,11 @@ enabled = false
 # tenant = "my-auth0-tenant"
 # tenant_region = "us"
 
-[functions.stripe-webhooks]
-verify_jwt = false
-
 # Use AWS Cognito (Amplify) as a third-party provider alongside Supabase Auth.re
 [auth.third_party.aws_cognito]
 enabled = false
 # user_pool_id = "my-user-pool-id"
 # user_pool_region = "us-east-1"
-
-[edge_runtime]
-enabled = true
-deno_version = 2
-# Configure one of the supported request policies: `oneshot`, `per_worker`.
-# Use `oneshot` for hot reload, or `per_worker` for load testing.
-policy = "per_worker"
-inspector_port = 8083
 
 [analytics]
 enabled = true

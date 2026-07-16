@@ -1,5 +1,4 @@
 <script lang="ts">
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Calendar, DayGrid, TimeGrid, Interaction } from "@event-calendar/core";
 import "@event-calendar/core/index.css";
 import * as Dialog from "$lib/components/ui/dialog";
@@ -137,14 +136,23 @@ const options = $derived({
 	},
 	height: "600px",
 	eventClick: handleEventClick,
-	eventContent: (info: any) => {
-		const workshop = info.event.extendedProps?.workshop;
-		const interestCount = info.event.extendedProps?.interestCount || 0;
-		const registrationCount = info.event.extendedProps?.registrationCount || 0;
+	eventContent: (info: Calendar.EventContentInfo) => {
+		const workshop = info.event.extendedProps?.workshop as
+			| WorkshopCalendarItem
+			| undefined;
+		const interestCount = Number(info.event.extendedProps?.interestCount) || 0;
+		const registrationCount =
+			Number(info.event.extendedProps?.registrationCount) || 0;
+		const publicMarker = workshop?.isPublic
+			? '<span class="workshop-public-marker" aria-label="Public workshop" title="Public workshop">Public</span>'
+			: "";
 
 		if (!workshop) {
+			const eventTitle =
+				typeof info.event.title === "string" ? info.event.title : "Workshop";
+
 			return {
-				html: `<div class="workshop-event p-1">${info.event.title}</div>`,
+				html: `<div class="workshop-event p-1">${eventTitle}</div>`,
 			};
 		}
 
@@ -153,6 +161,7 @@ const options = $derived({
 					<div class="workshop-event p-2 cursor-pointer hover:opacity-90 transition-opacity">
 						<div class="workshop-event-title font-medium text-sm flex items-center gap-1">
 							<span class="truncate">${workshop.title}</span>
+							${publicMarker}
 						</div>
 						<div class="workshop-event-info text-xs opacity-90 mt-1">
 							<div class="flex items-center justify-between">
@@ -203,7 +212,7 @@ const options = $derived({
     </div>
 
     <!-- Legend -->
-    <div class="flex items-center gap-6 mt-4 text-sm text-muted-foreground">
+    <div class="flex flex-wrap items-center gap-x-6 gap-y-2 mt-4 text-sm text-muted-foreground">
         <div class="flex items-center gap-2">
             <div class="w-4 h-4 bg-primary rounded-sm border border-primary/20"></div>
             <span>Planned</span>
@@ -216,6 +225,10 @@ const options = $derived({
             <div class="w-4 h-4 bg-destructive rounded-sm border border-destructive/20"></div>
             <span>Cancelled</span>
         </div>
+		<div class="flex items-center gap-2">
+			<span class="workshop-public-marker">Public</span>
+			<span>Open to non-members</span>
+		</div>
     </div>
 </div>
 
@@ -246,6 +259,20 @@ const options = $derived({
     :global(.workshop-event-title) {
         line-height: 1.2;
     }
+
+	:global(.workshop-public-marker) {
+		display: inline-flex;
+		flex: none;
+		align-items: center;
+		border: 1px solid currentColor;
+		border-radius: 9999px;
+		padding: 0.1rem 0.35rem;
+		font-size: 0.625rem;
+		font-weight: 700;
+		line-height: 1;
+		letter-spacing: 0.025em;
+		text-transform: uppercase;
+	}
 
     :global(.workshop-event-info) {
         line-height: 1.1;

@@ -52,6 +52,21 @@ defmodule Dhc.Waitlist do
   end
 
   @doc """
+  Sets whether the public waitlist accepts registrations.
+  """
+  @spec set_open(boolean()) :: {:ok, %{is_open: boolean()}} | {:error, :not_found}
+  def set_open(open?) when is_boolean(open?) do
+    value = if open?, do: "true", else: "false"
+
+    from(s in "settings", where: field(s, :key) == ^@waitlist_open_key)
+    |> Repo.update_all(set: [value: value])
+    |> case do
+      {1, _rows} -> {:ok, %{is_open: open?}}
+      {0, _rows} -> {:error, :not_found}
+    end
+  end
+
+  @doc """
   Returns domain-shaped waitlist analytics for the dashboard.
 
   The queries intentionally read the `waitlist` and `user_profiles` storage

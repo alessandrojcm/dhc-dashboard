@@ -12,32 +12,21 @@ import * as Select from "$lib/components/ui/select";
 import { Content, List, Root, Trigger } from "$lib/components/ui/tabs/index.js";
 import WaitlistTable from "./waitlist-table.svelte";
 import Analytics from "./workshop-analytics.svelte";
+import { waitlistUpdateStatusMutation } from "@dhc/api-client";
 
 const { data } = $props();
 let dialogOpen = $state(false);
 let value = $derived(page.url.searchParams.get("tab") || "dashboard");
 
 const toggleWaitlistMutation = createMutation(() => ({
-	mutationFn: async () => {
-		const response = await fetch("/dashboard/beginners-workshop", {
-			method: "POST",
-		});
-		const result = (await response.json()) as {
-			success: boolean;
-			error?: string;
-		};
-		if (!result.success) {
-			throw new Error(result.error || "Failed to toggle waitlist");
-		}
-		return result;
-	},
+	...waitlistUpdateStatusMutation(),
 	onSuccess: () => {
 		invalidate("wailist:status");
 		toast.success("Waitlist status updated", { position: "top-center" });
 		dialogOpen = false;
 	},
 	onError: (error) => {
-		toast.error(error.message || "Error updating waitlist status", {
+		toast.error(error.errors?.detail ?? "Error updating waitlist status", {
 			position: "top-center",
 		});
 		dialogOpen = false;
@@ -94,7 +83,7 @@ let viewLabel = $derived(
 					</AlertDialog.Header>
 					<AlertDialog.Footer>
 						<AlertDialog.Cancel onclick={() => (dialogOpen = false)}>Cancel</AlertDialog.Cancel>
-						<AlertDialog.Action onclick={() => toggleWaitlistMutation.mutate()} data-testid="action"
+						<AlertDialog.Action onclick={() => toggleWaitlistMutation.mutate({ body: { isOpen: !isOpen } })} data-testid="action"
 							>{isOpen ? 'Close' : 'Open'}</AlertDialog.Action
 						>
 					</AlertDialog.Footer>

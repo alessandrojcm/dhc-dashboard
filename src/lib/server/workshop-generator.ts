@@ -6,7 +6,7 @@ import { env } from "$env/dynamic/private";
 import {
 	BaseWorkshopSchema,
 	CreateWorkshopSchema,
-} from "$lib/server/services/workshops";
+} from "$lib/schemas/workshop";
 
 export const LLMCreateWrokshopSchema = v.object({
 	...v.omit(BaseWorkshopSchema, ["workshop_date", "workshop_end_date"]).entries,

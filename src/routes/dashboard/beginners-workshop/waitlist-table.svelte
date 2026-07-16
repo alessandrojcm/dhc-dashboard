@@ -1,13 +1,16 @@
 <script lang="ts">
 import {
 	invitationsCreateMutation,
+	invitationsResendMutation,
 	type InvitationsCreateData,
 	type Options,
 	type WaitlistEntriesSortField,
+	type WaitlistEntriesResponse2,
 	type WaitlistEntry,
 	type WaitlistStatus,
-	waitlistEntries,
-	waitlistUpdateEntry,
+	waitlistEntriesOptions,
+	waitlistEntriesQueryKey,
+	waitlistUpdateEntryMutation,
 } from "@dhc/api-client";
 import {
 	createMutation,
@@ -49,7 +52,6 @@ import * as Select from "$lib/components/ui/select";
 import * as Table from "$lib/components/ui/table/index.js";
 import SortHeader from "$lib/components/ui/table/sort-header.svelte";
 import ActionButtons from "./actions-buttons.svelte";
-import { resendInvitations } from "./admin.remote";
 import WaitlistStatusSelect from "./waitlist-status-select.svelte";
 
 type WaitlistTableRow = {
@@ -155,33 +157,6 @@ const waitlistQueryParams = $derived<WaitlistTableQueryParams>({
 	cursor,
 });
 
-async function loadWaitlistTablePage(
-	params: WaitlistTableQueryParams,
-): Promise<WaitlistTablePage> {
-	const response = await waitlistEntries({
-		query: {
-			limit: params.pageSize,
-			cursor: params.cursor ?? undefined,
-			q: params.searchQuery || undefined,
-			sort: waitlistEntrySortMap[params.sort],
-			direction: params.direction,
-		},
-	});
-
-	if (response.error) {
-		throw new Error("Failed to load waitlist entries. Please try again later.");
-	}
-
-	const result = response.data.data;
-
-	return {
-		data: result.entries.map(toTableRow),
-		count: result.totalCount,
-		nextCursor: result.nextCursor,
-		previousCursor: result.previousCursor,
-	};
-}
-
 function toTableRow(entry: WaitlistEntry): WaitlistTableRow {
 	return {
 		id: entry.id,
@@ -204,13 +179,29 @@ function toTableRow(entry: WaitlistEntry): WaitlistTableRow {
 	};
 }
 
-const waitlistQueryKey = $derived(["waitlist", waitlistQueryParams]);
-const waitlistQuery = createQuery<WaitlistTablePage>(() => ({
-	queryKey: waitlistQueryKey,
+const waitlistRequestOptions = $derived({
+	query: {
+		limit: waitlistQueryParams.pageSize,
+		cursor: waitlistQueryParams.cursor ?? undefined,
+		q: waitlistQueryParams.searchQuery || undefined,
+		sort: waitlistEntrySortMap[waitlistQueryParams.sort],
+		direction: waitlistQueryParams.direction,
+	},
+});
+const waitlistQueryKey = $derived(
+	waitlistEntriesQueryKey(waitlistRequestOptions),
+);
+const waitlistQuery = createQuery(() => ({
+	...waitlistEntriesOptions(waitlistRequestOptions),
 	placeholderData: keepPreviousData,
-	queryFn: ({ signal, queryKey }) => {
-		signal.throwIfAborted();
-		return loadWaitlistTablePage(queryKey[1] as WaitlistTableQueryParams);
+	select: (response): WaitlistTablePage => {
+		const result = response.data;
+		return {
+			data: result.entries.map(toTableRow),
+			count: result.totalCount,
+			nextCursor: result.nextCursor,
+			previousCursor: result.previousCursor,
+		};
 	},
 }));
 const queryClient = useQueryClient();
@@ -228,13 +219,21 @@ const inviteMember = createMutation(() => ({
 		const oldData = queryClient.getQueryData(waitlistQueryKey);
 		queryClient.setQueryData(
 			waitlistQueryKey,
-			(oldData: Awaited<(typeof waitlistQuery)["data"]>) => ({
-				...oldData,
-				data: oldData?.data?.map((d) => ({
-					...d,
-					...(d.id && waitlistIds.includes(d.id) ? { status: "invited" } : {}),
-				})),
-			}),
+			(oldData: WaitlistEntriesResponse2 | undefined) => {
+				if (!oldData) return oldData;
+				return {
+					...oldData,
+					data: {
+						...oldData.data,
+						entries: oldData.data.entries.map((entry) => ({
+							...entry,
+							...(waitlistIds.includes(entry.id)
+								? { status: "invited" as const }
+								: {}),
+						})),
+					},
+				};
+			},
 		);
 		return { oldData };
 	},
@@ -253,53 +252,47 @@ function inviteWaitlistMembers(waitlistIds: string[]) {
 }
 
 const resendInvitationLink = createMutation(() => ({
-	mutationFn: async (emails: string[]) => resendInvitations({ emails }),
-	onMutate: (emails) => {
+	...invitationsResendMutation(),
+	onMutate: (options) => {
+		const emails = options.body.emails;
 		const oldData = queryClient.getQueryData(waitlistQueryKey);
 		queryClient.setQueryData(
 			waitlistQueryKey,
-			(oldData: Awaited<(typeof waitlistQuery)["data"]>) => ({
-				...oldData,
-				data: oldData?.data?.map((d) => ({
-					...d,
-					...(d.email && emails.includes(d.email) ? { status: "invited" } : {}),
-				})),
-			}),
+			(oldData: WaitlistEntriesResponse2 | undefined) => {
+				if (!oldData) return oldData;
+				return {
+					...oldData,
+					data: {
+						...oldData.data,
+						entries: oldData.data.entries.map((entry) => ({
+							...entry,
+							...(emails.includes(entry.email)
+								? { status: "invited" as const }
+								: {}),
+						})),
+					},
+				};
+			},
 		);
 		return { oldData };
 	},
 	onSuccess: () => {
 		toast.success("Invitation link resent.");
 	},
-	onError: (oldData) => {
+	onError: (_error, _options, context) => {
 		toast.error("Something has gone wrong inviting members.");
-		queryClient.setQueryData(waitlistQueryKey, oldData);
+		queryClient.setQueryData(waitlistQueryKey, context?.oldData);
 	},
 }));
 
-const updateWaitlistEntry = createMutation<
-	WaitlistEntry,
-	Error,
-	{ id: string; status?: WaitlistStatus; adminNotes?: string | null }
->(() => ({
-	mutationFn: async ({ id, ...body }) => {
-		const response = await waitlistUpdateEntry({
-			path: { id },
-			body,
-		});
-
-		if (response.error) {
-			throw new Error("Failed to update waitlist entry.");
-		}
-
-		return response.data.data;
-	},
+const updateWaitlistEntry = createMutation(() => ({
+	...waitlistUpdateEntryMutation(),
 	onSuccess: () => {
 		toast.success("Waitlist entry updated.");
 		waitlistQuery.refetch();
 	},
-	onError: (error) => {
-		toast.error(error.message || "Failed to update waitlist entry.");
+	onError: () => {
+		toast.error("Failed to update waitlist entry.");
 	},
 	onSettled: () => {
 		waitlistQuery.refetch();
@@ -411,13 +404,15 @@ const tableOptions = $state<TableOptions<WaitlistTableRow>>({
 						if (row.original.status !== "invited") {
 							inviteWaitlistMembers([row.original.id!]);
 						} else {
-							resendInvitationLink.mutate([row.original.email!]);
+							resendInvitationLink.mutate({
+								body: { emails: [row.original.email!] },
+							});
 						}
 					},
 					onEdit(newValue) {
 						updateWaitlistEntry.mutate({
-							id: row.original.id,
-							adminNotes: newValue,
+							path: { id: row.original.id },
+							body: { adminNotes: newValue },
 						});
 					},
 				});
@@ -501,7 +496,10 @@ const tableOptions = $state<TableOptions<WaitlistTableRow>>({
 					disabled: updateWaitlistEntry.isPending,
 					onChange: (status: WaitlistStatus) => {
 						if (status === row.original.status) return;
-						updateWaitlistEntry.mutate({ id: row.original.id, status });
+						updateWaitlistEntry.mutate({
+							path: { id: row.original.id },
+							body: { status },
+						});
 					},
 				});
 			},
@@ -773,19 +771,19 @@ const table = createSvelteTable(tableOptions);
                                 if (row.original.status !== "invited") {
                                     inviteWaitlistMembers([row.original.id!]);
                                 } else {
-                                    resendInvitationLink.mutate([
-                                        row.original.email!,
-                                    ]);
+									resendInvitationLink.mutate({
+										body: { emails: [row.original.email!] },
+									});
                                 }
                             }}
                             adminNotes={row.original.admin_notes ?? "N/A"}
                             isExpanded={row.getIsExpanded()}
                             onToggleExpand={() => row.toggleExpanded()}
                             onEdit={(newValue) => {
-                                if (row.original.email) {
+								if (row.original.email) {
 									updateWaitlistEntry.mutate({
-										id: row.original.id,
-										adminNotes: newValue,
+										path: { id: row.original.id },
+										body: { adminNotes: newValue },
 									});
                                 }
                             }}
@@ -800,7 +798,10 @@ const table = createSvelteTable(tableOptions);
                         disabled={updateWaitlistEntry.isPending}
                         onChange={(status) => {
                             if (status === row.original.status) return;
-                            updateWaitlistEntry.mutate({ id: row.original.id, status });
+							updateWaitlistEntry.mutate({
+								path: { id: row.original.id },
+								body: { status },
+							});
                         }}
                     />
                 </div>

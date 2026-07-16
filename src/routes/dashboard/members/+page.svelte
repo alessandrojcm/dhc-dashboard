@@ -14,12 +14,13 @@ import { SvelteURLSearchParams } from "svelte/reactivity";
 
 const { data } = $props();
 let value = $derived(page.url.searchParams.get("tab") || "dashboard");
+type MembersUrl = `/dashboard/members?${string}`;
 
 function onTabChange(value: string) {
 	const newParams = new SvelteURLSearchParams(page.url.searchParams);
 	newParams.set("tab", value);
-	const url = `/dashboard/members?${newParams.toString()}`;
-	goto(resolve(url as any));
+	const url = `/dashboard/members?${newParams.toString()}` as MembersUrl;
+	goto(resolve(url));
 }
 let views = [
 	{
@@ -70,7 +71,7 @@ let viewLabel = $derived(
 			</List>
 
 			{#if data.canEditSettings}
-				<InviteDrawer supabase={data.supabase} />
+				<InviteDrawer />
 			{/if}
 		</div>
 		<Content value="dashboard">
@@ -80,7 +81,7 @@ let viewLabel = $derived(
 			<MembersTable />
 		</Content>
 		<Content value="invitations">
-			<InvitationsTable supabase={data.supabase} />
+			<InvitationsTable />
 		</Content>
 	</Root>
 </div>

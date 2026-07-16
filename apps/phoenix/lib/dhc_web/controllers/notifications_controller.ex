@@ -23,6 +23,32 @@ defmodule DhcWeb.NotificationsController do
     end
   end
 
+  @doc "PATCH /notifications/:id/read"
+  def mark_read(conn, %{"id" => notification_id}) do
+    user_id = conn.assigns.current_user.sub
+
+    case Notifications.mark_read(user_id, notification_id) do
+      {:ok, notification} ->
+        conn
+        |> put_view(json: DhcWeb.NotificationsJSON)
+        |> render(:show, notification: notification)
+
+      {:error, :not_found} ->
+        conn
+        |> put_status(:not_found)
+        |> json(%{errors: %{detail: "Notification not found"}})
+    end
+  end
+
+  @doc "POST /notifications/read-all"
+  def mark_all_read(conn, _params) do
+    {:ok, updated_count} = Notifications.mark_all_read(conn.assigns.current_user.sub)
+
+    conn
+    |> put_view(json: DhcWeb.NotificationsJSON)
+    |> render(:mark_all_read, updated_count: updated_count)
+  end
+
   defp bad_request(conn, detail) do
     conn
     |> put_status(:bad_request)

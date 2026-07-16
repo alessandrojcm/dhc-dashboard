@@ -28,6 +28,10 @@ tags:
     description: Global inventory activity/history feed (quartermaster)
     x-context: Dhc.Inventory
     x-resource: InventoryHistory
+  - name: InventoryDashboard
+    description: Aggregate inventory dashboard reads
+    x-context: Dhc.Inventory
+    x-resource: InventoryDashboard
   - name: Members
     description: |
       Member profile facts (identity, contact, preferred weapon), aggregate
@@ -48,6 +52,10 @@ tags:
       context functions, not in a separate schema (see ADR-0007).
     x-context: Dhc.Membership
     x-resource: Membership
+  - name: Workshops
+    description: Workshop reads and coordinator management lifecycle commands.
+    x-context: Dhc.Workshops
+    x-resource: Workshop
 
 paths:
   /health:
@@ -272,6 +280,46 @@ paths:
                 $ref: "#/components/schemas/InvitationCreateResponse"
         "400":
           description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks an invitation admin role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      operationId: invitations.delete
+      tags:
+        - Invitations
+      summary: Delete member invitations in bulk
+      description: |
+        Permanently deletes the requested invitations. Missing invitation ids
+        are ignored, matching the dashboard's previous service-layer behavior.
+
+        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
+        `president`, `admin`, or `committee_coordinator`.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InvitationDeleteRequest"
+      responses:
+        "204":
+          description: Invitations deleted
+        "400":
+          description: Invalid or empty invitation id list
           content:
             application/json:
               schema:
@@ -526,6 +574,51 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/WaitlistStatusResponse"
+    patch:
+      operationId: waitlist.updateStatus
+      tags:
+        - Waitlist
+      summary: Set whether the public waitlist is open
+      description: |
+        Sets the beginners workshop waitlist to an explicit open or closed
+        state. This is a domain command rather than a generic settings update.
+
+        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
+        `admin`, `president`, `committee_coordinator`, `beginners_coordinator`,
+        or `coach`.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WaitlistStatusUpdateRequest"
+      responses:
+        "200":
+          description: Updated waitlist status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WaitlistStatusResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a waitlist admin role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: isOpen is missing or not boolean
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /waitlist/analytics:
     get:
@@ -870,6 +963,63 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /notifications/read-all:
+    post:
+      operationId: notifications.markAllRead
+      tags:
+        - Notifications
+      summary: Mark all current user notifications as read
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Number of notifications marked as read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationsMarkAllReadResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /notifications/{id}/read:
+    patch:
+      operationId: notifications.markRead
+      tags:
+        - Notifications
+      summary: Mark one current user notification as read
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Updated notification
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Notification does not exist or belongs to another user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /members:
     get:
       operationId: members.list
@@ -1037,6 +1187,39 @@ paths:
                 $ref: "#/components/schemas/Error"
         "403":
           description: Authenticated user lacks a broad committee role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /members/me:
+    get:
+      operationId: members.me
+      tags:
+        - Members
+      summary: Read the current user's dashboard identity
+      description: |
+        Returns the authenticated user's identity, contact details, optional
+        Stripe customer reference, and JWT roles. Replaces the browser-side
+        user_profiles/user_roles reads and get_current_user_with_profile RPC
+        used by the dashboard shell.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current user data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CurrentUserResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No user profile exists for the authenticated user
           content:
             application/json:
               schema:
@@ -1222,6 +1405,68 @@ paths:
                 $ref: "#/components/schemas/Error"
         "502":
           description: Stripe rejected the pause call
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /members/{memberId}/billing-portal:
+    post:
+      operationId: membership.billingPortal
+      tags:
+        - Membership
+      summary: Create a Stripe Billing Portal session
+      description: |
+        Creates a short-lived Stripe Billing Portal URL for the member's Stripe
+        customer. Self-or-broad-committee auth, matching other membership commands.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: memberId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BillingPortalRequest"
+      responses:
+        "200":
+          description: Billing Portal session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingPortalResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user is neither the member nor a broad committee role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Member or Stripe customer not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Invalid return URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: Stripe request failed
           content:
             application/json:
               schema:
@@ -1420,6 +1665,45 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /workshops/{workshopId}/refunds:
+    get:
+      operationId: workshops.refunds
+      tags:
+        - Workshops
+      summary: List Workshop refund records
+      description: |
+        Returns all traceable refund attempts for a Workshop in newest-first
+        order. Requires `workshop_coordinator`, `president`, or `admin`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/WorkshopId"
+      responses:
+        "200":
+          description: Workshop refund records
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkshopRefundsResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a Workshop coordinator management role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No Workshop exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /workshops:
     get:
       operationId: workshops.list
@@ -1487,6 +1771,711 @@ paths:
                 $ref: "#/components/schemas/WorkshopsListResponse"
         "401":
           description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      operationId: workshops.create
+      tags:
+        - Workshops
+      summary: Create a planned Workshop
+      description: |
+        Creates a planned Workshop for coordinator management. The server sets
+        `createdBy` from the authenticated Supabase JWT and lifecycle status to
+        `planned`; clients cannot create directly into `published` or
+        `cancelled`.
+
+        Requires `workshop_coordinator`, `president`, or `admin`.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkshopManagementRequest"
+      responses:
+        "201":
+          description: Workshop created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkshopManagementResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a Workshop coordinator management role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Invalid Workshop management payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /workshops/{workshopId}:
+    get:
+      operationId: workshops.show
+      tags:
+        - Workshops
+      summary: Read a Workshop management summary
+      description: Requires `workshop_coordinator`, `president`, or `admin`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/WorkshopId"
+      responses:
+        "200":
+          description: Workshop management summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkshopManagementResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a Workshop coordinator management role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No Workshop exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    patch:
+      operationId: workshops.update
+      tags:
+        - Workshops
+      summary: Update Workshop management fields
+      description: |
+        Updates Workshop management fields. General edits are planned-only.
+        Lifecycle/status is not directly writable here; use publish/cancel
+        command endpoints. Pricing edits preserve the current looser rule:
+        pricing may be changed while planned, or after publish only while there
+        are zero active (`pending`/`confirmed`) registrations.
+
+        Requires `workshop_coordinator`, `president`, or `admin`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/WorkshopId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkshopManagementUpdateRequest"
+      responses:
+        "200":
+          description: Workshop updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkshopManagementResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a Workshop coordinator management role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No Workshop exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Invalid edit for current Workshop lifecycle state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      operationId: workshops.delete
+      tags:
+        - Workshops
+      summary: Delete a planned Workshop
+      description: Deletes planned Workshops only. Requires `workshop_coordinator`, `president`, or `admin`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/WorkshopId"
+      responses:
+        "204":
+          description: Workshop deleted
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a Workshop coordinator management role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No Workshop exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Workshop is not planned and cannot be deleted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /workshops/{workshopId}/publish:
+    post:
+      operationId: workshops.publish
+      tags:
+        - Workshops
+      summary: Publish a planned Workshop
+      description: Transitions a planned Workshop to published. Requires `workshop_coordinator`, `president`, or `admin`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/WorkshopId"
+      responses:
+        "200":
+          description: Workshop published
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkshopManagementResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a Workshop coordinator management role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No Workshop exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Workshop is not planned and cannot be published
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /workshops/{workshopId}/cancel:
+    post:
+      operationId: workshops.cancel
+      tags:
+        - Workshops
+      summary: Cancel a published Workshop
+      description: |
+        Transitions a published Workshop to cancelled and creates a traceable
+        refund attempt for every active paid registration. Workshop cancellation
+        refunds are not subject to the member cancellation deadline. Individual
+        Stripe failures are recorded as failed attempts and do not prevent the
+        Workshop cancellation. Requires `workshop_coordinator`, `president`, or
+        `admin`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/WorkshopId"
+      responses:
+        "200":
+          description: Workshop cancelled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkshopManagementResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a Workshop coordinator management role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No Workshop exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Workshop is not published and cannot be cancelled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /workshops/{workshopId}/interest:
+    post:
+      operationId: workshops.toggleInterest
+      tags:
+        - Workshops
+      summary: Toggle current member Workshop interest
+      description: |
+        Expresses interest in a planned Workshop when the authenticated member
+        has not already done so, or withdraws their existing interest when they
+        have. Phoenix derives the member id from the Supabase JWT `sub`; request
+        bodies cannot choose another member.
+
+        This preserves the existing member-facing toggle behavior: only planned
+        Workshops accept interest, toggling is idempotent from the UI's point of
+        view, and any authenticated member may use it. Published Workshops use
+        registration instead of interest.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/WorkshopId"
+      responses:
+        "200":
+          description: Interest toggled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkshopInterestToggleResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No Workshop exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Workshop is not planned and cannot accept interest
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /workshops/{workshopId}/registration/payment-intent:
+    post:
+      operationId: workshops.createRegistrationPaymentIntent
+      tags:
+        - Workshops
+      summary: Create current member Workshop registration PaymentIntent
+      description: |
+        Creates a Stripe PaymentIntent for the authenticated member to register
+        for a published Workshop. Phoenix derives the member id from the
+        Supabase JWT `sub`, checks duplicate active registrations, and checks
+        pending/confirmed capacity before calling Stripe.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/WorkshopId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkshopRegistrationPaymentIntentRequest"
+      responses:
+        "200":
+          description: PaymentIntent created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkshopRegistrationPaymentIntentResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No Workshop exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Workshop is full or member already has an active registration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Workshop is not published or request payload is invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: Stripe request failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /workshops/{workshopId}/registration/complete:
+    post:
+      operationId: workshops.completeRegistration
+      tags:
+        - Workshops
+      summary: Complete current member Workshop registration
+      description: |
+        Completes the authenticated member's Workshop registration after Stripe
+        confirms the PaymentIntent. The PaymentIntent must be succeeded and its
+        metadata must match the requested Workshop and member. Completion is
+        idempotent for the same PaymentIntent id. If capacity is exhausted after
+        payment but before insert, Phoenix issues a best-effort refund and
+        returns `409`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/WorkshopId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkshopRegistrationCompleteRequest"
+      responses:
+        "201":
+          description: Registration completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkshopRegistrationResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No Workshop exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Workshop is full or member already has an active registration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Payment is incomplete or does not match this registration request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: Stripe request failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /workshops/{workshopId}/registration:
+    delete:
+      operationId: workshops.cancelRegistration
+      tags:
+        - Workshops
+      summary: Cancel current member Workshop registration
+      description: |
+        Cancels the authenticated member's active pending/confirmed Workshop
+        registration. Phoenix evaluates refund eligibility server-side. Eligible
+        paid registrations are refunded and transition to `refunded`; ineligible
+        registrations transition to `cancelled` without a refund.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/WorkshopId"
+      responses:
+        "200":
+          description: Registration cancelled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkshopRegistrationCancelResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No active registration exists for the current member and Workshop
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: Stripe refund request failed; the failed attempt remains traceable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /workshops/{workshopId}/external-registration:
+    get:
+      operationId: workshops.externalRegistrationGate
+      tags:
+        - Workshops
+      summary: Check whether a Workshop accepts external registration
+      parameters:
+        - $ref: "#/components/parameters/WorkshopId"
+      responses:
+        "200":
+          description: External registration gate state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkshopExternalRegistrationGateResponse"
+
+  /workshops/{workshopId}/external-registration/checkout-session:
+    post:
+      operationId: workshops.createExternalCheckoutSession
+      tags:
+        - Workshops
+      summary: Create an embedded Stripe Checkout Session for an external attendee
+      parameters:
+        - $ref: "#/components/parameters/WorkshopId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkshopExternalCheckoutSessionRequest"
+      responses:
+        "200":
+          description: Embedded Checkout Session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkshopExternalCheckoutSessionResponse"
+        "404":
+          description: Workshop is unavailable for external registration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Workshop is full
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Invalid return URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: Stripe request failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /workshops/{workshopId}/external-registration/complete:
+    post:
+      operationId: workshops.completeExternalRegistration
+      tags:
+        - Workshops
+      summary: Complete an external Workshop registration from Stripe Checkout
+      description: |
+        Validates the paid Checkout Session, upserts the external attendee by
+        normalized email, and creates an idempotent confirmed registration. If
+        capacity is exhausted after payment, Phoenix refunds the PaymentIntent
+        and returns `409`.
+      parameters:
+        - $ref: "#/components/parameters/WorkshopId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkshopExternalRegistrationCompleteRequest"
+      responses:
+        "201":
+          description: External registration completed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkshopRegistrationResponse"
+        "404":
+          description: Workshop or Checkout Session not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Workshop is full or the attendee is already registered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Payment is incomplete, mismatched, or missing attendee details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: Stripe request failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /workshops/{workshopId}/registrations/{registrationId}/refund:
+    post:
+      operationId: workshops.refundRegistration
+      tags:
+        - Workshops
+      summary: Refund a Workshop registration
+      description: |
+        Explicit coordinator refund command. Phoenix enforces the Workshop's
+        refund eligibility rules, creates the refund record before contacting
+        Stripe, and records Stripe failures as failed attempts. Requires
+        `workshop_coordinator`, `president`, or `admin`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/WorkshopId"
+        - name: registrationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkshopRefundRequest"
+      responses:
+        "201":
+          description: Refund attempt created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkshopRefundResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a Workshop coordinator management role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Workshop registration not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Registration is not eligible for a refund or the reason is invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: Stripe refund request failed; the failed attempt remains traceable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /workshops/{workshopId}/attendance:
+    patch:
+      operationId: workshops.updateAttendance
+      tags:
+        - Workshops
+      summary: Atomically record Workshop attendee attendance
+      description: |
+        Records attendance for a batch of active Workshop attendees. Phoenix
+        derives the marker from the authenticated coordinator JWT, accepts only
+        pending/confirmed registrations belonging to this Workshop, and rejects
+        the entire batch if any update is invalid. Attendance is available only
+        once the Workshop has started. Requires `workshop_coordinator`,
+        `president`, or `admin`; `beginners_coordinator` is not authorized.
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/WorkshopId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkshopAttendanceUpdateRequest"
+      responses:
+        "200":
+          description: Attendance batch applied atomically
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkshopAttendanceUpdateResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a Workshop coordinator management role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No Workshop exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Workshop has not started, the batch is invalid, or an update targets a non-active attendee
           content:
             application/json:
               schema:
@@ -2493,6 +3482,32 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /inventory/stats:
+    get:
+      operationId: inventoryDashboard.stats
+      tags:
+        - InventoryDashboard
+      summary: Get inventory dashboard counts
+      description: |
+        Returns aggregate counts for containers, equipment categories, items,
+        and items currently out for maintenance. Requires a valid Supabase JWT
+        from any authenticated member.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Inventory dashboard counts
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryDashboardStatsResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /settings/{key}:
     patch:
       operationId: settings.update
@@ -2565,6 +3580,15 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+  parameters:
+    WorkshopId:
+      name: workshopId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: The Workshop id.
   schemas:
     InvitationCreateRequest:
       type: object
@@ -2613,6 +3637,17 @@ components:
             job_id:
               type: integer
               description: Oban job ID
+    InvitationDeleteRequest:
+      type: object
+      required:
+        - invitationIds
+      properties:
+        invitationIds:
+          type: array
+          minItems: 1
+          items:
+            type: string
+            format: uuid
     InvitationResendCreateRequest:
       type: object
       required:
@@ -2867,6 +3902,13 @@ components:
             isOpen:
               type: boolean
               description: Whether the public waitlist accepts registrations.
+    WaitlistStatusUpdateRequest:
+      type: object
+      required:
+        - isOpen
+      properties:
+        isOpen:
+          type: boolean
     WaitlistAnalyticsResponse:
       type: object
       required:
@@ -3403,6 +4445,26 @@ components:
             nextCursor:
               type: string
               nullable: true
+    NotificationResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: "#/components/schemas/Notification"
+    NotificationsMarkAllReadResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - updatedCount
+          properties:
+            updatedCount:
+              type: integer
+              minimum: 0
     Notification:
       type: object
       required:
@@ -3437,6 +4499,63 @@ components:
               type: string
               nullable: true
               description: URL of the HEMA insurance form, or null when not configured.
+    CurrentUserResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - id
+            - firstName
+            - lastName
+            - email
+            - phoneNumber
+            - customerId
+            - roles
+          properties:
+            id:
+              type: string
+              format: uuid
+            firstName:
+              type: string
+            lastName:
+              type: string
+            email:
+              type: string
+              format: email
+            phoneNumber:
+              type: string
+              nullable: true
+            customerId:
+              type: string
+              nullable: true
+            roles:
+              type: array
+              items:
+                type: string
+    BillingPortalRequest:
+      type: object
+      required:
+        - returnUrl
+      properties:
+        returnUrl:
+          type: string
+          format: uri
+    BillingPortalResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - url
+          properties:
+            url:
+              type: string
+              format: uri
     MembersAnalyticsResponse:
       type: object
       required:
@@ -3543,6 +4662,162 @@ components:
         The authenticated member's own registration for a Workshop. Exposed only
         as the current user's state (`currentUserRegistration`) on the
         member-safe collection — never as a list of other members' registrations.
+    WorkshopRegistrationPaymentIntentRequest:
+      type: object
+      required:
+        - amount
+      properties:
+        amount:
+          type: integer
+          minimum: 1
+          description: Payment amount in cents (minor units), matching the member Workshop price shown in the UI.
+        currency:
+          type: string
+          default: eur
+        customerId:
+          type: string
+          description: Optional Stripe customer id to attach to the PaymentIntent.
+    WorkshopRegistrationPaymentIntentResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - clientSecret
+            - paymentIntentId
+          properties:
+            clientSecret:
+              type: string
+            paymentIntentId:
+              type: string
+    WorkshopRegistrationCompleteRequest:
+      type: object
+      required:
+        - paymentIntentId
+      properties:
+        paymentIntentId:
+          type: string
+          minLength: 1
+    WorkshopRegistrationResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - registration
+          properties:
+            registration:
+              $ref: "#/components/schemas/WorkshopRegistration"
+    WorkshopRegistrationCancelResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - registration
+            - refundProcessed
+          properties:
+            registration:
+              $ref: "#/components/schemas/WorkshopRegistration"
+            refundProcessed:
+              type: boolean
+              description: Whether cancellation created and processed a refund attempt.
+    WorkshopExternalRegistrationGateResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - canRegister
+          properties:
+            canRegister:
+              type: boolean
+            reason:
+              type: string
+              enum: [NOT_FOUND, NOT_PUBLISHED, NOT_PUBLIC, NO_EXTERNAL_PRICE, FULL]
+            workshop:
+              allOf:
+                - $ref: "#/components/schemas/WorkshopExternalRegistrationWorkshop"
+              nullable: true
+    WorkshopExternalRegistrationWorkshop:
+      type: object
+      required:
+        - id
+        - title
+        - startDate
+        - endDate
+        - location
+        - priceNonMember
+        - maxCapacity
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+          nullable: true
+        startDate:
+          type: string
+          format: date-time
+        endDate:
+          type: string
+          format: date-time
+        location:
+          type: string
+        priceNonMember:
+          type: integer
+          minimum: 0
+        maxCapacity:
+          type: integer
+          minimum: 1
+    WorkshopExternalCheckoutSessionRequest:
+      type: object
+      required:
+        - returnUrl
+      additionalProperties: false
+      properties:
+        returnUrl:
+          type: string
+          format: uri
+          description: Must include the literal `{CHECKOUT_SESSION_ID}` placeholder.
+    WorkshopExternalCheckoutSessionResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - checkoutSessionId
+            - checkoutClientSecret
+            - checkoutUrl
+          properties:
+            checkoutSessionId:
+              type: string
+            checkoutClientSecret:
+              type: string
+            checkoutUrl:
+              type: string
+              nullable: true
+    WorkshopExternalRegistrationCompleteRequest:
+      type: object
+      required:
+        - checkoutSessionId
+      additionalProperties: false
+      properties:
+        checkoutSessionId:
+          type: string
+          minLength: 1
     WorkshopAttendeesResponse:
       type: object
       required:
@@ -3565,6 +4840,115 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/WorkshopRefund"
+    WorkshopManagementRequest:
+      type: object
+      required:
+        - title
+        - location
+        - startDate
+        - endDate
+        - maxCapacity
+        - priceMember
+        - priceNonMember
+        - isPublic
+        - refundDays
+        - announceDiscord
+        - announceEmail
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+        location:
+          type: string
+          minLength: 1
+        startDate:
+          type: string
+          format: date-time
+        endDate:
+          type: string
+          format: date-time
+        maxCapacity:
+          type: integer
+          minimum: 1
+        priceMember:
+          type: number
+          minimum: 0
+          description: Member price in cents (minor units).
+        priceNonMember:
+          type: number
+          minimum: 0
+          description: Non-member price in cents (minor units).
+        isPublic:
+          type: boolean
+        refundDays:
+          type: integer
+          minimum: 0
+        announceDiscord:
+          type: boolean
+        announceEmail:
+          type: boolean
+      description: |
+        Coordinator Workshop management input. Lifecycle status and createdBy
+        are server-owned and intentionally absent.
+    WorkshopManagementUpdateRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+        location:
+          type: string
+          minLength: 1
+        startDate:
+          type: string
+          format: date-time
+        endDate:
+          type: string
+          format: date-time
+        maxCapacity:
+          type: integer
+          minimum: 1
+        priceMember:
+          type: number
+          minimum: 0
+          description: Member price in cents (minor units).
+        priceNonMember:
+          type: number
+          minimum: 0
+          description: Non-member price in cents (minor units).
+        isPublic:
+          type: boolean
+        refundDays:
+          type: integer
+          minimum: 0
+        announceDiscord:
+          type: boolean
+        announceEmail:
+          type: boolean
+      description: |
+        Partial Workshop management update. All fields from
+        `WorkshopManagementRequest` are optional at runtime; lifecycle status is
+        still not writable through PATCH.
+    WorkshopManagementResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - workshop
+          properties:
+            workshop:
+              $ref: "#/components/schemas/WorkshopCalendarItem"
     WorkshopSummary:
       type: object
       required:
@@ -3810,6 +5194,27 @@ components:
               type: array
               items:
                 $ref: "#/components/schemas/Workshop"
+    WorkshopInterestToggleResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - interested
+            - action
+            - message
+          properties:
+            interested:
+              type: boolean
+              description: Whether the authenticated member is interested after the toggle.
+            action:
+              type: string
+              enum: [expressed, withdrawn]
+            message:
+              type: string
+              description: Human-readable status message preserved for the current UI toast.
     WorkshopAttendee:
       type: object
       required:
@@ -3830,7 +5235,7 @@ components:
           description: Only `pending` and `confirmed` registrations are returned as attendees.
         attendanceStatus:
           type: string
-          enum: [pending, attended, no_show, excused]
+          enum: [pending, attended, noShow, excused]
           nullable: true
         attendanceMarkedAt:
           type: string
@@ -3866,6 +5271,72 @@ components:
           nullable: true
         participant:
           $ref: "#/components/schemas/WorkshopParticipant"
+    WorkshopAttendanceUpdate:
+      type: object
+      required:
+        - registrationId
+        - attendanceStatus
+      properties:
+        registrationId:
+          type: string
+          format: uuid
+        attendanceStatus:
+          type: string
+          enum: [attended, noShow, excused]
+        notes:
+          type: string
+          maxLength: 500
+          nullable: true
+    WorkshopAttendanceUpdateRequest:
+      type: object
+      required:
+        - updates
+      properties:
+        updates:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/WorkshopAttendanceUpdate"
+    WorkshopAttendanceRecord:
+      type: object
+      required:
+        - id
+        - attendanceStatus
+        - attendanceMarkedAt
+        - attendanceMarkedBy
+        - attendanceNotes
+      properties:
+        id:
+          type: string
+          format: uuid
+        attendanceStatus:
+          type: string
+          enum: [pending, attended, noShow, excused]
+        attendanceMarkedAt:
+          type: string
+          format: date-time
+          nullable: true
+        attendanceMarkedBy:
+          type: string
+          format: uuid
+          nullable: true
+        attendanceNotes:
+          type: string
+          nullable: true
+    WorkshopAttendanceUpdateResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - registrations
+          properties:
+            registrations:
+              type: array
+              items:
+                $ref: "#/components/schemas/WorkshopAttendanceRecord"
     WorkshopRefund:
       type: object
       required:
@@ -3907,6 +5378,42 @@ components:
           nullable: true
         participant:
           $ref: "#/components/schemas/WorkshopParticipant"
+    WorkshopRefundRequest:
+      type: object
+      required:
+        - reason
+      additionalProperties: false
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+    WorkshopRefundResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - refund
+          properties:
+            refund:
+              $ref: "#/components/schemas/WorkshopRefund"
+    WorkshopRefundsResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - refunds
+          properties:
+            refunds:
+              type: array
+              items:
+                $ref: "#/components/schemas/WorkshopRefund"
     WorkshopParticipant:
       type: object
       required:
@@ -4293,6 +5800,32 @@ components:
       properties:
         data:
           $ref: "#/components/schemas/InventoryContainerDetail"
+    InventoryDashboardStatsResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - containers
+            - categories
+            - items
+            - maintenance
+          properties:
+            containers:
+              type: integer
+              minimum: 0
+            categories:
+              type: integer
+              minimum: 0
+            items:
+              type: integer
+              minimum: 0
+            maintenance:
+              type: integer
+              minimum: 0
+
     InventoryItem:
       type: object
       description: |

@@ -36,26 +36,13 @@ import { supabaseLogin } from './supabaseLogin';
 await supabaseLogin(page, 'user@example.com', 'password');
 ```
 
-### Workshop Service-backed Helpers
+### Workshop Helpers
 
-```typescript
-import {
-  publishWorkshopForTest,
-  processWorkshopRefundForTest,
-  updateWorkshopAttendanceForTest,
-  toggleWorkshopInterestForTest
-} from './attendee-test-helpers';
-
-const result = await processWorkshopRefundForTest(session, {
-  registration_id,
-  reason: 'Member requested cancellation'
-});
-```
-
-- Workshop E2E helpers now call service classes directly with explicit Kysely/session/logger/Stripe wiring.
-- Do not add new `/api/workshops/*` test transport usage; prefer the service-backed helpers in `attendee-test-helpers.ts`.
-- In `e2e/attendee-test-helpers.ts`, import `Database` from `src/database.types` (not the repo-root duplicate file) to avoid cross-module type identity mismatches in helper signatures.
-- Registration seeding overrides in `attendee-test-helpers.ts` should follow `club_activity_registrations` insert-column names (`club_activity_id`, `member_user_id`, etc.), not the simplified `TestRegistration` view model.
+- The legacy Svelte workshop services and their service-backed E2E helpers have been removed.
+- Workshop interest, refund, attendance, and full-lifecycle specs are skipped until they are replaced with Phoenix API coverage.
+- `attendee-test-helpers.ts` retains only direct fixture creation and generic UI helpers.
+- `inventory-categories.spec.ts` is also skipped because it depended on a removed request helper; restore it when its setup is migrated to a Phoenix API-aware helper.
+- Registration seeding overrides should follow `club_activity_registrations` insert-column names (`club_activity_id`, `member_user_id`, etc.), not the simplified `TestRegistration` view model.
 
 ### Database Setup
 
