@@ -1,7 +1,8 @@
 <script lang="ts">
 import { onMount } from "svelte";
 import {
-	notificationsList,
+	notificationsListInfiniteOptions,
+	notificationsListInfiniteQueryKey,
 	type Notification as ApiNotification,
 } from "@dhc/api-client";
 import dayjs from "dayjs";
@@ -39,36 +40,27 @@ type NotificationsInfiniteData = {
 };
 
 // Pagination parameters
-const PAGE_SIZE = 10;
+const PAGE_SIZE = 10 as const;
+const notificationsOptions = { query: { limit: PAGE_SIZE } };
+const notificationsQueryKey =
+	notificationsListInfiniteQueryKey(notificationsOptions);
 
 // Create infinite query for notifications
 const notificationsQuery = createInfiniteQuery(() => ({
-	queryKey: ["notifications"],
-	initialData: {
-		pages: [] as NotificationsPage[],
-		pageParams: [] as (string | null)[],
-	},
-	queryFn: async ({ pageParam, signal }): Promise<NotificationsPage> => {
-		const response = await notificationsList({
-			query: {
-				limit: PAGE_SIZE,
-				cursor: typeof pageParam === "string" ? pageParam : undefined,
-			},
-			signal,
-		});
-
-		if (response.error) throw response.error;
-
-		const result = response.data.data;
-
-		return {
-			data: result.notifications.map(toNotificationRow),
-			nextCursor: result.nextCursor,
-			count: result.unreadCount,
-		};
-	},
-	initialPageParam: null as string | null,
-	getNextPageParam: (lastPage) => lastPage.nextCursor,
+	...notificationsListInfiniteOptions(notificationsOptions),
+	initialPageParam: { query: {} },
+	getNextPageParam: (lastPage) => lastPage.data.nextCursor ?? undefined,
+	select: (data): NotificationsInfiniteData => ({
+		...data,
+		pages: data.pages.map((response) => ({
+			data: response.data.notifications.map(toNotificationRow),
+			nextCursor: response.data.nextCursor,
+			count: response.data.unreadCount,
+		})),
+		pageParams: data.pageParams.map((pageParam) =>
+			typeof pageParam === "string" ? pageParam : null,
+		),
+	}),
 }));
 
 function toNotificationRow(notification: ApiNotification): Notification {
@@ -89,57 +81,8 @@ const markAsRead = createMutation(() => ({
 
 		if (error) throw error;
 	},
-	onMutate: async (notificationId) => {
-		const previousData = queryClient.getQueryData<NotificationsInfiniteData>([
-			"notifications",
-		]);
-		queryClient.setQueryData<NotificationsInfiniteData>(
-			["notifications"],
-			(oldData) => {
-				if (!oldData) return oldData;
-
-				// Find if the notification being marked as read is currently unread
-				const targetNotification = oldData.pages
-					.flatMap((page) => page.data)
-					.find((notification) => notification.id === notificationId);
-
-				// Only decrease count if the notification was previously unread
-				const shouldDecreaseCount =
-					targetNotification && !targetNotification.read_at;
-
-				// Calculate new count if needed
-				const newCount =
-					shouldDecreaseCount && oldData.pages[0]?.count !== undefined
-						? Math.max(0, oldData.pages[0].count - 1) // Ensure count doesn't go below 0
-						: oldData.pages[0]?.count;
-
-				return {
-					...oldData,
-					pages: oldData?.pages.map((page, index) => ({
-						...page,
-						// Update count in the first page
-						...(index === 0 && newCount !== undefined
-							? { count: newCount }
-							: {}),
-						data: page.data
-							.map((notification) =>
-								notification.id === notificationId
-									? { ...notification, read_at: new Date().toISOString() }
-									: notification,
-							)
-							.sort(
-								(a, b) =>
-									new Date(b.created_at).getTime() -
-									new Date(a.created_at).getTime(),
-							),
-					})),
-				};
-			},
-		);
-		return { previousData };
-	},
-	onError: async (_, __, context) => {
-		await queryClient.setQueryData(["notifications"], context?.previousData);
+	onSuccess: () => {
+		queryClient.invalidateQueries({ queryKey: notificationsQueryKey });
 	},
 }));
 
@@ -151,39 +94,8 @@ const markAllAsRead = createMutation(() => ({
 			.eq("user_id", (await supabase.auth.getUser())?.data.user!.id)
 			.throwOnError();
 	},
-	onMutate: async () => {
-		const previousData = queryClient.getQueryData<NotificationsInfiniteData>([
-			"notifications",
-		]);
-		queryClient.setQueryData<NotificationsInfiniteData>(
-			["notifications"],
-			(oldData) => {
-				if (!oldData) return oldData;
-
-				return {
-					...oldData,
-					pages: oldData.pages.map((page, index) => ({
-						...page,
-						// Set count to 0 in the first page since all notifications will be read
-						...(index === 0 ? { count: 0 } : {}),
-						data: page.data
-							.map((notification) => ({
-								...notification,
-								read_at: new Date().toISOString(),
-							}))
-							.sort(
-								(a, b) =>
-									new Date(b.created_at).getTime() -
-									new Date(a.created_at).getTime(),
-							),
-					})),
-				};
-			},
-		);
-		return { previousData };
-	},
-	onError: async (_, __, context) => {
-		await queryClient.setQueryData(["notifications"], context?.previousData);
+	onSuccess: () => {
+		queryClient.invalidateQueries({ queryKey: notificationsQueryKey });
 	},
 }));
 
@@ -199,37 +111,8 @@ onMount(() => {
 				schema: "public",
 				table: "notifications",
 			},
-			(payload: { new: Notification }) => {
-				queryClient.setQueryData(
-					["notifications"],
-					(oldData: NotificationsInfiniteData | undefined) => {
-						if (!oldData) return oldData;
-
-						// Increase the count for unread notifications if this is a new unread notification
-						const newCount =
-							!payload.new.read_at && oldData.pages[0]?.count !== undefined
-								? oldData.pages[0].count + 1
-								: oldData.pages[0]?.count;
-
-						return {
-							...oldData,
-							pages: oldData?.pages.map((page, index) => ({
-								...page,
-								// Update count in the first page
-								...(index === 0 && newCount !== undefined
-									? { count: newCount }
-									: {}),
-								data: page.data
-									.concat(payload.new)
-									.sort(
-										(a, b) =>
-											new Date(b.created_at).getTime() -
-											new Date(a.created_at).getTime(),
-									),
-							})),
-						};
-					},
-				);
+			() => {
+				queryClient.invalidateQueries({ queryKey: notificationsQueryKey });
 			},
 		)
 		.on(
@@ -239,25 +122,8 @@ onMount(() => {
 				schema: "public",
 				table: "notifications",
 			},
-			(payload: { new: Notification }) => {
-				queryClient.setQueryData(
-					["notifications"],
-					(oldData: NotificationsInfiniteData | undefined) => {
-						if (!oldData) return oldData;
-
-						return {
-							...oldData,
-							pages: oldData.pages.map((page) => ({
-								...page,
-								data: page.data.map((notification) =>
-									notification.id === payload.new.id
-										? payload.new
-										: notification,
-								),
-							})),
-						};
-					},
-				);
+			() => {
+				queryClient.invalidateQueries({ queryKey: notificationsQueryKey });
 			},
 		)
 		.subscribe();

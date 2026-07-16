@@ -1,5 +1,4 @@
 <script lang="ts">
-import type { SupabaseClient } from "@supabase/supabase-js";
 import {
 	createMutation,
 	createQuery,
@@ -20,11 +19,10 @@ import { toast } from "svelte-sonner";
 import { goto } from "$app/navigation";
 import { resolve } from "$app/paths";
 import { page } from "$app/state";
-import type { Database } from "$database";
 import {
 	type Invitation,
 	type InvitationListSortField,
-	invitationsList,
+	invitationsListOptions,
 } from "@dhc/api-client";
 import { Badge } from "$lib/components/ui/badge";
 import { Button } from "$lib/components/ui/button";
@@ -85,8 +83,6 @@ type InvitationTablePage = {
 	previousCursor: string | null;
 };
 
-const { supabase }: { supabase: SupabaseClient<Database> } = $props();
-
 const pageSize = $derived.by(() => {
 	const requestedPageSize =
 		Number(page.url.searchParams.get("invitePageSize")) || 10;
@@ -137,33 +133,6 @@ const invitationsQueryParams = $derived<InvitationTableQueryParams>({
 	cursor,
 });
 
-async function loadInvitationsPage(
-	params: InvitationTableQueryParams,
-): Promise<InvitationTablePage> {
-	const response = await invitationsList({
-		query: {
-			limit: params.pageSize,
-			cursor: params.cursor ?? undefined,
-			q: params.searchQuery || undefined,
-			sort: invitationSortMap[params.sort],
-			direction: params.direction,
-		},
-	});
-
-	if (response.error) {
-		throw new Error("Failed to load invitations. Please try again later.");
-	}
-
-	const result = response.data.data;
-
-	return {
-		data: result.invitations.map(toTableRow),
-		count: result.totalCount,
-		nextCursor: result.nextCursor,
-		previousCursor: result.previousCursor,
-	};
-}
-
 function toTableRow(invitation: Invitation): InvitationTableRow {
 	return {
 		id: invitation.id,
@@ -174,14 +143,25 @@ function toTableRow(invitation: Invitation): InvitationTableRow {
 	};
 }
 
-const invitationsQueryKey = $derived(["invitations", invitationsQueryParams]);
-const invitationsQuery = createQuery<InvitationTablePage>(() => ({
-	queryKey: invitationsQueryKey,
+const invitationsQuery = createQuery(() => ({
+	...invitationsListOptions({
+		query: {
+			limit: invitationsQueryParams.pageSize,
+			cursor: invitationsQueryParams.cursor ?? undefined,
+			q: invitationsQueryParams.searchQuery || undefined,
+			sort: invitationSortMap[invitationsQueryParams.sort],
+			direction: invitationsQueryParams.direction,
+		},
+	}),
 	placeholderData: keepPreviousData,
-	initialData: { data: [], count: 0, nextCursor: null, previousCursor: null },
-	queryFn: ({ signal, queryKey }) => {
-		signal.throwIfAborted();
-		return loadInvitationsPage(queryKey[1] as InvitationTableQueryParams);
+	select: (response): InvitationTablePage => {
+		const result = response.data;
+		return {
+			data: result.invitations.map(toTableRow),
+			count: result.totalCount,
+			nextCursor: result.nextCursor,
+			previousCursor: result.previousCursor,
+		};
 	},
 }));
 
@@ -194,7 +174,7 @@ type MembersUrl = `/dashboard/members?${string}`;
 
 function navigateToMembers(searchParams: SvelteURLSearchParams) {
 	const url = `/dashboard/members?${searchParams.toString()}` as MembersUrl;
-	goto(resolve(url as any), { keepFocus: true, noScroll: true });
+	goto(resolve(url), { keepFocus: true, noScroll: true });
 }
 
 function onPaginationChange(newPageSize: (typeof pageSizeOptions)[number]) {

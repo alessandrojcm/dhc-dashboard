@@ -11,29 +11,13 @@ import { Tags, Plus, Edit, Package, AlertTriangle } from "lucide-svelte";
 import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
 import { createQuery } from "@tanstack/svelte-query";
 import {
-	inventoryCategoriesIndex,
+	inventoryCategoriesIndexOptions,
 	type InventoryCategory,
 } from "@dhc/api-client";
 
-let { data } = $props();
-
 const categoriesQuery = createQuery(() => ({
-	queryKey: ["inventory-categories"],
-	queryFn: async ({ signal }) => {
-		const { data: sessionData, error } = await data.supabase.auth.getSession();
-		if (error) throw error;
-
-		const accessToken = sessionData.session?.access_token;
-		if (!accessToken) throw new Error("Authentication required");
-
-		const response = await inventoryCategoriesIndex({
-			auth: accessToken,
-			signal,
-			throwOnError: true,
-		});
-
-		return response.data.data.categories;
-	},
+	...inventoryCategoriesIndexOptions(),
+	select: (response) => response.data.categories,
 }));
 
 const getAttributeCount = (category: InventoryCategory) =>
@@ -75,7 +59,7 @@ const getItemCount = (category: InventoryCategory) => category.itemCount ?? 0;
                     Error loading categories
                 </h3>
                 <p class="text-muted-foreground mb-4">
-                    {categoriesQuery.error.message}
+                    {categoriesQuery.error.errors?.detail || "Failed to load categories"}
                 </p>
                 <Button
                     onclick={() => categoriesQuery.refetch()}

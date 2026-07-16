@@ -732,6 +732,8 @@ export {
 	inventoryContainersShowQueryKey,
 	inventoryContainersUpdateMutation,
 	inventoryContainersUpdateMutationKey,
+	inventoryItemsIndexOptions,
+	inventoryItemsIndexQueryKey,
 	invitationsCreateMutation,
 	invitationsCreateMutationKey,
 	invitationsAcceptMutation,
