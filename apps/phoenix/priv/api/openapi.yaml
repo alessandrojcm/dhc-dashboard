@@ -1199,9 +1199,10 @@ paths:
         - Members
       summary: Read the current user's dashboard identity
       description: |
-        Returns the authenticated user's identity, contact details, and optional
-        Stripe customer reference. Replaces the browser-side user_profiles read
-        and get_current_user_with_profile RPC used by the dashboard shell.
+        Returns the authenticated user's identity, contact details, optional
+        Stripe customer reference, and JWT roles. Replaces the browser-side
+        user_profiles/user_roles reads and get_current_user_with_profile RPC
+        used by the dashboard shell.
       security:
         - bearerAuth: []
       responses:
@@ -4512,6 +4513,7 @@ components:
             - email
             - phoneNumber
             - customerId
+            - roles
           properties:
             id:
               type: string
@@ -4529,6 +4531,10 @@ components:
             customerId:
               type: string
               nullable: true
+            roles:
+              type: array
+              items:
+                type: string
     BillingPortalRequest:
       type: object
       required:

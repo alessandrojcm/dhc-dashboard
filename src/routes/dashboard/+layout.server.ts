@@ -1,17 +1,19 @@
 import { filterNavByRoles, navData } from "$lib/server/rbacRoles";
 import type { LayoutServerLoad } from "./$types";
 import { invariant } from "$lib/server/invariant";
+import { apiClientOptions } from "$lib/server/api-client";
+import { membersMe } from "@dhc/api-client";
 
-export const load: LayoutServerLoad = async ({ locals: { supabase } }) => {
-	const userId = await supabase.auth.getUser().then((u) => u.data.user?.id);
-	invariant(userId === undefined, "Unauthorized");
+export const load: LayoutServerLoad = async ({ locals }) => {
+	const { session } = await locals.safeGetSession();
+	invariant(!session, "Unauthorized");
 
-	const roles = await supabase
-		.from("user_roles")
-		.select("role")
-		.eq("user_id", userId!);
+	const response = await membersMe({
+		...apiClientOptions(session),
+		throwOnError: true,
+	});
+	const userRoles = response.data.data.roles;
 
-	const userRoles = roles.data!.map((r) => r.role)!;
 	return {
 		roles: userRoles,
 		navData: filterNavByRoles(navData, userRoles),

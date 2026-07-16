@@ -17,7 +17,7 @@ defmodule DhcWeb.MembersJSON do
     %{data: %{link: insurance_form.link}}
   end
 
-  def render("current_user.json", %{user: user}) do
+  def render("current_user.json", %{user: user, roles: roles}) do
     %{
       data: %{
         id: user.id,
@@ -25,7 +25,8 @@ defmodule DhcWeb.MembersJSON do
         lastName: user.last_name,
         email: user.email,
         phoneNumber: user.phone_number,
-        customerId: user.customer_id
+        customerId: user.customer_id,
+        roles: roles
       }
     }
   end
