@@ -5,10 +5,12 @@ import {
 	checkRefundEligibility,
 	type RefundEligibilityResult,
 } from "$lib/utils/refund-eligibility";
-import type { Workshop } from "@dhc/api-client";
+import {
+	workshopsCancelRegistrationMutation,
+	workshopsRefundRegistrationMutation,
+	type Workshop,
+} from "@dhc/api-client";
 import { toast } from "svelte-sonner";
-import { cancelRegistration } from "../../../routes/dashboard/my-workshops/registration.remote";
-import { processRefund } from "$lib/functions/workshops.remote";
 
 interface Props {
 	workshop: Workshop;
@@ -38,43 +40,42 @@ const refundEligibility: RefundEligibilityResult = $derived(
 );
 
 const cancelRegistrationMutation = createMutation(() => ({
-	mutationFn: async () => {
-		return cancelRegistration(workshop.id);
-	},
+	...workshopsCancelRegistrationMutation(),
 	onSuccess: () => {
 		toast.success("Registration cancelled successfully");
 		onSuccess();
 		onOpenChange(false);
 	},
 	onError: (error) => {
-		toast.error(
-			error instanceof Error ? error.message : "Failed to cancel registration",
-		);
+		toast.error(error.errors.detail || "Failed to cancel registration");
 	},
 }));
 
 const requestRefundMutation = createMutation(() => ({
-	mutationFn: async () => {
-		return processRefund({
-			registration_id: registrationId,
-			reason: "Requested by attendee",
-		});
-	},
+	...workshopsRefundRegistrationMutation(),
 	onSuccess: () => {
 		toast.success("Refund requested successfully");
 		onSuccess();
 		onOpenChange(false);
 	},
 	onError: (error) => {
-		toast.error(error.message || "Failed to process refund");
+		toast.error(error.errors.detail || "Failed to process refund");
 	},
 }));
 
 function handleConfirm() {
 	if (refundEligibility.isEligible) {
-		requestRefundMutation.mutate();
+		requestRefundMutation.mutate({
+			path: {
+				workshopId: workshop.id,
+				registrationId,
+			},
+			body: { reason: "Requested by attendee" },
+		});
 	} else {
-		cancelRegistrationMutation.mutate();
+		cancelRegistrationMutation.mutate({
+			path: { workshopId: workshop.id },
+		});
 	}
 }
 

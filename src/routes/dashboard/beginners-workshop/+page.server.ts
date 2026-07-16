@@ -1,6 +1,7 @@
+import { waitlistStatus } from "@dhc/api-client";
+import { apiClientOptions } from "$lib/server/api-client";
 import { invariant } from "$lib/server/invariant";
 import { allowedToggleRoles, getRolesFromSession } from "$lib/server/roles";
-import { createSettingsService } from "$lib/server/services/settings";
 import type { PageServerLoad } from "./$types";
 
 export const load: PageServerLoad = async ({ locals, depends, platform }) => {
@@ -9,10 +10,13 @@ export const load: PageServerLoad = async ({ locals, depends, platform }) => {
 	invariant(session === null, "Unauthorized");
 	const roles = getRolesFromSession(session!);
 
-	const settingsService = createSettingsService(platform!, session!);
+	const statusResponse = await waitlistStatus({
+		...apiClientOptions(session!),
+		throwOnError: true,
+	});
 
 	return {
 		canToggleWaitlist: roles.intersection(allowedToggleRoles).size > 0,
-		isWaitlistOpen: settingsService.isWaitlistOpen(),
+		isWaitlistOpen: statusResponse.data.data.isOpen,
 	};
 };

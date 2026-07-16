@@ -30,4 +30,4 @@ Dublin Hema Club dashboard: currently SvelteKit 2.x + Svelte 5 + Supabase + Stri
 
 ## See also
 
-`CONTEXT.md`, `docs/adr/`, `src/lib/server/services/AGENTS.md`, `supabase/AGENTS.md`, `e2e/AGENTS.md`
+`CONTEXT.md`, `docs/adr/`, `supabase/AGENTS.md`, `e2e/AGENTS.md`

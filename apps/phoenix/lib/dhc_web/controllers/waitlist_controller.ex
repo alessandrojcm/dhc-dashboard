@@ -13,6 +13,23 @@ defmodule DhcWeb.WaitlistController do
   end
 
   @doc """
+  PATCH /waitlist/status
+  """
+  def update_status(conn, %{"isOpen" => is_open}) when is_boolean(is_open) do
+    case Waitlist.set_open(is_open) do
+      {:ok, status} ->
+        conn
+        |> put_view(json: DhcWeb.WaitlistJSON)
+        |> render(:status, status: status)
+
+      {:error, :not_found} ->
+        not_found(conn, "Waitlist setting not found")
+    end
+  end
+
+  def update_status(conn, _params), do: unprocessable(conn, "isOpen must be a boolean")
+
+  @doc """
   GET /waitlist/analytics
   """
   def analytics(conn, _params) do

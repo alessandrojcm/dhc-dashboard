@@ -1,10 +1,9 @@
 import { command, getRequestEvent } from "$app/server";
-import { invitationsResend } from "@dhc/api-client";
+import { invitationsDelete, invitationsResend } from "@dhc/api-client";
 import * as v from "valibot";
 import { apiClientOptions } from "$lib/server/api-client";
 import { authorize } from "$lib/server/auth";
 import { SETTINGS_ROLES } from "$lib/server/roles";
-import { createInvitationService } from "$lib/server/services/invitations";
 
 export const resendInvitations = command(
 	v.object({
@@ -41,11 +40,17 @@ export const deleteInvitations = command(
 		v.minLength(1, "At least one invitation ID is required"),
 	),
 	async (invitationIds) => {
-		const { locals, platform } = getRequestEvent();
+		const { locals } = getRequestEvent();
 		const session = await authorize(locals, SETTINGS_ROLES);
 
-		const service = createInvitationService(platform!, session);
-		await service.bulkDelete(invitationIds);
+		const response = await invitationsDelete({
+			...apiClientOptions(session),
+			body: { invitationIds },
+		});
+
+		if (response.error) {
+			throw new Error("Failed to delete invitations. Please try again later.");
+		}
 
 		return { success: true as const };
 	},
