@@ -57,6 +57,15 @@ defmodule DhcWeb.Router do
     get "/waitlist/status", WaitlistController, :index
     post "/waitlist/entries", WaitlistController, :create
     post "/webhooks/stripe", StripeWebhooksController, :create
+    get "/workshops/:id/external-registration", WorkshopsController, :external_registration_gate
+
+    post "/workshops/:id/external-registration/checkout-session",
+         WorkshopsController,
+         :create_external_checkout_session
+
+    post "/workshops/:id/external-registration/complete",
+         WorkshopsController,
+         :complete_external_registration
   end
 
   scope "/api", DhcWeb do
@@ -64,6 +73,7 @@ defmodule DhcWeb.Router do
 
     get "/invitations", InvitationsController, :list
     post "/invitations", InvitationsController, :create
+    delete "/invitations", InvitationsController, :delete
     post "/invitations/resend", InvitationsController, :resend
   end
 
@@ -71,6 +81,7 @@ defmodule DhcWeb.Router do
     pipe_through [:api, :waitlist_admin_api]
 
     get "/waitlist/analytics", WaitlistController, :analytics
+    patch "/waitlist/status", WaitlistController, :update_status
     get "/waitlist/entries", WaitlistController, :entries
     get "/waitlist/entries/:id", WaitlistController, :show
     patch "/waitlist/entries/:id", WaitlistController, :update
@@ -87,8 +98,20 @@ defmodule DhcWeb.Router do
   scope "/api", DhcWeb do
     pipe_through [:api, :workshop_coordinator_api]
 
+    post "/workshops", WorkshopsController, :create
     get "/workshops/calendar", WorkshopsController, :calendar
+    get "/workshops/:id", WorkshopsController, :show
+    patch "/workshops/:id", WorkshopsController, :update
+    delete "/workshops/:id", WorkshopsController, :delete
+    post "/workshops/:id/publish", WorkshopsController, :publish
+    post "/workshops/:id/cancel", WorkshopsController, :cancel
     get "/workshops/:id/attendees", WorkshopsController, :attendees
+    get "/workshops/:id/refunds", WorkshopsController, :refunds
+    patch "/workshops/:id/attendance", WorkshopsController, :update_attendance
+
+    post "/workshops/:id/registrations/:registration_id/refund",
+         WorkshopsController,
+         :refund_registration
   end
 
   scope "/api", DhcWeb do
@@ -102,12 +125,24 @@ defmodule DhcWeb.Router do
     pipe_through [:api, :authenticated_api]
 
     get "/members/insurance-form", MembersController, :insurance_form
+    get "/members/me", MembersController, :me
     get "/members/:memberId", MembersController, :show
     patch "/members/:memberId", MembersController, :update
     post "/members/:memberId/membership/pause", MembershipController, :pause
     post "/members/:memberId/membership/resume", MembershipController, :resume
+    post "/members/:memberId/billing-portal", MembershipController, :billing_portal
     get "/notifications", NotificationsController, :index
+    post "/notifications/read-all", NotificationsController, :mark_all_read
+    patch "/notifications/:id/read", NotificationsController, :mark_read
     get "/workshops", WorkshopsController, :list
+    post "/workshops/:id/interest", WorkshopsController, :toggle_interest
+
+    post "/workshops/:id/registration/payment-intent",
+         WorkshopsController,
+         :create_registration_payment_intent
+
+    post "/workshops/:id/registration/complete", WorkshopsController, :complete_registration
+    delete "/workshops/:id/registration", WorkshopsController, :cancel_registration
     # ALE-105: any authenticated member may read equipment categories.
     get "/inventory/categories", InventoryCategoriesController, :index
     get "/inventory/categories/:id", InventoryCategoriesController, :show
@@ -120,6 +155,7 @@ defmodule DhcWeb.Router do
     get "/inventory/items/:id/history", InventoryItemsController, :history
     # ALE-108: any authenticated member may read the global inventory activity feed.
     get "/inventory/history", InventoryHistoryController, :index
+    get "/inventory/stats", InventoryDashboardController, :stats
   end
 
   scope "/api", DhcWeb do

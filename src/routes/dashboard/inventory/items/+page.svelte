@@ -31,7 +31,7 @@ import { page } from "$app/state";
 import { Label } from "$lib/components/ui/label";
 import { createQuery, keepPreviousData } from "@tanstack/svelte-query";
 import {
-	inventoryItemsIndex,
+	inventoryItemsIndexOptions,
 	type InventoryItem as ApiInventoryItem,
 } from "@dhc/api-client";
 
@@ -64,17 +64,8 @@ function toLegacyItem(item: ApiInventoryItem): InventoryItem {
 	};
 }
 
-async function getItems(signal: AbortSignal) {
-	const { data: sessionData, error } = await data.supabase.auth.getSession();
-	if (error) throw error;
-
-	const accessToken = sessionData.session?.access_token;
-	if (!accessToken) throw new Error("Authentication required");
-
-	const response = await inventoryItemsIndex({
-		auth: accessToken,
-		signal,
-		throwOnError: true,
+const itemsQuery = createQuery(() => ({
+	...inventoryItemsIndexOptions({
 		query: {
 			limit: PAGE_SIZE,
 			...(currentCursor ? { cursor: currentCursor } : {}),
@@ -85,25 +76,12 @@ async function getItems(signal: AbortSignal) {
 				? { outForMaintenance: maintenanceInput === "true" }
 				: {}),
 		},
-	});
-
-	return {
-		items: response.data.data.items.map(toLegacyItem),
-		nextCursor: response.data.data.nextCursor,
-	};
-}
-
-const itemsQuery = createQuery(() => ({
-	queryKey: [
-		"inventory-items",
-		currentCursor,
-		searchInput,
-		categoryInput,
-		containerInput,
-		maintenanceInput,
-	],
+	}),
 	placeholderData: keepPreviousData,
-	queryFn: async ({ signal }) => getItems(signal),
+	select: (response) => ({
+		items: response.data.items.map(toLegacyItem),
+		nextCursor: response.data.nextCursor,
+	}),
 }));
 
 const applyFilters = () => {
@@ -267,7 +245,9 @@ const hasActiveFilters = $derived(
 			<CardContent class="flex flex-col items-center justify-center py-12">
 				<AlertTriangle class="h-12 w-12 text-destructive mb-4" />
 				<h3 class="text-lg font-semibold mb-2">Error loading items</h3>
-				<p class="text-muted-foreground mb-4">{itemsQuery.error.message}</p>
+				<p class="text-muted-foreground mb-4">
+					{itemsQuery.error.errors?.detail || "Failed to load items"}
+				</p>
 				<Button onclick={() => itemsQuery.refetch()} variant="outline">Retry</Button>
 			</CardContent>
 		</Card>

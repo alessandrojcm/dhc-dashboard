@@ -21,7 +21,7 @@ After activation, `node`, `elixir`, `mix`, `pnpm` etc. resolve to the versions p
 ```bash
 # Dev (start in order)
 mise run sb-start           # 1. Start Supabase
-mise run sb-functions       # 2. Edge functions
+mise run phx-server         # 2. Phoenix API and Oban workers
 mise run dev                # 3. SvelteKit dev
 
 # Database
@@ -30,13 +30,18 @@ mise run sb-reset           # Reset + seed local DB
 
 # Testing
 mise run test-unit          # Vitest
-mise run test-e2e           # Playwright (requires all 3 services)
+mise run test-e2e           # Playwright (requires Supabase, Phoenix, and SvelteKit)
 mise run check              # Svelte type check (NOT raw tsc)
 
 # Lint & format
 mise run lint               # ESLint + Prettier check
 mise run format             # Auto-format with Biome
 ```
+
+ESLint intentionally excludes Phoenix build/dependency artifacts
+(`apps/phoenix/_build/`, `apps/phoenix/deps/`) and the generated OpenAPI client
+(`packages/api-client/src/client/`). Lint handwritten source and the tracked
+`packages/api-client/src/index.ts` export surface instead.
 
 ## Phoenix (in progress)
 

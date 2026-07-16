@@ -177,6 +177,50 @@ defmodule DhcWeb.NotificationsControllerTest do
     end
   end
 
+  describe "mark read" do
+    test "marks only the authenticated user's notification as read", %{conn: conn} do
+      notification = insert_notification(user_id: @user_id, body: "Unread")
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer user-token")
+        |> patch("/api/notifications/#{notification.id}/read")
+
+      assert %{"data" => %{"id" => id, "readAt" => read_at}} = json_response(conn, 200)
+      assert id == notification.id
+      assert is_binary(read_at)
+      assert Repo.get!(Notification, notification.id).read_at
+    end
+
+    test "does not reveal another user's notification", %{conn: conn} do
+      notification = insert_notification(user_id: @other_user_id, body: "Private")
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer user-token")
+        |> patch("/api/notifications/#{notification.id}/read")
+
+      assert %{"errors" => %{"detail" => "Notification not found"}} =
+               json_response(conn, 404)
+
+      refute Repo.get!(Notification, notification.id).read_at
+    end
+
+    test "marks all of the authenticated user's unread notifications as read", %{conn: conn} do
+      insert_notification(user_id: @user_id, body: "First")
+      insert_notification(user_id: @user_id, body: "Second")
+      other = insert_notification(user_id: @other_user_id, body: "Other")
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer user-token")
+        |> post("/api/notifications/read-all")
+
+      assert %{"data" => %{"updatedCount" => 2}} = json_response(conn, 200)
+      refute Repo.get!(Notification, other.id).read_at
+    end
+  end
+
   defp insert_notification(attrs) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 

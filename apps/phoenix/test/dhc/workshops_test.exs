@@ -332,6 +332,117 @@ defmodule Dhc.WorkshopsTest do
     end
   end
 
+  # ── Workshop management lifecycle ─────────────────────────────────────
+
+  describe "create_workshop/2" do
+    test "creates a planned Workshop and records the coordinator as creator" do
+      %{auth_user_id: creator_id} = WorkshopFixtures.member_fixture()
+
+      assert {:ok, workshop} =
+               Workshops.create_workshop(
+                 valid_workshop_attrs(%{title: "Intro Workshop"}),
+                 creator_id
+               )
+
+      assert workshop.title == "Intro Workshop"
+      assert workshop.status == "planned"
+      assert uuid_to_string(workshop.created_by) == creator_id
+    end
+
+    test "validates required management fields" do
+      assert {:error, changeset} = Workshops.create_workshop(%{title: ""}, Ecto.UUID.generate())
+
+      assert %{title: [_], location: [_], start_date: [_], end_date: [_]} = errors_on(changeset)
+    end
+  end
+
+  describe "update_workshop/2" do
+    test "updates planned Workshop details" do
+      workshop = WorkshopFixtures.workshop_fixture(status: "planned")
+
+      assert {:ok, updated} =
+               Workshops.update_workshop(workshop.id, %{
+                 title: "Updated",
+                 max_capacity: 30,
+                 price_member: 1500.0
+               })
+
+      assert updated.title == "Updated"
+      assert updated.max_capacity == 30
+      assert updated.price_member == 1500.0
+    end
+
+    test "rejects non-pricing edits once published" do
+      workshop = WorkshopFixtures.workshop_fixture(status: "published")
+
+      assert {:error, :not_editable} = Workshops.update_workshop(workshop.id, %{title: "Nope"})
+    end
+
+    test "allows published pricing edits while there are zero active registrations" do
+      workshop = WorkshopFixtures.workshop_fixture(status: "published", price_member: 1000.0)
+
+      assert {:ok, updated} = Workshops.update_workshop(workshop.id, %{price_member: 1200.0})
+
+      assert updated.price_member == 1200.0
+    end
+
+    test "rejects published pricing edits when active registrations exist" do
+      workshop = WorkshopFixtures.workshop_fixture(status: "published", price_member: 1000.0)
+      %{auth_user_id: uid} = WorkshopFixtures.member_fixture()
+
+      WorkshopFixtures.registration_fixture(
+        workshop_id: workshop.id,
+        member_user_id: uid,
+        status: "confirmed"
+      )
+
+      assert {:error, :pricing_locked} =
+               Workshops.update_workshop(workshop.id, %{price_member: 1200.0})
+    end
+  end
+
+  describe "delete_workshop/1" do
+    test "deletes planned Workshops" do
+      workshop = WorkshopFixtures.workshop_fixture(status: "planned")
+
+      assert :ok = Workshops.delete_workshop(workshop.id)
+      assert Workshops.workshop_summary(workshop.id) == nil
+    end
+
+    test "rejects non-planned Workshops" do
+      workshop = WorkshopFixtures.workshop_fixture(status: "published")
+
+      assert {:error, :not_deletable} = Workshops.delete_workshop(workshop.id)
+      assert Workshops.workshop_summary(workshop.id).status == "published"
+    end
+  end
+
+  describe "publish_workshop/1 and cancel_workshop/1" do
+    test "publishes planned Workshops" do
+      workshop = WorkshopFixtures.workshop_fixture(status: "planned")
+
+      assert {:ok, published} = Workshops.publish_workshop(workshop.id)
+
+      assert published.status == "published"
+    end
+
+    test "cancels published Workshops" do
+      workshop = WorkshopFixtures.workshop_fixture(status: "published")
+
+      assert {:ok, cancelled} = Workshops.cancel_workshop(workshop.id)
+
+      assert cancelled.status == "cancelled"
+    end
+
+    test "rejects invalid lifecycle transitions" do
+      planned = WorkshopFixtures.workshop_fixture(status: "planned")
+      published = WorkshopFixtures.workshop_fixture(status: "published")
+
+      assert {:error, :not_cancellable} = Workshops.cancel_workshop(planned.id)
+      assert {:error, :not_publishable} = Workshops.publish_workshop(published.id)
+    end
+  end
+
   # ── Counts ────────────────────────────────────────────────────────────
 
   describe "interest_count/1" do
@@ -398,6 +509,46 @@ defmodule Dhc.WorkshopsTest do
       %{auth_user_id: uid} = WorkshopFixtures.member_fixture()
 
       assert Workshops.current_user_interest?(workshop.id, uid) == false
+    end
+  end
+
+  describe "toggle_interest/2" do
+    test "expresses interest in a planned Workshop when none exists" do
+      workshop = WorkshopFixtures.workshop_fixture(status: "planned")
+      %{auth_user_id: uid} = WorkshopFixtures.member_fixture()
+
+      assert {:ok, %{interested: true, action: "expressed", message: message}} =
+               Workshops.toggle_interest(workshop.id, uid)
+
+      assert message == "Interest expressed successfully"
+      assert Workshops.current_user_interest?(workshop.id, uid)
+      assert Workshops.interest_count(workshop.id) == 1
+    end
+
+    test "withdraws existing interest in a planned Workshop" do
+      workshop = WorkshopFixtures.workshop_fixture(status: "planned")
+      %{auth_user_id: uid} = WorkshopFixtures.member_fixture()
+      WorkshopFixtures.interest_fixture(workshop.id, uid)
+
+      assert {:ok, %{interested: false, action: "withdrawn", message: message}} =
+               Workshops.toggle_interest(workshop.id, uid)
+
+      assert message == "Interest withdrawn successfully"
+      refute Workshops.current_user_interest?(workshop.id, uid)
+      assert Workshops.interest_count(workshop.id) == 0
+    end
+
+    test "rejects published Workshops" do
+      workshop = WorkshopFixtures.workshop_fixture(status: "published")
+      %{auth_user_id: uid} = WorkshopFixtures.member_fixture()
+
+      assert {:error, :not_planned} = Workshops.toggle_interest(workshop.id, uid)
+    end
+
+    test "returns not_found for a missing Workshop" do
+      %{auth_user_id: uid} = WorkshopFixtures.member_fixture()
+
+      assert {:error, :not_found} = Workshops.toggle_interest(Ecto.UUID.generate(), uid)
     end
   end
 
@@ -796,5 +947,23 @@ defmodule Dhc.WorkshopsTest do
       assert result.attendees == []
       assert result.refunds == []
     end
+  end
+
+  defp valid_workshop_attrs(overrides \\ %{}) do
+    %{
+      title: "Test Workshop",
+      description: "A workshop",
+      location: "Main Hall",
+      start_date: ~U[2026-09-01 10:00:00Z],
+      end_date: ~U[2026-09-01 12:00:00Z],
+      max_capacity: 20,
+      price_member: 1000.0,
+      price_non_member: 2000.0,
+      is_public: false,
+      refund_days: 3,
+      announce_discord: false,
+      announce_email: false
+    }
+    |> Map.merge(overrides)
   end
 end

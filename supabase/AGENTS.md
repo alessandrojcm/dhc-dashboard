@@ -1,20 +1,12 @@
 # SUPABASE LAYER
 
-PostgreSQL database, edge functions, and testing infrastructure.
+Supabase Auth, PostgreSQL migrations, templates, and testing infrastructure.
 
 ## STRUCTURE
 
 ```
 supabase/
 ├── migrations/       # Timestamped SQL migrations
-├── functions/        # Deno edge functions
-│   ├── _shared/      # Shared utilities (db.ts, kyselyDriver.ts)
-│   ├── stripe-webhooks/
-│   ├── stripe-sync/
-│   ├── bulk_invite_with_subscription/
-│   ├── process-emails/
-│   ├── process-discord/
-│   └── process-workshop-announcements/
 ├── tests/database/   # pgTAP unit tests
 ├── templates/        # Email templates (invite.html, magiclink.html)
 ├── config.toml       # Supabase configuration
@@ -43,21 +35,10 @@ $$;
 
 **After Migration**: Run `pnpm supabase:types`
 
-## EDGE FUNCTIONS
+## BACKGROUND WORK AND WEBHOOKS
 
-**Runtime**: Deno 2
-
-**Shared Code**: `_shared/` contains Kysely driver for type-safe SQL in Deno
-
-```typescript
-// In edge function
-import { getKyselyClient } from '../_shared/db.ts';
-
-const db = getKyselyClient();
-const result = await db.selectFrom('users').selectAll().execute();
-```
-
-**JWT Verification**: Disabled for webhooks in `config.toml`
+Supabase Edge Functions are retired and must not be reintroduced. Phoenix owns
+webhooks and Oban owns background jobs; see `apps/phoenix/`.
 
 ## RLS & RBAC
 
@@ -131,7 +112,6 @@ ROLLBACK;
 
 ```bash
 pnpm supabase:start          # Start local instance
-pnpm supabase:functions:serve # Serve edge functions
 pnpm supabase:reset          # Reset + reseed
 pnpm supabase:types          # Generate TypeScript types
 ```

@@ -1,7 +1,10 @@
 import { error, redirect } from "@sveltejs/kit";
 import * as v from "valibot";
-import { createPublicRegistrationService } from "$lib/server/services/workshops";
-import type { ExternalRegistrationError } from "$lib/server/services/workshops";
+import {
+	createExternalWorkshopCheckoutSession,
+	ExternalWorkshopRegistrationApiError,
+	getExternalWorkshopRegistrationGate,
+} from "$lib/server/api/external-workshop-registration";
 import type { PageServerLoad } from "./$types";
 
 /**
@@ -14,7 +17,7 @@ import type { PageServerLoad } from "./$types";
  * - Redirects full workshops to /workshops/[id]/full
  * - Returns workshop payload for eligible workshops
  */
-export const load: PageServerLoad = async ({ params, platform, url }) => {
+export const load: PageServerLoad = async ({ params, url }) => {
 	// Validate workshop ID
 	const workshopIdResult = v.safeParse(v.pipe(v.string(), v.uuid()), params.id);
 
@@ -25,9 +28,7 @@ export const load: PageServerLoad = async ({ params, platform, url }) => {
 	const workshopId = workshopIdResult.output;
 
 	// Check eligibility using public registration service
-	const registrationService = createPublicRegistrationService(platform!);
-	const gateStatus =
-		await registrationService.getExternalRegistrationGate(workshopId);
+	const gateStatus = await getExternalWorkshopRegistrationGate(workshopId);
 
 	// Handle different gate states according to Stage 3B contract
 	if (!gateStatus.canRegister) {
@@ -48,21 +49,30 @@ export const load: PageServerLoad = async ({ params, platform, url }) => {
 	const returnUrl = `${url.origin}/workshops/${workshopId}/confirmation?session_id={CHECKOUT_SESSION_ID}`;
 
 	try {
-		const checkoutSession =
-			await registrationService.createExternalCheckoutSession({
-				workshopId,
-				returnUrl,
-			});
+		const checkoutSession = await createExternalWorkshopCheckoutSession(
+			workshopId,
+			returnUrl,
+		);
+		const workshop = gateStatus.workshop!;
 
 		return {
-			workshop: gateStatus.workshop!,
+			workshop: {
+				id: workshop.id,
+				title: workshop.title,
+				description: workshop.description,
+				start_date: workshop.startDate,
+				end_date: workshop.endDate,
+				location: workshop.location,
+				price_non_member: workshop.priceNonMember,
+				max_capacity: workshop.maxCapacity,
+			},
 			checkoutSessionId: checkoutSession.checkoutSessionId,
 			checkoutClientSecret: checkoutSession.checkoutClientSecret,
 		};
 	} catch (err) {
-		const domainError = err as ExternalRegistrationError;
+		const domainError = err as ExternalWorkshopRegistrationApiError;
 
-		if (domainError.name === "ExternalRegistrationError") {
+		if (domainError.name === "ExternalWorkshopRegistrationApiError") {
 			if (domainError.code === "WORKSHOP_FULL") {
 				redirect(303, `/workshops/${workshopId}/full`);
 			}

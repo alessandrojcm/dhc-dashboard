@@ -2,7 +2,7 @@
 import {
 	type Member,
 	type MembersListSortField,
-	membersList,
+	membersListOptions,
 } from "@dhc/api-client";
 import { createQuery, keepPreviousData } from "@tanstack/svelte-query";
 import {
@@ -169,37 +169,6 @@ const membersQueryParams = $derived<MemberTableQueryParams>({
 	cursor,
 });
 
-async function loadMembersTablePage(
-	params: MemberTableQueryParams,
-): Promise<MemberTablePage> {
-	const response = await membersList({
-		query: {
-			limit: params.pageSize,
-			cursor: params.cursor ?? undefined,
-			q: params.searchQuery || undefined,
-			membershipStatus:
-				params.membershipStatus && params.membershipStatus.length > 0
-					? params.membershipStatus.join(",")
-					: undefined,
-			sort: memberSortMap[params.sort],
-			direction: params.direction,
-		},
-	});
-
-	if (response.error) {
-		throw new Error("Failed to load members. Please try again later.");
-	}
-
-	const result = response.data.data;
-
-	return {
-		data: result.members.map(toTableRow),
-		count: result.totalCount,
-		nextCursor: result.nextCursor,
-		previousCursor: result.previousCursor,
-	};
-}
-
 function toTableRow(member: Member): MemberTableRow {
 	return {
 		id: member.id,
@@ -228,13 +197,30 @@ function toTableRow(member: Member): MemberTableRow {
 	};
 }
 
-const membersQueryKey = $derived(["members", membersQueryParams]);
-const membersQuery = createQuery<MemberTablePage>(() => ({
-	queryKey: membersQueryKey,
+const membersQuery = createQuery(() => ({
+	...membersListOptions({
+		query: {
+			limit: membersQueryParams.pageSize,
+			cursor: membersQueryParams.cursor ?? undefined,
+			q: membersQueryParams.searchQuery || undefined,
+			membershipStatus:
+				membersQueryParams.membershipStatus &&
+				membersQueryParams.membershipStatus.length > 0
+					? membersQueryParams.membershipStatus.join(",")
+					: undefined,
+			sort: memberSortMap[membersQueryParams.sort],
+			direction: membersQueryParams.direction,
+		},
+	}),
 	placeholderData: keepPreviousData,
-	queryFn: ({ signal, queryKey }) => {
-		signal.throwIfAborted();
-		return loadMembersTablePage(queryKey[1] as MemberTableQueryParams);
+	select: (response): MemberTablePage => {
+		const result = response.data;
+		return {
+			data: result.members.map(toTableRow),
+			count: result.totalCount,
+			nextCursor: result.nextCursor,
+			previousCursor: result.previousCursor,
+		};
 	},
 }));
 

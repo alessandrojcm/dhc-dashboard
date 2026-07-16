@@ -35,11 +35,16 @@ import {
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import { buildContainerHierarchy } from "$lib/utils/inventory-form";
-import { moveItem, setMaintenance, updateItem } from "../data.remote";
+import { updateItem } from "../data.remote";
 import { onMount } from "svelte";
 import { invalidateAll } from "$app/navigation";
 import { createMutation } from "@tanstack/svelte-query";
 import type { InventoryAttributeDefinition } from "$lib/types";
+import { page } from "$app/state";
+import {
+	inventoryItemsMaintenanceMutation,
+	inventoryItemsMoveMutation,
+} from "@dhc/api-client";
 
 dayjs.extend(relativeTime);
 let { data } = $props();
@@ -94,37 +99,33 @@ let moveTargetContainerId = $state("");
 let moveNotes = $state("");
 
 const moveMutation = createMutation(() => ({
-	mutationFn: async (input: { containerId: string; notes?: string }) => {
-		return await moveItem(input);
-	},
-	onSuccess: (data) => {
-		toast.success(data.success, { position: "top-right" });
+	...inventoryItemsMoveMutation(),
+	onSuccess: () => {
+		toast.success("Item moved successfully", { position: "top-right" });
 		isMoveDialogOpen = false;
 		moveTargetContainerId = "";
 		moveNotes = "";
 		invalidateAll();
 	},
-	onError: (error: unknown) => {
-		toast.error(
-			error instanceof Error ? error.message : "Failed to move item.",
-			{ position: "top-right" },
-		);
+	onError: (error) => {
+		toast.error(error.errors?.detail ?? "Failed to move item.", {
+			position: "top-right",
+		});
 	},
 }));
 
 const maintenanceMutation = createMutation(() => ({
-	mutationFn: async (input: { outForMaintenance: boolean; notes?: string }) => {
-		return await setMaintenance(input);
-	},
-	onSuccess: (data) => {
-		toast.success(data.success, { position: "top-right" });
+	...inventoryItemsMaintenanceMutation(),
+	onSuccess: () => {
+		toast.success("Maintenance status updated successfully", {
+			position: "top-right",
+		});
 		invalidateAll();
 	},
-	onError: (error: unknown) => {
-		toast.error(
-			error instanceof Error ? error.message : "Failed to update maintenance.",
-			{ position: "top-right" },
-		);
+	onError: (error) => {
+		toast.error(error.errors?.detail ?? "Failed to update maintenance.", {
+			position: "top-right",
+		});
 	},
 }));
 
@@ -136,14 +137,18 @@ const openMoveDialog = () => {
 
 const handleMove = () => {
 	moveMutation.mutate({
-		containerId: moveTargetContainerId,
-		...(moveNotes ? { notes: moveNotes } : {}),
+		path: { id: page.params.id! },
+		body: {
+			containerId: moveTargetContainerId,
+			...(moveNotes ? { notes: moveNotes } : {}),
+		},
 	});
 };
 
 const handleToggleMaintenance = () => {
 	maintenanceMutation.mutate({
-		outForMaintenance: !displayItem.out_for_maintenance,
+		path: { id: page.params.id! },
+		body: { outForMaintenance: !displayItem.out_for_maintenance },
 	});
 };
 

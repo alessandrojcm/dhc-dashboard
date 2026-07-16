@@ -1,7 +1,7 @@
 import { command, form, getRequestEvent } from "$app/server";
 import { invitationsCreate, settingsUpdate } from "@dhc/api-client";
 import { apiClientOptions } from "$lib/server/api-client";
-import { InsuranceFormLinkSchema } from "$lib/server/services/settings";
+import { InsuranceFormLinkSchema } from "$lib/schemas/settings";
 import { invariant } from "$lib/server/invariant";
 import {
 	getRolesFromSession,

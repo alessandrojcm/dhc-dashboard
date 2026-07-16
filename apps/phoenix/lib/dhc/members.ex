@@ -161,6 +161,29 @@ defmodule Dhc.Members do
     end
   end
 
+  @doc "Returns the authenticated user's identity and Stripe customer reference."
+  @spec get_current_user(String.t()) :: {:ok, map()} | {:error, :not_found}
+  def get_current_user(user_id) do
+    query =
+      from p in UserProfile,
+        left_join: u in AuthUser,
+        on: u.id == p.supabase_user_id,
+        where: p.supabase_user_id == ^user_id,
+        select: %{
+          id: p.supabase_user_id,
+          first_name: p.first_name,
+          last_name: p.last_name,
+          email: u.email,
+          phone_number: p.phone_number,
+          customer_id: p.customer_id
+        }
+
+    case Repo.one(query) do
+      nil -> {:error, :not_found}
+      user -> {:ok, user}
+    end
+  end
+
   @doc """
   Partially updates member profile facts for one Supabase auth user id.
 

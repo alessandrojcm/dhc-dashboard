@@ -1,8 +1,8 @@
 import * as Sentry from "@sentry/sveltekit";
 import { error, isHttpError } from "@sveltejs/kit";
-import { getNextBillingDates } from "$lib/server/pricingUtils";
 import { apiBaseUrl } from "$lib/server/api-client";
 import { invitationsShowPublic } from "@dhc/api-client";
+import dayjs from "dayjs";
 import type { PageServerLoad } from "./$types";
 
 // TODO: fix page not reloading when invitation is confirmed, fix test
@@ -30,7 +30,8 @@ export const load: PageServerLoad = async ({ params, cookies }) => {
 			invitation,
 			isConfirmed,
 			insuranceFormLink: "",
-			...getNextBillingDates(),
+			nextMonthlyBillingDate: dayjs().add(1, "month").startOf("month").toDate(),
+			nextAnnualBillingDate: dayjs().month(0).date(7).add(1, "year").toDate(),
 		};
 	} catch (err) {
 		if (isHttpError(err)) {

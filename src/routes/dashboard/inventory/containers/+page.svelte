@@ -1,6 +1,4 @@
 <script lang="ts">
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import type { SupabaseClient } from "@supabase/supabase-js";
 import {
 	Card,
 	CardContent,
@@ -13,34 +11,19 @@ import { FolderOpen, Plus, Edit, Package, AlertTriangle } from "lucide-svelte";
 import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
 import { createQuery } from "@tanstack/svelte-query";
 import {
-	inventoryContainersIndex,
+	inventoryContainersIndexOptions,
 	type InventoryContainer,
 } from "@dhc/api-client";
 
 let { data } = $props();
-const supabase: SupabaseClient<any> = data.supabase;
 
 // Fetch containers with TanStack Query through the generated Phoenix client
 // (ALE-106). The `inventoryContainersIndex` endpoint returns a flat list
 // ordered by name, each with `parentContainerId`, a `parentContainer` summary,
 // and `itemCount`; the hierarchy is rebuilt client-side below.
 const containersQuery = createQuery(() => ({
-	queryKey: ["inventory-containers"],
-	queryFn: async ({ signal }) => {
-		const { data: sessionData, error } = await supabase.auth.getSession();
-		if (error) throw error;
-
-		const accessToken = sessionData.session?.access_token;
-		if (!accessToken) throw new Error("Authentication required");
-
-		const response = await inventoryContainersIndex({
-			auth: accessToken,
-			signal,
-			throwOnError: true,
-		});
-
-		return response.data.data.containers;
-	},
+	...inventoryContainersIndexOptions(),
+	select: (response) => response.data.containers,
 }));
 
 interface ContainerNode extends InventoryContainer {
@@ -129,7 +112,9 @@ const flatContainers = $derived(
 			<CardContent class="flex flex-col items-center justify-center py-12">
 				<AlertTriangle class="h-12 w-12 text-destructive mb-4" />
 				<h3 class="text-lg font-semibold mb-2">Error loading containers</h3>
-				<p class="text-muted-foreground mb-4">{containersQuery.error.message}</p>
+				<p class="text-muted-foreground mb-4">
+					{containersQuery.error.errors?.detail || "Failed to load containers"}
+				</p>
 				<Button onclick={() => containersQuery.refetch()} variant="outline">Retry</Button>
 			</CardContent>
 		</Card>
