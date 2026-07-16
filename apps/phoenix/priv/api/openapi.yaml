@@ -959,6 +959,63 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /notifications/read-all:
+    post:
+      operationId: notifications.markAllRead
+      tags:
+        - Notifications
+      summary: Mark all current user notifications as read
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Number of notifications marked as read
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationsMarkAllReadResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /notifications/{id}/read:
+    patch:
+      operationId: notifications.markRead
+      tags:
+        - Notifications
+      summary: Mark one current user notification as read
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          description: Updated notification
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Notification does not exist or belongs to another user
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /members:
     get:
       operationId: members.list
@@ -1126,6 +1183,38 @@ paths:
                 $ref: "#/components/schemas/Error"
         "403":
           description: Authenticated user lacks a broad committee role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /members/me:
+    get:
+      operationId: members.me
+      tags:
+        - Members
+      summary: Read the current user's dashboard identity
+      description: |
+        Returns the authenticated user's identity, contact details, and optional
+        Stripe customer reference. Replaces the browser-side user_profiles read
+        and get_current_user_with_profile RPC used by the dashboard shell.
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Current user data
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CurrentUserResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No user profile exists for the authenticated user
           content:
             application/json:
               schema:
@@ -1311,6 +1400,68 @@ paths:
                 $ref: "#/components/schemas/Error"
         "502":
           description: Stripe rejected the pause call
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /members/{memberId}/billing-portal:
+    post:
+      operationId: membership.billingPortal
+      tags:
+        - Membership
+      summary: Create a Stripe Billing Portal session
+      description: |
+        Creates a short-lived Stripe Billing Portal URL for the member's Stripe
+        customer. Self-or-broad-committee auth, matching other membership commands.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: memberId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BillingPortalRequest"
+      responses:
+        "200":
+          description: Billing Portal session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BillingPortalResponse"
+        "401":
+          description: Missing or invalid Supabase JWT
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user is neither the member nor a broad committee role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Member or Stripe customer not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Invalid return URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: Stripe request failed
           content:
             application/json:
               schema:
@@ -4263,6 +4414,26 @@ components:
             nextCursor:
               type: string
               nullable: true
+    NotificationResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: "#/components/schemas/Notification"
+    NotificationsMarkAllReadResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - updatedCount
+          properties:
+            updatedCount:
+              type: integer
+              minimum: 0
     Notification:
       type: object
       required:
@@ -4297,6 +4468,58 @@ components:
               type: string
               nullable: true
               description: URL of the HEMA insurance form, or null when not configured.
+    CurrentUserResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - id
+            - firstName
+            - lastName
+            - email
+            - phoneNumber
+            - customerId
+          properties:
+            id:
+              type: string
+              format: uuid
+            firstName:
+              type: string
+            lastName:
+              type: string
+            email:
+              type: string
+              format: email
+            phoneNumber:
+              type: string
+              nullable: true
+            customerId:
+              type: string
+              nullable: true
+    BillingPortalRequest:
+      type: object
+      required:
+        - returnUrl
+      properties:
+        returnUrl:
+          type: string
+          format: uri
+    BillingPortalResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - url
+          properties:
+            url:
+              type: string
+              format: uri
     MembersAnalyticsResponse:
       type: object
       required:

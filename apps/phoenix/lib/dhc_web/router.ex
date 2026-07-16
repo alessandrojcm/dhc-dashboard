@@ -125,11 +125,15 @@ defmodule DhcWeb.Router do
     pipe_through [:api, :authenticated_api]
 
     get "/members/insurance-form", MembersController, :insurance_form
+    get "/members/me", MembersController, :me
     get "/members/:memberId", MembersController, :show
     patch "/members/:memberId", MembersController, :update
     post "/members/:memberId/membership/pause", MembershipController, :pause
     post "/members/:memberId/membership/resume", MembershipController, :resume
+    post "/members/:memberId/billing-portal", MembershipController, :billing_portal
     get "/notifications", NotificationsController, :index
+    post "/notifications/read-all", NotificationsController, :mark_all_read
+    patch "/notifications/:id/read", NotificationsController, :mark_read
     get "/workshops", WorkshopsController, :list
     post "/workshops/:id/interest", WorkshopsController, :toggle_interest
 

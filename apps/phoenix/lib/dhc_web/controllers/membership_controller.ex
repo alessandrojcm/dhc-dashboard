@@ -43,6 +43,22 @@ defmodule DhcWeb.MembershipController do
     end
   end
 
+  @doc "POST /members/:memberId/billing-portal"
+  def billing_portal(conn, %{"memberId" => member_id, "returnUrl" => return_url}) do
+    with :ok <- authorize_self_or_admin(conn, member_id),
+         {:ok, url} <- Membership.create_billing_portal_session(member_id, return_url) do
+      json(conn, %{data: %{url: url}})
+    else
+      {:error, :forbidden} -> forbidden(conn, "Insufficient role")
+      {:error, :not_found} -> not_found(conn, "Member not found")
+      {:error, :invalid_payload} -> validation_error(conn, "Invalid billing portal return URL")
+      {:error, :stripe_error} -> bad_gateway(conn, "Stripe billing portal request failed")
+    end
+  end
+
+  def billing_portal(conn, _params),
+    do: validation_error(conn, "Invalid billing portal payload")
+
   defp authorize_self_or_admin(conn, member_id) do
     current_user = conn.assigns.current_user
 

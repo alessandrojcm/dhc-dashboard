@@ -7,14 +7,14 @@ import * as Popover from "$lib/components/ui/popover";
 import { toast } from "svelte-sonner";
 import { Check, DollarSign, User, CheckCheck } from "lucide-svelte";
 import { checkRefundEligibility } from "$lib/utils/refund-eligibility";
-import {
-	updateAttendance,
-	processRefund,
-} from "$lib/functions/workshops.remote";
 import type {
 	WorkshopAttendee,
 	WorkshopRefund,
 	WorkshopSummary,
+} from "@dhc/api-client";
+import {
+	workshopsRefundRegistrationMutation,
+	workshopsUpdateAttendanceMutation,
 } from "@dhc/api-client";
 
 interface Props {
@@ -65,44 +65,27 @@ function toggleAttendee(id: string) {
 }
 
 const markAttendedMutation = createMutation(() => ({
-	mutationFn: async (registrationIds: string[]) => {
-		if (!workshopId) throw new Error("Workshop ID is required");
-		return updateAttendance({
-			workshopId,
-			attendance_updates: registrationIds.map((id) => ({
-				registration_id: id,
-				attendance_status: "attended" as const,
-				notes: "",
-			})),
-		});
-	},
+	...workshopsUpdateAttendanceMutation(),
 	onSuccess: () => {
 		selectedAttendees = [];
 		onAttendanceUpdated?.();
 		toast.success("Marked as checked in");
 	},
-	onError: (error: Error) => {
-		toast.error(error.message);
+	onError: (error) => {
+		toast.error(error.errors?.detail ?? "Failed to update attendance");
 	},
 }));
 
 const refundMutation = createMutation(() => ({
-	mutationFn: async (registrationId: string) => {
-		if (!workshopId) throw new Error("Workshop ID is required");
-		return processRefund({
-			workshopId,
-			registration_id: registrationId,
-			reason: "Requested by user",
-		});
-	},
+	...workshopsRefundRegistrationMutation(),
 	onSuccess: () => {
 		attendeeIdForRefund = "";
 		refundPopoverOpen = false;
 		onRefundProcessed?.();
 		toast.success("Refund processed");
 	},
-	onError: (error: Error) => {
-		toast.error(error.message);
+	onError: (error) => {
+		toast.error(error.errors?.detail ?? "Failed to process refund");
 	},
 }));
 
@@ -234,7 +217,25 @@ function getRefundEligibility(attendee: WorkshopAttendee) {
 }
 
 function confirmRefund() {
-	refundMutation.mutate(attendeeIdForRefund);
+	if (!workshopId) return;
+	refundMutation.mutate({
+		path: { workshopId, registrationId: attendeeIdForRefund },
+		body: { reason: "Requested by user" },
+	});
+}
+
+function markAttended(registrationIds: string[]) {
+	if (!workshopId) return;
+	markAttendedMutation.mutate({
+		path: { workshopId },
+		body: {
+			updates: registrationIds.map((registrationId) => ({
+				registrationId,
+				attendanceStatus: "attended" as const,
+				notes: "",
+			})),
+		},
+	});
 }
 </script>
 
@@ -256,7 +257,7 @@ function confirmRefund() {
                         class="flex-1 sm:flex-none"
                         onclick={() => {
 						toggleSelectAll();
-						markAttendedMutation.mutate([...selectedAttendees]);
+						markAttended([...selectedAttendees]);
 					}}
                         disabled={markAttendedMutation.isPending || allSelected}
                 >
@@ -267,7 +268,7 @@ function confirmRefund() {
                 <Button
                         size="sm"
                         class="flex-1 sm:flex-none"
-                        onclick={() => markAttendedMutation.mutate([...selectedAttendees])}
+					onclick={() => markAttended([...selectedAttendees])}
                         disabled={markAttendedMutation.isPending || selectedAttendees.length === 0}
                 >
                     <Check class="w-4 h-4"/>
@@ -334,7 +335,7 @@ function confirmRefund() {
                         <Button
                                 size="sm"
                                 variant="outline"
-                                onclick={() => markAttendedMutation.mutate([attendee.id])}
+								onclick={() => markAttended([attendee.id])}
                                 disabled={markAttendedMutation.isPending}
                                 class="flex-1 gap-1 sm:flex-none"
                         >
