@@ -18,9 +18,11 @@ let dialogOpen = $state(false);
 let value = $derived(page.url.searchParams.get("tab") || "dashboard");
 
 const toggleWaitlistMutation = createMutation(() => ({
-	mutationFn: async () => {
+	mutationFn: async (isOpen: boolean) => {
 		const response = await fetch("/dashboard/beginners-workshop", {
 			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ isOpen }),
 		});
 		const result = (await response.json()) as {
 			success: boolean;
@@ -94,7 +96,7 @@ let viewLabel = $derived(
 					</AlertDialog.Header>
 					<AlertDialog.Footer>
 						<AlertDialog.Cancel onclick={() => (dialogOpen = false)}>Cancel</AlertDialog.Cancel>
-						<AlertDialog.Action onclick={() => toggleWaitlistMutation.mutate()} data-testid="action"
+						<AlertDialog.Action onclick={() => toggleWaitlistMutation.mutate(!isOpen)} data-testid="action"
 							>{isOpen ? 'Close' : 'Open'}</AlertDialog.Action
 						>
 					</AlertDialog.Footer>

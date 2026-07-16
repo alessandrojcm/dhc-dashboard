@@ -238,6 +238,25 @@ defmodule Dhc.Invitations do
 
   def resend_invitation_emails(_emails), do: {:ok, %{succeeded: 0, failed: 0}}
 
+  @doc """
+  Permanently deletes the requested Invitations.
+
+  Missing ids are ignored to preserve the previous bulk-delete semantics.
+  """
+  @spec delete_many([String.t()]) :: :ok | {:error, :invalid_invitation_ids}
+  def delete_many(invitation_ids) when is_list(invitation_ids) and invitation_ids != [] do
+    if Enum.all?(invitation_ids, &valid_uuid?/1) do
+      from(i in Invitation, where: i.id in ^invitation_ids)
+      |> Repo.delete_all()
+
+      :ok
+    else
+      {:error, :invalid_invitation_ids}
+    end
+  end
+
+  def delete_many(_invitation_ids), do: {:error, :invalid_invitation_ids}
+
   defp credentials_match?(invitation_id, email, %Date{} = date_of_birth) do
     normalized_email = normalize_email(email)
     now = DateTime.utc_now() |> DateTime.truncate(:second)
@@ -284,6 +303,8 @@ defmodule Dhc.Invitations do
     |> String.trim()
     |> String.downcase()
   end
+
+  defp valid_uuid?(value), do: match?({:ok, _uuid}, Ecto.UUID.cast(value))
 
   defp parse_date(%Date{} = date), do: {:ok, date}
 

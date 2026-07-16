@@ -281,6 +281,22 @@ defmodule DhcWeb.InvitationsController do
     |> render(:error, detail: "emails must be a non-empty list")
   end
 
+  @doc """
+  DELETE /invitations
+  """
+  def delete(conn, %{"invitationIds" => invitation_ids}) do
+    case Invitations.delete_many(invitation_ids) do
+      :ok -> send_resp(conn, :no_content, "")
+      {:error, :invalid_invitation_ids} -> invalid_invitation_ids(conn)
+    end
+  end
+
+  def delete(conn, _params), do: invalid_invitation_ids(conn)
+
+  defp invalid_invitation_ids(conn) do
+    bad_request(conn, "invitationIds must be a non-empty list of UUIDs")
+  end
+
   defp bad_request(conn, detail) do
     conn
     |> put_status(:bad_request)

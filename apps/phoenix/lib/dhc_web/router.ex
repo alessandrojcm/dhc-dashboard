@@ -73,6 +73,7 @@ defmodule DhcWeb.Router do
 
     get "/invitations", InvitationsController, :list
     post "/invitations", InvitationsController, :create
+    delete "/invitations", InvitationsController, :delete
     post "/invitations/resend", InvitationsController, :resend
   end
 
@@ -80,6 +81,7 @@ defmodule DhcWeb.Router do
     pipe_through [:api, :waitlist_admin_api]
 
     get "/waitlist/analytics", WaitlistController, :analytics
+    patch "/waitlist/status", WaitlistController, :update_status
     get "/waitlist/entries", WaitlistController, :entries
     get "/waitlist/entries/:id", WaitlistController, :show
     patch "/waitlist/entries/:id", WaitlistController, :update

@@ -2,7 +2,7 @@
 
 | Task | Location | Notes |
 |------|----------|-------|
-| Add DB mutation | `apps/phoenix/lib/dhc/<domain>/` | Phoenix is the current owner. The Svelte service directory contains only temporary invitation/settings compatibility code; do not add new domain services there. |
+| Add DB mutation | `apps/phoenix/lib/dhc/<domain>/` | Phoenix is the current owner. The legacy Svelte service directory has been removed; do not recreate it. |
 | Add API endpoint | `src/routes/api/` | CURRENT system — uses `authorize()` |
 | Add edge function | `supabase/functions/` | DEPRECATED — migrate to Oban instead |
 | Add Supabase migration | `supabase/migrations/` | FROZEN — no new migrations |

@@ -41,6 +41,7 @@ await supabaseLogin(page, 'user@example.com', 'password');
 - The legacy Svelte workshop services and their service-backed E2E helpers have been removed.
 - Workshop interest, refund, attendance, and full-lifecycle specs are skipped until they are replaced with Phoenix API coverage.
 - `attendee-test-helpers.ts` retains only direct fixture creation and generic UI helpers.
+- `inventory-categories.spec.ts` is also skipped because it depended on a removed request helper; restore it when its setup is migrated to a Phoenix API-aware helper.
 - Registration seeding overrides should follow `club_activity_registrations` insert-column names (`club_activity_id`, `member_user_id`, etc.), not the simplified `TestRegistration` view model.
 
 ### Database Setup
