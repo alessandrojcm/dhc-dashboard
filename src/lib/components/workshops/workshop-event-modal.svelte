@@ -204,26 +204,30 @@ const hasEditAction = $derived(!!event.handleEdit);
 		</div>
 
 		{#if workshop.isPublic && workshop.status === 'published'}
-			<div class="ml-8">
+			<div class="flex items-center justify-between gap-4 rounded-lg border bg-muted/30 p-3">
+				<div class="min-w-0">
+					<p class="text-sm font-medium text-foreground">Share public workshop</p>
+					<p class="text-xs text-muted-foreground">Copy the registration link to share it.</p>
+				</div>
 				<Button
-					variant="ghost"
+					variant="outline"
 					size="sm"
 					onclick={handleCopyPublicRegisterLink}
 					disabled={isCopyingLink}
-					class="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+					class="shrink-0"
 				>
 					{#if isCopyingLink}
-						<Loader2 class="w-3.5 h-3.5 mr-1.5 animate-spin" />
+						<Loader2 class="w-4 h-4 mr-2 animate-spin" />
 						Copying…
 					{:else if hasCopiedLink}
-						<CheckCircle class="w-3.5 h-3.5 mr-1.5" />
+						<CheckCircle class="w-4 h-4 mr-2" />
 						Copied
 					{:else if hasCopyError}
-						<AlertTriangle class="w-3.5 h-3.5 mr-1.5" />
+						<AlertTriangle class="w-4 h-4 mr-2" />
 						Couldn’t copy
 					{:else}
-						<Copy class="w-3.5 h-3.5 mr-1.5" />
-						Copy public registration link
+						<Copy class="w-4 h-4 mr-2" />
+						Copy link
 					{/if}
 				</Button>
 			</div>

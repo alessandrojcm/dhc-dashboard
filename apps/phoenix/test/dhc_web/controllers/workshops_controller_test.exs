@@ -1828,6 +1828,40 @@ defmodule DhcWeb.WorkshopsControllerTest do
 
       assert registration_id == to_uuid(registration.id)
     end
+
+    test "cancelling a Workshop does not duplicate an existing registration refund", %{
+      conn: conn
+    } do
+      workshop = insert_workshop(status: "published")
+
+      registration =
+        WorkshopFixtures.registration_fixture(
+          workshop_id: workshop.id,
+          member_user_id: @other_user_id,
+          status: "confirmed",
+          amount_paid: 1000,
+          stripe_checkout_session_id: "pi_already_refunded"
+        )
+
+      existing_refund =
+        WorkshopFixtures.refund_fixture(
+          registration_id: registration.id,
+          refund_reason: "Already requested"
+        )
+
+      conn =
+        conn
+        |> auth_conn("workshop_coordinator")
+        |> post("/api/workshops/#{to_uuid(workshop.id)}/cancel")
+
+      assert %{"data" => %{"workshop" => %{"status" => "cancelled"}}} =
+               json_response(conn, 200)
+
+      assert [%{id: refund_id, refund_reason: "Already requested"}] =
+               Dhc.Workshops.list_workshop_refunds(to_uuid(workshop.id))
+
+      assert refund_id == to_uuid(existing_refund.id)
+    end
   end
 
   describe "Phoenix-owned Workshop workflow" do

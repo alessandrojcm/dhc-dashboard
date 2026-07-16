@@ -570,7 +570,7 @@ defmodule Dhc.Workshops do
              is_binary(requested_by) do
     eligibility =
       if Keyword.get(opts, :skip_eligibility, false),
-        do: registration_for_refund(workshop_id, registration_id),
+        do: cancellation_refund_eligibility(workshop_id, registration_id),
         else: refund_eligibility(registration_id)
 
     with {:ok, %Registration{club_activity_id: ^workshop_id} = registration} <- eligibility,
@@ -1256,6 +1256,16 @@ defmodule Dhc.Workshops do
     case Repo.get_by(Registration, id: registration_id, club_activity_id: workshop_id) do
       nil -> {:error, :registration_not_found}
       registration -> {:ok, registration}
+    end
+  end
+
+  defp cancellation_refund_eligibility(workshop_id, registration_id) do
+    with {:ok, registration} <- registration_for_refund(workshop_id, registration_id) do
+      if Repo.exists?(from(rf in Refund, where: rf.registration_id == ^registration_id)) do
+        {:error, :already_requested}
+      else
+        {:ok, registration}
+      end
     end
   end
 
