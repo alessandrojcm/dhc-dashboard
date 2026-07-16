@@ -155,6 +155,7 @@ defmodule DhcWeb.Router do
     get "/inventory/items/:id/history", InventoryItemsController, :history
     # ALE-108: any authenticated member may read the global inventory activity feed.
     get "/inventory/history", InventoryHistoryController, :index
+    get "/inventory/stats", InventoryDashboardController, :stats
   end
 
   scope "/api", DhcWeb do

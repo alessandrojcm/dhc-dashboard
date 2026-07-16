@@ -1,4 +1,3 @@
-import type { KyselifyDatabase } from "kysely-supabase";
 import type { WorkshopCalendarItem } from "@dhc/api-client";
 import type { Database } from "../database.types.ts";
 
@@ -48,8 +47,6 @@ export enum SocialMediaConsent {
 	yes_recognizable = "yes_recognizable",
 	yes_unrecognizable = "yes_unrecognizable",
 }
-
-export type KyselyDatabase = KyselifyDatabase<Database>;
 
 export type StripePaymentInfo = {
 	customerId: string;

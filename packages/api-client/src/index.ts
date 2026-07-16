@@ -6,6 +6,7 @@
 // Generated SDK functions & types
 export {
 	healthIndex,
+	inventoryDashboardStats,
 	inventoryCategoriesCreate,
 	inventoryCategoriesDelete,
 	inventoryCategoriesIndex,
@@ -87,6 +88,12 @@ export type {
 	HealthIndexData,
 	HealthIndexResponse,
 	HealthIndexResponses,
+	InventoryDashboardStatsData,
+	InventoryDashboardStatsError,
+	InventoryDashboardStatsErrors,
+	InventoryDashboardStatsResponse,
+	InventoryDashboardStatsResponse2,
+	InventoryDashboardStatsResponses,
 	InventoryCategory,
 	InventoryCategoryAttributeDefinition,
 	InventoryCategoryCreateRequest,
@@ -544,6 +551,8 @@ export type {
 // Valibot schemas (runtime validation)
 export {
 	vHealthIndexResponse,
+	vInventoryDashboardStatsResponse,
+	vInventoryDashboardStatsResponse2,
 	vInventoryCategory,
 	vInventoryCategoryAttributeDefinition,
 	vInventoryCategoryCreateRequest,
@@ -772,6 +781,8 @@ export {
 export {
 	healthIndexOptions,
 	healthIndexQueryKey,
+	inventoryDashboardStatsOptions,
+	inventoryDashboardStatsQueryKey,
 	inventoryCategoriesCreateMutation,
 	inventoryCategoriesCreateMutationKey,
 	inventoryCategoriesDeleteMutation,

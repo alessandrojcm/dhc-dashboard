@@ -172,10 +172,6 @@ run = "pnpm supabase:reset"
 description = "Regenerate Supabase TypeScript types"
 run = "pnpm supabase:types"
 
-[tasks."sb-functions"]
-description = "Serve Supabase edge functions locally"
-run = "pnpm supabase:functions:serve"
-
 # ── Seeds ─────────────────────────────────────────
 
 [tasks."seed-committee"]
