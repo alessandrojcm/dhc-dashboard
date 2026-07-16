@@ -55,7 +55,7 @@ async function addInviteToList() {
 		{
 			firstName: values.firstName || "",
 			lastName: values.lastName || "",
-			email: values.email,
+			email: values.email ?? "",
 			phoneNumber: values.phoneNumber || "",
 			dateOfBirth: values.dateOfBirth || "",
 		},
