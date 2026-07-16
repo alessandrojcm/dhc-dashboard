@@ -57,6 +57,44 @@ defmodule Dhc.Membership do
     end
   end
 
+  @doc "Creates a short-lived Stripe Billing Portal session for a member."
+  @spec create_billing_portal_session(String.t(), String.t()) ::
+          {:ok, String.t()} | {:error, :invalid_payload | :not_found | :stripe_error}
+  def create_billing_portal_session(member_id, return_url) do
+    with :ok <- validate_return_url(return_url),
+         {:ok, member} <- load_member_customer(member_id),
+         {:ok, %{"url" => url}} <-
+           Operations.post_billing_portal_sessions(%{
+             "customer" => member.customer_id,
+             "return_url" => return_url
+           }) do
+      {:ok, url}
+    else
+      {:error, reason} when reason in [:invalid_payload, :not_found] ->
+        {:error, reason}
+
+      {:error, reason} ->
+        Logger.error("[membership] Stripe billing portal session failed",
+          member_id: member_id,
+          reason: inspect(reason)
+        )
+
+        {:error, :stripe_error}
+
+      _ ->
+        {:error, :stripe_error}
+    end
+  end
+
+  defp validate_return_url(return_url) when is_binary(return_url) do
+    case URI.parse(return_url) do
+      %URI{scheme: scheme, host: host} when scheme in ["http", "https"] and is_binary(host) -> :ok
+      _ -> {:error, :invalid_payload}
+    end
+  end
+
+  defp validate_return_url(_return_url), do: {:error, :invalid_payload}
+
   defp parse_pause_until(value) do
     with {:ok, datetime, _offset} <- DateTime.from_iso8601(value),
          :ok <- validate_pause_window(datetime) do

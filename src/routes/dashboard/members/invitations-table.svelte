@@ -22,7 +22,9 @@ import { page } from "$app/state";
 import {
 	type Invitation,
 	type InvitationListSortField,
+	invitationsDeleteMutation,
 	invitationsListOptions,
+	invitationsResendMutation,
 } from "@dhc/api-client";
 import { Badge } from "$lib/components/ui/badge";
 import { Button } from "$lib/components/ui/button";
@@ -39,10 +41,6 @@ import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
 import * as Select from "$lib/components/ui/select";
 import * as Table from "$lib/components/ui/table/index.js";
 import { getInvitationLink } from "$lib/utils/invitation";
-import {
-	deleteInvitations,
-	resendInvitations,
-} from "../beginners-workshop/admin.remote";
 import InvitationActions from "./invitation-actions.svelte";
 
 const pageSizeOptions = [10, 25, 50, 100] as const;
@@ -214,9 +212,7 @@ function onSearchChange(newSearch: string) {
 }
 
 const resendInvitationLink = createMutation(() => ({
-	mutationFn: async (data: { email: string; invitationId: string }[]) => {
-		return resendInvitations({ emails: data.map((e) => e.email) });
-	},
+	...invitationsResendMutation(),
 	onSuccess: () => {
 		toast.success("Invitation link resent");
 	},
@@ -226,15 +222,7 @@ const resendInvitationLink = createMutation(() => ({
 }));
 
 const bulkResendInvitations = createMutation(() => ({
-	mutationFn: async (selectedIds: string[]) => {
-		const selectedInvitations =
-			invitationsQuery.data?.data?.filter((invitation) =>
-				selectedIds.includes(invitation.id),
-			) || [];
-		return resendInvitations({
-			emails: selectedInvitations.map((invitation) => invitation.email),
-		});
-	},
+	...invitationsResendMutation(),
 	onSuccess: () => {
 		toast.success("Invitation links resent successfully");
 		selectedRows = new Set();
@@ -246,9 +234,7 @@ const bulkResendInvitations = createMutation(() => ({
 
 // Bulk delete mutation
 const bulkDeleteInvitations = createMutation(() => ({
-	mutationFn: async (selectedIds: string[]) => {
-		await deleteInvitations(selectedIds);
-	},
+	...invitationsDeleteMutation(),
 	onSuccess: () => {
 		toast.success("Invitations deleted successfully");
 		selectedRows = new Set(); // Clear selection
@@ -291,20 +277,16 @@ const table = createSvelteTable({
 			cell: ({ row }) => {
 				return renderComponent(InvitationActions, {
 					resendInvitation: () =>
-						resendInvitationLink.mutate([
-							{
-								email: row.original.email,
-								invitationId: row.original.id,
-							},
-						]),
+						resendInvitationLink.mutate({
+							body: { emails: [row.original.email] },
+						}),
 					invitationLink: getInvitationLink(
 						row.original.id,
 						row.original.email,
 					),
 					deleteInvitation: () =>
-						deleteInvitations([row.original.id]).then(() => {
-							toast.success("Invitation deleted");
-							invitationsQuery.refetch();
+						bulkDeleteInvitations.mutate({
+							body: { invitationIds: [row.original.id] },
 						}),
 				});
 			},
@@ -424,7 +406,12 @@ const table = createSvelteTable({
 				variant="outline"
 				size="sm"
 				disabled={bulkResendInvitations.isPending || selectedRows.size === 0}
-				onclick={() => bulkResendInvitations.mutate(selectedRowsArray)}
+				onclick={() => {
+					const emails = invitationsQuery.data?.data
+						.filter((invitation) => selectedRowsArray.includes(invitation.id))
+						.map((invitation) => invitation.email) ?? [];
+					bulkResendInvitations.mutate({ body: { emails } });
+				}}
 				class="flex items-center gap-2"
 			>
 				<SendIcon class="h-4 w-4" />
@@ -440,7 +427,8 @@ const table = createSvelteTable({
 				variant="destructive"
 				size="sm"
 				disabled={bulkDeleteInvitations.isPending || selectedRows.size === 0}
-				onclick={() => bulkDeleteInvitations.mutate(selectedRowsArray)}
+				onclick={() =>
+					bulkDeleteInvitations.mutate({ body: { invitationIds: selectedRowsArray } })}
 				class="flex items-center gap-2"
 			>
 				<Trash2 class="h-4 w-4" />
@@ -510,13 +498,8 @@ const table = createSvelteTable({
 						size="icon"
 						class="h-8 w-8"
 						aria-label="Resend invitation"
-						onclick={() =>
-							resendInvitationLink.mutate([
-								{
-									email: row.original.email,
-									invitationId: row.original.id
-								}
-							])}
+							onclick={() =>
+								resendInvitationLink.mutate({ body: { emails: [row.original.email] } })}
 					>
 						<SendIcon class="h-4 w-4" />
 					</Button>

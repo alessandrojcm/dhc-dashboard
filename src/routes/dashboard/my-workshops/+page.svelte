@@ -21,8 +21,11 @@ import {
 } from "$lib/components/ui/tabs/index.js";
 import { toast } from "svelte-sonner";
 import { CalendarDays } from "lucide-svelte";
-import { workshopsListOptions, workshopsListQueryKey } from "@dhc/api-client";
-import { toggleInterest } from "./registration.remote";
+import {
+	workshopsListOptions,
+	workshopsListQueryKey,
+	workshopsToggleInterestMutation,
+} from "@dhc/api-client";
 
 const queryClient = useQueryClient();
 let activeTab = $state("published");
@@ -38,9 +41,7 @@ const publishedWorkshopsQuery = createQuery(() => ({
 }));
 
 const interestMutation = createMutation(() => ({
-	mutationFn: async (workshopId: string) => {
-		return await toggleInterest(workshopId);
-	},
+	...workshopsToggleInterestMutation(),
 	onSuccess: (data) => {
 		queryClient.invalidateQueries({
 			queryKey: workshopsListQueryKey({ query: { status: "planned" } }),
@@ -48,17 +49,15 @@ const interestMutation = createMutation(() => ({
 		queryClient.invalidateQueries({
 			queryKey: workshopsListQueryKey({ query: { status: "published" } }),
 		});
-		toast.success(data.message);
+		toast.success(data.data.message);
 	},
 	onError: (error) => {
-		toast.error(
-			error instanceof Error ? error.message : "Failed to manage interest",
-		);
+		toast.error(error.errors?.detail ?? "Failed to manage interest");
 	},
 }));
 
 const handleInterestToggle = (workshopId: string) => {
-	interestMutation.mutate(workshopId);
+	interestMutation.mutate({ path: { workshopId } });
 };
 </script>
 

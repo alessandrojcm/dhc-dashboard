@@ -3,6 +3,8 @@ import { onMount } from "svelte";
 import {
 	notificationsListInfiniteOptions,
 	notificationsListInfiniteQueryKey,
+	notificationsMarkAllReadMutation,
+	notificationsMarkReadMutation,
 	type Notification as ApiNotification,
 } from "@dhc/api-client";
 import dayjs from "dayjs";
@@ -74,26 +76,14 @@ function toNotificationRow(notification: ApiNotification): Notification {
 }
 
 const markAsRead = createMutation(() => ({
-	mutationFn: async (notificationId: string) => {
-		const { error } = await supabase.rpc("mark_notification_as_read", {
-			notification_id: notificationId,
-		});
-
-		if (error) throw error;
-	},
+	...notificationsMarkReadMutation(),
 	onSuccess: () => {
 		queryClient.invalidateQueries({ queryKey: notificationsQueryKey });
 	},
 }));
 
 const markAllAsRead = createMutation(() => ({
-	mutationFn: async () => {
-		return supabase
-			.from("notifications")
-			.update({ read_at: new Date().toISOString() })
-			.eq("user_id", (await supabase.auth.getUser())?.data.user!.id)
-			.throwOnError();
-	},
+	...notificationsMarkAllReadMutation(),
 	onSuccess: () => {
 		queryClient.invalidateQueries({ queryKey: notificationsQueryKey });
 	},
@@ -189,7 +179,7 @@ function formatTime(timestamp: string): string {
 				{#if notificationsQuery?.data?.pages?.[0]?.data?.some((n) => !n.read_at)}
 					<button
 						class="text-xs text-primary bg-transparent border-none cursor-pointer"
-						onclick={() => markAllAsRead.mutate()}
+						onclick={() => markAllAsRead.mutate({})}
 					>
 						Mark all as read
 					</button>
@@ -226,7 +216,7 @@ function formatTime(timestamp: string): string {
 							{#if !notification.read_at}
 								<button
 									class="p-1 rounded-full text-primary hover:bg-primary-foreground flex-shrink-0 flex items-center justify-center"
-									onclick={() => markAsRead.mutate(notification.id)}
+								onclick={() => markAsRead.mutate({ path: { id: notification.id } })}
 								>
 									<span class="sr-only">Mark as read</span>
 									<svg

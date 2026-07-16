@@ -25,9 +25,13 @@ import { initForm } from "$lib/utils/init-form.svelte";
 import { whyThisField } from "$lib/components/ui/why-this-field.svelte";
 import FormDebug from "$lib/components/form-debug.svelte";
 import { memberProfileClientSchema } from "$lib/schemas/membersSignup";
-import { pauseSubscription, resumeSubscription } from "./subscription.remote";
 import { dev } from "$app/environment";
 import { untrack } from "svelte";
+import {
+	membershipBillingPortalMutation,
+	membershipPauseMutation,
+	membershipResumeMutation,
+} from "@dhc/api-client";
 
 const { data } = $props();
 
@@ -87,42 +91,37 @@ let pausedUntil: dayjs.Dayjs | null = $state(
 );
 
 const openBillingPortal = createMutation(() => ({
-	mutationFn: () =>
-		fetch(`/dashboard/members/${page.params.memberId}`, {
-			method: "POST",
-		}).then((res) => res.json()) as Promise<{ portalURL: string }>,
-	onSuccess: (portalData: { portalURL: string }) => {
-		window.open(portalData.portalURL, "_blank");
+	...membershipBillingPortalMutation(),
+	onSuccess: (response) => {
+		window.open(response.data.url, "_blank", "noopener,noreferrer");
+	},
+	onError: (error) => {
+		toast.error(error.errors?.detail ?? "Failed to open billing portal");
 	},
 }));
 
 let showPauseModal = $state(false);
 
 const pauseMutation = createMutation(() => ({
-	mutationFn: async (pauseData: { pauseUntil: string }) => {
-		return pauseSubscription({
-			memberId: page.params.memberId!,
-			pauseUntil: pauseData.pauseUntil,
-		});
-	},
-	onSuccess: ({ member }) => {
+	...membershipPauseMutation(),
+	onSuccess: ({ data: member }) => {
 		showPauseModal = false;
 		pausedUntil = member.subscriptionPausedUntil
 			? dayjs(member.subscriptionPausedUntil)
 			: null;
 	},
 	onError: (error) => {
-		toast.error(`Failed to pause subscription: ${error.message}`);
+		toast.error(error.errors?.detail ?? "Failed to pause subscription");
 	},
 }));
 
 const resumeMutation = createMutation(() => ({
-	mutationFn: () => resumeSubscription(page.params.memberId!),
+	...membershipResumeMutation(),
 	onSuccess: () => {
 		pausedUntil = null;
 	},
 	onError: (error) => {
-		toast.error(`Failed to resume subscription: ${error.message}`);
+		toast.error(error.errors?.detail ?? "Failed to resume subscription");
 	},
 }));
 </script>
@@ -230,7 +229,11 @@ const resumeMutation = createMutation(() => ({
                             disabled={openBillingPortal.isPending}
                             variant="outline"
                             type="button"
-                            onclick={() => openBillingPortal.mutate()}
+				onclick={() =>
+					openBillingPortal.mutate({
+						path: { memberId: page.params.memberId! },
+						body: { returnUrl: window.location.href },
+					})}
                             class="w-full"
                         >
                             {#if openBillingPortal.isPending}
@@ -269,7 +272,8 @@ const resumeMutation = createMutation(() => ({
                                     </Button>
                                     <Button
                                         variant="outline"
-                                        onclick={() => resumeMutation.mutate()}
+							onclick={() =>
+								resumeMutation.mutate({ path: { memberId: page.params.memberId! } })}
                                         disabled={resumeMutation.isPending}
                                         type="button"
                                         class="w-full"
@@ -558,8 +562,11 @@ const resumeMutation = createMutation(() => ({
 {#if showPauseModal}
     <PauseSubscriptionModal
         bind:open={showPauseModal}
-        onConfirm={(pauseData) => {
-            pauseMutation.mutate(pauseData);
+		onConfirm={(pauseData) => {
+			pauseMutation.mutate({
+				path: { memberId: page.params.memberId! },
+				body: { pauseUntil: pauseData.pauseUntil },
+			});
         }}
         isPending={pauseMutation.isPending}
         extend={pausedUntil?.isAfter(dayjs())}

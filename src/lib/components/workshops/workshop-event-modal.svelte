@@ -17,10 +17,11 @@ import dayjs from "dayjs";
 import type { WorkshopCalendarEvent } from "$lib/types";
 import Dinero from "dinero.js";
 import {
-	deleteWorkshop,
-	publishWorkshop,
-	cancelWorkshop,
-} from "$lib/functions/workshops.remote";
+	workshopsCalendarQueryKey,
+	workshopsCancelMutation,
+	workshopsDeleteMutation,
+	workshopsPublishMutation,
+} from "@dhc/api-client";
 
 let {
 	calendarEvent: event,
@@ -45,38 +46,38 @@ const interestCount = $derived.by(() => {
 });
 
 const deleteMutation = createMutation(() => ({
-	mutationFn: deleteWorkshop,
+	...workshopsDeleteMutation(),
 	onSuccess: () => {
-		queryClient.invalidateQueries({ queryKey: ["workshops"] });
+		queryClient.invalidateQueries({ queryKey: workshopsCalendarQueryKey() });
 		toast.success("Workshop deleted successfully");
 		onClose?.();
 	},
 	onError: (error) => {
-		toast.error(`Failed to delete workshop: ${error.message}`);
+		toast.error(error.errors?.detail ?? "Failed to delete workshop");
 	},
 }));
 
 const publishMutation = createMutation(() => ({
-	mutationFn: publishWorkshop,
+	...workshopsPublishMutation(),
 	onSuccess: () => {
-		queryClient.invalidateQueries({ queryKey: ["workshops"] });
+		queryClient.invalidateQueries({ queryKey: workshopsCalendarQueryKey() });
 		toast.success("Workshop published successfully");
 		onClose?.();
 	},
 	onError: (error) => {
-		toast.error(`Failed to publish workshop: ${error.message}`);
+		toast.error(error.errors?.detail ?? "Failed to publish workshop");
 	},
 }));
 
 const cancelMutation = createMutation(() => ({
-	mutationFn: cancelWorkshop,
+	...workshopsCancelMutation(),
 	onSuccess: () => {
-		queryClient.invalidateQueries({ queryKey: ["workshops"] });
+		queryClient.invalidateQueries({ queryKey: workshopsCalendarQueryKey() });
 		toast.success("Workshop cancelled successfully");
 		onClose?.();
 	},
 	onError: (error) => {
-		toast.error(`Failed to cancel workshop: ${error.message}`);
+		toast.error(error.errors?.detail ?? "Failed to cancel workshop");
 	},
 }));
 
@@ -90,15 +91,15 @@ function handleEdit() {
 }
 
 function handlePublish() {
-	publishMutation.mutate(workshop.id);
+	publishMutation.mutate({ path: { workshopId: workshop.id } });
 }
 
 function handleCancel() {
-	cancelMutation.mutate(workshop.id);
+	cancelMutation.mutate({ path: { workshopId: workshop.id } });
 }
 
 function handleDelete() {
-	deleteMutation.mutate(workshop.id);
+	deleteMutation.mutate({ path: { workshopId: workshop.id } });
 }
 
 async function handleCopyPublicRegisterLink() {

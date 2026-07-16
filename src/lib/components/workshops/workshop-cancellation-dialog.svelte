@@ -47,7 +47,7 @@ const cancelRegistrationMutation = createMutation(() => ({
 		onOpenChange(false);
 	},
 	onError: (error) => {
-		toast.error(error.errors.detail || "Failed to cancel registration");
+		toast.error(error.errors?.detail ?? "Failed to cancel registration");
 	},
 }));
 
@@ -59,7 +59,7 @@ const requestRefundMutation = createMutation(() => ({
 		onOpenChange(false);
 	},
 	onError: (error) => {
-		toast.error(error.errors.detail || "Failed to process refund");
+		toast.error(error.errors?.detail ?? "Failed to process refund");
 	},
 }));
 

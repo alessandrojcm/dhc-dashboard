@@ -1,6 +1,7 @@
 <script lang="ts">
 import {
 	invitationsCreateMutation,
+	invitationsResendMutation,
 	type InvitationsCreateData,
 	type Options,
 	type WaitlistEntriesSortField,
@@ -51,7 +52,6 @@ import * as Select from "$lib/components/ui/select";
 import * as Table from "$lib/components/ui/table/index.js";
 import SortHeader from "$lib/components/ui/table/sort-header.svelte";
 import ActionButtons from "./actions-buttons.svelte";
-import { resendInvitations } from "./admin.remote";
 import WaitlistStatusSelect from "./waitlist-status-select.svelte";
 
 type WaitlistTableRow = {
@@ -252,8 +252,9 @@ function inviteWaitlistMembers(waitlistIds: string[]) {
 }
 
 const resendInvitationLink = createMutation(() => ({
-	mutationFn: async (emails: string[]) => resendInvitations({ emails }),
-	onMutate: (emails) => {
+	...invitationsResendMutation(),
+	onMutate: (options) => {
+		const emails = options.body.emails;
 		const oldData = queryClient.getQueryData(waitlistQueryKey);
 		queryClient.setQueryData(
 			waitlistQueryKey,
@@ -278,7 +279,7 @@ const resendInvitationLink = createMutation(() => ({
 	onSuccess: () => {
 		toast.success("Invitation link resent.");
 	},
-	onError: (_error, _emails, context) => {
+	onError: (_error, _options, context) => {
 		toast.error("Something has gone wrong inviting members.");
 		queryClient.setQueryData(waitlistQueryKey, context?.oldData);
 	},
@@ -403,7 +404,9 @@ const tableOptions = $state<TableOptions<WaitlistTableRow>>({
 						if (row.original.status !== "invited") {
 							inviteWaitlistMembers([row.original.id!]);
 						} else {
-							resendInvitationLink.mutate([row.original.email!]);
+							resendInvitationLink.mutate({
+								body: { emails: [row.original.email!] },
+							});
 						}
 					},
 					onEdit(newValue) {
@@ -768,9 +771,9 @@ const table = createSvelteTable(tableOptions);
                                 if (row.original.status !== "invited") {
                                     inviteWaitlistMembers([row.original.id!]);
                                 } else {
-                                    resendInvitationLink.mutate([
-                                        row.original.email!,
-                                    ]);
+									resendInvitationLink.mutate({
+										body: { emails: [row.original.email!] },
+									});
                                 }
                             }}
                             adminNotes={row.original.admin_notes ?? "N/A"}
