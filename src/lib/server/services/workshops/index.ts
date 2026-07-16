@@ -30,12 +30,12 @@ export { WorkshopService } from "./workshop.service";
 export type {
 	CreateWorkshopInput,
 	UpdateWorkshopInput,
-} from "./workshop.service";
+} from "$lib/schemas/workshop";
 export {
 	BaseWorkshopSchema,
 	CreateWorkshopSchema,
 	UpdateWorkshopSchema,
-} from "./workshop.service";
+} from "$lib/schemas/workshop";
 
 // ============================================================================
 // Type Exports
