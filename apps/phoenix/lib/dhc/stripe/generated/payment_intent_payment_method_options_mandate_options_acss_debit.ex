@@ -1,0 +1,27 @@
+defmodule Dhc.Stripe.PaymentIntentPaymentMethodOptionsMandateOptionsAcssDebit do
+  @moduledoc """
+  Provides struct and type for a PaymentIntentPaymentMethodOptionsMandateOptionsAcssDebit
+  """
+
+  @type t :: %__MODULE__{
+          custom_mandate_url: String.t() | nil,
+          interval_description: String.t() | nil,
+          payment_schedule: String.t() | nil,
+          transaction_type: String.t() | nil
+        }
+
+  defstruct [:custom_mandate_url, :interval_description, :payment_schedule, :transaction_type]
+
+  @doc false
+  @spec __fields__(atom) :: keyword
+  def __fields__(type \\ :t)
+
+  def __fields__(:t) do
+    [
+      custom_mandate_url: :string,
+      interval_description: :string,
+      payment_schedule: {:enum, ["combined", "interval", "sporadic"]},
+      transaction_type: {:enum, ["business", "personal"]}
+    ]
+  end
+end
