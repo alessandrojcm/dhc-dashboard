@@ -165,7 +165,7 @@ defmodule Dhc.Invitations.Repository do
         "Successfully processed #{success_count} invitations out of #{length(results)}, failed to process #{failure_count} invitations"
       end
 
-    case NotificationsRepository.create(created_by_id, body) do
+    case Notifications.create(created_by_id, body) do
       :ok -> :ok
       {:error, reason} -> {:error, {:notification, reason}}
     end
