@@ -1,0 +1,172 @@
+defmodule Dhc.Stripe.SetupIntent do
+  @moduledoc """
+  Provides struct and type for a SetupIntent
+  """
+
+  @type t :: %__MODULE__{
+          application: Dhc.Stripe.Application.t() | String.t() | nil,
+          attach_to_self: boolean | nil,
+          automatic_payment_methods:
+            Dhc.Stripe.PaymentFlowsAutomaticPaymentMethodsSetupIntent.t() | nil,
+          cancellation_reason: String.t() | nil,
+          client_secret: String.t() | nil,
+          created: integer,
+          customer: Dhc.Stripe.Customer.t() | Dhc.Stripe.DeletedCustomer.t() | String.t() | nil,
+          customer_account: String.t() | nil,
+          description: String.t() | nil,
+          excluded_payment_method_types: [String.t()] | nil,
+          flow_directions: [String.t()] | nil,
+          id: String.t(),
+          last_setup_error: Dhc.Stripe.ApiErrors.t() | nil,
+          latest_attempt: Dhc.Stripe.SetupAttempt.t() | String.t() | nil,
+          livemode: boolean,
+          managed_payments: Dhc.Stripe.SmorResourceManagedPayments.t() | nil,
+          mandate: Dhc.Stripe.Mandate.t() | String.t() | nil,
+          metadata: map | nil,
+          next_action: Dhc.Stripe.SetupIntentNextAction.t() | nil,
+          object: String.t(),
+          on_behalf_of: Dhc.Stripe.Account.t() | String.t() | nil,
+          payment_method: Dhc.Stripe.PaymentMethod.t() | String.t() | nil,
+          payment_method_configuration_details:
+            Dhc.Stripe.PaymentMethodConfigBizPaymentMethodConfigurationDetails.t() | nil,
+          payment_method_options: Dhc.Stripe.SetupIntentPaymentMethodOptions.t() | nil,
+          payment_method_types: [String.t()],
+          single_use_mandate: Dhc.Stripe.Mandate.t() | String.t() | nil,
+          status: String.t(),
+          usage: String.t()
+        }
+
+  defstruct [
+    :application,
+    :attach_to_self,
+    :automatic_payment_methods,
+    :cancellation_reason,
+    :client_secret,
+    :created,
+    :customer,
+    :customer_account,
+    :description,
+    :excluded_payment_method_types,
+    :flow_directions,
+    :id,
+    :last_setup_error,
+    :latest_attempt,
+    :livemode,
+    :managed_payments,
+    :mandate,
+    :metadata,
+    :next_action,
+    :object,
+    :on_behalf_of,
+    :payment_method,
+    :payment_method_configuration_details,
+    :payment_method_options,
+    :payment_method_types,
+    :single_use_mandate,
+    :status,
+    :usage
+  ]
+
+  @doc false
+  @spec __fields__(atom) :: keyword
+  def __fields__(type \\ :t)
+
+  def __fields__(:t) do
+    [
+      application: {:union, [:string, {Dhc.Stripe.Application, :t}]},
+      attach_to_self: :boolean,
+      automatic_payment_methods: {Dhc.Stripe.PaymentFlowsAutomaticPaymentMethodsSetupIntent, :t},
+      cancellation_reason: {:enum, ["abandoned", "duplicate", "requested_by_customer"]},
+      client_secret: :string,
+      created: {:integer, "unix-time"},
+      customer: {:union, [:string, {Dhc.Stripe.Customer, :t}, {Dhc.Stripe.DeletedCustomer, :t}]},
+      customer_account: :string,
+      description: :string,
+      excluded_payment_method_types: [
+        enum: [
+          "acss_debit",
+          "affirm",
+          "afterpay_clearpay",
+          "alipay",
+          "alma",
+          "amazon_pay",
+          "au_becs_debit",
+          "bacs_debit",
+          "bancontact",
+          "billie",
+          "bizum",
+          "blik",
+          "boleto",
+          "card",
+          "cashapp",
+          "crypto",
+          "customer_balance",
+          "eps",
+          "fpx",
+          "giropay",
+          "grabpay",
+          "ideal",
+          "kakao_pay",
+          "klarna",
+          "konbini",
+          "kr_card",
+          "mb_way",
+          "mobilepay",
+          "multibanco",
+          "naver_pay",
+          "nz_bank_account",
+          "oxxo",
+          "p24",
+          "pay_by_bank",
+          "payco",
+          "paynow",
+          "paypal",
+          "payto",
+          "pix",
+          "promptpay",
+          "revolut_pay",
+          "samsung_pay",
+          "satispay",
+          "scalapay",
+          "sepa_debit",
+          "sofort",
+          "sunbit",
+          "swish",
+          "twint",
+          "upi",
+          "us_bank_account",
+          "wechat_pay",
+          "zip"
+        ]
+      ],
+      flow_directions: [enum: ["inbound", "outbound"]],
+      id: :string,
+      last_setup_error: {Dhc.Stripe.ApiErrors, :t},
+      latest_attempt: {:union, [:string, {Dhc.Stripe.SetupAttempt, :t}]},
+      livemode: :boolean,
+      managed_payments: {Dhc.Stripe.SmorResourceManagedPayments, :t},
+      mandate: {:union, [:string, {Dhc.Stripe.Mandate, :t}]},
+      metadata: :map,
+      next_action: {Dhc.Stripe.SetupIntentNextAction, :t},
+      object: {:const, "setup_intent"},
+      on_behalf_of: {:union, [:string, {Dhc.Stripe.Account, :t}]},
+      payment_method: {:union, [:string, {Dhc.Stripe.PaymentMethod, :t}]},
+      payment_method_configuration_details:
+        {Dhc.Stripe.PaymentMethodConfigBizPaymentMethodConfigurationDetails, :t},
+      payment_method_options: {Dhc.Stripe.SetupIntentPaymentMethodOptions, :t},
+      payment_method_types: [:string],
+      single_use_mandate: {:union, [:string, {Dhc.Stripe.Mandate, :t}]},
+      status:
+        {:enum,
+         [
+           "canceled",
+           "processing",
+           "requires_action",
+           "requires_confirmation",
+           "requires_payment_method",
+           "succeeded"
+         ]},
+      usage: :string
+    ]
+  end
+end
