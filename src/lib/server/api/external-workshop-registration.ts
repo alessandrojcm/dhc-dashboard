@@ -45,7 +45,8 @@ export async function getExternalWorkshopRegistrationGate(workshopId: string) {
 		throw apiError(response.error, "Failed to check Workshop availability");
 	}
 
-	return response.data.data satisfies WorkshopExternalRegistrationGateResponse["data"];
+	return response.data
+		.data satisfies WorkshopExternalRegistrationGateResponse["data"];
 }
 
 export async function createExternalWorkshopCheckoutSession(
