@@ -101,6 +101,12 @@ defmodule Dhc.Invitations.BulkInviteWorkerTest do
         "user" => %{"id" => created_by_id, "email" => "admin@example.com"}
       }
 
+      # Subscribe to the admin's Notification realtime topic before perform so
+      # the commit-safe broadcast attempt is observable. The bulk invitation
+      # workflow must produce exactly one notification_created signal for the
+      # admin alongside its existing processing Notification row.
+      Phoenix.PubSub.subscribe(Dhc.PubSub, Broadcaster.topic(created_by_id))
+
       assert :ok = BulkInviteWorker.perform(%Oban.Job{args: args})
 
       assert %Invitation{} = invitation = Repo.get_by(Invitation, email: "ada@example.com")
@@ -134,6 +140,10 @@ defmodule Dhc.Invitations.BulkInviteWorkerTest do
 
       assert %Notification{body: body} = Repo.get_by(Notification, user_id: created_by_id)
       assert body == "Successfully processed 1 invitations out of 1"
+
+      # Exactly one commit-safe creation signal for the admin's topic.
+      assert_received %Phoenix.Socket.Broadcast{event: "notification_created", payload: %{}}
+      refute_received %Phoenix.Socket.Broadcast{event: "notification_created"}
     end
   end
 
