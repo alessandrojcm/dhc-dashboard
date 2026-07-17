@@ -15,9 +15,12 @@ import {
 	createMutation,
 	useQueryClient,
 } from "@tanstack/svelte-query";
+import { browser } from "$app/environment";
+import { env } from "$env/dynamic/public";
 import type { Database } from "$database";
 import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
 import { Bell } from "lucide-svelte";
+import { connectNotificationRealtime } from "./notification-realtime.svelte";
 
 // Initialize dayjs plugins
 dayjs.extend(relativeTime);
@@ -92,35 +95,22 @@ const markAllAsRead = createMutation(() => ({
 const queryClient = useQueryClient();
 
 onMount(() => {
-	const subscription = supabase
-		.channel("notifications")
-		.on(
-			"postgres_changes",
-			{
-				event: "INSERT",
-				schema: "public",
-				table: "notifications",
-			},
-			() => {
-				queryClient.invalidateQueries({ queryKey: notificationsQueryKey });
-			},
-		)
-		.on(
-			"postgres_changes",
-			{
-				event: "UPDATE",
-				schema: "public",
-				table: "notifications",
-			},
-			() => {
-				queryClient.invalidateQueries({ queryKey: notificationsQueryKey });
-			},
-		)
-		.subscribe();
+	// Realtime is a browser-only best-effort invalidation signal. The socket
+	// URL is public routing configuration; the Supabase access token is passed
+	// as the Phoenix 1.8 native `authToken`. All realtime failures stay silent
+	// inside the bridge and never disable the HTTP query or mutations below.
+	if (!browser || !env.PUBLIC_PHOENIX_SOCKET_URL) return;
+
+	const realtime = connectNotificationRealtime({
+		socketUrl: env.PUBLIC_PHOENIX_SOCKET_URL,
+		supabase,
+		invalidate: () =>
+			queryClient.invalidateQueries({ queryKey: notificationsQueryKey }),
+	});
 
 	return () => {
 		try {
-			subscription.unsubscribe();
+			realtime.destroy();
 		} catch (e) {
 			console.warn(e);
 		}

@@ -113,6 +113,7 @@
 		"jwt-decode": "^4.0.0",
 		"libphonenumber-js": "^1.12.26",
 		"ollama-ai-provider-v2": "^1.5.3",
+		"phoenix": "^1.8.9",
 		"posthog-js": "^1.357.0",
 		"svelte-radix": "^3.0.0"
 	},

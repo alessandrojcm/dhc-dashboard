@@ -17,7 +17,8 @@ export const load: PageServerLoad = async ({ locals, platform }) => {
 
 	return {
 		canEditSettings,
-		insuranceFormLink:
-			canEditSettings ? (insuranceFormResponse.data.data.link ?? "") : "",
+		insuranceFormLink: canEditSettings
+			? (insuranceFormResponse.data.data.link ?? "")
+			: "",
 	};
 };
