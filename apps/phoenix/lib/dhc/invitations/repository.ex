@@ -11,7 +11,7 @@ defmodule Dhc.Invitations.Repository do
 
   alias Dhc.Invitations.Invitation
   alias Dhc.Invitations.ProcessingLog
-  alias Dhc.Notifications.Repository, as: NotificationsRepository
+  alias Dhc.Notifications
   alias Dhc.Repo
   alias Dhc.UserProfiles.Repository, as: UserProfilesRepository
   alias Dhc.UserProfiles.UserProfile

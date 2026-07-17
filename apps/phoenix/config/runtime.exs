@@ -69,6 +69,17 @@ if config_env() == :prod do
 
   config :dhc, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
 
+  # Resolve the effective browser-origin allow-list once for both HTTP CORS and
+  # WebSocket `check_origin`. Falls back to APP_URL when
+  # CORS_ALLOWED_ORIGINS is unset so the two controls cannot drift.
+  effective_cors_allowed_origins =
+    case cors_allowed_origins do
+      [] -> [System.get_env("APP_URL", "https://dublinhemaclub.com")]
+      origins -> origins
+    end
+
+  config :dhc, :cors_allowed_origins, effective_cors_allowed_origins
+
   config :dhc, DhcWeb.Endpoint,
     url: [host: host, port: 443, scheme: "https"],
     http: [
