@@ -6,6 +6,7 @@ defmodule Dhc.Notifications do
   import Ecto.Query
 
   alias Dhc.CursorPagination
+  alias Dhc.Notifications.Broadcaster
   alias Dhc.Notifications.Notification
   alias Dhc.Repo
 
@@ -13,6 +14,69 @@ defmodule Dhc.Notifications do
   @sort_specs %{
     "createdAt" => %{field: :created_at, type: :utc_datetime, encode: &DateTime.to_iso8601/1}
   }
+
+  @doc """
+  Creates a Notification for a user.
+
+  This is the **only** supported application API for Notification creation.
+  Raw insertion is private to this context; callers that need a Notification
+  must go through `create/2` so post-commit signalling cannot be bypassed.
+
+  Behaviour:
+
+    * Rejects calls made while the calling process is already inside a
+      repository transaction (`Repo.in_transaction?/0`). A nested call could
+      let the post-commit broadcast fire before the outer transaction
+      commits (or rolls it back), exposing data that may never become
+      durable. Fail fast with `{:error, :notification_create_inside_transaction}`.
+      A future workflow needing atomic creation with other writes must own
+      its own outermost transaction and broadcast after it returns.
+    * Inserts the row via an `Ecto.Multi` transaction owned by this context
+      using `Repo.transact/2`, which commits before returning `{:ok, _}`.
+    * After a successful commit, makes exactly one best-effort broadcast
+      attempt to the owner's per-user topic. A broadcast failure is logged
+      with the Notification and user identifiers but does NOT turn the
+      committed write into an application error — callers see `:ok` and the
+      row remains.
+    * A failed insert or rolled-back transaction creates no row and emits no
+      signal.
+
+  Returns `:ok` on a successful commit (regardless of broadcast outcome) and
+  `{:error, reason}` on a rejected nested call or insert failure.
+  """
+  @spec create(String.t(), String.t()) :: :ok | {:error, term()}
+  def create(user_id, body) when is_binary(user_id) and is_binary(body) do
+    if Repo.in_transaction?() do
+      {:error, :notification_create_inside_transaction}
+    else
+      Ecto.Multi.new()
+      |> Ecto.Multi.insert(:notification, notification_changeset(user_id, body))
+      |> Repo.transact()
+      |> after_commit_signal()
+    end
+  end
+
+  defp after_commit_signal({:ok, %{notification: notification}}) do
+    # Best-effort: the row is already durably committed by Repo.transact/2.
+    # A broadcast failure is logged inside the broadcaster but does not
+    # change the successful database result returned to callers.
+    _ = Broadcaster.notification_created(notification)
+    :ok
+  end
+
+  defp after_commit_signal({:error, _operation, reason, _changes}), do: {:error, reason}
+
+  defp notification_changeset(user_id, body) do
+    changeset =
+      %Notification{}
+      |> Ecto.Changeset.cast(%{body: body}, [:body])
+      |> Ecto.Changeset.validate_required([:body])
+
+    case Ecto.UUID.cast(user_id) do
+      {:ok, user_id} -> Ecto.Changeset.put_change(changeset, :user_id, user_id)
+      :error -> Ecto.Changeset.add_error(changeset, :user_id, "is invalid")
+    end
+  end
 
   @doc """
   Returns cursor-paginated, domain-shaped notifications for a single user.

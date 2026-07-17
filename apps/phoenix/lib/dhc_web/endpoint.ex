@@ -15,6 +15,21 @@ defmodule DhcWeb.Endpoint do
   #   websocket: [connect_info: [session: @session_options]],
   #   longpoll: [connect_info: [session: @session_options]]
 
+  # Authenticated, WebSocket-only socket for Notification invalidation signals.
+  #
+  # Phoenix 1.8 native `auth_token: true` exposes the JS client's `authToken`
+  # option as `connect_info[:auth_token]` in `UserSocket.connect/3` (the token is
+  # carried in the `Sec-WebSocket-Protocol` subprotocol, keeping it out of the
+  # URL). Long polling is intentionally disabled: this is a best-effort
+  # invalidation signal only, and disabling longpoll avoids a second transport
+  # lifecycle and CORS handling. See
+  # docs/secure-phoenix-channel-browser-integration.md and
+  # docs/phoenix-notification-realtime-migration-spec.md.
+  socket "/socket", DhcWeb.UserSocket,
+    websocket: true,
+    longpoll: false,
+    auth_token: true
+
   # Serve at "/" the static files from "priv/static" directory.
   #
   # When code reloading is disabled (e.g., in production),

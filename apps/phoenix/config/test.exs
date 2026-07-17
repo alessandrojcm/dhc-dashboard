@@ -26,6 +26,10 @@ config :dhc, Dhc.Repo,
 # you can enable the server option below.
 config :dhc, DhcWeb.Endpoint,
   http: [ip: {127, 0, 0, 1}, port: 4002],
+  # WebSocket origin validation for the Notification socket. Tests don't upgrade
+  # a real transport, but the value is kept consistent with the CORS allow-list
+  # so the endpoint reflects production-shaped configuration.
+  check_origin: ["http://localhost:5173"],
   secret_key_base: "4NYsNq71KJ4FMFOGvvddgFNTCbmuHANzkI6ZFu7ShIV+LhLwwdeG+iyDS7BEIW0t",
   server: false
 

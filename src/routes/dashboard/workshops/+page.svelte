@@ -14,10 +14,10 @@ import { createQuery } from "@tanstack/svelte-query";
 // Improvement: add pagination by month
 let { data } = $props();
 const workshopsQuery = createQuery(() => ({
-  ...workshopsCalendarOptions(),
-  select: response => {
-    return response.data.workshops
-  }
+	...workshopsCalendarOptions(),
+	select: (response) => {
+		return response.data.workshops;
+	},
 }));
 
 // Simple handlers - mutations are now handled in the modal component

@@ -21,6 +21,7 @@
 - **Background Jobs**: Oban 2.22.1 (replaces pgmq + pg_cron)
 - **API Style**: JSON API via Phoenix controllers, spec-first with OpenAPI
 - **Error Tracking**: Sentry 13.0.1 via `sentry` package + `hackney`
+- **Realtime (browser)**: official `phoenix` JS client (~1.8.x) for Notification invalidation signals over the WebSocket `/socket`; local to `NotificationCenter` via `notification-realtime.svelte.ts`. Best-effort only; HTTP API remains authoritative. `authToken` is captured at `Socket` construction, so `TOKEN_REFRESHED` rebuilds the socket/channel.
 
 ## Tooling & Task Runner
 

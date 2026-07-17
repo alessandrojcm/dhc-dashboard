@@ -18,7 +18,8 @@ export class ExternalWorkshopRegistrationApiError extends Error {
 }
 
 function apiError(error: unknown, fallback: string) {
-	const message = (error as ApiErrorResponse | undefined)?.errors?.detail ?? fallback;
+	const message =
+		(error as ApiErrorResponse | undefined)?.errors?.detail ?? fallback;
 	const normalized = message.toLowerCase();
 
 	const code = normalized.includes("full")
@@ -44,7 +45,8 @@ export async function getExternalWorkshopRegistrationGate(workshopId: string) {
 		throw apiError(response.error, "Failed to check Workshop availability");
 	}
 
-	return response.data.data satisfies WorkshopExternalRegistrationGateResponse["data"];
+	return response.data
+		.data satisfies WorkshopExternalRegistrationGateResponse["data"];
 }
 
 export async function createExternalWorkshopCheckoutSession(

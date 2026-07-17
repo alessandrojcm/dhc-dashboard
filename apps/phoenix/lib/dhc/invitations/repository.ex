@@ -11,7 +11,7 @@ defmodule Dhc.Invitations.Repository do
 
   alias Dhc.Invitations.Invitation
   alias Dhc.Invitations.ProcessingLog
-  alias Dhc.Notifications.Repository, as: NotificationsRepository
+  alias Dhc.Notifications
   alias Dhc.Repo
   alias Dhc.UserProfiles.Repository, as: UserProfilesRepository
   alias Dhc.UserProfiles.UserProfile
@@ -165,7 +165,7 @@ defmodule Dhc.Invitations.Repository do
         "Successfully processed #{success_count} invitations out of #{length(results)}, failed to process #{failure_count} invitations"
       end
 
-    case NotificationsRepository.create(created_by_id, body) do
+    case Notifications.create(created_by_id, body) do
       :ok -> :ok
       {:error, reason} -> {:error, {:notification, reason}}
     end

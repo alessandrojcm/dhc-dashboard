@@ -69,6 +69,17 @@ if config_env() == :prod do
 
   config :dhc, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
 
+  # Resolve the effective browser-origin allow-list once for both HTTP CORS and
+  # WebSocket `check_origin`. Falls back to APP_URL when
+  # CORS_ALLOWED_ORIGINS is unset so the two controls cannot drift.
+  effective_cors_allowed_origins =
+    case cors_allowed_origins do
+      [] -> [System.get_env("APP_URL", "https://dublinhemaclub.com")]
+      origins -> origins
+    end
+
+  config :dhc, :cors_allowed_origins, effective_cors_allowed_origins
+
   config :dhc, DhcWeb.Endpoint,
     url: [host: host, port: 443, scheme: "https"],
     http: [
@@ -78,6 +89,15 @@ if config_env() == :prod do
       # for details about using IPv6 vs IPv4 and loopback vs public addresses.
       ip: {0, 0, 0, 0, 0, 0, 0, 0}
     ],
+    # WebSocket origin validation for the Notification socket. Derived from the
+    # existing CORS_ALLOWED_ORIGINS allow-list so the cross-origin dashboard
+    # connection (browser origin https://dashboard.dublinhemaclub.com while
+    # PHX_HOST is dhc-dashboard.fly.dev) is accepted. HTTP CORS and WebSocket
+    # check_origin are separate controls: DhcWeb.Plugs.Cors authorizes the HTTP
+    # API, this authorizes the socket handshake. Never use a wildcard or
+    # `check_origin: false` in production. See
+    # docs/secure-phoenix-channel-browser-integration.md.
+    check_origin: effective_cors_allowed_origins,
     secret_key_base: secret_key_base
 
   config :dhc, :discord_webhook_url, System.get_env("DISCORD_WEBHOOK_URL")
@@ -124,10 +144,6 @@ if config_env() == :prod do
   config :dhc, :supabase_service_role_key, System.get_env("SUPABASE_SERVICE_ROLE_KEY")
   config :dhc, :app_url, System.get_env("APP_URL", "https://dublinhemaclub.com")
   config :dhc, :environment, :prod
-
-  if cors_allowed_origins == [] do
-    config :dhc, :cors_allowed_origins, [System.get_env("APP_URL", "https://dublinhemaclub.com")]
-  end
 
   # Sentry error tracking (DSN read automatically from SENTRY_DSN env var)
   traces_sample_rate =
