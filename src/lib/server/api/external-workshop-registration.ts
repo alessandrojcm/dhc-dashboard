@@ -18,7 +18,8 @@ export class ExternalWorkshopRegistrationApiError extends Error {
 }
 
 function apiError(error: unknown, fallback: string) {
-	const message = (error as ApiErrorResponse | undefined)?.errors?.detail ?? fallback;
+	const message =
+		(error as ApiErrorResponse | undefined)?.errors?.detail ?? fallback;
 	const normalized = message.toLowerCase();
 
 	const code = normalized.includes("full")
