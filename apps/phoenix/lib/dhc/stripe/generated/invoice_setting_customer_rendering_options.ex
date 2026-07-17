@@ -1,0 +1,17 @@
+defmodule Dhc.Stripe.InvoiceSettingCustomerRenderingOptions do
+  @moduledoc """
+  Provides struct and type for a InvoiceSettingCustomerRenderingOptions
+  """
+
+  @type t :: %__MODULE__{amount_tax_display: String.t() | nil, template: String.t() | nil}
+
+  defstruct [:amount_tax_display, :template]
+
+  @doc false
+  @spec __fields__(atom) :: keyword
+  def __fields__(type \\ :t)
+
+  def __fields__(:t) do
+    [amount_tax_display: :string, template: :string]
+  end
+end

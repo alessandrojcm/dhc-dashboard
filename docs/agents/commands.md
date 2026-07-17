@@ -179,13 +179,14 @@ const { data, error } = await healthIndex();
 mise run stripe-gen
 ```
 
-Generated output: `apps/phoenix/lib/dhc/stripe/generated/` (gitignored — do not manually edit).
+Generated output: `apps/phoenix/lib/dhc/stripe/generated/` (committed so production builds do not need to regenerate it; do not manually edit).
 
 To add new Stripe endpoints:
 1. Add the operation ID to `@allowed_operations` in `apps/phoenix/lib/mix/tasks/stripe.gen.ex`
 2. Also add it to `@allowed_operations` in `apps/phoenix/dev/dhc/stripe/processor.ex` (the oapi_generator filter)
 3. Run `mise run stripe-gen` (or `cd apps/phoenix && MIX_ENV=dev mix stripe.gen`)
-4. Use the generated functions via `Dhc.Stripe.Operations.*` with `Dhc.Stripe.Client`
+4. Commit the regenerated output in `apps/phoenix/lib/dhc/stripe/generated/`
+5. Use the generated functions via `Dhc.Stripe.Operations.*` with `Dhc.Stripe.Client`
 
 - Do not hand-roll Stripe endpoint calls with `Dhc.Stripe.Client.request/1` in domain code. If an endpoint exists in Stripe's OpenAPI spec, find the operation ID by the Stripe URL, add that exact ID to both allow-lists above, regenerate, and call the generated `Dhc.Stripe.Operations.*` function. If generation still fails after both allow-lists match the current spec, debug the generator/filter rather than bypassing it.
 

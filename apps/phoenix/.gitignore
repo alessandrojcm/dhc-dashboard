@@ -25,9 +25,6 @@ erl_crash.dump
 # Ignore package tarball (built via "mix hex.build").
 dhc-*.tar
 
-# Generated Stripe client (regenerate with `mise run stripe-gen`)
-/lib/dhc/stripe/generated/
-
 # Release build output is ignored, but release env templates are source files
 # used by Docker/Fly before `mix release`.
 /rel/*
