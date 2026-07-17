@@ -15,9 +15,12 @@ import {
 	createMutation,
 	useQueryClient,
 } from "@tanstack/svelte-query";
+import { browser } from "$app/environment";
+import { env } from "$env/dynamic/public";
 import type { Database } from "$database";
 import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
 import { Bell } from "lucide-svelte";
+import { connectNotificationRealtime } from "./notification-realtime.svelte";
 
 // Initialize dayjs plugins
 dayjs.extend(relativeTime);

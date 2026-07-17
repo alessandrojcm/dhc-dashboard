@@ -6,6 +6,7 @@ defmodule Dhc.Notifications do
   import Ecto.Query
 
   alias Dhc.CursorPagination
+  alias Dhc.Notifications.Broadcaster
   alias Dhc.Notifications.Notification
   alias Dhc.Repo
 

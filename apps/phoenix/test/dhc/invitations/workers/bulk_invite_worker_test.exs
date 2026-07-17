@@ -6,6 +6,7 @@ defmodule Dhc.Invitations.BulkInviteWorkerTest do
   alias Dhc.Invitations.Invitation
   alias Dhc.Invitations.BulkInviteWorker
   alias Dhc.Invitations.ProcessingLog
+  alias Dhc.Notifications.Broadcaster
   alias Dhc.Notifications.Notification
   alias Dhc.UserProfiles.UserProfile
   alias Dhc.Waitlist.WaitlistEntry
