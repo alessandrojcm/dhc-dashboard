@@ -12,7 +12,10 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		invariant(session === null, "Unauthorized");
 		const body = (await request.json()) as { isOpen?: unknown };
 		if (typeof body.isOpen !== "boolean") {
-			return json({ success: false, error: "Invalid waitlist status" }, { status: 400 });
+			return json(
+				{ success: false, error: "Invalid waitlist status" },
+				{ status: 400 },
+			);
 		}
 		const roles = getRolesFromSession(session!);
 		const canToggleWaitlist = roles.intersection(allowedToggleRoles).size > 0;
