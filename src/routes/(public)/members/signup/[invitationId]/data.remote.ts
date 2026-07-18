@@ -1,12 +1,14 @@
-import { form, getRequestEvent } from "$app/server";
+import { invitationsAccept, invitationsVerify } from "@dhc/api-client";
 import { error, isRedirect, redirect } from "@sveltejs/kit";
+import dayjs from "dayjs";
+import { dev } from "$app/environment";
+import { form, getRequestEvent } from "$app/server";
 import { inviteValidationSchema } from "$lib/schemas/inviteValidationSchema";
 import { memberSignupSchema } from "$lib/schemas/membersSignup";
 import { apiBaseUrl } from "$lib/server/api-client";
-import { dev } from "$app/environment";
 import logger from "$lib/server/services/shared/logger";
-import dayjs from "dayjs";
-import { invitationsAccept, invitationsVerify } from "@dhc/api-client";
+
+const invitationAcceptanceTimeout = 60_000;
 
 /**
  * Validates an invitation by checking email and date of birth
@@ -77,6 +79,9 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 		throw error(400, "Invitation ID is required");
 	}
 
+	let acceptanceError: unknown;
+	let acceptanceStatus: number | undefined;
+
 	try {
 		const verificationToken = event.cookies.get(
 			`invite-verification-${invitationId}`,
@@ -92,6 +97,7 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 		const acceptance = await invitationsAccept({
 			baseUrl: apiBaseUrl(),
 			path: { id: invitationId },
+			timeout: invitationAcceptanceTimeout,
 			body: {
 				verificationToken,
 				nextOfKinName: data.nextOfKin,
@@ -106,7 +112,9 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 		});
 
 		if (acceptance.error || !acceptance.data?.data.accepted) {
-			const status = acceptance.response?.status ?? 500;
+			acceptanceError = acceptance.error;
+			acceptanceStatus = acceptance.response?.status;
+			const status = acceptanceStatus ?? 500;
 			const message =
 				status === 402
 					? "Payment could not be completed"
@@ -125,10 +133,13 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 		if (isRedirect(err)) {
 			throw err;
 		}
-		logger.error(`[processPayment] Payment processing error: ${err}`);
-		logger.error("[processPayment] Error details:", {
+
+		const errorDetails = {
+			invitationId,
 			name: err instanceof Error ? err.name : "unknown",
 			message: err instanceof Error ? err.message : String(err),
+			status: acceptanceStatus,
+			apiError: acceptanceError,
 			code:
 				err instanceof Error && "code" in err
 					? (err as { code: string }).code
@@ -137,14 +148,18 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 				err instanceof Error && "type" in err
 					? (err as { type: string }).type
 					: "none",
-		});
-		logger.error(err as string);
+		};
+
 		let errorMessage =
 			err instanceof Error ? err.message : "An unexpected error occurred";
 
+		if (err instanceof Error && err.name === "TimeoutError") {
+			errorMessage =
+				"Invitation acceptance is taking longer than expected. Please wait a moment and try again.";
+		}
+
 		if (err instanceof Error && "code" in err) {
 			const stripeError = err as { code: string };
-			logger.error(`[processPayment] Stripe error code: ${stripeError.code}`);
 			switch (stripeError.code) {
 				case "charge_exceeds_source_limit":
 				case "charge_exceeds_transaction_limit":
@@ -170,7 +185,10 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 			}
 		}
 
-		logger.error(`[processPayment] Returning error to client: ${errorMessage}`);
+		logger.error("[processPayment] Payment processing failed", {
+			...errorDetails,
+			returnedMessage: errorMessage,
+		});
 		return { paymentFailed: true, error: errorMessage };
 	}
 });
