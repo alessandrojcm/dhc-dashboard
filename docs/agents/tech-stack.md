@@ -19,6 +19,7 @@
 - **Language**: Elixir 1.18.4, Erlang/OTP 27
 - **Database**: Ecto 3.13 + Postgrex (shared Postgres with Supabase)
 - **Background Jobs**: Oban 2.22.1 (replaces pgmq + pg_cron)
+- **Authentication target**: Phoenix 1.8 generated authentication (`mix phx.gen.auth`) with Assent for Discord OAuth; DHC-owned Postgres principals, identities, tokens, and sessions replace Supabase Auth after the specified cutover
 - **API Style**: JSON API via Phoenix controllers, spec-first with OpenAPI
 - **Error Tracking**: Sentry 13.0.1 via `sentry` package + `hackney`
 - **Realtime (browser)**: official `phoenix` JS client (~1.8.x) for Notification invalidation signals over the WebSocket `/socket`; local to `NotificationCenter` via `notification-realtime.svelte.ts`. Best-effort only; HTTP API remains authoritative. `authToken` is captured at `Socket` construction, so `TOKEN_REFRESHED` rebuilds the socket/channel.
