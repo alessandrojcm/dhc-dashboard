@@ -116,7 +116,8 @@ if config_env() == :prod do
     "workshopRegistration" =>
       System.get_env("WORKSHOP_REGISTRATION_TRANSACTIONAL_ID", "cmnok76cq02tq0ix92oeoi1kk"),
     "workshopRegistrationError" =>
-      System.get_env("WORKSHOP_REGISTRATION_ERROR_TRANSACTIONAL_ID", "workshopRegistrationError")
+      System.get_env("WORKSHOP_REGISTRATION_ERROR_TRANSACTIONAL_ID", "workshopRegistrationError"),
+    "magicLink" => System.get_env("MAGIC_LINK_TRANSACTIONAL_ID", "magic_link")
   }
 
   config :dhc, :stripe_secret_key, System.get_env("STRIPE_SECRET_KEY")
