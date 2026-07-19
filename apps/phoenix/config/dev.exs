@@ -106,7 +106,8 @@ config :dhc, :loops_transactional_ids, %{
   "workshopRegistration" =>
     System.get_env("WORKSHOP_REGISTRATION_TRANSACTIONAL_ID", "cmnok76cq02tq0ix92oeoi1kk"),
   "workshopRegistrationError" =>
-    System.get_env("WORKSHOP_REGISTRATION_ERROR_TRANSACTIONAL_ID", "workshopRegistrationError")
+    System.get_env("WORKSHOP_REGISTRATION_ERROR_TRANSACTIONAL_ID", "workshopRegistrationError"),
+  "magicLink" => System.get_env("MAGIC_LINK_TRANSACTIONAL_ID", "magic_link")
 }
 
 # Stripe API (not called in dev — sync logs and returns :ok)

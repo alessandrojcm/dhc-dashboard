@@ -52,7 +52,8 @@ config :dhc, :loops_transactional_ids, %{
   "inviteMember" => "test-loops-id-inviteMember",
   "workshopAnnouncement" => "test-loops-id-workshopAnnouncement",
   "workshopRegistration" => "test-loops-id-workshopRegistration",
-  "workshopRegistrationError" => "test-loops-id-workshopRegistrationError"
+  "workshopRegistrationError" => "test-loops-id-workshopRegistrationError",
+  "magicLink" => "test-loops-id-magicLink"
 }
 
 # Stripe sync — skip API calls in test

@@ -45,6 +45,21 @@ defmodule DhcWeb.Router do
     plug DhcWeb.Plugs.RequireAuth
   end
 
+  # ALE-165 — Phoenix-session auth path. New /api/auth/* endpoints and
+  # future migrated endpoints use this pipeline. Existing endpoints stay on
+  # :authenticated_api (Supabase JWT) until the ALE-163 cutover.
+  pipeline :authenticated_session_api do
+    plug DhcWeb.Plugs.RequireSession
+  end
+
+  # ALE-165 — rate-limited, non-enumerating magic-link request. Public.
+  # The plug short-circuits over-the-limit requests with the same 200 body
+  # the controller returns for a known/unknown address.
+  pipeline :magic_link_request_api do
+    plug :accepts, ["json"]
+    plug DhcWeb.Plugs.MagicLinkRateLimit
+  end
+
   scope "/api", DhcWeb do
     pipe_through :api
 
@@ -176,5 +191,31 @@ defmodule DhcWeb.Router do
     # ALE-108: dedicated movement/maintenance command endpoints, write roles only.
     post "/inventory/items/:id/move", InventoryItemsController, :move
     post "/inventory/items/:id/maintenance", InventoryItemsController, :maintenance
+  end
+
+  # ALE-165 — Phoenix-session auth API. Lives under /api/auth/* and is the
+  # first Phoenix-owned authentication path. Spec-first; the SvelteKit side
+  # (ALE-164) will switch its session seam to consume these endpoints.
+  scope "/api/auth", DhcWeb do
+    # Magic-link request — public, rate-limited, non-enumerating.
+    pipe_through :magic_link_request_api
+    post "/magic-link", AuthSessionController, :request_magic_link
+  end
+
+  scope "/api/auth", DhcWeb do
+    pipe_through :api
+
+    # Magic-link verify — public (the token is the credential). Sets the
+    # signed _dhc_session cookie on success.
+    post "/magic-link/verify", AuthSessionController, :verify_magic_link
+  end
+
+  scope "/api/auth", DhcWeb do
+    pipe_through [:api, :authenticated_session_api]
+
+    # Session projection — requires a valid, active session.
+    get "/session", AuthSessionController, :show_session
+    # Sign out the current device — revokes the one session token.
+    delete "/session", AuthSessionController, :delete_session
   end
 end

@@ -1,0 +1,301 @@
+defmodule Dhc.Auth do
+  @moduledoc """
+  The Authentication context — Phoenix-owned login, magic-link, and session
+  boundary (ADR 0009, ADR 0010, ALE-165).
+
+  This context is the single seam for authentication state. It owns:
+
+    * **Principal** lookup by normalized login email (`get_principal_by_email/1`).
+    * **Magic-link** issue and consume: `deliver_magic_link/2` enqueues a
+      Loops email via `Dhc.Email.Worker`; `consume_magic_link/1` verifies,
+      deletes outstanding magic-link tokens for the principal, confirms the
+      email on first use, and creates a new session.
+    * **Session** lifecycle: `create_session/1`, `get_principal_by_session_token/1`,
+      `delete_session_token/1`, `delete_all_principal_sessions/1`. Sessions
+      are opaque, DB-backed, 30-day absolute lifetime (no sliding refresh).
+    * **Access** projection: `load_session_principal/1` returns the Principal
+      plus current roles and `is_active` flag, so the request plug can decide
+      `401` (no/invalid/inactive session) vs `403` (missing role) without
+      touching another context. Roles come from `user_roles`; `is_active`
+      comes from `user_profiles` (Stripe-driven).
+
+  ## Email normalization
+
+  Every email input goes through `Dhc.Auth.Principal.normalize_email/1`. The
+  DB column is `citext` so case-insensitive lookups are guaranteed at both
+  layers.
+
+  ## Non-enumerating behavior
+
+  `deliver_magic_link/2` returns `{:ok, :sent}` for any well-formed email
+  — whether or not a Principal exists — so a caller cannot probe which
+  addresses are registered. Rate limiting (3/email/15min, 10/IP/hour) is
+  enforced at the controller layer (`DhcWeb.Plugs.MagicLinkRateLimit`) so the
+  context stays focused on state.
+
+  ## What this context does NOT do
+
+    * Member / Membership / Role policy. It loads roles and `is_active` as a
+      projection for the request plug; it does not grant or revoke them.
+    * Discord OAuth (ALE-167).
+    * Invitation Acceptance principal creation (ALE-162).
+    * Migration / cutover (ALE-163, ALE-166).
+  """
+
+  import Ecto.Query, warn: false
+  alias Dhc.Repo
+  alias Dhc.Auth.{Principal, PrincipalToken}
+
+  ## Database getters
+
+  @doc """
+  Fetches a Principal by its canonical login email.
+
+  Email is normalized before lookup. Returns `nil` if no Principal matches —
+  callers must treat this the same as a Principal that exists but is inactive
+  (see `deliver_magic_link/2`).
+  """
+  def get_principal_by_email(email) when is_binary(email) do
+    Repo.get_by(Principal, email: Principal.normalize_email(email))
+  end
+
+  def get_principal_by_email(nil), do: nil
+
+  @doc """
+  Fetches a Principal by id. Raises `Ecto.NoResultsError` if missing.
+  """
+  def get_principal!(id), do: Repo.get!(Principal, id)
+
+  @doc """
+  Registers a Principal with a normalized email. Used today only by tests and
+  (later) by Invitation Acceptance (ALE-162) — never by a public sign-up.
+  """
+  def register_principal(attrs) do
+    %Principal{}
+    |> Principal.email_changeset(attrs)
+    |> Repo.insert()
+  end
+
+  ## Magic link
+
+  @doc """
+  Enqueues a magic-link email to the Principal with the given email, if any.
+
+  Returns `{:ok, :sent}` for any well-formed email. The caller cannot tell
+  whether a Principal exists — this is the anti-enumeration contract. When no
+  Principal exists, no email is enqueued and no token row is written.
+
+  `magic_link_url_fun` is called with the URL-safe encoded token to build the
+  link the recipient will click. It is invoked only when a Principal exists.
+  """
+  def deliver_magic_link(email, magic_link_url_fun)
+      when is_function(magic_link_url_fun, 1) do
+    if principal = get_principal_by_email(email) do
+      {:ok, encoded_token, _row} = build_magic_link(principal)
+      url = magic_link_url_fun.(encoded_token)
+      enqueue_magic_link_email(principal, url)
+    end
+
+    {:ok, :sent}
+  end
+
+  defp build_magic_link(principal) do
+    {encoded_token, row} = PrincipalToken.build_magic_link_token(principal)
+    {:ok, _} = Repo.insert(row)
+    {:ok, encoded_token, row}
+  end
+
+  defp enqueue_magic_link_email(principal, url) do
+    # ALE-165: enqueue via the existing Oban email worker so magic-link
+    # delivery goes through the same Loops / Sentry / retry path as
+    # invitation and workshop emails. The Loops transactional ID is resolved
+    # at send time from :loops_transactional_ids config (the "magicLink"
+    # friendly name). The URL is passed as a data variable so the Loops
+    # template renders it without the worker needing to know the template.
+    %{email: principal.email, transactional_id: "magicLink", data_variables: %{"url" => url}}
+    |> Dhc.Email.Worker.new()
+    |> Oban.insert()
+  end
+
+  @doc """
+  Consumes a magic-link token and establishes a session.
+
+  Outcomes (all observable to the controller):
+
+    * `{:ok, %{principal: principal, session_token: token}}` — the Principal
+      is now logged in. The magic-link token row is deleted, any prior
+      magic-link tokens for the principal are deleted, the Principal's
+      `confirmed_at` is stamped on first consumption, and a fresh session
+      row is inserted.
+    * `{:error, :invalid}` — the token does not decode, has no row, has
+      expired, or was sent to an email that no longer matches the Principal.
+      The controller surfaces this as the same generic "invalid or expired"
+      response it uses for an unknown token (non-enumerating).
+
+  This function does **not** check `is_active` — the controller decides
+  whether an ineligible Principal receives a session. The spec says a
+  Principal may establish a session only while its Member has club access, so
+  the controller refuses inactive Principals before calling
+  `create_session/1`. This keeps the access policy out of the state layer.
+  """
+  def consume_magic_link(encoded_token) do
+    case PrincipalToken.verify_magic_link_token_query(encoded_token) do
+      {:ok, query} ->
+        Repo.transact(fn ->
+          case Repo.one(query) do
+            {principal, token_row} ->
+              # Delete the consumed magic-link token first, then any remaining
+              # outstanding magic-link tokens for the principal. Order
+              # matters: the token_row we just fetched is one of the
+              # principal's login tokens, so deleting all login tokens would
+              # also delete it and make `Repo.delete(token_row)` a stale
+              # entry. Deleting the specific row first avoids that.
+              with {:ok, _} <- Repo.delete(token_row),
+                   {:ok, _} <- delete_principal_magic_link_tokens(principal),
+                   {:ok, principal} <- maybe_confirm_principal(principal),
+                   {:ok, session_token} <- create_session(principal) do
+                # Repo.transact/1 requires a 2-tuple; pack principal + token
+                # into a map and unpack at the call site.
+                {:ok, %{principal: principal, session_token: session_token}}
+              end
+
+            nil ->
+              {:error, :invalid}
+          end
+        end)
+
+      :error ->
+        {:error, :invalid}
+    end
+  end
+
+  defp delete_principal_magic_link_tokens(principal) do
+    {count, _} =
+      Repo.delete_all(
+        from t in PrincipalToken,
+          where: t.principal_id == ^principal.id and t.context == "login"
+      )
+
+    {:ok, count}
+  end
+
+  defp maybe_confirm_principal(%Principal{confirmed_at: nil} = principal) do
+    principal
+    |> Principal.confirm_changeset()
+    |> Repo.update()
+  end
+
+  defp maybe_confirm_principal(%Principal{} = principal), do: {:ok, principal}
+
+  ## Session
+
+  @doc """
+  Creates a fresh DB-backed session for the principal and returns the raw
+  opaque token (to be placed in a signed cookie).
+
+  The Principal's `authenticated_at` is stamped on the session row. The
+  caller should set `principal.authenticated_at` before calling if it wants
+  a specific timestamp (e.g. for tests).
+  """
+  def create_session(%Principal{} = principal) do
+    {token, row} = PrincipalToken.build_session_token(principal)
+    {:ok, _} = Repo.insert(row)
+    {:ok, token}
+  end
+
+  @doc """
+  Looks up the Principal for a session token.
+
+  Returns `{:ok, principal}` if the token exists, has not expired (30-day
+  absolute), and the Principal row still exists. Returns `{:error, :invalid}`
+  otherwise. The caller (request plug) additionally checks `is_active` and
+  roles.
+  """
+  def get_principal_by_session_token(token) do
+    {:ok, query} = PrincipalToken.verify_session_token_query(token)
+
+    case Repo.one(query) do
+      {principal, _row} -> {:ok, principal}
+      nil -> {:error, :invalid}
+    end
+  end
+
+  @doc """
+  Deletes the session token row matching the raw token. Idempotent — a
+  second logout with the same cookie is a no-op.
+  """
+  def delete_session_token(token) do
+    Repo.delete_all(from(PrincipalToken, where: [token: ^token, context: "session"]))
+    :ok
+  end
+
+  @doc """
+  Deletes every session for the given principal. Used by sign-out-everywhere
+  and by email-change / access-loss revocation (per the spec).
+  """
+  def delete_all_principal_sessions(%Principal{} = principal) do
+    Repo.delete_all(
+      from t in PrincipalToken,
+        where: t.principal_id == ^principal.id and t.context == "session"
+    )
+
+    :ok
+  end
+
+  ## Access projection
+
+  @doc """
+  Loads the access projection for a Principal: current roles and the
+  `is_active` flag.
+
+  Returns `{:ok, %{principal: principal, roles: [String.t()], is_active: boolean}}`
+  or `{:error, :no_profile}` if the Principal has no `user_profiles` row —
+  which means it cannot have club access, so the request plug treats it as
+  `401`.
+
+  Roles come from `user_roles` (live on every request, per the spec). The
+  `is_active` flag is the Stripe-driven projection on `user_profiles` (see
+  CONTEXT.md — DHC does not set it directly).
+
+  ## Join shape (pre-cutover)
+
+  Until ALE-163 repoints the application foreign keys from `auth.users.id`
+  to `principals.id`, `user_profiles.supabase_user_id` and `user_roles.user_id`
+  still reference `auth.users`. M1 (ALE-166) creates one Principal per
+  existing Member **with the same UUID** as `auth.users.id`, so
+  `principals.id == user_profiles.supabase_user_id` holds after M1 and
+  remains true after M2 renames the column to `principal_id`. This query
+  joins on that UUID equality — it works for the post-M1 / pre-M2 window and
+  ALE-163 will tighten it to a real FK association after the rename.
+  """
+  def load_session_principal(principal) do
+    query =
+      from p in Principal,
+        left_join: profile in "user_profiles",
+        on: profile.supabase_user_id == p.id,
+        left_join: ur in "user_roles",
+        on: ur.user_id == p.id,
+        where: p.id == ^principal.id,
+        group_by: [p.id, profile.is_active],
+        select: %{
+          principal: p,
+          is_active: profile.is_active,
+          roles: fragment("array_agg(?)", ur.role)
+        }
+
+    case Repo.one(query) do
+      nil ->
+        {:error, :no_profile}
+
+      %{principal: _principal, is_active: nil} ->
+        # Left join produced a row (the Principal exists) but no user_profiles
+        # matched — the Principal has no Member profile, so it has no club
+        # access. Treat as no_profile: the request plug returns 401.
+        {:error, :no_profile}
+
+      %{principal: principal, is_active: is_active, roles: roles} ->
+        roles = roles |> Enum.filter(&is_binary/1) |> Enum.reject(&(&1 == ""))
+        {:ok, %{principal: principal, is_active: is_active, roles: roles}}
+    end
+  end
+end
