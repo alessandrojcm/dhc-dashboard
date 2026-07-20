@@ -263,6 +263,14 @@ paths:
 
         Requires a Supabase JWT whose `app_metadata.roles` includes one of:
         `president`, `admin`, or `committee_coordinator`.
+
+        Under ALE-162 (ADR 0010), issue time is side-effect free: the
+        enqueued worker only inserts the pending invitation row (carrying
+        the invite's first/last name, phone, date of birth, and a fresh
+        Phoenix UUID for `user_id`) and enqueues the invite email. It no
+        longer calls the Supabase admin API, creates a Stripe customer, or
+        inserts a `user_profiles` row — acceptance materializes the
+        Principal + Member record set atomically.
       security:
         - bearerAuth: []
       requestBody:
@@ -425,6 +433,11 @@ paths:
         Returns the signup pricing preview for a pending invitation. When a
         promotion code is supplied, Stripe validates it and applies it to the
         invoice previews before the DTO is returned.
+
+        Under ALE-162 (ADR 0010), no `user_profiles` row exists at pricing
+        time. The endpoint lazily creates a Stripe Customer on first preview
+        and persists the customer id on the invitation row so acceptance can
+        reuse it; subsequent pricing calls reuse the same customer.
       parameters:
         - name: id
           in: path
@@ -514,9 +527,23 @@ paths:
         - Invitations
       summary: Accept a verified invitation
       description: |
-        Converts a verified invitation into a Member in a Phoenix-owned atomic
-        domain operation. The verification token must come from the verify
-        endpoint. Only this endpoint may transition an invitation to accepted.
+        Atomically materializes a verified invitation into a Principal and
+        Member record set in one Phoenix-owned transaction (ADR 0010,
+        ALE-162). The verification token must come from the verify endpoint.
+        Only this endpoint may transition an invitation to accepted.
+
+        On success the transaction has created, all together: the
+        Authentication Principal (id = invitation.user_id, authoritative
+        email = invitation email), the UserProfile, the MemberProfile, the
+        `member` role, the invitation flip to `accepted`,
+        `user_profile.is_active = true`, and the waitlist `joined` update.
+
+        Acceptance is registration, not login. It does **not** establish a
+        Session or send a magic link — the new Member signs in through the
+        normal magic-link (or Discord) login path. Failed or replayed
+        acceptance leaves no partial record set; the invitation-status flip
+        is the replay defense (the 15-minute verification token is not
+        single-use).
       parameters:
         - name: id
           in: path

@@ -5,6 +5,7 @@ defmodule DhcWeb.InvitationsControllerTest do
 
   import Ecto.Query
 
+  alias Dhc.Auth.Principal
   alias Dhc.Invitations.Invitation
   alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.Repo
@@ -34,6 +35,22 @@ defmodule DhcWeb.InvitationsControllerTest do
   end
 
   defmodule PaymentProcessor do
+    # ALE-162: the payment processor now also owns Stripe customer creation
+    # (or reuse) at acceptance. The test stub records both calls so the
+    # acceptance tests can assert on the customer id passed to `complete/1`
+    # and the invite data passed to `create_customer/4`.
+    def create_customer(email, _name, _invited_by_id, _invitation_id) do
+      send(
+        Application.fetch_env!(:dhc, :invitation_payment_test_pid),
+        {:stripe_create_customer, %{email: email}}
+      )
+
+      # Return a deterministic, customer-id matching the pre-attached shape
+      # used by insert_invitation_with_profile/1 when no stripe_customer_id
+      # is set. Tests that pre-attach a customer_id never hit this callback.
+      {:ok, "cus_accept"}
+    end
+
     def complete(attrs) do
       send(Application.fetch_env!(:dhc, :invitation_payment_test_pid), {:stripe_complete, attrs})
       Application.get_env(:dhc, :invitation_payment_result, :ok)
@@ -469,7 +486,7 @@ defmodule DhcWeb.InvitationsControllerTest do
     end
 
     test "POST /api/invitations/:id/accept atomically creates member state", %{conn: conn} do
-      %{auth_user_id: user_id, profile_id: profile_id, invitation_id: invitation_id} =
+      %{invitation_id: invitation_id, user_id: user_id} =
         insert_invitation_with_profile(email: "accept@example.com", waitlist: true)
 
       {:ok, token} =
@@ -489,6 +506,11 @@ defmodule DhcWeb.InvitationsControllerTest do
 
       assert %{"data" => %{"accepted" => true, "memberId" => ^user_id}} = json_response(conn, 200)
 
+      # The customer_id pre-attached by insert_invitation_with_profile/1 is
+      # the one acceptance passes to the payment processor (no
+      # create_customer call when stripe_customer_id is already set).
+      refute_receive {:stripe_create_customer, _}
+
       assert_receive {:stripe_complete,
                       %{
                         customer_id: "cus_accept",
@@ -499,11 +521,22 @@ defmodule DhcWeb.InvitationsControllerTest do
 
       assert Repo.get!(Invitation, invitation_id).status == "accepted"
 
+      # ALE-162: acceptance creates the Principal with id = invitation.user_id.
+      assert %Principal{id: ^user_id, email: "accept@example.com"} =
+               Repo.get!(Principal, user_id)
+
+      # Acceptance creates the UserProfile (no pre-existing profile to flip).
+      user_profile = Repo.get_by!(UserProfile, supabase_user_id: user_id)
+      assert user_profile.first_name == "Ada"
+      assert user_profile.last_name == "Lovelace"
+      assert user_profile.date_of_birth == ~D[1990-01-01]
+      assert user_profile.customer_id == "cus_accept"
+      assert user_profile.is_active == true
+
       member = Repo.get!(MemberProfile, user_id)
-      assert member.user_profile_id == profile_id
+      assert member.user_profile_id == user_profile.id
       assert member.next_of_kin_name == "Ada Lovelace"
       assert member.insurance_form_submitted == true
-      assert Repo.get!(UserProfile, profile_id).is_active == true
 
       assert Repo.exists?(
                from r in Dhc.Auth.UserRole, where: r.user_id == ^user_id and r.role == "member"
@@ -514,10 +547,61 @@ defmodule DhcWeb.InvitationsControllerTest do
                  where: w.email == "accept@example.com",
                  select: w.status
              ) == "joined"
+
+      # ALE-162 / ADR 0010: acceptance must not establish a session or send a
+      # magic link. The auth session is created later via the normal sign-in
+      # path. Assert no session tokens and no magic-link email jobs were
+      # produced as a side effect of acceptance.
+      assert Repo.aggregate(
+               from(t in Dhc.Auth.PrincipalToken, where: t.context == "session"),
+               :count
+             ) == 0
+
+      assert Repo.aggregate(
+               from(t in Dhc.Auth.PrincipalToken, where: t.context == "login"),
+               :count
+             ) == 0
+
+      # No magic-link email was enqueued (only invite-member emails, if any).
+      refute_enqueued(worker: Dhc.Email.Worker)
+    end
+
+    test "POST /api/invitations/:id/accept creates a Stripe customer when none is attached",
+         %{conn: conn} do
+      %{invitation_id: invitation_id, user_id: user_id} =
+        insert_invitation_with_profile(email: "no-customer@example.com", waitlist: true)
+
+      # Strip the pre-attached customer so acceptance has to create one.
+      Repo.update_all(
+        from(i in Invitation, where: i.id == ^invitation_id),
+        set: [stripe_customer_id: nil]
+      )
+
+      {:ok, token} =
+        Dhc.Invitations.issue_verification_token(
+          invitation_id,
+          "no-customer@example.com",
+          ~D[1990-01-01]
+        )
+
+      conn =
+        post(conn, "/api/invitations/#{invitation_id}/accept", %{
+          "verificationToken" => token,
+          "nextOfKinName" => "Ada Lovelace",
+          "nextOfKinPhone" => "+353 1 000 0000",
+          "stripeConfirmationToken" => "ctok_test"
+        })
+
+      assert %{"data" => %{"accepted" => true, "memberId" => ^user_id}} = json_response(conn, 200)
+
+      assert_receive {:stripe_create_customer, %{email: "no-customer@example.com"}}
+      assert_receive {:stripe_complete, %{customer_id: "cus_accept"}}
+
+      assert Repo.get!(Invitation, invitation_id).status == "accepted"
     end
 
     test "POST /api/invitations/:id/accept rolls back when Stripe payment fails", %{conn: conn} do
-      %{profile_id: profile_id, invitation_id: invitation_id} =
+      %{invitation_id: invitation_id, user_id: user_id} =
         insert_invitation_with_profile(email: "stripe-fail@example.com", waitlist: true)
 
       Application.put_env(:dhc, :invitation_payment_result, {:error, :card_declined})
@@ -541,15 +625,27 @@ defmodule DhcWeb.InvitationsControllerTest do
                json_response(conn, 402)
 
       assert_receive {:stripe_complete, %{confirmation_token: "ctok_declined"}}
+
       assert Repo.get!(Invitation, invitation_id).status == "pending"
-      assert Repo.get!(UserProfile, profile_id).is_active == false
-      refute Repo.exists?(from m in MemberProfile, where: m.user_profile_id == ^profile_id)
+
+      # ALE-162: failed acceptance leaves no partial record set. No
+      # Principal, no UserProfile, no MemberProfile, no role, and the
+      # waitlist entry stays `invited` (not `joined`).
+      refute Repo.get(Principal, user_id)
+      refute Repo.exists?(from up in UserProfile, where: up.supabase_user_id == ^user_id)
+      refute Repo.exists?(from m in MemberProfile, where: m.id == ^user_id)
+
+      assert Repo.one!(
+               from w in Dhc.Waitlist.WaitlistEntry,
+                 where: w.email == "stripe-fail@example.com",
+                 select: w.status
+             ) == "invited"
     end
 
     test "POST /api/invitations/:id/accept rejects blank required fields before mutating", %{
       conn: conn
     } do
-      %{profile_id: profile_id, invitation_id: invitation_id} =
+      %{invitation_id: invitation_id} =
         insert_invitation_with_profile(email: "blank-accept@example.com", waitlist: true)
 
       {:ok, token} =
@@ -571,7 +667,6 @@ defmodule DhcWeb.InvitationsControllerTest do
                json_response(conn, 400)
 
       assert Repo.get!(Invitation, invitation_id).status == "pending"
-      assert Repo.get!(UserProfile, profile_id).is_active == false
 
       assert Repo.one!(
                from w in Dhc.Waitlist.WaitlistEntry,
@@ -582,13 +677,31 @@ defmodule DhcWeb.InvitationsControllerTest do
       refute_receive {:stripe_complete, _attrs}
     end
 
-    test "POST /api/invitations/:id/accept rolls back when member creation fails", %{conn: conn} do
-      %{auth_user_id: user_id, profile_id: profile_id, invitation_id: invitation_id} =
+    test "POST /api/invitations/:id/accept rolls back when member creation fails", %{
+      conn: conn
+    } do
+      %{invitation_id: invitation_id, user_id: user_id} =
         insert_invitation_with_profile(email: "rollback@example.com", waitlist: true)
+
+      # Pre-existing MemberProfile for invitation.user_id — acceptance must
+      # detect this and roll back as :invalid_invitation (replay defense /
+      # belt-and-braces check per ADR 0010). Insert it with a throwaway
+      # UserProfile so the FK is satisfied.
+      existing_profile =
+        Repo.insert!(%UserProfile{
+          id: Ecto.UUID.generate(),
+          supabase_user_id: Ecto.UUID.generate(),
+          first_name: "Existing",
+          last_name: "Member",
+          phone_number: "+353810000000",
+          date_of_birth: ~D[1990-01-01],
+          is_active: false,
+          social_media_consent: "no"
+        })
 
       Repo.insert!(%MemberProfile{
         id: user_id,
-        user_profile_id: profile_id,
+        user_profile_id: existing_profile.id,
         next_of_kin_name: "Existing Member",
         next_of_kin_phone: "+353 1 999 9999",
         preferred_weapon: [],
@@ -616,7 +729,11 @@ defmodule DhcWeb.InvitationsControllerTest do
                json_response(conn, 422)
 
       assert Repo.get!(Invitation, invitation_id).status == "pending"
-      assert Repo.get!(UserProfile, profile_id).is_active == false
+
+      # The pre-existing MemberProfile and UserProfile are untouched
+      # (acceptance rolled back before touching them).
+      assert Repo.get!(MemberProfile, user_id).next_of_kin_name == "Existing Member"
+      assert Repo.get!(UserProfile, existing_profile.id).is_active == false
 
       assert Repo.one!(
                from w in Dhc.Waitlist.WaitlistEntry,
@@ -624,7 +741,39 @@ defmodule DhcWeb.InvitationsControllerTest do
                  select: w.status
              ) == "invited"
 
+      # The payment processor was never called — the replay check runs
+      # before Stripe customer / payment work.
       refute_receive {:stripe_complete, _attrs}
+    end
+
+    test "POST /api/invitations/:id/accept is idempotent on replay (status flip is the guard)",
+         %{conn: conn} do
+      %{invitation_id: invitation_id} =
+        insert_invitation_with_profile(email: "replay@example.com", waitlist: true)
+
+      {:ok, token} =
+        Dhc.Invitations.issue_verification_token(
+          invitation_id,
+          "replay@example.com",
+          ~D[1990-01-01]
+        )
+
+      body = %{
+        "verificationToken" => token,
+        "nextOfKinName" => "Ada Lovelace",
+        "nextOfKinPhone" => "+353 1 000 0000",
+        "stripeConfirmationToken" => "ctok_test"
+      }
+
+      assert %{"data" => %{"accepted" => true}} =
+               json_response(post(conn, "/api/invitations/#{invitation_id}/accept", body), 200)
+
+      # Second acceptance with the same (still-valid) verification token
+      # finds the invitation no longer pending and rolls back. The spec
+      # (ADR 0010) calls the invitation-status flip the replay defense; the
+      # token itself is not single-use.
+      assert %{"errors" => %{"detail" => "Invitation cannot be accepted"}} =
+               json_response(post(conn, "/api/invitations/#{invitation_id}/accept", body), 422)
     end
   end
 
@@ -696,6 +845,15 @@ defmodule DhcWeb.InvitationsControllerTest do
 
   # Inserts an invitation directly into the `invitations` table.
   #
+  # ALE-162 (ADR 0010): issue time is side-effect free — the helper only
+  # inserts the invitation row. No `auth.users` row, no `user_profiles` row,
+  # no Stripe customer is created at issue time. The invitation carries the
+  # invite data (first/last/phone/DOB) and a pre-attached
+  # `stripe_customer_id` so acceptance tests can exercise the "reuse
+  # attached customer" path without standing up a Stripe Bypass. Tests that
+  # want to exercise the "acceptance creates the customer" path strip the
+  # customer_id after insert.
+  #
   # `search_text` is a `GENERATED ALWAYS AS (to_tsvector(email)) STORED`
   # column, so it is intentionally omitted — Postgres populates it from
   # `email` and the websearch query matches against it.
@@ -704,27 +862,27 @@ defmodule DhcWeb.InvitationsControllerTest do
   # deterministic newest-first ordering without relying on insertion timing.
   defp insert_invitation(attrs) do
     id = Ecto.UUID.generate()
+    user_id = Ecto.UUID.generate()
     now = DateTime.utc_now() |> DateTime.truncate(:second)
     created_at = DateTime.add(now, Keyword.get(attrs, :seconds, 0), :second)
     expires_at = DateTime.add(created_at, 7, :day)
 
-    # invitations via the Invitation schema — Ecto handles the `created_at`
-    # timestamp mapping (the schema declares `timestamps(inserted_at: :created_at)`),
-    # autodumps the :binary_id PK, and skips the generated `search_text` column
-    # (not a schema field; Postgres auto-populates it from `email`). Set
-    # `created_at` explicitly so the `seconds` offset gives deterministic
-    # newest-first ordering for cursor pagination — Ecto only auto-fills
-    # `inserted_at`/`created_at` when it's nil.
     {:ok, _invitation} =
       %Invitation{
         id: id,
         email: Keyword.get(attrs, :email, "test#{:rand.uniform(1_000_000)}@example.com"),
-        user_id: Keyword.get(attrs, :user_id),
+        user_id: Keyword.get(attrs, :user_id, user_id),
         waitlist_id: Keyword.get(attrs, :waitlist_id),
         status: Keyword.get(attrs, :status, "pending"),
         expires_at: expires_at,
         created_at: created_at,
-        invitation_type: Keyword.get(attrs, :invitation_type, "member")
+        created_by: Keyword.get(attrs, :created_by),
+        invitation_type: Keyword.get(attrs, :invitation_type, "member"),
+        first_name: Keyword.get(attrs, :first_name, "Ada"),
+        last_name: Keyword.get(attrs, :last_name, "Lovelace"),
+        phone_number: Keyword.get(attrs, :phone_number, "+353810000000"),
+        date_of_birth: Keyword.get(attrs, :date_of_birth, ~D[1990-01-01]),
+        stripe_customer_id: Keyword.get(attrs, :stripe_customer_id, "cus_accept")
       }
       |> Repo.insert()
 
@@ -732,28 +890,21 @@ defmodule DhcWeb.InvitationsControllerTest do
   end
 
   defp insert_invitation_with_profile(attrs) do
-    auth_user_id = Ecto.UUID.generate()
-    profile_id = Ecto.UUID.generate()
+    # ALE-162: the "with_profile" suffix is now historical — no profile is
+    # created at issue time. The helper exists for acceptance tests that
+    # need a pending invitation carrying the invite data plus an optional
+    # waitlist entry. The name is kept so the pre-ALE-162 test sites that
+    # referenced it continue to compile; the shape it returns is now
+    # `{invitation_id, user_id}` (no `auth_user_id` / `profile_id`).
     email = Keyword.fetch!(attrs, :email)
     date_of_birth = Keyword.get(attrs, :date_of_birth, ~D[1990-01-01])
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
-
-    Repo.insert_all(
-      "users",
-      [
-        [
-          id: Ecto.UUID.dump!(auth_user_id),
-          aud: "authenticated",
-          role: "authenticated",
-          email: email
-        ]
-      ],
-      prefix: "auth"
-    )
+    user_id = Ecto.UUID.generate()
+    invitation_id = Ecto.UUID.generate()
 
     waitlist_id =
       if Keyword.get(attrs, :waitlist, false) do
         id = Ecto.UUID.generate()
+        now = DateTime.utc_now() |> DateTime.truncate(:second)
 
         Repo.insert!(%Dhc.Waitlist.WaitlistEntry{
           id: id,
@@ -766,30 +917,25 @@ defmodule DhcWeb.InvitationsControllerTest do
         id
       end
 
-    Repo.insert!(%UserProfile{
-      id: profile_id,
-      supabase_user_id: auth_user_id,
-      first_name: "Ada",
-      last_name: "Lovelace",
-      date_of_birth: date_of_birth,
-      phone_number: "+353810000000",
-      gender: "woman (cis)",
-      pronouns: "she/her",
-      is_active: false,
-      customer_id: Keyword.get(attrs, :customer_id, "cus_accept"),
-      social_media_consent: "no",
-      waitlist_id: waitlist_id
-    })
+    expires_at = DateTime.utc_now() |> DateTime.add(7, :day) |> DateTime.truncate(:second)
 
-    invitation_id =
-      insert_invitation(
+    {:ok, _invitation} =
+      %Invitation{
+        id: invitation_id,
         email: email,
-        status: Keyword.get(attrs, :status, "pending"),
-        user_id: auth_user_id,
+        user_id: user_id,
         waitlist_id: waitlist_id,
-        invitation_type: Keyword.get(attrs, :invitation_type, "member")
-      )
+        status: Keyword.get(attrs, :status, "pending"),
+        expires_at: expires_at,
+        invitation_type: Keyword.get(attrs, :invitation_type, "member"),
+        first_name: Keyword.get(attrs, :first_name, "Ada"),
+        last_name: Keyword.get(attrs, :last_name, "Lovelace"),
+        phone_number: Keyword.get(attrs, :phone_number, "+353810000000"),
+        date_of_birth: date_of_birth,
+        stripe_customer_id: Keyword.get(attrs, :stripe_customer_id, "cus_accept")
+      }
+      |> Repo.insert()
 
-    %{auth_user_id: auth_user_id, profile_id: profile_id, invitation_id: invitation_id}
+    %{invitation_id: invitation_id, user_id: user_id, waitlist_id: waitlist_id}
   end
 end
