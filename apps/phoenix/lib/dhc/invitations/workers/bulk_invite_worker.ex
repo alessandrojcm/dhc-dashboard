@@ -6,6 +6,25 @@ defmodule Dhc.Invitations.BulkInviteWorker do
   Phoenix/Oban runtime. The Phoenix API layer is responsible for authorising
   admin-level access before enqueueing this worker.
 
+  ## ALE-162 — issue time is side-effect free
+
+  ADR 0010 fixes that the Authentication Principal is born inside Invitation
+  Acceptance, not at issue. This worker now performs **only** the issue-time
+  work for each invite:
+
+    * mint a fresh Phoenix UUID for `invitation.user_id` (the eventual
+      Principal id);
+    * insert the pending `invitations` row carrying `email`, `date_of_birth`,
+      `expires_at` (7 days), `created_by`, and `invitation_type`;
+    * enqueue the `inviteMember` email;
+    * if the invite came from a waitlist, mark the waitlist entry `invited`.
+
+  It no longer calls the Supabase admin API, creates a Stripe customer, or
+  inserts a `user_profiles` row. All of that moves into acceptance (and
+  pricing's lazy customer creation). The previous per-invite Supabase-Auth /
+  Stripe / profile-creation failure modes no longer exist at issue time; the
+  remaining failure modes are DB insert errors and email-enqueue errors.
+
   ## Job args
 
     * `invites` — list of invite maps or waitlist IDs. Invite maps require
@@ -24,7 +43,6 @@ defmodule Dhc.Invitations.BulkInviteWorker do
   alias Dhc.Email.Worker, as: EmailWorker
   alias Dhc.Invitations.Repository
   alias Dhc.Repo
-  alias Dhc.Stripe.Client, as: StripeClient
 
   @invite_email_template "inviteMember"
   @default_app_url "http://localhost:5173"
@@ -178,25 +196,19 @@ defmodule Dhc.Invitations.BulkInviteWorker do
   defp resolve_invite_data(_invite), do: {:error, :invalid_invite_shape}
 
   defp create_invitation_pipeline(original_invite, invite_data, created_by_id, ctx) do
+    # ALE-162 (ADR 0010): issue time is one insert. No Supabase admin call,
+    # no Stripe customer, no user_profiles row. Acceptance materializes the
+    # Principal + record set; pricing lazily creates the Stripe customer.
     Repo.transaction(fn ->
-      with {:ok, customer} <- create_stripe_customer(invite_data, created_by_id),
-           {:ok, auth_user} <- create_supabase_user(invite_data),
-           {:ok, invitation_id} <-
-             Repository.create_invitation_record(
-               original_invite,
-               invite_data,
-               auth_user["id"],
-               customer["id"],
-               created_by_id
-             ),
+      with {:ok, invitation_id} <-
+             Repository.create_invitation_record(original_invite, invite_data, created_by_id),
            :ok <- enqueue_invitation_email(invite_data, invitation_id),
            :ok <- maybe_update_waitlist(original_invite) do
         Logger.info(
           "[bulk-invite-worker] Processed invitation",
           Keyword.merge(ctx,
             email: invite_data["email"],
-            invitation_id: invitation_id,
-            stripe_customer_id: customer["id"]
+            invitation_id: invitation_id
           )
         )
 
@@ -208,53 +220,6 @@ defmodule Dhc.Invitations.BulkInviteWorker do
     |> case do
       {:ok, result} -> {:ok, result}
       {:error, reason} -> {:error, reason}
-    end
-  end
-
-  defp create_stripe_customer(invite_data, created_by_id) do
-    body = %{
-      "name" => Enum.join([invite_data["firstName"], invite_data["lastName"]], " "),
-      "email" => invite_data["email"],
-      "metadata[invited_by]" => created_by_id
-    }
-
-    case StripeClient.request(method: :post, url: "/v1/customers", body: body) do
-      {:ok, %{"id" => _id} = customer} -> {:ok, customer}
-      {:ok, body} -> {:error, {:stripe_customer_missing_id, body}}
-      {:error, reason} -> {:error, {:stripe_customer, reason}}
-    end
-  end
-
-  defp create_supabase_user(invite_data) do
-    with {:ok, url} <- supabase_auth_admin_url(),
-         {:ok, service_key} <- supabase_service_role_key() do
-      payload = %{
-        email: invite_data["email"],
-        email_confirm: true,
-        user_metadata: %{
-          first_name: invite_data["firstName"],
-          last_name: invite_data["lastName"]
-        }
-      }
-
-      case Req.post(url,
-             json: payload,
-             headers: [
-               {"authorization", "Bearer #{service_key}"},
-               {"apikey", service_key},
-               {"content-type", "application/json"}
-             ]
-           ) do
-        {:ok, %Req.Response{status: status, body: %{"id" => _id} = user}}
-        when status in 200..299 ->
-          {:ok, user}
-
-        {:ok, %Req.Response{status: status, body: body}} ->
-          {:error, {:supabase_auth, status, body}}
-
-        {:error, exception} ->
-          {:error, {:supabase_auth_http, exception}}
-      end
     end
   end
 
@@ -296,22 +261,6 @@ defmodule Dhc.Invitations.BulkInviteWorker do
       })
     )
     |> URI.to_string()
-  end
-
-  defp supabase_auth_admin_url do
-    case Application.get_env(:dhc, :supabase_url) do
-      nil -> {:error, :supabase_url_not_configured}
-      "" -> {:error, :supabase_url_not_configured}
-      url -> {:ok, URI.merge(url, "/auth/v1/admin/users") |> URI.to_string()}
-    end
-  end
-
-  defp supabase_service_role_key do
-    case Application.get_env(:dhc, :supabase_service_role_key) do
-      nil -> {:error, :supabase_service_role_key_not_configured}
-      "" -> {:error, :supabase_service_role_key_not_configured}
-      key -> {:ok, key}
-    end
   end
 
   defp invite_email(%{"email" => email}), do: email

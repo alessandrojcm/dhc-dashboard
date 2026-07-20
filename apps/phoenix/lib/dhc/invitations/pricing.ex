@@ -4,15 +4,22 @@ defmodule Dhc.Invitations.Pricing do
 
   Ports the SvelteKit `PricingService` Stripe invoice-preview calculation to
   Phoenix while preserving the DTO consumed by the signup UI.
+
+  ALE-162 (ADR 0010): issue time no longer creates a `user_profiles` row or a
+  Stripe customer, so there is no `customer_id` to look up at pricing time.
+  The pricing endpoint lazily creates a Stripe customer on first preview (or
+  reuses `invitation.stripe_customer_id` if a prior pricing call already
+  attached one) and persists it on the invitation row. Acceptance then
+  reuses the same customer.
   """
 
   import Ecto.Query
 
   alias Dhc.Invitations.Invitation
+  alias Dhc.Invitations.Repository
   alias Dhc.Repo
   alias Dhc.Stripe.LookupKeys
   alias Dhc.Stripe.Operations
-  alias Dhc.UserProfiles.UserProfile
 
   @migration_code "DHCDASHBOARD"
   @currency "EUR"
@@ -21,7 +28,7 @@ defmodule Dhc.Invitations.Pricing do
           {:ok, map()} | {:error, atom() | {:stripe, term()}}
   def pricing_for_invitation(invitation_id, coupon_code \\ nil) do
     with {:ok, invitation} <- pending_invitation(invitation_id),
-         {:ok, customer_id} <- customer_id(invitation.user_id),
+         {:ok, customer_id} <- resolve_customer_id(invitation),
          {:ok, prices} <- membership_price_ids(),
          {:ok, promotion} <- resolve_promotion(coupon_code),
          {:ok, details} <- pricing_details(customer_id, prices, promotion) do
@@ -44,13 +51,43 @@ defmodule Dhc.Invitations.Pricing do
     end
   end
 
-  defp customer_id(user_id) do
-    query = from up in UserProfile, where: up.supabase_user_id == ^user_id, select: up.customer_id
+  # ALE-162: no user_profiles row exists at pricing time. Reuse a previously
+  # attached customer if present (lazily created by a prior pricing call);
+  # otherwise create one and persist it on the invitation so acceptance can
+  # reuse it. The customer is named from the invitation's first/last name if
+  # available, emailed from the invitation email, and carries `invited_by`
+  # metadata from the invitation's creator.
+  defp resolve_customer_id(%Invitation{stripe_customer_id: id})
+       when is_binary(id) and id != "" do
+    {:ok, id}
+  end
 
-    case Repo.one(query) do
-      nil -> {:error, :customer_not_found}
-      "" -> {:error, :customer_not_found}
-      customer_id -> {:ok, customer_id}
+  defp resolve_customer_id(%Invitation{} = invitation) do
+    name =
+      [invitation.first_name, invitation.last_name]
+      |> Enum.filter(&(&1 not in [nil, ""]))
+      |> Enum.join(" ")
+
+    body = %{
+      "name" => name,
+      "email" => invitation.email,
+      "metadata[invited_by]" => invitation.created_by || invitation.user_id
+    }
+
+    idempotency_key = "invitation-pricing:#{invitation.id}:customer"
+
+    case Operations.post_customers(body, idempotency_key: idempotency_key) do
+      {:ok, %{"id" => customer_id}} when is_binary(customer_id) ->
+        case Repository.attach_stripe_customer_id(invitation.id, customer_id) do
+          {:ok, _invitation} -> {:ok, customer_id}
+          {:error, reason} -> {:error, {:stripe_customer_persist, reason}}
+        end
+
+      {:ok, body} ->
+        {:error, {:stripe_customer_missing_id, body}}
+
+      {:error, reason} ->
+        {:error, {:stripe, reason}}
     end
   end
 

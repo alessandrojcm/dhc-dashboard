@@ -5,6 +5,7 @@ defmodule Dhc.Invitations do
 
   import Ecto.Query
 
+  alias Dhc.Auth
   alias Dhc.Email.Worker, as: EmailWorker
   alias Dhc.Auth.UserRole
   alias Dhc.CursorPagination
@@ -120,6 +121,38 @@ defmodule Dhc.Invitations do
 
   @doc """
   Converts a verified Invitation into a Member in one database transaction.
+
+  ALE-162 (ADR 0010): acceptance is the atomic point at which a prospective
+  member becomes a Principal and a Member. In one `Repo.transaction` it:
+
+    * locks the pending invitation `FOR UPDATE`;
+    * creates a Stripe customer (or reuses `invitation.stripe_customer_id`
+      if the pricing endpoint already attached one);
+    * completes the Stripe payment (SetupIntent + subscriptions + first
+      invoice confirmation) — failure rolls back the whole transaction;
+    * creates the `Principal` with `id = invitation.user_id` and the
+      invitation's email as the authoritative normalized login email;
+    * creates the `UserProfile` keyed by `supabase_user_id =
+      invitation.user_id` (the post-M1 invariant holds from birth);
+    * creates the `MemberProfile` keyed by `invitation.user_id`;
+    * grants the `member` role;
+    * flips the invitation to `accepted`;
+    * sets `user_profile.is_active = true`;
+    * marks any waitlist entry for the invitation email `joined`.
+
+  It does **not** establish a Session or send a magic link — acceptance is
+  registration, not login. The first sign-in is a normal magic-link (or
+  Discord) login through `Dhc.Auth`.
+
+  ## Replay and failure semantics
+
+  The invitation-status flip is the replay defense: a second `accept` call
+  finds no pending invitation and rolls back with `:invalid_invitation`. The
+  15-minute verification token is **not** single-use (ADR 0010). A pre-existing
+  `MemberProfile` for `invitation.user_id` is treated as `:invalid_invitation`
+  and rolls back. Any failure — Stripe, Principal insert, UserProfile insert,
+  MemberProfile insert — rolls back the entire record set, leaving no partial
+  account (the spec's "no partial record set" invariant).
   """
   @spec accept(String.t(), String.t(), String.t(), String.t(), map()) ::
           {:ok, %{member_id: String.t()}} | {:error, term()}
@@ -148,26 +181,63 @@ defmodule Dhc.Invitations do
           Repo.rollback(:invalid_invitation)
         end
 
-        user_profile =
-          from(up in UserProfile, where: up.supabase_user_id == ^invitation.user_id)
-          |> Repo.one()
-
-        if is_nil(user_profile) do
-          Repo.rollback(:invalid_invitation)
-        end
-
+        # Replay defense: a pre-existing MemberProfile for this user_id means
+        # a prior acceptance already committed. The invitation-status flip is
+        # the primary replay guard; this is a belt-and-braces check.
         if Repo.exists?(from(m in MemberProfile, where: m.id == ^invitation.user_id)) do
           Repo.rollback(:invalid_invitation)
         end
 
+        # Resolve the Stripe customer. The pricing endpoint may have already
+        # attached one to the invitation; otherwise acceptance creates one
+        # here. The customer id is needed by StripePayment.complete/1.
+        customer_id =
+          case invitation.stripe_customer_id do
+            nil -> create_acceptance_customer!(invitation)
+            "" -> create_acceptance_customer!(invitation)
+            existing -> existing
+          end
+
         payment_attrs =
           payment_attrs
-          |> Map.put(:customer_id, user_profile.customer_id)
+          |> Map.put(:customer_id, customer_id)
           |> Map.put(:invitation_id, invitation.id)
 
         case payment_processor().complete(payment_attrs) do
           :ok -> :ok
           {:error, reason} -> Repo.rollback({:payment_failed, reason})
+        end
+
+        # ALE-162: create the Principal with id = invitation.user_id. This is
+        # the post-M1 invariant from birth: principals.id == user_profiles
+        # .supabase_user_id == member_profiles.id. The Principal's email is
+        # the authoritative normalized login email from the invitation.
+        case Auth.register_principal_with_id(invitation.user_id, %{email: invitation.email}) do
+          {:ok, _principal} -> :ok
+          {:error, _changeset} -> Repo.rollback(:principal_creation_failed)
+        end
+
+        # Create the UserProfile keyed by supabase_user_id = invitation.user_id.
+        # The bulk-invite data (first/last/phone/DOB) was carried on the
+        # invitation row at issue time; acceptance materializes the profile
+        # from it. gender/pronouns/social_media_consent default to nil/"no",
+        # matching the pre-ALE-162 upsert_invited_profile behavior.
+        user_profile = %UserProfile{
+          id: Ecto.UUID.generate(),
+          supabase_user_id: invitation.user_id,
+          first_name: invitation.first_name,
+          last_name: invitation.last_name,
+          phone_number: invitation.phone_number,
+          date_of_birth: invitation.date_of_birth,
+          customer_id: customer_id,
+          is_active: true,
+          waitlist_id: invitation.waitlist_id,
+          social_media_consent: "no"
+        }
+
+        case Repo.insert(user_profile) do
+          {:ok, _profile} -> :ok
+          {:error, _changeset} -> Repo.rollback(:invalid_invitation)
         end
 
         member_profile = %MemberProfile{
@@ -190,10 +260,6 @@ defmodule Dhc.Invitations do
         |> Ecto.Changeset.change(status: "accepted")
         |> Repo.update!()
 
-        user_profile
-        |> Ecto.Changeset.change(is_active: true)
-        |> Repo.update!()
-
         Repo.insert_all(
           UserRole,
           [[user_id: invitation.user_id, role: "member"]],
@@ -211,6 +277,23 @@ defmodule Dhc.Invitations do
 
         %{member_id: invitation.user_id}
       end)
+    end
+  end
+
+  defp create_acceptance_customer!(%Invitation{} = invitation) do
+    name =
+      [invitation.first_name, invitation.last_name]
+      |> Enum.filter(&(&1 not in [nil, ""]))
+      |> Enum.join(" ")
+
+    case payment_processor().create_customer(
+           invitation.email,
+           name,
+           invitation.created_by || invitation.user_id,
+           invitation.id
+         ) do
+      {:ok, customer_id} -> customer_id
+      {:error, reason} -> Repo.rollback({:payment_failed, reason})
     end
   end
 
@@ -261,15 +344,16 @@ defmodule Dhc.Invitations do
     normalized_email = normalize_email(email)
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
+    # ALE-162: date_of_birth is now stored on the invitation row at issue
+    # time (no user_profiles row exists until acceptance). Match email + DOB
+    # directly on the invitation.
     query =
       from i in Invitation,
-        join: up in UserProfile,
-        on: up.supabase_user_id == i.user_id,
         where: i.id == ^invitation_id,
         where: fragment("lower(?)", i.email) == ^normalized_email,
         where: i.status == "pending",
         where: i.expires_at > ^now,
-        where: up.date_of_birth == ^date_of_birth,
+        where: i.date_of_birth == ^date_of_birth,
         select: i.id
 
     Repo.exists?(query)
@@ -318,16 +402,18 @@ defmodule Dhc.Invitations do
   defp parse_date(_value), do: {:error, :invalid_date}
 
   defp list_invitation_resend_data(emails) do
+    # ALE-162: first_name / last_name / date_of_birth now live on the
+    # invitation row (carried at issue time). The pre-ALE-162 left-join to
+    # user_profiles is gone — there is no user_profiles row to join to
+    # until acceptance.
     from(i in Invitation,
-      left_join: up in UserProfile,
-      on: up.supabase_user_id == i.user_id,
       where: i.email in ^emails,
       select: %{
         id: i.id,
         email: i.email,
-        first_name: up.first_name,
-        last_name: up.last_name,
-        date_of_birth: up.date_of_birth
+        first_name: i.first_name,
+        last_name: i.last_name,
+        date_of_birth: i.date_of_birth
       }
     )
     |> Repo.all()
