@@ -87,7 +87,9 @@ defmodule Dhc.Invitations.BulkInviteWorkerTest do
       assert Ecto.UUID.cast!(invitation.user_id) == invitation.user_id
 
       # No user_profiles row was created at issue time.
-      refute Repo.exists?(from up in UserProfile, where: up.supabase_user_id == ^invitation.user_id)
+      refute Repo.exists?(
+               from up in UserProfile, where: up.supabase_user_id == ^invitation.user_id
+             )
 
       # No Stripe customer was created at issue time.
       assert invitation.stripe_customer_id in [nil, ""]
