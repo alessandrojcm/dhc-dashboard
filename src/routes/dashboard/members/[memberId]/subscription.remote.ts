@@ -4,7 +4,7 @@ import dayjs from "dayjs";
 import * as v from "valibot";
 import { authorize } from "$lib/server/auth";
 import { SETTINGS_ROLES } from "$lib/server/roles";
-import { apiBaseUrl, apiClientOptions } from "$lib/server/api-client";
+import { apiClientOptions } from "$lib/server/api-client";
 import { membershipPause, membershipResume } from "@dhc/api-client";
 
 export const pauseSubscription = command(
@@ -23,19 +23,21 @@ export const pauseSubscription = command(
 		),
 	}),
 	async ({ memberId, pauseUntil }) => {
-		const { locals } = getRequestEvent();
+		const event = getRequestEvent();
+		const { locals, cookies } = event;
 		const { session } = await locals.safeGetSession();
 
 		if (!session) {
 			error(401, "Authentication required");
 		}
 
-		if (session.user.id !== memberId) {
+		// ALE-164: `session.principal.id` replaces the Supabase `user.id`.
+		if (session.principal.id !== memberId) {
 			await authorize(locals, SETTINGS_ROLES);
 		}
 
 		const response = await membershipPause({
-			...apiClientOptions(session),
+			...apiClientOptions(cookies),
 			path: { memberId },
 			body: { pauseUntil: pauseUntil.toISOString() },
 			throwOnError: false,
@@ -52,19 +54,21 @@ export const pauseSubscription = command(
 export const resumeSubscription = command(
 	v.pipe(v.string(), v.uuid()),
 	async (memberId) => {
-		const { locals } = getRequestEvent();
+		const event = getRequestEvent();
+		const { locals, cookies } = event;
 		const { session } = await locals.safeGetSession();
 
 		if (!session) {
 			error(401, "Authentication required");
 		}
 
-		if (session.user.id !== memberId) {
+		// ALE-164: `session.principal.id` replaces the Supabase `user.id`.
+		if (session.principal.id !== memberId) {
 			await authorize(locals, SETTINGS_ROLES);
 		}
 
 		const response = await membershipResume({
-			...apiClientOptions(session),
+			...apiClientOptions(cookies),
 			path: { memberId },
 			throwOnError: false,
 		});

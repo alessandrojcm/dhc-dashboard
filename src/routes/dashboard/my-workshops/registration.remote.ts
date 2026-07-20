@@ -17,15 +17,15 @@ function apiErrorMessage(error: unknown, fallback: string) {
 export const toggleInterest = command(
 	v.pipe(v.string(), v.uuid()),
 	async (workshopId) => {
-		const { locals } = getRequestEvent();
-		const { session } = await locals.safeGetSession();
+		const event = getRequestEvent();
+		const { session } = await event.locals.safeGetSession();
 
 		if (!session) {
 			error(401, "Authentication required");
 		}
 
 		const response = await workshopsToggleInterest({
-			...apiClientOptions(session),
+			...apiClientOptions(event.cookies),
 			path: { workshopId },
 		});
 
@@ -50,15 +50,15 @@ export const createPaymentIntent = command(
 		customerId: v.optional(v.string()),
 	}),
 	async (input) => {
-		const { locals } = getRequestEvent();
-		const { session } = await locals.safeGetSession();
+		const event = getRequestEvent();
+		const { session } = await event.locals.safeGetSession();
 
 		if (!session) {
 			error(401, "Authentication required");
 		}
 
 		const response = await workshopsCreateRegistrationPaymentIntent({
-			...apiClientOptions(session),
+			...apiClientOptions(event.cookies),
 			path: { workshopId: input.workshopId },
 			body: {
 				amount: input.amount,
@@ -89,15 +89,15 @@ export const completeRegistration = command(
 		),
 	}),
 	async (input) => {
-		const { locals } = getRequestEvent();
-		const { session } = await locals.safeGetSession();
+		const event = getRequestEvent();
+		const { session } = await event.locals.safeGetSession();
 
 		if (!session) {
 			error(401, "Authentication required");
 		}
 
 		const response = await workshopsCompleteRegistration({
-			...apiClientOptions(session),
+			...apiClientOptions(event.cookies),
 			path: { workshopId: input.workshopId },
 			body: { paymentIntentId: input.paymentIntentId },
 		});
@@ -121,15 +121,15 @@ export const completeRegistration = command(
 export const cancelRegistration = command(
 	v.pipe(v.string(), v.uuid()),
 	async (workshopId) => {
-		const { locals } = getRequestEvent();
-		const { session } = await locals.safeGetSession();
+		const event = getRequestEvent();
+		const { session } = await event.locals.safeGetSession();
 
 		if (!session) {
 			error(401, "Authentication required");
 		}
 
 		const response = await workshopsCancelRegistration({
-			...apiClientOptions(session),
+			...apiClientOptions(event.cookies),
 			path: { workshopId },
 		});
 

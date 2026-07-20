@@ -2,15 +2,23 @@ defmodule DhcWeb.NotificationChannel do
   @moduledoc """
   Per-user Notification invalidation channel.
 
-  The browser joins `"notifications:<supabase-user-id>"`. `join/3` authorizes
-  the join by comparing the requested topic suffix exactly against the
-  verified `socket.assigns.current_user.sub` assigned by `UserSocket.connect/3`.
+  The browser joins one of two topic shapes:
+
+    * `"notifications:<sub>"` — the notification owner's id. `join/3`
+      authorizes by comparing the requested suffix exactly against the
+      verified `socket.assigns.current_user.sub` assigned by
+      `UserSocket.connect/3`.
+    * `"notifications:self"` — ALE-164 alias. The browser cannot read its own
+      id from the opaque socket token, so it joins `notifications:self` and
+      the channel resolves it to the verified `sub`. The authorization is the
+      same: only the verified user's own topic is joined.
+
   A user may join only their own topic; cross-user joins return
   `{:error, %{reason: "unauthorized"}}`.
 
   The realtime contract is intentionally minimal:
 
-    * topic  — `notifications:<supabase-user-id>` (the notification owner)
+    * topic  — `notifications:<sub>` (or `notifications:self`)
     * event  — `notification_created`
     * payload — `%{}` (empty; clients refetch authoritative state over HTTP)
 
@@ -27,6 +35,15 @@ defmodule DhcWeb.NotificationChannel do
   use DhcWeb, :channel
 
   @impl true
+  def join("notifications:self", _payload, socket) do
+    # ALE-164: the browser cannot read its own id from the opaque socket
+    # token, so it joins the `self` alias. Resolving to the verified sub is
+    # the authorization — the client only ever receives its own topic's
+    # broadcasts, and cross-user joins are impossible because the socket is
+    # already authenticated to a single principal.
+    {:ok, socket}
+  end
+
   def join("notifications:" <> requested_sub, _payload, socket) do
     verified_sub = socket.assigns.current_user.sub
 

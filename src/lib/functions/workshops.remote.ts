@@ -22,13 +22,20 @@ function apiErrorMessage(error: unknown, fallback: string) {
 	return (error as ApiErrorResponse | undefined)?.errors?.detail ?? fallback;
 }
 
+/**
+ * ALE-164: the dashboard authenticates through the Phoenix `_dhc_session`
+ * cookie. Remote functions forward the cookie to Phoenix via
+ * `apiClientOptions(event.cookies)`; the prior `apiClientOptions(session)`
+ * pattern (which carried the Supabase `access_token`) is removed.
+ */
+
 export const deleteWorkshop = command(
 	v.pipe(v.string(), v.uuid()),
 	async (workshopId) => {
-		const { locals } = getRequestEvent();
-		const session = await authorize(locals, WORKSHOP_ROLES);
+		const event = getRequestEvent();
+		await authorize(event.locals, WORKSHOP_ROLES);
 		const response = await workshopsDelete({
-			...apiClientOptions(session),
+			...apiClientOptions(event.cookies),
 			path: { workshopId },
 		});
 
@@ -48,10 +55,10 @@ export const deleteWorkshop = command(
 export const publishWorkshop = command(
 	v.pipe(v.string(), v.uuid()),
 	async (workshopId) => {
-		const { locals } = getRequestEvent();
-		const session = await authorize(locals, WORKSHOP_ROLES);
+		const event = getRequestEvent();
+		await authorize(event.locals, WORKSHOP_ROLES);
 		const response = await workshopsPublish({
-			...apiClientOptions(session),
+			...apiClientOptions(event.cookies),
 			path: { workshopId },
 		});
 
@@ -72,10 +79,10 @@ export const publishWorkshop = command(
 export const cancelWorkshop = command(
 	v.pipe(v.string(), v.uuid()),
 	async (workshopId) => {
-		const { locals } = getRequestEvent();
-		const session = await authorize(locals, WORKSHOP_ROLES);
+		const event = getRequestEvent();
+		await authorize(event.locals, WORKSHOP_ROLES);
 		const response = await workshopsCancel({
-			...apiClientOptions(session),
+			...apiClientOptions(event.cookies),
 			path: { workshopId },
 		});
 
@@ -113,9 +120,9 @@ export const updateAttendance = command(
 		),
 	}),
 	async ({ workshopId, attendance_updates }) => {
-		const { locals } = getRequestEvent();
-		const session = await authorize(locals, WORKSHOP_ROLES);
-		const registrations = await submitWorkshopAttendance(session, {
+		const event = getRequestEvent();
+		await authorize(event.locals, WORKSHOP_ROLES);
+		const registrations = await submitWorkshopAttendance(event.cookies, {
 			workshopId,
 			updates: attendance_updates.map(
 				(update): WorkshopAttendanceUpdate => ({
@@ -135,9 +142,9 @@ export const updateAttendance = command(
 export const getWorkshopRefunds = query(
 	v.pipe(v.string(), v.uuid()),
 	async (workshopId) => {
-		const { locals } = getRequestEvent();
-		const session = await authorize(locals, WORKSHOP_ROLES);
-		const refunds = await listWorkshopRefunds(session, workshopId);
+		const event = getRequestEvent();
+		await authorize(event.locals, WORKSHOP_ROLES);
+		const refunds = await listWorkshopRefunds(event.cookies, workshopId);
 		return { success: true as const, refunds };
 	},
 );
@@ -153,9 +160,9 @@ export const processRefund = command(
 		),
 	}),
 	async ({ workshopId, registration_id, reason }) => {
-		const { locals } = getRequestEvent();
-		const session = await authorize(locals, WORKSHOP_ROLES);
-		const refund = await submitWorkshopRefund(session, {
+		const event = getRequestEvent();
+		await authorize(event.locals, WORKSHOP_ROLES);
+		const refund = await submitWorkshopRefund(event.cookies, {
 			workshopId,
 			registrationId: registration_id,
 			reason,

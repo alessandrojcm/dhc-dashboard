@@ -9,9 +9,9 @@ import type { PageServerLoadEvent } from "./$types";
 // expects). ALE-106 switches the source to the Phoenix
 // `inventoryContainersIndex` endpoint and maps the camelCase API payload back
 // to that snake_case shape so the page template is unchanged.
-export const load = async ({ locals }: PageServerLoadEvent) => {
-	const session = await authorize(locals, INVENTORY_ROLES);
-	const response = await inventoryContainersIndex(apiClientOptions(session));
+export const load = async ({ locals, cookies }: PageServerLoadEvent) => {
+	await authorize(locals, INVENTORY_ROLES);
+	const response = await inventoryContainersIndex(apiClientOptions(cookies));
 
 	if (response.error) {
 		throw new Error(

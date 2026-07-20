@@ -52,10 +52,13 @@ defmodule DhcWeb.AuthSessionControllerTest do
         )
 
       # The args carry the friendly name and the recipient email — no token
-      # in the args (the token is in the URL data variable).
+      # in the args (the token is in the URL data variable). The data
+      # variable key is `LoginLink` to match the Loops "magic link"
+      # transactional template (`cma3yqgqw68tv9pm5v0si5ge3`).
       assert job.args["transactional_id"] == "magicLink"
       assert job.args["email"] == known.email
-      assert Map.has_key?(job.args["data_variables"], "url")
+      assert Map.has_key?(job.args["data_variables"], "LoginLink")
+      refute Map.has_key?(job.args["data_variables"], "url")
     end
   end
 
@@ -278,6 +281,41 @@ defmodule DhcWeb.AuthSessionControllerTest do
     # directly via a dedicated test route that we mount below.
     #
     # See `DhcWeb.Plugs.RequireSessionTest` for the 403 assertion.
+  end
+
+  # ── GET /api/auth/socket-token ───────────────────────────────────────
+
+  describe "GET /api/auth/socket-token" do
+    @tag :ale_164
+    test "200 with a short-lived socket token for a valid active session" do
+      auth_user_id = Ecto.UUID.generate()
+      email = "socket-#{System.unique_integer([:positive])}@example.com"
+
+      Dhc.MemberFixtures.member_fixture(%{
+        auth_user_id: auth_user_id,
+        is_active: true,
+        email: email
+      })
+
+      Repo.insert_all("user_roles", [[user_id: Ecto.UUID.dump!(auth_user_id), role: "member"]])
+
+      principal = principal_fixture(id: auth_user_id, email: email)
+      token = session_token(principal)
+
+      conn =
+        conn()
+        |> put_signed_cookie(@session_cookie, token)
+        |> get("/api/auth/socket-token")
+
+      assert %{"data" => %{"socketToken" => socket_token}} = json_response(conn, 200)
+      assert is_binary(socket_token) and socket_token != ""
+    end
+
+    @tag :ale_164
+    test "401 without a session cookie" do
+      conn = get(conn(), "/api/auth/socket-token")
+      assert %{"errors" => %{"detail" => "Unauthorized"}} = json_response(conn, 401)
+    end
   end
 
   # ── DELETE /api/auth/session ──────────────────────────────────────────

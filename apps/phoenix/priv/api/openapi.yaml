@@ -56,6 +56,12 @@ tags:
     description: Workshop reads and coordinator management lifecycle commands.
     x-context: Dhc.Workshops
     x-resource: Workshop
+  - name: AuthSession
+    description: |
+      Phoenix-owned session auth API (ALE-165/ALE-164). Magic-link sign-in,
+      session projection read, sign-out, and socket-token exchange. The
+      dashboard authenticates through the signed `_dhc_session` cookie
+      (`cookieSession` security scheme) instead of the Supabase bearer JWT.
 
 paths:
   /health:
@@ -3601,12 +3607,209 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /auth/magic-link:
+    post:
+      operationId: auth.requestMagicLink
+      tags:
+        - AuthSession
+      summary: Request a magic-link sign-in email
+      description: |
+        Enqueues a magic-link email to the Principal with the given email, if
+        any. Non-enumerating: always returns `200 {"data":{"sent":true}}` for a
+        well-formed email whether or not a Principal exists. Rate-limited to
+        3 requests per email per 15 minutes and 10 per IP per hour; over-the-
+        limit requests return the same `200` body (the plug halts before the
+        controller). ALE-164 replaces the Supabase `signInWithOtp` browser
+        path with this endpoint.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        "200":
+          description: Magic link requested (or rate-limited with the same body)
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: object
+                    required:
+                      - sent
+                    properties:
+                      sent:
+                        type: boolean
+                        description: Always `true`.
+
+  /auth/magic-link/verify:
+    post:
+      operationId: auth.verifyMagicLink
+      tags:
+        - AuthSession
+      summary: Consume a magic link and establish a session
+      description: |
+        Verifies the magic-link token, creates a DB-backed session, and sets
+        the signed `_dhc_session` cookie. Returns the session projection. An
+        invalid, expired, reused, or inactive-Principal token returns `401`
+        with the same generic body (non-enumerating). ALE-164 routes the
+        dashboard magic-link landing page here.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - token
+              properties:
+                token:
+                  type: string
+                  description: URL-safe Base64-encoded magic-link token.
+      responses:
+        "200":
+          description: Session established
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSessionProjection"
+        "401":
+          description: Invalid, expired, reused, or inactive-Principal token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /auth/session:
+    get:
+      operationId: auth.showSession
+      tags:
+        - AuthSession
+      summary: Read the current session projection
+      description: |
+        Returns `{ principal: { id, email }, roles }` for the session carried
+        by the `_dhc_session` cookie. Used by SvelteKit SSR and the browser
+        to read who is signed in. Returns `401` when there is no valid,
+        active session. ALE-164: the dashboard consumes this instead of the
+        Supabase `getSession()` projection.
+      security:
+        - cookieSession: []
+      responses:
+        "200":
+          description: Current session projection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSessionProjection"
+        "401":
+          description: Missing, expired, or inactive session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      operationId: auth.deleteSession
+      tags:
+        - AuthSession
+      summary: Sign out the current device
+      description: |
+        Revokes the current session token and clears the `_dhc_session`
+        cookie. Idempotent. ALE-164 replaces `supabase.auth.signOut()` on the
+        dashboard.
+      security:
+        - cookieSession: []
+      responses:
+        "200":
+          description: Signed out
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: object
+                    required:
+                      - signedOut
+                    properties:
+                      signedOut:
+                        type: boolean
+                        description: Always `true`.
+
+  /auth/socket-token:
+    get:
+      operationId: auth.socketToken
+      tags:
+        - AuthSession
+      summary: Exchange the session cookie for a short-lived socket token
+      description: |
+        ALE-164: the dashboard browser cannot read the HTTP-only
+        `_dhc_session` cookie to pass it via the Phoenix JS `authToken` socket
+        option, and `new WebSocket(url, protocols)` has no `withCredentials`
+        so a cross-origin socket cannot send the cookie. This endpoint
+        exchanges the cookie for a short-lived, JS-readable, DB-backed socket
+        token the browser can pass as `authToken`. `UserSocket.connect/3`
+        verifies it through the same auth boundary.
+      security:
+        - cookieSession: []
+      responses:
+        "200":
+          description: Socket token issued
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - data
+                properties:
+                  data:
+                    type: object
+                    required:
+                      - socketToken
+                    properties:
+                      socketToken:
+                        type: string
+                        description: |
+                          URL-safe Base64-encoded opaque socket token. Pass
+                          as the `authToken` option to the Phoenix JS `Socket`
+                          constructor.
+        "401":
+          description: Missing, expired, or inactive session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
 components:
   securitySchemes:
     bearerAuth:
       type: http
       scheme: bearer
       bearerFormat: JWT
+    cookieSession:
+      type: apiKey
+      in: cookie
+      name: _dhc_session
+      description: |
+        The signed `_dhc_session` cookie set by `POST /api/auth/magic-link/verify`.
+        Browsers send it automatically with `credentials: 'include'`; SvelteKit
+        SSR forwards it explicitly. ALE-164: the dashboard's primary auth
+        credential. `RequireAuth` accepts this cookie in addition to the
+        transitional Supabase bearer JWT (`bearerAuth`) until the ALE-163
+        cutover.
   parameters:
     WorkshopId:
       name: workshopId
@@ -6170,3 +6373,39 @@ components:
           properties:
             detail:
               type: string
+    AuthSessionProjection:
+      type: object
+      required:
+        - data
+      description: |
+        The Phoenix session projection. The authoritative login identity
+        (`principal.id` / `principal.email`) plus the current live roles. No
+        `is_active`, no raw token, no Supabase `sub`/bearer/refresh
+        compatibility. ALE-164: this replaces the Supabase `Session` +
+        `getUser()` projection on the dashboard.
+      properties:
+        data:
+          type: object
+          required:
+            - principal
+            - roles
+          properties:
+            principal:
+              type: object
+              required:
+                - id
+                - email
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                email:
+                  type: string
+                  format: email
+            roles:
+              type: array
+              items:
+                type: string
+              description: |
+                Current live roles from `user_roles`, loaded on every
+                authenticated request.

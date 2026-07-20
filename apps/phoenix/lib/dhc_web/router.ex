@@ -217,5 +217,9 @@ defmodule DhcWeb.Router do
     get "/session", AuthSessionController, :show_session
     # Sign out the current device — revokes the one session token.
     delete "/session", AuthSessionController, :delete_session
+    # ALE-164 — exchange the session cookie for a short-lived JS-readable
+    # socket token (the browser passes it via the Phoenix JS `authToken`
+    # subprotocol; the HTTP-only cookie cannot be read by JS).
+    get "/socket-token", AuthSessionController, :socket_token
   end
 end

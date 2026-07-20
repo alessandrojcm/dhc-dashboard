@@ -53,9 +53,9 @@ function toLegacyContainer(c: {
 	};
 }
 
-export const load: PageServerLoad = async ({ params, locals }) => {
-	const session = await authorize(locals, INVENTORY_ROLES);
-	const options = apiClientOptions(session);
+export const load: PageServerLoad = async ({ params, locals, cookies }) => {
+	await authorize(locals, INVENTORY_ROLES);
+	const options = apiClientOptions(cookies);
 
 	const [
 		itemResponse,

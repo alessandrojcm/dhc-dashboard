@@ -8,25 +8,24 @@ import posthog from "posthog-js";
 import type { Snippet } from "svelte";
 import { onMount } from "svelte";
 import { browser, dev } from "$app/environment";
-import { goto, invalidate } from "$app/navigation";
-import { resolve } from "$app/paths";
 import { env } from "$env/dynamic/public";
 import { registerApiErrorReporter } from "$lib/api-error-reporter";
 import type { LayoutData } from "./$types";
 
 const { children, data }: { children: Snippet; data: LayoutData } = $props();
 const session = $derived(data.session);
-const supabase = $derived(data.supabase);
 const queryClient = new QueryClient();
 
 if (browser) {
+	// ALE-164: the dashboard authenticates through the Phoenix `_dhc_session`
+	// cookie. The browser sends it automatically with
+	// `credentials: 'include'` on every request to the Phoenix API; no
+	// Supabase JWT getter is needed. `configureClient` sets `credentials`
+	// once so the generated `@dhc/api-client` carries the cookie.
 	configureClient({
 		baseUrl: env.PUBLIC_API_BASE_URL || "/api",
+		credentials: "include",
 		retry: 0,
-		getAuthToken: async () => {
-			const { data } = await supabase.auth.getSession();
-			return data.session?.access_token;
-		},
 	});
 
 	registerApiErrorReporter();
@@ -37,34 +36,24 @@ onMount(() => {
 		// Initialize PostHog
 		posthog.init("phc_8UeWfJf2mUh6QRm4BGgj38bMOJLGmdHmdGR280hMLPL", {
 			api_host: "https://us.i.posthog.com",
-			person_profiles: "identified_only", // or 'always' to create profiles for anonymous users as well
+			person_profiles: "identified_only",
 			capture_pageview: true,
 			capture_pageleave: true,
 		});
 	}
 
-	const { data: authListener } = supabase.auth.onAuthStateChange(
-		(event, newSession) => {
-			if (event === "SIGNED_OUT") {
-				goto(resolve("/auth"), {
-					replaceState: true,
-					invalidateAll: true,
-				});
-			}
-			if (newSession?.expires_at !== session?.expires_at) {
-				invalidate("supabase:auth");
-			}
-			if (newSession?.user) {
-				posthog.identify(newSession.user.id, {
-					email: newSession.user.email,
-					metadata: newSession.user.user_metadata,
-				});
-			}
-		},
-	);
-
-	return () => authListener.subscription.unsubscribe();
+	if (browser && session?.principal) {
+		posthog.identify(session.principal.id, {
+			email: session.principal.email,
+		});
+	}
 });
+
+// ALE-164: no Supabase `onAuthStateChange` listener. Session invalidation
+// is explicit: `invalidate("phoenix:session")` (e.g. after sign-in or
+// sign-out) re-runs the root layout load, which re-reads the session
+// projection from Phoenix. Child components (e.g. the dashboard logout
+// handler) call `invalidateAll()` directly.
 </script>
 
 <div class="app">

@@ -4,12 +4,12 @@ import { invariant } from "$lib/server/invariant";
 import { apiClientOptions } from "$lib/server/api-client";
 import { membersMe } from "@dhc/api-client";
 
-export const load: LayoutServerLoad = async ({ locals }) => {
+export const load: LayoutServerLoad = async ({ locals, cookies }) => {
 	const { session } = await locals.safeGetSession();
 	invariant(!session, "Unauthorized");
 
 	const response = await membersMe({
-		...apiClientOptions(session),
+		...apiClientOptions(cookies),
 		throwOnError: true,
 	});
 	const userRoles = response.data.data.roles;

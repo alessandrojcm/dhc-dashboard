@@ -8,7 +8,6 @@ import { Button } from "$lib/components/ui/button";
 import type { NavData, UserData } from "$lib/types";
 import DHCLogo from "/src/assets/images/dhc-logo.png?enhanced";
 import NotificationCenter from "$lib/components/notifications/NotificationCenter.svelte";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import { Menu } from "lucide-svelte";
 import { useSidebar } from "$lib/components/ui/sidebar/context.svelte.js";
 import { browser } from "$app/environment";
@@ -20,7 +19,6 @@ type Props = {
 	userData: Promise<Partial<UserData>>;
 	roles: Set<string>;
 	navData: NavData;
-	supabase: SupabaseClient;
 };
 
 // Get the sidebar context
@@ -42,7 +40,6 @@ let {
 	logout,
 	roles,
 	navData: data,
-	supabase,
 	...restProps
 }: ComponentProps<typeof Sidebar.Root> & Props = $props();
 let customAnchor = $state<HTMLElement>(null!);
@@ -100,7 +97,7 @@ let customAnchor = $state<HTMLElement>(null!);
 		<Sidebar.Menu>
 			<!-- Notifications Item -->
 			<Sidebar.MenuItem>
-				<NotificationCenter {supabase} />
+				<NotificationCenter />
 			</Sidebar.MenuItem>
 
 			<!-- User Profile Item -->

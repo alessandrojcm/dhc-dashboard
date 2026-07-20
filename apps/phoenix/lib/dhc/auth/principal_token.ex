@@ -35,6 +35,13 @@ defmodule Dhc.Auth.PrincipalToken do
   # one). See `Dhc.Auth` for the rotation/revocation policy.
   @session_validity_in_days 30
 
+  # Short-lived socket token (ALE-164). Long enough for a browser to fetch it
+  # and open a WebSocket immediately; short enough that a leaked token is not
+  # useful. Single-use is not required (the socket lifetime is the real
+  # boundary), but we store only the hash so a read-only DB leak cannot
+  # reconstruct a usable token.
+  @socket_validity_in_seconds 60
+
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
   @type t :: %__MODULE__{}
@@ -70,6 +77,28 @@ defmodule Dhc.Auth.PrincipalToken do
   end
 
   @doc """
+  Builds a short-lived socket token and its DB row (ALE-164).
+
+  The raw token (32 random bytes) is returned to the caller to be Base64-
+  encoded for transport as the `authToken` subprotocol value; the row stores
+  only the SHA-256 hash. Expiry is enforced by `verify_socket_token_query/1`
+  via `@socket_validity_in_seconds`.
+  """
+  def build_socket_token(principal) do
+    token = :crypto.strong_rand_bytes(@rand_size)
+    hashed_token = :crypto.hash(@hash_algorithm, token)
+    dt = principal.authenticated_at || DateTime.utc_now(:second)
+
+    {token,
+     %PrincipalToken{
+       token: hashed_token,
+       context: "socket",
+       principal_id: principal.id,
+       authenticated_at: dt
+     }}
+  end
+
+  @doc """
   Query that verifies a session token and returns `{principal, token_row}`.
 
   Valid iff the (context, hashed_token) row exists, has not expired
@@ -82,6 +111,27 @@ defmodule Dhc.Auth.PrincipalToken do
         join: p in assoc(t, :principal),
         where: t.created_at > ago(@session_validity_in_days, "day"),
         select: {%{p | authenticated_at: t.authenticated_at}, t}
+
+    {:ok, query}
+  end
+
+  @doc """
+  Query that verifies a short-lived socket token and returns `{principal,
+  token_row}` (ALE-164).
+
+  `token` is the raw bytes the browser received Base64-encoded from
+  `GET /api/auth/socket-token`. Valid iff the (context="socket", hashed_token)
+  row exists, was created within `@socket_validity_in_seconds`, and the
+  principal still exists.
+  """
+  def verify_socket_token_query(token) when is_binary(token) do
+    hashed_token = :crypto.hash(@hash_algorithm, token)
+
+    query =
+      from t in by_token_and_context_query(hashed_token, "socket"),
+        join: p in assoc(t, :principal),
+        where: t.created_at > ago(^@socket_validity_in_seconds, "second"),
+        select: {p, t}
 
     {:ok, query}
   end
