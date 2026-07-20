@@ -59,10 +59,10 @@ function toApiBody(
 
 export const createCategory = form(categorySchema, async (data) => {
 	const event = getRequestEvent();
-	const session = await authorize(event.locals, INVENTORY_ROLES);
+	await authorize(event.locals, INVENTORY_ROLES);
 
 	const response = await inventoryCategoriesCreate({
-		...apiClientOptions(session),
+		...apiClientOptions(event.cookies),
 		body: toApiBody(data),
 	});
 
@@ -79,10 +79,10 @@ export const createCategory = form(categorySchema, async (data) => {
 export const updateCategory = form(categorySchema, async (data) => {
 	const event = getRequestEvent();
 	const categoryId = event.params.id;
-	const session = await authorize(event.locals, INVENTORY_ROLES);
+	await authorize(event.locals, INVENTORY_ROLES);
 
 	const response = await inventoryCategoriesUpdate({
-		...apiClientOptions(session),
+		...apiClientOptions(event.cookies),
 		path: { id: categoryId! },
 		body: toApiBody(data),
 	});
@@ -100,10 +100,10 @@ export const updateCategory = form(categorySchema, async (data) => {
 export const deleteCategory = form(v.object({}), async () => {
 	const event = getRequestEvent();
 	const categoryId = event.params.id;
-	const session = await authorize(event.locals, INVENTORY_ROLES);
+	await authorize(event.locals, INVENTORY_ROLES);
 
 	const response = await inventoryCategoriesDelete({
-		...apiClientOptions(session),
+		...apiClientOptions(event.cookies),
 		path: { id: categoryId! },
 	});
 

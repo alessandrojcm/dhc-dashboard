@@ -75,6 +75,18 @@ defmodule DhcWeb.NotificationChannelTest do
       assert {:error, %{reason: "unauthorized"}} =
                subscribe_and_join(socket, NotificationChannel, "notifications:#{@user_id}")
     end
+
+    # ALE-164: the browser cannot read its own id from the opaque socket
+    # token, so it joins the `notifications:self` alias. The channel resolves
+    # it to the verified sub.
+    test "a user can join their own notifications:self alias (ALE-164)" do
+      socket = authenticated_socket("user-token")
+
+      assert {:ok, _, joined_socket} =
+               subscribe_and_join(socket, NotificationChannel, "notifications:self")
+
+      assert joined_socket.assigns.current_user.sub == @user_id
+    end
   end
 
   describe "notification_created broadcast isolation" do

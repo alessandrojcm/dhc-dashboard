@@ -13,11 +13,11 @@ export const resendInvitations = command(
 		),
 	}),
 	async ({ emails }) => {
-		const { locals } = getRequestEvent();
-		const session = await authorize(locals, SETTINGS_ROLES);
+		const event = getRequestEvent();
+		await authorize(event.locals, SETTINGS_ROLES);
 
 		const response = await invitationsResend({
-			...apiClientOptions(session),
+			...apiClientOptions(event.cookies),
 			body: { emails },
 		});
 
@@ -40,11 +40,11 @@ export const deleteInvitations = command(
 		v.minLength(1, "At least one invitation ID is required"),
 	),
 	async (invitationIds) => {
-		const { locals } = getRequestEvent();
-		const session = await authorize(locals, SETTINGS_ROLES);
+		const event = getRequestEvent();
+		await authorize(event.locals, SETTINGS_ROLES);
 
 		const response = await invitationsDelete({
-			...apiClientOptions(session),
+			...apiClientOptions(event.cookies),
 			body: { invitationIds },
 		});
 

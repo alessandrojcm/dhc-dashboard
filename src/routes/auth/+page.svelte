@@ -77,11 +77,13 @@ const urlMessage = $derived(page.url.searchParams.get("message"));
 		<Separator class="flex-grow w-auto" style="width: auto" />
 	</div>
 
-	<!-- Discord OAuth Form -->
+	<!-- Discord OAuth Form (ALE-164: disabled — ALE-167 re-enables via Assent) -->
 	<form {...discordAuth} class="w-full max-w-xs">
 		<Button
 			type="submit"
 			class="w-full bg-[#5865F2] hover:bg-[#FFFFFF] hover:text-[#000000]"
+			disabled
+			title="Discord sign-in is coming soon"
 		>
 			<DiscordLogo class="mr-2" />
 			Login with Discord

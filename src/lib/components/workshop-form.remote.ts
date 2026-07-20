@@ -22,7 +22,7 @@ function apiErrorMessage(error: unknown, fallback: string) {
 
 export const createWorkshop = form(CreateWorkshopRemoteSchema, async (data) => {
 	const event = getRequestEvent();
-	const session = await authorize(event.locals, WORKSHOP_ROLES);
+	await authorize(event.locals, WORKSHOP_ROLES);
 
 	// Cross-field validations
 	const startDate = dayjs(data.workshop_date);
@@ -69,7 +69,7 @@ export const createWorkshop = form(CreateWorkshopRemoteSchema, async (data) => {
 	};
 
 	const response = await workshopsCreate({
-		...apiClientOptions(session),
+		...apiClientOptions(event.cookies),
 		body: workshopData,
 	});
 
@@ -92,7 +92,7 @@ export const createWorkshop = form(CreateWorkshopRemoteSchema, async (data) => {
 
 export const updateWorkshop = form(UpdateWorkshopRemoteSchema, async (data) => {
 	const event = getRequestEvent();
-	const session = await authorize(event.locals, WORKSHOP_ROLES);
+	await authorize(event.locals, WORKSHOP_ROLES);
 	const workshopId = event.params.id;
 
 	if (!workshopId) {
@@ -142,7 +142,7 @@ export const updateWorkshop = form(UpdateWorkshopRemoteSchema, async (data) => {
 	}
 
 	const response = await workshopsUpdate({
-		...apiClientOptions(session),
+		...apiClientOptions(event.cookies),
 		path: { workshopId },
 		body: updateData,
 	});

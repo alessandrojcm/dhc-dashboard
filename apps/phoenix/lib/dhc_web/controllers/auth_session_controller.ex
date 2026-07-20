@@ -131,6 +131,24 @@ defmodule DhcWeb.AuthSessionController do
     |> render_view(:session, %{session: projection})
   end
 
+  # ── GET /api/auth/socket-token ──────────────────────────────────────
+  # ALE-164: the dashboard browser cannot read the HTTP-only `_dhc_session`
+  # cookie to pass it via the Phoenix JS `authToken` socket option, and
+  # `new WebSocket(url, protocols)` has no `withCredentials` so a cross-origin
+  # socket cannot send the cookie. This endpoint exchanges the cookie for a
+  # short-lived, JS-readable, DB-backed socket token the browser can pass as
+  # `authToken`. `UserSocket.connect/3` verifies it via the same
+  # `Dhc.Auth.get_principal_by_socket_token/1` boundary.
+  def socket_token(conn, _params) do
+    principal = conn.assigns.current_session.principal
+
+    {:ok, token} = Auth.create_socket_token(principal)
+
+    conn
+    |> put_status(:ok)
+    |> json(%{data: %{socketToken: Base.url_encode64(token, padding: false)}})
+  end
+
   # ── DELETE /api/auth/session ─────────────────────────────────────────
   def delete_session(conn, _params) do
     # Idempotent: works whether or not the cookie is present. If the

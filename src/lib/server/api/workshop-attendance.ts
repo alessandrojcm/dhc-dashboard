@@ -2,8 +2,7 @@ import {
 	workshopsUpdateAttendance,
 	type ApiErrorResponse,
 } from "@dhc/api-client";
-import { apiClientOptions } from "$lib/server/api-client";
-import type { Session } from "@supabase/supabase-js";
+import { apiClientOptions, type Cookies } from "$lib/server/api-client";
 
 export type WorkshopAttendanceUpdate = {
 	registrationId: string;
@@ -11,15 +10,20 @@ export type WorkshopAttendanceUpdate = {
 	notes?: string;
 };
 
+/**
+ * ALE-164: takes a `Cookies` (SvelteKit request cookies) and forwards the
+ * `_dhc_session` cookie to Phoenix, instead of the prior Supabase
+ * `access_token`.
+ */
 export async function submitWorkshopAttendance(
-	session: Pick<Session, "access_token">,
+	cookies: Cookies,
 	{
 		workshopId,
 		updates,
 	}: { workshopId: string; updates: WorkshopAttendanceUpdate[] },
 ) {
 	const response = await workshopsUpdateAttendance({
-		...apiClientOptions(session),
+		...apiClientOptions(cookies),
 		path: { workshopId },
 		body: { updates },
 	});

@@ -5,14 +5,14 @@ import { apiClientOptions } from "$lib/server/api-client";
 import { WORKSHOP_ROLES } from "$lib/server/roles";
 import type { PageServerLoad } from "./$types";
 
-export const load: PageServerLoad = async ({ locals, params }) => {
-	const session = await authorize(locals, WORKSHOP_ROLES);
+export const load: PageServerLoad = async ({ locals, cookies, params }) => {
+	await authorize(locals, WORKSHOP_ROLES);
 	const {
 		data,
 		error: apiError,
 		response,
 	} = await workshopsShow({
-		...apiClientOptions(session),
+		...apiClientOptions(cookies),
 		path: { workshopId: params.id },
 	});
 

@@ -9,6 +9,12 @@ import { getRolesFromSession, MEMBERS_ADMIN_ROLES } from "$lib/server/roles";
 import { apiClientOptions } from "$lib/server/api-client";
 import { invalid } from "@sveltejs/kit";
 
+/**
+ * ALE-164: the self-vs-admin check no longer reads the Supabase `user.id` —
+ * the Phoenix session projection carries the principal id directly as
+ * `session.principal.id`. Self-access is granted when the requested
+ * `memberId` matches the session principal.
+ */
 async function canUpdateSettings() {
 	const event = getRequestEvent();
 	const { session } = await event.locals.safeGetSession();
@@ -17,15 +23,8 @@ async function canUpdateSettings() {
 	if (roles.intersection(MEMBERS_ADMIN_ROLES).size > 0) {
 		return true;
 	}
-	const {
-		data: { user },
-		error,
-	} = await event.locals.supabase.auth.getUser();
-
-	if (error || user?.id !== event.locals.session?.user.id) {
-		return false;
-	}
-	return true;
+	// Self-access: the requested member id matches the signed-in principal.
+	return event.params.memberId === session!.principal.id;
 }
 
 export const updateProfile = form(
@@ -75,7 +74,7 @@ export const updateProfile = form(
 
 		try {
 			await membersUpdate({
-				...apiClientOptions(session),
+				...apiClientOptions(event.cookies),
 				path: { memberId },
 				body: {
 					firstName: data.firstName,

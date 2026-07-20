@@ -22,14 +22,14 @@ function toLegacyCategory(c: any) {
 	};
 }
 
-export const load: PageServerLoad = async ({ url, locals }) => {
-	const session = await authorize(locals, INVENTORY_ROLES);
+export const load: PageServerLoad = async ({ url, locals, cookies }) => {
+	await authorize(locals, INVENTORY_ROLES);
 	const preselectedContainer = url.searchParams.get("container");
 	const preselectedCategory = url.searchParams.get("category");
 
 	const [categoriesResponse, containersResponse] = await Promise.all([
-		inventoryCategoriesIndex(apiClientOptions(session)),
-		inventoryContainersIndex(apiClientOptions(session)),
+		inventoryCategoriesIndex(apiClientOptions(cookies)),
+		inventoryContainersIndex(apiClientOptions(cookies)),
 	]);
 
 	if (categoriesResponse.error) throw new Error("Failed to load categories");
