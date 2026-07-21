@@ -1,7 +1,7 @@
-import { form } from "$app/server";
+import { authRequestMagicLink } from "@dhc/api-client";
 import { invalid } from "@sveltejs/kit";
 import * as v from "valibot";
-import { authRequestMagicLink } from "@dhc/api-client";
+import { form } from "$app/server";
 import { env } from "$env/dynamic/private";
 
 const DEFAULT_API_BASE_URL = "http://localhost:4000/api";
@@ -43,16 +43,4 @@ export const magicLinkAuth = form(magicLinkSchema, async (data, issue) => {
 	}
 
 	return { success: "Check your email for the magic link" };
-});
-
-// ALE-164: the Discord OAuth button is disabled (ALE-167 will re-enable it via
-// Assent). The schema + form are kept as a no-op placeholder so the auth page
-// can render a disabled button without a Supabase call behind it.
-const discordSchema = v.object({});
-
-export const discordAuth = form(discordSchema, async () => {
-	// No-op: Discord sign-in is not wired in ALE-164. The button is disabled in
-	// the UI; this remote function exists so the form element is valid. If
-	// somehow submitted, return a generic message.
-	return { success: "Discord sign-in is not available yet" };
 });

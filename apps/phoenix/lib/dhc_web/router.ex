@@ -60,6 +60,10 @@ defmodule DhcWeb.Router do
     plug DhcWeb.Plugs.MagicLinkRateLimit
   end
 
+  pipeline :discord_oauth_api do
+    plug :fetch_session
+  end
+
   scope "/api", DhcWeb do
     pipe_through :api
 
@@ -193,9 +197,8 @@ defmodule DhcWeb.Router do
     post "/inventory/items/:id/maintenance", InventoryItemsController, :maintenance
   end
 
-  # ALE-165 — Phoenix-session auth API. Lives under /api/auth/* and is the
-  # first Phoenix-owned authentication path. Spec-first; the SvelteKit side
-  # (ALE-164) will switch its session seam to consume these endpoints.
+  # Phoenix-session auth API. Lives under /api/auth/* and is the first
+  # Phoenix-owned authentication path.
   scope "/api/auth", DhcWeb do
     # Magic-link request — public, rate-limited, non-enumerating.
     pipe_through :magic_link_request_api
@@ -208,6 +211,13 @@ defmodule DhcWeb.Router do
     # Magic-link verify — public (the token is the credential). Sets the
     # signed _dhc_session cookie on success.
     post "/magic-link/verify", AuthSessionController, :verify_magic_link
+  end
+
+  scope "/api/auth", DhcWeb do
+    pipe_through :discord_oauth_api
+
+    get "/discord", AuthSessionController, :request_discord
+    get "/discord/callback", AuthSessionController, :discord_callback
   end
 
   scope "/api/auth", DhcWeb do

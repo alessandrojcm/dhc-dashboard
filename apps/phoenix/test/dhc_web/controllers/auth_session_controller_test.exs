@@ -9,6 +9,60 @@ defmodule DhcWeb.AuthSessionControllerTest do
 
   @session_cookie "_dhc_session"
 
+  describe "GET /api/auth/discord" do
+    test "starts Discord OAuth with state stored in the Phoenix session" do
+      conn = get(conn(), "/api/auth/discord")
+
+      assert redirected_to(conn, 302) ==
+               "https://discord.example.com/oauth2/authorize?state=test-state"
+
+      assert get_session(conn, :discord_oauth_session_params) == %{state: "test-state"}
+    end
+  end
+
+  describe "GET /api/auth/discord/callback" do
+    test "links a verified Discord identity, sets a Phoenix Session, and redirects to dashboard" do
+      principal = active_principal("discord-request@example.com")
+
+      conn =
+        conn()
+        |> get("/api/auth/discord")
+        |> recycle()
+        |> get("/api/auth/discord/callback?state=test-state&code=success")
+
+      assert redirected_to(conn, 302) == "http://localhost:5173/dashboard"
+      assert conn.resp_cookies[@session_cookie]
+
+      identity =
+        Repo.get_by!(Dhc.Auth.ExternalIdentity,
+          provider: "discord",
+          provider_subject: "discord-request-success"
+        )
+
+      assert identity.principal_id == principal.id
+      refute Map.has_key?(identity.metadata, "access_token")
+    end
+
+    test "uses the same generic magic-link fallback for invalid state and unknown accounts" do
+      invalid_state = get(conn(), "/api/auth/discord/callback?state=wrong&code=success")
+
+      unknown =
+        conn()
+        |> get("/api/auth/discord")
+        |> recycle()
+        |> get("/api/auth/discord/callback?state=test-state&code=unknown")
+
+      assert redirected_to(invalid_state, 302) == "http://localhost:5173/auth?discord=failed"
+      assert redirected_to(unknown, 302) == "http://localhost:5173/auth?discord=failed"
+      refute invalid_state.resp_cookies[@session_cookie]
+      refute unknown.resp_cookies[@session_cookie]
+      refute Repo.exists?(Dhc.Auth.ExternalIdentity)
+
+      conn = post(conn(), "/api/auth/magic-link", %{"email" => "unknown-discord@example.com"})
+      assert %{"data" => %{"sent" => true}} = json_response(conn, 200)
+    end
+  end
+
   # ── POST /api/auth/magic-link ─────────────────────────────────────────
 
   describe "POST /api/auth/magic-link — non-enumerating response" do
@@ -380,5 +434,13 @@ defmodule DhcWeb.AuthSessionControllerTest do
 
   defp oban_jobs_count do
     Repo.aggregate("oban_jobs", :count)
+  end
+
+  defp active_principal(email) do
+    id = Ecto.UUID.generate()
+
+    Dhc.MemberFixtures.member_fixture(%{auth_user_id: id, is_active: true, email: email})
+    Repo.insert_all("user_roles", [[user_id: Ecto.UUID.dump!(id), role: "member"]])
+    principal_fixture(id: id, email: email)
   end
 end

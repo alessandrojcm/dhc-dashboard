@@ -2,7 +2,7 @@ defmodule DhcWeb.AuthSessionController do
   @moduledoc """
   Phoenix-owned authentication API (ALE-165).
 
-  Three endpoints, all JSON, all non-enumerating where the spec requires:
+  Phoenix-owned session endpoints, non-enumerating where the spec requires:
 
     * `POST /api/auth/magic-link` — request a magic link. Always returns
       `200 {"data":{"sent":true}}` for a well-formed email. The
@@ -20,6 +20,9 @@ defmodule DhcWeb.AuthSessionController do
       `401` when there is no valid session.
     * `DELETE /api/auth/session` — sign out the current device. Deletes the
       session token row, clears the cookie. Idempotent.
+    * `GET /api/auth/discord` and `/api/auth/discord/callback` — complete the
+      Discord OAuth flow, establish a Phoenix session for an eligible linked
+      Principal, and redirect back to the dashboard.
 
   ## Cookie contract
 
@@ -41,6 +44,54 @@ defmodule DhcWeb.AuthSessionController do
   # 30-day absolute — must match `Dhc.Auth.PrincipalToken`'s
   # `@session_validity_in_days`.
   @session_max_age 30 * 24 * 60 * 60
+
+  # ── GET /api/auth/discord ────────────────────────────────────────────
+  def request_discord(conn, _params) do
+    strategy = discord_strategy()
+
+    case strategy.authorize_url(discord_config()) do
+      {:ok, %{url: url, session_params: session_params}} ->
+        conn
+        |> put_session(:discord_oauth_session_params, session_params)
+        |> redirect(external: url)
+
+      {:error, _reason} ->
+        discord_failure(conn)
+    end
+  end
+
+  def discord_callback(conn, params) do
+    session_params = get_session(conn, :discord_oauth_session_params)
+    conn = Plug.Conn.delete_session(conn, :discord_oauth_session_params)
+    strategy = discord_strategy()
+
+    result =
+      discord_config()
+      |> Keyword.put(:session_params, session_params)
+      |> strategy.callback(params)
+
+    case result do
+      {:ok, %{user: claims}} ->
+        case Auth.sign_in_with_discord(claims) do
+          {:ok, %{session_token: session_token}} ->
+            :telemetry.execute([:dhc, :auth, :discord, :succeeded], %{}, %{})
+
+            app_url = Application.get_env(:dhc, :app_url, "http://localhost:5173")
+
+            conn
+            |> put_session_cookie(session_token)
+            |> redirect(external: "#{app_url}/dashboard")
+
+          {:error, :invalid} ->
+            :telemetry.execute([:dhc, :auth, :discord, :failed], %{}, %{})
+            discord_failure(conn)
+        end
+
+      {:error, _reason} ->
+        :telemetry.execute([:dhc, :auth, :discord, :failed], %{}, %{})
+        discord_failure(conn)
+    end
+  end
 
   # ── POST /api/auth/magic-link ────────────────────────────────────────
   def request_magic_link(conn, %{"email" => email} = _params) when is_binary(email) do
@@ -189,6 +240,19 @@ defmodule DhcWeb.AuthSessionController do
       nil -> []
       domain -> [domain: domain]
     end
+  end
+
+  defp discord_strategy do
+    Application.get_env(:dhc, :discord_oauth_strategy, Assent.Strategy.Discord)
+  end
+
+  defp discord_config do
+    Application.get_env(:dhc, :discord_oauth, [])
+  end
+
+  defp discord_failure(conn) do
+    app_url = Application.get_env(:dhc, :app_url, "http://localhost:5173")
+    redirect(conn, external: "#{app_url}/auth?discord=failed")
   end
 
   defp render_view(conn, template, assigns \\ %{})
