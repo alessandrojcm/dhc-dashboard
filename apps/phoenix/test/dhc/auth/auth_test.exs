@@ -210,6 +210,155 @@ defmodule Dhc.AuthTest do
     end
   end
 
+  describe "sign_in_with_discord/1" do
+    test "a linked provider subject signs its active Principal in" do
+      principal = active_principal_fixture(email: "linked@example.com")
+
+      Repo.insert_all("external_identities", [
+        [
+          id: Ecto.UUID.dump!(Ecto.UUID.generate()),
+          principal_id: Ecto.UUID.dump!(principal.id),
+          provider: "discord",
+          provider_subject: "discord-linked-1",
+          metadata: %{"email" => "old-profile@example.com"},
+          created_at: DateTime.utc_now(:second),
+          updated_at: DateTime.utc_now(:second)
+        ]
+      ])
+
+      assert {:ok, %{principal: signed_in, session_token: session_token}} =
+               Auth.sign_in_with_discord(%{
+                 "sub" => "discord-linked-1",
+                 "email" => "changed-profile@example.com",
+                 "email_verified" => true
+               })
+
+      assert signed_in.id == principal.id
+      assert {:ok, session_principal} = Auth.get_principal_by_session_token(session_token)
+      assert session_principal.id == principal.id
+    end
+
+    test "an unlinked subject auto-links to one active Principal by verified email" do
+      principal = active_principal_fixture(email: "verified@example.com")
+
+      assert {:ok, %{principal: signed_in}} =
+               Auth.sign_in_with_discord(%{
+                 "sub" => "discord-new-1",
+                 "email" => "VERIFIED@example.com",
+                 "email_verified" => true,
+                 "preferred_username" => "member-name",
+                 "picture" => "https://cdn.discordapp.com/avatar.png"
+               })
+
+      assert signed_in.id == principal.id
+      assert Auth.get_principal!(principal.id).email == "verified@example.com"
+
+      assert %{
+               principal_id: principal_id,
+               metadata: %{
+                 "email" => "VERIFIED@example.com",
+                 "email_verified" => true,
+                 "preferred_username" => "member-name",
+                 "picture" => "https://cdn.discordapp.com/avatar.png"
+               }
+             } =
+               Repo.get_by!(Dhc.Auth.ExternalIdentity,
+                 provider: "discord",
+                 provider_subject: "discord-new-1"
+               )
+
+      assert principal_id == principal.id
+    end
+
+    test "provider subject takes precedence over a profile email matching another Principal" do
+      linked = active_principal_fixture(email: "linked-owner@example.com")
+      other = active_principal_fixture(email: "profile-email@example.com")
+
+      identity = external_identity_fixture(linked, "discord-authoritative")
+
+      assert {:ok, %{principal: signed_in}} =
+               Auth.sign_in_with_discord(%{
+                 "sub" => "discord-authoritative",
+                 "email" => other.email,
+                 "email_verified" => true,
+                 "preferred_username" => "changed-name"
+               })
+
+      assert signed_in.id == linked.id
+
+      persisted = Repo.get!(Dhc.Auth.ExternalIdentity, identity.id)
+      assert persisted.principal_id == linked.id
+      assert persisted.metadata == identity.metadata
+      assert Auth.get_principal!(linked.id).email == "linked-owner@example.com"
+      assert Auth.get_principal!(other.id).email == "profile-email@example.com"
+    end
+
+    test "rejects unverified, mismatched, and unknown email claims without linking" do
+      active_principal_fixture(email: "eligible@example.com")
+
+      claims = [
+        %{
+          "sub" => "discord-unverified",
+          "email" => "eligible@example.com",
+          "email_verified" => false
+        },
+        %{
+          "sub" => "discord-mismatch",
+          "email" => "different@example.com",
+          "email_verified" => true
+        },
+        %{"sub" => "discord-no-email", "email_verified" => true}
+      ]
+
+      for claim <- claims do
+        assert {:error, :invalid} = Auth.sign_in_with_discord(claim)
+      end
+
+      refute Repo.exists?(Dhc.Auth.ExternalIdentity)
+    end
+
+    test "rejects a new subject when the matching Principal already has Discord linked" do
+      principal = active_principal_fixture(email: "already-linked@example.com")
+      identity = external_identity_fixture(principal, "discord-existing")
+
+      assert {:error, :invalid} =
+               Auth.sign_in_with_discord(%{
+                 "sub" => "discord-second",
+                 "email" => principal.email,
+                 "email_verified" => true
+               })
+
+      assert Repo.aggregate(Dhc.Auth.ExternalIdentity, :count) == 1
+
+      assert Repo.get!(Dhc.Auth.ExternalIdentity, identity.id).provider_subject ==
+               "discord-existing"
+    end
+
+    test "inactive Principals cannot sign in or gain a new link" do
+      id = Ecto.UUID.generate()
+      email = "inactive-discord@example.com"
+
+      Dhc.MemberFixtures.member_fixture(%{auth_user_id: id, is_active: false, email: email})
+      principal = principal_fixture(id: id, email: email)
+
+      assert {:error, :invalid} =
+               Auth.sign_in_with_discord(%{
+                 "sub" => "discord-inactive-new",
+                 "email" => email,
+                 "email_verified" => true
+               })
+
+      refute Repo.exists?(Dhc.Auth.ExternalIdentity)
+
+      external_identity_fixture(principal, "discord-inactive-linked")
+
+      assert {:error, :invalid} =
+               Auth.sign_in_with_discord(%{"sub" => "discord-inactive-linked"})
+
+      refute Repo.exists?(from(t in PrincipalToken, where: t.context == "session"))
+    end
+  end
+
   describe "load_session_principal/1" do
     test "returns roles and is_active when the Principal has a user_profile and roles" do
       # Build the Supabase/auth.users + user_profiles + member_profiles shape
@@ -258,5 +407,28 @@ defmodule Dhc.AuthTest do
 
   defp oban_jobs_count do
     Repo.aggregate("oban_jobs", :count)
+  end
+
+  defp active_principal_fixture(attrs) do
+    id = Ecto.UUID.generate()
+    email = Keyword.fetch!(attrs, :email)
+
+    Dhc.MemberFixtures.member_fixture(%{
+      auth_user_id: id,
+      is_active: true,
+      email: email
+    })
+
+    principal_fixture(id: id, email: email)
+  end
+
+  defp external_identity_fixture(principal, subject) do
+    %Dhc.Auth.ExternalIdentity{}
+    |> Dhc.Auth.ExternalIdentity.create_changeset(principal, %{
+      provider: "discord",
+      provider_subject: subject,
+      metadata: %{"email" => "original-profile@example.com"}
+    })
+    |> Repo.insert!()
   end
 end

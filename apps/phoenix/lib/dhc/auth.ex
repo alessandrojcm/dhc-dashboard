@@ -37,14 +37,13 @@ defmodule Dhc.Auth do
 
     * Member / Membership / Role policy. It loads roles and `is_active` as a
       projection for the request plug; it does not grant or revoke them.
-    * Discord OAuth (ALE-167).
     * Invitation Acceptance principal creation (ALE-162).
     * Migration / cutover (ALE-163, ALE-166).
   """
 
   import Ecto.Query, warn: false
   alias Dhc.Repo
-  alias Dhc.Auth.{Principal, PrincipalToken}
+  alias Dhc.Auth.{ExternalIdentity, Principal, PrincipalToken}
 
   ## Database getters
 
@@ -96,6 +95,93 @@ defmodule Dhc.Auth do
     %Principal{id: id}
     |> Principal.email_changeset(attrs)
     |> Repo.insert()
+  end
+
+  ## Discord External Identity
+
+  @doc """
+  Signs in the Principal linked to Discord's immutable provider subject.
+
+  Profile claims are never used to replace an existing link or update the
+  Principal's authoritative email. Unlinked-subject reconciliation is handled
+  by the same function after the linked-subject path, so subject lookup always
+  has precedence over mutable Discord profile data.
+  """
+  def sign_in_with_discord(%{"sub" => subject} = claims)
+      when is_binary(subject) and subject != "" do
+    case Repo.get_by(ExternalIdentity, provider: "discord", provider_subject: subject) do
+      %ExternalIdentity{} = identity ->
+        identity.principal_id
+        |> get_principal!()
+        |> create_eligible_session()
+
+      nil ->
+        link_discord_by_verified_email(subject, claims)
+    end
+  end
+
+  def sign_in_with_discord(_claims), do: {:error, :invalid}
+
+  defp link_discord_by_verified_email(
+         subject,
+         %{"email" => email, "email_verified" => true} = claims
+       )
+       when is_binary(email) do
+    case get_principal_by_email(email) do
+      %Principal{} = principal ->
+        case load_session_principal(principal) do
+          {:ok, %{is_active: true}} ->
+            create_discord_identity_and_session(principal, subject, claims)
+
+          _ ->
+            {:error, :invalid}
+        end
+
+      nil ->
+        {:error, :invalid}
+    end
+  end
+
+  defp link_discord_by_verified_email(_subject, _claims), do: {:error, :invalid}
+
+  defp create_discord_identity_and_session(principal, subject, claims) do
+    metadata =
+      Map.take(claims, [
+        "email",
+        "email_verified",
+        "preferred_username",
+        "picture",
+        "username",
+        "avatar"
+      ])
+
+    Repo.transact(fn ->
+      changeset =
+        ExternalIdentity.create_changeset(%ExternalIdentity{}, principal, %{
+          provider: "discord",
+          provider_subject: subject,
+          metadata: metadata
+        })
+
+      with {:ok, _identity} <- Repo.insert(changeset),
+           {:ok, session_token} <- create_session(principal) do
+        {:ok, %{principal: principal, session_token: session_token}}
+      else
+        {:error, _reason} -> {:error, :invalid}
+      end
+    end)
+  end
+
+  defp create_eligible_session(principal) do
+    case load_session_principal(principal) do
+      {:ok, %{is_active: true}} ->
+        with {:ok, session_token} <- create_session(principal) do
+          {:ok, %{principal: principal, session_token: session_token}}
+        end
+
+      _ ->
+        {:error, :invalid}
+    end
   end
 
   ## Magic link
