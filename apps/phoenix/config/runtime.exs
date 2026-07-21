@@ -101,6 +101,14 @@ if config_env() == :prod do
     secret_key_base: secret_key_base
 
   config :dhc, :discord_webhook_url, System.get_env("DISCORD_WEBHOOK_URL")
+
+  config :dhc, :discord_oauth,
+    client_id: System.fetch_env!("DISCORD_CLIENT_ID"),
+    client_secret: System.fetch_env!("DISCORD_CLIENT_SECRET"),
+    redirect_uri:
+      System.get_env("DISCORD_REDIRECT_URI", "https://#{host}/api/auth/discord/callback"),
+    code_verifier: true
+
   config :dhc, :loops_api_key, System.get_env("LOOPS_API_KEY")
 
   # Friendly name -> real Loops transactional ID mapping.
