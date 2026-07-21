@@ -286,7 +286,7 @@ defmodule Dhc.Waitlist do
       join: p in UserProfile,
       on: p.waitlist_id == w.id,
       where:
-        w.status != "joined" and p.is_active == false and is_nil(p.supabase_user_id) and
+        w.status != "joined" and p.is_active == false and is_nil(p.principal_id) and
           not is_nil(p.date_of_birth)
   end
 
@@ -527,7 +527,7 @@ defmodule Dhc.Waitlist do
         on: p.waitlist_id == w.id,
         left_join: wg in "waitlist_guardians",
         on: field(wg, :profile_id) == p.id,
-        where: p.is_active == false and is_nil(p.supabase_user_id)
+        where: p.is_active == false and is_nil(p.principal_id)
 
     base_query
     |> filter_entries_status(opts.status)
@@ -590,7 +590,7 @@ defmodule Dhc.Waitlist do
       on: p.waitlist_id == w.id,
       left_join: wg in WaitlistGuardian,
       on: wg.profile_id == p.id,
-      where: p.is_active == false and is_nil(p.supabase_user_id),
+      where: p.is_active == false and is_nil(p.principal_id),
       select: %{
         id: w.id,
         position:

@@ -50,7 +50,7 @@ defmodule DhcWeb.InventoryItemsController do
   POST /inventory/items
   """
   def create(conn, params) do
-    actor_id = conn.assigns.current_user.sub
+    actor_id = conn.assigns.current_session.principal.id
 
     case Inventory.create_item(params, actor_id) do
       {:ok, item} ->
@@ -83,7 +83,7 @@ defmodule DhcWeb.InventoryItemsController do
   PATCH /inventory/items/{id}
   """
   def update(conn, %{"id" => id} = params) do
-    actor_id = conn.assigns.current_user.sub
+    actor_id = conn.assigns.current_session.principal.id
 
     case Inventory.update_item(id, params, actor_id) do
       {:ok, item} ->
@@ -133,7 +133,7 @@ defmodule DhcWeb.InventoryItemsController do
   POST /inventory/items/{id}/move — ALE-108 dedicated move command.
   """
   def move(conn, %{"id" => id} = params) do
-    actor_id = conn.assigns.current_user.sub
+    actor_id = conn.assigns.current_session.principal.id
 
     case Inventory.move_item(id, params, actor_id) do
       {:ok, item} ->
@@ -156,7 +156,7 @@ defmodule DhcWeb.InventoryItemsController do
   POST /inventory/items/{id}/maintenance — ALE-108 dedicated maintenance command.
   """
   def maintenance(conn, %{"id" => id} = params) do
-    actor_id = conn.assigns.current_user.sub
+    actor_id = conn.assigns.current_session.principal.id
 
     case Inventory.set_item_maintenance(id, params, actor_id) do
       {:ok, item} ->

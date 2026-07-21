@@ -45,7 +45,7 @@ defmodule DhcWeb.NotificationChannel do
   end
 
   def join("notifications:" <> requested_sub, _payload, socket) do
-    verified_sub = socket.assigns.current_user.sub
+    verified_sub = socket.assigns.current_session.principal.id
 
     if requested_sub == verified_sub do
       {:ok, socket}

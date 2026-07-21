@@ -23,8 +23,5 @@ WORKSHOP_REGISTRATION_ERROR_TRANSACTIONAL_ID = { provider = "1Password", value =
 MAGIC_LINK_TRANSACTIONAL_ID = { provider = "1Password", value = "MAGIC_LINK_TRANSACTIONAL_ID" }
 STRIPE_SECRET_KEY = { provider = "1Password", value = "STRIPE_SECRET_KEY" }
 STRIPE_WEBHOOK_SIGNING_SECRET = { provider = "1Password", value = "STRIPE_WEBHOOK_SIGNING_SECRET" }
-SUPABASE_URL = { provider = "1Password", value = "SUPABASE_URL" }
-SUPABASE_ANON_KEY = { provider = "1Password", value = "SUPABASE_ANON_KEY" }
-SUPABASE_SERVICE_ROLE_KEY = { provider = "1Password", value = "SUPABASE_SERVICE_ROLE_KEY" }
 SENTRY_DSN = { provider = "1Password", value = "SENTRY_DSN" }
 INVITATION_VERIFICATION_TOKEN_SALT = { provider = "1Password", value = "INVITATION_VERIFICATION_TOKEN_SALT" }

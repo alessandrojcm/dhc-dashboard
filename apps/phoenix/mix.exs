@@ -59,8 +59,6 @@ defmodule Dhc.MixProject do
       {:opentelemetry_bandit, "~> 0.3"},
       {:opentelemetry_ecto, "~> 1.2"},
       {:opentelemetry_logger_metadata, "~> 0.2"},
-      {:supabase_potion, "~> 0.7"},
-      {:supabase_auth, "~> 1.0"},
       {:hackney, "~> 1.8"},
       {:finch, "~> 0.22.0"},
       {:req, "~> 0.5"},

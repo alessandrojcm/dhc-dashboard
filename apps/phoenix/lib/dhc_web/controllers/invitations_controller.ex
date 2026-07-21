@@ -220,13 +220,13 @@ defmodule DhcWeb.InvitationsController do
   POST /invitations
   """
   def create(conn, %{"invites" => invites}) when is_list(invites) and length(invites) > 0 do
-    current_user = conn.assigns.current_user
+    current_session = conn.assigns.current_session
 
     args = %{
       "invites" => invites,
       "user" => %{
-        "id" => current_user.sub,
-        "email" => current_user[:email]
+        "id" => current_session.principal.id,
+        "email" => current_session.principal.email
       }
     }
 
@@ -234,7 +234,7 @@ defmodule DhcWeb.InvitationsController do
       {:ok, job} ->
         Logger.info("[invitations] Enqueued invitation job",
           oban_job_id: job.id,
-          created_by: current_user.sub,
+          created_by: current_session.principal.id,
           invite_count: length(invites)
         )
 

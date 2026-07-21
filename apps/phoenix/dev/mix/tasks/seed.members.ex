@@ -7,8 +7,8 @@ defmodule Mix.Tasks.Seed.Members do
       mix seed.members
       mix seed.members 25
 
-  Auth users are created through the Supabase Admin API. Run via `mise run
-  seed-members` so repo-root `.env` is loaded before Mix starts.
+  Phoenix Principals are created directly through `Dhc.Auth`. Run via
+  `mise run seed-members` so repo-root `.env` is loaded before Mix starts.
   """
 
   use Mix.Task
