@@ -373,7 +373,9 @@ defmodule Dhc.AuthTest do
       })
 
       # Grant the member a role.
-      Repo.insert_all("user_roles", [[user_id: Ecto.UUID.dump!(auth_user_id), role: "member"]])
+      Repo.insert_all("user_roles", [
+        [principal_id: Ecto.UUID.dump!(auth_user_id), role: "member"]
+      ])
 
       principal = principal_fixture(id: auth_user_id, email: "active@example.com")
 

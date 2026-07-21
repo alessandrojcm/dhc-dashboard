@@ -5,12 +5,10 @@ defmodule Dhc.AuthFixtures do
   Inserts Principals, magic-link tokens, and session tokens directly through
   the `Dhc.Auth` context. Member / `user_profiles` rows are created with
   `Dhc.MemberFixtures.member_fixture/1` when an access projection is needed —
-  that helper wires the `auth.users` + `user_profiles` + `member_profiles`
-  rows the existing test harness expects.
+   that helper wires the Principal + `user_profiles` + `member_profiles` rows.
 
-  The `principal_fixture/1` helper takes an optional `:auth_user_id` so a
-  Principal can share a UUID with an existing `auth.users` row (the post-M1
-  shape: `principals.id == auth.users.id == user_profiles.supabase_user_id`).
+  The `principal_fixture/1` helper accepts an explicit `:id` when a test needs
+  to align it with another Principal-owned record.
   """
 
   alias Dhc.Auth
@@ -35,7 +33,18 @@ defmodule Dhc.AuthFixtures do
         email: unique_principal_email()
       })
 
-    {:ok, principal} = Auth.register_principal(%{email: attrs.email})
+    principal =
+      case Map.get(attrs, :id) do
+        nil ->
+          {:ok, principal} = Auth.register_principal(%{email: attrs.email})
+          principal
+
+        id ->
+          Repo.get(Principal, id) ||
+            case Auth.register_principal(%{email: attrs.email}) do
+              {:ok, principal} -> principal
+            end
+      end
 
     principal =
       case attrs do

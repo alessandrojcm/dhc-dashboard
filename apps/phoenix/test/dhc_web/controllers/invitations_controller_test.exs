@@ -526,7 +526,7 @@ defmodule DhcWeb.InvitationsControllerTest do
                Repo.get!(Principal, user_id)
 
       # Acceptance creates the UserProfile (no pre-existing profile to flip).
-      user_profile = Repo.get_by!(UserProfile, supabase_user_id: user_id)
+      user_profile = Repo.get_by!(UserProfile, principal_id: user_id)
       assert user_profile.first_name == "Ada"
       assert user_profile.last_name == "Lovelace"
       assert user_profile.date_of_birth == ~D[1990-01-01]
@@ -539,7 +539,8 @@ defmodule DhcWeb.InvitationsControllerTest do
       assert member.insurance_form_submitted == true
 
       assert Repo.exists?(
-               from r in Dhc.Auth.UserRole, where: r.user_id == ^user_id and r.role == "member"
+               from r in Dhc.Auth.UserRole,
+                 where: r.principal_id == ^user_id and r.role == "member"
              )
 
       assert Repo.one!(
@@ -632,7 +633,7 @@ defmodule DhcWeb.InvitationsControllerTest do
       # Principal, no UserProfile, no MemberProfile, no role, and the
       # waitlist entry stays `invited` (not `joined`).
       refute Repo.get(Principal, user_id)
-      refute Repo.exists?(from up in UserProfile, where: up.supabase_user_id == ^user_id)
+      refute Repo.exists?(from up in UserProfile, where: up.principal_id == ^user_id)
       refute Repo.exists?(from m in MemberProfile, where: m.id == ^user_id)
 
       assert Repo.one!(
@@ -683,14 +684,15 @@ defmodule DhcWeb.InvitationsControllerTest do
       %{invitation_id: invitation_id, user_id: user_id} =
         insert_invitation_with_profile(email: "rollback@example.com", waitlist: true)
 
-      # Pre-existing MemberProfile for invitation.user_id — acceptance must
-      # detect this and roll back as :invalid_invitation (replay defense /
-      # belt-and-braces check per ADR 0010). Insert it with a throwaway
-      # UserProfile so the FK is satisfied.
+      # Pre-existing Principal/Member records for invitation.user_id —
+      # acceptance must detect this and roll back as :invalid_invitation
+      # (replay defense / belt-and-braces check per ADR 0010).
+      Repo.insert!(%Principal{id: user_id, email: "existing-#{user_id}@example.com"})
+
       existing_profile =
         Repo.insert!(%UserProfile{
           id: Ecto.UUID.generate(),
-          supabase_user_id: Ecto.UUID.generate(),
+          principal_id: user_id,
           first_name: "Existing",
           last_name: "Member",
           phone_number: "+353810000000",

@@ -6,16 +6,16 @@ defmodule DhcWeb.Router do
   end
 
   pipeline :invitation_admin_api do
-    plug DhcWeb.Plugs.RequireAuth, roles: ~w(president admin committee_coordinator)
+    plug DhcWeb.Plugs.RequireSession, roles: ~w(president admin committee_coordinator)
   end
 
   pipeline :waitlist_admin_api do
-    plug DhcWeb.Plugs.RequireAuth,
+    plug DhcWeb.Plugs.RequireSession,
       roles: ~w(admin president committee_coordinator beginners_coordinator coach)
   end
 
   pipeline :members_admin_api do
-    plug DhcWeb.Plugs.RequireAuth,
+    plug DhcWeb.Plugs.RequireSession,
       roles:
         ~w(admin president treasurer committee_coordinator sparring_coordinator workshop_coordinator beginners_coordinator quartermaster pr_manager volunteer_coordinator research_coordinator coach)
   end
@@ -26,11 +26,11 @@ defmodule DhcWeb.Router do
     # `Dhc.Workshops.coordinator_management_roles/0`. Deliberately excludes
     # `beginners_coordinator` — the historical registration visibility drift
     # (see the `Dhc.Workshops` moduledoc) must not be reproduced.
-    plug DhcWeb.Plugs.RequireAuth, roles: Dhc.Workshops.coordinator_management_roles()
+    plug DhcWeb.Plugs.RequireSession, roles: Dhc.Workshops.coordinator_management_roles()
   end
 
   pipeline :settings_admin_api do
-    plug DhcWeb.Plugs.RequireAuth, roles: ~w(president committee_coordinator admin)
+    plug DhcWeb.Plugs.RequireSession, roles: ~w(president committee_coordinator admin)
   end
 
   # ALE-105 inventory category management. Mirrors the existing SvelteKit
@@ -38,16 +38,13 @@ defmodule DhcWeb.Router do
   # categories are any authenticated member — the existing Svelte category
   # list view is member-readable; writes require the inventory write roles.
   pipeline :inventory_admin_api do
-    plug DhcWeb.Plugs.RequireAuth, roles: ~w(quartermaster admin president)
+    plug DhcWeb.Plugs.RequireSession, roles: ~w(quartermaster admin president)
   end
 
   pipeline :authenticated_api do
-    plug DhcWeb.Plugs.RequireAuth
+    plug DhcWeb.Plugs.RequireSession
   end
 
-  # ALE-165 — Phoenix-session auth path. New /api/auth/* endpoints and
-  # future migrated endpoints use this pipeline. Existing endpoints stay on
-  # :authenticated_api (Supabase JWT) until the ALE-163 cutover.
   pipeline :authenticated_session_api do
     plug DhcWeb.Plugs.RequireSession
   end

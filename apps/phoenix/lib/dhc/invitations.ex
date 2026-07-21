@@ -224,7 +224,7 @@ defmodule Dhc.Invitations do
         # matching the pre-ALE-162 upsert_invited_profile behavior.
         user_profile = %UserProfile{
           id: Ecto.UUID.generate(),
-          supabase_user_id: invitation.user_id,
+          principal_id: invitation.user_id,
           first_name: invitation.first_name,
           last_name: invitation.last_name,
           phone_number: invitation.phone_number,
@@ -262,9 +262,9 @@ defmodule Dhc.Invitations do
 
         Repo.insert_all(
           UserRole,
-          [[user_id: invitation.user_id, role: "member"]],
+          [[principal_id: invitation.user_id, role: "member"]],
           on_conflict: :nothing,
-          conflict_target: [:user_id, :role]
+          conflict_target: [:principal_id, :role]
         )
 
         from(w in WaitlistEntry, where: w.email == ^invitation.email)
