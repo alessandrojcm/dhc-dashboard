@@ -405,24 +405,15 @@ defmodule Dhc.Auth do
   `is_active` flag is the Stripe-driven projection on `user_profiles` (see
   CONTEXT.md — DHC does not set it directly).
 
-  ## Join shape (pre-cutover)
-
-  Until ALE-163 repoints the application foreign keys from `auth.users.id`
-  to `principals.id`, `user_profiles.supabase_user_id` and `user_roles.user_id`
-  still reference `auth.users`. M1 (ALE-166) creates one Principal per
-  existing Member **with the same UUID** as `auth.users.id`, so
-  `principals.id == user_profiles.supabase_user_id` holds after M1 and
-  remains true after M2 renames the column to `principal_id`. This query
-  joins on that UUID equality — it works for the post-M1 / pre-M2 window and
-  ALE-163 will tighten it to a real FK association after the rename.
+  Application ownership points directly at `principals.id` after M2.
   """
   def load_session_principal(principal) do
     query =
       from p in Principal,
         left_join: profile in "user_profiles",
-        on: profile.supabase_user_id == p.id,
+        on: profile.principal_id == p.id,
         left_join: ur in "user_roles",
-        on: ur.user_id == p.id,
+        on: ur.principal_id == p.id,
         where: p.id == ^principal.id,
         group_by: [p.id, profile.is_active],
         select: %{

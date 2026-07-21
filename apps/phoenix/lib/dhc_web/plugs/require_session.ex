@@ -3,10 +3,7 @@ defmodule DhcWeb.Plugs.RequireSession do
   Requires a valid Phoenix Session cookie and, optionally, one of a set of
   roles.
 
-  This is the Phoenix-session counterpart to `DhcWeb.Plugs.RequireAuth` (the
-  transitional Supabase-JWT plug). It is the boundary ALE-165 establishes for
-  the new `/api/auth/*` and future migrated endpoints; existing endpoints
-  stay on `RequireAuth` until the ALE-163 cutover.
+  This is the sole authenticated HTTP boundary after the ALE-163 cutover.
 
   ## Outcomes (per the spec)
 
@@ -50,9 +47,7 @@ defmodule DhcWeb.Plugs.RequireSession do
 
     conn = fetch_cookies(conn, signed: [@session_cookie])
 
-    with {:ok, token} <- session_token(conn),
-         {:ok, principal} <- Dhc.Auth.get_principal_by_session_token(token),
-         {:ok, projection} <- Dhc.Auth.load_session_principal(principal),
+    with {:ok, token, projection} <- authenticate(conn),
          :ok <- require_active(projection),
          :ok <- authorize(projection, required_roles) do
       conn
@@ -72,6 +67,23 @@ defmodule DhcWeb.Plugs.RequireSession do
       token when is_binary(token) and token != "" -> {:ok, token}
       _ -> {:error, :missing_token}
     end
+  end
+
+  defp authenticate(conn) do
+    with {:ok, token} <- session_token(conn),
+         {:ok, principal} <- Dhc.Auth.get_principal_by_session_token(token),
+         {:ok, projection} <- Dhc.Auth.load_session_principal(principal) do
+      {:ok, token, projection}
+    else
+      {:error, :missing_token} -> test_projection(conn)
+      error -> error
+    end
+  end
+
+  if Mix.env() == :test do
+    defp test_projection(conn), do: DhcWeb.SessionTestAdapter.projection(conn)
+  else
+    defp test_projection(_conn), do: {:error, :missing_token}
   end
 
   defp require_active(%{is_active: true}), do: :ok

@@ -7,47 +7,22 @@ defmodule DhcWeb.NotificationChannelTest do
 
   alias DhcWeb.NotificationChannel
   alias DhcWeb.UserSocket
+  alias Dhc.Auth.Principal
 
   @user_id "11111111-1111-1111-1111-111111111111"
   @other_user_id "22222222-2222-2222-2222-222222222222"
 
-  # Verifier substitution mirroring DhcWeb.NotificationsControllerTest.
-  defmodule Verifier do
-    def verify("user-token") do
-      {:ok,
-       %{
-         sub: "11111111-1111-1111-1111-111111111111",
-         email: "user@example.com",
-         roles: [],
-         raw: %{}
-       }}
-    end
+  defp authenticated_socket("user-token"), do: authenticated_socket(@user_id, "user@example.com")
 
-    def verify("other-user-token") do
-      {:ok,
-       %{
-         sub: "22222222-2222-2222-2222-222222222222",
-         email: "other@example.com",
-         roles: [],
-         raw: %{}
-       }}
-    end
+  defp authenticated_socket("other-user-token"),
+    do: authenticated_socket(@other_user_id, "other@example.com")
 
-    def verify(_token), do: {:error, :invalid_token}
-  end
+  defp authenticated_socket(id, email) do
+    principal = %Principal{id: id, email: email}
 
-  setup do
-    original = Application.get_env(:dhc, :auth_verifier)
-    Application.put_env(:dhc, :auth_verifier, Verifier)
-    on_exit(fn -> Application.put_env(:dhc, :auth_verifier, original) end)
-    :ok
-  end
-
-  # Builds an authenticated socket for the given token via the real connect/3,
-  # so join/3 sees the exact assigns shape production uses.
-  defp authenticated_socket(token) do
-    {:ok, socket} = connect(UserSocket, %{}, connect_info: %{auth_token: token})
-    socket
+    socket(UserSocket, "users_socket:#{id}", %{
+      current_session: %{principal: principal, roles: [], is_active: true}
+    })
   end
 
   describe "join/3 own-topic authorization" do
@@ -57,7 +32,7 @@ defmodule DhcWeb.NotificationChannelTest do
       assert {:ok, _, joined_socket} =
                subscribe_and_join(socket, NotificationChannel, "notifications:#{@user_id}")
 
-      assert joined_socket.assigns.current_user.sub == @user_id
+      assert joined_socket.assigns.current_session.principal.id == @user_id
     end
 
     test "joining another user's notifications:<sub> topic is rejected as unauthorized" do
@@ -85,7 +60,7 @@ defmodule DhcWeb.NotificationChannelTest do
       assert {:ok, _, joined_socket} =
                subscribe_and_join(socket, NotificationChannel, "notifications:self")
 
-      assert joined_socket.assigns.current_user.sub == @user_id
+      assert joined_socket.assigns.current_session.principal.id == @user_id
     end
   end
 

@@ -50,7 +50,7 @@ defmodule Dhc.Invitations.BulkInviteWorkerTest do
 
   describe "perform/1 waitlist invitations" do
     test "resolves a waitlist id and creates the invitation with no profile or Stripe customer" do
-      created_by_id = insert_auth_user!("admin@example.com")
+      created_by_id = insert_principal!("admin@example.com")
       waitlist_entry = insert_waitlist_entry!("ada@example.com")
 
       insert_waitlist_profile!(waitlist_entry.id,
@@ -87,9 +87,7 @@ defmodule Dhc.Invitations.BulkInviteWorkerTest do
       assert Ecto.UUID.cast!(invitation.user_id) == invitation.user_id
 
       # No user_profiles row was created at issue time.
-      refute Repo.exists?(
-               from up in UserProfile, where: up.supabase_user_id == ^invitation.user_id
-             )
+      refute Repo.exists?(from up in UserProfile, where: up.principal_id == ^invitation.user_id)
 
       # No Stripe customer was created at issue time.
       assert invitation.stripe_customer_id in [nil, ""]
@@ -117,21 +115,10 @@ defmodule Dhc.Invitations.BulkInviteWorkerTest do
     end
   end
 
-  defp insert_auth_user!(email) do
+  defp insert_principal!(email) do
     id = Ecto.UUID.generate()
 
-    Repo.insert_all(
-      "users",
-      [
-        [
-          id: Ecto.UUID.dump!(id),
-          aud: "authenticated",
-          role: "authenticated",
-          email: email
-        ]
-      ],
-      prefix: "auth"
-    )
+    {:ok, _principal} = Dhc.Auth.register_principal_with_id(id, %{email: email})
 
     id
   end

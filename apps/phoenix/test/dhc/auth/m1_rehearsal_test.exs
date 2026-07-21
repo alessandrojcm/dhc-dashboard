@@ -5,10 +5,15 @@ defmodule Dhc.AuthM1RehearsalTest do
 
   alias Dhc.AuthMigration.M1
   alias Dhc.AuthMigration.M1.AnomalyError
+  alias Dhc.AuthMigration.M2
   alias Dhc.Repo
 
   setup do
     ensure_auth_identities_table!()
+
+    if column_exists?("user_profiles", "principal_id") do
+      M2.rollback!(Repo)
+    end
 
     # test_helper runs M1 once against an empty database. Each rehearsal test
     # needs to observe only its own target population and audit evidence.
@@ -351,6 +356,18 @@ defmodule Dhc.AuthM1RehearsalTest do
   end
 
   defp count(sql), do: rows(sql) |> hd() |> hd()
+
+  defp column_exists?(table, column) do
+    rows(
+      """
+      SELECT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = $1 AND column_name = $2
+      )
+      """,
+      [table, column]
+    ) == [[true]]
+  end
 
   defp rows(sql, params \\ []), do: Repo.query!(sql, params).rows
 end

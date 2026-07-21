@@ -173,7 +173,9 @@ defmodule DhcWeb.AuthSessionControllerTest do
         email: email
       })
 
-      Repo.insert_all("user_roles", [[user_id: Ecto.UUID.dump!(auth_user_id), role: "member"]])
+      Repo.insert_all("user_roles", [
+        [principal_id: Ecto.UUID.dump!(auth_user_id), role: "member"]
+      ])
 
       principal = principal_fixture(id: auth_user_id, email: email)
       {:ok, principal: principal}
@@ -293,7 +295,9 @@ defmodule DhcWeb.AuthSessionControllerTest do
         email: email
       })
 
-      Repo.insert_all("user_roles", [[user_id: Ecto.UUID.dump!(auth_user_id), role: "member"]])
+      Repo.insert_all("user_roles", [
+        [principal_id: Ecto.UUID.dump!(auth_user_id), role: "member"]
+      ])
 
       principal = principal_fixture(id: auth_user_id, email: email)
       token = session_token(principal)
@@ -351,7 +355,9 @@ defmodule DhcWeb.AuthSessionControllerTest do
         email: email
       })
 
-      Repo.insert_all("user_roles", [[user_id: Ecto.UUID.dump!(auth_user_id), role: "member"]])
+      Repo.insert_all("user_roles", [
+        [principal_id: Ecto.UUID.dump!(auth_user_id), role: "member"]
+      ])
 
       principal = principal_fixture(id: auth_user_id, email: email)
       token = session_token(principal)
@@ -440,7 +446,7 @@ defmodule DhcWeb.AuthSessionControllerTest do
     id = Ecto.UUID.generate()
 
     Dhc.MemberFixtures.member_fixture(%{auth_user_id: id, is_active: true, email: email})
-    Repo.insert_all("user_roles", [[user_id: Ecto.UUID.dump!(id), role: "member"]])
+    Repo.insert_all("user_roles", [[principal_id: Ecto.UUID.dump!(id), role: "member"]])
     principal_fixture(id: id, email: email)
   end
 end
