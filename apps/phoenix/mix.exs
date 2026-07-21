@@ -64,6 +64,7 @@ defmodule Dhc.MixProject do
       {:hackney, "~> 1.8"},
       {:finch, "~> 0.22.0"},
       {:req, "~> 0.5"},
+      {:assent, "~> 0.3.1"},
       # Fakerer: maintained fork of elixirs/faker. OTP app stays `:faker`,
       # Hex package is `:fakerer`. Dev-only (used by seeding mix tasks).
       # NOT `runtime: false`: seed tasks call `Mix.Task.run("app.start")`,

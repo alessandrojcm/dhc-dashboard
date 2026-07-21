@@ -136,5 +136,12 @@ config :dhc,
 config :dhc, :environment, :development
 config :dhc, :cors_allowed_origins, cors_allowed_origins
 
+config :dhc, :discord_oauth,
+  client_id: System.get_env("DISCORD_CLIENT_ID"),
+  client_secret: System.get_env("DISCORD_CLIENT_SECRET"),
+  redirect_uri:
+    System.get_env("DISCORD_REDIRECT_URI", "http://localhost:4000/api/auth/discord/callback"),
+  code_verifier: true
+
 # Initialize plugs at runtime for faster development compilation
 config :phoenix, :plug_init_mode, :runtime

@@ -91,6 +91,14 @@ ALWAYS use Superforms + our form components:
 </Form.Field>
 ```
 
+## Discord External Identities
+
+- Resolve Discord login by `(provider, provider_subject)` before looking at profile email.
+- Auto-link an unlinked subject only when Discord reports a verified email matching one active Principal.
+- Treat Discord email, username, and avatar as metadata only; never overwrite the Principal email or an existing identity link.
+- Keep identity creation and session creation in one `Repo.transact/1`, with database uniqueness on both `(provider, provider_subject)` and `(principal_id, provider)`.
+- OAuth failures redirect to the generic magic-link fallback and must not disclose whether a Principal exists.
+
 ## Phoenix Read-Migration API Conventions (ADR 0005)
 
 Conventions established by the Waitlist migration (#105–#107) and reinforced by the Members migration (#122). Apply to all remaining PostgREST read-migration slices (Workshops, Inventory).

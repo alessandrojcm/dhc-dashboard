@@ -12,6 +12,7 @@ config :dhc,
   generators: [timestamp_type: :utc_datetime]
 
 config :dhc, :cors_allowed_origins, []
+config :dhc, :discord_oauth_strategy, Assent.Strategy.Discord
 
 # Salt namespace for short-lived public invitation verification tokens. The
 # Endpoint secret_key_base remains the signing secret; this salt is configurable
