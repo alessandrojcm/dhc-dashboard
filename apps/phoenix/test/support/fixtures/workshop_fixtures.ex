@@ -6,8 +6,8 @@ defmodule Dhc.WorkshopFixtures do
 
   Inserts go through the Ecto schemas in `Dhc.Workshops.*` so the fixture path
   exercises the same column mappings the read helpers query. Member participants
-  reuse `Dhc.MemberFixtures.member_fixture/1` (auth user + user profile + member
-  profile); the returned `:auth_user_id` is the Supabase auth user id used as
+   reuse `Dhc.MemberFixtures.member_fixture/1` (Principal + user profile + member
+   profile); the returned `:principal_id` is used as
   both `club_activity_interest.user_id` and
   `club_activity_registrations.member_user_id`.
 
@@ -34,7 +34,7 @@ defmodule Dhc.WorkshopFixtures do
     * `:refund_days` (default `3`)
     * `:status` (default `"planned"`)
     * `:announce_discord` / `:announce_email` (default `false`)
-    * `:created_by` (default `nil`; must be a real `auth.users` id if set)
+    * `:created_by` (default `nil`; must be a real Principal id if set)
 
   Returns the inserted `Workshop` struct.
   """
@@ -116,7 +116,7 @@ defmodule Dhc.WorkshopFixtures do
   ## Options
 
     * `:workshop_id` (required) — the Workshop id
-    * `:member_user_id` — the member's Supabase auth user id (for member regs)
+    * `:member_user_id` — the member's Principal id (for member regs)
     * `:external_user_id` — the external user id (for external regs)
     * `:status` (default `"pending"`)
     * `:amount_paid` (default `1000`, cents)
@@ -191,10 +191,9 @@ defmodule Dhc.WorkshopFixtures do
   end
 
   @doc """
-  Convenience: inserts a full member participant (auth user + user profile +
+  Convenience: inserts a full member participant (Principal + user profile +
   member profile) and returns the `Dhc.MemberFixtures.member_fixture/1` map
-  (`%{auth_user_id, profile_id, customer_id}`). The `auth_user_id` is the
-  Supabase auth user id used for interest/registration fixtures.
+  (`%{principal_id, profile_id, customer_id}`).
   """
   def member_fixture(attrs \\ %{}) do
     MemberFixtures.member_fixture(attrs)

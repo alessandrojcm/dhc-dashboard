@@ -379,10 +379,9 @@ defmodule DhcWeb.InventoryCategoriesControllerTest do
     user_id = Ecto.UUID.generate()
 
     {:ok, _} =
-      Repo.query(
-        "INSERT INTO auth.users (id, aud, role, email) VALUES ($1, 'authenticated', 'authenticated', $2)",
-        [Ecto.UUID.dump!(user_id), "inv-#{System.unique_integer([:positive])}@example.com"]
-      )
+      Dhc.Auth.register_principal_with_id(user_id, %{
+        email: "inv-#{System.unique_integer([:positive])}@example.com"
+      })
 
     container_id = Ecto.UUID.generate()
 

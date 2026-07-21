@@ -12,7 +12,7 @@ defmodule Dhc.Auth.UserRole do
   @type t :: %__MODULE__{}
 
   schema "user_roles" do
-    field :user_id, :binary_id
+    field :principal_id, :binary_id
     field :role, :string
   end
 end

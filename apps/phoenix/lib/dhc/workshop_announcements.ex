@@ -72,12 +72,12 @@ defmodule Dhc.WorkshopAnnouncements do
   def list_active_users do
     query =
       from up in "user_profiles",
-        join: au in "users",
-        on: up.supabase_user_id == au.id,
-        where: up.is_active == true and not is_nil(au.email),
+        join: principal in "principals",
+        on: up.principal_id == principal.id,
+        where: up.is_active == true and not is_nil(principal.email),
         select: %{
-          user_id: up.supabase_user_id,
-          email: au.email,
+          user_id: up.principal_id,
+          email: principal.email,
           first_name: up.first_name,
           last_name: up.last_name
         }

@@ -148,9 +148,6 @@ if config_env() == :prod do
          :invitation_verification_token_salt,
          System.get_env("INVITATION_VERIFICATION_TOKEN_SALT", "invitation-verification-v1")
 
-  config :dhc, :supabase_url, System.get_env("SUPABASE_URL")
-  config :dhc, :supabase_anon_key, System.get_env("SUPABASE_ANON_KEY")
-  config :dhc, :supabase_service_role_key, System.get_env("SUPABASE_SERVICE_ROLE_KEY")
   config :dhc, :app_url, System.get_env("APP_URL", "https://dublinhemaclub.com")
   config :dhc, :environment, :prod
 

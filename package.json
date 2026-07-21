@@ -98,8 +98,6 @@
 		"@event-calendar/core": "^4.7.1",
 		"@internationalized/date": "^3.10.0",
 		"@sentry/sveltekit": "^10.25.0",
-		"@supabase/ssr": "^0.7.0",
-		"@supabase/supabase-js": "2.81.1",
 		"@tanstack/svelte-query": "^6.0.6",
 		"@tanstack/svelte-query-devtools": "^6.0.0",
 		"@tanstack/svelte-table": "^8.21.3",

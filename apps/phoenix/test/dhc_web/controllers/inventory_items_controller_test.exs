@@ -54,10 +54,7 @@ defmodule DhcWeb.InventoryItemsControllerTest do
 
   defp insert_user!(id, email) do
     {:ok, _} =
-      Repo.query(
-        "INSERT INTO auth.users (id, aud, role, email) VALUES ($1, 'authenticated', 'authenticated', $2)",
-        [Ecto.UUID.dump!(id), email]
-      )
+      Dhc.Auth.register_principal_with_id(id, %{email: email})
 
     :ok
   end
