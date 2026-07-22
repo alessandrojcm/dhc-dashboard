@@ -1,0 +1,16 @@
+id: no-bare-fetch
+snapshots:
+  ? |
+    const response = await fetch("/api/health");
+  : labels:
+    - source: fetch("/api/health")
+      style: primary
+      start: 23
+      end: 43
+  ? |
+    const response = await fetch(url, { method: "POST", body });
+  : labels:
+    - source: 'fetch(url, { method: "POST", body })'
+      style: primary
+      start: 23
+      end: 59

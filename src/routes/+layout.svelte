@@ -1,6 +1,5 @@
 <script lang="ts">
 import "../app.css";
-import { configureClient } from "@dhc/api-client";
 import { QueryClient, QueryClientProvider } from "@tanstack/svelte-query";
 import { SvelteQueryDevtools } from "@tanstack/svelte-query-devtools";
 import { Toaster } from "$lib/components/ui/sonner/index";
@@ -8,8 +7,7 @@ import posthog from "posthog-js";
 import type { Snippet } from "svelte";
 import { onMount } from "svelte";
 import { browser, dev } from "$app/environment";
-import { env } from "$env/dynamic/public";
-import { registerApiErrorReporter } from "$lib/api-error-reporter";
+import { configureBrowserApiClient } from "$lib/api-client";
 import type { LayoutData } from "./$types";
 
 const { children, data }: { children: Snippet; data: LayoutData } = $props();
@@ -22,13 +20,7 @@ if (browser) {
 	// `credentials: 'include'` on every request to the Phoenix API; no
 	// Supabase JWT getter is needed. `configureClient` sets `credentials`
 	// once so the generated `@dhc/api-client` carries the cookie.
-	configureClient({
-		baseUrl: env.PUBLIC_API_BASE_URL || "/api",
-		credentials: "include",
-		retry: 0,
-	});
-
-	registerApiErrorReporter();
+	configureBrowserApiClient();
 }
 
 onMount(() => {
