@@ -58,7 +58,7 @@ defmodule DhcWeb.InventoryContainersController do
   def create(conn, params) do
     # `created_by` is NOT NULL on the `containers` table and references
     # `auth.users`; the authenticated pipeline guarantees `current_user`.
-    actor_id = conn.assigns.current_user.sub
+    actor_id = conn.assigns.current_session.principal.id
 
     case Inventory.create_container(params, actor_id) do
       {:ok, container} ->

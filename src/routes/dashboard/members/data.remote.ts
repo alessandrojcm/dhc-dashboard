@@ -67,7 +67,7 @@ export const submitBulkInvites = command(
 		}
 
 		const response = await invitationsCreate({
-			...apiClientOptions(session!),
+			...apiClientOptions(event.cookies),
 			body: {
 				invites: validatedData.invites.map((invite) => ({
 					firstName: invite.firstName,
@@ -105,7 +105,7 @@ export const updateMemberSettings = form(
 		);
 
 		const response = await settingsUpdate({
-			...apiClientOptions(session!),
+			...apiClientOptions(event.cookies),
 			path: { key: "hema_insurance_form_link" },
 			body: { value: data.insuranceFormLink },
 		});

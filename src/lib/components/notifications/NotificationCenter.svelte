@@ -6,10 +6,10 @@ import {
 	notificationsMarkAllReadMutation,
 	notificationsMarkReadMutation,
 	type Notification as ApiNotification,
+	authSocketToken,
 } from "@dhc/api-client";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
-import type { SupabaseClient } from "@supabase/supabase-js";
 import {
 	createInfiniteQuery,
 	createMutation,
@@ -24,12 +24,6 @@ import { connectNotificationRealtime } from "./notification-realtime.svelte";
 
 // Initialize dayjs plugins
 dayjs.extend(relativeTime);
-
-const {
-	supabase,
-}: {
-	supabase: SupabaseClient<Database>;
-} = $props();
 
 type Notification = Database["public"]["Tables"]["notifications"]["Row"];
 
@@ -95,15 +89,25 @@ const markAllAsRead = createMutation(() => ({
 const queryClient = useQueryClient();
 
 onMount(() => {
-	// Realtime is a browser-only best-effort invalidation signal. The socket
-	// URL is public routing configuration; the Supabase access token is passed
-	// as the Phoenix 1.8 native `authToken`. All realtime failures stay silent
-	// inside the bridge and never disable the HTTP query or mutations below.
+	// Realtime is a browser-only best-effort invalidation signal. ALE-164:
+	// the browser fetches a short-lived Phoenix socket token via
+	// `GET /api/auth/socket-token` (credentialed, so the HTTP-only
+	// `_dhc_session` cookie is sent) and passes it to the Phoenix JS
+	// `Socket` as `authToken`. All realtime failures stay silent inside
+	// the bridge and never disable the HTTP query or mutations below.
 	if (!browser || !env.PUBLIC_PHOENIX_SOCKET_URL) return;
 
+	// The realtime bridge owns the socket-token fetch + reconnect cycle.
+	// We pass it a function that fetches a fresh socket token (the
+	// token is short-lived, so a reconnect after a long disconnect
+	// needs a fresh one).
 	const realtime = connectNotificationRealtime({
 		socketUrl: env.PUBLIC_PHOENIX_SOCKET_URL,
-		supabase,
+		getSocketToken: async () => {
+			const { data, error } = await authSocketToken();
+			if (error || !data) return null;
+			return data.data.socketToken;
+		},
 		invalidate: () =>
 			queryClient.invalidateQueries({ queryKey: notificationsQueryKey }),
 	});
@@ -206,7 +210,7 @@ function formatTime(timestamp: string): string {
 							{#if !notification.read_at}
 								<button
 									class="p-1 rounded-full text-primary hover:bg-primary-foreground flex-shrink-0 flex items-center justify-center"
-								onclick={() => markAsRead.mutate({ path: { id: notification.id } })}
+									onclick={() => markAsRead.mutate({ path: { id: notification.id } })}
 								>
 									<span class="sr-only">Mark as read</span>
 									<svg

@@ -52,7 +52,8 @@ config :dhc, :loops_transactional_ids, %{
   "inviteMember" => "test-loops-id-inviteMember",
   "workshopAnnouncement" => "test-loops-id-workshopAnnouncement",
   "workshopRegistration" => "test-loops-id-workshopRegistration",
-  "workshopRegistrationError" => "test-loops-id-workshopRegistrationError"
+  "workshopRegistrationError" => "test-loops-id-workshopRegistrationError",
+  "magicLink" => "test-loops-id-magicLink"
 }
 
 # Stripe sync — skip API calls in test
@@ -66,6 +67,8 @@ config :dhc, :supabase_service_role_key, "test-service-role-key"
 config :dhc, :app_url, "http://localhost:5173"
 config :dhc, :environment, :test
 config :dhc, :cors_allowed_origins, ["http://localhost:5173"]
+config :dhc, :discord_oauth_strategy, Dhc.DiscordOAuthStub
+config :dhc, :discord_oauth, client_id: "test-client", client_secret: "test-secret"
 
 # Print only warnings and errors during test
 config :logger, level: :warning

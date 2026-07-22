@@ -6,11 +6,15 @@ import { INVENTORY_ROLES } from "$lib/server/roles";
 import type { PageServerLoadEvent } from "./$types";
 import type { AttributeDefinition } from "$lib/schemas/inventory";
 
-export const load = async ({ params, locals }: PageServerLoadEvent) => {
-	const session = await authorize(locals, INVENTORY_ROLES);
+export const load = async ({
+	params,
+	locals,
+	cookies,
+}: PageServerLoadEvent) => {
+	await authorize(locals, INVENTORY_ROLES);
 
 	const response = await inventoryCategoriesShow({
-		...apiClientOptions(session),
+		...apiClientOptions(cookies),
 		path: { id: params.id },
 	});
 

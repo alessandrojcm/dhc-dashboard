@@ -6,7 +6,7 @@ import { invariant } from "$lib/server/invariant";
 import { allowedToggleRoles, getRolesFromSession } from "$lib/server/roles";
 import type { RequestHandler } from "./$types";
 
-export const POST: RequestHandler = async ({ locals, request }) => {
+export const POST: RequestHandler = async ({ locals, cookies, request }) => {
 	try {
 		const { session } = await locals.safeGetSession();
 		invariant(session === null, "Unauthorized");
@@ -25,7 +25,7 @@ export const POST: RequestHandler = async ({ locals, request }) => {
 		}
 
 		const response = await waitlistUpdateStatus({
-			...apiClientOptions(session!),
+			...apiClientOptions(cookies),
 			body: { isOpen: body.isOpen },
 		});
 

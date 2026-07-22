@@ -24,10 +24,9 @@ defmodule DhcWeb.InventoryDashboardControllerTest do
     Application.put_env(:dhc, :auth_verifier, Verifier)
 
     {:ok, _} =
-      Repo.query(
-        "INSERT INTO auth.users (id, aud, role, email) VALUES ($1, 'authenticated', 'authenticated', $2)",
-        [Ecto.UUID.dump!(@actor_id), "inventory-dashboard@example.com"]
-      )
+      Dhc.Auth.register_principal_with_id(@actor_id, %{
+        email: "inventory-dashboard@example.com"
+      })
 
     on_exit(fn -> Application.put_env(:dhc, :auth_verifier, original) end)
 

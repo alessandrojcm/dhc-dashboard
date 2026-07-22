@@ -6,16 +6,16 @@ defmodule DhcWeb.Router do
   end
 
   pipeline :invitation_admin_api do
-    plug DhcWeb.Plugs.RequireAuth, roles: ~w(president admin committee_coordinator)
+    plug DhcWeb.Plugs.RequireSession, roles: ~w(president admin committee_coordinator)
   end
 
   pipeline :waitlist_admin_api do
-    plug DhcWeb.Plugs.RequireAuth,
+    plug DhcWeb.Plugs.RequireSession,
       roles: ~w(admin president committee_coordinator beginners_coordinator coach)
   end
 
   pipeline :members_admin_api do
-    plug DhcWeb.Plugs.RequireAuth,
+    plug DhcWeb.Plugs.RequireSession,
       roles:
         ~w(admin president treasurer committee_coordinator sparring_coordinator workshop_coordinator beginners_coordinator quartermaster pr_manager volunteer_coordinator research_coordinator coach)
   end
@@ -26,11 +26,11 @@ defmodule DhcWeb.Router do
     # `Dhc.Workshops.coordinator_management_roles/0`. Deliberately excludes
     # `beginners_coordinator` — the historical registration visibility drift
     # (see the `Dhc.Workshops` moduledoc) must not be reproduced.
-    plug DhcWeb.Plugs.RequireAuth, roles: Dhc.Workshops.coordinator_management_roles()
+    plug DhcWeb.Plugs.RequireSession, roles: Dhc.Workshops.coordinator_management_roles()
   end
 
   pipeline :settings_admin_api do
-    plug DhcWeb.Plugs.RequireAuth, roles: ~w(president committee_coordinator admin)
+    plug DhcWeb.Plugs.RequireSession, roles: ~w(president committee_coordinator admin)
   end
 
   # ALE-105 inventory category management. Mirrors the existing SvelteKit
@@ -38,11 +38,27 @@ defmodule DhcWeb.Router do
   # categories are any authenticated member — the existing Svelte category
   # list view is member-readable; writes require the inventory write roles.
   pipeline :inventory_admin_api do
-    plug DhcWeb.Plugs.RequireAuth, roles: ~w(quartermaster admin president)
+    plug DhcWeb.Plugs.RequireSession, roles: ~w(quartermaster admin president)
   end
 
   pipeline :authenticated_api do
-    plug DhcWeb.Plugs.RequireAuth
+    plug DhcWeb.Plugs.RequireSession
+  end
+
+  pipeline :authenticated_session_api do
+    plug DhcWeb.Plugs.RequireSession
+  end
+
+  # ALE-165 — rate-limited, non-enumerating magic-link request. Public.
+  # The plug short-circuits over-the-limit requests with the same 200 body
+  # the controller returns for a known/unknown address.
+  pipeline :magic_link_request_api do
+    plug :accepts, ["json"]
+    plug DhcWeb.Plugs.MagicLinkRateLimit
+  end
+
+  pipeline :discord_oauth_api do
+    plug :fetch_session
   end
 
   scope "/api", DhcWeb do
@@ -176,5 +192,41 @@ defmodule DhcWeb.Router do
     # ALE-108: dedicated movement/maintenance command endpoints, write roles only.
     post "/inventory/items/:id/move", InventoryItemsController, :move
     post "/inventory/items/:id/maintenance", InventoryItemsController, :maintenance
+  end
+
+  # Phoenix-session auth API. Lives under /api/auth/* and is the first
+  # Phoenix-owned authentication path.
+  scope "/api/auth", DhcWeb do
+    # Magic-link request — public, rate-limited, non-enumerating.
+    pipe_through :magic_link_request_api
+    post "/magic-link", AuthSessionController, :request_magic_link
+  end
+
+  scope "/api/auth", DhcWeb do
+    pipe_through :api
+
+    # Magic-link verify — public (the token is the credential). Sets the
+    # signed _dhc_session cookie on success.
+    post "/magic-link/verify", AuthSessionController, :verify_magic_link
+  end
+
+  scope "/api/auth", DhcWeb do
+    pipe_through :discord_oauth_api
+
+    get "/discord", AuthSessionController, :request_discord
+    get "/discord/callback", AuthSessionController, :discord_callback
+  end
+
+  scope "/api/auth", DhcWeb do
+    pipe_through [:api, :authenticated_session_api]
+
+    # Session projection — requires a valid, active session.
+    get "/session", AuthSessionController, :show_session
+    # Sign out the current device — revokes the one session token.
+    delete "/session", AuthSessionController, :delete_session
+    # ALE-164 — exchange the session cookie for a short-lived JS-readable
+    # socket token (the browser passes it via the Phoenix JS `authToken`
+    # subprotocol; the HTTP-only cookie cannot be read by JS).
+    get "/socket-token", AuthSessionController, :socket_token
   end
 end

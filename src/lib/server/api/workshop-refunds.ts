@@ -3,19 +3,24 @@ import {
 	workshopsRefunds,
 	type ApiErrorResponse,
 } from "@dhc/api-client";
-import type { Session } from "@supabase/supabase-js";
-import { apiClientOptions } from "$lib/server/api-client";
+import { apiClientOptions, type Cookies } from "$lib/server/api-client";
 
 function refundApiError(error: unknown, fallback: string) {
 	return (error as ApiErrorResponse | undefined)?.errors?.detail ?? fallback;
 }
 
+/**
+ * ALE-164: the dashboard authenticates through the Phoenix `_dhc_session`
+ * cookie. These helpers take a `Cookies` (SvelteKit request cookies) and
+ * forward it to Phoenix via `apiClientOptions`, instead of the prior
+ * Supabase `access_token`.
+ */
 export async function listWorkshopRefunds(
-	session: Pick<Session, "access_token">,
+	cookies: Cookies,
 	workshopId: string,
 ) {
 	const response = await workshopsRefunds({
-		...apiClientOptions(session),
+		...apiClientOptions(cookies),
 		path: { workshopId },
 	});
 
@@ -29,7 +34,7 @@ export async function listWorkshopRefunds(
 }
 
 export async function submitWorkshopRefund(
-	session: Pick<Session, "access_token">,
+	cookies: Cookies,
 	{
 		workshopId,
 		registrationId,
@@ -37,7 +42,7 @@ export async function submitWorkshopRefund(
 	}: { workshopId: string; registrationId: string; reason: string },
 ) {
 	const response = await workshopsRefundRegistration({
-		...apiClientOptions(session),
+		...apiClientOptions(cookies),
 		path: { workshopId, registrationId },
 		body: { reason },
 	});

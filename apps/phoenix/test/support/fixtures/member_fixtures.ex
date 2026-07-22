@@ -1,6 +1,6 @@
 defmodule Dhc.MemberFixtures do
   @moduledoc """
-  Test helpers for creating the minimal auth/user/member rows needed by
+  Test helpers for creating the minimal Principal/member rows needed by
   Stripe-sync integration tests.
   """
 
@@ -9,7 +9,7 @@ defmodule Dhc.MemberFixtures do
   alias Dhc.UserProfiles.UserProfile
 
   @doc """
-  Inserts an auth user, a user profile, and a member profile.
+  Inserts a Principal, a user profile, and a member profile.
 
   Returns a map with `auth_user_id`, `profile_id`, and `customer_id`.
 
@@ -34,26 +34,18 @@ defmodule Dhc.MemberFixtures do
   def member_fixture(attrs \\ %{}) do
     attrs = Enum.into(attrs, %{})
 
-    auth_user_id = Map.get(attrs, :auth_user_id) || Ecto.UUID.generate()
+    principal_id =
+      Map.get(attrs, :principal_id) || Map.get(attrs, :auth_user_id) || Ecto.UUID.generate()
+
     profile_id = Map.get(attrs, :profile_id) || Ecto.UUID.generate()
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
     customer_id = Map.get(attrs, :customer_id, "cus_#{System.unique_integer([:positive])}")
 
-    # `auth.users` is Supabase-owned (no Ecto schema); insert raw. Postgrex
-    # expects binary UUIDs when bypassing the schema.
-    Repo.insert_all(
-      "users",
-      [
-        [
-          id: Ecto.UUID.dump!(auth_user_id),
-          aud: "authenticated",
-          role: "authenticated",
-          email: Map.get(attrs, :email) || unique_email()
-        ]
-      ],
-      prefix: "auth"
-    )
+    {:ok, _principal} =
+      Dhc.Auth.register_principal_with_id(principal_id, %{
+        email: Map.get(attrs, :email) || unique_email()
+      })
 
     # user_profiles via the UserProfile schema — Ecto handles the `created_at`
     # timestamp mapping (the schema declares `timestamps(inserted_at: :created_at)`)
@@ -63,7 +55,7 @@ defmodule Dhc.MemberFixtures do
     {:ok, _profile} =
       %UserProfile{
         id: profile_id,
-        supabase_user_id: auth_user_id,
+        principal_id: principal_id,
         first_name: Map.get(attrs, :first_name, "Test"),
         last_name: Map.get(attrs, :last_name, "Member"),
         phone_number: Map.get(attrs, :phone_number, "+353810000000"),
@@ -83,7 +75,7 @@ defmodule Dhc.MemberFixtures do
     # satisfy the schema's `:utc_datetime` type, which rejects microseconds.
     {:ok, _member} =
       %MemberProfile{
-        id: auth_user_id,
+        id: principal_id,
         user_profile_id: profile_id,
         next_of_kin_name: "Next of Kin",
         next_of_kin_phone: "+353820000000",
@@ -98,7 +90,8 @@ defmodule Dhc.MemberFixtures do
       |> Repo.insert()
 
     %{
-      auth_user_id: auth_user_id,
+      principal_id: principal_id,
+      auth_user_id: principal_id,
       profile_id: profile_id,
       customer_id: customer_id
     }

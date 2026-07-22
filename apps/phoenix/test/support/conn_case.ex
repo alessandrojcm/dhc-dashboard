@@ -35,4 +35,11 @@ defmodule DhcWeb.ConnCase do
     Dhc.DataCase.setup_sandbox(tags)
     {:ok, conn: Phoenix.ConnTest.build_conn()}
   end
+
+  @doc """
+  Builds a fresh connection for the test endpoint. Shortcut for
+  `Phoenix.ConnTest.build_conn/0` so test bodies can write `conn()` instead
+  of `build_conn()` (the convention used by the auth-session tests).
+  """
+  def conn, do: Phoenix.ConnTest.build_conn()
 end

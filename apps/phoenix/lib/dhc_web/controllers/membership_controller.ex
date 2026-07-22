@@ -60,10 +60,10 @@ defmodule DhcWeb.MembershipController do
     do: validation_error(conn, "Invalid billing portal payload")
 
   defp authorize_self_or_admin(conn, member_id) do
-    current_user = conn.assigns.current_user
+    current_session = conn.assigns.current_session
 
-    if current_user.sub == member_id or
-         Enum.any?(current_user.roles, &(&1 in @members_admin_roles)) do
+    if current_session.principal.id == member_id or
+         Enum.any?(current_session.roles, &(&1 in @members_admin_roles)) do
       :ok
     else
       {:error, :forbidden}

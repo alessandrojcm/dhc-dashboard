@@ -41,7 +41,7 @@ defmodule DhcWeb.WorkshopsController do
   interest and registration state.
   """
   def list(conn, params) do
-    workshops = Workshops.list_member_workshops(conn.assigns.current_user.sub, params)
+    workshops = Workshops.list_member_workshops(conn.assigns.current_session.principal.id, params)
 
     conn
     |> put_view(json: DhcWeb.WorkshopsJSON)
@@ -56,7 +56,7 @@ defmodule DhcWeb.WorkshopsController do
   def create(conn, params) do
     params
     |> management_attrs()
-    |> Workshops.create_workshop(conn.assigns.current_user.sub)
+    |> Workshops.create_workshop(conn.assigns.current_session.principal.id)
     |> case do
       {:ok, workshop} ->
         conn
@@ -131,7 +131,7 @@ defmodule DhcWeb.WorkshopsController do
   POST /workshops/{id}/cancel
   """
   def cancel(conn, %{"id" => id}) do
-    case Workshops.cancel_workshop(id, conn.assigns.current_user.sub) do
+    case Workshops.cancel_workshop(id, conn.assigns.current_session.principal.id) do
       {:ok, workshop} -> render_management(conn, Workshops.workshop_summary(workshop.id))
       {:error, reason} -> lifecycle_error(conn, reason)
     end
@@ -143,7 +143,7 @@ defmodule DhcWeb.WorkshopsController do
   Toggles the authenticated member's interest in a planned Workshop.
   """
   def toggle_interest(conn, %{"id" => id}) do
-    case Workshops.toggle_interest(id, conn.assigns.current_user.sub) do
+    case Workshops.toggle_interest(id, conn.assigns.current_session.principal.id) do
       {:ok, result} ->
         conn
         |> put_view(json: DhcWeb.WorkshopsJSON)
@@ -164,7 +164,11 @@ defmodule DhcWeb.WorkshopsController do
   registration after duplicate and capacity checks.
   """
   def create_registration_payment_intent(conn, %{"id" => id} = params) do
-    case Workshops.create_member_payment_intent(id, conn.assigns.current_user.sub, params) do
+    case Workshops.create_member_payment_intent(
+           id,
+           conn.assigns.current_session.principal.id,
+           params
+         ) do
       {:ok, result} ->
         conn
         |> put_view(json: DhcWeb.WorkshopsJSON)
@@ -184,7 +188,7 @@ defmodule DhcWeb.WorkshopsController do
   def complete_registration(conn, %{"id" => id, "paymentIntentId" => payment_intent_id}) do
     case Workshops.complete_member_registration(
            id,
-           conn.assigns.current_user.sub,
+           conn.assigns.current_session.principal.id,
            payment_intent_id
          ) do
       {:ok, registration} ->
@@ -257,7 +261,7 @@ defmodule DhcWeb.WorkshopsController do
   Cancels the authenticated member's active registration.
   """
   def cancel_registration(conn, %{"id" => id}) do
-    case Workshops.cancel_member_registration(id, conn.assigns.current_user.sub) do
+    case Workshops.cancel_member_registration(id, conn.assigns.current_session.principal.id) do
       {:ok, result} ->
         conn
         |> put_view(json: DhcWeb.WorkshopsJSON)
@@ -333,7 +337,7 @@ defmodule DhcWeb.WorkshopsController do
            workshop_id,
            registration_id,
            reason,
-           conn.assigns.current_user.sub
+           conn.assigns.current_session.principal.id
          ) do
       {:ok, refund} ->
         rendered_refund =
@@ -360,7 +364,11 @@ defmodule DhcWeb.WorkshopsController do
   def update_attendance(conn, %{"id" => id, "updates" => updates}) when is_list(updates) do
     with {:ok, updates} <- attendance_updates(updates),
          {:ok, registrations} <-
-           Workshops.update_workshop_attendance(id, conn.assigns.current_user.sub, updates) do
+           Workshops.update_workshop_attendance(
+             id,
+             conn.assigns.current_session.principal.id,
+             updates
+           ) do
       conn
       |> put_view(json: DhcWeb.WorkshopsJSON)
       |> render(:attendance, registrations: registrations)

@@ -10,8 +10,20 @@ vi.mock("@dhc/api-client", async (importOriginal) => ({
 	workshopsUpdateAttendance,
 }));
 
+// ALE-164: the helper now takes a `Cookies` (SvelteKit request cookies) and
+// forwards the `_dhc_session` cookie to Phoenix, instead of the prior Supabase
+// `access_token`.
+function fakeCookies(sessionCookie: string | undefined): {
+	get: (name: string) => string | undefined;
+} {
+	return {
+		get: (name: string) =>
+			name === "_dhc_session" ? sessionCookie : undefined,
+	};
+}
+
 describe("submitWorkshopAttendance", () => {
-	it("sends the authenticated coordinator's atomic updates through the generated client", async () => {
+	it("sends the authenticated coordinator's atomic updates through the generated client with the session cookie", async () => {
 		workshopsUpdateAttendance.mockResolvedValue({
 			data: {
 				data: {
@@ -26,9 +38,7 @@ describe("submitWorkshopAttendance", () => {
 		});
 
 		const result = await submitWorkshopAttendance(
-			{
-				access_token: "coordinator-token",
-			} as never,
+			fakeCookies("signed-session-cookie"),
 			{
 				workshopId: "11111111-1111-1111-1111-111111111111",
 				updates: [
@@ -43,7 +53,8 @@ describe("submitWorkshopAttendance", () => {
 
 		expect(workshopsUpdateAttendance).toHaveBeenCalledWith({
 			baseUrl: "http://localhost:4000/api",
-			auth: "coordinator-token",
+			credentials: "include",
+			headers: { cookie: "_dhc_session=signed-session-cookie" },
 			path: { workshopId: "11111111-1111-1111-1111-111111111111" },
 			body: {
 				updates: [

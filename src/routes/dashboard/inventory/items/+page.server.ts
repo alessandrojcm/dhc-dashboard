@@ -6,11 +6,13 @@ import {
 	inventoryContainersIndex,
 } from "@dhc/api-client";
 
-export const load = async ({ locals }: { locals: App.Locals }) => {
-	const session = await authorize(locals, INVENTORY_ROLES);
+import type { PageServerLoad } from "./$types";
+
+export const load: PageServerLoad = async ({ locals, cookies }) => {
+	await authorize(locals, INVENTORY_ROLES);
 	const [categoriesResponse, containersResponse] = await Promise.all([
-		inventoryCategoriesIndex(apiClientOptions(session)),
-		inventoryContainersIndex(apiClientOptions(session)),
+		inventoryCategoriesIndex(apiClientOptions(cookies)),
+		inventoryContainersIndex(apiClientOptions(cookies)),
 	]);
 
 	if (categoriesResponse.error) {

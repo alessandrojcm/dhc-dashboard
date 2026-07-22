@@ -8,11 +8,11 @@ import * as Breadcrumb from "$lib/components/ui/breadcrumb";
 import { Separator } from "$lib/components/ui/separator";
 import { createQuery } from "@tanstack/svelte-query";
 import { goto } from "$app/navigation";
+import { invalidateAll, invalidate } from "$app/navigation";
 import { resolve } from "$app/paths";
-import { membersMeOptions } from "@dhc/api-client";
+import { membersMeOptions, authDeleteSession } from "@dhc/api-client";
 
 let { children, data }: { data: LayoutData; children: any } = $props();
-let supabase = $derived(data.supabase);
 let roles = $derived.by(() => new Set(data.roles));
 let paths = $derived.by(() => page.url.pathname.split("/"));
 const userDataQuery = createQuery(() => ({
@@ -29,6 +29,27 @@ const userDataQuery = createQuery(() => ({
 	}),
 }));
 
+/**
+ * ALE-164: sign out via `DELETE /api/auth/session` (Phoenix revokes the
+ * session token and clears the `_dhc_session` cookie). The generated
+ * client sends the cookie with `credentials: 'include'`; no Supabase
+ * `auth.signOut()` call remains.
+ */
+async function logout() {
+	try {
+		await authDeleteSession();
+	} catch {
+		// Even if Phoenix is unreachable, clear the local session and
+		// redirect — the cookie will expire on its own.
+	}
+	await invalidateAll();
+	await invalidate("phoenix:session");
+	await goto(resolve("/auth"), {
+		replaceState: true,
+		invalidateAll: true,
+	});
+}
+
 function getLink(item: string): string {
 	let index = paths.indexOf(item);
 	if (index === -1) {
@@ -44,16 +65,9 @@ function getLink(item: string): string {
 <SidebarProvider class="h-[calc(100vh-5rem)]">
 	<DashboardSidebar
 		{roles}
-		logout={async () => {
-			await supabase.auth.signOut();
-			goto(resolve('/auth'), {
-				replaceState: true,
-				invalidateAll: true
-			});
-		}}
+		{logout}
 		userData={userDataQuery.promise}
 		navData={data.navData}
-		{supabase}
 	/>
 	<main class="w-full">
 		<Breadcrumb.Root class="m-6">

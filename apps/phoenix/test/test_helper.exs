@@ -76,6 +76,56 @@ end
 repo_config = Application.get_env(:dhc, Dhc.Repo, [])
 Application.put_env(:dhc, Dhc.Repo, Keyword.merge(repo_config, hostname: "localhost", port: port))
 
+# 5a. Grant CREATE on the `auth` schema to the test user so the ALE-166
+#     rehearsal fixture can create `auth.identities` (the GoTrue-managed
+#     table that exists in production but is absent from the
+#     testcontainers image's older auth schema — see
+#     test/support/fixtures/auth_migration_fixtures.ex). The `auth` schema
+#     is owned by `supabase_admin`; the test user (`postgres`) has USAGE
+#     but not CREATE. We connect once as `supabase_admin` (same
+#     POSTGRES_PASSWORD) to grant CREATE. This is test-only scaffolding;
+#     production M1 finds `auth.identities` already created by GoTrue.
+{:ok, _} = Application.ensure_all_started(:postgrex)
+
+{:ok, grant_conn} =
+  Postgrex.start_link(
+    hostname: "localhost",
+    port: port,
+    username: "supabase_admin",
+    password: System.get_env("POSTGRES_PASSWORD", "postgres"),
+    database: System.get_env("POSTGRES_DB", "postgres")
+  )
+
+Postgrex.query!(grant_conn, "GRANT CREATE ON SCHEMA auth TO postgres", [])
+GenServer.stop(grant_conn)
+
+# Create the production-shaped GoTrue identities table before Ecto migrations
+# so M1 can treat a missing source table as a hard anomaly. Create it as the
+# normal test user (after the grant) so sandboxed rehearsal tests may alter its
+# constraints to model otherwise-impossible corrupt source states.
+{:ok, identities_conn} =
+  Postgrex.start_link(
+    hostname: "localhost",
+    port: port,
+    username: "postgres",
+    password: System.get_env("POSTGRES_PASSWORD", "postgres"),
+    database: System.get_env("POSTGRES_DB", "postgres")
+  )
+
+Postgrex.query!(
+  identities_conn,
+  Dhc.AuthMigrationFixtures.auth_identities_table_sql(),
+  []
+)
+
+Postgrex.query!(
+  identities_conn,
+  Dhc.AuthMigrationFixtures.auth_identities_index_sql(),
+  []
+)
+
+GenServer.stop(identities_conn)
+
 # 6. Run migrations BEFORE starting the full app. Oban (a child of the app
 #    supervisor) runs `verify_migrated!` at startup when `testing: :manual`
 #    (our mode — disables peers/plugins/queues but still checks the table),

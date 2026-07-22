@@ -7,7 +7,7 @@ defmodule DhcWeb.NotificationsController do
   GET /notifications
   """
   def index(conn, params) do
-    user_id = conn.assigns.current_user.sub
+    user_id = conn.assigns.current_session.principal.id
 
     case Notifications.list_for_user(user_id, params) do
       {:ok, result} ->
@@ -25,7 +25,7 @@ defmodule DhcWeb.NotificationsController do
 
   @doc "PATCH /notifications/:id/read"
   def mark_read(conn, %{"id" => notification_id}) do
-    user_id = conn.assigns.current_user.sub
+    user_id = conn.assigns.current_session.principal.id
 
     case Notifications.mark_read(user_id, notification_id) do
       {:ok, notification} ->
@@ -42,7 +42,7 @@ defmodule DhcWeb.NotificationsController do
 
   @doc "POST /notifications/read-all"
   def mark_all_read(conn, _params) do
-    {:ok, updated_count} = Notifications.mark_all_read(conn.assigns.current_user.sub)
+    {:ok, updated_count} = Notifications.mark_all_read(conn.assigns.current_session.principal.id)
 
     conn
     |> put_view(json: DhcWeb.NotificationsJSON)

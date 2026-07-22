@@ -8,7 +8,7 @@ defmodule Dhc.UserProfiles.UserProfile do
   @foreign_key_type :binary_id
   @type t :: %__MODULE__{}
   schema "user_profiles" do
-    field :supabase_user_id, Ecto.UUID
+    field :principal_id, Ecto.UUID
     field :first_name, :string
     field :last_name, :string
     field :is_active, :boolean, default: true

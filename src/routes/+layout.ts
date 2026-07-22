@@ -1,59 +1,19 @@
-import {
-	createBrowserClient,
-	createServerClient,
-	isBrowser,
-} from "@supabase/ssr";
-import {
-	PUBLIC_SUPABASE_ANON_KEY,
-	PUBLIC_SUPABASE_URL,
-} from "$env/static/public";
-import type { Database } from "../database.types";
 import type { LayoutLoad } from "./$types";
 
-export const load: LayoutLoad = async ({ data, depends, fetch }) => {
-	/**
-	 * Declare a dependency so the layout can be invalidated, for example, on
-	 * session refresh.
-	 */
-	depends("supabase:auth");
+/**
+ * ALE-164: the dashboard authenticates through the Phoenix Session cookie.
+ * The Supabase browser client is no longer constructed here; the session
+ * projection is read from the layout data (populated by the root
+ * `+layout.server.ts` via `GET /api/auth/session`).
+ *
+ * The `depends("supabase:auth")` call is replaced with a Phoenix-session
+ * dependency key so `invalidateAll()` / `invalidate("phoenix:session")` can
+ * trigger a session re-read.
+ */
+export const load: LayoutLoad = async ({ data, depends }) => {
+	depends("phoenix:session");
 
-	const supabase = isBrowser()
-		? createBrowserClient<Database>(
-				PUBLIC_SUPABASE_URL,
-				PUBLIC_SUPABASE_ANON_KEY,
-				{
-					global: {
-						fetch,
-					},
-				},
-			)
-		: createServerClient<Database>(
-				PUBLIC_SUPABASE_URL,
-				PUBLIC_SUPABASE_ANON_KEY,
-				{
-					global: {
-						fetch,
-					},
-					cookies: {
-						getAll() {
-							return data.cookies;
-						},
-					},
-				},
-			);
-
-	/**
-	 * It's fine to use `getSession` here, because on the client, `getSession` is
-	 * safe, and on the server, it reads `session` from the `LayoutData`, which
-	 * safely checked the session using `safeGetSession`.
-	 */
-	const {
-		data: { session },
-	} = await supabase.auth.getSession();
-
-	const {
-		data: { user },
-	} = await supabase.auth.getUser();
-
-	return { session, supabase, user };
+	return {
+		session: data.session,
+	};
 };
