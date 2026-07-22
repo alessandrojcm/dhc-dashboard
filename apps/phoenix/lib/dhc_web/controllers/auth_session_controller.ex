@@ -36,6 +36,7 @@ defmodule DhcWeb.AuthSessionController do
   use DhcWeb, :controller
 
   import Plug.Conn
+  require Logger
 
   alias Dhc.Auth
   alias DhcWeb.AuthSessionJSON
@@ -76,6 +77,11 @@ defmodule DhcWeb.AuthSessionController do
           {:ok, %{session_token: session_token}} ->
             :telemetry.execute([:dhc, :auth, :discord, :succeeded], %{}, %{})
 
+            Logger.info("[auth] Discord sign-in succeeded",
+              provider: "discord",
+              outcome: "succeeded"
+            )
+
             app_url = Application.get_env(:dhc, :app_url, "http://localhost:5173")
 
             conn
@@ -84,11 +90,13 @@ defmodule DhcWeb.AuthSessionController do
 
           {:error, :invalid} ->
             :telemetry.execute([:dhc, :auth, :discord, :failed], %{}, %{})
+            log_discord_failure("account_validation")
             discord_failure(conn)
         end
 
       {:error, _reason} ->
         :telemetry.execute([:dhc, :auth, :discord, :failed], %{}, %{})
+        log_discord_failure("oauth_callback")
         discord_failure(conn)
     end
   end
@@ -229,6 +237,7 @@ defmodule DhcWeb.AuthSessionController do
     [
       sign: true,
       http_only: true,
+      secure: Application.get_env(:dhc, :auth_session_secure, false),
       same_site: "Lax",
       path: "/",
       max_age: @session_max_age
@@ -253,6 +262,14 @@ defmodule DhcWeb.AuthSessionController do
   defp discord_failure(conn) do
     app_url = Application.get_env(:dhc, :app_url, "http://localhost:5173")
     redirect(conn, external: "#{app_url}/auth?discord=failed")
+  end
+
+  defp log_discord_failure(stage) do
+    Logger.warning("[auth] Discord sign-in failed at #{stage}",
+      provider: "discord",
+      outcome: "failed",
+      failure_stage: stage
+    )
   end
 
   defp render_view(conn, template, assigns \\ %{})

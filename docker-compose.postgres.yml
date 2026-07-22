@@ -1,0 +1,24 @@
+name: dhc-postgres
+
+services:
+  db:
+    build:
+      context: .
+      dockerfile: Dockerfile.postgres
+    image: dhc-postgres:latest
+    ports:
+      - "54322:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - dhc_postgres_data:/var/lib/postgresql
+
+volumes:
+  dhc_postgres_data:

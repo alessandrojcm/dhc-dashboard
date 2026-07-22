@@ -3,6 +3,7 @@ defmodule Dhc.Repo.Migrations.CreateExtensionsAndEnums do
 
   def up do
     # Required extensions
+    execute "CREATE SCHEMA IF NOT EXISTS extensions"
     execute "CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\""
     execute "CREATE EXTENSION IF NOT EXISTS pg_jsonschema WITH SCHEMA extensions"
 
