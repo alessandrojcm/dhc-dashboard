@@ -34,7 +34,7 @@ mise run test-e2e           # Playwright (requires Supabase, Phoenix, and Svelte
 mise run check              # Svelte type check (NOT raw tsc)
 
 # Lint & format
-mise run lint               # ESLint + Prettier check
+mise run lint               # ESLint + Biome check
 mise run format             # Auto-format with Biome
 ```
 

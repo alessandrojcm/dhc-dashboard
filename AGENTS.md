@@ -1,13 +1,10 @@
 # PROJECT KNOWLEDGE BASE
 
-**Status:** Active migration from SvelteKit + Supabase to Phoenix + Ecto + Oban
+**Status:** Phoenix + Ecto + Oban migration complete
 
 ## Overview
 
-Dublin Hema Club dashboard: currently SvelteKit 2.x + Svelte 5 + Supabase + Stripe. Progressive migration to Phoenix + Ecto + Oban underway. Member management, workshops, payments, inventory.
-
-- **Phase 1**: Edge functions → Oban, then service layer → Phoenix API. SvelteKit consumes Phoenix via typed OpenAPI client.
-- **Phase 2** (future): Evaluate LiveView migration.
+Dublin Hema Club dashboard: SvelteKit 2.x + Svelte 5 frontend with a Phoenix + Ecto + Oban backend. SvelteKit consumes Phoenix through a typed OpenAPI client. Member management, workshops, payments, inventory.
 
 ## Navigation
 

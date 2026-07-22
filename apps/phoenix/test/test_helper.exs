@@ -5,9 +5,10 @@
 # this file runs. That lets us:
 #
 #   1. Start the testcontainers GenServer.
-#   2. Build the Docker Compose config (root docker-compose.yml, `db` profile,
-#      `db` service only).
-#   3. Start compose — `docker compose --profile db up -d --wait` runs and gates
+#   2. Build the Docker Compose config (root docker-compose.yml, `testing`
+#      profile, `test-db` service only).
+#   3. Start compose — `docker compose --profile testing up -d --wait test-db`
+#      runs and gates
 #      on the `pg_isready` healthcheck in docker-compose.yml.
 #   4. Read the dynamically-allocated host port for the db service's internal
 #      5432. testcontainers allocates a random host port per run; this is the
@@ -46,27 +47,28 @@
 Application.ensure_all_started(:hackney)
 {:ok, _} = Testcontainers.start_link()
 
-# 2. Build the compose config — root docker-compose.yml, db profile only.
+# 2. Build the compose config — root docker-compose.yml, testing profile only.
 compose_config =
   Testcontainers.DockerCompose.new(".")
-  |> Testcontainers.DockerCompose.with_profile("db")
-  |> Testcontainers.DockerCompose.with_services(["db"])
+  |> Testcontainers.DockerCompose.with_profile("testing")
+  |> Testcontainers.DockerCompose.with_services(["test-db"])
 
-# 3. Start compose (runs `docker compose --profile db up -d --wait`; gates on
-#    the upstream pg_isready healthcheck — no explicit wait strategy needed).
+# 3. Start compose (runs `docker compose --profile testing up -d --wait
+#    test-db`; gates on the upstream pg_isready healthcheck — no explicit wait
+#    strategy needed).
 {:ok, env} = Testcontainers.start_compose(compose_config)
 
-# 4. Read the dynamically-allocated host port for the db service. The third
+# 4. Read the dynamically-allocated host port for the test-db service. The third
 #    argument MUST be an integer (the container-internal port 5432); the
 #    guard is is_integer(port). Returns nil if the service isn't found.
-port = Testcontainers.Compose.ComposeEnvironment.get_service_port(env, "db", 5432)
+port = Testcontainers.Compose.ComposeEnvironment.get_service_port(env, "test-db", 5432)
 
 if is_nil(port) do
   raise """
-  db service did not expose port 5432 to the host.
-  Check docker-compose.yml (db must be in the `db` profile and expose "5432")
-  and that `docker compose --profile db up -d --wait` reports the db container
-  healthy.
+  test-db service did not expose port 5432 to the host.
+  Check docker-compose.yml (test-db must be in the `testing` profile and expose
+  "5432") and that `docker compose --profile testing up -d --wait test-db`
+  reports the test database healthy.
   """
 end
 
@@ -75,56 +77,6 @@ end
 #    config/test.exs; only hostname/port are dynamic per run.
 repo_config = Application.get_env(:dhc, Dhc.Repo, [])
 Application.put_env(:dhc, Dhc.Repo, Keyword.merge(repo_config, hostname: "localhost", port: port))
-
-# 5a. Grant CREATE on the `auth` schema to the test user so the ALE-166
-#     rehearsal fixture can create `auth.identities` (the GoTrue-managed
-#     table that exists in production but is absent from the
-#     testcontainers image's older auth schema — see
-#     test/support/fixtures/auth_migration_fixtures.ex). The `auth` schema
-#     is owned by `supabase_admin`; the test user (`postgres`) has USAGE
-#     but not CREATE. We connect once as `supabase_admin` (same
-#     POSTGRES_PASSWORD) to grant CREATE. This is test-only scaffolding;
-#     production M1 finds `auth.identities` already created by GoTrue.
-{:ok, _} = Application.ensure_all_started(:postgrex)
-
-{:ok, grant_conn} =
-  Postgrex.start_link(
-    hostname: "localhost",
-    port: port,
-    username: "supabase_admin",
-    password: System.get_env("POSTGRES_PASSWORD", "postgres"),
-    database: System.get_env("POSTGRES_DB", "postgres")
-  )
-
-Postgrex.query!(grant_conn, "GRANT CREATE ON SCHEMA auth TO postgres", [])
-GenServer.stop(grant_conn)
-
-# Create the production-shaped GoTrue identities table before Ecto migrations
-# so M1 can treat a missing source table as a hard anomaly. Create it as the
-# normal test user (after the grant) so sandboxed rehearsal tests may alter its
-# constraints to model otherwise-impossible corrupt source states.
-{:ok, identities_conn} =
-  Postgrex.start_link(
-    hostname: "localhost",
-    port: port,
-    username: "postgres",
-    password: System.get_env("POSTGRES_PASSWORD", "postgres"),
-    database: System.get_env("POSTGRES_DB", "postgres")
-  )
-
-Postgrex.query!(
-  identities_conn,
-  Dhc.AuthMigrationFixtures.auth_identities_table_sql(),
-  []
-)
-
-Postgrex.query!(
-  identities_conn,
-  Dhc.AuthMigrationFixtures.auth_identities_index_sql(),
-  []
-)
-
-GenServer.stop(identities_conn)
 
 # 6. Run migrations BEFORE starting the full app. Oban (a child of the app
 #    supervisor) runs `verify_migrated!` at startup when `testing: :manual`
