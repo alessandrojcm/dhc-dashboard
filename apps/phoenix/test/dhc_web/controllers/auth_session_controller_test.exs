@@ -2,6 +2,7 @@ defmodule DhcWeb.AuthSessionControllerTest do
   use DhcWeb.ConnCase, async: true
 
   import Dhc.AuthFixtures
+  import ExUnit.CaptureLog
   alias Dhc.Auth.PrincipalToken
   alias Dhc.Repo
 
@@ -31,7 +32,11 @@ defmodule DhcWeb.AuthSessionControllerTest do
         |> get("/api/auth/discord/callback?state=test-state&code=success")
 
       assert redirected_to(conn, 302) == "http://localhost:5173/dashboard"
-      assert conn.resp_cookies[@session_cookie]
+
+      cookie = conn.resp_cookies[@session_cookie]
+      assert cookie
+      assert cookie.domain == ".dublinhemaclub.com"
+      assert cookie.secure
 
       identity =
         Repo.get_by!(Dhc.Auth.ExternalIdentity,
@@ -60,6 +65,29 @@ defmodule DhcWeb.AuthSessionControllerTest do
 
       conn = post(conn(), "/api/auth/magic-link", %{"email" => "unknown-discord@example.com"})
       assert %{"data" => %{"sent" => true}} = json_response(conn, 200)
+    end
+
+    test "logs non-personal failure stages for Sentry" do
+      oauth_log =
+        capture_log(fn ->
+          conn = get(conn(), "/api/auth/discord/callback?state=wrong&code=success")
+          assert redirected_to(conn, 302) == "http://localhost:5173/auth?discord=failed"
+        end)
+
+      assert oauth_log =~ "[auth] Discord sign-in failed at oauth_callback"
+
+      account_log =
+        capture_log(fn ->
+          conn =
+            conn()
+            |> get("/api/auth/discord")
+            |> recycle()
+            |> get("/api/auth/discord/callback?state=test-state&code=unknown")
+
+          assert redirected_to(conn, 302) == "http://localhost:5173/auth?discord=failed"
+        end)
+
+      assert account_log =~ "[auth] Discord sign-in failed at account_validation"
     end
   end
 

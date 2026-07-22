@@ -65,6 +65,8 @@ config :dhc, :invitation_verification_token_salt, "invitation-verification-test"
 config :dhc, :supabase_url, "https://supabase.example.com"
 config :dhc, :supabase_service_role_key, "test-service-role-key"
 config :dhc, :app_url, "http://localhost:5173"
+config :dhc, :auth_session_domain, ".dublinhemaclub.com"
+config :dhc, :auth_session_secure, true
 config :dhc, :environment, :test
 config :dhc, :cors_allowed_origins, ["http://localhost:5173"]
 config :dhc, :discord_oauth_strategy, Dhc.DiscordOAuthStub

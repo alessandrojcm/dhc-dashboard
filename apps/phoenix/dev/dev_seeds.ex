@@ -544,7 +544,7 @@ defmodule Dhc.DevSeeds do
       on_conflict:
         {:replace,
          [
-           :supabase_user_id,
+           :principal_id,
            :first_name,
            :last_name,
            :phone_number,

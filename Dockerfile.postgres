@@ -1,0 +1,19 @@
+FROM postgres:latest
+
+ARG PG_JSONSCHEMA_VERSION=0.3.4
+ARG TARGETARCH
+
+RUN set -eux; \
+    apt-get update; \
+    apt-get install --yes --no-install-recommends ca-certificates curl; \
+    case "${TARGETARCH}" in \
+      amd64|arm64) extension_arch="${TARGETARCH}" ;; \
+      *) echo "Unsupported architecture: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac; \
+    extension_package="pg_jsonschema-v${PG_JSONSCHEMA_VERSION}-pg${PG_MAJOR}-${extension_arch}-linux-gnu.deb"; \
+    curl --fail --location --output "/tmp/${extension_package}" \
+      "https://github.com/supabase/pg_jsonschema/releases/download/v${PG_JSONSCHEMA_VERSION}/${extension_package}"; \
+    apt-get install --yes --no-install-recommends "/tmp/${extension_package}"; \
+    rm -f "/tmp/${extension_package}"; \
+    apt-get purge --yes --auto-remove curl; \
+    rm -rf /var/lib/apt/lists/*
