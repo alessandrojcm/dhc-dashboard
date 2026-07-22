@@ -1,110 +1,41 @@
-# Docker Compose for the project.
-#
-# Uniform-profile: every service carries a `profiles:` entry, so a bare
-# `docker compose up` starts nothing. Use `--profile <name>` to select a set:
-#
-#   Test harness (Phoenix):     docker compose --profile db up -d --wait
-#   E2E / full Supabase stack:  docker compose --profile supabase up -d --wait
-#
-# See docs/adr/0006-testcontainers-driven-phoenix-test-harness.md for why the
-# `db` profile is driven by testcontainers-elixir for `mix test`, and why the
-# `supabase` profile (auth/kong/rest) is reserved for a future E2E migration.
-
 name: dhc-dashboard
 
 services:
-  # ── Postgres (test harness + E2E shared surface) ─────────────
-  # supabase/postgres ships pg_jsonschema in the `extensions` schema and the
-  # full auth schema (auth.users, supabase_auth_admin role) at init via the
-  # image's built-in 00000000000001-auth-schema.sql. No bespoke init SQL is
-  # mounted — that was a deliberate decision (ADR 0006, Considered Options).
-  # The `db` profile is the only one exercised by the Phoenix test harness.
+  # Persistent local development database. A plain `docker compose up -d`
+  # starts this service on the port used by the Phoenix mise tasks.
   db:
-    image: supabase/postgres:17.6.1.136
-    profiles: ["db", "supabase"]
+    image: postgres:17
     ports:
-      - "5432" # string form → dynamic allocation by testcontainers; --wait resolves the mapped port
+      - "54322:5432"
     environment:
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "postgres", "-h", "localhost"]
-      interval: 5s
+      test: ["CMD-SHELL", "pg_isready -U postgres -d postgres"]
+      interval: 2s
       timeout: 5s
       retries: 10
-    command:
-      - postgres
-      - -c
-      - config_file=/etc/postgresql/postgresql.conf
-      - -c
-      - log_min_messages=fatal
-
-  # ── GoTrue (auth) — E2E only ──────────────────────────────────
-  # The Phoenix test harness stubs auth at the :auth_verifier seam, so
-  # GoTrue is not exercised by `mix test`. It lives under the `supabase`
-  # profile so the same compose file can drive E2E later. Requires
-  # additional env vars (JWT_SECRET, SITE_URL, SMTP_*, etc.) supplied by
-  # the E2E wiring — left stub-shaped here so the file is reusable.
-  auth:
-    image: supabase/gotrue:v2.189.0
-    profiles: ["supabase"]
-    depends_on:
-      db:
-        condition: service_healthy
-    environment:
-      GOTRUE_API_HOST: 0.0.0.0
-      GOTRUE_API_PORT: 9999
-      # Wire these up when E2E lands; placeholders keep the file valid.
-      API_EXTERNAL_URL: ${API_EXTERNAL_URL:-http://localhost:8000}
-      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
-      GOTRUE_JWT_SECRET: ${JWT_SECRET}
-      GOTRUE_SITE_URL: ${SITE_URL:-http://localhost:5173}
-
-  # ── Kong (API gateway) — E2E only ─────────────────────────────
-  # Declarative config + entrypoint stub live under volumes/api/ so the
-  # service definition is complete; full routing config is filled out when
-  # E2E is wired (ADR 0006, Consequences: E2E deferred).
-  kong:
-    image: kong/kong:3.9.1
-    profiles: ["supabase"]
-    depends_on:
-      - auth
-      - rest
-    # Dynamic host-port allocation (string form). E2E will pin these to fixed
-    # host ports when it wires the `supabase` profile — left dynamic here so a
-    # malformed KONG_HTTP_PORT/KONG_HTTPS_PORT in .env doesn't break compose
-    # validation for the (unused-for-now) supabase profile.
-    ports:
-      - "8000"
-      - "8443"
     volumes:
-      - ./volumes/api/kong.yml:/home/kong/temp.yml:ro
-      - ./volumes/api/kong-entrypoint.sh:/home/kong/kong-entrypoint.sh:ro
-    environment:
-      KONG_DATABASE: "off"
-      KONG_DECLARATIVE_CONFIG: /usr/local/kong/kong.yml
-      KONG_DNS_ORDER: LAST,A,CNAME
-      KONG_DNS_NOT_FOUND_TTL: 1
-      KONG_PLUGINS: request-transformer,cors,key-auth,acl,basic-auth,request-termination,ip-restriction,post-function
-      KONG_NGINX_PROXY_PROXY_BUFFER_SIZE: 160k
-      KONG_NGINX_PROXY_PROXY_BUFFERS: 64 160k
-      KONG_PROXY_ACCESS_LOG: /dev/stdout combined
-      SUPABASE_ANON_KEY: ${ANON_KEY}
-      SUPABASE_SERVICE_KEY: ${SERVICE_ROLE_KEY}
-    entrypoint: ["/bin/sh", "/home/kong/kong-entrypoint.sh"]
+      - dhc_postgres_data:/var/lib/postgresql/data
 
-  # ── PostgREST — E2E only ──────────────────────────────────────
-  # Not exercised by Phoenix tests (RLS read migration replaces
-  # PostgREST reads with Phoenix APIs). Kept for future E2E parity.
-  rest:
-    image: postgrest/postgrest:v14.12
-    profiles: ["supabase"]
-    depends_on:
-      db:
-        condition: service_healthy
+  # Disposable testcontainers database. The dynamic host port and absence of
+  # a named volume keep concurrent and repeated Phoenix test runs isolated.
+  test-db:
+    image: postgres:17
+    profiles: ["testing"]
+    ports:
+      - "5432"
     environment:
-      PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
-      PGRST_DB_SCHEMAS: ${PGRST_DB_SCHEMAS:-public}
-      PGRST_DB_ANON_ROLE: anon
-      PGRST_JWT_SECRET: ${JWT_SECRET}
-    command: ["postgrest"]
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ${POSTGRES_DB:-postgres}"]
+      interval: 2s
+      timeout: 5s
+      retries: 10
+    command: ["postgres", "-c", "log_min_messages=fatal"]
+
+volumes:
+  dhc_postgres_data:

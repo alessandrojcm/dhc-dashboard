@@ -1,1 +1,0 @@
-alter TABLE user_profiles add column customer_id text;

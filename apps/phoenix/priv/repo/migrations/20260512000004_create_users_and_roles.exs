@@ -48,7 +48,9 @@ defmodule Dhc.Repo.Migrations.CreateUsersAndRoles do
 
     # supabase_user_id must be unique — referenced by FK in a later migration
     # (club_activity_registrations.member_user_id -> user_profiles.supabase_user_id).
-    create unique_index(:user_profiles, [:supabase_user_id])
+    create unique_index(:user_profiles, [:supabase_user_id],
+             name: :user_profiles_supabase_user_id_key
+           )
 
     execute "CREATE INDEX idx_user_profiles_search ON user_profiles USING GIN (search_text)"
     create index(:user_profiles, [:waitlist_id])
@@ -79,7 +81,7 @@ defmodule Dhc.Repo.Migrations.CreateUsersAndRoles do
     )
     """
 
-    create index(:user_roles, [:role, :user_id, :id])
+    create index(:user_roles, [:role, :user_id, :id], name: :idx_user_role)
 
     # ── user_audit_log ──────────────────────────────────────
     create table(:user_audit_log, primary_key: false) do
