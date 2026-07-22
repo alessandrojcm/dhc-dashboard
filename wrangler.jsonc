@@ -18,6 +18,12 @@
     "enabled": true,
     "head_sampling_rate": 0.1,
   },
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "efaaf95632d34c21b6bc8e32b65f5f9a",
+    },
+  ],
   "vars": {
     "VITE_PUBLIC_SENTRY_ENABLED": "true",
     "API_BASE_URL": "https://api.dublinhemaclub.com/api",
@@ -27,6 +33,6 @@
     // TLS is required to keep it off the wire. Fly terminates TLS at its
     // proxy; Bandit speaks WebSocket on the same port as HTTP.
     "PUBLIC_PHOENIX_SOCKET_URL": "wss://api.dublinhemaclub.com/socket",
-    "PUBLIC_API_BASE_URL": "https://api.dublinhemaclub.com/api"
+    "PUBLIC_API_BASE_URL": "https://api.dublinhemaclub.com/api",
   },
 }
