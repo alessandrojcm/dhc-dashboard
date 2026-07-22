@@ -26,6 +26,7 @@
     // 60s socket token rides in the Sec-WebSocket-Protocol subprotocol, so
     // TLS is required to keep it off the wire. Fly terminates TLS at its
     // proxy; Bandit speaks WebSocket on the same port as HTTP.
-    "PUBLIC_PHOENIX_SOCKET_URL": "wss://api.dublinhemaclub.com/socket"
+    "PUBLIC_PHOENIX_SOCKET_URL": "wss://api.dublinhemaclub.com/socket",
+    "PUBLIC_API_BASE_URL": "https://api.dublinhemaclub.com/api"
   },
 }
