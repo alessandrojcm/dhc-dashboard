@@ -1,0 +1,12 @@
+id: no-bare-fetch
+valid:
+  - |
+      import { healthIndex } from "@dhc/api-client";
+      const result = await healthIndex({ baseUrl: apiBaseUrl() });
+  - |
+      const result = await rawFetch(requestFetch, url, options);
+invalid:
+  - |
+      const response = await fetch("/api/health");
+  - |
+      const response = await fetch(url, { method: "POST", body });

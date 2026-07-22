@@ -107,7 +107,7 @@ Phoenix deploys to Fly.io as an Elixir release built by `apps/phoenix/Dockerfile
 
 ```bash
 # Required locally/CI: flyctl and FLY_API_TOKEN
-mise run phx-fly-deploy        # fly deploy --remote-only
+mise run phx-fly-deploy        # fly deploy --depot (Fly Depot builder, persistent org-scoped layer cache)
 ```
 
 The container runs Phoenix through `fnox exec --profile production -- /app/bin/dhc start`, and the Fly release command runs migrations through the same fnox profile. `fnox.toml` uses the `production` profile and 1Password vault `Production-phoenix-api`. Create one 1Password item per runtime env var (for example `DATABASE_URL`, `SECRET_KEY_BASE`, `STRIPE_SECRET_KEY`) with the value in the item's password field.
@@ -121,6 +121,8 @@ fly secrets set OP_SERVICE_ACCOUNT_TOKEN=ops_... --app dhc-dashboard
 Rotating app secrets in 1Password does not require `fly secrets set` or a new image; restart Machines to reload them through `fnox exec`. Only rotate the Fly secret when the 1Password service account token itself changes.
 
 GitHub Actions workflow: `.github/workflows/deploy-phoenix-fly.yml`. Required GitHub secret: `FLY_API_TOKEN`. Optional GitHub variable: `FLY_PHOENIX_APP` (defaults to `dhc-dashboard`).
+
+The workflow builds with `flyctl deploy --depot` (Fly's Depot builder), which provides persistent org-scoped Docker layer caching across builds. This is faster and more deterministic than `--remote-only`'s pooled builder, which may hand you a cold VM with no cache. The mise toolchain is installed inside the Dockerfile during the remote build, so the workflow does not install mise on the GitHub runner.
 
 ## API Contract (full pipeline)
 
