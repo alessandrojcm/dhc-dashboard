@@ -19,6 +19,7 @@ kill_signal = "SIGTERM"
   POOL_SIZE = "5"
   PORT = "8080"
   CORS_ALLOWED_ORIGINS = "https://dashboard.dublinhemaclub.com"
+  DISCORD_REDIRECT_URI = "https://api.dublinhemaclub.com/api/auth/discord/callback"
 
 [http_service]
   internal_port = 8080

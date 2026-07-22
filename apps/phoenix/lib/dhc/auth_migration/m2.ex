@@ -183,12 +183,12 @@ defmodule Dhc.AuthMigration.M2 do
 
     query!(
       repo,
-      "ALTER INDEX user_profiles_supabase_user_id_index RENAME TO user_profiles_principal_id_index"
+      "ALTER INDEX user_profiles_supabase_user_id_key RENAME TO user_profiles_principal_id_index"
     )
 
     query!(
       repo,
-      "ALTER INDEX user_roles_role_user_id_id_index RENAME TO user_roles_role_principal_id_id_index"
+      "ALTER INDEX idx_user_role RENAME TO user_roles_role_principal_id_id_index"
     )
 
     query!(
@@ -203,12 +203,12 @@ defmodule Dhc.AuthMigration.M2 do
 
     query!(
       repo,
-      "ALTER INDEX user_profiles_principal_id_index RENAME TO user_profiles_supabase_user_id_index"
+      "ALTER INDEX user_profiles_principal_id_index RENAME TO user_profiles_supabase_user_id_key"
     )
 
     query!(
       repo,
-      "ALTER INDEX user_roles_role_principal_id_id_index RENAME TO user_roles_role_user_id_id_index"
+      "ALTER INDEX user_roles_role_principal_id_id_index RENAME TO idx_user_role"
     )
 
     query!(

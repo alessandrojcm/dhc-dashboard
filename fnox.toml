@@ -25,3 +25,5 @@ STRIPE_SECRET_KEY = { provider = "1Password", value = "STRIPE_SECRET_KEY" }
 STRIPE_WEBHOOK_SIGNING_SECRET = { provider = "1Password", value = "STRIPE_WEBHOOK_SIGNING_SECRET" }
 SENTRY_DSN = { provider = "1Password", value = "SENTRY_DSN" }
 INVITATION_VERIFICATION_TOKEN_SALT = { provider = "1Password", value = "INVITATION_VERIFICATION_TOKEN_SALT" }
+DISCORD_CLIENT_ID = { provider = "1Password", value = "DISCORD_CLIENT_ID" }
+DISCORD_CLIENT_SECRET = { provider = "1Password", value = "DISCORD_CLIENT_SECRET" }

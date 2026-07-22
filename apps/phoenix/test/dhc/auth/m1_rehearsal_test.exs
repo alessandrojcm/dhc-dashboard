@@ -155,15 +155,27 @@ defmodule Dhc.AuthM1RehearsalTest do
     end
 
     test "aborts on an orphan user profile before writing targets" do
-      seed_orphan_user_profile()
+      %{profile_id: profile_id, auth_user_id: auth_user_id} = seed_orphan_user_profile()
 
-      assert_abort(:orphan_user_profile)
+      error = assert_abort(:orphan_user_profile)
+
+      assert Exception.message(error) =~
+               "user_profile #{profile_id} -> auth.users #{auth_user_id} does not exist"
+
+      assert Exception.message(error) =~
+               "profiles have a NULL supabase_user_id or reference an auth.users row that does not exist"
     end
 
     test "aborts when a login-backed profile has no Member profile" do
-      seed_member(email: "orphan@example.com", with_member_profile: false)
+      member = seed_member(email: "orphan@example.com", with_member_profile: false)
 
-      assert_abort(:member_profile_missing)
+      error = assert_abort(:member_profile_missing)
+
+      assert Exception.message(error) =~
+               "user_profile #{member.user_profile_id} -> auth.users #{member.auth_user_id}; roles: member"
+
+      assert Exception.message(error) =~
+               "login-backed user_profiles have no member_profiles row linked by user_profile_id"
     end
 
     test "aborts on a normalized-email collision" do
@@ -272,6 +284,7 @@ defmodule Dhc.AuthM1RehearsalTest do
     assert principal_ids() == []
     assert rows("SELECT count(*) FROM external_identities") == [[0]]
     assert rows("SELECT count(*) FROM auth_migration_audit") == [[0]]
+    error
   end
 
   defp seed_auth_user_only(email) do
@@ -289,6 +302,9 @@ defmodule Dhc.AuthM1RehearsalTest do
   end
 
   defp seed_orphan_user_profile do
+    profile_id = Ecto.UUID.generate()
+    auth_user_id = Ecto.UUID.generate()
+
     Repo.query!(
       """
       INSERT INTO user_profiles
@@ -297,8 +313,10 @@ defmodule Dhc.AuthM1RehearsalTest do
       VALUES ($1, $2, 'Orphan', 'Profile', true, '1990-01-01', 'man (cis)',
               '+353810000000', 'no', NOW(), NOW())
       """,
-      [Ecto.UUID.dump!(Ecto.UUID.generate()), Ecto.UUID.dump!(Ecto.UUID.generate())]
+      [Ecto.UUID.dump!(profile_id), Ecto.UUID.dump!(auth_user_id)]
     )
+
+    %{profile_id: profile_id, auth_user_id: auth_user_id}
   end
 
   defp seed_email_identity(user_id, email) do
