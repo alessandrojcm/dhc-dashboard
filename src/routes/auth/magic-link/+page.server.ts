@@ -1,12 +1,7 @@
+import { authVerifyMagicLink } from "@dhc/api-client";
 import { redirect, type Cookies } from "@sveltejs/kit";
-import { env } from "$env/dynamic/private";
+import { apiClientOptions } from "$lib/server/api-client";
 import type { PageServerLoad } from "./$types";
-
-const DEFAULT_API_BASE_URL = "http://localhost:4000/api";
-
-function apiBaseUrl(): string {
-	return env.API_BASE_URL ?? DEFAULT_API_BASE_URL;
-}
 
 /**
  * ALE-164: magic-link verify landing route. The magic-link email points the
@@ -15,27 +10,24 @@ function apiBaseUrl(): string {
  * the signed `_dhc_session` cookie (Set-Cookie on the Phoenix response) and
  * returns the session projection.
  *
- * Because the Phoenix response sets the cookie via `Set-Cookie`, and
- * SvelteKit's `fetch` follows redirects but does not automatically propagate
- * cross-origin `Set-Cookie` to the browser, we re-set the cookie locally from
- * the Phoenix response's `Set-Cookie` header so the browser picks it up. On
- * success, redirect to `/dashboard`. On failure, redirect back to `/auth`
- * with an error.
+ * Because the Phoenix response sets the cookie via `Set-Cookie`, the generated
+ * client response does not automatically propagate it to the browser. We
+ * re-set the cookie locally from the raw response retained by Hey API. On
+ * success, redirect to `/dashboard`. On failure, redirect back to `/auth`.
  */
-export const load: PageServerLoad = async ({ url, cookies, fetch }) => {
+export const load: PageServerLoad = async ({ url, cookies }) => {
 	const token = url.searchParams.get("token");
 	if (!token) {
 		throw redirect(303, "/auth#error_description=Invalid%20magic%20link");
 	}
 
 	try {
-		const response = await fetch(`${apiBaseUrl()}/auth/magic-link/verify`, {
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ token }),
+		const { error, response } = await authVerifyMagicLink({
+			...apiClientOptions(cookies),
+			body: { token },
 		});
 
-		if (!response.ok) {
+		if (error || !response?.ok) {
 			throw redirect(
 				303,
 				"/auth#error_description=Invalid%20or%20expired%20link",
@@ -71,10 +63,10 @@ export const load: PageServerLoad = async ({ url, cookies, fetch }) => {
 
 /**
  * Parse a `Set-Cookie` header value and re-set the cookie on the SvelteKit
- * response so the browser receives it. SvelteKit's `fetch` does not
- * automatically propagate cross-origin `Set-Cookie` to the browser, so we do
- * it explicitly. The cookie name/value and attributes (HttpOnly, SameSite,
- * Path, Max-Age, Domain) come from Phoenix's header.
+ * response so the browser receives it. The generated API request does not
+ * automatically propagate cross-origin `Set-Cookie`, so we do it explicitly.
+ * The cookie name/value and attributes (HttpOnly, SameSite, Path, Max-Age,
+ * Domain) come from Phoenix's header.
  */
 function forwardSetCookie(cookies: Cookies, setCookieHeader: string): void {
 	// Set-Cookie may contain multiple cookies separated by comma, but Phoenix

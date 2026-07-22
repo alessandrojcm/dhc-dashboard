@@ -51,13 +51,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup mise tools
-        uses: jdx/mise-action@v3
-        with:
-          install: true
-
       - name: Setup flyctl
         uses: superfly/flyctl-actions/setup-flyctl@master
 
+      # Build on Fly's Depot builder, which provides persistent org-scoped
+      # Docker layer caching across builds (vs --remote-only's pooled builder,
+      # which may hand you a cold VM with no cache). The mise toolchain is
+      # installed inside the Dockerfile during the remote build, so there's
+      # no need for mise on the GitHub runner.
       - name: Deploy Phoenix release
-        run: flyctl deploy --app "${FLY_APP}" --remote-only
+        run: flyctl deploy --app "${FLY_APP}" --depot
