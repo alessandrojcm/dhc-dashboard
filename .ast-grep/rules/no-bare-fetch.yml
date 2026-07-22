@@ -1,0 +1,16 @@
+id: no-bare-fetch
+language: TypeScript
+severity: error
+files:
+  - src/**/*.ts
+ignores:
+  - src/lib/server/raw-fetch.ts
+rule:
+  pattern: fetch($$$ARGS)
+message: |
+  Do not call fetch directly in application source. Use the generated
+  @dhc/api-client operation instead. If raw HTTP access is genuinely required,
+  centralize it in src/lib/server/raw-fetch.ts for explicit review.
+note: |
+  Direct fetch calls bypass the generated OpenAPI client's request validation,
+  response validation, and typed endpoint contract.

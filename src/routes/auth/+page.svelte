@@ -1,7 +1,7 @@
 <script lang="ts">
 import { DiscordLogo, ExclamationTriangle } from "svelte-radix";
 import { page } from "$app/state";
-import { env } from "$env/dynamic/public";
+import { publicApiUrl } from "$lib/api-client";
 import * as Alert from "$lib/components/ui/alert/index.js";
 import { Button } from "$lib/components/ui/button";
 import { Card } from "$lib/components/ui/card";
@@ -24,9 +24,7 @@ const errorMessage = $derived(
 // biome-ignore lint/correctness/noUnusedVariables: Referenced from the Svelte template.
 const urlMessage = $derived(page.url.searchParams.get("message"));
 // biome-ignore lint/correctness/noUnusedVariables: Referenced from the Svelte template.
-const discordAuthUrl = $derived(
-	`${(env.PUBLIC_API_BASE_URL ?? "http://localhost:4000/api").replace(/\/$/, "")}/auth/discord`,
-);
+const discordAuthUrl = publicApiUrl("/auth/discord");
 </script>
 
 <Card
