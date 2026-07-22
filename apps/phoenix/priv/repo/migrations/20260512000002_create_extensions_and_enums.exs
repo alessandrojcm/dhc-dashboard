@@ -3,9 +3,8 @@ defmodule Dhc.Repo.Migrations.CreateExtensionsAndEnums do
 
   def up do
     # Required extensions
-    execute "CREATE SCHEMA IF NOT EXISTS extensions"
     execute "CREATE EXTENSION IF NOT EXISTS \"uuid-ossp\""
-    execute "CREATE EXTENSION IF NOT EXISTS pg_jsonschema WITH SCHEMA extensions"
+    execute "CREATE EXTENSION IF NOT EXISTS pgcrypto"
 
     # ── Role types ──────────────────────────────────────────────
     execute """
@@ -126,7 +125,7 @@ defmodule Dhc.Repo.Migrations.CreateExtensionsAndEnums do
     execute "DROP TYPE IF EXISTS social_media_consent"
     execute "DROP TYPE IF EXISTS gender"
     execute "DROP TYPE IF EXISTS role_type"
-    execute "DROP EXTENSION IF EXISTS pg_jsonschema"
+    execute "DROP EXTENSION IF EXISTS pgcrypto"
     execute "DROP EXTENSION IF EXISTS \"uuid-ossp\""
   end
 end
