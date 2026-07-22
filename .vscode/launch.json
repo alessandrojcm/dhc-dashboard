@@ -10,7 +10,7 @@
 			"name": "Run pnpm vite dev",
 			"runtimeExecutable": "pnpm",
 			"runtimeArgs": ["vite", "dev", "--host"],
-			"cwd": "${workspaceFolder}",
+			"cwd": "${workspaceFolder}/apps/web",
 			"console": "integratedTerminal"
 		}
 	]

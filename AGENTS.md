@@ -4,7 +4,9 @@
 
 ## Overview
 
-Dublin Hema Club dashboard: SvelteKit 2.x + Svelte 5 frontend with a Phoenix + Ecto + Oban backend. SvelteKit consumes Phoenix through a typed OpenAPI client. Member management, workshops, payments, inventory.
+Dublin Hema Club dashboard monorepo: the SvelteKit 2.x + Svelte 5 frontend lives in `apps/web`, alongside the Phoenix + Ecto + Oban backend in `apps/phoenix`. Root pnpm/mise commands delegate to the frontend workspace, which consumes Phoenix through the typed OpenAPI client in `packages/api-client`.
+
+Frontend linting uses Oxlint and formatting uses Oxfmt from `apps/web`; root `pnpm` and mise tasks delegate to those workspace scripts.
 
 ## Navigation
 

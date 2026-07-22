@@ -1,0 +1,18 @@
+{
+	"ignorePatterns": [
+		".cloudflare/**",
+		".svelte-kit/**",
+		"build/**",
+		"dist/**",
+		"playwright-report/**",
+		"test-results/**"
+	],
+	"useTabs": true,
+	"tabWidth": 2,
+	"printWidth": 80,
+	"singleQuote": false,
+	"svelte": {
+		"indentScriptAndStyle": false,
+		"sortOrder": "none"
+	}
+}

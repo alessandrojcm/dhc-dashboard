@@ -1,0 +1,30 @@
+{
+	"$schema": "./node_modules/oxlint/configuration_schema.json",
+	"env": {
+		"browser": true,
+		"node": true,
+		"svelte": true
+	},
+	"plugins": ["eslint", "typescript"],
+	"ignorePatterns": [
+		".cloudflare/**",
+		".svelte-kit/**",
+		"build/**",
+		"dist/**",
+		"playwright-report/**",
+		"**/*.d.ts",
+		"test-results/**"
+	],
+	"options": {
+		"reportUnusedDisableDirectives": "off"
+	},
+	"overrides": [
+		{
+			"files": ["**/*.test.ts", "**/*.spec.ts", "e2e/**/*.ts"],
+			"env": {
+				"vitest": true,
+				"node": true
+			}
+		}
+	]
+}

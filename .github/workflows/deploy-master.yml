@@ -17,7 +17,6 @@ jobs:
       contents: read
       pull-requests: read
     outputs:
-      supabase_migrations: ${{ steps.filter.outputs.supabase_migrations }}
       frontend: ${{ steps.filter.outputs.frontend }}
     steps:
       - name: Check out repository
@@ -28,18 +27,12 @@ jobs:
         id: filter
         with:
           filters: |
-            supabase_migrations:
-              - 'supabase/migrations/**'
-              - '.github/workflows/deploy-master.yml'
             frontend:
-              - 'src/**'
-              - 'packages/api-client/src/**'
-              - 'static/**'
-              - 'svelte.config.js'
-              - 'vite.config.ts'
-              - 'tailwind.config.js'
-              - 'tsconfig.json'
+              - 'apps/web/**'
+              - 'packages/api-client/**'
+              - 'apps/phoenix/priv/api/openapi.yaml'
               - 'package.json'
+              - 'pnpm-workspace.yaml'
               - 'pnpm-lock.yaml'
               - '.github/workflows/deploy-master.yml'
 
@@ -79,7 +72,7 @@ jobs:
         run: pnpm install
 
       - name: Generate types
-        run: pnpm exec svelte-kit sync
+        run: pnpm --filter @dhc/web exec svelte-kit sync
 
       - name: Build & Deploy Worker
         uses: cloudflare/wrangler-action@v3.14.1
@@ -97,3 +90,5 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: apps/web
+          packageManager: pnpm
