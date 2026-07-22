@@ -2,8 +2,13 @@
 
 ```text
 dhc-dashboard/
-├── apps/                      # Phoenix app (active)
-│   └── phoenix/
+├── apps/
+│   ├── web/                  # SvelteKit frontend workspace (@dhc/web)
+│   │   ├── src/              # Routes, components, hooks, and app code
+│   │   ├── static/           # Public assets
+│   │   ├── e2e/              # Playwright tests
+│   │   └── package.json      # Frontend dependencies and scripts
+│   └── phoenix/              # Phoenix API and workers
 │       ├── config/            # Ecto + Oban config per env
 │       ├── lib/dhc/           # Ecto repo + contexts + Oban workers
 │       │   ├── repo.ex        # Ecto Repo (connects to shared Postgres)
@@ -25,7 +30,6 @@ dhc-dashboard/
 │       │   ├── config.ts         # configureClient() + JWT getter setup
 │       │   └── client/           # Auto-generated on pnpm install (gitignored)
 │       └── package.json          # @dhc/api-client workspace package
-├── src/                       # Existing SvelteKit app (unchanged)
 ├── supabase/
 │   ├── functions/             # Deno edge functions (BEING MIGRATED to Oban)
 │   ├── migrations/            # SQL migrations (FROZEN — no new ones)

@@ -1,11 +1,12 @@
 test-results
+playwright-report
 node_modules
 
 # Output
 .output
 .vercel
-/.svelte-kit
-/build
+**/.svelte-kit
+**/build
 
 # OS
 .DS_Store

@@ -7,9 +7,11 @@ repoints all 17 application ownership foreign keys to `principals.id`.
 `invitations.user_id` remains unconstrained because a pending Invitation holds
 the UUID of a Principal that does not exist until acceptance.
 
-Supabase `auth.*` remains in place as rollback dead weight during the seven-day
-observation window. No Supabase session, access token, refresh token, or GoTrue
-state is migrated.
+Supabase `auth.*` remains in place as rollback dead weight only during the
+seven-day observation window. The subsequent Postgres-hosting migration removes
+it after the observation window closes; the application has no runtime
+dependency on that schema. No Supabase session, access token, refresh token, or
+GoTrue state is migrated.
 
 ## Roles and evidence
 
@@ -158,5 +160,5 @@ When seven complete days are healthy and the commander signs off:
    deployment configuration, and operator access.
 4. Confirm Phoenix has no Supabase Auth network traffic and both login methods
    still pass.
-5. Close the maintenance record. Retain `auth.*` only as documented rollback
-   dead weight pending the separate Postgres-hosting migration.
+5. Confirm the completed Postgres-hosting migration removed `auth.*`; do not
+   recreate or retain the schema. Close the maintenance record.
