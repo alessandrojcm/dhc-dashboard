@@ -597,7 +597,7 @@ defmodule Dhc.Workshops do
   def list_workshop_attendees(workshop_id) when is_binary(workshop_id) do
     from(r in Registration,
       left_join: p in UserProfile,
-      on: p.supabase_user_id == r.member_user_id,
+      on: p.principal_id == r.member_user_id,
       left_join: eu in ExternalUser,
       on: eu.id == r.external_user_id,
       where: r.club_activity_id == ^workshop_id and r.status in @counted_registration_statuses,
@@ -642,7 +642,7 @@ defmodule Dhc.Workshops do
       inner_join: r in Registration,
       on: r.id == rf.registration_id,
       left_join: p in UserProfile,
-      on: p.supabase_user_id == r.member_user_id,
+      on: p.principal_id == r.member_user_id,
       left_join: eu in ExternalUser,
       on: eu.id == r.external_user_id,
       where: r.club_activity_id == ^workshop_id,

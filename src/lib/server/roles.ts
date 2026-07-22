@@ -1,18 +1,15 @@
-import * as Sentry from "@sentry/sveltekit";
-import type { Session } from "@supabase/supabase-js";
-import { jwtDecode } from "jwt-decode";
+import type { PhoenixSessionProjection } from "$lib/server/auth";
 
-export function getRolesFromSession(session: Session) {
-	try {
-		const tokenClaim = jwtDecode(session?.access_token);
-		return new Set(
-			(tokenClaim as { app_metadata: { roles: string[] } }).app_metadata
-				?.roles || [],
-		);
-	} catch (error) {
-		Sentry.captureMessage(`Error decoding token: ${error}`, "error");
-		return new Set<string>();
-	}
+/**
+ * ALE-164: roles come from the Phoenix session projection, not from decoding
+ * the Supabase JWT's `app_metadata.roles` claim. `getRolesFromSession` is kept
+ * as a thin accessor so the existing call sites (guards, remote functions)
+ * keep working with the new projection shape.
+ */
+export function getRolesFromSession(
+	session: PhoenixSessionProjection | null,
+): Set<string> {
+	return new Set(session?.roles ?? []);
 }
 
 export const allowedToggleRoles = new Set([

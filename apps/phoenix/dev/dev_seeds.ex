@@ -32,8 +32,6 @@ defmodule Dhc.DevSeeds do
     end
   end
 
-  @type auth_user :: %{id: String.t(), email: String.t()}
-
   @spec seed_members(pos_integer()) :: :ok
   def seed_members(count) do
     ensure_faker_started()
@@ -131,14 +129,13 @@ defmodule Dhc.DevSeeds do
   end
 
   defp create_member(attrs) do
-    with {:ok, auth_user} <-
-           create_auth_user(attrs.email, attrs.first_name, attrs.last_name, "password123"),
+    with {:ok, principal} <- create_principal(attrs.email),
          {:ok, waitlist} <- insert_waitlist(attrs.email, "completed"),
-         {:ok, profile} <- insert_user_profile(attrs, auth_user.id, waitlist.id, true),
-         :ok <- insert_member_profile(auth_user.id, profile.id, attrs),
-         :ok <- insert_user_roles(auth_user.id, ["member"]),
+         {:ok, profile} <- insert_user_profile(attrs, principal.id, waitlist.id, true),
+         :ok <- insert_member_profile(principal.id, profile.id, attrs),
+         :ok <- insert_user_roles(principal.id, ["member"]),
          :ok <- maybe_insert_guardian(profile.id, attrs.date_of_birth) do
-      %{auth_user: auth_user, profile: profile, attrs: attrs}
+      %{principal: principal, profile: profile, attrs: attrs}
     else
       {:error, reason} ->
         Mix.shell().error("Skipping member #{attrs.email}: #{inspect(reason)}")
@@ -178,11 +175,10 @@ defmodule Dhc.DevSeeds do
       additional_data: %{"legacy" => Map.get(record, "additional_data", "")}
     }
 
-    with {:ok, auth_user} <-
-           create_auth_user(attrs.email, attrs.first_name, attrs.last_name, nil, roles),
-         {:ok, profile} <- insert_user_profile(attrs, auth_user.id, nil, true, auth_user.id),
-         :ok <- insert_member_profile(auth_user.id, profile.id, attrs),
-         :ok <- insert_user_roles(auth_user.id, roles) do
+    with {:ok, principal} <- create_principal(attrs.email),
+         {:ok, profile} <- insert_user_profile(attrs, principal.id, nil, true, principal.id),
+         :ok <- insert_member_profile(principal.id, profile.id, attrs),
+         :ok <- insert_user_roles(principal.id, roles) do
       :ok
     else
       {:error, reason} ->
@@ -192,17 +188,15 @@ defmodule Dhc.DevSeeds do
 
   # ── Workshop seeding helpers ─────────────────────────────────────
 
-  # Creates a minimal auth user + user profile + member profile to satisfy the
-  # `club_activities.created_by` FK. Returns the auth user id. If auth fails
-  # (e.g. Supabase not running), falls back to a random existing `auth.users` id
-  # so the seed can still run against a local `supabase start` DB.
+  # Creates a minimal Principal + user profile + member profile to satisfy the
+  # `club_activities.created_by` FK. Returns the Principal id.
   defp ensure_workshop_creator do
     roles = ["workshop_coordinator"]
     email = "seed.workshops+#{System.unique_integer([:positive])}@example.com"
     first_name = "Workshop"
     last_name = "Seeder"
 
-    case create_auth_user(email, first_name, last_name, nil, roles) do
+    case create_principal(email) do
       {:ok, %{id: id}} ->
         attrs = %{
           email: email,
@@ -233,9 +227,9 @@ defmodule Dhc.DevSeeds do
   end
 
   defp fallback_creator do
-    case Repo.query!("SELECT id::text FROM auth.users ORDER BY created_at DESC LIMIT 1", []) do
+    case Repo.query!("SELECT id::text FROM principals ORDER BY created_at DESC LIMIT 1", []) do
       %Postgrex.Result{rows: [[id]]} -> id
-      %Postgrex.Result{rows: []} -> Mix.raise("No auth.users row available for workshop creator")
+      %Postgrex.Result{rows: []} -> Mix.raise("No Principal available for workshop creator")
     end
   end
 
@@ -309,8 +303,8 @@ defmodule Dhc.DevSeeds do
     member_ids =
       Repo.all(
         from(p in UserProfile,
-          where: not is_nil(p.supabase_user_id),
-          select: p.supabase_user_id,
+          where: not is_nil(p.principal_id),
+          select: p.principal_id,
           limit: ^limit
         )
       )
@@ -430,48 +424,12 @@ defmodule Dhc.DevSeeds do
     Enum.random(~w(pending pending confirmed confirmed confirmed cancelled refunded))
   end
 
-  defp create_auth_user(email, first_name, last_name, password, roles \\ []) do
+  defp create_principal(email) do
     email = String.downcase(email)
 
-    with nil <- existing_auth_user(email),
-         {:ok, url} <- supabase_url(),
-         {:ok, key} <- supabase_service_role_key() do
-      body = %{
-        email: email,
-        email_confirm: true,
-        user_metadata: %{
-          full_name: "#{first_name} #{last_name}",
-          display_name: "#{first_name} #{last_name}"
-        },
-        app_metadata: %{roles: roles}
-      }
-
-      body = if password, do: Map.put(body, :password, password), else: body
-
-      case Req.post(url <> "/auth/v1/admin/users", json: body, headers: supabase_headers(key)) do
-        {:ok, %Req.Response{status: status, body: body}} when status in 200..299 ->
-          {:ok, %{id: body["id"], email: body["email"] || email}}
-
-        {:ok, %Req.Response{status: status, body: body}} ->
-          {:error, {:supabase_auth, status, body}}
-
-        {:error, reason} ->
-          {:error, {:supabase_auth_request, reason}}
-      end
-    else
-      %{id: _id, email: _email} = auth_user -> {:ok, auth_user}
-      error -> error
-    end
-  end
-
-  # `auth.users` is Supabase-owned (no Ecto schema), so keep this as a raw
-  # query. Postgrex expects a binary UUID for the `id` column.
-  defp existing_auth_user(email) do
-    case Repo.query!("SELECT id::text, email FROM auth.users WHERE lower(email) = $1 LIMIT 1", [
-           email
-         ]) do
-      %Postgrex.Result{rows: [[id, email]]} -> %{id: id, email: email}
-      %Postgrex.Result{rows: []} -> nil
+    case Dhc.Auth.get_principal_by_email(email) do
+      nil -> Dhc.Auth.register_principal(%{email: email})
+      principal -> {:ok, principal}
     end
   end
 
@@ -494,7 +452,7 @@ defmodule Dhc.DevSeeds do
 
   defp insert_user_profile(attrs, auth_user_id, waitlist_id, active?, id \\ nil) do
     profile = %UserProfile{
-      supabase_user_id: auth_user_id,
+      principal_id: auth_user_id,
       first_name: attrs.first_name,
       last_name: attrs.last_name,
       phone_number: attrs.phone_number,
@@ -564,11 +522,11 @@ defmodule Dhc.DevSeeds do
   end
 
   defp insert_user_roles(user_id, roles) do
-    # Insert one row per role. `user_roles` has a `UNIQUE (user_id, role)`
+    # Insert one row per role. `user_roles` has a `UNIQUE (principal_id, role)`
     # constraint, so `on_conflict: :nothing` makes re-runs idempotent.
     Enum.reduce_while(roles, :ok, fn role, :ok ->
-      %UserRole{user_id: user_id, role: role}
-      |> Repo.insert(on_conflict: :nothing, conflict_target: [:user_id, :role])
+      %UserRole{principal_id: user_id, role: role}
+      |> Repo.insert(on_conflict: :nothing, conflict_target: [:principal_id, :role])
       |> case do
         {:ok, _} -> {:cont, :ok}
         {:error, _} = error -> {:halt, error}
@@ -646,7 +604,7 @@ defmodule Dhc.DevSeeds do
       {:ok, %Req.Response{status: status, body: %{"id" => customer_id}}}
       when status in 200..299 ->
         Repo.update_all(
-          from(p in UserProfile, where: p.supabase_user_id == ^auth_user.id),
+          from(p in UserProfile, where: p.principal_id == ^auth_user.id),
           set: [customer_id: customer_id]
         )
 
@@ -712,31 +670,6 @@ defmodule Dhc.DevSeeds do
 
   defp parse_csv_line([char | rest], field, fields, quoted?),
     do: parse_csv_line(rest, field <> char, fields, quoted?)
-
-  defp supabase_url do
-    url =
-      Application.get_env(:dhc, :supabase_url) || System.get_env("SUPABASE_URL") ||
-        System.get_env("PUBLIC_SUPABASE_URL")
-
-    if url in [nil, ""],
-      do: {:error, :missing_supabase_url},
-      else: {:ok, String.trim_trailing(url, "/")}
-  end
-
-  defp supabase_service_role_key do
-    key =
-      Application.get_env(:dhc, :supabase_service_role_key) ||
-        System.get_env("SUPABASE_SERVICE_ROLE_KEY") || System.get_env("SERVICE_ROLE_KEY")
-
-    if key in [nil, ""], do: {:error, :missing_supabase_service_role_key}, else: {:ok, key}
-  end
-
-  defp supabase_headers(key),
-    do: [
-      {"apikey", key},
-      {"authorization", "Bearer #{key}"},
-      {"content-type", "application/json"}
-    ]
 
   defp fake_member do
     first_name = first_name()

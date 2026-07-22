@@ -1,6 +1,14 @@
-import { form, getRequestEvent } from "$app/server";
-import { invalid, redirect } from "@sveltejs/kit";
+import { authRequestMagicLink } from "@dhc/api-client";
+import { invalid } from "@sveltejs/kit";
 import * as v from "valibot";
+import { form } from "$app/server";
+import { env } from "$env/dynamic/private";
+
+const DEFAULT_API_BASE_URL = "http://localhost:4000/api";
+
+function apiBaseUrl(): string {
+	return env.API_BASE_URL ?? DEFAULT_API_BASE_URL;
+}
 
 const magicLinkSchema = v.object({
 	email: v.pipe(
@@ -10,42 +18,29 @@ const magicLinkSchema = v.object({
 	),
 });
 
-const discordSchema = v.object({});
-
+/**
+ * ALE-164: the magic-link form posts the email to Phoenix
+ * `POST /api/auth/magic-link`. The endpoint is non-enumerating and
+ * rate-limited; the result is always `{ sent: true }` on success. The
+ * Supabase `signInWithOtp` path is removed.
+ *
+ * The Phoenix API is credentialed (`credentials: 'include'` is configured on
+ * the shared client), but this remote function runs server-side, so we call
+ * the generated SDK directly with the base URL rather than going through the
+ * browser-configured client.
+ */
 export const magicLinkAuth = form(magicLinkSchema, async (data, issue) => {
-	const event = getRequestEvent();
-	const supabase = event.locals.supabase;
-	const url = event.url;
-
-	const { error } = await supabase.auth.signInWithOtp({
-		email: data.email,
-		options: {
-			emailRedirectTo: `${url.origin}/auth/callback?next=/dashboard`,
-		},
+	const { error } = await authRequestMagicLink({
+		baseUrl: apiBaseUrl(),
+		body: { email: data.email },
 	});
 
 	if (error) {
-		return invalid(issue.email(error.message));
+		const detail =
+			(error as { errors?: { detail?: string } } | undefined)?.errors?.detail ??
+			"Could not send magic link";
+		return invalid(issue.email(detail));
 	}
 
 	return { success: "Check your email for the magic link" };
-});
-
-export const discordAuth = form(discordSchema, async () => {
-	const event = getRequestEvent();
-	const supabase = event.locals.supabase;
-	const url = event.url;
-
-	const { data, error } = await supabase.auth.signInWithOAuth({
-		provider: "discord",
-		options: {
-			redirectTo: `${url.origin}/auth/callback?next=/dashboard`,
-		},
-	});
-
-	if (error) {
-		throw new Error(error.message);
-	}
-
-	redirect(303, data.url);
 });

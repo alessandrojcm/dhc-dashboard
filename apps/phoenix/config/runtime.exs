@@ -101,6 +101,14 @@ if config_env() == :prod do
     secret_key_base: secret_key_base
 
   config :dhc, :discord_webhook_url, System.get_env("DISCORD_WEBHOOK_URL")
+
+  config :dhc, :discord_oauth,
+    client_id: System.fetch_env!("DISCORD_CLIENT_ID"),
+    client_secret: System.fetch_env!("DISCORD_CLIENT_SECRET"),
+    redirect_uri:
+      System.get_env("DISCORD_REDIRECT_URI", "https://#{host}/api/auth/discord/callback"),
+    code_verifier: true
+
   config :dhc, :loops_api_key, System.get_env("LOOPS_API_KEY")
 
   # Friendly name -> real Loops transactional ID mapping.
@@ -116,7 +124,8 @@ if config_env() == :prod do
     "workshopRegistration" =>
       System.get_env("WORKSHOP_REGISTRATION_TRANSACTIONAL_ID", "cmnok76cq02tq0ix92oeoi1kk"),
     "workshopRegistrationError" =>
-      System.get_env("WORKSHOP_REGISTRATION_ERROR_TRANSACTIONAL_ID", "workshopRegistrationError")
+      System.get_env("WORKSHOP_REGISTRATION_ERROR_TRANSACTIONAL_ID", "workshopRegistrationError"),
+    "magicLink" => System.get_env("MAGIC_LINK_TRANSACTIONAL_ID", "magic_link")
   }
 
   config :dhc, :stripe_secret_key, System.get_env("STRIPE_SECRET_KEY")
@@ -139,9 +148,6 @@ if config_env() == :prod do
          :invitation_verification_token_salt,
          System.get_env("INVITATION_VERIFICATION_TOKEN_SALT", "invitation-verification-v1")
 
-  config :dhc, :supabase_url, System.get_env("SUPABASE_URL")
-  config :dhc, :supabase_anon_key, System.get_env("SUPABASE_ANON_KEY")
-  config :dhc, :supabase_service_role_key, System.get_env("SUPABASE_SERVICE_ROLE_KEY")
   config :dhc, :app_url, System.get_env("APP_URL", "https://dublinhemaclub.com")
   config :dhc, :environment, :prod
 

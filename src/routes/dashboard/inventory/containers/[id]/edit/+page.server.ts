@@ -16,11 +16,11 @@ import type { PageServerLoad } from "./$types";
 // switches the source to the Phoenix `inventoryContainersShow` +
 // `inventoryContainersIndex` endpoints and maps the camelCase API payloads
 // back to those snake_case shapes so the page template is unchanged.
-export const load: PageServerLoad = async ({ params, locals }) => {
-	const session = await authorize(locals, INVENTORY_ROLES);
+export const load: PageServerLoad = async ({ params, locals, cookies }) => {
+	await authorize(locals, INVENTORY_ROLES);
 
 	const showResponse = await inventoryContainersShow({
-		...apiClientOptions(session),
+		...apiClientOptions(cookies),
 		path: { id: params.id },
 	});
 
@@ -37,7 +37,7 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 	const detail = showResponse.data.data;
 
 	const listResponse = await inventoryContainersIndex(
-		apiClientOptions(session),
+		apiClientOptions(cookies),
 	);
 
 	if (listResponse.error) {

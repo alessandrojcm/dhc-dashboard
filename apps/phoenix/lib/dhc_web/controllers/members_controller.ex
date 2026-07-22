@@ -34,11 +34,11 @@ defmodule DhcWeb.MembersController do
 
   @doc "GET /members/me"
   def me(conn, _params) do
-    case Members.get_current_user(conn.assigns.current_user.sub) do
+    case Members.get_current_user(conn.assigns.current_session.principal.id) do
       {:ok, user} ->
         conn
         |> put_view(json: DhcWeb.MembersJSON)
-        |> render(:current_user, user: user, roles: conn.assigns.current_user.roles)
+        |> render(:current_user, user: user, roles: conn.assigns.current_session.roles)
 
       {:error, :not_found} ->
         not_found(conn, "Member not found")
@@ -98,10 +98,10 @@ defmodule DhcWeb.MembersController do
   end
 
   defp authorize_self_or_admin(conn, member_id) do
-    current_user = conn.assigns.current_user
+    current_session = conn.assigns.current_session
 
-    if current_user.sub == member_id or
-         Enum.any?(current_user.roles, &(&1 in @members_admin_roles)) do
+    if current_session.principal.id == member_id or
+         Enum.any?(current_session.roles, &(&1 in @members_admin_roles)) do
       :ok
     else
       {:error, :forbidden}

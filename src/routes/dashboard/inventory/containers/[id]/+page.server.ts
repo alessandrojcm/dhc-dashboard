@@ -12,12 +12,17 @@ import type { PageServerLoadEvent } from "./$types";
 // so the page template is unchanged. Item `attributes` are intentionally not
 // part of the container-detail contract (ALE-104); the page's display helper
 // falls back to `category.name` + id suffix when `attributes` is absent.
-export const load = async ({ params, locals, parent }: PageServerLoadEvent) => {
+export const load = async ({
+	params,
+	locals,
+	parent,
+	cookies,
+}: PageServerLoadEvent) => {
 	const { canEdit } = await parent();
-	const session = await authorize(locals, INVENTORY_ROLES);
+	await authorize(locals, INVENTORY_ROLES);
 
 	const response = await inventoryContainersShow({
-		...apiClientOptions(session),
+		...apiClientOptions(cookies),
 		path: { id: params.id },
 	});
 

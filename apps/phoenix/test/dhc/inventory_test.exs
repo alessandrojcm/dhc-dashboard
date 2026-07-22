@@ -13,6 +13,7 @@ defmodule Dhc.InventoryTest do
 
   import Ecto.Query
 
+  alias Dhc.Auth.Principal
   alias Dhc.Inventory
   alias Dhc.Inventory.EquipmentCategory
   alias Dhc.Repo
@@ -235,11 +236,11 @@ defmodule Dhc.InventoryTest do
   defp insert_container! do
     user_id = Ecto.UUID.generate()
 
-    {:ok, _} =
-      Repo.query(
-        "INSERT INTO auth.users (id, aud, role, email) VALUES ($1, 'authenticated', 'authenticated', $2)",
-        [Ecto.UUID.dump!(user_id), "inv-#{System.unique_integer([:positive])}@example.com"]
-      )
+    %Principal{id: user_id}
+    |> Principal.email_changeset(%{
+      email: "inv-#{System.unique_integer([:positive])}@example.com"
+    })
+    |> Repo.insert!()
 
     container_id = Ecto.UUID.generate()
 

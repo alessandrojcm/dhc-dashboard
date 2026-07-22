@@ -106,7 +106,8 @@ config :dhc, :loops_transactional_ids, %{
   "workshopRegistration" =>
     System.get_env("WORKSHOP_REGISTRATION_TRANSACTIONAL_ID", "cmnok76cq02tq0ix92oeoi1kk"),
   "workshopRegistrationError" =>
-    System.get_env("WORKSHOP_REGISTRATION_ERROR_TRANSACTIONAL_ID", "workshopRegistrationError")
+    System.get_env("WORKSHOP_REGISTRATION_ERROR_TRANSACTIONAL_ID", "workshopRegistrationError"),
+  "magicLink" => System.get_env("MAGIC_LINK_TRANSACTIONAL_ID", "magic_link")
 }
 
 # Stripe API (not called in dev — sync logs and returns :ok)
@@ -134,6 +135,13 @@ config :dhc,
 
 config :dhc, :environment, :development
 config :dhc, :cors_allowed_origins, cors_allowed_origins
+
+config :dhc, :discord_oauth,
+  client_id: System.get_env("DISCORD_CLIENT_ID"),
+  client_secret: System.get_env("DISCORD_CLIENT_SECRET"),
+  redirect_uri:
+    System.get_env("DISCORD_REDIRECT_URI", "http://localhost:4000/api/auth/discord/callback"),
+  code_verifier: true
 
 # Initialize plugs at runtime for faster development compilation
 config :phoenix, :plug_init_mode, :runtime

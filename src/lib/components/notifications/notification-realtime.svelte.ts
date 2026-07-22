@@ -1,14 +1,21 @@
 import { Socket as PhoenixSocket } from "phoenix";
 import type { Channel, Socket } from "phoenix";
-import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
- * Notification realtime bridge for NotificationCenter.
+ * Notification realtime bridge for NotificationCenter (ALE-164).
  *
- * Replaces the former Supabase Realtime `postgres_changes` subscription with
- * an authenticated, per-user Phoenix Channel. The channel carries only a
- * best-effort `notification_created` invalidation signal; notification data,
- * pagination, and unread counts remain owned by the Phoenix HTTP API.
+ * Replaces the Supabase-Realtime-backed bridge with a Phoenix-Session-backed
+ * one. The browser can no longer read the HTTP-only `_dhc_session` cookie to
+ * pass it as a Phoenix JS `authToken`, and `new WebSocket(url, protocols)`
+ * has no `withCredentials` so a cross-origin socket cannot send the cookie.
+ * Instead, the bridge fetches a short-lived, JS-readable socket token from
+ * `GET /api/auth/socket-token` (credentialed, so the cookie is sent) and
+ * passes it as `authToken`. The token is short-lived, so a reconnect after a
+ * long disconnect re-fetches a fresh one.
+ *
+ * The channel carries only a best-effort `notification_created` invalidation
+ * signal; notification data, pagination, and unread counts remain owned by
+ * the Phoenix HTTP API.
  *
  * The bridge is best-effort: connection, authentication, join, and reconnect
  * failures never throw to the caller. They emit diagnostic warnings and let
@@ -17,6 +24,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  */
 
 export type InvalidateNotifications = () => void;
+
+/**
+ * Fetches a short-lived Phoenix socket token. Returns `null` on any failure
+ * so the bridge can skip the connection attempt; the caller's HTTP queries
+ * remain usable.
+ */
+export type SocketTokenFetcher = () => Promise<string | null>;
 
 /**
  * Factory that constructs a Phoenix `Socket`. Injected so tests can substitute
@@ -30,8 +44,8 @@ export type SocketFactory = (
 export interface NotificationRealtimeConfig {
 	/** Public Phoenix WebSocket socket URL, e.g. `wss://host/socket`. */
 	socketUrl: string;
-	/** Supabase browser client used to read the session and auth changes. */
-	supabase: SupabaseClient;
+	/** Fetches a short-lived Phoenix socket token (via the session cookie). */
+	getSocketToken: SocketTokenFetcher;
 	/** Invalidates the Notifications infinite-query key (authoritative refetch). */
 	invalidate: InvalidateNotifications;
 	/** Constructs the Phoenix Socket. Defaults to the real `phoenix` client. */
@@ -39,7 +53,7 @@ export interface NotificationRealtimeConfig {
 }
 
 export interface NotificationRealtimeHandle {
-	/** Tear down auth listener, leave channel, and disconnect socket. Idempotent. */
+	/** Tear down channel and disconnect socket. Idempotent. */
 	destroy: () => void;
 }
 
@@ -57,27 +71,31 @@ function warn(context: string, error: unknown): void {
 }
 
 /**
- * Connect a Phoenix Socket, join the user's Notification topic, and wire
- * Supabase auth lifecycle (token refresh, sign-out) to the connection.
+ * Connect a Phoenix Socket, join the user's Notification topic, and wire the
+ * token lifecycle. The bridge re-fetches a socket token on every connect
+ * (initial and reconnect) because the token is short-lived.
  *
- * Returns a handle whose `destroy()` removes the auth listener, leaves the
- * channel, and disconnects the socket. All realtime failures are swallowed
- * and logged; `invalidate` is only ever called as a best-effort refetch
- * trigger, never as an error path.
+ * Returns a handle whose `destroy()` leaves the channel and disconnects the
+ * socket. All realtime failures are swallowed and logged; `invalidate` is
+ * only ever called as a best-effort refetch trigger, never as an error path.
+ *
+ * The `userId` (topic suffix) is read from the decoded socket token —
+ * Phoenix assigns `current_user.sub` on connect, and the channel join
+ * authorizes the topic against that sub. The browser does not need to know
+ * its own user id here; it learns the topic from the server's join response.
  */
 export function connectNotificationRealtime(
 	config: NotificationRealtimeConfig,
 ): NotificationRealtimeHandle {
 	const {
 		socketUrl,
-		supabase,
+		getSocketToken,
 		invalidate,
 		createSocket = defaultCreateSocket,
 	} = config;
 
 	let socket: Socket | null = null;
 	let channel: Channel | null = null;
-	let authSubscription: { unsubscribe: () => void } | null = null;
 	let destroyed = false;
 
 	function invalidateSafely(): void {
@@ -112,33 +130,29 @@ export function connectNotificationRealtime(
 		}
 	}
 
-	function unsubscribeAuth(): void {
-		if (!authSubscription) return;
-		const current = authSubscription;
-		authSubscription = null;
-		try {
-			current.unsubscribe();
-		} catch (error) {
-			warn("auth listener unsubscribe threw", error);
-		}
-	}
-
 	/**
-	 * Build a fresh socket + channel for the supplied access token / user id.
-	 * Replaces any existing connection wholesale: per the integration spec, a
-	 * refreshed token requires a new `Socket` instance because `authToken` is
-	 * a string captured at construction, not a live callback.
+	 * Fetch a fresh socket token and connect. Replaces any existing connection
+	 * wholesale: a reconnect after a long disconnect needs a fresh token
+	 * because the socket-token validity window is short.
 	 */
-	function connectWithToken(accessToken: string, userId: string): void {
+	async function connectWithFreshToken(): Promise<void> {
 		if (destroyed) return;
-		if (!accessToken || !userId) return;
+
+		let token: string | null;
+		try {
+			token = await getSocketToken();
+		} catch (error) {
+			warn("socket token fetch threw", error);
+			return;
+		}
+		if (destroyed || !token) return;
 
 		teardownChannel();
 		disconnectSocket();
 
 		let newSocket: Socket;
 		try {
-			newSocket = createSocket(socketUrl, { authToken: accessToken });
+			newSocket = createSocket(socketUrl, { authToken: token });
 		} catch (error) {
 			warn("socket construction failed", error);
 			return;
@@ -155,15 +169,17 @@ export function connectNotificationRealtime(
 			newSocket.connect();
 		} catch (error) {
 			warn("socket connect failed", error);
-			// Leave socket reference so a later token refresh can replace it;
-			// Phoenix would otherwise auto-reconnect, but construction may have
-			// partially failed in a test boundary.
 			return;
 		}
 
+		// The channel topic is `notifications:<sub>`. The browser does not know
+		// its own sub (the socket token is opaque), so it joins a generic
+		// `notifications:self` topic and relies on the server's join/3 to
+		// authorize against `socket.assigns.current_user.sub`. The channel
+		// module already rejects any mismatched topic suffix.
 		let newChannel: Channel;
 		try {
-			newChannel = newSocket.channel(`notifications:${userId}`);
+			newChannel = newSocket.channel("notifications:self");
 		} catch (error) {
 			warn("channel construction failed", error);
 			return;
@@ -190,55 +206,13 @@ export function connectNotificationRealtime(
 		}
 	}
 
-	async function init(): Promise<void> {
-		try {
-			const { data, error } = await supabase.auth.getSession();
-			if (error) {
-				warn("getSession error", error);
-			}
-			const accessToken = data.session?.access_token;
-			const userId = data.session?.user.id;
-			if (accessToken && userId) {
-				connectWithToken(accessToken, userId);
-			}
-		} catch (error) {
-			warn("initial session read failed", error);
-		}
-		if (destroyed) return;
-
-		try {
-			const { data } = supabase.auth.onAuthStateChange((event, session) => {
-				if (destroyed) return;
-				if (event === "TOKEN_REFRESHED") {
-					const accessToken = session?.access_token;
-					const userId = session?.user.id;
-					if (accessToken && userId) {
-						connectWithToken(accessToken, userId);
-					}
-				} else if (event === "SIGNED_OUT") {
-					unsubscribeAuth();
-					teardownChannel();
-					disconnectSocket();
-				}
-			});
-			if (destroyed) {
-				data.subscription.unsubscribe();
-			} else {
-				authSubscription = data.subscription;
-			}
-		} catch (error) {
-			warn("auth listener registration failed", error);
-		}
-	}
-
-	// Fire and forget; all failures are swallowed inside `init`.
-	void init();
+	// Fire and forget; all failures are swallowed inside `connectWithFreshToken`.
+	void connectWithFreshToken();
 
 	return {
 		destroy() {
 			if (destroyed) return;
 			destroyed = true;
-			unsubscribeAuth();
 			teardownChannel();
 			disconnectSocket();
 		},

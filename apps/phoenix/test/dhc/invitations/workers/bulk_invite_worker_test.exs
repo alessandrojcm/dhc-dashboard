@@ -11,19 +11,17 @@ defmodule Dhc.Invitations.BulkInviteWorkerTest do
   alias Dhc.UserProfiles.UserProfile
   alias Dhc.Waitlist.WaitlistEntry
 
-  setup do
-    original_stripe_api_url = Application.get_env(:dhc, :stripe_api_url)
-    original_supabase_url = Application.get_env(:dhc, :supabase_url)
-    original_service_role_key = Application.get_env(:dhc, :supabase_service_role_key)
-
-    on_exit(fn ->
-      Application.put_env(:dhc, :stripe_api_url, original_stripe_api_url)
-      Application.put_env(:dhc, :supabase_url, original_supabase_url)
-      Application.put_env(:dhc, :supabase_service_role_key, original_service_role_key)
-    end)
-
-    :ok
-  end
+  # ALE-162 (ADR 0010): issue time is side-effect free. The worker no longer
+  # calls the Supabase admin API, creates a Stripe customer, or inserts a
+  # user_profiles row. It only:
+  #   - mints a fresh Phoenix UUID for invitation.user_id;
+  #   - inserts the pending invitation carrying first/last/phone/DOB;
+  #   - enqueues the inviteMember email;
+  #   - marks the waitlist entry invited (when the invite came from a waitlist).
+  #
+  # Acceptance (not the worker) materializes the Principal + UserProfile +
+  # MemberProfile + role. The Stripe customer is lazily created by the
+  # pricing endpoint and reused by acceptance.
 
   describe "perform/1 validation" do
     test "returns validation errors when invites are missing" do
@@ -51,9 +49,8 @@ defmodule Dhc.Invitations.BulkInviteWorkerTest do
   end
 
   describe "perform/1 waitlist invitations" do
-    test "resolves a waitlist id and creates the invitation pipeline" do
-      created_by_id = insert_auth_user!("admin@example.com")
-      invited_auth_user_id = insert_auth_user!("ada@example.com")
+    test "resolves a waitlist id and creates the invitation with no profile or Stripe customer" do
+      created_by_id = insert_principal!("admin@example.com")
       waitlist_entry = insert_waitlist_entry!("ada@example.com")
 
       insert_waitlist_profile!(waitlist_entry.id,
@@ -62,39 +59,6 @@ defmodule Dhc.Invitations.BulkInviteWorkerTest do
         phone_number: "+353810000001",
         date_of_birth: ~D[1990-01-01]
       )
-
-      stripe_bypass = Bypass.open()
-      supabase_bypass = Bypass.open()
-
-      Application.put_env(:dhc, :stripe_api_url, "http://localhost:#{stripe_bypass.port}")
-      Application.put_env(:dhc, :supabase_url, "http://localhost:#{supabase_bypass.port}")
-      Application.put_env(:dhc, :supabase_service_role_key, "test-service-role-key")
-
-      Bypass.expect(stripe_bypass, "POST", "/v1/customers", fn conn ->
-        {:ok, body, conn} = Plug.Conn.read_body(conn)
-
-        assert body =~ "email=ada%40example.com"
-        assert body =~ "name=Ada+Lovelace"
-        assert body =~ "metadata%5Binvited_by%5D=#{created_by_id}"
-
-        conn
-        |> Plug.Conn.put_resp_content_type("application/json")
-        |> Plug.Conn.send_resp(200, ~s({"id":"cus_waitlist_123"}))
-      end)
-
-      Bypass.expect(supabase_bypass, "POST", "/auth/v1/admin/users", fn conn ->
-        {:ok, body, conn} = Plug.Conn.read_body(conn)
-
-        assert Plug.Conn.get_req_header(conn, "authorization") == ["Bearer test-service-role-key"]
-        assert Plug.Conn.get_req_header(conn, "apikey") == ["test-service-role-key"]
-        assert body =~ ~s("email":"ada@example.com")
-        assert body =~ ~s("first_name":"Ada")
-        assert body =~ ~s("last_name":"Lovelace")
-
-        conn
-        |> Plug.Conn.put_resp_content_type("application/json")
-        |> Plug.Conn.send_resp(200, ~s({"id":"#{invited_auth_user_id}"}))
-      end)
 
       args = %{
         "invites" => [waitlist_entry.id],
@@ -112,22 +76,26 @@ defmodule Dhc.Invitations.BulkInviteWorkerTest do
       assert %Invitation{} = invitation = Repo.get_by(Invitation, email: "ada@example.com")
       assert invitation.status == "pending"
       assert invitation.waitlist_id == waitlist_entry.id
-      assert invitation.user_id == invited_auth_user_id
       assert invitation.created_by == created_by_id
+      assert invitation.date_of_birth == ~D[1990-01-01]
+      assert invitation.first_name == "Ada"
+      assert invitation.last_name == "Lovelace"
+      assert invitation.phone_number == "+353810000001"
 
+      # ALE-162: user_id is a fresh Phoenix UUID (no auth.users row backs it).
+      assert invitation.user_id != nil
+      assert Ecto.UUID.cast!(invitation.user_id) == invitation.user_id
+
+      # No user_profiles row was created at issue time.
+      refute Repo.exists?(from up in UserProfile, where: up.principal_id == ^invitation.user_id)
+
+      # No Stripe customer was created at issue time.
+      assert invitation.stripe_customer_id in [nil, ""]
+
+      # The waitlist entry was marked invited.
       assert %WaitlistEntry{status: "invited"} = Repo.get(WaitlistEntry, waitlist_entry.id)
 
-      assert %UserProfile{} =
-               profile = Repo.get_by(UserProfile, supabase_user_id: invited_auth_user_id)
-
-      assert profile.first_name == "Ada"
-      assert profile.last_name == "Lovelace"
-      assert profile.phone_number == "+353810000001"
-      assert profile.date_of_birth == ~D[1990-01-01]
-      assert profile.customer_id == "cus_waitlist_123"
-      assert profile.waitlist_id == waitlist_entry.id
-      assert profile.is_active == false
-
+      # The inviteMember email was enqueued.
       assert [%Oban.Job{args: email_args}] = all_enqueued(worker: Dhc.Email.Worker)
       assert email_args["email"] == "ada@example.com"
       assert email_args["transactional_id"] == "inviteMember"
@@ -147,21 +115,10 @@ defmodule Dhc.Invitations.BulkInviteWorkerTest do
     end
   end
 
-  defp insert_auth_user!(email) do
+  defp insert_principal!(email) do
     id = Ecto.UUID.generate()
 
-    Repo.insert_all(
-      "users",
-      [
-        [
-          id: Ecto.UUID.dump!(id),
-          aud: "authenticated",
-          role: "authenticated",
-          email: email
-        ]
-      ],
-      prefix: "auth"
-    )
+    {:ok, _principal} = Dhc.Auth.register_principal_with_id(id, %{email: email})
 
     id
   end

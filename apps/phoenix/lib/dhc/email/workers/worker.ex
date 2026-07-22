@@ -11,9 +11,10 @@ defmodule Dhc.Email.Worker do
     * `email` — the recipient email address
     * `transactional_id` — a friendly template name (`"inviteMember"`,
       `"workshopAnnouncement"`, `"workshopRegistration"`,
-      `"workshopRegistrationError"`). The worker translates this to the real
-      Loops dashboard transactional ID via the `:loops_transactional_ids` app
-      env map (mirroring the edge function's env-var lookup).
+      `"workshopRegistrationError"`, `"magicLink"`). The worker translates
+      this to the real Loops dashboard transactional ID via the
+      `:loops_transactional_ids` app env map (mirroring the edge function's
+      env-var lookup).
     * `data_variables` — key-value pairs injected into the email template
       (values must be strings or numbers)
 
@@ -56,7 +57,7 @@ defmodule Dhc.Email.Worker do
 
   require Logger
 
-  @transactional_ids ~w(inviteMember workshopAnnouncement workshopRegistration workshopRegistrationError)
+  @transactional_ids ~w(inviteMember workshopAnnouncement workshopRegistration workshopRegistrationError magicLink)
   # Default Loops API URL. Overridable via app config for tests.
   defp loops_api_url,
     do: Application.get_env(:dhc, :loops_api_url, "https://app.loops.so/api/v1/transactional")

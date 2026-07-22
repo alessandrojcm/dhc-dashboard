@@ -8,7 +8,7 @@ defmodule Dhc.Members do
 
   import Ecto.Query
 
-  alias Dhc.Auth.AuthUser
+  alias Dhc.Auth.Principal
   alias Dhc.CursorPagination
   alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.Repo
@@ -148,7 +148,7 @@ defmodule Dhc.Members do
   end
 
   @doc """
-  Returns one domain-shaped member DTO by Supabase auth user id.
+  Returns one domain-shaped member DTO by Principal id.
 
   This absorbs the read side of the legacy `get_member_data` RPC while keeping
   the API DTO aligned with the member list shape.
@@ -166,11 +166,11 @@ defmodule Dhc.Members do
   def get_current_user(user_id) do
     query =
       from p in UserProfile,
-        left_join: u in AuthUser,
-        on: u.id == p.supabase_user_id,
-        where: p.supabase_user_id == ^user_id,
+        left_join: u in Principal,
+        on: u.id == p.principal_id,
+        where: p.principal_id == ^user_id,
         select: %{
-          id: p.supabase_user_id,
+          id: p.principal_id,
           first_name: p.first_name,
           last_name: p.last_name,
           email: u.email,
@@ -185,7 +185,7 @@ defmodule Dhc.Members do
   end
 
   @doc """
-  Partially updates member profile facts for one Supabase auth user id.
+  Partially updates member profile facts for one Principal id.
 
   `isActive` is intentionally not accepted: Stripe/webhooks own that projection.
   When name or phone changes, Stripe customer fields are echoed best-effort after
@@ -546,8 +546,8 @@ defmodule Dhc.Members do
       from m in MemberProfile,
         join: p in UserProfile,
         on: p.id == m.user_profile_id,
-        left_join: u in AuthUser,
-        on: u.id == p.supabase_user_id,
+        left_join: u in Principal,
+        on: u.id == p.principal_id,
         left_join: wg in "waitlist_guardians",
         on: field(wg, :profile_id) == p.id
 

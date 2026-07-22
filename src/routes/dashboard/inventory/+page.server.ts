@@ -7,9 +7,9 @@ import {
 } from "@dhc/api-client";
 import type { PageServerLoad } from "./$types";
 
-export const load: PageServerLoad = async ({ locals }) => {
-	const session = await authorize(locals, INVENTORY_READ_ROLES);
-	const options = apiClientOptions(session);
+export const load: PageServerLoad = async ({ locals, cookies }) => {
+	await authorize(locals, INVENTORY_READ_ROLES);
+	const options = apiClientOptions(cookies);
 
 	const [statsResponse, historyResponse] = await Promise.all([
 		inventoryDashboardStats(options),

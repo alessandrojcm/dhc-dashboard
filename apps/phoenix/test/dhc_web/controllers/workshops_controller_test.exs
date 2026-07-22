@@ -10,6 +10,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
 
   use DhcWeb.ConnCase, async: false
 
+  alias Dhc.Auth.Principal
   alias Dhc.Repo
   alias Dhc.UserProfiles.UserProfile
   alias Dhc.WorkshopFixtures
@@ -23,8 +24,8 @@ defmodule DhcWeb.WorkshopsControllerTest do
   @allowed_roles ~w(workshop_coordinator president admin)
   @rejected_roles ~w(beginners_coordinator member committee_coordinator coach treasurer)
 
-  # In-test JWT verifier: each role gets a deterministic token. The claims
-  # shape mirrors what `DhcWeb.Plugs.RequireAuth` reads (`roles`).
+  # The test-only session adapter maps each deterministic bearer token to this
+  # legacy claim shape so the controller suite can exercise role boundaries.
   defmodule Verifier do
     for role <-
           ~w(workshop_coordinator president admin beginners_coordinator member committee_coordinator coach treasurer) do
@@ -1998,23 +1999,17 @@ defmodule DhcWeb.WorkshopsControllerTest do
   end
 
   defp insert_auth_user_and_profile(user_id, first_name, last_name) do
-    Repo.insert_all(
-      "users",
-      [
-        [
-          id: Ecto.UUID.dump!(user_id),
-          aud: "authenticated",
-          role: "authenticated",
-          email:
-            "#{String.downcase(first_name)}-#{System.unique_integer([:positive])}@example.com"
-        ]
-      ],
-      prefix: "auth"
-    )
+    email =
+      "#{String.downcase(first_name)}-#{System.unique_integer([:positive])}@example.com"
+
+    {:ok, _principal} =
+      %Principal{id: user_id}
+      |> Principal.email_changeset(%{email: email})
+      |> Repo.insert()
 
     {:ok, _profile} =
       %UserProfile{
-        supabase_user_id: user_id,
+        principal_id: user_id,
         first_name: first_name,
         last_name: last_name,
         phone_number: "+353810000000",

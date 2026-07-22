@@ -14,22 +14,18 @@
     "nodejs_compat",
     "nodejs_compat_populate_process_env",
   ],
-  "hyperdrive": [
-    {
-      "binding": "HYPERDRIVE",
-      "id": "d6f9232b82c64c59a0d9f8226138f1e0",
-      "localConnectionString": "postgresql://postgres.pooler-dev:postgres@localhost:54329/postgres",
-    },
-  ],
   "observability": {
     "enabled": true,
     "head_sampling_rate": 0.1,
   },
   "vars": {
     "VITE_PUBLIC_SENTRY_ENABLED": "true",
-    "PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im90YWlpaWVjc25pa3dkY3lydXVxIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDU0MjI2NDMsImV4cCI6MjA2MDk5ODY0M30.B08UPmHPlKfSzywFXIoOGug2gKsNBLysBu2pVegDKQQ",
-    "PUBLIC_SUPABASE_URL": "https://otaiiiecsnikwdcyruuq.supabase.co",
-    "PUBLIC_API_BASE_URL": "https://api.dublinhemaclub.com/api",
-    "API_BASE_URL": "https://api.dublinhemaclub.com/api"
+    "API_BASE_URL": "https://api.dublinhemaclub.com/api",
+    // Public Phoenix WebSocket endpoint for Notification realtime. Same host
+    // as PUBLIC_API_BASE_URL, path /socket. Must be wss:// in prod — the
+    // 60s socket token rides in the Sec-WebSocket-Protocol subprotocol, so
+    // TLS is required to keep it off the wire. Fly terminates TLS at its
+    // proxy; Bandit speaks WebSocket on the same port as HTTP.
+    "PUBLIC_PHOENIX_SOCKET_URL": "wss://api.dublinhemaclub.com/socket"
   },
 }

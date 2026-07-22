@@ -6,12 +6,49 @@ defmodule Dhc.Invitations.StripePayment do
   module owns the server-side Stripe calls that attach the SEPA payment method,
   create the membership subscriptions, and confirm the first invoice payments
   before the invitation is converted to a member.
+
+  ALE-162 (ADR 0010): acceptance creates the Stripe customer when none is
+  already attached to the invitation (the pricing endpoint lazily creates one
+  on first preview and stores it on `invitations.stripe_customer_id`). See
+  `create_customer/2`.
   """
 
   alias Dhc.Stripe.LookupKeys
   alias Dhc.Stripe.Operations
 
   @migration_code "DHCDASHBOARD"
+
+  @doc """
+  Creates a Stripe customer for an invitation.
+
+  ALE-162: when the pricing endpoint has not already attached a customer to
+  the invitation (no `stripe_customer_id`), acceptance creates one here so the
+  membership subscriptions have a customer to attach to. The customer is named
+  and emailed from the invitation's contact info; `invited_by` metadata records
+  the admin who issued the invitation (preserving the pre-ALE-162 metadata
+  shape).
+
+  Returns `{:ok, customer_id}` on success or `{:error, reason}` shaped for the
+  acceptance transaction's rollback.
+  """
+  @spec create_customer(String.t(), String.t() | nil, String.t(), String.t()) ::
+          {:ok, String.t()} | {:error, term()}
+  def create_customer(email, name, invited_by_id, invitation_id)
+      when is_binary(email) and is_binary(name) and is_binary(invited_by_id) do
+    body = %{
+      "name" => name,
+      "email" => email,
+      "metadata[invited_by]" => invited_by_id
+    }
+
+    idempotency_key = "invitation-accept:#{invitation_id}:customer"
+
+    case Operations.post_customers(body, idempotency_key: idempotency_key) do
+      {:ok, %{"id" => id}} when is_binary(id) -> {:ok, id}
+      {:ok, body} -> {:error, {:stripe_customer_missing_id, body}}
+      {:error, reason} -> {:error, {:stripe_customer, reason}}
+    end
+  end
 
   @spec complete(map()) :: :ok | {:error, term()}
   def complete(%{customer_id: customer_id, confirmation_token: confirmation_token} = attrs)

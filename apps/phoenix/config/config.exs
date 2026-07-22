@@ -12,6 +12,7 @@ config :dhc,
   generators: [timestamp_type: :utc_datetime]
 
 config :dhc, :cors_allowed_origins, []
+config :dhc, :discord_oauth_strategy, Assent.Strategy.Discord
 
 # Salt namespace for short-lived public invitation verification tokens. The
 # Endpoint secret_key_base remains the signing secret; this salt is configurable
@@ -141,12 +142,6 @@ config :dhc, :stripe_api_version, "2025-10-29.clover"
 # Stripe webhook signing secret — set STRIPE_WEBHOOK_SIGNING_SECRET in runtime.
 # Supports a single string or a list of strings for secret rotation.
 config :dhc, :stripe_webhook_secret, System.get_env("STRIPE_WEBHOOK_SIGNING_SECRET")
-
-# Supabase Auth. Phoenix API endpoints validate Supabase JWTs and read roles
-# from app_metadata.roles.
-config :dhc, :supabase_url, System.get_env("SUPABASE_URL")
-config :dhc, :supabase_anon_key, System.get_env("SUPABASE_ANON_KEY")
-config :dhc, :auth_verifier, Dhc.Auth.SupabaseJwt
 
 # OpenAPI code generator profile for Stripe (dev-only dependency).
 # Used by `mix api.gen stripe` (triggered via `mise run stripe-gen`).

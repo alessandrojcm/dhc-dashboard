@@ -64,10 +64,10 @@ function toApiBody(data: ItemFormData): InventoryItemCreateRequest {
 
 export const createItem = form(itemSchema, async (data) => {
 	const event = getRequestEvent();
-	const session = await authorize(event.locals, INVENTORY_ROLES);
+	await authorize(event.locals, INVENTORY_ROLES);
 
 	const response = await inventoryItemsCreate({
-		...apiClientOptions(session),
+		...apiClientOptions(event.cookies),
 		body: toApiBody(data),
 	});
 
@@ -83,11 +83,11 @@ export const createItem = form(itemSchema, async (data) => {
 
 export const updateItem = form(itemSchema, async (data) => {
 	const event = getRequestEvent();
-	const session = await authorize(event.locals, INVENTORY_ROLES);
+	await authorize(event.locals, INVENTORY_ROLES);
 	const itemId = event.params.id!;
 
 	const response = await inventoryItemsUpdate({
-		...apiClientOptions(session),
+		...apiClientOptions(event.cookies),
 		path: { id: itemId },
 		body: toApiBody(data),
 	});
@@ -118,11 +118,11 @@ const MaintenanceItemSchema = v.object({
 
 export const moveItem = command(MoveItemSchema, async (input) => {
 	const event = getRequestEvent();
-	const session = await authorize(event.locals, INVENTORY_ROLES);
+	await authorize(event.locals, INVENTORY_ROLES);
 	const itemId = event.params.id!;
 
 	const response = await inventoryItemsMove({
-		...apiClientOptions(session),
+		...apiClientOptions(event.cookies),
 		path: { id: itemId },
 		body: {
 			containerId: input.containerId,
@@ -142,11 +142,11 @@ export const moveItem = command(MoveItemSchema, async (input) => {
 
 export const setMaintenance = command(MaintenanceItemSchema, async (input) => {
 	const event = getRequestEvent();
-	const session = await authorize(event.locals, INVENTORY_ROLES);
+	await authorize(event.locals, INVENTORY_ROLES);
 	const itemId = event.params.id!;
 
 	const response = await inventoryItemsMaintenance({
-		...apiClientOptions(session),
+		...apiClientOptions(event.cookies),
 		path: { id: itemId },
 		body: {
 			outForMaintenance: input.outForMaintenance,

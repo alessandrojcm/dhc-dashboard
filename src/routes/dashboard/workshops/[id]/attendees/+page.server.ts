@@ -3,7 +3,7 @@ import { workshopsAttendees } from "@dhc/api-client";
 import { apiClientOptions } from "$lib/server/api-client";
 import type { PageServerLoad } from "./$types";
 
-export const load: PageServerLoad = async ({ params, locals }) => {
+export const load: PageServerLoad = async ({ params, locals, cookies }) => {
 	const { session } = await locals.safeGetSession();
 
 	if (!session) {
@@ -16,13 +16,14 @@ export const load: PageServerLoad = async ({ params, locals }) => {
 	// `workshop_management_api` pipeline, so no SvelteKit `authorize()` role gate
 	// is needed here — see commit 389a54ae and ADR 0005. The historical
 	// `beginners_coordinator` registration visibility drift is NOT reproduced
-	// (Phoenix 403s it). The Supabase JWT is attached by `apiClientOptions`.
+	// (Phoenix 403s it). ALE-164: the `_dhc_session` cookie is forwarded by
+	// `apiClientOptions(cookies)`; the Supabase JWT path is removed.
 	const {
 		data,
 		error: apiError,
 		response,
 	} = await workshopsAttendees({
-		...apiClientOptions(session),
+		...apiClientOptions(cookies),
 		path: { id: params.id },
 	});
 

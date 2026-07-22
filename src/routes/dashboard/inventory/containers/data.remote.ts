@@ -66,10 +66,10 @@ function toApiBody(data: ContainerFormData): InventoryContainerCreateRequest {
 
 export const createContainer = form(containerSchema, async (data) => {
 	const event = getRequestEvent();
-	const session = await authorize(event.locals, INVENTORY_ROLES);
+	await authorize(event.locals, INVENTORY_ROLES);
 
 	const response = await inventoryContainersCreate({
-		...apiClientOptions(session),
+		...apiClientOptions(event.cookies),
 		body: toApiBody(data),
 	});
 
@@ -86,10 +86,10 @@ export const createContainer = form(containerSchema, async (data) => {
 export const updateContainer = form(containerSchema, async (data) => {
 	const event = getRequestEvent();
 	const containerId = event.params.id;
-	const session = await authorize(event.locals, INVENTORY_ROLES);
+	await authorize(event.locals, INVENTORY_ROLES);
 
 	const response = await inventoryContainersUpdate({
-		...apiClientOptions(session),
+		...apiClientOptions(event.cookies),
 		path: { id: containerId! },
 		body: toApiBody(data),
 	});
@@ -107,10 +107,10 @@ export const updateContainer = form(containerSchema, async (data) => {
 export const deleteContainer = form(v.object({}), async () => {
 	const event = getRequestEvent();
 	const containerId = event.params.id;
-	const session = await authorize(event.locals, INVENTORY_ROLES);
+	await authorize(event.locals, INVENTORY_ROLES);
 
 	const response = await inventoryContainersDelete({
-		...apiClientOptions(session),
+		...apiClientOptions(event.cookies),
 		path: { id: containerId! },
 	});
 

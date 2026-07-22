@@ -1,18 +1,32 @@
 <script lang="ts">
+import { DiscordLogo, ExclamationTriangle } from "svelte-radix";
 import { page } from "$app/state";
+import { env } from "$env/dynamic/public";
+import * as Alert from "$lib/components/ui/alert/index.js";
 import { Button } from "$lib/components/ui/button";
 import { Card } from "$lib/components/ui/card";
-import { DiscordLogo, ExclamationTriangle } from "svelte-radix";
+import * as Field from "$lib/components/ui/field";
 import { Input } from "$lib/components/ui/input";
 import { Separator } from "$lib/components/ui/separator";
-import * as Alert from "$lib/components/ui/alert/index.js";
-import * as Field from "$lib/components/ui/field";
 import DHCLogo from "/src/assets/images/dhc-logo.png?enhanced";
-import { magicLinkAuth, discordAuth } from "./data.remote";
+import { magicLinkAuth } from "./data.remote";
 
 const hash = $derived(page.url.hash.split("#")[1] as string);
-let errorMessage = $derived(new URLSearchParams(hash).get("error_description"));
+const discordFailed = $derived(
+	page.url.searchParams.get("discord") === "failed",
+);
+// biome-ignore lint/correctness/noUnusedVariables: Referenced from the Svelte template.
+const errorMessage = $derived(
+	discordFailed
+		? "Discord sign-in failed. Try a magic link instead."
+		: new URLSearchParams(hash).get("error_description"),
+);
+// biome-ignore lint/correctness/noUnusedVariables: Referenced from the Svelte template.
 const urlMessage = $derived(page.url.searchParams.get("message"));
+// biome-ignore lint/correctness/noUnusedVariables: Referenced from the Svelte template.
+const discordAuthUrl = $derived(
+	`${(env.PUBLIC_API_BASE_URL ?? "http://localhost:4000/api").replace(/\/$/, "")}/auth/discord`,
+);
 </script>
 
 <Card
@@ -62,7 +76,7 @@ const urlMessage = $derived(page.url.searchParams.get("message"));
 				id={fieldProps.name}
 				placeholder="your@email.com"
 			/>
-			{#each magicLinkAuth.fields.email.issues() as issue}
+			{#each magicLinkAuth.fields.email.issues() as issue (issue.message)}
 				<Field.Error>{issue.message}</Field.Error>
 			{/each}
 		</Field.Field>
@@ -77,8 +91,8 @@ const urlMessage = $derived(page.url.searchParams.get("message"));
 		<Separator class="flex-grow w-auto" style="width: auto" />
 	</div>
 
-	<!-- Discord OAuth Form -->
-	<form {...discordAuth} class="w-full max-w-xs">
+	<!-- Discord OAuth starts as a top-level navigation to Phoenix/Assent. -->
+	<form method="GET" action={discordAuthUrl} class="w-full max-w-xs">
 		<Button
 			type="submit"
 			class="w-full bg-[#5865F2] hover:bg-[#FFFFFF] hover:text-[#000000]"
