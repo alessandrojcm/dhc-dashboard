@@ -54,7 +54,8 @@ These are committed in `fly.toml` under `[env]`:
 
 | Variable | Value | Purpose |
 | --- | --- | --- |
-| `APP_URL` | `https://dublinhemaclub.com` | Public frontend URL used in generated links/emails |
+| `APP_URL` | `https://dashboard.dublinhemaclub.com` | Public dashboard URL used in generated links and redirects |
+| `AUTH_SESSION_DOMAIN` | `.dublinhemaclub.com` | Shared parent domain for the Phoenix session cookie |
 | `DNS_CLUSTER_QUERY` | `dhc-dashboard.internal` | Fly private DNS query for clustering |
 | `ECTO_IPV6` | `true` | Use Fly private IPv6 networking for Postgres |
 | `FNOX_IF_MISSING` | `error` | Fail startup if any fnox secret is missing |

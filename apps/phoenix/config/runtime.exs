@@ -149,6 +149,8 @@ if config_env() == :prod do
          System.get_env("INVITATION_VERIFICATION_TOKEN_SALT", "invitation-verification-v1")
 
   config :dhc, :app_url, System.get_env("APP_URL", "https://dublinhemaclub.com")
+  config :dhc, :auth_session_domain, System.fetch_env!("AUTH_SESSION_DOMAIN")
+  config :dhc, :auth_session_secure, true
   config :dhc, :environment, :prod
 
   # Sentry error tracking (DSN read automatically from SENTRY_DSN env var)

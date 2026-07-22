@@ -10,6 +10,7 @@ kill_signal = "SIGTERM"
 
 [env]
   APP_URL = "https://dashboard.dublinhemaclub.com"
+  AUTH_SESSION_DOMAIN = ".dublinhemaclub.com"
   DNS_CLUSTER_QUERY = "dhc-dashboard.internal"
   ECTO_IPV6 = "true"
   FNOX_IF_MISSING = "error"
