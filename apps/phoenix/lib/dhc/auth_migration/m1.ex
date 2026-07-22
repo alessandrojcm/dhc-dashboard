@@ -13,12 +13,15 @@ defmodule Dhc.AuthMigration.M1 do
   """
 
   defmodule AnomalyError do
-    defexception [:class, :count]
+    defexception [:class, :count, :detail]
 
     @impl true
-    def message(%__MODULE__{class: class, count: count}) do
-      "ALE-166 M1 abort: #{class} (#{count}); repair source data and rerun — " <>
-        "no exclusion manifest is supported"
+    def message(%__MODULE__{class: class, count: count, detail: detail}) do
+      base =
+        "ALE-166 M1 abort: #{class} (#{count}); repair source data and rerun — " <>
+          "no exclusion manifest is supported"
+
+      if detail, do: base <> "\n" <> detail, else: base
     end
   end
 
@@ -84,21 +87,9 @@ defmodule Dhc.AuthMigration.M1 do
   end
 
   defp principal_gates!(repo) do
-    gate!(repo, :orphan_user_profile, """
-    SELECT count(*)
-    FROM user_profiles up
-    LEFT JOIN auth.users u ON u.id = up.supabase_user_id
-    WHERE u.id IS NULL
-    """)
+    orphan_user_profile_gate!(repo)
 
-    gate!(repo, :member_profile_missing, """
-    SELECT count(*)
-    FROM user_profiles up
-    JOIN auth.users u ON u.id = up.supabase_user_id
-    LEFT JOIN member_profiles mp
-      ON mp.id = u.id AND mp.user_profile_id = up.id
-    WHERE mp.id IS NULL
-    """)
+    member_profile_missing_gate!(repo)
 
     gate!(repo, :member_uuid_mismatch, """
     SELECT count(*)
@@ -212,6 +203,106 @@ defmodule Dhc.AuthMigration.M1 do
 
     if anomaly_count > 0 do
       raise AnomalyError, class: class, count: anomaly_count
+    end
+  end
+
+  defp orphan_user_profile_gate!(repo) do
+    anomaly_count =
+      count(repo, """
+      SELECT count(*)
+      FROM user_profiles up
+      LEFT JOIN auth.users u ON u.id = up.supabase_user_id
+      WHERE u.id IS NULL
+      """)
+
+    if anomaly_count > 0 do
+      %{rows: samples} =
+        query!(repo, """
+        SELECT up.id::text, COALESCE(up.supabase_user_id::text, 'NULL')
+        FROM user_profiles up
+        LEFT JOIN auth.users u ON u.id = up.supabase_user_id
+        WHERE u.id IS NULL
+        ORDER BY up.id
+        LIMIT 10
+        """)
+
+      sample_lines =
+        Enum.map_join(samples, "\n", fn
+          [profile_id, "NULL"] ->
+            "  user_profile #{profile_id} -> supabase_user_id is NULL"
+
+          [profile_id, missing_auth_user_id] ->
+            "  user_profile #{profile_id} -> auth.users #{missing_auth_user_id} does not exist"
+        end)
+
+      omitted = anomaly_count - length(samples)
+      omitted_line = if omitted > 0, do: "\n  ... and #{omitted} more", else: ""
+
+      detail =
+        "Reason: these profiles have a NULL supabase_user_id or reference an auth.users row that does not exist.\n" <>
+          "Affected rows (up to 10):\n" <>
+          sample_lines <>
+          omitted_line <>
+          "\nInspect all with:\n" <>
+          "  SELECT up.id, up.supabase_user_id FROM user_profiles up " <>
+          "LEFT JOIN auth.users u ON u.id = up.supabase_user_id WHERE u.id IS NULL;"
+
+      raise AnomalyError,
+        class: :orphan_user_profile,
+        count: anomaly_count,
+        detail: detail
+    end
+  end
+
+  defp member_profile_missing_gate!(repo) do
+    anomaly_count =
+      count(repo, """
+      SELECT count(*)
+      FROM user_profiles up
+      JOIN auth.users u ON u.id = up.supabase_user_id
+      LEFT JOIN member_profiles mp ON mp.user_profile_id = up.id
+      WHERE mp.id IS NULL
+      """)
+
+    if anomaly_count > 0 do
+      %{rows: samples} =
+        query!(repo, """
+        SELECT up.id::text, u.id::text,
+               COALESCE(string_agg(DISTINCT ur.role::text, ', ' ORDER BY ur.role::text), 'no roles')
+        FROM user_profiles up
+        JOIN auth.users u ON u.id = up.supabase_user_id
+        LEFT JOIN member_profiles mp ON mp.user_profile_id = up.id
+        LEFT JOIN user_roles ur ON ur.user_id = u.id
+        WHERE mp.id IS NULL
+        GROUP BY up.id, u.id
+        ORDER BY up.id
+        LIMIT 10
+        """)
+
+      sample_lines =
+        Enum.map_join(samples, "\n", fn [profile_id, auth_user_id, roles] ->
+          "  user_profile #{profile_id} -> auth.users #{auth_user_id}; roles: #{roles}"
+        end)
+
+      omitted = anomaly_count - length(samples)
+      omitted_line = if omitted > 0, do: "\n  ... and #{omitted} more", else: ""
+
+      detail =
+        "Reason: these login-backed user_profiles have no member_profiles row linked by user_profile_id.\n" <>
+          "Affected rows (up to 10):\n" <>
+          sample_lines <>
+          omitted_line <>
+          "\nInspect all with:\n" <>
+          "  SELECT up.id, up.supabase_user_id, array_agg(ur.role) AS roles " <>
+          "FROM user_profiles up JOIN auth.users u ON u.id = up.supabase_user_id " <>
+          "LEFT JOIN member_profiles mp ON mp.user_profile_id = up.id " <>
+          "LEFT JOIN user_roles ur ON ur.user_id = u.id WHERE mp.id IS NULL " <>
+          "GROUP BY up.id, up.supabase_user_id;"
+
+      raise AnomalyError,
+        class: :member_profile_missing,
+        count: anomaly_count,
+        detail: detail
     end
   end
 

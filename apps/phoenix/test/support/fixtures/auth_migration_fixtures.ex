@@ -92,6 +92,7 @@ defmodule Dhc.AuthMigrationFixtures do
   def seed_member(attrs \\ %{}) do
     attrs = Enum.into(attrs, %{})
     auth_user_id = Map.get(attrs, :auth_user_id) || Ecto.UUID.generate()
+    user_profile_id = Ecto.UUID.generate()
     email = Map.get(attrs, :email) || unique_email()
 
     confirmed_at =
@@ -124,7 +125,7 @@ defmodule Dhc.AuthMigrationFixtures do
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW(), NOW())
       """,
       [
-        Ecto.UUID.dump!(Ecto.UUID.generate()),
+        Ecto.UUID.dump!(user_profile_id),
         Ecto.UUID.dump!(auth_user_id),
         Map.get(attrs, :first_name, "Mock"),
         Map.get(attrs, :last_name, "Member"),
@@ -167,6 +168,7 @@ defmodule Dhc.AuthMigrationFixtures do
 
     %{
       auth_user_id: auth_user_id,
+      user_profile_id: user_profile_id,
       email: email,
       discord: discord
     }
