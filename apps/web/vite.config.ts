@@ -1,49 +1,49 @@
-import { sentrySvelteKit } from '@sentry/sveltekit';
-import { sveltekit } from '@sveltejs/kit/vite';
-import { defineConfig } from 'vitest/config';
-import tailwindcss from '@tailwindcss/vite';
-import { enhancedImages } from '@sveltejs/enhanced-img';
-import { sentryVitePlugin } from '@sentry/vite-plugin';
+import { sentrySvelteKit } from "@sentry/sveltekit";
+import { sveltekit } from "@sveltejs/kit/vite";
+import { defineConfig } from "vitest/config";
+import tailwindcss from "@tailwindcss/vite";
+import { enhancedImages } from "@sveltejs/enhanced-img";
+import { sentryVitePlugin } from "@sentry/vite-plugin";
 import mkcert from "vite-plugin-mkcert";
 
-export default defineConfig(({command}) => ({
-	envDir: '../..',
-	assetsInclude: ['src/assets/**/*'],
+export default defineConfig(({ command }) => ({
+	envDir: "../..",
+	assetsInclude: ["src/assets/**/*"],
 	plugins: [
 		sentrySvelteKit({
-			debug: command === 'serve',
+			debug: command === "serve",
 			autoUploadSourceMaps: true,
-			org: 'dublin-hema-club',
-			project: 'dhc-dashboard',
+			org: "dublin-hema-club",
+			project: "dhc-dashboard",
 			authToken: process.env.SENTRY_AUTH_TOKEN,
 			sourcemaps: {
-				filesToDeleteAfterUpload: ['./svelte-kit/output/**/*.map'],
-				assets: ['./svelte-kit/output/**/*.map']
+				filesToDeleteAfterUpload: ["./svelte-kit/output/**/*.map"],
+				assets: ["./svelte-kit/output/**/*.map"],
 			},
-			adapter: 'cloudflare'
+			adapter: "cloudflare",
 		}),
 		sveltekit(),
 		enhancedImages(),
 		tailwindcss(),
 		sentryVitePlugin({
-			org: 'dublin-hema-club',
-			project: 'dhc-dashboard',
-			authToken: process.env.SENTRY_AUTH_TOKEN
+			org: "dublin-hema-club",
+			project: "dhc-dashboard",
+			authToken: process.env.SENTRY_AUTH_TOKEN,
 		}),
-		mkcert()
+		...(process.env.E2E_SERVER === "true" ? [] : [mkcert()]),
 	],
 	build: {
 		rollupOptions: {
-			external: ['cloudflare:workers']
+			external: ["cloudflare:workers"],
 		},
-		sourcemap: true
+		sourcemap: true,
 	},
 	test: {
-		include: ['src/**/*.{test,spec}.{js,ts}']
+		include: ["src/**/*.{test,spec}.{js,ts}"],
 	},
 	server: {
 		watch: {
-			ignored: ['**/supabase/**']
-		}
-	}
+			ignored: ["**/supabase/**"],
+		},
+	},
 }));

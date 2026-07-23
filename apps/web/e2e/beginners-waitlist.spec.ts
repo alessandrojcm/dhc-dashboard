@@ -3,7 +3,7 @@
 import { faker } from "@faker-js/faker";
 import { expect, test } from "@playwright/test";
 import dayjs from "dayjs";
-import { getSupabaseServiceClient } from "./setupFunctions";
+import { seedE2EScenario } from "./e2eApi";
 
 const testData = {
 	firstName: faker.person.firstName(),
@@ -15,15 +15,7 @@ const testData = {
 };
 
 test.afterAll(async () => {
-	await (
-		await getSupabaseServiceClient()
-	)
-		.from("settings")
-		.update({
-			value: "true",
-		})
-		.eq("key", "waitlist_open")
-		.throwOnError();
+	await seedE2EScenario("waitlistStatus", { isOpen: true });
 });
 
 test("fills out the waitlist form and asserts no errors", async ({ page }) => {
@@ -100,15 +92,7 @@ test("it should not allow people under 16 to sign up", async ({ page }) => {
 });
 
 test("it should not show the waitlist if closed", async ({ page }) => {
-	await (
-		await getSupabaseServiceClient()
-	)
-		.from("settings")
-		.update({
-			value: "false",
-		})
-		.eq("key", "waitlist_open")
-		.throwOnError();
+	await seedE2EScenario("waitlistStatus", { isOpen: false });
 	// Navigate to the form page
 	await page.goto("/waitlist");
 	await expect(

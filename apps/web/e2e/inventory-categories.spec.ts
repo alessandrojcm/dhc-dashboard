@@ -1,8 +1,22 @@
 import { expect, type Page, test } from "@playwright/test";
-import type { Database } from "../database.types";
+import type { InventoryCategoryCreateRequest } from "@dhc/api-client";
+import { seedE2EScenario } from "./e2eApi";
 // TODO: Restore this request helper when the legacy service-backed E2E baseline is migrated.
-import { createMember, getSupabaseServiceClient } from "./setupFunctions";
-import { loginAsUser } from "./supabaseLogin";
+import { createMember } from "./setupFunctions";
+import { loginAsUser } from "./auth";
+
+type PendingInventoryApiResponse = {
+	success: boolean;
+	category: {
+		id: string;
+		name: string;
+		description: string | null;
+		available_attributes: Record<string, { label?: string }>;
+	};
+	container: { id: string };
+	error: string;
+	issues: unknown;
+};
 
 async function makeAuthenticatedRequest(
 	page: Page,
@@ -12,7 +26,7 @@ async function makeAuthenticatedRequest(
 		data?: unknown;
 		headers?: Record<string, string>;
 	} = {},
-) {
+): Promise<PendingInventoryApiResponse> {
 	void page;
 	void url;
 	void options;
@@ -54,16 +68,8 @@ test.describe.skip("Inventory Categories Management", () => {
 		await adminData.cleanUp();
 	});
 
-	function createCategory(
-		cat: Database["public"]["Tables"]["equipment_categories"]["Insert"],
-	) {
-		const supabaseServiceClient = getSupabaseServiceClient();
-		return supabaseServiceClient
-			.from("equipment_categories")
-			.insert(cat)
-			.select("*")
-			.single()
-			.throwOnError();
+	async function createCategory(cat: InventoryCategoryCreateRequest) {
+		return { data: await seedE2EScenario("inventoryCategory", cat) };
 	}
 
 	test.describe("Category CRUD Operations", () => {
@@ -193,13 +199,14 @@ test.describe.skip("Inventory Categories Management", () => {
 			const createResponse = await createCategory({
 				name: originalName,
 				description: "Original description",
-				available_attributes: {
-					brand: {
+				availableAttributes: [
+					{
+						name: "brand",
 						type: "text",
 						label: "Brand",
 						required: false,
 					},
-				},
+				],
 			});
 
 			const categoryId = createResponse.data.id;

@@ -25,13 +25,13 @@ config :dhc, Dhc.Repo,
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
 config :dhc, DhcWeb.Endpoint,
-  http: [ip: {127, 0, 0, 1}, port: 4002],
+  http: [ip: {127, 0, 0, 1}, port: String.to_integer(System.get_env("E2E_API_PORT", "4002"))],
   # WebSocket origin validation for the Notification socket. Tests don't upgrade
   # a real transport, but the value is kept consistent with the CORS allow-list
   # so the endpoint reflects production-shaped configuration.
   check_origin: ["http://localhost:5173"],
   secret_key_base: "4NYsNq71KJ4FMFOGvvddgFNTCbmuHANzkI6ZFu7ShIV+LhLwwdeG+iyDS7BEIW0t",
-  server: false
+  server: System.get_env("E2E_SERVER") == "true"
 
 # Configure Oban for testing
 config :dhc, Oban,
@@ -65,10 +65,18 @@ config :dhc, :invitation_verification_token_salt, "invitation-verification-test"
 config :dhc, :supabase_url, "https://supabase.example.com"
 config :dhc, :supabase_service_role_key, "test-service-role-key"
 config :dhc, :app_url, "http://localhost:5173"
-config :dhc, :auth_session_domain, ".dublinhemaclub.com"
-config :dhc, :auth_session_secure, true
+config :dhc, :auth_session_domain, nil
+config :dhc, :auth_session_secure, false
 config :dhc, :environment, :test
-config :dhc, :cors_allowed_origins, ["http://localhost:5173"]
+
+config :dhc, :cors_allowed_origins, [
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  "https://127.0.0.1:5173"
+]
+
+config :dhc, :e2e_harness, System.get_env("E2E_SERVER") == "true"
+config :dhc, :e2e_harness_key, System.get_env("E2E_HARNESS_KEY", "local-e2e-harness")
 config :dhc, :discord_oauth_strategy, Dhc.DiscordOAuthStub
 config :dhc, :discord_oauth, client_id: "test-client", client_secret: "test-secret"
 

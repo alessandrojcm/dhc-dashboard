@@ -204,6 +204,15 @@ defmodule Dhc.Waitlist do
     end
   end
 
+  @doc false
+  @spec delete_entry(Ecto.UUID.t()) :: :ok | {:error, :not_found}
+  def delete_entry(id) do
+    case Repo.get(WaitlistEntry, id) do
+      nil -> {:error, :not_found}
+      entry -> Repo.delete(entry) |> then(fn {:ok, _entry} -> :ok end)
+    end
+  end
+
   @doc """
   Returns guardian details for a waitlist entry, when present.
   """

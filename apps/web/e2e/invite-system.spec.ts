@@ -2,7 +2,7 @@ import { faker } from "@faker-js/faker/locale/en_IE";
 import { expect, test } from "@playwright/test";
 import dayjs from "dayjs";
 import { createMember } from "./setupFunctions";
-import { loginAsUser } from "./supabaseLogin";
+import { loginAsUser } from "./auth";
 
 test.describe("Invitation System", () => {
 	let adminData: Awaited<ReturnType<typeof createMember>>;

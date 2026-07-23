@@ -1,13 +1,13 @@
 import { faker } from "@faker-js/faker";
 import { expect, type Page, test } from "@playwright/test";
 import dayjs from "dayjs";
+import { deleteE2EFixture, seedE2EScenario } from "./e2eApi";
 import {
 	createMember,
-	getSupabaseServiceClient,
 	setupInvitedUser,
 	createUniqueEmail,
 } from "./setupFunctions";
-import { loginAsUser } from "./supabaseLogin";
+import { loginAsUser } from "./auth";
 
 const MEMBERS_PATH = "/dashboard/members?tab=members";
 const INVITATIONS_PATH = "/dashboard/members?tab=invitations";
@@ -67,13 +67,11 @@ test.describe("Comprehensive page size tests", () => {
 	let adminMember: Awaited<ReturnType<typeof createMember>>;
 	const testData = {
 		members: [] as Awaited<ReturnType<typeof createMember>>[],
-		waitlist: [] as { email: string }[],
+		waitlist: [] as { id: string; email: string }[],
 		invitations: [] as Awaited<ReturnType<typeof setupInvitedUser>>[],
 	};
 
 	test.beforeAll(async () => {
-		const supabase = getSupabaseServiceClient();
-
 		// Create admin member
 		adminMember = await createMember({
 			email: createUniqueEmail("pagesize-test-admin"),
@@ -94,19 +92,19 @@ test.describe("Comprehensive page size tests", () => {
 			...new Array(25).map(async (_, i) => {
 				const email = createUniqueEmail("pagesize-waitlist", i);
 
-				await supabase.rpc("insert_waitlist_entry", {
-					first_name: faker.person.firstName(),
-					last_name: faker.person.lastName(),
+				const waitlist = await seedE2EScenario("waitlist", {
+					firstName: faker.person.firstName(),
+					lastName: faker.person.lastName(),
 					email: email,
-					date_of_birth: dayjs().subtract(20, "years").toISOString(),
+					dateOfBirth: dayjs().subtract(20, "years").format("YYYY-MM-DD"),
 					pronouns: "they/them",
 					gender: "non-binary",
-					phone_number: faker.phone.number(),
-					medical_conditions: "None",
-					social_media_consent: "no",
+					phoneNumber: faker.phone.number(),
+					medicalConditions: "None",
+					socialMediaConsent: "no",
 				});
 
-				testData.waitlist.push({ email });
+				testData.waitlist.push({ id: waitlist.waitlistId, email });
 			}),
 			new Array(25).map(async (_, i) => {
 				testData.invitations.push(
@@ -121,16 +119,11 @@ test.describe("Comprehensive page size tests", () => {
 	});
 
 	test.afterAll(async () => {
-		const supabase = getSupabaseServiceClient();
 		await Promise.all([
 			adminMember?.cleanUp().catch(console.error),
-			supabase
-				.from("waitlist")
-				.delete()
-				.in(
-					"email",
-					testData.waitlist.map((wl) => wl.email),
-				),
+			...testData.waitlist.map((waitlist) =>
+				deleteE2EFixture("waitlist", waitlist.id),
+			),
 			...testData.invitations.map((invitation) =>
 				invitation?.cleanUp().catch(console.error),
 			),
