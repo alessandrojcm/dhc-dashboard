@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import dayjs from "dayjs";
 import { createMember, createWorkshop } from "./setupFunctions";
-import { loginAsUser } from "./supabaseLogin";
+import { loginAsUser } from "./auth";
 
 test.describe("Workshop UI", () => {
 	let adminData: Awaited<ReturnType<typeof createMember>>;

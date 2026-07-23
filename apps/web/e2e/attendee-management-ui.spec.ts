@@ -4,8 +4,9 @@ import {
 	createTestWorkshop,
 	generateUniqueTestData,
 } from "./attendee-test-helpers";
-import { createMember, getSupabaseServiceClient } from "./setupFunctions";
-import { loginAsUser } from "./supabaseLogin";
+import { deleteE2EFixture } from "./e2eApi";
+import { createMember } from "./setupFunctions";
+import { loginAsUser } from "./auth";
 
 test.describe("Attendee Management UI", () => {
 	let adminData: Awaited<ReturnType<typeof createMember>>;
@@ -234,17 +235,12 @@ test.describe("Attendee Management UI", () => {
 
 	test.afterEach(async () => {
 		// Clean up test data
-		const supabase = getSupabaseServiceClient();
-
-		if (registrationIds.length > 0) {
-			await supabase
-				.from("club_activity_registrations")
-				.delete()
-				.in("id", registrationIds);
-		}
+		await Promise.all(
+			registrationIds.map((id) => deleteE2EFixture("registration", id)),
+		);
 
 		if (workshopId) {
-			await supabase.from("club_activities").delete().eq("id", workshopId);
+			await deleteE2EFixture("workshop", workshopId);
 		}
 	});
 

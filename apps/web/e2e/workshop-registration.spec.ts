@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { createMember } from "./setupFunctions";
-import { loginAsUser } from "./supabaseLogin";
+import { loginAsUser } from "./auth";
 
 test.describe("Workshop Registration", () => {
 	let memberData: Awaited<ReturnType<typeof createMember>>;

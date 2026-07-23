@@ -4,7 +4,7 @@ import {
 	setupInvitedUser,
 	createUniqueEmail,
 } from "./setupFunctions";
-import { loginAsUser } from "./supabaseLogin";
+import { loginAsUser } from "./auth";
 
 const INVITATIONS_PATH = "/dashboard/members?tab=invitations";
 

@@ -61,6 +61,18 @@ defmodule DhcWeb.Router do
     plug :fetch_session
   end
 
+  if Application.compile_env(:dhc, :e2e_harness, false) do
+    scope "/api/e2e", DhcWeb do
+      pipe_through :api
+
+      post "/reset", E2EHarnessController, :reset
+      post "/seed/:scenario", E2EHarnessController, :seed
+      post "/login", E2EHarnessController, :login
+      patch "/fixtures/:type/:id", E2EHarnessController, :update_fixture
+      post "/fixtures/:type/:id", E2EHarnessController, :delete_fixture
+    end
+  end
+
   scope "/api", DhcWeb do
     pipe_through :api
 

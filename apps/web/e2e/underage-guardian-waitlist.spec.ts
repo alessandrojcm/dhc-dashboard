@@ -3,7 +3,7 @@
 import { faker } from "@faker-js/faker";
 import { expect, test } from "@playwright/test";
 import dayjs from "dayjs";
-import { getSupabaseServiceClient } from "./setupFunctions";
+import { seedE2EScenario } from "./e2eApi";
 
 // Test data for an underage user (16-17 years old)
 const underageTestData = {
@@ -29,15 +29,7 @@ const adultTestData = {
 };
 
 test.afterAll(async () => {
-	await (
-		await getSupabaseServiceClient()
-	)
-		.from("settings")
-		.update({
-			value: "true",
-		})
-		.eq("key", "waitlist_open")
-		.throwOnError();
+	await seedE2EScenario("waitlistStatus", { isOpen: true });
 });
 
 test("underage user (16-17) should see guardian fields", async ({ page }) => {

@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
-import type { Database } from "../src/database.types";
-import { createMember, getSupabaseServiceClient } from "./setupFunctions";
+import type { E2ERegistrationSeedRequest, E2ERole } from "./e2eApi";
+import { seedE2EScenario } from "./e2eApi";
+import { createMember } from "./setupFunctions";
 
 /**
  * Helper functions for attendee management and refund E2E tests
@@ -41,18 +42,26 @@ export interface TestRefund {
 	requested_at: string;
 }
 
-type CreateTestWorkshopOverrides = Partial<
-	Database["public"]["Tables"]["club_activities"]["Insert"]
->;
+type CreateTestWorkshopOverrides = Partial<{
+	title: string;
+	description: string;
+	location: string;
+	start_date: string;
+	end_date: string;
+	max_capacity: number;
+	price_member: number;
+	price_non_member: number;
+	is_public: boolean;
+	refund_days: number;
+	created_by: string;
+	status: "planned" | "published" | "finished" | "cancelled";
+}>;
 
 type CreateTestRegistrationOverrides = Partial<
-	Omit<
-		Database["public"]["Tables"]["club_activity_registrations"]["Insert"],
-		"club_activity_id" | "member_user_id"
-	>
+	Omit<E2ERegistrationSeedRequest, "memberUserId" | "workshopId">
 >;
 
-type RoleType = Database["public"]["Enums"]["role_type"];
+type RoleType = E2ERole;
 
 /**
  * Creates a test workshop with default values using direct database access
@@ -63,7 +72,12 @@ export async function createTestWorkshop(
 ): Promise<TestWorkshop> {
 	const timestamp = Date.now();
 	const randomSuffix = Math.random().toString(36).substring(2, 15);
-	const supabase = getSupabaseServiceClient();
+	const creator = overrides.created_by
+		? undefined
+		: await createMember({
+				email: `workshop-creator-${timestamp}-${randomSuffix}@test.com`,
+				roles: new Set(["workshop_coordinator"]),
+			});
 
 	const workshopStartDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days from now
 	const workshopEndDate = new Date(
@@ -82,31 +96,37 @@ export async function createTestWorkshop(
 		is_public: true,
 		refund_days: 3,
 		status: "published" as const,
+		created_by: overrides.created_by ?? creator!.userId,
 		...overrides,
 	};
 
-	const { data: workshop, error } = await supabase
-		.from("club_activities")
-		.insert(defaultWorkshop)
-		.select()
-		.single();
-
-	if (error) {
-		throw new Error(`Failed to create workshop: ${error.message}`);
-	}
+	const workshop = await seedE2EScenario("workshop", {
+		title: defaultWorkshop.title,
+		description: defaultWorkshop.description,
+		location: defaultWorkshop.location,
+		startDate: defaultWorkshop.start_date,
+		endDate: defaultWorkshop.end_date,
+		maxCapacity: defaultWorkshop.max_capacity,
+		priceMember: defaultWorkshop.price_member,
+		priceNonMember: defaultWorkshop.price_non_member,
+		isPublic: defaultWorkshop.is_public,
+		refundDays: defaultWorkshop.refund_days,
+		createdBy: defaultWorkshop.created_by,
+		status: defaultWorkshop.status,
+	});
 
 	return {
 		id: workshop.id,
 		title: workshop.title || "",
 		description: workshop.description || "",
 		location: workshop.location || "",
-		workshop_date: workshop.start_date,
+		workshop_date: workshop.startDate,
 		workshop_time: "14:00", // Default time
-		max_capacity: workshop.max_capacity || 0,
-		price_member: (workshop.price_member || 0) / 100, // Convert back to dollars
-		price_non_member: (workshop.price_non_member || 0) / 100,
-		is_public: workshop.is_public || false,
-		refund_deadline_days: workshop.refund_days || 0,
+		max_capacity: workshop.maxCapacity || 0,
+		price_member: (workshop.priceMember || 0) / 100, // Convert back to dollars
+		price_non_member: (workshop.priceNonMember || 0) / 100,
+		is_public: workshop.isPublic || false,
+		refund_deadline_days: workshop.refundDays || 0,
 	};
 }
 
@@ -119,36 +139,28 @@ export async function createTestRegistration(
 	userId: string,
 	overrides: CreateTestRegistrationOverrides = {},
 ): Promise<TestRegistration> {
-	const supabase = getSupabaseServiceClient();
+	const defaultRegistration: E2ERegistrationSeedRequest = {
+		workshopId,
+		memberUserId: userId,
+		amountPaid: 2500, // 25.00 in cents
+		status: "confirmed" as const,
+		currency: "EUR",
+		...overrides,
+	};
 
-	const defaultRegistration: Database["public"]["Tables"]["club_activity_registrations"]["Insert"] =
-		{
-			club_activity_id: workshopId,
-			member_user_id: userId,
-			amount_paid: 2500, // 25.00 in cents
-			status: "confirmed" as const,
-			currency: "EUR",
-			...overrides,
-		};
-
-	const { data: registration, error } = await supabase
-		.from("club_activity_registrations")
-		.insert(defaultRegistration)
-		.select()
-		.single();
-
-	if (error) {
-		throw new Error(`Failed to create registration: ${error.message}`);
-	}
+	const registration = await seedE2EScenario(
+		"registration",
+		defaultRegistration,
+	);
 
 	return {
 		id: registration.id,
 		workshop_id: workshopId,
-		member_user_id: registration.member_user_id || "",
-		amount_paid: registration.amount_paid,
+		member_user_id: registration.memberUserId || "",
+		amount_paid: registration.amountPaid,
 		status: registration.status,
-		attendance_status: registration.attendance_status || undefined,
-		attendance_notes: registration.attendance_notes || undefined,
+		attendance_status: registration.attendanceStatus || undefined,
+		attendance_notes: registration.attendanceNotes || undefined,
 	};
 }
 

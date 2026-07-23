@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { createMember } from "./setupFunctions";
-import { loginAsUser } from "./supabaseLogin";
+import { loginAsUser } from "./auth";
 
 // Verifies the Members dashboard analytics panel renders through the Phoenix
 // API (GET /api/members/analytics) after the PostgREST read migration (#124).

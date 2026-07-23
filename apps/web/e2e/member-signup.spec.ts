@@ -6,16 +6,13 @@ test.describe("Member Signup - Negative test cases", () => {
 	[
 		{
 			addInvitation: false,
-			addSupabaseId: true,
 		},
 		{
 			addInvitation: true,
-			addSupabaseId: true,
 			token: "invalid_token",
 		},
 		{
 			addInvitation: true,
-			addSupabaseId: true,
 			invitationStatus: "expired" as const,
 		},
 	].forEach((override) => {

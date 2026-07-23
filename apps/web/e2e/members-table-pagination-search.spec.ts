@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { createMember } from "./setupFunctions";
-import { loginAsUser } from "./supabaseLogin";
+import { loginAsUser } from "./auth";
 
 test.describe("Members table pagination and search", () => {
 	let adminMember: Awaited<ReturnType<typeof createMember>>;

@@ -1,12 +1,9 @@
 import { faker } from "@faker-js/faker";
 import { expect, type Page, test } from "@playwright/test";
 import dayjs from "dayjs";
-import {
-	createMember,
-	getSupabaseServiceClient,
-	setupInvitedUser,
-} from "./setupFunctions";
-import { loginAsUser } from "./supabaseLogin";
+import { deleteE2EFixture, seedE2EScenario } from "./e2eApi";
+import { createMember, setupInvitedUser } from "./setupFunctions";
+import { loginAsUser } from "./auth";
 
 test.describe("Comprehensive table search tests", () => {
 	let runId = "";
@@ -18,7 +15,12 @@ test.describe("Comprehensive table search tests", () => {
 	let uniqueWaitlistEmail = "";
 	const testData = {
 		members: [] as Awaited<ReturnType<typeof createMember>>[],
-		waitlist: [] as { email: string; firstName: string; lastName: string }[],
+		waitlist: [] as {
+			id: string;
+			email: string;
+			firstName: string;
+			lastName: string;
+		}[],
 		invitations: [] as Awaited<ReturnType<typeof setupInvitedUser>>[],
 	};
 
@@ -33,8 +35,6 @@ test.describe("Comprehensive table search tests", () => {
 			roles: new Set(["admin"]),
 			createSubscription: false,
 		});
-
-		const supabase = getSupabaseServiceClient();
 
 		// Create test members with unique searchable data
 		await Promise.all([
@@ -51,19 +51,20 @@ test.describe("Comprehensive table search tests", () => {
 				const last_name = i === 0 ? "SearchTarget" : faker.person.lastName();
 				const email = `waitlist-search-${runId}-${i}@test.com`;
 
-				await supabase.rpc("insert_waitlist_entry", {
-					first_name,
-					last_name,
+				const waitlist = await seedE2EScenario("waitlist", {
+					firstName: first_name,
+					lastName: last_name,
 					email,
-					date_of_birth: dayjs().subtract(20, "years").toISOString(),
+					dateOfBirth: dayjs().subtract(20, "years").format("YYYY-MM-DD"),
 					pronouns: "they/them",
 					gender: "non-binary",
-					phone_number: faker.phone.number(),
-					medical_conditions: "None",
-					social_media_consent: "no",
+					phoneNumber: faker.phone.number(),
+					medicalConditions: "None",
+					socialMediaConsent: "no",
 				});
 
 				testData.waitlist.push({
+					id: waitlist.waitlistId,
 					email,
 					firstName: first_name,
 					lastName: last_name,
@@ -207,12 +208,11 @@ test.describe("Comprehensive table search tests", () => {
 	}
 
 	test.afterAll(async () => {
-		const supabase = getSupabaseServiceClient();
 		await adminMember?.cleanUp().catch(() => undefined);
 		const cleanupTasks = [
 			...testData.members.map((member) => member?.cleanUp()),
 			...testData.waitlist.map((waitlist) =>
-				supabase.from("waitlist").delete().eq("email", waitlist.email),
+				deleteE2EFixture("waitlist", waitlist.id),
 			),
 			...testData.invitations.map((invitation) => invitation?.cleanUp()),
 		];

@@ -1,13 +1,14 @@
 import { faker } from "@faker-js/faker";
 import { expect, test } from "@playwright/test";
 import dayjs from "dayjs";
-import { createMember, getSupabaseServiceClient } from "./setupFunctions";
-import { loginAsUser } from "./supabaseLogin";
+import { deleteE2EFixture, seedE2EScenario } from "./e2eApi";
+import { createMember } from "./setupFunctions";
+import { loginAsUser } from "./auth";
 
 test.describe("Pagination tests", () => {
 	let member: Awaited<ReturnType<typeof createMember>>;
 	const extraMembers: Array<Awaited<ReturnType<typeof createMember>>> = [];
-	const waitlistEmails: string[] = [];
+	const waitlistIds: string[] = [];
 	const timestamp = Date.now();
 	const randomSuffix = Math.random().toString(36).substring(2, 7);
 
@@ -30,21 +31,20 @@ test.describe("Pagination tests", () => {
 			extraMembers.push(extraMember);
 		}
 
-		const supabase = await getSupabaseServiceClient();
 		for (let i = 0; i < 15; i += 1) {
 			const email = buildEmail("test-pagination-waitlist", i);
-			waitlistEmails.push(email);
-			await supabase.rpc("insert_waitlist_entry", {
-				first_name: faker.person.firstName(),
-				last_name: faker.person.lastName(),
+			const waitlist = await seedE2EScenario("waitlist", {
+				firstName: faker.person.firstName(),
+				lastName: faker.person.lastName(),
 				email,
-				date_of_birth: dayjs().subtract(20, "years").toISOString(),
+				dateOfBirth: dayjs().subtract(20, "years").format("YYYY-MM-DD"),
 				pronouns: "they/them",
 				gender: "non-binary",
-				phone_number: faker.phone.number(),
-				medical_conditions: "None",
-				social_media_consent: "no",
+				phoneNumber: faker.phone.number(),
+				medicalConditions: "None",
+				socialMediaConsent: "no",
 			});
+			waitlistIds.push(waitlist.waitlistId);
 		}
 	});
 
@@ -53,9 +53,8 @@ test.describe("Pagination tests", () => {
 		for (const extraMember of extraMembers) {
 			await extraMember.cleanUp();
 		}
-		const supabase = await getSupabaseServiceClient();
-		for (const email of waitlistEmails) {
-			await supabase.from("waitlist").delete().eq("email", email);
+		for (const id of waitlistIds) {
+			await deleteE2EFixture("waitlist", id);
 		}
 	});
 

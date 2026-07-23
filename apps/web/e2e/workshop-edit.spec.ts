@@ -3,8 +3,8 @@ import {
 	createTestRegistration,
 	createTestWorkshop,
 } from "./attendee-test-helpers";
-import { createMember, getSupabaseServiceClient } from "./setupFunctions";
-import { loginAsUser } from "./supabaseLogin";
+import { createMember } from "./setupFunctions";
+import { loginAsUser } from "./auth";
 
 test.describe("Workshop Edit Feature", () => {
 	let adminData: Awaited<ReturnType<typeof createMember>>;
@@ -45,15 +45,9 @@ test.describe("Workshop Edit Feature", () => {
 			price_member: 1500,
 			price_non_member: 2500,
 			is_public: true,
+			status: "planned",
 		});
 		const workshopId = workshop.id;
-
-		// Update the workshop status to 'planned' so it can be edited
-		const supabase = getSupabaseServiceClient();
-		await supabase
-			.from("club_activities")
-			.update({ status: "planned" })
-			.eq("id", workshopId);
 
 		// Navigate to workshops page
 		await page.goto("/dashboard/workshops");
@@ -146,6 +140,7 @@ test.describe("Workshop Edit Feature", () => {
 			max_capacity: 10,
 			price_member: 15,
 			is_public: false,
+			status: "planned",
 		});
 		const workshopId = workshop.id;
 
@@ -237,13 +232,6 @@ test.describe("Workshop Edit Feature", () => {
 		});
 		const workshopId = workshop.id;
 
-		// Update the workshop status to 'planned' so it can be edited
-		const supabase = getSupabaseServiceClient();
-		await supabase
-			.from("club_activities")
-			.update({ status: "planned" })
-			.eq("id", workshopId);
-
 		// Navigate to edit page
 		await page.goto(`/dashboard/workshops/${workshopId}/edit`);
 
@@ -277,15 +265,9 @@ test.describe("Workshop Edit Feature", () => {
 			max_capacity: 8,
 			price_member: 12,
 			is_public: false,
+			status: "planned",
 		});
 		const workshopId = workshop.id;
-
-		// Update the workshop status to 'planned' so it can be edited
-		const supabase = getSupabaseServiceClient();
-		await supabase
-			.from("club_activities")
-			.update({ status: "planned" })
-			.eq("id", workshopId);
 
 		// Navigate to edit page
 		await page.goto(`/dashboard/workshops/${workshopId}/edit`);
