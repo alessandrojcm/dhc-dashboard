@@ -2,7 +2,8 @@
 
 ## Service Layer (MANDATORY)
 
-ALL database mutations go through services in `src/lib/server/services/`.
+Legacy service-layer examples, where still referenced during migration history, live under
+`apps/web/src/lib/server/services/`. New domain mutations belong in Phoenix contexts.
 
 ```typescript
 // In +page.server.ts

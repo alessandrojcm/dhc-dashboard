@@ -35,8 +35,8 @@ defmodule DhcWeb.AuthSessionControllerTest do
 
       cookie = conn.resp_cookies[@session_cookie]
       assert cookie
-      assert cookie.domain == ".dublinhemaclub.com"
-      assert cookie.secure
+      refute Map.has_key?(cookie, :domain)
+      refute cookie.secure
 
       identity =
         Repo.get_by!(Dhc.Auth.ExternalIdentity,

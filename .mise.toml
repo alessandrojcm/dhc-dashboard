@@ -32,14 +32,17 @@ _.file = ".env"      # auto-load .env if it exists (no dotenv-cli needed)
 
 [tasks.dev]
 description = "Start SvelteKit dev server"
+dir = "apps/web"
 run = "pnpm dev"
 
 [tasks.build]
 description = "Production build (SvelteKit)"
+dir = "apps/web"
 run = "pnpm build"
 
 [tasks.check]
 description = "Svelte type-check"
+dir = "apps/web"
 run = "pnpm check"
 
 # ── Phoenix ────────────────────────────────────────
@@ -104,7 +107,7 @@ run = "mix format --check-formatted"
 
 [tasks."ast-lint"]
 description = "Run ast-grep structural lint rules (fails on violations)"
-run = "ast-grep scan -c sgconfig.yml apps/phoenix/priv/repo/migrations/ src/"
+run = "ast-grep scan -c sgconfig.yml apps/phoenix/priv/repo/migrations/ apps/web/src/"
 
 [tasks."ast-test"]
 description = "Run ast-grep rule test fixtures"
@@ -130,47 +133,53 @@ run = "MIX_ENV=dev mix stripe.gen"
 
 [tasks.test]
 description = "Run all tests (unit + e2e)"
+dir = "apps/web"
 run = "pnpm test"
 
 [tasks."test-unit"]
 description = "Run Vitest unit tests"
+dir = "apps/web"
 run = "pnpm test:unit"
+
+[tasks."test-browser"]
+description = "Run Vitest browser component tests"
+dir = "apps/web"
+run = "pnpm test:browser --run"
 
 [tasks."test-e2e"]
 description = "Run Playwright e2e tests"
+dir = "apps/web"
+env = { API_BASE_URL = "http://127.0.0.1:4000/api", E2E_COMPOSE_PROJECT = "dhc-dashboard-e2e", E2E_HARNESS_KEY = "local-e2e-harness" }
 run = "pnpm test:e2e"
+
+[tasks."e2e-phoenix-server"]
+description = "Start the Phoenix E2E server and disposable PostgreSQL database"
+dir = "apps/phoenix"
+env = { MIX_ENV = "test", MIX_BUILD_PATH = "_build/e2e", E2E_SERVER = "true", E2E_API_PORT = "4000", E2E_COMPOSE_PROJECT = "dhc-dashboard-e2e", E2E_HARNESS_KEY = "local-e2e-harness" }
+run = "exec mix e2e.server"
+
+[tasks."e2e-web-server"]
+description = "Start SvelteKit for Playwright against the Phoenix E2E server"
+dir = "apps/web"
+env = { API_BASE_URL = "http://127.0.0.1:4000/api", PUBLIC_API_BASE_URL = "http://127.0.0.1:4000/api", E2E_SERVER = "true", CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE = "postgres://postgres:postgres@127.0.0.1:1/postgres" }
+run = "exec pnpm dev"
 
 # ── Linting & formatting ──────────────────────────
 
 [tasks.lint]
-description = "Lint JS/TS/Svelte (ESLint + Prettier check)"
+description = "Lint frontend JS/TS/Svelte scripts with Oxlint"
+dir = "apps/web"
 run = "pnpm lint"
 
 [tasks.format]
-description = "Auto-format JS/TS/Svelte (Biome)"
+description = "Auto-format frontend files with Oxfmt"
+dir = "apps/web"
 run = "pnpm format"
 
 [tasks."format-check"]
 description = "Check formatting without writing (CI)"
-run = "pnpm format --check 2>/dev/null || pnpm biome check --formatter-enabled=true ./src ./e2e"
-
-# ── Supabase ──────────────────────────────────────
-
-[tasks."sb-start"]
-description = "Start local Supabase stack"
-run = "pnpm supabase start"
-
-[tasks."sb-stop"]
-description = "Stop local Supabase stack"
-run = "pnpm supabase stop"
-
-[tasks."sb-reset"]
-description = "Reset local Supabase (drops + recreates + seeds)"
-run = "pnpm supabase:reset"
-
-[tasks."sb-types"]
-description = "Regenerate Supabase TypeScript types"
-run = "pnpm supabase:types"
+dir = "apps/web"
+run = "pnpm format:check"
 
 # ── Seeds ─────────────────────────────────────────
 

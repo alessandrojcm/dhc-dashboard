@@ -1,0 +1,38 @@
+FROM node:24-bullseye-slim
+
+# Add labels for better container management
+LABEL maintainer="Dublin HEMA Club"
+LABEL description="Development environment for DHC Dashboard"
+
+# Install necessary system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Enable and prepare pnpm with specific version
+RUN corepack enable && \
+    corepack prepare pnpm@10.18.3 --activate
+
+# Use non-root user for better security
+USER node
+
+WORKDIR /workspace
+
+# Copy package files first to leverage Docker cache
+COPY --chown=node:node package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY --chown=node:node apps/web/package.json ./apps/web/package.json
+COPY --chown=node:node packages/api-client/package.json ./packages/api-client/package.json
+COPY --chown=node:node packages/api-client/openapi-ts.config.ts packages/api-client/tsconfig.json ./packages/api-client/
+COPY --chown=node:node apps/phoenix/priv/api/openapi.yaml ./apps/phoenix/priv/api/openapi.yaml
+
+# Install dependencies
+RUN pnpm install --frozen-lockfile
+
+# Copy source code and other necessary directories
+COPY --chown=node:node ./apps/web ./apps/web
+COPY --chown=node:node ./packages/api-client ./packages/api-client
+
+WORKDIR /workspace/apps/web
+
+# Set environment to development
+ENV NODE_ENV=development

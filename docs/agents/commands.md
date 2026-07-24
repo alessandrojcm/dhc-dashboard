@@ -16,32 +16,32 @@ mise activate fish | source     # fish
 
 After activation, `node`, `elixir`, `mix`, `pnpm` etc. resolve to the versions pinned in `.mise.toml` on every `cd`.
 
-## SvelteKit (current)
+## SvelteKit (`apps/web`)
 
 ```bash
 # Dev (start in order)
-mise run sb-start           # 1. Start Supabase
+docker compose up -d db     # 1. Start PostgreSQL
 mise run phx-server         # 2. Phoenix API and Oban workers
-mise run dev                # 3. SvelteKit dev
-
-# Database
-mise run sb-types           # Generate Supabase TypeScript types
-mise run sb-reset           # Reset + seed local DB
+mise run dev                # 3. SvelteKit dev from apps/web
 
 # Testing
 mise run test-unit          # Vitest
-mise run test-e2e           # Playwright (requires Supabase, Phoenix, and SvelteKit)
+mise run test-browser       # Vitest Browser Mode component tests in Chromium
+mise run test-e2e           # Playwright; self-starts disposable PostgreSQL, Phoenix, and SvelteKit
 mise run check              # Svelte type check (NOT raw tsc)
 
 # Lint & format
-mise run lint               # ESLint + Biome check
-mise run format             # Auto-format with Biome
+mise run lint               # Oxlint (Svelte script blocks + JS/TS)
+mise run format             # Auto-format with Oxfmt
 ```
 
-ESLint intentionally excludes Phoenix build/dependency artifacts
-(`apps/phoenix/_build/`, `apps/phoenix/deps/`) and the generated OpenAPI client
-(`packages/api-client/src/client/`). Lint handwritten source and the tracked
-`packages/api-client/src/index.ts` export surface instead.
+Frontend linting and formatting run inside `apps/web` with Oxlint and Oxfmt;
+generated Phoenix and API-client files are outside that workspace and are not traversed.
+
+Playwright starts its Phoenix and SvelteKit processes through the internal
+`e2e-phoenix-server` and `e2e-web-server` mise tasks. Their task-local environment
+is the source of truth for E2E server settings; do not duplicate those variables
+in `playwright.config.ts` command strings.
 
 ## Phoenix (in progress)
 

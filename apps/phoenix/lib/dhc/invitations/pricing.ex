@@ -100,10 +100,18 @@ defmodule Dhc.Invitations.Pricing do
 
   defp price_id_for_lookup_key(lookup_key) do
     case Operations.get_prices(%{}, lookup_keys: [lookup_key], active: true, limit: 1) do
-      {:ok, %{"data" => [%{"id" => id} | _]}} when is_binary(id) -> {:ok, id}
-      {:ok, %{"data" => []}} -> {:error, :price_not_found}
-      {:error, reason} -> {:error, {:stripe, reason}}
-      _ -> {:error, :invalid_price_response}
+      {:ok, %{"data" => [%{"id" => id, "product" => product} | _]}}
+      when is_binary(id) and is_binary(product) ->
+        {:ok, %{id: id, product: product}}
+
+      {:ok, %{"data" => []}} ->
+        {:error, :price_not_found}
+
+      {:error, reason} ->
+        {:error, {:stripe, reason}}
+
+      _ ->
+        {:error, :invalid_price_response}
     end
   end
 
@@ -142,8 +150,11 @@ defmodule Dhc.Invitations.Pricing do
 
   defp retrieve_coupon(coupon_id) do
     case Operations.get_coupons_coupon(coupon_id, %{}) do
-      {:ok, coupon} -> {:ok, coupon}
-      {:error, reason} -> {:error, {:stripe, reason}}
+      {:ok, coupon} ->
+        {:ok, coupon}
+
+      {:error, reason} ->
+        {:error, {:stripe, reason}}
     end
   end
 
@@ -159,29 +170,61 @@ defmodule Dhc.Invitations.Pricing do
     next_january = next_january_anchor()
 
     calls = [
-      monthly_initial:
-        preview_invoice(customer_id, prices.monthly, :billing_cycle_anchor, next_month, promotion),
-      annual_initial:
+      monthly_initial: fn ->
         preview_invoice(
           customer_id,
-          prices.annual,
+          prices.monthly.id,
+          :billing_cycle_anchor,
+          next_month,
+          promotion_for_preview(promotion, prices.monthly, :initial)
+        )
+      end,
+      annual_initial: fn ->
+        preview_invoice(
+          customer_id,
+          prices.annual.id,
           :billing_cycle_anchor,
           next_january,
-          promotion
-        ),
-      monthly_recurring:
-        preview_invoice(customer_id, prices.monthly, :start_date, next_month, promotion),
-      annual_recurring:
-        preview_invoice(customer_id, prices.annual, :start_date, next_january, promotion)
+          promotion_for_preview(promotion, prices.annual, :initial)
+        )
+      end,
+      monthly_recurring: fn ->
+        preview_invoice(
+          customer_id,
+          prices.monthly.id,
+          :start_date,
+          next_month,
+          promotion_for_preview(promotion, prices.monthly, :recurring)
+        )
+      end,
+      annual_recurring: fn ->
+        preview_invoice(
+          customer_id,
+          prices.annual.id,
+          :start_date,
+          next_january,
+          promotion_for_preview(promotion, prices.annual, :recurring)
+        )
+      end
     ]
 
-    with {:ok, initial_monthly} <- Keyword.fetch!(calls, :monthly_initial),
-         {:ok, initial_annual} <- Keyword.fetch!(calls, :annual_initial),
-         {:ok, next_month_invoice} <- Keyword.fetch!(calls, :monthly_recurring),
-         {:ok, next_january_invoice} <- Keyword.fetch!(calls, :annual_recurring) do
+    previews =
+      calls
+      |> Task.async_stream(
+        fn {name, preview} -> {name, preview.()} end,
+        ordered: false,
+        timeout: :infinity
+      )
+      |> Map.new(fn {:ok, result} -> result end)
+
+    with {:ok, initial_monthly} <- Map.fetch!(previews, :monthly_initial),
+         {:ok, initial_annual} <- Map.fetch!(previews, :annual_initial),
+         {:ok, next_month_invoice} <- Map.fetch!(previews, :monthly_recurring),
+         {:ok, next_january_invoice} <- Map.fetch!(previews, :annual_recurring) do
       monthly_discount = total_discount(next_month_invoice)
       annual_discount = total_discount(next_january_invoice)
       initial_monthly_discount = total_discount(initial_monthly)
+      initial_annual_discount = total_discount(initial_annual)
 
       discount_percentage =
         cond do
@@ -191,6 +234,9 @@ defmodule Dhc.Invitations.Pricing do
           initial_monthly_discount > 0 ->
             discount_percentage(initial_monthly_discount, amount(initial_monthly, "subtotal"))
 
+          initial_annual_discount > 0 ->
+            discount_percentage(initial_annual_discount, amount(initial_annual, "subtotal"))
+
           monthly_discount > 0 ->
             discount_percentage(monthly_discount, amount(next_month_invoice, "subtotal"))
 
@@ -198,8 +244,12 @@ defmodule Dhc.Invitations.Pricing do
             0
         end
 
+      prorated_monthly_price = amount(initial_monthly, "amount_due")
+      prorated_annual_price = amount(initial_annual, "amount_due")
+
       prorated_price =
-        amount(initial_monthly, "amount_due") + amount(initial_annual, "amount_due")
+        one_time_price(prorated_monthly_price, promotion, prices.monthly) +
+          one_time_price(prorated_annual_price, promotion, prices.annual)
 
       {:ok,
        %{
@@ -212,8 +262,8 @@ defmodule Dhc.Invitations.Pricing do
            if(monthly_discount > 0, do: amount(next_month_invoice, "amount_due"), else: 0),
          discounted_annual_fee:
            if(annual_discount > 0, do: amount(next_january_invoice, "amount_due"), else: 0),
-         prorated_annual_price: amount(initial_annual, "amount_due"),
-         prorated_monthly_price: amount(initial_monthly, "amount_due"),
+         prorated_annual_price: prorated_annual_price,
+         prorated_monthly_price: prorated_monthly_price,
          coupon_details: promotion.coupon
        }}
     end
@@ -240,6 +290,44 @@ defmodule Dhc.Invitations.Pricing do
   defp maybe_add_discount(form, %{promotion_code_id: promotion_code_id}),
     do: Map.put(form, "discounts[0][promotion_code]", promotion_code_id)
 
+  defp promotion_for_preview(%{coupon: %{"duration" => "once"}} = promotion, _price, _phase),
+    do: %{promotion | promotion_code_id: nil}
+
+  defp promotion_for_preview(
+         %{coupon: %{"applies_to" => %{"products" => products}}} = promotion,
+         %{product: product},
+         _phase
+       )
+       when is_list(products) do
+    if product in products, do: promotion, else: %{promotion | promotion_code_id: nil}
+  end
+
+  defp promotion_for_preview(promotion, _price, _phase), do: promotion
+
+  defp one_time_price(
+         amount,
+         %{coupon: %{"duration" => "once", "percent_off" => percent_off}} = promotion,
+         price
+       )
+       when is_number(percent_off) do
+    if promotion_applies_to_price?(promotion, price) do
+      round(amount * (100 - percent_off) / 100)
+    else
+      amount
+    end
+  end
+
+  defp one_time_price(amount, _promotion, _price), do: amount
+
+  defp promotion_applies_to_price?(
+         %{coupon: %{"applies_to" => %{"products" => products}}},
+         %{product: product}
+       )
+       when is_list(products),
+       do: product in products
+
+  defp promotion_applies_to_price?(_promotion, _price), do: true
+
   defp total_discount(%{"total_discount_amounts" => discounts}) when is_list(discounts) do
     Enum.reduce(discounts, 0, fn discount, sum -> sum + amount(discount, "amount") end)
   end
@@ -259,6 +347,7 @@ defmodule Dhc.Invitations.Pricing do
     |> Map.put(:discount_percentage, percent_off)
     |> Map.put(:discounted_monthly_fee, 0)
     |> Map.put(:discounted_annual_fee, 0)
+    |> Map.delete(:coupon_details)
     |> generate_pricing_info()
   end
 
