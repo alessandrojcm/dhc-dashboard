@@ -155,7 +155,7 @@ run = "pnpm test:e2e"
 [tasks."e2e-phoenix-server"]
 description = "Start the Phoenix E2E server and disposable PostgreSQL database"
 dir = "apps/phoenix"
-env = { MIX_ENV = "test", E2E_SERVER = "true", E2E_API_PORT = "4000", E2E_COMPOSE_PROJECT = "dhc-dashboard-e2e", E2E_HARNESS_KEY = "local-e2e-harness" }
+env = { MIX_ENV = "test", MIX_BUILD_PATH = "_build/e2e", E2E_SERVER = "true", E2E_API_PORT = "4000", E2E_COMPOSE_PROJECT = "dhc-dashboard-e2e", E2E_HARNESS_KEY = "local-e2e-harness" }
 run = "exec mix e2e.server"
 
 [tasks."e2e-web-server"]
