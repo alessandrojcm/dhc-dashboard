@@ -34,23 +34,20 @@ export const submitWaitlist = form(
 		const result = v.safeParse(beginnersWaitlist, transformedData);
 
 		if (!result.success) {
-			// Map Valibot validation errors to form field issues
-			for (const validationIssue of result.issues) {
+			const formIssues = result.issues.map((validationIssue) => {
 				const fieldPath =
 					validationIssue.path?.map((p) => p.key).join(".") || "";
 				if (fieldPath) {
-					// Create field-specific issue using dynamic property access
 					// eslint-disable-next-line @typescript-eslint/no-explicit-any
 					const issueProxy = issue as any;
 					if (typeof issueProxy[fieldPath] === "function") {
-						invalid(issueProxy[fieldPath](validationIssue.message));
+						return issueProxy[fieldPath](validationIssue.message);
 					}
-				} else {
-					// Form-level error
-					invalid(validationIssue.message);
 				}
-			}
-			return;
+				return validationIssue.message;
+			});
+
+			invalid(...formIssues);
 		}
 
 		try {

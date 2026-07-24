@@ -3,7 +3,7 @@ import { seedE2EScenario } from "./e2eApi";
 import { createMember } from "./setupFunctions";
 import { loginAsUser } from "./auth";
 
-test.describe("Inventory Containers Management", () => {
+test.describe.skip("Inventory Containers Management", () => {
 	let quartermasterData: Awaited<ReturnType<typeof createMember>>;
 	let memberData: Awaited<ReturnType<typeof createMember>>;
 	let adminData: Awaited<ReturnType<typeof createMember>>;

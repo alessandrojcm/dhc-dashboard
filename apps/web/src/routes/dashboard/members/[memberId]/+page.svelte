@@ -193,6 +193,7 @@ const resumeMutation = createMutation(() => ({
 							"For insurance reasons, HEMA practitioners need to be at least 16 years old",
 						)}
 						<DatePicker
+							label="Date of Birth"
 							value={dobValue}
 							onDateChange={(date) => {
 								if (!date) return;
@@ -365,11 +366,14 @@ const resumeMutation = createMutation(() => ({
 						{#each updateProfile.fields.weapon.issues() as issue}
 							<Field.Error>{issue.message}</Field.Error>
 						{/each}
-						<input
-							type="hidden"
-							name={fieldProps.name}
-							value={weapon.join(", ")}
-						/>
+						{#each weapon as selectedWeapon, index (selectedWeapon)}
+							<input
+								{...updateProfile.fields.weapon[index].as(
+									"hidden",
+									selectedWeapon,
+								)}
+							/>
+						{/each}
 					</Field.Field>
 
 					<Field.Field>

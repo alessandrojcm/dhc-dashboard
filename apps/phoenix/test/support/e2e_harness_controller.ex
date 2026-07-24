@@ -16,8 +16,15 @@ defmodule DhcWeb.E2EHarnessController do
 
   def seed(conn, %{"scenario" => scenario} = params) do
     with_harness(conn, fn conn ->
-      data = E2EHarness.seed(scenario, Map.get(params, "attrs", %{}))
-      json(conn, %{data: data})
+      case E2EHarness.seed(scenario, Map.get(params, "attrs", %{})) do
+        {:error, reason} ->
+          conn
+          |> put_status(:unprocessable_entity)
+          |> json(%{errors: %{detail: inspect(reason)}})
+
+        data ->
+          json(conn, %{data: data})
+      end
     end)
   end
 

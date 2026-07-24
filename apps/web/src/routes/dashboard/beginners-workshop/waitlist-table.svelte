@@ -595,15 +595,19 @@ const table = createSvelteTable(tableOptions);
 	<span class="flex flex-nowrap items-center gap-2">
 		<Input
 			value={searchQuery}
-			onchange={(
-				t: Event & { currentTarget: EventTarget & HTMLInputElement },
-			) => onSearchChange(t.currentTarget.value)}
+			oninput={(t: Event & { currentTarget: EventTarget & HTMLInputElement }) =>
+				onSearchChange(t.currentTarget.value)}
 			placeholder="Search for a person"
 			class="w-full md:max-w-md"
 		/>
 
 		{#if searchQuery !== ""}
-			<Button variant="ghost" type="button" onclick={() => onSearchChange("")}>
+			<Button
+				variant="ghost"
+				type="button"
+				aria-label="Clear search"
+				onclick={() => onSearchChange("")}
+			>
 				<Cross2 />
 			</Button>
 		{/if}

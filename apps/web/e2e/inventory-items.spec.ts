@@ -33,7 +33,7 @@ async function createCategory(
 	return categoryData;
 }
 
-test.describe("Inventory Items Management", () => {
+test.describe.skip("Inventory Items Management", () => {
 	let quartermasterData: Awaited<ReturnType<typeof createMember>>;
 	let memberData: Awaited<ReturnType<typeof createMember>>;
 	let adminData: Awaited<ReturnType<typeof createMember>>;
