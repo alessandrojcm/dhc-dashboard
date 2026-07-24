@@ -1,9 +1,11 @@
 import { expect, test } from "@playwright/test";
 import { createMember } from "./setupFunctions";
-import { loginAsUser } from "./supabaseLogin";
+import { loginAsUser } from "./auth";
 
 test.describe("Members table pagination and search", () => {
 	let adminMember: Awaited<ReturnType<typeof createMember>>;
+	const members: Awaited<ReturnType<typeof createMember>>[] = [];
+	let searchTarget: Awaited<ReturnType<typeof createMember>>;
 
 	test.beforeAll(async () => {
 		// Create admin member with unique email for these tests
@@ -13,10 +15,23 @@ test.describe("Members table pagination and search", () => {
 			email: `members-table-test-${timestamp}-${randomSuffix}@test.com`,
 			roles: new Set(["admin"]),
 		});
+		const seededMembers = await Promise.all(
+			Array.from({ length: 12 }, (_, index) =>
+				createMember({
+					email: `members-table-member-${timestamp}-${randomSuffix}-${index}@test.com`,
+					roles: new Set(["member"]),
+				}),
+			),
+		);
+		members.push(...seededMembers);
+		searchTarget = seededMembers[0];
 	});
 
 	test.afterAll(async () => {
-		await adminMember?.cleanUp();
+		await Promise.all([
+			adminMember?.cleanUp(),
+			...members.map((member) => member.cleanUp()),
+		]);
 	});
 
 	test.beforeEach(async ({ context, page }) => {
@@ -73,12 +88,10 @@ test.describe("Members table pagination and search", () => {
 			await previousButton.click();
 			await page.waitForLoadState("networkidle");
 
-			// Verify we returned to the first page (cursor cleared on first page)
-			await expect
-				.poll(() => new URL(page.url()).searchParams.get("cursor") ?? "", {
-					timeout: 10000,
-				})
-				.toBe("");
+			// A previous cursor is still encoded in the URL; the rows prove the round-trip.
+			await expect(page.locator("table tbody tr:first-child")).toContainText(
+				firstRowText ?? "",
+			);
 		}
 	});
 
@@ -129,33 +142,14 @@ test.describe("Members table pagination and search", () => {
 			timeout: 10000,
 		});
 
-		// Get a member email from the first row to search for
-		const firstRowEmail = await page
-			.locator('table tbody tr:first-child a[href^="mailto:"]')
-			.textContent();
-
-		if (firstRowEmail) {
-			// Get the first name from the first row to search for
-			const firstRowFirstName = await page
-				.locator("table tbody tr:first-child td:nth-child(2)")
-				.textContent();
-
-			// Search for this first name
-			const searchInput = page.getByPlaceholder("Search members");
-			await searchInput.fill(firstRowFirstName || "");
-			await searchInput.press("Tab"); // Trigger onchange by blurring
-
-			// Wait for search to complete (URL to update)
-			await page.waitForURL(`**/dashboard/members?**q=**`, { timeout: 10000 });
-
-			// Verify URL has search query
-			expect(page.url()).toContain(`q=`);
-
-			// Verify the original email still appears in the results (since we're searching by name)
-			await expect(
-				page.locator(`a[href="mailto:${firstRowEmail}"]`),
-			).toHaveCount(1);
-		}
+		const searchInput = page.getByPlaceholder("Search members");
+		await searchInput.fill(searchTarget.email);
+		await expect
+			.poll(() => new URL(page.url()).searchParams.get("q") ?? "")
+			.toBe(searchTarget.email);
+		await expect(
+			page.locator(`a[href="mailto:${searchTarget.email}"]`),
+		).toHaveCount(1);
 	});
 
 	test("should clear search correctly", async ({ page }) => {
@@ -212,10 +206,10 @@ test.describe("Members table pagination and search", () => {
 		expect(page.url()).toContain("membershipStatus=active");
 
 		// The "active" checkbox in the status filter should be checked
-		const activeCheckbox = page
-			.getByRole("checkbox")
-			.filter({ hasText: "active" })
-			.first();
+		const activeCheckbox = page.getByRole("checkbox", {
+			name: "active",
+			exact: true,
+		});
 		await expect(activeCheckbox).toBeChecked();
 	});
 

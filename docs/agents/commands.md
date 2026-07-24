@@ -26,7 +26,8 @@ mise run dev                # 3. SvelteKit dev from apps/web
 
 # Testing
 mise run test-unit          # Vitest
-mise run test-e2e           # Playwright (requires PostgreSQL, Phoenix, and SvelteKit)
+mise run test-browser       # Vitest Browser Mode component tests in Chromium
+mise run test-e2e           # Playwright; self-starts disposable PostgreSQL, Phoenix, and SvelteKit
 mise run check              # Svelte type check (NOT raw tsc)
 
 # Lint & format
@@ -36,6 +37,11 @@ mise run format             # Auto-format with Oxfmt
 
 Frontend linting and formatting run inside `apps/web` with Oxlint and Oxfmt;
 generated Phoenix and API-client files are outside that workspace and are not traversed.
+
+Playwright starts its Phoenix and SvelteKit processes through the internal
+`e2e-phoenix-server` and `e2e-web-server` mise tasks. Their task-local environment
+is the source of truth for E2E server settings; do not duplicate those variables
+in `playwright.config.ts` command strings.
 
 ## Phoenix (in progress)
 

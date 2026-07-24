@@ -1,18 +1,7 @@
-import { getSupabaseServiceClient } from "./setupFunctions";
+import { resetE2EState } from "./e2eApi";
 
 async function globalSetup() {
-	const supabase = getSupabaseServiceClient();
-
-	const { data: users } = await supabase.auth.admin.listUsers();
-	for (const user of users?.users || []) {
-		await supabase.auth.admin.deleteUser(user.id);
-	}
-
-	await supabase.from("settings").delete().neq("key", "");
-	await supabase.from("settings").insert([
-		{ key: "waitlist_open", value: "true", type: "boolean" },
-		{ key: "hema_insurance_form_link", value: "", type: "text" },
-	]);
+	await resetE2EState();
 }
 
 export default globalSetup;

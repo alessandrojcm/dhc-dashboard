@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
-import { createMember, getSupabaseServiceClient } from "./setupFunctions";
-import { loginAsUser } from "./supabaseLogin";
+import { seedE2EScenario } from "./e2eApi";
+import { createMember } from "./setupFunctions";
+import { loginAsUser } from "./auth";
 
 // Verifies the member-detail profile page reads the insurance form link through
 // the Phoenix API (GET /api/members/insurance-form) after the PostgREST read
@@ -23,12 +24,10 @@ test.describe("Member insurance form link", () => {
 
 	test.afterAll(async () => {
 		// Restore the baseline empty value seeded in global-setup.
-		const supabase = getSupabaseServiceClient();
-		await supabase
-			.from("settings")
-			.update({ value: "" })
-			.eq("key", "hema_insurance_form_link")
-			.throwOnError();
+		await seedE2EScenario("setting", {
+			key: "hema_insurance_form_link",
+			value: "https://example.com/insurance",
+		});
 
 		await testData?.cleanUp();
 	});
@@ -38,12 +37,10 @@ test.describe("Member insurance form link", () => {
 	}) => {
 		// Seed the insurance form link the Phoenix endpoint reads. Set immediately
 		// before navigating to minimise the shared-settings interference window.
-		const supabase = getSupabaseServiceClient();
-		await supabase
-			.from("settings")
-			.update({ value: insuranceFormUrl })
-			.eq("key", "hema_insurance_form_link")
-			.throwOnError();
+		await seedE2EScenario("setting", {
+			key: "hema_insurance_form_link",
+			value: insuranceFormUrl,
+		});
 
 		await page.goto(`/dashboard/members/${testData.userId}`);
 

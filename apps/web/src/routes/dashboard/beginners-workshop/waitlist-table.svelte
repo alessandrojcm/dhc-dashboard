@@ -595,15 +595,19 @@ const table = createSvelteTable(tableOptions);
 	<span class="flex flex-nowrap items-center gap-2">
 		<Input
 			value={searchQuery}
-			onchange={(
-				t: Event & { currentTarget: EventTarget & HTMLInputElement },
-			) => onSearchChange(t.currentTarget.value)}
+			oninput={(t: Event & { currentTarget: EventTarget & HTMLInputElement }) =>
+				onSearchChange(t.currentTarget.value)}
 			placeholder="Search for a person"
 			class="w-full md:max-w-md"
 		/>
 
 		{#if searchQuery !== ""}
-			<Button variant="ghost" type="button" onclick={() => onSearchChange("")}>
+			<Button
+				variant="ghost"
+				type="button"
+				aria-label="Clear search"
+				onclick={() => onSearchChange("")}
+			>
 				<Cross2 />
 			</Button>
 		{/if}
@@ -892,7 +896,9 @@ const table = createSvelteTable(tableOptions);
 			value={pageSize.toString()}
 			onValueChange={(value) => onPaginationChange({ pageSize: Number(value) })}
 		>
-			<Select.Trigger class="w-16 h-8">{pageSize}</Select.Trigger>
+			<Select.Trigger class="w-16 h-8" aria-label="Waitlist elements per page"
+				>{pageSize}</Select.Trigger
+			>
 			<Select.Content>
 				{#each pageSizeOptions as pageSizeOption (pageSizeOption)}
 					<Select.Item value={pageSizeOption.toString()}>

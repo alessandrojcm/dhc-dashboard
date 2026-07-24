@@ -3,6 +3,8 @@ defmodule Dhc.Invitations.Invitation do
 
   use Ecto.Schema
 
+  import Ecto.Changeset
+
   @primary_key {:id, :binary_id, autogenerate: true}
   @type t :: %__MODULE__{}
   schema "invitations" do
@@ -37,5 +39,40 @@ defmodule Dhc.Invitations.Invitation do
     field :stripe_customer_id, :string
 
     timestamps(inserted_at: :created_at, type: :utc_datetime)
+  end
+
+  @doc false
+  def changeset(invitation, attrs) do
+    invitation
+    |> cast(attrs, [
+      :email,
+      :user_id,
+      :waitlist_id,
+      :status,
+      :expires_at,
+      :created_by,
+      :invitation_type,
+      :metadata,
+      :first_name,
+      :last_name,
+      :phone_number,
+      :date_of_birth,
+      :stripe_customer_id
+    ])
+    |> validate_required([
+      :email,
+      :user_id,
+      :status,
+      :expires_at,
+      :invitation_type,
+      :first_name,
+      :last_name,
+      :phone_number,
+      :date_of_birth
+    ])
+    |> update_change(:email, &(&1 |> String.trim() |> String.downcase()))
+    |> validate_format(:email, ~r/^[^\s]+@[^\s]+$/)
+    |> validate_inclusion(:status, ~w(pending accepted expired revoked))
+    |> unique_constraint(:email, name: :invitations_email_pending_unique)
   end
 end

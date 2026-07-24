@@ -73,7 +73,7 @@ export const updateProfile = form(
 		}
 
 		try {
-			await membersUpdate({
+			const response = await membersUpdate({
 				...apiClientOptions(event.cookies),
 				path: { memberId },
 				body: {
@@ -90,8 +90,12 @@ export const updateProfile = form(
 					insuranceFormSubmitted: data.insuranceFormSubmitted,
 					socialMediaConsent: data.socialMediaConsent,
 				},
-				throwOnError: true,
 			});
+			if (response.error) {
+				return {
+					error: response.error.errors?.detail ?? "Failed to update profile",
+				};
+			}
 
 			return { success: "Profile has been updated!" };
 		} catch (e) {

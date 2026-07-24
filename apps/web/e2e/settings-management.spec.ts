@@ -1,6 +1,16 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { createMember } from "./setupFunctions";
-import { loginAsUser } from "./supabaseLogin";
+import { loginAsUser } from "./auth";
+import { seedE2EScenario } from "./e2eApi";
+
+async function openDashboardPage(page: Page, path: string) {
+	await page.goto(path);
+	await page.waitForLoadState("networkidle");
+}
+
+test.afterAll(async () => {
+	await seedE2EScenario("waitlistStatus", { isOpen: true });
+});
 
 test.describe("Settings Management - Admin", () => {
 	let adminData: Awaited<ReturnType<typeof createMember>>;
@@ -16,7 +26,7 @@ test.describe("Settings Management - Admin", () => {
 	test.afterAll(() => adminData?.cleanUp());
 
 	test("should be able to update settings", async ({ page }) => {
-		await page.goto("/dashboard/members");
+		await openDashboardPage(page, "/dashboard/members");
 		await page.getByRole("button", { name: /settings/i }).click();
 		await page
 			.getByLabel(/hema insurance form link/i)
@@ -28,8 +38,10 @@ test.describe("Settings Management - Admin", () => {
 	});
 
 	test("should be able to toggle waitlist", async ({ page }) => {
-		await page.goto("/dashboard/beginners-workshop");
-		const toggleButton = page.getByText(/open waitlist|close waitlist/i);
+		await openDashboardPage(page, "/dashboard/beginners-workshop");
+		const toggleButton = page.getByRole("button", {
+			name: /open waitlist|close waitlist/i,
+		});
 		await expect(toggleButton).toBeVisible();
 
 		// Click the toggle button
@@ -57,7 +69,7 @@ test.describe("Settings Management - Committee Coordinator", () => {
 	test.afterAll(() => coordinatorData?.cleanUp());
 
 	test("should be able to update settings", async ({ page }) => {
-		await page.goto("/dashboard/members");
+		await openDashboardPage(page, "/dashboard/members");
 		await page.getByRole("button", { name: /settings/i }).click();
 		await page
 			.getByLabel(/hema insurance form link/i)
@@ -69,8 +81,10 @@ test.describe("Settings Management - Committee Coordinator", () => {
 	});
 
 	test("should be able to toggle waitlist", async ({ page }) => {
-		await page.goto("/dashboard/beginners-workshop");
-		const toggleButton = page.getByText(/open waitlist|close waitlist/i);
+		await openDashboardPage(page, "/dashboard/beginners-workshop");
+		const toggleButton = page.getByRole("button", {
+			name: /open waitlist|close waitlist/i,
+		});
 		await expect(toggleButton).toBeVisible();
 
 		// Click the toggle button
@@ -98,7 +112,7 @@ test.describe("Settings Management - President", () => {
 	test.afterAll(() => presidentData?.cleanUp());
 
 	test("should be able to update settings", async ({ page }) => {
-		await page.goto("/dashboard/members");
+		await openDashboardPage(page, "/dashboard/members");
 		await page.getByRole("button", { name: /settings/i }).click();
 		await page
 			.getByLabel(/hema insurance form link/i)
@@ -110,8 +124,10 @@ test.describe("Settings Management - President", () => {
 	});
 
 	test("should be able to toggle waitlist", async ({ page }) => {
-		await page.goto("/dashboard/beginners-workshop");
-		const toggleButton = page.getByText(/open waitlist|close waitlist/i);
+		await openDashboardPage(page, "/dashboard/beginners-workshop");
+		const toggleButton = page.getByRole("button", {
+			name: /open waitlist|close waitlist/i,
+		});
 		await expect(toggleButton).toBeVisible();
 
 		// Click the toggle button
@@ -168,12 +184,14 @@ test.describe("Settings Management - Regular Member", () => {
 	test("should not see settings button", async ({ page }) => {
 		await page.goto("/dashboard/members");
 		await expect(
-			page.getByRole("button", { name: "Settings" }),
+			page.getByRole("button", { name: "Settings", exact: true }),
 		).not.toBeVisible();
 	});
 
 	test("should not see waitlist toggle", async ({ page }) => {
 		await page.goto("/dashboard/beginners-workshop");
-		expect(page.getByText(/open waitlist|close waitlist/i)).not.toBeVisible();
+		await expect(
+			page.getByText(/open waitlist|close waitlist/i),
+		).not.toBeVisible();
 	});
 });

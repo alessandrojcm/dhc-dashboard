@@ -1,90 +1,21 @@
-// playwright.test.ts
-
 import { faker } from "@faker-js/faker";
-import { expect, test } from "@playwright/test";
-import dayjs from "dayjs";
-import { getSupabaseServiceClient } from "./setupFunctions";
+import { expect, type Page, test } from "@playwright/test";
+import dayjs, { type Dayjs } from "dayjs";
+import { seedE2EScenario } from "./e2eApi";
 
-const testData = {
-	firstName: faker.person.firstName(),
-	lastName: faker.person.lastName(),
-	email: faker.internet.email(),
-	phoneNumber: "0840997863",
-	dateOfBirth: dayjs().subtract(20, "years"), // Ensure date format is YYYY-MM-DD
-	medicalConditions: faker.lorem.sentence(),
-};
+const successMessage =
+	"You have been added to the waitlist, we will be in contact soon!";
 
-test.afterAll(async () => {
-	await (
-		await getSupabaseServiceClient()
-	)
-		.from("settings")
-		.update({
-			value: "true",
-		})
-		.eq("key", "waitlist_open")
-		.throwOnError();
-});
-
-test("fills out the waitlist form and asserts no errors", async ({ page }) => {
-	// Generate test data using faker-js
-
-	// Navigate to the form page
+async function openWaitlist(page: Page) {
 	await page.goto("/waitlist");
+	await page.waitForLoadState("networkidle");
+}
 
-	// Fill out the form
-	await page.fill('input[name="firstName"]', testData.firstName);
-	await page.fill('input[name="lastName"]', testData.lastName);
-	await page.fill('input[name="email"]', testData.email);
-
-	// Find the phone input field (it's now inside the phone input component)
-	// The new component has a div wrapper with an Input of type tel inside
-	const phoneInputField = page
-		.locator("div")
-		.filter({ hasText: /phone number/i })
-		.locator('input[type="tel"]');
-
-	await phoneInputField.pressSequentially(testData.phoneNumber, { delay: 50 });
-	await phoneInputField.blur();
-	await page.getByPlaceholder("Enter your pronouns").fill("he/him");
-	await page.getByLabel(/gender/i).click();
-	await page.getByRole("option", { name: "man (cis)", exact: true }).click();
-	await page.getByPlaceholder("Enter your pronouns").fill("he/him");
-	await page.getByLabel("Date of birth").click();
-	await page
-		.getByLabel("Select a year")
-		.selectOption(testData.dateOfBirth.year().toString());
-	await page
-		.getByLabel("Select a month")
-		.selectOption(testData.dateOfBirth.format("M"));
-	await page
-		.getByRole("button", { name: testData.dateOfBirth.format("dddd, MMMM D,") })
-		.click();
-	await page
-		.getByRole("radio", { name: "No", exact: true })
-		.scrollIntoViewIfNeeded();
-	await page.getByRole("radio", { name: "No", exact: true }).click();
-
-	await page
-		.getByLabel(/any medical condition/i)
-		.fill(testData.medicalConditions);
-	// Submit the form
-	await page.click('button[type="submit"]');
-	await expect(
-		page.getByText(
-			"You have been added to the waitlist, we will be in contact soon!",
-		),
-	).toBeVisible();
-});
-
-test("it should not allow people under 16 to sign up", async ({ page }) => {
-	// Generate test data using faker-js
-
-	// Navigate to the form page
-	await page.goto("/waitlist");
-	const dateOfBirth = dayjs();
-	await page.getByLabel(/date of birth/i).click();
-	await page.getByLabel("Date of birth").click();
+async function selectDateOfBirth(page: Page, dateOfBirth: Dayjs) {
+	const trigger = page.getByLabel("Date of birth");
+	await trigger.scrollIntoViewIfNeeded();
+	await expect(trigger).toBeVisible();
+	await trigger.click();
 	await page
 		.getByLabel("Select a year")
 		.selectOption(dateOfBirth.year().toString());
@@ -92,26 +23,90 @@ test("it should not allow people under 16 to sign up", async ({ page }) => {
 	await page
 		.getByRole("button", { name: dateOfBirth.format("dddd, MMMM D,") })
 		.click();
-	// Submit the form
-	await page.click('button[type="submit"]');
-	await expect(
-		await page.getByText(/you must be at least 16 years old/i),
-	).toBeInViewport();
-});
+}
 
-test("it should not show the waitlist if closed", async ({ page }) => {
-	await (
-		await getSupabaseServiceClient()
-	)
-		.from("settings")
-		.update({
-			value: "false",
-		})
-		.eq("key", "waitlist_open")
-		.throwOnError();
-	// Navigate to the form page
-	await page.goto("/waitlist");
-	await expect(
-		page.getByText(/the waitlist is currently closed/i),
-	).toBeVisible();
+async function fillWaitlistForm(page: Page, dateOfBirth: Dayjs) {
+	await page.getByLabel("First name").fill(faker.person.firstName());
+	await page.getByLabel("Last name").fill(faker.person.lastName());
+	await page
+		.getByLabel("Email")
+		.fill(`waitlist-${Date.now()}-${faker.string.alphanumeric(6)}@test.com`);
+	await page.getByLabel("Phone number").fill("0840997863");
+	await page.getByRole("button", { name: "Gender", exact: true }).click();
+	await page.getByRole("option", { name: "man (cis)", exact: true }).click();
+	await page.getByLabel("Pronouns").fill("he/him");
+	await selectDateOfBirth(page, dateOfBirth);
+	await page.getByRole("radio", { name: "No", exact: true }).click();
+	await page.getByLabel("Any medical condition?").fill("None");
+}
+
+test.describe("Beginners waitlist", () => {
+	test.beforeEach(async () => {
+		await seedE2EScenario("waitlistStatus", { isOpen: true });
+	});
+	test.afterAll(async () => {
+		await seedE2EScenario("waitlistStatus", { isOpen: true });
+	});
+
+	test("adult can join without guardian information", async ({ page }) => {
+		await openWaitlist(page);
+		await fillWaitlistForm(page, dayjs().subtract(25, "years"));
+
+		await expect(
+			page.getByText("Guardian Information (Required for under 18)"),
+		).not.toBeVisible();
+		await page.getByRole("button", { name: "Submit" }).click();
+		await expect(page.getByText(successMessage)).toBeVisible();
+	});
+
+	test("person under 16 cannot join", async ({ page }) => {
+		await openWaitlist(page);
+		await selectDateOfBirth(page, dayjs().subtract(15, "years"));
+		await page.getByRole("button", { name: "Submit" }).click();
+
+		await expect(
+			page.getByText(/you must be at least 16 years old/i),
+		).toBeVisible();
+	});
+
+	test("closed waitlist hides the form", async ({ page }) => {
+		await seedE2EScenario("waitlistStatus", { isOpen: false });
+		await openWaitlist(page);
+
+		await expect(
+			page.getByText(/the waitlist is currently closed/i),
+		).toBeVisible();
+	});
+
+	test("underage person sees required guardian fields", async ({ page }) => {
+		await openWaitlist(page);
+		await fillWaitlistForm(page, dayjs().subtract(17, "years"));
+
+		await expect(
+			page.getByText("Guardian Information (Required for under 18)"),
+		).toBeVisible();
+		await page.getByRole("button", { name: "Submit" }).click();
+		await expect(
+			page.getByText("Guardian first name is required"),
+		).toBeVisible();
+		await expect(
+			page.getByText("Guardian last name is required"),
+		).toBeVisible();
+		await expect(
+			page.getByText("Guardian phone number is required"),
+		).toBeVisible();
+	});
+
+	test("underage person can join with guardian information", async ({
+		page,
+	}) => {
+		await openWaitlist(page);
+		await fillWaitlistForm(page, dayjs().subtract(17, "years"));
+		await page.getByLabel("Guardian First Name").fill(faker.person.firstName());
+		await page.getByLabel("Guardian Last Name").fill(faker.person.lastName());
+		await page.getByLabel("Guardian Phone Number").fill("0840998877");
+		await page.getByRole("button", { name: "Submit" }).click();
+
+		await expect(page.getByText(successMessage)).toBeVisible();
+	});
 });

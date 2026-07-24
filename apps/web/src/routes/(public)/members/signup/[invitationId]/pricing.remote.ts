@@ -1,4 +1,4 @@
-import { command, getRequestEvent, query } from "$app/server";
+import { getRequestEvent, query } from "$app/server";
 import { error } from "@sveltejs/kit";
 import * as Sentry from "@sentry/sveltekit";
 import * as v from "valibot";
@@ -36,7 +36,3 @@ export const getPricingDetail = query(
 		}
 	},
 );
-
-export const applyCoupon = command(pricingSchema, (args) => {
-	getPricingDetail(args).refresh();
-});

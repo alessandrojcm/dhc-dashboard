@@ -8,7 +8,7 @@ import { Button } from "$lib/components/ui/button";
 import * as Card from "$lib/components/ui/card";
 import { Input } from "$lib/components/ui/input";
 import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
-import { applyCoupon, getPricingDetail } from "./pricing.remote";
+import { getPricingDetail } from "./pricing.remote";
 
 dayjs.extend(advancedFormat);
 
@@ -24,6 +24,29 @@ let {
 	nextAnnualBillingDate: Date;
 } = $props();
 let applyCouponError: string | null = $state(null);
+let couponCode = $state(currentCoupon ?? "");
+let applyingCoupon = $state(false);
+
+async function handleApplyCoupon() {
+	applyCouponError = null;
+	applyingCoupon = true;
+
+	try {
+		const code = couponCode.trim();
+		await getPricingDetail({ invitationId, code });
+		currentCoupon = code;
+	} catch (error) {
+		applyCouponError =
+			error &&
+			typeof error === "object" &&
+			"message" in error &&
+			typeof error.message === "string"
+				? error.message
+				: "Could not apply promotion code";
+	} finally {
+		applyingCoupon = false;
+	}
+}
 </script>
 
 {#await getPricingDetail({ invitationId, code: currentCoupon })}
@@ -49,21 +72,6 @@ let applyCouponError: string | null = $state(null);
 	{@const discountPercentage = planPricing.discountPercentage}
 	{@const proratedMonthlyPrice = Dinero(planPricing.proratedMonthlyPrice)}
 	{@const proratedAnnualPrice = Dinero(planPricing.proratedAnnualPrice)}
-
-	<!-- Calculate the visual display price for 'once' coupons -->
-	{@const displayProratedPriceDinero =
-		Boolean(discountPercentage) &&
-		discountedMonthlyFeeDinero === null &&
-		discountedAnnualFeeDinero === null
-			? Dinero({
-					amount: Math.round(
-						(proratedPriceDinero.getAmount() *
-							(100 - (discountPercentage ?? 0))) /
-							100,
-					),
-					currency: proratedPriceDinero.getCurrency(),
-				})
-			: proratedPriceDinero}
 
 	<Card.Root class="bg-muted">
 		<Card.Content class="pt-6">
@@ -150,7 +158,7 @@ let applyCouponError: string | null = $state(null);
 						<span>Total</span>
 					</div>
 					<span class="font-semibold text-sm"
-						>{displayProratedPriceDinero.toFormat()}</span
+						>{proratedPriceDinero.toFormat()}</span
 					>
 				</div>
 				{#if discountPercentage}
@@ -169,7 +177,7 @@ let applyCouponError: string | null = $state(null);
 						{/if}
 					</div>
 				{/if}
-				{#if currentCoupon && !applyCoupon.pending}
+				{#if currentCoupon}
 					<small class="text-sm text-green-600"
 						>Code {currentCoupon} applied</small
 					>
@@ -186,7 +194,7 @@ let applyCouponError: string | null = $state(null);
 									class={applyCouponError
 										? "border-red-500 w-full bg-white"
 										: "w-full bg-white"}
-									bind:value={currentCoupon}
+									bind:value={couponCode}
 								/>
 								{#if applyCouponError}
 									<p class="text-red-500">
@@ -194,18 +202,13 @@ let applyCouponError: string | null = $state(null);
 									</p>
 								{/if}
 								<Button
-									disabled={currentCoupon === "" || !!applyCoupon.pending}
+									disabled={couponCode.trim() === "" || applyingCoupon}
 									variant="outline"
 									class="mt-2 w-full bg-white"
 									type="button"
-									onclick={() => {
-										applyCouponError = null;
-										applyCoupon({ invitationId, code: currentCoupon }).catch(
-											(err) => (applyCouponError = err.message),
-										);
-									}}
+									onclick={handleApplyCoupon}
 									>Apply Code
-									{#if !!applyCoupon.pending}
+									{#if applyingCoupon}
 										<LoaderCircle class="animate-spin ml-2 h-4 w-4" />
 									{/if}
 								</Button>
