@@ -15,6 +15,7 @@ defmodule Dhc.E2EHarness do
   alias Dhc.Repo
   alias Dhc.Settings.Setting
   alias Dhc.Waitlist
+  alias Dhc.Waitlist.WaitlistEntry
   alias Dhc.Workshops
   alias Dhc.Workshops.Registration
   alias Dhc.UserProfiles.UserProfile
@@ -110,13 +111,14 @@ defmodule Dhc.E2EHarness do
           |> Map.put("guardianPhoneNumber", Map.get(guardian, "phoneNumber"))
       end
 
-    {:ok, result} = Waitlist.create_entry(payload)
-    status = Map.get(attrs, "status", "waiting")
+    with {:ok, result} <- Waitlist.create_entry(payload) do
+      status = Map.get(attrs, "status", "waiting")
 
-    from(w in "waitlist", where: field(w, :id) == ^result.id)
-    |> Repo.update_all(set: [status: status])
+      from(w in WaitlistEntry, where: w.id == ^result.id)
+      |> Repo.update_all(set: [status: status])
 
-    Map.merge(result, %{email: email, waitlistId: result.id, profileId: result.profile_id})
+      Map.merge(result, %{email: email, waitlistId: result.id, profileId: result.profile_id})
+    end
   end
 
   def seed("invitation", attrs) do
@@ -222,7 +224,13 @@ defmodule Dhc.E2EHarness do
     end
   end
 
-  def delete_fixture("waitlist", id), do: Waitlist.delete_entry(id)
+  def delete_fixture("waitlist", id) do
+    from(profile in UserProfile, where: profile.waitlist_id == ^id)
+    |> Repo.delete_all()
+
+    Waitlist.delete_entry(id)
+  end
+
   def delete_fixture("inventoryCategory", id), do: Categories.delete_category(id)
   def delete_fixture("inventoryContainer", id), do: Containers.delete_container(id)
   def delete_fixture("inventoryItem", id), do: Items.delete_item(id)

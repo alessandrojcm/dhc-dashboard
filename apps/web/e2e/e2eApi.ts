@@ -189,17 +189,36 @@ export type E2EFixtureType = Exclude<
 	"setting" | "waitlistStatus"
 >;
 
+export async function fetchE2EHarness(
+	path: string,
+	init: Omit<RequestInit, "headers">,
+	retryConnectionReset = false,
+) {
+	for (let attempt = 0; ; attempt += 1) {
+		try {
+			return await fetch(`${API_BASE_URL}/e2e${path}`, {
+				...init,
+				headers: {
+					"content-type": "application/json",
+					"x-e2e-harness-key": HARNESS_KEY,
+				},
+			});
+		} catch (error) {
+			const cause = (error as { cause?: { code?: string } }).cause;
+			if (!retryConnectionReset || attempt > 0 || cause?.code !== "ECONNRESET")
+				throw error;
+			await new Promise((resolve) => setTimeout(resolve, 50));
+		}
+	}
+}
+
 async function harnessRequest<T>(
 	path: string,
 	body: unknown,
 	method: "PATCH" | "POST" = "POST",
 ): Promise<T> {
-	const response = await fetch(`${API_BASE_URL}/e2e${path}`, {
+	const response = await fetchE2EHarness(path, {
 		method,
-		headers: {
-			"content-type": "application/json",
-			"x-e2e-harness-key": HARNESS_KEY,
-		},
 		body: JSON.stringify(body),
 	});
 

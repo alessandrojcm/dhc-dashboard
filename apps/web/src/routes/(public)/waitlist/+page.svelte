@@ -85,7 +85,7 @@ const dobPickerValue = $derived.by(() => {
 								id={fieldProps.name}
 								placeholder="Enter your first name"
 							/>
-							{#each submitWaitlist.fields.firstName.issues() as issue}
+							{#each submitWaitlist.fields.firstName.issues() as issue (issue.message)}
 								<Field.Error>{issue.message}</Field.Error>
 							{/each}
 						</Field.Field>
@@ -98,7 +98,7 @@ const dobPickerValue = $derived.by(() => {
 								id={fieldProps.name}
 								placeholder="Enter your last name"
 							/>
-							{#each submitWaitlist.fields.lastName.issues() as issue}
+							{#each submitWaitlist.fields.lastName.issues() as issue (issue.message)}
 								<Field.Error>{issue.message}</Field.Error>
 							{/each}
 						</Field.Field>
@@ -112,7 +112,7 @@ const dobPickerValue = $derived.by(() => {
 							id={fieldProps.name}
 							placeholder="Enter your email"
 						/>
-						{#each submitWaitlist.fields.email.issues() as issue}
+						{#each submitWaitlist.fields.email.issues() as issue (issue.message)}
 							<Field.Error>{issue.message}</Field.Error>
 						{/each}
 					</Field.Field>
@@ -127,7 +127,7 @@ const dobPickerValue = $derived.by(() => {
 							onChange={(value) =>
 								submitWaitlist.fields.phoneNumber.set(String(value))}
 						/>
-						{#each submitWaitlist.fields.phoneNumber.issues() as issue}
+						{#each submitWaitlist.fields.phoneNumber.issues() as issue (issue.message)}
 							<Field.Error>{issue.message}</Field.Error>
 						{/each}
 					</Field.Field>
@@ -140,10 +140,11 @@ const dobPickerValue = $derived.by(() => {
 						)}
 						<Select.Root
 							type="single"
-							value={submitWaitlist.fields.gender.value() as string}
+							value={(submitWaitlist.fields.gender.value() as
+								string | undefined) ?? ""}
 							onValueChange={(v) => submitWaitlist.fields.gender.set(v)}
 						>
-							<Select.Trigger id={fieldProps.name}>
+							<Select.Trigger id={fieldProps.name} aria-label="Gender">
 								{#if submitWaitlist.fields.gender.value()}
 									<p class="capitalize">
 										{submitWaitlist.fields.gender.value()}
@@ -167,7 +168,7 @@ const dobPickerValue = $derived.by(() => {
 							name={fieldProps.name}
 							value={submitWaitlist.fields.gender.value() ?? ""}
 						/>
-						{#each submitWaitlist.fields.gender.issues() as issue}
+						{#each submitWaitlist.fields.gender.issues() as issue (issue.message)}
 							<Field.Error>{issue.message}</Field.Error>
 						{/each}
 					</Field.Field>
@@ -185,14 +186,14 @@ const dobPickerValue = $derived.by(() => {
 						<Field.Description
 							>Please separate with slashes (e.g. they/them).</Field.Description
 						>
-						{#each submitWaitlist.fields.pronouns.issues() as issue}
+						{#each submitWaitlist.fields.pronouns.issues() as issue (issue.message)}
 							<Field.Error>{issue.message}</Field.Error>
 						{/each}
 					</Field.Field>
 
 					<Field.Field>
 						{@const { value, ...fieldProps } =
-							submitWaitlist.fields.dateOfBirth.as("date")}
+							submitWaitlist.fields.dateOfBirth.as("text")}
 						<Field.Label for={fieldProps.name}>Date of birth</Field.Label>
 						{@render whyThisField(
 							"For insurance reasons, HEMA practitioners need to be at least 16 years old",
@@ -200,6 +201,7 @@ const dobPickerValue = $derived.by(() => {
 						<DatePicker
 							{...fieldProps}
 							id={fieldProps.name}
+							label="Date of birth"
 							value={dobPickerValue}
 							onDateChange={(date) => {
 								if (date) {
@@ -207,7 +209,7 @@ const dobPickerValue = $derived.by(() => {
 								}
 							}}
 						/>
-						{#each submitWaitlist.fields.dateOfBirth.issues() as issue}
+						{#each submitWaitlist.fields.dateOfBirth.issues() as issue (issue.message)}
 							<Field.Error>{issue.message}</Field.Error>
 						{/each}
 					</Field.Field>
@@ -222,7 +224,7 @@ const dobPickerValue = $derived.by(() => {
 							id={fieldProps.name}
 							placeholder="Enter any medical conditions"
 						/>
-						{#each submitWaitlist.fields.medicalConditions.issues() as issue}
+						{#each submitWaitlist.fields.medicalConditions.issues() as issue (issue.message)}
 							<Field.Error>{issue.message}</Field.Error>
 						{/each}
 					</Field.Field>
@@ -236,6 +238,7 @@ const dobPickerValue = $derived.by(() => {
 						)}
 					</span>
 					<RadioGroup.Root
+						name="socialMediaConsent"
 						value={submitWaitlist.fields.socialMediaConsent.value() as SocialMediaConsent}
 						onValueChange={(v) =>
 							submitWaitlist.fields.socialMediaConsent.set(
@@ -244,39 +247,24 @@ const dobPickerValue = $derived.by(() => {
 						class="flex justify-start"
 					>
 						<div class="flex items-center space-x-3">
-							<RadioGroup.Item
-								{...submitWaitlist.fields.socialMediaConsent.as("button")}
-								value={submitWaitlist.fields.socialMediaConsent
-									.as("button")
-									.toString()}
-								id={"no"}
-							/>
+							<RadioGroup.Item value="no" id="no" />
 							<Field.Label for="no">No</Field.Label>
 						</div>
 						<div class="flex items-center space-x-3">
 							<RadioGroup.Item
-								{...submitWaitlist.fields.socialMediaConsent.as("button")}
-								value={submitWaitlist.fields.socialMediaConsent
-									.as("button")
-									.toString()}
-								id={"yes_unrecognizable"}
+								value="yes_unrecognizable"
+								id="yes_unrecognizable"
 							/>
 							<Field.Label for="yes_unrecognizable"
 								>If not recognizable (wearing a mask)</Field.Label
 							>
 						</div>
 						<div class="flex items-center space-x-3">
-							<RadioGroup.Item
-								{...submitWaitlist.fields.socialMediaConsent.as("button")}
-								value={submitWaitlist.fields.socialMediaConsent
-									.as("button")
-									.toString()}
-								id={"yes_recognizable"}
-							/>
+							<RadioGroup.Item value="yes_recognizable" id="yes_recognizable" />
 							<Field.Label for="yes_recognizable">Yes</Field.Label>
 						</div>
 					</RadioGroup.Root>
-					{#each submitWaitlist.fields.socialMediaConsent.issues() as issue}
+					{#each submitWaitlist.fields.socialMediaConsent.issues() as issue (issue.message)}
 						<Field.Error>{issue.message}</Field.Error>
 					{/each}
 				</Field.Set>
@@ -301,7 +289,7 @@ const dobPickerValue = $derived.by(() => {
 										id={fieldProps.name}
 										placeholder="Enter guardian's first name"
 									/>
-									{#each submitWaitlist.fields.guardianFirstName.issues() as issue}
+									{#each submitWaitlist.fields.guardianFirstName.issues() as issue (issue.message)}
 										<Field.Error>{issue.message}</Field.Error>
 									{/each}
 								</Field.Field>
@@ -317,7 +305,7 @@ const dobPickerValue = $derived.by(() => {
 										id={fieldProps.name}
 										placeholder="Enter guardian's last name"
 									/>
-									{#each submitWaitlist.fields.guardianLastName.issues() as issue}
+									{#each submitWaitlist.fields.guardianLastName.issues() as issue (issue.message)}
 										<Field.Error>{issue.message}</Field.Error>
 									{/each}
 								</Field.Field>
@@ -338,7 +326,7 @@ const dobPickerValue = $derived.by(() => {
 											String(value),
 										)}
 								/>
-								{#each submitWaitlist.fields.guardianPhoneNumber.issues() as issue}
+								{#each submitWaitlist.fields.guardianPhoneNumber.issues() as issue (issue.message)}
 									<Field.Error>{issue.message}</Field.Error>
 								{/each}
 							</Field.Field>

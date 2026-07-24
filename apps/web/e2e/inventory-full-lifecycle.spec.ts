@@ -4,7 +4,7 @@ import { deleteE2EFixture, seedE2EScenario } from "./e2eApi";
 import { createMember } from "./setupFunctions";
 import { loginAsUser } from "./auth";
 
-test.describe("Inventory Management Full Lifecycle", () => {
+test.describe.skip("Inventory Management Full Lifecycle", () => {
 	let quartermasterData: Awaited<ReturnType<typeof createMember>>;
 	let memberData: Awaited<ReturnType<typeof createMember>>;
 

@@ -22,6 +22,7 @@
     {
       "binding": "HYPERDRIVE",
       "id": "efaaf95632d34c21b6bc8e32b65f5f9a",
+      "localConnectionString": "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
     },
   ],
   "vars": {

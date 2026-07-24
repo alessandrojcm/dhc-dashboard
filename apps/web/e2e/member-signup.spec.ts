@@ -20,6 +20,7 @@ test.describe("Member Signup - Negative test cases", () => {
 			await page.goto(
 				`/members/signup/${invitation.invitationId}?email=wrong%40example.com&dateOfBirth=${invitation.date_of_birth.format("YYYY-MM-DD")}`,
 			);
+			await page.waitForLoadState("networkidle");
 			await page.getByRole("button", { name: /verify invitation/i }).click();
 
 			await expect(page.getByRole("alert")).toContainText(
@@ -37,6 +38,7 @@ test.describe("Member Signup - Negative test cases", () => {
 			await page.goto(
 				`/members/signup/${invitation.invitationId}?email=${encodeURIComponent(invitation.email)}&dateOfBirth=${invitation.date_of_birth.format("YYYY-MM-DD")}`,
 			);
+			await page.waitForLoadState("networkidle");
 			await page.getByRole("button", { name: /verify invitation/i }).click();
 
 			await expect(page.getByRole("alert")).toContainText(
@@ -65,6 +67,7 @@ test.describe("Member Signup - Valid invitation", () => {
 				testData.date_of_birth.format("YYYY-MM-DD"),
 			)}`,
 		);
+		await page.waitForLoadState("networkidle");
 		await page.getByText(/verify invitation/i).click();
 
 		// Wait for verification to complete and payment form to be visible

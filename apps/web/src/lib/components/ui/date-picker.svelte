@@ -17,13 +17,15 @@ type Props = {
 	maxValue?: DateValue;
 	name?: string;
 	id?: string;
+	label?: string;
+	type?: string;
 };
 
 const df = new DateFormatter("en-US", {
 	dateStyle: "long",
 });
 
-let { value, onDateChange, minValue, maxValue, name, id, ...rest }: Props =
+let { value, onDateChange, minValue, maxValue, name, id, label }: Props =
 	$props();
 let open = $state(false);
 
@@ -35,7 +37,7 @@ const formValue = $derived(
 
 <div>
 	<Popover.Root bind:open>
-		<Popover.Trigger {...rest}>
+		<Popover.Trigger>
 			{#snippet child({ props })}
 				<Button
 					variant="outline"
@@ -44,7 +46,9 @@ const formValue = $derived(
 						!value && "text-muted-foreground",
 					)}
 					{...props}
+					type="button"
 					{id}
+					aria-label={label}
 				>
 					<CalendarIcon class="mr-2 size-4" />
 					{value

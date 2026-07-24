@@ -1,15 +1,15 @@
 import type { BrowserContext } from "@playwright/test";
-import { API_BASE_URL, HARNESS_KEY } from "./e2eApi";
+import { fetchE2EHarness } from "./e2eApi";
 
 export async function loginAsUser(context: BrowserContext, email: string) {
-	const response = await fetch(`${API_BASE_URL}/e2e/login`, {
-		method: "POST",
-		headers: {
-			"content-type": "application/json",
-			"x-e2e-harness-key": HARNESS_KEY,
+	const response = await fetchE2EHarness(
+		"/login",
+		{
+			method: "POST",
+			body: JSON.stringify({ email }),
 		},
-		body: JSON.stringify({ email }),
-	});
+		true,
+	);
 
 	if (!response.ok) {
 		throw new Error(
