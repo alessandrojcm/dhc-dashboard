@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
+import { loginAsUser } from "./auth";
 import { createMember } from "./setupFunctions";
-import { phoenixSessionLogin } from "./phoenixSessionLogin";
 
 /**
  * ALE-164: focused integration tests for the dashboard Phoenix Session auth
@@ -39,7 +39,7 @@ test.describe("ALE-164: dashboard Phoenix Session auth seam", () => {
 		page,
 		context,
 	}) => {
-		await phoenixSessionLogin(context, memberEmail);
+		await loginAsUser(context, memberEmail);
 
 		// The dashboard layout server load reads the session projection from
 		// Phoenix via `GET /api/auth/session` (forwarded cookie). A 200 here
@@ -71,7 +71,7 @@ test.describe("ALE-164: dashboard Phoenix Session auth seam", () => {
 		page,
 		context,
 	}) => {
-		await phoenixSessionLogin(context, memberEmail);
+		await loginAsUser(context, memberEmail);
 		await page.goto("/dashboard");
 
 		// The Phoenix `_dhc_session` cookie is present...

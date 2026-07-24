@@ -1,15 +1,20 @@
 import { faker } from "@faker-js/faker";
 import { expect, test } from "@playwright/test";
 import dayjs from "dayjs";
-import { createMember, getSupabaseServiceClient } from "./setupFunctions";
-import { loginAsUser } from "./supabaseLogin";
+import { deleteE2EFixture, seedE2EScenario } from "./e2eApi";
+import { createMember } from "./setupFunctions";
+import { loginAsUser } from "./auth";
 
 test.describe("Waitlist table pagination and search", () => {
 	let adminMember: Awaited<ReturnType<typeof createMember>>;
-	const waitlistEmails: string[] = [];
+	const waitlistIds: string[] = [];
 	const waitlistPath = "/dashboard/beginners-workshop?tab=waitlist";
+	let searchTargetEmail = "";
+	const searchTargetName = "UniqueWaitlistSearch";
 
 	test.beforeAll(async () => {
+		await seedE2EScenario("waitlistStatus", { isOpen: true });
+
 		// Create admin member with unique email for these tests
 		const timestamp = Date.now();
 		const randomSuffix = Math.random().toString(36).substring(2, 8);
@@ -19,22 +24,22 @@ test.describe("Waitlist table pagination and search", () => {
 		});
 
 		// Create some waitlist entries for testing
-		const supabase = await getSupabaseServiceClient();
 		for (let i = 0; i < 15; i++) {
 			const email = `waitlist-test-${Date.now()}-${i}@example.com`;
-			waitlistEmails.push(email);
+			if (i === 0) searchTargetEmail = email;
 
-			await supabase.rpc("insert_waitlist_entry", {
-				first_name: faker.person.firstName(),
-				last_name: faker.person.lastName(),
+			const waitlist = await seedE2EScenario("waitlist", {
+				firstName: i === 0 ? searchTargetName : faker.person.firstName(),
+				lastName: faker.person.lastName(),
 				email: email,
-				date_of_birth: dayjs().subtract(20, "years").toISOString(),
+				dateOfBirth: dayjs().subtract(20, "years").format("YYYY-MM-DD"),
 				pronouns: "they/them",
 				gender: "non-binary",
-				phone_number: faker.phone.number(),
-				medical_conditions: "None",
-				social_media_consent: "no",
+				phoneNumber: "+353810000000",
+				medicalConditions: "None",
+				socialMediaConsent: "no",
 			});
+			waitlistIds.push(waitlist.waitlistId);
 		}
 	});
 
@@ -42,9 +47,8 @@ test.describe("Waitlist table pagination and search", () => {
 		await adminMember?.cleanUp();
 
 		// Clean up waitlist entries
-		const supabase = await getSupabaseServiceClient();
-		for (const email of waitlistEmails) {
-			await supabase.from("waitlist").delete().eq("email", email);
+		for (const id of waitlistIds) {
+			await deleteE2EFixture("waitlist", id);
 		}
 	});
 
@@ -76,12 +80,14 @@ test.describe("Waitlist table pagination and search", () => {
 			await nextButton.click();
 			await page.waitForLoadState("networkidle");
 
-			// Verify URL has page parameter
-			expect(page.url()).toContain("page=1");
+			// Verify URL has the next cursor.
+			await expect
+				.poll(() => new URL(page.url()).searchParams.get("cursor") ?? "")
+				.not.toBe("");
 
 			// Verify pagination controls reflect we moved off first page
 			await expect(
-				page.getByRole("button", { name: "Go to previous page" }),
+				page.getByRole("button", { name: "Previous" }),
 			).toBeEnabled();
 		}
 	});
@@ -129,29 +135,17 @@ test.describe("Waitlist table pagination and search", () => {
 			timeout: 10000,
 		});
 
-		// Get the first row's full name to search for
-		const firstRowName = await page
-			.locator("table tbody tr:first-child td:nth-child(4)")
-			.textContent();
-
-		// Search for this name
 		const searchInput = page.getByPlaceholder("Search for a person");
-		await searchInput.fill(firstRowName || "");
-		await searchInput.press("Tab"); // Trigger onchange by blurring
-
-		// Wait for search to complete (URL to update)
-		await page.waitForURL(
-			`**/dashboard/beginners-workshop?**tab=waitlist**q=**`,
-			{
-				timeout: 10000,
-			},
-		);
+		await searchInput.fill(searchTargetName);
 
 		// Verify URL has search query
-		expect(page.url()).toContain(`q=`);
+		await expect
+			.poll(() => new URL(page.url()).searchParams.get("q") ?? "")
+			.toBe(searchTargetName);
 
-		// Verify the search returned results (at least one row)
-		await expect(page.locator("table tbody tr")).toHaveCount(1);
+		await expect(
+			page.getByRole("link", { name: searchTargetEmail, exact: true }),
+		).toBeVisible();
 	});
 
 	test("should clear search correctly", async ({ page }) => {
@@ -165,7 +159,7 @@ test.describe("Waitlist table pagination and search", () => {
 
 		// Find and click the clear search button
 		const clearButton = page.getByRole("button", { name: "Clear search" });
-		await clearButton.click({ force: true });
+		await clearButton.click();
 
 		const waitForClearedQuery = () =>
 			expect

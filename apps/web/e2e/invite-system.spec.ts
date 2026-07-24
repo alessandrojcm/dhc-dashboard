@@ -2,7 +2,7 @@ import { faker } from "@faker-js/faker/locale/en_IE";
 import { expect, test } from "@playwright/test";
 import dayjs from "dayjs";
 import { createMember } from "./setupFunctions";
-import { loginAsUser } from "./supabaseLogin";
+import { loginAsUser } from "./auth";
 
 test.describe("Invitation System", () => {
 	let adminData: Awaited<ReturnType<typeof createMember>>;
@@ -220,6 +220,8 @@ test.describe("Invitation System", () => {
 
 		// Click "Add to List" button
 		await page.getByRole("button", { name: "Add to List" }).click();
+		await expect(page.getByText(testEmail1)).toBeVisible();
+		await expect(page.getByLabel("First Name")).toHaveValue("");
 
 		// Add second invitation to the list
 		const testEmail2 = `test-email-${Date.now()}-2@test.com`;

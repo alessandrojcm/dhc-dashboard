@@ -35,7 +35,6 @@ let {
 	onRefundProcessed,
 }: Props = $props();
 
-let refundPopoverOpen = $state(false);
 let attendeeIdForRefund = $state("");
 let selectedAttendees = $state<string[]>([]);
 
@@ -80,7 +79,6 @@ const refundMutation = createMutation(() => ({
 	...workshopsRefundRegistrationMutation(),
 	onSuccess: () => {
 		attendeeIdForRefund = "";
-		refundPopoverOpen = false;
 		onRefundProcessed?.();
 		toast.success("Refund processed");
 	},
@@ -357,21 +355,25 @@ function markAttended(registrationIds: string[]) {
 					{/if}
 
 					{#if !refund}
-						<Popover.Root open={refundPopoverOpen}>
+						<Popover.Root
+							open={attendeeIdForRefund === attendee.id}
+							onOpenChange={(open) => {
+								attendeeIdForRefund = open ? attendee.id : "";
+							}}
+						>
 							<Popover.Trigger>
-								<Button
-									size="sm"
-									variant="outline"
-									onclick={() => {
-										refundPopoverOpen = true;
-										attendeeIdForRefund = attendee.id;
-									}}
-									disabled={refundMutation.isPending}
-									class="w-full flex-1 gap-1 sm:w-auto sm:flex-none"
-								>
-									<DollarSign class="w-4 h-4" />
-									Refund
-								</Button>
+								{#snippet child({ props })}
+									<Button
+										{...props}
+										size="sm"
+										variant="outline"
+										disabled={refundMutation.isPending}
+										class="w-full flex-1 gap-1 sm:w-auto sm:flex-none"
+									>
+										<DollarSign class="w-4 h-4" />
+										Refund
+									</Button>
+								{/snippet}
 							</Popover.Trigger>
 							<Popover.Content class="w-80">
 								{@const eligibility = getRefundEligibility(attendee)}
@@ -408,7 +410,6 @@ function markAttended(registrationIds: string[]) {
 											size="sm"
 											variant="outline"
 											onclick={() => {
-												refundPopoverOpen = false;
 												attendeeIdForRefund = "";
 											}}
 										>

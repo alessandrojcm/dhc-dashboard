@@ -46,37 +46,39 @@ async function _copyToClipboard() {
 
 <Tooltip.Tooltip>
 	<Tooltip.Trigger>
-		<Button
-			type="button"
-			{size}
-			{variant}
-			onclick={_copyToClipboard}
-			class="relative"
-			aria-label={label}
-		>
-			{#if _isCopied === "copied"}
-				<span in:fade={{ duration: 150 }} class="flex items-center gap-2">
-					<Check class="h-4 w-4 text-green-500" />
-					<span class="sr-only">Copied!</span>
-				</span>
-			{:else if _isCopied === "error"}
-				<span in:fade={{ duration: 150 }} class="flex items-center gap-2">
-					<X class="h-4 w-4 text-red-500" />
-					<span class="sr-only">Failed to copy</span>
-				</span>
-			{:else}
-				<span in:fade={{ duration: 150 }} class="flex items-center gap-2">
-					<Copy class="h-4 w-4" />
-					<span class="sr-only">{label}</span>
-					{#if size !== "icon"}
-						<span>{label}</span>
-					{/if}
-				</span>
-
-				<Tooltip.Content side="top">
-					{label}
-				</Tooltip.Content>
-			{/if}
-		</Button>
+		{#snippet child({ props })}
+			<Button
+				type="button"
+				{size}
+				{variant}
+				{...props}
+				onclick={_copyToClipboard}
+				class="relative"
+				aria-label={label}
+			>
+				{#if _isCopied === "copied"}
+					<span in:fade={{ duration: 150 }} class="flex items-center gap-2">
+						<Check class="h-4 w-4 text-green-500" />
+						<span class="sr-only">Copied!</span>
+					</span>
+				{:else if _isCopied === "error"}
+					<span in:fade={{ duration: 150 }} class="flex items-center gap-2">
+						<X class="h-4 w-4 text-red-500" />
+						<span class="sr-only">Failed to copy</span>
+					</span>
+				{:else}
+					<span in:fade={{ duration: 150 }} class="flex items-center gap-2">
+						<Copy class="h-4 w-4" />
+						<span class="sr-only">{label}</span>
+						{#if size !== "icon"}
+							<span>{label}</span>
+						{/if}
+					</span>
+				{/if}
+			</Button>
+		{/snippet}
 	</Tooltip.Trigger>
+	<Tooltip.Content side="top">
+		{label}
+	</Tooltip.Content>
 </Tooltip.Tooltip>

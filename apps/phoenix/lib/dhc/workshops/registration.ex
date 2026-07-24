@@ -17,6 +17,8 @@ defmodule Dhc.Workshops.Registration do
 
   use Ecto.Schema
 
+  import Ecto.Changeset
+
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
   @type t :: %__MODULE__{}
@@ -43,5 +45,38 @@ defmodule Dhc.Workshops.Registration do
     field :attendance_notes, :string
 
     timestamps(type: :utc_datetime, inserted_at: :created_at)
+  end
+
+  @doc false
+  def fixture_changeset(registration, attrs) do
+    registration
+    |> cast(attrs, [
+      :club_activity_id,
+      :member_user_id,
+      :external_user_id,
+      :stripe_checkout_session_id,
+      :amount_paid,
+      :currency,
+      :status,
+      :registered_at,
+      :confirmed_at,
+      :cancelled_at,
+      :registration_notes,
+      :attendance_status,
+      :attendance_marked_at,
+      :attendance_marked_by,
+      :attendance_notes
+    ])
+    |> validate_required([:club_activity_id, :amount_paid, :currency, :status])
+    |> validate_inclusion(:status, ~w(pending confirmed cancelled refunded))
+    |> validate_inclusion(:attendance_status, ~w(pending attended no_show excused))
+    |> validate_number(:amount_paid, greater_than_or_equal_to: 0)
+    |> foreign_key_constraint(:club_activity_id)
+    |> foreign_key_constraint(:member_user_id)
+    |> foreign_key_constraint(:external_user_id)
+    |> check_constraint(:member_user_id,
+      name: :exactly_one_participant,
+      message: "must identify exactly one participant"
+    )
   end
 end

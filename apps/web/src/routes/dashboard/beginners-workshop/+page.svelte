@@ -63,15 +63,21 @@ let viewLabel = $derived(
 		{#await data.isWaitlistOpen then isOpen}
 			<AlertDialog.Root bind:open={dialogOpen}>
 				<AlertDialog.Trigger class="fixed right-4 top-4">
-					<Button variant="outline" onclick={() => (dialogOpen = true)}>
-						{#if isOpen}
-							<LockOpen class="w-4 h-4" />
-							<p class="hidden md:block">Close Waitlist</p>
-						{:else}
-							<Lock class="w-4 h-4" />
-							<p class="hidden md:block">Open Waitlist</p>
-						{/if}
-					</Button>
+					{#snippet child({ props })}
+						<Button
+							variant="outline"
+							{...props}
+							onclick={() => (dialogOpen = true)}
+						>
+							{#if isOpen}
+								<LockOpen class="w-4 h-4" />
+								<p class="hidden md:block">Close Waitlist</p>
+							{:else}
+								<Lock class="w-4 h-4" />
+								<p class="hidden md:block">Open Waitlist</p>
+							{/if}
+						</Button>
+					{/snippet}
 				</AlertDialog.Trigger>
 				<AlertDialog.Content>
 					<AlertDialog.Header>

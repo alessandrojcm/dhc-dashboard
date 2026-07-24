@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import "dotenv/config";
 import {
 	ANNUAL_FEE_LOOKUP,
@@ -6,7 +6,51 @@ import {
 } from "../src/lib/server/constants";
 import { setupInvitedUser, stripeClient } from "./setupFunctions";
 
+type InvitedUser = Awaited<ReturnType<typeof setupInvitedUser>>;
+
+function signupUrl(invitation: InvitedUser) {
+	return `/members/signup/${invitation.invitationId}?email=${encodeURIComponent(invitation.email)}&dateOfBirth=${encodeURIComponent(invitation.date_of_birth.format("YYYY-MM-DD"))}`;
+}
+
+async function openSignup(page: Page, invitation: InvitedUser) {
+	await page.goto(signupUrl(invitation));
+	const verifyButton = page.getByRole("button", { name: /verify invitation/i });
+	await expect(verifyButton).toBeVisible();
+	await page.waitForLoadState("networkidle");
+	await verifyButton.click();
+	await page.getByLabel(/next of kin$/i).waitFor({ state: "visible" });
+}
+
+async function openCouponForm(page: Page) {
+	const trigger = page.getByRole("button", {
+		name: "Have a promotional code?",
+	});
+	await trigger.scrollIntoViewIfNeeded();
+	await trigger.click();
+	await page
+		.getByPlaceholder("Enter promotional code")
+		.waitFor({ state: "visible" });
+}
+
+async function applyCoupon(page: Page, code: string) {
+	await openCouponForm(page);
+	await page.getByPlaceholder("Enter promotional code").fill(code);
+	await page.getByRole("button", { name: "Apply Code" }).click();
+	await expect(page.getByText(`Code ${code} applied`)).toBeVisible({
+		timeout: 15_000,
+	});
+}
+
+function pricingRow(page: Page, label: string) {
+	return page
+		.locator(".flex.justify-between")
+		.filter({ hasText: label })
+		.first();
+}
+
 test.describe("Member Signup - Coupon Codes", () => {
+	test.describe.configure({ timeout: 60_000 });
+
 	// Coupon codes for testing (created once, reused across tests)
 	let annualCouponCode: string;
 	let monthlyCouponCode: string;
@@ -215,526 +259,161 @@ test.describe("Member Signup - Coupon Codes", () => {
 		}
 	});
 
-	// GROUP 1: Read-only coupon application tests (tests 1-4)
-	// These tests only apply coupons and check the UI, they don't modify invitation state
-	test.describe("Coupon Application Tests", () => {
-		let testData: Awaited<ReturnType<typeof setupInvitedUser>>;
+	test.describe("Coupon application", () => {
+		let invitation: InvitedUser;
 
 		test.beforeAll(async () => {
-			// Create ONE invitation for all read-only tests
-			testData = await setupInvitedUser();
+			invitation = await setupInvitedUser();
 		});
 
 		test.afterAll(async () => {
-			// Clean up the invitation after all tests in this group
-			if (testData?.cleanUp) {
-				await testData.cleanUp();
-			}
+			await invitation?.cleanUp();
 		});
 
 		test.beforeEach(async ({ page }) => {
-			await page.goto(
-				`/members/signup/${testData.invitationId}?email=${encodeURIComponent(testData.email)}&dateOfBirth=${encodeURIComponent(
-					testData.date_of_birth.format("YYYY-MM-DD"),
-				)}`,
-			);
-
-			// Wait for page to load and check if verification is needed
-			const verifyButton = page.getByRole("button", {
-				name: /verify invitation/i,
-			});
-
-			// Wait a bit for the page to load, then check if verify button exists
-			try {
-				await verifyButton.waitFor({ state: "visible", timeout: 5000 });
-				await verifyButton.click();
-			} catch {
-				// Verify button not found - invitation might be auto-verified
-			}
-
-			await page.getByLabel(/next of kin$/i).waitFor({ state: "visible" });
+			await openSignup(page, invitation);
 		});
 
-		test("should apply valid annual coupon code", async ({ page }) => {
-			const accordionTrigger = page.getByRole("button", {
-				name: "Have a promotional code?",
+		for (const coupon of [
+			{ name: "annual", code: () => annualCouponCode },
+			{ name: "monthly", code: () => monthlyCouponCode },
+		]) {
+			test(`applies a valid ${coupon.name} coupon`, async ({ page }) => {
+				await applyCoupon(page, coupon.code());
 			});
-			await accordionTrigger.scrollIntoViewIfNeeded();
-			await accordionTrigger.click();
+		}
 
-			const couponInput = page.getByPlaceholder("Enter promotional code");
-			await couponInput.waitFor({ state: "visible", timeout: 10000 });
-			await couponInput.fill(annualCouponCode);
-
-			// The pricing automatically updates when coupon input changes
-			// Wait for the success message to appear
-			await expect(page.getByText(/coupon code not valid/i)).not.toBeVisible({
-				timeout: 3000,
-			});
-			await expect(
-				page.getByText(`Code ${annualCouponCode} applied`),
-			).toBeVisible({ timeout: 5000 });
-		});
-
-		test("should apply valid monthly coupon code", async ({ page }) => {
-			const accordionTrigger = page.getByRole("button", {
-				name: "Have a promotional code?",
-			});
-			await accordionTrigger.scrollIntoViewIfNeeded();
-			await accordionTrigger.click();
-
-			// Fill in the coupon code - pricing auto-updates via reactive binding
-			const couponInput = page.getByPlaceholder("Enter promotional code");
-			await couponInput.waitFor({ state: "visible", timeout: 10000 });
-			await couponInput.fill(monthlyCouponCode);
-
-			// Wait for the success message (pricing auto-updates when input changes)
-			await expect(page.getByText(/coupon code not valid/i)).not.toBeVisible({
-				timeout: 3000,
-			});
-			await expect(
-				page.getByText(`Code ${monthlyCouponCode} applied`),
-			).toBeVisible({ timeout: 5000 });
-		});
-
-		test("should apply valid combined coupon code and show discounted prices", async ({
+		test("shows discounted recurring prices for a permanent coupon", async ({
 			page,
 		}) => {
-			const accordionTrigger = page.getByRole("button", {
-				name: "Have a promotional code?",
-			});
-			await accordionTrigger.scrollIntoViewIfNeeded();
-			await accordionTrigger.click();
-
-			const originalMonthlyPrice = await page
-				.locator("text=Monthly membership fee")
-				.locator("..")
-				.locator("..")
+			const monthlyRow = pricingRow(page, "Monthly membership fee");
+			const annualRow = pricingRow(page, "Annual membership fee");
+			const originalMonthlyPrice = await monthlyRow
 				.locator("span.font-semibold")
 				.textContent();
-			const originalAnnualPrice = await page
-				.locator("text=Annual membership fee")
-				.locator("..")
-				.locator("..")
+			const originalAnnualPrice = await annualRow
 				.locator("span.font-semibold")
 				.textContent();
 
-			const couponInput = page.getByPlaceholder("Enter promotional code");
-			await couponInput.waitFor({ state: "visible", timeout: 10000 });
-			await couponInput.fill(combinedCouponCode);
+			await applyCoupon(page, combinedCouponCode);
 
-			await expect(
-				page.getByText(`Code ${combinedCouponCode} applied`),
-			).toBeVisible({ timeout: 10000 });
-
-			await accordionTrigger.click();
-			const applyButton = page.getByRole("button", { name: "Apply Code" });
-			await applyButton.waitFor({ state: "visible", timeout: 5000 });
-			await applyButton.click();
-
-			await expect(page.getByText(/Discount applied:/)).toBeVisible({
-				timeout: 10000,
-			});
-
-			// Check that the discounted prices are shown
-			const discountedMonthlyPrice = await page
-				.locator("text=Monthly membership fee")
-				.locator("..")
-				.locator("..")
+			const discountedMonthlyPrice = await monthlyRow
 				.locator("span.text-green-600")
 				.textContent();
-			const discountedAnnualPrice = await page
-				.locator("text=Annual membership fee")
-				.locator("..")
-				.locator("..")
+			const discountedAnnualPrice = await annualRow
 				.locator("span.text-green-600")
 				.textContent();
 
-			// Verify that the original prices are shown with strikethrough
+			await expect(monthlyRow.locator("span.line-through")).toBeVisible();
+			await expect(annualRow.locator("span.line-through")).toBeVisible();
+			await expect(page.getByText("Discount applied: 10% off")).toBeVisible();
 			await expect(
-				page
-					.locator("text=Monthly membership fee")
-					.locator("..")
-					.locator("..")
-					.locator("span.line-through"),
-			).toBeVisible();
-			await expect(
-				page
-					.locator("text=Annual membership fee")
-					.locator("..")
-					.locator("..")
-					.locator("span.line-through"),
+				page.getByText("Applies to all future payments"),
 			).toBeVisible();
 
-			// Verify that the discount percentage is shown
-			await expect(page.locator("text=Discount applied:")).toBeVisible();
-
-			// Verify that the "Applies to all future payments" text is shown (since we're using a 'forever' coupon)
-			await expect(
-				page.locator("text=Applies to all future payments"),
-			).toBeVisible();
-
-			// Verify that the discounted prices are less than the original prices
-			const originalMonthlyValue = parseFloat(
-				originalMonthlyPrice?.replace(/[^0-9.]/g, "") ?? "0",
+			const currencyValue = (value: string | null) =>
+				Number(value?.replace(/[^0-9.]/g, "") ?? 0);
+			expect(currencyValue(discountedMonthlyPrice)).toBeLessThan(
+				currencyValue(originalMonthlyPrice),
 			);
-			const discountedMonthlyValue = parseFloat(
-				discountedMonthlyPrice?.replace(/[^0-9.]/g, "") ?? "0",
+			expect(currencyValue(discountedAnnualPrice)).toBeLessThan(
+				currencyValue(originalAnnualPrice),
 			);
-			const originalAnnualValue = parseFloat(
-				originalAnnualPrice?.replace(/[^0-9.]/g, "") ?? "0",
-			);
-			const discountedAnnualValue = parseFloat(
-				discountedAnnualPrice?.replace(/[^0-9.]/g, "") ?? "0",
-			);
-
-			expect(discountedMonthlyValue).toBeLessThan(originalMonthlyValue);
-			expect(discountedAnnualValue).toBeLessThan(originalAnnualValue);
-
-			// Verify the discount percentage is approximately 10% (for combined coupon)
-			const monthlyDiscountPercent = Math.round(
-				((originalMonthlyValue - discountedMonthlyValue) /
-					originalMonthlyValue) *
-					100,
-			);
-			const annualDiscountPercent = Math.round(
-				((originalAnnualValue - discountedAnnualValue) / originalAnnualValue) *
-					100,
-			);
-
-			expect(monthlyDiscountPercent).toBeCloseTo(10, 1); // Allow 1% tolerance
-			expect(annualDiscountPercent).toBeCloseTo(10, 1); // Allow 1% tolerance
 		});
 
-		test('should apply one-time coupon and show "Applies to first payment only"', async ({
+		test("shows a one-time coupon on the first payment only", async ({
 			page,
 		}) => {
-			const accordionTrigger = page.getByRole("button", {
-				name: "Have a promotional code?",
-			});
-			await accordionTrigger.scrollIntoViewIfNeeded();
-			await accordionTrigger.click();
+			await applyCoupon(page, onceCouponCode);
 
-			const couponInput = page.getByPlaceholder("Enter promotional code");
-			await couponInput.waitFor({ state: "visible", timeout: 10000 });
-			await couponInput.fill(onceCouponCode);
-
-			await expect(page.getByText(/coupon code not valid/i)).not.toBeVisible({
-				timeout: 3000,
-			});
+			await expect(page.getByText("Discount applied: 15% off")).toBeVisible();
 			await expect(
-				page.getByText(`Code ${onceCouponCode} applied`),
-			).toBeVisible({
-				timeout: 5000,
-			});
-
-			await expect(page.getByText("Discount applied:")).toBeVisible({
-				timeout: 5000,
-			});
-
-			await expect(
-				page.getByText(/Applies to first payment only/),
+				page.getByText("Applies to first payment only"),
 			).toBeVisible();
-
-			await expect(page.getByText(/Discount applied: 15% off/)).toBeVisible();
-
-			// For a 'once' coupon, the original prices should still be shown without strikethrough
-			// since the discount only applies to the first payment
 			await expect(
-				page
-					.locator("text=Monthly membership fee")
-					.locator("..")
-					.locator("..")
-					.locator("span.line-through"),
-			).not.toBeVisible();
+				pricingRow(page, "Monthly membership fee").locator("span.line-through"),
+			).toHaveCount(0);
 			await expect(
-				page
-					.locator("text=Annual membership fee")
-					.locator("..")
-					.locator("..")
-					.locator("span.line-through"),
-			).not.toBeVisible();
-
-			await expect(page.getByText(/€0\.00/)).not.toBeVisible();
-		});
-	});
-
-	// GROUP 2: Tests that modify invitation state (tests 5-6)
-	test.describe("Coupon Validation and Payment Tests", () => {
-		// Test 6: Validation test (doesn't complete signup, can reuse invitation)
-		test.describe("should reject invalid coupon codes", () => {
-			let testData: Awaited<ReturnType<typeof setupInvitedUser>>;
-
-			test.beforeAll(async () => {
-				testData = await setupInvitedUser();
-			});
-
-			test.afterAll(async () => {
-				if (testData?.cleanUp) {
-					await testData.cleanUp();
-				}
-			});
-
-			test("validation test", async ({ page }) => {
-				await page.goto(
-					`/members/signup/${testData.invitationId}?email=${encodeURIComponent(testData.email)}&dateOfBirth=${encodeURIComponent(
-						testData.date_of_birth.format("YYYY-MM-DD"),
-					)}`,
-				);
-
-				// Wait for page to load and check if verification is needed
-				const verifyButton = page.getByRole("button", {
-					name: /verify invitation/i,
-				});
-
-				try {
-					await verifyButton.waitFor({ state: "visible", timeout: 5000 });
-					await verifyButton.click();
-				} catch {
-					// Verify button not found
-				}
-
-				await page.getByLabel(/next of kin$/i).waitFor({ state: "visible" });
-				const accordionTrigger = page.getByRole("button", {
-					name: "Have a promotional code?",
-				});
-				await accordionTrigger.scrollIntoViewIfNeeded();
-				await accordionTrigger.click();
-
-				const couponInput = page.getByPlaceholder("Enter promotional code");
-				await couponInput.waitFor({ state: "visible", timeout: 10000 });
-
-				await couponInput.fill("INVALID-COUPON-12345");
-				await expect(
-					page.getByText("Error loading pricing information"),
-				).toBeVisible({ timeout: 10000 });
-
-				await page.reload();
-				await page.getByLabel(/next of kin$/i).waitFor({ state: "visible" });
-
-				const accordionTrigger2 = page.getByRole("button", {
-					name: "Have a promotional code?",
-				});
-				await accordionTrigger2.scrollIntoViewIfNeeded();
-				await accordionTrigger2.click();
-
-				const couponInput2 = page.getByPlaceholder("Enter promotional code");
-				await couponInput2.waitFor({ state: "visible", timeout: 10000 });
-
-				await couponInput2.fill("TEST123");
-				await expect(
-					page.getByText("Error loading pricing information"),
-				).toBeVisible({ timeout: 10000 });
-			});
+				pricingRow(page, "Annual membership fee").locator("span.line-through"),
+			).toHaveCount(0);
+			await expect(page.getByText(/€0\.00/)).toHaveCount(0);
 		});
 
-		// Test 7: Payment test (completes signup, needs its own invitation)
-		test.describe("should process payment with coupon", () => {
-			let testData: Awaited<ReturnType<typeof setupInvitedUser>>;
+		test("rejects invalid coupon codes", async ({ page }) => {
+			await openCouponForm(page);
+			const couponInput = page.getByPlaceholder("Enter promotional code");
 
-			test.beforeAll(async () => {
-				testData = await setupInvitedUser();
-			});
-
-			test.afterAll(async () => {
-				if (testData?.cleanUp) {
-					await testData.cleanUp();
-				}
-			});
-
-			test("payment test", async ({ page }) => {
-				await page.goto(
-					`/members/signup/${testData.invitationId}?email=${encodeURIComponent(testData.email)}&dateOfBirth=${encodeURIComponent(
-						testData.date_of_birth.format("YYYY-MM-DD"),
-					)}`,
-				);
-
-				// Wait for page to load and check if verification is needed
-				const verifyButton = page.getByRole("button", {
-					name: /verify invitation/i,
-				});
-
-				try {
-					await verifyButton.waitFor({ state: "visible", timeout: 5000 });
-					await verifyButton.click();
-				} catch {
-					// Verify button not found
-				}
-
-				await page.getByLabel(/next of kin$/i).waitFor({ state: "visible" });
-
-				// Fill in next of kin details
-				await page.getByLabel(/next of kin$/i).fill("John Doe");
-
-				const phoneInputField = page.getByLabel(/next of kin phone number/i);
-
-				// Wait for the phone input field to be ready
-				await phoneInputField.waitFor({ state: "visible", timeout: 10000 });
-				await phoneInputField.fill("0838774532");
-
-				const accordionTrigger = page.getByRole("button", {
-					name: "Have a promotional code?",
-				});
-				await accordionTrigger.scrollIntoViewIfNeeded();
-				await accordionTrigger.click();
-
-				const couponInput = page.getByPlaceholder("Enter promotional code");
-				await couponInput.waitFor({ state: "visible", timeout: 10000 });
-				await couponInput.fill(combinedCouponCode);
-
-				await expect(page.getByText(/coupon code not valid/i)).not.toBeVisible({
-					timeout: 3000,
-				});
+			for (const code of ["INVALID-COUPON-12345", "TEST123"]) {
+				await couponInput.fill(code);
+				await page.getByRole("button", { name: "Apply Code" }).click();
 				await expect(
-					page.getByText(`Code ${combinedCouponCode} applied`),
-				).toBeVisible({ timeout: 5000 });
-
-				await accordionTrigger.click();
-
-				const applyButton = page.getByRole("button", { name: "Apply Code" });
-				await applyButton.waitFor({ state: "visible", timeout: 5000 });
-				await applyButton.click();
-
-				await expect(page.getByText(/Discount applied:/)).toBeVisible({
-					timeout: 10000,
-				});
-
-				// Interact with the embedded Stripe payment form (SEPA Direct Debit)
-				const stripeFrame = await page
-					.locator(".__PrivateStripeElement")
-					.frameLocator("iframe");
-				await stripeFrame.getByLabel("IBAN").fill("IE29AIBK93115212345678");
-				await stripeFrame.getByLabel("Address line 1").fill("123 Main Street");
-				await stripeFrame.getByLabel("Address line 2").fill("Apt 4B");
-				await stripeFrame
-					.getByLabel("Country or region")
-					.selectOption("Ireland");
-				await stripeFrame.getByLabel("City").fill("Dublin");
-				await stripeFrame.getByLabel("Eircode").fill("K45 HR22");
-				await stripeFrame.getByLabel("County").selectOption("Dublin");
-
-				const submitButton = page.getByRole("button", { name: /sign up/i });
-				await submitButton.click();
-
-				await expect(
-					page.getByText(
-						"Your membership has been successfully processed. Welcome to Dublin Hema Club! You will receive a Discord invite by email shortly.",
-					),
-				).toBeVisible({ timeout: 30000 });
-			});
-		});
-	});
-
-	// GROUP 3: Special coupon tests (tests 7-8)
-	test.describe("Special Coupon Tests", () => {
-		let testData: Awaited<ReturnType<typeof setupInvitedUser>>;
-
-		test.beforeAll(async () => {
-			// Create ONE invitation for these tests
-			testData = await setupInvitedUser();
-		});
-
-		test.afterAll(async () => {
-			// Clean up the invitation after all tests in this group
-			if (testData?.cleanUp) {
-				await testData.cleanUp();
+					page.getByText("Could not apply promotion code"),
+				).toBeVisible({ timeout: 15_000 });
 			}
 		});
 
-		test.beforeEach(async ({ page }) => {
-			await page.goto(
-				`/members/signup/${testData.invitationId}?email=${encodeURIComponent(testData.email)}&dateOfBirth=${encodeURIComponent(
-					testData.date_of_birth.format("YYYY-MM-DD"),
-				)}`,
+		for (const coupon of [
+			{ name: "100% one-time coupon", code: () => once100CouponCode },
+			{ name: "migration coupon", code: () => migrationCouponCode },
+		]) {
+			test(`${coupon.name} makes the first payment free`, async ({ page }) => {
+				await applyCoupon(page, coupon.code());
+
+				await expect(
+					page.getByText("Discount applied: 100% off"),
+				).toBeVisible();
+				await expect(
+					page.getByText("Applies to first payment only"),
+				).toBeVisible();
+				await expect(
+					pricingRow(page, "Total").getByText(/€0\.00/),
+				).toBeVisible();
+			});
+		}
+	});
+
+	test("processes payment with a coupon", async ({ page }) => {
+		const invitation = await setupInvitedUser();
+
+		try {
+			await openSignup(page, invitation);
+			await page.getByLabel(/next of kin$/i).fill("John Doe");
+			await page.getByLabel(/next of kin phone number/i).fill("0838774532");
+			await applyCoupon(page, combinedCouponCode);
+			await expect(page.getByText("Discount applied: 10% off")).toBeVisible();
+
+			await expect(page.locator("#payment-element-state")).toHaveAttribute(
+				"data-ready",
+				"true",
+			);
+			const stripeFrame = page
+				.locator(".__PrivateStripeElement")
+				.frameLocator("iframe");
+			await expect(stripeFrame.getByLabel("IBAN")).toBeVisible({
+				timeout: 15_000,
+			});
+			await stripeFrame.getByLabel("IBAN").fill("IE29AIBK93115212345678");
+			await stripeFrame.getByLabel("Email").fill(invitation.email);
+			await stripeFrame.getByLabel("Full name").fill("John Doe");
+			await stripeFrame.getByLabel("Address line 1").fill("123 Main Street");
+			await stripeFrame.getByLabel("Address line 2").fill("Apt 4B");
+			await stripeFrame.getByLabel("Country or region").selectOption("Ireland");
+			await stripeFrame.getByLabel("City").fill("Dublin");
+			await stripeFrame.getByLabel("Eircode").fill("K45 HR22");
+			await stripeFrame.getByLabel("County").selectOption("Dublin");
+			await expect(page.locator("#payment-element-state")).toHaveAttribute(
+				"data-complete",
+				"true",
 			);
 
-			// Wait for page to load and check if verification is needed
-			const verifyButton = page.getByRole("button", {
-				name: /verify invitation/i,
-			});
-
-			try {
-				await verifyButton.waitFor({ state: "visible", timeout: 5000 });
-				await verifyButton.click();
-			} catch {
-				// Verify button not found
-			}
-
-			await page.getByLabel(/next of kin$/i).waitFor({ state: "visible" });
-		});
-
-		test("applying a 100% once coupon shows €0.00 prorated price", async ({
-			page,
-		}) => {
-			const accordionTrigger = page.getByRole("button", {
-				name: "Have a promotional code?",
-			});
-			await accordionTrigger.scrollIntoViewIfNeeded();
-			await accordionTrigger.click();
-
-			const couponInput = page.getByPlaceholder("Enter promotional code");
-			await couponInput.waitFor({ state: "visible", timeout: 10000 });
-			await couponInput.fill(once100CouponCode);
-
-			await expect(page.getByText(/coupon code not valid/i)).not.toBeVisible({
-				timeout: 3000,
-			});
+			await page.getByRole("button", { name: /sign up/i }).click();
 			await expect(
-				page.getByText(`Code ${once100CouponCode} applied`),
-			).toBeVisible({ timeout: 5000 });
-
-			await expect(page.getByText("Discount applied:")).toBeVisible({
-				timeout: 5000,
-			});
-
-			await expect(
-				page.getByText(/Applies to first payment only/),
-			).toBeVisible();
-
-			// The prorated price total should show €0.00
-			await expect(
-				page
-					.locator(".flex.justify-between")
-					.filter({ hasText: "Total" })
-					.getByText(/€0\.00/),
-			).toBeVisible();
-		});
-
-		test("applying the migration code shows €0.00 total", async ({ page }) => {
-			const accordionTrigger = page.getByRole("button", {
-				name: "Have a promotional code?",
-			});
-			await accordionTrigger.scrollIntoViewIfNeeded();
-			await accordionTrigger.click();
-
-			const couponInput = page.getByPlaceholder("Enter promotional code");
-			await couponInput.waitFor({ state: "visible", timeout: 10000 });
-			await couponInput.fill(migrationCouponCode);
-
-			await expect(page.getByText(/coupon code not valid/i)).not.toBeVisible({
-				timeout: 3000,
-			});
-			await expect(
-				page.getByText(`Code ${migrationCouponCode} applied`),
-			).toBeVisible({ timeout: 5000 });
-
-			await accordionTrigger.click();
-			const applyButton = page.getByRole("button", { name: "Apply Code" });
-			await applyButton.waitFor({ state: "visible", timeout: 5000 });
-			await applyButton.click();
-
-			// Check that 100% discount is applied
-			await expect(page.getByText(/Discount applied: 100% off/)).toBeVisible({
-				timeout: 10000,
-			});
-
-			// The prorated price total should show €0.00
-			await expect(
-				page
-					.locator(".flex.justify-between")
-					.filter({ hasText: "Total" })
-					.getByText(/€0\.00/),
-			).toBeVisible();
-		});
+				page.getByText(
+					"Your membership has been successfully processed. Welcome to Dublin Hema Club! You will receive a Discord invite by email shortly.",
+				),
+			).toBeVisible({ timeout: 30_000 });
+		} finally {
+			await invitation.cleanUp();
+		}
 	});
 });

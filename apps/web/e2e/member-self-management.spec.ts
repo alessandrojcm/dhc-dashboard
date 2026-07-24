@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { createMember } from "./setupFunctions";
-import { loginAsUser } from "./supabaseLogin";
+import { loginAsUser } from "./auth";
 
 test.describe("Member Self-Management", () => {
 	let testData: Awaited<ReturnType<typeof createMember>>;
@@ -15,7 +15,7 @@ test.describe("Member Self-Management", () => {
 	});
 	test.afterAll(() => testData?.cleanUp());
 
-	test("should navigate to member profile whe using only member", async ({
+	test("should navigate to member profile when using only member", async ({
 		page,
 	}) => {
 		await page.goto("/dashboard");
@@ -26,15 +26,17 @@ test.describe("Member Self-Management", () => {
 		await page.goto("/dashboard");
 		await expect(page.getByText(/member information/i)).toBeVisible();
 		await page.getByLabel(/first name/i).fill("Updated name");
+		await page.getByLabel("Next of Kin", { exact: true }).fill("Test Contact");
+		await page.getByLabel("Next of Kin Phone Number").fill("0871234567");
 		await page.getByLabel(/preferred weapon/i).click();
 
-		await page.getByRole("option", { name: "Longsword" }).click();
+		await page.getByRole("option", { name: "Rapier" }).click();
 		await page.getByRole("button", { name: /save changes/i }).click();
 
 		await expect(page.getByText(/profile has been updated/i)).toBeVisible();
 		await page.reload();
 		await expect(page.getByLabel(/first name/i)).toHaveValue("Updated name");
-		await expect(page.getByText(/Longsword/i).first()).toBeVisible();
+		await expect(page.getByText(/Rapier/i).first()).toBeVisible();
 	});
 
 	test("it should show manage subscription button", async ({ page }) => {
@@ -61,7 +63,7 @@ test.describe("Member Management - Admin", () => {
 		adminEmail = `admin-${Date.now()}@test.com`;
 		adminData = await createMember({
 			email: adminEmail,
-			roles: new Set(["admin"]),
+			roles: new Set(["admin", "member"]),
 		});
 		memberData = await createMember({
 			email: `member-${Date.now()}@test.com`,
@@ -82,7 +84,7 @@ test.describe("Member Management - Admin", () => {
 			.getByRole("button", { name: new RegExp(adminData.email, "i") })
 			.first()
 			.click();
-		await page.getByText("My profile").click();
+		await page.getByRole("link", { name: "My Profile" }).click();
 		await expect(page.getByTestId("sidebar")).not.toHaveText("");
 	});
 
@@ -91,9 +93,10 @@ test.describe("Member Management - Admin", () => {
 	}) => {
 		await page.goto(`/dashboard/members/${memberData.userId}`);
 		await page.getByLabel(/first name/i).fill("Updated name");
+		await page.getByLabel("Next of Kin", { exact: true }).fill("Test Contact");
+		await page.getByLabel("Next of Kin Phone Number").fill("0871234567");
 		await page.getByLabel(/preferred weapon/i).click();
-		await page.getByRole("option", { name: "Longsword" }).click();
-		await page.getByRole("button", { name: /save changes/i }).click();
+		await page.getByRole("option", { name: "Rapier" }).click();
 		await page.getByRole("button", { name: /save changes/i }).click();
 		await expect(page.getByText(/profile has been updated/i)).toBeVisible();
 		await page.reload();

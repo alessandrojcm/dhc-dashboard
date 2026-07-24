@@ -8,6 +8,7 @@ import {
 	type StripeElements,
 	type StripeElementsOptions,
 	type StripePaymentElement,
+	type StripePaymentElementOptions,
 } from "@stripe/stripe-js";
 import { PUBLIC_STRIPE_KEY } from "$env/static/public";
 import { toast } from "svelte-sonner";
@@ -32,6 +33,8 @@ let stripe: Awaited<ReturnType<typeof loadStripe>> | null = $state(null);
 let elements: StripeElements | null | undefined = $state(null);
 let paymentElement: StripePaymentElement | null | undefined = $state(null);
 let paymentError = $state<string | null>(null);
+let paymentElementReady = $state(false);
+let paymentElementComplete = $state(false);
 
 const stripeElementsOptions: StripeElementsOptions = {
 	mode: "setup",
@@ -63,6 +66,15 @@ const stripeElementsOptions: StripeElementsOptions = {
 	},
 };
 
+const paymentElementOptions: StripePaymentElementOptions = {
+	layout: {
+		type: "accordion",
+		defaultCollapsed: false,
+		radios: false,
+		spacedAccordionItems: false,
+	},
+};
+
 // Initialize form with empty values
 initForm(processPayment, () => ({
 	nextOfKin: "",
@@ -86,13 +98,20 @@ onMount(() => {
 	loadStripe(PUBLIC_STRIPE_KEY).then((result) => {
 		stripe = result;
 		elements = stripe?.elements(stripeElementsOptions);
-		paymentElement = elements?.create("payment");
+		paymentElement = elements?.create("payment", paymentElementOptions);
+		paymentElement?.on("ready", () => {
+			paymentElementReady = true;
+		});
+		paymentElement?.on("change", ({ complete }) => {
+			paymentElementComplete = complete;
+		});
 		paymentElement?.mount("#payment-element");
 	});
 });
 
 const handleSubmit: ButtonProps["onclick"] = async (e) => {
 	e.preventDefault();
+	const form = (e.currentTarget as HTMLButtonElement).form;
 	// Validate Stripe is ready
 	if (!stripe || !elements) {
 		toast.error("Payment system not initialized");
@@ -132,8 +151,6 @@ const handleSubmit: ButtonProps["onclick"] = async (e) => {
 	// This ensures the value is available when the form serializes for submission
 	processPayment.fields.stripeConfirmationToken.set(confirmationToken.id);
 	await processPayment.validate();
-	const button = e.target as HTMLButtonElement | null;
-	const form = button?.form;
 	if (form) {
 		form.requestSubmit();
 	}
@@ -194,7 +211,7 @@ const handleSubmit: ButtonProps["onclick"] = async (e) => {
 			{#if page.params.invitationId}
 				<PricingDisplay
 					invitationId={page.params.invitationId ?? ""}
-					{currentCoupon}
+					bind:currentCoupon
 					{nextMonthlyBillingDate}
 					{nextAnnualBillingDate}
 				/>
@@ -216,7 +233,7 @@ const handleSubmit: ButtonProps["onclick"] = async (e) => {
 		<Button
 			type="submit"
 			class="ml-auto"
-			disabled={!!processPayment.pending}
+			disabled={!!processPayment.pending || !paymentElementReady}
 			onclick={handleSubmit}
 		>
 			{#if processPayment.pending}
@@ -227,11 +244,17 @@ const handleSubmit: ButtonProps["onclick"] = async (e) => {
 			{/if}
 		</Button>
 	</div>
+	<div
+		id="payment-element-state"
+		data-ready={paymentElementReady}
+		data-complete={paymentElementComplete}
+		class="sr-only"
+	></div>
 	<input
 		type="hidden"
 		{...processPayment.fields.stripeConfirmationToken.as("text")}
 	/>
-	<input type="hidden" {...processPayment.fields.couponCode.as("text")} />
+	<input {...processPayment.fields.couponCode.as("hidden", currentCoupon)} />
 </form>
 
 {#if dev}

@@ -391,7 +391,12 @@ const table = createSvelteTable({
 	/>
 
 	{#if searchQuery !== ""}
-		<Button variant="ghost" type="button" onclick={() => onSearchChange("")}>
+		<Button
+			variant="ghost"
+			type="button"
+			aria-label="Clear search"
+			onclick={() => onSearchChange("")}
+		>
 			<Cross2 />
 		</Button>
 	{/if}
