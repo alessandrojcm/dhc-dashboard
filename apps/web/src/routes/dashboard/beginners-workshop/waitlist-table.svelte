@@ -892,7 +892,9 @@ const table = createSvelteTable(tableOptions);
 			value={pageSize.toString()}
 			onValueChange={(value) => onPaginationChange({ pageSize: Number(value) })}
 		>
-			<Select.Trigger class="w-16 h-8">{pageSize}</Select.Trigger>
+			<Select.Trigger class="w-16 h-8" aria-label="Waitlist elements per page"
+				>{pageSize}</Select.Trigger
+			>
 			<Select.Content>
 				{#each pageSizeOptions as pageSizeOption (pageSizeOption)}
 					<Select.Item value={pageSizeOption.toString()}>

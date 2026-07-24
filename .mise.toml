@@ -161,7 +161,7 @@ run = "exec mix e2e.server"
 [tasks."e2e-web-server"]
 description = "Start SvelteKit for Playwright against the Phoenix E2E server"
 dir = "apps/web"
-env = { API_BASE_URL = "http://127.0.0.1:4000/api", E2E_SERVER = "true", CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE = "postgres://postgres:postgres@127.0.0.1:1/postgres" }
+env = { API_BASE_URL = "http://127.0.0.1:4000/api", PUBLIC_API_BASE_URL = "http://127.0.0.1:4000/api", E2E_SERVER = "true", CLOUDFLARE_HYPERDRIVE_LOCAL_CONNECTION_STRING_HYPERDRIVE = "postgres://postgres:postgres@127.0.0.1:1/postgres" }
 run = "exec pnpm dev"
 
 # ── Linting & formatting ──────────────────────────

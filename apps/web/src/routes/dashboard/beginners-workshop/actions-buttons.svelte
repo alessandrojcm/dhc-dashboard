@@ -49,13 +49,16 @@ let value = $state(adminNotes);
 	{/if}
 	<Tooltip.Root>
 		<Tooltip.Trigger>
-			<Button
-				variant="ghost"
-				aria-label="Invite Member"
-				onclick={() => inviteMember()}
-			>
-				<SendIcon class="h-4 w-4" />
-			</Button>
+			{#snippet child({ props })}
+				<Button
+					variant="ghost"
+					aria-label="Invite Member"
+					{...props}
+					onclick={() => inviteMember()}
+				>
+					<SendIcon class="h-4 w-4" />
+				</Button>
+			{/snippet}
 		</Tooltip.Trigger>
 		<Tooltip.Content class="flex flex-col gap-y-2">
 			<Label>Invite member</Label>
@@ -65,9 +68,11 @@ let value = $state(adminNotes);
 	<!-- Admin Notes -->
 	<Popover.Root onOpenChange={(open) => !open && (isEdit = false)}>
 		<Popover.Trigger>
-			<Button variant="ghost" aria-label="Admin notes">
-				<NotebookPen />
-			</Button>
+			{#snippet child({ props })}
+				<Button variant="ghost" aria-label="Admin notes" {...props}>
+					<NotebookPen />
+				</Button>
+			{/snippet}
 		</Popover.Trigger>
 		<Popover.Content class="flex flex-col gap-y-2">
 			<Label
