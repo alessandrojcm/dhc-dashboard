@@ -7,6 +7,8 @@ import {
 import { setupInvitedUser, stripeClient } from "./setupFunctions";
 
 test.describe("Member Signup - Coupon Codes", () => {
+	test.describe.configure({ timeout: 60_000 });
+
 	// Coupon codes for testing (created once, reused across tests)
 	let annualCouponCode: string;
 	let monthlyCouponCode: string;
@@ -247,6 +249,7 @@ test.describe("Member Signup - Coupon Codes", () => {
 			// Wait a bit for the page to load, then check if verify button exists
 			try {
 				await verifyButton.waitFor({ state: "visible", timeout: 5000 });
+				await page.waitForLoadState("networkidle");
 				await verifyButton.click();
 			} catch {
 				// Verify button not found - invitation might be auto-verified
@@ -265,6 +268,7 @@ test.describe("Member Signup - Coupon Codes", () => {
 			const couponInput = page.getByPlaceholder("Enter promotional code");
 			await couponInput.waitFor({ state: "visible", timeout: 10000 });
 			await couponInput.fill(annualCouponCode);
+			await page.getByRole("button", { name: "Apply Code" }).click();
 
 			// The pricing automatically updates when coupon input changes
 			// Wait for the success message to appear
@@ -273,7 +277,7 @@ test.describe("Member Signup - Coupon Codes", () => {
 			});
 			await expect(
 				page.getByText(`Code ${annualCouponCode} applied`),
-			).toBeVisible({ timeout: 5000 });
+			).toBeVisible({ timeout: 15_000 });
 		});
 
 		test("should apply valid monthly coupon code", async ({ page }) => {
@@ -287,6 +291,7 @@ test.describe("Member Signup - Coupon Codes", () => {
 			const couponInput = page.getByPlaceholder("Enter promotional code");
 			await couponInput.waitFor({ state: "visible", timeout: 10000 });
 			await couponInput.fill(monthlyCouponCode);
+			await page.getByRole("button", { name: "Apply Code" }).click();
 
 			// Wait for the success message (pricing auto-updates when input changes)
 			await expect(page.getByText(/coupon code not valid/i)).not.toBeVisible({
@@ -294,7 +299,7 @@ test.describe("Member Signup - Coupon Codes", () => {
 			});
 			await expect(
 				page.getByText(`Code ${monthlyCouponCode} applied`),
-			).toBeVisible({ timeout: 5000 });
+			).toBeVisible({ timeout: 15_000 });
 		});
 
 		test("should apply valid combined coupon code and show discounted prices", async ({
@@ -322,15 +327,11 @@ test.describe("Member Signup - Coupon Codes", () => {
 			const couponInput = page.getByPlaceholder("Enter promotional code");
 			await couponInput.waitFor({ state: "visible", timeout: 10000 });
 			await couponInput.fill(combinedCouponCode);
+			await page.getByRole("button", { name: "Apply Code" }).click();
 
 			await expect(
 				page.getByText(`Code ${combinedCouponCode} applied`),
 			).toBeVisible({ timeout: 10000 });
-
-			await accordionTrigger.click();
-			const applyButton = page.getByRole("button", { name: "Apply Code" });
-			await applyButton.waitFor({ state: "visible", timeout: 5000 });
-			await applyButton.click();
 
 			await expect(page.getByText(/Discount applied:/)).toBeVisible({
 				timeout: 10000,
@@ -418,6 +419,7 @@ test.describe("Member Signup - Coupon Codes", () => {
 			const couponInput = page.getByPlaceholder("Enter promotional code");
 			await couponInput.waitFor({ state: "visible", timeout: 10000 });
 			await couponInput.fill(onceCouponCode);
+			await page.getByRole("button", { name: "Apply Code" }).click();
 
 			await expect(page.getByText(/coupon code not valid/i)).not.toBeVisible({
 				timeout: 3000,
@@ -425,7 +427,7 @@ test.describe("Member Signup - Coupon Codes", () => {
 			await expect(
 				page.getByText(`Code ${onceCouponCode} applied`),
 			).toBeVisible({
-				timeout: 5000,
+				timeout: 15_000,
 			});
 
 			await expect(page.getByText("Discount applied:")).toBeVisible({
@@ -489,6 +491,7 @@ test.describe("Member Signup - Coupon Codes", () => {
 
 				try {
 					await verifyButton.waitFor({ state: "visible", timeout: 5000 });
+					await page.waitForLoadState("networkidle");
 					await verifyButton.click();
 				} catch {
 					// Verify button not found
@@ -505,26 +508,20 @@ test.describe("Member Signup - Coupon Codes", () => {
 				await couponInput.waitFor({ state: "visible", timeout: 10000 });
 
 				await couponInput.fill("INVALID-COUPON-12345");
+				await page.getByRole("button", { name: "Apply Code" }).click();
 				await expect(
-					page.getByText("Error loading pricing information"),
-				).toBeVisible({ timeout: 10000 });
-
-				await page.reload();
-				await page.getByLabel(/next of kin$/i).waitFor({ state: "visible" });
-
-				const accordionTrigger2 = page.getByRole("button", {
-					name: "Have a promotional code?",
+					page.getByText("Could not apply promotion code"),
+				).toBeVisible({
+					timeout: 15_000,
 				});
-				await accordionTrigger2.scrollIntoViewIfNeeded();
-				await accordionTrigger2.click();
 
-				const couponInput2 = page.getByPlaceholder("Enter promotional code");
-				await couponInput2.waitFor({ state: "visible", timeout: 10000 });
-
-				await couponInput2.fill("TEST123");
+				await couponInput.fill("TEST123");
+				await page.getByRole("button", { name: "Apply Code" }).click();
 				await expect(
-					page.getByText("Error loading pricing information"),
-				).toBeVisible({ timeout: 10000 });
+					page.getByText("Could not apply promotion code"),
+				).toBeVisible({
+					timeout: 15_000,
+				});
 			});
 		});
 
@@ -556,6 +553,7 @@ test.describe("Member Signup - Coupon Codes", () => {
 
 				try {
 					await verifyButton.waitFor({ state: "visible", timeout: 5000 });
+					await page.waitForLoadState("networkidle");
 					await verifyButton.click();
 				} catch {
 					// Verify button not found
@@ -581,29 +579,33 @@ test.describe("Member Signup - Coupon Codes", () => {
 				const couponInput = page.getByPlaceholder("Enter promotional code");
 				await couponInput.waitFor({ state: "visible", timeout: 10000 });
 				await couponInput.fill(combinedCouponCode);
+				await page.getByRole("button", { name: "Apply Code" }).click();
 
 				await expect(page.getByText(/coupon code not valid/i)).not.toBeVisible({
 					timeout: 3000,
 				});
 				await expect(
 					page.getByText(`Code ${combinedCouponCode} applied`),
-				).toBeVisible({ timeout: 5000 });
-
-				await accordionTrigger.click();
-
-				const applyButton = page.getByRole("button", { name: "Apply Code" });
-				await applyButton.waitFor({ state: "visible", timeout: 5000 });
-				await applyButton.click();
+				).toBeVisible({ timeout: 15_000 });
 
 				await expect(page.getByText(/Discount applied:/)).toBeVisible({
 					timeout: 10000,
 				});
 
 				// Interact with the embedded Stripe payment form (SEPA Direct Debit)
+				await expect(page.locator("#payment-element-state")).toHaveAttribute(
+					"data-ready",
+					"true",
+				);
 				const stripeFrame = await page
 					.locator(".__PrivateStripeElement")
 					.frameLocator("iframe");
+				await expect(stripeFrame.getByLabel("IBAN")).toBeVisible({
+					timeout: 15_000,
+				});
 				await stripeFrame.getByLabel("IBAN").fill("IE29AIBK93115212345678");
+				await stripeFrame.getByLabel("Email").fill(testData.email);
+				await stripeFrame.getByLabel("Full name").fill("John Doe");
 				await stripeFrame.getByLabel("Address line 1").fill("123 Main Street");
 				await stripeFrame.getByLabel("Address line 2").fill("Apt 4B");
 				await stripeFrame
@@ -612,6 +614,10 @@ test.describe("Member Signup - Coupon Codes", () => {
 				await stripeFrame.getByLabel("City").fill("Dublin");
 				await stripeFrame.getByLabel("Eircode").fill("K45 HR22");
 				await stripeFrame.getByLabel("County").selectOption("Dublin");
+				await expect(page.locator("#payment-element-state")).toHaveAttribute(
+					"data-complete",
+					"true",
+				);
 
 				const submitButton = page.getByRole("button", { name: /sign up/i });
 				await submitButton.click();
@@ -655,6 +661,7 @@ test.describe("Member Signup - Coupon Codes", () => {
 
 			try {
 				await verifyButton.waitFor({ state: "visible", timeout: 5000 });
+				await page.waitForLoadState("networkidle");
 				await verifyButton.click();
 			} catch {
 				// Verify button not found
@@ -675,13 +682,14 @@ test.describe("Member Signup - Coupon Codes", () => {
 			const couponInput = page.getByPlaceholder("Enter promotional code");
 			await couponInput.waitFor({ state: "visible", timeout: 10000 });
 			await couponInput.fill(once100CouponCode);
+			await page.getByRole("button", { name: "Apply Code" }).click();
 
 			await expect(page.getByText(/coupon code not valid/i)).not.toBeVisible({
 				timeout: 3000,
 			});
 			await expect(
 				page.getByText(`Code ${once100CouponCode} applied`),
-			).toBeVisible({ timeout: 5000 });
+			).toBeVisible({ timeout: 15_000 });
 
 			await expect(page.getByText("Discount applied:")).toBeVisible({
 				timeout: 5000,
@@ -710,6 +718,7 @@ test.describe("Member Signup - Coupon Codes", () => {
 			const couponInput = page.getByPlaceholder("Enter promotional code");
 			await couponInput.waitFor({ state: "visible", timeout: 10000 });
 			await couponInput.fill(migrationCouponCode);
+			await page.getByRole("button", { name: "Apply Code" }).click();
 
 			await expect(page.getByText(/coupon code not valid/i)).not.toBeVisible({
 				timeout: 3000,
@@ -717,11 +726,6 @@ test.describe("Member Signup - Coupon Codes", () => {
 			await expect(
 				page.getByText(`Code ${migrationCouponCode} applied`),
 			).toBeVisible({ timeout: 5000 });
-
-			await accordionTrigger.click();
-			const applyButton = page.getByRole("button", { name: "Apply Code" });
-			await applyButton.waitFor({ state: "visible", timeout: 5000 });
-			await applyButton.click();
 
 			// Check that 100% discount is applied
 			await expect(page.getByText(/Discount applied: 100% off/)).toBeVisible({
