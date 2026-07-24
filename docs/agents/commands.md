@@ -26,6 +26,7 @@ mise run dev                # 3. SvelteKit dev from apps/web
 
 # Testing
 mise run test-unit          # Vitest
+mise run test-browser       # Vitest Browser Mode component tests in Chromium
 mise run test-e2e           # Playwright; self-starts disposable PostgreSQL, Phoenix, and SvelteKit
 mise run check              # Svelte type check (NOT raw tsc)
 

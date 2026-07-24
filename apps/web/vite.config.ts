@@ -5,6 +5,7 @@ import tailwindcss from "@tailwindcss/vite";
 import { enhancedImages } from "@sveltejs/enhanced-img";
 import { sentryVitePlugin } from "@sentry/vite-plugin";
 import mkcert from "vite-plugin-mkcert";
+import { playwright } from "@vitest/browser-playwright";
 
 export default defineConfig(({ command }) => ({
 	envDir: "../..",
@@ -39,7 +40,30 @@ export default defineConfig(({ command }) => ({
 		sourcemap: true,
 	},
 	test: {
-		include: ["src/**/*.{test,spec}.{js,ts}"],
+		projects: [
+			{
+				extends: true,
+				test: {
+					name: "unit",
+					include: ["src/**/*.{test,spec}.{js,ts}"],
+					exclude: ["src/**/*.browser.{test,spec}.{js,ts}"],
+				},
+			},
+			{
+				extends: true,
+				test: {
+					name: "browser",
+					include: ["src/**/*.browser.{test,spec}.{js,ts}"],
+					setupFiles: ["vitest-browser-svelte"],
+					browser: {
+						enabled: true,
+						headless: true,
+						provider: playwright(),
+						instances: [{ browser: "chromium" }],
+					},
+				},
+			},
+		],
 	},
 	server: {
 		watch: {
