@@ -211,7 +211,7 @@ const handleSubmit: ButtonProps["onclick"] = async (e) => {
 			{#if page.params.invitationId}
 				<PricingDisplay
 					invitationId={page.params.invitationId ?? ""}
-					{currentCoupon}
+					bind:currentCoupon
 					{nextMonthlyBillingDate}
 					{nextAnnualBillingDate}
 				/>
@@ -254,7 +254,7 @@ const handleSubmit: ButtonProps["onclick"] = async (e) => {
 		type="hidden"
 		{...processPayment.fields.stripeConfirmationToken.as("text")}
 	/>
-	<input type="hidden" {...processPayment.fields.couponCode.as("text")} />
+	<input {...processPayment.fields.couponCode.as("hidden", currentCoupon)} />
 </form>
 
 {#if dev}
