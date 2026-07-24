@@ -41,7 +41,7 @@ const dobValue = $derived.by(() => {
 // Add current invite to the list
 async function addInviteToList() {
 	// Trigger validation
-	validateSingleInvite.validate({ includeUntouched: true });
+	await validateSingleInvite.validate({ includeUntouched: true });
 	if (
 		validateSingleInvite.fields.allIssues() &&
 		validateSingleInvite.fields.allIssues()!.length > 0

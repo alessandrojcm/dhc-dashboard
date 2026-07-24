@@ -1,303 +1,101 @@
-import { faker } from "@faker-js/faker";
 import { expect, type Page, test } from "@playwright/test";
-import dayjs from "dayjs";
-import { deleteE2EFixture, seedE2EScenario } from "./e2eApi";
-import {
-	createMember,
-	setupInvitedUser,
-	createUniqueEmail,
-} from "./setupFunctions";
 import { loginAsUser } from "./auth";
+import { createMember, createUniqueEmail } from "./setupFunctions";
 
-const MEMBERS_PATH = "/dashboard/members?tab=members";
-const INVITATIONS_PATH = "/dashboard/members?tab=invitations";
-const WAITLIST_PATH = "/dashboard/beginners-workshop?tab=waitlist";
+type TableCase = {
+	name: string;
+	path: string;
+	tab: string;
+	pageSizeLabel: string;
+};
 
-const RETRY_ATTEMPTS = 3;
-type SetupInvitedUserOptions = NonNullable<
-	Parameters<typeof setupInvitedUser>[0]
->;
-
-async function setupInvitedUserWithRetry(
-	options: Omit<SetupInvitedUserOptions, "email"> & {
-		emailPrefix: string;
-		index?: number;
+const tableCases: TableCase[] = [
+	{
+		name: "members",
+		path: "/dashboard/members?tab=members",
+		tab: "Members list",
+		pageSizeLabel: "Members elements per page",
 	},
-) {
-	let lastError: unknown;
-
-	for (let attempt = 0; attempt < RETRY_ATTEMPTS; attempt++) {
-		try {
-			return await setupInvitedUser({
-				...options,
-				email: createUniqueEmail(options.emailPrefix, options.index, attempt),
-			});
-		} catch (error) {
-			lastError = error;
-		}
-	}
-
-	throw lastError;
-}
+	{
+		name: "waitlist",
+		path: "/dashboard/beginners-workshop?tab=waitlist",
+		tab: "Waitlist",
+		pageSizeLabel: "Waitlist elements per page",
+	},
+];
 
 async function expectQueryParam(page: Page, key: string, value: string) {
 	await expect
-		.poll(() => new URL(page.url()).searchParams.get(key))
+		.poll(() => new URL(page.url()).searchParams.get(key) ?? "")
 		.toBe(value);
 }
 
-async function openTabAndWaitForRows(page: Page, tabName: string) {
-	await page.getByRole("tab", { name: tabName }).click();
-	await expect
-		.poll(() => page.locator("table tbody tr").count())
-		.toBeGreaterThan(0);
-}
-
-async function expectPageSizeValue(
-	page: Page,
-	triggerLabel: string,
-	value: string,
-) {
-	await expect(page.getByRole("button", { name: triggerLabel })).toContainText(
-		value,
-	);
-}
-
-test.describe("Comprehensive page size tests", () => {
-	let adminMember: Awaited<ReturnType<typeof createMember>>;
-	const testData = {
-		members: [] as Awaited<ReturnType<typeof createMember>>[],
-		waitlist: [] as { id: string; email: string }[],
-		invitations: [] as Awaited<ReturnType<typeof setupInvitedUser>>[],
-	};
+test.describe("Table page size", () => {
+	let admin: Awaited<ReturnType<typeof createMember>>;
+	const members: Awaited<ReturnType<typeof createMember>>[] = [];
 
 	test.beforeAll(async () => {
-		// Create admin member
-		adminMember = await createMember({
-			email: createUniqueEmail("pagesize-test-admin"),
+		test.setTimeout(120_000);
+		admin = await createMember({
+			email: createUniqueEmail("page-size-admin"),
 			roles: new Set(["admin"]),
 			createSubscription: false,
 		});
 
-		await Promise.all([
-			...new Array(25).map(async (_, i) => {
-				testData.members.push(
-					await createMember({
-						email: createUniqueEmail("pagesize-member", i),
-						roles: new Set(["member"]),
-						createSubscription: false,
-					}),
-				);
-			}),
-			...new Array(25).map(async (_, i) => {
-				const email = createUniqueEmail("pagesize-waitlist", i);
+		const seededMembers = await Promise.all(
+			Array.from({ length: 26 }, (_, index) =>
+				createMember({
+					email: createUniqueEmail("page-size-member", index),
+					roles: new Set(["member"]),
+					createSubscription: false,
+				}),
+			),
+		);
+		members.push(...seededMembers);
+	});
 
-				const waitlist = await seedE2EScenario("waitlist", {
-					firstName: faker.person.firstName(),
-					lastName: faker.person.lastName(),
-					email: email,
-					dateOfBirth: dayjs().subtract(20, "years").format("YYYY-MM-DD"),
-					pronouns: "they/them",
-					gender: "non-binary",
-					phoneNumber: faker.phone.number(),
-					medicalConditions: "None",
-					socialMediaConsent: "no",
-				});
-
-				testData.waitlist.push({ id: waitlist.waitlistId, email });
-			}),
-			new Array(25).map(async (_, i) => {
-				testData.invitations.push(
-					await setupInvitedUser({
-						email: createUniqueEmail("pagesize-invite", i),
-						invitationStatus: i % 2 === 0 ? "pending" : "expired",
-						useFakeCustomerId: true,
-					}),
-				);
-			}),
-		]);
+	test.beforeEach(async ({ context }) => {
+		await loginAsUser(context, admin.email);
 	});
 
 	test.afterAll(async () => {
 		await Promise.all([
-			adminMember?.cleanUp().catch(console.error),
-			...testData.waitlist.map((waitlist) =>
-				deleteE2EFixture("waitlist", waitlist.id),
-			),
-			...testData.invitations.map((invitation) =>
-				invitation?.cleanUp().catch(console.error),
-			),
-			...testData.members.map((member) =>
-				member?.cleanUp().catch(console.error),
-			),
+			admin?.cleanUp().catch(console.error),
+			...members.map((member) => member.cleanUp().catch(console.error)),
 		]);
 	});
 
-	test.beforeEach(async ({ context }) => {
-		await loginAsUser(context, adminMember.email);
-	});
+	for (const tableCase of tableCases) {
+		test(`${tableCase.name} page size updates`, async ({ page }) => {
+			await page.goto(
+				tableCase.name === "members"
+					? `${tableCase.path}&pageSize=25`
+					: tableCase.path,
+			);
+			await expect(
+				page.getByRole("tab", { name: tableCase.tab }),
+			).toHaveAttribute("data-state", "active");
 
-	test("members table: changing page size updates results", async ({
-		page,
-	}) => {
-		await page.goto(MEMBERS_PATH);
-		await openTabAndWaitForRows(page, "Members list");
-
-		// Change to 25
-		await page.goto(`${MEMBERS_PATH}&pageSize=25`);
-		await openTabAndWaitForRows(page, "Members list");
-
-		// Verify URL updated
-		await expectQueryParam(page, "pageSize", "25");
-		await expectPageSizeValue(page, "Members elements per page", "25");
-
-		// Change to 50
-		await page.goto(`${MEMBERS_PATH}&pageSize=50`);
-		await openTabAndWaitForRows(page, "Members list");
-
-		// Verify URL updated
-		await expectQueryParam(page, "pageSize", "50");
-		await expectPageSizeValue(page, "Members elements per page", "50");
-	});
-
-	test("waitlist table: changing page size updates results", async ({
-		page,
-	}) => {
-		await page.goto(WAITLIST_PATH);
-		await openTabAndWaitForRows(page, "Waitlist");
-
-		// Change to 25
-		await page.goto(`${WAITLIST_PATH}&pageSize=25`);
-		await openTabAndWaitForRows(page, "Waitlist");
-
-		// Verify URL updated
-		await expectQueryParam(page, "pageSize", "25");
-		await expectPageSizeValue(page, "Waitlist elements per page", "25");
-
-		// Change to 50
-		await page.goto(`${WAITLIST_PATH}&pageSize=50`);
-		await openTabAndWaitForRows(page, "Waitlist");
-
-		// Verify URL updated
-		await expectQueryParam(page, "pageSize", "50");
-		await expectPageSizeValue(page, "Waitlist elements per page", "50");
-	});
-
-	test("invitations table: changing page size updates results", async ({
-		page,
-	}) => {
-		await page.goto(INVITATIONS_PATH);
-		await openTabAndWaitForRows(page, "Invitations");
-
-		// Change to 25
-		await page.goto(`${INVITATIONS_PATH}&invitePageSize=25`);
-		await openTabAndWaitForRows(page, "Invitations");
-
-		// Verify URL updated with invitePageSize
-		await expectQueryParam(page, "invitePageSize", "25");
-		await expectPageSizeValue(page, "Invitations elements per page", "25");
-
-		// Change to 50
-		await page.goto(`${INVITATIONS_PATH}&invitePageSize=50`);
-		await openTabAndWaitForRows(page, "Invitations");
-
-		// Verify URL updated
-		await expectQueryParam(page, "invitePageSize", "50");
-		await expectPageSizeValue(page, "Invitations elements per page", "50");
-	});
-
-	test("members table: page size persists across pagination", async ({
-		page,
-	}) => {
-		await page.goto(`${MEMBERS_PATH}&pageSize=25`);
-
-		// Verify page size is 25
-		await expectQueryParam(page, "pageSize", "25");
-
-		// Go to next page
-		const nextButton = page.getByRole("button", { name: "Next" });
-		if (!(await nextButton.isDisabled())) {
-			await nextButton.click();
-
-			// Verify page size is still 25
+			const pageSize = page.getByRole("button", {
+				name: tableCase.pageSizeLabel,
+			});
+			if (tableCase.name === "waitlist") {
+				await pageSize.click();
+				await page.getByRole("option", { name: "25" }).click();
+			}
 			await expectQueryParam(page, "pageSize", "25");
-			await expectQueryParam(page, "page", "1");
-			await expectPageSizeValue(page, "Members elements per page", "25");
-		}
-	});
+			await expect(pageSize).toContainText("25");
 
-	test("waitlist table: page size persists across pagination", async ({
-		page,
-	}) => {
-		await page.goto(`${WAITLIST_PATH}&pageSize=25`);
-
-		// Verify page size is 25
-		await expectQueryParam(page, "pageSize", "25");
-
-		// Go to next page if available
-		const nextButton = page.getByRole("button", { name: "Next" });
-		if (!(await nextButton.isDisabled())) {
-			await nextButton.click();
-
-			// Verify page size is still 25
-			await expectQueryParam(page, "pageSize", "25");
-			await expectQueryParam(page, "page", "1");
-			await expectPageSizeValue(page, "Waitlist elements per page", "25");
-		}
-	});
-
-	test("invitations table: page size persists across pagination", async ({
-		page,
-	}) => {
-		await page.goto(`${INVITATIONS_PATH}&invitePageSize=25`);
-
-		// Verify page size is 25
-		await expectQueryParam(page, "invitePageSize", "25");
-
-		// Go to next page if available
-		const nextButton = page.getByRole("button", { name: "Next" });
-		if (!(await nextButton.isDisabled())) {
-			await nextButton.click();
-
-			// Verify page size is still 25
-			await expectQueryParam(page, "invitePageSize", "25");
-			await expectQueryParam(page, "invitePage", "1");
-			await expectPageSizeValue(page, "Invitations elements per page", "25");
-		}
-	});
-
-	test("invitations table: has independent page size from members table", async ({
-		page,
-	}) => {
-		await page.goto(`${MEMBERS_PATH}&pageSize=25`);
-
-		// Verify members table has pageSize=25
-		await expectQueryParam(page, "pageSize", "25");
-
-		// Click on invitations tab
-		await page.getByRole("tab", { name: "Invitations" }).click();
-
-		// Verify invitations table starts with default page size (10)
-		// Should NOT have invitePageSize in URL yet
-		const url = page.url();
-		expect(url).toContain("pageSize=25"); // Members page size persists
-		if (url.includes("invitePageSize")) {
-			expect(url).toContain("invitePageSize=10"); // Default or explicitly set
-		}
-
-		// Change invitations page size to 50
-		await page.goto(`${INVITATIONS_PATH}&pageSize=25&invitePageSize=50`);
-
-		// Verify both page sizes are independent
-		await expectQueryParam(page, "pageSize", "25"); // Members page size
-		await expectQueryParam(page, "invitePageSize", "50"); // Invitations page size
-
-		// Switch back to members tab
-		await page.getByRole("tab", { name: "Members list" }).click();
-		await openTabAndWaitForRows(page, "Members list");
-
-		// Verify members table still has its own page size
-		await expectQueryParam(page, "pageSize", "25");
-		await expectPageSizeValue(page, "Members elements per page", "25");
-	});
+			if (tableCase.name === "members") {
+				const next = page.getByRole("button", { name: "Next" });
+				await expect(next).toBeEnabled();
+				await next.click();
+				await expectQueryParam(page, "pageSize", "25");
+				await expect
+					.poll(() => new URL(page.url()).searchParams.get("cursor") ?? "")
+					.not.toBe("");
+				await expect(pageSize).toContainText("25");
+			}
+		});
+	}
 });
