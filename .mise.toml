@@ -141,6 +141,11 @@ description = "Run Vitest unit tests"
 dir = "apps/web"
 run = "pnpm test:unit"
 
+[tasks."test-browser"]
+description = "Run Vitest browser component tests"
+dir = "apps/web"
+run = "pnpm test:browser --run"
+
 [tasks."test-e2e"]
 description = "Run Playwright e2e tests"
 dir = "apps/web"

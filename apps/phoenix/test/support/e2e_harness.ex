@@ -141,7 +141,7 @@ defmodule Dhc.E2EHarness do
         last_name: Map.get(attrs, "lastName", "Invitee"),
         phone_number: Map.get(attrs, "phoneNumber", "+353810000000"),
         date_of_birth: date_of_birth,
-        stripe_customer_id: Map.get(attrs, "customerId", "cus_e2e_invite")
+        stripe_customer_id: Map.get(attrs, "customerId")
       })
       |> Repo.insert!()
 

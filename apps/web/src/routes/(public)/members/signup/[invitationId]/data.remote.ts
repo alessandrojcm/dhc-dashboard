@@ -151,7 +151,11 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 		};
 
 		let errorMessage =
-			err instanceof Error ? err.message : "An unexpected error occurred";
+			acceptanceStatus === 402
+				? "Payment could not be completed"
+				: err instanceof Error
+					? err.message
+					: "An unexpected error occurred";
 
 		if (err instanceof Error && err.name === "TimeoutError") {
 			errorMessage =

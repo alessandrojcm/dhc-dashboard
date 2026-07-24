@@ -1,5 +1,5 @@
 <script lang="ts">
-import { tick } from "svelte";
+import { tick, untrack } from "svelte";
 import * as Command from "$lib/components/ui/command/index.js";
 import * as Popover from "$lib/components/ui/popover/index.js";
 import { Button } from "$lib/components/ui/button/index.js";
@@ -10,7 +10,6 @@ import {
 	AsYouType,
 	parsePhoneNumber,
 	type CountryCode,
-	formatIncompletePhoneNumber,
 } from "libphonenumber-js/min";
 import { parseIncompletePhoneNumber } from "libphonenumber-js";
 import { ChevronDown, ChevronUp } from "lucide-svelte";
@@ -34,12 +33,16 @@ let {
 	id?: string;
 } = $props();
 
-// Internal state for the phone number value - synced with initialValue
-let phoneNumber = $derived(String(initialValue));
+let countryValue = $state<CountryCode>("IE");
+let formattedPhone = $state("");
+let lastEmittedValue = $state("");
 
-let { nationalNumber, value: countryValue } = $derived.by(() => {
-	return parseIncomingPhoneNumber(phoneNumber);
-});
+type ParsedPhoneNumber = {
+	nationalNumber: string;
+	value: CountryCode;
+};
+
+const nationalNumber = $derived(parseIncompletePhoneNumber(formattedPhone));
 
 const selectedValue = $derived.by(() => {
 	if (!countryValue) return null;
@@ -49,14 +52,34 @@ const selectedValue = $derived.by(() => {
 	);
 });
 
-// Format the national number for display in the input field
-const formatedPhone = $derived.by(() => {
-	if (!countryValue) return new AsYouType().input(nationalNumber);
-	return new AsYouType(countryValue as CountryCode).input(nationalNumber);
+$effect(() => {
+	const incomingValue = String(initialValue);
+	if (incomingValue === untrack(() => lastEmittedValue)) return;
+
+	const parsed = parseIncomingPhoneNumber(incomingValue);
+	countryValue = parsed.value;
+	formattedPhone = formatForDisplay(incomingValue, parsed);
 });
 
+function formatForDisplay(
+	phoneNumber: string,
+	parsed: ReturnType<typeof parseIncomingPhoneNumber>,
+) {
+	if (!phoneNumber) return "";
+
+	if (phoneNumber.startsWith("+")) {
+		try {
+			return parsePhoneNumber(phoneNumber).formatNational();
+		} catch {
+			// Fall back to formatting the incomplete national number.
+		}
+	}
+
+	return new AsYouType(parsed.value).input(parsed.nationalNumber);
+}
+
 // Parse an incoming phone number to extract country code and national number
-function parseIncomingPhoneNumber(phoneNumber: string) {
+function parseIncomingPhoneNumber(phoneNumber: string): ParsedPhoneNumber {
 	if (!phoneNumber) {
 		return { nationalNumber: "", value: "IE" as CountryCode };
 	}
@@ -68,7 +91,7 @@ function parseIncomingPhoneNumber(phoneNumber: string) {
 	if (isCountryCode) {
 		return {
 			nationalNumber: "",
-			value: isCountryCode.countryCode,
+			value: isCountryCode.countryCode as CountryCode,
 		};
 	}
 	try {
@@ -113,18 +136,12 @@ function closeAndFocusTrigger() {
 
 // Update the phone number when the input changes
 function updatePhoneNumber(inputValue: string) {
-	// Parse the input to remove any formatting
-	nationalNumber = parseIncompletePhoneNumber(inputValue);
-	// Update the parent with the full international format
-	let newPhoneNumber = "";
-	if (selectedValue && nationalNumber) {
-		newPhoneNumber = `+${selectedValue}${nationalNumber}`;
-	} else if (nationalNumber) {
-		newPhoneNumber = nationalNumber;
-	}
-	if (onChange) {
-		onChange(newPhoneNumber);
-	}
+	const formatter = new AsYouType(countryValue);
+	formattedPhone = formatter.input(inputValue);
+	const newPhoneNumber = formatter.getNumber()?.number ?? "";
+
+	lastEmittedValue = newPhoneNumber;
+	onChange?.(newPhoneNumber);
 }
 </script>
 
@@ -163,12 +180,12 @@ function updatePhoneNumber(inputValue: string) {
 							<Command.Item
 								value={country.countryNameEn}
 								onSelect={() => {
-									const newPhoneNumber = formatIncompletePhoneNumber(
-										`+${country.countryCallingCode}${nationalNumber}`,
-									);
-									if (onChange) {
-										onChange(newPhoneNumber);
-									}
+									countryValue = country.countryCode as CountryCode;
+									const formatter = new AsYouType(countryValue);
+									formattedPhone = formatter.input(nationalNumber);
+									const newPhoneNumber = formatter.getNumber()?.number ?? "";
+									lastEmittedValue = newPhoneNumber;
+									onChange?.(newPhoneNumber);
 									closeAndFocusTrigger();
 								}}
 							>
@@ -185,12 +202,11 @@ function updatePhoneNumber(inputValue: string) {
 		{...props}
 		{id}
 		type="tel"
-		value={formatedPhone}
-		onchange={(event) => {
-			if (!event.target) return;
-			updatePhoneNumber(event.target.value);
+		bind:value={formattedPhone}
+		oninput={(event) => {
+			updatePhoneNumber(event.currentTarget.value);
 		}}
 		{placeholder}
 	/>
-	<input type="hidden" {name} {id} value={phoneNumber} />
+	<input type="hidden" {name} {id} value={lastEmittedValue || initialValue} />
 </div>
