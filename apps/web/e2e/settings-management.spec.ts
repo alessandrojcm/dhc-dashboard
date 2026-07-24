@@ -1,0 +1,197 @@
+import { expect, test, type Page } from "@playwright/test";
+import { createMember } from "./setupFunctions";
+import { loginAsUser } from "./auth";
+import { seedE2EScenario } from "./e2eApi";
+
+async function openDashboardPage(page: Page, path: string) {
+	await page.goto(path);
+	await page.waitForLoadState("networkidle");
+}
+
+test.afterAll(async () => {
+	await seedE2EScenario("waitlistStatus", { isOpen: true });
+});
+
+test.describe("Settings Management - Admin", () => {
+	let adminData: Awaited<ReturnType<typeof createMember>>;
+	test.beforeAll(async () => {
+		adminData = await createMember({
+			email: `admin-${Date.now()}@test.com`,
+			roles: new Set(["admin"]),
+		});
+	});
+	test.beforeEach(async ({ context }) => {
+		await loginAsUser(context, adminData.email);
+	});
+	test.afterAll(() => adminData?.cleanUp());
+
+	test("should be able to update settings", async ({ page }) => {
+		await openDashboardPage(page, "/dashboard/members");
+		await page.getByRole("button", { name: /settings/i }).click();
+		await page
+			.getByLabel(/hema insurance form link/i)
+			.fill("https://example.com/insurance");
+		await page.getByRole("button", { name: /save settings/i }).click();
+		await expect(
+			page.getByText(/settings updated successfully/i),
+		).toBeVisible();
+	});
+
+	test("should be able to toggle waitlist", async ({ page }) => {
+		await openDashboardPage(page, "/dashboard/beginners-workshop");
+		const toggleButton = page.getByRole("button", {
+			name: /open waitlist|close waitlist/i,
+		});
+		await expect(toggleButton).toBeVisible();
+
+		// Click the toggle button
+		await toggleButton.click();
+
+		// Confirm the action in the alert dialog
+		await page.getByTestId("action").click();
+
+		// Check for success message
+		await expect(page.getByText(/waitlist status updated/i)).toBeVisible();
+	});
+});
+
+test.describe("Settings Management - Committee Coordinator", () => {
+	let coordinatorData: Awaited<ReturnType<typeof createMember>>;
+	test.beforeAll(async () => {
+		coordinatorData = await createMember({
+			email: `coordinator-${Date.now()}@test.com`,
+			roles: new Set(["committee_coordinator"]),
+		});
+	});
+	test.beforeEach(async ({ context }) => {
+		await loginAsUser(context, coordinatorData.email);
+	});
+	test.afterAll(() => coordinatorData?.cleanUp());
+
+	test("should be able to update settings", async ({ page }) => {
+		await openDashboardPage(page, "/dashboard/members");
+		await page.getByRole("button", { name: /settings/i }).click();
+		await page
+			.getByLabel(/hema insurance form link/i)
+			.fill("https://example.com/insurance");
+		await page.getByRole("button", { name: /save settings/i }).click();
+		await expect(
+			page.getByText(/settings updated successfully/i),
+		).toBeVisible();
+	});
+
+	test("should be able to toggle waitlist", async ({ page }) => {
+		await openDashboardPage(page, "/dashboard/beginners-workshop");
+		const toggleButton = page.getByRole("button", {
+			name: /open waitlist|close waitlist/i,
+		});
+		await expect(toggleButton).toBeVisible();
+
+		// Click the toggle button
+		await toggleButton.click();
+
+		// Confirm the action in the alert dialog
+		await page.getByTestId("action").click();
+
+		// Check for success message
+		await expect(page.getByText(/waitlist status updated/i)).toBeVisible();
+	});
+});
+
+test.describe("Settings Management - President", () => {
+	let presidentData: Awaited<ReturnType<typeof createMember>>;
+	test.beforeAll(async () => {
+		presidentData = await createMember({
+			email: `president-${Date.now()}@test.com`,
+			roles: new Set(["president"]),
+		});
+	});
+	test.beforeEach(async ({ context }) => {
+		await loginAsUser(context, presidentData.email);
+	});
+	test.afterAll(() => presidentData?.cleanUp());
+
+	test("should be able to update settings", async ({ page }) => {
+		await openDashboardPage(page, "/dashboard/members");
+		await page.getByRole("button", { name: /settings/i }).click();
+		await page
+			.getByLabel(/hema insurance form link/i)
+			.fill("https://example.com/insurance");
+		await page.getByRole("button", { name: /save settings/i }).click();
+		await expect(
+			page.getByText(/settings updated successfully/i),
+		).toBeVisible();
+	});
+
+	test("should be able to toggle waitlist", async ({ page }) => {
+		await openDashboardPage(page, "/dashboard/beginners-workshop");
+		const toggleButton = page.getByRole("button", {
+			name: /open waitlist|close waitlist/i,
+		});
+		await expect(toggleButton).toBeVisible();
+
+		// Click the toggle button
+		await toggleButton.click();
+
+		// Confirm the action in the alert dialog
+		await page.getByTestId("action").click();
+
+		// Check for success message
+		await expect(page.getByText(/waitlist status updated/i)).toBeVisible();
+	});
+});
+
+test.describe("Settings Management - Quartermaster", () => {
+	let quartermasterData: Awaited<ReturnType<typeof createMember>>;
+	test.beforeAll(async () => {
+		quartermasterData = await createMember({
+			email: `quartermaster-${Date.now()}@test.com`,
+			roles: new Set(["quartermaster", "member"]),
+		});
+	});
+	test.beforeEach(async ({ context }) => {
+		await loginAsUser(context, quartermasterData.email);
+	});
+	test.afterAll(() => quartermasterData?.cleanUp());
+
+	test("should not see settings button", async ({ page }) => {
+		await page.goto("/dashboard/members");
+		await expect(
+			page.getByRole("button", { name: /settings/i }),
+		).not.toBeVisible();
+	});
+
+	test("should not see waitlist toggle", async ({ page }) => {
+		await page.goto("/dashboard/beginners-workshop");
+		const toggleButton = page.getByText(/open waitlist|close waitlist/i);
+		await expect(toggleButton).not.toBeVisible();
+	});
+});
+
+test.describe("Settings Management - Regular Member", () => {
+	let memberData: Awaited<ReturnType<typeof createMember>>;
+	test.beforeAll(async () => {
+		memberData = await createMember({
+			email: `member-${Date.now()}@test.com`,
+			roles: new Set(["member"]),
+		});
+	});
+	test.beforeEach(async ({ context }) => {
+		await loginAsUser(context, memberData.email);
+	});
+	test.afterAll(() => memberData?.cleanUp());
+
+	test("should not see settings button", async ({ page }) => {
+		await page.goto("/dashboard/members");
+		await expect(
+			page.getByRole("button", { name: "Settings", exact: true }),
+		).not.toBeVisible();
+	});
+
+	test("should not see waitlist toggle", async ({ page }) => {
+		await page.goto("/dashboard/beginners-workshop");
+		await expect(
+			page.getByText(/open waitlist|close waitlist/i),
+		).not.toBeVisible();
+	});
+});

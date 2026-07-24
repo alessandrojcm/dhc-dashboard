@@ -1,0 +1,444 @@
+<script lang="ts">
+import { createMutation } from "@tanstack/svelte-query";
+import { Button } from "$lib/components/ui/button";
+import { Badge } from "$lib/components/ui/badge";
+import { Checkbox } from "$lib/components/ui/checkbox";
+import * as Popover from "$lib/components/ui/popover";
+import { toast } from "svelte-sonner";
+import { Check, DollarSign, User, CheckCheck } from "lucide-svelte";
+import { checkRefundEligibility } from "$lib/utils/refund-eligibility";
+import type {
+	WorkshopAttendee,
+	WorkshopRefund,
+	WorkshopSummary,
+} from "@dhc/api-client";
+import {
+	workshopsRefundRegistrationMutation,
+	workshopsUpdateAttendanceMutation,
+} from "@dhc/api-client";
+
+interface Props {
+	attendees: WorkshopAttendee[];
+	refunds: WorkshopRefund[];
+	workshop: WorkshopSummary;
+	workshopId?: string;
+	onAttendanceUpdated?: () => void;
+	onRefundProcessed?: () => void;
+}
+
+let {
+	attendees,
+	refunds,
+	workshop,
+	workshopId,
+	onAttendanceUpdated,
+	onRefundProcessed,
+}: Props = $props();
+
+let attendeeIdForRefund = $state("");
+let selectedAttendees = $state<string[]>([]);
+
+const unattendedAttendees = $derived(
+	attendees.filter((a) => a.attendanceStatus !== "attended"),
+);
+
+const allSelected = $derived(
+	unattendedAttendees.length > 0 &&
+		unattendedAttendees.every((a) => selectedAttendees.includes(a.id)),
+);
+
+function toggleSelectAll() {
+	if (allSelected) {
+		selectedAttendees = [];
+	} else {
+		selectedAttendees = unattendedAttendees.map((a) => a.id);
+	}
+}
+
+function toggleAttendee(id: string) {
+	if (selectedAttendees.includes(id)) {
+		selectedAttendees = selectedAttendees.filter((sid) => sid !== id);
+	} else {
+		selectedAttendees = [...selectedAttendees, id];
+	}
+}
+
+const markAttendedMutation = createMutation(() => ({
+	...workshopsUpdateAttendanceMutation(),
+	onSuccess: () => {
+		selectedAttendees = [];
+		onAttendanceUpdated?.();
+		toast.success("Marked as checked in");
+	},
+	onError: (error) => {
+		toast.error(error.errors?.detail ?? "Failed to update attendance");
+	},
+}));
+
+const refundMutation = createMutation(() => ({
+	...workshopsRefundRegistrationMutation(),
+	onSuccess: () => {
+		attendeeIdForRefund = "";
+		onRefundProcessed?.();
+		toast.success("Refund processed");
+	},
+	onError: (error) => {
+		toast.error(error.errors?.detail ?? "Failed to process refund");
+	},
+}));
+
+// Participant identity is normalized server-side into a single `participant`
+// DTO (`type` `member` | `external`, `displayName`, `email`) by
+// `GET /api/workshops/{id}/attendees`, so the storage join shapes
+// (`user_profiles` / `external_users`) no longer leak into the UI.
+function getAttendeeDisplayName(attendee: WorkshopAttendee) {
+	return attendee.participant.displayName;
+}
+
+function getAttendeeEmail(attendee: WorkshopAttendee) {
+	return attendee.participant.email ?? "";
+}
+
+function isExternalAttendee(attendee: WorkshopAttendee) {
+	return attendee.participant.type === "external";
+}
+
+function getAttendanceBadgeVariant(status: string | null | undefined) {
+	switch (status) {
+		case "pending":
+			return "outline";
+		case "attended":
+			return "default";
+		case "noShow":
+			return "destructive";
+		case "excused":
+			return "secondary";
+		default:
+			return "outline";
+	}
+}
+
+function getAttendanceStatusLabel(status: string | null | undefined) {
+	switch (status) {
+		case "attended":
+			return "Checked In";
+		case "noShow":
+			return "No Show";
+		case "excused":
+			return "Excused";
+		case "pending":
+		default:
+			return "Not Checked In";
+	}
+}
+
+function getPaymentBadgeVariant(
+	registrationStatus: string | null | undefined,
+	refund?: { status?: string } | null,
+) {
+	if (refund?.status === "completed" || registrationStatus === "refunded") {
+		return "secondary";
+	}
+
+	if (refund?.status === "failed") {
+		return "destructive";
+	}
+
+	switch (registrationStatus) {
+		case "confirmed":
+			return "default";
+		case "cancelled":
+			return "destructive";
+		case "pending":
+			return "outline";
+		default:
+			return "outline";
+	}
+}
+
+function getPaymentStatusLabel(
+	registrationStatus: string | null | undefined,
+	refund?: { status?: string; refundAmount?: number } | null,
+) {
+	if (refund?.status === "completed" || registrationStatus === "refunded") {
+		if (typeof refund?.refundAmount === "number") {
+			return `Refunded ${formatCurrency(refund.refundAmount / 100)}`;
+		}
+
+		return "Refunded";
+	}
+
+	if (refund?.status === "processing" || refund?.status === "pending") {
+		return "Refund Processing";
+	}
+
+	if (refund?.status === "failed") {
+		return "Refund Failed";
+	}
+
+	if (refund?.status === "cancelled") {
+		return "Refund Cancelled";
+	}
+
+	switch (registrationStatus) {
+		case "confirmed":
+			return "Paid";
+		case "pending":
+			return "Payment Pending";
+		case "cancelled":
+			return "Cancelled";
+		case "refunded":
+			return "Refunded";
+		default:
+			return "Unknown";
+	}
+}
+
+function getRefund(attendeeId: string) {
+	return refunds.find((refund) => refund.registrationId === attendeeId);
+}
+
+function formatCurrency(amount: number) {
+	return new Intl.NumberFormat("en-IE", {
+		style: "currency",
+		currency: "EUR",
+	}).format(amount);
+}
+
+function getRefundEligibility(attendee: WorkshopAttendee) {
+	return checkRefundEligibility(
+		workshop.startDate,
+		workshop.refundDays,
+		workshop.status,
+		attendee.status,
+	);
+}
+
+function confirmRefund() {
+	if (!workshopId) return;
+	refundMutation.mutate({
+		path: { workshopId, registrationId: attendeeIdForRefund },
+		body: { reason: "Requested by user" },
+	});
+}
+
+function markAttended(registrationIds: string[]) {
+	if (!workshopId) return;
+	markAttendedMutation.mutate({
+		path: { workshopId },
+		body: {
+			updates: registrationIds.map((registrationId) => ({
+				registrationId,
+				attendanceStatus: "attended" as const,
+				notes: "",
+			})),
+		},
+	});
+}
+</script>
+
+<div class="space-y-3">
+	{#if unattendedAttendees.length > 0}
+		<div
+			class="flex flex-col gap-3 rounded-lg border border-primary/20 bg-primary/5 p-3 sm:flex-row sm:items-center sm:justify-between"
+		>
+			<span class="text-sm font-medium">
+				{#if selectedAttendees.length > 0}
+					{selectedAttendees.length} attendee{selectedAttendees.length > 1
+						? "s"
+						: ""} selected
+				{:else}
+					Select attendees to mark as checked in
+				{/if}
+			</span>
+			<div class="flex w-full flex-wrap gap-2 sm:w-auto sm:justify-end">
+				<Button
+					size="sm"
+					class="flex-1 sm:flex-none"
+					onclick={() => {
+						toggleSelectAll();
+						markAttended([...selectedAttendees]);
+					}}
+					disabled={markAttendedMutation.isPending || allSelected}
+				>
+					<CheckCheck class="w-4 h-4" />
+					Mark all as Checked In
+				</Button>
+
+				<Button
+					size="sm"
+					class="flex-1 sm:flex-none"
+					onclick={() => markAttended([...selectedAttendees])}
+					disabled={markAttendedMutation.isPending ||
+						selectedAttendees.length === 0}
+				>
+					<Check class="w-4 h-4" />
+					Mark as Checked In
+				</Button>
+			</div>
+		</div>
+	{/if}
+
+	{#each attendees as attendee (attendee.id)}
+		{@const refund = getRefund(attendee.id)}
+		<div
+			class="rounded-lg border bg-card p-4 transition-colors hover:bg-accent/50"
+		>
+			<div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+				<div class="flex min-w-0 flex-1 items-start gap-3">
+					{#if attendee.attendanceStatus !== "attended"}
+						<Checkbox
+							id={`${getAttendeeDisplayName(attendee)}-select`}
+							checked={selectedAttendees.includes(attendee.id)}
+							onCheckedChange={() => toggleAttendee(attendee.id)}
+						/>
+					{:else}
+						<div class="w-5"></div>
+					{/if}
+
+					<div class="flex-shrink-0">
+						<div
+							class="w-10 h-10 rounded-full bg-muted flex items-center justify-center"
+						>
+							<User class="w-5 h-5 text-muted-foreground" />
+						</div>
+					</div>
+
+					<div class="min-w-0 flex-1">
+						<div class="font-medium text-sm">
+							{getAttendeeDisplayName(attendee)}
+						</div>
+						<div class="text-xs text-muted-foreground truncate">
+							{getAttendeeEmail(attendee)}
+						</div>
+
+						<div class="mt-2 flex flex-wrap items-center gap-2">
+							<Badge
+								variant={getAttendanceBadgeVariant(attendee.attendanceStatus)}
+								class="text-xs"
+							>
+								{getAttendanceStatusLabel(attendee.attendanceStatus)}
+							</Badge>
+							<Badge
+								variant={getPaymentBadgeVariant(attendee.status, refund)}
+								class="text-xs"
+							>
+								{getPaymentStatusLabel(attendee.status, refund)}
+							</Badge>
+
+							{#if isExternalAttendee(attendee)}
+								<Badge
+									variant="outline"
+									class="text-[10px] uppercase tracking-wide"
+								>
+									External
+								</Badge>
+							{/if}
+						</div>
+					</div>
+				</div>
+
+				<div
+					class="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end"
+				>
+					{#if attendee.attendanceStatus !== "attended"}
+						<Button
+							size="sm"
+							variant="outline"
+							onclick={() => markAttended([attendee.id])}
+							disabled={markAttendedMutation.isPending}
+							class="flex-1 gap-1 sm:flex-none"
+						>
+							<Check class="w-4 h-4" />
+							Mark Checked In
+						</Button>
+					{/if}
+
+					{#if !refund}
+						<Popover.Root
+							open={attendeeIdForRefund === attendee.id}
+							onOpenChange={(open) => {
+								attendeeIdForRefund = open ? attendee.id : "";
+							}}
+						>
+							<Popover.Trigger>
+								{#snippet child({ props })}
+									<Button
+										{...props}
+										size="sm"
+										variant="outline"
+										disabled={refundMutation.isPending}
+										class="w-full flex-1 gap-1 sm:w-auto sm:flex-none"
+									>
+										<DollarSign class="w-4 h-4" />
+										Refund
+									</Button>
+								{/snippet}
+							</Popover.Trigger>
+							<Popover.Content class="w-80">
+								{@const eligibility = getRefundEligibility(attendee)}
+								<div class="space-y-3">
+									<h4 class="font-medium">Confirm Refund</h4>
+									<p class="text-sm text-muted-foreground">
+										{getAttendeeDisplayName(attendee)}
+									</p>
+
+									{#if eligibility.isEligible}
+										<div class="text-sm">
+											<p class="text-green-600 font-medium">
+												✓ Eligible for refund
+											</p>
+											<p class="text-muted-foreground mt-1">
+												The user will receive a full refund to their original
+												payment method.
+											</p>
+										</div>
+									{:else}
+										<div class="text-sm">
+											<p class="text-orange-600 font-medium">
+												⚠ Not eligible for refund
+											</p>
+											<p class="text-muted-foreground mt-1">
+												{eligibility.reason}. The user will be removed from the
+												workshop without refund.
+											</p>
+										</div>
+									{/if}
+
+									<div class="flex justify-end gap-2">
+										<Button
+											size="sm"
+											variant="outline"
+											onclick={() => {
+												attendeeIdForRefund = "";
+											}}
+										>
+											Cancel
+										</Button>
+										<Button
+											size="sm"
+											onclick={confirmRefund}
+											disabled={refundMutation.isPending}
+										>
+											{#if refundMutation.isPending}
+												Processing...
+											{:else}
+												Confirm
+											{/if}
+										</Button>
+									</div>
+								</div>
+							</Popover.Content>
+						</Popover.Root>
+					{/if}
+				</div>
+			</div>
+		</div>
+	{/each}
+
+	{#if attendees.length === 0}
+		<div class="text-center py-8 text-muted-foreground">
+			No attendees registered yet
+		</div>
+	{/if}
+</div>
