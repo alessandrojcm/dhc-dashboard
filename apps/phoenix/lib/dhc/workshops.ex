@@ -342,7 +342,7 @@ defmodule Dhc.Workshops do
          :ok <- validate_member_payment_intent(payment_intent, workshop_id, user_id),
          {:ok, registration} <-
            Repo.transaction(fn ->
-             case Repo.get_by(Registration, stripe_checkout_session_id: payment_intent_id) do
+             case Repo.get_by(Registration, stripe_payment_intent_id: payment_intent_id) do
                %Registration{} = registration ->
                  registration
 
@@ -956,7 +956,7 @@ defmodule Dhc.Workshops do
       club_activity_id: workshop_id,
       member_user_id: user_id,
       status: "confirmed",
-      stripe_checkout_session_id: Map.fetch!(payment_intent, "id"),
+      stripe_payment_intent_id: Map.fetch!(payment_intent, "id"),
       amount_paid: Map.get(payment_intent, "amount"),
       currency: Map.get(payment_intent, "currency", "eur"),
       confirmed_at: now,
@@ -1279,54 +1279,96 @@ defmodule Dhc.Workshops do
       status: "pending",
       requested_at: now,
       requested_by: requested_by,
-      stripe_payment_intent_id: registration.stripe_checkout_session_id
+      stripe_payment_intent_id: registration.stripe_payment_intent_id
     }
     |> Repo.insert()
   end
 
-  defp submit_refund(refund, %Registration{stripe_checkout_session_id: nil} = registration, _by) do
+  # A registration with neither Stripe identifier set has nothing to refund
+  # against Stripe (a free / no-pay registration). Mark it refunded without
+  # contacting the provider.
+  defp submit_refund(
+         refund,
+         %Registration{
+           stripe_payment_intent_id: nil,
+           stripe_checkout_session_id: nil
+         } = registration,
+         _by
+       ) do
     mark_registration_refunded(registration)
     {:ok, refund}
   end
 
   defp submit_refund(refund, registration, processed_by) do
-    body = [
-      payment_intent: registration.stripe_checkout_session_id,
-      amount: registration.amount_paid,
-      reason: "requested_by_customer"
-    ]
+    with {:ok, payment_intent_id} <- resolve_refund_payment_intent(registration) do
+      body = [
+        payment_intent: payment_intent_id,
+        amount: registration.amount_paid,
+        reason: "requested_by_customer"
+      ]
 
-    case stripe_client().request(method: :post, url: "/v1/refunds", body: body) do
-      {:ok, %{"id" => stripe_refund_id}} ->
-        now = DateTime.utc_now() |> DateTime.truncate(:second)
+      case Dhc.Stripe.Operations.post_refunds(body, client: stripe_client()) do
+        {:ok, %{"id" => stripe_refund_id}} ->
+          now = DateTime.utc_now() |> DateTime.truncate(:second)
 
-        {:ok, updated_refund} =
-          refund
-          |> Ecto.Changeset.change(
-            status: "processing",
-            stripe_refund_id: stripe_refund_id,
-            stripe_payment_intent_id: registration.stripe_checkout_session_id,
-            processed_at: now,
-            processed_by: processed_by
-          )
-          |> Repo.update()
+          {:ok, updated_refund} =
+            refund
+            |> Ecto.Changeset.change(
+              status: "processing",
+              stripe_refund_id: stripe_refund_id,
+              stripe_payment_intent_id: payment_intent_id,
+              processed_at: now,
+              processed_by: processed_by
+            )
+            |> Repo.update()
 
-        mark_registration_refunded(registration)
-        {:ok, updated_refund}
+          mark_registration_refunded(registration)
+          {:ok, updated_refund}
 
-      _error ->
-        refund
-        |> Ecto.Changeset.change(status: "failed")
-        |> Repo.update!()
-
-        {:error, :refund_failed}
+        _error ->
+          mark_refund_failed(refund)
+      end
+    else
+      {:error, _reason} ->
+        mark_refund_failed(refund)
     end
   end
+
+  # Member registrations carry the Payment Intent directly.
+  defp resolve_refund_payment_intent(%Registration{stripe_payment_intent_id: pi_id})
+       when is_binary(pi_id) and pi_id != "" do
+    {:ok, pi_id}
+  end
+
+  # External registrations carry a Checkout Session id; resolve the
+  # underlying Payment Intent from it before refunding. This fixes the
+  # latent external-refund bug where the `cs_*` was sent to `/v1/refunds`
+  # as a `payment_intent`, which Stripe rejects.
+  defp resolve_refund_payment_intent(%Registration{stripe_checkout_session_id: cs_id})
+       when is_binary(cs_id) and cs_id != "" do
+    case stripe_retrieve_checkout_session(cs_id) do
+      {:ok, %{"payment_intent" => pi_id}} when is_binary(pi_id) and pi_id != "" ->
+        {:ok, pi_id}
+
+      _ ->
+        {:error, :payment_intent_not_resolvable}
+    end
+  end
+
+  defp resolve_refund_payment_intent(_registration), do: {:error, :payment_intent_not_resolvable}
 
   defp mark_registration_refunded(registration) do
     registration
     |> Ecto.Changeset.change(status: "refunded")
     |> Repo.update!()
+  end
+
+  defp mark_refund_failed(refund) do
+    refund
+    |> Ecto.Changeset.change(status: "failed")
+    |> Repo.update!()
+
+    {:error, :refund_failed}
   end
 
   defp active_paid_registrations(workshop_id) do

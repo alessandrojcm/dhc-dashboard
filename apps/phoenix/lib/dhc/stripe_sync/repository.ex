@@ -104,23 +104,39 @@ defmodule Dhc.StripeSync.Repository do
 
   @doc """
   Marks all profiles for the Stripe customer active and updates Membership dates.
+
+  Both writes run in a single `Repo.transaction/1` so a partial failure
+  (one `update_all` succeeds, the other raises) rolls the first back and
+  the whole call fails atomically — the Stripe sync retry then re-runs
+  both against a clean state instead of a half-applied one.
   """
-  @spec mark_customer_active(String.t(), DateTime.t() | nil, DateTime.t() | nil) :: :ok
+  @spec mark_customer_active(String.t(), DateTime.t() | nil, DateTime.t() | nil) ::
+          :ok | {:error, term()}
   def mark_customer_active(customer_id, last_payment_date, ended_at) do
-    customer_id
-    |> user_profile_ids_for_customer()
-    |> update_member_profiles(
-      set: [
-        subscription_paused_until: nil,
-        last_payment_date: last_payment_date,
-        membership_end_date: ended_at
-      ]
-    )
+    Repo.transaction(fn ->
+      customer_id
+      |> user_profile_ids_for_customer()
+      |> update_member_profiles(
+        set: [
+          subscription_paused_until: nil,
+          last_payment_date: last_payment_date,
+          membership_end_date: ended_at
+        ]
+      )
 
-    from(up in "user_profiles", where: up.customer_id == ^customer_id)
-    |> Repo.update_all(set: [is_active: true])
+      try do
+        from(up in "user_profiles", where: up.customer_id == ^customer_id)
+        |> Repo.update_all(set: [is_active: true])
+      rescue
+        e -> Repo.rollback({:is_active_update_failed, e})
+      end
 
-    :ok
+      :ok
+    end)
+    |> case do
+      {:ok, :ok} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   defp user_profile_ids_for_customer(customer_id) do
