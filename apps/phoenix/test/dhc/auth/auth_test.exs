@@ -184,8 +184,9 @@ defmodule Dhc.AuthTest do
       principal = principal_fixture()
       {:ok, token} = Auth.create_session(principal)
 
-      # Age the session row past 30 days.
-      age_token(token, -31, :day)
+      # Age the session row past 30 days. age_token matches the stored column
+      # value, which is the SHA-256 digest (not the raw cookie) since ALE-182.
+      age_token(:crypto.hash(:sha256, token), -31, :day)
 
       assert {:error, :invalid} = Auth.get_principal_by_session_token(token)
     end
@@ -207,6 +208,91 @@ defmodule Dhc.AuthTest do
       assert :ok = Auth.delete_all_principal_sessions(principal)
       assert {:error, :invalid} = Auth.get_principal_by_session_token(t1)
       assert {:error, :invalid} = Auth.get_principal_by_session_token(t2)
+    end
+  end
+
+  # ALE-182 — session tokens are stored as SHA-256 hashes, not plaintext. The
+  # migration backfills existing session rows in place so live cookies keep
+  # working. These tests pin the before/after behavior of the hashing change.
+  describe "session token hashing (ALE-182)" do
+    # Characterization: pins the behavior of `build_session_token/1`. Pre-ALE-182
+    # the raw cookie bytes were stored verbatim in the `token` column (plaintext);
+    # after ALE-182 the column holds the SHA-256 digest. This test was written
+    # first asserting the plaintext shape, went red when the fix landed
+    # (confirming the behavior changed), and is now inverted to pin the new
+    # shape so the suite stays green.
+    test "build_session_token/1 stores the SHA-256 digest, not the raw cookie (characterization)" do
+      principal = principal_fixture()
+      {:ok, token} = Auth.create_session(principal)
+
+      row = Repo.one!(from t in PrincipalToken, where: t.context == "session")
+      # The column now holds the digest; the raw cookie is 32 random bytes
+      # whose SHA-256 is 32 bytes but never equals the input.
+      assert row.token == :crypto.hash(:sha256, token)
+      refute row.token == token
+    end
+
+    # Desired: after ALE-182, the stored column holds the SHA-256 digest and
+    # verify/delete resolve the cookie through the hash.
+    test "build_session_token/1 stores only the SHA-256 hash and verify/delete work through the hash (desired)" do
+      principal = principal_fixture()
+      {:ok, token} = Auth.create_session(principal)
+
+      row = Repo.one!(from t in PrincipalToken, where: t.context == "session")
+      assert row.token == :crypto.hash(:sha256, token)
+      # The raw cookie is not what is stored.
+      refute row.token == token
+
+      # Verify and delete operate on the raw cookie (hashing happens inside).
+      assert {:ok, returned} = Auth.get_principal_by_session_token(token)
+      assert returned.id == principal.id
+
+      assert :ok = Auth.delete_session_token(token)
+      assert {:error, :invalid} = Auth.get_principal_by_session_token(token)
+    end
+
+    # Backfill regression: simulates a pre-migration session row stored as
+    # plaintext, runs the migration's in-place backfill, and asserts the
+    # existing cookie still authenticates with zero user disruption.
+    test "backfilling existing plaintext session rows keeps existing cookies valid (migration regression)" do
+      principal = principal_fixture()
+
+      # Insert a session row the pre-ALE-182 way: raw cookie bytes in the
+      # token column (what build_session_token/1 did before the fix).
+      raw_cookie = :crypto.strong_rand_bytes(32)
+
+      {:ok, _} =
+        %PrincipalToken{
+          token: raw_cookie,
+          context: "session",
+          principal_id: principal.id,
+          authenticated_at: principal.authenticated_at || DateTime.utc_now(:second)
+        }
+        |> Repo.insert()
+
+      # The pre-migration row holds plaintext; the new code hashes the
+      # incoming cookie before lookup, so the cookie does NOT authenticate
+      # yet. This is the window the backfill closes.
+      assert {:error, :invalid} = Auth.get_principal_by_session_token(raw_cookie)
+
+      # Run the ALE-182 backfill in place: hash every session row's token.
+      %{num_rows: 1} =
+        Repo.query!(
+          "UPDATE principal_tokens SET token = digest(token, 'sha256') WHERE context = 'session'"
+        )
+
+      # The existing cookie now authenticates — verify hashes the incoming
+      # cookie before lookup, matching the now-hashed column.
+      assert {:ok, returned} = Auth.get_principal_by_session_token(raw_cookie)
+      assert returned.id == principal.id
+
+      # And the row now stores the digest, not the plaintext.
+      row = Repo.one!(from t in PrincipalToken, where: t.context == "session")
+      assert row.token == :crypto.hash(:sha256, raw_cookie)
+
+      # Delete also works through the raw cookie.
+      assert :ok = Auth.delete_session_token(raw_cookie)
+      assert {:error, :invalid} = Auth.get_principal_by_session_token(raw_cookie)
     end
   end
 
