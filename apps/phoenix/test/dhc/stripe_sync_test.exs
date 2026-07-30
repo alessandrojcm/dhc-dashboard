@@ -289,6 +289,92 @@ defmodule Dhc.StripeSyncTest do
   end
 end
 
+defmodule Dhc.StripeSync.RepositoryMarkCustomerActiveTest do
+  @moduledoc """
+  ALE-193: `mark_customer_active/3` must apply its two `update_all`s
+  atomically so a partial failure self-heals via sync retry.
+
+  These tests run in the default (non-integration) CI gate — the existing
+  `RepositoryIntegrationTest` is tagged `:integration` and excluded from the
+  default `mise run phx-test` run. The happy path here verifies both the
+  member-profile date update and the user-profile `is_active` flip land
+  together, and the atomicity test verifies that a failure of the second
+  update rolls the first back (so a retry sees a clean state).
+  """
+
+  use Dhc.DataCase, async: false
+
+  alias Dhc.MemberProfiles.MemberProfile
+  alias Dhc.Repo
+  alias Dhc.StripeSync.Repository
+  alias Dhc.UserProfiles.UserProfile
+
+  import Ecto.Query
+
+  describe "mark_customer_active/3" do
+    test "applies both the member-profile date update and the is_active flip together" do
+      fixture = Dhc.MemberFixtures.member_fixture(is_active: false)
+      last_payment_date = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      assert :ok =
+               Repository.mark_customer_active(fixture.customer_id, last_payment_date, nil)
+
+      member =
+        Repo.one!(from(mp in MemberProfile, where: mp.user_profile_id == ^fixture.profile_id))
+
+      assert member.last_payment_date == last_payment_date
+      assert is_nil(member.subscription_paused_until)
+      assert is_nil(member.membership_end_date)
+
+      profile = Repo.get!(UserProfile, fixture.profile_id)
+      assert profile.is_active == true
+    end
+
+    test "rolls back the first update when the second one fails, so a retry sees clean state" do
+      fixture = Dhc.MemberFixtures.member_fixture(is_active: false)
+      last_payment_date = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      # Pin a CHECK that forbids is_active = true for this customer's
+      # profile, so the second update_all (the is_active flip) raises a
+      # check_violation. If mark_customer_active wraps both updates in a
+      # single transaction, the first update (the member-profile date
+      # change) rolls back too, leaving the member profile unchanged for a
+      # retry. Without the wrap the first update would persist.
+      #
+      # The customer_id is a fixture-generated Stripe-style string, safe to
+      # inline (DDL does not support bind parameters). The constraint is
+      # dropped in on_exit so it never leaks into other tests sharing the
+      # sandbox transaction (DDL CONSTRAINTs are not transactional).
+      escaped = String.replace(fixture.customer_id, "'", "''")
+
+      constraint = "is_active_must_stay_false_#{System.unique_integer([:positive])}"
+
+      Repo.query!(
+        "ALTER TABLE user_profiles ADD CONSTRAINT #{constraint} " <>
+          "CHECK (customer_id IS DISTINCT FROM '#{escaped}' OR " <>
+          "is_active IS DISTINCT FROM true)"
+      )
+
+      on_exit(fn ->
+        Repo.query!("ALTER TABLE user_profiles DROP CONSTRAINT IF EXISTS #{constraint}")
+      end)
+
+      result = Repository.mark_customer_active(fixture.customer_id, last_payment_date, nil)
+
+      # The transaction aborted; the function surfaces the failure.
+      assert match?({:error, _}, result)
+
+      # Member-profile date update must have rolled back with the failed
+      # is_active flip — a retry sees the original (unchanged, nil) state.
+      member =
+        Repo.one!(from(mp in MemberProfile, where: mp.user_profile_id == ^fixture.profile_id))
+
+      assert member.last_payment_date == nil
+      assert member.subscription_paused_until == nil
+    end
+  end
+end
+
 defmodule Dhc.StripeSync.RepositoryIntegrationTest do
   @moduledoc """
   Integration test for Dhc.StripeSync.Repository against the test database.

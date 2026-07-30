@@ -1411,7 +1411,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
           member_user_id: @member_user_id,
           status: "confirmed",
           amount_paid: 1000,
-          stripe_checkout_session_id: "pi_paid_registration"
+          stripe_payment_intent_id: "pi_paid_registration"
         )
 
       conn =
@@ -1715,7 +1715,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
           member_user_id: @other_user_id,
           status: "confirmed",
           amount_paid: 1000,
-          stripe_checkout_session_id: "pi_explicit_refund"
+          stripe_payment_intent_id: "pi_explicit_refund"
         )
 
       conn =
@@ -1753,7 +1753,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
           workshop_id: workshop.id,
           member_user_id: @other_user_id,
           status: "confirmed",
-          stripe_checkout_session_id: "pi_late_refund"
+          stripe_payment_intent_id: "pi_late_refund"
         )
 
       conn =
@@ -1780,7 +1780,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
           workshop_id: workshop.id,
           member_user_id: @other_user_id,
           status: "confirmed",
-          stripe_checkout_session_id: "pi_stripe_failure"
+          stripe_payment_intent_id: "pi_stripe_failure"
         )
 
       Application.put_env(:dhc, :workshop_stripe_refund_response, {:error, :provider_down})
@@ -1813,7 +1813,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
           member_user_id: @other_user_id,
           status: "confirmed",
           amount_paid: 1000,
-          stripe_checkout_session_id: "pi_cancelled_workshop"
+          stripe_payment_intent_id: "pi_cancelled_workshop"
         )
 
       conn =
@@ -1841,7 +1841,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
           member_user_id: @other_user_id,
           status: "confirmed",
           amount_paid: 1000,
-          stripe_checkout_session_id: "pi_already_refunded"
+          stripe_payment_intent_id: "pi_already_refunded"
         )
 
       existing_refund =
