@@ -336,9 +336,15 @@ defmodule Dhc.Auth do
   @doc """
   Deletes the session token row matching the raw token. Idempotent — a
   second logout with the same cookie is a no-op.
+
+  The incoming cookie is hashed (SHA-256) before lookup, matching
+  `Dhc.Auth.PrincipalToken.build_session_token/1`.
   """
   def delete_session_token(token) do
-    Repo.delete_all(from(PrincipalToken, where: [token: ^token, context: "session"]))
+    hashed_token = Dhc.Auth.PrincipalToken.hash_token(token)
+
+    Repo.delete_all(from(PrincipalToken, where: [token: ^hashed_token, context: "session"]))
+
     :ok
   end
 
