@@ -70,6 +70,44 @@ defmodule Dhc.AuthMigrationFixtures do
   end
 
   @doc """
+  Drops the ALE-180 linkage-drift constraint triggers and function if they
+  exist.
+
+  The M1/M2 rehearsal tests simulate a restored **pre-M2 backup** — a
+  production snapshot taken before the cutover. ALE-180 ships *after* M2, so
+  a genuine pre-M2 backup would not carry these triggers. The testcontainers
+  harness migrates the whole stack from zero, so the triggers are present in
+  the test schema; the rehearsal must drop them to faithfully model the
+  restored-backup state. Without this, the triggers' function body (which
+  references `user_profiles.principal_id`, the post-M2 column name) fails
+  with `undefined_column` once M2 is rolled back to the `supabase_user_id`
+  column.
+
+  Idempotent: a no-op when the triggers/function are absent.
+  """
+  def drop_post_m2_linkage_drift_triggers! do
+    # `DROP TRIGGER IF EXISTS` handles both regular and constraint triggers;
+    # `DROP CONSTRAINT TRIGGER` does not support IF EXISTS on this Postgres.
+    repo().query!(
+      "DROP TRIGGER IF EXISTS user_profiles_linkage_drift_update_principal_id ON user_profiles",
+      []
+    )
+
+    repo().query!(
+      "DROP TRIGGER IF EXISTS member_profiles_linkage_drift_update_user_profile_id ON member_profiles",
+      []
+    )
+
+    repo().query!(
+      "DROP TRIGGER IF EXISTS member_profiles_linkage_drift_insert ON member_profiles",
+      []
+    )
+
+    repo().query!("DROP FUNCTION IF EXISTS verify_linkage_drift()", [])
+    :ok
+  end
+
+  @doc """
   Inserts a production-shaped Member row: `auth.users` + `user_profiles`
   + `member_profiles` + `user_roles` (member role), all keyed by the same
   UUID. Returns a map with the shared UUID and the fixture inputs.
