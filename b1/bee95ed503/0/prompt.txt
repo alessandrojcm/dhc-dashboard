@@ -1,0 +1,37 @@
+You are a Spec code reviewer. Review whether the following changes faithfully implement the originating issue.
+
+The originating spec is Linear ticket ALE-189 (titled "ALE-176: Invitation acceptance reuses waitlist UserProfile"), a sub-issue of ALE-188. Here is its full text:
+
+---
+Title: ALE-176: Invitation acceptance reuses waitlist UserProfile
+
+Parent: ALE-188 — Schema remediation execution.
+
+What to build:
+Invitation Acceptance reuses the existing waitlist UserProfile instead of creating a duplicate on conversion. The migration adds a partial unique on `user_profiles(waitlist_id)` and a unique on `waitlist_guardians(profile_id)` (dropping the two non-unique indexes they replace), and `accept/5` is rewritten to lock the existing waitlist UserProfile `FOR UPDATE`, set `principal_id`/`is_active`/`customer_id`, and preserve intake-captured fields and guardian linkage.
+
+Acceptance criteria:
+- [ ] Ecto migration in `apps/phoenix/priv/repo/migrations/` adds `user_profiles(waitlist_id)` partial unique and `waitlist_guardians(profile_id)` unique, and drops the two non-unique indexes they replace.
+- [ ] `accept/5` locks the existing waitlist UserProfile `FOR UPDATE` and reuses it (sets `principal_id`/`is_active`/`customer_id`), preserving intake-captured fields and guardian linkage — no duplicate UserProfile is created on conversion.
+- [ ] Characterization test (red) pins current duplicate-creation behavior; companion green test asserts reuse.
+- [ ] `down/0` is reversible (mechanical reversal).
+- [ ] New migration uses `timestamps(type: :timestamptz, inserted_at: :created_at)`; `mise run ast-lint` clean.
+- [ ] `mise run phx-test` green on the release branch.
+
+Blocked by: None — can start immediately.
+---
+
+Additional spec context from the parent ALE-188 (relevant user stories):
+- ALE-176 should ship the `user_profiles(waitlist_id)` partial unique and `waitlist_guardians(profile_id)` unique plus the drop of the two non-unique indexes they replace, so that Invitation Acceptance reuses the existing waitlist UserProfile instead of creating a duplicate.
+- ALE-176 should rewrite `accept/5` to lock the existing waitlist UserProfile `FOR UPDATE`, set `principal_id`/`is_active`/`customer_id`, and preserve intake-captured fields and guardian linkage, so that a waitlisted prospective member who converts keeps their profile.
+- The ALE-188 implementation decisions: ALE-176 has a reversible `down/0` (mechanical reversal). Intake-captured fields to preserve = first/last/DOB/gender/pronouns/phone/social_media_consent/medical_conditions.
+- Testing decisions for ALE-176: characterization test pins current duplicate-creation behavior (red), companion green test asserts reuse.
+
+The three changed files (all uncommitted, against origin/main):
+1. NEW: apps/phoenix/priv/repo/migrations/20260730100000_ale_176_invitation_acceptance_reuses_waitlist_user_profile.exs
+2. MODIFIED: apps/phoenix/lib/dhc/invitations.ex — accept/5 now calls a new private helper reuse_or_create_user_profile!/3.
+3. MODIFIED: apps/phoenix/test/dhc_web/controllers/invitations_controller_test.exs — new "ALE-176" describe block with 2 tests + new helper insert_invitation_from_waitlist_entry/1.
+
+Read all three files in full. Also read apps/phoenix/lib/dhc/waitlist.ex (create_entry/1) to confirm the intake-captured fields being preserved are the ones the intake actually sets, and apps/phoenix/lib/dhc/user_profiles/user_profile.ex for the schema fields.
+
+Brief: Report: (a) requirements the spec asked for that are missing or partial; (b) behaviour in the diff that wasn't asked for (scope creep); (c) requirements that look implemented but where the implementation looks wrong. For each finding quote the spec line/acceptance criterion. Pay special attention to: does the partial unique use a WHERE clause? does accept/5 actually lock FOR UPDATE? are ALL the listed intake-captured fields preserved (or at least not overwritten)? is the characterization test actually red-against-the-old-behavior and green-after? is down/0 reversible? Note: the test suite (662 passed) and ast-lint already pass — do not re-run them, take that as given. Under 400 words. Be concrete with file:line references.

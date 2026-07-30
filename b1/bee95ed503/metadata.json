@@ -1,0 +1,29 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "b1bee95ed503",
+  "strategy": "manual-commit",
+  "branch": "gitbutler/workspace",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".agents/skills/gitbutler/SKILL.md",
+    "CONTEXT.md",
+    "apps/phoenix/lib/dhc/invitations.ex",
+    "apps/phoenix/test/dhc_web/controllers/invitations_controller_test.exs"
+  ],
+  "sessions": [
+    {
+      "metadata": "/b1/bee95ed503/0/metadata.json",
+      "transcript": "/b1/bee95ed503/0/full.jsonl",
+      "compact_transcript": "/b1/bee95ed503/0/transcript.jsonl",
+      "content_hash": "/b1/bee95ed503/0/content_hash.txt",
+      "prompt": "/b1/bee95ed503/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 62041,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 2907,
+    "api_call_count": 2
+  }
+}
