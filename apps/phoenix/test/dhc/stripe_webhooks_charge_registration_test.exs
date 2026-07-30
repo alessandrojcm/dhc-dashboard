@@ -125,6 +125,8 @@ defmodule Dhc.StripeWebhooksChargeRegistrationTest do
       %Registration{
         club_activity_id: workshop_id,
         external_user_id: external_user_id,
+        # ALE-181: display_name is NOT NULL on the registration row.
+        display_name: "External Guest",
         stripe_payment_intent_id: pi_id,
         amount_paid: 2000,
         currency: "eur",
@@ -146,6 +148,8 @@ defmodule Dhc.StripeWebhooksChargeRegistrationTest do
       %Registration{
         club_activity_id: workshop_id,
         external_user_id: external_user_id,
+        # ALE-181: display_name is NOT NULL on the registration row.
+        display_name: "External Guest",
         stripe_checkout_session_id: cs_id,
         amount_paid: 2000,
         currency: "eur",

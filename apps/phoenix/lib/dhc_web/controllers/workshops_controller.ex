@@ -108,12 +108,23 @@ defmodule DhcWeb.WorkshopsController do
   @doc """
   DELETE /workshops/{id}
 
-  Deletes planned Workshops only.
+  ALE-181: registrations-existence gates archive-vs-hard-delete.
+
+    * Workshop with registrations → `200` + archived Workshop body (soft-delete).
+    * Workshop with no registrations → `204` (hard-delete).
+    * Already-archived Workshop → `409`.
+    * Unknown Workshop → `404`.
   """
   def delete(conn, %{"id" => id}) do
     case Workshops.delete_workshop(id) do
-      :ok -> send_resp(conn, :no_content, "")
-      {:error, reason} -> lifecycle_error(conn, reason)
+      {:ok, :deleted} ->
+        send_resp(conn, :no_content, "")
+
+      {:ok, :archived, workshop} ->
+        render_management(conn, workshop)
+
+      {:error, reason} ->
+        lifecycle_error(conn, reason)
     end
   end
 
@@ -466,16 +477,19 @@ defmodule DhcWeb.WorkshopsController do
     unprocessable(conn, "Cannot change pricing when there are active registrations")
   end
 
-  defp lifecycle_error(conn, :not_deletable) do
-    unprocessable(conn, "Only planned workshops can be deleted")
-  end
-
   defp lifecycle_error(conn, :not_publishable) do
     unprocessable(conn, "Only planned workshops can be published")
   end
 
   defp lifecycle_error(conn, :not_cancellable) do
     unprocessable(conn, "Only published workshops can be cancelled")
+  end
+
+  # ALE-181: delete error mapping. `:already_archived` is the only delete-only
+  # error after the rewrite (the old `:not_deletable` status gate is gone);
+  # `:not_found` is shared with the other lifecycle errors above.
+  defp lifecycle_error(conn, :already_archived) do
+    conflict(conn, "Workshop is already archived")
   end
 
   defp member_registration_error(conn, :not_found), do: not_found(conn)

@@ -29,6 +29,13 @@ defmodule Dhc.Workshops.Registration do
     field :member_user_id, :binary_id
     field :external_user_id, :binary_id
 
+    # ALE-181: attendee snapshot. `display_name`/`email` are captured at write
+    # time so reads no longer join back to `user_profiles`/`external_users`.
+    # `display_name` is NOT NULL at the DB layer; `email` is nullable (member
+    # registrations do not capture an email on the registration row).
+    field :display_name, :string
+    field :email, :string
+
     field :stripe_checkout_session_id, :string
     field :stripe_payment_intent_id, :string
     field :amount_paid, :integer
@@ -55,6 +62,8 @@ defmodule Dhc.Workshops.Registration do
       :club_activity_id,
       :member_user_id,
       :external_user_id,
+      :display_name,
+      :email,
       :stripe_checkout_session_id,
       :stripe_payment_intent_id,
       :amount_paid,
@@ -69,7 +78,7 @@ defmodule Dhc.Workshops.Registration do
       :attendance_marked_by,
       :attendance_notes
     ])
-    |> validate_required([:club_activity_id, :amount_paid, :currency, :status])
+    |> validate_required([:club_activity_id, :amount_paid, :currency, :status, :display_name])
     |> validate_inclusion(:status, ~w(pending confirmed cancelled refunded))
     |> validate_inclusion(:attendance_status, ~w(pending attended no_show excused))
     |> validate_number(:amount_paid, greater_than_or_equal_to: 0)

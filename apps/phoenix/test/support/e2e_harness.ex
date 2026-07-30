@@ -185,7 +185,9 @@ defmodule Dhc.E2EHarness do
       %Registration{}
       |> Registration.fixture_changeset(%{
         club_activity_id: Map.fetch!(attrs, "workshopId"),
-        member_user_id: Map.fetch!(attrs, "memberUserId"),
+        member_user_id: Map.get(attrs, "memberUserId"),
+        # ALE-181: display_name is NOT NULL on the registration row.
+        display_name: Map.get(attrs, "displayName", "E2E Member"),
         amount_paid: Map.get(attrs, "amountPaid", 0),
         currency: Map.get(attrs, "currency", "eur"),
         status: Map.get(attrs, "status", "confirmed"),

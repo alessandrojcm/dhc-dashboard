@@ -71,9 +71,16 @@ defmodule Dhc.Workshops do
 
   import Ecto.Query
 
+  alias Dhc.Auth.Principal
   alias Dhc.Repo
   alias Dhc.UserProfiles.UserProfile
   alias Dhc.Workshops.{ExternalUser, Registration, Refund, Workshop, WorkshopInterest}
+
+  # ALE-181: attendee snapshot sentinel for a member registration whose
+  # `member_user_id` resolves to no `user_profiles` row. The snapshot is
+  # populated at write time, so a missing profile surfaces as a stable
+  # sentinel instead of corrupting the read later.
+  @unknown_member "[unknown member]"
 
   # The canonical Phoenix RBAC for coordinator Workshop management reads
   # (calendar + attendees/refunds). Mirrors the corrected RLS roles from
@@ -92,6 +99,20 @@ defmodule Dhc.Workshops do
   @member_registration_actor_type "member"
   @external_registration_actor_type "external"
 
+  # ALE-181: the Workshop summary scalar field set, in one place. The list
+  # read (`summary_query/0`) and the archived-Workshop body
+  # (`archive_workshop/1`, via `build_summary/2`) both build maps with these
+  # scalar keys plus three counts (`interest_count`,
+  # `pending_registration_count`, `confirmed_registration_count`), so a
+  # future field add lands once here instead of drifting between the two
+  # sites. The counts are passed into `build_summary/2` separately because
+  # each caller computes them differently (a SQL aggregate for the list,
+  # the `registration_counts/1` + `interest_count/1` helpers for the single
+  # archived read).
+  @summary_scalar_fields ~w(id title description location start_date end_date
+    max_capacity price_member price_non_member is_public refund_days status
+    announce_discord announce_email created_by)a
+
   @doc """
   Returns the canonical coordinator Workshop management roles.
 
@@ -107,6 +128,18 @@ defmodule Dhc.Workshops do
   """
   @spec member_visible_statuses() :: [String.t()]
   def member_visible_statuses, do: @member_visible_statuses
+
+  @doc """
+  Returns the attendee-snapshot sentinel used when a member registration's
+  `member_user_id` resolves to no `user_profiles` row.
+
+  Exposed so the test fixture (and any other consumer) references the same
+  source of truth as the production write path. The migration carries its
+  own copy of the literal because migrations cannot depend on application
+  modules.
+  """
+  @spec unknown_member() :: String.t()
+  def unknown_member, do: @unknown_member
 
   @doc """
   Lists the authenticated member's Workshop collection.
@@ -595,11 +628,12 @@ defmodule Dhc.Workshops do
   """
   @spec list_workshop_attendees(binary()) :: [map()]
   def list_workshop_attendees(workshop_id) when is_binary(workshop_id) do
+    # ALE-181: read the attendee snapshot (`display_name`, `email`) from the
+    # registration row, not a live join to `user_profiles`/`external_users`.
+    # The `member_user_id`/`external_user_id` columns still drive the
+    # `participant.type` so a member with a missing profile name resolves
+    # to `:member` rather than `:external`.
     from(r in Registration,
-      left_join: p in UserProfile,
-      on: p.principal_id == r.member_user_id,
-      left_join: eu in ExternalUser,
-      on: eu.id == r.external_user_id,
       where: r.club_activity_id == ^workshop_id and r.status in @counted_registration_statuses,
       order_by: [asc: r.created_at],
       select: %{
@@ -617,11 +651,8 @@ defmodule Dhc.Workshops do
         registration_notes: r.registration_notes,
         member_user_id: r.member_user_id,
         external_user_id: r.external_user_id,
-        member_first_name: p.first_name,
-        member_last_name: p.last_name,
-        external_first_name: eu.first_name,
-        external_last_name: eu.last_name,
-        external_email: eu.email
+        display_name: r.display_name,
+        email: r.email
       }
     )
     |> Repo.all()
@@ -638,13 +669,13 @@ defmodule Dhc.Workshops do
   """
   @spec list_workshop_refunds(binary()) :: [map()]
   def list_workshop_refunds(workshop_id) when is_binary(workshop_id) do
+    # ALE-181: participant identity is read from the registration snapshot
+    # (`display_name`, `email`), not a live join. Only the registration is
+    # joined to reach its snapshot; `user_profiles`/`external_users` are no
+    # longer touched here.
     from(rf in Refund,
       inner_join: r in Registration,
       on: r.id == rf.registration_id,
-      left_join: p in UserProfile,
-      on: p.principal_id == r.member_user_id,
-      left_join: eu in ExternalUser,
-      on: eu.id == r.external_user_id,
       where: r.club_activity_id == ^workshop_id,
       order_by: [desc: rf.requested_at],
       select: %{
@@ -659,11 +690,8 @@ defmodule Dhc.Workshops do
         completed_at: rf.completed_at,
         member_user_id: r.member_user_id,
         external_user_id: r.external_user_id,
-        member_first_name: p.first_name,
-        member_last_name: p.last_name,
-        external_first_name: eu.first_name,
-        external_last_name: eu.last_name,
-        external_email: eu.email
+        display_name: r.display_name,
+        email: r.email
       }
     )
     |> Repo.all()
@@ -772,21 +800,77 @@ defmodule Dhc.Workshops do
   end
 
   @doc """
-  Deletes a planned Workshop.
+  Deletes or archives a Workshop.
+
+  ALE-181 rewrite. The gate is registrations-existence, not status: a Workshop
+  with any registration history is soft-deleted (archived) so its financial and
+  audit rows are retained permanently (the financial-tail FKs are RESTRICT); a
+  Workshop with no registrations is hard-deleted. The previous status gate
+  (`planned`-only) is dropped.
+
+  ## Returns
+
+    * `{:ok, :archived, workshop}` — the Workshop had registrations and was
+      soft-deleted (`archived_at` set). The controller returns `200` with the
+      archived Workshop summary body.
+    * `{:ok, :deleted}` — the Workshop had no registrations and was
+      hard-deleted. The controller returns `204`.
+    * `{:error, :already_archived}` — the Workshop was already archived.
+      The controller returns `409`.
+    * `{:error, :not_found}` — no such Workshop. The controller returns
+      `404`.
   """
-  @spec delete_workshop(binary()) :: :ok | {:error, :not_found | :not_deletable}
+  @spec delete_workshop(binary()) ::
+          {:ok, :archived, map()}
+          | {:ok, :deleted}
+          | {:error, :not_found | :already_archived}
   def delete_workshop(workshop_id) when is_binary(workshop_id) do
     case Repo.get(Workshop, workshop_id) do
       nil ->
         {:error, :not_found}
 
-      %Workshop{status: "planned"} = workshop ->
-        {:ok, _} = Repo.delete(workshop)
-        :ok
+      %Workshop{archived_at: %DateTime{}} ->
+        {:error, :already_archived}
 
-      %Workshop{} ->
-        {:error, :not_deletable}
+      %Workshop{} = workshop ->
+        if has_registrations?(workshop_id) do
+          archive_workshop(workshop)
+        else
+          {:ok, _} = Repo.delete(workshop)
+          {:ok, :deleted}
+        end
     end
+  end
+
+  defp has_registrations?(workshop_id) do
+    from(r in Registration, where: r.club_activity_id == ^workshop_id)
+    |> Repo.exists?()
+  end
+
+  # ALE-181: archive a Workshop by stamping `archived_at`. Returns the
+  # archived Workshop summary body so the controller can render `200`
+  # directly. The body is built via `build_summary/2` (not via
+  # `workshop_summary/1`, which filters archived Workshops out) — counts
+  # reuse the existing `registration_counts/1` and `interest_count/1`
+  # helpers.
+  defp archive_workshop(workshop) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    {:ok, archived} =
+      workshop
+      |> Ecto.Changeset.change(archived_at: now)
+      |> Repo.update()
+
+    counts = registration_counts(workshop.id)
+
+    summary =
+      build_summary(archived, %{
+        interest_count: interest_count(workshop.id),
+        pending_registration_count: counts.pending,
+        confirmed_registration_count: counts.confirmed
+      })
+
+    {:ok, :archived, summary}
   end
 
   @doc """
@@ -952,9 +1036,16 @@ defmodule Dhc.Workshops do
   defp insert_member_registration(workshop_id, user_id, payment_intent) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
+    # ALE-181: capture the attendee snapshot at write time so reads no
+    # longer join back to `user_profiles`/`principals`. A missing profile
+    # resolves to the sentinel rather than failing the registration.
+    {display_name, email} = member_snapshot(user_id)
+
     %Registration{
       club_activity_id: workshop_id,
       member_user_id: user_id,
+      display_name: display_name,
+      email: email,
       status: "confirmed",
       stripe_payment_intent_id: Map.fetch!(payment_intent, "id"),
       amount_paid: Map.get(payment_intent, "amount"),
@@ -963,6 +1054,35 @@ defmodule Dhc.Workshops do
       registered_at: now
     }
     |> Repo.insert!()
+  end
+
+  # ALE-181: resolve the member attendee snapshot (`display_name` from
+  # `user_profiles` first/last name, `email` from `principals.email`) for a
+  # `member_user_id` (which is the Principal id). Returns the
+  # `@unknown_member` sentinel with a `nil` email when the profile is
+  # missing so the registration insert never fails on a dangling id.
+  defp member_snapshot(principal_id) do
+    row =
+      from(up in UserProfile,
+        left_join: p in Principal,
+        on: p.id == up.principal_id,
+        where: up.principal_id == ^principal_id,
+        select: %{first_name: up.first_name, last_name: up.last_name, email: p.email}
+      )
+      |> Repo.one()
+
+    case row do
+      nil ->
+        {@unknown_member, nil}
+
+      %{first_name: first, last_name: last, email: email} ->
+        name = String.trim("#{first || ""} #{last || ""}")
+
+        display_name =
+          if name == "", do: @unknown_member, else: name
+
+        {display_name, email}
+    end
   end
 
   defp external_registration_workshop(%Workshop{} = workshop) do
@@ -1111,9 +1231,21 @@ defmodule Dhc.Workshops do
 
       now = DateTime.utc_now() |> DateTime.truncate(:second)
 
+      # ALE-181: capture the attendee snapshot at write time. The external
+      # checkout customer details are the source of truth for the snapshot;
+      # `upsert_external_user/1` already normalized them, so reuse the
+      # customer map rather than re-reading the upserted `external_users` row.
+      display_name =
+        String.trim("#{customer.first_name || ""} #{customer.last_name || ""}")
+
+      display_name =
+        if display_name == "", do: @unknown_member, else: display_name
+
       %Registration{
         club_activity_id: workshop_id,
         external_user_id: external_user.id,
+        display_name: display_name,
+        email: customer.email,
         status: "confirmed",
         stripe_checkout_session_id: checkout_session_id,
         amount_paid: Map.fetch!(checkout_session, "amount_total"),
@@ -1434,12 +1566,34 @@ defmodule Dhc.Workshops do
     end
   end
 
+  # ALE-181: build a summary map from a `Workshop` struct plus its three
+  # counts. Shared by `archive_workshop/1` (the archived-Workshop body, which
+  # cannot use `workshop_summary/1` because that read filters archived rows
+  # out) so the archived body stays the same shape as the list summary
+  # without duplicating the field list.
+  defp build_summary(%Workshop{} = workshop, counts) do
+    workshop
+    |> Map.take(@summary_scalar_fields)
+    |> Map.merge(counts)
+  end
+
   defp summary_query do
+    # ALE-181: exclude archived (soft-deleted) Workshops from summaries so
+    # they drop out of the member collection and coordinator calendar
+    # without losing their financial/audit rows.
+    #
+    # The `select` field set mirrors `@summary_scalar_fields` +
+    # `@summary_count_fields` (the same shape `build_summary/2` builds for
+    # the archived-Workshop body). The SQL select names each field
+    # explicitly against its binding because Ecto's `select` needs literal
+    # field references, not a `Map.take`; keep the two in sync when adding a
+    # summary field.
     from(w in Workshop,
       left_join: i in WorkshopInterest,
       on: i.club_activity_id == w.id,
       left_join: r in Registration,
       on: r.club_activity_id == w.id,
+      where: is_nil(w.archived_at),
       group_by: w.id,
       select: %{
         id: w.id,
@@ -1539,22 +1693,26 @@ defmodule Dhc.Workshops do
     }
   end
 
-  # Branch on the source-of-truth FK column, not on the joined names, so a
-  # member with a missing profile name still resolves to `:member`.
+  # ALE-181: participant identity is read from the registration's attendee
+  # snapshot (`display_name`, `email`), not a live join to
+  # `user_profiles`/`external_users`. The source-of-truth FK column
+  # (`member_user_id` vs `external_user_id`) still drives the `type` so a
+  # member with a missing profile name resolves to `:member` rather than
+  # `:external`.
   defp participant(%{member_user_id: nil, external_user_id: ext_id} = row)
        when not is_nil(ext_id) do
     %{
       type: :external,
-      display_name: "#{row.external_first_name} #{row.external_last_name}",
-      email: row.external_email
+      display_name: row.display_name,
+      email: row.email
     }
   end
 
   defp participant(%{member_user_id: member_id} = row) when not is_nil(member_id) do
     %{
       type: :member,
-      display_name: "#{row.member_first_name} #{row.member_last_name}",
-      email: nil
+      display_name: row.display_name,
+      email: row.email
     }
   end
 end
