@@ -1,0 +1,1 @@
+Research current official @testing-library/svelte guidance for Svelte 5 + Vitest component tests using jsdom. Need exact setup, render/userEvent APIs, querying an input by label, and testing callback values during typing. Also note whether @testing-library/user-event is separate. Return concise primary-source guidance only; do not edit.
