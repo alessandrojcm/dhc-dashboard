@@ -1,0 +1,19 @@
+In the repo /Users/alessandrojcm/repos/dhc-dashboard, I need to find the actual Ecto/Ecto.Query calls that justify proposed indexes for the "ALE-185 Index additions and redundant index cleanup" ticket. For each table/column set below, find the query code (file:line) that filters/orders on those columns — that's the evidence the index is needed. Be thorough; check `apps/phoenix/lib/dhc/**/*.ex`.
+
+Tables and column sets to find queries for:
+1. `club_activities` — filters/oders on `(status, start_date)` or `status` alone or `start_date` alone
+2. `club_activity_registrations` — queries filtering on `club_activity_id` + `status IN ('pending','confirmed')`, capacity counts
+3. `notifications` — queries by `user_id`/`principal_id` + `created_at` ordering; unread count queries (`read_at IS NULL`)
+4. `inventory_items` — queries by `container_id`+`created_at`; `category_id`+`created_at`; `out_for_maintenance = true`+`created_at`
+5. `inventory_history` — queries by `item_id`+`created_at`; `created_at` alone
+6. `principal_tokens` — queries by `(principal_id, context)`; `created_at` for expiry cleanup
+7. `user_profiles` — first_name/last_name ordering (to confirm the prefix-overlap drop is safe): find queries that order by `last_name, first_name` and by `first_name, last_name`
+
+Also look for any query that filters on the standalone enum columns that have their own indexes today — to see whether those indexes are actually used:
+- `club_activity_registrations.status` alone
+- `attendance.status`, `attendance.marked_at`
+- `club_activity_refunds.status`
+- `waitlist.status` (note: there's already an index `[:status]` on waitlist)
+- `inventory_history.action`
+
+Return, per item: the query code snippet (file:line) and a one-line judgment: "uses proposed composite" / "uses only prefix" / "uses only standalone" / "no query found". Be concise. This is research only, do not modify any files.
