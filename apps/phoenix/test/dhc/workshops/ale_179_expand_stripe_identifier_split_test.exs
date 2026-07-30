@@ -40,9 +40,9 @@ defmodule Dhc.Workshops.Ale179ExpandStripeIdentifierSplitTest do
         Repo.query!(
           """
           INSERT INTO club_activity_registrations
-            (id, club_activity_id, member_user_id, stripe_checkout_session_id,
+            (id, club_activity_id, member_user_id, display_name, stripe_checkout_session_id,
              amount_paid, currency, status, registered_at, created_at, updated_at)
-          VALUES ($1, $2, $3, $4, 1000, 'eur', 'confirmed', NOW(), NOW(), NOW())
+          VALUES ($1, $2, $3, 'Member Test', $4, 1000, 'eur', 'confirmed', NOW(), NOW(), NOW())
           """,
           [
             Ecto.UUID.dump!(Ecto.UUID.generate()),
@@ -71,9 +71,9 @@ defmodule Dhc.Workshops.Ale179ExpandStripeIdentifierSplitTest do
         Repo.query!(
           """
           INSERT INTO club_activity_registrations
-            (id, club_activity_id, external_user_id, stripe_checkout_session_id,
+            (id, club_activity_id, external_user_id, display_name, stripe_checkout_session_id,
              amount_paid, currency, status, registered_at, created_at, updated_at)
-          VALUES ($1, $2, $3, $4, 1000, 'eur', 'confirmed', NOW(), NOW(), NOW())
+          VALUES ($1, $2, $3, 'External Guest', $4, 1000, 'eur', 'confirmed', NOW(), NOW(), NOW())
           """,
           [
             Ecto.UUID.dump!(Ecto.UUID.generate()),
@@ -101,9 +101,9 @@ defmodule Dhc.Workshops.Ale179ExpandStripeIdentifierSplitTest do
         Repo.query!(
           """
           INSERT INTO club_activity_registrations
-            (id, club_activity_id, member_user_id, stripe_checkout_session_id,
+            (id, club_activity_id, member_user_id, display_name, stripe_checkout_session_id,
              amount_paid, currency, status, registered_at, created_at, updated_at)
-          VALUES ($1, $2, $3, $4, 1000, 'eur', 'confirmed', NOW(), NOW(), NOW())
+          VALUES ($1, $2, $3, 'Member Test', $4, 1000, 'eur', 'confirmed', NOW(), NOW(), NOW())
           """,
           [
             Ecto.UUID.dump!(Ecto.UUID.generate()),
@@ -217,10 +217,10 @@ defmodule Dhc.Workshops.Ale179ExpandStripeIdentifierSplitTest do
           Repo.query!(
             """
             INSERT INTO club_activity_registrations
-              (id, club_activity_id, member_user_id,
+              (id, club_activity_id, member_user_id, display_name,
                stripe_payment_intent_id, stripe_checkout_session_id,
                amount_paid, currency, status, registered_at, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, $5, 1000, 'eur', 'confirmed', NOW(), NOW(), NOW())
+            VALUES ($1, $2, $3, 'Member Test', $4, $5, 1000, 'eur', 'confirmed', NOW(), NOW(), NOW())
             """,
             [
               Ecto.UUID.dump!(Ecto.UUID.generate()),

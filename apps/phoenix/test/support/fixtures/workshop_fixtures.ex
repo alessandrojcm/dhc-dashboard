@@ -17,6 +17,7 @@ defmodule Dhc.WorkshopFixtures do
 
   alias Dhc.MemberFixtures
   alias Dhc.Repo
+  alias Dhc.Workshops
   alias Dhc.Workshops.{ExternalUser, Refund, Registration, Workshop, WorkshopInterest}
 
   @doc """
@@ -140,6 +141,15 @@ defmodule Dhc.WorkshopFixtures do
       club_activity_id: Map.fetch!(attrs, :workshop_id),
       member_user_id: Map.get(attrs, :member_user_id),
       external_user_id: Map.get(attrs, :external_user_id),
+      # ALE-181: attendee snapshot. The fixture populates the snapshot so
+      # existing attendee-read tests keep passing without a live join. The
+      # fixture does not resolve the profile name from `user_profiles` /
+      # `external_users` — callers that care about a specific display name
+      # pass `:display_name`/`:email` explicitly, mirroring the production
+      # write paths that capture the snapshot at registration time. The
+      # default references the shared sentinel so the literal lives once.
+      display_name: Map.get(attrs, :display_name, Workshops.unknown_member()),
+      email: Map.get(attrs, :email),
       stripe_checkout_session_id: Map.get(attrs, :stripe_checkout_session_id),
       stripe_payment_intent_id: Map.get(attrs, :stripe_payment_intent_id),
       amount_paid: Map.get(attrs, :amount_paid, 1000),
