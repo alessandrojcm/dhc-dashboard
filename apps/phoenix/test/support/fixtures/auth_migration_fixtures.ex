@@ -108,6 +108,63 @@ defmodule Dhc.AuthMigrationFixtures do
   end
 
   @doc """
+  Restores schema objects changed by migrations that shipped after M2.
+
+  The rehearsal starts from a pre-M2 backup, while testcontainers migrates the
+  database through ALE-186 first. Recreate the empty history table, remove the
+  later Notification ownership FK, and restore the old ownership column names
+  before `M2.rollback!/1` rebuilds the legacy auth foreign keys.
+  """
+  def restore_pre_m2_schema! do
+    repo().query!(
+      """
+      CREATE TABLE IF NOT EXISTS waitlist_status_history (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        waitlist_id uuid REFERENCES waitlist(id),
+        old_status waitlist_status,
+        new_status waitlist_status NOT NULL,
+        changed_at timestamptz DEFAULT NOW(),
+        changed_by uuid REFERENCES principals(id),
+        notes text
+      )
+      """,
+      []
+    )
+
+    repo().query!(
+      """
+      DO $$
+      BEGIN
+        ALTER TABLE notifications
+          DROP CONSTRAINT IF EXISTS notifications_principal_id_fkey;
+
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'notifications'
+            AND column_name = 'principal_id'
+        ) THEN
+          ALTER TABLE notifications RENAME COLUMN principal_id TO user_id;
+        END IF;
+
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'user_audit_log'
+            AND column_name = 'principal_id'
+        ) THEN
+          ALTER TABLE user_audit_log RENAME COLUMN principal_id TO user_id;
+        END IF;
+      END
+      $$
+      """,
+      []
+    )
+
+    :ok
+  end
+
+  @doc """
   Inserts a production-shaped Member row: `auth.users` + `user_profiles`
   + `member_profiles` + `user_roles` (member role), all keyed by the same
   UUID. Returns a map with the shared UUID and the fixture inputs.

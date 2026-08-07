@@ -17,7 +17,6 @@ import {
 } from "@tanstack/svelte-query";
 import { browser } from "$app/environment";
 import { env } from "$env/dynamic/public";
-import type { Database } from "$database";
 import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
 import { Bell } from "lucide-svelte";
 import { connectNotificationRealtime } from "./notification-realtime.svelte";
@@ -25,7 +24,12 @@ import { connectNotificationRealtime } from "./notification-realtime.svelte";
 // Initialize dayjs plugins
 dayjs.extend(relativeTime);
 
-type Notification = Database["public"]["Tables"]["notifications"]["Row"];
+type Notification = {
+	id: string;
+	body: string;
+	created_at: string;
+	read_at: string | null;
+};
 
 type NotificationsPage = {
 	data: Notification[];
@@ -68,7 +72,6 @@ function toNotificationRow(notification: ApiNotification): Notification {
 		body: notification.body,
 		created_at: notification.createdAt,
 		read_at: notification.readAt,
-		user_id: "",
 	};
 }
 

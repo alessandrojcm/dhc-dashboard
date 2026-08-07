@@ -32,6 +32,9 @@ defmodule DhcWeb.NotificationsControllerTest do
   end
 
   setup do
+    Dhc.AuthFixtures.principal_fixture(%{id: @user_id})
+    Dhc.AuthFixtures.principal_fixture(%{id: @other_user_id})
+
     original = Application.get_env(:dhc, :auth_verifier)
     Application.put_env(:dhc, :auth_verifier, Verifier)
 
@@ -231,7 +234,7 @@ defmodule DhcWeb.NotificationsControllerTest do
 
     %Notification{
       id: Keyword.get(attrs, :id, Ecto.UUID.generate()),
-      user_id: Keyword.fetch!(attrs, :user_id),
+      principal_id: Keyword.fetch!(attrs, :user_id),
       body: Keyword.fetch!(attrs, :body),
       created_at: created_at,
       read_at: read_at

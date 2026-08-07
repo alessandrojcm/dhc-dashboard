@@ -111,7 +111,9 @@ defmodule Dhc.Invitations.BulkInviteWorkerTest do
       assert %ProcessingLog{total_count: 1, success_count: 1, failure_count: 0} =
                Repo.get_by(ProcessingLog, principal_id: created_by_id)
 
-      assert %Notification{body: body} = Repo.get_by(Notification, user_id: created_by_id)
+      assert %Notification{body: body} =
+               Repo.get_by(Notification, principal_id: created_by_id)
+
       assert body == "Successfully processed 1 invitations out of 1"
 
       # Exactly one commit-safe creation signal for the admin's topic.

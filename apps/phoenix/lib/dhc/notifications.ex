@@ -45,12 +45,12 @@ defmodule Dhc.Notifications do
   `{:error, reason}` on a rejected nested call or insert failure.
   """
   @spec create(String.t(), String.t()) :: :ok | {:error, term()}
-  def create(user_id, body) when is_binary(user_id) and is_binary(body) do
+  def create(principal_id, body) when is_binary(principal_id) and is_binary(body) do
     if Repo.in_transaction?() do
       {:error, :notification_create_inside_transaction}
     else
       Ecto.Multi.new()
-      |> Ecto.Multi.insert(:notification, notification_changeset(user_id, body))
+      |> Ecto.Multi.insert(:notification, notification_changeset(principal_id, body))
       |> Repo.transact()
       |> after_commit_signal()
     end
@@ -66,24 +66,26 @@ defmodule Dhc.Notifications do
 
   defp after_commit_signal({:error, _operation, reason, _changes}), do: {:error, reason}
 
-  defp notification_changeset(user_id, body) do
+  defp notification_changeset(principal_id, body) do
     changeset =
       %Notification{}
       |> Ecto.Changeset.cast(%{body: body}, [:body])
       |> Ecto.Changeset.validate_required([:body])
 
-    case Ecto.UUID.cast(user_id) do
-      {:ok, user_id} -> Ecto.Changeset.put_change(changeset, :user_id, user_id)
-      :error -> Ecto.Changeset.add_error(changeset, :user_id, "is invalid")
+    case Ecto.UUID.cast(principal_id) do
+      {:ok, principal_id} ->
+        Ecto.Changeset.put_change(changeset, :principal_id, principal_id)
+
+      :error ->
+        Ecto.Changeset.add_error(changeset, :principal_id, "is invalid")
     end
   end
 
   @doc """
   Returns cursor-paginated, domain-shaped notifications for a single user.
 
-  The query intentionally mirrors the old `notifications.user_id = auth.uid()`
-  RLS boundary in application code: callers must pass the authenticated
-  Supabase user id, and only rows for that user are considered.
+  Callers must pass the authenticated Principal id, and only rows owned by
+  that Principal are considered.
   """
   @spec list_for_user(String.t(), map()) :: {:ok, map()} | {:error, atom()}
   def list_for_user(user_id, params \\ %{})
@@ -110,7 +112,7 @@ defmodule Dhc.Notifications do
   @spec mark_read(String.t(), String.t()) :: {:ok, Notification.t()} | {:error, :not_found}
   def mark_read(user_id, notification_id)
       when is_binary(user_id) and is_binary(notification_id) do
-    case Repo.get_by(Notification, id: notification_id, user_id: user_id) do
+    case Repo.get_by(Notification, id: notification_id, principal_id: user_id) do
       nil ->
         {:error, :not_found}
 
@@ -128,7 +130,7 @@ defmodule Dhc.Notifications do
   def mark_all_read(user_id) when is_binary(user_id) do
     {updated_count, _} =
       Notification
-      |> where([n], n.user_id == ^user_id and is_nil(n.read_at))
+      |> where([n], n.principal_id == ^user_id and is_nil(n.read_at))
       |> Repo.update_all(set: [read_at: DateTime.utc_now() |> DateTime.truncate(:second)])
 
     {:ok, updated_count}
@@ -163,14 +165,14 @@ defmodule Dhc.Notifications do
 
   defp unread_count(user_id) do
     Notification
-    |> where([n], n.user_id == ^user_id and is_nil(n.read_at))
+    |> where([n], n.principal_id == ^user_id and is_nil(n.read_at))
     |> select([n], count(n.id))
     |> Repo.one()
   end
 
   defp notification_rows(user_id, opts, cursor) do
     Notification
-    |> where([n], n.user_id == ^user_id)
+    |> where([n], n.principal_id == ^user_id)
     |> CursorPagination.apply_cursor(
       cursor,
       Map.merge(opts, %{sort: "createdAt", direction: "desc"}),
