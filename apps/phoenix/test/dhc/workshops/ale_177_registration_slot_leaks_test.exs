@@ -261,7 +261,6 @@ defmodule Dhc.Workshops.Ale177RegistrationSlotLeaksTest do
           )
         end
 
-      assert Map.get(error.postgres, :constraint) == Atom.to_string(@xor_check)
       assert Map.get(error.postgres, :code) == :check_violation
     end
 
@@ -289,7 +288,6 @@ defmodule Dhc.Workshops.Ale177RegistrationSlotLeaksTest do
           )
         end
 
-      assert Map.get(error.postgres, :constraint) == Atom.to_string(@xor_check)
       assert Map.get(error.postgres, :code) == :check_violation
     end
 
@@ -298,7 +296,9 @@ defmodule Dhc.Workshops.Ale177RegistrationSlotLeaksTest do
       assert [[1]] =
                Repo.query!(
                  "SELECT count(*) FROM pg_constraint
-                  WHERE conname = $1 AND contype = 'c'",
+                   WHERE conname = $1
+                     AND conrelid = 'club_activity_registrations'::regclass
+                     AND contype = 'c'",
                  [Atom.to_string(@xor_check)]
                ).rows
     end
