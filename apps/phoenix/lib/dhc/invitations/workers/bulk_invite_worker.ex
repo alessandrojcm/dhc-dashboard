@@ -12,10 +12,10 @@ defmodule Dhc.Invitations.BulkInviteWorker do
   Acceptance, not at issue. This worker now performs **only** the issue-time
   work for each invite:
 
-    * mint a fresh Phoenix UUID for `invitation.user_id` (the eventual
+    * mint a fresh Phoenix UUID for `invitation.prospective_principal_id` (the eventual
       Principal id);
     * insert the pending `invitations` row carrying `email`, `date_of_birth`,
-      `expires_at` (7 days), `created_by`, and `invitation_type`;
+      `expires_at` (7 days), `created_by_principal_id`, and `invitation_type`;
     * enqueue the `inviteMember` email;
     * if the invite came from a waitlist, mark the waitlist entry `invited`.
 

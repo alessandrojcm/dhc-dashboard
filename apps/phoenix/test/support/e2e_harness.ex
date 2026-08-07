@@ -131,10 +131,9 @@ defmodule Dhc.E2EHarness do
     date_of_birth = parse_date(Map.get(attrs, "dateOfBirth"), ~D[1990-01-01])
 
     invitation =
-      %Invitation{}
+      %Invitation{prospective_principal_id: Ecto.UUID.generate()}
       |> Invitation.changeset(%{
         email: Map.fetch!(attrs, "email"),
-        user_id: Ecto.UUID.generate(),
         status: status,
         expires_at: expires_at,
         invitation_type: Map.get(attrs, "invitationType", "admin"),
@@ -151,7 +150,7 @@ defmodule Dhc.E2EHarness do
       invitationId: invitation.id,
       email: invitation.email,
       dateOfBirth: Date.to_iso8601(date_of_birth),
-      userId: invitation.user_id
+      userId: invitation.prospective_principal_id
     }
   end
 
