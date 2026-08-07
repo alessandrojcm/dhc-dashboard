@@ -54,7 +54,7 @@ defmodule Dhc.Invitations.Repository do
   Inserts a pending Invitation and returns its ID.
 
   ALE-162 (ADR 0010): issue time is side-effect free — this function mints a
-  fresh Phoenix UUID for `invitation.user_id` (the eventual Principal id) and
+  fresh Phoenix UUID for `invitation.prospective_principal_id` (the eventual Principal id) and
   stores the date of birth on the invitation row so `verify_credentials` can
   match without a `user_profiles` row. It does **not** call Supabase Auth,
   create a Stripe customer, or insert a `user_profiles` row. All of that moves
@@ -72,11 +72,17 @@ defmodule Dhc.Invitations.Repository do
     waitlist_id =
       if is_binary(original_invite), do: original_invite, else: Map.get(invite_data, "waitlistId")
 
-    with :ok <- expire_pending_for_email(invite_data["email"]),
-         {:ok, invitation_id} <-
-           insert_pending_invitation(invite_data, waitlist_id, created_by_id) do
-      {:ok, invitation_id}
-    else
+    Repo.transaction(fn ->
+      with :ok <- expire_pending_for_email(invite_data["email"]),
+           {:ok, invitation_id} <-
+             insert_pending_invitation(invite_data, waitlist_id, created_by_id) do
+        invitation_id
+      else
+        {:error, reason} -> Repo.rollback(reason)
+      end
+    end)
+    |> case do
+      {:ok, invitation_id} -> {:ok, invitation_id}
       {:error, reason} -> {:error, {:create_invitation, reason}}
     end
   end
@@ -97,7 +103,7 @@ defmodule Dhc.Invitations.Repository do
   @doc """
   Inserts a pending Invitation and returns its ID.
 
-  Mints a fresh Phoenix UUID for `user_id` (the eventual Principal id). Under
+  Mints a fresh Phoenix UUID for `prospective_principal_id` (the eventual Principal id). Under
   ALE-162 this is not an `auth.users` id; the auth.users FK was dropped and
   acceptance will create the Principal with this id.
   """
@@ -107,11 +113,11 @@ defmodule Dhc.Invitations.Repository do
     invitation = %Invitation{
       id: Ecto.UUID.generate(),
       email: invite_data["email"],
-      user_id: Ecto.UUID.generate(),
+      prospective_principal_id: Ecto.UUID.generate(),
       waitlist_id: waitlist_id,
       status: "pending",
       expires_at: DateTime.utc_now() |> DateTime.add(7, :day) |> DateTime.truncate(:second),
-      created_by: created_by_id,
+      created_by_principal_id: created_by_id,
       invitation_type: Map.get(invite_data, "invitationType", "admin"),
       metadata: Map.get(invite_data, "metadata"),
       first_name: invite_data["firstName"],
@@ -171,7 +177,7 @@ defmodule Dhc.Invitations.Repository do
     failure_count = length(results) - success_count
 
     log = %ProcessingLog{
-      user_id: created_by_id,
+      principal_id: created_by_id,
       total_count: length(results),
       success_count: success_count,
       failure_count: failure_count,

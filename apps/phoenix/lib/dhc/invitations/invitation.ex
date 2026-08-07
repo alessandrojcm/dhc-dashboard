@@ -14,11 +14,11 @@ defmodule Dhc.Invitations.Invitation do
     # `supabase_user_id` once acceptance materializes the record set. No
     # `auth.users` row backs it (the auth.users FK was dropped in the
     # ALE-162 migration); the FK to `principals.id` is added in M2/ALE-163.
-    field :user_id, Ecto.UUID
+    field :prospective_principal_id, Ecto.UUID
     field :waitlist_id, Ecto.UUID
     field :status, :string, default: "pending"
     field :expires_at, :utc_datetime
-    field :created_by, Ecto.UUID
+    field :created_by_principal_id, Ecto.UUID
     field :invitation_type, :string
     field :metadata, :map
 
@@ -46,11 +46,9 @@ defmodule Dhc.Invitations.Invitation do
     invitation
     |> cast(attrs, [
       :email,
-      :user_id,
       :waitlist_id,
       :status,
       :expires_at,
-      :created_by,
       :invitation_type,
       :metadata,
       :first_name,
@@ -61,7 +59,7 @@ defmodule Dhc.Invitations.Invitation do
     ])
     |> validate_required([
       :email,
-      :user_id,
+      :prospective_principal_id,
       :status,
       :expires_at,
       :invitation_type,

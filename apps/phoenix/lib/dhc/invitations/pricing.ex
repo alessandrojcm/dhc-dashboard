@@ -71,7 +71,8 @@ defmodule Dhc.Invitations.Pricing do
     body = %{
       "name" => name,
       "email" => invitation.email,
-      "metadata[invited_by]" => invitation.created_by || invitation.user_id
+      "metadata[invited_by]" =>
+        invitation.created_by_principal_id || invitation.prospective_principal_id
     }
 
     idempotency_key = "invitation-pricing:#{invitation.id}:customer"

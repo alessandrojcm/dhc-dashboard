@@ -79,7 +79,7 @@ defmodule Dhc.Auth do
   Registers a Principal with a specific id and normalized email.
 
   ALE-162 (ADR 0010): Invitation Acceptance creates the Principal inside the
-  acceptance transaction with `id = invitation.user_id` (the fresh Phoenix UUID
+  acceptance transaction with `id = invitation.prospective_principal_id` (the fresh Phoenix UUID
   minted at issue time). This keeps the post-M1 invariant
   `principals.id == user_profiles.supabase_user_id == member_profiles.id` from
   the moment the record set is born — there is never a Member without a
