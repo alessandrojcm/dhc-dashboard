@@ -43,14 +43,15 @@ defmodule Dhc.WorkshopFixtures do
     attrs = Enum.into(attrs, %{})
     now = DateTime.utc_now() |> DateTime.truncate(:second)
     default_start = DateTime.add(now, 7 * 24 * 60 * 60, :second)
-    default_end = DateTime.add(default_start, 2 * 60 * 60, :second)
+    start_date = Map.get(attrs, :start_date, default_start)
+    default_end = DateTime.add(start_date, 2 * 60 * 60, :second)
 
     {:ok, workshop} =
       %Workshop{
         title: Map.get(attrs, :title, "Test Workshop"),
         description: Map.get(attrs, :description, "A test workshop"),
         location: Map.get(attrs, :location, "Test Location"),
-        start_date: Map.get(attrs, :start_date, default_start),
+        start_date: start_date,
         end_date: Map.get(attrs, :end_date, default_end),
         max_capacity: Map.get(attrs, :max_capacity, 20),
         price_member: Map.get(attrs, :price_member, 1000.0),
