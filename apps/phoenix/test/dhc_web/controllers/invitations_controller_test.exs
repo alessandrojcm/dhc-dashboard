@@ -521,7 +521,7 @@ defmodule DhcWeb.InvitationsControllerTest do
 
       assert Repo.get!(Invitation, invitation_id).status == "accepted"
 
-      # ALE-162: acceptance creates the Principal with id = invitation.user_id.
+      # ALE-162: acceptance creates the pre-allocated prospective Principal.
       assert %Principal{id: ^user_id, email: "accept@example.com"} =
                Repo.get!(Principal, user_id)
 
@@ -684,7 +684,7 @@ defmodule DhcWeb.InvitationsControllerTest do
       %{invitation_id: invitation_id, user_id: user_id} =
         insert_invitation_with_profile(email: "rollback@example.com", waitlist: true)
 
-      # Pre-existing Principal/Member records for invitation.user_id —
+      # Pre-existing Principal/Member records for the prospective Principal id —
       # acceptance must detect this and roll back as :invalid_invitation
       # (replay defense / belt-and-braces check per ADR 0010).
       Repo.insert!(%Principal{id: user_id, email: "existing-#{user_id}@example.com"})
@@ -1002,12 +1002,12 @@ defmodule DhcWeb.InvitationsControllerTest do
       %Invitation{
         id: id,
         email: Keyword.get(attrs, :email, "test#{:rand.uniform(1_000_000)}@example.com"),
-        user_id: Keyword.get(attrs, :user_id, user_id),
+        prospective_principal_id: Keyword.get(attrs, :user_id, user_id),
         waitlist_id: Keyword.get(attrs, :waitlist_id),
         status: Keyword.get(attrs, :status, "pending"),
         expires_at: expires_at,
         created_at: created_at,
-        created_by: Keyword.get(attrs, :created_by),
+        created_by_principal_id: Keyword.get(attrs, :created_by),
         invitation_type: Keyword.get(attrs, :invitation_type, "member"),
         first_name: Keyword.get(attrs, :first_name, "Ada"),
         last_name: Keyword.get(attrs, :last_name, "Lovelace"),
@@ -1054,7 +1054,7 @@ defmodule DhcWeb.InvitationsControllerTest do
       %Invitation{
         id: invitation_id,
         email: email,
-        user_id: user_id,
+        prospective_principal_id: user_id,
         waitlist_id: waitlist_id,
         status: Keyword.get(attrs, :status, "pending"),
         expires_at: expires_at,
@@ -1133,7 +1133,7 @@ defmodule DhcWeb.InvitationsControllerTest do
       %Invitation{
         id: invitation_id,
         email: email,
-        user_id: user_id,
+        prospective_principal_id: user_id,
         waitlist_id: waitlist_id,
         status: "pending",
         expires_at: expires_at,

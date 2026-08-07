@@ -130,13 +130,13 @@ defmodule Dhc.Invitations do
       if the pricing endpoint already attached one);
     * completes the Stripe payment (SetupIntent + subscriptions + first
       invoice confirmation) — failure rolls back the whole transaction;
-    * creates the `Principal` with `id = invitation.user_id` and the
+    * creates the `Principal` with `id = invitation.prospective_principal_id` and the
       invitation's email as the authoritative normalized login email;
     * reuses the existing waitlist `UserProfile` when the invitation came
       from a waitlist entry, or creates a fresh one (ALE-176) — in both
       cases the UserProfile ends keyed by `principal_id = invitation
-      .user_id` (the post-M1 invariant holds from birth);
-    * creates the `MemberProfile` keyed by `invitation.user_id`;
+      .prospective_principal_id` (the post-M1 invariant holds from birth);
+    * creates the `MemberProfile` keyed by `invitation.prospective_principal_id`;
     * grants the `member` role;
     * flips the invitation to `accepted`;
     * sets `user_profile.is_active = true`;
@@ -151,7 +151,7 @@ defmodule Dhc.Invitations do
   The invitation-status flip is the replay defense: a second `accept` call
   finds no pending invitation and rolls back with `:invalid_invitation`. The
   15-minute verification token is **not** single-use (ADR 0010). A pre-existing
-  `MemberProfile` for `invitation.user_id` is treated as `:invalid_invitation`
+  `MemberProfile` for `invitation.prospective_principal_id` is treated as `:invalid_invitation`
   and rolls back. Any failure — Stripe, Principal insert, UserProfile insert,
   MemberProfile insert — rolls back the entire record set, leaving no partial
   account (the spec's "no partial record set" invariant).
@@ -186,7 +186,9 @@ defmodule Dhc.Invitations do
         # Replay defense: a pre-existing MemberProfile for this user_id means
         # a prior acceptance already committed. The invitation-status flip is
         # the primary replay guard; this is a belt-and-braces check.
-        if Repo.exists?(from(m in MemberProfile, where: m.id == ^invitation.user_id)) do
+        if Repo.exists?(
+             from(m in MemberProfile, where: m.id == ^invitation.prospective_principal_id)
+           ) do
           Repo.rollback(:invalid_invitation)
         end
 
@@ -210,11 +212,13 @@ defmodule Dhc.Invitations do
           {:error, reason} -> Repo.rollback({:payment_failed, reason})
         end
 
-        # ALE-162: create the Principal with id = invitation.user_id. This is
+        # ALE-162: create the Principal with the pre-allocated invitation id. This is
         # the post-M1 invariant from birth: principals.id == user_profiles
         # .supabase_user_id == member_profiles.id. The Principal's email is
         # the authoritative normalized login email from the invitation.
-        case Auth.register_principal_with_id(invitation.user_id, %{email: invitation.email}) do
+        case Auth.register_principal_with_id(invitation.prospective_principal_id, %{
+               email: invitation.email
+             }) do
           {:ok, _principal} -> :ok
           {:error, _changeset} -> Repo.rollback(:principal_creation_failed)
         end
@@ -234,7 +238,7 @@ defmodule Dhc.Invitations do
           reuse_or_create_user_profile(invitation, customer_id, now)
 
         member_profile = %MemberProfile{
-          id: invitation.user_id,
+          id: invitation.prospective_principal_id,
           user_profile_id: user_profile_id,
           next_of_kin_name: next_of_kin_name,
           next_of_kin_phone: next_of_kin_phone,
@@ -255,7 +259,7 @@ defmodule Dhc.Invitations do
 
         Repo.insert_all(
           UserRole,
-          [[principal_id: invitation.user_id, role: "member"]],
+          [[principal_id: invitation.prospective_principal_id, role: "member"]],
           on_conflict: :nothing,
           conflict_target: [:principal_id, :role]
         )
@@ -268,7 +272,7 @@ defmodule Dhc.Invitations do
           ]
         )
 
-        %{member_id: invitation.user_id}
+        %{member_id: invitation.prospective_principal_id}
       end)
     end
   end
@@ -282,7 +286,7 @@ defmodule Dhc.Invitations do
     case payment_processor().create_customer(
            invitation.email,
            name,
-           invitation.created_by || invitation.user_id,
+           invitation.created_by_principal_id || invitation.prospective_principal_id,
            invitation.id
          ) do
       {:ok, customer_id} -> customer_id
@@ -319,7 +323,7 @@ defmodule Dhc.Invitations do
     if waitlist_profile do
       waitlist_profile
       |> Ecto.Changeset.change(
-        principal_id: invitation.user_id,
+        principal_id: invitation.prospective_principal_id,
         is_active: true,
         customer_id: customer_id,
         updated_at: now
@@ -330,7 +334,7 @@ defmodule Dhc.Invitations do
     else
       user_profile = %UserProfile{
         id: Ecto.UUID.generate(),
-        principal_id: invitation.user_id,
+        principal_id: invitation.prospective_principal_id,
         first_name: invitation.first_name,
         last_name: invitation.last_name,
         phone_number: invitation.phone_number,
