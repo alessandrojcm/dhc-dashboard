@@ -70,6 +70,42 @@ defmodule Dhc.MemberProfiles.LinkageDriftTest do
 
       assert_linkage_drift_violation(error)
     end
+
+    test "INSERT member_profiles linked to a user profile with no principal raises" do
+      profile_id = Ecto.UUID.generate()
+
+      _ =
+        Repo.query!(
+          """
+          INSERT INTO user_profiles
+            (id, principal_id, first_name, last_name, is_active, date_of_birth,
+             gender, phone_number, social_media_consent, created_at, updated_at)
+          VALUES ($1, NULL, 'Unclaimed', 'Profile', true, '1990-01-01',
+                  'man (cis)', '+353810000000', 'no', NOW(), NOW())
+          """,
+          [Ecto.UUID.dump!(profile_id)]
+        )
+
+      principal_id = Ecto.UUID.generate()
+      {:ok, _} = Dhc.Auth.register_principal_with_id(principal_id, %{email: unique_email()})
+
+      error =
+        assert_raise Postgrex.Error, fn ->
+          Repo.query!(
+            """
+            INSERT INTO member_profiles
+              (id, user_profile_id, next_of_kin_name, next_of_kin_phone,
+               preferred_weapon, membership_start_date, insurance_form_submitted,
+               additional_data, created_at, updated_at)
+            VALUES ($1, $2, 'Kin', '+353820000000', ARRAY['longsword']::preferred_weapon[],
+                    NOW(), false, '{}'::jsonb, NOW(), NOW())
+            """,
+            [Ecto.UUID.dump!(principal_id), Ecto.UUID.dump!(profile_id)]
+          )
+        end
+
+      assert_linkage_drift_violation(error)
+    end
   end
 
   describe "desired: a linked pair that agrees is accepted" do
@@ -127,6 +163,13 @@ defmodule Dhc.MemberProfiles.LinkageDriftTest do
           """,
           [Ecto.UUID.dump!(Ecto.UUID.generate()), Ecto.UUID.dump!(principal_id)]
         )
+
+      :ok
+    end
+
+    test "user_profiles(customer_id) partial unique allows multiple empty customer ids" do
+      MemberFixtures.member_fixture(customer_id: "")
+      MemberFixtures.member_fixture(customer_id: "")
 
       :ok
     end
@@ -268,6 +311,20 @@ defmodule Dhc.MemberProfiles.LinkageDriftTest do
           Repo.query!(
             "UPDATE user_profiles SET principal_id = $1, updated_at = NOW() WHERE id = $2",
             [Ecto.UUID.dump!(other_principal_id), Ecto.UUID.dump!(member.profile_id)]
+          )
+        end
+
+      assert_linkage_drift_violation(error)
+    end
+
+    test "UPDATE user_profiles.principal_id to NULL raises when a MemberProfile links it" do
+      member = MemberFixtures.member_fixture()
+
+      error =
+        assert_raise Postgrex.Error, fn ->
+          Repo.query!(
+            "UPDATE user_profiles SET principal_id = NULL, updated_at = NOW() WHERE id = $1",
+            [Ecto.UUID.dump!(member.profile_id)]
           )
         end
 
