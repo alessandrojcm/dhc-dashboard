@@ -25,9 +25,9 @@ defmodule Dhc.Repo.Migrations.Ale179ExpandStripeIdentifierSplit do
        whose old value is non-null but matches neither `pi_` nor `cs_`
        aborts the migration (no payment intent is silently lost).
     3. Clears the `pi_*` values out of the old `stripe_checkout_session_id`
-       column so it holds only `cs_*` after expand. The old column is kept
-       (the contract migration, ALE-194, drops it once the code release
-       stops writing to it).
+       column so it holds only `cs_*` after expand. The contract migration
+       replaces this physical legacy column with a canonical column of the
+       same application-facing name after the code release.
     4. Adds `CHECK (num_nonnulls(stripe_payment_intent_id,
        stripe_checkout_session_id) <= 1) NOT VALID`. The invariant is "at
        most one identifier kind per row" — never both. It is `<= 1` rather

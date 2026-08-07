@@ -146,7 +146,7 @@ defmodule Dhc.Workshops.Ale179ExpandStripeIdentifierSplitTest do
       assert column_nullable?("club_activity_registrations", "stripe_payment_intent_id")
     end
 
-    test "stripe_checkout_session_id column still exists (contract drops it later)" do
+    test "stripe_checkout_session_id remains available for cs_ values" do
       assert column_exists?("club_activity_registrations", "stripe_checkout_session_id")
     end
 
