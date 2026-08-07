@@ -247,15 +247,16 @@ defmodule Dhc.Workshops.Ale177RegistrationSlotLeaksTest do
     @tag :ale_177
     test "a row with neither member_user_id nor external_user_id is rejected" do
       workshop = WorkshopFixtures.workshop_fixture()
+      {display_name_column, display_name_value} = display_name_fragments("No Participant")
 
       error =
         assert_raise Postgrex.Error, fn ->
           Repo.query!(
             """
             INSERT INTO club_activity_registrations
-              (id, club_activity_id, display_name, amount_paid, currency,
+              (id, club_activity_id#{display_name_column}, amount_paid, currency,
                status, registered_at, created_at, updated_at)
-            VALUES ($1, $2, 'No Participant', 1000, 'eur', 'pending', NOW(), NOW(), NOW())
+            VALUES ($1, $2#{display_name_value}, 1000, 'eur', 'pending', NOW(), NOW(), NOW())
             """,
             [Ecto.UUID.dump!(Ecto.UUID.generate()), Ecto.UUID.dump!(workshop.id)]
           )
@@ -269,15 +270,16 @@ defmodule Dhc.Workshops.Ale177RegistrationSlotLeaksTest do
       workshop = WorkshopFixtures.workshop_fixture()
       %{auth_user_id: uid} = WorkshopFixtures.member_fixture()
       external = WorkshopFixtures.external_user_fixture()
+      {display_name_column, display_name_value} = display_name_fragments("Both Participants")
 
       error =
         assert_raise Postgrex.Error, fn ->
           Repo.query!(
             """
             INSERT INTO club_activity_registrations
-              (id, club_activity_id, member_user_id, external_user_id, display_name,
+              (id, club_activity_id, member_user_id, external_user_id#{display_name_column},
                amount_paid, currency, status, registered_at, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, 'Both Participants', 1000, 'eur', 'pending', NOW(), NOW(), NOW())
+            VALUES ($1, $2, $3, $4#{display_name_value}, 1000, 'eur', 'pending', NOW(), NOW(), NOW())
             """,
             [
               Ecto.UUID.dump!(Ecto.UUID.generate()),
@@ -365,6 +367,29 @@ defmodule Dhc.Workshops.Ale177RegistrationSlotLeaksTest do
   end
 
   # ── helpers ───────────────────────────────────────────────────────────
+
+  defp display_name_fragments(value) do
+    if registration_column_exists?("display_name") do
+      {", display_name", ", '#{value}'"}
+    else
+      {"", ""}
+    end
+  end
+
+  defp registration_column_exists?(column) do
+    [[exists?]] =
+      Repo.query!(
+        "SELECT EXISTS (
+           SELECT 1 FROM information_schema.columns
+           WHERE table_schema = 'public'
+             AND table_name = 'club_activity_registrations'
+             AND column_name = $1
+         )",
+        [column]
+      ).rows
+
+    exists?
+  end
 
   defp index_def(name) do
     Repo.query!(
