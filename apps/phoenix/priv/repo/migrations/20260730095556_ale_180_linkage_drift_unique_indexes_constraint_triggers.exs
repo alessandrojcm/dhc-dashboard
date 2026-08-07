@@ -22,11 +22,11 @@ defmodule Dhc.Repo.Migrations.Ale180LinkageDriftUniqueIndexesConstraintTriggers 
     1. Drops the non-unique `member_profiles.user_profile_id` index and adds
        a unique one. Each UserProfile is owned by at most one MemberProfile.
     2. Adds a partial `user_profiles(customer_id)` unique index
-       (`WHERE customer_id IS NOT NULL`). Raises if production has duplicate
-       non-null customer ids — that is the correct abort, since it means the
-       Stripe customer link is already ambiguous. `customer_id` is nullable
-       (waitlist-only profiles and pre-Stripe members have NULL), so the
-       partial form is required.
+       (`WHERE customer_id IS NOT NULL AND customer_id <> ''`). Raises if
+       production has duplicate non-blank customer ids — that is the correct
+       abort, since it means the Stripe customer link is already ambiguous.
+       `customer_id` is nullable (waitlist-only profiles and pre-Stripe
+       members have NULL), so the partial form is required.
     3. Creates `verify_linkage_drift()`, a trigger function that raises only
        when a *linked pair exists and disagrees*: i.e. there is a
        `member_profiles` row whose `user_profile_id` points at a
@@ -79,7 +79,7 @@ defmodule Dhc.Repo.Migrations.Ale180LinkageDriftUniqueIndexesConstraintTriggers 
     execute """
     CREATE UNIQUE INDEX #{@customer_id_unique}
       ON user_profiles (customer_id)
-      WHERE customer_id IS NOT NULL
+      WHERE customer_id IS NOT NULL AND customer_id <> ''
     """
 
     # 3. The drift-check function. Raises only when a linked pair exists and
@@ -111,11 +111,11 @@ defmodule Dhc.Repo.Migrations.Ale180LinkageDriftUniqueIndexesConstraintTriggers 
         FROM user_profiles up
         WHERE up.id = NEW.user_profile_id;
 
-        IF up_principal_id IS NULL THEN
+        IF NOT FOUND THEN
           RETURN NEW;
         END IF;
 
-        IF up_principal_id <> NEW.id THEN
+        IF up_principal_id IS DISTINCT FROM NEW.id THEN
           RAISE EXCEPTION 'linkage drift: member_profiles.id % does not match user_profiles.principal_id % for user_profile_id %',
             NEW.id, up_principal_id, NEW.user_profile_id
             USING ERRCODE = 'check_violation', CONSTRAINT = 'linkage_drift_violation';
@@ -129,7 +129,7 @@ defmodule Dhc.Repo.Migrations.Ale180LinkageDriftUniqueIndexesConstraintTriggers 
           RETURN NEW;
         END IF;
 
-        IF mp_id <> NEW.principal_id THEN
+        IF mp_id IS DISTINCT FROM NEW.principal_id THEN
           RAISE EXCEPTION 'linkage drift: user_profiles.principal_id % does not match member_profiles.id % for user_profile_id %',
             NEW.principal_id, mp_id, NEW.id
             USING ERRCODE = 'check_violation', CONSTRAINT = 'linkage_drift_violation';
