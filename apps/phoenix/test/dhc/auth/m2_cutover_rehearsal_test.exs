@@ -12,6 +12,7 @@ defmodule Dhc.AuthM2CutoverRehearsalTest do
     ensure_auth_identities_table!()
 
     drop_post_m2_linkage_drift_triggers!()
+    restore_pre_m2_schema!()
 
     if column_exists?("user_profiles", "principal_id") do
       M2.rollback!(Repo)

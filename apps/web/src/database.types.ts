@@ -36,59 +36,59 @@ export type Database = {
 		Tables: {
 			club_activities: {
 				Row: {
-					announce_discord: boolean | null;
-					announce_email: boolean | null;
+					announce_discord: boolean;
+					announce_email: boolean;
 					created_at: string | null;
 					created_by: string | null;
 					description: string | null;
 					end_date: string;
 					id: string;
-					is_public: boolean | null;
+					is_public: boolean;
 					location: string;
 					max_capacity: number;
 					price_member: number;
 					price_non_member: number;
 					refund_days: number | null;
 					start_date: string;
-					status: Database["public"]["Enums"]["club_activity_status"] | null;
+					status: Database["public"]["Enums"]["club_activity_status"];
 					title: string;
 					updated_at: string | null;
 				};
 				Insert: {
-					announce_discord?: boolean | null;
-					announce_email?: boolean | null;
+					announce_discord?: boolean;
+					announce_email?: boolean;
 					created_at?: string | null;
 					created_by?: string | null;
 					description?: string | null;
 					end_date: string;
 					id?: string;
-					is_public?: boolean | null;
+					is_public?: boolean;
 					location: string;
 					max_capacity: number;
 					price_member: number;
 					price_non_member: number;
 					refund_days?: number | null;
 					start_date: string;
-					status?: Database["public"]["Enums"]["club_activity_status"] | null;
+					status?: Database["public"]["Enums"]["club_activity_status"];
 					title: string;
 					updated_at?: string | null;
 				};
 				Update: {
-					announce_discord?: boolean | null;
-					announce_email?: boolean | null;
+					announce_discord?: boolean;
+					announce_email?: boolean;
 					created_at?: string | null;
 					created_by?: string | null;
 					description?: string | null;
 					end_date?: string;
 					id?: string;
-					is_public?: boolean | null;
+					is_public?: boolean;
 					location?: string;
 					max_capacity?: number;
 					price_member?: number;
 					price_non_member?: number;
 					refund_days?: number | null;
 					start_date?: string;
-					status?: Database["public"]["Enums"]["club_activity_status"] | null;
+					status?: Database["public"]["Enums"]["club_activity_status"];
 					title?: string;
 					updated_at?: string | null;
 				};
@@ -648,22 +648,22 @@ export type Database = {
 					body: string;
 					created_at: string;
 					id: string;
+					principal_id: string;
 					read_at: string | null;
-					user_id: string;
 				};
 				Insert: {
 					body: string;
 					created_at?: string;
 					id?: string;
+					principal_id: string;
 					read_at?: string | null;
-					user_id: string;
 				};
 				Update: {
 					body?: string;
 					created_at?: string;
 					id?: string;
+					principal_id?: string;
 					read_at?: string | null;
-					user_id?: string;
 				};
 				Relationships: [];
 			};
@@ -707,7 +707,7 @@ export type Database = {
 					details: Json | null;
 					id: string;
 					ip_address: string | null;
-					user_id: string | null;
+					principal_id: string | null;
 				};
 				Insert: {
 					action: string;
@@ -715,7 +715,7 @@ export type Database = {
 					details?: Json | null;
 					id?: string;
 					ip_address?: string | null;
-					user_id?: string | null;
+					principal_id?: string | null;
 				};
 				Update: {
 					action?: string;
@@ -723,7 +723,7 @@ export type Database = {
 					details?: Json | null;
 					id?: string;
 					ip_address?: string | null;
-					user_id?: string | null;
+					principal_id?: string | null;
 				};
 				Relationships: [];
 			};
@@ -735,15 +735,13 @@ export type Database = {
 					first_name: string;
 					gender: Database["public"]["Enums"]["gender"] | null;
 					id: string;
-					is_active: boolean | null;
+					is_active: boolean;
 					last_name: string;
 					medical_conditions: string | null;
 					phone_number: string;
 					pronouns: string | null;
 					search_text: unknown;
-					social_media_consent:
-						| Database["public"]["Enums"]["social_media_consent"]
-						| null;
+					social_media_consent: Database["public"]["Enums"]["social_media_consent"];
 					supabase_user_id: string | null;
 					updated_at: string | null;
 					waitlist_id: string | null;
@@ -755,15 +753,13 @@ export type Database = {
 					first_name: string;
 					gender?: Database["public"]["Enums"]["gender"] | null;
 					id?: string;
-					is_active?: boolean | null;
+					is_active?: boolean;
 					last_name: string;
 					medical_conditions?: string | null;
 					phone_number?: string;
 					pronouns?: string | null;
 					search_text?: unknown;
-					social_media_consent?:
-						| Database["public"]["Enums"]["social_media_consent"]
-						| null;
+					social_media_consent?: Database["public"]["Enums"]["social_media_consent"];
 					supabase_user_id?: string | null;
 					updated_at?: string | null;
 					waitlist_id?: string | null;
@@ -775,15 +771,13 @@ export type Database = {
 					first_name?: string;
 					gender?: Database["public"]["Enums"]["gender"] | null;
 					id?: string;
-					is_active?: boolean | null;
+					is_active?: boolean;
 					last_name?: string;
 					medical_conditions?: string | null;
 					phone_number?: string;
 					pronouns?: string | null;
 					search_text?: unknown;
-					social_media_consent?:
-						| Database["public"]["Enums"]["social_media_consent"]
-						| null;
+					social_media_consent?: Database["public"]["Enums"]["social_media_consent"];
 					supabase_user_id?: string | null;
 					updated_at?: string | null;
 					waitlist_id?: string | null;
@@ -835,30 +829,30 @@ export type Database = {
 					admin_notes: string | null;
 					email: string;
 					id: string;
-					initial_registration_date: string | null;
+					initial_registration_date: string;
 					insurance_form_submitted: boolean | null;
 					last_contacted: string | null;
-					last_status_change: string | null;
+					last_status_change: string;
 					status: Database["public"]["Enums"]["waitlist_status"];
 				};
 				Insert: {
 					admin_notes?: string | null;
 					email: string;
 					id?: string;
-					initial_registration_date?: string | null;
+					initial_registration_date?: string;
 					insurance_form_submitted?: boolean | null;
 					last_contacted?: string | null;
-					last_status_change?: string | null;
+					last_status_change?: string;
 					status?: Database["public"]["Enums"]["waitlist_status"];
 				};
 				Update: {
 					admin_notes?: string | null;
 					email?: string;
 					id?: string;
-					initial_registration_date?: string | null;
+					initial_registration_date?: string;
 					insurance_form_submitted?: boolean | null;
 					last_contacted?: string | null;
-					last_status_change?: string | null;
+					last_status_change?: string;
 					status?: Database["public"]["Enums"]["waitlist_status"];
 				};
 				Relationships: [];
