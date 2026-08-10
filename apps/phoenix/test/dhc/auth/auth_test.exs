@@ -275,10 +275,21 @@ defmodule Dhc.AuthTest do
       # yet. This is the window the backfill closes.
       assert {:error, :invalid} = Auth.get_principal_by_session_token(raw_cookie)
 
-      # Run the ALE-182 backfill in place: hash every session row's token.
+      # Run the ALE-182 backfill in place using pgcrypto's installed schema.
+      %{rows: [[pgcrypto_schema]]} =
+        Repo.query!("""
+        SELECT namespace.nspname
+        FROM pg_extension extension
+        JOIN pg_namespace namespace ON namespace.oid = extension.extnamespace
+        WHERE extension.extname = 'pgcrypto'
+        """)
+
+      %{rows: [[quoted_pgcrypto_schema]]} =
+        Repo.query!("SELECT quote_ident($1)", [pgcrypto_schema])
+
       %{num_rows: 1} =
         Repo.query!(
-          "UPDATE principal_tokens SET token = digest(token, 'sha256') WHERE context = 'session'"
+          "UPDATE principal_tokens SET token = #{quoted_pgcrypto_schema}.digest(token, 'sha256') WHERE context = 'session'"
         )
 
       # The existing cookie now authenticates — verify hashes the incoming
