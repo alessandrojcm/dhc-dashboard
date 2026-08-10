@@ -266,6 +266,11 @@ defmodule DhcWeb.AuthSessionControllerTest do
       conn = post(conn(), "/api/auth/magic-link/verify", %{"token" => encoded})
       assert %{"errors" => %{"detail" => _}} = json_response(conn, 401)
 
+      assert Dhc.Auth.get_principal!(principal.id).confirmed_at
+
+      second_conn = post(conn(), "/api/auth/magic-link/verify", %{"token" => encoded})
+      assert %{"errors" => %{"detail" => _}} = json_response(second_conn, 401)
+
       # No session row was minted for the inactive principal.
       refute Repo.exists?(
                from(t in PrincipalToken,

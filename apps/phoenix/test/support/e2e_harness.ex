@@ -274,7 +274,8 @@ defmodule Dhc.E2EHarness do
 
   def login_cookie(email) do
     principal = Auth.get_principal_by_email(email) || raise "No E2E principal for #{email}"
-    {:ok, token} = Auth.create_session(principal)
+    {token, row} = PrincipalToken.build_session_token(principal)
+    Repo.insert!(row)
     token
   end
 

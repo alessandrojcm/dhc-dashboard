@@ -373,6 +373,21 @@ defmodule Dhc.StripeSync.RepositoryMarkCustomerActiveTest do
       assert member.subscription_paused_until == nil
     end
   end
+
+  describe "mark_customer_inactive/1" do
+    test "revokes the customer's existing Sessions with access" do
+      fixture = Dhc.MemberFixtures.member_fixture(is_active: true)
+      principal = Dhc.AuthFixtures.principal_fixture(id: fixture.auth_user_id)
+      token = Dhc.AuthFixtures.session_token(principal)
+
+      assert {:ok, 1} = Repository.mark_customer_inactive(fixture.customer_id)
+
+      assert {:error, :invalid} = Dhc.Auth.get_principal_by_session_token(token)
+
+      profile = Repo.get!(Dhc.UserProfiles.UserProfile, fixture.profile_id)
+      assert profile.is_active == false
+    end
+  end
 end
 
 defmodule Dhc.StripeSync.RepositoryIntegrationTest do
