@@ -1425,7 +1425,8 @@ defmodule Dhc.Workshops do
   defp stripe_refund_payment_intent(payment_intent_id) do
     Dhc.Stripe.Operations.post_refunds(
       [payment_intent: payment_intent_id, reason: "duplicate"],
-      client: stripe_client()
+      client: stripe_client(),
+      idempotency_key: "workshop-registration:#{payment_intent_id}:compensating-refund"
     )
   end
 

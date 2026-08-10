@@ -43,8 +43,10 @@ defmodule Dhc.Workshops.Ale179CodeReleaseStripeSplitWritesTest do
   defmodule StripeClient do
     def request(%{method: :get, url: url}), do: request(method: :get, url: url)
 
-    def request(%{method: method, url: url, body: body}),
-      do: request(method: method, url: url, body: body)
+    def request(%{method: method, url: url, body: body} = request) do
+      Application.put_env(:dhc, :ale_193_last_stripe_request_opts, Map.get(request, :opts, []))
+      request(method: method, url: url, body: body)
+    end
 
     def request(method: :post, url: "/v1/payment_intents", body: _body) do
       {:ok,
@@ -139,6 +141,7 @@ defmodule Dhc.Workshops.Ale179CodeReleaseStripeSplitWritesTest do
       Application.delete_env(:dhc, :ale_193_cs_retrieve_response)
       Application.delete_env(:dhc, :ale_193_refund_response)
       Application.delete_env(:dhc, :ale_193_last_refund_request)
+      Application.delete_env(:dhc, :ale_193_last_stripe_request_opts)
     end)
 
     :ok
@@ -197,6 +200,9 @@ defmodule Dhc.Workshops.Ale179CodeReleaseStripeSplitWritesTest do
 
       assert [payment_intent: ^payment_intent_id, reason: "duplicate"] =
                Application.fetch_env!(:dhc, :ale_193_last_refund_request)
+
+      assert Application.fetch_env!(:dhc, :ale_193_last_stripe_request_opts)[:idempotency_key] ==
+               "workshop-registration:#{payment_intent_id}:compensating-refund"
     end
 
     test "member completion reports payment failure when the compensating refund fails" do
@@ -235,6 +241,9 @@ defmodule Dhc.Workshops.Ale179CodeReleaseStripeSplitWritesTest do
 
       assert [payment_intent: "pi_from_checkout", reason: "duplicate"] =
                Application.fetch_env!(:dhc, :ale_193_last_refund_request)
+
+      assert Application.fetch_env!(:dhc, :ale_193_last_stripe_request_opts)[:idempotency_key] ==
+               "workshop-registration:pi_from_checkout:compensating-refund"
     end
   end
 
