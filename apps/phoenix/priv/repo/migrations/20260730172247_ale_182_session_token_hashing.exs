@@ -15,8 +15,8 @@ defmodule Dhc.Repo.Migrations.Ale182SessionTokenHashing do
   ## This migration
 
     1. **Backfill existing session rows in place** —
-       `UPDATE principal_tokens SET token = digest(token, 'sha256') WHERE
-       context = 'session'`. Only `session` rows are touched: `login`
+       schema-qualify `pgcrypto.digest` using the extension namespace and hash
+       every token where `context = 'session'`. Only `session` rows are touched: `login`
        (magic-link) and `socket` rows already store the digest. Existing
        cookies keep working with zero user disruption, because the application
        hashes the incoming cookie before lookup and now matches the
@@ -65,7 +65,22 @@ defmodule Dhc.Repo.Migrations.Ale182SessionTokenHashing do
   def up do
     # 1. Backfill existing session rows: hash the plaintext cookie in place.
     #    login (magic-link) and socket rows already store the digest.
-    execute "UPDATE principal_tokens SET token = digest(token, 'sha256') WHERE context = 'session'"
+    execute """
+    DO $$
+    DECLARE pgcrypto_schema text;
+    BEGIN
+      SELECT namespace.nspname INTO STRICT pgcrypto_schema
+      FROM pg_extension extension
+      JOIN pg_namespace namespace ON namespace.oid = extension.extnamespace
+      WHERE extension.extname = 'pgcrypto';
+
+      EXECUTE format(
+        'UPDATE principal_tokens SET token = %I.digest(token, ''sha256'') WHERE context = ''session''',
+        pgcrypto_schema
+      );
+    END;
+    $$ LANGUAGE plpgsql
+    """
 
     # 2. Constrain context to the three known values. NOT VALID then VALIDATE
     #    so existing rows are checked without a long table lock.
