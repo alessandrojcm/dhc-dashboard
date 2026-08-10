@@ -41,3 +41,9 @@ Repository: `alessandrojcm/dhc-dashboard`
 - Express blocking with Linear relations: `linctl issue relation add <blocker> --blocks <blocked>`.
 - The frontier is the map's open, unassigned children whose blocking relations are all closed. Claim one before work with `linctl issue assign <ticket>`.
 - Verify the map and its children with `linctl issue get <map>`, and inspect dependency edges with `linctl issue relation list <ticket>`.
+
+## Relation direction gotcha
+
+Agents keep entering `--blocks` relations backwards. The flag points **from the blocker toward the blocked issue**: `linctl issue relation add ALE-A --blocks ALE-B` means **ALE-A must finish before ALE-B** (ALE-A is the prerequisite, ALE-B is the dependent). Equivalently, read it as "ALE-A blocks ALE-B."
+
+When sequencing an expand→code→contract split (e.g. ALE-179), the correct edges are: expand `--blocks` code, and code `--blocks` contract. The expand migration is the frontier, not the contract. Before treating a Linear-reported "unblocked" issue as the frontier, cross-check it against the spec's stated ordering — if Linear's graph disagrees with the spec, the relations are inverted and must be fixed (`relation remove` the wrong edge, then `relation add` the correct one) before claiming the ticket.

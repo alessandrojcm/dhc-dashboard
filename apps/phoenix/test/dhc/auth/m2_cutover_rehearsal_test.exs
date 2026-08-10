@@ -11,6 +11,9 @@ defmodule Dhc.AuthM2CutoverRehearsalTest do
   setup do
     ensure_auth_identities_table!()
 
+    drop_post_m2_linkage_drift_triggers!()
+    restore_pre_m2_schema!()
+
     if column_exists?("user_profiles", "principal_id") do
       M2.rollback!(Repo)
     end
@@ -101,10 +104,15 @@ defmodule Dhc.AuthM2CutoverRehearsalTest do
   defp seed_invitation(email, status, user_id \\ Ecto.UUID.generate()) do
     id = Ecto.UUID.generate()
 
+    principal_column =
+      if column_exists?("invitations", "prospective_principal_id"),
+        do: "prospective_principal_id",
+        else: "user_id"
+
     Repo.query!(
       """
       INSERT INTO invitations
-        (id, email, user_id, status, invitation_type, expires_at, created_at, updated_at)
+        (id, email, #{principal_column}, status, invitation_type, expires_at, created_at, updated_at)
       VALUES ($1, $2, $3, $4::invitation_status, 'standard', NOW() + INTERVAL '1 day', NOW(), NOW())
       """,
       [Ecto.UUID.dump!(id), email, Ecto.UUID.dump!(user_id), status]

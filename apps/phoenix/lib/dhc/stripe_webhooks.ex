@@ -21,16 +21,15 @@ defmodule Dhc.StripeWebhooks do
   ## Architecture
 
   Event handlers in this module delegate to `Dhc.StripeSync` for
-  subscription-state synchronization and perform direct database
-  updates for charge/workshop-related events, following the same
-  patterns established in the Deno edge function.
+  subscription-state synchronization. Charge events no longer mutate
+  registrations directly — the dead `ch_*` handlers
+  (`confirm_workshop_registration` / `cancel_expired_workshop_registration`)
+  were removed in the ALE-193 code release because they matched charge ids
+  against a column that only holds `pi_*` / `cs_*` ids. Registration
+  confirmation is driven by `payment_intent.*` / checkout completion.
   """
 
-  import Ecto.Query
-
   require Logger
-
-  alias Dhc.Repo
 
   @allowed_event_types [
     "charge.succeeded",
@@ -184,11 +183,17 @@ defmodule Dhc.StripeWebhooks do
 
   defp handle_charge_succeeded(object) do
     case extract_workshop_metadata(object) do
-      {_workshop_id, _registration_data} = metadata ->
-        confirm_workshop_registration(object, metadata)
+      {_workshop_id, _registration_data} ->
+        # The ch_* charge-event → registration handlers were dead: they
+        # matched charge ids against stripe_checkout_session_id, a column
+        # that only holds pi_/cs_ ids. Real charge ids never matched, so
+        # both branches always no-op'd. Registration confirmation is driven
+        # by payment_intent.* / checkout completion, not charge.* events.
+        # Fall through to the customer sync, same as the no-metadata branch.
+        maybe_sync_customer(object)
 
       nil ->
-        # Not a workshop charge — still sync customer if present
+        # Not a workshop charge — sync customer if present
         maybe_sync_customer(object)
     end
   end
@@ -196,7 +201,8 @@ defmodule Dhc.StripeWebhooks do
   defp handle_charge_expired(object) do
     case extract_workshop_metadata(object) do
       {_workshop_id, _registration_data} ->
-        cancel_expired_workshop_registration(object)
+        # See handle_charge_succeeded/1: the ch_ handler was dead. No-op.
+        :ok
 
       nil ->
         :ok
@@ -279,111 +285,6 @@ defmodule Dhc.StripeWebhooks do
   end
 
   defp extract_workshop_metadata(_object), do: nil
-
-  defp confirm_workshop_registration(
-         %{"id" => charge_id, "amount" => amount},
-         {workshop_id, _registration_data_raw}
-       ) do
-    Logger.info("[stripe-webhooks] Confirming workshop registration",
-      charge_id: charge_id,
-      workshop_id: workshop_id,
-      amount: amount
-    )
-
-    try do
-      # Look up existing registration by charge_id (stored as checkout session ID)
-      # In the Deno function this was by checkout session ID, but charge events
-      # have the charge ID on the object.
-      # Update status to confirmed and set confirmed_at
-      now = DateTime.utc_now() |> DateTime.truncate(:second)
-
-      result =
-        from(r in "club_activity_registrations",
-          where: r.stripe_checkout_session_id == ^charge_id and r.status == ^"pending"
-        )
-        |> Repo.update_all(set: [status: "confirmed", confirmed_at: now])
-
-      case result do
-        {0, _} ->
-          Logger.info(
-            "[stripe-webhooks] No pending registration found for charge, may already be confirmed",
-            charge_id: charge_id,
-            workshop_id: workshop_id
-          )
-
-          :ok
-
-        {count, _} ->
-          Logger.info("[stripe-webhooks] Confirmed workshop registration(s)",
-            charge_id: charge_id,
-            workshop_id: workshop_id,
-            count: count
-          )
-
-          :ok
-      end
-    rescue
-      e ->
-        Logger.error("[stripe-webhooks] Failed to confirm workshop registration",
-          charge_id: charge_id,
-          workshop_id: workshop_id,
-          error: inspect(e)
-        )
-
-        Sentry.capture_exception(e,
-          stacktrace: __STACKTRACE__,
-          extra: %{charge_id: charge_id, workshop_id: workshop_id}
-        )
-
-        {:error, {:db_error, e}}
-    end
-  end
-
-  defp cancel_expired_workshop_registration(%{"id" => charge_id}) do
-    Logger.info("[stripe-webhooks] Cancelling expired workshop registration",
-      charge_id: charge_id
-    )
-
-    try do
-      now = DateTime.utc_now() |> DateTime.truncate(:second)
-
-      result =
-        from(r in "club_activity_registrations",
-          where: r.stripe_checkout_session_id == ^charge_id and r.status == ^"pending"
-        )
-        |> Repo.update_all(set: [status: "cancelled", cancelled_at: now])
-
-      case result do
-        {0, _} ->
-          Logger.info("[stripe-webhooks] No pending registration found for expired charge",
-            charge_id: charge_id
-          )
-
-          :ok
-
-        {count, _} ->
-          Logger.info("[stripe-webhooks] Cancelled expired workshop registration(s)",
-            charge_id: charge_id,
-            count: count
-          )
-
-          :ok
-      end
-    rescue
-      e ->
-        Logger.error("[stripe-webhooks] Failed to cancel expired registration",
-          charge_id: charge_id,
-          error: inspect(e)
-        )
-
-        Sentry.capture_exception(e,
-          stacktrace: __STACKTRACE__,
-          extra: %{charge_id: charge_id}
-        )
-
-        {:error, {:db_error, e}}
-    end
-  end
 
   # ── Customer sync helpers ────────────────────────────────────────────
 

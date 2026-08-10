@@ -65,11 +65,12 @@ defmodule Dhc.Auth.PrincipalToken do
   """
   def build_session_token(principal) do
     token = :crypto.strong_rand_bytes(@rand_size)
+    hashed_token = hash_token(token)
     dt = principal.authenticated_at || DateTime.utc_now(:second)
 
     {token,
      %PrincipalToken{
-       token: token,
+       token: hashed_token,
        context: "session",
        principal_id: principal.id,
        authenticated_at: dt
@@ -86,7 +87,7 @@ defmodule Dhc.Auth.PrincipalToken do
   """
   def build_socket_token(principal) do
     token = :crypto.strong_rand_bytes(@rand_size)
-    hashed_token = :crypto.hash(@hash_algorithm, token)
+    hashed_token = hash_token(token)
     dt = principal.authenticated_at || DateTime.utc_now(:second)
 
     {token,
@@ -101,13 +102,17 @@ defmodule Dhc.Auth.PrincipalToken do
   @doc """
   Query that verifies a session token and returns `{principal, token_row}`.
 
-  Valid iff the (context, hashed_token) row exists, has not expired
-  (inserted_at within `@session_validity_in_days`), and the principal still
-  exists.
+  `token` is the raw cookie bytes the caller received from
+  `build_session_token/1`. It is hashed (SHA-256) before lookup so the stored
+  digest is never reconstructed. Valid iff the (context, hashed_token) row
+  exists, has not expired (created_at within `@session_validity_in_days`),
+  and the principal still exists.
   """
   def verify_session_token_query(token) do
+    hashed_token = hash_token(token)
+
     query =
-      from t in by_token_and_context_query(token, "session"),
+      from t in by_token_and_context_query(hashed_token, "session"),
         join: p in assoc(t, :principal),
         where: t.created_at > ago(@session_validity_in_days, "day"),
         select: {%{p | authenticated_at: t.authenticated_at}, t}
@@ -125,7 +130,7 @@ defmodule Dhc.Auth.PrincipalToken do
   principal still exists.
   """
   def verify_socket_token_query(token) when is_binary(token) do
-    hashed_token = :crypto.hash(@hash_algorithm, token)
+    hashed_token = hash_token(token)
 
     query =
       from t in by_token_and_context_query(hashed_token, "socket"),
@@ -148,7 +153,7 @@ defmodule Dhc.Auth.PrincipalToken do
 
   defp build_hashed_token(principal, context, sent_to) do
     token = :crypto.strong_rand_bytes(@rand_size)
-    hashed_token = :crypto.hash(@hash_algorithm, token)
+    hashed_token = hash_token(token)
 
     {Base.url_encode64(token, padding: false),
      %PrincipalToken{
@@ -171,7 +176,7 @@ defmodule Dhc.Auth.PrincipalToken do
   def verify_magic_link_token_query(token) do
     case Base.url_decode64(token, padding: false) do
       {:ok, decoded_token} ->
-        hashed_token = :crypto.hash(@hash_algorithm, decoded_token)
+        hashed_token = hash_token(decoded_token)
 
         query =
           from t in by_token_and_context_query(hashed_token, "login"),
@@ -189,5 +194,17 @@ defmodule Dhc.Auth.PrincipalToken do
 
   defp by_token_and_context_query(token, context) do
     from PrincipalToken, where: [token: ^token, context: ^context]
+  end
+
+  @doc """
+  Hashes a raw token (the cookie / URL-encoded value the caller holds) with
+  the same algorithm `build_session_token/1`, `build_socket_token/1`, and
+  `build_magic_link_token/1` use to store the digest. Public so the auth
+  context can hash an incoming session cookie before a lookup or delete
+  (`verify_session_token_query/1` already hashes internally; `delete_session_token/1`
+  hashes through this helper).
+  """
+  def hash_token(token) do
+    :crypto.hash(@hash_algorithm, token)
   end
 end

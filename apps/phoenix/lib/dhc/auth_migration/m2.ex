@@ -62,18 +62,20 @@ defmodule Dhc.AuthMigration.M2 do
 
   @spec run!(repo()) :: :ok
   def run!(repo) do
+    foreign_keys = ownership_foreign_keys(repo)
+
     validate_reconciliation!(repo)
-    validate_referenced_principals!(repo)
+    validate_referenced_principals!(repo, foreign_keys)
 
     %{num_rows: pending_deleted} =
       query!(repo, "DELETE FROM invitations WHERE status = 'pending'")
 
-    drop_application_auth_foreign_keys!(repo)
+    drop_application_auth_foreign_keys!(repo, foreign_keys)
     rename_ownership_columns!(repo)
-    add_foreign_keys!(repo, "principals")
+    add_foreign_keys!(repo, foreign_keys, "principals")
 
     counts = %{
-      "foreign_keys_repointed" => length(@ownership_foreign_keys),
+      "foreign_keys_repointed" => length(foreign_keys),
       "pending_invitations_deleted" => pending_deleted
     }
 
@@ -94,9 +96,11 @@ defmodule Dhc.AuthMigration.M2 do
 
   @spec rollback!(repo()) :: :ok
   def rollback!(repo) do
-    drop_foreign_keys!(repo, @ownership_foreign_keys)
+    foreign_keys = ownership_foreign_keys(repo)
+
+    drop_foreign_keys!(repo, foreign_keys)
     restore_ownership_columns!(repo)
-    add_foreign_keys!(repo, "auth.users", legacy?: true)
+    add_foreign_keys!(repo, foreign_keys, "auth.users", legacy?: true)
     :ok
   end
 
@@ -128,9 +132,9 @@ defmodule Dhc.AuthMigration.M2 do
     gate!(:discord_reconciliation_mismatch, discord_mismatch_count)
   end
 
-  defp validate_referenced_principals!(repo) do
+  defp validate_referenced_principals!(repo, foreign_keys) do
     references =
-      @ownership_foreign_keys
+      foreign_keys
       |> Enum.reject(fn {table, _column, _constraint, _delete} -> table == "invitations" end)
       |> Enum.map_join(" UNION ALL ", fn {table, column, _constraint, _delete} ->
         column = legacy_column(table, column)
@@ -139,10 +143,16 @@ defmodule Dhc.AuthMigration.M2 do
 
     # Accepted Invitations are retained and must resolve. Pending Invitations
     # are deliberately excluded because M2 deletes them after all gates pass.
+    invitation_principal_column =
+      current_column(repo, "invitations", "prospective_principal_id", "user_id")
+
+    invitation_creator_column =
+      current_column(repo, "invitations", "created_by_principal_id", "created_by")
+
     references =
       references <>
-        " UNION ALL SELECT user_id FROM invitations WHERE status <> 'pending' AND user_id IS NOT NULL" <>
-        " UNION ALL SELECT created_by FROM invitations WHERE created_by IS NOT NULL"
+        " UNION ALL SELECT #{invitation_principal_column} FROM invitations WHERE status <> 'pending' AND #{invitation_principal_column} IS NOT NULL" <>
+        " UNION ALL SELECT #{invitation_creator_column} FROM invitations WHERE #{invitation_creator_column} IS NOT NULL"
 
     missing_count =
       count(repo, """
@@ -160,9 +170,9 @@ defmodule Dhc.AuthMigration.M2 do
   defp gate!(_class, 0), do: :ok
   defp gate!(class, count), do: raise(AnomalyError, class: class, count: count)
 
-  defp drop_application_auth_foreign_keys!(repo) do
+  defp drop_application_auth_foreign_keys!(repo, foreign_keys) do
     legacy_foreign_keys =
-      Enum.map(@ownership_foreign_keys, fn {table, column, constraint, delete} ->
+      Enum.map(foreign_keys, fn {table, column, constraint, delete} ->
         legacy_column = legacy_column(table, column)
         legacy_constraint = Map.get(@legacy_constraint_names, constraint, constraint)
         {table, legacy_column, legacy_constraint, delete}
@@ -217,16 +227,16 @@ defmodule Dhc.AuthMigration.M2 do
     )
   end
 
-  defp add_foreign_keys!(repo, target, opts \\ []) do
+  defp add_foreign_keys!(repo, foreign_keys, target, opts \\ []) do
     legacy? = Keyword.get(opts, :legacy?, false)
 
     foreign_keys =
       if legacy? do
-        Enum.reject(@ownership_foreign_keys, fn {_table, _column, constraint, _delete} ->
+        Enum.reject(foreign_keys, fn {_table, _column, constraint, _delete} ->
           Map.get(@legacy_constraint_names, constraint, constraint) in @already_removed_before_m2
         end)
       else
-        @ownership_foreign_keys
+        foreign_keys
       end
 
     Enum.each(foreign_keys, fn {table, column, constraint, delete} ->
@@ -250,6 +260,36 @@ defmodule Dhc.AuthMigration.M2 do
   defp legacy_column("user_profiles", "principal_id"), do: "supabase_user_id"
   defp legacy_column("user_roles", "principal_id"), do: "user_id"
   defp legacy_column(_table, column), do: column
+
+  defp ownership_foreign_keys(repo) do
+    invitation_creator_column =
+      current_column(repo, "invitations", "created_by_principal_id", "created_by")
+
+    processing_owner_column =
+      current_column(repo, "invitation_processing_logs", "principal_id", "user_id")
+
+    Enum.map(@ownership_foreign_keys, fn
+      {"invitations", "created_by", _constraint, delete} ->
+        constraint = "invitations_#{invitation_creator_column}_fkey"
+        {"invitations", invitation_creator_column, constraint, delete}
+
+      {"invitation_processing_logs", "user_id", _constraint, delete} ->
+        constraint = "invitation_processing_logs_#{processing_owner_column}_fkey"
+        {"invitation_processing_logs", processing_owner_column, constraint, delete}
+
+      foreign_key ->
+        foreign_key
+    end)
+  end
+
+  defp current_column(repo, table, current, legacy) do
+    if count(
+         repo,
+         "SELECT count(*) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = '#{table}' AND column_name = '#{current}'"
+       ) == 1,
+       do: current,
+       else: legacy
+  end
 
   defp count(repo, sql) do
     %{rows: [[value]]} = query!(repo, sql)

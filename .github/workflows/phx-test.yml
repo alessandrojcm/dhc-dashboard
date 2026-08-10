@@ -1,0 +1,86 @@
+name: Phoenix Tests
+
+on:
+  pull_request:
+    paths:
+      - 'apps/phoenix/**'
+      - 'docker-compose.yml'
+      - '.mise.toml'
+      - '.github/workflows/phx-test.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: phx-test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      phoenix: ${{ steps.filter.outputs.phoenix }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Check for changes
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            phoenix:
+              - 'apps/phoenix/**'
+              - 'docker-compose.yml'
+              - '.mise.toml'
+              - '.github/workflows/phx-test.yml'
+
+  test:
+    needs: changes
+    if: needs.changes.outputs.phoenix == 'true'
+    name: mix test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # The testcontainers harness (ADR 0006) drives the root docker-compose.yml
+      # `testing` profile via `docker compose --profile testing up -d --wait
+      # test-db`. ubuntu-latest ships Docker installed and running — no setup
+      # action needed. Mix deps + _build are cached keyed on mix.lock hash.
+      - name: Setup mise (Erlang + Elixir pinned in .mise.toml)
+        uses: jdx/mise-action@v2
+
+      - name: Restore deps & _build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            apps/phoenix/deps
+            apps/phoenix/_build
+          key: ${{ runner.os }}-mix-${{ hashFiles('apps/phoenix/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-
+
+      - name: Install Hex & Rebar
+        run: mix local.hex --force && mix local.rebar --force
+
+      - name: Install Phoenix deps
+        working-directory: apps/phoenix
+        run: mix deps.get
+
+      - name: Compile (warnings as errors)
+        working-directory: apps/phoenix
+        run: mix compile --warnings-as-errors
+
+      # mise run phx-test wraps `mix test` (the `test` Mix alias adds
+      # --no-start so test_helper.exs owns the testcontainers lifecycle).
+      # No secrets required — testcontainers brings up Postgres from the
+      # docker-compose testing profile; no external services are touched.
+      - name: Run tests
+        run: mise run phx-test

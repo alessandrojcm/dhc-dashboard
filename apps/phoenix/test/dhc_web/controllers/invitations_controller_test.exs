@@ -521,7 +521,7 @@ defmodule DhcWeb.InvitationsControllerTest do
 
       assert Repo.get!(Invitation, invitation_id).status == "accepted"
 
-      # ALE-162: acceptance creates the Principal with id = invitation.user_id.
+      # ALE-162: acceptance creates the pre-allocated prospective Principal.
       assert %Principal{id: ^user_id, email: "accept@example.com"} =
                Repo.get!(Principal, user_id)
 
@@ -684,7 +684,7 @@ defmodule DhcWeb.InvitationsControllerTest do
       %{invitation_id: invitation_id, user_id: user_id} =
         insert_invitation_with_profile(email: "rollback@example.com", waitlist: true)
 
-      # Pre-existing Principal/Member records for invitation.user_id —
+      # Pre-existing Principal/Member records for the prospective Principal id —
       # acceptance must detect this and roll back as :invalid_invitation
       # (replay defense / belt-and-braces check per ADR 0010).
       Repo.insert!(%Principal{id: user_id, email: "existing-#{user_id}@example.com"})
@@ -776,6 +776,135 @@ defmodule DhcWeb.InvitationsControllerTest do
       # token itself is not single-use.
       assert %{"errors" => %{"detail" => "Invitation cannot be accepted"}} =
                json_response(post(conn, "/api/invitations/#{invitation_id}/accept", body), 422)
+    end
+  end
+
+  describe "ALE-176: invitation acceptance reuses the waitlist UserProfile" do
+    # The waitlist intake (`Dhc.Waitlist.create_entry/1`) creates an inactive
+    # `user_profiles` row carrying the intake-captured fields (first/last/DOB/
+    # gender/pronouns/phone/social_media_consent/medical_conditions) plus an
+    # optional guardian row. Pre-ALE-176, acceptance created a *second*
+    # `user_profiles` row keyed to the same `waitlist_id`, discarding the
+    # intake fields and orphaning the guardian. ALE-176 makes acceptance lock
+    # the existing waitlist UserProfile `FOR UPDATE` and reuse it, setting
+    # `principal_id`/`is_active`/`customer_id` while preserving the rest.
+    #
+    # TDD workflow: the "does not create a duplicate" test below is the
+    # characterization — it went red against the pre-ALE-176 `accept/5`
+    # (which left two `user_profiles` rows per `waitlist_id`) and goes green
+    # once the reuse path lands, confirming the duplicate behavior changed.
+    # The companion tests assert the desired reuse + guardian preservation.
+
+    test "acceptance does not create a duplicate UserProfile (characterization: red pre-ALE-176, green after)",
+         %{conn: conn} do
+      %{invitation_id: invitation_id, user_id: user_id, waitlist_id: waitlist_id} =
+        insert_invitation_from_waitlist_entry(
+          email: "reuse@example.com",
+          intake: [
+            first_name: "IntakeFirst",
+            last_name: "IntakeLast",
+            gender: "non-binary",
+            pronouns: "they/them",
+            phone_number: "+353871234567",
+            social_media_consent: "yes_recognizable",
+            medical_conditions: "asthma"
+          ]
+        )
+
+      {:ok, token} =
+        Dhc.Invitations.issue_verification_token(
+          invitation_id,
+          "reuse@example.com",
+          ~D[1990-01-01]
+        )
+
+      conn =
+        post(conn, "/api/invitations/#{invitation_id}/accept", %{
+          "verificationToken" => token,
+          "nextOfKinName" => "Ada Lovelace",
+          "nextOfKinPhone" => "+353 1 000 0000",
+          "stripeConfirmationToken" => "ctok_test"
+        })
+
+      assert %{"data" => %{"accepted" => true, "memberId" => ^user_id}} = json_response(conn, 200)
+
+      # Exactly one UserProfile references the waitlist_id — pre-ALE-176 this
+      # was two (the intake row + a duplicate acceptance row). This is the
+      # assertion that flipped from red to green when the reuse path landed.
+      profiles =
+        from(up in UserProfile, where: up.waitlist_id == ^waitlist_id) |> Repo.all()
+
+      assert length(profiles) == 1
+
+      reused = hd(profiles)
+
+      # The reused row is the one acceptance flipped to active + linked to
+      # the new Principal, carrying the Stripe customer from the invitation.
+      assert reused.principal_id == user_id
+      assert reused.is_active == true
+      assert reused.customer_id == "cus_accept"
+
+      # Intake-captured fields are preserved (not overwritten with the
+      # invitation's default "Ada Lovelace" / "no" shape). All fields the
+      # intake captures (first/last/DOB/gender/pronouns/phone/social_media_
+      # consent/medical_conditions) are checked.
+      assert reused.first_name == "IntakeFirst"
+      assert reused.last_name == "IntakeLast"
+      assert reused.date_of_birth == ~D[1990-01-01]
+      assert reused.gender == "non-binary"
+      assert reused.pronouns == "they/them"
+      assert reused.phone_number == "+353871234567"
+      assert reused.social_media_consent == "yes_recognizable"
+      assert reused.medical_conditions == "asthma"
+
+      # The MemberProfile points at the reused UserProfile id (the triangle
+      # invariant survives acceptance without a duplicate).
+      member = Repo.get!(MemberProfile, user_id)
+      assert member.user_profile_id == reused.id
+    end
+
+    test "acceptance preserves the guardian row linked to the waitlist UserProfile",
+         %{conn: conn} do
+      %{invitation_id: invitation_id, waitlist_id: waitlist_id, profile_id: profile_id} =
+        insert_invitation_from_waitlist_entry(
+          email: "guardian@example.com",
+          intake: [guardian: true]
+        )
+
+      {:ok, token} =
+        Dhc.Invitations.issue_verification_token(
+          invitation_id,
+          "guardian@example.com",
+          ~D[1990-01-01]
+        )
+
+      conn =
+        post(conn, "/api/invitations/#{invitation_id}/accept", %{
+          "verificationToken" => token,
+          "nextOfKinName" => "Ada Lovelace",
+          "nextOfKinPhone" => "+353 1 000 0000",
+          "stripeConfirmationToken" => "ctok_test"
+        })
+
+      assert %{"data" => %{"accepted" => true}} = json_response(conn, 200)
+
+      # The guardian row survived acceptance and still points at the same
+      # UserProfile id (no orphaned guardian pointing at a dropped duplicate).
+      guardian =
+        Repo.one!(
+          from wg in "waitlist_guardians",
+            where: wg.profile_id == ^Ecto.UUID.dump!(profile_id),
+            select: %{first_name: wg.first_name, last_name: wg.last_name}
+        )
+
+      assert guardian.first_name == "Parent"
+      assert guardian.last_name == "Guardian"
+
+      # And there is still only one UserProfile for the waitlist_id.
+      assert Repo.aggregate(
+               from(up in UserProfile, where: up.waitlist_id == ^waitlist_id),
+               :count
+             ) == 1
     end
   end
 
@@ -873,12 +1002,12 @@ defmodule DhcWeb.InvitationsControllerTest do
       %Invitation{
         id: id,
         email: Keyword.get(attrs, :email, "test#{:rand.uniform(1_000_000)}@example.com"),
-        user_id: Keyword.get(attrs, :user_id, user_id),
+        prospective_principal_id: Keyword.get(attrs, :user_id, user_id),
         waitlist_id: Keyword.get(attrs, :waitlist_id),
         status: Keyword.get(attrs, :status, "pending"),
         expires_at: expires_at,
         created_at: created_at,
-        created_by: Keyword.get(attrs, :created_by),
+        created_by_principal_id: Keyword.get(attrs, :created_by),
         invitation_type: Keyword.get(attrs, :invitation_type, "member"),
         first_name: Keyword.get(attrs, :first_name, "Ada"),
         last_name: Keyword.get(attrs, :last_name, "Lovelace"),
@@ -925,7 +1054,7 @@ defmodule DhcWeb.InvitationsControllerTest do
       %Invitation{
         id: invitation_id,
         email: email,
-        user_id: user_id,
+        prospective_principal_id: user_id,
         waitlist_id: waitlist_id,
         status: Keyword.get(attrs, :status, "pending"),
         expires_at: expires_at,
@@ -939,5 +1068,89 @@ defmodule DhcWeb.InvitationsControllerTest do
       |> Repo.insert()
 
     %{invitation_id: invitation_id, user_id: user_id, waitlist_id: waitlist_id}
+  end
+
+  # ALE-176: builds the pre-acceptance state exactly as `Dhc.Waitlist.create_entry/1`
+  # leaves it — a waitlist entry plus an inactive `user_profiles` intake row
+  # (carrying first/last/DOB/gender/pronouns/phone/social_media_consent/
+  # medical_conditions) and an optional guardian — then mints a pending
+  # Invitation tied to that `waitlist_id` (the way bulk invite does). This is
+  # the shape acceptance must reuse rather than duplicate.
+  defp insert_invitation_from_waitlist_entry(attrs) do
+    email = Keyword.fetch!(attrs, :email)
+    date_of_birth = Keyword.get(attrs, :date_of_birth, ~D[1990-01-01])
+    intake = Keyword.get(attrs, :intake, [])
+
+    waitlist_id = Ecto.UUID.generate()
+    profile_id = Ecto.UUID.generate()
+    user_id = Ecto.UUID.generate()
+    invitation_id = Ecto.UUID.generate()
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    {:ok, _waitlist} =
+      %Dhc.Waitlist.WaitlistEntry{
+        id: waitlist_id,
+        email: email,
+        status: "invited",
+        initial_registration_date: now,
+        last_status_change: now
+      }
+      |> Repo.insert()
+
+    {:ok, _profile} =
+      %UserProfile{
+        id: profile_id,
+        first_name: Keyword.get(intake, :first_name, "IntakeFirst"),
+        last_name: Keyword.get(intake, :last_name, "IntakeLast"),
+        is_active: false,
+        date_of_birth: date_of_birth,
+        gender: Keyword.get(intake, :gender, "man (cis)"),
+        pronouns: Keyword.get(intake, :pronouns),
+        phone_number: Keyword.get(intake, :phone_number, "+353810000000"),
+        social_media_consent: Keyword.get(intake, :social_media_consent, "no"),
+        medical_conditions: Keyword.get(intake, :medical_conditions),
+        waitlist_id: waitlist_id
+      }
+      |> Repo.insert()
+
+    if Keyword.get(intake, :guardian, false) do
+      {1, _} =
+        Repo.insert_all("waitlist_guardians", [
+          %{
+            id: Ecto.UUID.dump!(Ecto.UUID.generate()),
+            profile_id: Ecto.UUID.dump!(profile_id),
+            first_name: "Parent",
+            last_name: "Guardian",
+            phone_number: "+353 1 111 1111",
+            created_at: now
+          }
+        ])
+    end
+
+    expires_at = DateTime.utc_now() |> DateTime.add(7, :day) |> DateTime.truncate(:second)
+
+    {:ok, _invitation} =
+      %Invitation{
+        id: invitation_id,
+        email: email,
+        prospective_principal_id: user_id,
+        waitlist_id: waitlist_id,
+        status: "pending",
+        expires_at: expires_at,
+        invitation_type: "member",
+        first_name: "Ada",
+        last_name: "Lovelace",
+        phone_number: "+353810000000",
+        date_of_birth: date_of_birth,
+        stripe_customer_id: "cus_accept"
+      }
+      |> Repo.insert()
+
+    %{
+      invitation_id: invitation_id,
+      user_id: user_id,
+      waitlist_id: waitlist_id,
+      profile_id: profile_id
+    }
   end
 end

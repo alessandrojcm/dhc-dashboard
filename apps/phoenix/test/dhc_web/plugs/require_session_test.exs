@@ -98,7 +98,8 @@ defmodule DhcWeb.Plugs.RequireSessionTest do
 
       principal = principal_fixture(id: auth_user_id, email: email)
       token = session_token(principal)
-      age_token(token, -31, :day)
+      # age_token matches the stored column value (SHA-256 digest since ALE-182).
+      age_token(:crypto.hash(:sha256, token), -31, :day)
 
       conn =
         conn()
