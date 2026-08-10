@@ -1,13 +1,14 @@
 defmodule Dhc.Repo.Migrations.Ale179ContractValidateStripeIdentifierSplit do
   @moduledoc """
-  ALE-179 (contract): replace the legacy conflated Stripe column and validate
-  the split identifier invariant after the code release.
+  ALE-179 (contract): remove legacy PaymentIntent duplicates from the
+  Checkout Session column and validate the split identifier invariant after
+  the code release.
 
-  The expand migration moved `pi_*` values to `stripe_payment_intent_id` and
-  left only `cs_*` values in the existing `stripe_checkout_session_id` column.
-  This migration replaces that physical legacy column with a fresh canonical
-  column of the same application-facing name, preserving all `cs_*` values,
-  then rebuilds and validates the CHECK and partial unique against it.
+  The expand migration copied `pi_*` values to `stripe_payment_intent_id` but
+  retained the legacy value so the previous application release remained
+  compatible. This migration clears only those duplicated `pi_*` values. The
+  existing Checkout Session column and partial unique index remain in place,
+  avoiding a full-table rewrite and index rebuild.
 
   ALE-179 is unsafe to roll back after writes because its expand backfill moved
   identifiers between columns. Backup-restore is the only supported rollback.
@@ -16,30 +17,41 @@ defmodule Dhc.Repo.Migrations.Ale179ContractValidateStripeIdentifierSplit do
   use Ecto.Migration
 
   @check :club_activity_registrations_stripe_identifier_xor
-  @cs_unique :club_activity_registrations_stripe_checkout_session_id_unique
 
   def up do
-    rename table(:club_activity_registrations),
-           :stripe_checkout_session_id,
-           to: :stripe_checkout_session_id_legacy
+    execute """
+    DO $$
+    DECLARE invalid_identifiers bigint;
+    BEGIN
+      SELECT count(*) INTO invalid_identifiers
+        FROM club_activity_registrations
+       WHERE stripe_checkout_session_id IS NOT NULL
+         AND (
+           left(stripe_checkout_session_id, 3) NOT IN ('pi_', 'cs_')
+           OR (
+             stripe_payment_intent_id IS NOT NULL
+             AND stripe_payment_intent_id IS DISTINCT FROM stripe_checkout_session_id
+           )
+         );
 
-    alter table(:club_activity_registrations) do
-      add :stripe_checkout_session_id, :text
-    end
+      IF invalid_identifiers > 0 THEN
+        RAISE EXCEPTION
+          'ALE-179 contract: % invalid or conflicting Stripe identifiers remain; reconcile them before retrying',
+          invalid_identifiers
+          USING ERRCODE = 'check_violation';
+      END IF;
+    END;
+    $$ LANGUAGE plpgsql
+    """
 
     execute """
     UPDATE club_activity_registrations
-       SET stripe_checkout_session_id = stripe_checkout_session_id_legacy
+       SET stripe_checkout_session_id = NULL
+     WHERE left(stripe_checkout_session_id, 3) = 'pi_'
+       AND stripe_payment_intent_id = stripe_checkout_session_id
     """
 
-    execute """
-    ALTER TABLE club_activity_registrations
-      DROP CONSTRAINT #{@check}
-    """
-
-    drop index(:club_activity_registrations, [:stripe_checkout_session_id_legacy],
-           name: @cs_unique
-         )
+    execute "ALTER TABLE club_activity_registrations DROP CONSTRAINT #{@check}"
 
     execute """
     ALTER TABLE club_activity_registrations
@@ -51,15 +63,6 @@ defmodule Dhc.Repo.Migrations.Ale179ContractValidateStripeIdentifierSplit do
     ALTER TABLE club_activity_registrations
       VALIDATE CONSTRAINT #{@check}
     """
-
-    create unique_index(:club_activity_registrations, [:stripe_checkout_session_id],
-             name: @cs_unique,
-             where: "stripe_checkout_session_id IS NOT NULL"
-           )
-
-    alter table(:club_activity_registrations) do
-      remove :stripe_checkout_session_id_legacy
-    end
   end
 
   def down do

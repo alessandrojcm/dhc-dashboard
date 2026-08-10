@@ -84,6 +84,24 @@ defmodule Dhc.Repo.Migrations.Ale177RegistrationSlotLeaksPartialUniquesXorCheck 
   @active_predicate "status IN ('pending'::registration_status, 'confirmed'::registration_status)"
 
   def up do
+    execute """
+    DO $$
+    DECLARE invalid_participants bigint;
+    BEGIN
+      SELECT count(*) INTO invalid_participants
+        FROM club_activity_registrations
+       WHERE num_nonnulls(member_user_id, external_user_id) <> 1;
+
+      IF invalid_participants > 0 THEN
+        RAISE EXCEPTION
+          'ALE-177: % registrations violate the exactly-one-participant invariant; reconcile them before retrying',
+          invalid_participants
+          USING ERRCODE = 'check_violation', CONSTRAINT = '#{@xor_check}';
+      END IF;
+    END;
+    $$ LANGUAGE plpgsql
+    """
+
     # 1. Drop the two full uniques being replaced. `drop_if_exists` guards
     #    against a partial failure leaving the migration half-applied.
     drop_if_exists(

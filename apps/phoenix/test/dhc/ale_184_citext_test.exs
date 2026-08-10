@@ -11,16 +11,17 @@ defmodule Dhc.Ale184CitextTest do
   end
 
   describe "case-variant collision characterization" do
-    test "the citext cast rejects collisions permitted by the previous text type" do
+    test "the migration gate reports collisions permitted by the previous text type" do
       Repo.query!("ALTER TABLE waitlist ALTER COLUMN email TYPE text USING email::text")
 
       email = unique_email("collision")
       insert_waitlist(email)
       insert_waitlist(String.upcase(email))
 
-      assert_raise Postgrex.Error, fn ->
-        Repo.query!("ALTER TABLE waitlist ALTER COLUMN email TYPE citext USING email::citext")
-      end
+      error = assert_raise Postgrex.Error, &run_collision_gate!/0
+
+      assert Map.get(error.postgres, :code) == :unique_violation
+      assert Map.get(error.postgres, :message) =~ "waitlist groups: 1"
     end
   end
 
@@ -80,5 +81,32 @@ defmodule Dhc.Ale184CitextTest do
 
   defp unique_email(prefix) do
     "#{prefix}-#{System.unique_integer([:positive])}@example.com"
+  end
+
+  defp run_collision_gate! do
+    Repo.query!("""
+    DO $$
+    DECLARE waitlist_collisions bigint;
+    DECLARE external_user_collisions bigint;
+    BEGIN
+      SELECT count(*) INTO waitlist_collisions
+        FROM (
+          SELECT lower(email) FROM waitlist GROUP BY lower(email) HAVING count(*) > 1
+        ) duplicates;
+
+      SELECT count(*) INTO external_user_collisions
+        FROM (
+          SELECT lower(email) FROM external_users GROUP BY lower(email) HAVING count(*) > 1
+        ) duplicates;
+
+      IF waitlist_collisions > 0 OR external_user_collisions > 0 THEN
+        RAISE EXCEPTION
+          'ALE-184: case-insensitive email collisions found (waitlist groups: %, external_users groups: %)',
+          waitlist_collisions, external_user_collisions
+          USING ERRCODE = 'unique_violation';
+      END IF;
+    END;
+    $$ LANGUAGE plpgsql
+    """)
   end
 end

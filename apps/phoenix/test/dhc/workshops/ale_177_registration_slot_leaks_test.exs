@@ -244,6 +244,45 @@ defmodule Dhc.Workshops.Ale177RegistrationSlotLeaksTest do
   end
 
   describe "the XOR CHECK (exactly_one_participant) is enforced at the DB layer" do
+    test "the migration gate reports historical XOR violations before adding the CHECK" do
+      workshop = WorkshopFixtures.workshop_fixture()
+      {display_name_column, display_name_value} = display_name_fragments("No Participant")
+
+      Repo.query!("ALTER TABLE club_activity_registrations DROP CONSTRAINT #{@xor_check}")
+
+      Repo.query!(
+        """
+        INSERT INTO club_activity_registrations
+          (id, club_activity_id#{display_name_column}, amount_paid, currency,
+           status, registered_at, created_at, updated_at)
+        VALUES ($1, $2#{display_name_value}, 1000, 'eur', 'pending', NOW(), NOW(), NOW())
+        """,
+        [Ecto.UUID.dump!(Ecto.UUID.generate()), Ecto.UUID.dump!(workshop.id)]
+      )
+
+      error =
+        assert_raise Postgrex.Error, fn ->
+          Repo.query!("""
+          DO $$
+          DECLARE invalid_participants bigint;
+          BEGIN
+            SELECT count(*) INTO invalid_participants
+              FROM club_activity_registrations
+             WHERE num_nonnulls(member_user_id, external_user_id) <> 1;
+
+            IF invalid_participants > 0 THEN
+              RAISE EXCEPTION 'ALE-177: % registrations violate the exactly-one-participant invariant', invalid_participants
+                USING ERRCODE = 'check_violation', CONSTRAINT = '#{@xor_check}';
+            END IF;
+          END;
+          $$ LANGUAGE plpgsql
+          """)
+        end
+
+      assert Map.get(error.postgres, :constraint) == Atom.to_string(@xor_check)
+      assert Map.get(error.postgres, :message) =~ "1 registrations"
+    end
+
     @tag :ale_177
     test "a row with neither member_user_id nor external_user_id is rejected" do
       workshop = WorkshopFixtures.workshop_fixture()

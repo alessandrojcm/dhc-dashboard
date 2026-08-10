@@ -64,6 +64,27 @@ defmodule Dhc.Repo.Migrations.Ale180LinkageDriftUniqueIndexesConstraintTriggers 
   @trigger_up_update "user_profiles_linkage_drift_update_principal_id"
 
   def up do
+    execute "LOCK TABLE member_profiles, user_profiles IN SHARE ROW EXCLUSIVE MODE"
+
+    execute """
+    DO $$
+    DECLARE drifted_pairs bigint;
+    BEGIN
+      SELECT count(*) INTO drifted_pairs
+        FROM member_profiles mp
+        JOIN user_profiles up ON up.id = mp.user_profile_id
+       WHERE up.principal_id IS DISTINCT FROM mp.id;
+
+      IF drifted_pairs > 0 THEN
+        RAISE EXCEPTION
+          'ALE-180: % existing member/user profile pairs violate the linkage invariant; reconcile them before retrying',
+          drifted_pairs
+          USING ERRCODE = 'check_violation', CONSTRAINT = 'linkage_drift_violation';
+      END IF;
+    END;
+    $$ LANGUAGE plpgsql
+    """
+
     # 1. member_profiles.user_profile_id: non-unique → unique.
     drop_if_exists(index(:member_profiles, [:user_profile_id], name: @member_profile_id_index))
 

@@ -25,7 +25,11 @@ defmodule Dhc.Workshops.Ale179CodeReleaseStripeSplitWritesTest do
 
   use Dhc.DataCase, async: false
 
+  alias Ecto.Adapters.SQL.Sandbox
+  alias Dhc.Auth.Principal
+  alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.Repo
+  alias Dhc.UserProfiles.UserProfile
   alias Dhc.Workshops
   alias Dhc.Workshops.Registration
   alias Dhc.WorkshopFixtures
@@ -175,6 +179,144 @@ defmodule Dhc.Workshops.Ale179CodeReleaseStripeSplitWritesTest do
     end
   end
 
+  describe "archived Workshops reject registration" do
+    test "member initiation is rejected and a completed payment is refunded" do
+      workshop = archived_workshop_fixture()
+      %{auth_user_id: user_id} = WorkshopFixtures.member_fixture()
+
+      Application.put_env(:dhc, :ale_193_workshop_id, workshop.id)
+      Application.put_env(:dhc, :ale_193_member_user_id, user_id)
+
+      assert {:error, :not_found} =
+               Workshops.create_member_payment_intent(workshop.id, user_id, %{amount: 1000})
+
+      payment_intent_id = "pi_archived_#{System.unique_integer([:positive])}"
+
+      assert {:error, :not_found} =
+               Workshops.complete_member_registration(workshop.id, user_id, payment_intent_id)
+
+      assert [payment_intent: ^payment_intent_id, reason: "duplicate"] =
+               Application.fetch_env!(:dhc, :ale_193_last_refund_request)
+    end
+
+    test "member completion reports payment failure when the compensating refund fails" do
+      workshop = archived_workshop_fixture()
+      %{auth_user_id: user_id} = WorkshopFixtures.member_fixture()
+
+      Application.put_env(:dhc, :ale_193_workshop_id, workshop.id)
+      Application.put_env(:dhc, :ale_193_member_user_id, user_id)
+      Application.put_env(:dhc, :ale_193_refund_response, {:error, :provider_unavailable})
+
+      assert {:error, :payment_failed} =
+               Workshops.complete_member_registration(
+                 workshop.id,
+                 user_id,
+                 "pi_archived_refund_failure"
+               )
+    end
+
+    test "external gates reject initiation and refund an in-flight paid checkout" do
+      workshop = archived_workshop_fixture()
+      Application.put_env(:dhc, :ale_193_workshop_id, workshop.id)
+
+      assert %{can_register: false, reason: "NOT_FOUND"} =
+               Workshops.external_registration_gate(workshop.id)
+
+      assert {:error, :not_found} =
+               Workshops.create_external_checkout_session(
+                 workshop.id,
+                 "https://example.com/return?session={CHECKOUT_SESSION_ID}"
+               )
+
+      checkout_session_id = "cs_archived_#{System.unique_integer([:positive])}"
+
+      assert {:error, :not_found} =
+               Workshops.complete_external_registration(workshop.id, checkout_session_id)
+
+      assert [payment_intent: "pi_from_checkout", reason: "duplicate"] =
+               Application.fetch_env!(:dhc, :ale_193_last_refund_request)
+    end
+  end
+
+  describe "delete and registration serialization" do
+    test "a completion holding the Workshop lock commits before deletion decides to archive" do
+      {workshop, member} =
+        outside_sandbox(fn ->
+          workshop = WorkshopFixtures.workshop_fixture(status: "published", max_capacity: 2)
+          member = WorkshopFixtures.member_fixture()
+          {workshop, member}
+        end)
+
+      user_id = member.auth_user_id
+
+      Application.put_env(:dhc, :ale_193_workshop_id, workshop.id)
+      Application.put_env(:dhc, :ale_193_member_user_id, user_id)
+
+      ready_lock = :erlang.phash2({workshop.id, :ready}, 2_000_000_000)
+      release_lock = :erlang.phash2({workshop.id, :release}, 2_000_000_000)
+      trigger = "ale_review_delay_registration_#{ready_lock}"
+
+      outside_sandbox(fn ->
+        install_registration_delay!(trigger, workshop.id, ready_lock, release_lock)
+      end)
+
+      on_exit(fn ->
+        outside_sandbox(fn ->
+          Repo.query!("DROP TRIGGER IF EXISTS #{trigger} ON club_activity_registrations")
+          Repo.query!("DROP FUNCTION IF EXISTS #{trigger}()")
+          Repo.delete_all(from r in Registration, where: r.club_activity_id == ^workshop.id)
+          Repo.delete_all(from w in Dhc.Workshops.Workshop, where: w.id == ^workshop.id)
+          Repo.delete_all(from mp in MemberProfile, where: mp.id == ^member.principal_id)
+          Repo.delete_all(from up in UserProfile, where: up.id == ^member.profile_id)
+          Repo.delete_all(from p in Principal, where: p.id == ^member.principal_id)
+        end)
+      end)
+
+      supervisor = start_supervised!(Task.Supervisor)
+      payment_intent_id = "pi_delete_race_#{System.unique_integer([:positive])}"
+      test_pid = self()
+
+      coordinator =
+        Task.Supervisor.async_nolink(supervisor, fn ->
+          outside_sandbox(fn ->
+            Repo.transaction(fn ->
+              Repo.query!("SELECT pg_advisory_xact_lock($1)", [release_lock])
+              send(test_pid, :release_lock_acquired)
+
+              receive do
+                :release_registration -> :ok
+              end
+            end)
+          end)
+        end)
+
+      assert_receive :release_lock_acquired
+
+      completion =
+        Task.Supervisor.async_nolink(supervisor, fn ->
+          outside_sandbox(fn ->
+            Workshops.complete_member_registration(workshop.id, user_id, payment_intent_id)
+          end)
+        end)
+
+      outside_sandbox(fn -> await_advisory_lock!(ready_lock, 1_000) end)
+
+      deletion =
+        Task.Supervisor.async_nolink(supervisor, fn ->
+          outside_sandbox(fn -> Workshops.delete_workshop(workshop.id) end)
+        end)
+
+      outside_sandbox(fn -> await_workshop_lock_wait!(1_000) end)
+      send(coordinator.pid, :release_registration)
+
+      assert {:ok, %Registration{stripe_payment_intent_id: ^payment_intent_id}} =
+               Task.await(completion, :infinity)
+
+      assert {:ok, :archived, _summary} = Task.await(deletion, :infinity)
+      assert {:ok, :ok} = Task.await(coordinator, :infinity)
+    end
+  end
+
   # ── Refunds resolve the split identifier ─────────────────────────────
 
   describe "process_refund/5 refunds against the resolved Payment Intent" do
@@ -294,5 +436,74 @@ defmodule Dhc.Workshops.Ale179CodeReleaseStripeSplitWritesTest do
       # No Stripe refund request issued for a no-id registration.
       assert Application.get_env(:dhc, :ale_193_last_refund_request) == nil
     end
+  end
+
+  defp archived_workshop_fixture do
+    workshop =
+      WorkshopFixtures.workshop_fixture(
+        status: "published",
+        is_public: true,
+        price_non_member: 2000.0
+      )
+
+    workshop
+    |> Ecto.Changeset.change(archived_at: DateTime.utc_now() |> DateTime.truncate(:second))
+    |> Repo.update!()
+  end
+
+  defp outside_sandbox(fun), do: Sandbox.unboxed_run(Repo, fun)
+
+  defp install_registration_delay!(trigger, workshop_id, ready_lock, release_lock) do
+    Repo.query!("""
+    CREATE FUNCTION #{trigger}() RETURNS trigger AS $$
+    BEGIN
+      IF NEW.club_activity_id = '#{workshop_id}'::uuid THEN
+        PERFORM pg_advisory_xact_lock(#{ready_lock});
+        PERFORM pg_advisory_xact_lock(#{release_lock});
+      END IF;
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql
+    """)
+
+    Repo.query!("""
+    CREATE TRIGGER #{trigger}
+    BEFORE INSERT ON club_activity_registrations
+    FOR EACH ROW EXECUTE FUNCTION #{trigger}()
+    """)
+  end
+
+  defp await_advisory_lock!(_lock_key, 0), do: flunk("registration did not reach the insert")
+
+  defp await_advisory_lock!(lock_key, attempts) do
+    case Repo.query!("SELECT pg_try_advisory_lock($1)", [lock_key]).rows do
+      [[false]] ->
+        :ok
+
+      [[true]] ->
+        Repo.query!("SELECT pg_advisory_unlock($1)", [lock_key])
+        await_advisory_lock!(lock_key, attempts - 1)
+    end
+  end
+
+  defp await_workshop_lock_wait!(0), do: flunk("deletion did not wait for the Workshop lock")
+
+  defp await_workshop_lock_wait!(attempts) do
+    waiting? =
+      Repo.query!(
+        """
+        SELECT EXISTS (
+          SELECT 1
+            FROM pg_stat_activity
+           WHERE pid <> pg_backend_pid()
+             AND wait_event_type = 'Lock'
+             AND query LIKE $1
+             AND query LIKE $2
+        )
+        """,
+        ["%FROM \"club_activities\"%", "%FOR UPDATE%"]
+      ).rows == [[true]]
+
+    if waiting?, do: :ok, else: await_workshop_lock_wait!(attempts - 1)
   end
 end
