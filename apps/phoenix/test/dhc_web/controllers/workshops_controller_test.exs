@@ -694,7 +694,12 @@ defmodule DhcWeb.WorkshopsControllerTest do
                json_response(cancel_conn, 200)
     end
 
-    test "deletes planned Workshops with 204 and rejects published deletes", %{conn: conn} do
+    @tag :ale_181
+    test "hard-deletes a Workshop with no registrations with 204 regardless of status", %{
+      conn: conn
+    } do
+      # ALE-181 dropped the status gate: a published Workshop with no
+      # registrations is hard-deleted, not rejected.
       planned = WorkshopFixtures.workshop_fixture(status: "planned")
       published = WorkshopFixtures.workshop_fixture(status: "published")
 
@@ -710,8 +715,53 @@ defmodule DhcWeb.WorkshopsControllerTest do
         |> auth_conn("admin")
         |> delete("/api/workshops/#{to_uuid(published.id)}")
 
-      assert %{"errors" => %{"detail" => "Only planned workshops can be deleted"}} =
-               json_response(conn, 422)
+      assert response(conn, 204) == ""
+    end
+
+    @tag :ale_181
+    test "archives a Workshop with registrations with 200 + body", %{conn: conn} do
+      workshop = WorkshopFixtures.workshop_fixture(status: "published")
+
+      WorkshopFixtures.registration_fixture(
+        workshop_id: workshop.id,
+        member_user_id: @member_user_id,
+        status: "confirmed"
+      )
+
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> delete("/api/workshops/#{to_uuid(workshop.id)}")
+
+      assert %{"data" => %{"workshop" => body}} = json_response(conn, 200)
+      assert body["id"] == to_uuid(workshop.id)
+      assert body["status"] == "published"
+    end
+
+    @tag :ale_181
+    test "rejects an already-archived Workshop with 409", %{conn: conn} do
+      workshop = WorkshopFixtures.workshop_fixture(status: "published")
+
+      WorkshopFixtures.registration_fixture(
+        workshop_id: workshop.id,
+        member_user_id: @member_user_id,
+        status: "confirmed"
+      )
+
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> delete("/api/workshops/#{to_uuid(workshop.id)}")
+
+      assert response(conn, 200) != nil
+
+      conn =
+        build_conn()
+        |> auth_conn("admin")
+        |> delete("/api/workshops/#{to_uuid(workshop.id)}")
+
+      assert %{"errors" => %{"detail" => "Workshop is already archived"}} =
+               json_response(conn, 409)
     end
 
     test "returns 404 for unknown Workshop ids", %{conn: conn} do
@@ -917,7 +967,9 @@ defmodule DhcWeb.WorkshopsControllerTest do
       WorkshopFixtures.registration_fixture(
         workshop_id: workshop.id,
         member_user_id: uid,
-        status: "confirmed"
+        status: "confirmed",
+        # ALE-181: participant identity is the registration snapshot.
+        display_name: "Ada Lovelace"
       )
 
       conn =
@@ -957,7 +1009,10 @@ defmodule DhcWeb.WorkshopsControllerTest do
       WorkshopFixtures.registration_fixture(
         workshop_id: workshop.id,
         external_user_id: ext.id,
-        status: "confirmed"
+        status: "confirmed",
+        # ALE-181: participant identity is the registration snapshot.
+        display_name: "Grace Hopper",
+        email: "grace@example.com"
       )
 
       conn =
@@ -991,14 +1046,17 @@ defmodule DhcWeb.WorkshopsControllerTest do
         workshop_id: workshop.id,
         member_user_id: u2,
         status: "confirmed",
-        created_at: later
+        created_at: later,
+        # ALE-181: participant identity is the registration snapshot.
+        display_name: "Second Reg"
       )
 
       WorkshopFixtures.registration_fixture(
         workshop_id: workshop.id,
         member_user_id: u1,
         status: "confirmed",
-        created_at: earlier
+        created_at: earlier,
+        display_name: "First Reg"
       )
 
       conn =
@@ -1065,7 +1123,9 @@ defmodule DhcWeb.WorkshopsControllerTest do
         WorkshopFixtures.registration_fixture(
           workshop_id: workshop.id,
           member_user_id: uid,
-          status: "refunded"
+          status: "refunded",
+          # ALE-181: participant identity is the registration snapshot.
+          display_name: "Alan Turing"
         )
 
       WorkshopFixtures.refund_fixture(registration_id: reg.id)
@@ -1106,7 +1166,10 @@ defmodule DhcWeb.WorkshopsControllerTest do
         WorkshopFixtures.registration_fixture(
           workshop_id: workshop.id,
           external_user_id: ext.id,
-          status: "refunded"
+          status: "refunded",
+          # ALE-181: participant identity is the registration snapshot.
+          display_name: "Katherine Johnson",
+          email: "katherine@example.com"
         )
 
       WorkshopFixtures.refund_fixture(registration_id: reg.id)
@@ -1411,7 +1474,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
           member_user_id: @member_user_id,
           status: "confirmed",
           amount_paid: 1000,
-          stripe_checkout_session_id: "pi_paid_registration"
+          stripe_payment_intent_id: "pi_paid_registration"
         )
 
       conn =
@@ -1715,7 +1778,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
           member_user_id: @other_user_id,
           status: "confirmed",
           amount_paid: 1000,
-          stripe_checkout_session_id: "pi_explicit_refund"
+          stripe_payment_intent_id: "pi_explicit_refund"
         )
 
       conn =
@@ -1753,7 +1816,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
           workshop_id: workshop.id,
           member_user_id: @other_user_id,
           status: "confirmed",
-          stripe_checkout_session_id: "pi_late_refund"
+          stripe_payment_intent_id: "pi_late_refund"
         )
 
       conn =
@@ -1780,7 +1843,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
           workshop_id: workshop.id,
           member_user_id: @other_user_id,
           status: "confirmed",
-          stripe_checkout_session_id: "pi_stripe_failure"
+          stripe_payment_intent_id: "pi_stripe_failure"
         )
 
       Application.put_env(:dhc, :workshop_stripe_refund_response, {:error, :provider_down})
@@ -1813,7 +1876,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
           member_user_id: @other_user_id,
           status: "confirmed",
           amount_paid: 1000,
-          stripe_checkout_session_id: "pi_cancelled_workshop"
+          stripe_payment_intent_id: "pi_cancelled_workshop"
         )
 
       conn =
@@ -1841,7 +1904,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
           member_user_id: @other_user_id,
           status: "confirmed",
           amount_paid: 1000,
-          stripe_checkout_session_id: "pi_already_refunded"
+          stripe_payment_intent_id: "pi_already_refunded"
         )
 
       existing_refund =

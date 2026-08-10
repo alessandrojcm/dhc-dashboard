@@ -23,6 +23,7 @@ defmodule Dhc.WorkshopsTest do
 
   use Dhc.DataCase, async: false
 
+  alias Dhc.Repo
   alias Dhc.WorkshopFixtures
   alias Dhc.Workshops
 
@@ -402,18 +403,66 @@ defmodule Dhc.WorkshopsTest do
   end
 
   describe "delete_workshop/1" do
-    test "deletes planned Workshops" do
+    @tag :ale_181
+    test "hard-deletes Workshops with no registrations and returns {:ok, :deleted}" do
       workshop = WorkshopFixtures.workshop_fixture(status: "planned")
 
-      assert :ok = Workshops.delete_workshop(workshop.id)
+      assert {:ok, :deleted} = Workshops.delete_workshop(workshop.id)
       assert Workshops.workshop_summary(workshop.id) == nil
     end
 
-    test "rejects non-planned Workshops" do
+    @tag :ale_181
+    test "hard-deletes a Workshop with no registrations regardless of status" do
+      # ALE-181 dropped the status gate: a published Workshop with no
+      # registrations is hard-deleted, not rejected.
       workshop = WorkshopFixtures.workshop_fixture(status: "published")
 
-      assert {:error, :not_deletable} = Workshops.delete_workshop(workshop.id)
-      assert Workshops.workshop_summary(workshop.id).status == "published"
+      assert {:ok, :deleted} = Workshops.delete_workshop(workshop.id)
+      assert Workshops.workshop_summary(workshop.id) == nil
+    end
+
+    @tag :ale_181
+    test "archives Workshops with registrations and returns {:ok, :archived, summary}" do
+      workshop = WorkshopFixtures.workshop_fixture(status: "published")
+
+      %{auth_user_id: uid} = WorkshopFixtures.member_fixture()
+
+      WorkshopFixtures.registration_fixture(
+        workshop_id: workshop.id,
+        member_user_id: uid,
+        status: "confirmed"
+      )
+
+      assert {:ok, :archived, summary} = Workshops.delete_workshop(workshop.id)
+
+      assert summary.id == workshop.id
+      assert summary.status == "published"
+
+      # The Workshop is soft-deleted: it drops out of the summary read but
+      # the row is retained (the financial-tail FKs are RESTRICT).
+      assert Workshops.workshop_summary(workshop.id) == nil
+
+      assert Repo.get(Dhc.Workshops.Workshop, workshop.id).archived_at != nil
+    end
+
+    @tag :ale_181
+    test "rejects an already-archived Workshop with {:error, :already_archived}" do
+      workshop = WorkshopFixtures.workshop_fixture(status: "published")
+
+      %{auth_user_id: uid} = WorkshopFixtures.member_fixture()
+
+      WorkshopFixtures.registration_fixture(
+        workshop_id: workshop.id,
+        member_user_id: uid,
+        status: "confirmed"
+      )
+
+      assert {:ok, :archived, _} = Workshops.delete_workshop(workshop.id)
+      assert {:error, :already_archived} = Workshops.delete_workshop(workshop.id)
+    end
+
+    test "returns {:error, :not_found} for unknown Workshop ids" do
+      assert {:error, :not_found} = Workshops.delete_workshop(Ecto.UUID.generate())
     end
   end
 
@@ -683,7 +732,11 @@ defmodule Dhc.WorkshopsTest do
       WorkshopFixtures.registration_fixture(
         workshop_id: workshop.id,
         member_user_id: uid,
-        status: "confirmed"
+        status: "confirmed",
+        # ALE-181: participant identity is the registration snapshot, not a
+        # live join. The fixture does not resolve the profile name, so the
+        # test passes the snapshot it expects to read back.
+        display_name: "Ada Lovelace"
       )
 
       [attendee] = Workshops.list_workshop_attendees(workshop.id)
@@ -708,7 +761,10 @@ defmodule Dhc.WorkshopsTest do
       WorkshopFixtures.registration_fixture(
         workshop_id: workshop.id,
         external_user_id: ext.id,
-        status: "confirmed"
+        status: "confirmed",
+        # ALE-181: participant identity is the registration snapshot.
+        display_name: "Grace Hopper",
+        email: "grace@example.com"
       )
 
       [attendee] = Workshops.list_workshop_attendees(workshop.id)
@@ -837,7 +893,9 @@ defmodule Dhc.WorkshopsTest do
         WorkshopFixtures.registration_fixture(
           workshop_id: workshop.id,
           member_user_id: uid,
-          status: "refunded"
+          status: "refunded",
+          # ALE-181: participant identity is the registration snapshot.
+          display_name: "Alan Turing"
         )
 
       WorkshopFixtures.refund_fixture(registration_id: reg.id)
@@ -865,7 +923,10 @@ defmodule Dhc.WorkshopsTest do
         WorkshopFixtures.registration_fixture(
           workshop_id: workshop.id,
           external_user_id: ext.id,
-          status: "refunded"
+          status: "refunded",
+          # ALE-181: participant identity is the registration snapshot.
+          display_name: "Katherine Johnson",
+          email: "katherine@example.com"
         )
 
       WorkshopFixtures.refund_fixture(registration_id: reg.id)

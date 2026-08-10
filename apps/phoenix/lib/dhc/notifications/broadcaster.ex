@@ -10,7 +10,7 @@ defmodule Dhc.Notifications.Broadcaster do
 
   The realtime contract is:
 
-    * topic  — `notifications:<supabase-user-id>` (the notification owner)
+    * topic  — `notifications:<principal-id>` (the notification owner)
     * event  — `notification_created`
     * payload — `%{}` (empty; clients refetch authoritative state over HTTP)
 
@@ -68,12 +68,12 @@ defmodule Dhc.Notifications.Broadcaster do
 
   defp log_failure(notification, {:error, reason}) do
     Logger.error(
-      "[notifications] Broadcast failed for notification #{notification.id} user #{notification.user_id}: #{inspect(reason)}"
+      "[notifications] Broadcast failed for notification #{notification.id} principal #{notification.principal_id}: #{inspect(reason)}"
     )
   end
 
   @doc """
-  Builds the per-user Notification realtime topic for a Supabase user id.
+  Builds the per-user Notification realtime topic for a Principal id.
   """
   @spec topic(String.t()) :: String.t()
   def topic(user_id) when is_binary(user_id), do: "notifications:#{user_id}"
@@ -86,8 +86,8 @@ defmodule Dhc.Notifications.Broadcaster do
   forward as the `notification_created` event with an empty payload.
   """
   @spec broadcast(Notification.t()) :: broadcast_result()
-  def broadcast(%Notification{user_id: user_id}) do
-    DhcWeb.Endpoint.broadcast(topic(user_id), "notification_created", %{})
+  def broadcast(%Notification{principal_id: principal_id}) do
+    DhcWeb.Endpoint.broadcast(topic(principal_id), "notification_created", %{})
   end
 
   defp broadcaster do

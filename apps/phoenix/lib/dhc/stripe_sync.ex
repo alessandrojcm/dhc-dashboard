@@ -450,15 +450,24 @@ defmodule Dhc.StripeSync do
     ended_at = parse_unix_timestamp(Map.get(subscription, "ended_at"))
 
     try do
-      :ok = Repository.mark_customer_active(customer_id, last_payment_date, ended_at)
+      case Repository.mark_customer_active(customer_id, last_payment_date, ended_at) do
+        :ok ->
+          Logger.debug("[stripe-sync] Marked customer as active",
+            customer_id: customer_id,
+            last_payment_date:
+              if(last_payment_date, do: DateTime.to_iso8601(last_payment_date), else: nil)
+          )
 
-      Logger.debug("[stripe-sync] Marked customer as active",
-        customer_id: customer_id,
-        last_payment_date:
-          if(last_payment_date, do: DateTime.to_iso8601(last_payment_date), else: nil)
-      )
+          {:ok, :active}
 
-      {:ok, :active}
+        {:error, reason} ->
+          Logger.error("[stripe-sync] Failed to mark customer as active",
+            customer_id: customer_id,
+            error: inspect(reason)
+          )
+
+          {:error, {:db_error, reason}}
+      end
     rescue
       e ->
         Logger.error("[stripe-sync] Failed to mark customer as active",

@@ -40,6 +40,10 @@ defmodule Dhc.Workshops.Workshop do
     field :announce_email, :boolean, default: false
     # `created_by` references `auth.users(id)` (Supabase-owned); read-only here.
     field :created_by, :binary_id
+    # ALE-181: soft-delete marker. `nil` = active; a timestamp = archived.
+    # `summary_query/0` filters `archived_at IS NULL` so archived Workshops
+    # drop out of summaries without losing their financial/audit rows.
+    field :archived_at, :utc_datetime
 
     timestamps(type: :utc_datetime, inserted_at: :created_at)
   end

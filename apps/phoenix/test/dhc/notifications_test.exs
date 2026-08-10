@@ -11,6 +11,7 @@ defmodule Dhc.NotificationsTest do
   @user_id "11111111-1111-1111-1111-111111111111"
 
   setup do
+    Dhc.AuthFixtures.principal_fixture(%{id: @user_id})
     original_broadcaster = Application.get_env(:dhc, :notification_broadcaster)
     on_exit(fn -> Application.put_env(:dhc, :notification_broadcaster, original_broadcaster) end)
     :ok
@@ -22,7 +23,7 @@ defmodule Dhc.NotificationsTest do
 
       assert :ok = Notifications.create(@user_id, "Hello from the club")
 
-      assert [%Notification{user_id: @user_id, body: "Hello from the club"}] =
+      assert [%Notification{principal_id: @user_id, body: "Hello from the club"}] =
                Repo.all(Notification)
 
       # Exactly one notification_created signal, empty payload, delivered to
@@ -83,7 +84,7 @@ defmodule Dhc.NotificationsTest do
         end)
 
       # The committed row survives the best-effort delivery failure.
-      assert [%Notification{user_id: @user_id, body: "committed despite broadcast"}] =
+      assert [%Notification{principal_id: @user_id, body: "committed despite broadcast"}] =
                Repo.all(Notification)
 
       # The failure is observable through the log seam, with the Notification

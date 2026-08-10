@@ -14,7 +14,7 @@ defmodule Dhc.Invitations.BulkInviteWorkerTest do
   # ALE-162 (ADR 0010): issue time is side-effect free. The worker no longer
   # calls the Supabase admin API, creates a Stripe customer, or inserts a
   # user_profiles row. It only:
-  #   - mints a fresh Phoenix UUID for invitation.user_id;
+  #   - mints a fresh Phoenix UUID for invitation.prospective_principal_id;
   #   - inserts the pending invitation carrying first/last/phone/DOB;
   #   - enqueues the inviteMember email;
   #   - marks the waitlist entry invited (when the invite came from a waitlist).
@@ -76,18 +76,23 @@ defmodule Dhc.Invitations.BulkInviteWorkerTest do
       assert %Invitation{} = invitation = Repo.get_by(Invitation, email: "ada@example.com")
       assert invitation.status == "pending"
       assert invitation.waitlist_id == waitlist_entry.id
-      assert invitation.created_by == created_by_id
+      assert invitation.created_by_principal_id == created_by_id
       assert invitation.date_of_birth == ~D[1990-01-01]
       assert invitation.first_name == "Ada"
       assert invitation.last_name == "Lovelace"
       assert invitation.phone_number == "+353810000001"
 
-      # ALE-162: user_id is a fresh Phoenix UUID (no auth.users row backs it).
-      assert invitation.user_id != nil
-      assert Ecto.UUID.cast!(invitation.user_id) == invitation.user_id
+      # ALE-162: the prospective Principal id is a fresh UUID.
+      assert invitation.prospective_principal_id != nil
+
+      assert Ecto.UUID.cast!(invitation.prospective_principal_id) ==
+               invitation.prospective_principal_id
 
       # No user_profiles row was created at issue time.
-      refute Repo.exists?(from up in UserProfile, where: up.principal_id == ^invitation.user_id)
+      refute Repo.exists?(
+               from up in UserProfile,
+                 where: up.principal_id == ^invitation.prospective_principal_id
+             )
 
       # No Stripe customer was created at issue time.
       assert invitation.stripe_customer_id in [nil, ""]
@@ -104,9 +109,11 @@ defmodule Dhc.Invitations.BulkInviteWorkerTest do
       assert email_args["data_variables"]["invitationLink"] =~ "/members/signup/#{invitation.id}"
 
       assert %ProcessingLog{total_count: 1, success_count: 1, failure_count: 0} =
-               Repo.get_by(ProcessingLog, user_id: created_by_id)
+               Repo.get_by(ProcessingLog, principal_id: created_by_id)
 
-      assert %Notification{body: body} = Repo.get_by(Notification, user_id: created_by_id)
+      assert %Notification{body: body} =
+               Repo.get_by(Notification, principal_id: created_by_id)
+
       assert body == "Successfully processed 1 invitations out of 1"
 
       # Exactly one commit-safe creation signal for the admin's topic.

@@ -6,7 +6,7 @@ defmodule Dhc.Notifications.Notification do
   @primary_key {:id, :binary_id, autogenerate: true}
   @type t :: %__MODULE__{}
   schema "notifications" do
-    field :user_id, Ecto.UUID
+    field :principal_id, Ecto.UUID
     field :body, :string
     field :created_at, :utc_datetime
     field :read_at, :utc_datetime
