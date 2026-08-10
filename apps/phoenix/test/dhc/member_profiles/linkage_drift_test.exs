@@ -25,6 +25,64 @@ defmodule Dhc.MemberProfiles.LinkageDriftTest do
   @linkage_drift_constraint "linkage_drift_violation"
 
   describe "characterization: linkage drift is rejected after ALE-180" do
+    test "the migration gate reports linked pairs that already drifted" do
+      owner_principal_id = Ecto.UUID.generate()
+      {:ok, _} = Dhc.Auth.register_principal_with_id(owner_principal_id, %{email: unique_email()})
+
+      profile_id = Ecto.UUID.generate()
+
+      Repo.query!(
+        """
+        INSERT INTO user_profiles
+          (id, principal_id, first_name, last_name, is_active, date_of_birth,
+           gender, phone_number, social_media_consent, created_at, updated_at)
+        VALUES ($1, $2, 'Owner', 'Profile', true, '1990-01-01',
+                'man (cis)', '+353810000000', 'no', NOW(), NOW())
+        """,
+        [Ecto.UUID.dump!(profile_id), Ecto.UUID.dump!(owner_principal_id)]
+      )
+
+      drift_principal_id = Ecto.UUID.generate()
+      {:ok, _} = Dhc.Auth.register_principal_with_id(drift_principal_id, %{email: unique_email()})
+
+      Repo.query!("DROP TRIGGER member_profiles_linkage_drift_insert ON member_profiles")
+
+      Repo.query!(
+        """
+        INSERT INTO member_profiles
+          (id, user_profile_id, next_of_kin_name, next_of_kin_phone,
+           preferred_weapon, membership_start_date, insurance_form_submitted,
+           additional_data, created_at, updated_at)
+        VALUES ($1, $2, 'Kin', '+353820000000', ARRAY['longsword']::preferred_weapon[],
+                NOW(), false, '{}'::jsonb, NOW(), NOW())
+        """,
+        [Ecto.UUID.dump!(drift_principal_id), Ecto.UUID.dump!(profile_id)]
+      )
+
+      error =
+        assert_raise Postgrex.Error, fn ->
+          Repo.query!("""
+          DO $$
+          DECLARE drifted_pairs bigint;
+          BEGIN
+            SELECT count(*) INTO drifted_pairs
+              FROM member_profiles mp
+              JOIN user_profiles up ON up.id = mp.user_profile_id
+             WHERE up.principal_id IS DISTINCT FROM mp.id;
+
+            IF drifted_pairs > 0 THEN
+              RAISE EXCEPTION 'ALE-180: % existing pairs violate the linkage invariant', drifted_pairs
+                USING ERRCODE = 'check_violation', CONSTRAINT = 'linkage_drift_violation';
+            END IF;
+          END;
+          $$ LANGUAGE plpgsql
+          """)
+        end
+
+      assert_linkage_drift_violation(error)
+      assert Map.get(error.postgres, :message) =~ "1 existing pairs"
+    end
+
     # This test pins the DESIRED behavior: after the migration, a
     # member_profiles row whose id (principal) disagrees with the linked
     # user_profiles.principal_id is rejected by the constraint trigger. Before

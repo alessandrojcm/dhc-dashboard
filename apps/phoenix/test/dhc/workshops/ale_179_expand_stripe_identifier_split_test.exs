@@ -22,7 +22,7 @@ defmodule Dhc.Workshops.Ale179ExpandStripeIdentifierSplitTest do
   @cs_unique :club_activity_registrations_stripe_checkout_session_id_unique
   @check :club_activity_registrations_stripe_identifier_xor
 
-  describe "backfill: the migration's prefix split moves pi_ out and leaves cs_ behind" do
+  describe "backfill: the expand release preserves old-code compatibility" do
     # The migration runs at setup (migrate-from-zero), so its backfill has
     # already applied to the empty test DB (no rows to split). This test
     # re-runs the migration's exact backfill SQL against rows seeded with
@@ -30,7 +30,7 @@ defmodule Dhc.Workshops.Ale179ExpandStripeIdentifierSplitTest do
     # the old column moves to stripe_payment_intent_id and is cleared from
     # stripe_checkout_session_id; a `cs_*` value stays in
     # stripe_checkout_session_id and leaves stripe_payment_intent_id NULL.
-    test "a pi_ value in the old column moves to stripe_payment_intent_id" do
+    test "a pi_ value is copied while remaining readable through the legacy column" do
       workshop = WorkshopFixtures.workshop_fixture()
       %{auth_user_id: user_id} = WorkshopFixtures.member_fixture()
 
@@ -52,10 +52,10 @@ defmodule Dhc.Workshops.Ale179ExpandStripeIdentifierSplitTest do
           ]
         )
 
-      # Re-run the migration's backfill + clear against this seeded row.
+      # Re-run the expand backfill against this seeded row.
       run_backfill!()
 
-      assert [["pi_test_123", nil]] =
+      assert [["pi_test_123", "pi_test_123"]] =
                Repo.query!(
                  "SELECT stripe_payment_intent_id, stripe_checkout_session_id
                   FROM club_activity_registrations WHERE member_user_id = $1",
@@ -93,51 +93,34 @@ defmodule Dhc.Workshops.Ale179ExpandStripeIdentifierSplitTest do
                ).rows
     end
 
-    test "an unparseable old value aborts the backfill gate" do
-      workshop = WorkshopFixtures.workshop_fixture()
-      %{auth_user_id: user_id} = WorkshopFixtures.member_fixture()
+    for malformed <- ["ch_unknown_prefix", "piXwildcard", "csXwildcard"] do
+      test "the literal-prefix gate rejects #{malformed}" do
+        workshop = WorkshopFixtures.workshop_fixture()
+        %{auth_user_id: user_id} = WorkshopFixtures.member_fixture()
 
-      _ =
-        Repo.query!(
-          """
-          INSERT INTO club_activity_registrations
-            (id, club_activity_id, member_user_id, display_name, stripe_checkout_session_id,
-             amount_paid, currency, status, registered_at, created_at, updated_at)
-          VALUES ($1, $2, $3, 'Member Test', $4, 1000, 'eur', 'confirmed', NOW(), NOW(), NOW())
-          """,
-          [
-            Ecto.UUID.dump!(Ecto.UUID.generate()),
-            Ecto.UUID.dump!(workshop.id),
-            Ecto.UUID.dump!(user_id),
-            "ch_unknown_prefix"
-          ]
-        )
+        _ =
+          Repo.query!(
+            """
+            INSERT INTO club_activity_registrations
+              (id, club_activity_id, member_user_id, display_name, stripe_checkout_session_id,
+               amount_paid, currency, status, registered_at, created_at, updated_at)
+            VALUES ($1, $2, $3, 'Member Test', $4, 1000, 'eur', 'confirmed', NOW(), NOW(), NOW())
+            """,
+            [
+              Ecto.UUID.dump!(Ecto.UUID.generate()),
+              Ecto.UUID.dump!(workshop.id),
+              Ecto.UUID.dump!(user_id),
+              unquote(malformed)
+            ]
+          )
 
-      run_backfill!()
+        error =
+          assert_raise Postgrex.Error, fn ->
+            run_backfill!()
+          end
 
-      error =
-        assert_raise Postgrex.Error, fn ->
-          Repo.query!("""
-          DO $$
-          DECLARE unparseable int;
-          BEGIN
-            SELECT count(*) INTO unparseable
-              FROM club_activity_registrations
-             WHERE stripe_checkout_session_id IS NOT NULL
-               AND stripe_checkout_session_id NOT LIKE 'cs_%';
-
-            IF unparseable > 0 THEN
-              RAISE EXCEPTION
-                'ALE-179 expand: % unparseable Stripe identifiers remain',
-                unparseable
-                USING ERRCODE = 'check_violation';
-            END IF;
-          END;
-          $$ LANGUAGE plpgsql
-          """)
-        end
-
-      assert Map.get(error.postgres, :code) == :check_violation
+        assert Map.get(error.postgres, :code) == :check_violation
+      end
     end
   end
 
@@ -345,18 +328,45 @@ defmodule Dhc.Workshops.Ale179ExpandStripeIdentifierSplitTest do
 
   # Re-runs the migration's backfill against the current table state. The
   # migration already ran at setup against an empty DB; this lets the backfill
-  # tests seed conflated rows and verify the prefix split. The CHECK is
-  # already enforced (the migration added it), so the move must be atomic —
-  # set both columns in one UPDATE so no intermediate state has both set.
+  # tests seed conflated rows and verify the transitional state. The full test
+  # schema has the contract CHECK, so replace it with the expand CHECK first.
   defp run_backfill! do
+    Repo.query!("ALTER TABLE club_activity_registrations DROP CONSTRAINT #{@check}")
+
+    Repo.query!("""
+    ALTER TABLE club_activity_registrations
+      ADD CONSTRAINT #{@check}
+      CHECK (
+        stripe_payment_intent_id IS NULL
+        OR stripe_checkout_session_id IS NULL
+        OR stripe_payment_intent_id = stripe_checkout_session_id
+      ) NOT VALID
+    """)
+
     _ =
       Repo.query!("""
       UPDATE club_activity_registrations
-         SET stripe_payment_intent_id = stripe_checkout_session_id,
-             stripe_checkout_session_id = NULL
+         SET stripe_payment_intent_id = stripe_checkout_session_id
        WHERE stripe_checkout_session_id IS NOT NULL
-         AND stripe_checkout_session_id LIKE 'pi_%'
+         AND left(stripe_checkout_session_id, 3) = 'pi_'
       """)
+
+    Repo.query!("""
+    DO $$
+    DECLARE unparseable int;
+    BEGIN
+      SELECT count(*) INTO unparseable
+        FROM club_activity_registrations
+       WHERE stripe_checkout_session_id IS NOT NULL
+         AND left(stripe_checkout_session_id, 3) NOT IN ('pi_', 'cs_');
+
+      IF unparseable > 0 THEN
+        RAISE EXCEPTION 'ALE-179 expand: % unparseable Stripe identifiers remain', unparseable
+          USING ERRCODE = 'check_violation';
+      END IF;
+    END;
+    $$ LANGUAGE plpgsql
+    """)
 
     :ok
   end

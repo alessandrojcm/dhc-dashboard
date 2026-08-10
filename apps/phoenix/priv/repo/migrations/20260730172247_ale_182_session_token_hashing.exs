@@ -37,6 +37,13 @@ defmodule Dhc.Repo.Migrations.Ale182SessionTokenHashing do
   migration) already covers `(context, hashed_token)` lookups and is unchanged:
   the backfill writes one digest per row, so uniqueness is preserved.
 
+  ## Deployment shape
+
+  This migration is not compatible with overlapping old and new application
+  versions. Deploy it under the drain/migrate/start procedure in
+  `docs/ale-182-session-token-hashing-runbook.md`; old instances must be
+  stopped before the release command runs and must not restart afterward.
+
   ## down/0
 
   **Backup-restore is the only rollback.** The backfill is a one-way hash: the

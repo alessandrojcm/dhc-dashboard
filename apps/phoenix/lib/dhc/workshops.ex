@@ -389,6 +389,12 @@ defmodule Dhc.Workshops do
                      _ = stripe_refund_payment_intent(payment_intent_id)
                      Repo.rollback(:full)
 
+                   {:error, reason} when reason in [:not_found, :not_published] ->
+                     case stripe_refund_payment_intent(payment_intent_id) do
+                       {:ok, %{"id" => _refund_id}} -> Repo.rollback(reason)
+                       _ -> Repo.rollback(:payment_failed)
+                     end
+
                    {:error, reason} ->
                      Repo.rollback(reason)
                  end
@@ -407,6 +413,9 @@ defmodule Dhc.Workshops do
   def external_registration_gate(workshop_id) when is_binary(workshop_id) do
     case Repo.get(Workshop, workshop_id) do
       nil ->
+        %{can_register: false, reason: "NOT_FOUND"}
+
+      %Workshop{archived_at: %DateTime{}} ->
         %{can_register: false, reason: "NOT_FOUND"}
 
       %Workshop{status: status} when status != "published" ->
@@ -825,21 +834,29 @@ defmodule Dhc.Workshops do
           | {:ok, :deleted}
           | {:error, :not_found | :already_archived}
   def delete_workshop(workshop_id) when is_binary(workshop_id) do
-    case Repo.get(Workshop, workshop_id) do
-      nil ->
-        {:error, :not_found}
+    {:ok, result} =
+      Repo.transaction(fn ->
+        workshop =
+          Repo.one(from(w in Workshop, where: w.id == ^workshop_id, lock: "FOR UPDATE"))
 
-      %Workshop{archived_at: %DateTime{}} ->
-        {:error, :already_archived}
+        case workshop do
+          nil ->
+            {:error, :not_found}
 
-      %Workshop{} = workshop ->
-        if has_registrations?(workshop_id) do
-          archive_workshop(workshop)
-        else
-          {:ok, _} = Repo.delete(workshop)
-          {:ok, :deleted}
+          %Workshop{archived_at: %DateTime{}} ->
+            {:error, :already_archived}
+
+          %Workshop{} = workshop ->
+            if has_registrations?(workshop_id) do
+              archive_workshop(workshop)
+            else
+              {:ok, _} = Repo.delete(workshop)
+              {:ok, :deleted}
+            end
         end
-    end
+      end)
+
+    result
   end
 
   defp has_registrations?(workshop_id) do
@@ -982,6 +999,7 @@ defmodule Dhc.Workshops do
   defp member_registration_workshop(workshop_id) do
     case Repo.get(Workshop, workshop_id) do
       nil -> {:error, :not_found}
+      %Workshop{archived_at: %DateTime{}} -> {:error, :not_found}
       %Workshop{status: status} when status != "published" -> {:error, :not_published}
       %Workshop{} = workshop -> {:ok, workshop}
     end
@@ -993,6 +1011,7 @@ defmodule Dhc.Workshops do
 
     case workshop do
       nil -> {:error, :not_found}
+      %Workshop{archived_at: %DateTime{}} -> {:error, :not_found}
       %Workshop{status: status} when status != "published" -> {:error, :not_published}
       %Workshop{} = workshop -> {:ok, workshop}
     end
@@ -1100,7 +1119,12 @@ defmodule Dhc.Workshops do
 
   defp external_registration_workshop_for_checkout(workshop_id) do
     case Repo.get(Workshop, workshop_id) do
-      %Workshop{status: "published", is_public: true, price_non_member: price} = workshop
+      %Workshop{
+        status: "published",
+        archived_at: nil,
+        is_public: true,
+        price_non_member: price
+      } = workshop
       when not is_nil(price) and price >= 0 ->
         {:ok, workshop}
 
@@ -1255,14 +1279,29 @@ defmodule Dhc.Workshops do
       }
       |> Repo.insert!()
     else
-      nil -> Repo.rollback(:not_found)
-      %Registration{} = registration -> registration
-      {:error, reason} -> Repo.rollback(reason)
+      nil ->
+        case refund_checkout_session(checkout_session) do
+          :ok -> Repo.rollback(:not_found)
+          {:error, reason} -> Repo.rollback(reason)
+        end
+
+      %Registration{} = registration ->
+        registration
+
+      {:error, :not_found} ->
+        case refund_checkout_session(checkout_session) do
+          :ok -> Repo.rollback(:not_found)
+          {:error, reason} -> Repo.rollback(reason)
+        end
+
+      {:error, reason} ->
+        Repo.rollback(reason)
     end
   end
 
   defp external_registration_workshop_for_completion(%Workshop{
          status: "published",
+         archived_at: nil,
          is_public: true,
          price_non_member: price
        })
@@ -1319,6 +1358,19 @@ defmodule Dhc.Workshops do
       end
     else
       :ok
+    end
+  end
+
+  defp refund_checkout_session(checkout_session) do
+    case Map.get(checkout_session, "payment_intent") do
+      payment_intent_id when is_binary(payment_intent_id) ->
+        case stripe_refund_payment_intent(payment_intent_id) do
+          {:ok, %{"id" => _refund_id}} -> :ok
+          _ -> {:error, :payment_failed}
+        end
+
+      _ ->
+        {:error, :payment_failed}
     end
   end
 
