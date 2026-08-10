@@ -1,6 +1,7 @@
 # ADR 0010: Authentication within Invitation Acceptance
 
 **Status:** Accepted
+**Amended by:** ADR-0013
 **Date:** 2026-07-17
 **Deciders:** @alessandrojcm
 **Tags:** authentication, phoenix, invitations, onboarding, migration
