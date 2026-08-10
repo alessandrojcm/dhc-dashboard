@@ -2,8 +2,8 @@ defmodule Dhc.AuthFixtures do
   @moduledoc """
   Test helpers for the Phoenix-owned auth foundation (ALE-165).
 
-  Inserts Principals, magic-link tokens, and session tokens directly through
-  the `Dhc.Auth` context. Member / `user_profiles` rows are created with
+  Inserts Principals, magic-link tokens, and session tokens directly. Member /
+  `user_profiles` rows are created with
   `Dhc.MemberFixtures.member_fixture/1` when an access projection is needed —
    that helper wires the Principal + `user_profiles` + `member_profiles` rows.
 
@@ -103,7 +103,8 @@ defmodule Dhc.AuthFixtures do
   token (the value placed in the signed cookie).
   """
   def session_token(principal) do
-    {:ok, token} = Auth.create_session(principal)
+    {token, row} = Dhc.Auth.PrincipalToken.build_session_token(principal)
+    {:ok, _} = Repo.insert(row)
     token
   end
 

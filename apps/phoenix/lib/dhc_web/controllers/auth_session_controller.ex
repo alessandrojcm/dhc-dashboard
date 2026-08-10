@@ -14,7 +14,8 @@ defmodule DhcWeb.AuthSessionController do
       projection. On failure, returns `401 {"errors":{"detail":"Invalid or
       expired link"}}` — the same response the rate-limit and unknown-email
       paths would produce if they were distinguishable, which they are not.
-      Refuses inactive Principals with `401` (no session minted).
+       Inactive Principals receive `401`; Authentication consumes the proof
+       but atomically declines to mint a Session.
     * `GET /api/auth/session` — return the current session projection. Used
       by SvelteKit SSR and the browser to read who is signed in. Returns
       `401` when there is no valid session.
@@ -138,31 +139,13 @@ defmodule DhcWeb.AuthSessionController do
   # ── POST /api/auth/magic-link/verify ─────────────────────────────────
   def verify_magic_link(conn, %{"token" => token} = _params) when is_binary(token) do
     case Auth.consume_magic_link(token) do
-      {:ok, %{principal: principal, session_token: session_token}} ->
-        # Access check: a Principal may establish a session only while its
-        # Member has club access. `load_session_principal/1` gives us
-        # `is_active` without a second context. An inactive Principal never
-        # gets a cookie.
-        case Auth.load_session_principal(principal) do
-          {:ok, %{is_active: true} = projection} ->
-            :telemetry.execute([:dhc, :auth, :magic_link, :succeeded], %{}, %{})
+      {:ok, %{session_token: session_token, session: projection}} ->
+        :telemetry.execute([:dhc, :auth, :magic_link, :succeeded], %{}, %{})
 
-            conn
-            |> put_session_cookie(session_token)
-            |> put_status(:ok)
-            |> render_view(:session, %{session: projection})
-
-          _ ->
-            # Inactive or no profile — revoke the session we just minted
-            # and respond 401. Non-enumerating: same body as an invalid
-            # token.
-            Auth.delete_session_token(session_token)
-            :telemetry.execute([:dhc, :auth, :magic_link, :inactive_principal], %{}, %{})
-
-            conn
-            |> put_status(:unauthorized)
-            |> render_view(:error, %{error: "Invalid or expired link"})
-        end
+        conn
+        |> put_session_cookie(session_token)
+        |> put_status(:ok)
+        |> render_view(:session, %{session: projection})
 
       {:error, :invalid} ->
         :telemetry.execute([:dhc, :auth, :magic_link, :failed], %{}, %{})
