@@ -31,7 +31,7 @@ defmodule Dhc.Workshops.Ale179CodeReleaseStripeSplitWritesTest do
   alias Dhc.Repo
   alias Dhc.UserProfiles.UserProfile
   alias Dhc.Workshops
-  alias Dhc.Workshops.Registration
+  alias Dhc.Workshops.{PaymentAttempt, Refund, Registration}
   alias Dhc.WorkshopFixtures
 
   # A test-only Stripe client driven by `Application` env, so individual
@@ -118,7 +118,8 @@ defmodule Dhc.Workshops.Ale179CodeReleaseStripeSplitWritesTest do
         "metadata" => %{
           "type" => "workshop_registration",
           "actor_type" => "external",
-          "workshop_id" => Application.fetch_env!(:dhc, :ale_193_workshop_id)
+          "workshop_id" => Application.fetch_env!(:dhc, :ale_193_workshop_id),
+          "payment_attempt_id" => Application.fetch_env!(:dhc, :ale_193_payment_attempt_id)
         },
         "customer_details" => %{
           "email" => "guest@example.com",
@@ -142,6 +143,7 @@ defmodule Dhc.Workshops.Ale179CodeReleaseStripeSplitWritesTest do
       Application.delete_env(:dhc, :ale_193_refund_response)
       Application.delete_env(:dhc, :ale_193_last_refund_request)
       Application.delete_env(:dhc, :ale_193_last_stripe_request_opts)
+      Application.delete_env(:dhc, :ale_193_payment_attempt_id)
     end)
 
     :ok
@@ -183,7 +185,7 @@ defmodule Dhc.Workshops.Ale179CodeReleaseStripeSplitWritesTest do
   end
 
   describe "archived Workshops reject registration" do
-    test "member initiation is rejected and a completed payment is refunded" do
+    test "member initiation is rejected and a completed payment is durably compensated" do
       workshop = archived_workshop_fixture()
       %{auth_user_id: user_id} = WorkshopFixtures.member_fixture()
 
@@ -195,17 +197,19 @@ defmodule Dhc.Workshops.Ale179CodeReleaseStripeSplitWritesTest do
 
       payment_intent_id = "pi_archived_#{System.unique_integer([:positive])}"
 
-      assert {:error, :not_found} =
+      assert {:error, :compensation_pending} =
                Workshops.complete_member_registration(workshop.id, user_id, payment_intent_id)
 
-      assert [payment_intent: ^payment_intent_id, reason: "duplicate"] =
-               Application.fetch_env!(:dhc, :ale_193_last_refund_request)
+      attempt = Repo.get_by!(PaymentAttempt, stripe_payment_intent_id: payment_intent_id)
 
-      assert Application.fetch_env!(:dhc, :ale_193_last_stripe_request_opts)[:idempotency_key] ==
-               "workshop-registration:#{payment_intent_id}:compensating-refund"
+      assert %Refund{status: "pending", payment_attempt_id: attempt_id} =
+               Repo.get_by!(Refund, payment_attempt_id: attempt.id)
+
+      assert attempt_id == attempt.id
+      assert Application.get_env(:dhc, :ale_193_last_refund_request) == nil
     end
 
-    test "member completion reports payment failure when the compensating refund fails" do
+    test "member completion does not contact Stripe while recording compensation" do
       workshop = archived_workshop_fixture()
       %{auth_user_id: user_id} = WorkshopFixtures.member_fixture()
 
@@ -213,15 +217,17 @@ defmodule Dhc.Workshops.Ale179CodeReleaseStripeSplitWritesTest do
       Application.put_env(:dhc, :ale_193_member_user_id, user_id)
       Application.put_env(:dhc, :ale_193_refund_response, {:error, :provider_unavailable})
 
-      assert {:error, :payment_failed} =
+      assert {:error, :compensation_pending} =
                Workshops.complete_member_registration(
                  workshop.id,
                  user_id,
                  "pi_archived_refund_failure"
                )
+
+      assert Application.get_env(:dhc, :ale_193_last_refund_request) == nil
     end
 
-    test "external gates reject initiation and refund an in-flight paid checkout" do
+    test "external gates reject initiation and durably compensate an in-flight paid checkout" do
       workshop = archived_workshop_fixture()
       Application.put_env(:dhc, :ale_193_workshop_id, workshop.id)
 
@@ -231,19 +237,34 @@ defmodule Dhc.Workshops.Ale179CodeReleaseStripeSplitWritesTest do
       assert {:error, :not_found} =
                Workshops.create_external_checkout_session(
                  workshop.id,
+                 Ecto.UUID.generate(),
                  "https://example.com/return?session={CHECKOUT_SESSION_ID}"
                )
 
       checkout_session_id = "cs_archived_#{System.unique_integer([:positive])}"
+      payment_attempt_id = Ecto.UUID.generate()
+      Application.put_env(:dhc, :ale_193_payment_attempt_id, payment_attempt_id)
 
-      assert {:error, :not_found} =
+      Repo.insert!(%PaymentAttempt{
+        id: payment_attempt_id,
+        club_activity_id: workshop.id,
+        actor_type: "external",
+        amount: 2000,
+        currency: "eur",
+        status: "paid",
+        stripe_checkout_session_id: checkout_session_id,
+        paid_at: DateTime.utc_now() |> DateTime.truncate(:second)
+      })
+
+      assert {:error, :compensation_pending} =
                Workshops.complete_external_registration(workshop.id, checkout_session_id)
 
-      assert [payment_intent: "pi_from_checkout", reason: "duplicate"] =
-               Application.fetch_env!(:dhc, :ale_193_last_refund_request)
+      attempt = Repo.get_by!(PaymentAttempt, stripe_checkout_session_id: checkout_session_id)
 
-      assert Application.fetch_env!(:dhc, :ale_193_last_stripe_request_opts)[:idempotency_key] ==
-               "workshop-registration:pi_from_checkout:compensating-refund"
+      assert %Refund{status: "pending", stripe_payment_intent_id: "pi_from_checkout"} =
+               Repo.get_by!(Refund, payment_attempt_id: attempt.id)
+
+      assert Application.get_env(:dhc, :ale_193_last_refund_request) == nil
     end
   end
 
@@ -274,6 +295,7 @@ defmodule Dhc.Workshops.Ale179CodeReleaseStripeSplitWritesTest do
           Repo.query!("DROP TRIGGER IF EXISTS #{trigger} ON club_activity_registrations")
           Repo.query!("DROP FUNCTION IF EXISTS #{trigger}()")
           Repo.delete_all(from r in Registration, where: r.club_activity_id == ^workshop.id)
+          Repo.delete_all(from pa in PaymentAttempt, where: pa.club_activity_id == ^workshop.id)
           Repo.delete_all(from w in Dhc.Workshops.Workshop, where: w.id == ^workshop.id)
           Repo.delete_all(from mp in MemberProfile, where: mp.id == ^member.principal_id)
           Repo.delete_all(from up in UserProfile, where: up.id == ^member.profile_id)
@@ -328,7 +350,7 @@ defmodule Dhc.Workshops.Ale179CodeReleaseStripeSplitWritesTest do
 
   # ── Refunds resolve the split identifier ─────────────────────────────
 
-  describe "process_refund/5 refunds against the resolved Payment Intent" do
+  describe "process_refund/5 records durable repayment obligations" do
     # Both member and external registrations must refund against a `pi_*`
     # Payment Intent. Member registrations carry it directly in
     # `stripe_payment_intent_id`. External registrations carry a `cs_*` in
@@ -361,13 +383,10 @@ defmodule Dhc.Workshops.Ale179CodeReleaseStripeSplitWritesTest do
                  principal_id
                )
 
-      assert refund.status == "processing"
-      assert refund.stripe_refund_id == "re_test_member"
+      assert refund.status == "pending"
+      assert refund.stripe_refund_id == nil
       assert refund.stripe_payment_intent_id == pi_id
-
-      # The refund request body must carry the resolved Payment Intent.
-      assert [payment_intent: ^pi_id, amount: 1000, reason: "requested_by_customer"] =
-               Application.fetch_env!(:dhc, :ale_193_last_refund_request)
+      assert Application.get_env(:dhc, :ale_193_last_refund_request) == nil
     end
 
     test "external registration resolves the Payment Intent from the checkout session" do
@@ -382,6 +401,18 @@ defmodule Dhc.Workshops.Ale179CodeReleaseStripeSplitWritesTest do
       Application.put_env(:dhc, :ale_193_workshop_id, workshop.id)
 
       cs_id = "cs_refund_external_#{System.unique_integer([:positive])}"
+      payment_attempt_id = Ecto.UUID.generate()
+      Application.put_env(:dhc, :ale_193_payment_attempt_id, payment_attempt_id)
+
+      Repo.insert!(%PaymentAttempt{
+        id: payment_attempt_id,
+        club_activity_id: workshop.id,
+        actor_type: "external",
+        amount: 2000,
+        currency: "eur",
+        status: "pending",
+        stripe_checkout_session_id: cs_id
+      })
 
       assert {:ok, %Registration{} = registration} =
                Workshops.complete_external_registration(workshop.id, cs_id)
@@ -399,14 +430,10 @@ defmodule Dhc.Workshops.Ale179CodeReleaseStripeSplitWritesTest do
                  coordinator_id
                )
 
-      assert refund.status == "processing"
-      assert refund.stripe_refund_id == "re_test_member"
-      assert refund.stripe_payment_intent_id == "pi_from_checkout"
-
-      # The /v1/refunds request must carry the *resolved* Payment Intent,
-      # not the checkout session id — the latent external-refund bug.
-      assert [payment_intent: "pi_from_checkout", amount: 2000, reason: "requested_by_customer"] =
-               Application.fetch_env!(:dhc, :ale_193_last_refund_request)
+      assert refund.status == "pending"
+      assert refund.stripe_refund_id == nil
+      assert refund.stripe_payment_intent_id == nil
+      assert Application.get_env(:dhc, :ale_193_last_refund_request) == nil
     end
 
     test "a paid registration with no Stripe id skips the Stripe call and marks refunded" do

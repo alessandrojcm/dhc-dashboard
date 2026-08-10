@@ -51,12 +51,13 @@ export async function getExternalWorkshopRegistrationGate(workshopId: string) {
 
 export async function createExternalWorkshopCheckoutSession(
 	workshopId: string,
+	paymentAttemptId: string,
 	returnUrl: string,
 ) {
 	const response = await workshopsCreateExternalCheckoutSession({
 		baseUrl: apiBaseUrl(),
 		path: { workshopId },
-		body: { returnUrl },
+		body: { paymentAttemptId, returnUrl },
 	});
 
 	if (response.error || !response.data) {

@@ -38,6 +38,7 @@ defmodule Dhc.Workshops.Registration do
 
     field :stripe_checkout_session_id, :string
     field :stripe_payment_intent_id, :string
+    field :payment_attempt_id, :binary_id
     field :amount_paid, :integer
     field :currency, :string, default: "eur"
     field :status, :string, default: "pending"
@@ -66,6 +67,7 @@ defmodule Dhc.Workshops.Registration do
       :email,
       :stripe_checkout_session_id,
       :stripe_payment_intent_id,
+      :payment_attempt_id,
       :amount_paid,
       :currency,
       :status,

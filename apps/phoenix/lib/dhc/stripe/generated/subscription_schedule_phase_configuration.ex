@@ -23,6 +23,7 @@ defmodule Dhc.Stripe.SubscriptionSchedulePhaseConfiguration do
           proration_behavior: String.t(),
           start_date: integer,
           transfer_data: Dhc.Stripe.SubscriptionTransferData.t() | nil,
+          trial: boolean | nil,
           trial_end: integer | nil
         }
 
@@ -46,6 +47,7 @@ defmodule Dhc.Stripe.SubscriptionSchedulePhaseConfiguration do
     :proration_behavior,
     :start_date,
     :transfer_data,
+    :trial,
     :trial_end
   ]
 
@@ -74,6 +76,7 @@ defmodule Dhc.Stripe.SubscriptionSchedulePhaseConfiguration do
       proration_behavior: {:enum, ["always_invoice", "create_prorations", "none"]},
       start_date: {:integer, "unix-time"},
       transfer_data: {Dhc.Stripe.SubscriptionTransferData, :t},
+      trial: :boolean,
       trial_end: {:integer, "unix-time"}
     ]
   end

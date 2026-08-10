@@ -78,6 +78,8 @@ defmodule Dhc.Stripe.TaxRate do
            "igst",
            "jct",
            "lease_tax",
+           "mass_transit_parking_tax",
+           "parking_tax",
            "pst",
            "qst",
            "retail_delivery_fee",

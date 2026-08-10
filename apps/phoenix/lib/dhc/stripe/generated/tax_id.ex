@@ -101,6 +101,7 @@ defmodule Dhc.Stripe.TaxId do
            "hk_br",
            "hr_oib",
            "hu_tin",
+           "ic_nif",
            "id_npwp",
            "il_vat",
            "in_gst",

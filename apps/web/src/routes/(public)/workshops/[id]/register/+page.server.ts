@@ -51,6 +51,7 @@ export const load: PageServerLoad = async ({ params, url }) => {
 	try {
 		const checkoutSession = await createExternalWorkshopCheckoutSession(
 			workshopId,
+			crypto.randomUUID(),
 			returnUrl,
 		);
 		const workshop = gateStatus.workshop!;

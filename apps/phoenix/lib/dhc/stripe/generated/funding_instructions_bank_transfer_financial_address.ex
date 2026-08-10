@@ -27,7 +27,17 @@ defmodule Dhc.Stripe.FundingInstructionsBankTransferFinancialAddress do
       sort_code: {Dhc.Stripe.FundingInstructionsBankTransferSortCodeRecord, :t},
       spei: {Dhc.Stripe.FundingInstructionsBankTransferSpeiRecord, :t},
       supported_networks: [
-        enum: ["ach", "bacs", "domestic_wire_us", "fps", "sepa", "spei", "swift", "zengin"]
+        enum: [
+          "ach",
+          "bacs",
+          "chaps",
+          "domestic_wire_us",
+          "fps",
+          "sepa",
+          "spei",
+          "swift",
+          "zengin"
+        ]
       ],
       swift: {Dhc.Stripe.FundingInstructionsBankTransferSwiftRecord, :t},
       type: {:enum, ["aba", "iban", "sort_code", "spei", "swift", "zengin"]},

@@ -51,7 +51,10 @@ defmodule Dhc.StripeWebhooks do
     "invoice.payment_succeeded",
     "payment_intent.succeeded",
     "payment_intent.payment_failed",
-    "payment_intent.canceled"
+    "payment_intent.canceled",
+    "refund.created",
+    "refund.updated",
+    "refund.failed"
   ]
 
   @doc """
@@ -117,6 +120,9 @@ defmodule Dhc.StripeWebhooks do
       ] ->
         # Payment intent events — acknowledge for now, may trigger sync
         handle_payment_intent_event(event_type, object)
+
+      event_type in ["refund.created", "refund.updated", "refund.failed"] ->
+        Dhc.Workshops.Refund.apply_provider_update(object)
 
       true ->
         Logger.info("[stripe-webhooks] Unhandled event type, acknowledging",

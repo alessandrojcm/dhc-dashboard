@@ -21,7 +21,6 @@ interface Props {
 	workshopId: string;
 	workshopTitle: string;
 	amount: number; // in cents
-	currency?: string;
 	customerId?: string;
 	onSuccess?: () => void;
 	onCancel?: () => void;
@@ -31,7 +30,6 @@ let {
 	workshopId,
 	workshopTitle,
 	amount,
-	currency = "eur",
 	customerId,
 	onSuccess,
 	onCancel,
@@ -174,11 +172,7 @@ onMount(() => {
 			// Create payment intent when component mounts
 			createPaymentIntent.mutate({
 				path: { workshopId },
-				body: {
-					amount,
-					currency,
-					...(customerId ? { customerId } : {}),
-				},
+				body: customerId ? { customerId } : {},
 			});
 		} catch (err) {
 			error =
@@ -208,11 +202,7 @@ onMount(() => {
 					error = null;
 					createPaymentIntent.mutate({
 						path: { workshopId },
-						body: {
-							amount,
-							currency,
-							...(customerId ? { customerId } : {}),
-						},
+						body: customerId ? { customerId } : {},
 					});
 				}}
 			>
