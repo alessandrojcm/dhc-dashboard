@@ -38,6 +38,8 @@ defmodule Mix.Tasks.Stripe.Gen do
                         # Setup intents
                         "PostSetupIntents",
                         # Payment intents
+                        "PostPaymentIntents",
+                        "GetPaymentIntentsIntent",
                         "PostPaymentIntentsIntent",
                         "PostPaymentIntentsIntentConfirm",
                         # Checkout sessions
@@ -47,6 +49,7 @@ defmodule Mix.Tasks.Stripe.Gen do
                         "PostBillingPortalSessions",
                         # Refunds
                         "PostRefunds",
+                        "GetRefundsRefund",
                         # Promotion codes
                         "GetPromotionCodes",
                         # Coupons

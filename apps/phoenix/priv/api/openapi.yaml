@@ -2127,10 +2127,10 @@ paths:
         - Workshops
       summary: Create current member Workshop registration PaymentIntent
       description: |
-        Creates a Stripe PaymentIntent for the authenticated member to register
-        for a published Workshop. Phoenix derives the member id from the
-        Supabase JWT `sub`, checks duplicate active registrations, and checks
-        pending/confirmed capacity before calling Stripe.
+        Creates a durable payment attempt and Stripe PaymentIntent for the
+        authenticated member to register for a published Workshop. Phoenix
+        derives both the member identity and amount from authoritative server
+        data before calling Stripe.
       security:
         - bearerAuth: []
       parameters:
@@ -2190,8 +2190,8 @@ paths:
         confirms the PaymentIntent. The PaymentIntent must be succeeded and its
         metadata must match the requested Workshop and member. Completion is
         idempotent for the same PaymentIntent id. If capacity is exhausted after
-        payment but before insert, Phoenix issues a best-effort refund and
-        returns `409`.
+        payment but before insert, Phoenix records a durable refund obligation
+        and returns `409` indicating that compensation is pending.
       security:
         - bearerAuth: []
       parameters:
@@ -2222,7 +2222,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
         "409":
-          description: Workshop is full or member already has an active registration
+          description: Workshop is full, the member is already registered, or payment was accepted and compensation is pending
           content:
             application/json:
               schema:
@@ -2249,8 +2249,9 @@ paths:
       description: |
         Cancels the authenticated member's active pending/confirmed Workshop
         registration. Phoenix evaluates refund eligibility server-side. Eligible
-        paid registrations are refunded and transition to `refunded`; ineligible
-        registrations transition to `cancelled` without a refund.
+        paid registrations atomically create a durable Refund and Oban job, then
+        transition to `refunded`; provider processing continues asynchronously.
+        Ineligible registrations transition to `cancelled` without a refund.
       security:
         - bearerAuth: []
       parameters:
@@ -2274,13 +2275,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
-        "502":
-          description: Stripe refund request failed; the failed attempt remains traceable
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Error"
-
   /workshops/{workshopId}/external-registration:
     get:
       operationId: workshops.externalRegistrationGate
@@ -2351,9 +2345,10 @@ paths:
       summary: Complete an external Workshop registration from Stripe Checkout
       description: |
         Validates the paid Checkout Session, upserts the external attendee by
-        normalized email, and creates an idempotent confirmed registration. If
-        capacity is exhausted after payment, Phoenix refunds the PaymentIntent
-        and returns `409`.
+        normalized email, and creates an idempotent confirmed registration tied
+        to its durable payment attempt. If Registration cannot be created after
+        valid payment, Phoenix records a durable refund obligation and returns
+        `409` indicating that compensation is pending.
       parameters:
         - $ref: "#/components/parameters/WorkshopId"
       requestBody:
@@ -4894,16 +4889,8 @@ components:
         member-safe collection — never as a list of other members' registrations.
     WorkshopRegistrationPaymentIntentRequest:
       type: object
-      required:
-        - amount
+      additionalProperties: false
       properties:
-        amount:
-          type: integer
-          minimum: 1
-          description: Payment amount in cents (minor units), matching the member Workshop price shown in the UI.
-        currency:
-          type: string
-          default: eur
         customerId:
           type: string
           description: Optional Stripe customer id to attach to the PaymentIntent.
@@ -4951,13 +4938,13 @@ components:
           type: object
           required:
             - registration
-            - refundProcessed
+            - refundPending
           properties:
             registration:
               $ref: "#/components/schemas/WorkshopRegistration"
-            refundProcessed:
+            refundPending:
               type: boolean
-              description: Whether cancellation created and processed a refund attempt.
+              description: Whether cancellation durably recorded a refund obligation for asynchronous processing.
     WorkshopExternalRegistrationGateResponse:
       type: object
       required:
@@ -5013,9 +5000,14 @@ components:
     WorkshopExternalCheckoutSessionRequest:
       type: object
       required:
+        - paymentAttemptId
         - returnUrl
       additionalProperties: false
       properties:
+        paymentAttemptId:
+          type: string
+          format: uuid
+          description: Caller-generated durable identity reused when retrying this checkout initiation.
         returnUrl:
           type: string
           format: uri

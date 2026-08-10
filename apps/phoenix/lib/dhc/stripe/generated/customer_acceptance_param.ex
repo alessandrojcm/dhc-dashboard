@@ -21,7 +21,7 @@ defmodule Dhc.Stripe.CustomerAcceptanceParam do
       accepted_at: {:integer, "unix-time"},
       offline: :map,
       online: {Dhc.Stripe.OnlineParam, :t},
-      type: {:enum, ["offline", "offline", "online", "online", "online"]}
+      type: {:enum, ["offline", "online", "online"]}
     ]
   end
 end

@@ -1,17 +1,17 @@
 defmodule Dhc.Stripe.RadarOptionsWithPevalOptions do
   @moduledoc """
-  Provides struct and type for a RadarOptionsWithPevalOptions
+  Provides struct and types for a RadarOptionsWithPevalOptions
   """
 
-  @type t :: %__MODULE__{session: String.t() | nil}
+  @type t :: %__MODULE__{referrer: String.t() | nil, session: String.t() | nil}
 
-  defstruct [:session]
+  defstruct [:referrer, :session]
 
   @doc false
   @spec __fields__(atom) :: keyword
   def __fields__(type \\ :t)
 
   def __fields__(:t) do
-    [session: :string]
+    [referrer: {:union, [:string, const: ""]}, session: :string]
   end
 end

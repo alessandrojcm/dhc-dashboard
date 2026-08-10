@@ -42,7 +42,7 @@ defmodule DhcWeb.WorkshopsJSON do
     %{
       data: %{
         registration: registration(result.registration),
-        refundProcessed: result.refund_processed
+        refundPending: result.refund_pending
       }
     }
   end
