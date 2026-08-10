@@ -1,0 +1,12 @@
+{
+  "rules": [
+    {
+      "id": "non-rolling-database-cutover",
+      "rule": "Do not report database migration risks whose only failure scenario requires old and new application versions to write concurrently. Incompatible database changes are deployed during a maintenance-window cutover: stop or drain every old Phoenix instance, confirm no old instance can receive traffic, run all pending migrations, then start only the new release. Continue to report integrity risks that can occur before the cutover, after the cutover, or without mixed-version writers. See docs/ale-182-session-token-hashing-runbook.md.",
+      "scope": [
+        "apps/phoenix/priv/repo/migrations/**"
+      ],
+      "severity": "high"
+    }
+  ]
+}
