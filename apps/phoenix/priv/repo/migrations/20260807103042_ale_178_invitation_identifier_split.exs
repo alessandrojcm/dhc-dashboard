@@ -44,8 +44,12 @@ defmodule Dhc.Repo.Migrations.Ale178InvitationIdentifierSplit do
     """
 
     execute """
-    ALTER INDEX invitation_processing_logs_user_id_index
-      RENAME TO invitation_processing_logs_principal_id_index
+    DROP INDEX IF EXISTS invitation_processing_logs_user_id_index
+    """
+
+    execute """
+    CREATE INDEX IF NOT EXISTS invitation_processing_logs_principal_id_index
+      ON invitation_processing_logs (principal_id)
     """
   end
 
