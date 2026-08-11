@@ -78,6 +78,62 @@ defmodule Dhc.Invitations.StripePayment do
 
   def complete(_attrs), do: {:error, :stripe_confirmation_token_required}
 
+  @doc """
+  Cancels subscriptions created by an acceptance attempt before that attempt is
+  concluded and a replacement attempt is allowed to start.
+
+  Stripe DELETE requests are idempotent, so interrupted cleanup can safely be
+  retried by the acceptance recovery worker.
+  """
+  @spec cancel_membership(map()) :: :ok | {:error, term()}
+  def cancel_membership(stripe_state) when is_map(stripe_state) do
+    errors =
+      [stripe_state["monthly_subscription_id"], stripe_state["annual_subscription_id"]]
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
+      |> Enum.reduce([], fn subscription_id, errors ->
+        case cancel_subscription(subscription_id) do
+          :ok -> errors
+          {:error, reason} -> [{subscription_id, reason} | errors]
+        end
+      end)
+
+    case errors do
+      [] -> :ok
+      errors -> {:error, {:subscription_cleanup_failed, Enum.reverse(errors)}}
+    end
+  end
+
+  defp cancel_subscription(subscription_id) do
+    case Operations.delete_subscriptions_subscription_exposed_id(subscription_id, %{
+           "invoice_now" => false,
+           "prorate" => false
+         }) do
+      {:ok, _subscription} ->
+        :ok
+
+      {:error, %Dhc.Stripe.Error{error: %{code: "resource_missing"}}} ->
+        :ok
+
+      {:error, {:stripe_api, 404, %{"error" => %{"code" => "resource_missing"}}}} ->
+        :ok
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @doc false
+  def retryable_failure?({:stripe_customer, reason}), do: retryable_failure?(reason)
+
+  def retryable_failure?({:stripe_api, status, _body})
+      when status in [408, 409, 429] or status >= 500,
+      do: true
+
+  def retryable_failure?({:http_error, _reason}), do: true
+  def retryable_failure?(:timeout), do: true
+  def retryable_failure?(_reason), do: false
+
   defp create_setup_intent(attrs) do
     form = [
       {"confirm", "true"},

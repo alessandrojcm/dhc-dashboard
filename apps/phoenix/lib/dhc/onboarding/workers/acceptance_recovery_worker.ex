@@ -7,6 +7,7 @@ defmodule Dhc.Onboarding.Workers.AcceptanceRecoveryWorker do
 
   alias Dhc.Invitations
   alias Dhc.Invitations.Invitation
+  alias Dhc.Onboarding
   alias Dhc.Onboarding.InvitationAcceptanceAttempt
   alias Dhc.Repo
 
@@ -37,6 +38,15 @@ defmodule Dhc.Onboarding.Workers.AcceptanceRecoveryWorker do
 
       {%InvitationAcceptanceAttempt{status: "completed"}, _invitation} ->
         :ok
+
+      {%InvitationAcceptanceAttempt{status: "declined"}, _invitation} ->
+        :ok
+
+      {%InvitationAcceptanceAttempt{status: "cleanup_pending"} = attempt, _invitation} ->
+        case Onboarding.retry_failed_attempt_cleanup(attempt.id) do
+          :ok -> :ok
+          {:error, _reason} -> {:snooze, 60}
+        end
 
       nil ->
         :discard

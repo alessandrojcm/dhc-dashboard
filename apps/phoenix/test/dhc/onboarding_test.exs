@@ -15,6 +15,8 @@ defmodule Dhc.OnboardingTest do
     original_adapter = Application.get_env(:dhc, :onboarding_stripe_adapter)
     original_result = Application.get_env(:dhc, :onboarding_stripe_result)
     original_customer_result = Application.get_env(:dhc, :onboarding_stripe_customer_result)
+    original_cancel_result = Application.get_env(:dhc, :onboarding_stripe_cancel_result)
+    original_progress = Application.get_env(:dhc, :onboarding_stripe_progress)
 
     Application.put_env(:dhc, :onboarding_stripe_adapter, Dhc.OnboardingTestStripeAdapter)
     Application.put_env(:dhc, :onboarding_stripe_result, {:ok, %{}})
@@ -33,6 +35,18 @@ defmodule Dhc.OnboardingTest do
         Application.put_env(:dhc, :onboarding_stripe_customer_result, original_customer_result)
       else
         Application.delete_env(:dhc, :onboarding_stripe_customer_result)
+      end
+
+      if original_cancel_result do
+        Application.put_env(:dhc, :onboarding_stripe_cancel_result, original_cancel_result)
+      else
+        Application.delete_env(:dhc, :onboarding_stripe_cancel_result)
+      end
+
+      if original_progress do
+        Application.put_env(:dhc, :onboarding_stripe_progress, original_progress)
+      else
+        Application.delete_env(:dhc, :onboarding_stripe_progress)
       end
 
       Application.delete_env(:dhc, :onboarding_test_pid)
@@ -82,11 +96,17 @@ defmodule Dhc.OnboardingTest do
            )
   end
 
-  test "a declined Membership attempt closes before a retry starts another attempt" do
+  test "an annual decline cancels partial Membership provisioning before a retry" do
     invitation = insert_invitation!()
     {:ok, token} = token_for(invitation)
     decline = {:stripe_api, 402, %{"error" => %{"code" => "card_declined"}}}
     Application.put_env(:dhc, :onboarding_stripe_result, {:error, decline})
+
+    Application.put_env(:dhc, :onboarding_stripe_progress, %{
+      "monthly_subscription_id" => "sub_monthly_onboarding",
+      "monthly_confirmed" => true,
+      "annual_subscription_id" => "sub_annual_onboarding"
+    })
 
     attrs = %{confirmation_token: "ctok_declined"}
 
@@ -96,6 +116,14 @@ defmodule Dhc.OnboardingTest do
     attempt = Repo.get_by!(InvitationAcceptanceAttempt, invitation_id: invitation.id)
     assert attempt.status == "declined"
     assert attempt.stripe_customer_id == "cus_onboarding"
+
+    assert_received {:cancel_membership,
+                     %{
+                       "monthly_subscription_id" => "sub_monthly_onboarding",
+                       "monthly_confirmed" => true,
+                       "annual_subscription_id" => "sub_annual_onboarding"
+                     }}
+
     assert Repo.get!(Invitation, invitation.id).status == "pending"
     refute Repo.get(Principal, invitation.prospective_principal_id)
 
@@ -113,6 +141,68 @@ defmodule Dhc.OnboardingTest do
 
     assert attempts |> Enum.map(& &1.status) |> Enum.sort() == ["completed", "declined"]
     assert Enum.map(attempts, & &1.stripe_customer_id) == ["cus_onboarding", "cus_onboarding"]
+  end
+
+  test "a permanent payment error concludes the attempt so corrected payment data can be used" do
+    invitation = insert_invitation!()
+    {:ok, token} = token_for(invitation)
+    failure = {:setup_intent_failed, "requires_payment_method"}
+    Application.put_env(:dhc, :onboarding_stripe_result, {:error, failure})
+
+    assert {:error, {:payment_failed, ^failure}} =
+             Onboarding.accept(invitation.id, token, "Next of Kin", "+353810000001", %{
+               confirmation_token: "ctok_invalid"
+             })
+
+    assert %InvitationAcceptanceAttempt{status: "declined"} =
+             Repo.get_by!(InvitationAcceptanceAttempt, invitation_id: invitation.id)
+
+    Application.put_env(:dhc, :onboarding_stripe_result, {:ok, %{}})
+
+    assert {:ok, %{member_id: _}} =
+             Onboarding.accept(invitation.id, token, "Next of Kin", "+353810000001", %{
+               confirmation_token: "ctok_corrected"
+             })
+
+    assert_received {:provision_membership, %{confirmation_token: "ctok_corrected"}}
+
+    assert 2 ==
+             Repo.aggregate(
+               from(a in InvitationAcceptanceAttempt, where: a.invitation_id == ^invitation.id),
+               :count
+             )
+  end
+
+  test "failed subscription cleanup is retried before the attempt is concluded" do
+    invitation = insert_invitation!()
+    {:ok, token} = token_for(invitation)
+    decline = {:stripe_api, 402, %{"error" => %{"code" => "card_declined"}}}
+    Application.put_env(:dhc, :onboarding_stripe_result, {:error, decline})
+    Application.put_env(:dhc, :onboarding_stripe_cancel_result, {:error, :stripe_unavailable})
+
+    assert {:error, {:payment_failed, ^decline}} =
+             Onboarding.accept(invitation.id, token, "Next of Kin", "+353810000001", %{
+               confirmation_token: "ctok_declined"
+             })
+
+    attempt = Repo.get_by!(InvitationAcceptanceAttempt, invitation_id: invitation.id)
+    assert attempt.status == "cleanup_pending"
+    assert_enqueued(worker: AcceptanceRecoveryWorker, args: %{"attempt_id" => attempt.id})
+
+    assert {:error, :payment_cleanup_pending} =
+             Onboarding.accept(invitation.id, token, "Next of Kin", "+353810000001", %{
+               confirmation_token: "ctok_corrected"
+             })
+
+    refute_received {:provision_membership, %{confirmation_token: "ctok_corrected"}}
+
+    assert {:snooze, 60} =
+             perform_job(AcceptanceRecoveryWorker, %{"attempt_id" => attempt.id})
+
+    Application.put_env(:dhc, :onboarding_stripe_cancel_result, :ok)
+
+    assert :ok = perform_job(AcceptanceRecoveryWorker, %{"attempt_id" => attempt.id})
+    assert Repo.get!(InvitationAcceptanceAttempt, attempt.id).status == "declined"
   end
 
   test "an active attempt keeps its original Stripe parameters across transport retries" do
