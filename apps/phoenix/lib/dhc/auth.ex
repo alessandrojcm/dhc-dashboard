@@ -15,9 +15,9 @@ defmodule Dhc.Auth do
       `delete_session_token/1`, and `delete_all_principal_sessions/1`. Sessions
        are opaque, DB-backed, 30-day absolute lifetime (no sliding refresh).
     * **Access** projection: `apply_member_access/2` serializes projection
-      changes with sign-in and revokes every authentication token when access
-      is lost. `load_session_principal/1` returns current roles and access for
-      authenticated requests.
+      changes with sign-in, revokes every authentication token, and disconnects
+      established sockets when access is lost. `load_session_principal/1`
+      returns current roles and access for authenticated requests.
 
   ## Email normalization
 
@@ -370,40 +370,70 @@ defmodule Dhc.Auth do
   end
 
   @doc """
-  Applies Membership's access decision to a Member projection.
+  Applies Membership's access decision to one or more Member projections.
 
-  The projection row is locked so this transition serializes with every
-  sign-in path. Losing access updates the projection and removes all Session
-  and socket tokens in the same transaction. Restoring access never creates a
-  Session.
+  Projection rows are locked so this transition serializes with every sign-in
+  path. Losing access updates the projections and removes all Session and
+  socket tokens in the same transaction. After that transaction commits, all
+  established sockets for the affected Principals are disconnected. Restoring
+  access never creates a Session.
   """
-  @spec apply_member_access(Ecto.UUID.t(), boolean()) :: :ok | {:error, term()}
+  @spec apply_member_access(Ecto.UUID.t() | [Ecto.UUID.t()], boolean()) ::
+          :ok | {:error, term()}
   def apply_member_access(profile_id, is_active)
       when is_binary(profile_id) and is_boolean(is_active) do
+    apply_member_access([profile_id], is_active)
+  end
+
+  def apply_member_access(profile_ids, is_active)
+      when is_list(profile_ids) and is_boolean(is_active) do
+    if not is_active and Repo.in_transaction?() do
+      {:error, :nested_transaction}
+    else
+      apply_member_access_outside_transaction(profile_ids, is_active)
+    end
+  end
+
+  defp apply_member_access_outside_transaction(profile_ids, is_active) do
+    profile_ids = Enum.uniq(profile_ids)
+
     Repo.transaction(fn ->
-      profile =
+      profiles =
         UserProfile
-        |> where([profile], profile.id == ^profile_id)
+        |> where([profile], profile.id in ^profile_ids)
+        |> order_by([profile], profile.id)
         |> lock("FOR UPDATE")
-        |> Repo.one()
+        |> Repo.all()
 
-      if is_nil(profile), do: Repo.rollback(:not_found)
+      if length(profiles) != length(profile_ids), do: Repo.rollback(:not_found)
 
-      from(p in UserProfile, where: p.id == ^profile.id)
+      from(p in UserProfile, where: p.id in ^profile_ids)
       |> Repo.update_all(set: [is_active: is_active, updated_at: DateTime.utc_now(:second)])
 
-      if not is_active and profile.principal_id do
+      principal_ids =
+        profiles
+        |> Enum.map(& &1.principal_id)
+        |> Enum.reject(&is_nil/1)
+
+      if not is_active and principal_ids != [] do
         Repo.delete_all(
           from t in PrincipalToken,
-            where: t.principal_id == ^profile.principal_id and t.context in ["session", "socket"]
+            where: t.principal_id in ^principal_ids and t.context in ["session", "socket"]
         )
       end
 
-      :ok
+      principal_ids
     end)
     |> case do
-      {:ok, :ok} -> :ok
-      {:error, reason} -> {:error, reason}
+      {:ok, principal_ids} ->
+        if not is_active do
+          Enum.each(principal_ids, &DhcWeb.UserSocket.disconnect/1)
+        end
+
+        :ok
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 

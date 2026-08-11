@@ -84,13 +84,10 @@ defmodule Dhc.StripeSync.Repository do
   """
   @spec mark_customer_inactive(String.t()) :: {:ok, non_neg_integer()}
   def mark_customer_inactive(customer_id) do
-    Repo.transaction(fn ->
-      profile_ids = user_profile_ids_for_customer(customer_id)
-      apply_member_access!(profile_ids, false)
-      length(profile_ids)
-    end)
-    |> case do
-      {:ok, updated_count} -> {:ok, updated_count}
+    profile_ids = user_profile_ids_for_customer(customer_id)
+
+    case Auth.apply_member_access(profile_ids, false) do
+      :ok -> {:ok, length(profile_ids)}
       {:error, reason} -> {:error, reason}
     end
   end
