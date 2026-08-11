@@ -40,4 +40,5 @@ Authentication uses Phoenix `_dhc_session` cookies. `loginAsUser()` calls the pr
 - The database is fresh per Playwright run, not per test.
 - Tests should still use unique emails and clean up named fixtures where practical.
 - A failing browser assertion must not prevent fixture cleanup.
+- For date-only fixtures, use the canonical date returned by the Phoenix harness; do not reformat the source JavaScript `Date`, which can cross a timezone boundary.
 - Keep the HTML and JSON reports when reporting a mixed pass/fail run; distinguish harness startup failures from missing browser binaries and application assertion failures.

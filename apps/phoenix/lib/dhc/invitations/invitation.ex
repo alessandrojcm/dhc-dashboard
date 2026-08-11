@@ -33,9 +33,9 @@ defmodule Dhc.Invitations.Invitation do
     field :phone_number, :string
     field :date_of_birth, :date
 
-    # ALE-162: lazily set by the pricing endpoint on first preview, so
-    # acceptance can reuse the same Stripe customer instead of minting a
-    # new one when the invitee already opened the pricing page.
+    # Historical pre-ADR-0013 field. New pricing calls never write it; the
+    # acceptance workflow only reads it to resume Invitations already priced
+    # before the migration.
     field :stripe_customer_id, :string
 
     timestamps(inserted_at: :created_at, type: :utc_datetime)

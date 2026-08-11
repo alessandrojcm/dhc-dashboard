@@ -112,6 +112,7 @@ onMount(() => {
 const handleSubmit: ButtonProps["onclick"] = async (e) => {
 	e.preventDefault();
 	const form = (e.currentTarget as HTMLButtonElement).form;
+
 	// Validate Stripe is ready
 	if (!stripe || !elements) {
 		toast.error("Payment system not initialized");
