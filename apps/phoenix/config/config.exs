@@ -20,6 +20,7 @@ config :dhc, :discord_oauth_strategy, Assent.Strategy.Discord
 config :dhc, :invitation_verification_token_salt, "invitation-verification-v1"
 
 config :dhc, :invitation_payment_processor, Dhc.Invitations.StripePayment
+config :dhc, :onboarding_stripe_adapter, Dhc.Onboarding.StripeAdapter.Live
 config :dhc, :workshop_stripe_adapter, Dhc.Workshops.StripeAdapter.Live
 
 # Configure Oban for background job processing

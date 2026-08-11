@@ -20,6 +20,19 @@ defmodule Dhc.Invitations.Repository do
   @type invite_data :: map()
   @type invite_result :: map()
 
+  @spec invitation_id_for_issue_key(String.t()) :: {:ok, Ecto.UUID.t()} | :not_found
+  def invitation_id_for_issue_key(issue_key) when is_binary(issue_key) do
+    from(i in Invitation,
+      where: fragment("?->>'issue_key'", i.metadata) == ^issue_key,
+      select: i.id
+    )
+    |> Repo.one()
+    |> case do
+      nil -> :not_found
+      invitation_id -> {:ok, invitation_id}
+    end
+  end
+
   @doc """
   Resolves a waitlist ID into the invite shape accepted by bulk Invitation processing.
 
@@ -58,7 +71,7 @@ defmodule Dhc.Invitations.Repository do
   stores the date of birth on the invitation row so `verify_credentials` can
   match without a `user_profiles` row. It does **not** call Supabase Auth,
   create a Stripe customer, or insert a `user_profiles` row. All of that moves
-  into acceptance (and pricing's lazy customer creation).
+  into acceptance; pricing remains read-only.
 
   `original_invite` is preserved only to detect waitlist-id invites and read
   the optional `invitationType` / `metadata` from `invite_data`.
@@ -140,32 +153,6 @@ defmodule Dhc.Invitations.Repository do
   @spec mark_waitlist_invited(String.t()) :: :ok
   def mark_waitlist_invited(waitlist_id) when is_binary(waitlist_id) do
     WaitlistRepository.mark_invited(waitlist_id)
-  end
-
-  @doc """
-  Lazily attaches a Stripe customer id to an Invitation.
-
-  ALE-162: the pricing endpoint creates a Stripe customer on first preview
-  (no `user_profiles` row exists at pricing time) and stores the id on the
-  invitation row so subsequent pricing calls and acceptance reuse the same
-  customer. Returns `{:ok, invitation}` with the reloaded invitation, or
-  `{:error, reason}` if the update fails.
-  """
-  @spec attach_stripe_customer_id(String.t(), String.t()) ::
-          {:ok, Invitation.t()} | {:error, term()}
-  def attach_stripe_customer_id(invitation_id, customer_id)
-      when is_binary(invitation_id) and is_binary(customer_id) do
-    from(i in Invitation, where: i.id == ^invitation_id)
-    |> Repo.update_all(
-      set: [
-        stripe_customer_id: customer_id,
-        updated_at: DateTime.utc_now() |> DateTime.truncate(:second)
-      ]
-    )
-    |> case do
-      {1, _} -> {:ok, Repo.get!(Invitation, invitation_id)}
-      {0, _} -> {:error, :not_found}
-    end
   end
 
   @doc """

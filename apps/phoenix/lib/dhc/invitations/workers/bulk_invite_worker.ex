@@ -20,8 +20,8 @@ defmodule Dhc.Invitations.BulkInviteWorker do
     * if the invite came from a waitlist, mark the waitlist entry `invited`.
 
   It no longer calls the Supabase admin API, creates a Stripe customer, or
-  inserts a `user_profiles` row. All of that moves into acceptance (and
-  pricing's lazy customer creation). The previous per-invite Supabase-Auth /
+  inserts a `user_profiles` row. Principal, profile, and Membership
+  creation happen during acceptance. The previous per-invite Supabase-Auth /
   Stripe / profile-creation failure modes no longer exist at issue time; the
   remaining failure modes are DB insert errors and email-enqueue errors.
 
@@ -33,7 +33,9 @@ defmodule Dhc.Invitations.BulkInviteWorker do
 
   The worker intentionally records per-invite failures and continues processing
   the rest of the batch. It only returns an error for invalid job args or an
-  unrecoverable failure to write the final processing log/notification.
+  unrecoverable failure while issuing an Invitation. Batch summary failures
+  are logged but do not fail this job, so completed per-Invitation work is
+  never replayed.
   """
 
   use Oban.Worker, queue: :invitations, max_attempts: 3
@@ -134,26 +136,44 @@ defmodule Dhc.Invitations.BulkInviteWorker do
   defp process_invites(%{"invites" => invites, "user" => %{"id" => created_by_id}}, ctx) do
     start_time = System.monotonic_time(:millisecond)
 
-    results = Enum.map(invites, &process_one_invite(&1, created_by_id, ctx))
+    results =
+      invites
+      |> Enum.with_index()
+      |> Enum.map(fn {invite, index} -> process_one_invite(invite, index, created_by_id, ctx) end)
 
+    finalize_batch(results, created_by_id, ctx)
+
+    processing_time_ms = System.monotonic_time(:millisecond) - start_time
+
+    Logger.info(
+      "[bulk-invite-worker] Stored invitation processing results",
+      Keyword.merge(ctx,
+        created_by: created_by_id,
+        processing_time_ms: processing_time_ms
+      )
+    )
+
+    {:ok, results}
+  end
+
+  defp finalize_batch(results, created_by_id, ctx) do
     with :ok <- Repository.store_processing_results(results, created_by_id),
          :ok <- Repository.create_processing_notification(results, created_by_id) do
-      processing_time_ms = System.monotonic_time(:millisecond) - start_time
-
-      Logger.info(
-        "[bulk-invite-worker] Stored invitation processing results",
-        Keyword.merge(ctx,
-          created_by: created_by_id,
-          processing_time_ms: processing_time_ms
+      :ok
+    else
+      {:error, reason} ->
+        Logger.error(
+          "[bulk-invite-worker] Batch finalization failed after invitation issue completed",
+          Keyword.merge(ctx, created_by: created_by_id, reason: format_reason(reason))
         )
-      )
 
-      {:ok, results}
+        :ok
     end
   end
 
-  defp process_one_invite(invite, created_by_id, ctx) do
+  defp process_one_invite(invite, index, created_by_id, ctx) do
     with {:ok, invite_data} <- resolve_invite_data(invite),
+         invite_data <- put_issue_key(invite_data, issue_key(ctx, index)),
          {:ok, result} <- create_invitation_pipeline(invite, invite_data, created_by_id, ctx) do
       result
     else
@@ -198,29 +218,48 @@ defmodule Dhc.Invitations.BulkInviteWorker do
   defp create_invitation_pipeline(original_invite, invite_data, created_by_id, ctx) do
     # ALE-162 (ADR 0010): issue time is one insert. No Supabase admin call,
     # no Stripe customer, no user_profiles row. Acceptance materializes the
-    # Principal + record set; pricing lazily creates the Stripe customer.
-    Repo.transaction(fn ->
-      with {:ok, invitation_id} <-
-             Repository.create_invitation_record(original_invite, invite_data, created_by_id),
-           :ok <- enqueue_invitation_email(invite_data, invitation_id),
-           :ok <- maybe_update_waitlist(original_invite) do
-        Logger.info(
-          "[bulk-invite-worker] Processed invitation",
-          Keyword.merge(ctx,
-            email: invite_data["email"],
-            invitation_id: invitation_id
-          )
-        )
+    # Principal + record set; acceptance creates the Stripe customer.
+    issue_key = get_in(invite_data, ["metadata", "issue_key"])
 
-        %{email: invite_data["email"], success: true, invitationId: invitation_id}
-      else
-        {:error, reason} -> Repo.rollback(reason)
-      end
-    end)
-    |> case do
-      {:ok, result} -> {:ok, result}
-      {:error, reason} -> {:error, reason}
+    case Repository.invitation_id_for_issue_key(issue_key) do
+      {:ok, invitation_id} ->
+        {:ok, invitation_result(invite_data, invitation_id)}
+
+      :not_found ->
+        Repo.transaction(fn ->
+          with {:ok, invitation_id} <-
+                 Repository.create_invitation_record(original_invite, invite_data, created_by_id),
+               :ok <- enqueue_invitation_email(invite_data, invitation_id),
+               :ok <- maybe_update_waitlist(original_invite) do
+            Logger.info(
+              "[bulk-invite-worker] Processed invitation",
+              Keyword.merge(ctx,
+                email: invite_data["email"],
+                invitation_id: invitation_id
+              )
+            )
+
+            invitation_result(invite_data, invitation_id)
+          else
+            {:error, reason} -> Repo.rollback(reason)
+          end
+        end)
+        |> case do
+          {:ok, result} -> {:ok, result}
+          {:error, reason} -> {:error, reason}
+        end
     end
+  end
+
+  defp invitation_result(invite_data, invitation_id) do
+    %{email: invite_data["email"], success: true, invitationId: invitation_id}
+  end
+
+  defp issue_key(ctx, index), do: "bulk-invite:#{ctx[:oban_job_id] || "unpersisted"}:#{index}"
+
+  defp put_issue_key(invite_data, issue_key) do
+    metadata = Map.get(invite_data, "metadata") || %{}
+    Map.put(invite_data, "metadata", Map.put(metadata, "issue_key", issue_key))
   end
 
   defp enqueue_invitation_email(invite_data, invitation_id) do

@@ -12,6 +12,7 @@ defmodule Dhc.E2EHarness do
   alias Dhc.Inventory.Items
   alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.MemberFixtures
+  alias Dhc.Onboarding.InvitationAcceptanceAttempts
   alias Dhc.Repo
   alias Dhc.Settings.Setting
   alias Dhc.Waitlist
@@ -213,7 +214,16 @@ defmodule Dhc.E2EHarness do
 
   def delete_fixture("member", id), do: delete_principal(id)
 
-  def delete_fixture("invitation", id), do: Dhc.Invitations.delete_many([id])
+  def delete_fixture("invitation", id) do
+    principal_id =
+      Repo.one(from(i in Invitation, where: i.id == ^id, select: i.prospective_principal_id))
+
+    InvitationAcceptanceAttempts.purge_for_invitation(id)
+    :ok = Dhc.Invitations.delete_many([id])
+
+    if principal_id, do: delete_principal(principal_id)
+    :ok
+  end
 
   def delete_fixture("workshop", id) do
     case Repo.get(Dhc.Workshops.Workshop, id) do

@@ -7,23 +7,19 @@ defmodule Dhc.Invitations.StripePayment do
   create the membership subscriptions, and confirm the first invoice payments
   before the invitation is converted to a member.
 
-  ALE-162 (ADR 0010): acceptance creates the Stripe customer when none is
-  already attached to the invitation (the pricing endpoint lazily creates one
-  on first preview and stores it on `invitations.stripe_customer_id`). See
-  `create_customer/2`.
+  Acceptance creates the Stripe customer when none is already attached to the
+  durable Invitation Acceptance Attempt. Pricing remains read-only.
   """
 
-  alias Dhc.Stripe.LookupKeys
   alias Dhc.Stripe.Operations
-
-  @migration_code "DHCDASHBOARD"
+  alias Dhc.Invitations.Pricing
 
   @doc """
   Creates a Stripe customer for an invitation.
 
-  ALE-162: when the pricing endpoint has not already attached a customer to
-  the invitation (no `stripe_customer_id`), acceptance creates one here so the
-  membership subscriptions have a customer to attach to. The customer is named
+  When an Invitation Acceptance Attempt has no Stripe customer, acceptance
+  creates one here so the Membership subscriptions have a customer to attach
+  to. The customer is named
   and emailed from the invitation's contact info; `invited_by` metadata records
   the admin who issued the invitation (preserving the pre-ALE-162 metadata
   shape).
@@ -57,8 +53,13 @@ defmodule Dhc.Invitations.StripePayment do
     with {:ok, setup_intent} <- create_setup_intent(attrs),
          :ok <- validate_setup_intent(setup_intent),
          {:ok, payment_method_id} <- payment_method_id(setup_intent),
-         {:ok, prices} <- membership_price_ids(),
-         {:ok, promotion} <- resolve_promotion(Map.get(attrs, :coupon_code)),
+         :ok <-
+           report_progress(attrs, %{
+             "setup_intent_id" => resource_id(setup_intent),
+             "payment_method_id" => payment_method_id
+           }),
+         {:ok, prices} <- Pricing.membership_price_ids(),
+         {:ok, promotion} <- Pricing.resolve_promotion(Map.get(attrs, :coupon_code)),
          :ok <-
            create_membership_subscriptions(
              customer_id,
@@ -102,65 +103,31 @@ defmodule Dhc.Invitations.StripePayment do
   defp payment_method_id(%{"payment_method" => %{"id" => id}}) when is_binary(id), do: {:ok, id}
   defp payment_method_id(_setup_intent), do: {:error, :payment_method_missing}
 
-  defp membership_price_ids do
-    with {:ok, monthly} <- price_id_for_lookup_key(LookupKeys.monthly()),
-         {:ok, annual} <- price_id_for_lookup_key(LookupKeys.annual()) do
-      {:ok, %{monthly: monthly, annual: annual}}
-    end
-  end
-
-  defp price_id_for_lookup_key(lookup_key) do
-    case Operations.get_prices(%{}, lookup_keys: [lookup_key], active: true, limit: 1) do
-      {:ok, %{"data" => [%{"id" => id} | _]}} when is_binary(id) -> {:ok, id}
-      {:ok, %{"data" => []}} -> {:error, {:price_not_found, lookup_key}}
-      {:error, reason} -> {:error, reason}
-      _ -> {:error, {:invalid_price_response, lookup_key}}
-    end
-  end
-
-  defp resolve_promotion(nil), do: {:ok, %{migration?: false, promotion_code_id: nil}}
-  defp resolve_promotion(""), do: {:ok, %{migration?: false, promotion_code_id: nil}}
-
-  defp resolve_promotion(coupon_code) when is_binary(coupon_code) do
-    trimmed = String.trim(coupon_code)
-
-    case Operations.get_promotion_codes(%{}, active: true, code: trimmed, limit: 1) do
-      {:ok, %{"data" => [%{"id" => id} | _]}} when is_binary(id) ->
-        migration? = String.downcase(trimmed) == String.downcase(migration_code())
-        {:ok, %{migration?: migration?, promotion_code_id: if(migration?, do: nil, else: id)}}
-
-      {:ok, %{"data" => []}} ->
-        {:error, :invalid_promotion_code}
-
-      {:error, reason} ->
-        {:error, reason}
-
-      _ ->
-        {:error, :invalid_promotion_code_response}
-    end
-  end
-
   defp create_membership_subscriptions(customer_id, payment_method_id, prices, promotion, attrs) do
     with {:ok, monthly} <-
            create_subscription(
              :monthly,
              customer_id,
              payment_method_id,
-             prices.monthly,
+             prices.monthly.id,
              promotion,
              attrs
            ),
+         :ok <- report_subscription_progress(attrs, :monthly, monthly),
          :ok <- maybe_confirm_first_invoice(monthly, payment_method_id, promotion, attrs),
+         :ok <- report_progress(attrs, %{"monthly_confirmed" => true}),
          {:ok, annual} <-
            create_subscription(
              :annual,
              customer_id,
              payment_method_id,
-             prices.annual,
+             prices.annual.id,
              promotion,
              attrs
            ),
-         :ok <- maybe_confirm_first_invoice(annual, payment_method_id, promotion, attrs) do
+         :ok <- report_subscription_progress(attrs, :annual, annual),
+         :ok <- maybe_confirm_first_invoice(annual, payment_method_id, promotion, attrs),
+         :ok <- report_progress(attrs, %{"annual_confirmed" => true}) do
       :ok
     end
   end
@@ -267,11 +234,31 @@ defmodule Dhc.Invitations.StripePayment do
   end
 
   defp idempotency_key(attrs, suffix) do
-    invitation_id = Map.get(attrs, :invitation_id, "unknown-invitation")
-    "invitation-accept:#{invitation_id}:#{suffix}"
+    attempt_id = Map.get(attrs, :attempt_id, Map.get(attrs, :invitation_id, "unknown-attempt"))
+    "invitation-acceptance-attempt:#{attempt_id}:#{suffix}"
   end
 
-  defp migration_code do
-    Application.get_env(:dhc, :dashboard_migration_code, @migration_code)
+  defp report_subscription_progress(attrs, kind, subscription) do
+    prefix = Atom.to_string(kind)
+
+    progress =
+      %{"#{prefix}_subscription_id" => resource_id(subscription)}
+      |> maybe_put("#{prefix}_invoice_id", latest_invoice(subscription) |> resource_id())
+      |> maybe_put("#{prefix}_payment_intent_id", payment_intent_id(subscription))
+
+    report_progress(attrs, progress)
   end
+
+  defp report_progress(attrs, progress) do
+    case Map.get(attrs, :progress) do
+      callback when is_function(callback, 1) -> callback.(progress)
+      _ -> :ok
+    end
+  end
+
+  defp resource_id(%{"id" => id}) when is_binary(id), do: id
+  defp resource_id(_resource), do: nil
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
 end

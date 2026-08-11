@@ -5,94 +5,27 @@ defmodule Dhc.Invitations.Pricing do
   Ports the SvelteKit `PricingService` Stripe invoice-preview calculation to
   Phoenix while preserving the DTO consumed by the signup UI.
 
-  ALE-162 (ADR 0010): issue time no longer creates a `user_profiles` row or a
-  Stripe customer, so there is no `customer_id` to look up at pricing time.
-  The pricing endpoint lazily creates a Stripe customer on first preview (or
-  reuses `invitation.stripe_customer_id` if a prior pricing call already
-  attached one) and persists it on the invitation row. Acceptance then
-  reuses the same customer.
+  ADR 0013 makes pricing read-only. Invoice previews are calculated for a
+  prospective subscription without creating or persisting a Stripe Customer.
   """
 
-  import Ecto.Query
-
-  alias Dhc.Invitations.Invitation
-  alias Dhc.Invitations.Repository
-  alias Dhc.Repo
   alias Dhc.Stripe.LookupKeys
   alias Dhc.Stripe.Operations
 
   @migration_code "DHCDASHBOARD"
   @currency "EUR"
 
-  @spec pricing_for_invitation(String.t(), String.t() | nil) ::
-          {:ok, map()} | {:error, atom() | {:stripe, term()}}
-  def pricing_for_invitation(invitation_id, coupon_code \\ nil) do
-    with {:ok, invitation} <- pending_invitation(invitation_id),
-         {:ok, customer_id} <- resolve_customer_id(invitation),
-         {:ok, prices} <- membership_price_ids(),
+  @doc false
+  def preview_membership(coupon_code \\ nil) do
+    with {:ok, prices} <- membership_price_ids(),
          {:ok, promotion} <- resolve_promotion(coupon_code),
-         {:ok, details} <- pricing_details(customer_id, prices, promotion) do
+         {:ok, details} <- pricing_details(prices, promotion) do
       {:ok, generate_pricing_info(details)}
     end
   end
 
-  defp pending_invitation(invitation_id) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
-
-    query =
-      from i in Invitation,
-        where: i.id == ^invitation_id,
-        where: i.status == "pending",
-        where: i.expires_at > ^now
-
-    case Repo.one(query) do
-      nil -> {:error, :not_found}
-      invitation -> {:ok, invitation}
-    end
-  end
-
-  # ALE-162: no user_profiles row exists at pricing time. Reuse a previously
-  # attached customer if present (lazily created by a prior pricing call);
-  # otherwise create one and persist it on the invitation so acceptance can
-  # reuse it. The customer is named from the invitation's first/last name if
-  # available, emailed from the invitation email, and carries `invited_by`
-  # metadata from the invitation's creator.
-  defp resolve_customer_id(%Invitation{stripe_customer_id: id})
-       when is_binary(id) and id != "" do
-    {:ok, id}
-  end
-
-  defp resolve_customer_id(%Invitation{} = invitation) do
-    name =
-      [invitation.first_name, invitation.last_name]
-      |> Enum.filter(&(&1 not in [nil, ""]))
-      |> Enum.join(" ")
-
-    body = %{
-      "name" => name,
-      "email" => invitation.email,
-      "metadata[invited_by]" =>
-        invitation.created_by_principal_id || invitation.prospective_principal_id
-    }
-
-    idempotency_key = "invitation-pricing:#{invitation.id}:customer"
-
-    case Operations.post_customers(body, idempotency_key: idempotency_key) do
-      {:ok, %{"id" => customer_id}} when is_binary(customer_id) ->
-        case Repository.attach_stripe_customer_id(invitation.id, customer_id) do
-          {:ok, _invitation} -> {:ok, customer_id}
-          {:error, reason} -> {:error, {:stripe_customer_persist, reason}}
-        end
-
-      {:ok, body} ->
-        {:error, {:stripe_customer_missing_id, body}}
-
-      {:error, reason} ->
-        {:error, {:stripe, reason}}
-    end
-  end
-
-  defp membership_price_ids do
+  @doc false
+  def membership_price_ids do
     with {:ok, monthly} <- price_id_for_lookup_key(LookupKeys.monthly()),
          {:ok, annual} <- price_id_for_lookup_key(LookupKeys.annual()) do
       {:ok, %{monthly: monthly, annual: annual}}
@@ -116,10 +49,13 @@ defmodule Dhc.Invitations.Pricing do
     end
   end
 
-  defp resolve_promotion(nil), do: {:ok, %{code: nil, promotion_code_id: nil, coupon: nil}}
-  defp resolve_promotion(""), do: {:ok, %{code: nil, promotion_code_id: nil, coupon: nil}}
+  @doc false
+  def resolve_promotion(nil),
+    do: {:ok, %{code: nil, promotion_code_id: nil, coupon: nil, migration?: false}}
 
-  defp resolve_promotion(coupon_code) when is_binary(coupon_code) do
+  def resolve_promotion(""), do: resolve_promotion(nil)
+
+  def resolve_promotion(coupon_code) when is_binary(coupon_code) do
     trimmed = String.trim(coupon_code)
 
     if trimmed == "" do
@@ -129,11 +65,17 @@ defmodule Dhc.Invitations.Pricing do
         {:ok, %{"data" => [%{"id" => id, "promotion" => %{"coupon" => coupon_id}} | _]}}
         when is_binary(id) and is_binary(coupon_id) ->
           if migration_code?(trimmed) do
-            {:ok, %{code: trimmed, promotion_code_id: nil, coupon: %{migration?: true}}}
+            {:ok,
+             %{
+               code: trimmed,
+               promotion_code_id: nil,
+               coupon: %{migration?: true},
+               migration?: true
+             }}
           else
             with {:ok, coupon} <- retrieve_coupon(coupon_id),
                  :ok <- validate_coupon(coupon) do
-              {:ok, %{code: trimmed, promotion_code_id: id, coupon: coupon}}
+              {:ok, %{code: trimmed, promotion_code_id: id, coupon: coupon, migration?: false}}
             end
           end
 
@@ -166,14 +108,13 @@ defmodule Dhc.Invitations.Pricing do
 
   defp validate_coupon(_coupon), do: :ok
 
-  defp pricing_details(customer_id, prices, promotion) do
+  defp pricing_details(prices, promotion) do
     next_month = next_month_anchor()
     next_january = next_january_anchor()
 
     calls = [
       monthly_initial: fn ->
         preview_invoice(
-          customer_id,
           prices.monthly.id,
           :billing_cycle_anchor,
           next_month,
@@ -182,7 +123,6 @@ defmodule Dhc.Invitations.Pricing do
       end,
       annual_initial: fn ->
         preview_invoice(
-          customer_id,
           prices.annual.id,
           :billing_cycle_anchor,
           next_january,
@@ -191,7 +131,6 @@ defmodule Dhc.Invitations.Pricing do
       end,
       monthly_recurring: fn ->
         preview_invoice(
-          customer_id,
           prices.monthly.id,
           :start_date,
           next_month,
@@ -200,7 +139,6 @@ defmodule Dhc.Invitations.Pricing do
       end,
       annual_recurring: fn ->
         preview_invoice(
-          customer_id,
           prices.annual.id,
           :start_date,
           next_january,
@@ -270,10 +208,9 @@ defmodule Dhc.Invitations.Pricing do
     end
   end
 
-  defp preview_invoice(customer_id, price_id, date_key, unix_anchor, promotion) do
+  defp preview_invoice(price_id, date_key, unix_anchor, promotion) do
     form =
       %{
-        "customer" => customer_id,
         "subscription_details[items][0][price]" => price_id,
         "subscription_details[items][0][quantity]" => "1",
         "subscription_details[#{date_key}]" => Integer.to_string(unix_anchor)

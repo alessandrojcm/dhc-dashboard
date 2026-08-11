@@ -1,0 +1,37 @@
+defmodule Dhc.OnboardingTestStripeAdapter do
+  @moduledoc false
+
+  @behaviour Dhc.Onboarding.StripeAdapter
+
+  @impl true
+  def preview_membership(coupon_code) do
+    send(test_pid(), {:preview_membership, coupon_code})
+    {:ok, %{proratedPrice: %{amount: 0}}}
+  end
+
+  @impl true
+  def create_customer(attrs) do
+    send(test_pid(), {:create_customer, attrs})
+    Application.get_env(:dhc, :onboarding_stripe_customer_result, {:ok, "cus_onboarding"})
+  end
+
+  @impl true
+  def provision_membership(attrs) do
+    send(test_pid(), {:provision_membership, attrs})
+
+    with :ok <- report_progress(attrs) do
+      Application.get_env(:dhc, :onboarding_stripe_result, {:ok, %{}})
+    end
+  end
+
+  defp report_progress(%{progress: progress}) when is_function(progress, 1) do
+    progress.(%{
+      "setup_intent_id" => "seti_onboarding",
+      "monthly_subscription_id" => "sub_monthly_onboarding"
+    })
+  end
+
+  defp report_progress(_attrs), do: :ok
+
+  defp test_pid, do: Application.fetch_env!(:dhc, :onboarding_test_pid)
+end
