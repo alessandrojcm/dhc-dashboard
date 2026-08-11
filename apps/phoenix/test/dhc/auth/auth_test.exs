@@ -143,7 +143,7 @@ defmodule Dhc.AuthTest do
       principal = inactive_principal_fixture(confirmed_at: nil)
       {encoded, _row} = magic_link_token(principal)
 
-      assert {:error, :invalid} = Auth.consume_magic_link(encoded)
+      assert {:error, :inactive_membership} = Auth.consume_magic_link(encoded)
       assert Auth.get_principal!(principal.id).confirmed_at
       assert {:error, :invalid} = Auth.consume_magic_link(encoded)
 
@@ -520,6 +520,41 @@ defmodule Dhc.AuthTest do
                Auth.sign_in_with_discord(%{"sub" => "discord-inactive-linked"})
 
       refute Repo.exists?(from(t in PrincipalToken, where: t.context == "session"))
+    end
+  end
+
+  describe "link_discord_identity/2" do
+    test "an authenticated active Principal can link a Discord subject with a different email" do
+      principal = active_principal_fixture(email: "principal-email@example.com")
+
+      assert {:ok, identity} =
+               Auth.link_discord_identity(principal, %{
+                 "sub" => "discord-authenticated-link",
+                 "email" => "different-discord-email@example.com",
+                 "email_verified" => true,
+                 "preferred_username" => "linked-member"
+               })
+
+      assert identity.principal_id == principal.id
+      assert identity.provider == "discord"
+      assert identity.provider_subject == "discord-authenticated-link"
+      assert identity.metadata["email"] == "different-discord-email@example.com"
+      assert Auth.get_principal!(principal.id).email == "principal-email@example.com"
+      refute Repo.exists?(from(t in PrincipalToken, where: t.context == "session"))
+    end
+
+    test "cannot take a Discord subject already linked to another Principal" do
+      owner = active_principal_fixture(email: "discord-owner@example.com")
+      requester = active_principal_fixture(email: "discord-requester@example.com")
+      external_identity_fixture(owner, "discord-owned-subject")
+
+      assert {:error, :invalid} =
+               Auth.link_discord_identity(requester, %{"sub" => "discord-owned-subject"})
+
+      assert Repo.get_by!(Dhc.Auth.ExternalIdentity,
+               provider: "discord",
+               provider_subject: "discord-owned-subject"
+             ).principal_id == owner.id
     end
   end
 

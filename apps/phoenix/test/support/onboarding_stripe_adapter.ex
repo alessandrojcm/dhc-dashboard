@@ -20,7 +20,10 @@ defmodule Dhc.OnboardingTestStripeAdapter do
     send(test_pid(), {:provision_membership, attrs})
 
     with :ok <- report_progress(attrs) do
-      Application.get_env(:dhc, :onboarding_stripe_result, {:ok, %{}})
+      case Application.get_env(:dhc, :onboarding_stripe_result, {:ok, %{}}) do
+        result when is_function(result, 0) -> result.()
+        result -> result
+      end
     end
   end
 

@@ -6,6 +6,7 @@ defmodule Dhc.Onboarding do
 
   import Ecto.Query
 
+  alias Dhc.Auth.Principal
   alias Dhc.Invitations
   alias Dhc.Invitations.BulkInviteWorker
   alias Dhc.Invitations.Invitation
@@ -63,6 +64,10 @@ defmodule Dhc.Onboarding do
       if Repo.exists?(
            from(m in MemberProfile, where: m.id == ^invitation.prospective_principal_id)
          ) do
+        Repo.rollback(:invalid_invitation)
+      end
+
+      if Repo.exists?(from(p in Principal, where: p.email == ^invitation.email)) do
         Repo.rollback(:invalid_invitation)
       end
 
