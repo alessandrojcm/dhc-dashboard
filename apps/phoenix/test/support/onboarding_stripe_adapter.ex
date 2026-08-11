@@ -24,11 +24,22 @@ defmodule Dhc.OnboardingTestStripeAdapter do
     end
   end
 
+  @impl true
+  def cancel_membership(stripe_state) do
+    send(test_pid(), {:cancel_membership, stripe_state})
+    Application.get_env(:dhc, :onboarding_stripe_cancel_result, :ok)
+  end
+
+  @impl true
+  def retryable_failure?(reason), do: Dhc.Invitations.StripePayment.retryable_failure?(reason)
+
   defp report_progress(%{progress: progress}) when is_function(progress, 1) do
-    progress.(%{
-      "setup_intent_id" => "seti_onboarding",
-      "monthly_subscription_id" => "sub_monthly_onboarding"
-    })
+    progress.(
+      Application.get_env(:dhc, :onboarding_stripe_progress, %{
+        "setup_intent_id" => "seti_onboarding",
+        "monthly_subscription_id" => "sub_monthly_onboarding"
+      })
+    )
   end
 
   defp report_progress(_attrs), do: :ok

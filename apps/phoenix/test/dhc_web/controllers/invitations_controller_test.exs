@@ -55,6 +55,17 @@ defmodule DhcWeb.InvitationsControllerTest do
       send(Application.fetch_env!(:dhc, :invitation_payment_test_pid), {:stripe_complete, attrs})
       Application.get_env(:dhc, :invitation_payment_result, :ok)
     end
+
+    def cancel_membership(stripe_state) do
+      send(
+        Application.fetch_env!(:dhc, :invitation_payment_test_pid),
+        {:stripe_cancel_membership, stripe_state}
+      )
+
+      :ok
+    end
+
+    def retryable_failure?(reason), do: Dhc.Invitations.StripePayment.retryable_failure?(reason)
   end
 
   setup do
@@ -626,6 +637,7 @@ defmodule DhcWeb.InvitationsControllerTest do
                json_response(conn, 402)
 
       assert_receive {:stripe_complete, %{confirmation_token: "ctok_declined"}}
+      assert_receive {:stripe_cancel_membership, %{}}
 
       assert Repo.get!(Invitation, invitation_id).status == "pending"
 

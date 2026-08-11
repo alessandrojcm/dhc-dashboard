@@ -4,4 +4,6 @@ defmodule Dhc.Onboarding.StripeAdapter do
   @callback preview_membership(String.t() | nil) :: {:ok, map()} | {:error, term()}
   @callback create_customer(map()) :: {:ok, String.t()} | {:error, term()}
   @callback provision_membership(map()) :: {:ok, map()} | {:error, term()}
+  @callback cancel_membership(map()) :: :ok | {:error, term()}
+  @callback retryable_failure?(term()) :: boolean()
 end

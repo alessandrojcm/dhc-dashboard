@@ -27,6 +27,12 @@ defmodule Dhc.Onboarding.StripeAdapter.Live do
     end
   end
 
+  @impl true
+  def cancel_membership(stripe_state), do: payment_processor().cancel_membership(stripe_state)
+
+  @impl true
+  def retryable_failure?(reason), do: payment_processor().retryable_failure?(reason)
+
   defp payment_processor do
     Application.get_env(:dhc, :invitation_payment_processor, Dhc.Invitations.StripePayment)
   end

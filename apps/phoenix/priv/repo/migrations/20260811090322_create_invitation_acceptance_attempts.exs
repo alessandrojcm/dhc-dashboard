@@ -31,7 +31,7 @@ defmodule Dhc.Repo.Migrations.CreateInvitationAcceptanceAttempts do
       """
       CREATE UNIQUE INDEX invitation_acceptance_attempts_active_unique
         ON invitation_acceptance_attempts (invitation_id)
-        WHERE status IN ('processing', 'provisioned')
+        WHERE status IN ('processing', 'cleanup_pending', 'provisioned')
       """,
       "DROP INDEX invitation_acceptance_attempts_active_unique"
     )
@@ -39,7 +39,8 @@ defmodule Dhc.Repo.Migrations.CreateInvitationAcceptanceAttempts do
     create constraint(
              :invitation_acceptance_attempts,
              :invitation_acceptance_attempts_status_check,
-             check: "status IN ('processing', 'provisioned', 'completed', 'declined')"
+             check:
+               "status IN ('processing', 'cleanup_pending', 'provisioned', 'completed', 'declined')"
            )
 
     create constraint(

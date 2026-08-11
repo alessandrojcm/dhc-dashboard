@@ -68,10 +68,16 @@ defmodule Dhc.Onboarding do
 
       active_attempt =
         from(a in InvitationAcceptanceAttempt,
-          where: a.invitation_id == ^invitation.id and a.status in ["processing", "provisioned"],
+          where:
+            a.invitation_id == ^invitation.id and
+              a.status in ["processing", "cleanup_pending", "provisioned"],
           lock: "FOR UPDATE"
         )
         |> Repo.one()
+
+      if active_attempt && active_attempt.status == "cleanup_pending" do
+        Repo.rollback(:payment_cleanup_pending)
+      end
 
       if is_nil(active_attempt) and DateTime.compare(invitation.expires_at, now) != :gt do
         Repo.rollback(:invalid_invitation)
@@ -158,7 +164,11 @@ defmodule Dhc.Onboarding do
 
   defp mark_provisioned(attempt, stripe_state) do
     Repo.transaction(fn ->
-      attempt = Repo.get!(InvitationAcceptanceAttempt, attempt.id)
+      attempt =
+        from(a in InvitationAcceptanceAttempt, where: a.id == ^attempt.id, lock: "FOR UPDATE")
+        |> Repo.one!()
+
+      if attempt.status != "processing", do: Repo.rollback(:attempt_not_processing)
 
       updated =
         attempt
@@ -169,12 +179,7 @@ defmodule Dhc.Onboarding do
         )
         |> Repo.update!()
 
-      %{"attempt_id" => updated.id}
-      |> AcceptanceRecoveryWorker.new(
-        schedule_in: 60,
-        unique: [period: :infinity, fields: [:worker, :args]]
-      )
-      |> Oban.insert!()
+      enqueue_recovery(updated.id)
 
       updated
     end)
@@ -209,23 +214,83 @@ defmodule Dhc.Onboarding do
   end
 
   defp record_provider_failure(attempt, reason) do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    attempt = Repo.get!(InvitationAcceptanceAttempt, attempt.id)
 
-    changes =
-      if declined?(reason) do
-        [status: "declined", concluded_at: now, last_error: inspect(reason)]
-      else
-        [last_error: inspect(reason)]
-      end
-
-    attempt |> Ecto.Changeset.change(changes) |> Repo.update!()
+    if stripe_adapter().retryable_failure?(reason) do
+      attempt
+      |> Ecto.Changeset.change(last_error: inspect(reason))
+      |> Repo.update!()
+    else
+      conclude_failed_attempt(attempt, reason)
+    end
   end
 
-  defp declined?(:card_declined), do: true
-  defp declined?({:card_declined, _}), do: true
-  defp declined?({:stripe_customer, reason}), do: declined?(reason)
-  defp declined?({:stripe_api, _status, %{"error" => %{"code" => "card_declined"}}}), do: true
-  defp declined?(_reason), do: false
+  defp conclude_failed_attempt(attempt, reason) do
+    attempt =
+      Repo.transaction(fn ->
+        attempt =
+          from(a in InvitationAcceptanceAttempt, where: a.id == ^attempt.id, lock: "FOR UPDATE")
+          |> Repo.one!()
+
+        attempt =
+          attempt
+          |> Ecto.Changeset.change(status: "cleanup_pending", last_error: inspect(reason))
+          |> Repo.update!()
+
+        enqueue_recovery(attempt.id)
+        attempt
+      end)
+      |> then(fn {:ok, attempt} -> attempt end)
+
+    retry_failed_attempt_cleanup(attempt.id)
+  end
+
+  @doc false
+  def retry_failed_attempt_cleanup(attempt_id) do
+    attempt = Repo.get!(InvitationAcceptanceAttempt, attempt_id)
+
+    if attempt.status == "cleanup_pending" do
+      case stripe_adapter().cancel_membership(attempt.stripe_state) do
+        :ok ->
+          mark_declined(attempt, attempt.last_error)
+          :ok
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    else
+      :ok
+    end
+  end
+
+  defp mark_declined(attempt, reason) do
+    Repo.transaction(fn ->
+      attempt =
+        from(a in InvitationAcceptanceAttempt, where: a.id == ^attempt.id, lock: "FOR UPDATE")
+        |> Repo.one!()
+
+      if attempt.status == "cleanup_pending" do
+        attempt
+        |> Ecto.Changeset.change(
+          status: "declined",
+          concluded_at: DateTime.utc_now() |> DateTime.truncate(:second),
+          last_error: if(is_binary(reason), do: reason, else: inspect(reason))
+        )
+        |> Repo.update!()
+      else
+        attempt
+      end
+    end)
+  end
+
+  defp enqueue_recovery(attempt_id) do
+    %{"attempt_id" => attempt_id}
+    |> AcceptanceRecoveryWorker.new(
+      schedule_in: 60,
+      unique: [period: :infinity, fields: [:worker, :args]]
+    )
+    |> Oban.insert!()
+  end
 
   defp record_stripe_progress(attempt_id, progress) when is_map(progress) do
     Repo.transaction(fn ->
