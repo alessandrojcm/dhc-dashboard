@@ -7,26 +7,40 @@ defmodule Dhc.Workshops.Workers.RefundReconciliationWorker do
 
   alias Dhc.Repo
   alias Dhc.Workshops.Refund
+  alias Dhc.Workshops.Workers.RefundWorker
 
   @impl Oban.Worker
   def perform(%Oban.Job{}) do
-    from(r in Refund,
-      where: r.status == "processing" and not is_nil(r.stripe_refund_id),
-      select: r.stripe_refund_id
-    )
-    |> Repo.all()
-    |> Enum.reduce(:ok, fn stripe_refund_id, result ->
-      refund_result =
+    submission_results =
+      from(r in Refund,
+        where: r.status == "pending",
+        select: r.id
+      )
+      |> Repo.all()
+      |> Enum.map(fn refund_id ->
+        refund_id
+        |> then(&RefundWorker.new(%{refund_id: &1}))
+        |> Oban.insert()
+        |> case do
+          {:ok, _job} -> :ok
+          {:error, reason} -> {:error, reason}
+        end
+      end)
+
+    provider_results =
+      from(r in Refund,
+        where: r.status == "processing" and not is_nil(r.stripe_refund_id),
+        select: r.stripe_refund_id
+      )
+      |> Repo.all()
+      |> Enum.map(fn stripe_refund_id ->
         with {:ok, object} <- stripe_adapter().retrieve_refund(stripe_refund_id),
              :ok <- Refund.apply_provider_update(object) do
           :ok
         end
+      end)
 
-      case {result, refund_result} do
-        {:ok, {:error, reason}} -> {:error, reason}
-        _ -> result
-      end
-    end)
+    Enum.find(submission_results ++ provider_results, :ok, &match?({:error, _reason}, &1))
   end
 
   defp stripe_adapter do

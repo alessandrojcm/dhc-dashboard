@@ -4,7 +4,7 @@ defmodule Dhc.Workshops.Workers.RefundWorker do
   use Oban.Worker,
     queue: :stripe,
     max_attempts: 10,
-    unique: [period: :infinity, fields: [:worker, :args]]
+    unique: [period: :infinity, fields: [:worker, :args], states: :incomplete]
 
   import Ecto.Query
 
