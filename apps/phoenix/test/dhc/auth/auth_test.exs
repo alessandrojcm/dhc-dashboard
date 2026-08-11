@@ -229,6 +229,8 @@ defmodule Dhc.AuthTest do
       profile = Repo.get_by!(Dhc.UserProfiles.UserProfile, principal_id: principal.id)
       session_token = session_token(principal)
       {:ok, socket_token} = Auth.create_socket_token(principal)
+      socket_id = DhcWeb.UserSocket.socket_id(principal.id)
+      :ok = DhcWeb.Endpoint.subscribe(socket_id)
 
       assert :ok = Auth.apply_member_access(profile.id, false)
 
@@ -236,9 +238,28 @@ defmodule Dhc.AuthTest do
       assert {:error, :invalid} = Auth.get_principal_by_session_token(session_token)
       assert {:error, :invalid} = Auth.get_principal_by_socket_token(socket_token)
 
+      assert_receive %Phoenix.Socket.Broadcast{
+        topic: ^socket_id,
+        event: "disconnect",
+        payload: %{}
+      }
+
       assert :ok = Auth.apply_member_access(profile.id, true)
       assert {:error, :invalid} = Auth.get_principal_by_session_token(session_token)
       assert {:error, :invalid} = Auth.get_principal_by_socket_token(socket_token)
+    end
+
+    test "revocation refuses a nested transaction so disconnect cannot precede commit" do
+      principal = active_principal_fixture()
+      profile = Repo.get_by!(Dhc.UserProfiles.UserProfile, principal_id: principal.id)
+      socket_id = DhcWeb.UserSocket.socket_id(principal.id)
+      :ok = DhcWeb.Endpoint.subscribe(socket_id)
+
+      assert {:ok, {:error, :nested_transaction}} =
+               Repo.transaction(fn -> Auth.apply_member_access(profile.id, false) end)
+
+      assert Repo.get!(Dhc.UserProfiles.UserProfile, profile.id).is_active == true
+      refute_receive %Phoenix.Socket.Broadcast{topic: ^socket_id, event: "disconnect"}
     end
 
     test "restoring access does not establish a Session" do
