@@ -237,6 +237,45 @@ defmodule Dhc.Workshops.DurablePaymentAndRefundWorkflowsTest do
       assert replay.id == registration.id
     end
 
+    test "recovers the pending attempt when Stripe succeeded before its id was persisted" do
+      workshop =
+        WorkshopFixtures.workshop_fixture(
+          status: "published",
+          price_member: 1800.0,
+          max_capacity: 2
+        )
+
+      %{auth_user_id: member_id} = WorkshopFixtures.member_fixture()
+      Application.put_env(:dhc, :durable_test_workshop_id, workshop.id)
+      Application.put_env(:dhc, :durable_test_member_id, member_id)
+      Application.put_env(:dhc, :durable_payment_completed, true)
+
+      attempt =
+        Repo.insert!(%PaymentAttempt{
+          club_activity_id: workshop.id,
+          member_user_id: member_id,
+          actor_type: "member",
+          amount: 1800,
+          currency: "eur",
+          status: "pending"
+        })
+
+      assert {:ok, registration} =
+               Workshops.complete_member_registration(
+                 workshop.id,
+                 member_id,
+                 "pi_durable_member"
+               )
+
+      assert registration.payment_attempt_id == attempt.id
+      assert Repo.aggregate(PaymentAttempt, :count, :id) == 1
+
+      assert %PaymentAttempt{
+               status: "registered",
+               stripe_payment_intent_id: "pi_durable_member"
+             } = Repo.get!(PaymentAttempt, attempt.id)
+    end
+
     test "durably compensates a valid payment that loses the capacity race" do
       workshop =
         WorkshopFixtures.workshop_fixture(
@@ -537,6 +576,22 @@ defmodule Dhc.Workshops.DurablePaymentAndRefundWorkflowsTest do
 
       assert %{status: "processing", stripe_refund_id: "re_durable"} =
                Repo.get!(Refund, refund.id)
+    end
+
+    test "reconciliation replaces an exhausted submission job for a pending refund" do
+      {refund, _registration} = durable_refund_fixture()
+      assert [%Oban.Job{} = exhausted_job] = all_enqueued(worker: RefundWorker)
+
+      exhausted_job
+      |> Ecto.Changeset.change(state: "discarded", attempt: 10, max_attempts: 10)
+      |> Repo.update!()
+
+      assert :ok = perform_job(RefundReconciliationWorker, %{})
+
+      assert [%Oban.Job{id: replacement_job_id}] =
+               all_enqueued(worker: RefundWorker, args: %{refund_id: refund.id})
+
+      refute replacement_job_id == exhausted_job.id
     end
 
     test "Stripe events and reconciliation drive terminal progression idempotently" do

@@ -565,23 +565,49 @@ defmodule Dhc.Workshops do
           Repo.rollback(:payment_metadata_mismatch)
 
         nil ->
-          amount = trunc(workshop.price_member)
-
-          Repo.insert!(%PaymentAttempt{
-            club_activity_id: workshop_id,
-            member_user_id: user_id,
-            actor_type: "member",
-            amount: amount,
-            currency: "eur",
-            status: "paid",
-            stripe_payment_intent_id: payment_intent_id,
-            paid_at: DateTime.utc_now() |> DateTime.truncate(:second)
-          })
+          recover_member_attempt(workshop, user_id, payment_intent_id)
       end
     end)
     |> case do
       {:ok, attempt} -> {:ok, attempt}
       {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp recover_member_attempt(workshop, user_id, payment_intent_id) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    case Repo.one(
+           from(pa in PaymentAttempt,
+             where:
+               pa.club_activity_id == ^workshop.id and pa.member_user_id == ^user_id and
+                 pa.actor_type == "member" and pa.status in ["pending", "paid"],
+             lock: "FOR UPDATE"
+           )
+         ) do
+      %PaymentAttempt{stripe_payment_intent_id: nil} = attempt ->
+        attempt
+        |> Ecto.Changeset.change(
+          status: "paid",
+          stripe_payment_intent_id: payment_intent_id,
+          paid_at: now
+        )
+        |> Repo.update!()
+
+      %PaymentAttempt{} ->
+        Repo.rollback(:payment_metadata_mismatch)
+
+      nil ->
+        Repo.insert!(%PaymentAttempt{
+          club_activity_id: workshop.id,
+          member_user_id: user_id,
+          actor_type: "member",
+          amount: trunc(workshop.price_member),
+          currency: "eur",
+          status: "paid",
+          stripe_payment_intent_id: payment_intent_id,
+          paid_at: now
+        })
     end
   end
 
