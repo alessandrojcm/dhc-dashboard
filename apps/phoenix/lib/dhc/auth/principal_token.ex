@@ -121,6 +121,24 @@ defmodule Dhc.Auth.PrincipalToken do
   end
 
   @doc """
+  Query that verifies a non-secret session row reference.
+
+  The reference is the session row UUID, not the raw bearer token. It is used
+  only for server-managed flows that already authenticated the raw token and
+  need to revalidate that the same session still exists at a later callback.
+  """
+  def verify_session_reference_query(reference) when is_binary(reference) do
+    query =
+      from t in PrincipalToken,
+        join: p in assoc(t, :principal),
+        where: t.id == ^reference and t.context == "session",
+        where: t.created_at > ago(@session_validity_in_days, "day"),
+        select: {%{p | authenticated_at: t.authenticated_at}, t}
+
+    {:ok, query}
+  end
+
+  @doc """
   Query that verifies a short-lived socket token and returns `{principal,
   token_row}` (ALE-164).
 

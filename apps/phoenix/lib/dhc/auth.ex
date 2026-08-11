@@ -123,6 +123,36 @@ defmodule Dhc.Auth do
 
   def sign_in_with_discord(_claims), do: {:error, :invalid}
 
+  @doc """
+  Links Discord to a Principal that has already proved its identity through an
+  authenticated Session. Discord's email is retained as metadata only and is
+  not required to match the Principal's authoritative email.
+  """
+  def link_discord_identity(%Principal{} = principal, %{"sub" => subject} = claims)
+      when is_binary(subject) and subject != "" do
+    Repo.transaction(fn ->
+      unless eligible_member_locked?(principal.id), do: Repo.rollback(:invalid)
+
+      principal
+      |> discord_identity_changeset(subject, claims)
+      |> Repo.insert()
+      |> case do
+        {:ok, identity} -> identity
+        {:error, _changeset} -> Repo.rollback(:invalid)
+      end
+    end)
+    |> transaction_result()
+  end
+
+  def link_discord_identity(principal_id, claims) when is_binary(principal_id) do
+    case Repo.get(Principal, principal_id) do
+      %Principal{} = principal -> link_discord_identity(principal, claims)
+      nil -> {:error, :invalid}
+    end
+  end
+
+  def link_discord_identity(_principal, _claims), do: {:error, :invalid}
+
   defp link_discord_by_verified_email(
          subject,
          %{"email" => email, "email_verified" => true} = claims
@@ -140,25 +170,10 @@ defmodule Dhc.Auth do
   defp link_discord_by_verified_email(_subject, _claims), do: {:error, :invalid}
 
   defp create_discord_identity_and_session(principal, subject, claims) do
-    metadata =
-      Map.take(claims, [
-        "email",
-        "email_verified",
-        "preferred_username",
-        "picture",
-        "username",
-        "avatar"
-      ])
-
     Repo.transaction(fn ->
       unless eligible_member_locked?(principal.id), do: Repo.rollback(:invalid)
 
-      changeset =
-        ExternalIdentity.create_changeset(%ExternalIdentity{}, principal, %{
-          provider: "discord",
-          provider_subject: subject,
-          metadata: metadata
-        })
+      changeset = discord_identity_changeset(principal, subject, claims)
 
       case Repo.insert(changeset) do
         {:ok, _identity} ->
@@ -169,6 +184,24 @@ defmodule Dhc.Auth do
       end
     end)
     |> transaction_result()
+  end
+
+  defp discord_identity_changeset(principal, subject, claims) do
+    metadata =
+      Map.take(claims, [
+        "email",
+        "email_verified",
+        "preferred_username",
+        "picture",
+        "username",
+        "avatar"
+      ])
+
+    ExternalIdentity.create_changeset(%ExternalIdentity{}, principal, %{
+      provider: "discord",
+      provider_subject: subject,
+      metadata: metadata
+    })
   end
 
   defp establish_eligible_session(principal) do
@@ -237,13 +270,15 @@ defmodule Dhc.Auth do
       `confirmed_at` is stamped on first consumption, and a fresh session
       row is inserted. The returned `session` projection was read while the
       Member access row was locked.
+    * `{:error, :inactive_membership}` — the token is valid and consumed, but
+      the Member does not currently have club access.
     * `{:error, :invalid}` — the token does not decode, has no row, has
       expired, or was sent to an email that no longer matches the Principal.
       The controller surfaces this as the same generic "invalid or expired"
       response it uses for an unknown token (non-enumerating).
 
   A valid token for an inactive Member is still consumed and confirms the
-  Principal, but returns the generic invalid result and creates no Session.
+  Principal, but returns `:inactive_membership` and creates no Session.
   """
   def consume_magic_link(encoded_token) do
     case PrincipalToken.verify_magic_link_token_query(encoded_token) do
@@ -260,7 +295,8 @@ defmodule Dhc.Auth do
         end)
         |> case do
           {:ok, {:signed_in, result}} -> {:ok, result}
-          {:ok, outcome} when outcome in [:inactive, :invalid] -> {:error, :invalid}
+          {:ok, :inactive} -> {:error, :inactive_membership}
+          {:ok, :invalid} -> {:error, :invalid}
           {:error, _reason} -> {:error, :invalid}
         end
 
@@ -334,6 +370,37 @@ defmodule Dhc.Auth do
   """
   def get_principal_by_session_token(token) do
     {:ok, query} = PrincipalToken.verify_session_token_query(token)
+
+    case Repo.one(query) do
+      {principal, _row} -> {:ok, principal}
+      nil -> {:error, :invalid}
+    end
+  end
+
+  @doc """
+  Resolves a valid raw session token to its non-secret row UUID.
+
+  The UUID can be retained by a server-managed multi-request flow without
+  duplicating the reusable bearer token. It is not accepted as an HTTP
+  authentication credential.
+  """
+  def get_session_reference(token) when is_binary(token) do
+    {:ok, query} = PrincipalToken.verify_session_token_query(token)
+
+    case Repo.one(query) do
+      {_principal, row} -> {:ok, row.id}
+      nil -> {:error, :invalid}
+    end
+  end
+
+  @doc """
+  Revalidates a session row UUID and returns its Principal.
+
+  Deleting or expiring the original Session invalidates the reference because
+  both lookups target the same database row.
+  """
+  def get_principal_by_session_reference(reference) when is_binary(reference) do
+    {:ok, query} = PrincipalToken.verify_session_reference_query(reference)
 
     case Repo.one(query) do
       {principal, _row} -> {:ok, principal}

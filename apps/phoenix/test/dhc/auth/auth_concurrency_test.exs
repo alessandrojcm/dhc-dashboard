@@ -84,7 +84,7 @@ defmodule Dhc.AuthConcurrencyTest do
 
     send(locker.pid, :release_profile)
     assert {:ok, :released} = Task.await(locker)
-    assert {:error, :invalid} = Task.await(sign_in)
+    assert {:error, :inactive_membership} = Task.await(sign_in)
 
     assert :ok = unboxed(fn -> Auth.apply_member_access(fixture.profile_id, true) end)
 

@@ -173,9 +173,13 @@ test.describe("Member Signup - Valid invitation", () => {
 		await page.getByRole("button", { name: /sign up/i }).click();
 		await expect(
 			page.getByText(
-				"Your membership has been successfully processed. Welcome to Dublin Hema Club! You will receive a Discord invite by email shortly.",
+				"Your membership has been successfully processed. Welcome to Dublin Hema Club! Sign in with your membership email to continue.",
 			),
 		).toBeVisible({ timeout: 30000 });
+		await expect(page.getByRole("link", { name: "Sign In" })).toHaveAttribute(
+			"href",
+			"/auth",
+		);
 	});
 
 	test("should show error when payment exceeds weekly limit", async ({

@@ -21,6 +21,7 @@ import { createMember } from "./setupFunctions";
 test.describe("ALE-164: dashboard Phoenix Session auth seam", () => {
 	let cleanUp: () => Promise<void>;
 	let memberEmail: string;
+	let memberId: string;
 
 	test.beforeAll(async () => {
 		const result = await createMember({
@@ -28,6 +29,7 @@ test.describe("ALE-164: dashboard Phoenix Session auth seam", () => {
 			roles: new Set(["member"]),
 		});
 		memberEmail = result.email;
+		memberId = result.userId;
 		cleanUp = result.cleanUp;
 	});
 
@@ -88,6 +90,18 @@ test.describe("ALE-164: dashboard Phoenix Session auth seam", () => {
 			(c) => c.domain === "127.0.0.1",
 		);
 		expect(dashboardSupabaseCookies).toHaveLength(0);
+	});
+
+	test("an authenticated member can start Discord linking from their profile", async ({
+		page,
+		context,
+	}) => {
+		await loginAsUser(context, memberEmail);
+		await page.goto(`/dashboard/members/${memberId}`);
+
+		await expect(
+			page.getByRole("link", { name: "Link Discord account" }),
+		).toHaveAttribute("href", /\/api\/auth\/discord\/link$/);
 	});
 
 	test("a credentialed request from an unapproved origin is rejected by Phoenix CORS", async ({

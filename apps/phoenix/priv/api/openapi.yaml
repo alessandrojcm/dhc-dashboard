@@ -3657,9 +3657,10 @@ paths:
       description: |
         Verifies the magic-link token, creates a DB-backed session, and sets
         the signed `_dhc_session` cookie. Returns the session projection. An
-        invalid, expired, reused, or inactive-Principal token returns `401`
-        with the same generic body (non-enumerating). ALE-164 routes the
-        dashboard magic-link landing page here.
+        invalid, expired, or reused token returns `401` with the same generic
+        body (non-enumerating). A valid token for an inactive Principal is
+        consumed but returns `403` with a clear membership message and creates
+        no session. ALE-164 routes the dashboard magic-link landing page here.
       security: []
       requestBody:
         required: true
@@ -3681,7 +3682,36 @@ paths:
               schema:
                 $ref: "#/components/schemas/AuthSessionProjection"
         "401":
-          description: Invalid, expired, reused, or inactive-Principal token
+          description: Invalid, expired, or reused token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Valid token for an inactive Principal; no session established
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /auth/discord/link:
+    get:
+      operationId: auth.linkDiscord
+      tags:
+        - AuthSession
+      summary: Start authenticated Discord identity linking
+      description: |
+        Starts Discord OAuth for the currently authenticated Principal. The
+        initiating Phoenix Session is bound to the OAuth flow and revalidated
+        on callback before the Discord identity is linked. Discord email is
+        retained as metadata and need not match the Principal email.
+      security:
+        - cookieSession: []
+      responses:
+        "302":
+          description: Redirect to Discord authorization
+        "401":
+          description: Missing, expired, or inactive session
           content:
             application/json:
               schema:

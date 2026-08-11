@@ -12,18 +12,21 @@ defmodule DhcWeb.AuthSessionController do
     * `POST /api/auth/magic-link/verify` — consume a magic link. On success,
       sets the signed `_dhc_session` cookie and returns the session
       projection. On failure, returns `401 {"errors":{"detail":"Invalid or
-      expired link"}}` — the same response the rate-limit and unknown-email
-      paths would produce if they were distinguishable, which they are not.
-       Inactive Principals receive `401`; Authentication consumes the proof
-       but atomically declines to mint a Session.
+       expired link"}}` — the same response the rate-limit and unknown-email
+       paths would produce if they were distinguishable, which they are not.
+       Inactive Principals receive `403` with a clear membership message;
+       Authentication consumes the proof but atomically declines to mint a
+       Session.
     * `GET /api/auth/session` — return the current session projection. Used
       by SvelteKit SSR and the browser to read who is signed in. Returns
       `401` when there is no valid session.
     * `DELETE /api/auth/session` — sign out the current device. Deletes the
       session token row, clears the cookie. Idempotent.
-    * `GET /api/auth/discord` and `/api/auth/discord/callback` — complete the
-      Discord OAuth flow, establish a Phoenix session for an eligible linked
-      Principal, and redirect back to the dashboard.
+     * `GET /api/auth/discord` and `/api/auth/discord/callback` — complete the
+       Discord OAuth flow, establish a Phoenix session for an eligible linked
+       Principal, and redirect back to the dashboard.
+     * `GET /api/auth/discord/link` — start an authenticated Discord-link flow.
+       The initiating Session is revalidated when Discord calls back.
 
   ## Cookie contract
 
@@ -49,6 +52,28 @@ defmodule DhcWeb.AuthSessionController do
 
   # ── GET /api/auth/discord ────────────────────────────────────────────
   def request_discord(conn, _params) do
+    conn
+    |> Plug.Conn.delete_session(:discord_link_session_reference)
+    |> authorize_discord()
+  end
+
+  def request_discord_link(conn, _params) do
+    session_token = conn.assigns.current_session_token
+
+    case Auth.get_session_reference(session_token) do
+      {:ok, session_reference} ->
+        conn
+        |> put_session(:discord_link_session_reference, session_reference)
+        |> authorize_discord()
+
+      {:error, :invalid} ->
+        conn
+        |> put_status(:unauthorized)
+        |> render_view(:error, %{error: "Unauthorized"})
+    end
+  end
+
+  defp authorize_discord(conn) do
     strategy = discord_strategy()
 
     case strategy.authorize_url(discord_config()) do
@@ -64,7 +89,13 @@ defmodule DhcWeb.AuthSessionController do
 
   def discord_callback(conn, params) do
     session_params = get_session(conn, :discord_oauth_session_params)
-    conn = Plug.Conn.delete_session(conn, :discord_oauth_session_params)
+    link_session_reference = get_session(conn, :discord_link_session_reference)
+
+    conn =
+      conn
+      |> Plug.Conn.delete_session(:discord_oauth_session_params)
+      |> Plug.Conn.delete_session(:discord_link_session_reference)
+
     strategy = discord_strategy()
 
     result =
@@ -74,7 +105,7 @@ defmodule DhcWeb.AuthSessionController do
 
     case result do
       {:ok, %{user: claims}} ->
-        case Auth.sign_in_with_discord(claims) do
+        case complete_discord_auth(link_session_reference, claims) do
           {:ok, %{session_token: session_token}} ->
             :telemetry.execute([:dhc, :auth, :discord, :succeeded], %{}, %{})
 
@@ -89,6 +120,11 @@ defmodule DhcWeb.AuthSessionController do
             |> put_session_cookie(session_token)
             |> redirect(external: "#{app_url}/dashboard")
 
+          {:ok, :linked} ->
+            :telemetry.execute([:dhc, :auth, :discord, :linked], %{}, %{})
+            app_url = Application.get_env(:dhc, :app_url, "http://localhost:5173")
+            redirect(conn, external: "#{app_url}/dashboard")
+
           {:error, :invalid} ->
             :telemetry.execute([:dhc, :auth, :discord, :failed], %{}, %{})
             log_discord_failure("account_validation")
@@ -101,6 +137,18 @@ defmodule DhcWeb.AuthSessionController do
         discord_failure(conn)
     end
   end
+
+  defp complete_discord_auth(session_reference, claims) when is_binary(session_reference) do
+    with {:ok, principal} <- Auth.get_principal_by_session_reference(session_reference),
+         {:ok, %{is_active: true}} <- Auth.load_session_principal(principal),
+         {:ok, _identity} <- Auth.link_discord_identity(principal, claims) do
+      {:ok, :linked}
+    else
+      _error -> {:error, :invalid}
+    end
+  end
+
+  defp complete_discord_auth(_session_reference, claims), do: Auth.sign_in_with_discord(claims)
 
   # ── POST /api/auth/magic-link ────────────────────────────────────────
   def request_magic_link(conn, %{"email" => email} = _params) when is_binary(email) do
@@ -150,6 +198,15 @@ defmodule DhcWeb.AuthSessionController do
       {:error, :invalid} ->
         :telemetry.execute([:dhc, :auth, :magic_link, :failed], %{}, %{})
         unauthorized_link(conn)
+
+      {:error, :inactive_membership} ->
+        :telemetry.execute([:dhc, :auth, :magic_link, :inactive], %{}, %{})
+
+        conn
+        |> put_status(:forbidden)
+        |> render_view(:error, %{
+          error: "Your membership is inactive. Please contact the club to restore access."
+        })
     end
   end
 

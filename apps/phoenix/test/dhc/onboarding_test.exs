@@ -340,9 +340,14 @@ defmodule Dhc.OnboardingTest do
     invitation = insert_invitation!()
     {:ok, token} = token_for(invitation)
 
-    conflicting_principal =
-      %Principal{id: Ecto.UUID.generate(), email: invitation.email}
-      |> Repo.insert!()
+    Application.put_env(:dhc, :onboarding_stripe_result, fn ->
+      conflicting_principal =
+        %Principal{id: Ecto.UUID.generate(), email: invitation.email}
+        |> Repo.insert!()
+
+      send(self(), {:conflicting_principal, conflicting_principal})
+      {:ok, %{}}
+    end)
 
     assert {:error, :principal_creation_failed} =
              Onboarding.accept(
@@ -358,7 +363,9 @@ defmodule Dhc.OnboardingTest do
     assert Repo.get!(Invitation, invitation.id).status == "pending"
     assert_enqueued(worker: AcceptanceRecoveryWorker, args: %{"attempt_id" => attempt.id})
 
+    assert_received {:conflicting_principal, conflicting_principal}
     Repo.delete!(conflicting_principal)
+    Application.put_env(:dhc, :onboarding_stripe_result, {:ok, %{}})
 
     invitation
     |> Ecto.Changeset.change(
@@ -371,6 +378,28 @@ defmodule Dhc.OnboardingTest do
 
     assert Repo.get!(Invitation, invitation.id).status == "accepted"
     assert Repo.get!(InvitationAcceptanceAttempt, attempt.id).status == "completed"
+  end
+
+  test "an invitation for an existing Principal is rejected before Stripe work" do
+    invitation = insert_invitation!()
+    {:ok, token} = token_for(invitation)
+
+    %Principal{id: Ecto.UUID.generate(), email: invitation.email}
+    |> Repo.insert!()
+
+    assert {:error, :invalid_invitation} =
+             Onboarding.accept(
+               invitation.id,
+               token,
+               "Next of Kin",
+               "+353810000001",
+               %{confirmation_token: "ctok_must_not_be_used"}
+             )
+
+    refute_received {:create_customer, _}
+    refute_received {:provision_membership, _}
+    refute Repo.get_by(InvitationAcceptanceAttempt, invitation_id: invitation.id)
+    assert Repo.get!(Invitation, invitation.id).status == "pending"
   end
 
   defp insert_invitation! do
