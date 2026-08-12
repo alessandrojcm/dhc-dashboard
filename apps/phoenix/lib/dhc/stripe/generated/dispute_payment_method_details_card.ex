@@ -6,10 +6,11 @@ defmodule Dhc.Stripe.DisputePaymentMethodDetailsCard do
   @type t :: %__MODULE__{
           brand: String.t(),
           case_type: String.t(),
+          network: String.t(),
           network_reason_code: String.t() | nil
         }
 
-  defstruct [:brand, :case_type, :network_reason_code]
+  defstruct [:brand, :case_type, :network, :network_reason_code]
 
   @doc false
   @spec __fields__(atom) :: keyword
@@ -19,6 +20,7 @@ defmodule Dhc.Stripe.DisputePaymentMethodDetailsCard do
     [
       brand: :string,
       case_type: {:enum, ["block", "chargeback", "compliance", "inquiry", "resolution"]},
+      network: :string,
       network_reason_code: :string
     ]
   end

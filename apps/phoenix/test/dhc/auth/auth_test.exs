@@ -91,10 +91,15 @@ defmodule Dhc.AuthTest do
 
   describe "consume_magic_link/1" do
     test "consumes a valid token, confirms the Principal, and mints a session" do
-      principal = principal_fixture(confirmed_at: nil)
+      principal = active_principal_fixture(confirmed_at: nil)
       {encoded, _row} = magic_link_token(principal)
 
-      assert {:ok, %{principal: returned_principal, session_token: session_token}} =
+      assert {:ok,
+              %{
+                principal: returned_principal,
+                session_token: session_token,
+                session: %{is_active: true}
+              }} =
                Auth.consume_magic_link(encoded)
 
       assert returned_principal.id == principal.id
@@ -106,7 +111,7 @@ defmodule Dhc.AuthTest do
     end
 
     test "is single-use: the second attempt is invalid" do
-      principal = principal_fixture()
+      principal = active_principal_fixture()
       {encoded, _row} = magic_link_token(principal)
 
       assert {:ok, _} = Auth.consume_magic_link(encoded)
@@ -114,7 +119,7 @@ defmodule Dhc.AuthTest do
     end
 
     test "deletes outstanding magic-link tokens for the principal on consumption" do
-      principal = principal_fixture()
+      principal = active_principal_fixture()
       {_, _} = magic_link_token(principal)
       {_, _} = magic_link_token(principal)
 
@@ -132,6 +137,21 @@ defmodule Dhc.AuthTest do
                from(t in PrincipalToken, where: [principal_id: ^principal.id, context: "login"]),
                :count
              ) == 0
+    end
+
+    test "consumes and confirms a valid token for an inactive Principal without minting a session" do
+      principal = inactive_principal_fixture(confirmed_at: nil)
+      {encoded, _row} = magic_link_token(principal)
+
+      assert {:error, :inactive_membership} = Auth.consume_magic_link(encoded)
+      assert Auth.get_principal!(principal.id).confirmed_at
+      assert {:error, :invalid} = Auth.consume_magic_link(encoded)
+
+      refute Repo.exists?(
+               from(t in PrincipalToken,
+                 where: [principal_id: ^principal.id, context: "session"]
+               )
+             )
     end
 
     test "rejects an expired token (older than 15 minutes)" do
@@ -167,14 +187,6 @@ defmodule Dhc.AuthTest do
   end
 
   describe "sessions" do
-    test "create_session/1 inserts a verifiable session token" do
-      principal = principal_fixture()
-      {:ok, token} = Auth.create_session(principal)
-
-      assert {:ok, returned} = Auth.get_principal_by_session_token(token)
-      assert returned.id == principal.id
-    end
-
     test "get_principal_by_session_token/1 rejects an unknown token" do
       assert {:error, :invalid} =
                Auth.get_principal_by_session_token(:crypto.strong_rand_bytes(32))
@@ -182,7 +194,7 @@ defmodule Dhc.AuthTest do
 
     test "get_principal_by_session_token/1 rejects an expired session (>30 days)" do
       principal = principal_fixture()
-      {:ok, token} = Auth.create_session(principal)
+      token = session_token(principal)
 
       # Age the session row past 30 days. age_token matches the stored column
       # value, which is the SHA-256 digest (not the raw cookie) since ALE-182.
@@ -193,7 +205,7 @@ defmodule Dhc.AuthTest do
 
     test "delete_session_token/1 is idempotent" do
       principal = principal_fixture()
-      {:ok, token} = Auth.create_session(principal)
+      token = session_token(principal)
 
       assert :ok = Auth.delete_session_token(token)
       assert :ok = Auth.delete_session_token(token)
@@ -202,12 +214,67 @@ defmodule Dhc.AuthTest do
 
     test "delete_all_principal_sessions/1 removes every session for the principal" do
       principal = principal_fixture()
-      {:ok, t1} = Auth.create_session(principal)
-      {:ok, t2} = Auth.create_session(principal)
+      t1 = session_token(principal)
+      t2 = session_token(principal)
 
       assert :ok = Auth.delete_all_principal_sessions(principal)
       assert {:error, :invalid} = Auth.get_principal_by_session_token(t1)
       assert {:error, :invalid} = Auth.get_principal_by_session_token(t2)
+    end
+  end
+
+  describe "apply_member_access/2" do
+    test "revoking access deletes every authentication token for the Principal" do
+      principal = active_principal_fixture()
+      profile = Repo.get_by!(Dhc.UserProfiles.UserProfile, principal_id: principal.id)
+      session_token = session_token(principal)
+      {:ok, socket_token} = Auth.create_socket_token(principal)
+      socket_id = DhcWeb.UserSocket.socket_id(principal.id)
+      :ok = DhcWeb.Endpoint.subscribe(socket_id)
+
+      assert :ok = Auth.apply_member_access(profile.id, false)
+
+      assert Repo.get!(Dhc.UserProfiles.UserProfile, profile.id).is_active == false
+      assert {:error, :invalid} = Auth.get_principal_by_session_token(session_token)
+      assert {:error, :invalid} = Auth.get_principal_by_socket_token(socket_token)
+
+      assert_receive %Phoenix.Socket.Broadcast{
+        topic: ^socket_id,
+        event: "disconnect",
+        payload: %{}
+      }
+
+      assert :ok = Auth.apply_member_access(profile.id, true)
+      assert {:error, :invalid} = Auth.get_principal_by_session_token(session_token)
+      assert {:error, :invalid} = Auth.get_principal_by_socket_token(socket_token)
+    end
+
+    test "revocation refuses a nested transaction so disconnect cannot precede commit" do
+      principal = active_principal_fixture()
+      profile = Repo.get_by!(Dhc.UserProfiles.UserProfile, principal_id: principal.id)
+      socket_id = DhcWeb.UserSocket.socket_id(principal.id)
+      :ok = DhcWeb.Endpoint.subscribe(socket_id)
+
+      assert {:ok, {:error, :nested_transaction}} =
+               Repo.transaction(fn -> Auth.apply_member_access(profile.id, false) end)
+
+      assert Repo.get!(Dhc.UserProfiles.UserProfile, profile.id).is_active == true
+      refute_receive %Phoenix.Socket.Broadcast{topic: ^socket_id, event: "disconnect"}
+    end
+
+    test "restoring access does not establish a Session" do
+      principal = inactive_principal_fixture()
+      profile = Repo.get_by!(Dhc.UserProfiles.UserProfile, principal_id: principal.id)
+
+      assert :ok = Auth.apply_member_access(profile.id, true)
+
+      assert Repo.get!(Dhc.UserProfiles.UserProfile, profile.id).is_active == true
+
+      refute Repo.exists?(
+               from(t in PrincipalToken,
+                 where: [principal_id: ^principal.id, context: "session"]
+               )
+             )
     end
   end
 
@@ -223,7 +290,7 @@ defmodule Dhc.AuthTest do
     # shape so the suite stays green.
     test "build_session_token/1 stores the SHA-256 digest, not the raw cookie (characterization)" do
       principal = principal_fixture()
-      {:ok, token} = Auth.create_session(principal)
+      token = session_token(principal)
 
       row = Repo.one!(from t in PrincipalToken, where: t.context == "session")
       # The column now holds the digest; the raw cookie is 32 random bytes
@@ -236,7 +303,7 @@ defmodule Dhc.AuthTest do
     # verify/delete resolve the cookie through the hash.
     test "build_session_token/1 stores only the SHA-256 hash and verify/delete work through the hash (desired)" do
       principal = principal_fixture()
-      {:ok, token} = Auth.create_session(principal)
+      token = session_token(principal)
 
       row = Repo.one!(from t in PrincipalToken, where: t.context == "session")
       assert row.token == :crypto.hash(:sha256, token)
@@ -456,6 +523,41 @@ defmodule Dhc.AuthTest do
     end
   end
 
+  describe "link_discord_identity/2" do
+    test "an authenticated active Principal can link a Discord subject with a different email" do
+      principal = active_principal_fixture(email: "principal-email@example.com")
+
+      assert {:ok, identity} =
+               Auth.link_discord_identity(principal, %{
+                 "sub" => "discord-authenticated-link",
+                 "email" => "different-discord-email@example.com",
+                 "email_verified" => true,
+                 "preferred_username" => "linked-member"
+               })
+
+      assert identity.principal_id == principal.id
+      assert identity.provider == "discord"
+      assert identity.provider_subject == "discord-authenticated-link"
+      assert identity.metadata["email"] == "different-discord-email@example.com"
+      assert Auth.get_principal!(principal.id).email == "principal-email@example.com"
+      refute Repo.exists?(from(t in PrincipalToken, where: t.context == "session"))
+    end
+
+    test "cannot take a Discord subject already linked to another Principal" do
+      owner = active_principal_fixture(email: "discord-owner@example.com")
+      requester = active_principal_fixture(email: "discord-requester@example.com")
+      external_identity_fixture(owner, "discord-owned-subject")
+
+      assert {:error, :invalid} =
+               Auth.link_discord_identity(requester, %{"sub" => "discord-owned-subject"})
+
+      assert Repo.get_by!(Dhc.Auth.ExternalIdentity,
+               provider: "discord",
+               provider_subject: "discord-owned-subject"
+             ).principal_id == owner.id
+    end
+  end
+
   describe "load_session_principal/1" do
     test "returns roles and is_active when the Principal has a user_profile and roles" do
       # Build the Supabase/auth.users + user_profiles + member_profiles shape
@@ -508,9 +610,9 @@ defmodule Dhc.AuthTest do
     Repo.aggregate("oban_jobs", :count)
   end
 
-  defp active_principal_fixture(attrs) do
+  defp active_principal_fixture(attrs \\ []) do
     id = Ecto.UUID.generate()
-    email = Keyword.fetch!(attrs, :email)
+    email = Keyword.get(attrs, :email, unique_principal_email())
 
     Dhc.MemberFixtures.member_fixture(%{
       auth_user_id: id,
@@ -518,7 +620,28 @@ defmodule Dhc.AuthTest do
       email: email
     })
 
-    principal_fixture(id: id, email: email)
+    principal_fixture(%{
+      id: id,
+      email: email,
+      confirmed_at: Keyword.get(attrs, :confirmed_at, DateTime.utc_now(:second))
+    })
+  end
+
+  defp inactive_principal_fixture(attrs \\ []) do
+    id = Ecto.UUID.generate()
+    email = Keyword.get(attrs, :email, unique_principal_email())
+
+    Dhc.MemberFixtures.member_fixture(%{
+      auth_user_id: id,
+      is_active: false,
+      email: email
+    })
+
+    principal_fixture(%{
+      id: id,
+      email: email,
+      confirmed_at: Keyword.get(attrs, :confirmed_at, DateTime.utc_now(:second))
+    })
   end
 
   defp external_identity_fixture(principal, subject) do

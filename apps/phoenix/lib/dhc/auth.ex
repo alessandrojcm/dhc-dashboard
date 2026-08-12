@@ -1,23 +1,23 @@
 defmodule Dhc.Auth do
   @moduledoc """
   The Authentication context — Phoenix-owned login, magic-link, and session
-  boundary (ADR 0009, ADR 0010, ALE-165).
+  boundary (ADR 0009, ADR 0010, ADR 0011, ALE-165).
 
   This context is the single seam for authentication state. It owns:
 
     * **Principal** lookup by normalized login email (`get_principal_by_email/1`).
     * **Magic-link** issue and consume: `deliver_magic_link/2` enqueues a
       Loops email via `Dhc.Email.Worker`; `consume_magic_link/1` verifies,
-      deletes outstanding magic-link tokens for the principal, confirms the
-      email on first use, and creates a new session.
-    * **Session** lifecycle: `create_session/1`, `get_principal_by_session_token/1`,
-      `delete_session_token/1`, `delete_all_principal_sessions/1`. Sessions
-      are opaque, DB-backed, 30-day absolute lifetime (no sliding refresh).
-    * **Access** projection: `load_session_principal/1` returns the Principal
-      plus current roles and `is_active` flag, so the request plug can decide
-      `401` (no/invalid/inactive session) vs `403` (missing role) without
-      touching another context. Roles come from `user_roles`; `is_active`
-      comes from `user_profiles` (Stripe-driven).
+       deletes outstanding magic-link tokens for the principal, confirms the
+       email on first use, and creates a new session only when the Member has
+       access.
+    * **Session** lifecycle: proof-oriented sign-in, `get_principal_by_session_token/1`,
+      `delete_session_token/1`, and `delete_all_principal_sessions/1`. Sessions
+       are opaque, DB-backed, 30-day absolute lifetime (no sliding refresh).
+    * **Access** projection: `apply_member_access/2` serializes projection
+      changes with sign-in, revokes every authentication token, and disconnects
+      established sockets when access is lost. `load_session_principal/1`
+      returns current roles and access for authenticated requests.
 
   ## Email normalization
 
@@ -35,8 +35,8 @@ defmodule Dhc.Auth do
 
   ## What this context does NOT do
 
-    * Member / Membership / Role policy. It loads roles and `is_active` as a
-      projection for the request plug; it does not grant or revoke them.
+    * Member / Membership / Role policy. Membership decides the access value;
+      Authentication applies that projection atomically with Session cleanup.
     * Invitation Acceptance principal creation (ALE-162).
     * Migration / cutover (ALE-163, ALE-166).
   """
@@ -44,6 +44,7 @@ defmodule Dhc.Auth do
   import Ecto.Query, warn: false
   alias Dhc.Repo
   alias Dhc.Auth.{ExternalIdentity, Principal, PrincipalToken}
+  alias Dhc.UserProfiles.UserProfile
 
   ## Database getters
 
@@ -113,7 +114,7 @@ defmodule Dhc.Auth do
       %ExternalIdentity{} = identity ->
         identity.principal_id
         |> get_principal!()
-        |> create_eligible_session()
+        |> establish_eligible_session()
 
       nil ->
         link_discord_by_verified_email(subject, claims)
@@ -122,6 +123,36 @@ defmodule Dhc.Auth do
 
   def sign_in_with_discord(_claims), do: {:error, :invalid}
 
+  @doc """
+  Links Discord to a Principal that has already proved its identity through an
+  authenticated Session. Discord's email is retained as metadata only and is
+  not required to match the Principal's authoritative email.
+  """
+  def link_discord_identity(%Principal{} = principal, %{"sub" => subject} = claims)
+      when is_binary(subject) and subject != "" do
+    Repo.transaction(fn ->
+      unless eligible_member_locked?(principal.id), do: Repo.rollback(:invalid)
+
+      principal
+      |> discord_identity_changeset(subject, claims)
+      |> Repo.insert()
+      |> case do
+        {:ok, identity} -> identity
+        {:error, _changeset} -> Repo.rollback(:invalid)
+      end
+    end)
+    |> transaction_result()
+  end
+
+  def link_discord_identity(principal_id, claims) when is_binary(principal_id) do
+    case Repo.get(Principal, principal_id) do
+      %Principal{} = principal -> link_discord_identity(principal, claims)
+      nil -> {:error, :invalid}
+    end
+  end
+
+  def link_discord_identity(_principal, _claims), do: {:error, :invalid}
+
   defp link_discord_by_verified_email(
          subject,
          %{"email" => email, "email_verified" => true} = claims
@@ -129,13 +160,7 @@ defmodule Dhc.Auth do
        when is_binary(email) do
     case get_principal_by_email(email) do
       %Principal{} = principal ->
-        case load_session_principal(principal) do
-          {:ok, %{is_active: true}} ->
-            create_discord_identity_and_session(principal, subject, claims)
-
-          _ ->
-            {:error, :invalid}
-        end
+        create_discord_identity_and_session(principal, subject, claims)
 
       nil ->
         {:error, :invalid}
@@ -145,6 +170,23 @@ defmodule Dhc.Auth do
   defp link_discord_by_verified_email(_subject, _claims), do: {:error, :invalid}
 
   defp create_discord_identity_and_session(principal, subject, claims) do
+    Repo.transaction(fn ->
+      unless eligible_member_locked?(principal.id), do: Repo.rollback(:invalid)
+
+      changeset = discord_identity_changeset(principal, subject, claims)
+
+      case Repo.insert(changeset) do
+        {:ok, _identity} ->
+          %{principal: principal, session_token: insert_session!(principal)}
+
+        {:error, _changeset} ->
+          Repo.rollback(:invalid)
+      end
+    end)
+    |> transaction_result()
+  end
+
+  defp discord_identity_changeset(principal, subject, claims) do
     metadata =
       Map.take(claims, [
         "email",
@@ -155,33 +197,19 @@ defmodule Dhc.Auth do
         "avatar"
       ])
 
-    Repo.transact(fn ->
-      changeset =
-        ExternalIdentity.create_changeset(%ExternalIdentity{}, principal, %{
-          provider: "discord",
-          provider_subject: subject,
-          metadata: metadata
-        })
-
-      with {:ok, _identity} <- Repo.insert(changeset),
-           {:ok, session_token} <- create_session(principal) do
-        {:ok, %{principal: principal, session_token: session_token}}
-      else
-        {:error, _reason} -> {:error, :invalid}
-      end
-    end)
+    ExternalIdentity.create_changeset(%ExternalIdentity{}, principal, %{
+      provider: "discord",
+      provider_subject: subject,
+      metadata: metadata
+    })
   end
 
-  defp create_eligible_session(principal) do
-    case load_session_principal(principal) do
-      {:ok, %{is_active: true}} ->
-        with {:ok, session_token} <- create_session(principal) do
-          {:ok, %{principal: principal, session_token: session_token}}
-        end
-
-      _ ->
-        {:error, :invalid}
-    end
+  defp establish_eligible_session(principal) do
+    Repo.transaction(fn ->
+      unless eligible_member_locked?(principal.id), do: Repo.rollback(:invalid)
+      %{principal: principal, session_token: insert_session!(principal)}
+    end)
+    |> transaction_result()
   end
 
   ## Magic link
@@ -231,7 +259,8 @@ defmodule Dhc.Auth do
   end
 
   @doc """
-  Consumes a magic-link token and establishes a session.
+  Consumes a magic-link token and, for an eligible Member, establishes a
+  session.
 
   Outcomes (all observable to the controller):
 
@@ -239,43 +268,37 @@ defmodule Dhc.Auth do
       is now logged in. The magic-link token row is deleted, any prior
       magic-link tokens for the principal are deleted, the Principal's
       `confirmed_at` is stamped on first consumption, and a fresh session
-      row is inserted.
+      row is inserted. The returned `session` projection was read while the
+      Member access row was locked.
+    * `{:error, :inactive_membership}` — the token is valid and consumed, but
+      the Member does not currently have club access.
     * `{:error, :invalid}` — the token does not decode, has no row, has
       expired, or was sent to an email that no longer matches the Principal.
       The controller surfaces this as the same generic "invalid or expired"
       response it uses for an unknown token (non-enumerating).
 
-  This function does **not** check `is_active` — the controller decides
-  whether an ineligible Principal receives a session. The spec says a
-  Principal may establish a session only while its Member has club access, so
-  the controller refuses inactive Principals before calling
-  `create_session/1`. This keeps the access policy out of the state layer.
+  A valid token for an inactive Member is still consumed and confirms the
+  Principal, but returns `:inactive_membership` and creates no Session.
   """
   def consume_magic_link(encoded_token) do
     case PrincipalToken.verify_magic_link_token_query(encoded_token) do
       {:ok, query} ->
-        Repo.transact(fn ->
+        Repo.transaction(fn ->
           case Repo.one(query) do
-            {principal, token_row} ->
-              # Delete the consumed magic-link token first, then any remaining
-              # outstanding magic-link tokens for the principal. Order
-              # matters: the token_row we just fetched is one of the
-              # principal's login tokens, so deleting all login tokens would
-              # also delete it and make `Repo.delete(token_row)` a stale
-              # entry. Deleting the specific row first avoids that.
-              with {:ok, _} <- Repo.delete(token_row),
-                   {:ok, _} <- delete_principal_magic_link_tokens(principal),
-                   {:ok, principal} <- maybe_confirm_principal(principal),
-                   {:ok, session_token} <- create_session(principal) do
-                # Repo.transact/1 requires a 2-tuple; pack principal + token
-                # into a map and unpack at the call site.
-                {:ok, %{principal: principal, session_token: session_token}}
-              end
+            {principal, _token_row} ->
+              eligible? = eligible_member_locked?(principal.id)
+              consume_locked_magic_link(query, principal, eligible?)
 
             nil ->
-              {:error, :invalid}
+              :invalid
           end
         end)
+        |> case do
+          {:ok, {:signed_in, result}} -> {:ok, result}
+          {:ok, :inactive} -> {:error, :inactive_membership}
+          {:ok, :invalid} -> {:error, :invalid}
+          {:error, _reason} -> {:error, :invalid}
+        end
 
       :error ->
         {:error, :invalid}
@@ -292,6 +315,35 @@ defmodule Dhc.Auth do
     {:ok, count}
   end
 
+  defp consume_locked_magic_link(query, principal, eligible?) do
+    # Member-first lock ordering keeps concurrent proofs and access changes
+    # from deadlocking while the token refetch preserves single-use behavior.
+    case query |> lock("FOR UPDATE") |> Repo.one() do
+      {_principal, token_row} ->
+        with {:ok, _} <- Repo.delete(token_row),
+             {:ok, _} <- delete_principal_magic_link_tokens(principal),
+             {:ok, principal} <- maybe_confirm_principal(principal) do
+          if eligible? do
+            {:ok, session} = load_session_principal(principal)
+
+            {:signed_in,
+             %{
+               principal: principal,
+               session_token: insert_session!(principal),
+               session: session
+             }}
+          else
+            :inactive
+          end
+        else
+          {:error, reason} -> Repo.rollback(reason)
+        end
+
+      nil ->
+        :invalid
+    end
+  end
+
   defp maybe_confirm_principal(%Principal{confirmed_at: nil} = principal) do
     principal
     |> Principal.confirm_changeset()
@@ -302,18 +354,10 @@ defmodule Dhc.Auth do
 
   ## Session
 
-  @doc """
-  Creates a fresh DB-backed session for the principal and returns the raw
-  opaque token (to be placed in a signed cookie).
-
-  The Principal's `authenticated_at` is stamped on the session row. The
-  caller should set `principal.authenticated_at` before calling if it wants
-  a specific timestamp (e.g. for tests).
-  """
-  def create_session(%Principal{} = principal) do
+  defp insert_session!(%Principal{} = principal) do
     {token, row} = PrincipalToken.build_session_token(principal)
-    {:ok, _} = Repo.insert(row)
-    {:ok, token}
+    Repo.insert!(row)
+    token
   end
 
   @doc """
@@ -326,6 +370,37 @@ defmodule Dhc.Auth do
   """
   def get_principal_by_session_token(token) do
     {:ok, query} = PrincipalToken.verify_session_token_query(token)
+
+    case Repo.one(query) do
+      {principal, _row} -> {:ok, principal}
+      nil -> {:error, :invalid}
+    end
+  end
+
+  @doc """
+  Resolves a valid raw session token to its non-secret row UUID.
+
+  The UUID can be retained by a server-managed multi-request flow without
+  duplicating the reusable bearer token. It is not accepted as an HTTP
+  authentication credential.
+  """
+  def get_session_reference(token) when is_binary(token) do
+    {:ok, query} = PrincipalToken.verify_session_token_query(token)
+
+    case Repo.one(query) do
+      {_principal, row} -> {:ok, row.id}
+      nil -> {:error, :invalid}
+    end
+  end
+
+  @doc """
+  Revalidates a session row UUID and returns its Principal.
+
+  Deleting or expiring the original Session invalidates the reference because
+  both lookups target the same database row.
+  """
+  def get_principal_by_session_reference(reference) when is_binary(reference) do
+    {:ok, query} = PrincipalToken.verify_session_reference_query(reference)
 
     case Repo.one(query) do
       {principal, _row} -> {:ok, principal}
@@ -359,6 +434,74 @@ defmodule Dhc.Auth do
     )
 
     :ok
+  end
+
+  @doc """
+  Applies Membership's access decision to one or more Member projections.
+
+  Projection rows are locked so this transition serializes with every sign-in
+  path. Losing access updates the projections and removes all Session and
+  socket tokens in the same transaction. After that transaction commits, all
+  established sockets for the affected Principals are disconnected. Restoring
+  access never creates a Session.
+  """
+  @spec apply_member_access(Ecto.UUID.t() | [Ecto.UUID.t()], boolean()) ::
+          :ok | {:error, term()}
+  def apply_member_access(profile_id, is_active)
+      when is_binary(profile_id) and is_boolean(is_active) do
+    apply_member_access([profile_id], is_active)
+  end
+
+  def apply_member_access(profile_ids, is_active)
+      when is_list(profile_ids) and is_boolean(is_active) do
+    if not is_active and Repo.in_transaction?() do
+      {:error, :nested_transaction}
+    else
+      apply_member_access_outside_transaction(profile_ids, is_active)
+    end
+  end
+
+  defp apply_member_access_outside_transaction(profile_ids, is_active) do
+    profile_ids = Enum.uniq(profile_ids)
+
+    Repo.transaction(fn ->
+      profiles =
+        UserProfile
+        |> where([profile], profile.id in ^profile_ids)
+        |> order_by([profile], profile.id)
+        |> lock("FOR UPDATE")
+        |> Repo.all()
+
+      if length(profiles) != length(profile_ids), do: Repo.rollback(:not_found)
+
+      from(p in UserProfile, where: p.id in ^profile_ids)
+      |> Repo.update_all(set: [is_active: is_active, updated_at: DateTime.utc_now(:second)])
+
+      principal_ids =
+        profiles
+        |> Enum.map(& &1.principal_id)
+        |> Enum.reject(&is_nil/1)
+
+      if not is_active and principal_ids != [] do
+        Repo.delete_all(
+          from t in PrincipalToken,
+            where: t.principal_id in ^principal_ids and t.context in ["session", "socket"]
+        )
+      end
+
+      principal_ids
+    end)
+    |> case do
+      {:ok, principal_ids} ->
+        if not is_active do
+          Enum.each(principal_ids, &DhcWeb.UserSocket.disconnect/1)
+        end
+
+        :ok
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   ## Socket tokens (ALE-164)
@@ -397,6 +540,17 @@ defmodule Dhc.Auth do
   end
 
   ## Access projection
+
+  defp eligible_member_locked?(principal_id) do
+    UserProfile
+    |> where([profile], profile.principal_id == ^principal_id)
+    |> select([profile], profile.is_active)
+    |> lock("FOR UPDATE")
+    |> Repo.one() == true
+  end
+
+  defp transaction_result({:ok, result}), do: {:ok, result}
+  defp transaction_result({:error, _reason}), do: {:error, :invalid}
 
   @doc """
   Loads the access projection for a Principal: current roles and the

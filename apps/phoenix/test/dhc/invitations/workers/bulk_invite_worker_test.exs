@@ -20,8 +20,8 @@ defmodule Dhc.Invitations.BulkInviteWorkerTest do
   #   - marks the waitlist entry invited (when the invite came from a waitlist).
   #
   # Acceptance (not the worker) materializes the Principal + UserProfile +
-  # MemberProfile + role. The Stripe customer is lazily created by the
-  # pricing endpoint and reused by acceptance.
+  # MemberProfile + role. Acceptance creates the Stripe customer; pricing is
+  # read-only.
 
   describe "perform/1 validation" do
     test "returns validation errors when invites are missing" do
@@ -119,6 +119,41 @@ defmodule Dhc.Invitations.BulkInviteWorkerTest do
       # Exactly one commit-safe creation signal for the admin's topic.
       assert_received %Phoenix.Socket.Broadcast{event: "notification_created", payload: %{}}
       refute_received %Phoenix.Socket.Broadcast{event: "notification_created"}
+    end
+
+    test "replaying the same Oban job does not reissue an already completed invitation" do
+      created_by_id = insert_principal!("replay-admin@example.com")
+
+      args = %{
+        "invites" => [
+          %{
+            "firstName" => "Ada",
+            "lastName" => "Lovelace",
+            "email" => "replay-invite@example.com",
+            "phoneNumber" => "+353810000001",
+            "dateOfBirth" => "1990-01-01"
+          }
+        ],
+        "user" => %{"id" => created_by_id, "email" => "replay-admin@example.com"}
+      }
+
+      job = %Oban.Job{
+        id: 42,
+        attempt: 1,
+        queue: "invitations",
+        worker: inspect(BulkInviteWorker),
+        args: args
+      }
+
+      assert :ok = BulkInviteWorker.perform(job)
+      assert :ok = BulkInviteWorker.perform(%{job | attempt: 2})
+
+      assert Repo.aggregate(
+               from(i in Invitation, where: i.email == "replay-invite@example.com"),
+               :count
+             ) == 1
+
+      assert length(all_enqueued(worker: Dhc.Email.Worker)) == 1
     end
   end
 

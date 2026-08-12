@@ -59,6 +59,12 @@ defmodule DhcWeb.WorkshopsControllerTest do
     def request(method: :post, url: "/v1/checkout/sessions", body: body) do
       Application.put_env(:dhc, :last_workshop_checkout_request, body)
 
+      Application.put_env(
+        :dhc,
+        :workshop_payment_attempt_id,
+        form_value(body, :"metadata[payment_attempt_id]")
+      )
+
       case Application.get_env(:dhc, :workshop_stripe_checkout_create_response, :ok) do
         :ok ->
           {:ok,
@@ -87,7 +93,8 @@ defmodule DhcWeb.WorkshopsControllerTest do
              "metadata" => %{
                "type" => "workshop_registration",
                "actor_type" => "external",
-               "workshop_id" => Application.fetch_env!(:dhc, :workshop_stripe_workshop_id)
+               "workshop_id" => Application.fetch_env!(:dhc, :workshop_stripe_workshop_id),
+               "payment_attempt_id" => Application.fetch_env!(:dhc, :workshop_payment_attempt_id)
              },
              "customer_details" => %{
                "email" => " Guest@Example.com ",
@@ -188,6 +195,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
       Application.delete_env(:dhc, :last_workshop_stripe_refund_request)
       Application.delete_env(:dhc, :last_workshop_checkout_request)
       Application.delete_env(:dhc, :last_workshop_payment_intent_update)
+      Application.delete_env(:dhc, :workshop_payment_attempt_id)
     end)
   end
 
@@ -1339,15 +1347,15 @@ defmodule DhcWeb.WorkshopsControllerTest do
   # ── Member registration ───────────────────────────────────────────────
 
   describe "member registration" do
-    test "creates a PaymentIntent after duplicate and capacity checks", %{conn: conn} do
+    test "creates a PaymentIntent using the authoritative Workshop price", %{conn: conn} do
       workshop = insert_workshop(status: "published", max_capacity: 2)
 
       conn =
         conn
         |> auth_conn("member")
         |> post("/api/workshops/#{to_uuid(workshop.id)}/registration/payment-intent", %{
-          "amount" => 1000,
-          "currency" => "eur",
+          "amount" => 1,
+          "currency" => "usd",
           "customerId" => "cus_test"
         })
 
@@ -1380,9 +1388,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
       conn =
         conn
         |> auth_conn("member")
-        |> post("/api/workshops/#{to_uuid(workshop.id)}/registration/payment-intent", %{
-          "amount" => 1000
-        })
+        |> post("/api/workshops/#{to_uuid(workshop.id)}/registration/payment-intent", %{})
 
       assert %{"errors" => %{"detail" => "Workshop is full"}} = json_response(conn, 409)
       assert Application.get_env(:dhc, :last_workshop_stripe_request) == nil
@@ -1453,14 +1459,14 @@ defmodule DhcWeb.WorkshopsControllerTest do
       assert %{
                "data" => %{
                  "registration" => %{"id" => id, "status" => "cancelled"},
-                 "refundProcessed" => false
+                 "refundPending" => false
                }
              } = json_response(conn, 200)
 
       assert id == to_uuid(registration.id)
     end
 
-    test "cancellation refunds an eligible paid registration", %{conn: conn} do
+    test "cancellation durably schedules an eligible paid registration refund", %{conn: conn} do
       workshop =
         insert_workshop(
           status: "published",
@@ -1485,18 +1491,13 @@ defmodule DhcWeb.WorkshopsControllerTest do
       assert %{
                "data" => %{
                  "registration" => %{"status" => "refunded"},
-                 "refundProcessed" => true
+                 "refundPending" => true
                }
              } = json_response(conn, 200)
 
-      assert [
-               payment_intent: "pi_paid_registration",
-               amount: 1000,
-               reason: "requested_by_customer"
-             ] =
-               Application.fetch_env!(:dhc, :last_workshop_stripe_refund_request)
+      assert Application.get_env(:dhc, :last_workshop_stripe_refund_request) == nil
 
-      assert [%{registration_id: refund_registration_id, status: "processing"}] =
+      assert [%{registration_id: refund_registration_id, status: "pending"}] =
                Dhc.Workshops.list_workshop_refunds(to_uuid(workshop.id))
 
       assert refund_registration_id == to_uuid(registration.id)
@@ -1524,7 +1525,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
       assert %{
                "data" => %{
                  "registration" => %{"status" => "cancelled"},
-                 "refundProcessed" => false
+                 "refundPending" => false
                }
              } = json_response(conn, 200)
 
@@ -1587,11 +1588,13 @@ defmodule DhcWeb.WorkshopsControllerTest do
       return_url =
         "https://example.com/workshops/#{to_uuid(workshop.id)}/confirmation?session_id={CHECKOUT_SESSION_ID}"
 
+      payment_attempt_id = Ecto.UUID.generate()
+
       conn =
         post(
           conn,
           "/api/workshops/#{to_uuid(workshop.id)}/external-registration/checkout-session",
-          %{"returnUrl" => return_url}
+          %{"paymentAttemptId" => payment_attempt_id, "returnUrl" => return_url}
         )
 
       assert %{
@@ -1619,6 +1622,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
         )
 
       Application.put_env(:dhc, :workshop_stripe_workshop_id, to_uuid(workshop.id))
+      insert_external_payment_attempt(workshop, "cs_paid_external")
 
       conn =
         post(
@@ -1666,6 +1670,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
       )
 
       Application.put_env(:dhc, :workshop_stripe_workshop_id, to_uuid(workshop.id))
+      insert_external_payment_attempt(workshop, "cs_upsert_external")
 
       conn =
         post(
@@ -1681,7 +1686,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
                Dhc.Workshops.list_workshop_attendees(to_uuid(workshop.id))
     end
 
-    test "refunds a paid Checkout Session when capacity is lost before completion", %{conn: conn} do
+    test "durably compensates a paid Checkout Session when capacity is lost", %{conn: conn} do
       workshop =
         insert_workshop(
           status: "published",
@@ -1691,6 +1696,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
         )
 
       Application.put_env(:dhc, :workshop_stripe_workshop_id, to_uuid(workshop.id))
+      insert_external_payment_attempt(workshop, "cs_capacity_race")
 
       WorkshopFixtures.registration_fixture(
         workshop_id: workshop.id,
@@ -1706,10 +1712,9 @@ defmodule DhcWeb.WorkshopsControllerTest do
         )
 
       assert %{"errors" => %{"detail" => detail}} = json_response(conn, 409)
-      assert detail =~ "refunded"
+      assert detail =~ "refund is pending"
 
-      assert [payment_intent: "pi_external", reason: "duplicate"] =
-               Application.fetch_env!(:dhc, :last_workshop_stripe_refund_request)
+      assert Application.get_env(:dhc, :last_workshop_stripe_refund_request) == nil
     end
 
     test "returns payment failure when Stripe cannot create Checkout", %{conn: conn} do
@@ -1723,6 +1728,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
           conn,
           "/api/workshops/#{to_uuid(workshop.id)}/external-registration/checkout-session",
           %{
+            "paymentAttemptId" => Ecto.UUID.generate(),
             "returnUrl" => "https://example.com/confirmation?session_id={CHECKOUT_SESSION_ID}"
           }
         )
@@ -1794,8 +1800,8 @@ defmodule DhcWeb.WorkshopsControllerTest do
                  "refund" => %{
                    "registrationId" => registration_id,
                    "refundReason" => "Unable to attend",
-                   "status" => "processing",
-                   "stripeRefundId" => "re_test_member"
+                   "status" => "pending",
+                   "stripeRefundId" => nil
                  }
                }
              } = json_response(conn, 201)
@@ -1831,7 +1837,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
                json_response(conn, 422)
     end
 
-    test "keeps a failed refund attempt traceable when Stripe fails", %{conn: conn} do
+    test "records a refund obligation without contacting Stripe", %{conn: conn} do
       workshop =
         insert_workshop(
           status: "published",
@@ -1856,13 +1862,14 @@ defmodule DhcWeb.WorkshopsControllerTest do
           %{"reason" => "Requested"}
         )
 
-      assert %{"errors" => %{"detail" => "Refund provider request failed"}} =
-               json_response(conn, 502)
+      assert %{"data" => %{"refund" => %{"status" => "pending"}}} =
+               json_response(conn, 201)
 
-      assert [%{status: "failed"}] =
+      assert [%{status: "pending"}] =
                Dhc.Workshops.list_workshop_refunds(to_uuid(workshop.id))
 
-      assert %{status: "confirmed"} = Repo.get(Dhc.Workshops.Registration, registration.id)
+      assert %{status: "refunded"} = Repo.get(Dhc.Workshops.Registration, registration.id)
+      assert Application.get_env(:dhc, :last_workshop_stripe_refund_request) == nil
     end
 
     test "cancelling a Workshop creates refund attempts for active paid registrations", %{
@@ -1887,7 +1894,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
       assert %{"data" => %{"workshop" => %{"status" => "cancelled"}}} =
                json_response(conn, 200)
 
-      assert [%{registration_id: registration_id, status: "processing"}] =
+      assert [%{registration_id: registration_id, status: "pending"}] =
                Dhc.Workshops.list_workshop_refunds(to_uuid(workshop.id))
 
       assert registration_id == to_uuid(registration.id)
@@ -1973,10 +1980,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
       payment_conn =
         build_conn()
         |> auth_conn("member")
-        |> post("/api/workshops/#{workshop_id}/registration/payment-intent", %{
-          "amount" => 1000,
-          "currency" => "eur"
-        })
+        |> post("/api/workshops/#{workshop_id}/registration/payment-intent", %{})
 
       assert %{"data" => %{"paymentIntentId" => payment_intent_id}} =
                json_response(payment_conn, 200)
@@ -2021,7 +2025,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
                  "refunds" => [
                    %{
                      "registrationId" => ^registration_id,
-                     "status" => "processing"
+                     "status" => "pending"
                    }
                  ]
                }
@@ -2041,6 +2045,21 @@ defmodule DhcWeb.WorkshopsControllerTest do
     |> Map.put_new(:end_date, DateTime.add(start_date, 2, :hour))
     |> Map.put(:start_date, start_date)
     |> WorkshopFixtures.workshop_fixture()
+  end
+
+  defp insert_external_payment_attempt(workshop, checkout_session_id) do
+    payment_attempt_id = Ecto.UUID.generate()
+    Application.put_env(:dhc, :workshop_payment_attempt_id, payment_attempt_id)
+
+    Repo.insert!(%Dhc.Workshops.PaymentAttempt{
+      id: payment_attempt_id,
+      club_activity_id: workshop.id,
+      actor_type: "external",
+      amount: trunc(workshop.price_non_member),
+      currency: "eur",
+      status: "pending",
+      stripe_checkout_session_id: checkout_session_id
+    })
   end
 
   defp valid_workshop_payload(overrides \\ %{}) do

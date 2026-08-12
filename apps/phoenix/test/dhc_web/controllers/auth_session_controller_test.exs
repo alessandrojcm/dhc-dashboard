@@ -21,6 +21,63 @@ defmodule DhcWeb.AuthSessionControllerTest do
     end
   end
 
+  describe "GET /api/auth/discord/link" do
+    test "links Discord to the authenticated Principal even when provider email differs" do
+      principal = active_principal("magic-link-owner@example.com")
+      token = session_token(principal)
+
+      link_conn =
+        conn()
+        |> put_signed_cookie(@session_cookie, token)
+        |> get("/api/auth/discord/link")
+
+      session_reference = get_session(link_conn, :discord_link_session_reference)
+      assert {:ok, _uuid} = Ecto.UUID.cast(session_reference)
+      refute session_reference == token
+
+      conn =
+        link_conn
+        |> recycle()
+        |> get("/api/auth/discord/callback?state=test-state&code=success")
+
+      assert redirected_to(conn, 302) == "http://localhost:5173/dashboard"
+
+      assert Repo.get_by!(Dhc.Auth.ExternalIdentity,
+               provider: "discord",
+               provider_subject: "discord-request-success"
+             ).principal_id == principal.id
+    end
+
+    test "requires an authenticated session" do
+      conn = get(conn(), "/api/auth/discord/link")
+      assert %{"errors" => %{"detail" => "Unauthorized"}} = json_response(conn, 401)
+    end
+
+    test "refuses to link when the initiating session is revoked before callback" do
+      principal = active_principal("revoked-discord-link@example.com")
+      token = session_token(principal)
+
+      conn =
+        conn()
+        |> put_signed_cookie(@session_cookie, token)
+        |> get("/api/auth/discord/link")
+
+      assert :ok = Dhc.Auth.delete_session_token(token)
+
+      conn =
+        conn
+        |> recycle()
+        |> get("/api/auth/discord/callback?state=test-state&code=success")
+
+      assert redirected_to(conn, 302) == "http://localhost:5173/auth?discord=failed"
+
+      refute Repo.get_by(Dhc.Auth.ExternalIdentity,
+               provider: "discord",
+               provider_subject: "discord-request-success"
+             )
+    end
+  end
+
   describe "GET /api/auth/discord/callback" do
     test "links a verified Discord identity, sets a Phoenix Session, and redirects to dashboard" do
       principal = active_principal("discord-request@example.com")
@@ -250,7 +307,7 @@ defmodule DhcWeb.AuthSessionControllerTest do
       assert %{"errors" => %{"detail" => _}} = json_response(conn, 401)
     end
 
-    test "401 (no session minted) for an inactive Principal" do
+    test "403 with a clear message (and no session) for an inactive Principal" do
       auth_user_id = Ecto.UUID.generate()
       email = "inactive-#{System.unique_integer([:positive])}@example.com"
 
@@ -264,7 +321,18 @@ defmodule DhcWeb.AuthSessionControllerTest do
       {encoded, _} = magic_link_token(principal)
 
       conn = post(conn(), "/api/auth/magic-link/verify", %{"token" => encoded})
-      assert %{"errors" => %{"detail" => _}} = json_response(conn, 401)
+
+      assert %{
+               "errors" => %{
+                 "detail" =>
+                   "Your membership is inactive. Please contact the club to restore access."
+               }
+             } = json_response(conn, 403)
+
+      assert Dhc.Auth.get_principal!(principal.id).confirmed_at
+
+      second_conn = post(conn(), "/api/auth/magic-link/verify", %{"token" => encoded})
+      assert %{"errors" => %{"detail" => _}} = json_response(second_conn, 401)
 
       # No session row was minted for the inactive principal.
       refute Repo.exists?(

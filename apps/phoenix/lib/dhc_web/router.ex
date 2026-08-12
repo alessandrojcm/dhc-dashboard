@@ -230,6 +230,12 @@ defmodule DhcWeb.Router do
   end
 
   scope "/api/auth", DhcWeb do
+    pipe_through [:api, :discord_oauth_api, :authenticated_session_api]
+
+    get "/discord/link", AuthSessionController, :request_discord_link
+  end
+
+  scope "/api/auth", DhcWeb do
     pipe_through [:api, :authenticated_session_api]
 
     # Session projection — requires a valid, active session.

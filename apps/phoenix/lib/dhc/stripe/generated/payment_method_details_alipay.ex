@@ -1,6 +1,6 @@
-defmodule Dhc.Stripe.PaymentFlowsPrivatePaymentMethodsAlipayDetails do
+defmodule Dhc.Stripe.PaymentMethodDetailsAlipay do
   @moduledoc """
-  Provides struct and type for a PaymentFlowsPrivatePaymentMethodsAlipayDetails
+  Provides struct and type for a PaymentMethodDetailsAlipay
   """
 
   @type t :: %__MODULE__{

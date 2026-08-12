@@ -34,6 +34,7 @@ defmodule Dhc.Stripe.ThreeDSecureDetails do
          [
            "attempt_acknowledged",
            "authenticated",
+           "data_share_only",
            "exempted",
            "failed",
            "not_supported",

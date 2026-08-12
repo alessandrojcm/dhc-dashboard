@@ -1,6 +1,6 @@
 defmodule Dhc.Stripe.AutomaticPaymentMethodsParam do
   @moduledoc """
-  Provides struct and type for a AutomaticPaymentMethodsParam
+  Provides struct and types for a AutomaticPaymentMethodsParam
   """
 
   @type t :: %__MODULE__{allow_redirects: String.t() | nil, enabled: boolean}

@@ -3,8 +3,7 @@ defmodule DhcWeb.InvitationsController do
 
   require Logger
 
-  alias Dhc.Invitations
-  alias Dhc.Invitations.BulkInviteWorker
+  alias Dhc.{Invitations, Onboarding}
 
   @doc """
   GET /invitations
@@ -46,7 +45,7 @@ defmodule DhcWeb.InvitationsController do
   GET /invitations/:id/pricing
   """
   def pricing(conn, %{"id" => id} = params) do
-    case Invitations.pricing(id, Map.get(params, "code")) do
+    case Onboarding.pricing(id, Map.get(params, "code")) do
       {:ok, pricing} ->
         conn
         |> put_view(json: DhcWeb.InvitationsJSON)
@@ -72,6 +71,12 @@ defmodule DhcWeb.InvitationsController do
           detail: "Forever coupons can only be percentage-based, not amount-based"
         )
 
+      {:error, :membership_not_required} ->
+        conn
+        |> put_status(:unprocessable_entity)
+        |> put_view(json: DhcWeb.InvitationsJSON)
+        |> render(:error, detail: "Invitation does not require Membership pricing")
+
       {:error, reason} ->
         Logger.error("[invitations] Failed to calculate invitation pricing",
           invitation_id: id,
@@ -89,7 +94,7 @@ defmodule DhcWeb.InvitationsController do
   POST /invitations/:id/verify
   """
   def verify(conn, %{"id" => id, "email" => email, "dateOfBirth" => date_of_birth}) do
-    case Invitations.verify_credentials(id, email, date_of_birth) do
+    case Onboarding.verify_credentials(id, email, date_of_birth) do
       {:ok, token} ->
         conn
         |> put_view(json: DhcWeb.InvitationsJSON)
@@ -119,18 +124,17 @@ defmodule DhcWeb.InvitationsController do
           "id" => id,
           "verificationToken" => token,
           "nextOfKinName" => next_of_kin_name,
-          "nextOfKinPhone" => next_of_kin_phone,
-          "stripeConfirmationToken" => stripe_confirmation_token
+          "nextOfKinPhone" => next_of_kin_phone
         } = params
       ) do
     with :ok <- validate_acceptance_payload(next_of_kin_name, next_of_kin_phone),
          {:ok, result} <-
-           Invitations.accept(
+           Onboarding.accept(
              id,
              token,
              next_of_kin_name,
              next_of_kin_phone,
-             payment_attrs(conn, params, stripe_confirmation_token)
+             payment_attrs(conn, params)
            ) do
       conn
       |> put_view(json: DhcWeb.InvitationsJSON)
@@ -185,11 +189,11 @@ defmodule DhcWeb.InvitationsController do
   defp present_string?(value) when is_binary(value), do: String.trim(value) != ""
   defp present_string?(_value), do: false
 
-  defp payment_attrs(conn, params, stripe_confirmation_token) do
+  defp payment_attrs(conn, params) do
     mandate_context = Map.get(params, "mandateContext", %{})
 
     %{
-      confirmation_token: stripe_confirmation_token,
+      confirmation_token: Map.get(params, "stripeConfirmationToken"),
       coupon_code: Map.get(params, "couponCode"),
       mandate_context: %{
         ip_address: Map.get(mandate_context, "ipAddress", client_ip(conn)),
@@ -222,15 +226,12 @@ defmodule DhcWeb.InvitationsController do
   def create(conn, %{"invites" => invites}) when is_list(invites) and length(invites) > 0 do
     current_session = conn.assigns.current_session
 
-    args = %{
-      "invites" => invites,
-      "user" => %{
-        "id" => current_session.principal.id,
-        "email" => current_session.principal.email
-      }
+    user = %{
+      "id" => current_session.principal.id,
+      "email" => current_session.principal.email
     }
 
-    case Oban.insert(BulkInviteWorker.new(args)) do
+    case Onboarding.issue_invitations(invites, user) do
       {:ok, job} ->
         Logger.info("[invitations] Enqueued invitation job",
           oban_job_id: job.id,

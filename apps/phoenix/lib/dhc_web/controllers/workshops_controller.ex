@@ -229,10 +229,16 @@ defmodule DhcWeb.WorkshopsController do
     |> render(:external_registration_gate, gate: gate)
   end
 
-  def create_external_checkout_session(conn, %{"id" => id, "returnUrl" => return_url})
-      when is_binary(return_url) do
+  def create_external_checkout_session(conn, %{
+        "id" => id,
+        "paymentAttemptId" => payment_attempt_id,
+        "returnUrl" => return_url
+      })
+      when is_binary(payment_attempt_id) and is_binary(return_url) do
     with {:ok, workshop_id} <- Ecto.UUID.cast(id),
-         {:ok, result} <- Workshops.create_external_checkout_session(workshop_id, return_url) do
+         {:ok, attempt_id} <- Ecto.UUID.cast(payment_attempt_id),
+         {:ok, result} <-
+           Workshops.create_external_checkout_session(workshop_id, attempt_id, return_url) do
       conn
       |> put_view(json: DhcWeb.WorkshopsJSON)
       |> render(:external_checkout_session, result: result)
@@ -243,7 +249,7 @@ defmodule DhcWeb.WorkshopsController do
   end
 
   def create_external_checkout_session(conn, _params),
-    do: unprocessable(conn, "Return URL is required")
+    do: unprocessable(conn, "Payment attempt ID and return URL are required")
 
   def complete_external_registration(conn, %{
         "id" => id,
@@ -502,6 +508,9 @@ defmodule DhcWeb.WorkshopsController do
 
   defp member_registration_error(conn, :full), do: conflict(conn, "Workshop is full")
 
+  defp member_registration_error(conn, :compensation_pending),
+    do: conflict(conn, "Payment accepted; refund is pending")
+
   defp member_registration_error(conn, :invalid_amount),
     do: unprocessable(conn, "Amount must be positive")
 
@@ -529,8 +538,8 @@ defmodule DhcWeb.WorkshopsController do
 
   defp external_registration_error(conn, :full), do: conflict(conn, "Workshop is full")
 
-  defp external_registration_error(conn, :full_refunded),
-    do: conflict(conn, "Workshop is full; your payment has been refunded")
+  defp external_registration_error(conn, :compensation_pending),
+    do: conflict(conn, "Payment accepted; refund is pending")
 
   defp external_registration_error(conn, :already_registered),
     do: conflict(conn, "This email is already registered for this workshop")
