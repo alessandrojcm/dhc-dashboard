@@ -197,6 +197,43 @@ defmodule Dhc.Stripe.Operations do
     })
   end
 
+  @doc """
+  Retrieve a PaymentIntent
+
+  <p>Retrieves the details of a PaymentIntent that has previously been created. </p>
+
+  <p>You can retrieve a PaymentIntent client-side using a publishable key when the <code>client_secret</code> is in the query string. </p>
+
+  <p>If you retrieve a PaymentIntent with a publishable key, it only returns a subset of properties. Refer to the <a href="#payment_intent_object">payment intent</a> object reference for more details.</p>
+
+  ## Options
+
+    * `client_secret`: The client secret of the PaymentIntent. We require it if you use a publishable key to retrieve the source.
+    * `expand`: Specifies which fields in the response should be expanded.
+
+  ## Request Body
+
+  **Content Types**: `application/x-www-form-urlencoded`
+  """
+  @spec get_payment_intents_intent(intent :: String.t(), body :: map, opts :: keyword) ::
+          {:ok, Dhc.Stripe.PaymentIntent.t()} | {:error, Dhc.Stripe.Error.t()}
+  def get_payment_intents_intent(intent, body, opts \\ []) do
+    client = opts[:client] || @default_client
+    query = Keyword.take(opts, [:client_secret, :expand])
+
+    client.request(%{
+      args: [intent: intent, body: body],
+      call: {Dhc.Stripe.Operations, :get_payment_intents_intent},
+      url: "/v1/payment_intents/#{intent}",
+      body: body,
+      method: :get,
+      query: query,
+      request: [{"application/x-www-form-urlencoded", :map}],
+      response: [{200, {Dhc.Stripe.PaymentIntent, :t}}, default: {Dhc.Stripe.Error, :t}],
+      opts: opts
+    })
+  end
+
   @type get_prices_200_json_resp :: %{
           data: [Dhc.Stripe.Price.t()],
           has_more: boolean,
@@ -356,6 +393,38 @@ defmodule Dhc.Stripe.Operations do
         {200, {Dhc.Stripe.Operations, :get_promotion_codes_200_json_resp}},
         default: {Dhc.Stripe.Error, :t}
       ],
+      opts: opts
+    })
+  end
+
+  @doc """
+  Retrieve a refund
+
+  <p>Retrieves the details of an existing refund.</p>
+
+  ## Options
+
+    * `expand`: Specifies which fields in the response should be expanded.
+
+  ## Request Body
+
+  **Content Types**: `application/x-www-form-urlencoded`
+  """
+  @spec get_refunds_refund(refund :: String.t(), body :: map, opts :: keyword) ::
+          {:ok, Dhc.Stripe.Refund.t()} | {:error, Dhc.Stripe.Error.t()}
+  def get_refunds_refund(refund, body, opts \\ []) do
+    client = opts[:client] || @default_client
+    query = Keyword.take(opts, [:expand])
+
+    client.request(%{
+      args: [refund: refund, body: body],
+      call: {Dhc.Stripe.Operations, :get_refunds_refund},
+      url: "/v1/refunds/#{refund}",
+      body: body,
+      method: :get,
+      query: query,
+      request: [{"application/x-www-form-urlencoded", :map}],
+      response: [{200, {Dhc.Stripe.Refund, :t}}, default: {Dhc.Stripe.Error, :t}],
       opts: opts
     })
   end
@@ -621,6 +690,41 @@ defmodule Dhc.Stripe.Operations do
   end
 
   @doc """
+  Create a PaymentIntent
+
+  <p>Creates a PaymentIntent object.</p>
+
+  <p>After the PaymentIntent is created, attach a payment method and <a href="/docs/api/payment_intents/confirm">confirm</a>
+  to continue the payment. Learn more about <a href="/docs/payments/payment-intents">the available payment flows
+  with the Payment Intents API</a>.</p>
+
+  <p>When you use <code>confirm=true</code> during creation, it’s equivalent to creating
+  and confirming the PaymentIntent in the same call. You can use any parameters
+  available in the <a href="/docs/api/payment_intents/confirm">confirm API</a> when you supply
+  <code>confirm=true</code>.</p>
+
+  ## Request Body
+
+  **Content Types**: `application/x-www-form-urlencoded`
+  """
+  @spec post_payment_intents(body :: map, opts :: keyword) ::
+          {:ok, Dhc.Stripe.PaymentIntent.t()} | {:error, Dhc.Stripe.Error.t()}
+  def post_payment_intents(body, opts \\ []) do
+    client = opts[:client] || @default_client
+
+    client.request(%{
+      args: [body: body],
+      call: {Dhc.Stripe.Operations, :post_payment_intents},
+      url: "/v1/payment_intents",
+      body: body,
+      method: :post,
+      request: [{"application/x-www-form-urlencoded", :map}],
+      response: [{200, {Dhc.Stripe.PaymentIntent, :t}}, default: {Dhc.Stripe.Error, :t}],
+      opts: opts
+    })
+  end
+
+  @doc """
   Update a PaymentIntent
 
   <p>Updates properties on a PaymentIntent object without confirming.</p>
@@ -734,7 +838,7 @@ defmodule Dhc.Stripe.Operations do
   end
 
   @doc """
-  Create customer balance refund
+  Create a refund
 
   <p>When you create a new refund, you must specify a Charge or a PaymentIntent object on which to create it.</p>
 

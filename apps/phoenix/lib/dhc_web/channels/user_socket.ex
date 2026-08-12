@@ -15,7 +15,8 @@ defmodule DhcWeb.UserSocket do
       JS client can pass via `authToken`. Verified through
       `Dhc.Auth.get_principal_by_socket_token/1`.
   The verified Session projection is assigned as `current_session`. `id/1`
-  scopes the socket to the verified Principal.
+  scopes the socket to the verified Principal and lets access revocation
+  disconnect every established socket for that Principal.
 
   Only `notifications:*` topics are routed here, and long polling is disabled at
   the endpoint mount. See `docs/secure-phoenix-channel-browser-integration.md`
@@ -33,6 +34,14 @@ defmodule DhcWeb.UserSocket do
   channel "notifications:*", NotificationChannel
 
   ## Authentication
+
+  @doc false
+  def socket_id(principal_id), do: "users_socket:#{principal_id}"
+
+  @doc "Disconnects every established socket for an Authentication Principal."
+  def disconnect(principal_id) do
+    DhcWeb.Endpoint.broadcast(socket_id(principal_id), "disconnect", %{})
+  end
 
   @impl true
   def connect(_params, socket, connect_info) do
@@ -82,5 +91,5 @@ defmodule DhcWeb.UserSocket do
   end
 
   @impl true
-  def id(socket), do: "users_socket:#{socket.assigns.current_session.principal.id}"
+  def id(socket), do: socket_id(socket.assigns.current_session.principal.id)
 end

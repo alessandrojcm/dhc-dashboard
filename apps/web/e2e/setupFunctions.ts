@@ -108,6 +108,7 @@ export async function setupWaitlistedUser(
 export async function setupInvitedUser(
 	params: Partial<{
 		addInvitation: boolean;
+		dateOfBirth: Date;
 		email: string;
 		invitationStatus: "pending" | "expired" | "accepted" | "revoked";
 		token: string;
@@ -116,6 +117,7 @@ export async function setupInvitedUser(
 ) {
 	const email = params.email ?? faker.internet.email().toLowerCase();
 	const testData = person(email);
+	if (params.dateOfBirth) testData.date_of_birth = params.dateOfBirth;
 
 	if (params.addInvitation === false) {
 		return {
@@ -139,14 +141,28 @@ export async function setupInvitedUser(
 	return {
 		...testData,
 		...seeded,
-		date_of_birth: dayjs(testData.date_of_birth),
+		date_of_birth: dayjs(seeded.dateOfBirth),
 		async token() {
 			return params.token ?? "e2e-invitation-token";
 		},
 		async cleanUp() {
-			await deleteE2EFixture("invitation", seeded.invitationId);
+			try {
+				await deleteStripeCustomersByEmail(email);
+			} finally {
+				await deleteE2EFixture("invitation", seeded.invitationId);
+			}
 		},
 	};
+}
+
+async function deleteStripeCustomersByEmail(email: string) {
+	const customers = await stripeClient.customers.list({ email, limit: 100 });
+
+	for (const customer of customers.data) {
+		if (!customer.deleted) {
+			await stripeClient.customers.del(customer.id);
+		}
+	}
 }
 
 export async function createWorkshop({

@@ -93,6 +93,7 @@ describe("external Workshop registration API", () => {
 		await expect(
 			createExternalWorkshopCheckoutSession(
 				"workshop-1",
+				"7f8f909d-f2d8-4cc4-bcb4-2f31097f7903",
 				"https://example.com/confirmation?session_id={CHECKOUT_SESSION_ID}",
 			),
 		).rejects.toMatchObject({ code: "PAYMENT_FAILED" });

@@ -57,6 +57,8 @@ test.describe("Member Signup - Coupon Codes", () => {
 	let combinedCouponCode: string;
 	let onceCouponCode: string;
 	let once100CouponCode: string;
+	let complimentaryCouponCode: string;
+	let complimentaryPromotionId: string;
 	let migrationCouponCode: string;
 	// Promotion code IDs for cleanup
 	let promotionCodeIds: string[] = [];
@@ -108,6 +110,7 @@ test.describe("Member Signup - Coupon Codes", () => {
 			combinedCoupon,
 			onceCoupon,
 			once100Coupon,
+			complimentaryCoupon,
 			migrationCoupon,
 		] = await Promise.all([
 			// Coupon for annual fee only - 20% off
@@ -146,6 +149,12 @@ test.describe("Member Signup - Coupon Codes", () => {
 				duration: "once",
 				name: "100% Off First Payment",
 			}),
+			// Complimentary Membership - all recurring fees remain free
+			stripeClient.coupons.create({
+				percent_off: 100,
+				duration: "forever",
+				name: "Complimentary Membership",
+			}),
 			// Special migration coupon for testing the migration code functionality
 			stripeClient.coupons.create({
 				percent_off: 100,
@@ -161,6 +170,7 @@ test.describe("Member Signup - Coupon Codes", () => {
 			combinedPromotion,
 			oncePromotion,
 			once100Promotion,
+			complimentaryPromotion,
 			migrationPromotion,
 		] = await Promise.all([
 			stripeClient.promotionCodes.create({
@@ -203,6 +213,14 @@ test.describe("Member Signup - Coupon Codes", () => {
 				code: `ONCE100OFF-${Date.now().toString().slice(-6)}`,
 				max_redemptions: 5,
 			}),
+			stripeClient.promotionCodes.create({
+				promotion: {
+					coupon: complimentaryCoupon.id,
+					type: "coupon",
+				},
+				code: `COMPLIMENTARY-${Date.now().toString().slice(-6)}`,
+				max_redemptions: 5,
+			}),
 			// Create the migration code with the exact name from the environment variable
 			stripeClient.promotionCodes.create({
 				promotion: {
@@ -220,6 +238,8 @@ test.describe("Member Signup - Coupon Codes", () => {
 		combinedCouponCode = combinedPromotion.code;
 		onceCouponCode = oncePromotion.code;
 		once100CouponCode = once100Promotion.code;
+		complimentaryCouponCode = complimentaryPromotion.code;
+		complimentaryPromotionId = complimentaryPromotion.id;
 		migrationCouponCode = migrationPromotion.code;
 
 		// Save promotion code IDs for cleanup
@@ -229,6 +249,7 @@ test.describe("Member Signup - Coupon Codes", () => {
 			combinedPromotion.id,
 			oncePromotion.id,
 			once100Promotion.id,
+			complimentaryPromotion.id,
 			migrationPromotion.id,
 		];
 	});
@@ -372,48 +393,104 @@ test.describe("Member Signup - Coupon Codes", () => {
 		}
 	});
 
-	test("processes payment with a coupon", async ({ page }) => {
-		const invitation = await setupInvitedUser();
+	for (const coupon of [
+		{
+			name: "a percentage coupon",
+			code: () => combinedCouponCode,
+			discount: "10% off",
+			promotionId: undefined,
+		},
+		{
+			name: "a complimentary 100% coupon",
+			code: () => complimentaryCouponCode,
+			discount: "100% off",
+			promotionId: () => complimentaryPromotionId,
+		},
+	]) {
+		test(`processes Membership acceptance with ${coupon.name}`, async ({
+			page,
+		}) => {
+			const invitation = await setupInvitedUser();
 
-		try {
-			await openSignup(page, invitation);
-			await page.getByLabel(/next of kin$/i).fill("John Doe");
-			await page.getByLabel(/next of kin phone number/i).fill("0838774532");
-			await applyCoupon(page, combinedCouponCode);
-			await expect(page.getByText("Discount applied: 10% off")).toBeVisible();
+			try {
+				await openSignup(page, invitation);
+				await page.getByLabel(/next of kin$/i).fill("John Doe");
+				await page.getByLabel(/next of kin phone number/i).fill("0838774532");
+				await applyCoupon(page, coupon.code());
+				await expect(
+					page.getByText(`Discount applied: ${coupon.discount}`),
+				).toBeVisible();
 
-			await expect(page.locator("#payment-element-state")).toHaveAttribute(
-				"data-ready",
-				"true",
-			);
-			const stripeFrame = page
-				.locator(".__PrivateStripeElement")
-				.frameLocator("iframe");
-			await expect(stripeFrame.getByLabel("IBAN")).toBeVisible({
-				timeout: 15_000,
-			});
-			await stripeFrame.getByLabel("IBAN").fill("IE29AIBK93115212345678");
-			await stripeFrame.getByLabel("Email").fill(invitation.email);
-			await stripeFrame.getByLabel("Full name").fill("John Doe");
-			await stripeFrame.getByLabel("Address line 1").fill("123 Main Street");
-			await stripeFrame.getByLabel("Address line 2").fill("Apt 4B");
-			await stripeFrame.getByLabel("Country or region").selectOption("Ireland");
-			await stripeFrame.getByLabel("City").fill("Dublin");
-			await stripeFrame.getByLabel("Eircode").fill("K45 HR22");
-			await stripeFrame.getByLabel("County").selectOption("Dublin");
-			await expect(page.locator("#payment-element-state")).toHaveAttribute(
-				"data-complete",
-				"true",
-			);
+				await expect(page.locator("#payment-element-state")).toHaveAttribute(
+					"data-ready",
+					"true",
+				);
+				const stripeFrame = page
+					.locator(".__PrivateStripeElement")
+					.frameLocator("iframe");
+				await expect(stripeFrame.getByLabel("IBAN")).toBeVisible({
+					timeout: 15_000,
+				});
+				await stripeFrame.getByLabel("IBAN").fill("IE29AIBK93115212345678");
+				await stripeFrame.getByLabel("Email").fill(invitation.email);
+				await stripeFrame.getByLabel("Full name").fill("John Doe");
+				await stripeFrame.getByLabel("Address line 1").fill("123 Main Street");
+				await stripeFrame.getByLabel("Address line 2").fill("Apt 4B");
+				await stripeFrame
+					.getByLabel("Country or region")
+					.selectOption("Ireland");
+				await stripeFrame.getByLabel("City").fill("Dublin");
+				await stripeFrame.getByLabel("Eircode").fill("K45 HR22");
+				await stripeFrame.getByLabel("County").selectOption("Dublin");
+				await expect(page.locator("#payment-element-state")).toHaveAttribute(
+					"data-complete",
+					"true",
+				);
 
-			await page.getByRole("button", { name: /sign up/i }).click();
-			await expect(
-				page.getByText(
-					"Your membership has been successfully processed. Welcome to Dublin Hema Club! You will receive a Discord invite by email shortly.",
-				),
-			).toBeVisible({ timeout: 30_000 });
-		} finally {
-			await invitation.cleanUp();
-		}
-	});
+				await page.getByRole("button", { name: /sign up/i }).click();
+				await expect(
+					page.getByText(
+						"Your membership has been successfully processed. Welcome to Dublin Hema Club! Sign in with your membership email to continue.",
+					),
+				).toBeVisible({ timeout: 30_000 });
+				await expect(
+					page.getByRole("link", { name: "Sign In" }),
+				).toHaveAttribute("href", "/auth");
+
+				if (coupon.promotionId) {
+					const customers = await stripeClient.customers.list({
+						email: invitation.email,
+						limit: 2,
+					});
+					expect(customers.data).toHaveLength(1);
+
+					const subscriptions = await stripeClient.subscriptions.list({
+						customer: customers.data[0].id,
+						status: "all",
+						limit: 10,
+						expand: ["data.discounts"],
+					});
+					expect(subscriptions.data).toHaveLength(2);
+
+					for (const subscription of subscriptions.data) {
+						const promotionIds = subscription.discounts.flatMap((discount) => {
+							if (typeof discount === "string" || !discount.promotion_code) {
+								return [];
+							}
+
+							return [
+								typeof discount.promotion_code === "string"
+									? discount.promotion_code
+									: discount.promotion_code.id,
+							];
+						});
+
+						expect(promotionIds).toContain(coupon.promotionId());
+					}
+				}
+			} finally {
+				await invitation.cleanUp();
+			}
+		});
+	}
 });

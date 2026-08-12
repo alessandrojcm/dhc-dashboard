@@ -29,6 +29,7 @@ export const createExternalCheckoutSession = command(
 		try {
 			const result = await createExternalWorkshopCheckoutSession(
 				input.workshopId,
+				input.paymentAttemptId,
 				returnUrl,
 			);
 

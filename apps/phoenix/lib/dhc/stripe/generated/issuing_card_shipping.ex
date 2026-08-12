@@ -6,6 +6,7 @@ defmodule Dhc.Stripe.IssuingCardShipping do
   @type t :: %__MODULE__{
           address: Dhc.Stripe.Address.t(),
           address_validation: Dhc.Stripe.IssuingCardShippingAddressValidation.t() | nil,
+          business_name: String.t() | nil,
           carrier: String.t() | nil,
           customs: Dhc.Stripe.IssuingCardShippingCustoms.t() | nil,
           eta: integer | nil,
@@ -22,6 +23,7 @@ defmodule Dhc.Stripe.IssuingCardShipping do
   defstruct [
     :address,
     :address_validation,
+    :business_name,
     :carrier,
     :customs,
     :eta,
@@ -43,7 +45,8 @@ defmodule Dhc.Stripe.IssuingCardShipping do
     [
       address: {Dhc.Stripe.Address, :t},
       address_validation: {Dhc.Stripe.IssuingCardShippingAddressValidation, :t},
-      carrier: {:enum, ["dhl", "fedex", "royal_mail", "usps"]},
+      business_name: :string,
+      carrier: {:enum, ["correos", "dhl", "fedex", "royal_mail", "usps"]},
       customs: {Dhc.Stripe.IssuingCardShippingCustoms, :t},
       eta: {:integer, "unix-time"},
       name: :string,

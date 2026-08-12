@@ -30,6 +30,8 @@ defmodule Dhc.Stripe.Processor do
                         # Setup intents
                         "PostSetupIntents",
                         # Payment intents
+                        "PostPaymentIntents",
+                        "GetPaymentIntentsIntent",
                         "PostPaymentIntentsIntent",
                         "PostPaymentIntentsIntentConfirm",
                         # Checkout sessions
@@ -39,6 +41,7 @@ defmodule Dhc.Stripe.Processor do
                         "PostBillingPortalSessions",
                         # Refunds
                         "PostRefunds",
+                        "GetRefundsRefund",
                         # Promotion codes
                         "GetPromotionCodes",
                         # Coupons

@@ -27,6 +27,8 @@ import FormDebug from "$lib/components/form-debug.svelte";
 import { memberProfileClientSchema } from "$lib/schemas/membersSignup";
 import { dev } from "$app/environment";
 import { untrack } from "svelte";
+import { DiscordLogo } from "svelte-radix";
+import { publicApiUrl } from "$lib/api-client";
 import {
 	membershipBillingPortalMutation,
 	membershipPauseMutation,
@@ -34,6 +36,10 @@ import {
 } from "@dhc/api-client";
 
 const { data } = $props();
+const discordLinkUrl = publicApiUrl("/auth/discord/link");
+const isOwnProfile = $derived(
+	page.data.session?.principal.id === page.params.memberId,
+);
 
 initForm(updateProfile, () => ({
 	firstName: data.profileData.firstName ?? "",
@@ -209,6 +215,19 @@ const resumeMutation = createMutation(() => ({
 					</Field.Field>
 
 					{#if data.canUpdate}
+						{#if isOwnProfile}
+							<div class="space-y-2">
+								<Button href={discordLinkUrl} variant="outline" class="w-full">
+									<DiscordLogo class="mr-2 h-4 w-4" />
+									Link Discord account
+								</Button>
+								<p class="text-sm text-muted-foreground">
+									Use this after signing in by email when your Discord email is
+									different.
+								</p>
+							</div>
+						{/if}
+
 						<Button
 							disabled={openBillingPortal.isPending}
 							variant="outline"

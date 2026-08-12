@@ -10,6 +10,7 @@ defmodule Dhc.StripeSync.Repository do
 
   import Ecto.Query
 
+  alias Dhc.Auth
   alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.Repo
 
@@ -83,11 +84,12 @@ defmodule Dhc.StripeSync.Repository do
   """
   @spec mark_customer_inactive(String.t()) :: {:ok, non_neg_integer()}
   def mark_customer_inactive(customer_id) do
-    {updated_count, _} =
-      from(up in "user_profiles", where: up.customer_id == ^customer_id)
-      |> Repo.update_all(set: [is_active: false])
+    profile_ids = user_profile_ids_for_customer(customer_id)
 
-    {:ok, updated_count}
+    case Auth.apply_member_access(profile_ids, false) do
+      :ok -> {:ok, length(profile_ids)}
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   @doc """
@@ -125,8 +127,9 @@ defmodule Dhc.StripeSync.Repository do
       )
 
       try do
-        from(up in "user_profiles", where: up.customer_id == ^customer_id)
-        |> Repo.update_all(set: [is_active: true])
+        customer_id
+        |> user_profile_ids_for_customer()
+        |> apply_member_access!(true)
       rescue
         e -> Repo.rollback({:is_active_update_failed, e})
       end
@@ -142,6 +145,7 @@ defmodule Dhc.StripeSync.Repository do
   defp user_profile_ids_for_customer(customer_id) do
     from(up in Dhc.UserProfiles.UserProfile,
       where: up.customer_id == ^customer_id,
+      order_by: up.id,
       select: up.id
     )
     |> Repo.all()
@@ -156,5 +160,14 @@ defmodule Dhc.StripeSync.Repository do
     |> Repo.update_all(updates)
 
     :ok
+  end
+
+  defp apply_member_access!(profile_ids, is_active) do
+    Enum.each(profile_ids, fn profile_id ->
+      case Auth.apply_member_access(profile_id, is_active) do
+        :ok -> :ok
+        {:error, reason} -> Repo.rollback({:is_active_update_failed, reason})
+      end
+    end)
   end
 end

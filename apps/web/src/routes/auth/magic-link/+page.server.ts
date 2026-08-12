@@ -21,44 +21,37 @@ export const load: PageServerLoad = async ({ url, cookies }) => {
 		throw redirect(303, "/auth#error_description=Invalid%20magic%20link");
 	}
 
+	let result: Awaited<ReturnType<typeof authVerifyMagicLink>>;
 	try {
-		const { error, response } = await authVerifyMagicLink({
+		result = await authVerifyMagicLink({
 			...apiClientOptions(cookies),
 			body: { token },
 		});
-
-		if (error || !response?.ok) {
-			throw redirect(
-				303,
-				"/auth#error_description=Invalid%20or%20expired%20link",
-			);
-		}
-
-		// Phoenix sets the signed `_dhc_session` cookie via Set-Cookie. The
-		// cookie attributes (Secure, HttpOnly, SameSite=Lax, Path=/, domain)
-		// are chosen by Phoenix. Forward the Set-Cookie to the browser by
-		// re-setting it locally with the same value + attributes Phoenix
-		// chose. We read the raw Set-Cookie header and parse the cookie
-		// name/value out of it.
-		const setCookie = response.headers.get("set-cookie");
-		if (setCookie) {
-			forwardSetCookie(cookies, setCookie);
-		}
-
-		throw redirect(303, "/dashboard?message=Signed%20in");
-	} catch (e) {
-		// A redirect is the expected success path (SvelteKit throws
-		// `Redirect`); rethrow it so the router handles it.
-		if (e instanceof Error && e.name === "Redirect") {
-			throw e;
-		}
-		// Any other error: the token was invalid/expired, or Phoenix was
-		// unreachable. Send the user back to the auth page with an error.
-		throw redirect(
-			303,
-			"/auth#error_description=Invalid%20or%20expired%20link",
-		);
+	} catch {
+		redirect(303, "/auth#error_description=Invalid%20or%20expired%20link");
 	}
+
+	const { error, response } = result;
+	if (error || !response?.ok) {
+		const detail =
+			response?.status === 403 && error?.errors?.detail
+				? error.errors.detail
+				: "Invalid or expired link";
+		redirect(303, `/auth#error_description=${encodeURIComponent(detail)}`);
+	}
+
+	// Phoenix sets the signed `_dhc_session` cookie via Set-Cookie. The
+	// cookie attributes (Secure, HttpOnly, SameSite=Lax, Path=/, domain)
+	// are chosen by Phoenix. Forward the Set-Cookie to the browser by
+	// re-setting it locally with the same value + attributes Phoenix
+	// chose. We read the raw Set-Cookie header and parse the cookie
+	// name/value out of it.
+	const setCookie = response.headers.get("set-cookie");
+	if (setCookie) {
+		forwardSetCookie(cookies, setCookie);
+	}
+
+	redirect(303, "/dashboard?message=Signed%20in");
 };
 
 /**

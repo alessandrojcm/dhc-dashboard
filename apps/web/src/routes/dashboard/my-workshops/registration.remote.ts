@@ -45,8 +45,6 @@ export const toggleInterest = command(
 export const createPaymentIntent = command(
 	v.object({
 		workshopId: v.pipe(v.string(), v.uuid()),
-		amount: v.pipe(v.number(), v.minValue(1, "Amount must be positive")),
-		currency: v.optional(v.string(), "eur"),
 		customerId: v.optional(v.string()),
 	}),
 	async (input) => {
@@ -60,11 +58,7 @@ export const createPaymentIntent = command(
 		const response = await workshopsCreateRegistrationPaymentIntent({
 			...apiClientOptions(event.cookies),
 			path: { workshopId: input.workshopId },
-			body: {
-				amount: input.amount,
-				currency: input.currency,
-				...(input.customerId ? { customerId: input.customerId } : {}),
-			},
+			body: input.customerId ? { customerId: input.customerId } : {},
 		});
 
 		if (response.error) {

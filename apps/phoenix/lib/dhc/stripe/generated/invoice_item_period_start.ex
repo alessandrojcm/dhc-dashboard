@@ -19,8 +19,11 @@ defmodule Dhc.Stripe.InvoiceItemPeriodStart do
          [
            "max_item_period_start",
            "max_item_period_start",
+           "max_item_period_start",
+           "now",
            "now",
            "phase_start",
+           "timestamp",
            "timestamp",
            "timestamp"
          ]}

@@ -1,6 +1,6 @@
 defmodule Dhc.Stripe.TransferDataPaymentDataParams do
   @moduledoc """
-  Provides struct and type for a TransferDataPaymentDataParams
+  Provides struct and types for a TransferDataPaymentDataParams
   """
 
   @type t :: %__MODULE__{description: String.t() | nil, metadata: map | String.t() | nil}

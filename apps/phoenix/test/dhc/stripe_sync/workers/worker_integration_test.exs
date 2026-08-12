@@ -14,6 +14,7 @@ defmodule Dhc.StripeSync.WorkerIntegrationTest do
   alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.Repo
   alias Dhc.Stripe.Client, as: StripeClient
+  alias Dhc.Stripe.LookupKeys
   alias Dhc.StripeSync.Worker
 
   import Ecto.Query
@@ -21,7 +22,7 @@ defmodule Dhc.StripeSync.WorkerIntegrationTest do
   @moduletag :integration
 
   @stripe_api_url "https://api.stripe.com"
-  @price_setting_key "stripe_monthly_price_id"
+  @price_setting_key "stripe_membership_price_ids"
   describe "perform/1 against Stripe test mode" do
     setup do
       original_url = Application.get_env(:dhc, :stripe_api_url)
@@ -54,10 +55,10 @@ defmodule Dhc.StripeSync.WorkerIntegrationTest do
     end
 
     test "creates Stripe test fixtures and syncs them into local membership state" do
-      price_id = System.get_env("STRIPE_SYNC_TEST_PRICE_ID") || fetch_membership_price_id!()
-      maybe_seed_price_cache(price_id)
+      price_ids = membership_price_ids!()
+      maybe_seed_price_cache(price_ids)
 
-      stripe_fixtures = create_stripe_fixtures!(price_id)
+      stripe_fixtures = create_stripe_fixtures!(price_ids)
 
       try do
         fixtures =
@@ -85,38 +86,41 @@ defmodule Dhc.StripeSync.WorkerIntegrationTest do
     end
   end
 
-  defp create_stripe_fixtures!(price_id) do
+  defp create_stripe_fixtures!(price_ids) do
     run_id = "dhc-stripe-sync-#{System.unique_integer([:positive])}"
 
     active_customer = create_customer!(run_id, "active")
-    active_subscription = create_subscription!(active_customer["id"], price_id)
+    active_subscriptions = create_subscriptions!(active_customer["id"], price_ids)
 
     paused_customer = create_customer!(run_id, "paused")
-    paused_subscription = create_subscription!(paused_customer["id"], price_id)
-    pause_subscription!(paused_subscription["id"])
+    paused_subscriptions = create_subscriptions!(paused_customer["id"], price_ids)
+    paused_subscriptions |> List.first() |> Map.fetch!("id") |> pause_subscription!()
 
     inactive_customer = create_customer!(run_id, "inactive")
-    inactive_subscription = create_subscription!(inactive_customer["id"], price_id)
-    cancel_subscription!(inactive_subscription["id"])
+    inactive_subscriptions = create_subscriptions!(inactive_customer["id"], price_ids)
+    inactive_subscriptions |> List.first() |> Map.fetch!("id") |> cancel_subscription!()
 
     missing_customer = create_customer!(run_id, "missing")
 
     %{
       active: %{
         customer_id: active_customer["id"],
-        subscription_id: active_subscription["id"]
+        subscription_ids: Enum.map(active_subscriptions, & &1["id"])
       },
       paused: %{
         customer_id: paused_customer["id"],
-        subscription_id: paused_subscription["id"]
+        subscription_ids: Enum.map(paused_subscriptions, & &1["id"])
       },
       inactive: %{
         customer_id: inactive_customer["id"],
-        subscription_id: inactive_subscription["id"],
-        canceled?: true
+        subscription_ids: Enum.map(inactive_subscriptions, & &1["id"])
       },
-      missing: %{customer_id: missing_customer["id"]}
+      missing: %{customer_id: missing_customer["id"], subscription_ids: []}
     }
+  end
+
+  defp create_subscriptions!(customer_id, price_ids) do
+    Enum.map(price_ids, &create_subscription!(customer_id, &1))
   end
 
   defp create_customer!(run_id, scenario) do
@@ -154,9 +158,7 @@ defmodule Dhc.StripeSync.WorkerIntegrationTest do
     stripe_fixtures
     |> Map.values()
     |> Enum.each(fn fixture ->
-      unless Map.get(fixture, :canceled?) do
-        maybe_cancel_subscription(fixture[:subscription_id])
-      end
+      Enum.each(fixture.subscription_ids, &maybe_cancel_subscription/1)
 
       maybe_delete_customer(fixture.customer_id)
     end)
@@ -189,22 +191,40 @@ defmodule Dhc.StripeSync.WorkerIntegrationTest do
     end
   end
 
-  defp fetch_membership_price_id! do
-    case stripe_get!("/v1/prices", %{
-           "lookup_keys[]" => "standard_membership_fee",
-           active: "true",
-           limit: 1
-         }) do
-      %{"data" => [%{"id" => price_id} | _]} ->
-        price_id
+  defp membership_price_ids! do
+    price_ids =
+      case System.get_env("STRIPE_SYNC_TEST_PRICE_IDS") do
+        nil -> fetch_membership_price_ids!()
+        value -> String.split(value, ",", trim: true)
+      end
 
-      %{"data" => []} ->
-        raise """
-        Stripe test mode has no active price with lookup_key=standard_membership_fee.
+    expected_count = length(LookupKeys.all())
 
-        Set STRIPE_SYNC_TEST_PRICE_ID=price_... or create the test price in Stripe.
-        """
+    if length(price_ids) == expected_count do
+      price_ids
+    else
+      raise "Expected #{expected_count} Stripe membership price IDs, got #{length(price_ids)}"
     end
+  end
+
+  defp fetch_membership_price_ids! do
+    Enum.map(LookupKeys.all(), fn lookup_key ->
+      case stripe_get!("/v1/prices", %{
+             "lookup_keys[]" => lookup_key,
+             active: "true",
+             limit: 1
+           }) do
+        %{"data" => [%{"id" => price_id} | _]} ->
+          price_id
+
+        %{"data" => []} ->
+          raise """
+          Stripe test mode has no active price with lookup_key=#{lookup_key}.
+
+          Set STRIPE_SYNC_TEST_PRICE_IDS=price_monthly,... or create the test price in Stripe.
+          """
+      end
+    end)
   end
 
   defp stripe_get!(path, params) do
@@ -235,10 +255,9 @@ defmodule Dhc.StripeSync.WorkerIntegrationTest do
     ]
   end
 
-  defp maybe_seed_price_cache(nil), do: :ok
-  defp maybe_seed_price_cache(""), do: :ok
+  defp maybe_seed_price_cache([]), do: :ok
 
-  defp maybe_seed_price_cache(price_id) do
+  defp maybe_seed_price_cache(price_ids) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
     Repo.insert_all(
@@ -246,7 +265,7 @@ defmodule Dhc.StripeSync.WorkerIntegrationTest do
       [
         [
           key: @price_setting_key,
-          value: price_id,
+          value: Enum.join(price_ids, ","),
           type: "text",
           created_at: now,
           updated_at: now

@@ -189,13 +189,17 @@ defmodule Dhc.WorkshopFixtures do
     attrs = Enum.into(attrs, %{})
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
+    id = Ecto.UUID.generate()
+
     {:ok, refund} =
       %Refund{
+        id: id,
         registration_id: Map.fetch!(attrs, :registration_id),
         refund_amount: Map.get(attrs, :refund_amount, 1000),
         refund_reason: Map.get(attrs, :refund_reason, "Test refund"),
         status: Map.get(attrs, :status, "pending"),
-        requested_at: Map.get(attrs, :requested_at, now)
+        requested_at: Map.get(attrs, :requested_at, now),
+        idempotency_key: Map.get(attrs, :idempotency_key, "workshop-refund:#{id}")
       }
       |> Repo.insert()
 
