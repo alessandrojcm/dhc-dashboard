@@ -5,19 +5,46 @@ import type { Plugin } from "@opencode-ai/plugin";
  *
  * Blocks the agent from invoking any `git` command in the `bash` tool.
  * Git operations should be performed through GitButler (`but`) instead.
+ * Linked Git worktrees are exempt because GitButler cannot manage them.
  */
-export default (async ({ client }) => {
+export default (async ({ client, directory }) => {
+  const gitMetadata = Bun.spawnSync(
+    [
+      "git",
+      "rev-parse",
+      "--path-format=absolute",
+      "--git-dir",
+      "--git-common-dir",
+    ],
+    {
+      cwd: directory,
+      stdout: "pipe",
+      stderr: "ignore",
+    },
+  );
+  const [gitDirectory, gitCommonDirectory] = gitMetadata.stdout
+    .toString()
+    .trim()
+    .split("\n");
+  const isLinkedWorktree =
+    gitMetadata.exitCode === 0 &&
+    Boolean(gitDirectory && gitCommonDirectory) &&
+    gitDirectory !== gitCommonDirectory;
+
   await client.app.log({
     body: {
       service: "git-guardian",
       level: "info",
-      message: "Git Guardian plugin initialized",
+      message: isLinkedWorktree
+        ? "Git Guardian disabled in linked Git worktree"
+        : "Git Guardian plugin initialized",
     },
   });
 
   return {
     "tool.execute.before": async (input, output) => {
       if (
+        isLinkedWorktree ||
         input.tool !== "bash" ||
         !output.args ||
         typeof output.args.command !== "string"
