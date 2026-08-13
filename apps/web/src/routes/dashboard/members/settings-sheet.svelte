@@ -3,7 +3,7 @@ import * as Sheet from "$lib/components/ui/sheet/index.js";
 import * as Field from "$lib/components/ui/field";
 import { Button } from "$lib/components/ui/button";
 import { Input } from "$lib/components/ui/input";
-import { Lock } from "lucide-svelte";
+import { Lock } from "@lucide/svelte";
 import { toast } from "svelte-sonner";
 import { updateMemberSettings } from "./data.remote";
 import { initForm } from "$lib/utils/init-form.svelte";

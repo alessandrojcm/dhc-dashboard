@@ -20,7 +20,7 @@ import {
 	TabsTrigger,
 } from "$lib/components/ui/tabs/index.js";
 import { toast } from "svelte-sonner";
-import { CalendarDays } from "lucide-svelte";
+import { CalendarDays } from "@lucide/svelte";
 import {
 	workshopsListOptions,
 	workshopsListQueryKey,

@@ -11,7 +11,7 @@ import { Separator } from "$lib/components/ui/separator";
 import * as Sheet from "$lib/components/ui/sheet/index.js";
 import { fromDate, getLocalTimeZone } from "@internationalized/date";
 import dayjs from "dayjs";
-import { Info, Loader, Plus, Trash2 } from "lucide-svelte";
+import { Info, Loader, Plus, Trash2 } from "@lucide/svelte";
 import { submitBulkInvites, validateSingleInvite } from "./data.remote";
 import { adminInviteRemoteSchema } from "$lib/schemas/adminInvite";
 

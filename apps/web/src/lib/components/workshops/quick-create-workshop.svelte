@@ -10,7 +10,7 @@ import {
 } from "$lib/components/ui/popover";
 import { createMutation } from "@tanstack/svelte-query";
 import { toast } from "svelte-sonner";
-import { Sparkles, Loader2 } from "lucide-svelte";
+import { Sparkles, Loader2 } from "@lucide/svelte";
 import { generateWorkshop } from "../../../routes/dashboard/my-workshops/generate.remote";
 
 let prompt = $state("");

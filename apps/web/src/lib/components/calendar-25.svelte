@@ -6,7 +6,7 @@ import { Button } from "$lib/components/ui/button";
 import { Calendar } from "$lib/components/ui/calendar";
 import { Input } from "$lib/components/ui/input";
 import { getLocalTimeZone } from "@internationalized/date";
-import { ChevronDownIcon } from "lucide-svelte";
+import { ChevronDownIcon } from "@lucide/svelte";
 
 interface Props {
 	id: string;

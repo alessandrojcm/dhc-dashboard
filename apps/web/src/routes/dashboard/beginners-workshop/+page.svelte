@@ -1,6 +1,6 @@
 <script lang="ts">
 import { createMutation } from "@tanstack/svelte-query";
-import { Lock, LockOpen } from "lucide-svelte";
+import { Lock, LockOpen } from "@lucide/svelte";
 import { toast } from "svelte-sonner";
 import { goto, invalidate } from "$app/navigation";
 import { resolve } from "$app/paths";

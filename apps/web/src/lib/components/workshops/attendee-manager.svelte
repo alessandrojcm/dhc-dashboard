@@ -5,7 +5,7 @@ import { Badge } from "$lib/components/ui/badge";
 import { Checkbox } from "$lib/components/ui/checkbox";
 import * as Popover from "$lib/components/ui/popover";
 import { toast } from "svelte-sonner";
-import { Check, DollarSign, User, CheckCheck } from "lucide-svelte";
+import { Check, DollarSign, User, CheckCheck } from "@lucide/svelte";
 import { checkRefundEligibility } from "$lib/utils/refund-eligibility";
 import type {
 	WorkshopAttendee,

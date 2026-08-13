@@ -13,7 +13,7 @@ import { Checkbox } from "$lib/components/ui/checkbox";
 import { Badge } from "$lib/components/ui/badge";
 import * as Select from "$lib/components/ui/select";
 import * as Field from "$lib/components/ui/field";
-import { Plus, Settings, Trash2 } from "lucide-svelte";
+import { Plus, Settings, Trash2 } from "@lucide/svelte";
 
 interface AttributeBuilderProps {
 	/** Current attributes array value */

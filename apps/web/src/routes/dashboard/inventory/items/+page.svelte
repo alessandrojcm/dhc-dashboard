@@ -23,7 +23,7 @@ import {
 	AlertTriangle,
 	FolderOpen,
 	Tags,
-} from "lucide-svelte";
+} from "@lucide/svelte";
 import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
 import { goto } from "$app/navigation";
 import { resolve } from "$app/paths";

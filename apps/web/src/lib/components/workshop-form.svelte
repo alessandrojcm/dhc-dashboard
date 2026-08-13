@@ -8,7 +8,7 @@ import { Switch } from "$lib/components/ui/switch";
 import { Alert, AlertDescription } from "$lib/components/ui/alert";
 import * as Field from "$lib/components/ui/field";
 import Calendar25 from "$lib/components/calendar-25.svelte";
-import { CheckCircle } from "lucide-svelte";
+import { CheckCircle } from "@lucide/svelte";
 import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
 import {
 	type CalendarDate,
