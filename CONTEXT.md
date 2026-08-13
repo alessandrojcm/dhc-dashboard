@@ -55,6 +55,7 @@
 | 0016 | Reviewed, staged Discord identity prefill for existing Members | Accepted |
 | 0017 | Discord identity persistence and migration invariants | Accepted |
 | 0018 | Subject-only Discord sign-in cutover and recovery | Accepted |
+| 0019 | ALE-169 Discord identity implementation contract | Accepted |
 
 ## Architecture (Target State)
 
