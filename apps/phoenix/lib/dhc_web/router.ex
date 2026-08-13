@@ -77,6 +77,8 @@ defmodule DhcWeb.Router do
     pipe_through :api
 
     get "/health", HealthController, :index
+    get "/onboarding/acceptance", OnboardingController, :show_acceptance
+    post "/onboarding/acceptance", OnboardingController, :start_acceptance
     get "/options", MembersController, :options
     get "/invitations/:id", InvitationsController, :show
     get "/invitations/:id/pricing", InvitationsController, :pricing

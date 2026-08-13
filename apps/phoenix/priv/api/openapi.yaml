@@ -61,7 +61,9 @@ tags:
       Phoenix-owned session auth API (ALE-165/ALE-164). Magic-link sign-in,
       session projection read, sign-out, and socket-token exchange. The
       dashboard authenticates through the signed `_dhc_session` cookie
-      (`cookieSession` security scheme) instead of the Supabase bearer JWT.
+       (`cookieSession` security scheme) instead of the Supabase bearer JWT.
+  - name: Onboarding
+    description: Protected, pre-payment Invitation Acceptance journey.
 
 paths:
   /health:
@@ -588,6 +590,71 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+
+  /onboarding/acceptance:
+    post:
+      operationId: onboarding.startAcceptance
+      tags: [Onboarding]
+      summary: Verify Invitation credentials and begin protected acceptance
+      description: |
+        Proves Invitation email and date of birth, then creates or resumes the
+        one active Acceptance Attempt and its awaiting-Discord Continuation.
+        This starts no OAuth or Stripe work and creates no Principal, identity,
+        Membership, role, magic link, or DHC Session. The browser retains the
+        opaque server references in its protected session only.
+      security: []
+      parameters:
+        - name: x-onboarding-continuation
+          in: header
+          required: false
+          description: Existing protected browser proof required to resume a live Continuation.
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OnboardingStartAcceptanceRequest"
+      responses:
+        "200":
+          description: Safe protected acceptance state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+        "422":
+          description: Credentials or Invitation are not eligible; safe restart state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+    get:
+      operationId: onboarding.showAcceptance
+      tags: [Onboarding]
+      summary: Read the protected acceptance state
+      description: |
+        Reads state only from opaque references held in the protected browser
+        session. Missing, expired, or mismatched proof returns restart
+        verification and never accepts an Invitation identifier from the caller.
+      security: []
+      parameters:
+        - name: x-onboarding-continuation
+          in: header
+          required: false
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Safe protected acceptance state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+        "422":
+          description: Browser proof is missing or no longer eligible
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
 
   /waitlist/status:
     get:
@@ -3845,6 +3912,31 @@ components:
         format: uuid
       description: The Workshop id.
   schemas:
+    OnboardingStartAcceptanceRequest:
+      type: object
+      required: [invitationId, email, dateOfBirth]
+      properties:
+        invitationId: { type: string, format: uuid }
+        email: { type: string, format: email }
+        dateOfBirth: { type: string, format: date }
+    OnboardingAcceptanceStateResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [state]
+          properties:
+            state:
+              type: string
+              enum: [awaitingDiscord, restartVerification]
+            expiresAt:
+              type: string
+              format: date-time
+            continuationId:
+              type: string
+              format: uuid
+              description: Opaque protected-browser-session reference.
     InvitationCreateRequest:
       type: object
       required:
