@@ -9,7 +9,7 @@ The installed Assent strategy already provides the secure Discord authorization-
 
 The current controller cannot be reused unchanged. Every successful callback currently finishes either Discord sign-in or authenticated account linking and then redirects to the dashboard. Invitation Acceptance needs a distinct OAuth purpose that preserves the invitation context, returns a short-lived verified Discord assertion to the acceptance workflow, and does not establish a Session.
 
-Bulk roster import needs a Discord bot token, the guild ID, and the `GUILD_MEMBERS` privileged intent. The repository currently configures an OAuth client and a Discord webhook, but not a bot token or guild ID. The roster must be used to stage assignments by Discord User ID; username, global display name, guild nickname, and email are not safe reconciliation keys.
+Bulk roster import needs a Discord bot token, the guild ID, and the `GUILD_MEMBERS` privileged intent. DHC already operates a bot externally, while the repository currently configures only the interactive OAuth client and Discord webhook—not that bot's token or guild ID. ADR-0015 requires a one-off roster script to receive temporary audited access to the existing bot token. The roster must be used to stage assignments by Discord User ID; username, global display name, guild nickname, and email are not safe reconciliation keys.
 
 ## Installed OAuth contract
 
@@ -129,7 +129,7 @@ Not present in repository configuration or the current integration:
 - pending administrator assignment model
 - acceptance-specific Discord OAuth purpose and callback completion
 
-A webhook URL cannot authenticate guild-roster API requests. The existing Discord application may be extended with a bot user, or a separate bot application may be used; that is a design and operations choice, not a protocol requirement.
+A webhook URL cannot authenticate guild-roster API requests. Reusing an existing bot or provisioning a separate application is a design and operations choice, not a protocol requirement. ADR-0015 resolves that choice for DHC by reusing its existing bot only as the credential for a separate one-off roster script.
 
 ## Constraints for downstream tickets
 
@@ -137,7 +137,7 @@ A webhook URL cannot authenticate guild-roster API requests. The existing Discor
 2. **Identity key:** persist and compare Discord User ID/Assent `sub`; keep username as mutable metadata.
 3. **Scopes:** `identify` is sufficient for the target subject-only contract; retain `email` only for an explicitly temporary or metadata purpose.
 4. **No premature Session:** the acceptance OAuth callback must not authenticate a Principal that does not exist yet.
-5. **Roster prerequisites:** provision a bot token and guild ID, install the bot in the DHC guild, and enable `GUILD_MEMBERS` before the prefill script runs.
+5. **Roster prerequisites:** make the existing bot token and guild ID available through the controlled task environment, verify that bot is installed in the DHC guild, and enable `GUILD_MEMBERS` before the prefill script runs.
 6. **Roster pagination:** request up to 1000 entries, follow the `after` cursor, and obey response-driven rate limits.
 7. **Administrator authority:** the script must stage the selected Discord User ID, not infer authority from username or email.
 8. **Data minimization:** retain only the provider subject and display metadata required for review and support unless a later decision justifies more guild data.
@@ -145,7 +145,6 @@ A webhook URL cannot authenticate guild-roster API requests. The existing Discor
 ## Open decisions
 
 - Signed versus durable invitation-bound Discord continuation.
-- Same Discord application versus a separate application for the bot identity.
 - Exact pending-assignment persistence, audit, and correction model.
 - Script input/output and administrator review ergonomics.
 - Whether and when to remove the `email` OAuth scope with the email-based login fallback.
