@@ -2,7 +2,7 @@
 import { fromDate } from "@internationalized/date";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
-import { ArrowRightIcon } from "lucide-svelte";
+import { ArrowRightIcon } from "@lucide/svelte";
 import { goto } from "$app/navigation";
 import { resolve } from "$app/paths";
 import { page } from "$app/state";

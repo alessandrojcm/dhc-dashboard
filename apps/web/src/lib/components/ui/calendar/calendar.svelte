@@ -1,10 +1,47 @@
-<script lang="ts">
+<script lang="ts" generics="Value extends DateValue = DateValue">
 import { Calendar as CalendarPrimitive } from "bits-ui";
 import * as Calendar from "./index.js";
-import { cn, type WithoutChildrenOrChild } from "$lib/utils.js";
+import { cn } from "$lib/utils.js";
 import type { ButtonVariant } from "../button/button.svelte";
 import { isEqualMonth, type DateValue } from "@internationalized/date";
 import type { Snippet } from "svelte";
+import type { HTMLAttributes } from "svelte/elements";
+
+type SingleCalendarProps<Value extends DateValue> = Omit<
+	HTMLAttributes<HTMLDivElement>,
+	"children"
+> & {
+	ref?: HTMLDivElement | null;
+	type: "single";
+	value?: Value;
+	onValueChange?: (value: Value | undefined) => void;
+	placeholder?: DateValue;
+	onPlaceholderChange?: (value: DateValue) => void;
+	preventDeselect?: boolean;
+	minValue?: DateValue;
+	maxValue?: DateValue;
+	disabled?: boolean;
+	pagedNavigation?: boolean;
+	weekStartsOn?: 0 | 1 | 2 | 3 | 4 | 5 | 6;
+	weekdayFormat?: Intl.DateTimeFormatOptions["weekday"];
+	isDateDisabled?: (date: DateValue) => boolean;
+	isDateUnavailable?: (date: DateValue) => boolean;
+	fixedWeeks?: boolean;
+	numberOfMonths?: number;
+	calendarLabel?: string;
+	locale?: string;
+	readonly?: boolean;
+	initialFocus?: boolean;
+	disableDaysOutsideMonth?: boolean;
+	maxDays?: number;
+	buttonVariant?: ButtonVariant;
+	captionLayout?: "dropdown" | "dropdown-months" | "dropdown-years" | "label";
+	months?: CalendarPrimitive.MonthSelectProps["months"];
+	years?: CalendarPrimitive.YearSelectProps["years"];
+	monthFormat?: CalendarPrimitive.MonthSelectProps["monthFormat"];
+	yearFormat?: CalendarPrimitive.YearSelectProps["yearFormat"];
+	day?: Snippet<[{ day: DateValue; outsideMonth: boolean }]>;
+};
 
 let {
 	ref = $bindable(null),
@@ -22,15 +59,7 @@ let {
 	day,
 	disableDaysOutsideMonth = false,
 	...restProps
-}: WithoutChildrenOrChild<CalendarPrimitive.RootProps> & {
-	buttonVariant?: ButtonVariant;
-	captionLayout?: "dropdown" | "dropdown-months" | "dropdown-years" | "label";
-	months?: CalendarPrimitive.MonthSelectProps["months"];
-	years?: CalendarPrimitive.YearSelectProps["years"];
-	monthFormat?: CalendarPrimitive.MonthSelectProps["monthFormat"];
-	yearFormat?: CalendarPrimitive.YearSelectProps["yearFormat"];
-	day?: Snippet<[{ day: DateValue; outsideMonth: boolean }]>;
-} = $props();
+}: SingleCalendarProps<Value> = $props();
 
 const monthFormat = $derived.by(() => {
 	if (monthFormatProp) return monthFormatProp;
@@ -56,7 +85,7 @@ get along, so we shut typescript up by casting `value` to `never`.
 	{locale}
 	{monthFormat}
 	{yearFormat}
-	{...restProps}
+	{...restProps as any}
 >
 	{#snippet children({ months, weekdays })}
 		<Calendar.Months>

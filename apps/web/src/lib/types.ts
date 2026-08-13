@@ -1,4 +1,5 @@
 import type { WorkshopCalendarItem } from "@dhc/api-client";
+import type { Pathname } from "$app/types";
 import type { Database } from "../database.types.ts";
 
 // Removed Schedule-X import - using vkurko/calendar now
@@ -14,14 +15,14 @@ export type UserData = {
 
 export type NavigationItem = {
 	title: string;
-	url: string;
+	url: Pathname;
 	isActive?: boolean;
 	role: Set<string>;
 };
 
 export type NavigationGroup = {
 	title: string;
-	url: string;
+	url: Pathname;
 	items?: NavigationItem[];
 	role: Set<string>;
 };

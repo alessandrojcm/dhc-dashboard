@@ -10,7 +10,7 @@ import { Button } from "$lib/components/ui/button";
 import { Input } from "$lib/components/ui/input";
 import { Textarea } from "$lib/components/ui/textarea";
 import * as Field from "$lib/components/ui/field";
-import { ArrowLeft, Tags, Trash2 } from "lucide-svelte";
+import { ArrowLeft, Tags, Trash2 } from "@lucide/svelte";
 import AttributeBuilder from "$lib/components/inventory/AttributeBuilder.svelte";
 import { updateCategory, deleteCategory } from "../../data.remote";
 import { onMount } from "svelte";

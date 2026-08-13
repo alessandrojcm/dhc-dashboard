@@ -12,7 +12,7 @@ import {
 	type CountryCode,
 } from "libphonenumber-js/min";
 import { parseIncompletePhoneNumber } from "libphonenumber-js";
-import { ChevronDown, ChevronUp } from "lucide-svelte";
+import { ChevronDown, ChevronUp } from "@lucide/svelte";
 
 const countryCodes = $state(countryCodesList.all());
 let open = $state(false);

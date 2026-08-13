@@ -21,7 +21,7 @@ import {
 } from "$lib/components/ui/select";
 import { Checkbox } from "$lib/components/ui/checkbox";
 import * as Field from "$lib/components/ui/field";
-import { ArrowLeft, Package, AlertCircle } from "lucide-svelte";
+import { ArrowLeft, Package, AlertCircle } from "@lucide/svelte";
 import { Label } from "$lib/components/ui/label";
 import { Alert, AlertDescription } from "$lib/components/ui/alert";
 import { buildContainerHierarchy } from "$lib/utils/inventory-form";

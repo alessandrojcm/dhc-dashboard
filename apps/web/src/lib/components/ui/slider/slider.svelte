@@ -5,6 +5,7 @@ import { cn, type WithoutChildrenOrChild } from "$lib/utils.js";
 let {
 	ref = $bindable(null),
 	value = $bindable(),
+	type = "single",
 	orientation = "horizontal",
 	class: className,
 	...restProps
@@ -18,13 +19,14 @@ get along, so we shut typescript up by casting `value` to `never`.
 <SliderPrimitive.Root
 	bind:ref
 	bind:value={value as never}
+	{type}
 	data-slot="slider"
 	{orientation}
 	class={cn(
 		"relative flex w-full touch-none select-none items-center data-[orientation=vertical]:h-full data-[orientation=vertical]:min-h-44 data-[orientation=vertical]:w-auto data-[orientation=vertical]:flex-col data-[disabled]:opacity-50",
 		className,
 	)}
-	{...restProps}
+	{...restProps as any}
 >
 	{#snippet children({ thumbs })}
 		<span
