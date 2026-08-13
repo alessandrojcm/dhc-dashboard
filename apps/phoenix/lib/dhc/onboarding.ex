@@ -12,11 +12,114 @@ defmodule Dhc.Onboarding do
   alias Dhc.Invitations.Invitation
   alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.Onboarding.InvitationAcceptanceAttempt
+  alias Dhc.Onboarding.InvitationAcceptanceDiscordContinuation
   alias Dhc.Onboarding.Workers.AcceptanceRecoveryWorker
   alias Dhc.Repo
 
   defdelegate verify_credentials(invitation_id, email, date_of_birth), to: Invitations
   defdelegate issue_verification_token(invitation_id, email, date_of_birth), to: Invitations
+
+  @doc """
+  Starts the protected pre-payment acceptance journey.
+
+  The returned identifiers are deliberately opaque and must only be retained by
+  the browser's protected transport session. They never identify a Principal or
+  authorize dashboard access.
+  """
+  @spec start_acceptance(String.t(), String.t(), String.t()) ::
+          {:ok, map()} | {:error, :invalid_credentials | :invalid_invitation}
+  def start_acceptance(invitation_id, email, date_of_birth) do
+    start_acceptance(invitation_id, email, date_of_birth, nil)
+  end
+
+  @spec start_acceptance(String.t(), String.t(), String.t(), String.t() | nil) ::
+          {:ok, map()} | {:error, :invalid_credentials | :invalid_invitation}
+  def start_acceptance(invitation_id, email, date_of_birth, protected_continuation_id) do
+    with {:ok, invitation_id} <- Ecto.UUID.cast(invitation_id),
+         {:ok, _token} <- Invitations.verify_credentials(invitation_id, email, date_of_birth) do
+      Repo.transaction(fn ->
+        now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+        invitation =
+          from(i in Invitation,
+            where: i.id == ^invitation_id and i.status == "pending",
+            lock: "FOR UPDATE"
+          )
+          |> Repo.one()
+
+        if is_nil(invitation), do: Repo.rollback(:invalid_invitation)
+
+        attempt =
+          from(a in InvitationAcceptanceAttempt,
+            where:
+              a.invitation_id == ^invitation.id and
+                a.status in ["processing", "cleanup_pending", "provisioned"],
+            lock: "FOR UPDATE"
+          )
+          |> Repo.one()
+
+        if attempt && not pre_oauth_attempt?(attempt), do: Repo.rollback(:invalid_invitation)
+
+        if DateTime.compare(invitation.expires_at, now) != :gt,
+          do: Repo.rollback(:invalid_invitation)
+
+        attempt = attempt || insert_pre_oauth_attempt!(invitation)
+
+        continuation =
+          from(c in InvitationAcceptanceDiscordContinuation,
+            where: c.attempt_id == ^attempt.id and c.status in ["awaiting_oauth", "verified"],
+            lock: "FOR UPDATE"
+          )
+          |> Repo.one()
+
+        continuation =
+          if continuation && DateTime.compare(continuation.expires_at, now) == :gt do
+            if browser_owns_continuation?(continuation, protected_continuation_id),
+              do: continuation,
+              else: Repo.rollback(:invalid_invitation)
+          else
+            if continuation do
+              continuation
+              |> Ecto.Changeset.change(status: "expired", concluded_at: now)
+              |> Repo.update!()
+            end
+
+            %InvitationAcceptanceDiscordContinuation{
+              invitation_id: invitation.id,
+              attempt_id: attempt.id,
+              expires_at:
+                earliest_expiry(invitation.expires_at, DateTime.add(now, 15 * 60, :second))
+            }
+            |> Repo.insert!()
+          end
+
+        safe_state(continuation)
+      end)
+    else
+      :error -> {:error, :invalid_credentials}
+      {:error, _} -> {:error, :invalid_credentials}
+    end
+  end
+
+  @spec acceptance_state(String.t()) :: {:ok, map()} | {:error, :restart_verification}
+  def acceptance_state(continuation_id) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    with {:ok, continuation_id} <- Ecto.UUID.cast(continuation_id),
+         %InvitationAcceptanceDiscordContinuation{} = continuation <-
+           Repo.get(InvitationAcceptanceDiscordContinuation, continuation_id),
+         %InvitationAcceptanceAttempt{status: "processing"} <-
+           Repo.get(InvitationAcceptanceAttempt, continuation.attempt_id),
+         %Invitation{status: "pending"} = invitation <-
+           Repo.get(Invitation, continuation.invitation_id),
+         true <- continuation.status == "awaiting_oauth",
+         :gt <- DateTime.compare(invitation.expires_at, now),
+         :gt <- DateTime.compare(continuation.expires_at, now) do
+      {:ok, safe_state(continuation)}
+    else
+      _ -> {:error, :restart_verification}
+    end
+  end
 
   @spec issue_invitations([map() | String.t()], map()) ::
           {:ok, Oban.Job.t()} | {:error, Ecto.Changeset.t()}
@@ -130,6 +233,35 @@ defmodule Dhc.Onboarding do
       stripe_customer_id: prior_customer_id || invitation.stripe_customer_id
     }
     |> Repo.insert!()
+  end
+
+  defp insert_pre_oauth_attempt!(invitation) do
+    %InvitationAcceptanceAttempt{invitation_id: invitation.id, acceptance_data: %{}}
+    |> Repo.insert!()
+  end
+
+  defp pre_oauth_attempt?(attempt) do
+    attempt.status == "processing" and attempt.acceptance_data == %{} and
+      attempt.stripe_customer_id in [nil, ""] and attempt.stripe_state == %{}
+  end
+
+  defp earliest_expiry(left, right) do
+    if DateTime.compare(left, right) == :gt, do: right, else: left
+  end
+
+  defp browser_owns_continuation?(continuation, protected_continuation_id) do
+    case Ecto.UUID.cast(protected_continuation_id) do
+      {:ok, continuation_id} -> continuation.id == continuation_id
+      :error -> false
+    end
+  end
+
+  defp safe_state(continuation) do
+    %{
+      state: "awaitingDiscord",
+      continuation_id: continuation.id,
+      expires_at: continuation.expires_at
+    }
   end
 
   defp provision_membership(

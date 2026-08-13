@@ -9,6 +9,7 @@ defmodule Dhc.OnboardingTest do
   alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.Onboarding
   alias Dhc.Onboarding.InvitationAcceptanceAttempt
+  alias Dhc.Onboarding.InvitationAcceptanceDiscordContinuation
   alias Dhc.Onboarding.Workers.AcceptanceRecoveryWorker
 
   setup do
@@ -94,6 +95,111 @@ defmodule Dhc.OnboardingTest do
     refute Repo.exists?(
              from(a in InvitationAcceptanceAttempt, where: a.invitation_id == ^invitation.id)
            )
+  end
+
+  test "credential verification starts one protected pre-payment attempt and continuation" do
+    invitation = insert_invitation!()
+
+    assert {:ok, first} =
+             Onboarding.start_acceptance(
+               invitation.id,
+               invitation.email,
+               Date.to_iso8601(invitation.date_of_birth)
+             )
+
+    assert first.state == "awaitingDiscord"
+    continuation = Repo.get!(InvitationAcceptanceDiscordContinuation, first.continuation_id)
+    assert {:ok, refreshed} = Onboarding.acceptance_state(first.continuation_id)
+    assert refreshed.state == "awaitingDiscord"
+
+    assert {:error, :invalid_invitation} =
+             Onboarding.start_acceptance(
+               invitation.id,
+               invitation.email,
+               Date.to_iso8601(invitation.date_of_birth)
+             )
+
+    assert {:ok, replay} =
+             Onboarding.start_acceptance(
+               invitation.id,
+               invitation.email,
+               Date.to_iso8601(invitation.date_of_birth),
+               first.continuation_id
+             )
+
+    assert Repo.get!(InvitationAcceptanceDiscordContinuation, replay.continuation_id).attempt_id ==
+             continuation.attempt_id
+
+    assert replay.continuation_id == first.continuation_id
+    assert Repo.aggregate(InvitationAcceptanceAttempt, :count) == 1
+    assert Repo.aggregate(InvitationAcceptanceDiscordContinuation, :count) == 1
+    refute Repo.get(Principal, invitation.prospective_principal_id)
+    refute_received {:create_customer, _}
+    refute_received {:provision_membership, _}
+  end
+
+  test "missing or mismatched opaque proof returns restart verification" do
+    invitation = insert_invitation!()
+
+    assert {:ok, state} =
+             Onboarding.start_acceptance(
+               invitation.id,
+               invitation.email,
+               Date.to_iso8601(invitation.date_of_birth)
+             )
+
+    assert {:error, :restart_verification} =
+             Onboarding.acceptance_state(Ecto.UUID.generate())
+
+    assert {:ok, %{state: "awaitingDiscord"}} =
+             Onboarding.acceptance_state(state.continuation_id)
+  end
+
+  test "an active pre-OAuth attempt cannot restart after the Invitation expires" do
+    invitation = insert_invitation!()
+
+    assert {:ok, _state} =
+             Onboarding.start_acceptance(
+               invitation.id,
+               invitation.email,
+               Date.to_iso8601(invitation.date_of_birth)
+             )
+
+    invitation
+    |> Ecto.Changeset.change(
+      expires_at: DateTime.utc_now() |> DateTime.add(-1, :second) |> DateTime.truncate(:second)
+    )
+    |> Repo.update!()
+
+    assert {:error, :invalid_invitation} =
+             Onboarding.start_acceptance(
+               invitation.id,
+               invitation.email,
+               Date.to_iso8601(invitation.date_of_birth)
+             )
+
+    assert Repo.aggregate(InvitationAcceptanceAttempt, :count) == 1
+    assert Repo.aggregate(InvitationAcceptanceDiscordContinuation, :count) == 1
+  end
+
+  test "a replay-ineligible active attempt cannot start a Discord continuation" do
+    invitation = insert_invitation!()
+
+    %InvitationAcceptanceAttempt{
+      invitation_id: invitation.id,
+      status: "processing",
+      acceptance_data: %{"payment" => %{"confirmation_token" => "existing"}}
+    }
+    |> Repo.insert!()
+
+    assert {:error, :invalid_invitation} =
+             Onboarding.start_acceptance(
+               invitation.id,
+               invitation.email,
+               Date.to_iso8601(invitation.date_of_birth)
+             )
+
+    refute Repo.exists?(InvitationAcceptanceDiscordContinuation)
   end
 
   test "an annual decline cancels partial Membership provisioning before a retry" do

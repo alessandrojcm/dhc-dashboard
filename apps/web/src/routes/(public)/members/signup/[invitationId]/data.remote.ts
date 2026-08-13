@@ -1,4 +1,4 @@
-import { invitationsAccept, invitationsVerify } from "@dhc/api-client";
+import { invitationsAccept, onboardingStartAcceptance } from "@dhc/api-client";
 import { error, isRedirect, redirect } from "@sveltejs/kit";
 import dayjs from "dayjs";
 import { dev } from "$app/environment";
@@ -20,39 +20,43 @@ export const validateInvitation = form(inviteValidationSchema, async (data) => {
 	if (!invitationId) {
 		throw new Error("Invitation ID is required");
 	}
+	const protectedContinuation = event.cookies.get(
+		`onboarding-acceptance-${invitationId}`,
+	);
 
-	const response = await invitationsVerify({
+	const response = await onboardingStartAcceptance({
 		baseUrl: apiBaseUrl(),
-		path: { id: invitationId },
+		headers: protectedContinuation
+			? { "x-onboarding-continuation": protectedContinuation }
+			: undefined,
 		body: {
+			invitationId,
 			email: data.email,
 			dateOfBirth: dayjs(data.dateOfBirth).format("YYYY-MM-DD"),
 		},
 	});
 
-	if (response.error || !response.data?.data.verificationToken) {
+	const protectedState = response.data?.data;
+	if (
+		response.error ||
+		protectedState?.state !== "awaitingDiscord" ||
+		!protectedState.continuationId
+	) {
 		return { success: false, verified: false };
 	}
 
 	event.cookies.set(
-		`invite-verification-${invitationId}`,
-		response.data.data.verificationToken,
+		`onboarding-acceptance-${invitationId}`,
+		protectedState.continuationId,
 		{
 			expires: new Date(Date.now() + 60 * 15 * 1000),
-			path: "/",
+			path: `/members/signup/${invitationId}`,
 			httpOnly: true,
 			secure: !dev,
 			sameSite: "lax",
 		},
 	);
 
-	event.cookies.set(`invite-confirmed-${invitationId}`, "true", {
-		expires: new Date(Date.now() + 60 * 60 * 24 * 30),
-		path: "/",
-		httpOnly: !dev,
-		secure: !dev,
-		sameSite: "lax",
-	});
 	return { success: true, verified: true };
 });
 
