@@ -8,14 +8,14 @@ defmodule Dhc.DiscordOAuthStub do
     {:ok,
      %{
        url: "https://discord.example.com/oauth2/authorize?state=test-state",
-       session_params: %{state: "test-state"}
+       session_params: %{state: "test-state", code_verifier: "test-code-verifier"}
      }}
   end
 
   @impl true
   def callback(config, %{"state" => "test-state", "code" => code}) do
     case {Keyword.get(config, :session_params), code} do
-      {%{state: "test-state"}, "success"} ->
+      {%{state: "test-state", code_verifier: "test-code-verifier"}, "success"} ->
         {:ok,
          %{
            user: %{
@@ -27,7 +27,7 @@ defmodule Dhc.DiscordOAuthStub do
            token: %{"access_token" => "not-persisted"}
          }}
 
-      {%{state: "test-state"}, "unknown"} ->
+      {%{state: "test-state", code_verifier: "test-code-verifier"}, "unknown"} ->
         {:ok,
          %{
            user: %{

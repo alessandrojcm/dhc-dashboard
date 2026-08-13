@@ -17,7 +17,10 @@ defmodule DhcWeb.AuthSessionControllerTest do
       assert redirected_to(conn, 302) ==
                "https://discord.example.com/oauth2/authorize?state=test-state"
 
-      assert get_session(conn, :discord_oauth_session_params) == %{state: "test-state"}
+      assert get_session(conn, :discord_oauth_flow) == %{
+               purpose: :sign_in,
+               session_params: %{state: "test-state", code_verifier: "test-code-verifier"}
+             }
     end
   end
 
@@ -31,9 +34,12 @@ defmodule DhcWeb.AuthSessionControllerTest do
         |> put_signed_cookie(@session_cookie, token)
         |> get("/api/auth/discord/link")
 
-      session_reference = get_session(link_conn, :discord_link_session_reference)
+      %{purpose: {:link, session_reference}, session_params: session_params} =
+        get_session(link_conn, :discord_oauth_flow)
+
       assert {:ok, _uuid} = Ecto.UUID.cast(session_reference)
       refute session_reference == token
+      assert session_params == %{state: "test-state", code_verifier: "test-code-verifier"}
 
       conn =
         link_conn
@@ -124,6 +130,76 @@ defmodule DhcWeb.AuthSessionControllerTest do
       assert %{"data" => %{"sent" => true}} = json_response(conn, 200)
     end
 
+    test "does not link the authenticated Principal when the recorded purpose is sign-in" do
+      authenticated_principal = active_principal("already-authenticated@example.com")
+      sign_in_principal = active_principal("discord-request@example.com")
+      token = session_token(authenticated_principal)
+
+      conn =
+        conn()
+        |> put_signed_cookie(@session_cookie, token)
+        |> get("/api/auth/discord")
+        |> recycle()
+        |> get("/api/auth/discord/callback?state=test-state&code=success")
+
+      assert redirected_to(conn, 302) == "http://localhost:5173/dashboard"
+
+      assert Repo.get_by!(Dhc.Auth.ExternalIdentity,
+               provider: "discord",
+               provider_subject: "discord-request-success"
+             ).principal_id == sign_in_principal.id
+    end
+
+    test "rejects a callback with no recorded purpose before creating an identity or Session" do
+      conn = get(conn(), "/api/auth/discord/callback?state=test-state&code=success")
+
+      assert redirected_to(conn, 302) == "http://localhost:5173/auth?discord=failed"
+      refute conn.resp_cookies[@session_cookie]
+      refute Repo.exists?(Dhc.Auth.ExternalIdentity)
+      refute Repo.exists?(from(t in PrincipalToken, where: t.context == "session"))
+    end
+
+    test "rejects an unknown recorded purpose before creating an identity or Session" do
+      conn =
+        conn()
+        |> init_test_session(%{
+          discord_oauth_flow: %{
+            purpose: :invitation_acceptance,
+            session_params: %{state: "test-state", code_verifier: "test-code-verifier"}
+          }
+        })
+        |> get("/api/auth/discord/callback?state=test-state&code=success")
+
+      assert redirected_to(conn, 302) == "http://localhost:5173/auth?discord=failed"
+      refute conn.resp_cookies[@session_cookie]
+      refute Repo.exists?(Dhc.Auth.ExternalIdentity)
+      refute Repo.exists?(from(t in PrincipalToken, where: t.context == "session"))
+    end
+
+    test "consumes the recorded purpose so a callback cannot be replayed" do
+      principal = active_principal("discord-request@example.com")
+
+      conn =
+        conn()
+        |> get("/api/auth/discord")
+        |> recycle()
+        |> get("/api/auth/discord/callback?state=test-state&code=success")
+
+      assert redirected_to(conn, 302) == "http://localhost:5173/dashboard"
+
+      replay =
+        conn
+        |> recycle()
+        |> get("/api/auth/discord/callback?state=test-state&code=success")
+
+      assert redirected_to(replay, 302) == "http://localhost:5173/auth?discord=failed"
+      assert Repo.aggregate(Dhc.Auth.ExternalIdentity, :count) == 1
+      assert Repo.aggregate(from(t in PrincipalToken, where: t.context == "session"), :count) == 1
+
+      assert Repo.get_by!(Dhc.Auth.ExternalIdentity, provider: "discord").principal_id ==
+               principal.id
+    end
+
     test "logs non-personal failure stages for Sentry" do
       oauth_log =
         capture_log(fn ->
@@ -131,7 +207,7 @@ defmodule DhcWeb.AuthSessionControllerTest do
           assert redirected_to(conn, 302) == "http://localhost:5173/auth?discord=failed"
         end)
 
-      assert oauth_log =~ "[auth] Discord sign-in failed at oauth_callback"
+      assert oauth_log =~ "[auth] Discord sign-in failed at oauth_purpose"
 
       account_log =
         capture_log(fn ->

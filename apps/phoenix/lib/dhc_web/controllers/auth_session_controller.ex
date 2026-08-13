@@ -50,11 +50,12 @@ defmodule DhcWeb.AuthSessionController do
   # `@session_validity_in_days`.
   @session_max_age 30 * 24 * 60 * 60
 
+  @discord_oauth_flow_session_key :discord_oauth_flow
+
   # ── GET /api/auth/discord ────────────────────────────────────────────
   def request_discord(conn, _params) do
     conn
-    |> Plug.Conn.delete_session(:discord_link_session_reference)
-    |> authorize_discord()
+    |> authorize_discord(:sign_in)
   end
 
   def request_discord_link(conn, _params) do
@@ -63,8 +64,7 @@ defmodule DhcWeb.AuthSessionController do
     case Auth.get_session_reference(session_token) do
       {:ok, session_reference} ->
         conn
-        |> put_session(:discord_link_session_reference, session_reference)
-        |> authorize_discord()
+        |> authorize_discord({:link, session_reference})
 
       {:error, :invalid} ->
         conn
@@ -73,13 +73,21 @@ defmodule DhcWeb.AuthSessionController do
     end
   end
 
-  defp authorize_discord(conn) do
+  # The purpose and Assent's state/PKCE session parameters are persisted as
+  # one browser-session value. The browser never supplies the purpose during
+  # the callback, so it cannot turn a sign-in into a link (or vice versa).
+  # Starting another Discord flow replaces this value; only the most recently
+  # started flow may complete.
+  defp authorize_discord(conn, purpose) do
     strategy = discord_strategy()
 
     case strategy.authorize_url(discord_config()) do
       {:ok, %{url: url, session_params: session_params}} ->
         conn
-        |> put_session(:discord_oauth_session_params, session_params)
+        |> put_session(@discord_oauth_flow_session_key, %{
+          purpose: purpose,
+          session_params: session_params
+        })
         |> redirect(external: url)
 
       {:error, _reason} ->
@@ -88,48 +96,20 @@ defmodule DhcWeb.AuthSessionController do
   end
 
   def discord_callback(conn, params) do
-    session_params = get_session(conn, :discord_oauth_session_params)
-    link_session_reference = get_session(conn, :discord_link_session_reference)
+    flow = get_session(conn, @discord_oauth_flow_session_key)
 
     conn =
       conn
-      |> Plug.Conn.delete_session(:discord_oauth_session_params)
-      |> Plug.Conn.delete_session(:discord_link_session_reference)
+      |> Plug.Conn.delete_session(@discord_oauth_flow_session_key)
 
-    strategy = discord_strategy()
-
-    result =
-      discord_config()
-      |> Keyword.put(:session_params, session_params)
-      |> strategy.callback(params)
-
-    case result do
-      {:ok, %{user: claims}} ->
-        case complete_discord_auth(link_session_reference, claims) do
-          {:ok, %{session_token: session_token}} ->
-            :telemetry.execute([:dhc, :auth, :discord, :succeeded], %{}, %{})
-
-            Logger.info("[auth] Discord sign-in succeeded",
-              provider: "discord",
-              outcome: "succeeded"
-            )
-
-            app_url = Application.get_env(:dhc, :app_url, "http://localhost:5173")
-
-            conn
-            |> put_session_cookie(session_token)
-            |> redirect(external: "#{app_url}/dashboard")
-
-          {:ok, :linked} ->
-            :telemetry.execute([:dhc, :auth, :discord, :linked], %{}, %{})
-            app_url = Application.get_env(:dhc, :app_url, "http://localhost:5173")
-            redirect(conn, external: "#{app_url}/dashboard")
-
-          {:error, :invalid} ->
-            :telemetry.execute([:dhc, :auth, :discord, :failed], %{}, %{})
-            log_discord_failure("account_validation")
-            discord_failure(conn)
-        end
+    with {:ok, purpose, session_params} <- valid_discord_oauth_flow(flow),
+         {:ok, %{user: claims}} <- complete_discord_oauth_callback(params, session_params) do
+      complete_discord_auth(conn, purpose, claims)
+    else
+      {:error, :invalid_purpose} ->
+        :telemetry.execute([:dhc, :auth, :discord, :failed], %{}, %{})
+        log_discord_failure("oauth_purpose")
+        discord_failure(conn)
 
       {:error, _reason} ->
         :telemetry.execute([:dhc, :auth, :discord, :failed], %{}, %{})
@@ -138,17 +118,62 @@ defmodule DhcWeb.AuthSessionController do
     end
   end
 
-  defp complete_discord_auth(session_reference, claims) when is_binary(session_reference) do
-    with {:ok, principal} <- Auth.get_principal_by_session_reference(session_reference),
-         {:ok, %{is_active: true}} <- Auth.load_session_principal(principal),
-         {:ok, _identity} <- Auth.link_discord_identity(principal, claims) do
-      {:ok, :linked}
-    else
-      _error -> {:error, :invalid}
+  defp valid_discord_oauth_flow(%{purpose: :sign_in, session_params: session_params})
+       when is_map(session_params),
+       do: {:ok, :sign_in, session_params}
+
+  defp valid_discord_oauth_flow(%{
+         purpose: {:link, session_reference},
+         session_params: session_params
+       })
+       when is_binary(session_reference) and is_map(session_params),
+       do: {:ok, {:link, session_reference}, session_params}
+
+  defp valid_discord_oauth_flow(_flow), do: {:error, :invalid_purpose}
+
+  defp complete_discord_oauth_callback(params, session_params) do
+    discord_config()
+    |> Keyword.put(:session_params, session_params)
+    |> discord_strategy().callback(params)
+  end
+
+  defp complete_discord_auth(conn, :sign_in, claims) do
+    case Auth.sign_in_with_discord(claims) do
+      {:ok, %{session_token: session_token}} ->
+        :telemetry.execute([:dhc, :auth, :discord, :succeeded], %{}, %{})
+
+        Logger.info("[auth] Discord sign-in succeeded",
+          provider: "discord",
+          outcome: "succeeded"
+        )
+
+        app_url = Application.get_env(:dhc, :app_url, "http://localhost:5173")
+
+        conn
+        |> put_session_cookie(session_token)
+        |> redirect(external: "#{app_url}/dashboard")
+
+      {:error, :invalid} ->
+        :telemetry.execute([:dhc, :auth, :discord, :failed], %{}, %{})
+        log_discord_failure("account_validation")
+        discord_failure(conn)
     end
   end
 
-  defp complete_discord_auth(_session_reference, claims), do: Auth.sign_in_with_discord(claims)
+  defp complete_discord_auth(conn, {:link, session_reference}, claims) do
+    with {:ok, principal} <- Auth.get_principal_by_session_reference(session_reference),
+         {:ok, %{is_active: true}} <- Auth.load_session_principal(principal),
+         {:ok, _identity} <- Auth.link_discord_identity(principal, claims) do
+      :telemetry.execute([:dhc, :auth, :discord, :linked], %{}, %{})
+      app_url = Application.get_env(:dhc, :app_url, "http://localhost:5173")
+      redirect(conn, external: "#{app_url}/dashboard")
+    else
+      _error ->
+        :telemetry.execute([:dhc, :auth, :discord, :failed], %{}, %{})
+        log_discord_failure("account_validation")
+        discord_failure(conn)
+    end
+  end
 
   # ── POST /api/auth/magic-link ────────────────────────────────────────
   def request_magic_link(conn, %{"email" => email} = _params) when is_binary(email) do
