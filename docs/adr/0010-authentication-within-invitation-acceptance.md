@@ -1,7 +1,7 @@
 # ADR 0010: Authentication within Invitation Acceptance
 
 **Status:** Accepted
-**Amended by:** ADR-0013
+**Amended by:** ADR-0013, ADR-0014
 **Date:** 2026-07-17
 **Deciders:** @alessandrojcm
 **Tags:** authentication, phoenix, invitations, onboarding, migration
@@ -18,9 +18,9 @@ The target contract (ADR 0009; ALE-156) requires stable principal and Member IDs
 
 **The Authentication Principal is born inside acceptance.** Invitation Acceptance is the single, atomic point at which a prospective member becomes a Principal and a Member. Concretely:
 
-- **Issue time does only one thing**: mint the invitation row — id, email, date of birth, `expires_at` (7 days), `created_by`, status `pending`. No profile, no principal, no external identity, no Stripe customer is created at issue. The `invitation.user_id` is a fresh Phoenix UUID minted at issue; it is not a Supabase UUID and it is not resolved against any existing identity.
+- **Issue time does only one thing**: mint the invitation row — id, email, date of birth, `expires_at` (7 days), `created_by`, status `pending`. No profile, no principal, no external identity, no Stripe customer is created at issue. The `invitation.prospective_principal_id` is a fresh Phoenix UUID minted at issue; it is not a Supabase UUID and it is not resolved against any existing identity.
 
-- **Acceptance creates the principal and the entire member-facing record set in one `Repo.transaction`:** the Principal (id = `invitation.user_id`, authoritative email = invitation email), the `UserProfile`, the `MemberProfile` (id = `invitation.user_id`), the `member` role, the invitation flip to `accepted`, `user_profile.is_active = true`, and the waitlist `joined` update — all commit together. The principal and the Member come into existence together; there is never a Member without a principal or a principal without a Member.
+- **Acceptance creates the principal and the entire member-facing record set in one `Repo.transaction`:** the Principal (id = `invitation.prospective_principal_id`, authoritative email = invitation email), the `UserProfile`, the `MemberProfile` (id = `invitation.prospective_principal_id`), the `member` role, the invitation flip to `accepted`, `user_profile.is_active = true`, and the waitlist `joined` update — all commit together. The principal and the Member come into existence together; there is never a Member without a principal or a principal without a Member.
 
 - **Acceptance does not establish a session.** It is the *registration*; it is not the login. On success the member is routed to a static success page that points to the normal sign-in path. Acceptance does not auto-send a magic link (auto-sending from a public, unauthenticated flow is a spam/abuse vector; the magic link is delivered only through the rate-limited login flow on demand).
 
@@ -42,7 +42,7 @@ The target contract (ADR 0009; ALE-156) requires stable principal and Member IDs
 - Issue time becomes trivially cheap and side-effect free (one insert); it no longer calls a Supabase admin API or creates a Stripe customer. Customer creation moves into acceptance or is driven by the Stripe webhook — to be specified by the implementation / ALE-152.
 - Expired invitations leave behind only the invitation row (flipped to `expired`); no orphan `UserProfile` or principal rows accumulate, and no cleanup worker is needed.
 - Re-issue is just a new invitation with a new id; acceptance builds everything fresh. No collision with stale profiles.
-- The acceptance transaction shape changes: it no longer *looks up* a pre-existing `UserProfile` by `supabase_user_id`; it *creates* the principal, `UserProfile`, and `MemberProfile` together, keyed by `invitation.user_id`. `UserProfile` loses its `supabase_user_id` lookup role; the principal's id is the join key.
+- The acceptance transaction shape changes: it no longer *looks up* a pre-existing `UserProfile` by `supabase_user_id`; it *creates* the principal, `UserProfile`, and `MemberProfile` together, keyed by `invitation.prospective_principal_id`. `UserProfile` loses its `supabase_user_id` lookup role; the principal's id is the join key.
 - Payment idempotency within acceptance (Stripe charge surviving a late transaction rollback) is a pre-existing concern unrelated to the auth integration and is deferred to the implementation / ALE-152, not specified here.
 - First-contact Discord for a mismatched-email member is a two-step dance (magic link, then link Discord from settings). This is accepted as the price of never mis-linking a Discord identity to a stranger's principal.
 - ALE-152 (migration script) must preserve the Supabase UUID as the Phoenix principal/Member id for *already-accepted* members (ALE-156) and delete pending invitations at cutover rather than migrating them.
