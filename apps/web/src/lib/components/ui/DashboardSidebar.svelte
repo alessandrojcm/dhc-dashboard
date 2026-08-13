@@ -8,7 +8,7 @@ import { Button } from "$lib/components/ui/button";
 import type { NavData, UserData } from "$lib/types";
 import DHCLogo from "/src/assets/images/dhc-logo.png?enhanced";
 import NotificationCenter from "$lib/components/notifications/NotificationCenter.svelte";
-import { Menu } from "@lucide/svelte";
+import { Menu, Shield } from "@lucide/svelte";
 import { useSidebar } from "$lib/components/ui/sidebar/context.svelte.js";
 import { browser } from "$app/environment";
 import { resolve } from "$app/paths";
@@ -67,13 +67,16 @@ let customAnchor = $state<HTMLElement>(null!);
 	bind:ref
 	{collapsible}
 	{...restProps}
-	class="h-[100vh] border-r-1 md:block"
+	class="h-dvh border-r md:block shadow-xl shadow-primary/10"
 >
-	<Sidebar.Header class="flex flex-row items-center">
-		<div class="h-12 w-12">
+	<Sidebar.Header class="brand-header">
+		<div class="brand-mark">
 			<enhanced:img src={DHCLogo} alt="Dublin Hema Club Logo" />
 		</div>
-		<h2 class="text-lg mt-2 text-black font-medium">Dublin Hema Club</h2>
+		<div>
+			<p class="brand-kicker">Established in Dublin</p>
+			<h2>Dublin Hema Club</h2>
+		</div>
 	</Sidebar.Header>
 	<Sidebar.Content data-testid="sidebar">
 		<!-- We create a Sidebar.Group for each parent. -->
@@ -81,7 +84,9 @@ let customAnchor = $state<HTMLElement>(null!);
 			{#if group.role.intersection(roles).size > 0}
 				<Sidebar.Group>
 					{#if group?.items}
-						<Sidebar.GroupLabel>{group.title}</Sidebar.GroupLabel>
+						<Sidebar.GroupLabel class="nav-group-label"
+							>{group.title}</Sidebar.GroupLabel
+						>
 						<Sidebar.GroupContent>
 							<Sidebar.Menu>
 								{#each group.items as item (item.title)}
@@ -89,7 +94,7 @@ let customAnchor = $state<HTMLElement>(null!);
 										<Sidebar.MenuItem>
 											<Sidebar.MenuButton
 												onclick={toggleSidebar}
-												class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+												class="nav-item data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
 											>
 												<a href={resolvePath(item.url)}>{item.title}</a>
 											</Sidebar.MenuButton>
@@ -101,7 +106,7 @@ let customAnchor = $state<HTMLElement>(null!);
 					{:else}
 						<Sidebar.MenuButton
 							onclick={toggleSidebar}
-							class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+							class="nav-item data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
 						>
 							<a href={resolvePath(group.url)}>{group.title}</a>
 						</Sidebar.MenuButton>
@@ -111,6 +116,10 @@ let customAnchor = $state<HTMLElement>(null!);
 		{/each}
 	</Sidebar.Content>
 	<Sidebar.Footer class="m-2 mb-4">
+		<div class="member-note">
+			<Shield size={15} aria-hidden="true" />
+			<span>Member workspace</span>
+		</div>
 		<Sidebar.Menu>
 			<!-- Notifications Item -->
 			<Sidebar.MenuItem>
@@ -164,3 +173,77 @@ let customAnchor = $state<HTMLElement>(null!);
 		</Sidebar.Menu>
 	</Sidebar.Footer>
 </Sidebar.Root>
+
+<style>
+.brand-header {
+	display: flex;
+	align-items: center;
+	gap: 0.75rem;
+	padding: 1.25rem 1rem 1rem;
+}
+
+.brand-mark {
+	display: grid;
+	height: 2.75rem;
+	width: 2.75rem;
+	place-items: center;
+	border: 1px solid hsl(var(--sidebar-primary) / 0.65);
+	border-radius: 0.625rem;
+	background: hsl(var(--sidebar-primary-foreground));
+	padding: 0.25rem;
+}
+
+.brand-mark :global(img) {
+	max-height: 100%;
+	max-width: 100%;
+	object-fit: contain;
+}
+
+.brand-kicker {
+	margin: 0 0 0.125rem;
+	color: hsl(var(--sidebar-primary));
+	font-size: 0.5625rem;
+	font-weight: 800;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+}
+
+h2 {
+	margin: 0;
+	color: hsl(var(--sidebar-foreground));
+	font-family: Georgia, "Times New Roman", serif;
+	font-size: 1.125rem;
+	font-weight: 700;
+	letter-spacing: -0.025em;
+}
+
+.nav-group-label {
+	color: hsl(var(--sidebar-foreground) / 0.5);
+	font-size: 0.625rem;
+	font-weight: 800;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+}
+
+.nav-item {
+	font-weight: 600;
+	transition:
+		background-color 180ms ease-out,
+		color 180ms ease-out,
+		transform 180ms ease-out;
+}
+
+.nav-item:hover {
+	transform: translateX(2px);
+}
+
+.member-note {
+	display: flex;
+	align-items: center;
+	gap: 0.5rem;
+	margin: 0.5rem;
+	color: hsl(var(--sidebar-foreground) / 0.55);
+	font-size: 0.6875rem;
+	font-weight: 600;
+}
+</style>

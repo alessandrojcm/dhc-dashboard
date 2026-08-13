@@ -17,11 +17,10 @@ account establish a Session for another Member's Principal.
 Discord's guild roster is the only permitted source for the candidate Discord
 accounts. Per ALE-203, its User ID is equivalent to Assent's OAuth `sub`; its
 username, global display name, and guild nickname are mutable and are only
-human-recognition aids. ADR-0015 and ALE-210 require a one-off roster script to
-reuse DHC's existing bot through temporary audited credential access and a
-recorded successful access preflight. This decision defines the prefill and
-first-use contract; it neither implements the task nor creates recurring roster
-synchronization.
+human-recognition aids. ADR-0015 and ALE-210 require a separate, temporary
+roster bot and a recorded successful provisioning preflight. This decision
+defines the prefill and first-use contract; it neither implements the task nor
+creates a permanent guild integration.
 
 ## Decision
 
@@ -57,12 +56,12 @@ independent review. Terminal records remain as history.
 ### Authoritative sources and bounded roster handling
 
 The task operates only after an ALE-210 execution record proves, from the same
-controlled task environment, the existing bot's application identity and
-access to the configured guild. It accepts the existing bot token only through
-the task-local `DISCORD_ROSTER_BOT_TOKEN` alias plus
-`DISCORD_ROSTER_GUILD_ID`; interactive OAuth credentials are rejected if
-supplied. It must record the preflight execution-record ID, configured guild
-ID, bot application ID, tool revision, executor, and timestamp before capture.
+controlled task environment, the separate bot's application identity and
+access to the configured guild. It accepts only
+`DISCORD_ROSTER_BOT_TOKEN` and `DISCORD_ROSTER_GUILD_ID` for Discord access;
+the interactive OAuth credentials are rejected if supplied. It must record the
+preflight execution-record ID, configured guild ID, bot application ID, tool
+revision, executor, and timestamp before doing any capture.
 
 The task reads `GET /guilds/{guild_id}/members` as that bot, requesting up to
 1000 entries per page, following the opaque `after` User-ID cursor, and obeying
@@ -98,11 +97,10 @@ The later one-shot administrative task exposes these phases; it is never a web
 request, Oban job, CI job, cron task, browser process, or general developer
 command.
 
-1. `capture`: takes no roster file and loads only the task-local
-   `DISCORD_ROSTER_BOT_TOKEN` alias and `DISCORD_ROSTER_GUILD_ID` for roster
-   access from its dedicated audited secret path. It verifies the recorded
-   access preflight (which already checked the existing bot's expected
-   application ID), captures
+1. `capture`: takes no roster file and loads only
+   `DISCORD_ROSTER_BOT_TOKEN` and `DISCORD_ROSTER_GUILD_ID` for roster access
+   from its dedicated audited secret path. It verifies the recorded provisioning
+   preflight (which already checked the expected bot application ID), captures
    every page, and emits
    `capture_id`, encrypted review-package location, digest, count, and receipt.
 2. `stage`: takes `capture_id` and a signed mapping manifest. Every manifest
@@ -252,12 +250,9 @@ complete roster.
 
 The correction window ends only after the final report, any pre-use corrections,
 and documented hand-off to the post-use recovery process. Then DHC follows
-ADR-0015: revoke the executor's token access, destroy the one-shot environment,
-delete the restricted roster package, and disable `GUILD_MEMBERS` if the
-existing bot's established role does not need it. The bot remains installed for
-that established role. A later capture requires a new approved operational
-authorization and access preflight; continued bot operation is not standing
-authorization for roster synchronization.
+ADR-0015: remove/disable the separate bot and revoke or rotate its token. A
+later need to capture again requires a new approved operational authorization
+and provisioning preflight; it does not leave the bot as a permanent service.
 
 ## Consequences
 
@@ -282,5 +277,5 @@ authorization for roster synchronization.
 - **Allow an administrator to repair a promoted binding in the roster task.**
   Rejected: it bypasses proof of both account control and destination Principal
   control, and would make a data-import tool a credential takeover surface.
-- **Run periodic roster synchronization with the existing bot.** Rejected by
-  ADR-0015: guild presence is not a continuing identity or access assertion.
+- **Keep the roster bot for periodic synchronization.** Rejected by ADR-0015:
+  guild presence is not a continuing identity or access assertion.

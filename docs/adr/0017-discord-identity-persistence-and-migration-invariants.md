@@ -305,11 +305,9 @@ must not repurpose an Assignment or Continuation.
    uniqueness conflict, or unreconciled Stripe-linked Attempt before contract.
 5. **Contract.** Remove superseded callback/link code and temporary
    compatibility reads only after the observation gate. Keep all new tables,
-   constraints, indexes, triggers, and audit history. After the ADR-0016
-   correction window, revoke roster-script access to the existing bot token and
-   disable `GUILD_MEMBERS` when its established role does not need it. Retaining
-   the bot for that role is not a reason to retain the roster package or remove
-   reviewed Assignment history.
+   constraints, indexes, triggers, and audit history. Retire the separate
+   roster bot after the ADR-0016 correction window; that operational retirement
+   is not a reason to remove reviewed Assignment history.
 
 ## Consequences
 

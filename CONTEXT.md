@@ -51,7 +51,7 @@
 | 0012 | Durable Workshop Payment Attempts and Refunds | Accepted |
 | 0013 | Onboarding owns Invitation issue and Invitation Acceptance | Accepted |
 | 0014 | Verified Discord continuation in Invitation Acceptance | Accepted |
-| 0015 | Reuse the existing Discord bot for roster prefill | Accepted |
+| 0015 | Separate Discord roster bot application | Accepted |
 | 0016 | Reviewed, staged Discord identity prefill for existing Members | Accepted |
 | 0017 | Discord identity persistence and migration invariants | Accepted |
 | 0018 | Subject-only Discord sign-in cutover and recovery | Accepted |

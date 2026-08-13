@@ -7,17 +7,116 @@ const { children } = $props();
 	<title>Dublin Hema Club - Join</title>
 </svelte:head>
 
-<div class="flex flex-col md:flex-row h-screen">
-	<div
-		class="hidden md:flex flex-1 md:basis-1/4 bg-blue-500 px-2 items-center justify-center"
-	>
-		<enhanced:img
-			src={DHCLogo}
-			alt="Dublin Hema Club Logo"
-			class="max-w-full h-auto"
-		/>
+<div class="join-shell">
+	<div class="club-panel">
+		<div class="club-panel__content">
+			<div class="club-panel__logo">
+				<enhanced:img src={DHCLogo} alt="Dublin Hema Club Logo" />
+			</div>
+			<p class="club-panel__eyebrow">Historical European Martial Arts</p>
+			<h1>Train with intention. Learn together.</h1>
+			<p class="club-panel__copy">
+				A welcoming Dublin club for people who want to study, practise, and
+				preserve historical fencing.
+			</p>
+		</div>
+		<p class="club-panel__footer">Dublin Hema Club · Member portal</p>
 	</div>
-	<div class="flex-1 flex items-center justify-center md:basis-3/4 p-4 md:p-0">
+	<div class="join-content">
 		{@render children()}
 	</div>
 </div>
+
+<style>
+.join-shell {
+	display: flex;
+	min-height: 100dvh;
+}
+.club-panel {
+	display: none;
+	position: relative;
+	flex: 0 0 38%;
+	min-height: 100dvh;
+	overflow: hidden;
+	background: hsl(var(--primary));
+	color: hsl(var(--primary-foreground));
+}
+.club-panel::after {
+	position: absolute;
+	inset: auto -7rem -8rem auto;
+	width: 21rem;
+	height: 21rem;
+	border: 1px solid hsl(var(--secondary) / 0.6);
+	border-radius: 999px;
+	box-shadow:
+		0 0 0 2.5rem hsl(var(--secondary) / 0.1),
+		0 0 0 5rem hsl(var(--secondary) / 0.06);
+	content: "";
+}
+.club-panel__content {
+	position: relative;
+	z-index: 1;
+	max-width: 27rem;
+	padding: 3rem;
+}
+.club-panel__logo {
+	display: grid;
+	width: 4rem;
+	height: 4rem;
+	place-items: center;
+	margin-bottom: 5rem;
+	border: 1px solid hsl(var(--secondary) / 0.7);
+	border-radius: 0.75rem;
+	background: hsl(var(--primary-foreground));
+	padding: 0.5rem;
+}
+.club-panel__logo :global(img) {
+	max-width: 100%;
+	max-height: 100%;
+	object-fit: contain;
+}
+.club-panel__eyebrow {
+	margin: 0 0 0.75rem;
+	color: hsl(var(--secondary));
+	font-size: 0.6875rem;
+	font-weight: 800;
+	letter-spacing: 0.14em;
+	text-transform: uppercase;
+}
+h1 {
+	margin: 0;
+	font-family: Georgia, "Times New Roman", serif;
+	font-size: clamp(2.3rem, 4vw, 4.5rem);
+	letter-spacing: -0.05em;
+	line-height: 0.96;
+}
+.club-panel__copy {
+	max-width: 24rem;
+	margin: 1.5rem 0 0;
+	color: hsl(var(--primary-foreground) / 0.72);
+	line-height: 1.65;
+}
+.club-panel__footer {
+	position: absolute;
+	bottom: 2rem;
+	left: 3rem;
+	margin: 0;
+	color: hsl(var(--primary-foreground) / 0.55);
+	font-size: 0.75rem;
+}
+.join-content {
+	display: flex;
+	flex: 1;
+	align-items: center;
+	justify-content: center;
+	padding: 1.5rem;
+}
+@media (min-width: 768px) {
+	.club-panel {
+		display: block;
+	}
+	.join-content {
+		padding: 2.5rem;
+	}
+}
+</style>

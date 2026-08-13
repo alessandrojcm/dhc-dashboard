@@ -14,7 +14,7 @@ import { membersMeOptions, authDeleteSession } from "@dhc/api-client";
 
 let { children, data }: { data: LayoutData; children: any } = $props();
 let roles = $derived.by(() => new Set(data.roles));
-let paths = $derived.by(() => page.url.pathname.split("/"));
+let paths = $derived.by(() => page.url.pathname.split("/").filter(Boolean));
 const userDataQuery = createQuery(() => ({
 	...membersMeOptions(),
 	experimental_prefetchInRender: true,
@@ -62,42 +62,69 @@ function getLink(item: string): string {
 <svelte:head>
 	<title>Dublin Hema Club - Dashboard</title>
 </svelte:head>
-<SidebarProvider class="h-[calc(100vh-5rem)]">
+<a class="skip-link" href="#dashboard-content">Skip to main content</a>
+<SidebarProvider class="min-h-dvh bg-transparent">
 	<DashboardSidebar
 		{roles}
 		{logout}
 		userData={userDataQuery.promise}
 		navData={data.navData}
 	/>
-	<main class="w-full">
-		<Breadcrumb.Root class="m-6">
-			<Breadcrumb.List class="ml-12 md:ml-0">
-				{#each paths as item, index (item)}
-					{#if index !== paths.length - 1}
-						<Breadcrumb.Item>
-							<Breadcrumb.Link class="capitalize" href={getLink(item)}>
-								{item.replace("-", " ")}
-							</Breadcrumb.Link>
-						</Breadcrumb.Item>
-					{:else}
-						<Breadcrumb.Item>
-							<Breadcrumb.Page class="capitalize">
-								{item.replaceAll("-", " ")}
-							</Breadcrumb.Page>
-						</Breadcrumb.Item>
-					{/if}
-					{#if index < paths.length - 1}
-						<Breadcrumb.Separator>/</Breadcrumb.Separator>
-					{/if}
-				{/each}
-			</Breadcrumb.List>
-		</Breadcrumb.Root>
-		<Separator class="mb-2" />
-		{@render children()}
+	<main id="dashboard-content" class="w-full" tabindex="-1">
+		<header class="dashboard-header">
+			<div>
+				<p class="eyebrow">Dublin Hema Club</p>
+				<h1>Club operations</h1>
+			</div>
+			<Breadcrumb.Root>
+				<Breadcrumb.List class="ml-12 md:ml-0">
+					{#each paths as item, index (item)}
+						{#if index !== paths.length - 1}
+							<Breadcrumb.Item>
+								<Breadcrumb.Link class="capitalize" href={getLink(item)}>
+									{item.replace("-", " ")}
+								</Breadcrumb.Link>
+							</Breadcrumb.Item>
+						{:else}
+							<Breadcrumb.Item>
+								<Breadcrumb.Page class="capitalize">
+									{item.replaceAll("-", " ")}
+								</Breadcrumb.Page>
+							</Breadcrumb.Item>
+						{/if}
+						{#if index < paths.length - 1}
+							<Breadcrumb.Separator>/</Breadcrumb.Separator>
+						{/if}
+					{/each}
+				</Breadcrumb.List>
+			</Breadcrumb.Root>
+		</header>
+		<Separator />
+		<div class="dashboard-content">
+			{@render children()}
+		</div>
 	</main>
 </SidebarProvider>
 
 <style>
+.skip-link {
+	position: fixed;
+	top: 0.75rem;
+	left: 0.75rem;
+	z-index: 100;
+	transform: translateY(-160%);
+	border-radius: 0.375rem;
+	background: hsl(var(--secondary));
+	padding: 0.75rem 1rem;
+	color: hsl(var(--secondary-foreground));
+	font-weight: 700;
+	transition: transform 150ms ease-out;
+}
+
+.skip-link:focus {
+	transform: translateY(0);
+}
+
 main {
 	flex: 1;
 	display: flex;
@@ -105,11 +132,61 @@ main {
 	width: 100%;
 	margin: 0 auto;
 	box-sizing: border-box;
+	background: hsl(var(--background) / 0.72);
+}
+
+.dashboard-header {
+	display: flex;
+	align-items: flex-end;
+	justify-content: space-between;
+	gap: 1rem;
+	padding: 1.25rem 1.5rem;
+}
+
+.eyebrow {
+	margin: 0 0 0.25rem;
+	color: hsl(var(--secondary));
+	font-size: 0.6875rem;
+	font-weight: 800;
+	letter-spacing: 0.16em;
+	text-transform: uppercase;
+}
+
+h1 {
+	margin: 0;
+	color: hsl(var(--foreground));
+	font-family: Georgia, "Times New Roman", serif;
+	font-size: clamp(1.5rem, 2vw, 2rem);
+	font-weight: 700;
+	letter-spacing: -0.035em;
+	line-height: 1;
+}
+
+.dashboard-content {
+	padding: 1.5rem;
 }
 
 @media (min-width: 768px) {
 	main {
 		width: calc(100vw - var(--sidebar-width));
+	}
+
+	.dashboard-header,
+	.dashboard-content {
+		padding-left: 2rem;
+		padding-right: 2rem;
+	}
+}
+
+@media (max-width: 640px) {
+	.dashboard-header {
+		align-items: flex-start;
+		flex-direction: column;
+		padding-top: 4.5rem;
+	}
+
+	.dashboard-content {
+		padding: 1rem;
 	}
 }
 </style>
