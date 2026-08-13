@@ -15,10 +15,13 @@
   "scripts": {
     "postinstall": "openapi-ts",
     "api:generate": "openapi-ts",
-    "api:generate:watch": "openapi-ts --watch"
+    "api:generate:watch": "openapi-ts --watch",
+    "lint": "oxlint",
+    "lint:fix": "oxlint --fix"
   },
   "devDependencies": {
-    "@hey-api/openapi-ts": "0.97.2"
+    "@hey-api/openapi-ts": "0.97.2",
+    "oxlint": "^1.75.0"
   },
   "engines": {
     "node": ">=22.13.0"
@@ -26,6 +29,6 @@
   "dependencies": {
     "@tanstack/svelte-query": "^6.0.6",
     "ky": "^2.0.2",
-    "valibot": "1.2.0"
+    "valibot": "1.4.2"
   }
 }

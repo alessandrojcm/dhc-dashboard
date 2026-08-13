@@ -31,7 +31,7 @@ import {
 	Plus,
 	Wrench,
 	ArrowRightLeft,
-} from "lucide-svelte";
+} from "@lucide/svelte";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import { buildContainerHierarchy } from "$lib/utils/inventory-form";

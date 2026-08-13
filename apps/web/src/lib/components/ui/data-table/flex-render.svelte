@@ -12,7 +12,7 @@ import type {
 	CellContext,
 	ColumnDefTemplate,
 	HeaderContext,
-} from "@tanstack/svelte-table";
+} from "@tanstack/table-core";
 
 import {
 	RenderComponentConfig,

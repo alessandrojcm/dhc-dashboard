@@ -31,12 +31,12 @@ mise run test-e2e           # Playwright; self-starts disposable PostgreSQL, Pho
 mise run check              # Svelte type check (NOT raw tsc)
 
 # Lint & format
-mise run lint               # Oxlint (Svelte script blocks + JS/TS)
+mise run lint               # Oxlint (web Svelte/JS/TS + API client TS)
 mise run format             # Auto-format with Oxfmt
 ```
 
-Frontend linting and formatting run inside `apps/web` with Oxlint and Oxfmt;
-generated Phoenix and API-client files are outside that workspace and are not traversed.
+Oxlint runs in both `apps/web` and `packages/api-client`; the generated API client
+under `packages/api-client/src/client/` is ignored. Oxfmt remains scoped to `apps/web`.
 
 Playwright starts its Phoenix and SvelteKit processes through the internal
 `e2e-phoenix-server` and `e2e-web-server` mise tasks. Their task-local environment

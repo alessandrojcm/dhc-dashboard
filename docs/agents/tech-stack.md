@@ -6,7 +6,7 @@
 - **Backend**: Supabase (Postgres + Auth + Edge Functions)
 - **ORM**: Kysely (mutations), Supabase client (queries)
 - **State**: TanStack Query (`createQuery(() => ({}))` thunk pattern)
-- **Table**: `@tanstack/svelte-table` and `@tanstack/table-core` must stay on the same major version (currently `^8.21.x`). Mismatched versions (e.g. v9 alpha svelte-table with v8 table-core) cause subtle type errors in `FlexRender` and column definitions.
+- **Table**: `@tanstack/table-core` `^8.21.x`, integrated through the custom Svelte 5 adapter in `src/lib/components/ui/data-table/`. The adapter supplies rune-based table state and rendering helpers, and imports shared table types directly from `table-core`; `@tanstack/svelte-table` is not required. Treat adoption of the official Svelte adapter as a deliberate v9 migration rather than adding its v8 package alongside the custom adapter.
 - **Payments**: Stripe
 - **Validation**: Valibot
 - **Forms**: Superforms

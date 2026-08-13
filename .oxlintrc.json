@@ -1,0 +1,7 @@
+{
+	"plugins": ["eslint", "typescript"],
+	"ignorePatterns": ["node_modules/**", "dist/**", "**/*.d.ts"],
+	"options": {
+		"reportUnusedDisableDirectives": "off"
+	}
+}

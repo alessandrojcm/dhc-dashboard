@@ -18,7 +18,7 @@ import {
 import { browser } from "$app/environment";
 import { env } from "$env/dynamic/public";
 import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
-import { Bell } from "lucide-svelte";
+import { Bell } from "@lucide/svelte";
 import { connectNotificationRealtime } from "./notification-realtime.svelte";
 
 // Initialize dayjs plugins

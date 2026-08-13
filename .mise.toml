@@ -167,8 +167,7 @@ run = "exec pnpm dev"
 # ── Linting & formatting ──────────────────────────
 
 [tasks.lint]
-description = "Lint frontend JS/TS/Svelte scripts with Oxlint"
-dir = "apps/web"
+description = "Lint frontend and API client JS/TS/Svelte scripts with Oxlint"
 run = "pnpm lint"
 
 [tasks.format]

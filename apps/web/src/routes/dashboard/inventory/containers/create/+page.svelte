@@ -16,7 +16,7 @@ import {
 	SelectTrigger,
 } from "$lib/components/ui/select";
 import * as Field from "$lib/components/ui/field";
-import { ArrowLeft, FolderOpen } from "lucide-svelte";
+import { ArrowLeft, FolderOpen } from "@lucide/svelte";
 import { createContainer } from "../data.remote";
 import { onMount } from "svelte";
 

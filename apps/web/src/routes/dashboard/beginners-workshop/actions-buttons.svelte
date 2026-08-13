@@ -8,7 +8,7 @@ import {
 	Edit,
 	NotebookPen,
 	Trash2,
-} from "lucide-svelte";
+} from "@lucide/svelte";
 import * as Popover from "$lib/components/ui/popover";
 import { Label } from "$lib/components/ui/label";
 import { Textarea } from "$lib/components/ui/textarea";
