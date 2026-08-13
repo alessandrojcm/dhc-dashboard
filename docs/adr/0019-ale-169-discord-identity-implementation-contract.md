@@ -163,9 +163,10 @@ account/membership information on collision.
   are deleted after the correction window. Retain only selected subject,
   immutable snapshot, capture/review receipts, and permanent security audit
   records as ADR-0016/0017 prescribe.
-- The separate roster bot has no product/runtime role after prefill. Its token,
-  guild roster, and OAuth credentials are separate and never enter application
-  logs, tables, Oban arguments, OpenAPI, or frontend state.
+- Roster export is a one-off script authenticated by DHC's existing bot. The
+  script is not added to that bot's runtime; its task-local token access, guild
+  roster, and OAuth credentials never enter application logs, tables, Oban
+  arguments, OpenAPI, or frontend state.
 - Recovery is a separately authenticated, dual-controlled security operation;
   admin/member screens do not get direct identity transfer/delete operations.
 
@@ -178,8 +179,9 @@ Follow this order; later steps must not begin early:
    code. Rehearse migrations and verify zero existing-identity versus active-row
    conflicts.
 2. **Backfill/review:** do not synthesize Assignments from existing identities
-   or metadata. Execute ADR-0015/0016 provisioning, capture, stage, independent
-   review, and receipts; report omissions/conflicts without bypass.
+   or metadata. Execute ADR-0015/0016 existing-bot access preflight, capture,
+   stage, independent review, and receipts; report omissions/conflicts without
+   bypass.
 3. **Prepared verification:** deploy Acceptance routes/UI and workers behind
    `prepared`; run callback, replay, payment, lock-contention, and outage drills
    with production-like evidence. No Assignment promotes and no new acceptance
@@ -193,8 +195,10 @@ Follow this order; later steps must not begin early:
    (`discord_sign_in_paused`) and uses magic-link recovery; it never restores
    email linking. Existing durable state remains.
 6. **Contract:** after ADR-0018 removal criteria, remove legacy code and Discord
-   `email` scope, retain constraints/audits, and retire the roster bot after its
-   correction window. Roll forward compatible code rather than down-migrating.
+   `email` scope, retain constraints/audits, revoke the roster script's bot-token
+   access after its correction window, and disable `GUILD_MEMBERS` if the bot's
+   established role does not need it. Keep the existing bot for that role. Roll
+   forward compatible code rather than down-migrating.
 
 Metrics and alerts must cover OAuth start/callback/cancel/error latency,
 Continuation/Claim lifecycle and age, collisions before Stripe, Attempt/Stripe
@@ -243,7 +247,7 @@ Implementation tickets are complete only when they prove the following:
 ## Explicitly out of scope
 
 This contract does **not** add guild enrollment, Membership-driven guild
-cleanup, invitation analytics, or implementation slicing. Guild roster access
-exists only for the one-off, separately reviewed existing-member prefill;
-Membership access remains a DHC Session policy and does not grant or revoke
-Discord guild membership.
+cleanup, invitation analytics, or implementation slicing. The existing bot is
+reused only to authenticate the one-off, separately reviewed existing-member
+roster export; Membership access remains a DHC Session policy and does not grant
+or revoke Discord guild membership.
