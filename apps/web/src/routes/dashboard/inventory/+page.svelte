@@ -15,7 +15,7 @@ import {
 	Plus,
 	Clock,
 	Wrench,
-} from "lucide-svelte";
+} from "@lucide/svelte";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 

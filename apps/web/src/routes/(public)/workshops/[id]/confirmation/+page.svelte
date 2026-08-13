@@ -2,7 +2,7 @@
 import { Alert, AlertTitle, AlertDescription } from "$lib/components/ui/alert";
 import { Button } from "$lib/components/ui/button";
 import * as Card from "$lib/components/ui/card";
-import { CheckCircle } from "lucide-svelte";
+import { CheckCircle } from "@lucide/svelte";
 </script>
 
 <div class="container mx-auto px-4 py-8">

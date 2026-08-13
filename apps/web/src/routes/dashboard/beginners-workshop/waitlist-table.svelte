@@ -29,7 +29,7 @@ import {
 	type TableOptions,
 } from "@tanstack/table-core";
 import dayjs from "dayjs";
-import { Loader2, SendIcon } from "lucide-svelte";
+import { Loader2, SendIcon } from "@lucide/svelte";
 import { createRawSnippet } from "svelte";
 import { SvelteURLSearchParams } from "svelte/reactivity";
 import { Cross2 } from "svelte-radix";

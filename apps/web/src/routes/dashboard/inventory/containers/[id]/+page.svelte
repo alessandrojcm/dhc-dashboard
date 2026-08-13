@@ -16,7 +16,7 @@ import {
 	Package,
 	Folder,
 	AlertTriangle,
-} from "lucide-svelte";
+} from "@lucide/svelte";
 import dayjs from "dayjs";
 
 let { data } = $props();

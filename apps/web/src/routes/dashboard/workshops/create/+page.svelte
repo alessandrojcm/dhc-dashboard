@@ -4,7 +4,7 @@ import { Button } from "$lib/components/ui/button";
 import { Alert, AlertDescription } from "$lib/components/ui/alert";
 import { goto } from "$app/navigation";
 import { resolve } from "$app/paths";
-import { Sparkles } from "lucide-svelte";
+import { Sparkles } from "@lucide/svelte";
 
 const { data } = $props();
 

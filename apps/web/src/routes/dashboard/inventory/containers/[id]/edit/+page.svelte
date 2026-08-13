@@ -16,7 +16,7 @@ import {
 	SelectTrigger,
 } from "$lib/components/ui/select";
 import * as Field from "$lib/components/ui/field";
-import { AlertCircleIcon, ArrowLeft, FolderOpen, Trash2 } from "lucide-svelte";
+import { AlertCircleIcon, ArrowLeft, FolderOpen, Trash2 } from "@lucide/svelte";
 import * as Alert from "$lib/components/ui/alert";
 import { updateContainer, deleteContainer } from "../../data.remote";
 import { SvelteMap } from "svelte/reactivity";

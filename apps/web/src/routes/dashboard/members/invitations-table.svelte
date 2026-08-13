@@ -11,7 +11,7 @@ import {
 	type SortingState,
 } from "@tanstack/table-core";
 import dayjs from "dayjs";
-import { SendIcon, Trash2 } from "lucide-svelte";
+import { SendIcon, Trash2 } from "@lucide/svelte";
 import { createRawSnippet } from "svelte";
 import { SvelteURLSearchParams } from "svelte/reactivity";
 import { Cross2 } from "svelte-radix";

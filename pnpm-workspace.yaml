@@ -1,25 +1,32 @@
 packages:
-  - 'apps/*'
-  - 'packages/*'
+  - apps/*
+  - packages/*
+
+allowBuilds:
+  '@sentry/cli': true
+  better-sqlite3: true
+  core-js: true
+  esbuild: true
+  sharp: true
+  workerd: true
+
+engineStrict: true
+
+overrides:
+  'evalite>@fastify/static': 9.3.0
+  'evalite>better-sqlite3': 13.0.3
 
 onlyBuiltDependencies:
-  - "@parcel/watcher"
-  - "@prisma/engines"
-  - "@sentry/cli"
-  - "@snaplet/seed"
-  - "@tailwindcss/oxide"
+  - '@parcel/watcher'
+  - '@sentry/cli'
+  - '@tailwindcss/oxide'
   - better-sqlite3
   - core-js
   - esbuild
   - maplibre-gl
   - protobufjs
   - sharp
-  - supabase
   - unix-dgram
   - workerd
 
-ignoredBuiltDependencies:
-  - netlify-cli
-
-engineStrict: true
 strictPeerDependencies: false

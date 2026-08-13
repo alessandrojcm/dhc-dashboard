@@ -2,7 +2,7 @@
 import * as Field from "$lib/components/ui/field";
 import { Input } from "$lib/components/ui/input";
 import { Button, type ButtonProps } from "$lib/components/ui/button";
-import { ArrowRightIcon } from "lucide-svelte";
+import { ArrowRightIcon } from "@lucide/svelte";
 import {
 	loadStripe,
 	type StripeElements,

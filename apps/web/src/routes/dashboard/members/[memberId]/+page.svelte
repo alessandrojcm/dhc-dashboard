@@ -14,7 +14,7 @@ import * as Select from "$lib/components/ui/select";
 import { Textarea } from "$lib/components/ui/textarea";
 import { fromDate, getLocalTimeZone } from "@internationalized/date";
 import { createMutation } from "@tanstack/svelte-query";
-import { ExternalLink } from "lucide-svelte";
+import { ExternalLink } from "@lucide/svelte";
 import { toast } from "svelte-sonner";
 import { Badge } from "$lib/components/ui/badge";
 import PauseSubscriptionModal from "$lib/components/ui/pause-subscription-modal.svelte";

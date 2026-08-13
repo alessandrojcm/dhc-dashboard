@@ -10,7 +10,7 @@ import {
 	Loader2,
 	AlertTriangle,
 	CheckCircle,
-} from "lucide-svelte";
+} from "@lucide/svelte";
 import { createMutation, useQueryClient } from "@tanstack/svelte-query";
 import { toast } from "svelte-sonner";
 import dayjs from "dayjs";
