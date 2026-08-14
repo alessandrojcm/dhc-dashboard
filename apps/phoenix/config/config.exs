@@ -22,6 +22,9 @@ config :dhc, :invitation_verification_token_salt, "invitation-verification-v1"
 config :dhc, :invitation_payment_processor, Dhc.Invitations.StripePayment
 config :dhc, :onboarding_stripe_adapter, Dhc.Onboarding.StripeAdapter.Live
 config :dhc, :workshop_stripe_adapter, Dhc.Workshops.StripeAdapter.Live
+# Non-prod email delivery seam — relays email jobs to the local Mailpit
+# container (see Dhc.Email.DevMailer). Overridden with a stub in test.exs.
+config :dhc, :email_dev_mailer, Dhc.Email.DevMailer
 
 # Configure Oban for background job processing
 config :dhc, Oban,
