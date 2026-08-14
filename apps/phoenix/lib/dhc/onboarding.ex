@@ -137,7 +137,9 @@ defmodule Dhc.Onboarding do
                 continuation.provider_subject
               )
 
-              if pre_oauth_attempt?(attempt), do: decline_attempt!(attempt, "discord_expired", now)
+              if pre_oauth_attempt?(attempt),
+                do: decline_attempt!(attempt, "discord_expired", now)
+
               Repo.rollback(:restart_verification)
             end
 
@@ -223,7 +225,7 @@ defmodule Dhc.Onboarding do
                 from(e in Dhc.Auth.ExternalIdentity,
                   where:
                     e.provider == "discord" and e.provider_subject == ^subject and
-                      is_nil(e.retired_at),
+                        is_nil(e.retired_at),
                   lock: "FOR UPDATE"
                 )
               ) ->
@@ -243,7 +245,7 @@ defmodule Dhc.Onboarding do
                 from(a in StagedAssignment,
                   where:
                     a.provider == "discord" and a.provider_subject == ^subject and
-                      a.state in ["proposed", "approved"],
+                        a.state in ["proposed", "approved"],
                   lock: "FOR UPDATE"
                 )
               ) ->
@@ -638,12 +640,6 @@ defmodule Dhc.Onboarding do
     %{state: "awaiting_oauth", expires_at: continuation.expires_at}
   end
 
-  defp safe_state_with_handle(continuation, invitation) do
-    continuation
-    |> safe_state(invitation)
-    |> Map.put(:continuation_id, continuation.id)
-  end
-
   defp safe_acceptance_state(continuation, invitation, attempt, now) do
     cond do
       continuation.status in ["collision", "failed"] ->
@@ -669,6 +665,11 @@ defmodule Dhc.Onboarding do
       true ->
         {:error, :restart_verification}
     end
+  end
+
+  defp subject_fingerprint(subject) do
+    secret = Application.fetch_env!(:dhc, :invitation_acceptance_subject_fingerprint_secret)
+    Dhc.Discord.SubjectFingerprint.generate(subject, secret)
   end
 
   defp safe_attempt_state(%{status: "completed"}, invitation),
@@ -988,11 +989,6 @@ defmodule Dhc.Onboarding do
       last_error: "discord_collision"
     )
     |> Repo.update!()
-  end
-
-  defp subject_fingerprint(subject) do
-    secret = Application.fetch_env!(:dhc, :invitation_acceptance_subject_fingerprint_secret)
-    :crypto.mac(:hmac, :sha256, secret, subject) |> Base.encode16(case: :lower)
   end
 
   defp protected_acceptance_started?(invitation_id) do

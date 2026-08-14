@@ -4,7 +4,7 @@ defmodule DhcWeb.AuthSessionControllerTest do
   import Dhc.AuthFixtures
   import ExUnit.CaptureLog
   alias Dhc.Auth.{ExternalIdentity, PrincipalToken, UserRole}
-  alias Dhc.Discord.{IdentityRecovery, IdentityRecoveryProof, SignedManifest}
+  alias Dhc.Discord.{IdentityRecovery, IdentityRecoveryProof, SignedManifest, SubjectFingerprint}
   alias Dhc.Repo
 
   import Ecto.Query
@@ -918,20 +918,40 @@ defmodule DhcWeb.AuthSessionControllerTest do
       "action" => "open",
       "issued_at" => DateTime.to_iso8601(now),
       "binding_id" => identity.id,
-      "binding_fingerprint" =>
-        :crypto.mac(:hmac, :sha256, fingerprint_key, subject)
-        |> Base.encode16(case: :lower),
-      "reporter_reference" => "controller-recovery-test",
+      "binding_fingerprint" => SubjectFingerprint.generate(subject, fingerprint_key),
+      "reporter_reference" => "support-case:controller-recovery-test",
       "reason_code" => "replacement_request",
-      "evidence_references" => ["evidence-controller-test"],
+      "evidence_references" => ["evidence:controller-test"],
       "actor_principal_id" => operator.id
     }
 
     manifest_key = "controller-recovery-manifest-key"
+    operator_proof_key = "controller-recovery-operator-proof-key"
+    manifest = SignedManifest.sign(command, operator.id, manifest_key)
+
+    {:ok, _command, manifest_digest, signer} =
+      SignedManifest.verify(manifest, %{operator.id => manifest_key})
+
+    assert signer == operator.id
+
+    proof =
+      SignedManifest.sign(
+        %{
+          "version" => 1,
+          "action" => "authorize_identity_recovery",
+          "issued_at" => DateTime.to_iso8601(now),
+          "manifest_digest" => manifest_digest,
+          "actor_principal_id" => operator.id,
+          "nonce" => Ecto.UUID.generate()
+        },
+        operator.id,
+        operator_proof_key
+      )
 
     assert {:ok, receipt} =
-             IdentityRecovery.open_signed(SignedManifest.sign(command, manifest_key), %{
-               manifest_key: manifest_key,
+             IdentityRecovery.open_signed(manifest, proof, %{
+               manifest_keys: %{operator.id => manifest_key},
+               operator_proof_keys: %{operator.id => operator_proof_key},
                fingerprint_key: fingerprint_key,
                now: now
              })
