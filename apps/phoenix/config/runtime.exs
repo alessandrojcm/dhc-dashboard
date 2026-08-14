@@ -1,5 +1,11 @@
 import Config
 
+if config_env() == :prod do
+  config :dhc,
+         :invitation_acceptance_subject_fingerprint_secret,
+         System.fetch_env!("INVITATION_ACCEPTANCE_SUBJECT_FINGERPRINT_SECRET")
+end
+
 # config/runtime.exs is executed for all environments, including
 # during releases. It is executed after compilation and before the
 # system starts, so it is typically used to load production configuration
@@ -66,6 +72,7 @@ if config_env() == :prod do
       """
 
   host = System.get_env("PHX_HOST") || "example.com"
+  app_url = System.get_env("APP_URL", "https://dublinhemaclub.com")
 
   config :dhc, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
 
@@ -74,7 +81,7 @@ if config_env() == :prod do
   # CORS_ALLOWED_ORIGINS is unset so the two controls cannot drift.
   effective_cors_allowed_origins =
     case cors_allowed_origins do
-      [] -> [System.get_env("APP_URL", "https://dublinhemaclub.com")]
+      [] -> [app_url]
       origins -> origins
     end
 
@@ -108,6 +115,13 @@ if config_env() == :prod do
     redirect_uri:
       System.get_env("DISCORD_REDIRECT_URI", "https://#{host}/api/auth/discord/callback"),
     code_verifier: true
+
+  config :dhc,
+         :invitation_acceptance_discord_redirect_uri,
+         System.get_env(
+           "INVITATION_ACCEPTANCE_DISCORD_REDIRECT_URI",
+           "#{app_url}/auth/discord/acceptance/callback"
+         )
 
   config :dhc, :loops_api_key, System.get_env("LOOPS_API_KEY")
 
@@ -148,7 +162,7 @@ if config_env() == :prod do
          :invitation_verification_token_salt,
          System.get_env("INVITATION_VERIFICATION_TOKEN_SALT", "invitation-verification-v1")
 
-  config :dhc, :app_url, System.get_env("APP_URL", "https://dublinhemaclub.com")
+  config :dhc, :app_url, app_url
   config :dhc, :auth_session_domain, System.fetch_env!("AUTH_SESSION_DOMAIN")
   config :dhc, :auth_session_secure, true
   config :dhc, :environment, :prod

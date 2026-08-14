@@ -13,6 +13,9 @@ defmodule Dhc.Onboarding.InvitationAcceptanceDiscordContinuation do
     field :status, :string, default: "awaiting_oauth"
     field :expires_at, :utc_datetime
     field :concluded_at, :utc_datetime
+    field :provider_subject, :string
+    field :subject_fingerprint, :string
+    field :display_metadata, :map, default: %{}
 
     timestamps(type: :utc_datetime, inserted_at: :created_at)
   end

@@ -7,12 +7,22 @@
 # General application configuration
 import Config
 
+# Keyed, non-reversible audit fingerprint for terminal invitation-acceptance
+# continuations. Production overrides this from runtime configuration.
+config :dhc,
+       :invitation_acceptance_subject_fingerprint_secret,
+       "dev-only-acceptance-subject-fingerprint-secret"
+
 config :dhc,
   ecto_repos: [Dhc.Repo],
   generators: [timestamp_type: :utc_datetime]
 
 config :dhc, :cors_allowed_origins, []
 config :dhc, :discord_oauth_strategy, Assent.Strategy.Discord
+
+config :dhc,
+       :invitation_acceptance_discord_redirect_uri,
+       "http://localhost:5173/auth/discord/acceptance/callback"
 
 # Salt namespace for short-lived public invitation verification tokens. The
 # Endpoint secret_key_base remains the signing secret; this salt is configurable

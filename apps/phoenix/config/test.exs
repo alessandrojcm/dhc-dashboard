@@ -64,9 +64,20 @@ config :dhc, :stripe_api_url, System.get_env("STRIPE_API_URL", "https://api.stri
 config :dhc, :stripe_api_version, "2025-10-29.clover"
 config :dhc, :stripe_webhook_secret, "whsec_test_signing_key_for_webhook_verification"
 config :dhc, :invitation_verification_token_salt, "invitation-verification-test"
+
+config :dhc,
+       :invitation_acceptance_subject_fingerprint_secret,
+       "acceptance-subject-fingerprint-test"
+
 config :dhc, :supabase_url, "https://supabase.example.com"
 config :dhc, :supabase_service_role_key, "test-service-role-key"
-config :dhc, :app_url, "http://localhost:5173"
+app_url = System.get_env("APP_URL", "http://localhost:5173")
+config :dhc, :app_url, app_url
+
+config :dhc,
+       :invitation_acceptance_discord_redirect_uri,
+       "#{app_url}/auth/discord/acceptance/callback"
+
 config :dhc, :auth_session_domain, nil
 config :dhc, :auth_session_secure, false
 config :dhc, :environment, :test

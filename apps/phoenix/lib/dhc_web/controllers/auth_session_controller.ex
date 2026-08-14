@@ -58,6 +58,13 @@ defmodule DhcWeb.AuthSessionController do
     |> authorize_discord(:sign_in)
   end
 
+  # This flow is deliberately separate from sign-in and linking. The opaque
+  # continuation remains in the protected browser session and is never placed
+  # in Discord state or a redirect URL.
+  def request_acceptance_discord(conn, continuation_id) do
+    authorize_discord(conn, {:invitation_acceptance, continuation_id})
+  end
+
   def request_discord_link(conn, _params) do
     session_token = conn.assigns.current_session_token
 
@@ -81,7 +88,7 @@ defmodule DhcWeb.AuthSessionController do
   defp authorize_discord(conn, purpose) do
     strategy = discord_strategy()
 
-    case strategy.authorize_url(discord_config()) do
+    case strategy.authorize_url(discord_config(purpose)) do
       {:ok, %{url: url, session_params: session_params}} ->
         conn
         |> put_session(@discord_oauth_flow_session_key, %{
@@ -102,20 +109,30 @@ defmodule DhcWeb.AuthSessionController do
       conn
       |> Plug.Conn.delete_session(@discord_oauth_flow_session_key)
 
-    with {:ok, purpose, session_params} <- valid_discord_oauth_flow(flow),
-         {:ok, %{user: claims}} <- complete_discord_oauth_callback(params, session_params) do
-      complete_discord_auth(conn, purpose, claims)
-    else
+    case valid_discord_oauth_flow(flow) do
+      {:ok, purpose, session_params} ->
+        case complete_discord_oauth_callback(params, session_params, purpose) do
+          {:ok, %{user: claims}} -> complete_discord_auth(conn, purpose, claims)
+          {:error, _reason} -> complete_discord_callback_failure(conn, purpose, params)
+        end
+
       {:error, :invalid_purpose} ->
         :telemetry.execute([:dhc, :auth, :discord, :failed], %{}, %{})
         log_discord_failure("oauth_purpose")
         discord_failure(conn)
-
-      {:error, _reason} ->
-        :telemetry.execute([:dhc, :auth, :discord, :failed], %{}, %{})
-        log_discord_failure("oauth_callback")
-        discord_failure(conn)
     end
+  end
+
+  defp complete_discord_callback_failure(conn, {:invitation_acceptance, continuation_id}, params) do
+    outcome = if params["error"] == "access_denied", do: :cancelled, else: :failed
+    _ = Dhc.Onboarding.fail_discord(continuation_id, outcome)
+    acceptance_resume(conn, continuation_id)
+  end
+
+  defp complete_discord_callback_failure(conn, _purpose, _params) do
+    :telemetry.execute([:dhc, :auth, :discord, :failed], %{}, %{})
+    log_discord_failure("oauth_callback")
+    discord_failure(conn)
   end
 
   defp valid_discord_oauth_flow(%{purpose: :sign_in, session_params: session_params})
@@ -129,10 +146,17 @@ defmodule DhcWeb.AuthSessionController do
        when is_binary(session_reference) and is_map(session_params),
        do: {:ok, {:link, session_reference}, session_params}
 
+  defp valid_discord_oauth_flow(%{
+         purpose: {:invitation_acceptance, continuation_id},
+         session_params: session_params
+       })
+       when is_binary(continuation_id) and is_map(session_params),
+       do: {:ok, {:invitation_acceptance, continuation_id}, session_params}
+
   defp valid_discord_oauth_flow(_flow), do: {:error, :invalid_purpose}
 
-  defp complete_discord_oauth_callback(params, session_params) do
-    discord_config()
+  defp complete_discord_oauth_callback(params, session_params, purpose) do
+    discord_config(purpose)
     |> Keyword.put(:session_params, session_params)
     |> discord_strategy().callback(params)
   end
@@ -172,6 +196,14 @@ defmodule DhcWeb.AuthSessionController do
         :telemetry.execute([:dhc, :auth, :discord, :failed], %{}, %{})
         log_discord_failure("account_validation")
         discord_failure(conn)
+    end
+  end
+
+  defp complete_discord_auth(conn, {:invitation_acceptance, continuation_id}, claims) do
+    case Dhc.Onboarding.verify_discord(continuation_id, claims) do
+      {:ok, _safe_state} -> acceptance_resume(conn, continuation_id)
+      {:error, :collision} -> acceptance_resume(conn, continuation_id)
+      {:error, _} -> acceptance_failure(conn, continuation_id)
     end
   end
 
@@ -324,9 +356,34 @@ defmodule DhcWeb.AuthSessionController do
     Application.get_env(:dhc, :discord_oauth, [])
   end
 
+  defp discord_config({:invitation_acceptance, _continuation_id}) do
+    Keyword.put(
+      discord_config(),
+      :redirect_uri,
+      Application.fetch_env!(:dhc, :invitation_acceptance_discord_redirect_uri)
+    )
+  end
+
+  defp discord_config(_purpose), do: discord_config()
+
   defp discord_failure(conn) do
     app_url = Application.get_env(:dhc, :app_url, "http://localhost:5173")
     redirect(conn, external: "#{app_url}/auth?discord=failed")
+  end
+
+  defp acceptance_resume(conn, continuation_id) do
+    app_url = Application.get_env(:dhc, :app_url, "http://localhost:5173")
+
+    case Dhc.Onboarding.acceptance_oauth_resume_path(continuation_id) do
+      {:ok, path} -> redirect(conn, external: app_url <> path)
+      {:error, _} -> redirect(conn, external: app_url <> "/members/signup/restart")
+    end
+  end
+
+  defp acceptance_failure(conn, continuation_id) do
+    # Do not expose provider or continuation diagnostics. The local status view
+    # decides which neutral restart state to show.
+    acceptance_resume(conn, continuation_id)
   end
 
   defp log_discord_failure(stage) do

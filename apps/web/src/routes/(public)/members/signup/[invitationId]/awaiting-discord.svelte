@@ -1,4 +1,5 @@
 <script lang="ts">
+import { page } from "$app/state";
 import { Button } from "$lib/components/ui/button";
 </script>
 
@@ -14,5 +15,7 @@ import { Button } from "$lib/components/ui/button";
 	<p class="text-sm text-muted-foreground">
 		Your membership has not been created and no payment has started.
 	</p>
-	<Button disabled>Connect Discord</Button>
+	<Button href={`/members/signup/${page.params.invitationId}/discord`}
+		>Continue to Discord</Button
+	>
 </main>

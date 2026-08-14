@@ -40,14 +40,14 @@ export const validateInvitation = form(inviteValidationSchema, async (data) => {
 	if (
 		response.error ||
 		protectedState?.state !== "awaitingDiscord" ||
-		!protectedState.continuationId
+		!response.response?.headers.get("x-onboarding-continuation")
 	) {
 		return { success: false, verified: false };
 	}
 
 	event.cookies.set(
 		`onboarding-acceptance-${invitationId}`,
-		protectedState.continuationId,
+		response.response.headers.get("x-onboarding-continuation")!,
 		{
 			expires: new Date(Date.now() + 60 * 15 * 1000),
 			path: `/members/signup/${invitationId}`,

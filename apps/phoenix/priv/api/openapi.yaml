@@ -618,6 +618,10 @@ paths:
       responses:
         "200":
           description: Safe protected acceptance state
+          headers:
+            x-onboarding-continuation:
+              description: Opaque proof for the SvelteKit protected HTTP-only browser session; never expose to browser JavaScript or URLs.
+              schema: { type: string, format: uuid }
           content:
             application/json:
               schema:
@@ -651,6 +655,57 @@ paths:
                 $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
         "422":
           description: Browser proof is missing or no longer eligible
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+
+  /onboarding/acceptance/discord:
+    get:
+      operationId: onboarding.startDiscord
+      tags: [Onboarding]
+      summary: Begin Discord verification for Invitation Acceptance
+      description: |
+        Starts acceptance-specific Discord OAuth only for the current
+        awaiting-OAuth Continuation. The protected Phoenix browser session binds
+        the opaque Continuation reference to Assent state and PKCE data. The
+        reference is never placed in OAuth state, a URL, or the response body.
+      security:
+        - onboardingContinuation: []
+      responses:
+        "302":
+          description: Redirect to Discord OAuth authorization
+          headers:
+            Location:
+              required: true
+              schema: { type: string, format: uri }
+        "422":
+          description: Browser proof is missing or no longer awaiting OAuth
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+
+  /onboarding/acceptance/discord/cancel:
+    post:
+      operationId: onboarding.cancelDiscord
+      tags: [Onboarding]
+      summary: End the current Discord verification before payment
+      description: |
+        Atomically terminalizes and zeroizes the current pre-payment
+        Continuation and releases its transient Discord Subject Claim. It starts
+        no Stripe work and creates no Principal, External Identity, or Session.
+      security:
+        - onboardingContinuation: []
+      responses:
+        "200":
+          description: Discord verification ended; Invitation credentials must be verified again
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+        "422":
+          description: Browser proof is missing, consumed, or already terminal
           content:
             application/json:
               schema:
@@ -3902,6 +3957,14 @@ components:
         credential. `RequireAuth` accepts this cookie in addition to the
         transitional Supabase bearer JWT (`bearerAuth`) until the ALE-163
         cutover.
+    onboardingContinuation:
+      type: apiKey
+      in: header
+      name: x-onboarding-continuation
+      description: |
+        Opaque proof held only in the SvelteKit HTTP-only browser session.
+        It authorizes access to one pre-payment Invitation Acceptance and must
+        never be exposed to browser JavaScript, URLs, analytics, or response bodies.
   parameters:
     WorkshopId:
       name: workshopId
@@ -3929,14 +3992,22 @@ components:
           properties:
             state:
               type: string
-              enum: [awaitingDiscord, restartVerification]
-            expiresAt:
+              enum: [awaitingDiscord, discordVerified, discordCollision, restartVerification]
+            invitationEmail:
               type: string
-              format: date-time
-            continuationId:
-              type: string
-              format: uuid
-              description: Opaque protected-browser-session reference.
+              format: email
+            discord:
+              $ref: "#/components/schemas/OnboardingSafeDiscordPresentation"
+
+    OnboardingSafeDiscordPresentation:
+      type: object
+      description: Mutable display snapshot for account recognition; never an identity binding fact.
+      properties:
+        username:
+          type: string
+        avatarUrl:
+          type: string
+          format: uri
     InvitationCreateRequest:
       type: object
       required:
