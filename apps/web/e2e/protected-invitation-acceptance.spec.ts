@@ -178,13 +178,10 @@ test("starts a protected Invitation Acceptance without starting Stripe or a dash
 		);
 		expect(proof).toMatchObject({
 			httpOnly: true,
-			path: "/",
+			path: `/members/signup/${invitation.invitationId}`,
 			sameSite: "Lax",
 		});
 		if (!proof) throw new Error("Missing protected acceptance proof cookie");
-		expect(proof.value).toMatch(
-			/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
-		);
 		const forbiddenStorageFragments = [
 			proof.name,
 			proof.value,

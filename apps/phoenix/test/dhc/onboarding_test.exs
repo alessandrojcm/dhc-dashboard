@@ -25,6 +25,7 @@ defmodule Dhc.OnboardingTest do
     original_customer_result = Application.get_env(:dhc, :onboarding_stripe_customer_result)
     original_cancel_result = Application.get_env(:dhc, :onboarding_stripe_cancel_result)
     original_progress = Application.get_env(:dhc, :onboarding_stripe_progress)
+    original_expiry_clock = Application.get_env(:dhc, :onboarding_discord_expiry_clock)
 
     Application.put_env(:dhc, :onboarding_stripe_adapter, Dhc.OnboardingTestStripeAdapter)
     Application.put_env(:dhc, :onboarding_stripe_result, {:ok, %{}})
@@ -58,15 +59,21 @@ defmodule Dhc.OnboardingTest do
       end
 
       Application.delete_env(:dhc, :onboarding_test_pid)
+
+      if original_expiry_clock do
+        Application.put_env(:dhc, :onboarding_discord_expiry_clock, original_expiry_clock)
+      else
+        Application.delete_env(:dhc, :onboarding_discord_expiry_clock)
+      end
     end)
   end
 
   test "acceptance provisions Membership before atomically creating the Member" do
     invitation = insert_invitation!()
-    {:ok, token} = token_for(invitation)
+    continuation_id = continuation_for(invitation)
 
     assert {:ok, %{member_id: member_id}} =
-             Onboarding.accept(invitation.id, token, "Next of Kin", "+353810000001", %{
+             Onboarding.accept(invitation.id, continuation_id, "Next of Kin", "+353810000001", %{
                confirmation_token: "ctok_success"
              })
 
@@ -88,6 +95,31 @@ defmodule Dhc.OnboardingTest do
 
     assert_received {:create_customer, _}
     assert_received {:provision_membership, %{confirmation_token: "ctok_success"}}
+
+    assert %ExternalIdentity{
+             principal_id: ^member_id,
+             provider: "discord"
+           } = Repo.get_by!(ExternalIdentity, principal_id: member_id)
+
+    continuation = Repo.get!(InvitationAcceptanceDiscordContinuation, continuation_id)
+    assert continuation.status == "consumed"
+    assert continuation.provider_subject == nil
+    assert continuation.display_metadata == %{}
+    refute Repo.exists?(InvitationAcceptanceDiscordSubjectClaim)
+  end
+
+  test "a legacy invitation verification token cannot begin Stripe work" do
+    invitation = insert_invitation!()
+    {:ok, token} = token_for(invitation)
+
+    assert {:error, :discord_verification_required} =
+             Onboarding.accept(invitation.id, token, "Next of Kin", "+353810000001", %{
+               confirmation_token: "ctok_must_not_be_used"
+             })
+
+    refute_received {:create_customer, _}
+    refute_received {:provision_membership, _}
+    refute Repo.exists?(InvitationAcceptanceAttempt)
   end
 
   test "pricing is read-only and uses the shared Stripe adapter" do
@@ -749,9 +781,28 @@ defmodule Dhc.OnboardingTest do
     refute Repo.exists?(InvitationAcceptanceDiscordContinuation)
   end
 
+  test "the maintenance worker expires and zeroizes abandoned verified continuations" do
+    invitation = insert_invitation!()
+    continuation_id = continuation_for(invitation)
+    continuation = Repo.get!(InvitationAcceptanceDiscordContinuation, continuation_id)
+    future_now = DateTime.add(continuation.expires_at, 1, :second)
+    Application.put_env(:dhc, :onboarding_discord_expiry_clock, fn -> future_now end)
+
+    assert :ok = perform_job(DiscordContinuationExpiryWorker, %{})
+
+    continuation = Repo.get!(InvitationAcceptanceDiscordContinuation, continuation_id)
+    assert continuation.status == "expired"
+    assert continuation.provider_subject == nil
+    assert continuation.display_metadata == %{}
+    assert is_binary(continuation.subject_fingerprint)
+    refute Repo.exists?(InvitationAcceptanceDiscordSubjectClaim)
+
+    assert {:ok, 0} = Onboarding.expire_discord_continuations()
+  end
+
   test "an annual decline cancels partial Membership provisioning before a retry" do
     invitation = insert_invitation!()
-    {:ok, token} = token_for(invitation)
+    continuation_id = continuation_for(invitation)
     decline = {:stripe_api, 402, %{"error" => %{"code" => "card_declined"}}}
     Application.put_env(:dhc, :onboarding_stripe_result, {:error, decline})
 
@@ -764,7 +815,13 @@ defmodule Dhc.OnboardingTest do
     attrs = %{confirmation_token: "ctok_declined"}
 
     assert {:error, {:payment_failed, ^decline}} =
-             Onboarding.accept(invitation.id, token, "Next of Kin", "+353810000001", attrs)
+             Onboarding.accept(
+               invitation.id,
+               continuation_id,
+               "Next of Kin",
+               "+353810000001",
+               attrs
+             )
 
     attempt = Repo.get_by!(InvitationAcceptanceAttempt, invitation_id: invitation.id)
     assert attempt.status == "declined"
@@ -781,9 +838,16 @@ defmodule Dhc.OnboardingTest do
     refute Repo.get(Principal, invitation.prospective_principal_id)
 
     Application.put_env(:dhc, :onboarding_stripe_result, {:ok, %{}})
+    continuation_id = continuation_for(invitation)
 
     assert {:ok, %{member_id: _}} =
-             Onboarding.accept(invitation.id, token, "Next of Kin", "+353810000001", attrs)
+             Onboarding.accept(
+               invitation.id,
+               continuation_id,
+               "Next of Kin",
+               "+353810000001",
+               attrs
+             )
 
     attempts =
       from(a in InvitationAcceptanceAttempt,
@@ -798,22 +862,30 @@ defmodule Dhc.OnboardingTest do
 
   test "a permanent payment error concludes the attempt so corrected payment data can be used" do
     invitation = insert_invitation!()
-    {:ok, token} = token_for(invitation)
+    continuation_id = continuation_for(invitation)
     failure = {:setup_intent_failed, "requires_payment_method"}
     Application.put_env(:dhc, :onboarding_stripe_result, {:error, failure})
 
     assert {:error, {:payment_failed, ^failure}} =
-             Onboarding.accept(invitation.id, token, "Next of Kin", "+353810000001", %{
+             Onboarding.accept(invitation.id, continuation_id, "Next of Kin", "+353810000001", %{
                confirmation_token: "ctok_invalid"
              })
 
     assert %InvitationAcceptanceAttempt{status: "declined"} =
              Repo.get_by!(InvitationAcceptanceAttempt, invitation_id: invitation.id)
 
+    assert %InvitationAcceptanceDiscordContinuation{
+             status: "failed",
+             provider_subject: nil,
+             subject_fingerprint: nil,
+             display_metadata: %{}
+           } = Repo.get!(InvitationAcceptanceDiscordContinuation, continuation_id)
+
     Application.put_env(:dhc, :onboarding_stripe_result, {:ok, %{}})
+    continuation_id = continuation_for(invitation)
 
     assert {:ok, %{member_id: _}} =
-             Onboarding.accept(invitation.id, token, "Next of Kin", "+353810000001", %{
+             Onboarding.accept(invitation.id, continuation_id, "Next of Kin", "+353810000001", %{
                confirmation_token: "ctok_corrected"
              })
 
@@ -828,13 +900,13 @@ defmodule Dhc.OnboardingTest do
 
   test "failed subscription cleanup is retried before the attempt is concluded" do
     invitation = insert_invitation!()
-    {:ok, token} = token_for(invitation)
+    continuation_id = continuation_for(invitation)
     decline = {:stripe_api, 402, %{"error" => %{"code" => "card_declined"}}}
     Application.put_env(:dhc, :onboarding_stripe_result, {:error, decline})
     Application.put_env(:dhc, :onboarding_stripe_cancel_result, {:error, :stripe_unavailable})
 
     assert {:error, {:payment_failed, ^decline}} =
-             Onboarding.accept(invitation.id, token, "Next of Kin", "+353810000001", %{
+             Onboarding.accept(invitation.id, continuation_id, "Next of Kin", "+353810000001", %{
                confirmation_token: "ctok_declined"
              })
 
@@ -843,7 +915,7 @@ defmodule Dhc.OnboardingTest do
     assert_enqueued(worker: AcceptanceRecoveryWorker, args: %{"attempt_id" => attempt.id})
 
     assert {:error, :payment_cleanup_pending} =
-             Onboarding.accept(invitation.id, token, "Next of Kin", "+353810000001", %{
+             Onboarding.accept(invitation.id, continuation_id, "Next of Kin", "+353810000001", %{
                confirmation_token: "ctok_corrected"
              })
 
@@ -860,7 +932,7 @@ defmodule Dhc.OnboardingTest do
 
   test "an active attempt keeps its original Stripe parameters across transport retries" do
     invitation = insert_invitation!()
-    {:ok, token} = token_for(invitation)
+    continuation_id = continuation_for(invitation)
     Application.put_env(:dhc, :onboarding_stripe_result, {:error, {:http_error, :timeout}})
 
     original_attrs = %{
@@ -872,7 +944,7 @@ defmodule Dhc.OnboardingTest do
     assert {:error, {:payment_failed, {:http_error, :timeout}}} =
              Onboarding.accept(
                invitation.id,
-               token,
+               continuation_id,
                "Next of Kin",
                "+353810000001",
                original_attrs
@@ -884,7 +956,7 @@ defmodule Dhc.OnboardingTest do
     assert {:ok, %{member_id: _}} =
              Onboarding.accept(
                invitation.id,
-               token,
+               continuation_id,
                "Updated Kin",
                "+353810000002",
                %{
@@ -912,12 +984,12 @@ defmodule Dhc.OnboardingTest do
 
   test "a live-shaped Stripe customer rejection closes the attempt" do
     invitation = insert_invitation!()
-    {:ok, token} = token_for(invitation)
+    continuation_id = continuation_for(invitation)
     decline = {:stripe_customer, {:stripe_api, 402, %{"error" => %{"code" => "card_declined"}}}}
     Application.put_env(:dhc, :onboarding_stripe_customer_result, {:error, decline})
 
     assert {:error, {:payment_failed, ^decline}} =
-             Onboarding.accept(invitation.id, token, "Next of Kin", "+353810000001", %{
+             Onboarding.accept(invitation.id, continuation_id, "Next of Kin", "+353810000001", %{
                confirmation_token: "ctok_declined"
              })
 
@@ -927,14 +999,20 @@ defmodule Dhc.OnboardingTest do
 
   test "a Stripe rate limit keeps the active attempt available for retry" do
     invitation = insert_invitation!()
-    {:ok, token} = token_for(invitation)
+    continuation_id = continuation_for(invitation)
     rate_limit = {:stripe_api, 429, %{"error" => %{"code" => "rate_limit"}}}
     Application.put_env(:dhc, :onboarding_stripe_result, {:error, rate_limit})
 
     attrs = %{confirmation_token: "ctok_retry"}
 
     assert {:error, {:payment_failed, ^rate_limit}} =
-             Onboarding.accept(invitation.id, token, "Next of Kin", "+353810000001", attrs)
+             Onboarding.accept(
+               invitation.id,
+               continuation_id,
+               "Next of Kin",
+               "+353810000001",
+               attrs
+             )
 
     assert %InvitationAcceptanceAttempt{status: "processing", concluded_at: nil} =
              Repo.get_by!(InvitationAcceptanceAttempt, invitation_id: invitation.id)
@@ -942,7 +1020,13 @@ defmodule Dhc.OnboardingTest do
     Application.put_env(:dhc, :onboarding_stripe_result, {:ok, %{}})
 
     assert {:ok, %{member_id: _}} =
-             Onboarding.accept(invitation.id, token, "Next of Kin", "+353810000001", attrs)
+             Onboarding.accept(
+               invitation.id,
+               continuation_id,
+               "Next of Kin",
+               "+353810000001",
+               attrs
+             )
 
     assert 1 ==
              Repo.aggregate(
@@ -951,15 +1035,21 @@ defmodule Dhc.OnboardingTest do
              )
   end
 
-  test "an active attempt can be reverified and resumed after the Invitation expires" do
+  test "a consumed Discord proof can resume its active attempt after both expiries" do
     invitation = insert_invitation!()
-    {:ok, token} = token_for(invitation)
+    continuation_id = continuation_for(invitation)
     Application.put_env(:dhc, :onboarding_stripe_result, {:error, {:http_error, :timeout}})
 
     attrs = %{confirmation_token: "ctok_before_expiry"}
 
     assert {:error, {:payment_failed, {:http_error, :timeout}}} =
-             Onboarding.accept(invitation.id, token, "Next of Kin", "+353810000001", attrs)
+             Onboarding.accept(
+               invitation.id,
+               continuation_id,
+               "Next of Kin",
+               "+353810000001",
+               attrs
+             )
 
     invitation
     |> Ecto.Changeset.change(
@@ -967,19 +1057,19 @@ defmodule Dhc.OnboardingTest do
     )
     |> Repo.update!()
 
-    assert {:ok, resumed_token} =
-             Onboarding.verify_credentials(
-               invitation.id,
-               invitation.email,
-               invitation.date_of_birth
-             )
+    InvitationAcceptanceDiscordContinuation
+    |> Repo.get!(continuation_id)
+    |> Ecto.Changeset.change(
+      expires_at: DateTime.utc_now() |> DateTime.add(-60, :second) |> DateTime.truncate(:second)
+    )
+    |> Repo.update!()
 
     Application.put_env(:dhc, :onboarding_stripe_result, {:ok, %{}})
 
     assert {:ok, %{member_id: _}} =
              Onboarding.accept(
                invitation.id,
-               resumed_token,
+               continuation_id,
                "Next of Kin",
                "+353810000001",
                attrs
@@ -991,7 +1081,7 @@ defmodule Dhc.OnboardingTest do
 
   test "a provisioned attempt is recoverable after local conversion rolls back" do
     invitation = insert_invitation!()
-    {:ok, token} = token_for(invitation)
+    continuation_id = continuation_for(invitation)
 
     Application.put_env(:dhc, :onboarding_stripe_result, fn ->
       conflicting_principal =
@@ -1005,7 +1095,7 @@ defmodule Dhc.OnboardingTest do
     assert {:error, :principal_creation_failed} =
              Onboarding.accept(
                invitation.id,
-               token,
+               continuation_id,
                "Next of Kin",
                "+353810000001",
                %{confirmation_token: "ctok_recovery"}
@@ -1035,7 +1125,7 @@ defmodule Dhc.OnboardingTest do
 
   test "an invitation for an existing Principal is rejected before Stripe work" do
     invitation = insert_invitation!()
-    {:ok, token} = token_for(invitation)
+    continuation_id = continuation_for(invitation)
 
     %Principal{id: Ecto.UUID.generate(), email: invitation.email}
     |> Repo.insert!()
@@ -1043,7 +1133,7 @@ defmodule Dhc.OnboardingTest do
     assert {:error, :invalid_invitation} =
              Onboarding.accept(
                invitation.id,
-               token,
+               continuation_id,
                "Next of Kin",
                "+353810000001",
                %{confirmation_token: "ctok_must_not_be_used"}
@@ -1051,7 +1141,10 @@ defmodule Dhc.OnboardingTest do
 
     refute_received {:create_customer, _}
     refute_received {:provision_membership, _}
-    refute Repo.get_by(InvitationAcceptanceAttempt, invitation_id: invitation.id)
+
+    assert %InvitationAcceptanceAttempt{acceptance_data: %{}, status: "processing"} =
+             Repo.get_by!(InvitationAcceptanceAttempt, invitation_id: invitation.id)
+
     assert Repo.get!(Invitation, invitation.id).status == "pending"
   end
 
@@ -1078,5 +1171,22 @@ defmodule Dhc.OnboardingTest do
       invitation.email,
       invitation.date_of_birth
     )
+  end
+
+  defp continuation_for(invitation) do
+    {:ok, state} =
+      Onboarding.start_acceptance(
+        invitation.id,
+        invitation.email,
+        Date.to_iso8601(invitation.date_of_birth)
+      )
+
+    {:ok, %{state: "discordVerified"}} =
+      Onboarding.verify_discord(state.continuation_id, %{
+        "sub" => "onboarding-subject-#{System.unique_integer([:positive])}",
+        "preferred_username" => "onboarding-member"
+      })
+
+    state.continuation_id
   end
 end

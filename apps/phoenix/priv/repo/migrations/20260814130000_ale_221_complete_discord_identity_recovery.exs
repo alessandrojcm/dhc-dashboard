@@ -305,8 +305,8 @@ defmodule Dhc.Repo.Migrations.Ale221CompleteDiscordIdentityRecovery do
     BEGIN
       SELECT * INTO current_assignment FROM staged_discord_assignments WHERE id = NEW.id;
       IF NOT FOUND OR current_assignment.state NOT IN ('proposed', 'approved') THEN RETURN NULL; END IF;
-      PERFORM pg_advisory_xact_lock(hashtextextended('discord:principal:' || current_assignment.principal_id::text, 0));
-      PERFORM pg_advisory_xact_lock(hashtextextended('discord:' || current_assignment.provider_subject, 0));
+      PERFORM pg_advisory_xact_lock(hashtextextended('discord/principal/' || current_assignment.principal_id::text, 0));
+      PERFORM pg_advisory_xact_lock(hashtextextended('discord/subject/discord/' || current_assignment.provider_subject, 0));
       IF NOT EXISTS (
         SELECT 1 FROM user_profiles up
         JOIN member_profiles mp ON mp.user_profile_id = up.id AND mp.id = up.principal_id
@@ -341,8 +341,8 @@ defmodule Dhc.Repo.Migrations.Ale221CompleteDiscordIdentityRecovery do
     BEGIN
       SELECT * INTO current_identity FROM external_identities WHERE id = NEW.id;
       IF NOT FOUND OR current_identity.provider <> 'discord'#{current_active} THEN RETURN NULL; END IF;
-      PERFORM pg_advisory_xact_lock(hashtextextended('discord:principal:' || current_identity.principal_id::text, 0));
-      PERFORM pg_advisory_xact_lock(hashtextextended('discord:' || current_identity.provider_subject, 0));
+      PERFORM pg_advisory_xact_lock(hashtextextended('discord/principal/' || current_identity.principal_id::text, 0));
+      PERFORM pg_advisory_xact_lock(hashtextextended('discord/subject/discord/' || current_identity.provider_subject, 0));
       IF EXISTS (
         SELECT 1 FROM staged_discord_assignments a
         WHERE a.state IN ('proposed', 'approved')
@@ -369,7 +369,7 @@ defmodule Dhc.Repo.Migrations.Ale221CompleteDiscordIdentityRecovery do
     BEGIN
       SELECT * INTO current_claim FROM invitation_acceptance_discord_subject_claims WHERE id = NEW.id;
       IF NOT FOUND OR current_claim.provider <> 'discord' THEN RETURN NULL; END IF;
-      PERFORM pg_advisory_xact_lock(hashtextextended('discord:' || current_claim.provider_subject, 0));
+      PERFORM pg_advisory_xact_lock(hashtextextended('discord/subject/discord/' || current_claim.provider_subject, 0));
       IF EXISTS (
         SELECT 1 FROM staged_discord_assignments a
         WHERE a.state IN ('proposed', 'approved') AND a.provider = 'discord'

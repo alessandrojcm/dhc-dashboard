@@ -34,6 +34,37 @@ defmodule DhcWeb.OnboardingController do
   def verify_invitation_acceptance(conn, _params),
     do: restart_verification(conn, :unprocessable_entity)
 
+  def start_acceptance(conn, %{
+        "invitationId" => id,
+        "email" => email,
+        "dateOfBirth" => date_of_birth
+      }) do
+    case Onboarding.start_acceptance(id, email, date_of_birth, continuation_id(conn)) do
+      {:ok, %{continuation_id: continuation_id, view: state}} ->
+        conn
+        |> put_resp_header("x-onboarding-continuation", continuation_id)
+        |> render_legacy_state(state)
+
+      {:error, :missing_browser_proof} ->
+        legacy_restart_verification(conn, :conflict)
+
+      {:error, _reason} ->
+        legacy_restart_verification(conn, :unprocessable_entity)
+    end
+  end
+
+  def start_acceptance(conn, _params),
+    do: legacy_restart_verification(conn, :unprocessable_entity)
+
+  def show_acceptance(conn, _params) do
+    with continuation_id when is_binary(continuation_id) <- continuation_id(conn),
+         {:ok, state} <- Onboarding.acceptance_state(continuation_id) do
+      render_legacy_state(conn, state)
+    else
+      _ -> legacy_restart_verification(conn)
+    end
+  end
+
   def show_invitation_acceptance(conn, _params) do
     with continuation_id when is_binary(continuation_id) <- acceptance_id_from_cookie(conn),
          {:ok, state} <- Onboarding.acceptance_state(continuation_id) do
@@ -44,8 +75,9 @@ defmodule DhcWeb.OnboardingController do
   end
 
   def start_discord(conn, _params) do
-    with [continuation_id] <- get_req_header(conn, "x-onboarding-continuation"),
-         {:ok, %{state: "awaitingDiscord"}} <- Onboarding.acceptance_state(continuation_id) do
+    with continuation_id when is_binary(continuation_id) <- continuation_id(conn),
+         {:ok, %{state: state}} when state in ["awaiting_oauth", "awaitingDiscord"] <-
+           Onboarding.acceptance_state(continuation_id) do
       DhcWeb.AuthSessionController.request_acceptance_discord(conn, continuation_id)
     else
       _ -> restart_verification(conn)
@@ -53,9 +85,9 @@ defmodule DhcWeb.OnboardingController do
   end
 
   def cancel_discord(conn, _params) do
-    with [continuation_id] <- get_req_header(conn, "x-onboarding-continuation"),
+    with continuation_id when is_binary(continuation_id) <- continuation_id(conn),
          {:ok, state} <- Onboarding.cancel_discord(continuation_id) do
-      render_state(conn, state)
+      render_legacy_state(conn, state)
     else
       _ -> restart_verification(conn)
     end
@@ -69,7 +101,7 @@ defmodule DhcWeb.OnboardingController do
           "stripeConfirmationToken" => confirmation_token
         } = params
       ) do
-    continuation_id = get_req_header(conn, "x-onboarding-continuation") |> List.first()
+    continuation_id = continuation_id(conn)
     mandate_context = Map.get(params, "mandateContext", %{})
 
     attrs = %{
@@ -98,7 +130,7 @@ defmodule DhcWeb.OnboardingController do
   def continue_acceptance(conn, _params), do: current_or_restart(conn)
 
   def retry_acceptance(conn, _params) do
-    with [continuation_id] <- get_req_header(conn, "x-onboarding-continuation"),
+    with continuation_id when is_binary(continuation_id) <- continuation_id(conn),
          {:ok, state} <- Onboarding.retry_acceptance(continuation_id) do
       render_state(conn, state)
     else
@@ -119,6 +151,17 @@ defmodule DhcWeb.OnboardingController do
     json(conn, %{data: data})
   end
 
+  defp render_legacy_state(conn, state) do
+    state =
+      Map.update(state, :state, "restartVerification", fn
+        "awaiting_oauth" -> "awaitingDiscord"
+        "restart_verification" -> "restartVerification"
+        value -> value
+      end)
+
+    render_state(conn, state)
+  end
+
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
@@ -128,10 +171,21 @@ defmodule DhcWeb.OnboardingController do
     |> json(%{data: %{state: "restart_verification"}})
   end
 
+  defp legacy_restart_verification(conn, status \\ :conflict) do
+    conn
+    |> put_status(status)
+    |> json(%{data: %{state: "restartVerification"}})
+  end
+
   defp acceptance_id_from_cookie(conn) do
     conn
     |> fetch_cookies(signed: [@acceptance_cookie])
     |> then(& &1.cookies[@acceptance_cookie])
+  end
+
+  defp continuation_id(conn) do
+    acceptance_id_from_cookie(conn) ||
+      (get_req_header(conn, "x-onboarding-continuation") |> List.first())
   end
 
   defp acceptance_cookie_opts do
@@ -146,7 +200,7 @@ defmodule DhcWeb.OnboardingController do
   end
 
   defp current_or_restart(conn, status \\ :conflict) do
-    with [continuation_id] <- get_req_header(conn, "x-onboarding-continuation"),
+    with continuation_id when is_binary(continuation_id) <- continuation_id(conn),
          {:ok, state} <- Onboarding.acceptance_state(continuation_id) do
       conn |> put_status(status) |> render_state(state)
     else

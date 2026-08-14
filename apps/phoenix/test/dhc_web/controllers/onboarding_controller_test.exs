@@ -6,6 +6,7 @@ defmodule DhcWeb.OnboardingControllerTest do
   alias Dhc.Auth.Principal
   alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.Onboarding.InvitationAcceptanceAttempt
+  alias Dhc.Onboarding.InvitationAcceptanceDiscordCollisionAuditEvent
   alias Dhc.Onboarding.InvitationAcceptanceDiscordContinuation
   alias Dhc.Onboarding.InvitationAcceptanceDiscordSubjectClaim
   alias Dhc.Repo
@@ -160,12 +161,28 @@ defmodule DhcWeb.OnboardingControllerTest do
 
     refute Map.has_key?(json_response(safe, 200)["data"], "continuationId")
 
+    resumed_credentials =
+      conn()
+      |> put_req_header("x-onboarding-continuation", continuation_id)
+      |> post("/api/onboarding/acceptance", %{
+        "invitationId" => invitation.id,
+        "email" => invitation.email,
+        "dateOfBirth" => Date.to_iso8601(invitation.date_of_birth)
+      })
+
+    assert %{"data" => %{"state" => "discordVerified"}} =
+             json_response(resumed_credentials, 200)
+
+    assert get_resp_header(resumed_credentials, "x-onboarding-continuation") == [continuation_id]
+
     replay =
       callback
       |> recycle()
       |> get("/api/auth/discord/callback?state=test-state&code=success")
 
-    assert redirected_to(replay, 302) == "http://localhost:5173/auth?discord=failed"
+    assert redirected_to(replay, 302) ==
+             "http://localhost:5173/members/signup/#{invitation.id}/resume"
+
     assert Repo.aggregate(InvitationAcceptanceDiscordSubjectClaim, :count) == 1
     refute Repo.exists?(ExternalIdentity)
     refute Repo.exists?(Dhc.Auth.PrincipalToken)
@@ -293,6 +310,17 @@ defmodule DhcWeb.OnboardingControllerTest do
     refute Repo.exists?(InvitationAcceptanceDiscordSubjectClaim)
     refute Repo.exists?(Dhc.Auth.PrincipalToken)
     refute Repo.exists?("oban_jobs")
+
+    assert %InvitationAcceptanceDiscordCollisionAuditEvent{
+             continuation_id: continuation_id,
+             existing_principal_id: existing_principal_id,
+             reason_code: "external_identity",
+             subject_fingerprint: fingerprint
+           } = Repo.one!(InvitationAcceptanceDiscordCollisionAuditEvent)
+
+    assert continuation_id == state.continuation_id
+    assert existing_principal_id == principal.id
+    assert fingerprint == continuation.subject_fingerprint
   end
 
   test "a retired External Identity does not block a fresh subject claim" do
@@ -369,6 +397,16 @@ defmodule DhcWeb.OnboardingControllerTest do
 
     assert second_continuation.status == "collision"
     assert second_continuation.provider_subject == nil
+
+    assert %InvitationAcceptanceDiscordCollisionAuditEvent{
+             continuation_id: continuation_id,
+             existing_principal_id: nil,
+             reason_code: "active_claim",
+             subject_fingerprint: fingerprint
+           } = Repo.one!(InvitationAcceptanceDiscordCollisionAuditEvent)
+
+    assert continuation_id == second_state.continuation_id
+    assert fingerprint == second_continuation.subject_fingerprint
   end
 
   test "an OAuth protocol failure terminalizes the continuation without creating credentials", %{
@@ -400,6 +438,30 @@ defmodule DhcWeb.OnboardingControllerTest do
     assert continuation.status == "failed"
     assert continuation.provider_subject == nil
     assert continuation.display_metadata == %{}
+    refute Repo.exists?(InvitationAcceptanceDiscordSubjectClaim)
+    refute Repo.exists?(ExternalIdentity)
+    refute Repo.exists?(Dhc.Auth.PrincipalToken)
+
+    unavailable =
+      conn()
+      |> put_req_header("x-onboarding-continuation", continuation_id)
+      |> get("/api/onboarding/acceptance")
+
+    assert %{"data" => %{"state" => "discordUnavailable"}} =
+             json_response(unavailable, 200)
+  end
+
+  test "a callback with a lost browser OAuth session returns to the neutral restart flow", %{
+    conn: conn
+  } do
+    callback =
+      conn
+      |> put_req_header("x-discord-oauth-purpose", "invitation_acceptance")
+      |> get("/api/auth/discord/callback?state=test-state&code=success")
+
+    assert redirected_to(callback, 302) ==
+             "http://localhost:5173/members/signup/restart"
+
     refute Repo.exists?(InvitationAcceptanceDiscordSubjectClaim)
     refute Repo.exists?(ExternalIdentity)
     refute Repo.exists?(Dhc.Auth.PrincipalToken)
@@ -470,7 +532,7 @@ defmodule DhcWeb.OnboardingControllerTest do
       |> get("/api/onboarding/acceptance")
 
     assert %{"data" => %{"state" => "restartVerification"}} =
-             json_response(response, 422)
+             json_response(response, 409)
 
     continuation =
       Repo.get!(InvitationAcceptanceDiscordContinuation, state.continuation_id)

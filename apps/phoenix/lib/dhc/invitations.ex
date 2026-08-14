@@ -86,22 +86,21 @@ defmodule Dhc.Invitations do
   end
 
   @doc """
-  Verifies public Invitation credentials and returns a short-lived signed token.
+  Verifies public Invitation credentials without issuing bearer material.
   """
   @spec verify_credentials(String.t(), String.t(), String.t()) ::
-          {:ok, String.t()} | {:error, :invalid_credentials}
+          :ok | {:error, :invalid_credentials}
   def verify_credentials(invitation_id, email, date_of_birth) do
     with {:ok, date} <- parse_date(date_of_birth),
-         true <- credentials_match?(invitation_id, email, date),
-         {:ok, token} <- issue_verification_token(invitation_id, email, date) do
-      {:ok, token}
+         true <- credentials_match?(invitation_id, email, date) do
+      :ok
     else
       _ -> {:error, :invalid_credentials}
     end
   end
 
   @doc """
-  Issues the opaque signed token used by the public accept endpoint.
+  Issues a legacy opaque signed token for compatibility and rejection tests.
   """
   @spec issue_verification_token(String.t(), String.t(), Date.t()) :: {:ok, String.t()}
   def issue_verification_token(invitation_id, email, %Date{} = date_of_birth) do
@@ -142,6 +141,25 @@ defmodule Dhc.Invitations do
   end
 
   @doc false
+  def convert(
+        invitation_id,
+        attempt_id,
+        continuation_id,
+        next_of_kin_name,
+        next_of_kin_phone,
+        customer_id
+      ) do
+    do_convert(
+      invitation_id,
+      attempt_id,
+      next_of_kin_name,
+      next_of_kin_phone,
+      customer_id,
+      continuation_id
+    )
+  end
+
+  @doc false
   def convert_with_discord(
         invitation_id,
         attempt_id,
@@ -171,8 +189,6 @@ defmodule Dhc.Invitations do
     Repo.transaction(fn ->
       now = DateTime.utc_now() |> DateTime.truncate(:second)
 
-      discord = lock_discord_conversion!(continuation_id, invitation_id, attempt_id)
-
       invitation =
         from(i in Invitation,
           where: i.id == ^invitation_id and i.status == "pending",
@@ -192,6 +208,13 @@ defmodule Dhc.Invitations do
         |> Repo.one()
 
       if is_nil(attempt), do: Repo.rollback(:invalid_attempt)
+
+      discord =
+        lock_discord_conversion!(
+          continuation_id,
+          invitation,
+          attempt
+        )
 
       if Repo.exists?(
            from(m in MemberProfile, where: m.id == ^invitation.prospective_principal_id)
@@ -283,21 +306,22 @@ defmodule Dhc.Invitations do
     end)
   end
 
-  defp lock_discord_conversion!(nil, _invitation_id, _attempt_id), do: nil
+  defp lock_discord_conversion!(nil, _invitation, _attempt), do: nil
 
-  defp lock_discord_conversion!(continuation_id, invitation_id, attempt_id) do
+  defp lock_discord_conversion!(continuation_id, invitation, attempt) do
     continuation = Repo.get(InvitationAcceptanceDiscordContinuation, continuation_id)
 
     if is_nil(continuation) or is_nil(continuation.provider_subject),
       do: Repo.rollback(:invalid_continuation)
 
+    DiscordSubjectLock.lock_principal!(invitation.prospective_principal_id)
     DiscordSubjectLock.lock!(continuation.provider_subject)
 
     continuation =
       from(c in InvitationAcceptanceDiscordContinuation,
         where:
-          c.id == ^continuation_id and c.invitation_id == ^invitation_id and
-            c.attempt_id == ^attempt_id and c.status == "verified",
+          c.id == ^continuation_id and c.invitation_id == ^invitation.id and
+            c.attempt_id == ^attempt.id and c.status == "verified",
         lock: "FOR UPDATE"
       )
       |> Repo.one()

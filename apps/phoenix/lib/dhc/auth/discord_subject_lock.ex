@@ -8,7 +8,7 @@ defmodule Dhc.Auth.DiscordSubjectLock do
   def lock_principal!(principal_id) when is_binary(principal_id) and principal_id != "" do
     Repo.query!(
       "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
-      ["discord:principal:" <> principal_id],
+      ["discord/principal/" <> principal_id],
       log: false
     )
 
@@ -20,7 +20,7 @@ defmodule Dhc.Auth.DiscordSubjectLock do
   def lock!(subject) when is_binary(subject) and subject != "" do
     Repo.query!(
       "SELECT pg_advisory_xact_lock(hashtextextended($1, 0))",
-      ["discord:" <> subject],
+      ["discord/subject/discord/" <> subject],
       log: false
     )
 
