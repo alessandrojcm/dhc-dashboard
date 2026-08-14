@@ -96,6 +96,7 @@ defmodule DhcWeb.AuthSessionController do
   # started flow may complete.
   defp authorize_discord(conn, purpose) do
     strategy = discord_strategy()
+    conn = Plug.Conn.delete_session(conn, @discord_oauth_flow_session_key)
 
     case strategy.authorize_url(discord_config(purpose)) do
       {:ok, %{url: url, session_params: session_params}} ->
