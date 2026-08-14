@@ -13,7 +13,7 @@ export const POST: RequestHandler = async ({ cookies, params }) => {
 		});
 	}
 	cookies.delete(`onboarding-acceptance-${params.invitationId}`, {
-		path: `/members/signup/${params.invitationId}`,
+		path: "/",
 	});
 	throw redirect(303, `/members/signup/${params.invitationId}`);
 };

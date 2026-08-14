@@ -47,6 +47,36 @@ defmodule Dhc.Invitations.StripePayment do
   end
 
   @spec complete(map()) :: :ok | {:error, term()}
+  def complete(%{customer_id: customer_id, complimentary: true} = attrs)
+      when is_binary(customer_id) and customer_id != "" do
+    with {:ok, prices} <- Pricing.membership_price_ids(),
+         {:ok, promotion} <- Pricing.resolve_promotion(Map.get(attrs, :coupon_code)),
+         true <- promotion.coupon != nil,
+         :ok <- create_membership_subscriptions(customer_id, nil, prices, promotion, attrs) do
+      :ok
+    else
+      false -> {:error, :complimentary_promotion_required}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  def complete(%{customer_id: customer_id, payment_method_id: payment_method_id} = attrs)
+      when is_binary(customer_id) and customer_id != "" and is_binary(payment_method_id) and
+             payment_method_id != "" do
+    with {:ok, prices} <- Pricing.membership_price_ids(),
+         {:ok, promotion} <- Pricing.resolve_promotion(Map.get(attrs, :coupon_code)),
+         :ok <-
+           create_membership_subscriptions(
+             customer_id,
+             payment_method_id,
+             prices,
+             promotion,
+             attrs
+           ) do
+      :ok
+    end
+  end
+
   def complete(%{customer_id: customer_id, confirmation_token: confirmation_token} = attrs)
       when is_binary(customer_id) and customer_id != "" and is_binary(confirmation_token) and
              confirmation_token != "" do
@@ -195,9 +225,9 @@ defmodule Dhc.Invitations.StripePayment do
         {"items[0][price]", price_id},
         {"payment_behavior", "default_incomplete"},
         {"collection_method", "charge_automatically"},
-        {"default_payment_method", payment_method_id},
         {"expand[]", "latest_invoice.payments"}
       ]
+      |> maybe_add_payment_method(payment_method_id)
       |> add_billing_anchor(kind)
       |> maybe_add_discount(promotion)
 
@@ -221,6 +251,11 @@ defmodule Dhc.Invitations.StripePayment do
   defp maybe_add_discount(form, %{promotion_code_id: promotion_code_id}),
     do: [{"discounts[0][promotion_code]", promotion_code_id} | form]
 
+  defp maybe_add_payment_method(form, nil), do: form
+
+  defp maybe_add_payment_method(form, payment_method_id),
+    do: [{"default_payment_method", payment_method_id} | form]
+
   defp maybe_confirm_first_invoice(subscription, _payment_method_id, %{migration?: true}, attrs) do
     case latest_invoice(subscription) do
       %{"id" => invoice_id, "amount_due" => amount_due} when is_integer(amount_due) ->
@@ -235,6 +270,8 @@ defmodule Dhc.Invitations.StripePayment do
       {:error, reason} -> {:error, reason}
     end)
   end
+
+  defp maybe_confirm_first_invoice(_subscription, nil, _promotion, _attrs), do: :ok
 
   defp maybe_confirm_first_invoice(subscription, payment_method_id, _promotion, attrs) do
     case payment_intent_id(subscription) do

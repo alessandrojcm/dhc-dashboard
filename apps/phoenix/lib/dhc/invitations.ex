@@ -6,6 +6,8 @@ defmodule Dhc.Invitations do
   import Ecto.Query
 
   alias Dhc.Auth
+  alias Dhc.Auth.DiscordSubjectLock
+  alias Dhc.Auth.ExternalIdentity
   alias Dhc.Email.Worker, as: EmailWorker
   alias Dhc.Auth.UserRole
   alias Dhc.CursorPagination
@@ -13,6 +15,8 @@ defmodule Dhc.Invitations do
   alias Dhc.Invitations.Repository
   alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.Onboarding.InvitationAcceptanceAttempt
+  alias Dhc.Onboarding.InvitationAcceptanceDiscordContinuation
+  alias Dhc.Onboarding.InvitationAcceptanceDiscordSubjectClaim
   alias Dhc.Repo
   alias Dhc.UserProfiles.UserProfile
   alias Dhc.Waitlist.WaitlistEntry
@@ -127,8 +131,47 @@ defmodule Dhc.Invitations do
         next_of_kin_phone,
         customer_id
       ) do
+    do_convert(
+      invitation_id,
+      attempt_id,
+      next_of_kin_name,
+      next_of_kin_phone,
+      customer_id,
+      nil
+    )
+  end
+
+  @doc false
+  def convert_with_discord(
+        invitation_id,
+        attempt_id,
+        continuation_id,
+        next_of_kin_name,
+        next_of_kin_phone,
+        customer_id
+      ) do
+    do_convert(
+      invitation_id,
+      attempt_id,
+      next_of_kin_name,
+      next_of_kin_phone,
+      customer_id,
+      continuation_id
+    )
+  end
+
+  defp do_convert(
+         invitation_id,
+         attempt_id,
+         next_of_kin_name,
+         next_of_kin_phone,
+         customer_id,
+         continuation_id
+       ) do
     Repo.transaction(fn ->
       now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      discord = lock_discord_conversion!(continuation_id, invitation_id, attempt_id)
 
       invitation =
         from(i in Invitation,
@@ -181,6 +224,23 @@ defmodule Dhc.Invitations do
         {:error, _changeset} -> Repo.rollback(:invalid_invitation)
       end
 
+      if discord do
+        principal = Repo.get!(Dhc.Auth.Principal, invitation.prospective_principal_id)
+
+        metadata =
+          discord.continuation.display_metadata
+          |> Map.take(["username", "avatarUrl"])
+          |> rename_avatar_metadata()
+
+        %ExternalIdentity{}
+        |> ExternalIdentity.create_changeset(principal, %{
+          provider: "discord",
+          provider_subject: discord.continuation.provider_subject,
+          metadata: metadata
+        })
+        |> Repo.insert!()
+      end
+
       invitation |> Ecto.Changeset.change(status: "accepted") |> Repo.update!()
 
       Repo.insert_all(
@@ -206,9 +266,62 @@ defmodule Dhc.Invitations do
         set: [status: "completed", concluded_at: now, updated_at: now, last_error: nil]
       )
 
+      if discord do
+        Repo.delete!(discord.claim)
+
+        discord.continuation
+        |> Ecto.Changeset.change(
+          status: "consumed",
+          concluded_at: now,
+          provider_subject: nil,
+          display_metadata: %{}
+        )
+        |> Repo.update!()
+      end
+
       %{member_id: invitation.prospective_principal_id}
     end)
   end
+
+  defp lock_discord_conversion!(nil, _invitation_id, _attempt_id), do: nil
+
+  defp lock_discord_conversion!(continuation_id, invitation_id, attempt_id) do
+    continuation = Repo.get(InvitationAcceptanceDiscordContinuation, continuation_id)
+
+    if is_nil(continuation) or is_nil(continuation.provider_subject),
+      do: Repo.rollback(:invalid_continuation)
+
+    DiscordSubjectLock.lock!(continuation.provider_subject)
+
+    continuation =
+      from(c in InvitationAcceptanceDiscordContinuation,
+        where:
+          c.id == ^continuation_id and c.invitation_id == ^invitation_id and
+            c.attempt_id == ^attempt_id and c.status == "verified",
+        lock: "FOR UPDATE"
+      )
+      |> Repo.one()
+
+    if is_nil(continuation), do: Repo.rollback(:invalid_continuation)
+
+    claim =
+      from(c in InvitationAcceptanceDiscordSubjectClaim,
+        where:
+          c.continuation_id == ^continuation.id and c.provider == "discord" and
+            c.provider_subject == ^continuation.provider_subject,
+        lock: "FOR UPDATE"
+      )
+      |> Repo.one()
+
+    if is_nil(claim), do: Repo.rollback(:invalid_continuation)
+    %{continuation: continuation, claim: claim}
+  end
+
+  defp rename_avatar_metadata(%{"avatarUrl" => avatar_url} = metadata) do
+    metadata |> Map.delete("avatarUrl") |> Map.put("avatar", avatar_url)
+  end
+
+  defp rename_avatar_metadata(metadata), do: metadata
 
   # ALE-176: resolve the UserProfile acceptance leaves behind. When the
   # invitation came from a waitlist entry, lock the existing waitlist
@@ -323,7 +436,7 @@ defmodule Dhc.Invitations do
         left_join: a in InvitationAcceptanceAttempt,
         on:
           a.invitation_id == i.id and
-            a.status in ["processing", "provisioned"],
+            a.status in ["processing", "payment_pending", "provisioned"],
         where: i.id == ^invitation_id,
         where: fragment("lower(?)", i.email) == ^normalized_email,
         where: i.status == "pending",

@@ -1,9 +1,16 @@
 <script lang="ts">
 import { page } from "$app/state";
 import { Button } from "$lib/components/ui/button";
+import type { PageServerData } from "./$types";
+import PaymentForm from "./payment-form.svelte";
 
-let { discord }: { discord?: { username?: string; avatarUrl?: string } } =
-	$props();
+let {
+	data,
+	discord,
+}: {
+	data: PageServerData;
+	discord?: { username?: string; avatarUrl?: string };
+} = $props();
 </script>
 
 <main class="mx-auto max-w-xl space-y-6 p-6">
@@ -21,7 +28,7 @@ let { discord }: { discord?: { username?: string; avatarUrl?: string } } =
 		This is the Discord account that will be associated with your membership.
 		Its display name may change.
 	</p>
-	<Button disabled>Continue to payment</Button>
+	<PaymentForm {data} />
 	<form
 		method="POST"
 		action={`/members/signup/${page.params.invitationId}/discord/cancel`}

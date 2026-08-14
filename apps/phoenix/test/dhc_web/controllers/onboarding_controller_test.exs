@@ -11,6 +11,17 @@ defmodule DhcWeb.OnboardingControllerTest do
   alias Dhc.Repo
   alias Dhc.UserProfiles.UserProfile
 
+  setup do
+    original_adapter = Application.get_env(:dhc, :onboarding_stripe_adapter)
+    Application.put_env(:dhc, :onboarding_stripe_adapter, Dhc.OnboardingTestStripeAdapter)
+    Application.put_env(:dhc, :onboarding_test_pid, self())
+
+    on_exit(fn ->
+      Application.put_env(:dhc, :onboarding_stripe_adapter, original_adapter)
+      Application.delete_env(:dhc, :onboarding_test_pid)
+    end)
+  end
+
   test "starts and refreshes the safe awaiting-Discord state without conversion", %{conn: conn} do
     invitation = invitation_fixture()
 
@@ -188,6 +199,46 @@ defmodule DhcWeb.OnboardingControllerTest do
     assert continuation.provider_subject == nil
     assert continuation.display_metadata == %{}
     assert is_binary(continuation.subject_fingerprint)
+  end
+
+  test "Continue finalizes the Elements ConfirmationToken on the server without a Session", %{
+    conn: conn
+  } do
+    invitation = invitation_fixture()
+
+    {:ok, state} =
+      Dhc.Onboarding.start_acceptance(
+        invitation.id,
+        invitation.email,
+        Date.to_iso8601(invitation.date_of_birth)
+      )
+
+    {:ok, _verified} =
+      Dhc.Onboarding.verify_discord(state.continuation_id, %{
+        "sub" => "controller-paid-subject",
+        "preferred_username" => "controller-member"
+      })
+
+    continued =
+      conn
+      |> put_req_header("x-onboarding-continuation", state.continuation_id)
+      |> post("/api/onboarding/acceptance/continue", %{
+        "nextOfKinName" => "Grace Hopper",
+        "nextOfKinPhone" => "+353810000099",
+        "stripeConfirmationToken" => "ctok_controller_paid",
+        "mandateContext" => %{
+          "ipAddress" => "127.0.0.1",
+          "userAgent" => "controller-test"
+        }
+      })
+
+    assert %{"data" => %{"state" => "accepted"}} = json_response(continued, 200)
+
+    refute Map.has_key?(json_response(continued, 200)["data"], "attemptId")
+    assert_received {:provision_membership, %{confirmation_token: "ctok_controller_paid"}}
+    refute continued.resp_cookies["_dhc_session"]
+    refute Repo.exists?(Dhc.Auth.PrincipalToken)
+    assert Repo.exists?(ExternalIdentity)
   end
 
   test "an existing External Identity produces the same neutral collision state without Stripe or Session work",

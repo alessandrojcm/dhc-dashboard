@@ -9,6 +9,15 @@ defmodule Dhc.Onboarding.StripeAdapter.Live do
   def preview_membership(coupon_code), do: Pricing.preview_membership(coupon_code)
 
   @impl true
+  def payment_requirement(coupon_code) do
+    with {:ok, pricing} <- preview_membership(coupon_code) do
+      if pricing.discountPercentage == 100,
+        do: {:ok, :complimentary},
+        else: {:ok, :paid}
+    end
+  end
+
+  @impl true
   def create_customer(attrs) do
     payment_processor().create_customer(
       attrs.email,

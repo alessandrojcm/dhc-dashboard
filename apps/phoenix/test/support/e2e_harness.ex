@@ -4,6 +4,7 @@ defmodule Dhc.E2EHarness do
   import Ecto.Query
 
   alias Dhc.Auth
+  alias Dhc.Auth.ExternalIdentity
   alias Dhc.Auth.PrincipalToken
   alias Dhc.Auth.UserRole
   alias Dhc.Invitations.Invitation
@@ -287,6 +288,43 @@ defmodule Dhc.E2EHarness do
     {token, row} = PrincipalToken.build_session_token(principal)
     Repo.insert!(row)
     token
+  end
+
+  def invitation_acceptance_audit(invitation_id) do
+    principal_id =
+      Repo.one!(
+        from(i in Invitation,
+          where: i.id == ^invitation_id,
+          select: i.prospective_principal_id
+        )
+      )
+
+    token_counts =
+      Repo.all(
+        from(t in PrincipalToken,
+          where: t.principal_id == ^principal_id,
+          group_by: t.context,
+          select: {t.context, count(t.id)}
+        )
+      )
+      |> Map.new()
+
+    %{
+      sessionTokenCount: Map.get(token_counts, "session", 0),
+      magicLinkTokenCount: Map.get(token_counts, "login", 0),
+      discordIdentityCount:
+        Repo.aggregate(
+          from(identity in ExternalIdentity,
+            where: identity.principal_id == ^principal_id and identity.provider == "discord"
+          ),
+          :count
+        ),
+      memberProfileCount:
+        Repo.aggregate(
+          from(profile in MemberProfile, where: profile.id == ^principal_id),
+          :count
+        )
+    }
   end
 
   defp delete_principal(id) do

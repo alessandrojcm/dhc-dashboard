@@ -711,6 +711,83 @@ paths:
               schema:
                 $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
 
+  /onboarding/acceptance/continue:
+    post:
+      operationId: onboarding.continueAcceptance
+      tags: [Onboarding]
+      summary: Consume verified Discord proof and begin durable payment progression
+      description: |
+        Atomically binds the browser-held verified Continuation to its one active
+        Acceptance Attempt before any Stripe mutation. Replays return the current
+        safe Attempt projection and cannot create another Attempt, Claim, or
+        provider operation. The client-provided Stripe ConfirmationToken only
+        transports Payment Element data; Phoenix owns SetupIntent, subscription,
+        invoice-payment, and final Member progression.
+      security:
+        - onboardingContinuation: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OnboardingContinueAcceptanceRequest"
+      responses:
+        "200":
+          description: Current safe Acceptance Attempt state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+        "409":
+          description: Transition is stale or disallowed; current safe state is returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+        "402":
+          description: Server-side Stripe finalization could not complete
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+        "422":
+          description: Browser proof is missing or request details are malformed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+
+  /onboarding/acceptance/retry:
+    post:
+      operationId: onboarding.retryAcceptance
+      tags: [Onboarding]
+      summary: Resume the current durable Acceptance Attempt
+      description: |
+        Reconciles only the Attempt already bound to this browser proof. It never
+        creates another proof, Claim, or Attempt. Once Stripe is ready, all local
+        Member and Discord identity records are finalized in one transaction.
+      security:
+        - onboardingContinuation: []
+      responses:
+        "200":
+          description: Current safe Acceptance Attempt state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+        "409":
+          description: Transition is stale or provider progress is not ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+        "422":
+          description: Browser proof is missing or invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+
   /waitlist/status:
     get:
       operationId: waitlist.status
@@ -3982,6 +4059,25 @@ components:
         invitationId: { type: string, format: uuid }
         email: { type: string, format: email }
         dateOfBirth: { type: string, format: date }
+    OnboardingContinueAcceptanceRequest:
+      type: object
+      required: [nextOfKinName, nextOfKinPhone, stripeConfirmationToken]
+      properties:
+        nextOfKinName:
+          type: string
+          minLength: 1
+        nextOfKinPhone:
+          type: string
+          minLength: 1
+        stripeConfirmationToken:
+          type: string
+          minLength: 1
+        couponCode:
+          type: string
+        mandateContext:
+          type: object
+          additionalProperties: true
+          description: Client mandate context needed for server-side Stripe confirmation.
     OnboardingAcceptanceStateResponse:
       type: object
       required: [data]
@@ -3992,13 +4088,18 @@ components:
           properties:
             state:
               type: string
-              enum: [awaitingDiscord, discordVerified, discordCollision, restartVerification]
+              enum:
+                - awaitingDiscord
+                - discordVerified
+                - discordCollision
+                - restartVerification
+                - paymentPending
+                - accepted
             invitationEmail:
               type: string
               format: email
             discord:
               $ref: "#/components/schemas/OnboardingSafeDiscordPresentation"
-
     OnboardingSafeDiscordPresentation:
       type: object
       description: Mutable display snapshot for account recognition; never an identity binding fact.

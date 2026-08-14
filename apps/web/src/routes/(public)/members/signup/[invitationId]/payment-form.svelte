@@ -13,7 +13,7 @@ import {
 import { PUBLIC_STRIPE_KEY } from "$env/static/public";
 import { toast } from "svelte-sonner";
 import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
-import { onMount } from "svelte";
+import { onMount, tick } from "svelte";
 import * as Alert from "$lib/components/ui/alert";
 import PhoneInput from "$lib/components/ui/phone-input.svelte";
 import PricingDisplay from "./pricing-display.svelte";
@@ -148,10 +148,10 @@ const handleSubmit: ButtonProps["onclick"] = async (e) => {
 		return;
 	}
 
-	// Update the hidden input element directly in the DOM
-	// This ensures the value is available when the form serializes for submission
+	// Wait for the remote field update to reach the hidden input before the form
+	// serializes its controls for submission.
 	processPayment.fields.stripeConfirmationToken.set(confirmationToken.id);
-	await processPayment.validate();
+	await tick();
 	if (form) {
 		form.requestSubmit();
 	}

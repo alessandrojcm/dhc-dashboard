@@ -93,6 +93,10 @@ config :dhc, :e2e_harness_key, System.get_env("E2E_HARNESS_KEY", "local-e2e-harn
 config :dhc, :discord_oauth_strategy, Dhc.DiscordOAuthStub
 config :dhc, :discord_oauth, client_id: "test-client", client_secret: "test-secret"
 
+if System.get_env("E2E_SERVER") == "true" do
+  config :dhc, :onboarding_stripe_adapter, Dhc.E2EOnboardingStripeAdapter
+end
+
 # Print only warnings and errors during test
 config :logger, level: :warning
 
