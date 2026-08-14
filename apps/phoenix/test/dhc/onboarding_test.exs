@@ -1051,6 +1051,9 @@ defmodule Dhc.OnboardingTest do
              display_metadata: %{}
            } = Repo.get!(InvitationAcceptanceDiscordContinuation, continuation_id)
 
+    assert {:ok, %{state: "restartVerification"}} =
+             Onboarding.acceptance_state(continuation_id)
+
     Application.put_env(:dhc, :onboarding_stripe_result, {:ok, %{}})
     continuation_id = continuation_for(invitation)
 

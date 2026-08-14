@@ -682,8 +682,14 @@ defmodule Dhc.Onboarding do
 
   defp safe_acceptance_state(continuation, invitation, attempt, now) do
     cond do
-      continuation.status in ["collision", "failed"] ->
+      continuation.status == "collision" ->
         {:ok, safe_state(continuation, invitation)}
+
+      continuation.status == "failed" and attempt.last_error == "discord_failed" ->
+        {:ok, safe_state(continuation, invitation)}
+
+      continuation.status == "failed" ->
+        {:ok, %{state: "restartVerification"}}
 
       attempt.status == "completed" and invitation.status == "accepted" ->
         {:ok, %{state: "accepted", invitation_email: invitation.email}}
