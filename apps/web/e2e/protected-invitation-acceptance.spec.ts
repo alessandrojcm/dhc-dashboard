@@ -14,8 +14,34 @@ test("starts a protected Invitation Acceptance without starting Stripe or a dash
 		status: "pending",
 	});
 	const stripeRequests: string[] = [];
+	const browserRequestPayloads: string[] = [];
+	await page.route(
+		`**/members/signup/${invitation.invitationId}/discord`,
+		async (route) => {
+			const response = await route.fetch({ maxRedirects: 0 });
+			expect(response.status()).toBe(302);
+			const authorizationUrl = new URL(response.headers().location);
+			expect(authorizationUrl.origin + authorizationUrl.pathname).toBe(
+				"https://discord.example.com/oauth2/authorize",
+			);
+			expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
+				"http://127.0.0.1:5173/auth/discord/acceptance/callback",
+			);
+			await route.fulfill({
+				response,
+				headers: {
+					...response.headers(),
+					location:
+						"http://127.0.0.1:5173/auth/discord/acceptance/callback?state=test-state&code=success",
+				},
+			});
+		},
+	);
 
 	page.on("request", (request) => {
+		browserRequestPayloads.push(
+			`${request.url()}\n${request.postData() ?? ""}`,
+		);
 		if (request.url().includes("stripe.com"))
 			stripeRequests.push(request.url());
 	});
@@ -45,9 +71,27 @@ test("starts a protected Invitation Acceptance without starting Stripe or a dash
 			path: `/members/signup/${invitation.invitationId}`,
 			sameSite: "Lax",
 		});
-		expect(proof?.value).toMatch(
+		if (!proof) throw new Error("Missing protected acceptance proof cookie");
+		expect(proof.value).toMatch(
 			/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
 		);
+		const forbiddenStorageFragments = [
+			proof.name,
+			proof.value,
+			"_dhc_key",
+			"_dhc_session",
+		];
+		const browserStorageText = () =>
+			page.evaluate(() =>
+				[localStorage, sessionStorage]
+					.flatMap((storage) =>
+						Object.keys(storage).flatMap((key) => [
+							key,
+							storage.getItem(key) ?? "",
+						]),
+					)
+					.join("\n"),
+			);
 		expect(cookies.some((cookie) => cookie.name === "_dhc_session")).toBe(
 			false,
 		);
@@ -56,12 +100,53 @@ test("starts a protected Invitation Acceptance without starting Stripe or a dash
 		await expect(
 			page.getByRole("heading", { name: "Connect Discord" }),
 		).toBeVisible();
+		const awaitingDiscordStorage = await browserStorageText();
+		for (const fragment of forbiddenStorageFragments)
+			expect(awaitingDiscordStorage).not.toContain(fragment);
+
+		await page.getByRole("link", { name: "Continue to Discord" }).click();
 		await expect(
-			page.evaluate(() => ({
-				local: localStorage.length,
-				session: sessionStorage.length,
-			})),
-		).resolves.toEqual({ local: 0, session: 0 });
+			page.getByRole("heading", { name: "Discord verified" }),
+		).toBeVisible();
+		await expect(
+			page.getByText("Verified Discord account: @request-member"),
+		).toBeVisible();
+		expect(page.url()).toBe(
+			`http://127.0.0.1:5173/members/signup/${invitation.invitationId}`,
+		);
+		expect(stripeRequests).toEqual([]);
+		expect(
+			(await context.cookies()).some(
+				(cookie) => cookie.name === "_dhc_session",
+			),
+		).toBe(false);
+		expect(
+			(await context.cookies()).some((cookie) => cookie.name === "_dhc_key"),
+		).toBe(false);
+
+		await page.reload();
+		await expect(
+			page.getByRole("heading", { name: "Discord verified" }),
+		).toBeVisible();
+		const verifiedDiscordStorage = await browserStorageText();
+		for (const fragment of forbiddenStorageFragments)
+			expect(verifiedDiscordStorage).not.toContain(fragment);
+		const browserRequestText = browserRequestPayloads.join("\n");
+		for (const fragment of forbiddenStorageFragments)
+			expect(browserRequestText).not.toContain(fragment);
+
+		await page
+			.getByRole("button", { name: "Use a different Discord account" })
+			.click();
+		await expect(
+			page.getByRole("button", { name: "Verify Invitation" }),
+		).toBeVisible();
+		expect(stripeRequests).toEqual([]);
+		expect(
+			(await context.cookies()).some((cookie) =>
+				cookie.name.startsWith("onboarding-acceptance-"),
+			),
+		).toBe(false);
 	} finally {
 		await deleteE2EFixture("invitation", invitation.invitationId);
 	}

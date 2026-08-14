@@ -79,6 +79,7 @@ defmodule DhcWeb.Router do
     get "/health", HealthController, :index
     get "/onboarding/acceptance", OnboardingController, :show_acceptance
     post "/onboarding/acceptance", OnboardingController, :start_acceptance
+    post "/onboarding/acceptance/discord/cancel", OnboardingController, :cancel_discord
     get "/options", MembersController, :options
     get "/invitations/:id", InvitationsController, :show
     get "/invitations/:id/pricing", InvitationsController, :pricing
@@ -96,6 +97,12 @@ defmodule DhcWeb.Router do
     post "/workshops/:id/external-registration/complete",
          WorkshopsController,
          :complete_external_registration
+  end
+
+  scope "/api", DhcWeb do
+    pipe_through [:api, :discord_oauth_api]
+
+    get "/onboarding/acceptance/discord", OnboardingController, :start_discord
   end
 
   scope "/api", DhcWeb do

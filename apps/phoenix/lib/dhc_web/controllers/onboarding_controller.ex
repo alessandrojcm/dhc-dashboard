@@ -15,8 +15,13 @@ defmodule DhcWeb.OnboardingController do
       end
 
     case Onboarding.start_acceptance(id, email, date_of_birth, protected_continuation_id) do
-      {:ok, state} -> render_state(conn, state)
-      {:error, _} -> restart_verification(conn)
+      {:ok, state} ->
+        conn
+        |> put_resp_header("x-onboarding-continuation", state.continuation_id)
+        |> render_state(state)
+
+      {:error, _} ->
+        restart_verification(conn)
     end
   end
 
@@ -33,15 +38,35 @@ defmodule DhcWeb.OnboardingController do
     end
   end
 
-  defp render_state(conn, state) do
-    json(conn, %{
-      data: %{
-        state: state.state,
-        expiresAt: DateTime.to_iso8601(state.expires_at),
-        continuationId: state.continuation_id
-      }
-    })
+  def start_discord(conn, _params) do
+    with [continuation_id] <- get_req_header(conn, "x-onboarding-continuation"),
+         {:ok, %{state: "awaitingDiscord"}} <- Onboarding.acceptance_state(continuation_id) do
+      DhcWeb.AuthSessionController.request_acceptance_discord(conn, continuation_id)
+    else
+      _ -> restart_verification(conn)
+    end
   end
+
+  def cancel_discord(conn, _params) do
+    with [continuation_id] <- get_req_header(conn, "x-onboarding-continuation"),
+         {:ok, state} <- Onboarding.cancel_discord(continuation_id) do
+      render_state(conn, state)
+    else
+      _ -> restart_verification(conn)
+    end
+  end
+
+  defp render_state(conn, state) do
+    data =
+      %{state: state.state}
+      |> maybe_put(:invitationEmail, state[:invitation_email])
+      |> maybe_put(:discord, state[:discord])
+
+    json(conn, %{data: data})
+  end
+
+  defp maybe_put(map, _key, nil), do: map
+  defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
   defp restart_verification(conn) do
     conn

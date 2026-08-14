@@ -5,11 +5,24 @@ defmodule Dhc.Onboarding.InvitationAcceptanceAttempts do
 
   alias Dhc.Onboarding.InvitationAcceptanceAttempt
   alias Dhc.Onboarding.InvitationAcceptanceDiscordContinuation
+  alias Dhc.Onboarding.InvitationAcceptanceDiscordSubjectClaim
   alias Dhc.Repo
 
   @spec purge_for_invitation(Ecto.UUID.t()) :: non_neg_integer()
   def purge_for_invitation(invitation_id) do
     Repo.transaction(fn ->
+      continuation_ids =
+        from(c in InvitationAcceptanceDiscordContinuation,
+          where: c.invitation_id == ^invitation_id,
+          select: c.id
+        )
+
+      Repo.delete_all(
+        from(c in InvitationAcceptanceDiscordSubjectClaim,
+          where: c.continuation_id in subquery(continuation_ids)
+        )
+      )
+
       Repo.delete_all(
         from(c in InvitationAcceptanceDiscordContinuation,
           where: c.invitation_id == ^invitation_id

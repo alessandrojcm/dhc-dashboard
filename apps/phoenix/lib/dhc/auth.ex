@@ -43,7 +43,8 @@ defmodule Dhc.Auth do
 
   import Ecto.Query, warn: false
   alias Dhc.Repo
-  alias Dhc.Auth.{ExternalIdentity, Principal, PrincipalToken}
+  alias Dhc.Auth.{DiscordSubjectLock, ExternalIdentity, Principal, PrincipalToken}
+  alias Dhc.Onboarding.InvitationAcceptanceDiscordSubjectClaim
   alias Dhc.UserProfiles.UserProfile
 
   ## Database getters
@@ -132,6 +133,8 @@ defmodule Dhc.Auth do
       when is_binary(subject) and subject != "" do
     Repo.transaction(fn ->
       unless eligible_member_locked?(principal.id), do: Repo.rollback(:invalid)
+      DiscordSubjectLock.lock!(subject)
+      if discord_subject_claimed?(subject), do: Repo.rollback(:invalid)
 
       principal
       |> discord_identity_changeset(subject, claims)
@@ -172,6 +175,8 @@ defmodule Dhc.Auth do
   defp create_discord_identity_and_session(principal, subject, claims) do
     Repo.transaction(fn ->
       unless eligible_member_locked?(principal.id), do: Repo.rollback(:invalid)
+      DiscordSubjectLock.lock!(subject)
+      if discord_subject_claimed?(subject), do: Repo.rollback(:invalid)
 
       changeset = discord_identity_changeset(principal, subject, claims)
 
@@ -202,6 +207,14 @@ defmodule Dhc.Auth do
       provider_subject: subject,
       metadata: metadata
     })
+  end
+
+  defp discord_subject_claimed?(subject) do
+    Repo.exists?(
+      from(claim in InvitationAcceptanceDiscordSubjectClaim,
+        where: claim.provider == "discord" and claim.provider_subject == ^subject
+      )
+    )
   end
 
   defp establish_eligible_session(principal) do

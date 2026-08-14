@@ -556,6 +556,25 @@ defmodule Dhc.AuthTest do
                provider_subject: "discord-owned-subject"
              ).principal_id == owner.id
     end
+
+    test "cannot bind a Discord subject reserved by an active Invitation Acceptance claim" do
+      principal = active_principal_fixture(email: "claim-barrier@example.com")
+      active_discord_claim_fixture("discord-acceptance-reserved")
+
+      assert {:error, :invalid} =
+               Auth.link_discord_identity(principal, %{
+                 "sub" => "discord-acceptance-reserved"
+               })
+
+      assert {:error, :invalid} =
+               Auth.sign_in_with_discord(%{
+                 "sub" => "discord-acceptance-reserved",
+                 "email" => principal.email,
+                 "email_verified" => true
+               })
+
+      refute Repo.exists?(Dhc.Auth.ExternalIdentity)
+    end
   end
 
   describe "load_session_principal/1" do
@@ -651,6 +670,48 @@ defmodule Dhc.AuthTest do
       provider_subject: subject,
       metadata: %{"email" => "original-profile@example.com"}
     })
+    |> Repo.insert!()
+  end
+
+  defp active_discord_claim_fixture(subject) do
+    invitation =
+      %Dhc.Invitations.Invitation{
+        email: "claim-invitation-#{System.unique_integer([:positive])}@example.com",
+        prospective_principal_id: Ecto.UUID.generate(),
+        status: "pending",
+        expires_at: DateTime.utc_now() |> DateTime.add(1, :day) |> DateTime.truncate(:second),
+        invitation_type: "member",
+        first_name: "Claim",
+        last_name: "Owner",
+        phone_number: "+353810000000",
+        date_of_birth: ~D[1990-01-01]
+      }
+      |> Repo.insert!()
+
+    attempt =
+      %Dhc.Onboarding.InvitationAcceptanceAttempt{
+        invitation_id: invitation.id,
+        acceptance_data: %{}
+      }
+      |> Repo.insert!()
+
+    continuation =
+      %Dhc.Onboarding.InvitationAcceptanceDiscordContinuation{
+        invitation_id: invitation.id,
+        attempt_id: attempt.id,
+        status: "verified",
+        expires_at: DateTime.utc_now() |> DateTime.add(15, :minute) |> DateTime.truncate(:second),
+        provider_subject: subject,
+        subject_fingerprint: "fixture-fingerprint",
+        display_metadata: %{}
+      }
+      |> Repo.insert!()
+
+    %Dhc.Onboarding.InvitationAcceptanceDiscordSubjectClaim{
+      continuation_id: continuation.id,
+      provider: "discord",
+      provider_subject: subject
+    }
     |> Repo.insert!()
   end
 end
