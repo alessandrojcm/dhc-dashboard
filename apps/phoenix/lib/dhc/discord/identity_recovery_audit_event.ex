@@ -19,7 +19,13 @@ defmodule Dhc.Discord.IdentityRecoveryAuditEvent do
     event
     |> cast(attrs, [:recovery_case_id, :action, :actor_principal_id])
     |> validate_required([:recovery_case_id, :action, :actor_principal_id])
-    |> validate_inclusion(:action, ["opened_and_contained"])
+    |> validate_inclusion(:action, [
+      "opened_and_contained",
+      "discord_oauth_proved",
+      "destination_magic_link_proved",
+      "approved",
+      "completed"
+    ])
     |> foreign_key_constraint(:recovery_case_id)
     |> foreign_key_constraint(:actor_principal_id)
   end

@@ -82,11 +82,28 @@ cd apps/phoenix
 DISCORD_IDENTITY_RECOVERY_MANIFEST_KEY=... \
 DISCORD_SUBJECT_FINGERPRINT_KEY=... \
 mix dhc.discord.identity_recovery open /secure/path/recovery-manifest.json
+
+# After the case has case-bound Discord OAuth and destination magic-link proofs,
+# submit two separately signed approval manifests from distinct admin/president actors:
+DISCORD_IDENTITY_RECOVERY_MANIFEST_KEY=... \
+DISCORD_SUBJECT_FINGERPRINT_KEY=... \
+mix dhc.discord.identity_recovery approve /secure/path/first-approval.json
+
+DISCORD_IDENTITY_RECOVERY_MANIFEST_KEY=... \
+DISCORD_SUBJECT_FINGERPRINT_KEY=... \
+mix dhc.discord.identity_recovery approve /secure/path/second-approval.json
+
+# Atomically complete the approved replacement or transfer:
+DISCORD_IDENTITY_RECOVERY_MANIFEST_KEY=... \
+DISCORD_SUBJECT_FINGERPRINT_KEY=... \
+mix dhc.discord.identity_recovery complete DIR-CASE-REFERENCE
 ```
 
 The manifest must be fresh (five minutes), signed by the dedicated recovery key,
 and name an `admin` or `president` actor. The command prints only a support-safe
-case receipt and never accepts a raw Discord subject.
+case receipt and never accepts a raw Discord subject. Each approval must exactly
+match the case's source binding fingerprint, destination Principal UUID, incoming
+subject fingerprint, evidence references, and replacement/transfer operation.
 
 # Code quality
 mise run phx-format         # Format all Elixir files

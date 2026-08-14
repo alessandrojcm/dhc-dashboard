@@ -1,5 +1,5 @@
 defmodule Mix.Tasks.Dhc.Discord.IdentityRecovery do
-  @shortdoc "Opens a separately authenticated Discord identity recovery case"
+  @shortdoc "Operates separately authenticated Discord identity recovery cases"
 
   use Mix.Task
 
@@ -15,8 +15,27 @@ defmodule Mix.Tasks.Dhc.Discord.IdentityRecovery do
     |> print!()
   end
 
+  def run(["approve", manifest_path]) do
+    Mix.Task.run("app.start")
+
+    manifest_path
+    |> read_envelope!()
+    |> IdentityRecovery.approve_signed(options())
+    |> print!()
+  end
+
+  def run(["complete", case_reference]) do
+    Mix.Task.run("app.start")
+
+    case_reference
+    |> IdentityRecovery.complete(options().fingerprint_key)
+    |> print!()
+  end
+
   def run(_) do
-    Mix.raise("Expected: mix dhc.discord.identity_recovery open MANIFEST")
+    Mix.raise(
+      "Expected: mix dhc.discord.identity_recovery open MANIFEST | approve MANIFEST | complete CASE_REFERENCE"
+    )
   end
 
   defp options do

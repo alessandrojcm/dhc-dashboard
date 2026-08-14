@@ -112,7 +112,13 @@ defmodule Dhc.Auth do
   """
   def sign_in_with_discord(%{"sub" => subject} = claims)
       when is_binary(subject) and subject != "" do
-    case Repo.get_by(ExternalIdentity, provider: "discord", provider_subject: subject) do
+    case Repo.one(
+           from(identity in ExternalIdentity,
+             where:
+               identity.provider == "discord" and identity.provider_subject == ^subject and
+                 is_nil(identity.retired_at)
+           )
+         ) do
       %ExternalIdentity{} = identity ->
         if is_nil(identity.sign_in_disabled_at) do
           identity.principal_id
@@ -180,7 +186,13 @@ defmodule Dhc.Auth do
             )
 
           existing_identity =
-            Repo.get_by(ExternalIdentity, provider: "discord", provider_subject: subject)
+            Repo.one(
+              from(identity in ExternalIdentity,
+                where:
+                  identity.provider == "discord" and identity.provider_subject == ^subject and
+                    is_nil(identity.retired_at)
+              )
+            )
 
           cond do
             match?(%ExternalIdentity{principal_id: ^principal_id}, existing_identity) ->
@@ -202,7 +214,7 @@ defmodule Dhc.Auth do
             Repo.exists?(
               from(e in ExternalIdentity,
                 where:
-                  e.provider == "discord" and
+                  e.provider == "discord" and is_nil(e.retired_at) and
                       (e.provider_subject == ^subject or e.principal_id == ^principal_id)
               )
             ) ->

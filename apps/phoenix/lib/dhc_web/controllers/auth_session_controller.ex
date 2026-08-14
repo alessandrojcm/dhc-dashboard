@@ -43,6 +43,7 @@ defmodule DhcWeb.AuthSessionController do
   require Logger
 
   alias Dhc.Auth
+  alias Dhc.Discord.IdentityRecovery
   alias DhcWeb.AuthSessionJSON
 
   @session_cookie "_dhc_session"
@@ -77,6 +78,14 @@ defmodule DhcWeb.AuthSessionController do
         conn
         |> put_status(:unauthorized)
         |> render_view(:error, %{error: "Unauthorized"})
+    end
+  end
+
+  def request_discord_recovery(conn, %{"case_reference" => case_reference}) do
+    if IdentityRecovery.active_case?(case_reference) do
+      authorize_discord(conn, {:identity_recovery, case_reference})
+    else
+      recovery_failure(conn)
     end
   end
 
@@ -129,6 +138,9 @@ defmodule DhcWeb.AuthSessionController do
     acceptance_resume(conn, continuation_id)
   end
 
+  defp complete_discord_callback_failure(conn, {:identity_recovery, _case_reference}, _params),
+    do: recovery_failure(conn)
+
   defp complete_discord_callback_failure(conn, _purpose, _params) do
     :telemetry.execute([:dhc, :auth, :discord, :failed], %{}, %{})
     log_discord_failure("oauth_callback")
@@ -152,6 +164,13 @@ defmodule DhcWeb.AuthSessionController do
        })
        when is_binary(continuation_id) and is_map(session_params),
        do: {:ok, {:invitation_acceptance, continuation_id}, session_params}
+
+  defp valid_discord_oauth_flow(%{
+         purpose: {:identity_recovery, case_reference},
+         session_params: session_params
+       })
+       when is_binary(case_reference) and is_map(session_params),
+       do: {:ok, {:identity_recovery, case_reference}, session_params}
 
   defp valid_discord_oauth_flow(_flow), do: {:error, :invalid_purpose}
 
@@ -207,6 +226,17 @@ defmodule DhcWeb.AuthSessionController do
     end
   end
 
+  defp complete_discord_auth(conn, {:identity_recovery, case_reference}, claims) do
+    case IdentityRecovery.record_discord_oauth_proof(
+           case_reference,
+           claims,
+           discord_subject_fingerprint_key()
+         ) do
+      {:ok, _receipt} -> recovery_success(conn, case_reference, "discord-proof-received")
+      {:error, _reason} -> recovery_failure(conn)
+    end
+  end
+
   # ── POST /api/auth/magic-link ────────────────────────────────────────
   def request_magic_link(conn, %{"email" => email} = _params) when is_binary(email) do
     # The rate-limit plug runs before this controller and has already
@@ -241,6 +271,30 @@ defmodule DhcWeb.AuthSessionController do
     |> render_view(:sent)
   end
 
+  def request_recovery_magic_link(conn, %{
+        "case_reference" => case_reference,
+        "email" => email
+      })
+      when is_binary(email) do
+    if IdentityRecovery.active_case?(case_reference) do
+      frontend_base = Application.get_env(:dhc, :app_url, "http://localhost:5173")
+
+      magic_link_url_fun = fn token ->
+        encoded_case = URI.encode_www_form(case_reference)
+        encoded_token = URI.encode_www_form(token)
+
+        "#{frontend_base}/auth/identity-recovery?caseReference=#{encoded_case}&token=#{encoded_token}"
+      end
+
+      {:ok, :sent} = Auth.deliver_magic_link(email, magic_link_url_fun)
+    end
+
+    conn |> put_status(:ok) |> render_view(:sent)
+  end
+
+  def request_recovery_magic_link(conn, _params),
+    do: conn |> put_status(:ok) |> render_view(:sent)
+
   # ── POST /api/auth/magic-link/verify ─────────────────────────────────
   def verify_magic_link(conn, %{"token" => token} = _params) when is_binary(token) do
     case Auth.consume_magic_link(token) do
@@ -268,6 +322,19 @@ defmodule DhcWeb.AuthSessionController do
   end
 
   def verify_magic_link(conn, _params), do: unauthorized_link(conn)
+
+  def verify_recovery_magic_link(conn, %{
+        "case_reference" => case_reference,
+        "token" => token
+      })
+      when is_binary(token) do
+    case IdentityRecovery.record_magic_link_proof(case_reference, token) do
+      {:ok, _receipt} -> json(conn, %{data: %{proofReceived: true}})
+      {:error, _reason} -> unauthorized_link(conn)
+    end
+  end
+
+  def verify_recovery_magic_link(conn, _params), do: unauthorized_link(conn)
 
   defp unauthorized_link(conn) do
     conn
@@ -370,6 +437,23 @@ defmodule DhcWeb.AuthSessionController do
     app_url = Application.get_env(:dhc, :app_url, "http://localhost:5173")
     redirect(conn, external: "#{app_url}/auth?discord=failed")
   end
+
+  defp recovery_success(conn, case_reference, status) do
+    app_url = Application.get_env(:dhc, :app_url, "http://localhost:5173")
+    encoded_case = URI.encode_www_form(case_reference)
+
+    redirect(conn,
+      external: "#{app_url}/auth/identity-recovery?caseReference=#{encoded_case}&status=#{status}"
+    )
+  end
+
+  defp recovery_failure(conn) do
+    app_url = Application.get_env(:dhc, :app_url, "http://localhost:5173")
+    redirect(conn, external: "#{app_url}/auth/identity-recovery?status=failed")
+  end
+
+  defp discord_subject_fingerprint_key,
+    do: Application.fetch_env!(:dhc, :discord_subject_fingerprint_key)
 
   defp acceptance_resume(conn, continuation_id) do
     app_url = Application.get_env(:dhc, :app_url, "http://localhost:5173")

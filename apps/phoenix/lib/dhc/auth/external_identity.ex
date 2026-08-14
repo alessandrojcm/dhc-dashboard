@@ -17,6 +17,7 @@ defmodule Dhc.Auth.ExternalIdentity do
     field :provider_subject, :string
     field :metadata, :map, default: %{}
     field :sign_in_disabled_at, :utc_datetime_usec
+    field :retired_at, :utc_datetime_usec
 
     belongs_to :principal, Dhc.Auth.Principal
 

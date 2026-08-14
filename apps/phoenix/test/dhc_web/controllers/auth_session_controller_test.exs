@@ -3,7 +3,8 @@ defmodule DhcWeb.AuthSessionControllerTest do
 
   import Dhc.AuthFixtures
   import ExUnit.CaptureLog
-  alias Dhc.Auth.PrincipalToken
+  alias Dhc.Auth.{ExternalIdentity, PrincipalToken, UserRole}
+  alias Dhc.Discord.{IdentityRecovery, IdentityRecoveryProof, SignedManifest}
   alias Dhc.Repo
 
   import Ecto.Query
@@ -21,6 +22,74 @@ defmodule DhcWeb.AuthSessionControllerTest do
                purpose: :sign_in,
                session_params: %{state: "test-state", code_verifier: "test-code-verifier"}
              }
+    end
+  end
+
+  describe "Discord identity recovery proofs" do
+    test "binds callback proof to one active case without identity or Session creation" do
+      receipt = recovery_case_fixture()
+
+      conn = get(conn(), "/api/auth/discord/recovery/#{receipt.case_reference}")
+
+      assert redirected_to(conn, 302) ==
+               "https://discord.example.com/oauth2/authorize?state=test-state"
+
+      assert get_session(conn, :discord_oauth_flow).purpose ==
+               {:identity_recovery, receipt.case_reference}
+
+      conn =
+        conn
+        |> recycle()
+        |> get("/api/auth/discord/callback?state=test-state&code=success")
+
+      assert redirected_to(conn, 302) =~
+               "/auth/identity-recovery?caseReference=#{receipt.case_reference}&status=discord-proof-received"
+
+      refute conn.resp_cookies[@session_cookie]
+      refute Repo.exists?(from(t in PrincipalToken, where: t.context == "session"))
+
+      refute Repo.exists?(
+               from(i in ExternalIdentity,
+                 where: i.provider_subject == "discord-request-success"
+               )
+             )
+
+      proof = Repo.get_by!(IdentityRecoveryProof, kind: "discord_oauth")
+      assert proof.recovery_case_id
+      assert proof.subject == "discord-request-success"
+      refute inspect(proof) =~ "discord-request@example.com"
+    end
+
+    test "consumes a destination magic link as case proof without setting a Session cookie" do
+      receipt = recovery_case_fixture()
+      destination = active_principal("recovery-destination@example.com")
+
+      request =
+        post(
+          conn(),
+          "/api/auth/recovery/#{receipt.case_reference}/magic-link",
+          %{"email" => destination.email}
+        )
+
+      assert %{"data" => %{"sent" => true}} = json_response(request, 200)
+      assert oban_jobs_count() == 1
+
+      {token, row} = PrincipalToken.build_magic_link_token(destination)
+      Repo.insert!(row)
+
+      verified =
+        post(
+          conn(),
+          "/api/auth/recovery/#{receipt.case_reference}/magic-link/verify",
+          %{"token" => token}
+        )
+
+      assert %{"data" => %{"proofReceived" => true}} = json_response(verified, 200)
+      refute verified.resp_cookies[@session_cookie]
+      refute Repo.exists?(from(t in PrincipalToken, where: t.context == "session"))
+
+      assert Repo.get_by!(IdentityRecoveryProof, kind: "destination_magic_link").principal_id ==
+               destination.id
     end
   end
 
@@ -646,5 +715,52 @@ defmodule DhcWeb.AuthSessionControllerTest do
     Dhc.MemberFixtures.member_fixture(%{auth_user_id: id, is_active: true, email: email})
     Repo.insert_all("user_roles", [[principal_id: Ecto.UUID.dump!(id), role: "member"]])
     principal_fixture(id: id, email: email)
+  end
+
+  defp recovery_case_fixture do
+    source = active_principal("recovery-source-#{System.unique_integer([:positive])}@example.com")
+
+    operator =
+      active_principal("recovery-admin-#{System.unique_integer([:positive])}@example.com")
+
+    Repo.insert!(%UserRole{principal_id: operator.id, role: "admin"})
+    subject = "contained-subject-#{System.unique_integer([:positive])}"
+
+    identity =
+      %ExternalIdentity{}
+      |> ExternalIdentity.create_changeset(source, %{
+        provider: "discord",
+        provider_subject: subject,
+        metadata: %{}
+      })
+      |> Repo.insert!()
+
+    fingerprint_key = Application.fetch_env!(:dhc, :discord_subject_fingerprint_key)
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    command = %{
+      "version" => 1,
+      "action" => "open",
+      "issued_at" => DateTime.to_iso8601(now),
+      "binding_id" => identity.id,
+      "binding_fingerprint" =>
+        :crypto.mac(:hmac, :sha256, fingerprint_key, subject)
+        |> Base.encode16(case: :lower),
+      "reporter_reference" => "controller-recovery-test",
+      "reason_code" => "replacement_request",
+      "evidence_references" => ["evidence-controller-test"],
+      "actor_principal_id" => operator.id
+    }
+
+    manifest_key = "controller-recovery-manifest-key"
+
+    assert {:ok, receipt} =
+             IdentityRecovery.open_signed(SignedManifest.sign(command, manifest_key), %{
+               manifest_key: manifest_key,
+               fingerprint_key: fingerprint_key,
+               now: now
+             })
+
+    receipt
   end
 end
