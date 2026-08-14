@@ -8,7 +8,10 @@ defmodule Dhc.Discord.IdentityRecoveryApproval do
   schema "discord_identity_recovery_approvals" do
     field :recovery_case_id, :binary_id
     field :approver_principal_id, :binary_id
+    field :discord_oauth_proof_id, :binary_id
+    field :destination_magic_link_proof_id, :binary_id
     field :approval_digest, :string
+    field :attempt, :integer
     field :source_binding_fingerprint, :string
     field :destination_principal_id, :binary_id
     field :incoming_subject_fingerprint, :string

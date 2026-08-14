@@ -80,6 +80,10 @@ defmodule DhcWeb.Router do
           E2EHarnessController,
           :invitation_acceptance_assertion
 
+      post "/complete/identity-recovery/:case_reference",
+           E2EHarnessController,
+           :complete_identity_recovery
+
       patch "/fixtures/:type/:id", E2EHarnessController, :update_fixture
       post "/fixtures/:type/:id", E2EHarnessController, :delete_fixture
     end

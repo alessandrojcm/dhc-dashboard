@@ -1,6 +1,6 @@
 defmodule Dhc.Discord.SignedManifest do
   @moduledoc """
-  Verifies an exact JSON payload wrapped in a signer-bound detached HMAC signature.
+  Verifies exact JSON payloads wrapped in detached HMAC or Ed25519 signatures.
 
   Each envelope names its signing Principal, and every authorized operator has a
   distinct key. The signature covers both the signer and the original payload
@@ -33,6 +33,34 @@ defmodule Dhc.Discord.SignedManifest do
 
   def verify(_, _), do: {:error, :invalid_manifest_signature}
 
+  @doc "Verifies an Ed25519 envelope without exposing the approver's private key."
+  def verify_ed25519(envelope, public_key)
+      when is_map(envelope) and is_binary(public_key) do
+    with true <- MapSet.new(Map.keys(envelope)) == MapSet.new(~w(payload signature)),
+         true <- byte_size(public_key) == 32,
+         payload when is_binary(payload) <- Map.get(envelope, "payload"),
+         signature when is_binary(signature) <- Map.get(envelope, "signature"),
+         {:ok, payload_bytes} <- Base.url_decode64(payload, padding: false),
+         {:ok, supplied_signature} <- Base.url_decode64(signature, padding: false),
+         true <-
+           :crypto.verify(
+             :eddsa,
+             :none,
+             payload_bytes,
+             supplied_signature,
+             [public_key, :ed25519]
+           ),
+         {:ok, command} when is_map(command) <- Jason.decode(payload_bytes) do
+      {:ok, command, digest(payload_bytes)}
+    else
+      _ -> {:error, :invalid_manifest_signature}
+    end
+  rescue
+    ErlangError -> {:error, :invalid_manifest_signature}
+  end
+
+  def verify_ed25519(_, _), do: {:error, :invalid_manifest_signature}
+
   def read(path, keys) do
     with {:ok, bytes} <- File.read(path),
          {:ok, envelope} <- Jason.decode(bytes) do
@@ -53,6 +81,19 @@ defmodule Dhc.Discord.SignedManifest do
       "signature" =>
         key
         |> then(&:crypto.mac(:hmac, :sha256, &1, signed_bytes))
+        |> Base.url_encode64(padding: false)
+    }
+  end
+
+  @doc "Signs an approval command with an actor-held Ed25519 private key."
+  def sign_ed25519(command, private_key)
+      when is_map(command) and is_binary(private_key) do
+    payload = Jason.encode!(command)
+
+    %{
+      "payload" => Base.url_encode64(payload, padding: false),
+      "signature" =>
+        :crypto.sign(:eddsa, :none, payload, [private_key, :ed25519])
         |> Base.url_encode64(padding: false)
     }
   end

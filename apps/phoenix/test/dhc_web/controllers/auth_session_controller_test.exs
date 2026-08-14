@@ -106,8 +106,7 @@ defmodule DhcWeb.AuthSessionControllerTest do
       assert %{"data" => %{"sent" => true}} = json_response(request, 200)
       assert oban_jobs_count() == 1
 
-      {token, row} = PrincipalToken.build_magic_link_token(destination)
-      Repo.insert!(row)
+      token = recovery_token_from_enqueued_email()
 
       verified =
         post(
@@ -122,6 +121,50 @@ defmodule DhcWeb.AuthSessionControllerTest do
 
       assert Repo.get_by!(IdentityRecoveryProof, kind: "destination_magic_link").principal_id ==
                destination.id
+    end
+
+    test "rejects ordinary and cross-case magic links without consuming the case token" do
+      first = recovery_case_fixture()
+      second = recovery_case_fixture()
+      destination = active_principal("case-bound-destination@example.com")
+
+      post(
+        conn(),
+        "/api/auth/recovery/#{first.case_reference}/magic-link",
+        %{"email" => destination.email}
+      )
+
+      case_token = recovery_token_from_enqueued_email()
+      {ordinary_token, ordinary_row} = PrincipalToken.build_magic_link_token(destination)
+      Repo.insert!(ordinary_row)
+
+      assert json_response(
+               post(
+                 conn(),
+                 "/api/auth/recovery/#{second.case_reference}/magic-link/verify",
+                 %{"token" => case_token}
+               ),
+               401
+             )
+
+      assert json_response(
+               post(
+                 conn(),
+                 "/api/auth/recovery/#{first.case_reference}/magic-link/verify",
+                 %{"token" => ordinary_token}
+               ),
+               401
+             )
+
+      assert %{"data" => %{"proofReceived" => true}} =
+               json_response(
+                 post(
+                   conn(),
+                   "/api/auth/recovery/#{first.case_reference}/magic-link/verify",
+                   %{"token" => case_token}
+                 ),
+                 200
+               )
     end
   end
 
@@ -882,6 +925,17 @@ defmodule DhcWeb.AuthSessionControllerTest do
 
   defp oban_jobs_count do
     Repo.aggregate("oban_jobs", :count)
+  end
+
+  defp recovery_token_from_enqueued_email do
+    job = Repo.one!(from(job in Oban.Job, where: job.worker == "Dhc.Email.Worker"))
+    link = get_in(job.args, ["data_variables", "LoginLink"])
+
+    link
+    |> URI.parse()
+    |> Map.fetch!(:query)
+    |> URI.decode_query()
+    |> Map.fetch!("token")
   end
 
   defp active_principal(email) do

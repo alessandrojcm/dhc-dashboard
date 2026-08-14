@@ -391,7 +391,7 @@ defmodule Dhc.Discord.IdentityRecoveryTest do
            ) == 0
 
     destination_principal = Auth.get_principal!(destination.principal_id)
-    {magic_link, _row} = magic_link_token(destination_principal)
+    {magic_link, _row} = recovery_magic_link_token(destination_principal, receipt)
 
     assert {:ok, ^receipt} =
              IdentityRecovery.record_magic_link_proof(receipt.case_reference, magic_link)
@@ -399,6 +399,17 @@ defmodule Dhc.Discord.IdentityRecoveryTest do
     assert {:error, :invalid} = Auth.get_principal_by_session_token(magic_link)
     source_session = session_token(Auth.get_principal!(context.target.principal_id))
     destination_session = session_token(destination_principal)
+    {_source_login, _} = magic_link_token(Auth.get_principal!(context.target.principal_id))
+    {_destination_login, _} = magic_link_token(destination_principal)
+
+    {:ok, source_socket} =
+      Auth.create_socket_token(Auth.get_principal!(context.target.principal_id))
+
+    {:ok, destination_socket} = Auth.create_socket_token(destination_principal)
+    source_socket_id = DhcWeb.UserSocket.socket_id(context.target.principal_id)
+    destination_socket_id = DhcWeb.UserSocket.socket_id(destination.principal_id)
+    :ok = DhcWeb.Endpoint.subscribe(source_socket_id)
+    :ok = DhcWeb.Endpoint.subscribe(destination_socket_id)
 
     approve!(context.operator.principal_id, receipt, destination.principal_id, incoming_subject)
     approve!(second_approver.principal_id, receipt, destination.principal_id, incoming_subject)
@@ -426,7 +437,20 @@ defmodule Dhc.Discord.IdentityRecoveryTest do
     assert new_identity.metadata == %{}
     assert {:error, :invalid} = Auth.get_principal_by_session_token(source_session)
     assert {:error, :invalid} = Auth.get_principal_by_session_token(destination_session)
-    assert Repo.aggregate(from(t in PrincipalToken, where: t.context == "session"), :count) == 0
+    assert {:error, :invalid} = Auth.get_principal_by_socket_token(source_socket)
+    assert {:error, :invalid} = Auth.get_principal_by_socket_token(destination_socket)
+
+    refute Repo.exists?(
+             from(t in PrincipalToken,
+               where:
+                 t.principal_id in ^[context.target.principal_id, destination.principal_id] and
+                   (t.context in ["session", "socket", "login"] or
+                      like(t.context, "identity_recovery:%"))
+             )
+           )
+
+    assert_receive %Phoenix.Socket.Broadcast{topic: ^source_socket_id, event: "disconnect"}
+    assert_receive %Phoenix.Socket.Broadcast{topic: ^destination_socket_id, event: "disconnect"}
 
     [history] = Repo.all(IdentityBindingHistory)
     assert history.old_external_identity_id == old_identity.id
@@ -479,18 +503,34 @@ defmodule Dhc.Discord.IdentityRecoveryTest do
     incoming_subject = "approval-subject-#{System.unique_integer([:positive])}"
     prove_case!(receipt, destination.principal_id, incoming_subject)
 
-    approve!(context.operator.principal_id, receipt, destination.principal_id, incoming_subject)
+    first_approval =
+      approval_command(
+        context.operator.principal_id,
+        receipt,
+        destination.principal_id,
+        incoming_subject
+      )
+
+    {:ok, first_approval_issued_at, 0} = DateTime.from_iso8601(first_approval["issued_at"])
+
+    assert {:ok, ^receipt} =
+             approve_command(
+               context.operator.principal_id,
+               first_approval,
+               first_approval_issued_at
+             )
 
     assert {:error, :invalid_recovery_command} =
              IdentityRecovery.complete(receipt.case_reference, @fingerprint_key)
 
-    assert {:error, :invalid_recovery_operation} =
-             approve(
+    assert {:ok, ^receipt} =
+             approve_command(
                context.operator.principal_id,
-               receipt,
-               destination.principal_id,
-               incoming_subject
+               first_approval,
+               first_approval_issued_at
              )
+
+    assert Repo.aggregate(IdentityRecoveryApproval, :count) == 1
 
     changed =
       approval_command(
@@ -502,10 +542,7 @@ defmodule Dhc.Discord.IdentityRecoveryTest do
       |> Map.put("evidence_references", ["support-said-so"])
 
     assert {:error, :invalid_recovery_command} =
-             IdentityRecovery.approve_signed(
-               signed_approval(changed, second_approver.principal_id),
-               approval_options(second_approver.principal_id)
-             )
+             approve_command(second_approver.principal_id, changed, context.now)
 
     stale_now = DateTime.add(DateTime.utc_now() |> DateTime.truncate(:second), -301, :second)
 
@@ -519,10 +556,7 @@ defmodule Dhc.Discord.IdentityRecoveryTest do
       )
 
     assert {:ok, _} =
-             IdentityRecovery.approve_signed(
-               signed_approval(stale_command, second_approver.principal_id),
-               approval_options(second_approver.principal_id, stale_now)
-             )
+             approve_command(second_approver.principal_id, stale_command, stale_now)
 
     assert {:error, :invalid_recovery_command} =
              IdentityRecovery.complete(receipt.case_reference, @fingerprint_key)
@@ -531,6 +565,185 @@ defmodule Dhc.Discord.IdentityRecoveryTest do
     assert is_nil(source.retired_at)
     assert source.sign_in_disabled_at
     assert Repo.aggregate(IdentityBindingHistory, :count) == 0
+  end
+
+  test "approval identity is derived from distinct Ed25519 credentials", context do
+    destination = Dhc.MemberFixtures.member_fixture()
+    second_approver = authorized_operator()
+    receipt = open_case!(context)
+    incoming_subject = "credential-subject-#{System.unique_integer([:positive])}"
+    prove_case!(receipt, destination.principal_id, incoming_subject)
+
+    command =
+      approval_command(
+        context.operator.principal_id,
+        receipt,
+        destination.principal_id,
+        incoming_subject
+      )
+
+    {:ok, issued_at, 0} = DateTime.from_iso8601(command["issued_at"])
+    {first_public, first_private} = :crypto.generate_key(:eddsa, :ed25519)
+    {second_public, _second_private} = :crypto.generate_key(:eddsa, :ed25519)
+    envelope = SignedManifest.sign_ed25519(command, first_private)
+
+    refute Map.has_key?(command, "actor_principal_id")
+
+    assert {:error, :invalid_manifest_signature} =
+             IdentityRecovery.approve_signed(envelope, %{
+               approver_public_keys: %{second_approver.principal_id => second_public},
+               now: issued_at
+             })
+
+    assert {:ok, _} =
+             IdentityRecovery.approve_signed(envelope, %{
+               approver_public_keys: %{context.operator.principal_id => first_public},
+               now: issued_at
+             })
+
+    assert Repo.one!(IdentityRecoveryApproval).approver_principal_id ==
+             context.operator.principal_id
+  end
+
+  test "rejects a third live approval without poisoning completion", context do
+    destination = Dhc.MemberFixtures.member_fixture()
+    second_approver = authorized_operator()
+    third_approver = authorized_operator()
+    receipt = open_case!(context)
+    incoming_subject = "third-approval-subject-#{System.unique_integer([:positive])}"
+    prove_case!(receipt, destination.principal_id, incoming_subject)
+
+    approve!(context.operator.principal_id, receipt, destination.principal_id, incoming_subject)
+    approve!(second_approver.principal_id, receipt, destination.principal_id, incoming_subject)
+
+    assert {:error, :invalid_recovery_command} =
+             approve(
+               third_approver.principal_id,
+               receipt,
+               destination.principal_id,
+               incoming_subject
+             )
+
+    assert Repo.aggregate(IdentityRecoveryApproval, :count) == 2
+
+    assert {:ok, %{state: "completed"}} =
+             IdentityRecovery.complete(receipt.case_reference, @fingerprint_key)
+  end
+
+  test "appends fresh proof and approval attempts after expiry", context do
+    destination = Dhc.MemberFixtures.member_fixture()
+    second_approver = authorized_operator()
+    receipt = open_case!(context)
+    incoming_subject = "refresh-subject-#{System.unique_integer([:positive])}"
+    expired_now = DateTime.add(context.now, -301, :second)
+
+    assert {:ok, ^receipt} =
+             IdentityRecovery.record_discord_oauth_proof(
+               receipt.case_reference,
+               %{"sub" => incoming_subject},
+               @fingerprint_key,
+               expired_now
+             )
+
+    assert {:ok, ^receipt} =
+             IdentityRecovery.record_discord_oauth_proof(
+               receipt.case_reference,
+               %{"sub" => incoming_subject},
+               @fingerprint_key,
+               context.now
+             )
+
+    principal = Auth.get_principal!(destination.principal_id)
+    {expired_token, _} = recovery_magic_link_token(principal, receipt)
+
+    assert {:ok, ^receipt} =
+             IdentityRecovery.record_magic_link_proof(
+               receipt.case_reference,
+               expired_token,
+               expired_now
+             )
+
+    {fresh_token, _} = recovery_magic_link_token(principal, receipt)
+
+    assert {:ok, ^receipt} =
+             IdentityRecovery.record_magic_link_proof(
+               receipt.case_reference,
+               fresh_token,
+               context.now
+             )
+
+    assert [1, 2] ==
+             Repo.all(
+               from(p in IdentityRecoveryProof,
+                 where: p.kind == "discord_oauth",
+                 order_by: p.attempt,
+                 select: p.attempt
+               )
+             )
+
+    expired_command =
+      approval_command(
+        context.operator.principal_id,
+        receipt,
+        destination.principal_id,
+        incoming_subject,
+        expired_now
+      )
+
+    assert {:ok, _} =
+             approve_command(context.operator.principal_id, expired_command, expired_now)
+
+    approve!(context.operator.principal_id, receipt, destination.principal_id, incoming_subject)
+    approve!(second_approver.principal_id, receipt, destination.principal_id, incoming_subject)
+
+    assert Repo.aggregate(
+             from(a in IdentityRecoveryApproval,
+               where: a.approver_principal_id == ^context.operator.principal_id
+             ),
+             :count
+           ) == 2
+
+    assert {:ok, %{state: "completed"}} =
+             IdentityRecovery.complete(receipt.case_reference, @fingerprint_key)
+
+    assert Repo.aggregate(IdentityRecoveryProof, :count) == 4
+    assert Repo.aggregate(IdentityRecoveryApproval, :count) == 3
+  end
+
+  test "terminalizes an unresolved case immutably and permits a fresh contained case", context do
+    receipt = open_case!(context)
+
+    close_command = %{
+      "version" => 1,
+      "action" => "close",
+      "issued_at" => DateTime.to_iso8601(context.now),
+      "case_reference" => receipt.case_reference,
+      "outcome" => "expired",
+      "reason_code" => "proof_window_expired",
+      "actor_principal_id" => context.operator.principal_id
+    }
+
+    assert {:ok, %{state: "expired"}} =
+             IdentityRecovery.close_signed(
+               SignedManifest.sign(
+                 close_command,
+                 context.operator.principal_id,
+                 manifest_key(context.operator.principal_id)
+               ),
+               context.options
+             )
+
+    expired = Repo.get_by!(IdentityRecoveryCase, case_reference: receipt.case_reference)
+    assert expired.terminal_at
+    assert expired.terminal_reason_code == "proof_window_expired"
+    assert Repo.get!(ExternalIdentity, context.identity.id).sign_in_disabled_at
+
+    assert {:ok, replacement_case} = open(context)
+
+    refute replacement_case.case_reference == receipt.case_reference
+    assert replacement_case.state == "open"
+    assert Repo.aggregate(IdentityRecoveryCase, :count) == 2
+    assert_raise Ecto.ConstraintError, fn -> Repo.delete!(expired) end
   end
 
   test "a permanent destination conflict rolls back without weakening containment", context do
@@ -663,7 +876,8 @@ defmodule Dhc.Discord.IdentityRecoveryTest do
                @fingerprint_key
              )
 
-    {token, _row} = magic_link_token(Auth.get_principal!(destination_principal_id))
+    {token, _row} =
+      recovery_magic_link_token(Auth.get_principal!(destination_principal_id), receipt)
 
     assert {:ok, ^receipt} =
              IdentityRecovery.record_magic_link_proof(receipt.case_reference, token)
@@ -677,19 +891,19 @@ defmodule Dhc.Discord.IdentityRecoveryTest do
     command = approval_command(actor_id, receipt, destination_id, incoming_subject)
     {:ok, issued_at, 0} = DateTime.from_iso8601(command["issued_at"])
 
+    approve_command(actor_id, command, issued_at)
+  end
+
+  defp approve_command(actor_id, command, now) do
+    {public_key, private_key} = :crypto.generate_key(:eddsa, :ed25519)
+
     IdentityRecovery.approve_signed(
-      signed_approval(command, actor_id),
-      approval_options(actor_id, issued_at)
+      SignedManifest.sign_ed25519(command, private_key),
+      %{approver_public_keys: %{actor_id => public_key}, now: now}
     )
   end
 
-  defp signed_approval(command, actor_id),
-    do: SignedManifest.sign(command, actor_id, manifest_key(actor_id))
-
-  defp approval_options(actor_id, now \\ DateTime.utc_now()),
-    do: %{manifest_keys: %{actor_id => manifest_key(actor_id)}, now: now}
-
-  defp approval_command(actor_id, receipt, destination_id, incoming_subject, now \\ nil) do
+  defp approval_command(_actor_id, receipt, destination_id, incoming_subject, now \\ nil) do
     now = now || DateTime.utc_now() |> DateTime.truncate(:second)
 
     %{
@@ -705,9 +919,15 @@ defmodule Dhc.Discord.IdentityRecoveryTest do
         if(receipt.binding_fingerprint == fingerprint(incoming_subject),
           do: "transfer",
           else: "replacement"
-        ),
-      "actor_principal_id" => actor_id
+        )
     }
+  end
+
+  defp recovery_magic_link_token(principal, receipt) do
+    recovery_case = Repo.get_by!(IdentityRecoveryCase, case_reference: receipt.case_reference)
+    {token, row} = PrincipalToken.build_identity_recovery_token(principal, recovery_case.id)
+    Repo.insert!(row)
+    {token, row}
   end
 
   defp command(context) do

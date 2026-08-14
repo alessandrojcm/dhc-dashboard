@@ -170,6 +170,20 @@ type SettingSeed = {
 	result: Pick<SettingsItem, "key" | "value">;
 };
 
+type IdentityRecoverySeed = {
+	attrs: { operation: "replacement" | "transfer" };
+	result: {
+		caseReference: string;
+		destinationEmail: string;
+		proofUrl: string;
+		operation: "replacement" | "transfer";
+		sourcePrincipalId: string;
+		destinationPrincipalId: string;
+		firstApproverId: string;
+		secondApproverId: string;
+	};
+};
+
 type E2EScenarios = {
 	member: MemberSeed;
 	waitlist: WaitlistSeed;
@@ -181,12 +195,13 @@ type E2EScenarios = {
 	registration: RegistrationSeed;
 	waitlistStatus: WaitlistStatusSeed;
 	setting: SettingSeed;
+	identityRecovery: IdentityRecoverySeed;
 };
 
 export type E2EScenarioName = keyof E2EScenarios;
 export type E2EFixtureType = Exclude<
 	E2EScenarioName,
-	"setting" | "waitlistStatus"
+	"identityRecovery" | "setting" | "waitlistStatus"
 >;
 
 export async function fetchE2EHarness(
@@ -309,6 +324,19 @@ export async function interruptNextOnboardingFinalization() {
 		"/onboarding/interrupt-next-finalization",
 		{},
 	);
+}
+
+export async function completeIdentityRecovery(caseReference: string) {
+	const response = await harnessRequest<{
+		data: {
+			state: "completed";
+			operation: "replacement" | "transfer";
+			activeDestinationPrincipalId: string;
+			bindingHistoryCount: number;
+			affectedTokenCount: number;
+		};
+	}>(`/complete/identity-recovery/${caseReference}`, {});
+	return response.data;
 }
 
 type E2EUpdatableFixture =

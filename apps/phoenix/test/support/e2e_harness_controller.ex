@@ -71,6 +71,20 @@ defmodule DhcWeb.E2EHarnessController do
     end)
   end
 
+  def complete_identity_recovery(conn, %{"case_reference" => case_reference}) do
+    with_harness(conn, fn conn ->
+      case E2EHarness.complete_identity_recovery(case_reference) do
+        {:ok, data} ->
+          json(conn, %{data: data})
+
+        {:error, reason} ->
+          conn
+          |> put_status(:unprocessable_entity)
+          |> json(%{errors: %{detail: inspect(reason)}})
+      end
+    end)
+  end
+
   def delete_fixture(conn, %{"type" => type, "id" => id}) do
     with_harness(conn, fn conn ->
       E2EHarness.delete_fixture(type, id)
