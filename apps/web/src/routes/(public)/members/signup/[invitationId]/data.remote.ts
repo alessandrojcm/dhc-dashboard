@@ -1,4 +1,8 @@
-import { invitationsAccept, onboardingStartAcceptance } from "@dhc/api-client";
+import {
+	invitationsAccept,
+	onboardingContinueAcceptance,
+	onboardingStartAcceptance,
+} from "@dhc/api-client";
 import { error, isRedirect, redirect } from "@sveltejs/kit";
 import dayjs from "dayjs";
 import { dev } from "$app/environment";
@@ -50,7 +54,9 @@ export const validateInvitation = form(inviteValidationSchema, async (data) => {
 		response.response.headers.get("x-onboarding-continuation")!,
 		{
 			expires: new Date(Date.now() + 60 * 15 * 1000),
-			path: `/members/signup/${invitationId}`,
+			// Remote forms submit to /_app/remote, so the protected proof must be
+			// available outside the page route while remaining HTTP-only.
+			path: "/",
 			httpOnly: true,
 			secure: !dev,
 			sameSite: "lax",
@@ -87,6 +93,44 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 	let acceptanceStatus: number | undefined;
 
 	try {
+		const protectedContinuation = event.cookies.get(
+			`onboarding-acceptance-${invitationId}`,
+		);
+
+		if (protectedContinuation) {
+			const acceptance = await onboardingContinueAcceptance({
+				baseUrl: apiBaseUrl(),
+				headers: { "x-onboarding-continuation": protectedContinuation },
+				timeout: invitationAcceptanceTimeout,
+				body: {
+					nextOfKinName: data.nextOfKin,
+					nextOfKinPhone: data.nextOfKinNumber,
+					stripeConfirmationToken: data.stripeConfirmationToken,
+					couponCode: data.couponCode || undefined,
+					mandateContext: {
+						ipAddress: event.getClientAddress(),
+						userAgent: event.request.headers.get("user-agent") ?? undefined,
+					},
+				},
+			});
+
+			if (acceptance.error || acceptance.data?.data.state !== "accepted") {
+				acceptanceError = acceptance.error;
+				acceptanceStatus = acceptance.response?.status;
+				throw error(
+					acceptanceStatus ?? 500,
+					acceptanceStatus === 402
+						? "Payment could not be completed"
+						: "Invitation acceptance failed",
+				);
+			}
+
+			event.cookies.delete(`onboarding-acceptance-${invitationId}`, {
+				path: "/",
+			});
+			throw redirect(303, `/members/signup/${invitationId}/success`);
+		}
+
 		const verificationToken = event.cookies.get(
 			`invite-verification-${invitationId}`,
 		);

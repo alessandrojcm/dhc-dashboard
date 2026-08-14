@@ -56,7 +56,7 @@ defmodule Dhc.Onboarding do
           from(a in InvitationAcceptanceAttempt,
             where:
               a.invitation_id == ^invitation.id and
-                a.status in ["processing", "cleanup_pending", "provisioned"],
+                a.status in ["processing", "payment_pending", "cleanup_pending", "provisioned"],
             lock: "FOR UPDATE"
           )
           |> Repo.one()
@@ -114,23 +114,34 @@ defmodule Dhc.Onboarding do
     with {:ok, continuation_id} <- Ecto.UUID.cast(continuation_id),
          {:ok, %InvitationAcceptanceDiscordContinuation{} = continuation} <-
            load_current_continuation(continuation_id, now),
-         %Invitation{status: "pending"} = invitation <-
-           Repo.get(Invitation, continuation.invitation_id),
-         true <- continuation.status in ["awaiting_oauth", "verified", "collision"] do
-      if continuation.status == "collision" do
-        {:ok, safe_state(continuation, invitation)}
-      else
-        with %InvitationAcceptanceAttempt{status: "processing"} <-
-               Repo.get(InvitationAcceptanceAttempt, continuation.attempt_id),
-             :gt <- DateTime.compare(invitation.expires_at, now),
-             :gt <- DateTime.compare(continuation.expires_at, now) do
-          {:ok, safe_state(continuation, invitation)}
-        else
-          _ -> {:error, :restart_verification}
-        end
-      end
+         %Invitation{} = invitation <- Repo.get(Invitation, continuation.invitation_id),
+         %InvitationAcceptanceAttempt{} = attempt <-
+           Repo.get(InvitationAcceptanceAttempt, continuation.attempt_id) do
+      safe_acceptance_state(continuation, invitation, attempt, now)
     else
       _ -> {:error, :restart_verification}
+    end
+  end
+
+  @spec continue_acceptance(String.t(), map()) :: {:ok, map()} | {:error, term()}
+  def continue_acceptance(continuation_id, attrs) when is_map(attrs) do
+    with :ok <- validate_acceptance_details(attrs),
+         {:ok, invitation, attempt, advance?} <-
+           consume_verified_continuation(continuation_id, attrs) do
+      if advance?,
+        do: begin_payment(invitation, attempt),
+        else: {:ok, safe_attempt_state(attempt, invitation)}
+    end
+  end
+
+  @spec retry_acceptance(String.t()) :: {:ok, map()} | {:error, term()}
+  def retry_acceptance(continuation_id) do
+    with {:ok, continuation_id} <- Ecto.UUID.cast(continuation_id),
+         {:ok, invitation, attempt} <- load_consumed_attempt(continuation_id) do
+      retry_attempt(invitation, attempt)
+    else
+      :error -> {:error, :invalid_continuation}
+      {:error, _reason} = error -> error
     end
   end
 
@@ -148,7 +159,8 @@ defmodule Dhc.Onboarding do
           :missing
 
         continuation.status in ["awaiting_oauth", "verified"] and
-            DateTime.compare(continuation.expires_at, now) != :gt ->
+          DateTime.compare(continuation.expires_at, now) != :gt and
+            not continuation_consumed_into_attempt?(continuation) ->
           terminalize_continuation!(
             continuation,
             "expired",
@@ -165,6 +177,16 @@ defmodule Dhc.Onboarding do
     |> case do
       {:ok, %InvitationAcceptanceDiscordContinuation{} = continuation} -> {:ok, continuation}
       _ -> {:error, :restart_verification}
+    end
+  end
+
+  defp continuation_consumed_into_attempt?(continuation) do
+    case Repo.get(InvitationAcceptanceAttempt, continuation.attempt_id) do
+      %InvitationAcceptanceAttempt{acceptance_data: data} ->
+        Map.get(data, "continuation_id") == continuation.id
+
+      _ ->
+        false
     end
   end
 
@@ -502,6 +524,254 @@ defmodule Dhc.Onboarding do
       expires_at: continuation.expires_at
     }
 
+  defp safe_acceptance_state(continuation, invitation, attempt, now) do
+    cond do
+      continuation.status == "collision" ->
+        {:ok, safe_state(continuation, invitation)}
+
+      attempt.status == "completed" and invitation.status == "accepted" ->
+        {:ok, %{state: "accepted", invitation_email: invitation.email}}
+
+      attempt.status == "payment_pending" and continuation.status == "verified" ->
+        {:ok, safe_state(continuation, invitation)}
+
+      attempt.status == "provisioned" and continuation.status == "verified" ->
+        {:ok, safe_attempt_state(attempt, invitation)}
+
+      attempt.status == "processing" and continuation.status in ["awaiting_oauth", "verified"] and
+        DateTime.compare(invitation.expires_at, now) == :gt and
+          DateTime.compare(continuation.expires_at, now) == :gt ->
+        {:ok, safe_state(continuation, invitation)}
+
+      true ->
+        {:error, :restart_verification}
+    end
+  end
+
+  defp safe_attempt_state(%{status: "completed"}, invitation),
+    do: %{state: "accepted", invitation_email: invitation.email}
+
+  defp safe_attempt_state(%{status: "payment_pending"}, _invitation),
+    do: %{state: "paymentPending"}
+
+  defp safe_attempt_state(%{status: "provisioned"}, _invitation),
+    do: %{state: "paymentPending"}
+
+  defp safe_attempt_state(_attempt, _invitation), do: %{state: "restartVerification"}
+
+  defp validate_acceptance_details(attrs) do
+    if present?(Map.get(attrs, :next_of_kin_name)) and
+         present?(Map.get(attrs, :next_of_kin_phone)) and
+         present?(Map.get(attrs, :confirmation_token)) do
+      :ok
+    else
+      {:error, :invalid_acceptance_details}
+    end
+  end
+
+  defp present?(value), do: is_binary(value) and String.trim(value) != ""
+
+  defp consume_verified_continuation(continuation_id, attrs) do
+    with {:ok, continuation_id} <- Ecto.UUID.cast(continuation_id) do
+      Repo.transaction(fn ->
+        now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+        continuation =
+          from(c in InvitationAcceptanceDiscordContinuation,
+            where: c.id == ^continuation_id,
+            lock: "FOR UPDATE"
+          )
+          |> Repo.one()
+
+        if is_nil(continuation), do: Repo.rollback(:invalid_continuation)
+
+        invitation =
+          from(i in Invitation,
+            where: i.id == ^continuation.invitation_id,
+            lock: "FOR UPDATE"
+          )
+          |> Repo.one!()
+
+        attempt =
+          from(a in InvitationAcceptanceAttempt,
+            where: a.id == ^continuation.attempt_id,
+            lock: "FOR UPDATE"
+          )
+          |> Repo.one!()
+
+        already_consumed? =
+          Map.get(attempt.acceptance_data, "continuation_id") == continuation.id and
+            attempt.status in ["payment_pending", "provisioned", "completed"]
+
+        cond do
+          already_consumed? ->
+            {invitation, attempt, false}
+
+          invitation.status != "pending" or attempt.status != "processing" or
+            continuation.status != "verified" or
+              DateTime.compare(continuation.expires_at, now) != :gt ->
+            Repo.rollback(:invalid_continuation)
+
+          not active_claim?(continuation) ->
+            Repo.rollback(:invalid_continuation)
+
+          true ->
+            payment_attrs = %{
+              confirmation_token: attrs.confirmation_token,
+              coupon_code: blank_to_nil(Map.get(attrs, :coupon_code)),
+              mandate_context: Map.get(attrs, :mandate_context, %{})
+            }
+
+            acceptance_data =
+              acceptance_data(
+                String.trim(attrs.next_of_kin_name),
+                String.trim(attrs.next_of_kin_phone),
+                payment_attrs
+              )
+              |> Map.put("continuation_id", continuation.id)
+
+            attempt =
+              attempt
+              |> Ecto.Changeset.change(
+                status: "payment_pending",
+                acceptance_data: acceptance_data,
+                stripe_state: Map.put(attempt.stripe_state, "payment_operation_started", true)
+              )
+              |> Repo.update!()
+
+            {invitation, attempt, true}
+        end
+      end)
+      |> case do
+        {:ok, {invitation, attempt, advance?}} ->
+          {:ok, invitation, attempt, advance?}
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    else
+      :error -> {:error, :invalid_continuation}
+    end
+  end
+
+  defp active_claim?(continuation) do
+    Repo.exists?(
+      from(c in InvitationAcceptanceDiscordSubjectClaim,
+        where:
+          c.continuation_id == ^continuation.id and c.provider == "discord" and
+            c.provider_subject == ^continuation.provider_subject
+      )
+    )
+  end
+
+  defp load_consumed_attempt(continuation_id) do
+    Repo.transaction(fn ->
+      continuation =
+        from(c in InvitationAcceptanceDiscordContinuation,
+          where: c.id == ^continuation_id,
+          lock: "FOR UPDATE"
+        )
+        |> Repo.one()
+
+      if is_nil(continuation), do: Repo.rollback(:invalid_continuation)
+
+      attempt =
+        from(a in InvitationAcceptanceAttempt,
+          where: a.id == ^continuation.attempt_id,
+          lock: "FOR UPDATE"
+        )
+        |> Repo.one!()
+
+      invitation = Repo.get!(Invitation, continuation.invitation_id)
+
+      unless Map.get(attempt.acceptance_data, "continuation_id") == continuation.id,
+        do: Repo.rollback(:invalid_continuation)
+
+      {invitation, attempt}
+    end)
+    |> case do
+      {:ok, {invitation, attempt}} -> {:ok, invitation, attempt}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp begin_payment(invitation, attempt) do
+    attrs = payment_attrs(attempt)
+
+    with {:ok, requirement} <- stripe_adapter().payment_requirement(attrs.coupon_code),
+         {:ok, attempt} <- ensure_customer(invitation, attempt) do
+      case requirement do
+        :paid -> provision_and_finalize(invitation, attempt, attrs)
+        :complimentary -> provision_complimentary(invitation, attempt, attrs.coupon_code)
+      end
+    else
+      {:error, reason} ->
+        record_provider_failure(attempt, reason)
+        {:error, {:payment_failed, reason}}
+    end
+  end
+
+  defp provision_complimentary(invitation, attempt, coupon_code) do
+    provision_and_finalize(invitation, attempt, %{
+      complimentary: true,
+      coupon_code: coupon_code
+    })
+  end
+
+  defp retry_attempt(invitation, %{status: "completed"} = attempt),
+    do: {:ok, safe_attempt_state(attempt, invitation)}
+
+  defp retry_attempt(invitation, %{status: "provisioned"} = attempt),
+    do: finalize_discord(invitation, attempt)
+
+  defp retry_attempt(invitation, %{status: "payment_pending"} = attempt) do
+    begin_payment(invitation, attempt)
+  end
+
+  defp retry_attempt(_invitation, _attempt), do: {:error, :invalid_attempt}
+
+  defp provision_and_finalize(invitation, attempt, attrs) do
+    attrs =
+      attrs
+      |> Map.put(:attempt_id, attempt.id)
+      |> Map.put(:invitation_id, invitation.id)
+      |> Map.put(:customer_id, attempt.stripe_customer_id)
+      |> Map.put(:progress, &record_stripe_progress(attempt.id, &1))
+
+    case stripe_adapter().provision_membership(attrs) do
+      {:ok, stripe_state} ->
+        with {:ok, attempt} <- mark_provisioned(attempt, stripe_state) do
+          finalize_discord(invitation, attempt)
+        end
+
+      {:error, reason} ->
+        record_provider_failure(attempt, reason)
+        {:error, {:payment_failed, reason}}
+    end
+  end
+
+  defp finalize_discord(invitation, attempt) do
+    data = attempt.acceptance_data
+
+    case Invitations.convert_with_discord(
+           invitation.id,
+           attempt.id,
+           Map.fetch!(data, "continuation_id"),
+           Map.fetch!(data, "next_of_kin_name"),
+           Map.fetch!(data, "next_of_kin_phone"),
+           attempt.stripe_customer_id
+         ) do
+      {:ok, _member} ->
+        {:ok, %{state: "accepted", invitation_email: invitation.email}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp blank_to_nil(value) when value in [nil, ""], do: nil
+  defp blank_to_nil(value) when is_binary(value), do: String.trim(value)
+
   defp display_metadata(claims) do
     %{}
     |> maybe_put("username", Map.get(claims, "preferred_username"))
@@ -588,7 +858,8 @@ defmodule Dhc.Onboarding do
         from(a in InvitationAcceptanceAttempt, where: a.id == ^attempt.id, lock: "FOR UPDATE")
         |> Repo.one!()
 
-      if attempt.status != "processing", do: Repo.rollback(:attempt_not_processing)
+      if attempt.status not in ["processing", "payment_pending"],
+        do: Repo.rollback(:attempt_not_processing)
 
       updated =
         attempt

@@ -10,6 +10,15 @@ defmodule Dhc.OnboardingTestStripeAdapter do
   end
 
   @impl true
+  def payment_requirement(coupon_code) do
+    send(test_pid(), {:payment_requirement, coupon_code})
+
+    if coupon_code == "COMPLIMENTARY",
+      do: {:ok, :complimentary},
+      else: {:ok, :paid}
+  end
+
+  @impl true
   def create_customer(attrs) do
     send(test_pid(), {:create_customer, attrs})
     Application.get_env(:dhc, :onboarding_stripe_customer_result, {:ok, "cus_onboarding"})

@@ -1,6 +1,7 @@
 import { onboardingShowAcceptance } from "@dhc/api-client";
 import { apiBaseUrl } from "$lib/server/api-client";
 import dayjs from "dayjs";
+import { redirect } from "@sveltejs/kit";
 import type { PageServerLoad } from "./$types";
 
 export const load: PageServerLoad = async ({ params, cookies }) => {
@@ -20,6 +21,12 @@ export const load: PageServerLoad = async ({ params, cookies }) => {
 			"x-onboarding-continuation": proof,
 		},
 	});
+	if (response.data?.data?.state === "accepted") {
+		cookies.delete(`onboarding-acceptance-${params.invitationId}`, {
+			path: "/",
+		});
+		throw redirect(303, `/members/signup/${params.invitationId}/success`);
+	}
 
 	return {
 		state: response.data?.data?.state ?? ("restartVerification" as const),

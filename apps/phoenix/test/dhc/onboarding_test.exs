@@ -4,13 +4,18 @@ defmodule Dhc.OnboardingTest do
 
   import Ecto.Query
 
+  alias Dhc.Auth.ExternalIdentity
   alias Dhc.Auth.Principal
+  alias Dhc.Auth.PrincipalToken
+  alias Dhc.Auth.UserRole
   alias Dhc.Invitations.Invitation
   alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.Onboarding
   alias Dhc.Onboarding.InvitationAcceptanceAttempt
   alias Dhc.Onboarding.InvitationAcceptanceDiscordContinuation
+  alias Dhc.Onboarding.InvitationAcceptanceDiscordSubjectClaim
   alias Dhc.Onboarding.Workers.AcceptanceRecoveryWorker
+  alias Dhc.UserProfiles.UserProfile
 
   setup do
     original_adapter = Application.get_env(:dhc, :onboarding_stripe_adapter)
@@ -136,6 +141,223 @@ defmodule Dhc.OnboardingTest do
     refute Repo.get(Principal, invitation.prospective_principal_id)
     refute_received {:create_customer, _}
     refute_received {:provision_membership, _}
+  end
+
+  test "verified Continue is single-use and atomically finalizes the paid Discord-bound Member" do
+    invitation = insert_invitation!()
+
+    {:ok, started} =
+      Onboarding.start_acceptance(
+        invitation.id,
+        invitation.email,
+        Date.to_iso8601(invitation.date_of_birth)
+      )
+
+    assert {:ok, %{state: "discordVerified"}} =
+             Onboarding.verify_discord(started.continuation_id, %{
+               "sub" => "paid-discord-subject",
+               "preferred_username" => "paid-member",
+               "picture" => "https://cdn.example.com/paid-member.png"
+             })
+
+    attrs = %{
+      next_of_kin_name: "Grace Hopper",
+      next_of_kin_phone: "+353810000099",
+      confirmation_token: "ctok_discord_paid",
+      coupon_code: nil,
+      mandate_context: %{ip_address: "127.0.0.1", user_agent: "test-agent"}
+    }
+
+    invitation_email = invitation.email
+
+    assert {:ok, %{state: "accepted", invitation_email: ^invitation_email}} =
+             Onboarding.continue_acceptance(started.continuation_id, attrs)
+
+    assert_received {:payment_requirement, nil}
+    assert_received {:create_customer, %{attempt_id: attempt_id}}
+
+    assert_received {:provision_membership,
+                     %{
+                       confirmation_token: "ctok_discord_paid",
+                       mandate_context: %{ip_address: "127.0.0.1", user_agent: "test-agent"}
+                     }}
+
+    assert {:ok, %{state: "accepted"}} =
+             Onboarding.continue_acceptance(started.continuation_id, %{
+               attrs
+               | next_of_kin_name: "Must not replace durable input",
+                 confirmation_token: "ctok_must_not_be_used"
+             })
+
+    refute_received {:payment_requirement, _}
+    refute_received {:create_customer, _}
+    refute_received {:provision_membership, _}
+    assert Repo.aggregate(InvitationAcceptanceAttempt, :count) == 1
+    assert Repo.aggregate(InvitationAcceptanceDiscordSubjectClaim, :count) == 0
+
+    principal_id = invitation.prospective_principal_id
+    assert %Principal{id: ^principal_id, email: email} = Repo.get!(Principal, principal_id)
+    assert email == invitation.email
+
+    assert %UserProfile{principal_id: ^principal_id, customer_id: "cus_onboarding"} =
+             Repo.get_by!(UserProfile, principal_id: principal_id)
+
+    assert %MemberProfile{id: ^principal_id, next_of_kin_name: "Grace Hopper"} =
+             Repo.get!(MemberProfile, principal_id)
+
+    assert %UserRole{role: "member"} = Repo.get_by!(UserRole, principal_id: principal_id)
+
+    assert %ExternalIdentity{
+             principal_id: ^principal_id,
+             provider: "discord",
+             provider_subject: "paid-discord-subject",
+             metadata: %{"username" => "paid-member"}
+           } = Repo.get_by!(ExternalIdentity, principal_id: principal_id, provider: "discord")
+
+    assert %InvitationAcceptanceAttempt{id: ^attempt_id, status: "completed"} =
+             Repo.get!(InvitationAcceptanceAttempt, attempt_id)
+
+    assert %InvitationAcceptanceDiscordContinuation{
+             status: "consumed",
+             provider_subject: nil,
+             display_metadata: %{}
+           } = Repo.get!(InvitationAcceptanceDiscordContinuation, started.continuation_id)
+
+    refute Repo.exists?(InvitationAcceptanceDiscordSubjectClaim)
+    refute Repo.exists?(PrincipalToken)
+  end
+
+  test "complimentary acceptance uses the same finalization without a payment descriptor" do
+    invitation = insert_invitation!()
+
+    {:ok, started} =
+      Onboarding.start_acceptance(
+        invitation.id,
+        invitation.email,
+        Date.to_iso8601(invitation.date_of_birth)
+      )
+
+    {:ok, _state} =
+      Onboarding.verify_discord(started.continuation_id, %{
+        "sub" => "complimentary-discord-subject",
+        "preferred_username" => "complimentary-member"
+      })
+
+    assert {:ok, %{state: "accepted"}} =
+             Onboarding.continue_acceptance(started.continuation_id, %{
+               next_of_kin_name: "Grace Hopper",
+               next_of_kin_phone: "+353810000099",
+               confirmation_token: "ctok_complimentary",
+               coupon_code: "COMPLIMENTARY"
+             })
+
+    assert_received {:payment_requirement, "COMPLIMENTARY"}
+    assert_received {:create_customer, _attrs}
+    assert_received {:provision_membership, %{complimentary: true}}
+    assert Repo.get!(Invitation, invitation.id).status == "accepted"
+    assert Repo.exists?(ExternalIdentity)
+    refute Repo.exists?(PrincipalToken)
+  end
+
+  test "duplicate Continue returns the current projection and only explicit Retry resumes Stripe" do
+    invitation = insert_invitation!()
+
+    {:ok, started} =
+      Onboarding.start_acceptance(
+        invitation.id,
+        invitation.email,
+        Date.to_iso8601(invitation.date_of_birth)
+      )
+
+    {:ok, _state} =
+      Onboarding.verify_discord(started.continuation_id, %{
+        "sub" => "retry-discord-subject",
+        "preferred_username" => "retry-member"
+      })
+
+    timeout = {:http_error, :timeout}
+    Application.put_env(:dhc, :onboarding_stripe_result, {:error, timeout})
+
+    attrs = %{
+      next_of_kin_name: "Grace Hopper",
+      next_of_kin_phone: "+353810000099",
+      confirmation_token: "ctok_original",
+      coupon_code: nil
+    }
+
+    assert {:error, {:payment_failed, ^timeout}} =
+             Onboarding.continue_acceptance(started.continuation_id, attrs)
+
+    assert_received {:payment_requirement, nil}
+    assert_received {:create_customer, _attrs}
+    assert_received {:provision_membership, %{confirmation_token: "ctok_original"}}
+
+    assert %InvitationAcceptanceAttempt{status: "payment_pending"} =
+             Repo.get_by!(InvitationAcceptanceAttempt, invitation_id: invitation.id)
+
+    Application.put_env(:dhc, :onboarding_stripe_result, {:ok, %{}})
+
+    assert {:ok, %{state: "paymentPending"}} =
+             Onboarding.continue_acceptance(started.continuation_id, %{
+               attrs
+               | next_of_kin_name: "Must not replace durable input",
+                 confirmation_token: "ctok_must_not_be_used"
+             })
+
+    refute_received {:payment_requirement, _}
+    refute_received {:create_customer, _}
+    refute_received {:provision_membership, _}
+
+    assert {:ok, %{state: "accepted"}} = Onboarding.retry_acceptance(started.continuation_id)
+    assert_received {:provision_membership, %{confirmation_token: "ctok_original"}}
+    refute_received {:provision_membership, %{confirmation_token: "ctok_must_not_be_used"}}
+  end
+
+  test "Discord-bound finalization rollback leaves no partial conversion records" do
+    invitation = insert_invitation!()
+
+    {:ok, started} =
+      Onboarding.start_acceptance(
+        invitation.id,
+        invitation.email,
+        Date.to_iso8601(invitation.date_of_birth)
+      )
+
+    {:ok, _state} =
+      Onboarding.verify_discord(started.continuation_id, %{
+        "sub" => "rollback-discord-subject",
+        "preferred_username" => "rollback-member"
+      })
+
+    conflicting_principal =
+      %Principal{id: Ecto.UUID.generate(), email: invitation.email}
+      |> Repo.insert!()
+
+    assert {:error, :principal_creation_failed} =
+             Onboarding.continue_acceptance(started.continuation_id, %{
+               next_of_kin_name: "Grace Hopper",
+               next_of_kin_phone: "+353810000099",
+               confirmation_token: "ctok_rollback",
+               coupon_code: nil
+             })
+
+    refute Repo.get(Principal, invitation.prospective_principal_id)
+    refute Repo.get(MemberProfile, invitation.prospective_principal_id)
+    refute Repo.get_by(UserProfile, principal_id: invitation.prospective_principal_id)
+    refute Repo.get_by(ExternalIdentity, provider_subject: "rollback-discord-subject")
+    refute Repo.get_by(UserRole, principal_id: invitation.prospective_principal_id)
+    assert Repo.get!(Invitation, invitation.id).status == "pending"
+
+    attempt = Repo.get_by!(InvitationAcceptanceAttempt, invitation_id: invitation.id)
+    assert attempt.status == "provisioned"
+    assert Repo.exists?(InvitationAcceptanceDiscordSubjectClaim)
+
+    assert %InvitationAcceptanceDiscordContinuation{
+             status: "verified",
+             provider_subject: "rollback-discord-subject"
+           } = Repo.get!(InvitationAcceptanceDiscordContinuation, started.continuation_id)
+
+    Repo.delete!(conflicting_principal)
   end
 
   test "missing or mismatched opaque proof returns restart verification" do

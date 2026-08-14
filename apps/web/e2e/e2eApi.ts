@@ -251,6 +251,18 @@ export async function deleteE2EFixture(type: E2EFixtureType, id: string) {
 	await harnessRequest(`/fixtures/${type}/${id}`, {});
 }
 
+export async function auditInvitationAcceptance(id: string) {
+	const response = await harnessRequest<{
+		data: {
+			sessionTokenCount: number;
+			magicLinkTokenCount: number;
+			discordIdentityCount: number;
+			memberProfileCount: number;
+		};
+	}>(`/audit/invitation-acceptance/${id}`, {});
+	return response.data;
+}
+
 type E2EUpdatableFixture =
 	| "inventoryCategory"
 	| "inventoryContainer"

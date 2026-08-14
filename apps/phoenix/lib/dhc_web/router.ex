@@ -68,6 +68,7 @@ defmodule DhcWeb.Router do
       post "/reset", E2EHarnessController, :reset
       post "/seed/:scenario", E2EHarnessController, :seed
       post "/login", E2EHarnessController, :login
+      post "/audit/invitation-acceptance/:id", E2EHarnessController, :invitation_acceptance_audit
       patch "/fixtures/:type/:id", E2EHarnessController, :update_fixture
       post "/fixtures/:type/:id", E2EHarnessController, :delete_fixture
     end
@@ -79,6 +80,8 @@ defmodule DhcWeb.Router do
     get "/health", HealthController, :index
     get "/onboarding/acceptance", OnboardingController, :show_acceptance
     post "/onboarding/acceptance", OnboardingController, :start_acceptance
+    post "/onboarding/acceptance/continue", OnboardingController, :continue_acceptance
+    post "/onboarding/acceptance/retry", OnboardingController, :retry_acceptance
     post "/onboarding/acceptance/discord/cancel", OnboardingController, :cancel_discord
     get "/options", MembersController, :options
     get "/invitations/:id", InvitationsController, :show
