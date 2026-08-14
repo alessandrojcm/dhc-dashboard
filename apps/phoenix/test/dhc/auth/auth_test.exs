@@ -6,6 +6,7 @@ defmodule Dhc.AuthTest do
   alias Dhc.Auth.PrincipalToken
   alias Dhc.Auth.ExternalIdentity
   alias Dhc.Discord.{StagedAssignment, StagedAssignmentAuditEvent}
+  alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.Repo
 
   import Dhc.AuthFixtures
@@ -447,35 +448,118 @@ defmodule Dhc.AuthTest do
       assert {:ok, %{session_token: _}} = Auth.sign_in_with_discord(%{"sub" => subject})
     end
 
-    test "unapproved and malformed subjects have neutral outcomes without mutation" do
-      principal = active_principal_fixture(email: "unapproved@example.com")
-      subject = "discord-unapproved-assignment"
+    test "promotion rejects a Principal whose current Member linkage was removed after approval" do
+      principal = active_principal_fixture(email: "unlinked-assigned@example.com")
+      subject = "discord-unlinked-assignment"
 
       assignment =
         Dhc.DiscordAssignmentFixtures.approved_assignment_fixture(principal.id, subject)
 
-      assignment
-      |> Ecto.Changeset.change(
-        state: "withdrawn",
-        terminal_at: DateTime.utc_now(),
-        terminal_actor_principal_id: principal.id,
-        reason_code: "operator_withdrawal"
-      )
-      |> Repo.update!()
+      profile = Repo.get_by!(Dhc.UserProfiles.UserProfile, principal_id: principal.id)
+      Repo.delete_all(from(member in MemberProfile, where: member.user_profile_id == ^profile.id))
+
+      assert {:error, :invalid} = Auth.sign_in_with_discord(%{"sub" => subject})
+      assert Repo.get!(StagedAssignment, assignment.id).state == "approved"
+      refute Repo.get_by(ExternalIdentity, provider: "discord", provider_subject: subject)
+      refute Repo.exists?(from(t in PrincipalToken, where: t.principal_id == ^principal.id))
+    end
+
+    test "unmapped, non-approved, and malformed subjects ignore matching verified email" do
+      proposed_principal = active_principal_fixture(email: "proposed-email@example.com")
+      rejected_principal = active_principal_fixture(email: "rejected-email@example.com")
+      withdrawn_principal = active_principal_fixture(email: "withdrawn-email@example.com")
+      superseded_principal = active_principal_fixture(email: "superseded-email@example.com")
+
+      proposed =
+        Dhc.DiscordAssignmentFixtures.assignment_fixture(
+          proposed_principal.id,
+          "discord-proposed-assignment"
+        )
+
+      rejected =
+        Dhc.DiscordAssignmentFixtures.assignment_fixture(
+          rejected_principal.id,
+          "discord-rejected-assignment",
+          state: "rejected"
+        )
+
+      withdrawn =
+        Dhc.DiscordAssignmentFixtures.approved_assignment_fixture(
+          withdrawn_principal.id,
+          "discord-withdrawn-assignment"
+        )
+        |> StagedAssignment.transition_changeset(%{
+          state: "withdrawn",
+          terminal_at: DateTime.utc_now(),
+          terminal_actor_principal_id: withdrawn_principal.id,
+          reason_code: "operator_withdrawal"
+        })
+        |> Repo.update!()
+
+      replacement_principal = active_principal_fixture(email: "replacement@example.com")
+
+      replacement =
+        Dhc.DiscordAssignmentFixtures.assignment_fixture(
+          replacement_principal.id,
+          "discord-replacement-assignment"
+        )
+
+      superseded =
+        Dhc.DiscordAssignmentFixtures.approved_assignment_fixture(
+          superseded_principal.id,
+          "discord-superseded-assignment"
+        )
+        |> StagedAssignment.transition_changeset(%{
+          state: "superseded",
+          terminal_at: DateTime.utc_now(),
+          terminal_actor_principal_id: superseded_principal.id,
+          reason_code: "mapping_corrected",
+          superseded_by_id: replacement.id
+        })
+        |> Repo.update!()
+
+      for {principal, assignment} <- [
+            {proposed_principal, proposed},
+            {rejected_principal, rejected},
+            {withdrawn_principal, withdrawn},
+            {superseded_principal, superseded}
+          ] do
+        assert {:error, :invalid} =
+                 Auth.sign_in_with_discord(%{
+                   "sub" => assignment.provider_subject,
+                   "email" => String.upcase(principal.email),
+                   "email_verified" => true
+                 })
+
+        assert Repo.get!(StagedAssignment, assignment.id).state == assignment.state
+
+        refute Repo.get_by(ExternalIdentity,
+                 provider: "discord",
+                 provider_subject: assignment.provider_subject
+               )
+
+        refute Repo.exists?(from(t in PrincipalToken, where: t.principal_id == ^principal.id))
+      end
+
+      unmapped = active_principal_fixture(email: "unmapped-email@example.com")
+
+      assert {:error, :invalid} =
+               Auth.sign_in_with_discord(%{
+                 "sub" => "discord-unmapped-assignment",
+                 "email" => String.upcase(unmapped.email),
+                 "email_verified" => true
+               })
 
       for claims <- [
-            %{"sub" => subject, "email" => principal.email, "email_verified" => false},
-            %{"sub" => "unknown-subject"},
             %{"sub" => ""},
             %{"sub" => nil},
-            %{"username" => "reviewed-user", "email" => principal.email}
+            %{"username" => "reviewed-user", "email" => unmapped.email}
           ] do
         assert {:error, :invalid} = Auth.sign_in_with_discord(claims)
       end
 
-      assert Repo.get!(StagedAssignment, assignment.id).state == "withdrawn"
-      refute Repo.exists?(from(i in ExternalIdentity, where: i.principal_id == ^principal.id))
-      refute Repo.exists?(from(t in PrincipalToken, where: t.principal_id == ^principal.id))
+      refute Repo.exists?(from(i in ExternalIdentity, where: i.principal_id == ^unmapped.id))
+      refute Repo.exists?(from(t in PrincipalToken, where: t.principal_id == ^unmapped.id))
     end
 
     test "a failed promotion rolls back identity, state, and promotion audit" do
@@ -485,13 +569,13 @@ defmodule Dhc.AuthTest do
       assignment =
         Dhc.DiscordAssignmentFixtures.approved_assignment_fixture(principal.id, subject)
 
-      function_name = "ale218_fail_promotion_#{System.unique_integer([:positive])}"
+      function_name = "ale218_fail_identity_insert_#{System.unique_integer([:positive])}"
 
       Repo.query!("""
       CREATE FUNCTION #{function_name}() RETURNS trigger AS $$
       BEGIN
-        IF NEW.assignment_id = '#{assignment.id}'::uuid AND NEW.action = 'promoted' THEN
-          RAISE EXCEPTION 'forced promotion audit failure';
+        IF NEW.provider = 'discord' AND NEW.provider_subject = '#{subject}' THEN
+          RAISE EXCEPTION 'forced identity insert failure';
         END IF;
         RETURN NEW;
       END;
@@ -500,7 +584,7 @@ defmodule Dhc.AuthTest do
 
       Repo.query!("""
       CREATE TRIGGER #{function_name}
-        BEFORE INSERT ON staged_discord_assignment_audit_events
+        BEFORE INSERT ON external_identities
         FOR EACH ROW EXECUTE FUNCTION #{function_name}();
       """)
 
@@ -543,38 +627,6 @@ defmodule Dhc.AuthTest do
       assert signed_in.id == principal.id
       assert {:ok, session_principal} = Auth.get_principal_by_session_token(session_token)
       assert session_principal.id == principal.id
-    end
-
-    test "an unlinked subject auto-links to one active Principal by verified email" do
-      principal = active_principal_fixture(email: "verified@example.com")
-
-      assert {:ok, %{principal: signed_in}} =
-               Auth.sign_in_with_discord(%{
-                 "sub" => "discord-new-1",
-                 "email" => "VERIFIED@example.com",
-                 "email_verified" => true,
-                 "preferred_username" => "member-name",
-                 "picture" => "https://cdn.discordapp.com/avatar.png"
-               })
-
-      assert signed_in.id == principal.id
-      assert Auth.get_principal!(principal.id).email == "verified@example.com"
-
-      assert %{
-               principal_id: principal_id,
-               metadata: %{
-                 "email" => "VERIFIED@example.com",
-                 "email_verified" => true,
-                 "preferred_username" => "member-name",
-                 "picture" => "https://cdn.discordapp.com/avatar.png"
-               }
-             } =
-               Repo.get_by!(Dhc.Auth.ExternalIdentity,
-                 provider: "discord",
-                 provider_subject: "discord-new-1"
-               )
-
-      assert principal_id == principal.id
     end
 
     test "provider subject takes precedence over a profile email matching another Principal" do

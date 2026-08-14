@@ -45,6 +45,7 @@ defmodule Dhc.Auth do
   alias Dhc.Repo
   alias Dhc.Auth.{DiscordSubjectLock, ExternalIdentity, Principal, PrincipalToken}
   alias Dhc.Discord.StagedAssignment
+  alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.Onboarding.InvitationAcceptanceDiscordSubjectClaim
   alias Dhc.UserProfiles.UserProfile
 
@@ -105,10 +106,9 @@ defmodule Dhc.Auth do
   @doc """
   Signs in the Principal linked to Discord's immutable provider subject.
 
-  Profile claims are never used to replace an existing link or update the
-  Principal's authoritative email. Unlinked-subject reconciliation is handled
-  by the same function after the linked-subject path, so subject lookup always
-  has precedence over mutable Discord profile data.
+  Profile claims are never used to select a Principal, replace an existing
+  link, or update the Principal's authoritative email. An unlinked subject can
+  authenticate only by promoting its exact approved Staged Assignment.
   """
   def sign_in_with_discord(%{"sub" => subject} = claims)
       when is_binary(subject) and subject != "" do
@@ -136,9 +136,8 @@ defmodule Dhc.Auth do
   def sign_in_with_discord(_claims), do: {:error, :invalid}
 
   # An approved roster assignment is proof-bound to the immutable Discord
-  # subject. It deliberately runs before verified-email reconciliation: the
-  # latter is a convenience path, while a reviewed assignment is a prior,
-  # explicit binding decision.
+  # subject. No mutable profile claim, including Discord email, can grant login
+  # authority for an unlinked subject.
   defp sign_in_unlinked_discord_subject(subject, claims) do
     case promote_staged_discord_assignment(subject, claims) do
       {:ok, principal} ->
@@ -147,10 +146,7 @@ defmodule Dhc.Auth do
         # but no session is minted.
         establish_eligible_session(principal)
 
-      {:error, :no_assignment} ->
-        link_discord_by_verified_email(subject, claims)
-
-      {:error, :invalid} ->
+      {:error, reason} when reason in [:no_assignment, :invalid] ->
         {:error, :invalid}
     end
   end
@@ -221,10 +217,16 @@ defmodule Dhc.Auth do
               Repo.rollback(:invalid)
 
             true ->
-              principal = Repo.get!(Principal, principal_id)
+              case linked_member_principal_locked(principal_id) do
+                nil ->
+                  Repo.rollback(:invalid)
 
-              case Repo.insert(discord_identity_changeset(principal, subject, claims)) do
-                {:ok, _identity} ->
+                principal ->
+                  # The approved assignment must cease being an active binding
+                  # candidate before the permanent identity is inserted. The
+                  # transition trigger appends the promotion audit in this same
+                  # transaction; a later insert failure rolls all three writes
+                  # back together.
                   assignment
                   |> StagedAssignment.transition_changeset(%{
                     state: "promoted",
@@ -234,10 +236,10 @@ defmodule Dhc.Auth do
                   })
                   |> Repo.update!()
 
-                  principal
-
-                {:error, _changeset} ->
-                  Repo.rollback(:invalid)
+                  case Repo.insert(discord_identity_changeset(principal, subject, claims)) do
+                    {:ok, _identity} -> principal
+                    {:error, _changeset} -> Repo.rollback(:invalid)
+                  end
               end
           end
         end)
@@ -281,43 +283,6 @@ defmodule Dhc.Auth do
   end
 
   def link_discord_identity(_principal, _claims), do: {:error, :invalid}
-
-  defp link_discord_by_verified_email(
-         subject,
-         %{"email" => email, "email_verified" => true} = claims
-       )
-       when is_binary(email) do
-    case get_principal_by_email(email) do
-      %Principal{} = principal ->
-        create_discord_identity_and_session(principal, subject, claims)
-
-      nil ->
-        {:error, :invalid}
-    end
-  end
-
-  defp link_discord_by_verified_email(_subject, _claims), do: {:error, :invalid}
-
-  defp create_discord_identity_and_session(principal, subject, claims) do
-    safe_discord_transaction(fn ->
-      DiscordSubjectLock.lock_principal!(principal.id)
-      DiscordSubjectLock.lock!(subject)
-      principal = lock_principal!(principal.id)
-      unless eligible_member_locked?(principal.id), do: Repo.rollback(:invalid)
-      if discord_subject_claimed?(subject), do: Repo.rollback(:invalid)
-
-      changeset = discord_identity_changeset(principal, subject, claims)
-
-      case Repo.insert(changeset) do
-        {:ok, _identity} ->
-          %{principal: principal, session_token: insert_session!(principal)}
-
-        {:error, _changeset} ->
-          Repo.rollback(:invalid)
-      end
-    end)
-    |> transaction_result()
-  end
 
   defp discord_identity_changeset(principal, subject, claims) do
     metadata =
@@ -697,6 +662,19 @@ defmodule Dhc.Auth do
       %Principal{} = principal -> principal
       nil -> Repo.rollback(:invalid)
     end
+  end
+
+  defp linked_member_principal_locked(principal_id) do
+    from(principal in Principal,
+      join: profile in UserProfile,
+      on: profile.principal_id == principal.id,
+      join: member in MemberProfile,
+      on: member.user_profile_id == profile.id and member.id == principal.id,
+      where: principal.id == ^principal_id,
+      select: principal,
+      lock: "FOR UPDATE"
+    )
+    |> Repo.one()
   end
 
   defp transaction_result({:ok, result}), do: {:ok, result}

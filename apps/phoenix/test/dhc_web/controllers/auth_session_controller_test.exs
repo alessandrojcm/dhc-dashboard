@@ -212,7 +212,7 @@ defmodule DhcWeb.AuthSessionControllerTest do
       assert Repo.get!(Dhc.Discord.StagedAssignment, assignment.id).state == "promoted"
     end
 
-    test "links a verified Discord identity, sets a Phoenix Session, and redirects to dashboard" do
+    test "does not grant login authority from a matching verified Discord email" do
       principal = active_principal("discord-request@example.com")
 
       conn =
@@ -221,21 +221,10 @@ defmodule DhcWeb.AuthSessionControllerTest do
         |> recycle()
         |> get("/api/auth/discord/callback?state=test-state&code=success")
 
-      assert redirected_to(conn, 302) == "http://localhost:5173/dashboard"
-
-      cookie = conn.resp_cookies[@session_cookie]
-      assert cookie
-      refute Map.has_key?(cookie, :domain)
-      refute cookie.secure
-
-      identity =
-        Repo.get_by!(Dhc.Auth.ExternalIdentity,
-          provider: "discord",
-          provider_subject: "discord-request-success"
-        )
-
-      assert identity.principal_id == principal.id
-      refute Map.has_key?(identity.metadata, "access_token")
+      assert redirected_to(conn, 302) == "http://localhost:5173/auth?discord=failed"
+      refute conn.resp_cookies[@session_cookie]
+      refute Repo.exists?(Dhc.Auth.ExternalIdentity)
+      refute Repo.exists?(from(t in PrincipalToken, where: t.principal_id == ^principal.id))
     end
 
     test "uses the same generic magic-link fallback for invalid state and unknown accounts" do
@@ -380,6 +369,11 @@ defmodule DhcWeb.AuthSessionControllerTest do
       sign_in_principal = active_principal("discord-request@example.com")
       token = session_token(authenticated_principal)
 
+      Dhc.DiscordAssignmentFixtures.approved_assignment_fixture(
+        sign_in_principal.id,
+        "discord-request-success"
+      )
+
       conn =
         conn()
         |> put_signed_cookie(@session_cookie, token)
@@ -423,6 +417,11 @@ defmodule DhcWeb.AuthSessionControllerTest do
 
     test "consumes the recorded purpose so a callback cannot be replayed" do
       principal = active_principal("discord-request@example.com")
+
+      Dhc.DiscordAssignmentFixtures.approved_assignment_fixture(
+        principal.id,
+        "discord-request-success"
+      )
 
       conn =
         conn()

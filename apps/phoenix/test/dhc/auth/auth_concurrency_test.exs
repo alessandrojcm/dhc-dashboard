@@ -5,6 +5,16 @@ defmodule Dhc.AuthConcurrencyTest do
 
   alias Dhc.Auth
   alias Dhc.Auth.{ExternalIdentity, Principal, PrincipalToken}
+
+  alias Dhc.Discord.{
+    AssignmentReviewExecution,
+    AssignmentStageExecution,
+    AssignmentStageResult,
+    RosterReceipt,
+    StagedAssignment,
+    StagedAssignmentAuditEvent
+  }
+
   alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.Repo
   alias Dhc.UserProfiles.UserProfile
@@ -26,7 +36,7 @@ defmodule Dhc.AuthConcurrencyTest do
     on_exit(fn -> unboxed(fn -> delete_fixture(fixture.principal_id) end) end)
 
     locker = lock_profile(task_supervisor, fixture.profile_id, test_process)
-    assert_receive {:profile_locked, locker_pid}
+    assert_receive {:profile_locked, locker_pid, blocker_pid}
     assert locker_pid == locker.pid
 
     sign_in =
@@ -34,15 +44,15 @@ defmodule Dhc.AuthConcurrencyTest do
         Auth.consume_magic_link(fixture.encoded_token)
       end)
 
-    assert_receive {:database_backend, :sign_in, backend_pid}
-    assert_backend_waiting_on_lock(backend_pid)
+    assert_receive {:database_operation_started, :sign_in}
+    assert_backend_blocked_by(blocker_pid)
 
     send(locker.pid, :release_profile)
     assert {:ok, :released} = Task.await(locker)
     assert {:ok, %{session_token: session_token}} = Task.await(sign_in)
 
     locker = lock_profile(task_supervisor, fixture.profile_id, test_process)
-    assert_receive {:profile_locked, locker_pid}
+    assert_receive {:profile_locked, locker_pid, blocker_pid}
     assert locker_pid == locker.pid
 
     revoke =
@@ -50,8 +60,8 @@ defmodule Dhc.AuthConcurrencyTest do
         Auth.apply_member_access(fixture.profile_id, false)
       end)
 
-    assert_receive {:database_backend, :revoke, backend_pid}
-    assert_backend_waiting_on_lock(backend_pid)
+    assert_receive {:database_operation_started, :revoke}
+    assert_backend_blocked_by(blocker_pid)
 
     send(locker.pid, :release_profile)
     assert {:ok, :released} = Task.await(locker)
@@ -71,7 +81,7 @@ defmodule Dhc.AuthConcurrencyTest do
       end)
 
     locker = lock_profile(task_supervisor, fixture.profile_id, test_process, false)
-    assert_receive {:profile_locked, locker_pid}
+    assert_receive {:profile_locked, locker_pid, blocker_pid}
     assert locker_pid == locker.pid
 
     sign_in =
@@ -79,8 +89,8 @@ defmodule Dhc.AuthConcurrencyTest do
         Auth.consume_magic_link(encoded_token)
       end)
 
-    assert_receive {:database_backend, :inactive_sign_in, backend_pid}
-    assert_backend_waiting_on_lock(backend_pid)
+    assert_receive {:database_operation_started, :inactive_sign_in}
+    assert_backend_blocked_by(blocker_pid)
 
     send(locker.pid, :release_profile)
     assert {:ok, :released} = Task.await(locker)
@@ -101,7 +111,7 @@ defmodule Dhc.AuthConcurrencyTest do
     end)
 
     locker = lock_profile(task_supervisor, fixture.profile_id, test_process)
-    assert_receive {:profile_locked, locker_pid}
+    assert_receive {:profile_locked, locker_pid, blocker_pid}
     assert locker_pid == locker.pid
 
     discord_sign_in =
@@ -109,8 +119,8 @@ defmodule Dhc.AuthConcurrencyTest do
         Auth.sign_in_with_discord(%{"sub" => "concurrent-discord"})
       end)
 
-    assert_receive {:database_backend, :discord_sign_in, backend_pid}
-    assert_backend_waiting_on_lock(backend_pid)
+    assert_receive {:database_operation_started, :discord_sign_in}
+    assert_backend_blocked_by(blocker_pid)
 
     send(locker.pid, :release_profile)
     assert {:ok, :released} = Task.await(locker)
@@ -120,33 +130,41 @@ defmodule Dhc.AuthConcurrencyTest do
       Repo.delete_all(from(i in ExternalIdentity, where: i.principal_id == ^fixture.principal_id))
     end)
 
-    locker = lock_profile(task_supervisor, fixture.profile_id, test_process)
-    assert_receive {:profile_locked, locker_pid}
-    assert locker_pid == locker.pid
+    subject = "concurrent-discord-assignment"
 
-    discord_link =
-      database_task(task_supervisor, test_process, :discord_link, fn ->
-        principal = Repo.get!(Principal, fixture.principal_id)
-
-        Auth.sign_in_with_discord(%{
-          "sub" => "concurrent-discord-new",
-          "email" => principal.email,
-          "email_verified" => true
-        })
+    assignment =
+      unboxed(fn ->
+        Dhc.DiscordAssignmentFixtures.approved_assignment_fixture(
+          fixture.principal_id,
+          subject
+        )
       end)
 
-    assert_receive {:database_backend, :discord_link, backend_pid}
-    assert_backend_waiting_on_lock(backend_pid)
+    on_exit(fn -> unboxed(fn -> delete_assignment_fixture(assignment) end) end)
+
+    locker = lock_profile(task_supervisor, fixture.profile_id, test_process)
+    assert_receive {:profile_locked, locker_pid, blocker_pid}
+    assert locker_pid == locker.pid
+
+    discord_promotion =
+      database_task(task_supervisor, test_process, :discord_promotion, fn ->
+        Auth.sign_in_with_discord(%{"sub" => subject})
+      end)
+
+    assert_receive {:database_operation_started, :discord_promotion}
+    assert_backend_blocked_by(blocker_pid)
 
     send(locker.pid, :release_profile)
     assert {:ok, :released} = Task.await(locker)
-    assert {:ok, %{session_token: _token}} = Task.await(discord_link)
+    assert {:ok, %{session_token: _token}} = Task.await(discord_promotion)
   end
 
   defp lock_profile(task_supervisor, profile_id, test_process, is_active \\ nil) do
     Task.Supervisor.async_nolink(task_supervisor, fn ->
       unboxed(fn ->
         Repo.transaction(fn ->
+          blocker_pid = postgres_backend_pid()
+
           profile =
             UserProfile
             |> where([profile], profile.id == ^profile_id)
@@ -159,7 +177,7 @@ defmodule Dhc.AuthConcurrencyTest do
             |> Repo.update!()
           end
 
-          send(test_process, {:profile_locked, self()})
+          send(test_process, {:profile_locked, self(), blocker_pid})
 
           receive do
             :release_profile -> :released
@@ -172,39 +190,44 @@ defmodule Dhc.AuthConcurrencyTest do
   defp database_task(task_supervisor, test_process, label, fun) do
     Task.Supervisor.async_nolink(task_supervisor, fn ->
       unboxed(fn ->
-        %{rows: [[backend_pid]]} = Repo.query!("SELECT pg_backend_pid()")
-        send(test_process, {:database_backend, label, backend_pid})
+        send(test_process, {:database_operation_started, label})
         fun.()
       end)
     end)
   end
 
-  defp assert_backend_waiting_on_lock(backend_pid) do
-    deadline = System.monotonic_time(:millisecond) + 1_000
-    do_assert_backend_waiting_on_lock(backend_pid, deadline)
+  defp postgres_backend_pid do
+    %{rows: [[backend_pid]]} = Repo.query!("SELECT pg_backend_pid()")
+    backend_pid
   end
 
-  defp do_assert_backend_waiting_on_lock(backend_pid, deadline) do
-    waiting? =
+  defp assert_backend_blocked_by(blocker_pid) do
+    deadline = System.monotonic_time(:millisecond) + 1_000
+    do_assert_backend_blocked_by(blocker_pid, deadline)
+  end
+
+  defp do_assert_backend_blocked_by(blocker_pid, deadline) do
+    directly_blocked? =
       unboxed(fn ->
-        case Repo.query!(
-               "SELECT wait_event_type FROM pg_stat_activity WHERE pid = $1",
-               [backend_pid]
-             ).rows do
-          [["Lock"]] -> true
-          _rows -> false
-        end
+        %{rows: [[directly_blocked?]]} =
+          Repo.query!(
+            "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE $1::integer = ANY(pg_blocking_pids(pid)))",
+            [blocker_pid],
+            log: false
+          )
+
+        directly_blocked?
       end)
 
     cond do
-      waiting? ->
+      directly_blocked? ->
         :ok
 
       System.monotonic_time(:millisecond) < deadline ->
-        do_assert_backend_waiting_on_lock(backend_pid, deadline)
+        do_assert_backend_blocked_by(blocker_pid, deadline)
 
       true ->
-        flunk("database backend #{backend_pid} did not wait on the Member row lock")
+        flunk("no database backend waited directly on Member row locker #{blocker_pid}")
     end
   end
 
@@ -220,5 +243,48 @@ defmodule Dhc.AuthConcurrencyTest do
     Repo.delete_all(from(m in MemberProfile, where: m.user_profile_id in ^profile_ids))
     Repo.delete_all(from(p in UserProfile, where: p.principal_id == ^principal_id))
     Repo.delete_all(from(p in Principal, where: p.id == ^principal_id))
+  end
+
+  defp delete_assignment_fixture(assignment) do
+    assignment = Repo.get!(StagedAssignment, assignment.id)
+    capture = Repo.get!(RosterReceipt, assignment.capture_id)
+
+    Repo.query!(
+      "ALTER TABLE staged_discord_assignment_audit_events DISABLE TRIGGER ale217_reject_audit_mutation"
+    )
+
+    try do
+      Repo.delete_all(
+        from(e in StagedAssignmentAuditEvent, where: e.assignment_id == ^assignment.id)
+      )
+    after
+      Repo.query!(
+        "ALTER TABLE staged_discord_assignment_audit_events ENABLE TRIGGER ale217_reject_audit_mutation"
+      )
+    end
+
+    Repo.delete_all(from(r in AssignmentStageResult, where: r.assignment_id == ^assignment.id))
+    Repo.delete_all(from(a in StagedAssignment, where: a.id == ^assignment.id))
+
+    if assignment.review_execution_id do
+      Repo.delete_all(
+        from(e in AssignmentReviewExecution, where: e.id == ^assignment.review_execution_id)
+      )
+    end
+
+    Repo.delete_all(
+      from(e in AssignmentStageExecution, where: e.id == ^assignment.stage_execution_id)
+    )
+
+    Repo.delete_all(from(r in RosterReceipt, where: r.id == ^capture.id))
+
+    if capture.preflight_receipt_id do
+      Repo.delete_all(from(r in RosterReceipt, where: r.id == ^capture.preflight_receipt_id))
+    end
+
+    [assignment.prepared_by_principal_id, assignment.approved_by_principal_id]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
+    |> Enum.each(&delete_fixture/1)
   end
 end
