@@ -132,8 +132,9 @@ defmodule Dhc.Auth do
   def link_discord_identity(%Principal{} = principal, %{"sub" => subject} = claims)
       when is_binary(subject) and subject != "" do
     Repo.transaction(fn ->
-      unless eligible_member_locked?(principal.id), do: Repo.rollback(:invalid)
+      DiscordSubjectLock.lock_principal!(principal.id)
       DiscordSubjectLock.lock!(subject)
+      unless eligible_member_locked?(principal.id), do: Repo.rollback(:invalid)
       if discord_subject_claimed?(subject), do: Repo.rollback(:invalid)
 
       principal
@@ -174,8 +175,9 @@ defmodule Dhc.Auth do
 
   defp create_discord_identity_and_session(principal, subject, claims) do
     Repo.transaction(fn ->
-      unless eligible_member_locked?(principal.id), do: Repo.rollback(:invalid)
+      DiscordSubjectLock.lock_principal!(principal.id)
       DiscordSubjectLock.lock!(subject)
+      unless eligible_member_locked?(principal.id), do: Repo.rollback(:invalid)
       if discord_subject_claimed?(subject), do: Repo.rollback(:invalid)
 
       changeset = discord_identity_changeset(principal, subject, claims)

@@ -6,7 +6,7 @@ defmodule Dhc.Discord.RosterCapture do
   accepts interactive OAuth credentials and returns only support-safe receipts.
   """
 
-  alias Dhc.Discord.{RosterClient, RosterPackage, RosterReceipts}
+  alias Dhc.Discord.{RosterClient, RosterDigest, RosterPackage, RosterReceipts}
 
   @type safe_result :: %{
           preflight_receipt_id: Ecto.UUID.t(),
@@ -118,7 +118,7 @@ defmodule Dhc.Discord.RosterCapture do
   end
 
   defp write_capture(options, preflight, users) do
-    roster_digest = digest(users)
+    roster_digest = RosterDigest.digest(users)
     capture_id = Ecto.UUID.generate()
 
     package = %{
