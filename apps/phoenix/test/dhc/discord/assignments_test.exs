@@ -3,13 +3,16 @@ defmodule Dhc.Discord.AssignmentsTest do
 
   import ExUnit.CaptureIO
 
-  alias Dhc.Auth.ExternalIdentity
+  alias Dhc.Auth.{ExternalIdentity, UserRole}
 
   alias Dhc.Discord.{
     AssignmentReviewExecution,
+    AssignmentStageExecution,
+    AssignmentStageResult,
     Assignments,
     RosterDigest,
     RosterPackage,
+    RosterReceipt,
     RosterReceipts,
     SignedManifest,
     StagedAssignment,
@@ -38,7 +41,10 @@ defmodule Dhc.Discord.AssignmentsTest do
       ])
 
     options = %{
-      manifest_key: "manifest-test-key",
+      manifest_keys: %{
+        preparer.id => "preparer-manifest-test-key",
+        reviewer.id => "reviewer-manifest-test-key"
+      },
       fingerprint_key: "fingerprint-test-key",
       package_key: capture.package_key,
       package_path: capture.package_path,
@@ -60,7 +66,7 @@ defmodule Dhc.Discord.AssignmentsTest do
   test "stages only exact capture rows and replays without duplicate assignments or audits",
        context do
     command = stage_command(context)
-    envelope = SignedManifest.sign(command, context.options.manifest_key)
+    envelope = sign(command, context.options)
 
     assert {:ok, first} = Assignments.stage_signed(envelope, context.options)
     assert first.counts == %{"proposed" => 1}
@@ -87,9 +93,164 @@ defmodule Dhc.Discord.AssignmentsTest do
 
     assert {:error, :row_not_in_capture} =
              Assignments.stage_signed(
-               SignedManifest.sign(changed, context.options.manifest_key),
+               sign(changed, context.options),
                context.options
              )
+  end
+
+  test "signatures authenticate the named preparer and reviewer with distinct keys", context do
+    stage_command = stage_command(context)
+
+    forged_stage =
+      SignedManifest.sign(
+        stage_command,
+        context.preparer.id,
+        Map.fetch!(context.options.manifest_keys, context.reviewer.id)
+      )
+
+    assert {:error, :invalid_manifest_signature} =
+             Assignments.stage_signed(forged_stage, context.options)
+
+    reviewer_signed_stage =
+      SignedManifest.sign(
+        stage_command,
+        context.reviewer.id,
+        Map.fetch!(context.options.manifest_keys, context.reviewer.id)
+      )
+
+    assert {:error, :manifest_signer_mismatch} =
+             Assignments.stage_signed(reviewer_signed_stage, context.options)
+
+    assignment = stage!(context)
+    review_command = review_command(context, assignment, "approve")
+
+    shared_key = Map.fetch!(context.options.manifest_keys, context.preparer.id)
+
+    duplicate_key_options = %{
+      context.options
+      | manifest_keys: %{
+          context.preparer.id => shared_key,
+          context.reviewer.id => shared_key
+        }
+    }
+
+    impersonated_review =
+      SignedManifest.sign(review_command, context.reviewer.id, shared_key)
+
+    assert {:error, :invalid_manifest_signature} =
+             Assignments.apply_review_signed(impersonated_review, duplicate_key_options)
+
+    preparer_signed_review =
+      SignedManifest.sign(
+        review_command,
+        context.preparer.id,
+        Map.fetch!(context.options.manifest_keys, context.preparer.id)
+      )
+
+    assert {:error, :manifest_signer_mismatch} =
+             Assignments.apply_review_signed(preparer_signed_review, context.options)
+
+    assert Repo.aggregate(StagedAssignment, :count) == 1
+    assert Repo.aggregate(AssignmentReviewExecution, :count) == 0
+  end
+
+  test "malformed signed rows and unknown Principals fail closed without task crashes", context do
+    malformed_stage = put_in(stage_command(context), ["rows"], ["not-a-row"])
+
+    assert {:error, :invalid_stage_manifest} =
+             Assignments.stage_signed(sign(malformed_stage, context.options), context.options)
+
+    unknown =
+      context
+      |> stage_command()
+      |> put_in(["rows", Access.at(0), "principal_id"], Ecto.UUID.generate())
+
+    assert {:error, :unknown_principal} =
+             Assignments.stage_signed(sign(unknown, context.options), context.options)
+
+    invalid_review = %{
+      "version" => 1,
+      "capture_id" => context.capture.id,
+      "reviewer_principal_id" => context.reviewer.id,
+      "rows" => ["not-a-row"]
+    }
+
+    assert {:error, :invalid_review_manifest} =
+             Assignments.apply_review_signed(
+               sign(invalid_review, context.options),
+               context.options
+             )
+
+    assert Repo.aggregate(AssignmentStageExecution, :count) == 0
+    assert Repo.aggregate(AssignmentReviewExecution, :count) == 0
+  end
+
+  test "capture digest authenticates metadata and roster receipts are immutable", context do
+    {:ok, package} = RosterPackage.read(context.capture.package_path, context.options.package_key)
+
+    tampered =
+      Map.put(
+        package,
+        "captured_at",
+        DateTime.utc_now() |> DateTime.add(60) |> DateTime.to_iso8601()
+      )
+
+    {:ok, _} =
+      RosterPackage.write(
+        context.capture.package_dir,
+        context.capture.id,
+        tampered,
+        context.options.package_key
+      )
+
+    assert {:error, :capture_receipt_digest_mismatch} =
+             Assignments.stage_signed(
+               sign(stage_command(context), context.options),
+               context.options
+             )
+
+    capture = Repo.get!(RosterReceipt, context.capture.id)
+
+    error =
+      assert_raise Ecto.ConstraintError, fn ->
+        Repo.transaction(
+          fn -> capture |> Ecto.Changeset.change(result: "rewritten") |> Repo.update!() end,
+          mode: :savepoint
+        )
+      end
+
+    assert error.constraint == "discord_roster_receipts_immutable"
+
+    consistency_error =
+      assert_raise Postgrex.Error, fn ->
+        Repo.transaction(
+          fn ->
+            assert {:ok, _} =
+                     RosterReceipts.create(%{
+                       id: Ecto.UUID.generate(),
+                       kind: :capture,
+                       status: :succeeded,
+                       actor_id: context.preparer.id,
+                       guild_id: "other-guild",
+                       bot_application_id: "bot-217",
+                       tool_revision: "ale-217-capture-test",
+                       evidence_digest: digest_json(%{inconsistent: true}),
+                       package_digest: String.duplicate("a", 64),
+                       record_count: 1,
+                       result: "inconsistent capture",
+                       preflight_receipt_id: context.capture.preflight_id
+                     })
+
+            Repo.query!("SET CONSTRAINTS ALL IMMEDIATE")
+          end,
+          mode: :savepoint
+        )
+      end
+
+    assert consistency_error.postgres.constraint in [
+             "discord_roster_receipts_preflight_consistency",
+             "discord_roster_receipts_capture_consistency"
+           ]
   end
 
   test "independent review exposes exact restricted evidence and applies one explicit decision",
@@ -122,7 +283,7 @@ defmodule Dhc.Discord.AssignmentsTest do
            }
 
     command = review_command(context, assignment, "approve")
-    envelope = SignedManifest.sign(command, context.options.manifest_key)
+    envelope = sign(command, context.options)
 
     assert {:ok, first} = Assignments.apply_review_signed(envelope, context.options)
     assert first.counts == %{"approved" => 1}
@@ -139,9 +300,138 @@ defmodule Dhc.Discord.AssignmentsTest do
 
     assert {:error, :stale_or_unreviewable_proposal} =
              Assignments.apply_review_signed(
-               SignedManifest.sign(stale, context.options.manifest_key),
+               sign(stale, context.options),
                context.options
              )
+  end
+
+  test "approved review replays remain historical after a later withdrawal", context do
+    assignment = stage!(context)
+    envelope = sign(review_command(context, assignment, "approve"), context.options)
+
+    assert {:ok, first} = Assignments.apply_review_signed(envelope, context.options)
+
+    withdrawal = %{
+      "version" => 1,
+      "action" => "withdraw",
+      "assignment_id" => assignment.id,
+      "proposal_digest" => assignment.proposal_digest,
+      "actor_principal_id" => context.reviewer.id,
+      "reason_code" => "operator_withdrawal"
+    }
+
+    assert {:ok, %{state: "withdrawn"}} =
+             Assignments.withdraw_signed(sign(withdrawal, context.options), context.options)
+
+    assert {:ok, replay} = Assignments.apply_review_signed(envelope, context.options)
+    assert replay.execution_id == first.execution_id
+    assert replay.rows == first.rows
+    assert [%{state: "approved"}] = replay.rows
+    assert Repo.get!(StagedAssignment, assignment.id).state == "withdrawn"
+  end
+
+  test "rejected review attempts persist one immutable idempotency receipt", context do
+    assignment = stage!(context)
+
+    command =
+      context
+      |> review_command(assignment, "approve")
+      |> put_in(["rows", Access.at(0), "proposal_digest"], String.duplicate("0", 64))
+
+    envelope = sign(command, context.options)
+
+    assert {:error, :stale_or_unreviewable_proposal} =
+             Assignments.apply_review_signed(envelope, context.options)
+
+    assert {:error, :stale_or_unreviewable_proposal} =
+             Assignments.apply_review_signed(envelope, context.options)
+
+    execution = Repo.one!(AssignmentReviewExecution)
+    assert execution.state == "rejected"
+    assert execution.reason_code == "stale_or_unreviewable_proposal"
+    assert Repo.aggregate(AssignmentReviewExecution, :count) == 1
+
+    error =
+      assert_raise Ecto.ConstraintError, fn ->
+        Repo.transaction(
+          fn ->
+            execution |> Ecto.Changeset.change(reason_code: "rewritten") |> Repo.update!()
+          end,
+          mode: :savepoint
+        )
+      end
+
+    assert error.constraint == "discord_assignment_review_executions_immutable"
+  end
+
+  test "stage and review evidence rows are immutable and audit rows are trigger-owned", context do
+    assignment = stage!(context)
+
+    assert {:ok, _} =
+             Assignments.apply_review_signed(
+               sign(review_command(context, assignment, "approve"), context.options),
+               context.options
+             )
+
+    stage_execution = Repo.one!(AssignmentStageExecution)
+    stage_result = Repo.one!(AssignmentStageResult)
+    review_execution = Repo.one!(AssignmentReviewExecution)
+    audit = Repo.one!(from e in StagedAssignmentAuditEvent, limit: 1)
+
+    immutable = [
+      {stage_execution, "discord_assignment_stage_executions_immutable"},
+      {stage_result, "discord_assignment_stage_results_immutable"},
+      {review_execution, "discord_assignment_review_executions_immutable"}
+    ]
+
+    Enum.each(immutable, fn {record, constraint} ->
+      error =
+        assert_raise Ecto.ConstraintError, fn ->
+          Repo.transaction(
+            fn -> Repo.delete!(record) end,
+            mode: :savepoint
+          )
+        end
+
+      assert error.constraint == constraint
+    end)
+
+    update_error =
+      assert_raise Ecto.ConstraintError, fn ->
+        Repo.transaction(
+          fn -> audit |> Ecto.Changeset.change(reason_code: "rewritten") |> Repo.update!() end,
+          mode: :savepoint
+        )
+      end
+
+    assert update_error.constraint == "staged_discord_assignment_audit_events_immutable"
+
+    delete_error =
+      assert_raise Ecto.ConstraintError, fn ->
+        Repo.transaction(fn -> Repo.delete!(audit) end, mode: :savepoint)
+      end
+
+    assert delete_error.constraint == "staged_discord_assignment_audit_events_immutable"
+
+    direct = %StagedAssignmentAuditEvent{
+      assignment_id: assignment.id,
+      action: "approved",
+      actor_principal_id: context.reviewer.id,
+      reason_code: "forged",
+      old_state: "proposed",
+      new_state: "approved",
+      capture_id: assignment.capture_id,
+      stage_execution_id: assignment.stage_execution_id,
+      tool_revision: assignment.tool_revision,
+      subject_fingerprint: assignment.subject_fingerprint
+    }
+
+    insert_error =
+      assert_raise Ecto.ConstraintError, fn ->
+        Repo.transaction(fn -> Repo.insert!(direct) end, mode: :savepoint)
+      end
+
+    assert insert_error.constraint == "staged_discord_assignment_audit_events_trigger_owned"
   end
 
   test "reject is terminal and an approved or proposed row can be withdrawn without editing identity evidence",
@@ -151,7 +441,7 @@ defmodule Dhc.Discord.AssignmentsTest do
 
     assert {:ok, _} =
              Assignments.apply_review_signed(
-               SignedManifest.sign(reject, context.options.manifest_key),
+               sign(reject, context.options),
                context.options
              )
 
@@ -200,7 +490,7 @@ defmodule Dhc.Discord.AssignmentsTest do
 
     assert {:ok, %{state: "withdrawn"}} =
              Assignments.withdraw_signed(
-               SignedManifest.sign(withdraw, options.manifest_key),
+               sign(withdraw, options),
                options
              )
 
@@ -246,7 +536,7 @@ defmodule Dhc.Discord.AssignmentsTest do
       }
     }
 
-    envelope = SignedManifest.sign(command, options.manifest_key)
+    envelope = sign(command, options)
     assert {:ok, first} = Assignments.supersede_signed(envelope, options)
     assert first.superseded_assignment_id == old.id
 
@@ -278,7 +568,7 @@ defmodule Dhc.Discord.AssignmentsTest do
 
     assert {:ok, %{counts: %{"approved" => 1}}} =
              Assignments.apply_review_signed(
-               SignedManifest.sign(review, options.manifest_key),
+               sign(review, options),
                options
              )
 
@@ -343,7 +633,7 @@ defmodule Dhc.Discord.AssignmentsTest do
     }
 
     assert {:ok, %{counts: %{"conflicted" => 1, "proposed" => 1}} = staged} =
-             Assignments.stage_signed(SignedManifest.sign(stage, options.manifest_key), options)
+             Assignments.stage_signed(sign(stage, options), options)
 
     assignment_id =
       staged.rows
@@ -357,7 +647,7 @@ defmodule Dhc.Discord.AssignmentsTest do
 
     assert {:ok, _} =
              Assignments.apply_review_signed(
-               SignedManifest.sign(review, options.manifest_key),
+               sign(review, options),
                options
              )
 
@@ -385,13 +675,114 @@ defmodule Dhc.Discord.AssignmentsTest do
     refute inspect(report) =~ "omitted-user"
   end
 
+  test "final report distinguishes promoted, rejected, and unresolved rows", context do
+    rejected_target = member_fixture("report-rejected")
+    unresolved_target = member_fixture("report-unresolved")
+    subjects = [context.subject, unique_subject(), unique_subject()]
+    targets = [context.target, rejected_target, unresolved_target]
+
+    users =
+      subjects
+      |> Enum.with_index(1)
+      |> Enum.map(fn {subject, index} ->
+        %{
+          "id" => subject,
+          "username" => "report-user-#{index}",
+          "global_name" => nil,
+          "nickname" => nil
+        }
+      end)
+
+    capture = capture_fixture(context.preparer.id, users)
+    on_exit(fn -> File.rm_rf(capture.package_dir) end)
+
+    options = %{
+      context.options
+      | package_key: capture.package_key,
+        package_path: capture.package_path
+    }
+
+    rows =
+      [targets, subjects]
+      |> Enum.zip()
+      |> Enum.with_index(1)
+      |> Enum.map(fn {{target, subject}, index} ->
+        %{
+          "principal_id" => target.id,
+          "discord_user_id" => subject,
+          "username_snapshot" => "report-user-#{index}"
+        }
+      end)
+
+    command = %{
+      "version" => 1,
+      "capture_id" => capture.id,
+      "preparer_principal_id" => context.preparer.id,
+      "rows" => rows
+    }
+
+    assert {:ok, %{counts: %{"proposed" => 3}}} =
+             Assignments.stage_signed(sign(command, options), options)
+
+    assignments = Repo.all(from a in StagedAssignment, where: a.capture_id == ^capture.id)
+    [approved, rejected, _unresolved] = Enum.sort_by(assignments, & &1.principal_id)
+
+    review = %{
+      "version" => 1,
+      "capture_id" => capture.id,
+      "reviewer_principal_id" => context.reviewer.id,
+      "rows" => [
+        %{
+          "assignment_id" => approved.id,
+          "proposal_digest" => approved.proposal_digest,
+          "decision" => "approve"
+        },
+        %{
+          "assignment_id" => rejected.id,
+          "proposal_digest" => rejected.proposal_digest,
+          "decision" => "reject"
+        }
+      ]
+    }
+
+    assert {:ok, %{counts: %{"approved" => 1, "rejected" => 1}}} =
+             Assignments.apply_review_signed(sign(review, options), options)
+
+    approved = Repo.get!(StagedAssignment, approved.id)
+
+    approved
+    |> StagedAssignment.transition_changeset(%{
+      state: "promoted",
+      terminal_at: DateTime.utc_now(),
+      terminal_actor_principal_id: context.reviewer.id,
+      reason_code: "discord_identity_promoted"
+    })
+    |> Repo.update!()
+
+    assert {:ok, report} = Assignments.report(capture.id, options)
+
+    assert report.counts == %{
+             "approved" => 0,
+             "captured" => 3,
+             "conflicted" => 0,
+             "omitted" => 0,
+             "promoted" => 1,
+             "proposed" => 3,
+             "rejected" => 1,
+             "unresolved" => 1
+           }
+
+    assert report.rows |> Enum.map(& &1.outcome) |> Enum.sort() ==
+             ["promoted", "rejected", "unresolved"]
+  end
+
   test "active claims and permanent identities are reported as conflicts without unsafe receipt data",
        context do
     claim_fixture(context.subject)
 
     assert {:ok, claim_result} =
              Assignments.stage_signed(
-               SignedManifest.sign(stage_command(context), context.options.manifest_key),
+               sign(stage_command(context), context.options),
                context.options
              )
 
@@ -426,7 +817,7 @@ defmodule Dhc.Discord.AssignmentsTest do
       stage_command(%{context | capture: other_capture, subject: other_subject}, "linked")
 
     assert {:ok, identity_result} =
-             Assignments.stage_signed(SignedManifest.sign(command, options.manifest_key), options)
+             Assignments.stage_signed(sign(command, options), options)
 
     assert hd(identity_result.rows).reason_code == "permanent_identity_collision"
   end
@@ -463,7 +854,7 @@ defmodule Dhc.Discord.AssignmentsTest do
 
     assert {:ok, _} =
              Assignments.apply_review_signed(
-               SignedManifest.sign(review, context.options.manifest_key),
+               sign(review, context.options),
                context.options
              )
 
@@ -496,7 +887,8 @@ defmodule Dhc.Discord.AssignmentsTest do
         manifest_digest: digest_json(%{review: Ecto.UUID.generate()}),
         reviewer_principal_id: context.preparer.id,
         tool_revision: context.options.tool_revision,
-        executed_at: now
+        executed_at: now,
+        state: "applied"
       })
       |> Repo.insert!()
 
@@ -602,7 +994,7 @@ defmodule Dhc.Discord.AssignmentsTest do
     first =
       Task.Supervisor.async_nolink(task_supervisor, fn ->
         Assignments.stage_signed(
-          SignedManifest.sign(stage_command(context), context.options.manifest_key),
+          sign(stage_command(context), context.options),
           context.options
         )
       end)
@@ -615,7 +1007,7 @@ defmodule Dhc.Discord.AssignmentsTest do
     second =
       Task.Supervisor.async_nolink(task_supervisor, fn ->
         Assignments.stage_signed(
-          SignedManifest.sign(second_command, context.options.manifest_key),
+          sign(second_command, context.options),
           context.options
         )
       end)
@@ -633,13 +1025,136 @@ defmodule Dhc.Discord.AssignmentsTest do
            ) == 1
   end
 
-  test "operator task emits only safe staging receipt identifiers", context do
+  test "independent PostgreSQL connections serialize claims, links, and role revocation" do
+    supervisor = start_supervised!(Task.Supervisor)
+    parent = self()
+
+    external =
+      supervisor
+      |> unboxed_async(fn -> external_race_context() end)
+      |> Task.await()
+
+    on_exit(fn ->
+      cleanup_external_race_context(external)
+      File.rm_rf(external.capture.package_dir)
+    end)
+
+    [claim_subject, identity_subject, revoked_subject] = external.subjects
+    [claim_target, identity_target, revoked_target] = external.targets
+
+    claim_stage_command =
+      stage_command_for(external, claim_target.id, claim_subject, "race-1")
+
+    claim_stage =
+      unboxed_async(supervisor, fn ->
+        send(parent, {:ready, self()})
+        receive do: (:go -> :ok)
+        Assignments.stage_signed(sign(claim_stage_command, external.options), external.options)
+      end)
+
+    claim =
+      unboxed_async(supervisor, fn ->
+        send(parent, {:ready, self()})
+        receive do: (:go -> :ok)
+
+        Onboarding.verify_discord(external.continuation_id, %{
+          "sub" => claim_subject,
+          "preferred_username" => "claim-race"
+        })
+      end)
+
+    assert_receive {:ready, claim_stage_pid}
+    assert_receive {:ready, claim_pid}
+    send(claim_stage_pid, :go)
+    send(claim_pid, :go)
+
+    {:ok, claim_stage_result} = Task.await(claim_stage)
+    claim_result = Task.await(claim)
+    claim_stage_state = claim_stage_result.rows |> hd() |> Map.fetch!(:state)
+
+    case {claim_stage_state, claim_result} do
+      {"proposed", {:error, :collision}} -> :ok
+      {"conflicted", {:ok, _claim}} -> :ok
+    end
+
+    identity_stage_command =
+      stage_command_for(external, identity_target.id, identity_subject, "race-2")
+
+    identity_stage =
+      unboxed_async(supervisor, fn ->
+        send(parent, {:ready, self()})
+        receive do: (:go -> :ok)
+        Assignments.stage_signed(sign(identity_stage_command, external.options), external.options)
+      end)
+
+    identity =
+      unboxed_async(supervisor, fn ->
+        send(parent, {:ready, self()})
+        receive do: (:go -> :ok)
+
+        Repo.transaction(fn ->
+          Repo.insert!(%ExternalIdentity{
+            principal_id: identity_target.id,
+            provider: "discord",
+            provider_subject: identity_subject,
+            metadata: %{}
+          })
+
+          Repo.query!("SET CONSTRAINTS ALL IMMEDIATE")
+          :linked
+        end)
+      end)
+
+    assert_receive {:ready, identity_stage_pid}
+    assert_receive {:ready, identity_pid}
+    send(identity_stage_pid, :go)
+    send(identity_pid, :go)
+
+    {:ok, identity_stage_result} = Task.await(identity_stage)
+    identity_result = Task.await(identity)
+    identity_stage_state = identity_stage_result.rows |> hd() |> Map.fetch!(:state)
+
+    assert (identity_stage_state == "proposed" and match?({:error, _}, identity_result)) or
+             (identity_stage_state == "conflicted" and identity_result == {:ok, :linked})
+
+    revoked_stage_command =
+      stage_command_for(external, revoked_target.id, revoked_subject, "race-3")
+
+    revoker =
+      unboxed_async(supervisor, fn ->
+        Repo.transaction(fn ->
+          from(r in UserRole,
+            where: r.principal_id == ^external.preparer.id and r.role == "admin"
+          )
+          |> Repo.delete_all()
+
+          send(parent, {:revocation_locked, self()})
+          receive do: (:commit_revocation -> :ok)
+        end)
+      end)
+
+    assert_receive {:revocation_locked, revoker_pid}
+
+    revoked_stage =
+      unboxed_async(supervisor, fn ->
+        send(parent, :revoked_stage_started)
+        Assignments.stage_signed(sign(revoked_stage_command, external.options), external.options)
+      end)
+
+    assert_receive :revoked_stage_started
+    assert Task.yield(revoked_stage, 0) == nil
+    send(revoker_pid, :commit_revocation)
+    assert {:ok, _} = Task.await(revoker)
+    assert {:error, :unauthorized_principal} = Task.await(revoked_stage)
+  end
+
+  test "operator task exercises every phase and limits raw evidence to review", context do
     manifest_path = Path.join(context.capture.package_dir, "stage-manifest.json")
-    envelope = SignedManifest.sign(stage_command(context), context.options.manifest_key)
+    envelope = sign(stage_command(context), context.options)
     File.write!(manifest_path, Jason.encode!(envelope))
 
     env = %{
-      "DISCORD_ASSIGNMENT_MANIFEST_KEY" => context.options.manifest_key,
+      "DISCORD_ASSIGNMENT_MANIFEST_KEYS" => Jason.encode!(context.options.manifest_keys),
       "DISCORD_SUBJECT_FINGERPRINT_KEY" => context.options.fingerprint_key,
       "DISCORD_ROSTER_PACKAGE_KEY" => context.options.package_key,
       "DISCORD_ASSIGNMENT_TOOL_REVISION" => context.options.tool_revision
@@ -655,21 +1170,101 @@ defmodule Dhc.Discord.AssignmentsTest do
       end)
     end)
 
-    Mix.Task.reenable("dhc.discord.assignments")
+    stage_output =
+      run_assignments_task(["stage", manifest_path, context.capture.package_path])
 
-    output =
-      capture_io(fn ->
-        Mix.Tasks.Dhc.Discord.Assignments.run([
-          "stage",
-          manifest_path,
-          context.capture.package_path
-        ])
-      end)
+    assert_safe_task_output(stage_output, context)
+    assignment = Repo.one!(StagedAssignment)
 
-    assert output =~ "subject_fingerprint"
-    refute output =~ context.subject
-    refute output =~ "target-user"
-    refute output =~ context.target.email
+    review_output =
+      run_assignments_task([
+        "review",
+        context.capture.id,
+        context.reviewer.id,
+        context.capture.package_path
+      ])
+
+    assert review_output =~ context.subject
+    assert review_output =~ "target-user"
+    refute review_output =~ context.target.email
+
+    review_path = Path.join(context.capture.package_dir, "review-manifest.json")
+
+    File.write!(
+      review_path,
+      Jason.encode!(sign(review_command(context, assignment, "approve"), context.options))
+    )
+
+    apply_output = run_assignments_task(["apply-review", review_path])
+    assert_safe_task_output(apply_output, context)
+
+    report_output =
+      run_assignments_task(["report", context.capture.id, context.capture.package_path])
+
+    assert_safe_task_output(report_output, context)
+    assert report_output =~ "approved"
+
+    replacement_subject = unique_subject()
+
+    replacement_capture =
+      capture_fixture(context.reviewer.id, [
+        %{
+          "id" => replacement_subject,
+          "username" => "replacement-user",
+          "global_name" => nil,
+          "nickname" => nil
+        }
+      ])
+
+    on_exit(fn -> File.rm_rf(replacement_capture.package_dir) end)
+
+    replacement_options = %{
+      context.options
+      | package_key: replacement_capture.package_key,
+        package_path: replacement_capture.package_path
+    }
+
+    supersede_command = %{
+      "version" => 1,
+      "action" => "supersede",
+      "capture_id" => replacement_capture.id,
+      "assignment_id" => assignment.id,
+      "proposal_digest" => assignment.proposal_digest,
+      "actor_principal_id" => context.reviewer.id,
+      "row" => %{
+        "principal_id" => context.target.id,
+        "discord_user_id" => replacement_subject,
+        "username_snapshot" => "replacement-user"
+      }
+    }
+
+    supersede_path = Path.join(replacement_capture.package_dir, "supersede-manifest.json")
+    File.write!(supersede_path, Jason.encode!(sign(supersede_command, replacement_options)))
+    System.put_env("DISCORD_ROSTER_PACKAGE_KEY", replacement_capture.package_key)
+
+    supersede_output =
+      run_assignments_task(["supersede", supersede_path, replacement_capture.package_path])
+
+    refute supersede_output =~ replacement_subject
+    refute supersede_output =~ "replacement-user"
+    replacement = Repo.get_by!(StagedAssignment, capture_id: replacement_capture.id)
+
+    withdraw_command = %{
+      "version" => 1,
+      "action" => "withdraw",
+      "assignment_id" => replacement.id,
+      "proposal_digest" => replacement.proposal_digest,
+      "actor_principal_id" => context.preparer.id,
+      "reason_code" => "operator_correction"
+    }
+
+    withdraw_path = Path.join(replacement_capture.package_dir, "withdraw-manifest.json")
+    File.write!(withdraw_path, Jason.encode!(sign(withdraw_command, replacement_options)))
+    withdraw_output = run_assignments_task(["withdraw", withdraw_path])
+
+    refute withdraw_output =~ replacement_subject
+    refute withdraw_output =~ "replacement-user"
+    assert withdraw_output =~ "withdrawn"
   end
 
   defp stage!(context, username_snapshot \\ "target-user") do
@@ -677,7 +1272,7 @@ defmodule Dhc.Discord.AssignmentsTest do
 
     {:ok, result} =
       Assignments.stage_signed(
-        SignedManifest.sign(command, context.options.manifest_key),
+        sign(command, context.options),
         context.options
       )
 
@@ -712,6 +1307,140 @@ defmodule Dhc.Discord.AssignmentsTest do
         }
       ]
     }
+  end
+
+  defp run_assignments_task(args) do
+    Mix.Task.reenable("dhc.discord.assignments")
+
+    capture_io(fn ->
+      Mix.Tasks.Dhc.Discord.Assignments.run(args)
+    end)
+  end
+
+  defp assert_safe_task_output(output, context) do
+    assert output =~ "subject_fingerprint"
+    refute output =~ context.subject
+    refute output =~ "target-user"
+    refute output =~ context.target.email
+  end
+
+  defp unboxed_async(supervisor, fun) do
+    Task.Supervisor.async_nolink(supervisor, fn ->
+      Ecto.Adapters.SQL.Sandbox.unboxed_run(Repo, fun)
+    end)
+  end
+
+  defp external_race_context do
+    preparer = member_fixture("external-race-preparer", "admin")
+
+    targets =
+      Enum.map(1..3, fn index -> member_fixture("external-race-target-#{index}") end)
+
+    subjects = Enum.map(1..3, fn _ -> unique_subject() end)
+
+    users =
+      subjects
+      |> Enum.with_index(1)
+      |> Enum.map(fn {subject, index} ->
+        %{
+          "id" => subject,
+          "username" => "race-#{index}",
+          "global_name" => nil,
+          "nickname" => nil
+        }
+      end)
+
+    capture = capture_fixture(preparer.id, users)
+
+    %{
+      preparer: preparer,
+      targets: targets,
+      subjects: subjects,
+      continuation_id: acceptance_continuation_fixture(),
+      capture: capture,
+      options: %{
+        manifest_keys: %{preparer.id => "external-race-manifest-key"},
+        fingerprint_key: "external-race-fingerprint-key",
+        package_key: capture.package_key,
+        package_path: capture.package_path,
+        tool_revision: "ale-217-test"
+      }
+    }
+  end
+
+  defp stage_command_for(context, principal_id, subject, username) do
+    %{
+      "version" => 1,
+      "capture_id" => context.capture.id,
+      "preparer_principal_id" => context.preparer.id,
+      "rows" => [
+        %{
+          "principal_id" => principal_id,
+          "discord_user_id" => subject,
+          "username_snapshot" => username
+        }
+      ]
+    }
+  end
+
+  defp cleanup_external_race_context(context) do
+    principal_ids = [context.preparer.id | Enum.map(context.targets, & &1.id)]
+    capture_id = Ecto.UUID.dump!(context.capture.id)
+    receipt_ids = Enum.map([context.capture.id, context.capture.preflight_id], &Ecto.UUID.dump!/1)
+    principal_ids = Enum.map(principal_ids, &Ecto.UUID.dump!/1)
+
+    Ecto.Adapters.SQL.Sandbox.unboxed_run(Repo, fn ->
+      Repo.query!("SET session_replication_role = replica")
+
+      try do
+        Repo.query!(
+          "DELETE FROM staged_discord_assignment_audit_events WHERE assignment_id IN (SELECT id FROM staged_discord_assignments WHERE capture_id = $1)",
+          [capture_id]
+        )
+
+        Repo.query!(
+          "DELETE FROM discord_assignment_stage_results WHERE stage_execution_id IN (SELECT id FROM discord_assignment_stage_executions WHERE capture_id = $1)",
+          [capture_id]
+        )
+
+        Repo.query!("DELETE FROM discord_assignment_review_executions WHERE capture_id = $1", [
+          capture_id
+        ])
+
+        Repo.query!("DELETE FROM staged_discord_assignments WHERE capture_id = $1", [
+          capture_id
+        ])
+
+        Repo.query!("DELETE FROM discord_assignment_stage_executions WHERE capture_id = $1", [
+          capture_id
+        ])
+
+        Repo.query!("DELETE FROM discord_roster_receipts WHERE id = ANY($1::uuid[])", [
+          receipt_ids
+        ])
+
+        Repo.query!("DELETE FROM external_identities WHERE provider_subject = ANY($1::text[])", [
+          context.subjects
+        ])
+
+        Repo.query!(
+          "DELETE FROM invitation_acceptance_discord_subject_claims WHERE provider_subject = ANY($1::text[])",
+          [context.subjects]
+        )
+
+        Repo.query!("DELETE FROM user_roles WHERE principal_id = ANY($1::uuid[])", [principal_ids])
+
+        Repo.query!("DELETE FROM member_profiles WHERE id = ANY($1::uuid[])", [principal_ids])
+
+        Repo.query!("DELETE FROM user_profiles WHERE principal_id = ANY($1::uuid[])", [
+          principal_ids
+        ])
+
+        Repo.query!("DELETE FROM principals WHERE id = ANY($1::uuid[])", [principal_ids])
+      after
+        Repo.query!("SET session_replication_role = origin")
+      end
+    end)
   end
 
   defp member_fixture(label, role \\ nil) do
@@ -758,6 +1487,8 @@ defmodule Dhc.Discord.AssignmentsTest do
       "users" => users
     }
 
+    package_digest = RosterDigest.package_digest(package)
+
     {:ok, package_path} = RosterPackage.write(package_dir, capture_id, package, package_key)
 
     {:ok, capture} =
@@ -770,7 +1501,7 @@ defmodule Dhc.Discord.AssignmentsTest do
         bot_application_id: "bot-217",
         tool_revision: tool_revision,
         evidence_digest: digest_json(%{preflight_receipt_id: preflight.id}),
-        package_digest: digest,
+        package_digest: package_digest,
         record_count: length(users),
         result: "capture complete; no staged assignments created",
         preflight_receipt_id: preflight.id
@@ -778,6 +1509,7 @@ defmodule Dhc.Discord.AssignmentsTest do
 
     %{
       id: capture.id,
+      preflight_id: preflight.id,
       package_dir: package_dir,
       package_path: package_path,
       package_key: package_key
@@ -820,6 +1552,14 @@ defmodule Dhc.Discord.AssignmentsTest do
   end
 
   defp unique_subject, do: "ale-217-subject-#{System.unique_integer([:positive])}"
+
+  defp sign(command, options) do
+    signer =
+      command["preparer_principal_id"] || command["reviewer_principal_id"] ||
+        command["actor_principal_id"]
+
+    SignedManifest.sign(command, signer, Map.fetch!(options.manifest_keys, signer))
+  end
 
   defp digest_json(value),
     do: :crypto.hash(:sha256, Jason.encode!(value)) |> Base.encode16(case: :lower)

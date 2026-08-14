@@ -30,7 +30,6 @@ defmodule Dhc.Discord.AssignmentStageResult do
     |> validate_required([:stage_execution_id, :principal_id, :subject_fingerprint, :outcome])
     |> validate_inclusion(:outcome, ["proposed", "conflicted"])
     |> foreign_key_constraint(:stage_execution_id)
-    |> foreign_key_constraint(:principal_id)
     |> foreign_key_constraint(:assignment_id)
     |> check_constraint(:outcome, name: :discord_assignment_stage_results_outcome_check)
   end
