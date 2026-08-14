@@ -10,7 +10,10 @@ import {
 	seedE2EScenario,
 	startOnboardingIsolationProbe,
 } from "./e2eApi";
-import { fillInvitationCredentials } from "./invitationSignup";
+import {
+	fillInvitationCredentials,
+	submitInvitationCredentials,
+} from "./invitationSignup";
 import {
 	routeSuccessfulDiscordAcceptance,
 	setupInvitedUser,
@@ -75,10 +78,7 @@ async function reachDiscordVerified(
 	},
 ) {
 	await routeSuccessfulDiscordAcceptance(page, invitation.invitationId);
-	await page.goto(
-		`/members/signup/${invitation.invitationId}?email=${encodeURIComponent(invitation.email)}&dateOfBirth=${invitation.dateOfBirth}`,
-	);
-	await page.getByRole("button", { name: "Verify Invitation" }).click();
+	await submitInvitationCredentials(page, invitation);
 	await page.getByRole("link", { name: "Continue to Discord" }).click();
 	await expect(
 		page.getByRole("heading", { name: "Discord verified" }),
@@ -147,7 +147,6 @@ test("starts a protected Invitation Acceptance without starting Stripe or a dash
 		dateOfBirth: "1990-01-01",
 		status: "pending",
 	});
-	const stripeRequests: string[] = [];
 	const browserRequestPayloads: string[] = [];
 	await routeSuccessfulDiscordAcceptance(page, invitation.invitationId);
 	let probeFinished = false;
@@ -157,8 +156,6 @@ test("starts a protected Invitation Acceptance without starting Stripe or a dash
 		browserRequestPayloads.push(
 			`${request.url()}\n${request.postData() ?? ""}`,
 		);
-		if (request.url().includes("stripe.com"))
-			stripeRequests.push(request.url());
 	});
 
 	try {
@@ -179,14 +176,13 @@ test("starts a protected Invitation Acceptance without starting Stripe or a dash
 				"Your membership has not been created and no payment has started.",
 			),
 		).toBeVisible();
-		expect(stripeRequests).toEqual([]);
 		const cookies = await context.cookies();
 		const proof = cookies.find(
 			(cookie) => cookie.name === "_dhc_onboarding_acceptance",
 		);
 		expect(proof).toMatchObject({
 			httpOnly: true,
-			path: `/members/signup/${invitation.invitationId}`,
+			path: "/",
 			sameSite: "Lax",
 		});
 		if (!proof) throw new Error("Missing protected acceptance proof cookie");

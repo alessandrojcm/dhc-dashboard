@@ -1024,6 +1024,11 @@ defmodule Dhc.Onboarding do
           finalize_discord(invitation, attempt)
         end
 
+      {:pending, %{"payment_intent_status" => "processing"} = stripe_state} ->
+        with {:ok, attempt} <- mark_provisioned(attempt, stripe_state) do
+          finalize_discord(invitation, attempt)
+        end
+
       {:pending, stripe_state} ->
         with :ok <- record_stripe_progress(attempt.id, attempt.operation_token, stripe_state),
              {:ok, _invitation, current_attempt} <- revalidate_payment_fence(attempt.id) do

@@ -78,6 +78,68 @@ defmodule Dhc.Invitations.StripePaymentTest do
              )
   end
 
+  test "continues creating subscriptions when the monthly SEPA payment is processing", %{
+    bypass: bypass
+  } do
+    test_process = self()
+
+    Bypass.stub(bypass, "POST", "/v1/subscriptions", fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      params = URI.decode_query(body)
+
+      case params["metadata[acceptance_kind]"] do
+        "monthly" ->
+          send(test_process, {:subscription_created, :monthly})
+
+          stripe_json(conn, %{
+            "id" => "sub_monthly",
+            "latest_invoice" => %{
+              "id" => "in_monthly",
+              "status" => "open",
+              "payments" => %{
+                "data" => [%{"payment" => %{"payment_intent" => "pi_monthly"}}]
+              }
+            }
+          })
+
+        "annual" ->
+          send(test_process, {:subscription_created, :annual})
+
+          stripe_json(conn, %{
+            "id" => "sub_annual",
+            "latest_invoice" => %{
+              "id" => "in_annual",
+              "status" => "paid",
+              "payments" => %{"data" => []}
+            }
+          })
+      end
+    end)
+
+    Bypass.expect_once(bypass, "GET", "/v1/payment_intents/pi_monthly", fn conn ->
+      stripe_json(conn, %{"id" => "pi_monthly", "status" => "processing"})
+    end)
+
+    plan = %{
+      monthly_price_id: "price_monthly",
+      annual_price_id: "price_annual",
+      migration?: false,
+      promotion_code_id: nil,
+      requirement: :paid
+    }
+
+    assert {:pending, %{"payment_intent_status" => "processing"}} =
+             StripePayment.complete(%{
+               customer_id: "cus_member",
+               payment_method_id: "pm_sepa",
+               attempt_id: "attempt-123",
+               payment_plan: plan
+             })
+
+    assert_received {:subscription_created, :monthly}
+    assert_received {:subscription_created, :annual}
+  end
+
   defp stripe_json(conn, body) do
     conn
     |> Plug.Conn.put_resp_content_type("application/json")

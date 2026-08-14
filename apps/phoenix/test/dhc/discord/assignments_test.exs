@@ -11,6 +11,7 @@ defmodule Dhc.Discord.AssignmentsTest do
     AssignmentStageResult,
     Assignments,
     RosterDigest,
+    RosterExecution,
     RosterPackage,
     RosterReceipt,
     RosterReceipts,
@@ -21,7 +22,13 @@ defmodule Dhc.Discord.AssignmentsTest do
 
   alias Dhc.Invitations.Invitation
   alias Dhc.Onboarding
-  alias Dhc.Onboarding.InvitationAcceptanceDiscordSubjectClaim
+
+  alias Dhc.Onboarding.{
+    InvitationAcceptanceAttempt,
+    InvitationAcceptanceDiscordContinuation,
+    InvitationAcceptanceDiscordSubjectClaim
+  }
+
   alias Dhc.Repo
 
   setup do
@@ -77,10 +84,20 @@ defmodule Dhc.Discord.AssignmentsTest do
 
     assert {:ok, replay} = Assignments.stage_signed(envelope, context.options)
     assert replay.execution_id == first.execution_id
-    assert Repo.aggregate(StagedAssignment, :count) == 1
-    assert Repo.aggregate(StagedAssignmentAuditEvent, :count) == 1
 
-    [event] = Repo.all(StagedAssignmentAuditEvent)
+    assert Repo.aggregate(
+             from(a in StagedAssignment, where: a.capture_id == ^context.capture.id),
+             :count
+           ) == 1
+
+    assert Repo.aggregate(
+             from(e in StagedAssignmentAuditEvent, where: e.capture_id == ^context.capture.id),
+             :count
+           ) == 1
+
+    [event] =
+      Repo.all(from(e in StagedAssignmentAuditEvent, where: e.capture_id == ^context.capture.id))
+
     assignment = Repo.get!(StagedAssignment, row.assignment_id)
     assert event.action == "proposed"
     assert event.actor_principal_id == context.preparer.id
@@ -150,8 +167,15 @@ defmodule Dhc.Discord.AssignmentsTest do
     assert {:error, :manifest_signer_mismatch} =
              Assignments.apply_review_signed(preparer_signed_review, context.options)
 
-    assert Repo.aggregate(StagedAssignment, :count) == 1
-    assert Repo.aggregate(AssignmentReviewExecution, :count) == 0
+    assert Repo.aggregate(
+             from(a in StagedAssignment, where: a.capture_id == ^context.capture.id),
+             :count
+           ) == 1
+
+    assert Repo.aggregate(
+             from(e in AssignmentReviewExecution, where: e.capture_id == ^context.capture.id),
+             :count
+           ) == 0
   end
 
   test "malformed signed rows and unknown Principals fail closed without task crashes", context do
@@ -181,8 +205,15 @@ defmodule Dhc.Discord.AssignmentsTest do
                context.options
              )
 
-    assert Repo.aggregate(AssignmentStageExecution, :count) == 0
-    assert Repo.aggregate(AssignmentReviewExecution, :count) == 0
+    assert Repo.aggregate(
+             from(e in AssignmentStageExecution, where: e.capture_id == ^context.capture.id),
+             :count
+           ) == 0
+
+    assert Repo.aggregate(
+             from(e in AssignmentReviewExecution, where: e.capture_id == ^context.capture.id),
+             :count
+           ) == 0
   end
 
   test "capture digest authenticates metadata and roster receipts are immutable", context do
@@ -194,6 +225,8 @@ defmodule Dhc.Discord.AssignmentsTest do
         "captured_at",
         DateTime.utc_now() |> DateTime.add(60) |> DateTime.to_iso8601()
       )
+
+    assert :ok = RosterPackage.delete(context.capture.package_path)
 
     {:ok, _} =
       RosterPackage.write(
@@ -228,6 +261,7 @@ defmodule Dhc.Discord.AssignmentsTest do
             assert {:ok, _} =
                      RosterReceipts.create(%{
                        id: Ecto.UUID.generate(),
+                       execution_id: context.capture.execution_id,
                        kind: :capture,
                        status: :succeeded,
                        actor_id: context.preparer.id,
@@ -290,11 +324,19 @@ defmodule Dhc.Discord.AssignmentsTest do
     refute inspect(first) =~ context.subject
     refute inspect(first) =~ "target-user"
     assert Repo.get!(StagedAssignment, assignment.id).state == "approved"
-    assert Repo.aggregate(StagedAssignmentAuditEvent, :count) == 2
+
+    assert Repo.aggregate(
+             from(e in StagedAssignmentAuditEvent, where: e.assignment_id == ^assignment.id),
+             :count
+           ) == 2
 
     assert {:ok, replay} = Assignments.apply_review_signed(envelope, context.options)
     assert replay.execution_id == first.execution_id
-    assert Repo.aggregate(StagedAssignmentAuditEvent, :count) == 2
+
+    assert Repo.aggregate(
+             from(e in StagedAssignmentAuditEvent, where: e.assignment_id == ^assignment.id),
+             :count
+           ) == 2
 
     stale = put_in(command, ["rows", Access.at(0), "decision"], "reject")
 
@@ -346,10 +388,16 @@ defmodule Dhc.Discord.AssignmentsTest do
     assert {:error, :stale_or_unreviewable_proposal} =
              Assignments.apply_review_signed(envelope, context.options)
 
-    execution = Repo.one!(AssignmentReviewExecution)
+    execution =
+      Repo.one!(from(e in AssignmentReviewExecution, where: e.capture_id == ^context.capture.id))
+
     assert execution.state == "rejected"
     assert execution.reason_code == "stale_or_unreviewable_proposal"
-    assert Repo.aggregate(AssignmentReviewExecution, :count) == 1
+
+    assert Repo.aggregate(
+             from(e in AssignmentReviewExecution, where: e.capture_id == ^context.capture.id),
+             :count
+           ) == 1
 
     error =
       assert_raise Ecto.ConstraintError, fn ->
@@ -373,10 +421,19 @@ defmodule Dhc.Discord.AssignmentsTest do
                context.options
              )
 
-    stage_execution = Repo.one!(AssignmentStageExecution)
-    stage_result = Repo.one!(AssignmentStageResult)
-    review_execution = Repo.one!(AssignmentReviewExecution)
-    audit = Repo.one!(from e in StagedAssignmentAuditEvent, limit: 1)
+    assignment = Repo.get!(StagedAssignment, assignment.id)
+    stage_execution = Repo.get!(AssignmentStageExecution, assignment.stage_execution_id)
+    stage_result = Repo.get_by!(AssignmentStageResult, assignment_id: assignment.id)
+    review_execution = Repo.get!(AssignmentReviewExecution, assignment.review_execution_id)
+
+    audit =
+      Repo.one!(
+        from(e in StagedAssignmentAuditEvent,
+          where: e.assignment_id == ^assignment.id,
+          order_by: [asc: e.created_at],
+          limit: 1
+        )
+      )
 
     immutable = [
       {stage_execution, "discord_assignment_stage_executions_immutable"},
@@ -497,7 +554,12 @@ defmodule Dhc.Discord.AssignmentsTest do
     withdrawn = Repo.get!(StagedAssignment, proposed.id)
     assert withdrawn.provider_subject == second_subject
     assert withdrawn.username_snapshot == "replacement"
-    assert Repo.aggregate(StagedAssignmentAuditEvent, :count) == 4
+    assignment_ids = [rejected.id, proposed.id]
+
+    assert Repo.aggregate(
+             from(e in StagedAssignmentAuditEvent, where: e.assignment_id in ^assignment_ids),
+             :count
+           ) == 4
   end
 
   test "superseding preserves the old evidence and requires fresh independent review", context do
@@ -550,12 +612,25 @@ defmodule Dhc.Discord.AssignmentsTest do
     assert replacement.provider_subject == replacement_subject
     assert replacement.username_snapshot == "corrected-user"
     assert replacement.prepared_by_principal_id == context.reviewer.id
-    assert Repo.aggregate(StagedAssignmentAuditEvent, :count) == 3
+    assignment_ids = [old.id, replacement.id]
+
+    assert Repo.aggregate(
+             from(e in StagedAssignmentAuditEvent, where: e.assignment_id in ^assignment_ids),
+             :count
+           ) == 3
 
     assert {:ok, replay} = Assignments.supersede_signed(envelope, options)
     assert replay == first
-    assert Repo.aggregate(StagedAssignment, :count) == 2
-    assert Repo.aggregate(StagedAssignmentAuditEvent, :count) == 3
+
+    assert Repo.aggregate(
+             from(a in StagedAssignment, where: a.id in ^assignment_ids),
+             :count
+           ) == 2
+
+    assert Repo.aggregate(
+             from(e in StagedAssignmentAuditEvent, where: e.assignment_id in ^assignment_ids),
+             :count
+           ) == 3
 
     review_context = %{
       context
@@ -573,7 +648,11 @@ defmodule Dhc.Discord.AssignmentsTest do
              )
 
     assert Repo.get!(StagedAssignment, replacement.id).state == "approved"
-    assert Repo.aggregate(StagedAssignmentAuditEvent, :count) == 4
+
+    assert Repo.aggregate(
+             from(e in StagedAssignmentAuditEvent, where: e.assignment_id in ^assignment_ids),
+             :count
+           ) == 4
   end
 
   test "final report counts captured proposals and current safe outcomes without duplicating conflicts as omissions",
@@ -824,7 +903,9 @@ defmodule Dhc.Discord.AssignmentsTest do
 
   test "database rejects identity-field edits and audit mutation", context do
     assignment = stage!(context)
-    event = Repo.one!(StagedAssignmentAuditEvent)
+
+    event =
+      Repo.one!(from(e in StagedAssignmentAuditEvent, where: e.assignment_id == ^assignment.id))
 
     identity_error =
       assert_raise Ecto.ConstraintError, fn ->
@@ -880,22 +961,22 @@ defmodule Dhc.Discord.AssignmentsTest do
     assignment = stage!(context)
     now = DateTime.utc_now()
 
-    same_preparer_review =
-      %AssignmentReviewExecution{}
-      |> AssignmentReviewExecution.changeset(%{
-        capture_id: context.capture.id,
-        manifest_digest: digest_json(%{review: Ecto.UUID.generate()}),
-        reviewer_principal_id: context.preparer.id,
-        tool_revision: context.options.tool_revision,
-        executed_at: now,
-        state: "applied"
-      })
-      |> Repo.insert!()
-
     error =
       assert_raise Postgrex.Error, fn ->
         Repo.transaction(
           fn ->
+            same_preparer_review =
+              %AssignmentReviewExecution{}
+              |> AssignmentReviewExecution.changeset(%{
+                capture_id: context.capture.id,
+                manifest_digest: digest_json(%{review: Ecto.UUID.generate()}),
+                reviewer_principal_id: context.preparer.id,
+                tool_revision: context.options.tool_revision,
+                executed_at: now,
+                state: "applied"
+              })
+              |> Repo.insert!()
+
             assignment
             |> StagedAssignment.transition_changeset(%{
               state: "rejected",
@@ -1020,7 +1101,10 @@ defmodule Dhc.Discord.AssignmentsTest do
     assert Enum.sort(outcomes) == ["conflicted", "proposed"]
 
     assert Repo.aggregate(
-             from(a in StagedAssignment, where: a.state in ["proposed", "approved"]),
+             from(a in StagedAssignment,
+               where:
+                 a.provider_subject == ^context.subject and a.state in ["proposed", "approved"]
+             ),
              :count
            ) == 1
   end
@@ -1146,6 +1230,12 @@ defmodule Dhc.Discord.AssignmentsTest do
     send(revoker_pid, :commit_revocation)
     assert {:ok, _} = Task.await(revoker)
     assert {:error, :unauthorized_principal} = Task.await(revoked_stage)
+
+    cleanup_external_race_context(external)
+
+    refute Repo.get(InvitationAcceptanceDiscordContinuation, external.continuation_id)
+    refute Repo.get(InvitationAcceptanceAttempt, external.attempt_id)
+    refute Repo.get(Invitation, external.invitation_id)
   end
 
   test "operator task exercises every phase and limits raw evidence to review", context do
@@ -1174,7 +1264,9 @@ defmodule Dhc.Discord.AssignmentsTest do
       run_assignments_task(["stage", manifest_path, context.capture.package_path])
 
     assert_safe_task_output(stage_output, context)
-    assignment = Repo.one!(StagedAssignment)
+
+    assignment =
+      Repo.one!(from(a in StagedAssignment, where: a.capture_id == ^context.capture.id))
 
     review_output =
       run_assignments_task([
@@ -1352,11 +1444,16 @@ defmodule Dhc.Discord.AssignmentsTest do
 
     capture = capture_fixture(preparer.id, users)
 
+    continuation_id = acceptance_continuation_fixture()
+    continuation = Repo.get!(InvitationAcceptanceDiscordContinuation, continuation_id)
+
     %{
       preparer: preparer,
       targets: targets,
       subjects: subjects,
-      continuation_id: acceptance_continuation_fixture(),
+      continuation_id: continuation_id,
+      attempt_id: continuation.attempt_id,
+      invitation_id: continuation.invitation_id,
       capture: capture,
       options: %{
         manifest_keys: %{preparer.id => "external-race-manifest-key"},
@@ -1386,6 +1483,9 @@ defmodule Dhc.Discord.AssignmentsTest do
   defp cleanup_external_race_context(context) do
     principal_ids = [context.preparer.id | Enum.map(context.targets, & &1.id)]
     capture_id = Ecto.UUID.dump!(context.capture.id)
+    continuation_id = Ecto.UUID.dump!(context.continuation_id)
+    attempt_id = Ecto.UUID.dump!(context.attempt_id)
+    invitation_id = Ecto.UUID.dump!(context.invitation_id)
     receipt_ids = Enum.map([context.capture.id, context.capture.preflight_id], &Ecto.UUID.dump!/1)
     principal_ids = Enum.map(principal_ids, &Ecto.UUID.dump!/1)
 
@@ -1419,14 +1519,34 @@ defmodule Dhc.Discord.AssignmentsTest do
           receipt_ids
         ])
 
+        Repo.query!("DELETE FROM discord_roster_executions WHERE id = $1", [
+          Ecto.UUID.dump!(context.capture.execution_id)
+        ])
+
         Repo.query!("DELETE FROM external_identities WHERE provider_subject = ANY($1::text[])", [
           context.subjects
         ])
 
         Repo.query!(
-          "DELETE FROM invitation_acceptance_discord_subject_claims WHERE provider_subject = ANY($1::text[])",
-          [context.subjects]
+          "DELETE FROM invitation_acceptance_discord_collision_audit_events WHERE continuation_id = $1",
+          [continuation_id]
         )
+
+        Repo.query!(
+          "DELETE FROM invitation_acceptance_discord_subject_claims WHERE continuation_id = $1 OR provider_subject = ANY($2::text[])",
+          [continuation_id, context.subjects]
+        )
+
+        Repo.query!(
+          "DELETE FROM invitation_acceptance_discord_continuations WHERE id = $1",
+          [continuation_id]
+        )
+
+        Repo.query!("DELETE FROM oban_jobs WHERE args->>'attempt_id' = $1", [context.attempt_id])
+
+        Repo.query!("DELETE FROM invitation_acceptance_attempts WHERE id = $1", [attempt_id])
+
+        Repo.query!("DELETE FROM invitations WHERE id = $1", [invitation_id])
 
         Repo.query!("DELETE FROM user_roles WHERE principal_id = ANY($1::uuid[])", [principal_ids])
 
@@ -1460,9 +1580,23 @@ defmodule Dhc.Discord.AssignmentsTest do
     package_key = Base.encode64(:crypto.strong_rand_bytes(32))
     tool_revision = "ale-217-capture-test"
     digest = RosterDigest.digest(users)
+    now = DateTime.utc_now()
+
+    execution =
+      %RosterExecution{actor_id: actor_id}
+      |> RosterExecution.approval_changeset(%{
+        guild_id: "guild-217",
+        bot_application_id: "bot-217",
+        tool_revision: tool_revision,
+        status: :approved,
+        approved_at: now,
+        expires_at: DateTime.add(now, 3_600, :second)
+      })
+      |> Repo.insert!()
 
     {:ok, preflight} =
       RosterReceipts.create(%{
+        execution_id: execution.id,
         kind: :preflight,
         status: :succeeded,
         actor_id: actor_id,
@@ -1494,6 +1628,7 @@ defmodule Dhc.Discord.AssignmentsTest do
     {:ok, capture} =
       RosterReceipts.create(%{
         id: capture_id,
+        execution_id: execution.id,
         kind: :capture,
         status: :succeeded,
         actor_id: actor_id,
@@ -1510,6 +1645,7 @@ defmodule Dhc.Discord.AssignmentsTest do
     %{
       id: capture.id,
       preflight_id: preflight.id,
+      execution_id: execution.id,
       package_dir: package_dir,
       package_path: package_path,
       package_key: package_key

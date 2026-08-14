@@ -22,6 +22,15 @@ defmodule Dhc.DiscordAssignmentFixtures do
   end
 
   def assignment_fixture(target_principal_id, subject, attrs \\ %{}) do
+    {:ok, assignment} =
+      Repo.transaction(fn ->
+        create_assignment_fixture(target_principal_id, subject, attrs)
+      end)
+
+    assignment
+  end
+
+  defp create_assignment_fixture(target_principal_id, subject, attrs) do
     attrs = Enum.into(attrs, %{})
     state = Map.get(attrs, :state, "proposed")
     preparer = member_fixture("preparer")

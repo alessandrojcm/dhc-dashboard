@@ -9,21 +9,26 @@ import {
 	setupInvitedUser,
 	stripeClient,
 } from "./setupFunctions";
+import { fillInvitationCredentials } from "./invitationSignup";
 
 type InvitedUser = Awaited<ReturnType<typeof setupInvitedUser>>;
 
-function signupUrl(invitation: InvitedUser) {
-	return `/members/signup/${invitation.invitationId}?email=${encodeURIComponent(invitation.email)}&dateOfBirth=${encodeURIComponent(invitation.date_of_birth.format("YYYY-MM-DD"))}`;
-}
-
 async function openSignup(page: Page, invitation: InvitedUser) {
 	await routeSuccessfulDiscordAcceptance(page, invitation.invitationId);
-	await page.goto(signupUrl(invitation));
+	await page.goto(`/members/signup/${invitation.invitationId}`);
 	const verifyButton = page.getByRole("button", { name: /verify invitation/i });
 	await expect(verifyButton).toBeVisible();
 	await page.waitForLoadState("networkidle");
+	await fillInvitationCredentials(page, {
+		email: invitation.email,
+		dateOfBirth: invitation.date_of_birth.format("YYYY-MM-DD"),
+	});
 	await verifyButton.click();
 	await page.getByRole("link", { name: "Continue to Discord" }).click();
+	await expect(
+		page.getByRole("heading", { name: "Discord verified" }),
+	).toBeVisible();
+	await page.getByRole("button", { name: "Continue to payment" }).click();
 	await page.getByLabel(/next of kin$/i).waitFor({ state: "visible" });
 }
 

@@ -605,16 +605,14 @@ paths:
 
   /onboarding/acceptance:
     post:
-      operationId: onboarding.verifyInvitationAcceptance
+      operationId: onboarding.startAcceptance
       tags: [Onboarding]
-      summary: Verify Invitation credentials and begin protected acceptance
+      summary: Verify Invitation credentials through the legacy continuation-header transport
       description: |
-        Proves Invitation email and date of birth, then creates or resumes the
-        one active Acceptance Attempt and its awaiting-Discord Continuation.
-        This starts no OAuth or Stripe work and creates no Principal, identity,
-        Membership, role, magic link, or DHC Session. The browser retains the
-        opaque server references in its secure HttpOnly cookie only. The
-        Continuation identifier is never returned in the response view.
+        Compatibility endpoint for clients that still transport the opaque
+        Continuation identifier in the x-onboarding-continuation header. New
+        browser flows must use /onboarding/invitation-acceptance/verify so the
+        proof remains in a signed HttpOnly cookie.
       security: []
       parameters: []
       requestBody:
@@ -646,6 +644,47 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+
+  /onboarding/invitation-acceptance/verify:
+    post:
+      operationId: onboarding.verifyInvitationAcceptance
+      tags: [Onboarding]
+      summary: Verify Invitation credentials and begin protected acceptance
+      description: |
+        Proves Invitation email and date of birth, then creates or resumes the
+        one active Acceptance Attempt and its awaiting-OAuth Continuation.
+        This starts no OAuth or Stripe work and creates no Principal, identity,
+        Membership, role, magic link, or DHC Session. The opaque Continuation
+        reference is retained only in a signed HttpOnly cookie and is never
+        returned in the response view.
+      security: []
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OnboardingStartAcceptanceRequest"
+      responses:
+        "200":
+          description: Safe protected acceptance state with signed HttpOnly browser proof
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+        "422":
+          description: Malformed or invalid Invitation credentials; safe restart state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+        "409":
+          description: A live flow exists but this browser has no valid proof
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+
   /onboarding/invitation-acceptance:
     get:
       operationId: onboarding.showInvitationAcceptance

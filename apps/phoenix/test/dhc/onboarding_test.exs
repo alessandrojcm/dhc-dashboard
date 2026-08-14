@@ -609,10 +609,51 @@ defmodule Dhc.OnboardingTest do
     refute_received {:provision_membership, %{confirmation_token: "ctok_must_not_be_used"}}
   end
 
+  test "a processing SEPA PaymentIntent finalizes acceptance while settlement remains pending" do
+    invitation = insert_invitation!()
+
+    {:ok, started} =
+      Onboarding.start_acceptance(
+        invitation.id,
+        invitation.email,
+        Date.to_iso8601(invitation.date_of_birth)
+      )
+
+    {:ok, _state} =
+      Onboarding.verify_discord(started.continuation_id, %{
+        "sub" => "processing-sepa-discord-subject",
+        "preferred_username" => "processing-sepa-member"
+      })
+
+    assert {:ok, %{state: "paymentReady"}} =
+             Onboarding.continue_acceptance(started.continuation_id)
+
+    stripe_state = %{
+      "payment_state" => "pending",
+      "payment_intent_status" => "processing"
+    }
+
+    Application.put_env(:dhc, :onboarding_stripe_result, {:pending, stripe_state})
+
+    assert {:ok, %{state: "accepted"}} =
+             Onboarding.submit_payment(started.continuation_id, %{
+               next_of_kin_name: "Grace Hopper",
+               next_of_kin_phone: "+353810000099",
+               confirmation_token: "ctok_processing_sepa"
+             })
+
+    attempt = Repo.get_by!(InvitationAcceptanceAttempt, invitation_id: invitation.id)
+    assert attempt.status == "completed"
+    assert Map.take(attempt.stripe_state, Map.keys(stripe_state)) == stripe_state
+    assert Repo.get!(Invitation, invitation.id).status == "accepted"
+    assert Repo.get(Principal, invitation.prospective_principal_id)
+
+    assert :ok = perform_job(AcceptanceRecoveryWorker, %{"attempt_id" => attempt.id})
+    assert Repo.aggregate(InvitationAcceptanceAttempt, :count) == 1
+  end
+
   test "incomplete PaymentIntent outcomes remain durable without converting the invitation" do
     outcomes = [
-      {%{"payment_state" => "pending", "payment_intent_status" => "processing"},
-       "paymentPending"},
       {%{"payment_state" => "needs_action", "payment_intent_status" => "requires_action"},
        "paymentNeedsAction"},
       {%{"payment_state" => "terminal", "payment_intent_status" => "canceled"}, "paymentTerminal"}

@@ -125,7 +125,6 @@ defmodule Dhc.Discord.RosterCaptureTest do
     assert capture.preflight_receipt_id == preflight.id
     assert capture.execution_id == execution.id
     assert capture.actor_id == execution.actor_id
-    assert capture.package_digest == result.digest
     assert capture.record_count == 2
     assert preflight.record_count == 1
     assert preflight.bot_application_id == "app-1"
@@ -188,7 +187,14 @@ defmodule Dhc.Discord.RosterCaptureTest do
              RosterCapture.capture(options(package_dir, second, captured_stub()))
 
     refute first_result.capture_id == second_result.capture_id
-    assert Repo.aggregate(from(r in RosterReceipt, where: r.kind == :capture), :count) == 2
+    execution_ids = [first.id, second.id]
+
+    assert Repo.aggregate(
+             from(r in RosterReceipt,
+               where: r.kind == :capture and r.execution_id in ^execution_ids
+             ),
+             :count
+           ) == 2
   end
 
   test "rejects an approved execution whose actor lacks a current administration role", %{

@@ -37,7 +37,6 @@ export function onboardingApiClientOptions(cookies: ReadableCookies) {
 export function relayOnboardingAcceptanceCookie(
 	cookies: WritableCookies,
 	headers: Headers,
-	invitationId: string,
 ) {
 	const setCookie = headers.get("set-cookie");
 	const prefix = `${onboardingAcceptanceCookie}=`;
@@ -53,7 +52,7 @@ export function relayOnboardingAcceptanceCookie(
 		encode: (raw) => raw,
 		httpOnly: true,
 		maxAge: 15 * 60,
-		path: `/members/signup/${invitationId}`,
+		path: "/",
 		sameSite: "lax",
 		secure: !dev,
 	});
