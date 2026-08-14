@@ -2,6 +2,7 @@
 
 **Status:** Accepted  
 **Date:** 2026-08-13  
+**Amended:** 2026-08-14 — retain the existing Stripe Elements/ConfirmationToken payment experience; remove the mandatory hosted-Checkout redirect  
 **Amends:** ADR-0009, ADR-0010, ADR-0013  
 **Implements:** ADR-0014 through ADR-0018; ALE-169  
 **Tags:** onboarding, authentication, discord, api, migration, operations
@@ -18,8 +19,11 @@ exercise. It resolves the earlier ADRs as follows:
   email-match/mismatch first-sign-in paths are superseded. Its atomic
   Principal/Member birth, authoritative invitation email, and no-session
   boundary remain.
-- ADR-0013's durable Attempt and Stripe seam remain. An Acceptance Attempt now
-  requires a consumed verified Discord Continuation before any Stripe mutation.
+- ADR-0013's durable Attempt and server-authorized Stripe seam remain, including
+  the existing Stripe Elements/ConfirmationToken collection experience. An
+  Acceptance Attempt now requires a consumed verified Discord Continuation
+  before any Stripe mutation. This contract does not require Stripe Checkout or
+  replace the established payment form.
 - ADR-0014 defines the prospective-member proof and transaction boundaries;
   ADR-0015–0017 define the reviewed existing-member path and its persistence;
   ADR-0018 supplies subject-only sign-in, gates, recovery, and rollback policy.
@@ -42,7 +46,8 @@ Discord subject, price, or Stripe state.
 | `verify_invitation` | Verify invitation email and date of birth; lock Invitation; create or resume its single active Attempt and an `awaiting_oauth` Continuation in the protected acceptance browser session. | No Stripe, Principal, identity, Membership, or DHC Session. |
 | OAuth start/callback | Bind Assent state and PKCE to that browser session. Validate callback, invitation/attempt fences, and expiry; atomically change Continuation to `verified` and insert its Subject Claim. | Callback has no Stripe work and never calls ordinary sign-in. |
 | collision/cancel/failure/expiry | Compare-and-set a terminal Continuation, release the Claim, zeroize raw subject and display metadata, and close the Attempt where ADR-0014 requires. | No Stripe; no identity or Session. |
-| `continue` | Lock verified Continuation, Attempt, Invitation, and Claim; consume the browser-held Continuation into the Attempt exactly once. | Only a successful consume permits the Attempt's existing Stripe progression. |
+| `continue` | Lock verified Continuation, Attempt, Invitation, and Claim; consume the browser-held Continuation into the Attempt exactly once. | Only a successful consume permits the browser to enter the existing Stripe Elements payment step. It does not itself create Stripe state. |
+| payment submission | Accept the existing membership details, coupon code, and browser-created Stripe ConfirmationToken for the protected Attempt; re-lock and verify the consumed Continuation/Claim fence before invoking the existing server-side Stripe seam. | Phoenix remains authoritative for pricing, coupon validation, Stripe progression, and finalization. The browser cannot supply an amount, currency, customer, Attempt, or provider progression state. |
 | retry/reconciliation | Resume the same Attempt, Claim, and stable Stripe idempotency keys. | Never repeat OAuth or create a second Attempt. |
 | finalization | In one `Repo.transact/1`, lock all workflow rows and create/claim profile, Principal, MemberProfile, `member` Role, Membership, accepted Invitation, Waitlist outcome, and Discord External Identity; delete Claim and consume/zeroize Continuation. | Local writes are all-or-nothing. No authenticated Session or magic link is created. |
 
@@ -61,9 +66,9 @@ ADR-0017 advisory-lock order and deferred cross-table constraints.
 ## Phoenix, Ecto, and Oban obligations
 
 1. The public domain seam is `Dhc.Onboarding`: verification, safe state read,
-   OAuth start/callback completion, cancellation, continue, retry, and
-   reconciliation. Controllers do not orchestrate Stripe, cross-table identity
-   checks, or state transitions.
+   OAuth start/callback completion, cancellation, continue, payment submission,
+   retry, and reconciliation. Controllers do not orchestrate Stripe,
+   cross-table identity checks, or state transitions.
 2. Reuse the existing Assent Discord protocol adapter (state, PKCE, code
    exchange, normalized `sub`); add an explicit Acceptance purpose. The callback
    must not call `Auth.sign_in_with_discord/1` or an authenticated-link command.
@@ -106,25 +111,40 @@ caller forwards a credential manually.
 | `GET /api/onboarding/invitation-acceptance/discord` | Full browser navigation; validates `awaiting_oauth`, stores purpose/Continuation beside Assent state + PKCE, then redirects to Discord. |
 | Discord callback | Browser-only redirect to `/accept-invitation/resume`; no JSON claim, token, or authenticated-session cookie. |
 | `POST /api/onboarding/invitation-acceptance/discord/cancel` | Pre-consumption only; compare-and-set ends the Continuation/Claim and returns server state. |
-| `POST /api/onboarding/invitation-acceptance/continue` | Consumes verified proof and returns the current payment/progress state; duplicates return that same Attempt projection. |
+| `POST /api/onboarding/invitation-acceptance/continue` | Consumes verified proof and returns `payment_ready` for the protected Attempt; duplicates return that same Attempt projection without creating Stripe state. |
+| `POST /api/onboarding/invitation-acceptance/payment` | Submits the established membership-details, coupon, and Stripe Elements ConfirmationToken payload against the protected Attempt. The server calculates and validates price, advances the durable Stripe seam, and finalizes when provider progress permits. |
 | `POST /api/onboarding/invitation-acceptance/retry` | Only resumes a server-declared recoverable Attempt transition; never makes a new proof or Attempt. |
 
 Every JSON success is `{ data: InvitationAcceptanceView }`; errors use
 `{ errors: { detail: string } }`. The view is a discriminated state union:
 `verify_invitation`, `awaiting_oauth`, `restart_verification`,
-`discord_verified`, `payment_pending`, `payment_needs_action`,
+`discord_verified`, `payment_ready`, `payment_pending`, `payment_needs_action`,
 `payment_terminal`, `discord_unavailable`, `discord_collision`,
 `invitation_expired`, and `accepted`.
 
 `discord_verified` exposes only invitation email and current safe Discord
-presentation (`username`, optional avatar URL). `payment_needs_action` exposes
-only a server-authorized payment descriptor. The required initial descriptor is
-`{ kind: "redirect", url: string }`, where `url` is a Stripe URL minted by the
-server for the current Attempt; SvelteKit performs a full navigation and returns
-to the same resume route. Complimentary membership returns no descriptor.
-Amounts, currencies, provider IDs, client secrets, Attempt IDs, Continuation
-IDs, subject, claim state, OAuth state/PKCE, Discord email, and DHC session
-credentials are never in the view, URL, local storage, or analytics.
+presentation (`username`, optional avatar URL). `payment_ready` authorizes the
+existing Stripe Elements membership-payment form for this protected browser; it
+is not a Stripe operation and carries no amount or caller-selectable provider
+state. The form continues to collect membership details and an optional coupon,
+creates a Stripe ConfirmationToken in the browser, and submits it to Phoenix.
+Phoenix calculates the authoritative price, validates the coupon, performs
+Stripe progression through the durable Attempt, and finalizes the conversion.
+Complimentary membership uses the same form and existing 100% discount path.
+
+`payment_needs_action` is reserved for action actually required by Stripe for
+the current server-owned progression, such as provider authentication. It does
+not mandate an initial Stripe Checkout Session or a hosted payment page. A
+provider-required redirect may use full navigation and must return to the same
+resume route.
+
+Amounts selected by the caller, currencies, provider customer/subscription IDs,
+client secrets, Attempt IDs, Continuation IDs, subject, claim state, OAuth
+state/PKCE, Discord email, and DHC session credentials are never in the safe
+view, URL, local storage, or analytics. The ConfirmationToken is accepted only
+in the payment request body, is never a URL or durable browser credential, and
+must not be logged or retained outside the Attempt's existing minimum payment
+progress data.
 
 Malformed request payloads are `422`; missing/expired browser proof is `409`
 with the restart state; stale/disallowed state transitions are `409` with the
@@ -150,6 +170,13 @@ success offers only **Go to sign in**, prefilled visually with invitation email,
 to the normal rate-limited magic-link request page. Do not display dashboard
 navigation, signed-in chrome, countdown authority, raw technical failure, or
 account/membership information on collision.
+
+After `continue` returns `payment_ready`, reuse the established membership
+details, coupon, validation, and Stripe Elements form. Discord verification adds
+an authorization fence before that form; it does not introduce a parallel form
+or replace Elements with Stripe Checkout. OAuth remains a full navigation.
+Payment leaves the app only when Stripe requires provider authentication for
+the submitted Elements payment method.
 
 ## Security and privacy
 
@@ -227,8 +254,9 @@ Implementation tickets are complete only when they prove the following:
    loss revokes sessions; magic link remains usable as the fallback.
 5. **API/UI:** generated OpenAPI/controller/client contracts cover every
    endpoint/state/error. Svelte tests cover all safe views, full OAuth
-   navigation, refresh, server-directed payment redirect, neutral collision,
-   and sign-in-only success. No bare Phoenix fetches.
+   navigation, refresh, reuse of the existing Stripe Elements/details/coupon
+   form after `payment_ready`, any provider-required payment action, neutral
+   collision, and sign-in-only success. No bare Phoenix fetches.
 6. **Privacy/security:** tests assert no email/name reconciliation after cutover,
    no enumeration, zeroization, restricted audit fields, no token/job leakage,
    CSRF, and recovery's two approvals plus both fresh proofs.
@@ -251,3 +279,19 @@ cleanup, invitation analytics, or implementation slicing. The existing bot is
 reused only to authenticate the one-off, separately reviewed existing-member
 roster export; Membership access remains a DHC Session policy and does not grant
 or revoke Discord guild membership.
+
+## Payment UI clarification
+
+Mandatory Stripe-hosted Checkout was considered and rejected. The existing
+Stripe Elements flow is already server-authorized: the browser creates only a
+ConfirmationToken, while Phoenix owns Invitation and Attempt validation,
+authoritative pricing, coupon validation, Stripe customer/subscription
+progression, idempotency, and atomic Member finalization. Replacing that flow
+with Checkout would duplicate the established membership-details and coupon UI
+without strengthening the Discord, payment, or transaction boundaries required
+by this ADR.
+
+The required change is therefore ordering, not payment-product replacement:
+Invitation credentials and Discord OAuth are verified first; `continue`
+consumes that proof into the durable Attempt; only then may the existing Elements
+form submit payment input to the server-owned Onboarding command.
