@@ -1,6 +1,9 @@
 import { onboardingStartDiscord } from "@dhc/api-client";
 import { redirect, type RequestHandler } from "@sveltejs/kit";
-import { onboardingApiClientOptions } from "$lib/server/onboarding-api";
+import {
+	onboardingAcceptanceCookie,
+	onboardingApiClientOptions,
+} from "$lib/server/onboarding-api";
 
 const ACCEPTANCE_RECOVERY_COOKIE = "discord-acceptance-invitation";
 const ACCEPTANCE_CALLBACK_PATH = "/auth/discord/acceptance/callback";
@@ -9,7 +12,7 @@ export const GET: RequestHandler = async ({ cookies, params }) => {
 	const invitationId = params.invitationId;
 	if (!invitationId) throw redirect(303, "/");
 
-	const proof = cookies.get("_dhc_onboarding_acceptance");
+	const proof = cookies.get(onboardingAcceptanceCookie);
 	if (!proof) throw redirect(303, `/members/signup/${invitationId}`);
 
 	const result = await onboardingStartDiscord({

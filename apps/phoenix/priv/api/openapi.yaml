@@ -616,6 +616,7 @@ paths:
         opaque server references in its secure HttpOnly cookie only. The
         Continuation identifier is never returned in the response view.
       security: []
+      parameters: []
       requestBody:
         required: true
         content:
@@ -645,7 +646,6 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
-
   /onboarding/invitation-acceptance:
     get:
       operationId: onboarding.showInvitationAcceptance
@@ -671,7 +671,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
 
-  /onboarding/acceptance/discord:
+  /onboarding/invitation-acceptance/discord:
     get:
       operationId: onboarding.startDiscord
       tags: [Onboarding]
@@ -697,7 +697,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
 
-  /onboarding/acceptance/discord/cancel:
+  /onboarding/invitation-acceptance/discord/cancel:
     post:
       operationId: onboarding.cancelDiscord
       tags: [Onboarding]
@@ -722,26 +722,19 @@ paths:
               schema:
                 $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
 
-  /onboarding/acceptance/continue:
+  /onboarding/invitation-acceptance/continue:
     post:
       operationId: onboarding.continueAcceptance
       tags: [Onboarding]
-      summary: Consume verified Discord proof and begin durable payment progression
+      summary: Consume verified Discord proof and authorize the payment form
       description: |
         Atomically binds the browser-held verified Continuation to its one active
         Acceptance Attempt before any Stripe mutation. Replays return the current
         safe Attempt projection and cannot create another Attempt, Claim, or
-        provider operation. The client-provided Stripe ConfirmationToken only
-        transports Payment Element data; Phoenix owns SetupIntent, subscription,
-        invoice-payment, and final Member progression.
+        provider operation. This operation has no request body and creates no
+        Stripe state. A successful response is paymentReady.
       security:
         - onboardingContinuation: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/OnboardingContinueAcceptanceRequest"
       responses:
         "200":
           description: Current safe Acceptance Attempt state
@@ -755,20 +748,69 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
-        "402":
-          description: Server-side Stripe finalization could not complete
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
         "422":
-          description: Browser proof is missing or request details are malformed
+          description: Browser proof is missing or invalid
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
 
-  /onboarding/acceptance/retry:
+  /onboarding/invitation-acceptance/payment:
+    post:
+      operationId: onboarding.submitPayment
+      tags: [Onboarding]
+      summary: Submit membership details and Stripe Elements payment input
+      description: |
+        Records the payment payload durably against the consumed protected
+        Attempt before provider mutation, then advances the server-owned Stripe
+        workflow with stable inputs and idempotency keys.
+      security:
+        - onboardingContinuation: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OnboardingPaymentRequest"
+      responses:
+        "200":
+          description: Current safe Acceptance Attempt state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+        "402":
+          description: Payment input was terminally rejected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+        "409":
+          description: Transition is stale or disallowed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+        "422":
+          description: Payment payload is malformed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Provider progression is temporarily unavailable and recovery is scheduled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Local finalization failed with durable reconciliation retained
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /onboarding/invitation-acceptance/retry:
     post:
       operationId: onboarding.retryAcceptance
       tags: [Onboarding]
@@ -4151,14 +4193,6 @@ components:
         credential. `RequireAuth` accepts this cookie in addition to the
         transitional Supabase bearer JWT (`bearerAuth`) until the ALE-163
         cutover.
-    onboardingContinuation:
-      type: apiKey
-      in: header
-      name: x-onboarding-continuation
-      description: |
-        Opaque proof held only in the SvelteKit HTTP-only browser session.
-        It authorizes access to one pre-payment Invitation Acceptance and must
-        never be exposed to browser JavaScript, URLs, analytics, or response bodies.
     onboardingAcceptanceSession:
       type: apiKey
       in: cookie
@@ -4183,7 +4217,7 @@ components:
         invitationId: { type: string, format: uuid }
         email: { type: string, format: email }
         dateOfBirth: { type: string, format: date }
-    OnboardingContinueAcceptanceRequest:
+    OnboardingPaymentRequest:
       type: object
       required: [nextOfKinName, nextOfKinPhone, stripeConfirmationToken]
       properties:
@@ -4220,7 +4254,10 @@ components:
                 - discordUnavailable
                 - restartVerification
                 - restart_verification
+                - paymentReady
                 - paymentPending
+                - paymentNeedsAction
+                - paymentTerminal
                 - accepted
             invitationEmail:
               type: string
@@ -4233,6 +4270,9 @@ components:
             retryAllowed:
               type: boolean
               description: Whether the current payment/finalization state permits an explicit client retry.
+            expiresAt:
+              type: string
+              format: date-time
     OnboardingSafeDiscordPresentation:
       type: object
       description: Mutable display snapshot for account recognition; never an identity binding fact.
@@ -4242,9 +4282,6 @@ components:
         avatarUrl:
           type: string
           format: uri
-            expiresAt:
-              type: string
-              format: date-time
     InvitationCreateRequest:
       type: object
       required:

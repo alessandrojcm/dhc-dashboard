@@ -27,6 +27,13 @@ defmodule Dhc.OnboardingE2EStripeAdapter do
   end
 
   @impl true
+  def prepare_payment(coupon_code) do
+    guarded_call(:prepare_payment, fn ->
+      Dhc.Onboarding.StripeAdapter.Live.prepare_payment(coupon_code)
+    end)
+  end
+
+  @impl true
   def create_customer(attrs) do
     guarded_call(:create_customer, fn ->
       Dhc.Onboarding.StripeAdapter.Live.create_customer(attrs)

@@ -246,8 +246,11 @@ defmodule Dhc.OnboardingTest do
       {:error, {:http_error, :timeout}}
     )
 
-    assert {:error, {:payment_failed, {:http_error, :timeout}}} =
-             Onboarding.continue_acceptance(started.continuation_id, %{
+    assert {:ok, %{state: "paymentReady"}} =
+             Onboarding.continue_acceptance(started.continuation_id)
+
+    assert {:error, {:provider_unavailable, {:http_error, :timeout}}} =
+             Onboarding.submit_payment(started.continuation_id, %{
                next_of_kin_name: "Grace Hopper",
                next_of_kin_phone: "+353810000099",
                confirmation_token: "ctok_recoverable_expiry",
@@ -348,10 +351,21 @@ defmodule Dhc.OnboardingTest do
 
     invitation_email = invitation.email
 
-    assert {:ok, %{state: "accepted", invitation_email: ^invitation_email}} =
-             Onboarding.continue_acceptance(started.continuation_id, attrs)
+    assert {:ok, %{state: "paymentReady"}} =
+             Onboarding.continue_acceptance(started.continuation_id)
 
-    assert_received {:payment_requirement, nil}
+    assert {:error, :invalid_continuation} =
+             Onboarding.cancel_discord(started.continuation_id)
+
+    assert Repo.exists?(InvitationAcceptanceDiscordSubjectClaim)
+    refute_received {:prepare_payment, _}
+    refute_received {:create_customer, _}
+    refute_received {:provision_membership, _}
+
+    assert {:ok, %{state: "accepted", invitation_email: ^invitation_email}} =
+             Onboarding.submit_payment(started.continuation_id, attrs)
+
+    assert_received {:prepare_payment, nil}
     assert_received {:create_customer, %{attempt_id: attempt_id}}
 
     assert_received {:provision_membership,
@@ -361,13 +375,13 @@ defmodule Dhc.OnboardingTest do
                      }}
 
     assert {:ok, %{state: "accepted"}} =
-             Onboarding.continue_acceptance(started.continuation_id, %{
+             Onboarding.submit_payment(started.continuation_id, %{
                attrs
                | next_of_kin_name: "Must not replace durable input",
                  confirmation_token: "ctok_must_not_be_used"
              })
 
-    refute_received {:payment_requirement, _}
+    refute_received {:prepare_payment, _}
     refute_received {:create_customer, _}
     refute_received {:provision_membership, _}
     assert Repo.aggregate(InvitationAcceptanceAttempt, :count) == 1
@@ -421,15 +435,18 @@ defmodule Dhc.OnboardingTest do
         "preferred_username" => "complimentary-member"
       })
 
+    assert {:ok, %{state: "paymentReady"}} =
+             Onboarding.continue_acceptance(started.continuation_id)
+
     assert {:ok, %{state: "accepted"}} =
-             Onboarding.continue_acceptance(started.continuation_id, %{
+             Onboarding.submit_payment(started.continuation_id, %{
                next_of_kin_name: "Grace Hopper",
                next_of_kin_phone: "+353810000099",
                confirmation_token: "ctok_complimentary",
                coupon_code: "COMPLIMENTARY"
              })
 
-    assert_received {:payment_requirement, "COMPLIMENTARY"}
+    assert_received {:prepare_payment, "COMPLIMENTARY"}
     assert_received {:create_customer, _attrs}
     assert_received {:provision_membership, %{complimentary: true}}
     assert Repo.get!(Invitation, invitation.id).status == "accepted"
@@ -463,15 +480,20 @@ defmodule Dhc.OnboardingTest do
       coupon_code: nil
     }
 
-    assert {:error, {:payment_failed, ^timeout}} =
-             Onboarding.continue_acceptance(started.continuation_id, attrs)
+    assert {:ok, %{state: "paymentReady"}} =
+             Onboarding.continue_acceptance(started.continuation_id)
 
-    assert_received {:payment_requirement, nil}
+    assert {:error, {:provider_unavailable, ^timeout}} =
+             Onboarding.submit_payment(started.continuation_id, attrs)
+
+    assert_received {:prepare_payment, nil}
     assert_received {:create_customer, _attrs}
     assert_received {:provision_membership, %{confirmation_token: "ctok_original"}}
 
-    assert %InvitationAcceptanceAttempt{status: "payment_pending"} =
-             Repo.get_by!(InvitationAcceptanceAttempt, invitation_id: invitation.id)
+    attempt = Repo.get_by!(InvitationAcceptanceAttempt, invitation_id: invitation.id)
+    assert %InvitationAcceptanceAttempt{status: "payment_pending"} = attempt
+
+    assert_enqueued(worker: AcceptanceRecoveryWorker, args: %{"attempt_id" => attempt.id})
 
     jobs = all_enqueued(worker: AcceptanceRecoveryWorker)
     assert [%{args: %{"attempt_id" => recovery_attempt_id}}] = jobs
@@ -516,19 +538,64 @@ defmodule Dhc.OnboardingTest do
     Application.put_env(:dhc, :onboarding_stripe_result, {:ok, %{}})
 
     assert {:ok, %{state: "paymentPending"}} =
-             Onboarding.continue_acceptance(started.continuation_id, %{
+             Onboarding.submit_payment(started.continuation_id, %{
                attrs
                | next_of_kin_name: "Must not replace durable input",
                  confirmation_token: "ctok_must_not_be_used"
              })
 
-    refute_received {:payment_requirement, _}
+    refute_received {:prepare_payment, _}
     refute_received {:create_customer, _}
     refute_received {:provision_membership, _}
 
     assert {:ok, %{state: "accepted"}} = Onboarding.retry_acceptance(started.continuation_id)
     assert_received {:provision_membership, %{confirmation_token: "ctok_original"}}
     refute_received {:provision_membership, %{confirmation_token: "ctok_must_not_be_used"}}
+  end
+
+  test "incomplete PaymentIntent outcomes remain durable without converting the invitation" do
+    outcomes = [
+      {%{"payment_state" => "pending", "payment_intent_status" => "processing"},
+       "paymentPending"},
+      {%{"payment_state" => "needs_action", "payment_intent_status" => "requires_action"},
+       "paymentNeedsAction"},
+      {%{"payment_state" => "terminal", "payment_intent_status" => "canceled"}, "paymentTerminal"}
+    ]
+
+    for {stripe_state, expected_state} <- outcomes do
+      invitation = insert_invitation!()
+
+      {:ok, started} =
+        Onboarding.start_acceptance(
+          invitation.id,
+          invitation.email,
+          Date.to_iso8601(invitation.date_of_birth)
+        )
+
+      {:ok, _state} =
+        Onboarding.verify_discord(started.continuation_id, %{
+          "sub" => "#{expected_state}-discord-subject",
+          "preferred_username" => expected_state
+        })
+
+      assert {:ok, %{state: "paymentReady"}} =
+               Onboarding.continue_acceptance(started.continuation_id)
+
+      Application.put_env(:dhc, :onboarding_stripe_result, {:pending, stripe_state})
+
+      assert {:ok, %{state: ^expected_state}} =
+               Onboarding.submit_payment(started.continuation_id, %{
+                 next_of_kin_name: "Grace Hopper",
+                 next_of_kin_phone: "+353810000099",
+                 confirmation_token: "ctok_#{expected_state}"
+               })
+
+      attempt = Repo.get_by!(InvitationAcceptanceAttempt, invitation_id: invitation.id)
+      assert attempt.status == "payment_pending"
+      assert Map.take(attempt.stripe_state, Map.keys(stripe_state)) == stripe_state
+      assert Repo.get!(Invitation, invitation.id).status == "pending"
+      refute Repo.get(Principal, invitation.prospective_principal_id)
+    end
   end
 
   test "Discord-bound finalization rollback leaves no partial conversion records" do
@@ -551,8 +618,11 @@ defmodule Dhc.OnboardingTest do
       %Principal{id: Ecto.UUID.generate(), email: invitation.email}
       |> Repo.insert!()
 
+    assert {:ok, %{state: "paymentReady"}} =
+             Onboarding.continue_acceptance(started.continuation_id)
+
     assert {:error, :principal_creation_failed} =
-             Onboarding.continue_acceptance(started.continuation_id, %{
+             Onboarding.submit_payment(started.continuation_id, %{
                next_of_kin_name: "Grace Hopper",
                next_of_kin_phone: "+353810000099",
                confirmation_token: "ctok_rollback",
@@ -618,8 +688,11 @@ defmodule Dhc.OnboardingTest do
     decline = {:setup_intent_failed, "requires_payment_method"}
     Application.put_env(:dhc, :onboarding_stripe_result, {:error, decline})
 
+    assert {:ok, %{state: "paymentReady"}} =
+             Onboarding.continue_acceptance(started.continuation_id)
+
     assert {:error, {:payment_failed, ^decline}} =
-             Onboarding.continue_acceptance(started.continuation_id, %{
+             Onboarding.submit_payment(started.continuation_id, %{
                next_of_kin_name: "Grace Hopper",
                next_of_kin_phone: "+353810000099",
                confirmation_token: "ctok_declined_discord",

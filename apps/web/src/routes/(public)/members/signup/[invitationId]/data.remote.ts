@@ -1,17 +1,18 @@
 import {
-	invitationsAccept,
 	onboardingCancelDiscord,
 	onboardingContinueAcceptance,
+	onboardingSubmitPayment,
 	onboardingVerifyInvitationAcceptance,
 } from "@dhc/api-client";
+import { dev } from "$app/environment";
 import { error, isRedirect, redirect } from "@sveltejs/kit";
 import dayjs from "dayjs";
 import * as v from "valibot";
 import { form, getRequestEvent } from "$app/server";
 import { inviteValidationSchema } from "$lib/schemas/inviteValidationSchema";
 import { memberSignupSchema } from "$lib/schemas/membersSignup";
-import { apiBaseUrl } from "$lib/server/api-client";
 import {
+	onboardingAcceptanceCookie,
 	onboardingApiClientOptions,
 	relayOnboardingAcceptanceCookie,
 } from "$lib/server/onboarding-api";
@@ -69,7 +70,7 @@ export const restartDiscordVerification = form(v.object({}), async () => {
 		throw error(400, "Invitation ID is required");
 	}
 
-	const cookieName = "_dhc_onboarding_acceptance";
+	const cookieName = onboardingAcceptanceCookie;
 	const protectedContinuation = event.cookies.get(cookieName);
 
 	if (protectedContinuation) {
@@ -84,6 +85,26 @@ export const restartDiscordVerification = form(v.object({}), async () => {
 	redirect(303, `/members/signup/${invitationId}`);
 });
 
+export const continueToPayment = form(async () => {
+	const event = getRequestEvent();
+	const invitationId = event.params.invitationId;
+
+	if (!invitationId) throw error(400, "Invitation ID is required");
+
+	const response = await onboardingContinueAcceptance({
+		...onboardingApiClientOptions(event.cookies),
+	});
+
+	if (response.error || response.data?.data.state !== "paymentReady") {
+		throw error(
+			response.response?.status ?? 409,
+			"Unable to continue to payment",
+		);
+	}
+
+	redirect(303, `/members/signup/${invitationId}`);
+});
+
 /**
  * Processes payment for member signup
  */
@@ -94,15 +115,6 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 	logger.debug(
 		`[processPayment] Starting payment processing for invitation: ${invitationId}`,
 	);
-	logger.debug("[processPayment] Received data:", {
-		nextOfKin: data.nextOfKin,
-		nextOfKinNumber: data.nextOfKinNumber,
-		stripeConfirmationToken: data.stripeConfirmationToken
-			? `${data.stripeConfirmationToken.substring(0, 10)}...`
-			: "MISSING",
-		couponCode: data.couponCode || "none",
-	});
-
 	if (!invitationId) {
 		throw error(400, "Invitation ID is required");
 	}
@@ -111,10 +123,10 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 	let acceptanceStatus: number | undefined;
 
 	try {
-		const protectedContinuation = event.cookies.get("_dhc_onboarding_acceptance");
+		const protectedContinuation = event.cookies.get(onboardingAcceptanceCookie);
 
 		if (protectedContinuation) {
-			const acceptance = await onboardingContinueAcceptance({
+			const acceptance = await onboardingSubmitPayment({
 				...onboardingApiClientOptions(event.cookies),
 				timeout: invitationAcceptanceTimeout,
 				body: {
@@ -129,7 +141,8 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 				},
 			});
 
-			if (acceptance.error || acceptance.data?.data.state !== "accepted") {
+			const state = acceptance.data?.data.state;
+			if (acceptance.error) {
 				acceptanceError = acceptance.error;
 				acceptanceStatus = acceptance.response?.status;
 				throw error(
@@ -140,63 +153,42 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 				);
 			}
 
-			event.cookies.delete("_dhc_onboarding_acceptance", {
+			if (
+				state === "paymentPending" ||
+				state === "paymentNeedsAction" ||
+				state === "paymentTerminal"
+			) {
+				throw redirect(303, `/members/signup/${invitationId}`);
+			}
+
+			if (state !== "accepted") {
+				throw error(409, "Invitation acceptance failed");
+			}
+
+			if (acceptance.data?.data.invitationEmail) {
+				event.cookies.set(
+					"invitation-sign-in-prefill",
+					acceptance.data.data.invitationEmail,
+					{
+						path: "/auth",
+						httpOnly: true,
+						secure: !dev,
+						sameSite: "lax",
+						maxAge: 10 * 60,
+					},
+				);
+			}
+
+			event.cookies.delete(onboardingAcceptanceCookie, {
 				path: `/members/signup/${invitationId}`,
 			});
 			throw redirect(303, `/members/signup/${invitationId}/success`);
 		}
 
-		const verificationToken = event.cookies.get(
-			`invite-verification-${invitationId}`,
+		throw error(
+			409,
+			"Invitation verification has expired. Please verify again.",
 		);
-
-		if (!verificationToken) {
-			throw error(
-				409,
-				"Invitation verification has expired. Please verify again.",
-			);
-		}
-
-		const acceptance = await invitationsAccept({
-			baseUrl: apiBaseUrl(),
-			path: { id: invitationId },
-			timeout: invitationAcceptanceTimeout,
-			headers: {
-				Authorization: `Bearer ${verificationToken}`,
-			},
-			body: {
-				nextOfKinName: data.nextOfKin,
-				nextOfKinPhone: data.nextOfKinNumber,
-				stripeConfirmationToken: data.stripeConfirmationToken,
-				couponCode: data.couponCode || undefined,
-				mandateContext: {
-					ipAddress: event.getClientAddress(),
-					userAgent: event.request.headers.get("user-agent") ?? undefined,
-				},
-			},
-		});
-
-		if (acceptance.error || !acceptance.data?.data.accepted) {
-			acceptanceError = acceptance.error;
-			acceptanceStatus = acceptance.response?.status;
-			const status = acceptanceStatus ?? 500;
-			const message =
-				status === 402
-					? "Payment could not be completed"
-					: "Invitation acceptance failed";
-
-			throw error(status, message);
-		}
-
-		// Success! Delete temporary invitation cookies.
-		logger.debug("[processPayment] Payment processing completed successfully");
-		event.cookies.delete("access-token", { path: "/" });
-		event.cookies.delete(`invite-verification-${invitationId}`, { path: "/" });
-		event.cookies.delete("_dhc_onboarding_acceptance", {
-			path: `/members/signup/${invitationId}`,
-		});
-		event.cookies.delete(`invite-confirmed-${invitationId}`, { path: "/" });
-		throw redirect(301, `/members/signup/${invitationId}/success`);
 	} catch (err) {
 		if (isRedirect(err)) {
 			throw err;

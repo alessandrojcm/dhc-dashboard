@@ -80,7 +80,7 @@ defmodule DhcWeb.OnboardingController do
            Onboarding.acceptance_state(continuation_id) do
       DhcWeb.AuthSessionController.request_acceptance_discord(conn, continuation_id)
     else
-      _ -> restart_verification(conn)
+      _ -> restart_verification(conn, :conflict)
     end
   end
 
@@ -89,11 +89,20 @@ defmodule DhcWeb.OnboardingController do
          {:ok, state} <- Onboarding.cancel_discord(continuation_id) do
       render_legacy_state(conn, state)
     else
-      _ -> restart_verification(conn)
+      _ -> restart_verification(conn, :conflict)
     end
   end
 
-  def continue_acceptance(
+  def continue_acceptance(conn, _params) do
+    with continuation_id when is_binary(continuation_id) <- continuation_id(conn),
+         {:ok, state} <- Onboarding.continue_acceptance(continuation_id) do
+      render_state(conn, state)
+    else
+      _ -> current_or_restart(conn)
+    end
+  end
+
+  def submit_payment(
         conn,
         %{
           "nextOfKinName" => next_of_kin_name,
@@ -112,22 +121,37 @@ defmodule DhcWeb.OnboardingController do
       mandate_context: %{
         ip_address: Map.get(mandate_context, "ipAddress", client_ip(conn)),
         user_agent:
-           Map.get(
-             mandate_context,
-             "userAgent",
-             get_req_header(conn, "user-agent") |> List.first()
-           )
+          Map.get(
+            mandate_context,
+            "userAgent",
+            get_req_header(conn, "user-agent") |> List.first()
+          )
       }
     }
 
-    case Onboarding.continue_acceptance(continuation_id, attrs) do
-      {:ok, state} -> render_state(conn, state)
-      {:error, {:payment_failed, _reason}} -> current_or_restart(conn, :payment_required)
-      {:error, _reason} -> current_or_restart(conn)
+    case Onboarding.submit_payment(continuation_id, attrs) do
+      {:ok, state} ->
+        render_state(conn, state)
+
+      {:error, {:payment_failed, _reason}} ->
+        current_or_restart(conn, :payment_required)
+
+      {:error, {:provider_unavailable, _reason}} ->
+        provider_unavailable(conn)
+
+      {:error, :invalid_acceptance_details} ->
+        error_detail(conn, :unprocessable_entity, "Invalid payment details")
+
+      {:error, :invalid_continuation} ->
+        current_or_restart(conn)
+
+      {:error, _reason} ->
+        error_detail(conn, :internal_server_error, "Invitation acceptance could not be finalized")
     end
   end
 
-  def continue_acceptance(conn, _params), do: current_or_restart(conn)
+  def submit_payment(conn, _params),
+    do: error_detail(conn, :unprocessable_entity, "Invalid payment details")
 
   def retry_acceptance(conn, _params) do
     with continuation_id when is_binary(continuation_id) <- continuation_id(conn),
@@ -165,7 +189,7 @@ defmodule DhcWeb.OnboardingController do
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
-  defp restart_verification(conn, status \\ :conflict) do
+  defp restart_verification(conn, status) do
     conn
     |> put_status(status)
     |> json(%{data: %{state: "restart_verification"}})
@@ -185,7 +209,7 @@ defmodule DhcWeb.OnboardingController do
 
   defp continuation_id(conn) do
     acceptance_id_from_cookie(conn) ||
-      (get_req_header(conn, "x-onboarding-continuation") |> List.first())
+      get_req_header(conn, "x-onboarding-continuation") |> List.first()
   end
 
   defp acceptance_cookie_opts do
@@ -204,8 +228,22 @@ defmodule DhcWeb.OnboardingController do
          {:ok, state} <- Onboarding.acceptance_state(continuation_id) do
       conn |> put_status(status) |> render_state(state)
     else
-      _ -> restart_verification(conn)
+      _ -> restart_verification(conn, :conflict)
     end
+  end
+
+  defp provider_unavailable(conn) do
+    error_detail(
+      conn,
+      :service_unavailable,
+      "Payment progression is temporarily unavailable; recovery is scheduled"
+    )
+  end
+
+  defp error_detail(conn, status, detail) do
+    conn
+    |> put_status(status)
+    |> json(%{errors: %{detail: detail}})
   end
 
   defp client_ip(conn) do

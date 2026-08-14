@@ -10,12 +10,17 @@ defmodule Dhc.OnboardingTestStripeAdapter do
   end
 
   @impl true
-  def payment_requirement(coupon_code) do
-    send(test_pid(), {:payment_requirement, coupon_code})
+  def prepare_payment(coupon_code) do
+    send(test_pid(), {:prepare_payment, coupon_code})
 
-    if coupon_code == "COMPLIMENTARY",
-      do: {:ok, :complimentary},
-      else: {:ok, :paid}
+    {:ok,
+     %{
+       requirement: if(coupon_code == "COMPLIMENTARY", do: :complimentary, else: :paid),
+       monthly_price_id: "price_monthly_onboarding",
+       annual_price_id: "price_annual_onboarding",
+       promotion_code_id: if(coupon_code, do: "promo_onboarding"),
+       migration?: false
+     }}
   end
 
   @impl true
