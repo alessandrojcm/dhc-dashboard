@@ -4,9 +4,20 @@ defmodule Dhc.Email.WorkerTest do
   alias Dhc.Email.Worker
 
   describe "perform/1 with valid args in test environment" do
-    test "succeeds and skips actual email send" do
-      # Test env is configured to skip sends, so we test the happy path
-      # without hitting the real Loops API
+    # test.exs swaps :email_dev_mailer to Dhc.Email.DevMailerStub, which
+    # captures deliveries in the test process mailbox.
+    setup do
+      Application.put_env(:dhc, :email_dev_mailer_test_pid, self())
+
+      on_exit(fn ->
+        Application.delete_env(:dhc, :email_dev_mailer_test_pid)
+        Application.delete_env(:dhc, :email_dev_mailer_stub_result)
+      end)
+
+      :ok
+    end
+
+    test "delivers the Loops payload as JSON to the dev mailer" do
       args = %{
         "email" => "user@example.com",
         "transactional_id" => "inviteMember",
@@ -14,9 +25,20 @@ defmodule Dhc.Email.WorkerTest do
       }
 
       assert Worker.perform(%Oban.Job{args: args}) == :ok
+
+      assert_receive {:dev_email, %{to: to, subject: subject, body: body}}
+      assert to == "user@example.com"
+      assert subject == "[dev] Loops email: inviteMember"
+
+      payload = Jason.decode!(body)
+
+      assert payload["email"] == "user@example.com"
+      assert payload["transactional_id"] == "inviteMember"
+      assert payload["data_variables"]["name"] == "Alice"
+      assert payload["data_variables"]["inviteLink"] == "https://example.com/invite"
     end
 
-    test "succeeds for workshopAnnouncement transactional type" do
+    test "delivers for workshopAnnouncement transactional type" do
       args = %{
         "email" => "user@example.com",
         "transactional_id" => "workshopAnnouncement",
@@ -27,18 +49,27 @@ defmodule Dhc.Email.WorkerTest do
       }
 
       assert Worker.perform(%Oban.Job{args: args}) == :ok
+
+      assert_receive {:dev_email, %{subject: subject, body: body}}
+      assert subject == "[dev] Loops email: workshopAnnouncement"
+
+      payload = Jason.decode!(body)
+      assert payload["data_variables"]["workshopTitle"] == "HEMA Open Session"
     end
 
-    test "succeeds without data_variables" do
+    test "delivers without data_variables (defaults to empty map)" do
       args = %{
         "email" => "user@example.com",
         "transactional_id" => "inviteMember"
       }
 
       assert Worker.perform(%Oban.Job{args: args}) == :ok
+
+      assert_receive {:dev_email, %{body: body}}
+      assert Jason.decode!(body)["data_variables"] == %{}
     end
 
-    test "succeeds with numeric data variable values" do
+    test "delivers with numeric data variable values" do
       args = %{
         "email" => "user@example.com",
         "transactional_id" => "workshopAnnouncement",
@@ -46,6 +77,23 @@ defmodule Dhc.Email.WorkerTest do
       }
 
       assert Worker.perform(%Oban.Job{args: args}) == :ok
+
+      assert_receive {:dev_email, %{body: body}}
+      assert Jason.decode!(body)["data_variables"]["count"] == 5
+    end
+
+    test "succeeds without retrying when the Mailpit relay is unreachable" do
+      # A dev relay being down is expected (container not started), so the
+      # job must still complete rather than burn its 5 Oban attempts.
+      Application.put_env(:dhc, :email_dev_mailer_stub_result, {:error, :econnrefused})
+
+      args = %{
+        "email" => "user@example.com",
+        "transactional_id" => "inviteMember"
+      }
+
+      assert Worker.perform(%Oban.Job{args: args}) == :ok
+      assert_received {:dev_email, %{to: "user@example.com"}}
     end
   end
 

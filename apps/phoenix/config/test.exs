@@ -42,7 +42,9 @@ config :dhc, Oban,
 
 # Discord worker — skip sending in test
 config :dhc, :discord_webhook_url, "https://discord.example.com/webhook/test"
-# Email worker — skip sending in test
+# Email worker — dev delivery goes to the stub (never a real SMTP relay);
+# the Loops API path is exercised by the prod-env describe block via Bypass.
+config :dhc, :email_dev_mailer, Dhc.Email.DevMailerStub
 config :dhc, :loops_api_key, "test-loops-api-key"
 # Friendly name -> real Loops transactional ID mapping (test stubs).
 # The worker resolves this in prod-env tests (the describe block that flips

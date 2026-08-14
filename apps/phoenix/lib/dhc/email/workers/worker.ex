@@ -37,7 +37,12 @@ defmodule Dhc.Email.Worker do
 
   ## Environment behaviour
 
-    * **dev/test** — skips the HTTP call and logs the payload instead
+    * **dev/test** — delivers the Loops payload (recipient, friendly template
+      name, data variables) as plain JSON to the local Mailpit relay via the
+      `:email_dev_mailer` module (`Dhc.Email.DevMailer` by default, SMTP to
+      `localhost:1025`, web UI `http://localhost:8025`). Delivery failures are
+      logged and swallowed — a stopped Mailpit container must never fail or
+      retry dev jobs — so the job always succeeds even if the relay is down.
     * **prod** — POSTs to `https://app.loops.so/api/v1/transactional` using
       the `LOOPS_API_KEY` environment variable
 
@@ -67,7 +72,7 @@ defmodule Dhc.Email.Worker do
     ctx = job_log_context(job)
 
     with :ok <- validate_args(args, ctx),
-         :ok <- send_email(args, job, ctx) do
+         :ok <- send_email(args, ctx) do
       :ok
     else
       {:error, reason} = error ->
@@ -167,30 +172,61 @@ defmodule Dhc.Email.Worker do
 
   defp validate_data_variables(errors, _args), do: errors
 
-  defp send_email(%{"email" => email, "transactional_id" => transactional_id} = args, job, ctx) do
-    if skip_send?() do
-      Logger.info(
-        "[email-worker] Skipping email send in non-prod environment",
-        Keyword.merge(ctx,
-          email: email,
-          transactional_id: transactional_id,
-          data_variables: inspect(args["data_variables"])
-        )
-      )
-
-      :ok
-    else
+  defp send_email(%{"transactional_id" => transactional_id} = args, ctx) do
+    if env() == :prod do
       with {:ok, loops_id} <- resolve_loops_id(transactional_id, ctx) do
-        post_to_loops(args, loops_id, job, ctx)
+        post_to_loops(args, loops_id, ctx)
       end
+    else
+      deliver_dev_email(args, ctx)
     end
   end
-
-  defp skip_send?, do: env() != :prod
 
   defp env do
     Application.get_env(:dhc, :environment, :development)
   end
+
+  # Non-prod delivery: the raw Loops payload as JSON through the dev mailer
+  # seam (Mailpit by default). The job never fails on delivery errors — the
+  # dev relay being down is an expected condition (e.g. the compose service
+  # was never started), not something to retry 5 times into Oban's discard.
+  defp deliver_dev_email(
+         %{"email" => email, "transactional_id" => transactional_id} = args,
+         ctx
+       ) do
+    payload = %{
+      email: email,
+      transactional_id: transactional_id,
+      data_variables: Map.get(args, "data_variables", %{})
+    }
+
+    subject = "[dev] Loops email: #{transactional_id}"
+    body = Jason.encode!(payload, pretty: true)
+
+    case dev_mailer().deliver(email, subject, body) do
+      :ok ->
+        Logger.info(
+          "[email-worker] Email delivered to Mailpit (dev)",
+          Keyword.merge(ctx, email: email, transactional_id: transactional_id)
+        )
+
+        :ok
+
+      {:error, reason} ->
+        Logger.warning(
+          "[email-worker] Mailpit delivery failed (is `docker compose up -d mailpit` running?), job will not retry",
+          Keyword.merge(ctx,
+            email: email,
+            transactional_id: transactional_id,
+            reason: inspect(reason)
+          )
+        )
+
+        :ok
+    end
+  end
+
+  defp dev_mailer, do: Application.get_env(:dhc, :email_dev_mailer, Dhc.Email.DevMailer)
 
   defp resolve_loops_id(friendly_name, ctx) do
     # Translation mirrors the edge function's env-var lookup. The map is built
@@ -236,7 +272,6 @@ defmodule Dhc.Email.Worker do
   defp post_to_loops(
          %{"email" => email, "transactional_id" => transactional_id} = args,
          loops_id,
-         _job,
          ctx
        ) do
     api_key = loops_api_key()
