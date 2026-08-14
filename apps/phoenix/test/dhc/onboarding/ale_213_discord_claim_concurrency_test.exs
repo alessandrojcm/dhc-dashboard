@@ -4,7 +4,7 @@ defmodule Dhc.Onboarding.Ale213DiscordClaimConcurrencyTest do
   import Ecto.Query
 
   alias Dhc.Auth
-  alias Dhc.Auth.{ExternalIdentity, Principal, PrincipalToken}
+  alias Dhc.Auth.{ExternalIdentity, Principal, PrincipalToken, UserRole}
   alias Dhc.Invitations.Invitation
 
   alias Dhc.Discord.{
@@ -324,6 +324,96 @@ defmodule Dhc.Onboarding.Ale213DiscordClaimConcurrencyTest do
       refute Repo.exists?(
                from(i in ExternalIdentity, where: i.principal_id == ^contender.principal_id)
              )
+    end)
+  end
+
+  test "concurrent recovery deliveries converge on one completed Discord-bound acceptance" do
+    task_supervisor = start_supervised!(Task.Supervisor)
+    test_process = self()
+
+    %{acceptance: acceptance, attempt_id: attempt_id, principal_id: principal_id} =
+      unboxed(fn ->
+        acceptance = acceptance_fixture()
+
+        {:ok, %{state: "discordVerified"}} =
+          Onboarding.verify_discord(acceptance.continuation_id, %{
+            "sub" => unique_subject("recovery-race"),
+            "preferred_username" => "recovery-race-member"
+          })
+
+        attempt =
+          Repo.get_by!(InvitationAcceptanceAttempt, invitation_id: acceptance.invitation_id)
+
+        attempt
+        |> Ecto.Changeset.change(
+          status: "provisioned",
+          stripe_customer_id: "cus_recovery_race",
+          stripe_state: %{
+            "setup_intent_id" => "seti_recovery_race",
+            "monthly_subscription_id" => "sub_recovery_race"
+          },
+          acceptance_data: %{
+            "continuation_id" => acceptance.continuation_id,
+            "next_of_kin_name" => "Grace Hopper",
+            "next_of_kin_phone" => "+353810000099",
+            "payment" => %{"confirmation_token" => "ctok_recovery_race"}
+          }
+        )
+        |> Repo.update!()
+
+        invitation = Repo.get!(Invitation, acceptance.invitation_id)
+
+        %{
+          acceptance: acceptance,
+          attempt_id: attempt.id,
+          principal_id: invitation.prospective_principal_id
+        }
+      end)
+
+    on_exit(fn ->
+      unboxed(fn ->
+        delete_member(principal_id)
+        delete_acceptances([acceptance.invitation_id])
+      end)
+    end)
+
+    recoveries =
+      for label <- [:first_recovery, :second_recovery] do
+        ready_task(task_supervisor, test_process, label, fn ->
+          Onboarding.recover_acceptance(attempt_id)
+        end)
+      end
+
+    for label <- [:first_recovery, :second_recovery] do
+      assert_receive {:ready, ^label, pid}
+      send(pid, :go)
+    end
+
+    assert Enum.all?(recoveries, fn task ->
+             match?({:ok, %{state: "accepted"}}, Task.await(task))
+           end)
+
+    unboxed(fn ->
+      assert Repo.get!(InvitationAcceptanceAttempt, attempt_id).status == "completed"
+      assert Repo.get!(Invitation, acceptance.invitation_id).status == "accepted"
+      assert Repo.aggregate(from(p in Principal, where: p.id == ^principal_id), :count) == 1
+      assert Repo.aggregate(from(m in MemberProfile, where: m.id == ^principal_id), :count) == 1
+
+      assert Repo.aggregate(
+               from(p in UserProfile, where: p.principal_id == ^principal_id),
+               :count
+             ) == 1
+
+      assert Repo.aggregate(from(r in UserRole, where: r.principal_id == ^principal_id), :count) ==
+               1
+
+      assert Repo.aggregate(
+               from(i in ExternalIdentity, where: i.principal_id == ^principal_id),
+               :count
+             ) == 1
+
+      refute Repo.exists?(InvitationAcceptanceDiscordSubjectClaim)
+      refute Repo.exists?(from(t in PrincipalToken, where: t.principal_id == ^principal_id))
     end)
   end
 

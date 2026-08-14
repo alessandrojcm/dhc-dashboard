@@ -5,6 +5,7 @@ defmodule Dhc.E2EHarness do
 
   alias Dhc.Auth
   alias Dhc.Auth.ExternalIdentity
+  alias Dhc.Auth.Principal
   alias Dhc.Auth.PrincipalToken
   alias Dhc.Auth.UserRole
   alias Dhc.Invitations.Invitation
@@ -14,6 +15,9 @@ defmodule Dhc.E2EHarness do
   alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.MemberFixtures
   alias Dhc.Onboarding.InvitationAcceptanceAttempts
+  alias Dhc.Onboarding.InvitationAcceptanceAttempt
+  alias Dhc.Onboarding.InvitationAcceptanceDiscordContinuation
+  alias Dhc.Onboarding.InvitationAcceptanceDiscordSubjectClaim
   alias Dhc.Repo
   alias Dhc.Settings.Setting
   alias Dhc.Waitlist
@@ -23,6 +27,8 @@ defmodule Dhc.E2EHarness do
   alias Dhc.UserProfiles.UserProfile
 
   def reset! do
+    Dhc.E2EOnboardingFinalizer.reset!()
+
     %{rows: [[tables]]} =
       Ecto.Adapters.SQL.query!(
         Repo,
@@ -309,9 +315,43 @@ defmodule Dhc.E2EHarness do
       )
       |> Map.new()
 
+    attempts =
+      Repo.all(
+        from(a in InvitationAcceptanceAttempt,
+          where: a.invitation_id == ^invitation_id,
+          select: %{
+            status: a.status,
+            stripe_customer_id: a.stripe_customer_id,
+            stripe_state: a.stripe_state
+          }
+        )
+      )
+
+    continuation_ids =
+      Repo.all(
+        from(c in InvitationAcceptanceDiscordContinuation,
+          where: c.invitation_id == ^invitation_id,
+          select: c.id
+        )
+      )
+
     %{
       sessionTokenCount: Map.get(token_counts, "session", 0),
       magicLinkTokenCount: Map.get(token_counts, "login", 0),
+      principalCount:
+        Repo.aggregate(from(principal in Principal, where: principal.id == ^principal_id), :count),
+      userProfileCount:
+        Repo.aggregate(
+          from(profile in UserProfile, where: profile.principal_id == ^principal_id),
+          :count
+        ),
+      memberRoleCount:
+        Repo.aggregate(
+          from(role in UserRole,
+            where: role.principal_id == ^principal_id and role.role == "member"
+          ),
+          :count
+        ),
       discordIdentityCount:
         Repo.aggregate(
           from(identity in ExternalIdentity,
@@ -323,8 +363,32 @@ defmodule Dhc.E2EHarness do
         Repo.aggregate(
           from(profile in MemberProfile, where: profile.id == ^principal_id),
           :count
-        )
+        ),
+      attemptCount: length(attempts),
+      provisionedAttemptCount: Enum.count(attempts, &(&1.status == "provisioned")),
+      completedAttemptCount: Enum.count(attempts, &(&1.status == "completed")),
+      declinedAttemptCount: Enum.count(attempts, &(&1.status == "declined")),
+      continuationCount: length(continuation_ids),
+      subjectClaimCount:
+        Repo.aggregate(
+          from(claim in InvitationAcceptanceDiscordSubjectClaim,
+            where: claim.continuation_id in ^continuation_ids
+          ),
+          :count
+        ),
+      stripeCustomerCount:
+        attempts
+        |> Enum.map(& &1.stripe_customer_id)
+        |> Enum.reject(&is_nil/1)
+        |> Enum.uniq()
+        |> length(),
+      monthlySubscriptionCount: stripe_progress_count(attempts, "monthly_subscription_id"),
+      annualSubscriptionCount: stripe_progress_count(attempts, "annual_subscription_id")
     }
+  end
+
+  def interrupt_next_finalization! do
+    Dhc.E2EOnboardingFinalizer.interrupt_next!()
   end
 
   defp delete_principal(id) do
@@ -341,6 +405,14 @@ defmodule Dhc.E2EHarness do
     end)
 
     :ok
+  end
+
+  defp stripe_progress_count(attempts, key) do
+    attempts
+    |> Enum.map(&Map.get(&1.stripe_state, key))
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
+    |> length()
   end
 
   defp parse_date(nil, fallback), do: fallback

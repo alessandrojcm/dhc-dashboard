@@ -256,11 +256,30 @@ export async function auditInvitationAcceptance(id: string) {
 		data: {
 			sessionTokenCount: number;
 			magicLinkTokenCount: number;
+			principalCount: number;
+			userProfileCount: number;
+			memberRoleCount: number;
 			discordIdentityCount: number;
 			memberProfileCount: number;
+			attemptCount: number;
+			provisionedAttemptCount: number;
+			completedAttemptCount: number;
+			declinedAttemptCount: number;
+			continuationCount: number;
+			subjectClaimCount: number;
+			stripeCustomerCount: number;
+			monthlySubscriptionCount: number;
+			annualSubscriptionCount: number;
 		};
 	}>(`/audit/invitation-acceptance/${id}`, {});
 	return response.data;
+}
+
+export async function interruptNextOnboardingFinalization() {
+	return harnessRequest<{ data: { armed: true } }>(
+		"/onboarding/interrupt-next-finalization",
+		{},
+	);
 }
 
 type E2EUpdatableFixture =

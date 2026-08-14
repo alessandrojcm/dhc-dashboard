@@ -51,6 +51,13 @@ defmodule DhcWeb.E2EHarnessController do
     end)
   end
 
+  def interrupt_next_finalization(conn, _params) do
+    with_harness(conn, fn conn ->
+      :ok = E2EHarness.interrupt_next_finalization!()
+      json(conn, %{data: %{armed: true}})
+    end)
+  end
+
   def delete_fixture(conn, %{"type" => type, "id" => id}) do
     with_harness(conn, fn conn ->
       E2EHarness.delete_fixture(type, id)

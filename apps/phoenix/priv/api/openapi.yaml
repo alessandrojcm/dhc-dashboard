@@ -4206,6 +4206,12 @@ components:
               format: email
             discord:
               $ref: "#/components/schemas/OnboardingSafeDiscordPresentation"
+            discordVerified:
+              type: boolean
+              description: Whether Discord proof has already been consumed into the durable Acceptance Attempt.
+            retryAllowed:
+              type: boolean
+              description: Whether the current payment/finalization state permits an explicit client retry.
     OnboardingSafeDiscordPresentation:
       type: object
       description: Mutable display snapshot for account recognition; never an identity binding fact.
