@@ -235,7 +235,9 @@ defmodule Dhc.Onboarding do
 
           Repo.exists?(
             from(e in Dhc.Auth.ExternalIdentity,
-              where: e.provider == "discord" and e.provider_subject == ^subject
+              where:
+                e.provider == "discord" and e.provider_subject == ^subject and
+                    is_nil(e.retired_at)
             )
           ) ->
             terminalize_collision!(continuation, attempt, now, subject)

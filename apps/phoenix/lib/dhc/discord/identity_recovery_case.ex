@@ -17,6 +17,10 @@ defmodule Dhc.Discord.IdentityRecoveryCase do
     field :evidence_references, {:array, :string}, default: []
     field :actor_principal_id, :binary_id
     field :opened_at, :utc_datetime_usec
+    field :destination_principal_id, :binary_id
+    field :incoming_subject_fingerprint, :string
+    field :operation, :string
+    field :completed_at, :utc_datetime_usec
 
     timestamps(type: :utc_datetime_usec, updated_at: false, inserted_at: :created_at)
   end

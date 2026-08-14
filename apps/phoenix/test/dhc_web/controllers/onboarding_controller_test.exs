@@ -292,6 +292,42 @@ defmodule DhcWeb.OnboardingControllerTest do
     refute Repo.exists?("oban_jobs")
   end
 
+  test "a retired External Identity does not block a fresh subject claim" do
+    invitation = invitation_fixture()
+
+    principal =
+      %Principal{email: "retired-discord-owner@example.com"}
+      |> Repo.insert!()
+
+    %ExternalIdentity{
+      principal_id: principal.id,
+      provider: "discord",
+      provider_subject: "retired-discord-subject",
+      metadata: %{},
+      sign_in_disabled_at: DateTime.utc_now(),
+      retired_at: DateTime.utc_now()
+    }
+    |> Repo.insert!()
+
+    {:ok, state} =
+      Dhc.Onboarding.start_acceptance(
+        invitation.id,
+        invitation.email,
+        Date.to_iso8601(invitation.date_of_birth)
+      )
+
+    assert {:ok, %{state: "discordVerified"}} =
+             Dhc.Onboarding.verify_discord(state.continuation_id, %{
+               "sub" => "retired-discord-subject"
+             })
+
+    assert Repo.get_by!(InvitationAcceptanceDiscordSubjectClaim,
+             continuation_id: state.continuation_id
+           ).provider_subject == "retired-discord-subject"
+
+    refute Repo.exists?(Dhc.Auth.PrincipalToken)
+  end
+
   test "the Postgres subject-claim constraint prevents a second acceptance from reserving one Discord subject" do
     first = invitation_fixture()
     second = invitation_fixture()

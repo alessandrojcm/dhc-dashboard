@@ -36,7 +36,7 @@ defmodule Dhc.AuthMigration.M1 do
     discord_gates!(repo)
 
     query!(repo, populate_principals_sql())
-    query!(repo, populate_external_identities_sql())
+    query!(repo, populate_external_identities_sql(retired_at_column?(repo)))
 
     counts = reconciliation_counts(repo)
     reconcile!(counts)
@@ -391,7 +391,12 @@ defmodule Dhc.AuthMigration.M1 do
     """
   end
 
-  defp populate_external_identities_sql do
+  defp populate_external_identities_sql(retired_at_column?) do
+    conflict_target =
+      if retired_at_column?,
+        do: "ON CONFLICT (provider, provider_subject) WHERE retired_at IS NULL DO NOTHING",
+        else: "ON CONFLICT (provider, provider_subject) DO NOTHING"
+
     """
     INSERT INTO external_identities
       (id, principal_id, provider, provider_subject, metadata, created_at, updated_at)
@@ -407,8 +412,23 @@ defmodule Dhc.AuthMigration.M1 do
     FROM auth.identities i
     JOIN principals p ON p.id = i.user_id
     WHERE i.provider = 'discord'
-    ON CONFLICT (provider, provider_subject) DO NOTHING
+    #{conflict_target}
     """
+  end
+
+  defp retired_at_column?(repo) do
+    %{rows: [[exists?]]} =
+      query!(repo, """
+      SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = current_schema()
+          AND table_name = 'external_identities'
+          AND column_name = 'retired_at'
+      )
+      """)
+
+    exists?
   end
 
   defp require_auth_identities!(repo) do

@@ -557,7 +557,7 @@ defmodule Dhc.Discord.Assignments do
       Repo.exists?(
         from(e in ExternalIdentity,
           where:
-            e.provider == "discord" and
+            e.provider == "discord" and is_nil(e.retired_at) and
                 (e.principal_id == ^principal_id or e.provider_subject == ^subject)
         )
       ) ->

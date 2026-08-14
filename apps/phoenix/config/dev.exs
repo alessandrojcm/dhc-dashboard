@@ -150,5 +150,9 @@ config :dhc, :discord_oauth,
     System.get_env("DISCORD_REDIRECT_URI", "http://localhost:4000/api/auth/discord/callback"),
   code_verifier: true
 
+config :dhc,
+       :discord_subject_fingerprint_key,
+       System.get_env("DISCORD_SUBJECT_FINGERPRINT_KEY", "development-discord-fingerprint-key")
+
 # Initialize plugs at runtime for faster development compilation
 config :phoenix, :plug_init_mode, :runtime

@@ -117,6 +117,10 @@ if config_env() == :prod do
     code_verifier: true
 
   config :dhc,
+         :discord_subject_fingerprint_key,
+         System.fetch_env!("DISCORD_SUBJECT_FINGERPRINT_KEY")
+
+  config :dhc,
          :invitation_acceptance_discord_redirect_uri,
          System.get_env(
            "INVITATION_ACCEPTANCE_DISCORD_REDIRECT_URI",
