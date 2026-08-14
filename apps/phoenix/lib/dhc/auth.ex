@@ -114,9 +114,13 @@ defmodule Dhc.Auth do
       when is_binary(subject) and subject != "" do
     case Repo.get_by(ExternalIdentity, provider: "discord", provider_subject: subject) do
       %ExternalIdentity{} = identity ->
-        identity.principal_id
-        |> get_principal!()
-        |> establish_eligible_session()
+        if is_nil(identity.sign_in_disabled_at) do
+          identity.principal_id
+          |> get_principal!()
+          |> establish_eligible_session()
+        else
+          {:error, :invalid}
+        end
 
       nil ->
         sign_in_unlinked_discord_subject(subject, claims)

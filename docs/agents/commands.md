@@ -71,6 +71,23 @@ mise run phx-migrate        # Run pending migrations
 mise run phx-rollback       # Rollback last migration
 mise run phx-gen-migration NAME  # Generate a new migration
 
+### Discord identity recovery
+
+Recovery containment is an offline, separately authenticated operator workflow;
+it is not a member or administrator profile operation. Pass a short-lived signed
+manifest that identifies the binding by UUID plus its support-safe fingerprint:
+
+```bash
+cd apps/phoenix
+DISCORD_IDENTITY_RECOVERY_MANIFEST_KEY=... \
+DISCORD_SUBJECT_FINGERPRINT_KEY=... \
+mix dhc.discord.identity_recovery open /secure/path/recovery-manifest.json
+```
+
+The manifest must be fresh (five minutes), signed by the dedicated recovery key,
+and name an `admin` or `president` actor. The command prints only a support-safe
+case receipt and never accepts a raw Discord subject.
+
 # Code quality
 mise run phx-format         # Format all Elixir files
 mise run phx-format-check   # Check formatting (CI)
