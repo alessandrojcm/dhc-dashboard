@@ -92,8 +92,15 @@ config :phoenix, :stacktrace_depth, 20
 
 # Discord webhook URL (not sent in dev — messages are logged instead)
 config :dhc, :discord_webhook_url, System.get_env("DISCORD_WEBHOOK_URL")
-# Loops API key (not sent in dev — payloads are logged instead)
+# Loops API key (not sent in dev — jobs are relayed to Mailpit instead)
 config :dhc, :loops_api_key, System.get_env("LOOPS_API_KEY")
+
+# Local Mailpit relay (docker-compose `mailpit` service). The email worker
+# delivers the raw Loops payload here as JSON instead of calling the API.
+config :dhc, :dev_smtp,
+  relay: System.get_env("MAILPIT_HOST", "localhost"),
+  port: String.to_integer(System.get_env("MAILPIT_PORT", "1025")),
+  from: "dev@dhc.local"
 
 # Friendly name -> real Loops transactional ID mapping.
 # Mirrors the edge function's env-var lookup. In dev the worker skips the

@@ -63,6 +63,9 @@ defmodule Dhc.MixProject do
       {:finch, "~> 0.22.0"},
       {:req, "~> 0.5"},
       {:assent, "~> 0.3.1"},
+      # SMTP client for the dev email relay (Mailpit). Used by
+      # Dhc.Email.DevMailer in non-prod environments.
+      {:gen_smtp, "~> 1.3"},
       # Fakerer: maintained fork of elixirs/faker. OTP app stays `:faker`,
       # Hex package is `:fakerer`. Dev-only (used by seeding mix tasks).
       # NOT `runtime: false`: seed tasks call `Mix.Task.run("app.start")`,
