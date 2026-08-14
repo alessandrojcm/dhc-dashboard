@@ -114,12 +114,12 @@ defmodule Dhc.OnboardingTest do
                Date.to_iso8601(invitation.date_of_birth)
              )
 
-    assert first.state == "awaitingDiscord"
+    assert first.view.state == "awaiting_oauth"
     continuation = Repo.get!(InvitationAcceptanceDiscordContinuation, first.continuation_id)
     assert {:ok, refreshed} = Onboarding.acceptance_state(first.continuation_id)
-    assert refreshed.state == "awaitingDiscord"
+    assert refreshed.state == "awaiting_oauth"
 
-    assert {:error, :invalid_invitation} =
+    assert {:error, :missing_browser_proof} =
              Onboarding.start_acceptance(
                invitation.id,
                invitation.email,
@@ -618,6 +618,73 @@ defmodule Dhc.OnboardingTest do
     assert Repo.aggregate(InvitationAcceptanceAttempt, :count) == 2
   end
 
+  test "legacy verification and acceptance stay fenced after a protected flow starts" do
+    invitation = insert_invitation!()
+    {:ok, legacy_token} = token_for(invitation)
+
+    assert {:ok, _state} =
+             Onboarding.start_acceptance(
+               invitation.id,
+               invitation.email,
+               Date.to_iso8601(invitation.date_of_birth)
+             )
+
+    attempt = Repo.get_by!(InvitationAcceptanceAttempt, invitation_id: invitation.id)
+
+    attempt
+    |> Ecto.Changeset.change(
+      status: "declined",
+      concluded_at: DateTime.utc_now() |> DateTime.truncate(:second)
+    )
+    |> Repo.update!()
+
+    assert {:error, :invalid_credentials} =
+             Onboarding.verify_credentials(
+               invitation.id,
+               invitation.email,
+               invitation.date_of_birth
+             )
+
+    assert {:error, :discord_verification_required} =
+             Onboarding.accept(
+               invitation.id,
+               legacy_token,
+               "Next of Kin",
+               "+353810000001",
+               %{confirmation_token: "ctok_must_not_be_used"}
+             )
+
+    attempt = Repo.get!(InvitationAcceptanceAttempt, attempt.id)
+    assert attempt.acceptance_data == %{}
+    assert attempt.stripe_customer_id == nil
+    assert attempt.stripe_state == %{}
+    assert Repo.get!(Invitation, invitation.id).status == "pending"
+    refute Repo.get(Principal, invitation.prospective_principal_id)
+    refute_received {:create_customer, _}
+    refute_received {:provision_membership, _}
+  end
+
+  test "a Continuation cannot reference an Attempt from another Invitation" do
+    invitation = insert_invitation!()
+    other_invitation = insert_invitation!()
+
+    attempt =
+      %InvitationAcceptanceAttempt{invitation_id: invitation.id, acceptance_data: %{}}
+      |> Repo.insert!()
+
+    assert_raise Ecto.ConstraintError, fn ->
+      %InvitationAcceptanceDiscordContinuation{
+        invitation_id: other_invitation.id,
+        attempt_id: attempt.id,
+        expires_at:
+          DateTime.utc_now()
+          |> DateTime.add(15, :minute)
+          |> DateTime.truncate(:second)
+      }
+      |> Repo.insert!()
+    end
+  end
+
   test "missing or mismatched opaque proof returns restart verification" do
     invitation = insert_invitation!()
 
@@ -631,7 +698,7 @@ defmodule Dhc.OnboardingTest do
     assert {:error, :restart_verification} =
              Onboarding.acceptance_state(Ecto.UUID.generate())
 
-    assert {:ok, %{state: "awaitingDiscord"}} =
+    assert {:ok, %{state: "awaiting_oauth"}} =
              Onboarding.acceptance_state(state.continuation_id)
   end
 

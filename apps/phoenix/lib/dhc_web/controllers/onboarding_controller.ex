@@ -3,38 +3,43 @@ defmodule DhcWeb.OnboardingController do
 
   alias Dhc.Onboarding
 
-  def start_acceptance(conn, %{
+  @acceptance_cookie "_dhc_onboarding_acceptance"
+  @acceptance_max_age 15 * 60
+
+  def verify_invitation_acceptance(conn, %{
         "invitationId" => id,
         "email" => email,
         "dateOfBirth" => date_of_birth
       }) do
-    protected_continuation_id =
-      case get_req_header(conn, "x-onboarding-continuation") do
-        [continuation_id] -> continuation_id
-        _ -> nil
-      end
+    protected_continuation_id = acceptance_id_from_cookie(conn)
 
     case Onboarding.start_acceptance(id, email, date_of_birth, protected_continuation_id) do
-      {:ok, state} ->
+      {:ok, %{continuation_id: continuation_id, view: state}} ->
         conn
-        |> put_resp_header("x-onboarding-continuation", state.continuation_id)
+        |> put_resp_cookie(
+          @acceptance_cookie,
+          continuation_id,
+          acceptance_cookie_opts()
+        )
         |> render_state(state)
 
+      {:error, :missing_browser_proof} ->
+        restart_verification(conn, :conflict)
+
       {:error, _} ->
-        restart_verification(conn)
+        restart_verification(conn, :unprocessable_entity)
     end
   end
 
-  def start_acceptance(conn, _params), do: restart_verification(conn)
+  def verify_invitation_acceptance(conn, _params),
+    do: restart_verification(conn, :unprocessable_entity)
 
-  # These opaque references are supplied only by the SvelteKit protected
-  # browser-session cookie. The public API never accepts an Invitation id here.
-  def show_acceptance(conn, _params) do
-    with [continuation_id] <- get_req_header(conn, "x-onboarding-continuation"),
+  def show_invitation_acceptance(conn, _params) do
+    with continuation_id when is_binary(continuation_id) <- acceptance_id_from_cookie(conn),
          {:ok, state} <- Onboarding.acceptance_state(continuation_id) do
       render_state(conn, state)
     else
-      _ -> restart_verification(conn)
+      _ -> restart_verification(conn, :conflict)
     end
   end
 
@@ -75,11 +80,11 @@ defmodule DhcWeb.OnboardingController do
       mandate_context: %{
         ip_address: Map.get(mandate_context, "ipAddress", client_ip(conn)),
         user_agent:
-          Map.get(
-            mandate_context,
-            "userAgent",
-            get_req_header(conn, "user-agent") |> List.first()
-          )
+           Map.get(
+             mandate_context,
+             "userAgent",
+             get_req_header(conn, "user-agent") |> List.first()
+           )
       }
     }
 
@@ -104,6 +109,7 @@ defmodule DhcWeb.OnboardingController do
   defp render_state(conn, state) do
     data =
       %{state: state.state}
+      |> maybe_put(:expiresAt, state[:expires_at] && DateTime.to_iso8601(state.expires_at))
       |> maybe_put(:invitationEmail, state[:invitation_email])
       |> maybe_put(:discord, state[:discord])
       |> maybe_put(:payment, state[:payment])
@@ -116,10 +122,27 @@ defmodule DhcWeb.OnboardingController do
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
-  defp restart_verification(conn) do
+  defp restart_verification(conn, status \\ :conflict) do
     conn
-    |> put_status(:unprocessable_entity)
-    |> json(%{data: %{state: "restartVerification"}})
+    |> put_status(status)
+    |> json(%{data: %{state: "restart_verification"}})
+  end
+
+  defp acceptance_id_from_cookie(conn) do
+    conn
+    |> fetch_cookies(signed: [@acceptance_cookie])
+    |> then(& &1.cookies[@acceptance_cookie])
+  end
+
+  defp acceptance_cookie_opts do
+    [
+      sign: true,
+      http_only: true,
+      secure: Application.get_env(:dhc, :auth_session_secure, false),
+      same_site: "Lax",
+      path: "/api/onboarding/invitation-acceptance",
+      max_age: @acceptance_max_age
+    ]
   end
 
   defp current_or_restart(conn, status \\ :conflict) do

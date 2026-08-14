@@ -74,6 +74,12 @@ defmodule DhcWeb.Router do
            E2EHarnessController,
            :interrupt_next_finalization
 
+      post "/probes/onboarding-isolation", E2EHarnessController, :start_onboarding_isolation_probe
+
+      get "/assertions/invitation-acceptance/:id",
+          E2EHarnessController,
+          :invitation_acceptance_assertion
+
       patch "/fixtures/:type/:id", E2EHarnessController, :update_fixture
       post "/fixtures/:type/:id", E2EHarnessController, :delete_fixture
     end
@@ -88,6 +94,15 @@ defmodule DhcWeb.Router do
     post "/onboarding/acceptance/continue", OnboardingController, :continue_acceptance
     post "/onboarding/acceptance/retry", OnboardingController, :retry_acceptance
     post "/onboarding/acceptance/discord/cancel", OnboardingController, :cancel_discord
+
+    get "/onboarding/invitation-acceptance",
+        OnboardingController,
+        :show_invitation_acceptance
+
+    post "/onboarding/invitation-acceptance/verify",
+         OnboardingController,
+         :verify_invitation_acceptance
+
     get "/options", MembersController, :options
     get "/invitations/:id", InvitationsController, :show
     get "/invitations/:id/pricing", InvitationsController, :pricing

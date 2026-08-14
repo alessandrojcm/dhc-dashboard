@@ -20,8 +20,15 @@ defmodule Dhc.Onboarding do
   alias Dhc.Onboarding.Workers.AcceptanceRecoveryWorker
   alias Dhc.Repo
 
-  defdelegate verify_credentials(invitation_id, email, date_of_birth), to: Invitations
   defdelegate issue_verification_token(invitation_id, email, date_of_birth), to: Invitations
+
+  def verify_credentials(invitation_id, email, date_of_birth) do
+    if protected_acceptance_started?(invitation_id) do
+      {:error, :invalid_credentials}
+    else
+      Invitations.verify_credentials(invitation_id, email, date_of_birth)
+    end
+  end
 
   @doc """
   Starts the protected pre-payment acceptance journey.
@@ -80,7 +87,7 @@ defmodule Dhc.Onboarding do
           if continuation && DateTime.compare(continuation.expires_at, now) == :gt do
             if browser_owns_continuation?(continuation, protected_continuation_id),
               do: continuation,
-              else: Repo.rollback(:invalid_invitation)
+              else: Repo.rollback(:missing_browser_proof)
           else
             if continuation do
               terminalize_continuation!(
@@ -100,7 +107,10 @@ defmodule Dhc.Onboarding do
             |> Repo.insert!()
           end
 
-        safe_state(continuation)
+        %{
+          continuation_id: continuation.id,
+          view: safe_state(continuation)
+        }
       end)
     else
       :error -> {:error, :invalid_credentials}
@@ -441,6 +451,10 @@ defmodule Dhc.Onboarding do
 
       if Repo.exists?(from(p in Principal, where: p.email == ^invitation.email)) do
         Repo.rollback(:invalid_invitation)
+      end
+
+      if protected_acceptance_started?(invitation.id) do
+        Repo.rollback(:discord_verification_required)
       end
 
       active_attempt =
@@ -872,6 +886,20 @@ defmodule Dhc.Onboarding do
   defp subject_fingerprint(subject) do
     secret = Application.fetch_env!(:dhc, :invitation_acceptance_subject_fingerprint_secret)
     :crypto.mac(:hmac, :sha256, secret, subject) |> Base.encode16(case: :lower)
+  end
+
+  defp protected_acceptance_started?(invitation_id) do
+    case Ecto.UUID.cast(invitation_id) do
+      {:ok, invitation_id} ->
+        Repo.exists?(
+          from(c in InvitationAcceptanceDiscordContinuation,
+            where: c.invitation_id == ^invitation_id
+          )
+        )
+
+      :error ->
+        false
+    end
   end
 
   defp provision_membership(
