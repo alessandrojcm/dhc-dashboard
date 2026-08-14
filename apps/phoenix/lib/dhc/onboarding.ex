@@ -11,6 +11,7 @@ defmodule Dhc.Onboarding do
   alias Dhc.Invitations
   alias Dhc.Invitations.BulkInviteWorker
   alias Dhc.Invitations.Invitation
+  alias Dhc.Discord.StagedAssignment
   alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.Onboarding.InvitationAcceptanceAttempt
   alias Dhc.Onboarding.InvitationAcceptanceDiscordContinuation
@@ -213,6 +214,16 @@ defmodule Dhc.Onboarding do
           Repo.exists?(
             from(e in Dhc.Auth.ExternalIdentity,
               where: e.provider == "discord" and e.provider_subject == ^subject
+            )
+          ) ->
+            terminalize_collision!(continuation, attempt, now, subject)
+            {:error, :collision}
+
+          Repo.exists?(
+            from(a in StagedAssignment,
+              where:
+                a.provider == "discord" and a.provider_subject == ^subject and
+                    a.state in ["proposed", "approved"]
             )
           ) ->
             terminalize_collision!(continuation, attempt, now, subject)

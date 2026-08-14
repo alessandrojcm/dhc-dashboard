@@ -15,6 +15,17 @@ defmodule Dhc.Discord.RosterPackage do
 
   def delete(path), do: File.rm(path)
 
+  def read(path, key) do
+    with {:ok, encrypted} <- File.read(path),
+         {:ok, plaintext} <- decrypt(encrypted, key),
+         {:ok, package} <- Jason.decode(plaintext) do
+      {:ok, package}
+    else
+      {:error, %Jason.DecodeError{}} -> {:error, :invalid_review_package}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
   defp encrypt(plaintext, key) do
     with {:ok, key} <- decode_key(key) do
       iv = :crypto.strong_rand_bytes(12)
@@ -25,6 +36,17 @@ defmodule Dhc.Discord.RosterPackage do
       {:ok, <<1, iv::binary, tag::binary, ciphertext::binary>>}
     end
   end
+
+  defp decrypt(<<1, iv::binary-size(12), tag::binary-size(16), ciphertext::binary>>, key) do
+    with {:ok, key} <- decode_key(key) do
+      case :crypto.crypto_one_time_aead(:aes_256_gcm, key, iv, ciphertext, @aad, tag, false) do
+        :error -> {:error, :invalid_review_package}
+        plaintext -> {:ok, plaintext}
+      end
+    end
+  end
+
+  defp decrypt(_, _), do: {:error, :invalid_review_package}
 
   defp decode_key(key) when is_binary(key) do
     case Base.decode64(key) do
