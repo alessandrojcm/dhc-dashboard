@@ -95,19 +95,19 @@ defmodule DhcWeb.OnboardingControllerTest do
     invitation = invitation_fixture()
 
     started =
-      post(conn, "/api/onboarding/acceptance", %{
+      post(conn, "/api/onboarding/invitation-acceptance/verify", %{
         "invitationId" => invitation.id,
         "email" => invitation.email,
         "dateOfBirth" => Date.to_iso8601(invitation.date_of_birth)
       })
 
-    [continuation_id] = get_resp_header(started, "x-onboarding-continuation")
+    continuation_id =
+      Repo.get_by!(InvitationAcceptanceDiscordContinuation, invitation_id: invitation.id).id
 
     oauth =
       started
       |> recycle()
-      |> put_req_header("x-onboarding-continuation", continuation_id)
-      |> get("/api/onboarding/acceptance/discord")
+      |> get("/api/onboarding/invitation-acceptance/discord")
 
     oauth_redirect = oauth |> redirected_to(302) |> URI.parse()
 
@@ -143,8 +143,7 @@ defmodule DhcWeb.OnboardingControllerTest do
     safe =
       callback
       |> recycle()
-      |> put_req_header("x-onboarding-continuation", continuation_id)
-      |> get("/api/onboarding/acceptance")
+      |> get("/api/onboarding/invitation-acceptance")
 
     invitation_email = invitation.email
 
@@ -193,28 +192,23 @@ defmodule DhcWeb.OnboardingControllerTest do
   } do
     invitation = invitation_fixture()
 
-    {:ok, state} =
-      Dhc.Onboarding.start_acceptance(
-        invitation.id,
-        invitation.email,
-        Date.to_iso8601(invitation.date_of_birth)
-      )
+    {started, continuation_id} = start_acceptance_conn(conn, invitation)
 
     {:ok, _} =
-      Dhc.Onboarding.verify_discord(state.continuation_id, %{
+      Dhc.Onboarding.verify_discord(continuation_id, %{
         "sub" => "cancel-subject",
         "preferred_username" => "cancelled"
       })
 
     response =
-      conn
-      |> put_req_header("x-onboarding-continuation", state.continuation_id)
-      |> post("/api/onboarding/acceptance/discord/cancel")
+      started
+      |> recycle()
+      |> post("/api/onboarding/invitation-acceptance/discord/cancel")
 
     assert %{"data" => %{"state" => "restartVerification"}} = json_response(response, 200)
     refute Repo.exists?(InvitationAcceptanceDiscordSubjectClaim)
 
-    continuation = Repo.get!(InvitationAcceptanceDiscordContinuation, state.continuation_id)
+    continuation = Repo.get!(InvitationAcceptanceDiscordContinuation, continuation_id)
     assert continuation.status == "cancelled"
     assert continuation.provider_subject == nil
     assert continuation.display_metadata == %{}
@@ -226,23 +220,26 @@ defmodule DhcWeb.OnboardingControllerTest do
   } do
     invitation = invitation_fixture()
 
-    {:ok, state} =
-      Dhc.Onboarding.start_acceptance(
-        invitation.id,
-        invitation.email,
-        Date.to_iso8601(invitation.date_of_birth)
-      )
+    {started, continuation_id} = start_acceptance_conn(conn, invitation)
 
     {:ok, _verified} =
-      Dhc.Onboarding.verify_discord(state.continuation_id, %{
+      Dhc.Onboarding.verify_discord(continuation_id, %{
         "sub" => "controller-paid-subject",
         "preferred_username" => "controller-member"
       })
 
     continued =
-      conn
-      |> put_req_header("x-onboarding-continuation", state.continuation_id)
-      |> post("/api/onboarding/acceptance/continue", %{
+      started
+      |> recycle()
+      |> post("/api/onboarding/invitation-acceptance/continue")
+
+    assert %{"data" => %{"state" => "paymentReady"}} = json_response(continued, 200)
+    refute_received {:provision_membership, _}
+
+    paid =
+      continued
+      |> recycle()
+      |> post("/api/onboarding/invitation-acceptance/payment", %{
         "nextOfKinName" => "Grace Hopper",
         "nextOfKinPhone" => "+353810000099",
         "stripeConfirmationToken" => "ctok_controller_paid",
@@ -252,11 +249,11 @@ defmodule DhcWeb.OnboardingControllerTest do
         }
       })
 
-    assert %{"data" => %{"state" => "accepted"}} = json_response(continued, 200)
+    assert %{"data" => %{"state" => "accepted"}} = json_response(paid, 200)
 
-    refute Map.has_key?(json_response(continued, 200)["data"], "attemptId")
+    refute Map.has_key?(json_response(paid, 200)["data"], "attemptId")
     assert_received {:provision_membership, %{confirmation_token: "ctok_controller_paid"}}
-    refute continued.resp_cookies["_dhc_session"]
+    refute paid.resp_cookies["_dhc_session"]
     refute Repo.exists?(Dhc.Auth.PrincipalToken)
     assert Repo.exists?(ExternalIdentity)
   end
@@ -279,28 +276,22 @@ defmodule DhcWeb.OnboardingControllerTest do
     }
     |> Repo.insert!()
 
-    {:ok, state} =
-      Dhc.Onboarding.start_acceptance(
-        invitation.id,
-        invitation.email,
-        Date.to_iso8601(invitation.date_of_birth)
-      )
+    {started, continuation_id} = start_acceptance_conn(conn, invitation)
 
     assert {:error, :collision} =
-             Dhc.Onboarding.verify_discord(state.continuation_id, %{
+             Dhc.Onboarding.verify_discord(continuation_id, %{
                "sub" => "discord-request-success",
                "preferred_username" => "must-not-identify-owner"
              })
 
     response =
-      conn
-      |> put_req_header("x-onboarding-continuation", state.continuation_id)
-      |> get("/api/onboarding/acceptance")
+      started
+      |> recycle()
+      |> get("/api/onboarding/invitation-acceptance")
 
     assert %{"data" => %{"state" => "discordCollision"}} = json_response(response, 200)
 
-    continuation =
-      Repo.get!(InvitationAcceptanceDiscordContinuation, state.continuation_id)
+    continuation = Repo.get!(InvitationAcceptanceDiscordContinuation, continuation_id)
 
     assert continuation.status == "collision"
     assert continuation.provider_subject == nil
@@ -318,7 +309,7 @@ defmodule DhcWeb.OnboardingControllerTest do
              subject_fingerprint: fingerprint
            } = Repo.one!(InvitationAcceptanceDiscordCollisionAuditEvent)
 
-    assert continuation_id == state.continuation_id
+    assert continuation_id == continuation.id
     assert existing_principal_id == principal.id
     assert fingerprint == continuation.subject_fingerprint
   end
@@ -415,19 +406,19 @@ defmodule DhcWeb.OnboardingControllerTest do
     invitation = invitation_fixture()
 
     started =
-      post(conn, "/api/onboarding/acceptance", %{
+      post(conn, "/api/onboarding/invitation-acceptance/verify", %{
         "invitationId" => invitation.id,
         "email" => invitation.email,
         "dateOfBirth" => Date.to_iso8601(invitation.date_of_birth)
       })
 
-    [continuation_id] = get_resp_header(started, "x-onboarding-continuation")
+    continuation_id =
+      Repo.get_by!(InvitationAcceptanceDiscordContinuation, invitation_id: invitation.id).id
 
     callback =
       started
       |> recycle()
-      |> put_req_header("x-onboarding-continuation", continuation_id)
-      |> get("/api/onboarding/acceptance/discord")
+      |> get("/api/onboarding/invitation-acceptance/discord")
       |> recycle()
       |> get("/api/auth/discord/callback?state=wrong&code=success")
 
@@ -471,19 +462,19 @@ defmodule DhcWeb.OnboardingControllerTest do
     invitation = invitation_fixture()
 
     started =
-      post(conn, "/api/onboarding/acceptance", %{
+      post(conn, "/api/onboarding/invitation-acceptance/verify", %{
         "invitationId" => invitation.id,
         "email" => invitation.email,
         "dateOfBirth" => Date.to_iso8601(invitation.date_of_birth)
       })
 
-    [continuation_id] = get_resp_header(started, "x-onboarding-continuation")
+    continuation_id =
+      Repo.get_by!(InvitationAcceptanceDiscordContinuation, invitation_id: invitation.id).id
 
     callback =
       started
       |> recycle()
-      |> put_req_header("x-onboarding-continuation", continuation_id)
-      |> get("/api/onboarding/acceptance/discord")
+      |> get("/api/onboarding/invitation-acceptance/discord")
       |> recycle()
       |> get("/api/auth/discord/callback?error=access_denied&state=test-state")
 
@@ -506,36 +497,30 @@ defmodule DhcWeb.OnboardingControllerTest do
        } do
     invitation = invitation_fixture()
 
-    {:ok, state} =
-      Dhc.Onboarding.start_acceptance(
-        invitation.id,
-        invitation.email,
-        Date.to_iso8601(invitation.date_of_birth)
-      )
+    {started, continuation_id} = start_acceptance_conn(conn, invitation)
 
     {:ok, _safe_state} =
-      Dhc.Onboarding.verify_discord(state.continuation_id, %{
+      Dhc.Onboarding.verify_discord(continuation_id, %{
         "sub" => "expiring-subject",
         "preferred_username" => "must-be-zeroized"
       })
 
     InvitationAcceptanceDiscordContinuation
-    |> Repo.get!(state.continuation_id)
+    |> Repo.get!(continuation_id)
     |> Ecto.Changeset.change(
       expires_at: DateTime.utc_now() |> DateTime.add(-1, :second) |> DateTime.truncate(:second)
     )
     |> Repo.update!()
 
     response =
-      conn
-      |> put_req_header("x-onboarding-continuation", state.continuation_id)
-      |> get("/api/onboarding/acceptance")
+      started
+      |> recycle()
+      |> get("/api/onboarding/invitation-acceptance")
 
-    assert %{"data" => %{"state" => "restartVerification"}} =
+    assert %{"data" => %{"state" => "restart_verification"}} =
              json_response(response, 409)
 
-    continuation =
-      Repo.get!(InvitationAcceptanceDiscordContinuation, state.continuation_id)
+    continuation = Repo.get!(InvitationAcceptanceDiscordContinuation, continuation_id)
 
     assert continuation.status == "expired"
     assert continuation.provider_subject == nil
@@ -623,5 +608,19 @@ defmodule DhcWeb.OnboardingControllerTest do
     |> Map.merge(attrs)
     |> then(&struct!(Invitation, &1))
     |> Repo.insert!()
+  end
+
+  defp start_acceptance_conn(conn, invitation) do
+    started =
+      post(conn, "/api/onboarding/invitation-acceptance/verify", %{
+        "invitationId" => invitation.id,
+        "email" => invitation.email,
+        "dateOfBirth" => Date.to_iso8601(invitation.date_of_birth)
+      })
+
+    continuation_id =
+      Repo.get_by!(InvitationAcceptanceDiscordContinuation, invitation_id: invitation.id).id
+
+    {started, continuation_id}
   end
 end

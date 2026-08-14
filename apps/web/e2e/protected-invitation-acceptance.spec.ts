@@ -82,6 +82,12 @@ async function reachDiscordVerified(
 	).toBeVisible();
 }
 
+async function continueToPayment(page: import("@playwright/test").Page) {
+	await expect(page.getByLabel("Next of Kin", { exact: true })).toHaveCount(0);
+	await page.getByRole("button", { name: "Continue to payment" }).click();
+	await expect(page.getByLabel("Next of Kin", { exact: true })).toBeVisible();
+}
+
 async function expectUnsignedCompletedAcceptance(
 	page: import("@playwright/test").Page,
 	context: import("@playwright/test").BrowserContext,
@@ -102,7 +108,7 @@ async function expectUnsignedCompletedAcceptance(
 	expect(cookies.some((cookie) => cookie.name === "_dhc_session")).toBe(false);
 	expect(cookies.some((cookie) => cookie.name === "_dhc_key")).toBe(false);
 	expect(
-		cookies.some((cookie) => cookie.name.startsWith("onboarding-acceptance-")),
+		cookies.some((cookie) => cookie.name === "_dhc_onboarding_acceptance"),
 	).toBe(false);
 
 	await expect
@@ -268,8 +274,8 @@ test("starts a protected Invitation Acceptance without starting Stripe or a dash
 			page.getByRole("button", { name: "Verify Invitation" }),
 		).toBeVisible();
 		expect(
-			(await context.cookies()).some((cookie) =>
-				cookie.name.startsWith("onboarding-acceptance-"),
+			(await context.cookies()).some(
+				(cookie) => cookie.name === "_dhc_onboarding_acceptance",
 			),
 		).toBe(false);
 		const browserStorage = await page.evaluate(() => ({
@@ -324,10 +330,11 @@ test("completes a paid Discord-bound Invitation Acceptance without creating auth
 			email: invitation.email,
 			dateOfBirth: invitation.date_of_birth.format("YYYY-MM-DD"),
 		});
+		await continueToPayment(page);
 		await fillMembershipPayment(page, invitation, "Grace Hopper", "0838774532");
 		expect(
-			(await context.cookies()).some((cookie) =>
-				cookie.name.startsWith("onboarding-acceptance-"),
+			(await context.cookies()).some(
+				(cookie) => cookie.name === "_dhc_onboarding_acceptance",
 			),
 		).toBe(true);
 		const signUpButton = page.getByRole("button", { name: "Sign up" });
@@ -364,6 +371,7 @@ test("recovers a real Stripe acceptance interrupted before local finalization", 
 			email: invitation.email,
 			dateOfBirth: invitation.date_of_birth.format("YYYY-MM-DD"),
 		});
+		await continueToPayment(page);
 		await fillMembershipPayment(
 			page,
 			invitation,
@@ -465,6 +473,7 @@ test("completes a complimentary Discord-bound Invitation Acceptance without auth
 			email: invitation.email,
 			dateOfBirth: invitation.date_of_birth.format("YYYY-MM-DD"),
 		});
+		await continueToPayment(page);
 		await fillMembershipPayment(
 			page,
 			invitation,

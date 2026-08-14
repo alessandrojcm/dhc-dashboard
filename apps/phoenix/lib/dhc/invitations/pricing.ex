@@ -25,6 +25,34 @@ defmodule Dhc.Invitations.Pricing do
   end
 
   @doc false
+  def membership_payment_plan(coupon_code \\ nil) do
+    with {:ok, prices} <- membership_price_ids(),
+         {:ok, promotion} <- resolve_promotion(coupon_code),
+         {:ok, details} <- pricing_details(prices, promotion) do
+      complimentary? =
+        migration_promotion?(promotion) or
+          Enum.all?(
+            [
+              details.prorated_monthly_price,
+              details.prorated_annual_price,
+              details.monthly_amount_due,
+              details.annual_amount_due
+            ],
+            &(&1 == 0)
+          )
+
+      {:ok,
+       %{
+         requirement: if(complimentary?, do: :complimentary, else: :paid),
+         monthly_price_id: prices.monthly.id,
+         annual_price_id: prices.annual.id,
+         promotion_code_id: promotion.promotion_code_id,
+         migration?: promotion.migration?
+       }}
+    end
+  end
+
+  @doc false
   def membership_price_ids do
     with {:ok, monthly} <- price_id_for_lookup_key(LookupKeys.monthly()),
          {:ok, annual} <- price_id_for_lookup_key(LookupKeys.annual()) do
@@ -195,6 +223,8 @@ defmodule Dhc.Invitations.Pricing do
          prorated_price: if(migration_promotion?(promotion), do: 0, else: prorated_price),
          monthly_fee: amount(next_month_invoice, "subtotal"),
          annual_fee: amount(next_january_invoice, "subtotal"),
+         monthly_amount_due: amount(next_month_invoice, "amount_due"),
+         annual_amount_due: amount(next_january_invoice, "amount_due"),
          discount_percentage: discount_percentage,
          coupon: promotion.code,
          discounted_monthly_fee:

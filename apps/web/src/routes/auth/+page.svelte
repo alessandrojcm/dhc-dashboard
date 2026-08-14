@@ -11,6 +11,8 @@ import { Separator } from "$lib/components/ui/separator";
 import DHCLogo from "/src/assets/images/dhc-logo.png?enhanced";
 import { magicLinkAuth } from "./data.remote";
 
+let { data } = $props();
+
 const hash = $derived(page.url.hash.split("#")[1] as string);
 const discordFailed = $derived(
 	page.url.searchParams.get("discord") === "failed",
@@ -62,7 +64,10 @@ const discordAuthUrl = publicApiUrl("/auth/discord");
 	<!-- Magic Link Form -->
 	<form {...magicLinkAuth} class="w-full max-w-xs space-y-4">
 		<Field.Field>
-			{@const fieldProps = magicLinkAuth.fields.email.as("email")}
+			{@const fieldProps = magicLinkAuth.fields.email.as(
+				"email",
+				data.prefillEmail ?? "",
+			)}
 			<Field.Label for={fieldProps.name}>Email</Field.Label>
 			<Input
 				{...fieldProps}

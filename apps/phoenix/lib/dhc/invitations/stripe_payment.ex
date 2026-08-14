@@ -46,16 +46,15 @@ defmodule Dhc.Invitations.StripePayment do
     end
   end
 
-  @spec complete(map()) :: :ok | {:error, term()}
+  @spec complete(map()) :: :ok | {:pending, map()} | {:error, term()}
   def complete(%{customer_id: customer_id, complimentary: true} = attrs)
       when is_binary(customer_id) and customer_id != "" do
-    with {:ok, prices} <- Pricing.membership_price_ids(),
-         {:ok, promotion} <- Pricing.resolve_promotion(Map.get(attrs, :coupon_code)),
-         true <- promotion.coupon != nil,
-         :ok <- create_membership_subscriptions(customer_id, nil, prices, promotion, attrs) do
+    with {:ok, plan} <- payment_plan(attrs),
+         true <- plan.requirement == :complimentary,
+         :ok <- create_membership_subscriptions(customer_id, nil, plan, attrs) do
       :ok
     else
-      false -> {:error, :complimentary_promotion_required}
+      false -> {:error, :complimentary_payment_plan_required}
       {:error, _reason} = error -> error
     end
   end
@@ -63,14 +62,12 @@ defmodule Dhc.Invitations.StripePayment do
   def complete(%{customer_id: customer_id, payment_method_id: payment_method_id} = attrs)
       when is_binary(customer_id) and customer_id != "" and is_binary(payment_method_id) and
              payment_method_id != "" do
-    with {:ok, prices} <- Pricing.membership_price_ids(),
-         {:ok, promotion} <- Pricing.resolve_promotion(Map.get(attrs, :coupon_code)),
+    with {:ok, plan} <- payment_plan(attrs),
          :ok <-
            create_membership_subscriptions(
              customer_id,
              payment_method_id,
-             prices,
-             promotion,
+             plan,
              attrs
            ) do
       :ok
@@ -88,14 +85,12 @@ defmodule Dhc.Invitations.StripePayment do
              "setup_intent_id" => resource_id(setup_intent),
              "payment_method_id" => payment_method_id
            }),
-         {:ok, prices} <- Pricing.membership_price_ids(),
-         {:ok, promotion} <- Pricing.resolve_promotion(Map.get(attrs, :coupon_code)),
+         {:ok, plan} <- payment_plan(attrs),
          :ok <-
            create_membership_subscriptions(
              customer_id,
              payment_method_id,
-             prices,
-             promotion,
+             plan,
              attrs
            ) do
       :ok
@@ -172,9 +167,11 @@ defmodule Dhc.Invitations.StripePayment do
       {"payment_method_types[]", "sepa_debit"}
     ]
 
-    Operations.post_setup_intents(Map.new(form),
-      idempotency_key: idempotency_key(attrs, "setup-intent")
-    )
+    with :ok <- authorize_progression(attrs) do
+      Operations.post_setup_intents(Map.new(form),
+        idempotency_key: idempotency_key(attrs, "setup-intent")
+      )
+    end
   end
 
   defp validate_setup_intent(%{"status" => status}) when status in ["succeeded", "processing"],
@@ -189,30 +186,30 @@ defmodule Dhc.Invitations.StripePayment do
   defp payment_method_id(%{"payment_method" => %{"id" => id}}) when is_binary(id), do: {:ok, id}
   defp payment_method_id(_setup_intent), do: {:error, :payment_method_missing}
 
-  defp create_membership_subscriptions(customer_id, payment_method_id, prices, promotion, attrs) do
+  defp create_membership_subscriptions(customer_id, payment_method_id, plan, attrs) do
     with {:ok, monthly} <-
            create_subscription(
              :monthly,
              customer_id,
              payment_method_id,
-             prices.monthly.id,
-             promotion,
+             plan.monthly_price_id,
+             plan,
              attrs
            ),
          :ok <- report_subscription_progress(attrs, :monthly, monthly),
-         :ok <- maybe_confirm_first_invoice(monthly, payment_method_id, promotion, attrs),
+         :ok <- maybe_confirm_first_invoice(monthly, payment_method_id, plan, attrs),
          :ok <- report_progress(attrs, %{"monthly_confirmed" => true}),
          {:ok, annual} <-
            create_subscription(
              :annual,
              customer_id,
              payment_method_id,
-             prices.annual.id,
-             promotion,
+             plan.annual_price_id,
+             plan,
              attrs
            ),
          :ok <- report_subscription_progress(attrs, :annual, annual),
-         :ok <- maybe_confirm_first_invoice(annual, payment_method_id, promotion, attrs),
+         :ok <- maybe_confirm_first_invoice(annual, payment_method_id, plan, attrs),
          :ok <- report_progress(attrs, %{"annual_confirmed" => true}) do
       :ok
     end
@@ -231,9 +228,11 @@ defmodule Dhc.Invitations.StripePayment do
       |> add_billing_anchor(kind)
       |> maybe_add_discount(promotion)
 
-    Operations.post_subscriptions(Map.new(form),
-      idempotency_key: idempotency_key(attrs, "subscription-#{kind}")
-    )
+    with :ok <- authorize_progression(attrs) do
+      Operations.post_subscriptions(Map.new(form),
+        idempotency_key: idempotency_key(attrs, "subscription-#{kind}")
+      )
+    end
   end
 
   defp add_billing_anchor(form, :monthly),
@@ -271,12 +270,26 @@ defmodule Dhc.Invitations.StripePayment do
     end)
   end
 
-  defp maybe_confirm_first_invoice(_subscription, nil, _promotion, _attrs), do: :ok
+  defp maybe_confirm_first_invoice(subscription, nil, %{requirement: :complimentary}, _attrs) do
+    case latest_invoice(subscription) do
+      %{"status" => "paid", "amount_due" => 0} ->
+        :ok
+
+      %{"status" => status, "amount_due" => amount_due} ->
+        {:error, {:complimentary_invoice_unsettled, status, amount_due}}
+
+      _ ->
+        {:error, :complimentary_invoice_missing}
+    end
+  end
+
+  defp maybe_confirm_first_invoice(_subscription, nil, _promotion, _attrs),
+    do: {:error, :payment_method_required}
 
   defp maybe_confirm_first_invoice(subscription, payment_method_id, _promotion, attrs) do
     case payment_intent_id(subscription) do
-      nil -> :ok
-      payment_intent_id -> confirm_payment_intent(payment_intent_id, payment_method_id, attrs)
+      nil -> validate_paid_invoice(subscription)
+      payment_intent_id -> progress_payment_intent(payment_intent_id, payment_method_id, attrs)
     end
   end
 
@@ -300,6 +313,17 @@ defmodule Dhc.Invitations.StripePayment do
     end
   end
 
+  defp progress_payment_intent(payment_intent_id, payment_method_id, attrs) do
+    with :ok <- authorize_progression(attrs),
+         {:ok, payment_intent} <-
+           Operations.get_payment_intents_intent(payment_intent_id, %{}) do
+      case payment_intent_outcome(payment_intent) do
+        :confirm -> confirm_payment_intent(payment_intent_id, payment_method_id, attrs)
+        outcome -> outcome
+      end
+    end
+  end
+
   defp confirm_payment_intent(payment_intent_id, payment_method_id, attrs) do
     context = Map.get(attrs, :mandate_context, %{})
 
@@ -311,19 +335,77 @@ defmodule Dhc.Invitations.StripePayment do
       {"mandate_data[customer_acceptance][online][user_agent]", Map.get(context, :user_agent, "")}
     ]
 
-    case Operations.post_payment_intents_intent_confirm(payment_intent_id, Map.new(form),
-           idempotency_key: idempotency_key(attrs, "payment-intent-#{payment_intent_id}")
-         ) do
-      {:ok, _payment_intent} -> :ok
-      {:error, reason} -> {:error, reason}
+    with :ok <- authorize_progression(attrs) do
+      case Operations.post_payment_intents_intent_confirm(payment_intent_id, Map.new(form),
+             idempotency_key: idempotency_key(attrs, "payment-intent-#{payment_intent_id}")
+           ) do
+        {:ok, payment_intent} -> payment_intent_outcome(payment_intent)
+        {:error, reason} -> {:error, reason}
+      end
+    end
+  end
+
+  defp payment_intent_outcome(%{"status" => "succeeded"}), do: :ok
+
+  defp payment_intent_outcome(%{"id" => id, "status" => "processing"}) do
+    {:pending,
+     %{
+       "payment_state" => "pending",
+       "payment_intent_id" => id,
+       "payment_intent_status" => "processing"
+     }}
+  end
+
+  defp payment_intent_outcome(%{"id" => id, "status" => "requires_action"} = intent) do
+    {:pending,
+     %{
+       "payment_state" => "needs_action",
+       "payment_intent_id" => id,
+       "payment_intent_status" => "requires_action",
+       "payment_action_type" => get_in(intent, ["next_action", "type"])
+     }}
+  end
+
+  defp payment_intent_outcome(%{"status" => "requires_confirmation"}), do: :confirm
+
+  defp payment_intent_outcome(%{"id" => id, "status" => status})
+       when status in ["requires_payment_method", "requires_capture", "canceled"] do
+    {:pending,
+     %{
+       "payment_state" => "terminal",
+       "payment_intent_id" => id,
+       "payment_intent_status" => status
+     }}
+  end
+
+  defp payment_intent_outcome(_payment_intent),
+    do: {:error, :invalid_payment_intent_response}
+
+  defp validate_paid_invoice(subscription) do
+    case latest_invoice(subscription) do
+      %{"status" => "paid"} -> :ok
+      %{"status" => status} -> {:error, {:invoice_unsettled, status}}
+      _ -> {:error, :invoice_payment_missing}
     end
   end
 
   defp create_credit_note(invoice_id, amount, attrs) do
-    Operations.post_credit_notes(
-      %{"invoice" => invoice_id, "amount" => Integer.to_string(amount)},
-      idempotency_key: idempotency_key(attrs, "credit-note-#{invoice_id}")
-    )
+    with :ok <- authorize_progression(attrs) do
+      Operations.post_credit_notes(
+        %{"invoice" => invoice_id, "amount" => Integer.to_string(amount)},
+        idempotency_key: idempotency_key(attrs, "credit-note-#{invoice_id}")
+      )
+    end
+  end
+
+  defp payment_plan(%{payment_plan: plan}) when is_map(plan), do: {:ok, plan}
+  defp payment_plan(attrs), do: Pricing.membership_payment_plan(Map.get(attrs, :coupon_code))
+
+  defp authorize_progression(attrs) do
+    case Map.get(attrs, :fence) do
+      callback when is_function(callback, 0) -> callback.()
+      _ -> :ok
+    end
   end
 
   defp idempotency_key(attrs, suffix) do

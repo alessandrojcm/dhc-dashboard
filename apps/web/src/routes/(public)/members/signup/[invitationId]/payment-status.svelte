@@ -10,7 +10,13 @@ const { data }: { data: PageServerData } = $props();
 	<p class="text-sm font-medium text-muted-foreground">
 		Create your membership
 	</p>
-	<h1 class="text-3xl font-bold">Payment in progress</h1>
+	<h1 class="text-3xl font-bold">
+		{data.state === "paymentNeedsAction"
+			? "Payment needs attention"
+			: data.state === "paymentTerminal"
+				? "Payment could not be completed"
+				: "Payment in progress"}
+	</h1>
 	{#if data.discordVerified}
 		<p class="text-muted-foreground">
 			Your Discord account remains verified. You will not need to connect it
@@ -18,10 +24,11 @@ const { data }: { data: PageServerData } = $props();
 		</p>
 	{/if}
 	<p class="text-muted-foreground">
-		Your acceptance is saved. Completion will resume the same payment and
-		membership attempt, so it will not create a duplicate membership.
+		{data.state === "paymentTerminal"
+			? "Your verified acceptance is saved. Contact support before trying again."
+			: "Your verified acceptance is saved. Completing payment will not create a second membership."}
 	</p>
-	{#if data.retryAllowed}
+	{#if data.retryAllowed && data.state !== "paymentTerminal"}
 		<Button href={`/members/signup/${page.params.invitationId}/resume`}>
 			Retry completion
 		</Button>

@@ -92,6 +92,7 @@ defmodule DhcWeb.Router do
     get "/onboarding/acceptance", OnboardingController, :show_acceptance
     post "/onboarding/acceptance", OnboardingController, :start_acceptance
     post "/onboarding/acceptance/continue", OnboardingController, :continue_acceptance
+    post "/onboarding/acceptance/payment", OnboardingController, :submit_payment
     post "/onboarding/acceptance/retry", OnboardingController, :retry_acceptance
     post "/onboarding/acceptance/discord/cancel", OnboardingController, :cancel_discord
 
@@ -102,6 +103,14 @@ defmodule DhcWeb.Router do
     post "/onboarding/invitation-acceptance/verify",
          OnboardingController,
          :verify_invitation_acceptance
+
+    post "/onboarding/invitation-acceptance/continue", OnboardingController, :continue_acceptance
+    post "/onboarding/invitation-acceptance/payment", OnboardingController, :submit_payment
+    post "/onboarding/invitation-acceptance/retry", OnboardingController, :retry_acceptance
+
+    post "/onboarding/invitation-acceptance/discord/cancel",
+         OnboardingController,
+         :cancel_discord
 
     get "/options", MembersController, :options
     get "/invitations/:id", InvitationsController, :show
@@ -125,7 +134,7 @@ defmodule DhcWeb.Router do
   scope "/api", DhcWeb do
     pipe_through [:api, :discord_oauth_api]
 
-    get "/onboarding/acceptance/discord", OnboardingController, :start_discord
+    get "/onboarding/invitation-acceptance/discord", OnboardingController, :start_discord
   end
 
   scope "/api", DhcWeb do
