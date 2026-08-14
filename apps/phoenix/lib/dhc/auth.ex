@@ -44,6 +44,7 @@ defmodule Dhc.Auth do
   import Ecto.Query, warn: false
   alias Dhc.Repo
   alias Dhc.Auth.{DiscordSubjectLock, ExternalIdentity, Principal, PrincipalToken}
+  alias Dhc.Discord.StagedAssignment
   alias Dhc.Onboarding.InvitationAcceptanceDiscordSubjectClaim
   alias Dhc.UserProfiles.UserProfile
 
@@ -118,11 +119,118 @@ defmodule Dhc.Auth do
         |> establish_eligible_session()
 
       nil ->
-        link_discord_by_verified_email(subject, claims)
+        sign_in_unlinked_discord_subject(subject, claims)
     end
   end
 
   def sign_in_with_discord(_claims), do: {:error, :invalid}
+
+  # An approved roster assignment is proof-bound to the immutable Discord
+  # subject. It deliberately runs before verified-email reconciliation: the
+  # latter is a convenience path, while a reviewed assignment is a prior,
+  # explicit binding decision.
+  defp sign_in_unlinked_discord_subject(subject, claims) do
+    case promote_staged_discord_assignment(subject, claims) do
+      {:ok, principal} ->
+        # Promotion has committed before this separate, ordinary access-checked
+        # session boundary runs. An inactive Member keeps the permanent link,
+        # but no session is minted.
+        establish_eligible_session(principal)
+
+      {:error, :no_assignment} ->
+        link_discord_by_verified_email(subject, claims)
+
+      {:error, :invalid} ->
+        {:error, :invalid}
+    end
+  end
+
+  defp promote_staged_discord_assignment(subject, claims) do
+    case Repo.one(
+           from(a in StagedAssignment,
+             where:
+               a.provider == "discord" and a.provider_subject == ^subject and
+                 a.state in ["proposed", "approved"],
+             select: a.principal_id
+           )
+         ) do
+      nil ->
+        {:error, :no_assignment}
+
+      principal_id ->
+        safe_discord_transaction(fn ->
+          # The shared lock order is Principal then subject. Re-read every
+          # decision under those locks; the database constraint triggers are
+          # the final cross-table invariant at commit.
+          DiscordSubjectLock.lock_principal!(principal_id)
+          DiscordSubjectLock.lock!(subject)
+
+          assignment =
+            Repo.one(
+              from(a in StagedAssignment,
+                where:
+                  a.provider == "discord" and a.provider_subject == ^subject and
+                    a.principal_id == ^principal_id,
+                lock: "FOR UPDATE"
+              )
+            )
+
+          existing_identity =
+            Repo.get_by(ExternalIdentity, provider: "discord", provider_subject: subject)
+
+          cond do
+            match?(%ExternalIdentity{principal_id: ^principal_id}, existing_identity) ->
+              # A callback that began before another promotion committed may
+              # arrive here with a stale pre-lock lookup. Observe the permanent
+              # identity under the shared locks and continue through the same
+              # post-commit session boundary as an ordinary linked sign-in.
+              Repo.get!(Principal, principal_id)
+
+            not is_nil(existing_identity) ->
+              Repo.rollback(:invalid)
+
+            is_nil(assignment) or assignment.state != "approved" ->
+              Repo.rollback(:invalid)
+
+            discord_subject_claimed?(subject) ->
+              Repo.rollback(:invalid)
+
+            Repo.exists?(
+              from(e in ExternalIdentity,
+                where:
+                  e.provider == "discord" and
+                      (e.provider_subject == ^subject or e.principal_id == ^principal_id)
+              )
+            ) ->
+              Repo.rollback(:invalid)
+
+            true ->
+              principal = Repo.get!(Principal, principal_id)
+
+              case Repo.insert(discord_identity_changeset(principal, subject, claims)) do
+                {:ok, _identity} ->
+                  assignment
+                  |> StagedAssignment.transition_changeset(%{
+                    state: "promoted",
+                    terminal_at: DateTime.utc_now(),
+                    terminal_actor_principal_id: principal_id,
+                    reason_code: "oauth_sign_in"
+                  })
+                  |> Repo.update!()
+
+                  principal
+
+                {:error, _changeset} ->
+                  Repo.rollback(:invalid)
+              end
+          end
+        end)
+        |> case do
+          {:ok, principal} -> {:ok, principal}
+          {:error, _reason} -> {:error, :invalid}
+        end
+    end
+  end
 
   @doc """
   Links Discord to a Principal that has already proved its identity through an
@@ -131,7 +239,7 @@ defmodule Dhc.Auth do
   """
   def link_discord_identity(%Principal{} = principal, %{"sub" => subject} = claims)
       when is_binary(subject) and subject != "" do
-    Repo.transaction(fn ->
+    safe_discord_transaction(fn ->
       DiscordSubjectLock.lock_principal!(principal.id)
       DiscordSubjectLock.lock!(subject)
       unless eligible_member_locked?(principal.id), do: Repo.rollback(:invalid)
@@ -174,7 +282,7 @@ defmodule Dhc.Auth do
   defp link_discord_by_verified_email(_subject, _claims), do: {:error, :invalid}
 
   defp create_discord_identity_and_session(principal, subject, claims) do
-    Repo.transaction(fn ->
+    safe_discord_transaction(fn ->
       DiscordSubjectLock.lock_principal!(principal.id)
       DiscordSubjectLock.lock!(subject)
       unless eligible_member_locked?(principal.id), do: Repo.rollback(:invalid)
@@ -566,6 +674,17 @@ defmodule Dhc.Auth do
 
   defp transaction_result({:ok, result}), do: {:ok, result}
   defp transaction_result({:error, _reason}), do: {:error, :invalid}
+
+  # Deferred cross-table constraint triggers may reject at COMMIT rather than
+  # at Repo.insert/2. OAuth callers must still receive the same neutral result
+  # and never an exception that distinguishes a collision from an unknown
+  # account or failed proof.
+  defp safe_discord_transaction(fun) do
+    Repo.transaction(fun)
+  rescue
+    Postgrex.Error -> {:error, :invalid}
+    Ecto.ConstraintError -> {:error, :invalid}
+  end
 
   @doc """
   Loads the access projection for a Principal: current roles and the
