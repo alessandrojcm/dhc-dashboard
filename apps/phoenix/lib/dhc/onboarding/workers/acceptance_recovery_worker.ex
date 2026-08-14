@@ -13,8 +13,10 @@ defmodule Dhc.Onboarding.Workers.AcceptanceRecoveryWorker do
     case Onboarding.recover_acceptance(attempt_id) do
       :ok -> :ok
       {:ok, _state} -> :ok
-      :discard -> :discard
-      {:error, _reason} -> {:snooze, 60}
+      :discard -> {:cancel, :attempt_not_found}
+      {:error, :operation_in_progress} -> {:snooze, 30}
+      {:error, :payment_not_started} -> {:cancel, :payment_not_started}
+      {:error, reason} -> {:error, reason}
     end
   end
 end

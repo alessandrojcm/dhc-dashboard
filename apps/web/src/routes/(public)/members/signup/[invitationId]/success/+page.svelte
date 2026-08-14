@@ -7,8 +7,8 @@ import { Button } from "$lib/components/ui/button";
 <Alert.Root variant="success" class="w-full">
 	<Alert.Title>Thank You for Joining!</Alert.Title>
 	<Alert.Description>
-		Your membership has been successfully processed. Welcome to Dublin Hema
-		Club! Sign in with your membership email to continue.
+		Your membership has been created. You are not signed in. Continue to the
+		normal sign-in page with your membership email.
 	</Alert.Description>
-	<Button href={resolve("/auth")} class="mt-2 w-fit">Sign In</Button>
+	<Button href={resolve("/auth")} class="mt-2 w-fit">Go to sign in</Button>
 </Alert.Root>

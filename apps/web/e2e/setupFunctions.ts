@@ -11,7 +11,14 @@ import {
 import { deleteE2EFixture, seedE2EScenario } from "./e2eApi";
 import type { E2ERole } from "./e2eApi";
 
-export const stripeClient = new stripe(process.env.STRIPE_SECRET_KEY || "", {
+const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+if (!stripeSecretKey?.startsWith("sk_test_")) {
+	throw new Error(
+		"Stripe E2E helpers require a non-empty test-mode STRIPE_SECRET_KEY (sk_test_...).",
+	);
+}
+
+export const stripeClient = new stripe(stripeSecretKey, {
 	apiVersion: "2025-10-29.clover",
 });
 

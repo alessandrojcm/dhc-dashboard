@@ -1,6 +1,9 @@
 import { expect, test } from "@playwright/test";
+import { createHmac } from "node:crypto";
 import {
+	API_BASE_URL,
 	auditInvitationAcceptance,
+	clearOnboardingFinalizationInterruption,
 	deleteE2EFixture,
 	finishInvitationAcceptanceProbe,
 	interruptNextOnboardingFinalization,
@@ -98,11 +101,10 @@ async function expectUnsignedCompletedAcceptance(
 		{ timeout: 30_000 },
 	);
 	await expect(
-		page.getByText(
-			"Your membership has been successfully processed. Welcome to Dublin Hema Club! Sign in with your membership email to continue.",
-		),
+		page.getByText("Your membership has been created."),
 	).toBeVisible();
-	await expect(page.getByRole("link", { name: "Sign In" })).toBeVisible();
+	await expect(page.getByText("You are not signed in.")).toBeVisible();
+	await expect(page.getByRole("link", { name: "Go to sign in" })).toBeVisible();
 
 	const cookies = await context.cookies();
 	expect(cookies.some((cookie) => cookie.name === "_dhc_session")).toBe(false);
@@ -113,7 +115,7 @@ async function expectUnsignedCompletedAcceptance(
 
 	await expect
 		.poll(() => auditInvitationAcceptance(invitationId))
-		.toEqual({
+		.toMatchObject({
 			sessionTokenCount: 0,
 			magicLinkTokenCount: 0,
 			principalCount: 1,
@@ -364,8 +366,25 @@ test("recovers a real Stripe acceptance interrupted before local finalization", 
 	page,
 }) => {
 	const invitation = await setupInvitedUser();
+	let coupon:
+		| Awaited<ReturnType<typeof stripeClient.coupons.create>>
+		| undefined;
+	let promotion:
+		| Awaited<ReturnType<typeof stripeClient.promotionCodes.create>>
+		| undefined;
 
 	try {
+		coupon = await stripeClient.coupons.create({
+			percent_off: 10,
+			duration: "once",
+			name: "Protected acceptance recovery E2E",
+		});
+		promotion = await stripeClient.promotionCodes.create({
+			promotion: { coupon: coupon.id, type: "coupon" },
+			code: `RECOVERY-${Date.now()}`,
+			max_redemptions: 2,
+		});
+
 		await reachDiscordVerified(page, {
 			invitationId: invitation.invitationId,
 			email: invitation.email,
@@ -377,8 +396,9 @@ test("recovers a real Stripe acceptance interrupted before local finalization", 
 			invitation,
 			"Katherine Johnson",
 			"0838774532",
+			promotion.code,
 		);
-		await interruptNextOnboardingFinalization();
+		await interruptNextOnboardingFinalization(invitation.invitationId);
 		await page.getByRole("button", { name: "Sign up" }).click();
 
 		await expect
@@ -393,58 +413,76 @@ test("recovers a real Stripe acceptance interrupted before local finalization", 
 				monthlySubscriptionCount: 1,
 				annualSubscriptionCount: 1,
 			});
+		const customers = await stripeClient.customers.list({
+			email: invitation.email,
+			limit: 2,
+		});
+		const subscriptions = await stripeClient.subscriptions.list({
+			customer: customers.data[0].id,
+			status: "all",
+			limit: 10,
+		});
+		const webhookPayload = JSON.stringify({
+			id: `evt_recovery_${Date.now()}`,
+			type: "customer.subscription.updated",
+			data: { object: subscriptions.data[0] },
+		});
+		const timestamp = Math.floor(Date.now() / 1000);
+		const signature = createHmac(
+			"sha256",
+			"whsec_test_signing_key_for_webhook_verification",
+		)
+			.update(`${timestamp}.${webhookPayload}`)
+			.digest("hex");
+		const webhookResponse = await fetch(`${API_BASE_URL}/webhooks/stripe`, {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				"stripe-signature": `t=${timestamp},v1=${signature}`,
+			},
+			body: webhookPayload,
+		});
+		expect(webhookResponse.ok).toBe(true);
+
+		await expect
+			.poll(
+				async () =>
+					JSON.stringify(
+						await auditInvitationAcceptance(invitation.invitationId),
+					),
+				{ timeout: 30_000 },
+			)
+			.toContain('"completedAttemptCount":1');
+		expect(
+			await auditInvitationAcceptance(invitation.invitationId),
+		).toMatchObject({
+			completedAttemptCount: 1,
+			memberProfileCount: 1,
+			discordIdentityCount: 1,
+		});
 		await page.reload();
 		await expect(
-			page.getByRole("heading", { name: "Payment in progress" }),
+			page.getByText("Your membership has been created."),
 		).toBeVisible();
-		await expect(
-			page.getByText(
-				"Your Discord account remains verified. You will not need to connect it again.",
-			),
-		).toBeVisible();
-		await expect(
-			page.getByRole("link", { name: "Retry completion" }),
-		).toBeVisible();
-
-		expect(await auditInvitationAcceptance(invitation.invitationId)).toEqual({
-			sessionTokenCount: 0,
-			magicLinkTokenCount: 0,
-			principalCount: 0,
-			userProfileCount: 0,
-			memberRoleCount: 0,
-			discordIdentityCount: 0,
-			memberProfileCount: 0,
-			attemptCount: 1,
-			provisionedAttemptCount: 1,
-			completedAttemptCount: 0,
-			declinedAttemptCount: 0,
-			continuationCount: 1,
-			subjectClaimCount: 1,
-			stripeCustomerCount: 1,
-			monthlySubscriptionCount: 1,
-			annualSubscriptionCount: 1,
-		});
-
-		await page.getByRole("link", { name: "Retry completion" }).click();
 		await expectUnsignedCompletedAcceptance(
 			page,
 			context,
 			invitation.invitationId,
 		);
 
-		const customers = await stripeClient.customers.list({
-			email: invitation.email,
-			limit: 2,
-		});
 		expect(customers.data).toHaveLength(1);
-		const subscriptions = await stripeClient.subscriptions.list({
-			customer: customers.data[0].id,
-			status: "all",
-			limit: 10,
-		});
 		expect(subscriptions.data).toHaveLength(2);
 	} finally {
-		await invitation.cleanUp();
+		await clearOnboardingFinalizationInterruption(invitation.invitationId);
+		try {
+			if (promotion)
+				await stripeClient.promotionCodes.update(promotion.id, {
+					active: false,
+				});
+			if (coupon) await stripeClient.coupons.del(coupon.id);
+		} finally {
+			await invitation.cleanUp();
+		}
 	}
 });
 
@@ -456,18 +494,24 @@ test("completes a complimentary Discord-bound Invitation Acceptance without auth
 		email: `complimentary-discord-acceptance-${Date.now()}@example.com`,
 		dateOfBirth: new Date("1990-01-01T00:00:00.000Z"),
 	});
-	const coupon = await stripeClient.coupons.create({
-		percent_off: 100,
-		duration: "forever",
-		name: "Protected acceptance complimentary E2E",
-	});
-	const promotion = await stripeClient.promotionCodes.create({
-		promotion: { coupon: coupon.id, type: "coupon" },
-		code: `COMPLIMENTARY-${Date.now()}`,
-		max_redemptions: 2,
-	});
+	let coupon:
+		| Awaited<ReturnType<typeof stripeClient.coupons.create>>
+		| undefined;
+	let promotion:
+		| Awaited<ReturnType<typeof stripeClient.promotionCodes.create>>
+		| undefined;
 
 	try {
+		coupon = await stripeClient.coupons.create({
+			percent_off: 100,
+			duration: "forever",
+			name: "Protected acceptance complimentary E2E",
+		});
+		promotion = await stripeClient.promotionCodes.create({
+			promotion: { coupon: coupon.id, type: "coupon" },
+			code: `COMPLIMENTARY-${Date.now()}`,
+			max_redemptions: 2,
+		});
 		await reachDiscordVerified(page, {
 			invitationId: invitation.invitationId,
 			email: invitation.email,
@@ -490,8 +534,11 @@ test("completes a complimentary Discord-bound Invitation Acceptance without auth
 		);
 	} finally {
 		try {
-			await stripeClient.promotionCodes.update(promotion.id, { active: false });
-			await stripeClient.coupons.del(coupon.id);
+			if (promotion)
+				await stripeClient.promotionCodes.update(promotion.id, {
+					active: false,
+				});
+			if (coupon) await stripeClient.coupons.del(coupon.id);
 		} finally {
 			await invitation.cleanUp();
 		}

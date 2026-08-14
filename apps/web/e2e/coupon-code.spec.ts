@@ -453,13 +453,11 @@ test.describe("Member Signup - Coupon Codes", () => {
 				);
 
 				await page.getByRole("button", { name: /sign up/i }).click();
+				await expect(page.getByText(/You are not signed in\./)).toBeVisible({
+					timeout: 30_000,
+				});
 				await expect(
-					page.getByText(
-						"Your membership has been successfully processed. Welcome to Dublin Hema Club! Sign in with your membership email to continue.",
-					),
-				).toBeVisible({ timeout: 30_000 });
-				await expect(
-					page.getByRole("link", { name: "Sign In" }),
+					page.getByRole("link", { name: "Go to sign in" }),
 				).toHaveAttribute("href", "/auth");
 
 				if (coupon.promotionId) {

@@ -324,6 +324,62 @@ defmodule Dhc.OnboardingTest do
     assert args == %{}
   end
 
+  test "acceptance recovery enqueues uniquely with only the Attempt identifier" do
+    attempt_id = Ecto.UUID.generate()
+    args = %{"attempt_id" => attempt_id}
+
+    assert {:ok, _job} = Oban.insert(AcceptanceRecoveryWorker.new(args))
+    assert {:ok, _same_job} = Oban.insert(AcceptanceRecoveryWorker.new(args))
+
+    assert [%{args: ^args}] = all_enqueued(worker: AcceptanceRecoveryWorker)
+  end
+
+  test "Stripe reconciliation advances a unique scheduled recovery" do
+    original_delay = Application.get_env(:dhc, :acceptance_recovery_delay_seconds)
+    Application.put_env(:dhc, :acceptance_recovery_delay_seconds, 1)
+
+    on_exit(fn ->
+      if is_nil(original_delay) do
+        Application.delete_env(:dhc, :acceptance_recovery_delay_seconds)
+      else
+        Application.put_env(:dhc, :acceptance_recovery_delay_seconds, original_delay)
+      end
+    end)
+
+    invitation = insert_invitation!()
+
+    assert {:ok, _started} =
+             Onboarding.start_acceptance(
+               invitation.id,
+               invitation.email,
+               Date.to_iso8601(invitation.date_of_birth)
+             )
+
+    attempt =
+      invitation.id
+      |> then(&Repo.get_by!(InvitationAcceptanceAttempt, invitation_id: &1))
+      |> Ecto.Changeset.change(
+        status: "payment_pending",
+        stripe_customer_id: "cus_reconcile_scheduled"
+      )
+      |> Repo.update!()
+
+    args = %{"attempt_id" => attempt.id}
+
+    assert {:ok, original_job} =
+             args
+             |> AcceptanceRecoveryWorker.new(schedule_in: 30)
+             |> Oban.insert()
+
+    assert :ok = Onboarding.reconcile_stripe_event(%{"customer" => attempt.stripe_customer_id})
+
+    assert [%{id: job_id, scheduled_at: scheduled_at}] =
+             all_enqueued(worker: AcceptanceRecoveryWorker, args: args)
+
+    assert job_id == original_job.id
+    assert DateTime.before?(scheduled_at, original_job.scheduled_at)
+  end
+
   test "verified Continue is single-use and atomically finalizes the paid Discord-bound Member" do
     invitation = insert_invitation!()
 
@@ -994,7 +1050,7 @@ defmodule Dhc.OnboardingTest do
 
     refute_received {:provision_membership, %{confirmation_token: "ctok_corrected"}}
 
-    assert {:snooze, 60} =
+    assert {:error, :stripe_unavailable} =
              perform_job(AcceptanceRecoveryWorker, %{"attempt_id" => attempt.id})
 
     Application.put_env(:dhc, :onboarding_stripe_cancel_result, :ok)
@@ -1023,6 +1079,7 @@ defmodule Dhc.OnboardingTest do
                original_attrs
              )
 
+    assert_received {:prepare_payment, "WELCOME"}
     assert_received {:provision_membership, %{confirmation_token: "ctok_original"}}
     Application.put_env(:dhc, :onboarding_stripe_result, {:ok, %{}})
 
@@ -1039,6 +1096,8 @@ defmodule Dhc.OnboardingTest do
                }
              )
 
+    refute_received {:prepare_payment, "CHANGED"}
+
     assert_received {:provision_membership,
                      %{
                        confirmation_token: "ctok_original",
@@ -1051,8 +1110,9 @@ defmodule Dhc.OnboardingTest do
 
     attempt = Repo.get_by!(InvitationAcceptanceAttempt, invitation_id: invitation.id)
     assert attempt.status == "completed"
-    assert attempt.acceptance_data["next_of_kin_name"] == "Updated Kin"
-    assert attempt.acceptance_data["payment"]["confirmation_token"] == "ctok_original"
+    assert attempt.acceptance_data["next_of_kin_name"] == "Next of Kin"
+    refute Map.has_key?(attempt.acceptance_data, "payment")
+    assert attempt.stripe_state["payment_plan"]["promotion_code_id"] == "promo_onboarding"
   end
 
   test "a live-shaped Stripe customer rejection closes the attempt" do
@@ -1087,7 +1147,7 @@ defmodule Dhc.OnboardingTest do
                attrs
              )
 
-    assert %InvitationAcceptanceAttempt{status: "processing", concluded_at: nil} =
+    assert %InvitationAcceptanceAttempt{status: "payment_pending", concluded_at: nil} =
              Repo.get_by!(InvitationAcceptanceAttempt, invitation_id: invitation.id)
 
     Application.put_env(:dhc, :onboarding_stripe_result, {:ok, %{}})
@@ -1221,12 +1281,126 @@ defmodule Dhc.OnboardingTest do
     assert Repo.get!(Invitation, invitation.id).status == "pending"
   end
 
+  test "secure acceptance reuses the waitlist UserProfile and preserves intake data" do
+    invitation =
+      insert_waitlist_invitation!(
+        first_name: "IntakeFirst",
+        last_name: "IntakeLast",
+        gender: "non-binary",
+        pronouns: "they/them",
+        phone_number: "+353871234567",
+        social_media_consent: "yes_recognizable",
+        medical_conditions: "asthma"
+      )
+
+    continuation_id = continuation_for(invitation)
+
+    assert {:ok, %{member_id: member_id}} =
+             Onboarding.accept(invitation.id, continuation_id, "Next of Kin", "+353810000001", %{
+               confirmation_token: "ctok_waitlist_reuse"
+             })
+
+    profiles = Repo.all(from(up in UserProfile, where: up.waitlist_id == ^invitation.waitlist_id))
+    assert [reused] = profiles
+    assert reused.principal_id == member_id
+    assert reused.is_active
+    assert reused.customer_id == "cus_onboarding"
+    assert reused.first_name == "IntakeFirst"
+    assert reused.last_name == "IntakeLast"
+    assert reused.date_of_birth == ~D[1990-01-01]
+    assert reused.gender == "non-binary"
+    assert reused.pronouns == "they/them"
+    assert reused.phone_number == "+353871234567"
+    assert reused.social_media_consent == "yes_recognizable"
+    assert reused.medical_conditions == "asthma"
+    assert Repo.get!(MemberProfile, member_id).user_profile_id == reused.id
+  end
+
+  test "secure acceptance preserves the guardian linked to the waitlist UserProfile" do
+    invitation = insert_waitlist_invitation!(guardian: true)
+    profile = Repo.get_by!(UserProfile, waitlist_id: invitation.waitlist_id)
+    continuation_id = continuation_for(invitation)
+
+    assert {:ok, %{member_id: _member_id}} =
+             Onboarding.accept(invitation.id, continuation_id, "Next of Kin", "+353810000001", %{
+               confirmation_token: "ctok_waitlist_guardian"
+             })
+
+    assert [["Parent", "Guardian"]] =
+             Repo.query!(
+               "SELECT first_name, last_name FROM waitlist_guardians WHERE profile_id = $1",
+               [Ecto.UUID.dump!(profile.id)]
+             ).rows
+
+    assert Repo.aggregate(
+             from(up in UserProfile, where: up.waitlist_id == ^invitation.waitlist_id),
+             :count
+           ) == 1
+  end
+
   defp insert_invitation! do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
     %Invitation{
       email: "onboarding-#{System.unique_integer([:positive])}@example.com",
       prospective_principal_id: Ecto.UUID.generate(),
+      status: "pending",
+      expires_at: DateTime.add(now, 7, :day),
+      invitation_type: "member",
+      first_name: "Ada",
+      last_name: "Lovelace",
+      phone_number: "+353810000000",
+      date_of_birth: ~D[1990-01-01]
+    }
+    |> Repo.insert!()
+  end
+
+  defp insert_waitlist_invitation!(attrs) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    waitlist_id = Ecto.UUID.generate()
+
+    Repo.insert!(%Dhc.Waitlist.WaitlistEntry{
+      id: waitlist_id,
+      email: "waitlist-onboarding-#{System.unique_integer([:positive])}@example.com",
+      status: "invited",
+      initial_registration_date: now,
+      last_status_change: now
+    })
+
+    waitlist = Repo.get!(Dhc.Waitlist.WaitlistEntry, waitlist_id)
+    profile_id = Ecto.UUID.generate()
+
+    Repo.insert!(%UserProfile{
+      id: profile_id,
+      waitlist_id: waitlist_id,
+      first_name: Keyword.get(attrs, :first_name, "IntakeFirst"),
+      last_name: Keyword.get(attrs, :last_name, "IntakeLast"),
+      is_active: false,
+      date_of_birth: ~D[1990-01-01],
+      gender: Keyword.get(attrs, :gender, "man (cis)"),
+      pronouns: Keyword.get(attrs, :pronouns),
+      phone_number: Keyword.get(attrs, :phone_number, "+353810000000"),
+      social_media_consent: Keyword.get(attrs, :social_media_consent, "no"),
+      medical_conditions: Keyword.get(attrs, :medical_conditions)
+    })
+
+    if Keyword.get(attrs, :guardian, false) do
+      Repo.insert_all("waitlist_guardians", [
+        %{
+          id: Ecto.UUID.dump!(Ecto.UUID.generate()),
+          profile_id: Ecto.UUID.dump!(profile_id),
+          first_name: "Parent",
+          last_name: "Guardian",
+          phone_number: "+353 1 111 1111",
+          created_at: now
+        }
+      ])
+    end
+
+    %Invitation{
+      email: waitlist.email,
+      prospective_principal_id: Ecto.UUID.generate(),
+      waitlist_id: waitlist_id,
       status: "pending",
       expires_at: DateTime.add(now, 7, :day),
       invitation_type: "member",

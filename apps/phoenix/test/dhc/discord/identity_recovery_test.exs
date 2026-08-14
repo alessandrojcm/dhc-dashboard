@@ -537,7 +537,8 @@ defmodule Dhc.Discord.IdentityRecoveryTest do
         second_approver.principal_id,
         receipt,
         destination.principal_id,
-        incoming_subject
+        incoming_subject,
+        context.now
       )
       |> Map.put("evidence_references", ["support-said-so"])
 
