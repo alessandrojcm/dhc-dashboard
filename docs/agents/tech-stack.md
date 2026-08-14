@@ -19,6 +19,7 @@
 - **Language**: Elixir 1.18.4, Erlang/OTP 27
 - **Database**: Ecto 3.13 + Postgrex (shared Postgres with Supabase)
 - **Background Jobs**: Oban 2.22.1 (replaces pgmq + pg_cron)
+- **Dev email catching**: Mailpit (compose `mailpit` service); `Dhc.Email.Worker` relays non-prod email jobs to it via `gen_smtp` 1.3 as plain JSON. See [commands.md](commands.md) for the dev workflow.
 - **Authentication target**: Phoenix 1.8 generated authentication (`mix phx.gen.auth`) with Assent 0.3.1 for Discord OAuth; DHC-owned Postgres principals, identities, tokens, and sessions replace Supabase Auth after the specified cutover
 - **API Style**: JSON API via Phoenix controllers, spec-first with OpenAPI
 - **Error Tracking**: Sentry 13.0.1 via `sentry` package + `hackney`

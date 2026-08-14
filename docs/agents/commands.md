@@ -20,9 +20,9 @@ After activation, `node`, `elixir`, `mix`, `pnpm` etc. resolve to the versions p
 
 ```bash
 # Dev (start in order)
-docker compose up -d db     # 1. Start PostgreSQL
-mise run phx-server         # 2. Phoenix API and Oban workers
-mise run dev                # 3. SvelteKit dev from apps/web
+docker compose up -d db mailpit   # 1. Start PostgreSQL + Mailpit (dev email catcher)
+mise run phx-server               # 2. Phoenix API and Oban workers
+mise run dev                      # 3. SvelteKit dev from apps/web
 
 # Testing
 mise run test-unit          # Vitest
@@ -42,6 +42,17 @@ Playwright starts its Phoenix and SvelteKit processes through the internal
 `e2e-phoenix-server` and `e2e-web-server` mise tasks. Their task-local environment
 is the source of truth for E2E server settings; do not duplicate those variables
 in `playwright.config.ts` command strings.
+
+## Dev email catching (Mailpit)
+
+The compose file ships a `mailpit` service (`axllent/mailpit`). In dev, the
+email worker (`Dhc.Email.Worker`) relays every email job to it over SMTP
+instead of calling the Loops API — the raw payload (recipient, template name,
+data variables) arrives as pretty-printed JSON, since only Loops can render
+the real templates. Web UI at `http://localhost:8025`, SMTP on
+`localhost:1025` (override with `MAILPIT_HOST`/`MAILPIT_PORT`). Messages are
+in-memory and lost on container restart. A stopped Mailpit container is not an
+error: delivery failures log a warning and the job still succeeds.
 
 ## Phoenix (in progress)
 

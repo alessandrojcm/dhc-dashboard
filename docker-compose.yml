@@ -19,6 +19,15 @@ services:
     volumes:
       - dhc_postgres_data:/var/lib/postgresql/data
 
+  # Local dev email catcher. The Phoenix email worker relays every non-prod
+  # email job here as plain JSON. Web UI at http://localhost:8025, SMTP on
+  # localhost:1025. Messages are held in memory and are lost on restart.
+  mailpit:
+    image: axllent/mailpit:v1.30
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
   # Disposable testcontainers database. The dynamic host port and absence of
   # a named volume keep concurrent and repeated Phoenix test runs isolated.
   test-db:
