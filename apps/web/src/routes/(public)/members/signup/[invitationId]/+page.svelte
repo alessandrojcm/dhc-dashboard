@@ -8,7 +8,7 @@ import PaymentStatus from "./payment-status.svelte";
 const { data } = $props();
 </script>
 
-{#if data.state === "awaitingDiscord"}
+{#if data.state === "awaiting_oauth"}
 	<AwaitingDiscord />
 {:else if data.state === "discordVerified"}
 	<DiscordVerified {data} discord={data.discord} />

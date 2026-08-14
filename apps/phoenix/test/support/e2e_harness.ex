@@ -14,6 +14,7 @@ defmodule Dhc.E2EHarness do
   alias Dhc.Inventory.Items
   alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.MemberFixtures
+  alias Dhc.Onboarding.InvitationAcceptanceAttempt
   alias Dhc.Onboarding.InvitationAcceptanceAttempts
   alias Dhc.Onboarding.InvitationAcceptanceAttempt
   alias Dhc.Onboarding.InvitationAcceptanceDiscordContinuation
@@ -28,6 +29,7 @@ defmodule Dhc.E2EHarness do
 
   def reset! do
     Dhc.E2EOnboardingFinalizer.reset!()
+    _ = Dhc.OnboardingE2EStripeAdapter.finish_probe()
 
     %{rows: [[tables]]} =
       Ecto.Adapters.SQL.query!(
@@ -54,6 +56,74 @@ defmodule Dhc.E2EHarness do
     ])
 
     :ok
+  end
+
+  def start_onboarding_isolation_probe,
+    do: Dhc.OnboardingE2EStripeAdapter.start_probe()
+
+  def invitation_acceptance_assertion(invitation_id) do
+    invitation = Repo.get!(Invitation, invitation_id)
+    principal_id = invitation.prospective_principal_id
+    attempt = Repo.get_by!(InvitationAcceptanceAttempt, invitation_id: invitation_id)
+
+    %{
+      attempts:
+        Repo.aggregate(
+          from(attempt in InvitationAcceptanceAttempt,
+            where: attempt.invitation_id == ^invitation_id
+          ),
+          :count
+        ),
+      continuations:
+        Repo.aggregate(
+          from(continuation in InvitationAcceptanceDiscordContinuation,
+            where: continuation.invitation_id == ^invitation_id
+          ),
+          :count
+        ),
+      externalIdentities:
+        Repo.aggregate(
+          from(identity in Dhc.Auth.ExternalIdentity,
+            where: identity.principal_id == ^principal_id
+          ),
+          :count
+        ),
+      magicLinksOrSessions:
+        Repo.aggregate(
+          from(token in PrincipalToken, where: token.principal_id == ^principal_id),
+          :count
+        ),
+      memberProfiles:
+        Repo.aggregate(
+          from(profile in MemberProfile, where: profile.id == ^principal_id),
+          :count
+        ),
+      obanJobs:
+        Repo.aggregate(
+          from(job in "oban_jobs",
+            where: fragment("?->>'attempt_id' = ?", field(job, :args), ^attempt.id)
+          ),
+          :count
+        ),
+      principals:
+        Repo.aggregate(
+          from(principal in Dhc.Auth.Principal, where: principal.id == ^principal_id),
+          :count
+        ),
+      roles:
+        Repo.aggregate(
+          from(role in UserRole, where: role.principal_id == ^principal_id),
+          :count
+        ),
+      stripeCustomerId: attempt.stripe_customer_id,
+      stripeInvocations: Dhc.OnboardingE2EStripeAdapter.finish_probe(),
+      stripeState: attempt.stripe_state,
+      userProfiles:
+        Repo.aggregate(
+          from(profile in UserProfile, where: profile.principal_id == ^principal_id),
+          :count
+        )
+    }
   end
 
   def seed("member", attrs) do

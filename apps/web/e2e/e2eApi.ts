@@ -215,11 +215,11 @@ export async function fetchE2EHarness(
 async function harnessRequest<T>(
 	path: string,
 	body: unknown,
-	method: "PATCH" | "POST" = "POST",
+	method: "GET" | "PATCH" | "POST" = "POST",
 ): Promise<T> {
 	const response = await fetchE2EHarness(path, {
 		method,
-		body: JSON.stringify(body),
+		body: method === "GET" ? undefined : JSON.stringify(body),
 	});
 
 	if (!response.ok) {
@@ -233,6 +233,35 @@ async function harnessRequest<T>(
 
 export async function resetE2EState() {
 	return harnessRequest<{ data: { reset: true } }>("/reset", {});
+}
+
+export async function startOnboardingIsolationProbe() {
+	return harnessRequest<{ data: { started: true } }>(
+		"/probes/onboarding-isolation",
+		{},
+	);
+}
+
+export type InvitationAcceptanceAssertion = {
+	attempts: number;
+	continuations: number;
+	externalIdentities: number;
+	magicLinksOrSessions: number;
+	memberProfiles: number;
+	obanJobs: number;
+	principals: number;
+	roles: number;
+	stripeCustomerId: string | null;
+	stripeInvocations: string[];
+	stripeState: Record<string, unknown>;
+	userProfiles: number;
+};
+
+export async function finishInvitationAcceptanceProbe(invitationId: string) {
+	const response = await harnessRequest<{
+		data: InvitationAcceptanceAssertion;
+	}>(`/assertions/invitation-acceptance/${invitationId}`, {}, "GET");
+	return response.data;
 }
 
 export async function seedE2EScenario<S extends E2EScenarioName>(

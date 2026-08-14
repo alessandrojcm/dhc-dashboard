@@ -23,8 +23,8 @@ const invitationId = $derived(page.params.invitationId);
 let { isVerified = $bindable(false) } = $props();
 initForm(validateInvitation, () => {
 	return {
-		email: page.url.searchParams.get("email") || "",
-		dateOfBirth: page.url.searchParams.get("dateOfBirth") || "",
+		email: "",
+		dateOfBirth: "",
 	};
 });
 // Date picker value — force UTC to avoid ±1 day timezone drift
@@ -92,7 +92,7 @@ const dobValue = $derived.by(() => {
 						id={fieldProps.name}
 						placeholder="Enter your email address"
 					/>
-					{#each validateInvitation.fields.email.issues() as issue}
+					{#each validateInvitation.fields.email.issues() as issue (issue.message)}
 						<Field.Error>{issue.message}</Field.Error>
 					{/each}
 				</Field.Field>
@@ -115,7 +115,7 @@ const dobValue = $derived.by(() => {
 							validateInvitation.fields.dateOfBirth.set(`${y}-${m}-${d}`);
 						}}
 					/>
-					{#each validateInvitation.fields.dateOfBirth.issues() as issue}
+					{#each validateInvitation.fields.dateOfBirth.issues() as issue (issue.message)}
 						<Field.Error>{issue.message}</Field.Error>
 					{/each}
 				</Field.Field>

@@ -22,11 +22,11 @@ defmodule DhcWeb.OnboardingControllerTest do
     end)
   end
 
-  test "starts and refreshes the safe awaiting-Discord state without conversion", %{conn: conn} do
+  test "starts and refreshes the safe awaiting-OAuth state through a signed cookie", %{conn: conn} do
     invitation = invitation_fixture()
 
     conn =
-      post(conn, "/api/onboarding/acceptance", %{
+      post(conn, "/api/onboarding/invitation-acceptance/verify", %{
         "invitationId" => invitation.id,
         "email" => invitation.email,
         "dateOfBirth" => Date.to_iso8601(invitation.date_of_birth)
@@ -34,40 +34,43 @@ defmodule DhcWeb.OnboardingControllerTest do
 
     assert %{
              "data" => %{
-               "state" => "awaitingDiscord"
+               "state" => "awaiting_oauth"
              }
            } =
              json_response(conn, 200)
 
-    [continuation_id] = get_resp_header(conn, "x-onboarding-continuation")
+    refute Map.has_key?(json_response(conn, 200)["data"], "continuationId")
+
+    assert %{http_only: true, same_site: "Lax", secure: false, value: _continuation_id} =
+             conn.resp_cookies["_dhc_onboarding_acceptance"]
 
     refreshed =
-      conn()
-      |> put_req_header("x-onboarding-continuation", continuation_id)
-      |> get("/api/onboarding/acceptance")
+      conn
+      |> recycle()
+      |> get("/api/onboarding/invitation-acceptance")
 
-    assert %{"data" => %{"state" => "awaitingDiscord"}} = json_response(refreshed, 200)
+    assert %{"data" => %{"state" => "awaiting_oauth"}} = json_response(refreshed, 200)
 
     duplicate_without_proof =
-      post(conn(), "/api/onboarding/acceptance", %{
+      post(conn(), "/api/onboarding/invitation-acceptance/verify", %{
         "invitationId" => invitation.id,
         "email" => invitation.email,
         "dateOfBirth" => Date.to_iso8601(invitation.date_of_birth)
       })
 
-    assert %{"data" => %{"state" => "restartVerification"}} =
-             json_response(duplicate_without_proof, 422)
+    assert %{"data" => %{"state" => "restart_verification"}} =
+             json_response(duplicate_without_proof, 409)
 
     resumed =
-      conn()
-      |> put_req_header("x-onboarding-continuation", continuation_id)
-      |> post("/api/onboarding/acceptance", %{
+      conn
+      |> recycle()
+      |> post("/api/onboarding/invitation-acceptance/verify", %{
         "invitationId" => invitation.id,
         "email" => invitation.email,
         "dateOfBirth" => Date.to_iso8601(invitation.date_of_birth)
       })
 
-    assert %{"data" => %{"state" => "awaitingDiscord"}} = json_response(resumed, 200)
+    assert %{"data" => %{"state" => "awaiting_oauth"}} = json_response(resumed, 200)
     assert Repo.aggregate(InvitationAcceptanceAttempt, :count) == 1
 
     assert %InvitationAcceptanceAttempt{
@@ -485,34 +488,34 @@ defmodule DhcWeb.OnboardingControllerTest do
     invitation = invitation_fixture()
 
     invalid =
-      post(conn, "/api/onboarding/acceptance", %{
+      post(conn, "/api/onboarding/invitation-acceptance/verify", %{
         "invitationId" => invitation.id,
         "email" => "wrong@example.com",
         "dateOfBirth" => "1990-01-01"
       })
 
-    assert %{"data" => %{"state" => "restartVerification"}} = json_response(invalid, 422)
+    assert %{"data" => %{"state" => "restart_verification"}} = json_response(invalid, 422)
 
-    assert %{"data" => %{"state" => "restartVerification"}} =
-             get(conn(), "/api/onboarding/acceptance") |> json_response(422)
+    assert %{"data" => %{"state" => "restart_verification"}} =
+             get(conn(), "/api/onboarding/invitation-acceptance") |> json_response(409)
 
     malformed_start =
-      post(conn(), "/api/onboarding/acceptance", %{
+      post(conn(), "/api/onboarding/invitation-acceptance/verify", %{
         "invitationId" => "not-an-id",
         "email" => invitation.email,
         "dateOfBirth" => "1990-01-01"
       })
 
-    assert %{"data" => %{"state" => "restartVerification"}} =
+    assert %{"data" => %{"state" => "restart_verification"}} =
              json_response(malformed_start, 422)
 
     malformed_proof =
       conn()
-      |> put_req_header("x-onboarding-continuation", "not-an-id")
-      |> get("/api/onboarding/acceptance")
+      |> put_req_cookie("_dhc_onboarding_acceptance", "not-a-signed-cookie")
+      |> get("/api/onboarding/invitation-acceptance")
 
-    assert %{"data" => %{"state" => "restartVerification"}} =
-             json_response(malformed_proof, 422)
+    assert %{"data" => %{"state" => "restart_verification"}} =
+             json_response(malformed_proof, 409)
   end
 
   test "expired, replay-ineligible, and converted Invitations return the same safe state", %{
@@ -528,13 +531,13 @@ defmodule DhcWeb.OnboardingControllerTest do
 
     for invitation <- invitations do
       response =
-        post(conn, "/api/onboarding/acceptance", %{
+        post(conn, "/api/onboarding/invitation-acceptance/verify", %{
           "invitationId" => invitation.id,
           "email" => invitation.email,
           "dateOfBirth" => Date.to_iso8601(invitation.date_of_birth)
         })
 
-      assert %{"data" => %{"state" => "restartVerification"}} = json_response(response, 422)
+      assert %{"data" => %{"state" => "restart_verification"}} = json_response(response, 422)
     end
 
     refute Repo.exists?(InvitationAcceptanceAttempt)

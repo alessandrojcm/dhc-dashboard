@@ -58,6 +58,19 @@ defmodule DhcWeb.E2EHarnessController do
     end)
   end
 
+  def start_onboarding_isolation_probe(conn, _params) do
+    with_harness(conn, fn conn ->
+      :ok = E2EHarness.start_onboarding_isolation_probe()
+      json(conn, %{data: %{started: true}})
+    end)
+  end
+
+  def invitation_acceptance_assertion(conn, %{"id" => invitation_id}) do
+    with_harness(conn, fn conn ->
+      json(conn, %{data: E2EHarness.invitation_acceptance_assertion(invitation_id)})
+    end)
+  end
+
   def delete_fixture(conn, %{"type" => type, "id" => id}) do
     with_harness(conn, fn conn ->
       E2EHarness.delete_fixture(type, id)

@@ -591,9 +591,9 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /onboarding/acceptance:
+  /onboarding/invitation-acceptance/verify:
     post:
-      operationId: onboarding.startAcceptance
+      operationId: onboarding.verifyInvitationAcceptance
       tags: [Onboarding]
       summary: Verify Invitation credentials and begin protected acceptance
       description: |
@@ -601,14 +601,9 @@ paths:
         one active Acceptance Attempt and its awaiting-Discord Continuation.
         This starts no OAuth or Stripe work and creates no Principal, identity,
         Membership, role, magic link, or DHC Session. The browser retains the
-        opaque server references in its protected session only.
+        opaque server references in its secure HttpOnly cookie only. The
+        Continuation identifier is never returned in the response view.
       security: []
-      parameters:
-        - name: x-onboarding-continuation
-          in: header
-          required: false
-          description: Existing protected browser proof required to resume a live Continuation.
-          schema: { type: string, format: uuid }
       requestBody:
         required: true
         content:
@@ -627,25 +622,29 @@ paths:
               schema:
                 $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
         "422":
-          description: Credentials or Invitation are not eligible; safe restart state
+          description: Malformed or invalid Invitation credentials; safe restart state
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+        "409":
+          description: A live flow exists but this browser has no valid proof
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+
+  /onboarding/invitation-acceptance:
     get:
-      operationId: onboarding.showAcceptance
+      operationId: onboarding.showInvitationAcceptance
       tags: [Onboarding]
       summary: Read the protected acceptance state
       description: |
         Reads state only from opaque references held in the protected browser
         session. Missing, expired, or mismatched proof returns restart
         verification and never accepts an Invitation identifier from the caller.
-      security: []
-      parameters:
-        - name: x-onboarding-continuation
-          in: header
-          required: false
-          schema: { type: string, format: uuid }
+      security:
+        - onboardingAcceptanceSession: []
       responses:
         "200":
           description: Safe protected acceptance state
@@ -653,7 +652,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
-        "422":
+        "409":
           description: Browser proof is missing or no longer eligible
           content:
             application/json:
@@ -4148,6 +4147,13 @@ components:
         Opaque proof held only in the SvelteKit HTTP-only browser session.
         It authorizes access to one pre-payment Invitation Acceptance and must
         never be exposed to browser JavaScript, URLs, analytics, or response bodies.
+    onboardingAcceptanceSession:
+      type: apiKey
+      in: cookie
+      name: _dhc_onboarding_acceptance
+      description: |
+        Short-lived signed HttpOnly browser proof for one Invitation Acceptance.
+        It is transport state only and is never a DHC authenticated Session.
   parameters:
     WorkshopId:
       name: workshopId
@@ -4196,9 +4202,11 @@ components:
               type: string
               enum:
                 - awaitingDiscord
+                - awaiting_oauth
                 - discordVerified
                 - discordCollision
                 - restartVerification
+                - restart_verification
                 - paymentPending
                 - accepted
             invitationEmail:
@@ -4221,6 +4229,9 @@ components:
         avatarUrl:
           type: string
           format: uri
+            expiresAt:
+              type: string
+              format: date-time
     InvitationCreateRequest:
       type: object
       required:

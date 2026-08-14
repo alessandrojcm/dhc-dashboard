@@ -1,15 +1,18 @@
 import {
 	invitationsAccept,
 	onboardingContinueAcceptance,
-	onboardingStartAcceptance,
+	onboardingVerifyInvitationAcceptance,
 } from "@dhc/api-client";
 import { error, isRedirect, redirect } from "@sveltejs/kit";
 import dayjs from "dayjs";
-import { dev } from "$app/environment";
 import { form, getRequestEvent } from "$app/server";
 import { inviteValidationSchema } from "$lib/schemas/inviteValidationSchema";
 import { memberSignupSchema } from "$lib/schemas/membersSignup";
 import { apiBaseUrl } from "$lib/server/api-client";
+import {
+	onboardingApiClientOptions,
+	relayOnboardingAcceptanceCookie,
+} from "$lib/server/onboarding-api";
 import logger from "$lib/server/services/shared/logger";
 
 const invitationAcceptanceTimeout = 60_000;
@@ -24,15 +27,8 @@ export const validateInvitation = form(inviteValidationSchema, async (data) => {
 	if (!invitationId) {
 		throw new Error("Invitation ID is required");
 	}
-	const protectedContinuation = event.cookies.get(
-		`onboarding-acceptance-${invitationId}`,
-	);
-
-	const response = await onboardingStartAcceptance({
-		baseUrl: apiBaseUrl(),
-		headers: protectedContinuation
-			? { "x-onboarding-continuation": protectedContinuation }
-			: undefined,
+	const response = await onboardingVerifyInvitationAcceptance({
+		...onboardingApiClientOptions(event.cookies),
 		body: {
 			invitationId,
 			email: data.email,
@@ -41,27 +37,24 @@ export const validateInvitation = form(inviteValidationSchema, async (data) => {
 	});
 
 	const protectedState = response.data?.data;
+	const rawResponse = response.response;
 	if (
 		response.error ||
-		protectedState?.state !== "awaitingDiscord" ||
-		!response.response?.headers.get("x-onboarding-continuation")
+		protectedState?.state !== "awaiting_oauth" ||
+		!rawResponse
 	) {
 		return { success: false, verified: false };
 	}
 
-	event.cookies.set(
-		`onboarding-acceptance-${invitationId}`,
-		response.response.headers.get("x-onboarding-continuation")!,
-		{
-			expires: new Date(Date.now() + 60 * 15 * 1000),
-			// Remote forms submit to /_app/remote, so the protected proof must be
-			// available outside the page route while remaining HTTP-only.
-			path: "/",
-			httpOnly: true,
-			secure: !dev,
-			sameSite: "lax",
-		},
-	);
+	if (
+		!relayOnboardingAcceptanceCookie(
+			event.cookies,
+			rawResponse.headers,
+			invitationId,
+		)
+	) {
+		return { success: false, verified: false };
+	}
 
 	return { success: true, verified: true };
 });

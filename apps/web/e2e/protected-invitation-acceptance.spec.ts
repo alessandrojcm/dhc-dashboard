@@ -2,9 +2,12 @@ import { expect, test } from "@playwright/test";
 import {
 	auditInvitationAcceptance,
 	deleteE2EFixture,
+	finishInvitationAcceptanceProbe,
 	interruptNextOnboardingFinalization,
 	seedE2EScenario,
+	startOnboardingIsolationProbe,
 } from "./e2eApi";
+import { fillInvitationCredentials } from "./invitationSignup";
 import {
 	routeSuccessfulDiscordAcceptance,
 	setupInvitedUser,
@@ -139,6 +142,8 @@ test("starts a protected Invitation Acceptance without starting Stripe or a dash
 	const stripeRequests: string[] = [];
 	const browserRequestPayloads: string[] = [];
 	await routeSuccessfulDiscordAcceptance(page, invitation.invitationId);
+	let probeFinished = false;
+	let testFailed = false;
 
 	page.on("request", (request) => {
 		browserRequestPayloads.push(
@@ -149,10 +154,13 @@ test("starts a protected Invitation Acceptance without starting Stripe or a dash
 	});
 
 	try {
-		await page.goto(
-			`/members/signup/${invitation.invitationId}?email=${encodeURIComponent(invitation.email)}&dateOfBirth=${invitation.dateOfBirth}`,
-		);
+		await startOnboardingIsolationProbe();
+		await page.goto(`/members/signup/${invitation.invitationId}`);
+		await page.waitForLoadState("networkidle");
+		await fillInvitationCredentials(page, invitation);
 		await page.getByRole("button", { name: "Verify Invitation" }).click();
+		expect(page.url()).not.toContain(invitation.email);
+		expect(page.url()).not.toContain(invitation.dateOfBirth);
 
 		await expect(page.getByText("Create your membership")).toBeVisible();
 		await expect(
@@ -165,8 +173,8 @@ test("starts a protected Invitation Acceptance without starting Stripe or a dash
 		).toBeVisible();
 		expect(stripeRequests).toEqual([]);
 		const cookies = await context.cookies();
-		const proof = cookies.find((cookie) =>
-			cookie.name.startsWith("onboarding-acceptance-"),
+		const proof = cookies.find(
+			(cookie) => cookie.name === "_dhc_onboarding_acceptance",
 		);
 		expect(proof).toMatchObject({
 			httpOnly: true,
@@ -194,9 +202,29 @@ test("starts a protected Invitation Acceptance without starting Stripe or a dash
 					)
 					.join("\n"),
 			);
+		expect(proof.value).not.toContain(invitation.invitationId);
 		expect(cookies.some((cookie) => cookie.name === "_dhc_session")).toBe(
 			false,
 		);
+
+		const isolation = await finishInvitationAcceptanceProbe(
+			invitation.invitationId,
+		);
+		probeFinished = true;
+		expect(isolation).toEqual({
+			attempts: 1,
+			continuations: 1,
+			externalIdentities: 0,
+			magicLinksOrSessions: 0,
+			memberProfiles: 0,
+			obanJobs: 0,
+			principals: 0,
+			roles: 0,
+			stripeCustomerId: null,
+			stripeInvocations: [],
+			stripeState: {},
+			userProfiles: 0,
+		});
 
 		await page.reload();
 		await expect(
@@ -247,8 +275,35 @@ test("starts a protected Invitation Acceptance without starting Stripe or a dash
 				cookie.name.startsWith("onboarding-acceptance-"),
 			),
 		).toBe(false);
+		const browserStorage = await page.evaluate(() => ({
+			local: Object.entries(localStorage),
+			session: Object.entries(sessionStorage),
+		}));
+		const storageKeys = [
+			...browserStorage.local.map(([key]) => key),
+			...browserStorage.session.map(([key]) => key),
+		];
+		const serializedStorage = JSON.stringify(browserStorage);
+		expect(storageKeys.join(" ")).not.toMatch(
+			/onboarding|acceptance|continuation|attempt/i,
+		);
+		expect(serializedStorage).not.toContain(invitation.invitationId);
+		expect(serializedStorage).not.toContain(invitation.email);
+		expect(serializedStorage).not.toContain(invitation.dateOfBirth);
+	} catch (error) {
+		testFailed = true;
+		throw error;
 	} finally {
-		await deleteE2EFixture("invitation", invitation.invitationId);
+		if (!probeFinished) {
+			await finishInvitationAcceptanceProbe(invitation.invitationId).catch(
+				() => undefined,
+			);
+		}
+		await deleteE2EFixture("invitation", invitation.invitationId).catch(
+			(error) => {
+				if (!testFailed) throw error;
+			},
+		);
 	}
 });
 
