@@ -29,10 +29,8 @@ let { value, onDateChange, minValue, maxValue, name, id, label }: Props =
 	$props();
 let open = $state(false);
 
-// Derive the ISO string value for form submission
-const formValue = $derived(
-	value ? value.toDate(getLocalTimeZone()).toISOString() : "",
-);
+// DatePicker is used for calendar dates (birthdays, resume dates), not instants.
+const formValue = $derived(value?.toString() ?? "");
 </script>
 
 <div>

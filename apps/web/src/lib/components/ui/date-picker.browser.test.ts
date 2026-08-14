@@ -1,4 +1,8 @@
-import { CalendarDate } from "@internationalized/date";
+import {
+	CalendarDate,
+	resetLocalTimeZone,
+	setLocalTimeZone,
+} from "@internationalized/date";
 import { expect, test, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
@@ -41,4 +45,23 @@ test("opens the calendar popover without an initial date", async () => {
 	await userEvent.click(screen.getByRole("button", { name: "Select a date" }));
 
 	await expect.element(screen.getByLabelText("Select a year")).toBeVisible();
+});
+
+test("submits a date-only value without timezone conversion", async () => {
+	setLocalTimeZone("Europe/Dublin");
+
+	try {
+		const screen = await render(DatePicker, {
+			value: new CalendarDate(2001, 4, 15),
+			onDateChange: vi.fn(),
+			name: "dateOfBirth",
+		});
+
+		const hiddenInput = screen.container.querySelector<HTMLInputElement>(
+			'input[type="hidden"][name="dateOfBirth"]',
+		);
+		expect(hiddenInput?.value).toBe("2001-04-15");
+	} finally {
+		resetLocalTimeZone();
+	}
 });

@@ -25,7 +25,7 @@ export const load: PageServerLoad = async ({ params, cookies }) => {
 	if (response.data?.data?.state === "accepted") {
 		setSignInPrefill(cookies, response.data.data.invitationEmail);
 		cookies.delete(onboardingAcceptanceCookie, {
-			path: `/members/signup/${params.invitationId}`,
+			path: "/",
 		});
 		throw redirect(303, `/members/signup/${params.invitationId}/success`);
 	}

@@ -194,6 +194,8 @@ defmodule Dhc.Invitations do
     Repo.transaction(fn ->
       now = DateTime.utc_now() |> DateTime.truncate(:second)
 
+      lock_discord_conversion_advisories!(invitation_id, continuation_id)
+
       invitation =
         from(i in Invitation,
           where: i.id == ^invitation_id and i.status == "pending",
@@ -327,14 +329,6 @@ defmodule Dhc.Invitations do
   defp lock_discord_conversion!(nil, _invitation, _attempt), do: nil
 
   defp lock_discord_conversion!(continuation_id, invitation, attempt) do
-    continuation = Repo.get(InvitationAcceptanceDiscordContinuation, continuation_id)
-
-    if is_nil(continuation) or is_nil(continuation.provider_subject),
-      do: Repo.rollback(:invalid_continuation)
-
-    DiscordSubjectLock.lock_principal!(invitation.prospective_principal_id)
-    DiscordSubjectLock.lock!(continuation.provider_subject)
-
     continuation =
       from(c in InvitationAcceptanceDiscordContinuation,
         where:
@@ -358,6 +352,23 @@ defmodule Dhc.Invitations do
     if is_nil(claim), do: Repo.rollback(:invalid_continuation)
 
     %{continuation: continuation, claim: claim}
+  end
+
+  defp lock_discord_conversion_advisories!(_invitation_id, nil), do: :ok
+
+  defp lock_discord_conversion_advisories!(invitation_id, continuation_id) do
+    invitation = Repo.get(Invitation, invitation_id)
+
+    if is_nil(invitation), do: Repo.rollback(:invalid_invitation)
+
+    DiscordSubjectLock.lock_principal!(invitation.prospective_principal_id)
+
+    continuation = Repo.get(InvitationAcceptanceDiscordContinuation, continuation_id)
+
+    if is_nil(continuation) or is_nil(continuation.provider_subject),
+      do: Repo.rollback(:invalid_continuation)
+
+    DiscordSubjectLock.lock!(continuation.provider_subject)
   end
 
   defp rename_avatar_metadata(%{"avatarUrl" => avatar_url} = metadata) do

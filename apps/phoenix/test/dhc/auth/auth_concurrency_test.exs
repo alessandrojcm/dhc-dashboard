@@ -10,6 +10,7 @@ defmodule Dhc.AuthConcurrencyTest do
     AssignmentReviewExecution,
     AssignmentStageExecution,
     AssignmentStageResult,
+    RosterExecution,
     RosterReceipt,
     StagedAssignment,
     StagedAssignmentAuditEvent
@@ -263,24 +264,43 @@ defmodule Dhc.AuthConcurrencyTest do
       )
     end
 
-    Repo.delete_all(from(r in AssignmentStageResult, where: r.assignment_id == ^assignment.id))
-    Repo.delete_all(from(a in StagedAssignment, where: a.id == ^assignment.id))
+    immutable_receipt_tables = [
+      "discord_assignment_stage_results",
+      "discord_assignment_review_executions",
+      "discord_assignment_stage_executions",
+      "discord_roster_receipts"
+    ]
 
-    if assignment.review_execution_id do
+    Enum.each(immutable_receipt_tables, fn table ->
+      Repo.query!("ALTER TABLE #{table} DISABLE TRIGGER ale217_reject_receipt_mutation")
+    end)
+
+    try do
+      Repo.delete_all(from(r in AssignmentStageResult, where: r.assignment_id == ^assignment.id))
+      Repo.delete_all(from(a in StagedAssignment, where: a.id == ^assignment.id))
+
+      if assignment.review_execution_id do
+        Repo.delete_all(
+          from(e in AssignmentReviewExecution, where: e.id == ^assignment.review_execution_id)
+        )
+      end
+
       Repo.delete_all(
-        from(e in AssignmentReviewExecution, where: e.id == ^assignment.review_execution_id)
+        from(e in AssignmentStageExecution, where: e.id == ^assignment.stage_execution_id)
       )
+
+      Repo.delete_all(from(r in RosterReceipt, where: r.id == ^capture.id))
+
+      if capture.preflight_receipt_id do
+        Repo.delete_all(from(r in RosterReceipt, where: r.id == ^capture.preflight_receipt_id))
+      end
+    after
+      Enum.each(immutable_receipt_tables, fn table ->
+        Repo.query!("ALTER TABLE #{table} ENABLE TRIGGER ale217_reject_receipt_mutation")
+      end)
     end
 
-    Repo.delete_all(
-      from(e in AssignmentStageExecution, where: e.id == ^assignment.stage_execution_id)
-    )
-
-    Repo.delete_all(from(r in RosterReceipt, where: r.id == ^capture.id))
-
-    if capture.preflight_receipt_id do
-      Repo.delete_all(from(r in RosterReceipt, where: r.id == ^capture.preflight_receipt_id))
-    end
+    Repo.delete_all(from(e in RosterExecution, where: e.id == ^capture.execution_id))
 
     [assignment.prepared_by_principal_id, assignment.approved_by_principal_id]
     |> Enum.reject(&is_nil/1)

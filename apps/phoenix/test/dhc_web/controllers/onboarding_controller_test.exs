@@ -85,8 +85,8 @@ defmodule DhcWeb.OnboardingControllerTest do
     refute Repo.exists?(Dhc.Auth.ExternalIdentity)
     refute Repo.exists?(Dhc.Auth.PrincipalToken)
     refute Repo.exists?(Dhc.Auth.UserRole)
-    refute Repo.exists?(UserProfile)
-    refute Repo.exists?(MemberProfile)
+    refute Repo.get_by(UserProfile, principal_id: invitation.prospective_principal_id)
+    refute Repo.get(MemberProfile, invitation.prospective_principal_id)
     refute Repo.exists?("oban_jobs")
   end
 

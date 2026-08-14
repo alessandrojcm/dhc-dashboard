@@ -46,16 +46,27 @@ export const validateInvitation = form(inviteValidationSchema, async (data) => {
 		protectedState?.state !== "awaiting_oauth" ||
 		!rawResponse
 	) {
+		logger.warn("[validateInvitation] Verification response rejected", {
+			invitationId,
+			status: rawResponse?.status,
+			state: protectedState?.state,
+			hasApiError: Boolean(response.error),
+			hasResponse: Boolean(rawResponse),
+		});
 		return { success: false, verified: false };
 	}
 
-	if (
-		!relayOnboardingAcceptanceCookie(
-			event.cookies,
-			rawResponse.headers,
+	const cookieRelayed = relayOnboardingAcceptanceCookie(
+		event.cookies,
+		rawResponse.headers,
+	);
+
+	if (!cookieRelayed) {
+		logger.warn("[validateInvitation] Acceptance cookie was not relayed", {
 			invitationId,
-		)
-	) {
+			status: rawResponse.status,
+			hasSetCookieHeader: rawResponse.headers.has("set-cookie"),
+		});
 		return { success: false, verified: false };
 	}
 
@@ -79,7 +90,7 @@ export const restartDiscordVerification = form(v.object({}), async () => {
 	}
 
 	event.cookies.delete(onboardingAcceptanceCookie, {
-		path: `/members/signup/${invitationId}`,
+		path: "/",
 	});
 	redirect(303, `/members/signup/${invitationId}`);
 });
@@ -185,7 +196,7 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 		}
 
 		event.cookies.delete(onboardingAcceptanceCookie, {
-			path: `/members/signup/${invitationId}`,
+			path: "/",
 		});
 		throw redirect(303, `/members/signup/${invitationId}/success`);
 	} catch (err) {

@@ -1,5 +1,5 @@
 <script lang="ts">
-import { fromDate } from "@internationalized/date";
+import { parseDate } from "@internationalized/date";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
 import { ArrowRightIcon } from "@lucide/svelte";
@@ -37,7 +37,7 @@ const dobValue = $derived.by(() => {
 	) {
 		return undefined;
 	}
-	return fromDate(dayjs.utc(dob).toDate(), "UTC");
+	return parseDate(dob);
 });
 </script>
 

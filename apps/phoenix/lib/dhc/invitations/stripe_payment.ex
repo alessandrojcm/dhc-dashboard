@@ -235,7 +235,8 @@ defmodule Dhc.Invitations.StripePayment do
              attrs
            ),
          :ok <- report_subscription_progress(attrs, :monthly, monthly),
-         :ok <- maybe_confirm_first_invoice(monthly, payment_method_id, plan, attrs),
+         monthly_outcome <- maybe_confirm_first_invoice(monthly, payment_method_id, plan, attrs),
+         :ok <- continue_after_payment_outcome(monthly_outcome),
          :ok <- report_progress(attrs, %{"monthly_confirmed" => true}),
          {:ok, annual} <-
            ensure_subscription(
@@ -248,11 +249,23 @@ defmodule Dhc.Invitations.StripePayment do
              attrs
            ),
          :ok <- report_subscription_progress(attrs, :annual, annual),
-         :ok <- maybe_confirm_first_invoice(annual, payment_method_id, plan, attrs),
+         annual_outcome <- maybe_confirm_first_invoice(annual, payment_method_id, plan, attrs),
+         :ok <- continue_after_payment_outcome(annual_outcome),
          :ok <- report_progress(attrs, %{"annual_confirmed" => true}) do
-      :ok
+      combine_payment_outcomes(monthly_outcome, annual_outcome)
     end
   end
+
+  defp continue_after_payment_outcome(:ok), do: :ok
+
+  defp continue_after_payment_outcome({:pending, %{"payment_intent_status" => "processing"}}),
+    do: :ok
+
+  defp continue_after_payment_outcome(outcome), do: outcome
+
+  defp combine_payment_outcomes(:ok, :ok), do: :ok
+  defp combine_payment_outcomes(_monthly, {:pending, _state} = annual), do: annual
+  defp combine_payment_outcomes({:pending, _state} = monthly, :ok), do: monthly
 
   defp ensure_subscription(
          kind,

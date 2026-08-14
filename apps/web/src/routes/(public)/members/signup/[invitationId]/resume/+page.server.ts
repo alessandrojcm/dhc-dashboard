@@ -32,7 +32,7 @@ export const load: PageServerLoad = async ({ params, cookies }) => {
 				);
 			}
 			cookies.delete(onboardingAcceptanceCookie, {
-				path: `/members/signup/${params.invitationId}`,
+				path: "/",
 			});
 			throw redirect(303, `/members/signup/${params.invitationId}/success`);
 		}

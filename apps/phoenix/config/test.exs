@@ -114,8 +114,9 @@ if e2e_server? do
     queues: [invitations: 1, stripe: 1]
 end
 
-# Print only warnings and errors during test
-config :logger, level: :warning
+# Keep normal test output quiet, but expose Phoenix request and application logs
+# when Playwright owns the E2E server lifecycle.
+config :logger, level: if(e2e_server?, do: :info, else: :warning)
 
 # Initialize plugs at runtime for faster test compilation
 config :phoenix, :plug_init_mode, :runtime
