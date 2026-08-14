@@ -85,6 +85,32 @@ defmodule DhcWeb.AuthSessionControllerTest do
   end
 
   describe "GET /api/auth/discord/callback" do
+    test "promotes an approved assignment through the ordinary callback and sets a Session" do
+      principal = active_principal("assigned-member@example.com")
+
+      assignment =
+        Dhc.DiscordAssignmentFixtures.approved_assignment_fixture(
+          principal.id,
+          "discord-request-success"
+        )
+
+      conn =
+        conn()
+        |> get("/api/auth/discord")
+        |> recycle()
+        |> get("/api/auth/discord/callback?state=test-state&code=success")
+
+      assert redirected_to(conn, 302) == "http://localhost:5173/dashboard"
+      assert conn.resp_cookies[@session_cookie]
+
+      assert Repo.get_by!(Dhc.Auth.ExternalIdentity,
+               provider: "discord",
+               provider_subject: "discord-request-success"
+             ).principal_id == principal.id
+
+      assert Repo.get!(Dhc.Discord.StagedAssignment, assignment.id).state == "promoted"
+    end
+
     test "links a verified Discord identity, sets a Phoenix Session, and redirects to dashboard" do
       principal = active_principal("discord-request@example.com")
 

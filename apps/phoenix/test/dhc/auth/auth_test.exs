@@ -4,6 +4,8 @@ defmodule Dhc.AuthTest do
   alias Dhc.Auth
   alias Dhc.Auth.Principal
   alias Dhc.Auth.PrincipalToken
+  alias Dhc.Auth.ExternalIdentity
+  alias Dhc.Discord.{StagedAssignment, StagedAssignmentAuditEvent}
   alias Dhc.Repo
 
   import Dhc.AuthFixtures
@@ -375,6 +377,147 @@ defmodule Dhc.AuthTest do
   end
 
   describe "sign_in_with_discord/1" do
+    test "promotes an approved exact-subject assignment before establishing a session" do
+      principal = active_principal_fixture(email: "assigned@example.com")
+      subject = "discord-approved-assignment"
+
+      assignment =
+        Dhc.DiscordAssignmentFixtures.approved_assignment_fixture(principal.id, subject,
+          username_snapshot: "mutable-name"
+        )
+
+      other = active_principal_fixture(email: "discord-profile@example.com")
+
+      assert {:ok, %{principal: signed_in, session_token: session_token}} =
+               Auth.sign_in_with_discord(%{
+                 "sub" => subject,
+                 "email" => other.email,
+                 "email_verified" => true,
+                 "preferred_username" => "different-name",
+                 "username" => "another-name",
+                 "nickname" => "not-a-selector",
+                 "avatar" => "not-a-selector"
+               })
+
+      assert signed_in.id == principal.id
+      assert {:ok, %{id: principal_id}} = Auth.get_principal_by_session_token(session_token)
+      assert principal_id == principal.id
+
+      identity = Repo.get_by!(ExternalIdentity, provider: "discord", provider_subject: subject)
+      assert identity.principal_id == principal.id
+      assert Repo.get!(StagedAssignment, assignment.id).state == "promoted"
+
+      assert Repo.aggregate(
+               from(e in StagedAssignmentAuditEvent,
+                 where: e.assignment_id == ^assignment.id and e.action == "promoted"
+               ),
+               :count
+             ) == 1
+    end
+
+    test "an inactive Member keeps a promoted identity but receives no session" do
+      principal = inactive_principal_fixture(email: "inactive-assigned@example.com")
+      subject = "discord-inactive-assignment"
+
+      assignment =
+        Dhc.DiscordAssignmentFixtures.approved_assignment_fixture(principal.id, subject)
+
+      assert {:error, :invalid} = Auth.sign_in_with_discord(%{"sub" => subject})
+
+      assert Repo.get_by!(ExternalIdentity, provider: "discord", provider_subject: subject).principal_id ==
+               principal.id
+
+      assert Repo.get!(StagedAssignment, assignment.id).state == "promoted"
+
+      refute Repo.exists?(
+               from(t in PrincipalToken,
+                 where: t.principal_id == ^principal.id and t.context == "session"
+               )
+             )
+
+      profile = Repo.get_by!(Dhc.UserProfiles.UserProfile, principal_id: principal.id)
+      assert :ok = Auth.apply_member_access(profile.id, true)
+
+      refute Repo.exists?(
+               from(t in PrincipalToken,
+                 where: t.principal_id == ^principal.id and t.context == "session"
+               )
+             )
+
+      assert {:ok, %{session_token: _}} = Auth.sign_in_with_discord(%{"sub" => subject})
+    end
+
+    test "unapproved and malformed subjects have neutral outcomes without mutation" do
+      principal = active_principal_fixture(email: "unapproved@example.com")
+      subject = "discord-unapproved-assignment"
+
+      assignment =
+        Dhc.DiscordAssignmentFixtures.approved_assignment_fixture(principal.id, subject)
+
+      assignment
+      |> Ecto.Changeset.change(
+        state: "withdrawn",
+        terminal_at: DateTime.utc_now(),
+        terminal_actor_principal_id: principal.id,
+        reason_code: "operator_withdrawal"
+      )
+      |> Repo.update!()
+
+      for claims <- [
+            %{"sub" => subject, "email" => principal.email, "email_verified" => false},
+            %{"sub" => "unknown-subject"},
+            %{"sub" => ""},
+            %{"sub" => nil},
+            %{"username" => "reviewed-user", "email" => principal.email}
+          ] do
+        assert {:error, :invalid} = Auth.sign_in_with_discord(claims)
+      end
+
+      assert Repo.get!(StagedAssignment, assignment.id).state == "withdrawn"
+      refute Repo.exists?(from(i in ExternalIdentity, where: i.principal_id == ^principal.id))
+      refute Repo.exists?(from(t in PrincipalToken, where: t.principal_id == ^principal.id))
+    end
+
+    test "a failed promotion rolls back identity, state, and promotion audit" do
+      principal = active_principal_fixture(email: "rollback-assigned@example.com")
+      subject = "discord-rollback-assignment"
+
+      assignment =
+        Dhc.DiscordAssignmentFixtures.approved_assignment_fixture(principal.id, subject)
+
+      function_name = "ale218_fail_promotion_#{System.unique_integer([:positive])}"
+
+      Repo.query!("""
+      CREATE FUNCTION #{function_name}() RETURNS trigger AS $$
+      BEGIN
+        IF NEW.assignment_id = '#{assignment.id}'::uuid AND NEW.action = 'promoted' THEN
+          RAISE EXCEPTION 'forced promotion audit failure';
+        END IF;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+      """)
+
+      Repo.query!("""
+      CREATE TRIGGER #{function_name}
+        BEFORE INSERT ON staged_discord_assignment_audit_events
+        FOR EACH ROW EXECUTE FUNCTION #{function_name}();
+      """)
+
+      assert {:error, :invalid} = Auth.sign_in_with_discord(%{"sub" => subject})
+      assert Repo.get!(StagedAssignment, assignment.id).state == "approved"
+      refute Repo.get_by(ExternalIdentity, provider: "discord", provider_subject: subject)
+
+      assert Repo.aggregate(
+               from(e in StagedAssignmentAuditEvent,
+                 where: e.assignment_id == ^assignment.id and e.action == "promoted"
+               ),
+               :count
+             ) == 0
+
+      refute Repo.exists?(from(t in PrincipalToken, where: t.principal_id == ^principal.id))
+    end
+
     test "a linked provider subject signs its active Principal in" do
       principal = active_principal_fixture(email: "linked@example.com")
 
