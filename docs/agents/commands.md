@@ -79,31 +79,37 @@ manifest that identifies the binding by UUID plus its support-safe fingerprint:
 
 ```bash
 cd apps/phoenix
-DISCORD_IDENTITY_RECOVERY_MANIFEST_KEY=... \
+DISCORD_IDENTITY_RECOVERY_MANIFEST_KEYS='{"OPERATOR_PRINCIPAL_UUID":"distinct-manifest-key"}' \
+DISCORD_IDENTITY_RECOVERY_OPERATOR_PROOF_KEYS='{"OPERATOR_PRINCIPAL_UUID":"distinct-proof-key"}' \
 DISCORD_SUBJECT_FINGERPRINT_KEY=... \
-mix dhc.discord.identity_recovery open /secure/path/recovery-manifest.json
+mix dhc.discord.identity_recovery open \
+  /secure/path/recovery-manifest.json \
+  /secure/path/operator-proof.json
 
 # After the case has case-bound Discord OAuth and destination magic-link proofs,
 # submit two separately signed approval manifests from distinct admin/president actors:
-DISCORD_IDENTITY_RECOVERY_MANIFEST_KEY=... \
+DISCORD_IDENTITY_RECOVERY_MANIFEST_KEYS='{"FIRST_APPROVER_PRINCIPAL_UUID":"distinct-first-key"}' \
 DISCORD_SUBJECT_FINGERPRINT_KEY=... \
 mix dhc.discord.identity_recovery approve /secure/path/first-approval.json
 
-DISCORD_IDENTITY_RECOVERY_MANIFEST_KEY=... \
+DISCORD_IDENTITY_RECOVERY_MANIFEST_KEYS='{"SECOND_APPROVER_PRINCIPAL_UUID":"distinct-second-key"}' \
 DISCORD_SUBJECT_FINGERPRINT_KEY=... \
 mix dhc.discord.identity_recovery approve /secure/path/second-approval.json
 
 # Atomically complete the approved replacement or transfer:
-DISCORD_IDENTITY_RECOVERY_MANIFEST_KEY=... \
 DISCORD_SUBJECT_FINGERPRINT_KEY=... \
 mix dhc.discord.identity_recovery complete DIR-CASE-REFERENCE
 ```
 
-The manifest must be fresh (five minutes), signed by the dedicated recovery key,
-and name an `admin` or `president` actor. The command prints only a support-safe
-case receipt and never accepts a raw Discord subject. Each approval must exactly
-match the case's source binding fingerprint, destination Principal UUID, incoming
-subject fingerprint, evidence references, and replacement/transfer operation.
+The manifest must be fresh (five minutes) and signed by the named operator's
+dedicated key. The separately authenticated operator-proof issuer signs a second fresh,
+single-use envelope containing the exact manifest digest, the same `admin` or
+`president` actor UUID, and a nonce. Reporter and evidence values are bounded
+opaque references such as `support-case:123` and `evidence:456`. The command
+prints only a support-safe case receipt and never accepts a raw Discord subject.
+Each approval must exactly match the case's source binding fingerprint,
+destination Principal UUID, incoming subject fingerprint, evidence references,
+and replacement/transfer operation.
 
 # Code quality
 mise run phx-format         # Format all Elixir files

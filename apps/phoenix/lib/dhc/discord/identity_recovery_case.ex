@@ -27,17 +27,7 @@ defmodule Dhc.Discord.IdentityRecoveryCase do
 
   def open_changeset(recovery_case, attrs) do
     recovery_case
-    |> cast(attrs, [
-      :external_identity_id,
-      :case_reference,
-      :state,
-      :reason_code,
-      :reporter_reference,
-      :binding_fingerprint,
-      :evidence_references,
-      :actor_principal_id,
-      :opened_at
-    ])
+    |> cast(attrs, [:reason_code, :reporter_reference, :evidence_references])
     |> validate_required([
       :external_identity_id,
       :case_reference,

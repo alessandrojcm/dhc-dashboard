@@ -74,6 +74,12 @@ defmodule Dhc.Repo.Migrations.Ale221CompleteDiscordIdentityRecovery do
       )
     )
 
+    drop_if_exists(
+      unique_index(:discord_identity_recovery_audit_events, [:recovery_case_id, :action])
+    )
+
+    create(index(:discord_identity_recovery_audit_events, [:recovery_case_id, :action]))
+
     create table(:discord_identity_recovery_proofs, primary_key: false) do
       add(:id, :uuid, primary_key: true, default: fragment("gen_random_uuid()"))
 
@@ -221,11 +227,145 @@ defmodule Dhc.Repo.Migrations.Ale221CompleteDiscordIdentityRecovery do
       )
     end
 
+    execute("""
+    CREATE OR REPLACE FUNCTION ale220_reject_recovery_case_mutation() RETURNS trigger AS $$
+    BEGIN
+      IF TG_OP = 'UPDATE'
+         AND OLD.state = 'open'
+         AND NEW.state = 'completed'
+         AND OLD.id IS NOT DISTINCT FROM NEW.id
+         AND OLD.external_identity_id IS NOT DISTINCT FROM NEW.external_identity_id
+         AND OLD.case_reference IS NOT DISTINCT FROM NEW.case_reference
+         AND OLD.reason_code IS NOT DISTINCT FROM NEW.reason_code
+         AND OLD.reporter_reference IS NOT DISTINCT FROM NEW.reporter_reference
+         AND OLD.binding_fingerprint IS NOT DISTINCT FROM NEW.binding_fingerprint
+         AND OLD.evidence_references IS NOT DISTINCT FROM NEW.evidence_references
+         AND OLD.actor_principal_id IS NOT DISTINCT FROM NEW.actor_principal_id
+         AND OLD.opened_at IS NOT DISTINCT FROM NEW.opened_at
+         AND OLD.created_at IS NOT DISTINCT FROM NEW.created_at
+         AND OLD.destination_principal_id IS NULL
+         AND OLD.incoming_subject_fingerprint IS NULL
+         AND OLD.operation IS NULL
+         AND OLD.completed_at IS NULL
+         AND NEW.destination_principal_id IS NOT NULL
+         AND NEW.incoming_subject_fingerprint IS NOT NULL
+         AND NEW.operation IN ('replacement', 'transfer')
+         AND NEW.completed_at IS NOT NULL THEN
+        RETURN NEW;
+      END IF;
+
+      RAISE EXCEPTION 'identity recovery cases are immutable except for valid completion'
+        USING ERRCODE = '23514', CONSTRAINT = 'discord_identity_recovery_cases_immutable';
+    END;
+    $$ LANGUAGE plpgsql;
+    """)
+
+    execute("""
+    CREATE FUNCTION ale221_append_recovery_proof_audit() RETURNS trigger AS $$
+    BEGIN
+      INSERT INTO discord_identity_recovery_audit_events
+        (id, recovery_case_id, action, actor_principal_id, created_at)
+      SELECT gen_random_uuid(), NEW.recovery_case_id,
+        CASE NEW.kind
+          WHEN 'discord_oauth' THEN 'discord_oauth_proved'
+          WHEN 'destination_magic_link' THEN 'destination_magic_link_proved'
+        END,
+        recovery_case.actor_principal_id,
+        NEW.created_at
+      FROM discord_identity_recovery_cases recovery_case
+      WHERE recovery_case.id = NEW.recovery_case_id;
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+    """)
+
+    execute("""
+    CREATE TRIGGER ale221_append_recovery_proof_audit
+      AFTER INSERT ON discord_identity_recovery_proofs
+      FOR EACH ROW EXECUTE FUNCTION ale221_append_recovery_proof_audit();
+    """)
+
+    execute("""
+    CREATE FUNCTION ale221_append_recovery_approval_audit() RETURNS trigger AS $$
+    BEGIN
+      INSERT INTO discord_identity_recovery_audit_events
+        (id, recovery_case_id, action, actor_principal_id, created_at)
+      VALUES
+        (gen_random_uuid(), NEW.recovery_case_id, 'approved', NEW.approver_principal_id, NEW.created_at);
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+    """)
+
+    execute("""
+    CREATE TRIGGER ale221_append_recovery_approval_audit
+      AFTER INSERT ON discord_identity_recovery_approvals
+      FOR EACH ROW EXECUTE FUNCTION ale221_append_recovery_approval_audit();
+    """)
+
+    execute("""
+    CREATE FUNCTION ale221_append_recovery_completion_audit() RETURNS trigger AS $$
+    DECLARE completion_actor uuid;
+    BEGIN
+      IF OLD.state = 'open' AND NEW.state = 'completed' THEN
+        SELECT approver_principal_id INTO completion_actor
+        FROM discord_identity_recovery_approvals
+        WHERE recovery_case_id = NEW.id
+        ORDER BY created_at, id
+        LIMIT 1;
+
+        INSERT INTO discord_identity_recovery_audit_events
+          (id, recovery_case_id, action, actor_principal_id, created_at)
+        VALUES
+          (gen_random_uuid(), NEW.id, 'completed', completion_actor, NEW.completed_at);
+      END IF;
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+    """)
+
+    execute("""
+    CREATE TRIGGER ale221_append_recovery_completion_audit
+      AFTER UPDATE ON discord_identity_recovery_cases
+      FOR EACH ROW EXECUTE FUNCTION ale221_append_recovery_completion_audit();
+    """)
+
     replace_ale217_binding_functions(true)
   end
 
   def down do
     replace_ale217_binding_functions(false)
+
+    execute(
+      "DROP TRIGGER IF EXISTS ale221_append_recovery_completion_audit ON discord_identity_recovery_cases"
+    )
+
+    execute("DROP FUNCTION IF EXISTS ale221_append_recovery_completion_audit()")
+
+    execute(
+      "DROP TRIGGER IF EXISTS ale221_append_recovery_approval_audit ON discord_identity_recovery_approvals"
+    )
+
+    execute("DROP FUNCTION IF EXISTS ale221_append_recovery_approval_audit()")
+
+    execute(
+      "DROP TRIGGER IF EXISTS ale221_append_recovery_proof_audit ON discord_identity_recovery_proofs"
+    )
+
+    execute("DROP FUNCTION IF EXISTS ale221_append_recovery_proof_audit()")
+
+    execute("""
+    CREATE OR REPLACE FUNCTION ale220_reject_recovery_case_mutation() RETURNS trigger AS $$
+    BEGIN
+      RAISE EXCEPTION 'identity recovery cases are immutable'
+        USING ERRCODE = '23514', CONSTRAINT = 'discord_identity_recovery_cases_immutable';
+    END;
+    $$ LANGUAGE plpgsql;
+    """)
+
+    drop_if_exists(index(:discord_identity_recovery_audit_events, [:recovery_case_id, :action]))
+
+    create(unique_index(:discord_identity_recovery_audit_events, [:recovery_case_id, :action]))
 
     for table <- [
           :discord_identity_binding_history,

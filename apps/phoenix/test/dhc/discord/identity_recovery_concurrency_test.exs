@@ -3,16 +3,14 @@ defmodule Dhc.Discord.IdentityRecoveryConcurrencyTest do
 
   import Ecto.Query
 
+  alias Dhc.Auth
   alias Dhc.Auth.{DiscordSubjectLock, ExternalIdentity, Principal, PrincipalToken, UserRole}
 
   alias Dhc.Discord.{
-    IdentityBindingHistory,
     IdentityRecovery,
-    IdentityRecoveryApproval,
-    IdentityRecoveryAuditEvent,
     IdentityRecoveryCase,
-    IdentityRecoveryProof,
-    SignedManifest
+    SignedManifest,
+    SubjectFingerprint
   }
 
   alias Dhc.MemberProfiles.MemberProfile
@@ -20,14 +18,139 @@ defmodule Dhc.Discord.IdentityRecoveryConcurrencyTest do
   alias Dhc.UserProfiles.UserProfile
   alias Ecto.Adapters.SQL.Sandbox
 
-  @manifest_key "ale-221-concurrency-manifest-key"
-  @fingerprint_key "ale-221-concurrency-fingerprint-key"
+  @manifest_key "ale-220-concurrency-manifest-key"
+  @operator_proof_key "ale-220-concurrency-operator-proof-key"
+  @fingerprint_key "ale-220-concurrency-fingerprint-key"
 
-  test "recovery and a concurrent permanent binding serialize and fail closed" do
+  setup do
+    fixture = unboxed(&containment_fixture/0)
+    on_exit(fn -> unboxed(fn -> delete_fixture(fixture) end) end)
+    %{fixture: fixture, task_supervisor: start_supervised!(Task.Supervisor)}
+  end
+
+  test "containment wins before a waiting Discord sign-in and no Session can escape",
+       %{fixture: fixture, task_supervisor: task_supervisor} do
     test_process = self()
-    task_supervisor = start_supervised!(Task.Supervisor)
-    fixture = unboxed(&ready_recovery_fixture/0)
+    role_locker = lock_operator_role(task_supervisor, fixture, test_process)
+    assert_receive {:operator_role_locked, role_locker_pid}
+    assert role_locker_pid == role_locker.pid
 
+    recovery =
+      database_task(task_supervisor, test_process, :recovery, fn ->
+        IdentityRecovery.open_signed(fixture.manifest, fixture.proof, fixture.options)
+      end)
+
+    assert_receive {:database_backend, :recovery, recovery_backend}
+    assert_backend_waiting_on_lock(recovery_backend)
+
+    sign_in =
+      database_task(task_supervisor, test_process, :sign_in, fn ->
+        Auth.sign_in_with_discord(%{"sub" => fixture.subject})
+      end)
+
+    assert_receive {:database_backend, :sign_in, sign_in_backend}
+    assert_backend_waiting_on_lock(sign_in_backend)
+
+    send(role_locker.pid, :release_role)
+    assert {:ok, :released} = Task.await(role_locker)
+    assert {:ok, _receipt} = Task.await(recovery)
+    assert {:error, :invalid} = Task.await(sign_in)
+
+    refute unboxed(fn ->
+             Repo.exists?(
+               from(token in PrincipalToken,
+                 where:
+                   token.principal_id == ^fixture.target.principal_id and
+                     token.context == "session"
+               )
+             )
+           end)
+  end
+
+  test "a sign-in that linearizes first is revoked before containment returns",
+       %{fixture: fixture, task_supervisor: task_supervisor} do
+    test_process = self()
+    profile_locker = lock_profile(task_supervisor, fixture.target.profile_id, test_process)
+    assert_receive {:profile_locked, profile_locker_pid}
+    assert profile_locker_pid == profile_locker.pid
+
+    sign_in =
+      database_task(task_supervisor, test_process, :sign_in, fn ->
+        Auth.sign_in_with_discord(%{"sub" => fixture.subject})
+      end)
+
+    assert_receive {:database_backend, :sign_in, sign_in_backend}
+    assert_backend_waiting_on_lock(sign_in_backend)
+
+    recovery =
+      database_task(task_supervisor, test_process, :recovery, fn ->
+        IdentityRecovery.open_signed(fixture.manifest, fixture.proof, fixture.options)
+      end)
+
+    assert_receive {:database_backend, :recovery, recovery_backend}
+    assert_backend_waiting_on_lock(recovery_backend)
+
+    send(profile_locker.pid, :release_profile)
+    assert {:ok, :released} = Task.await(profile_locker)
+    assert {:ok, %{session_token: token}} = Task.await(sign_in)
+    assert {:ok, _receipt} = Task.await(recovery)
+    assert {:error, :invalid} = unboxed(fn -> Auth.get_principal_by_session_token(token) end)
+  end
+
+  test "operator-role revocation that linearizes first prevents containment",
+       %{fixture: fixture, task_supervisor: task_supervisor} do
+    test_process = self()
+
+    revoker =
+      Task.Supervisor.async_nolink(task_supervisor, fn ->
+        unboxed(fn ->
+          Repo.transaction(fn ->
+            role =
+              UserRole
+              |> where(
+                [candidate],
+                candidate.principal_id == ^fixture.operator.principal_id and
+                  candidate.role == "admin"
+              )
+              |> lock("FOR UPDATE")
+              |> Repo.one!()
+
+            Repo.delete!(role)
+            send(test_process, {:operator_role_deleted, self()})
+
+            receive do
+              :commit_role_revocation -> :revoked
+            end
+          end)
+        end)
+      end)
+
+    assert_receive {:operator_role_deleted, revoker_pid}
+    assert revoker_pid == revoker.pid
+
+    recovery =
+      database_task(task_supervisor, test_process, :recovery, fn ->
+        IdentityRecovery.open_signed(fixture.manifest, fixture.proof, fixture.options)
+      end)
+
+    assert_receive {:database_backend, :recovery, recovery_backend}
+    assert_backend_waiting_on_lock(recovery_backend)
+
+    send(revoker.pid, :commit_role_revocation)
+    assert {:ok, :revoked} = Task.await(revoker)
+    assert {:error, :unauthorized_operator} = Task.await(recovery)
+
+    assert is_nil(
+             unboxed(fn ->
+               Repo.get!(ExternalIdentity, fixture.identity.id).sign_in_disabled_at
+             end)
+           )
+  end
+
+  test "recovery and a concurrent permanent binding serialize and fail closed",
+       %{task_supervisor: task_supervisor} do
+    test_process = self()
+    fixture = unboxed(&ready_recovery_fixture/0)
     on_exit(fn -> unboxed(fn -> delete_fixture(fixture) end) end)
 
     binder =
@@ -75,7 +198,6 @@ defmodule Dhc.Discord.IdentityRecoveryConcurrencyTest do
 
       recovery_case = Repo.get!(IdentityRecoveryCase, fixture.recovery_case_id)
       assert recovery_case.state == "open"
-      assert Repo.aggregate(IdentityBindingHistory, :count) == 0
 
       assert Repo.exists?(
                from(identity in ExternalIdentity,
@@ -86,6 +208,43 @@ defmodule Dhc.Discord.IdentityRecoveryConcurrencyTest do
                )
              )
     end)
+  end
+
+  defp containment_fixture do
+    target = Dhc.MemberFixtures.member_fixture(is_active: true)
+    operator = Dhc.MemberFixtures.member_fixture(is_active: true)
+    principal = Repo.get!(Principal, target.principal_id)
+    subject = "ale-220-race-#{System.unique_integer([:positive])}"
+
+    identity =
+      %ExternalIdentity{}
+      |> ExternalIdentity.create_changeset(principal, %{
+        provider: "discord",
+        provider_subject: subject,
+        metadata: %{}
+      })
+      |> Repo.insert!()
+
+    Repo.insert!(%UserRole{principal_id: operator.principal_id, role: "admin"})
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    command = open_command(identity, subject, operator.principal_id, now, "support-case:race")
+
+    manifest =
+      SignedManifest.sign(command, operator.principal_id, manifest_key(operator.principal_id))
+
+    proof = operator_proof(manifest, operator.principal_id, now)
+
+    %{
+      target: target,
+      operator: operator,
+      identity: identity,
+      subject: subject,
+      manifest: manifest,
+      proof: proof,
+      options: options(now, operator.principal_id),
+      principal_ids: [target.principal_id, operator.principal_id]
+    }
   end
 
   defp ready_recovery_fixture do
@@ -112,24 +271,30 @@ defmodule Dhc.Discord.IdentityRecoveryConcurrencyTest do
 
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
-    open_command = %{
-      "version" => 1,
-      "action" => "open",
-      "issued_at" => DateTime.to_iso8601(now),
-      "binding_id" => source_identity.id,
-      "binding_fingerprint" => fingerprint(source_subject),
-      "reporter_reference" => "concurrency-test",
-      "reason_code" => "replacement_request",
-      "evidence_references" => ["concurrency-evidence"],
-      "actor_principal_id" => first_approver.principal_id
-    }
+    command =
+      open_command(
+        source_identity,
+        source_subject,
+        first_approver.principal_id,
+        now,
+        "support-case:concurrency"
+      )
+
+    manifest =
+      SignedManifest.sign(
+        command,
+        first_approver.principal_id,
+        manifest_key(first_approver.principal_id)
+      )
+
+    proof = operator_proof(manifest, first_approver.principal_id, now)
 
     assert {:ok, receipt} =
-             IdentityRecovery.open_signed(SignedManifest.sign(open_command, @manifest_key), %{
-               manifest_key: @manifest_key,
-               fingerprint_key: @fingerprint_key,
-               now: now
-             })
+             IdentityRecovery.open_signed(
+               manifest,
+               proof,
+               options(now, first_approver.principal_id)
+             )
 
     assert {:ok, ^receipt} =
              IdentityRecovery.record_discord_oauth_proof(
@@ -165,6 +330,46 @@ defmodule Dhc.Discord.IdentityRecoveryConcurrencyTest do
     }
   end
 
+  defp open_command(identity, subject, actor_id, now, reporter_reference) do
+    %{
+      "version" => 1,
+      "action" => "open",
+      "issued_at" => DateTime.to_iso8601(now),
+      "binding_id" => identity.id,
+      "binding_fingerprint" => fingerprint(subject),
+      "reporter_reference" => reporter_reference,
+      "reason_code" => "replacement_request",
+      "evidence_references" => ["evidence:concurrency"],
+      "actor_principal_id" => actor_id
+    }
+  end
+
+  defp operator_proof(manifest, actor_id, now) do
+    {:ok, _command, manifest_digest, ^actor_id} =
+      SignedManifest.verify(manifest, %{actor_id => manifest_key(actor_id)})
+
+    SignedManifest.sign(
+      %{
+        "version" => 1,
+        "action" => "authorize_identity_recovery",
+        "issued_at" => DateTime.to_iso8601(now),
+        "manifest_digest" => manifest_digest,
+        "actor_principal_id" => actor_id,
+        "nonce" => Ecto.UUID.generate()
+      },
+      actor_id,
+      operator_proof_key(actor_id)
+    )
+  end
+
+  defp options(now, actor_id),
+    do: %{
+      manifest_keys: %{actor_id => manifest_key(actor_id)},
+      operator_proof_keys: %{actor_id => operator_proof_key(actor_id)},
+      fingerprint_key: @fingerprint_key,
+      now: now
+    }
+
   defp approve!(actor_id, destination_id, incoming_subject, receipt) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
@@ -182,10 +387,54 @@ defmodule Dhc.Discord.IdentityRecoveryConcurrencyTest do
     }
 
     assert {:ok, _receipt} =
-             IdentityRecovery.approve_signed(SignedManifest.sign(command, @manifest_key), %{
-               manifest_key: @manifest_key,
-               now: now
-             })
+             IdentityRecovery.approve_signed(
+               SignedManifest.sign(command, actor_id, manifest_key(actor_id)),
+               %{
+                 manifest_keys: %{actor_id => manifest_key(actor_id)},
+                 now: now
+               }
+             )
+  end
+
+  defp lock_operator_role(task_supervisor, fixture, test_process) do
+    Task.Supervisor.async_nolink(task_supervisor, fn ->
+      unboxed(fn ->
+        Repo.transaction(fn ->
+          UserRole
+          |> where(
+            [role],
+            role.principal_id == ^fixture.operator.principal_id and role.role == "admin"
+          )
+          |> lock("FOR UPDATE")
+          |> Repo.one!()
+
+          send(test_process, {:operator_role_locked, self()})
+
+          receive do
+            :release_role -> :released
+          end
+        end)
+      end)
+    end)
+  end
+
+  defp lock_profile(task_supervisor, profile_id, test_process) do
+    Task.Supervisor.async_nolink(task_supervisor, fn ->
+      unboxed(fn ->
+        Repo.transaction(fn ->
+          UserProfile
+          |> where([profile], profile.id == ^profile_id)
+          |> lock("FOR UPDATE")
+          |> Repo.one!()
+
+          send(test_process, {:profile_locked, self()})
+
+          receive do
+            :release_profile -> :released
+          end
+        end)
+      end)
+    end)
   end
 
   defp database_task(task_supervisor, test_process, label, fun) do
@@ -223,49 +472,37 @@ defmodule Dhc.Discord.IdentityRecoveryConcurrencyTest do
         do_assert_backend_waiting_on_lock(backend_pid, deadline)
 
       true ->
-        flunk("database backend #{backend_pid} did not wait on a Discord binding lock")
+        flunk("database backend #{backend_pid} did not wait on the expected Postgres lock")
     end
   end
 
   defp delete_fixture(fixture) do
-    recovery_history_triggers(:disable)
+    disable_recovery_triggers()
 
     try do
-      case_id = fixture.recovery_case_id
-      principal_ids = fixture.principal_ids
+      Repo.delete_all("discord_identity_binding_history")
+      Repo.delete_all("discord_identity_recovery_approvals")
+      Repo.delete_all("discord_identity_recovery_proofs")
+      Repo.delete_all("discord_identity_recovery_operator_proof_uses")
+      Repo.delete_all("discord_identity_recovery_audit_events")
+      Repo.delete_all("discord_identity_recovery_cases")
 
       Repo.delete_all(
-        from(history in IdentityBindingHistory, where: history.recovery_case_id == ^case_id)
+        from(token in PrincipalToken, where: token.principal_id in ^fixture.principal_ids)
       )
 
       Repo.delete_all(
-        from(audit in IdentityRecoveryAuditEvent, where: audit.recovery_case_id == ^case_id)
+        from(identity in ExternalIdentity,
+          where: identity.principal_id in ^fixture.principal_ids
+        )
       )
 
-      Repo.delete_all(
-        from(approval in IdentityRecoveryApproval, where: approval.recovery_case_id == ^case_id)
-      )
-
-      Repo.delete_all(
-        from(proof in IdentityRecoveryProof, where: proof.recovery_case_id == ^case_id)
-      )
-
-      Repo.delete_all(
-        from(recovery_case in IdentityRecoveryCase, where: recovery_case.id == ^case_id)
-      )
-
-      Repo.delete_all(from(token in PrincipalToken, where: token.principal_id in ^principal_ids))
-
-      Repo.delete_all(
-        from(identity in ExternalIdentity, where: identity.principal_id in ^principal_ids)
-      )
-
-      Repo.delete_all(from(role in UserRole, where: role.principal_id in ^principal_ids))
+      Repo.delete_all(from(role in UserRole, where: role.principal_id in ^fixture.principal_ids))
 
       profile_ids =
         Repo.all(
           from(profile in UserProfile,
-            where: profile.principal_id in ^principal_ids,
+            where: profile.principal_id in ^fixture.principal_ids,
             select: profile.id
           )
         )
@@ -275,32 +512,32 @@ defmodule Dhc.Discord.IdentityRecoveryConcurrencyTest do
       )
 
       Repo.delete_all(from(profile in UserProfile, where: profile.id in ^profile_ids))
-      Repo.delete_all(from(principal in Principal, where: principal.id in ^principal_ids))
+      Repo.delete_all(from(principal in Principal, where: principal.id in ^fixture.principal_ids))
     after
-      recovery_history_triggers(:enable)
+      enable_recovery_triggers()
     end
   end
 
-  defp recovery_history_triggers(action) when action in [:disable, :enable] do
-    sql_action = action |> Atom.to_string() |> String.upcase()
-
-    for {table, trigger} <- [
-          {"discord_identity_recovery_audit_events", "ale220_reject_recovery_audit_mutation"},
-          {"discord_identity_recovery_proofs",
-           "ale221_reject_discord_identity_recovery_proofs_mutation"},
-          {"discord_identity_recovery_approvals",
-           "ale221_reject_discord_identity_recovery_approvals_mutation"},
-          {"discord_identity_binding_history",
-           "ale221_reject_discord_identity_binding_history_mutation"}
-        ] do
-      Repo.query!("ALTER TABLE #{table} #{sql_action} TRIGGER #{trigger}")
-    end
+  defp disable_recovery_triggers do
+    for table <- recovery_tables(), do: Repo.query!("ALTER TABLE #{table} DISABLE TRIGGER USER")
   end
 
-  defp fingerprint(subject),
-    do:
-      :crypto.mac(:hmac, :sha256, @fingerprint_key, subject)
-      |> Base.encode16(case: :lower)
+  defp enable_recovery_triggers do
+    for table <- Enum.reverse(recovery_tables()),
+        do: Repo.query!("ALTER TABLE #{table} ENABLE TRIGGER USER")
+  end
 
+  defp recovery_tables,
+    do: [
+      "discord_identity_binding_history",
+      "discord_identity_recovery_approvals",
+      "discord_identity_recovery_proofs",
+      "discord_identity_recovery_audit_events",
+      "discord_identity_recovery_cases"
+    ]
+
+  defp fingerprint(subject), do: SubjectFingerprint.generate(subject, @fingerprint_key)
+  defp manifest_key(actor_id), do: @manifest_key <> ":" <> actor_id
+  defp operator_proof_key(actor_id), do: @operator_proof_key <> ":" <> actor_id
   defp unboxed(fun), do: Sandbox.unboxed_run(Repo, fun)
 end

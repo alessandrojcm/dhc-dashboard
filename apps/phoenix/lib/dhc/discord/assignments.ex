@@ -938,7 +938,8 @@ defmodule Dhc.Discord.Assignments do
     )
   end
 
-  defp subject_fingerprint(subject, key), do: fingerprint("discord:" <> subject, key)
+  defp subject_fingerprint(subject, key),
+    do: Dhc.Discord.SubjectFingerprint.generate(subject, key)
 
   defp fingerprint(value, key),
     do: :crypto.mac(:hmac, :sha256, key, value) |> Base.encode16(case: :lower)

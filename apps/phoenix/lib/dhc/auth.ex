@@ -120,13 +120,7 @@ defmodule Dhc.Auth do
            )
          ) do
       %ExternalIdentity{} = identity ->
-        if is_nil(identity.sign_in_disabled_at) do
-          identity.principal_id
-          |> get_principal!()
-          |> establish_eligible_session()
-        else
-          {:error, :invalid}
-        end
+        establish_discord_session(identity)
 
       nil ->
         sign_in_unlinked_discord_subject(subject, claims)
@@ -134,6 +128,33 @@ defmodule Dhc.Auth do
   end
 
   def sign_in_with_discord(_claims), do: {:error, :invalid}
+
+  defp establish_discord_session(identity) do
+    safe_discord_transaction(fn ->
+      DiscordSubjectLock.lock_principal!(identity.principal_id)
+      DiscordSubjectLock.lock!(identity.provider_subject)
+
+      locked_identity =
+        ExternalIdentity
+        |> where(
+          [candidate],
+          candidate.id == ^identity.id and candidate.provider == "discord" and
+            candidate.provider_subject == ^identity.provider_subject and
+            candidate.principal_id == ^identity.principal_id
+        )
+        |> lock("FOR UPDATE")
+        |> Repo.one()
+
+      if is_nil(locked_identity) or not is_nil(locked_identity.sign_in_disabled_at),
+        do: Repo.rollback(:invalid)
+
+      unless eligible_member_locked?(identity.principal_id), do: Repo.rollback(:invalid)
+
+      principal = Repo.get!(Principal, identity.principal_id)
+      %{principal: principal, session_token: insert_session!(principal)}
+    end)
+    |> transaction_result()
+  end
 
   # An approved roster assignment is proof-bound to the immutable Discord
   # subject. No mutable profile claim, including Discord email, can grant login

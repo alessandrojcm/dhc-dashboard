@@ -3,11 +3,14 @@ defmodule Dhc.Discord.IdentityRecovery do
   Runs the dual-controlled Discord identity recovery workflow.
 
   A signed, short-lived operator manifest opens and contains a case without
-  exposing the Discord subject. Case-bound OAuth and destination magic-link
-  proofs establish the requested operation without creating an identity or
-  Session. Two distinct authorized operators must then sign the exact operation
-  before one transaction retires the source binding, creates the destination
-  binding, writes immutable history, and revokes every affected Session.
+  exposing the Discord subject. A second, short-lived proof from the operator
+  authentication issuer binds the named actor to that exact manifest digest and
+  is consumed atomically with containment. Case-bound OAuth and destination
+  magic-link proofs then establish the requested operation without creating an
+  identity or Session. Two distinct authorized operators must sign the exact
+  operation before one transaction retires the source binding, creates the
+  destination binding, writes immutable history, and revokes every affected
+  Session.
   """
 
   import Ecto.Query
@@ -17,11 +20,12 @@ defmodule Dhc.Discord.IdentityRecovery do
   alias Dhc.Discord.{
     IdentityBindingHistory,
     IdentityRecoveryApproval,
-    IdentityRecoveryAuditEvent,
     IdentityRecoveryCase,
+    IdentityRecoveryOperatorProofUse,
     IdentityRecoveryProof,
     SignedManifest,
-    StagedAssignment
+    StagedAssignment,
+    SubjectFingerprint
   }
 
   alias Dhc.Onboarding.InvitationAcceptanceDiscordSubjectClaim
@@ -30,6 +34,9 @@ defmodule Dhc.Discord.IdentityRecovery do
   @operator_roles ~w(admin president)
   @reason_codes ~w(promoted_binding replacement_request)
   @freshness_seconds 300
+  @digest_pattern ~r/\A[0-9a-f]{64}\z/
+  @reporter_reference_pattern ~r/\A(?:support-case|ticket):[A-Za-z0-9][A-Za-z0-9._-]{0,95}\z/
+  @evidence_reference_pattern ~r/\A(?:evidence|attachment|ticket):[A-Za-z0-9][A-Za-z0-9._-]{0,95}\z/
 
   def active_case?(case_reference) when is_binary(case_reference) do
     Repo.exists?(
@@ -85,8 +92,10 @@ defmodule Dhc.Discord.IdentityRecovery do
 
   @doc "Accepts an independently signed administrator approval of the exact proof-bound operation."
   def approve_signed(envelope, options) when is_map(options) do
-    with {:ok, command, digest} <- SignedManifest.verify(envelope, options.manifest_key),
+    with {:ok, manifest_keys} <- required_keyring(options, :manifest_keys),
+         {:ok, command, digest, signer} <- SignedManifest.verify(envelope, manifest_keys),
          :ok <- exact_approval_command(command),
+         :ok <- signed_by_actor(command, signer),
          :ok <- fresh_command?(command["issued_at"], Map.get(options, :now, DateTime.utc_now())),
          :ok <- authorize_operator(command["actor_principal_id"]) do
       approve(command, digest, Map.get(options, :now, DateTime.utc_now()))
@@ -106,101 +115,185 @@ defmodule Dhc.Discord.IdentityRecovery do
 
   def complete(_, _), do: {:error, :invalid_recovery_operation}
 
-  def open_signed(envelope, options) when is_map(options) do
-    with {:ok, command, _digest} <- SignedManifest.verify(envelope, options.manifest_key),
+  def open_signed(manifest_envelope, proof_envelope, options)
+      when is_map(manifest_envelope) and is_map(proof_envelope) and is_map(options) do
+    with {:ok, manifest_keys} <- required_keyring(options, :manifest_keys),
+         {:ok, proof_keys} <- required_keyring(options, :operator_proof_keys),
+         {:ok, fingerprint_key} <- required_option(options, :fingerprint_key),
+         {:ok, command, manifest_digest, manifest_signer} <-
+           SignedManifest.verify(manifest_envelope, manifest_keys),
          :ok <- exact_open_command(command),
-         :ok <- fresh_command?(command["issued_at"], Map.get(options, :now, DateTime.utc_now())),
-         :ok <- authorize_operator(command["actor_principal_id"]) do
-      open(command, options.fingerprint_key)
+         :ok <- signed_by_actor(command, manifest_signer),
+         {:ok, proof, proof_digest, proof_signer} <-
+           SignedManifest.verify(proof_envelope, proof_keys),
+         :ok <- exact_operator_proof(proof),
+         :ok <- signed_by_actor(proof, proof_signer),
+         :ok <- proof_matches_command(proof, command, manifest_digest),
+         :ok <- fresh?(command["issued_at"], Map.get(options, :now, DateTime.utc_now())),
+         :ok <- fresh?(proof["issued_at"], Map.get(options, :now, DateTime.utc_now())) do
+      open(command, manifest_digest, proof_digest, fingerprint_key)
+    else
+      {:error, :stale_operator_authentication} = error -> error
+      _error -> {:error, :invalid_recovery_command}
     end
   end
 
-  def open_signed(_, _), do: {:error, :invalid_recovery_command}
+  def open_signed(_, _, _), do: {:error, :invalid_recovery_command}
 
-  defp open(command, fingerprint_key) when is_binary(fingerprint_key) and fingerprint_key != "" do
+  defp open(command, manifest_digest, proof_digest, fingerprint_key) do
+    if Repo.in_transaction?() do
+      {:error, :nested_transaction}
+    else
+      case lookup_identity(command["binding_id"]) do
+        nil ->
+          {:error, :invalid_recovery_command}
+
+        identity ->
+          open_identity(identity, command, manifest_digest, proof_digest, fingerprint_key)
+      end
+    end
+  end
+
+  defp lookup_identity(binding_id) do
+    Repo.one(
+      from(identity in ExternalIdentity,
+        where: identity.id == ^binding_id and identity.provider == "discord"
+      )
+    )
+  end
+
+  defp open_identity(identity, command, manifest_digest, proof_digest, fingerprint_key) do
     Repo.transaction(fn ->
-      identity =
+      DiscordSubjectLock.lock_principal!(identity.principal_id)
+      DiscordSubjectLock.lock!(identity.provider_subject)
+
+      locked_identity =
         Repo.one(
-          from(identity in ExternalIdentity,
+          from(candidate in ExternalIdentity,
             where:
-              identity.id == ^command["binding_id"] and identity.provider == "discord" and
-                is_nil(identity.retired_at),
+              candidate.id == ^identity.id and candidate.id == ^command["binding_id"] and
+                candidate.provider == "discord" and is_nil(candidate.retired_at) and
+                candidate.principal_id == ^identity.principal_id and
+                candidate.provider_subject == ^identity.provider_subject,
             lock: "FOR UPDATE"
           )
         )
 
-      case identity do
-        nil -> Repo.rollback(:invalid_recovery_command)
-        identity -> open_locked(identity, command, fingerprint_key)
+      if is_nil(locked_identity), do: Repo.rollback(:invalid_recovery_command)
+      authorize_operator_locked!(command["actor_principal_id"])
+
+      expected_fingerprint =
+        SubjectFingerprint.generate(locked_identity.provider_subject, fingerprint_key)
+
+      unless Plug.Crypto.secure_compare(
+               command["binding_fingerprint"],
+               expected_fingerprint
+             ),
+             do: Repo.rollback(:invalid_recovery_command)
+
+      existing_case =
+        Repo.one(
+          from(recovery_case in IdentityRecoveryCase,
+            where:
+              recovery_case.external_identity_id == ^locked_identity.id and
+                recovery_case.state == "open",
+            lock: "FOR UPDATE"
+          )
+        )
+
+      if existing_case do
+        {receipt(existing_case), nil}
+      else
+        open_new_case(
+          locked_identity,
+          command,
+          manifest_digest,
+          proof_digest,
+          expected_fingerprint
+        )
       end
     end)
     |> transaction_result()
+    |> disconnect_after_commit()
+  rescue
+    Postgrex.Error -> {:error, :invalid_recovery_command}
+    Ecto.ConstraintError -> {:error, :invalid_recovery_command}
   end
 
-  defp open(_, _), do: {:error, :invalid_recovery_command}
+  defp open_new_case(
+         identity,
+         command,
+         manifest_digest,
+         proof_digest,
+         expected_fingerprint
+       ) do
+    if not is_nil(identity.sign_in_disabled_at), do: Repo.rollback(:invalid_recovery_command)
 
-  defp open_locked(identity, command, fingerprint_key) do
-    expected_fingerprint = fingerprint(identity.provider_subject, fingerprint_key)
+    now = DateTime.utc_now()
 
-    if not Plug.Crypto.secure_compare(command["binding_fingerprint"], expected_fingerprint) do
-      Repo.rollback(:invalid_recovery_command)
-    end
-
-    existing_case =
-      Repo.one(
-        from(recovery_case in IdentityRecoveryCase,
-          where:
-            recovery_case.external_identity_id == ^identity.id and recovery_case.state == "open",
-          lock: "FOR UPDATE"
-        )
-      )
-
-    if existing_case do
-      receipt(existing_case)
-    else
-      if not is_nil(identity.sign_in_disabled_at), do: Repo.rollback(:invalid_recovery_command)
-
-      now = DateTime.utc_now()
-
-      recovery_case =
-        %IdentityRecoveryCase{}
-        |> IdentityRecoveryCase.open_changeset(%{
-          external_identity_id: identity.id,
-          case_reference: case_reference(),
-          state: "open",
-          reason_code: command["reason_code"],
-          reporter_reference: command["reporter_reference"],
-          binding_fingerprint: expected_fingerprint,
-          evidence_references: command["evidence_references"],
-          actor_principal_id: command["actor_principal_id"],
-          opened_at: now
-        })
-        |> Repo.insert!()
-
-      {1, _} =
-        Repo.update_all(
-          from(external_identity in ExternalIdentity,
-            where: external_identity.id == ^identity.id
-          ),
-          set: [sign_in_disabled_at: now]
-        )
-
-      Repo.delete_all(
-        from(token in Dhc.Auth.PrincipalToken,
-          where: token.principal_id == ^identity.principal_id and token.context == "session"
-        )
-      )
-
-      %IdentityRecoveryAuditEvent{}
-      |> IdentityRecoveryAuditEvent.open_changeset(%{
-        recovery_case_id: recovery_case.id,
-        action: "opened_and_contained",
-        actor_principal_id: command["actor_principal_id"]
+    recovery_case =
+      %IdentityRecoveryCase{
+        external_identity_id: identity.id,
+        case_reference: case_reference(),
+        state: "open",
+        binding_fingerprint: expected_fingerprint,
+        actor_principal_id: command["actor_principal_id"],
+        opened_at: now
+      }
+      |> IdentityRecoveryCase.open_changeset(%{
+        reason_code: command["reason_code"],
+        reporter_reference: command["reporter_reference"],
+        evidence_references: command["evidence_references"]
       })
-      |> Repo.insert!()
+      |> Repo.insert()
+      |> case do
+        {:ok, recovery_case} -> recovery_case
+        {:error, _changeset} -> Repo.rollback(:invalid_recovery_command)
+      end
 
-      receipt(recovery_case)
+    {1, _} =
+      Repo.update_all(
+        from(external_identity in ExternalIdentity,
+          where:
+            external_identity.id == ^identity.id and
+              is_nil(external_identity.sign_in_disabled_at)
+        ),
+        set: [sign_in_disabled_at: now]
+      )
+
+    Repo.delete_all(
+      from(token in PrincipalToken,
+        where:
+          token.principal_id == ^identity.principal_id and
+            token.context in ["session", "socket"]
+      )
+    )
+
+    case Repo.insert(%IdentityRecoveryOperatorProofUse{
+           proof_digest: proof_digest,
+           manifest_digest: manifest_digest,
+           actor_principal_id: command["actor_principal_id"],
+           recovery_case_id: recovery_case.id,
+           consumed_at: now
+         }) do
+      {:ok, _proof_use} -> {receipt(recovery_case), identity.principal_id}
+      {:error, _changeset} -> Repo.rollback(:invalid_recovery_command)
     end
+  end
+
+  defp authorize_operator_locked!(principal_id) do
+    role =
+      UserRole
+      |> where(
+        [candidate],
+        candidate.principal_id == ^principal_id and candidate.role in ^@operator_roles
+      )
+      |> order_by([candidate], candidate.role)
+      |> limit(1)
+      |> lock("FOR UPDATE")
+      |> Repo.one()
+
+    if is_nil(role), do: Repo.rollback(:unauthorized_operator)
   end
 
   defp receipt(recovery_case) do
@@ -253,7 +346,6 @@ defmodule Dhc.Discord.IdentityRecovery do
     cond do
       is_nil(existing) ->
         Repo.insert!(struct(IdentityRecoveryProof, proof_attrs))
-        audit!(recovery_case.id, "#{kind}_proved", recovery_case.actor_principal_id)
         receipt(recovery_case)
 
       matching_proof?(existing, proof_attrs) and DateTime.after?(existing.expires_at, now) ->
@@ -295,7 +387,6 @@ defmodule Dhc.Discord.IdentityRecovery do
       })
       |> Repo.insert!()
 
-      audit!(recovery_case.id, "approved", command["actor_principal_id"])
       receipt(recovery_case)
     end)
     |> transaction_result()
@@ -414,8 +505,6 @@ defmodule Dhc.Discord.IdentityRecovery do
       )
     )
 
-    audit!(recovery_case.id, "completed", hd(approvals).approver_principal_id)
-
     %{
       case_reference: recovery_case.case_reference,
       state: "completed",
@@ -469,14 +558,6 @@ defmodule Dhc.Discord.IdentityRecovery do
   defp lock_subjects!(subjects),
     do: subjects |> Enum.uniq() |> Enum.sort() |> Enum.each(&DiscordSubjectLock.lock!/1)
 
-  defp audit!(case_id, action, actor_id),
-    do:
-      Repo.insert!(%IdentityRecoveryAuditEvent{
-        recovery_case_id: case_id,
-        action: action,
-        actor_principal_id: actor_id
-      })
-
   defp fail_on_conflict!(source, destination_id, incoming_subject) do
     if Repo.exists?(
          from(c in InvitationAcceptanceDiscordSubjectClaim,
@@ -525,15 +606,16 @@ defmodule Dhc.Discord.IdentityRecovery do
 
   defp exact_open_command(command) do
     valid? =
-      MapSet.new(Map.keys(command)) ==
-        MapSet.new(
-          ~w(version action issued_at binding_id binding_fingerprint reporter_reference reason_code evidence_references actor_principal_id)
-        ) and
+      exact_keys?(
+        command,
+        ~w(version action issued_at binding_id binding_fingerprint reporter_reference reason_code evidence_references actor_principal_id)
+      ) and
         command["version"] == 1 and command["action"] == "open" and
         valid_uuid?(command["binding_id"]) and valid_uuid?(command["actor_principal_id"]) and
-        command["reason_code"] in @reason_codes and is_binary(command["binding_fingerprint"]) and
-        is_binary(command["reporter_reference"]) and is_list(command["evidence_references"]) and
-        Enum.all?(command["evidence_references"], &(is_binary(&1) and byte_size(&1) > 0))
+        command["reason_code"] in @reason_codes and
+        SubjectFingerprint.valid?(command["binding_fingerprint"]) and
+        valid_reporter_reference?(command["reporter_reference"]) and
+        valid_evidence_references?(command["evidence_references"])
 
     if valid?, do: :ok, else: {:error, :invalid_recovery_command}
   end
@@ -555,7 +637,53 @@ defmodule Dhc.Discord.IdentityRecovery do
     if valid?, do: :ok, else: {:error, :invalid_recovery_command}
   end
 
-  defp fresh_command?(issued_at, now) when is_binary(issued_at) do
+  defp exact_operator_proof(proof) do
+    valid? =
+      exact_keys?(
+        proof,
+        ~w(version action issued_at manifest_digest actor_principal_id nonce)
+      ) and
+        proof["version"] == 1 and proof["action"] == "authorize_identity_recovery" and
+        valid_uuid?(proof["actor_principal_id"]) and valid_uuid?(proof["nonce"]) and
+        is_binary(proof["manifest_digest"]) and
+        String.match?(proof["manifest_digest"], @digest_pattern)
+
+    if valid?, do: :ok, else: {:error, :invalid_recovery_command}
+  end
+
+  defp proof_matches_command(proof, command, manifest_digest) do
+    if proof["actor_principal_id"] == command["actor_principal_id"] and
+         proof["manifest_digest"] == manifest_digest,
+       do: :ok,
+       else: {:error, :invalid_recovery_command}
+  end
+
+  defp signed_by_actor(command, signer) do
+    if command["actor_principal_id"] == signer,
+      do: :ok,
+      else: {:error, :invalid_recovery_command}
+  end
+
+  defp exact_keys?(value, keys) when is_map(value),
+    do: MapSet.new(Map.keys(value)) == MapSet.new(keys)
+
+  defp exact_keys?(_value, _keys), do: false
+
+  defp valid_reporter_reference?(value) when is_binary(value),
+    do: String.match?(value, @reporter_reference_pattern)
+
+  defp valid_reporter_reference?(_value), do: false
+
+  defp valid_evidence_references?(references)
+       when is_list(references) and length(references) in 1..10 do
+    Enum.all?(references, fn reference ->
+      is_binary(reference) and String.match?(reference, @evidence_reference_pattern)
+    end)
+  end
+
+  defp valid_evidence_references?(_references), do: false
+
+  defp fresh?(issued_at, now) when is_binary(issued_at) do
     with {:ok, issued_at, 0} <- DateTime.from_iso8601(issued_at),
          difference <- DateTime.diff(now, issued_at, :second),
          true <- difference >= 0 and difference <= @freshness_seconds do
@@ -565,12 +693,27 @@ defmodule Dhc.Discord.IdentityRecovery do
     end
   end
 
-  defp fresh_command?(_, _), do: {:error, :stale_operator_authentication}
+  defp fresh?(_, _), do: {:error, :stale_operator_authentication}
+
+  defp fresh_command?(issued_at, now), do: fresh?(issued_at, now)
+
+  defp required_option(options, key) do
+    case Map.get(options, key) do
+      value when is_binary(value) and value != "" -> {:ok, value}
+      _value -> {:error, :invalid_recovery_command}
+    end
+  end
+
+  defp required_keyring(options, key) do
+    case Map.get(options, key) do
+      value when is_map(value) and map_size(value) > 0 -> {:ok, value}
+      _value -> {:error, :invalid_recovery_command}
+    end
+  end
 
   defp valid_uuid?(value), do: match?({:ok, _}, Ecto.UUID.cast(value))
 
-  defp fingerprint(subject, key),
-    do: :crypto.mac(:hmac, :sha256, key, subject) |> Base.encode16(case: :lower)
+  defp fingerprint(subject, key), do: SubjectFingerprint.generate(subject, key)
 
   defp proof_digest(subject, key), do: fingerprint("recovery-proof:" <> subject, key)
 
@@ -579,6 +722,16 @@ defmodule Dhc.Discord.IdentityRecovery do
 
   defp case_reference, do: "DIR-" <> (Ecto.UUID.generate() |> String.upcase())
 
-  defp transaction_result({:ok, receipt}), do: {:ok, receipt}
+  defp transaction_result({:ok, result}), do: {:ok, result}
+  defp transaction_result({:error, :unauthorized_operator}), do: {:error, :unauthorized_operator}
   defp transaction_result({:error, _reason}), do: {:error, :invalid_recovery_command}
+
+  defp disconnect_after_commit({:ok, {receipt, nil}}), do: {:ok, receipt}
+
+  defp disconnect_after_commit({:ok, {receipt, principal_id}}) do
+    DhcWeb.UserSocket.disconnect(principal_id)
+    {:ok, receipt}
+  end
+
+  defp disconnect_after_commit(error), do: error
 end
