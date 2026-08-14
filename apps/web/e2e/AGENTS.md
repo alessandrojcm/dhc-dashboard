@@ -13,6 +13,7 @@ pnpm --filter @dhc/web test:e2e
 Playwright owns the full run lifecycle. Do not manually start PostgreSQL, Phoenix, Supabase, or SvelteKit first.
 
 - `playwright.config.ts` starts the `e2e-phoenix-server` and `e2e-web-server` mise tasks; their task-local `env` tables define the test server environment.
+- `playwright.config.ts` appends its process ID to the configured `E2E_COMPOSE_PROJECT` prefix. Phoenix and global teardown inherit that value, giving every run an isolated Compose project instead of attaching to a stale database from another worktree.
 - `mix e2e.server` starts the root Compose `test-db` through testcontainers-elixir, reads its dynamic port, migrates it, and starts Phoenix on `127.0.0.1:4000`.
 - Global setup calls `POST /api/e2e/reset`, truncating application tables and restoring base settings.
 - The suite currently uses one Playwright worker because legacy specs share run-level state. Add worker-partitioned databases before raising `workers`.

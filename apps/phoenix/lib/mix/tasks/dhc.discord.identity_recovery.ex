@@ -26,6 +26,15 @@ defmodule Mix.Tasks.Dhc.Discord.IdentityRecovery do
     |> print!()
   end
 
+  def run(["close", manifest_path]) do
+    Mix.Task.run("app.start")
+
+    manifest_path
+    |> read_envelope!()
+    |> IdentityRecovery.close_signed(close_options())
+    |> print!()
+  end
+
   def run(["complete", case_reference]) do
     Mix.Task.run("app.start")
 
@@ -36,7 +45,7 @@ defmodule Mix.Tasks.Dhc.Discord.IdentityRecovery do
 
   def run(_) do
     Mix.raise(
-      "Expected: mix dhc.discord.identity_recovery open MANIFEST OPERATOR_PROOF | approve MANIFEST | complete CASE_REFERENCE"
+      "Expected: mix dhc.discord.identity_recovery open MANIFEST OPERATOR_PROOF | approve MANIFEST | close MANIFEST | complete CASE_REFERENCE"
     )
   end
 
@@ -48,8 +57,37 @@ defmodule Mix.Tasks.Dhc.Discord.IdentityRecovery do
     }
   end
 
-  defp approval_options,
+  defp close_options,
     do: %{manifest_keys: required_keyring!("DISCORD_IDENTITY_RECOVERY_MANIFEST_KEYS")}
+
+  defp approval_options do
+    encoded = required_env!("DISCORD_IDENTITY_RECOVERY_APPROVER_PUBLIC_KEYS")
+
+    approver_public_keys =
+      with {:ok, values} when is_map(values) <- Jason.decode(encoded) do
+        Map.new(values, fn {principal_id, public_key} ->
+          case Base.decode64(public_key) do
+            {:ok, decoded} -> {principal_id, decoded}
+            :error -> Mix.raise("approver public keys must be base64 encoded")
+          end
+        end)
+      else
+        _ -> Mix.raise("DISCORD_IDENTITY_RECOVERY_APPROVER_PUBLIC_KEYS must be a JSON object")
+      end
+
+    keys = Map.values(approver_public_keys)
+
+    unless map_size(approver_public_keys) > 0 and
+             Enum.all?(approver_public_keys, fn {principal_id, public_key} ->
+               match?({:ok, _}, Ecto.UUID.cast(principal_id)) and byte_size(public_key) == 32
+             end) and length(Enum.uniq(keys)) == length(keys) do
+      Mix.raise(
+        "DISCORD_IDENTITY_RECOVERY_APPROVER_PUBLIC_KEYS must map Principal UUIDs to distinct Ed25519 public keys"
+      )
+    end
+
+    %{approver_public_keys: approver_public_keys}
+  end
 
   defp read_envelope!(path) do
     with {:ok, bytes} <- File.read(path),

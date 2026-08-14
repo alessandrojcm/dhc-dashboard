@@ -8,13 +8,21 @@ defmodule Dhc.E2EHarness do
   alias Dhc.Auth.Principal
   alias Dhc.Auth.PrincipalToken
   alias Dhc.Auth.UserRole
+
+  alias Dhc.Discord.{
+    IdentityBindingHistory,
+    IdentityRecovery,
+    IdentityRecoveryCase,
+    IdentityRecoveryProof,
+    SignedManifest
+  }
+
   alias Dhc.Invitations.Invitation
   alias Dhc.Inventory.Categories
   alias Dhc.Inventory.Containers
   alias Dhc.Inventory.Items
   alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.MemberFixtures
-  alias Dhc.Onboarding.InvitationAcceptanceAttempt
   alias Dhc.Onboarding.InvitationAcceptanceAttempts
   alias Dhc.Onboarding.InvitationAcceptanceAttempt
   alias Dhc.Onboarding.InvitationAcceptanceDiscordContinuation
@@ -229,6 +237,90 @@ defmodule Dhc.E2EHarness do
       email: invitation.email,
       dateOfBirth: Date.to_iso8601(date_of_birth),
       userId: invitation.prospective_principal_id
+    }
+  end
+
+  def seed("identityRecovery", attrs) do
+    operation = Map.get(attrs, "operation", "replacement")
+    suffix = System.unique_integer([:positive])
+    source = MemberFixtures.member_fixture(%{email: "recovery-source-#{suffix}@example.com"})
+
+    destination =
+      MemberFixtures.member_fixture(%{email: "recovery-destination-#{suffix}@example.com"})
+
+    first_approver =
+      MemberFixtures.member_fixture(%{email: "recovery-admin-#{suffix}@example.com"})
+
+    second_approver =
+      MemberFixtures.member_fixture(%{email: "recovery-president-#{suffix}@example.com"})
+
+    Repo.insert!(%UserRole{principal_id: first_approver.principal_id, role: "admin"})
+    Repo.insert!(%UserRole{principal_id: second_approver.principal_id, role: "president"})
+
+    source_subject = "e2e-recovery-source-#{suffix}"
+
+    incoming_subject =
+      if operation == "transfer", do: source_subject, else: "e2e-recovery-incoming-#{suffix}"
+
+    source_principal = Auth.get_principal!(source.principal_id)
+
+    source_identity =
+      %ExternalIdentity{}
+      |> ExternalIdentity.create_changeset(source_principal, %{
+        provider: "discord",
+        provider_subject: source_subject,
+        metadata: %{}
+      })
+      |> Repo.insert!()
+
+    fingerprint_key = Application.fetch_env!(:dhc, :discord_subject_fingerprint_key)
+    manifest_key = "e2e-identity-recovery-manifest-key"
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    open_command = %{
+      "version" => 1,
+      "action" => "open",
+      "issued_at" => DateTime.to_iso8601(now),
+      "binding_id" => source_identity.id,
+      "binding_fingerprint" => recovery_fingerprint(source_subject, fingerprint_key),
+      "reporter_reference" => "e2e-recovery-#{suffix}",
+      "reason_code" => "replacement_request",
+      "evidence_references" => ["e2e-evidence-#{suffix}"],
+      "actor_principal_id" => first_approver.principal_id
+    }
+
+    {:ok, receipt} =
+      IdentityRecovery.open_signed(SignedManifest.sign(open_command, manifest_key), %{
+        manifest_key: manifest_key,
+        fingerprint_key: fingerprint_key,
+        now: now
+      })
+
+    {:ok, ^receipt} =
+      IdentityRecovery.record_discord_oauth_proof(
+        receipt.case_reference,
+        %{"sub" => incoming_subject},
+        fingerprint_key
+      )
+
+    recovery_case = Repo.get_by!(IdentityRecoveryCase, case_reference: receipt.case_reference)
+    destination_principal = Auth.get_principal!(destination.principal_id)
+
+    {token, token_row} =
+      PrincipalToken.build_identity_recovery_token(destination_principal, recovery_case.id)
+
+    Repo.insert!(token_row)
+
+    %{
+      caseReference: receipt.case_reference,
+      destinationEmail: destination_principal.email,
+      proofUrl:
+        "/auth/identity-recovery?caseReference=#{URI.encode_www_form(receipt.case_reference)}&token=#{URI.encode_www_form(token)}",
+      operation: operation,
+      sourcePrincipalId: source.principal_id,
+      destinationPrincipalId: destination.principal_id,
+      firstApproverId: first_approver.principal_id,
+      secondApproverId: second_approver.principal_id
     }
   end
 
@@ -461,6 +553,105 @@ defmodule Dhc.E2EHarness do
     Dhc.E2EOnboardingFinalizer.interrupt_next!()
   end
 
+  def complete_identity_recovery(case_reference) do
+    recovery_case = Repo.get_by!(IdentityRecoveryCase, case_reference: case_reference)
+
+    oauth =
+      Repo.get_by!(IdentityRecoveryProof,
+        recovery_case_id: recovery_case.id,
+        kind: "discord_oauth"
+      )
+
+    destination =
+      Repo.get_by!(IdentityRecoveryProof,
+        recovery_case_id: recovery_case.id,
+        kind: "destination_magic_link"
+      )
+
+    second_approver_id =
+      Repo.one!(
+        from(role in UserRole,
+          where:
+            role.role in ["admin", "president"] and
+              role.principal_id != ^recovery_case.actor_principal_id,
+          order_by: [desc: role.id],
+          limit: 1,
+          select: role.principal_id
+        )
+      )
+
+    approver_ids = [recovery_case.actor_principal_id, second_approver_id]
+
+    operation =
+      if recovery_case.binding_fingerprint ==
+           recovery_fingerprint(
+             oauth.subject,
+             Application.fetch_env!(:dhc, :discord_subject_fingerprint_key)
+           ),
+         do: "transfer",
+         else: "replacement"
+
+    command = %{
+      "version" => 1,
+      "action" => "approve",
+      "issued_at" => DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601(),
+      "case_reference" => recovery_case.case_reference,
+      "source_binding_fingerprint" => recovery_case.binding_fingerprint,
+      "destination_principal_id" => destination.principal_id,
+      "incoming_subject_fingerprint" => oauth.subject_fingerprint,
+      "evidence_references" => recovery_case.evidence_references,
+      "operation" => operation
+    }
+
+    Enum.each(approver_ids, fn approver_id ->
+      {public_key, private_key} = :crypto.generate_key(:eddsa, :ed25519)
+
+      {:ok, _receipt} =
+        IdentityRecovery.approve_signed(SignedManifest.sign_ed25519(command, private_key), %{
+          approver_public_keys: %{approver_id => public_key},
+          now: DateTime.utc_now() |> DateTime.truncate(:second)
+        })
+    end)
+
+    fingerprint_key = Application.fetch_env!(:dhc, :discord_subject_fingerprint_key)
+
+    with {:ok, result} <- IdentityRecovery.complete(case_reference, fingerprint_key) do
+      source_identity = Repo.get!(ExternalIdentity, recovery_case.external_identity_id)
+
+      active_identity =
+        Repo.one!(
+          from(identity in ExternalIdentity,
+            where:
+              identity.principal_id == ^destination.principal_id and
+                identity.provider == "discord" and is_nil(identity.retired_at)
+          )
+        )
+
+      {:ok,
+       %{
+         state: result.state,
+         operation: result.operation,
+         activeDestinationPrincipalId: active_identity.principal_id,
+         bindingHistoryCount:
+           Repo.aggregate(
+             from(history in IdentityBindingHistory,
+               where: history.recovery_case_id == ^recovery_case.id
+             ),
+             :count
+           ),
+         affectedTokenCount:
+           Repo.aggregate(
+             from(token in PrincipalToken,
+               where:
+                 token.principal_id in ^[source_identity.principal_id, destination.principal_id] and
+                   token.context in ["session", "socket", "login"]
+             ),
+             :count
+           )
+       }}
+    end
+  end
+
   defp delete_principal(id) do
     Repo.transaction(fn ->
       Repo.delete_all(from(t in PrincipalToken, where: t.principal_id == ^id))
@@ -552,4 +743,7 @@ defmodule Dhc.E2EHarness do
       :error -> target
     end
   end
+
+  defp recovery_fingerprint(subject, key),
+    do: :crypto.mac(:hmac, :sha256, key, subject) |> Base.encode16(case: :lower)
 end

@@ -21,6 +21,9 @@ defmodule Dhc.Discord.IdentityRecoveryCase do
     field :incoming_subject_fingerprint, :string
     field :operation, :string
     field :completed_at, :utc_datetime_usec
+    field :terminal_at, :utc_datetime_usec
+    field :terminal_reason_code, :string
+    field :terminal_actor_principal_id, :binary_id
 
     timestamps(type: :utc_datetime_usec, updated_at: false, inserted_at: :created_at)
   end

@@ -327,7 +327,12 @@ defmodule DhcWeb.AuthSessionController do
         "#{frontend_base}/auth/identity-recovery?caseReference=#{encoded_case}&token=#{encoded_token}"
       end
 
-      {:ok, :sent} = Auth.deliver_magic_link(email, magic_link_url_fun)
+      {:ok, :sent} =
+        IdentityRecovery.deliver_destination_proof(
+          case_reference,
+          email,
+          magic_link_url_fun
+        )
     end
 
     conn |> put_status(:ok) |> render_view(:sent)

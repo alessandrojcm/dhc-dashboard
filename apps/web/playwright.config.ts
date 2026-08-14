@@ -3,6 +3,10 @@ import { fileURLToPath } from "node:url";
 import { resolve } from "path";
 
 const rootDir = fileURLToPath(new URL("../..", import.meta.url));
+const composeProjectPrefix =
+	process.env.E2E_COMPOSE_PROJECT ?? "dhc-dashboard-e2e";
+
+process.env.E2E_COMPOSE_PROJECT = `${composeProjectPrefix}-${process.pid}`;
 
 export default defineConfig({
 	use: {

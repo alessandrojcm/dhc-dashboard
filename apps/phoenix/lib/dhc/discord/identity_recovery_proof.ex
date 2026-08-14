@@ -12,6 +12,7 @@ defmodule Dhc.Discord.IdentityRecoveryProof do
     field :subject_fingerprint, :string
     field :principal_id, :binary_id
     field :proof_digest, :string
+    field :attempt, :integer
     field :expires_at, :utc_datetime_usec
     timestamps(type: :utc_datetime_usec, updated_at: false, inserted_at: :created_at)
   end

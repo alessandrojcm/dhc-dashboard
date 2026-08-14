@@ -304,7 +304,11 @@ defmodule Dhc.Discord.IdentityRecoveryConcurrencyTest do
              )
 
     destination_principal = Repo.get!(Principal, destination.principal_id)
-    {magic_link, token_row} = PrincipalToken.build_magic_link_token(destination_principal)
+    recovery_case = Repo.get_by!(IdentityRecoveryCase, case_reference: receipt.case_reference)
+
+    {magic_link, token_row} =
+      PrincipalToken.build_identity_recovery_token(destination_principal, recovery_case.id)
+
     Repo.insert!(token_row)
 
     assert {:ok, ^receipt} =
@@ -312,8 +316,6 @@ defmodule Dhc.Discord.IdentityRecoveryConcurrencyTest do
 
     approve!(first_approver.principal_id, destination.principal_id, incoming_subject, receipt)
     approve!(second_approver.principal_id, destination.principal_id, incoming_subject, receipt)
-
-    recovery_case = Repo.get_by!(IdentityRecoveryCase, case_reference: receipt.case_reference)
 
     %{
       case_reference: receipt.case_reference,
@@ -382,18 +384,16 @@ defmodule Dhc.Discord.IdentityRecoveryConcurrencyTest do
       "destination_principal_id" => destination_id,
       "incoming_subject_fingerprint" => fingerprint(incoming_subject),
       "evidence_references" => receipt.evidence_references,
-      "operation" => "replacement",
-      "actor_principal_id" => actor_id
+      "operation" => "replacement"
     }
 
+    {public_key, private_key} = :crypto.generate_key(:eddsa, :ed25519)
+
     assert {:ok, _receipt} =
-             IdentityRecovery.approve_signed(
-               SignedManifest.sign(command, actor_id, manifest_key(actor_id)),
-               %{
-                 manifest_keys: %{actor_id => manifest_key(actor_id)},
-                 now: now
-               }
-             )
+             IdentityRecovery.approve_signed(SignedManifest.sign_ed25519(command, private_key), %{
+               approver_public_keys: %{actor_id => public_key},
+               now: now
+             })
   end
 
   defp lock_operator_role(task_supervisor, fixture, test_process) do
