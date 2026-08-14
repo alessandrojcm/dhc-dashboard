@@ -53,7 +53,7 @@ defmodule Mix.Tasks.Dhc.Discord.Assignments do
 
   defp options(package_path \\ nil) do
     %{
-      manifest_key: required_env!("DISCORD_ASSIGNMENT_MANIFEST_KEY"),
+      manifest_keys: required_manifest_keys!(),
       fingerprint_key: required_env!("DISCORD_SUBJECT_FINGERPRINT_KEY"),
       package_key: System.get_env("DISCORD_ROSTER_PACKAGE_KEY"),
       package_path: package_path,
@@ -71,6 +71,23 @@ defmodule Mix.Tasks.Dhc.Discord.Assignments do
   end
 
   defp required_env!(name), do: System.get_env(name) || Mix.raise("#{name} is required")
+
+  defp required_manifest_keys! do
+    with encoded when is_binary(encoded) <- System.get_env("DISCORD_ASSIGNMENT_MANIFEST_KEYS"),
+         {:ok, keys} when is_map(keys) and map_size(keys) > 0 <- Jason.decode(encoded),
+         true <-
+           Enum.all?(keys, fn {principal_id, key} ->
+             match?({:ok, _}, Ecto.UUID.cast(principal_id)) and is_binary(key) and key != ""
+           end),
+         true <- Map.values(keys) |> Enum.uniq() |> length() == map_size(keys) do
+      keys
+    else
+      _ ->
+        Mix.raise(
+          "DISCORD_ASSIGNMENT_MANIFEST_KEYS must be a JSON object of Principal UUIDs to distinct signing keys"
+        )
+    end
+  end
 
   defp print!({:ok, result}), do: Mix.shell().info(Jason.encode!(result, pretty: true))
 

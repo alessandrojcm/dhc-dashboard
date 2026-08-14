@@ -18,7 +18,8 @@ defmodule Dhc.Discord.Assignments do
     RosterPackage,
     RosterReceipt,
     SignedManifest,
-    StagedAssignment
+    StagedAssignment,
+    StagedAssignmentAuditEvent
   }
 
   alias Dhc.Onboarding.InvitationAcceptanceDiscordSubjectClaim
@@ -28,8 +29,10 @@ defmodule Dhc.Discord.Assignments do
   @active_states ~w(proposed approved)
 
   def stage_signed(envelope, options) do
-    with {:ok, command, manifest_digest} <- SignedManifest.verify(envelope, options.manifest_key),
+    with {:ok, command, manifest_digest, signer} <-
+           SignedManifest.verify(envelope, options.manifest_keys),
          :ok <- exact_stage_command(command),
+         :ok <- authenticated_actor(command, signer, "preparer_principal_id"),
          {:ok, package} <- RosterPackage.read(options.package_path, options.package_key),
          :ok <- validate_package(command["capture_id"], package) do
       stage(command, manifest_digest, package, options)
@@ -37,8 +40,10 @@ defmodule Dhc.Discord.Assignments do
   end
 
   def apply_review_signed(envelope, options) do
-    with {:ok, command, manifest_digest} <- SignedManifest.verify(envelope, options.manifest_key),
-         :ok <- exact_review_command(command) do
+    with {:ok, command, manifest_digest, signer} <-
+           SignedManifest.verify(envelope, options.manifest_keys),
+         :ok <- exact_review_command(command),
+         :ok <- authenticated_actor(command, signer, "reviewer_principal_id") do
       apply_review(command, manifest_digest, options)
     end
   end
@@ -46,56 +51,62 @@ defmodule Dhc.Discord.Assignments do
   def review_evidence(capture_id, reviewer_principal_id, options) do
     with :ok <- valid_uuid(capture_id),
          :ok <- valid_uuid(reviewer_principal_id),
-         :ok <- authorize_member_admin(reviewer_principal_id),
          {:ok, package} <- RosterPackage.read(options.package_path, options.package_key),
          :ok <- validate_package(capture_id, package),
          {:ok, capture} <- verified_capture(capture_id) do
-      assignments =
-        Repo.all(
-          from(a in StagedAssignment,
-            where: a.capture_id == ^capture.id and a.state == "proposed",
-            order_by: [asc: a.id]
+      Repo.transaction(fn ->
+        lock_operation([], [reviewer_principal_id])
+        authorize_member_admin_locked!(reviewer_principal_id)
+
+        assignments =
+          Repo.all(
+            from(a in StagedAssignment,
+              where: a.capture_id == ^capture.id and a.state == "proposed",
+              order_by: [asc: a.id]
+            )
           )
-        )
 
-      users = Map.new(package["users"], &{&1["id"], &1})
+        users = Map.new(package["users"], &{&1["id"], &1})
 
-      if Enum.any?(assignments, &(&1.prepared_by_principal_id == reviewer_principal_id)) do
-        {:error, :reviewer_must_differ_from_preparer}
-      else
-        {:ok,
-         Enum.map(assignments, fn assignment ->
-           user = Map.fetch!(users, assignment.provider_subject)
+        if Enum.any?(assignments, &(&1.prepared_by_principal_id == reviewer_principal_id)) do
+          Repo.rollback(:reviewer_must_differ_from_preparer)
+        end
 
-           %{
-             assignment_id: assignment.id,
-             principal_id: assignment.principal_id,
-             discord_user_id: assignment.provider_subject,
-             username_snapshot: assignment.username_snapshot,
-             global_name: user["global_name"],
-             nickname: user["nickname"],
-             capture_id: assignment.capture_id,
-             proposal_digest: assignment.proposal_digest
-           }
-         end)}
-      end
+        Enum.map(assignments, fn assignment ->
+          user = Map.fetch!(users, assignment.provider_subject)
+
+          %{
+            assignment_id: assignment.id,
+            principal_id: assignment.principal_id,
+            discord_user_id: assignment.provider_subject,
+            username_snapshot: assignment.username_snapshot,
+            global_name: user["global_name"],
+            nickname: user["nickname"],
+            capture_id: assignment.capture_id,
+            proposal_digest: assignment.proposal_digest
+          }
+        end)
+      end)
+      |> transaction_result()
     end
   end
 
   def withdraw_signed(envelope, options) do
-    with {:ok, command, _digest} <- SignedManifest.verify(envelope, options.manifest_key),
+    with {:ok, command, _digest, signer} <-
+           SignedManifest.verify(envelope, options.manifest_keys),
          :ok <- exact_withdraw_command(command),
-         :ok <- authorize_member_admin(command["actor_principal_id"]) do
+         :ok <- authenticated_actor(command, signer, "actor_principal_id") do
       Repo.transaction(fn -> withdraw_locked(command) end) |> transaction_result()
     end
   end
 
   def supersede_signed(envelope, options) do
-    with {:ok, command, manifest_digest} <- SignedManifest.verify(envelope, options.manifest_key),
+    with {:ok, command, manifest_digest, signer} <-
+           SignedManifest.verify(envelope, options.manifest_keys),
          :ok <- exact_supersede_command(command),
+         :ok <- authenticated_actor(command, signer, "actor_principal_id"),
          {:ok, package} <- RosterPackage.read(options.package_path, options.package_key),
-         :ok <- validate_package(command["capture_id"], package),
-         :ok <- authorize_member_admin(command["actor_principal_id"]) do
+         :ok <- validate_package(command["capture_id"], package) do
       supersede(command, manifest_digest, package, options)
     end
   end
@@ -151,8 +162,7 @@ defmodule Dhc.Discord.Assignments do
   end
 
   defp stage(command, manifest_digest, package, options) do
-    with :ok <- authorize_member_admin(command["preparer_principal_id"]),
-         {:ok, _capture} <- verified_capture(command["capture_id"]),
+    with {:ok, _capture} <- verified_capture(command["capture_id"]),
          :ok <- validate_stage_rows(command["rows"], package) do
       Repo.transaction(fn ->
         lock_manifest!("stage", manifest_digest)
@@ -161,8 +171,15 @@ defmodule Dhc.Discord.Assignments do
                capture_id: command["capture_id"],
                manifest_digest: manifest_digest
              ) do
-          nil -> create_stage(command, manifest_digest, options)
-          execution -> stage_receipt(execution)
+          nil ->
+            bindings = Enum.map(command["rows"], &{&1["principal_id"], &1["discord_user_id"]})
+            lock_operation(bindings, [command["preparer_principal_id"]])
+            authorize_member_admin_locked!(command["preparer_principal_id"])
+            validate_principals_locked!(Enum.map(command["rows"], & &1["principal_id"]))
+            create_stage(command, manifest_digest, options)
+
+          execution ->
+            stage_receipt(execution)
         end
       end)
       |> transaction_result()
@@ -172,8 +189,6 @@ defmodule Dhc.Discord.Assignments do
   defp create_stage(command, manifest_digest, options) do
     now = DateTime.utc_now()
     rows = Enum.sort_by(command["rows"], &{&1["principal_id"], &1["discord_user_id"]})
-
-    lock_bindings(Enum.map(rows, &{&1["principal_id"], &1["discord_user_id"]}))
 
     execution =
       %AssignmentStageExecution{}
@@ -230,25 +245,43 @@ defmodule Dhc.Discord.Assignments do
   end
 
   defp apply_review(command, manifest_digest, options) do
-    with :ok <- authorize_member_admin(command["reviewer_principal_id"]),
-         {:ok, _capture} <- verified_capture(command["capture_id"]),
+    with {:ok, _capture} <- verified_capture(command["capture_id"]),
          :ok <- validate_unique_review_rows(command["rows"]) do
-      Repo.transaction(fn ->
-        lock_manifest!("review", manifest_digest)
+      result =
+        Repo.transaction(fn ->
+          lock_manifest!("review", manifest_digest)
 
-        case Repo.get_by(AssignmentReviewExecution,
-               capture_id: command["capture_id"],
-               manifest_digest: manifest_digest
-             ) do
-          nil -> create_review(command, manifest_digest, options)
-          execution -> review_receipt(execution)
-        end
-      end)
-      |> transaction_result()
+          case Repo.get_by(AssignmentReviewExecution,
+                 capture_id: command["capture_id"],
+                 manifest_digest: manifest_digest
+               ) do
+            nil -> create_review(command, manifest_digest, options)
+            %{state: "applied"} = execution -> review_receipt(execution)
+            %{state: "rejected", reason_code: reason} -> Repo.rollback(review_reason(reason))
+          end
+        end)
+
+      case transaction_result(result) do
+        {:error, reason} = error ->
+          persist_rejected_review(command, manifest_digest, options, reason)
+          error
+
+        success ->
+          success
+      end
     end
   end
 
   defp create_review(command, manifest_digest, options) do
+    assignment_keys = assignment_keys(command["rows"])
+
+    lock_operation(
+      Enum.map(assignment_keys, &{&1.principal_id, &1.provider_subject}),
+      [command["reviewer_principal_id"]]
+    )
+
+    authorize_member_admin_locked!(command["reviewer_principal_id"])
+
     assignments =
       command["rows"]
       |> Enum.map(& &1["assignment_id"])
@@ -262,8 +295,6 @@ defmodule Dhc.Discord.Assignments do
         )
       end)
       |> Map.new(&{&1.id, &1})
-
-    lock_bindings(Enum.map(assignments, fn {_id, a} -> {a.principal_id, a.provider_subject} end))
 
     Enum.each(command["rows"], fn row ->
       assignment = Map.get(assignments, row["assignment_id"])
@@ -285,7 +316,8 @@ defmodule Dhc.Discord.Assignments do
         manifest_digest: manifest_digest,
         reviewer_principal_id: command["reviewer_principal_id"],
         tool_revision: options.tool_revision,
-        executed_at: now
+        executed_at: now,
+        state: "applied"
       })
       |> Repo.insert!()
 
@@ -317,20 +349,23 @@ defmodule Dhc.Discord.Assignments do
   end
 
   defp withdraw_locked(command) do
-    assignment =
-      Repo.one(
-        from(a in StagedAssignment,
-          where: a.id == ^command["assignment_id"],
-          lock: "FOR UPDATE"
-        )
-      )
+    assignment_key = Repo.get(StagedAssignment, command["assignment_id"])
+
+    if is_nil(assignment_key), do: Repo.rollback(:stale_assignment)
+
+    lock_operation(
+      [{assignment_key.principal_id, assignment_key.provider_subject}],
+      [command["actor_principal_id"]]
+    )
+
+    authorize_member_admin_locked!(command["actor_principal_id"])
+
+    assignment = assignment_for_update(command["assignment_id"])
 
     if is_nil(assignment) or assignment.proposal_digest != command["proposal_digest"] or
          assignment.state not in @active_states do
       Repo.rollback(:stale_assignment)
     end
-
-    lock_bindings([{assignment.principal_id, assignment.provider_subject}])
 
     assignment
     |> StagedAssignment.transition_changeset(%{
@@ -360,13 +395,22 @@ defmodule Dhc.Discord.Assignments do
         if existing_execution,
           do: Repo.rollback({:replayed, supersede_receipt(existing_execution)})
 
-        old =
-          Repo.one(
-            from(a in StagedAssignment,
-              where: a.id == ^command["assignment_id"],
-              lock: "FOR UPDATE"
-            )
-          )
+        old_key = Repo.get(StagedAssignment, command["assignment_id"])
+
+        if is_nil(old_key), do: Repo.rollback(:stale_assignment)
+
+        lock_operation(
+          [
+            {old_key.principal_id, old_key.provider_subject},
+            {row["principal_id"], row["discord_user_id"]}
+          ],
+          [command["actor_principal_id"]]
+        )
+
+        authorize_member_admin_locked!(command["actor_principal_id"])
+        validate_principals_locked!([row["principal_id"]])
+
+        old = assignment_for_update(command["assignment_id"])
 
         if is_nil(old) or old.proposal_digest != command["proposal_digest"] or
              old.state not in @active_states do
@@ -374,11 +418,6 @@ defmodule Dhc.Discord.Assignments do
         end
 
         new_id = Ecto.UUID.generate()
-
-        lock_bindings([
-          {old.principal_id, old.provider_subject},
-          {row["principal_id"], row["discord_user_id"]}
-        ])
 
         old
         |> StagedAssignment.transition_changeset(%{
@@ -449,7 +488,8 @@ defmodule Dhc.Discord.Assignments do
           where:
             c.id == ^capture_id and c.kind == :capture and c.status == :succeeded and
               p.kind == :preflight and p.status == :succeeded and p.guild_id == c.guild_id and
-              p.bot_application_id == c.bot_application_id,
+              p.bot_application_id == c.bot_application_id and
+              p.tool_revision == c.tool_revision,
           select: c
         )
       )
@@ -458,7 +498,8 @@ defmodule Dhc.Discord.Assignments do
   end
 
   defp validate_package(capture_id, package) do
-    with {:ok, receipt} <- verified_capture(capture_id) do
+    with :ok <- validate_package_shape(package),
+         {:ok, receipt} <- verified_capture(capture_id) do
       users = package["users"]
 
       cond do
@@ -483,7 +524,7 @@ defmodule Dhc.Discord.Assignments do
         RosterDigest.digest(users) != package["digest"] ->
           {:error, :capture_package_digest_mismatch}
 
-        package["digest"] != receipt.package_digest ->
+        RosterDigest.package_digest(package) != receipt.package_digest ->
           {:error, :capture_receipt_digest_mismatch}
 
         true ->
@@ -492,18 +533,62 @@ defmodule Dhc.Discord.Assignments do
     end
   end
 
+  defp validate_package_shape(package) when is_map(package) do
+    exact_keys =
+      ~w(version capture_id guild_id tool_revision captured_at record_count digest users)
+
+    valid_user? = fn
+      %{
+        "id" => id,
+        "username" => username,
+        "global_name" => global_name,
+        "nickname" => nickname
+      } = user
+      when map_size(user) == 4 and is_binary(id) and id != "" and is_binary(username) and
+             username != "" and (is_nil(global_name) or is_binary(global_name)) and
+             (is_nil(nickname) or is_binary(nickname)) ->
+        true
+
+      _ ->
+        false
+    end
+
+    if MapSet.new(Map.keys(package)) == MapSet.new(exact_keys) and
+         is_binary(package["capture_id"]) and is_binary(package["guild_id"]) and
+         package["guild_id"] != "" and is_binary(package["tool_revision"]) and
+         package["tool_revision"] != "" and is_binary(package["captured_at"]) and
+         is_integer(package["record_count"]) and package["record_count"] >= 0 and
+         is_binary(package["digest"]) and is_list(package["users"]) and
+         Enum.all?(package["users"], valid_user?) do
+      :ok
+    else
+      {:error, :invalid_capture_package}
+    end
+  end
+
+  defp validate_package_shape(_), do: {:error, :invalid_capture_package}
+
   defp validate_stage_rows(rows, package) when is_list(rows) and rows != [] do
     users = Map.new(package["users"], &{&1["id"], &1["username"]})
 
     cond do
       Enum.any?(
         rows,
-        &(MapSet.new(Map.keys(&1)) !=
-              MapSet.new(~w(principal_id discord_user_id username_snapshot)))
+        fn
+          row when is_map(row) ->
+            MapSet.new(Map.keys(row)) !=
+                MapSet.new(~w(principal_id discord_user_id username_snapshot))
+
+          _ ->
+            true
+        end
       ) ->
         {:error, :invalid_stage_manifest}
 
-      Enum.any?(rows, &(valid_uuid(&1["principal_id"]) != :ok)) ->
+      Enum.any?(rows, fn row ->
+        valid_uuid(row["principal_id"]) != :ok or not nonempty_string?(row["discord_user_id"]) or
+            not nonempty_string?(row["username_snapshot"])
+      end) ->
         {:error, :invalid_stage_manifest}
 
       Enum.any?(rows, fn row ->
@@ -532,9 +617,10 @@ defmodule Dhc.Discord.Assignments do
   end
 
   defp validate_unique_review_rows(rows) do
-    if is_list(rows) and rows != [] and not duplicates?(rows, "assignment_id"),
-      do: :ok,
-      else: {:error, :invalid_review_manifest}
+    if is_list(rows) and rows != [] and Enum.all?(rows, &is_map/1) and
+         not duplicates?(rows, "assignment_id"),
+       do: :ok,
+       else: {:error, :invalid_review_manifest}
   end
 
   defp binding_conflict(principal_id, subject, except_assignment_id \\ nil) do
@@ -590,14 +676,34 @@ defmodule Dhc.Discord.Assignments do
     )
   end
 
-  defp authorize_member_admin(principal_id) do
-    if Repo.exists?(
-         from(r in UserRole,
-           where: r.principal_id == ^principal_id and r.role in ^@member_admin_roles
-         )
-       ),
-       do: :ok,
-       else: {:error, :unauthorized_principal}
+  defp authorize_member_admin_locked!(principal_id) do
+    role =
+      Repo.one(
+        from(r in UserRole,
+          where: r.principal_id == ^principal_id and r.role in ^@member_admin_roles,
+          order_by: [asc: r.id],
+          limit: 1
+        )
+      )
+
+    if is_nil(role), do: Repo.rollback(:unauthorized_principal)
+    :ok
+  end
+
+  defp validate_principals_locked!(principal_ids) do
+    expected = principal_ids |> Enum.uniq() |> Enum.sort()
+
+    found =
+      Repo.all(
+        from(p in Principal,
+          where: p.id in ^expected,
+          select: p.id,
+          order_by: [asc: p.id],
+          lock: "FOR KEY SHARE"
+        )
+      )
+
+    if found != expected, do: Repo.rollback(:unknown_principal)
   end
 
   defp exact_stage_command(command),
@@ -621,8 +727,10 @@ defmodule Dhc.Discord.Assignments do
            ),
          true <-
            Enum.all?(command["rows"], fn row ->
-             MapSet.new(Map.keys(row)) == MapSet.new(~w(assignment_id proposal_digest decision)) and
-               row["decision"] in ~w(approve reject) and valid_uuid(row["assignment_id"]) == :ok
+             is_map(row) and
+               MapSet.new(Map.keys(row)) == MapSet.new(~w(assignment_id proposal_digest decision)) and
+               row["decision"] in ~w(approve reject) and valid_uuid(row["assignment_id"]) == :ok and
+               nonempty_string?(row["proposal_digest"])
            end) do
       :ok
     else
@@ -654,7 +762,8 @@ defmodule Dhc.Discord.Assignments do
   end
 
   defp exact_command(command, keys, version, condition) do
-    if MapSet.new(Map.keys(command)) == MapSet.new(keys) and command["version"] == version and
+    if is_map(command) and MapSet.new(Map.keys(command)) == MapSet.new(keys) and
+         command["version"] == version and
          condition,
        do: :ok,
        else: {:error, :invalid_manifest}
@@ -665,6 +774,14 @@ defmodule Dhc.Discord.Assignments do
       {:ok, _} -> :ok
       :error -> {:error, :invalid_uuid}
     end
+  end
+
+  defp nonempty_string?(value), do: is_binary(value) and value != ""
+
+  defp authenticated_actor(command, signer, actor_key) do
+    if command[actor_key] == signer,
+      do: :ok,
+      else: {:error, :manifest_signer_mismatch}
   end
 
   defp duplicates?(rows, key) do
@@ -714,16 +831,71 @@ defmodule Dhc.Discord.Assignments do
   end
 
   defp review_receipt(execution) do
-    assignments =
-      Repo.all(from(a in StagedAssignment, where: a.review_execution_id == ^execution.id))
+    rows =
+      Repo.all(
+        from(e in StagedAssignmentAuditEvent,
+          join: a in StagedAssignment,
+          on: a.id == e.assignment_id,
+          where:
+            e.review_execution_id == ^execution.id and
+              e.new_state in ["approved", "rejected"],
+          order_by: [asc: e.assignment_id],
+          select: {a, e.new_state}
+        )
+      )
 
     %{
       execution_id: execution.id,
       capture_id: execution.capture_id,
-      counts: Enum.frequencies_by(assignments, & &1.state),
-      rows: Enum.map(assignments, &safe_assignment/1)
+      state: execution.state,
+      reason_code: execution.reason_code,
+      counts: Enum.frequencies_by(rows, &elem(&1, 1)),
+      rows: Enum.map(rows, fn {assignment, state} -> safe_assignment(assignment, state) end)
     }
   end
+
+  defp persist_rejected_review(command, manifest_digest, options, reason) do
+    reason_code = rejected_review_reason(reason)
+
+    Repo.transaction(fn ->
+      lock_manifest!("review", manifest_digest)
+
+      unless Repo.get_by(AssignmentReviewExecution,
+               capture_id: command["capture_id"],
+               manifest_digest: manifest_digest
+             ) do
+        lock_operation([], [command["reviewer_principal_id"]])
+
+        %AssignmentReviewExecution{}
+        |> AssignmentReviewExecution.changeset(%{
+          capture_id: command["capture_id"],
+          manifest_digest: manifest_digest,
+          reviewer_principal_id: command["reviewer_principal_id"],
+          tool_revision: options.tool_revision,
+          executed_at: DateTime.utc_now(),
+          state: "rejected",
+          reason_code: reason_code
+        })
+        |> Repo.insert!()
+      end
+    end)
+
+    :ok
+  end
+
+  defp rejected_review_reason({:conflicted, _assignment_id, _reason}), do: "binding_conflict"
+  defp rejected_review_reason(reason) when reason in [:unauthorized_principal], do: "unauthorized"
+
+  defp rejected_review_reason(reason)
+       when reason in [:stale_review_manifest, :stale_or_unreviewable_proposal],
+       do: "stale_or_unreviewable_proposal"
+
+  defp rejected_review_reason(_), do: "invalid_review"
+
+  defp review_reason("binding_conflict"), do: :binding_conflict
+  defp review_reason("unauthorized"), do: :unauthorized_principal
+  defp review_reason("stale_or_unreviewable_proposal"), do: :stale_or_unreviewable_proposal
+  defp review_reason(_), do: :invalid_review_manifest
 
   defp supersede_receipt(execution) do
     replacement =
@@ -742,11 +914,15 @@ defmodule Dhc.Discord.Assignments do
   end
 
   defp safe_assignment(assignment) do
+    safe_assignment(assignment, assignment.state)
+  end
+
+  defp safe_assignment(assignment, state) do
     %{
       assignment_id: assignment.id,
       principal_id: assignment.principal_id,
       subject_fingerprint: assignment.subject_fingerprint,
-      state: assignment.state
+      state: state
     }
   end
 
@@ -775,9 +951,23 @@ defmodule Dhc.Discord.Assignments do
     )
   end
 
-  defp lock_bindings(bindings) do
-    bindings
-    |> Enum.map(&elem(&1, 0))
+  defp assignment_keys(rows) do
+    ids = Enum.map(rows, & &1["assignment_id"])
+
+    Repo.all(
+      from(a in StagedAssignment,
+        where: a.id in ^ids,
+        select: %{id: a.id, principal_id: a.principal_id, provider_subject: a.provider_subject}
+      )
+    )
+  end
+
+  defp assignment_for_update(id) do
+    Repo.one(from(a in StagedAssignment, where: a.id == ^id, lock: "FOR UPDATE"))
+  end
+
+  defp lock_operation(bindings, actor_principal_ids) do
+    (actor_principal_ids ++ Enum.map(bindings, &elem(&1, 0)))
     |> Enum.uniq()
     |> Enum.sort()
     |> Enum.each(&DiscordSubjectLock.lock_principal!/1)

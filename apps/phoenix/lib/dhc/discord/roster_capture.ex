@@ -237,6 +237,8 @@ defmodule Dhc.Discord.RosterCapture do
       users: users
     }
 
+    package_digest = RosterDigest.package_digest(package)
+
     with {:ok, package_path} <-
            RosterPackage.write(options.package_dir, capture_id, package, options.package_key) do
       case receipt(options).create(%{
@@ -251,7 +253,7 @@ defmodule Dhc.Discord.RosterCapture do
              tool_revision: options.tool_revision,
              evidence_digest:
                digest(%{preflight_receipt_id: preflight.id, guild_id: options.guild_id}),
-             package_digest: roster_digest,
+             package_digest: package_digest,
              record_count: length(users),
              result: "capture complete; no staged assignments created",
              preflight_receipt_id: preflight.id

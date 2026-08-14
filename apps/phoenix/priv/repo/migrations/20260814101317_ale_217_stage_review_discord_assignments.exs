@@ -41,6 +41,8 @@ defmodule Dhc.Repo.Migrations.Ale217StageReviewDiscordAssignments do
 
       add(:tool_revision, :text, null: false)
       add(:executed_at, :timestamptz, null: false)
+      add(:state, :text, null: false)
+      add(:reason_code, :text)
       timestamps(type: :timestamptz, updated_at: false, inserted_at: :created_at)
     end
 
@@ -50,9 +52,18 @@ defmodule Dhc.Repo.Migrations.Ale217StageReviewDiscordAssignments do
       )
     )
 
+    create(
+      constraint(
+        :discord_assignment_review_executions,
+        :discord_assignment_review_executions_lifecycle_check,
+        check:
+          "(state = 'applied' AND reason_code IS NULL) OR (state = 'rejected' AND NULLIF(reason_code, '') IS NOT NULL)"
+      )
+    )
+
     create table(:staged_discord_assignments, primary_key: false) do
       add(:id, :uuid, primary_key: true, default: fragment("gen_random_uuid()"))
-      add(:principal_id, references(:principals, type: :uuid, on_delete: :restrict), null: false)
+      add(:principal_id, :uuid, null: false)
 
       add(:capture_id, references(:discord_roster_receipts, type: :uuid, on_delete: :restrict),
         null: false
@@ -264,11 +275,51 @@ defmodule Dhc.Repo.Migrations.Ale217StageReviewDiscordAssignments do
     create(index(:staged_discord_assignment_audit_events, [:assignment_id, :created_at]))
 
     create_mutation_and_audit_triggers()
+    create_append_only_receipt_triggers()
+    create_roster_receipt_consistency_trigger()
     create_execution_consistency_trigger()
+    create_receipt_consistency_triggers()
+    create_role_authorization_lock_trigger()
     create_binding_constraint_triggers()
   end
 
   def down do
+    execute("DROP TRIGGER IF EXISTS ale217_lock_admin_role_mutation ON user_roles")
+    execute("DROP FUNCTION IF EXISTS ale217_lock_admin_role_mutation()")
+
+    execute(
+      "DROP TRIGGER IF EXISTS ale217_check_review_execution_dependents ON discord_assignment_review_executions"
+    )
+
+    execute(
+      "DROP TRIGGER IF EXISTS ale217_check_stage_result_consistency ON discord_assignment_stage_results"
+    )
+
+    execute(
+      "DROP TRIGGER IF EXISTS ale217_check_stage_execution_dependents ON discord_assignment_stage_executions"
+    )
+
+    execute("DROP FUNCTION IF EXISTS ale217_check_review_execution_dependents()")
+    execute("DROP FUNCTION IF EXISTS ale217_check_stage_result_consistency()")
+    execute("DROP FUNCTION IF EXISTS ale217_check_stage_execution_dependents()")
+
+    execute(
+      "DROP TRIGGER IF EXISTS ale217_check_roster_receipt_consistency ON discord_roster_receipts"
+    )
+
+    execute("DROP FUNCTION IF EXISTS ale217_check_roster_receipt_consistency()")
+
+    for table <- [
+          "discord_roster_receipts",
+          "discord_assignment_stage_executions",
+          "discord_assignment_review_executions",
+          "discord_assignment_stage_results"
+        ] do
+      execute("DROP TRIGGER IF EXISTS ale217_reject_receipt_mutation ON #{table}")
+    end
+
+    execute("DROP FUNCTION IF EXISTS ale217_reject_receipt_mutation()")
+
     execute(
       "DROP TRIGGER IF EXISTS ale217_check_subject_claim_binding ON invitation_acceptance_discord_subject_claims"
     )
@@ -297,7 +348,12 @@ defmodule Dhc.Repo.Migrations.Ale217StageReviewDiscordAssignments do
       "DROP TRIGGER IF EXISTS ale217_reject_audit_mutation ON staged_discord_assignment_audit_events"
     )
 
+    execute(
+      "DROP TRIGGER IF EXISTS ale217_reject_direct_audit_insert ON staged_discord_assignment_audit_events"
+    )
+
     execute("DROP FUNCTION IF EXISTS ale217_reject_audit_mutation()")
+    execute("DROP FUNCTION IF EXISTS ale217_reject_direct_audit_insert()")
     execute("DROP TRIGGER IF EXISTS ale217_append_assignment_audit ON staged_discord_assignments")
     execute("DROP FUNCTION IF EXISTS ale217_append_assignment_audit()")
 
@@ -389,13 +445,31 @@ defmodule Dhc.Repo.Migrations.Ale217StageReviewDiscordAssignments do
          NEW.subject_fingerprint, now());
       RETURN NEW;
     END;
-    $$ LANGUAGE plpgsql;
+    $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public;
     """)
 
     execute("""
     CREATE TRIGGER ale217_append_assignment_audit
       AFTER INSERT OR UPDATE ON staged_discord_assignments
       FOR EACH ROW EXECUTE FUNCTION ale217_append_assignment_audit();
+    """)
+
+    execute("""
+    CREATE FUNCTION ale217_reject_direct_audit_insert() RETURNS trigger AS $$
+    BEGIN
+      IF pg_trigger_depth() < 2 THEN
+        RAISE EXCEPTION 'assignment audit events may only be inserted by the assignment trigger'
+          USING ERRCODE = '23514', CONSTRAINT = 'staged_discord_assignment_audit_events_trigger_owned';
+      END IF;
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+    """)
+
+    execute("""
+    CREATE TRIGGER ale217_reject_direct_audit_insert
+      BEFORE INSERT ON staged_discord_assignment_audit_events
+      FOR EACH ROW EXECUTE FUNCTION ale217_reject_direct_audit_insert();
     """)
 
     execute("""
@@ -411,6 +485,205 @@ defmodule Dhc.Repo.Migrations.Ale217StageReviewDiscordAssignments do
     CREATE TRIGGER ale217_reject_audit_mutation
       BEFORE UPDATE OR DELETE ON staged_discord_assignment_audit_events
       FOR EACH ROW EXECUTE FUNCTION ale217_reject_audit_mutation();
+    """)
+  end
+
+  defp create_append_only_receipt_triggers do
+    execute("""
+    CREATE FUNCTION ale217_reject_receipt_mutation() RETURNS trigger AS $$
+    BEGIN
+      RAISE EXCEPTION 'security receipts are append-only'
+        USING ERRCODE = '23514', CONSTRAINT = TG_TABLE_NAME || '_immutable';
+    END;
+    $$ LANGUAGE plpgsql;
+    """)
+
+    for table <- [
+          "discord_roster_receipts",
+          "discord_assignment_stage_executions",
+          "discord_assignment_review_executions",
+          "discord_assignment_stage_results"
+        ] do
+      execute("""
+      CREATE TRIGGER ale217_reject_receipt_mutation
+        BEFORE UPDATE OR DELETE ON #{table}
+        FOR EACH ROW EXECUTE FUNCTION ale217_reject_receipt_mutation();
+      """)
+    end
+  end
+
+  defp create_roster_receipt_consistency_trigger do
+    execute("""
+    CREATE FUNCTION ale217_check_roster_receipt_consistency() RETURNS trigger AS $$
+    DECLARE
+      current_receipt discord_roster_receipts%ROWTYPE;
+      preflight discord_roster_receipts%ROWTYPE;
+    BEGIN
+      SELECT * INTO current_receipt FROM discord_roster_receipts WHERE id = NEW.id;
+      IF NOT FOUND THEN RETURN NULL; END IF;
+
+      IF current_receipt.kind = 'capture' THEN
+        SELECT * INTO preflight
+        FROM discord_roster_receipts
+        WHERE id = current_receipt.preflight_receipt_id;
+
+        IF NOT FOUND OR current_receipt.status <> 'succeeded'
+           OR preflight.kind <> 'preflight' OR preflight.status <> 'succeeded'
+           OR preflight.guild_id <> current_receipt.guild_id
+           OR preflight.bot_application_id <> current_receipt.bot_application_id
+           OR preflight.tool_revision <> current_receipt.tool_revision THEN
+          RAISE EXCEPTION 'capture receipt does not match a successful preflight'
+            USING ERRCODE = '23514', CONSTRAINT = 'discord_roster_receipts_preflight_consistency';
+        END IF;
+      ELSE
+        IF EXISTS (
+          SELECT 1 FROM discord_roster_receipts capture
+          WHERE capture.preflight_receipt_id = current_receipt.id
+            AND (current_receipt.status <> 'succeeded'
+              OR capture.guild_id <> current_receipt.guild_id
+              OR capture.bot_application_id <> current_receipt.bot_application_id
+              OR capture.tool_revision <> current_receipt.tool_revision)
+        ) THEN
+          RAISE EXCEPTION 'preflight receipt does not match its capture receipts'
+            USING ERRCODE = '23514', CONSTRAINT = 'discord_roster_receipts_capture_consistency';
+        END IF;
+      END IF;
+      RETURN NULL;
+    END;
+    $$ LANGUAGE plpgsql;
+    """)
+
+    execute("""
+    CREATE CONSTRAINT TRIGGER ale217_check_roster_receipt_consistency
+      AFTER INSERT OR UPDATE ON discord_roster_receipts
+      DEFERRABLE INITIALLY DEFERRED
+      FOR EACH ROW EXECUTE FUNCTION ale217_check_roster_receipt_consistency();
+    """)
+  end
+
+  defp create_receipt_consistency_triggers do
+    execute("""
+    CREATE FUNCTION ale217_check_stage_result_consistency() RETURNS trigger AS $$
+    DECLARE
+      current_result discord_assignment_stage_results%ROWTYPE;
+      assignment staged_discord_assignments%ROWTYPE;
+    BEGIN
+      SELECT * INTO current_result FROM discord_assignment_stage_results WHERE id = NEW.id;
+      IF NOT FOUND THEN RETURN NULL; END IF;
+
+      IF current_result.outcome = 'proposed' THEN
+        SELECT * INTO assignment
+        FROM staged_discord_assignments
+        WHERE id = current_result.assignment_id;
+
+        IF NOT FOUND OR assignment.stage_execution_id <> current_result.stage_execution_id
+           OR assignment.principal_id <> current_result.principal_id
+           OR assignment.subject_fingerprint <> current_result.subject_fingerprint THEN
+          RAISE EXCEPTION 'stage result does not match its assignment'
+            USING ERRCODE = '23514', CONSTRAINT = 'discord_assignment_stage_results_assignment_consistency';
+        END IF;
+      END IF;
+      RETURN NULL;
+    END;
+    $$ LANGUAGE plpgsql;
+    """)
+
+    execute("""
+    CREATE CONSTRAINT TRIGGER ale217_check_stage_result_consistency
+      AFTER INSERT OR UPDATE ON discord_assignment_stage_results
+      DEFERRABLE INITIALLY DEFERRED
+      FOR EACH ROW EXECUTE FUNCTION ale217_check_stage_result_consistency();
+    """)
+
+    execute("""
+    CREATE FUNCTION ale217_check_stage_execution_dependents() RETURNS trigger AS $$
+    BEGIN
+      IF EXISTS (
+        SELECT 1 FROM staged_discord_assignments assignment
+        WHERE assignment.stage_execution_id = NEW.id
+          AND (assignment.capture_id <> NEW.capture_id
+            OR assignment.prepared_by_principal_id <> NEW.preparer_principal_id)
+      ) OR EXISTS (
+        SELECT 1
+        FROM discord_assignment_stage_results result
+        LEFT JOIN staged_discord_assignments assignment ON assignment.id = result.assignment_id
+        WHERE result.stage_execution_id = NEW.id
+          AND result.outcome = 'proposed'
+          AND (assignment.id IS NULL OR assignment.stage_execution_id <> NEW.id)
+      ) THEN
+        RAISE EXCEPTION 'stage execution does not match its dependent receipts'
+          USING ERRCODE = '23514', CONSTRAINT = 'discord_assignment_stage_executions_dependents_consistency';
+      END IF;
+      RETURN NULL;
+    END;
+    $$ LANGUAGE plpgsql;
+    """)
+
+    execute("""
+    CREATE CONSTRAINT TRIGGER ale217_check_stage_execution_dependents
+      AFTER INSERT OR UPDATE ON discord_assignment_stage_executions
+      DEFERRABLE INITIALLY DEFERRED
+      FOR EACH ROW EXECUTE FUNCTION ale217_check_stage_execution_dependents();
+    """)
+
+    execute("""
+    CREATE FUNCTION ale217_check_review_execution_dependents() RETURNS trigger AS $$
+    DECLARE current_execution discord_assignment_review_executions%ROWTYPE;
+    BEGIN
+      SELECT * INTO current_execution
+      FROM discord_assignment_review_executions
+      WHERE id = NEW.id;
+      IF NOT FOUND THEN RETURN NULL; END IF;
+
+      IF current_execution.state = 'applied' AND NOT EXISTS (
+        SELECT 1 FROM staged_discord_assignment_audit_events event
+        WHERE event.review_execution_id = current_execution.id
+      ) THEN
+        RAISE EXCEPTION 'applied review execution has no immutable row results'
+          USING ERRCODE = '23514', CONSTRAINT = 'discord_assignment_review_executions_applied_results';
+      END IF;
+
+      IF current_execution.state = 'rejected' AND EXISTS (
+        SELECT 1 FROM staged_discord_assignments assignment
+        WHERE assignment.review_execution_id = current_execution.id
+      ) THEN
+        RAISE EXCEPTION 'rejected review execution cannot own transitions'
+          USING ERRCODE = '23514', CONSTRAINT = 'discord_assignment_review_executions_rejected_results';
+      END IF;
+      RETURN NULL;
+    END;
+    $$ LANGUAGE plpgsql;
+    """)
+
+    execute("""
+    CREATE CONSTRAINT TRIGGER ale217_check_review_execution_dependents
+      AFTER INSERT OR UPDATE ON discord_assignment_review_executions
+      DEFERRABLE INITIALLY DEFERRED
+      FOR EACH ROW EXECUTE FUNCTION ale217_check_review_execution_dependents();
+    """)
+  end
+
+  defp create_role_authorization_lock_trigger do
+    execute("""
+    CREATE FUNCTION ale217_lock_admin_role_mutation() RETURNS trigger AS $$
+    BEGIN
+      IF OLD.role IN ('admin', 'president', 'treasurer', 'committee_coordinator',
+        'sparring_coordinator', 'workshop_coordinator', 'beginners_coordinator',
+        'quartermaster', 'pr_manager', 'volunteer_coordinator',
+        'research_coordinator', 'coach') THEN
+        PERFORM pg_advisory_xact_lock(
+          hashtextextended('discord:principal:' || OLD.principal_id::text, 0)
+        );
+      END IF;
+      RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
+    END;
+    $$ LANGUAGE plpgsql;
+    """)
+
+    execute("""
+    CREATE TRIGGER ale217_lock_admin_role_mutation
+      BEFORE UPDATE OR DELETE ON user_roles
+      FOR EACH ROW EXECUTE FUNCTION ale217_lock_admin_role_mutation();
     """)
   end
 
@@ -446,7 +719,8 @@ defmodule Dhc.Repo.Migrations.Ale217StageReviewDiscordAssignments do
           current_assignment.terminal_actor_principal_id
         );
 
-        IF NOT FOUND OR review_execution.capture_id <> current_assignment.capture_id
+         IF NOT FOUND OR review_execution.state <> 'applied'
+            OR review_execution.capture_id <> current_assignment.capture_id
            OR review_execution.reviewer_principal_id <> expected_reviewer
            OR review_execution.reviewer_principal_id = current_assignment.prepared_by_principal_id THEN
           RAISE EXCEPTION 'assignment does not match an independent review execution'

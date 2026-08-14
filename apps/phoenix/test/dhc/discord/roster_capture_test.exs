@@ -8,6 +8,7 @@ defmodule Dhc.Discord.RosterCaptureTest do
 
   alias Dhc.Discord.{
     RosterCapture,
+    RosterDigest,
     RosterExecution,
     RosterPackage,
     RosterReceipt
@@ -167,6 +168,7 @@ defmodule Dhc.Discord.RosterCaptureTest do
     assert_receive {:discord_request, "/api/v10/guilds/guild-1/members", %{"limit" => "1"}}
     assert_receive {:discord_request, "/api/v10/guilds/guild-1/members", %{"limit" => "1000"}}
 
+    assert capture.package_digest == RosterDigest.package_digest(package)
     assert :ok = RosterCapture.cleanup(result.package_path)
     refute File.exists?(result.package_path)
   end
