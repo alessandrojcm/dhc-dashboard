@@ -23,6 +23,38 @@ defmodule DhcWeb.AuthSessionControllerTest do
                session_params: %{state: "test-state", code_verifier: "test-code-verifier"}
              }
     end
+
+    test "clears an older link flow when replacement authorization fails" do
+      principal = active_principal("failed-replacement@example.com")
+      token = session_token(principal)
+
+      link_conn =
+        conn()
+        |> put_signed_cookie(@session_cookie, token)
+        |> get("/api/auth/discord/link")
+
+      %{session_params: %{state: stale_state}} = get_session(link_conn, :discord_oauth_flow)
+      Dhc.DiscordOAuthStub.fail_next_authorization()
+
+      failed_start =
+        link_conn
+        |> recycle()
+        |> get("/api/auth/discord")
+
+      assert redirected_to(failed_start, 302) == "http://localhost:5173/auth?discord=failed"
+      refute get_session(failed_start, :discord_oauth_flow)
+
+      stale_callback =
+        failed_start
+        |> recycle()
+        |> get("/api/auth/discord/callback?state=#{stale_state}&code=success")
+
+      assert redirected_to(stale_callback, 302) ==
+               "http://localhost:5173/auth?discord=failed"
+
+      refute Repo.exists?(Dhc.Auth.ExternalIdentity)
+      assert Repo.aggregate(from(t in PrincipalToken, where: t.context == "session"), :count) == 1
+    end
   end
 
   describe "Discord identity recovery proofs" do
@@ -207,7 +239,11 @@ defmodule DhcWeb.AuthSessionControllerTest do
     end
 
     test "uses the same generic magic-link fallback for invalid state and unknown accounts" do
-      invalid_state = get(conn(), "/api/auth/discord/callback?state=wrong&code=success")
+      invalid_state =
+        conn()
+        |> get("/api/auth/discord")
+        |> recycle()
+        |> get("/api/auth/discord/callback?state=wrong&code=success")
 
       unknown =
         conn()
@@ -223,6 +259,120 @@ defmodule DhcWeb.AuthSessionControllerTest do
 
       conn = post(conn(), "/api/auth/magic-link", %{"email" => "unknown-discord@example.com"})
       assert %{"data" => %{"sent" => true}} = json_response(conn, 200)
+    end
+
+    test "rejects callback session parameters with the wrong PKCE verifier" do
+      conn =
+        conn()
+        |> init_test_session(%{
+          discord_oauth_flow: %{
+            purpose: :sign_in,
+            session_params: %{state: "test-state", code_verifier: "wrong-code-verifier"}
+          }
+        })
+        |> get("/api/auth/discord/callback?state=test-state&code=success")
+
+      assert redirected_to(conn, 302) == "http://localhost:5173/auth?discord=failed"
+      refute get_session(conn, :discord_oauth_flow)
+      refute conn.resp_cookies[@session_cookie]
+      refute Repo.exists?(Dhc.Auth.ExternalIdentity)
+      refute Repo.exists?(from(t in PrincipalToken, where: t.context == "session"))
+    end
+
+    test "rejects a stale sign-in callback after a link flow replaces it" do
+      principal = active_principal("link-replaces-sign-in@example.com")
+      token = session_token(principal)
+
+      sign_in_conn =
+        conn()
+        |> put_signed_cookie(@session_cookie, token)
+        |> get("/api/auth/discord")
+
+      %{session_params: %{state: stale_state}} = get_session(sign_in_conn, :discord_oauth_flow)
+
+      link_conn =
+        sign_in_conn
+        |> recycle()
+        |> get("/api/auth/discord/link")
+
+      assert %{
+               purpose: {:link, _session_reference},
+               session_params: %{
+                 state: "test-state-2",
+                 code_verifier: "test-code-verifier-2"
+               }
+             } = get_session(link_conn, :discord_oauth_flow)
+
+      stale_callback =
+        link_conn
+        |> recycle()
+        |> get("/api/auth/discord/callback?state=#{stale_state}&code=success")
+
+      assert redirected_to(stale_callback, 302) ==
+               "http://localhost:5173/auth?discord=failed"
+
+      refute get_session(stale_callback, :discord_oauth_flow)
+      refute Repo.exists?(Dhc.Auth.ExternalIdentity)
+      assert Repo.aggregate(from(t in PrincipalToken, where: t.context == "session"), :count) == 1
+    end
+
+    test "rejects a stale link callback after a sign-in flow replaces it" do
+      principal = active_principal("sign-in-replaces-link@example.com")
+      token = session_token(principal)
+
+      link_conn =
+        conn()
+        |> put_signed_cookie(@session_cookie, token)
+        |> get("/api/auth/discord/link")
+
+      %{session_params: %{state: stale_state}} = get_session(link_conn, :discord_oauth_flow)
+
+      sign_in_conn =
+        link_conn
+        |> recycle()
+        |> get("/api/auth/discord")
+
+      assert %{
+               purpose: :sign_in,
+               session_params: %{
+                 state: "test-state-2",
+                 code_verifier: "test-code-verifier-2"
+               }
+             } = get_session(sign_in_conn, :discord_oauth_flow)
+
+      stale_callback =
+        sign_in_conn
+        |> recycle()
+        |> get("/api/auth/discord/callback?state=#{stale_state}&code=success")
+
+      assert redirected_to(stale_callback, 302) ==
+               "http://localhost:5173/auth?discord=failed"
+
+      refute get_session(stale_callback, :discord_oauth_flow)
+      refute Repo.exists?(Dhc.Auth.ExternalIdentity)
+      assert Repo.aggregate(from(t in PrincipalToken, where: t.context == "session"), :count) == 1
+    end
+
+    test "consumes the flow when Discord reports provider cancellation" do
+      conn =
+        conn()
+        |> get("/api/auth/discord")
+        |> recycle()
+        |> get("/api/auth/discord/callback?state=test-state&error=access_denied")
+
+      assert redirected_to(conn, 302) == "http://localhost:5173/auth?discord=failed"
+      refute get_session(conn, :discord_oauth_flow)
+      refute Repo.exists?(Dhc.Auth.ExternalIdentity)
+      refute Repo.exists?(from(t in PrincipalToken, where: t.context == "session"))
+
+      replay =
+        conn
+        |> recycle()
+        |> get("/api/auth/discord/callback?state=test-state&code=success")
+
+      assert redirected_to(replay, 302) == "http://localhost:5173/auth?discord=failed"
+      refute Repo.exists?(Dhc.Auth.ExternalIdentity)
+      refute Repo.exists?(from(t in PrincipalToken, where: t.context == "session"))
     end
 
     test "does not link the authenticated Principal when the recorded purpose is sign-in" do
@@ -277,6 +427,32 @@ defmodule DhcWeb.AuthSessionControllerTest do
       conn =
         conn()
         |> get("/api/auth/discord")
+        |> recycle()
+        |> get("/api/auth/discord/callback?state=test-state&code=success")
+
+      assert redirected_to(conn, 302) == "http://localhost:5173/dashboard"
+
+      replay =
+        conn
+        |> recycle()
+        |> get("/api/auth/discord/callback?state=test-state&code=success")
+
+      assert redirected_to(replay, 302) == "http://localhost:5173/auth?discord=failed"
+      assert Repo.aggregate(Dhc.Auth.ExternalIdentity, :count) == 1
+      assert Repo.aggregate(from(t in PrincipalToken, where: t.context == "session"), :count) == 1
+
+      assert Repo.get_by!(Dhc.Auth.ExternalIdentity, provider: "discord").principal_id ==
+               principal.id
+    end
+
+    test "consumes a successful link flow so it cannot be replayed" do
+      principal = active_principal("link-replay@example.com")
+      token = session_token(principal)
+
+      conn =
+        conn()
+        |> put_signed_cookie(@session_cookie, token)
+        |> get("/api/auth/discord/link")
         |> recycle()
         |> get("/api/auth/discord/callback?state=test-state&code=success")
 
