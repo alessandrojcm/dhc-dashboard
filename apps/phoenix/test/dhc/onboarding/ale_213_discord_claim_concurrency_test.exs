@@ -4,6 +4,7 @@ defmodule Dhc.Onboarding.Ale213DiscordClaimConcurrencyTest do
   import Ecto.Query
 
   alias Dhc.Auth
+  alias Dhc.Auth.DiscordSubjectLock
   alias Dhc.Auth.{ExternalIdentity, Principal, PrincipalToken, UserRole}
   alias Dhc.Invitations.Invitation
 
@@ -189,59 +190,54 @@ defmodule Dhc.Onboarding.Ale213DiscordClaimConcurrencyTest do
     end)
   end
 
-  test "a Claim cannot win against promotion of its approved assignment" do
+  test "Claim versus promotion overlaps at the subject lock in both queue orders" do
     task_supervisor = start_supervised!(Task.Supervisor)
     test_process = self()
 
-    %{acceptance: acceptance, target: target, assignment: assignment, subject: subject} =
+    for order <- [[:promotion, :claim], [:claim, :promotion]] do
+      %{acceptance: acceptance, target: target, assignment: assignment, subject: subject} =
+        unboxed(fn ->
+          acceptance = acceptance_fixture()
+          target = Dhc.MemberFixtures.member_fixture(is_active: true)
+          subject = unique_subject("claim-promotion-#{Enum.join(order, "-")}")
+
+          %{
+            acceptance: acceptance,
+            target: target,
+            subject: subject,
+            assignment:
+              Dhc.DiscordAssignmentFixtures.approved_assignment_fixture(
+                target.principal_id,
+                subject
+              )
+          }
+        end)
+
+      on_exit(fn ->
+        unboxed(fn ->
+          delete_acceptances([acceptance.invitation_id])
+          delete_assignment_fixture(assignment)
+        end)
+      end)
+
+      results =
+        subject_lock_race(task_supervisor, test_process, subject, order, %{
+          promotion: fn -> Auth.sign_in_with_discord(%{"sub" => subject}) end,
+          claim: fn ->
+            Onboarding.verify_discord(acceptance.continuation_id, %{"sub" => subject})
+          end
+        })
+
+      assert {:ok, %{principal: %{id: principal_id}}} = results.promotion
+      assert principal_id == target.principal_id
+      assert {:error, :collision} = results.claim
+
       unboxed(fn ->
-        acceptance = acceptance_fixture()
-        target = Dhc.MemberFixtures.member_fixture(is_active: true)
-        subject = unique_subject("claim-promotion")
-
-        %{
-          acceptance: acceptance,
-          target: target,
-          subject: subject,
-          assignment:
-            Dhc.DiscordAssignmentFixtures.approved_assignment_fixture(
-              target.principal_id,
-              subject
-            )
-        }
+        assert Repo.get!(StagedAssignment, assignment.id).state == "promoted"
+        assert Repo.get_by!(ExternalIdentity, provider: "discord", provider_subject: subject)
+        refute Repo.get_by(InvitationAcceptanceDiscordSubjectClaim, provider_subject: subject)
       end)
-
-    on_exit(fn ->
-      unboxed(fn ->
-        delete_acceptances([acceptance.invitation_id])
-        delete_assignment_fixture(assignment)
-      end)
-    end)
-
-    promotion =
-      ready_task(task_supervisor, test_process, :promotion, fn ->
-        Auth.sign_in_with_discord(%{"sub" => subject})
-      end)
-
-    claim =
-      ready_task(task_supervisor, test_process, :claim, fn ->
-        Onboarding.verify_discord(acceptance.continuation_id, %{"sub" => subject})
-      end)
-
-    assert_receive {:ready, :promotion, promotion_pid}
-    assert_receive {:ready, :claim, claim_pid}
-    send(promotion_pid, :go)
-    send(claim_pid, :go)
-
-    assert {:ok, %{principal: %{id: principal_id}}} = Task.await(promotion)
-    assert principal_id == target.principal_id
-    assert {:error, :collision} = Task.await(claim)
-
-    unboxed(fn ->
-      assert Repo.get!(StagedAssignment, assignment.id).state == "promoted"
-      assert Repo.get_by!(ExternalIdentity, provider: "discord", provider_subject: subject)
-      refute Repo.get_by(InvitationAcceptanceDiscordSubjectClaim, provider_subject: subject)
-    end)
+    end
   end
 
   test "duplicate promotions converge on one identity and one promotion audit" do
@@ -266,23 +262,20 @@ defmodule Dhc.Onboarding.Ale213DiscordClaimConcurrencyTest do
 
     on_exit(fn -> unboxed(fn -> delete_assignment_fixture(assignment) end) end)
 
-    callbacks =
-      for label <- [:first_promotion, :second_promotion] do
-        ready_task(task_supervisor, test_process, label, fn ->
-          Auth.sign_in_with_discord(%{"sub" => subject})
-        end)
-      end
+    results =
+      subject_lock_race(
+        task_supervisor,
+        test_process,
+        subject,
+        [:first_promotion, :second_promotion],
+        %{
+          first_promotion: fn -> Auth.sign_in_with_discord(%{"sub" => subject}) end,
+          second_promotion: fn -> Auth.sign_in_with_discord(%{"sub" => subject}) end
+        }
+      )
 
-    for label <- [:first_promotion, :second_promotion] do
-      assert_receive {:ready, ^label, pid}
-      send(pid, :go)
-    end
-
-    assert Enum.all?(callbacks, fn task ->
-             match?(
-               {:ok, %{principal: %{id: id}}} when id == target.principal_id,
-               Task.await(task)
-             )
+    assert Enum.all?(results, fn {_label, result} ->
+             match?({:ok, %{principal: %{id: id}}} when id == target.principal_id, result)
            end)
 
     unboxed(fn ->
@@ -304,62 +297,187 @@ defmodule Dhc.Onboarding.Ale213DiscordClaimConcurrencyTest do
     end)
   end
 
-  test "promotion wins a concurrent permanent-link collision without partial state" do
+  test "promotion versus permanent link overlaps at the subject lock in both queue orders" do
     task_supervisor = start_supervised!(Task.Supervisor)
     test_process = self()
 
-    %{target: target, contender: contender, assignment: assignment, subject: subject} =
+    for order <- [
+          [:assignment_promotion, :permanent_link],
+          [:permanent_link, :assignment_promotion]
+        ] do
+      %{target: target, contender: contender, assignment: assignment, subject: subject} =
+        unboxed(fn ->
+          target = Dhc.MemberFixtures.member_fixture(is_active: true)
+          contender = Dhc.MemberFixtures.member_fixture(is_active: true)
+          subject = unique_subject("permanent-collision-#{Enum.join(order, "-")}")
+
+          %{
+            target: target,
+            contender: contender,
+            subject: subject,
+            assignment:
+              Dhc.DiscordAssignmentFixtures.approved_assignment_fixture(
+                target.principal_id,
+                subject
+              )
+          }
+        end)
+
+      on_exit(fn ->
+        unboxed(fn ->
+          delete_assignment_fixture(assignment, [contender.principal_id])
+        end)
+      end)
+
+      results =
+        subject_lock_race(task_supervisor, test_process, subject, order, %{
+          assignment_promotion: fn -> Auth.sign_in_with_discord(%{"sub" => subject}) end,
+          permanent_link: fn ->
+            Auth.link_discord_identity(contender.principal_id, %{"sub" => subject})
+          end
+        })
+
+      assert {:ok, %{principal: %{id: principal_id}}} = results.assignment_promotion
+      assert principal_id == target.principal_id
+      assert {:error, :invalid} = results.permanent_link
+
       unboxed(fn ->
-        target = Dhc.MemberFixtures.member_fixture(is_active: true)
-        contender = Dhc.MemberFixtures.member_fixture(is_active: true)
-        subject = unique_subject("permanent-collision")
+        assert Repo.get!(StagedAssignment, assignment.id).state == "promoted"
 
-        %{
-          target: target,
-          contender: contender,
-          subject: subject,
-          assignment:
-            Dhc.DiscordAssignmentFixtures.approved_assignment_fixture(
-              target.principal_id,
-              subject
-            )
-        }
+        assert Repo.get_by!(ExternalIdentity,
+                 provider: "discord",
+                 provider_subject: subject
+               ).principal_id == target.principal_id
+
+        refute Repo.exists?(
+                 from(i in ExternalIdentity, where: i.principal_id == ^contender.principal_id)
+               )
+      end)
+    end
+  end
+
+  defp subject_lock_race(task_supervisor, test_process, subject, order, operations) do
+    race_ref = make_ref()
+
+    holder =
+      Task.Supervisor.async_nolink(task_supervisor, fn ->
+        unboxed(fn ->
+          Repo.transaction(fn ->
+            blocker_pid = postgres_backend_pid()
+            DiscordSubjectLock.lock!(subject)
+            send(test_process, {:subject_lock_held, race_ref, blocker_pid})
+
+            receive do
+              {:release_subject_lock, ^race_ref} -> :released
+            end
+          end)
+        end)
       end)
 
-    on_exit(fn ->
+    assert_receive {:subject_lock_held, ^race_ref, blocker_pid}
+    baseline_waiter_count = advisory_waiter_count()
+
+    tasks =
+      order
+      |> Enum.with_index(1)
+      |> Enum.map(fn {label, expected_waiter_count} ->
+        task =
+          Task.Supervisor.async_nolink(task_supervisor, fn ->
+            unboxed(fn ->
+              send(test_process, {:operation_started, race_ref, label})
+              Map.fetch!(operations, label).()
+            end)
+          end)
+
+        assert_receive {:operation_started, ^race_ref, ^label}
+
+        if expected_waiter_count == 1 do
+          assert_direct_advisory_block(blocker_pid)
+        end
+
+        assert_advisory_waiter_count(baseline_waiter_count + expected_waiter_count)
+        {label, task}
+      end)
+
+    send(holder.pid, {:release_subject_lock, race_ref})
+    assert {:ok, :released} = Task.await(holder)
+
+    Map.new(tasks, fn {label, task} -> {label, Task.await(task, 10_000)} end)
+  end
+
+  defp postgres_backend_pid do
+    %{rows: [[backend_pid]]} = Repo.query!("SELECT pg_backend_pid()")
+    backend_pid
+  end
+
+  defp assert_direct_advisory_block(blocker_pid) do
+    deadline = System.monotonic_time(:millisecond) + 2_000
+    wait_for_direct_advisory_block(blocker_pid, deadline)
+  end
+
+  defp wait_for_direct_advisory_block(blocker_pid, deadline) do
+    directly_blocked? =
       unboxed(fn ->
-        delete_assignment_fixture(assignment, [contender.principal_id])
-      end)
-    end)
+        %{rows: [[directly_blocked?]]} =
+          Repo.query!(
+            "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE $1::integer = ANY(pg_blocking_pids(pid)))",
+            [blocker_pid],
+            log: false
+          )
 
-    promotion =
-      ready_task(task_supervisor, test_process, :assignment_promotion, fn ->
-        Auth.sign_in_with_discord(%{"sub" => subject})
-      end)
-
-    link =
-      ready_task(task_supervisor, test_process, :permanent_link, fn ->
-        Auth.link_discord_identity(contender.principal_id, %{"sub" => subject})
+        directly_blocked?
       end)
 
-    assert_receive {:ready, :assignment_promotion, promotion_pid}
-    assert_receive {:ready, :permanent_link, link_pid}
-    send(promotion_pid, :go)
-    send(link_pid, :go)
+    cond do
+      directly_blocked? ->
+        :ok
 
-    assert {:ok, %{principal: %{id: principal_id}}} = Task.await(promotion)
-    assert principal_id == target.principal_id
-    assert {:error, :invalid} = Task.await(link)
+      System.monotonic_time(:millisecond) < deadline ->
+        wait_for_direct_advisory_block(blocker_pid, deadline)
 
+      true ->
+        flunk("expected a PostgreSQL backend to block directly on backend #{blocker_pid}")
+    end
+  end
+
+  defp assert_advisory_waiter_count(expected_count) do
+    deadline = System.monotonic_time(:millisecond) + 2_000
+    wait_for_advisory_waiters(expected_count, deadline)
+  end
+
+  defp wait_for_advisory_waiters(expected_count, deadline) do
+    waiter_count = advisory_waiter_count()
+
+    cond do
+      waiter_count >= expected_count ->
+        :ok
+
+      System.monotonic_time(:millisecond) < deadline ->
+        wait_for_advisory_waiters(expected_count, deadline)
+
+      true ->
+        flunk(
+          "expected at least #{expected_count} ungranted PostgreSQL advisory locks, got #{waiter_count}"
+        )
+    end
+  end
+
+  defp advisory_waiter_count do
     unboxed(fn ->
-      assert Repo.get!(StagedAssignment, assignment.id).state == "promoted"
+      %{rows: [[waiter_count]]} =
+        Repo.query!(
+          """
+          SELECT count(*)
+          FROM pg_locks
+          WHERE locktype = 'advisory'
+            AND NOT granted
+            AND database = (SELECT oid FROM pg_database WHERE datname = current_database())
+          """,
+          [],
+          log: false
+        )
 
-      assert Repo.get_by!(ExternalIdentity, provider: "discord", provider_subject: subject).principal_id ==
-               target.principal_id
-
-      refute Repo.exists?(
-               from(i in ExternalIdentity, where: i.principal_id == ^contender.principal_id)
-             )
+      waiter_count
     end)
   end
 

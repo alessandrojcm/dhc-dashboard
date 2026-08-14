@@ -11,7 +11,16 @@ defmodule Dhc.DiscordAssignmentFixtures do
   alias Dhc.Repo
 
   def approved_assignment_fixture(target_principal_id, subject, attrs \\ %{}) do
+    assignment_fixture(
+      target_principal_id,
+      subject,
+      Map.put(Enum.into(attrs, %{}), :state, "approved")
+    )
+  end
+
+  def assignment_fixture(target_principal_id, subject, attrs \\ %{}) do
     attrs = Enum.into(attrs, %{})
+    state = Map.get(attrs, :state, "proposed")
     preparer = member_fixture("preparer")
     reviewer = member_fixture("reviewer")
     now = DateTime.utc_now()
@@ -84,14 +93,31 @@ defmodule Dhc.DiscordAssignmentFixtures do
       })
       |> Repo.insert!()
 
-    assignment
-    |> StagedAssignment.transition_changeset(%{
-      state: "approved",
-      approved_by_principal_id: reviewer,
-      review_execution_id: review_execution.id,
-      approved_at: now
-    })
-    |> Repo.update!()
+    case state do
+      "proposed" ->
+        assignment
+
+      "approved" ->
+        assignment
+        |> StagedAssignment.transition_changeset(%{
+          state: "approved",
+          approved_by_principal_id: reviewer,
+          review_execution_id: review_execution.id,
+          approved_at: now
+        })
+        |> Repo.update!()
+
+      "rejected" ->
+        assignment
+        |> StagedAssignment.transition_changeset(%{
+          state: "rejected",
+          review_execution_id: review_execution.id,
+          terminal_at: now,
+          terminal_actor_principal_id: reviewer,
+          reason_code: "review_rejected"
+        })
+        |> Repo.update!()
+    end
   end
 
   defp member_fixture(label) do
