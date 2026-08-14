@@ -136,6 +136,7 @@ defmodule Dhc.Invitations do
       next_of_kin_name,
       next_of_kin_phone,
       customer_id,
+      nil,
       nil
     )
   end
@@ -155,7 +156,8 @@ defmodule Dhc.Invitations do
       next_of_kin_name,
       next_of_kin_phone,
       customer_id,
-      continuation_id
+      continuation_id,
+      nil
     )
   end
 
@@ -166,7 +168,8 @@ defmodule Dhc.Invitations do
         continuation_id,
         next_of_kin_name,
         next_of_kin_phone,
-        customer_id
+        customer_id,
+        operation_token
       ) do
     do_convert(
       invitation_id,
@@ -174,7 +177,8 @@ defmodule Dhc.Invitations do
       next_of_kin_name,
       next_of_kin_phone,
       customer_id,
-      continuation_id
+      continuation_id,
+      operation_token
     )
   end
 
@@ -184,7 +188,8 @@ defmodule Dhc.Invitations do
          next_of_kin_name,
          next_of_kin_phone,
          customer_id,
-         continuation_id
+         continuation_id,
+         operation_token
        ) do
     Repo.transaction(fn ->
       now = DateTime.utc_now() |> DateTime.truncate(:second)
@@ -198,14 +203,19 @@ defmodule Dhc.Invitations do
 
       if is_nil(invitation), do: Repo.rollback(:invalid_invitation)
 
-      attempt =
+      attempt_query =
         from(a in InvitationAcceptanceAttempt,
           where:
             a.id == ^attempt_id and a.invitation_id == ^invitation.id and
-              a.status == "provisioned",
-          lock: "FOR UPDATE"
+              a.status == "provisioned"
         )
-        |> Repo.one()
+
+      attempt_query =
+        if operation_token,
+          do: from(a in attempt_query, where: a.operation_token == ^operation_token),
+          else: attempt_query
+
+      attempt = from(a in attempt_query, lock: "FOR UPDATE") |> Repo.one()
 
       if is_nil(attempt), do: Repo.rollback(:invalid_attempt)
 
@@ -286,7 +296,15 @@ defmodule Dhc.Invitations do
         where: a.id == ^attempt_id and a.invitation_id == ^invitation.id
       )
       |> Repo.update_all(
-        set: [status: "completed", concluded_at: now, updated_at: now, last_error: nil]
+        set: [
+          status: "completed",
+          concluded_at: now,
+          updated_at: now,
+          last_error: nil,
+          acceptance_data: clear_payment_secrets(attempt.acceptance_data),
+          operation_token: nil,
+          operation_started_at: nil
+        ]
       )
 
       if discord do
@@ -338,6 +356,7 @@ defmodule Dhc.Invitations do
       |> Repo.one()
 
     if is_nil(claim), do: Repo.rollback(:invalid_continuation)
+
     %{continuation: continuation, claim: claim}
   end
 
@@ -346,6 +365,8 @@ defmodule Dhc.Invitations do
   end
 
   defp rename_avatar_metadata(metadata), do: metadata
+
+  defp clear_payment_secrets(data) when is_map(data), do: Map.delete(data, "payment")
 
   # ALE-176: resolve the UserProfile acceptance leaves behind. When the
   # invitation came from a waitlist entry, lock the existing waitlist

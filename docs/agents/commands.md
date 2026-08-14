@@ -27,7 +27,8 @@ mise run dev                      # 3. SvelteKit dev from apps/web
 # Testing
 mise run test-unit          # Vitest
 mise run test-browser       # Vitest Browser Mode component tests in Chromium
-mise run test-e2e           # Playwright; self-starts disposable PostgreSQL, Phoenix, and SvelteKit
+STRIPE_SECRET_KEY=sk_test_... mise run test-e2e
+                            # Playwright + real Stripe test mode; self-starts disposable PostgreSQL, Phoenix, and SvelteKit
 mise run check              # Svelte type check (NOT raw tsc)
 
 # Lint & format
@@ -53,6 +54,12 @@ the real templates. Web UI at `http://localhost:8025`, SMTP on
 `localhost:1025` (override with `MAILPIT_HOST`/`MAILPIT_PORT`). Messages are
 in-memory and lost on container restart. A stopped Mailpit container is not an
 error: delivery failures log a warning and the job still succeeds.
+
+The E2E suite intentionally uses Stripe's real test API for invitation acceptance.
+It fails before startup unless `STRIPE_SECRET_KEY` starts with `sk_test_`. The test
+account must provide active `monthly_membership_fee` and `annual_membership_fee`
+lookup-key prices; coupon tests create unique promotion fixtures and clean them up.
+Never supply a live-mode key.
 
 ## Phoenix (in progress)
 

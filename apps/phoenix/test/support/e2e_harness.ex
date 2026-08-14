@@ -275,6 +275,7 @@ defmodule Dhc.E2EHarness do
 
     fingerprint_key = Application.fetch_env!(:dhc, :discord_subject_fingerprint_key)
     manifest_key = "e2e-identity-recovery-manifest-key"
+    operator_proof_key = "e2e-identity-recovery-operator-proof-key"
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
     open_command = %{
@@ -289,9 +290,30 @@ defmodule Dhc.E2EHarness do
       "actor_principal_id" => first_approver.principal_id
     }
 
+    actor_id = first_approver.principal_id
+    manifest = SignedManifest.sign(open_command, actor_id, manifest_key)
+
+    {:ok, _command, manifest_digest, ^actor_id} =
+      SignedManifest.verify(manifest, %{actor_id => manifest_key})
+
+    operator_proof =
+      SignedManifest.sign(
+        %{
+          "version" => 1,
+          "action" => "authorize_identity_recovery",
+          "issued_at" => DateTime.to_iso8601(now),
+          "manifest_digest" => manifest_digest,
+          "actor_principal_id" => actor_id,
+          "nonce" => Ecto.UUID.generate()
+        },
+        actor_id,
+        operator_proof_key
+      )
+
     {:ok, receipt} =
-      IdentityRecovery.open_signed(SignedManifest.sign(open_command, manifest_key), %{
-        manifest_key: manifest_key,
+      IdentityRecovery.open_signed(manifest, operator_proof, %{
+        manifest_keys: %{actor_id => manifest_key},
+        operator_proof_keys: %{actor_id => operator_proof_key},
         fingerprint_key: fingerprint_key,
         now: now
       })
@@ -482,12 +504,33 @@ defmodule Dhc.E2EHarness do
         from(a in InvitationAcceptanceAttempt,
           where: a.invitation_id == ^invitation_id,
           select: %{
+            id: a.id,
             status: a.status,
             stripe_customer_id: a.stripe_customer_id,
-            stripe_state: a.stripe_state
+            stripe_state: a.stripe_state,
+            last_error: a.last_error,
+            operation_active: not is_nil(a.operation_token)
           }
         )
       )
+
+    attempt_ids = Enum.map(attempts, & &1.id)
+
+    recovery_jobs =
+      Repo.all(
+        from(job in Oban.Job,
+          where: job.worker == "Dhc.Onboarding.Workers.AcceptanceRecoveryWorker",
+          select: %{
+            id: job.id,
+            state: job.state,
+            args: job.args,
+            attempt: job.attempt,
+            scheduled_at: job.scheduled_at,
+            errors: job.errors
+          }
+        )
+      )
+      |> Enum.filter(&(Map.get(&1.args, "attempt_id") in attempt_ids))
 
     continuation_ids =
       Repo.all(
@@ -527,6 +570,16 @@ defmodule Dhc.E2EHarness do
           :count
         ),
       attemptCount: length(attempts),
+      attempts:
+        Enum.map(attempts, fn attempt ->
+          %{
+            id: attempt.id,
+            status: attempt.status,
+            lastError: attempt.last_error,
+            operationActive: attempt.operation_active
+          }
+        end),
+      recoveryJobs: recovery_jobs,
       provisionedAttemptCount: Enum.count(attempts, &(&1.status == "provisioned")),
       completedAttemptCount: Enum.count(attempts, &(&1.status == "completed")),
       declinedAttemptCount: Enum.count(attempts, &(&1.status == "declined")),
@@ -549,8 +602,30 @@ defmodule Dhc.E2EHarness do
     }
   end
 
-  def interrupt_next_finalization! do
-    Dhc.E2EOnboardingFinalizer.interrupt_next!()
+  def interrupt_next_finalization!(invitation_id) do
+    attempt =
+      Repo.one!(
+        from(a in InvitationAcceptanceAttempt,
+          where:
+            a.invitation_id == ^invitation_id and
+              a.status in ["processing", "payment_pending", "provisioned"],
+          order_by: [desc: a.created_at],
+          limit: 1
+        )
+      )
+
+    Dhc.E2EOnboardingFinalizer.interrupt!(attempt.id)
+  end
+
+  def clear_finalization_interruption!(invitation_id) do
+    from(a in InvitationAcceptanceAttempt,
+      where: a.invitation_id == ^invitation_id,
+      select: a.id
+    )
+    |> Repo.all()
+    |> Enum.each(&Dhc.E2EOnboardingFinalizer.clear!/1)
+
+    :ok
   end
 
   def complete_identity_recovery(case_reference) do

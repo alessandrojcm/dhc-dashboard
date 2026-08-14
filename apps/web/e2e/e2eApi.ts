@@ -306,6 +306,20 @@ export async function auditInvitationAcceptance(id: string) {
 			discordIdentityCount: number;
 			memberProfileCount: number;
 			attemptCount: number;
+			attempts: Array<{
+				id: string;
+				status: string;
+				lastError: string | null;
+				operationActive: boolean;
+			}>;
+			recoveryJobs: Array<{
+				id: number;
+				state: string;
+				args: Record<string, unknown>;
+				attempt: number;
+				scheduled_at: string;
+				errors: Array<Record<string, unknown>>;
+			}>;
 			provisionedAttemptCount: number;
 			completedAttemptCount: number;
 			declinedAttemptCount: number;
@@ -319,10 +333,21 @@ export async function auditInvitationAcceptance(id: string) {
 	return response.data;
 }
 
-export async function interruptNextOnboardingFinalization() {
+export async function interruptNextOnboardingFinalization(
+	invitationId: string,
+) {
 	return harnessRequest<{ data: { armed: true } }>(
 		"/onboarding/interrupt-next-finalization",
-		{},
+		{ invitationId },
+	);
+}
+
+export async function clearOnboardingFinalizationInterruption(
+	invitationId: string,
+) {
+	return harnessRequest<{ data: { cleared: true } }>(
+		"/onboarding/clear-finalization-interruption",
+		{ invitationId },
 	);
 }
 

@@ -84,6 +84,10 @@ defmodule DhcWeb.Router do
            E2EHarnessController,
            :complete_identity_recovery
 
+      post "/onboarding/clear-finalization-interruption",
+           E2EHarnessController,
+           :clear_finalization_interruption
+
       patch "/fixtures/:type/:id", E2EHarnessController, :update_fixture
       post "/fixtures/:type/:id", E2EHarnessController, :delete_fixture
     end

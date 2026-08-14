@@ -51,9 +51,9 @@ defmodule DhcWeb.E2EHarnessController do
     end)
   end
 
-  def interrupt_next_finalization(conn, _params) do
+  def interrupt_next_finalization(conn, %{"invitationId" => invitation_id}) do
     with_harness(conn, fn conn ->
-      :ok = E2EHarness.interrupt_next_finalization!()
+      :ok = E2EHarness.interrupt_next_finalization!(invitation_id)
       json(conn, %{data: %{armed: true}})
     end)
   end
@@ -82,6 +82,13 @@ defmodule DhcWeb.E2EHarnessController do
           |> put_status(:unprocessable_entity)
           |> json(%{errors: %{detail: inspect(reason)}})
       end
+    end)
+  end
+
+  def clear_finalization_interruption(conn, %{"invitationId" => invitation_id}) do
+    with_harness(conn, fn conn ->
+      :ok = E2EHarness.clear_finalization_interruption!(invitation_id)
+      json(conn, %{data: %{cleared: true}})
     end)
   end
 

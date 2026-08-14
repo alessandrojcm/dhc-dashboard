@@ -5,16 +5,23 @@ Playwright end-to-end tests backed by Phoenix and a disposable PostgreSQL databa
 ## Running
 
 ```bash
-mise run test-e2e
+STRIPE_SECRET_KEY=sk_test_... mise run test-e2e
 # or
 pnpm --filter @dhc/web test:e2e
 ```
 
 Playwright owns the full run lifecycle. Do not manually start PostgreSQL, Phoenix, Supabase, or SvelteKit first.
 
+The suite uses the real Stripe test API and rejects missing keys and all keys that
+do not start with `sk_test_`. Never run it with live-mode credentials. The Stripe
+test account must have active membership prices under the lookup keys used by the
+application. Every spec that creates customers, subscriptions, coupons, or
+promotion codes owns cleanup from the first successful resource creation.
+
 - `playwright.config.ts` starts the `e2e-phoenix-server` and `e2e-web-server` mise tasks; their task-local `env` tables define the test server environment.
 - `playwright.config.ts` appends its process ID to the configured `E2E_COMPOSE_PROJECT` prefix. Phoenix and global teardown inherit that value, giving every run an isolated Compose project instead of attaching to a stale database from another worktree.
 - `mix e2e.server` starts the root Compose `test-db` through testcontainers-elixir, reads its dynamic port, migrates it, and starts Phoenix on `127.0.0.1:4000`.
+- Keep the E2E Oban configuration at `plugins: []`, not `plugins: false`. Oban 2.23 uses peer leadership to stage scheduled jobs; `false` disables leadership even when queues are enabled and leaves delayed recovery jobs unexecuted.
 - Global setup calls `POST /api/e2e/reset`, truncating application tables and restoring base settings.
 - The suite currently uses one Playwright worker because legacy specs share run-level state. Add worker-partitioned databases before raising `workers`.
 - HTML output is written to `apps/web/playwright-report`; machine-readable output is `apps/web/test-results/playwright-results.json`.

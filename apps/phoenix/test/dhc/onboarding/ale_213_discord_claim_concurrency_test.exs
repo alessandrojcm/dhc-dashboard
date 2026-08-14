@@ -543,9 +543,10 @@ defmodule Dhc.Onboarding.Ale213DiscordClaimConcurrencyTest do
       send(pid, :go)
     end
 
-    assert Enum.all?(recoveries, fn task ->
-             match?({:ok, %{state: "accepted"}}, Task.await(task))
-           end)
+    recovery_results = Enum.map(recoveries, &Task.await/1)
+
+    assert Enum.count(recovery_results, &match?({:ok, %{state: "accepted"}}, &1)) == 1
+    assert Enum.count(recovery_results, &match?({:error, :operation_in_progress}, &1)) == 1
 
     unboxed(fn ->
       assert Repo.get!(InvitationAcceptanceAttempt, attempt_id).status == "completed"

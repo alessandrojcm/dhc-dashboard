@@ -70,8 +70,7 @@ export const restartDiscordVerification = form(v.object({}), async () => {
 		throw error(400, "Invitation ID is required");
 	}
 
-	const cookieName = onboardingAcceptanceCookie;
-	const protectedContinuation = event.cookies.get(cookieName);
+	const protectedContinuation = event.cookies.get(onboardingAcceptanceCookie);
 
 	if (protectedContinuation) {
 		await onboardingCancelDiscord({
@@ -79,7 +78,7 @@ export const restartDiscordVerification = form(v.object({}), async () => {
 		});
 	}
 
-	event.cookies.delete(cookieName, {
+	event.cookies.delete(onboardingAcceptanceCookie, {
 		path: `/members/signup/${invitationId}`,
 	});
 	redirect(303, `/members/signup/${invitationId}`);
@@ -125,70 +124,70 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 	try {
 		const protectedContinuation = event.cookies.get(onboardingAcceptanceCookie);
 
-		if (protectedContinuation) {
-			const acceptance = await onboardingSubmitPayment({
-				...onboardingApiClientOptions(event.cookies),
-				timeout: invitationAcceptanceTimeout,
-				body: {
-					nextOfKinName: data.nextOfKin,
-					nextOfKinPhone: data.nextOfKinNumber,
-					stripeConfirmationToken: data.stripeConfirmationToken,
-					couponCode: data.couponCode || undefined,
-					mandateContext: {
-						ipAddress: event.getClientAddress(),
-						userAgent: event.request.headers.get("user-agent") ?? undefined,
-					},
-				},
-			});
-
-			const state = acceptance.data?.data.state;
-			if (acceptance.error) {
-				acceptanceError = acceptance.error;
-				acceptanceStatus = acceptance.response?.status;
-				throw error(
-					acceptanceStatus ?? 500,
-					acceptanceStatus === 402
-						? "Payment could not be completed"
-						: "Invitation acceptance failed",
-				);
-			}
-
-			if (
-				state === "paymentPending" ||
-				state === "paymentNeedsAction" ||
-				state === "paymentTerminal"
-			) {
-				throw redirect(303, `/members/signup/${invitationId}`);
-			}
-
-			if (state !== "accepted") {
-				throw error(409, "Invitation acceptance failed");
-			}
-
-			if (acceptance.data?.data.invitationEmail) {
-				event.cookies.set(
-					"invitation-sign-in-prefill",
-					acceptance.data.data.invitationEmail,
-					{
-						path: "/auth",
-						httpOnly: true,
-						secure: !dev,
-						sameSite: "lax",
-						maxAge: 10 * 60,
-					},
-				);
-			}
-
-			event.cookies.delete(onboardingAcceptanceCookie, {
-				path: `/members/signup/${invitationId}`,
-			});
-			throw redirect(303, `/members/signup/${invitationId}/success`);
+		if (!protectedContinuation) {
+			throw error(
+				409,
+				"Invitation verification has expired. Please verify again.",
+			);
 		}
 
-		throw error(
-			409,
-			"Invitation verification has expired. Please verify again.",
-		);
+		const acceptance = await onboardingSubmitPayment({
+			...onboardingApiClientOptions(event.cookies),
+			timeout: invitationAcceptanceTimeout,
+			body: {
+				nextOfKinName: data.nextOfKin,
+				nextOfKinPhone: data.nextOfKinNumber,
+				stripeConfirmationToken: data.stripeConfirmationToken,
+				couponCode: data.couponCode || undefined,
+				mandateContext: {
+					ipAddress: event.getClientAddress(),
+					userAgent: event.request.headers.get("user-agent") ?? undefined,
+				},
+			},
+		});
+
+		const state = acceptance.data?.data.state;
+		if (acceptance.error) {
+			acceptanceError = acceptance.error;
+			acceptanceStatus = acceptance.response?.status;
+			throw error(
+				acceptanceStatus ?? 500,
+				acceptanceStatus === 402
+					? "Payment could not be completed"
+					: "Invitation acceptance failed",
+			);
+		}
+
+		if (
+			state === "paymentPending" ||
+			state === "paymentNeedsAction" ||
+			state === "paymentTerminal"
+		) {
+			throw redirect(303, `/members/signup/${invitationId}`);
+		}
+
+		if (state !== "accepted") {
+			throw error(409, "Invitation acceptance failed");
+		}
+
+		if (acceptance.data?.data.invitationEmail) {
+			event.cookies.set(
+				"invitation-sign-in-prefill",
+				acceptance.data.data.invitationEmail,
+				{
+					path: "/auth",
+					httpOnly: true,
+					secure: !dev,
+					sameSite: "lax",
+					maxAge: 10 * 60,
+				},
+			);
+		}
+
+		event.cookies.delete(onboardingAcceptanceCookie, {
+			path: `/members/signup/${invitationId}`,
+		});
+		throw redirect(303, `/members/signup/${invitationId}/success`);
 	} catch (err) {
 		if (isRedirect(err)) {
 			throw err;

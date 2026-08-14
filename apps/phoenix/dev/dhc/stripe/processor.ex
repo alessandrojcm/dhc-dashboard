@@ -28,6 +28,8 @@ defmodule Dhc.Stripe.Processor do
                         "DeleteSubscriptionsSubscriptionExposedId",
                         "PostSubscriptionsSubscriptionResume",
                         # Setup intents
+                        "GetSetupIntents",
+                        "GetSetupIntentsIntent",
                         "PostSetupIntents",
                         # Payment intents
                         "PostPaymentIntents",

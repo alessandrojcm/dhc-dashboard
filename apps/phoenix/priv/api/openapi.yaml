@@ -603,7 +603,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-  /onboarding/invitation-acceptance/verify:
+  /onboarding/acceptance:
     post:
       operationId: onboarding.verifyInvitationAcceptance
       tags: [Onboarding]
