@@ -1,0 +1,12 @@
+[
+  {
+    "nick": "Nick",
+    "roles": [],
+    "user": {
+      "id": "1",
+      "username": "one",
+      "global_name": "One",
+      "avatar": null
+    }
+  }
+]

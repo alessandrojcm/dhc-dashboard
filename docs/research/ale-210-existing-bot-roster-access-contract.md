@@ -31,6 +31,14 @@ change the bot's established product role.
 | Guild configuration | Supply `DISCORD_ROSTER_GUILD_ID` and expected `DISCORD_ROSTER_BOT_APPLICATION_ID` as opaque strings. The latter is required for the preflight identity check. |
 | Temporary access | The ALE-205 executor receives audited access only for the approved execution window. The dashboard runtime, browser, CI, and ordinary developer environments do not receive the bot token. Revoke executor access and destroy the one-shot environment after the correction window. |
 
+The capture command additionally requires
+`DISCORD_ROSTER_EXECUTION_PROFILE=approved-one-shot`, an immutable
+`DISCORD_ROSTER_TOOL_REVISION`, and `DISCORD_ROSTER_EXECUTION_ID` naming a
+current, unconsumed database authorization for the operator, guild,
+application, and revision. It derives the actor from that authorization after
+rechecking the operator's current Member-administration role; callers do not
+self-assert an actor ID.
+
 Adding these task-local names to Phoenix runtime configuration is prohibited;
 they belong only to the operator-invoked roster tooling.
 

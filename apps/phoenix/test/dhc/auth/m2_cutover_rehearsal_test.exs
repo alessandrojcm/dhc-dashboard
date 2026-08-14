@@ -139,8 +139,12 @@ defmodule Dhc.AuthM2CutoverRehearsalTest do
   defp application_principal_foreign_keys do
     foreign_keys("public", "principals")
     |> Enum.reject(fn [table, _constraint] ->
-      table in ~w(external_identities principal_tokens) or
-        table in @post_m2_principal_fk_tables
+      table in ~w(
+        discord_roster_executions
+        discord_roster_receipts
+        external_identities
+        principal_tokens
+      ) or table in @post_m2_principal_fk_tables
     end)
   end
 
