@@ -15,6 +15,8 @@ defmodule Dhc.OnboardingTest do
   alias Dhc.Onboarding.InvitationAcceptanceDiscordContinuation
   alias Dhc.Onboarding.InvitationAcceptanceDiscordSubjectClaim
   alias Dhc.Onboarding.Workers.AcceptanceRecoveryWorker
+  alias Dhc.Onboarding.Workers.DiscordContinuationExpiryWorker
+  alias Dhc.StripeWebhooks
   alias Dhc.UserProfiles.UserProfile
 
   setup do
@@ -141,6 +143,150 @@ defmodule Dhc.OnboardingTest do
     refute Repo.get(Principal, invitation.prospective_principal_id)
     refute_received {:create_customer, _}
     refute_received {:provision_membership, _}
+  end
+
+  test "expiry maintenance closes an unconsumed Discord proof and allows a fresh attempt" do
+    invitation = insert_invitation!()
+
+    {:ok, started} =
+      Onboarding.start_acceptance(
+        invitation.id,
+        invitation.email,
+        Date.to_iso8601(invitation.date_of_birth)
+      )
+
+    assert {:ok, %{state: "discordVerified"}} =
+             Onboarding.verify_discord(started.continuation_id, %{
+               "sub" => "expired-discord-subject",
+               "preferred_username" => "expired-member"
+             })
+
+    started.continuation_id
+    |> then(&Repo.get!(InvitationAcceptanceDiscordContinuation, &1))
+    |> Ecto.Changeset.change(
+      expires_at: DateTime.utc_now() |> DateTime.add(-60, :second) |> DateTime.truncate(:second)
+    )
+    |> Repo.update!()
+
+    assert :ok = perform_job(DiscordContinuationExpiryWorker, %{})
+
+    assert %InvitationAcceptanceDiscordContinuation{
+             status: "expired",
+             provider_subject: nil,
+             display_metadata: %{}
+           } = Repo.get!(InvitationAcceptanceDiscordContinuation, started.continuation_id)
+
+    assert %InvitationAcceptanceAttempt{status: "declined"} =
+             Repo.get_by!(InvitationAcceptanceAttempt, invitation_id: invitation.id)
+
+    refute Repo.exists?(InvitationAcceptanceDiscordSubjectClaim)
+
+    assert {:ok, fresh} =
+             Onboarding.start_acceptance(
+               invitation.id,
+               invitation.email,
+               Date.to_iso8601(invitation.date_of_birth)
+             )
+
+    refute fresh.continuation_id == started.continuation_id
+    assert Repo.aggregate(InvitationAcceptanceAttempt, :count) == 2
+  end
+
+  test "expiry maintenance preserves a consumed proof while payment remains recoverable" do
+    invitation = insert_invitation!()
+
+    {:ok, started} =
+      Onboarding.start_acceptance(
+        invitation.id,
+        invitation.email,
+        Date.to_iso8601(invitation.date_of_birth)
+      )
+
+    assert {:ok, %{state: "discordVerified"}} =
+             Onboarding.verify_discord(started.continuation_id, %{
+               "sub" => "recoverable-expired-subject",
+               "preferred_username" => "recoverable-member"
+             })
+
+    Application.put_env(
+      :dhc,
+      :onboarding_stripe_result,
+      {:error, {:http_error, :timeout}}
+    )
+
+    assert {:error, {:payment_failed, {:http_error, :timeout}}} =
+             Onboarding.continue_acceptance(started.continuation_id, %{
+               next_of_kin_name: "Grace Hopper",
+               next_of_kin_phone: "+353810000099",
+               confirmation_token: "ctok_recoverable_expiry",
+               coupon_code: nil
+             })
+
+    started.continuation_id
+    |> then(&Repo.get!(InvitationAcceptanceDiscordContinuation, &1))
+    |> Ecto.Changeset.change(
+      expires_at: DateTime.utc_now() |> DateTime.add(-60, :second) |> DateTime.truncate(:second)
+    )
+    |> Repo.update!()
+
+    assert :ok = perform_job(DiscordContinuationExpiryWorker, %{})
+
+    assert %InvitationAcceptanceDiscordContinuation{
+             status: "verified",
+             provider_subject: "recoverable-expired-subject"
+           } = Repo.get!(InvitationAcceptanceDiscordContinuation, started.continuation_id)
+
+    assert %InvitationAcceptanceAttempt{status: "payment_pending"} =
+             Repo.get_by!(InvitationAcceptanceAttempt, invitation_id: invitation.id)
+
+    assert Repo.exists?(InvitationAcceptanceDiscordSubjectClaim)
+  end
+
+  test "expiry maintenance reports inconsistent Claims without deleting evidence" do
+    invitation = insert_invitation!()
+
+    {:ok, started} =
+      Onboarding.start_acceptance(
+        invitation.id,
+        invitation.email,
+        Date.to_iso8601(invitation.date_of_birth)
+      )
+
+    assert {:ok, %{state: "discordVerified"}} =
+             Onboarding.verify_discord(started.continuation_id, %{
+               "sub" => "inconsistent-expiry-subject"
+             })
+
+    started.continuation_id
+    |> then(&Repo.get!(InvitationAcceptanceDiscordContinuation, &1))
+    |> Ecto.Changeset.change(
+      expires_at: DateTime.utc_now() |> DateTime.add(-60, :second) |> DateTime.truncate(:second)
+    )
+    |> Repo.update!()
+
+    claim = Repo.one!(InvitationAcceptanceDiscordSubjectClaim)
+
+    claim
+    |> Ecto.Changeset.change(provider_subject: "mismatched-expiry-subject")
+    |> Repo.update!()
+
+    assert {:error, {:inconsistent_claims, [continuation_id]}} =
+             DiscordContinuationExpiryWorker.perform(%Oban.Job{args: %{}})
+
+    assert continuation_id == started.continuation_id
+
+    assert Repo.get!(InvitationAcceptanceDiscordContinuation, started.continuation_id).status ==
+             "verified"
+
+    assert Repo.get!(InvitationAcceptanceDiscordSubjectClaim, claim.id)
+  end
+
+  test "expiry maintenance enqueues uniquely without sensitive arguments" do
+    assert {:ok, _job} = Oban.insert(DiscordContinuationExpiryWorker.new(%{}))
+    assert {:ok, _same_job} = Oban.insert(DiscordContinuationExpiryWorker.new(%{}))
+
+    assert [%{args: args}] = all_enqueued(worker: DiscordContinuationExpiryWorker)
+    assert args == %{}
   end
 
   test "verified Continue is single-use and atomically finalizes the paid Discord-bound Member" do
@@ -295,6 +441,46 @@ defmodule Dhc.OnboardingTest do
     assert %InvitationAcceptanceAttempt{status: "payment_pending"} =
              Repo.get_by!(InvitationAcceptanceAttempt, invitation_id: invitation.id)
 
+    jobs = all_enqueued(worker: AcceptanceRecoveryWorker)
+    assert [%{args: %{"attempt_id" => recovery_attempt_id}}] = jobs
+
+    assert recovery_attempt_id ==
+             Repo.get_by!(InvitationAcceptanceAttempt, invitation_id: invitation.id).id
+
+    refute inspect(jobs) =~ "ctok_original"
+    refute inspect(jobs) =~ "retry-discord-subject"
+
+    assert :ok =
+             StripeWebhooks.process_event(%{
+               "type" => "account.updated",
+               "data" => %{
+                 "object" => %{
+                   "id" => "acct_acceptance_recovery",
+                   "customer" => "cus_onboarding"
+                 }
+               }
+             })
+
+    assert :ok =
+             StripeWebhooks.process_event(%{
+               "type" => "account.updated",
+               "data" => %{
+                 "object" => %{
+                   "id" => "acct_acceptance_recovery_replay",
+                   "customer" => %{"id" => "cus_onboarding"}
+                 }
+               }
+             })
+
+    assert [_one_recovery_job] = all_enqueued(worker: AcceptanceRecoveryWorker)
+
+    assert {:ok,
+            %{
+              state: "paymentPending",
+              discord_verified: true,
+              retry_allowed: true
+            }} = Onboarding.acceptance_state(started.continuation_id)
+
     Application.put_env(:dhc, :onboarding_stripe_result, {:ok, %{}})
 
     assert {:ok, %{state: "paymentPending"}} =
@@ -358,6 +544,78 @@ defmodule Dhc.OnboardingTest do
            } = Repo.get!(InvitationAcceptanceDiscordContinuation, started.continuation_id)
 
     Repo.delete!(conflicting_principal)
+
+    invitation
+    |> Ecto.Changeset.change(
+      expires_at: DateTime.utc_now() |> DateTime.add(-60, :second) |> DateTime.truncate(:second)
+    )
+    |> Repo.update!()
+
+    assert :ok = perform_job(AcceptanceRecoveryWorker, %{"attempt_id" => attempt.id})
+
+    assert %ExternalIdentity{
+             provider: "discord",
+             provider_subject: "rollback-discord-subject"
+           } = Repo.get_by!(ExternalIdentity, principal_id: invitation.prospective_principal_id)
+
+    assert %InvitationAcceptanceDiscordContinuation{
+             status: "consumed",
+             provider_subject: nil,
+             display_metadata: %{}
+           } = Repo.get!(InvitationAcceptanceDiscordContinuation, started.continuation_id)
+
+    refute Repo.exists?(InvitationAcceptanceDiscordSubjectClaim)
+  end
+
+  test "terminal Discord-bound payment failure releases proof and permits a fresh attempt" do
+    invitation = insert_invitation!()
+
+    {:ok, started} =
+      Onboarding.start_acceptance(
+        invitation.id,
+        invitation.email,
+        Date.to_iso8601(invitation.date_of_birth)
+      )
+
+    {:ok, _state} =
+      Onboarding.verify_discord(started.continuation_id, %{
+        "sub" => "declined-discord-subject",
+        "preferred_username" => "declined-member"
+      })
+
+    decline = {:setup_intent_failed, "requires_payment_method"}
+    Application.put_env(:dhc, :onboarding_stripe_result, {:error, decline})
+
+    assert {:error, {:payment_failed, ^decline}} =
+             Onboarding.continue_acceptance(started.continuation_id, %{
+               next_of_kin_name: "Grace Hopper",
+               next_of_kin_phone: "+353810000099",
+               confirmation_token: "ctok_declined_discord",
+               coupon_code: nil
+             })
+
+    assert %InvitationAcceptanceAttempt{status: "declined"} =
+             Repo.get_by!(InvitationAcceptanceAttempt, invitation_id: invitation.id)
+
+    assert %InvitationAcceptanceDiscordContinuation{
+             status: "failed",
+             provider_subject: nil,
+             display_metadata: %{}
+           } = Repo.get!(InvitationAcceptanceDiscordContinuation, started.continuation_id)
+
+    refute Repo.exists?(InvitationAcceptanceDiscordSubjectClaim)
+
+    Application.put_env(:dhc, :onboarding_stripe_result, {:ok, %{}})
+
+    assert {:ok, fresh} =
+             Onboarding.start_acceptance(
+               invitation.id,
+               invitation.email,
+               Date.to_iso8601(invitation.date_of_birth)
+             )
+
+    refute fresh.continuation_id == started.continuation_id
+    assert Repo.aggregate(InvitationAcceptanceAttempt, :count) == 2
   end
 
   test "missing or mismatched opaque proof returns restart verification" do

@@ -15,7 +15,7 @@ const { data } = $props();
 {:else if data.state === "discordCollision"}
 	<DiscordCollision />
 {:else if data.state === "paymentPending"}
-	<PaymentStatus />
+	<PaymentStatus {data} />
 {:else}
 	<ConfirmInvitation />
 {/if}

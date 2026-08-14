@@ -4,7 +4,11 @@ import {
 	ANNUAL_FEE_LOOKUP,
 	MEMBERSHIP_FEE_LOOKUP_NAME,
 } from "../src/lib/server/constants";
-import { setupInvitedUser, stripeClient } from "./setupFunctions";
+import {
+	routeSuccessfulDiscordAcceptance,
+	setupInvitedUser,
+	stripeClient,
+} from "./setupFunctions";
 
 type InvitedUser = Awaited<ReturnType<typeof setupInvitedUser>>;
 
@@ -13,11 +17,13 @@ function signupUrl(invitation: InvitedUser) {
 }
 
 async function openSignup(page: Page, invitation: InvitedUser) {
+	await routeSuccessfulDiscordAcceptance(page, invitation.invitationId);
 	await page.goto(signupUrl(invitation));
 	const verifyButton = page.getByRole("button", { name: /verify invitation/i });
 	await expect(verifyButton).toBeVisible();
 	await page.waitForLoadState("networkidle");
 	await verifyButton.click();
+	await page.getByRole("link", { name: "Continue to Discord" }).click();
 	await page.getByLabel(/next of kin$/i).waitFor({ state: "visible" });
 }
 
@@ -283,16 +289,13 @@ test.describe("Member Signup - Coupon Codes", () => {
 	test.describe("Coupon application", () => {
 		let invitation: InvitedUser;
 
-		test.beforeAll(async () => {
-			invitation = await setupInvitedUser();
-		});
-
-		test.afterAll(async () => {
-			await invitation?.cleanUp();
-		});
-
 		test.beforeEach(async ({ page }) => {
+			invitation = await setupInvitedUser();
 			await openSignup(page, invitation);
+		});
+
+		test.afterEach(async () => {
+			await invitation?.cleanUp();
 		});
 
 		for (const coupon of [
@@ -415,7 +418,9 @@ test.describe("Member Signup - Coupon Codes", () => {
 			try {
 				await openSignup(page, invitation);
 				await page.getByLabel(/next of kin$/i).fill("John Doe");
-				await page.getByLabel(/next of kin phone number/i).fill("0838774532");
+				const phoneInput = page.getByLabel(/next of kin phone number/i);
+				await phoneInput.pressSequentially("0838774532", { delay: 50 });
+				await phoneInput.press("Tab");
 				await applyCoupon(page, coupon.code());
 				await expect(
 					page.getByText(`Discount applied: ${coupon.discount}`),

@@ -32,6 +32,8 @@ export const load: PageServerLoad = async ({ params, cookies }) => {
 		state: response.data?.data?.state ?? ("restartVerification" as const),
 		invitationEmail: response.data?.data?.invitationEmail,
 		discord: response.data?.data?.discord,
+		discordVerified: response.data?.data?.discordVerified,
+		retryAllowed: response.data?.data?.retryAllowed,
 		nextMonthlyBillingDate: dayjs().add(1, "month").startOf("month").toDate(),
 		nextAnnualBillingDate: dayjs().month(0).date(7).add(1, "year").toDate(),
 	};

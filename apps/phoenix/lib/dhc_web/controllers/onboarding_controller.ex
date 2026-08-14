@@ -107,6 +107,8 @@ defmodule DhcWeb.OnboardingController do
       |> maybe_put(:invitationEmail, state[:invitation_email])
       |> maybe_put(:discord, state[:discord])
       |> maybe_put(:payment, state[:payment])
+      |> maybe_put(:discordVerified, state[:discord_verified])
+      |> maybe_put(:retryAllowed, state[:retry_allowed])
 
     json(conn, %{data: data})
   end

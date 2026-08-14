@@ -95,7 +95,8 @@ config :dhc, :discord_oauth, client_id: "test-client", client_secret: "test-secr
 config :dhc, :discord_subject_fingerprint_key, "test-discord-subject-fingerprint-key"
 
 if System.get_env("E2E_SERVER") == "true" do
-  config :dhc, :onboarding_stripe_adapter, Dhc.E2EOnboardingStripeAdapter
+  config :dhc, :onboarding_stripe_adapter, Dhc.Onboarding.StripeAdapter.Live
+  config :dhc, :onboarding_finalizer, Dhc.E2EOnboardingFinalizer
 end
 
 # Print only warnings and errors during test

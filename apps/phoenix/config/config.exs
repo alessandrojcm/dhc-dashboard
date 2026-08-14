@@ -48,7 +48,8 @@ config :dhc, Oban,
     {Oban.Plugins.Cron,
      crontab: [
        {"0 0 * * *", Dhc.StripeSync.Worker},
-       {"*/15 * * * *", Dhc.Workshops.Workers.RefundReconciliationWorker}
+       {"*/15 * * * *", Dhc.Workshops.Workers.RefundReconciliationWorker},
+       {"*/5 * * * *", Dhc.Onboarding.Workers.DiscordContinuationExpiryWorker}
      ]}
   ]
 

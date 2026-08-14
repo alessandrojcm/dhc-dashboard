@@ -69,6 +69,11 @@ defmodule DhcWeb.Router do
       post "/seed/:scenario", E2EHarnessController, :seed
       post "/login", E2EHarnessController, :login
       post "/audit/invitation-acceptance/:id", E2EHarnessController, :invitation_acceptance_audit
+
+      post "/onboarding/interrupt-next-finalization",
+           E2EHarnessController,
+           :interrupt_next_finalization
+
       patch "/fixtures/:type/:id", E2EHarnessController, :update_fixture
       post "/fixtures/:type/:id", E2EHarnessController, :delete_fixture
     end

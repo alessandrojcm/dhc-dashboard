@@ -2,8 +2,14 @@ import { expect, test } from "@playwright/test";
 import {
 	auditInvitationAcceptance,
 	deleteE2EFixture,
+	interruptNextOnboardingFinalization,
 	seedE2EScenario,
 } from "./e2eApi";
+import {
+	routeSuccessfulDiscordAcceptance,
+	setupInvitedUser,
+	stripeClient,
+} from "./setupFunctions";
 
 test.describe.configure({ timeout: 60_000 });
 
@@ -54,34 +60,6 @@ async function fillMembershipPayment(
 	);
 }
 
-async function routeSuccessfulDiscordAcceptance(
-	page: import("@playwright/test").Page,
-	invitationId: string,
-) {
-	await page.route(
-		`**/members/signup/${invitationId}/discord`,
-		async (route) => {
-			const response = await route.fetch({ maxRedirects: 0 });
-			expect(response.status()).toBe(302);
-			const authorizationUrl = new URL(response.headers().location);
-			expect(authorizationUrl.origin + authorizationUrl.pathname).toBe(
-				"https://discord.example.com/oauth2/authorize",
-			);
-			expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
-				"http://127.0.0.1:5173/auth/discord/acceptance/callback",
-			);
-			await route.fulfill({
-				response,
-				headers: {
-					...response.headers(),
-					location:
-						"http://127.0.0.1:5173/auth/discord/acceptance/callback?state=test-state&code=success",
-				},
-			});
-		},
-	);
-}
-
 async function reachDiscordVerified(
 	page: import("@playwright/test").Page,
 	invitation: {
@@ -111,10 +89,11 @@ async function expectUnsignedCompletedAcceptance(
 		{ timeout: 30_000 },
 	);
 	await expect(
-		page.getByText("Your membership has been created."),
+		page.getByText(
+			"Your membership has been successfully processed. Welcome to Dublin Hema Club! Sign in with your membership email to continue.",
+		),
 	).toBeVisible();
-	await expect(page.getByText("You are not signed in.")).toBeVisible();
-	await expect(page.getByRole("link", { name: "Go to sign in" })).toBeVisible();
+	await expect(page.getByRole("link", { name: "Sign In" })).toBeVisible();
 
 	const cookies = await context.cookies();
 	expect(cookies.some((cookie) => cookie.name === "_dhc_session")).toBe(false);
@@ -128,8 +107,20 @@ async function expectUnsignedCompletedAcceptance(
 		.toEqual({
 			sessionTokenCount: 0,
 			magicLinkTokenCount: 0,
+			principalCount: 1,
+			userProfileCount: 1,
+			memberRoleCount: 1,
 			discordIdentityCount: 1,
 			memberProfileCount: 1,
+			attemptCount: 1,
+			provisionedAttemptCount: 0,
+			completedAttemptCount: 1,
+			declinedAttemptCount: 0,
+			continuationCount: 1,
+			subjectClaimCount: 0,
+			stripeCustomerCount: 1,
+			monthlySubscriptionCount: 1,
+			annualSubscriptionCount: 1,
 		});
 }
 
@@ -265,13 +256,9 @@ test("completes a paid Discord-bound Invitation Acceptance without creating auth
 	context,
 	page,
 }) => {
-	const invitation = await seedE2EScenario("invitation", {
+	const invitation = await setupInvitedUser({
 		email: `paid-discord-acceptance-${Date.now()}@example.com`,
-		firstName: "Ada",
-		lastName: "Lovelace",
-		phoneNumber: "+353810000000",
-		dateOfBirth: "1990-01-01",
-		status: "pending",
+		dateOfBirth: new Date("1990-01-01T00:00:00.000Z"),
 	});
 	const hostedCheckoutRequests: string[] = [];
 	page.on("request", (request) => {
@@ -280,7 +267,11 @@ test("completes a paid Discord-bound Invitation Acceptance without creating auth
 	});
 
 	try {
-		await reachDiscordVerified(page, invitation);
+		await reachDiscordVerified(page, {
+			invitationId: invitation.invitationId,
+			email: invitation.email,
+			dateOfBirth: invitation.date_of_birth.format("YYYY-MM-DD"),
+		});
 		await fillMembershipPayment(page, invitation, "Grace Hopper", "0838774532");
 		expect(
 			(await context.cookies()).some((cookie) =>
@@ -305,7 +296,95 @@ test("completes a paid Discord-bound Invitation Acceptance without creating auth
 		);
 		expect(hostedCheckoutRequests).toEqual([]);
 	} finally {
-		await deleteE2EFixture("invitation", invitation.invitationId);
+		await invitation.cleanUp();
+	}
+});
+
+test("recovers a real Stripe acceptance interrupted before local finalization", async ({
+	context,
+	page,
+}) => {
+	const invitation = await setupInvitedUser();
+
+	try {
+		await reachDiscordVerified(page, {
+			invitationId: invitation.invitationId,
+			email: invitation.email,
+			dateOfBirth: invitation.date_of_birth.format("YYYY-MM-DD"),
+		});
+		await fillMembershipPayment(
+			page,
+			invitation,
+			"Katherine Johnson",
+			"0838774532",
+		);
+		await interruptNextOnboardingFinalization();
+		await page.getByRole("button", { name: "Sign up" }).click();
+
+		await expect
+			.poll(() => auditInvitationAcceptance(invitation.invitationId), {
+				timeout: 30_000,
+			})
+			.toMatchObject({
+				principalCount: 0,
+				attemptCount: 1,
+				provisionedAttemptCount: 1,
+				stripeCustomerCount: 1,
+				monthlySubscriptionCount: 1,
+				annualSubscriptionCount: 1,
+			});
+		await page.reload();
+		await expect(
+			page.getByRole("heading", { name: "Payment in progress" }),
+		).toBeVisible();
+		await expect(
+			page.getByText(
+				"Your Discord account remains verified. You will not need to connect it again.",
+			),
+		).toBeVisible();
+		await expect(
+			page.getByRole("link", { name: "Retry completion" }),
+		).toBeVisible();
+
+		expect(await auditInvitationAcceptance(invitation.invitationId)).toEqual({
+			sessionTokenCount: 0,
+			magicLinkTokenCount: 0,
+			principalCount: 0,
+			userProfileCount: 0,
+			memberRoleCount: 0,
+			discordIdentityCount: 0,
+			memberProfileCount: 0,
+			attemptCount: 1,
+			provisionedAttemptCount: 1,
+			completedAttemptCount: 0,
+			declinedAttemptCount: 0,
+			continuationCount: 1,
+			subjectClaimCount: 1,
+			stripeCustomerCount: 1,
+			monthlySubscriptionCount: 1,
+			annualSubscriptionCount: 1,
+		});
+
+		await page.getByRole("link", { name: "Retry completion" }).click();
+		await expectUnsignedCompletedAcceptance(
+			page,
+			context,
+			invitation.invitationId,
+		);
+
+		const customers = await stripeClient.customers.list({
+			email: invitation.email,
+			limit: 2,
+		});
+		expect(customers.data).toHaveLength(1);
+		const subscriptions = await stripeClient.subscriptions.list({
+			customer: customers.data[0].id,
+			status: "all",
+			limit: 10,
+		});
+		expect(subscriptions.data).toHaveLength(2);
+	} finally {
+		await invitation.cleanUp();
 	}
 });
 
@@ -313,22 +392,33 @@ test("completes a complimentary Discord-bound Invitation Acceptance without auth
 	context,
 	page,
 }) => {
-	const invitation = await seedE2EScenario("invitation", {
+	const invitation = await setupInvitedUser({
 		email: `complimentary-discord-acceptance-${Date.now()}@example.com`,
-		firstName: "Grace",
-		lastName: "Hopper",
-		phoneNumber: "+353810000000",
-		dateOfBirth: "1990-01-01",
-		status: "pending",
+		dateOfBirth: new Date("1990-01-01T00:00:00.000Z"),
 	});
+	const coupon = await stripeClient.coupons.create({
+		percent_off: 100,
+		duration: "forever",
+		name: "Protected acceptance complimentary E2E",
+	});
+	const promotion = await stripeClient.promotionCodes.create({
+		promotion: { coupon: coupon.id, type: "coupon" },
+		code: `COMPLIMENTARY-${Date.now()}`,
+		max_redemptions: 2,
+	});
+
 	try {
-		await reachDiscordVerified(page, invitation);
+		await reachDiscordVerified(page, {
+			invitationId: invitation.invitationId,
+			email: invitation.email,
+			dateOfBirth: invitation.date_of_birth.format("YYYY-MM-DD"),
+		});
 		await fillMembershipPayment(
 			page,
 			invitation,
 			"Ada Lovelace",
 			"0838774532",
-			"COMPLIMENTARY",
+			promotion.code,
 		);
 		await page.getByRole("button", { name: "Sign up" }).click();
 
@@ -338,6 +428,11 @@ test("completes a complimentary Discord-bound Invitation Acceptance without auth
 			invitation.invitationId,
 		);
 	} finally {
-		await deleteE2EFixture("invitation", invitation.invitationId);
+		try {
+			await stripeClient.promotionCodes.update(promotion.id, { active: false });
+			await stripeClient.coupons.del(coupon.id);
+		} finally {
+			await invitation.cleanUp();
+		}
 	}
 });

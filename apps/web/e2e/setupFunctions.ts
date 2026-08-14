@@ -1,5 +1,6 @@
 import { faker } from "@faker-js/faker/locale/en_IE";
 import type { WorkshopStatus } from "@dhc/api-client";
+import { expect, type Page } from "@playwright/test";
 import "dotenv/config";
 import dayjs from "dayjs";
 import stripe from "stripe";
@@ -13,6 +14,34 @@ import type { E2ERole } from "./e2eApi";
 export const stripeClient = new stripe(process.env.STRIPE_SECRET_KEY || "", {
 	apiVersion: "2025-10-29.clover",
 });
+
+export async function routeSuccessfulDiscordAcceptance(
+	page: Page,
+	invitationId: string,
+) {
+	await page.route(
+		`**/members/signup/${invitationId}/discord`,
+		async (route) => {
+			const response = await route.fetch({ maxRedirects: 0 });
+			expect(response.status()).toBe(302);
+			const authorizationUrl = new URL(response.headers().location);
+			expect(authorizationUrl.origin + authorizationUrl.pathname).toBe(
+				"https://discord.example.com/oauth2/authorize",
+			);
+			expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
+				"http://127.0.0.1:5173/auth/discord/acceptance/callback",
+			);
+			await route.fulfill({
+				response,
+				headers: {
+					...response.headers(),
+					location:
+						"http://127.0.0.1:5173/auth/discord/acceptance/callback?state=test-state&code=success",
+				},
+			});
+		},
+	);
+}
 
 const person = (email: string) => ({
 	first_name: faker.person.firstName(),
