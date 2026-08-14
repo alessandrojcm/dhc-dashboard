@@ -258,6 +258,7 @@ defmodule Dhc.Auth do
     safe_discord_transaction(fn ->
       DiscordSubjectLock.lock_principal!(principal.id)
       DiscordSubjectLock.lock!(subject)
+      principal = lock_principal!(principal.id)
       unless eligible_member_locked?(principal.id), do: Repo.rollback(:invalid)
       if discord_subject_claimed?(subject), do: Repo.rollback(:invalid)
 
@@ -301,6 +302,7 @@ defmodule Dhc.Auth do
     safe_discord_transaction(fn ->
       DiscordSubjectLock.lock_principal!(principal.id)
       DiscordSubjectLock.lock!(subject)
+      principal = lock_principal!(principal.id)
       unless eligible_member_locked?(principal.id), do: Repo.rollback(:invalid)
       if discord_subject_claimed?(subject), do: Repo.rollback(:invalid)
 
@@ -686,6 +688,15 @@ defmodule Dhc.Auth do
     |> select([profile], profile.is_active)
     |> lock("FOR UPDATE")
     |> Repo.one() == true
+  end
+
+  defp lock_principal!(principal_id) do
+    from(principal in Principal, where: principal.id == ^principal_id, lock: "FOR UPDATE")
+    |> Repo.one()
+    |> case do
+      %Principal{} = principal -> principal
+      nil -> Repo.rollback(:invalid)
+    end
   end
 
   defp transaction_result({:ok, result}), do: {:ok, result}

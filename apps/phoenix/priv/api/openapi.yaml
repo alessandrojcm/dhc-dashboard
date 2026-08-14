@@ -492,9 +492,8 @@ paths:
         - Invitations
       summary: Verify public invitation credentials
       description: |
-        Checks public invitation credentials using email and date of birth. On
-        success returns a short-lived opaque verification token bound to the
-        invitation id and normalized identity.
+        Compatibility-only credential check. It never returns a bearer token;
+        new acceptance flows use the protected Onboarding Continuation endpoint.
       parameters:
         - name: id
           in: path
@@ -535,10 +534,12 @@ paths:
         - Invitations
       summary: Accept a verified invitation
       description: |
-        Atomically materializes a verified invitation into a Principal and
-        Member record set in one Phoenix-owned transaction (ADR 0010,
-        ALE-162). The verification token must come from the verify endpoint.
-        Only this endpoint may transition an invitation to accepted.
+        Atomically materializes a Discord-verified invitation into a Principal,
+        External Identity, and Member record set in one Phoenix-owned
+        transaction (ADRs 0010 and 0014). The protected Continuation header must
+        identify the verified Continuation bound to this Invitation and its
+        active Acceptance Attempt. Only this endpoint may transition an
+        invitation to accepted.
 
         On success the transaction has created, all together: the
         Authentication Principal (id = invitation.user_id, authoritative
@@ -549,9 +550,9 @@ paths:
         Acceptance is registration, not login. It does **not** establish a
         Session or send a magic link — the new Member signs in through the
         normal magic-link (or Discord) login path. Failed or replayed
-        acceptance leaves no partial record set; the invitation-status flip
-        is the replay defense (the 15-minute verification token is not
-        single-use).
+        acceptance leaves no partial record set. The Invitation status,
+        Acceptance Attempt, one-time Discord Claim, and consumed Continuation
+        provide the replay defense.
       parameters:
         - name: id
           in: path
@@ -559,6 +560,11 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: x-onboarding-continuation
+          in: header
+          required: true
+          description: Opaque verified Continuation retained only in the SvelteKit HTTP-only browser session.
+          schema: { type: string, format: uuid }
       requestBody:
         required: true
         content:
@@ -578,8 +584,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "409":
+          description: Discord verification is missing, expired, or mismatched, or this Acceptance is already progressing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "422":
-          description: Invalid token or invitation cannot be accepted
+          description: Invitation or acceptance payload cannot be accepted
           content:
             application/json:
               schema:
@@ -678,7 +690,7 @@ paths:
             Location:
               required: true
               schema: { type: string, format: uri }
-        "422":
+        "409":
           description: Browser proof is missing or no longer awaiting OAuth
           content:
             application/json:
@@ -703,7 +715,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
-        "422":
+        "409":
           description: Browser proof is missing, consumed, or already terminal
           content:
             application/json:
@@ -4205,6 +4217,7 @@ components:
                 - awaiting_oauth
                 - discordVerified
                 - discordCollision
+                - discordUnavailable
                 - restartVerification
                 - restart_verification
                 - paymentPending
@@ -4481,24 +4494,17 @@ components:
           type: object
           required:
             - verified
-            - verificationToken
           properties:
             verified:
               type: boolean
               description: Always true when credentials verify successfully.
-            verificationToken:
-              type: string
-              description: Short-lived opaque token bound to invitation and verified identity.
     InvitationAcceptRequest:
       type: object
       required:
-        - verificationToken
         - nextOfKinName
         - nextOfKinPhone
         - stripeConfirmationToken
       properties:
-        verificationToken:
-          type: string
         nextOfKinName:
           type: string
           minLength: 1

@@ -13,7 +13,7 @@ defmodule Dhc.Onboarding.Workers.DiscordContinuationExpiryWorker do
   @impl Oban.Worker
   def perform(%Oban.Job{}) do
     case Onboarding.expire_discord_continuations() do
-      :ok ->
+      {:ok, _expired_count} ->
         :ok
 
       {:error, {:inconsistent_claims, continuation_ids}} = error ->

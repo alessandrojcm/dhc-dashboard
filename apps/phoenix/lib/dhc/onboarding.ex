@@ -7,14 +7,15 @@ defmodule Dhc.Onboarding do
   import Ecto.Query
   require Logger
 
-  alias Dhc.Auth.Principal
   alias Dhc.Auth.DiscordSubjectLock
+  alias Dhc.Auth.Principal
   alias Dhc.Invitations
   alias Dhc.Invitations.BulkInviteWorker
   alias Dhc.Invitations.Invitation
   alias Dhc.Discord.StagedAssignment
   alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.Onboarding.InvitationAcceptanceAttempt
+  alias Dhc.Onboarding.InvitationAcceptanceDiscordCollisionAuditEvent
   alias Dhc.Onboarding.InvitationAcceptanceDiscordContinuation
   alias Dhc.Onboarding.InvitationAcceptanceDiscordSubjectClaim
   alias Dhc.Onboarding.Workers.AcceptanceRecoveryWorker
@@ -47,7 +48,7 @@ defmodule Dhc.Onboarding do
           {:ok, map()} | {:error, :invalid_credentials | :invalid_invitation}
   def start_acceptance(invitation_id, email, date_of_birth, protected_continuation_id) do
     with {:ok, invitation_id} <- Ecto.UUID.cast(invitation_id),
-         {:ok, _token} <- Invitations.verify_credentials(invitation_id, email, date_of_birth) do
+         :ok <- Invitations.verify_credentials(invitation_id, email, date_of_birth) do
       Repo.transaction(fn ->
         now = DateTime.utc_now() |> DateTime.truncate(:second)
 
@@ -109,7 +110,7 @@ defmodule Dhc.Onboarding do
 
         %{
           continuation_id: continuation.id,
-          view: safe_state(continuation)
+          view: safe_state(continuation, invitation)
         }
       end)
     else
@@ -122,14 +123,39 @@ defmodule Dhc.Onboarding do
   def acceptance_state(continuation_id) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
-    with {:ok, continuation_id} <- Ecto.UUID.cast(continuation_id),
-         {:ok, %InvitationAcceptanceDiscordContinuation{} = continuation} <-
-           load_current_continuation(continuation_id, now),
-         %Invitation{} = invitation <- Repo.get(Invitation, continuation.invitation_id),
-         %InvitationAcceptanceAttempt{} = attempt <-
-           Repo.get(InvitationAcceptanceAttempt, continuation.attempt_id) do
-      safe_acceptance_state(continuation, invitation, attempt, now)
+    with {:ok, continuation_id} <- Ecto.UUID.cast(continuation_id) do
+      Repo.transaction(fn ->
+        case lock_continuation_flow(continuation_id) do
+          {:ok, invitation, attempt, continuation} ->
+            if continuation.status in ["awaiting_oauth", "verified"] and
+                 DateTime.compare(continuation.expires_at, now) != :gt and
+                 not continuation_consumed_into_attempt?(continuation) do
+              terminalize_continuation!(
+                continuation,
+                "expired",
+                now,
+                continuation.provider_subject
+              )
+
+              if pre_oauth_attempt?(attempt), do: decline_attempt!(attempt, "discord_expired", now)
+              Repo.rollback(:restart_verification)
+            end
+
+            case safe_acceptance_state(continuation, invitation, attempt, now) do
+              {:ok, state} -> state
+              {:error, reason} -> Repo.rollback(reason)
+            end
+
+          :error ->
+            Repo.rollback(:restart_verification)
+        end
+      end)
     else
+      _ -> {:error, :restart_verification}
+    end
+    |> case do
+      {:ok, :restart_verification} -> {:error, :restart_verification}
+      {:ok, state} -> {:ok, state}
       _ -> {:error, :restart_verification}
     end
   end
@@ -156,41 +182,6 @@ defmodule Dhc.Onboarding do
     end
   end
 
-  defp load_current_continuation(continuation_id, now) do
-    Repo.transaction(fn ->
-      continuation =
-        from(c in InvitationAcceptanceDiscordContinuation,
-          where: c.id == ^continuation_id,
-          lock: "FOR UPDATE"
-        )
-        |> Repo.one()
-
-      cond do
-        is_nil(continuation) ->
-          :missing
-
-        continuation.status in ["awaiting_oauth", "verified"] and
-          DateTime.compare(continuation.expires_at, now) != :gt and
-            not continuation_consumed_into_attempt?(continuation) ->
-          terminalize_continuation!(
-            continuation,
-            "expired",
-            now,
-            continuation.provider_subject
-          )
-
-          :expired
-
-        true ->
-          continuation
-      end
-    end)
-    |> case do
-      {:ok, %InvitationAcceptanceDiscordContinuation{} = continuation} -> {:ok, continuation}
-      _ -> {:error, :restart_verification}
-    end
-  end
-
   defp continuation_consumed_into_attempt?(continuation) do
     case Repo.get(InvitationAcceptanceAttempt, continuation.attempt_id) do
       %InvitationAcceptanceAttempt{acceptance_data: data} ->
@@ -208,60 +199,63 @@ defmodule Dhc.Onboarding do
       Repo.transaction(fn ->
         now = DateTime.utc_now() |> DateTime.truncate(:second)
 
-        continuation =
-          from(c in InvitationAcceptanceDiscordContinuation,
-            where: c.id == ^continuation_id,
-            lock: "FOR UPDATE"
-          )
-          |> Repo.one()
+        {invitation, attempt, continuation} =
+          case lock_continuation_flow(continuation_id) do
+            {:ok, invitation, attempt, continuation} -> {invitation, attempt, continuation}
+            :error -> Repo.rollback(:invalid_continuation)
+          end
 
-        if is_nil(continuation), do: Repo.rollback(:invalid_continuation)
-
-        invitation =
-          from(i in Invitation,
-            where: i.id == ^continuation.invitation_id and i.status == "pending",
-            lock: "FOR UPDATE"
-          )
-          |> Repo.one()
-
-        attempt =
-          from(a in InvitationAcceptanceAttempt,
-            where: a.id == ^continuation.attempt_id,
-            lock: "FOR UPDATE"
-          )
-          |> Repo.one()
-
-        if is_nil(invitation) or is_nil(attempt) or attempt.status != "processing",
+        if invitation.status != "pending" or attempt.status != "processing",
           do: Repo.rollback(:invalid_continuation)
 
         DiscordSubjectLock.lock!(subject)
 
         cond do
-          continuation.status == "verified" ->
+          continuation.status == "verified" and continuation.provider_subject == subject ->
             {:ok, safe_state(continuation, invitation)}
 
           continuation.status != "awaiting_oauth" or
               DateTime.compare(continuation.expires_at, now) != :gt ->
             {:error, :invalid_continuation}
 
-          Repo.exists?(
-            from(e in Dhc.Auth.ExternalIdentity,
-              where:
-                e.provider == "discord" and e.provider_subject == ^subject and
-                    is_nil(e.retired_at)
+          identity =
+              Repo.one(
+                from(e in Dhc.Auth.ExternalIdentity,
+                  where:
+                    e.provider == "discord" and e.provider_subject == ^subject and
+                      is_nil(e.retired_at),
+                  lock: "FOR UPDATE"
+                )
+              ) ->
+            terminalize_collision!(
+              continuation,
+              attempt,
+              now,
+              subject,
+              "external_identity",
+              identity.principal_id
             )
-          ) ->
-            terminalize_collision!(continuation, attempt, now, subject)
+
             {:error, :collision}
 
-          Repo.exists?(
-            from(a in StagedAssignment,
-              where:
-                a.provider == "discord" and a.provider_subject == ^subject and
-                    a.state in ["proposed", "approved"]
+          assignment =
+              Repo.one(
+                from(a in StagedAssignment,
+                  where:
+                    a.provider == "discord" and a.provider_subject == ^subject and
+                      a.state in ["proposed", "approved"],
+                  lock: "FOR UPDATE"
+                )
+              ) ->
+            terminalize_collision!(
+              continuation,
+              attempt,
+              now,
+              subject,
+              "staged_assignment",
+              assignment.principal_id
             )
-          ) ->
-            terminalize_collision!(continuation, attempt, now, subject)
+
             {:error, :collision}
 
           true ->
@@ -297,7 +291,15 @@ defmodule Dhc.Onboarding do
 
               {:ok, safe_state(continuation, invitation)}
             else
-              terminalize_collision!(continuation, attempt, now, subject)
+              terminalize_collision!(
+                continuation,
+                attempt,
+                now,
+                subject,
+                "active_claim",
+                nil
+              )
+
               {:error, :collision}
             end
         end
@@ -318,15 +320,15 @@ defmodule Dhc.Onboarding do
       Repo.transaction(fn ->
         now = DateTime.utc_now() |> DateTime.truncate(:second)
 
-        continuation =
-          from(c in InvitationAcceptanceDiscordContinuation,
-            where: c.id == ^continuation_id,
-            lock: "FOR UPDATE"
-          )
-          |> Repo.one()
+        {_invitation, attempt, continuation} =
+          case lock_continuation_flow(continuation_id) do
+            {:ok, invitation, attempt, continuation} -> {invitation, attempt, continuation}
+            :error -> Repo.rollback(:invalid_continuation)
+          end
 
-        if is_nil(continuation) or continuation.status not in ["awaiting_oauth", "verified"],
-          do: Repo.rollback(:invalid_continuation)
+        if continuation.status not in ["awaiting_oauth", "verified"] or
+             not pre_oauth_attempt?(attempt),
+           do: Repo.rollback(:invalid_continuation)
 
         attempt =
           from(a in InvitationAcceptanceAttempt,
@@ -348,14 +350,13 @@ defmodule Dhc.Onboarding do
   def fail_discord(continuation_id, outcome) when outcome in [:cancelled, :failed] do
     with {:ok, continuation_id} <- Ecto.UUID.cast(continuation_id) do
       Repo.transaction(fn ->
-        continuation =
-          from(c in InvitationAcceptanceDiscordContinuation,
-            where: c.id == ^continuation_id,
-            lock: "FOR UPDATE"
-          )
-          |> Repo.one()
+        {_invitation, attempt, continuation} =
+          case lock_continuation_flow(continuation_id) do
+            {:ok, invitation, attempt, continuation} -> {invitation, attempt, continuation}
+            :error -> Repo.rollback(:invalid_continuation)
+          end
 
-        if is_nil(continuation) or continuation.status != "awaiting_oauth",
+        if continuation.status != "awaiting_oauth" or not pre_oauth_attempt?(attempt),
           do: Repo.rollback(:invalid_continuation)
 
         attempt =
@@ -387,6 +388,13 @@ defmodule Dhc.Onboarding do
     end
   end
 
+  defp discord_expiry_now do
+    :dhc
+    |> Application.get_env(:onboarding_discord_expiry_clock, &DateTime.utc_now/0)
+    |> then(fn clock -> clock.() end)
+    |> DateTime.truncate(:second)
+  end
+
   @spec acceptance_oauth_resume_path(String.t()) ::
           {:ok, String.t()} | {:error, :invalid_continuation}
   def acceptance_oauth_resume_path(continuation_id) do
@@ -415,22 +423,38 @@ defmodule Dhc.Onboarding do
 
   @spec accept(String.t(), String.t(), String.t(), String.t(), map()) ::
           {:ok, %{member_id: String.t()}} | {:error, term()}
-  def accept(invitation_id, verification_token, next_of_kin_name, next_of_kin_phone, attrs) do
-    with :ok <- Invitations.verify_acceptance_token(verification_token, invitation_id),
-         {:ok, invitation, attempt} <-
-           prepare_attempt(invitation_id, next_of_kin_name, next_of_kin_phone, attrs),
-         {:ok, attempt} <- provision_membership(invitation, attempt, attrs) do
+  def accept(invitation_id, continuation_id, next_of_kin_name, next_of_kin_phone, attrs) do
+    with {:ok, continuation_id} <- Ecto.UUID.cast(continuation_id),
+         {:ok, invitation, attempt, progression} <-
+           prepare_attempt(
+             invitation_id,
+             continuation_id,
+             next_of_kin_name,
+             next_of_kin_phone,
+             attrs
+           ),
+         {:ok, attempt} <- maybe_provision_membership(progression, invitation, attempt, attrs) do
       Invitations.convert(
         invitation.id,
         attempt.id,
+        continuation_id,
         next_of_kin_name,
         next_of_kin_phone,
         attempt.stripe_customer_id
       )
+    else
+      :error -> {:error, :discord_verification_required}
+      error -> error
     end
   end
 
-  defp prepare_attempt(invitation_id, next_of_kin_name, next_of_kin_phone, payment_attrs) do
+  defp prepare_attempt(
+         invitation_id,
+         continuation_id,
+         next_of_kin_name,
+         next_of_kin_phone,
+         payment_attrs
+       ) do
     Repo.transaction(fn ->
       now = DateTime.utc_now() |> DateTime.truncate(:second)
 
@@ -461,7 +485,7 @@ defmodule Dhc.Onboarding do
         from(a in InvitationAcceptanceAttempt,
           where:
             a.invitation_id == ^invitation.id and
-              a.status in ["processing", "cleanup_pending", "provisioned"],
+              a.status in ["processing", "stripe_progressing", "cleanup_pending", "provisioned"],
           lock: "FOR UPDATE"
         )
         |> Repo.one()
@@ -470,52 +494,78 @@ defmodule Dhc.Onboarding do
         Repo.rollback(:payment_cleanup_pending)
       end
 
-      if is_nil(active_attempt) and DateTime.compare(invitation.expires_at, now) != :gt do
-        Repo.rollback(:invalid_invitation)
-      end
+      if is_nil(active_attempt), do: Repo.rollback(:discord_verification_required)
 
-      attempt =
-        if active_attempt do
-          active_attempt
-          |> Ecto.Changeset.change(
-            acceptance_data:
-              Map.merge(active_attempt.acceptance_data, %{
-                "next_of_kin_name" => next_of_kin_name,
-                "next_of_kin_phone" => next_of_kin_phone
-              })
-          )
-          |> Repo.update!()
+      continuation =
+        from(c in InvitationAcceptanceDiscordContinuation,
+          where:
+            c.id == ^continuation_id and c.invitation_id == ^invitation.id and
+              c.attempt_id == ^active_attempt.id,
+          lock: "FOR UPDATE"
+        )
+        |> Repo.one()
+
+      proof_already_consumed =
+        not is_nil(continuation) and
+          active_attempt.acceptance_data["discord_continuation_id"] == continuation.id
+
+      if is_nil(continuation) or continuation.status != "verified" or
+           (not proof_already_consumed and DateTime.compare(continuation.expires_at, now) != :gt) or
+           (active_attempt.acceptance_data != %{} and not proof_already_consumed),
+         do: Repo.rollback(:discord_verification_required)
+
+      DiscordSubjectLock.lock!(continuation.provider_subject)
+
+      claim =
+        from(c in InvitationAcceptanceDiscordSubjectClaim,
+          where:
+            c.continuation_id == ^continuation.id and c.provider == "discord" and
+              c.provider_subject == ^continuation.provider_subject,
+          lock: "FOR UPDATE"
+        )
+        |> Repo.one()
+
+      if is_nil(claim), do: Repo.rollback(:discord_verification_required)
+
+      if active_attempt.status == "stripe_progressing",
+        do: Repo.rollback(:acceptance_in_progress)
+
+      updated_acceptance_data =
+        if active_attempt.acceptance_data == %{} do
+          acceptance_data(next_of_kin_name, next_of_kin_phone, payment_attrs)
+          |> Map.put("discord_continuation_id", continuation.id)
         else
-          insert_attempt!(
-            invitation,
-            acceptance_data(next_of_kin_name, next_of_kin_phone, payment_attrs)
-          )
+          Map.merge(active_attempt.acceptance_data, %{
+            "next_of_kin_name" => next_of_kin_name,
+            "next_of_kin_phone" => next_of_kin_phone
+          })
         end
 
-      {invitation, attempt}
+      {attempt, progression} =
+        if active_attempt.status == "provisioned" do
+          {active_attempt, :provisioned}
+        else
+          attempt =
+            active_attempt
+            |> Ecto.Changeset.change(
+              status: "stripe_progressing",
+              acceptance_data: updated_acceptance_data,
+              last_error: nil
+            )
+            |> Repo.update!()
+
+          {attempt, :claimed}
+        end
+
+      {invitation, attempt, progression}
     end)
     |> case do
-      {:ok, {invitation, attempt}} -> {:ok, invitation, attempt}
-      {:error, reason} -> {:error, reason}
+      {:ok, {invitation, attempt, progression}} ->
+        {:ok, invitation, attempt, progression}
+
+      {:error, reason} ->
+        {:error, reason}
     end
-  end
-
-  defp insert_attempt!(invitation, acceptance_data) do
-    prior_customer_id =
-      from(a in InvitationAcceptanceAttempt,
-        where: a.invitation_id == ^invitation.id and not is_nil(a.stripe_customer_id),
-        order_by: [desc: a.created_at],
-        limit: 1,
-        select: a.stripe_customer_id
-      )
-      |> Repo.one()
-
-    %InvitationAcceptanceAttempt{
-      invitation_id: invitation.id,
-      acceptance_data: acceptance_data,
-      stripe_customer_id: prior_customer_id || invitation.stripe_customer_id
-    }
-    |> Repo.insert!()
   end
 
   defp insert_pre_oauth_attempt!(invitation) do
@@ -539,6 +589,40 @@ defmodule Dhc.Onboarding do
     end
   end
 
+  defp lock_continuation_flow(continuation_id) do
+    case Repo.get(InvitationAcceptanceDiscordContinuation, continuation_id) do
+      nil ->
+        :error
+
+      probe ->
+        invitation =
+          from(i in Invitation, where: i.id == ^probe.invitation_id, lock: "FOR UPDATE")
+          |> Repo.one()
+
+        attempt =
+          from(a in InvitationAcceptanceAttempt,
+            where: a.id == ^probe.attempt_id,
+            lock: "FOR UPDATE"
+          )
+          |> Repo.one()
+
+        continuation =
+          from(c in InvitationAcceptanceDiscordContinuation,
+            where: c.id == ^continuation_id,
+            lock: "FOR UPDATE"
+          )
+          |> Repo.one()
+
+        if invitation && attempt && continuation &&
+             continuation.invitation_id == invitation.id && continuation.attempt_id == attempt.id &&
+             attempt.invitation_id == invitation.id do
+          {:ok, invitation, attempt, continuation}
+        else
+          :error
+        end
+    end
+  end
+
   defp safe_state(%{status: "verified"} = continuation, invitation) do
     %{
       state: "discordVerified",
@@ -548,21 +632,21 @@ defmodule Dhc.Onboarding do
   end
 
   defp safe_state(%{status: "collision"}, _invitation), do: %{state: "discordCollision"}
+  defp safe_state(%{status: "failed"}, _invitation), do: %{state: "discordUnavailable"}
 
   defp safe_state(continuation, _invitation) do
-    %{state: "awaitingDiscord", expires_at: continuation.expires_at}
+    %{state: "awaiting_oauth", expires_at: continuation.expires_at}
   end
 
-  defp safe_state(continuation),
-    do: %{
-      state: "awaitingDiscord",
-      continuation_id: continuation.id,
-      expires_at: continuation.expires_at
-    }
+  defp safe_state_with_handle(continuation, invitation) do
+    continuation
+    |> safe_state(invitation)
+    |> Map.put(:continuation_id, continuation.id)
+  end
 
   defp safe_acceptance_state(continuation, invitation, attempt, now) do
     cond do
-      continuation.status == "collision" ->
+      continuation.status in ["collision", "failed"] ->
         {:ok, safe_state(continuation, invitation)}
 
       attempt.status == "completed" and invitation.status == "accepted" ->
@@ -850,6 +934,8 @@ defmodule Dhc.Onboarding do
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
   defp terminalize_continuation!(continuation, status, now, subject) do
+    if is_binary(subject) and subject != "", do: DiscordSubjectLock.lock!(subject)
+
     Repo.delete_all(
       from(c in InvitationAcceptanceDiscordSubjectClaim,
         where: c.continuation_id == ^continuation.id
@@ -862,17 +948,38 @@ defmodule Dhc.Onboarding do
       concluded_at: now,
       provider_subject: nil,
       display_metadata: %{},
-      subject_fingerprint:
-        if(status == "failed",
-          do: nil,
-          else: if(is_binary(subject) and subject != "", do: subject_fingerprint(subject))
-        )
+      subject_fingerprint: terminal_subject_fingerprint(status, subject)
     )
     |> Repo.update!()
   end
 
-  defp terminalize_collision!(continuation, attempt, now, subject) do
+  defp terminal_subject_fingerprint("failed", _subject), do: nil
+
+  defp terminal_subject_fingerprint(_status, subject)
+       when is_binary(subject) and subject != "",
+       do: subject_fingerprint(subject)
+
+  defp terminal_subject_fingerprint(_status, _subject), do: nil
+
+  defp terminalize_collision!(
+         continuation,
+         attempt,
+         now,
+         subject,
+         reason_code,
+         existing_principal_id
+       ) do
+    fingerprint = subject_fingerprint(subject)
     terminalize_continuation!(continuation, "collision", now, subject)
+
+    %InvitationAcceptanceDiscordCollisionAuditEvent{
+      continuation_id: continuation.id,
+      existing_principal_id: existing_principal_id,
+      subject_fingerprint: fingerprint,
+      reason_code: reason_code,
+      created_at: now
+    }
+    |> Repo.insert!()
 
     attempt
     |> Ecto.Changeset.change(
@@ -901,6 +1008,12 @@ defmodule Dhc.Onboarding do
         false
     end
   end
+
+  defp maybe_provision_membership(:provisioned, _invitation, attempt, _attrs),
+    do: {:ok, attempt}
+
+  defp maybe_provision_membership(:claimed, invitation, attempt, attrs),
+    do: provision_membership(invitation, attempt, attrs)
 
   defp provision_membership(
          _invitation,
@@ -976,6 +1089,16 @@ defmodule Dhc.Onboarding do
        when is_binary(id) and id != "",
        do: {:ok, attempt}
 
+  defp ensure_customer(
+         %Invitation{stripe_customer_id: id},
+         %InvitationAcceptanceAttempt{} = attempt
+       )
+       when is_binary(id) and id != "" do
+    attempt
+    |> Ecto.Changeset.change(stripe_customer_id: id)
+    |> Repo.update()
+  end
+
   defp ensure_customer(invitation, attempt) do
     name =
       [invitation.first_name, invitation.last_name]
@@ -1006,9 +1129,19 @@ defmodule Dhc.Onboarding do
     attempt = Repo.get!(InvitationAcceptanceAttempt, attempt.id)
 
     if stripe_adapter().retryable_failure?(reason) do
-      attempt
-      |> Ecto.Changeset.change(last_error: inspect(reason))
-      |> Repo.update!()
+      Repo.transaction(fn ->
+        attempt =
+          from(a in InvitationAcceptanceAttempt, where: a.id == ^attempt.id, lock: "FOR UPDATE")
+          |> Repo.one!()
+
+        if attempt.status == "stripe_progressing" do
+          attempt
+          |> Ecto.Changeset.change(status: "processing", last_error: inspect(reason))
+          |> Repo.update!()
+        else
+          attempt
+        end
+      end)
     else
       conclude_failed_attempt(attempt, reason)
     end
@@ -1031,13 +1164,14 @@ defmodule Dhc.Onboarding do
           from(a in InvitationAcceptanceAttempt, where: a.id == ^attempt.id, lock: "FOR UPDATE")
           |> Repo.one!()
 
-        attempt =
+        if attempt.status == "stripe_progressing" do
           attempt
           |> Ecto.Changeset.change(status: "cleanup_pending", last_error: inspect(reason))
           |> Repo.update!()
-
-        enqueue_recovery(attempt.id)
-        attempt
+          |> tap(fn updated -> enqueue_recovery(updated.id) end)
+        else
+          attempt
+        end
       end)
       |> then(fn {:ok, attempt} -> attempt end)
 
@@ -1064,8 +1198,15 @@ defmodule Dhc.Onboarding do
 
   defp mark_declined(attempt, reason) do
     Repo.transaction(fn ->
+      invitation =
+        from(i in Invitation, where: i.id == ^attempt.invitation_id, lock: "FOR UPDATE")
+        |> Repo.one!()
+
       attempt =
-        from(a in InvitationAcceptanceAttempt, where: a.id == ^attempt.id, lock: "FOR UPDATE")
+        from(a in InvitationAcceptanceAttempt,
+          where: a.id == ^attempt.id and a.invitation_id == ^invitation.id,
+          lock: "FOR UPDATE"
+        )
         |> Repo.one!()
 
       if attempt.status == "cleanup_pending" do
@@ -1147,7 +1288,7 @@ defmodule Dhc.Onboarding do
 
   @doc false
   def expire_discord_continuations do
-    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    now = discord_expiry_now()
 
     expired_ids =
       from(c in InvitationAcceptanceDiscordContinuation,
@@ -1170,7 +1311,7 @@ defmodule Dhc.Onboarding do
       |> Enum.sort()
 
     case inconsistent_ids do
-      [] -> :ok
+      [] -> {:ok, length(expired_ids)}
       ids -> {:error, {:inconsistent_claims, ids}}
     end
   end

@@ -92,6 +92,10 @@ ALWAYS use Superforms + our form components:
 </Form.Field>
 ```
 
+## Real PostgreSQL Concurrency Tests
+
+- `Ecto.Adapters.SQL.Sandbox.unboxed_run/2` commits outside the normal test-owner transaction. Cleanup must remove both domain rows and committed side effects, including attempt-scoped Oban jobs; do not rely on sandbox rollback.
+
 ## Discord External Identities
 
 - Resolve Discord login by `(provider, provider_subject)` before looking at profile email.

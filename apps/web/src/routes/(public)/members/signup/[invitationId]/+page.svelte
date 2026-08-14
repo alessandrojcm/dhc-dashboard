@@ -4,6 +4,7 @@ import AwaitingDiscord from "./awaiting-discord.svelte";
 import DiscordVerified from "./discord-verified.svelte";
 import DiscordCollision from "./discord-collision.svelte";
 import PaymentStatus from "./payment-status.svelte";
+import DiscordUnavailable from "./discord-unavailable.svelte";
 
 const { data } = $props();
 </script>
@@ -16,6 +17,8 @@ const { data } = $props();
 	<DiscordCollision />
 {:else if data.state === "paymentPending"}
 	<PaymentStatus {data} />
+{:else if data.state === "discordUnavailable"}
+	<DiscordUnavailable />
 {:else}
 	<ConfirmInvitation />
 {/if}

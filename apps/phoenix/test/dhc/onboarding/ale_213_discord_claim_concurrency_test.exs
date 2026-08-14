@@ -19,11 +19,47 @@ defmodule Dhc.Onboarding.Ale213DiscordClaimConcurrencyTest do
   alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.Onboarding
   alias Dhc.Onboarding.InvitationAcceptanceAttempt
+  alias Dhc.Onboarding.InvitationAcceptanceDiscordCollisionAuditEvent
   alias Dhc.Onboarding.InvitationAcceptanceDiscordContinuation
   alias Dhc.Onboarding.InvitationAcceptanceDiscordSubjectClaim
   alias Dhc.Repo
   alias Dhc.UserProfiles.UserProfile
   alias Ecto.Adapters.SQL.Sandbox
+
+  setup do
+    original_adapter = Application.get_env(:dhc, :onboarding_stripe_adapter)
+    original_result = Application.get_env(:dhc, :onboarding_stripe_result)
+    original_customer_result = Application.get_env(:dhc, :onboarding_stripe_customer_result)
+    original_test_pid = Application.get_env(:dhc, :onboarding_test_pid)
+    test_pid = self()
+
+    Application.put_env(:dhc, :onboarding_stripe_adapter, Dhc.OnboardingTestStripeAdapter)
+    Application.put_env(:dhc, :onboarding_stripe_customer_result, {:ok, "cus_concurrency"})
+    Application.put_env(:dhc, :onboarding_test_pid, test_pid)
+
+    Application.put_env(:dhc, :onboarding_stripe_result, fn ->
+      send(test_pid, {:stripe_progression_started, Process.get(:acceptance_label), self()})
+
+      receive do
+        :release_stripe_progression -> {:ok, %{}}
+      end
+    end)
+
+    on_exit(fn ->
+      restore_env(:onboarding_stripe_adapter, original_adapter)
+      restore_env(:onboarding_stripe_result, original_result)
+      restore_env(:onboarding_stripe_customer_result, original_customer_result)
+      restore_env(:onboarding_test_pid, original_test_pid)
+    end)
+  end
+
+  test "the first request owns Stripe progression while its duplicate observes in-progress state" do
+    assert_single_stripe_progression(:first)
+  end
+
+  test "the second request owns Stripe progression while the first observes in-progress state" do
+    assert_single_stripe_progression(:second)
+  end
 
   test "concurrent acceptances reserve a Discord subject exactly once" do
     task_supervisor = start_supervised!(Task.Supervisor)
@@ -417,6 +453,209 @@ defmodule Dhc.Onboarding.Ale213DiscordClaimConcurrencyTest do
     end)
   end
 
+  test "callback verification and protected restart use one row-lock order without deadlock" do
+    task_supervisor = start_supervised!(Task.Supervisor)
+    test_process = self()
+    acceptance = unboxed(&acceptance_fixture/0)
+
+    on_exit(fn -> unboxed(fn -> delete_acceptances([acceptance.invitation_id]) end) end)
+
+    invitation = unboxed(fn -> Repo.get!(Invitation, acceptance.invitation_id) end)
+
+    callback_task =
+      ready_task(task_supervisor, test_process, :callback, fn ->
+        Onboarding.verify_discord(acceptance.continuation_id, %{
+          "sub" => unique_subject("callback-restart"),
+          "preferred_username" => "callback-restart"
+        })
+      end)
+
+    restart_task =
+      ready_task(task_supervisor, test_process, :restart, fn ->
+        Onboarding.start_acceptance(
+          invitation.id,
+          invitation.email,
+          Date.to_iso8601(invitation.date_of_birth),
+          acceptance.continuation_id
+        )
+      end)
+
+    assert_receive {:ready, :callback, callback_pid}
+    assert_receive {:ready, :restart, restart_pid}
+    send(callback_pid, :go)
+    send(restart_pid, :go)
+
+    assert {:ok, %{state: "discordVerified"}} = Task.await(callback_task)
+
+    assert {:ok, %{continuation_id: continuation_id, view: %{state: restart_state}}} =
+             Task.await(restart_task)
+
+    assert continuation_id == acceptance.continuation_id
+    assert restart_state in ["awaiting_oauth", "discordVerified"]
+
+    unboxed(fn ->
+      assert Repo.get!(
+               InvitationAcceptanceDiscordContinuation,
+               acceptance.continuation_id
+             ).status == "verified"
+
+      assert Repo.aggregate(InvitationAcceptanceDiscordSubjectClaim, :count) == 1
+    end)
+  end
+
+  test "deferred constraints reject a Continuation bound to another Invitation's Attempt" do
+    {first, second, second_attempt} =
+      unboxed(fn ->
+        first = invitation_fixture()
+        second = invitation_fixture()
+
+        second_attempt =
+          %InvitationAcceptanceAttempt{invitation_id: second.id, acceptance_data: %{}}
+          |> Repo.insert!()
+
+        {first, second, second_attempt}
+      end)
+
+    on_exit(fn -> unboxed(fn -> delete_acceptances([first.id, second.id]) end) end)
+
+    assert_raise Postgrex.Error, ~r/Discord continuation invitation does not match/, fn ->
+      unboxed(fn ->
+        Repo.transaction(fn ->
+          %InvitationAcceptanceDiscordContinuation{
+            invitation_id: first.id,
+            attempt_id: second_attempt.id,
+            expires_at:
+              DateTime.utc_now() |> DateTime.add(15, :minute) |> DateTime.truncate(:second)
+          }
+          |> Repo.insert!()
+
+          Repo.query!("SET CONSTRAINTS ALL IMMEDIATE")
+        end)
+      end)
+    end
+  end
+
+  test "deferred constraints reject a Claim whose Continuation is not verified" do
+    acceptance = unboxed(&acceptance_fixture/0)
+    on_exit(fn -> unboxed(fn -> delete_acceptances([acceptance.invitation_id]) end) end)
+
+    assert_raise Postgrex.Error, ~r/Discord subject claim must belong/, fn ->
+      unboxed(fn ->
+        Repo.transaction(fn ->
+          %InvitationAcceptanceDiscordSubjectClaim{
+            continuation_id: acceptance.continuation_id,
+            provider: "discord",
+            provider_subject: unique_subject("unverified-owner")
+          }
+          |> Repo.insert!()
+
+          Repo.query!("SET CONSTRAINTS ALL IMMEDIATE")
+        end)
+      end)
+    end
+  end
+
+  test "deferred constraints reject a verified Continuation without its Claim" do
+    acceptance = unboxed(&acceptance_fixture/0)
+    on_exit(fn -> unboxed(fn -> delete_acceptances([acceptance.invitation_id]) end) end)
+
+    assert_raise Postgrex.Error, ~r/Verified Discord continuation must own/, fn ->
+      unboxed(fn ->
+        Repo.transaction(fn ->
+          acceptance.continuation_id
+          |> then(&Repo.get!(InvitationAcceptanceDiscordContinuation, &1))
+          |> Ecto.Changeset.change(
+            status: "verified",
+            provider_subject: unique_subject("missing-claim"),
+            subject_fingerprint: "test-fingerprint"
+          )
+          |> Repo.update!()
+
+          Repo.query!("SET CONSTRAINTS ALL IMMEDIATE")
+        end)
+      end)
+    end
+  end
+
+  test "deferred constraints reject a permanent Discord link while a Claim owns the subject" do
+    %{acceptance: acceptance, member: member, subject: subject} =
+      unboxed(fn ->
+        acceptance = acceptance_fixture()
+        member = Dhc.MemberFixtures.member_fixture(is_active: true)
+        subject = unique_subject("claim-permanent-conflict")
+
+        {:ok, _state} =
+          Onboarding.verify_discord(acceptance.continuation_id, %{"sub" => subject})
+
+        %{acceptance: acceptance, member: member, subject: subject}
+      end)
+
+    on_exit(fn ->
+      unboxed(fn ->
+        delete_acceptances([acceptance.invitation_id])
+        delete_member(member.principal_id)
+      end)
+    end)
+
+    assert_raise Postgrex.Error, ~r/Discord subject cannot be both claimed/, fn ->
+      unboxed(fn ->
+        Repo.transaction(fn ->
+          %ExternalIdentity{
+            principal_id: member.principal_id,
+            provider: "discord",
+            provider_subject: subject,
+            metadata: %{}
+          }
+          |> Repo.insert!()
+
+          Repo.query!("SET CONSTRAINTS ALL IMMEDIATE")
+        end)
+      end)
+    end
+  end
+
+  test "collision audit evidence is immutable" do
+    %{acceptance: acceptance, member: member, audit_event: audit_event} =
+      unboxed(fn ->
+        acceptance = acceptance_fixture()
+        member = Dhc.MemberFixtures.member_fixture(is_active: true)
+        subject = unique_subject("immutable-audit")
+
+        %ExternalIdentity{
+          principal_id: member.principal_id,
+          provider: "discord",
+          provider_subject: subject,
+          metadata: %{}
+        }
+        |> Repo.insert!()
+
+        {:error, :collision} =
+          Onboarding.verify_discord(acceptance.continuation_id, %{"sub" => subject})
+
+        %{
+          acceptance: acceptance,
+          member: member,
+          audit_event: Repo.one!(InvitationAcceptanceDiscordCollisionAuditEvent)
+        }
+      end)
+
+    on_exit(fn ->
+      unboxed(fn ->
+        delete_acceptances([acceptance.invitation_id])
+        delete_member(member.principal_id)
+      end)
+    end)
+
+    assert_raise Postgrex.Error, ~r/Discord collision audit events are immutable/, fn ->
+      unboxed(fn ->
+        from(event in InvitationAcceptanceDiscordCollisionAuditEvent,
+          where: event.id == ^audit_event.id
+        )
+        |> Repo.update_all(set: [reason_code: "active_claim"])
+      end)
+    end
+  end
+
   defp ready_task(task_supervisor, test_process, label, fun) do
     Task.Supervisor.async_nolink(task_supervisor, fn ->
       send(test_process, {:ready, label, self()})
@@ -425,6 +664,98 @@ defmodule Dhc.Onboarding.Ale213DiscordClaimConcurrencyTest do
         :go -> unboxed(fun)
       end
     end)
+  end
+
+  defp assert_single_stripe_progression(owner_label) do
+    task_supervisor = start_supervised!(Task.Supervisor)
+    test_process = self()
+    acceptance = unboxed(&verified_acceptance_fixture/0)
+
+    on_exit(fn ->
+      unboxed(fn ->
+        delete_acceptances([acceptance.invitation_id])
+        delete_member(acceptance.principal_id)
+      end)
+    end)
+
+    tasks =
+      Map.new([:first, :second], fn label ->
+        task =
+          ready_task(task_supervisor, test_process, label, fn ->
+            Process.put(:acceptance_label, label)
+
+            result =
+              Onboarding.accept(
+                acceptance.invitation_id,
+                acceptance.continuation_id,
+                "Next of Kin",
+                "+353810000001",
+                %{confirmation_token: "ctok_concurrency"}
+              )
+
+            send(test_process, {:acceptance_finished, label, result})
+            result
+          end)
+
+        assert_receive {:ready, ^label, pid}
+        {label, %{task: task, pid: pid}}
+      end)
+
+    duplicate_label = if owner_label == :first, do: :second, else: :first
+    send(tasks[owner_label].pid, :go)
+
+    assert_receive {:stripe_progression_started, ^owner_label, owner_pid}
+
+    send(tasks[duplicate_label].pid, :go)
+
+    duplicate_outcome =
+      receive do
+        {:acceptance_finished, ^duplicate_label, result} -> {:returned, result}
+      after
+        250 -> :blocked
+      end
+
+    additional_progression =
+      receive do
+        {:stripe_progression_started, ^duplicate_label, duplicate_pid} -> duplicate_pid
+      after
+        100 -> nil
+      end
+
+    send(owner_pid, :release_stripe_progression)
+    if additional_progression, do: send(additional_progression, :release_stripe_progression)
+
+    owner_result = Task.await(tasks[owner_label].task)
+    duplicate_result = Task.await(tasks[duplicate_label].task)
+
+    assert duplicate_outcome == {:returned, {:error, :acceptance_in_progress}}
+    assert additional_progression == nil
+    assert {:ok, %{member_id: member_id}} = owner_result
+    assert member_id == acceptance.principal_id
+    assert duplicate_result == {:error, :acceptance_in_progress}
+    refute_received {:cancel_membership, _stripe_state}
+
+    unboxed(fn ->
+      assert %InvitationAcceptanceAttempt{status: "completed"} =
+               Repo.get_by!(InvitationAcceptanceAttempt,
+                 invitation_id: acceptance.invitation_id
+               )
+    end)
+  end
+
+  defp verified_acceptance_fixture do
+    acceptance = acceptance_fixture()
+    subject = unique_subject("stripe-progression")
+
+    assert {:ok, %{state: "discordVerified"}} =
+             Onboarding.verify_discord(acceptance.continuation_id, %{
+               "sub" => subject,
+               "preferred_username" => "stripe-progression"
+             })
+
+    invitation = Repo.get!(Invitation, acceptance.invitation_id)
+
+    Map.put(acceptance, :principal_id, invitation.prospective_principal_id)
   end
 
   defp acceptance_fixture do
@@ -458,37 +789,53 @@ defmodule Dhc.Onboarding.Ale213DiscordClaimConcurrencyTest do
   defp unique_subject(label),
     do: "ale-213-#{label}-#{System.unique_integer([:positive])}"
 
+  defp restore_env(key, nil), do: Application.delete_env(:dhc, key)
+  defp restore_env(key, value), do: Application.put_env(:dhc, key, value)
+
   defp unboxed(fun), do: Sandbox.unboxed_run(Repo, fun)
 
   defp delete_acceptances(invitation_ids) do
-    continuation_ids =
-      Repo.all(
-        from(c in InvitationAcceptanceDiscordContinuation,
-          where: c.invitation_id in ^invitation_ids,
-          select: c.id
+    Repo.transaction(fn ->
+      continuation_ids =
+        Repo.all(
+          from(c in InvitationAcceptanceDiscordContinuation,
+            where: c.invitation_id in ^invitation_ids,
+            select: c.id
+          )
+        )
+
+      attempt_ids =
+        Repo.all(
+          from(a in InvitationAcceptanceAttempt,
+            where: a.invitation_id in ^invitation_ids,
+            select: a.id
+          )
+        )
+
+      # Immutable audit rows are intentionally undeletable through ordinary
+      # DELETE. Test cleanup truncates only after ExUnit has serialized this
+      # real-Postgres module, then removes the rest in one deferred transaction.
+      Repo.query!("TRUNCATE invitation_acceptance_discord_collision_audit_events")
+
+      Repo.delete_all(
+        from(c in InvitationAcceptanceDiscordSubjectClaim,
+          where: c.continuation_id in ^continuation_ids
         )
       )
 
-    attempt_ids =
-      Repo.all(
-        from(a in InvitationAcceptanceAttempt,
-          where: a.invitation_id in ^invitation_ids,
-          select: a.id
+      Repo.delete_all(
+        from(c in InvitationAcceptanceDiscordContinuation, where: c.id in ^continuation_ids)
+      )
+
+      Repo.delete_all(
+        from(j in Oban.Job,
+          where: fragment("?->>'attempt_id'", j.args) in ^attempt_ids
         )
       )
 
-    Repo.delete_all(
-      from(c in InvitationAcceptanceDiscordSubjectClaim,
-        where: c.continuation_id in ^continuation_ids
-      )
-    )
-
-    Repo.delete_all(
-      from(c in InvitationAcceptanceDiscordContinuation, where: c.id in ^continuation_ids)
-    )
-
-    Repo.delete_all(from(a in InvitationAcceptanceAttempt, where: a.id in ^attempt_ids))
-    Repo.delete_all(from(i in Invitation, where: i.id in ^invitation_ids))
+      Repo.delete_all(from(a in InvitationAcceptanceAttempt, where: a.id in ^attempt_ids))
+      Repo.delete_all(from(i in Invitation, where: i.id in ^invitation_ids))
+    end)
   end
 
   defp delete_member(principal_id) do

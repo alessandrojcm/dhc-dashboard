@@ -25,8 +25,8 @@ defmodule DhcWeb.InvitationsJSON do
     %{data: pricing}
   end
 
-  def render("verify.json", %{verification_token: token}) do
-    %{data: %{verified: true, verificationToken: token}}
+  def render("verify.json", _assigns) do
+    %{data: %{verified: true}}
   end
 
   def render("accept.json", %{result: result}) do

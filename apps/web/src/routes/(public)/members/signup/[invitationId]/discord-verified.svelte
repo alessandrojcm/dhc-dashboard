@@ -1,8 +1,8 @@
 <script lang="ts">
-import { page } from "$app/state";
 import { Button } from "$lib/components/ui/button";
 import type { PageServerData } from "./$types";
 import PaymentForm from "./payment-form.svelte";
+import { restartDiscordVerification } from "./data.remote";
 
 let {
 	data,
@@ -29,12 +29,15 @@ let {
 		Its display name may change.
 	</p>
 	<PaymentForm {data} />
-	<form
-		method="POST"
-		action={`/members/signup/${page.params.invitationId}/discord/cancel`}
-	>
-		<Button type="submit" variant="outline"
-			>Use a different Discord account</Button
+	<form {...restartDiscordVerification}>
+		<Button
+			type="submit"
+			variant="outline"
+			disabled={!!restartDiscordVerification.pending}
 		>
+			{restartDiscordVerification.pending
+				? "Restarting..."
+				: "Use a different Discord account"}
+		</Button>
 	</form>
 </main>

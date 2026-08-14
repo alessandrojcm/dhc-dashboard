@@ -475,8 +475,8 @@ defmodule Dhc.Repo.Migrations.Ale217StageReviewDiscordAssignments do
       SELECT * INTO current_assignment FROM staged_discord_assignments WHERE id = NEW.id;
       IF NOT FOUND OR current_assignment.state NOT IN ('proposed', 'approved') THEN RETURN NULL; END IF;
 
-      PERFORM pg_advisory_xact_lock(hashtextextended('discord:principal:' || current_assignment.principal_id::text, 0));
-      PERFORM pg_advisory_xact_lock(hashtextextended('discord:' || current_assignment.provider_subject, 0));
+      PERFORM pg_advisory_xact_lock(hashtextextended('discord/principal/' || current_assignment.principal_id::text, 0));
+      PERFORM pg_advisory_xact_lock(hashtextextended('discord/subject/discord/' || current_assignment.provider_subject, 0));
 
       IF NOT EXISTS (
         SELECT 1 FROM user_profiles up
@@ -521,8 +521,8 @@ defmodule Dhc.Repo.Migrations.Ale217StageReviewDiscordAssignments do
       SELECT * INTO current_identity FROM external_identities WHERE id = NEW.id;
       IF NOT FOUND OR current_identity.provider <> 'discord' THEN RETURN NULL; END IF;
 
-      PERFORM pg_advisory_xact_lock(hashtextextended('discord:principal:' || current_identity.principal_id::text, 0));
-      PERFORM pg_advisory_xact_lock(hashtextextended('discord:' || current_identity.provider_subject, 0));
+      PERFORM pg_advisory_xact_lock(hashtextextended('discord/principal/' || current_identity.principal_id::text, 0));
+      PERFORM pg_advisory_xact_lock(hashtextextended('discord/subject/discord/' || current_identity.provider_subject, 0));
 
       IF EXISTS (
         SELECT 1 FROM staged_discord_assignments a
@@ -562,7 +562,7 @@ defmodule Dhc.Repo.Migrations.Ale217StageReviewDiscordAssignments do
 
       IF NOT FOUND OR current_claim.provider <> 'discord' THEN RETURN NULL; END IF;
 
-      PERFORM pg_advisory_xact_lock(hashtextextended('discord:' || current_claim.provider_subject, 0));
+      PERFORM pg_advisory_xact_lock(hashtextextended('discord/subject/discord/' || current_claim.provider_subject, 0));
 
       IF EXISTS (
         SELECT 1 FROM staged_discord_assignments a

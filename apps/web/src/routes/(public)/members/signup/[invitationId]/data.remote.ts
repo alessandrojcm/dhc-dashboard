@@ -1,10 +1,12 @@
 import {
 	invitationsAccept,
+	onboardingCancelDiscord,
 	onboardingContinueAcceptance,
 	onboardingVerifyInvitationAcceptance,
 } from "@dhc/api-client";
 import { error, isRedirect, redirect } from "@sveltejs/kit";
 import dayjs from "dayjs";
+import * as v from "valibot";
 import { form, getRequestEvent } from "$app/server";
 import { inviteValidationSchema } from "$lib/schemas/inviteValidationSchema";
 import { memberSignupSchema } from "$lib/schemas/membersSignup";
@@ -59,6 +61,29 @@ export const validateInvitation = form(inviteValidationSchema, async (data) => {
 	return { success: true, verified: true };
 });
 
+export const restartDiscordVerification = form(v.object({}), async () => {
+	const event = getRequestEvent();
+	const invitationId = event.params.invitationId;
+
+	if (!invitationId) {
+		throw error(400, "Invitation ID is required");
+	}
+
+	const cookieName = "_dhc_onboarding_acceptance";
+	const protectedContinuation = event.cookies.get(cookieName);
+
+	if (protectedContinuation) {
+		await onboardingCancelDiscord({
+			...onboardingApiClientOptions(event.cookies),
+		});
+	}
+
+	event.cookies.delete(cookieName, {
+		path: `/members/signup/${invitationId}`,
+	});
+	redirect(303, `/members/signup/${invitationId}`);
+});
+
 /**
  * Processes payment for member signup
  */
@@ -86,14 +111,11 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 	let acceptanceStatus: number | undefined;
 
 	try {
-		const protectedContinuation = event.cookies.get(
-			`onboarding-acceptance-${invitationId}`,
-		);
+		const protectedContinuation = event.cookies.get("_dhc_onboarding_acceptance");
 
 		if (protectedContinuation) {
 			const acceptance = await onboardingContinueAcceptance({
-				baseUrl: apiBaseUrl(),
-				headers: { "x-onboarding-continuation": protectedContinuation },
+				...onboardingApiClientOptions(event.cookies),
 				timeout: invitationAcceptanceTimeout,
 				body: {
 					nextOfKinName: data.nextOfKin,
@@ -118,8 +140,8 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 				);
 			}
 
-			event.cookies.delete(`onboarding-acceptance-${invitationId}`, {
-				path: "/",
+			event.cookies.delete("_dhc_onboarding_acceptance", {
+				path: `/members/signup/${invitationId}`,
 			});
 			throw redirect(303, `/members/signup/${invitationId}/success`);
 		}
@@ -130,7 +152,7 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 
 		if (!verificationToken) {
 			throw error(
-				400,
+				409,
 				"Invitation verification has expired. Please verify again.",
 			);
 		}
@@ -139,8 +161,10 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 			baseUrl: apiBaseUrl(),
 			path: { id: invitationId },
 			timeout: invitationAcceptanceTimeout,
+			headers: {
+				Authorization: `Bearer ${verificationToken}`,
+			},
 			body: {
-				verificationToken,
 				nextOfKinName: data.nextOfKin,
 				nextOfKinPhone: data.nextOfKinNumber,
 				stripeConfirmationToken: data.stripeConfirmationToken,
@@ -168,6 +192,9 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 		logger.debug("[processPayment] Payment processing completed successfully");
 		event.cookies.delete("access-token", { path: "/" });
 		event.cookies.delete(`invite-verification-${invitationId}`, { path: "/" });
+		event.cookies.delete("_dhc_onboarding_acceptance", {
+			path: `/members/signup/${invitationId}`,
+		});
 		event.cookies.delete(`invite-confirmed-${invitationId}`, { path: "/" });
 		throw redirect(301, `/members/signup/${invitationId}/success`);
 	} catch (err) {
