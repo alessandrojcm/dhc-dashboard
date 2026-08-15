@@ -28,8 +28,8 @@ defmodule Dhc.E2EHarness do
   alias Dhc.UserProfiles.UserProfile
 
   def reset! do
-    Dhc.E2EOnboardingFinalizer.reset!()
-    _ = Dhc.OnboardingE2EStripeAdapter.finish_probe()
+    Dhc.Onboarding.Finalizer.E2E.reset!()
+    _ = Dhc.Onboarding.StripeAdapter.E2E.finish_probe()
 
     %{rows: [[tables]]} =
       Ecto.Adapters.SQL.query!(
@@ -59,7 +59,7 @@ defmodule Dhc.E2EHarness do
   end
 
   def start_onboarding_isolation_probe,
-    do: Dhc.OnboardingE2EStripeAdapter.start_probe()
+    do: Dhc.Onboarding.StripeAdapter.E2E.start_probe()
 
   def invitation_acceptance_assertion(invitation_id) do
     invitation = Repo.get!(Invitation, invitation_id)
@@ -116,7 +116,7 @@ defmodule Dhc.E2EHarness do
           :count
         ),
       stripeCustomerId: attempt.stripe_customer_id,
-      stripeInvocations: Dhc.OnboardingE2EStripeAdapter.finish_probe(),
+      stripeInvocations: Dhc.Onboarding.StripeAdapter.E2E.finish_probe(),
       stripeState: attempt.stripe_state,
       userProfiles:
         Repo.aggregate(
@@ -500,7 +500,7 @@ defmodule Dhc.E2EHarness do
         )
       )
 
-    Dhc.E2EOnboardingFinalizer.interrupt!(attempt.id)
+    Dhc.Onboarding.Finalizer.E2E.interrupt!(attempt.id)
   end
 
   def clear_finalization_interruption!(invitation_id) do
@@ -509,7 +509,7 @@ defmodule Dhc.E2EHarness do
       select: a.id
     )
     |> Repo.all()
-    |> Enum.each(&Dhc.E2EOnboardingFinalizer.clear!/1)
+    |> Enum.each(&Dhc.Onboarding.Finalizer.E2E.clear!/1)
 
     :ok
   end

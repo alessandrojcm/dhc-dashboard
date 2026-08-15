@@ -14,7 +14,7 @@ defmodule DhcWeb.OnboardingControllerTest do
 
   setup do
     original_adapter = Application.get_env(:dhc, :onboarding_stripe_adapter)
-    Application.put_env(:dhc, :onboarding_stripe_adapter, Dhc.OnboardingTestStripeAdapter)
+    Application.put_env(:dhc, :onboarding_stripe_adapter, Dhc.Onboarding.StripeAdapter.Test)
     Application.put_env(:dhc, :onboarding_test_pid, self())
 
     on_exit(fn ->

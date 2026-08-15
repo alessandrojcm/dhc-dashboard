@@ -104,7 +104,7 @@ config :dhc, :discord_subject_fingerprint_key, "test-discord-subject-fingerprint
 
 if e2e_server? do
   config :dhc, :onboarding_stripe_adapter, Dhc.Onboarding.StripeAdapter.Live
-  config :dhc, :onboarding_finalizer, Dhc.E2EOnboardingFinalizer
+  config :dhc, :onboarding_finalizer, Dhc.Onboarding.Finalizer.E2E
   config :dhc, :acceptance_recovery_delay_seconds, 1
 
   config :dhc, Oban,
