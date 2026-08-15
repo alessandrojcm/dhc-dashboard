@@ -19,6 +19,7 @@ defmodule Dhc.Onboarding do
   alias Dhc.Onboarding.InvitationAcceptanceDiscordCollisionAuditEvent
   alias Dhc.Onboarding.InvitationAcceptanceDiscordContinuation
   alias Dhc.Onboarding.InvitationAcceptanceDiscordSubjectClaim
+  alias Dhc.Onboarding.SafeView
   alias Dhc.Onboarding.Workers.AcceptanceRecoveryWorker
   alias Dhc.Repo
 
@@ -113,7 +114,7 @@ defmodule Dhc.Onboarding do
 
         %{
           continuation_id: continuation.id,
-          view: safe_state(continuation, invitation)
+          view: SafeView.continuation_state(continuation, invitation)
         }
       end)
     else
@@ -148,7 +149,7 @@ defmodule Dhc.Onboarding do
 
               :restart_verification
             else
-              case safe_acceptance_state(continuation, invitation, attempt, now) do
+              case SafeView.acceptance_state(continuation, invitation, attempt, now) do
                 {:ok, state} -> state
                 {:error, reason} -> Repo.rollback(reason)
               end
@@ -171,7 +172,7 @@ defmodule Dhc.Onboarding do
   @spec continue_acceptance(String.t()) :: {:ok, map()} | {:error, term()}
   def continue_acceptance(continuation_id) do
     with {:ok, invitation, attempt} <- consume_verified_continuation(continuation_id) do
-      {:ok, safe_attempt_state(attempt, invitation)}
+      {:ok, SafeView.attempt_state(attempt, invitation)}
     end
   end
 
@@ -182,7 +183,7 @@ defmodule Dhc.Onboarding do
            record_payment_submission(continuation_id, attrs) do
       if advance?,
         do: run_acceptance_operation(attempt.id, :automatic),
-        else: {:ok, safe_attempt_state(attempt, invitation)}
+        else: {:ok, SafeView.attempt_state(attempt, invitation)}
     end
   end
 
@@ -227,7 +228,7 @@ defmodule Dhc.Onboarding do
 
         cond do
           continuation.status == "verified" and continuation.provider_subject == subject ->
-            {:ok, safe_state(continuation, invitation)}
+            {:ok, SafeView.continuation_state(continuation, invitation)}
 
           continuation.status != "awaiting_oauth" or
               DateTime.compare(continuation.expires_at, now) != :gt ->
@@ -304,7 +305,7 @@ defmodule Dhc.Onboarding do
                 )
                 |> Repo.update!()
 
-              {:ok, safe_state(continuation, invitation)}
+              {:ok, SafeView.continuation_state(continuation, invitation)}
             else
               terminalize_collision!(
                 continuation,
@@ -661,90 +662,10 @@ defmodule Dhc.Onboarding do
     end
   end
 
-  defp safe_state(%{status: "verified"} = continuation, invitation) do
-    %{
-      state: "discordVerified",
-      invitation_email: invitation.email,
-      discord: Map.take(continuation.display_metadata, ["username", "avatarUrl"])
-    }
-  end
-
-  defp safe_state(%{status: "collision"}, _invitation), do: %{state: "discordCollision"}
-  defp safe_state(%{status: "failed"}, _invitation), do: %{state: "discordUnavailable"}
-
-  defp safe_state(continuation, _invitation) do
-    %{state: "awaiting_oauth", expires_at: continuation.expires_at}
-  end
-
-  defp safe_acceptance_state(continuation, invitation, attempt, now) do
-    cond do
-      continuation.status == "collision" ->
-        {:ok, safe_state(continuation, invitation)}
-
-      continuation.status == "failed" and attempt.last_error == "discord_failed" ->
-        {:ok, safe_state(continuation, invitation)}
-
-      continuation.status == "failed" ->
-        {:ok, %{state: "restartVerification"}}
-
-      attempt.status == "completed" and invitation.status == "accepted" ->
-        {:ok, %{state: "accepted", invitation_email: invitation.email}}
-
-      attempt.status == "payment_pending" and continuation.status == "verified" ->
-        {:ok, safe_attempt_state(attempt, invitation)}
-
-      attempt.status == "provisioned" and continuation.status == "verified" ->
-        {:ok, safe_attempt_state(attempt, invitation)}
-
-      AttemptState.payment_ready?(attempt) and continuation.status == "verified" ->
-        {:ok, safe_attempt_state(attempt, invitation)}
-
-      attempt.status == "processing" and continuation.status in ["awaiting_oauth", "verified"] and
-        DateTime.compare(invitation.expires_at, now) == :gt and
-          DateTime.compare(continuation.expires_at, now) == :gt ->
-        {:ok, safe_state(continuation, invitation)}
-
-      true ->
-        {:error, :restart_verification}
-    end
-  end
-
   defp subject_fingerprint(subject) do
     secret = Application.fetch_env!(:dhc, :invitation_acceptance_subject_fingerprint_secret)
     Dhc.Discord.SubjectFingerprint.generate(subject, secret)
   end
-
-  defp safe_attempt_state(%{status: "completed"}, invitation),
-    do: %{state: "accepted", invitation_email: invitation.email}
-
-  defp safe_attempt_state(%{status: "processing"} = attempt, _invitation) do
-    if AttemptState.payment_ready?(attempt),
-      do: %{state: "paymentReady"},
-      else: %{state: "restartVerification"}
-  end
-
-  defp safe_attempt_state(
-         %{status: "payment_pending", stripe_state: stripe_state} = attempt,
-         _invitation
-       ) do
-    {state, retry_allowed} =
-      case Map.get(stripe_state, "payment_state") do
-        "needs_action" -> {"paymentNeedsAction", true}
-        "terminal" -> {"paymentTerminal", false}
-        _ -> {"paymentPending", AttemptState.retry_allowed?(attempt)}
-      end
-
-    %{state: state, discord_verified: true, retry_allowed: retry_allowed}
-  end
-
-  defp safe_attempt_state(%{status: "provisioned"} = attempt, _invitation),
-    do: %{
-      state: "paymentPending",
-      discord_verified: true,
-      retry_allowed: AttemptState.retry_allowed?(attempt)
-    }
-
-  defp safe_attempt_state(_attempt, _invitation), do: %{state: "restartVerification"}
 
   defp validate_acceptance_details(attrs) do
     if present?(Map.get(attrs, :next_of_kin_name)) and
@@ -995,7 +916,7 @@ defmodule Dhc.Onboarding do
   end
 
   defp retry_attempt(invitation, %{status: "completed"} = attempt),
-    do: {:ok, safe_attempt_state(attempt, invitation)}
+    do: {:ok, SafeView.attempt_state(attempt, invitation)}
 
   defp retry_attempt(invitation, %{status: "provisioned"} = attempt),
     do: finalize_discord(invitation, attempt)
@@ -1033,7 +954,7 @@ defmodule Dhc.Onboarding do
       {:pending, stripe_state} ->
         with :ok <- record_stripe_progress(attempt.id, attempt.operation_token, stripe_state),
              {:ok, _invitation, current_attempt} <- revalidate_payment_fence(attempt.id) do
-          {:ok, safe_attempt_state(current_attempt, invitation)}
+          {:ok, SafeView.attempt_state(current_attempt, invitation)}
         end
 
       {:error, reason} ->
