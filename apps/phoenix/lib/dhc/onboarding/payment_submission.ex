@@ -746,9 +746,6 @@ defmodule Dhc.Onboarding.PaymentSubmission do
     :ok
   end
 
-  @doc false
-  defdelegate expire_discord_continuations(), to: AcceptanceFlow
-
   defp run_acceptance_operation(attempt_id, mode) do
     case acquire_recovery_operation(attempt_id, mode) do
       {:ok, %{attempt: %{status: status}}} when status in ["completed", "declined"] ->
