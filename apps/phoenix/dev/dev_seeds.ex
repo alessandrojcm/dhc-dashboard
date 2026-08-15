@@ -3,7 +3,7 @@ defmodule Dhc.DevSeeds do
 
   import Ecto.Query
 
-  alias Dhc.Auth.UserRole
+  alias Dhc.Auth.{Principal, UserRole}
   alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.Repo
   alias Dhc.UserProfiles.UserProfile
@@ -36,6 +36,14 @@ defmodule Dhc.DevSeeds do
   def seed_members(count) do
     ensure_faker_started()
 
+    count
+    |> create_members()
+    |> maybe_create_stripe_customers()
+
+    :ok
+  end
+
+  defp create_members(count) do
     1..count
     |> Task.async_stream(
       fn _ -> fake_member() |> create_member() end,
@@ -54,9 +62,6 @@ defmodule Dhc.DevSeeds do
         Mix.shell().error("Member task exited: #{inspect(reason)}")
         acc
     end)
-    |> maybe_create_stripe_customers()
-
-    :ok
   end
 
   @spec seed_waitlist(pos_integer()) :: :ok
@@ -312,8 +317,9 @@ defmodule Dhc.DevSeeds do
     if length(member_ids) < 5 do
       extra = 10 - length(member_ids)
 
-      seed_members(extra)
-      |> Enum.map(fn %{auth_user: auth_user} -> auth_user.id end)
+      extra
+      |> create_members()
+      |> Enum.map(fn %{principal: principal} -> principal.id end)
       |> Enum.concat(member_ids)
     else
       member_ids
@@ -342,11 +348,14 @@ defmodule Dhc.DevSeeds do
       now = DateTime.utc_now() |> DateTime.truncate(:second)
       status = weighted_registration_status()
       confirmed_at = if status == "confirmed", do: now, else: nil
+      {display_name, email} = member_snapshot(user_id)
 
       {:ok, registration} =
         %Registration{
           club_activity_id: workshop_id,
           member_user_id: user_id,
+          display_name: display_name,
+          email: email,
           amount_paid: price_member,
           currency: "eur",
           status: status,
@@ -365,19 +374,23 @@ defmodule Dhc.DevSeeds do
   defp maybe_seed_external_registrations(workshop_id, price_non_member) do
     external_count = Enum.random(0..3)
 
-    1..external_count
+    List.duplicate(:external_registration, external_count)
     |> Enum.each(fn _ ->
       external_user = insert_external_user()
       now = DateTime.utc_now() |> DateTime.truncate(:second)
+      status = weighted_registration_status()
 
       {:ok, registration} =
         %Registration{
           club_activity_id: workshop_id,
           external_user_id: external_user.id,
+          display_name: "#{external_user.first_name} #{external_user.last_name}",
+          email: external_user.email,
           amount_paid: price_non_member,
           currency: "eur",
-          status: weighted_registration_status(),
+          status: status,
           registered_at: now,
+          confirmed_at: if(status == "confirmed", do: now),
           attendance_status: Enum.random(@attendance_statuses)
         }
         |> Repo.insert()
@@ -401,16 +414,47 @@ defmodule Dhc.DevSeeds do
     external_user
   end
 
+  defp member_snapshot(principal_id) do
+    row =
+      from(profile in UserProfile,
+        left_join: principal in Principal,
+        on: principal.id == profile.principal_id,
+        where: profile.principal_id == ^principal_id,
+        select: %{
+          first_name: profile.first_name,
+          last_name: profile.last_name,
+          email: principal.email
+        }
+      )
+      |> Repo.one()
+
+    case row do
+      nil ->
+        {Dhc.Workshops.unknown_member(), nil}
+
+      %{first_name: first_name, last_name: last_name, email: email} ->
+        display_name = String.trim("#{first_name || ""} #{last_name || ""}")
+
+        display_name =
+          if display_name == "", do: Dhc.Workshops.unknown_member(), else: display_name
+
+        {display_name, email}
+    end
+  end
+
   defp maybe_seed_refund(%Registration{id: registration_id, status: status}) do
     if status in ["cancelled", "refunded"] or :rand.uniform(5) == 1 do
       now = DateTime.utc_now() |> DateTime.truncate(:second)
+      id = Ecto.UUID.generate()
 
       %Refund{
+        id: id,
         registration_id: registration_id,
         refund_amount: Enum.random([500, 1000, 1500]),
         refund_reason:
           Enum.random(["No longer attending", "Schedule conflict", "Requested by member"]),
         status: Enum.random(@refund_statuses),
+        idempotency_key: "workshop-refund:#{id}",
         requested_at: now
       }
       |> Repo.insert(on_conflict: :nothing, conflict_target: [:id])
@@ -596,7 +640,7 @@ defmodule Dhc.DevSeeds do
     end
   end
 
-  defp create_stripe_customer(%{auth_user: auth_user, attrs: attrs}, stripe_key) do
+  defp create_stripe_customer(%{principal: principal, attrs: attrs}, stripe_key) do
     case Req.post("https://api.stripe.com/v1/customers",
            auth: {:bearer, stripe_key},
            form: [name: "#{attrs.first_name} #{attrs.last_name}", email: attrs.email]
@@ -604,7 +648,7 @@ defmodule Dhc.DevSeeds do
       {:ok, %Req.Response{status: status, body: %{"id" => customer_id}}}
       when status in 200..299 ->
         Repo.update_all(
-          from(p in UserProfile, where: p.principal_id == ^auth_user.id),
+          from(p in UserProfile, where: p.principal_id == ^principal.id),
           set: [customer_id: customer_id]
         )
 
