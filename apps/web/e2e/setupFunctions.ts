@@ -62,7 +62,7 @@ const person = (email: string) => ({
 		"non-binary",
 	]),
 	weapon: faker.helpers.arrayElement(["longsword", "rapier", "sabre"]),
-	phone_number: faker.phone.number({ style: "international" }),
+	phone_number: "+353871234567",
 	next_of_kin: {
 		name: faker.person.fullName(),
 		phone_number: faker.phone.number({ style: "international" }),

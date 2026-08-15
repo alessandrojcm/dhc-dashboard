@@ -14,7 +14,8 @@ defmodule Dhc.E2EHarness do
     IdentityRecovery,
     IdentityRecoveryCase,
     IdentityRecoveryProof,
-    SignedManifest
+    SignedManifest,
+    SubjectFingerprint
   }
 
   alias Dhc.Invitations.Invitation
@@ -284,9 +285,9 @@ defmodule Dhc.E2EHarness do
       "issued_at" => DateTime.to_iso8601(now),
       "binding_id" => source_identity.id,
       "binding_fingerprint" => recovery_fingerprint(source_subject, fingerprint_key),
-      "reporter_reference" => "e2e-recovery-#{suffix}",
+      "reporter_reference" => "support-case:e2e-#{suffix}",
       "reason_code" => "replacement_request",
-      "evidence_references" => ["e2e-evidence-#{suffix}"],
+      "evidence_references" => ["evidence:e2e-#{suffix}"],
       "actor_principal_id" => first_approver.principal_id
     }
 
@@ -732,6 +733,11 @@ defmodule Dhc.E2EHarness do
       Repo.delete_all(from(t in PrincipalToken, where: t.principal_id == ^id))
       Repo.delete_all(from(r in UserRole, where: r.principal_id == ^id))
 
+      Repo.update_all(
+        from(i in Invitation, where: i.created_by_principal_id == ^id),
+        set: [created_by_principal_id: nil]
+      )
+
       profile_ids =
         Repo.all(from(p in UserProfile, where: p.principal_id == ^id, select: p.id))
 
@@ -820,5 +826,5 @@ defmodule Dhc.E2EHarness do
   end
 
   defp recovery_fingerprint(subject, key),
-    do: :crypto.mac(:hmac, :sha256, key, subject) |> Base.encode16(case: :lower)
+    do: SubjectFingerprint.generate(subject, key)
 end

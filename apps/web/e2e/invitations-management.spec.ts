@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { loginAsUser } from "./auth";
+import { gotoHydrated } from "./hydration";
 import {
 	createMember,
 	createUniqueEmail,
@@ -117,7 +118,10 @@ test.describe("Invitation management", () => {
 	test("keeps invitation pagination separate from members", async ({
 		page,
 	}) => {
-		await page.goto("/dashboard/members?tab=members&page=2&pageSize=25");
+		await gotoHydrated(
+			page,
+			"/dashboard/members?tab=members&page=2&pageSize=25",
+		);
 		await page.getByRole("tab", { name: "Invitations" }).click();
 		await expect(page.getByPlaceholder("Search invitations")).toBeVisible();
 		await expectQueryParam(page, "page", "2");

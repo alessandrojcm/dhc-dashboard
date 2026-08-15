@@ -7,6 +7,7 @@ import { Calendar } from "$lib/components/ui/calendar";
 import { Input } from "$lib/components/ui/input";
 import { getLocalTimeZone } from "@internationalized/date";
 import { ChevronDownIcon } from "@lucide/svelte";
+import { onMount } from "svelte";
 
 interface Props {
 	id: string;
@@ -31,6 +32,11 @@ let {
 }: Props = $props();
 
 let open = $state(false);
+let hydrated = $state(false);
+
+onMount(() => {
+	hydrated = true;
+});
 
 function handleDateChange(newDate: CalendarDate | undefined) {
 	date = newDate;
@@ -38,17 +44,23 @@ function handleDateChange(newDate: CalendarDate | undefined) {
 }
 </script>
 
-<div class="flex flex-col gap-6">
+<div
+	class="flex flex-col gap-6"
+	data-testid="{id}-date-time-picker"
+	data-hydrated={hydrated}
+>
 	<div class="flex flex-col gap-3">
 		<Label for="{id}-date" class="px-1">Date</Label>
 		<Popover.Root bind:open>
-			<Popover.Trigger id="{id}-date">
+			<Popover.Trigger>
 				{#snippet child({ props })}
 					<Button
-						{disabled}
-						{...props}
 						variant="outline"
 						class="w-full justify-between font-normal"
+						{...props}
+						type="button"
+						id="{id}-date"
+						{disabled}
 					>
 						{date
 							? date.toDate(getLocalTimeZone()).toLocaleDateString()

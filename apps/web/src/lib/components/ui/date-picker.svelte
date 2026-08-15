@@ -4,6 +4,7 @@ import {
 	type DateValue,
 	DateFormatter,
 	getLocalTimeZone,
+	toCalendarDate,
 } from "@internationalized/date";
 import { cn } from "$lib/utils.js";
 import { Button } from "$lib/components/ui/button/index.js";
@@ -30,7 +31,7 @@ let { value, onDateChange, minValue, maxValue, name, id, label }: Props =
 let open = $state(false);
 
 // DatePicker is used for calendar dates (birthdays, resume dates), not instants.
-const formValue = $derived(value?.toString() ?? "");
+const formValue = $derived(value ? toCalendarDate(value).toString() : "");
 </script>
 
 <div>

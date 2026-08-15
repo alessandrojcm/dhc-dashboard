@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { createMember } from "./setupFunctions";
 import { loginAsUser } from "./auth";
+import { gotoHydrated } from "./hydration";
 
 test.describe("Member Self-Management", () => {
 	let testData: Awaited<ReturnType<typeof createMember>>;
@@ -18,18 +19,17 @@ test.describe("Member Self-Management", () => {
 	test("should navigate to member profile when using only member", async ({
 		page,
 	}) => {
-		await page.goto("/dashboard");
+		await gotoHydrated(page, "/dashboard");
 		await expect(page.getByText(/member information/i)).toBeVisible();
 	});
 
 	test("should update member profile", async ({ page }) => {
-		await page.goto("/dashboard");
+		await gotoHydrated(page, "/dashboard");
 		await expect(page.getByText(/member information/i)).toBeVisible();
 		await page.getByLabel(/first name/i).fill("Updated name");
 		await page.getByLabel("Next of Kin", { exact: true }).fill("Test Contact");
 		await page.getByLabel("Next of Kin Phone Number").fill("0871234567");
 		await page.getByLabel(/preferred weapon/i).click();
-
 		await page.getByRole("option", { name: "Rapier" }).click();
 		await page.getByRole("button", { name: /save changes/i }).click();
 
@@ -40,7 +40,7 @@ test.describe("Member Self-Management", () => {
 	});
 
 	test("it should show manage subscription button", async ({ page }) => {
-		await page.goto("/dashboard");
+		await gotoHydrated(page, "/dashboard");
 		await page.getByText(/manage payment settings/i).click();
 		const newPage = await page.waitForEvent("popup");
 		await expect(newPage).toHaveURL(/billing\.stripe\.com/);
@@ -49,7 +49,7 @@ test.describe("Member Self-Management", () => {
 	test("it should not show other options when user is only member", async ({
 		page,
 	}) => {
-		await page.goto("/dashboard");
+		await gotoHydrated(page, "/dashboard");
 		expect(page.url()).toContain(`/dashboard/members/${testData.userId}`);
 		await expect(page.getByTestId("sidebar")).toHaveText("My Workshops");
 	});
@@ -79,7 +79,7 @@ test.describe("Member Management - Admin", () => {
 	);
 
 	test("it should show other options when user is admin", async ({ page }) => {
-		await page.goto("/dashboard");
+		await gotoHydrated(page, "/dashboard");
 		await page
 			.getByRole("button", { name: new RegExp(adminData.email, "i") })
 			.first()
@@ -91,7 +91,7 @@ test.describe("Member Management - Admin", () => {
 	test("admin should be able to navigate to a specific member profile", async ({
 		page,
 	}) => {
-		await page.goto(`/dashboard/members/${memberData.userId}`);
+		await gotoHydrated(page, `/dashboard/members/${memberData.userId}`);
 		await page.getByLabel(/first name/i).fill("Updated name");
 		await page.getByLabel("Next of Kin", { exact: true }).fill("Test Contact");
 		await page.getByLabel("Next of Kin Phone Number").fill("0871234567");
@@ -132,7 +132,7 @@ test.describe("Member management - cross member role check", () => {
 	test("it should be redirected to its own profile if trying to access another users profile", async ({
 		page,
 	}) => {
-		await page.goto(`/dashboard/members/${memberTwo.userId}`);
+		await gotoHydrated(page, `/dashboard/members/${memberTwo.userId}`);
 		await expect(page.getByText(memberOne.first_name).first()).toBeVisible();
 	});
 });

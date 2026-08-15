@@ -8,6 +8,7 @@ import { createMember, createWorkshop } from "./setupFunctions";
 import { deleteE2EFixture, seedE2EScenario } from "./e2eApi";
 import type { E2ERegistrationSeedRequest } from "./e2eApi";
 import { loginAsUser } from "./auth";
+import { gotoHydrated } from "./hydration";
 
 // Consolidated workshop management E2E covering the list/calendar, create form,
 // edit form (incl. published-lock and pricing-lock), modal publish/cancel/delete
@@ -22,7 +23,12 @@ async function pickWorkshopDate(
 	page: import("@playwright/test").Page,
 	date: dayjs.Dayjs,
 ) {
-	await page.getByRole("button", { name: "Date" }).click();
+	await expect(page.getByTestId("workshop-date-time-picker")).toHaveAttribute(
+		"data-hydrated",
+		"true",
+	);
+	const dateTrigger = page.getByRole("button", { name: "Date", exact: true });
+	await dateTrigger.click();
 	await expect(page.getByLabel("Select a year")).toBeVisible();
 	await page.getByLabel("Select a year").selectOption(date.year().toString());
 	await page.getByLabel("Select a month").selectOption(date.format("M"));
@@ -103,7 +109,7 @@ test.describe("Workshop Management", () => {
 			context,
 		}) => {
 			await loginAsUser(context, adminData.email);
-			await page.goto("/dashboard/workshops");
+			await gotoHydrated(page, "/dashboard/workshops");
 
 			await expect(
 				page.getByRole("heading", { name: "Workshops" }),
@@ -115,11 +121,13 @@ test.describe("Workshop Management", () => {
 
 		test("navigates to the create workshop form", async ({ page, context }) => {
 			await loginAsUser(context, adminData.email);
-			await page.goto("/dashboard/workshops");
+			await gotoHydrated(page, "/dashboard/workshops");
 
 			await page.getByRole("button", { name: "Create Workshop" }).click();
 
-			await expect(page).toHaveURL("/dashboard/workshops/create");
+			await expect
+				.poll(() => new URL(page.url()).pathname)
+				.toBe("/dashboard/workshops/create");
 			await expect(
 				page.getByRole("heading", { name: "Create Workshop" }),
 			).toBeVisible();
@@ -149,7 +157,7 @@ test.describe("Workshop Management", () => {
 			});
 			createdWorkshopIds.push(workshop.id);
 
-			await page.goto("/dashboard/workshops");
+			await gotoHydrated(page, "/dashboard/workshops");
 
 			const dialog = await openWorkshopModal(page, title);
 
@@ -193,7 +201,7 @@ test.describe("Workshop Management", () => {
 			});
 			createdWorkshopIds.push(workshop.id);
 
-			await page.goto("/dashboard/workshops");
+			await gotoHydrated(page, "/dashboard/workshops");
 			const dialog = await openWorkshopModal(page, title);
 
 			await expect(dialog.getByText("€12.50")).toBeVisible();
@@ -202,7 +210,7 @@ test.describe("Workshop Management", () => {
 
 		test("works for workshop_coordinator role", async ({ page, context }) => {
 			await loginAsUser(context, coordinatorData.email);
-			await page.goto("/dashboard/workshops");
+			await gotoHydrated(page, "/dashboard/workshops");
 
 			await expect(
 				page.getByRole("heading", { name: "Workshops" }),
@@ -225,7 +233,7 @@ test.describe("Workshop Management", () => {
 			context,
 		}) => {
 			await loginAsUser(context, adminData.email);
-			await page.goto("/dashboard/workshops/create");
+			await gotoHydrated(page, "/dashboard/workshops/create");
 
 			await expect(page.getByRole("textbox", { name: /title/i })).toBeVisible();
 			await expect(
@@ -260,17 +268,19 @@ test.describe("Workshop Management", () => {
 			context,
 		}) => {
 			await loginAsUser(context, adminData.email);
-			await page.goto("/dashboard/workshops/create");
+			await gotoHydrated(page, "/dashboard/workshops/create");
 
 			await page.getByRole("button", { name: "Create Workshop" }).click();
 
 			// Still on the create page; server-side validation rejected the empty form.
-			await expect(page).toHaveURL("/dashboard/workshops/create");
+			await expect
+				.poll(() => new URL(page.url()).pathname)
+				.toBe("/dashboard/workshops/create");
 		});
 
 		test("creates a workshop through the UI", async ({ page, context }) => {
 			await loginAsUser(context, adminData.email);
-			await page.goto("/dashboard/workshops/create");
+			await gotoHydrated(page, "/dashboard/workshops/create");
 
 			const ts = Date.now();
 			const title = `UI Created Workshop ${ts}`;
@@ -324,11 +334,13 @@ test.describe("Workshop Management", () => {
 			createdWorkshopIds.push(workshop.id);
 
 			// Open the calendar modal and click Edit Workshop.
-			await page.goto("/dashboard/workshops");
+			await gotoHydrated(page, "/dashboard/workshops");
 			const dialog = await openWorkshopModal(page, originalTitle);
 			await dialog.getByTestId("edit-workshop-button").click();
 
-			await expect(page).toHaveURL(`/dashboard/workshops/${workshop.id}/edit`);
+			await expect
+				.poll(() => new URL(page.url()).pathname)
+				.toBe(`/dashboard/workshops/${workshop.id}/edit`);
 			await expect(
 				page.getByRole("heading", { name: "Edit Workshop" }),
 			).toBeVisible();
@@ -396,7 +408,7 @@ test.describe("Workshop Management", () => {
 			});
 			createdWorkshopIds.push(workshop.id);
 
-			await page.goto(`/dashboard/workshops/${workshop.id}/edit`);
+			await gotoHydrated(page, `/dashboard/workshops/${workshop.id}/edit`);
 
 			await expect(
 				page.getByText(
@@ -444,7 +456,7 @@ test.describe("Workshop Management", () => {
 			);
 			createdRegistrationIds.push(registration.id);
 
-			await page.goto(`/dashboard/workshops/${workshop.id}/edit`);
+			await gotoHydrated(page, `/dashboard/workshops/${workshop.id}/edit`);
 
 			await expect(
 				page.getByText(
@@ -475,7 +487,7 @@ test.describe("Workshop Management", () => {
 			});
 			createdWorkshopIds.push(workshop.id);
 
-			await page.goto(`/dashboard/workshops/${workshop.id}/edit`);
+			await gotoHydrated(page, `/dashboard/workshops/${workshop.id}/edit`);
 
 			await page.getByRole("textbox", { name: /title/i }).fill("");
 			await page.getByRole("textbox", { name: /location/i }).fill("");
@@ -484,7 +496,9 @@ test.describe("Workshop Management", () => {
 
 			await expect(page.getByText("Title is required")).toBeVisible();
 			await expect(page.getByText("Location is required")).toBeVisible();
-			await expect(page).toHaveURL(`/dashboard/workshops/${workshop.id}/edit`);
+			await expect
+				.poll(() => new URL(page.url()).pathname)
+				.toBe(`/dashboard/workshops/${workshop.id}/edit`);
 		});
 
 		test("allows workshop_coordinator to edit", async ({ page, context }) => {
@@ -504,7 +518,7 @@ test.describe("Workshop Management", () => {
 			});
 			createdWorkshopIds.push(workshop.id);
 
-			await page.goto(`/dashboard/workshops/${workshop.id}/edit`);
+			await gotoHydrated(page, `/dashboard/workshops/${workshop.id}/edit`);
 
 			await expect(
 				page.getByRole("heading", { name: "Edit Workshop" }),
@@ -541,7 +555,7 @@ test.describe("Workshop Management", () => {
 			});
 			createdWorkshopIds.push(workshop.id);
 
-			await page.goto("/dashboard/workshops");
+			await gotoHydrated(page, "/dashboard/workshops");
 			const dialog = await openWorkshopModal(page, title);
 
 			await dialog.getByRole("button", { name: "Publish" }).click();
@@ -579,7 +593,7 @@ test.describe("Workshop Management", () => {
 			});
 			createdWorkshopIds.push(workshop.id);
 
-			await page.goto("/dashboard/workshops");
+			await gotoHydrated(page, "/dashboard/workshops");
 			const dialog = await openWorkshopModal(page, title);
 
 			// The Cancel action opens a popover (not a native dialog) with
@@ -622,7 +636,7 @@ test.describe("Workshop Management", () => {
 			});
 			createdWorkshopIds.push(workshop.id);
 
-			await page.goto("/dashboard/workshops");
+			await gotoHydrated(page, "/dashboard/workshops");
 			const dialog = await openWorkshopModal(page, title);
 
 			await dialog.getByRole("button", { name: "Delete" }).click();
@@ -691,7 +705,7 @@ test.describe("Workshop Management", () => {
 
 		test("displays the attendee management page", async ({ page, context }) => {
 			await loginAsUser(context, adminData.email);
-			await page.goto(`/dashboard/workshops/${workshopId}/attendees`);
+			await gotoHydrated(page, `/dashboard/workshops/${workshopId}/attendees`);
 
 			await expect(
 				page.getByRole("heading", { name: "Workshop Attendees" }),
@@ -708,7 +722,7 @@ test.describe("Workshop Management", () => {
 			context,
 		}) => {
 			await loginAsUser(context, adminData.email);
-			await page.goto(`/dashboard/workshops/${workshopId}/attendees`);
+			await gotoHydrated(page, `/dashboard/workshops/${workshopId}/attendees`);
 
 			// Default attendance status renders as "Not Checked In" (human label,
 			// not the raw "pending" enum).
@@ -719,7 +733,7 @@ test.describe("Workshop Management", () => {
 
 		test("marks an attendee as checked in", async ({ page, context }) => {
 			await loginAsUser(context, adminData.email);
-			await page.goto(`/dashboard/workshops/${workshopId}/attendees`);
+			await gotoHydrated(page, `/dashboard/workshops/${workshopId}/attendees`);
 
 			// The per-row "Mark Checked In" button updates attendance to "attended".
 			// "Mark Checked In" appears both as a bulk action (disabled until rows are
@@ -745,7 +759,7 @@ test.describe("Workshop Management", () => {
 			context,
 		}) => {
 			await loginAsUser(context, adminData.email);
-			await page.goto(`/dashboard/workshops/${workshopId}/attendees`);
+			await gotoHydrated(page, `/dashboard/workshops/${workshopId}/attendees`);
 			await page.waitForLoadState("networkidle");
 
 			// The refund UI is a popover triggered by the first refundable attendee.
@@ -769,7 +783,7 @@ test.describe("Workshop Management", () => {
 
 		test("closes the refund popover on cancel", async ({ page, context }) => {
 			await loginAsUser(context, adminData.email);
-			await page.goto(`/dashboard/workshops/${workshopId}/attendees`);
+			await gotoHydrated(page, `/dashboard/workshops/${workshopId}/attendees`);
 			await page.waitForLoadState("networkidle");
 
 			const refundButton = page.getByRole("button", { name: "Refund" }).first();
@@ -793,7 +807,8 @@ test.describe("Workshop Management", () => {
 			context,
 		}) => {
 			await loginAsUser(context, adminData.email);
-			const response = await page.goto(
+			const response = await gotoHydrated(
+				page,
 				`/dashboard/workshops/${NON_EXISTENT_WORKSHOP_ID}/attendees`,
 			);
 
@@ -811,7 +826,7 @@ test.describe("Workshop Management", () => {
 			context,
 		}) => {
 			await loginAsUser(context, memberData.email);
-			await page.goto(`/dashboard/workshops/${workshopId}/attendees`);
+			await gotoHydrated(page, `/dashboard/workshops/${workshopId}/attendees`);
 
 			expect(page.url()).toContain("/dashboard/members");
 		});

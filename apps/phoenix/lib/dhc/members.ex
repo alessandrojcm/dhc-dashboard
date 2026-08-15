@@ -597,8 +597,9 @@ defmodule Dhc.Members do
   defp filter_list_search(query, q) do
     where(
       query,
-      [_m, p, _u, _wg],
-      fragment("? @@ websearch_to_tsquery('english', ?)", field(p, :search_text), ^q)
+      [_m, p, u, _wg],
+      fragment("? @@ websearch_to_tsquery('english', ?)", field(p, :search_text), ^q) or
+        fragment("strpos(lower(?), lower(?)) > 0", u.email, ^q)
     )
   end
 

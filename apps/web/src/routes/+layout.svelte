@@ -13,6 +13,7 @@ import type { LayoutData } from "./$types";
 const { children, data }: { children: Snippet; data: LayoutData } = $props();
 const session = $derived(data.session);
 const queryClient = new QueryClient();
+let hydrated = $state(false);
 
 if (browser) {
 	// ALE-164: the dashboard authenticates through the Phoenix `_dhc_session`
@@ -24,6 +25,8 @@ if (browser) {
 }
 
 onMount(() => {
+	hydrated = true;
+
 	if (browser && !dev) {
 		// Initialize PostHog
 		posthog.init("phc_8UeWfJf2mUh6QRm4BGgj38bMOJLGmdHmdGR280hMLPL", {
@@ -48,7 +51,7 @@ onMount(() => {
 // handler) call `invalidateAll()` directly.
 </script>
 
-<div class="app">
+<div class="app" data-app-hydrated={hydrated}>
 	<QueryClientProvider client={queryClient}>
 		{@render children()}
 		<SvelteQueryDevtools />

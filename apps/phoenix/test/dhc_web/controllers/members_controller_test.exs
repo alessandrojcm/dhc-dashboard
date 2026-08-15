@@ -326,6 +326,23 @@ defmodule DhcWeb.MembersControllerTest do
                json_response(conn, 200)
     end
 
+    test "searches the authoritative principal email", %{conn: conn} do
+      insert_member(email: "search-target-with-hyphens@example.com")
+      insert_member(email: "other-member@example.com")
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> get("/api/members", q: "search-target-with-hyphens@example.com")
+
+      assert %{
+               "data" => %{
+                 "members" => [%{"email" => "search-target-with-hyphens@example.com"}],
+                 "totalCount" => 1
+               }
+             } = json_response(conn, 200)
+    end
+
     test "supports multi-select membershipStatus filter (single and multiple)", %{conn: conn} do
       insert_member(first_name: "Active", last_name: "Member", is_active: true)
       insert_member(first_name: "Inactive", last_name: "Member", is_active: false)
