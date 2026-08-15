@@ -1,11 +1,19 @@
 # ALE-210 — Existing Discord bot roster-access contract
 
 **Decision date:** 2026-08-13  
-**Amended:** 2026-08-13  
-**Status:** Accepted operational contract for ALE-205  
+**Amended:** 2026-08-15
+**Status:** Superseded in part by ADR-0019's 2026-08-15 amendment
 **Scope:** Prove and temporarily expose the minimum Discord capability required
 to read the DHC guild roster for the one-off existing-Member prefill. This
 document does not implement a bot, a roster client, persistence, or the prefill.
+
+> **Supersession note (2026-08-15):** The endpoint, pagination, privileged-intent,
+> and credential-safety findings remain valid. The in-app preflight execution,
+> capture authorization, encrypted package, digest, and receipt design is
+> superseded. The migration now uses `scripts/discord-roster-export.mjs` with
+> `DISCORD_BOT_TOKEN` and `DISCORD_GUILD_ID`, writes restricted plain
+> `roster.json` out of band, and leaves only selected staged assignments plus
+> their audit history in the application database.
 
 ## Decision summary
 

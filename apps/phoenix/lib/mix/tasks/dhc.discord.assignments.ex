@@ -10,84 +10,78 @@ defmodule Mix.Tasks.Dhc.Discord.Assignments do
     Mix.Task.run("app.start")
 
     case args do
-      ["stage", manifest_path, package_path] ->
-        manifest_path
-        |> read_envelope!()
-        |> Assignments.stage_signed(options(package_path))
+      ["stage", roster_path, rows_path, preparer_principal_id] ->
+        Assignments.stage(
+          read_json!(roster_path, "roster"),
+          read_json!(rows_path, "stage rows"),
+          preparer_principal_id,
+          options()
+        )
         |> print!()
 
-      ["review", capture_id, reviewer_principal_id, package_path] ->
-        Assignments.review_evidence(capture_id, reviewer_principal_id, options(package_path))
+      ["review", capture_id, roster_path, reviewer_principal_id] ->
+        Assignments.review_evidence(
+          capture_id,
+          read_json!(roster_path, "roster"),
+          reviewer_principal_id
+        )
         |> print!()
 
-      ["apply-review", manifest_path] ->
-        manifest_path
-        |> read_envelope!()
-        |> Assignments.apply_review_signed(options())
+      ["apply-review", capture_id, rows_path, reviewer_principal_id] ->
+        Assignments.apply_review(
+          capture_id,
+          read_json!(rows_path, "review rows"),
+          reviewer_principal_id,
+          options()
+        )
         |> print!()
 
-      ["withdraw", manifest_path] ->
-        manifest_path |> read_envelope!() |> Assignments.withdraw_signed(options()) |> print!()
+      ["withdraw", assignment_id, actor_principal_id, reason_code] ->
+        Assignments.withdraw(assignment_id, actor_principal_id, reason_code) |> print!()
 
-      ["supersede", manifest_path, package_path] ->
-        manifest_path
-        |> read_envelope!()
-        |> Assignments.supersede_signed(options(package_path))
+      ["supersede", assignment_id, roster_path, row_path, actor_principal_id] ->
+        Assignments.supersede(
+          assignment_id,
+          read_json!(roster_path, "roster"),
+          read_json!(row_path, "replacement row"),
+          actor_principal_id,
+          options()
+        )
         |> print!()
 
-      ["report", capture_id, package_path] ->
-        Assignments.report(capture_id, options(package_path)) |> print!()
+      ["report", capture_id, roster_path] ->
+        Assignments.report(capture_id, read_json!(roster_path, "roster"), options()) |> print!()
 
       _ ->
         Mix.raise("""
         Expected one of:
-          mix dhc.discord.assignments stage MANIFEST PACKAGE
-          mix dhc.discord.assignments review CAPTURE_ID REVIEWER_PRINCIPAL_ID PACKAGE
-          mix dhc.discord.assignments apply-review MANIFEST
-          mix dhc.discord.assignments withdraw MANIFEST
-          mix dhc.discord.assignments supersede MANIFEST PACKAGE
-          mix dhc.discord.assignments report CAPTURE_ID PACKAGE
+          mix dhc.discord.assignments stage ROSTER_JSON STAGE_ROWS_JSON PREPARER_PRINCIPAL_ID
+          mix dhc.discord.assignments review CAPTURE_ID ROSTER_JSON REVIEWER_PRINCIPAL_ID
+          mix dhc.discord.assignments apply-review CAPTURE_ID REVIEW_ROWS_JSON REVIEWER_PRINCIPAL_ID
+          mix dhc.discord.assignments withdraw ASSIGNMENT_ID ACTOR_PRINCIPAL_ID REASON_CODE
+          mix dhc.discord.assignments supersede ASSIGNMENT_ID ROSTER_JSON REPLACEMENT_ROW_JSON ACTOR_PRINCIPAL_ID
+          mix dhc.discord.assignments report CAPTURE_ID ROSTER_JSON
         """)
     end
   end
 
-  defp options(package_path \\ nil) do
+  defp options do
     %{
-      manifest_keys: required_manifest_keys!(),
       fingerprint_key: required_env!("DISCORD_SUBJECT_FINGERPRINT_KEY"),
-      package_key: System.get_env("DISCORD_ROSTER_PACKAGE_KEY"),
-      package_path: package_path,
       tool_revision: System.get_env("DISCORD_ASSIGNMENT_TOOL_REVISION", "unknown")
     }
   end
 
-  defp read_envelope!(path) do
+  defp read_json!(path, label) do
     with {:ok, bytes} <- File.read(path),
-         {:ok, envelope} when is_map(envelope) <- Jason.decode(bytes) do
-      envelope
+         {:ok, value} <- Jason.decode(bytes) do
+      value
     else
-      _ -> Mix.raise("signed manifest could not be read")
+      _ -> Mix.raise("#{label} JSON could not be read")
     end
   end
 
   defp required_env!(name), do: System.get_env(name) || Mix.raise("#{name} is required")
-
-  defp required_manifest_keys! do
-    with encoded when is_binary(encoded) <- System.get_env("DISCORD_ASSIGNMENT_MANIFEST_KEYS"),
-         {:ok, keys} when is_map(keys) and map_size(keys) > 0 <- Jason.decode(encoded),
-         true <-
-           Enum.all?(keys, fn {principal_id, key} ->
-             match?({:ok, _}, Ecto.UUID.cast(principal_id)) and is_binary(key) and key != ""
-           end),
-         true <- Map.values(keys) |> Enum.uniq() |> length() == map_size(keys) do
-      keys
-    else
-      _ ->
-        Mix.raise(
-          "DISCORD_ASSIGNMENT_MANIFEST_KEYS must be a JSON object of Principal UUIDs to distinct signing keys"
-        )
-    end
-  end
 
   defp print!({:ok, result}), do: Mix.shell().info(Jason.encode!(result, pretty: true))
 

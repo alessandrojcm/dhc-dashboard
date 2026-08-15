@@ -6,8 +6,6 @@ defmodule Dhc.DiscordAssignmentFixtures do
   alias Dhc.Discord.{
     AssignmentReviewExecution,
     AssignmentStageExecution,
-    RosterExecution,
-    RosterReceipts,
     StagedAssignment
   }
 
@@ -37,54 +35,12 @@ defmodule Dhc.DiscordAssignmentFixtures do
     reviewer = member_fixture("reviewer")
     now = DateTime.utc_now()
     revision = "ale-218-test"
-
-    execution =
-      %RosterExecution{actor_id: preparer}
-      |> RosterExecution.approval_changeset(%{
-        guild_id: "ale-218-guild",
-        bot_application_id: "ale-218-bot",
-        tool_revision: revision,
-        status: :approved,
-        approved_at: now,
-        expires_at: DateTime.add(now, 3_600, :second)
-      })
-      |> Repo.insert!()
-
-    {:ok, preflight} =
-      RosterReceipts.create(%{
-        execution_id: execution.id,
-        kind: :preflight,
-        status: :succeeded,
-        actor_id: preparer,
-        guild_id: "ale-218-guild",
-        bot_application_id: "ale-218-bot",
-        tool_revision: revision,
-        evidence_digest: digest("preflight"),
-        record_count: 1,
-        result: "preflight succeeded"
-      })
-
-    {:ok, capture} =
-      RosterReceipts.create(%{
-        execution_id: execution.id,
-        kind: :capture,
-        status: :succeeded,
-        actor_id: preparer,
-        guild_id: "ale-218-guild",
-        bot_application_id: "ale-218-bot",
-        tool_revision: revision,
-        evidence_digest: digest("capture"),
-        package_digest: digest(subject),
-        record_count: 1,
-        result: "capture succeeded",
-        preflight_receipt_id: preflight.id
-      })
+    capture_id = Ecto.UUID.generate()
 
     stage_execution =
       %AssignmentStageExecution{}
       |> AssignmentStageExecution.changeset(%{
-        capture_id: capture.id,
-        manifest_digest: digest("stage-#{subject}"),
+        capture_id: capture_id,
         preparer_principal_id: preparer,
         tool_revision: revision,
         executed_at: now
@@ -95,13 +51,12 @@ defmodule Dhc.DiscordAssignmentFixtures do
       %StagedAssignment{}
       |> StagedAssignment.proposal_changeset(%{
         principal_id: target_principal_id,
-        capture_id: capture.id,
+        capture_id: capture_id,
         stage_execution_id: stage_execution.id,
         provider: "discord",
         provider_subject: subject,
         username_snapshot: Map.get(attrs, :username_snapshot, "reviewed-user"),
         subject_fingerprint: Dhc.Discord.SubjectFingerprint.generate(subject, @fingerprint_key),
-        proposal_digest: digest("proposal:#{subject}"),
         state: "proposed",
         prepared_by_principal_id: preparer,
         tool_revision: revision
@@ -112,12 +67,10 @@ defmodule Dhc.DiscordAssignmentFixtures do
       if state in ["approved", "rejected"] do
         %AssignmentReviewExecution{}
         |> AssignmentReviewExecution.changeset(%{
-          capture_id: capture.id,
-          manifest_digest: digest("review-#{subject}"),
+          capture_id: capture_id,
           reviewer_principal_id: reviewer,
           tool_revision: revision,
-          executed_at: now,
-          state: "applied"
+          executed_at: now
         })
         |> Repo.insert!()
       end
@@ -161,7 +114,4 @@ defmodule Dhc.DiscordAssignmentFixtures do
 
     id
   end
-
-  defp digest(value),
-    do: :crypto.hash(:sha256, value) |> Base.encode16(case: :lower)
 end
