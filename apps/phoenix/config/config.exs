@@ -47,10 +47,9 @@ config :dhc, Oban,
     {Oban.Plugins.Reindexer, schedule: "@weekly"},
     {Oban.Plugins.Cron,
      crontab: [
-       {"* * * * *", Dhc.Onboarding.Workers.ContinuationExpiryWorker},
        {"0 0 * * *", Dhc.StripeSync.Worker},
        {"*/15 * * * *", Dhc.Workshops.Workers.RefundReconciliationWorker},
-       {"*/5 * * * *", Dhc.Onboarding.Workers.DiscordContinuationExpiryWorker}
+       {"* * * * *", Dhc.Onboarding.Workers.DiscordContinuationExpiryWorker}
      ]}
   ]
 
