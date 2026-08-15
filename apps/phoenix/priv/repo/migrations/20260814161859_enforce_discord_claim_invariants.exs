@@ -1,4 +1,4 @@
-defmodule Dhc.Repo.Migrations.Ale213EnforceDiscordClaimInvariants do
+defmodule Dhc.Repo.Migrations.EnforceDiscordClaimInvariants do
   use Ecto.Migration
 
   def up do

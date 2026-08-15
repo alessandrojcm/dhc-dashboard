@@ -1,7 +1,9 @@
-defmodule Dhc.Repo.Migrations.Ale213ClaimStripeProgression do
+defmodule Dhc.Repo.Migrations.AddPaymentPendingAcceptanceStatus do
   use Ecto.Migration
 
   def up do
+    execute("DROP INDEX invitation_acceptance_attempts_active_unique")
+
     drop constraint(
            :invitation_acceptance_attempts,
            :invitation_acceptance_attempts_status_check
@@ -11,26 +13,24 @@ defmodule Dhc.Repo.Migrations.Ale213ClaimStripeProgression do
              :invitation_acceptance_attempts,
              :invitation_acceptance_attempts_status_check,
              check:
-               "status IN ('processing', 'stripe_progressing', 'cleanup_pending', 'provisioned', 'completed', 'declined')"
+               "status IN ('processing', 'payment_pending', 'cleanup_pending', 'provisioned', 'completed', 'declined')"
            )
 
-    execute "DROP INDEX invitation_acceptance_attempts_active_unique"
-
-    execute """
+    execute("""
     CREATE UNIQUE INDEX invitation_acceptance_attempts_active_unique
       ON invitation_acceptance_attempts (invitation_id)
-      WHERE status IN ('processing', 'stripe_progressing', 'cleanup_pending', 'provisioned')
-    """
+      WHERE status IN ('processing', 'payment_pending', 'cleanup_pending', 'provisioned')
+    """)
   end
 
   def down do
-    execute "DROP INDEX invitation_acceptance_attempts_active_unique"
+    execute("DROP INDEX invitation_acceptance_attempts_active_unique")
 
-    execute """
-    CREATE UNIQUE INDEX invitation_acceptance_attempts_active_unique
-      ON invitation_acceptance_attempts (invitation_id)
-      WHERE status IN ('processing', 'cleanup_pending', 'provisioned')
-    """
+    execute("""
+    UPDATE invitation_acceptance_attempts
+    SET status = 'processing'
+    WHERE status = 'payment_pending'
+    """)
 
     drop constraint(
            :invitation_acceptance_attempts,
@@ -43,5 +43,11 @@ defmodule Dhc.Repo.Migrations.Ale213ClaimStripeProgression do
              check:
                "status IN ('processing', 'cleanup_pending', 'provisioned', 'completed', 'declined')"
            )
+
+    execute("""
+    CREATE UNIQUE INDEX invitation_acceptance_attempts_active_unique
+      ON invitation_acceptance_attempts (invitation_id)
+      WHERE status IN ('processing', 'cleanup_pending', 'provisioned')
+    """)
   end
 end

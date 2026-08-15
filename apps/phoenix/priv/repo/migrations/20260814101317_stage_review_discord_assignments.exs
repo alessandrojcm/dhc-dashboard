@@ -1,4 +1,4 @@
-defmodule Dhc.Repo.Migrations.Ale217StageReviewDiscordAssignments do
+defmodule Dhc.Repo.Migrations.StageReviewDiscordAssignments do
   use Ecto.Migration
 
   def up do
