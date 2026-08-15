@@ -1,4 +1,4 @@
-defmodule Dhc.Onboarding.Ale213DiscordClaimConcurrencyTest do
+defmodule Dhc.Onboarding.DiscordClaimConcurrencyTest do
   use ExUnit.Case, async: false
 
   import Ecto.Query

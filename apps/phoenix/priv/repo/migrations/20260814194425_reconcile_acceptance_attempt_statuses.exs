@@ -1,4 +1,4 @@
-defmodule Dhc.Repo.Migrations.Ale214AddPaymentPendingAcceptanceStatus do
+defmodule Dhc.Repo.Migrations.ReconcileAcceptanceAttemptStatuses do
   use Ecto.Migration
 
   def up do
@@ -13,13 +13,13 @@ defmodule Dhc.Repo.Migrations.Ale214AddPaymentPendingAcceptanceStatus do
              :invitation_acceptance_attempts,
              :invitation_acceptance_attempts_status_check,
              check:
-               "status IN ('processing', 'payment_pending', 'cleanup_pending', 'provisioned', 'completed', 'declined')"
+               "status IN ('processing', 'payment_pending', 'stripe_progressing', 'cleanup_pending', 'provisioned', 'completed', 'declined')"
            )
 
     execute("""
     CREATE UNIQUE INDEX invitation_acceptance_attempts_active_unique
       ON invitation_acceptance_attempts (invitation_id)
-      WHERE status IN ('processing', 'payment_pending', 'cleanup_pending', 'provisioned')
+      WHERE status IN ('processing', 'payment_pending', 'stripe_progressing', 'cleanup_pending', 'provisioned')
     """)
   end
 
@@ -28,7 +28,7 @@ defmodule Dhc.Repo.Migrations.Ale214AddPaymentPendingAcceptanceStatus do
 
     execute("""
     UPDATE invitation_acceptance_attempts
-    SET status = 'processing'
+    SET status = 'stripe_progressing'
     WHERE status = 'payment_pending'
     """)
 
@@ -41,13 +41,13 @@ defmodule Dhc.Repo.Migrations.Ale214AddPaymentPendingAcceptanceStatus do
              :invitation_acceptance_attempts,
              :invitation_acceptance_attempts_status_check,
              check:
-               "status IN ('processing', 'cleanup_pending', 'provisioned', 'completed', 'declined')"
+               "status IN ('processing', 'stripe_progressing', 'cleanup_pending', 'provisioned', 'completed', 'declined')"
            )
 
     execute("""
     CREATE UNIQUE INDEX invitation_acceptance_attempts_active_unique
       ON invitation_acceptance_attempts (invitation_id)
-      WHERE status IN ('processing', 'cleanup_pending', 'provisioned')
+      WHERE status IN ('processing', 'stripe_progressing', 'cleanup_pending', 'provisioned')
     """)
   end
 end

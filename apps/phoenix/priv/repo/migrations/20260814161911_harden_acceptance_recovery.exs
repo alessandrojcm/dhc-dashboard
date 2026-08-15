@@ -1,4 +1,4 @@
-defmodule Dhc.Repo.Migrations.Ale215HardenAcceptanceRecovery do
+defmodule Dhc.Repo.Migrations.HardenAcceptanceRecovery do
   use Ecto.Migration
 
   def up do

@@ -1,4 +1,4 @@
-defmodule Dhc.Repo.Migrations.Ale213AddDiscordSubjectClaims do
+defmodule Dhc.Repo.Migrations.AddDiscordSubjectClaims do
   use Ecto.Migration
 
   def change do

@@ -1,4 +1,4 @@
-defmodule Dhc.Repo.Migrations.Ale220DiscordIdentityLifecycle do
+defmodule Dhc.Repo.Migrations.DiscordIdentityLifecycle do
   use Ecto.Migration
 
   def up do
