@@ -14,6 +14,7 @@ defmodule Dhc.Onboarding do
   alias Dhc.Invitations.Invitation
   alias Dhc.Discord.StagedAssignment
   alias Dhc.MemberProfiles.MemberProfile
+  alias Dhc.Onboarding.AttemptState
   alias Dhc.Onboarding.InvitationAcceptanceAttempt
   alias Dhc.Onboarding.InvitationAcceptanceDiscordCollisionAuditEvent
   alias Dhc.Onboarding.InvitationAcceptanceDiscordContinuation
@@ -72,7 +73,7 @@ defmodule Dhc.Onboarding do
           )
           |> Repo.one()
 
-        if attempt && not pre_oauth_attempt?(attempt), do: Repo.rollback(:invalid_invitation)
+        if attempt && not AttemptState.pre_oauth?(attempt), do: Repo.rollback(:invalid_invitation)
 
         if DateTime.compare(invitation.expires_at, now) != :gt,
           do: Repo.rollback(:invalid_invitation)
@@ -142,7 +143,7 @@ defmodule Dhc.Onboarding do
                 continuation.provider_subject
               )
 
-              if pre_oauth_attempt?(attempt),
+              if AttemptState.pre_oauth?(attempt),
                 do: decline_attempt!(attempt, "discord_expired", now)
 
               :restart_verification
@@ -342,7 +343,7 @@ defmodule Dhc.Onboarding do
           end
 
         if continuation.status not in ["awaiting_oauth", "verified"] or
-             not pre_oauth_attempt?(attempt),
+             not AttemptState.pre_oauth?(attempt),
            do: Repo.rollback(:invalid_continuation)
 
         _invitation =
@@ -377,7 +378,7 @@ defmodule Dhc.Onboarding do
             :error -> Repo.rollback(:invalid_continuation)
           end
 
-        if continuation.status != "awaiting_oauth" or not pre_oauth_attempt?(attempt),
+        if continuation.status != "awaiting_oauth" or not AttemptState.pre_oauth?(attempt),
           do: Repo.rollback(:invalid_continuation)
 
         _invitation =
@@ -615,11 +616,6 @@ defmodule Dhc.Onboarding do
     |> Kernel.||(invitation.stripe_customer_id)
   end
 
-  defp pre_oauth_attempt?(attempt) do
-    attempt.status == "processing" and attempt.acceptance_data == %{} and
-      attempt.stripe_customer_id in [nil, ""] and attempt.stripe_state == %{}
-  end
-
   defp earliest_expiry(left, right) do
     if DateTime.compare(left, right) == :gt, do: right, else: left
   end
@@ -700,7 +696,7 @@ defmodule Dhc.Onboarding do
       attempt.status == "provisioned" and continuation.status == "verified" ->
         {:ok, safe_attempt_state(attempt, invitation)}
 
-      payment_ready_attempt?(attempt) and continuation.status == "verified" ->
+      AttemptState.payment_ready?(attempt) and continuation.status == "verified" ->
         {:ok, safe_attempt_state(attempt, invitation)}
 
       attempt.status == "processing" and continuation.status in ["awaiting_oauth", "verified"] and
@@ -722,7 +718,7 @@ defmodule Dhc.Onboarding do
     do: %{state: "accepted", invitation_email: invitation.email}
 
   defp safe_attempt_state(%{status: "processing"} = attempt, _invitation) do
-    if payment_ready_attempt?(attempt),
+    if AttemptState.payment_ready?(attempt),
       do: %{state: "paymentReady"},
       else: %{state: "restartVerification"}
   end
@@ -735,14 +731,18 @@ defmodule Dhc.Onboarding do
       case Map.get(stripe_state, "payment_state") do
         "needs_action" -> {"paymentNeedsAction", true}
         "terminal" -> {"paymentTerminal", false}
-        _ -> {"paymentPending", retry_allowed?(attempt)}
+        _ -> {"paymentPending", AttemptState.retry_allowed?(attempt)}
       end
 
     %{state: state, discord_verified: true, retry_allowed: retry_allowed}
   end
 
   defp safe_attempt_state(%{status: "provisioned"} = attempt, _invitation),
-    do: %{state: "paymentPending", discord_verified: true, retry_allowed: retry_allowed?(attempt)}
+    do: %{
+      state: "paymentPending",
+      discord_verified: true,
+      retry_allowed: AttemptState.retry_allowed?(attempt)
+    }
 
   defp safe_attempt_state(_attempt, _invitation), do: %{state: "restartVerification"}
 
@@ -859,7 +859,7 @@ defmodule Dhc.Onboarding do
             {invitation, attempt, false}
 
           invitation.status != "pending" or attempt.status != "processing" or
-            not payment_ready_attempt?(attempt) or continuation.status != "verified" or
+            not AttemptState.payment_ready?(attempt) or continuation.status != "verified" or
               not active_claim?(continuation) ->
             Repo.rollback(:invalid_continuation)
 
@@ -899,11 +899,6 @@ defmodule Dhc.Onboarding do
     else
       :error -> {:error, :invalid_continuation}
     end
-  end
-
-  defp payment_ready_attempt?(attempt) do
-    attempt.status == "processing" and
-      present?(Map.get(attempt.acceptance_data, "continuation_id"))
   end
 
   defp active_claim?(continuation) do
@@ -1319,7 +1314,7 @@ defmodule Dhc.Onboarding do
   defp mark_provisioned(attempt, stripe_state) do
     Repo.transaction(fn ->
       attempt =
-        if discord_bound_attempt?(attempt) do
+        if AttemptState.discord_bound?(attempt) do
           case lock_payment_fence(attempt.id) do
             {:ok, _invitation, current_attempt}
             when current_attempt.operation_token == attempt.operation_token ->
@@ -1751,10 +1746,10 @@ defmodule Dhc.Onboarding do
 
       if is_nil(attempt), do: Repo.rollback(:not_found)
 
-      if mode == :explicit and not retry_allowed?(attempt),
+      if mode == :explicit and not AttemptState.retry_allowed?(attempt),
         do: Repo.rollback(:retry_not_allowed)
 
-      if lease_active?(attempt), do: Repo.rollback(:operation_in_progress)
+      if AttemptState.lease_active?(attempt), do: Repo.rollback(:operation_in_progress)
 
       if continuation && attempt.status in ["payment_pending", "cleanup_pending", "provisioned"] do
         if continuation.status != "verified" or is_nil(continuation.provider_subject),
@@ -1786,21 +1781,6 @@ defmodule Dhc.Onboarding do
 
       %{attempt: attempt, invitation: invitation, continuation: continuation}
     end)
-  end
-
-  defp retry_allowed?(attempt) do
-    attempt.status in ["payment_pending", "provisioned"] and not is_nil(attempt.last_error) and
-      not lease_active?(attempt)
-  end
-
-  defp lease_active?(%{operation_token: nil}), do: false
-  defp lease_active?(%{operation_started_at: nil}), do: false
-
-  defp lease_active?(attempt) do
-    DateTime.compare(
-      attempt.operation_started_at,
-      DateTime.utc_now() |> DateTime.add(-5, :minute) |> DateTime.truncate(:second)
-    ) == :gt
   end
 
   defp attempt_continuation(attempt) do
@@ -1908,7 +1888,7 @@ defmodule Dhc.Onboarding do
       snapshot = Repo.one(query)
 
       attempt =
-        if snapshot && discord_bound_attempt?(snapshot) do
+        if snapshot && AttemptState.discord_bound?(snapshot) do
           case lock_payment_fence(attempt_id) do
             {:ok, _invitation, current_attempt}
             when is_nil(operation_token) or current_attempt.operation_token == operation_token ->
@@ -1944,7 +1924,7 @@ defmodule Dhc.Onboarding do
   end
 
   defp revalidate_customer_attempt(attempt) do
-    if discord_bound_attempt?(attempt) do
+    if AttemptState.discord_bound?(attempt) do
       case revalidate_payment_fence(attempt.id) do
         {:ok, _invitation, current_attempt}
         when current_attempt.operation_token == attempt.operation_token ->
@@ -1967,11 +1947,6 @@ defmodule Dhc.Onboarding do
       end
     end
   end
-
-  defp discord_bound_attempt?(attempt),
-    do:
-      present?(Map.get(attempt.acceptance_data, "continuation_id")) or
-        present?(Map.get(attempt.acceptance_data, "discord_continuation_id"))
 
   defp revalidate_payment_fence(attempt_id) do
     Repo.transaction(fn ->
