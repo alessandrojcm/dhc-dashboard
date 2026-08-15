@@ -10,10 +10,8 @@ defmodule Dhc.Auth.PrincipalToken do
       hashed; the original is placed in the cookie. Expires after 30 days
       (absolute — no sliding refresh).
     * `"socket"` — a short-lived credential used only to open a Phoenix socket.
-    * `"identity_recovery:<case UUID>"` — a short-lived destination proof that
-      can be consumed only by the exact recovery case that issued it.
 
-  Both tokens are looked up by `(context, hashed_token)`. Storing only the
+  Tokens are looked up by `(context, hashed_token)`. Storing only the
   hash means a read-only DB leak cannot reconstruct a usable token.
 
   Shape follows `mix phx.gen.auth`'s `UserToken`, adapted to DHC's 30-day
@@ -172,12 +170,6 @@ defmodule Dhc.Auth.PrincipalToken do
     build_hashed_token(principal, "login", principal.email)
   end
 
-  @doc "Builds a destination proof token scoped to one identity recovery case."
-  def build_identity_recovery_token(principal, recovery_case_id)
-      when is_binary(recovery_case_id) do
-    build_hashed_token(principal, identity_recovery_context(recovery_case_id), principal.email)
-  end
-
   defp build_hashed_token(principal, context, sent_to) do
     token = :crypto.strong_rand_bytes(@rand_size)
     hashed_token = hash_token(token)
@@ -218,31 +210,6 @@ defmodule Dhc.Auth.PrincipalToken do
         :error
     end
   end
-
-  @doc "Verifies a destination proof token for the exact recovery case that issued it."
-  def verify_identity_recovery_token_query(token, recovery_case_id)
-      when is_binary(token) and is_binary(recovery_case_id) do
-    case Base.url_decode64(token, padding: false) do
-      {:ok, decoded_token} ->
-        hashed_token = hash_token(decoded_token)
-        context = identity_recovery_context(recovery_case_id)
-
-        query =
-          from t in by_token_and_context_query(hashed_token, context),
-            join: p in assoc(t, :principal),
-            where: t.created_at > ago(^@magic_link_validity_in_minutes, "minute"),
-            where: t.sent_to == p.email,
-            select: {p, t}
-
-        {:ok, query}
-
-      :error ->
-        :error
-    end
-  end
-
-  def identity_recovery_context(recovery_case_id) when is_binary(recovery_case_id),
-    do: "identity_recovery:" <> recovery_case_id
 
   defp by_token_and_context_query(token, context) do
     from PrincipalToken, where: [token: ^token, context: ^context]

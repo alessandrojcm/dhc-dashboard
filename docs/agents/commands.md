@@ -78,58 +78,6 @@ mise run phx-migrate        # Run pending migrations
 mise run phx-rollback       # Rollback last migration
 mise run phx-gen-migration NAME  # Generate a new migration
 
-### Discord identity recovery
-
-Recovery containment is an offline, separately authenticated operator workflow;
-it is not a member or administrator profile operation. Pass a short-lived signed
-manifest that identifies the binding by UUID plus its support-safe fingerprint:
-
-```bash
-cd apps/phoenix
-DISCORD_IDENTITY_RECOVERY_MANIFEST_KEYS='{"OPERATOR_PRINCIPAL_UUID":"distinct-manifest-key"}' \
-DISCORD_IDENTITY_RECOVERY_OPERATOR_PROOF_KEYS='{"OPERATOR_PRINCIPAL_UUID":"distinct-proof-key"}' \
-DISCORD_SUBJECT_FINGERPRINT_KEY=... \
-mix dhc.discord.identity_recovery open \
-  /secure/path/recovery-manifest.json \
-  /secure/path/operator-proof.json
-
-# After the case has case-bound Discord OAuth and destination magic-link proofs,
-# submit two Ed25519-signed approval manifests from distinct admin/president actors.
-# The application receives only their Principal-bound public keys:
-DISCORD_IDENTITY_RECOVERY_APPROVER_PUBLIC_KEYS='{"principal-uuid":"base64-public-key",...}' \
-mix dhc.discord.identity_recovery approve /secure/path/first-approval.json
-
-DISCORD_IDENTITY_RECOVERY_APPROVER_PUBLIC_KEYS='{"principal-uuid":"base64-public-key",...}' \
-mix dhc.discord.identity_recovery approve /secure/path/second-approval.json
-
-# Atomically complete the approved replacement or transfer:
-DISCORD_SUBJECT_FINGERPRINT_KEY=... \
-mix dhc.discord.identity_recovery complete DIR-CASE-REFERENCE
-
-# Or terminalize an unresolved case without re-enabling the contained binding:
-DISCORD_IDENTITY_RECOVERY_MANIFEST_KEYS='{"OPERATOR_PRINCIPAL_UUID":"distinct-manifest-key"}' \
-mix dhc.discord.identity_recovery close /secure/path/close-manifest.json
-```
-
-Open/close manifests must be fresh (five minutes), signed by the dedicated
-Principal-bound recovery key, and name the same `admin` or `president` actor as
-the envelope signer. Opening also requires a second fresh, single-use envelope
-from the separately authenticated operator-proof issuer. That envelope contains
-the exact manifest digest, the same actor UUID, and a nonce. Approval manifests
-omit the actor ID: the verifier derives it from a configured Principal-bound
-Ed25519 public key, so one approver cannot impersonate another and the application
-never receives an approval private key. The command prints only a support-safe
-case receipt and never accepts a raw Discord subject. Reporter and evidence values
-are bounded opaque references such as `support-case:123` and `evidence:456`. Each
-approval must exactly match the case's source binding fingerprint, destination
-Principal UUID, incoming subject fingerprint, evidence references, and
-replacement/transfer operation.
-Expired proof or approval attempts are retained immutably; fresh attempts are
-appended. Use a signed `close` manifest with outcome `failed`, `cancelled`, or
-`expired` to terminalize an unresolved case without re-enabling its contained
-binding. ALE-221 is forward-only after deployment; recover by rolling forward or
-pausing Discord, never by rolling this migration down.
-
 # Code quality
 mise run phx-format         # Format all Elixir files
 mise run phx-format-check   # Check formatting (CI)

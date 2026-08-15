@@ -71,20 +71,6 @@ defmodule DhcWeb.E2EHarnessController do
     end)
   end
 
-  def complete_identity_recovery(conn, %{"case_reference" => case_reference}) do
-    with_harness(conn, fn conn ->
-      case E2EHarness.complete_identity_recovery(case_reference) do
-        {:ok, data} ->
-          json(conn, %{data: data})
-
-        {:error, reason} ->
-          conn
-          |> put_status(:unprocessable_entity)
-          |> json(%{errors: %{detail: inspect(reason)}})
-      end
-    end)
-  end
-
   def clear_finalization_interruption(conn, %{"invitationId" => invitation_id}) do
     with_harness(conn, fn conn ->
       :ok = E2EHarness.clear_finalization_interruption!(invitation_id)

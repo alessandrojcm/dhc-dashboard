@@ -6,16 +6,6 @@ defmodule Dhc.E2EHarnessTest do
   alias Dhc.Invitations.Invitation
   alias Dhc.Repo
 
-  for operation <- ~w(replacement transfer) do
-    test "seeds an identity recovery #{operation} scenario" do
-      assert %{
-               caseReference: "DIR-" <> _,
-               operation: unquote(operation),
-               proofUrl: "/auth/identity-recovery?" <> _
-             } = E2EHarness.seed("identityRecovery", %{"operation" => unquote(operation)})
-    end
-  end
-
   test "deleting a member fixture detaches Invitations created by its Principal" do
     member =
       E2EHarness.seed("member", %{

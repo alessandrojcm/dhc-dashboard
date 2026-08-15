@@ -9,12 +9,6 @@ defmodule Dhc.AuthM2CutoverRehearsalTest do
   alias Dhc.Repo
 
   @post_m2_principal_fk_tables ~w(
-    discord_identity_binding_history
-    discord_identity_recovery_approvals
-    discord_identity_recovery_audit_events
-    discord_identity_recovery_cases
-    discord_identity_recovery_proofs
-    discord_identity_recovery_operator_proof_uses
     discord_assignment_review_executions
     discord_assignment_stage_executions
     discord_assignment_stage_results
