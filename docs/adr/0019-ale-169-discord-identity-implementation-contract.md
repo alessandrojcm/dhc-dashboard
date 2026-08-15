@@ -4,6 +4,7 @@
 **Date:** 2026-08-13  
 **Amended:** 2026-08-14 — retain the existing Stripe Elements/ConfirmationToken payment experience; remove the mandatory hosted-Checkout redirect; define protected pricing, Stripe-action, retry, and payment-secret lifecycle contracts
 **Amended:** 2026-08-15 — descope dual-controlled Discord identity recovery; a member who loses their Discord account uses normal magic-link sign-in followed by manual administrator action, with no dedicated recovery workflow
+**Amended:** 2026-08-15 — replace in-app roster capture, encrypted packages, capture receipts, roster digests, and signed assignment manifests with a throwaway script and restricted plain JSON
 **Amends:** ADR-0009, ADR-0010, ADR-0013  
 **Implements:** ADR-0014 through ADR-0018; ALE-169  
 **Tags:** onboarding, authentication, discord, api, migration, operations
@@ -33,6 +34,24 @@ The only enduring Discord-to-Principal binding is `external_identities`. A
 Continuation, Subject Claim, and Staged Assignment are deliberately different
 temporary/pre-use states. A display name is never an identity or authorization
 fact.
+
+### 2026-08-15 roster-export amendment
+
+The one-off existing-Member migration no longer uses an in-app roster client,
+encrypted roster package, preflight/capture receipt, roster or manifest digest,
+or signed manifest envelope. Those requirements in ADR-0016, ADR-0017, and the
+older text below are superseded. An explicitly throwaway Node script uses the
+existing bot token from its process environment, paginates the guild-members
+endpoint, and writes a restricted plain JSON roster out of band. The Phoenix
+assignment task validates that file without persisting the complete roster.
+
+Stage and review decisions are plain JSON files. A separately authenticated
+operator supplies Member-admin Principal IDs as explicit task arguments; the
+task authorizes those IDs against the database at execution time. The IDs are
+not themselves authentication credentials. The distinct preparer/reviewer rule, immutable
+Staged Assignment lifecycle, collision constraints, keyed subject fingerprints,
+and audit events remain required. `capture_id` is now an opaque UUID for the
+one-off stage run, not a foreign key to capture machinery.
 
 ## Required behavior and transaction boundaries
 
@@ -301,10 +320,10 @@ operation, and Stripe action handling uses only the discriminated
   Session.
 - Collision, omission, outage, inactive access, and recovery responses must not
   reveal a Principal, Member, email, Assignment, claim, or link existence.
-- Roster review packages are restricted/encrypted outside the dashboard DB and
-  are deleted after the correction window. Retain only selected subject,
-  immutable snapshot, capture/review receipts, and permanent security audit
-  records as ADR-0016/0017 prescribe.
+- The plain roster JSON and mapping/review files are restricted outside the
+  dashboard DB and deleted after the correction window. Retain only selected
+  subjects, immutable snapshots, assignment execution evidence, and permanent
+  security audit records.
 - Roster export is a one-off script authenticated by DHC's existing bot. The
   script is not added to that bot's runtime; its task-local token access, guild
   roster, and OAuth credentials never enter application logs, tables, Oban
@@ -321,9 +340,8 @@ Follow this order; later steps must not begin early:
    code. Rehearse migrations and verify zero existing-identity versus active-row
    conflicts.
 2. **Backfill/review:** do not synthesize Assignments from existing identities
-   or metadata. Execute ADR-0015/0016 existing-bot access preflight, capture,
-   stage, independent review, and receipts; report omissions/conflicts without
-   bypass.
+   or metadata. Run the one-off roster export, then stage and independently
+   review the selected mappings; report omissions/conflicts without bypass.
 3. **Prepared verification:** deploy Acceptance routes/UI and workers behind
    `prepared`; run callback, replay, payment, lock-contention, and outage drills
    with production-like evidence. No Assignment promotes and no new acceptance
@@ -338,9 +356,10 @@ Follow this order; later steps must not begin early:
    email linking. Existing durable state remains.
 6. **Contract:** after ADR-0018 removal criteria, remove legacy code and Discord
    `email` scope, retain constraints/audits, revoke the roster script's bot-token
-   access after its correction window, and disable `GUILD_MEMBERS` if the bot's
-   established role does not need it. Keep the existing bot for that role. Roll
-   forward compatible code rather than down-migrating.
+   access after its correction window, delete the script and plain roster, and
+   disable `GUILD_MEMBERS` if the bot's established role does not need it. Keep
+   the existing bot for that role. Roll forward compatible code rather than
+   down-migrating.
 
 Metrics and alerts must cover OAuth start/callback/cancel/error latency,
 Continuation/Claim lifecycle and age, collisions before Stripe, Attempt/Stripe

@@ -5,11 +5,7 @@ defmodule Dhc.Repo.Migrations.Ale217StageReviewDiscordAssignments do
     create table(:discord_assignment_stage_executions, primary_key: false) do
       add(:id, :uuid, primary_key: true, default: fragment("gen_random_uuid()"))
 
-      add(:capture_id, references(:discord_roster_receipts, type: :uuid, on_delete: :restrict),
-        null: false
-      )
-
-      add(:manifest_digest, :text, null: false)
+      add(:capture_id, :uuid, null: false)
 
       add(:preparer_principal_id, references(:principals, type: :uuid, on_delete: :restrict),
         null: false
@@ -20,20 +16,10 @@ defmodule Dhc.Repo.Migrations.Ale217StageReviewDiscordAssignments do
       timestamps(type: :timestamptz, updated_at: false, inserted_at: :created_at)
     end
 
-    create(
-      unique_index(:discord_assignment_stage_executions, [:capture_id, :manifest_digest],
-        name: :discord_assignment_stage_executions_manifest_unique
-      )
-    )
-
     create table(:discord_assignment_review_executions, primary_key: false) do
       add(:id, :uuid, primary_key: true, default: fragment("gen_random_uuid()"))
 
-      add(:capture_id, references(:discord_roster_receipts, type: :uuid, on_delete: :restrict),
-        null: false
-      )
-
-      add(:manifest_digest, :text, null: false)
+      add(:capture_id, :uuid, null: false)
 
       add(:reviewer_principal_id, references(:principals, type: :uuid, on_delete: :restrict),
         null: false
@@ -41,33 +27,14 @@ defmodule Dhc.Repo.Migrations.Ale217StageReviewDiscordAssignments do
 
       add(:tool_revision, :text, null: false)
       add(:executed_at, :timestamptz, null: false)
-      add(:state, :text, null: false)
-      add(:reason_code, :text)
       timestamps(type: :timestamptz, updated_at: false, inserted_at: :created_at)
     end
-
-    create(
-      unique_index(:discord_assignment_review_executions, [:capture_id, :manifest_digest],
-        name: :discord_assignment_review_executions_manifest_unique
-      )
-    )
-
-    create(
-      constraint(
-        :discord_assignment_review_executions,
-        :discord_assignment_review_executions_lifecycle_check,
-        check:
-          "(state = 'applied' AND reason_code IS NULL) OR (state = 'rejected' AND NULLIF(reason_code, '') IS NOT NULL)"
-      )
-    )
 
     create table(:staged_discord_assignments, primary_key: false) do
       add(:id, :uuid, primary_key: true, default: fragment("gen_random_uuid()"))
       add(:principal_id, :uuid, null: false)
 
-      add(:capture_id, references(:discord_roster_receipts, type: :uuid, on_delete: :restrict),
-        null: false
-      )
+      add(:capture_id, :uuid, null: false)
 
       add(
         :stage_execution_id,
@@ -79,7 +46,6 @@ defmodule Dhc.Repo.Migrations.Ale217StageReviewDiscordAssignments do
       add(:provider_subject, :text, null: false)
       add(:username_snapshot, :text, null: false)
       add(:subject_fingerprint, :text, null: false)
-      add(:proposal_digest, :text, null: false)
       add(:state, :text, null: false, default: "proposed")
 
       add(:prepared_by_principal_id, references(:principals, type: :uuid, on_delete: :restrict),
@@ -128,12 +94,6 @@ defmodule Dhc.Repo.Migrations.Ale217StageReviewDiscordAssignments do
       )
     )
 
-    create(
-      unique_index(:staged_discord_assignments, [:proposal_digest],
-        name: :staged_discord_assignments_proposal_digest_unique
-      )
-    )
-
     create(index(:staged_discord_assignments, [:capture_id]))
     create(index(:staged_discord_assignments, [:stage_execution_id]))
     create(index(:staged_discord_assignments, [:review_execution_id]))
@@ -147,7 +107,7 @@ defmodule Dhc.Repo.Migrations.Ale217StageReviewDiscordAssignments do
     create(
       constraint(:staged_discord_assignments, :staged_discord_assignments_snapshot_check,
         check:
-          "NULLIF(username_snapshot, '') IS NOT NULL AND NULLIF(subject_fingerprint, '') IS NOT NULL AND NULLIF(proposal_digest, '') IS NOT NULL"
+          "NULLIF(username_snapshot, '') IS NOT NULL AND NULLIF(subject_fingerprint, '') IS NOT NULL"
       )
     )
 
@@ -251,9 +211,7 @@ defmodule Dhc.Repo.Migrations.Ale217StageReviewDiscordAssignments do
         null: false
       )
 
-      add(:capture_id, references(:discord_roster_receipts, type: :uuid, on_delete: :restrict),
-        null: false
-      )
+      add(:capture_id, :uuid, null: false)
 
       add(
         :stage_execution_id,
@@ -275,10 +233,9 @@ defmodule Dhc.Repo.Migrations.Ale217StageReviewDiscordAssignments do
     create(index(:staged_discord_assignment_audit_events, [:assignment_id, :created_at]))
 
     create_mutation_and_audit_triggers()
-    create_append_only_receipt_triggers()
-    create_roster_receipt_consistency_trigger()
+    create_append_only_execution_triggers()
     create_execution_consistency_trigger()
-    create_receipt_consistency_triggers()
+    create_result_consistency_triggers()
     create_role_authorization_lock_trigger()
     create_binding_constraint_triggers()
   end
@@ -303,22 +260,15 @@ defmodule Dhc.Repo.Migrations.Ale217StageReviewDiscordAssignments do
     execute("DROP FUNCTION IF EXISTS ale217_check_stage_result_consistency()")
     execute("DROP FUNCTION IF EXISTS ale217_check_stage_execution_dependents()")
 
-    execute(
-      "DROP TRIGGER IF EXISTS ale217_check_roster_receipt_consistency ON discord_roster_receipts"
-    )
-
-    execute("DROP FUNCTION IF EXISTS ale217_check_roster_receipt_consistency()")
-
     for table <- [
-          "discord_roster_receipts",
           "discord_assignment_stage_executions",
           "discord_assignment_review_executions",
           "discord_assignment_stage_results"
         ] do
-      execute("DROP TRIGGER IF EXISTS ale217_reject_receipt_mutation ON #{table}")
+      execute("DROP TRIGGER IF EXISTS ale217_reject_execution_mutation ON #{table}")
     end
 
-    execute("DROP FUNCTION IF EXISTS ale217_reject_receipt_mutation()")
+    execute("DROP FUNCTION IF EXISTS ale217_reject_execution_mutation()")
 
     execute(
       "DROP TRIGGER IF EXISTS ale217_check_subject_claim_binding ON invitation_acceptance_discord_subject_claims"
@@ -375,11 +325,11 @@ defmodule Dhc.Repo.Migrations.Ale217StageReviewDiscordAssignments do
     BEGIN
       IF (NEW.principal_id, NEW.capture_id, NEW.stage_execution_id, NEW.provider,
           NEW.provider_subject, NEW.username_snapshot, NEW.subject_fingerprint,
-          NEW.proposal_digest, NEW.prepared_by_principal_id, NEW.tool_revision)
+          NEW.prepared_by_principal_id, NEW.tool_revision)
          IS DISTINCT FROM
          (OLD.principal_id, OLD.capture_id, OLD.stage_execution_id, OLD.provider,
           OLD.provider_subject, OLD.username_snapshot, OLD.subject_fingerprint,
-          OLD.proposal_digest, OLD.prepared_by_principal_id, OLD.tool_revision) THEN
+          OLD.prepared_by_principal_id, OLD.tool_revision) THEN
         RAISE EXCEPTION 'assignment identity evidence is immutable'
           USING ERRCODE = '23514', CONSTRAINT = 'staged_discord_assignments_identity_immutable';
       END IF;
@@ -488,80 +438,30 @@ defmodule Dhc.Repo.Migrations.Ale217StageReviewDiscordAssignments do
     """)
   end
 
-  defp create_append_only_receipt_triggers do
+  defp create_append_only_execution_triggers do
     execute("""
-    CREATE FUNCTION ale217_reject_receipt_mutation() RETURNS trigger AS $$
+    CREATE FUNCTION ale217_reject_execution_mutation() RETURNS trigger AS $$
     BEGIN
-      RAISE EXCEPTION 'security receipts are append-only'
+      RAISE EXCEPTION 'assignment execution evidence is append-only'
         USING ERRCODE = '23514', CONSTRAINT = TG_TABLE_NAME || '_immutable';
     END;
     $$ LANGUAGE plpgsql;
     """)
 
     for table <- [
-          "discord_roster_receipts",
           "discord_assignment_stage_executions",
           "discord_assignment_review_executions",
           "discord_assignment_stage_results"
         ] do
       execute("""
-      CREATE TRIGGER ale217_reject_receipt_mutation
+      CREATE TRIGGER ale217_reject_execution_mutation
         BEFORE UPDATE OR DELETE ON #{table}
-        FOR EACH ROW EXECUTE FUNCTION ale217_reject_receipt_mutation();
+        FOR EACH ROW EXECUTE FUNCTION ale217_reject_execution_mutation();
       """)
     end
   end
 
-  defp create_roster_receipt_consistency_trigger do
-    execute("""
-    CREATE FUNCTION ale217_check_roster_receipt_consistency() RETURNS trigger AS $$
-    DECLARE
-      current_receipt discord_roster_receipts%ROWTYPE;
-      preflight discord_roster_receipts%ROWTYPE;
-    BEGIN
-      SELECT * INTO current_receipt FROM discord_roster_receipts WHERE id = NEW.id;
-      IF NOT FOUND THEN RETURN NULL; END IF;
-
-      IF current_receipt.kind = 'capture' THEN
-        SELECT * INTO preflight
-        FROM discord_roster_receipts
-        WHERE id = current_receipt.preflight_receipt_id;
-
-        IF NOT FOUND OR current_receipt.status <> 'succeeded'
-           OR preflight.kind <> 'preflight' OR preflight.status <> 'succeeded'
-           OR preflight.guild_id <> current_receipt.guild_id
-           OR preflight.bot_application_id <> current_receipt.bot_application_id
-           OR preflight.tool_revision <> current_receipt.tool_revision THEN
-          RAISE EXCEPTION 'capture receipt does not match a successful preflight'
-            USING ERRCODE = '23514', CONSTRAINT = 'discord_roster_receipts_preflight_consistency';
-        END IF;
-      ELSE
-        IF EXISTS (
-          SELECT 1 FROM discord_roster_receipts capture
-          WHERE capture.preflight_receipt_id = current_receipt.id
-            AND (current_receipt.status <> 'succeeded'
-              OR capture.guild_id <> current_receipt.guild_id
-              OR capture.bot_application_id <> current_receipt.bot_application_id
-              OR capture.tool_revision <> current_receipt.tool_revision)
-        ) THEN
-          RAISE EXCEPTION 'preflight receipt does not match its capture receipts'
-            USING ERRCODE = '23514', CONSTRAINT = 'discord_roster_receipts_capture_consistency';
-        END IF;
-      END IF;
-      RETURN NULL;
-    END;
-    $$ LANGUAGE plpgsql;
-    """)
-
-    execute("""
-    CREATE CONSTRAINT TRIGGER ale217_check_roster_receipt_consistency
-      AFTER INSERT OR UPDATE ON discord_roster_receipts
-      DEFERRABLE INITIALLY DEFERRED
-      FOR EACH ROW EXECUTE FUNCTION ale217_check_roster_receipt_consistency();
-    """)
-  end
-
-  defp create_receipt_consistency_triggers do
+  defp create_result_consistency_triggers do
     execute("""
     CREATE FUNCTION ale217_check_stage_result_consistency() RETURNS trigger AS $$
     DECLARE
@@ -611,7 +511,7 @@ defmodule Dhc.Repo.Migrations.Ale217StageReviewDiscordAssignments do
           AND result.outcome = 'proposed'
           AND (assignment.id IS NULL OR assignment.stage_execution_id <> NEW.id)
       ) THEN
-        RAISE EXCEPTION 'stage execution does not match its dependent receipts'
+        RAISE EXCEPTION 'stage execution does not match its dependent evidence'
           USING ERRCODE = '23514', CONSTRAINT = 'discord_assignment_stage_executions_dependents_consistency';
       END IF;
       RETURN NULL;
@@ -635,20 +535,12 @@ defmodule Dhc.Repo.Migrations.Ale217StageReviewDiscordAssignments do
       WHERE id = NEW.id;
       IF NOT FOUND THEN RETURN NULL; END IF;
 
-      IF current_execution.state = 'applied' AND NOT EXISTS (
+      IF NOT EXISTS (
         SELECT 1 FROM staged_discord_assignment_audit_events event
         WHERE event.review_execution_id = current_execution.id
       ) THEN
-        RAISE EXCEPTION 'applied review execution has no immutable row results'
+        RAISE EXCEPTION 'review execution has no immutable row results'
           USING ERRCODE = '23514', CONSTRAINT = 'discord_assignment_review_executions_applied_results';
-      END IF;
-
-      IF current_execution.state = 'rejected' AND EXISTS (
-        SELECT 1 FROM staged_discord_assignments assignment
-        WHERE assignment.review_execution_id = current_execution.id
-      ) THEN
-        RAISE EXCEPTION 'rejected review execution cannot own transitions'
-          USING ERRCODE = '23514', CONSTRAINT = 'discord_assignment_review_executions_rejected_results';
       END IF;
       RETURN NULL;
     END;
@@ -672,7 +564,7 @@ defmodule Dhc.Repo.Migrations.Ale217StageReviewDiscordAssignments do
         'quartermaster', 'pr_manager', 'volunteer_coordinator',
         'research_coordinator', 'coach') THEN
         PERFORM pg_advisory_xact_lock(
-          hashtextextended('discord:principal:' || OLD.principal_id::text, 0)
+          hashtextextended('discord/principal/' || OLD.principal_id::text, 0)
         );
       END IF;
       RETURN CASE WHEN TG_OP = 'DELETE' THEN OLD ELSE NEW END;
@@ -719,8 +611,7 @@ defmodule Dhc.Repo.Migrations.Ale217StageReviewDiscordAssignments do
           current_assignment.terminal_actor_principal_id
         );
 
-         IF NOT FOUND OR review_execution.state <> 'applied'
-            OR review_execution.capture_id <> current_assignment.capture_id
+         IF NOT FOUND OR review_execution.capture_id <> current_assignment.capture_id
            OR review_execution.reviewer_principal_id <> expected_reviewer
            OR review_execution.reviewer_principal_id = current_assignment.prepared_by_principal_id THEN
           RAISE EXCEPTION 'assignment does not match an independent review execution'

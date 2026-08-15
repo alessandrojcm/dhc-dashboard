@@ -77,6 +77,42 @@ mise run phx-console        # Start server inside IEx interactive shell
 mise run phx-migrate        # Run pending migrations
 mise run phx-rollback       # Rollback last migration
 mise run phx-gen-migration NAME  # Generate a new migration
+```
+
+### One-off Discord roster export and assignment review
+
+Export the existing guild roster once with Node's built-in `fetch`. The bot token
+and guild ID come only from the process environment. The script writes
+`roster.json` with mode `0600`; keep it restricted and delete it after the
+migration review window.
+
+```bash
+DISCORD_BOT_TOKEN=... \
+DISCORD_GUILD_ID=... \
+node scripts/discord-roster-export.mjs
+
+# Stage rows are a plain JSON array of
+# {"principal_id":"...","discord_user_id":"...","username_snapshot":"..."}.
+# The command prints the generated capture ID used by the later phases.
+cd apps/phoenix
+DISCORD_SUBJECT_FINGERPRINT_KEY=... \
+mix dhc.discord.assignments stage ../../roster.json /secure/path/stage-rows.json PREPARER_PRINCIPAL_ID
+
+# Review displays the selected roster evidence. Apply-review consumes a plain
+# array of {"assignment_id":"...","decision":"approve|reject"}.
+mix dhc.discord.assignments review CAPTURE_ID ../../roster.json REVIEWER_PRINCIPAL_ID
+DISCORD_SUBJECT_FINGERPRINT_KEY=... \
+mix dhc.discord.assignments apply-review CAPTURE_ID /secure/path/review-rows.json REVIEWER_PRINCIPAL_ID
+
+DISCORD_SUBJECT_FINGERPRINT_KEY=... \
+mix dhc.discord.assignments report CAPTURE_ID ../../roster.json
+```
+
+The separately authenticated operator supplies the preparer and reviewer IDs;
+the task authorizes both against current Member-admin roles in the database, and
+they must be different. The ID arguments are not authentication credentials.
+The roster exporter is throwaway migration tooling, not a recurring sync or
+Phoenix runtime task.
 
 # Code quality
 mise run phx-format         # Format all Elixir files

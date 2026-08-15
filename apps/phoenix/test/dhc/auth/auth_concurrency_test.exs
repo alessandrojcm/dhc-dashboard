@@ -10,8 +10,6 @@ defmodule Dhc.AuthConcurrencyTest do
     AssignmentReviewExecution,
     AssignmentStageExecution,
     AssignmentStageResult,
-    RosterExecution,
-    RosterReceipt,
     StagedAssignment,
     StagedAssignmentAuditEvent
   }
@@ -248,7 +246,6 @@ defmodule Dhc.AuthConcurrencyTest do
 
   defp delete_assignment_fixture(assignment) do
     assignment = Repo.get!(StagedAssignment, assignment.id)
-    capture = Repo.get!(RosterReceipt, assignment.capture_id)
 
     Repo.query!(
       "ALTER TABLE staged_discord_assignment_audit_events DISABLE TRIGGER ale217_reject_audit_mutation"
@@ -264,15 +261,14 @@ defmodule Dhc.AuthConcurrencyTest do
       )
     end
 
-    immutable_receipt_tables = [
+    immutable_execution_tables = [
       "discord_assignment_stage_results",
       "discord_assignment_review_executions",
-      "discord_assignment_stage_executions",
-      "discord_roster_receipts"
+      "discord_assignment_stage_executions"
     ]
 
-    Enum.each(immutable_receipt_tables, fn table ->
-      Repo.query!("ALTER TABLE #{table} DISABLE TRIGGER ale217_reject_receipt_mutation")
+    Enum.each(immutable_execution_tables, fn table ->
+      Repo.query!("ALTER TABLE #{table} DISABLE TRIGGER ale217_reject_execution_mutation")
     end)
 
     try do
@@ -288,19 +284,11 @@ defmodule Dhc.AuthConcurrencyTest do
       Repo.delete_all(
         from(e in AssignmentStageExecution, where: e.id == ^assignment.stage_execution_id)
       )
-
-      Repo.delete_all(from(r in RosterReceipt, where: r.id == ^capture.id))
-
-      if capture.preflight_receipt_id do
-        Repo.delete_all(from(r in RosterReceipt, where: r.id == ^capture.preflight_receipt_id))
-      end
     after
-      Enum.each(immutable_receipt_tables, fn table ->
-        Repo.query!("ALTER TABLE #{table} ENABLE TRIGGER ale217_reject_receipt_mutation")
+      Enum.each(immutable_execution_tables, fn table ->
+        Repo.query!("ALTER TABLE #{table} ENABLE TRIGGER ale217_reject_execution_mutation")
       end)
     end
-
-    Repo.delete_all(from(e in RosterExecution, where: e.id == ^capture.execution_id))
 
     [assignment.prepared_by_principal_id, assignment.approved_by_principal_id]
     |> Enum.reject(&is_nil/1)

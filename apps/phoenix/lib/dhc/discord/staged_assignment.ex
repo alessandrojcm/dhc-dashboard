@@ -15,7 +15,6 @@ defmodule Dhc.Discord.StagedAssignment do
     field :provider_subject, :string
     field :username_snapshot, :string
     field :subject_fingerprint, :string
-    field :proposal_digest, :string
     field :state, :string, default: "proposed"
     field :prepared_by_principal_id, :binary_id
     field :approved_by_principal_id, :binary_id
@@ -40,7 +39,6 @@ defmodule Dhc.Discord.StagedAssignment do
       :provider_subject,
       :username_snapshot,
       :subject_fingerprint,
-      :proposal_digest,
       :state,
       :prepared_by_principal_id,
       :tool_revision
@@ -53,7 +51,6 @@ defmodule Dhc.Discord.StagedAssignment do
       :provider_subject,
       :username_snapshot,
       :subject_fingerprint,
-      :proposal_digest,
       :state,
       :prepared_by_principal_id,
       :tool_revision
@@ -64,11 +61,7 @@ defmodule Dhc.Discord.StagedAssignment do
     |> unique_constraint([:provider, :provider_subject],
       name: :staged_discord_assignments_active_subject
     )
-    |> unique_constraint(:proposal_digest,
-      name: :staged_discord_assignments_proposal_digest_unique
-    )
     |> foreign_key_constraint(:principal_id)
-    |> foreign_key_constraint(:capture_id)
     |> foreign_key_constraint(:stage_execution_id)
     |> check_constraint(:principal_id, name: :staged_discord_assignments_member_link)
     |> check_constraint(:provider_subject,
