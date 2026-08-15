@@ -1,4 +1,4 @@
-defmodule Dhc.E2EOnboardingFinalizer do
+defmodule Dhc.Onboarding.Finalizer.E2E do
   @moduledoc false
 
   alias Dhc.Invitations

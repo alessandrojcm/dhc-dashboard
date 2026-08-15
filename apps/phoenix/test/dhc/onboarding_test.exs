@@ -27,7 +27,7 @@ defmodule Dhc.OnboardingTest do
     original_progress = Application.get_env(:dhc, :onboarding_stripe_progress)
     original_expiry_clock = Application.get_env(:dhc, :onboarding_discord_expiry_clock)
 
-    Application.put_env(:dhc, :onboarding_stripe_adapter, Dhc.OnboardingTestStripeAdapter)
+    Application.put_env(:dhc, :onboarding_stripe_adapter, Dhc.Onboarding.StripeAdapter.Test)
     Application.put_env(:dhc, :onboarding_stripe_result, {:ok, %{}})
     Application.put_env(:dhc, :onboarding_test_pid, self())
 

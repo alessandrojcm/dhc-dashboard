@@ -1,4 +1,4 @@
-defmodule Dhc.OnboardingTestStripeAdapter do
+defmodule Dhc.Onboarding.StripeAdapter.Test do
   @moduledoc false
 
   @behaviour Dhc.Onboarding.StripeAdapter

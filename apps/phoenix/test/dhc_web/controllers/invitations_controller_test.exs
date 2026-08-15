@@ -45,7 +45,7 @@ defmodule DhcWeb.InvitationsControllerTest do
     }
 
     Application.put_env(:dhc, :auth_verifier, Verifier)
-    Application.put_env(:dhc, :onboarding_stripe_adapter, Dhc.OnboardingTestStripeAdapter)
+    Application.put_env(:dhc, :onboarding_stripe_adapter, Dhc.Onboarding.StripeAdapter.Test)
     Application.put_env(:dhc, :onboarding_stripe_customer_result, {:ok, "cus_accept"})
     Application.put_env(:dhc, :onboarding_stripe_result, {:ok, %{}})
     Application.put_env(:dhc, :onboarding_test_pid, self())

@@ -33,7 +33,7 @@ defmodule Dhc.Onboarding.Ale213DiscordClaimConcurrencyTest do
     original_test_pid = Application.get_env(:dhc, :onboarding_test_pid)
     test_pid = self()
 
-    Application.put_env(:dhc, :onboarding_stripe_adapter, Dhc.OnboardingTestStripeAdapter)
+    Application.put_env(:dhc, :onboarding_stripe_adapter, Dhc.Onboarding.StripeAdapter.Test)
     Application.put_env(:dhc, :onboarding_stripe_customer_result, {:ok, "cus_concurrency"})
     Application.put_env(:dhc, :onboarding_test_pid, test_pid)
 

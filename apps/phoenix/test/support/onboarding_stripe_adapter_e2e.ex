@@ -1,4 +1,4 @@
-defmodule Dhc.OnboardingE2EStripeAdapter do
+defmodule Dhc.Onboarding.StripeAdapter.E2E do
   @moduledoc false
 
   @behaviour Dhc.Onboarding.StripeAdapter
