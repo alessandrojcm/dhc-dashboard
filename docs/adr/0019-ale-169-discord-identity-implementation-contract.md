@@ -3,6 +3,7 @@
 **Status:** Accepted  
 **Date:** 2026-08-13  
 **Amended:** 2026-08-14 — retain the existing Stripe Elements/ConfirmationToken payment experience; remove the mandatory hosted-Checkout redirect; define protected pricing, Stripe-action, retry, and payment-secret lifecycle contracts
+**Amended:** 2026-08-15 — descope dual-controlled Discord identity recovery; a member who loses their Discord account uses normal magic-link sign-in followed by manual administrator action, with no dedicated recovery workflow
 **Amends:** ADR-0009, ADR-0010, ADR-0013  
 **Implements:** ADR-0014 through ADR-0018; ALE-169  
 **Tags:** onboarding, authentication, discord, api, migration, operations

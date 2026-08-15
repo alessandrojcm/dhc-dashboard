@@ -80,10 +80,6 @@ defmodule DhcWeb.Router do
           E2EHarnessController,
           :invitation_acceptance_assertion
 
-      post "/complete/identity-recovery/:case_reference",
-           E2EHarnessController,
-           :complete_identity_recovery
-
       post "/onboarding/clear-finalization-interruption",
            E2EHarnessController,
            :clear_finalization_interruption
@@ -261,10 +257,6 @@ defmodule DhcWeb.Router do
     # Magic-link request — public, rate-limited, non-enumerating.
     pipe_through :magic_link_request_api
     post "/magic-link", AuthSessionController, :request_magic_link
-
-    post "/recovery/:case_reference/magic-link",
-         AuthSessionController,
-         :request_recovery_magic_link
   end
 
   scope "/api/auth", DhcWeb do
@@ -273,10 +265,6 @@ defmodule DhcWeb.Router do
     # Magic-link verify — public (the token is the credential). Sets the
     # signed _dhc_session cookie on success.
     post "/magic-link/verify", AuthSessionController, :verify_magic_link
-
-    post "/recovery/:case_reference/magic-link/verify",
-         AuthSessionController,
-         :verify_recovery_magic_link
   end
 
   scope "/api/auth", DhcWeb do
@@ -284,7 +272,6 @@ defmodule DhcWeb.Router do
 
     get "/discord", AuthSessionController, :request_discord
     get "/discord/callback", AuthSessionController, :discord_callback
-    get "/discord/recovery/:case_reference", AuthSessionController, :request_discord_recovery
   end
 
   scope "/api/auth", DhcWeb do

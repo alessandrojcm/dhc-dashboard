@@ -362,24 +362,6 @@ defmodule Dhc.Auth do
     {:ok, :sent}
   end
 
-  @doc """
-  Delivers a magic-link-shaped credential that can prove one destination
-  Principal for one exact Discord identity recovery case. It is not accepted by
-  the ordinary login path and retains the same non-enumerating response.
-  """
-  def deliver_identity_recovery_link(email, recovery_case_id, magic_link_url_fun)
-      when is_binary(recovery_case_id) and is_function(magic_link_url_fun, 1) do
-    if principal = get_principal_by_email(email) do
-      {encoded_token, row} =
-        PrincipalToken.build_identity_recovery_token(principal, recovery_case_id)
-
-      {:ok, _row} = Repo.insert(row)
-      enqueue_magic_link_email(principal, magic_link_url_fun.(encoded_token))
-    end
-
-    {:ok, :sent}
-  end
-
   defp build_magic_link(principal) do
     {encoded_token, row} = PrincipalToken.build_magic_link_token(principal)
     {:ok, _} = Repo.insert(row)
