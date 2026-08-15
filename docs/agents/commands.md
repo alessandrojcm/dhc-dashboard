@@ -289,7 +289,7 @@ cd apps/phoenix && mix seed.members 25
 cd apps/phoenix && mix seed.committee_members ../../scripts/users.csv
 ```
 
-`mise` loads `.env` automatically; the seed Mix tasks do not load dotenv themselves. Keep `.env` up to date with the same Phoenix DB connection convention used by the app (`DATABASE_URL`, preferred), plus `PUBLIC_SUPABASE_URL`/`SUPABASE_URL` and `SERVICE_ROLE_KEY`/`SUPABASE_SERVICE_ROLE_KEY`. `seed.members` and `seed.committee_members` create Supabase auth users through the Supabase Admin API, then insert app DB rows. `seed.members` only creates Stripe customers when `STRIPE_SECRET_KEY` is set.
+`mise` loads `.env` automatically; the seed Mix tasks do not load dotenv themselves. Keep `.env` up to date with the same Phoenix DB connection convention used by the app (`DATABASE_URL`, preferred). `seed.members`, `seed.workshops`, and `seed.committee_members` create Phoenix Principals directly through `Dhc.Auth`. `seed.members` only creates Stripe customers when `STRIPE_SECRET_KEY` is set. The committee CSV is intentionally local and gitignored because it contains member data; pass its path explicitly when `scripts/users.csv` is not present.
 
 ## CI (full check)
 
