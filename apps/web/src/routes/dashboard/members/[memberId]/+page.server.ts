@@ -5,7 +5,7 @@ import {
 } from "@dhc/api-client";
 import * as Sentry from "@sentry/sveltekit";
 import { error, type ServerLoadEvent } from "@sveltejs/kit";
-import { apiBaseUrl, apiClientOptions } from "$lib/server/api-client";
+import { apiClientOptions } from "$lib/server/api-client";
 import { invariant } from "$lib/server/invariant";
 import { getRolesFromSession, MEMBERS_ADMIN_ROLES } from "$lib/server/roles";
 import type { SocialMediaConsent } from "$lib/types.ts";
@@ -39,12 +39,16 @@ export const load: PageServerLoad = async (event) => {
 	try {
 		const canUpdate = await canUpdateSettings(event);
 		const apiOptions = apiClientOptions(cookies);
-		const memberResponse = await membersShow({
-			...apiOptions,
-			path: { memberId: params.memberId },
-			throwOnError: true,
-		});
+		const [memberResponse, optionsResponse] = await Promise.all([
+			membersShow({
+				...apiOptions,
+				path: { memberId: params.memberId },
+				throwOnError: true,
+			}),
+			membersOptions({ ...apiOptions, throwOnError: true }),
+		]);
 		const memberProfile = memberResponse.data.data;
+		const options = optionsResponse.data.data;
 
 		// Self-access fallback: a non-admin may view only their own profile.
 		// ALE-164: `session.principal.id` replaces the Supabase `user.id`.
@@ -52,9 +56,6 @@ export const load: PageServerLoad = async (event) => {
 			return error(404, "Member not found");
 		}
 
-		const options = membersOptions({ baseUrl: apiBaseUrl() }).then(
-			(response) => response.data?.data ?? { genders: [], weapons: [] },
-		);
 		const preferredWeapon = (memberProfile.preferredWeapon ?? []).filter(
 			(weapon): weapon is string => typeof weapon === "string",
 		);
@@ -77,8 +78,8 @@ export const load: PageServerLoad = async (event) => {
 					| SocialMediaConsent
 					| undefined,
 			},
-			genders: options.then((data) => data.genders),
-			weapons: options.then((data) => data.weapons),
+			genders: options.genders,
+			weapons: options.weapons,
 			insuranceFormLink: membersInsuranceForm({
 				...apiOptions,
 			})

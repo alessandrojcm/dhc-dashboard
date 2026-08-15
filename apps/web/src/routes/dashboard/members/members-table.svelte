@@ -590,7 +590,10 @@ const table = createSvelteTable(tableOptions);
 </div>
 
 <!-- Desktop Table View (hidden on mobile) -->
-<div class="hidden md:block overflow-x-auto overflow-y-auto h-[65svh]">
+<div
+	data-testid="members-table"
+	class="hidden md:block overflow-x-auto overflow-y-auto h-[65svh]"
+>
 	<Table.Root class="w-full">
 		<Table.Header class="sticky top-0 z-10 bg-white">
 			{#each table.getHeaderGroups() as headerGroup (headerGroup.id)}

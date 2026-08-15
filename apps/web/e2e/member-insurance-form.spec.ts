@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import { seedE2EScenario } from "./e2eApi";
 import { createMember } from "./setupFunctions";
 import { loginAsUser } from "./auth";
+import { gotoHydrated } from "./hydration";
 
 // Verifies the member-detail profile page reads the insurance form link through
 // the Phoenix API (GET /api/members/insurance-form) after the PostgREST read
@@ -42,7 +43,7 @@ test.describe("Member insurance form link", () => {
 			value: insuranceFormUrl,
 		});
 
-		await page.goto(`/dashboard/members/${testData.userId}`);
+		await gotoHydrated(page, `/dashboard/members/${testData.userId}`);
 
 		// The "Open insurance form" button only renders when the Phoenix read
 		// returns a non-null link, so visibility proves the read works end-to-end.

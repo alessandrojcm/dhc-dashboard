@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 import dayjs from "dayjs";
 import { createMember } from "./setupFunctions";
 import { loginAsUser } from "./auth";
+import { gotoHydrated } from "./hydration";
 
 test.describe("Invitation System", () => {
 	let adminData: Awaited<ReturnType<typeof createMember>>;
@@ -27,8 +28,7 @@ test.describe("Invitation System", () => {
 		page,
 	}) => {
 		// Navigate to members page
-		await page.goto("/dashboard/members");
-
+		await gotoHydrated(page, "/dashboard/members");
 		// Open invite drawer
 		await page.getByRole("button", { name: "Invite Members" }).click();
 
@@ -84,7 +84,7 @@ test.describe("Invitation System", () => {
 		page,
 	}) => {
 		// Navigate to members page
-		await page.goto("/dashboard/members");
+		await gotoHydrated(page, "/dashboard/members");
 
 		// Open invite drawer
 		await page.getByRole("button", { name: "Invite Members" }).click();
@@ -101,7 +101,7 @@ test.describe("Invitation System", () => {
 		page,
 	}) => {
 		// Navigate to members page
-		await page.goto("/dashboard/members");
+		await gotoHydrated(page, "/dashboard/members");
 
 		// Open invite drawer
 		await page.getByRole("button", { name: "Invite Members" }).click();
@@ -188,7 +188,7 @@ test.describe("Invitation System", () => {
 		page,
 	}) => {
 		// Navigate to members page
-		await page.goto("/dashboard/members");
+		await gotoHydrated(page, "/dashboard/members");
 
 		// Open invite drawer
 		await page.getByRole("button", { name: "Invite Members" }).click();
@@ -271,7 +271,7 @@ test.describe("Invitation System", () => {
 
 	test("should validate email format when adding to list", async ({ page }) => {
 		// Navigate to members page
-		await page.goto("/dashboard/members");
+		await gotoHydrated(page, "/dashboard/members");
 
 		// Open invite drawer
 		await page.getByRole("button", { name: "Invite Members" }).click();
@@ -323,7 +323,7 @@ test.describe("Invitation System", () => {
 			await loginAsUser(context, memberData.email);
 
 			// Navigate to members page
-			await page.goto("/dashboard/members");
+			await gotoHydrated(page, "/dashboard/members");
 
 			// Verify the invite button is not visible
 			await expect(
@@ -351,7 +351,7 @@ test.describe("Invitation System", () => {
 			await loginAsUser(context, coordinatorData.email);
 
 			// Navigate to members page
-			await page.goto("/dashboard/members");
+			await gotoHydrated(page, "/dashboard/members");
 
 			// Verify the invite button is visible
 			await expect(
