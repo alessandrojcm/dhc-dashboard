@@ -84,7 +84,8 @@ mise run phx-gen-migration NAME  # Generate a new migration
 
 ### One-off Discord roster export and assignment review
 
-Export the existing guild roster once with Node's built-in `fetch`. The bot token
+Export the existing guild roster once with `@discordjs/rest`, which handles
+Discord rate limits while the script paginates through the guild. The bot token
 and guild ID come only from the process environment. The script writes
 `roster.json` with mode `0600`; keep it restricted and delete it after the
 migration review window.

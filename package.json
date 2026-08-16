@@ -20,7 +20,9 @@
 	},
 	"packageManager": "pnpm@11.21.0",
 	"devDependencies": {
+		"@discordjs/rest": "^2.6.3",
 		"@oxlint/plugins": "1.78.0",
+		"discord-api-types": "^0.38.53",
 		"oxlint": "1.78.0"
 	}
 }

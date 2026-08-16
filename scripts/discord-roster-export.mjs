@@ -2,13 +2,15 @@
 // Keep roster.json restricted and delete it after the staged-assignment review window.
 
 import { chmod, writeFile } from 'node:fs/promises';
+import { REST } from '@discordjs/rest';
+import { Routes } from 'discord-api-types/v10';
 
-const API_BASE_URL = 'https://discord.com/api/v10';
 const PAGE_SIZE = 1000;
 const OUTPUT_PATH = 'roster.json';
 
 const token = requiredEnv('DISCORD_BOT_TOKEN');
 const guildId = requiredEnv('DISCORD_GUILD_ID');
+const discord = new REST({ version: '10' }).setToken(token);
 
 if (!/^\d+$/.test(guildId)) {
   throw new Error('DISCORD_GUILD_ID must be a Discord snowflake');
@@ -19,7 +21,7 @@ const seenIds = new Set();
 let after;
 
 while (true) {
-  const { members, resetAfterMs } = await fetchPage(after);
+  const members = await fetchPage(after);
 
   for (const member of members) {
     const exported = exportMember(member);
@@ -43,10 +45,6 @@ while (true) {
   }
 
   after = nextAfter;
-
-  if (resetAfterMs > 0) {
-    await sleep(resetAfterMs);
-  }
 }
 
 await writeFile(OUTPUT_PATH, `${JSON.stringify(roster, null, 2)}\n`, {
@@ -58,70 +56,19 @@ await chmod(OUTPUT_PATH, 0o600);
 console.log(`Wrote ${roster.length} members to ${OUTPUT_PATH}`);
 
 async function fetchPage(cursor) {
-  const url = new URL(`${API_BASE_URL}/guilds/${guildId}/members`);
-  url.searchParams.set('limit', String(PAGE_SIZE));
+  const query = new URLSearchParams({ limit: String(PAGE_SIZE) });
 
   if (cursor) {
-    url.searchParams.set('after', cursor);
+    query.set('after', cursor);
   }
 
-  while (true) {
-    const response = await fetch(url, {
-      headers: { Authorization: `Bot ${token}` },
-    });
+  const members = await discord.get(Routes.guildMembers(guildId), { query });
 
-    if (response.status === 429) {
-      const retryAfterMs = await rateLimitDelay(response);
-      await sleep(retryAfterMs);
-      continue;
-    }
-
-    if (!response.ok) {
-      throw new Error(`Discord member export failed with HTTP ${response.status}`);
-    }
-
-    let members;
-
-    try {
-      members = await response.json();
-    } catch {
-      throw new Error('Discord returned malformed JSON for the member list');
-    }
-
-    if (!Array.isArray(members)) {
-      throw new Error('Discord member-list response must be an array');
-    }
-
-    const remaining = Number(response.headers.get('x-ratelimit-remaining'));
-    const resetAfterSeconds = Number(response.headers.get('x-ratelimit-reset-after'));
-    const resetAfterMs = remaining === 0 && Number.isFinite(resetAfterSeconds)
-      ? Math.max(0, Math.ceil(resetAfterSeconds * 1000))
-      : 0;
-
-    return { members, resetAfterMs };
-  }
-}
-
-async function rateLimitDelay(response) {
-  const retryAfterValue = response.headers.get('retry-after');
-  const retryAfterHeader = retryAfterValue == null ? Number.NaN : Number(retryAfterValue);
-  let body;
-
-  try {
-    body = await response.json();
-  } catch {
-    body = null;
+  if (!Array.isArray(members)) {
+    throw new Error('Discord member-list response must be an array');
   }
 
-  const retryAfterSeconds = Number.isFinite(retryAfterHeader) && retryAfterHeader >= 0
-    ? retryAfterHeader
-    : Number(body?.retry_after);
-
-  if (!Number.isFinite(retryAfterSeconds) || retryAfterSeconds < 0) {
-    throw new Error('Discord rate-limit response did not include a valid retry delay');
-  }
-
-  return Math.max(1, Math.ceil(retryAfterSeconds * 1000));
+  return members;
 }
 
 function exportMember(member) {
@@ -160,8 +107,4 @@ function requiredEnv(name) {
   }
 
   return value;
-}
-
-function sleep(milliseconds) {
-  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
