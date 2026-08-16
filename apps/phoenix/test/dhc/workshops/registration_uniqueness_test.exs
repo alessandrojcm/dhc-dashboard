@@ -1,4 +1,4 @@
-defmodule Dhc.Workshops.Ale177RegistrationSlotLeaksTest do
+defmodule Dhc.Workshops.RegistrationUniquenessTest do
   @moduledoc """
   ALE-177: cancelled and refunded Registrations free their slot for
   re-registration. The migration drops the two full
@@ -54,7 +54,7 @@ defmodule Dhc.Workshops.Ale177RegistrationSlotLeaksTest do
   @xor_check :exactly_one_participant
 
   describe "re-registration: a cancelled/refunded row frees the slot" do
-    @tag :ale_177
+    @tag :registration_uniqueness
     test "a cancelled member registration frees the slot for a fresh pending row" do
       workshop = WorkshopFixtures.workshop_fixture()
       %{auth_user_id: uid} = WorkshopFixtures.member_fixture()
@@ -79,7 +79,7 @@ defmodule Dhc.Workshops.Ale177RegistrationSlotLeaksTest do
                |> then(&{:ok, &1})
     end
 
-    @tag :ale_177
+    @tag :registration_uniqueness
     test "a refunded member registration frees the slot for a fresh confirmed row" do
       workshop = WorkshopFixtures.workshop_fixture()
       %{auth_user_id: uid} = WorkshopFixtures.member_fixture()
@@ -102,7 +102,7 @@ defmodule Dhc.Workshops.Ale177RegistrationSlotLeaksTest do
                |> then(&{:ok, &1})
     end
 
-    @tag :ale_177
+    @tag :registration_uniqueness
     test "a cancelled external registration frees the slot for a fresh pending row" do
       workshop = WorkshopFixtures.workshop_fixture()
       external = WorkshopFixtures.external_user_fixture()
@@ -125,7 +125,7 @@ defmodule Dhc.Workshops.Ale177RegistrationSlotLeaksTest do
                |> then(&{:ok, &1})
     end
 
-    @tag :ale_177
+    @tag :registration_uniqueness
     test "a refunded external registration frees the slot for a fresh confirmed row" do
       workshop = WorkshopFixtures.workshop_fixture()
       external = WorkshopFixtures.external_user_fixture()
@@ -148,7 +148,7 @@ defmodule Dhc.Workshops.Ale177RegistrationSlotLeaksTest do
                |> then(&{:ok, &1})
     end
 
-    @tag :ale_177
+    @tag :registration_uniqueness
     test "re-register after cancelled, then cancel and re-register again (the slot stays free)" do
       workshop = WorkshopFixtures.workshop_fixture()
       %{auth_user_id: uid} = WorkshopFixtures.member_fixture()
@@ -192,7 +192,7 @@ defmodule Dhc.Workshops.Ale177RegistrationSlotLeaksTest do
   end
 
   describe "the partial unique still blocks duplicate active registrations" do
-    @tag :ale_177
+    @tag :registration_uniqueness
     test "two pending member registrations for the same (member, workshop) raise" do
       workshop = WorkshopFixtures.workshop_fixture()
       %{auth_user_id: uid} = WorkshopFixtures.member_fixture()
@@ -217,7 +217,7 @@ defmodule Dhc.Workshops.Ale177RegistrationSlotLeaksTest do
       assert error.constraint == Atom.to_string(@member_unique)
     end
 
-    @tag :ale_177
+    @tag :registration_uniqueness
     test "two confirmed external registrations for the same (external, workshop) raise" do
       workshop = WorkshopFixtures.workshop_fixture()
       external = WorkshopFixtures.external_user_fixture()
@@ -271,7 +271,7 @@ defmodule Dhc.Workshops.Ale177RegistrationSlotLeaksTest do
              WHERE num_nonnulls(member_user_id, external_user_id) <> 1;
 
             IF invalid_participants > 0 THEN
-              RAISE EXCEPTION 'ALE-177: % registrations violate the exactly-one-participant invariant', invalid_participants
+              RAISE EXCEPTION '% registrations violate the exactly-one-participant invariant', invalid_participants
                 USING ERRCODE = 'check_violation', CONSTRAINT = '#{@xor_check}';
             END IF;
           END;
@@ -283,7 +283,7 @@ defmodule Dhc.Workshops.Ale177RegistrationSlotLeaksTest do
       assert Map.get(error.postgres, :message) =~ "1 registrations"
     end
 
-    @tag :ale_177
+    @tag :registration_uniqueness
     test "a row with neither member_user_id nor external_user_id is rejected" do
       workshop = WorkshopFixtures.workshop_fixture()
       {display_name_column, display_name_value} = display_name_fragments("No Participant")
@@ -304,7 +304,7 @@ defmodule Dhc.Workshops.Ale177RegistrationSlotLeaksTest do
       assert Map.get(error.postgres, :code) == :check_violation
     end
 
-    @tag :ale_177
+    @tag :registration_uniqueness
     test "a row with both member_user_id and external_user_id is rejected" do
       workshop = WorkshopFixtures.workshop_fixture()
       %{auth_user_id: uid} = WorkshopFixtures.member_fixture()
@@ -332,7 +332,7 @@ defmodule Dhc.Workshops.Ale177RegistrationSlotLeaksTest do
       assert Map.get(error.postgres, :code) == :check_violation
     end
 
-    @tag :ale_177
+    @tag :registration_uniqueness
     test "the XOR CHECK is idempotent — the constraint exists exactly once" do
       assert [[1]] =
                Repo.query!(
@@ -346,7 +346,7 @@ defmodule Dhc.Workshops.Ale177RegistrationSlotLeaksTest do
   end
 
   describe "the (club_activity_id, created_at, id) partial composite index exists" do
-    @tag :ale_177
+    @tag :registration_uniqueness
     test "the composite index exists with the expected column order and partial predicate" do
       assert [true, defn] = index_def(@composite_index)
       assert defn =~ "CREATE INDEX"
@@ -357,7 +357,7 @@ defmodule Dhc.Workshops.Ale177RegistrationSlotLeaksTest do
   end
 
   describe "the old full uniques are gone" do
-    @tag :ale_177
+    @tag :registration_uniqueness
     test "the full member unique is dropped" do
       # The baseline default name
       # (`club_activity_registrations_club_activity_id_member_user_id_index`,
@@ -374,7 +374,7 @@ defmodule Dhc.Workshops.Ale177RegistrationSlotLeaksTest do
                ).rows
     end
 
-    @tag :ale_177
+    @tag :registration_uniqueness
     test "the full external unique is dropped" do
       assert [[0]] =
                Repo.query!(
@@ -386,7 +386,7 @@ defmodule Dhc.Workshops.Ale177RegistrationSlotLeaksTest do
                ).rows
     end
 
-    @tag :ale_177
+    @tag :registration_uniqueness
     test "the new member partial unique exists with the pending/confirmed predicate" do
       assert [true, defn] = index_def(@member_unique)
       assert defn =~ "CREATE UNIQUE INDEX"
@@ -395,7 +395,7 @@ defmodule Dhc.Workshops.Ale177RegistrationSlotLeaksTest do
       assert defn =~ "'confirmed'::registration_status"
     end
 
-    @tag :ale_177
+    @tag :registration_uniqueness
     test "the new external partial unique exists with the pending/confirmed predicate" do
       assert [true, defn] = index_def(@external_unique)
       assert defn =~ "CREATE UNIQUE INDEX"

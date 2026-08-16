@@ -1,4 +1,4 @@
-defmodule Dhc.Repo.Migrations.Ale162DropAuthUsersFksAddInvitationAcceptanceColumns do
+defmodule Dhc.Repo.Migrations.DropAuthUsersFksAddInvitationAcceptanceColumns do
   use Ecto.Migration
 
   @moduledoc """

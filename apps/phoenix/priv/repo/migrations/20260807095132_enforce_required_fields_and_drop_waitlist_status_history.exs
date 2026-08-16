@@ -1,4 +1,4 @@
-defmodule Dhc.Repo.Migrations.Ale186NotificationsAuditNotNullsChecksDropWaitlistStatusHistory do
+defmodule Dhc.Repo.Migrations.EnforceRequiredFieldsAndDropWaitlistStatusHistory do
   use Ecto.Migration
 
   @disable_ddl_transaction true
@@ -210,7 +210,7 @@ defmodule Dhc.Repo.Migrations.Ale186NotificationsAuditNotNullsChecksDropWaitlist
       WHERE count <> '0';
 
       IF failures IS NOT NULL THEN
-        RAISE EXCEPTION 'ALE-186 data gate failed: %', failures;
+        RAISE EXCEPTION 'Required-field data gate failed: %', failures;
       END IF;
     END
     $$

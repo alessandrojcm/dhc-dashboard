@@ -1,4 +1,4 @@
-defmodule Dhc.Repo.Migrations.Ale166CreateAuthMigrationAudit do
+defmodule Dhc.Repo.Migrations.CreateAuthMigrationAudit do
   use Ecto.Migration
 
   @moduledoc """
@@ -16,7 +16,7 @@ defmodule Dhc.Repo.Migrations.Ale166CreateAuthMigrationAudit do
       window and the 13-month operational-evidence retention requirement.
 
   `auth_migration_audit` is that evidence trail. It is written by M1
-  (`20260720100002_ale_166_m1_populate_principal_identities.exs`) and read
+  (`20260720100002_populate_principal_identities.exs`) and read
   by M2's reconciliation step; it is **not** written by any runtime auth
   path. No personal authentication payload (email, provider subject, token
   material) is ever stored here — only counts, anomaly class names, and

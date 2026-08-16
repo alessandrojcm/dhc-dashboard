@@ -1,4 +1,4 @@
-defmodule Dhc.Workshops.Ale179CodeReleaseStripeSplitWritesTest do
+defmodule Dhc.Workshops.StripeIdentifierWriteTest do
   @moduledoc """
   ALE-193 (code release): after the ALE-179 expand migration split the
   Stripe identifier into `stripe_payment_intent_id` (`pi_*`) and
@@ -44,7 +44,12 @@ defmodule Dhc.Workshops.Ale179CodeReleaseStripeSplitWritesTest do
     def request(%{method: :get, url: url}), do: request(method: :get, url: url)
 
     def request(%{method: method, url: url, body: body} = request) do
-      Application.put_env(:dhc, :ale_193_last_stripe_request_opts, Map.get(request, :opts, []))
+      Application.put_env(
+        :dhc,
+        :workshop_stripe_test_last_request_opts,
+        Map.get(request, :opts, [])
+      )
+
       request(method: method, url: url, body: body)
     end
 
@@ -61,7 +66,7 @@ defmodule Dhc.Workshops.Ale179CodeReleaseStripeSplitWritesTest do
     end
 
     def request(method: :get, url: "/v1/payment_intents/" <> payment_intent_id) do
-      case Application.get_env(:dhc, :ale_193_pi_retrieve_response) do
+      case Application.get_env(:dhc, :workshop_stripe_test_payment_intent_response) do
         nil ->
           {:ok, pi_retrieve_default(payment_intent_id)}
 
@@ -71,7 +76,7 @@ defmodule Dhc.Workshops.Ale179CodeReleaseStripeSplitWritesTest do
     end
 
     def request(method: :get, url: "/v1/checkout/sessions/" <> checkout_session_id) do
-      case Application.get_env(:dhc, :ale_193_cs_retrieve_response) do
+      case Application.get_env(:dhc, :workshop_stripe_test_checkout_session_response) do
         nil ->
           {:ok, cs_retrieve_default(checkout_session_id)}
 
@@ -81,9 +86,9 @@ defmodule Dhc.Workshops.Ale179CodeReleaseStripeSplitWritesTest do
     end
 
     def request(method: :post, url: "/v1/refunds", body: body) do
-      Application.put_env(:dhc, :ale_193_last_refund_request, body)
+      Application.put_env(:dhc, :workshop_stripe_test_last_refund_request, body)
 
-      case Application.get_env(:dhc, :ale_193_refund_response, :ok) do
+      case Application.get_env(:dhc, :workshop_stripe_test_refund_response, :ok) do
         :ok -> {:ok, %{"id" => "re_test_member"}}
         other -> other
       end
@@ -101,8 +106,8 @@ defmodule Dhc.Workshops.Ale179CodeReleaseStripeSplitWritesTest do
         "metadata" => %{
           "type" => "workshop_registration",
           "actor_type" => "member",
-          "workshop_id" => Application.fetch_env!(:dhc, :ale_193_workshop_id),
-          "user_id" => Application.fetch_env!(:dhc, :ale_193_member_user_id)
+          "workshop_id" => Application.fetch_env!(:dhc, :workshop_stripe_test_workshop_id),
+          "user_id" => Application.fetch_env!(:dhc, :workshop_stripe_test_member_user_id)
         }
       }
     end
@@ -118,8 +123,9 @@ defmodule Dhc.Workshops.Ale179CodeReleaseStripeSplitWritesTest do
         "metadata" => %{
           "type" => "workshop_registration",
           "actor_type" => "external",
-          "workshop_id" => Application.fetch_env!(:dhc, :ale_193_workshop_id),
-          "payment_attempt_id" => Application.fetch_env!(:dhc, :ale_193_payment_attempt_id)
+          "workshop_id" => Application.fetch_env!(:dhc, :workshop_stripe_test_workshop_id),
+          "payment_attempt_id" =>
+            Application.fetch_env!(:dhc, :workshop_stripe_test_payment_attempt_id)
         },
         "customer_details" => %{
           "email" => "guest@example.com",
@@ -136,14 +142,14 @@ defmodule Dhc.Workshops.Ale179CodeReleaseStripeSplitWritesTest do
 
     on_exit(fn ->
       Application.put_env(:dhc, :workshop_stripe_client, original_stripe)
-      Application.delete_env(:dhc, :ale_193_workshop_id)
-      Application.delete_env(:dhc, :ale_193_member_user_id)
-      Application.delete_env(:dhc, :ale_193_pi_retrieve_response)
-      Application.delete_env(:dhc, :ale_193_cs_retrieve_response)
-      Application.delete_env(:dhc, :ale_193_refund_response)
-      Application.delete_env(:dhc, :ale_193_last_refund_request)
-      Application.delete_env(:dhc, :ale_193_last_stripe_request_opts)
-      Application.delete_env(:dhc, :ale_193_payment_attempt_id)
+      Application.delete_env(:dhc, :workshop_stripe_test_workshop_id)
+      Application.delete_env(:dhc, :workshop_stripe_test_member_user_id)
+      Application.delete_env(:dhc, :workshop_stripe_test_payment_intent_response)
+      Application.delete_env(:dhc, :workshop_stripe_test_checkout_session_response)
+      Application.delete_env(:dhc, :workshop_stripe_test_refund_response)
+      Application.delete_env(:dhc, :workshop_stripe_test_last_refund_request)
+      Application.delete_env(:dhc, :workshop_stripe_test_last_request_opts)
+      Application.delete_env(:dhc, :workshop_stripe_test_payment_attempt_id)
     end)
 
     :ok
@@ -156,8 +162,8 @@ defmodule Dhc.Workshops.Ale179CodeReleaseStripeSplitWritesTest do
       workshop = WorkshopFixtures.workshop_fixture(status: "published", max_capacity: 2)
       %{auth_user_id: user_id} = WorkshopFixtures.member_fixture()
 
-      Application.put_env(:dhc, :ale_193_workshop_id, workshop.id)
-      Application.put_env(:dhc, :ale_193_member_user_id, user_id)
+      Application.put_env(:dhc, :workshop_stripe_test_workshop_id, workshop.id)
+      Application.put_env(:dhc, :workshop_stripe_test_member_user_id, user_id)
 
       pi_id = "pi_member_#{System.unique_integer([:positive])}"
 
@@ -172,8 +178,8 @@ defmodule Dhc.Workshops.Ale179CodeReleaseStripeSplitWritesTest do
       workshop = WorkshopFixtures.workshop_fixture(status: "published", max_capacity: 2)
       %{auth_user_id: user_id} = WorkshopFixtures.member_fixture()
 
-      Application.put_env(:dhc, :ale_193_workshop_id, workshop.id)
-      Application.put_env(:dhc, :ale_193_member_user_id, user_id)
+      Application.put_env(:dhc, :workshop_stripe_test_workshop_id, workshop.id)
+      Application.put_env(:dhc, :workshop_stripe_test_member_user_id, user_id)
 
       pi_id = "pi_idem_#{System.unique_integer([:positive])}"
 
@@ -189,8 +195,8 @@ defmodule Dhc.Workshops.Ale179CodeReleaseStripeSplitWritesTest do
       workshop = archived_workshop_fixture()
       %{auth_user_id: user_id} = WorkshopFixtures.member_fixture()
 
-      Application.put_env(:dhc, :ale_193_workshop_id, workshop.id)
-      Application.put_env(:dhc, :ale_193_member_user_id, user_id)
+      Application.put_env(:dhc, :workshop_stripe_test_workshop_id, workshop.id)
+      Application.put_env(:dhc, :workshop_stripe_test_member_user_id, user_id)
 
       assert {:error, :not_found} =
                Workshops.create_member_payment_intent(workshop.id, user_id, %{amount: 1000})
@@ -206,16 +212,21 @@ defmodule Dhc.Workshops.Ale179CodeReleaseStripeSplitWritesTest do
                Repo.get_by!(Refund, payment_attempt_id: attempt.id)
 
       assert attempt_id == attempt.id
-      assert Application.get_env(:dhc, :ale_193_last_refund_request) == nil
+      assert Application.get_env(:dhc, :workshop_stripe_test_last_refund_request) == nil
     end
 
     test "member completion does not contact Stripe while recording compensation" do
       workshop = archived_workshop_fixture()
       %{auth_user_id: user_id} = WorkshopFixtures.member_fixture()
 
-      Application.put_env(:dhc, :ale_193_workshop_id, workshop.id)
-      Application.put_env(:dhc, :ale_193_member_user_id, user_id)
-      Application.put_env(:dhc, :ale_193_refund_response, {:error, :provider_unavailable})
+      Application.put_env(:dhc, :workshop_stripe_test_workshop_id, workshop.id)
+      Application.put_env(:dhc, :workshop_stripe_test_member_user_id, user_id)
+
+      Application.put_env(
+        :dhc,
+        :workshop_stripe_test_refund_response,
+        {:error, :provider_unavailable}
+      )
 
       assert {:error, :compensation_pending} =
                Workshops.complete_member_registration(
@@ -224,12 +235,12 @@ defmodule Dhc.Workshops.Ale179CodeReleaseStripeSplitWritesTest do
                  "pi_archived_refund_failure"
                )
 
-      assert Application.get_env(:dhc, :ale_193_last_refund_request) == nil
+      assert Application.get_env(:dhc, :workshop_stripe_test_last_refund_request) == nil
     end
 
     test "external gates reject initiation and durably compensate an in-flight paid checkout" do
       workshop = archived_workshop_fixture()
-      Application.put_env(:dhc, :ale_193_workshop_id, workshop.id)
+      Application.put_env(:dhc, :workshop_stripe_test_workshop_id, workshop.id)
 
       assert %{can_register: false, reason: "NOT_FOUND"} =
                Workshops.external_registration_gate(workshop.id)
@@ -243,7 +254,7 @@ defmodule Dhc.Workshops.Ale179CodeReleaseStripeSplitWritesTest do
 
       checkout_session_id = "cs_archived_#{System.unique_integer([:positive])}"
       payment_attempt_id = Ecto.UUID.generate()
-      Application.put_env(:dhc, :ale_193_payment_attempt_id, payment_attempt_id)
+      Application.put_env(:dhc, :workshop_stripe_test_payment_attempt_id, payment_attempt_id)
 
       Repo.insert!(%PaymentAttempt{
         id: payment_attempt_id,
@@ -264,7 +275,7 @@ defmodule Dhc.Workshops.Ale179CodeReleaseStripeSplitWritesTest do
       assert %Refund{status: "pending", stripe_payment_intent_id: "pi_from_checkout"} =
                Repo.get_by!(Refund, payment_attempt_id: attempt.id)
 
-      assert Application.get_env(:dhc, :ale_193_last_refund_request) == nil
+      assert Application.get_env(:dhc, :workshop_stripe_test_last_refund_request) == nil
     end
   end
 
@@ -279,12 +290,12 @@ defmodule Dhc.Workshops.Ale179CodeReleaseStripeSplitWritesTest do
 
       user_id = member.auth_user_id
 
-      Application.put_env(:dhc, :ale_193_workshop_id, workshop.id)
-      Application.put_env(:dhc, :ale_193_member_user_id, user_id)
+      Application.put_env(:dhc, :workshop_stripe_test_workshop_id, workshop.id)
+      Application.put_env(:dhc, :workshop_stripe_test_member_user_id, user_id)
 
       ready_lock = :erlang.phash2({workshop.id, :ready}, 2_000_000_000)
       release_lock = :erlang.phash2({workshop.id, :release}, 2_000_000_000)
-      trigger = "ale_review_delay_registration_#{ready_lock}"
+      trigger = "test_registration_delay_#{ready_lock}"
 
       outside_sandbox(fn ->
         install_registration_delay!(trigger, workshop.id, ready_lock, release_lock)
@@ -368,8 +379,8 @@ defmodule Dhc.Workshops.Ale179CodeReleaseStripeSplitWritesTest do
       %{auth_user_id: user_id, principal_id: principal_id} =
         WorkshopFixtures.member_fixture()
 
-      Application.put_env(:dhc, :ale_193_workshop_id, workshop.id)
-      Application.put_env(:dhc, :ale_193_member_user_id, user_id)
+      Application.put_env(:dhc, :workshop_stripe_test_workshop_id, workshop.id)
+      Application.put_env(:dhc, :workshop_stripe_test_member_user_id, user_id)
 
       pi_id = "pi_refund_member_#{System.unique_integer([:positive])}"
 
@@ -386,7 +397,7 @@ defmodule Dhc.Workshops.Ale179CodeReleaseStripeSplitWritesTest do
       assert refund.status == "pending"
       assert refund.stripe_refund_id == nil
       assert refund.stripe_payment_intent_id == pi_id
-      assert Application.get_env(:dhc, :ale_193_last_refund_request) == nil
+      assert Application.get_env(:dhc, :workshop_stripe_test_last_refund_request) == nil
     end
 
     test "external registration resolves the Payment Intent from the checkout session" do
@@ -398,11 +409,11 @@ defmodule Dhc.Workshops.Ale179CodeReleaseStripeSplitWritesTest do
           start_date: DateTime.utc_now() |> DateTime.add(30, :day) |> DateTime.truncate(:second)
         )
 
-      Application.put_env(:dhc, :ale_193_workshop_id, workshop.id)
+      Application.put_env(:dhc, :workshop_stripe_test_workshop_id, workshop.id)
 
       cs_id = "cs_refund_external_#{System.unique_integer([:positive])}"
       payment_attempt_id = Ecto.UUID.generate()
-      Application.put_env(:dhc, :ale_193_payment_attempt_id, payment_attempt_id)
+      Application.put_env(:dhc, :workshop_stripe_test_payment_attempt_id, payment_attempt_id)
 
       Repo.insert!(%PaymentAttempt{
         id: payment_attempt_id,
@@ -433,7 +444,7 @@ defmodule Dhc.Workshops.Ale179CodeReleaseStripeSplitWritesTest do
       assert refund.status == "pending"
       assert refund.stripe_refund_id == nil
       assert refund.stripe_payment_intent_id == nil
-      assert Application.get_env(:dhc, :ale_193_last_refund_request) == nil
+      assert Application.get_env(:dhc, :workshop_stripe_test_last_refund_request) == nil
     end
 
     test "a paid registration with no Stripe id skips the Stripe call and marks refunded" do
@@ -470,7 +481,7 @@ defmodule Dhc.Workshops.Ale179CodeReleaseStripeSplitWritesTest do
       assert refund.status == "pending"
 
       # No Stripe refund request issued for a no-id registration.
-      assert Application.get_env(:dhc, :ale_193_last_refund_request) == nil
+      assert Application.get_env(:dhc, :workshop_stripe_test_last_refund_request) == nil
     end
   end
 

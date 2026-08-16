@@ -764,7 +764,7 @@ defmodule DhcWeb.InvitationsControllerTest do
     end
   end
 
-  describe "ALE-176: invitation acceptance reuses the waitlist UserProfile" do
+  describe "invitation acceptance reuses the waitlist UserProfile" do
     # The waitlist intake (`Dhc.Waitlist.create_entry/1`) creates an inactive
     # `user_profiles` row carrying the intake-captured fields (first/last/DOB/
     # gender/pronouns/phone/social_media_consent/medical_conditions) plus an
@@ -780,7 +780,7 @@ defmodule DhcWeb.InvitationsControllerTest do
     # once the reuse path lands, confirming the duplicate behavior changed.
     # The companion tests assert the desired reuse + guardian preservation.
 
-    test "acceptance does not create a duplicate UserProfile (characterization: red pre-ALE-176, green after)",
+    test "acceptance does not create a duplicate UserProfile",
          %{conn: conn} do
       %{invitation_id: invitation_id, user_id: user_id, waitlist_id: waitlist_id} =
         insert_invitation_from_waitlist_entry(

@@ -1,4 +1,4 @@
-defmodule Dhc.Repo.Migrations.Ale185HighValueIndexesAndRedundantIndexDrops do
+defmodule Dhc.Repo.Migrations.AddQueryIndexesAndDropRedundantIndexes do
   use Ecto.Migration
 
   def up do

@@ -1,4 +1,4 @@
-defmodule Dhc.Repo.Migrations.Ale176InvitationAcceptanceReusesWaitlistUserProfile do
+defmodule Dhc.Repo.Migrations.ReuseWaitlistProfileForInvitationAcceptance do
   @moduledoc """
   ALE-176: enforce that each waitlist entry owns at most one UserProfile, and
   each UserProfile owns at most one guardian, so Invitation acceptance can

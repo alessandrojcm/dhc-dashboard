@@ -403,7 +403,7 @@ defmodule Dhc.WorkshopsTest do
   end
 
   describe "delete_workshop/1" do
-    @tag :ale_181
+    @tag :workshop_archival
     test "hard-deletes Workshops with no registrations and returns {:ok, :deleted}" do
       workshop = WorkshopFixtures.workshop_fixture(status: "planned")
 
@@ -411,7 +411,7 @@ defmodule Dhc.WorkshopsTest do
       assert Workshops.workshop_summary(workshop.id) == nil
     end
 
-    @tag :ale_181
+    @tag :workshop_archival
     test "hard-deletes a Workshop with no registrations regardless of status" do
       # ALE-181 dropped the status gate: a published Workshop with no
       # registrations is hard-deleted, not rejected.
@@ -421,7 +421,7 @@ defmodule Dhc.WorkshopsTest do
       assert Workshops.workshop_summary(workshop.id) == nil
     end
 
-    @tag :ale_181
+    @tag :workshop_archival
     test "archives Workshops with registrations and returns {:ok, :archived, summary}" do
       workshop = WorkshopFixtures.workshop_fixture(status: "published")
 
@@ -445,7 +445,7 @@ defmodule Dhc.WorkshopsTest do
       assert Repo.get(Dhc.Workshops.Workshop, workshop.id).archived_at != nil
     end
 
-    @tag :ale_181
+    @tag :workshop_archival
     test "rejects an already-archived Workshop with {:error, :already_archived}" do
       workshop = WorkshopFixtures.workshop_fixture(status: "published")
 

@@ -717,7 +717,7 @@ defmodule DhcWeb.AuthSessionControllerTest do
   # ── GET /api/auth/socket-token ───────────────────────────────────────
 
   describe "GET /api/auth/socket-token" do
-    @tag :ale_164
+    @tag :socket_authentication
     test "200 with a short-lived socket token for a valid active session" do
       auth_user_id = Ecto.UUID.generate()
       email = "socket-#{System.unique_integer([:positive])}@example.com"
@@ -744,7 +744,7 @@ defmodule DhcWeb.AuthSessionControllerTest do
       assert is_binary(socket_token) and socket_token != ""
     end
 
-    @tag :ale_164
+    @tag :socket_authentication
     test "401 without a session cookie" do
       conn = get(conn(), "/api/auth/socket-token")
       assert %{"errors" => %{"detail" => "Unauthorized"}} = json_response(conn, 401)

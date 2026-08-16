@@ -1,4 +1,4 @@
-defmodule Dhc.Repo.Migrations.Ale166M1PopulatePrincipalIdentities do
+defmodule Dhc.Repo.Migrations.PopulatePrincipalIdentities do
   use Ecto.Migration
 
   @moduledoc """

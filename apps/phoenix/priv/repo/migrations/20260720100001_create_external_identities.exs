@@ -1,4 +1,4 @@
-defmodule Dhc.Repo.Migrations.Ale166CreateExternalIdentities do
+defmodule Dhc.Repo.Migrations.CreateExternalIdentities do
   use Ecto.Migration
 
   @moduledoc """
@@ -11,7 +11,7 @@ defmodule Dhc.Repo.Migrations.Ale166CreateExternalIdentities do
   The spec fixes that a Discord account is identified by its **immutable
   provider subject**, not its email/username/avatar. One provider subject is
   unique across Principals, and one Principal can have at most one identity
-  per provider. M1 (`20260720100002_ale_166_m1_populate_principal_identities.exs`)
+  per provider. M1 (`20260720100002_populate_principal_identities.exs`)
   populates this table from Supabase's `auth.identities` (Discord only);
   ALE-167 adds the runtime Assent callback that writes here on first
   Discord sign-in. ALE-166 ships the schema + M1 import so the cutover

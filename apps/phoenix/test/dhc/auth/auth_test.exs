@@ -284,7 +284,7 @@ defmodule Dhc.AuthTest do
   # ALE-182 — session tokens are stored as SHA-256 hashes, not plaintext. The
   # migration backfills existing session rows in place so live cookies keep
   # working. These tests pin the before/after behavior of the hashing change.
-  describe "session token hashing (ALE-182)" do
+  describe "session token hashing" do
     # Characterization: pins the behavior of `build_session_token/1`. Pre-ALE-182
     # the raw cookie bytes were stored verbatim in the `token` column (plaintext);
     # after ALE-182 the column holds the SHA-256 digest. This test was written
@@ -569,7 +569,8 @@ defmodule Dhc.AuthTest do
       assignment =
         Dhc.DiscordAssignmentFixtures.approved_assignment_fixture(principal.id, subject)
 
-      function_name = "ale218_fail_identity_insert_#{System.unique_integer([:positive])}"
+      function_name =
+        "fail_external_identity_insert_for_test_#{System.unique_integer([:positive])}"
 
       Repo.query!("""
       CREATE FUNCTION #{function_name}() RETURNS trigger AS $$

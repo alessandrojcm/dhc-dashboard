@@ -1,4 +1,4 @@
-defmodule Dhc.Repo.Migrations.Ale177RegistrationSlotLeaksPartialUniquesXorCheck do
+defmodule Dhc.Repo.Migrations.EnforceActiveRegistrationUniqueness do
   @moduledoc """
   ALE-177: cancelled and refunded Registrations free their slot for
   re-registration, and the participant XOR invariant is enforced at the DB
@@ -94,7 +94,7 @@ defmodule Dhc.Repo.Migrations.Ale177RegistrationSlotLeaksPartialUniquesXorCheck 
 
       IF invalid_participants > 0 THEN
         RAISE EXCEPTION
-          'ALE-177: % registrations violate the exactly-one-participant invariant; reconcile them before retrying',
+          '% registrations violate the exactly-one-participant invariant; reconcile them before retrying',
           invalid_participants
           USING ERRCODE = 'check_violation', CONSTRAINT = '#{@xor_check}';
       END IF;
@@ -173,11 +173,11 @@ defmodule Dhc.Repo.Migrations.Ale177RegistrationSlotLeaksPartialUniquesXorCheck 
     # Raise rather than silently no-op so an operator does not mistake a
     # no-op for a real rollback.
     raise """
-    ALE-177 down/0 is unsafe-after-write and not implemented.
+    Active registration uniqueness down/0 is unsafe-after-write and not implemented.
     Re-adding the full uniques would collide with re-registration rows the
     partial uniques were introduced to allow, and dropping the XOR CHECK
     would re-expose the participant-invariant gap. Backup-restore is the
-    only rollback. See ALE-187 runbook.
+    only rollback.
     """
   end
 end

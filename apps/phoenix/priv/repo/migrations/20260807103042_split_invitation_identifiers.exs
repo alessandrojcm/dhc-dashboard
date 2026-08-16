@@ -1,4 +1,4 @@
-defmodule Dhc.Repo.Migrations.Ale178InvitationIdentifierSplit do
+defmodule Dhc.Repo.Migrations.SplitInvitationIdentifiers do
   use Ecto.Migration
 
   def up do
@@ -54,6 +54,6 @@ defmodule Dhc.Repo.Migrations.Ale178InvitationIdentifierSplit do
   end
 
   def down do
-    raise "ALE-178 is unsafe to roll back after invitation reissues; restore from backup"
+    raise "Invitation identifier splitting is unsafe to roll back after reissues; restore from backup"
   end
 end

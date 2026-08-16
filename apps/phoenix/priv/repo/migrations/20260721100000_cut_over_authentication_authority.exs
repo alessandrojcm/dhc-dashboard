@@ -1,4 +1,4 @@
-defmodule Dhc.Repo.Migrations.Ale163M2CutOverAuthenticationAuthority do
+defmodule Dhc.Repo.Migrations.CutOverAuthenticationAuthority do
   use Ecto.Migration
 
   @moduledoc """
