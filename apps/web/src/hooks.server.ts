@@ -1,5 +1,5 @@
 import * as Sentry from "@sentry/sveltekit";
-import { type Handle, redirect } from "@sveltejs/kit";
+import { type Handle, type HandleServerError, redirect } from "@sveltejs/kit";
 import { sequence } from "@sveltejs/kit/hooks";
 import { dev } from "$app/environment";
 import { canAccessUrl } from "$lib/server/rbacRoles";
@@ -68,6 +68,25 @@ const roleGuard: Handle = async ({ event, resolve }) => {
 	return resolve(event);
 };
 
+/**
+ * Console-logs every unhandled server error with its full stack before
+ * Sentry reports it. SvelteKit only prints unexpected errors itself when
+ * `handleError` is NOT overridden — since we override it (for Sentry), and
+ * Sentry is disabled in dev, nothing would reach the server console without
+ * this. Called for unexpected errors only; errors thrown via `error()` from
+ * `@sveltejs/kit` never reach here.
+ */
+const logUnhandledServerError: HandleServerError = ({
+	error,
+	event,
+	status,
+}) => {
+	console.error(
+		`[server-error] ${status} ${event.request.method} ${event.url.pathname} (route: ${event.route.id ?? "unknown"})`,
+		error,
+	);
+};
+
 export const handle: Handle = sequence(
 	Sentry.initCloudflareSentryHandle({
 		enabled: !dev,
@@ -83,4 +102,4 @@ export const handle: Handle = sequence(
 	authGuard,
 	roleGuard,
 );
-export const handleError = Sentry.handleErrorWithSentry();
+export const handleError = Sentry.handleErrorWithSentry(logUnhandledServerError);

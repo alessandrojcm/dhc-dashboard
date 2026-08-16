@@ -47,7 +47,6 @@ defmodule Dhc.Invitations.BulkInviteWorker do
   alias Dhc.Repo
 
   @invite_email_template "inviteMember"
-  @default_app_url "http://localhost:5173"
 
   @impl Worker
   def backoff(%Oban.Job{attempt: attempt}), do: trunc(:math.pow(attempt, 4) + 15)
@@ -291,7 +290,7 @@ defmodule Dhc.Invitations.BulkInviteWorker do
   defp maybe_update_waitlist(_invite), do: :ok
 
   defp invitation_link(invite_data, invitation_id) do
-    app_url = Application.get_env(:dhc, :app_url, @default_app_url)
+    app_url = Application.fetch_env!(:dhc, :app_url)
 
     app_url
     |> URI.merge("/members/signup/#{invitation_id}")

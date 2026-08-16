@@ -23,6 +23,13 @@ After activation, `node`, `elixir`, `mix`, `pnpm` etc. resolve to the versions p
 docker compose up -d db mailpit   # 1. Start PostgreSQL + Mailpit (dev email catcher)
 mise run phx-server               # 2. Phoenix API and Oban workers
 mise run dev                      # 3. SvelteKit dev from apps/web
+```
+
+- The SvelteKit dev server serves **HTTPS** at the canonical local origin `https://127.0.0.1:5173` (`vite-plugin-mkcert`, self-signed). Probe it with `curl -sk https://127.0.0.1:5173/...`; plain `http://` curls fail even when the server is up. Keep frontend URLs, redirects, and browser visits on `127.0.0.1` rather than mixing it with `localhost`, because host-only auth cookies do not cross between them.
+- Phoenix remains on `http://127.0.0.1:4000` in development. Since the browser frontend and API use different schemes, development auth cookies are intentionally `Secure; SameSite=None` and browser API calls use credentialed CORS. E2E remains a separate HTTP-only `127.0.0.1` topology with `SameSite=Lax` cookies.
+- Unhandled server errors are console-logged (status, method, path, route, stack) by `logUnhandledServerError` in `apps/web/src/hooks.server.ts`, wrapped inside Sentry's `handleError`. The catch-all UI is the root `apps/web/src/routes/+error.svelte` plus `apps/web/src/error.html` (fallback for errors in `handle`, `+server.js`, or the root layout load, which no `+error.svelte` can render).
+
+```bash
 
 # Testing
 mise run test-unit          # Vitest
@@ -57,6 +64,9 @@ the real templates. Web UI at `http://localhost:8025`, SMTP on
 `localhost:1025` (override with `MAILPIT_HOST`/`MAILPIT_PORT`). Messages are
 in-memory and lost on container restart. A stopped Mailpit container is not an
 error: delivery failures log a warning and the job still succeeds.
+`Dhc.Email.DevMailer` belongs under `apps/phoenix/dev/` because `gen_smtp` is a
+dev-only dependency; placing the adapter under `lib/` breaks test-environment
+compilation under `--warnings-as-errors`.
 
 The E2E suite intentionally uses Stripe's real test API for invitation acceptance.
 It fails before startup unless `STRIPE_SECRET_KEY` starts with `sk_test_`. The test

@@ -1,10 +1,11 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 import "dotenv/config";
 import {
 	routeSuccessfulDiscordAcceptance,
 	setupInvitedUser,
 } from "./setupFunctions";
 import { submitInvitationCredentials } from "./invitationSignup";
+import { API_BASE_URL } from "./e2eApi";
 
 type InvitedUser = Awaited<ReturnType<typeof setupInvitedUser>>;
 
@@ -55,6 +56,24 @@ async function expectNeutralInvitationError(page: Page) {
 	await expect(
 		page.getByRole("alert").filter({ hasText: "Something has gone wrong" }),
 	).toBeVisible();
+}
+
+async function signInWithDiscord(page: Page, context: BrowserContext) {
+	const response = await context.request.get(`${API_BASE_URL}/auth/discord`, {
+		maxRedirects: 0,
+	});
+	expect(response.status()).toBe(302);
+	const authorizationUrl = new URL(response.headers().location);
+	expect(authorizationUrl.origin + authorizationUrl.pathname).toBe(
+		"https://discord.example.com/oauth2/authorize",
+	);
+	const state = authorizationUrl.searchParams.get("state");
+	expect(state).toBeTruthy();
+
+	const callbackUrl = new URL(`${API_BASE_URL}/auth/discord/callback`);
+	callbackUrl.searchParams.set("state", state ?? "");
+	callbackUrl.searchParams.set("code", "success");
+	await page.goto(callbackUrl.toString());
 }
 
 test.describe("Member Signup - Negative test cases", () => {
@@ -153,6 +172,38 @@ test.describe("Member Signup - Valid invitation", () => {
 				hasText: "Phone number of your next of kin is required.",
 			}),
 		).toBeVisible();
+	});
+
+	test("can sign in after completing signup", async ({ context, page }) => {
+		test.setTimeout(60_000);
+		await page.getByLabel("Next of Kin", { exact: true }).fill("John Doe");
+		const phoneInputField = page.getByLabel("Next of Kin Phone Number");
+		await phoneInputField.pressSequentially("0838774532", { delay: 50 });
+		await phoneInputField.press("Tab");
+		await fillStripePayment(page, testData.email, "IE29AIBK93115212345678");
+
+		await page.getByRole("button", { name: /sign up/i }).click();
+		await expect(page).toHaveURL(
+			`http://127.0.0.1:5173/members/signup/${testData.invitationId}/success`,
+			{ timeout: 30_000 },
+		);
+		await expect(
+			page.getByText("Your membership has been created."),
+		).toBeVisible();
+
+		await page.getByRole("link", { name: "Go to sign in" }).click();
+		await expect(
+			page.getByRole("heading", { name: "Log in to the DHC Dashboard" }),
+		).toBeVisible();
+		await signInWithDiscord(page, context);
+
+		await expect(page).toHaveURL(
+			`http://127.0.0.1:5173/dashboard/members/${testData.userId}`,
+		);
+		await expect(
+			page.getByText("Member Information", { exact: true }),
+		).toBeVisible();
+		await expect(page.getByLabel("Email")).toHaveValue(testData.email);
 	});
 
 	for (const paymentLimit of [

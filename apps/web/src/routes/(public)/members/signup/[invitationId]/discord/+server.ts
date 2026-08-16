@@ -8,7 +8,7 @@ import {
 const ACCEPTANCE_RECOVERY_COOKIE = "discord-acceptance-invitation";
 const ACCEPTANCE_CALLBACK_PATH = "/auth/discord/acceptance/callback";
 
-export const GET: RequestHandler = async ({ cookies, params }) => {
+export const GET: RequestHandler = async ({ cookies, params, url }) => {
 	const invitationId = params.invitationId;
 	if (!invitationId) throw redirect(303, "/");
 
@@ -30,11 +30,17 @@ export const GET: RequestHandler = async ({ cookies, params }) => {
 		cookies.set(
 			value.split("=", 1)[0],
 			value.slice(value.indexOf("=") + 1).split(";", 1)[0],
-			{ path: "/", httpOnly: true, sameSite: "lax" },
+			{
+				path: "/",
+				httpOnly: true,
+				secure: url.protocol === "https:",
+				sameSite: "lax",
+			},
 		);
 	cookies.set(ACCEPTANCE_RECOVERY_COOKIE, invitationId, {
 		path: ACCEPTANCE_CALLBACK_PATH,
 		httpOnly: true,
+		secure: url.protocol === "https:",
 		sameSite: "lax",
 		maxAge: 15 * 60,
 	});
