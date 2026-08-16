@@ -103,7 +103,7 @@ defmodule Dhc.NotificationsTest do
       assert :ok = Notifications.create(@user_id, "second")
 
       rows = Repo.all(Notification)
-      assert length(rows) == 2
+      assert [_, _] = rows
       bodies = Enum.map(rows, & &1.body) |> Enum.sort()
       assert bodies == ["first", "second"]
 

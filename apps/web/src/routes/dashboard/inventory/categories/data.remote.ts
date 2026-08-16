@@ -34,6 +34,30 @@ import { apiClientOptions } from "$lib/server/api-client";
 import { INVENTORY_ROLES } from "$lib/server/roles";
 import { categorySchema } from "$lib/schemas/inventory";
 
+type CategoryAttributeRequest =
+	InventoryCategoryCreateRequest["availableAttributes"][number];
+
+function toApiAttribute(
+	attribute: v.InferOutput<
+		typeof categorySchema
+	>["available_attributes"][number],
+): CategoryAttributeRequest {
+	const converted: CategoryAttributeRequest = {
+		type: attribute.type,
+		label: attribute.label,
+		required: attribute.required,
+		options: attribute.options,
+		name: attribute.name,
+	};
+	if (
+		attribute.default_value !== undefined &&
+		attribute.default_value !== null
+	) {
+		converted.defaultValue = attribute.default_value;
+	}
+	return converted;
+}
+
 /**
  * Translate a valibot-validated form payload (snake_case, the shape
  * `AttributeBuilder` emits) to the camelCase `InventoryCategoryCreateRequest`
@@ -44,17 +68,12 @@ import { categorySchema } from "$lib/schemas/inventory";
 function toApiBody(
 	data: v.InferOutput<typeof categorySchema>,
 ): InventoryCategoryCreateRequest {
-	return {
+	const body: InventoryCategoryCreateRequest = {
 		name: data.name,
-		...(data.description ? { description: data.description } : {}),
-		availableAttributes: (data.available_attributes ?? []).map((attr) => {
-			const { default_value, ...rest } = attr as Record<string, unknown>;
-			return {
-				...rest,
-				...(default_value !== undefined ? { defaultValue: default_value } : {}),
-			} as InventoryCategoryCreateRequest["availableAttributes"][number];
-		}),
+		availableAttributes: (data.available_attributes ?? []).map(toApiAttribute),
 	};
+	if (data.description) body.description = data.description;
+	return body;
 }
 
 export const createCategory = form(categorySchema, async (data) => {
@@ -80,10 +99,11 @@ export const updateCategory = form(categorySchema, async (data) => {
 	const event = getRequestEvent();
 	const categoryId = event.params.id;
 	await authorize(event.locals, INVENTORY_ROLES);
+	if (!categoryId) throw new Error("Category ID is required");
 
 	const response = await inventoryCategoriesUpdate({
 		...apiClientOptions(event.cookies),
-		path: { id: categoryId! },
+		path: { id: categoryId },
 		body: toApiBody(data),
 	});
 
@@ -101,10 +121,11 @@ export const deleteCategory = form(v.object({}), async () => {
 	const event = getRequestEvent();
 	const categoryId = event.params.id;
 	await authorize(event.locals, INVENTORY_ROLES);
+	if (!categoryId) throw new Error("Category ID is required");
 
 	const response = await inventoryCategoriesDelete({
 		...apiClientOptions(event.cookies),
-		path: { id: categoryId! },
+		path: { id: categoryId },
 	});
 
 	if (response.error) {

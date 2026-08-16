@@ -23,7 +23,7 @@ const processedData = $derived.by(() => {
 		if (item.age === null) {
 			unknownValue += item.value;
 		} else {
-			const ageNum = typeof item.age === "string" ? Number(item.age) : item.age;
+			const ageNum = Number(item.age);
 			numericAges.push({
 				age: ageNum,
 				value: item.value,

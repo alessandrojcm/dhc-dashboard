@@ -1,9 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	connectNotificationRealtime,
+	type RealtimeChannel,
+	type RealtimePush,
+	type RealtimeSocket,
 	type SocketFactory,
 } from "./notification-realtime.svelte";
-import type { Channel, Push, Socket } from "phoenix";
+import type { PhoenixPayload } from "phoenix";
 
 /**
  * Focused NotificationCenter realtime bridge tests (ALE-164).
@@ -28,69 +31,66 @@ import type { Channel, Push, Socket } from "phoenix";
 
 type PushReceiver = {
 	status: string;
-	cb: (response: unknown) => void;
+	cb: (response: PhoenixPayload) => void;
 }[];
 
-interface FakeChannel extends Channel {
+interface FakeChannel extends RealtimeChannel {
 	topic: string;
 	receivers: PushReceiver;
-	onCallbacks: Map<string, ((payload: unknown) => void)[]>;
+	onCallbacks: Map<string, ((payload: PhoenixPayload) => void)[]>;
 	leaveMock: ReturnType<typeof vi.fn>;
 }
 
-interface FakeSocket extends Socket {
+interface FakeSocket extends RealtimeSocket {
 	url: string;
 	authToken: string;
 	connected: boolean;
 	disconnected: boolean;
 	channels: FakeChannel[];
-	onErrorCb?: (reason?: unknown) => void;
+	onErrorCb?: (reason?: string) => void;
 }
 
 function makeFakeChannel(topic: string): FakeChannel {
 	const receivers: PushReceiver = [];
-	const onCallbacks = new Map<string, ((payload: unknown) => void)[]>();
+	const onCallbacks = new Map<string, ((payload: PhoenixPayload) => void)[]>();
 	const leaveMock = vi.fn();
 
-	const push = (): Push => {
-		const api = {
-			receive(status: string, cb: (response: unknown) => void) {
+	const push = (): RealtimePush => {
+		const api: RealtimePush = {
+			receive(status: string, cb: (response: PhoenixPayload) => void) {
 				receivers.push({ status, cb });
 				return api;
 			},
 			send() {
 				return api;
 			},
-		} as unknown as Push;
+		};
 		return api;
 	};
 
-	return {
+	const channel: FakeChannel = {
 		topic,
 		receivers,
 		onCallbacks,
 		leaveMock,
 		join: vi.fn(() => push()),
-		leave: vi.fn((() => {
+		leave: vi.fn(() => {
 			leaveMock();
 			return push();
-		}) as () => Push),
-		push: vi.fn(() => push()),
-		on: vi.fn((event: string, cb: (payload: unknown) => void) => {
+		}),
+		on: vi.fn((event: string, cb: (payload: PhoenixPayload) => void) => {
 			const list = onCallbacks.get(event) ?? [];
 			list.push(cb);
 			onCallbacks.set(event, list);
 			return event;
 		}),
-		off: vi.fn(),
-		onClose: vi.fn(),
-		onError: vi.fn(),
-	} as unknown as FakeChannel;
+	};
+	return channel;
 }
 
 function makeFakeSocket(url: string, authToken: string): FakeSocket {
 	const channels: FakeChannel[] = [];
-	return {
+	const socket: FakeSocket = {
 		url,
 		authToken,
 		connected: false,
@@ -108,22 +108,18 @@ function makeFakeSocket(url: string, authToken: string): FakeSocket {
 			channels.push(ch);
 			return ch;
 		}),
-		remove: vi.fn(),
-		onOpen: vi.fn(),
-		onClose: vi.fn(),
-		onError: vi.fn(function (this: FakeSocket, cb: (r?: unknown) => void) {
-			this.onErrorCb = cb;
+		onError: vi.fn((cb: (reason?: string) => void) => {
+			socket.onErrorCb = cb;
+			return "error";
 		}),
-		onMessage: vi.fn(),
-		connectionState: vi.fn(() => "open"),
-		isConnected: vi.fn(),
-	} as unknown as FakeSocket;
+	};
+	return socket;
 }
 
 function emitChannelEvent(
 	channel: FakeChannel,
 	event: string,
-	payload: unknown = {},
+	payload: PhoenixPayload = {},
 ) {
 	for (const cb of channel.onCallbacks.get(event) ?? []) {
 		cb(payload);
@@ -133,7 +129,7 @@ function emitChannelEvent(
 function resolveJoin(
 	channel: FakeChannel,
 	status: string,
-	response: unknown = {},
+	response: PhoenixPayload = {},
 ) {
 	for (const r of channel.receivers) {
 		if (r.status === status) r.cb(response);
@@ -169,7 +165,7 @@ const createSocketFactory = (): SocketFactory => {
 	return (url, options) => {
 		const socket = makeFakeSocket(url, options.authToken);
 		createdSockets.push(socket);
-		return socket as unknown as Socket;
+		return socket;
 	};
 };
 

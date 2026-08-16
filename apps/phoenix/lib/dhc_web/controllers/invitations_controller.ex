@@ -95,10 +95,10 @@ defmodule DhcWeb.InvitationsController do
   """
   def verify(conn, %{"id" => id, "email" => email, "dateOfBirth" => date_of_birth}) do
     case Onboarding.verify_credentials(id, email, date_of_birth) do
-      {:ok, token} ->
+      :ok ->
         conn
         |> put_view(json: DhcWeb.InvitationsJSON)
-        |> render(:verify, verification_token: token)
+        |> render(:verify)
 
       {:error, :invalid_credentials} ->
         conn
@@ -122,16 +122,16 @@ defmodule DhcWeb.InvitationsController do
         conn,
         %{
           "id" => id,
-          "verificationToken" => token,
           "nextOfKinName" => next_of_kin_name,
           "nextOfKinPhone" => next_of_kin_phone
         } = params
       ) do
-    with :ok <- validate_acceptance_payload(next_of_kin_name, next_of_kin_phone),
+    with [continuation_id] <- get_req_header(conn, "x-onboarding-continuation"),
+         :ok <- validate_acceptance_payload(next_of_kin_name, next_of_kin_phone),
          {:ok, result} <-
            Onboarding.accept(
              id,
-             token,
+             continuation_id,
              next_of_kin_name,
              next_of_kin_phone,
              payment_attrs(conn, params)
@@ -148,6 +148,24 @@ defmodule DhcWeb.InvitationsController do
         |> put_status(:unprocessable_entity)
         |> put_view(json: DhcWeb.InvitationsJSON)
         |> render(:error, detail: "Invalid verification token")
+
+      {:error, :discord_verification_required} ->
+        conn
+        |> put_status(:conflict)
+        |> put_view(json: DhcWeb.InvitationsJSON)
+        |> render(:error, detail: "Discord verification is required before payment")
+
+      {:error, :acceptance_in_progress} ->
+        conn
+        |> put_status(:conflict)
+        |> put_view(json: DhcWeb.InvitationsJSON)
+        |> render(:error, detail: "Invitation acceptance is already in progress")
+
+      missing_or_ambiguous_header when is_list(missing_or_ambiguous_header) ->
+        conn
+        |> put_status(:conflict)
+        |> put_view(json: DhcWeb.InvitationsJSON)
+        |> render(:error, detail: "Discord verification is required before payment")
 
       {:error, :invalid_invitation} ->
         conn
@@ -223,7 +241,7 @@ defmodule DhcWeb.InvitationsController do
   @doc """
   POST /invitations
   """
-  def create(conn, %{"invites" => invites}) when is_list(invites) and length(invites) > 0 do
+  def create(conn, %{"invites" => [_ | _] = invites}) do
     current_session = conn.assigns.current_session
 
     user = %{
@@ -266,7 +284,7 @@ defmodule DhcWeb.InvitationsController do
   @doc """
   POST /invitations/resend
   """
-  def resend(conn, %{"emails" => emails}) when is_list(emails) and length(emails) > 0 do
+  def resend(conn, %{"emails" => [_ | _] = emails}) do
     with {:ok, result} <- Invitations.resend_invitation_emails(emails) do
       conn
       |> put_status(:accepted)

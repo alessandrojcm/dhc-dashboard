@@ -8,6 +8,7 @@ import { Input } from "$lib/components/ui/input";
 import * as countryCodesList from "country-codes-list";
 import {
 	AsYouType,
+	isSupportedCountry,
 	parsePhoneNumber,
 	type CountryCode,
 } from "libphonenumber-js/min";
@@ -41,6 +42,12 @@ type ParsedPhoneNumber = {
 	nationalNumber: string;
 	value: CountryCode;
 };
+
+const defaultCountry: CountryCode = "IE";
+
+function supportedCountry(countryCode: string): CountryCode {
+	return isSupportedCountry(countryCode) ? countryCode : defaultCountry;
+}
 
 const nationalNumber = $derived(parseIncompletePhoneNumber(formattedPhone));
 
@@ -81,7 +88,7 @@ function formatForDisplay(
 // Parse an incoming phone number to extract country code and national number
 function parseIncomingPhoneNumber(phoneNumber: string): ParsedPhoneNumber {
 	if (!phoneNumber) {
-		return { nationalNumber: "", value: "IE" as CountryCode };
+		return { nationalNumber: "", value: defaultCountry };
 	}
 	// It is just a country code so return accordingly
 	const isCountryCode = countryCodesList.findOne(
@@ -91,7 +98,7 @@ function parseIncomingPhoneNumber(phoneNumber: string): ParsedPhoneNumber {
 	if (isCountryCode) {
 		return {
 			nationalNumber: "",
-			value: isCountryCode.countryCode as CountryCode,
+			value: supportedCountry(isCountryCode.countryCode),
 		};
 	}
 	try {
@@ -105,21 +112,21 @@ function parseIncomingPhoneNumber(phoneNumber: string): ParsedPhoneNumber {
 				};
 			} else {
 				return {
-					value: "IE" as CountryCode,
+					value: defaultCountry,
 					nationalNumber: phoneNumber.substring(1), // Remove the + sign
 				};
 			}
 		} else {
 			return {
 				nationalNumber: phoneNumber,
-				value: "IE" as CountryCode,
+				value: defaultCountry,
 			};
 		}
 	} catch {
 		// If parsing fails, just use the raw number
 		return {
 			nationalNumber: phoneNumber,
-			value: "IE" as CountryCode,
+			value: defaultCountry,
 		};
 	}
 }
@@ -180,7 +187,7 @@ function updatePhoneNumber(inputValue: string) {
 							<Command.Item
 								value={country.countryNameEn}
 								onSelect={() => {
-									countryValue = country.countryCode as CountryCode;
+									countryValue = supportedCountry(country.countryCode);
 									const formatter = new AsYouType(countryValue);
 									formattedPhone = formatter.input(nationalNumber);
 									const newPhoneNumber = formatter.getNumber()?.number ?? "";

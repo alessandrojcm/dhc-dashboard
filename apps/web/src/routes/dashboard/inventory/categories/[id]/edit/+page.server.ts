@@ -4,7 +4,7 @@ import { authorize } from "$lib/server/auth";
 import { apiClientOptions } from "$lib/server/api-client";
 import { INVENTORY_ROLES } from "$lib/server/roles";
 import type { PageServerLoadEvent } from "./$types";
-import type { AttributeDefinition } from "$lib/schemas/inventory";
+import { parseApiAttributeDefinitions } from "$lib/schemas/inventory";
 
 export const load = async ({
 	params,
@@ -35,15 +35,9 @@ export const load = async ({
 	// The form/AttributeBuilder consume the snake_case shape; the API returns
 	// camelCase (`availableAttributes`, `defaultValue`). Map back so the
 	// existing edit UI keeps working unchanged.
-	const available_attributes: AttributeDefinition[] = (
-		category.availableAttributes ?? []
-	).map((attr) => {
-		const { defaultValue, ...rest } = attr;
-		return {
-			...rest,
-			...(defaultValue !== undefined ? { default_value: defaultValue } : {}),
-		} as AttributeDefinition;
-	});
+	const available_attributes = parseApiAttributeDefinitions(
+		category.availableAttributes ?? [],
+	);
 
 	return {
 		category: {

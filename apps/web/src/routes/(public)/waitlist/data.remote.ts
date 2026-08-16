@@ -6,15 +6,7 @@ import beginnersWaitlist, {
 } from "$lib/schemas/beginnersWaitlist";
 import { waitlistCreateEntry } from "@dhc/api-client";
 import { apiBaseUrl } from "$lib/server/api-client";
-
-function apiErrorDetail(error: unknown): string | undefined {
-	if (error && typeof error === "object" && "errors" in error) {
-		const errors = error.errors;
-		if (errors && typeof errors === "object" && "detail" in errors) {
-			return typeof errors.detail === "string" ? errors.detail : undefined;
-		}
-	}
-}
+import { apiErrorDetail } from "$lib/server/api-error";
 
 /**
  * Waitlist submission form
@@ -37,14 +29,34 @@ export const submitWaitlist = form(
 			const formIssues = result.issues.map((validationIssue) => {
 				const fieldPath =
 					validationIssue.path?.map((p) => p.key).join(".") || "";
-				if (fieldPath) {
-					// eslint-disable-next-line @typescript-eslint/no-explicit-any
-					const issueProxy = issue as any;
-					if (typeof issueProxy[fieldPath] === "function") {
-						return issueProxy[fieldPath](validationIssue.message);
-					}
+				switch (fieldPath) {
+					case "firstName":
+						return issue.firstName(validationIssue.message);
+					case "lastName":
+						return issue.lastName(validationIssue.message);
+					case "email":
+						return issue.email(validationIssue.message);
+					case "phoneNumber":
+						return issue.phoneNumber(validationIssue.message);
+					case "dateOfBirth":
+						return issue.dateOfBirth(validationIssue.message);
+					case "medicalConditions":
+						return issue.medicalConditions(validationIssue.message);
+					case "pronouns":
+						return issue.pronouns(validationIssue.message);
+					case "gender":
+						return issue.gender(validationIssue.message);
+					case "socialMediaConsent":
+						return issue.socialMediaConsent(validationIssue.message);
+					case "guardianFirstName":
+						return issue.guardianFirstName(validationIssue.message);
+					case "guardianLastName":
+						return issue.guardianLastName(validationIssue.message);
+					case "guardianPhoneNumber":
+						return issue.guardianPhoneNumber(validationIssue.message);
+					default:
+						return validationIssue.message;
 				}
-				return validationIssue.message;
 			});
 
 			invalid(...formIssues);

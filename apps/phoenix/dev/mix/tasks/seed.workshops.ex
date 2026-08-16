@@ -7,7 +7,7 @@ defmodule Mix.Tasks.Seed.Workshops do
       mix seed.workshops
       mix seed.workshops 5
 
-  Auth users are created through the Supabase Admin API. Run via `mise run
+  Phoenix Principals are created directly through `Dhc.Auth`. Run via `mise run
   seed-workshops` so repo-root `.env` is loaded before Mix starts.
   """
 

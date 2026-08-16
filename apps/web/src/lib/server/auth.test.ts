@@ -1,17 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { getPhoenixSession, type PhoenixSessionClient } from "$lib/server/auth";
 
-// Hoist the mocked SDK function so the module-level import picks up the mock.
-const { authShowSession } = vi.hoisted(() => ({
-	authShowSession: vi.fn(),
-}));
-
-vi.mock("@dhc/api-client", async (importOriginal) => ({
-	...(await importOriginal<typeof import("@dhc/api-client")>()),
-	authShowSession,
-}));
-
-// Import after the mock is registered.
-const { getPhoenixSession } = await import("$lib/server/auth");
+const authShowSession = vi.fn<PhoenixSessionClient["showSession"]>();
+const client: PhoenixSessionClient = { showSession: authShowSession };
 
 /**
  * ALE-164: focused integration tests for the SSR auth seam.
@@ -27,9 +18,7 @@ const { getPhoenixSession } = await import("$lib/server/auth");
  *   4. `null` when the call throws (network/decode failure) — never throws;
  *   5. the cookie is forwarded via the `cookie` header, not a bearer.
  */
-function fakeCookies(sessionCookie: string | undefined): {
-	get: (name: string) => string | undefined;
-} {
+function fakeCookies(sessionCookie: string | undefined) {
 	return {
 		get: (name: string) =>
 			name === "_dhc_session" ? sessionCookie : undefined,
@@ -57,6 +46,7 @@ describe("getPhoenixSession (SSR auth seam, ALE-164)", () => {
 
 		const session = await getPhoenixSession(
 			fakeCookies("signed-session-cookie"),
+			client,
 		);
 
 		expect(session).toEqual({
@@ -69,13 +59,14 @@ describe("getPhoenixSession (SSR auth seam, ALE-164)", () => {
 
 		// The cookie is forwarded via the `cookie` header — not a bearer `auth`.
 		expect(authShowSession).toHaveBeenCalledTimes(1);
-		const callArg = authShowSession.mock.calls[0][0];
-		expect(callArg.headers.cookie).toBe("_dhc_session=signed-session-cookie");
-		expect(callArg.baseUrl).toBe("http://localhost:4000/api");
+		expect(authShowSession).toHaveBeenCalledWith({
+			baseUrl: "http://localhost:4000/api",
+			headers: { cookie: "_dhc_session=signed-session-cookie" },
+		});
 	});
 
 	it("returns null and does not call Phoenix when there is no _dhc_session cookie", async () => {
-		const session = await getPhoenixSession(fakeCookies(undefined));
+		const session = await getPhoenixSession(fakeCookies(undefined), client);
 
 		expect(session).toBeNull();
 		expect(authShowSession).not.toHaveBeenCalled();
@@ -89,6 +80,7 @@ describe("getPhoenixSession (SSR auth seam, ALE-164)", () => {
 
 		const session = await getPhoenixSession(
 			fakeCookies("expired-session-cookie"),
+			client,
 		);
 
 		expect(session).toBeNull();
@@ -99,6 +91,7 @@ describe("getPhoenixSession (SSR auth seam, ALE-164)", () => {
 
 		const session = await getPhoenixSession(
 			fakeCookies("signed-session-cookie"),
+			client,
 		);
 
 		expect(session).toBeNull();
@@ -109,6 +102,7 @@ describe("getPhoenixSession (SSR auth seam, ALE-164)", () => {
 
 		const session = await getPhoenixSession(
 			fakeCookies("signed-session-cookie"),
+			client,
 		);
 
 		expect(session).toBeNull();

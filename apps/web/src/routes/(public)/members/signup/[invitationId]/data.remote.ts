@@ -1,14 +1,29 @@
-import { invitationsAccept, invitationsVerify } from "@dhc/api-client";
+import {
+	onboardingCancelDiscord,
+	onboardingContinueAcceptance,
+	onboardingSubmitPayment,
+	onboardingVerifyInvitationAcceptance,
+} from "@dhc/api-client";
+import { dev } from "$app/environment";
 import { error, isRedirect, redirect } from "@sveltejs/kit";
 import dayjs from "dayjs";
-import { dev } from "$app/environment";
+import * as v from "valibot";
 import { form, getRequestEvent } from "$app/server";
 import { inviteValidationSchema } from "$lib/schemas/inviteValidationSchema";
 import { memberSignupSchema } from "$lib/schemas/membersSignup";
-import { apiBaseUrl } from "$lib/server/api-client";
+import {
+	onboardingAcceptanceCookie,
+	onboardingApiClientOptions,
+	relayOnboardingAcceptanceCookie,
+} from "$lib/server/onboarding-api";
 import logger from "$lib/server/services/shared/logger";
+import { apiErrorDetail } from "$lib/server/api-error";
 
 const invitationAcceptanceTimeout = 60_000;
+const PaymentErrorMetadataSchema = v.object({
+	code: v.optional(v.string()),
+	type: v.optional(v.string()),
+});
 
 /**
  * Validates an invitation by checking email and date of birth
@@ -20,40 +35,89 @@ export const validateInvitation = form(inviteValidationSchema, async (data) => {
 	if (!invitationId) {
 		throw new Error("Invitation ID is required");
 	}
-
-	const response = await invitationsVerify({
-		baseUrl: apiBaseUrl(),
-		path: { id: invitationId },
+	const response = await onboardingVerifyInvitationAcceptance({
+		...onboardingApiClientOptions(event.cookies),
 		body: {
+			invitationId,
 			email: data.email,
 			dateOfBirth: dayjs(data.dateOfBirth).format("YYYY-MM-DD"),
 		},
 	});
 
-	if (response.error || !response.data?.data.verificationToken) {
+	const protectedState = response.data?.data;
+	const rawResponse = response.response;
+	if (
+		response.error ||
+		protectedState?.state !== "awaiting_oauth" ||
+		!rawResponse
+	) {
+		logger.warn("[validateInvitation] Verification response rejected", {
+			invitationId,
+			status: rawResponse?.status,
+			state: protectedState?.state,
+			hasApiError: Boolean(response.error),
+			hasResponse: Boolean(rawResponse),
+		});
 		return { success: false, verified: false };
 	}
 
-	event.cookies.set(
-		`invite-verification-${invitationId}`,
-		response.data.data.verificationToken,
-		{
-			expires: new Date(Date.now() + 60 * 15 * 1000),
-			path: "/",
-			httpOnly: true,
-			secure: !dev,
-			sameSite: "lax",
-		},
+	const cookieRelayed = relayOnboardingAcceptanceCookie(
+		event.cookies,
+		rawResponse.headers,
 	);
 
-	event.cookies.set(`invite-confirmed-${invitationId}`, "true", {
-		expires: new Date(Date.now() + 60 * 60 * 24 * 30),
-		path: "/",
-		httpOnly: !dev,
-		secure: !dev,
-		sameSite: "lax",
-	});
+	if (!cookieRelayed) {
+		logger.warn("[validateInvitation] Acceptance cookie was not relayed", {
+			invitationId,
+			status: rawResponse.status,
+			hasSetCookieHeader: rawResponse.headers.has("set-cookie"),
+		});
+		return { success: false, verified: false };
+	}
+
 	return { success: true, verified: true };
+});
+
+export const restartDiscordVerification = form(v.object({}), async () => {
+	const event = getRequestEvent();
+	const invitationId = event.params.invitationId;
+
+	if (!invitationId) {
+		throw error(400, "Invitation ID is required");
+	}
+
+	const protectedContinuation = event.cookies.get(onboardingAcceptanceCookie);
+
+	if (protectedContinuation) {
+		await onboardingCancelDiscord({
+			...onboardingApiClientOptions(event.cookies),
+		});
+	}
+
+	event.cookies.delete(onboardingAcceptanceCookie, {
+		path: "/",
+	});
+	redirect(303, `/members/signup/${invitationId}`);
+});
+
+export const continueToPayment = form(async () => {
+	const event = getRequestEvent();
+	const invitationId = event.params.invitationId;
+
+	if (!invitationId) throw error(400, "Invitation ID is required");
+
+	const response = await onboardingContinueAcceptance({
+		...onboardingApiClientOptions(event.cookies),
+	});
+
+	if (response.error || response.data?.data.state !== "paymentReady") {
+		throw error(
+			response.response?.status ?? 409,
+			"Unable to continue to payment",
+		);
+	}
+
+	redirect(303, `/members/signup/${invitationId}`);
 });
 
 /**
@@ -66,40 +130,27 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 	logger.debug(
 		`[processPayment] Starting payment processing for invitation: ${invitationId}`,
 	);
-	logger.debug("[processPayment] Received data:", {
-		nextOfKin: data.nextOfKin,
-		nextOfKinNumber: data.nextOfKinNumber,
-		stripeConfirmationToken: data.stripeConfirmationToken
-			? `${data.stripeConfirmationToken.substring(0, 10)}...`
-			: "MISSING",
-		couponCode: data.couponCode || "none",
-	});
-
 	if (!invitationId) {
 		throw error(400, "Invitation ID is required");
 	}
 
-	let acceptanceError: unknown;
+	let acceptanceErrorDetail: string | undefined;
 	let acceptanceStatus: number | undefined;
 
 	try {
-		const verificationToken = event.cookies.get(
-			`invite-verification-${invitationId}`,
-		);
+		const protectedContinuation = event.cookies.get(onboardingAcceptanceCookie);
 
-		if (!verificationToken) {
+		if (!protectedContinuation) {
 			throw error(
-				400,
+				409,
 				"Invitation verification has expired. Please verify again.",
 			);
 		}
 
-		const acceptance = await invitationsAccept({
-			baseUrl: apiBaseUrl(),
-			path: { id: invitationId },
+		const acceptance = await onboardingSubmitPayment({
+			...onboardingApiClientOptions(event.cookies),
 			timeout: invitationAcceptanceTimeout,
 			body: {
-				verificationToken,
 				nextOfKinName: data.nextOfKin,
 				nextOfKinPhone: data.nextOfKinNumber,
 				stripeConfirmationToken: data.stripeConfirmationToken,
@@ -111,43 +162,68 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 			},
 		});
 
-		if (acceptance.error || !acceptance.data?.data.accepted) {
-			acceptanceError = acceptance.error;
+		const state = acceptance.data?.data.state;
+		if (acceptance.error) {
+			acceptanceErrorDetail = apiErrorDetail(acceptance.error);
 			acceptanceStatus = acceptance.response?.status;
-			const status = acceptanceStatus ?? 500;
-			const message =
-				status === 402
+			throw error(
+				acceptanceStatus ?? 500,
+				acceptanceStatus === 402
 					? "Payment could not be completed"
-					: "Invitation acceptance failed";
-
-			throw error(status, message);
+					: "Invitation acceptance failed",
+			);
 		}
 
-		// Success! Delete temporary invitation cookies.
-		logger.debug("[processPayment] Payment processing completed successfully");
-		event.cookies.delete("access-token", { path: "/" });
-		event.cookies.delete(`invite-verification-${invitationId}`, { path: "/" });
-		event.cookies.delete(`invite-confirmed-${invitationId}`, { path: "/" });
-		throw redirect(301, `/members/signup/${invitationId}/success`);
+		if (
+			state === "paymentPending" ||
+			state === "paymentNeedsAction" ||
+			state === "paymentTerminal"
+		) {
+			throw redirect(303, `/members/signup/${invitationId}`);
+		}
+
+		if (state !== "accepted") {
+			throw error(409, "Invitation acceptance failed");
+		}
+
+		if (acceptance.data?.data.invitationEmail) {
+			event.cookies.set(
+				"invitation-sign-in-prefill",
+				acceptance.data.data.invitationEmail,
+				{
+					path: "/auth",
+					httpOnly: true,
+					secure: !dev,
+					sameSite: "lax",
+					maxAge: 10 * 60,
+				},
+			);
+		}
+
+		event.cookies.delete(onboardingAcceptanceCookie, {
+			path: "/",
+		});
+		throw redirect(303, `/members/signup/${invitationId}/success`);
 	} catch (err) {
 		if (isRedirect(err)) {
 			throw err;
 		}
+		const paymentErrorMetadata = v.safeParse(PaymentErrorMetadataSchema, err);
+		const errorCode = paymentErrorMetadata.success
+			? paymentErrorMetadata.output.code
+			: undefined;
+		const errorType = paymentErrorMetadata.success
+			? paymentErrorMetadata.output.type
+			: undefined;
 
 		const errorDetails = {
 			invitationId,
 			name: err instanceof Error ? err.name : "unknown",
 			message: err instanceof Error ? err.message : String(err),
 			status: acceptanceStatus,
-			apiError: acceptanceError,
-			code:
-				err instanceof Error && "code" in err
-					? (err as { code: string }).code
-					: "none",
-			type:
-				err instanceof Error && "type" in err
-					? (err as { type: string }).type
-					: "none",
+			apiError: acceptanceErrorDetail,
+			code: errorCode ?? "none",
+			type: errorType ?? "none",
 		};
 
 		let errorMessage =
@@ -162,9 +238,8 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 				"Invitation acceptance is taking longer than expected. Please wait a moment and try again.";
 		}
 
-		if (err instanceof Error && "code" in err) {
-			const stripeError = err as { code: string };
-			switch (stripeError.code) {
+		if (errorCode) {
+			switch (errorCode) {
 				case "charge_exceeds_source_limit":
 				case "charge_exceeds_transaction_limit":
 					errorMessage =
@@ -184,7 +259,7 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 					errorMessage = "The payment attempt failed";
 					break;
 				default:
-					errorMessage = `An error occurred with the payment processor (${stripeError.code})`;
+					errorMessage = `An error occurred with the payment processor (${errorCode})`;
 					break;
 			}
 		}

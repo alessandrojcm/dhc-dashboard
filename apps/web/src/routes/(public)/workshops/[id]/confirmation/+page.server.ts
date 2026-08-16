@@ -28,9 +28,8 @@ export const load = async ({
 			checkoutSessionId,
 		);
 	} catch (err) {
-		const domainError = err as ExternalWorkshopRegistrationApiError;
-		if (domainError.name === "ExternalWorkshopRegistrationApiError") {
-			error(400, domainError.message);
+		if (err instanceof ExternalWorkshopRegistrationApiError) {
+			error(400, err.message);
 		}
 
 		throw err;

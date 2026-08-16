@@ -61,7 +61,9 @@ tags:
       Phoenix-owned session auth API (ALE-165/ALE-164). Magic-link sign-in,
       session projection read, sign-out, and socket-token exchange. The
       dashboard authenticates through the signed `_dhc_session` cookie
-      (`cookieSession` security scheme) instead of the Supabase bearer JWT.
+       (`cookieSession` security scheme) instead of the Supabase bearer JWT.
+  - name: Onboarding
+    description: Protected, pre-payment Invitation Acceptance journey.
 
 paths:
   /health:
@@ -490,9 +492,8 @@ paths:
         - Invitations
       summary: Verify public invitation credentials
       description: |
-        Checks public invitation credentials using email and date of birth. On
-        success returns a short-lived opaque verification token bound to the
-        invitation id and normalized identity.
+        Compatibility-only credential check. It never returns a bearer token;
+        new acceptance flows use the protected Onboarding Continuation endpoint.
       parameters:
         - name: id
           in: path
@@ -533,10 +534,12 @@ paths:
         - Invitations
       summary: Accept a verified invitation
       description: |
-        Atomically materializes a verified invitation into a Principal and
-        Member record set in one Phoenix-owned transaction (ADR 0010,
-        ALE-162). The verification token must come from the verify endpoint.
-        Only this endpoint may transition an invitation to accepted.
+        Atomically materializes a Discord-verified invitation into a Principal,
+        External Identity, and Member record set in one Phoenix-owned
+        transaction (ADRs 0010 and 0014). The protected Continuation header must
+        identify the verified Continuation bound to this Invitation and its
+        active Acceptance Attempt. Only this endpoint may transition an
+        invitation to accepted.
 
         On success the transaction has created, all together: the
         Authentication Principal (id = invitation.user_id, authoritative
@@ -547,9 +550,9 @@ paths:
         Acceptance is registration, not login. It does **not** establish a
         Session or send a magic link — the new Member signs in through the
         normal magic-link (or Discord) login path. Failed or replayed
-        acceptance leaves no partial record set; the invitation-status flip
-        is the replay defense (the 15-minute verification token is not
-        single-use).
+        acceptance leaves no partial record set. The Invitation status,
+        Acceptance Attempt, one-time Discord Claim, and consumed Continuation
+        provide the replay defense.
       parameters:
         - name: id
           in: path
@@ -557,6 +560,11 @@ paths:
           schema:
             type: string
             format: uuid
+        - name: x-onboarding-continuation
+          in: header
+          required: true
+          description: Opaque verified Continuation retained only in the SvelteKit HTTP-only browser session.
+          schema: { type: string, format: uuid }
       requestBody:
         required: true
         content:
@@ -576,8 +584,14 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "409":
+          description: Discord verification is missing, expired, or mismatched, or this Acceptance is already progressing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "422":
-          description: Invalid token or invitation cannot be accepted
+          description: Invitation or acceptance payload cannot be accepted
           content:
             application/json:
               schema:
@@ -588,6 +602,283 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+
+  /onboarding/acceptance:
+    post:
+      operationId: onboarding.startAcceptance
+      tags: [Onboarding]
+      summary: Verify Invitation credentials through the legacy continuation-header transport
+      description: |
+        Compatibility endpoint for clients that still transport the opaque
+        Continuation identifier in the x-onboarding-continuation header. New
+        browser flows must use /onboarding/invitation-acceptance/verify so the
+        proof remains in a signed HttpOnly cookie.
+      security: []
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OnboardingStartAcceptanceRequest"
+      responses:
+        "200":
+          description: Safe protected acceptance state
+          headers:
+            x-onboarding-continuation:
+              description: Opaque proof for the SvelteKit protected HTTP-only browser session; never expose to browser JavaScript or URLs.
+              schema: { type: string, format: uuid }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+        "422":
+          description: Malformed or invalid Invitation credentials; safe restart state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+        "409":
+          description: A live flow exists but this browser has no valid proof
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+
+  /onboarding/invitation-acceptance/verify:
+    post:
+      operationId: onboarding.verifyInvitationAcceptance
+      tags: [Onboarding]
+      summary: Verify Invitation credentials and begin protected acceptance
+      description: |
+        Proves Invitation email and date of birth, then creates or resumes the
+        one active Acceptance Attempt and its awaiting-OAuth Continuation.
+        This starts no OAuth or Stripe work and creates no Principal, identity,
+        Membership, role, magic link, or DHC Session. The opaque Continuation
+        reference is retained only in a signed HttpOnly cookie and is never
+        returned in the response view.
+      security: []
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OnboardingStartAcceptanceRequest"
+      responses:
+        "200":
+          description: Safe protected acceptance state with signed HttpOnly browser proof
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+        "422":
+          description: Malformed or invalid Invitation credentials; safe restart state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+        "409":
+          description: A live flow exists but this browser has no valid proof
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+
+  /onboarding/invitation-acceptance:
+    get:
+      operationId: onboarding.showInvitationAcceptance
+      tags: [Onboarding]
+      summary: Read the protected acceptance state
+      description: |
+        Reads state only from opaque references held in the protected browser
+        session. Missing, expired, or mismatched proof returns restart
+        verification and never accepts an Invitation identifier from the caller.
+      security:
+        - onboardingAcceptanceSession: []
+      responses:
+        "200":
+          description: Safe protected acceptance state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+        "409":
+          description: Browser proof is missing or no longer eligible
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+
+  /onboarding/invitation-acceptance/discord:
+    get:
+      operationId: onboarding.startDiscord
+      tags: [Onboarding]
+      summary: Begin Discord verification for Invitation Acceptance
+      description: |
+        Starts acceptance-specific Discord OAuth only for the current
+        awaiting-OAuth Continuation. The protected Phoenix browser session binds
+        the opaque Continuation reference to Assent state and PKCE data. The
+        reference is never placed in OAuth state, a URL, or the response body.
+      security:
+        - onboardingContinuation: []
+      responses:
+        "302":
+          description: Redirect to Discord OAuth authorization
+          headers:
+            Location:
+              required: true
+              schema: { type: string, format: uri }
+        "409":
+          description: Browser proof is missing or no longer awaiting OAuth
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+
+  /onboarding/invitation-acceptance/discord/cancel:
+    post:
+      operationId: onboarding.cancelDiscord
+      tags: [Onboarding]
+      summary: End the current Discord verification before payment
+      description: |
+        Atomically terminalizes and zeroizes the current pre-payment
+        Continuation and releases its transient Discord Subject Claim. It starts
+        no Stripe work and creates no Principal, External Identity, or Session.
+      security:
+        - onboardingContinuation: []
+      responses:
+        "200":
+          description: Discord verification ended; Invitation credentials must be verified again
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+        "409":
+          description: Browser proof is missing, consumed, or already terminal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+
+  /onboarding/invitation-acceptance/continue:
+    post:
+      operationId: onboarding.continueAcceptance
+      tags: [Onboarding]
+      summary: Consume verified Discord proof and authorize the payment form
+      description: |
+        Atomically binds the browser-held verified Continuation to its one active
+        Acceptance Attempt before any Stripe mutation. Replays return the current
+        safe Attempt projection and cannot create another Attempt, Claim, or
+        provider operation. This operation has no request body and creates no
+        Stripe state. A successful response is paymentReady.
+      security:
+        - onboardingContinuation: []
+      responses:
+        "200":
+          description: Current safe Acceptance Attempt state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+        "409":
+          description: Transition is stale or disallowed; current safe state is returned
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+        "422":
+          description: Browser proof is missing or invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+
+  /onboarding/invitation-acceptance/payment:
+    post:
+      operationId: onboarding.submitPayment
+      tags: [Onboarding]
+      summary: Submit membership details and Stripe Elements payment input
+      description: |
+        Records the payment payload durably against the consumed protected
+        Attempt before provider mutation, then advances the server-owned Stripe
+        workflow with stable inputs and idempotency keys.
+      security:
+        - onboardingContinuation: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OnboardingPaymentRequest"
+      responses:
+        "200":
+          description: Current safe Acceptance Attempt state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+        "402":
+          description: Payment input was terminally rejected
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+        "409":
+          description: Transition is stale or disallowed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+        "422":
+          description: Payment payload is malformed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "503":
+          description: Provider progression is temporarily unavailable and recovery is scheduled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Local finalization failed with durable reconciliation retained
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /onboarding/invitation-acceptance/retry:
+    post:
+      operationId: onboarding.retryAcceptance
+      tags: [Onboarding]
+      summary: Resume the current durable Acceptance Attempt
+      description: |
+        Reconciles only the Attempt already bound to this browser proof. It never
+        creates another proof, Claim, or Attempt. Once Stripe is ready, all local
+        Member and Discord identity records are finalized in one transaction.
+      security:
+        - onboardingContinuation: []
+      responses:
+        "200":
+          description: Current safe Acceptance Attempt state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+        "409":
+          description: Transition is stale or provider progress is not ready
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
+        "422":
+          description: Browser proof is missing or invalid
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingAcceptanceStateResponse"
 
   /waitlist/status:
     get:
@@ -3835,6 +4126,13 @@ components:
         credential. `RequireAuth` accepts this cookie in addition to the
         transitional Supabase bearer JWT (`bearerAuth`) until the ALE-163
         cutover.
+    onboardingAcceptanceSession:
+      type: apiKey
+      in: cookie
+      name: _dhc_onboarding_acceptance
+      description: |
+        Short-lived signed HttpOnly browser proof for one Invitation Acceptance.
+        It is transport state only and is never a DHC authenticated Session.
   parameters:
     WorkshopId:
       name: workshopId
@@ -3845,6 +4143,78 @@ components:
         format: uuid
       description: The Workshop id.
   schemas:
+    OnboardingStartAcceptanceRequest:
+      type: object
+      required: [invitationId, email, dateOfBirth]
+      properties:
+        invitationId: { type: string, format: uuid }
+        email: { type: string, format: email }
+        dateOfBirth: { type: string, format: date }
+    OnboardingPaymentRequest:
+      type: object
+      required: [nextOfKinName, nextOfKinPhone, stripeConfirmationToken]
+      properties:
+        nextOfKinName:
+          type: string
+          minLength: 1
+        nextOfKinPhone:
+          type: string
+          minLength: 1
+        stripeConfirmationToken:
+          type: string
+          minLength: 1
+        couponCode:
+          type: string
+        mandateContext:
+          type: object
+          additionalProperties: true
+          description: Client mandate context needed for server-side Stripe confirmation.
+    OnboardingAcceptanceStateResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [state]
+          properties:
+            state:
+              type: string
+              enum:
+                - awaitingDiscord
+                - awaiting_oauth
+                - discordVerified
+                - discordCollision
+                - discordUnavailable
+                - restartVerification
+                - restart_verification
+                - paymentReady
+                - paymentPending
+                - paymentNeedsAction
+                - paymentTerminal
+                - accepted
+            invitationEmail:
+              type: string
+              format: email
+            discord:
+              $ref: "#/components/schemas/OnboardingSafeDiscordPresentation"
+            discordVerified:
+              type: boolean
+              description: Whether Discord proof has already been consumed into the durable Acceptance Attempt.
+            retryAllowed:
+              type: boolean
+              description: Whether the current payment/finalization state permits an explicit client retry.
+            expiresAt:
+              type: string
+              format: date-time
+    OnboardingSafeDiscordPresentation:
+      type: object
+      description: Mutable display snapshot for account recognition; never an identity binding fact.
+      properties:
+        username:
+          type: string
+        avatarUrl:
+          type: string
+          format: uri
     InvitationCreateRequest:
       type: object
       required:
@@ -4094,24 +4464,17 @@ components:
           type: object
           required:
             - verified
-            - verificationToken
           properties:
             verified:
               type: boolean
               description: Always true when credentials verify successfully.
-            verificationToken:
-              type: string
-              description: Short-lived opaque token bound to invitation and verified identity.
     InvitationAcceptRequest:
       type: object
       required:
-        - verificationToken
         - nextOfKinName
         - nextOfKinPhone
         - stripeConfirmationToken
       properties:
-        verificationToken:
-          type: string
         nextOfKinName:
           type: string
           minLength: 1

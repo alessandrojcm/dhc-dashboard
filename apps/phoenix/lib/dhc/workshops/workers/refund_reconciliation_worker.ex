@@ -34,9 +34,8 @@ defmodule Dhc.Workshops.Workers.RefundReconciliationWorker do
       )
       |> Repo.all()
       |> Enum.map(fn stripe_refund_id ->
-        with {:ok, object} <- stripe_adapter().retrieve_refund(stripe_refund_id),
-             :ok <- Refund.apply_provider_update(object) do
-          :ok
+        with {:ok, object} <- stripe_adapter().retrieve_refund(stripe_refund_id) do
+          Refund.apply_provider_update(object)
         end
       end)
 

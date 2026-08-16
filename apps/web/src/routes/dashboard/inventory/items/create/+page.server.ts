@@ -6,21 +6,7 @@ import {
 	inventoryContainersIndex,
 } from "@dhc/api-client";
 import type { PageServerLoad } from "./$types";
-
-function toLegacyCategory(c: any) {
-	return {
-		id: c.id,
-		name: c.name,
-		description: c.description ?? null,
-		available_attributes: (c.availableAttributes ?? []).map((attr: any) => {
-			const { defaultValue, ...rest } = attr;
-			return {
-				...rest,
-				...(defaultValue !== undefined ? { default_value: defaultValue } : {}),
-			};
-		}),
-	};
-}
+import { parseLegacyInventoryCategory } from "$lib/schemas/inventory";
 
 export const load: PageServerLoad = async ({ url, locals, cookies }) => {
 	await authorize(locals, INVENTORY_ROLES);
@@ -39,12 +25,14 @@ export const load: PageServerLoad = async ({ url, locals, cookies }) => {
 		initialData: {
 			container_id: preselectedContainer || "",
 			category_id: preselectedCategory || "",
-			attributes: {} as Record<string, unknown>,
+			attributes: {},
 			quantity: 1,
 			notes: "",
 			out_for_maintenance: false,
 		},
-		categories: categoriesResponse.data.data.categories.map(toLegacyCategory),
+		categories: categoriesResponse.data.data.categories.map(
+			parseLegacyInventoryCategory,
+		),
 		containers: containersResponse.data.data.containers.map((c) => ({
 			id: c.id,
 			name: c.name,

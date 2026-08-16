@@ -181,7 +181,7 @@ defmodule DhcWeb.InventoryCategoriesControllerTest do
         })
 
       assert %{"data" => payload} = json_response(conn, 201)
-      assert length(payload["availableAttributes"]) == 1
+      assert [_attribute] = payload["availableAttributes"]
     end
 
     test "returns 403 for non-write roles", %{conn: conn} do

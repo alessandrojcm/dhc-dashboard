@@ -60,8 +60,9 @@ export function createSvelteTable<TData extends RowData>(
 				state: mergeObjects(state, options.state || {}),
 
 				onStateChange: (updater: Updater<TableState>) => {
-					if (updater instanceof Function) state = updater(state as TableState);
-					else state = mergeObjects(state, updater);
+					if (updater instanceof Function) {
+						state = updater(mergeObjects(table.initialState, state));
+					} else state = mergeObjects(state, updater);
 
 					options.onStateChange?.(updater);
 				},
@@ -82,36 +83,40 @@ export function createSvelteTable<TData extends RowData>(
  * Merges objects together while keeping their getters alive.
  * Taken from SolidJS: {@link https://github.com/solidjs/solid/blob/24abc825c0996fd2bc8c1de1491efe9a7e743aff/packages/solid/src/server/rendering.ts#L82-L115}
  */
-function mergeObjects<T>(source: T): T;
-function mergeObjects<T, U>(source: T, source1: U): T & U;
-function mergeObjects<T, U, V>(source: T, source1: U, source2: V): T & U & V;
-function mergeObjects<T, U, V, W>(
+function mergeObjects<T extends object>(source: T): T;
+function mergeObjects<T extends object, U extends object>(
+	source: T,
+	source1: U,
+): T & U;
+function mergeObjects<T extends object, U extends object, V extends object>(
 	source: T,
 	source1: U,
 	source2: V,
-	source3: W,
-): T & U & V & W;
-function mergeObjects(...sources: unknown[]): unknown {
-	const target: Record<string, unknown> = {};
+): T & U & V;
+function mergeObjects<
+	T extends object,
+	U extends object,
+	V extends object,
+	W extends object,
+>(source: T, source1: U, source2: V, source3: W): T & U & V & W;
+function mergeObjects(...sources: object[]) {
+	const target = {};
 	for (let i = 0; i < sources.length; i++) {
-		let source = sources[i];
-		if (typeof source === "function") source = source();
-		if (source) {
-			const descriptors = Object.getOwnPropertyDescriptors(source);
-			for (const key in descriptors) {
-				if (key in target) continue;
-				Object.defineProperty(target, key, {
-					enumerable: true,
-					get() {
-						for (let i = sources.length - 1; i >= 0; i--) {
-							let s = sources[i];
-							if (typeof s === "function") s = s();
-							const v = ((s as Record<string, unknown>) || {})[key];
-							if (v !== undefined) return v;
-						}
-					},
-				});
-			}
+		const descriptors = Object.getOwnPropertyDescriptors(sources[i]);
+		for (const key in descriptors) {
+			if (key in target) continue;
+			Object.defineProperty(target, key, {
+				enumerable: true,
+				get() {
+					for (let i = sources.length - 1; i >= 0; i--) {
+						const descriptor = Object.getOwnPropertyDescriptor(sources[i], key);
+						const value = descriptor?.get
+							? descriptor.get.call(sources[i])
+							: descriptor?.value;
+						if (value !== undefined) return value;
+					}
+				},
+			});
 		}
 	}
 	return target;

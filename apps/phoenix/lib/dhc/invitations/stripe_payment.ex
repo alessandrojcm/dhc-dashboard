@@ -29,28 +29,65 @@ defmodule Dhc.Invitations.StripePayment do
   """
   @spec create_customer(String.t(), String.t() | nil, String.t(), String.t()) ::
           {:ok, String.t()} | {:error, term()}
-  def create_customer(email, name, invited_by_id, invitation_id)
+  def create_customer(email, name, invited_by_id, acceptance_attempt_id)
       when is_binary(email) and is_binary(name) and is_binary(invited_by_id) do
     body = %{
       "name" => name,
       "email" => email,
-      "metadata[invited_by]" => invited_by_id
+      "metadata[invited_by]" => invited_by_id,
+      "metadata[acceptance_attempt_id]" => acceptance_attempt_id
     }
 
-    idempotency_key = "invitation-accept:#{invitation_id}:customer"
+    idempotency_key = "invitation-accept:#{acceptance_attempt_id}:customer"
 
-    case Operations.post_customers(body, idempotency_key: idempotency_key) do
-      {:ok, %{"id" => id}} when is_binary(id) -> {:ok, id}
-      {:ok, body} -> {:error, {:stripe_customer_missing_id, body}}
-      {:error, reason} -> {:error, {:stripe_customer, reason}}
+    case find_customer_by_attempt(email, acceptance_attempt_id) do
+      {:ok, id} when is_binary(id) ->
+        {:ok, id}
+
+      {:ok, nil} ->
+        case Operations.post_customers(body, idempotency_key: idempotency_key) do
+          {:ok, %{"id" => id}} when is_binary(id) -> {:ok, id}
+          {:ok, response} -> {:error, {:stripe_customer_missing_id, response}}
+          {:error, reason} -> {:error, {:stripe_customer, reason}}
+        end
+
+      {:error, reason} ->
+        {:error, {:stripe_customer, reason}}
     end
   end
 
-  @spec complete(map()) :: :ok | {:error, term()}
+  @spec complete(map()) :: :ok | {:pending, map()} | {:error, term()}
+  def complete(%{customer_id: customer_id, complimentary: true} = attrs)
+      when is_binary(customer_id) and customer_id != "" do
+    with {:ok, plan} <- payment_plan(attrs),
+         true <- plan.requirement == :complimentary,
+         :ok <- create_membership_subscriptions(customer_id, nil, plan, attrs) do
+      :ok
+    else
+      false -> {:error, :complimentary_payment_plan_required}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  def complete(%{customer_id: customer_id, payment_method_id: payment_method_id} = attrs)
+      when is_binary(customer_id) and customer_id != "" and is_binary(payment_method_id) and
+             payment_method_id != "" do
+    with {:ok, plan} <- payment_plan(attrs) do
+      create_membership_subscriptions(
+        customer_id,
+        payment_method_id,
+        plan,
+        attrs
+      )
+    end
+  end
+
   def complete(%{customer_id: customer_id, confirmation_token: confirmation_token} = attrs)
       when is_binary(customer_id) and customer_id != "" and is_binary(confirmation_token) and
              confirmation_token != "" do
-    with {:ok, setup_intent} <- create_setup_intent(attrs),
+    with {:ok, stripe_state} <- reconcile_provider_progress(attrs),
+         attrs = Map.put(attrs, :stripe_state, stripe_state),
+         {:ok, setup_intent} <- ensure_setup_intent(attrs, stripe_state),
          :ok <- validate_setup_intent(setup_intent),
          {:ok, payment_method_id} <- payment_method_id(setup_intent),
          :ok <-
@@ -58,17 +95,13 @@ defmodule Dhc.Invitations.StripePayment do
              "setup_intent_id" => resource_id(setup_intent),
              "payment_method_id" => payment_method_id
            }),
-         {:ok, prices} <- Pricing.membership_price_ids(),
-         {:ok, promotion} <- Pricing.resolve_promotion(Map.get(attrs, :coupon_code)),
-         :ok <-
-           create_membership_subscriptions(
-             customer_id,
-             payment_method_id,
-             prices,
-             promotion,
-             attrs
-           ) do
-      :ok
+         {:ok, plan} <- payment_plan(attrs) do
+      create_membership_subscriptions(
+        customer_id,
+        payment_method_id,
+        plan,
+        attrs
+      )
     end
   end
 
@@ -87,20 +120,18 @@ defmodule Dhc.Invitations.StripePayment do
   """
   @spec cancel_membership(map()) :: :ok | {:error, term()}
   def cancel_membership(stripe_state) when is_map(stripe_state) do
-    errors =
-      [stripe_state["monthly_subscription_id"], stripe_state["annual_subscription_id"]]
-      |> Enum.reject(&is_nil/1)
-      |> Enum.uniq()
-      |> Enum.reduce([], fn subscription_id, errors ->
-        case cancel_subscription(subscription_id) do
-          :ok -> errors
-          {:error, reason} -> [{subscription_id, reason} | errors]
-        end
-      end)
+    with {:ok, discovered_ids} <- discover_subscription_ids(stripe_state) do
+      errors =
+        ([stripe_state["monthly_subscription_id"], stripe_state["annual_subscription_id"]] ++
+           discovered_ids)
+        |> Enum.reject(&is_nil/1)
+        |> Enum.uniq()
+        |> Enum.reduce([], &collect_cancellation_error/2)
 
-    case errors do
-      [] -> :ok
-      errors -> {:error, {:subscription_cleanup_failed, Enum.reverse(errors)}}
+      case errors do
+        [] -> :ok
+        errors -> {:error, {:subscription_cleanup_failed, Enum.reverse(errors)}}
+      end
     end
   end
 
@@ -123,6 +154,13 @@ defmodule Dhc.Invitations.StripePayment do
     end
   end
 
+  defp collect_cancellation_error(subscription_id, errors) do
+    case cancel_subscription(subscription_id) do
+      :ok -> errors
+      {:error, reason} -> [{subscription_id, reason} | errors]
+    end
+  end
+
   @doc false
   def retryable_failure?({:stripe_customer, reason}), do: retryable_failure?(reason)
 
@@ -131,6 +169,8 @@ defmodule Dhc.Invitations.StripePayment do
       do: true
 
   def retryable_failure?({:http_error, _reason}), do: true
+  def retryable_failure?({:progress_persistence, _reason}), do: true
+  def retryable_failure?(:stale_acceptance_operation), do: true
   def retryable_failure?(:timeout), do: true
   def retryable_failure?(_reason), do: false
 
@@ -139,13 +179,33 @@ defmodule Dhc.Invitations.StripePayment do
       {"confirm", "true"},
       {"customer", Map.fetch!(attrs, :customer_id)},
       {"confirmation_token", Map.fetch!(attrs, :confirmation_token)},
-      {"payment_method_types[]", "sepa_debit"}
+      {"payment_method_types[]", "sepa_debit"},
+      {"metadata[acceptance_attempt_id]", Map.fetch!(attrs, :attempt_id)}
     ]
 
-    Operations.post_setup_intents(Map.new(form),
-      idempotency_key: idempotency_key(attrs, "setup-intent")
-    )
+    with :ok <- authorize_progression(attrs) do
+      Operations.post_setup_intents(Map.new(form),
+        idempotency_key: idempotency_key(attrs, "setup-intent")
+      )
+    end
   end
+
+  defp ensure_setup_intent(_attrs, %{"payment_method_id" => payment_method_id} = state)
+       when is_binary(payment_method_id) and payment_method_id != "" do
+    {:ok,
+     %{
+       "id" => state["setup_intent_id"],
+       "status" => "succeeded",
+       "payment_method" => payment_method_id
+     }}
+  end
+
+  defp ensure_setup_intent(_attrs, %{"setup_intent_id" => setup_intent_id})
+       when is_binary(setup_intent_id) and setup_intent_id != "" do
+    Operations.get_setup_intents_intent(setup_intent_id, %{})
+  end
+
+  defp ensure_setup_intent(attrs, _stripe_state), do: create_setup_intent(attrs)
 
   defp validate_setup_intent(%{"status" => status}) when status in ["succeeded", "processing"],
     do: :ok
@@ -159,32 +219,71 @@ defmodule Dhc.Invitations.StripePayment do
   defp payment_method_id(%{"payment_method" => %{"id" => id}}) when is_binary(id), do: {:ok, id}
   defp payment_method_id(_setup_intent), do: {:error, :payment_method_missing}
 
-  defp create_membership_subscriptions(customer_id, payment_method_id, prices, promotion, attrs) do
+  defp create_membership_subscriptions(customer_id, payment_method_id, plan, attrs) do
+    stripe_state = Map.get(attrs, :stripe_state, %{})
+
     with {:ok, monthly} <-
-           create_subscription(
+           ensure_subscription(
              :monthly,
              customer_id,
              payment_method_id,
-             prices.monthly.id,
-             promotion,
+             plan.monthly_price_id,
+             plan,
+             stripe_state,
              attrs
            ),
          :ok <- report_subscription_progress(attrs, :monthly, monthly),
-         :ok <- maybe_confirm_first_invoice(monthly, payment_method_id, promotion, attrs),
+         monthly_outcome <- maybe_confirm_first_invoice(monthly, payment_method_id, plan, attrs),
+         :ok <- continue_after_payment_outcome(monthly_outcome),
          :ok <- report_progress(attrs, %{"monthly_confirmed" => true}),
          {:ok, annual} <-
-           create_subscription(
+           ensure_subscription(
              :annual,
              customer_id,
              payment_method_id,
-             prices.annual.id,
-             promotion,
+             plan.annual_price_id,
+             plan,
+             stripe_state,
              attrs
            ),
          :ok <- report_subscription_progress(attrs, :annual, annual),
-         :ok <- maybe_confirm_first_invoice(annual, payment_method_id, promotion, attrs),
+         annual_outcome <- maybe_confirm_first_invoice(annual, payment_method_id, plan, attrs),
+         :ok <- continue_after_payment_outcome(annual_outcome),
          :ok <- report_progress(attrs, %{"annual_confirmed" => true}) do
-      :ok
+      combine_payment_outcomes(monthly_outcome, annual_outcome)
+    end
+  end
+
+  defp continue_after_payment_outcome(:ok), do: :ok
+
+  defp continue_after_payment_outcome({:pending, %{"payment_intent_status" => "processing"}}),
+    do: :ok
+
+  defp continue_after_payment_outcome(outcome), do: outcome
+
+  defp combine_payment_outcomes(:ok, :ok), do: :ok
+  defp combine_payment_outcomes(_monthly, {:pending, _state} = annual), do: annual
+  defp combine_payment_outcomes({:pending, _state} = monthly, :ok), do: monthly
+
+  defp ensure_subscription(
+         kind,
+         customer_id,
+         payment_method_id,
+         price_id,
+         promotion,
+         state,
+         attrs
+       ) do
+    key = "#{kind}_subscription_id"
+
+    case Map.get(state, key) do
+      id when is_binary(id) and id != "" ->
+        Operations.get_subscriptions_subscription_exposed_id(id, %{},
+          expand: ["latest_invoice.payments"]
+        )
+
+      _ ->
+        create_subscription(kind, customer_id, payment_method_id, price_id, promotion, attrs)
     end
   end
 
@@ -195,15 +294,24 @@ defmodule Dhc.Invitations.StripePayment do
         {"items[0][price]", price_id},
         {"payment_behavior", "default_incomplete"},
         {"collection_method", "charge_automatically"},
-        {"default_payment_method", payment_method_id},
         {"expand[]", "latest_invoice.payments"}
       ]
+      |> maybe_add_payment_method(payment_method_id)
       |> add_billing_anchor(kind)
       |> maybe_add_discount(promotion)
+      |> then(
+        &[
+          {"metadata[acceptance_attempt_id]", Map.fetch!(attrs, :attempt_id)},
+          {"metadata[acceptance_kind]", Atom.to_string(kind)}
+          | &1
+        ]
+      )
 
-    Operations.post_subscriptions(Map.new(form),
-      idempotency_key: idempotency_key(attrs, "subscription-#{kind}")
-    )
+    with :ok <- authorize_progression(attrs) do
+      Operations.post_subscriptions(Map.new(form),
+        idempotency_key: idempotency_key(attrs, "subscription-#{kind}")
+      )
+    end
   end
 
   defp add_billing_anchor(form, :monthly),
@@ -221,6 +329,11 @@ defmodule Dhc.Invitations.StripePayment do
   defp maybe_add_discount(form, %{promotion_code_id: promotion_code_id}),
     do: [{"discounts[0][promotion_code]", promotion_code_id} | form]
 
+  defp maybe_add_payment_method(form, nil), do: form
+
+  defp maybe_add_payment_method(form, payment_method_id),
+    do: [{"default_payment_method", payment_method_id} | form]
+
   defp maybe_confirm_first_invoice(subscription, _payment_method_id, %{migration?: true}, attrs) do
     case latest_invoice(subscription) do
       %{"id" => invoice_id, "amount_due" => amount_due} when is_integer(amount_due) ->
@@ -236,10 +349,26 @@ defmodule Dhc.Invitations.StripePayment do
     end)
   end
 
+  defp maybe_confirm_first_invoice(subscription, nil, %{requirement: :complimentary}, _attrs) do
+    case latest_invoice(subscription) do
+      %{"status" => "paid", "amount_due" => 0} ->
+        :ok
+
+      %{"status" => status, "amount_due" => amount_due} ->
+        {:error, {:complimentary_invoice_unsettled, status, amount_due}}
+
+      _ ->
+        {:error, :complimentary_invoice_missing}
+    end
+  end
+
+  defp maybe_confirm_first_invoice(_subscription, nil, _promotion, _attrs),
+    do: {:error, :payment_method_required}
+
   defp maybe_confirm_first_invoice(subscription, payment_method_id, _promotion, attrs) do
     case payment_intent_id(subscription) do
-      nil -> :ok
-      payment_intent_id -> confirm_payment_intent(payment_intent_id, payment_method_id, attrs)
+      nil -> validate_paid_invoice(subscription)
+      payment_intent_id -> progress_payment_intent(payment_intent_id, payment_method_id, attrs)
     end
   end
 
@@ -263,6 +392,17 @@ defmodule Dhc.Invitations.StripePayment do
     end
   end
 
+  defp progress_payment_intent(payment_intent_id, payment_method_id, attrs) do
+    with :ok <- authorize_progression(attrs),
+         {:ok, payment_intent} <-
+           Operations.get_payment_intents_intent(payment_intent_id, %{}) do
+      case payment_intent_outcome(payment_intent) do
+        :confirm -> confirm_payment_intent(payment_intent_id, payment_method_id, attrs)
+        outcome -> outcome
+      end
+    end
+  end
+
   defp confirm_payment_intent(payment_intent_id, payment_method_id, attrs) do
     context = Map.get(attrs, :mandate_context, %{})
 
@@ -274,19 +414,77 @@ defmodule Dhc.Invitations.StripePayment do
       {"mandate_data[customer_acceptance][online][user_agent]", Map.get(context, :user_agent, "")}
     ]
 
-    case Operations.post_payment_intents_intent_confirm(payment_intent_id, Map.new(form),
-           idempotency_key: idempotency_key(attrs, "payment-intent-#{payment_intent_id}")
-         ) do
-      {:ok, _payment_intent} -> :ok
-      {:error, reason} -> {:error, reason}
+    with :ok <- authorize_progression(attrs) do
+      case Operations.post_payment_intents_intent_confirm(payment_intent_id, Map.new(form),
+             idempotency_key: idempotency_key(attrs, "payment-intent-#{payment_intent_id}")
+           ) do
+        {:ok, payment_intent} -> payment_intent_outcome(payment_intent)
+        {:error, reason} -> {:error, reason}
+      end
+    end
+  end
+
+  defp payment_intent_outcome(%{"status" => "succeeded"}), do: :ok
+
+  defp payment_intent_outcome(%{"id" => id, "status" => "processing"}) do
+    {:pending,
+     %{
+       "payment_state" => "pending",
+       "payment_intent_id" => id,
+       "payment_intent_status" => "processing"
+     }}
+  end
+
+  defp payment_intent_outcome(%{"id" => id, "status" => "requires_action"} = intent) do
+    {:pending,
+     %{
+       "payment_state" => "needs_action",
+       "payment_intent_id" => id,
+       "payment_intent_status" => "requires_action",
+       "payment_action_type" => get_in(intent, ["next_action", "type"])
+     }}
+  end
+
+  defp payment_intent_outcome(%{"status" => "requires_confirmation"}), do: :confirm
+
+  defp payment_intent_outcome(%{"id" => id, "status" => status})
+       when status in ["requires_payment_method", "requires_capture", "canceled"] do
+    {:pending,
+     %{
+       "payment_state" => "terminal",
+       "payment_intent_id" => id,
+       "payment_intent_status" => status
+     }}
+  end
+
+  defp payment_intent_outcome(_payment_intent),
+    do: {:error, :invalid_payment_intent_response}
+
+  defp validate_paid_invoice(subscription) do
+    case latest_invoice(subscription) do
+      %{"status" => "paid"} -> :ok
+      %{"status" => status} -> {:error, {:invoice_unsettled, status}}
+      _ -> {:error, :invoice_payment_missing}
     end
   end
 
   defp create_credit_note(invoice_id, amount, attrs) do
-    Operations.post_credit_notes(
-      %{"invoice" => invoice_id, "amount" => Integer.to_string(amount)},
-      idempotency_key: idempotency_key(attrs, "credit-note-#{invoice_id}")
-    )
+    with :ok <- authorize_progression(attrs) do
+      Operations.post_credit_notes(
+        %{"invoice" => invoice_id, "amount" => Integer.to_string(amount)},
+        idempotency_key: idempotency_key(attrs, "credit-note-#{invoice_id}")
+      )
+    end
+  end
+
+  defp payment_plan(%{payment_plan: plan}) when is_map(plan), do: {:ok, plan}
+  defp payment_plan(attrs), do: Pricing.membership_payment_plan(Map.get(attrs, :coupon_code))
+
+  defp authorize_progression(attrs) do
+    case Map.get(attrs, :fence) do
+      callback when is_function(callback, 0) -> callback.()
+      _ -> :ok
+    end
   end
 
   defp idempotency_key(attrs, suffix) do
@@ -307,10 +505,161 @@ defmodule Dhc.Invitations.StripePayment do
 
   defp report_progress(attrs, progress) do
     case Map.get(attrs, :progress) do
-      callback when is_function(callback, 1) -> callback.(progress)
-      _ -> :ok
+      callback when is_function(callback, 1) ->
+        case callback.(progress) do
+          :ok -> :ok
+          {:error, reason} -> {:error, {:progress_persistence, reason}}
+        end
+
+      _ ->
+        :ok
     end
   end
+
+  defp reconcile_provider_progress(attrs) do
+    state = Map.get(attrs, :stripe_state, %{})
+    attempt_id = Map.fetch!(attrs, :attempt_id)
+    customer_id = Map.fetch!(attrs, :customer_id)
+
+    with {:ok, setup_intents} <-
+           Operations.get_setup_intents(%{}, customer: customer_id, limit: 100),
+         {:ok, subscriptions} <-
+           Operations.get_subscriptions(%{},
+             customer: customer_id,
+             status: "all",
+             limit: 100,
+             expand: ["data.latest_invoice.payments"]
+           ) do
+      state =
+        state
+        |> merge_setup_intent_progress(setup_intents["data"] || [], attempt_id)
+        |> merge_subscription_progress(subscriptions["data"] || [], attempt_id)
+
+      case report_progress(attrs, state) do
+        :ok -> {:ok, state}
+        {:error, _reason} = error -> error
+      end
+    end
+  end
+
+  defp merge_setup_intent_progress(state, setup_intents, attempt_id) do
+    case Enum.find(
+           setup_intents,
+           &(get_in(&1, ["metadata", "acceptance_attempt_id"]) == attempt_id)
+         ) do
+      nil ->
+        state
+
+      setup_intent ->
+        state
+        |> maybe_put("setup_intent_id", resource_id(setup_intent))
+        |> maybe_put("payment_method_id", payment_method_value(setup_intent))
+    end
+  end
+
+  defp merge_subscription_progress(state, subscriptions, attempt_id) do
+    Enum.reduce(subscriptions, state, fn subscription, acc ->
+      metadata = Map.get(subscription, "metadata", %{})
+
+      if metadata["acceptance_attempt_id"] == attempt_id and
+           metadata["acceptance_kind"] in ["monthly", "annual"] do
+        kind = metadata["acceptance_kind"]
+
+        acc
+        |> maybe_put("#{kind}_subscription_id", resource_id(subscription))
+        |> maybe_put("#{kind}_invoice_id", latest_invoice(subscription) |> resource_id())
+        |> maybe_put("#{kind}_payment_intent_id", payment_intent_id(subscription))
+      else
+        acc
+      end
+    end)
+  end
+
+  defp payment_method_value(%{"payment_method" => id}) when is_binary(id), do: id
+  defp payment_method_value(%{"payment_method" => %{"id" => id}}), do: id
+  defp payment_method_value(_setup_intent), do: nil
+
+  defp discover_subscription_ids(%{
+         "customer_id" => customer_id,
+         "acceptance_attempt_id" => attempt_id
+       }) do
+    case Operations.get_subscriptions(%{}, customer: customer_id, status: "all", limit: 100) do
+      {:ok, %{"data" => subscriptions}} ->
+        ids =
+          subscriptions
+          |> Enum.filter(&(get_in(&1, ["metadata", "acceptance_attempt_id"]) == attempt_id))
+          |> Enum.map(&resource_id/1)
+          |> Enum.reject(&is_nil/1)
+
+        {:ok, ids}
+
+      {:error, reason} ->
+        {:error, {:subscription_cleanup_discovery_failed, reason}}
+    end
+  end
+
+  defp discover_subscription_ids(_stripe_state), do: {:ok, []}
+
+  defp find_customer_by_attempt(email, acceptance_attempt_id) do
+    with {:ok, ids} <-
+           list_customer_ids_for_attempt(email, acceptance_attempt_id, nil, MapSet.new()) do
+      case MapSet.to_list(ids) do
+        [] -> {:ok, nil}
+        [id] -> {:ok, id}
+        ids -> {:error, {:ambiguous_acceptance_customers, Enum.sort(ids)}}
+      end
+    end
+  end
+
+  defp list_customer_ids_for_attempt(email, acceptance_attempt_id, starting_after, ids) do
+    opts =
+      [email: email, limit: 100]
+      |> maybe_add_starting_after(starting_after)
+
+    case Operations.get_customers(%{}, opts) do
+      {:ok, %{"data" => customers} = response} when is_list(customers) ->
+        ids =
+          Enum.reduce(customers, ids, &collect_attempt_customer(&1, &2, acceptance_attempt_id))
+
+        continue_customer_search(
+          response["has_more"],
+          customers,
+          email,
+          acceptance_attempt_id,
+          ids
+        )
+
+      {:ok, response} ->
+        {:error, {:malformed_customer_list, response}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp collect_attempt_customer(customer, ids, acceptance_attempt_id) do
+    if get_in(customer, ["metadata", "acceptance_attempt_id"]) == acceptance_attempt_id do
+      case resource_id(customer) do
+        nil -> ids
+        id -> MapSet.put(ids, id)
+      end
+    else
+      ids
+    end
+  end
+
+  defp continue_customer_search(true, customers, email, acceptance_attempt_id, ids) do
+    case List.last(customers) |> resource_id() do
+      nil -> {:error, :malformed_customer_page}
+      cursor -> list_customer_ids_for_attempt(email, acceptance_attempt_id, cursor, ids)
+    end
+  end
+
+  defp continue_customer_search(_has_more, _customers, _email, _attempt_id, ids),
+    do: {:ok, ids}
+
+  defp maybe_add_starting_after(opts, nil), do: opts
+  defp maybe_add_starting_after(opts, cursor), do: Keyword.put(opts, :starting_after, cursor)
 
   defp resource_id(%{"id" => id}) when is_binary(id), do: id
   defp resource_id(_resource), do: nil

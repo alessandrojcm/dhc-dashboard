@@ -29,11 +29,13 @@ import { dev } from "$app/environment";
 import { untrack } from "svelte";
 import { DiscordLogo } from "svelte-radix";
 import { publicApiUrl } from "$lib/api-client";
+import * as v from "valibot";
 import {
 	membershipBillingPortalMutation,
 	membershipPauseMutation,
 	membershipResumeMutation,
 } from "@dhc/api-client";
+import { SocialMediaConsent } from "$lib/types";
 
 const { data } = $props();
 const discordLinkUrl = publicApiUrl("/auth/discord/link");
@@ -71,14 +73,27 @@ $effect(() => {
 // Reactive form field values
 const dateOfBirth = $derived(updateProfile.fields.dateOfBirth.value() ?? "");
 const gender = $derived(updateProfile.fields.gender.value() ?? "");
-const weapon = $derived(
-	(updateProfile.fields.weapon.value() ?? []).filter(
-		(value): value is string => typeof value === "string",
-	),
-);
+const weapon = $derived.by(() => {
+	const parsed = v.safeParse(
+		v.array(v.string()),
+		updateProfile.fields.weapon.value(),
+	);
+	return parsed.success ? parsed.output : [];
+});
 const socialMediaConsent = $derived(
 	updateProfile.fields.socialMediaConsent.value(),
 );
+const socialMediaConsentSchema = v.picklist([
+	SocialMediaConsent.no,
+	SocialMediaConsent.yes_unrecognizable,
+	SocialMediaConsent.yes_recognizable,
+]);
+
+function requireMemberId(): string {
+	const memberId = page.params.memberId;
+	if (!memberId) throw new Error("Member ID is required");
+	return memberId;
+}
 
 // Date picker value conversion
 const dobValue = $derived.by(() => {
@@ -148,7 +163,7 @@ const resumeMutation = createMutation(() => ({
 						{@const fieldProps = updateProfile.fields.firstName.as("text")}
 						<Field.Label for={fieldProps.name}>First name</Field.Label>
 						<Input {...fieldProps} id={fieldProps.name} />
-						{#each updateProfile.fields.firstName.issues() as issue}
+						{#each updateProfile.fields.firstName.issues() as issue (issue.message)}
 							<Field.Error>{issue.message}</Field.Error>
 						{/each}
 					</Field.Field>
@@ -157,7 +172,7 @@ const resumeMutation = createMutation(() => ({
 						{@const fieldProps = updateProfile.fields.lastName.as("text")}
 						<Field.Label for={fieldProps.name}>Last name</Field.Label>
 						<Input {...fieldProps} id={fieldProps.name} />
-						{#each updateProfile.fields.lastName.issues() as issue}
+						{#each updateProfile.fields.lastName.issues() as issue (issue.message)}
 							<Field.Error>{issue.message}</Field.Error>
 						{/each}
 					</Field.Field>
@@ -174,7 +189,7 @@ const resumeMutation = createMutation(() => ({
 						<Field.Description>
 							Please contact us if you need to change your email.
 						</Field.Description>
-						{#each updateProfile.fields.email.issues() as issue}
+						{#each updateProfile.fields.email.issues() as issue (issue.message)}
 							<Field.Error>{issue.message}</Field.Error>
 						{/each}
 					</Field.Field>
@@ -188,7 +203,7 @@ const resumeMutation = createMutation(() => ({
 							id={fieldProps.name}
 							placeholder="Enter your phone number"
 						/>
-						{#each updateProfile.fields.phoneNumber.issues() as issue}
+						{#each updateProfile.fields.phoneNumber.issues() as issue (issue.message)}
 							<Field.Error>{issue.message}</Field.Error>
 						{/each}
 					</Field.Field>
@@ -209,7 +224,7 @@ const resumeMutation = createMutation(() => ({
 							}}
 						/>
 						<input type="hidden" name="dateOfBirth" value={dateOfBirth} />
-						{#each updateProfile.fields.dateOfBirth.issues() as issue}
+						{#each updateProfile.fields.dateOfBirth.issues() as issue (issue.message)}
 							<Field.Error>{issue.message}</Field.Error>
 						{/each}
 					</Field.Field>
@@ -234,7 +249,7 @@ const resumeMutation = createMutation(() => ({
 							type="button"
 							onclick={() =>
 								openBillingPortal.mutate({
-									path: { memberId: page.params.memberId! },
+									path: { memberId: requireMemberId() },
 									body: { returnUrl: window.location.href },
 								})}
 							class="w-full"
@@ -273,7 +288,7 @@ const resumeMutation = createMutation(() => ({
 										variant="outline"
 										onclick={() =>
 											resumeMutation.mutate({
-												path: { memberId: page.params.memberId! },
+												path: { memberId: requireMemberId() },
 											})}
 										disabled={resumeMutation.isPending}
 										type="button"
@@ -310,22 +325,16 @@ const resumeMutation = createMutation(() => ({
 							onValueChange={(v) => updateProfile.fields.gender.set(v)}
 							name="gender"
 						>
-							{#await data.genders}
-								<Select.Trigger class="w-full capitalize">
-									{gender || "Select your gender"}
-								</Select.Trigger>
-							{:then genders}
-								<Select.Trigger class="w-full capitalize">
-									{gender || "Select your gender"}
-								</Select.Trigger>
-								<Select.Content>
-									{#each genders as g (g)}
-										<Select.Item value={g} class="capitalize">{g}</Select.Item>
-									{/each}
-								</Select.Content>
-							{/await}
+							<Select.Trigger class="w-full capitalize">
+								{gender || "Select your gender"}
+							</Select.Trigger>
+							<Select.Content>
+								{#each data.genders as g (g)}
+									<Select.Item value={g} class="capitalize">{g}</Select.Item>
+								{/each}
+							</Select.Content>
 						</Select.Root>
-						{#each updateProfile.fields.gender.issues() as issue}
+						{#each updateProfile.fields.gender.issues() as issue (issue.message)}
 							<Field.Error>{issue.message}</Field.Error>
 						{/each}
 					</Field.Field>
@@ -342,7 +351,7 @@ const resumeMutation = createMutation(() => ({
 							id={fieldProps.name}
 							placeholder="e.g. she/her, they/them"
 						/>
-						{#each updateProfile.fields.pronouns.issues() as issue}
+						{#each updateProfile.fields.pronouns.issues() as issue (issue.message)}
 							<Field.Error>{issue.message}</Field.Error>
 						{/each}
 					</Field.Field>
@@ -356,33 +365,25 @@ const resumeMutation = createMutation(() => ({
 							value={weapon}
 							onValueChange={(v) => updateProfile.fields.weapon.set(v)}
 						>
-							{#await data.weapons}
-								<Select.Trigger class="capitalize">
-									{weapon?.length > 0
-										? weapon.join(", ")
-										: "Select your preferred weapon(s)"}
-								</Select.Trigger>
-							{:then weapons}
-								<Select.Trigger
-									id={fieldProps.name}
-									name={fieldProps.name}
-									class="capitalize"
-								>
-									{weapon
-										? weapon.join(", ").replace(/[_-]/g, " ")
-										: "Select your preferred weapon(s)"}
-								</Select.Trigger>
-								<Select.Content>
-									{#each weapons as w (w)}
-										<Select.Item class="capitalize" value={w}
-											>{w.replace(/[_-]/g, " ")}</Select.Item
-										>
-									{/each}
-								</Select.Content>
-							{/await}
+							<Select.Trigger
+								id={fieldProps.name}
+								name={fieldProps.name}
+								class="capitalize"
+							>
+								{weapon
+									? weapon.join(", ").replace(/[_-]/g, " ")
+									: "Select your preferred weapon(s)"}
+							</Select.Trigger>
+							<Select.Content>
+								{#each data.weapons as w (w)}
+									<Select.Item class="capitalize" value={w}
+										>{w.replace(/[_-]/g, " ")}</Select.Item
+									>
+								{/each}
+							</Select.Content>
 						</Select.Root>
 						<Field.Description>You can select more than one</Field.Description>
-						{#each updateProfile.fields.weapon.issues() as issue}
+						{#each updateProfile.fields.weapon.issues() as issue (issue.message)}
 							<Field.Error>{issue.message}</Field.Error>
 						{/each}
 						{#each weapon as selectedWeapon, index (selectedWeapon)}
@@ -405,10 +406,12 @@ const resumeMutation = createMutation(() => ({
 							name="socialMediaConsent"
 							class="flex justify-start"
 							value={socialMediaConsent}
-							onValueChange={(v) =>
-								updateProfile.fields.socialMediaConsent.set(
-									v as typeof socialMediaConsent,
-								)}
+							onValueChange={(value) => {
+								const parsed = v.safeParse(socialMediaConsentSchema, value);
+								if (parsed.success) {
+									updateProfile.fields.socialMediaConsent.set(parsed.output);
+								}
+							}}
 						>
 							<div class="flex items-center space-x-3 space-y-0">
 								<RadioGroup.Item value="no" id="consent-no" />
@@ -428,7 +431,7 @@ const resumeMutation = createMutation(() => ({
 								<Label for="consent-yes" class="font-normal">Yes</Label>
 							</div>
 						</RadioGroup.Root>
-						{#each updateProfile.fields.socialMediaConsent.issues() as issue}
+						{#each updateProfile.fields.socialMediaConsent.issues() as issue (issue.message)}
 							<Field.Error>{issue.message}</Field.Error>
 						{/each}
 					</Field.Field>
@@ -443,7 +446,7 @@ const resumeMutation = createMutation(() => ({
 							placeholder="Please list any medical conditions or allergies you have. If none, leave blank."
 							class="min-h-[100px]"
 						/>
-						{#each updateProfile.fields.medicalConditions.issues() as issue}
+						{#each updateProfile.fields.medicalConditions.issues() as issue (issue.message)}
 							<Field.Error>{issue.message}</Field.Error>
 						{/each}
 					</Field.Field>
@@ -457,7 +460,7 @@ const resumeMutation = createMutation(() => ({
 						{@const fieldProps = updateProfile.fields.nextOfKin.as("text")}
 						<Field.Label for={fieldProps.name}>Next of Kin</Field.Label>
 						<Input {...fieldProps} id={fieldProps.name} />
-						{#each updateProfile.fields.nextOfKin.issues() as issue}
+						{#each updateProfile.fields.nextOfKin.issues() as issue (issue.message)}
 							<Field.Error>{issue.message}</Field.Error>
 						{/each}
 					</Field.Field>
@@ -473,7 +476,7 @@ const resumeMutation = createMutation(() => ({
 							id={fieldProps.name}
 							placeholder="Enter your next of kin's phone number"
 						/>
-						{#each updateProfile.fields.nextOfKinNumber.issues() as issue}
+						{#each updateProfile.fields.nextOfKinNumber.issues() as issue (issue.message)}
 							<Field.Error>{issue.message}</Field.Error>
 						{/each}
 					</Field.Field>
@@ -520,7 +523,7 @@ const resumeMutation = createMutation(() => ({
 		bind:open={showPauseModal}
 		onConfirm={(pauseData) => {
 			pauseMutation.mutate({
-				path: { memberId: page.params.memberId! },
+				path: { memberId: requireMemberId() },
 				body: { pauseUntil: pauseData.pauseUntil },
 			});
 		}}

@@ -20,6 +20,7 @@ import {
 import utc from "dayjs/plugin/utc";
 import timezone from "dayjs/plugin/timezone";
 import dayjs from "dayjs";
+import { untrack } from "svelte";
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
@@ -60,50 +61,35 @@ let {
 const remoteForm = $derived(
 	mode === "create" ? createWorkshop : updateWorkshop,
 );
-const initialFormValue = $derived.by(() => {
-	if (mode === "create") {
-		return {
-			title: initialData?.title ?? "",
-			description: initialData?.description ?? "",
-			location: initialData?.location ?? "",
-			workshop_date: initialData?.workshop_date
-				? dayjs(initialData.workshop_date).toISOString()
-				: "",
-			workshop_end_date: initialData?.workshop_end_date
-				? dayjs(initialData.workshop_end_date).toISOString()
-				: "",
-			max_capacity: initialData?.max_capacity ?? 1,
-			price_member: initialData?.price_member ?? 0,
-			price_non_member: initialData?.price_non_member ?? 0,
-			is_public: initialData?.is_public ?? false,
-			refund_deadline_days: initialData?.refund_deadline_days ?? undefined,
-			announce_discord: initialData?.announce_discord ?? false,
-			announce_email: initialData?.announce_email ?? false,
-		};
-	}
-	return {
-		title: initialData?.title ?? "",
-		description: initialData?.description ?? "",
-		location: initialData?.location ?? "",
-		workshop_date: initialData?.workshop_date
-			? dayjs(initialData.workshop_date).toISOString()
-			: "",
-		workshop_end_date: initialData?.workshop_end_date
-			? dayjs(initialData.workshop_end_date).toISOString()
-			: "",
-		max_capacity: initialData?.max_capacity ?? 1,
-		price_member: initialData?.price_member ?? 0,
-		price_non_member: initialData?.price_non_member ?? 0,
-		is_public: initialData?.is_public ?? false,
-		refund_deadline_days: initialData?.refund_deadline_days ?? undefined,
-	};
+const baseInitialFormValue = $derived.by(() => ({
+	title: initialData?.title ?? "",
+	description: initialData?.description ?? "",
+	location: initialData?.location ?? "",
+	workshop_date: initialData?.workshop_date
+		? dayjs(initialData.workshop_date).toISOString()
+		: "",
+	workshop_end_date: initialData?.workshop_end_date
+		? dayjs(initialData.workshop_end_date).toISOString()
+		: "",
+	max_capacity: initialData?.max_capacity ?? 1,
+	price_member: initialData?.price_member ?? 0,
+	price_non_member: initialData?.price_non_member ?? 0,
+	is_public: initialData?.is_public ?? false,
+	refund_deadline_days: initialData?.refund_deadline_days ?? undefined,
+}));
+const createInitialFormValue = $derived({
+	...baseInitialFormValue,
+	announce_discord: initialData?.announce_discord ?? false,
+	announce_email: initialData?.announce_email ?? false,
 });
+const updateInitialFormValue = $derived({ ...baseInitialFormValue });
 
-// Initialize the appropriate form based on mode
-if (mode === "create") {
-	initForm(createWorkshop, () => initialFormValue);
+// Current callers pass a static mode, so initialize only the selected
+// module-scoped remote form and avoid clobbering another mounted form instance.
+if (untrack(() => mode) === "create") {
+	initForm(createWorkshop, () => createInitialFormValue);
 } else {
-	initForm(updateWorkshop, () => initialFormValue);
+	initForm(updateWorkshop, () => updateInitialFormValue);
 }
 
 // Derived values for reading form state
@@ -132,14 +118,9 @@ const endTime = $derived.by(() => {
 });
 
 // Date update helper - updates form fields
-function updateWorkshopDates(
-	date?: CalendarDate | string,
-	op: "start" | "end" | "date" = "date",
-) {
-	if (!date) return;
-
-	if (typeof date === "string" && op === "start") {
-		const [hour, minute] = date.split(":").map(Number);
+function updateWorkshopTime(time: string, field: "start" | "end") {
+	const [hour, minute] = time.split(":").map(Number);
+	if (field === "start") {
 		const baseDate = workshopDate ? dayjs(workshopDate) : dayjs();
 		remoteForm.fields.workshop_date.set(
 			baseDate.hour(hour).minute(minute).toISOString(),
@@ -147,8 +128,7 @@ function updateWorkshopDates(
 		return;
 	}
 
-	if (typeof date === "string" && op === "end") {
-		const [hour, minute] = date.split(":").map(Number);
+	if (field === "end") {
 		const baseDate = workshopEndDate
 			? dayjs(workshopEndDate)
 			: workshopDate
@@ -159,36 +139,36 @@ function updateWorkshopDates(
 		);
 		return;
 	}
+}
 
-	// Handle date change (CalendarDate) - preserve existing times or use defaults
-	if (typeof date !== "string") {
-		const startDateDayjs = workshopDate ? dayjs(workshopDate) : null;
-		const startTimeVal = startDateDayjs?.isValid()
-			? {
-					hour: startDateDayjs.hour(),
-					minute: startDateDayjs.minute(),
-				}
-			: { hour: 10, minute: 0 };
+function updateWorkshopDate(date: CalendarDate | undefined) {
+	if (!date) return;
+	const startDateDayjs = workshopDate ? dayjs(workshopDate) : null;
+	const startTimeVal = startDateDayjs?.isValid()
+		? {
+				hour: startDateDayjs.hour(),
+				minute: startDateDayjs.minute(),
+			}
+		: { hour: 10, minute: 0 };
 
-		const endDateDayjs = workshopEndDate ? dayjs(workshopEndDate) : null;
-		const endTimeVal = endDateDayjs?.isValid()
-			? { hour: endDateDayjs.hour(), minute: endDateDayjs.minute() }
-			: { hour: 12, minute: 0 };
+	const endDateDayjs = workshopEndDate ? dayjs(workshopEndDate) : null;
+	const endTimeVal = endDateDayjs?.isValid()
+		? { hour: endDateDayjs.hour(), minute: endDateDayjs.minute() }
+		: { hour: 12, minute: 0 };
 
-		remoteForm.fields.workshop_date.set(
-			toCalendarDateTime(date)
-				.set(startTimeVal)
-				.toDate(getLocalTimeZone())
-				.toISOString(),
-		);
+	remoteForm.fields.workshop_date.set(
+		toCalendarDateTime(date)
+			.set(startTimeVal)
+			.toDate(getLocalTimeZone())
+			.toISOString(),
+	);
 
-		remoteForm.fields.workshop_end_date.set(
-			toCalendarDateTime(date)
-				.set(endTimeVal)
-				.toDate(getLocalTimeZone())
-				.toISOString(),
-		);
-	}
+	remoteForm.fields.workshop_end_date.set(
+		toCalendarDateTime(date)
+			.set(endTimeVal)
+			.toDate(getLocalTimeZone())
+			.toISOString(),
+	);
 }
 
 // Edit permissions
@@ -218,19 +198,6 @@ $effect(() => {
 
 // Success and error messages from form result
 const successMessage = $derived(remoteForm.result?.success);
-const errorMessage = $derived.by(() => {
-	// Check for error in result
-	if (remoteForm.result && "error" in remoteForm.result) {
-		return (remoteForm.result as { error: string }).error;
-	}
-	// Check for issues array in result
-	if (remoteForm.result && "issues" in remoteForm.result) {
-		const issues = (remoteForm.result as { issues: Array<{ message: string }> })
-			.issues;
-		if (issues?.length > 0) return issues[0]?.message;
-	}
-	return null;
-});
 </script>
 
 <div class="space-y-8">
@@ -240,12 +207,6 @@ const errorMessage = $derived.by(() => {
 			<AlertDescription class="text-green-800"
 				>{successMessage}</AlertDescription
 			>
-		</Alert>
-	{/if}
-
-	{#if errorMessage}
-		<Alert variant="destructive">
-			<AlertDescription>{errorMessage}</AlertDescription>
 		</Alert>
 	{/if}
 
@@ -286,7 +247,7 @@ const errorMessage = $derived.by(() => {
 						placeholder="Enter workshop title"
 						disabled={!isWorkshopEditable}
 					/>
-					{#each remoteForm.fields.title.issues() as issue}
+					{#each remoteForm.fields.title.issues() as issue, index (`${issue.message}-${index}`)}
 						<Field.Error>{issue.message}</Field.Error>
 					{/each}
 				</Field.Field>
@@ -300,7 +261,7 @@ const errorMessage = $derived.by(() => {
 						placeholder="Enter workshop location"
 						disabled={!isWorkshopEditable}
 					/>
-					{#each remoteForm.fields.location.issues() as issue}
+					{#each remoteForm.fields.location.issues() as issue, index (`${issue.message}-${index}`)}
 						<Field.Error>{issue.message}</Field.Error>
 					{/each}
 				</Field.Field>
@@ -316,7 +277,7 @@ const errorMessage = $derived.by(() => {
 					rows={4}
 					disabled={!isWorkshopEditable}
 				/>
-				{#each remoteForm.fields.description.issues() as issue}
+				{#each remoteForm.fields.description.issues() as issue, index (`${issue.message}-${index}`)}
 					<Field.Error>{issue.message}</Field.Error>
 				{/each}
 			</Field.Field>
@@ -336,18 +297,18 @@ const errorMessage = $derived.by(() => {
 						date={workshopDateValue}
 						{startTime}
 						{endTime}
-						onDateChange={(d) => updateWorkshopDates(d, "date")}
-						onStartTimeChange={(d) => updateWorkshopDates(d, "start")}
-						onEndTimeChange={(d) => updateWorkshopDates(d, "end")}
+						onDateChange={updateWorkshopDate}
+						onStartTimeChange={(time) => updateWorkshopTime(time, "start")}
+						onEndTimeChange={(time) => updateWorkshopTime(time, "end")}
 						disabled={!isWorkshopEditable}
 					/>
 				</div>
 				<input name="workshop_date" type="hidden" value={workshopDate} />
 				<input name="workshop_end_date" type="hidden" value={workshopEndDate} />
-				{#each remoteForm.fields.workshop_date.issues() as issue}
+				{#each remoteForm.fields.workshop_date.issues() as issue, index (`${issue.message}-${index}`)}
 					<Field.Error>{issue.message}</Field.Error>
 				{/each}
-				{#each remoteForm.fields.workshop_end_date.issues() as issue}
+				{#each remoteForm.fields.workshop_end_date.issues() as issue, index (`${issue.message}-${index}`)}
 					<Field.Error>{issue.message}</Field.Error>
 				{/each}
 			</Field.Field>
@@ -370,7 +331,7 @@ const errorMessage = $derived.by(() => {
 						placeholder="Enter maximum capacity"
 						disabled={!isWorkshopEditable}
 					/>
-					{#each remoteForm.fields.max_capacity.issues() as issue}
+					{#each remoteForm.fields.max_capacity.issues() as issue, index (`${issue.message}-${index}`)}
 						<Field.Error>{issue.message}</Field.Error>
 					{/each}
 				</Field.Field>
@@ -390,7 +351,7 @@ const errorMessage = $derived.by(() => {
 					<p class="mt-1 text-sm text-muted-foreground">
 						Days before workshop when refunds are no longer available
 					</p>
-					{#each remoteForm.fields.refund_deadline_days.issues() as issue}
+					{#each remoteForm.fields.refund_deadline_days.issues() as issue, index (`${issue.message}-${index}`)}
 						<Field.Error>{issue.message}</Field.Error>
 					{/each}
 				</Field.Field>
@@ -498,7 +459,7 @@ const errorMessage = $derived.by(() => {
 						Enable this to allow non-members to register for the workshop
 					</p>
 				</div>
-				{#each remoteForm.fields.is_public.issues() as issue}
+				{#each remoteForm.fields.is_public.issues() as issue, index (`${issue.message}-${index}`)}
 					<Field.Error>{issue.message}</Field.Error>
 				{/each}
 			</div>

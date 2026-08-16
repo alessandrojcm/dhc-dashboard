@@ -10,6 +10,19 @@ defmodule Dhc.MixProject do
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
+      hex: [
+        # Bypass and Testcontainers pull Cowlib and Hackney into tests. Their
+        # latest compatible releases have no upstream fixes for these
+        # advisories, and neither package is in the production dependency tree.
+        ignore_advisories: [
+          "CVE-2026-43966",
+          "CVE-2026-43969",
+          "CVE-2026-47069",
+          "CVE-2026-47071",
+          "CVE-2026-47075",
+          "CVE-2026-47076"
+        ]
+      ],
       listeners: [Phoenix.CodeReloader]
     ]
   end
@@ -40,17 +53,17 @@ defmodule Dhc.MixProject do
   # Type `mix help deps` for examples and options.
   defp deps do
     [
-      {:phoenix, "~> 1.8.7"},
+      {:phoenix, "~> 1.8.11"},
       {:phoenix_ecto, "~> 4.5"},
       {:ecto_sql, "~> 3.13"},
-      {:postgrex, ">= 0.0.0"},
+      {:postgrex, "~> 0.22.4"},
       {:telemetry_metrics, "~> 1.0"},
       {:telemetry_poller, "~> 1.0"},
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.2.0"},
-      {:bandit, "~> 1.5"},
+      {:bandit, "~> 1.12.4"},
       {:oban, "~> 2.19"},
-      {:sentry, "~> 13.0"},
+      {:sentry, "~> 13.4"},
       {:opentelemetry, "~> 1.5"},
       {:opentelemetry_api, "~> 1.4"},
       {:opentelemetry_exporter, "~> 1.8"},
@@ -59,9 +72,11 @@ defmodule Dhc.MixProject do
       {:opentelemetry_bandit, "~> 0.3"},
       {:opentelemetry_ecto, "~> 1.2"},
       {:opentelemetry_logger_metadata, "~> 0.2"},
-      {:hackney, "~> 1.8"},
+      # Testcontainers requires Hackney 1.x for Docker Unix-socket transport.
+      # Keep it test-only so the unpatched line is excluded from production.
+      {:hackney, "~> 1.25", only: :test},
       {:finch, "~> 0.22.0"},
-      {:req, "~> 0.5"},
+      {:req, "~> 0.7.2"},
       {:assent, "~> 0.3.1"},
       # SMTP client for the dev email relay (Mailpit). Used by
       # Dhc.Email.DevMailer in non-prod environments.
@@ -87,7 +102,9 @@ defmodule Dhc.MixProject do
       # Testcontainers.Compose.ComposeEnvironment) landed in 2.3.x (PR #247).
       # See ADR 0006 for the lifecycle: test_helper.exs starts the db profile,
       # reads the dynamic port, then starts the app + runs migrations.
-      {:testcontainers, "~> 2.3", only: :test}
+      {:testcontainers, "~> 2.3", only: :test},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:ex_slop, "~> 0.1", only: [:dev, :test], runtime: false}
     ]
   end
 
@@ -110,7 +127,14 @@ defmodule Dhc.MixProject do
       # — test_helper.exs owns the full compose→migrate→sandbox lifecycle now
       # (ADR 0006). `mix test path/to/file.exs` still routes through here.
       test: ["test --no-start"],
-      precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "test"]
+      precommit: [
+        "credo",
+        "hex.audit",
+        "compile --warnings-as-errors",
+        "deps.unlock --unused",
+        "format",
+        "test"
+      ]
     ]
   end
 end

@@ -54,7 +54,7 @@ defmodule DhcWeb.NotificationChannelTest do
     # ALE-164: the browser cannot read its own id from the opaque socket
     # token, so it joins the `notifications:self` alias. The channel resolves
     # it to the verified sub.
-    test "a user can join their own notifications:self alias (ALE-164)" do
+    test "a user can join their own notifications:self alias" do
       socket = authenticated_socket("user-token")
 
       assert {:ok, _, joined_socket} =

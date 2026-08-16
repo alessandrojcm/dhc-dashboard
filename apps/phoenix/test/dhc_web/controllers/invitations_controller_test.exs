@@ -34,60 +34,27 @@ defmodule DhcWeb.InvitationsControllerTest do
     def verify(_token), do: {:error, :invalid_token}
   end
 
-  defmodule PaymentProcessor do
-    # ALE-162: the payment processor now also owns Stripe customer creation
-    # (or reuse) at acceptance. The test stub records both calls so the
-    # acceptance tests can assert on the customer id passed to `complete/1`
-    # and the invite data passed to `create_customer/4`.
-    def create_customer(email, _name, _invited_by_id, _invitation_id) do
-      send(
-        Application.fetch_env!(:dhc, :invitation_payment_test_pid),
-        {:stripe_create_customer, %{email: email}}
-      )
-
-      # Return a deterministic, customer-id matching the pre-attached shape
-      # used by insert_invitation_with_profile/1 when no stripe_customer_id
-      # is set. Tests that pre-attach a customer_id never hit this callback.
-      {:ok, "cus_accept"}
-    end
-
-    def complete(attrs) do
-      send(Application.fetch_env!(:dhc, :invitation_payment_test_pid), {:stripe_complete, attrs})
-      Application.get_env(:dhc, :invitation_payment_result, :ok)
-    end
-
-    def cancel_membership(stripe_state) do
-      send(
-        Application.fetch_env!(:dhc, :invitation_payment_test_pid),
-        {:stripe_cancel_membership, stripe_state}
-      )
-
-      :ok
-    end
-
-    def retryable_failure?(reason), do: Dhc.Invitations.StripePayment.retryable_failure?(reason)
-  end
-
   setup do
-    original = Application.get_env(:dhc, :auth_verifier)
-    original_payment_processor = Application.get_env(:dhc, :invitation_payment_processor)
-    original_payment_result = Application.get_env(:dhc, :invitation_payment_result)
+    original = %{
+      auth_verifier: Application.get_env(:dhc, :auth_verifier),
+      onboarding_stripe_adapter: Application.get_env(:dhc, :onboarding_stripe_adapter),
+      onboarding_stripe_customer_result:
+        Application.get_env(:dhc, :onboarding_stripe_customer_result),
+      onboarding_stripe_result: Application.get_env(:dhc, :onboarding_stripe_result),
+      onboarding_test_pid: Application.get_env(:dhc, :onboarding_test_pid)
+    }
+
     Application.put_env(:dhc, :auth_verifier, Verifier)
-    Application.put_env(:dhc, :invitation_payment_processor, PaymentProcessor)
-    Application.put_env(:dhc, :invitation_payment_result, :ok)
-    Application.put_env(:dhc, :invitation_payment_test_pid, self())
+    Application.put_env(:dhc, :onboarding_stripe_adapter, Dhc.Onboarding.StripeAdapter.Test)
+    Application.put_env(:dhc, :onboarding_stripe_customer_result, {:ok, "cus_accept"})
+    Application.put_env(:dhc, :onboarding_stripe_result, {:ok, %{}})
+    Application.put_env(:dhc, :onboarding_test_pid, self())
 
     on_exit(fn ->
-      Application.put_env(:dhc, :auth_verifier, original)
-      Application.put_env(:dhc, :invitation_payment_processor, original_payment_processor)
-
-      if original_payment_result do
-        Application.put_env(:dhc, :invitation_payment_result, original_payment_result)
-      else
-        Application.delete_env(:dhc, :invitation_payment_result)
-      end
-
-      Application.delete_env(:dhc, :invitation_payment_test_pid)
+      Enum.each(original, fn
+        {key, nil} -> Application.delete_env(:dhc, key)
+        {key, value} -> Application.put_env(:dhc, key, value)
+      end)
     end)
   end
 
@@ -183,7 +150,7 @@ defmodule DhcWeb.InvitationsControllerTest do
       assert is_integer(response["data"]["job_id"])
 
       assert [%Oban.Job{args: args}] = all_enqueued(worker: Dhc.Invitations.BulkInviteWorker)
-      assert length(args["invites"]) == 2
+      assert [_, _] = args["invites"]
       assert args["invites"] == [dup_invite, dup_invite]
     end
   end
@@ -427,7 +394,7 @@ defmodule DhcWeb.InvitationsControllerTest do
       assert %{"errors" => %{"detail" => "Insufficient role"}} = json_response(conn, 403)
     end
 
-    test "returns 400 for an empty or invalid invitation id list", %{conn: conn} do
+    test "returns 400 for an empty or invalid invitation id list", _context do
       for invitation_ids <- [[], ["not-a-uuid"]] do
         conn =
           build_conn()
@@ -444,7 +411,7 @@ defmodule DhcWeb.InvitationsControllerTest do
     test "GET /api/invitations/:id returns public-safe invitation state without PII", %{
       conn: conn
     } do
-      %{invitation_id: invitation_id} = insert_invitation_with_profile(email: "pii@example.com")
+      invitation_id = insert_invitation(email: "pii@example.com")
 
       conn = get(conn, "/api/invitations/#{invitation_id}")
 
@@ -463,9 +430,10 @@ defmodule DhcWeb.InvitationsControllerTest do
       refute Map.has_key?(json_response(conn, 200)["data"], "lastName")
     end
 
-    test "POST /api/invitations/:id/verify returns an opaque token for matching credentials", %{
-      conn: conn
-    } do
+    test "POST /api/invitations/:id/verify confirms credentials without returning bearer material",
+         %{
+           conn: conn
+         } do
       %{invitation_id: invitation_id} =
         insert_invitation_with_profile(email: "verify@example.com", date_of_birth: ~D[1990-01-01])
 
@@ -475,16 +443,14 @@ defmodule DhcWeb.InvitationsControllerTest do
           "dateOfBirth" => "1990-01-01"
         })
 
-      assert %{"data" => %{"verified" => true, "verificationToken" => token}} =
-               json_response(conn, 200)
-
-      assert is_binary(token)
-      assert byte_size(token) > 20
+      assert %{"data" => %{"verified" => true}} = json_response(conn, 200)
+      refute Map.has_key?(json_response(conn, 200)["data"], "verificationToken")
+      assert get_resp_header(conn, "authorization") == []
     end
 
     test "POST /api/invitations/:id/verify rejects mismatched credentials", %{conn: conn} do
-      %{invitation_id: invitation_id} =
-        insert_invitation_with_profile(email: "verify@example.com", date_of_birth: ~D[1990-01-01])
+      invitation_id =
+        insert_invitation(email: "verify@example.com", date_of_birth: ~D[1990-01-01])
 
       conn =
         post(conn, "/api/invitations/#{invitation_id}/verify", %{
@@ -496,20 +462,44 @@ defmodule DhcWeb.InvitationsControllerTest do
                json_response(conn, 422)
     end
 
-    test "POST /api/invitations/:id/accept atomically creates member state", %{conn: conn} do
-      %{invitation_id: invitation_id, user_id: user_id} =
-        insert_invitation_with_profile(email: "accept@example.com", waitlist: true)
+    test "POST /api/invitations/:id/accept rejects a legacy token before Stripe", %{conn: conn} do
+      %{invitation_id: invitation_id} =
+        insert_invitation_with_profile(email: "legacy-token@example.com", waitlist: true)
 
       {:ok, token} =
         Dhc.Invitations.issue_verification_token(
           invitation_id,
-          "accept@example.com",
+          "legacy-token@example.com",
           ~D[1990-01-01]
         )
 
       conn =
         post(conn, "/api/invitations/#{invitation_id}/accept", %{
           "verificationToken" => token,
+          "nextOfKinName" => "Ada Lovelace",
+          "nextOfKinPhone" => "+353 1 000 0000",
+          "stripeConfirmationToken" => "ctok_must_not_be_used"
+        })
+
+      assert %{
+               "errors" => %{"detail" => "Discord verification is required before payment"}
+             } = json_response(conn, 409)
+
+      refute_receive {:create_customer, _}
+      refute_receive {:provision_membership, _}
+      refute Repo.exists?(Dhc.Onboarding.InvitationAcceptanceAttempt)
+    end
+
+    test "POST /api/invitations/:id/accept atomically creates member state", %{conn: conn} do
+      %{invitation_id: invitation_id, user_id: user_id} =
+        insert_invitation_with_profile(email: "accept@example.com", waitlist: true)
+
+      continuation_id = verified_continuation_for(invitation_id)
+
+      conn =
+        conn
+        |> put_req_header("x-onboarding-continuation", continuation_id)
+        |> post("/api/invitations/#{invitation_id}/accept", %{
           "nextOfKinName" => "Ada Lovelace",
           "nextOfKinPhone" => "+353 1 000 0000",
           "stripeConfirmationToken" => "ctok_test"
@@ -520,9 +510,9 @@ defmodule DhcWeb.InvitationsControllerTest do
       # The customer_id pre-attached by insert_invitation_with_profile/1 is
       # the one acceptance passes to the payment processor (no
       # create_customer call when stripe_customer_id is already set).
-      refute_receive {:stripe_create_customer, _}
+      refute_receive {:create_customer, _}
 
-      assert_receive {:stripe_complete,
+      assert_receive {:provision_membership,
                       %{
                         customer_id: "cus_accept",
                         confirmation_token: "ctok_test",
@@ -589,16 +579,12 @@ defmodule DhcWeb.InvitationsControllerTest do
         set: [stripe_customer_id: nil]
       )
 
-      {:ok, token} =
-        Dhc.Invitations.issue_verification_token(
-          invitation_id,
-          "no-customer@example.com",
-          ~D[1990-01-01]
-        )
+      continuation_id = verified_continuation_for(invitation_id)
 
       conn =
-        post(conn, "/api/invitations/#{invitation_id}/accept", %{
-          "verificationToken" => token,
+        conn
+        |> put_req_header("x-onboarding-continuation", continuation_id)
+        |> post("/api/invitations/#{invitation_id}/accept", %{
           "nextOfKinName" => "Ada Lovelace",
           "nextOfKinPhone" => "+353 1 000 0000",
           "stripeConfirmationToken" => "ctok_test"
@@ -606,8 +592,8 @@ defmodule DhcWeb.InvitationsControllerTest do
 
       assert %{"data" => %{"accepted" => true, "memberId" => ^user_id}} = json_response(conn, 200)
 
-      assert_receive {:stripe_create_customer, %{email: "no-customer@example.com"}}
-      assert_receive {:stripe_complete, %{customer_id: "cus_accept"}}
+      assert_receive {:create_customer, %{email: "no-customer@example.com"}}
+      assert_receive {:provision_membership, %{customer_id: "cus_accept"}}
 
       assert Repo.get!(Invitation, invitation_id).status == "accepted"
     end
@@ -616,28 +602,24 @@ defmodule DhcWeb.InvitationsControllerTest do
       %{invitation_id: invitation_id, user_id: user_id} =
         insert_invitation_with_profile(email: "stripe-fail@example.com", waitlist: true)
 
-      Application.put_env(:dhc, :invitation_payment_result, {:error, :card_declined})
+      Application.put_env(:dhc, :onboarding_stripe_result, {:error, :card_declined})
 
-      {:ok, token} =
-        Dhc.Invitations.issue_verification_token(
-          invitation_id,
-          "stripe-fail@example.com",
-          ~D[1990-01-01]
-        )
+      continuation_id = verified_continuation_for(invitation_id)
 
       conn =
-        post(conn, "/api/invitations/#{invitation_id}/accept", %{
-          "verificationToken" => token,
+        conn
+        |> put_req_header("x-onboarding-continuation", continuation_id)
+        |> post("/api/invitations/#{invitation_id}/accept", %{
           "nextOfKinName" => "Ada Lovelace",
           "nextOfKinPhone" => "+353 1 000 0000",
-          "stripeConfirmationToken" => "ctok_declined"
+          "stripeConfirmationToken" => "ctok_must_not_be_used"
         })
 
       assert %{"errors" => %{"detail" => "Payment could not be completed"}} =
                json_response(conn, 402)
 
-      assert_receive {:stripe_complete, %{confirmation_token: "ctok_declined"}}
-      assert_receive {:stripe_cancel_membership, %{}}
+      assert_receive {:provision_membership, %{confirmation_token: "ctok_must_not_be_used"}}
+      assert_receive {:cancel_membership, _stripe_state}
 
       assert Repo.get!(Invitation, invitation_id).status == "pending"
 
@@ -661,16 +643,12 @@ defmodule DhcWeb.InvitationsControllerTest do
       %{invitation_id: invitation_id} =
         insert_invitation_with_profile(email: "blank-accept@example.com", waitlist: true)
 
-      {:ok, token} =
-        Dhc.Invitations.issue_verification_token(
-          invitation_id,
-          "blank-accept@example.com",
-          ~D[1990-01-01]
-        )
+      continuation_id = verified_continuation_for(invitation_id)
 
       conn =
-        post(conn, "/api/invitations/#{invitation_id}/accept", %{
-          "verificationToken" => token,
+        conn
+        |> put_req_header("x-onboarding-continuation", continuation_id)
+        |> post("/api/invitations/#{invitation_id}/accept", %{
           "nextOfKinName" => "  ",
           "nextOfKinPhone" => "+353 1 000 0000",
           "stripeConfirmationToken" => "ctok_test"
@@ -687,7 +665,7 @@ defmodule DhcWeb.InvitationsControllerTest do
                  select: w.status
              ) == "invited"
 
-      refute_receive {:stripe_complete, _attrs}
+      refute_receive {:provision_membership, _attrs}
     end
 
     test "POST /api/invitations/:id/accept rolls back when member creation fails", %{
@@ -695,6 +673,8 @@ defmodule DhcWeb.InvitationsControllerTest do
     } do
       %{invitation_id: invitation_id, user_id: user_id} =
         insert_invitation_with_profile(email: "rollback@example.com", waitlist: true)
+
+      continuation_id = verified_continuation_for(invitation_id)
 
       # Pre-existing Principal/Member records for the prospective Principal id —
       # acceptance must detect this and roll back as :invalid_invitation
@@ -724,16 +704,10 @@ defmodule DhcWeb.InvitationsControllerTest do
         additional_data: %{}
       })
 
-      {:ok, token} =
-        Dhc.Invitations.issue_verification_token(
-          invitation_id,
-          "rollback@example.com",
-          ~D[1990-01-01]
-        )
-
       conn =
-        post(conn, "/api/invitations/#{invitation_id}/accept", %{
-          "verificationToken" => token,
+        conn
+        |> put_req_header("x-onboarding-continuation", continuation_id)
+        |> post("/api/invitations/#{invitation_id}/accept", %{
           "nextOfKinName" => "Ada Lovelace",
           "nextOfKinPhone" => "+353 1 000 0000",
           "stripeConfirmationToken" => "ctok_test"
@@ -757,7 +731,7 @@ defmodule DhcWeb.InvitationsControllerTest do
 
       # The payment processor was never called — the replay check runs
       # before Stripe customer / payment work.
-      refute_receive {:stripe_complete, _attrs}
+      refute_receive {:provision_membership, _attrs}
     end
 
     test "POST /api/invitations/:id/accept is idempotent on replay (status flip is the guard)",
@@ -765,33 +739,32 @@ defmodule DhcWeb.InvitationsControllerTest do
       %{invitation_id: invitation_id} =
         insert_invitation_with_profile(email: "replay@example.com", waitlist: true)
 
-      {:ok, token} =
-        Dhc.Invitations.issue_verification_token(
-          invitation_id,
-          "replay@example.com",
-          ~D[1990-01-01]
-        )
+      continuation_id = verified_continuation_for(invitation_id)
 
       body = %{
-        "verificationToken" => token,
         "nextOfKinName" => "Ada Lovelace",
         "nextOfKinPhone" => "+353 1 000 0000",
         "stripeConfirmationToken" => "ctok_test"
       }
 
       assert %{"data" => %{"accepted" => true}} =
-               json_response(post(conn, "/api/invitations/#{invitation_id}/accept", body), 200)
+               conn
+               |> put_req_header("x-onboarding-continuation", continuation_id)
+               |> post("/api/invitations/#{invitation_id}/accept", body)
+               |> json_response(200)
 
-      # Second acceptance with the same (still-valid) verification token
-      # finds the invitation no longer pending and rolls back. The spec
-      # (ADR 0010) calls the invitation-status flip the replay defense; the
-      # token itself is not single-use.
+      # A second acceptance with the consumed Continuation finds the
+      # invitation no longer pending and rolls back. The invitation-status
+      # flip remains the final replay defense.
       assert %{"errors" => %{"detail" => "Invitation cannot be accepted"}} =
-               json_response(post(conn, "/api/invitations/#{invitation_id}/accept", body), 422)
+               conn
+               |> put_req_header("x-onboarding-continuation", continuation_id)
+               |> post("/api/invitations/#{invitation_id}/accept", body)
+               |> json_response(422)
     end
   end
 
-  describe "ALE-176: invitation acceptance reuses the waitlist UserProfile" do
+  describe "invitation acceptance reuses the waitlist UserProfile" do
     # The waitlist intake (`Dhc.Waitlist.create_entry/1`) creates an inactive
     # `user_profiles` row carrying the intake-captured fields (first/last/DOB/
     # gender/pronouns/phone/social_media_consent/medical_conditions) plus an
@@ -807,7 +780,7 @@ defmodule DhcWeb.InvitationsControllerTest do
     # once the reuse path lands, confirming the duplicate behavior changed.
     # The companion tests assert the desired reuse + guardian preservation.
 
-    test "acceptance does not create a duplicate UserProfile (characterization: red pre-ALE-176, green after)",
+    test "acceptance does not create a duplicate UserProfile",
          %{conn: conn} do
       %{invitation_id: invitation_id, user_id: user_id, waitlist_id: waitlist_id} =
         insert_invitation_from_waitlist_entry(
@@ -823,16 +796,12 @@ defmodule DhcWeb.InvitationsControllerTest do
           ]
         )
 
-      {:ok, token} =
-        Dhc.Invitations.issue_verification_token(
-          invitation_id,
-          "reuse@example.com",
-          ~D[1990-01-01]
-        )
+      continuation_id = verified_continuation_for(invitation_id)
 
       conn =
-        post(conn, "/api/invitations/#{invitation_id}/accept", %{
-          "verificationToken" => token,
+        conn
+        |> put_req_header("x-onboarding-continuation", continuation_id)
+        |> post("/api/invitations/#{invitation_id}/accept", %{
           "nextOfKinName" => "Ada Lovelace",
           "nextOfKinPhone" => "+353 1 000 0000",
           "stripeConfirmationToken" => "ctok_test"
@@ -846,7 +815,7 @@ defmodule DhcWeb.InvitationsControllerTest do
       profiles =
         from(up in UserProfile, where: up.waitlist_id == ^waitlist_id) |> Repo.all()
 
-      assert length(profiles) == 1
+      assert [_profile] = profiles
 
       reused = hd(profiles)
 
@@ -883,16 +852,12 @@ defmodule DhcWeb.InvitationsControllerTest do
           intake: [guardian: true]
         )
 
-      {:ok, token} =
-        Dhc.Invitations.issue_verification_token(
-          invitation_id,
-          "guardian@example.com",
-          ~D[1990-01-01]
-        )
+      continuation_id = verified_continuation_for(invitation_id)
 
       conn =
-        post(conn, "/api/invitations/#{invitation_id}/accept", %{
-          "verificationToken" => token,
+        conn
+        |> put_req_header("x-onboarding-continuation", continuation_id)
+        |> post("/api/invitations/#{invitation_id}/accept", %{
           "nextOfKinName" => "Ada Lovelace",
           "nextOfKinPhone" => "+353 1 000 0000",
           "stripeConfirmationToken" => "ctok_test"
@@ -1030,6 +995,25 @@ defmodule DhcWeb.InvitationsControllerTest do
       |> Repo.insert()
 
     id
+  end
+
+  defp verified_continuation_for(invitation_id) do
+    invitation = Repo.get!(Invitation, invitation_id)
+
+    {:ok, state} =
+      Dhc.Onboarding.start_acceptance(
+        invitation.id,
+        invitation.email,
+        Date.to_iso8601(invitation.date_of_birth)
+      )
+
+    {:ok, %{state: "discordVerified"}} =
+      Dhc.Onboarding.verify_discord(state.continuation_id, %{
+        "sub" => "controller-subject-#{System.unique_integer([:positive])}",
+        "preferred_username" => "controller-member"
+      })
+
+    state.continuation_id
   end
 
   defp insert_invitation_with_profile(attrs) do

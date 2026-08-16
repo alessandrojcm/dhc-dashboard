@@ -3,24 +3,21 @@ import {
 	completeExternalWorkshopRegistration,
 	createExternalWorkshopCheckoutSession,
 	getExternalWorkshopRegistrationGate,
+	type ExternalWorkshopRegistrationClient,
 } from "./external-workshop-registration";
 
-const {
-	workshopsCompleteExternalRegistration,
-	workshopsCreateExternalCheckoutSession,
-	workshopsExternalRegistrationGate,
-} = vi.hoisted(() => ({
-	workshopsCompleteExternalRegistration: vi.fn(),
-	workshopsCreateExternalCheckoutSession: vi.fn(),
-	workshopsExternalRegistrationGate: vi.fn(),
-}));
+const workshopsCompleteExternalRegistration =
+	vi.fn<ExternalWorkshopRegistrationClient["completeRegistration"]>();
+const workshopsCreateExternalCheckoutSession =
+	vi.fn<ExternalWorkshopRegistrationClient["createCheckoutSession"]>();
+const workshopsExternalRegistrationGate =
+	vi.fn<ExternalWorkshopRegistrationClient["registrationGate"]>();
 
-vi.mock("@dhc/api-client", async (importOriginal) => ({
-	...(await importOriginal<typeof import("@dhc/api-client")>()),
-	workshopsCompleteExternalRegistration,
-	workshopsCreateExternalCheckoutSession,
-	workshopsExternalRegistrationGate,
-}));
+const client: ExternalWorkshopRegistrationClient = {
+	completeRegistration: workshopsCompleteExternalRegistration,
+	createCheckoutSession: workshopsCreateExternalCheckoutSession,
+	registrationGate: workshopsExternalRegistrationGate,
+};
 
 describe("external Workshop registration API", () => {
 	beforeEach(() => vi.clearAllMocks());
@@ -30,12 +27,23 @@ describe("external Workshop registration API", () => {
 			data: {
 				data: {
 					canRegister: true,
-					workshop: { id: "workshop-1", title: "Public Workshop" },
+					workshop: {
+						id: "workshop-1",
+						title: "Public Workshop",
+						startDate: "2026-08-20T10:00:00Z",
+						endDate: "2026-08-20T12:00:00Z",
+						location: "Dublin",
+						priceNonMember: 2500,
+						maxCapacity: 20,
+					},
 				},
 			},
 		});
 
-		const result = await getExternalWorkshopRegistrationGate("workshop-1");
+		const result = await getExternalWorkshopRegistrationGate(
+			"workshop-1",
+			client,
+		);
 
 		expect(workshopsExternalRegistrationGate).toHaveBeenCalledWith({
 			baseUrl: "http://localhost:4000/api",
@@ -50,7 +58,7 @@ describe("external Workshop registration API", () => {
 		});
 
 		await expect(
-			getExternalWorkshopRegistrationGate("workshop-1"),
+			getExternalWorkshopRegistrationGate("workshop-1", client),
 		).resolves.toEqual({ canRegister: false, reason: "FULL" });
 	});
 
@@ -62,7 +70,7 @@ describe("external Workshop registration API", () => {
 		});
 
 		await expect(
-			completeExternalWorkshopRegistration("workshop-1", "cs_paid"),
+			completeExternalWorkshopRegistration("workshop-1", "cs_paid", client),
 		).resolves.toEqual({ id: "registration-1", status: "confirmed" });
 		expect(workshopsCompleteExternalRegistration).toHaveBeenCalledWith({
 			baseUrl: "http://localhost:4000/api",
@@ -81,7 +89,7 @@ describe("external Workshop registration API", () => {
 		});
 
 		await expect(
-			completeExternalWorkshopRegistration("workshop-1", "cs_paid"),
+			completeExternalWorkshopRegistration("workshop-1", "cs_paid", client),
 		).rejects.toMatchObject({ code: "WORKSHOP_FULL" });
 	});
 
@@ -95,6 +103,7 @@ describe("external Workshop registration API", () => {
 				"workshop-1",
 				"7f8f909d-f2d8-4cc4-bcb4-2f31097f7903",
 				"https://example.com/confirmation?session_id={CHECKOUT_SESSION_ID}",
+				client,
 			),
 		).rejects.toMatchObject({ code: "PAYMENT_FAILED" });
 	});

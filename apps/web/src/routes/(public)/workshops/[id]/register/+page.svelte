@@ -41,7 +41,7 @@ onMount(() => {
 			return;
 		}
 
-		if (typeof data.checkoutClientSecret !== "string") {
+		if (!data.checkoutClientSecret) {
 			flowError =
 				"Failed to initialize checkout. Please refresh and try again.";
 			checkoutInitializing = false;

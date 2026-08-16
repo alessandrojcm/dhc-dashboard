@@ -1,10 +1,8 @@
 <script lang="ts">
-import { page } from "$app/state";
 import { createQuery, useQueryClient } from "@tanstack/svelte-query";
 import {
 	workshopsAttendeesOptions,
 	workshopsAttendeesQueryKey,
-	type WorkshopAttendeesResponse,
 } from "@dhc/api-client";
 import {
 	Card,
@@ -15,7 +13,7 @@ import {
 import AttendeeManager from "$lib/components/workshops/attendee-manager.svelte";
 
 let { data } = $props();
-const workshopId = page.params.id!;
+const workshopId = $derived(data.attendeesResponse.data.workshop.id);
 const queryClient = useQueryClient();
 
 // Single Phoenix read (`GET /api/workshops/{id}/attendees`) via the generated
@@ -28,7 +26,7 @@ const queryClient = useQueryClient();
 // join shapes). `initialData` is the SSR envelope from `+page.server.ts`.
 const attendeesQuery = createQuery(() => ({
 	...workshopsAttendeesOptions({ path: { id: workshopId } }),
-	initialData: data.attendeesResponse as WorkshopAttendeesResponse | undefined,
+	initialData: data.attendeesResponse,
 }));
 
 const payload = $derived(attendeesQuery.data?.data);

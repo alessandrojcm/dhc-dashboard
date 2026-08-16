@@ -25,6 +25,34 @@ defmodule Dhc.Invitations.Pricing do
   end
 
   @doc false
+  def membership_payment_plan(coupon_code \\ nil) do
+    with {:ok, prices} <- membership_price_ids(),
+         {:ok, promotion} <- resolve_promotion(coupon_code),
+         {:ok, details} <- pricing_details(prices, promotion) do
+      complimentary? =
+        migration_promotion?(promotion) or
+          Enum.all?(
+            [
+              details.prorated_monthly_price,
+              details.prorated_annual_price,
+              details.monthly_amount_due,
+              details.annual_amount_due
+            ],
+            &(&1 == 0)
+          )
+
+      {:ok,
+       %{
+         requirement: if(complimentary?, do: :complimentary, else: :paid),
+         monthly_price_id: prices.monthly.id,
+         annual_price_id: prices.annual.id,
+         promotion_code_id: promotion.promotion_code_id,
+         migration?: promotion.migration?
+       }}
+    end
+  end
+
+  @doc false
   def membership_price_ids do
     with {:ok, monthly} <- price_id_for_lookup_key(LookupKeys.monthly()),
          {:ok, annual} <- price_id_for_lookup_key(LookupKeys.annual()) do
@@ -61,32 +89,40 @@ defmodule Dhc.Invitations.Pricing do
     if trimmed == "" do
       resolve_promotion(nil)
     else
-      case Operations.get_promotion_codes(%{}, active: true, code: trimmed, limit: 1) do
-        {:ok, %{"data" => [%{"id" => id, "promotion" => %{"coupon" => coupon_id}} | _]}}
-        when is_binary(id) and is_binary(coupon_id) ->
-          if migration_code?(trimmed) do
-            {:ok,
-             %{
-               code: trimmed,
-               promotion_code_id: nil,
-               coupon: %{migration?: true},
-               migration?: true
-             }}
-          else
-            with {:ok, coupon} <- retrieve_coupon(coupon_id),
-                 :ok <- validate_coupon(coupon) do
-              {:ok, %{code: trimmed, promotion_code_id: id, coupon: coupon, migration?: false}}
-            end
-          end
+      fetch_promotion(trimmed)
+    end
+  end
 
-        {:ok, %{"data" => []}} ->
-          {:error, :invalid_promotion_code}
+  defp fetch_promotion(code) do
+    case Operations.get_promotion_codes(%{}, active: true, code: code, limit: 1) do
+      {:ok, %{"data" => [%{"id" => id, "promotion" => %{"coupon" => coupon_id}} | _]}}
+      when is_binary(id) and is_binary(coupon_id) ->
+        build_promotion(code, id, coupon_id)
 
-        {:error, reason} ->
-          {:error, {:stripe, reason}}
+      {:ok, %{"data" => []}} ->
+        {:error, :invalid_promotion_code}
 
-        _ ->
-          {:error, :invalid_promotion_code_response}
+      {:error, reason} ->
+        {:error, {:stripe, reason}}
+
+      _ ->
+        {:error, :invalid_promotion_code_response}
+    end
+  end
+
+  defp build_promotion(code, id, coupon_id) do
+    if migration_code?(code) do
+      {:ok,
+       %{
+         code: code,
+         promotion_code_id: nil,
+         coupon: %{migration?: true},
+         migration?: true
+       }}
+    else
+      with {:ok, coupon} <- retrieve_coupon(coupon_id),
+           :ok <- validate_coupon(coupon) do
+        {:ok, %{code: code, promotion_code_id: id, coupon: coupon, migration?: false}}
       end
     end
   end
@@ -195,6 +231,8 @@ defmodule Dhc.Invitations.Pricing do
          prorated_price: if(migration_promotion?(promotion), do: 0, else: prorated_price),
          monthly_fee: amount(next_month_invoice, "subtotal"),
          annual_fee: amount(next_january_invoice, "subtotal"),
+         monthly_amount_due: amount(next_month_invoice, "amount_due"),
+         annual_amount_due: amount(next_january_invoice, "amount_due"),
          discount_percentage: discount_percentage,
          coupon: promotion.code,
          discounted_monthly_fee:

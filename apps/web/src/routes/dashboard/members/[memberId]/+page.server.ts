@@ -5,11 +5,11 @@ import {
 } from "@dhc/api-client";
 import * as Sentry from "@sentry/sveltekit";
 import { error, type ServerLoadEvent } from "@sveltejs/kit";
-import { apiBaseUrl, apiClientOptions } from "$lib/server/api-client";
-import { invariant } from "$lib/server/invariant";
+import { apiClientOptions } from "$lib/server/api-client";
 import { getRolesFromSession, MEMBERS_ADMIN_ROLES } from "$lib/server/roles";
-import type { SocialMediaConsent } from "$lib/types.ts";
+import { SocialMediaConsent as SocialMediaConsentValues } from "$lib/types";
 import type { PageServerLoad } from "./$types";
+import * as v from "valibot";
 
 /**
  * ALE-164: the self-vs-admin check no longer reads the Supabase `user.id` —
@@ -19,13 +19,13 @@ import type { PageServerLoad } from "./$types";
  */
 async function canUpdateSettings(event: ServerLoadEvent): Promise<boolean> {
 	const { session } = await event.locals.safeGetSession();
-	invariant(session === null, "Unauthorized");
+	if (!session) error(401, "Unauthorized");
 	const roles = getRolesFromSession(session);
 	if (roles.intersection(MEMBERS_ADMIN_ROLES).size > 0) {
 		return true;
 	}
 	// Self-access: the requested member id matches the signed-in principal.
-	return event.params.memberId === session!.principal.id;
+	return event.params.memberId === session.principal.id;
 }
 
 export const load: PageServerLoad = async (event) => {
@@ -39,12 +39,16 @@ export const load: PageServerLoad = async (event) => {
 	try {
 		const canUpdate = await canUpdateSettings(event);
 		const apiOptions = apiClientOptions(cookies);
-		const memberResponse = await membersShow({
-			...apiOptions,
-			path: { memberId: params.memberId },
-			throwOnError: true,
-		});
+		const [memberResponse, optionsResponse] = await Promise.all([
+			membersShow({
+				...apiOptions,
+				path: { memberId: params.memberId },
+				throwOnError: true,
+			}),
+			membersOptions({ ...apiOptions, throwOnError: true }),
+		]);
 		const memberProfile = memberResponse.data.data;
+		const options = optionsResponse.data.data;
 
 		// Self-access fallback: a non-admin may view only their own profile.
 		// ALE-164: `session.principal.id` replaces the Supabase `user.id`.
@@ -52,11 +56,16 @@ export const load: PageServerLoad = async (event) => {
 			return error(404, "Member not found");
 		}
 
-		const options = membersOptions({ baseUrl: apiBaseUrl() }).then(
-			(response) => response.data?.data ?? { genders: [], weapons: [] },
+		const preferredWeaponResult = v.safeParse(
+			v.array(v.string()),
+			memberProfile.preferredWeapon ?? [],
 		);
-		const preferredWeapon = (memberProfile.preferredWeapon ?? []).filter(
-			(weapon): weapon is string => typeof weapon === "string",
+		const preferredWeapon = preferredWeaponResult.success
+			? preferredWeaponResult.output
+			: [];
+		const socialMediaConsentResult = v.safeParse(
+			v.enum(SocialMediaConsentValues),
+			memberProfile.socialMediaConsent,
 		);
 
 		return {
@@ -73,12 +82,12 @@ export const load: PageServerLoad = async (event) => {
 				nextOfKinNumber: memberProfile.nextOfKinPhone ?? "",
 				weapon: preferredWeapon,
 				insuranceFormSubmitted: memberProfile.insuranceFormSubmitted ?? false,
-				socialMediaConsent: memberProfile.socialMediaConsent as
-					| SocialMediaConsent
-					| undefined,
+				socialMediaConsent: socialMediaConsentResult.success
+					? socialMediaConsentResult.output
+					: undefined,
 			},
-			genders: options.then((data) => data.genders),
-			weapons: options.then((data) => data.weapons),
+			genders: options.genders,
+			weapons: options.weapons,
 			insuranceFormLink: membersInsuranceForm({
 				...apiOptions,
 			})

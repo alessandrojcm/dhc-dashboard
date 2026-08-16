@@ -4,15 +4,11 @@ import {
 	workshopsCompleteRegistration,
 	workshopsCreateRegistrationPaymentIntent,
 	workshopsToggleInterest,
-	type ApiErrorResponse,
 } from "@dhc/api-client";
 import { error } from "@sveltejs/kit";
 import * as v from "valibot";
 import { apiClientOptions } from "$lib/server/api-client";
-
-function apiErrorMessage(error: unknown, fallback: string) {
-	return (error as ApiErrorResponse | undefined)?.errors?.detail ?? fallback;
-}
+import { apiErrorMessage } from "$lib/server/api-error";
 
 export const toggleInterest = command(
 	v.pipe(v.string(), v.uuid()),

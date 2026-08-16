@@ -9,8 +9,10 @@ import {
 import { getTooltipContext, Tooltip as TooltipPrimitive } from "layerchart";
 import type { Snippet } from "svelte";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function defaultFormatter(value: any, _payload: TooltipPayload[]) {
+function defaultFormatter(
+	value: string | number | null,
+	_payload: TooltipPayload[],
+) {
 	return `${value}`;
 }
 
@@ -36,8 +38,11 @@ let {
 	labelKey?: string;
 	hideIndicator?: boolean;
 	labelClassName?: string;
-	labelFormatter?: // eslint-disable-next-line @typescript-eslint/no-explicit-any
-		| ((value: any, payload: TooltipPayload[]) => string | number | Snippet)
+	labelFormatter?:
+		| ((
+				value: string | number,
+				payload: TooltipPayload[],
+		  ) => string | number | Snippet)
 		| null;
 	formatter?: Snippet<
 		[
@@ -64,8 +69,8 @@ const formattedLabel = $derived.by(() => {
 	const itemConfig = getPayloadConfigFromPayload(chart.config, item, key);
 
 	const value =
-		!labelKey && typeof label === "string"
-			? (chart.config[label as keyof typeof chart.config]?.label ?? label)
+		!labelKey && label
+			? (chart.config[label]?.label ?? label)
 			: (itemConfig?.label ?? item.label);
 
 	if (value === undefined) return null;
@@ -81,7 +86,7 @@ const nestLabel = $derived(
 {#snippet TooltipLabel()}
 	{#if formattedLabel}
 		<div class={cn("font-medium", labelClassName)}>
-			{#if typeof formattedLabel === "function"}
+			{#if formattedLabel instanceof Function}
 				{@render formattedLabel()}
 			{:else}
 				{formattedLabel}

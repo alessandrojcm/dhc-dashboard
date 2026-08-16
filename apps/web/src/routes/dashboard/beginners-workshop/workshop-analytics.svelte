@@ -23,8 +23,6 @@ onMount(async () => {
 	}
 });
 
-type GenderDistributionItem = { gender: string; value: number };
-
 // Browser-side Phoenix read (`GET /api/waitlist/analytics`) via the generated
 // TanStack Query options. The Supabase JWT is attached by `configureClient`'s
 // `getAuthToken` hook; authz is enforced by Phoenix's `waitlist_admin_api`
@@ -38,7 +36,7 @@ const genderDistributionData = $derived.by(() => {
 	return analytics.genderDistribution.map((row) => ({
 		gender: row.gender,
 		value: row.value,
-	})) as GenderDistributionItem[];
+	}));
 });
 const ageDistribution = $derived.by(() => {
 	const result = analytics?.ageDistribution ?? [];

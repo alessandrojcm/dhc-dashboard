@@ -68,6 +68,22 @@ defmodule DhcWeb.Router do
       post "/reset", E2EHarnessController, :reset
       post "/seed/:scenario", E2EHarnessController, :seed
       post "/login", E2EHarnessController, :login
+      post "/audit/invitation-acceptance/:id", E2EHarnessController, :invitation_acceptance_audit
+
+      post "/onboarding/interrupt-next-finalization",
+           E2EHarnessController,
+           :interrupt_next_finalization
+
+      post "/probes/onboarding-isolation", E2EHarnessController, :start_onboarding_isolation_probe
+
+      get "/assertions/invitation-acceptance/:id",
+          E2EHarnessController,
+          :invitation_acceptance_assertion
+
+      post "/onboarding/clear-finalization-interruption",
+           E2EHarnessController,
+           :clear_finalization_interruption
+
       patch "/fixtures/:type/:id", E2EHarnessController, :update_fixture
       post "/fixtures/:type/:id", E2EHarnessController, :delete_fixture
     end
@@ -77,6 +93,29 @@ defmodule DhcWeb.Router do
     pipe_through :api
 
     get "/health", HealthController, :index
+    get "/onboarding/acceptance", OnboardingController, :show_acceptance
+    post "/onboarding/acceptance", OnboardingController, :start_acceptance
+    post "/onboarding/acceptance/continue", OnboardingController, :continue_acceptance
+    post "/onboarding/acceptance/payment", OnboardingController, :submit_payment
+    post "/onboarding/acceptance/retry", OnboardingController, :retry_acceptance
+    post "/onboarding/acceptance/discord/cancel", OnboardingController, :cancel_discord
+
+    get "/onboarding/invitation-acceptance",
+        OnboardingController,
+        :show_invitation_acceptance
+
+    post "/onboarding/invitation-acceptance/verify",
+         OnboardingController,
+         :verify_invitation_acceptance
+
+    post "/onboarding/invitation-acceptance/continue", OnboardingController, :continue_acceptance
+    post "/onboarding/invitation-acceptance/payment", OnboardingController, :submit_payment
+    post "/onboarding/invitation-acceptance/retry", OnboardingController, :retry_acceptance
+
+    post "/onboarding/invitation-acceptance/discord/cancel",
+         OnboardingController,
+         :cancel_discord
+
     get "/options", MembersController, :options
     get "/invitations/:id", InvitationsController, :show
     get "/invitations/:id/pricing", InvitationsController, :pricing
@@ -94,6 +133,12 @@ defmodule DhcWeb.Router do
     post "/workshops/:id/external-registration/complete",
          WorkshopsController,
          :complete_external_registration
+  end
+
+  scope "/api", DhcWeb do
+    pipe_through [:api, :discord_oauth_api]
+
+    get "/onboarding/invitation-acceptance/discord", OnboardingController, :start_discord
   end
 
   scope "/api", DhcWeb do

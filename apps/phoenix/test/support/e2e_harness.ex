@@ -4,8 +4,11 @@ defmodule Dhc.E2EHarness do
   import Ecto.Query
 
   alias Dhc.Auth
+  alias Dhc.Auth.ExternalIdentity
+  alias Dhc.Auth.Principal
   alias Dhc.Auth.PrincipalToken
   alias Dhc.Auth.UserRole
+
   alias Dhc.Invitations.Invitation
   alias Dhc.Inventory.Categories
   alias Dhc.Inventory.Containers
@@ -13,6 +16,9 @@ defmodule Dhc.E2EHarness do
   alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.MemberFixtures
   alias Dhc.Onboarding.InvitationAcceptanceAttempts
+  alias Dhc.Onboarding.InvitationAcceptanceAttempt
+  alias Dhc.Onboarding.InvitationAcceptanceDiscordContinuation
+  alias Dhc.Onboarding.InvitationAcceptanceDiscordSubjectClaim
   alias Dhc.Repo
   alias Dhc.Settings.Setting
   alias Dhc.Waitlist
@@ -22,6 +28,9 @@ defmodule Dhc.E2EHarness do
   alias Dhc.UserProfiles.UserProfile
 
   def reset! do
+    Dhc.Onboarding.Finalizer.E2E.reset!()
+    _ = Dhc.Onboarding.StripeAdapter.E2E.finish_probe()
+
     %{rows: [[tables]]} =
       Ecto.Adapters.SQL.query!(
         Repo,
@@ -47,6 +56,74 @@ defmodule Dhc.E2EHarness do
     ])
 
     :ok
+  end
+
+  def start_onboarding_isolation_probe,
+    do: Dhc.Onboarding.StripeAdapter.E2E.start_probe()
+
+  def invitation_acceptance_assertion(invitation_id) do
+    invitation = Repo.get!(Invitation, invitation_id)
+    principal_id = invitation.prospective_principal_id
+    attempt = Repo.get_by!(InvitationAcceptanceAttempt, invitation_id: invitation_id)
+
+    %{
+      attempts:
+        Repo.aggregate(
+          from(attempt in InvitationAcceptanceAttempt,
+            where: attempt.invitation_id == ^invitation_id
+          ),
+          :count
+        ),
+      continuations:
+        Repo.aggregate(
+          from(continuation in InvitationAcceptanceDiscordContinuation,
+            where: continuation.invitation_id == ^invitation_id
+          ),
+          :count
+        ),
+      externalIdentities:
+        Repo.aggregate(
+          from(identity in Dhc.Auth.ExternalIdentity,
+            where: identity.principal_id == ^principal_id
+          ),
+          :count
+        ),
+      magicLinksOrSessions:
+        Repo.aggregate(
+          from(token in PrincipalToken, where: token.principal_id == ^principal_id),
+          :count
+        ),
+      memberProfiles:
+        Repo.aggregate(
+          from(profile in MemberProfile, where: profile.id == ^principal_id),
+          :count
+        ),
+      obanJobs:
+        Repo.aggregate(
+          from(job in "oban_jobs",
+            where: fragment("?->>'attempt_id' = ?", field(job, :args), ^attempt.id)
+          ),
+          :count
+        ),
+      principals:
+        Repo.aggregate(
+          from(principal in Dhc.Auth.Principal, where: principal.id == ^principal_id),
+          :count
+        ),
+      roles:
+        Repo.aggregate(
+          from(role in UserRole, where: role.principal_id == ^principal_id),
+          :count
+        ),
+      stripeCustomerId: attempt.stripe_customer_id,
+      stripeInvocations: Dhc.Onboarding.StripeAdapter.E2E.finish_probe(),
+      stripeState: attempt.stripe_state,
+      userProfiles:
+        Repo.aggregate(
+          from(profile in UserProfile, where: profile.principal_id == ^principal_id),
+          :count
+        )
+    }
   end
 
   def seed("member", attrs) do
@@ -289,10 +366,164 @@ defmodule Dhc.E2EHarness do
     token
   end
 
+  def invitation_acceptance_audit(invitation_id) do
+    principal_id =
+      Repo.one!(
+        from(i in Invitation,
+          where: i.id == ^invitation_id,
+          select: i.prospective_principal_id
+        )
+      )
+
+    token_counts =
+      Repo.all(
+        from(t in PrincipalToken,
+          where: t.principal_id == ^principal_id,
+          group_by: t.context,
+          select: {t.context, count(t.id)}
+        )
+      )
+      |> Map.new()
+
+    attempts =
+      Repo.all(
+        from(a in InvitationAcceptanceAttempt,
+          where: a.invitation_id == ^invitation_id,
+          select: %{
+            id: a.id,
+            status: a.status,
+            stripe_customer_id: a.stripe_customer_id,
+            stripe_state: a.stripe_state,
+            last_error: a.last_error,
+            operation_active: not is_nil(a.operation_token)
+          }
+        )
+      )
+
+    attempt_ids = Enum.map(attempts, & &1.id)
+
+    recovery_jobs =
+      Repo.all(
+        from(job in Oban.Job,
+          where:
+            job.worker == "Dhc.Onboarding.Workers.AcceptanceRecoveryWorker" and
+              job.args["attempt_id"] in ^attempt_ids,
+          select: %{
+            id: job.id,
+            state: job.state,
+            args: job.args,
+            attempt: job.attempt,
+            scheduled_at: job.scheduled_at,
+            errors: job.errors
+          }
+        )
+      )
+
+    continuation_ids =
+      Repo.all(
+        from(c in InvitationAcceptanceDiscordContinuation,
+          where: c.invitation_id == ^invitation_id,
+          select: c.id
+        )
+      )
+
+    %{
+      sessionTokenCount: Map.get(token_counts, "session", 0),
+      magicLinkTokenCount: Map.get(token_counts, "login", 0),
+      principalCount:
+        Repo.aggregate(from(principal in Principal, where: principal.id == ^principal_id), :count),
+      userProfileCount:
+        Repo.aggregate(
+          from(profile in UserProfile, where: profile.principal_id == ^principal_id),
+          :count
+        ),
+      memberRoleCount:
+        Repo.aggregate(
+          from(role in UserRole,
+            where: role.principal_id == ^principal_id and role.role == "member"
+          ),
+          :count
+        ),
+      discordIdentityCount:
+        Repo.aggregate(
+          from(identity in ExternalIdentity,
+            where: identity.principal_id == ^principal_id and identity.provider == "discord"
+          ),
+          :count
+        ),
+      memberProfileCount:
+        Repo.aggregate(
+          from(profile in MemberProfile, where: profile.id == ^principal_id),
+          :count
+        ),
+      attemptCount: length(attempts),
+      attempts:
+        Enum.map(attempts, fn attempt ->
+          %{
+            id: attempt.id,
+            status: attempt.status,
+            lastError: attempt.last_error,
+            operationActive: attempt.operation_active
+          }
+        end),
+      recoveryJobs: recovery_jobs,
+      provisionedAttemptCount: Enum.count(attempts, &(&1.status == "provisioned")),
+      completedAttemptCount: Enum.count(attempts, &(&1.status == "completed")),
+      declinedAttemptCount: Enum.count(attempts, &(&1.status == "declined")),
+      continuationCount: length(continuation_ids),
+      subjectClaimCount:
+        Repo.aggregate(
+          from(claim in InvitationAcceptanceDiscordSubjectClaim,
+            where: claim.continuation_id in ^continuation_ids
+          ),
+          :count
+        ),
+      stripeCustomerCount:
+        attempts
+        |> Enum.map(& &1.stripe_customer_id)
+        |> Enum.reject(&is_nil/1)
+        |> Enum.uniq()
+        |> length(),
+      monthlySubscriptionCount: stripe_progress_count(attempts, "monthly_subscription_id"),
+      annualSubscriptionCount: stripe_progress_count(attempts, "annual_subscription_id")
+    }
+  end
+
+  def interrupt_next_finalization!(invitation_id) do
+    attempt =
+      Repo.one!(
+        from(a in InvitationAcceptanceAttempt,
+          where:
+            a.invitation_id == ^invitation_id and
+              a.status in ["processing", "payment_pending", "provisioned"],
+          order_by: [desc: a.created_at],
+          limit: 1
+        )
+      )
+
+    Dhc.Onboarding.Finalizer.E2E.interrupt!(attempt.id)
+  end
+
+  def clear_finalization_interruption!(invitation_id) do
+    from(a in InvitationAcceptanceAttempt,
+      where: a.invitation_id == ^invitation_id,
+      select: a.id
+    )
+    |> Repo.all()
+    |> Enum.each(&Dhc.Onboarding.Finalizer.E2E.clear!/1)
+
+    :ok
+  end
+
   defp delete_principal(id) do
     Repo.transaction(fn ->
       Repo.delete_all(from(t in PrincipalToken, where: t.principal_id == ^id))
       Repo.delete_all(from(r in UserRole, where: r.principal_id == ^id))
+
+      Repo.update_all(
+        from(i in Invitation, where: i.created_by_principal_id == ^id),
+        set: [created_by_principal_id: nil]
+      )
 
       profile_ids =
         Repo.all(from(p in UserProfile, where: p.principal_id == ^id, select: p.id))
@@ -303,6 +534,14 @@ defmodule Dhc.E2EHarness do
     end)
 
     :ok
+  end
+
+  defp stripe_progress_count(attempts, key) do
+    attempts
+    |> Enum.map(&Map.get(&1.stripe_state, key))
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
+    |> length()
   end
 
   defp parse_date(nil, fallback), do: fallback

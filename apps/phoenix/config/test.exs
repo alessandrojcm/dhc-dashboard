@@ -59,14 +59,33 @@ config :dhc, :loops_transactional_ids, %{
 }
 
 # Tests that exercise Stripe replace the client or use test-mode credentials.
-config :dhc, :stripe_secret_key, System.get_env("STRIPE_SECRET_KEY", "sk_test_stub_key")
+e2e_server? = System.get_env("E2E_SERVER") == "true"
+stripe_secret_key = System.get_env("STRIPE_SECRET_KEY")
+
+if e2e_server? and
+     (is_nil(stripe_secret_key) or not String.starts_with?(stripe_secret_key, "sk_test_")) do
+  raise "E2E_SERVER requires a non-empty Stripe test-mode STRIPE_SECRET_KEY (sk_test_...)"
+end
+
+config :dhc, :stripe_secret_key, stripe_secret_key || "sk_test_stub_key"
 config :dhc, :stripe_api_url, System.get_env("STRIPE_API_URL", "https://api.stripe.com")
 config :dhc, :stripe_api_version, "2025-10-29.clover"
 config :dhc, :stripe_webhook_secret, "whsec_test_signing_key_for_webhook_verification"
 config :dhc, :invitation_verification_token_salt, "invitation-verification-test"
+
+config :dhc,
+       :invitation_acceptance_subject_fingerprint_secret,
+       "acceptance-subject-fingerprint-test"
+
 config :dhc, :supabase_url, "https://supabase.example.com"
 config :dhc, :supabase_service_role_key, "test-service-role-key"
-config :dhc, :app_url, "http://localhost:5173"
+app_url = System.get_env("APP_URL", "http://localhost:5173")
+config :dhc, :app_url, app_url
+
+config :dhc,
+       :invitation_acceptance_discord_redirect_uri,
+       "#{app_url}/auth/discord/acceptance/callback"
+
 config :dhc, :auth_session_domain, nil
 config :dhc, :auth_session_secure, false
 config :dhc, :environment, :test
@@ -81,9 +100,23 @@ config :dhc, :e2e_harness, System.get_env("E2E_SERVER") == "true"
 config :dhc, :e2e_harness_key, System.get_env("E2E_HARNESS_KEY", "local-e2e-harness")
 config :dhc, :discord_oauth_strategy, Dhc.DiscordOAuthStub
 config :dhc, :discord_oauth, client_id: "test-client", client_secret: "test-secret"
+config :dhc, :discord_subject_fingerprint_key, "test-discord-subject-fingerprint-key"
 
-# Print only warnings and errors during test
-config :logger, level: :warning
+if e2e_server? do
+  config :dhc, :onboarding_stripe_adapter, Dhc.Onboarding.StripeAdapter.Live
+  config :dhc, :onboarding_finalizer, Dhc.Onboarding.Finalizer.E2E
+  config :dhc, :acceptance_recovery_delay_seconds, 1
+
+  config :dhc, Oban,
+    repo: Dhc.Repo,
+    testing: :disabled,
+    plugins: [],
+    queues: [invitations: 1, stripe: 1]
+end
+
+# Keep normal test output quiet, but expose Phoenix request and application logs
+# when Playwright owns the E2E server lifecycle.
+config :logger, level: if(e2e_server?, do: :info, else: :warning)
 
 # Initialize plugs at runtime for faster test compilation
 config :phoenix, :plug_init_mode, :runtime

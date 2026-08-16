@@ -10,6 +10,7 @@
 - E2E tests need unique data: `test-${Date.now()}-${randomSuffix}@example.com`
 - Use `dinero.js` for money, `day.js` for dates
 - TanStack Query uses thunk pattern: `createQuery(() => ({...}))`
+- Cookies required by SvelteKit remote functions must use `path: "/"`, because remote form requests are sent to `/_app/remote/...` rather than the page route. Delete those cookies with the same root path.
 - Stripe sync scheduling is Phoenix/Oban-owned through `Dhc.StripeSync.Worker`; the legacy Supabase `functions/stripe-sync` edge function and its manual E2E spec have been removed.
 - Members dashboard status filtering supports three states: `active`, `inactive`, `paused`; `paused` means `is_active = true` and `subscription_paused_until` is in the future.
 - `member_management_view` now exposes computed `membership_status` (`active`/`inactive`/`paused`) plus `paused_until` aliasing `member_profiles.subscription_paused_until` for member list filtering.

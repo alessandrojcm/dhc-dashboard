@@ -1,6 +1,6 @@
 <script lang="ts">
 import { Alert, AlertDescription, AlertTitle } from "$lib/components/ui/alert";
-import { Button } from "$lib/components/ui/button";
+import { Button, buttonVariants } from "$lib/components/ui/button";
 import { Card } from "$lib/components/ui/card";
 import DatePicker from "$lib/components/ui/date-picker.svelte";
 import * as Field from "$lib/components/ui/field";
@@ -14,8 +14,6 @@ import dayjs from "dayjs";
 import { Info, Loader, Plus, Trash2 } from "@lucide/svelte";
 import { submitBulkInvites, validateSingleInvite } from "./data.remote";
 import { adminInviteRemoteSchema } from "$lib/schemas/adminInvite";
-
-let isOpen = $state(false);
 
 // Local state for the invite list (since we're building it client-side)
 let invitesList = $state<
@@ -102,10 +100,10 @@ function handleBulkSubmit() {
 }
 </script>
 
-<Button variant="outline" onclick={() => (isOpen = true)}>Invite Members</Button
->
-
-<Sheet.Root bind:open={isOpen}>
+<Sheet.Root>
+	<Sheet.Trigger class={buttonVariants({ variant: "outline" })}
+		>Invite Members</Sheet.Trigger
+	>
 	<Sheet.Content class="w-[400px] sm:w-[540px] p-4 scroll-smooth" side="right">
 		<Sheet.Header>
 			<Sheet.Title>Invite Members</Sheet.Title>
@@ -151,7 +149,7 @@ function handleBulkSubmit() {
 								validateSingleInvite.fields.firstName.as("text")}
 							<Field.Label for={fieldProps.name}>First Name</Field.Label>
 							<Input {...fieldProps} id={fieldProps.name} />
-							{#each validateSingleInvite.fields.firstName.issues() as issue}
+							{#each validateSingleInvite.fields.firstName.issues() as issue (issue.message)}
 								<Field.Error>{issue.message}</Field.Error>
 							{/each}
 						</Field.Field>
@@ -162,7 +160,7 @@ function handleBulkSubmit() {
 								validateSingleInvite.fields.lastName.as("text")}
 							<Field.Label for={fieldProps.name}>Last Name</Field.Label>
 							<Input {...fieldProps} id={fieldProps.name} />
-							{#each validateSingleInvite.fields.lastName.issues() as issue}
+							{#each validateSingleInvite.fields.lastName.issues() as issue (issue.message)}
 								<Field.Error>{issue.message}</Field.Error>
 							{/each}
 						</Field.Field>
@@ -173,7 +171,7 @@ function handleBulkSubmit() {
 						{@const fieldProps = validateSingleInvite.fields.email.as("email")}
 						<Field.Label for={fieldProps.name}>Email</Field.Label>
 						<Input {...fieldProps} id={fieldProps.name} />
-						{#each validateSingleInvite.fields.email.issues() as issue}
+						{#each validateSingleInvite.fields.email.issues() as issue (issue.message)}
 							<Field.Error>{issue.message}</Field.Error>
 						{/each}
 					</Field.Field>
@@ -194,7 +192,7 @@ function handleBulkSubmit() {
 								);
 							}}
 						/>
-						{#each validateSingleInvite.fields.dateOfBirth.issues() as issue}
+						{#each validateSingleInvite.fields.dateOfBirth.issues() as issue (issue.message)}
 							<Field.Error>{issue.message}</Field.Error>
 						{/each}
 					</Field.Field>
@@ -211,7 +209,7 @@ function handleBulkSubmit() {
 							onChange={(v) =>
 								validateSingleInvite.fields.phoneNumber.set(String(v))}
 						/>
-						{#each validateSingleInvite.fields.phoneNumber.issues() as issue}
+						{#each validateSingleInvite.fields.phoneNumber.issues() as issue (issue.message)}
 							<Field.Error>{issue.message}</Field.Error>
 						{/each}
 					</Field.Field>

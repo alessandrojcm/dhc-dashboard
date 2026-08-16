@@ -4,20 +4,41 @@ import {
 	ANNUAL_FEE_LOOKUP,
 	MEMBERSHIP_FEE_LOOKUP_NAME,
 } from "../src/lib/server/constants";
-import { setupInvitedUser, stripeClient } from "./setupFunctions";
+import {
+	routeSuccessfulDiscordAcceptance,
+	setupInvitedUser,
+	stripeClient,
+} from "./setupFunctions";
+import { fillInvitationCredentials } from "./invitationSignup";
+import * as v from "valibot";
 
 type InvitedUser = Awaited<ReturnType<typeof setupInvitedUser>>;
+type StripeReference = string | { id: string } | null | undefined;
 
-function signupUrl(invitation: InvitedUser) {
-	return `/members/signup/${invitation.invitationId}?email=${encodeURIComponent(invitation.email)}&dateOfBirth=${encodeURIComponent(invitation.date_of_birth.format("YYYY-MM-DD"))}`;
+function stripeReferenceId(reference: StripeReference): string | undefined {
+	const stringReference = v.safeParse(v.string(), reference);
+	if (stringReference.success) return stringReference.output;
+
+	const objectReference = v.safeParse(v.object({ id: v.string() }), reference);
+	return objectReference.success ? objectReference.output.id : undefined;
 }
 
 async function openSignup(page: Page, invitation: InvitedUser) {
-	await page.goto(signupUrl(invitation));
+	await routeSuccessfulDiscordAcceptance(page, invitation.invitationId);
+	await page.goto(`/members/signup/${invitation.invitationId}`);
 	const verifyButton = page.getByRole("button", { name: /verify invitation/i });
 	await expect(verifyButton).toBeVisible();
 	await page.waitForLoadState("networkidle");
+	await fillInvitationCredentials(page, {
+		email: invitation.email,
+		dateOfBirth: invitation.date_of_birth.format("YYYY-MM-DD"),
+	});
 	await verifyButton.click();
+	await page.getByRole("link", { name: "Continue to Discord" }).click();
+	await expect(
+		page.getByRole("heading", { name: "Discord verified" }),
+	).toBeVisible();
+	await page.getByRole("button", { name: "Continue to payment" }).click();
 	await page.getByLabel(/next of kin$/i).waitFor({ state: "visible" });
 }
 
@@ -76,10 +97,7 @@ test.describe("Member Signup - Coupon Codes", () => {
 			if (promo.active) {
 				await stripeClient.promotionCodes.update(promo.id, { active: false });
 			}
-			const couponId =
-				typeof promo.promotion?.coupon === "string"
-					? promo.promotion.coupon
-					: promo.promotion?.coupon?.id;
+			const couponId = stripeReferenceId(promo.promotion?.coupon);
 			if (couponId) {
 				try {
 					await stripeClient.coupons.del(couponId);
@@ -102,6 +120,11 @@ test.describe("Member Signup - Coupon Codes", () => {
 		if (!annualPriceId || !monthlyPriceId) {
 			throw new Error("Could not find price IDs for membership fees");
 		}
+		const annualProductId = stripeReferenceId(annualPrices.data[0].product);
+		const monthlyProductId = stripeReferenceId(monthlyPrices.data[0].product);
+		if (!annualProductId || !monthlyProductId) {
+			throw new Error("Could not find product IDs for membership fees");
+		}
 
 		// Create coupons in Stripe
 		const [
@@ -119,7 +142,7 @@ test.describe("Member Signup - Coupon Codes", () => {
 				duration: "once",
 				name: "Annual Fee Test Discount",
 				applies_to: {
-					products: [annualPrices.data[0].product as string],
+					products: [annualProductId],
 				},
 			}),
 			// Coupon for monthly fee only - 15% off
@@ -128,7 +151,7 @@ test.describe("Member Signup - Coupon Codes", () => {
 				duration: "once",
 				name: "Monthly Fee Test Discount",
 				applies_to: {
-					products: [monthlyPrices.data[0].product as string],
+					products: [monthlyProductId],
 				},
 			}),
 			// Coupon for both fees - 10% off (permanent discount)
@@ -264,10 +287,7 @@ test.describe("Member Signup - Coupon Codes", () => {
 					active: false,
 				});
 
-				const couponId =
-					typeof promotion.promotion?.coupon === "string"
-						? promotion.promotion.coupon
-						: promotion.promotion?.coupon?.id;
+				const couponId = stripeReferenceId(promotion.promotion?.coupon);
 				if (couponId) {
 					await stripeClient.coupons.del(couponId);
 				}
@@ -283,16 +303,13 @@ test.describe("Member Signup - Coupon Codes", () => {
 	test.describe("Coupon application", () => {
 		let invitation: InvitedUser;
 
-		test.beforeAll(async () => {
-			invitation = await setupInvitedUser();
-		});
-
-		test.afterAll(async () => {
-			await invitation?.cleanUp();
-		});
-
 		test.beforeEach(async ({ page }) => {
+			invitation = await setupInvitedUser();
 			await openSignup(page, invitation);
+		});
+
+		test.afterEach(async () => {
+			await invitation?.cleanUp();
 		});
 
 		for (const coupon of [
@@ -415,7 +432,9 @@ test.describe("Member Signup - Coupon Codes", () => {
 			try {
 				await openSignup(page, invitation);
 				await page.getByLabel(/next of kin$/i).fill("John Doe");
-				await page.getByLabel(/next of kin phone number/i).fill("0838774532");
+				const phoneInput = page.getByLabel(/next of kin phone number/i);
+				await phoneInput.pressSequentially("0838774532", { delay: 50 });
+				await phoneInput.press("Tab");
 				await applyCoupon(page, coupon.code());
 				await expect(
 					page.getByText(`Discount applied: ${coupon.discount}`),
@@ -448,13 +467,11 @@ test.describe("Member Signup - Coupon Codes", () => {
 				);
 
 				await page.getByRole("button", { name: /sign up/i }).click();
+				await expect(page.getByText(/You are not signed in\./)).toBeVisible({
+					timeout: 30_000,
+				});
 				await expect(
-					page.getByText(
-						"Your membership has been successfully processed. Welcome to Dublin Hema Club! Sign in with your membership email to continue.",
-					),
-				).toBeVisible({ timeout: 30_000 });
-				await expect(
-					page.getByRole("link", { name: "Sign In" }),
+					page.getByRole("link", { name: "Go to sign in" }),
 				).toHaveAttribute("href", "/auth");
 
 				if (coupon.promotionId) {
@@ -474,15 +491,23 @@ test.describe("Member Signup - Coupon Codes", () => {
 
 					for (const subscription of subscriptions.data) {
 						const promotionIds = subscription.discounts.flatMap((discount) => {
-							if (typeof discount === "string" || !discount.promotion_code) {
+							const parsedDiscount = v.safeParse(
+								v.object({
+									promotion_code: v.optional(
+										v.nullable(
+											v.union([v.string(), v.object({ id: v.string() })]),
+										),
+									),
+								}),
+								discount,
+							);
+							if (!parsedDiscount.success) {
 								return [];
 							}
-
-							return [
-								typeof discount.promotion_code === "string"
-									? discount.promotion_code
-									: discount.promotion_code.id,
-							];
+							const promotionId = stripeReferenceId(
+								parsedDiscount.output.promotion_code,
+							);
+							return promotionId ? [promotionId] : [];
 						});
 
 						expect(promotionIds).toContain(coupon.promotionId());

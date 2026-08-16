@@ -27,7 +27,8 @@ mise run dev                      # 3. SvelteKit dev from apps/web
 # Testing
 mise run test-unit          # Vitest
 mise run test-browser       # Vitest Browser Mode component tests in Chromium
-mise run test-e2e           # Playwright; self-starts disposable PostgreSQL, Phoenix, and SvelteKit
+STRIPE_SECRET_KEY=sk_test_... mise run test-e2e
+                            # Playwright + real Stripe test mode; self-starts disposable PostgreSQL, Phoenix, and SvelteKit
 mise run check              # Svelte type check (NOT raw tsc)
 
 # Lint & format
@@ -37,6 +38,9 @@ mise run format             # Auto-format with Oxfmt
 
 Oxlint runs in both `apps/web` and `packages/api-client`; the generated API client
 under `packages/api-client/src/client/` is ignored. Oxfmt remains scoped to `apps/web`.
+The shared config loads the project-local anti-slop plugin from
+`tools/oxlint/anti-slop/`; keep `oxlint` and `@oxlint/plugins` on the same pinned
+version when upgrading it, and leave all anti-slop rules enabled at error severity.
 
 Playwright starts its Phoenix and SvelteKit processes through the internal
 `e2e-phoenix-server` and `e2e-web-server` mise tasks. Their task-local environment
@@ -54,6 +58,12 @@ the real templates. Web UI at `http://localhost:8025`, SMTP on
 in-memory and lost on container restart. A stopped Mailpit container is not an
 error: delivery failures log a warning and the job still succeeds.
 
+The E2E suite intentionally uses Stripe's real test API for invitation acceptance.
+It fails before startup unless `STRIPE_SECRET_KEY` starts with `sk_test_`. The test
+account must provide active `monthly_membership_fee` and `annual_membership_fee`
+lookup-key prices; coupon tests create unique promotion fixtures and clean them up.
+Never supply a live-mode key.
+
 ## Phoenix (in progress)
 
 Phoenix mise tasks override the root Supabase Docker `.env` database host and connect to host-local Supabase Postgres at `localhost:54322`.
@@ -70,6 +80,43 @@ mise run phx-console        # Start server inside IEx interactive shell
 mise run phx-migrate        # Run pending migrations
 mise run phx-rollback       # Rollback last migration
 mise run phx-gen-migration NAME  # Generate a new migration
+```
+
+### One-off Discord roster export and assignment review
+
+Export the existing guild roster once with `@discordjs/rest`, which handles
+Discord rate limits while the script paginates through the guild. The bot token
+and guild ID come only from the process environment. The script writes
+`roster.json` with mode `0600`; keep it restricted and delete it after the
+migration review window.
+
+```bash
+DISCORD_BOT_TOKEN=... \
+DISCORD_GUILD_ID=... \
+node scripts/discord-roster-export.mjs
+
+# Stage rows are a plain JSON array of
+# {"principal_id":"...","discord_user_id":"...","username_snapshot":"..."}.
+# The command prints the generated capture ID used by the later phases.
+cd apps/phoenix
+DISCORD_SUBJECT_FINGERPRINT_KEY=... \
+mix dhc.discord.assignments stage ../../roster.json /secure/path/stage-rows.json PREPARER_PRINCIPAL_ID
+
+# Review displays the selected roster evidence. Apply-review consumes a plain
+# array of {"assignment_id":"...","decision":"approve|reject"}.
+mix dhc.discord.assignments review CAPTURE_ID ../../roster.json REVIEWER_PRINCIPAL_ID
+DISCORD_SUBJECT_FINGERPRINT_KEY=... \
+mix dhc.discord.assignments apply-review CAPTURE_ID /secure/path/review-rows.json REVIEWER_PRINCIPAL_ID
+
+DISCORD_SUBJECT_FINGERPRINT_KEY=... \
+mix dhc.discord.assignments report CAPTURE_ID ../../roster.json
+```
+
+The separately authenticated operator supplies the preparer and reviewer IDs;
+the task authorizes both against current Member-admin roles in the database, and
+they must be different. The ID arguments are not authentication credentials.
+The roster exporter is throwaway migration tooling, not a recurring sync or
+Phoenix runtime task.
 
 # Code quality
 mise run phx-format         # Format all Elixir files
@@ -96,6 +143,12 @@ cd apps/phoenix && \
   STRIPE_SYNC_TEST_PRICE_ID=price_... \
   mix test test/dhc/stripe_sync/workers/worker_integration_test.exs --include integration
 ```
+
+Tests that use `Ecto.Adapters.SQL.Sandbox.unboxed_run/2` commit outside the
+per-test sandbox transaction and must explicitly delete every durable fixture
+in `on_exit/1`. If teardown must remove immutable Discord assignment audit rows,
+disable only `discord_assignment_reject_audit_mutation` for that deletion and
+always re-enable it in an `after` block.
 
 ### Sentry (production error tracking)
 
@@ -224,7 +277,7 @@ cd apps/phoenix && mix seed.members 25
 cd apps/phoenix && mix seed.committee_members ../../scripts/users.csv
 ```
 
-`mise` loads `.env` automatically; the seed Mix tasks do not load dotenv themselves. Keep `.env` up to date with the same Phoenix DB connection convention used by the app (`DATABASE_URL`, preferred), plus `PUBLIC_SUPABASE_URL`/`SUPABASE_URL` and `SERVICE_ROLE_KEY`/`SUPABASE_SERVICE_ROLE_KEY`. `seed.members` and `seed.committee_members` create Supabase auth users through the Supabase Admin API, then insert app DB rows. `seed.members` only creates Stripe customers when `STRIPE_SECRET_KEY` is set.
+`mise` loads `.env` automatically; the seed Mix tasks do not load dotenv themselves. Keep `.env` up to date with the same Phoenix DB connection convention used by the app (`DATABASE_URL`, preferred). `seed.members`, `seed.workshops`, and `seed.committee_members` create Phoenix Principals directly through `Dhc.Auth`. `seed.members` only creates Stripe customers when `STRIPE_SECRET_KEY` is set. The committee CSV is intentionally local and gitignored because it contains member data; pass its path explicitly when `scripts/users.csv` is not present.
 
 ## CI (full check)
 

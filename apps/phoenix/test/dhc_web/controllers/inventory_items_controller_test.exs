@@ -102,7 +102,7 @@ defmodule DhcWeb.InventoryItemsControllerTest do
     test "returns cursor-paginated items newest first with container/category summaries", %{
       conn: conn
     } do
-      category = insert_category!("ALE107 Masks")
+      category = insert_category!("Inventory Items Test Masks")
       container = create_container!(%{"name" => "Armory"})
       first = create_item!(item_payload(container, category, %{"notes" => "first"}))
       second = create_item!(item_payload(container, category, %{"notes" => "second"}))
@@ -127,7 +127,11 @@ defmodule DhcWeb.InventoryItemsControllerTest do
                "parent_container_id" => nil
              }
 
-      assert payload["category"] == %{"id" => to_uuid(category.id), "name" => "ALE107 Masks"}
+      assert payload["category"] == %{
+               "id" => to_uuid(category.id),
+               "name" => "Inventory Items Test Masks"
+             }
+
       assert payload["outForMaintenance"] == false
       assert payload["attributes"] == %{"brand" => "PBT"}
     end
@@ -200,7 +204,7 @@ defmodule DhcWeb.InventoryItemsControllerTest do
 
   describe "create" do
     test "creates an item and records created history for write roles", %{conn: conn} do
-      category = insert_category!("ALE107 Jackets")
+      category = insert_category!("Inventory Items Test Jackets")
       container = create_container!(%{"name" => "Rack"})
 
       conn =
@@ -240,7 +244,7 @@ defmodule DhcWeb.InventoryItemsControllerTest do
     end
 
     test "rejects negative, float, and huge integer quantities with 422", %{conn: conn} do
-      category = insert_category!("ALE107 Qty Edge")
+      category = insert_category!("Inventory Items Quantity Validation")
       container = create_container!(%{"name" => "Qty Box"})
 
       for bad_qty <- [-1, 2.5, 1_000_001] do
@@ -258,7 +262,7 @@ defmodule DhcWeb.InventoryItemsControllerTest do
     end
 
     test "rejects non-object attributes (string, array) with 422", %{conn: conn} do
-      category = insert_category!("ALE107 Attr Edge")
+      category = insert_category!("Inventory Items Attribute Validation")
       container = create_container!(%{"name" => "Attr Box"})
 
       for bad_attrs <- ["not-a-map", [1, 2, 3]] do
@@ -278,7 +282,7 @@ defmodule DhcWeb.InventoryItemsControllerTest do
 
   describe "show" do
     test "returns one item or 404", %{conn: conn} do
-      category = insert_category!("ALE107 Gorgets")
+      category = insert_category!("Inventory Items Test Gorgets")
       container = create_container!(%{"name" => "Shelf"})
       item = create_item!(item_payload(container, category, %{"notes" => "visible"}))
 
@@ -302,7 +306,7 @@ defmodule DhcWeb.InventoryItemsControllerTest do
 
   describe "update" do
     test "updates fields and records updated history", %{conn: conn} do
-      category = insert_category!("ALE107 Longswords")
+      category = insert_category!("Inventory Items Test Longswords")
       container = create_container!(%{"name" => "Wall"})
       item = create_item!(item_payload(container, category))
 
@@ -324,7 +328,7 @@ defmodule DhcWeb.InventoryItemsControllerTest do
     end
 
     test "records moved history when containerId changes", %{conn: conn} do
-      category = insert_category!("ALE107 Swords")
+      category = insert_category!("Inventory Items Test Swords")
       old = create_container!(%{"name" => "Old Box"})
       new = create_container!(%{"name" => "New Box"})
       item = create_item!(item_payload(old, category))

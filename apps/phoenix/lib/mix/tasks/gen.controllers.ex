@@ -128,13 +128,7 @@ defmodule Mix.Tasks.Gen.Controllers do
   def unique_tags(spec) do
     spec.paths
     |> Enum.flat_map(fn {_path, path_item} ->
-      @http_verbs
-      |> Enum.flat_map(fn verb ->
-        case Map.get(path_item, verb) do
-          %OpenApiSpex.Operation{tags: tags} when is_list(tags) -> tags
-          _ -> []
-        end
-      end)
+      Enum.flat_map(@http_verbs, &operation_tags(path_item, &1))
     end)
     |> Enum.uniq()
     |> Enum.sort()
@@ -148,12 +142,7 @@ defmodule Mix.Tasks.Gen.Controllers do
     spec.paths
     |> Enum.flat_map(fn {path, path_item} ->
       @http_verbs
-      |> Enum.filter(fn verb ->
-        case Map.get(path_item, verb) do
-          %OpenApiSpex.Operation{tags: tags} -> tag in (tags || [])
-          _ -> false
-        end
-      end)
+      |> Enum.filter(&operation_tagged?(path_item, &1, tag))
       |> Enum.map(fn verb ->
         %OpenApiSpex.Operation{} = operation = Map.get(path_item, verb)
 
@@ -167,18 +156,32 @@ defmodule Mix.Tasks.Gen.Controllers do
     end)
   end
 
+  defp operation_tags(path_item, verb) do
+    case Map.get(path_item, verb) do
+      %OpenApiSpex.Operation{tags: tags} when is_list(tags) -> tags
+      _ -> []
+    end
+  end
+
+  defp operation_tagged?(path_item, verb, tag) do
+    case Map.get(path_item, verb) do
+      %OpenApiSpex.Operation{tags: tags} -> tag in (tags || [])
+      _ -> false
+    end
+  end
+
   # ── File generation ──────────────────────────────────────────────────
 
   defp generate_controller(tag, spec, opts) do
     module_name = controller_module(tag)
     file_path = controller_file_path(tag)
 
-    unless write_file_permitted?(file_path, opts) do
-      Mix.shell().info([:yellow, "  skip ", :reset, file_path, " (already exists)"])
-    else
+    if write_file_permitted?(file_path, opts) do
       content = controller_content(module_name, tag, spec)
       write_file!(file_path, content)
       Mix.shell().info([:green, "  create ", :reset, file_path])
+    else
+      Mix.shell().info([:yellow, "  skip ", :reset, file_path, " (already exists)"])
     end
   end
 
@@ -186,38 +189,38 @@ defmodule Mix.Tasks.Gen.Controllers do
     module_name = json_module(tag)
     file_path = json_file_path(tag)
 
-    unless write_file_permitted?(file_path, opts) do
-      Mix.shell().info([:yellow, "  skip ", :reset, file_path, " (already exists)"])
-    else
+    if write_file_permitted?(file_path, opts) do
       content = json_renderer_content(module_name, tag, spec)
       write_file!(file_path, content)
       Mix.shell().info([:green, "  create ", :reset, file_path])
+    else
+      Mix.shell().info([:yellow, "  skip ", :reset, file_path, " (already exists)"])
     end
   end
 
   defp generate_contract_test(tag, spec, opts) do
     file_path = contract_test_file_path(tag)
 
-    unless write_file_permitted?(file_path, opts) do
-      Mix.shell().info([:yellow, "  skip ", :reset, file_path, " (already exists)"])
-    else
+    if write_file_permitted?(file_path, opts) do
       content = contract_test_content(tag, spec)
       write_file!(file_path, content)
       Mix.shell().info([:green, "  create ", :reset, file_path])
+    else
+      Mix.shell().info([:yellow, "  skip ", :reset, file_path, " (already exists)"])
     end
   end
 
   defp write_file_permitted?(file_path, opts) do
     full_path = Path.join(File.cwd!(), file_path)
 
-    if not File.exists?(full_path) do
-      true
-    else
+    if File.exists?(full_path) do
       case opts[:force] do
         :all -> true
         ^file_path -> true
         _ -> false
       end
+    else
+      true
     end
   end
 
@@ -313,9 +316,9 @@ defmodule Mix.Tasks.Gen.Controllers do
     changeset = changeset_code(op, tag, spec)
     has_body = not is_nil(op.operation.requestBody)
 
-    cond do
+    case action do
       # GET collection → index
-      action == "index" ->
+      "index" ->
         """
           @doc \"\"\"
           #{method_str} #{op.path}
@@ -327,8 +330,8 @@ defmodule Mix.Tasks.Gen.Controllers do
         """
 
       # GET single → show
-      action == "show" ->
-        id_param = path_id_param(op) || "id"
+      "show" ->
+        id_param = path_id_param_or_default(op)
 
         """
           @doc \"\"\"
@@ -341,8 +344,8 @@ defmodule Mix.Tasks.Gen.Controllers do
         """
 
       # POST collection → create
-      action == "create" ->
-        assigns = if has_body, do: "params", else: "_params"
+      "create" ->
+        assigns = params_binding(has_body)
 
         """
           @doc \"\"\"
@@ -359,8 +362,8 @@ defmodule Mix.Tasks.Gen.Controllers do
         """
 
       # DELETE single → delete
-      action == "delete" ->
-        id_param = path_id_param(op) || "id"
+      "delete" ->
+        id_param = path_id_param_or_default(op)
 
         """
           @doc \"\"\"
@@ -376,8 +379,8 @@ defmodule Mix.Tasks.Gen.Controllers do
         """
 
       # PUT/PATCH single → update
-      action == "update" ->
-        id_param = path_id_param(op) || "id"
+      "update" ->
+        id_param = path_id_param_or_default(op)
 
         """
           @doc \"\"\"
@@ -393,9 +396,9 @@ defmodule Mix.Tasks.Gen.Controllers do
         """
 
       # Non-REST (e.g. POST /resources/{id}/renew → renew)
-      true ->
-        id_param = path_id_param(op) || "id"
-        assigns = if has_body, do: "params", else: "_params"
+      _ ->
+        id_param = path_id_param_or_default(op)
+        assigns = params_binding(has_body)
 
         """
           @doc \"\"\"
@@ -411,6 +414,10 @@ defmodule Mix.Tasks.Gen.Controllers do
         """
     end
   end
+
+  defp path_id_param_or_default(op), do: path_id_param(op) || "id"
+  defp params_binding(true), do: "params"
+  defp params_binding(false), do: "_params"
 
   # ── JSON renderer module content ─────────────────────────────────────
 
@@ -500,12 +507,10 @@ defmodule Mix.Tasks.Gen.Controllers do
           |> Enum.map(&(elem(&1, 0) |> Atom.to_string() |> String.length()))
           |> Enum.max(fn -> 0 end)
 
-        fields
-        |> Enum.map(fn {name, _type} ->
+        Enum.map_join(fields, ",\n", fn {name, _type} ->
           pad = String.duplicate(" ", max_len - String.length(Atom.to_string(name)))
           "          #{name}:#{pad} #{r_var}.#{name}"
         end)
-        |> Enum.join(",\n")
     end
   end
 
@@ -533,20 +538,18 @@ defmodule Mix.Tasks.Gen.Controllers do
     http_method = op.method |> to_string() |> String.downcase()
 
     body =
-      cond do
-        op.operation.requestBody != nil ->
-          """
-              conn = #{http_method}(conn, "#{phx_path}", %{})
-              assert json_response(conn, #{status_code})
-              assert %{"data" => _} = json_response(conn, #{status_code})
-          """
-
-        true ->
-          """
-              conn = #{http_method}(conn, "#{phx_path}")
-              assert json_response(conn, #{status_code})
-              assert %{"data" => _} = json_response(conn, #{status_code})
-          """
+      if op.operation.requestBody != nil do
+        """
+            conn = #{http_method}(conn, "#{phx_path}", %{})
+            assert json_response(conn, #{status_code})
+            assert %{"data" => _} = json_response(conn, #{status_code})
+        """
+      else
+        """
+            conn = #{http_method}(conn, "#{phx_path}")
+            assert json_response(conn, #{status_code})
+            assert %{"data" => _} = json_response(conn, #{status_code})
+        """
       end
 
     """
@@ -635,35 +638,27 @@ defmodule Mix.Tasks.Gen.Controllers do
     segments = String.split(path, "/", trim: true)
     params = Enum.filter(segments, &param_segment?/1)
     has_trailing_param = segments != [] and param_segment?(List.last(segments))
+    shape = path_shape(params, has_trailing_param)
 
-    cond do
-      # GET with no path params → collection index
-      method == :get and params == [] ->
-        "index"
+    standard_action(method, shape) || custom_action(segments)
+  end
 
-      # GET with exactly one path param at the end → single resource show
-      method == :get and has_trailing_param and length(params) == 1 ->
-        "show"
+  defp path_shape([], _has_trailing_param), do: :collection
+  defp path_shape([_], true), do: :member
+  defp path_shape(_params, _has_trailing_param), do: :custom
 
-      # POST with no path params → create
-      method == :post and params == [] ->
-        "create"
+  defp standard_action(:get, :collection), do: "index"
+  defp standard_action(:get, :member), do: "show"
+  defp standard_action(:post, :collection), do: "create"
+  defp standard_action(method, :member) when method in [:put, :patch], do: "update"
+  defp standard_action(:delete, :member), do: "delete"
+  defp standard_action(_method, _shape), do: nil
 
-      # PUT/PATCH with exactly one path param at the end → update
-      method in [:put, :patch] and has_trailing_param and length(params) == 1 ->
-        "update"
-
-      # DELETE with exactly one path param at the end → delete
-      method == :delete and has_trailing_param and length(params) == 1 ->
-        "delete"
-
-      # Non-REST: use last non-parameter segment (e.g. POST /resources/{id}/renew → "renew")
-      true ->
-        segments
-        |> Enum.reject(&param_segment?/1)
-        |> List.last()
-        |> Kernel.||("action")
-    end
+  defp custom_action(segments) do
+    segments
+    |> Enum.reject(&param_segment?/1)
+    |> List.last()
+    |> Kernel.||("action")
   end
 
   # ── Tag extensions ───────────────────────────────────────────────────
@@ -788,12 +783,10 @@ defmodule Mix.Tasks.Gen.Controllers do
   Exposed for testing.
   """
   def pluralize(underscored) do
-    cond do
-      Regex.match?(~r/[^aeiou]y$/, underscored) ->
-        String.replace(underscored, ~r/y$/, "ies")
-
-      true ->
-        underscored <> "s"
+    if Regex.match?(~r/[^aeiou]y$/, underscored) do
+      String.replace(underscored, ~r/y$/, "ies")
+    else
+      underscored <> "s"
     end
   end
 
@@ -822,20 +815,20 @@ defmodule Mix.Tasks.Gen.Controllers do
       # If operationId specifies a standard REST action, prefer it over
       # the path-derived name (handles cases like GET /health/detailed
       # with operationId "health.show").
-      if op_action in ~w(index show create update delete) do
-        op_action
-      else
-        # Non-REST operationId: use it unless path derivation found a REST match
-        if derived in ~w(index show create update delete) do
-          derived
-        else
-          op_action
-        end
-      end
+      preferred_action(op_action, derived)
     else
       derived
     end
   end
+
+  defp preferred_action(op_action, _derived)
+       when op_action in ~w(index show create update delete),
+       do: op_action
+
+  defp preferred_action(_op_action, derived) when derived in ~w(index show create update delete),
+    do: derived
+
+  defp preferred_action(op_action, _derived), do: op_action
 
   # ── Path analysis helpers ────────────────────────────────────────────
 
@@ -963,8 +956,8 @@ defmodule Mix.Tasks.Gen.Controllers do
   end
 
   defp generate_changeset(fields, required, struct_module) do
-    cast_fields = fields |> Enum.map(&inspect/1) |> Enum.join(", ")
-    required_fields = required |> Enum.map(&inspect/1) |> Enum.join(", ")
+    cast_fields = Enum.map_join(fields, ", ", &inspect/1)
+    required_fields = Enum.map_join(required, ", ", &inspect/1)
 
     cast_line =
       if fields == [] do

@@ -1,7 +1,8 @@
 <script lang="ts">
 import type {
-	InventoryCategory,
 	InventoryAttributeDefinition,
+	InventoryAttributes,
+	InventoryAttributeValue,
 } from "$lib/types";
 import {
 	Card,
@@ -26,7 +27,7 @@ import { Label } from "$lib/components/ui/label";
 import { Alert, AlertDescription } from "$lib/components/ui/alert";
 import { buildContainerHierarchy } from "$lib/utils/inventory-form";
 import { createItem } from "../data.remote";
-import { onMount } from "svelte";
+import { onMount, untrack } from "svelte";
 
 let { data } = $props();
 
@@ -35,35 +36,36 @@ let attributeErrors = $state<Record<string, string>>({});
 let formError = $state<string | null>(null);
 
 // Local state for attributes (since they're dynamic)
-let attributes = $state<Record<string, unknown>>({});
-let categoryId = $state(data.initialData.category_id);
-let containerId = $state(data.initialData.container_id);
-let quantity = $state(data.initialData.quantity);
-let notes = $state(data.initialData.notes);
-let outForMaintenance = $state(data.initialData.out_for_maintenance);
+let attributes = $state<InventoryAttributes>({});
+let categoryId = $state(untrack(() => data.initialData.category_id));
+let containerId = $state(untrack(() => data.initialData.container_id));
+let quantity = $state(untrack(() => data.initialData.quantity));
+let notes = $state(untrack(() => data.initialData.notes));
+let outForMaintenance = $state(
+	untrack(() => data.initialData.out_for_maintenance),
+);
 
 onMount(() => {
 	createItem.fields.set({
 		container_id: data.initialData.container_id,
 		category_id: data.initialData.category_id,
-		attributes: data.initialData.attributes,
+		attributes: JSON.stringify(data.initialData.attributes),
 		quantity: data.initialData.quantity,
 		notes: data.initialData.notes,
 		out_for_maintenance: data.initialData.out_for_maintenance,
 	});
 });
 
-const hierarchicalContainers = buildContainerHierarchy(data.containers);
+const hierarchicalContainers = $derived(
+	buildContainerHierarchy(data.containers),
+);
 
 // Reactive category selection for dynamic attributes
 const selectedCategory = $derived(
-	data.categories.find((c) => c.id === categoryId) as
-		| InventoryCategory
-		| undefined,
+	data.categories.find((c) => c.id === categoryId),
 );
 const categoryAttributes = $derived(
-	(selectedCategory?.available_attributes as InventoryAttributeDefinition[]) ||
-		[],
+	selectedCategory?.available_attributes ?? [],
 );
 
 // Display names for selected items
@@ -84,22 +86,22 @@ function updateCategory(newCategoryId: string) {
 
 	// Reset attributes when category changes
 	attributes = {};
-	createItem.fields.attributes.set({});
+	createItem.fields.attributes.set("{}");
 
 	// Find the selected category
 	const category = data.categories.find((c) => c.id === newCategoryId);
 	if (!category) return;
 
 	// Initialize only required attributes or those with default values
-	const availableAttrs =
-		(category.available_attributes as InventoryAttributeDefinition[]) || [];
+	const availableAttrs: InventoryAttributeDefinition[] =
+		category.available_attributes;
 	availableAttrs.forEach((attr) => {
 		// Only set default value if explicitly provided
 		if (attr.default_value !== undefined) {
 			attributes[attr.name] = attr.default_value;
 		}
 	});
-	createItem.fields.attributes.set(attributes);
+	createItem.fields.attributes.set(JSON.stringify(attributes));
 }
 
 function updateContainer(newContainerId: string) {
@@ -107,10 +109,22 @@ function updateContainer(newContainerId: string) {
 	createItem.fields.container_id.set(newContainerId);
 }
 
-function updateAttribute(attrName: string, value: unknown) {
+function updateAttribute(attrName: string, value: InventoryAttributeValue) {
 	attributes[attrName] = value;
-	createItem.fields.attributes.set({ ...attributes });
+	createItem.fields.attributes.set(JSON.stringify(attributes));
 	clearAttributeError(attrName);
+}
+
+function attributeText(attrName: string): string {
+	const value = attributes[attrName];
+	return value === null || value === undefined ? "" : String(value);
+}
+
+function attributeNumber(attrName: string): number | "" {
+	const value = attributes[attrName];
+	if (value === null || value === undefined || value === "") return "";
+	const parsed = Number(value);
+	return Number.isFinite(parsed) ? parsed : "";
 }
 
 function clearAttributeError(attrName: string) {
@@ -172,7 +186,7 @@ function clearAttributeError(attrName: string) {
 								{/each}
 							</SelectContent>
 						</Select>
-						{#each createItem.fields.category_id.issues() as issue}
+						{#each createItem.fields.category_id.issues() as issue, index (`${issue.message}-${index}`)}
 							<Field.Error>{issue.message}</Field.Error>
 						{/each}
 					</Field.Field>
@@ -196,7 +210,7 @@ function clearAttributeError(attrName: string) {
 								{/each}
 							</SelectContent>
 						</Select>
-						{#each createItem.fields.container_id.issues() as issue}
+						{#each createItem.fields.container_id.issues() as issue, index (`${issue.message}-${index}`)}
 							<Field.Error>{issue.message}</Field.Error>
 						{/each}
 					</Field.Field>
@@ -215,7 +229,7 @@ function clearAttributeError(attrName: string) {
 								createItem.fields.quantity.set(quantity);
 							}}
 						/>
-						{#each createItem.fields.quantity.issues() as issue}
+						{#each createItem.fields.quantity.issues() as issue, index (`${issue.message}-${index}`)}
 							<Field.Error>{issue.message}</Field.Error>
 						{/each}
 					</Field.Field>
@@ -247,7 +261,7 @@ function clearAttributeError(attrName: string) {
 						placeholder="Optional notes about this item"
 						rows={3}
 					/>
-					{#each createItem.fields.notes.issues() as issue}
+					{#each createItem.fields.notes.issues() as issue, index (`${issue.message}-${index}`)}
 						<Field.Error>{issue.message}</Field.Error>
 					{/each}
 				</Field.Field>
@@ -285,7 +299,7 @@ function clearAttributeError(attrName: string) {
 											{#if attr.type === "text"}
 												<Input
 													id={attr.name}
-													value={(attributes[attr.name] as string) || ""}
+													value={attributeText(attr.name)}
 													placeholder={attr.label}
 													class={attributeErrors[attr.name]
 														? "border-destructive focus-visible:ring-destructive"
@@ -300,7 +314,7 @@ function clearAttributeError(attrName: string) {
 												<Input
 													id={attr.name}
 													type="number"
-													value={(attributes[attr.name] as number) || ""}
+													value={attributeNumber(attr.name)}
 													placeholder={attr.label}
 													class={attributeErrors[attr.name]
 														? "border-destructive"
@@ -314,7 +328,7 @@ function clearAttributeError(attrName: string) {
 											{:else if attr.type === "select" && attr.options}
 												<Select
 													type="single"
-													value={(attributes[attr.name] as string) || undefined}
+													value={attributeText(attr.name) || undefined}
 													name="attributes.{attr.name}"
 													onValueChange={(value) =>
 														updateAttribute(attr.name, value)}

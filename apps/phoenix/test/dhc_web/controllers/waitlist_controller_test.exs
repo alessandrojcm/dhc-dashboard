@@ -96,7 +96,7 @@ defmodule DhcWeb.WaitlistControllerTest do
       assert %{"errors" => %{"detail" => "Insufficient role"}} = json_response(conn, 403)
     end
 
-    test "returns 422 when isOpen is missing or not boolean", %{conn: conn} do
+    test "returns 422 when isOpen is missing or not boolean", %{conn: _conn} do
       for payload <- [%{}, %{"isOpen" => "true"}] do
         conn =
           build_conn()
@@ -513,6 +513,7 @@ defmodule DhcWeb.WaitlistControllerTest do
 
     test "rejects a minor with empty guardian fields with 422", %{conn: conn} do
       set_waitlist_open(true)
+      persisted_before = persistence_counts()
 
       conn =
         post(
@@ -529,12 +530,12 @@ defmodule DhcWeb.WaitlistControllerTest do
       assert %{"errors" => _} = json_response(conn, 422)
 
       # Nothing was persisted — neither the waitlist entry nor the profile.
-      assert Repo.aggregate(WaitlistEntry, :count) == 0
-      assert Repo.aggregate(UserProfile, :count) == 0
+      assert persistence_counts() == persisted_before
     end
 
     test "rejects a minor with guardian fields omitted entirely with 422", %{conn: conn} do
       set_waitlist_open(true)
+      persisted_before = persistence_counts()
 
       conn =
         post(
@@ -545,8 +546,7 @@ defmodule DhcWeb.WaitlistControllerTest do
 
       assert %{"errors" => _} = json_response(conn, 422)
 
-      assert Repo.aggregate(WaitlistEntry, :count) == 0
-      assert Repo.aggregate(UserProfile, :count) == 0
+      assert persistence_counts() == persisted_before
     end
 
     test "returns 409 for duplicate email", %{conn: conn} do
@@ -572,6 +572,7 @@ defmodule DhcWeb.WaitlistControllerTest do
 
     test "rejects an under-16 date of birth with 422", %{conn: conn} do
       set_waitlist_open(true)
+      persisted_before = persistence_counts()
 
       conn =
         post(conn, "/api/waitlist/entries", adult_payload(dateOfBirth: underage_birth_date()))
@@ -579,15 +580,16 @@ defmodule DhcWeb.WaitlistControllerTest do
       assert %{"errors" => %{"detail" => "Invalid waitlist entry payload"}} =
                json_response(conn, 422)
 
-      assert Repo.aggregate(WaitlistEntry, :count) == 0
-      assert Repo.aggregate(UserProfile, :count) == 0
+      assert persistence_counts() == persisted_before
     end
 
     test "rejects missing required fields (firstName, email, dateOfBirth) with 422",
-         %{conn: conn} do
+         %{conn: _conn} do
       set_waitlist_open(true)
 
       for field <- [:firstName, :email, :dateOfBirth] do
+        persisted_before = persistence_counts()
+
         conn =
           build_conn()
           |> post("/api/waitlist/entries", Map.delete(adult_payload(), field))
@@ -595,19 +597,20 @@ defmodule DhcWeb.WaitlistControllerTest do
         assert %{"errors" => %{"detail" => "Invalid waitlist entry payload"}} =
                  json_response(conn, 422)
 
-        assert Repo.aggregate(WaitlistEntry, :count) == 0
+        assert persistence_counts() == persisted_before
       end
     end
 
     test "rejects an invalid email format with 422", %{conn: conn} do
       set_waitlist_open(true)
+      persisted_before = persistence_counts()
 
       conn = post(conn, "/api/waitlist/entries", adult_payload(email: "not-an-email"))
 
       assert %{"errors" => %{"detail" => "email has invalid format"}} =
                json_response(conn, 422)
 
-      assert Repo.aggregate(WaitlistEntry, :count) == 0
+      assert persistence_counts() == persisted_before
     end
   end
 
@@ -615,6 +618,13 @@ defmodule DhcWeb.WaitlistControllerTest do
     value = if open?, do: "true", else: "false"
     result = Repo.query!("UPDATE settings SET value = $1 WHERE key = 'waitlist_open'", [value])
     assert result.num_rows == 1
+  end
+
+  defp persistence_counts do
+    %{
+      user_profiles: Repo.aggregate(UserProfile, :count),
+      waitlist_entries: Repo.aggregate(WaitlistEntry, :count)
+    }
   end
 
   defp insert_waitlist_profile(attrs \\ []) do

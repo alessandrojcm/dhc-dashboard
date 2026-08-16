@@ -1,4 +1,6 @@
 defmodule Mix.Tasks.E2e.Server do
+  @moduledoc false
+
   use Mix.Task
 
   @shortdoc "Starts Phoenix against a disposable Testcontainers E2E database"
@@ -28,6 +30,7 @@ defmodule Mix.Tasks.E2e.Server do
 
     Application.put_env(:dhc, Dhc.Repo, repo_config)
     Application.put_env(:dhc, DhcWeb.Endpoint, endpoint_config())
+    Application.put_env(:dhc, :onboarding_stripe_adapter, Dhc.Onboarding.StripeAdapter.E2E)
 
     Application.ensure_all_started(:ecto_sql)
     Application.ensure_all_started(:postgrex)

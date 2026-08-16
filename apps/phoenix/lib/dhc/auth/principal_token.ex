@@ -2,15 +2,16 @@ defmodule Dhc.Auth.PrincipalToken do
   @moduledoc """
   Token store for the Phoenix auth foundation.
 
-  A `principal_tokens` row carries one of two contexts:
+  A `principal_tokens` row carries one of these contexts:
 
     * `"login"` — a magic-link token. Random bytes are sent to the Principal's
       email; the SHA-256 hash is stored. Single-use, expires after 15 minutes.
     * `"session"` — an opaque DB-backed session token. Random bytes are stored
       hashed; the original is placed in the cookie. Expires after 30 days
       (absolute — no sliding refresh).
+    * `"socket"` — a short-lived credential used only to open a Phoenix socket.
 
-  Both tokens are looked up by `(context, hashed_token)`. Storing only the
+  Tokens are looked up by `(context, hashed_token)`. Storing only the
   hash means a read-only DB leak cannot reconstruct a usable token.
 
   Shape follows `mix phx.gen.auth`'s `UserToken`, adapted to DHC's 30-day

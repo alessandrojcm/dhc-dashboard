@@ -17,7 +17,6 @@ import { SvelteURLSearchParams } from "svelte/reactivity";
 import { Cross2 } from "svelte-radix";
 import { toast } from "svelte-sonner";
 import { goto } from "$app/navigation";
-import { resolve } from "$app/paths";
 import { page } from "$app/state";
 import {
 	type Invitation,
@@ -56,15 +55,12 @@ const invitationSortFields = [
 
 type InvitationTableSortField = (typeof invitationSortFields)[number];
 
-const invitationSortMap: Record<
-	InvitationTableSortField,
-	InvitationListSortField
-> = {
+const invitationSortMap = {
 	email: "email",
 	status: "status",
 	expires_at: "expiresAt",
 	created_at: "createdAt",
-};
+} satisfies Record<InvitationTableSortField, InvitationListSortField>;
 
 type InvitationTableRow = {
 	id: string;
@@ -84,28 +80,32 @@ type InvitationTablePage = {
 const pageSize = $derived.by(() => {
 	const requestedPageSize =
 		Number(page.url.searchParams.get("invitePageSize")) || 10;
-	return pageSizeOptions.includes(
-		requestedPageSize as (typeof pageSizeOptions)[number],
-	)
-		? (requestedPageSize as (typeof pageSizeOptions)[number])
-		: (10 as (typeof pageSizeOptions)[number]);
+	return isPageSize(requestedPageSize) ? requestedPageSize : 10;
 });
 const searchQuery = $derived(page.url.searchParams.get("inviteQ") || "");
 const cursor = $derived(page.url.searchParams.get("inviteCursor"));
 const activeSort = $derived.by(() => {
 	const requestedSortColumn = page.url.searchParams.get("inviteSort");
-	const sortColumn = invitationSortFields.includes(
-		requestedSortColumn as (typeof invitationSortFields)[number],
-	)
-		? (requestedSortColumn as InvitationTableSortField)
+	const sortColumn = isInvitationSortField(requestedSortColumn)
+		? requestedSortColumn
 		: "created_at";
 	const sortDirection = page.url.searchParams.get("inviteDirection");
 
 	return {
 		sort: sortColumn,
-		direction: sortDirection === "asc" ? ("asc" as const) : ("desc" as const),
+		direction: sortDirection === "asc" ? "asc" : "desc",
 	} as const;
 });
+
+function isPageSize(value: number): value is (typeof pageSizeOptions)[number] {
+	return pageSizeOptions.some((option) => option === value);
+}
+
+function isInvitationSortField(
+	value: string | null,
+): value is InvitationTableSortField {
+	return invitationSortFields.some((field) => field === value);
+}
 const sortingState: SortingState = $derived.by(() => {
 	return [
 		{
@@ -168,11 +168,9 @@ let selectedRows = $state<Set<string>>(new Set());
 // Derived state for bulk operations
 const selectedRowsArray = $derived(Array.from(selectedRows));
 
-type MembersUrl = `/dashboard/members?${string}`;
-
 function navigateToMembers(searchParams: SvelteURLSearchParams) {
-	const url = `/dashboard/members?${searchParams.toString()}` as MembersUrl;
-	goto(resolve(url), { keepFocus: true, noScroll: true });
+	const url = `/dashboard/members?${searchParams.toString()}`;
+	goto(url, { keepFocus: true, noScroll: true });
 }
 
 function onPaginationChange(newPageSize: (typeof pageSizeOptions)[number]) {
@@ -301,8 +299,8 @@ const table = createSvelteTable({
 			id: "status",
 			header: "Status",
 			accessorKey: "status",
-			cell: (info) => {
-				const status = info.getValue() as string;
+			cell: ({ row }) => {
+				const status = row.original.status;
 				return renderComponent(Badge, {
 					children: createRawSnippet(() => ({
 						render: () => status,
@@ -316,8 +314,8 @@ const table = createSvelteTable({
 			id: "expires_at",
 			header: () => "Expires",
 			accessorKey: "expires_at",
-			cell: (info) => {
-				const expiresAt = info.getValue() as string;
+			cell: ({ row }) => {
+				const expiresAt = row.original.expires_at;
 				const isExpired = dayjs(expiresAt).isBefore(dayjs());
 				return renderSnippet(
 					createRawSnippet((value) => ({
@@ -349,7 +347,7 @@ const table = createSvelteTable({
 		},
 	},
 	onSortingChange: (updater) => {
-		if (typeof updater === "function") {
+		if (updater instanceof Function) {
 			onSortingChange(updater(sortingState));
 		} else {
 			onSortingChange(updater);
@@ -360,7 +358,7 @@ const table = createSvelteTable({
 	getExpandedRowModel: getExpandedRowModel(),
 	getRowId: (row) => row.id,
 	onRowSelectionChange: (updater) => {
-		if (typeof updater === "function") {
+		if (updater instanceof Function) {
 			const currentSelection = Array.from(selectedRows).reduce(
 				(prv, curr) => ({
 					...prv,
@@ -462,7 +460,7 @@ const table = createSvelteTable({
 						>
 							<FlexRender
 								content={header.column.columnDef.header ?? ""}
-								context={header.getContext() ?? {}}
+								context={header.getContext()}
 							/>
 						</Table.Head>
 					{/each}
@@ -577,8 +575,10 @@ const table = createSvelteTable({
 		<Select.Root
 			type="single"
 			value={pageSize.toString()}
-			onValueChange={(value) =>
-				onPaginationChange(Number(value) as (typeof pageSizeOptions)[number])}
+			onValueChange={(value) => {
+				const nextPageSize = Number(value);
+				if (isPageSize(nextPageSize)) onPaginationChange(nextPageSize);
+			}}
 		>
 			<Select.Trigger
 				class="w-16 h-8"
