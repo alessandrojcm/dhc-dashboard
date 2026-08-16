@@ -9,7 +9,7 @@ let {
 	child,
 	...restProps
 }: WithElementRef<HTMLAttributes<HTMLDivElement>> & {
-	child?: Snippet<[{ props: Record<string, unknown> }]>;
+	child?: Snippet<[{ props: HTMLAttributes<HTMLDivElement> }]>;
 } = $props();
 
 const mergedProps = $derived({

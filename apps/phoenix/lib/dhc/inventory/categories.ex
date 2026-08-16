@@ -87,21 +87,7 @@ defmodule Dhc.Inventory.Categories do
         {:error, :not_found}
 
       %EquipmentCategory{} = category ->
-        item_count =
-          from(i in "inventory_items",
-            where: i.category_id == type(^id, :binary_id),
-            select: count(i.id)
-          )
-          |> Repo.one() || 0
-
-        if item_count > 0 do
-          {:error, :still_referenced}
-        else
-          case Repo.delete(category) do
-            {:ok, deleted} -> {:ok, deleted}
-            {:error, _changeset} -> {:error, :not_found}
-          end
-        end
+        delete_unreferenced_category(category)
     end
   end
 
@@ -121,33 +107,43 @@ defmodule Dhc.Inventory.Categories do
         changeset
 
       list when is_list(list) ->
-        errors =
-          Enum.reduce(list, [], fn item, acc ->
-            cond do
-              not is_map(item) ->
-                [{:available_attributes, "must be an array of attribute definitions"} | acc]
-
-              is_map_key(item, "type") and item["type"] not in ~w(text select number boolean) ->
-                [
-                  {:available_attributes,
-                   "attribute type must be one of: text, select, number, boolean"}
-                  | acc
-                ]
-
-              true ->
-                acc
-            end
-          end)
-
-        case errors do
-          [] -> changeset
-          [{field, msg} | _] -> Ecto.Changeset.add_error(changeset, field, msg)
+        case Enum.find_value(list, &available_attribute_error/1) do
+          nil -> changeset
+          message -> Ecto.Changeset.add_error(changeset, :available_attributes, message)
         end
 
       _ ->
         Ecto.Changeset.add_error(changeset, :available_attributes, "must be an array")
     end
   end
+
+  defp delete_unreferenced_category(%EquipmentCategory{id: id} = category) do
+    if category_item_count(id) > 0 do
+      {:error, :still_referenced}
+    else
+      case Repo.delete(category) do
+        {:ok, deleted} -> {:ok, deleted}
+        {:error, _changeset} -> {:error, :not_found}
+      end
+    end
+  end
+
+  defp category_item_count(id) do
+    from(i in "inventory_items",
+      where: i.category_id == type(^id, :binary_id),
+      select: count(i.id)
+    )
+    |> Repo.one() || 0
+  end
+
+  defp available_attribute_error(item) when not is_map(item),
+    do: "must be an array of attribute definitions"
+
+  defp available_attribute_error(%{"type" => type})
+       when type not in ~w(text select number boolean),
+       do: "attribute type must be one of: text, select, number, boolean"
+
+  defp available_attribute_error(_item), do: nil
 
   defp normalize_attrs(attrs) when is_map(attrs) do
     %{

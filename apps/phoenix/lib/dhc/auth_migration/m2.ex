@@ -13,7 +13,7 @@ defmodule Dhc.AuthMigration.M2 do
 
     @impl true
     def message(%__MODULE__{class: class, count: count}) do
-      "ALE-163 M2 abort: #{class} (#{count}); restore the write freeze and reconcile before retry"
+      "Authentication cutover abort: #{class} (#{count}); restore the write freeze and reconcile before retry"
     end
   end
 

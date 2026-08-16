@@ -36,10 +36,10 @@ import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import { buildContainerHierarchy } from "$lib/utils/inventory-form";
 import { updateItem } from "../data.remote";
-import { onMount } from "svelte";
+import { onMount, untrack } from "svelte";
 import { invalidateAll } from "$app/navigation";
 import { createMutation } from "@tanstack/svelte-query";
-import type { InventoryAttributeDefinition } from "$lib/types";
+import type { InventoryAttributeValue, InventoryAttributes } from "$lib/types";
 import { page } from "$app/state";
 import {
 	inventoryItemsMaintenanceMutation,
@@ -48,7 +48,7 @@ import {
 
 dayjs.extend(relativeTime);
 let { data } = $props();
-const { item: initialItem, containers, canEdit } = data;
+const { item: initialItem, containers, canEdit } = untrack(() => data);
 
 // Track the current item state (will be updated after successful edits)
 let currentItem = $state(initialItem);
@@ -60,12 +60,14 @@ let isEditMode = $state(false);
 let attributeErrors = $state<Record<string, string>>({});
 
 // Local state for form fields
-let containerId = $state(data.initialFormData.container_id);
-let quantity = $state(data.initialFormData.quantity);
-let notes = $state(data.initialFormData.notes);
-let outForMaintenance = $state(data.initialFormData.out_for_maintenance);
-let attributes = $state<Record<string, unknown>>(
-	data.initialFormData.attributes,
+let containerId = $state(untrack(() => data.initialFormData.container_id));
+let quantity = $state(untrack(() => data.initialFormData.quantity));
+let notes = $state(untrack(() => data.initialFormData.notes));
+let outForMaintenance = $state(
+	untrack(() => data.initialFormData.out_for_maintenance),
+);
+let attributes = $state<InventoryAttributes>(
+	untrack(() => data.initialFormData.attributes),
 );
 
 onMount(() => {
@@ -75,7 +77,7 @@ onMount(() => {
 		quantity: data.initialFormData.quantity,
 		notes: data.initialFormData.notes,
 		out_for_maintenance: data.initialFormData.out_for_maintenance,
-		attributes: data.initialFormData.attributes,
+		attributes: JSON.stringify(data.initialFormData.attributes),
 	});
 });
 
@@ -136,18 +138,22 @@ const openMoveDialog = () => {
 };
 
 const handleMove = () => {
+	const itemId = page.params.id;
+	if (!itemId) throw new Error("Item ID is required");
 	moveMutation.mutate({
-		path: { id: page.params.id! },
+		path: { id: itemId },
 		body: {
 			containerId: moveTargetContainerId,
-			...(moveNotes ? { notes: moveNotes } : {}),
+			notes: moveNotes || undefined,
 		},
 	});
 };
 
 const handleToggleMaintenance = () => {
+	const itemId = page.params.id;
+	if (!itemId) throw new Error("Item ID is required");
 	maintenanceMutation.mutate({
-		path: { id: page.params.id! },
+		path: { id: itemId },
 		body: { outForMaintenance: !displayItem.out_for_maintenance },
 	});
 };
@@ -158,8 +164,7 @@ const hierarchicalContainers = buildContainerHierarchy(containers);
 
 // Use the display item's category since it can't be changed
 const categoryAttributes = $derived(
-	(displayItem.category
-		?.available_attributes as InventoryAttributeDefinition[]) || [],
+	displayItem.category?.available_attributes ?? [],
 );
 const selectedContainerName = $derived.by(() => {
 	const container = hierarchicalContainers.find((c) => c.id === containerId);
@@ -171,11 +176,15 @@ const handleEdit = () => {
 
 	// Initialize any missing category attributes
 	categoryAttributes.forEach((attr) => {
-		if (attr.name && attributes[attr.name] === undefined) {
-			attributes[attr.name] = attr.default_value ?? undefined;
+		if (
+			attr.name &&
+			attributes[attr.name] === undefined &&
+			attr.default_value !== undefined
+		) {
+			attributes[attr.name] = attr.default_value;
 		}
 	});
-	updateItem.fields.attributes.set({ ...attributes });
+	updateItem.fields.attributes.set(JSON.stringify(attributes));
 };
 
 const handleCancel = () => {
@@ -188,10 +197,22 @@ const handleCancel = () => {
 	attributes = { ...data.initialFormData.attributes };
 };
 
-function updateAttribute(attrName: string, value: unknown) {
+function updateAttribute(attrName: string, value: InventoryAttributeValue) {
 	attributes[attrName] = value;
-	updateItem.fields.attributes.set({ ...attributes });
+	updateItem.fields.attributes.set(JSON.stringify(attributes));
 	clearAttributeError(attrName);
+}
+
+function attributeText(attrName: string): string {
+	const value = attributes[attrName];
+	return value === null || value === undefined ? "" : String(value);
+}
+
+function attributeNumber(attrName: string): number | "" {
+	const value = attributes[attrName];
+	if (value === null || value === undefined || value === "") return "";
+	const parsed = Number(value);
+	return Number.isFinite(parsed) ? parsed : "";
 }
 
 function clearAttributeError(attrName: string) {
@@ -203,12 +224,12 @@ function clearAttributeError(attrName: string) {
 
 const getItemDisplayName = (item: {
 	id: string;
-	attributes?: Record<string, unknown> | null;
+	attributes?: InventoryAttributes | null;
 	category?: { name?: string | null } | null;
 }) => {
-	if (item.attributes?.name) return item.attributes.name;
+	if (item.attributes?.name) return String(item.attributes.name);
 	if (item.attributes?.brand && item.attributes?.type) {
-		return `${item.attributes.brand} ${item.attributes.type}`;
+		return `${String(item.attributes.brand)} ${String(item.attributes.type)}`;
 	}
 	return `${item.category?.name || "Item"} #${item.id.slice(-8)}`;
 };
@@ -344,7 +365,7 @@ const formatActionLabel = (action: string) => {
 											{/each}
 										</SelectContent>
 									</Select>
-									{#each updateItem.fields.container_id.issues() as issue}
+									{#each updateItem.fields.container_id.issues() as issue, index (`${issue.message}-${index}`)}
 										<Field.Error>{issue.message}</Field.Error>
 									{/each}
 								</Field.Field>
@@ -361,7 +382,7 @@ const formatActionLabel = (action: string) => {
 											updateItem.fields.quantity.set(quantity);
 										}}
 									/>
-									{#each updateItem.fields.quantity.issues() as issue}
+									{#each updateItem.fields.quantity.issues() as issue, index (`${issue.message}-${index}`)}
 										<Field.Error>{issue.message}</Field.Error>
 									{/each}
 								</Field.Field>
@@ -395,7 +416,7 @@ const formatActionLabel = (action: string) => {
 									placeholder="Optional notes about this item"
 									rows={3}
 								/>
-								{#each updateItem.fields.notes.issues() as issue}
+								{#each updateItem.fields.notes.issues() as issue, index (`${issue.message}-${index}`)}
 									<Field.Error>{issue.message}</Field.Error>
 								{/each}
 							</Field.Field>
@@ -514,7 +535,7 @@ const formatActionLabel = (action: string) => {
 														{#if attr.type === "text"}
 															<Input
 																id={attr.name}
-																value={(attributes[attr.name] as string) || ""}
+																value={attributeText(attr.name)}
 																placeholder={attr.label}
 																class={attributeErrors[attr.name]
 																	? "border-destructive focus-visible:ring-destructive"
@@ -532,7 +553,7 @@ const formatActionLabel = (action: string) => {
 															<Input
 																id={attr.name}
 																type="number"
-																value={(attributes[attr.name] as number) || ""}
+																value={attributeNumber(attr.name)}
 																placeholder={attr.label}
 																class={attributeErrors[attr.name]
 																	? "border-destructive"
@@ -565,8 +586,7 @@ const formatActionLabel = (action: string) => {
 														</Label>
 														<Select
 															type="single"
-															value={(attributes[attr.name] as string) ||
-																undefined}
+															value={attributeText(attr.name) || undefined}
 															name="attributes.{attr.name}"
 															onValueChange={(value) =>
 																updateAttribute(attr.name, value)}

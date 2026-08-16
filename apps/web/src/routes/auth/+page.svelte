@@ -11,19 +11,18 @@ import { Separator } from "$lib/components/ui/separator";
 import DHCLogo from "/src/assets/images/dhc-logo.png?enhanced";
 import { magicLinkAuth } from "./data.remote";
 
-const hash = $derived(page.url.hash.split("#")[1] as string);
+let { data } = $props();
+
+const hash = $derived(page.url.hash.split("#")[1] ?? "");
 const discordFailed = $derived(
 	page.url.searchParams.get("discord") === "failed",
 );
-// biome-ignore lint/correctness/noUnusedVariables: Referenced from the Svelte template.
 const errorMessage = $derived(
 	discordFailed
 		? "Discord sign-in failed. Try a magic link instead."
 		: new URLSearchParams(hash).get("error_description"),
 );
-// biome-ignore lint/correctness/noUnusedVariables: Referenced from the Svelte template.
 const urlMessage = $derived(page.url.searchParams.get("message"));
-// biome-ignore lint/correctness/noUnusedVariables: Referenced from the Svelte template.
 const discordAuthUrl = publicApiUrl("/auth/discord");
 </script>
 
@@ -62,7 +61,10 @@ const discordAuthUrl = publicApiUrl("/auth/discord");
 	<!-- Magic Link Form -->
 	<form {...magicLinkAuth} class="w-full max-w-xs space-y-4">
 		<Field.Field>
-			{@const fieldProps = magicLinkAuth.fields.email.as("email")}
+			{@const fieldProps = magicLinkAuth.fields.email.as(
+				"email",
+				data.prefillEmail ?? "",
+			)}
 			<Field.Label for={fieldProps.name}>Email</Field.Label>
 			<Input
 				{...fieldProps}

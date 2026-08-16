@@ -34,8 +34,8 @@ import { createRawSnippet } from "svelte";
 import { SvelteURLSearchParams } from "svelte/reactivity";
 import { Cross2 } from "svelte-radix";
 import { toast } from "svelte-sonner";
+import * as v from "valibot";
 import { goto } from "$app/navigation";
-import { resolve } from "$app/paths";
 import { page } from "$app/state";
 import { Badge } from "$lib/components/ui/badge";
 import { Button } from "$lib/components/ui/button";
@@ -105,10 +105,7 @@ const waitlistEntrySortFields = [
 	"last_status_change",
 ] as const;
 
-const waitlistEntrySortMap: Record<
-	WaitlistTableSortField,
-	WaitlistEntriesSortField
-> = {
+const waitlistEntrySortMap = {
 	current_position: "position",
 	full_name: "fullName",
 	status: "status",
@@ -116,27 +113,33 @@ const waitlistEntrySortMap: Record<
 	initial_registration_date: "initialRegistrationDate",
 	last_contacted: "lastContacted",
 	last_status_change: "lastStatusChange",
-};
+} satisfies Record<WaitlistTableSortField, WaitlistEntriesSortField>;
+
+function isPageSize(value: number): value is (typeof pageSizeOptions)[number] {
+	return pageSizeOptions.some((option) => option === value);
+}
+
+function isWaitlistSortField(
+	value: string | null,
+): value is WaitlistTableSortField {
+	return waitlistEntrySortFields.some((field) => field === value);
+}
 
 const pageSize = $derived.by(() => {
 	const requestedPageSize = Number(page.url.searchParams.get("pageSize")) || 10;
-	return pageSizeOptions.includes(requestedPageSize as 10 | 25 | 50 | 100)
-		? requestedPageSize
-		: 10;
+	return isPageSize(requestedPageSize) ? requestedPageSize : 10;
 });
 const searchQuery = $derived(page.url.searchParams.get("q") || "");
 const cursor = $derived(page.url.searchParams.get("cursor"));
 const activeSort = $derived.by(() => {
 	const requestedSortColumn = page.url.searchParams.get("sort");
-	const sortColumn = waitlistEntrySortFields.includes(
-		requestedSortColumn as (typeof waitlistEntrySortFields)[number],
-	)
-		? requestedSortColumn!
+	const sortColumn = isWaitlistSortField(requestedSortColumn)
+		? requestedSortColumn
 		: "current_position";
 	const sortDirection = page.url.searchParams.get("direction");
 
 	return {
-		sort: sortColumn as WaitlistTableSortField,
+		sort: sortColumn,
 		direction: sortDirection === "desc" ? "desc" : "asc",
 	} as const;
 });
@@ -153,7 +156,7 @@ const waitlistQueryParams = $derived<WaitlistTableQueryParams>({
 	searchQuery,
 	sort: activeSort.sort,
 	direction: activeSort.direction,
-	pageSize: pageSize as (typeof pageSizeOptions)[number],
+	pageSize,
 	cursor,
 });
 
@@ -207,9 +210,10 @@ const waitlistQuery = createQuery(() => ({
 const queryClient = useQueryClient();
 
 function getWaitlistIds(options: InvitationsCreateOptions) {
-	return options.body.invites.filter(
-		(invite): invite is string => typeof invite === "string",
-	);
+	return options.body.invites.flatMap((invite) => {
+		const parsed = v.safeParse(v.string(), invite);
+		return parsed.success ? [parsed.output] : [];
+	});
 }
 
 const inviteMember = createMutation(() => ({
@@ -225,12 +229,11 @@ const inviteMember = createMutation(() => ({
 					...oldData,
 					data: {
 						...oldData.data,
-						entries: oldData.data.entries.map((entry) => ({
-							...entry,
-							...(waitlistIds.includes(entry.id)
-								? { status: "invited" as const }
-								: {}),
-						})),
+						entries: oldData.data.entries.map((entry) =>
+							waitlistIds.includes(entry.id)
+								? { ...entry, status: "invited" }
+								: entry,
+						),
 					},
 				};
 			},
@@ -264,12 +267,11 @@ const resendInvitationLink = createMutation(() => ({
 					...oldData,
 					data: {
 						...oldData.data,
-						entries: oldData.data.entries.map((entry) => ({
-							...entry,
-							...(emails.includes(entry.email)
-								? { status: "invited" as const }
-								: {}),
-						})),
+						entries: oldData.data.entries.map((entry) =>
+							emails.includes(entry.email)
+								? { ...entry, status: "invited" }
+								: entry,
+						),
 					},
 				};
 			},
@@ -299,12 +301,9 @@ const updateWaitlistEntry = createMutation(() => ({
 	},
 }));
 
-type BeginnersWorkshopUrl = `/dashboard/beginners-workshop?${string}`;
-
 function navigateToBeginnersWorkshop(searchParams: SvelteURLSearchParams) {
-	const url =
-		`/dashboard/beginners-workshop?${searchParams.toString()}` as BeginnersWorkshopUrl;
-	goto(resolve(url), { keepFocus: true, noScroll: true });
+	const url = `/dashboard/beginners-workshop?${searchParams.toString()}`;
+	goto(url, { keepFocus: true, noScroll: true });
 }
 
 function onPaginationChange(newPagination: Partial<PaginationState>) {
@@ -360,21 +359,21 @@ const tableOptions = $state<TableOptions<WaitlistTableRow>>({
 			return {
 				pageIndex: 0,
 				pageSize,
-			} as PaginationState;
+			};
 		},
 		get sorting() {
 			return sortingState;
 		},
 	},
 	onExpandedChange: (updater) => {
-		if (typeof updater === "function") {
+		if (updater instanceof Function) {
 			expandedState = updater(expandedState);
 		} else {
 			expandedState = updater;
 		}
 	},
 	onRowSelectionChange: (updater) => {
-		if (typeof updater === "function") {
+		if (updater instanceof Function) {
 			selectedState = updater(selectedState);
 		} else {
 			selectedState = updater;
@@ -402,10 +401,10 @@ const tableOptions = $state<TableOptions<WaitlistTableRow>>({
 					onToggleExpand: () => row.toggleExpanded(),
 					inviteMember: () => {
 						if (row.original.status !== "invited") {
-							inviteWaitlistMembers([row.original.id!]);
+							inviteWaitlistMembers([row.original.id]);
 						} else {
 							resendInvitationLink.mutate({
-								body: { emails: [row.original.email!] },
+								body: { emails: [row.original.email] },
 							});
 						}
 					},
@@ -560,7 +559,7 @@ const tableOptions = $state<TableOptions<WaitlistTableRow>>({
 		return waitlistQuery?.data?.data ?? [];
 	},
 	onPaginationChange: (updater) => {
-		if (typeof updater === "function") {
+		if (updater instanceof Function) {
 			onPaginationChange(
 				updater({
 					pageIndex: 0,
@@ -572,7 +571,7 @@ const tableOptions = $state<TableOptions<WaitlistTableRow>>({
 		}
 	},
 	onSortingChange: (updater) => {
-		if (typeof updater === "function") {
+		if (updater instanceof Function) {
 			onSortingChange(updater(sortingState));
 		} else {
 			onSortingChange(updater);
@@ -581,7 +580,7 @@ const tableOptions = $state<TableOptions<WaitlistTableRow>>({
 	get rowCount() {
 		return waitlistQuery?.data?.count ?? 0;
 	},
-	getRowId: (row) => row.id!,
+	getRowId: (row) => row.id,
 	getCoreRowModel: getCoreRowModel(),
 	getPaginationRowModel: getPaginationRowModel(),
 	getSortedRowModel: getSortedRowModel(),
@@ -752,10 +751,10 @@ const table = createSvelteTable(tableOptions);
 						<ActionButtons
 							inviteMember={() => {
 								if (row.original.status !== "invited") {
-									inviteWaitlistMembers([row.original.id!]);
+									inviteWaitlistMembers([row.original.id]);
 								} else {
 									resendInvitationLink.mutate({
-										body: { emails: [row.original.email!] },
+										body: { emails: [row.original.email] },
 									});
 								}
 							}}

@@ -7,12 +7,22 @@
 # General application configuration
 import Config
 
+# Keyed, non-reversible audit fingerprint for terminal invitation-acceptance
+# continuations. Production overrides this from runtime configuration.
+config :dhc,
+       :invitation_acceptance_subject_fingerprint_secret,
+       "dev-only-acceptance-subject-fingerprint-secret"
+
 config :dhc,
   ecto_repos: [Dhc.Repo],
   generators: [timestamp_type: :utc_datetime]
 
 config :dhc, :cors_allowed_origins, []
 config :dhc, :discord_oauth_strategy, Assent.Strategy.Discord
+
+config :dhc,
+       :invitation_acceptance_discord_redirect_uri,
+       "http://localhost:5173/auth/discord/acceptance/callback"
 
 # Salt namespace for short-lived public invitation verification tokens. The
 # Endpoint secret_key_base remains the signing secret; this salt is configurable
@@ -38,7 +48,8 @@ config :dhc, Oban,
     {Oban.Plugins.Cron,
      crontab: [
        {"0 0 * * *", Dhc.StripeSync.Worker},
-       {"*/15 * * * *", Dhc.Workshops.Workers.RefundReconciliationWorker}
+       {"*/15 * * * *", Dhc.Workshops.Workers.RefundReconciliationWorker},
+       {"* * * * *", Dhc.Onboarding.Workers.DiscordContinuationExpiryWorker}
      ]}
   ]
 
@@ -57,19 +68,67 @@ config :dhc, DhcWeb.Endpoint,
 config :logger, :default_formatter,
   format: "$time $metadata[$level] $message\n",
   metadata: [
-    :request_id,
-    :oban_job_id,
-    :oban_attempt,
-    :oban_queue,
-    :oban_worker,
+    :active,
+    :active_price_ids,
+    :announcement_type,
+    :attempt_id,
+    :body,
+    :charge_id,
+    :continuation_ids,
+    :created_by,
+    :customer_id,
+    :discord_jobs,
     :email,
-    :transactional_id,
+    :email_jobs,
+    :error,
+    :errors,
+    :event_id,
+    :event_type,
+    :expected_price_ids,
+    :failed,
+    :failure_stage,
+    :found_count,
+    :inactive,
+    :inactive_reason,
+    :input_count,
+    :invitation_id,
+    :invite_count,
+    :last_payment_date,
+    :lookup_keys,
     :loops_id,
     :loops_status,
-    :workshop_id,
-    :announcement_type,
-    :created_by,
-    :invitation_id
+    :manual_customer_count,
+    :manual_customer_ids_provided,
+    :matched_customers,
+    :member_id,
+    :missing_count,
+    :missing_customer_ids,
+    :missing_price_ids,
+    :oban_attempt,
+    :oban_job_id,
+    :oban_queue,
+    :oban_worker,
+    :object_id,
+    :outcome,
+    :paused,
+    :price_ids,
+    :processed,
+    :provider,
+    :reason,
+    :request_id,
+    :resume_date,
+    :scanned,
+    :stale_before,
+    :status,
+    :stripe_error,
+    :stripe_subscriptions_scanned,
+    :subscription_id,
+    :target_count,
+    :target_customers,
+    :transactional_id,
+    :unchanged,
+    :updated,
+    :workshop_id
   ]
 
 # Sentry baseline config (DSN/secrets are loaded in config/runtime.exs).

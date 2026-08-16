@@ -4,10 +4,9 @@ import * as v from "valibot";
 import formSchema, {
 	memberProfileClientSchema,
 } from "$lib/schemas/membersSignup";
-import { invariant } from "$lib/server/invariant";
 import { getRolesFromSession, MEMBERS_ADMIN_ROLES } from "$lib/server/roles";
 import { apiClientOptions } from "$lib/server/api-client";
-import { invalid } from "@sveltejs/kit";
+import { error, invalid } from "@sveltejs/kit";
 
 /**
  * ALE-164: the self-vs-admin check no longer reads the Supabase `user.id` —
@@ -18,20 +17,21 @@ import { invalid } from "@sveltejs/kit";
 async function canUpdateSettings() {
 	const event = getRequestEvent();
 	const { session } = await event.locals.safeGetSession();
-	invariant(session === null, "Unauthorized");
-	const roles = getRolesFromSession(session!);
+	if (!session) error(401, "Unauthorized");
+	const roles = getRolesFromSession(session);
 	if (roles.intersection(MEMBERS_ADMIN_ROLES).size > 0) {
 		return true;
 	}
 	// Self-access: the requested member id matches the signed-in principal.
-	return event.params.memberId === session!.principal.id;
+	return event.params.memberId === session.principal.id;
 }
 
 export const updateProfile = form(
 	memberProfileClientSchema,
 	async (data, issue) => {
 		const event = getRequestEvent();
-		const memberId = event.params.memberId!;
+		const memberId = event.params.memberId;
+		if (!memberId) throw new Error("Member ID is required");
 
 		const canUpdate = await canUpdateSettings();
 		if (!canUpdate) {
@@ -57,16 +57,33 @@ export const updateProfile = form(
 			for (const validationIssue of result.issues) {
 				const fieldPath =
 					validationIssue.path?.map((p) => p.key).join(".") || "";
-				if (fieldPath) {
-					// Create field-specific issue using dynamic property access
-					// eslint-disable-next-line @typescript-eslint/no-explicit-any
-					const issueProxy = issue as any;
-					if (typeof issueProxy[fieldPath] === "function") {
-						invalid(issueProxy[fieldPath](validationIssue.message));
-					}
-				} else {
-					// Form-level error
-					invalid(validationIssue.message);
+				switch (fieldPath) {
+					case "firstName":
+						invalid(issue.firstName(validationIssue.message));
+					case "lastName":
+						invalid(issue.lastName(validationIssue.message));
+					case "phoneNumber":
+						invalid(issue.phoneNumber(validationIssue.message));
+					case "dateOfBirth":
+						invalid(issue.dateOfBirth(validationIssue.message));
+					case "pronouns":
+						invalid(issue.pronouns(validationIssue.message));
+					case "gender":
+						invalid(issue.gender(validationIssue.message));
+					case "medicalConditions":
+						invalid(issue.medicalConditions(validationIssue.message));
+					case "nextOfKin":
+						invalid(issue.nextOfKin(validationIssue.message));
+					case "nextOfKinNumber":
+						invalid(issue.nextOfKinNumber(validationIssue.message));
+					case "weapon":
+						invalid(issue.weapon(validationIssue.message));
+					case "insuranceFormSubmitted":
+						invalid(issue.insuranceFormSubmitted(validationIssue.message));
+					case "socialMediaConsent":
+						invalid(issue.socialMediaConsent(validationIssue.message));
+					default:
+						invalid(validationIssue.message);
 				}
 			}
 			return;

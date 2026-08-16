@@ -1,5 +1,5 @@
 import { Socket as PhoenixSocket } from "phoenix";
-import type { Channel, Socket } from "phoenix";
+import type { PhoenixPayload } from "phoenix";
 
 /**
  * Notification realtime bridge for NotificationCenter (ALE-164).
@@ -36,10 +36,35 @@ export type SocketTokenFetcher = () => Promise<string | null>;
  * Factory that constructs a Phoenix `Socket`. Injected so tests can substitute
  * the client boundary without importing the real `phoenix` package.
  */
+export interface RealtimePush {
+	receive(
+		status: string,
+		callback: (response: PhoenixPayload) => void,
+	): RealtimePush;
+	send(timeout?: number): RealtimePush;
+}
+
+export interface RealtimeChannel {
+	readonly topic: string;
+	join(timeout?: number): RealtimePush;
+	leave(timeout?: number): RealtimePush;
+	on(
+		event: string,
+		callback: (payload: PhoenixPayload, ref?: string) => void,
+	): string;
+}
+
+export interface RealtimeSocket {
+	connect(): void;
+	disconnect(callback?: () => void, code?: number, reason?: string): void;
+	channel(topic: string): RealtimeChannel;
+	onError(callback: (reason?: string) => void): string;
+}
+
 export type SocketFactory = (
 	url: string,
 	options: { authToken: string },
-) => Socket;
+) => RealtimeSocket;
 
 export interface NotificationRealtimeConfig {
 	/** Public Phoenix WebSocket socket URL, e.g. `wss://host/socket`. */
@@ -66,8 +91,8 @@ const defaultCreateSocket: SocketFactory = (url, options) => {
 	return new PhoenixSocket(url, options);
 };
 
-function warn(context: string, error: unknown): void {
-	console.warn(`NotificationCenter realtime: ${context}`, error);
+function warn(context: string, cause: unknown): void {
+	console.warn(`NotificationCenter realtime: ${context}`, cause);
 }
 
 /**
@@ -94,8 +119,8 @@ export function connectNotificationRealtime(
 		createSocket = defaultCreateSocket,
 	} = config;
 
-	let socket: Socket | null = null;
-	let channel: Channel | null = null;
+	let socket: RealtimeSocket | null = null;
+	let channel: RealtimeChannel | null = null;
 	let destroyed = false;
 
 	function invalidateSafely(): void {
@@ -150,7 +175,7 @@ export function connectNotificationRealtime(
 		teardownChannel();
 		disconnectSocket();
 
-		let newSocket: Socket;
+		let newSocket: RealtimeSocket;
 		try {
 			newSocket = createSocket(socketUrl, { authToken: token });
 		} catch (error) {
@@ -177,7 +202,7 @@ export function connectNotificationRealtime(
 		// `notifications:self` topic and relies on the server's join/3 to
 		// authorize against `socket.assigns.current_user.sub`. The channel
 		// module already rejects any mismatched topic suffix.
-		let newChannel: Channel;
+		let newChannel: RealtimeChannel;
 		try {
 			newChannel = newSocket.channel("notifications:self");
 		} catch (error) {

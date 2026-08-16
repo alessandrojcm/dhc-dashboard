@@ -17,7 +17,6 @@ import { createRawSnippet } from "svelte";
 import { SvelteURLSearchParams } from "svelte/reactivity";
 import { Cross2 } from "svelte-radix";
 import { goto } from "$app/navigation";
-import { resolve } from "$app/paths";
 import { page } from "$app/state";
 import { Badge } from "$lib/components/ui/badge";
 import { Button } from "$lib/components/ui/button";
@@ -93,7 +92,7 @@ const memberSortFields = [
 
 type MemberTableSortField = (typeof memberSortFields)[number];
 
-const memberSortMap: Record<MemberTableSortField, MembersListSortField> = {
+const memberSortMap = {
 	first_name: "firstName",
 	last_name: "lastName",
 	email: "email",
@@ -103,23 +102,29 @@ const memberSortMap: Record<MemberTableSortField, MembersListSortField> = {
 	last_payment_date: "lastPaymentDate",
 	subscription_paused_until: "subscriptionPausedUntil",
 	is_active: "isActive",
-};
+} satisfies Record<MemberTableSortField, MembersListSortField>;
 
 const statusOptions = ["active", "inactive", "paused"] as const;
 type MemberStatusFilter = (typeof statusOptions)[number];
 
-type MembersUrl = `/dashboard/members?${string}`;
-
 function navigateToMembers(searchParams: URLSearchParams) {
-	const url = `/dashboard/members?${searchParams.toString()}` as MembersUrl;
-	goto(resolve(url), { keepFocus: true, noScroll: true });
+	const url = `/dashboard/members?${searchParams.toString()}`;
+	goto(url, { keepFocus: true, noScroll: true });
+}
+
+function isPageSize(value: number): value is (typeof pageSizeOptions)[number] {
+	return pageSizeOptions.some((option) => option === value);
+}
+
+function isMemberSortField(
+	value: string | null,
+): value is MemberTableSortField {
+	return memberSortFields.some((field) => field === value);
 }
 
 const pageSize = $derived.by(() => {
 	const requestedPageSize = Number(page.url.searchParams.get("pageSize")) || 10;
-	return pageSizeOptions.includes(requestedPageSize as 10 | 25 | 50 | 100)
-		? requestedPageSize
-		: 10;
+	return isPageSize(requestedPageSize) ? requestedPageSize : 10;
 });
 const searchQuery = $derived(page.url.searchParams.get("q") || "");
 const cursor = $derived(page.url.searchParams.get("cursor"));
@@ -139,15 +144,13 @@ const membershipStatusFilter = $derived.by(() => {
 });
 const activeSort = $derived.by(() => {
 	const requestedSortColumn = page.url.searchParams.get("sort");
-	const sortColumn = memberSortFields.includes(
-		requestedSortColumn as (typeof memberSortFields)[number],
-	)
-		? requestedSortColumn!
+	const sortColumn = isMemberSortField(requestedSortColumn)
+		? requestedSortColumn
 		: "last_name";
 	const sortDirection = page.url.searchParams.get("direction");
 
 	return {
-		sort: sortColumn as MemberTableSortField,
+		sort: sortColumn,
 		direction: sortDirection === "desc" ? "desc" : "asc",
 	} as const;
 });
@@ -164,7 +167,7 @@ const membersQueryParams = $derived<MemberTableQueryParams>({
 	searchQuery,
 	sort: activeSort.sort,
 	direction: activeSort.direction,
-	pageSize: pageSize as (typeof pageSizeOptions)[number],
+	pageSize,
 	membershipStatus: membershipStatusFilter,
 	cursor,
 });
@@ -457,8 +460,8 @@ const tableOptions = $state<TableOptions<MemberTableRow>>({
 		{
 			accessorKey: "preferred_weapon",
 			header: "Weapons",
-			cell: ({ getValue }) => {
-				const weapons = getValue() as string[];
+			cell: ({ row }) => {
+				const weapons = row.original.preferred_weapon;
 				return renderSnippet(
 					createRawSnippet(() => ({
 						render: () =>
@@ -485,8 +488,8 @@ const tableOptions = $state<TableOptions<MemberTableRow>>({
 					class: "p-2",
 					sortDirection: column.getIsSorted(),
 				}),
-			cell: ({ getValue }) => {
-				const date = getValue() as string | null;
+			cell: ({ row }) => {
+				const date = row.original.membership_start_date;
 				return renderSnippet(
 					createRawSnippet((value) => ({
 						render: () =>
@@ -505,8 +508,8 @@ const tableOptions = $state<TableOptions<MemberTableRow>>({
 					class: "p-2",
 					sortDirection: column.getIsSorted(),
 				}),
-			cell: ({ getValue }) => {
-				const date = getValue() as string | null;
+			cell: ({ row }) => {
+				const date = row.original.last_payment_date;
 				return renderSnippet(
 					createRawSnippet((value) => ({
 						render: () =>
@@ -521,7 +524,7 @@ const tableOptions = $state<TableOptions<MemberTableRow>>({
 		return membersQuery?.data?.data ?? [];
 	},
 	onSortingChange: (updater) => {
-		if (typeof updater === "function") {
+		if (updater instanceof Function) {
 			onSortingChange(updater(sortingState));
 		} else {
 			onSortingChange(updater);
@@ -537,7 +540,7 @@ const tableOptions = $state<TableOptions<MemberTableRow>>({
 		},
 	},
 	onExpandedChange: (updater) => {
-		if (typeof updater === "function") {
+		if (updater instanceof Function) {
 			expandedState = updater(expandedState);
 		} else {
 			expandedState = updater;
@@ -590,7 +593,10 @@ const table = createSvelteTable(tableOptions);
 </div>
 
 <!-- Desktop Table View (hidden on mobile) -->
-<div class="hidden md:block overflow-x-auto overflow-y-auto h-[65svh]">
+<div
+	data-testid="members-table"
+	class="hidden md:block overflow-x-auto overflow-y-auto h-[65svh]"
+>
 	<Table.Root class="w-full">
 		<Table.Header class="sticky top-0 z-10 bg-white">
 			{#each table.getHeaderGroups() as headerGroup (headerGroup.id)}

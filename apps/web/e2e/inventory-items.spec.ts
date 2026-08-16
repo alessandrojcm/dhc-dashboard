@@ -4,6 +4,9 @@ import { seedE2EScenario } from "./e2eApi";
 import { createMember } from "./setupFunctions";
 import { loginAsUser } from "./auth";
 
+type TestInventoryAttributeValue = string | number | boolean | null;
+type TestInventoryAttributes = Record<string, TestInventoryAttributeValue>;
+
 // Helper functions for creating test data
 const createContainer = async (data: {
 	name: string;
@@ -368,7 +371,7 @@ test.describe.skip("Inventory Items Management", () => {
 		category_id: string;
 		container_id: string;
 		quantity: number;
-		attributes?: Record<string, unknown>;
+		attributes?: TestInventoryAttributes;
 		out_for_maintenance?: boolean;
 	}) => {
 		const created = await seedE2EScenario("inventoryItem", {

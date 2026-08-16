@@ -93,40 +93,42 @@ defmodule Dhc.WorkshopAnnouncements do
   """
   @spec format_discord_message(workshop(), String.t()) :: String.t()
   def format_discord_message(workshop, announcement_type) do
-    formatted_date = format_date(workshop.start_date)
-
-    case announcement_type do
-      "created" ->
-        case workshop.status do
-          "planned" ->
-            "📅 **New Workshop Being Planned:**\n• #{workshop.title} on #{formatted_date} at #{workshop.location}\nHead to \"My Workshops\" to express your interest!"
-
-          "published" ->
-            "🎯 **Registration Now Open:**\n• #{workshop.title} on #{formatted_date} at #{workshop.location}\nHead to \"My Workshops\" to register!"
-
-          _ ->
-            "🗡️ **Workshop Update:**\n• #{workshop.title} on #{formatted_date} at #{workshop.location}"
-        end
-
-      "status_changed" ->
-        case workshop.status do
-          "published" ->
-            "🎯 **Registration Now Open:**\n• #{workshop.title} on #{formatted_date} at #{workshop.location}\nHead to \"My Workshops\" to register!"
-
-          "cancelled" ->
-            "❌ **Cancelled Workshop:**\n• #{workshop.title} scheduled for #{formatted_date} has been cancelled"
-
-          _ ->
-            "🗡️ **Workshop Status Update:**\n• #{workshop.title} on #{formatted_date} at #{workshop.location}"
-        end
-
-      "time_changed" ->
-        "⏰ **Schedule Change:**\n• #{workshop.title} is now scheduled for #{formatted_date} at #{workshop.location}"
-
-      "location_changed" ->
-        "📍 **Location Change:**\n• #{workshop.title} on #{formatted_date} will now be held at #{workshop.location}"
-    end
+    discord_message(
+      announcement_type,
+      workshop.status,
+      workshop,
+      format_date(workshop.start_date)
+    )
   end
+
+  defp discord_message("created", "planned", workshop, date),
+    do:
+      "📅 **New Workshop Being Planned:**\n• #{workshop.title} on #{date} at #{workshop.location}\nHead to \"My Workshops\" to express your interest!"
+
+  defp discord_message("created", "published", workshop, date),
+    do:
+      "🎯 **Registration Now Open:**\n• #{workshop.title} on #{date} at #{workshop.location}\nHead to \"My Workshops\" to register!"
+
+  defp discord_message("created", _status, workshop, date),
+    do: "🗡️ **Workshop Update:**\n• #{workshop.title} on #{date} at #{workshop.location}"
+
+  defp discord_message("status_changed", "published", workshop, date),
+    do:
+      "🎯 **Registration Now Open:**\n• #{workshop.title} on #{date} at #{workshop.location}\nHead to \"My Workshops\" to register!"
+
+  defp discord_message("status_changed", "cancelled", workshop, date),
+    do: "❌ **Cancelled Workshop:**\n• #{workshop.title} scheduled for #{date} has been cancelled"
+
+  defp discord_message("status_changed", _status, workshop, date),
+    do: "🗡️ **Workshop Status Update:**\n• #{workshop.title} on #{date} at #{workshop.location}"
+
+  defp discord_message("time_changed", _status, workshop, date),
+    do:
+      "⏰ **Schedule Change:**\n• #{workshop.title} is now scheduled for #{date} at #{workshop.location}"
+
+  defp discord_message("location_changed", _status, workshop, date),
+    do:
+      "📍 **Location Change:**\n• #{workshop.title} on #{date} will now be held at #{workshop.location}"
 
   @doc """
   Formats an email message body for a single workshop announcement.
@@ -136,40 +138,35 @@ defmodule Dhc.WorkshopAnnouncements do
   """
   @spec format_email_message(workshop(), String.t()) :: String.t()
   def format_email_message(workshop, announcement_type) do
-    formatted_date = format_date(workshop.start_date)
-
-    case announcement_type do
-      "created" ->
-        case workshop.status do
-          "planned" ->
-            "New Workshop Being Planned: #{workshop.title} on #{formatted_date} at #{workshop.location}. Head to \"My Workshops\" to express your interest!"
-
-          "published" ->
-            "Registration Now Open: #{workshop.title} on #{formatted_date} at #{workshop.location}. Head to \"My Workshops\" to register!"
-
-          _ ->
-            "Workshop Update: #{workshop.title} on #{formatted_date} at #{workshop.location}"
-        end
-
-      "status_changed" ->
-        case workshop.status do
-          "published" ->
-            "Registration Now Open: #{workshop.title} on #{formatted_date} at #{workshop.location}. Head to \"My Workshops\" to register!"
-
-          "cancelled" ->
-            "Cancelled Workshop: #{workshop.title} scheduled for #{formatted_date} has been cancelled."
-
-          _ ->
-            "Workshop Status Update: #{workshop.title} on #{formatted_date} at #{workshop.location}"
-        end
-
-      "time_changed" ->
-        "Schedule Change: #{workshop.title} is now scheduled for #{formatted_date} at #{workshop.location}."
-
-      "location_changed" ->
-        "Location Change: #{workshop.title} on #{formatted_date} will now be held at #{workshop.location}."
-    end
+    email_message(announcement_type, workshop.status, workshop, format_date(workshop.start_date))
   end
+
+  defp email_message("created", "planned", workshop, date),
+    do:
+      "New Workshop Being Planned: #{workshop.title} on #{date} at #{workshop.location}. Head to \"My Workshops\" to express your interest!"
+
+  defp email_message("created", "published", workshop, date),
+    do:
+      "Registration Now Open: #{workshop.title} on #{date} at #{workshop.location}. Head to \"My Workshops\" to register!"
+
+  defp email_message("created", _status, workshop, date),
+    do: "Workshop Update: #{workshop.title} on #{date} at #{workshop.location}"
+
+  defp email_message("status_changed", "published", workshop, date),
+    do:
+      "Registration Now Open: #{workshop.title} on #{date} at #{workshop.location}. Head to \"My Workshops\" to register!"
+
+  defp email_message("status_changed", "cancelled", workshop, date),
+    do: "Cancelled Workshop: #{workshop.title} scheduled for #{date} has been cancelled."
+
+  defp email_message("status_changed", _status, workshop, date),
+    do: "Workshop Status Update: #{workshop.title} on #{date} at #{workshop.location}"
+
+  defp email_message("time_changed", _status, workshop, date),
+    do: "Schedule Change: #{workshop.title} is now scheduled for #{date} at #{workshop.location}."
+
+  defp email_message("location_changed", _status, workshop, date),
+    do: "Location Change: #{workshop.title} on #{date} will now be held at #{workshop.location}."
 
   @doc """
   Formats a datetime for display in messages.

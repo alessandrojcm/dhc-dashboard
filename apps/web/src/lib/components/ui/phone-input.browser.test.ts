@@ -15,6 +15,10 @@ test("formats Irish national input while emitting its E.164 value", async () => 
 
 	await expect.element(input).toHaveValue("083 877 4532");
 	expect(onChange).toHaveBeenLastCalledWith("+353838774532");
+	const hiddenInput = document.querySelector<HTMLInputElement>(
+		'input[type="hidden"]',
+	);
+	expect(hiddenInput?.value).toBe("+353838774532");
 });
 
 test("displays an E.164 value in national format", async () => {

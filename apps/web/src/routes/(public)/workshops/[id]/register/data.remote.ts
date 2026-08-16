@@ -40,13 +40,11 @@ export const createExternalCheckoutSession = command(
 				checkoutUrl: result.checkoutUrl,
 			};
 		} catch (err) {
-			const error = err as ExternalWorkshopRegistrationApiError;
-
-			if (error.name === "ExternalWorkshopRegistrationApiError") {
+			if (err instanceof ExternalWorkshopRegistrationApiError) {
 				return {
 					success: false as const,
-					error: error.message,
-					code: error.code,
+					error: err.message,
+					code: err.code,
 				};
 			}
 

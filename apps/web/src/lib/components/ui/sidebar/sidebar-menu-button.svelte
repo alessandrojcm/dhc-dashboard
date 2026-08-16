@@ -60,7 +60,7 @@ let {
 	tooltipContentProps?: WithoutChildrenOrChild<
 		ComponentProps<typeof Tooltip.Content>
 	>;
-	child?: Snippet<[{ props: Record<string, unknown> }]>;
+	child?: Snippet<[{ props: HTMLAttributes<HTMLButtonElement> }]>;
 } = $props();
 
 const sidebar = useSidebar();
@@ -75,8 +75,8 @@ const buttonProps = $derived({
 });
 </script>
 
-{#snippet Button({ props }: { props?: Record<string, unknown> })}
-	{@const mergedProps = mergeProps(buttonProps, props)}
+{#snippet Button({ props }: { props?: HTMLAttributes<HTMLButtonElement> })}
+	{@const mergedProps = mergeProps(buttonProps, { ...props })}
 	{#if child}
 		{@render child({ props: mergedProps })}
 	{:else}
@@ -101,10 +101,10 @@ const buttonProps = $derived({
 			hidden={sidebar.state !== "collapsed" || sidebar.isMobile}
 			{...tooltipContentProps}
 		>
-			{#if typeof tooltipContent === "string"}
-				{tooltipContent}
-			{:else if tooltipContent}
+			{#if tooltipContent instanceof Function}
 				{@render tooltipContent()}
+			{:else}
+				{tooltipContent}
 			{/if}
 		</Tooltip.Content>
 	</Tooltip.Root>

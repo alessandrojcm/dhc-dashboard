@@ -20,20 +20,16 @@ onMount(() => {
 	createCategory.fields.set({
 		name: "",
 		description: "",
-		available_attributes: [],
+		available_attributes: "[]",
 	});
 });
 
-// Get current attributes value reactively
-const attributes = $derived(
-	(createCategory.fields.available_attributes.value() as
-		| AttributeDefinition[]
-		| undefined) ?? [],
-);
+let attributes = $state<AttributeDefinition[]>([]);
 
 // Callback to update attributes
 const handleAttributesChange = (newAttributes: AttributeDefinition[]) => {
-	createCategory.fields.available_attributes.set(newAttributes);
+	attributes = newAttributes;
+	createCategory.fields.available_attributes.set(JSON.stringify(newAttributes));
 };
 </script>
 
@@ -71,7 +67,7 @@ const handleAttributesChange = (newAttributes: AttributeDefinition[]) => {
 						id={fieldProps.name}
 						placeholder="e.g., Masks, Jackets, Swords"
 					/>
-					{#each createCategory.fields.name.issues() as issue}
+					{#each createCategory.fields.name.issues() as issue, index (`${issue.message}-${index}`)}
 						<Field.Error>{issue.message}</Field.Error>
 					{/each}
 				</Field.Field>
@@ -85,7 +81,7 @@ const handleAttributesChange = (newAttributes: AttributeDefinition[]) => {
 						placeholder="Optional description of this equipment category"
 						rows={3}
 					/>
-					{#each createCategory.fields.description.issues() as issue}
+					{#each createCategory.fields.description.issues() as issue, index (`${issue.message}-${index}`)}
 						<Field.Error>{issue.message}</Field.Error>
 					{/each}
 				</Field.Field>

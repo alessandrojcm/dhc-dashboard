@@ -43,7 +43,10 @@ defmodule Dhc.Auth do
 
   import Ecto.Query, warn: false
   alias Dhc.Repo
-  alias Dhc.Auth.{ExternalIdentity, Principal, PrincipalToken}
+  alias Dhc.Auth.{DiscordSubjectLock, ExternalIdentity, Principal, PrincipalToken}
+  alias Dhc.Discord.StagedAssignment
+  alias Dhc.MemberProfiles.MemberProfile
+  alias Dhc.Onboarding.InvitationAcceptanceDiscordSubjectClaim
   alias Dhc.UserProfiles.UserProfile
 
   ## Database getters
@@ -103,25 +106,179 @@ defmodule Dhc.Auth do
   @doc """
   Signs in the Principal linked to Discord's immutable provider subject.
 
-  Profile claims are never used to replace an existing link or update the
-  Principal's authoritative email. Unlinked-subject reconciliation is handled
-  by the same function after the linked-subject path, so subject lookup always
-  has precedence over mutable Discord profile data.
+  Profile claims are never used to select a Principal, replace an existing
+  link, or update the Principal's authoritative email. An unlinked subject can
+  authenticate only by promoting its exact approved Staged Assignment.
   """
   def sign_in_with_discord(%{"sub" => subject} = claims)
       when is_binary(subject) and subject != "" do
-    case Repo.get_by(ExternalIdentity, provider: "discord", provider_subject: subject) do
+    case Repo.one(
+           from(identity in ExternalIdentity,
+             where:
+               identity.provider == "discord" and identity.provider_subject == ^subject and
+                 is_nil(identity.retired_at)
+           )
+         ) do
       %ExternalIdentity{} = identity ->
-        identity.principal_id
-        |> get_principal!()
-        |> establish_eligible_session()
+        establish_discord_session(identity)
 
       nil ->
-        link_discord_by_verified_email(subject, claims)
+        sign_in_unlinked_discord_subject(subject, claims)
     end
   end
 
   def sign_in_with_discord(_claims), do: {:error, :invalid}
+
+  defp establish_discord_session(identity) do
+    safe_discord_transaction(fn ->
+      DiscordSubjectLock.lock_principal!(identity.principal_id)
+      DiscordSubjectLock.lock!(identity.provider_subject)
+
+      locked_identity =
+        ExternalIdentity
+        |> where(
+          [candidate],
+          candidate.id == ^identity.id and candidate.provider == "discord" and
+            candidate.provider_subject == ^identity.provider_subject and
+            candidate.principal_id == ^identity.principal_id
+        )
+        |> lock("FOR UPDATE")
+        |> Repo.one()
+
+      if is_nil(locked_identity) or not is_nil(locked_identity.sign_in_disabled_at),
+        do: Repo.rollback(:invalid)
+
+      unless eligible_member_locked?(identity.principal_id), do: Repo.rollback(:invalid)
+
+      principal = Repo.get!(Principal, identity.principal_id)
+      %{principal: principal, session_token: insert_session!(principal)}
+    end)
+    |> transaction_result()
+  end
+
+  # An approved roster assignment is proof-bound to the immutable Discord
+  # subject. No mutable profile claim, including Discord email, can grant login
+  # authority for an unlinked subject.
+  defp sign_in_unlinked_discord_subject(subject, claims) do
+    case promote_staged_discord_assignment(subject, claims) do
+      {:ok, principal} ->
+        # Promotion has committed before this separate, ordinary access-checked
+        # session boundary runs. An inactive Member keeps the permanent link,
+        # but no session is minted.
+        establish_eligible_session(principal)
+
+      {:error, reason} when reason in [:no_assignment, :invalid] ->
+        {:error, :invalid}
+    end
+  end
+
+  defp promote_staged_discord_assignment(subject, claims) do
+    case Repo.one(
+           from(a in StagedAssignment,
+             where:
+               a.provider == "discord" and a.provider_subject == ^subject and
+                 a.state in ["proposed", "approved"],
+             select: a.principal_id
+           )
+         ) do
+      nil ->
+        {:error, :no_assignment}
+
+      principal_id ->
+        safe_discord_transaction(fn ->
+          promote_staged_assignment_locked(principal_id, subject, claims)
+        end)
+        |> case do
+          {:ok, principal} -> {:ok, principal}
+          {:error, _reason} -> {:error, :invalid}
+        end
+    end
+  end
+
+  defp promote_staged_assignment_locked(principal_id, subject, claims) do
+    DiscordSubjectLock.lock_principal!(principal_id)
+    DiscordSubjectLock.lock!(subject)
+
+    assignment = locked_staged_assignment(principal_id, subject)
+    existing_identity = active_discord_identity(subject)
+
+    cond do
+      match?(%ExternalIdentity{principal_id: ^principal_id}, existing_identity) ->
+        Repo.get!(Principal, principal_id)
+
+      not is_nil(existing_identity) ->
+        Repo.rollback(:invalid)
+
+      is_nil(assignment) or assignment.state != "approved" ->
+        Repo.rollback(:invalid)
+
+      discord_subject_claimed?(subject) ->
+        Repo.rollback(:invalid)
+
+      active_discord_identity_conflict?(principal_id, subject) ->
+        Repo.rollback(:invalid)
+
+      true ->
+        promote_approved_assignment(assignment, principal_id, subject, claims)
+    end
+  end
+
+  defp locked_staged_assignment(principal_id, subject) do
+    Repo.one(
+      from(a in StagedAssignment,
+        where:
+          a.provider == "discord" and a.provider_subject == ^subject and
+            a.principal_id == ^principal_id,
+        lock: "FOR UPDATE"
+      )
+    )
+  end
+
+  defp active_discord_identity(subject) do
+    Repo.one(
+      from(identity in ExternalIdentity,
+        where:
+          identity.provider == "discord" and identity.provider_subject == ^subject and
+            is_nil(identity.retired_at)
+      )
+    )
+  end
+
+  defp active_discord_identity_conflict?(principal_id, subject) do
+    Repo.exists?(
+      from(e in ExternalIdentity,
+        where:
+          e.provider == "discord" and is_nil(e.retired_at) and
+            (e.provider_subject == ^subject or e.principal_id == ^principal_id)
+      )
+    )
+  end
+
+  defp promote_approved_assignment(assignment, principal_id, subject, claims) do
+    case linked_member_principal_locked(principal_id) do
+      nil ->
+        Repo.rollback(:invalid)
+
+      principal ->
+        assignment
+        |> StagedAssignment.transition_changeset(%{
+          state: "promoted",
+          terminal_at: DateTime.utc_now(),
+          terminal_actor_principal_id: principal_id,
+          reason_code: "oauth_sign_in"
+        })
+        |> Repo.update!()
+
+        insert_promoted_identity!(principal, subject, claims)
+    end
+  end
+
+  defp insert_promoted_identity!(principal, subject, claims) do
+    case Repo.insert(discord_identity_changeset(principal, subject, claims)) do
+      {:ok, _identity} -> principal
+      {:error, _changeset} -> Repo.rollback(:invalid)
+    end
+  end
 
   @doc """
   Links Discord to a Principal that has already proved its identity through an
@@ -130,8 +287,12 @@ defmodule Dhc.Auth do
   """
   def link_discord_identity(%Principal{} = principal, %{"sub" => subject} = claims)
       when is_binary(subject) and subject != "" do
-    Repo.transaction(fn ->
+    safe_discord_transaction(fn ->
+      DiscordSubjectLock.lock_principal!(principal.id)
+      DiscordSubjectLock.lock!(subject)
+      principal = lock_principal!(principal.id)
       unless eligible_member_locked?(principal.id), do: Repo.rollback(:invalid)
+      if discord_subject_claimed?(subject), do: Repo.rollback(:invalid)
 
       principal
       |> discord_identity_changeset(subject, claims)
@@ -153,39 +314,6 @@ defmodule Dhc.Auth do
 
   def link_discord_identity(_principal, _claims), do: {:error, :invalid}
 
-  defp link_discord_by_verified_email(
-         subject,
-         %{"email" => email, "email_verified" => true} = claims
-       )
-       when is_binary(email) do
-    case get_principal_by_email(email) do
-      %Principal{} = principal ->
-        create_discord_identity_and_session(principal, subject, claims)
-
-      nil ->
-        {:error, :invalid}
-    end
-  end
-
-  defp link_discord_by_verified_email(_subject, _claims), do: {:error, :invalid}
-
-  defp create_discord_identity_and_session(principal, subject, claims) do
-    Repo.transaction(fn ->
-      unless eligible_member_locked?(principal.id), do: Repo.rollback(:invalid)
-
-      changeset = discord_identity_changeset(principal, subject, claims)
-
-      case Repo.insert(changeset) do
-        {:ok, _identity} ->
-          %{principal: principal, session_token: insert_session!(principal)}
-
-        {:error, _changeset} ->
-          Repo.rollback(:invalid)
-      end
-    end)
-    |> transaction_result()
-  end
-
   defp discord_identity_changeset(principal, subject, claims) do
     metadata =
       Map.take(claims, [
@@ -202,6 +330,14 @@ defmodule Dhc.Auth do
       provider_subject: subject,
       metadata: metadata
     })
+  end
+
+  defp discord_subject_claimed?(subject) do
+    Repo.exists?(
+      from(claim in InvitationAcceptanceDiscordSubjectClaim,
+        where: claim.provider == "discord" and claim.provider_subject == ^subject
+      )
+    )
   end
 
   defp establish_eligible_session(principal) do
@@ -283,27 +419,29 @@ defmodule Dhc.Auth do
   def consume_magic_link(encoded_token) do
     case PrincipalToken.verify_magic_link_token_query(encoded_token) do
       {:ok, query} ->
-        Repo.transaction(fn ->
-          case Repo.one(query) do
-            {principal, _token_row} ->
-              eligible? = eligible_member_locked?(principal.id)
-              consume_locked_magic_link(query, principal, eligible?)
-
-            nil ->
-              :invalid
-          end
-        end)
-        |> case do
-          {:ok, {:signed_in, result}} -> {:ok, result}
-          {:ok, :inactive} -> {:error, :inactive_membership}
-          {:ok, :invalid} -> {:error, :invalid}
-          {:error, _reason} -> {:error, :invalid}
-        end
+        Repo.transaction(fn -> consume_magic_link_query(query) end)
+        |> magic_link_result()
 
       :error ->
         {:error, :invalid}
     end
   end
+
+  defp consume_magic_link_query(query) do
+    case Repo.one(query) do
+      {principal, _token_row} ->
+        eligible? = eligible_member_locked?(principal.id)
+        consume_locked_magic_link(query, principal, eligible?)
+
+      nil ->
+        :invalid
+    end
+  end
+
+  defp magic_link_result({:ok, {:signed_in, result}}), do: {:ok, result}
+  defp magic_link_result({:ok, :inactive}), do: {:error, :inactive_membership}
+  defp magic_link_result({:ok, :invalid}), do: {:error, :invalid}
+  defp magic_link_result({:error, _reason}), do: {:error, :invalid}
 
   defp delete_principal_magic_link_tokens(principal) do
     {count, _} =
@@ -323,18 +461,7 @@ defmodule Dhc.Auth do
         with {:ok, _} <- Repo.delete(token_row),
              {:ok, _} <- delete_principal_magic_link_tokens(principal),
              {:ok, principal} <- maybe_confirm_principal(principal) do
-          if eligible? do
-            {:ok, session} = load_session_principal(principal)
-
-            {:signed_in,
-             %{
-               principal: principal,
-               session_token: insert_session!(principal),
-               session: session
-             }}
-          else
-            :inactive
-          end
+          magic_link_access_result(principal, eligible?)
         else
           {:error, reason} -> Repo.rollback(reason)
         end
@@ -342,6 +469,19 @@ defmodule Dhc.Auth do
       nil ->
         :invalid
     end
+  end
+
+  defp magic_link_access_result(_principal, false), do: :inactive
+
+  defp magic_link_access_result(principal, true) do
+    {:ok, session} = load_session_principal(principal)
+
+    {:signed_in,
+     %{
+       principal: principal,
+       session_token: insert_session!(principal),
+       session: session
+     }}
   end
 
   defp maybe_confirm_principal(%Principal{confirmed_at: nil} = principal) do
@@ -549,8 +689,41 @@ defmodule Dhc.Auth do
     |> Repo.one() == true
   end
 
+  defp lock_principal!(principal_id) do
+    from(principal in Principal, where: principal.id == ^principal_id, lock: "FOR UPDATE")
+    |> Repo.one()
+    |> case do
+      %Principal{} = principal -> principal
+      nil -> Repo.rollback(:invalid)
+    end
+  end
+
+  defp linked_member_principal_locked(principal_id) do
+    from(principal in Principal,
+      join: profile in UserProfile,
+      on: profile.principal_id == principal.id,
+      join: member in MemberProfile,
+      on: member.user_profile_id == profile.id and member.id == principal.id,
+      where: principal.id == ^principal_id,
+      select: principal,
+      lock: "FOR UPDATE"
+    )
+    |> Repo.one()
+  end
+
   defp transaction_result({:ok, result}), do: {:ok, result}
   defp transaction_result({:error, _reason}), do: {:error, :invalid}
+
+  # Deferred cross-table constraint triggers may reject at COMMIT rather than
+  # at Repo.insert/2. OAuth callers must still receive the same neutral result
+  # and never an exception that distinguishes a collision from an unknown
+  # account or failed proof.
+  defp safe_discord_transaction(fun) do
+    Repo.transaction(fun)
+  rescue
+    Postgrex.Error -> {:error, :invalid}
+    Ecto.ConstraintError -> {:error, :invalid}
+  end
 
   @doc """
   Loads the access projection for a Principal: current roles and the

@@ -1,6 +1,5 @@
 <script lang="ts">
 import { goto } from "$app/navigation";
-import { resolve } from "$app/paths";
 import { page } from "$app/state";
 import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
 import { Root, List, Trigger, Content } from "$lib/components/ui/tabs/index.js";
@@ -14,13 +13,11 @@ import { SvelteURLSearchParams } from "svelte/reactivity";
 
 const { data } = $props();
 let value = $derived(page.url.searchParams.get("tab") || "dashboard");
-type MembersUrl = `/dashboard/members?${string}`;
-
 function onTabChange(value: string) {
 	const newParams = new SvelteURLSearchParams(page.url.searchParams);
 	newParams.set("tab", value);
-	const url = `/dashboard/members?${newParams.toString()}` as MembersUrl;
-	goto(resolve(url));
+	const url = `/dashboard/members?${newParams.toString()}`;
+	goto(url);
 }
 let views = [
 	{

@@ -20,6 +20,7 @@ import { env } from "$env/dynamic/public";
 import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
 import { Bell } from "@lucide/svelte";
 import { connectNotificationRealtime } from "./notification-realtime.svelte";
+import * as v from "valibot";
 
 // Initialize dayjs plugins
 dayjs.extend(relativeTime);
@@ -60,9 +61,10 @@ const notificationsQuery = createInfiniteQuery(() => ({
 			nextCursor: response.data.nextCursor,
 			count: response.data.unreadCount,
 		})),
-		pageParams: data.pageParams.map((pageParam) =>
-			typeof pageParam === "string" ? pageParam : null,
-		),
+		pageParams: data.pageParams.map((pageParam) => {
+			const parsed = v.safeParse(v.string(), pageParam);
+			return parsed.success ? parsed.output : null;
+		}),
 	}),
 }));
 

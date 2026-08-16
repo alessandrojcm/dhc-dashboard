@@ -8,7 +8,7 @@ defmodule Dhc.StripeWebhooksTest do
       types = StripeWebhooks.allowed_event_types()
 
       assert is_list(types)
-      assert length(types) > 0
+      assert [_ | _] = types
       assert Enum.all?(types, &is_binary/1)
     end
 

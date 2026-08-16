@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { createMember } from "./setupFunctions";
 import { loginAsUser } from "./auth";
+import { gotoHydrated } from "./hydration";
 
 test.describe("Members table pagination and search", () => {
 	let adminMember: Awaited<ReturnType<typeof createMember>>;
@@ -43,21 +44,23 @@ test.describe("Members table pagination and search", () => {
 	test("should paginate members table correctly via cursor prev/next", async ({
 		page,
 	}) => {
-		await page.goto("/dashboard/members?tab=members");
+		await gotoHydrated(page, "/dashboard/members?tab=members");
 
 		// Wait for table rows to be attached in DOM
-		await page.locator("table tbody tr").first().waitFor({
+		const memberRows = page.getByTestId("members-table").locator("tbody tr");
+		await memberRows.first().waitFor({
 			state: "attached",
 			timeout: 10000,
 		});
 
-		const initialRowCount = await page.locator("table tbody tr").count();
+		const initialRowCount = await memberRows.count();
 		expect(initialRowCount).toBeGreaterThan(0);
 		expect(initialRowCount).toBeLessThanOrEqual(10);
 
 		// Get the first row text
 		const firstRowText = await page
-			.locator("table tbody tr:first-child")
+			.getByTestId("members-table")
+			.locator("tbody tr:first-child")
 			.textContent();
 
 		// Check if there's a next page button and if it's enabled
@@ -71,7 +74,8 @@ test.describe("Members table pagination and search", () => {
 
 			// Get the new first row text
 			const newFirstRowText = await page
-				.locator("table tbody tr:first-child")
+				.getByTestId("members-table")
+				.locator("tbody tr:first-child")
 				.textContent();
 
 			// Verify we're on a different page
@@ -89,17 +93,18 @@ test.describe("Members table pagination and search", () => {
 			await page.waitForLoadState("networkidle");
 
 			// A previous cursor is still encoded in the URL; the rows prove the round-trip.
-			await expect(page.locator("table tbody tr:first-child")).toContainText(
-				firstRowText ?? "",
-			);
+			await expect(
+				page.getByTestId("members-table").locator("tbody tr:first-child"),
+			).toContainText(firstRowText ?? "");
 		}
 	});
 
 	test("should change page size correctly", async ({ page }) => {
-		await page.goto("/dashboard/members?tab=members");
+		await gotoHydrated(page, "/dashboard/members?tab=members");
 
 		// Wait for table rows to be attached in DOM
-		await page.locator("table tbody tr").first().waitFor({
+		const memberRows = page.getByTestId("members-table").locator("tbody tr");
+		await memberRows.first().waitFor({
 			state: "attached",
 			timeout: 10000,
 		});
@@ -118,7 +123,7 @@ test.describe("Members table pagination and search", () => {
 		});
 
 		// Wait for table to reload with new page size
-		await page.locator("table tbody tr").first().waitFor({
+		await memberRows.first().waitFor({
 			state: "attached",
 			timeout: 10000,
 		});
@@ -128,19 +133,23 @@ test.describe("Members table pagination and search", () => {
 		await expect(pageSizeTrigger).toContainText("25");
 
 		// Verify rows are displayed (should be up to 25)
-		const rowCount = await page.locator("table tbody tr").count();
+		const rowCount = await memberRows.count();
 		expect(rowCount).toBeGreaterThan(0);
 		expect(rowCount).toBeLessThanOrEqual(25);
 	});
 
 	test("should search members correctly", async ({ page }) => {
-		await page.goto("/dashboard/members?tab=members");
+		await gotoHydrated(page, "/dashboard/members?tab=members");
 
 		// Wait for table rows to be attached in DOM (not necessarily visible due to responsive CSS)
-		await page.locator("table tbody tr").first().waitFor({
-			state: "attached",
-			timeout: 10000,
-		});
+		await page
+			.getByTestId("members-table")
+			.locator("tbody tr")
+			.first()
+			.waitFor({
+				state: "attached",
+				timeout: 10000,
+			});
 
 		const searchInput = page.getByPlaceholder("Search members");
 		await searchInput.fill(searchTarget.email);
@@ -153,11 +162,12 @@ test.describe("Members table pagination and search", () => {
 	});
 
 	test("should clear search correctly", async ({ page }) => {
-		await page.goto("/dashboard/members?tab=members&q=test");
+		await gotoHydrated(page, "/dashboard/members?tab=members&q=test");
 
 		// Wait for table to load or no results message
 		await page
-			.locator('table tbody tr, p:has-text("No results found")')
+			.getByTestId("members-table")
+			.locator('tbody tr, p:has-text("No results found")')
 			.first()
 			.waitFor({ state: "attached", timeout: 10000 });
 
@@ -194,13 +204,20 @@ test.describe("Members table pagination and search", () => {
 		page,
 	}) => {
 		// Navigate with the membershipStatus filter applied (renamed from `status`).
-		await page.goto("/dashboard/members?tab=members&membershipStatus=active");
+		await gotoHydrated(
+			page,
+			"/dashboard/members?tab=members&membershipStatus=active",
+		);
 
 		// Wait for table rows to be attached in DOM
-		await page.locator("table tbody tr").first().waitFor({
-			state: "attached",
-			timeout: 10000,
-		});
+		await page
+			.getByTestId("members-table")
+			.locator("tbody tr")
+			.first()
+			.waitFor({
+				state: "attached",
+				timeout: 10000,
+			});
 
 		// Verify the URL carries the membershipStatus param
 		expect(page.url()).toContain("membershipStatus=active");
@@ -216,16 +233,17 @@ test.describe("Members table pagination and search", () => {
 	test("should display correct total count for pagination", async ({
 		page,
 	}) => {
-		await page.goto("/dashboard/members?tab=members");
+		await gotoHydrated(page, "/dashboard/members?tab=members");
 
 		// Wait for table rows to be attached in DOM
-		await page.locator("table tbody tr").first().waitFor({
+		const memberRows = page.getByTestId("members-table").locator("tbody tr");
+		await memberRows.first().waitFor({
 			state: "attached",
 			timeout: 15000,
 		});
 
 		// Verify rows are displayed
-		const rowCount = await page.locator("table tbody tr").count();
+		const rowCount = await memberRows.count();
 		expect(rowCount).toBeGreaterThan(0);
 		expect(rowCount).toBeLessThanOrEqual(10);
 	});

@@ -81,50 +81,23 @@ export type WorkshopCalendarEvent = {
 	handleEdit?: (workshop: WorkshopCalendarItem) => void;
 };
 
-// Inventory attribute types - using discriminated unions for type-safe attribute definitions
-type BaseInventoryAttribute = {
+export type InventoryAttributeValue =
+	| string
+	| number
+	| boolean
+	| null
+	| undefined;
+
+export type InventoryAttributeDefinition = {
 	name: string;
 	label: string;
 	required: boolean;
+	type: "text" | "select" | "number" | "boolean";
+	options?: string[];
+	default_value?: InventoryAttributeValue;
 };
 
-type TextAttribute = BaseInventoryAttribute & {
-	type: "text";
-	default_value?: string;
-};
-
-type SelectAttribute = BaseInventoryAttribute & {
-	type: "select";
-	options: string[];
-	default_value?: string;
-};
-
-type NumberAttribute = BaseInventoryAttribute & {
-	type: "number";
-	default_value?: number;
-};
-
-type DateAttribute = BaseInventoryAttribute & {
-	type: "date";
-	default_value?: string;
-};
-
-type BooleanAttribute = BaseInventoryAttribute & {
-	type: "boolean";
-	default_value?: boolean;
-};
-
-export type InventoryAttributeDefinition =
-	| TextAttribute
-	| SelectAttribute
-	| NumberAttribute
-	| DateAttribute
-	| BooleanAttribute;
-
-export type InventoryAttributes = Record<
-	string,
-	InventoryAttributeDefinition["default_value"]
->;
+export type InventoryAttributes = Record<string, InventoryAttributeValue>;
 
 export type InventoryCategory =
 	Database["public"]["Tables"]["equipment_categories"]["Row"] & {

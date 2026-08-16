@@ -137,9 +137,9 @@ const options = $derived({
 	height: "600px",
 	eventClick: handleEventClick,
 	eventContent: (info: Calendar.EventContentInfo) => {
-		const workshop = info.event.extendedProps?.workshop as
-			| WorkshopCalendarItem
-			| undefined;
+		const workshop = workshops.find(
+			(item) => item.id === String(info.event.id),
+		);
 		const interestCount = Number(info.event.extendedProps?.interestCount) || 0;
 		const registrationCount =
 			Number(info.event.extendedProps?.registrationCount) || 0;
@@ -148,8 +148,7 @@ const options = $derived({
 			: "";
 
 		if (!workshop) {
-			const eventTitle =
-				typeof info.event.title === "string" ? info.event.title : "Workshop";
+			const eventTitle = String(info.event.title || "Workshop");
 
 			return {
 				html: `<div class="workshop-event p-1">${eventTitle}</div>`,

@@ -152,18 +152,7 @@ defmodule Dhc.Waitlist do
       end)
       |> maybe_insert_guardian(normalized)
       |> Repo.transaction()
-      |> case do
-        {:ok, %{waitlist_entry: entry, user_profile: profile}} ->
-          {:ok, %{id: entry.id, profile_id: profile.id, status: entry.status}}
-
-        {:error, :waitlist_entry, changeset, _changes} ->
-          if duplicate_email_changeset?(changeset),
-            do: {:error, :duplicate_email},
-            else: {:error, changeset}
-
-        {:error, _operation, %Ecto.Changeset{} = changeset, _changes} ->
-          {:error, changeset}
-      end
+      |> handle_create_result()
     end
   end
 
@@ -188,19 +177,35 @@ defmodule Dhc.Waitlist do
           {:ok, map()} | {:error, :not_found} | {:error, atom()} | {:error, Ecto.Changeset.t()}
   def update_entry(id, attrs) when is_map(attrs) do
     with {:ok, normalized} <- normalize_update_attrs(attrs) do
-      case Repo.get(WaitlistEntry, id) do
-        nil ->
-          {:error, :not_found}
+      update_normalized_entry(id, normalized)
+    end
+  end
 
-        entry ->
-          entry
-          |> WaitlistEntry.admin_update_changeset(normalized)
-          |> Repo.update()
-          |> case do
-            {:ok, _entry} -> get_entry(id)
-            {:error, changeset} -> {:error, changeset}
-          end
-      end
+  defp handle_create_result({:ok, %{waitlist_entry: entry, user_profile: profile}}),
+    do: {:ok, %{id: entry.id, profile_id: profile.id, status: entry.status}}
+
+  defp handle_create_result({:error, :waitlist_entry, changeset, _changes}) do
+    if duplicate_email_changeset?(changeset),
+      do: {:error, :duplicate_email},
+      else: {:error, changeset}
+  end
+
+  defp handle_create_result({:error, _operation, %Ecto.Changeset{} = changeset, _changes}),
+    do: {:error, changeset}
+
+  defp update_normalized_entry(id, normalized) do
+    case Repo.get(WaitlistEntry, id) do
+      nil ->
+        {:error, :not_found}
+
+      entry ->
+        entry
+        |> WaitlistEntry.admin_update_changeset(normalized)
+        |> Repo.update()
+        |> case do
+          {:ok, _entry} -> get_entry(id)
+          {:error, changeset} -> {:error, changeset}
+        end
     end
   end
 
@@ -453,38 +458,40 @@ defmodule Dhc.Waitlist do
     status = blank_to_nil(Map.get(attrs, "status"))
     admin_notes = Map.get(attrs, "adminNotes", :missing)
 
-    cond do
-      is_nil(status) and admin_notes == :missing ->
-        {:error, :invalid_payload}
-
-      not is_nil(status) and status not in @allowed_statuses ->
-        {:error, :invalid_status}
-
-      admin_notes != :missing and not (is_binary(admin_notes) or is_nil(admin_notes)) ->
-        {:error, :invalid_payload}
-
-      true ->
-        normalized = %{}
-        normalized = if is_nil(status), do: normalized, else: Map.put(normalized, :status, status)
-
-        normalized =
-          if admin_notes == :missing,
-            do: normalized,
-            else: Map.put(normalized, :admin_notes, admin_notes)
-
-        normalized =
-          if is_nil(status),
-            do: normalized,
-            else:
-              Map.put(
-                normalized,
-                :last_status_change,
-                DateTime.utc_now() |> DateTime.truncate(:second)
-              )
-
-        {:ok, normalized}
+    with :ok <- validate_update_status(status, admin_notes),
+         :ok <- validate_admin_notes(admin_notes) do
+      {:ok, build_update_attrs(status, admin_notes)}
     end
   end
+
+  defp validate_update_status(nil, :missing), do: {:error, :invalid_payload}
+
+  defp validate_update_status(status, _admin_notes)
+       when not is_nil(status) and status not in @allowed_statuses,
+       do: {:error, :invalid_status}
+
+  defp validate_update_status(_status, _admin_notes), do: :ok
+
+  defp validate_admin_notes(:missing), do: :ok
+
+  defp validate_admin_notes(admin_notes) when is_binary(admin_notes) or is_nil(admin_notes),
+    do: :ok
+
+  defp validate_admin_notes(_admin_notes), do: {:error, :invalid_payload}
+
+  defp build_update_attrs(status, admin_notes) do
+    %{}
+    |> maybe_put_update(:status, status, not is_nil(status))
+    |> maybe_put_update(:admin_notes, admin_notes, admin_notes != :missing)
+    |> maybe_put_update(
+      :last_status_change,
+      DateTime.utc_now() |> DateTime.truncate(:second),
+      not is_nil(status)
+    )
+  end
+
+  defp maybe_put_update(attrs, key, value, true), do: Map.put(attrs, key, value)
+  defp maybe_put_update(attrs, _key, _value, false), do: attrs
 
   defp parse_integer(value) when is_integer(value), do: value
 

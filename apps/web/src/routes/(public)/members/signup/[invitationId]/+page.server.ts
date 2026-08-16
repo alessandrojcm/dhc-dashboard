@@ -1,47 +1,53 @@
-import * as Sentry from "@sentry/sveltekit";
-import { error, isHttpError } from "@sveltejs/kit";
-import { apiBaseUrl } from "$lib/server/api-client";
-import { invitationsShowPublic } from "@dhc/api-client";
+import { onboardingShowInvitationAcceptance } from "@dhc/api-client";
+import { dev } from "$app/environment";
+import {
+	onboardingAcceptanceCookie,
+	onboardingApiClientOptions,
+} from "$lib/server/onboarding-api";
 import dayjs from "dayjs";
+import { redirect } from "@sveltejs/kit";
 import type { PageServerLoad } from "./$types";
 
-// TODO: fix page not reloading when invitation is confirmed, fix test
 export const load: PageServerLoad = async ({ params, cookies }) => {
-	const invitationId = params.invitationId;
-	const isConfirmed = Boolean(cookies.get(`invite-confirmed-${invitationId}`));
+	const proof = cookies.get(onboardingAcceptanceCookie);
 
-	try {
-		const response = await invitationsShowPublic({
-			baseUrl: apiBaseUrl(),
-			path: { id: invitationId },
-		});
-
-		if (response.error || !response.data?.data) {
-			const status = response.response?.status === 404 ? 404 : 500;
-			error(
-				status,
-				status === 404 ? "Invitation not found" : "Something went wrong",
-			);
-		}
-
-		const invitation = response.data.data;
-
+	if (!proof) {
 		return {
-			invitation,
-			isConfirmed,
-			insuranceFormLink: "",
+			state: "restart_verification" as const,
 			nextMonthlyBillingDate: dayjs().add(1, "month").startOf("month").toDate(),
 			nextAnnualBillingDate: dayjs().month(0).date(7).add(1, "year").toDate(),
 		};
-	} catch (err) {
-		if (isHttpError(err)) {
-			throw err;
-		}
-
-		console.error("[+page.server.ts] Load error:", err);
-		Sentry.captureException(err);
-		error(404, {
-			message: "Something went wrong",
-		});
 	}
+
+	const response = await onboardingShowInvitationAcceptance(
+		onboardingApiClientOptions(cookies),
+	);
+	if (response.data?.data?.state === "accepted") {
+		setSignInPrefill(cookies, response.data.data.invitationEmail);
+		cookies.delete(onboardingAcceptanceCookie, {
+			path: "/",
+		});
+		throw redirect(303, `/members/signup/${params.invitationId}/success`);
+	}
+
+	return {
+		...response.data?.data,
+		state: response.data?.data?.state ?? ("restart_verification" as const),
+		nextMonthlyBillingDate: dayjs().add(1, "month").startOf("month").toDate(),
+		nextAnnualBillingDate: dayjs().month(0).date(7).add(1, "year").toDate(),
+	};
 };
+
+function setSignInPrefill(
+	cookies: Parameters<PageServerLoad>[0]["cookies"],
+	email: string | undefined,
+) {
+	if (!email) return;
+	cookies.set("invitation-sign-in-prefill", email, {
+		path: "/auth",
+		httpOnly: true,
+		secure: !dev,
+		sameSite: "lax",
+		maxAge: 10 * 60,
+	});
+}

@@ -1,8 +1,26 @@
 import {
 	workshopsUpdateAttendance,
-	type ApiErrorResponse,
+	type WorkshopAttendanceUpdateResponse,
 } from "@dhc/api-client";
 import { apiClientOptions, type Cookies } from "$lib/server/api-client";
+import { apiErrorMessage } from "$lib/server/api-error";
+
+export interface WorkshopAttendanceClient {
+	updateAttendance(options: {
+		baseUrl: string;
+		credentials: "include";
+		headers: Record<string, string>;
+		path: { workshopId: string };
+		body: { updates: WorkshopAttendanceUpdate[] };
+	}): Promise<{
+		data?: { data: WorkshopAttendanceUpdateResponse["data"] };
+		error?: unknown;
+	}>;
+}
+
+const defaultClient: WorkshopAttendanceClient = {
+	updateAttendance: async (options) => workshopsUpdateAttendance(options),
+};
 
 export type WorkshopAttendanceUpdate = {
 	registrationId: string;
@@ -21,17 +39,20 @@ export async function submitWorkshopAttendance(
 		workshopId,
 		updates,
 	}: { workshopId: string; updates: WorkshopAttendanceUpdate[] },
+	client: WorkshopAttendanceClient = defaultClient,
 ) {
-	const response = await workshopsUpdateAttendance({
+	const response = await client.updateAttendance({
 		...apiClientOptions(cookies),
 		path: { workshopId },
 		body: { updates },
 	});
 
-	if (response.error) {
+	if (response.error || !response.data) {
 		throw new Error(
-			(response.error as ApiErrorResponse).errors?.detail ??
+			apiErrorMessage(
+				response.error,
 				"Failed to update workshop attendance. Please try again later.",
+			),
 		);
 	}
 

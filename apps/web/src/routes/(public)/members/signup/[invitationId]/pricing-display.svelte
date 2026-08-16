@@ -37,12 +37,7 @@ async function handleApplyCoupon() {
 		currentCoupon = code;
 	} catch (error) {
 		applyCouponError =
-			error &&
-			typeof error === "object" &&
-			"message" in error &&
-			typeof error.message === "string"
-				? error.message
-				: "Could not apply promotion code";
+			error instanceof Error ? error.message : "Could not apply promotion code";
 	} finally {
 		applyingCoupon = false;
 	}

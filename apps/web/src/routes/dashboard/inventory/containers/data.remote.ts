@@ -55,13 +55,14 @@ function toApiBody(data: ContainerFormData): InventoryContainerCreateRequest {
 		data.parent_container_id && data.parent_container_id.length > 0
 			? data.parent_container_id
 			: null;
-	return {
+	const body: InventoryContainerCreateRequest = {
 		name: data.name,
-		...(data.description ? { description: data.description } : {}),
-		...(data.parent_container_id !== undefined
-			? { parentContainerId: parentId }
-			: {}),
 	};
+	if (data.description) body.description = data.description;
+	if (data.parent_container_id !== undefined) {
+		body.parentContainerId = parentId;
+	}
+	return body;
 }
 
 export const createContainer = form(containerSchema, async (data) => {
@@ -87,10 +88,11 @@ export const updateContainer = form(containerSchema, async (data) => {
 	const event = getRequestEvent();
 	const containerId = event.params.id;
 	await authorize(event.locals, INVENTORY_ROLES);
+	if (!containerId) throw new Error("Container ID is required");
 
 	const response = await inventoryContainersUpdate({
 		...apiClientOptions(event.cookies),
-		path: { id: containerId! },
+		path: { id: containerId },
 		body: toApiBody(data),
 	});
 
@@ -108,10 +110,11 @@ export const deleteContainer = form(v.object({}), async () => {
 	const event = getRequestEvent();
 	const containerId = event.params.id;
 	await authorize(event.locals, INVENTORY_ROLES);
+	if (!containerId) throw new Error("Container ID is required");
 
 	const response = await inventoryContainersDelete({
 		...apiClientOptions(event.cookies),
-		path: { id: containerId! },
+		path: { id: containerId },
 	});
 
 	if (response.error) {

@@ -24,7 +24,7 @@ defmodule Dhc.MemberProfiles.LinkageDriftTest do
   # Postgrex error regardless of the function body's message wording.
   @linkage_drift_constraint "linkage_drift_violation"
 
-  describe "characterization: linkage drift is rejected after ALE-180" do
+  describe "linkage drift rejection" do
     test "the migration gate reports linked pairs that already drifted" do
       owner_principal_id = Ecto.UUID.generate()
       {:ok, _} = Dhc.Auth.register_principal_with_id(owner_principal_id, %{email: unique_email()})
@@ -71,7 +71,7 @@ defmodule Dhc.MemberProfiles.LinkageDriftTest do
              WHERE up.principal_id IS DISTINCT FROM mp.id;
 
             IF drifted_pairs > 0 THEN
-              RAISE EXCEPTION 'ALE-180: % existing pairs violate the linkage invariant', drifted_pairs
+              RAISE EXCEPTION '% existing pairs violate the linkage invariant', drifted_pairs
                 USING ERRCODE = 'check_violation', CONSTRAINT = 'linkage_drift_violation';
             END IF;
           END;

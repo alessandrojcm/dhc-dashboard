@@ -3,6 +3,10 @@ import type { InventoryCategoryAttributeDefinition } from "@dhc/api-client";
 import { deleteE2EFixture, seedE2EScenario } from "./e2eApi";
 import { createMember } from "./setupFunctions";
 import { loginAsUser } from "./auth";
+import * as v from "valibot";
+
+type TestInventoryAttributeValue = string | number | boolean | null;
+type TestInventoryAttributes = Record<string, TestInventoryAttributeValue>;
 
 test.describe.skip("Inventory Management Full Lifecycle", () => {
 	let quartermasterData: Awaited<ReturnType<typeof createMember>>;
@@ -66,7 +70,7 @@ test.describe.skip("Inventory Management Full Lifecycle", () => {
 		categoryId: string,
 		containerId: string,
 		quantity: number = 1,
-		attributes: Record<string, unknown> = {},
+		attributes: TestInventoryAttributes = {},
 	) {
 		const itemData = await seedE2EScenario("inventoryItem", {
 			categoryId,
@@ -596,15 +600,17 @@ test.describe.skip("Inventory Management Full Lifecycle", () => {
 			},
 		);
 
-		expect(
-			(validItem?.attributes as Record<string, unknown>).requiredText,
-		).toBe("Valid text");
-		expect(
-			(validItem?.attributes as Record<string, unknown>).selectWithOptions,
-		).toBe("Option2");
-		expect(
-			(validItem?.attributes as Record<string, unknown>).optionalNumber,
-		).toBe(42);
+		const validAttributes = v.parse(
+			v.object({
+				requiredText: v.string(),
+				selectWithOptions: v.string(),
+				optionalNumber: v.number(),
+			}),
+			validItem.attributes,
+		);
+		expect(validAttributes.requiredText).toBe("Valid text");
+		expect(validAttributes.selectWithOptions).toBe("Option2");
+		expect(validAttributes.optionalNumber).toBe(42);
 	});
 
 	test("should maintain data integrity across operations", async ({

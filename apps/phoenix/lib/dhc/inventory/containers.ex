@@ -86,14 +86,18 @@ defmodule Dhc.Inventory.Containers do
         {:error, :not_found}
 
       %Container{} = container ->
-        if direct_item_count(id) > 0 do
-          {:error, :still_referenced}
-        else
-          case Repo.delete(container) do
-            {:ok, deleted} -> {:ok, deleted}
-            {:error, _changeset} -> {:error, :still_referenced}
-          end
-        end
+        delete_unreferenced_container(container)
+    end
+  end
+
+  defp delete_unreferenced_container(%Container{} = container) do
+    if direct_item_count(container.id) > 0 do
+      {:error, :still_referenced}
+    else
+      case Repo.delete(container) do
+        {:ok, deleted} -> {:ok, deleted}
+        {:error, _changeset} -> {:error, :still_referenced}
+      end
     end
   end
 

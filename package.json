@@ -18,5 +18,11 @@
 		"format:check": "pnpm --filter @dhc/web format:check",
 		"api-gen": "pnpm --filter @dhc/api-client api:generate"
 	},
-	"packageManager": "pnpm@11.21.0"
+	"packageManager": "pnpm@11.21.0",
+	"devDependencies": {
+		"@discordjs/rest": "^2.6.3",
+		"@oxlint/plugins": "1.78.0",
+		"discord-api-types": "^0.38.53",
+		"oxlint": "1.78.0"
+	}
 }

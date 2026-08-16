@@ -14,6 +14,8 @@ defmodule Dhc.Onboarding.InvitationAcceptanceAttempt do
     field :stripe_customer_id, :string
     field :stripe_state, :map, default: %{}
     field :last_error, :string
+    field :operation_token, Ecto.UUID
+    field :operation_started_at, :utc_datetime
     field :concluded_at, :utc_datetime
 
     timestamps(type: :utc_datetime, inserted_at: :created_at)

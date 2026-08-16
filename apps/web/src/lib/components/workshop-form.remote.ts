@@ -2,12 +2,12 @@ import { form, getRequestEvent } from "$app/server";
 import {
 	workshopsCreate,
 	workshopsUpdate,
-	type ApiErrorResponse,
 	type WorkshopManagementRequest,
 	type WorkshopManagementUpdateRequest,
 } from "@dhc/api-client";
 import Dinero from "dinero.js";
 import { authorize } from "$lib/server/auth";
+import { apiErrorMessage } from "$lib/server/api-error";
 import { apiClientOptions } from "$lib/server/api-client";
 import { WORKSHOP_ROLES } from "$lib/server/roles";
 import {
@@ -15,10 +15,6 @@ import {
 	UpdateWorkshopRemoteSchema,
 } from "$lib/schemas/workshop";
 import dayjs from "dayjs";
-
-function apiErrorMessage(error: unknown, fallback: string) {
-	return (error as ApiErrorResponse | undefined)?.errors?.detail ?? fallback;
-}
 
 export const createWorkshop = form(CreateWorkshopRemoteSchema, async (data) => {
 	const event = getRequestEvent();
@@ -124,14 +120,14 @@ export const updateWorkshop = form(UpdateWorkshopRemoteSchema, async (data) => {
 		refundDays: data.refund_deadline_days ?? undefined,
 	};
 
-	if (typeof data.price_member === "number") {
+	if (data.price_member !== undefined) {
 		updateData.priceMember = Dinero({
 			amount: Math.round(data.price_member * 100),
 			currency: "EUR",
 		}).getAmount();
 	}
 
-	if (typeof data.price_non_member === "number") {
+	if (data.price_non_member !== undefined) {
 		updateData.priceNonMember =
 			data.is_public && data.price_non_member
 				? Dinero({

@@ -118,9 +118,8 @@ defmodule Dhc.Invitations.BulkInviteWorker do
     if is_nil(args[field]) or args[field] == "", do: ["missing #{field}" | errors], else: errors
   end
 
-  defp validate_invites(errors, %{"invites" => invites})
-       when is_list(invites) and length(invites) > 0,
-       do: errors
+  defp validate_invites(errors, %{"invites" => [_ | _]}),
+    do: errors
 
   defp validate_invites(errors, %{"invites" => _invites}),
     do: ["invites must be a non-empty list" | errors]
@@ -227,27 +226,31 @@ defmodule Dhc.Invitations.BulkInviteWorker do
 
       :not_found ->
         Repo.transaction(fn ->
-          with {:ok, invitation_id} <-
-                 Repository.create_invitation_record(original_invite, invite_data, created_by_id),
-               :ok <- enqueue_invitation_email(invite_data, invitation_id),
-               :ok <- maybe_update_waitlist(original_invite) do
-            Logger.info(
-              "[bulk-invite-worker] Processed invitation",
-              Keyword.merge(ctx,
-                email: invite_data["email"],
-                invitation_id: invitation_id
-              )
-            )
-
-            invitation_result(invite_data, invitation_id)
-          else
-            {:error, reason} -> Repo.rollback(reason)
-          end
+          create_invitation(original_invite, invite_data, created_by_id, ctx)
         end)
         |> case do
           {:ok, result} -> {:ok, result}
           {:error, reason} -> {:error, reason}
         end
+    end
+  end
+
+  defp create_invitation(original_invite, invite_data, created_by_id, ctx) do
+    with {:ok, invitation_id} <-
+           Repository.create_invitation_record(original_invite, invite_data, created_by_id),
+         :ok <- enqueue_invitation_email(invite_data, invitation_id),
+         :ok <- maybe_update_waitlist(original_invite) do
+      Logger.info(
+        "[bulk-invite-worker] Processed invitation",
+        Keyword.merge(ctx,
+          email: invite_data["email"],
+          invitation_id: invitation_id
+        )
+      )
+
+      invitation_result(invite_data, invitation_id)
+    else
+      {:error, reason} -> Repo.rollback(reason)
     end
   end
 

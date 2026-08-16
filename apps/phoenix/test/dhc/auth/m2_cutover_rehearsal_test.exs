@@ -8,6 +8,14 @@ defmodule Dhc.AuthM2CutoverRehearsalTest do
   alias Dhc.AuthMigration.M2.AnomalyError
   alias Dhc.Repo
 
+  @post_m2_principal_fk_tables ~w(
+    discord_assignment_review_executions
+    discord_assignment_stage_executions
+    discord_assignment_stage_results
+    staged_discord_assignment_audit_events
+    staged_discord_assignments
+  )
+
   setup do
     ensure_auth_identities_table!()
 
@@ -42,7 +50,7 @@ defmodule Dhc.AuthM2CutoverRehearsalTest do
              )
 
     assert auth_user_foreign_keys() == []
-    assert length(application_principal_foreign_keys()) == 17
+    assert Enum.count_until(application_principal_foreign_keys(), 18) == 17
 
     assert [["ok", %{"foreign_keys_repointed" => 17, "pending_invitations_deleted" => 0}]] =
              rows("""
@@ -97,7 +105,7 @@ defmodule Dhc.AuthM2CutoverRehearsalTest do
     assert column_exists?("user_profiles", "supabase_user_id")
     assert column_exists?("user_roles", "user_id")
     refute column_exists?("user_profiles", "principal_id")
-    assert length(auth_user_foreign_keys()) == 14
+    assert Enum.count_until(auth_user_foreign_keys(), 15) == 14
     assert application_principal_foreign_keys() == []
   end
 
@@ -126,7 +134,10 @@ defmodule Dhc.AuthM2CutoverRehearsalTest do
   defp application_principal_foreign_keys do
     foreign_keys("public", "principals")
     |> Enum.reject(fn [table, _constraint] ->
-      table in ~w(external_identities principal_tokens)
+      table in ~w(
+        external_identities
+        principal_tokens
+      ) or table in @post_m2_principal_fk_tables
     end)
   end
 

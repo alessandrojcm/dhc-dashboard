@@ -1,11 +1,19 @@
 # ALE-210 — Existing Discord bot roster-access contract
 
 **Decision date:** 2026-08-13  
-**Amended:** 2026-08-13  
-**Status:** Accepted operational contract for ALE-205  
+**Amended:** 2026-08-15
+**Status:** Superseded in part by ADR-0019's 2026-08-15 amendment
 **Scope:** Prove and temporarily expose the minimum Discord capability required
 to read the DHC guild roster for the one-off existing-Member prefill. This
 document does not implement a bot, a roster client, persistence, or the prefill.
+
+> **Supersession note (2026-08-15):** The endpoint, pagination, privileged-intent,
+> and credential-safety findings remain valid. The in-app preflight execution,
+> capture authorization, encrypted package, digest, and receipt design is
+> superseded. The migration now uses `scripts/discord-roster-export.mjs` with
+> `DISCORD_BOT_TOKEN` and `DISCORD_GUILD_ID`, writes restricted plain
+> `roster.json` out of band, and leaves only selected staged assignments plus
+> their audit history in the application database.
 
 ## Decision summary
 
@@ -30,6 +38,14 @@ change the bot's established product role.
 | Existing bot token | Inject the existing token into the one-shot environment under the task-local name `DISCORD_ROSTER_BOT_TOKEN`. This is an access alias, not a second bot or a new persistent copy. Never commit, print, log, persist, or expose it to browser code. |
 | Guild configuration | Supply `DISCORD_ROSTER_GUILD_ID` and expected `DISCORD_ROSTER_BOT_APPLICATION_ID` as opaque strings. The latter is required for the preflight identity check. |
 | Temporary access | The ALE-205 executor receives audited access only for the approved execution window. The dashboard runtime, browser, CI, and ordinary developer environments do not receive the bot token. Revoke executor access and destroy the one-shot environment after the correction window. |
+
+The capture command additionally requires
+`DISCORD_ROSTER_EXECUTION_PROFILE=approved-one-shot`, an immutable
+`DISCORD_ROSTER_TOOL_REVISION`, and `DISCORD_ROSTER_EXECUTION_ID` naming a
+current, unconsumed database authorization for the operator, guild,
+application, and revision. It derives the actor from that authorization after
+rechecking the operator's current Member-administration role; callers do not
+self-assert an actor ID.
 
 Adding these task-local names to Phoenix runtime configuration is prohibited;
 they belong only to the operator-invoked roster tooling.

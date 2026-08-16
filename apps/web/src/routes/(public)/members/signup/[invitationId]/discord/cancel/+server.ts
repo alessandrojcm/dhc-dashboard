@@ -1,0 +1,21 @@
+import { onboardingCancelDiscord } from "@dhc/api-client";
+import { redirect, type RequestHandler } from "@sveltejs/kit";
+import {
+	onboardingAcceptanceCookie,
+	onboardingApiClientOptions,
+} from "$lib/server/onboarding-api";
+
+// Deliberately no continuation in this URL: the protected cookie is the only
+// browser-held reference used to release the claim.
+export const POST: RequestHandler = async ({ cookies, params }) => {
+	const proof = cookies.get(onboardingAcceptanceCookie);
+	if (proof) {
+		await onboardingCancelDiscord({
+			...onboardingApiClientOptions(cookies),
+		});
+	}
+	cookies.delete(onboardingAcceptanceCookie, {
+		path: "/",
+	});
+	throw redirect(303, `/members/signup/${params.invitationId}`);
+};

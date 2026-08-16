@@ -702,7 +702,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
                json_response(cancel_conn, 200)
     end
 
-    @tag :ale_181
+    @tag :workshop_archival
     test "hard-deletes a Workshop with no registrations with 204 regardless of status", %{
       conn: conn
     } do
@@ -726,7 +726,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
       assert response(conn, 204) == ""
     end
 
-    @tag :ale_181
+    @tag :workshop_archival
     test "archives a Workshop with registrations with 200 + body", %{conn: conn} do
       workshop = WorkshopFixtures.workshop_fixture(status: "published")
 
@@ -746,7 +746,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
       assert body["status"] == "published"
     end
 
-    @tag :ale_181
+    @tag :workshop_archival
     test "rejects an already-archived Workshop with 409", %{conn: conn} do
       workshop = WorkshopFixtures.workshop_fixture(status: "published")
 
@@ -894,8 +894,8 @@ defmodule DhcWeb.WorkshopsControllerTest do
                }
              } = json_response(conn, 200)
 
-      assert length(attendees) == 1
-      assert length(refunds) == 1
+      assert [_attendee] = attendees
+      assert [_refund] = refunds
 
       # Workshop summary uses Workshop vocabulary + camelCase, not club_activity*.
       assert workshop_payload["title"] == "Managed"
@@ -963,7 +963,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
 
       statuses = Enum.map(attendees, & &1["status"]) |> Enum.sort()
       assert statuses == ["confirmed", "pending"]
-      assert length(attendees) == 2
+      assert [_, _] = attendees
     end
 
     test "normalizes a member participant with displayName and no email", %{conn: conn} do
@@ -1116,7 +1116,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
 
       assert %{"data" => %{"refunds" => refunds}} = json_response(conn, 200)
 
-      assert length(refunds) == 2
+      assert [_, _] = refunds
       statuses = Enum.map(refunds, & &1["status"]) |> Enum.sort()
       assert statuses == ["completed", "pending"]
     end
