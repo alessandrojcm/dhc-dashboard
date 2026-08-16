@@ -1,5 +1,4 @@
 <script lang="ts">
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import {
 	Card,
 	CardContent,
@@ -34,6 +33,9 @@ import {
 	inventoryItemsIndexOptions,
 	type InventoryItem as ApiInventoryItem,
 } from "@dhc/api-client";
+import type { InventoryAttributes } from "$lib/types";
+import { parseInventoryAttributes } from "$lib/schemas/inventory";
+import { SvelteURLSearchParams } from "svelte/reactivity";
 
 let { data } = $props();
 
@@ -48,7 +50,7 @@ type InventoryItem = {
 	id: string;
 	quantity: number;
 	out_for_maintenance: boolean;
-	attributes: Record<string, unknown>;
+	attributes: InventoryAttributes;
 	category: { id?: string | null; name?: string | null } | null;
 	container: { id?: string | null; name?: string | null } | null;
 };
@@ -58,7 +60,7 @@ function toLegacyItem(item: ApiInventoryItem): InventoryItem {
 		id: item.id,
 		quantity: item.quantity,
 		out_for_maintenance: item.outForMaintenance,
-		attributes: (item.attributes ?? {}) as Record<string, unknown>,
+		attributes: parseInventoryAttributes(item.attributes ?? {}),
 		category: item.category,
 		container: item.container,
 	};
@@ -68,13 +70,13 @@ const itemsQuery = createQuery(() => ({
 	...inventoryItemsIndexOptions({
 		query: {
 			limit: PAGE_SIZE,
-			...(currentCursor ? { cursor: currentCursor } : {}),
-			...(searchInput ? { search: searchInput } : {}),
-			...(categoryInput ? { categoryId: categoryInput } : {}),
-			...(containerInput ? { containerId: containerInput } : {}),
-			...(maintenanceInput
-				? { outForMaintenance: maintenanceInput === "true" }
-				: {}),
+			cursor: currentCursor || undefined,
+			search: searchInput || undefined,
+			categoryId: categoryInput || undefined,
+			containerId: containerInput || undefined,
+			outForMaintenance: maintenanceInput
+				? maintenanceInput === "true"
+				: undefined,
 		},
 	}),
 	placeholderData: keepPreviousData,
@@ -85,15 +87,14 @@ const itemsQuery = createQuery(() => ({
 }));
 
 const applyFilters = () => {
-	// eslint-disable-next-line svelte/prefer-svelte-reactivity
-	const params = new URLSearchParams();
+	const params = new SvelteURLSearchParams();
 	if (searchInput) params.set("search", searchInput);
 	if (categoryInput) params.set("category", categoryInput);
 	if (containerInput) params.set("container", containerInput);
 	if (maintenanceInput) params.set("maintenance", maintenanceInput);
 
 	const url = `/dashboard/inventory/items?${params.toString()}`;
-	goto(resolve(url as any));
+	goto(url);
 };
 
 const clearFilters = () => {
@@ -102,25 +103,23 @@ const clearFilters = () => {
 
 const goToNextPage = () => {
 	if (!itemsQuery.data?.nextCursor) return;
-	// eslint-disable-next-line svelte/prefer-svelte-reactivity
-	const params = new URLSearchParams(page.url.searchParams);
+	const params = new SvelteURLSearchParams(page.url.searchParams);
 	params.set("cursor", itemsQuery.data.nextCursor);
 	const url = `/dashboard/inventory/items?${params.toString()}`;
-	goto(resolve(url as any));
+	goto(url);
 };
 
 const goToFirstPage = () => {
-	// eslint-disable-next-line svelte/prefer-svelte-reactivity
-	const params = new URLSearchParams(page.url.searchParams);
+	const params = new SvelteURLSearchParams(page.url.searchParams);
 	params.delete("cursor");
 	const url = `/dashboard/inventory/items?${params.toString()}`;
-	goto(resolve(url as any));
+	goto(url);
 };
 
 const getItemDisplayName = (item: InventoryItem) => {
-	if (item.attributes?.name) return item.attributes.name;
+	if (item.attributes?.name) return String(item.attributes.name);
 	if (item.attributes?.brand && item.attributes?.type) {
-		return `${item.attributes.brand} ${item.attributes.type}`;
+		return `${String(item.attributes.brand)} ${String(item.attributes.type)}`;
 	}
 	return `${item.category?.name || "Item"} #${item.id.slice(-8)}`;
 };

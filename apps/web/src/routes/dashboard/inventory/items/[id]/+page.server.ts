@@ -8,33 +8,12 @@ import {
 	inventoryItemsHistory,
 	inventoryItemsShow,
 } from "@dhc/api-client";
-import type {
-	InventoryAttributeDefinition,
-	InventoryAttributes,
-} from "$lib/types";
+import type { InventoryAttributes } from "$lib/types";
+import {
+	parseInventoryAttributes,
+	parseLegacyInventoryCategory,
+} from "$lib/schemas/inventory";
 import type { PageServerLoad } from "./$types";
-
-type ApiCategory = {
-	id: string;
-	name: string;
-	description?: string | null;
-	availableAttributes?: Array<Record<string, unknown>>;
-};
-
-function toLegacyCategory(c: ApiCategory) {
-	return {
-		id: c.id,
-		name: c.name,
-		description: c.description ?? null,
-		available_attributes: (c.availableAttributes ?? []).map((attr) => {
-			const { defaultValue, ...rest } = attr;
-			return {
-				...rest,
-				...(defaultValue !== undefined ? { default_value: defaultValue } : {}),
-			};
-		}),
-	};
-}
 
 function toLegacyContainer(c: {
 	id: string;
@@ -82,8 +61,9 @@ export const load: PageServerLoad = async ({ params, locals, cookies }) => {
 	if (categoriesResponse.error) throw new Error("Failed to load categories");
 	if (containersResponse.error) throw new Error("Failed to load containers");
 
-	const categories =
-		categoriesResponse.data.data.categories.map(toLegacyCategory);
+	const categories = categoriesResponse.data.data.categories.map(
+		parseLegacyInventoryCategory,
+	);
 	const containers =
 		containersResponse.data.data.containers.map(toLegacyContainer);
 	const apiItem = itemResponse.data.data;
@@ -96,7 +76,7 @@ export const load: PageServerLoad = async ({ params, locals, cookies }) => {
 		quantity: apiItem.quantity,
 		notes: apiItem.notes ?? null,
 		out_for_maintenance: apiItem.outForMaintenance,
-		attributes: (apiItem.attributes ?? {}) as InventoryAttributes,
+		attributes: parseInventoryAttributes(apiItem.attributes ?? {}),
 		photo_url: apiItem.photoUrl ?? null,
 		created_at: apiItem.createdAt,
 		updated_at: apiItem.updatedAt,
@@ -134,11 +114,10 @@ export const load: PageServerLoad = async ({ params, locals, cookies }) => {
 	}));
 
 	const initialAttributes: InventoryAttributes = {};
-	const existingAttributes = (item.attributes as InventoryAttributes) || {};
+	const existingAttributes = item.attributes;
 
 	if (item.category?.available_attributes) {
-		const availableAttributes = item.category
-			.available_attributes as InventoryAttributeDefinition[];
+		const availableAttributes = item.category.available_attributes;
 		availableAttributes.forEach((attr) => {
 			initialAttributes[attr.name] =
 				existingAttributes[attr.name] ?? attr.default_value ?? undefined;

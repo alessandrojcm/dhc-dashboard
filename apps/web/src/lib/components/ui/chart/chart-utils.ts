@@ -1,4 +1,5 @@
-import { type Component, getContext, type Snippet, setContext } from "svelte";
+import { type Component, getContext, setContext } from "svelte";
+import * as v from "valibot";
 
 export const THEMES = { light: "", dark: ".dark" } as const;
 
@@ -12,17 +13,23 @@ export type ChartConfig = {
 	);
 };
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type TooltipValue = string | number | null;
+
 export type TooltipPayload = {
 	key: string;
 	name?: string;
 	label?: string;
-	value?: unknown;
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	payload?: any;
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	color?: any;
+	value?: TooltipValue;
+	payload?: Record<string, TooltipValue>;
+	color?: string;
 };
+
+const StringSchema = v.string();
+
+function parsedString(value: TooltipValue | undefined): string | undefined {
+	const result = v.safeParse(StringSchema, value);
+	return result.success ? result.output : undefined;
+}
 
 // Helper to extract item config from a payload.
 export function getPayloadConfigFromPayload(
@@ -30,39 +37,26 @@ export function getPayloadConfigFromPayload(
 	payload: TooltipPayload,
 	key: string,
 ) {
-	if (typeof payload !== "object" || payload === null) return undefined;
-
-	const payloadPayload =
-		"payload" in payload &&
-		typeof payload.payload === "object" &&
-		payload.payload !== null
-			? payload.payload
-			: undefined;
-
 	let configLabelKey: string = key;
 
 	if (payload.key === key) {
 		configLabelKey = payload.key;
 	} else if (payload.name === key) {
 		configLabelKey = payload.name;
-	} else if (
-		key in payload &&
-		typeof payload[key as keyof typeof payload] === "string"
-	) {
-		configLabelKey = payload[key as keyof typeof payload] as string;
-	} else if (
-		payloadPayload !== undefined &&
-		key in payloadPayload &&
-		typeof payloadPayload[key as keyof typeof payloadPayload] === "string"
-	) {
-		configLabelKey = payloadPayload[
-			key as keyof typeof payloadPayload
-		] as string;
+	} else {
+		const directValue = new Map<string, TooltipValue | undefined>([
+			["key", payload.key],
+			["name", payload.name],
+			["label", payload.label],
+			["value", payload.value],
+		]).get(key);
+		configLabelKey =
+			parsedString(directValue) ??
+			parsedString(payload.payload?.[key]) ??
+			configLabelKey;
 	}
 
-	return configLabelKey in config
-		? config[configLabelKey]
-		: config[key as keyof typeof config];
+	return config[configLabelKey] ?? config[key];
 }
 
 type ChartContextValue = {

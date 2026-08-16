@@ -73,7 +73,7 @@ export function buildContainerHierarchy(
 export function validateCategoryAttributes(
 	categoryAttributes: InventoryAttributeDefinition[],
 	formDataAttributes: InventoryAttributes,
-): { errors: Record<string, string>; hasErrors: boolean } {
+) {
 	const errors: Record<string, string> = {};
 	let hasErrors = false;
 

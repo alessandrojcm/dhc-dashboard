@@ -26,6 +26,12 @@ interface Props {
 	onRefundProcessed?: () => void;
 }
 
+type AttendedUpdate = {
+	registrationId: string;
+	attendanceStatus: "attended";
+	notes: string;
+};
+
 let {
 	attendees,
 	refunds,
@@ -161,7 +167,7 @@ function getPaymentStatusLabel(
 	refund?: { status?: string; refundAmount?: number } | null,
 ) {
 	if (refund?.status === "completed" || registrationStatus === "refunded") {
-		if (typeof refund?.refundAmount === "number") {
+		if (refund?.refundAmount !== undefined) {
 			return `Refunded ${formatCurrency(refund.refundAmount / 100)}`;
 		}
 
@@ -224,14 +230,17 @@ function confirmRefund() {
 
 function markAttended(registrationIds: string[]) {
 	if (!workshopId) return;
+	const updates = registrationIds.map(
+		(registrationId): AttendedUpdate => ({
+			registrationId,
+			attendanceStatus: "attended",
+			notes: "",
+		}),
+	);
 	markAttendedMutation.mutate({
 		path: { workshopId },
 		body: {
-			updates: registrationIds.map((registrationId) => ({
-				registrationId,
-				attendanceStatus: "attended" as const,
-				notes: "",
-			})),
+			updates,
 		},
 	});
 }

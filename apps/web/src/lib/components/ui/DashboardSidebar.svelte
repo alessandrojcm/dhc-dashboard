@@ -12,7 +12,6 @@ import { Menu } from "@lucide/svelte";
 import { useSidebar } from "$lib/components/ui/sidebar/context.svelte.js";
 import { browser } from "$app/environment";
 import { resolve } from "$app/paths";
-import type { Pathname } from "$app/types";
 
 type Props = {
 	className?: string | undefined | null;
@@ -32,12 +31,6 @@ function toggleSidebar() {
 	if (window.innerWidth < 768) {
 		sidebar.toggle();
 	}
-}
-
-function resolvePath(path: Pathname) {
-	// `Pathname` is already constrained to valid application paths. SvelteKit's
-	// overload cannot represent the full generated union as a single argument.
-	return resolve(path as "/");
 }
 
 let {
@@ -91,7 +84,7 @@ let customAnchor = $state<HTMLElement>(null!);
 												onclick={toggleSidebar}
 												class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
 											>
-												<a href={resolvePath(item.url)}>{item.title}</a>
+												<a href={item.url}>{item.title}</a>
 											</Sidebar.MenuButton>
 										</Sidebar.MenuItem>
 									{/if}
@@ -103,7 +96,7 @@ let customAnchor = $state<HTMLElement>(null!);
 							onclick={toggleSidebar}
 							class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
 						>
-							<a href={resolvePath(group.url)}>{group.title}</a>
+							<a href={group.url}>{group.title}</a>
 						</Sidebar.MenuButton>
 					{/if}
 				</Sidebar.Group>

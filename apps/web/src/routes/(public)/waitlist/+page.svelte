@@ -19,12 +19,17 @@ import { CheckCircled } from "svelte-radix";
 import DatePicker from "$lib/components/ui/date-picker.svelte";
 import PhoneInput from "$lib/components/ui/phone-input.svelte";
 import { SocialMediaConsent } from "$lib/types";
+import * as v from "valibot";
 
 let { data } = $props();
 
-const dateOfBirthValue = $derived(
-	submitWaitlist.fields.dateOfBirth.value() as string,
-);
+const dateOfBirthValue = $derived.by(() => {
+	const parsed = v.safeParse(
+		v.string(),
+		submitWaitlist.fields.dateOfBirth.value(),
+	);
+	return parsed.success ? parsed.output : "";
+});
 const isUnderAge = $derived.by(() => {
 	if (!dateOfBirthValue) {
 		return false;
@@ -46,6 +51,10 @@ const dobPickerValue = $derived.by(() => {
 	}
 	return fromDate(date, getLocalTimeZone());
 });
+
+function isSocialMediaConsent(value: string): value is SocialMediaConsent {
+	return Object.values(SocialMediaConsent).some((consent) => consent === value);
+}
 </script>
 
 {#snippet whyThisField(text: string)}
@@ -140,8 +149,7 @@ const dobPickerValue = $derived.by(() => {
 						)}
 						<Select.Root
 							type="single"
-							value={(submitWaitlist.fields.gender.value() as
-								string | undefined) ?? ""}
+							value={submitWaitlist.fields.gender.value() ?? ""}
 							onValueChange={(v) => submitWaitlist.fields.gender.set(v)}
 						>
 							<Select.Trigger id={fieldProps.name} aria-label="Gender">
@@ -239,11 +247,12 @@ const dobPickerValue = $derived.by(() => {
 					</span>
 					<RadioGroup.Root
 						name="socialMediaConsent"
-						value={submitWaitlist.fields.socialMediaConsent.value() as SocialMediaConsent}
-						onValueChange={(v) =>
-							submitWaitlist.fields.socialMediaConsent.set(
-								v as SocialMediaConsent,
-							)}
+						value={submitWaitlist.fields.socialMediaConsent.value()}
+						onValueChange={(value) => {
+							if (isSocialMediaConsent(value)) {
+								submitWaitlist.fields.socialMediaConsent.set(value);
+							}
+						}}
 						class="flex justify-start"
 					>
 						<div class="flex items-center space-x-3">

@@ -17,8 +17,13 @@ import {
 	relayOnboardingAcceptanceCookie,
 } from "$lib/server/onboarding-api";
 import logger from "$lib/server/services/shared/logger";
+import { apiErrorDetail } from "$lib/server/api-error";
 
 const invitationAcceptanceTimeout = 60_000;
+const PaymentErrorMetadataSchema = v.object({
+	code: v.optional(v.string()),
+	type: v.optional(v.string()),
+});
 
 /**
  * Validates an invitation by checking email and date of birth
@@ -129,7 +134,7 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 		throw error(400, "Invitation ID is required");
 	}
 
-	let acceptanceError: unknown;
+	let acceptanceErrorDetail: string | undefined;
 	let acceptanceStatus: number | undefined;
 
 	try {
@@ -159,7 +164,7 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 
 		const state = acceptance.data?.data.state;
 		if (acceptance.error) {
-			acceptanceError = acceptance.error;
+			acceptanceErrorDetail = apiErrorDetail(acceptance.error);
 			acceptanceStatus = acceptance.response?.status;
 			throw error(
 				acceptanceStatus ?? 500,
@@ -203,21 +208,22 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 		if (isRedirect(err)) {
 			throw err;
 		}
+		const paymentErrorMetadata = v.safeParse(PaymentErrorMetadataSchema, err);
+		const errorCode = paymentErrorMetadata.success
+			? paymentErrorMetadata.output.code
+			: undefined;
+		const errorType = paymentErrorMetadata.success
+			? paymentErrorMetadata.output.type
+			: undefined;
 
 		const errorDetails = {
 			invitationId,
 			name: err instanceof Error ? err.name : "unknown",
 			message: err instanceof Error ? err.message : String(err),
 			status: acceptanceStatus,
-			apiError: acceptanceError,
-			code:
-				err instanceof Error && "code" in err
-					? (err as { code: string }).code
-					: "none",
-			type:
-				err instanceof Error && "type" in err
-					? (err as { type: string }).type
-					: "none",
+			apiError: acceptanceErrorDetail,
+			code: errorCode ?? "none",
+			type: errorType ?? "none",
 		};
 
 		let errorMessage =
@@ -232,9 +238,8 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 				"Invitation acceptance is taking longer than expected. Please wait a moment and try again.";
 		}
 
-		if (err instanceof Error && "code" in err) {
-			const stripeError = err as { code: string };
-			switch (stripeError.code) {
+		if (errorCode) {
+			switch (errorCode) {
 				case "charge_exceeds_source_limit":
 				case "charge_exceeds_transaction_limit":
 					errorMessage =
@@ -254,7 +259,7 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 					errorMessage = "The payment attempt failed";
 					break;
 				default:
-					errorMessage = `An error occurred with the payment processor (${stripeError.code})`;
+					errorMessage = `An error occurred with the payment processor (${errorCode})`;
 					break;
 			}
 		}

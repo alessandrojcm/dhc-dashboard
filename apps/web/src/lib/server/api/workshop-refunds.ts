@@ -1,13 +1,42 @@
 import {
 	workshopsRefundRegistration,
 	workshopsRefunds,
-	type ApiErrorResponse,
+	type WorkshopRefundResponse,
+	type WorkshopRefundsResponse,
 } from "@dhc/api-client";
 import { apiClientOptions, type Cookies } from "$lib/server/api-client";
+import { apiErrorMessage } from "$lib/server/api-error";
 
-function refundApiError(error: unknown, fallback: string) {
-	return (error as ApiErrorResponse | undefined)?.errors?.detail ?? fallback;
+export interface WorkshopRefundClient {
+	refundRegistration(
+		options: RefundRegistrationOptions,
+	): Promise<ApiResult<WorkshopRefundResponse["data"]>>;
+	listRefunds(
+		options: ListRefundsOptions,
+	): Promise<ApiResult<WorkshopRefundsResponse["data"]>>;
 }
+
+interface ApiResult<T> {
+	data?: { data: T };
+	error?: unknown;
+}
+
+interface ListRefundsOptions {
+	baseUrl: string;
+	credentials: "include";
+	headers: Record<string, string>;
+	path: { workshopId: string };
+}
+
+interface RefundRegistrationOptions extends ListRefundsOptions {
+	path: { workshopId: string; registrationId: string };
+	body: { reason: string };
+}
+
+const defaultClient: WorkshopRefundClient = {
+	refundRegistration: async (options) => workshopsRefundRegistration(options),
+	listRefunds: async (options) => workshopsRefunds(options),
+};
 
 /**
  * ALE-164: the dashboard authenticates through the Phoenix `_dhc_session`
@@ -18,15 +47,16 @@ function refundApiError(error: unknown, fallback: string) {
 export async function listWorkshopRefunds(
 	cookies: Cookies,
 	workshopId: string,
+	client: WorkshopRefundClient = defaultClient,
 ) {
-	const response = await workshopsRefunds({
+	const response = await client.listRefunds({
 		...apiClientOptions(cookies),
 		path: { workshopId },
 	});
 
-	if (response.error) {
+	if (response.error || !response.data) {
 		throw new Error(
-			refundApiError(response.error, "Failed to load Workshop refunds."),
+			apiErrorMessage(response.error, "Failed to load Workshop refunds."),
 		);
 	}
 
@@ -40,16 +70,17 @@ export async function submitWorkshopRefund(
 		registrationId,
 		reason,
 	}: { workshopId: string; registrationId: string; reason: string },
+	client: WorkshopRefundClient = defaultClient,
 ) {
-	const response = await workshopsRefundRegistration({
+	const response = await client.refundRegistration({
 		...apiClientOptions(cookies),
 		path: { workshopId, registrationId },
 		body: { reason },
 	});
 
-	if (response.error) {
+	if (response.error || !response.data) {
 		throw new Error(
-			refundApiError(response.error, "Failed to process Workshop refund."),
+			apiErrorMessage(response.error, "Failed to process Workshop refund."),
 		);
 	}
 

@@ -1,8 +1,23 @@
 import { authShowSession } from "@dhc/api-client";
 import { env } from "$env/dynamic/private";
+import { error } from "@sveltejs/kit";
 import { invariant } from "./invariant";
 import { getRolesFromSession } from "./roles";
 import { apiClientOptions, type Cookies } from "./api-client";
+
+export interface PhoenixSessionClient {
+	showSession(options: {
+		baseUrl: string;
+		headers: Record<string, string>;
+	}): Promise<{
+		data?: { data: PhoenixSessionProjection };
+		error?: unknown;
+	}>;
+}
+
+const defaultSessionClient: PhoenixSessionClient = {
+	showSession: async (options) => authShowSession(options),
+};
 
 const DEFAULT_API_BASE_URL = "http://localhost:4000/api";
 
@@ -44,12 +59,13 @@ function apiBaseUrl(): string {
  */
 export async function getPhoenixSession(
 	cookies: Cookies,
+	client: PhoenixSessionClient = defaultSessionClient,
 ): Promise<PhoenixSessionProjection | null> {
 	const sessionCookie = cookies.get("_dhc_session");
 	if (!sessionCookie) return null;
 
 	try {
-		const { data, error } = await authShowSession({
+		const { data, error } = await client.showSession({
 			baseUrl: apiBaseUrl(),
 			// Forward the signed cookie verbatim; Phoenix verifies the
 			// signature via `Plug.Conn.fetch_cookies(signed: [...])`.
@@ -82,13 +98,13 @@ export async function authorize(
 	allowedRoles: Set<string>,
 ): Promise<PhoenixSessionProjection> {
 	const { session } = await locals.safeGetSession();
-	invariant(!session, "Unauthorized", 401);
+	if (!session) error(401, { message: "Unauthorized" });
 
 	const roles = getRolesFromSession(session);
 	const hasPermission = roles.intersection(allowedRoles).size > 0;
 	invariant(!hasPermission, "Unauthorized", 403);
 
-	return session!;
+	return session;
 }
 
 /**

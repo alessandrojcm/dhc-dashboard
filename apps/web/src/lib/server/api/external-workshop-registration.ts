@@ -2,10 +2,44 @@ import {
 	workshopsCompleteExternalRegistration,
 	workshopsCreateExternalCheckoutSession,
 	workshopsExternalRegistrationGate,
-	type ApiErrorResponse,
+	type WorkshopExternalCheckoutSessionResponse,
 	type WorkshopExternalRegistrationGateResponse,
+	type WorkshopRegistrationResponse,
 } from "@dhc/api-client";
 import { apiBaseUrl } from "$lib/server/api-client";
+import { apiErrorMessage } from "$lib/server/api-error";
+
+export interface ExternalWorkshopRegistrationClient {
+	completeRegistration(options: {
+		baseUrl: string;
+		path: { workshopId: string };
+		body: { checkoutSessionId: string };
+	}): Promise<ApiResult<WorkshopRegistrationResponse["data"]>>;
+	createCheckoutSession(options: {
+		baseUrl: string;
+		path: { workshopId: string };
+		body: { paymentAttemptId: string; returnUrl: string };
+	}): Promise<ApiResult<WorkshopExternalCheckoutSessionResponse["data"]>>;
+	registrationGate(options: {
+		baseUrl: string;
+		path: { workshopId: string };
+	}): Promise<ApiResult<WorkshopExternalRegistrationGateResponse["data"]>>;
+}
+
+interface ApiResult<T> {
+	data?: { data: T };
+	error?: unknown;
+	response?: { status: number };
+}
+
+const defaultClient: ExternalWorkshopRegistrationClient = {
+	completeRegistration: async (options) =>
+		workshopsCompleteExternalRegistration(options),
+	createCheckoutSession: async (options) =>
+		workshopsCreateExternalCheckoutSession(options),
+	registrationGate: async (options) =>
+		workshopsExternalRegistrationGate(options),
+};
 
 export class ExternalWorkshopRegistrationApiError extends Error {
 	constructor(
@@ -17,9 +51,8 @@ export class ExternalWorkshopRegistrationApiError extends Error {
 	}
 }
 
-function apiError(error: unknown, fallback: string) {
-	const message =
-		(error as ApiErrorResponse | undefined)?.errors?.detail ?? fallback;
+function apiError(cause: unknown, fallback: string) {
+	const message = apiErrorMessage(cause, fallback);
 	const normalized = message.toLowerCase();
 
 	const code = normalized.includes("full")
@@ -35,8 +68,11 @@ function apiError(error: unknown, fallback: string) {
 	return new ExternalWorkshopRegistrationApiError(message, code);
 }
 
-export async function getExternalWorkshopRegistrationGate(workshopId: string) {
-	const response = await workshopsExternalRegistrationGate({
+export async function getExternalWorkshopRegistrationGate(
+	workshopId: string,
+	client: ExternalWorkshopRegistrationClient = defaultClient,
+) {
+	const response = await client.registrationGate({
 		baseUrl: apiBaseUrl(),
 		path: { workshopId },
 	});
@@ -53,8 +89,9 @@ export async function createExternalWorkshopCheckoutSession(
 	workshopId: string,
 	paymentAttemptId: string,
 	returnUrl: string,
+	client: ExternalWorkshopRegistrationClient = defaultClient,
 ) {
-	const response = await workshopsCreateExternalCheckoutSession({
+	const response = await client.createCheckoutSession({
 		baseUrl: apiBaseUrl(),
 		path: { workshopId },
 		body: { paymentAttemptId, returnUrl },
@@ -70,8 +107,9 @@ export async function createExternalWorkshopCheckoutSession(
 export async function completeExternalWorkshopRegistration(
 	workshopId: string,
 	checkoutSessionId: string,
+	client: ExternalWorkshopRegistrationClient = defaultClient,
 ) {
-	const response = await workshopsCompleteExternalRegistration({
+	const response = await client.completeRegistration({
 		baseUrl: apiBaseUrl(),
 		path: { workshopId },
 		body: { checkoutSessionId },

@@ -60,7 +60,7 @@ const system = `
 			max_capacity: 20,
 			price_member: 2000,
 			refund_deadline_days: 3,
-		} as v.InferInput<typeof LLMCreateWrokshopSchema>),
+		}),
 	)}
 	
 	Create a workshop about footwork. tomorrow 2pm to 3pm, 20 euro, available to everyone, announce everywhere
@@ -89,7 +89,7 @@ const system = `
 			is_public: true,
 			announce_discord: true,
 			announce_email: true,
-		} as v.InferInput<typeof LLMCreateWrokshopSchema>),
+		}),
 	)}
 	
 	Create a workshop about wrestling. saturday next week 10am to 4pm, 30 euro, 25 euro for the public, available to everyone, announce everywhere
@@ -120,7 +120,7 @@ const system = `
 			is_public: true,
 			announce_discord: true,
 			announce_email: true,
-		} as v.InferInput<typeof LLMCreateWrokshopSchema>),
+		}),
 	)}
 	
 	If the user enters and invalid query, for example, they set the start date before the end date, you will reply with:

@@ -12,7 +12,8 @@ export function registerApiErrorReporter() {
 		Sentry.captureException(error, {
 			tags: {
 				api_client: "hey-api",
-				api_error_name: error instanceof Error ? error.name : typeof error,
+				api_error_name:
+					error instanceof Error ? error.name : "NonErrorApiFailure",
 			},
 			contexts: {
 				api: {

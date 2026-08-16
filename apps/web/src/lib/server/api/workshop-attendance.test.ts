@@ -1,21 +1,19 @@
 import { describe, expect, it, vi } from "vitest";
-import { submitWorkshopAttendance } from "./workshop-attendance";
+import {
+	submitWorkshopAttendance,
+	type WorkshopAttendanceClient,
+} from "./workshop-attendance";
 
-const { workshopsUpdateAttendance } = vi.hoisted(() => ({
-	workshopsUpdateAttendance: vi.fn(),
-}));
-
-vi.mock("@dhc/api-client", async (importOriginal) => ({
-	...(await importOriginal<typeof import("@dhc/api-client")>()),
-	workshopsUpdateAttendance,
-}));
+const workshopsUpdateAttendance =
+	vi.fn<WorkshopAttendanceClient["updateAttendance"]>();
+const client: WorkshopAttendanceClient = {
+	updateAttendance: workshopsUpdateAttendance,
+};
 
 // ALE-164: the helper now takes a `Cookies` (SvelteKit request cookies) and
 // forwards the `_dhc_session` cookie to Phoenix, instead of the prior Supabase
 // `access_token`.
-function fakeCookies(sessionCookie: string | undefined): {
-	get: (name: string) => string | undefined;
-} {
+function fakeCookies(sessionCookie: string | undefined) {
 	return {
 		get: (name: string) =>
 			name === "_dhc_session" ? sessionCookie : undefined,
@@ -31,6 +29,9 @@ describe("submitWorkshopAttendance", () => {
 						{
 							id: "22222222-2222-2222-2222-222222222222",
 							attendanceStatus: "attended",
+							attendanceMarkedAt: "2026-08-16T10:00:00Z",
+							attendanceMarkedBy: "coordinator-1",
+							attendanceNotes: "Present",
 						},
 					],
 				},
@@ -49,6 +50,7 @@ describe("submitWorkshopAttendance", () => {
 					},
 				],
 			},
+			client,
 		);
 
 		expect(workshopsUpdateAttendance).toHaveBeenCalledWith({
@@ -70,6 +72,9 @@ describe("submitWorkshopAttendance", () => {
 			{
 				id: "22222222-2222-2222-2222-222222222222",
 				attendanceStatus: "attended",
+				attendanceMarkedAt: "2026-08-16T10:00:00Z",
+				attendanceMarkedBy: "coordinator-1",
+				attendanceNotes: "Present",
 			},
 		]);
 	});

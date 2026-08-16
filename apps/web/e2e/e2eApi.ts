@@ -16,9 +16,22 @@ import type {
 	WorkshopManagementRequest,
 	WorkshopStatus,
 } from "@dhc/api-client";
+import * as v from "valibot";
 
 const API_BASE_URL = process.env.API_BASE_URL ?? "http://127.0.0.1:4000/api";
 const HARNESS_KEY = process.env.E2E_HARNESS_KEY ?? "local-e2e-harness";
+
+type JsonScalar = string | number | boolean | null;
+type JsonValue = JsonScalar | JsonValue[] | JsonObject;
+type JsonObject = { [key: string]: JsonValue };
+
+const connectionResetErrorSchema = v.object({
+	cause: v.optional(
+		v.object({
+			code: v.optional(v.string()),
+		}),
+	),
+});
 
 export type E2ERole =
 	| "admin"
@@ -184,6 +197,14 @@ type E2EScenarios = {
 };
 
 export type E2EScenarioName = keyof E2EScenarios;
+type ScenarioAttributes = E2EScenarios[E2EScenarioName]["attrs"];
+type PartialScenarioAttributes = {
+	[S in E2EScenarioName]: Partial<E2EScenarios[S]["attrs"]>;
+}[E2EScenarioName];
+type HarnessRequestBody =
+	| { attrs: ScenarioAttributes | PartialScenarioAttributes }
+	| { invitationId: string }
+	| { empty?: never };
 export type E2EFixtureType = Exclude<
 	E2EScenarioName,
 	"setting" | "waitlistStatus"
@@ -204,7 +225,8 @@ export async function fetchE2EHarness(
 				},
 			});
 		} catch (error) {
-			const cause = (error as { cause?: { code?: string } }).cause;
+			const parsedError = v.safeParse(connectionResetErrorSchema, error);
+			const cause = parsedError.success ? parsedError.output.cause : undefined;
 			if (!retryConnectionReset || attempt > 0 || cause?.code !== "ECONNRESET")
 				throw error;
 			await new Promise((resolve) => setTimeout(resolve, 50));
@@ -214,7 +236,7 @@ export async function fetchE2EHarness(
 
 async function harnessRequest<T>(
 	path: string,
-	body: unknown,
+	body: HarnessRequestBody,
 	method: "GET" | "PATCH" | "POST" = "POST",
 ): Promise<T> {
 	const response = await fetchE2EHarness(path, {
@@ -228,7 +250,8 @@ async function harnessRequest<T>(
 		);
 	}
 
-	return response.json() as Promise<T>;
+	const payload: T = await response.json();
+	return payload;
 }
 
 export async function resetE2EState() {
@@ -253,7 +276,7 @@ export type InvitationAcceptanceAssertion = {
 	roles: number;
 	stripeCustomerId: string | null;
 	stripeInvocations: string[];
-	stripeState: Record<string, unknown>;
+	stripeState: JsonObject;
 	userProfiles: number;
 };
 
@@ -300,10 +323,10 @@ export async function auditInvitationAcceptance(id: string) {
 			recoveryJobs: Array<{
 				id: number;
 				state: string;
-				args: Record<string, unknown>;
+				args: JsonObject;
 				attempt: number;
 				scheduled_at: string;
-				errors: Array<Record<string, unknown>>;
+				errors: JsonObject[];
 			}>;
 			provisionedAttemptCount: number;
 			completedAttemptCount: number;
@@ -343,16 +366,14 @@ type E2EUpdatableFixture =
 	| "registration"
 	| "workshop";
 
-export async function updateE2EFixture<T>(
-	type: E2EUpdatableFixture,
+export async function updateE2EFixture<S extends E2EUpdatableFixture>(
+	type: S,
 	id: string,
-	attrs: unknown,
-): Promise<T> {
-	const response = await harnessRequest<{ data: T }>(
-		`/fixtures/${type}/${id}`,
-		{ attrs },
-		"PATCH",
-	);
+	attrs: Partial<E2EScenarios[S]["attrs"]>,
+): Promise<E2EScenarios[S]["result"]> {
+	const response = await harnessRequest<{
+		data: E2EScenarios[S]["result"];
+	}>(`/fixtures/${type}/${id}`, { attrs }, "PATCH");
 	return response.data;
 }
 

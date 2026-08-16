@@ -64,8 +64,8 @@ const removeAttribute = (index: number) => {
 
 const updateAttribute = (
 	index: number,
-	field: keyof AttributeDefinition,
-	value: unknown,
+	field: "label" | "required",
+	value: string | boolean,
 ) => {
 	const updated = [...attributes];
 	updated[index] = { ...updated[index], [field]: value };
@@ -249,7 +249,7 @@ const removeOption = (attrIndex: number, optionIndex: number) => {
 	{/if}
 
 	<!-- Show validation issues -->
-	{#each issues as issue}
+	{#each issues as issue, index (`${issue.message}-${index}`)}
 		<Field.Error>{issue.message}</Field.Error>
 	{/each}
 </div>

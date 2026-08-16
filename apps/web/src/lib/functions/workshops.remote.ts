@@ -3,11 +3,11 @@ import {
 	workshopsCancel,
 	workshopsDelete,
 	workshopsPublish,
-	type ApiErrorResponse,
 } from "@dhc/api-client";
 import * as v from "valibot";
 import { authorize } from "$lib/server/auth";
 import { apiClientOptions } from "$lib/server/api-client";
+import { apiErrorMessage } from "$lib/server/api-error";
 import {
 	submitWorkshopAttendance,
 	type WorkshopAttendanceUpdate,
@@ -17,10 +17,6 @@ import {
 	submitWorkshopRefund,
 } from "$lib/server/api/workshop-refunds";
 import { WORKSHOP_ROLES } from "$lib/server/roles";
-
-function apiErrorMessage(error: unknown, fallback: string) {
-	return (error as ApiErrorResponse | undefined)?.errors?.detail ?? fallback;
-}
 
 /**
  * ALE-164: the dashboard authenticates through the Phoenix `_dhc_session`
