@@ -8,7 +8,6 @@ import { Card } from "$lib/components/ui/card";
 import * as Field from "$lib/components/ui/field";
 import { Input } from "$lib/components/ui/input";
 import { Separator } from "$lib/components/ui/separator";
-import DHCLogo from "/src/assets/images/dhc-logo.png?enhanced";
 import { magicLinkAuth } from "./data.remote";
 
 let { data } = $props();
@@ -26,15 +25,16 @@ const urlMessage = $derived(page.url.searchParams.get("message"));
 const discordAuthUrl = publicApiUrl("/auth/discord");
 </script>
 
-<Card
-	class="flex flex-col self-center w-[90%] sm:w-[80%] md:w-[70%] lg:w-[50%] max-w-md p-6 h-auto min-h-[24rem] justify-around items-center"
->
-	<div class="md:hidden flex justify-center mb-4">
-		<enhanced:img src={DHCLogo} alt="Dublin Hema Club Logo" class="w-24 h-24" />
+<Card class="w-full gap-7 border-t-4 border-t-secondary p-6 sm:p-8">
+	<div class="space-y-2 text-center sm:text-left">
+		<p class="text-xs font-bold uppercase tracking-[0.2em] text-primary">
+			Welcome back
+		</p>
+		<h2 class="text-3xl leading-tight sm:text-4xl">Enter the club desk</h2>
+		<p class="text-sm leading-6 text-muted-foreground">
+			Use your club email or continue with Discord.
+		</p>
 	</div>
-	<h2 class="prose font-bold prose-h2 text-2xl text-center">
-		Log in to the DHC Dashboard
-	</h2>
 
 	{#if magicLinkAuth.result?.success}
 		<Alert.Root variant="success" class="max-w-md mt-4">
@@ -59,7 +59,7 @@ const discordAuthUrl = publicApiUrl("/auth/discord");
 	{/if}
 
 	<!-- Magic Link Form -->
-	<form {...magicLinkAuth} class="w-full max-w-xs space-y-4">
+	<form {...magicLinkAuth} class="w-full space-y-4">
 		<Field.Field>
 			{@const fieldProps = magicLinkAuth.fields.email.as(
 				"email",
@@ -80,17 +80,17 @@ const discordAuthUrl = publicApiUrl("/auth/discord");
 	</form>
 
 	<!-- Separator -->
-	<div class="flex items-center w-full max-w-xs">
+	<div class="flex w-full items-center">
 		<Separator class="flex-grow w-auto" style="width: auto" />
 		<span class="px-3 text-sm text-muted-foreground">OR</span>
 		<Separator class="flex-grow w-auto" style="width: auto" />
 	</div>
 
 	<!-- Discord OAuth starts as a top-level navigation to Phoenix/Assent. -->
-	<form method="GET" action={discordAuthUrl} class="w-full max-w-xs">
+	<form method="GET" action={discordAuthUrl} class="w-full">
 		<Button
 			type="submit"
-			class="w-full bg-[#5865F2] hover:bg-[#FFFFFF] hover:text-[#000000]"
+			class="w-full bg-[#5865F2] text-white shadow-none hover:bg-[#4752c4]"
 		>
 			<DiscordLogo class="mr-2" />
 			Login with Discord
