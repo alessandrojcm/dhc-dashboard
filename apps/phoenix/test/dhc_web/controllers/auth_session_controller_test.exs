@@ -1,5 +1,5 @@
 defmodule DhcWeb.AuthSessionControllerTest do
-  use DhcWeb.ConnCase, async: true
+  use DhcWeb.ConnCase, async: false
 
   import Dhc.AuthFixtures
   import ExUnit.CaptureLog
@@ -117,7 +117,18 @@ defmodule DhcWeb.AuthSessionControllerTest do
   end
 
   describe "GET /api/auth/discord/callback" do
-    test "promotes an approved assignment through the ordinary callback and sets a Session" do
+    test "promotes an approved assignment and applies the configured Session cookie policy" do
+      previous_same_site = Application.get_env(:dhc, :auth_session_same_site)
+      previous_secure = Application.get_env(:dhc, :auth_session_secure)
+
+      on_exit(fn ->
+        Application.put_env(:dhc, :auth_session_same_site, previous_same_site)
+        Application.put_env(:dhc, :auth_session_secure, previous_secure)
+      end)
+
+      Application.put_env(:dhc, :auth_session_same_site, "None")
+      Application.put_env(:dhc, :auth_session_secure, true)
+
       principal = active_principal("assigned-member@example.com")
 
       assignment =
@@ -133,7 +144,11 @@ defmodule DhcWeb.AuthSessionControllerTest do
         |> get("/api/auth/discord/callback?state=test-state&code=success")
 
       assert redirected_to(conn, 302) == "http://localhost:5173/dashboard"
-      assert conn.resp_cookies[@session_cookie]
+
+      session_cookie = conn.resp_cookies[@session_cookie]
+      assert session_cookie
+      assert session_cookie.secure
+      assert session_cookie.same_site == "None"
 
       assert Repo.get_by!(Dhc.Auth.ExternalIdentity,
                provider: "discord",

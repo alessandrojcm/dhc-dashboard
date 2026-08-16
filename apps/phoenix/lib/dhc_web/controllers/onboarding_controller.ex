@@ -217,7 +217,7 @@ defmodule DhcWeb.OnboardingController do
       sign: true,
       http_only: true,
       secure: Application.get_env(:dhc, :auth_session_secure, false),
-      same_site: "Lax",
+      same_site: Application.get_env(:dhc, :auth_session_same_site, "Lax"),
       path: "/api/onboarding/invitation-acceptance",
       max_age: @acceptance_max_age
     ]

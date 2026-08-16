@@ -88,6 +88,7 @@ config :dhc,
 
 config :dhc, :auth_session_domain, nil
 config :dhc, :auth_session_secure, false
+config :dhc, :auth_session_same_site, "Lax"
 config :dhc, :environment, :test
 
 config :dhc, :cors_allowed_origins, [
