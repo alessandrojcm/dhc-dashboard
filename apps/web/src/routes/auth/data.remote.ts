@@ -3,6 +3,7 @@ import { invalid } from "@sveltejs/kit";
 import * as v from "valibot";
 import { form, getRequestEvent } from "$app/server";
 import { apiClientOptions } from "$lib/server/api-client";
+import { apiErrorMessage } from "$lib/server/api-error";
 
 const magicLinkSchema = v.object({
 	email: v.pipe(
@@ -29,9 +30,7 @@ export const magicLinkAuth = form(magicLinkSchema, async (data, issue) => {
 	});
 
 	if (error) {
-		const detail =
-			(error as { errors?: { detail?: string } } | undefined)?.errors?.detail ??
-			"Could not send magic link";
+		const detail = apiErrorMessage(error, "Could not send magic link");
 		return invalid(issue.email(detail));
 	}
 

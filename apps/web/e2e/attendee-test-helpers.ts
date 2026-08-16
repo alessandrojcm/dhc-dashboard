@@ -281,10 +281,12 @@ export async function fillFormField(
 	await page.fill(selector, value);
 	await page.waitForFunction(
 		({ selector, value }) => {
-			const element = document.querySelector(selector) as
-				| HTMLInputElement
-				| HTMLTextAreaElement;
-			return element && element.value === value;
+			const element = document.querySelector(selector);
+			return (
+				(element instanceof HTMLInputElement ||
+					element instanceof HTMLTextAreaElement) &&
+				element.value === value
+			);
 		},
 		{ selector, value },
 	);
@@ -302,7 +304,7 @@ export async function selectDropdownOption(
 	await page.waitForFunction(
 		({ selector, value }) => {
 			const element = document.querySelector(selector);
-			return element && (element as HTMLSelectElement).value === value;
+			return element instanceof HTMLSelectElement && element.value === value;
 		},
 		{ selector, value },
 	);
@@ -320,26 +322,6 @@ export async function clickAndWait(
 	if (waitForSelector) {
 		await page.waitForSelector(waitForSelector, { state: "visible" });
 	}
-}
-
-/**
- * Validates that an API response has the expected success format
- */
-export function validateApiResponse(
-	data: Record<string, unknown>,
-	expectedResource?: string,
-) {
-	if (!data.success) {
-		throw new Error(`API request failed: ${data.error || "Unknown error"}`);
-	}
-
-	if (expectedResource && !data[expectedResource]) {
-		throw new Error(
-			`Expected resource '${expectedResource}' not found in response`,
-		);
-	}
-
-	return data;
 }
 
 /**

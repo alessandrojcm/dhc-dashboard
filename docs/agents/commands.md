@@ -38,6 +38,9 @@ mise run format             # Auto-format with Oxfmt
 
 Oxlint runs in both `apps/web` and `packages/api-client`; the generated API client
 under `packages/api-client/src/client/` is ignored. Oxfmt remains scoped to `apps/web`.
+The shared config loads the project-local anti-slop plugin from
+`tools/oxlint/anti-slop/`; keep `oxlint` and `@oxlint/plugins` on the same pinned
+version when upgrading it, and leave all anti-slop rules enabled at error severity.
 
 Playwright starts its Phoenix and SvelteKit processes through the internal
 `e2e-phoenix-server` and `e2e-web-server` mise tasks. Their task-local environment

@@ -9,7 +9,7 @@ import { render } from "vitest-browser-svelte";
 import DatePicker from "./date-picker.svelte";
 
 test("selects a date from the calendar popover", async () => {
-	const onDateChange = vi.fn();
+	const onDateChange = vi.fn<(date: Date) => void>();
 	const screen = await render(DatePicker, {
 		value: new CalendarDate(2000, 1, 1),
 		onDateChange,
@@ -27,7 +27,7 @@ test("selects a date from the calendar popover", async () => {
 	);
 
 	expect(onDateChange).toHaveBeenCalledOnce();
-	const selectedDate = onDateChange.mock.calls[0][0] as Date;
+	const selectedDate = onDateChange.mock.calls[0][0];
 	expect(selectedDate.getFullYear()).toBe(2001);
 	expect(selectedDate.getMonth()).toBe(1);
 	expect(selectedDate.getDate()).toBe(15);

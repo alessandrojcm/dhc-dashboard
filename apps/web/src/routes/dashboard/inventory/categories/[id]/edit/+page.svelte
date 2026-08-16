@@ -17,27 +17,21 @@ import { onMount } from "svelte";
 import type { AttributeDefinition } from "$lib/schemas/inventory";
 
 let { data } = $props();
+let attributes = $state<AttributeDefinition[]>([]);
 
 onMount(() => {
+	attributes = data.category.available_attributes;
 	updateCategory.fields.set({
 		name: data.category.name,
 		description: data.category.description ?? undefined,
-		available_attributes: data.category
-			.available_attributes as AttributeDefinition[],
+		available_attributes: JSON.stringify(data.category.available_attributes),
 	});
 });
 
-// Get current attributes value reactively
-const attributes = $derived(
-	(updateCategory.fields.available_attributes.value() as
-		| AttributeDefinition[]
-		| undefined) ??
-		(data.category.available_attributes as AttributeDefinition[]),
-);
-
 // Callback to update attributes
 const handleAttributesChange = (newAttributes: AttributeDefinition[]) => {
-	updateCategory.fields.available_attributes.set(newAttributes);
+	attributes = newAttributes;
+	updateCategory.fields.available_attributes.set(JSON.stringify(newAttributes));
 };
 
 let showDeleteConfirm = $state(false);
@@ -77,7 +71,7 @@ let showDeleteConfirm = $state(false);
 						id={fieldProps.name}
 						placeholder="e.g., Masks, Jackets, Swords"
 					/>
-					{#each updateCategory.fields.name.issues() as issue}
+					{#each updateCategory.fields.name.issues() as issue, index (`${issue.message}-${index}`)}
 						<Field.Error>{issue.message}</Field.Error>
 					{/each}
 				</Field.Field>
@@ -91,7 +85,7 @@ let showDeleteConfirm = $state(false);
 						placeholder="Optional description of this equipment category"
 						rows={3}
 					/>
-					{#each updateCategory.fields.description.issues() as issue}
+					{#each updateCategory.fields.description.issues() as issue, index (`${issue.message}-${index}`)}
 						<Field.Error>{issue.message}</Field.Error>
 					{/each}
 				</Field.Field>

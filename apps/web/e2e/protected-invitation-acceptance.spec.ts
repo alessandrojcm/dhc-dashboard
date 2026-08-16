@@ -337,7 +337,7 @@ test("completes a paid Discord-bound Invitation Acceptance without creating auth
 		).toBe(true);
 		const signUpButton = page.getByRole("button", { name: "Sign up" });
 		const formValues = await signUpButton.evaluate((button) => {
-			const form = (button as HTMLButtonElement).form;
+			const form = button instanceof HTMLButtonElement ? button.form : null;
 			return form ? Object.fromEntries(new FormData(form)) : null;
 		});
 		expect(formValues).toMatchObject({

@@ -24,42 +24,47 @@ import {
 	inventoryItemsMove,
 	inventoryItemsUpdate,
 	type InventoryItemCreateRequest,
+	type InventoryItemMaintenanceRequest,
+	type InventoryItemMoveRequest,
 } from "@dhc/api-client";
 import { authorize } from "$lib/server/auth";
 import { apiClientOptions } from "$lib/server/api-client";
 import { INVENTORY_ROLES } from "$lib/server/roles";
-import { itemSchema } from "$lib/schemas/inventory";
+import { inventoryAttributesSchema, itemSchema } from "$lib/schemas/inventory";
 
 type ItemFormData = v.InferOutput<typeof itemSchema>;
 
-function normalizeAttributes(value: unknown): Record<string, unknown> {
-	if (typeof value === "string") {
+function normalizeAttributes(cause: unknown): ItemFormData["attributes"] {
+	const attributes = v.safeParse(inventoryAttributesSchema, cause);
+	if (attributes.success) return attributes.output;
+
+	const serialized = v.safeParse(v.string(), cause);
+	if (serialized.success) {
 		try {
-			const parsed = JSON.parse(value);
-			return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-				? (parsed as Record<string, unknown>)
-				: {};
+			const parsed = v.safeParse(
+				inventoryAttributesSchema,
+				JSON.parse(serialized.output),
+			);
+			return parsed.success ? parsed.output : {};
 		} catch {
 			return {};
 		}
 	}
-
-	return value && typeof value === "object" && !Array.isArray(value)
-		? (value as Record<string, unknown>)
-		: {};
+	return {};
 }
 
 function toApiBody(data: ItemFormData): InventoryItemCreateRequest {
-	return {
+	const body: InventoryItemCreateRequest = {
 		containerId: data.container_id,
 		categoryId: data.category_id,
 		quantity: data.quantity,
 		attributes: normalizeAttributes(data.attributes),
-		...(data.notes ? { notes: data.notes } : {}),
-		...(data.out_for_maintenance !== undefined
-			? { outForMaintenance: data.out_for_maintenance }
-			: {}),
 	};
+	if (data.notes) body.notes = data.notes;
+	if (data.out_for_maintenance !== undefined) {
+		body.outForMaintenance = data.out_for_maintenance;
+	}
+	return body;
 }
 
 export const createItem = form(itemSchema, async (data) => {
@@ -84,7 +89,8 @@ export const createItem = form(itemSchema, async (data) => {
 export const updateItem = form(itemSchema, async (data) => {
 	const event = getRequestEvent();
 	await authorize(event.locals, INVENTORY_ROLES);
-	const itemId = event.params.id!;
+	const itemId = event.params.id;
+	if (!itemId) throw new Error("Item ID is required");
 
 	const response = await inventoryItemsUpdate({
 		...apiClientOptions(event.cookies),
@@ -119,15 +125,15 @@ const MaintenanceItemSchema = v.object({
 export const moveItem = command(MoveItemSchema, async (input) => {
 	const event = getRequestEvent();
 	await authorize(event.locals, INVENTORY_ROLES);
-	const itemId = event.params.id!;
+	const itemId = event.params.id;
+	if (!itemId) throw new Error("Item ID is required");
+	const body: InventoryItemMoveRequest = { containerId: input.containerId };
+	if (input.notes) body.notes = input.notes;
 
 	const response = await inventoryItemsMove({
 		...apiClientOptions(event.cookies),
 		path: { id: itemId },
-		body: {
-			containerId: input.containerId,
-			...(input.notes ? { notes: input.notes } : {}),
-		},
+		body,
 	});
 
 	if (response.error) {
@@ -143,15 +149,17 @@ export const moveItem = command(MoveItemSchema, async (input) => {
 export const setMaintenance = command(MaintenanceItemSchema, async (input) => {
 	const event = getRequestEvent();
 	await authorize(event.locals, INVENTORY_ROLES);
-	const itemId = event.params.id!;
+	const itemId = event.params.id;
+	if (!itemId) throw new Error("Item ID is required");
+	const body: InventoryItemMaintenanceRequest = {
+		outForMaintenance: input.outForMaintenance,
+	};
+	if (input.notes) body.notes = input.notes;
 
 	const response = await inventoryItemsMaintenance({
 		...apiClientOptions(event.cookies),
 		path: { id: itemId },
-		body: {
-			outForMaintenance: input.outForMaintenance,
-			...(input.notes ? { notes: input.notes } : {}),
-		},
+		body,
 	});
 
 	if (response.error) {

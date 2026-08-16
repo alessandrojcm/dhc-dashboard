@@ -15,10 +15,10 @@ const themeContents = $derived.by(() => {
 	if (!colorConfig || !colorConfig.length) return;
 
 	const themeContents = [];
-	for (let [_theme, prefix] of Object.entries(THEMES)) {
+	for (const theme of ["light", "dark"] as const) {
+		const prefix = THEMES[theme];
 		let content = `${prefix} [data-chart=${id}] {\n`;
 		const color = colorConfig.map(([key, itemConfig]) => {
-			const theme = _theme as keyof typeof itemConfig.theme;
 			const color = itemConfig.theme?.[theme] || itemConfig.color;
 			return color ? `\t--color-${key}: ${color};` : null;
 		});

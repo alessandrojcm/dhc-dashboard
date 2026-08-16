@@ -4,6 +4,12 @@ import { createMember } from "./setupFunctions";
 import { loginAsUser } from "./auth";
 import { gotoHydrated } from "./hydration";
 
+declare global {
+	interface Window {
+		__openedUrls: string[];
+	}
+}
+
 // Verifies the member-detail profile page reads the insurance form link through
 // the Phoenix API (GET /api/members/insurance-form) after the PostgREST read
 // migration. Requires the Phoenix dev server (mise run phx-server) to be
@@ -54,19 +60,15 @@ test.describe("Member insurance form link", () => {
 		// URL flows through Phoenix -> load -> button click. This guards against
 		// shared-settings interference from other specs mutating the same row.
 		await page.evaluate(() => {
-			(window as unknown as { __openedUrls: string[] }).__openedUrls = [];
-			window.open = ((url: string) => {
-				(window as unknown as { __openedUrls: string[] }).__openedUrls.push(
-					url,
-				);
+			window.__openedUrls = [];
+			window.open = (url) => {
+				window.__openedUrls.push(String(url));
 				return null;
-			}) as typeof window.open;
+			};
 		});
 		await button.click();
 
-		const openedUrls = await page.evaluate(
-			() => (window as unknown as { __openedUrls: string[] }).__openedUrls,
-		);
+		const openedUrls = await page.evaluate(() => window.__openedUrls);
 		expect(openedUrls).toEqual([insuranceFormUrl]);
 	});
 });

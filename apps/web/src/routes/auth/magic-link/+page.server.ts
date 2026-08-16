@@ -2,6 +2,10 @@ import { authVerifyMagicLink } from "@dhc/api-client";
 import { redirect, type Cookies } from "@sveltejs/kit";
 import { apiClientOptions } from "$lib/server/api-client";
 import type { PageServerLoad } from "./$types";
+import * as v from "valibot";
+
+type CookieOptions = Parameters<Cookies["set"]>[2];
+const SameSiteSchema = v.picklist(["lax", "strict", "none"]);
 
 /**
  * ALE-164: magic-link verify landing route. The magic-link email points the
@@ -72,14 +76,7 @@ function forwardSetCookie(cookies: Cookies, setCookieHeader: string): void {
 	const value = nameValue.slice(eqIndex + 1).trim();
 	if (!name) return;
 
-	const options: {
-		path: string;
-		httpOnly?: boolean;
-		secure?: boolean;
-		sameSite?: "lax" | "strict" | "none";
-		maxAge?: number;
-		domain?: string;
-	} = { path: "/" };
+	const options: CookieOptions = { path: "/" };
 	for (const part of attrParts) {
 		const trimmed = part.trim();
 		const lower = trimmed.toLowerCase();
@@ -88,10 +85,11 @@ function forwardSetCookie(cookies: Cookies, setCookieHeader: string): void {
 		} else if (lower === "secure") {
 			options.secure = true;
 		} else if (lower.startsWith("samesite=")) {
-			options.sameSite = lower.slice("samesite=".length) as
-				| "lax"
-				| "strict"
-				| "none";
+			const sameSite = v.safeParse(
+				SameSiteSchema,
+				lower.slice("samesite=".length),
+			);
+			if (sameSite.success) options.sameSite = sameSite.output;
 		} else if (lower.startsWith("path=")) {
 			options.path = lower.slice("path=".length);
 		} else if (lower.startsWith("max-age=")) {

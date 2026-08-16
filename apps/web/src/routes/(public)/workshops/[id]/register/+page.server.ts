@@ -54,7 +54,8 @@ export const load: PageServerLoad = async ({ params, url }) => {
 			crypto.randomUUID(),
 			returnUrl,
 		);
-		const workshop = gateStatus.workshop!;
+		const workshop = gateStatus.workshop;
+		if (!workshop) error(404, "Workshop not found");
 
 		return {
 			workshop: {
@@ -71,14 +72,12 @@ export const load: PageServerLoad = async ({ params, url }) => {
 			checkoutClientSecret: checkoutSession.checkoutClientSecret,
 		};
 	} catch (err) {
-		const domainError = err as ExternalWorkshopRegistrationApiError;
-
-		if (domainError.name === "ExternalWorkshopRegistrationApiError") {
-			if (domainError.code === "WORKSHOP_FULL") {
+		if (err instanceof ExternalWorkshopRegistrationApiError) {
+			if (err.code === "WORKSHOP_FULL") {
 				redirect(303, `/workshops/${workshopId}/full`);
 			}
 
-			if (domainError.code === "WORKSHOP_NOT_FOUND") {
+			if (err.code === "WORKSHOP_NOT_FOUND") {
 				error(404, "Workshop not found");
 			}
 		}

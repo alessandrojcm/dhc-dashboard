@@ -29,11 +29,13 @@ import { dev } from "$app/environment";
 import { untrack } from "svelte";
 import { DiscordLogo } from "svelte-radix";
 import { publicApiUrl } from "$lib/api-client";
+import * as v from "valibot";
 import {
 	membershipBillingPortalMutation,
 	membershipPauseMutation,
 	membershipResumeMutation,
 } from "@dhc/api-client";
+import { SocialMediaConsent } from "$lib/types";
 
 const { data } = $props();
 const discordLinkUrl = publicApiUrl("/auth/discord/link");
@@ -71,14 +73,27 @@ $effect(() => {
 // Reactive form field values
 const dateOfBirth = $derived(updateProfile.fields.dateOfBirth.value() ?? "");
 const gender = $derived(updateProfile.fields.gender.value() ?? "");
-const weapon = $derived(
-	(updateProfile.fields.weapon.value() ?? []).filter(
-		(value): value is string => typeof value === "string",
-	),
-);
+const weapon = $derived.by(() => {
+	const parsed = v.safeParse(
+		v.array(v.string()),
+		updateProfile.fields.weapon.value(),
+	);
+	return parsed.success ? parsed.output : [];
+});
 const socialMediaConsent = $derived(
 	updateProfile.fields.socialMediaConsent.value(),
 );
+const socialMediaConsentSchema = v.picklist([
+	SocialMediaConsent.no,
+	SocialMediaConsent.yes_unrecognizable,
+	SocialMediaConsent.yes_recognizable,
+]);
+
+function requireMemberId(): string {
+	const memberId = page.params.memberId;
+	if (!memberId) throw new Error("Member ID is required");
+	return memberId;
+}
 
 // Date picker value conversion
 const dobValue = $derived.by(() => {
@@ -234,7 +249,7 @@ const resumeMutation = createMutation(() => ({
 							type="button"
 							onclick={() =>
 								openBillingPortal.mutate({
-									path: { memberId: page.params.memberId! },
+									path: { memberId: requireMemberId() },
 									body: { returnUrl: window.location.href },
 								})}
 							class="w-full"
@@ -273,7 +288,7 @@ const resumeMutation = createMutation(() => ({
 										variant="outline"
 										onclick={() =>
 											resumeMutation.mutate({
-												path: { memberId: page.params.memberId! },
+												path: { memberId: requireMemberId() },
 											})}
 										disabled={resumeMutation.isPending}
 										type="button"
@@ -391,10 +406,12 @@ const resumeMutation = createMutation(() => ({
 							name="socialMediaConsent"
 							class="flex justify-start"
 							value={socialMediaConsent}
-							onValueChange={(v) =>
-								updateProfile.fields.socialMediaConsent.set(
-									v as typeof socialMediaConsent,
-								)}
+							onValueChange={(value) => {
+								const parsed = v.safeParse(socialMediaConsentSchema, value);
+								if (parsed.success) {
+									updateProfile.fields.socialMediaConsent.set(parsed.output);
+								}
+							}}
 						>
 							<div class="flex items-center space-x-3 space-y-0">
 								<RadioGroup.Item value="no" id="consent-no" />
@@ -506,7 +523,7 @@ const resumeMutation = createMutation(() => ({
 		bind:open={showPauseModal}
 		onConfirm={(pauseData) => {
 			pauseMutation.mutate({
-				path: { memberId: page.params.memberId! },
+				path: { memberId: requireMemberId() },
 				body: { pauseUntil: pauseData.pauseUntil },
 			});
 		}}

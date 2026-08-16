@@ -111,7 +111,8 @@ onMount(() => {
 
 const handleSubmit: ButtonProps["onclick"] = async (e) => {
 	e.preventDefault();
-	const form = (e.currentTarget as HTMLButtonElement).form;
+	if (!(e.currentTarget instanceof HTMLButtonElement)) return;
+	const form = e.currentTarget.form;
 
 	// Validate Stripe is ready
 	if (!stripe || !elements) {

@@ -10,8 +10,18 @@ import {
 	stripeClient,
 } from "./setupFunctions";
 import { fillInvitationCredentials } from "./invitationSignup";
+import * as v from "valibot";
 
 type InvitedUser = Awaited<ReturnType<typeof setupInvitedUser>>;
+type StripeReference = string | { id: string } | null | undefined;
+
+function stripeReferenceId(reference: StripeReference): string | undefined {
+	const stringReference = v.safeParse(v.string(), reference);
+	if (stringReference.success) return stringReference.output;
+
+	const objectReference = v.safeParse(v.object({ id: v.string() }), reference);
+	return objectReference.success ? objectReference.output.id : undefined;
+}
 
 async function openSignup(page: Page, invitation: InvitedUser) {
 	await routeSuccessfulDiscordAcceptance(page, invitation.invitationId);
@@ -87,10 +97,7 @@ test.describe("Member Signup - Coupon Codes", () => {
 			if (promo.active) {
 				await stripeClient.promotionCodes.update(promo.id, { active: false });
 			}
-			const couponId =
-				typeof promo.promotion?.coupon === "string"
-					? promo.promotion.coupon
-					: promo.promotion?.coupon?.id;
+			const couponId = stripeReferenceId(promo.promotion?.coupon);
 			if (couponId) {
 				try {
 					await stripeClient.coupons.del(couponId);
@@ -113,6 +120,11 @@ test.describe("Member Signup - Coupon Codes", () => {
 		if (!annualPriceId || !monthlyPriceId) {
 			throw new Error("Could not find price IDs for membership fees");
 		}
+		const annualProductId = stripeReferenceId(annualPrices.data[0].product);
+		const monthlyProductId = stripeReferenceId(monthlyPrices.data[0].product);
+		if (!annualProductId || !monthlyProductId) {
+			throw new Error("Could not find product IDs for membership fees");
+		}
 
 		// Create coupons in Stripe
 		const [
@@ -130,7 +142,7 @@ test.describe("Member Signup - Coupon Codes", () => {
 				duration: "once",
 				name: "Annual Fee Test Discount",
 				applies_to: {
-					products: [annualPrices.data[0].product as string],
+					products: [annualProductId],
 				},
 			}),
 			// Coupon for monthly fee only - 15% off
@@ -139,7 +151,7 @@ test.describe("Member Signup - Coupon Codes", () => {
 				duration: "once",
 				name: "Monthly Fee Test Discount",
 				applies_to: {
-					products: [monthlyPrices.data[0].product as string],
+					products: [monthlyProductId],
 				},
 			}),
 			// Coupon for both fees - 10% off (permanent discount)
@@ -275,10 +287,7 @@ test.describe("Member Signup - Coupon Codes", () => {
 					active: false,
 				});
 
-				const couponId =
-					typeof promotion.promotion?.coupon === "string"
-						? promotion.promotion.coupon
-						: promotion.promotion?.coupon?.id;
+				const couponId = stripeReferenceId(promotion.promotion?.coupon);
 				if (couponId) {
 					await stripeClient.coupons.del(couponId);
 				}
@@ -482,15 +491,23 @@ test.describe("Member Signup - Coupon Codes", () => {
 
 					for (const subscription of subscriptions.data) {
 						const promotionIds = subscription.discounts.flatMap((discount) => {
-							if (typeof discount === "string" || !discount.promotion_code) {
+							const parsedDiscount = v.safeParse(
+								v.object({
+									promotion_code: v.optional(
+										v.nullable(
+											v.union([v.string(), v.object({ id: v.string() })]),
+										),
+									),
+								}),
+								discount,
+							);
+							if (!parsedDiscount.success) {
 								return [];
 							}
-
-							return [
-								typeof discount.promotion_code === "string"
-									? discount.promotion_code
-									: discount.promotion_code.id,
-							];
+							const promotionId = stripeReferenceId(
+								parsedDiscount.output.promotion_code,
+							);
+							return promotionId ? [promotionId] : [];
 						});
 
 						expect(promotionIds).toContain(coupon.promotionId());

@@ -6,10 +6,10 @@ import {
 import * as Sentry from "@sentry/sveltekit";
 import { error, type ServerLoadEvent } from "@sveltejs/kit";
 import { apiClientOptions } from "$lib/server/api-client";
-import { invariant } from "$lib/server/invariant";
 import { getRolesFromSession, MEMBERS_ADMIN_ROLES } from "$lib/server/roles";
-import type { SocialMediaConsent } from "$lib/types.ts";
+import { SocialMediaConsent as SocialMediaConsentValues } from "$lib/types";
 import type { PageServerLoad } from "./$types";
+import * as v from "valibot";
 
 /**
  * ALE-164: the self-vs-admin check no longer reads the Supabase `user.id` —
@@ -19,13 +19,13 @@ import type { PageServerLoad } from "./$types";
  */
 async function canUpdateSettings(event: ServerLoadEvent): Promise<boolean> {
 	const { session } = await event.locals.safeGetSession();
-	invariant(session === null, "Unauthorized");
+	if (!session) error(401, "Unauthorized");
 	const roles = getRolesFromSession(session);
 	if (roles.intersection(MEMBERS_ADMIN_ROLES).size > 0) {
 		return true;
 	}
 	// Self-access: the requested member id matches the signed-in principal.
-	return event.params.memberId === session!.principal.id;
+	return event.params.memberId === session.principal.id;
 }
 
 export const load: PageServerLoad = async (event) => {
@@ -56,8 +56,16 @@ export const load: PageServerLoad = async (event) => {
 			return error(404, "Member not found");
 		}
 
-		const preferredWeapon = (memberProfile.preferredWeapon ?? []).filter(
-			(weapon): weapon is string => typeof weapon === "string",
+		const preferredWeaponResult = v.safeParse(
+			v.array(v.string()),
+			memberProfile.preferredWeapon ?? [],
+		);
+		const preferredWeapon = preferredWeaponResult.success
+			? preferredWeaponResult.output
+			: [];
+		const socialMediaConsentResult = v.safeParse(
+			v.enum(SocialMediaConsentValues),
+			memberProfile.socialMediaConsent,
 		);
 
 		return {
@@ -74,9 +82,9 @@ export const load: PageServerLoad = async (event) => {
 				nextOfKinNumber: memberProfile.nextOfKinPhone ?? "",
 				weapon: preferredWeapon,
 				insuranceFormSubmitted: memberProfile.insuranceFormSubmitted ?? false,
-				socialMediaConsent: memberProfile.socialMediaConsent as
-					| SocialMediaConsent
-					| undefined,
+				socialMediaConsent: socialMediaConsentResult.success
+					? socialMediaConsentResult.output
+					: undefined,
 			},
 			genders: options.genders,
 			weapons: options.weapons,

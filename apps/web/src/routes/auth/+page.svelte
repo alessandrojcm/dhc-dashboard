@@ -13,19 +13,16 @@ import { magicLinkAuth } from "./data.remote";
 
 let { data } = $props();
 
-const hash = $derived(page.url.hash.split("#")[1] as string);
+const hash = $derived(page.url.hash.split("#")[1] ?? "");
 const discordFailed = $derived(
 	page.url.searchParams.get("discord") === "failed",
 );
-// biome-ignore lint/correctness/noUnusedVariables: Referenced from the Svelte template.
 const errorMessage = $derived(
 	discordFailed
 		? "Discord sign-in failed. Try a magic link instead."
 		: new URLSearchParams(hash).get("error_description"),
 );
-// biome-ignore lint/correctness/noUnusedVariables: Referenced from the Svelte template.
 const urlMessage = $derived(page.url.searchParams.get("message"));
-// biome-ignore lint/correctness/noUnusedVariables: Referenced from the Svelte template.
 const discordAuthUrl = publicApiUrl("/auth/discord");
 </script>
 

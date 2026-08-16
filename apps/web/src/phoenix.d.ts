@@ -5,7 +5,11 @@
 // See https://hexdocs.pm/phoenix/1.8.7/js/index.html
 
 declare module "phoenix" {
-	export type PhoenixPayload = unknown;
+	export type PhoenixScalar = string | number | boolean | null;
+	export type PhoenixPayload =
+		| PhoenixScalar
+		| PhoenixPayload[]
+		| { [key: string]: PhoenixPayload };
 
 	export interface PhoenixSocketOptions {
 		/** Phoenix 1.8 native transport auth token (string or closure). */
@@ -16,7 +20,7 @@ declare module "phoenix" {
 		rejoinAfterMs?: (tries: number) => number;
 		logger?: (kind: string, msg: string, data?: PhoenixPayload) => void;
 		debug?: boolean;
-		params?: Record<string, unknown>;
+		params?: Record<string, PhoenixPayload>;
 		vsn?: string;
 	}
 
@@ -34,14 +38,14 @@ declare module "phoenix" {
 		readonly topic: string;
 		constructor(
 			topic: string,
-			params?: Record<string, unknown>,
+			params?: Record<string, PhoenixPayload>,
 			socket?: Socket,
 		);
 		join(timeout?: number): Push;
 		leave(timeout?: number): Push;
 		push(
 			event: string,
-			payload?: Record<string, unknown>,
+			payload?: Record<string, PhoenixPayload>,
 			timeout?: number,
 		): Push;
 		on(
@@ -50,18 +54,18 @@ declare module "phoenix" {
 		): string;
 		off(event: string, ref?: string): void;
 		onClose(callback: (payload?: PhoenixPayload) => void): string;
-		onError(callback: (reason?: unknown) => void): string;
+		onError(callback: (reason?: string) => void): string;
 	}
 
 	export class Socket {
 		constructor(endPoint: string, opts?: PhoenixSocketOptions);
 		connect(): void;
 		disconnect(callback?: () => void, code?: number, reason?: string): void;
-		channel(topic: string, params?: Record<string, unknown>): Channel;
+		channel(topic: string, params?: Record<string, PhoenixPayload>): Channel;
 		remove(channel: Channel): void;
 		onOpen(callback: () => void): string;
 		onClose(callback: () => void): string;
-		onError(callback: (reason?: unknown) => void): string;
+		onError(callback: (reason?: string) => void): string;
 		onMessage(
 			callback: (
 				event: string,

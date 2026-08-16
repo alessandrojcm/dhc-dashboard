@@ -18,5 +18,9 @@
 		"format:check": "pnpm --filter @dhc/web format:check",
 		"api-gen": "pnpm --filter @dhc/api-client api:generate"
 	},
-	"packageManager": "pnpm@11.21.0"
+	"packageManager": "pnpm@11.21.0",
+	"devDependencies": {
+		"@oxlint/plugins": "1.78.0",
+		"oxlint": "1.78.0"
+	}
 }

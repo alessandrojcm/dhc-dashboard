@@ -29,9 +29,7 @@ let showCancellationDialog = $state(false);
 let selectedRegistration: { id: string; status: string } | null = $state(null);
 const queryClient = useQueryClient();
 
-const userData = queryClient.getQueryData(["logged_in_user_data"]) as
-	| UserData
-	| undefined;
+const userData = queryClient.getQueryData<UserData>(["logged_in_user_data"]);
 
 function getStatusColor(status: string = "planned") {
 	switch (status) {
