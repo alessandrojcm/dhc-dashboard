@@ -221,7 +221,7 @@ defmodule DhcWeb.AuthSessionController do
           outcome: "succeeded"
         )
 
-        app_url = Application.get_env(:dhc, :app_url, "http://localhost:5173")
+        app_url = Application.fetch_env!(:dhc, :app_url)
 
         conn
         |> put_session_cookie(session_token)
@@ -239,7 +239,7 @@ defmodule DhcWeb.AuthSessionController do
          {:ok, %{is_active: true}} <- Auth.load_session_principal(principal),
          {:ok, _identity} <- Auth.link_discord_identity(principal, claims) do
       :telemetry.execute([:dhc, :auth, :discord, :linked], %{}, %{})
-      app_url = Application.get_env(:dhc, :app_url, "http://localhost:5173")
+      app_url = Application.fetch_env!(:dhc, :app_url)
       redirect(conn, external: "#{app_url}/dashboard")
     else
       _error ->
@@ -266,7 +266,7 @@ defmodule DhcWeb.AuthSessionController do
     # The magic-link URL points back at the dashboard's magic-link verify
     # endpoint (the SvelteKit side will host the UI that POSTs the token
     # here). The frontend base URL is configurable.
-    frontend_base = Application.get_env(:dhc, :app_url, "http://localhost:5173")
+    frontend_base = Application.fetch_env!(:dhc, :app_url)
     magic_link_url_fun = fn token -> "#{frontend_base}/auth/magic-link?token=#{token}" end
 
     {:ok, :sent} = Auth.deliver_magic_link(email, magic_link_url_fun)
@@ -385,7 +385,7 @@ defmodule DhcWeb.AuthSessionController do
       sign: true,
       http_only: true,
       secure: Application.get_env(:dhc, :auth_session_secure, false),
-      same_site: "Lax",
+      same_site: Application.get_env(:dhc, :auth_session_same_site, "Lax"),
       path: "/",
       max_age: @session_max_age
     ] ++ domain_opt()
@@ -417,7 +417,7 @@ defmodule DhcWeb.AuthSessionController do
   defp discord_config(_purpose), do: discord_config()
 
   defp discord_failure(conn) do
-    app_url = Application.get_env(:dhc, :app_url, "http://localhost:5173")
+    app_url = Application.fetch_env!(:dhc, :app_url)
     redirect(conn, external: "#{app_url}/auth?discord=failed")
   end
 
@@ -433,12 +433,12 @@ defmodule DhcWeb.AuthSessionController do
   end
 
   defp acceptance_restart(conn) do
-    app_url = Application.get_env(:dhc, :app_url, "http://localhost:5173")
+    app_url = Application.fetch_env!(:dhc, :app_url)
     redirect(conn, external: app_url <> "/members/signup/restart")
   end
 
   defp acceptance_resume(conn, continuation_id) do
-    app_url = Application.get_env(:dhc, :app_url, "http://localhost:5173")
+    app_url = Application.fetch_env!(:dhc, :app_url)
 
     case Dhc.Onboarding.acceptance_oauth_resume_path(continuation_id) do
       {:ok, path} -> redirect(conn, external: app_url <> path)

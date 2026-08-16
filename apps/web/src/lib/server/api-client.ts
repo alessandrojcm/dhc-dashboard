@@ -1,7 +1,7 @@
 import { env } from "$env/dynamic/private";
 import { registerApiErrorReporter } from "$lib/api-error-reporter";
 
-const DEFAULT_API_BASE_URL = "http://localhost:4000/api";
+const DEFAULT_API_BASE_URL = "http://127.0.0.1:4000/api";
 
 registerApiErrorReporter();
 

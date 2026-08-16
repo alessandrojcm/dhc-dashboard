@@ -20,13 +20,7 @@ cors_allowed_origins =
   case System.get_env("CORS_ALLOWED_ORIGINS") do
     nil ->
       [
-        "http://localhost:5173",
-        "http://localhost:4173",
-        "http://localhost:3000",
-        "https://localhost:5173",
-        "http://127.0.0.1:5173",
         "https://127.0.0.1:5173",
-        "http://127.0.0.1:4173",
         "https://127.0.0.1:4173"
       ]
 
@@ -138,7 +132,14 @@ config :dhc,
 config :dhc,
        :app_url,
        System.get_env("APP_URL") || System.get_env("PUBLIC_SITE_URL") ||
-         System.get_env("SITE_URL") || "http://localhost:5173"
+         System.get_env("SITE_URL") || "https://127.0.0.1:5173"
+
+# The browser-facing SvelteKit app uses HTTPS while Phoenix remains on HTTP in
+# local development. Schemeful SameSite therefore treats browser API requests
+# as cross-site; loopback permits Secure cookies over HTTP.
+config :dhc, :auth_session_domain, nil
+config :dhc, :auth_session_secure, true
+config :dhc, :auth_session_same_site, "None"
 
 config :dhc, :environment, :development
 config :dhc, :cors_allowed_origins, cors_allowed_origins
@@ -147,7 +148,10 @@ config :dhc, :discord_oauth,
   client_id: System.get_env("DISCORD_CLIENT_ID"),
   client_secret: System.get_env("DISCORD_CLIENT_SECRET"),
   redirect_uri:
-    System.get_env("DISCORD_REDIRECT_URI", "http://localhost:4000/api/auth/discord/callback"),
+    System.get_env(
+      "DISCORD_REDIRECT_URI",
+      "http://127.0.0.1:4000/api/auth/discord/callback"
+    ),
   code_verifier: true
 
 config :dhc,
