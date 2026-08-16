@@ -31,6 +31,7 @@
 - **Task runner**: mise tasks (replaces Makefile — `mise run <task>`)
 - **Package manager**: pnpm (workspaces)
 - **API contract generation**: `mise run api-gen` (Phoenix stubs + TS client)
+- **Discord migration tooling**: `@discordjs/rest` and `discord-api-types` are root dev dependencies used only by the throwaway roster export script; they are not application runtime dependencies
 
 ## Experimental Features (SvelteKit)
 
