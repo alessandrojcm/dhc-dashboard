@@ -102,7 +102,9 @@ defmodule Dhc.MixProject do
       # Testcontainers.Compose.ComposeEnvironment) landed in 2.3.x (PR #247).
       # See ADR 0006 for the lifecycle: test_helper.exs starts the db profile,
       # reads the dynamic port, then starts the app + runs migrations.
-      {:testcontainers, "~> 2.3", only: :test}
+      {:testcontainers, "~> 2.3", only: :test},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:ex_slop, "~> 0.1", only: [:dev, :test], runtime: false}
     ]
   end
 
@@ -126,6 +128,7 @@ defmodule Dhc.MixProject do
       # (ADR 0006). `mix test path/to/file.exs` still routes through here.
       test: ["test --no-start"],
       precommit: [
+        "credo",
         "hex.audit",
         "compile --warnings-as-errors",
         "deps.unlock --unused",

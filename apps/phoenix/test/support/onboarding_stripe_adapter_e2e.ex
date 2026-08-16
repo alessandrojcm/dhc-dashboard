@@ -80,13 +80,17 @@ defmodule Dhc.Onboarding.StripeAdapter.E2E do
   defp ensure_probe! do
     case Process.whereis(@probe) do
       nil ->
-        case Agent.start(fn -> %{active: false, invocations: []} end, name: @probe) do
-          {:ok, pid} -> pid
-          {:error, {:already_started, pid}} -> pid
-        end
+        start_probe_agent()
 
       pid ->
         pid
+    end
+  end
+
+  defp start_probe_agent do
+    case Agent.start(fn -> %{active: false, invocations: []} end, name: @probe) do
+      {:ok, pid} -> pid
+      {:error, {:already_started, pid}} -> pid
     end
   end
 end

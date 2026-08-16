@@ -191,14 +191,13 @@ defmodule Mix.Tasks.Stripe.Gen do
 
     Enum.reduce(filtered_paths, refs, fn {_path, methods}, acc ->
       Enum.reduce(methods, acc, fn {_method, details}, inner_acc ->
-        if is_map(details) do
-          collect_refs(details, inner_acc)
-        else
-          inner_acc
-        end
+        collect_path_refs(details, inner_acc)
       end)
     end)
   end
+
+  defp collect_path_refs(details, acc) when is_map(details), do: collect_refs(details, acc)
+  defp collect_path_refs(_details, acc), do: acc
 
   defp collect_refs(obj, acc) when is_map(obj) do
     acc = if obj["$ref"], do: MapSet.put(acc, obj["$ref"]), else: acc

@@ -55,62 +55,56 @@ defmodule DhcWeb.StripeWebhooksController do
   defp verify_and_enqueue(conn, payload, sig_header) do
     secret = StripeWebhook.webhook_secret()
 
-    cond do
-      is_nil(secret) or secret == "" ->
-        Logger.error("[stripe-webhooks] STRIPE_WEBHOOK_SIGNING_SECRET not configured")
+    if is_nil(secret) or secret == "" do
+      Logger.error("[stripe-webhooks] STRIPE_WEBHOOK_SIGNING_SECRET not configured")
+
+      conn
+      |> put_status(:internal_server_error)
+      |> put_view(json: DhcWeb.StripeWebhooksJSON)
+      |> render(:error, detail: "Webhook secret not configured")
+    else
+      verify_signature(conn, payload, sig_header, secret)
+    end
+  end
+
+  defp verify_signature(conn, payload, sig_header, secret) do
+    case StripeWebhook.verify(payload, sig_header, secret) do
+      {:ok, event} ->
+        enqueue_event(conn, event)
+
+      {:error, :no_matching_signature} ->
+        Logger.warning("[stripe-webhooks] Invalid signature")
 
         conn
-        |> put_status(:internal_server_error)
+        |> put_status(:unauthorized)
         |> put_view(json: DhcWeb.StripeWebhooksJSON)
-        |> render(:error, detail: "Webhook secret not configured")
+        |> render(:error, detail: "Invalid signature")
 
-      true ->
-        case StripeWebhook.verify(payload, sig_header, secret) do
-          {:ok, event} ->
-            enqueue_event(conn, event)
+      {:error, :timestamp_expired} ->
+        Logger.warning("[stripe-webhooks] Timestamp expired")
 
-          {:error, :no_matching_signature} ->
-            Logger.warning("[stripe-webhooks] Invalid signature")
+        conn
+        |> put_status(:unauthorized)
+        |> put_view(json: DhcWeb.StripeWebhooksJSON)
+        |> render(:error, detail: "Timestamp expired")
 
-            conn
-            |> put_status(:unauthorized)
-            |> put_view(json: DhcWeb.StripeWebhooksJSON)
-            |> render(:error, detail: "Invalid signature")
+      {:error, reason} when reason in [:missing_header, :invalid_header] ->
+        Logger.warning("[stripe-webhooks] Malformed Stripe-Signature header")
 
-          {:error, :timestamp_expired} ->
-            Logger.warning("[stripe-webhooks] Timestamp expired")
+        conn
+        |> put_status(:bad_request)
+        |> put_view(json: DhcWeb.StripeWebhooksJSON)
+        |> render(:error, detail: "Malformed Stripe-Signature header")
 
-            conn
-            |> put_status(:unauthorized)
-            |> put_view(json: DhcWeb.StripeWebhooksJSON)
-            |> render(:error, detail: "Timestamp expired")
+      {:error, reason} ->
+        Logger.warning("[stripe-webhooks] Signature verification failed",
+          reason: inspect(reason)
+        )
 
-          {:error, :missing_header} ->
-            Logger.warning("[stripe-webhooks] Malformed Stripe-Signature header")
-
-            conn
-            |> put_status(:bad_request)
-            |> put_view(json: DhcWeb.StripeWebhooksJSON)
-            |> render(:error, detail: "Malformed Stripe-Signature header")
-
-          {:error, :invalid_header} ->
-            Logger.warning("[stripe-webhooks] Malformed Stripe-Signature header")
-
-            conn
-            |> put_status(:bad_request)
-            |> put_view(json: DhcWeb.StripeWebhooksJSON)
-            |> render(:error, detail: "Malformed Stripe-Signature header")
-
-          {:error, reason} ->
-            Logger.warning("[stripe-webhooks] Signature verification failed",
-              reason: inspect(reason)
-            )
-
-            conn
-            |> put_status(:bad_request)
-            |> put_view(json: DhcWeb.StripeWebhooksJSON)
-            |> render(:error, detail: "Signature verification failed")
-        end
+        conn
+        |> put_status(:bad_request)
+        |> put_view(json: DhcWeb.StripeWebhooksJSON)
+        |> render(:error, detail: "Signature verification failed")
     end
   end
 

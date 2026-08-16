@@ -164,16 +164,7 @@ defmodule Dhc.StripeSync do
     case req_stripe_subscriptions(params) do
       {:ok, %{"data" => data, "has_more" => has_more}} ->
         new_acc =
-          Enum.reduce(data, acc, fn sub, inner_acc ->
-            customer_id = extract_customer_id(sub)
-
-            if MapSet.member?(target_customer_ids, customer_id) do
-              existing = Map.get(inner_acc, customer_id, [])
-              Map.put(inner_acc, customer_id, [sub | existing])
-            else
-              inner_acc
-            end
-          end)
+          Enum.reduce(data, acc, &collect_target_subscription(&1, &2, target_customer_ids))
 
         new_scanned = scanned + length(data)
 
@@ -191,6 +182,16 @@ defmodule Dhc.StripeSync do
 
       {:error, reason} ->
         {:error, reason}
+    end
+  end
+
+  defp collect_target_subscription(subscription, acc, target_customer_ids) do
+    customer_id = extract_customer_id(subscription)
+
+    if MapSet.member?(target_customer_ids, customer_id) do
+      Map.update(acc, customer_id, [subscription], &[subscription | &1])
+    else
+      acc
     end
   end
 
@@ -286,8 +287,7 @@ defmodule Dhc.StripeSync do
   defp list_stripe_prices do
     lookup_keys_query =
       LookupKeys.all()
-      |> Enum.map(&"lookup_keys[]=#{URI.encode_www_form(&1)}")
-      |> Enum.join("&")
+      |> Enum.map_join("&", &"lookup_keys[]=#{URI.encode_www_form(&1)}")
 
     query_string = "#{lookup_keys_query}&active=true&limit=10"
 

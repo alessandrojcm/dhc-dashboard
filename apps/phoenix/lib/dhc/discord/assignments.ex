@@ -51,45 +51,47 @@ defmodule Dhc.Discord.Assignments do
          :ok <- validate_roster(roster),
          :ok <- capture_exists(capture_id) do
       Repo.transaction(fn ->
-        lock_operation([], [reviewer_principal_id])
-        authorize_member_admin_locked!(reviewer_principal_id)
-
-        assignments =
-          Repo.all(
-            from(a in StagedAssignment,
-              where: a.capture_id == ^capture_id and a.state == "proposed",
-              order_by: [asc: a.id]
-            )
-          )
-
-        if Enum.any?(assignments, &(&1.prepared_by_principal_id == reviewer_principal_id)) do
-          Repo.rollback(:reviewer_must_differ_from_preparer)
-        end
-
-        users = Map.new(roster, &{&1["id"], &1})
-
-        Enum.map(assignments, fn assignment ->
-          user =
-            Map.get(users, assignment.provider_subject) ||
-              Repo.rollback(:assignment_not_in_roster)
-
-          if user["username"] != assignment.username_snapshot do
-            Repo.rollback(:assignment_roster_mismatch)
-          end
-
-          %{
-            assignment_id: assignment.id,
-            principal_id: assignment.principal_id,
-            discord_user_id: assignment.provider_subject,
-            username_snapshot: assignment.username_snapshot,
-            global_name: user["global_name"],
-            nickname: user["nickname"],
-            capture_id: assignment.capture_id
-          }
-        end)
+        build_review_evidence(capture_id, roster, reviewer_principal_id)
       end)
       |> transaction_result()
     end
+  end
+
+  defp build_review_evidence(capture_id, roster, reviewer_principal_id) do
+    lock_operation([], [reviewer_principal_id])
+    authorize_member_admin_locked!(reviewer_principal_id)
+
+    assignments =
+      Repo.all(
+        from(a in StagedAssignment,
+          where: a.capture_id == ^capture_id and a.state == "proposed",
+          order_by: [asc: a.id]
+        )
+      )
+
+    if Enum.any?(assignments, &(&1.prepared_by_principal_id == reviewer_principal_id)),
+      do: Repo.rollback(:reviewer_must_differ_from_preparer)
+
+    users = Map.new(roster, &{&1["id"], &1})
+    Enum.map(assignments, &review_evidence_row(&1, users))
+  end
+
+  defp review_evidence_row(assignment, users) do
+    user =
+      Map.get(users, assignment.provider_subject) || Repo.rollback(:assignment_not_in_roster)
+
+    if user["username"] != assignment.username_snapshot,
+      do: Repo.rollback(:assignment_roster_mismatch)
+
+    %{
+      assignment_id: assignment.id,
+      principal_id: assignment.principal_id,
+      discord_user_id: assignment.provider_subject,
+      username_snapshot: assignment.username_snapshot,
+      global_name: user["global_name"],
+      nickname: user["nickname"],
+      capture_id: assignment.capture_id
+    }
   end
 
   def apply_review(capture_id, rows, reviewer_principal_id, options) do
@@ -264,12 +266,7 @@ defmodule Dhc.Discord.Assignments do
     Enum.each(rows, fn row ->
       assignment = Map.get(assignments, row["assignment_id"])
       validate_review_row!(assignment, capture_id, reviewer_principal_id)
-
-      if row["decision"] == "approve" do
-        if reason =
-             binding_conflict(assignment.principal_id, assignment.provider_subject, assignment.id),
-           do: Repo.rollback({:conflicted, assignment.id, reason})
-      end
+      validate_approval_conflict!(row["decision"], assignment)
     end)
 
     now = DateTime.utc_now()
@@ -506,6 +503,14 @@ defmodule Dhc.Discord.Assignments do
     end
   end
 
+  defp validate_approval_conflict!("reject", _assignment), do: :ok
+
+  defp validate_approval_conflict!("approve", assignment) do
+    if reason =
+         binding_conflict(assignment.principal_id, assignment.provider_subject, assignment.id),
+       do: Repo.rollback({:conflicted, assignment.id, reason})
+  end
+
   defp binding_conflict(principal_id, subject, except_assignment_id \\ nil) do
     assignment_conflict_query =
       from(a in StagedAssignment,
@@ -523,20 +528,10 @@ defmodule Dhc.Discord.Assignments do
       not member_principal?(principal_id) ->
         "invalid_member_principal_relationship"
 
-      Repo.exists?(
-        from(e in ExternalIdentity,
-          where:
-            e.provider == "discord" and is_nil(e.retired_at) and
-                (e.principal_id == ^principal_id or e.provider_subject == ^subject)
-        )
-      ) ->
+      permanent_identity_conflict?(principal_id, subject) ->
         "permanent_identity_collision"
 
-      Repo.exists?(
-        from(c in InvitationAcceptanceDiscordSubjectClaim,
-          where: c.provider == "discord" and c.provider_subject == ^subject
-        )
-      ) ->
+      active_claim_conflict?(subject) ->
         "active_claim_collision"
 
       Repo.exists?(assignment_conflict_query) ->
@@ -545,6 +540,24 @@ defmodule Dhc.Discord.Assignments do
       true ->
         nil
     end
+  end
+
+  defp permanent_identity_conflict?(principal_id, subject) do
+    Repo.exists?(
+      from(e in ExternalIdentity,
+        where:
+          e.provider == "discord" and is_nil(e.retired_at) and
+            (e.principal_id == ^principal_id or e.provider_subject == ^subject)
+      )
+    )
+  end
+
+  defp active_claim_conflict?(subject) do
+    Repo.exists?(
+      from(c in InvitationAcceptanceDiscordSubjectClaim,
+        where: c.provider == "discord" and c.provider_subject == ^subject
+      )
+    )
   end
 
   defp member_principal?(principal_id) do

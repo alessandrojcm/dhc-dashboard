@@ -234,23 +234,8 @@ defmodule Dhc.Members do
         nil ->
           Repo.rollback(:not_found)
 
-        {user_profile, member_profile} ->
-          current = %{
-            first_name: user_profile.first_name,
-            last_name: user_profile.last_name,
-            phone_number: user_profile.phone_number,
-            customer_id: user_profile.customer_id
-          }
-
-          with {:ok, _user_profile} <- update_user_profile(user_profile, attrs),
-               {:ok, _member_profile} <- update_member_profile(member_profile, attrs),
-               {:ok, member} <- get_member(member_id) do
-            maybe_echo_customer_to_stripe(current, member, attrs)
-            member
-          else
-            {:error, %Ecto.Changeset{} = changeset} -> Repo.rollback(changeset)
-            {:error, :not_found} -> Repo.rollback(:not_found)
-          end
+        profile_pair ->
+          update_profile_pair(member_id, profile_pair, attrs)
       end
     end)
     |> case do
@@ -259,6 +244,25 @@ defmodule Dhc.Members do
     end
   rescue
     _e in Postgrex.Error -> {:error, :invalid_payload}
+  end
+
+  defp update_profile_pair(member_id, {user_profile, member_profile}, attrs) do
+    current = %{
+      first_name: user_profile.first_name,
+      last_name: user_profile.last_name,
+      phone_number: user_profile.phone_number,
+      customer_id: user_profile.customer_id
+    }
+
+    with {:ok, _user_profile} <- update_user_profile(user_profile, attrs),
+         {:ok, _member_profile} <- update_member_profile(member_profile, attrs),
+         {:ok, member} <- get_member(member_id) do
+      maybe_echo_customer_to_stripe(current, member, attrs)
+      member
+    else
+      {:error, %Ecto.Changeset{} = changeset} -> Repo.rollback(changeset)
+      {:error, :not_found} -> Repo.rollback(:not_found)
+    end
   end
 
   defp load_profile_pair(member_id) do
@@ -310,34 +314,59 @@ defmodule Dhc.Members do
   end
 
   defp maybe_echo_customer_to_stripe(current, member, attrs) do
-    name_present? = Map.has_key?(attrs, "firstName") or Map.has_key?(attrs, "lastName")
-    phone_present? = Map.has_key?(attrs, "phoneNumber")
+    case stripe_customer_changes(current, member, attrs) do
+      {_customer_id, changes} when map_size(changes) == 0 ->
+        :ok
 
-    current_name = "#{current.first_name || ""} #{current.last_name || ""}" |> String.trim()
-    new_name = "#{member.first_name || ""} #{member.last_name || ""}" |> String.trim()
-    name_changed? = name_present? and current_name != new_name
-    phone_changed? = phone_present? and current.phone_number != member.phone_number
+      {customer_id, changes} ->
+        echo_customer_to_stripe(customer_id, changes, member.id)
+    end
+  end
 
-    if current.customer_id && (name_changed? or phone_changed?) do
-      body = %{}
-      body = if name_changed?, do: Map.put(body, :name, new_name), else: body
-      body = if phone_changed?, do: Map.put(body, :phone, member.phone_number), else: body
+  defp stripe_customer_changes(%{customer_id: nil}, _member, _attrs), do: {nil, %{}}
 
-      case Dhc.Stripe.Client.request(
-             method: :post,
-             url: "/v1/customers/#{URI.encode(current.customer_id)}",
-             body: body
-           ) do
-        {:ok, _body} ->
-          :ok
+  defp stripe_customer_changes(current, member, attrs) do
+    current_name = display_name(current)
+    new_name = display_name(member)
 
-        {:error, reason} ->
-          Logger.warning("[members] Stripe customer echo failed; leaving DB update committed",
-            member_id: member.id,
-            customer_id: current.customer_id,
-            reason: inspect(reason)
-          )
-      end
+    changes =
+      %{}
+      |> maybe_put_customer_change(
+        :name,
+        new_name,
+        (Map.has_key?(attrs, "firstName") or Map.has_key?(attrs, "lastName")) and
+          current_name != new_name
+      )
+      |> maybe_put_customer_change(
+        :phone,
+        member.phone_number,
+        Map.has_key?(attrs, "phoneNumber") and current.phone_number != member.phone_number
+      )
+
+    {current.customer_id, changes}
+  end
+
+  defp display_name(profile),
+    do: "#{profile.first_name || ""} #{profile.last_name || ""}" |> String.trim()
+
+  defp maybe_put_customer_change(changes, key, value, true), do: Map.put(changes, key, value)
+  defp maybe_put_customer_change(changes, _key, _value, false), do: changes
+
+  defp echo_customer_to_stripe(customer_id, changes, member_id) do
+    case Dhc.Stripe.Client.request(
+           method: :post,
+           url: "/v1/customers/#{URI.encode(customer_id)}",
+           body: changes
+         ) do
+      {:ok, _body} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("[members] Stripe customer echo failed; leaving DB update committed",
+          member_id: member_id,
+          customer_id: customer_id,
+          reason: inspect(reason)
+        )
     end
   end
 

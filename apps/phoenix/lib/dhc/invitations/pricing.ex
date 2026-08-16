@@ -89,32 +89,40 @@ defmodule Dhc.Invitations.Pricing do
     if trimmed == "" do
       resolve_promotion(nil)
     else
-      case Operations.get_promotion_codes(%{}, active: true, code: trimmed, limit: 1) do
-        {:ok, %{"data" => [%{"id" => id, "promotion" => %{"coupon" => coupon_id}} | _]}}
-        when is_binary(id) and is_binary(coupon_id) ->
-          if migration_code?(trimmed) do
-            {:ok,
-             %{
-               code: trimmed,
-               promotion_code_id: nil,
-               coupon: %{migration?: true},
-               migration?: true
-             }}
-          else
-            with {:ok, coupon} <- retrieve_coupon(coupon_id),
-                 :ok <- validate_coupon(coupon) do
-              {:ok, %{code: trimmed, promotion_code_id: id, coupon: coupon, migration?: false}}
-            end
-          end
+      fetch_promotion(trimmed)
+    end
+  end
 
-        {:ok, %{"data" => []}} ->
-          {:error, :invalid_promotion_code}
+  defp fetch_promotion(code) do
+    case Operations.get_promotion_codes(%{}, active: true, code: code, limit: 1) do
+      {:ok, %{"data" => [%{"id" => id, "promotion" => %{"coupon" => coupon_id}} | _]}}
+      when is_binary(id) and is_binary(coupon_id) ->
+        build_promotion(code, id, coupon_id)
 
-        {:error, reason} ->
-          {:error, {:stripe, reason}}
+      {:ok, %{"data" => []}} ->
+        {:error, :invalid_promotion_code}
 
-        _ ->
-          {:error, :invalid_promotion_code_response}
+      {:error, reason} ->
+        {:error, {:stripe, reason}}
+
+      _ ->
+        {:error, :invalid_promotion_code_response}
+    end
+  end
+
+  defp build_promotion(code, id, coupon_id) do
+    if migration_code?(code) do
+      {:ok,
+       %{
+         code: code,
+         promotion_code_id: nil,
+         coupon: %{migration?: true},
+         migration?: true
+       }}
+    else
+      with {:ok, coupon} <- retrieve_coupon(coupon_id),
+           :ok <- validate_coupon(coupon) do
+        {:ok, %{code: code, promotion_code_id: id, coupon: coupon, migration?: false}}
       end
     end
   end

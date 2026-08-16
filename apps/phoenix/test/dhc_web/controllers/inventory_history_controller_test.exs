@@ -163,7 +163,7 @@ defmodule DhcWeb.InventoryHistoryControllerTest do
         |> get("/api/inventory/history", %{"limit" => "3"})
 
       assert %{"data" => %{"history" => history, "limit" => 3}} = json_response(conn, 200)
-      assert length(history) <= 3
+      refute match?([_, _, _, _ | _], history)
     end
 
     test "defaults to limit 50 when no limit param is passed", %{conn: conn} do

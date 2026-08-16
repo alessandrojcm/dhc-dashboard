@@ -1,4 +1,8 @@
 defmodule Mix.Tasks.Dhc.Discord.Assignments do
+  @moduledoc """
+  Stages Discord assignments and applies an independent review workflow.
+  """
+
   @shortdoc "Stages and independently reviews controlled Discord assignments"
 
   use Mix.Task
