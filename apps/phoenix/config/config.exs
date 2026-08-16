@@ -22,7 +22,7 @@ config :dhc, :discord_oauth_strategy, Assent.Strategy.Discord
 
 config :dhc,
        :invitation_acceptance_discord_redirect_uri,
-       "http://localhost:5173/auth/discord/acceptance/callback"
+       "https://127.0.0.1:5173/auth/discord/acceptance/callback"
 
 # Salt namespace for short-lived public invitation verification tokens. The
 # Endpoint secret_key_base remains the signing secret; this salt is configurable
