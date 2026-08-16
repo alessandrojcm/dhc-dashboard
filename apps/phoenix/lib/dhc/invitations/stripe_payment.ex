@@ -72,15 +72,13 @@ defmodule Dhc.Invitations.StripePayment do
   def complete(%{customer_id: customer_id, payment_method_id: payment_method_id} = attrs)
       when is_binary(customer_id) and customer_id != "" and is_binary(payment_method_id) and
              payment_method_id != "" do
-    with {:ok, plan} <- payment_plan(attrs),
-         :ok <-
-           create_membership_subscriptions(
-             customer_id,
-             payment_method_id,
-             plan,
-             attrs
-           ) do
-      :ok
+    with {:ok, plan} <- payment_plan(attrs) do
+      create_membership_subscriptions(
+        customer_id,
+        payment_method_id,
+        plan,
+        attrs
+      )
     end
   end
 
@@ -97,15 +95,13 @@ defmodule Dhc.Invitations.StripePayment do
              "setup_intent_id" => resource_id(setup_intent),
              "payment_method_id" => payment_method_id
            }),
-         {:ok, plan} <- payment_plan(attrs),
-         :ok <-
-           create_membership_subscriptions(
-             customer_id,
-             payment_method_id,
-             plan,
-             attrs
-           ) do
-      :ok
+         {:ok, plan} <- payment_plan(attrs) do
+      create_membership_subscriptions(
+        customer_id,
+        payment_method_id,
+        plan,
+        attrs
+      )
     end
   end
 
@@ -130,12 +126,7 @@ defmodule Dhc.Invitations.StripePayment do
            discovered_ids)
         |> Enum.reject(&is_nil/1)
         |> Enum.uniq()
-        |> Enum.reduce([], fn subscription_id, errors ->
-          case cancel_subscription(subscription_id) do
-            :ok -> errors
-            {:error, reason} -> [{subscription_id, reason} | errors]
-          end
-        end)
+        |> Enum.reduce([], &collect_cancellation_error/2)
 
       case errors do
         [] -> :ok
@@ -160,6 +151,13 @@ defmodule Dhc.Invitations.StripePayment do
 
       {:error, reason} ->
         {:error, reason}
+    end
+  end
+
+  defp collect_cancellation_error(subscription_id, errors) do
+    case cancel_subscription(subscription_id) do
+      :ok -> errors
+      {:error, reason} -> [{subscription_id, reason} | errors]
     end
   end
 
@@ -621,26 +619,15 @@ defmodule Dhc.Invitations.StripePayment do
     case Operations.get_customers(%{}, opts) do
       {:ok, %{"data" => customers} = response} when is_list(customers) ->
         ids =
-          Enum.reduce(customers, ids, fn customer, acc ->
-            if get_in(customer, ["metadata", "acceptance_attempt_id"]) ==
-                 acceptance_attempt_id do
-              case resource_id(customer) do
-                nil -> acc
-                id -> MapSet.put(acc, id)
-              end
-            else
-              acc
-            end
-          end)
+          Enum.reduce(customers, ids, &collect_attempt_customer(&1, &2, acceptance_attempt_id))
 
-        if response["has_more"] == true do
-          case List.last(customers) |> resource_id() do
-            nil -> {:error, :malformed_customer_page}
-            cursor -> list_customer_ids_for_attempt(email, acceptance_attempt_id, cursor, ids)
-          end
-        else
-          {:ok, ids}
-        end
+        continue_customer_search(
+          response["has_more"],
+          customers,
+          email,
+          acceptance_attempt_id,
+          ids
+        )
 
       {:ok, response} ->
         {:error, {:malformed_customer_list, response}}
@@ -649,6 +636,27 @@ defmodule Dhc.Invitations.StripePayment do
         {:error, reason}
     end
   end
+
+  defp collect_attempt_customer(customer, ids, acceptance_attempt_id) do
+    if get_in(customer, ["metadata", "acceptance_attempt_id"]) == acceptance_attempt_id do
+      case resource_id(customer) do
+        nil -> ids
+        id -> MapSet.put(ids, id)
+      end
+    else
+      ids
+    end
+  end
+
+  defp continue_customer_search(true, customers, email, acceptance_attempt_id, ids) do
+    case List.last(customers) |> resource_id() do
+      nil -> {:error, :malformed_customer_page}
+      cursor -> list_customer_ids_for_attempt(email, acceptance_attempt_id, cursor, ids)
+    end
+  end
+
+  defp continue_customer_search(_has_more, _customers, _email, _attempt_id, ids),
+    do: {:ok, ids}
 
   defp maybe_add_starting_after(opts, nil), do: opts
   defp maybe_add_starting_after(opts, cursor), do: Keyword.put(opts, :starting_after, cursor)

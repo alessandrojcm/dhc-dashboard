@@ -894,8 +894,8 @@ defmodule DhcWeb.WorkshopsControllerTest do
                }
              } = json_response(conn, 200)
 
-      assert length(attendees) == 1
-      assert length(refunds) == 1
+      assert [_attendee] = attendees
+      assert [_refund] = refunds
 
       # Workshop summary uses Workshop vocabulary + camelCase, not club_activity*.
       assert workshop_payload["title"] == "Managed"
@@ -963,7 +963,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
 
       statuses = Enum.map(attendees, & &1["status"]) |> Enum.sort()
       assert statuses == ["confirmed", "pending"]
-      assert length(attendees) == 2
+      assert [_, _] = attendees
     end
 
     test "normalizes a member participant with displayName and no email", %{conn: conn} do
@@ -1116,7 +1116,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
 
       assert %{"data" => %{"refunds" => refunds}} = json_response(conn, 200)
 
-      assert length(refunds) == 2
+      assert [_, _] = refunds
       statuses = Enum.map(refunds, & &1["status"]) |> Enum.sort()
       assert statuses == ["completed", "pending"]
     end

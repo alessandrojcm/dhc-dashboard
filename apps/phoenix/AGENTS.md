@@ -3,6 +3,8 @@ This is a web application written using the Phoenix web framework.
 ## Project guidelines
 
 - Use `mix precommit` alias when you are done with all changes and fix any pending issues; it begins with `mix hex.audit` so dependency advisories fail validation
+- Run `mix credo --all` from `apps/phoenix` for static analysis; the project configuration also enables `ExSlop`
+- Keep generated Stripe modules under `lib/dhc/stripe/generated/` excluded from Credo instead of refactoring generated source
 - Use the already included and available `:req` (`Req`) library for HTTP requests, **avoid** `:httpoison`, `:tesla`, and `:httpc`. Req is included by default and is the preferred HTTP client for Phoenix apps
 - Hackney is test-only because Testcontainers requires its 1.x Unix-socket transport. Keep it out of production and do not force Hackney 4 until Testcontainers supports Docker Unix sockets with it; the matching Hex advisory exceptions in `mix.exs` apply only to test-only Hackney/Cowlib.
 

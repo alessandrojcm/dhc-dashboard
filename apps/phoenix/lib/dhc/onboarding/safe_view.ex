@@ -21,37 +21,63 @@ defmodule Dhc.Onboarding.SafeView do
     %{state: "awaiting_oauth", expires_at: continuation.expires_at}
   end
 
-  def acceptance_state(continuation, invitation, attempt, now) do
+  def acceptance_state(%{status: "collision"} = continuation, invitation, _attempt, _now),
+    do: {:ok, continuation_state(continuation, invitation)}
+
+  def acceptance_state(
+        %{status: "failed"} = continuation,
+        invitation,
+        %{last_error: "discord_failed"},
+        _now
+      ),
+      do: {:ok, continuation_state(continuation, invitation)}
+
+  def acceptance_state(%{status: "failed"}, _invitation, _attempt, _now),
+    do: {:ok, %{state: "restartVerification"}}
+
+  def acceptance_state(
+        _continuation,
+        %{status: "accepted"} = invitation,
+        %{status: "completed"},
+        _now
+      ),
+      do: {:ok, %{state: "accepted", invitation_email: invitation.email}}
+
+  def acceptance_state(
+        %{status: "verified"},
+        invitation,
+        %{status: status} = attempt,
+        _now
+      )
+      when status in ["payment_pending", "provisioned"],
+      do: {:ok, attempt_state(attempt, invitation)}
+
+  def acceptance_state(%{status: "verified"} = continuation, invitation, attempt, now) do
     cond do
-      continuation.status == "collision" ->
-        {:ok, continuation_state(continuation, invitation)}
-
-      continuation.status == "failed" and attempt.last_error == "discord_failed" ->
-        {:ok, continuation_state(continuation, invitation)}
-
-      continuation.status == "failed" ->
-        {:ok, %{state: "restartVerification"}}
-
-      attempt.status == "completed" and invitation.status == "accepted" ->
-        {:ok, %{state: "accepted", invitation_email: invitation.email}}
-
-      attempt.status == "payment_pending" and continuation.status == "verified" ->
+      AttemptState.payment_ready?(attempt) ->
         {:ok, attempt_state(attempt, invitation)}
 
-      attempt.status == "provisioned" and continuation.status == "verified" ->
-        {:ok, attempt_state(attempt, invitation)}
-
-      AttemptState.payment_ready?(attempt) and continuation.status == "verified" ->
-        {:ok, attempt_state(attempt, invitation)}
-
-      attempt.status == "processing" and continuation.status in ["awaiting_oauth", "verified"] and
-        DateTime.compare(invitation.expires_at, now) == :gt and
-          DateTime.compare(continuation.expires_at, now) == :gt ->
+      active_processing?(continuation, invitation, attempt, now) ->
         {:ok, continuation_state(continuation, invitation)}
 
       true ->
         {:error, :restart_verification}
     end
+  end
+
+  def acceptance_state(%{status: "awaiting_oauth"} = continuation, invitation, attempt, now) do
+    if active_processing?(continuation, invitation, attempt, now),
+      do: {:ok, continuation_state(continuation, invitation)},
+      else: {:error, :restart_verification}
+  end
+
+  def acceptance_state(_continuation, _invitation, _attempt, _now),
+    do: {:error, :restart_verification}
+
+  defp active_processing?(continuation, invitation, attempt, now) do
+    attempt.status == "processing" and
+      DateTime.compare(invitation.expires_at, now) == :gt and
+      DateTime.compare(continuation.expires_at, now) == :gt
   end
 
   def attempt_state(%{status: "completed"}, invitation),

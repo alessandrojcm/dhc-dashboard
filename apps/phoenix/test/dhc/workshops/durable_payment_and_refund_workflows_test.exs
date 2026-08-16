@@ -323,7 +323,7 @@ defmodule Dhc.Workshops.DurablePaymentAndRefundWorkflowsTest do
                Workshops.complete_member_registration(workshop.id, member_id, payment_intent_id)
 
       assert Repo.aggregate(Refund, :count, :id) == 1
-      assert length(all_enqueued(worker: RefundWorker)) == 1
+      assert [_job] = all_enqueued(worker: RefundWorker)
 
       Application.put_env(
         :dhc,
@@ -448,7 +448,7 @@ defmodule Dhc.Workshops.DurablePaymentAndRefundWorkflowsTest do
                Workshops.complete_external_registration(workshop.id, checkout_session_id)
 
       assert Repo.aggregate(Refund, :count, :id) == 1
-      assert length(all_enqueued(worker: RefundWorker)) == 1
+      assert [_job] = all_enqueued(worker: RefundWorker)
     end
 
     test "rejects a paid Checkout without its durable Payment Attempt identity" do

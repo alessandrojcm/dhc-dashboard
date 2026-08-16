@@ -66,28 +66,7 @@ defmodule Dhc.Workshops.Refund do
           :ok
 
         refund ->
-          now = DateTime.utc_now() |> DateTime.truncate(:second)
-
-          {status, completed_at} =
-            case provider_status do
-              "succeeded" -> {"completed", refund.completed_at || now}
-              "failed" -> {"failed", nil}
-              _ -> {"processing", nil}
-            end
-
-          refund
-          |> Ecto.Changeset.change(
-            status: status,
-            provider_status: provider_status,
-            completed_at: completed_at,
-            last_error: if(status == "failed", do: "Stripe refund failed", else: nil)
-          )
-          |> Repo.update!()
-
-          if status == "completed" and is_binary(refund.payment_attempt_id) do
-            from(pa in PaymentAttempt, where: pa.id == ^refund.payment_attempt_id)
-            |> Repo.update_all(set: [status: "refunded", concluded_at: now, updated_at: now])
-          end
+          apply_refund_status(refund, provider_status)
       end
     end)
 
@@ -95,4 +74,32 @@ defmodule Dhc.Workshops.Refund do
   end
 
   def apply_provider_update(_object), do: {:error, :invalid_refund_object}
+
+  defp apply_refund_status(refund, provider_status) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+    {status, completed_at} = local_status(provider_status, refund.completed_at, now)
+
+    refund
+    |> Ecto.Changeset.change(
+      status: status,
+      provider_status: provider_status,
+      completed_at: completed_at,
+      last_error: if(status == "failed", do: "Stripe refund failed", else: nil)
+    )
+    |> Repo.update!()
+
+    maybe_mark_payment_attempt_refunded(refund.payment_attempt_id, status, now)
+  end
+
+  defp local_status("succeeded", completed_at, now), do: {"completed", completed_at || now}
+  defp local_status("failed", _completed_at, _now), do: {"failed", nil}
+  defp local_status(_provider_status, _completed_at, _now), do: {"processing", nil}
+
+  defp maybe_mark_payment_attempt_refunded(payment_attempt_id, "completed", now)
+       when is_binary(payment_attempt_id) do
+    from(pa in PaymentAttempt, where: pa.id == ^payment_attempt_id)
+    |> Repo.update_all(set: [status: "refunded", concluded_at: now, updated_at: now])
+  end
+
+  defp maybe_mark_payment_attempt_refunded(_payment_attempt_id, _status, _now), do: :ok
 end

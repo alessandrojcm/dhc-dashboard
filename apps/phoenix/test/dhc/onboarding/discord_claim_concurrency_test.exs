@@ -360,17 +360,7 @@ defmodule Dhc.Onboarding.DiscordClaimConcurrencyTest do
 
     holder =
       Task.Supervisor.async_nolink(task_supervisor, fn ->
-        unboxed(fn ->
-          Repo.transaction(fn ->
-            blocker_pid = postgres_backend_pid()
-            DiscordSubjectLock.lock!(subject)
-            send(test_process, {:subject_lock_held, race_ref, blocker_pid})
-
-            receive do
-              {:release_subject_lock, ^race_ref} -> :released
-            end
-          end)
-        end)
+        hold_subject_lock(subject, test_process, race_ref)
       end)
 
     assert_receive {:subject_lock_held, ^race_ref, blocker_pid}
@@ -382,10 +372,7 @@ defmodule Dhc.Onboarding.DiscordClaimConcurrencyTest do
       |> Enum.map(fn {label, expected_waiter_count} ->
         task =
           Task.Supervisor.async_nolink(task_supervisor, fn ->
-            unboxed(fn ->
-              send(test_process, {:operation_started, race_ref, label})
-              Map.fetch!(operations, label).()
-            end)
+            run_race_operation(test_process, race_ref, label, operations)
           end)
 
         assert_receive {:operation_started, ^race_ref, ^label}
@@ -402,6 +389,29 @@ defmodule Dhc.Onboarding.DiscordClaimConcurrencyTest do
     assert {:ok, :released} = Task.await(holder)
 
     Map.new(tasks, fn {label, task} -> {label, Task.await(task, 10_000)} end)
+  end
+
+  defp hold_subject_lock(subject, test_process, race_ref) do
+    unboxed(fn ->
+      Repo.transaction(fn -> hold_subject_lock_transaction(subject, test_process, race_ref) end)
+    end)
+  end
+
+  defp hold_subject_lock_transaction(subject, test_process, race_ref) do
+    blocker_pid = postgres_backend_pid()
+    DiscordSubjectLock.lock!(subject)
+    send(test_process, {:subject_lock_held, race_ref, blocker_pid})
+
+    receive do
+      {:release_subject_lock, ^race_ref} -> :released
+    end
+  end
+
+  defp run_race_operation(test_process, race_ref, label, operations) do
+    unboxed(fn ->
+      send(test_process, {:operation_started, race_ref, label})
+      Map.fetch!(operations, label).()
+    end)
   end
 
   defp postgres_backend_pid do

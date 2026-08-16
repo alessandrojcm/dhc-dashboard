@@ -241,7 +241,7 @@ defmodule DhcWeb.InvitationsController do
   @doc """
   POST /invitations
   """
-  def create(conn, %{"invites" => invites}) when is_list(invites) and length(invites) > 0 do
+  def create(conn, %{"invites" => [_ | _] = invites}) do
     current_session = conn.assigns.current_session
 
     user = %{
@@ -284,7 +284,7 @@ defmodule DhcWeb.InvitationsController do
   @doc """
   POST /invitations/resend
   """
-  def resend(conn, %{"emails" => emails}) when is_list(emails) and length(emails) > 0 do
+  def resend(conn, %{"emails" => [_ | _] = emails}) do
     with {:ok, result} <- Invitations.resend_invitation_emails(emails) do
       conn
       |> put_status(:accepted)

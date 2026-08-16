@@ -314,8 +314,10 @@ defmodule Dhc.DevSeeds do
         )
       )
 
-    if length(member_ids) < 5 do
-      extra = 10 - length(member_ids)
+    member_count = length(member_ids)
+
+    if member_count < 5 do
+      extra = 10 - member_count
 
       extra
       |> create_members()

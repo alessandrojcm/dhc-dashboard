@@ -160,30 +160,36 @@ defmodule Dhc.AuthConcurrencyTest do
 
   defp lock_profile(task_supervisor, profile_id, test_process, is_active \\ nil) do
     Task.Supervisor.async_nolink(task_supervisor, fn ->
-      unboxed(fn ->
-        Repo.transaction(fn ->
-          blocker_pid = postgres_backend_pid()
-
-          profile =
-            UserProfile
-            |> where([profile], profile.id == ^profile_id)
-            |> lock("FOR UPDATE")
-            |> Repo.one!()
-
-          if is_boolean(is_active) do
-            profile
-            |> Ecto.Changeset.change(is_active: is_active)
-            |> Repo.update!()
-          end
-
-          send(test_process, {:profile_locked, self(), blocker_pid})
-
-          receive do
-            :release_profile -> :released
-          end
-        end)
-      end)
+      run_lock_profile_task(profile_id, test_process, is_active)
     end)
+  end
+
+  defp run_lock_profile_task(profile_id, test_process, is_active) do
+    unboxed(fn ->
+      Repo.transaction(fn -> lock_profile_transaction(profile_id, test_process, is_active) end)
+    end)
+  end
+
+  defp lock_profile_transaction(profile_id, test_process, is_active) do
+    blocker_pid = postgres_backend_pid()
+
+    profile =
+      UserProfile
+      |> where([profile], profile.id == ^profile_id)
+      |> lock("FOR UPDATE")
+      |> Repo.one!()
+
+    if is_boolean(is_active) do
+      profile
+      |> Ecto.Changeset.change(is_active: is_active)
+      |> Repo.update!()
+    end
+
+    send(test_process, {:profile_locked, self(), blocker_pid})
+
+    receive do
+      :release_profile -> :released
+    end
   end
 
   defp database_task(task_supervisor, test_process, label, fun) do

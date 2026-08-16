@@ -150,7 +150,7 @@ defmodule DhcWeb.InvitationsControllerTest do
       assert is_integer(response["data"]["job_id"])
 
       assert [%Oban.Job{args: args}] = all_enqueued(worker: Dhc.Invitations.BulkInviteWorker)
-      assert length(args["invites"]) == 2
+      assert [_, _] = args["invites"]
       assert args["invites"] == [dup_invite, dup_invite]
     end
   end
@@ -815,7 +815,7 @@ defmodule DhcWeb.InvitationsControllerTest do
       profiles =
         from(up in UserProfile, where: up.waitlist_id == ^waitlist_id) |> Repo.all()
 
-      assert length(profiles) == 1
+      assert [_profile] = profiles
 
       reused = hd(profiles)
 

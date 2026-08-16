@@ -105,63 +105,7 @@ defmodule Dhc.Inventory.Items do
         {:error, :not_found}
 
       %Item{} = item ->
-        normalized = normalize_item_attrs(attrs)
-        old_container_id = item.container_id
-        new_container_id = Map.get(normalized, "container_id", old_container_id)
-
-        changeset =
-          item
-          |> item_changeset(normalized)
-          |> Ecto.Changeset.put_change(:updated_by, actor_id)
-          |> Ecto.Changeset.foreign_key_constraint(:container_id,
-            name: :inventory_items_container_id_fkey
-          )
-          |> Ecto.Changeset.foreign_key_constraint(:category_id,
-            name: :inventory_items_category_id_fkey
-          )
-          |> Ecto.Changeset.foreign_key_constraint(:updated_by,
-            name: :inventory_items_updated_by_fkey
-          )
-
-        multi = Ecto.Multi.new() |> Ecto.Multi.update(:item, changeset)
-
-        multi =
-          if container_changed?(old_container_id, new_container_id) do
-            Ecto.Multi.insert(
-              multi,
-              :history_moved,
-              ItemHistory.record_moved_history(
-                item.id,
-                old_container_id,
-                new_container_id,
-                actor_id,
-                Map.get(normalized, "notes")
-              )
-            )
-          else
-            multi
-          end
-
-        multi =
-          Ecto.Multi.insert(multi, :history_updated, fn %{item: %Item{}} ->
-            ItemHistory.record_updated_history(item.id, actor_id, Map.get(normalized, "notes"))
-          end)
-
-        multi
-        |> Repo.transaction()
-        |> case do
-          {:ok, %{item: %Item{} = updated}} ->
-            {:ok, load_item_aggregates(updated)}
-
-          {:error, :item, %Ecto.Changeset{} = err, _changes} ->
-            {:error, err}
-
-          {:error, _step, %Ecto.Changeset{} = err, _changes} ->
-            {:error, err}
-
-          {:error, _step, reason, _changes} ->
-            {:error, reason}
-        end
+        update_existing_item(item, attrs, actor_id)
     end
   end
 
@@ -198,59 +142,7 @@ defmodule Dhc.Inventory.Items do
         {:error, :not_found}
 
       %Item{} = item ->
-        new_container_id = parse_container_id(attrs)
-
-        changeset =
-          item
-          |> Ecto.Changeset.cast(%{container_id: new_container_id}, [:container_id])
-          |> Ecto.Changeset.validate_required([:container_id])
-          |> Ecto.Changeset.put_change(:updated_by, actor_id)
-          |> Ecto.Changeset.foreign_key_constraint(:container_id,
-            name: :inventory_items_container_id_fkey
-          )
-          |> Ecto.Changeset.foreign_key_constraint(:updated_by,
-            name: :inventory_items_updated_by_fkey
-          )
-
-        notes = parse_notes(attrs)
-
-        multi = Ecto.Multi.new() |> Ecto.Multi.update(:item, changeset)
-
-        multi =
-          if container_changed?(item.container_id, new_container_id) do
-            Ecto.Multi.insert(
-              multi,
-              :history_moved,
-              ItemHistory.record_moved_history(
-                item.id,
-                item.container_id,
-                new_container_id,
-                actor_id,
-                notes
-              )
-            )
-          else
-            multi
-          end
-
-        multi
-        |> Repo.transaction()
-        |> case do
-          {:ok, %{item: %Item{} = updated}} ->
-            {:ok, load_item_aggregates(updated)}
-
-          {:error, :item, %Ecto.Changeset{errors: [{:container_id, _} | _]}, _changes} ->
-            {:error, :invalid_container}
-
-          {:error, :item, %Ecto.Changeset{} = err, _changes} ->
-            {:error, err}
-
-          {:error, _step, %Ecto.Changeset{} = err, _changes} ->
-            {:error, err}
-
-          {:error, _step, reason, _changes} ->
-            {:error, reason}
-        end
+        move_existing_item(item, attrs, actor_id)
     end
   end
 
@@ -270,59 +162,133 @@ defmodule Dhc.Inventory.Items do
         {:error, :not_found}
 
       %Item{} = item ->
-        case parse_maintenance_flag(attrs) do
-          {:ok, out_for_maintenance} ->
-            notes = parse_notes(attrs)
-
-            changeset =
-              item
-              |> Ecto.Changeset.cast(%{out_for_maintenance: out_for_maintenance}, [
-                :out_for_maintenance
-              ])
-              |> Ecto.Changeset.put_change(:updated_by, actor_id)
-              |> Ecto.Changeset.foreign_key_constraint(:updated_by,
-                name: :inventory_items_updated_by_fkey
-              )
-
-            multi = Ecto.Multi.new() |> Ecto.Multi.update(:item, changeset)
-
-            multi =
-              if item.out_for_maintenance != out_for_maintenance do
-                Ecto.Multi.insert(
-                  multi,
-                  :history_maintenance,
-                  ItemHistory.record_maintenance_history(
-                    item.id,
-                    out_for_maintenance,
-                    actor_id,
-                    notes
-                  )
-                )
-              else
-                multi
-              end
-
-            multi
-            |> Repo.transaction()
-            |> case do
-              {:ok, %{item: %Item{} = updated}} ->
-                {:ok, load_item_aggregates(updated)}
-
-              {:error, :item, %Ecto.Changeset{} = err, _changes} ->
-                {:error, err}
-
-              {:error, _step, %Ecto.Changeset{} = err, _changes} ->
-                {:error, err}
-
-              {:error, _step, reason, _changes} ->
-                {:error, reason}
-            end
-
-          :invalid ->
-            {:error, %Ecto.Changeset{errors: [out_for_maintenance: {"is invalid", []}]}}
-        end
+        set_existing_item_maintenance(item, attrs, actor_id)
     end
   end
+
+  defp update_existing_item(%Item{} = item, attrs, actor_id) do
+    normalized = normalize_item_attrs(attrs)
+    old_container_id = item.container_id
+    new_container_id = Map.get(normalized, "container_id", old_container_id)
+
+    changeset =
+      item
+      |> item_changeset(normalized)
+      |> Ecto.Changeset.put_change(:updated_by, actor_id)
+      |> Ecto.Changeset.foreign_key_constraint(:container_id,
+        name: :inventory_items_container_id_fkey
+      )
+      |> Ecto.Changeset.foreign_key_constraint(:category_id,
+        name: :inventory_items_category_id_fkey
+      )
+      |> Ecto.Changeset.foreign_key_constraint(:updated_by,
+        name: :inventory_items_updated_by_fkey
+      )
+
+    Ecto.Multi.new()
+    |> Ecto.Multi.update(:item, changeset)
+    |> maybe_record_move(item, new_container_id, actor_id, Map.get(normalized, "notes"))
+    |> Ecto.Multi.insert(:history_updated, fn %{item: %Item{}} ->
+      ItemHistory.record_updated_history(item.id, actor_id, Map.get(normalized, "notes"))
+    end)
+    |> Repo.transaction()
+    |> handle_item_transaction()
+  end
+
+  defp move_existing_item(%Item{} = item, attrs, actor_id) do
+    new_container_id = parse_container_id(attrs)
+
+    changeset =
+      item
+      |> Ecto.Changeset.cast(%{container_id: new_container_id}, [:container_id])
+      |> Ecto.Changeset.validate_required([:container_id])
+      |> Ecto.Changeset.put_change(:updated_by, actor_id)
+      |> Ecto.Changeset.foreign_key_constraint(:container_id,
+        name: :inventory_items_container_id_fkey
+      )
+      |> Ecto.Changeset.foreign_key_constraint(:updated_by,
+        name: :inventory_items_updated_by_fkey
+      )
+
+    Ecto.Multi.new()
+    |> Ecto.Multi.update(:item, changeset)
+    |> maybe_record_move(item, new_container_id, actor_id, parse_notes(attrs))
+    |> Repo.transaction()
+    |> handle_move_transaction()
+  end
+
+  defp set_existing_item_maintenance(%Item{} = item, attrs, actor_id) do
+    case parse_maintenance_flag(attrs) do
+      {:ok, out_for_maintenance} ->
+        update_maintenance(item, out_for_maintenance, actor_id, parse_notes(attrs))
+
+      :invalid ->
+        {:error, %Ecto.Changeset{errors: [out_for_maintenance: {"is invalid", []}]}}
+    end
+  end
+
+  defp update_maintenance(item, out_for_maintenance, actor_id, notes) do
+    changeset =
+      item
+      |> Ecto.Changeset.cast(%{out_for_maintenance: out_for_maintenance}, [
+        :out_for_maintenance
+      ])
+      |> Ecto.Changeset.put_change(:updated_by, actor_id)
+      |> Ecto.Changeset.foreign_key_constraint(:updated_by,
+        name: :inventory_items_updated_by_fkey
+      )
+
+    Ecto.Multi.new()
+    |> Ecto.Multi.update(:item, changeset)
+    |> maybe_record_maintenance(item, out_for_maintenance, actor_id, notes)
+    |> Repo.transaction()
+    |> handle_item_transaction()
+  end
+
+  defp maybe_record_move(multi, item, new_container_id, actor_id, notes) do
+    if container_changed?(item.container_id, new_container_id) do
+      Ecto.Multi.insert(
+        multi,
+        :history_moved,
+        ItemHistory.record_moved_history(
+          item.id,
+          item.container_id,
+          new_container_id,
+          actor_id,
+          notes
+        )
+      )
+    else
+      multi
+    end
+  end
+
+  defp maybe_record_maintenance(multi, item, out_for_maintenance, actor_id, notes) do
+    if item.out_for_maintenance != out_for_maintenance do
+      Ecto.Multi.insert(
+        multi,
+        :history_maintenance,
+        ItemHistory.record_maintenance_history(item.id, out_for_maintenance, actor_id, notes)
+      )
+    else
+      multi
+    end
+  end
+
+  defp handle_item_transaction({:ok, %{item: %Item{} = updated}}),
+    do: {:ok, load_item_aggregates(updated)}
+
+  defp handle_item_transaction({:error, _step, %Ecto.Changeset{} = err, _changes}),
+    do: {:error, err}
+
+  defp handle_item_transaction({:error, _step, reason, _changes}), do: {:error, reason}
+
+  defp handle_move_transaction(
+         {:error, :item, %Ecto.Changeset{errors: [{:container_id, _} | _]}, _changes}
+       ),
+       do: {:error, :invalid_container}
+
+  defp handle_move_transaction(result), do: handle_item_transaction(result)
 
   defp item_base_query(opts) do
     from(i in Item,

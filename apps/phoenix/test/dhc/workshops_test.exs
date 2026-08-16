@@ -74,7 +74,7 @@ defmodule Dhc.WorkshopsTest do
       assert "Published" in titles
       refute "Finished" in titles
       refute "Cancelled" in titles
-      assert length(summaries) == 2
+      assert [_, _] = summaries
     end
 
     test "orders by start_date ascending by default" do
@@ -213,7 +213,7 @@ defmodule Dhc.WorkshopsTest do
       assert "Published" in titles
       assert "Finished" in titles
       refute "Cancelled" in titles
-      assert length(summaries) == 3
+      assert [_, _, _] = summaries
       refute uuid_to_string(cancelled.id) in Enum.map(summaries, &uuid_to_string(&1.id))
     end
 
@@ -686,7 +686,7 @@ defmodule Dhc.WorkshopsTest do
 
       statuses = Enum.map(attendees, & &1.status) |> Enum.sort()
       assert statuses == ["confirmed", "pending"]
-      assert length(attendees) == 2
+      assert [_, _] = attendees
     end
 
     test "orders attendees by created_at ascending" do
@@ -848,7 +848,7 @@ defmodule Dhc.WorkshopsTest do
       refunds = Workshops.list_workshop_refunds(workshop.id)
 
       # No status filter — both pending and completed refunds are returned.
-      assert length(refunds) == 2
+      assert [_, _] = refunds
       statuses = Enum.map(refunds, & &1.status) |> Enum.sort()
       assert statuses == ["completed", "pending"]
     end
@@ -993,8 +993,8 @@ defmodule Dhc.WorkshopsTest do
       result = Workshops.workshop_attendees_and_refunds(workshop.id)
 
       assert result.workshop.title == "Managed"
-      assert length(result.attendees) == 1
-      assert length(result.refunds) == 1
+      assert [_attendee] = result.attendees
+      assert [_refund] = result.refunds
       assert hd(result.attendees).participant.type == :member
       assert hd(result.refunds).participant.type == :member
     end

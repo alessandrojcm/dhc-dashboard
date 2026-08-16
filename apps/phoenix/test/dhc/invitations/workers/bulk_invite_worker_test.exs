@@ -153,7 +153,7 @@ defmodule Dhc.Invitations.BulkInviteWorkerTest do
                :count
              ) == 1
 
-      assert length(all_enqueued(worker: Dhc.Email.Worker)) == 1
+      assert [_job] = all_enqueued(worker: Dhc.Email.Worker)
     end
   end
 

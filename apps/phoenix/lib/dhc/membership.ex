@@ -34,9 +34,8 @@ defmodule Dhc.Membership do
          {:ok, member} <- load_member_customer(member_id),
          {:ok, subscription} <- find_membership_subscription(member.customer_id, :active),
          {:ok, updated_subscription} <- pause_stripe_subscription(subscription, pause_until),
-         {:ok, confirmed_until} <- confirmed_pause_until(updated_subscription),
-         {:ok, updated_member} <- write_pause_until(member_id, confirmed_until) do
-      {:ok, updated_member}
+         {:ok, confirmed_until} <- confirmed_pause_until(updated_subscription) do
+      write_pause_until(member_id, confirmed_until)
     end
   end
 
@@ -51,9 +50,8 @@ defmodule Dhc.Membership do
     with {:ok, member} <- load_member_customer(member_id),
          :ok <- ensure_locally_paused(member),
          {:ok, subscription} <- find_membership_subscription(member.customer_id, :paused),
-         {:ok, _updated_subscription} <- resume_stripe_subscription(subscription),
-         {:ok, updated_member} <- write_pause_until(member_id, nil) do
-      {:ok, updated_member}
+         {:ok, _updated_subscription} <- resume_stripe_subscription(subscription) do
+      write_pause_until(member_id, nil)
     end
   end
 
@@ -238,17 +236,23 @@ defmodule Dhc.Membership do
         Repo.rollback(:not_found)
       end
 
-      case Ecto.Changeset.change(member_profile, subscription_paused_until: pause_until)
-           |> Repo.update() do
+      member_profile
+      |> Ecto.Changeset.change(subscription_paused_until: pause_until)
+      |> Repo.update()
+      |> case do
         {:ok, _profile} ->
-          case Members.get_member(member_id) do
-            {:ok, member} -> member
-            {:error, reason} -> Repo.rollback(reason)
-          end
+          load_updated_member(member_id)
 
         {:error, changeset} ->
           Repo.rollback(changeset)
       end
     end)
+  end
+
+  defp load_updated_member(member_id) do
+    case Members.get_member(member_id) do
+      {:ok, member} -> member
+      {:error, reason} -> Repo.rollback(reason)
+    end
   end
 end

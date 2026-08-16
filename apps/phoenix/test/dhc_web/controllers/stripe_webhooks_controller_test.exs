@@ -199,7 +199,7 @@ defmodule DhcWeb.StripeWebhooksControllerTest do
 
       # Two deliveries → two enqueued jobs. The controller does not dedup.
       jobs = all_enqueued(worker: Dhc.StripeWebhooks.Worker)
-      assert length(jobs) == 2
+      assert [_, _] = jobs
       assert Enum.all?(jobs, &(&1.args["event_id"] == "evt_dup_001"))
     end
   end

@@ -1,4 +1,6 @@
 defmodule Mix.Tasks.E2e.Server do
+  @moduledoc false
+
   use Mix.Task
 
   @shortdoc "Starts Phoenix against a disposable Testcontainers E2E database"

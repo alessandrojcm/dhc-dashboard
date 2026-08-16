@@ -62,7 +62,7 @@ defmodule Mix.Tasks.Gen.ControllersTest do
   test "operations_for_tag returns all operations for a given tag", %{spec: spec} do
     operations = Controllers.operations_for_tag(spec, "Health")
 
-    assert length(operations) == 2
+    assert [_, _] = operations
 
     index_op = Enum.find(operations, &(&1.operation_id == "health.index"))
     show_op = Enum.find(operations, &(&1.operation_id == "health.show"))
@@ -79,7 +79,7 @@ defmodule Mix.Tasks.Gen.ControllersTest do
   test "operations_for_tag returns all CRUD operations for Widgets", %{crud_spec: spec} do
     operations = Controllers.operations_for_tag(spec, "Widgets")
 
-    assert length(operations) == 6
+    assert [_, _, _, _, _, _] = operations
 
     action_names =
       operations
@@ -92,7 +92,7 @@ defmodule Mix.Tasks.Gen.ControllersTest do
   test "operations_for_tag returns list-only operations for Gadgets", %{crud_spec: spec} do
     operations = Controllers.operations_for_tag(spec, "Gadgets")
 
-    assert length(operations) == 1
+    assert [_operation] = operations
     assert hd(operations).operation_id == "gadgets.index"
     assert hd(operations).method == :get
     assert hd(operations).path == "/gadgets"

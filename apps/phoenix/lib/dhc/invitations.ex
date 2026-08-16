@@ -117,9 +117,7 @@ defmodule Dhc.Invitations do
   @doc false
   def verify_acceptance_token(token, invitation_id) do
     with {:ok, claims} <- verify_token(token),
-         :ok <- token_matches_invitation(claims, invitation_id) do
-      :ok
-    end
+         do: token_matches_invitation(claims, invitation_id)
   end
 
   @doc false
@@ -196,30 +194,8 @@ defmodule Dhc.Invitations do
 
       lock_discord_conversion_advisories!(invitation_id, continuation_id)
 
-      invitation =
-        from(i in Invitation,
-          where: i.id == ^invitation_id and i.status == "pending",
-          lock: "FOR UPDATE"
-        )
-        |> Repo.one()
-
-      if is_nil(invitation), do: Repo.rollback(:invalid_invitation)
-
-      attempt_query =
-        from(a in InvitationAcceptanceAttempt,
-          where:
-            a.id == ^attempt_id and a.invitation_id == ^invitation.id and
-              a.status == "provisioned"
-        )
-
-      attempt_query =
-        if operation_token,
-          do: from(a in attempt_query, where: a.operation_token == ^operation_token),
-          else: attempt_query
-
-      attempt = from(a in attempt_query, lock: "FOR UPDATE") |> Repo.one()
-
-      if is_nil(attempt), do: Repo.rollback(:invalid_attempt)
+      invitation = lock_pending_invitation!(invitation_id)
+      attempt = lock_provisioned_attempt!(attempt_id, invitation.id, operation_token)
 
       discord =
         lock_discord_conversion!(
@@ -228,18 +204,8 @@ defmodule Dhc.Invitations do
           attempt
         )
 
-      if Repo.exists?(
-           from(m in MemberProfile, where: m.id == ^invitation.prospective_principal_id)
-         ) do
-        Repo.rollback(:invalid_invitation)
-      end
-
-      case Auth.register_principal_with_id(invitation.prospective_principal_id, %{
-             email: invitation.email
-           }) do
-        {:ok, _principal} -> :ok
-        {:error, _changeset} -> Repo.rollback(:principal_creation_failed)
-      end
+      ensure_member_absent!(invitation.prospective_principal_id)
+      register_principal!(invitation)
 
       user_profile_id = reuse_or_create_user_profile(invitation, customer_id, now)
 
@@ -254,27 +220,8 @@ defmodule Dhc.Invitations do
         additional_data: %{}
       }
 
-      case Repo.insert(member_profile) do
-        {:ok, _member_profile} -> :ok
-        {:error, _changeset} -> Repo.rollback(:invalid_invitation)
-      end
-
-      if discord do
-        principal = Repo.get!(Dhc.Auth.Principal, invitation.prospective_principal_id)
-
-        metadata =
-          discord.continuation.display_metadata
-          |> Map.take(["username", "avatarUrl"])
-          |> rename_avatar_metadata()
-
-        %ExternalIdentity{}
-        |> ExternalIdentity.create_changeset(principal, %{
-          provider: "discord",
-          provider_subject: discord.continuation.provider_subject,
-          metadata: metadata
-        })
-        |> Repo.insert!()
-      end
+      insert_member_profile!(member_profile)
+      maybe_create_discord_identity(discord, invitation.prospective_principal_id)
 
       invitation |> Ecto.Changeset.change(status: "accepted") |> Repo.update!()
 
@@ -285,12 +232,7 @@ defmodule Dhc.Invitations do
         conflict_target: [:principal_id, :role]
       )
 
-      waitlist_query =
-        if invitation.waitlist_id do
-          from(w in WaitlistEntry, where: w.id == ^invitation.waitlist_id)
-        else
-          from(w in WaitlistEntry, where: w.email == ^invitation.email)
-        end
+      waitlist_query = waitlist_entry_query(invitation)
 
       Repo.update_all(waitlist_query, set: [status: "joined", last_status_change: now])
 
@@ -309,21 +251,101 @@ defmodule Dhc.Invitations do
         ]
       )
 
-      if discord do
-        Repo.delete!(discord.claim)
-
-        discord.continuation
-        |> Ecto.Changeset.change(
-          status: "consumed",
-          concluded_at: now,
-          provider_subject: nil,
-          display_metadata: %{}
-        )
-        |> Repo.update!()
-      end
+      maybe_consume_discord(discord, now)
 
       %{member_id: invitation.prospective_principal_id}
     end)
+  end
+
+  defp lock_pending_invitation!(invitation_id) do
+    invitation =
+      from(i in Invitation,
+        where: i.id == ^invitation_id and i.status == "pending",
+        lock: "FOR UPDATE"
+      )
+      |> Repo.one()
+
+    if is_nil(invitation), do: Repo.rollback(:invalid_invitation), else: invitation
+  end
+
+  defp lock_provisioned_attempt!(attempt_id, invitation_id, operation_token) do
+    query =
+      from(a in InvitationAcceptanceAttempt,
+        where:
+          a.id == ^attempt_id and a.invitation_id == ^invitation_id and
+            a.status == "provisioned"
+      )
+      |> maybe_require_operation_token(operation_token)
+
+    attempt = from(a in query, lock: "FOR UPDATE") |> Repo.one()
+
+    if is_nil(attempt), do: Repo.rollback(:invalid_attempt), else: attempt
+  end
+
+  defp maybe_require_operation_token(query, nil), do: query
+
+  defp maybe_require_operation_token(query, operation_token),
+    do: from(a in query, where: a.operation_token == ^operation_token)
+
+  defp ensure_member_absent!(principal_id) do
+    if Repo.exists?(from(m in MemberProfile, where: m.id == ^principal_id)),
+      do: Repo.rollback(:invalid_invitation)
+  end
+
+  defp register_principal!(invitation) do
+    case Auth.register_principal_with_id(invitation.prospective_principal_id, %{
+           email: invitation.email
+         }) do
+      {:ok, _principal} -> :ok
+      {:error, _changeset} -> Repo.rollback(:principal_creation_failed)
+    end
+  end
+
+  defp insert_member_profile!(member_profile) do
+    case Repo.insert(member_profile) do
+      {:ok, _member_profile} -> :ok
+      {:error, _changeset} -> Repo.rollback(:invalid_invitation)
+    end
+  end
+
+  defp maybe_create_discord_identity(nil, _principal_id), do: :ok
+
+  defp maybe_create_discord_identity(discord, principal_id) do
+    principal = Repo.get!(Dhc.Auth.Principal, principal_id)
+
+    metadata =
+      discord.continuation.display_metadata
+      |> Map.take(["username", "avatarUrl"])
+      |> rename_avatar_metadata()
+
+    %ExternalIdentity{}
+    |> ExternalIdentity.create_changeset(principal, %{
+      provider: "discord",
+      provider_subject: discord.continuation.provider_subject,
+      metadata: metadata
+    })
+    |> Repo.insert!()
+  end
+
+  defp waitlist_entry_query(%Invitation{waitlist_id: waitlist_id}) when not is_nil(waitlist_id),
+    do: from(w in WaitlistEntry, where: w.id == ^waitlist_id)
+
+  defp waitlist_entry_query(%Invitation{email: email}),
+    do: from(w in WaitlistEntry, where: w.email == ^email)
+
+  defp maybe_consume_discord(nil, _now), do: :ok
+
+  defp maybe_consume_discord(discord, now) do
+    Repo.delete!(discord.claim)
+
+    discord.continuation
+    |> Ecto.Changeset.change(
+      status: "consumed",
+      concluded_at: now,
+      provider_subject: nil,
+      display_metadata: %{}
+    )
+    |> Repo.update!()
   end
 
   defp lock_discord_conversion!(nil, _invitation, _attempt), do: nil
@@ -442,7 +464,7 @@ defmodule Dhc.Invitations do
   """
   @spec resend_invitation_emails([String.t()]) ::
           {:ok, %{succeeded: non_neg_integer(), failed: non_neg_integer()}}
-  def resend_invitation_emails(emails) when is_list(emails) and length(emails) > 0 do
+  def resend_invitation_emails([_ | _] = emails) do
     invite_data = list_invitation_resend_data(emails)
 
     succeeded =

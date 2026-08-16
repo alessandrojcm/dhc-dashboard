@@ -112,24 +112,29 @@ defmodule DhcWeb.AuthSessionController do
 
       :not_replay ->
         conn = maybe_delete_completed_oauth_flow(conn, flow)
+        continue_discord_callback(conn, flow, params)
+    end
+  end
 
-        case valid_discord_oauth_flow(flow) do
-          {:ok, purpose, session_params} ->
-            case complete_discord_oauth_callback(params, session_params, purpose) do
-              {:ok, %{user: claims}} -> complete_discord_auth(conn, purpose, claims)
-              {:error, _reason} -> complete_discord_callback_failure(conn, purpose, params)
-            end
+  defp continue_discord_callback(conn, flow, params) do
+    case valid_discord_oauth_flow(flow) do
+      {:ok, purpose, session_params} ->
+        complete_discord_callback(conn, params, session_params, purpose)
 
-          {:error, :invalid_purpose} ->
-            :telemetry.execute([:dhc, :auth, :discord, :failed], %{}, %{})
-            log_discord_failure("oauth_purpose")
+      {:error, :invalid_purpose} ->
+        :telemetry.execute([:dhc, :auth, :discord, :failed], %{}, %{})
+        log_discord_failure("oauth_purpose")
 
-            if acceptance_callback_request?(conn) do
-              acceptance_restart(conn)
-            else
-              discord_failure(conn)
-            end
-        end
+        if acceptance_callback_request?(conn),
+          do: acceptance_restart(conn),
+          else: discord_failure(conn)
+    end
+  end
+
+  defp complete_discord_callback(conn, params, session_params, purpose) do
+    case complete_discord_oauth_callback(params, session_params, purpose) do
+      {:ok, %{user: claims}} -> complete_discord_auth(conn, purpose, claims)
+      {:error, _reason} -> complete_discord_callback_failure(conn, purpose, params)
     end
   end
 
@@ -141,7 +146,7 @@ defmodule DhcWeb.AuthSessionController do
          %{"state" => state}
        )
        when is_binary(continuation_id) and is_map(session_params) and is_binary(state) do
-    expected_state = Map.get(session_params, :state) || Map.get(session_params, "state")
+    expected_state = oauth_state(session_params)
 
     case {Plug.Crypto.secure_compare(to_string(expected_state), state),
           Dhc.Onboarding.acceptance_state(continuation_id)} do
@@ -155,6 +160,10 @@ defmodule DhcWeb.AuthSessionController do
   end
 
   defp acceptance_callback_replay(_flow, _params), do: :not_replay
+
+  defp oauth_state(%{state: state}), do: state
+  defp oauth_state(%{"state" => state}), do: state
+  defp oauth_state(_session_params), do: nil
 
   defp maybe_delete_completed_oauth_flow(conn, %{
          purpose: {:invitation_acceptance, _continuation_id}

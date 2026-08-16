@@ -69,17 +69,7 @@ defmodule Dhc.Workshops.Workers.RefundWorker do
         {:ok, id}
 
       %Registration{stripe_checkout_session_id: id} when is_binary(id) and id != "" ->
-        case stripe_adapter().retrieve_checkout_session(id) do
-          {:ok, %{"payment_intent" => payment_intent_id}}
-          when is_binary(payment_intent_id) and payment_intent_id != "" ->
-            {:ok, payment_intent_id}
-
-          {:error, reason} ->
-            {:error, reason}
-
-          _ ->
-            {:error, :payment_intent_not_resolvable}
-        end
+        resolve_checkout_payment_intent(id)
 
       _ ->
         {:error, :payment_intent_not_resolvable}

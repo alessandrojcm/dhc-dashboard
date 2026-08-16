@@ -405,7 +405,9 @@ defmodule Dhc.E2EHarness do
     recovery_jobs =
       Repo.all(
         from(job in Oban.Job,
-          where: job.worker == "Dhc.Onboarding.Workers.AcceptanceRecoveryWorker",
+          where:
+            job.worker == "Dhc.Onboarding.Workers.AcceptanceRecoveryWorker" and
+              job.args["attempt_id"] in ^attempt_ids,
           select: %{
             id: job.id,
             state: job.state,
@@ -416,7 +418,6 @@ defmodule Dhc.E2EHarness do
           }
         )
       )
-      |> Enum.filter(&(Map.get(&1.args, "attempt_id") in attempt_ids))
 
     continuation_ids =
       Repo.all(
