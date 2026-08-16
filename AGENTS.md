@@ -20,6 +20,7 @@ JavaScript/TypeScript linting uses the shared root Oxlint config through the `ap
 - Services & roles: [docs/agents/services-and-roles.md](docs/agents/services-and-roles.md)
 - Notes: [docs/agents/notes.md](docs/agents/notes.md)
 - Visual previews: [docs/agents/visual-previews.md](docs/agents/visual-previews.md)
+- Frontend design system: [design-system/dublin-hema-club/MASTER.md](design-system/dublin-hema-club/MASTER.md)
 
 ## Agent skills
 

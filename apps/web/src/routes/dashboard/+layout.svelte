@@ -5,7 +5,6 @@ import { SidebarProvider } from "$lib/components/ui/sidebar";
 import DashboardSidebar from "$lib/components/ui/DashboardSidebar.svelte";
 import { page } from "$app/state";
 import * as Breadcrumb from "$lib/components/ui/breadcrumb";
-import { Separator } from "$lib/components/ui/separator";
 import { createQuery } from "@tanstack/svelte-query";
 import { goto } from "$app/navigation";
 import { invalidateAll, invalidate } from "$app/navigation";
@@ -62,38 +61,53 @@ function getLink(item: string): string {
 <svelte:head>
 	<title>Dublin Hema Club - Dashboard</title>
 </svelte:head>
-<SidebarProvider class="h-[calc(100vh-5rem)]">
+<a
+	href="#dashboard-content"
+	class="sr-only z-50 rounded-md bg-primary px-4 py-3 text-primary-foreground focus:fixed focus:left-4 focus:top-4 focus:not-sr-only"
+	>Skip to dashboard content</a
+>
+<SidebarProvider class="min-h-svh bg-background">
 	<DashboardSidebar
 		{roles}
 		{logout}
 		userData={userDataQuery.promise}
 		navData={data.navData}
 	/>
-	<main class="w-full">
-		<Breadcrumb.Root class="m-6">
-			<Breadcrumb.List class="ml-12 md:ml-0">
-				{#each paths as item, index (item)}
-					{#if index !== paths.length - 1}
-						<Breadcrumb.Item>
-							<Breadcrumb.Link class="capitalize" href={getLink(item)}>
-								{item.replace("-", " ")}
-							</Breadcrumb.Link>
-						</Breadcrumb.Item>
-					{:else}
-						<Breadcrumb.Item>
-							<Breadcrumb.Page class="capitalize">
-								{item.replaceAll("-", " ")}
-							</Breadcrumb.Page>
-						</Breadcrumb.Item>
-					{/if}
-					{#if index < paths.length - 1}
-						<Breadcrumb.Separator>/</Breadcrumb.Separator>
-					{/if}
-				{/each}
-			</Breadcrumb.List>
-		</Breadcrumb.Root>
-		<Separator class="mb-2" />
-		{@render children()}
+	<main id="dashboard-content" class="min-w-0 w-full">
+		<header
+			class="sticky top-0 z-20 border-b border-border/70 bg-background/90 px-4 py-3 backdrop-blur-md sm:px-6"
+		>
+			<div class="mx-auto flex max-w-[90rem] items-center gap-4">
+				<div
+					class="ml-12 hidden border-r border-border pr-4 text-xs font-bold uppercase tracking-[0.18em] text-primary sm:block md:ml-0"
+				>
+					Club desk
+				</div>
+				<Breadcrumb.Root>
+					<Breadcrumb.List class="ml-12 md:ml-0">
+						{#each paths as item, index (item)}
+							{#if index !== paths.length - 1}
+								<Breadcrumb.Item>
+									<Breadcrumb.Link class="capitalize" href={getLink(item)}>
+										{item.replace("-", " ")}
+									</Breadcrumb.Link>
+								</Breadcrumb.Item>
+							{:else}
+								<Breadcrumb.Item>
+									<Breadcrumb.Page class="capitalize">
+										{item.replaceAll("-", " ")}
+									</Breadcrumb.Page>
+								</Breadcrumb.Item>
+							{/if}
+							{#if index < paths.length - 1}
+								<Breadcrumb.Separator>/</Breadcrumb.Separator>
+							{/if}
+						{/each}
+					</Breadcrumb.List>
+				</Breadcrumb.Root>
+			</div>
+		</header>
+		<div class="mx-auto w-full max-w-[90rem]">{@render children()}</div>
 	</main>
 </SidebarProvider>
 
@@ -105,6 +119,7 @@ main {
 	width: 100%;
 	margin: 0 auto;
 	box-sizing: border-box;
+	overflow-x: hidden;
 }
 
 @media (min-width: 768px) {

@@ -8,10 +8,20 @@ import { Button } from "$lib/components/ui/button";
 import type { NavData, UserData } from "$lib/types";
 import DHCLogo from "/src/assets/images/dhc-logo.png?enhanced";
 import NotificationCenter from "$lib/components/notifications/NotificationCenter.svelte";
-import { Menu } from "@lucide/svelte";
+import {
+	Boxes,
+	CalendarDays,
+	ChevronRight,
+	GraduationCap,
+	Home,
+	Menu,
+	Swords,
+	UsersRound,
+} from "@lucide/svelte";
 import { useSidebar } from "$lib/components/ui/sidebar/context.svelte.js";
 import { browser } from "$app/environment";
 import { resolve } from "$app/paths";
+import { page } from "$app/state";
 
 type Props = {
 	className?: string | undefined | null;
@@ -43,9 +53,27 @@ let {
 	...restProps
 }: ComponentProps<typeof Sidebar.Root> & Props = $props();
 let customAnchor = $state<HTMLElement>(null!);
+
+const navIcons = {
+	"Beginners Workshop": GraduationCap,
+	Members: UsersRound,
+	Workshops: CalendarDays,
+	"My Workshops": Swords,
+	Inventory: Boxes,
+	Overview: Home,
+	Containers: Boxes,
+	Categories: Boxes,
+	Items: Swords,
+};
+
+function isActive(url: string) {
+	return url === "/dashboard"
+		? page.url.pathname === url
+		: page.url.pathname === url || page.url.pathname.startsWith(`${url}/`);
+}
 </script>
 
-<div class="md:hidden fixed top-4 left-4 z-50">
+<div class="fixed left-3 top-2 z-50 md:hidden">
 	<Button
 		variant="outline"
 		size="icon"
@@ -60,31 +88,81 @@ let customAnchor = $state<HTMLElement>(null!);
 	bind:ref
 	{collapsible}
 	{...restProps}
-	class="h-[100vh] border-r-1 md:block"
+	class="h-svh border-r md:block"
 >
-	<Sidebar.Header class="flex flex-row items-center">
-		<div class="h-12 w-12">
-			<enhanced:img src={DHCLogo} alt="Dublin Hema Club Logo" />
+	<Sidebar.Header
+		class="flex flex-row items-center gap-3 border-b border-sidebar-border px-4 py-5"
+	>
+		<div
+			class="size-11 shrink-0 overflow-hidden rounded-full border-2 border-secondary bg-white"
+		>
+			<enhanced:img src={DHCLogo} alt="" class="size-full object-cover" />
 		</div>
-		<h2 class="text-lg mt-2 text-black font-medium">Dublin Hema Club</h2>
+		<div>
+			<p
+				class="text-[0.65rem] font-bold uppercase tracking-[0.2em] text-secondary"
+			>
+				Dublin HEMA
+			</p>
+			<h2 class="text-lg leading-tight text-sidebar-foreground">Club desk</h2>
+		</div>
 	</Sidebar.Header>
-	<Sidebar.Content data-testid="sidebar">
+	<Sidebar.Content data-testid="sidebar" class="px-2 py-4">
+		<Sidebar.Group>
+			<Sidebar.Menu>
+				<Sidebar.MenuItem>
+					<Sidebar.MenuButton
+						isActive={isActive("/dashboard")}
+						tooltipContent="Home"
+					>
+						{#snippet child({ props })}
+							<a
+								class={props.class}
+								href="/dashboard"
+								onclick={toggleSidebar}
+								aria-current={isActive("/dashboard") ? "page" : undefined}
+							>
+								<Home /><span>Home</span>
+							</a>
+						{/snippet}
+					</Sidebar.MenuButton>
+				</Sidebar.MenuItem>
+			</Sidebar.Menu>
+		</Sidebar.Group>
 		<!-- We create a Sidebar.Group for each parent. -->
 		{#each data.navMain as group (group.title)}
 			{#if group.role.intersection(roles).size > 0}
-				<Sidebar.Group>
+				<Sidebar.Group class="py-2">
 					{#if group?.items}
-						<Sidebar.GroupLabel>{group.title}</Sidebar.GroupLabel>
+						<Sidebar.GroupLabel class="gap-2 text-sidebar-foreground/55">
+							{@const GroupIcon =
+								navIcons[group.title as keyof typeof navIcons] ?? Boxes}
+							<GroupIcon class="size-3.5" />{group.title}
+						</Sidebar.GroupLabel>
 						<Sidebar.GroupContent>
 							<Sidebar.Menu>
 								{#each group.items as item (item.title)}
 									{#if item.role.intersection(roles).size > 0}
 										<Sidebar.MenuItem>
+											{@const ItemIcon =
+												navIcons[item.title as keyof typeof navIcons] ??
+												ChevronRight}
 											<Sidebar.MenuButton
-												onclick={toggleSidebar}
-												class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+												isActive={isActive(item.url)}
+												tooltipContent={item.title}
 											>
-												<a href={item.url}>{item.title}</a>
+												{#snippet child({ props })}
+													<a
+														class={props.class}
+														href={item.url}
+														onclick={toggleSidebar}
+														aria-current={isActive(item.url)
+															? "page"
+															: undefined}
+													>
+														<ItemIcon /><span>{item.title}</span>
+													</a>
+												{/snippet}
 											</Sidebar.MenuButton>
 										</Sidebar.MenuItem>
 									{/if}
@@ -92,18 +170,29 @@ let customAnchor = $state<HTMLElement>(null!);
 							</Sidebar.Menu>
 						</Sidebar.GroupContent>
 					{:else}
+						{@const GroupIcon =
+							navIcons[group.title as keyof typeof navIcons] ?? ChevronRight}
 						<Sidebar.MenuButton
-							onclick={toggleSidebar}
-							class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+							isActive={isActive(group.url)}
+							tooltipContent={group.title}
 						>
-							<a href={group.url}>{group.title}</a>
+							{#snippet child({ props })}
+								<a
+									class={props.class}
+									href={group.url}
+									onclick={toggleSidebar}
+									aria-current={isActive(group.url) ? "page" : undefined}
+								>
+									<GroupIcon /><span>{group.title}</span>
+								</a>
+							{/snippet}
 						</Sidebar.MenuButton>
 					{/if}
 				</Sidebar.Group>
 			{/if}
 		{/each}
 	</Sidebar.Content>
-	<Sidebar.Footer class="m-2 mb-4">
+	<Sidebar.Footer class="m-2 mb-4 border-t border-sidebar-border pt-3">
 		<Sidebar.Menu>
 			<!-- Notifications Item -->
 			<Sidebar.MenuItem>
@@ -122,19 +211,21 @@ let customAnchor = $state<HTMLElement>(null!);
 								size="lg"
 								class="data-[state=open]:bg-sidebar-accent cursor-pointer data-[state=open]:text-sidebar-accent-foreground"
 							>
-								<Avatar.Root class="h-8 w-8">
+								<Avatar.Root class="h-8 w-8 border border-secondary/50">
 									<Avatar.Fallback
 										>{user?.firstName?.charAt(0)}{user?.lastName?.charAt(
 											0,
 										)}</Avatar.Fallback
 									>
 								</Avatar.Root>
-								<div class="flex flex-col space-y-1">
+								<div class="flex min-w-0 flex-col space-y-1">
 									<p class="text-sm font-medium leading-none">
 										{user?.firstName}
 										{user?.lastName}
 									</p>
-									<p class="text-muted-foreground text-xs leading-none">
+									<p
+										class="truncate text-xs leading-none text-sidebar-foreground/55"
+									>
 										{user?.email}
 									</p>
 								</div>
