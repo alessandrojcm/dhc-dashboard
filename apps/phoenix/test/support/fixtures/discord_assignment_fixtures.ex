@@ -34,7 +34,7 @@ defmodule Dhc.DiscordAssignmentFixtures do
     preparer = member_fixture("preparer")
     reviewer = member_fixture("reviewer")
     now = DateTime.utc_now()
-    revision = "ale-218-test"
+    revision = "discord-assignment-test"
     capture_id = Ecto.UUID.generate()
 
     stage_execution =
@@ -109,7 +109,7 @@ defmodule Dhc.DiscordAssignmentFixtures do
 
     Dhc.MemberFixtures.member_fixture(%{
       principal_id: id,
-      email: "ale-218-#{label}-#{System.unique_integer([:positive])}@example.com"
+      email: "discord-assignment-#{label}-#{System.unique_integer([:positive])}@example.com"
     })
 
     id

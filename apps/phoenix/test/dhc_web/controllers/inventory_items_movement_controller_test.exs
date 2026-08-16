@@ -100,7 +100,7 @@ defmodule DhcWeb.InventoryItemsMovementControllerTest do
 
   describe "move" do
     test "moves the item and records moved history for write roles", %{conn: conn} do
-      category = insert_category!("ALE108 Helmets")
+      category = insert_category!("Inventory Movement Test Helmets")
       old = create_container!(%{"name" => "Old Move Box"})
       new = create_container!(%{"name" => "New Move Box"})
       item = create_item!(item_payload(old, category))
@@ -130,7 +130,7 @@ defmodule DhcWeb.InventoryItemsMovementControllerTest do
     end
 
     test "returns 404 for unknown item", %{conn: conn} do
-      category = insert_category!("ALE108 Missing")
+      category = insert_category!("Inventory Movement Missing Items")
       new = create_container!(%{"name" => "Target Box"})
 
       conn =
@@ -144,7 +144,7 @@ defmodule DhcWeb.InventoryItemsMovementControllerTest do
     end
 
     test "returns 422 for unknown container", %{conn: conn} do
-      category = insert_category!("ALE108 Bad Target")
+      category = insert_category!("Inventory Movement Invalid Targets")
       old = create_container!(%{"name" => "Source Box"})
       item = create_item!(item_payload(old, category))
 
@@ -160,7 +160,7 @@ defmodule DhcWeb.InventoryItemsMovementControllerTest do
     end
 
     test "returns 422 when containerId is missing", %{conn: conn} do
-      category = insert_category!("ALE108 No Container")
+      category = insert_category!("Inventory Movement Missing Containers")
       old = create_container!(%{"name" => "Holding Box"})
       item = create_item!(item_payload(old, category))
 
@@ -174,7 +174,7 @@ defmodule DhcWeb.InventoryItemsMovementControllerTest do
     end
 
     test "returns 403 for non-write roles", %{conn: conn} do
-      category = insert_category!("ALE108 Protected Move")
+      category = insert_category!("Inventory Movement Protected Items")
       old = create_container!(%{"name" => "Old"})
       new = create_container!(%{"name" => "New"})
       item = create_item!(item_payload(old, category))
@@ -190,7 +190,7 @@ defmodule DhcWeb.InventoryItemsMovementControllerTest do
     end
 
     test "move to the same container is a no-op — no spurious moved history", %{conn: conn} do
-      category = insert_category!("ALE108 Same Container")
+      category = insert_category!("Inventory Movement Same Container")
       container = create_container!(%{"name" => "Same Box"})
       item = create_item!(item_payload(container, category))
 
@@ -210,7 +210,7 @@ defmodule DhcWeb.InventoryItemsMovementControllerTest do
 
   describe "maintenance" do
     test "flags maintenance out and records maintenance_out history", %{conn: conn} do
-      category = insert_category!("ALE108 Gauntlets")
+      category = insert_category!("Inventory Maintenance Test Gauntlets")
       container = create_container!(%{"name" => "Workshop"})
       item = create_item!(item_payload(container, category))
 
@@ -240,7 +240,7 @@ defmodule DhcWeb.InventoryItemsMovementControllerTest do
     end
 
     test "returns an item from maintenance and records maintenance_in history", %{conn: conn} do
-      category = insert_category!("ALE108 Returns")
+      category = insert_category!("Inventory Maintenance Returns")
       container = create_container!(%{"name" => "Rack"})
       item = create_item!(item_payload(container, category, %{"outForMaintenance" => true}))
 
@@ -257,7 +257,7 @@ defmodule DhcWeb.InventoryItemsMovementControllerTest do
     end
 
     test "returns 422 when outForMaintenance is missing", %{conn: conn} do
-      category = insert_category!("ALE108 No Flag")
+      category = insert_category!("Inventory Maintenance Missing Flags")
       container = create_container!(%{"name" => "Box"})
       item = create_item!(item_payload(container, category))
 
@@ -271,7 +271,7 @@ defmodule DhcWeb.InventoryItemsMovementControllerTest do
     end
 
     test "returns 422 when outForMaintenance is not a boolean", %{conn: conn} do
-      category = insert_category!("ALE108 Bad Flag")
+      category = insert_category!("Inventory Maintenance Invalid Flags")
       container = create_container!(%{"name" => "Box"})
       item = create_item!(item_payload(container, category))
 
@@ -298,7 +298,7 @@ defmodule DhcWeb.InventoryItemsMovementControllerTest do
     end
 
     test "returns 403 for non-write roles", %{conn: conn} do
-      category = insert_category!("ALE108 Protected Maint")
+      category = insert_category!("Inventory Maintenance Protected Items")
       container = create_container!(%{"name" => "Box"})
       item = create_item!(item_payload(container, category))
 
@@ -315,7 +315,7 @@ defmodule DhcWeb.InventoryItemsMovementControllerTest do
     test "maintenance flip to same state is a no-op — no spurious maintenance history", %{
       conn: conn
     } do
-      category = insert_category!("ALE108 Same Maint")
+      category = insert_category!("Inventory Maintenance Repeated State")
       container = create_container!(%{"name" => "Box"})
       item = create_item!(item_payload(container, category, %{"outForMaintenance" => true}))
 
@@ -334,7 +334,7 @@ defmodule DhcWeb.InventoryItemsMovementControllerTest do
   end
 
   test "move/maintenance allow inventory write roles", %{conn: _conn} do
-    category = insert_category!("ALE108 Write Roles Move")
+    category = insert_category!("Inventory Movement Authorized Roles")
     old = create_container!(%{"name" => "Old Box"})
     new = create_container!(%{"name" => "New Box"})
 

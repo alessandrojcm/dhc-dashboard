@@ -142,9 +142,9 @@ cd apps/phoenix && \
 
 Tests that use `Ecto.Adapters.SQL.Sandbox.unboxed_run/2` commit outside the
 per-test sandbox transaction and must explicitly delete every durable fixture
-in `on_exit/1`. If teardown must remove immutable ALE-217 assignment audit rows,
-disable only `ale217_reject_audit_mutation` for that deletion and always
-re-enable it in an `after` block.
+in `on_exit/1`. If teardown must remove immutable Discord assignment audit rows,
+disable only `discord_assignment_reject_audit_mutation` for that deletion and
+always re-enable it in an `after` block.
 
 ### Sentry (production error tracking)
 

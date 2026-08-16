@@ -1,4 +1,4 @@
-defmodule Dhc.Repo.Migrations.Ale181WorkshopSoftDeleteAttendeeSnapshotFinancialTailFkRepoints do
+defmodule Dhc.Repo.Migrations.ArchiveWorkshopsAndSnapshotAttendees do
   @moduledoc """
   ALE-181: Workshop soft-delete + attendee snapshot + financial-tail FK repoints.
 
@@ -166,11 +166,10 @@ defmodule Dhc.Repo.Migrations.Ale181WorkshopSoftDeleteAttendeeSnapshotFinancialT
     # Backup-restore is the only rollback. Raise rather than silently no-op
     # so an operator does not mistake a no-op for a real rollback.
     raise """
-    ALE-181 down/0 is unsafe-after-write and not implemented.
+    Workshop archival down/0 is unsafe-after-write and not implemented.
     Archives and the snapshot backfill are one-way, and reverting the
     RESTRICT FKs back to DELETE would re-expose financial history to
-    cascade deletion. Backup-restore is the only rollback. See ALE-187
-    runbook.
+    cascade deletion. Backup-restore is the only rollback.
     """
   end
 end

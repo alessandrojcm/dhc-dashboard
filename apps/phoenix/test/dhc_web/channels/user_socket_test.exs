@@ -32,7 +32,7 @@ defmodule DhcWeb.UserSocketTest do
   # as the `authToken` subprotocol. `connect/3` verifies it through
   # `Dhc.Auth.get_principal_by_socket_token/1` and assigns `current_session`.
 
-  describe "connect/3 Phoenix socket token path (ALE-164)" do
+  describe "connect/3 Phoenix socket token path" do
     setup do
       auth_user_id = Ecto.UUID.generate()
       email = "socket-#{System.unique_integer([:positive])}@example.com"

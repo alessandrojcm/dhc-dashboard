@@ -8,11 +8,11 @@ defmodule Dhc.Repo.Migrations.DiscordIdentityLifecycle do
     end
 
     replace_identity_unique_indexes("retired_at IS NULL")
-    replace_ale217_binding_functions(true)
+    replace_discord_binding_functions(true)
   end
 
   def down do
-    replace_ale217_binding_functions(false)
+    replace_discord_binding_functions(false)
     replace_identity_unique_indexes(nil)
 
     alter table(:external_identities) do
@@ -49,14 +49,14 @@ defmodule Dhc.Repo.Migrations.DiscordIdentityLifecycle do
     )
   end
 
-  defp replace_ale217_binding_functions(retired_column?) do
+  defp replace_discord_binding_functions(retired_column?) do
     active_identity = if retired_column?, do: " AND ei.retired_at IS NULL", else: ""
 
     current_active =
       if retired_column?, do: " OR current_identity.retired_at IS NOT NULL", else: ""
 
     execute("""
-    CREATE OR REPLACE FUNCTION ale217_check_assignment_binding() RETURNS trigger AS $$
+    CREATE OR REPLACE FUNCTION discord_assignment_check_binding() RETURNS trigger AS $$
     DECLARE current_assignment staged_discord_assignments%ROWTYPE;
     BEGIN
       SELECT * INTO current_assignment FROM staged_discord_assignments WHERE id = NEW.id;
@@ -92,7 +92,7 @@ defmodule Dhc.Repo.Migrations.DiscordIdentityLifecycle do
     """)
 
     execute("""
-    CREATE OR REPLACE FUNCTION ale217_check_external_identity_binding() RETURNS trigger AS $$
+    CREATE OR REPLACE FUNCTION discord_assignment_check_external_identity_binding() RETURNS trigger AS $$
     DECLARE current_identity external_identities%ROWTYPE;
     BEGIN
       SELECT * INTO current_identity FROM external_identities WHERE id = NEW.id;
@@ -120,7 +120,7 @@ defmodule Dhc.Repo.Migrations.DiscordIdentityLifecycle do
     """)
 
     execute("""
-    CREATE OR REPLACE FUNCTION ale217_check_subject_claim_binding() RETURNS trigger AS $$
+    CREATE OR REPLACE FUNCTION discord_assignment_check_subject_claim_binding() RETURNS trigger AS $$
     DECLARE current_claim invitation_acceptance_discord_subject_claims%ROWTYPE;
     BEGIN
       SELECT * INTO current_claim FROM invitation_acceptance_discord_subject_claims WHERE id = NEW.id;

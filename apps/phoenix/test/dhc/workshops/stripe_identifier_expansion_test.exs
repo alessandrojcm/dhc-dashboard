@@ -1,4 +1,4 @@
-defmodule Dhc.Workshops.Ale179ExpandStripeIdentifierSplitTest do
+defmodule Dhc.Workshops.StripeIdentifierExpansionTest do
   @moduledoc """
   ALE-179 (expand): the conflated `stripe_checkout_session_id` column is
   split into `stripe_payment_intent_id` (`pi_*`) and
@@ -361,7 +361,7 @@ defmodule Dhc.Workshops.Ale179ExpandStripeIdentifierSplitTest do
          AND left(stripe_checkout_session_id, 3) NOT IN ('pi_', 'cs_');
 
       IF unparseable > 0 THEN
-        RAISE EXCEPTION 'ALE-179 expand: % unparseable Stripe identifiers remain', unparseable
+        RAISE EXCEPTION 'Stripe identifier expansion: % unparseable identifiers remain', unparseable
           USING ERRCODE = 'check_violation';
       END IF;
     END;

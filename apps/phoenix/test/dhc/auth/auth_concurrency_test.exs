@@ -248,7 +248,7 @@ defmodule Dhc.AuthConcurrencyTest do
     assignment = Repo.get!(StagedAssignment, assignment.id)
 
     Repo.query!(
-      "ALTER TABLE staged_discord_assignment_audit_events DISABLE TRIGGER ale217_reject_audit_mutation"
+      "ALTER TABLE staged_discord_assignment_audit_events DISABLE TRIGGER discord_assignment_reject_audit_mutation"
     )
 
     try do
@@ -257,7 +257,7 @@ defmodule Dhc.AuthConcurrencyTest do
       )
     after
       Repo.query!(
-        "ALTER TABLE staged_discord_assignment_audit_events ENABLE TRIGGER ale217_reject_audit_mutation"
+        "ALTER TABLE staged_discord_assignment_audit_events ENABLE TRIGGER discord_assignment_reject_audit_mutation"
       )
     end
 
@@ -268,7 +268,9 @@ defmodule Dhc.AuthConcurrencyTest do
     ]
 
     Enum.each(immutable_execution_tables, fn table ->
-      Repo.query!("ALTER TABLE #{table} DISABLE TRIGGER ale217_reject_execution_mutation")
+      Repo.query!(
+        "ALTER TABLE #{table} DISABLE TRIGGER discord_assignment_reject_execution_mutation"
+      )
     end)
 
     try do
@@ -286,7 +288,9 @@ defmodule Dhc.AuthConcurrencyTest do
       )
     after
       Enum.each(immutable_execution_tables, fn table ->
-        Repo.query!("ALTER TABLE #{table} ENABLE TRIGGER ale217_reject_execution_mutation")
+        Repo.query!(
+          "ALTER TABLE #{table} ENABLE TRIGGER discord_assignment_reject_execution_mutation"
+        )
       end)
     end
 

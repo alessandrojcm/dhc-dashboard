@@ -1,4 +1,4 @@
-defmodule Dhc.Ale184CitextTest do
+defmodule Dhc.EmailCaseInsensitivityTest do
   use Dhc.DataCase, async: false
 
   alias Dhc.Repo
@@ -101,7 +101,7 @@ defmodule Dhc.Ale184CitextTest do
 
       IF waitlist_collisions > 0 OR external_user_collisions > 0 THEN
         RAISE EXCEPTION
-          'ALE-184: case-insensitive email collisions found (waitlist groups: %, external_users groups: %)',
+          'case-insensitive email collisions found (waitlist groups: %, external_users groups: %)',
           waitlist_collisions, external_user_collisions
           USING ERRCODE = 'unique_violation';
       END IF;

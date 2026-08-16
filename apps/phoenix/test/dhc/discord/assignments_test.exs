@@ -224,7 +224,9 @@ defmodule Dhc.Discord.AssignmentsTest do
 
   test "role revocation trigger shares the assignment actor lock namespace" do
     %{rows: [[definition]]} =
-      Repo.query!("SELECT pg_get_functiondef('ale217_lock_admin_role_mutation()'::regprocedure)")
+      Repo.query!(
+        "SELECT pg_get_functiondef('discord_assignment_lock_admin_role_mutation()'::regprocedure)"
+      )
 
     assert definition =~ "discord/principal/"
     refute definition =~ "discord:principal:"

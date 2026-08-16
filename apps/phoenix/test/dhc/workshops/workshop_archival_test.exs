@@ -1,4 +1,4 @@
-defmodule Dhc.Workshops.Ale181WorkshopSoftDeleteAttendeeSnapshotTest do
+defmodule Dhc.Workshops.WorkshopArchivalTest do
   @moduledoc """
   ALE-181: Workshop soft-delete + attendee snapshot + financial-tail FK repoints.
 
@@ -46,7 +46,7 @@ defmodule Dhc.Workshops.Ale181WorkshopSoftDeleteAttendeeSnapshotTest do
   # ── Cascade — RESTRICT FKs ─────────────────────────────────────────────
 
   describe "cascade — financial-tail FKs are RESTRICT" do
-    @tag :ale_181
+    @tag :workshop_archival
     test "deleting a Workshop with a registration is blocked by the RESTRICT FK" do
       workshop = WorkshopFixtures.workshop_fixture(status: "published")
       %{auth_user_id: uid} = WorkshopFixtures.member_fixture()
@@ -75,7 +75,7 @@ defmodule Dhc.Workshops.Ale181WorkshopSoftDeleteAttendeeSnapshotTest do
       assert constraint_is_restrict?(@registrations_activity_fk)
     end
 
-    @tag :ale_181
+    @tag :workshop_archival
     test "deleting a registration with a refund is blocked by the RESTRICT FK" do
       workshop = WorkshopFixtures.workshop_fixture(status: "published")
       %{auth_user_id: uid} = WorkshopFixtures.member_fixture()
@@ -104,7 +104,7 @@ defmodule Dhc.Workshops.Ale181WorkshopSoftDeleteAttendeeSnapshotTest do
   # ── Archive — registrations-existence gates archive-vs-hard-delete ──────
 
   describe "archive — registrations-existence gates archive-vs-hard-delete" do
-    @tag :ale_181
+    @tag :workshop_archival
     test "a Workshop with a registration is archived, not hard-deleted" do
       workshop = WorkshopFixtures.workshop_fixture(status: "published")
       %{auth_user_id: uid} = WorkshopFixtures.member_fixture()
@@ -124,7 +124,7 @@ defmodule Dhc.Workshops.Ale181WorkshopSoftDeleteAttendeeSnapshotTest do
       assert %Workshop{archived_at: %DateTime{}} = Repo.get(Workshop, workshop.id)
     end
 
-    @tag :ale_181
+    @tag :workshop_archival
     test "an archived Workshop is excluded from summaries" do
       workshop = WorkshopFixtures.workshop_fixture(status: "published", title: "Archived")
       %{auth_user_id: uid} = WorkshopFixtures.member_fixture()
@@ -150,7 +150,7 @@ defmodule Dhc.Workshops.Ale181WorkshopSoftDeleteAttendeeSnapshotTest do
   # ── Snapshot reads ─────────────────────────────────────────────────────
 
   describe "snapshot reads — attendee/refund read the snapshot, not a live join" do
-    @tag :ale_181
+    @tag :workshop_archival
     test "list_workshop_attendees/1 reads the snapshot, so anonymizing the profile does not corrupt it" do
       workshop = WorkshopFixtures.workshop_fixture()
       %{auth_user_id: uid, profile_id: profile_id} = WorkshopFixtures.member_fixture()
@@ -180,7 +180,7 @@ defmodule Dhc.Workshops.Ale181WorkshopSoftDeleteAttendeeSnapshotTest do
              }
     end
 
-    @tag :ale_181
+    @tag :workshop_archival
     test "list_workshop_refunds/1 reads the snapshot, not a live join" do
       workshop = WorkshopFixtures.workshop_fixture()
       %{auth_user_id: uid} = WorkshopFixtures.member_fixture()
@@ -209,7 +209,7 @@ defmodule Dhc.Workshops.Ale181WorkshopSoftDeleteAttendeeSnapshotTest do
   # ── Delete branches ────────────────────────────────────────────────────
 
   describe "delete branches" do
-    @tag :ale_181
+    @tag :workshop_archival
     test "a Workshop with no registrations is hard-deleted" do
       workshop = WorkshopFixtures.workshop_fixture(status: "planned")
 
@@ -217,7 +217,7 @@ defmodule Dhc.Workshops.Ale181WorkshopSoftDeleteAttendeeSnapshotTest do
       assert Repo.get(Workshop, workshop.id) == nil
     end
 
-    @tag :ale_181
+    @tag :workshop_archival
     test "an already-archived Workshop returns {:error, :already_archived}" do
       workshop = WorkshopFixtures.workshop_fixture(status: "published")
       %{auth_user_id: uid} = WorkshopFixtures.member_fixture()
@@ -233,7 +233,7 @@ defmodule Dhc.Workshops.Ale181WorkshopSoftDeleteAttendeeSnapshotTest do
       assert {:error, :already_archived} = Workshops.delete_workshop(workshop.id)
     end
 
-    @tag :ale_181
+    @tag :workshop_archival
     test "the status gate is dropped — a published Workshop with no registrations is hard-deleted" do
       # The old behavior rejected a published Workshop with `:not_deletable`.
       # ALE-181 dropped the status gate; registrations-existence is the only

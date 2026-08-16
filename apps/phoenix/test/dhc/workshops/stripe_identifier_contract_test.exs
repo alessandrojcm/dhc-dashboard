@@ -1,4 +1,4 @@
-defmodule Dhc.Workshops.Ale179ContractStripeIdentifierSplitTest do
+defmodule Dhc.Workshops.StripeIdentifierContractTest do
   use Dhc.DataCase, async: false
 
   alias Dhc.Repo

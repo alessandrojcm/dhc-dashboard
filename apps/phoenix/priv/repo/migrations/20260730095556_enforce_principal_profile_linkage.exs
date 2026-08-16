@@ -1,4 +1,4 @@
-defmodule Dhc.Repo.Migrations.Ale180LinkageDriftUniqueIndexesConstraintTriggers do
+defmodule Dhc.Repo.Migrations.EnforcePrincipalProfileLinkage do
   @moduledoc """
   ALE-180: enforce the triangle invariant `member_profiles.id ==
   user_profiles.principal_id` at the DB layer.
@@ -77,7 +77,7 @@ defmodule Dhc.Repo.Migrations.Ale180LinkageDriftUniqueIndexesConstraintTriggers 
 
       IF drifted_pairs > 0 THEN
         RAISE EXCEPTION
-          'ALE-180: % existing member/user profile pairs violate the linkage invariant; reconcile them before retrying',
+          '% existing member/user profile pairs violate the linkage invariant; reconcile them before retrying',
           drifted_pairs
           USING ERRCODE = 'check_violation', CONSTRAINT = 'linkage_drift_violation';
       END IF;

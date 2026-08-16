@@ -1,4 +1,4 @@
-defmodule Dhc.Repo.Migrations.Ale179ExpandStripeIdentifierSplit do
+defmodule Dhc.Repo.Migrations.ExpandStripeIdentifierSplit do
   @moduledoc """
   ALE-179 (expand): split the conflated Stripe identifier on
   `club_activity_registrations` into two columns.
@@ -78,7 +78,7 @@ defmodule Dhc.Repo.Migrations.Ale179ExpandStripeIdentifierSplit do
 
       IF unparseable > 0 THEN
         RAISE EXCEPTION
-          'ALE-179 expand: % unparseable Stripe identifiers remain in stripe_checkout_session_id (expected pi_* or cs_*)',
+          'Stripe identifier expansion: % unparseable identifiers remain in stripe_checkout_session_id (expected pi_* or cs_*)',
           unparseable
           USING ERRCODE = 'check_violation';
       END IF;
@@ -127,9 +127,9 @@ defmodule Dhc.Repo.Migrations.Ale179ExpandStripeIdentifierSplit do
     # silently no-op so an operator does not mistake a no-op for a real
     # rollback.
     raise """
-    ALE-179 expand down/0 is unsafe-after-write and not implemented.
+    Stripe identifier expansion down/0 is unsafe-after-write and not implemented.
     The backfill and the pi_* clear are one-way. Backup-restore is the
-    only rollback. See ALE-187 runbook.
+    only rollback.
     """
   end
 end

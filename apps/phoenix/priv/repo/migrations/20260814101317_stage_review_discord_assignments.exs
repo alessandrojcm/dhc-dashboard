@@ -241,77 +241,81 @@ defmodule Dhc.Repo.Migrations.StageReviewDiscordAssignments do
   end
 
   def down do
-    execute("DROP TRIGGER IF EXISTS ale217_lock_admin_role_mutation ON user_roles")
-    execute("DROP FUNCTION IF EXISTS ale217_lock_admin_role_mutation()")
+    execute("DROP TRIGGER IF EXISTS discord_assignment_lock_admin_role_mutation ON user_roles")
+    execute("DROP FUNCTION IF EXISTS discord_assignment_lock_admin_role_mutation()")
 
     execute(
-      "DROP TRIGGER IF EXISTS ale217_check_review_execution_dependents ON discord_assignment_review_executions"
+      "DROP TRIGGER IF EXISTS discord_assignment_check_review_execution_dependents ON discord_assignment_review_executions"
     )
 
     execute(
-      "DROP TRIGGER IF EXISTS ale217_check_stage_result_consistency ON discord_assignment_stage_results"
+      "DROP TRIGGER IF EXISTS discord_assignment_check_stage_result_consistency ON discord_assignment_stage_results"
     )
 
     execute(
-      "DROP TRIGGER IF EXISTS ale217_check_stage_execution_dependents ON discord_assignment_stage_executions"
+      "DROP TRIGGER IF EXISTS discord_assignment_check_stage_execution_dependents ON discord_assignment_stage_executions"
     )
 
-    execute("DROP FUNCTION IF EXISTS ale217_check_review_execution_dependents()")
-    execute("DROP FUNCTION IF EXISTS ale217_check_stage_result_consistency()")
-    execute("DROP FUNCTION IF EXISTS ale217_check_stage_execution_dependents()")
+    execute("DROP FUNCTION IF EXISTS discord_assignment_check_review_execution_dependents()")
+    execute("DROP FUNCTION IF EXISTS discord_assignment_check_stage_result_consistency()")
+    execute("DROP FUNCTION IF EXISTS discord_assignment_check_stage_execution_dependents()")
 
     for table <- [
           "discord_assignment_stage_executions",
           "discord_assignment_review_executions",
           "discord_assignment_stage_results"
         ] do
-      execute("DROP TRIGGER IF EXISTS ale217_reject_execution_mutation ON #{table}")
+      execute("DROP TRIGGER IF EXISTS discord_assignment_reject_execution_mutation ON #{table}")
     end
 
-    execute("DROP FUNCTION IF EXISTS ale217_reject_execution_mutation()")
+    execute("DROP FUNCTION IF EXISTS discord_assignment_reject_execution_mutation()")
 
     execute(
-      "DROP TRIGGER IF EXISTS ale217_check_subject_claim_binding ON invitation_acceptance_discord_subject_claims"
+      "DROP TRIGGER IF EXISTS discord_assignment_check_subject_claim_binding ON invitation_acceptance_discord_subject_claims"
     )
 
-    execute("DROP FUNCTION IF EXISTS ale217_check_subject_claim_binding()")
+    execute("DROP FUNCTION IF EXISTS discord_assignment_check_subject_claim_binding()")
 
     execute(
-      "DROP TRIGGER IF EXISTS ale217_check_external_identity_binding ON external_identities"
+      "DROP TRIGGER IF EXISTS discord_assignment_check_external_identity_binding ON external_identities"
     )
 
-    execute("DROP FUNCTION IF EXISTS ale217_check_external_identity_binding()")
+    execute("DROP FUNCTION IF EXISTS discord_assignment_check_external_identity_binding()")
 
     execute(
-      "DROP TRIGGER IF EXISTS ale217_check_assignment_binding ON staged_discord_assignments"
+      "DROP TRIGGER IF EXISTS discord_assignment_check_binding ON staged_discord_assignments"
     )
 
-    execute("DROP FUNCTION IF EXISTS ale217_check_assignment_binding()")
+    execute("DROP FUNCTION IF EXISTS discord_assignment_check_binding()")
 
     execute(
-      "DROP TRIGGER IF EXISTS ale217_check_assignment_execution_consistency ON staged_discord_assignments"
+      "DROP TRIGGER IF EXISTS discord_assignment_check_execution_consistency ON staged_discord_assignments"
     )
 
-    execute("DROP FUNCTION IF EXISTS ale217_check_assignment_execution_consistency()")
+    execute("DROP FUNCTION IF EXISTS discord_assignment_check_execution_consistency()")
 
     execute(
-      "DROP TRIGGER IF EXISTS ale217_reject_audit_mutation ON staged_discord_assignment_audit_events"
+      "DROP TRIGGER IF EXISTS discord_assignment_reject_audit_mutation ON staged_discord_assignment_audit_events"
     )
 
     execute(
-      "DROP TRIGGER IF EXISTS ale217_reject_direct_audit_insert ON staged_discord_assignment_audit_events"
+      "DROP TRIGGER IF EXISTS discord_assignment_reject_direct_audit_insert ON staged_discord_assignment_audit_events"
     )
 
-    execute("DROP FUNCTION IF EXISTS ale217_reject_audit_mutation()")
-    execute("DROP FUNCTION IF EXISTS ale217_reject_direct_audit_insert()")
-    execute("DROP TRIGGER IF EXISTS ale217_append_assignment_audit ON staged_discord_assignments")
-    execute("DROP FUNCTION IF EXISTS ale217_append_assignment_audit()")
+    execute("DROP FUNCTION IF EXISTS discord_assignment_reject_audit_mutation()")
+    execute("DROP FUNCTION IF EXISTS discord_assignment_reject_direct_audit_insert()")
 
     execute(
-      "DROP TRIGGER IF EXISTS ale217_guard_assignment_mutation ON staged_discord_assignments"
+      "DROP TRIGGER IF EXISTS discord_assignment_append_audit ON staged_discord_assignments"
     )
 
-    execute("DROP FUNCTION IF EXISTS ale217_guard_assignment_mutation()")
+    execute("DROP FUNCTION IF EXISTS discord_assignment_append_audit()")
+
+    execute(
+      "DROP TRIGGER IF EXISTS discord_assignment_guard_mutation ON staged_discord_assignments"
+    )
+
+    execute("DROP FUNCTION IF EXISTS discord_assignment_guard_mutation()")
     drop(table(:staged_discord_assignment_audit_events))
     drop(table(:discord_assignment_stage_results))
     drop(table(:staged_discord_assignments))
@@ -321,7 +325,7 @@ defmodule Dhc.Repo.Migrations.StageReviewDiscordAssignments do
 
   defp create_mutation_and_audit_triggers do
     execute("""
-    CREATE FUNCTION ale217_guard_assignment_mutation() RETURNS trigger AS $$
+    CREATE FUNCTION discord_assignment_guard_mutation() RETURNS trigger AS $$
     BEGIN
       IF (NEW.principal_id, NEW.capture_id, NEW.stage_execution_id, NEW.provider,
           NEW.provider_subject, NEW.username_snapshot, NEW.subject_fingerprint,
@@ -367,13 +371,13 @@ defmodule Dhc.Repo.Migrations.StageReviewDiscordAssignments do
     """)
 
     execute("""
-    CREATE TRIGGER ale217_guard_assignment_mutation
+    CREATE TRIGGER discord_assignment_guard_mutation
       BEFORE UPDATE ON staged_discord_assignments
-      FOR EACH ROW EXECUTE FUNCTION ale217_guard_assignment_mutation();
+      FOR EACH ROW EXECUTE FUNCTION discord_assignment_guard_mutation();
     """)
 
     execute("""
-    CREATE FUNCTION ale217_append_assignment_audit() RETURNS trigger AS $$
+    CREATE FUNCTION discord_assignment_append_audit() RETURNS trigger AS $$
     DECLARE
       audit_actor uuid;
     BEGIN
@@ -399,13 +403,13 @@ defmodule Dhc.Repo.Migrations.StageReviewDiscordAssignments do
     """)
 
     execute("""
-    CREATE TRIGGER ale217_append_assignment_audit
+    CREATE TRIGGER discord_assignment_append_audit
       AFTER INSERT OR UPDATE ON staged_discord_assignments
-      FOR EACH ROW EXECUTE FUNCTION ale217_append_assignment_audit();
+      FOR EACH ROW EXECUTE FUNCTION discord_assignment_append_audit();
     """)
 
     execute("""
-    CREATE FUNCTION ale217_reject_direct_audit_insert() RETURNS trigger AS $$
+    CREATE FUNCTION discord_assignment_reject_direct_audit_insert() RETURNS trigger AS $$
     BEGIN
       IF pg_trigger_depth() < 2 THEN
         RAISE EXCEPTION 'assignment audit events may only be inserted by the assignment trigger'
@@ -417,13 +421,13 @@ defmodule Dhc.Repo.Migrations.StageReviewDiscordAssignments do
     """)
 
     execute("""
-    CREATE TRIGGER ale217_reject_direct_audit_insert
+    CREATE TRIGGER discord_assignment_reject_direct_audit_insert
       BEFORE INSERT ON staged_discord_assignment_audit_events
-      FOR EACH ROW EXECUTE FUNCTION ale217_reject_direct_audit_insert();
+      FOR EACH ROW EXECUTE FUNCTION discord_assignment_reject_direct_audit_insert();
     """)
 
     execute("""
-    CREATE FUNCTION ale217_reject_audit_mutation() RETURNS trigger AS $$
+    CREATE FUNCTION discord_assignment_reject_audit_mutation() RETURNS trigger AS $$
     BEGIN
       RAISE EXCEPTION 'assignment audit events are immutable'
         USING ERRCODE = '23514', CONSTRAINT = 'staged_discord_assignment_audit_events_immutable';
@@ -432,15 +436,15 @@ defmodule Dhc.Repo.Migrations.StageReviewDiscordAssignments do
     """)
 
     execute("""
-    CREATE TRIGGER ale217_reject_audit_mutation
+    CREATE TRIGGER discord_assignment_reject_audit_mutation
       BEFORE UPDATE OR DELETE ON staged_discord_assignment_audit_events
-      FOR EACH ROW EXECUTE FUNCTION ale217_reject_audit_mutation();
+      FOR EACH ROW EXECUTE FUNCTION discord_assignment_reject_audit_mutation();
     """)
   end
 
   defp create_append_only_execution_triggers do
     execute("""
-    CREATE FUNCTION ale217_reject_execution_mutation() RETURNS trigger AS $$
+    CREATE FUNCTION discord_assignment_reject_execution_mutation() RETURNS trigger AS $$
     BEGIN
       RAISE EXCEPTION 'assignment execution evidence is append-only'
         USING ERRCODE = '23514', CONSTRAINT = TG_TABLE_NAME || '_immutable';
@@ -454,16 +458,16 @@ defmodule Dhc.Repo.Migrations.StageReviewDiscordAssignments do
           "discord_assignment_stage_results"
         ] do
       execute("""
-      CREATE TRIGGER ale217_reject_execution_mutation
+      CREATE TRIGGER discord_assignment_reject_execution_mutation
         BEFORE UPDATE OR DELETE ON #{table}
-        FOR EACH ROW EXECUTE FUNCTION ale217_reject_execution_mutation();
+        FOR EACH ROW EXECUTE FUNCTION discord_assignment_reject_execution_mutation();
       """)
     end
   end
 
   defp create_result_consistency_triggers do
     execute("""
-    CREATE FUNCTION ale217_check_stage_result_consistency() RETURNS trigger AS $$
+    CREATE FUNCTION discord_assignment_check_stage_result_consistency() RETURNS trigger AS $$
     DECLARE
       current_result discord_assignment_stage_results%ROWTYPE;
       assignment staged_discord_assignments%ROWTYPE;
@@ -489,14 +493,14 @@ defmodule Dhc.Repo.Migrations.StageReviewDiscordAssignments do
     """)
 
     execute("""
-    CREATE CONSTRAINT TRIGGER ale217_check_stage_result_consistency
+    CREATE CONSTRAINT TRIGGER discord_assignment_check_stage_result_consistency
       AFTER INSERT OR UPDATE ON discord_assignment_stage_results
       DEFERRABLE INITIALLY DEFERRED
-      FOR EACH ROW EXECUTE FUNCTION ale217_check_stage_result_consistency();
+      FOR EACH ROW EXECUTE FUNCTION discord_assignment_check_stage_result_consistency();
     """)
 
     execute("""
-    CREATE FUNCTION ale217_check_stage_execution_dependents() RETURNS trigger AS $$
+    CREATE FUNCTION discord_assignment_check_stage_execution_dependents() RETURNS trigger AS $$
     BEGIN
       IF EXISTS (
         SELECT 1 FROM staged_discord_assignments assignment
@@ -520,14 +524,14 @@ defmodule Dhc.Repo.Migrations.StageReviewDiscordAssignments do
     """)
 
     execute("""
-    CREATE CONSTRAINT TRIGGER ale217_check_stage_execution_dependents
+    CREATE CONSTRAINT TRIGGER discord_assignment_check_stage_execution_dependents
       AFTER INSERT OR UPDATE ON discord_assignment_stage_executions
       DEFERRABLE INITIALLY DEFERRED
-      FOR EACH ROW EXECUTE FUNCTION ale217_check_stage_execution_dependents();
+      FOR EACH ROW EXECUTE FUNCTION discord_assignment_check_stage_execution_dependents();
     """)
 
     execute("""
-    CREATE FUNCTION ale217_check_review_execution_dependents() RETURNS trigger AS $$
+    CREATE FUNCTION discord_assignment_check_review_execution_dependents() RETURNS trigger AS $$
     DECLARE current_execution discord_assignment_review_executions%ROWTYPE;
     BEGIN
       SELECT * INTO current_execution
@@ -548,16 +552,16 @@ defmodule Dhc.Repo.Migrations.StageReviewDiscordAssignments do
     """)
 
     execute("""
-    CREATE CONSTRAINT TRIGGER ale217_check_review_execution_dependents
+    CREATE CONSTRAINT TRIGGER discord_assignment_check_review_execution_dependents
       AFTER INSERT OR UPDATE ON discord_assignment_review_executions
       DEFERRABLE INITIALLY DEFERRED
-      FOR EACH ROW EXECUTE FUNCTION ale217_check_review_execution_dependents();
+      FOR EACH ROW EXECUTE FUNCTION discord_assignment_check_review_execution_dependents();
     """)
   end
 
   defp create_role_authorization_lock_trigger do
     execute("""
-    CREATE FUNCTION ale217_lock_admin_role_mutation() RETURNS trigger AS $$
+    CREATE FUNCTION discord_assignment_lock_admin_role_mutation() RETURNS trigger AS $$
     BEGIN
       IF OLD.role IN ('admin', 'president', 'treasurer', 'committee_coordinator',
         'sparring_coordinator', 'workshop_coordinator', 'beginners_coordinator',
@@ -573,15 +577,15 @@ defmodule Dhc.Repo.Migrations.StageReviewDiscordAssignments do
     """)
 
     execute("""
-    CREATE TRIGGER ale217_lock_admin_role_mutation
+    CREATE TRIGGER discord_assignment_lock_admin_role_mutation
       BEFORE UPDATE OR DELETE ON user_roles
-      FOR EACH ROW EXECUTE FUNCTION ale217_lock_admin_role_mutation();
+      FOR EACH ROW EXECUTE FUNCTION discord_assignment_lock_admin_role_mutation();
     """)
   end
 
   defp create_execution_consistency_trigger do
     execute("""
-    CREATE FUNCTION ale217_check_assignment_execution_consistency() RETURNS trigger AS $$
+    CREATE FUNCTION discord_assignment_check_execution_consistency() RETURNS trigger AS $$
     DECLARE
       current_assignment staged_discord_assignments%ROWTYPE;
       stage_execution discord_assignment_stage_executions%ROWTYPE;
@@ -625,16 +629,16 @@ defmodule Dhc.Repo.Migrations.StageReviewDiscordAssignments do
     """)
 
     execute("""
-    CREATE CONSTRAINT TRIGGER ale217_check_assignment_execution_consistency
+    CREATE CONSTRAINT TRIGGER discord_assignment_check_execution_consistency
       AFTER INSERT OR UPDATE ON staged_discord_assignments
       DEFERRABLE INITIALLY DEFERRED
-      FOR EACH ROW EXECUTE FUNCTION ale217_check_assignment_execution_consistency();
+      FOR EACH ROW EXECUTE FUNCTION discord_assignment_check_execution_consistency();
     """)
   end
 
   defp create_binding_constraint_triggers do
     execute("""
-    CREATE FUNCTION ale217_check_assignment_binding() RETURNS trigger AS $$
+    CREATE FUNCTION discord_assignment_check_binding() RETURNS trigger AS $$
     DECLARE current_assignment staged_discord_assignments%ROWTYPE;
     BEGIN
       SELECT * INTO current_assignment FROM staged_discord_assignments WHERE id = NEW.id;
@@ -673,14 +677,14 @@ defmodule Dhc.Repo.Migrations.StageReviewDiscordAssignments do
     """)
 
     execute("""
-    CREATE CONSTRAINT TRIGGER ale217_check_assignment_binding
+    CREATE CONSTRAINT TRIGGER discord_assignment_check_binding
       AFTER INSERT OR UPDATE ON staged_discord_assignments
       DEFERRABLE INITIALLY DEFERRED
-      FOR EACH ROW EXECUTE FUNCTION ale217_check_assignment_binding();
+      FOR EACH ROW EXECUTE FUNCTION discord_assignment_check_binding();
     """)
 
     execute("""
-    CREATE FUNCTION ale217_check_external_identity_binding() RETURNS trigger AS $$
+    CREATE FUNCTION discord_assignment_check_external_identity_binding() RETURNS trigger AS $$
     DECLARE current_identity external_identities%ROWTYPE;
     BEGIN
       SELECT * INTO current_identity FROM external_identities WHERE id = NEW.id;
@@ -711,14 +715,14 @@ defmodule Dhc.Repo.Migrations.StageReviewDiscordAssignments do
     """)
 
     execute("""
-    CREATE CONSTRAINT TRIGGER ale217_check_external_identity_binding
+    CREATE CONSTRAINT TRIGGER discord_assignment_check_external_identity_binding
       AFTER INSERT OR UPDATE ON external_identities
       DEFERRABLE INITIALLY DEFERRED
-      FOR EACH ROW EXECUTE FUNCTION ale217_check_external_identity_binding();
+      FOR EACH ROW EXECUTE FUNCTION discord_assignment_check_external_identity_binding();
     """)
 
     execute("""
-    CREATE FUNCTION ale217_check_subject_claim_binding() RETURNS trigger AS $$
+    CREATE FUNCTION discord_assignment_check_subject_claim_binding() RETURNS trigger AS $$
     DECLARE current_claim invitation_acceptance_discord_subject_claims%ROWTYPE;
     BEGIN
       SELECT * INTO current_claim
@@ -754,10 +758,10 @@ defmodule Dhc.Repo.Migrations.StageReviewDiscordAssignments do
     """)
 
     execute("""
-    CREATE CONSTRAINT TRIGGER ale217_check_subject_claim_binding
+    CREATE CONSTRAINT TRIGGER discord_assignment_check_subject_claim_binding
       AFTER INSERT OR UPDATE ON invitation_acceptance_discord_subject_claims
       DEFERRABLE INITIALLY DEFERRED
-      FOR EACH ROW EXECUTE FUNCTION ale217_check_subject_claim_binding();
+      FOR EACH ROW EXECUTE FUNCTION discord_assignment_check_subject_claim_binding();
     """)
   end
 end

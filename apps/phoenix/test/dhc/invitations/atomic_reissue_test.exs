@@ -1,4 +1,4 @@
-defmodule Dhc.Invitations.Ale178AtomicReissueTest do
+defmodule Dhc.Invitations.AtomicReissueTest do
   use Dhc.DataCase, async: false
 
   alias Dhc.Invitations.Invitation
@@ -15,12 +15,14 @@ defmodule Dhc.Invitations.Ale178AtomicReissueTest do
 
       Repo.query!("""
       ALTER TABLE invitations
-      ADD CONSTRAINT ale_178_reissue_failure
+      ADD CONSTRAINT reject_pending_member_invitation
       CHECK (email <> 'member@example.com' OR status <> 'pending') NOT VALID
       """)
 
       on_exit(fn ->
-        Repo.query!("ALTER TABLE invitations DROP CONSTRAINT IF EXISTS ale_178_reissue_failure")
+        Repo.query!(
+          "ALTER TABLE invitations DROP CONSTRAINT IF EXISTS reject_pending_member_invitation"
+        )
       end)
 
       assert {:error, {:create_invitation, _reason}} =
@@ -59,7 +61,7 @@ defmodule Dhc.Invitations.Ale178AtomicReissueTest do
     end
 
     test "concurrent reissues fail loud instead of silently discarding a Principal id" do
-      email = "ale178-#{System.unique_integer([:positive])}@example.com"
+      email = "atomic-reissue-#{System.unique_integer([:positive])}@example.com"
       invite_data = invite_data(email)
 
       assert {:ok, original_id} =
@@ -69,9 +71,9 @@ defmodule Dhc.Invitations.Ale178AtomicReissueTest do
 
       outside_sandbox(fn ->
         Repo.query!("""
-        CREATE OR REPLACE FUNCTION ale_178_delay_pending_invitation() RETURNS trigger AS $$
+        CREATE OR REPLACE FUNCTION delay_pending_invitation_for_concurrency_test() RETURNS trigger AS $$
         BEGIN
-          IF NEW.email::text LIKE 'ale178-%' THEN
+          IF NEW.email::text LIKE 'atomic-reissue-%' THEN
             PERFORM pg_sleep(0.1);
           END IF;
           RETURN NEW;
@@ -80,17 +82,21 @@ defmodule Dhc.Invitations.Ale178AtomicReissueTest do
         """)
 
         Repo.query!("""
-        CREATE TRIGGER ale_178_delay_pending_invitation
+        CREATE TRIGGER delay_pending_invitation_for_concurrency_test
         BEFORE INSERT ON invitations
-        FOR EACH ROW EXECUTE FUNCTION ale_178_delay_pending_invitation()
+        FOR EACH ROW EXECUTE FUNCTION delay_pending_invitation_for_concurrency_test()
         """)
       end)
 
       on_exit(fn ->
         outside_sandbox(fn ->
           Repo.delete_all(from i in Invitation, where: i.email == ^email)
-          Repo.query!("DROP TRIGGER IF EXISTS ale_178_delay_pending_invitation ON invitations")
-          Repo.query!("DROP FUNCTION IF EXISTS ale_178_delay_pending_invitation()")
+
+          Repo.query!(
+            "DROP TRIGGER IF EXISTS delay_pending_invitation_for_concurrency_test ON invitations"
+          )
+
+          Repo.query!("DROP FUNCTION IF EXISTS delay_pending_invitation_for_concurrency_test()")
         end)
       end)
 

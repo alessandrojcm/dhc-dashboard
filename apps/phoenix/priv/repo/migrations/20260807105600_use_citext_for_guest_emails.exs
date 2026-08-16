@@ -1,4 +1,4 @@
-defmodule Dhc.Repo.Migrations.Ale184CitextOnWaitlistAndExternalUsers do
+defmodule Dhc.Repo.Migrations.UseCitextForGuestEmails do
   use Ecto.Migration
 
   def up do
@@ -25,7 +25,7 @@ defmodule Dhc.Repo.Migrations.Ale184CitextOnWaitlistAndExternalUsers do
 
       IF waitlist_collisions > 0 OR external_user_collisions > 0 THEN
         RAISE EXCEPTION
-          'ALE-184: case-insensitive email collisions found (waitlist groups: %, external_users groups: %); reconcile them before retrying',
+          'Case-insensitive email collisions found (waitlist groups: %, external_users groups: %); reconcile them before retrying',
           waitlist_collisions, external_user_collisions
           USING ERRCODE = 'unique_violation';
       END IF;

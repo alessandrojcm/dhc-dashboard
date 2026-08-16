@@ -1,4 +1,4 @@
-defmodule Dhc.Repo.Migrations.Ale179ContractValidateStripeIdentifierSplit do
+defmodule Dhc.Repo.Migrations.ValidateStripeIdentifierSplit do
   @moduledoc """
   ALE-179 (contract): remove legacy PaymentIntent duplicates from the
   Checkout Session column and validate the split identifier invariant after
@@ -36,7 +36,7 @@ defmodule Dhc.Repo.Migrations.Ale179ContractValidateStripeIdentifierSplit do
 
       IF invalid_identifiers > 0 THEN
         RAISE EXCEPTION
-          'ALE-179 contract: % invalid or conflicting Stripe identifiers remain; reconcile them before retrying',
+          'Stripe identifier validation: % invalid or conflicting identifiers remain; reconcile them before retrying',
           invalid_identifiers
           USING ERRCODE = 'check_violation';
       END IF;
@@ -67,8 +67,8 @@ defmodule Dhc.Repo.Migrations.Ale179ContractValidateStripeIdentifierSplit do
 
   def down do
     raise """
-    ALE-179 contract down/0 is unsafe-after-write and not implemented.
-    Backup-restore is the only rollback. See ALE-187 runbook.
+    Stripe identifier validation down/0 is unsafe-after-write and not implemented.
+    Backup-restore is the only rollback.
     """
   end
 end

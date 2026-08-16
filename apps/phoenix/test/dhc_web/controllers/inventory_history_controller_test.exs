@@ -96,7 +96,7 @@ defmodule DhcWeb.InventoryHistoryControllerTest do
     test "returns global activity newest first with item and container summaries", %{
       conn: conn
     } do
-      category = insert_category!("ALE108 Global Feed")
+      category = insert_category!("Inventory History Global Feed")
       old = create_container!(%{"name" => "Old Global"})
       new = create_container!(%{"name" => "New Global"})
       item = create_item!(item_payload(old, category))
@@ -150,7 +150,7 @@ defmodule DhcWeb.InventoryHistoryControllerTest do
     end
 
     test "honors the limit query param", %{conn: conn} do
-      category = insert_category!("ALE108 Limit Feed")
+      category = insert_category!("Inventory History Limited Feed")
       container = create_container!(%{"name" => "Limit Box"})
 
       for n <- 1..5 do
@@ -182,7 +182,7 @@ defmodule DhcWeb.InventoryHistoryControllerTest do
   end
 
   test "read endpoints allow authenticated roles", %{conn: _conn} do
-    category = insert_category!("ALE108 History Read Roles")
+    category = insert_category!("Inventory History Reader Roles")
     container = create_container!(%{"name" => "Read Box"})
     create_item!(item_payload(container, category))
 

@@ -1,4 +1,4 @@
-defmodule Dhc.Repo.Migrations.Ale182SessionTokenHashing do
+defmodule Dhc.Repo.Migrations.HashSessionTokens do
   @moduledoc """
   ALE-182: store session tokens as SHA-256 hashes, not plaintext.
 
@@ -109,8 +109,8 @@ defmodule Dhc.Repo.Migrations.Ale182SessionTokenHashing do
     # would imply a rollback is safe. Restore from the pre-window backup to
     # roll back (ALE-187 runbook).
     raise ArgumentError,
-          "ALE-182 session-token hashing is unsafe-after-write: the backfill " <>
+          "Session-token hashing is unsafe-after-write: the backfill " <>
             "is a one-way SHA-256 hash and cannot be reversed. Roll back via " <>
-            "backup-restore per the ALE-187 runbook."
+            "backup-restore."
   end
 end

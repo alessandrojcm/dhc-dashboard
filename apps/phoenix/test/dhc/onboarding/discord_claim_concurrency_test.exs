@@ -895,7 +895,7 @@ defmodule Dhc.Onboarding.DiscordClaimConcurrencyTest do
 
   defp invitation_fixture do
     %Invitation{
-      email: "ale-213-#{System.unique_integer([:positive])}@example.com",
+      email: "discord-claim-#{System.unique_integer([:positive])}@example.com",
       prospective_principal_id: Ecto.UUID.generate(),
       status: "pending",
       expires_at: DateTime.utc_now() |> DateTime.add(7, :day) |> DateTime.truncate(:second),
@@ -909,7 +909,7 @@ defmodule Dhc.Onboarding.DiscordClaimConcurrencyTest do
   end
 
   defp unique_subject(label),
-    do: "ale-213-#{label}-#{System.unique_integer([:positive])}"
+    do: "discord-claim-#{label}-#{System.unique_integer([:positive])}"
 
   defp restore_env(key, nil), do: Application.delete_env(:dhc, key)
   defp restore_env(key, value), do: Application.put_env(:dhc, key, value)
@@ -981,11 +981,11 @@ defmodule Dhc.Onboarding.DiscordClaimConcurrencyTest do
       from(i in ExternalIdentity, where: i.principal_id == ^assignment.principal_id)
     )
 
-    # ALE-217 audit rows are immutable in production. These unboxed tests must
+    # Assignment audit rows are immutable in production. These unboxed tests must
     # remove their own durable fixtures so later global-count tests remain
     # isolated, therefore teardown briefly disables only the audit-delete guard.
     Repo.query!(
-      "ALTER TABLE staged_discord_assignment_audit_events DISABLE TRIGGER ale217_reject_audit_mutation"
+      "ALTER TABLE staged_discord_assignment_audit_events DISABLE TRIGGER discord_assignment_reject_audit_mutation"
     )
 
     try do
@@ -994,7 +994,7 @@ defmodule Dhc.Onboarding.DiscordClaimConcurrencyTest do
       )
     after
       Repo.query!(
-        "ALTER TABLE staged_discord_assignment_audit_events ENABLE TRIGGER ale217_reject_audit_mutation"
+        "ALTER TABLE staged_discord_assignment_audit_events ENABLE TRIGGER discord_assignment_reject_audit_mutation"
       )
     end
 
@@ -1005,7 +1005,9 @@ defmodule Dhc.Onboarding.DiscordClaimConcurrencyTest do
     ]
 
     Enum.each(immutable_execution_tables, fn table ->
-      Repo.query!("ALTER TABLE #{table} DISABLE TRIGGER ale217_reject_execution_mutation")
+      Repo.query!(
+        "ALTER TABLE #{table} DISABLE TRIGGER discord_assignment_reject_execution_mutation"
+      )
     end)
 
     try do
@@ -1023,7 +1025,9 @@ defmodule Dhc.Onboarding.DiscordClaimConcurrencyTest do
       )
     after
       Enum.each(immutable_execution_tables, fn table ->
-        Repo.query!("ALTER TABLE #{table} ENABLE TRIGGER ale217_reject_execution_mutation")
+        Repo.query!(
+          "ALTER TABLE #{table} ENABLE TRIGGER discord_assignment_reject_execution_mutation"
+        )
       end)
     end
 

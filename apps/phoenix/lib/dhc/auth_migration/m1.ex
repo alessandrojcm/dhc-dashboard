@@ -18,7 +18,7 @@ defmodule Dhc.AuthMigration.M1 do
     @impl true
     def message(%__MODULE__{class: class, count: count, detail: detail}) do
       base =
-        "ALE-166 M1 abort: #{class} (#{count}); repair source data and rerun — " <>
+        "Authentication population abort: #{class} (#{count}); repair source data and rerun — " <>
           "no exclusion manifest is supported"
 
       if detail, do: base <> "\n" <> detail, else: base
