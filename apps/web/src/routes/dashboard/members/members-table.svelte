@@ -12,60 +12,44 @@ import {
 	type SortingState,
 	type TableOptions,
 } from "@tanstack/table-core";
-import dayjs from "dayjs";
-import { createRawSnippet } from "svelte";
+import {
+	ChevronLeft,
+	ChevronRight,
+	RotateCcw,
+	Search,
+	Users,
+	X,
+} from "@lucide/svelte";
 import { SvelteURLSearchParams } from "svelte/reactivity";
-import { Cross2 } from "svelte-radix";
 import { goto } from "$app/navigation";
 import { page } from "$app/state";
-import { Badge } from "$lib/components/ui/badge";
 import { Button } from "$lib/components/ui/button";
-import { Checkbox } from "$lib/components/ui/checkbox";
 import {
 	createSvelteTable,
 	FlexRender,
 	renderComponent,
-	renderSnippet,
 } from "$lib/components/ui/data-table/index.js";
 import { Input } from "$lib/components/ui/input";
 import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
 import * as Select from "$lib/components/ui/select";
 import * as Table from "$lib/components/ui/table/index.js";
 import SortHeader from "$lib/components/ui/table/sort-header.svelte";
+import { cn } from "$lib/utils";
 import MemberActions from "./member-actions.svelte";
-
-type MemberTableRow = {
-	id: string;
-	first_name: string;
-	last_name: string;
-	email: string;
-	phone_number: string | null;
-	gender: string | null;
-	pronouns: string | null;
-	is_active: boolean;
-	preferred_weapon: string[];
-	membership_start_date: string | null;
-	membership_end_date: string | null;
-	last_payment_date: string | null;
-	insurance_form_submitted: boolean;
-	age: number | null;
-	social_media_consent: "no" | "yes_recognizable" | "yes_unrecognizable";
-	next_of_kin_name: string | null;
-	next_of_kin_phone: string | null;
-	guardian_first_name: string | null;
-	guardian_last_name: string | null;
-	guardian_phone_number: string | null;
-	medical_conditions: string | null;
-	subscription_paused_until: string | null;
-	membership_status: "active" | "inactive" | "paused";
-};
+import MemberDateCell from "./member-date-cell.svelte";
+import MemberDetails from "./member-details.svelte";
+import MemberIdentityCell from "./member-identity-cell.svelte";
+import MemberPhoneCell from "./member-phone-cell.svelte";
+import MemberStatusBadge from "./member-status-badge.svelte";
+import type { MemberStatus, MemberTableRow } from "./member-table.types";
+import MemberWeapons from "./member-weapons.svelte";
 
 type MemberTableQueryParams = {
 	searchQuery: string;
 	sort: MemberTableSortField;
 	direction: "asc" | "desc";
 	pageSize: (typeof pageSizeOptions)[number];
-	membershipStatus: readonly MemberStatusFilter[] | null;
+	membershipStatus: readonly MemberStatus[] | null;
 	cursor: string | null;
 };
 
@@ -77,6 +61,7 @@ type MemberTablePage = {
 };
 
 const pageSizeOptions = [10, 25, 50, 100] as const;
+const statusOptions = ["active", "paused", "inactive"] as const;
 
 const memberSortFields = [
 	"first_name",
@@ -104,12 +89,17 @@ const memberSortMap = {
 	is_active: "isActive",
 } satisfies Record<MemberTableSortField, MembersListSortField>;
 
-const statusOptions = ["active", "inactive", "paused"] as const;
-type MemberStatusFilter = (typeof statusOptions)[number];
-
-function navigateToMembers(searchParams: URLSearchParams) {
-	const url = `/dashboard/members?${searchParams.toString()}`;
-	goto(url, { keepFocus: true, noScroll: true });
+function navigateToMembers(
+	searchParams: URLSearchParams,
+	options: { replaceState?: boolean } = {},
+) {
+	const query = searchParams.toString();
+	const url = `${page.url.pathname}${query ? `?${query}` : ""}`;
+	void goto(url, {
+		keepFocus: true,
+		noScroll: true,
+		replaceState: options.replaceState,
+	});
 }
 
 function isPageSize(value: number): value is (typeof pageSizeOptions)[number] {
@@ -134,12 +124,14 @@ const membershipStatusFilter = $derived.by(() => {
 		.split(",")
 		.map((status) => status.trim())
 		.filter(
-			(status): status is MemberStatusFilter =>
+			(status): status is MemberStatus =>
 				status === "active" || status === "inactive" || status === "paused",
 		);
-	if (selected.length === 0) {
+
+	if (selected.length === 0 || selected.length === statusOptions.length) {
 		return null;
 	}
+
 	return statusOptions.filter((status) => selected.includes(status));
 });
 const activeSort = $derived.by(() => {
@@ -154,14 +146,18 @@ const activeSort = $derived.by(() => {
 		direction: sortDirection === "desc" ? "desc" : "asc",
 	} as const;
 });
-const sortingState: SortingState = $derived.by(() => {
-	return [
-		{
-			id: activeSort.sort,
-			desc: activeSort.direction === "desc",
-		},
-	];
-});
+const sortingState: SortingState = $derived([
+	{
+		id: activeSort.sort,
+		desc: activeSort.direction === "desc",
+	},
+]);
+const hasActiveFilters = $derived(
+	searchQuery !== "" || membershipStatusFilter !== null,
+);
+
+let searchDraft = $derived(searchQuery);
+let expandedState = $state({});
 
 const membersQueryParams = $derived<MemberTableQueryParams>({
 	searchQuery,
@@ -231,7 +227,7 @@ function onPaginationChange(newPageSize: number) {
 	const newParams = new SvelteURLSearchParams(page.url.searchParams);
 	newParams.set("pageSize", newPageSize.toString());
 	newParams.delete("cursor");
-	navigateToMembers(newParams);
+	navigateToMembers(newParams, { replaceState: true });
 }
 
 function onCursorChange(newCursor: string | null | undefined) {
@@ -242,43 +238,65 @@ function onCursorChange(newCursor: string | null | undefined) {
 }
 
 function onSortingChange(newSorting: SortingState) {
-	const [sortingState] = newSorting;
+	const [nextSorting] = newSorting;
+	if (!nextSorting) return;
 	const newParams = new SvelteURLSearchParams(page.url.searchParams);
-	newParams.set("sort", sortingState.id);
-	newParams.set("direction", sortingState.desc ? "desc" : "asc");
+	newParams.set("sort", nextSorting.id);
+	newParams.set("direction", nextSorting.desc ? "desc" : "asc");
 	newParams.delete("cursor");
-	navigateToMembers(newParams);
+	navigateToMembers(newParams, { replaceState: true });
 }
 
 function onSearchChange(newSearch: string) {
+	const normalizedSearch = newSearch.trim();
 	const newParams = new SvelteURLSearchParams(page.url.searchParams);
-	newParams.set("q", newSearch);
-	newParams.delete("cursor");
-	navigateToMembers(newParams);
-}
-
-function onStatusFilterChange(
-	status: MemberStatusFilter,
-	checked: boolean | "indeterminate",
-) {
-	const current = membershipStatusFilter ?? [...statusOptions];
-	const next = checked
-		? statusOptions.filter(
-				(value) => value === status || current.includes(value),
-			)
-		: current.filter((value) => value !== status);
-	const newParams = new SvelteURLSearchParams(page.url.searchParams);
-	if (next.length === 0 || next.length === statusOptions.length) {
-		newParams.delete("membershipStatus");
+	if (normalizedSearch) {
+		newParams.set("q", normalizedSearch);
 	} else {
-		newParams.set("membershipStatus", next.join(","));
+		newParams.delete("q");
 	}
 	newParams.delete("cursor");
-	navigateToMembers(newParams);
+	navigateToMembers(newParams, { replaceState: true });
 }
 
-// State for expanded rows
-let expandedState = $state({});
+function onSearchSubmit(event: SubmitEvent) {
+	event.preventDefault();
+	onSearchChange(searchDraft);
+}
+
+function onStatusFilterChange(status: MemberStatus | null) {
+	const newParams = new SvelteURLSearchParams(page.url.searchParams);
+
+	if (status === null) {
+		newParams.delete("membershipStatus");
+	} else {
+		const current = membershipStatusFilter ?? [];
+		const next = current.includes(status)
+			? current.filter((value) => value !== status)
+			: [...current, status];
+
+		if (next.length === 0 || next.length === statusOptions.length) {
+			newParams.delete("membershipStatus");
+		} else {
+			newParams.set(
+				"membershipStatus",
+				statusOptions.filter((value) => next.includes(value)).join(","),
+			);
+		}
+	}
+
+	newParams.delete("cursor");
+	navigateToMembers(newParams, { replaceState: true });
+}
+
+function resetFilters() {
+	searchDraft = "";
+	const newParams = new SvelteURLSearchParams(page.url.searchParams);
+	newParams.delete("q");
+	newParams.delete("membershipStatus");
+	newParams.delete("cursor");
+	navigateToMembers(newParams, { replaceState: true });
+}
 
 const tableOptions = $state<TableOptions<MemberTableRow>>({
 	autoResetPageIndex: false,
@@ -287,248 +305,90 @@ const tableOptions = $state<TableOptions<MemberTableRow>>({
 	getExpandedRowModel: getExpandedRowModel(),
 	columns: [
 		{
-			id: "actions",
-			header: "Actions",
-			cell: ({ row }) => {
-				return renderComponent(MemberActions, {
-					memberId: row.original.id,
-					isExpanded: row.getIsExpanded(),
-					onToggleExpand: () => row.toggleExpanded(),
-				});
-			},
-		},
-		{
-			accessorKey: "first_name",
-			header: ({ column }) =>
-				renderComponent(SortHeader, {
-					onclick: () => column.toggleSorting(column.getIsSorted() === "asc"),
-					header: "First Name",
-					class: "p-2",
-					sortDirection: column.getIsSorted(),
-				}),
-			cell: ({ getValue }) => {
-				return renderSnippet(
-					createRawSnippet((value) => ({
-						render: () =>
-							`<div class="w-[100px] md:w-[120px] whitespace-break-spaces break-words">${value()}</div>`,
-					})),
-					getValue(),
-				);
-			},
-		},
-		{
+			id: "last_name",
 			accessorKey: "last_name",
 			header: ({ column }) =>
 				renderComponent(SortHeader, {
 					onclick: () => column.toggleSorting(column.getIsSorted() === "asc"),
-					header: "Last Name",
-					class: "p-2",
+					header: "Member",
+					class: "-ml-2 h-9 px-2",
 					sortDirection: column.getIsSorted(),
 				}),
-			cell: ({ getValue }) => {
-				return renderSnippet(
-					createRawSnippet((value) => ({
-						render: () =>
-							`<div class="w-[100px] md:w-[120px] whitespace-break-spaces break-words">${value()}</div>`,
-					})),
-					getValue(),
-				);
-			},
+			cell: ({ row }) =>
+				renderComponent(MemberIdentityCell, { member: row.original }),
 		},
 		{
-			accessorKey: "email",
-			header: "Email",
-			cell: ({ getValue }) => {
-				return renderSnippet(
-					createRawSnippet((value) => ({
-						render: () =>
-							`<a href="mailto:${value()}" class="w-[150px] md:w-[200px] whitespace-break-spaces break-words">${value()}</a>`,
-					})),
-					getValue(),
-				);
-			},
+			accessorKey: "membership_status",
+			header: "Status",
+			cell: ({ row }) =>
+				renderComponent(MemberStatusBadge, {
+					status: row.original.membership_status,
+				}),
 		},
 		{
 			accessorKey: "phone_number",
-			header: "Phone Number",
-			cell: ({ getValue }) => {
-				return renderSnippet(
-					createRawSnippet((value) => ({
-						render: () => `<div class="w-[120px]">${value() ?? "N/A"}</div>`,
-					})),
-					getValue(),
-				);
-			},
-		},
-		{
-			accessorKey: "is_active",
-			header: "Status",
-			cell: ({ row, getValue }) => {
-				if (row.original.membership_status === "paused") {
-					return renderComponent(Badge, {
-						variant: "secondary",
-						class: "h-6",
-						children: createRawSnippet(() => ({
-							render: () => "Paused",
-						})),
-					});
-				}
-
-				return renderComponent(Badge, {
-					variant: getValue() ? "default" : "destructive",
-					class: "h-6",
-					children: createRawSnippet(() => ({
-						render: () =>
-							`<p class="capitalize">${getValue() ? "Active" : "Inactive"}</p>`,
-					})),
-				});
-			},
-		},
-		{
-			accessorKey: "subscription_paused_until",
-			header: "Subscription",
-			cell: ({ row }) => {
-				const pausedUntil = row.original.subscription_paused_until;
-				const isActive = row.original.is_active;
-
-				if (!isActive) {
-					return renderComponent(Badge, {
-						variant: "destructive",
-						class: "h-6",
-						children: createRawSnippet(() => ({ render: () => "Inactive" })),
-					});
-				}
-
-				if (pausedUntil && dayjs(pausedUntil).isAfter(dayjs())) {
-					return renderComponent(Badge, {
-						variant: "secondary",
-						class: "h-6",
-						children: createRawSnippet(() => ({
-							render: () =>
-								`Paused until ${dayjs(pausedUntil).format("MMM D, YYYY")}`,
-						})),
-					});
-				}
-
-				return renderComponent(Badge, {
-					variant: "default",
-					class: "h-6",
-					children: createRawSnippet(() => ({ render: () => "Active" })),
-				});
-			},
-		},
-		{
-			accessorKey: "age",
-			header: ({ column }) =>
-				renderComponent(SortHeader, {
-					onclick: () => column.toggleSorting(column.getIsSorted() === "asc"),
-					header: "Age",
-					class: "p-2",
-					sortDirection: column.getIsSorted(),
+			header: "Phone",
+			cell: ({ row }) =>
+				renderComponent(MemberPhoneCell, {
+					phone: row.original.phone_number,
 				}),
-			cell: ({ getValue }) => {
-				return renderSnippet(
-					createRawSnippet((value) => ({
-						render: () => {
-							const age = value();
-							return `<div class="w-[120px] ${age !== null && age < 18 ? "text-red-800" : ""}">${age === null ? "N/A" : age < 18 ? age + "(👶)" : age}</div>`;
-						},
-					})),
-					getValue(),
-				);
-			},
-		},
-		{
-			accessorKey: "social_media_consent",
-			header: "Social  Consent",
-			cell: ({ getValue }) => {
-				return renderComponent(Badge, {
-					variant:
-						getValue() !== "no"
-							? getValue() === "yes_recognizable"
-								? "default"
-								: "secondary"
-							: "destructive",
-					class: "h-8",
-					children: createRawSnippet(() => ({
-						render: () =>
-							`<p class="first-letter:capitalize">${getValue().replace("_", ", ")}</p>`,
-					})),
-				});
-			},
 		},
 		{
 			accessorKey: "preferred_weapon",
 			header: "Weapons",
-			cell: ({ row }) => {
-				const weapons = row.original.preferred_weapon;
-				return renderSnippet(
-					createRawSnippet(() => ({
-						render: () =>
-							`<div class="flex gap-1 flex-wrap">${weapons
-								.map(
-									(w) =>
-										`<span class="bg-primary/10 text-primary rounded px-2 py-1 text-sm first-letter:capitalize">${w.replace(
-											/[-_]/g,
-											" ",
-										)}</span>`,
-								)
-								.join("")}</div>`,
-					})),
-					weapons,
-				);
-			},
+			cell: ({ row }) =>
+				renderComponent(MemberWeapons, {
+					weapons: row.original.preferred_weapon,
+				}),
 		},
 		{
 			accessorKey: "membership_start_date",
 			header: ({ column }) =>
 				renderComponent(SortHeader, {
 					onclick: () => column.toggleSorting(column.getIsSorted() === "asc"),
-					header: "Member Since",
-					class: "p-2",
+					header: "Member since",
+					class: "-ml-2 h-9 px-2",
 					sortDirection: column.getIsSorted(),
 				}),
-			cell: ({ row }) => {
-				const date = row.original.membership_start_date;
-				return renderSnippet(
-					createRawSnippet((value) => ({
-						render: () =>
-							`<p>${value() ? dayjs(value()).format("MMM D, YYYY") : "Never"}</p>`,
-					})),
-					date,
-				);
-			},
+			cell: ({ row }) =>
+				renderComponent(MemberDateCell, {
+					date: row.original.membership_start_date,
+					emptyLabel: "Never",
+				}),
 		},
 		{
 			accessorKey: "last_payment_date",
 			header: ({ column }) =>
 				renderComponent(SortHeader, {
 					onclick: () => column.toggleSorting(column.getIsSorted() === "asc"),
-					header: "Last Payment",
-					class: "p-2",
+					header: "Last payment",
+					class: "-ml-2 h-9 px-2",
 					sortDirection: column.getIsSorted(),
 				}),
-			cell: ({ row }) => {
-				const date = row.original.last_payment_date;
-				return renderSnippet(
-					createRawSnippet((value) => ({
-						render: () =>
-							`<p>${value() ? dayjs(value()).format("MMM D, YYYY") : "Never"}</p>`,
-					})),
-					date,
-				);
-			},
+			cell: ({ row }) =>
+				renderComponent(MemberDateCell, {
+					date: row.original.last_payment_date,
+					emptyLabel: "Never",
+				}),
+		},
+		{
+			id: "actions",
+			header: "Actions",
+			cell: ({ row }) =>
+				renderComponent(MemberActions, {
+					memberId: row.original.id,
+					isExpanded: row.getIsExpanded(),
+					onToggleExpand: () => row.toggleExpanded(),
+				}),
 		},
 	],
 	get data() {
-		return membersQuery?.data?.data ?? [];
+		return membersQuery.data?.data ?? [];
 	},
 	onSortingChange: (updater) => {
-		if (updater instanceof Function) {
-			onSortingChange(updater(sortingState));
-		} else {
-			onSortingChange(updater);
-		}
+		onSortingChange(
+			updater instanceof Function ? updater(sortingState) : updater,
+		);
 	},
 	getRowId: (row) => row.id,
 	state: {
@@ -540,11 +400,8 @@ const tableOptions = $state<TableOptions<MemberTableRow>>({
 		},
 	},
 	onExpandedChange: (updater) => {
-		if (updater instanceof Function) {
-			expandedState = updater(expandedState);
-		} else {
-			expandedState = updater;
-		}
+		expandedState =
+			updater instanceof Function ? updater(expandedState) : updater;
 	},
 	getCoreRowModel: getCoreRowModel(),
 	getSortedRowModel: getSortedRowModel(),
@@ -553,387 +410,390 @@ const tableOptions = $state<TableOptions<MemberTableRow>>({
 const table = createSvelteTable(tableOptions);
 </script>
 
-<div class="flex w-full items-center gap-2 mb-2 p-2 flex-wrap">
-	<Input
-		value={searchQuery}
-		oninput={(t: Event & { currentTarget: EventTarget & HTMLInputElement }) =>
-			onSearchChange(t.currentTarget.value)}
-		placeholder="Search members"
-		class="max-w-md"
-	/>
-
-	<div class="flex items-center gap-3 rounded-md border px-3 py-2">
-		<p class="text-sm text-muted-foreground">Status</p>
-		{#each statusOptions as status (status)}
-			<label class="flex items-center gap-2 text-sm capitalize">
-				<Checkbox
-					checked={(membershipStatusFilter ?? [...statusOptions]).includes(
-						status,
-					)}
-					onCheckedChange={(checked) => onStatusFilterChange(status, checked)}
-				/>
-				{status}
-			</label>
-		{/each}
-	</div>
-
-	{#if searchQuery !== ""}
-		<Button
-			variant="ghost"
-			type="button"
-			aria-label="Clear search"
-			onclick={() => onSearchChange("")}
+{#snippet emptyState()}
+	<div class="flex flex-col items-center justify-center px-6 py-12 text-center">
+		<div
+			class="flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary"
 		>
-			<Cross2 />
-		</Button>
-	{/if}
-	{#if membersQuery.isFetching}
-		<LoaderCircle />
-	{/if}
-</div>
-
-<!-- Desktop Table View (hidden on mobile) -->
-<div
-	data-testid="members-table"
-	class="hidden md:block overflow-x-auto overflow-y-auto h-[65svh]"
->
-	<Table.Root class="w-full">
-		<Table.Header class="sticky top-0 z-10 bg-white">
-			{#each table.getHeaderGroups() as headerGroup (headerGroup.id)}
-				<Table.Row>
-					{#each headerGroup.headers as header (header.id)}
-						<Table.Head
-							class="text-black prose prose-p text-xs md:text-sm font-medium p-2"
-						>
-							<FlexRender
-								content={header.column.columnDef.header}
-								context={header.getContext()}
-							/>
-						</Table.Head>
-					{/each}
-				</Table.Row>
-			{/each}
-		</Table.Header>
-		<Table.Body>
-			{#each table.getRowModel().rows as row (row.id)}
-				<Table.Row>
-					{#each row.getVisibleCells() as cell (cell.id)}
-						<Table.Cell
-							class="whitespace-normal md:whitespace-nowrap py-2 md:py-4 px-2 md:px-3 text-xs md:text-sm prose prose-p"
-						>
-							<FlexRender
-								content={cell.column.columnDef.cell}
-								context={cell.getContext()}
-							/>
-						</Table.Cell>
-					{/each}
-				</Table.Row>
-				{#if row.getIsExpanded()}
-					<Table.Row>
-						<Table.Cell
-							colspan={row.getVisibleCells().length}
-							class="p-4 bg-muted/20"
-						>
-							<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-								<!-- Next of Kin Information -->
-								<div class="bg-card rounded-lg border p-4">
-									<h3 class="text-sm font-medium mb-2">
-										Next of Kin Information
-									</h3>
-									<div class="grid grid-cols-3 gap-2">
-										<div class="text-xs font-medium text-muted-foreground">
-											Name
-										</div>
-										<div class="col-span-2 text-xs">
-											{row.original.next_of_kin_name || "N/A"}
-										</div>
-
-										<div class="text-xs font-medium text-muted-foreground">
-											Phone
-										</div>
-										<div class="col-span-2 text-xs">
-											{row.original.next_of_kin_phone || "N/A"}
-										</div>
-									</div>
-								</div>
-
-								<!-- Guardian Information -->
-								<div class="bg-card rounded-lg border p-4">
-									<h3 class="text-sm font-medium mb-2">Guardian Information</h3>
-									{#if row.original.guardian_first_name || row.original.guardian_last_name || row.original.guardian_phone_number}
-										<div class="grid grid-cols-3 gap-2">
-											<div class="text-xs font-medium text-muted-foreground">
-												Name
-											</div>
-											<div class="col-span-2 text-xs">
-												{row.original.guardian_first_name || ""}
-												{row.original.guardian_last_name || ""}
-											</div>
-
-											<div class="text-xs font-medium text-muted-foreground">
-												Phone
-											</div>
-											<div class="col-span-2 text-xs">
-												{row.original.guardian_phone_number || "N/A"}
-											</div>
-										</div>
-									{:else}
-										<p class="text-xs text-muted-foreground">
-											No guardian information available
-										</p>
-									{/if}
-								</div>
-
-								<!-- Medical Conditions -->
-								<div class="bg-card rounded-lg border p-4">
-									<h3 class="text-sm font-medium mb-2">Medical Conditions</h3>
-									<p class="text-xs">
-										{row.original.medical_conditions || "None reported"}
-									</p>
-								</div>
-							</div>
-						</Table.Cell>
-					</Table.Row>
-				{/if}
-			{/each}
-		</Table.Body>
-	</Table.Root>
-</div>
-
-<!-- Mobile Card View (hidden on desktop) -->
-<div class="md:hidden overflow-y-auto h-[60svh] px-2 py-1">
-	<div class="space-y-4">
-		{#if table.getRowCount() === 0}
-			<p class="text-foreground">No results found</p>
+			<Users class="size-6" aria-hidden="true" />
+		</div>
+		<h3 class="mt-4 font-heading text-xl text-foreground">No members found</h3>
+		<p class="mt-1 max-w-sm text-sm leading-6 text-muted-foreground">
+			{hasActiveFilters
+				? "Try changing your search or status filters."
+				: "Member records will appear here once they have been added."}
+		</p>
+		{#if hasActiveFilters}
+			<Button variant="outline" class="mt-4" onclick={resetFilters}>
+				<RotateCcw class="size-4" aria-hidden="true" />
+				Reset filters
+			</Button>
 		{/if}
-		{#each table.getRowModel().rows as row (row.id)}
-			<div class="bg-card text-card-foreground rounded-lg border shadow-sm p-4">
-				<!-- Name and Actions Row -->
-				<div class="flex justify-between items-center mb-3">
-					<div class="font-medium text-base">
-						{row.original.first_name}
-						{row.original.last_name}
+	</div>
+{/snippet}
+
+<section
+	aria-labelledby="member-directory-title"
+	aria-busy={membersQuery.isFetching}
+	class="overflow-hidden rounded-2xl border border-border bg-card shadow-[4px_4px_0_hsl(var(--secondary)/0.35)]"
+>
+	<header class="border-b border-border bg-muted/20 p-4 sm:p-5">
+		<div class="flex flex-wrap items-start justify-between gap-3">
+			<div>
+				<h2
+					id="member-directory-title"
+					class="font-heading text-2xl text-foreground"
+				>
+					Member directory
+				</h2>
+				<p class="mt-1 text-sm text-muted-foreground">
+					{membersQuery.data?.count ?? 0}
+					{membersQuery.data?.count === 1 ? "member" : "members"}
+				</p>
+			</div>
+			{#if membersQuery.isFetching}
+				<div
+					class="flex min-h-11 items-center gap-2 text-sm font-medium text-muted-foreground"
+					role="status"
+					aria-live="polite"
+				>
+					<LoaderCircle />
+					<span class="sr-only sm:not-sr-only">Updating members</span>
+				</div>
+			{/if}
+		</div>
+
+		<div
+			class="mt-5 grid gap-4 xl:grid-cols-[minmax(20rem,1fr)_auto] xl:items-end"
+		>
+			<form class="grid gap-2" onsubmit={onSearchSubmit}>
+				<label
+					for="member-search"
+					class="text-sm font-semibold text-foreground"
+				>
+					Search members
+				</label>
+				<div class="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+					<div class="relative">
+						<Search
+							class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+							aria-hidden="true"
+						/>
+						<Input
+							id="member-search"
+							name="q"
+							type="search"
+							bind:value={searchDraft}
+							placeholder="Name, email, or phone"
+							class="h-11 pl-10 pr-11"
+							autocomplete="off"
+						/>
+						{#if searchDraft}
+							<Button
+								variant="ghost"
+								size="icon"
+								type="button"
+								class="absolute right-0 top-0"
+								aria-label="Clear search"
+								onclick={() => {
+									searchDraft = "";
+									onSearchChange("");
+								}}
+							>
+								<X class="size-4" aria-hidden="true" />
+							</Button>
+						{/if}
 					</div>
-					<div>
+					<Button type="submit" variant="outline">
+						<Search class="size-4 sm:hidden" aria-hidden="true" />
+						<span class="hidden sm:inline">Search</span>
+						<span class="sr-only sm:hidden">Search members</span>
+					</Button>
+				</div>
+			</form>
+
+			<fieldset class="grid gap-2">
+				<legend class="text-sm font-semibold text-foreground"
+					>Membership status</legend
+				>
+				<div class="flex flex-wrap gap-2">
+					<Button
+						variant="outline"
+						size="sm"
+						type="button"
+						aria-pressed={membershipStatusFilter === null}
+						class={cn(
+							"min-h-11 shadow-none",
+							membershipStatusFilter === null &&
+								"border-primary bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
+						)}
+						onclick={() => onStatusFilterChange(null)}
+					>
+						All
+					</Button>
+					{#each statusOptions as status (status)}
+						{@const selected =
+							membershipStatusFilter?.includes(status) ?? false}
+						<Button
+							variant="outline"
+							size="sm"
+							type="button"
+							aria-pressed={selected}
+							class={cn(
+								"min-h-11 capitalize shadow-none",
+								selected &&
+									"border-primary bg-primary text-primary-foreground hover:bg-primary/90 hover:text-primary-foreground",
+							)}
+							onclick={() => onStatusFilterChange(status)}
+						>
+							{status}
+						</Button>
+					{/each}
+					{#if hasActiveFilters}
+						<Button
+							variant="ghost"
+							size="sm"
+							type="button"
+							class="min-h-11"
+							onclick={resetFilters}
+						>
+							<RotateCcw class="size-4" aria-hidden="true" />
+							Reset
+						</Button>
+					{/if}
+				</div>
+			</fieldset>
+		</div>
+	</header>
+
+	{#if membersQuery.isError}
+		<div
+			class="flex flex-col items-center justify-center px-6 py-14 text-center"
+			role="alert"
+		>
+			<h3 class="font-heading text-xl text-foreground">
+				Members could not be loaded
+			</h3>
+			<p class="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
+				Check your connection and try again. Your filters have been kept.
+			</p>
+			<Button class="mt-4" onclick={() => membersQuery.refetch()}
+				>Try again</Button
+			>
+		</div>
+	{:else if membersQuery.isPending}
+		<div class="flex min-h-72 items-center justify-center" role="status">
+			<LoaderCircle />
+			<span class="sr-only">Loading members</span>
+		</div>
+	{:else}
+		<!-- A compact data table preserves scan speed on larger screens. -->
+		<div data-testid="members-table" class="hidden overflow-x-auto lg:block">
+			<Table.Root class="min-w-[900px]">
+				<Table.Caption class="sr-only">
+					Member directory. Sortable columns include member name, member since,
+					and last payment.
+				</Table.Caption>
+				<Table.Header class="bg-muted/50">
+					{#each table.getHeaderGroups() as headerGroup (headerGroup.id)}
+						<Table.Row class="hover:bg-transparent">
+							{#each headerGroup.headers as header (header.id)}
+								{@const sortDirection = header.column.getIsSorted()}
+								<Table.Head
+									scope="col"
+									aria-sort={sortDirection === "asc"
+										? "ascending"
+										: sortDirection === "desc"
+											? "descending"
+											: undefined}
+									class={cn(
+										"px-4 text-xs font-bold uppercase tracking-wide text-muted-foreground",
+										header.column.id === "actions" && "text-right",
+									)}
+								>
+									<FlexRender
+										content={header.column.columnDef.header}
+										context={header.getContext()}
+									/>
+								</Table.Head>
+							{/each}
+						</Table.Row>
+					{/each}
+				</Table.Header>
+				<Table.Body>
+					{#each table.getRowModel().rows as row (row.id)}
+						<Table.Row class="group">
+							{#each row.getVisibleCells() as cell (cell.id)}
+								<Table.Cell
+									class={cn(
+										"px-4 py-3.5",
+										cell.column.id === "last_name" && "min-w-64",
+										cell.column.id === "actions" && "text-right",
+									)}
+								>
+									<FlexRender
+										content={cell.column.columnDef.cell}
+										context={cell.getContext()}
+									/>
+								</Table.Cell>
+							{/each}
+						</Table.Row>
+						{#if row.getIsExpanded()}
+							<Table.Row>
+								<Table.Cell
+									colspan={row.getVisibleCells().length}
+									class="bg-muted/20 p-4"
+								>
+									<MemberDetails member={row.original} />
+								</Table.Cell>
+							</Table.Row>
+						{/if}
+					{:else}
+						<Table.Row>
+							<Table.Cell colspan={table.getAllColumns().length} class="p-0">
+								{@render emptyState()}
+							</Table.Cell>
+						</Table.Row>
+					{/each}
+				</Table.Body>
+			</Table.Root>
+		</div>
+
+		<!-- Mobile and tablet cards reveal secondary data only on request. -->
+		<div
+			class="divide-y divide-border lg:hidden"
+			data-testid="members-card-list"
+		>
+			{#each table.getRowModel().rows as row (row.id)}
+				<article class="p-4 sm:p-5">
+					<div class="flex items-start justify-between gap-3">
+						<MemberIdentityCell member={row.original} />
+						<MemberStatusBadge status={row.original.membership_status} />
+					</div>
+
+					<div
+						class="mt-4 grid gap-3 rounded-xl bg-muted/35 p-3 sm:grid-cols-2"
+					>
+						<div>
+							<p
+								class="text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+							>
+								Phone
+							</p>
+							<div class="mt-1">
+								<MemberPhoneCell phone={row.original.phone_number} />
+							</div>
+						</div>
+						<div>
+							<p
+								class="text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+							>
+								Member since
+							</p>
+							<div class="mt-1">
+								<MemberDateCell
+									date={row.original.membership_start_date}
+									emptyLabel="Never"
+								/>
+							</div>
+						</div>
+						{#if row.original.preferred_weapon.length > 0}
+							<div class="sm:col-span-2">
+								<p
+									class="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+								>
+									Weapons
+								</p>
+								<MemberWeapons weapons={row.original.preferred_weapon} />
+							</div>
+						{/if}
+					</div>
+
+					<div class="mt-4">
 						<MemberActions
 							memberId={row.original.id}
 							isExpanded={row.getIsExpanded()}
 							onToggleExpand={() => row.toggleExpanded()}
+							showLabels
 						/>
 					</div>
-				</div>
 
-				<!-- Email -->
-				<div class="grid grid-cols-3 py-1 border-b">
-					<div class="text-sm font-medium text-muted-foreground">Email</div>
-					<div class="col-span-2 text-sm break-words">{row.original.email}</div>
-				</div>
+					{#if row.getIsExpanded()}
+						<div class="mt-4 border-t border-border pt-4">
+							<MemberDetails member={row.original} />
+						</div>
+					{/if}
+				</article>
+			{:else}
+				{@render emptyState()}
+			{/each}
+		</div>
+	{/if}
 
-				<!-- Phone -->
-				<div class="grid grid-cols-3 py-1 border-b">
-					<div class="text-sm font-medium text-muted-foreground">Phone</div>
-					<div class="col-span-2 text-sm">
-						{row.original.phone_number || "N/A"}
-					</div>
-				</div>
-
-				<!-- Gender -->
-				<div class="grid grid-cols-3 py-1 border-b">
-					<div class="text-sm font-medium text-muted-foreground">Gender</div>
-					<div class="col-span-2 text-sm capitalize">
-						{row.original.gender || "N/A"}
-					</div>
-				</div>
-
-				<!-- Age -->
-				<div class="grid grid-cols-3 py-1 border-b">
-					<div class="text-sm font-medium text-muted-foreground">Age</div>
-					<div class="col-span-2 text-sm">{row.original.age ?? "N/A"}</div>
-				</div>
-
-				<!-- Social Media Consent -->
-				<div class="grid grid-cols-3 py-1 border-b">
-					<div class="text-sm font-medium text-muted-foreground">
-						Social Consent
-					</div>
-					<div class="col-span-2">
-						<Badge
-							variant={row.original.social_media_consent ===
-								"yes_recognizable" ||
-							row.original.social_media_consent === "yes_unrecognizable"
-								? "default"
-								: "destructive"}
-							class="h-6"
+	{#if !membersQuery.isError}
+		<footer
+			class="flex flex-col gap-4 border-t border-border bg-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between"
+		>
+			<div
+				class="flex flex-wrap items-center justify-between gap-3 sm:justify-start"
+			>
+				<p class="text-sm text-muted-foreground">
+					<span class="font-semibold text-foreground">
+						{table.getRowModel().rows.length}
+					</span>
+					shown of
+					<span class="font-semibold text-foreground">
+						{membersQuery.data?.count ?? 0}
+					</span>
+				</p>
+				<div class="flex items-center gap-2">
+					<span
+						id="members-page-size-label"
+						class="text-sm text-muted-foreground"
+					>
+						Rows
+					</span>
+					<Select.Root
+						type="single"
+						value={pageSize.toString()}
+						onValueChange={(value) => onPaginationChange(Number(value))}
+					>
+						<Select.Trigger
+							class="h-11 w-20"
+							aria-labelledby="members-page-size-label"
 						>
-							<p class="capitalize">
-								{row.original.social_media_consent?.replace("_", " ") ??
-									"Unknown"}
-							</p>
-						</Badge>
-					</div>
-				</div>
-
-				<!-- Subscription Status -->
-				<div class="grid grid-cols-3 py-1 border-b">
-					<div class="text-sm font-medium text-muted-foreground">
-						Subscription
-					</div>
-					<div class="col-span-2">
-						{#if !row.original.is_active}
-							<Badge variant="destructive" class="h-6">
-								<p>Inactive</p>
-							</Badge>
-						{:else if row.original.subscription_paused_until && dayjs(row.original.subscription_paused_until).isAfter(dayjs())}
-							<Badge variant="secondary" class="h-6">
-								<p>
-									Paused until {dayjs(
-										row.original.subscription_paused_until,
-									).format("MMM D, YYYY")}
-								</p>
-							</Badge>
-						{:else}
-							<Badge variant="default" class="h-6">
-								<p>Active</p>
-							</Badge>
-						{/if}
-					</div>
-				</div>
-
-				<!-- Preferred Weapon -->
-				<div class="grid grid-cols-3 py-1 border-b">
-					<div class="text-sm font-medium text-muted-foreground">Weapons</div>
-					<div class="col-span-2 text-sm">
-						{#if row.original.preferred_weapon}
-							{#each row.original.preferred_weapon as weapon (weapon)}
-								<Badge variant="outline" class="mr-1 mb-1 capitalize">
-									{weapon.replace(/_/g, " ")}
-								</Badge>
+							{pageSize}
+						</Select.Trigger>
+						<Select.Content>
+							{#each pageSizeOptions as pageSizeOption (pageSizeOption)}
+								<Select.Item value={pageSizeOption.toString()}>
+									{pageSizeOption}
+								</Select.Item>
 							{/each}
-						{:else}
-							None specified
-						{/if}
-					</div>
+						</Select.Content>
+					</Select.Root>
 				</div>
-
-				<!-- Member Since -->
-				<div class="grid grid-cols-3 py-1">
-					<div class="text-sm font-medium text-muted-foreground">
-						Member Since
-					</div>
-					<div class="col-span-2 text-sm">
-						{#if row.original.membership_start_date}
-							{dayjs(row.original.membership_start_date).format("MMM D, YYYY")}
-						{:else}
-							Never
-						{/if}
-					</div>
-				</div>
-
-				<!-- Expanded Content -->
-				{#if row.getIsExpanded()}
-					<div class="mt-4 pt-4 border-t border-muted">
-						<!-- Next of Kin Information -->
-						<div class="mb-4">
-							<h3 class="text-sm font-medium mb-2">Next of Kin Information</h3>
-							<div class="grid grid-cols-3 gap-2">
-								<div class="text-xs font-medium text-muted-foreground">
-									Name
-								</div>
-								<div class="col-span-2 text-xs">
-									{row.original.next_of_kin_name || "N/A"}
-								</div>
-
-								<div class="text-xs font-medium text-muted-foreground">
-									Phone
-								</div>
-								<div class="col-span-2 text-xs">
-									{row.original.next_of_kin_phone || "N/A"}
-								</div>
-							</div>
-						</div>
-
-						<!-- Guardian Information -->
-						<div class="mb-4">
-							<h3 class="text-sm font-medium mb-2">Guardian Information</h3>
-							{#if row.original.guardian_first_name || row.original.guardian_last_name || row.original.guardian_phone_number}
-								<div class="grid grid-cols-3 gap-2">
-									<div class="text-xs font-medium text-muted-foreground">
-										Name
-									</div>
-									<div class="col-span-2 text-xs">
-										{row.original.guardian_first_name || ""}
-										{row.original.guardian_last_name || ""}
-									</div>
-
-									<div class="text-xs font-medium text-muted-foreground">
-										Phone
-									</div>
-									<div class="col-span-2 text-xs">
-										{row.original.guardian_phone_number || "N/A"}
-									</div>
-								</div>
-							{:else}
-								<p class="text-xs text-muted-foreground">
-									No guardian information available
-								</p>
-							{/if}
-						</div>
-
-						<!-- Medical Conditions -->
-						<div>
-							<h3 class="text-sm font-medium mb-2">Medical Conditions</h3>
-							<p class="text-xs">
-								{row.original.medical_conditions || "None reported"}
-							</p>
-						</div>
-					</div>
-				{/if}
 			</div>
-		{/each}
-	</div>
-</div>
 
-<div
-	class="flex flex-col md:flex-row items-center justify-between gap-4 p-4 bg-card border-t"
->
-	<div class="flex items-center gap-2 w-full md:w-auto justify-start">
-		<p class="text-sm text-muted-foreground">Elements per page</p>
-		<Select.Root
-			type="single"
-			value={pageSize.toString()}
-			onValueChange={(value) => onPaginationChange(Number(value))}
-		>
-			<Select.Trigger class="w-16 h-8" aria-label="Members elements per page">
-				{pageSize}
-			</Select.Trigger>
-			<Select.Content>
-				{#each pageSizeOptions as pageSizeOption (pageSizeOption)}
-					<Select.Item value={pageSizeOption.toString()}>
-						{pageSizeOption}
-					</Select.Item>
-				{/each}
-			</Select.Content>
-		</Select.Root>
-	</div>
-	<div
-		class="w-full md:w-auto flex items-center justify-center md:justify-end gap-2"
-	>
-		<Button
-			variant="outline"
-			disabled={!membersQuery?.data?.previousCursor || membersQuery.isFetching}
-			onclick={() => onCursorChange(membersQuery?.data?.previousCursor)}
-		>
-			Previous
-		</Button>
-		<p class="text-sm text-muted-foreground">
-			{membersQuery?.data?.count ?? 0} total
-		</p>
-		<Button
-			variant="outline"
-			disabled={!membersQuery?.data?.nextCursor || membersQuery.isFetching}
-			onclick={() => onCursorChange(membersQuery?.data?.nextCursor)}
-		>
-			Next
-		</Button>
-	</div>
-</div>
+			<nav class="grid grid-cols-2 gap-2" aria-label="Member directory pages">
+				<Button
+					variant="outline"
+					disabled={!membersQuery.data?.previousCursor ||
+						membersQuery.isFetching}
+					onclick={() => onCursorChange(membersQuery.data?.previousCursor)}
+				>
+					<ChevronLeft class="size-4" aria-hidden="true" />
+					Previous
+				</Button>
+				<Button
+					variant="outline"
+					disabled={!membersQuery.data?.nextCursor || membersQuery.isFetching}
+					onclick={() => onCursorChange(membersQuery.data?.nextCursor)}
+				>
+					Next
+					<ChevronRight class="size-4" aria-hidden="true" />
+				</Button>
+			</nav>
+		</footer>
+	{/if}
+</section>
