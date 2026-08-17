@@ -1,5 +1,4 @@
 <script lang="ts">
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import type { LayoutData } from "./$types";
 import { SidebarProvider } from "$lib/components/ui/sidebar";
 import DashboardSidebar from "$lib/components/ui/DashboardSidebar.svelte";
@@ -10,8 +9,9 @@ import { goto } from "$app/navigation";
 import { invalidateAll, invalidate } from "$app/navigation";
 import { resolve } from "$app/paths";
 import { membersMeOptions, authDeleteSession } from "@dhc/api-client";
+import type { Snippet } from "svelte";
 
-let { children, data }: { data: LayoutData; children: any } = $props();
+let { children, data }: { data: LayoutData; children: Snippet } = $props();
 let roles = $derived.by(() => new Set(data.roles));
 let paths = $derived.by(() => page.url.pathname.split("/"));
 const userDataQuery = createQuery(() => ({
@@ -56,6 +56,18 @@ function getLink(item: string): string {
 	}
 	return paths.slice(0, index + 1).join("/");
 }
+
+function getBreadcrumbLabel(item: string, index: number): string {
+	const isMemberProfile =
+		page.route.id === "/dashboard/members/[memberId]" &&
+		index === paths.length - 1;
+	if (isMemberProfile) {
+		return userDataQuery.data?.id === page.params.memberId
+			? "My profile"
+			: "Member profile";
+	}
+	return item.replaceAll("-", " ");
+}
 </script>
 
 <svelte:head>
@@ -95,7 +107,7 @@ function getLink(item: string): string {
 							{:else}
 								<Breadcrumb.Item>
 									<Breadcrumb.Page class="capitalize">
-										{item.replaceAll("-", " ")}
+										{getBreadcrumbLabel(item, index)}
 									</Breadcrumb.Page>
 								</Breadcrumb.Item>
 							{/if}

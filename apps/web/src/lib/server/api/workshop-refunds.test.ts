@@ -56,7 +56,7 @@ describe("Workshop refund API", () => {
 		// ALE-164: the cookie is forwarded via the `cookie` header, not a bearer
 		// `auth` field. The `_dhc_session` cookie value is the credential.
 		expect(workshopsRefunds).toHaveBeenCalledWith({
-			baseUrl: "http://localhost:4000/api",
+			baseUrl: "http://127.0.0.1:4000/api",
 			credentials: "include",
 			headers: { cookie: "_dhc_session=signed-session-cookie" },
 			path: { workshopId: "workshop-1" },
@@ -95,7 +95,7 @@ describe("Workshop refund API", () => {
 		);
 
 		expect(workshopsRefundRegistration).toHaveBeenCalledWith({
-			baseUrl: "http://localhost:4000/api",
+			baseUrl: "http://127.0.0.1:4000/api",
 			credentials: "include",
 			headers: { cookie: "_dhc_session=signed-session-cookie" },
 			path: {
@@ -115,7 +115,7 @@ describe("Workshop refund API", () => {
 		await listWorkshopRefunds(fakeCookies(undefined), "workshop-1", client);
 
 		expect(workshopsRefunds).toHaveBeenCalledWith({
-			baseUrl: "http://localhost:4000/api",
+			baseUrl: "http://127.0.0.1:4000/api",
 			credentials: "include",
 			headers: {},
 			path: { workshopId: "workshop-1" },

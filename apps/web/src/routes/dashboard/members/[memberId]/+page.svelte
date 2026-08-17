@@ -14,7 +14,16 @@ import * as Select from "$lib/components/ui/select";
 import { Textarea } from "$lib/components/ui/textarea";
 import { fromDate, getLocalTimeZone } from "@internationalized/date";
 import { createMutation } from "@tanstack/svelte-query";
-import { ExternalLink } from "@lucide/svelte";
+import {
+	ArrowLeft,
+	Check,
+	CreditCard,
+	ExternalLink,
+	HeartPulse,
+	LockKeyhole,
+	Swords,
+	UserRound,
+} from "@lucide/svelte";
 import { toast } from "svelte-sonner";
 import { Badge } from "$lib/components/ui/badge";
 import PauseSubscriptionModal from "$lib/components/ui/pause-subscription-modal.svelte";
@@ -42,6 +51,12 @@ const discordLinkUrl = publicApiUrl("/auth/discord/link");
 const isOwnProfile = $derived(
 	page.data.session?.principal.id === page.params.memberId,
 );
+const profileName = $derived(
+	[data.profileData.firstName, data.profileData.lastName]
+		.filter(Boolean)
+		.join(" ") || "Member",
+);
+const pageTitle = $derived(isOwnProfile ? "My profile" : `Edit ${profileName}`);
 
 initForm(updateProfile, () => ({
 	firstName: data.profileData.firstName ?? "",
@@ -147,22 +162,70 @@ const resumeMutation = createMutation(() => ({
 }));
 </script>
 
-<Card.Root class="w-full max-w-4xl mx-auto">
-	<Card.Header>
-		<Card.Title>Member Information</Card.Title>
-		<Card.Description>View and edit your membership details</Card.Description>
-	</Card.Header>
-	<Card.Content class="min-h-96 max-h-[73dvh] overflow-y-auto">
-		<form
-			{...updateProfile.preflight(memberProfileClientSchema)}
-			class="space-y-8"
+<svelte:head>
+	<title>{pageTitle} | Dublin HEMA Club</title>
+</svelte:head>
+
+<div class="mx-auto w-full max-w-6xl">
+	<header class="mb-7">
+		{#if !isOwnProfile}
+			<Button
+				href="/dashboard/members/directory"
+				variant="ghost"
+				size="sm"
+				class="mb-4 -ml-3"
+			>
+				<ArrowLeft aria-hidden="true" />
+				Back to members
+			</Button>
+		{/if}
+
+		<p class="mb-2 text-xs font-bold uppercase tracking-[0.18em] text-primary">
+			{isOwnProfile ? "Account & membership" : "Member administration"}
+		</p>
+		<h1 class="font-heading text-3xl text-foreground sm:text-4xl">
+			{pageTitle}
+		</h1>
+		<p
+			class="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground sm:text-base"
 		>
-			<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-				<div class="space-y-6">
+			{isOwnProfile
+				? "Keep your contact, training, and safety details up to date."
+				: "Update this member’s club profile, safety details, and membership settings."}
+		</p>
+	</header>
+
+	<form
+		id="member-profile-form"
+		{...updateProfile.preflight(memberProfileClientSchema)}
+		class="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]"
+	>
+		<div class="min-w-0 space-y-6">
+			<Card.Root>
+				<Card.Header class="border-b border-border/70 pb-5">
+					<div class="flex items-start gap-3">
+						<div class="rounded-xl bg-primary/10 p-2.5 text-primary">
+							<UserRound class="size-5" aria-hidden="true" />
+						</div>
+						<div>
+							<h2 class="text-lg font-semibold">Personal details</h2>
+							<p class="mt-1 text-sm leading-5 text-muted-foreground">
+								How the club can identify and contact {isOwnProfile
+									? "you"
+									: "this member"}.
+							</p>
+						</div>
+					</div>
+				</Card.Header>
+				<Card.Content class="grid gap-5 sm:grid-cols-2">
 					<Field.Field>
 						{@const fieldProps = updateProfile.fields.firstName.as("text")}
 						<Field.Label for={fieldProps.name}>First name</Field.Label>
-						<Input {...fieldProps} id={fieldProps.name} />
+						<Input
+							{...fieldProps}
+							id={fieldProps.name}
+							autocomplete="given-name"
+						/>
 						{#each updateProfile.fields.firstName.issues() as issue (issue.message)}
 							<Field.Error>{issue.message}</Field.Error>
 						{/each}
@@ -171,7 +234,11 @@ const resumeMutation = createMutation(() => ({
 					<Field.Field>
 						{@const fieldProps = updateProfile.fields.lastName.as("text")}
 						<Field.Label for={fieldProps.name}>Last name</Field.Label>
-						<Input {...fieldProps} id={fieldProps.name} />
+						<Input
+							{...fieldProps}
+							id={fieldProps.name}
+							autocomplete="family-name"
+						/>
 						{#each updateProfile.fields.lastName.issues() as issue (issue.message)}
 							<Field.Error>{issue.message}</Field.Error>
 						{/each}
@@ -179,15 +246,23 @@ const resumeMutation = createMutation(() => ({
 
 					<Field.Field>
 						{@const fieldProps = updateProfile.fields.email.as("email")}
-						<Field.Label for={fieldProps.name}>Email</Field.Label>
+						<div class="flex items-center gap-2">
+							<Field.Label for={fieldProps.name}>Email</Field.Label>
+							<LockKeyhole
+								class="size-3.5 text-muted-foreground"
+								aria-hidden="true"
+							/>
+						</div>
 						<Input
-							class="cursor-not-allowed bg-gray-300/50"
+							class="cursor-default bg-muted/60 text-muted-foreground"
 							readonly
 							{...fieldProps}
 							id={fieldProps.name}
+							autocomplete="email"
+							aria-describedby="email-help"
 						/>
-						<Field.Description>
-							Please contact us if you need to change your email.
+						<Field.Description id="email-help">
+							Email changes are handled by the club team.
 						</Field.Description>
 						{#each updateProfile.fields.email.issues() as issue (issue.message)}
 							<Field.Error>{issue.message}</Field.Error>
@@ -196,12 +271,13 @@ const resumeMutation = createMutation(() => ({
 
 					<Field.Field>
 						{@const fieldProps = updateProfile.fields.phoneNumber.as("tel")}
-						<Field.Label for={fieldProps.name}>Phone Number</Field.Label>
+						<Field.Label for={fieldProps.name}>Phone number</Field.Label>
 						<PhoneInput
 							{...fieldProps}
 							onChange={(val) => updateProfile.fields.phoneNumber.set(val)}
 							id={fieldProps.name}
 							placeholder="Enter your phone number"
+							autocomplete="tel"
 						/>
 						{#each updateProfile.fields.phoneNumber.issues() as issue (issue.message)}
 							<Field.Error>{issue.message}</Field.Error>
@@ -209,12 +285,14 @@ const resumeMutation = createMutation(() => ({
 					</Field.Field>
 
 					<Field.Field>
-						<Field.Label>Date of Birth</Field.Label>
-						{@render whyThisField(
-							"For insurance reasons, HEMA practitioners need to be at least 16 years old",
-						)}
+						<div class="flex items-center gap-2">
+							<Field.Label>Date of birth</Field.Label>
+							{@render whyThisField(
+								"For insurance reasons, HEMA practitioners need to be at least 16 years old",
+							)}
+						</div>
 						<DatePicker
-							label="Date of Birth"
+							label="Date of birth"
 							value={dobValue}
 							onDateChange={(date) => {
 								if (!date) return;
@@ -228,109 +306,48 @@ const resumeMutation = createMutation(() => ({
 							<Field.Error>{issue.message}</Field.Error>
 						{/each}
 					</Field.Field>
+				</Card.Content>
+			</Card.Root>
 
-					{#if data.canUpdate}
-						{#if isOwnProfile}
-							<div class="space-y-2">
-								<Button href={discordLinkUrl} variant="outline" class="w-full">
-									<DiscordLogo class="mr-2 h-4 w-4" />
-									Link Discord account
-								</Button>
-								<p class="text-sm text-muted-foreground">
-									Use this after signing in by email when your Discord email is
-									different.
-								</p>
-							</div>
-						{/if}
-
-						<Button
-							disabled={openBillingPortal.isPending}
-							variant="outline"
-							type="button"
-							onclick={() =>
-								openBillingPortal.mutate({
-									path: { memberId: requireMemberId() },
-									body: { returnUrl: window.location.href },
-								})}
-							class="w-full"
+			<Card.Root>
+				<Card.Header class="border-b border-border/70 pb-5">
+					<div class="flex items-start gap-3">
+						<div
+							class="rounded-xl bg-secondary/20 p-2.5 text-secondary-foreground"
 						>
-							{#if openBillingPortal.isPending}
-								<LoaderCircle class="ml-2 h-4 w-4" />
-							{/if}
-							Manage payment settings
-							<ExternalLink class="ml-2 h-4 w-4" />
-						</Button>
-
-						<div class="space-y-4 grid-cols-2 grid-rows-2">
-							<div class="flex items-center justify-between">
-								<span class="text-sm font-medium">Subscription Status:</span>
-								{#if pausedUntil?.isAfter(dayjs())}
-									<Badge variant="secondary">
-										Paused until {pausedUntil.format("MMM D, YYYY")}
-									</Badge>
-								{:else}
-									<Badge variant="default">Active</Badge>
-								{/if}
-							</div>
-
-							{#if pausedUntil?.isAfter(dayjs())}
-								<ButtonGroup.Root>
-									<Button
-										variant="default"
-										onclick={() => (showPauseModal = true)}
-										disabled={resumeMutation.isPending}
-										type="button"
-										class="w-full"
-									>
-										Extend pause
-									</Button>
-									<Button
-										variant="outline"
-										onclick={() =>
-											resumeMutation.mutate({
-												path: { memberId: requireMemberId() },
-											})}
-										disabled={resumeMutation.isPending}
-										type="button"
-										class="w-full"
-									>
-										{resumeMutation.isPending
-											? "Resuming..."
-											: "Resume Subscription"}
-									</Button>
-								</ButtonGroup.Root>
-							{:else}
-								<Button
-									variant="outline"
-									onclick={() => (showPauseModal = true)}
-									type="button"
-									class="w-full"
-								>
-									Pause Subscription
-								</Button>
-							{/if}
+							<Swords class="size-5" aria-hidden="true" />
 						</div>
-					{/if}
-				</div>
-
-				<div class="space-y-6">
+						<div>
+							<h2 class="text-lg font-semibold">Training preferences</h2>
+							<p class="mt-1 text-sm leading-5 text-muted-foreground">
+								Preferences that help coaches plan an inclusive training
+								environment.
+							</p>
+						</div>
+					</div>
+				</Card.Header>
+				<Card.Content class="grid gap-5 sm:grid-cols-2">
 					<Field.Field>
-						<Field.Label>Gender</Field.Label>
-						{@render whyThisField(
-							"This helps us maintain a balanced and inclusive training environment",
-						)}
+						<div class="flex items-center gap-2">
+							<Field.Label for="gender">Gender</Field.Label>
+							{@render whyThisField(
+								"This helps us maintain a balanced and inclusive training environment",
+							)}
+						</div>
 						<Select.Root
 							type="single"
 							value={gender}
-							onValueChange={(v) => updateProfile.fields.gender.set(v)}
+							onValueChange={(value) => updateProfile.fields.gender.set(value)}
 							name="gender"
 						>
-							<Select.Trigger class="w-full capitalize">
+							<Select.Trigger id="gender" class="w-full capitalize">
 								{gender || "Select your gender"}
 							</Select.Trigger>
 							<Select.Content>
-								{#each data.genders as g (g)}
-									<Select.Item value={g} class="capitalize">{g}</Select.Item>
+								{#each data.genders as option (option)}
+									<Select.Item value={option} class="capitalize">
+										{option}
+									</Select.Item>
 								{/each}
 							</Select.Content>
 						</Select.Root>
@@ -341,12 +358,13 @@ const resumeMutation = createMutation(() => ({
 
 					<Field.Field>
 						{@const fieldProps = updateProfile.fields.pronouns.as("text")}
-						<Field.Label for={fieldProps.name}>Pronouns</Field.Label>
-						{@render whyThisField(
-							"This helps us maintain a balanced and inclusive training environment",
-						)}
+						<div class="flex items-center gap-2">
+							<Field.Label for={fieldProps.name}>Pronouns</Field.Label>
+							{@render whyThisField(
+								"This helps us maintain a balanced and inclusive training environment",
+							)}
+						</div>
 						<Input
-							class="capitalize"
 							{...fieldProps}
 							id={fieldProps.name}
 							placeholder="e.g. she/her, they/them"
@@ -356,33 +374,43 @@ const resumeMutation = createMutation(() => ({
 						{/each}
 					</Field.Field>
 
-					<Field.Field>
+					<Field.Field class="sm:col-span-2">
 						{@const fieldProps =
 							updateProfile.fields.weapon.as("select multiple")}
-						<Field.Label for={fieldProps.name}>Preferred Weapon</Field.Label>
+						<Field.Label for={fieldProps.name}>Preferred weapons</Field.Label>
 						<Select.Root
 							type="multiple"
 							value={weapon}
-							onValueChange={(v) => updateProfile.fields.weapon.set(v)}
+							onValueChange={(value) => updateProfile.fields.weapon.set(value)}
 						>
 							<Select.Trigger
 								id={fieldProps.name}
 								name={fieldProps.name}
-								class="capitalize"
+								class="w-full"
 							>
-								{weapon
-									? weapon.join(", ").replace(/[_-]/g, " ")
-									: "Select your preferred weapon(s)"}
+								{weapon.length > 0
+									? `${weapon.length} selected`
+									: "Select preferred weapons"}
 							</Select.Trigger>
 							<Select.Content>
-								{#each data.weapons as w (w)}
-									<Select.Item class="capitalize" value={w}
-										>{w.replace(/[_-]/g, " ")}</Select.Item
-									>
+								{#each data.weapons as option (option)}
+									<Select.Item class="capitalize" value={option}>
+										{option.replace(/[_-]/g, " ")}
+									</Select.Item>
 								{/each}
 							</Select.Content>
 						</Select.Root>
-						<Field.Description>You can select more than one</Field.Description>
+						<Field.Description>Select all that apply.</Field.Description>
+						{#if weapon.length > 0}
+							<div class="flex flex-wrap gap-2" aria-label="Selected weapons">
+								{#each weapon as selectedWeapon (selectedWeapon)}
+									<Badge variant="secondary" class="capitalize">
+										<Check class="size-3" aria-hidden="true" />
+										{selectedWeapon.replace(/[_-]/g, " ")}
+									</Badge>
+								{/each}
+							</div>
+						{/if}
 						{#each updateProfile.fields.weapon.issues() as issue (issue.message)}
 							<Field.Error>{issue.message}</Field.Error>
 						{/each}
@@ -396,15 +424,14 @@ const resumeMutation = createMutation(() => ({
 						{/each}
 					</Field.Field>
 
-					<Field.Field>
-						<Label class="text-sm font-medium">Social media consent</Label>
-						<Field.Description>
-							We sometimes take pictures for our social media, please indicate
-							if you are comfortable with this
-						</Field.Description>
+					<fieldset class="space-y-3 sm:col-span-2">
+						<legend class="text-sm font-medium">Social media consent</legend>
+						<p class="text-sm leading-5 text-muted-foreground">
+							Choose how club photos may be used on social media.
+						</p>
 						<RadioGroup.Root
 							name="socialMediaConsent"
-							class="flex justify-start"
+							class="grid gap-2"
 							value={socialMediaConsent}
 							onValueChange={(value) => {
 								const parsed = v.safeParse(socialMediaConsentSchema, value);
@@ -413,53 +440,106 @@ const resumeMutation = createMutation(() => ({
 								}
 							}}
 						>
-							<div class="flex items-center space-x-3 space-y-0">
-								<RadioGroup.Item value="no" id="consent-no" />
-								<Label for="consent-no" class="font-normal">No</Label>
-							</div>
-							<div class="flex items-center space-x-3 space-y-0">
+							<Label
+								for="consent-no"
+								class="flex min-h-12 cursor-pointer items-start gap-3 rounded-xl border border-border/80 p-3 transition-colors hover:bg-muted/50 has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary/5"
+							>
+								<RadioGroup.Item value="no" id="consent-no" class="mt-0.5" />
+								<span>
+									<span class="block font-medium">No photos</span>
+									<span
+										class="mt-0.5 block text-sm font-normal text-muted-foreground"
+									>
+										Do not use photos of me.
+									</span>
+								</span>
+							</Label>
+							<Label
+								for="consent-unrecognizable"
+								class="flex min-h-12 cursor-pointer items-start gap-3 rounded-xl border border-border/80 p-3 transition-colors hover:bg-muted/50 has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary/5"
+							>
 								<RadioGroup.Item
 									value="yes_unrecognizable"
 									id="consent-unrecognizable"
+									class="mt-0.5"
 								/>
-								<Label for="consent-unrecognizable" class="font-normal"
-									>If not recognizable (wearing a mask)</Label
-								>
-							</div>
-							<div class="flex items-center space-x-3 space-y-0">
-								<RadioGroup.Item value="yes_recognizable" id="consent-yes" />
-								<Label for="consent-yes" class="font-normal">Yes</Label>
-							</div>
+								<span>
+									<span class="block font-medium"
+										>Only when I’m not recognizable</span
+									>
+									<span
+										class="mt-0.5 block text-sm font-normal text-muted-foreground"
+									>
+										For example, while wearing a fencing mask.
+									</span>
+								</span>
+							</Label>
+							<Label
+								for="consent-yes"
+								class="flex min-h-12 cursor-pointer items-start gap-3 rounded-xl border border-border/80 p-3 transition-colors hover:bg-muted/50 has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary/5"
+							>
+								<RadioGroup.Item
+									value="yes_recognizable"
+									id="consent-yes"
+									class="mt-0.5"
+								/>
+								<span>
+									<span class="block font-medium">Photos are okay</span>
+									<span
+										class="mt-0.5 block text-sm font-normal text-muted-foreground"
+									>
+										Photos may show me clearly.
+									</span>
+								</span>
+							</Label>
 						</RadioGroup.Root>
 						{#each updateProfile.fields.socialMediaConsent.issues() as issue (issue.message)}
 							<Field.Error>{issue.message}</Field.Error>
 						{/each}
-					</Field.Field>
+					</fieldset>
+				</Card.Content>
+			</Card.Root>
 
-					<Field.Field>
+			<Card.Root>
+				<Card.Header class="border-b border-border/70 pb-5">
+					<div class="flex items-start gap-3">
+						<div class="rounded-xl bg-accent/10 p-2.5 text-accent">
+							<HeartPulse class="size-5" aria-hidden="true" />
+						</div>
+						<div>
+							<h2 class="text-lg font-semibold">Health & emergency</h2>
+							<p class="mt-1 text-sm leading-5 text-muted-foreground">
+								Safety information coaches may need during training.
+							</p>
+						</div>
+					</div>
+				</Card.Header>
+				<Card.Content class="grid gap-5 sm:grid-cols-2">
+					<Field.Field class="sm:col-span-2">
 						{@const fieldProps =
 							updateProfile.fields.medicalConditions.as("text")}
-						<Field.Label for={fieldProps.name}>Medical Conditions</Field.Label>
+						<Field.Label for={fieldProps.name}
+							>Medical conditions or allergies</Field.Label
+						>
 						<Textarea
 							{...fieldProps}
 							id={fieldProps.name}
-							placeholder="Please list any medical conditions or allergies you have. If none, leave blank."
-							class="min-h-[100px]"
+							placeholder="Add anything coaches should know, or leave blank."
+							class="min-h-28"
 						/>
 						{#each updateProfile.fields.medicalConditions.issues() as issue (issue.message)}
 							<Field.Error>{issue.message}</Field.Error>
 						{/each}
 					</Field.Field>
-				</div>
-			</div>
 
-			<div class="space-y-6">
-				<h3 class="text-lg font-semibold">Emergency Contact</h3>
-				<div class="grid grid-cols-1 md:grid-cols-2 gap-6">
 					<Field.Field>
 						{@const fieldProps = updateProfile.fields.nextOfKin.as("text")}
-						<Field.Label for={fieldProps.name}>Next of Kin</Field.Label>
-						<Input {...fieldProps} id={fieldProps.name} />
+						<Field.Label for={fieldProps.name}>Emergency contact</Field.Label>
+						<Input
+							{...fieldProps}
+							id={fieldProps.name}
+							placeholder="Full name"
+						/>
 						{#each updateProfile.fields.nextOfKin.issues() as issue (issue.message)}
 							<Field.Error>{issue.message}</Field.Error>
 						{/each}
@@ -468,51 +548,184 @@ const resumeMutation = createMutation(() => ({
 					<Field.Field>
 						{@const fieldProps = updateProfile.fields.nextOfKinNumber.as("tel")}
 						<Field.Label for={fieldProps.name}
-							>Next of Kin Phone Number
-						</Field.Label>
+							>Emergency contact phone</Field.Label
+						>
 						<PhoneInput
 							{...fieldProps}
 							onChange={(val) => updateProfile.fields.nextOfKinNumber.set(val)}
 							id={fieldProps.name}
-							placeholder="Enter your next of kin's phone number"
+							placeholder="Enter their phone number"
 						/>
 						{#each updateProfile.fields.nextOfKinNumber.issues() as issue (issue.message)}
 							<Field.Error>{issue.message}</Field.Error>
 						{/each}
 					</Field.Field>
-				</div>
-			</div>
+				</Card.Content>
+			</Card.Root>
+		</div>
 
-			<div class="space-y-2">
-				<h3 class="text-lg font-semibold">Insurance Form</h3>
-				{#await data.insuranceFormLink}
-					<LoaderCircle class="h-4 w-4" />
-				{:then link}
-					{#if link}
+		<aside
+			class="space-y-6 lg:sticky lg:top-6 lg:self-start"
+			aria-label="Membership settings"
+		>
+			<Card.Root>
+				<Card.Header class="border-b border-border/70 pb-5">
+					<div class="flex items-start gap-3">
+						<div class="rounded-xl bg-primary/10 p-2.5 text-primary">
+							<CreditCard class="size-5" aria-hidden="true" />
+						</div>
+						<div>
+							<h2 class="text-lg font-semibold">Membership</h2>
+							<p class="mt-1 text-sm leading-5 text-muted-foreground">
+								Billing and subscription controls.
+							</p>
+						</div>
+					</div>
+				</Card.Header>
+				<Card.Content class="space-y-4">
+					<div class="flex items-center justify-between gap-3">
+						<span class="text-sm font-medium">Subscription</span>
+						{#if pausedUntil?.isAfter(dayjs())}
+							<Badge variant="secondary">
+								Paused until {pausedUntil.format("MMM D, YYYY")}
+							</Badge>
+						{:else}
+							<Badge variant="default">Active</Badge>
+						{/if}
+					</div>
+
+					{#if data.canUpdate}
 						<Button
+							disabled={openBillingPortal.isPending}
+							variant="outline"
 							type="button"
-							variant="link"
-							class="h-auto w-fit p-0"
-							onclick={() => window.open(link, "_blank", "noopener,noreferrer")}
+							onclick={() =>
+								openBillingPortal.mutate({
+									path: { memberId: requireMemberId() },
+									body: { returnUrl: window.location.href },
+								})}
+							class="w-full"
 						>
-							Open insurance form
+							{#if openBillingPortal.isPending}
+								<LoaderCircle class="size-4" />
+							{/if}
+							Manage billing
+							<ExternalLink class="size-4" aria-hidden="true" />
 						</Button>
-					{:else}
-						<span class="text-gray-500">
-							No insurance form link configured
-						</span>
-					{/if}
-				{:catch}
-					<span class="text-red-500"> Error loading insurance form link </span>
-				{/await}
-			</div>
 
-			<Button type="submit" class="w-full" disabled={!!updateProfile.pending}>
-				{updateProfile.pending ? "Saving..." : "Save Changes"}
+						{#if pausedUntil?.isAfter(dayjs())}
+							<ButtonGroup.Root class="w-full">
+								<Button
+									variant="default"
+									onclick={() => (showPauseModal = true)}
+									disabled={resumeMutation.isPending}
+									type="button"
+									class="min-w-0 flex-1 px-3"
+								>
+									Extend pause
+								</Button>
+								<Button
+									variant="outline"
+									onclick={() =>
+										resumeMutation.mutate({
+											path: { memberId: requireMemberId() },
+										})}
+									disabled={resumeMutation.isPending}
+									type="button"
+									class="min-w-0 flex-1 px-3"
+								>
+									{resumeMutation.isPending ? "Resuming…" : "Resume"}
+								</Button>
+							</ButtonGroup.Root>
+						{:else}
+							<Button
+								variant="outline"
+								onclick={() => (showPauseModal = true)}
+								type="button"
+								class="w-full"
+							>
+								Pause subscription
+							</Button>
+						{/if}
+					{/if}
+
+					{#if isOwnProfile}
+						<div class="border-t border-border/70 pt-4">
+							{#if data.member.discordIdentity}
+								<div class="rounded-xl border border-border/80 bg-muted/40 p-3">
+									<div class="flex items-center gap-3">
+										{#if data.member.discordIdentity.avatarUrl}
+											<img
+												src={data.member.discordIdentity.avatarUrl}
+												alt=""
+												width="40"
+												height="40"
+												referrerpolicy="no-referrer"
+												class="size-10 rounded-full bg-background object-cover"
+											/>
+										{:else}
+											<div
+												class="grid size-10 shrink-0 place-items-center rounded-full bg-[#5865f2]/10 text-[#5865f2]"
+											>
+												<DiscordLogo class="size-5" aria-hidden="true" />
+											</div>
+										{/if}
+										<div class="min-w-0 flex-1">
+											<div class="flex flex-wrap items-center gap-2">
+												<span class="text-sm font-semibold">Discord</span>
+												<Badge variant="secondary">Connected</Badge>
+											</div>
+											<p class="mt-0.5 truncate text-sm text-muted-foreground">
+												{data.member.discordIdentity.username
+													? `@${data.member.discordIdentity.username}`
+													: "Discord account linked"}
+											</p>
+										</div>
+									</div>
+								</div>
+								<p class="mt-2 text-sm leading-5 text-muted-foreground">
+									You can use this Discord account to sign in.
+								</p>
+							{:else}
+								<Button href={discordLinkUrl} variant="outline" class="w-full">
+									<DiscordLogo class="size-4" aria-hidden="true" />
+									Link Discord account
+								</Button>
+								<p class="mt-2 text-sm leading-5 text-muted-foreground">
+									Connect Discord so you can use it to sign in.
+								</p>
+							{/if}
+						</div>
+					{/if}
+				</Card.Content>
+			</Card.Root>
+		</aside>
+
+		<div
+			class="sticky bottom-3 z-10 col-span-full flex flex-col gap-3 rounded-2xl border border-border/80 bg-card/95 p-3 shadow-lg backdrop-blur sm:flex-row sm:items-center sm:justify-between sm:px-4"
+		>
+			<div class="hidden sm:block">
+				<p class="text-sm font-semibold">Ready to save?</p>
+				<p class="text-sm text-muted-foreground">
+					Your changes apply to {isOwnProfile ? "your profile" : profileName}.
+				</p>
+			</div>
+			<Button
+				type="submit"
+				class="w-full sm:w-auto sm:min-w-40"
+				disabled={!!updateProfile.pending}
+			>
+				{#if updateProfile.pending}
+					<LoaderCircle class="size-4" />
+				{/if}
+				{updateProfile.pending ? "Saving…" : "Save changes"}
 			</Button>
-		</form>
-	</Card.Content>
-</Card.Root>
+			<span class="sr-only" aria-live="polite">
+				{updateProfile.pending ? "Saving profile changes" : ""}
+			</span>
+		</div>
+	</form>
+</div>
 
 {#if dev}
 	<FormDebug form={updateProfile} />

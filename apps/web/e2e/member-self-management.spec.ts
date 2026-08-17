@@ -20,15 +20,24 @@ test.describe("Member Self-Management", () => {
 		page,
 	}) => {
 		await gotoHydrated(page, "/dashboard");
-		await expect(page.getByText(/member information/i)).toBeVisible();
+		await expect(
+			page.getByRole("heading", { name: "My profile" }),
+		).toBeVisible();
+		await expect(
+			page.getByRole("navigation", { name: "Members sections" }),
+		).toHaveCount(0);
 	});
 
 	test("should update member profile", async ({ page }) => {
 		await gotoHydrated(page, "/dashboard");
-		await expect(page.getByText(/member information/i)).toBeVisible();
+		await expect(
+			page.getByRole("heading", { name: "My profile" }),
+		).toBeVisible();
 		await page.getByLabel(/first name/i).fill("Updated name");
-		await page.getByLabel("Next of Kin", { exact: true }).fill("Test Contact");
-		await page.getByLabel("Next of Kin Phone Number").fill("0871234567");
+		await page
+			.getByLabel("Emergency contact", { exact: true })
+			.fill("Test Contact");
+		await page.getByLabel("Emergency contact phone").fill("0871234567");
 		await page.getByLabel(/preferred weapon/i).click();
 		await page.getByRole("option", { name: "Rapier" }).click();
 		await page.getByRole("button", { name: /save changes/i }).click();
@@ -92,9 +101,22 @@ test.describe("Member Management - Admin", () => {
 		page,
 	}) => {
 		await gotoHydrated(page, `/dashboard/members/${memberData.userId}`);
+		await expect(
+			page.getByRole("heading", {
+				name: `Edit ${memberData.first_name} ${memberData.last_name}`,
+			}),
+		).toBeVisible();
+		await expect(
+			page.getByRole("link", { name: "Back to members" }),
+		).toBeVisible();
+		await expect(
+			page.getByRole("navigation", { name: "Members sections" }),
+		).toHaveCount(0);
 		await page.getByLabel(/first name/i).fill("Updated name");
-		await page.getByLabel("Next of Kin", { exact: true }).fill("Test Contact");
-		await page.getByLabel("Next of Kin Phone Number").fill("0871234567");
+		await page
+			.getByLabel("Emergency contact", { exact: true })
+			.fill("Test Contact");
+		await page.getByLabel("Emergency contact phone").fill("0871234567");
 		await page.getByLabel(/preferred weapon/i).click();
 		await page.getByRole("option", { name: "Rapier" }).click();
 		await page.getByRole("button", { name: /save changes/i }).click();
