@@ -119,6 +119,7 @@ defmodule DhcWeb.OnboardingControllerTest do
 
     assert URI.decode_query(oauth_redirect.query) == %{
              "redirect_uri" => "http://localhost:5173/auth/discord/acceptance/callback",
+             "scope" => "identify email guilds.join",
              "state" => "test-state"
            }
 
@@ -139,6 +140,20 @@ defmodule DhcWeb.OnboardingControllerTest do
 
     assert %InvitationAcceptanceDiscordSubjectClaim{provider: "discord"} =
              Repo.one(InvitationAcceptanceDiscordSubjectClaim)
+
+    grant = Repo.one!(Dhc.Discord.JoinGrant)
+    assert grant.continuation_id == continuation_id
+    assert grant.attempt_id
+    assert grant.encrypted_access_token != "acceptance-access-token"
+    refute :refresh_token in Dhc.Discord.JoinGrant.__schema__(:fields)
+    assert {:ok, "acceptance-access-token"} = Dhc.Discord.join_grant_access_token(grant)
+
+    expected_expiry = DateTime.utc_now() |> DateTime.add(604_800, :second)
+    assert abs(DateTime.diff(grant.expires_at, expected_expiry, :second)) <= 2
+
+    assert {:ok, zeroized_grant} = Dhc.Discord.zeroize_join_grant(grant)
+    assert zeroized_grant.encrypted_access_token == nil
+    assert {:error, :unavailable} = Dhc.Discord.join_grant_access_token(zeroized_grant)
 
     safe =
       callback
@@ -183,6 +198,7 @@ defmodule DhcWeb.OnboardingControllerTest do
              "http://localhost:5173/members/signup/#{invitation.id}/resume"
 
     assert Repo.aggregate(InvitationAcceptanceDiscordSubjectClaim, :count) == 1
+    assert Repo.aggregate(Dhc.Discord.JoinGrant, :count) == 1
     refute Repo.exists?(ExternalIdentity)
     refute Repo.exists?(Dhc.Auth.PrincipalToken)
   end
@@ -222,14 +238,18 @@ defmodule DhcWeb.OnboardingControllerTest do
 
     {started, continuation_id} = start_acceptance_conn(conn, invitation)
 
-    {:ok, _verified} =
-      Dhc.Onboarding.verify_discord(continuation_id, %{
-        "sub" => "controller-paid-subject",
-        "preferred_username" => "controller-member"
-      })
+    verified =
+      started
+      |> recycle()
+      |> get("/api/onboarding/invitation-acceptance/discord")
+      |> recycle()
+      |> get("/api/auth/discord/callback?state=test-state&code=success")
+
+    assert redirected_to(verified, 302) ==
+             "http://localhost:5173/members/signup/#{invitation.id}/resume"
 
     continued =
-      started
+      verified
       |> recycle()
       |> post("/api/onboarding/invitation-acceptance/continue")
 
@@ -256,6 +276,13 @@ defmodule DhcWeb.OnboardingControllerTest do
     refute paid.resp_cookies["_dhc_session"]
     refute Repo.exists?(Dhc.Auth.PrincipalToken)
     assert Repo.exists?(ExternalIdentity)
+
+    assert %Dhc.Discord.JoinGrant{
+             continuation_id: ^continuation_id,
+             encrypted_access_token: encrypted_access_token
+           } = Repo.one!(Dhc.Discord.JoinGrant)
+
+    assert is_binary(encrypted_access_token)
   end
 
   test "an existing External Identity produces the same neutral collision state without Stripe or Session work",

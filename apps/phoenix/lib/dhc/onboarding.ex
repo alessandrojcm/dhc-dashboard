@@ -43,6 +43,9 @@ defmodule Dhc.Onboarding do
   @spec verify_discord(String.t(), map()) :: {:ok, map()} | {:error, atom()}
   defdelegate verify_discord(continuation_id, claims), to: AcceptanceFlow
 
+  @spec verify_discord(String.t(), map(), map()) :: {:ok, map()} | {:error, atom()}
+  defdelegate verify_discord(continuation_id, claims, token), to: AcceptanceFlow
+
   @spec cancel_discord(String.t()) :: {:ok, map()} | {:error, :invalid_continuation}
   defdelegate cancel_discord(continuation_id), to: AcceptanceFlow
 
