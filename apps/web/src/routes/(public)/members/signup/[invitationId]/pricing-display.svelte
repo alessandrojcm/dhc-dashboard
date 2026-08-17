@@ -79,7 +79,8 @@ async function handleApplyCoupon() {
 							{proratedAnnualPrice.toFormat()} for this year
 						</p>
 					</div>
-					<span class="text-lg font-bold">{proratedPriceDinero.toFormat()}</span>
+					<span class="text-lg font-bold">{proratedPriceDinero.toFormat()}</span
+					>
 				</div>
 
 				<div class="grid gap-3 border-t border-border/70 pt-4 sm:grid-cols-2">
