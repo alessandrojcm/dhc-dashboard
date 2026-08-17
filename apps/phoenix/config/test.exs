@@ -100,6 +100,7 @@ config :dhc, :cors_allowed_origins, [
 config :dhc, :e2e_harness, System.get_env("E2E_SERVER") == "true"
 config :dhc, :e2e_harness_key, System.get_env("E2E_HARNESS_KEY", "local-e2e-harness")
 config :dhc, :discord_oauth_strategy, Dhc.DiscordOAuthStub
+config :dhc, :discord_adapter, Dhc.Discord.Adapter.Test
 config :dhc, :discord_oauth, client_id: "test-client", client_secret: "test-secret"
 config :dhc, :discord_subject_fingerprint_key, "test-discord-subject-fingerprint-key"
 

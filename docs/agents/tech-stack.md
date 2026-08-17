@@ -22,6 +22,7 @@
 - **Background Jobs**: Oban 2.23 (replaces pgmq + pg_cron)
 - **Dev email catching**: Mailpit (compose `mailpit` service); `Dhc.Email.Worker` relays non-prod email jobs to it via `gen_smtp` 1.3 as plain JSON. See [commands.md](commands.md) for the dev workflow.
 - **Authentication target**: Phoenix 1.8 generated authentication (`mix phx.gen.auth`) with Assent 0.3.1 for Discord OAuth; DHC-owned Postgres principals, identities, tokens, and sessions replace Supabase Auth after the specified cutover
+- **Discord server REST**: Nostrum 0.10.4 behind `Dhc.Discord.Adapter`; the stable release is loaded as an included application and only its ratelimiter is supervised, avoiding a gateway connection in tokenless dev/test environments
 - **API Style**: JSON API via Phoenix controllers, spec-first with OpenAPI
 - **Error Tracking**: Sentry 13.4 via the `sentry` package and Finch; Hackney is test-only for Testcontainers
 - **Realtime (browser)**: official `phoenix` JS client (~1.8.x) for Notification invalidation signals over the WebSocket `/socket`; local to `NotificationCenter` via `notification-realtime.svelte.ts`. Best-effort only; HTTP API remains authoritative. `authToken` is captured at `Socket` construction, so `TOKEN_REFRESHED` rebuilds the socket/channel.
