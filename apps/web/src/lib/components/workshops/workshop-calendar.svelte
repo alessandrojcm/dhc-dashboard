@@ -29,6 +29,25 @@ interface MoreLinkInfo {
 	num: number;
 }
 
+function escapeHtml(value: string) {
+	return value.replace(/[&<>"']/g, (character) => {
+		switch (character) {
+			case "&":
+				return "&amp;";
+			case "<":
+				return "&lt;";
+			case ">":
+				return "&gt;";
+			case '"':
+				return "&quot;";
+			case "'":
+				return "&#039;";
+			default:
+				return character;
+		}
+	});
+}
+
 let {
 	workshops = [],
 	userId,
@@ -49,7 +68,7 @@ let dialogOpen = $state(false);
 // Convert workshops to EventCalendar events format with status-based colors
 const events: CalendarEvent[] = $derived(
 	workshops.map((workshop) => {
-		const getStatusColors = (status: string) => {
+		const getStatusColors = (status: WorkshopCalendarItem["status"]) => {
 			switch (status) {
 				case "planned":
 					return {
@@ -60,6 +79,11 @@ const events: CalendarEvent[] = $derived(
 					return {
 						backgroundColor: "hsl(142 76% 36%)", // green-600
 						textColor: "hsl(0 0% 100%)", // white
+					};
+				case "finished":
+					return {
+						backgroundColor: "hsl(var(--muted))",
+						textColor: "hsl(var(--muted-foreground))",
 					};
 				case "cancelled":
 					return {
@@ -74,7 +98,7 @@ const events: CalendarEvent[] = $derived(
 			}
 		};
 
-		const colors = getStatusColors(workshop.status || "planned");
+		const colors = getStatusColors(workshop.status);
 
 		return {
 			id: workshop.id,
@@ -148,7 +172,7 @@ const options = $derived({
 			: "";
 
 		if (!workshop) {
-			const eventTitle = String(info.event.title || "Workshop");
+			const eventTitle = escapeHtml(String(info.event.title || "Workshop"));
 
 			return {
 				html: `<div class="workshop-event p-1">${eventTitle}</div>`,
@@ -158,10 +182,11 @@ const options = $derived({
 		return {
 			html: `
 					<div class="workshop-event p-2 cursor-pointer hover:opacity-90 transition-opacity">
-						<div class="workshop-event-title font-medium text-sm flex items-center gap-1">
-							<span class="truncate">${workshop.title}</span>
+						<div class="flex items-center justify-between gap-1 text-xs font-semibold uppercase tracking-wide opacity-90">
+							<span>${workshop.status}</span>
 							${publicMarker}
 						</div>
+						<div class="workshop-event-title mt-1 truncate text-sm font-semibold">${escapeHtml(workshop.title)}</div>
 						<div class="workshop-event-info text-xs opacity-90 mt-1">
 							<div class="flex items-center justify-between">
 								<span>${workshop.status === "planned" ? `${interestCount} interested` : `${registrationCount} registered`}</span>
@@ -172,7 +197,7 @@ const options = $derived({
 				`,
 		};
 	},
-	dayMaxEvents: false, // Show all events without "+X more" limit
+	dayMaxEvents: true,
 	moreLinkContent: (arg: MoreLinkInfo): string => `+${arg.num} more`,
 	selectable: false,
 	editable: false,
@@ -231,6 +256,10 @@ const options = $derived({
 			<span>Cancelled</span>
 		</div>
 		<div class="flex items-center gap-2">
+			<div class="h-4 w-4 rounded-sm border border-border bg-muted"></div>
+			<span>Finished</span>
+		</div>
+		<div class="flex items-center gap-2">
 			<span class="workshop-public-marker">Public</span>
 			<span>Open to non-members</span>
 		</div>
@@ -239,7 +268,10 @@ const options = $derived({
 
 <!-- Workshop Event Dialog -->
 <Dialog.Root bind:open={dialogOpen}>
-	<Dialog.Content class="max-w-lg p-0 gap-0">
+	<Dialog.Content
+		class="max-h-[calc(100dvh-2rem)] max-w-2xl gap-0 overflow-hidden p-0 sm:max-w-2xl"
+		showCloseButton={false}
+	>
 		{#if selectedEvent}
 			<WorkshopEventModal
 				calendarEvent={selectedEvent}
@@ -272,7 +304,7 @@ const options = $derived({
 	border: 1px solid currentColor;
 	border-radius: 9999px;
 	padding: 0.1rem 0.35rem;
-	font-size: 0.625rem;
+	font-size: 0.75rem;
 	font-weight: 700;
 	line-height: 1;
 	letter-spacing: 0.025em;
