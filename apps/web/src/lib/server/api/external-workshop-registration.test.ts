@@ -46,7 +46,7 @@ describe("external Workshop registration API", () => {
 		);
 
 		expect(workshopsExternalRegistrationGate).toHaveBeenCalledWith({
-			baseUrl: "http://localhost:4000/api",
+			baseUrl: "http://127.0.0.1:4000/api",
 			path: { workshopId: "workshop-1" },
 		});
 		expect(result.canRegister).toBe(true);
@@ -73,7 +73,7 @@ describe("external Workshop registration API", () => {
 			completeExternalWorkshopRegistration("workshop-1", "cs_paid", client),
 		).resolves.toEqual({ id: "registration-1", status: "confirmed" });
 		expect(workshopsCompleteExternalRegistration).toHaveBeenCalledWith({
-			baseUrl: "http://localhost:4000/api",
+			baseUrl: "http://127.0.0.1:4000/api",
 			path: { workshopId: "workshop-1" },
 			body: { checkoutSessionId: "cs_paid" },
 		});

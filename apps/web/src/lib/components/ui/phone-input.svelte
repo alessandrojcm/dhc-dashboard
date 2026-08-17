@@ -14,6 +14,7 @@ import {
 } from "libphonenumber-js/min";
 import { parseIncompletePhoneNumber } from "libphonenumber-js";
 import { ChevronDown, ChevronUp } from "@lucide/svelte";
+import type { HTMLInputAttributes } from "svelte/elements";
 
 const countryCodes = $state(countryCodesList.all());
 let open = $state(false);
@@ -26,12 +27,9 @@ let {
 	name,
 	id,
 	...props
-}: {
-	placeholder?: string;
+}: Omit<HTMLInputAttributes, "value" | "files" | "type" | "bind:files"> & {
 	value?: string | number;
 	onChange?: (value: string) => void;
-	name?: string;
-	id?: string;
 } = $props();
 
 let countryValue = $state<CountryCode>("IE");

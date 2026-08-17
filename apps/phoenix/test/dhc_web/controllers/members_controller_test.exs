@@ -1,6 +1,7 @@
 defmodule DhcWeb.MembersControllerTest do
   use DhcWeb.ConnCase, async: false
 
+  alias Dhc.Auth.ExternalIdentity
   alias Dhc.Repo
 
   defmodule Verifier do
@@ -465,6 +466,41 @@ defmodule DhcWeb.MembersControllerTest do
       assert member["firstName"] == "Self"
       assert member["email"] == "self@example.com"
       assert member["dateOfBirth"] =~ ~r/^\d{4}-\d{2}-\d{2}$/
+      assert member["discordIdentity"] == nil
+    end
+
+    test "returns safe presentation data for an active Discord identity", %{conn: conn} do
+      %{auth_user_id: member_id} =
+        insert_member(
+          auth_user_id: "11111111-1111-1111-1111-111111111111",
+          email: "self@example.com"
+        )
+
+      Repo.insert!(%ExternalIdentity{
+        principal_id: member_id,
+        provider: "discord",
+        provider_subject: "discord-subject-must-not-leak",
+        metadata: %{
+          "preferred_username" => "blade.runner",
+          "picture" => "https://cdn.discordapp.com/avatars/example/avatar.png",
+          "email" => "discord-private@example.com"
+        }
+      })
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer self-token")
+        |> get("/api/members/#{member_id}")
+
+      assert %{"data" => member} = json_response(conn, 200)
+
+      assert member["discordIdentity"] == %{
+               "username" => "blade.runner",
+               "avatarUrl" => "https://cdn.discordapp.com/avatars/example/avatar.png"
+             }
+
+      refute inspect(member["discordIdentity"]) =~ "discord-subject-must-not-leak"
+      refute inspect(member["discordIdentity"]) =~ "discord-private@example.com"
     end
 
     test "allows broad committee roles to read any member", %{conn: conn} do

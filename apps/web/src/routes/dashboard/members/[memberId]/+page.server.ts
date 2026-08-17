@@ -1,8 +1,4 @@
-import {
-	membersInsuranceForm,
-	membersOptions,
-	membersShow,
-} from "@dhc/api-client";
+import { membersOptions, membersShow } from "@dhc/api-client";
 import * as Sentry from "@sentry/sveltekit";
 import { error, type ServerLoadEvent } from "@sveltejs/kit";
 import { apiClientOptions } from "$lib/server/api-client";
@@ -88,14 +84,10 @@ export const load: PageServerLoad = async (event) => {
 			},
 			genders: options.genders,
 			weapons: options.weapons,
-			insuranceFormLink: membersInsuranceForm({
-				...apiOptions,
-			})
-				.then((response) => response.data?.data.link ?? null)
-				.catch(() => null),
 			member: {
 				id: params.memberId,
 				subscription_paused_until: memberProfile.subscriptionPausedUntil,
+				discordIdentity: memberProfile.discordIdentity,
 			},
 			canUpdate,
 		};

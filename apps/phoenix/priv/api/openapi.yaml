@@ -4745,6 +4745,7 @@ components:
         - medicalConditions
         - subscriptionPausedUntil
         - membershipStatus
+        - discordIdentity
       properties:
         id:
           type: string
@@ -4821,6 +4822,26 @@ components:
           nullable: true
         membershipStatus:
           $ref: "#/components/schemas/MembershipStatus"
+        discordIdentity:
+          allOf:
+            - $ref: "#/components/schemas/DiscordIdentitySummary"
+          nullable: true
+          description: Active Discord link presentation, or null when no account is linked. Never includes the provider subject or provider email.
+    DiscordIdentitySummary:
+      type: object
+      required:
+        - username
+        - avatarUrl
+      properties:
+        username:
+          type: string
+          nullable: true
+          description: Mutable Discord username metadata, when available.
+        avatarUrl:
+          type: string
+          format: uri
+          nullable: true
+          description: Provider-hosted avatar URL, when available.
     MemberResponse:
       type: object
       required:
