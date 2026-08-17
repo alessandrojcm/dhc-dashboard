@@ -11,6 +11,8 @@ defmodule Dhc.Invitations do
   alias Dhc.Email.Worker, as: EmailWorker
   alias Dhc.Auth.UserRole
   alias Dhc.CursorPagination
+  alias Dhc.Discord.JoinGrant
+  alias Dhc.Discord.Workers.GuildJoinWorker
   alias Dhc.Invitations.Invitation
   alias Dhc.Invitations.Repository
   alias Dhc.MemberProfiles.MemberProfile
@@ -252,6 +254,7 @@ defmodule Dhc.Invitations do
       )
 
       maybe_consume_discord(discord, now)
+      maybe_enqueue_guild_join(continuation_id)
 
       %{member_id: invitation.prospective_principal_id}
     end)
@@ -346,6 +349,15 @@ defmodule Dhc.Invitations do
       display_metadata: %{}
     )
     |> Repo.update!()
+  end
+
+  defp maybe_enqueue_guild_join(nil), do: :ok
+
+  defp maybe_enqueue_guild_join(continuation_id) do
+    case Repo.get_by(JoinGrant, continuation_id: continuation_id) do
+      nil -> :ok
+      grant -> Oban.insert!(GuildJoinWorker.new(%{"grant_id" => grant.id}))
+    end
   end
 
   defp lock_discord_conversion!(nil, _invitation, _attempt), do: nil
