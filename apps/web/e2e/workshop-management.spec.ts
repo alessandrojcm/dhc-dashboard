@@ -43,15 +43,18 @@ async function pickWorkshopDate(
 		.fill(date.add(1, "hour").format("HH:mm:ss"));
 }
 
-// Open the workshop event modal by clicking the calendar event button whose
-// accessible name starts with the title. Calendar events render as <button>s.
+// Open the workshop event modal from the matching management card.
 async function openWorkshopModal(
 	page: import("@playwright/test").Page,
 	title: string,
 ) {
-	const eventButton = page.getByRole("button", { name: title });
-	await expect(eventButton).toBeVisible();
-	await eventButton.click();
+	const workshopCard = page
+		.getByRole("article")
+		.filter({ has: page.getByRole("heading", { name: title, exact: true }) });
+	await expect(workshopCard).toBeVisible();
+	await workshopCard
+		.getByRole("button", { name: "Manage", exact: true })
+		.click();
 	const dialog = page.getByRole("dialog");
 	await expect(dialog).toBeVisible();
 	return dialog;
@@ -112,10 +115,10 @@ test.describe("Workshop Management", () => {
 			await gotoHydrated(page, "/dashboard/workshops");
 
 			await expect(
-				page.getByRole("heading", { name: "Workshops" }),
+				page.getByRole("heading", { name: "Manage workshops", exact: true }),
 			).toBeVisible();
 			await expect(
-				page.getByRole("button", { name: "Create Workshop" }),
+				page.getByRole("button", { name: "Create workshop", exact: true }),
 			).toBeVisible();
 		});
 
@@ -123,13 +126,15 @@ test.describe("Workshop Management", () => {
 			await loginAsUser(context, adminData.email);
 			await gotoHydrated(page, "/dashboard/workshops");
 
-			await page.getByRole("button", { name: "Create Workshop" }).click();
+			await page
+				.getByRole("button", { name: "Create workshop", exact: true })
+				.click();
 
 			await expect
 				.poll(() => new URL(page.url()).pathname)
 				.toBe("/dashboard/workshops/create");
 			await expect(
-				page.getByRole("heading", { name: "Create Workshop" }),
+				page.getByRole("heading", { name: "Create a workshop", exact: true }),
 			).toBeVisible();
 		});
 
@@ -161,22 +166,23 @@ test.describe("Workshop Management", () => {
 
 			const dialog = await openWorkshopModal(page, title);
 
-			await expect(dialog.getByText(title)).toBeVisible();
+			await expect(
+				dialog.getByRole("heading", { name: title, exact: true }),
+			).toBeVisible();
 			await expect(
 				dialog.getByText("Test workshop for list display"),
 			).toBeVisible();
 			await expect(dialog.getByText("Test Location")).toBeVisible();
-			// Status badge uses capitalized labels.
-			await expect(dialog.getByText("Planned")).toBeVisible();
+			await expect(dialog.getByText("planned", { exact: true })).toBeVisible();
 			// Planned workshops show Edit / Publish / Delete (not Cancel).
 			await expect(
-				dialog.getByRole("button", { name: "Edit Workshop" }),
+				dialog.getByRole("button", { name: "Edit workshop", exact: true }),
 			).toBeVisible();
 			await expect(
-				dialog.getByRole("button", { name: "Publish" }),
+				dialog.getByRole("button", { name: "Publish workshop", exact: true }),
 			).toBeVisible();
 			await expect(
-				dialog.getByRole("button", { name: "Delete" }),
+				dialog.getByRole("button", { name: "Delete workshop", exact: true }),
 			).toBeVisible();
 		});
 
@@ -213,16 +219,18 @@ test.describe("Workshop Management", () => {
 			await gotoHydrated(page, "/dashboard/workshops");
 
 			await expect(
-				page.getByRole("heading", { name: "Workshops" }),
+				page.getByRole("heading", { name: "Manage workshops", exact: true }),
 			).toBeVisible();
 			await expect(
-				page.getByRole("button", { name: "Create Workshop" }),
+				page.getByRole("button", { name: "Create workshop", exact: true }),
 			).toBeVisible();
 
-			await page.getByRole("button", { name: "Create Workshop" }).click();
+			await page
+				.getByRole("button", { name: "Create workshop", exact: true })
+				.click();
 			await expect(page).toHaveURL("/dashboard/workshops/create");
 			await expect(
-				page.getByRole("heading", { name: "Create Workshop" }),
+				page.getByRole("heading", { name: "Create a workshop", exact: true }),
 			).toBeVisible();
 		});
 	});
@@ -235,31 +243,35 @@ test.describe("Workshop Management", () => {
 			await loginAsUser(context, adminData.email);
 			await gotoHydrated(page, "/dashboard/workshops/create");
 
-			await expect(page.getByRole("textbox", { name: /title/i })).toBeVisible();
+			await expect(
+				page.getByRole("textbox", { name: "Workshop title", exact: true }),
+			).toBeVisible();
 			await expect(
 				page.getByRole("textbox", { name: /description/i }),
 			).toBeVisible();
 			await expect(
 				page.getByRole("textbox", { name: /location/i }),
 			).toBeVisible();
-			await expect(page.getByText(/workshop date & time/i)).toBeVisible();
 			await expect(
-				page.getByRole("spinbutton", { name: /maximum capacity/i }),
+				page.getByText("Workshop date and time", { exact: true }),
 			).toBeVisible();
 			await expect(
-				page.getByRole("spinbutton", { name: /member price/i }),
+				page.getByRole("spinbutton", { name: "Available places", exact: true }),
 			).toBeVisible();
 			await expect(
-				page.getByText("Public Workshop", { exact: true }),
+				page.getByRole("spinbutton", { name: "Member price", exact: true }),
 			).toBeVisible();
 			await expect(
-				page.getByRole("spinbutton", { name: /refund deadline/i }),
+				page.getByRole("switch", { name: /^Members only/ }),
 			).toBeVisible();
 			await expect(
-				page.getByRole("button", { name: "Create Workshop" }),
+				page.getByRole("spinbutton", { name: "Refund cutoff", exact: true }),
 			).toBeVisible();
 			await expect(
-				page.getByRole("link", { name: "Back to Workshops" }),
+				page.getByRole("button", { name: "Create Workshop", exact: true }),
+			).toBeVisible();
+			await expect(
+				page.getByRole("link", { name: "All workshops", exact: true }),
 			).toBeVisible();
 		});
 
@@ -270,7 +282,9 @@ test.describe("Workshop Management", () => {
 			await loginAsUser(context, adminData.email);
 			await gotoHydrated(page, "/dashboard/workshops/create");
 
-			await page.getByRole("button", { name: "Create Workshop" }).click();
+			await page
+				.getByRole("button", { name: "Create Workshop", exact: true })
+				.click();
 
 			// Still on the create page; server-side validation rejected the empty form.
 			await expect
@@ -286,7 +300,9 @@ test.describe("Workshop Management", () => {
 			const title = `UI Created Workshop ${ts}`;
 			const workshopDate = dayjs().add(1, "day");
 
-			await page.getByRole("textbox", { name: /title/i }).fill(title);
+			await page
+				.getByRole("textbox", { name: "Workshop title", exact: true })
+				.fill(title);
 			await page
 				.getByRole("textbox", { name: /description/i })
 				.fill("Created via UI");
@@ -295,11 +311,15 @@ test.describe("Workshop Management", () => {
 				.fill("Test Location");
 			await pickWorkshopDate(page, workshopDate);
 			await page
-				.getByRole("spinbutton", { name: /maximum capacity/i })
+				.getByRole("spinbutton", { name: "Available places", exact: true })
 				.fill("15");
-			await page.getByRole("spinbutton", { name: /member price/i }).fill("15");
+			await page
+				.getByRole("spinbutton", { name: "Member price", exact: true })
+				.fill("15");
 
-			await page.getByRole("button", { name: "Create Workshop" }).click();
+			await page
+				.getByRole("button", { name: "Create Workshop", exact: true })
+				.click();
 
 			await expect(
 				page.getByText(`Workshop "${title}" created successfully!`),
@@ -346,9 +366,9 @@ test.describe("Workshop Management", () => {
 			).toBeVisible();
 
 			// Pre-populated values (prices are in euros on the form).
-			await expect(page.getByRole("textbox", { name: /title/i })).toHaveValue(
-				originalTitle,
-			);
+			await expect(
+				page.getByRole("textbox", { name: "Workshop title", exact: true }),
+			).toHaveValue(originalTitle);
 			await expect(
 				page.getByRole("textbox", { name: /description/i }),
 			).toHaveValue("Original description");
@@ -356,17 +376,22 @@ test.describe("Workshop Management", () => {
 				page.getByRole("textbox", { name: /location/i }),
 			).toHaveValue("Original Location");
 			await expect(
-				page.getByRole("spinbutton", { name: /maximum capacity/i }),
+				page.getByRole("spinbutton", { name: "Available places", exact: true }),
 			).toHaveValue("10");
 			await expect(
-				page.getByRole("spinbutton", { name: "Member Price", exact: true }),
+				page.getByRole("spinbutton", { name: "Member price", exact: true }),
 			).toHaveValue("15");
 			await expect(
-				page.getByRole("spinbutton", { name: /non-member price/i }),
+				page.getByRole("spinbutton", {
+					name: "Non-member price",
+					exact: true,
+				}),
 			).toHaveValue("25");
 
 			// Update details.
-			await page.getByRole("textbox", { name: /title/i }).fill(updatedTitle);
+			await page
+				.getByRole("textbox", { name: "Workshop title", exact: true })
+				.fill(updatedTitle);
 			await page
 				.getByRole("textbox", { name: /description/i })
 				.fill("Updated description");
@@ -374,13 +399,16 @@ test.describe("Workshop Management", () => {
 				.getByRole("textbox", { name: /location/i })
 				.fill("Updated Location");
 			await page
-				.getByRole("spinbutton", { name: /maximum capacity/i })
+				.getByRole("spinbutton", { name: "Available places", exact: true })
 				.fill("15");
 			await page
-				.getByRole("spinbutton", { name: "Member Price", exact: true })
+				.getByRole("spinbutton", { name: "Member price", exact: true })
 				.fill("20");
 			await page
-				.getByRole("spinbutton", { name: /non-member price/i })
+				.getByRole("spinbutton", {
+					name: "Non-member price",
+					exact: true,
+				})
 				.fill("30");
 
 			await page.getByRole("button", { name: "Update Workshop" }).click();
@@ -417,7 +445,7 @@ test.describe("Workshop Management", () => {
 			).toBeVisible();
 
 			await expect(
-				page.getByRole("textbox", { name: /title/i }),
+				page.getByRole("textbox", { name: "Workshop title", exact: true }),
 			).toBeDisabled();
 			await expect(
 				page.getByRole("textbox", { name: /description/i }),
@@ -464,7 +492,7 @@ test.describe("Workshop Management", () => {
 				),
 			).toBeVisible();
 			await expect(
-				page.getByRole("spinbutton", { name: /member price/i }),
+				page.getByRole("spinbutton", { name: "Member price", exact: true }),
 			).toBeDisabled();
 		});
 
@@ -489,7 +517,9 @@ test.describe("Workshop Management", () => {
 
 			await gotoHydrated(page, `/dashboard/workshops/${workshop.id}/edit`);
 
-			await page.getByRole("textbox", { name: /title/i }).fill("");
+			await page
+				.getByRole("textbox", { name: "Workshop title", exact: true })
+				.fill("");
 			await page.getByRole("textbox", { name: /location/i }).fill("");
 
 			await page.getByRole("button", { name: "Update Workshop" }).click();
@@ -525,7 +555,9 @@ test.describe("Workshop Management", () => {
 			).toBeVisible();
 
 			const updatedTitle = `Updated ${workshopTitle}`;
-			await page.getByRole("textbox", { name: /title/i }).fill(updatedTitle);
+			await page
+				.getByRole("textbox", { name: "Workshop title", exact: true })
+				.fill(updatedTitle);
 			await page.getByRole("button", { name: "Update Workshop" }).click();
 
 			await expect(page.getByText(/updated successfully/i)).toBeVisible();
@@ -558,7 +590,9 @@ test.describe("Workshop Management", () => {
 			await gotoHydrated(page, "/dashboard/workshops");
 			const dialog = await openWorkshopModal(page, title);
 
-			await dialog.getByRole("button", { name: "Publish" }).click();
+			await dialog
+				.getByRole("button", { name: "Publish workshop", exact: true })
+				.click();
 
 			// Toast confirms the action.
 			await expect(
@@ -596,13 +630,16 @@ test.describe("Workshop Management", () => {
 			await gotoHydrated(page, "/dashboard/workshops");
 			const dialog = await openWorkshopModal(page, title);
 
-			// The Cancel action opens a popover (not a native dialog) with
-			// "Keep Workshop" / "Cancel Workshop" buttons.
-			await dialog.getByRole("button", { name: "Cancel" }).click();
+			await dialog
+				.getByRole("button", { name: "Cancel workshop", exact: true })
+				.click();
 			await expect(
-				page.getByRole("button", { name: "Cancel Workshop" }),
+				page.getByRole("button", { name: "Keep workshop", exact: true }),
 			).toBeVisible();
-			await page.getByRole("button", { name: "Cancel Workshop" }).click();
+			await page
+				.getByRole("button", { name: "Cancel workshop", exact: true })
+				.last()
+				.click();
 
 			await expect(
 				page.getByText("Workshop cancelled successfully"),
@@ -639,21 +676,27 @@ test.describe("Workshop Management", () => {
 			await gotoHydrated(page, "/dashboard/workshops");
 			const dialog = await openWorkshopModal(page, title);
 
-			await dialog.getByRole("button", { name: "Delete" }).click();
+			await dialog
+				.getByRole("button", { name: "Delete workshop", exact: true })
+				.click();
 			await expect(
-				page.getByRole("button", { name: "Delete Workshop" }),
+				page.getByRole("button", { name: "Keep workshop", exact: true }),
 			).toBeVisible();
-			await page.getByRole("button", { name: "Delete Workshop" }).click();
+			await page
+				.getByRole("button", { name: "Delete workshop", exact: true })
+				.last()
+				.click();
 
 			await expect(page.getByText("Workshop deleted successfully")).toBeVisible(
 				{
 					timeout: 10000,
 				},
 			);
-			// Workshop disappears from the calendar.
-			await expect(page.getByRole("button", { name: title })).not.toBeVisible({
-				timeout: 10000,
-			});
+			await expect(
+				page
+					.getByRole("region", { name: "Workshop management", exact: true })
+					.getByRole("heading", { name: title, exact: true }),
+			).not.toBeVisible({ timeout: 10000 });
 
 			// Remove from cleanup list since it's already deleted.
 			const idx = createdWorkshopIds.indexOf(workshop.id);
@@ -663,14 +706,16 @@ test.describe("Workshop Management", () => {
 
 	test.describe("attendee management", () => {
 		let workshopId: string;
+		let workshopTitle: string;
 
 		test.beforeAll(async () => {
 			// One published workshop shared across attendee tests, with three
 			// registrations so the list is non-empty.
 			const ts = Date.now();
 			const start = dayjs().add(7, "day").hour(14).minute(0);
+			workshopTitle = `Attendee Workshop ${ts}`;
 			const workshop = await createWorkshop({
-				title: `Attendee Workshop ${ts}`,
+				title: workshopTitle,
 				description: "Attendee management fixture",
 				location: "Test Location",
 				start_date: start.toDate(),
@@ -708,13 +753,20 @@ test.describe("Workshop Management", () => {
 			await gotoHydrated(page, `/dashboard/workshops/${workshopId}/attendees`);
 
 			await expect(
-				page.getByRole("heading", { name: "Workshop Attendees" }),
+				page.getByRole("heading", { name: workshopTitle, exact: true }),
 			).toBeVisible();
 			await expect(
-				page.getByText("Manage attendance and process refunds"),
+				page.getByText(
+					"Check participants in, monitor the live headcount, and handle registration exceptions from one desk.",
+					{ exact: true },
+				),
 			).toBeVisible();
-			await expect(page.getByText("Registered Attendees")).toBeVisible();
-			await expect(page.getByText("Refund").first()).toBeVisible();
+			await expect(
+				page.getByRole("heading", { name: "Check-in roster", exact: true }),
+			).toBeVisible();
+			await expect(
+				page.getByRole("button", { name: "Refund", exact: true }).first(),
+			).toBeVisible();
 		});
 
 		test("lists attendees with attendance status badges", async ({
@@ -724,9 +776,9 @@ test.describe("Workshop Management", () => {
 			await loginAsUser(context, adminData.email);
 			await gotoHydrated(page, `/dashboard/workshops/${workshopId}/attendees`);
 
-			// Default attendance status renders as "Not Checked In" (human label,
-			// not the raw "pending" enum).
-			await expect(page.getByText("Not Checked In").first()).toBeVisible({
+			await expect(
+				page.getByText("Awaiting check-in", { exact: true }).first(),
+			).toBeVisible({
 				timeout: 10000,
 			});
 		});
@@ -735,21 +787,16 @@ test.describe("Workshop Management", () => {
 			await loginAsUser(context, adminData.email);
 			await gotoHydrated(page, `/dashboard/workshops/${workshopId}/attendees`);
 
-			// The per-row "Mark Checked In" button updates attendance to "attended".
-			// "Mark Checked In" appears both as a bulk action (disabled until rows are
-			// selected) and per-row; the first enabled per-row button is the target.
 			const checkInButtons = page.getByRole("button", {
-				name: "Mark Checked In",
+				name: "Check in",
+				exact: true,
 			});
 			await expect(checkInButtons.first()).toBeVisible({ timeout: 10000 });
+			await checkInButtons.first().click();
 
-			// Click the first enabled one (the per-row buttons; the bulk one is
-			// disabled without a selection).
-			const perRowButton = checkInButtons.nth(1);
-			await perRowButton.click();
-
-			// The attendance badge flips from "Not Checked In" to "Checked In".
-			await expect(page.getByText("Checked In").first()).toBeVisible({
+			await expect(
+				page.getByText("Checked in", { exact: true }).first(),
+			).toBeVisible({
 				timeout: 10000,
 			});
 		});
@@ -762,21 +809,22 @@ test.describe("Workshop Management", () => {
 			await gotoHydrated(page, `/dashboard/workshops/${workshopId}/attendees`);
 			await page.waitForLoadState("networkidle");
 
-			// The refund UI is a popover triggered by the first refundable attendee.
-			const refundButton = page.getByRole("button", { name: "Refund" }).first();
+			const refundButton = page
+				.getByRole("button", { name: "Refund", exact: true })
+				.first();
 			await expect(refundButton).toBeVisible({ timeout: 10000 });
 			await refundButton.click();
 
-			await expect(page.getByText("Confirm Refund")).toBeVisible({
-				timeout: 10000,
-			});
+			const refundDialog = page.getByRole("alertdialog");
+			await expect(refundDialog).toBeVisible({ timeout: 10000 });
+			await expect(
+				refundDialog.getByRole("heading", { name: /^Refund .+\?$/ }),
+			).toBeVisible();
+			await refundDialog
+				.getByRole("button", { name: "Confirm refund", exact: true })
+				.click();
 
-			const popover = page
-				.locator('[data-slot="popover-content"]')
-				.filter({ hasText: "Confirm Refund" });
-			await popover.getByRole("button", { name: "Confirm" }).click();
-
-			await expect(page.getByText("Refund processed")).toBeVisible({
+			await expect(page.getByText("Refund request processed")).toBeVisible({
 				timeout: 10000,
 			});
 		});
@@ -786,20 +834,18 @@ test.describe("Workshop Management", () => {
 			await gotoHydrated(page, `/dashboard/workshops/${workshopId}/attendees`);
 			await page.waitForLoadState("networkidle");
 
-			const refundButton = page.getByRole("button", { name: "Refund" }).first();
+			const refundButton = page
+				.getByRole("button", { name: "Refund", exact: true })
+				.first();
 			await expect(refundButton).toBeVisible({ timeout: 10000 });
 			await refundButton.click();
 
-			await expect(page.getByText("Confirm Refund")).toBeVisible({
-				timeout: 10000,
-			});
-			const popover = page
-				.locator('[data-slot="popover-content"]')
-				.filter({ hasText: "Confirm Refund" });
-			await popover.getByRole("button", { name: "Cancel" }).click();
-
-			// Popover closes; the heading is gone.
-			await expect(page.getByText("Confirm Refund")).not.toBeVisible();
+			const refundDialog = page.getByRole("alertdialog");
+			await expect(refundDialog).toBeVisible({ timeout: 10000 });
+			await refundDialog
+				.getByRole("button", { name: "Keep registration", exact: true })
+				.click();
+			await expect(refundDialog).not.toBeVisible();
 		});
 
 		test("returns 404 for a non-existent workshop", async ({

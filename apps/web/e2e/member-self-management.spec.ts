@@ -50,8 +50,11 @@ test.describe("Member Self-Management", () => {
 
 	test("it should show manage subscription button", async ({ page }) => {
 		await gotoHydrated(page, "/dashboard");
-		await page.getByText(/manage payment settings/i).click();
-		const newPage = await page.waitForEvent("popup");
+		const popup = page.waitForEvent("popup");
+		await page
+			.getByRole("button", { name: "Manage billing", exact: true })
+			.click();
+		const newPage = await popup;
 		await expect(newPage).toHaveURL(/billing\.stripe\.com/);
 	});
 
@@ -60,7 +63,16 @@ test.describe("Member Self-Management", () => {
 	}) => {
 		await gotoHydrated(page, "/dashboard");
 		expect(page.url()).toContain(`/dashboard/members/${testData.userId}`);
-		await expect(page.getByTestId("sidebar")).toHaveText("My Workshops");
+		const sidebar = page.getByTestId("sidebar");
+		await expect(
+			sidebar.getByRole("link", { name: "Home", exact: true }),
+		).toBeVisible();
+		await expect(
+			sidebar.getByRole("link", { name: "My Workshops", exact: true }),
+		).toBeVisible();
+		await expect(
+			sidebar.getByRole("link", { name: "Members", exact: true }),
+		).toHaveCount(0);
 	});
 });
 
@@ -93,8 +105,15 @@ test.describe("Member Management - Admin", () => {
 			.getByRole("button", { name: new RegExp(adminData.email, "i") })
 			.first()
 			.click();
-		await page.getByRole("link", { name: "My Profile" }).click();
-		await expect(page.getByTestId("sidebar")).not.toHaveText("");
+		const profileLink = page
+			.getByRole("menu")
+			.getByRole("link", { name: "My Profile", exact: true });
+		await expect(profileLink).toBeVisible();
+		await profileLink.click();
+		await expect(page).toHaveURL(`/dashboard/members/${adminData.userId}`);
+		await expect(
+			page.getByRole("heading", { name: "My profile", exact: true }),
+		).toBeVisible();
 	});
 
 	test("admin should be able to navigate to a specific member profile", async ({

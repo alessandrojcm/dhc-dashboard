@@ -58,7 +58,7 @@ let viewLabel = $derived(
 	{#if data.canToggleWaitlist}
 		{#await data.isWaitlistOpen then isOpen}
 			<AlertDialog.Root bind:open={dialogOpen}>
-				<AlertDialog.Trigger class="fixed right-4 top-4">
+				<AlertDialog.Trigger class="fixed right-4 top-20 z-30">
 					{#snippet child({ props })}
 						<Button
 							variant="outline"
