@@ -101,9 +101,7 @@ function handleBulkSubmit() {
 </script>
 
 <Sheet.Root>
-	<Sheet.Trigger class={buttonVariants({ variant: "outline" })}
-		>Invite Members</Sheet.Trigger
-	>
+	<Sheet.Trigger class={buttonVariants()}>Invite members</Sheet.Trigger>
 	<Sheet.Content class="w-[400px] sm:w-[540px] p-4 scroll-smooth" side="right">
 		<Sheet.Header>
 			<Sheet.Title>Invite Members</Sheet.Title>
