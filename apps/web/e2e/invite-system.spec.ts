@@ -282,7 +282,9 @@ test.describe("Invitation System", () => {
 		);
 		await page.getByLabel("First Name").fill("Edited");
 		await page.getByRole("button", { name: "Update invite" }).click();
-		await expect(page.getByText(/Edited/)).toBeVisible();
+		await expect(
+			page.getByRole("listitem").filter({ hasText: testEmail1 }),
+		).toContainText("Edited");
 
 		// Remove the first invitation
 		await page.getByLabel("Remove invite").first().click();

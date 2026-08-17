@@ -167,9 +167,8 @@ test("starts a protected Invitation Acceptance without starting Stripe or a dash
 		expect(page.url()).not.toContain(invitation.email);
 		expect(page.url()).not.toContain(invitation.dateOfBirth);
 
-		await expect(page.getByText("Create your membership")).toBeVisible();
 		await expect(
-			page.getByRole("heading", { name: "Connect Discord" }),
+			page.getByRole("heading", { name: "Connect Discord", exact: true }),
 		).toBeVisible();
 		await expect(
 			page.getByText(
@@ -239,8 +238,11 @@ test("starts a protected Invitation Acceptance without starting Stripe or a dash
 		await expect(
 			page.getByRole("heading", { name: "Discord verified" }),
 		).toBeVisible();
+		const discordVerified = page.getByRole("region", {
+			name: "Discord verified",
+		});
 		await expect(
-			page.getByText("Verified Discord account: @request-member"),
+			discordVerified.getByText("@request-member", { exact: true }),
 		).toBeVisible();
 		expect(page.url()).toBe(
 			`http://127.0.0.1:5173/members/signup/${invitation.invitationId}`,

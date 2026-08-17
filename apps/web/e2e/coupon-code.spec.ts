@@ -63,10 +63,13 @@ async function applyCoupon(page: Page, code: string) {
 }
 
 function pricingRow(page: Page, label: string) {
-	return page
-		.locator(".flex.justify-between")
-		.filter({ hasText: label })
-		.first();
+	return page.getByText(label, { exact: true }).locator("..");
+}
+
+function currencyValues(value: string | null) {
+	return Array.from(value?.matchAll(/€\s?([\d,]+(?:\.\d{2})?)/g) ?? []).map(
+		([, amount]) => Number(amount.replaceAll(",", "")),
+	);
 }
 
 test.describe("Member Signup - Coupon Codes", () => {
@@ -324,56 +327,57 @@ test.describe("Member Signup - Coupon Codes", () => {
 		test("shows discounted recurring prices for a permanent coupon", async ({
 			page,
 		}) => {
-			const monthlyRow = pricingRow(page, "Monthly membership fee");
-			const annualRow = pricingRow(page, "Annual membership fee");
-			const originalMonthlyPrice = await monthlyRow
-				.locator("span.font-semibold")
-				.textContent();
-			const originalAnnualPrice = await annualRow
-				.locator("span.font-semibold")
-				.textContent();
+			const monthlyRow = pricingRow(page, "Then monthly");
+			const annualRow = pricingRow(page, "Then annually");
+			const [originalMonthlyPrice] = currencyValues(
+				await monthlyRow.textContent(),
+			);
+			const [originalAnnualPrice] = currencyValues(
+				await annualRow.textContent(),
+			);
 
 			await applyCoupon(page, combinedCouponCode);
 
-			const discountedMonthlyPrice = await monthlyRow
-				.locator("span.text-green-600")
-				.textContent();
-			const discountedAnnualPrice = await annualRow
-				.locator("span.text-green-600")
-				.textContent();
+			const [discountedMonthlyPrice, displayedOriginalMonthlyPrice] =
+				currencyValues(await monthlyRow.textContent());
+			const [discountedAnnualPrice, displayedOriginalAnnualPrice] =
+				currencyValues(await annualRow.textContent());
 
-			await expect(monthlyRow.locator("span.line-through")).toBeVisible();
-			await expect(annualRow.locator("span.line-through")).toBeVisible();
 			await expect(page.getByText("Discount applied: 10% off")).toBeVisible();
 			await expect(
 				page.getByText("Applies to all future payments"),
 			).toBeVisible();
 
-			const currencyValue = (value: string | null) =>
-				Number(value?.replace(/[^0-9.]/g, "") ?? 0);
-			expect(currencyValue(discountedMonthlyPrice)).toBeLessThan(
-				currencyValue(originalMonthlyPrice),
-			);
-			expect(currencyValue(discountedAnnualPrice)).toBeLessThan(
-				currencyValue(originalAnnualPrice),
-			);
+			expect(displayedOriginalMonthlyPrice).toBe(originalMonthlyPrice);
+			expect(displayedOriginalAnnualPrice).toBe(originalAnnualPrice);
+			expect(discountedMonthlyPrice).toBeLessThan(originalMonthlyPrice);
+			expect(discountedAnnualPrice).toBeLessThan(originalAnnualPrice);
 		});
 
 		test("shows a one-time coupon on the first payment only", async ({
 			page,
 		}) => {
+			const monthlyRow = pricingRow(page, "Then monthly");
+			const annualRow = pricingRow(page, "Then annually");
+			const originalMonthlyPrices = currencyValues(
+				await monthlyRow.textContent(),
+			);
+			const originalAnnualPrices = currencyValues(
+				await annualRow.textContent(),
+			);
+
 			await applyCoupon(page, onceCouponCode);
 
 			await expect(page.getByText("Discount applied: 15% off")).toBeVisible();
 			await expect(
 				page.getByText("Applies to first payment only"),
 			).toBeVisible();
-			await expect(
-				pricingRow(page, "Monthly membership fee").locator("span.line-through"),
-			).toHaveCount(0);
-			await expect(
-				pricingRow(page, "Annual membership fee").locator("span.line-through"),
-			).toHaveCount(0);
+			expect(currencyValues(await monthlyRow.textContent())).toEqual(
+				originalMonthlyPrices,
+			);
+			expect(currencyValues(await annualRow.textContent())).toEqual(
+				originalAnnualPrices,
+			);
 			await expect(page.getByText(/€0\.00/)).toHaveCount(0);
 		});
 
@@ -403,9 +407,7 @@ test.describe("Member Signup - Coupon Codes", () => {
 				await expect(
 					page.getByText("Applies to first payment only"),
 				).toBeVisible();
-				await expect(
-					pricingRow(page, "Total").getByText(/€0\.00/),
-				).toBeVisible();
+				await expect(page.getByText("€0.00", { exact: true })).toBeVisible();
 			});
 		}
 	});

@@ -9,24 +9,10 @@ import {
 	allowedToggleRoles,
 } from "$lib/server/roles";
 import {
-	adminInviteRemoteSchema,
 	bulkInviteRemoteSchema,
 	bulkInviteSchema,
 } from "$lib/schemas/adminInvite";
 import * as v from "valibot";
-
-/**
- * Validates a single invite entry (used for adding to the bulk list)
- * This doesn't submit to server - just validates the data
- */
-export const validateSingleInvite = form(
-	adminInviteRemoteSchema,
-	async (data) => {
-		// This form is used for validation only on the client side
-		// Return the validated data
-		return { invite: data };
-	},
-);
 
 /**
  * Submits bulk invites to the API

@@ -11,8 +11,9 @@ import * as Sheet from "$lib/components/ui/sheet/index.js";
 import { fromDate, getLocalTimeZone } from "@internationalized/date";
 import dayjs from "dayjs";
 import { Info, Loader, Pencil, Plus, Trash2 } from "@lucide/svelte";
-import { submitBulkInvites, validateSingleInvite } from "./data.remote";
+import { submitBulkInvites } from "./data.remote";
 import { adminInviteRemoteSchema } from "$lib/schemas/adminInvite";
+import * as v from "valibot";
 
 type Invite = {
 	firstName: string;
@@ -22,51 +23,81 @@ type Invite = {
 	dateOfBirth: string;
 };
 
+type InviteFieldErrors = {
+	firstName: string[];
+	lastName: string[];
+	email: string[];
+	phoneNumber: string[];
+	dateOfBirth: string[];
+};
+
+type InviteField = keyof InviteFieldErrors;
+
+function emptyInvite(): Invite {
+	return {
+		firstName: "",
+		lastName: "",
+		email: "",
+		phoneNumber: "",
+		dateOfBirth: "",
+	};
+}
+
+function emptyFieldErrors(): InviteFieldErrors {
+	return {
+		firstName: [],
+		lastName: [],
+		email: [],
+		phoneNumber: [],
+		dateOfBirth: [],
+	};
+}
+
 let invitesList = $state<Invite[]>([]);
 let editingIndex = $state<number | null>(null);
 let firstNameInput = $state<HTMLInputElement | null>(null);
 let dialogHeading = $state<HTMLElement | null>(null);
 let queueAnnouncement = $state("");
+let inviteFields = $state<Invite>(emptyInvite());
+let fieldErrors = $state<InviteFieldErrors>(emptyFieldErrors());
 
 // Success/error message state
 let formMessage = $state<{ success?: string; failure?: string } | null>(null);
 
 // Date picker value for single invite form
 const dobValue = $derived.by(() => {
-	const dob = validateSingleInvite.fields.dateOfBirth.value();
+	const dob = inviteFields.dateOfBirth;
 	if (!dob || !dayjs(dob).isValid()) return undefined;
 	return fromDate(dayjs(dob).toDate(), getLocalTimeZone());
 });
 
 function resetInviteForm({ focus = false } = {}) {
-	validateSingleInvite.fields.set({
-		firstName: "",
-		lastName: "",
-		email: "",
-		phoneNumber: "",
-		dateOfBirth: "",
-	});
+	inviteFields = emptyInvite();
+	fieldErrors = emptyFieldErrors();
 	editingIndex = null;
 	if (focus) queueMicrotask(() => firstNameInput?.focus());
 }
 
-async function addInviteToList() {
-	formMessage = null;
-	await validateSingleInvite.validate({ includeUntouched: true });
-	if (
-		validateSingleInvite.fields.allIssues() &&
-		validateSingleInvite.fields.allIssues()!.length > 0
-	)
-		return;
+function clearFieldError(field: InviteField) {
+	fieldErrors[field] = [];
+}
 
-	const values = validateSingleInvite.fields.value();
-	const invite: Invite = {
-		firstName: values.firstName || "",
-		lastName: values.lastName || "",
-		email: values.email ?? "",
-		phoneNumber: values.phoneNumber || "",
-		dateOfBirth: values.dateOfBirth || "",
-	};
+function addInviteToList() {
+	formMessage = null;
+	const result = v.safeParse(adminInviteRemoteSchema, inviteFields);
+	if (!result.success) {
+		const errors = v.flatten(result.issues).nested;
+		fieldErrors = {
+			firstName: errors?.firstName ?? [],
+			lastName: errors?.lastName ?? [],
+			email: errors?.email ?? [],
+			phoneNumber: errors?.phoneNumber ?? [],
+			dateOfBirth: errors?.dateOfBirth ?? [],
+		};
+		return;
+	}
+
+	const invite: Invite = { ...result.output };
 
 	if (editingIndex === null) {
 		invitesList = [...invitesList, invite];
@@ -87,7 +118,8 @@ function editInvite(index: number) {
 
 	formMessage = null;
 	editingIndex = index;
-	validateSingleInvite.fields.set(invite);
+	inviteFields = { ...invite };
+	fieldErrors = emptyFieldErrors();
 	queueAnnouncement = `Editing ${invite.firstName} ${invite.lastName}.`;
 	queueMicrotask(() => firstNameInput?.focus());
 }
@@ -168,7 +200,7 @@ function handleBulkSubmit() {
 			</div>
 
 			<form
-				{...validateSingleInvite.preflight(adminInviteRemoteSchema)}
+				novalidate
 				onsubmit={(e) => {
 					e.preventDefault();
 					addInviteToList();
@@ -197,103 +229,109 @@ function handleBulkSubmit() {
 				<Field.Group class="gap-4">
 					<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 						<Field.Field>
-							{@const fieldProps =
-								validateSingleInvite.fields.firstName.as("text")}
-							<Field.Label for={fieldProps.name}
+							<Field.Label for="invite-first-name"
 								>First Name <span aria-hidden="true" class="text-destructive"
 									>*</span
 								><span class="sr-only"> required</span></Field.Label
 							>
 							<Input
-								{...fieldProps}
 								bind:ref={firstNameInput}
-								id={fieldProps.name}
+								bind:value={inviteFields.firstName}
+								id="invite-first-name"
+								name="firstName"
+								type="text"
 								autocomplete="given-name"
 								class="h-11"
+								aria-invalid={fieldErrors.firstName.length > 0}
+								oninput={() => clearFieldError("firstName")}
 							/>
-							{#each validateSingleInvite.fields.firstName.issues() as issue (issue.message)}
-								<Field.Error>{issue.message}</Field.Error>
+							{#each fieldErrors.firstName as error (error)}
+								<Field.Error>{error}</Field.Error>
 							{/each}
 						</Field.Field>
 
 						<Field.Field>
-							{@const fieldProps =
-								validateSingleInvite.fields.lastName.as("text")}
-							<Field.Label for={fieldProps.name}
+							<Field.Label for="invite-last-name"
 								>Last Name <span aria-hidden="true" class="text-destructive"
 									>*</span
 								><span class="sr-only"> required</span></Field.Label
 							>
 							<Input
-								{...fieldProps}
-								id={fieldProps.name}
+								bind:value={inviteFields.lastName}
+								id="invite-last-name"
+								name="lastName"
+								type="text"
 								autocomplete="family-name"
 								class="h-11"
+								aria-invalid={fieldErrors.lastName.length > 0}
+								oninput={() => clearFieldError("lastName")}
 							/>
-							{#each validateSingleInvite.fields.lastName.issues() as issue (issue.message)}
-								<Field.Error>{issue.message}</Field.Error>
+							{#each fieldErrors.lastName as error (error)}
+								<Field.Error>{error}</Field.Error>
 							{/each}
 						</Field.Field>
 					</div>
 
 					<Field.Field>
-						{@const fieldProps = validateSingleInvite.fields.email.as("email")}
-						<Field.Label for={fieldProps.name}
+						<Field.Label for="invite-email"
 							>Email <span aria-hidden="true" class="text-destructive">*</span
 							><span class="sr-only"> required</span></Field.Label
 						>
 						<Input
-							{...fieldProps}
-							id={fieldProps.name}
+							bind:value={inviteFields.email}
+							id="invite-email"
+							name="email"
+							type="email"
 							autocomplete="email"
 							class="h-11"
+							aria-invalid={fieldErrors.email.length > 0}
+							oninput={() => clearFieldError("email")}
 						/>
-						{#each validateSingleInvite.fields.email.issues() as issue (issue.message)}
-							<Field.Error>{issue.message}</Field.Error>
+						{#each fieldErrors.email as error (error)}
+							<Field.Error>{error}</Field.Error>
 						{/each}
 					</Field.Field>
 
 					<Field.Field>
-						{@const { value, ...fieldProps } =
-							validateSingleInvite.fields.dateOfBirth.as("text")}
-						<Field.Label for={fieldProps.name}
+						<Field.Label for="invite-date-of-birth"
 							>Date of birth <span aria-hidden="true" class="text-destructive"
 								>*</span
 							><span class="sr-only"> required</span></Field.Label
 						>
 						<DatePicker
-							{...fieldProps}
-							id={fieldProps.name}
+							id="invite-date-of-birth"
+							name="dateOfBirth"
 							value={dobValue}
 							onDateChange={(date) => {
 								if (!date) return;
-								validateSingleInvite.fields.dateOfBirth.set(
-									dayjs(date).format("YYYY-MM-DD"),
-								);
+								inviteFields.dateOfBirth = dayjs(date).format("YYYY-MM-DD");
+								clearFieldError("dateOfBirth");
 							}}
 						/>
-						{#each validateSingleInvite.fields.dateOfBirth.issues() as issue (issue.message)}
-							<Field.Error>{issue.message}</Field.Error>
+						{#each fieldErrors.dateOfBirth as error (error)}
+							<Field.Error>{error}</Field.Error>
 						{/each}
 					</Field.Field>
 
 					<Field.Field>
-						{@const fieldProps =
-							validateSingleInvite.fields.phoneNumber.as("tel")}
-						<Field.Label for={fieldProps.name}
+						<Field.Label for="invite-phone-number"
 							>Phone Number <span aria-hidden="true" class="text-destructive"
 								>*</span
 							><span class="sr-only"> required</span></Field.Label
 						>
 						<PhoneInput
 							placeholder="Enter your phone number"
-							{...fieldProps}
-							id={fieldProps.name}
-							onChange={(v) =>
-								validateSingleInvite.fields.phoneNumber.set(String(v))}
+							id="invite-phone-number"
+							name="phoneNumber"
+							value={inviteFields.phoneNumber}
+							aria-invalid={fieldErrors.phoneNumber.length > 0}
+							onChange={(value) => {
+								inviteFields.phoneNumber = value;
+								clearFieldError("phoneNumber");
+							}}
 						/>
-						{#each validateSingleInvite.fields.phoneNumber.issues() as issue (issue.message)}
-							<Field.Error>{issue.message}</Field.Error>
+						{#each fieldErrors.phoneNumber as error (error)}
+							<Field.Error>{error}</Field.Error>
 						{/each}
 					</Field.Field>
 				</Field.Group>
