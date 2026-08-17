@@ -45,7 +45,9 @@ function isActive(href: (typeof sections)[number]["href"]): boolean {
 	<title>Members | Dublin HEMA Club</title>
 </svelte:head>
 
-<div class="h-[calc(100dvh-57px)] overflow-y-auto px-4 pb-8 sm:px-6 lg:px-8">
+<div
+	class="members-scroll-region h-[calc(100dvh-57px)] overflow-y-auto px-4 pb-8 sm:px-6 lg:px-8"
+>
 	<div class="mx-auto w-full max-w-7xl">
 		<header class="flex flex-col gap-5 py-6 sm:py-8">
 			<div class="flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
@@ -99,3 +101,9 @@ function isActive(href: (typeof sections)[number]["href"]): boolean {
 		</div>
 	</div>
 </div>
+
+<style>
+:global(html:has(.members-scroll-region)) {
+	overflow-y: hidden;
+}
+</style>

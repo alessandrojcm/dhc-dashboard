@@ -6,6 +6,7 @@
 - **Backend**: Supabase (Postgres + Auth + Edge Functions)
 - **ORM**: Kysely (mutations), Supabase client (queries)
 - **State**: TanStack Query (`createQuery(() => ({}))` thunk pattern)
+- **Charts**: LayerChart 2.2 on Svelte 5. The shared tooltip adapter reads `getChartContext().tooltip`; `getTooltipContext()` was removed in LayerChart 2.x and must not be reintroduced.
 - **Table**: `@tanstack/table-core` `^8.21.x`, integrated through the custom Svelte 5 adapter in `src/lib/components/ui/data-table/`. The adapter supplies rune-based table state and rendering helpers, and imports shared table types directly from `table-core`; `@tanstack/svelte-table` is not required. Treat adoption of the official Svelte adapter as a deliberate v9 migration rather than adding its v8 package alongside the custom adapter.
 - **Payments**: Stripe
 - **Validation**: Valibot
