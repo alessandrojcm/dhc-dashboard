@@ -79,7 +79,7 @@ defmodule Dhc.Invitations.Repository do
   Existing pending Invitations for the same email are expired before the new
   Invitation is inserted, mirroring the pre-ALE-162 behavior.
   """
-  @spec create_invitation_record(map() | String.t(), invite_data(), String.t()) ::
+  @spec create_invitation_record(map() | String.t(), invite_data(), String.t() | nil) ::
           {:ok, Ecto.UUID.t()} | {:error, term()}
   def create_invitation_record(original_invite, invite_data, created_by_id) do
     waitlist_id =
@@ -120,7 +120,7 @@ defmodule Dhc.Invitations.Repository do
   ALE-162 this is not an `auth.users` id; the auth.users FK was dropped and
   acceptance will create the Principal with this id.
   """
-  @spec insert_pending_invitation(invite_data(), String.t() | nil, String.t()) ::
+  @spec insert_pending_invitation(invite_data(), String.t() | nil, String.t() | nil) ::
           {:ok, Ecto.UUID.t()} | {:error, term()}
   def insert_pending_invitation(invite_data, waitlist_id, created_by_id) do
     invitation = %Invitation{
