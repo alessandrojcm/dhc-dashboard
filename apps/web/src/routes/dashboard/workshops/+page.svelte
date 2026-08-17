@@ -67,9 +67,11 @@ function handleEdit(workshop: WorkshopCalendarItem) {
 	<title>Manage workshops | Dublin HEMA Club</title>
 </svelte:head>
 
-<div class="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-10">
+<div
+	class="mx-auto flex max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-10"
+>
 	<header
-		class="flex flex-col gap-5 border-b border-border/80 pb-6 sm:flex-row sm:items-end sm:justify-between"
+		class="order-1 flex flex-col gap-5 border-b border-border/80 pb-6 sm:flex-row sm:items-end sm:justify-between"
 	>
 		<div class="max-w-2xl space-y-2">
 			<p class="text-xs font-bold tracking-[0.18em] text-primary uppercase">
@@ -94,14 +96,14 @@ function handleEdit(workshop: WorkshopCalendarItem) {
 	</header>
 
 	{#if workshopsQuery.error?.errors}
-		<Alert variant="destructive">
+		<Alert variant="destructive" class="order-2">
 			<AlertDescription>{workshopsQuery.error.errors?.detail}</AlertDescription>
 		</Alert>
 	{/if}
 
 	<section
 		aria-label="Workshop overview"
-		class="grid grid-cols-2 gap-3 lg:grid-cols-4"
+		class="order-4 grid grid-cols-2 gap-3 sm:order-3 lg:grid-cols-4"
 	>
 		<div class="rounded-2xl border border-border/80 bg-card p-4 sm:p-5">
 			<div class="flex items-center justify-between gap-3">
@@ -135,7 +137,7 @@ function handleEdit(workshop: WorkshopCalendarItem) {
 		</div>
 	</section>
 
-	<Tabs.Root value="manage" class="gap-5">
+	<Tabs.Root value="manage" class="order-3 gap-5 sm:order-4">
 		<Tabs.List
 			class="hidden h-12 w-fit p-1 sm:inline-flex"
 			aria-label="Workshop views"
@@ -159,7 +161,7 @@ function handleEdit(workshop: WorkshopCalendarItem) {
 			/>
 		</Tabs.Content>
 
-		<Tabs.Content value="calendar" class="hidden sm:block">
+		<Tabs.Content value="calendar" class="max-sm:hidden">
 			<div class="space-y-3">
 				<div>
 					<h2 class="text-xl font-bold">Calendar overview</h2>

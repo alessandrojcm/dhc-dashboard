@@ -151,7 +151,7 @@ function clearFilters() {
 			</div>
 
 			<div
-				class="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 lg:justify-end"
+				class="flex flex-wrap gap-2 lg:justify-end"
 				aria-label="Filter workshops by status"
 			>
 				{#each statusFilters as filter (filter.value)}
