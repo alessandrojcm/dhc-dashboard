@@ -130,6 +130,31 @@
 @layer base {
 	* {
 		@apply border-border;
+		scrollbar-color: hsl(var(--primary) / 0.78) hsl(var(--muted) / 0.7);
+		scrollbar-width: thin;
+	}
+
+	*::-webkit-scrollbar {
+		width: 0.75rem;
+		height: 0.75rem;
+	}
+
+	*::-webkit-scrollbar-track {
+		background: hsl(var(--muted) / 0.7);
+	}
+
+	*::-webkit-scrollbar-thumb {
+		border: 3px solid hsl(var(--muted) / 0.7);
+		border-radius: 999px;
+		background: hsl(var(--primary) / 0.78);
+	}
+
+	*::-webkit-scrollbar-thumb:hover {
+		background: hsl(var(--primary));
+	}
+
+	*::-webkit-scrollbar-corner {
+		background: hsl(var(--muted) / 0.7);
 	}
 
 	body {

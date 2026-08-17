@@ -3,11 +3,7 @@ import { Button } from "$lib/components/ui/button";
 import { restartDiscordVerification } from "./data.remote";
 </script>
 
-<main class="mx-auto max-w-xl space-y-6 p-6">
-	<p class="text-sm font-medium text-muted-foreground">
-		Create your membership
-	</p>
-	<h1 class="text-3xl font-bold">Discord is temporarily unavailable</h1>
+<div class="max-w-xl space-y-6">
 	<p class="text-muted-foreground">
 		We could not finish Discord verification. No payment was started and no
 		membership or sign-in session was created.
@@ -22,4 +18,4 @@ import { restartDiscordVerification } from "./data.remote";
 				: "Restart verification"}
 		</Button>
 	</form>
-</main>
+</div>
