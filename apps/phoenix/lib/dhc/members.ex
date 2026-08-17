@@ -708,19 +708,18 @@ defmodule Dhc.Members do
   end
 
   defp first_metadata_value(metadata, keys) do
-    Enum.find_value(keys, fn key ->
-      case Map.get(metadata, key) do
-        value when is_binary(value) ->
-          case String.trim(value) do
-            "" -> nil
-            trimmed -> trimmed
-          end
-
-        _other ->
-          nil
-      end
-    end)
+    Enum.find_value(keys, &normalized_metadata_value(metadata, &1))
   end
+
+  defp normalized_metadata_value(metadata, key) do
+    case Map.get(metadata, key) do
+      value when is_binary(value) -> value |> String.trim() |> empty_to_nil()
+      _other -> nil
+    end
+  end
+
+  defp empty_to_nil(""), do: nil
+  defp empty_to_nil(value), do: value
 
   defp safe_avatar_url(nil), do: nil
 

@@ -104,6 +104,13 @@ ALWAYS use Superforms + our form components:
 - Keep identity creation and session creation in one `Repo.transact/1`, with database uniqueness on both `(provider, provider_subject)` and `(principal_id, provider)`.
 - OAuth failures redirect to the generic magic-link fallback and must not disclose whether a Principal exists.
 
+## Discord Server REST
+
+- Call Discord server operations through `Dhc.Discord`; swap the single `Dhc.Discord.Adapter` behaviour in tests rather than calling Nostrum directly.
+- Nostrum 0.10.4 is an included application. `Dhc.Discord.RestClientSupervisor` starts its REST ratelimiter only when `DISCORD_BOT_TOKEN` is present; do not start Nostrum's gateway/cache/voice application tree.
+- Nostrum's stable `Guild.members/2` conversion drops embedded user fields. The production adapter deliberately paginates through the lower-level ratelimited request API and normalizes complete rows into `Dhc.Discord.GuildMember`.
+- Discord IDs must be cast to snowflake integers before calling Nostrum's public guild mutation functions. Reject CR/LF in audit reasons before they reach Gun headers.
+
 ## Phoenix Read-Migration API Conventions (ADR 0005)
 
 Conventions established by the Waitlist migration (#105–#107) and reinforced by the Members migration (#122). Apply to all remaining PostgREST read-migration slices (Workshops, Inventory).

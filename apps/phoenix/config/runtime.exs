@@ -1,6 +1,20 @@
 import Config
 
+discord_bot_token = System.get_env("DISCORD_BOT_TOKEN")
+discord_guild_id = System.get_env("DISCORD_GUILD_ID")
+
+config :dhc, :discord_bot_token, discord_bot_token
+config :dhc, :discord_guild_id, discord_guild_id
+
 if config_env() == :prod do
+  if is_nil(discord_bot_token) or String.trim(discord_bot_token) == "" do
+    raise "environment variable DISCORD_BOT_TOKEN is missing"
+  end
+
+  if is_nil(discord_guild_id) or String.trim(discord_guild_id) == "" do
+    raise "environment variable DISCORD_GUILD_ID is missing"
+  end
+
   config :dhc,
          :invitation_acceptance_subject_fingerprint_secret,
          System.fetch_env!("INVITATION_ACCEPTANCE_SUBJECT_FINGERPRINT_SECRET")
