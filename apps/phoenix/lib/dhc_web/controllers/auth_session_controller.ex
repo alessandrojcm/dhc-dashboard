@@ -51,6 +51,8 @@ defmodule DhcWeb.AuthSessionController do
   @session_max_age 30 * 24 * 60 * 60
 
   @discord_oauth_flow_session_key :discord_oauth_flow
+  @discord_identity_scope "identify email"
+  @discord_acceptance_scope "identify email guilds.join"
 
   # ── GET /api/auth/discord ────────────────────────────────────────────
   def request_discord(conn, _params) do
@@ -133,7 +135,7 @@ defmodule DhcWeb.AuthSessionController do
 
   defp complete_discord_callback(conn, params, session_params, purpose) do
     case complete_discord_oauth_callback(params, session_params, purpose) do
-      {:ok, %{user: claims}} -> complete_discord_auth(conn, purpose, claims)
+      {:ok, %{user: claims, token: token}} -> complete_discord_auth(conn, purpose, claims, token)
       {:error, _reason} -> complete_discord_callback_failure(conn, purpose, params)
     end
   end
@@ -211,7 +213,7 @@ defmodule DhcWeb.AuthSessionController do
     |> discord_strategy().callback(params)
   end
 
-  defp complete_discord_auth(conn, :sign_in, claims) do
+  defp complete_discord_auth(conn, :sign_in, claims, _token) do
     case Auth.sign_in_with_discord(claims) do
       {:ok, %{session_token: session_token}} ->
         :telemetry.execute([:dhc, :auth, :discord, :succeeded], %{}, %{})
@@ -234,7 +236,7 @@ defmodule DhcWeb.AuthSessionController do
     end
   end
 
-  defp complete_discord_auth(conn, {:link, session_reference}, claims) do
+  defp complete_discord_auth(conn, {:link, session_reference}, claims, _token) do
     with {:ok, principal} <- Auth.get_principal_by_session_reference(session_reference),
          {:ok, %{is_active: true}} <- Auth.load_session_principal(principal),
          {:ok, _identity} <- Auth.link_discord_identity(principal, claims) do
@@ -249,8 +251,8 @@ defmodule DhcWeb.AuthSessionController do
     end
   end
 
-  defp complete_discord_auth(conn, {:invitation_acceptance, continuation_id}, claims) do
-    case Dhc.Onboarding.verify_discord(continuation_id, claims) do
+  defp complete_discord_auth(conn, {:invitation_acceptance, continuation_id}, claims, token) do
+    case Dhc.Onboarding.verify_discord(continuation_id, claims, token) do
       {:ok, _safe_state} -> acceptance_resume(conn, continuation_id)
       {:error, :collision} -> acceptance_resume(conn, continuation_id)
       {:error, _} -> acceptance_failure(conn, continuation_id)
@@ -407,14 +409,17 @@ defmodule DhcWeb.AuthSessionController do
   end
 
   defp discord_config({:invitation_acceptance, _continuation_id}) do
-    Keyword.put(
-      discord_config(),
+    discord_config()
+    |> Keyword.put(:authorization_params, scope: @discord_acceptance_scope)
+    |> Keyword.put(
       :redirect_uri,
       Application.fetch_env!(:dhc, :invitation_acceptance_discord_redirect_uri)
     )
   end
 
-  defp discord_config(_purpose), do: discord_config()
+  defp discord_config(_purpose) do
+    Keyword.put(discord_config(), :authorization_params, scope: @discord_identity_scope)
+  end
 
   defp discord_failure(conn) do
     app_url = Application.fetch_env!(:dhc, :app_url)

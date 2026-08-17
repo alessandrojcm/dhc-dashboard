@@ -20,6 +20,7 @@ defmodule Dhc.DiscordOAuthStub do
       query =
         %{state: state}
         |> maybe_put_redirect_uri(Keyword.get(config, :redirect_uri))
+        |> maybe_put_scope(get_in(config, [:authorization_params, :scope]))
         |> URI.encode_query()
 
       {:ok,
@@ -34,6 +35,9 @@ defmodule Dhc.DiscordOAuthStub do
 
   defp maybe_put_redirect_uri(query, redirect_uri),
     do: Map.put(query, :redirect_uri, redirect_uri)
+
+  defp maybe_put_scope(query, nil), do: query
+  defp maybe_put_scope(query, scope), do: Map.put(query, :scope, scope)
 
   @impl true
   def callback(_config, %{"error" => _error}), do: {:error, :provider_error}
@@ -50,7 +54,11 @@ defmodule Dhc.DiscordOAuthStub do
              "preferred_username" => "request-member",
              "picture" => "https://cdn.discord.example.com/avatars/request-member.png"
            },
-           token: %{"access_token" => "not-persisted"}
+           token: %{
+             "access_token" => "acceptance-access-token",
+             "expires_in" => 604_800,
+             "refresh_token" => "must-never-be-persisted"
+           }
          }}
 
       {true, "unknown"} ->
@@ -61,7 +69,11 @@ defmodule Dhc.DiscordOAuthStub do
              "email" => "unknown-discord@example.com",
              "email_verified" => true
            },
-           token: %{"access_token" => "not-persisted"}
+           token: %{
+             "access_token" => "unknown-access-token",
+             "expires_in" => 604_800,
+             "refresh_token" => "must-never-be-persisted"
+           }
          }}
 
       _ ->
