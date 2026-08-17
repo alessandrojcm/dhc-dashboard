@@ -21,8 +21,6 @@ import type { PageServerData } from "./$types";
 import { page } from "$app/state";
 import { processPayment } from "./data.remote";
 import { initForm } from "$lib/utils/init-form.svelte";
-import { dev } from "$app/environment";
-import FormDebug from "$lib/components/form-debug.svelte";
 
 const { data }: { data: PageServerData } = $props();
 let currentCoupon = $state("");
@@ -44,7 +42,7 @@ const stripeElementsOptions: StripeElementsOptions = {
 	appearance: {
 		theme: "flat",
 		variables: {
-			colorPrimary: "221.2 83.2% 53.3%",
+			colorPrimary: "hsl(221.2, 83.2%, 53.3%)",
 			borderRadius: ".5rem",
 			fontFamily: "Inter, sans-serif",
 			fontSizeBase: "1rem",
@@ -181,7 +179,7 @@ const handleSubmit: ButtonProps["onclick"] = async (e) => {
 	</Alert.Root>
 {/each}
 
-<form {...processPayment} class="space-y-6">
+<form {...processPayment} class="space-y-7">
 	<div class="space-y-4">
 		<Field.Field>
 			{@const fieldProps = processPayment.fields.nextOfKin.as("text")}
@@ -208,7 +206,12 @@ const handleSubmit: ButtonProps["onclick"] = async (e) => {
 				<Field.Error>{issue.message}</Field.Error>
 			{/each}
 		</Field.Field>
-		<p class="prose text-lg text-black">Payment details</p>
+		<div class="border-t border-border/70 pt-6">
+			<p class="font-display text-xl text-foreground">Membership & payment</p>
+			<p class="mt-1 text-sm leading-6 text-muted-foreground">
+				Review your plan and enter the account used for your membership fee.
+			</p>
+		</div>
 		<svelte:boundary>
 			{#if page.params.invitationId}
 				<PricingDisplay
@@ -231,10 +234,11 @@ const handleSubmit: ButtonProps["onclick"] = async (e) => {
 			{/snippet}
 		</svelte:boundary>
 	</div>
-	<div class="flex justify-between">
+	<div class="flex justify-end border-t border-border/70 pt-6">
 		<Button
 			type="submit"
-			class="ml-auto"
+			class="w-full sm:w-auto"
+			size="lg"
 			disabled={!!processPayment.pending || !paymentElementReady}
 			onclick={handleSubmit}
 		>
@@ -258,7 +262,3 @@ const handleSubmit: ButtonProps["onclick"] = async (e) => {
 	/>
 	<input {...processPayment.fields.couponCode.as("hidden", currentCoupon)} />
 </form>
-
-{#if dev}
-	<FormDebug form={processPayment} />
-{/if}

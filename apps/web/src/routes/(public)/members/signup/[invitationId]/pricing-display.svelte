@@ -47,8 +47,8 @@ async function handleApplyCoupon() {
 {#await getPricingDetail({ invitationId, code: currentCoupon })}
 	<!-- Loading state -->
 	<Card.Root class="bg-muted">
-		<Card.Content class="pt-6">
-			<div class="flex items-center justify-center h-48">
+		<Card.Content class="py-8">
+			<div class="flex items-center justify-center">
 				<LoaderCircle class="text-primary animate-spin" />
 				<span class="ml-2">Loading pricing information...</span>
 			</div>
@@ -69,92 +69,56 @@ async function handleApplyCoupon() {
 	{@const proratedAnnualPrice = Dinero(planPricing.proratedAnnualPrice)}
 
 	<Card.Root class="bg-muted">
-		<Card.Content class="pt-6">
+		<Card.Content class="py-5">
 			<div class="space-y-4">
-				<div class="flex justify-between items-center">
-					<div class="flex flex-col items-start">
-						<span>Monthly membership fee</span>
-						<small class="text-sm text-gray-500"
-							>Regular monthly payment starting next {dayjs(
-								nextMonthlyBillingDate,
-							).format("MMMM [the] Do, YYYY")}</small
-						>
+				<div class="flex items-start justify-between gap-4">
+					<div>
+						<p class="font-semibold">Due today</p>
+						<p class="mt-1 text-xs leading-5 text-muted-foreground">
+							{proratedMonthlyPrice.toFormat()} for this month +
+							{proratedAnnualPrice.toFormat()} for this year
+						</p>
 					</div>
-					<div class="flex flex-col items-end">
-						{#if discountedMonthlyFeeDinero}
-							<span class="font-semibold text-green-600"
-								>{discountedMonthlyFeeDinero.toFormat()}</span
-							>
-							<span class="text-sm line-through text-muted-foreground"
-								>{monthlyFeeDinero.toFormat()}</span
-							>
-						{:else}
-							<span class="font-semibold">{monthlyFeeDinero.toFormat()}</span>
-						{/if}
-					</div>
+					<span class="text-lg font-bold">{proratedPriceDinero.toFormat()}</span>
 				</div>
-				<div class="flex justify-between items-center">
-					<div class="flex flex-col items-start">
-						<span>Annual membership fee</span>
-						<small class="text-sm text-gray-500"
-							>Fee charged every year, starting next {dayjs(
-								nextAnnualBillingDate,
-							).format("MMMM [the] Do, YYYY")}</small
-						>
+
+				<div class="grid gap-3 border-t border-border/70 pt-4 sm:grid-cols-2">
+					<div>
+						<p class="text-sm font-medium">Then monthly</p>
+						<div class="mt-1 flex items-baseline gap-2">
+							{#if discountedMonthlyFeeDinero}
+								<span class="font-semibold text-green-600"
+									>{discountedMonthlyFeeDinero.toFormat()}</span
+								>
+								<span class="text-xs text-muted-foreground line-through"
+									>{monthlyFeeDinero.toFormat()}</span
+								>
+							{:else}
+								<span class="font-semibold">{monthlyFeeDinero.toFormat()}</span>
+							{/if}
+						</div>
+						<p class="mt-1 text-xs text-muted-foreground">
+							From {dayjs(nextMonthlyBillingDate).format("D MMM YYYY")}
+						</p>
 					</div>
-					<div class="flex flex-col items-end">
-						{#if discountedAnnualFeeDinero}
-							<span class="font-semibold text-green-600"
-								>{discountedAnnualFeeDinero.toFormat()}</span
-							>
-							<span class="text-sm line-through text-muted-foreground"
-								>{annualFeeDinero.toFormat()}</span
-							>
-						{:else}
-							<span class="font-semibold">{annualFeeDinero.toFormat()}</span>
-						{/if}
+					<div>
+						<p class="text-sm font-medium">Then annually</p>
+						<div class="mt-1 flex items-baseline gap-2">
+							{#if discountedAnnualFeeDinero}
+								<span class="font-semibold text-green-600"
+									>{discountedAnnualFeeDinero.toFormat()}</span
+								>
+								<span class="text-xs text-muted-foreground line-through"
+									>{annualFeeDinero.toFormat()}</span
+								>
+							{:else}
+								<span class="font-semibold">{annualFeeDinero.toFormat()}</span>
+							{/if}
+						</div>
+						<p class="mt-1 text-xs text-muted-foreground">
+							From {dayjs(nextAnnualBillingDate).format("D MMM YYYY")}
+						</p>
 					</div>
-				</div>
-				<div class="flex justify-between items-center m-0">
-					<div class="flex items-start flex-col">
-						<span>First payment</span>
-						<small class="text-sm text-gray-500">
-							This is the initial amount charged today, covering the rest of the
-							current month and the annual fee.</small
-						>
-					</div>
-				</div>
-				<div class="flex justify-between items-center p-4 text-sm m-0">
-					<div class="flex items-start flex-col mr-4">
-						<span>Pro-rated monthly fee</span>
-						<small class="text-xs text-gray-500">
-							This is the pro-rated monthly fee covering from today to the rest
-							of the month</small
-						>
-					</div>
-					<span class="font-semibold text-sm"
-						>{proratedMonthlyPrice.toFormat()}</span
-					>
-				</div>
-				<div class="flex justify-between items-center p-4 text-sm m-0">
-					<div class="flex items-start flex-col mr-4">
-						<span>Pro-rated annual fee</span>
-						<small class="text-xs text-gray-500">
-							This is the pro-rated annual fee covering from today to the rest
-							of the year</small
-						>
-					</div>
-					<span class="font-semibold text-sm"
-						>{proratedAnnualPrice.toFormat()}</span
-					>
-				</div>
-				<div class="flex justify-between items-center p-4 text-sm m-0">
-					<div class="flex items-start flex-col mr-4">
-						<span>Total</span>
-					</div>
-					<span class="font-semibold text-sm"
-						>{proratedPriceDinero.toFormat()}</span
-					>
 				</div>
 				{#if discountPercentage}
 					<div class="mt-2 p-2 bg-green-50 text-green-700 rounded-md text-sm">
@@ -215,4 +179,4 @@ async function handleApplyCoupon() {
 		</Card.Content>
 	</Card.Root>
 {/await}
-<div class={"mt-4"} id="payment-element"></div>
+<div class="mt-4" id="payment-element"></div>
