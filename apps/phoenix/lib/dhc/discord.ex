@@ -26,9 +26,10 @@ defmodule Dhc.Discord do
     adapter().list_guild_members(guild_id())
   end
 
-  @spec add_guild_member(String.t(), String.t()) :: Dhc.Discord.Adapter.add_member_result()
-  def add_guild_member(user_id, access_token) do
-    adapter().add_guild_member(guild_id(), user_id, access_token)
+  @spec add_guild_member(String.t(), String.t(), String.t()) ::
+          Dhc.Discord.Adapter.add_member_result()
+  def add_guild_member(user_id, access_token, nickname) do
+    adapter().add_guild_member(guild_id(), user_id, access_token, nickname)
   end
 
   @spec kick_guild_member(String.t(), String.t()) :: Dhc.Discord.Adapter.kick_member_result()
@@ -476,7 +477,13 @@ defmodule Dhc.Discord do
   end
 
   @spec prepare_guild_join(Ecto.UUID.t()) ::
-          {:ok, %{grant: JoinGrant.t(), user_id: String.t(), access_token: String.t()}}
+          {:ok,
+           %{
+             grant: JoinGrant.t(),
+             user_id: String.t(),
+             access_token: String.t(),
+             nickname: String.t()
+           }}
           | {:terminal, atom()}
           | {:error, atom()}
   def prepare_guild_join(grant_id) do
@@ -492,8 +499,14 @@ defmodule Dhc.Discord do
   defp prepare_existing_guild_join(grant) do
     if DateTime.compare(grant.expires_at, DateTime.utc_now()) == :gt do
       with {:ok, access_token} <- join_grant_access_token(grant),
-           {:ok, user_id} <- discord_user_id_for_grant(grant) do
-        {:ok, %{grant: grant, user_id: user_id, access_token: access_token}}
+           {:ok, member} <- discord_member_for_grant(grant) do
+        {:ok,
+         %{
+           grant: grant,
+           user_id: member.user_id,
+           access_token: access_token,
+           nickname: member.first_name
+         }}
       else
         {:error, :unavailable} -> {:terminal, :grant_unavailable}
         {:error, :invalid} -> terminalize_grant(grant, :invalid_grant)
@@ -504,7 +517,7 @@ defmodule Dhc.Discord do
     end
   end
 
-  defp discord_user_id_for_grant(grant) do
+  defp discord_member_for_grant(grant) do
     query =
       from(identity in ExternalIdentity,
         join: attempt in InvitationAcceptanceAttempt,
@@ -514,12 +527,16 @@ defmodule Dhc.Discord do
         where:
           identity.principal_id == invitation.prospective_principal_id and
             identity.provider == "discord" and is_nil(identity.retired_at),
-        select: identity.provider_subject
+        select: %{user_id: identity.provider_subject, first_name: invitation.first_name}
       )
 
     case Repo.one(query) do
-      user_id when is_binary(user_id) -> {:ok, user_id}
-      nil -> {:error, :discord_identity_not_found}
+      %{user_id: user_id, first_name: first_name} = member
+      when is_binary(user_id) and is_binary(first_name) ->
+        {:ok, member}
+
+      nil ->
+        {:error, :discord_identity_not_found}
     end
   end
 

@@ -40,7 +40,7 @@ defmodule Dhc.Discord.Workers.GuildJoinWorkerTest do
       assert :ok = perform_job(GuildJoinWorker, %{"grant_id" => grant.id})
 
       assert_receive {:add_guild_member,
-                      ["guild-123", ^discord_user_id, "short-lived-access-token"]}
+                      ["guild-123", ^discord_user_id, "short-lived-access-token", "Ada"]}
 
       assert Repo.get!(JoinGrant, grant.id).encrypted_access_token == nil
     end

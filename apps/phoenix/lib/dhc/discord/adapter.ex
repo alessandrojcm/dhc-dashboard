@@ -13,7 +13,8 @@ defmodule Dhc.Discord.Adapter do
   @callback add_guild_member(
               guild_id :: String.t(),
               user_id :: String.t(),
-              access_token :: String.t()
+              access_token :: String.t(),
+              nickname :: String.t()
             ) :: add_member_result()
 
   @callback kick_guild_member(

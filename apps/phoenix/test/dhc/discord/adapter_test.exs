@@ -46,11 +46,11 @@ defmodule Dhc.Discord.AdapterTest do
   test "add guild member uses the configured adapter and returns scripted outcomes" do
     TestAdapter.script(:add_guild_member, [{:ok, :added}, {:ok, :already_member}])
 
-    assert Dhc.Discord.add_guild_member("discord-1", "oauth-token") == {:ok, :added}
+    assert Dhc.Discord.add_guild_member("discord-1", "oauth-token", "Ada") == {:ok, :added}
 
-    assert_receive {:add_guild_member, ["guild-123", "discord-1", "oauth-token"]}
+    assert_receive {:add_guild_member, ["guild-123", "discord-1", "oauth-token", "Ada"]}
 
-    assert Dhc.Discord.add_guild_member("discord-1", "oauth-token") ==
+    assert Dhc.Discord.add_guild_member("discord-1", "oauth-token", "Ada") ==
              {:ok, :already_member}
   end
 
@@ -73,7 +73,7 @@ defmodule Dhc.Discord.AdapterTest do
     Application.put_env(:dhc, :discord_guild_id, "123456789012345678")
 
     assert {:error, %Dhc.Discord.ApiError{status: 400, message: "invalid Discord user id"}} =
-             Dhc.Discord.add_guild_member("not-a-snowflake", "oauth-token")
+             Dhc.Discord.add_guild_member("not-a-snowflake", "oauth-token", "Ada")
   end
 
   test "the live adapter rejects line breaks in audit reasons" do
@@ -88,6 +88,25 @@ defmodule Dhc.Discord.AdapterTest do
              Dhc.Discord.kick_guild_member(
                "234567890123456789",
                "DHC Doctor — Admin\r\nInjected: value"
+             )
+  end
+
+  test "the development adapter never mutates a Discord guild" do
+    assert {:ok, []} = Dhc.Discord.Adapter.Dev.list_guild_members("guild-123")
+
+    assert {:ok, :added} =
+             Dhc.Discord.Adapter.Dev.add_guild_member(
+               "guild-123",
+               "discord-1",
+               "oauth-token",
+               "Ada"
+             )
+
+    assert :ok =
+             Dhc.Discord.Adapter.Dev.kick_guild_member(
+               "guild-123",
+               "discord-1",
+               "development test"
              )
   end
 
