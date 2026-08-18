@@ -6,16 +6,21 @@ defmodule Dhc.Discord do
   """
 
   alias Dhc.Auth.ExternalIdentity
+  alias Dhc.Auth.UserRole
+  alias Dhc.Discord.GuildMemberCache
   alias Dhc.Discord.JoinGrant
   alias Dhc.Invitations.Invitation
   alias Dhc.Onboarding.InvitationAcceptanceAttempt
   alias Dhc.Onboarding.InvitationAcceptanceDiscordContinuation
+  alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.Repo
+  alias Dhc.UserProfiles.UserProfile
 
   import Ecto.Changeset, only: [change: 2, unique_constraint: 3]
   import Ecto.Query
 
   @join_grant_salt "discord join grant:v1"
+  @doctor_cache_ttl_seconds 60
 
   @spec list_guild_members() :: Dhc.Discord.Adapter.list_members_result()
   def list_guild_members do
@@ -30,6 +35,267 @@ defmodule Dhc.Discord do
   @spec kick_guild_member(String.t(), String.t()) :: Dhc.Discord.Adapter.kick_member_result()
   def kick_guild_member(user_id, reason) do
     adapter().kick_guild_member(guild_id(), user_id, reason)
+  end
+
+  @spec doctor_report(keyword()) :: {:ok, map()} | {:error, term()}
+  def doctor_report(options \\ []) do
+    refresh? = Keyword.get(options, :refresh, false)
+
+    with {:ok, guild_members, fetched_at} <-
+           GuildMemberCache.fetch(
+             guild_id(),
+             refresh?,
+             &list_guild_members/0,
+             @doctor_cache_ttl_seconds
+           ) do
+      {:ok, build_doctor_report(guild_members, fetched_at)}
+    end
+  end
+
+  defp build_doctor_report(guild_members, fetched_at) do
+    humans = Enum.reject(guild_members, & &1.bot)
+    members = doctor_members()
+    members_by_principal = Map.new(members, &{&1.principal_id, &1})
+    identities = active_discord_identities()
+    assignments = active_staged_assignments()
+    roles = roles_by_principal()
+
+    identities_by_subject = Map.new(identities, &{&1.provider_subject, &1})
+    identities_by_principal = Map.new(identities, &{&1.principal_id, &1})
+    assignments_by_subject = Map.new(assignments, &{&1.provider_subject, &1})
+    assignments_by_principal = Map.new(assignments, &{&1.principal_id, &1})
+
+    rows =
+      Enum.map(humans, fn guild_member ->
+        classify_guild_member(
+          guild_member,
+          identities_by_subject,
+          assignments_by_subject,
+          members_by_principal,
+          roles
+        )
+      end)
+
+    grouped = Enum.group_by(rows, & &1.bucket, &Map.delete(&1, :bucket))
+    guild_user_ids = MapSet.new(humans, & &1.user_id)
+    pending_grants = pending_join_grant_principals()
+
+    missing_members =
+      members
+      |> Enum.flat_map(fn member ->
+        missing_member(
+          member,
+          identities_by_principal,
+          assignments_by_principal,
+          guild_user_ids,
+          pending_grants
+        )
+      end)
+      |> Enum.sort_by(&{&1.member.last_name, &1.member.first_name, &1.member.id})
+
+    %{
+      server_members: %{
+        linked_active: sorted_bucket(grouped, :linked_active),
+        linked_inactive: sorted_bucket(grouped, :linked_inactive),
+        pending_link: sorted_bucket(grouped, :pending_link),
+        unrecognized: sorted_bucket(grouped, :unrecognized)
+      },
+      missing_members: missing_members,
+      cache: %{fetched_at: fetched_at, ttl_seconds: @doctor_cache_ttl_seconds}
+    }
+  end
+
+  defp doctor_members do
+    from(member in MemberProfile,
+      join: profile in UserProfile,
+      on: profile.id == member.user_profile_id and member.id == profile.principal_id,
+      select: %{
+        principal_id: profile.principal_id,
+        first_name: profile.first_name,
+        last_name: profile.last_name,
+        is_active: profile.is_active,
+        subscription_paused_until: member.subscription_paused_until
+      }
+    )
+    |> Repo.all()
+    |> Enum.map(&Map.put(&1, :membership_status, membership_status(&1)))
+  end
+
+  defp active_discord_identities do
+    Repo.all(
+      from(identity in ExternalIdentity,
+        where: identity.provider == "discord" and is_nil(identity.retired_at),
+        select: %{
+          principal_id: identity.principal_id,
+          provider_subject: identity.provider_subject
+        }
+      )
+    )
+  end
+
+  defp active_staged_assignments do
+    Repo.all(
+      from(assignment in Dhc.Discord.StagedAssignment,
+        where: assignment.provider == "discord" and assignment.state in ["proposed", "approved"],
+        select: %{
+          principal_id: assignment.principal_id,
+          provider_subject: assignment.provider_subject,
+          username_snapshot: assignment.username_snapshot
+        }
+      )
+    )
+  end
+
+  defp roles_by_principal do
+    UserRole
+    |> Repo.all()
+    |> Enum.group_by(& &1.principal_id, & &1.role)
+  end
+
+  defp pending_join_grant_principals do
+    now = DateTime.utc_now()
+
+    from(grant in JoinGrant,
+      join: attempt in InvitationAcceptanceAttempt,
+      on: attempt.id == grant.attempt_id,
+      join: invitation in Invitation,
+      on: invitation.id == attempt.invitation_id,
+      where: not is_nil(grant.encrypted_access_token) and grant.expires_at > ^now,
+      select: invitation.prospective_principal_id
+    )
+    |> Repo.all()
+    |> MapSet.new()
+  end
+
+  defp classify_guild_member(
+         guild_member,
+         identities_by_subject,
+         assignments_by_subject,
+         members_by_principal,
+         roles
+       ) do
+    case Map.get(identities_by_subject, guild_member.user_id) do
+      %{principal_id: principal_id} ->
+        linked_row(guild_member, Map.get(members_by_principal, principal_id), roles)
+
+      nil ->
+        pending_or_unrecognized_row(
+          guild_member,
+          Map.get(assignments_by_subject, guild_member.user_id),
+          members_by_principal,
+          roles
+        )
+    end
+  end
+
+  defp linked_row(guild_member, nil, _roles), do: unrecognized_row(guild_member)
+
+  defp linked_row(guild_member, member, roles) do
+    bucket = if member.is_active, do: :linked_active, else: :linked_inactive
+    protected = protected?(member.principal_id, roles)
+
+    guild_row(guild_member, member, protected,
+      bucket: bucket,
+      kickable: bucket == :linked_inactive and not protected
+    )
+  end
+
+  defp pending_or_unrecognized_row(guild_member, nil, _members, _roles),
+    do: unrecognized_row(guild_member)
+
+  defp pending_or_unrecognized_row(guild_member, assignment, members, roles) do
+    case Map.get(members, assignment.principal_id) do
+      nil ->
+        unrecognized_row(guild_member)
+
+      member ->
+        protected = protected?(member.principal_id, roles)
+
+        guild_row(guild_member, member, protected,
+          bucket: :pending_link,
+          kickable: not protected
+        )
+    end
+  end
+
+  defp unrecognized_row(guild_member) do
+    guild_row(guild_member, nil, false, bucket: :unrecognized, kickable: true)
+  end
+
+  defp guild_row(guild_member, member, protected, options) do
+    %{
+      bucket: Keyword.fetch!(options, :bucket),
+      discord_user_id: guild_member.user_id,
+      username: guild_member.username,
+      display_name: guild_member.display_name,
+      avatar: guild_member.avatar,
+      joined_at: guild_member.joined_at,
+      member: member_summary(member),
+      membership_status: member && member.membership_status,
+      protected: protected,
+      kickable: Keyword.fetch!(options, :kickable)
+    }
+  end
+
+  defp missing_member(
+         member,
+         identities_by_principal,
+         assignments_by_principal,
+         guild_user_ids,
+         pending_grants
+       ) do
+    {link_status, discord_user_id} =
+      cond do
+        identity = Map.get(identities_by_principal, member.principal_id) ->
+          {:linked, identity.provider_subject}
+
+        assignment = Map.get(assignments_by_principal, member.principal_id) ->
+          {:pending, assignment.provider_subject}
+
+        true ->
+          {:never_linked, nil}
+      end
+
+    if discord_user_id && MapSet.member?(guild_user_ids, discord_user_id) do
+      []
+    else
+      [
+        %{
+          member: member_summary(member),
+          membership_status: member.membership_status,
+          link_status: link_status,
+          discord_user_id: discord_user_id,
+          auto_join_pending: MapSet.member?(pending_grants, member.principal_id)
+        }
+      ]
+    end
+  end
+
+  defp member_summary(nil), do: nil
+
+  defp member_summary(member) do
+    %{id: member.principal_id, first_name: member.first_name, last_name: member.last_name}
+  end
+
+  defp protected?(principal_id, roles) do
+    roles
+    |> Map.get(principal_id, [])
+    |> Enum.any?(&(&1 != "member"))
+  end
+
+  defp membership_status(%{is_active: false}), do: :inactive
+
+  defp membership_status(%{subscription_paused_until: paused_until})
+       when not is_nil(paused_until) do
+    if DateTime.after?(paused_until, DateTime.utc_now()), do: :paused, else: :active
+  end
+
+  defp membership_status(_member), do: :active
+
+  defp sorted_bucket(grouped, bucket) do
+    grouped
+    |> Map.get(bucket, [])
+    |> Enum.sort_by(&{&1.display_name, &1.discord_user_id})
   end
 
   @spec create_join_grant(Ecto.UUID.t(), map()) ::

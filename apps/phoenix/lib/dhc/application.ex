@@ -24,7 +24,8 @@ defmodule Dhc.Application do
         {DNSCluster, query: Application.get_env(:dhc, :dns_cluster_query) || :ignore},
         {Phoenix.PubSub, name: Dhc.PubSub},
         # Oban for background job processing
-        {Oban, Application.fetch_env!(:dhc, Oban)}
+        {Oban, Application.fetch_env!(:dhc, Oban)},
+        Dhc.Discord.GuildMemberCache
       ] ++
         discord_children() ++
         [

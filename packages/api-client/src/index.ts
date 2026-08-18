@@ -6,6 +6,7 @@
 // Generated SDK functions & types
 export {
 	healthIndex,
+	discordDoctorReport,
 	authRequestMagicLink,
 	authVerifyMagicLink,
 	authLinkDiscord,
@@ -94,6 +95,18 @@ export {
 } from "./client/sdk.gen";
 export type {
 	ClientOptions,
+	DiscordDoctorCacheMetadata,
+	DiscordDoctorMemberSummary,
+	DiscordDoctorMissingMember,
+	DiscordDoctorReport,
+	DiscordDoctorReportData,
+	DiscordDoctorReportError,
+	DiscordDoctorReportErrors,
+	DiscordDoctorReportResponse,
+	DiscordDoctorReportResponse2,
+	DiscordDoctorReportResponses,
+	DiscordDoctorServerMember,
+	DiscordDoctorServerMembers,
 	AuthSessionProjection,
 	AuthRequestMagicLinkData,
 	AuthRequestMagicLinkResponse,
@@ -623,6 +636,15 @@ export type {
 
 // Valibot schemas (runtime validation)
 export {
+	vDiscordDoctorCacheMetadata,
+	vDiscordDoctorMemberSummary,
+	vDiscordDoctorMissingMember,
+	vDiscordDoctorReport,
+	vDiscordDoctorReportQuery,
+	vDiscordDoctorReportResponse,
+	vDiscordDoctorReportResponse2,
+	vDiscordDoctorServerMember,
+	vDiscordDoctorServerMembers,
 	vHealthIndexResponse,
 	vAuthSessionProjection,
 	vAuthRequestMagicLinkBody,
@@ -871,6 +893,8 @@ export {
 export {
 	healthIndexOptions,
 	healthIndexQueryKey,
+	discordDoctorReportOptions,
+	discordDoctorReportQueryKey,
 	authRequestMagicLinkMutation,
 	authRequestMagicLinkMutationKey,
 	authVerifyMagicLinkMutation,
