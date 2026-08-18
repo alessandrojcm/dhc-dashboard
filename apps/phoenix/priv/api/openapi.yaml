@@ -64,8 +64,55 @@ tags:
        (`cookieSession` security scheme) instead of the Supabase bearer JWT.
   - name: Onboarding
     description: Protected, pre-payment Invitation Acceptance journey.
+  - name: DiscordDoctor
+    description: Live Discord server reconciliation for authorized committee administrators.
+    x-context: Dhc.Discord
+    x-resource: DoctorReport
 
 paths:
+  /discord-doctor/report:
+    get:
+      operationId: discordDoctor.report
+      tags:
+        - DiscordDoctor
+      summary: Get the Discord Doctor reconciliation report
+      description: Returns every human server account in exactly one reconciliation bucket and every Member not known to be in the server.
+      security:
+        - cookieSession: []
+      parameters:
+        - name: refresh
+          in: query
+          required: false
+          description: Bypass the short-lived Discord member-list cache.
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Complete reconciliation report.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiscordDoctorReportResponse"
+        "401":
+          description: Authentication required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Discord Doctor role required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: Discord member list could not be fetched.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /health:
     get:
       operationId: health.index
@@ -4842,6 +4889,110 @@ components:
           format: uri
           nullable: true
           description: Provider-hosted avatar URL, when available.
+    DiscordDoctorReportResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/DiscordDoctorReport"
+    DiscordDoctorReport:
+      type: object
+      required: [serverMembers, missingMembers, cache]
+      properties:
+        serverMembers:
+          $ref: "#/components/schemas/DiscordDoctorServerMembers"
+        missingMembers:
+          type: array
+          items:
+            $ref: "#/components/schemas/DiscordDoctorMissingMember"
+        cache:
+          $ref: "#/components/schemas/DiscordDoctorCacheMetadata"
+    DiscordDoctorServerMembers:
+      type: object
+      required: [linkedActive, linkedInactive, pendingLink, unrecognized]
+      properties:
+        linkedActive:
+          type: array
+          items:
+            $ref: "#/components/schemas/DiscordDoctorServerMember"
+        linkedInactive:
+          type: array
+          items:
+            $ref: "#/components/schemas/DiscordDoctorServerMember"
+        pendingLink:
+          type: array
+          items:
+            $ref: "#/components/schemas/DiscordDoctorServerMember"
+        unrecognized:
+          type: array
+          items:
+            $ref: "#/components/schemas/DiscordDoctorServerMember"
+    DiscordDoctorServerMember:
+      type: object
+      required: [discordUserId, username, displayName, avatar, joinedAt, member, membershipStatus, protected, kickable]
+      properties:
+        discordUserId:
+          type: string
+        username:
+          type: string
+        displayName:
+          type: string
+        avatar:
+          type: string
+          nullable: true
+        joinedAt:
+          type: string
+          format: date-time
+          nullable: true
+        member:
+          allOf:
+            - $ref: "#/components/schemas/DiscordDoctorMemberSummary"
+          nullable: true
+        membershipStatus:
+          allOf:
+            - $ref: "#/components/schemas/MembershipStatus"
+          nullable: true
+        protected:
+          type: boolean
+        kickable:
+          type: boolean
+    DiscordDoctorMemberSummary:
+      type: object
+      required: [id, firstName, lastName]
+      properties:
+        id:
+          type: string
+          format: uuid
+        firstName:
+          type: string
+        lastName:
+          type: string
+    DiscordDoctorMissingMember:
+      type: object
+      required: [member, membershipStatus, linkStatus, discordUserId, autoJoinPending]
+      properties:
+        member:
+          $ref: "#/components/schemas/DiscordDoctorMemberSummary"
+        membershipStatus:
+          $ref: "#/components/schemas/MembershipStatus"
+        linkStatus:
+          type: string
+          enum: [linked, pending, never_linked]
+        discordUserId:
+          type: string
+          nullable: true
+        autoJoinPending:
+          type: boolean
+    DiscordDoctorCacheMetadata:
+      type: object
+      required: [fetchedAt, ttlSeconds]
+      properties:
+        fetchedAt:
+          type: string
+          format: date-time
+        ttlSeconds:
+          type: integer
+          minimum: 1
     MemberResponse:
       type: object
       required:
