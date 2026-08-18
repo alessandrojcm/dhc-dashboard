@@ -19,7 +19,7 @@ defmodule Dhc.Discord.Workers.GuildJoinWorker do
   end
 
   defp add_member(join) do
-    case Discord.add_guild_member(join.user_id, join.access_token) do
+    case Discord.add_guild_member(join.user_id, join.access_token, join.nickname) do
       {:ok, outcome} when outcome in [:added, :already_member] -> zeroize(join.grant)
       {:error, %ApiError{status: status}} when status in [401, 403] -> zeroize(join.grant)
       {:error, reason} -> {:error, reason}

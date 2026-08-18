@@ -17,10 +17,12 @@ defmodule Dhc.Discord.Adapter.Nostrum do
   end
 
   @impl true
-  def add_guild_member(guild_id, user_id, access_token) do
+  def add_guild_member(guild_id, user_id, access_token, nickname) do
     with {:ok, guild_id} <- cast_snowflake(guild_id, "guild id"),
          {:ok, user_id} <- cast_snowflake(user_id, "user id") do
-      case Nostrum.Api.Guild.add_member(guild_id, user_id, access_token: access_token) do
+      options = [access_token: access_token, nick: nickname]
+
+      case Nostrum.Api.Guild.add_member(guild_id, user_id, options) do
         {:ok, %Nostrum.Struct.Guild.Member{}} -> {:ok, :added}
         {:ok} -> {:ok, :already_member}
         {:error, error} -> {:error, normalize_error(error)}

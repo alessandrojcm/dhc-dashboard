@@ -39,7 +39,7 @@ defmodule Dhc.MixProject do
   def application do
     [
       mod: {Dhc.Application, []},
-      extra_applications: [:logger, :runtime_tools],
+      extra_applications: [:logger, :runtime_tools, :gun],
       included_applications: [:nostrum]
     ]
   end

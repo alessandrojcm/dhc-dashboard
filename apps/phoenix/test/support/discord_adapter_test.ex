@@ -20,8 +20,8 @@ defmodule Dhc.Discord.Adapter.Test do
   end
 
   @impl true
-  def add_guild_member(guild_id, user_id, access_token) do
-    record_and_pop(:add_guild_member, [guild_id, user_id, access_token])
+  def add_guild_member(guild_id, user_id, access_token, nickname) do
+    record_and_pop(:add_guild_member, [guild_id, user_id, access_token, nickname])
   end
 
   @impl true
