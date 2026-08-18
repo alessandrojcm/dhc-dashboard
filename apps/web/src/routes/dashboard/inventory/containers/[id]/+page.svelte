@@ -11,11 +11,11 @@ import { Badge } from "$lib/components/ui/badge";
 import {
 	ArrowLeft,
 	FolderOpen,
-	Edit,
+	SquarePen,
 	Plus,
 	Package,
 	Folder,
-	AlertTriangle,
+	TriangleAlert,
 } from "@lucide/svelte";
 import dayjs from "dayjs";
 
@@ -94,7 +94,7 @@ const getItemDisplayName = (item: any) => {
 								href="/dashboard/inventory/containers/{container.id}/edit"
 								size="sm"
 							>
-								<Edit class="mr-2 h-4 w-4" />
+								<SquarePen class="mr-2 h-4 w-4" />
 								Edit
 							</Button>
 						</div>
@@ -215,7 +215,7 @@ const getItemDisplayName = (item: any) => {
 														variant="destructive"
 														class="text-xs flex items-center gap-1"
 													>
-														<AlertTriangle class="h-3 w-3" />
+														<TriangleAlert class="h-3 w-3" />
 														Maintenance
 													</Badge>
 												{/if}

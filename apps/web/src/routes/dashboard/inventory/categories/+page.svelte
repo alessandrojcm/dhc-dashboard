@@ -7,7 +7,7 @@ import {
 } from "$lib/components/ui/card";
 import { Button } from "$lib/components/ui/button";
 import { Badge } from "$lib/components/ui/badge";
-import { Tags, Plus, Edit, Package, AlertTriangle } from "@lucide/svelte";
+import { Tags, Plus, SquarePen, Package, TriangleAlert } from "@lucide/svelte";
 import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
 import { createQuery } from "@tanstack/svelte-query";
 import {
@@ -50,7 +50,7 @@ const getItemCount = (category: InventoryCategory) => category.itemCount ?? 0;
 	{:else if categoriesQuery.isError}
 		<Card>
 			<CardContent class="flex flex-col items-center justify-center py-12">
-				<AlertTriangle class="h-12 w-12 text-destructive mb-4" />
+				<TriangleAlert class="h-12 w-12 text-destructive mb-4" />
 				<h3 class="text-lg font-semibold mb-2">Error loading categories</h3>
 				<p class="text-muted-foreground mb-4">
 					{categoriesQuery.error.errors?.detail || "Failed to load categories"}
@@ -90,7 +90,7 @@ const getItemCount = (category: InventoryCategory) => category.itemCount ?? 0;
 								variant="ghost"
 								size="sm"
 							>
-								<Edit class="h-4 w-4" />
+								<SquarePen class="h-4 w-4" />
 							</Button>
 						</CardTitle>
 					</CardHeader>

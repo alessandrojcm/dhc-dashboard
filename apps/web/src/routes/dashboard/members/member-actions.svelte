@@ -1,7 +1,7 @@
 <script lang="ts">
 import { Button } from "$lib/components/ui/button";
 import * as Tooltip from "$lib/components/ui/tooltip";
-import { ChevronDown, ChevronUp, Edit } from "@lucide/svelte";
+import { ChevronDown, ChevronUp, SquarePen } from "@lucide/svelte";
 type Props = {
 	memberId: string;
 	isExpanded?: boolean;
@@ -67,7 +67,7 @@ const {
 	{/if}
 	{#if showLabels}
 		<Button variant="ghost" href={`/dashboard/members/${memberId}`}>
-			<Edit class="size-4" aria-hidden="true" />
+			<SquarePen class="size-4" aria-hidden="true" />
 			Edit member
 		</Button>
 	{:else}
@@ -81,7 +81,7 @@ const {
 						href={`/dashboard/members/${memberId}`}
 						{...props}
 					>
-						<Edit class="size-4" aria-hidden="true" />
+						<SquarePen class="size-4" aria-hidden="true" />
 					</Button>
 				{/snippet}
 			</Tooltip.Trigger>

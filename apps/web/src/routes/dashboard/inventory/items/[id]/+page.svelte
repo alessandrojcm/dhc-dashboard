@@ -23,7 +23,7 @@ import { toast } from "svelte-sonner";
 import {
 	ArrowLeft,
 	Package,
-	Edit,
+	SquarePen,
 	X,
 	FolderOpen,
 	Tags,
@@ -296,7 +296,7 @@ const formatActionLabel = (action: string) => {
 			</div>
 			{#if canEdit && !isEditMode}
 				<Button onclick={handleEdit}>
-					<Edit class="mr-2 h-4 w-4" />
+					<SquarePen class="mr-2 h-4 w-4" />
 					Edit Item
 				</Button>
 			{/if}

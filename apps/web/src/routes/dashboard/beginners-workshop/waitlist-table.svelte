@@ -29,7 +29,7 @@ import {
 	type TableOptions,
 } from "@tanstack/table-core";
 import dayjs from "dayjs";
-import { Loader2, SendIcon } from "@lucide/svelte";
+import { LoaderCircle, SendIcon } from "@lucide/svelte";
 import { createRawSnippet } from "svelte";
 import { Cross2 } from "svelte-radix";
 import { toast } from "svelte-sonner";
@@ -46,7 +46,6 @@ import {
 	renderSnippet,
 } from "$lib/components/ui/data-table/index.js";
 import { Input } from "$lib/components/ui/input";
-import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
 import * as Select from "$lib/components/ui/select";
 import * as Table from "$lib/components/ui/table/index.js";
 import SortHeader from "$lib/components/ui/table/sort-header.svelte";
@@ -626,7 +625,7 @@ const table = createSvelteTable(tableOptions);
 		onclick={() => inviteWaitlistMembers(Object.keys(selectedState))}
 	>
 		{#if inviteMember.isPending}
-			<Loader2 class="mr-2 h-4 w-4 animate-spin" />
+			<LoaderCircle class="mr-2 h-4 w-4 animate-spin" />
 		{:else}
 			<SendIcon class="mr-2 h-4 w-4" />
 		{/if}

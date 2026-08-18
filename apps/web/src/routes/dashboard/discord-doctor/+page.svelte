@@ -16,8 +16,8 @@ import {
 	keepPreviousData,
 } from "@tanstack/svelte-query";
 import {
-	AlertTriangle,
-	Loader2,
+	TriangleAlert,
+	LoaderCircle,
 	RefreshCw,
 	ServerCog,
 	ShieldCheck,
@@ -382,7 +382,7 @@ async function refreshMembers() {
 			<section
 				class="flex flex-col items-center rounded-2xl border border-destructive/40 bg-destructive/5 px-5 py-12 text-center"
 			>
-				<AlertTriangle class="size-10 text-destructive" aria-hidden="true" />
+				<TriangleAlert class="size-10 text-destructive" aria-hidden="true" />
 				<h2 class="mt-4 font-heading text-xl text-foreground">
 					Member list unavailable
 				</h2>
@@ -747,7 +747,7 @@ async function refreshMembers() {
 				<div
 					class="flex gap-3 rounded-xl border border-secondary bg-secondary/15 p-4 text-sm"
 				>
-					<AlertTriangle
+					<TriangleAlert
 						aria-hidden="true"
 						class="mt-0.5 size-5 shrink-0 text-foreground"
 					/>
@@ -847,7 +847,7 @@ async function refreshMembers() {
 					onclick={submitKick}
 				>
 					{#if kickMutation.isPending}
-						<Loader2 aria-hidden="true" class="animate-spin" />
+						<LoaderCircle aria-hidden="true" class="animate-spin" />
 						Kicking…
 					{:else}
 						<UserMinus aria-hidden="true" />

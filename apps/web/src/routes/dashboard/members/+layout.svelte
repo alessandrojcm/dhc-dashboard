@@ -1,7 +1,7 @@
 <script lang="ts">
 import { page } from "$app/state";
 import { cn } from "$lib/utils";
-import { BarChart3, Mail, Users } from "@lucide/svelte";
+import { ChartColumn, Mail, Users } from "@lucide/svelte";
 import type { LayoutProps } from "./$types";
 import InviteDrawer from "./invite-drawer.svelte";
 import SettingsSheet from "./settings-sheet.svelte";
@@ -12,7 +12,7 @@ const sections = [
 	{
 		label: "Overview",
 		href: "/dashboard/members",
-		icon: BarChart3,
+		icon: ChartColumn,
 	},
 	{
 		label: "Members",
