@@ -1,27 +1,48 @@
 <script lang="ts">
 import {
+	discordDoctorKickMutation,
 	discordDoctorReportOptions,
+	membersMeOptions,
+	type DiscordDoctorKickRequest,
+	type DiscordDoctorKickResult,
 	type DiscordDoctorMemberSummary,
+	type DiscordDoctorServerMember,
 	type DiscordDoctorServerMembers,
 	type MembershipStatus,
 } from "@dhc/api-client";
-import { createQuery, keepPreviousData } from "@tanstack/svelte-query";
+import {
+	createMutation,
+	createQuery,
+	keepPreviousData,
+} from "@tanstack/svelte-query";
 import {
 	AlertTriangle,
+	Loader2,
 	RefreshCw,
 	ServerCog,
 	ShieldCheck,
+	UserMinus,
 	Users,
 } from "@lucide/svelte";
+import { toast } from "svelte-sonner";
+import { onMount } from "svelte";
+import * as AlertDialog from "$lib/components/ui/alert-dialog";
 import { Badge } from "$lib/components/ui/badge";
 import { Button } from "$lib/components/ui/button";
+import { Label } from "$lib/components/ui/label";
 import { Skeleton } from "$lib/components/ui/skeleton";
 import * as Table from "$lib/components/ui/table";
 import * as Tabs from "$lib/components/ui/tabs";
+import { Textarea } from "$lib/components/ui/textarea";
 import { cn } from "$lib/utils";
 
 type DoctorView = "server" | "members";
 type ServerBucket = keyof DiscordDoctorServerMembers;
+type KickReview = {
+	bucket: ServerBucket;
+	targets: DiscordDoctorServerMember[];
+	skipped: DiscordDoctorServerMember[];
+};
 
 const buckets = [
 	{
@@ -65,10 +86,29 @@ const linkStatusLabels = {
 	never_linked: "Never linked",
 } as const;
 
+const auditBucketNames = {
+	linkedActive: "linked_active",
+	linkedInactive: "linked_inactive",
+	pendingLink: "pending_link",
+	unrecognized: "unrecognized",
+} satisfies Record<ServerBucket, string>;
+
+const outcomeLabels = {
+	kicked: "Kicked",
+	already_left: "Already left",
+	refused: "Refused",
+	failed: "Failed",
+} satisfies Record<DiscordDoctorKickResult["outcome"], string>;
+
 let view = $state<DoctorView>("server");
 let selectedBucket = $state<ServerBucket>("linkedActive");
 let bypassCache = $state(false);
 let now = $state(Date.now());
+let kickDialogOpen = $state(false);
+let kickReview = $state<KickReview | null>(null);
+let kickNote = $state("");
+let kickResults = $state<Record<string, DiscordDoctorKickResult>>({});
+let latestKickRows = $state<DiscordDoctorServerMember[]>([]);
 
 const reportQuery = createQuery(() => ({
 	...discordDoctorReportOptions({ query: { refresh: bypassCache } }),
@@ -77,6 +117,20 @@ const reportQuery = createQuery(() => ({
 }));
 
 const report = $derived(reportQuery.data?.data);
+const currentUserQuery = createQuery(() => ({
+	...membersMeOptions(),
+	refetchOnWindowFocus: false,
+}));
+const adminName = $derived.by(() => {
+	const member = currentUserQuery.data?.data;
+	return member ? `${member.firstName} ${member.lastName}` : "";
+});
+const auditReasonPreview = $derived.by(() => {
+	if (!kickReview || !adminName) return "Loading admin name…";
+	const base = `DHC Doctor — ${adminName}: ${auditBucketNames[kickReview.bucket]}`;
+	const note = kickNote.trim();
+	return note ? `${base} — ${note}` : base;
+});
 const cacheAgeSeconds = $derived.by(() => {
 	if (!report?.cache.fetchedAt) return 0;
 	const fetchedAt = Date.parse(report.cache.fetchedAt);
@@ -88,7 +142,27 @@ const cacheIsStale = $derived(
 	Boolean(report) && cacheAgeSeconds >= (report?.cache.ttlSeconds ?? 0),
 );
 
-$effect(() => {
+const kickMutation = createMutation(() => ({
+	...discordDoctorKickMutation(),
+	onSuccess: (response) => {
+		const nextResults = { ...kickResults };
+		for (const result of response.data.results) {
+			nextResults[result.discordUserId] = result;
+		}
+		kickResults = nextResults;
+		latestKickRows = kickReview?.targets ?? [];
+		kickDialogOpen = false;
+		kickReview = null;
+		kickNote = "";
+		toast.success("Kick request completed");
+		void reportQuery.refetch();
+	},
+	onError: (error) => {
+		toast.error(error.errors?.detail ?? "Failed to kick server accounts");
+	},
+}));
+
+onMount(() => {
 	const interval = window.setInterval(() => {
 		now = Date.now();
 	}, 1000);
@@ -108,6 +182,86 @@ function formatJoinedAt(value: string | null): string {
 		month: "short",
 		year: "numeric",
 	}).format(date)}`;
+}
+
+function canKick(
+	bucket: ServerBucket,
+	row: DiscordDoctorServerMember,
+): boolean {
+	return bucket !== "linkedActive" && row.kickable && !row.protected;
+}
+
+function bulkActionLabel(bucket: ServerBucket): string | null {
+	switch (bucket) {
+		case "linkedInactive":
+			return "Kick all inactive";
+		case "unrecognized":
+			return "Kick all unrecognized";
+		case "linkedActive":
+		case "pendingLink":
+			return null;
+	}
+}
+
+function startSingleKick(bucket: ServerBucket, row: DiscordDoctorServerMember) {
+	if (!canKick(bucket, row)) return;
+	kickReview = { bucket, targets: [row], skipped: [] };
+	kickNote = "";
+	kickDialogOpen = true;
+}
+
+function startBulkKick(
+	bucket: ServerBucket,
+	rows: DiscordDoctorServerMember[],
+) {
+	if (!bulkActionLabel(bucket)) return;
+	const targets = rows.filter((row) => canKick(bucket, row));
+	if (targets.length === 0) return;
+	kickReview = {
+		bucket,
+		targets,
+		skipped: rows.filter((row) => !canKick(bucket, row)),
+	};
+	kickNote = "";
+	kickDialogOpen = true;
+}
+
+function updateKickDialog(open: boolean) {
+	if (!open && kickMutation.isPending) return;
+	kickDialogOpen = open;
+	if (!open) {
+		kickReview = null;
+		kickNote = "";
+	}
+}
+
+function submitKick() {
+	if (!kickReview || kickReview.targets.length === 0 || !adminName) return;
+	const note = kickNote.trim();
+	const body: DiscordDoctorKickRequest = {
+		discordUserIds: kickReview.targets.map((row) => row.discordUserId),
+	};
+	if (note) body.note = note;
+	kickMutation.mutate({ body });
+}
+
+function skipReason(row: DiscordDoctorServerMember): string {
+	if (row.protected) return "Protected member";
+	if (row.membershipStatus === "paused") return "Paused member";
+	return "Not eligible for removal";
+}
+
+function outcomeStyle(outcome: DiscordDoctorKickResult["outcome"]): string {
+	switch (outcome) {
+		case "kicked":
+			return "border-primary/30 bg-primary/10 text-primary";
+		case "already_left":
+			return "border-primary/25 bg-primary/5 text-foreground";
+		case "refused":
+			return "border-secondary bg-secondary/20 text-foreground";
+		case "failed":
+			return "border-destructive/30 bg-destructive/10 text-destructive";
+	}
 }
 
 async function refreshMembers() {
@@ -246,6 +400,50 @@ async function refreshMembers() {
 			</section>
 		{:else if report}
 			{#if view === "server"}
+				{#if latestKickRows.length > 0}
+					<section
+						class="mb-4 rounded-2xl border border-border bg-card p-4 shadow-[4px_4px_0_hsl(var(--secondary)/0.25)] sm:p-5"
+						aria-live="polite"
+						aria-labelledby="latest-kick-results-title"
+					>
+						<h2
+							id="latest-kick-results-title"
+							class="font-heading text-lg text-foreground"
+						>
+							Latest kick results
+						</h2>
+						<div class="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+							{#each latestKickRows as row (row.discordUserId)}
+								{@const outcome = kickResults[row.discordUserId]}
+								{#if outcome}
+									<div
+										class="flex items-start justify-between gap-3 rounded-xl border border-border bg-muted/20 p-3"
+									>
+										<div class="min-w-0">
+											<p class="truncate font-semibold text-foreground">
+												{row.displayName}
+											</p>
+											<p class="truncate text-xs text-muted-foreground">
+												@{row.username}
+											</p>
+											{#if outcome.reason || outcome.error}
+												<p class="mt-1 text-xs text-muted-foreground">
+													{outcome.reason ?? outcome.error}
+												</p>
+											{/if}
+										</div>
+										<Badge
+											variant="outline"
+											class={outcomeStyle(outcome.outcome)}
+										>
+											{outcomeLabels[outcome.outcome]}
+										</Badge>
+									</div>
+								{/if}
+							{/each}
+						</div>
+					</section>
+				{/if}
 				<Tabs.Root bind:value={selectedBucket}>
 					<Tabs.List
 						class="h-auto w-full flex-wrap justify-start gap-1 bg-muted/60 p-1.5"
@@ -269,13 +467,27 @@ async function refreshMembers() {
 							<section
 								class="overflow-hidden rounded-2xl border border-border bg-card shadow-[4px_4px_0_hsl(var(--secondary)/0.35)]"
 							>
-								<header class="border-b border-border bg-muted/20 p-4 sm:p-5">
-									<h2 class="font-heading text-xl text-foreground">
-										{bucket.label}
-									</h2>
-									<p class="mt-1 text-sm leading-6 text-muted-foreground">
-										{bucket.blurb}
-									</p>
+								<header
+									class="flex flex-col gap-4 border-b border-border bg-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5"
+								>
+									<div>
+										<h2 class="font-heading text-xl text-foreground">
+											{bucket.label}
+										</h2>
+										<p class="mt-1 text-sm leading-6 text-muted-foreground">
+											{bucket.blurb}
+										</p>
+									</div>
+									{#if bulkActionLabel(bucket.key) && rows.some( (row) => canKick(bucket.key, row) )}
+										<Button
+											variant="destructive"
+											class="min-h-11 self-start sm:self-center"
+											onclick={() => startBulkKick(bucket.key, rows)}
+										>
+											<UserMinus aria-hidden="true" />
+											{bulkActionLabel(bucket.key)}
+										</Button>
+									{/if}
 								</header>
 
 								{#if rows.length === 0}
@@ -283,103 +495,146 @@ async function refreshMembers() {
 										Nothing in this bucket.
 									</p>
 								{:else}
-									<Table.Root class="min-w-[46rem]">
-										<Table.Caption class="sr-only">
-											{bucket.label} Discord server accounts
-										</Table.Caption>
-										<Table.Header>
-											<Table.Row>
-												<Table.Head>Server account</Table.Head>
-												<Table.Head>Member match</Table.Head>
-												<Table.Head>Membership</Table.Head>
-												<Table.Head>Status</Table.Head>
-											</Table.Row>
-										</Table.Header>
-										<Table.Body>
-											{#each rows as row (row.discordUserId)}
+									<div class="overflow-x-auto">
+										<Table.Root class="min-w-[54rem]">
+											<Table.Caption class="sr-only">
+												{bucket.label} Discord server accounts
+											</Table.Caption>
+											<Table.Header>
 												<Table.Row>
-													<Table.Cell class="p-4 sm:p-5">
-														<div class="flex min-w-0 items-center gap-3">
-															<div
-																class="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 font-heading text-sm text-primary"
-																aria-hidden="true"
-															>
-																{row.displayName.slice(0, 2).toUpperCase()}
-															</div>
-															<div class="min-w-0">
-																<p class="font-semibold text-foreground">
-																	<span>{row.displayName}</span>
-																	<span
-																		class="ml-1 font-normal text-muted-foreground"
-																		>@{row.username}</span
-																	>
-																</p>
-																<p class="text-xs text-muted-foreground">
-																	{formatJoinedAt(row.joinedAt)}
-																</p>
-															</div>
-														</div>
-													</Table.Cell>
-													<Table.Cell class="p-4 sm:p-5">
-														{#if row.member}
-															<p class="font-medium text-foreground">
-																{fullName(row.member)}
-															</p>
-															{#if bucket.key === "pendingLink"}
-																<p
-																	class="mt-1 max-w-xs whitespace-normal text-xs text-destructive"
-																>
-																	Unconfirmed match — verify on Discord first.
-																</p>
-															{:else}
-																<p class="text-xs text-muted-foreground">
-																	Proven link
-																</p>
-															{/if}
-														{:else}
-															<span class="text-sm text-muted-foreground"
-																>No member match</span
-															>
-														{/if}
-													</Table.Cell>
-													<Table.Cell class="p-4 sm:p-5">
-														{#if row.membershipStatus}
-															<Badge
-																variant="outline"
-																class={cn(
-																	"capitalize",
-																	membershipStyles[row.membershipStatus],
-																)}
-															>
-																{row.membershipStatus}
-															</Badge>
-														{:else}
-															<span class="text-sm text-muted-foreground"
-																>Unknown</span
-															>
-														{/if}
-													</Table.Cell>
-													<Table.Cell class="p-4 sm:p-5">
-														{#if row.protected}
-															<Badge
-																variant="outline"
-																class="border-primary/40 bg-primary/10 font-semibold text-primary"
-															>
-																<ShieldCheck aria-hidden="true" />
-																Protected
-															</Badge>
-														{:else if bucket.key === "pendingLink"}
-															<Badge variant="secondary">Unproven match</Badge>
-														{:else}
-															<span class="text-sm text-muted-foreground"
-																>Review</span
-															>
-														{/if}
-													</Table.Cell>
+													<Table.Head>Server account</Table.Head>
+													<Table.Head>Member match</Table.Head>
+													<Table.Head>Membership</Table.Head>
+													<Table.Head>Status</Table.Head>
+													<Table.Head class="text-right">Actions</Table.Head>
 												</Table.Row>
-											{/each}
-										</Table.Body>
-									</Table.Root>
+											</Table.Header>
+											<Table.Body>
+												{#each rows as row (row.discordUserId)}
+													{@const outcome = kickResults[row.discordUserId]}
+													<Table.Row>
+														<Table.Cell class="p-4 sm:p-5">
+															<div class="flex min-w-0 items-center gap-3">
+																<div
+																	class="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 font-heading text-sm text-primary"
+																	aria-hidden="true"
+																>
+																	{row.displayName.slice(0, 2).toUpperCase()}
+																</div>
+																<div class="min-w-0">
+																	<p class="font-semibold text-foreground">
+																		<span>{row.displayName}</span>
+																		<span
+																			class="ml-1 font-normal text-muted-foreground"
+																			>@{row.username}</span
+																		>
+																	</p>
+																	<p class="text-xs text-muted-foreground">
+																		{formatJoinedAt(row.joinedAt)}
+																	</p>
+																</div>
+															</div>
+														</Table.Cell>
+														<Table.Cell class="p-4 sm:p-5">
+															{#if row.member}
+																<p class="font-medium text-foreground">
+																	{fullName(row.member)}
+																</p>
+																{#if bucket.key === "pendingLink"}
+																	<p
+																		class="mt-1 max-w-xs whitespace-normal text-xs text-destructive"
+																	>
+																		Unconfirmed match — verify on Discord first.
+																	</p>
+																{:else}
+																	<p class="text-xs text-muted-foreground">
+																		Proven link
+																	</p>
+																{/if}
+															{:else}
+																<span class="text-sm text-muted-foreground"
+																	>No member match</span
+																>
+															{/if}
+														</Table.Cell>
+														<Table.Cell class="p-4 sm:p-5">
+															{#if row.membershipStatus}
+																<Badge
+																	variant="outline"
+																	class={cn(
+																		"capitalize",
+																		membershipStyles[row.membershipStatus],
+																	)}
+																>
+																	{row.membershipStatus}
+																</Badge>
+															{:else}
+																<span class="text-sm text-muted-foreground"
+																	>Unknown</span
+																>
+															{/if}
+														</Table.Cell>
+														<Table.Cell class="p-4 sm:p-5">
+															<div class="flex flex-col items-start gap-2">
+																{#if outcome}
+																	<Badge
+																		variant="outline"
+																		class={outcomeStyle(outcome.outcome)}
+																	>
+																		{outcomeLabels[outcome.outcome]}
+																	</Badge>
+																	{#if outcome.reason || outcome.error}
+																		<p
+																			class="max-w-48 whitespace-normal text-xs text-muted-foreground"
+																		>
+																			{outcome.reason ?? outcome.error}
+																		</p>
+																	{/if}
+																{/if}
+																{#if row.protected}
+																	<Badge
+																		variant="outline"
+																		class="border-primary/40 bg-primary/10 font-semibold text-primary"
+																	>
+																		<ShieldCheck aria-hidden="true" />
+																		Protected
+																	</Badge>
+																{:else if bucket.key === "pendingLink"}
+																	<Badge variant="secondary"
+																		>Unproven match</Badge
+																	>
+																{:else if !outcome}
+																	<span class="text-sm text-muted-foreground"
+																		>Review</span
+																	>
+																{/if}
+															</div>
+														</Table.Cell>
+														<Table.Cell class="p-4 text-right sm:p-5">
+															{#if canKick(bucket.key, row)}
+																<Button
+																	variant="destructive"
+																	size="sm"
+																	class="min-h-11"
+																	aria-label={`Kick ${row.displayName}`}
+																	disabled={kickMutation.isPending}
+																	onclick={() =>
+																		startSingleKick(bucket.key, row)}
+																>
+																	<UserMinus aria-hidden="true" />
+																	Kick
+																</Button>
+															{:else}
+																<span class="text-sm text-muted-foreground"
+																	>No action</span
+																>
+															{/if}
+														</Table.Cell>
+													</Table.Row>
+												{/each}
+											</Table.Body>
+										</Table.Root>
+									</div>
 								{/if}
 							</section>
 						</Tabs.Content>
@@ -464,3 +719,143 @@ async function refreshMembers() {
 		{/if}
 	</div>
 </div>
+
+<AlertDialog.Root open={kickDialogOpen} onOpenChange={updateKickDialog}>
+	{#if kickReview}
+		<AlertDialog.Content
+			class="max-h-[calc(100svh-2rem)] overflow-y-auto rounded-2xl border-border/80 sm:max-w-2xl"
+		>
+			<AlertDialog.Header>
+				<div
+					class="mb-1 flex size-11 items-center justify-center rounded-xl bg-destructive/10 text-destructive"
+					aria-hidden="true"
+				>
+					<UserMinus class="size-5" />
+				</div>
+				<AlertDialog.Title>
+					Kick {kickReview.targets.length}
+					{kickReview.targets.length === 1 ? "account" : "accounts"} from the server?
+				</AlertDialog.Title>
+				<AlertDialog.Description class="leading-6">
+					Kicks run immediately and are logged to the Discord audit log only —
+					there is no record in this system. Review every account before
+					continuing.
+				</AlertDialog.Description>
+			</AlertDialog.Header>
+
+			{#if kickReview.bucket === "pendingLink"}
+				<div
+					class="flex gap-3 rounded-xl border border-secondary bg-secondary/15 p-4 text-sm"
+				>
+					<AlertTriangle
+						aria-hidden="true"
+						class="mt-0.5 size-5 shrink-0 text-foreground"
+					/>
+					<div>
+						<p class="font-bold text-foreground">
+							Unconfirmed match — verify on Discord first…
+						</p>
+						<p class="mt-1 leading-6 text-muted-foreground">
+							This assignment has not been confirmed by the member. Pending
+							links can only be reviewed one at a time.
+						</p>
+					</div>
+				</div>
+			{/if}
+
+			<div class="grid gap-4 sm:grid-cols-2">
+				<section
+					class="rounded-xl border border-destructive/25 bg-destructive/5 p-4"
+				>
+					<h3 class="text-sm font-bold text-foreground">
+						Will be kicked ({kickReview.targets.length})
+					</h3>
+					<ul class="mt-3 space-y-2">
+						{#each kickReview.targets as row (row.discordUserId)}
+							<li class="rounded-lg border border-border bg-background p-3">
+								<p class="font-semibold text-foreground">{row.displayName}</p>
+								<p class="text-xs text-muted-foreground">@{row.username}</p>
+								{#if row.member}
+									<p class="mt-1 text-xs text-muted-foreground">
+										Member match: {fullName(row.member)}
+									</p>
+								{/if}
+							</li>
+						{/each}
+					</ul>
+				</section>
+
+				<section class="rounded-xl border border-border bg-muted/20 p-4">
+					<h3 class="text-sm font-bold text-foreground">
+						Skipped — will not be kicked ({kickReview.skipped.length})
+					</h3>
+					{#if kickReview.skipped.length === 0}
+						<p class="mt-3 text-sm text-muted-foreground">
+							No accounts will be skipped.
+						</p>
+					{:else}
+						<ul class="mt-3 space-y-2">
+							{#each kickReview.skipped as row (row.discordUserId)}
+								<li class="rounded-lg border border-border bg-background p-3">
+									<div class="flex items-start justify-between gap-3">
+										<div>
+											<p class="font-semibold text-foreground">
+												{row.displayName}
+											</p>
+											<p class="text-xs text-muted-foreground">
+												@{row.username}
+											</p>
+										</div>
+										<Badge variant="outline">{skipReason(row)}</Badge>
+									</div>
+								</li>
+							{/each}
+						</ul>
+					{/if}
+				</section>
+			</div>
+
+			<div class="space-y-4 rounded-xl border border-border bg-muted/20 p-4">
+				<div>
+					<p class="text-sm font-bold text-foreground">Discord audit reason</p>
+					<code
+						class="mt-2 block break-words rounded-lg border border-border bg-background px-3 py-2 font-mono text-xs leading-5 text-foreground"
+						aria-live="polite"
+					>
+						{auditReasonPreview}
+					</code>
+				</div>
+				<div class="space-y-2">
+					<Label for="discord-kick-note">Audit note (optional)</Label>
+					<Textarea
+						id="discord-kick-note"
+						bind:value={kickNote}
+						rows={2}
+						placeholder="Add context for the Discord audit log"
+						disabled={kickMutation.isPending}
+					/>
+				</div>
+			</div>
+
+			<AlertDialog.Footer>
+				<AlertDialog.Cancel disabled={kickMutation.isPending}>
+					Cancel
+				</AlertDialog.Cancel>
+				<Button
+					variant="destructive"
+					disabled={kickMutation.isPending || !adminName}
+					onclick={submitKick}
+				>
+					{#if kickMutation.isPending}
+						<Loader2 aria-hidden="true" class="animate-spin" />
+						Kicking…
+					{:else}
+						<UserMinus aria-hidden="true" />
+						Kick {kickReview.targets.length}
+						{kickReview.targets.length === 1 ? "account" : "accounts"}
+					{/if}
+				</Button>
+			</AlertDialog.Footer>
+		</AlertDialog.Content>
+	{/if}
+</AlertDialog.Root>
