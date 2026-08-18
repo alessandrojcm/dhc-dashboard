@@ -13,7 +13,7 @@ import {
 	CalendarDays,
 	ChevronRight,
 	GraduationCap,
-	Home,
+	House,
 	Menu,
 	Stethoscope,
 	Swords,
@@ -62,7 +62,7 @@ const navIcons = {
 	Workshops: CalendarDays,
 	"My Workshops": Swords,
 	Inventory: Boxes,
-	Overview: Home,
+	Overview: House,
 	Containers: Boxes,
 	Categories: Boxes,
 	Items: Swords,
@@ -124,7 +124,7 @@ function isActive(url: string) {
 								onclick={toggleSidebar}
 								aria-current={isActive("/dashboard") ? "page" : undefined}
 							>
-								<Home /><span>Home</span>
+								<House /><span>Home</span>
 							</a>
 						{/snippet}
 					</Sidebar.MenuButton>

@@ -11,9 +11,9 @@ import {
 	Users,
 	MapPin,
 	Copy,
-	Loader2,
-	AlertTriangle,
-	CheckCircle,
+	LoaderCircle,
+	TriangleAlert,
+	CircleCheckBig,
 	Pencil,
 	X,
 } from "@lucide/svelte";
@@ -378,13 +378,13 @@ const hasEditAction = $derived(!!event.handleEdit);
 						class="min-h-11 w-full shrink-0 bg-background sm:w-auto"
 					>
 						{#if isCopyingLink}
-							<Loader2 class="animate-spin" />
+							<LoaderCircle class="animate-spin" />
 							Copying…
 						{:else if hasCopiedLink}
-							<CheckCircle />
+							<CircleCheckBig />
 							Copied
 						{:else if hasCopyError}
-							<AlertTriangle />
+							<TriangleAlert />
 							Couldn’t copy
 						{:else}
 							<Copy />
@@ -446,9 +446,9 @@ const hasEditAction = $derived(!!event.handleEdit);
 					class="min-h-11 w-full sm:w-auto"
 				>
 					{#if publishMutation.isPending}
-						<Loader2 class="animate-spin" />
+						<LoaderCircle class="animate-spin" />
 					{:else}
-						<CheckCircle />
+						<CircleCheckBig />
 					{/if}
 					Publish workshop
 				</Button>
@@ -499,9 +499,9 @@ const hasEditAction = $derived(!!event.handleEdit);
 							disabled={cancelMutation.isPending}
 						>
 							{#if cancelMutation.isPending}
-								<Loader2 class="animate-spin" />
+								<LoaderCircle class="animate-spin" />
 							{:else}
-								<AlertTriangle />
+								<TriangleAlert />
 							{/if}
 							Cancel workshop
 						</Popover.Trigger>
@@ -528,7 +528,7 @@ const hasEditAction = $derived(!!event.handleEdit);
 										}}
 										disabled={cancelMutation.isPending}
 									>
-										{#if cancelMutation.isPending}<Loader2
+										{#if cancelMutation.isPending}<LoaderCircle
 												class="animate-spin"
 											/>{/if}
 										Cancel workshop
@@ -544,9 +544,9 @@ const hasEditAction = $derived(!!event.handleEdit);
 							disabled={deleteMutation.isPending}
 						>
 							{#if deleteMutation.isPending}
-								<Loader2 class="animate-spin" />
+								<LoaderCircle class="animate-spin" />
 							{:else}
-								<AlertTriangle />
+								<TriangleAlert />
 							{/if}
 							Delete workshop
 						</Popover.Trigger>
@@ -573,7 +573,7 @@ const hasEditAction = $derived(!!event.handleEdit);
 										}}
 										disabled={deleteMutation.isPending}
 									>
-										{#if deleteMutation.isPending}<Loader2
+										{#if deleteMutation.isPending}<LoaderCircle
 												class="animate-spin"
 											/>{/if}
 										Delete workshop

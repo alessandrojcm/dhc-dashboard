@@ -1,7 +1,7 @@
 <script lang="ts">
 import { membersAnalyticsOptions } from "@dhc/api-client";
 import { createQuery } from "@tanstack/svelte-query";
-import { BarChart3, CalendarDays, Swords, Users } from "@lucide/svelte";
+import { ChartColumn, CalendarDays, Swords, Users } from "@lucide/svelte";
 import * as Card from "$lib/components/ui/card/index.js";
 import { Skeleton } from "$lib/components/ui/skeleton/index.js";
 import {
@@ -175,7 +175,7 @@ const mostPopularWeapon = $derived(weaponDistribution[0]);
 						<span
 							class="grid size-9 shrink-0 place-items-center rounded-lg bg-accent/10 text-accent"
 						>
-							<BarChart3 class="size-4" aria-hidden="true" />
+							<ChartColumn class="size-4" aria-hidden="true" />
 						</span>
 					</div>
 					{#if analyticsQuery.isLoading}

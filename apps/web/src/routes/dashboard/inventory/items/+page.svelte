@@ -18,8 +18,8 @@ import {
 	Package,
 	Plus,
 	Search,
-	Filter,
-	AlertTriangle,
+	Funnel,
+	TriangleAlert,
 	FolderOpen,
 	Tags,
 } from "@lucide/svelte";
@@ -145,7 +145,7 @@ const hasActiveFilters = $derived(
 	<Card class="mb-6">
 		<CardHeader>
 			<CardTitle class="flex items-center gap-2">
-				<Filter class="h-5 w-5" />
+				<Funnel class="h-5 w-5" />
 				Filters
 			</CardTitle>
 		</CardHeader>
@@ -245,7 +245,7 @@ const hasActiveFilters = $derived(
 	{:else if itemsQuery.isError}
 		<Card>
 			<CardContent class="flex flex-col items-center justify-center py-12">
-				<AlertTriangle class="h-12 w-12 text-destructive mb-4" />
+				<TriangleAlert class="h-12 w-12 text-destructive mb-4" />
 				<h3 class="text-lg font-semibold mb-2">Error loading items</h3>
 				<p class="text-muted-foreground mb-4">
 					{itemsQuery.error.errors?.detail || "Failed to load items"}
@@ -312,7 +312,7 @@ const hasActiveFilters = $derived(
 												variant="destructive"
 												class="text-xs flex items-center gap-1"
 											>
-												<AlertTriangle class="h-3 w-3" />
+								<TriangleAlert class="h-3 w-3" />
 												Maintenance
 											</Badge>
 										{/if}

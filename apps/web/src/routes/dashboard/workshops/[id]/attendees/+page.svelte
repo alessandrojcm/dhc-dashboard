@@ -11,7 +11,7 @@ import {
 	type WorkshopSummary,
 } from "@dhc/api-client";
 import {
-	AlertTriangle,
+	TriangleAlert,
 	ArrowLeft,
 	CalendarDays,
 	Clock3,
@@ -103,7 +103,7 @@ function formatWorkshopDate(startDate?: string | null) {
 		</div>
 	{:else if attendeesQuery.error}
 		<Alert variant="destructive">
-			<AlertTriangle aria-hidden="true" />
+			<TriangleAlert aria-hidden="true" />
 			<AlertTitle>Attendance data could not be loaded</AlertTitle>
 			<AlertDescription>
 				Refresh the page to try again. If the problem continues, check the

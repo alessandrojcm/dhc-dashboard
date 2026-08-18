@@ -10,13 +10,13 @@ import {
 	workshopsUpdateAttendanceMutation,
 } from "@dhc/api-client";
 import {
-	AlertTriangle,
+	TriangleAlert,
 	Check,
 	CheckCheck,
-	CheckCircle,
+	CircleCheckBig,
 	Clock3,
 	DollarSign,
-	Loader2,
+	LoaderCircle,
 	Search,
 	User,
 	Users,
@@ -364,7 +364,7 @@ function markAttended(registrationIds: string[]) {
 						selectedAttendees.length === 0}
 				>
 					{#if markAttendedMutation.isPending}
-						<Loader2 aria-hidden="true" class="animate-spin" />
+						<LoaderCircle aria-hidden="true" class="animate-spin" />
 						Updating…
 					{:else}
 						<CheckCheck aria-hidden="true" />
@@ -432,7 +432,7 @@ function markAttended(registrationIds: string[]) {
 								aria-hidden="true"
 							>
 								{#if attendee.attendanceStatus === "attended"}
-									<CheckCircle class="size-5" />
+									<CircleCheckBig class="size-5" />
 								{:else}
 									<User class="size-5" />
 								{/if}
@@ -600,7 +600,7 @@ function markAttended(registrationIds: string[]) {
 				<div
 					class="flex gap-3 rounded-xl border border-primary/20 bg-primary/5 p-4 text-sm"
 				>
-					<CheckCircle
+					<CircleCheckBig
 						aria-hidden="true"
 						class="mt-0.5 size-5 shrink-0 text-primary"
 					/>
@@ -616,7 +616,7 @@ function markAttended(registrationIds: string[]) {
 				<div
 					class="flex gap-3 rounded-xl border border-secondary/50 bg-secondary/10 p-4 text-sm"
 				>
-					<AlertTriangle
+					<TriangleAlert
 						aria-hidden="true"
 						class="mt-0.5 size-5 shrink-0 text-foreground"
 					/>
@@ -640,7 +640,7 @@ function markAttended(registrationIds: string[]) {
 					onclick={confirmRefund}
 				>
 					{#if refundMutation.isPending}
-						<Loader2 aria-hidden="true" class="animate-spin" />
+							<LoaderCircle aria-hidden="true" class="animate-spin" />
 						Processing…
 					{:else if selectedRefundEligibility.isEligible}
 						<DollarSign aria-hidden="true" />

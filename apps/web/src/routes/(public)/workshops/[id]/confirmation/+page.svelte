@@ -2,7 +2,7 @@
 import { Alert, AlertTitle, AlertDescription } from "$lib/components/ui/alert";
 import { Button } from "$lib/components/ui/button";
 import * as Card from "$lib/components/ui/card";
-import { CheckCircle } from "@lucide/svelte";
+import { CircleCheckBig } from "@lucide/svelte";
 </script>
 
 <div class="container mx-auto px-4 py-8">
@@ -14,7 +14,7 @@ import { CheckCircle } from "@lucide/svelte";
 			</Card.Header>
 			<Card.Content>
 				<Alert class="border-green-200 bg-green-50">
-					<CheckCircle class="h-4 w-4 text-green-600" />
+					<CircleCheckBig class="h-4 w-4 text-green-600" />
 					<AlertTitle class="text-green-800">Registration successful</AlertTitle
 					>
 					<AlertDescription class="text-green-700">

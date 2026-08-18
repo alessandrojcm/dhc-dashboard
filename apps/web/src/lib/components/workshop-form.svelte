@@ -12,11 +12,11 @@ import {
 	BellRing,
 	CalendarDays,
 	Check,
-	CheckCircle,
+	CircleCheckBig,
 	Circle,
 	Clock3,
 	Euro,
-	Globe2,
+	Earth,
 	Mail,
 	MapPin,
 	Megaphone,
@@ -277,7 +277,7 @@ const successMessage = $derived(remoteForm.result?.success);
 	{#if successMessage}
 		<div role="status" aria-live="polite">
 			<Alert variant="default" class="border-green-200 bg-green-50">
-				<CheckCircle class="h-4 w-4 text-green-700" />
+				<CircleCheckBig class="h-4 w-4 text-green-700" />
 				<AlertDescription class="text-green-900">
 					{successMessage}
 				</AlertDescription>
@@ -651,7 +651,7 @@ const successMessage = $derived(remoteForm.result?.success);
 								class="flex size-10 shrink-0 items-center justify-center rounded-lg bg-background text-primary shadow-xs"
 							>
 								{#if isPublic}
-									<Globe2 aria-hidden="true" class="size-5" />
+									<Earth aria-hidden="true" class="size-5" />
 								{:else}
 									<ShieldCheck aria-hidden="true" class="size-5" />
 								{/if}
@@ -823,7 +823,7 @@ const successMessage = $derived(remoteForm.result?.success);
 					<div class="rounded-xl border border-border/80 p-3">
 						<div class="flex items-center gap-2">
 							{#if isPublic}
-								<Globe2 aria-hidden="true" class="size-4 text-primary" />
+								<Earth aria-hidden="true" class="size-4 text-primary" />
 								<span class="text-sm font-semibold">Public registration</span>
 							{:else}
 								<ShieldCheck aria-hidden="true" class="size-4 text-primary" />

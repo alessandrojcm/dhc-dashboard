@@ -10,7 +10,7 @@ import {
 } from "$lib/components/ui/popover";
 import { createMutation } from "@tanstack/svelte-query";
 import { toast } from "svelte-sonner";
-import { Sparkles, Loader2 } from "@lucide/svelte";
+import { Sparkles, LoaderCircle } from "@lucide/svelte";
 import { generateWorkshop } from "../../../routes/dashboard/my-workshops/generate.remote";
 
 let prompt = $state("");
@@ -113,7 +113,7 @@ function handleKeydown(event: KeyboardEvent) {
 							class="gap-2"
 						>
 							{#if generateWorkshopMutation.isPending}
-								<Loader2 aria-hidden="true" class="h-3 w-3 animate-spin" />
+								<LoaderCircle aria-hidden="true" class="h-3 w-3 animate-spin" />
 								Generating...
 							{:else}
 								<Sparkles aria-hidden="true" class="h-3 w-3" />

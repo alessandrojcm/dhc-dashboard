@@ -5,7 +5,7 @@ import {
 	ChevronUp,
 	ChevronDown,
 	SendIcon,
-	Edit,
+	SquarePen,
 	NotebookPen,
 	Trash2,
 } from "@lucide/svelte";
@@ -78,7 +78,7 @@ let value = $state(adminNotes);
 			<Label
 				>Admin notes
 				<Button variant="ghost" onclick={() => (isEdit = !isEdit)}>
-					<Edit class="h-4 w-4" />
+					<SquarePen class="h-4 w-4" />
 				</Button>
 			</Label>
 			{#if isEdit}
