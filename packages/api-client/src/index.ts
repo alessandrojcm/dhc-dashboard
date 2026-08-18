@@ -646,6 +646,9 @@ export type {
 // Valibot schemas (runtime validation)
 export {
 	vDiscordDoctorCacheMetadata,
+	vDiscordDoctorKickRequest,
+	vDiscordDoctorKickResponse,
+	vDiscordDoctorKickResult,
 	vDiscordDoctorMemberSummary,
 	vDiscordDoctorMissingMember,
 	vDiscordDoctorReport,
@@ -902,6 +905,8 @@ export {
 export {
 	healthIndexOptions,
 	healthIndexQueryKey,
+	discordDoctorKickMutation,
+	discordDoctorKickMutationKey,
 	discordDoctorReportOptions,
 	discordDoctorReportQueryKey,
 	authRequestMagicLinkMutation,
