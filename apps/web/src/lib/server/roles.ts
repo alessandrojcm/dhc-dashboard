@@ -24,6 +24,12 @@ export const SETTINGS_ROLES = new Set([
 	"admin",
 ]);
 
+export const DISCORD_DOCTOR_ROLES = new Set([
+	"admin",
+	"president",
+	"committee_coordinator",
+]);
+
 export const MEMBERS_ADMIN_ROLES = new Set([
 	"admin",
 	"president",

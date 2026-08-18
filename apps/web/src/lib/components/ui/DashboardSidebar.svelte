@@ -15,6 +15,7 @@ import {
 	GraduationCap,
 	Home,
 	Menu,
+	Stethoscope,
 	Swords,
 	UsersRound,
 } from "@lucide/svelte";
@@ -57,6 +58,7 @@ let customAnchor = $state<HTMLElement>(null!);
 const navIcons = {
 	"Beginners Workshop": GraduationCap,
 	Members: UsersRound,
+	"Discord Doctor": Stethoscope,
 	Workshops: CalendarDays,
 	"My Workshops": Swords,
 	Inventory: Boxes,

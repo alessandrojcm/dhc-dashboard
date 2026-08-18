@@ -1,4 +1,8 @@
-import { INVENTORY_ROLES, WORKSHOP_ROLES } from "$lib/server/roles";
+import {
+	DISCORD_DOCTOR_ROLES,
+	INVENTORY_ROLES,
+	WORKSHOP_ROLES,
+} from "$lib/server/roles";
 import type { NavData, NavigationGroup } from "$lib/types";
 
 const data: NavData = {
@@ -31,6 +35,11 @@ const data: NavData = {
 				"research_coordinator",
 				"coach",
 			]),
+		},
+		{
+			title: "Discord Doctor",
+			url: "/dashboard/discord-doctor",
+			role: DISCORD_DOCTOR_ROLES,
 		},
 		{
 			title: "Workshops",
