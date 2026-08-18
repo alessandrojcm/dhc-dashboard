@@ -7,6 +7,7 @@
 export {
 	healthIndex,
 	discordDoctorReport,
+	discordDoctorKick,
 	authRequestMagicLink,
 	authVerifyMagicLink,
 	authLinkDiscord,
@@ -96,6 +97,14 @@ export {
 export type {
 	ClientOptions,
 	DiscordDoctorCacheMetadata,
+	DiscordDoctorKickData,
+	DiscordDoctorKickError,
+	DiscordDoctorKickErrors,
+	DiscordDoctorKickRequest,
+	DiscordDoctorKickResponse,
+	DiscordDoctorKickResponse2,
+	DiscordDoctorKickResponses,
+	DiscordDoctorKickResult,
 	DiscordDoctorMemberSummary,
 	DiscordDoctorMissingMember,
 	DiscordDoctorReport,

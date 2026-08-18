@@ -7,8 +7,7 @@ defmodule Dhc.Discord do
 
   alias Dhc.Auth.ExternalIdentity
   alias Dhc.Auth.UserRole
-  alias Dhc.Discord.GuildMemberCache
-  alias Dhc.Discord.JoinGrant
+  alias Dhc.Discord.{ApiError, GuildMemberCache, JoinGrant}
   alias Dhc.Invitations.Invitation
   alias Dhc.Onboarding.InvitationAcceptanceAttempt
   alias Dhc.Onboarding.InvitationAcceptanceDiscordContinuation
@@ -50,6 +49,125 @@ defmodule Dhc.Discord do
            ) do
       {:ok, build_doctor_report(guild_members, fetched_at)}
     end
+  end
+
+  @spec doctor_kick([String.t()], Ecto.UUID.t(), String.t() | nil) ::
+          {:ok, [map()]} | {:error, term()}
+  def doctor_kick(user_ids, admin_principal_id, note) do
+    with {:ok, guild_members} <- list_guild_members(),
+         {:ok, admin_name} <- doctor_admin_name(admin_principal_id) do
+      members = doctor_members()
+      members_by_principal = Map.new(members, &{&1.principal_id, &1})
+      guild_members_by_id = Map.new(guild_members, &{&1.user_id, &1})
+
+      kick_context = %{
+        identities: Map.new(active_discord_identities(), &{&1.provider_subject, &1}),
+        assignments: Map.new(active_staged_assignments(), &{&1.provider_subject, &1}),
+        members: members_by_principal,
+        roles: roles_by_principal(),
+        admin_name: admin_name,
+        note: note,
+        multiple_targets?: match?([_, _ | _], user_ids)
+      }
+
+      results =
+        Enum.map(user_ids, fn user_id ->
+          guild_member = Map.get(guild_members_by_id, user_id)
+          kick_doctor_target(user_id, guild_member, kick_context)
+        end)
+
+      {:ok, results}
+    end
+  end
+
+  defp doctor_admin_name(principal_id) do
+    query =
+      from(profile in UserProfile,
+        where: profile.principal_id == ^principal_id,
+        select: {profile.first_name, profile.last_name}
+      )
+
+    case Repo.one(query) do
+      {first_name, last_name} -> {:ok, "#{first_name} #{last_name}"}
+      nil -> {:error, :admin_not_found}
+    end
+  end
+
+  defp kick_doctor_target(user_id, nil, _context) do
+    kick_result(user_id, :already_left)
+  end
+
+  defp kick_doctor_target(user_id, guild_member, context) do
+    row =
+      classify_guild_member(
+        guild_member,
+        context.identities,
+        context.assignments,
+        context.members,
+        context.roles
+      )
+
+    cond do
+      guild_member.bot ->
+        kick_result(user_id, :refused, reason: "bot account")
+
+      row.protected ->
+        kick_result(user_id, :refused, reason: "protected member")
+
+      row.membership_status == :paused ->
+        kick_result(user_id, :refused, reason: "paused member")
+
+      row.bucket == :linked_active ->
+        kick_result(user_id, :refused, reason: "active linked member")
+
+      row.bucket == :pending_link and context.multiple_targets? ->
+        kick_result(user_id, :refused, reason: "pending links can only be kicked one at a time")
+
+      row.bucket in [:linked_inactive, :pending_link, :unrecognized] ->
+        execute_doctor_kick(user_id, row.bucket, context.admin_name, context.note)
+    end
+  end
+
+  defp execute_doctor_kick(user_id, bucket, admin_name, note) do
+    reason = doctor_audit_reason(admin_name, bucket, note)
+
+    case kick_guild_member(user_id, reason) do
+      :ok ->
+        kick_result(user_id, :kicked)
+
+      {:error, %ApiError{status: 404}} ->
+        kick_result(user_id, :already_left)
+
+      {:error, %ApiError{message: message}} when is_binary(message) and message != "" ->
+        kick_result(user_id, :failed, error: message)
+
+      {:error, _error} ->
+        kick_result(user_id, :failed, error: "Discord request failed")
+    end
+  end
+
+  defp doctor_audit_reason(admin_name, bucket, note) do
+    base = "DHC Doctor — #{admin_name}: #{bucket}"
+
+    case note do
+      note when is_binary(note) ->
+        case String.trim(note) do
+          "" -> base
+          trimmed -> "#{base} — #{trimmed}"
+        end
+
+      _other ->
+        base
+    end
+  end
+
+  defp kick_result(user_id, outcome, options \\ []) do
+    %{
+      discord_user_id: user_id,
+      outcome: outcome,
+      reason: Keyword.get(options, :reason),
+      error: Keyword.get(options, :error)
+    }
   end
 
   defp build_doctor_report(guild_members, fetched_at) do
