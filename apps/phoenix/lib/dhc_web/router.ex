@@ -176,6 +176,7 @@ defmodule DhcWeb.Router do
     pipe_through [:api, :discord_doctor_admin_api]
 
     get "/discord-doctor/report", DiscordDoctorController, :report
+    post "/discord-doctor/kick", DiscordDoctorController, :kick
   end
 
   scope "/api", DhcWeb do

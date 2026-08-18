@@ -19,6 +19,22 @@ defmodule DhcWeb.DiscordDoctorJSON do
     }
   end
 
+  def render("kick.json", %{results: results}) do
+    %{
+      data: %{
+        results:
+          Enum.map(results, fn result ->
+            %{
+              discordUserId: result.discord_user_id,
+              outcome: result.outcome,
+              reason: result.reason,
+              error: result.error
+            }
+          end)
+      }
+    }
+  end
+
   defp server_member(row) do
     %{
       discordUserId: row.discord_user_id,

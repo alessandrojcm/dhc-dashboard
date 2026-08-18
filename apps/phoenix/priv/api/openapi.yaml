@@ -113,6 +113,57 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /discord-doctor/kick:
+    post:
+      operationId: discordDoctor.kick
+      tags:
+        - DiscordDoctor
+      summary: Kick reviewed Discord server accounts
+      description: |
+        Kicks the explicit Discord user ids after re-deriving each account's
+        current reconciliation bucket and enforcing every safety rule. Partial
+        failures are returned as per-row outcomes; this operation never bans an
+        account and does not create an application-side audit record.
+      security:
+        - cookieSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DiscordDoctorKickRequest"
+      responses:
+        "200":
+          description: Per-account kick outcomes.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiscordDoctorKickResponse"
+        "401":
+          description: Authentication required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Discord Doctor role required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Invalid kick request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: Discord member list could not be fetched.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /health:
     get:
       operationId: health.index
@@ -4993,6 +5044,50 @@ components:
         ttlSeconds:
           type: integer
           minimum: 1
+    DiscordDoctorKickRequest:
+      type: object
+      required: [discordUserIds]
+      additionalProperties: false
+      properties:
+        discordUserIds:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+        note:
+          type: string
+          description: Optional note appended to each generated Discord audit-log reason.
+    DiscordDoctorKickResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [results]
+          properties:
+            results:
+              type: array
+              items:
+                $ref: "#/components/schemas/DiscordDoctorKickResult"
+    DiscordDoctorKickResult:
+      type: object
+      required: [discordUserId, outcome, reason, error]
+      properties:
+        discordUserId:
+          type: string
+        outcome:
+          type: string
+          enum: [kicked, already_left, refused, failed]
+        reason:
+          type: string
+          nullable: true
+          description: Server-side safety reason when the outcome is refused.
+        error:
+          type: string
+          nullable: true
+          description: Safe Discord failure detail when the outcome is failed.
     MemberResponse:
       type: object
       required:
