@@ -96,6 +96,9 @@ function parseTrustedSetCookie(
 
 	const options: Omit<CookieOptions, "path"> = {
 		encode: (raw) => raw,
+		httpOnly: false,
+		sameSite: false,
+		secure: false,
 	};
 	let path: string | undefined;
 

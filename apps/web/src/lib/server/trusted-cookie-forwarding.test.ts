@@ -91,7 +91,7 @@ describe("trusted Phoenix cookie forwarding", () => {
 		const options = cookies.set.mock.calls[0][2];
 		expect(options).not.toHaveProperty("maxAge");
 		expect(options).not.toHaveProperty("expires");
-		expect(options).not.toHaveProperty("sameSite");
+		expect(options.sameSite).toBe(false);
 		expect(options).not.toHaveProperty("domain");
 	});
 
@@ -100,6 +100,26 @@ describe("trusted Phoenix cookie forwarding", () => {
 
 		expect(forwardTrustedResponseCookies(cookies, new Headers())).toEqual([]);
 		expect(cookies.set).not.toHaveBeenCalled();
+	});
+
+	it("does not replace omitted upstream attributes with SvelteKit defaults", () => {
+		const cookies = cookieWriter();
+		const headers = new Headers({
+			"set-cookie": "oauth_state=signed-value; Path=/",
+		});
+
+		expect(forwardTrustedResponseCookies(cookies, headers)).toEqual([
+			"oauth_state",
+		]);
+		expect(cookies.set).toHaveBeenCalledWith(
+			"oauth_state",
+			"signed-value",
+			expect.objectContaining({
+				httpOnly: false,
+				sameSite: false,
+				secure: false,
+			}),
+		);
 	});
 
 	it("forwards only the requested trusted cookie", () => {

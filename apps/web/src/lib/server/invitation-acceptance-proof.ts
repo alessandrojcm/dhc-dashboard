@@ -10,7 +10,7 @@ type ProofReader = {
 };
 
 type ProofWriter = Pick<Cookies, "set">;
-type ProofCookies = Pick<Cookies, "get" | "delete">;
+type ProofCookies = Pick<Cookies, "delete">;
 
 export function hasInvitationAcceptanceProof(cookies: ProofReader): boolean {
 	return Boolean(cookies.get(acceptanceProofCookie));

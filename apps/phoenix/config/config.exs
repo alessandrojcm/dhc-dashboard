@@ -20,6 +20,8 @@ config :dhc,
 config :dhc, :cors_allowed_origins, []
 config :dhc, :discord_oauth_strategy, Assent.Strategy.Discord
 config :dhc, :discord_adapter, Dhc.Discord.Adapter.Nostrum
+config :dhc, :auth_session_secure, true
+config :dhc, :auth_session_same_site, "Lax"
 
 config :dhc,
        :invitation_acceptance_discord_redirect_uri,

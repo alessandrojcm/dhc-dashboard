@@ -4,7 +4,6 @@ import {
 	onboardingSubmitPayment,
 	onboardingVerifyInvitationAcceptance,
 } from "@dhc/api-client";
-import { dev } from "$app/environment";
 import { error, isRedirect, redirect } from "@sveltejs/kit";
 import dayjs from "dayjs";
 import * as v from "valibot";
@@ -17,6 +16,7 @@ import {
 	invitationAcceptanceApiOptions,
 	relayInvitationAcceptanceProof,
 } from "$lib/server/invitation-acceptance-proof";
+import { completeInvitationAcceptance } from "$lib/server/post-acceptance-sign-in-handoff";
 import logger from "$lib/server/services/shared/logger";
 import { apiErrorDetail } from "$lib/server/api-error";
 
@@ -195,22 +195,11 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 			throw error(409, "Invitation acceptance failed");
 		}
 
-		if (acceptance.data?.data.invitationEmail) {
-			event.cookies.set(
-				"invitation-sign-in-prefill",
-				acceptance.data.data.invitationEmail,
-				{
-					path: "/auth",
-					httpOnly: true,
-					secure: !dev,
-					sameSite: "lax",
-					maxAge: 10 * 60,
-				},
-			);
-		}
-
-		clearInvitationAcceptanceProof(event.cookies);
-		throw redirect(303, `/members/signup/${invitationId}/success`);
+		completeInvitationAcceptance(
+			event.cookies,
+			acceptance.data?.data.invitationEmail,
+			invitationId,
+		);
 	} catch (err) {
 		if (isRedirect(err)) {
 			throw err;
