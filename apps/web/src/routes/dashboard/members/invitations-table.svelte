@@ -24,7 +24,7 @@ import {
 	Trash2,
 	X,
 } from "@lucide/svelte";
-import { SvelteSet, SvelteURLSearchParams } from "svelte/reactivity";
+import { SvelteSet } from "svelte/reactivity";
 import { toast } from "svelte-sonner";
 import { goto } from "$app/navigation";
 import { page } from "$app/state";
@@ -35,12 +35,18 @@ import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
 import * as Select from "$lib/components/ui/select";
 import * as Table from "$lib/components/ui/table/index.js";
 import SortHeader from "$lib/components/ui/table/sort-header.svelte";
+import {
+	isPageSize,
+	PAGE_SIZE_OPTIONS,
+	parsePageSize,
+	transitionCursorQuery,
+} from "$lib/cursor-query";
 import { cn } from "$lib/utils";
 import { getInvitationLink } from "$lib/utils/invitation";
 import InvitationActions from "./invitation-actions.svelte";
 import InvitationSelectionCheckbox from "./invitation-selection-checkbox.svelte";
 
-const pageSizeOptions = [10, 25, 50, 100] as const;
+const pageSizeOptions = PAGE_SIZE_OPTIONS;
 const invitationSortFields = [
 	"email",
 	"status",
@@ -84,10 +90,6 @@ const invitationSortMap = {
 	created_at: "createdAt",
 } satisfies Record<InvitationTableSortField, InvitationListSortField>;
 
-function isPageSize(value: number): value is (typeof pageSizeOptions)[number] {
-	return pageSizeOptions.some((option) => option === value);
-}
-
 function isInvitationSortField(
 	value: string | null | undefined,
 ): value is InvitationTableSortField {
@@ -107,11 +109,9 @@ function navigateToInvitations(
 	});
 }
 
-const pageSize = $derived.by(() => {
-	const requestedPageSize =
-		Number(page.url.searchParams.get("invitePageSize")) || 10;
-	return isPageSize(requestedPageSize) ? requestedPageSize : 10;
-});
+const pageSize = $derived(
+	parsePageSize(page.url.searchParams, "invitePageSize"),
+);
 const searchQuery = $derived(page.url.searchParams.get("inviteQ") || "");
 const cursor = $derived(page.url.searchParams.get("inviteCursor"));
 const activeSort = $derived.by(() => {
@@ -200,17 +200,20 @@ function setAllInvitationsSelected(selected: boolean) {
 function onPaginationChange(newPageSize: number) {
 	if (!isPageSize(newPageSize)) return;
 	clearSelection();
-	const newParams = new SvelteURLSearchParams(page.url.searchParams);
-	newParams.set("invitePageSize", newPageSize.toString());
-	newParams.delete("inviteCursor");
+	const newParams = transitionCursorQuery(page.url.searchParams, {
+		cursorKey: "inviteCursor",
+		updates: { invitePageSize: newPageSize.toString() },
+	});
 	navigateToInvitations(newParams, { replaceState: true });
 }
 
 function onCursorChange(newCursor: string | null | undefined) {
 	if (!newCursor) return;
 	clearSelection();
-	const newParams = new SvelteURLSearchParams(page.url.searchParams);
-	newParams.set("inviteCursor", newCursor);
+	const newParams = transitionCursorQuery(page.url.searchParams, {
+		cursorKey: "inviteCursor",
+		cursor: newCursor,
+	});
 	navigateToInvitations(newParams);
 }
 
@@ -219,10 +222,10 @@ function onSortingChange(
 	direction: SortDirection,
 ) {
 	clearSelection();
-	const newParams = new SvelteURLSearchParams(page.url.searchParams);
-	newParams.set("inviteSort", sort);
-	newParams.set("inviteDirection", direction);
-	newParams.delete("inviteCursor");
+	const newParams = transitionCursorQuery(page.url.searchParams, {
+		cursorKey: "inviteCursor",
+		updates: { inviteSort: sort, inviteDirection: direction },
+	});
 	navigateToInvitations(newParams, { replaceState: true });
 }
 
@@ -241,10 +244,10 @@ function sortDirectionFor(
 function onSearchChange(newSearch: string) {
 	clearSelection();
 	const normalizedSearch = newSearch.trim();
-	const newParams = new SvelteURLSearchParams(page.url.searchParams);
-	if (normalizedSearch) newParams.set("inviteQ", normalizedSearch);
-	else newParams.delete("inviteQ");
-	newParams.delete("inviteCursor");
+	const newParams = transitionCursorQuery(page.url.searchParams, {
+		cursorKey: "inviteCursor",
+		updates: { inviteQ: normalizedSearch || null },
+	});
 	navigateToInvitations(newParams, { replaceState: true });
 }
 
