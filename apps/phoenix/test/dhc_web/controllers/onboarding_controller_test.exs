@@ -123,6 +123,8 @@ defmodule DhcWeb.OnboardingControllerTest do
              "state" => "test-state"
            }
 
+    assert %{same_site: "Lax", secure: false} = oauth.resp_cookies["_dhc_key"]
+
     assert get_session(oauth, :discord_oauth_flow).purpose ==
              {:invitation_acceptance, continuation_id}
 
