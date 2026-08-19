@@ -20,7 +20,6 @@ import {
 	Users,
 	X,
 } from "@lucide/svelte";
-import { SvelteURLSearchParams } from "svelte/reactivity";
 import { goto } from "$app/navigation";
 import { page } from "$app/state";
 import { Button } from "$lib/components/ui/button";
@@ -34,6 +33,11 @@ import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
 import * as Select from "$lib/components/ui/select";
 import * as Table from "$lib/components/ui/table/index.js";
 import SortHeader from "$lib/components/ui/table/sort-header.svelte";
+import {
+	PAGE_SIZE_OPTIONS,
+	parsePageSize,
+	transitionCursorQuery,
+} from "$lib/cursor-query";
 import { cn } from "$lib/utils";
 import MemberActions from "./member-actions.svelte";
 import MemberDateCell from "./member-date-cell.svelte";
@@ -60,7 +64,7 @@ type MemberTablePage = {
 	previousCursor: string | null;
 };
 
-const pageSizeOptions = [10, 25, 50, 100] as const;
+const pageSizeOptions = PAGE_SIZE_OPTIONS;
 const statusOptions = ["active", "paused", "inactive"] as const;
 
 const memberSortFields = [
@@ -102,20 +106,13 @@ function navigateToMembers(
 	});
 }
 
-function isPageSize(value: number): value is (typeof pageSizeOptions)[number] {
-	return pageSizeOptions.some((option) => option === value);
-}
-
 function isMemberSortField(
 	value: string | null,
 ): value is MemberTableSortField {
 	return memberSortFields.some((field) => field === value);
 }
 
-const pageSize = $derived.by(() => {
-	const requestedPageSize = Number(page.url.searchParams.get("pageSize")) || 10;
-	return isPageSize(requestedPageSize) ? requestedPageSize : 10;
-});
+const pageSize = $derived(parsePageSize(page.url.searchParams, "pageSize"));
 const searchQuery = $derived(page.url.searchParams.get("q") || "");
 const cursor = $derived(page.url.searchParams.get("cursor"));
 const membershipStatusFilter = $derived.by(() => {
@@ -224,38 +221,41 @@ const membersQuery = createQuery(() => ({
 }));
 
 function onPaginationChange(newPageSize: number) {
-	const newParams = new SvelteURLSearchParams(page.url.searchParams);
-	newParams.set("pageSize", newPageSize.toString());
-	newParams.delete("cursor");
+	const newParams = transitionCursorQuery(page.url.searchParams, {
+		cursorKey: "cursor",
+		updates: { pageSize: newPageSize.toString() },
+	});
 	navigateToMembers(newParams, { replaceState: true });
 }
 
 function onCursorChange(newCursor: string | null | undefined) {
 	if (!newCursor) return;
-	const newParams = new SvelteURLSearchParams(page.url.searchParams);
-	newParams.set("cursor", newCursor);
+	const newParams = transitionCursorQuery(page.url.searchParams, {
+		cursorKey: "cursor",
+		cursor: newCursor,
+	});
 	navigateToMembers(newParams);
 }
 
 function onSortingChange(newSorting: SortingState) {
 	const [nextSorting] = newSorting;
 	if (!nextSorting) return;
-	const newParams = new SvelteURLSearchParams(page.url.searchParams);
-	newParams.set("sort", nextSorting.id);
-	newParams.set("direction", nextSorting.desc ? "desc" : "asc");
-	newParams.delete("cursor");
+	const newParams = transitionCursorQuery(page.url.searchParams, {
+		cursorKey: "cursor",
+		updates: {
+			sort: nextSorting.id,
+			direction: nextSorting.desc ? "desc" : "asc",
+		},
+	});
 	navigateToMembers(newParams, { replaceState: true });
 }
 
 function onSearchChange(newSearch: string) {
 	const normalizedSearch = newSearch.trim();
-	const newParams = new SvelteURLSearchParams(page.url.searchParams);
-	if (normalizedSearch) {
-		newParams.set("q", normalizedSearch);
-	} else {
-		newParams.delete("q");
-	}
-	newParams.delete("cursor");
+	const newParams = transitionCursorQuery(page.url.searchParams, {
+		cursorKey: "cursor",
+		updates: { q: normalizedSearch || null },
+	});
 	navigateToMembers(newParams, { replaceState: true });
 }
 
@@ -265,10 +265,10 @@ function onSearchSubmit(event: SubmitEvent) {
 }
 
 function onStatusFilterChange(status: MemberStatus | null) {
-	const newParams = new SvelteURLSearchParams(page.url.searchParams);
+	let membershipStatus: string | null;
 
 	if (status === null) {
-		newParams.delete("membershipStatus");
+		membershipStatus = null;
 	} else {
 		const current = membershipStatusFilter ?? [];
 		const next = current.includes(status)
@@ -276,25 +276,27 @@ function onStatusFilterChange(status: MemberStatus | null) {
 			: [...current, status];
 
 		if (next.length === 0 || next.length === statusOptions.length) {
-			newParams.delete("membershipStatus");
+			membershipStatus = null;
 		} else {
-			newParams.set(
-				"membershipStatus",
-				statusOptions.filter((value) => next.includes(value)).join(","),
-			);
+			membershipStatus = statusOptions
+				.filter((value) => next.includes(value))
+				.join(",");
 		}
 	}
 
-	newParams.delete("cursor");
+	const newParams = transitionCursorQuery(page.url.searchParams, {
+		cursorKey: "cursor",
+		updates: { membershipStatus },
+	});
 	navigateToMembers(newParams, { replaceState: true });
 }
 
 function resetFilters() {
 	searchDraft = "";
-	const newParams = new SvelteURLSearchParams(page.url.searchParams);
-	newParams.delete("q");
-	newParams.delete("membershipStatus");
-	newParams.delete("cursor");
+	const newParams = transitionCursorQuery(page.url.searchParams, {
+		cursorKey: "cursor",
+		updates: { q: null, membershipStatus: null },
+	});
 	navigateToMembers(newParams, { replaceState: true });
 }
 

@@ -31,7 +31,6 @@ import {
 import dayjs from "dayjs";
 import { Loader2, SendIcon } from "@lucide/svelte";
 import { createRawSnippet } from "svelte";
-import { SvelteURLSearchParams } from "svelte/reactivity";
 import { Cross2 } from "svelte-radix";
 import { toast } from "svelte-sonner";
 import * as v from "valibot";
@@ -51,6 +50,11 @@ import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
 import * as Select from "$lib/components/ui/select";
 import * as Table from "$lib/components/ui/table/index.js";
 import SortHeader from "$lib/components/ui/table/sort-header.svelte";
+import {
+	PAGE_SIZE_OPTIONS,
+	parsePageSize,
+	transitionCursorQuery,
+} from "$lib/cursor-query";
 import ActionButtons from "./actions-buttons.svelte";
 import WaitlistStatusSelect from "./waitlist-status-select.svelte";
 
@@ -93,7 +97,7 @@ type WaitlistTablePage = {
 
 type InvitationsCreateOptions = Options<InvitationsCreateData>;
 
-const pageSizeOptions = [10, 25, 50, 100] as const;
+const pageSizeOptions = PAGE_SIZE_OPTIONS;
 
 const waitlistEntrySortFields = [
 	"current_position",
@@ -115,20 +119,13 @@ const waitlistEntrySortMap = {
 	last_status_change: "lastStatusChange",
 } satisfies Record<WaitlistTableSortField, WaitlistEntriesSortField>;
 
-function isPageSize(value: number): value is (typeof pageSizeOptions)[number] {
-	return pageSizeOptions.some((option) => option === value);
-}
-
 function isWaitlistSortField(
 	value: string | null,
 ): value is WaitlistTableSortField {
 	return waitlistEntrySortFields.some((field) => field === value);
 }
 
-const pageSize = $derived.by(() => {
-	const requestedPageSize = Number(page.url.searchParams.get("pageSize")) || 10;
-	return isPageSize(requestedPageSize) ? requestedPageSize : 10;
-});
+const pageSize = $derived(parsePageSize(page.url.searchParams, "pageSize"));
 const searchQuery = $derived(page.url.searchParams.get("q") || "");
 const cursor = $derived(page.url.searchParams.get("cursor"));
 const activeSort = $derived.by(() => {
@@ -301,7 +298,7 @@ const updateWaitlistEntry = createMutation(() => ({
 	},
 }));
 
-function navigateToBeginnersWorkshop(searchParams: SvelteURLSearchParams) {
+function navigateToBeginnersWorkshop(searchParams: URLSearchParams) {
 	const url = `/dashboard/beginners-workshop?${searchParams.toString()}`;
 	goto(url, { keepFocus: true, noScroll: true });
 }
@@ -312,32 +309,40 @@ function onPaginationChange(newPagination: Partial<PaginationState>) {
 		pageSize,
 		...newPagination,
 	};
-	const newParams = new SvelteURLSearchParams(page.url.searchParams);
-	newParams.set("pageSize", paginationState.pageSize.toString());
-	newParams.delete("cursor");
+	const newParams = transitionCursorQuery(page.url.searchParams, {
+		cursorKey: "cursor",
+		updates: { pageSize: paginationState.pageSize.toString() },
+	});
 	navigateToBeginnersWorkshop(newParams);
 }
 
 function onCursorChange(newCursor: string | null | undefined) {
 	if (!newCursor) return;
-	const newParams = new SvelteURLSearchParams(page.url.searchParams);
-	newParams.set("cursor", newCursor);
+	const newParams = transitionCursorQuery(page.url.searchParams, {
+		cursorKey: "cursor",
+		cursor: newCursor,
+	});
 	navigateToBeginnersWorkshop(newParams);
 }
 
 function onSortingChange(newSorting: SortingState) {
 	const [sortingState] = newSorting;
-	const newParams = new SvelteURLSearchParams(page.url.searchParams);
-	newParams.set("sort", sortingState.id);
-	newParams.set("direction", sortingState.desc ? "desc" : "asc");
-	newParams.delete("cursor");
+	if (!sortingState) return;
+	const newParams = transitionCursorQuery(page.url.searchParams, {
+		cursorKey: "cursor",
+		updates: {
+			sort: sortingState.id,
+			direction: sortingState.desc ? "desc" : "asc",
+		},
+	});
 	navigateToBeginnersWorkshop(newParams);
 }
 
 function onSearchChange(newSearch: string) {
-	const newParams = new SvelteURLSearchParams(page.url.searchParams);
-	newParams.set("q", newSearch);
-	newParams.delete("cursor");
+	const newParams = transitionCursorQuery(page.url.searchParams, {
+		cursorKey: "cursor",
+		updates: { q: newSearch || null },
+	});
 	navigateToBeginnersWorkshop(newParams);
 }
 
