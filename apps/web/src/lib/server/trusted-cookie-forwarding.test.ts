@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+	forwardTrustedResponseCookie,
 	forwardTrustedResponseCookies,
 	type CookieWriter,
 } from "$lib/server/trusted-cookie-forwarding";
@@ -99,5 +100,26 @@ describe("trusted Phoenix cookie forwarding", () => {
 
 		expect(forwardTrustedResponseCookies(cookies, new Headers())).toEqual([]);
 		expect(cookies.set).not.toHaveBeenCalled();
+	});
+
+	it("forwards only the requested trusted cookie", () => {
+		const cookies = cookieWriter();
+		const headers = new Headers({
+			"set-cookie":
+				"_dhc_onboarding_acceptance=proof; Path=/, _dhc_key=oauth-state; Path=/auth/discord/callback; HttpOnly",
+		});
+
+		expect(forwardTrustedResponseCookie(cookies, headers, "_dhc_key")).toBe(
+			true,
+		);
+		expect(cookies.set).toHaveBeenCalledTimes(1);
+		expect(cookies.set).toHaveBeenCalledWith(
+			"_dhc_key",
+			"oauth-state",
+			expect.objectContaining({
+				path: "/auth/discord/callback",
+				httpOnly: true,
+			}),
+		);
 	});
 });
