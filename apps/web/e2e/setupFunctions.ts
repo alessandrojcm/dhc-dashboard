@@ -74,17 +74,22 @@ export async function createMember({
 	email = faker.internet.email().toLowerCase(),
 	roles = new Set<E2ERole>(["member"]),
 	createSubscription = false,
+	subscriptionPaymentMethod = "sepa_debit",
 }: {
 	email: string;
 	roles?: Set<E2ERole>;
 	createSubscription?: boolean;
+	subscriptionPaymentMethod?: "sepa_debit" | "card";
 }) {
 	const testData = person(email);
 	let stripeCleanup: (() => Promise<void>) | undefined;
 	let customerId: string | undefined;
 
 	if (createSubscription) {
-		const subscription = await createStripeCustomerWithSubscription(email);
+		const subscription = await createStripeCustomerWithSubscription(
+			email,
+			subscriptionPaymentMethod,
+		);
 		customerId = subscription.customerId;
 		stripeCleanup = subscription.cleanUp;
 	}
@@ -251,19 +256,29 @@ export async function createWorkshop({
 	};
 }
 
-export async function createStripeCustomerWithSubscription(email: string) {
+export async function createStripeCustomerWithSubscription(
+	email: string,
+	paymentMethodType: "sepa_debit" | "card" = "sepa_debit",
+) {
 	const customer = await stripeClient.customers.create({
 		email,
 		metadata: { source: "test" },
 	});
-	const paymentMethod = await stripeClient.paymentMethods.create({
-		type: "sepa_debit",
-		sepa_debit: { iban: "IE29AIBK93115212345678" },
-		billing_details: { email, name: "Test User" },
-	});
-	await stripeClient.paymentMethods.attach(paymentMethod.id, {
-		customer: customer.id,
-	});
+	const paymentMethod =
+		paymentMethodType === "card"
+			? await stripeClient.paymentMethods.attach("pm_card_visa", {
+					customer: customer.id,
+				})
+			: await stripeClient.paymentMethods.create({
+					type: "sepa_debit",
+					sepa_debit: { iban: "IE29AIBK93115212345678" },
+					billing_details: { email, name: "Test User" },
+				});
+	if (paymentMethodType === "sepa_debit") {
+		await stripeClient.paymentMethods.attach(paymentMethod.id, {
+			customer: customer.id,
+		});
+	}
 	await stripeClient.customers.update(customer.id, {
 		invoice_settings: { default_payment_method: paymentMethod.id },
 	});

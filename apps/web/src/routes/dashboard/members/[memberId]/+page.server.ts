@@ -25,12 +25,13 @@ async function canUpdateSettings(event: ServerLoadEvent): Promise<boolean> {
 }
 
 export const load: PageServerLoad = async (event) => {
-	const { params, locals, cookies } = event;
+	const { params, locals, cookies, depends } = event;
 	const { session } = await locals.safeGetSession();
 
 	if (!session) {
 		return error(401, "Unauthorized");
 	}
+	depends(`member:detail:${params.memberId}`);
 
 	try {
 		const canUpdate = await canUpdateSettings(event);

@@ -1,6 +1,6 @@
 <script lang="ts">
 import { page } from "$app/state";
-import { refreshAll } from "$app/navigation";
+import { invalidate } from "$app/navigation";
 import { Button } from "$lib/components/ui/button";
 import * as Card from "$lib/components/ui/card";
 import dayjs from "dayjs";
@@ -13,7 +13,7 @@ import * as RadioGroup from "$lib/components/ui/radio-group/index.js";
 import * as Select from "$lib/components/ui/select";
 import { Textarea } from "$lib/components/ui/textarea";
 import { fromDate, getLocalTimeZone } from "@internationalized/date";
-import { createMutation } from "@tanstack/svelte-query";
+import { createMutation, useQueryClient } from "@tanstack/svelte-query";
 import {
 	ArrowLeft,
 	Check,
@@ -43,10 +43,15 @@ import {
 	membershipBillingPortalMutation,
 	membershipPauseMutation,
 	membershipResumeMutation,
+	membersAnalyticsQueryKey,
+	membersListQueryKey,
+	membersMeQueryKey,
+	membersShowQueryKey,
 } from "@dhc/api-client";
 import { SocialMediaConsent } from "$lib/types";
 
 const { data } = $props();
+const queryClient = useQueryClient();
 const discordLinkUrl = publicApiUrl("/auth/discord/link");
 const isOwnProfile = $derived(
 	page.data.session?.principal.id === page.params.memberId,
@@ -57,6 +62,37 @@ const profileName = $derived(
 		.join(" ") || "Member",
 );
 const pageTitle = $derived(isOwnProfile ? "My profile" : `Edit ${profileName}`);
+
+function detailDependency(memberId: string): string {
+	return `member:detail:${memberId}`;
+}
+
+async function reconcileProfileMutation(memberId: string) {
+	await Promise.all([
+		queryClient.invalidateQueries({ queryKey: membersListQueryKey() }),
+		queryClient.invalidateQueries({
+			queryKey: membersShowQueryKey({ path: { memberId } }),
+		}),
+		isOwnProfile
+			? queryClient.invalidateQueries({ queryKey: membersMeQueryKey() })
+			: Promise.resolve(),
+		invalidate(detailDependency(memberId)),
+	]);
+}
+
+async function reconcileMembershipMutation(memberId: string) {
+	await Promise.all([
+		queryClient.invalidateQueries({ queryKey: membersListQueryKey() }),
+		queryClient.invalidateQueries({
+			queryKey: membersShowQueryKey({ path: { memberId } }),
+		}),
+		queryClient.invalidateQueries({ queryKey: membersAnalyticsQueryKey() }),
+		isOwnProfile
+			? queryClient.invalidateQueries({ queryKey: membersMeQueryKey() })
+			: Promise.resolve(),
+		invalidate(detailDependency(memberId)),
+	]);
+}
 
 initForm(updateProfile, () => ({
 	firstName: data.profileData.firstName ?? "",
@@ -74,11 +110,20 @@ initForm(updateProfile, () => ({
 	socialMediaConsent: data.profileData.socialMediaConsent,
 }));
 
-// Handle success/error from form submission
+let profileResultHandled = false;
+
+// Handle each completed form submission once. Targeted detail invalidation
+// updates this page's data while the remote form result remains available.
 $effect(() => {
+	if (updateProfile.pending) {
+		profileResultHandled = false;
+		return;
+	}
 	const result = updateProfile.result;
+	if (!result || profileResultHandled) return;
+	profileResultHandled = true;
 	if (result?.success) {
-		void refreshAll({ includeLoadFunctions: true });
+		void reconcileProfileMutation(requireMemberId());
 		toast.success(result.success, { position: "top-right" });
 	} else if (result?.error) {
 		toast.error(result.error, { position: "top-right" });
@@ -140,11 +185,12 @@ let showPauseModal = $state(false);
 
 const pauseMutation = createMutation(() => ({
 	...membershipPauseMutation(),
-	onSuccess: ({ data: member }) => {
+	onSuccess: async ({ data: member }) => {
 		showPauseModal = false;
 		pausedUntil = member.subscriptionPausedUntil
 			? dayjs(member.subscriptionPausedUntil)
 			: null;
+		await reconcileMembershipMutation(requireMemberId());
 	},
 	onError: (error) => {
 		toast.error(error.errors?.detail ?? "Failed to pause subscription");
@@ -153,8 +199,9 @@ const pauseMutation = createMutation(() => ({
 
 const resumeMutation = createMutation(() => ({
 	...membershipResumeMutation(),
-	onSuccess: () => {
+	onSuccess: async () => {
 		pausedUntil = null;
+		await reconcileMembershipMutation(requireMemberId());
 	},
 	onError: (error) => {
 		toast.error(error.errors?.detail ?? "Failed to resume subscription");
