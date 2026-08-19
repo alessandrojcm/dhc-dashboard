@@ -1,3 +1,4 @@
+import type { WorkshopCalendarResponse } from "@dhc/api-client";
 import { expect, test } from "@playwright/test";
 import dayjs from "dayjs";
 import {
@@ -184,6 +185,69 @@ test.describe("Workshop Management", () => {
 			await expect(
 				dialog.getByRole("button", { name: "Delete workshop", exact: true }),
 			).toBeVisible();
+		});
+
+		test("renders coordinator capacity from the generated Workshop projections", async ({
+			page,
+			context,
+		}) => {
+			await loginAsUser(context, adminData.email);
+
+			const ts = Date.now();
+			const title = `Capacity Projection ${ts}`;
+			const workshop = await createTestWorkshop(page, {
+				title,
+				max_capacity: 3,
+				status: "published",
+				created_by: adminData.userId!,
+			});
+			createdWorkshopIds.push(workshop.id);
+
+			await page.route("**/api/workshops/calendar", async (route) => {
+				const response = await route.fetch();
+				const body: WorkshopCalendarResponse = await response.json();
+				const projectedWorkshop = body.data.workshops.find(
+					(item) => item.id === workshop.id,
+				);
+
+				if (projectedWorkshop) {
+					Object.assign(projectedWorkshop, {
+						pendingRegistrationCount: 0,
+						confirmedRegistrationCount: 0,
+						registrationCount: 3,
+						placesRemaining: 0,
+						isAtCapacity: true,
+					});
+				}
+
+				await route.fulfill({ response, json: body });
+			});
+
+			await gotoHydrated(page, "/dashboard/workshops");
+
+			const workshopCard = page.getByRole("article").filter({
+				has: page.getByRole("heading", { name: title, exact: true }),
+			});
+			await expect(
+				workshopCard.getByText("3 / 3", { exact: true }),
+			).toBeVisible();
+			await expect(workshopCard.getByRole("progressbar")).toHaveAttribute(
+				"aria-valuenow",
+				"100",
+			);
+
+			const dialog = await openWorkshopModal(page, title);
+			await expect(dialog.getByText("3 / 3", { exact: true })).toBeVisible();
+			await expect(
+				dialog
+					.getByText("Remaining", { exact: true })
+					.locator("..")
+					.getByText("0", { exact: true }),
+			).toBeVisible();
+			await expect(dialog.getByRole("progressbar")).toHaveAttribute(
+				"aria-valuenow",
+				"100",
+			);
 		});
 
 		test("formats prices correctly in the modal", async ({ page, context }) => {

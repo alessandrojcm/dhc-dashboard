@@ -19,7 +19,7 @@ defmodule DhcWeb.WorkshopsController do
   GET /workshops/calendar
 
   Returns non-cancelled Workshops for the coordinator management calendar,
-  with interest and pending/confirmed registration counts.
+  with interest, active Registration counts, and capacity projections.
 
   The DTO carries no current-user registration or interest state; those were
   PostgREST join artifacts (PRD #142). Month/date-window pagination is out of

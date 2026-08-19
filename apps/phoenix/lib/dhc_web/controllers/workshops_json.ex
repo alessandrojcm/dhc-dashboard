@@ -118,7 +118,10 @@ defmodule DhcWeb.WorkshopsJSON do
       createdBy: workshop.created_by,
       interestCount: workshop.interest_count,
       pendingRegistrationCount: workshop.pending_registration_count,
-      confirmedRegistrationCount: workshop.confirmed_registration_count
+      confirmedRegistrationCount: workshop.confirmed_registration_count,
+      registrationCount: workshop.registration_count,
+      placesRemaining: workshop.places_remaining,
+      isAtCapacity: workshop.is_at_capacity
     }
   end
 
