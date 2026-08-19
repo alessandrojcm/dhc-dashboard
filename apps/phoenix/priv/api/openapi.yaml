@@ -5910,6 +5910,9 @@ components:
         - interestCount
         - pendingRegistrationCount
         - confirmedRegistrationCount
+        - registrationCount
+        - placesRemaining
+        - isAtCapacity
       properties:
         id:
           type: string
@@ -5969,6 +5972,18 @@ components:
           type: integer
           minimum: 0
           description: Total confirmed registrations (counts toward availability).
+        registrationCount:
+          type: integer
+          minimum: 0
+          description: Total active registrations counted toward Workshop capacity.
+        placesRemaining:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Remaining capacity, clamped to zero; null when the Workshop is uncapped.
+        isAtCapacity:
+          type: boolean
+          description: Whether active registrations have reached or exceeded a capped Workshop's capacity. Always false when uncapped.
     WorkshopCalendarResponse:
       type: object
       required:

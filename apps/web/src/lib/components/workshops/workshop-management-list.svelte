@@ -73,17 +73,12 @@ const filteredWorkshops = $derived.by(() => {
 		});
 });
 
-function getRegistrationCount(workshop: WorkshopCalendarItem) {
-	return (
-		workshop.pendingRegistrationCount + workshop.confirmedRegistrationCount
-	);
-}
-
 function getCapacityPercentage(workshop: WorkshopCalendarItem) {
+	if (workshop.isAtCapacity) return 100;
 	if (!workshop.maxCapacity) return 0;
 	return Math.min(
 		100,
-		Math.round((getRegistrationCount(workshop) / workshop.maxCapacity) * 100),
+		Math.round((workshop.registrationCount / workshop.maxCapacity) * 100),
 	);
 }
 
@@ -203,7 +198,7 @@ function clearFilters() {
 	{:else}
 		<div class="space-y-3">
 			{#each filteredWorkshops as workshop (workshop.id)}
-				{@const registrationCount = getRegistrationCount(workshop)}
+				{@const registrationCount = workshop.registrationCount}
 				{@const isPast = dayjs(workshop.endDate).isBefore(dayjs())}
 				<article
 					class="grid gap-5 rounded-2xl border border-border/80 bg-card p-4 shadow-sm transition-[border-color,box-shadow] duration-200 hover:border-primary/40 hover:shadow-md sm:p-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(15rem,0.7fr)_auto] lg:items-center"

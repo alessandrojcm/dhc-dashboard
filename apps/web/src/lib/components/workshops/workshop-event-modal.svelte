@@ -40,21 +40,17 @@ let {
 
 const queryClient = useQueryClient();
 const workshop = $derived(event.workshop);
-const registrationCount = $derived(
-	workshop.pendingRegistrationCount + workshop.confirmedRegistrationCount,
-);
-const capacityRemaining = $derived(
-	workshop.maxCapacity === null
-		? null
-		: Math.max(0, workshop.maxCapacity - registrationCount),
-);
+const registrationCount = $derived(workshop.registrationCount);
+const capacityRemaining = $derived(workshop.placesRemaining);
 const capacityPercentage = $derived(
-	workshop.maxCapacity
-		? Math.min(
-				100,
-				Math.round((registrationCount / workshop.maxCapacity) * 100),
-			)
-		: 0,
+	workshop.isAtCapacity
+		? 100
+		: workshop.maxCapacity
+			? Math.min(
+					100,
+					Math.round((registrationCount / workshop.maxCapacity) * 100),
+				)
+			: 0,
 );
 const canViewAttendees = $derived(
 	workshop.status === "published" ||

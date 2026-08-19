@@ -45,13 +45,7 @@ const publishedCount = $derived(
 	workshops.filter((workshop) => workshop.status === "published").length,
 );
 const registrationCount = $derived(
-	workshops.reduce(
-		(total, workshop) =>
-			total +
-			workshop.pendingRegistrationCount +
-			workshop.confirmedRegistrationCount,
-		0,
-	),
+	workshops.reduce((total, workshop) => total + workshop.registrationCount, 0),
 );
 
 function handleCreate() {
