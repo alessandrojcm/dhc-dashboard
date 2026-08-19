@@ -4,6 +4,7 @@ import {
 	onboardingAcceptanceCookie,
 	onboardingApiClientOptions,
 } from "$lib/server/onboarding-api";
+import { forwardTrustedResponseCookies } from "$lib/server/trusted-cookie-forwarding";
 
 const ACCEPTANCE_RECOVERY_COOKIE = "discord-acceptance-invitation";
 const ACCEPTANCE_CALLBACK_PATH = "/auth/discord/acceptance/callback";
@@ -25,18 +26,7 @@ export const GET: RequestHandler = async ({ cookies, params, url }) => {
 	if (response.status !== 302 || !location)
 		throw redirect(303, `/members/signup/${invitationId}`);
 
-	const setCookies = response.headers.getSetCookie?.() ?? [];
-	for (const value of setCookies)
-		cookies.set(
-			value.split("=", 1)[0],
-			value.slice(value.indexOf("=") + 1).split(";", 1)[0],
-			{
-				path: "/",
-				httpOnly: true,
-				secure: url.protocol === "https:",
-				sameSite: "lax",
-			},
-		);
+	forwardTrustedResponseCookies(cookies, response.headers);
 	cookies.set(ACCEPTANCE_RECOVERY_COOKIE, invitationId, {
 		path: ACCEPTANCE_CALLBACK_PATH,
 		httpOnly: true,
