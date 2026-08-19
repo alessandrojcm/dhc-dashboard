@@ -6,7 +6,8 @@ This is a web application written using the Phoenix web framework.
 - Run `mix credo --all` from `apps/phoenix` for static analysis; the project configuration also enables `ExSlop`
 - Keep generated Stripe modules under `lib/dhc/stripe/generated/` excluded from Credo instead of refactoring generated source
 - Use the already included and available `:req` (`Req`) library for HTTP requests, **avoid** `:httpoison`, `:tesla`, and `:httpc`. Req is included by default and is the preferred HTTP client for Phoenix apps
-- Hackney is test-only because Testcontainers requires its 1.x Unix-socket transport. Keep it out of production and do not force Hackney 4 until Testcontainers supports Docker Unix sockets with it; the matching Hex advisory exceptions in `mix.exs` apply only to test-only Hackney/Cowlib.
+- Hackney is test-only because Testcontainers requires its 1.x Unix-socket transport. Keep it out of production and do not force Hackney 4 until Testcontainers supports Docker Unix sockets with it; the matching Hackney advisory exceptions in `mix.exs` apply only to that test dependency.
+- Nostrum's REST client pulls Gun and Cowlib into production. Limit Cowlib advisory exceptions to explicitly reviewed CVE IDs and document the relevant exposure or mitigation in `mix.exs`; re-evaluate CVE-2026-43971 before adding Link-header serialization or passing untrusted targets, `rel` values, or attribute keys to `cow_link:link/1`.
 
 ### Phoenix v1.8 guidelines
 

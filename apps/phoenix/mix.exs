@@ -15,10 +15,14 @@ defmodule Dhc.MixProject do
         # REST client pulls Gun and Cowlib into production. Their latest
         # compatible releases have no upstream fixes for these advisories.
         # Discord adapter inputs are constrained to snowflakes, and audit-log
-        # reasons reject CR/LF before reaching Gun's header encoder.
+        # reasons reject CR/LF before reaching Gun's header encoder. The app
+        # does not serialize Link response headers through `cow_link:link/1`,
+        # so untrusted Link targets, rel values, or attribute keys cannot reach
+        # the serializer affected by CVE-2026-43971.
         ignore_advisories: [
           "CVE-2026-43966",
           "CVE-2026-43969",
+          "CVE-2026-43971",
           "CVE-2026-47069",
           "CVE-2026-47071",
           "CVE-2026-47075",
