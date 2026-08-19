@@ -1,17 +1,16 @@
 import { onboardingShowInvitationAcceptance } from "@dhc/api-client";
 import { dev } from "$app/environment";
 import {
-	onboardingAcceptanceCookie,
-	onboardingApiClientOptions,
-} from "$lib/server/onboarding-api";
+	clearInvitationAcceptanceProof,
+	hasInvitationAcceptanceProof,
+	invitationAcceptanceApiOptions,
+} from "$lib/server/invitation-acceptance-proof";
 import dayjs from "dayjs";
 import { redirect } from "@sveltejs/kit";
 import type { PageServerLoad } from "./$types";
 
 export const load: PageServerLoad = async ({ params, cookies }) => {
-	const proof = cookies.get(onboardingAcceptanceCookie);
-
-	if (!proof) {
+	if (!hasInvitationAcceptanceProof(cookies)) {
 		return {
 			state: "restart_verification" as const,
 			nextMonthlyBillingDate: dayjs().add(1, "month").startOf("month").toDate(),
@@ -20,14 +19,18 @@ export const load: PageServerLoad = async ({ params, cookies }) => {
 	}
 
 	const response = await onboardingShowInvitationAcceptance(
-		onboardingApiClientOptions(cookies),
+		invitationAcceptanceApiOptions(cookies),
 	);
 	if (response.data?.data?.state === "accepted") {
 		setSignInPrefill(cookies, response.data.data.invitationEmail);
-		cookies.delete(onboardingAcceptanceCookie, {
-			path: "/",
-		});
+		clearInvitationAcceptanceProof(cookies);
 		throw redirect(303, `/members/signup/${params.invitationId}/success`);
+	}
+	if (
+		response.data?.data?.state === "restart_verification" ||
+		response.response?.status === 409
+	) {
+		clearInvitationAcceptanceProof(cookies);
 	}
 
 	return {

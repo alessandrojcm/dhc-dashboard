@@ -2,19 +2,18 @@ import { onboardingRetryAcceptance } from "@dhc/api-client";
 import { redirect } from "@sveltejs/kit";
 import { dev } from "$app/environment";
 import {
-	onboardingAcceptanceCookie,
-	onboardingApiClientOptions,
-} from "$lib/server/onboarding-api";
+	clearInvitationAcceptanceProof,
+	hasInvitationAcceptanceProof,
+	invitationAcceptanceApiOptions,
+} from "$lib/server/invitation-acceptance-proof";
 import type { PageServerLoad } from "./$types";
 
 // The resume URL contains only the public invitation route parameter. The
 // protected continuation remains in the HTTP-only cookie.
 export const load: PageServerLoad = async ({ params, cookies }) => {
-	const proof = cookies.get(onboardingAcceptanceCookie);
-
-	if (proof) {
+	if (hasInvitationAcceptanceProof(cookies)) {
 		const response = await onboardingRetryAcceptance({
-			...onboardingApiClientOptions(cookies),
+			...invitationAcceptanceApiOptions(cookies),
 		});
 
 		if (response.data?.data?.state === "accepted") {
@@ -31,10 +30,14 @@ export const load: PageServerLoad = async ({ params, cookies }) => {
 					},
 				);
 			}
-			cookies.delete(onboardingAcceptanceCookie, {
-				path: "/",
-			});
+			clearInvitationAcceptanceProof(cookies);
 			throw redirect(303, `/members/signup/${params.invitationId}/success`);
+		}
+		if (
+			response.data?.data?.state === "restart_verification" ||
+			response.response?.status === 409
+		) {
+			clearInvitationAcceptanceProof(cookies);
 		}
 	}
 

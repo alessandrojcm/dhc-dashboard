@@ -21,7 +21,7 @@ export function forwardTrustedResponseCookies(
 	const forwarded: string[] = [];
 
 	for (const header of setCookieHeaders(headers)) {
-		const parsed = parseSetCookie(header);
+		const parsed = parseTrustedSetCookie(header);
 		if (!parsed) continue;
 
 		cookies.set(parsed.name, parsed.value, parsed.options);
@@ -29,6 +29,28 @@ export function forwardTrustedResponseCookies(
 	}
 
 	return forwarded;
+}
+
+/** Read one named cookie from a trusted upstream response without applying it. */
+export function trustedResponseCookie(headers: Headers, name: string) {
+	for (const header of setCookieHeaders(headers)) {
+		const parsed = parseTrustedSetCookie(header);
+		if (parsed?.name === name) return parsed;
+	}
+
+	return undefined;
+}
+
+export function forwardTrustedResponseCookie(
+	cookies: CookieWriter,
+	headers: Headers,
+	name: string,
+): boolean {
+	const parsed = trustedResponseCookie(headers, name);
+	if (!parsed) return false;
+
+	cookies.set(parsed.name, parsed.value, parsed.options);
+	return true;
 }
 
 function setCookieHeaders(headers: Headers): string[] {
@@ -59,7 +81,7 @@ function splitCombinedSetCookieHeader(header: string): string[] {
 	return cookies.filter(Boolean);
 }
 
-function parseSetCookie(
+function parseTrustedSetCookie(
 	header: string,
 ): { name: string; value: string; options: CookieOptions } | undefined {
 	const [nameValue, ...attributeParts] = header.split(";");
