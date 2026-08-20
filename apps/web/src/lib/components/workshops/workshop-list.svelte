@@ -62,10 +62,10 @@ const workshopGroups = $derived.by(() => {
 
 	const booked = sortedWorkshops.filter(hasActiveRegistration);
 	const open = sortedWorkshops.filter(
-		(workshop) => !hasActiveRegistration(workshop) && !isAtCapacity(workshop),
+		(workshop) => !hasActiveRegistration(workshop) && !workshop.isAtCapacity,
 	);
 	const full = sortedWorkshops.filter(
-		(workshop) => !hasActiveRegistration(workshop) && isAtCapacity(workshop),
+		(workshop) => !hasActiveRegistration(workshop) && workshop.isAtCapacity,
 	);
 
 	return [
@@ -96,23 +96,6 @@ function hasActiveRegistration(workshop: Workshop) {
 	);
 }
 
-function registrationCount(workshop: Workshop) {
-	return (
-		workshop.pendingRegistrationCount + workshop.confirmedRegistrationCount
-	);
-}
-
-function availablePlaces(workshop: Workshop) {
-	return Math.max(0, workshop.maxCapacity - registrationCount(workshop));
-}
-
-function isAtCapacity(workshop: Workshop) {
-	return (
-		workshop.maxCapacity > 0 &&
-		registrationCount(workshop) >= workshop.maxCapacity
-	);
-}
-
 function formatPrice(price: number) {
 	return Dinero({ amount: price, currency: "EUR" }).toFormat();
 }
@@ -136,7 +119,7 @@ function getMemberState(workshop: Workshop) {
 	if (status === "refunded") return "Refunded";
 	if (status === "cancelled") return "Cancelled";
 	if (workshop.currentUserInterest) return "Interested";
-	if (isAtCapacity(workshop)) return "Fully booked";
+	if (workshop.isAtCapacity) return "Fully booked";
 	return view === "planned" ? "In planning" : "Open";
 }
 
@@ -317,11 +300,13 @@ function handleRegistrationSuccess() {
 											{formatPrice(workshop.priceMember)}
 										</p>
 										<p class="mt-1 text-xs text-muted-foreground">
-											{#if isAtCapacity(workshop)}
+											{#if workshop.isAtCapacity}
 												Fully booked
+											{:else if workshop.placesRemaining === null}
+												No capacity limit
 											{:else}
-												{availablePlaces(workshop)}
-												{availablePlaces(workshop) === 1 ? "place" : "places"}
+												{workshop.placesRemaining}
+												{workshop.placesRemaining === 1 ? "place" : "places"}
 												left
 											{/if}
 										</p>
@@ -359,10 +344,10 @@ function handleRegistrationSuccess() {
 										<Button
 											class="min-h-11 w-full"
 											onclick={() => openRegistration(workshop)}
-											disabled={isAtCapacity(workshop)}
+											disabled={workshop.isAtCapacity}
 										>
 											<TicketCheck aria-hidden="true" />
-											{isAtCapacity(workshop) ? "Fully booked" : "Register"}
+											{workshop.isAtCapacity ? "Fully booked" : "Register"}
 										</Button>
 									{/if}
 								</div>

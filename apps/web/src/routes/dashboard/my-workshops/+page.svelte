@@ -39,7 +39,7 @@ const bookedCount = $derived(
 );
 const openCount = $derived(
 	publishedWorkshops.filter(
-		(workshop) => !hasActiveRegistration(workshop) && !isAtCapacity(workshop),
+		(workshop) => !hasActiveRegistration(workshop) && !workshop.isAtCapacity,
 	).length,
 );
 const interestedCount = $derived(
@@ -62,14 +62,6 @@ const interestMutation = createMutation(() => ({
 function hasActiveRegistration(workshop: Workshop) {
 	return ["pending", "confirmed"].includes(
 		workshop.currentUserRegistration?.status ?? "",
-	);
-}
-
-function isAtCapacity(workshop: Workshop) {
-	return (
-		workshop.maxCapacity > 0 &&
-		workshop.pendingRegistrationCount + workshop.confirmedRegistrationCount >=
-			workshop.maxCapacity
 	);
 }
 
