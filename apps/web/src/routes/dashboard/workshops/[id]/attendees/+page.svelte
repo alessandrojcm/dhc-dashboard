@@ -158,16 +158,22 @@ function formatWorkshopDate(startDate?: string | null) {
 		</header>
 
 		<section class="grid gap-3 sm:grid-cols-3" aria-label="Attendance overview">
-			<div class="rounded-2xl border border-border/80 bg-card p-4 sm:p-5">
+			<div
+				role="group"
+				aria-label="Registration capacity"
+				class="rounded-2xl border border-border/80 bg-card p-4 sm:p-5"
+			>
 				<div class="flex items-center justify-between gap-3">
 					<p class="text-sm font-medium text-muted-foreground">Registered</p>
 					<Users aria-hidden="true" class="size-5 text-primary" />
 				</div>
-				<p class="mt-2 text-2xl font-bold tabular-nums">{attendees.length}</p>
+				<p class="mt-2 text-2xl font-bold tabular-nums">
+					{workshop.registrationCount}
+				</p>
 				<p class="mt-1 text-xs text-muted-foreground">
-					{workshop.maxCapacity
-						? `${Math.max(0, workshop.maxCapacity - attendees.length)} places remaining`
-						: "No capacity limit"}
+					{workshop.placesRemaining === null
+						? "No capacity limit"
+						: `${workshop.placesRemaining} places remaining`}
 				</p>
 			</div>
 

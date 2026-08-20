@@ -796,16 +796,23 @@ test.describe("Workshop Management", () => {
 			createdWorkshopIds.push(workshopId);
 
 			const regAttrs: E2ERegistrationSeedRequest[] = [
-				adminData.userId,
-				memberData.userId,
-				coordinatorData.userId,
-			].map((userId) => ({
-				workshopId,
-				memberUserId: userId,
-				amountPaid: 2500,
-				status: "confirmed" as const,
-				currency: "EUR",
-			}));
+				...[adminData.userId, memberData.userId, coordinatorData.userId].map(
+					(userId) => ({
+						workshopId,
+						memberUserId: userId,
+						amountPaid: 2500,
+						status: "confirmed" as const,
+						currency: "EUR",
+					}),
+				),
+				{
+					workshopId,
+					memberUserId: adminData.userId,
+					amountPaid: 2500,
+					status: "cancelled",
+					currency: "EUR",
+				},
+			];
 			for (const attrs of regAttrs) {
 				const reg = await seedE2EScenario("registration", attrs);
 				createdRegistrationIds.push(reg.id);
@@ -827,6 +834,15 @@ test.describe("Workshop Management", () => {
 			).toBeVisible();
 			await expect(
 				page.getByRole("heading", { name: "Check-in roster", exact: true }),
+			).toBeVisible();
+			const capacitySummary = page
+				.getByRole("region", { name: "Attendance overview", exact: true })
+				.getByRole("group", { name: "Registration capacity", exact: true });
+			await expect(
+				capacitySummary.getByText("3", { exact: true }),
+			).toBeVisible();
+			await expect(
+				capacitySummary.getByText("7 places remaining", { exact: true }),
 			).toBeVisible();
 			await expect(
 				page.getByRole("button", { name: "Refund", exact: true }).first(),
