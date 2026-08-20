@@ -9,23 +9,17 @@
  * `authorize()` is still called here so the SvelteKit layer 403s before
  * reaching the network when the role is missing.
  *
- * ALE-108 adds dedicated `moveItem` and `setMaintenance` commands that hit
- * `POST /inventory/items/{id}/move` and `POST /inventory/items/{id}/maintenance`,
- * preserving the `moved` / `maintenance_out` / `maintenance_in` audit history
- * side effects as required by the Inventory REST contract.
+ * Item movement and maintenance actions are called directly through the
+ * generated Phoenix client from the item detail page.
  */
 
-import { command, form, getRequestEvent } from "$app/server";
+import { form, getRequestEvent } from "$app/server";
 import { redirect } from "@sveltejs/kit";
 import * as v from "valibot";
 import {
 	inventoryItemsCreate,
-	inventoryItemsMaintenance,
-	inventoryItemsMove,
 	inventoryItemsUpdate,
 	type InventoryItemCreateRequest,
-	type InventoryItemMaintenanceRequest,
-	type InventoryItemMoveRequest,
 } from "@dhc/api-client";
 import { authorize } from "$lib/server/auth";
 import { apiClientOptions } from "$lib/server/api-client";
@@ -106,68 +100,4 @@ export const updateItem = form(itemSchema, async (data) => {
 	}
 
 	return { success: "Item updated successfully" };
-});
-
-// ── ALE-108: dedicated movement/maintenance command endpoints ─────────
-// These preserve the moved / maintenance_out / maintenance_in audit history
-// side effects as dedicated commands, separate from the general PATCH update.
-
-const MoveItemSchema = v.object({
-	containerId: v.pipe(v.string(), v.uuid()),
-	notes: v.optional(v.pipe(v.string(), v.maxLength(1000))),
-});
-
-const MaintenanceItemSchema = v.object({
-	outForMaintenance: v.boolean(),
-	notes: v.optional(v.pipe(v.string(), v.maxLength(1000))),
-});
-
-export const moveItem = command(MoveItemSchema, async (input) => {
-	const event = getRequestEvent();
-	await authorize(event.locals, INVENTORY_ROLES);
-	const itemId = event.params.id;
-	if (!itemId) throw new Error("Item ID is required");
-	const body: InventoryItemMoveRequest = { containerId: input.containerId };
-	if (input.notes) body.notes = input.notes;
-
-	const response = await inventoryItemsMove({
-		...apiClientOptions(event.cookies),
-		path: { id: itemId },
-		body,
-	});
-
-	if (response.error) {
-		throw new Error(
-			response.error.errors?.detail ??
-				"Failed to move item. Please try again later.",
-		);
-	}
-
-	return { success: "Item moved successfully" };
-});
-
-export const setMaintenance = command(MaintenanceItemSchema, async (input) => {
-	const event = getRequestEvent();
-	await authorize(event.locals, INVENTORY_ROLES);
-	const itemId = event.params.id;
-	if (!itemId) throw new Error("Item ID is required");
-	const body: InventoryItemMaintenanceRequest = {
-		outForMaintenance: input.outForMaintenance,
-	};
-	if (input.notes) body.notes = input.notes;
-
-	const response = await inventoryItemsMaintenance({
-		...apiClientOptions(event.cookies),
-		path: { id: itemId },
-		body,
-	});
-
-	if (response.error) {
-		throw new Error(
-			response.error.errors?.detail ??
-				"Failed to update maintenance status. Please try again later.",
-		);
-	}
-
-	return { success: "Maintenance status updated successfully" };
 });
