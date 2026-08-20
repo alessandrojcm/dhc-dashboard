@@ -5841,6 +5841,9 @@ components:
         - interestCount
         - pendingRegistrationCount
         - confirmedRegistrationCount
+        - registrationCount
+        - placesRemaining
+        - isAtCapacity
       properties:
         id:
           type: string
@@ -5889,6 +5892,18 @@ components:
         confirmedRegistrationCount:
           type: integer
           minimum: 0
+        registrationCount:
+          type: integer
+          minimum: 0
+          description: Number of active pending or confirmed Registrations.
+        placesRemaining:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Remaining capacity, or null when the Workshop is uncapped.
+        isAtCapacity:
+          type: boolean
+          description: False for uncapped Workshops.
     WorkshopCalendarItem:
       type: object
       required:
