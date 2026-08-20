@@ -62,24 +62,15 @@ export const submitWaitlist = form(
 			invalid(...formIssues);
 		}
 
+		let response;
 		try {
-			const { error } = await waitlistCreateEntry({
+			response = await waitlistCreateEntry({
 				baseUrl: apiBaseUrl(),
 				body: {
 					...result.output,
 					dateOfBirth: result.output.dateOfBirth.toISOString().slice(0, 10),
 				},
 			});
-
-			if (error) {
-				const detail = apiErrorDetail(error);
-
-				if (detail?.includes("already on the waitlist")) {
-					invalid(issue.email("This email is already on the waitlist"));
-				}
-
-				throw new Error(detail ?? "Waitlist submission failed");
-			}
 		} catch (err) {
 			console.error("Waitlist submission error:", err);
 
@@ -87,6 +78,17 @@ export const submitWaitlist = form(
 				invalid(issue.email("This email is already on the waitlist"));
 			}
 
+			throw new Error("Something went wrong, please try again later.");
+		}
+
+		if (response.error) {
+			const detail = apiErrorDetail(response.error);
+
+			if (detail?.includes("already on the waitlist")) {
+				invalid(issue.email("This email is already on the waitlist"));
+			}
+
+			console.error("Waitlist submission error:", detail);
 			throw new Error("Something went wrong, please try again later.");
 		}
 
