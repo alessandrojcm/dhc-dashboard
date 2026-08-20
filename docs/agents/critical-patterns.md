@@ -54,43 +54,37 @@ This mirrors the `member_profiles`/`user_profiles`/`invitations`/workshop-tables
 
 **Source of truth is production, not the baseline.** When a code path (e.g. `stripe_sync/repository.ex`) uses `created_at:` and the testcontainers harness fails because the baseline produced `inserted_at`, the fix is the baseline, not the code.
 
-## Remote Functions (`.remote.ts`)
+## SvelteKit Remote Functions and Phoenix Mutations
 
-Remote functions MUST delegate to the service layer:
+Choose one client/server boundary for each operation:
 
-```typescript
-// In *.remote.ts file
-import { command, getRequestEvent } from '$app/server';
-import { authorize } from '$lib/server/auth';
-import { createWorkshopService } from '$lib/server/services/workshops';
+- Use SvelteKit `form(...)` for HTML form submissions that benefit from progressive enhancement, schema-backed field state, and field-level validation errors.
+- Use generated `@dhc/api-client` TanStack mutation options for imperative Phoenix operations. Reconcile affected data with generated query-key helpers, `invalidateQueries`, or a focused refetch.
+- Use `command(...)` only when the browser needs an intentional SvelteKit server facade, such as server-only orchestration that is not already represented by a generated Phoenix operation.
+- Do not add a `.remote.ts` wrapper that only duplicates an existing generated Phoenix mutation.
+- Use `query(...)` for intentional server-only reads. Phoenix API reads use generated query options as described under "TanStack Query with the Phoenix API".
 
-export const deleteWorkshop = command(
-  v.pipe(v.string(), v.uuid()),
-  async (workshopId) => {
-    const { locals, platform } = getRequestEvent();
-    const session = await authorize(locals, WORKSHOP_ROLES);
-    const service = createWorkshopService(platform!, session);
-    await service.delete(workshopId);  // MUST use service
-    return { success: true };
-  }
-);
-```
+All remote functions that accept input use a Valibot schema. Authenticated handlers obtain the request with `getRequestEvent()` and authorize through `authorize()` or `locals.safeGetSession()`. Phoenix calls forward request cookies through `apiClientOptions(event.cookies)`. Domain mutations belong in Phoenix contexts; remote functions must not access Kysely or `executeWithRLS` directly.
 
-- **NEVER** use raw Kysely/`executeWithRLS` in remote functions
-- **ALWAYS** instantiate service via factory function
-- Validation handled by Valibot schema (first arg to `command`/`query`)
-- Authorization via `authorize()` or `locals.safeGetSession()`
+## Remote Forms
 
-## Forms
-
-ALWAYS use Superforms + our form components:
+Spread the remote form or its preflight-enhanced variant onto the native form element, and use the generated field APIs so names, restored values, and `aria-invalid` remain connected:
 
 ```svelte
-<Form.Field>
-  <Form.Control><Form.Label />{input}</Form.Control>
-  <Form.FieldErrors />
-</Form.Field>
+<form {...updateProfile.preflight(memberProfileClientSchema)}>
+  {@const fieldProps = updateProfile.fields.firstName.as("text")}
+  <Field.Label for={fieldProps.name}>First name</Field.Label>
+  <Input {...fieldProps} id={fieldProps.name} />
+  {#each updateProfile.fields.firstName.issues() as issue (issue.message)}
+    <Field.Error>{issue.message}</Field.Error>
+  {/each}
+</form>
 ```
+
+- Prefer `form(...)` to `command(...)` when the operation naturally submits a form.
+- Use `.preflight(schema)` when client-side validation is appropriate.
+- Treat `invalid(...)`, `redirect(...)`, and `error(...)` as control-flow exceptions. Keep them outside broad catches or explicitly rethrow them.
+- Use `.pending` for submission state and `.result` only for ephemeral post-submission feedback.
 
 ## Real PostgreSQL Concurrency Tests
 
