@@ -57,6 +57,14 @@ function getLink(item: string): string {
 	return paths.slice(0, index + 1).join("/");
 }
 
+// Routes whose breadcrumb shows a workshop id segment. Their loads already
+// fetch the workshop, so `page.data` (merged across all loads) carries the
+// title — swap the raw id for it, falling back to a generic label.
+const WORKSHOP_ID_ROUTES = new Set([
+	"/dashboard/workshops/[id]/edit",
+	"/dashboard/workshops/[id]/attendees",
+]);
+
 function getBreadcrumbLabel(item: string, index: number): string {
 	const isMemberProfile =
 		page.route.id === "/dashboard/members/[memberId]" &&
@@ -65,6 +73,15 @@ function getBreadcrumbLabel(item: string, index: number): string {
 		return userDataQuery.data?.id === page.params.memberId
 			? "My profile"
 			: "Member profile";
+	}
+	if (item === page.params.id && WORKSHOP_ID_ROUTES.has(page.route.id ?? "")) {
+		// SAFETY: the attendees load returns Phoenix's WorkshopAttendeesResponse
+		// envelope verbatim (`{ data: { workshop } }`); only `title` is read.
+		const attendeesEnvelope = page.data.attendeesResponse as
+			| { data?: { workshop?: { title?: string } } }
+			| undefined;
+		const workshop = page.data.workshop ?? attendeesEnvelope?.data?.workshop;
+		return workshop?.title || "Workshop";
 	}
 	return item.replaceAll("-", " ");
 }
@@ -101,7 +118,7 @@ function getBreadcrumbLabel(item: string, index: number): string {
 							{#if index !== paths.length - 1}
 								<Breadcrumb.Item>
 									<Breadcrumb.Link class="capitalize" href={getLink(item)}>
-										{item.replace("-", " ")}
+										{getBreadcrumbLabel(item, index)}
 									</Breadcrumb.Link>
 								</Breadcrumb.Item>
 							{:else}
