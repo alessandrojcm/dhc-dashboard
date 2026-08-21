@@ -272,7 +272,7 @@ function markAttended(registrationIds: string[]) {
 					Check-in roster
 				</h2>
 				<p class="mt-1 text-sm leading-6 text-muted-foreground">
-					Find a participant, confirm their status, and keep the desk moving.
+					Search for participants and update their attendance.
 				</p>
 			</div>
 			<p class="text-sm font-semibold text-muted-foreground" aria-live="polite">

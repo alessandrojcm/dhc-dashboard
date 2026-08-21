@@ -69,14 +69,13 @@ function handleEdit(workshop: WorkshopCalendarItem) {
 	>
 		<div class="max-w-2xl space-y-2">
 			<p class="text-xs font-bold tracking-[0.18em] text-primary uppercase">
-				Workshop operations
+				Workshops
 			</p>
 			<h1 class="text-3xl font-bold tracking-tight sm:text-4xl">
 				Manage workshops
 			</h1>
 			<p class="text-base leading-7 text-muted-foreground">
-				Plan upcoming sessions, publish registrations, and keep attendance
-				moving.
+				Create workshops, open registration, and manage attendance.
 			</p>
 		</div>
 

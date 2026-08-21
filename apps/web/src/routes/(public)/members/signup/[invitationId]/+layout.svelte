@@ -12,7 +12,7 @@ const { children } = $props();
 	<Card.Header class="border-b border-border/70 bg-muted/25 px-6 py-5 sm:px-8">
 		<Card.Title class="text-xl sm:text-2xl">Join Dublin HEMA Club</Card.Title>
 		<Card.Description class="mt-1 max-w-2xl leading-relaxed">
-			A few quick steps, then you are ready to train, organise, and belong.
+			Confirm your invitation, connect Discord, and choose a membership plan.
 		</Card.Description>
 	</Card.Header>
 	<Card.Content class="px-0 pb-0">

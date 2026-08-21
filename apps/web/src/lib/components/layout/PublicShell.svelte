@@ -31,7 +31,7 @@ let {
 				<p class="text-xs font-bold uppercase tracking-[0.2em] text-secondary">
 					{eyebrow}
 				</p>
-				<p class="font-display text-xl leading-tight">The club desk</p>
+				<p class="font-display text-xl leading-tight">Club portal</p>
 			</div>
 		</div>
 
@@ -39,16 +39,16 @@ let {
 			<p
 				class="mb-4 text-xs font-bold uppercase tracking-[0.24em] text-secondary"
 			>
-				Train · Organise · Belong
+				Membership and workshops
 			</p>
 			<h1 class="text-4xl leading-[1.05] text-balance lg:text-6xl">
-				Old arts.<br />A living club.
+				Dublin HEMA Club
 			</h1>
 			<p
 				class="mt-6 max-w-md text-base leading-7 text-sidebar-foreground/75 lg:text-lg"
 			>
-				Your place for workshops, membership, and the everyday work that keeps
-				Dublin HEMA moving.
+				Sign in, join the beginners waiting list, or complete your membership
+				registration.
 			</p>
 		</div>
 

@@ -21,17 +21,16 @@ const navIcons = {
 };
 
 const descriptions = {
-	"Beginners Workshop":
-		"Welcome the next generation of fencers and manage the waiting list.",
-	Members: "Keep the club connected, informed, and ready to train.",
-	Workshops: "Plan sessions, publish dates, and keep the calendar moving.",
-	"My Workshops": "See what is coming up and keep your training plans close.",
+	"Beginners Workshop": "Manage the beginners course and waiting list.",
+	Members: "View and manage club members.",
+	Workshops: "Create workshops and manage registrations.",
+	"My Workshops": "View your upcoming and previous workshops.",
 	Inventory: "Track weapons, protective kit, storage, and maintenance.",
 };
 </script>
 
 <svelte:head>
-	<title>Club desk | Dublin HEMA Club</title>
+	<title>Dashboard | Dublin HEMA Club</title>
 	<meta
 		name="description"
 		content="Your Dublin HEMA Club workspace for members, workshops, and equipment."
@@ -50,23 +49,22 @@ const descriptions = {
 			<div
 				class="mb-6 inline-flex items-center gap-2 rounded-full border border-secondary/40 bg-secondary/10 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.18em] text-secondary"
 			>
-				<ShieldCheck class="size-4" /> Club operations
+				<ShieldCheck class="size-4" /> Dashboard
 			</div>
 			<h1 class="text-4xl leading-[1.05] text-balance sm:text-5xl lg:text-7xl">
-				Keep the club<br />in fighting form.
+				Dublin HEMA Club
 			</h1>
 			<p
 				class="mt-6 max-w-2xl text-base leading-7 text-sidebar-foreground/72 sm:text-lg"
 			>
-				One place for the people, sessions, and equipment behind every night on
-				the training floor.
+				Manage members, workshops, the beginners course, and club equipment.
 			</p>
 		</div>
 		<div
 			class="mt-10 flex items-center gap-3 text-sm font-semibold text-sidebar-foreground/70 lg:absolute lg:bottom-10 lg:right-12 lg:max-w-[14rem] lg:text-sidebar-primary-foreground"
 		>
 			<span class="size-2 shrink-0 rounded-full bg-secondary"></span>
-			{data.navData.navMain.length} workspaces ready for you
+			{data.navData.navMain.length} sections available
 		</div>
 	</section>
 
@@ -107,7 +105,7 @@ const descriptions = {
 						</div>
 						<p class="mt-2 text-sm leading-6 text-muted-foreground">
 							{descriptions[item.title as keyof typeof descriptions] ??
-								"Open this part of the club desk."}
+								"Open this section."}
 						</p>
 					</div>
 				</a>
