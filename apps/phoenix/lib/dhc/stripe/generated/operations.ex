@@ -197,6 +197,67 @@ defmodule Dhc.Stripe.Operations do
     })
   end
 
+  @type get_customers_customer_payment_methods_200_json_resp :: %{
+          data: [Dhc.Stripe.PaymentMethod.t()],
+          has_more: boolean,
+          object: String.t(),
+          url: String.t()
+        }
+
+  @doc """
+  List a Customer's PaymentMethods
+
+  <p>Returns a list of PaymentMethods for a given Customer</p>
+
+  ## Options
+
+    * `allow_redisplay`: This field indicates whether this payment method can be shown again to its customer in a checkout flow. Stripe products such as Checkout and Elements use this field to determine whether a payment method can be shown as a saved payment method in a checkout flow.
+    * `ending_before`: A cursor for use in pagination. `ending_before` is an object ID that defines your place in the list. For instance, if you make a list request and receive 100 objects, starting with `obj_bar`, your subsequent call can include `ending_before=obj_bar` in order to fetch the previous page of the list.
+    * `expand`: Specifies which fields in the response should be expanded.
+    * `limit`: A limit on the number of objects to be returned. Limit can range between 1 and 100, and the default is 10.
+    * `starting_after`: A cursor for use in pagination. `starting_after` is an object ID that defines your place in the list. For instance, if you make a list request and receive 100 objects, ending with `obj_foo`, your subsequent call can include `starting_after=obj_foo` in order to fetch the next page of the list.
+    * `type`: An optional filter on the list, based on the object `type` field. Without the filter, the list includes all current and future payment method types. If your integration expects only one type of payment method in the response, make sure to provide a type value in the request.
+
+  ## Request Body
+
+  **Content Types**: `application/x-www-form-urlencoded`
+  """
+  @spec get_customers_customer_payment_methods(
+          customer :: String.t(),
+          body :: map,
+          opts :: keyword
+        ) ::
+          {:ok, Dhc.Stripe.Operations.get_customers_customer_payment_methods_200_json_resp()}
+          | {:error, Dhc.Stripe.Error.t()}
+  def get_customers_customer_payment_methods(customer, body, opts \\ []) do
+    client = opts[:client] || @default_client
+
+    query =
+      Keyword.take(opts, [
+        :allow_redisplay,
+        :ending_before,
+        :expand,
+        :limit,
+        :starting_after,
+        :type
+      ])
+
+    client.request(%{
+      args: [customer: customer, body: body],
+      call: {Dhc.Stripe.Operations, :get_customers_customer_payment_methods},
+      url: "/v1/customers/#{customer}/payment_methods",
+      body: body,
+      method: :get,
+      query: query,
+      request: [{"application/x-www-form-urlencoded", :map}],
+      response: [
+        {200, {Dhc.Stripe.Operations, :get_customers_customer_payment_methods_200_json_resp}},
+        default: {Dhc.Stripe.Error, :t}
+      ],
+      opts: opts
+    })
+  end
+
   @doc """
   Retrieve a PaymentIntent
 
@@ -444,7 +505,7 @@ defmodule Dhc.Stripe.Operations do
   ## Options
 
     * `attach_to_self`: If present, the SetupIntent's payment method will be attached to the in-context Stripe Account.
-
+      
       It can only be used for this Stripe Account’s own money movement flows like InboundTransfer and OutboundTransfers. It cannot be set to true when setting up a PaymentMethod for a Customer, and defaults to false when attaching a PaymentMethod to a Customer.
     * `created`: A filter on the list, based on the object `created` field. The value can be a string with an integer Unix timestamp, or it can be a dictionary with a number of different query options.
     * `customer`: Only return SetupIntents for the customer specified by this customer ID.
@@ -1119,6 +1180,15 @@ defmodule Dhc.Stripe.Operations do
   def __fields__(:get_customers_200_json_resp) do
     [
       data: [{Dhc.Stripe.Customer, :t}],
+      has_more: :boolean,
+      object: {:const, "list"},
+      url: :string
+    ]
+  end
+
+  def __fields__(:get_customers_customer_payment_methods_200_json_resp) do
+    [
+      data: [{Dhc.Stripe.PaymentMethod, :t}],
       has_more: :boolean,
       object: {:const, "list"},
       url: :string
