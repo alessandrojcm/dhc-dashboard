@@ -76,8 +76,11 @@ defmodule Dhc.Invitations.Repository do
   `original_invite` is preserved only to detect waitlist-id invites and read
   the optional `invitationType` / `metadata` from `invite_data`.
 
-  Existing pending Invitations for the same email are expired before the new
-  Invitation is inserted, mirroring the pre-ALE-162 behavior.
+  Rejects the invite while a pending Invitation exists for the email
+  (case-insensitive; the column is `citext`). Re-inviting becomes possible
+  again only once the pending Invitation expires or is revoked. The partial
+  unique index `invitations_email_pending_unique` stays as the concurrency
+  backstop: two racing inserts can never both win.
   """
   @spec create_invitation_record(map() | String.t(), invite_data(), String.t() | nil) ::
           {:ok, Ecto.UUID.t()} | {:error, term()}
@@ -86,7 +89,7 @@ defmodule Dhc.Invitations.Repository do
       if is_binary(original_invite), do: original_invite, else: Map.get(invite_data, "waitlistId")
 
     Repo.transaction(fn ->
-      with :ok <- expire_pending_for_email(invite_data["email"]),
+      with :ok <- ensure_no_pending_invitation(invite_data["email"]),
            {:ok, invitation_id} <-
              insert_pending_invitation(invite_data, waitlist_id, created_by_id) do
         invitation_id
@@ -100,17 +103,15 @@ defmodule Dhc.Invitations.Repository do
     end
   end
 
-  @doc """
-  Expires pending Invitations for an email address.
-  """
-  @spec expire_pending_for_email(String.t()) :: :ok
-  def expire_pending_for_email(email) when is_binary(email) do
-    from(i in Invitation, where: i.email == ^email and i.status == "pending")
-    |> Repo.update_all(
-      set: [status: "expired", updated_at: DateTime.utc_now() |> DateTime.truncate(:second)]
-    )
+  # Sequential duplicate defense: a friendly rejection instead of relying on
+  # the partial unique index. Concurrent invites are still arbitrated by the
+  # index itself (`invitations_email_pending_unique`).
+  defp ensure_no_pending_invitation(email) when is_binary(email) do
+    pending? =
+      from(i in Invitation, where: i.email == ^email and i.status == "pending")
+      |> Repo.exists?()
 
-    :ok
+    if pending?, do: {:error, :duplicate_pending_invitation}, else: :ok
   end
 
   @doc """
