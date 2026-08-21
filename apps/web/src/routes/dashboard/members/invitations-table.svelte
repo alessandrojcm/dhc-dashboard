@@ -1,59 +1,87 @@
 <script lang="ts">
 import {
-	createMutation,
-	createQuery,
-	keepPreviousData,
-} from "@tanstack/svelte-query";
-import {
-	getCoreRowModel,
-	getExpandedRowModel,
-	getSortedRowModel,
-	type SortingState,
-} from "@tanstack/table-core";
-import dayjs from "dayjs";
-import { SendIcon, Trash2 } from "@lucide/svelte";
-import { createRawSnippet } from "svelte";
-import { SvelteURLSearchParams } from "svelte/reactivity";
-import { Cross2 } from "svelte-radix";
-import { toast } from "svelte-sonner";
-import { goto } from "$app/navigation";
-import { page } from "$app/state";
-import {
 	type Invitation,
 	type InvitationListSortField,
 	invitationsDeleteMutation,
 	invitationsListOptions,
 	invitationsResendMutation,
 } from "@dhc/api-client";
-import { Badge } from "$lib/components/ui/badge";
-import { Button } from "$lib/components/ui/button";
-import * as ButtonGroup from "$lib/components/ui/button-group";
-import { Checkbox } from "$lib/components/ui/checkbox";
 import {
-	createSvelteTable,
-	FlexRender,
-	renderComponent,
-	renderSnippet,
-} from "$lib/components/ui/data-table/index.js";
+	createMutation,
+	createQuery,
+	keepPreviousData,
+} from "@tanstack/svelte-query";
+import dayjs from "dayjs";
+import {
+	ArrowDown,
+	ArrowUp,
+	ChevronLeft,
+	ChevronRight,
+	Mail,
+	RotateCcw,
+	Search,
+	Send,
+	Trash2,
+	X,
+} from "@lucide/svelte";
+import { SvelteSet } from "svelte/reactivity";
+import { toast } from "svelte-sonner";
+import { goto } from "$app/navigation";
+import { page } from "$app/state";
+import { Badge, type BadgeVariant } from "$lib/components/ui/badge";
+import { Button } from "$lib/components/ui/button";
 import { Input } from "$lib/components/ui/input";
 import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
 import * as Select from "$lib/components/ui/select";
 import * as Table from "$lib/components/ui/table/index.js";
+import SortHeader from "$lib/components/ui/table/sort-header.svelte";
+import {
+	isPageSize,
+	PAGE_SIZE_OPTIONS,
+	parsePageSize,
+	transitionCursorQuery,
+} from "$lib/cursor-query";
+import { cn } from "$lib/utils";
 import { getInvitationLink } from "$lib/utils/invitation";
 import InvitationActions from "./invitation-actions.svelte";
+import InvitationSelectionCheckbox from "./invitation-selection-checkbox.svelte";
 
-const pageSizeOptions = [10, 25, 50, 100] as const;
-
-// The table sorts on DB column names (snake_case) to stay compatible with the
-// existing column ids; these map to the camelCase sort fields the API expects.
+const pageSizeOptions = PAGE_SIZE_OPTIONS;
 const invitationSortFields = [
 	"email",
 	"status",
 	"expires_at",
 	"created_at",
 ] as const;
+const sortOptions = [
+	{ value: "created_at", label: "Sent date" },
+	{ value: "expires_at", label: "Expiry date" },
+	{ value: "email", label: "Email" },
+	{ value: "status", label: "Status" },
+] as const;
 
 type InvitationTableSortField = (typeof invitationSortFields)[number];
+type SortDirection = "asc" | "desc";
+type InvitationTableRow = {
+	id: string;
+	email: string;
+	status: Invitation["status"];
+	expires_at: string;
+	created_at: string;
+};
+type InvitationTablePage = {
+	data: InvitationTableRow[];
+	count: number;
+	nextCursor: string | null;
+	previousCursor: string | null;
+};
+type InvitationTableQueryParams = {
+	pageSize: (typeof pageSizeOptions)[number];
+	searchQuery: string;
+	sort: InvitationTableSortField;
+	direction: SortDirection;
+	cursor: string | null;
+};
 
 const invitationSortMap = {
 	email: "email",
@@ -62,26 +90,28 @@ const invitationSortMap = {
 	created_at: "createdAt",
 } satisfies Record<InvitationTableSortField, InvitationListSortField>;
 
-type InvitationTableRow = {
-	id: string;
-	email: string;
-	status: Invitation["status"];
-	expires_at: string;
-	created_at: string;
-};
+function isInvitationSortField(
+	value: string | null | undefined,
+): value is InvitationTableSortField {
+	return invitationSortFields.some((field) => field === value);
+}
 
-type InvitationTablePage = {
-	data: InvitationTableRow[];
-	count: number;
-	nextCursor: string | null;
-	previousCursor: string | null;
-};
+function navigateToInvitations(
+	searchParams: URLSearchParams,
+	options: { replaceState?: boolean } = {},
+) {
+	const query = searchParams.toString();
+	const url = `${page.url.pathname}${query ? `?${query}` : ""}`;
+	void goto(url, {
+		keepFocus: true,
+		noScroll: true,
+		replaceState: options.replaceState,
+	});
+}
 
-const pageSize = $derived.by(() => {
-	const requestedPageSize =
-		Number(page.url.searchParams.get("invitePageSize")) || 10;
-	return isPageSize(requestedPageSize) ? requestedPageSize : 10;
-});
+const pageSize = $derived(
+	parsePageSize(page.url.searchParams, "invitePageSize"),
+);
 const searchQuery = $derived(page.url.searchParams.get("inviteQ") || "");
 const cursor = $derived(page.url.searchParams.get("inviteCursor"));
 const activeSort = $derived.by(() => {
@@ -96,33 +126,6 @@ const activeSort = $derived.by(() => {
 		direction: sortDirection === "asc" ? "asc" : "desc",
 	} as const;
 });
-
-function isPageSize(value: number): value is (typeof pageSizeOptions)[number] {
-	return pageSizeOptions.some((option) => option === value);
-}
-
-function isInvitationSortField(
-	value: string | null,
-): value is InvitationTableSortField {
-	return invitationSortFields.some((field) => field === value);
-}
-const sortingState: SortingState = $derived.by(() => {
-	return [
-		{
-			id: activeSort.sort,
-			desc: activeSort.direction === "desc",
-		},
-	];
-});
-
-type InvitationTableQueryParams = {
-	pageSize: (typeof pageSizeOptions)[number];
-	searchQuery: string;
-	sort: InvitationTableSortField;
-	direction: "asc" | "desc";
-	cursor: string | null;
-};
-
 const invitationsQueryParams = $derived<InvitationTableQueryParams>({
 	pageSize,
 	searchQuery,
@@ -130,6 +133,9 @@ const invitationsQueryParams = $derived<InvitationTableQueryParams>({
 	direction: activeSort.direction,
 	cursor,
 });
+
+let searchDraft = $derived(searchQuery);
+const selectedRows = new SvelteSet<string>();
 
 function toTableRow(invitation: Invitation): InvitationTableRow {
 	return {
@@ -163,459 +169,684 @@ const invitationsQuery = createQuery(() => ({
 	},
 }));
 
-let selectedRows = $state<Set<string>>(new Set());
-
-// Derived state for bulk operations
+const invitations = $derived(invitationsQuery.data?.data ?? []);
+const invitationIds = $derived(invitations.map((invitation) => invitation.id));
 const selectedRowsArray = $derived(Array.from(selectedRows));
+const allInvitationsSelected = $derived(
+	invitationIds.length > 0 &&
+		invitationIds.every((invitationId) => selectedRows.has(invitationId)),
+);
+const someInvitationsSelected = $derived(
+	!allInvitationsSelected &&
+		invitationIds.some((invitationId) => selectedRows.has(invitationId)),
+);
 
-function navigateToMembers(searchParams: SvelteURLSearchParams) {
-	const url = `/dashboard/members?${searchParams.toString()}`;
-	goto(url, { keepFocus: true, noScroll: true });
+function clearSelection() {
+	selectedRows.clear();
 }
 
-function onPaginationChange(newPageSize: (typeof pageSizeOptions)[number]) {
-	const newParams = new SvelteURLSearchParams(page.url.searchParams);
-	newParams.set("invitePageSize", newPageSize.toString());
-	// Changing page size resets the cursor (the old cursor bound the prior limit).
-	newParams.delete("inviteCursor");
-	navigateToMembers(newParams);
+function setInvitationSelected(invitationId: string, selected: boolean) {
+	if (selected) selectedRows.add(invitationId);
+	else selectedRows.delete(invitationId);
+}
+
+function setAllInvitationsSelected(selected: boolean) {
+	for (const invitationId of invitationIds) {
+		if (selected) selectedRows.add(invitationId);
+		else selectedRows.delete(invitationId);
+	}
+}
+
+function onPaginationChange(newPageSize: number) {
+	if (!isPageSize(newPageSize)) return;
+	clearSelection();
+	const newParams = transitionCursorQuery(page.url.searchParams, {
+		cursorKey: "inviteCursor",
+		updates: { invitePageSize: newPageSize.toString() },
+	});
+	navigateToInvitations(newParams, { replaceState: true });
 }
 
 function onCursorChange(newCursor: string | null | undefined) {
-	const newParams = new SvelteURLSearchParams(page.url.searchParams);
-	if (newCursor) {
-		newParams.set("inviteCursor", newCursor);
-	} else {
-		newParams.delete("inviteCursor");
-	}
-	navigateToMembers(newParams);
+	if (!newCursor) return;
+	clearSelection();
+	const newParams = transitionCursorQuery(page.url.searchParams, {
+		cursorKey: "inviteCursor",
+		cursor: newCursor,
+	});
+	navigateToInvitations(newParams);
 }
 
-function onSortingChange(newSorting: SortingState) {
-	const [sorting] = newSorting;
-	const newParams = new SvelteURLSearchParams(page.url.searchParams);
-	newParams.set("inviteSort", sorting.id);
-	newParams.set("inviteDirection", sorting.desc ? "desc" : "asc");
-	// Re-sorting invalidates the cursor (it bound the prior sort field/direction).
-	newParams.delete("inviteCursor");
-	navigateToMembers(newParams);
+function onSortingChange(
+	sort: InvitationTableSortField,
+	direction: SortDirection,
+) {
+	clearSelection();
+	const newParams = transitionCursorQuery(page.url.searchParams, {
+		cursorKey: "inviteCursor",
+		updates: { inviteSort: sort, inviteDirection: direction },
+	});
+	navigateToInvitations(newParams, { replaceState: true });
+}
+
+function toggleSort(sort: InvitationTableSortField) {
+	const direction =
+		activeSort.sort === sort && activeSort.direction === "asc" ? "desc" : "asc";
+	onSortingChange(sort, direction);
+}
+
+function sortDirectionFor(
+	sort: InvitationTableSortField,
+): SortDirection | false {
+	return activeSort.sort === sort ? activeSort.direction : false;
 }
 
 function onSearchChange(newSearch: string) {
-	const newParams = new SvelteURLSearchParams(page.url.searchParams);
-	newParams.set("inviteQ", newSearch);
-	// Re-searching invalidates the cursor (it bound the prior query).
-	newParams.delete("inviteCursor");
-	navigateToMembers(newParams);
+	clearSelection();
+	const normalizedSearch = newSearch.trim();
+	const newParams = transitionCursorQuery(page.url.searchParams, {
+		cursorKey: "inviteCursor",
+		updates: { inviteQ: normalizedSearch || null },
+	});
+	navigateToInvitations(newParams, { replaceState: true });
 }
 
-const resendInvitationLink = createMutation(() => ({
+function onSearchSubmit(event: SubmitEvent) {
+	event.preventDefault();
+	onSearchChange(searchDraft);
+}
+
+function resetSearch() {
+	searchDraft = "";
+	onSearchChange("");
+}
+
+const resendInvitation = createMutation(() => ({
 	...invitationsResendMutation(),
-	onSuccess: () => {
-		toast.success("Invitation link resent");
-	},
-	onError: () => {
-		toast.error("Failed to resend invitation link");
-	},
+	onSuccess: () => toast.success("Invitation email resent"),
+	onError: () => toast.error("Failed to resend invitation email"),
 }));
 
-const bulkResendInvitations = createMutation(() => ({
+const resendSelectedInvitations = createMutation(() => ({
 	...invitationsResendMutation(),
 	onSuccess: () => {
-		toast.success("Invitation links resent successfully");
-		selectedRows = new Set();
+		toast.success("Selected invitation emails resent");
+		clearSelection();
 	},
-	onError: () => {
-		toast.error("Failed to resend invitation links");
-	},
+	onError: () => toast.error("Failed to resend selected invitations"),
 }));
 
-// Bulk delete mutation
-const bulkDeleteInvitations = createMutation(() => ({
+const deleteInvitations = createMutation(() => ({
 	...invitationsDeleteMutation(),
 	onSuccess: () => {
-		toast.success("Invitations deleted successfully");
-		selectedRows = new Set(); // Clear selection
-		invitationsQuery.refetch(); // Refresh data
+		toast.success("Invitation deleted");
+		clearSelection();
+		void invitationsQuery.refetch();
 	},
-	onError: () => {
-		toast.error("Failed to delete invitations");
-	},
+	onError: () => toast.error("Failed to delete invitation"),
 }));
 
-// Create table
-const table = createSvelteTable({
-	autoResetPageIndex: false,
-	manualPagination: true,
-	manualSorting: true,
-	enableRowSelection: true,
-	get data() {
-		return invitationsQuery.data?.data || [];
-	},
-	columns: [
-		{
-			id: "select",
-			header: () =>
-				renderComponent(Checkbox, {
-					checked: table.getIsAllRowsSelected(),
-					indeterminate: table.getIsSomeRowsSelected(),
-					onCheckedChange: (state: boolean) => {
-						table.toggleAllRowsSelected(state);
-					},
-				}),
-			cell: ({ row }) =>
-				renderComponent(Checkbox, {
-					checked: row.getIsSelected(),
-					onCheckedChange: (state: boolean) => row.toggleSelected(state),
-				}),
-		},
-		{
-			id: "actions",
-			header: "Actions",
-			cell: ({ row }) => {
-				return renderComponent(InvitationActions, {
-					resendInvitation: () =>
-						resendInvitationLink.mutate({
-							body: { emails: [row.original.email] },
-						}),
-					invitationLink: getInvitationLink(
-						row.original.id,
-						row.original.email,
-					),
-					deleteInvitation: () =>
-						bulkDeleteInvitations.mutate({
-							body: { invitationIds: [row.original.id] },
-						}),
-				});
-			},
-		},
-		{
-			id: "email",
-			header: "Email",
-			accessorKey: "email",
-			cell: (info) => info.getValue(),
-		},
-		{
-			id: "status",
-			header: "Status",
-			accessorKey: "status",
-			cell: ({ row }) => {
-				const status = row.original.status;
-				return renderComponent(Badge, {
-					children: createRawSnippet(() => ({
-						render: () => status,
-					})),
-					variant: status === "pending" ? "default" : "destructive",
-					class: "capitalize",
-				});
-			},
-		},
-		{
-			id: "expires_at",
-			header: () => "Expires",
-			accessorKey: "expires_at",
-			cell: ({ row }) => {
-				const expiresAt = row.original.expires_at;
-				const isExpired = dayjs(expiresAt).isBefore(dayjs());
-				return renderSnippet(
-					createRawSnippet((value) => ({
-						render: () => `
-						<div class="flex items-center">
-							<span class="${isExpired ? "text-destructive" : ""}">
-								${dayjs(value()).format("MMM D, YYYY")}
-							</span>
-						</div>
-					`,
-					})),
-					expiresAt,
-				);
-			},
-		},
-	],
-	state: {
-		get sorting() {
-			return sortingState;
-		},
-		get rowSelection() {
-			return Array.from(selectedRows).reduce(
-				(prv, curr) => ({
-					...prv,
-					[curr]: true,
-				}),
-				{},
-			);
-		},
-	},
-	onSortingChange: (updater) => {
-		if (updater instanceof Function) {
-			onSortingChange(updater(sortingState));
-		} else {
-			onSortingChange(updater);
-		}
-	},
-	getCoreRowModel: getCoreRowModel(),
-	getSortedRowModel: getSortedRowModel(),
-	getExpandedRowModel: getExpandedRowModel(),
-	getRowId: (row) => row.id,
-	onRowSelectionChange: (updater) => {
-		if (updater instanceof Function) {
-			const currentSelection = Array.from(selectedRows).reduce(
-				(prv, curr) => ({
-					...prv,
-					[curr]: true,
-				}),
-				{},
-			);
-			const newSelection = updater(currentSelection);
-			selectedRows = new Set(
-				Object.keys(newSelection).filter((key) => newSelection[key]),
-			);
-		} else {
-			selectedRows = new Set(
-				Object.keys(updater).filter((key) => updater[key]),
-			);
-		}
-	},
-});
+function resendSelected() {
+	const emails = invitations
+		.filter((invitation) => selectedRows.has(invitation.id))
+		.map((invitation) => invitation.email);
+	if (emails.length === 0) return;
+	resendSelectedInvitations.mutate({ body: { emails } });
+}
+
+function deleteSelected() {
+	if (selectedRowsArray.length === 0) return;
+	deleteInvitations.mutate({
+		body: { invitationIds: selectedRowsArray },
+	});
+}
+
+function formatDate(value: string): string {
+	return dayjs(value).isValid() ? dayjs(value).format("D MMM YYYY") : "Unknown";
+}
+
+function statusVariant(status: Invitation["status"]): BadgeVariant {
+	if (status === "accepted") return "secondary";
+	if (status === "expired") return "destructive";
+	if (status === "revoked") return "outline";
+	return "default";
+}
 </script>
 
-<div class="flex w-full items-center space-x-2 mb-2 p-2">
-	<Input
-		value={searchQuery}
-		onchange={(t: Event & { currentTarget: EventTarget & HTMLInputElement }) =>
-			onSearchChange(t.currentTarget.value)}
-		placeholder="Search invitations"
-		class="max-w-md"
-	/>
+{#snippet statusBadge(status: Invitation["status"])}
+	<Badge variant={statusVariant(status)} class="capitalize">{status}</Badge>
+{/snippet}
 
-	{#if searchQuery !== ""}
-		<Button
-			variant="ghost"
-			type="button"
-			aria-label="Clear search"
-			onclick={() => onSearchChange("")}
+{#snippet expirationDate(value: string)}
+	{@const expired = dayjs(value).isBefore(dayjs())}
+	<span class={cn("text-sm tabular-nums", expired && "text-destructive")}>
+		{#if expired}<span class="font-semibold">Expired </span>{/if}
+		<time datetime={value}>{formatDate(value)}</time>
+	</span>
+{/snippet}
+
+{#snippet emptyState()}
+	<div class="flex flex-col items-center justify-center px-6 py-12 text-center">
+		<div
+			class="flex size-12 items-center justify-center rounded-2xl bg-primary/10 text-primary"
 		>
-			<Cross2 />
-		</Button>
-	{/if}
-	{#if invitationsQuery.isFetching}
-		<LoaderCircle />
-	{/if}
-
-	<div class="flex items-center justify-between ml-auto">
-		<ButtonGroup.Root>
-			<!-- Bulk Resend Button -->
-			<Button
-				variant="outline"
-				size="sm"
-				disabled={bulkResendInvitations.isPending || selectedRows.size === 0}
-				onclick={() => {
-					const emails =
-						invitationsQuery.data?.data
-							.filter((invitation) => selectedRowsArray.includes(invitation.id))
-							.map((invitation) => invitation.email) ?? [];
-					bulkResendInvitations.mutate({ body: { emails } });
-				}}
-				class="flex items-center gap-2"
-			>
-				<SendIcon class="h-4 w-4" />
-				<span class="hidden sm:inline">
-					{bulkResendInvitations.isPending
-						? "Sending..."
-						: `Resend${selectedRows.size === 0 ? "" : ` ${selectedRows.size}`}`}
-				</span>
+			<Mail class="size-6" aria-hidden="true" />
+		</div>
+		<h3 class="mt-4 font-heading text-xl text-foreground">
+			No invitations found
+		</h3>
+		<p class="mt-1 max-w-sm text-sm leading-6 text-muted-foreground">
+			{searchQuery
+				? "Try a different email address or clear your search."
+				: "Sent invitations will appear here so you can track and manage them."}
+		</p>
+		{#if searchQuery}
+			<Button variant="outline" class="mt-4 min-h-11" onclick={resetSearch}>
+				<RotateCcw class="size-4" aria-hidden="true" />
+				Clear search
 			</Button>
-
-			<!-- Bulk Delete Button -->
-			<Button
-				variant="destructive"
-				size="sm"
-				disabled={bulkDeleteInvitations.isPending || selectedRows.size === 0}
-				onclick={() =>
-					bulkDeleteInvitations.mutate({
-						body: { invitationIds: selectedRowsArray },
-					})}
-				class="flex items-center gap-2"
-			>
-				<Trash2 class="h-4 w-4" />
-				<span class="hidden sm:inline">
-					{bulkDeleteInvitations.isPending
-						? "Deleting..."
-						: `Delete${selectedRows.size === 0 ? "" : ` ${selectedRows.size}`}`}
-				</span>
-			</Button>
-		</ButtonGroup.Root>
-	</div>
-</div>
-
-<!-- Desktop Table View (hidden on mobile) -->
-<div class="hidden md:block overflow-x-auto overflow-y-auto h-[65svh]">
-	<Table.Root class="w-full">
-		<Table.Header class="sticky top-0 z-10 bg-white">
-			{#each table.getHeaderGroups() as headerGroup (headerGroup.id)}
-				<Table.Row>
-					{#each headerGroup.headers as header (header.id)}
-						<Table.Head
-							class="text-black prose prose-p text-xs md:text-sm font-medium p-2"
-						>
-							<FlexRender
-								content={header.column.columnDef.header ?? ""}
-								context={header.getContext()}
-							/>
-						</Table.Head>
-					{/each}
-				</Table.Row>
-			{/each}
-		</Table.Header>
-		<Table.Body>
-			{#each table.getRowModel().rows as row (row.id)}
-				<Table.Row>
-					{#each row.getVisibleCells() as cell (cell.id)}
-						<Table.Cell
-							class="whitespace-normal md:whitespace-nowrap py-2 md:py-4 px-2 md:px-3 text-xs md:text-sm prose prose-p"
-						>
-							<FlexRender
-								content={cell.column.columnDef.cell}
-								context={cell.getContext()}
-							/>
-						</Table.Cell>
-					{/each}
-				</Table.Row>
-			{/each}
-		</Table.Body>
-	</Table.Root>
-</div>
-
-<!-- Mobile Card View (hidden on desktop) -->
-<div class="md:hidden overflow-y-auto h-[60svh] px-2 py-1">
-	<div class="space-y-4">
-		{#if table.getRowCount() === 0}
-			<p class="text-foreground">No results found</p>
 		{/if}
-		{#each table.getRowModel().rows as row (row.id)}
-			<div class="bg-card text-card-foreground rounded-lg border shadow-sm p-4">
-				<!-- Checkbox and Email Row -->
-				<div class="flex items-center gap-2 mb-3">
-					<Checkbox
-						checked={row.getIsSelected()}
-						onchange={() => row.toggleSelected()}
-					/>
-					<div class="font-medium text-base break-words">
-						{row.original.email}
-					</div>
-				</div>
+	</div>
+{/snippet}
 
-				<!-- Actions Row -->
-				<div class="flex items-center space-x-2 mb-3">
-					<Button
-						variant="ghost"
-						size="icon"
-						class="h-8 w-8"
-						aria-label="Resend invitation"
-						onclick={() =>
-							resendInvitationLink.mutate({
-								body: { emails: [row.original.email] },
-							})}
-					>
-						<SendIcon class="h-4 w-4" />
+<section
+	aria-labelledby="invitation-activity-title"
+	aria-busy={invitationsQuery.isFetching}
+	class="overflow-hidden rounded-2xl border border-border bg-card shadow-[4px_4px_0_hsl(var(--secondary)/0.35)]"
+>
+	<header class="border-b border-border bg-muted/20 p-4 sm:p-5">
+		<div class="flex flex-wrap items-start justify-between gap-3">
+			<div>
+				<h2
+					id="invitation-activity-title"
+					class="font-heading text-2xl text-foreground"
+				>
+					Invitation activity
+				</h2>
+				<p class="mt-1 text-sm text-muted-foreground">
+					{invitationsQuery.data?.count ?? 0}
+					{invitationsQuery.data?.count === 1 ? "invitation" : "invitations"}
+				</p>
+			</div>
+			{#if invitationsQuery.isFetching}
+				<div
+					class="flex min-h-11 items-center gap-2 text-sm font-medium text-muted-foreground"
+					role="status"
+					aria-live="polite"
+				>
+					<LoaderCircle />
+					<span class="sr-only sm:not-sr-only">Updating invitations</span>
+				</div>
+			{/if}
+		</div>
+
+		<div
+			class="mt-5 grid gap-4 xl:grid-cols-[minmax(20rem,1fr)_auto] xl:items-end"
+		>
+			<form class="grid gap-2" onsubmit={onSearchSubmit}>
+				<label
+					for="invitation-search"
+					class="text-sm font-semibold text-foreground"
+				>
+					Search invitations
+				</label>
+				<div class="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+					<div class="relative">
+						<Search
+							class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+							aria-hidden="true"
+						/>
+						<Input
+							id="invitation-search"
+							name="inviteQ"
+							type="search"
+							bind:value={searchDraft}
+							placeholder="Email address"
+							class="h-11 pl-10 pr-11"
+							autocomplete="off"
+						/>
+						{#if searchDraft}
+							<Button
+								variant="ghost"
+								size="icon"
+								type="button"
+								class="absolute right-0 top-0"
+								aria-label="Clear search"
+								onclick={resetSearch}
+							>
+								<X class="size-4" aria-hidden="true" />
+							</Button>
+						{/if}
+					</div>
+					<Button type="submit" variant="outline">
+						<Search class="size-4 sm:hidden" aria-hidden="true" />
+						<span class="hidden sm:inline">Search</span>
+						<span class="sr-only sm:hidden">Search invitations</span>
 					</Button>
 				</div>
+			</form>
 
-				<!-- Status Badge -->
-				<div class="mb-3">
-					<Badge
-						variant={row.original.status === "pending"
-							? "default"
-							: "destructive"}
-						class="h-6"
+			<div class="grid gap-2">
+				<span
+					id="invitation-sort-label"
+					class="text-sm font-semibold text-foreground"
+				>
+					Sort invitations
+				</span>
+				<div class="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+					<Select.Root
+						type="single"
+						value={activeSort.sort}
+						onValueChange={(value) => {
+							if (isInvitationSortField(value)) {
+								onSortingChange(value, activeSort.direction);
+							}
+						}}
 					>
-						<p class="capitalize">{row.original.status || "Unknown"}</p>
-					</Badge>
-				</div>
-
-				<!-- Expires -->
-				<div class="grid grid-cols-3 py-1 border-b">
-					<div class="text-sm font-medium text-muted-foreground">Expires</div>
-					<div class="col-span-2 text-sm">
-						{#if row.original.expires_at}
-							<span
-								class={dayjs(row.original.expires_at).isBefore(dayjs())
-									? "text-destructive"
-									: ""}
-							>
-								{dayjs(row.original.expires_at).format("MMM D, YYYY")}
-							</span>
+						<Select.Trigger
+							class="min-w-40 data-[size=default]:h-11"
+							aria-labelledby="invitation-sort-label"
+						>
+							{sortOptions.find((option) => option.value === activeSort.sort)
+								?.label}
+						</Select.Trigger>
+						<Select.Content>
+							{#each sortOptions as option (option.value)}
+								<Select.Item value={option.value}>{option.label}</Select.Item>
+							{/each}
+						</Select.Content>
+					</Select.Root>
+					<Button
+						type="button"
+						variant="outline"
+						class="min-h-11"
+						onclick={() =>
+							onSortingChange(
+								activeSort.sort,
+								activeSort.direction === "asc" ? "desc" : "asc",
+							)}
+					>
+						{#if activeSort.direction === "asc"}
+							<ArrowUp class="size-4" aria-hidden="true" />
+							Ascending
 						{:else}
-							N/A
+							<ArrowDown class="size-4" aria-hidden="true" />
+							Descending
 						{/if}
-					</div>
-				</div>
-
-				<!-- Created -->
-				<div class="grid grid-cols-3 py-1 border-b">
-					<div class="text-sm font-medium text-muted-foreground">Created</div>
-					<div class="col-span-2 text-sm">
-						{#if row.original.created_at}
-							{dayjs(row.original.created_at).format("MMM D, YYYY")}
-						{:else}
-							Unknown
-						{/if}
-					</div>
+					</Button>
 				</div>
 			</div>
-		{/each}
-	</div>
-</div>
+		</div>
 
-<div
-	class="flex flex-col md:flex-row items-center justify-between gap-4 p-4 bg-card border-t"
->
-	<div class="flex items-center gap-2 w-full md:w-auto justify-start">
-		<p class="text-sm text-muted-foreground">Elements per page</p>
-		<Select.Root
-			type="single"
-			value={pageSize.toString()}
-			onValueChange={(value) => {
-				const nextPageSize = Number(value);
-				if (isPageSize(nextPageSize)) onPaginationChange(nextPageSize);
-			}}
-		>
-			<Select.Trigger
-				class="w-16 h-8"
-				aria-label="Invitations elements per page"
+		{#if selectedRows.size > 0}
+			<div
+				class="mt-4 flex flex-col gap-3 rounded-xl border border-primary/25 bg-primary/5 p-3 sm:flex-row sm:items-center sm:justify-between"
 			>
-				{pageSize}
-			</Select.Trigger>
-			<Select.Content>
-				{#each pageSizeOptions as pageSizeOption (pageSizeOption)}
-					<Select.Item value={pageSizeOption.toString()}>
-						{pageSizeOption}
-					</Select.Item>
-				{/each}
-			</Select.Content>
-		</Select.Root>
-	</div>
-	<div
-		class="w-full md:w-auto flex items-center justify-center md:justify-end gap-2"
-	>
-		<Button
-			variant="outline"
-			disabled={!invitationsQuery.data?.previousCursor ||
-				invitationsQuery.isFetching}
-			onclick={() => onCursorChange(invitationsQuery.data?.previousCursor)}
+				<p class="text-sm font-semibold text-foreground" aria-live="polite">
+					{selectedRows.size}
+					{selectedRows.size === 1 ? "invitation" : "invitations"} selected
+				</p>
+				<div class="grid grid-cols-3 gap-2">
+					<Button
+						variant="outline"
+						size="sm"
+						class="min-h-11"
+						disabled={resendSelectedInvitations.isPending}
+						onclick={resendSelected}
+					>
+						<Send class="size-4" aria-hidden="true" />
+						<span class="hidden sm:inline">
+							{resendSelectedInvitations.isPending ? "Sending…" : "Resend"}
+						</span>
+						<span class="sr-only sm:hidden">Resend selected invitations</span>
+					</Button>
+					<Button
+						variant="destructive"
+						size="sm"
+						class="min-h-11"
+						disabled={deleteInvitations.isPending}
+						onclick={deleteSelected}
+					>
+						<Trash2 class="size-4" aria-hidden="true" />
+						<span class="hidden sm:inline">
+							{deleteInvitations.isPending ? "Deleting…" : "Delete"}
+						</span>
+						<span class="sr-only sm:hidden">Delete selected invitations</span>
+					</Button>
+					<Button
+						variant="ghost"
+						size="sm"
+						class="min-h-11"
+						onclick={clearSelection}
+					>
+						Clear
+					</Button>
+				</div>
+			</div>
+		{/if}
+	</header>
+
+	{#if invitationsQuery.isError}
+		<div
+			class="flex flex-col items-center justify-center px-6 py-14 text-center"
+			role="alert"
 		>
-			Previous
-		</Button>
-		<p class="text-sm text-muted-foreground">
-			{invitationsQuery.data?.count ?? 0} total
-		</p>
-		<Button
-			variant="outline"
-			disabled={!invitationsQuery.data?.nextCursor ||
-				invitationsQuery.isFetching}
-			onclick={() => onCursorChange(invitationsQuery.data?.nextCursor)}
+			<h3 class="font-heading text-xl text-foreground">
+				Invitations could not be loaded
+			</h3>
+			<p class="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
+				Check your connection and try again. Your search and sort settings have
+				been kept.
+			</p>
+			<Button class="mt-4 min-h-11" onclick={() => invitationsQuery.refetch()}>
+				Try again
+			</Button>
+		</div>
+	{:else if invitationsQuery.isPending}
+		<div class="flex min-h-72 items-center justify-center" role="status">
+			<LoaderCircle />
+			<span class="sr-only">Loading invitations</span>
+		</div>
+	{:else}
+		<div
+			data-testid="invitations-table"
+			class="hidden overflow-x-auto xl:block"
 		>
-			Next
-		</Button>
-	</div>
-</div>
+			<Table.Root class="min-w-[860px]">
+				<Table.Caption class="sr-only">
+					Invitation activity. Sortable columns include email, status, sent
+					date, and expiry date.
+				</Table.Caption>
+				<Table.Header class="bg-muted/50">
+					<Table.Row class="hover:bg-transparent">
+						<Table.Head scope="col" class="w-14 px-4">
+							<InvitationSelectionCheckbox
+								checked={allInvitationsSelected}
+								indeterminate={someInvitationsSelected}
+								label="Select all invitations shown"
+								onCheckedChange={(checked: boolean) =>
+									setAllInvitationsSelected(checked)}
+							/>
+						</Table.Head>
+						<Table.Head
+							scope="col"
+							aria-sort={activeSort.sort === "email"
+								? activeSort.direction === "asc"
+									? "ascending"
+									: "descending"
+								: undefined}
+							class="px-4 text-xs font-bold uppercase tracking-wide text-muted-foreground"
+						>
+							<SortHeader
+								header="Email"
+								sortDirection={sortDirectionFor("email")}
+								class="-ml-2 min-h-11 px-2"
+								onclick={() => toggleSort("email")}
+							/>
+						</Table.Head>
+						<Table.Head
+							scope="col"
+							aria-sort={activeSort.sort === "status"
+								? activeSort.direction === "asc"
+									? "ascending"
+									: "descending"
+								: undefined}
+							class="px-4 text-xs font-bold uppercase tracking-wide text-muted-foreground"
+						>
+							<SortHeader
+								header="Status"
+								sortDirection={sortDirectionFor("status")}
+								class="-ml-2 min-h-11 px-2"
+								onclick={() => toggleSort("status")}
+							/>
+						</Table.Head>
+						<Table.Head
+							scope="col"
+							aria-sort={activeSort.sort === "created_at"
+								? activeSort.direction === "asc"
+									? "ascending"
+									: "descending"
+								: undefined}
+							class="px-4 text-xs font-bold uppercase tracking-wide text-muted-foreground"
+						>
+							<SortHeader
+								header="Sent"
+								sortDirection={sortDirectionFor("created_at")}
+								class="-ml-2 min-h-11 px-2"
+								onclick={() => toggleSort("created_at")}
+							/>
+						</Table.Head>
+						<Table.Head
+							scope="col"
+							aria-sort={activeSort.sort === "expires_at"
+								? activeSort.direction === "asc"
+									? "ascending"
+									: "descending"
+								: undefined}
+							class="px-4 text-xs font-bold uppercase tracking-wide text-muted-foreground"
+						>
+							<SortHeader
+								header="Expires"
+								sortDirection={sortDirectionFor("expires_at")}
+								class="-ml-2 min-h-11 px-2"
+								onclick={() => toggleSort("expires_at")}
+							/>
+						</Table.Head>
+						<Table.Head
+							scope="col"
+							class="px-4 text-right text-xs font-bold uppercase tracking-wide text-muted-foreground"
+						>
+							Actions
+						</Table.Head>
+					</Table.Row>
+				</Table.Header>
+				<Table.Body>
+					{#each invitations as invitation (invitation.id)}
+						<Table.Row
+							data-state={selectedRows.has(invitation.id)
+								? "selected"
+								: undefined}
+						>
+							<Table.Cell class="px-4 py-3.5">
+								<InvitationSelectionCheckbox
+									checked={selectedRows.has(invitation.id)}
+									label={`Select invitation for ${invitation.email}`}
+									onCheckedChange={(checked: boolean) =>
+										setInvitationSelected(invitation.id, checked)}
+								/>
+							</Table.Cell>
+							<Table.Cell
+								class="min-w-64 px-4 py-3.5 font-semibold text-foreground"
+							>
+								{invitation.email}
+							</Table.Cell>
+							<Table.Cell class="px-4 py-3.5">
+								{@render statusBadge(invitation.status)}
+							</Table.Cell>
+							<Table.Cell
+								class="px-4 py-3.5 text-sm tabular-nums text-muted-foreground"
+							>
+								<time datetime={invitation.created_at}>
+									{formatDate(invitation.created_at)}
+								</time>
+							</Table.Cell>
+							<Table.Cell class="px-4 py-3.5">
+								{@render expirationDate(invitation.expires_at)}
+							</Table.Cell>
+							<Table.Cell class="px-4 py-3.5 text-right">
+								<InvitationActions
+									resendInvitation={() =>
+										resendInvitation.mutate({
+											body: { emails: [invitation.email] },
+										})}
+									invitationLink={getInvitationLink(
+										invitation.id,
+										invitation.email,
+									)}
+									deleteInvitation={() =>
+										deleteInvitations.mutate({
+											body: { invitationIds: [invitation.id] },
+										})}
+									isResending={resendInvitation.isPending}
+									isDeleting={deleteInvitations.isPending}
+								/>
+							</Table.Cell>
+						</Table.Row>
+					{:else}
+						<Table.Row>
+							<Table.Cell colspan={6} class="p-0">
+								{@render emptyState()}
+							</Table.Cell>
+						</Table.Row>
+					{/each}
+				</Table.Body>
+			</Table.Root>
+		</div>
+
+		<div
+			data-testid="invitations-card-list"
+			class="divide-y divide-border xl:hidden"
+		>
+			{#each invitations as invitation (invitation.id)}
+				<article
+					class={cn(
+						"p-4 transition-colors duration-200 sm:p-5",
+						selectedRows.has(invitation.id) && "bg-primary/5",
+					)}
+				>
+					<div class="flex items-start gap-3">
+						<InvitationSelectionCheckbox
+							checked={selectedRows.has(invitation.id)}
+							label={`Select invitation for ${invitation.email}`}
+							onCheckedChange={(checked: boolean) =>
+								setInvitationSelected(invitation.id, checked)}
+						/>
+						<div class="min-w-0 flex-1">
+							<p class="break-all font-semibold leading-6 text-foreground">
+								{invitation.email}
+							</p>
+							<div class="mt-2">{@render statusBadge(invitation.status)}</div>
+						</div>
+					</div>
+
+					<div class="mt-4 grid grid-cols-2 gap-3 rounded-xl bg-muted/35 p-3">
+						<div>
+							<p
+								class="text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+							>
+								Sent
+							</p>
+							<time
+								datetime={invitation.created_at}
+								class="mt-1 block text-sm tabular-nums text-foreground"
+							>
+								{formatDate(invitation.created_at)}
+							</time>
+						</div>
+						<div>
+							<p
+								class="text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+							>
+								Expires
+							</p>
+							<div class="mt-1">
+								{@render expirationDate(invitation.expires_at)}
+							</div>
+						</div>
+					</div>
+
+					<div class="mt-4">
+						<InvitationActions
+							resendInvitation={() =>
+								resendInvitation.mutate({
+									body: { emails: [invitation.email] },
+								})}
+							invitationLink={getInvitationLink(
+								invitation.id,
+								invitation.email,
+							)}
+							deleteInvitation={() =>
+								deleteInvitations.mutate({
+									body: { invitationIds: [invitation.id] },
+								})}
+							isResending={resendInvitation.isPending}
+							isDeleting={deleteInvitations.isPending}
+							showLabels
+						/>
+					</div>
+				</article>
+			{:else}
+				{@render emptyState()}
+			{/each}
+		</div>
+	{/if}
+
+	{#if !invitationsQuery.isError}
+		<footer
+			class="flex flex-col gap-4 border-t border-border bg-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between"
+		>
+			<div
+				class="flex flex-wrap items-center justify-between gap-3 sm:justify-start"
+			>
+				<p class="text-sm text-muted-foreground">
+					<span class="font-semibold text-foreground">{invitations.length}</span
+					>
+					shown of
+					<span class="font-semibold text-foreground">
+						{invitationsQuery.data?.count ?? 0}
+					</span>
+				</p>
+				<div class="flex items-center gap-2">
+					<span
+						id="invitations-page-size-label"
+						class="text-sm text-muted-foreground"
+					>
+						Rows
+					</span>
+					<Select.Root
+						type="single"
+						value={pageSize.toString()}
+						onValueChange={(value) => onPaginationChange(Number(value))}
+					>
+						<Select.Trigger
+							class="w-20 data-[size=default]:h-11"
+							aria-labelledby="invitations-page-size-label"
+						>
+							{pageSize}
+						</Select.Trigger>
+						<Select.Content>
+							{#each pageSizeOptions as pageSizeOption (pageSizeOption)}
+								<Select.Item value={pageSizeOption.toString()}>
+									{pageSizeOption}
+								</Select.Item>
+							{/each}
+						</Select.Content>
+					</Select.Root>
+				</div>
+			</div>
+
+			<nav class="grid grid-cols-2 gap-2" aria-label="Invitation pages">
+				<Button
+					variant="outline"
+					class="min-h-11"
+					disabled={!invitationsQuery.data?.previousCursor ||
+						invitationsQuery.isFetching}
+					onclick={() => onCursorChange(invitationsQuery.data?.previousCursor)}
+				>
+					<ChevronLeft class="size-4" aria-hidden="true" />
+					Previous
+				</Button>
+				<Button
+					variant="outline"
+					class="min-h-11"
+					disabled={!invitationsQuery.data?.nextCursor ||
+						invitationsQuery.isFetching}
+					onclick={() => onCursorChange(invitationsQuery.data?.nextCursor)}
+				>
+					Next
+					<ChevronRight class="size-4" aria-hidden="true" />
+				</Button>
+			</nav>
+		</footer>
+	{/if}
+</section>

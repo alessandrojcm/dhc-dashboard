@@ -276,6 +276,8 @@ The Stripe API version is pinned in app config (`:stripe_api_version`, default `
 # Phoenix Mix tasks replacing legacy scripts/seed*.js
 mise run seed-waitlist
 mise run seed-waitlist 50
+mise run seed-invitations
+mise run seed-invitations 50
 mise run seed-members
 mise run seed-members 25
 mise run seed-committee
@@ -283,11 +285,12 @@ mise run seed-committee ./scripts/users.csv
 
 # Or run directly from Phoenix app
 cd apps/phoenix && mix seed.waitlist 50
+cd apps/phoenix && mix seed.invitations 50
 cd apps/phoenix && mix seed.members 25
 cd apps/phoenix && mix seed.committee_members ../../scripts/users.csv
 ```
 
-`mise` loads `.env` automatically; the seed Mix tasks do not load dotenv themselves. Keep `.env` up to date with the same Phoenix DB connection convention used by the app (`DATABASE_URL`, preferred). `seed.members`, `seed.workshops`, and `seed.committee_members` create Phoenix Principals directly through `Dhc.Auth`. `seed.members` only creates Stripe customers when `STRIPE_SECRET_KEY` is set. The committee CSV is intentionally local and gitignored because it contains member data; pass its path explicitly when `scripts/users.csv` is not present.
+`mise` loads `.env` automatically; the seed Mix tasks do not load dotenv themselves. Keep `.env` up to date with the same Phoenix DB connection convention used by the app (`DATABASE_URL`, preferred). `seed.members`, `seed.workshops`, and `seed.committee_members` create Phoenix Principals directly through `Dhc.Auth`. `seed.invitations` creates direct, pending member invitations without a waitlist entry or an issuing administrator. `seed.members` only creates Stripe customers when `STRIPE_SECRET_KEY` is set. The committee CSV is intentionally local and gitignored because it contains member data; pass its path explicitly when `scripts/users.csv` is not present.
 
 ## CI (full check)
 

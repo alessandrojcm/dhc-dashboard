@@ -337,13 +337,62 @@ defmodule DhcWeb.WorkshopsControllerTest do
                "createdBy" => nil,
                "interestCount" => 2,
                "pendingRegistrationCount" => 1,
-               "confirmedRegistrationCount" => 1
+               "confirmedRegistrationCount" => 1,
+               "registrationCount" => 2,
+               "placesRemaining" => 10,
+               "isAtCapacity" => false
              }
 
       refute Map.has_key?(item, "userInterest")
       refute Map.has_key?(item, "userRegistrations")
       refute Map.has_key?(item, "currentUserRegistration")
       refute Map.has_key?(item, "attendees")
+    end
+
+    test "returns authoritative capacity projections for coordinator workshops", %{conn: conn} do
+      cases = [
+        {"Zero registrations", 4, [], 0, 4, false},
+        {"Partial registrations", 5, ~w(pending confirmed cancelled refunded), 2, 3, false},
+        {"At capacity", 2, ~w(pending confirmed), 2, 0, true},
+        {"Over capacity", 1, ~w(pending confirmed pending), 3, 0, true}
+      ]
+
+      for {title, max_capacity, statuses, _count, _remaining, _at_capacity} <- cases do
+        workshop =
+          WorkshopFixtures.workshop_fixture(
+            title: title,
+            status: "published",
+            max_capacity: max_capacity
+          )
+
+        insert_external_registrations(workshop, statuses)
+      end
+
+      workshops =
+        conn
+        |> auth_conn("workshop_coordinator")
+        |> get("/api/workshops/calendar")
+        |> json_response(200)
+        |> get_in(["data", "workshops"])
+        |> Map.new(&{&1["title"], &1})
+
+      for {title, _max_capacity, _statuses, count, remaining, at_capacity} <- cases do
+        assert %{
+                 "registrationCount" => ^count,
+                 "placesRemaining" => ^remaining,
+                 "isAtCapacity" => ^at_capacity
+               } = workshops[title]
+      end
+    end
+
+    test "serializes uncapped coordinator capacity projections" do
+      workshop = uncapped_workshop_summary()
+
+      assert %{data: %{workshops: [item]}} =
+               DhcWeb.WorkshopsJSON.render("calendar.json", %{workshops: [workshop]})
+
+      assert item.placesRemaining == nil
+      assert item.isAtCapacity == false
     end
   end
 
@@ -470,6 +519,55 @@ defmodule DhcWeb.WorkshopsControllerTest do
                "id" => current_registration.id,
                "status" => "confirmed"
              }
+    end
+
+    test "returns authoritative capacity projections for member workshops", %{conn: conn} do
+      cases = [
+        {"Zero registrations", 4, [], 0, 4, false},
+        {"Partial registrations", 5, ~w(pending confirmed cancelled refunded), 2, 3, false},
+        {"At capacity", 2, ~w(pending confirmed), 2, 0, true},
+        {"Over capacity", 1, ~w(pending confirmed pending), 3, 0, true}
+      ]
+
+      for {title, max_capacity, statuses, _count, _remaining, _at_capacity} <- cases do
+        workshop =
+          WorkshopFixtures.workshop_fixture(
+            title: title,
+            status: "published",
+            max_capacity: max_capacity
+          )
+
+        insert_external_registrations(workshop, statuses)
+      end
+
+      workshops =
+        conn
+        |> auth_conn("member")
+        |> get("/api/workshops", status: "published")
+        |> json_response(200)
+        |> get_in(["data", "workshops"])
+        |> Map.new(&{&1["title"], &1})
+
+      for {title, _max_capacity, _statuses, count, remaining, at_capacity} <- cases do
+        assert %{
+                 "registrationCount" => ^count,
+                 "placesRemaining" => ^remaining,
+                 "isAtCapacity" => ^at_capacity
+               } = workshops[title]
+      end
+    end
+
+    test "serializes uncapped member capacity projections" do
+      workshop =
+        uncapped_workshop_summary()
+        |> Map.merge(%{current_user_interest: false, current_user_registration: nil})
+
+      assert %{data: %{workshops: [item]}} =
+               DhcWeb.WorkshopsJSON.render("list.json", %{workshops: [workshop]})
+
+      assert item.registrationCount == 3
+      assert item.placesRemaining == nil
+      assert item.isAtCapacity == false
     end
 
     test "does not expose attendee identities or storage-shaped join details", %{conn: conn} do
@@ -909,6 +1007,73 @@ defmodule DhcWeb.WorkshopsControllerTest do
 
       refute Map.has_key?(workshop_payload, "club_activity_id")
       refute Map.has_key?(workshop_payload, "start_date")
+    end
+
+    test "returns authoritative capacity projections for active Registrations", %{conn: conn} do
+      workshop =
+        WorkshopFixtures.workshop_fixture(
+          title: "Capacity summary",
+          status: "published",
+          max_capacity: 3
+        )
+
+      insert_external_registrations(workshop, ~w(pending confirmed cancelled refunded))
+
+      conn =
+        conn
+        |> auth_conn("workshop_coordinator")
+        |> get("/api/workshops/#{to_uuid(workshop.id)}/attendees")
+
+      assert %{
+               "data" => %{
+                 "workshop" => %{
+                   "registrationCount" => 2,
+                   "placesRemaining" => 1,
+                   "isAtCapacity" => false
+                 },
+                 "attendees" => [_, _]
+               }
+             } = json_response(conn, 200)
+    end
+
+    test "reports full and over-capacity Workshops defensively" do
+      full = WorkshopFixtures.workshop_fixture(title: "Full", max_capacity: 2)
+      over_capacity = WorkshopFixtures.workshop_fixture(title: "Over capacity", max_capacity: 1)
+
+      insert_external_registrations(full, ~w(pending confirmed))
+      insert_external_registrations(over_capacity, ~w(pending confirmed))
+
+      for {workshop, registration_count} <- [{full, 2}, {over_capacity, 2}] do
+        conn =
+          build_conn()
+          |> auth_conn("workshop_coordinator")
+          |> get("/api/workshops/#{to_uuid(workshop.id)}/attendees")
+
+        assert %{
+                 "data" => %{
+                   "workshop" => %{
+                     "registrationCount" => ^registration_count,
+                     "placesRemaining" => 0,
+                     "isAtCapacity" => true
+                   }
+                 }
+               } = json_response(conn, 200)
+      end
+    end
+
+    test "serializes uncapped Workshop capacity without inventing a limit" do
+      workshop = uncapped_workshop_summary()
+
+      assert %{data: %{workshop: summary}} =
+               DhcWeb.WorkshopsJSON.render("attendees.json", %{
+                 workshop: workshop,
+                 attendees: [],
+                 refunds: []
+               })
+
+      assert summary.registrationCount == 3
+      assert summary.placesRemaining == nil
+      assert summary.isAtCapacity == false
     end
   end
 
@@ -2060,6 +2225,44 @@ defmodule DhcWeb.WorkshopsControllerTest do
       status: "pending",
       stripe_checkout_session_id: checkout_session_id
     })
+  end
+
+  defp insert_external_registrations(workshop, statuses) do
+    for status <- statuses do
+      external_user = WorkshopFixtures.external_user_fixture()
+
+      WorkshopFixtures.registration_fixture(
+        workshop_id: workshop.id,
+        external_user_id: external_user.id,
+        status: status
+      )
+    end
+  end
+
+  defp uncapped_workshop_summary do
+    %{
+      id: Ecto.UUID.generate(),
+      title: "Uncapped",
+      description: nil,
+      location: "Main Hall",
+      start_date: ~U[2026-07-01 10:00:00Z],
+      end_date: ~U[2026-07-01 12:00:00Z],
+      max_capacity: nil,
+      price_member: 1500.0,
+      price_non_member: 2500.0,
+      is_public: true,
+      refund_days: 5,
+      status: "published",
+      announce_discord: true,
+      announce_email: true,
+      created_by: nil,
+      interest_count: 0,
+      pending_registration_count: 2,
+      confirmed_registration_count: 1,
+      registration_count: 3,
+      places_remaining: nil,
+      is_at_capacity: false
+    }
   end
 
   defp valid_workshop_payload(overrides \\ %{}) do

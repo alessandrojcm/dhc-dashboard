@@ -45,12 +45,12 @@ function handleDateChange(newDate: CalendarDate | undefined) {
 </script>
 
 <div
-	class="flex flex-col gap-6"
+	class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end"
 	data-testid="{id}-date-time-picker"
 	data-hydrated={hydrated}
 >
 	<div class="flex flex-col gap-3">
-		<Label for="{id}-date" class="px-1">Date</Label>
+		<Label for="{id}-date">Date</Label>
 		<Popover.Root bind:open>
 			<Popover.Trigger>
 				{#snippet child({ props })}
@@ -83,9 +83,9 @@ function handleDateChange(newDate: CalendarDate | undefined) {
 			</Popover.Content>
 		</Popover.Root>
 	</div>
-	<div class="flex gap-4">
+	<div class="grid grid-cols-2 gap-3">
 		<div class="flex flex-col gap-3">
-			<Label for="{id}-time-from" class="px-1">From</Label>
+			<Label for="{id}-time-from">From</Label>
 			<Input
 				type="time"
 				id="{id}-time-from"
@@ -95,11 +95,11 @@ function handleDateChange(newDate: CalendarDate | undefined) {
 				onchange={(e: Event) => {
 					onStartTimeChange?.((e.currentTarget as HTMLInputElement).value);
 				}}
-				class="bg-background appearance-none [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
+				class="h-11 bg-background appearance-none [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
 			/>
 		</div>
 		<div class="flex flex-col gap-3">
-			<Label for="{id}-time-to" class="px-1">To</Label>
+			<Label for="{id}-time-to">To</Label>
 			<Input
 				type="time"
 				id="{id}-time-to"
@@ -109,7 +109,7 @@ function handleDateChange(newDate: CalendarDate | undefined) {
 				onchange={(e: Event) => {
 					onEndTimeChange?.((e.currentTarget as HTMLInputElement).value);
 				}}
-				class="bg-background appearance-none [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
+				class="h-11 bg-background appearance-none [&::-webkit-calendar-picker-indicator]:hidden [&::-webkit-calendar-picker-indicator]:appearance-none"
 			/>
 		</div>
 	</div>

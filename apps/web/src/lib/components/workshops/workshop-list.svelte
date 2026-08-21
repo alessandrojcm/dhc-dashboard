@@ -1,252 +1,396 @@
 <script lang="ts">
 import { Badge } from "$lib/components/ui/badge";
-import {
-	Card,
-	CardContent,
-	CardHeader,
-	CardTitle,
-} from "$lib/components/ui/card";
-import { Button, buttonVariants } from "$lib/components/ui/button/index.js";
-import * as Dialog from "$lib/components/ui/dialog/index.js";
+import { Button } from "$lib/components/ui/button";
+import * as Dialog from "$lib/components/ui/dialog";
 import WorkshopExpressCheckout from "./workshop-express-checkout.svelte";
 import WorkshopCancellationDialog from "./workshop-cancellation-dialog.svelte";
 import dayjs from "dayjs";
 import Dinero from "dinero.js";
 import { useQueryClient } from "@tanstack/svelte-query";
 import type { UserData } from "$lib/types";
-import type { Workshop } from "@dhc/api-client";
+import {
+	CalendarCheck2,
+	Check,
+	Clock3,
+	Heart,
+	MapPin,
+	RotateCcw,
+	TicketCheck,
+	Users,
+} from "@lucide/svelte";
+import { workshopsListQueryKey, type Workshop } from "@dhc/api-client";
+
+type WorkshopView = "bookable" | "planned";
 
 interface Props {
 	workshops: Workshop[];
+	view: WorkshopView;
 	onInterestToggle?: (workshopId: string) => void;
 	isLoading?: boolean;
 }
 
-let { workshops, onInterestToggle, isLoading = false }: Props = $props();
+let { workshops, view, onInterestToggle, isLoading = false }: Props = $props();
 
-let selectedWorkshop: Workshop | null = $state(null);
-let showCancellationDialog = $state(false);
+let checkoutWorkshop: Workshop | null = $state(null);
+let cancellationWorkshop: Workshop | null = $state(null);
 let selectedRegistration: { id: string; status: string } | null = $state(null);
-const queryClient = useQueryClient();
+let registrationDialogOpen = $state(false);
+let cancellationDialogOpen = $state(false);
 
+const queryClient = useQueryClient();
 const userData = queryClient.getQueryData<UserData>(["logged_in_user_data"]);
 
-function getStatusColor(status: string = "planned") {
-	switch (status) {
-		case "planned":
-			return "bg-yellow-500";
-		case "published":
-			return "bg-green-500";
-		case "finished":
-			return "bg-blue-500";
-		case "cancelled":
-			return "bg-red-500";
-		default:
-			return "bg-gray-500";
-	}
-}
+const sortedWorkshops = $derived(
+	[...workshops].sort(
+		(first, second) =>
+			dayjs(first.startDate).valueOf() - dayjs(second.startDate).valueOf(),
+	),
+);
 
-function formatDateTime(dateString: string) {
-	return dayjs(dateString).format("MMM D, YYYY h:mm A");
+const workshopGroups = $derived.by(() => {
+	if (view === "planned") {
+		return [
+			{
+				id: "coming-soon",
+				title: "Help shape what comes next",
+				description:
+					"Save your interest so coordinators can see which ideas members want most.",
+				workshops: sortedWorkshops,
+			},
+		];
+	}
+
+	const booked = sortedWorkshops.filter(hasActiveRegistration);
+	const open = sortedWorkshops.filter(
+		(workshop) => !hasActiveRegistration(workshop) && !workshop.isAtCapacity,
+	);
+	const full = sortedWorkshops.filter(
+		(workshop) => !hasActiveRegistration(workshop) && workshop.isAtCapacity,
+	);
+
+	return [
+		{
+			id: "booked",
+			title: "You’re going",
+			description: "Your confirmed and pending workshop registrations.",
+			workshops: booked,
+		},
+		{
+			id: "open",
+			title: "Open for booking",
+			description: "Choose your next session and secure your place.",
+			workshops: open,
+		},
+		{
+			id: "full",
+			title: "Fully booked",
+			description: "These sessions may reopen if another member cancels.",
+			workshops: full,
+		},
+	].filter((group) => group.workshops.length > 0);
+});
+
+function hasActiveRegistration(workshop: Workshop) {
+	return ["pending", "confirmed"].includes(
+		workshop.currentUserRegistration?.status ?? "",
+	);
 }
 
 function formatPrice(price: number) {
 	return Dinero({ amount: price, currency: "EUR" }).toFormat();
 }
 
-function hasUserInterest(workshop: Workshop): boolean {
-	if (workshop.status === "published") {
-		return workshop.currentUserRegistration !== null;
+function formatWorkshopTime(workshop: Workshop) {
+	const start = dayjs(workshop.startDate);
+	const end = dayjs(workshop.endDate);
+
+	if (start.isSame(end, "day")) {
+		return `${start.format("ddd, D MMM · h:mm A")}–${end.format("h:mm A")}`;
 	}
-	return workshop.currentUserInterest;
+
+	return `${start.format("D MMM · h:mm A")}–${end.format("D MMM · h:mm A")}`;
 }
 
-function getUserRegistration(
-	workshop: Workshop,
-): { id: string; status: string } | null {
-	return workshop.currentUserRegistration;
+function getMemberState(workshop: Workshop) {
+	const status = workshop.currentUserRegistration?.status;
+
+	if (status === "confirmed") return "You’re going";
+	if (status === "pending") return "Registration pending";
+	if (status === "refunded") return "Refunded";
+	if (status === "cancelled") return "Cancelled";
+	if (workshop.currentUserInterest) return "Interested";
+	if (workshop.isAtCapacity) return "Fully booked";
+	return view === "planned" ? "In planning" : "Open";
 }
 
-function getInterestCount(workshop: Workshop): number {
-	return workshop.status === "published"
-		? workshop.pendingRegistrationCount + workshop.confirmedRegistrationCount
-		: workshop.interestCount;
+function getMemberStateVariant(workshop: Workshop) {
+	const state = getMemberState(workshop);
+
+	if (state === "You’re going" || state === "Interested") {
+		return "default" as const;
+	}
+	if (state === "Registration pending" || state === "In planning") {
+		return "secondary" as const;
+	}
+	return "outline" as const;
 }
 
-function getWorkshopPrice(workshop: Workshop): number {
-	// For now, assume all users are members - you can enhance this logic
-	return workshop.priceMember;
+function openRegistration(workshop: Workshop) {
+	checkoutWorkshop = workshop;
+	registrationDialogOpen = true;
 }
 
-function isRefunded(workshop: Workshop): boolean {
-	return workshop.currentUserRegistration?.status === "refunded";
+function handleRegistrationDialogChange(open: boolean) {
+	registrationDialogOpen = open;
+	if (!open) checkoutWorkshop = null;
 }
 
-function handleCancelRegistration(workshop: Workshop) {
-	const registration = getUserRegistration(workshop);
-	if (registration) {
-		selectedWorkshop = workshop;
-		selectedRegistration = registration;
-		showCancellationDialog = true;
+function openCancellation(workshop: Workshop) {
+	if (!workshop.currentUserRegistration) return;
+
+	cancellationWorkshop = workshop;
+	selectedRegistration = workshop.currentUserRegistration;
+	cancellationDialogOpen = true;
+}
+
+function handleCancellationDialogChange(open: boolean) {
+	cancellationDialogOpen = open;
+	if (!open) {
+		cancellationWorkshop = null;
+		selectedRegistration = null;
 	}
 }
 
 function handleRegistrationSuccess() {
-	queryClient.invalidateQueries({ queryKey: ["workshops"] });
+	queryClient.invalidateQueries({
+		queryKey: workshopsListQueryKey({ query: { status: "published" } }),
+	});
+	registrationDialogOpen = false;
+	checkoutWorkshop = null;
 }
 </script>
 
-<div class="space-y-4">
-	{#if workshops.length === 0}
-		<Card>
-			<CardContent class="pt-6">
-				<div class="text-center text-muted-foreground">
-					No workshops found. Create your first workshop to get started.
+{#if workshops.length === 0}
+	<div
+		class="rounded-2xl border border-dashed border-border bg-card px-5 py-12 text-center sm:px-8"
+	>
+		{#if view === "planned"}
+			<Heart aria-hidden="true" class="mx-auto size-10 text-primary" />
+			<h2 class="mt-4 text-xl font-bold">Nothing in planning right now</h2>
+			<p class="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
+				New workshop ideas will appear here first. Check back soon to help shape
+				what the club runs next.
+			</p>
+		{:else}
+			<TicketCheck aria-hidden="true" class="mx-auto size-10 text-primary" />
+			<h2 class="mt-4 text-xl font-bold">No workshops open yet</h2>
+			<p class="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
+				There are no workshops available to book right now. New sessions will
+				appear here when registration opens.
+			</p>
+		{/if}
+	</div>
+{:else}
+	<div class="space-y-8">
+		{#each workshopGroups as group (group.id)}
+			<section class="space-y-3" aria-labelledby={`workshop-group-${group.id}`}>
+				<div
+					class="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between"
+				>
+					<div>
+						<h2 id={`workshop-group-${group.id}`} class="text-xl font-bold">
+							{group.title}
+						</h2>
+						<p class="mt-1 text-sm text-muted-foreground">
+							{group.description}
+						</p>
+					</div>
+					<p class="text-sm font-medium text-muted-foreground">
+						{group.workshops.length}
+						{group.workshops.length === 1 ? "workshop" : "workshops"}
+					</p>
 				</div>
-			</CardContent>
-		</Card>
-	{:else}
-		{#each workshops as workshop (workshop.id)}
-			<Card>
-				<CardHeader>
-					<div class="flex justify-between items-start">
-						<CardTitle>{workshop.title}</CardTitle>
-						{#if isRefunded(workshop)}
-							<Badge class={`${getStatusColor("cancelled")} capitalize`}
-								>Refunded</Badge
-							>
-						{:else}
-							<Badge
-								class={`${getStatusColor(workshop.status ?? "planned")} capitalize`}
-							>
-								{workshop?.status}
-							</Badge>
-						{/if}
-					</div>
-				</CardHeader>
-				<CardContent>
-					<div class="space-y-2">
-						{#if workshop.description}
-							<p class="text-sm text-muted-foreground">
-								{workshop.description}
-							</p>
-						{/if}
-						<div class="grid grid-cols-2 gap-4 text-sm">
-							<div>
-								<strong>Start:</strong>
-								{formatDateTime(workshop.startDate)}
-							</div>
-							<div>
-								<strong>End:</strong>
-								{formatDateTime(workshop.endDate)}
-							</div>
-							<div>
-								<strong>Location:</strong>
-								{workshop.location}
-							</div>
-							<div>
-								<strong>Capacity:</strong>
-								{workshop.maxCapacity}
-							</div>
-							<div>
-								<strong>Member Price:</strong>
-								{formatPrice(workshop.priceMember)}
-							</div>
-							{#if workshop.isPublic}
-								<div>
-									<strong>Non-Member Price:</strong>
-									{formatPrice(workshop.priceNonMember)}
-								</div>
-							{/if}
-							{#if workshop.status === "planned"}
-								<div>
-									<strong>Interest:</strong>
-									{getInterestCount(workshop)} people interested
-								</div>
-							{/if}
-							{#if workshop.status === "published"}
-								<div>
-									<strong>Attendees:</strong>
-									{getInterestCount(workshop)} people attending
-								</div>
-							{/if}
-						</div>
-						{#if workshop.status === "published"}
-							<div class="flex justify-end pt-4">
-								{#if !hasUserInterest(workshop)}
-									<Dialog.Root>
-										<Dialog.Trigger
-											onclick={() => (selectedWorkshop = workshop)}
-											class={buttonVariants({ variant: "default" })}
-										>
-											Register
-										</Dialog.Trigger>
-										<Dialog.Content>
-											{#if selectedWorkshop !== null}
-												<Dialog.Header>
-													<Dialog.Title>Workshop Registration</Dialog.Title>
-													<Dialog.Description>
-														Complete your registration for {selectedWorkshop.title}
-													</Dialog.Description>
-												</Dialog.Header>
 
-												<WorkshopExpressCheckout
-													workshopId={selectedWorkshop.id}
-													workshopTitle={selectedWorkshop.title}
-													amount={getWorkshopPrice(selectedWorkshop)}
-													customerId={userData?.customerId}
-													onSuccess={() => {
-														selectedWorkshop = null;
-														handleRegistrationSuccess();
-													}}
-													onCancel={() => (selectedWorkshop = null)}
-												/>
-											{/if}
-										</Dialog.Content>
-									</Dialog.Root>
-								{:else if !isRefunded(workshop)}
-									<Button
-										variant="destructive"
-										onclick={() => handleCancelRegistration(workshop)}
-									>
-										Cancel Registration
-									</Button>
-								{/if}
-							</div>
-						{/if}
-						{#if workshop.status === "planned" && onInterestToggle}
-							<div class="flex justify-end pt-4">
-								<Button
-									variant={hasUserInterest(workshop) ? "default" : "outline"}
-									onclick={() => onInterestToggle(workshop.id)}
-									disabled={isLoading}
+				<div class="space-y-3">
+					{#each group.workshops as workshop (workshop.id)}
+						<article
+							class="grid gap-4 rounded-2xl border border-border/80 bg-card p-4 shadow-sm transition-[border-color,box-shadow] duration-200 hover:border-primary/40 hover:shadow-md sm:p-5 lg:grid-cols-[4.5rem_minmax(0,1fr)_minmax(12rem,auto)] lg:items-center lg:gap-5"
+						>
+							<div
+								class="flex h-16 w-16 shrink-0 flex-col items-center justify-center rounded-xl border border-primary/20 bg-primary/5 text-primary lg:h-[4.5rem] lg:w-[4.5rem]"
+								aria-hidden="true"
+							>
+								<span
+									class="text-[0.65rem] font-bold tracking-[0.16em] uppercase"
 								>
-									{hasUserInterest(workshop)
-										? "Withdraw Interest"
-										: "Express Interest"}
-								</Button>
+									{dayjs(workshop.startDate).format("MMM")}
+								</span>
+								<span class="text-2xl font-bold leading-none">
+									{dayjs(workshop.startDate).format("D")}
+								</span>
+								<span class="mt-0.5 text-[0.6rem] font-semibold uppercase">
+									{dayjs(workshop.startDate).format("ddd")}
+								</span>
 							</div>
-						{/if}
-					</div>
-				</CardContent>
-			</Card>
-		{/each}
-	{/if}
-</div>
 
-{#if selectedWorkshop && selectedRegistration}
+							<div class="min-w-0">
+								<div class="flex flex-wrap items-center gap-2">
+									<Badge variant={getMemberStateVariant(workshop)}>
+										{#if getMemberState(workshop) === "You’re going"}
+											<Check aria-hidden="true" />
+										{/if}
+										{getMemberState(workshop)}
+									</Badge>
+									{#if workshop.isPublic}
+										<Badge variant="outline">Open to non-members</Badge>
+									{/if}
+								</div>
+
+								<h3
+									class="mt-2 text-lg font-bold leading-snug text-foreground sm:text-xl"
+								>
+									{workshop.title}
+								</h3>
+								{#if workshop.description}
+									<p
+										class="mt-1 line-clamp-2 text-sm leading-6 text-muted-foreground"
+									>
+										{workshop.description}
+									</p>
+								{/if}
+
+								<div
+									class="mt-3 grid gap-x-5 gap-y-2 text-sm text-muted-foreground sm:grid-cols-2"
+								>
+									<span class="flex min-w-0 items-center gap-2">
+										<Clock3
+											aria-hidden="true"
+											class="size-4 shrink-0 text-primary"
+										/>
+										<span>{formatWorkshopTime(workshop)}</span>
+									</span>
+									<span class="flex min-w-0 items-center gap-2">
+										<MapPin
+											aria-hidden="true"
+											class="size-4 shrink-0 text-primary"
+										/>
+										<span class="truncate">{workshop.location}</span>
+									</span>
+								</div>
+							</div>
+
+							<div
+								class="grid gap-3 border-t border-border/70 pt-4 sm:grid-cols-[1fr_auto] sm:items-end lg:block lg:border-t-0 lg:border-l lg:pt-0 lg:pl-5"
+							>
+								<div>
+									{#if view === "planned"}
+										<p
+											class="flex items-center gap-2 text-sm font-bold text-foreground"
+										>
+											<Users aria-hidden="true" class="size-4 text-primary" />
+											{workshop.interestCount}
+											{workshop.interestCount === 1 ? "member" : "members"}
+											interested
+										</p>
+										<p class="mt-1 text-xs text-muted-foreground">
+											No payment or commitment yet
+										</p>
+									{:else}
+										<p class="text-xl font-bold text-foreground">
+											{formatPrice(workshop.priceMember)}
+										</p>
+										<p class="mt-1 text-xs text-muted-foreground">
+											{#if workshop.isAtCapacity}
+												Fully booked
+											{:else if workshop.placesRemaining === null}
+												No capacity limit
+											{:else}
+												{workshop.placesRemaining}
+												{workshop.placesRemaining === 1 ? "place" : "places"}
+												left
+											{/if}
+										</p>
+									{/if}
+								</div>
+
+								<div class="sm:min-w-44 lg:mt-4">
+									{#if view === "planned" && onInterestToggle}
+										<Button
+											variant={workshop.currentUserInterest
+												? "secondary"
+												: "default"}
+											class="min-h-11 w-full"
+											onclick={() => onInterestToggle(workshop.id)}
+											disabled={isLoading}
+										>
+											{#if workshop.currentUserInterest}
+												<RotateCcw aria-hidden="true" />
+												Withdraw interest
+											{:else}
+												<Heart aria-hidden="true" />
+												I’m interested
+											{/if}
+										</Button>
+									{:else if hasActiveRegistration(workshop)}
+										<Button
+											variant="outline"
+											class="min-h-11 w-full"
+											onclick={() => openCancellation(workshop)}
+										>
+											<CalendarCheck2 aria-hidden="true" />
+											Manage booking
+										</Button>
+									{:else}
+										<Button
+											class="min-h-11 w-full"
+											onclick={() => openRegistration(workshop)}
+											disabled={workshop.isAtCapacity}
+										>
+											<TicketCheck aria-hidden="true" />
+											{workshop.isAtCapacity ? "Fully booked" : "Register"}
+										</Button>
+									{/if}
+								</div>
+							</div>
+						</article>
+					{/each}
+				</div>
+			</section>
+		{/each}
+	</div>
+{/if}
+
+<Dialog.Root
+	open={registrationDialogOpen}
+	onOpenChange={handleRegistrationDialogChange}
+>
+	<Dialog.Content class="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg">
+		{#if checkoutWorkshop}
+			<Dialog.Header>
+				<Dialog.Title>Workshop registration</Dialog.Title>
+				<Dialog.Description>
+					Complete your registration for {checkoutWorkshop.title}.
+				</Dialog.Description>
+			</Dialog.Header>
+			<WorkshopExpressCheckout
+				workshopId={checkoutWorkshop.id}
+				workshopTitle={checkoutWorkshop.title}
+				amount={checkoutWorkshop.priceMember}
+				customerId={userData?.customerId}
+				onSuccess={handleRegistrationSuccess}
+				onCancel={() => handleRegistrationDialogChange(false)}
+			/>
+		{/if}
+	</Dialog.Content>
+</Dialog.Root>
+
+{#if cancellationWorkshop && selectedRegistration}
 	<WorkshopCancellationDialog
-		workshop={selectedWorkshop}
+		workshop={cancellationWorkshop}
 		registrationId={selectedRegistration.id}
 		registrationStatus={selectedRegistration.status}
-		open={showCancellationDialog}
-		onOpenChange={(open) => {
-			showCancellationDialog = open;
-			if (!open) {
-				selectedWorkshop = null;
-				selectedRegistration = null;
-			}
-		}}
+		open={cancellationDialogOpen}
+		onOpenChange={handleCancellationDialogChange}
 		onSuccess={handleRegistrationSuccess}
 	/>
 {/if}

@@ -26,11 +26,7 @@ $effect(() => {
 });
 </script>
 
-<Button
-	variant="outline"
-	class="fixed right-4 top-4"
-	onclick={() => (isOpen = true)}
->
+<Button variant="outline" onclick={() => (isOpen = true)}>
 	<Lock class="mr-2 h-4 w-4" />
 	Settings
 </Button>
@@ -54,7 +50,7 @@ $effect(() => {
 					id={fieldProps.name}
 					placeholder="https://example.com/insurance-form"
 				/>
-				{#each updateMemberSettings.fields.insuranceFormLink.issues() as issue}
+				{#each updateMemberSettings.fields.insuranceFormLink.issues() as issue (issue.message)}
 					<Field.Error>{issue.message}</Field.Error>
 				{/each}
 			</Field.Field>

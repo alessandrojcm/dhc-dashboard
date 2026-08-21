@@ -15,9 +15,13 @@ const {
 } = $props();
 </script>
 
-<span class="flex items-center gap-2">
-	{header}
-	<Button {variant} {...restProps}>
+<Button
+	{variant}
+	aria-label={`Sort by ${header}${sortDirection ? `, currently ${sortDirection === "asc" ? "ascending" : "descending"}` : ""}`}
+	{...restProps}
+>
+	<span>{header}</span>
+	<span aria-hidden="true">
 		{#if sortDirection === "asc"}
 			<ArrowUp class="size-4" />
 		{:else if sortDirection === "desc"}
@@ -25,5 +29,5 @@ const {
 		{:else}
 			<ArrowUpDown class="size-4" />
 		{/if}
-	</Button>
-</span>
+	</span>
+</Button>

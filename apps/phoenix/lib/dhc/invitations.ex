@@ -11,6 +11,8 @@ defmodule Dhc.Invitations do
   alias Dhc.Email.Worker, as: EmailWorker
   alias Dhc.Auth.UserRole
   alias Dhc.CursorPagination
+  alias Dhc.Discord.JoinGrant
+  alias Dhc.Discord.Workers.GuildJoinWorker
   alias Dhc.Invitations.Invitation
   alias Dhc.Invitations.Repository
   alias Dhc.MemberProfiles.MemberProfile
@@ -252,6 +254,7 @@ defmodule Dhc.Invitations do
       )
 
       maybe_consume_discord(discord, now)
+      maybe_enqueue_guild_join(continuation_id)
 
       %{member_id: invitation.prospective_principal_id}
     end)
@@ -346,6 +349,15 @@ defmodule Dhc.Invitations do
       display_metadata: %{}
     )
     |> Repo.update!()
+  end
+
+  defp maybe_enqueue_guild_join(nil), do: :ok
+
+  defp maybe_enqueue_guild_join(continuation_id) do
+    case Repo.get_by(JoinGrant, continuation_id: continuation_id) do
+      nil -> :ok
+      grant -> Oban.insert!(GuildJoinWorker.new(%{"grant_id" => grant.id}))
+    end
   end
 
   defp lock_discord_conversion!(nil, _invitation, _attempt), do: nil
@@ -461,22 +473,30 @@ defmodule Dhc.Invitations do
 
   @doc """
   Re-enqueues invite-member emails for existing invitations.
+
+  Only actionable invitations (`pending` / `expired`) are considered; one
+  email per address, targeting the most recent actionable invitation.
+  Accepted and revoked invitations are never resurrected, and sibling rows
+  for the same email keep their status, so a resend can never create a
+  second pending invitation for an email.
   """
   @spec resend_invitation_emails([String.t()]) ::
           {:ok, %{succeeded: non_neg_integer(), failed: non_neg_integer()}}
-  def resend_invitation_emails([_ | _] = emails) do
+  def resend_invitation_emails([_ | _] = raw_emails) do
+    emails = Enum.uniq(raw_emails)
     invite_data = list_invitation_resend_data(emails)
 
     succeeded =
       invite_data
-      |> Enum.map(&enqueue_invitation_email/1)
+      |> Enum.map(fn invitation ->
+        with :ok <- enqueue_invitation_email(invitation),
+             :ok <- refresh_for_resend(invitation.id) do
+          :ok
+        else
+          {:error, _reason} -> {:error, invitation.email}
+        end
+      end)
       |> Enum.count(&match?(:ok, &1))
-
-    found_emails = Enum.map(invite_data, & &1.email)
-
-    if found_emails != [] do
-      expire_for_resend(found_emails)
-    end
 
     {:ok, %{succeeded: succeeded, failed: length(emails) - succeeded}}
   end
@@ -569,8 +589,14 @@ defmodule Dhc.Invitations do
     # invitation row (carried at issue time). The pre-ALE-162 left-join to
     # user_profiles is gone — there is no user_profiles row to join to
     # until acceptance.
+    #
+    # Only `pending` / `expired` rows are actionable for resend. An email can
+    # legitimately have several historical rows (e.g. an expired invitation
+    # plus the current pending one), so pick the newest per email and leave
+    # the older rows untouched.
     from(i in Invitation,
-      where: i.email in ^emails,
+      where: i.email in ^emails and i.status in ["pending", "expired"],
+      order_by: [desc: i.created_at],
       select: %{
         id: i.id,
         email: i.email,
@@ -580,6 +606,7 @@ defmodule Dhc.Invitations do
       }
     )
     |> Repo.all()
+    |> Enum.uniq_by(& &1.email)
   end
 
   defp enqueue_invitation_email(invitation) do
@@ -599,11 +626,22 @@ defmodule Dhc.Invitations do
     end
   end
 
-  defp expire_for_resend(emails) do
-    from(i in Invitation, where: i.email in ^emails)
-    |> Repo.update_all(
-      set: [status: "pending", expires_at: DateTime.add(DateTime.utc_now(), 1, :day)]
+  # Re-arms exactly the invitation being resent: pending again with a fresh
+  # short expiry window. Targeted by id (not by email), so sibling rows for
+  # the same email are never flipped to pending — flipping more than one row
+  # would violate `invitations_email_pending_unique`, and flipping an
+  # accepted/revoked row would resurrect a settled invitation.
+  defp refresh_for_resend(invitation_id) do
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+    from(i in Invitation,
+      where: i.id == ^invitation_id and i.status in ["pending", "expired"]
     )
+    |> Repo.update_all(
+      set: [status: "pending", expires_at: DateTime.add(now, 1, :day), updated_at: now]
+    )
+
+    :ok
   end
 
   defp invitation_link(invitation) do

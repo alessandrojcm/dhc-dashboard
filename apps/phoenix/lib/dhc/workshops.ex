@@ -110,13 +110,12 @@ defmodule Dhc.Workshops do
   # ALE-181: the Workshop summary scalar field set, in one place. The list
   # read (`summary_query/0`) and the archived-Workshop body
   # (`archive_workshop/1`, via `build_summary/2`) both build maps with these
-  # scalar keys plus three counts (`interest_count`,
-  # `pending_registration_count`, `confirmed_registration_count`), so a
-  # future field add lands once here instead of drifting between the two
-  # sites. The counts are passed into `build_summary/2` separately because
-  # each caller computes them differently (a SQL aggregate for the list,
-  # the `registration_counts/1` + `interest_count/1` helpers for the single
-  # archived read).
+  # scalar keys plus three source counts (`interest_count`,
+  # `pending_registration_count`, `confirmed_registration_count`) and the
+  # capacity projection derived from those counts. The source counts are
+  # passed into `build_summary/2` separately because each caller computes them
+  # differently (a SQL aggregate for the list, the `registration_counts/1` +
+  # `interest_count/1` helpers for the single archived read).
   @summary_scalar_fields ~w(id title description location start_date end_date
     max_capacity price_member price_non_member is_public refund_days status
     announce_discord announce_email created_by)a
@@ -195,6 +194,7 @@ defmodule Dhc.Workshops do
     |> apply_status_filter(Keyword.get(opts, :statuses), Keyword.get(opts, :exclude_statuses))
     |> apply_order(order_field, direction)
     |> Repo.all()
+    |> Enum.map(&with_capacity_projection/1)
   end
 
   @doc """
@@ -204,9 +204,12 @@ defmodule Dhc.Workshops do
   """
   @spec workshop_summary(binary()) :: map() | nil
   def workshop_summary(workshop_id) when is_binary(workshop_id) do
-    summary_query()
-    |> where([w], w.id == ^workshop_id)
-    |> Repo.one()
+    summary =
+      summary_query()
+      |> where([w], w.id == ^workshop_id)
+      |> Repo.one()
+
+    if summary, do: with_capacity_projection(summary)
   end
 
   # ── Counts ────────────────────────────────────────────────────────────
@@ -243,6 +246,33 @@ defmodule Dhc.Workshops do
       nil -> %{pending: 0, confirmed: 0}
       counts -> counts
     end
+  end
+
+  @doc """
+  Projects active Registration capacity facts from a Workshop summary.
+
+  Pending and confirmed Registrations are the source counts. Remaining places
+  are clamped at zero for defensive over-capacity data. A `nil` maximum means
+  the Workshop is uncapped, so remaining places stay `nil` and capacity is
+  never reported as reached.
+  """
+  @spec capacity_projection(map()) :: %{
+          registration_count: non_neg_integer(),
+          places_remaining: non_neg_integer() | nil,
+          is_at_capacity: boolean()
+        }
+  def capacity_projection(%{
+        max_capacity: max_capacity,
+        pending_registration_count: pending_count,
+        confirmed_registration_count: confirmed_count
+      }) do
+    registration_count = pending_count + confirmed_count
+
+    %{
+      registration_count: registration_count,
+      places_remaining: places_remaining(max_capacity, registration_count),
+      is_at_capacity: not is_nil(max_capacity) and registration_count >= max_capacity
+    }
   end
 
   # ── Current-user state ────────────────────────────────────────────────
@@ -1955,6 +1985,17 @@ defmodule Dhc.Workshops do
     workshop
     |> Map.take(@summary_scalar_fields)
     |> Map.merge(counts)
+    |> with_capacity_projection()
+  end
+
+  defp with_capacity_projection(summary) do
+    Map.merge(summary, capacity_projection(summary))
+  end
+
+  defp places_remaining(nil, _registration_count), do: nil
+
+  defp places_remaining(max_capacity, registration_count) do
+    max(max_capacity - registration_count, 0)
   end
 
   defp summary_query do

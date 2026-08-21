@@ -1,14 +1,17 @@
 <script lang="ts" module>
 import * as Tooltip from "$lib/components/ui/tooltip/index.js";
-import { HelpCircle } from "@lucide/svelte";
+import { CircleQuestionMark } from "@lucide/svelte";
 export { whyThisField };
 </script>
 
 {#snippet whyThisField(message: string)}
 	<Tooltip.Provider>
 		<Tooltip.Root>
-			<Tooltip.Trigger>
-				<HelpCircle class="h-4 w-4 text-muted-foreground" />
+			<Tooltip.Trigger
+				aria-label="Why we ask for this information"
+				class="cursor-help rounded-sm focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+			>
+				<CircleQuestionMark class="h-4 w-4 text-muted-foreground" aria-hidden="true" />
 			</Tooltip.Trigger>
 			<Tooltip.Content>
 				{message}

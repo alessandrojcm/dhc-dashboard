@@ -1,8 +1,4 @@
-import {
-	membersInsuranceForm,
-	membersOptions,
-	membersShow,
-} from "@dhc/api-client";
+import { membersOptions, membersShow } from "@dhc/api-client";
 import * as Sentry from "@sentry/sveltekit";
 import { error, type ServerLoadEvent } from "@sveltejs/kit";
 import { apiClientOptions } from "$lib/server/api-client";
@@ -29,12 +25,13 @@ async function canUpdateSettings(event: ServerLoadEvent): Promise<boolean> {
 }
 
 export const load: PageServerLoad = async (event) => {
-	const { params, locals, cookies } = event;
+	const { params, locals, cookies, depends } = event;
 	const { session } = await locals.safeGetSession();
 
 	if (!session) {
 		return error(401, "Unauthorized");
 	}
+	depends(`member:detail:${params.memberId}`);
 
 	try {
 		const canUpdate = await canUpdateSettings(event);
@@ -88,14 +85,10 @@ export const load: PageServerLoad = async (event) => {
 			},
 			genders: options.genders,
 			weapons: options.weapons,
-			insuranceFormLink: membersInsuranceForm({
-				...apiOptions,
-			})
-				.then((response) => response.data?.data.link ?? null)
-				.catch(() => null),
 			member: {
 				id: params.memberId,
 				subscription_paused_until: memberProfile.subscriptionPausedUntil,
+				discordIdentity: memberProfile.discordIdentity,
 			},
 			canUpdate,
 		};

@@ -19,6 +19,9 @@ config :dhc,
 
 config :dhc, :cors_allowed_origins, []
 config :dhc, :discord_oauth_strategy, Assent.Strategy.Discord
+config :dhc, :discord_adapter, Dhc.Discord.Adapter.Nostrum
+config :dhc, :auth_session_secure, true
+config :dhc, :auth_session_same_site, "Lax"
 
 config :dhc,
        :invitation_acceptance_discord_redirect_uri,
@@ -48,6 +51,7 @@ config :dhc, Oban,
     {Oban.Plugins.Cron,
      crontab: [
        {"0 0 * * *", Dhc.StripeSync.Worker},
+       {"0 * * * *", Dhc.Discord.Workers.JoinGrantCleanupWorker},
        {"*/15 * * * *", Dhc.Workshops.Workers.RefundReconciliationWorker},
        {"* * * * *", Dhc.Onboarding.Workers.DiscordContinuationExpiryWorker}
      ]}

@@ -8,6 +8,8 @@ defmodule Dhc.OnboardingTest do
   alias Dhc.Auth.Principal
   alias Dhc.Auth.PrincipalToken
   alias Dhc.Auth.UserRole
+  alias Dhc.Discord.JoinGrant
+  alias Dhc.Discord.Workers.GuildJoinWorker
   alias Dhc.Invitations.Invitation
   alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.Onboarding
@@ -391,11 +393,15 @@ defmodule Dhc.OnboardingTest do
       )
 
     assert {:ok, %{state: "discordVerified"}} =
-             Onboarding.verify_discord(started.continuation_id, %{
-               "sub" => "paid-discord-subject",
-               "preferred_username" => "paid-member",
-               "picture" => "https://cdn.example.com/paid-member.png"
-             })
+             Onboarding.verify_discord(
+               started.continuation_id,
+               %{
+                 "sub" => "paid-discord-subject",
+                 "preferred_username" => "paid-member",
+                 "picture" => "https://cdn.example.com/paid-member.png"
+               },
+               %{"access_token" => "discord-join-token", "expires_in" => 604_800}
+             )
 
     attrs = %{
       next_of_kin_name: "Grace Hopper",
@@ -464,6 +470,12 @@ defmodule Dhc.OnboardingTest do
 
     assert %InvitationAcceptanceAttempt{id: ^attempt_id, status: "completed"} =
              Repo.get!(InvitationAcceptanceAttempt, attempt_id)
+
+    grant = Repo.get_by!(JoinGrant, attempt_id: attempt_id)
+    assert_enqueued(worker: GuildJoinWorker, args: %{"grant_id" => grant.id})
+
+    join_jobs = all_enqueued(worker: GuildJoinWorker)
+    refute inspect(join_jobs) =~ "discord-join-token"
 
     assert %InvitationAcceptanceDiscordContinuation{
              status: "consumed",
@@ -706,10 +718,14 @@ defmodule Dhc.OnboardingTest do
       )
 
     {:ok, _state} =
-      Onboarding.verify_discord(started.continuation_id, %{
-        "sub" => "rollback-discord-subject",
-        "preferred_username" => "rollback-member"
-      })
+      Onboarding.verify_discord(
+        started.continuation_id,
+        %{
+          "sub" => "rollback-discord-subject",
+          "preferred_username" => "rollback-member"
+        },
+        %{"access_token" => "rollback-join-token", "expires_in" => 604_800}
+      )
 
     conflicting_principal =
       %Principal{id: Ecto.UUID.generate(), email: invitation.email}
@@ -732,6 +748,7 @@ defmodule Dhc.OnboardingTest do
     refute Repo.get_by(ExternalIdentity, provider_subject: "rollback-discord-subject")
     refute Repo.get_by(UserRole, principal_id: invitation.prospective_principal_id)
     assert Repo.get!(Invitation, invitation.id).status == "pending"
+    refute_enqueued(worker: GuildJoinWorker)
 
     attempt = Repo.get_by!(InvitationAcceptanceAttempt, invitation_id: invitation.id)
     assert attempt.status == "provisioned"
@@ -751,6 +768,9 @@ defmodule Dhc.OnboardingTest do
     |> Repo.update!()
 
     assert :ok = perform_job(AcceptanceRecoveryWorker, %{"attempt_id" => attempt.id})
+
+    grant = Repo.get_by!(JoinGrant, attempt_id: attempt.id)
+    assert_enqueued(worker: GuildJoinWorker, args: %{"grant_id" => grant.id})
 
     assert %ExternalIdentity{
              provider: "discord",

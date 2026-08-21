@@ -8,6 +8,7 @@ defmodule Dhc.Members do
 
   import Ecto.Query
 
+  alias Dhc.Auth.ExternalIdentity
   alias Dhc.Auth.Principal
   alias Dhc.CursorPagination
   alias Dhc.MemberProfiles.MemberProfile
@@ -156,8 +157,11 @@ defmodule Dhc.Members do
   @spec get_member(String.t()) :: {:ok, map()} | {:error, :not_found}
   def get_member(member_id) do
     case member_query(member_id) |> Repo.one() do
-      nil -> {:error, :not_found}
-      member -> {:ok, member}
+      nil ->
+        {:error, :not_found}
+
+      member ->
+        {:ok, Map.put(member, :discord_identity, discord_identity_summary(member_id))}
     end
   end
 
@@ -682,6 +686,48 @@ defmodule Dhc.Members do
     %{sort: "lastName", q: nil, membership_status: nil}
     |> positioned_list_query()
     |> where([m], m.id == ^member_id)
+  end
+
+  defp discord_identity_summary(member_id) do
+    metadata =
+      ExternalIdentity
+      |> where(
+        [identity],
+        identity.principal_id == ^member_id and identity.provider == "discord" and
+          is_nil(identity.retired_at)
+      )
+      |> select([identity], identity.metadata)
+      |> Repo.one()
+
+    if metadata do
+      %{
+        username: first_metadata_value(metadata, ["preferred_username", "username"]),
+        avatar_url: metadata |> first_metadata_value(["picture"]) |> safe_avatar_url()
+      }
+    end
+  end
+
+  defp first_metadata_value(metadata, keys) do
+    Enum.find_value(keys, &normalized_metadata_value(metadata, &1))
+  end
+
+  defp normalized_metadata_value(metadata, key) do
+    case Map.get(metadata, key) do
+      value when is_binary(value) -> value |> String.trim() |> empty_to_nil()
+      _other -> nil
+    end
+  end
+
+  defp empty_to_nil(""), do: nil
+  defp empty_to_nil(value), do: value
+
+  defp safe_avatar_url(nil), do: nil
+
+  defp safe_avatar_url(url) do
+    case URI.parse(url) do
+      %URI{scheme: scheme, host: host} when scheme in ["http", "https"] and is_binary(host) -> url
+      _uri -> nil
+    end
   end
 
   defp list_order_field("firstName"), do: :first_name

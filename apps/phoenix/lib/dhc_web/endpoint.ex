@@ -8,7 +8,8 @@ defmodule DhcWeb.Endpoint do
     store: :cookie,
     key: "_dhc_key",
     signing_salt: "8dIa9x5k",
-    same_site: "Lax"
+    secure: Application.compile_env(:dhc, :auth_session_secure),
+    same_site: Application.compile_env(:dhc, :auth_session_same_site)
   ]
 
   # socket "/live", Phoenix.LiveView.Socket,

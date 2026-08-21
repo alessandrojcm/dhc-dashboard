@@ -1,11 +1,8 @@
 import { authVerifyMagicLink } from "@dhc/api-client";
-import { redirect, type Cookies } from "@sveltejs/kit";
+import { redirect } from "@sveltejs/kit";
 import { apiClientOptions } from "$lib/server/api-client";
+import { forwardTrustedResponseCookies } from "$lib/server/trusted-cookie-forwarding";
 import type { PageServerLoad } from "./$types";
-import * as v from "valibot";
-
-type CookieOptions = Parameters<Cookies["set"]>[2];
-const SameSiteSchema = v.picklist(["lax", "strict", "none"]);
 
 /**
  * ALE-164: magic-link verify landing route. The magic-link email points the
@@ -50,54 +47,7 @@ export const load: PageServerLoad = async ({ url, cookies }) => {
 	// re-setting it locally with the same value + attributes Phoenix
 	// chose. We read the raw Set-Cookie header and parse the cookie
 	// name/value out of it.
-	const setCookie = response.headers.get("set-cookie");
-	if (setCookie) {
-		forwardSetCookie(cookies, setCookie);
-	}
+	forwardTrustedResponseCookies(cookies, response.headers);
 
 	redirect(303, "/dashboard?message=Signed%20in");
 };
-
-/**
- * Parse a `Set-Cookie` header value and re-set the cookie on the SvelteKit
- * response so the browser receives it. The generated API request does not
- * automatically propagate cross-origin `Set-Cookie`, so we do it explicitly.
- * The cookie name/value and attributes (HttpOnly, SameSite, Path, Max-Age,
- * Domain) come from Phoenix's header.
- */
-function forwardSetCookie(cookies: Cookies, setCookieHeader: string): void {
-	// Set-Cookie may contain multiple cookies separated by comma, but Phoenix
-	// only sets one here. Split on the first `;` to separate the name=value
-	// from the attributes.
-	const [nameValue, ...attrParts] = setCookieHeader.split(";");
-	const eqIndex = nameValue.indexOf("=");
-	if (eqIndex === -1) return;
-	const name = nameValue.slice(0, eqIndex).trim();
-	const value = nameValue.slice(eqIndex + 1).trim();
-	if (!name) return;
-
-	const options: CookieOptions = { path: "/" };
-	for (const part of attrParts) {
-		const trimmed = part.trim();
-		const lower = trimmed.toLowerCase();
-		if (lower === "httponly") {
-			options.httpOnly = true;
-		} else if (lower === "secure") {
-			options.secure = true;
-		} else if (lower.startsWith("samesite=")) {
-			const sameSite = v.safeParse(
-				SameSiteSchema,
-				lower.slice("samesite=".length),
-			);
-			if (sameSite.success) options.sameSite = sameSite.output;
-		} else if (lower.startsWith("path=")) {
-			options.path = lower.slice("path=".length);
-		} else if (lower.startsWith("max-age=")) {
-			options.maxAge = Number(lower.slice("max-age=".length));
-		} else if (lower.startsWith("domain=")) {
-			options.domain = lower.slice("domain=".length);
-		}
-	}
-
-	cookies.set(name, value, options);
-}

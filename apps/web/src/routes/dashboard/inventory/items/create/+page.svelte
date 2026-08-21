@@ -22,7 +22,7 @@ import {
 } from "$lib/components/ui/select";
 import { Checkbox } from "$lib/components/ui/checkbox";
 import * as Field from "$lib/components/ui/field";
-import { ArrowLeft, Package, AlertCircle } from "@lucide/svelte";
+import { ArrowLeft, Package, CircleAlert } from "@lucide/svelte";
 import { Label } from "$lib/components/ui/label";
 import { Alert, AlertDescription } from "$lib/components/ui/alert";
 import { buildContainerHierarchy } from "$lib/utils/inventory-form";
@@ -151,7 +151,7 @@ function clearAttributeError(attrName: string) {
 	<!-- Error message display -->
 	{#if formError}
 		<Alert variant="destructive" class="mb-4">
-			<AlertCircle class="h-4 w-4" />
+			<CircleAlert class="h-4 w-4" />
 			<AlertDescription>{formError}</AlertDescription>
 		</Alert>
 	{/if}

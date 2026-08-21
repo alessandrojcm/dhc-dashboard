@@ -62,14 +62,14 @@ test.describe("Invitation System", () => {
 		await page.getByLabel("Phone Number").fill("123456789");
 
 		// Add to list first
-		await page.getByRole("button", { name: "Add to List" }).click();
+		await page.getByRole("button", { name: "Add invite" }).click();
 
 		// Verify the invitation was added to the list
 		await expect(page.getByText(testEmail)).toBeVisible();
-		await expect(page.getByText("Invite List (1)")).toBeVisible();
+		await expect(page.getByText("Ready to send (1)")).toBeVisible();
 		// Then send the invite - note that the form is now empty but that's OK
 		// The "Send Invitations" button submits a different form with the invites list
-		await page.getByRole("button", { name: "Send 1 Invitations" }).click();
+		await page.getByRole("button", { name: "Send 1 invitation" }).click();
 
 		// Verify success message with a longer timeout
 		await expect(
@@ -90,11 +90,30 @@ test.describe("Invitation System", () => {
 		await page.getByRole("button", { name: "Invite Members" }).click();
 
 		// Try to add to list without filling required fields
-		await page.getByRole("button", { name: "Add to List" }).click();
+		await page.getByRole("button", { name: "Add invite" }).click();
 
 		// Verify validation errors
 		await expect(page.getByText(/please enter an email/i)).toBeVisible();
 		await expect(page.getByText("Phone Number is required")).toBeVisible();
+	});
+
+	test("uses a full-screen, single-action invitation flow on mobile", async ({
+		page,
+	}) => {
+		await page.setViewportSize({ width: 390, height: 844 });
+		await gotoHydrated(page, "/dashboard/members");
+		await page.getByRole("button", { name: "Invite Members" }).click();
+
+		const dialog = page.getByRole("dialog");
+		await expect(dialog).toHaveCSS("width", "390px");
+		await expect(dialog).toHaveCSS("height", "844px");
+		await expect(
+			page.getByRole("button", { name: "Add invite" }),
+		).toBeVisible();
+		await expect(
+			page.getByRole("button", { name: /Send 0 invitations/i }),
+		).not.toBeVisible();
+		await expect(page.getByText(/Ready to send/)).not.toBeVisible();
 	});
 
 	test("should be able to add multiple invitations to the list and send them", async ({
@@ -132,7 +151,7 @@ test.describe("Invitation System", () => {
 		await page.getByLabel("Phone Number").fill("123456789");
 
 		// Click "Add to List" button
-		await page.getByRole("button", { name: "Add to List" }).click();
+		await page.getByRole("button", { name: "Add invite" }).click();
 
 		// Verify the invitation was added to the list
 		await expect(page.getByText(testEmail1)).toBeVisible();
@@ -162,18 +181,18 @@ test.describe("Invitation System", () => {
 
 		await page.getByLabel("Phone Number").fill("987654321");
 
-		// Click "Add to List" button
-		await page.getByRole("button", { name: "Add to List" }).click();
+		// Add the second invitation to the queue
+		await page.getByRole("button", { name: "Add invite" }).click();
 
 		// Verify both invitations are in the list
 		await expect(page.getByText(testEmail1)).toBeVisible();
 		await expect(page.getByText(testEmail2)).toBeVisible();
 
 		// Verify the invite count is correct
-		await expect(page.getByText("Invite List (2)")).toBeVisible();
+		await expect(page.getByText("Ready to send (2)")).toBeVisible();
 
 		// Submit bulk invites - this uses a separate form with just the invites list
-		await page.getByRole("button", { name: "Send 2 Invitations" }).click();
+		await page.getByRole("button", { name: "Send 2 invitations" }).click();
 
 		// Verify success message with a longer timeout
 		await expect(
@@ -219,7 +238,7 @@ test.describe("Invitation System", () => {
 		await page.getByLabel("Phone Number").fill("123456789");
 
 		// Click "Add to List" button
-		await page.getByRole("button", { name: "Add to List" }).click();
+		await page.getByRole("button", { name: "Add invite" }).click();
 		await expect(page.getByText(testEmail1)).toBeVisible();
 		await expect(page.getByLabel("First Name")).toHaveValue("");
 
@@ -247,11 +266,26 @@ test.describe("Invitation System", () => {
 			.click();
 		await page.getByLabel("Phone Number").fill("123456789");
 		// Click "Add to List" button
-		await page.getByRole("button", { name: "Add to List" }).click();
+		await page.getByRole("button", { name: "Add invite" }).click();
 
 		// Verify both invitations are in the list
 		await expect(page.getByText(testEmail1)).toBeVisible();
 		await expect(page.getByText(testEmail2)).toBeVisible();
+
+		// Edit the first queued invitation before sending
+		await page
+			.getByLabel(/Edit invite for/)
+			.first()
+			.click();
+		await expect(page.getByRole("textbox", { name: "Email" })).toHaveValue(
+			testEmail1,
+		);
+		await page.getByLabel("First Name").fill("Edited");
+		await page.getByRole("button", { name: "Update invite" }).click();
+		await expect(
+			page.getByRole("listitem").filter({ hasText: testEmail1 }),
+		).toContainText("Edited");
+
 		// Remove the first invitation
 		await page.getByLabel("Remove invite").first().click();
 
@@ -260,13 +294,16 @@ test.describe("Invitation System", () => {
 		await expect(page.getByText(testEmail2)).toBeVisible();
 
 		// Verify the invite count is updated
-		await expect(page.getByText("Invite List (1)")).toBeVisible();
+		await expect(page.getByText("Ready to send (1)")).toBeVisible();
 
 		// Clear all invitations
 		await page.getByRole("button", { name: "Clear All" }).click();
 
 		// Verify no invitations remain
-		await expect(page.getByText("No invites added yet")).toBeVisible();
+		await expect(page.getByText(/Ready to send/)).not.toBeVisible();
+		await expect(
+			page.getByRole("button", { name: /Send \d+ invitations?/ }),
+		).not.toBeVisible();
 	});
 
 	test("should validate email format when adding to list", async ({ page }) => {
@@ -301,7 +338,7 @@ test.describe("Invitation System", () => {
 		await page.getByLabel("Phone Number").fill("123456789");
 
 		// Try to add to list
-		await page.getByRole("button", { name: "Add to List" }).click();
+		await page.getByRole("button", { name: "Add invite" }).click();
 
 		// Verify validation error
 		await expect(page.getByText(/email is invalid/i)).toBeVisible();
@@ -387,7 +424,7 @@ test.describe("Invitation System", () => {
 			await page.getByLabel("Phone Number").fill("123456789");
 
 			// Click "Add to List" button
-			await page.getByRole("button", { name: "Add to List" }).click();
+			await page.getByRole("button", { name: "Add invite" }).click();
 
 			// Verify the invitation was added to the list
 			await expect(page.getByText(testEmail)).toBeVisible();

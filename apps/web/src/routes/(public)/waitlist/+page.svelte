@@ -62,15 +62,17 @@ function isSocialMediaConsent(value: string): value is SocialMediaConsent {
 {/snippet}
 
 <svelte:head>
-	<title>Dublin Hema Club - Waitlist Registration</title>
+	<title>Dublin HEMA Club - Waiting list</title>
 </svelte:head>
 
 <Card.Root class="self-center">
 	<Card.Header>
-		<Card.Title class="prose prose-h1 text-xl">Waitlist Form</Card.Title>
+		<Card.Title class="prose prose-h1 text-xl"
+			>Beginners waiting list</Card.Title
+		>
 		<Card.Description class="prose">
-			Thanks for your interest in Dublin Hema Club! Please sign up for our
-			waitlist, we will contact you once a spot for our beginners workshop opens
+			Join the waiting list for our next beginners course. We will contact you
+			when a place becomes available.
 		</Card.Description>
 	</Card.Header>
 	<Card.Content class="overflow-auto max-h-[85svh]">
@@ -145,7 +147,7 @@ function isSocialMediaConsent(value: string): value is SocialMediaConsent {
 						{@const fieldProps = submitWaitlist.fields.gender.as("select")}
 						<Field.Label for={fieldProps.name}>Gender</Field.Label>
 						{@render whyThisField(
-							"This helps us maintain a balanced and inclusive training environment",
+							"We use this information to understand the makeup of the waiting list",
 						)}
 						<Select.Root
 							type="single"
@@ -184,7 +186,7 @@ function isSocialMediaConsent(value: string): value is SocialMediaConsent {
 						{@const fieldProps = submitWaitlist.fields.pronouns.as("text")}
 						<Field.Label for={fieldProps.name}>Pronouns</Field.Label>
 						{@render whyThisField(
-							"This helps us maintain a balanced and inclusive training environment",
+							"We share this with instructors so they know how to address you",
 						)}
 						<Input
 							{...fieldProps}

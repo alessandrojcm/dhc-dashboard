@@ -4,6 +4,7 @@ defmodule Dhc.DevSeeds do
   import Ecto.Query
 
   alias Dhc.Auth.{Principal, UserRole}
+  alias Dhc.Invitations.Repository, as: InvitationRepository
   alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.Repo
   alias Dhc.UserProfiles.UserProfile
@@ -84,6 +85,26 @@ defmodule Dhc.DevSeeds do
     :ok
   end
 
+  @spec seed_invitations(pos_integer()) :: :ok
+  def seed_invitations(count) do
+    ensure_faker_started()
+
+    1..count
+    |> Task.async_stream(
+      fn _ -> fake_invitation() |> create_invitation() end,
+      max_concurrency: System.schedulers_online() * 2,
+      timeout: :infinity,
+      on_timeout: :kill_task
+    )
+    |> Enum.each(fn
+      {:ok, {:ok, _invitation_id}} -> :ok
+      {:ok, {:error, reason}} -> Mix.shell().error("Skipping invitation: #{inspect(reason)}")
+      {:exit, reason} -> Mix.shell().error("Invitation task exited: #{inspect(reason)}")
+    end)
+
+    :ok
+  end
+
   @spec seed_committee_members(Path.t()) :: :ok
   def seed_committee_members(csv_path) do
     csv_path
@@ -158,6 +179,12 @@ defmodule Dhc.DevSeeds do
         Mix.shell().error("Skipping waitlist entry #{attrs.email}: #{inspect(reason)}")
         {:error, reason}
     end
+  end
+
+  defp create_invitation(attrs) do
+    # Seeded invitations are direct member invites, so they deliberately have
+    # neither a waitlist entry nor an issuing administrator.
+    InvitationRepository.create_invitation_record(%{}, attrs, nil)
   end
 
   defp create_committee_member(record) do
@@ -737,6 +764,19 @@ defmodule Dhc.DevSeeds do
 
   defp fake_waitlist_entry do
     fake_member()
+  end
+
+  defp fake_invitation do
+    member = fake_member()
+
+    %{
+      "email" => member.email,
+      "firstName" => member.first_name,
+      "lastName" => member.last_name,
+      "phoneNumber" => member.phone_number,
+      "dateOfBirth" => member.date_of_birth,
+      "invitationType" => "admin"
+    }
   end
 
   # Fakerer-backed fake-data generators. Faker maintains per-process sampler

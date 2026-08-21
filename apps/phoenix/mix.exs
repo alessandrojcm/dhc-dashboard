@@ -11,12 +11,18 @@ defmodule Dhc.MixProject do
       aliases: aliases(),
       deps: deps(),
       hex: [
-        # Bypass and Testcontainers pull Cowlib and Hackney into tests. Their
-        # latest compatible releases have no upstream fixes for these
-        # advisories, and neither package is in the production dependency tree.
+        # Bypass and Testcontainers pull Hackney into tests. Nostrum's stable
+        # REST client pulls Gun and Cowlib into production. Their latest
+        # compatible releases have no upstream fixes for these advisories.
+        # Discord adapter inputs are constrained to snowflakes, and audit-log
+        # reasons reject CR/LF before reaching Gun's header encoder. The app
+        # does not serialize Link response headers through `cow_link:link/1`,
+        # so untrusted Link targets, rel values, or attribute keys cannot reach
+        # the serializer affected by CVE-2026-43971.
         ignore_advisories: [
           "CVE-2026-43966",
           "CVE-2026-43969",
+          "CVE-2026-43971",
           "CVE-2026-47069",
           "CVE-2026-47071",
           "CVE-2026-47075",
@@ -33,7 +39,8 @@ defmodule Dhc.MixProject do
   def application do
     [
       mod: {Dhc.Application, []},
-      extra_applications: [:logger, :runtime_tools]
+      extra_applications: [:logger, :runtime_tools, :gun],
+      included_applications: [:nostrum]
     ]
   end
 
@@ -77,6 +84,7 @@ defmodule Dhc.MixProject do
       {:hackney, "~> 1.25", only: :test},
       {:finch, "~> 0.22.0"},
       {:req, "~> 0.7.2"},
+      {:nostrum, "~> 0.10.4"},
       {:assent, "~> 0.3.1"},
       # SMTP client for the dev email relay (Mailpit). Used by
       # Dhc.Email.DevMailer in non-prod environments.

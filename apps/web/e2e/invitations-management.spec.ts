@@ -7,7 +7,7 @@ import {
 	setupInvitedUser,
 } from "./setupFunctions";
 
-const INVITATIONS_PATH = "/dashboard/members?tab=invitations";
+const INVITATIONS_PATH = "/dashboard/members/invitations";
 
 async function expectQueryParam(page: Page, key: string, value: string) {
 	await expect
@@ -16,23 +16,33 @@ async function expectQueryParam(page: Page, key: string, value: string) {
 }
 
 async function openInvitations(page: Page, expectedCount: number) {
-	await page.goto(INVITATIONS_PATH);
-	await expect(page.getByRole("tab", { name: "Invitations" })).toHaveAttribute(
-		"data-state",
-		"active",
-	);
-	await expect(page.getByPlaceholder("Search invitations")).toBeVisible();
-	await expect(page.getByText(`${expectedCount} total`).first()).toBeVisible();
+	await gotoHydrated(page, INVITATIONS_PATH);
+	await expect(
+		page.getByRole("link", { name: "Invitations", exact: true }),
+	).toHaveAttribute("aria-current", "page");
+	await expect(
+		page.getByRole("region", { name: "Invitation activity", exact: true }),
+	).toHaveAttribute("aria-busy", "false");
+	await expect(
+		page.getByRole("searchbox", {
+			name: "Search invitations",
+			exact: true,
+		}),
+	).toBeVisible();
+	await expect(
+		page.getByText(`${expectedCount} invitations`, { exact: true }),
+	).toBeVisible();
 }
 
 async function searchInvitations(page: Page, query: string) {
-	const search = page.getByPlaceholder("Search invitations");
+	const search = page.getByRole("searchbox", {
+		name: "Search invitations",
+		exact: true,
+	});
 	await search.fill(query);
-	await search.press("Tab");
+	await page.getByRole("button", { name: "Search", exact: true }).click();
 	await expectQueryParam(page, "inviteQ", query);
-	await expect(
-		page.getByText("1 total").filter({ visible: true }),
-	).toBeVisible();
+	await expect(page.getByText("1 invitation", { exact: true })).toBeVisible();
 }
 
 function invitationRow(page: Page, email: string) {
@@ -81,11 +91,14 @@ test.describe("Invitation management", () => {
 	test("displays and searches invitations", async ({ page }) => {
 		await openInvitations(page, invitations.length);
 
-		const search = page.getByPlaceholder("Search invitations");
+		const search = page.getByRole("searchbox", {
+			name: "Search invitations",
+			exact: true,
+		});
 		await searchInvitations(page, expiredInvitation.email);
 		const row = invitationRow(page, expiredInvitation.email);
 		await expect(row).toBeVisible();
-		await expect(row.getByRole("cell", { name: "expired" })).toBeVisible();
+		await expect(row.getByText("expired", { exact: true })).toBeVisible();
 
 		await page.getByRole("button", { name: "Clear search" }).click();
 		await expectQueryParam(page, "inviteQ", "");
@@ -98,7 +111,8 @@ test.describe("Invitation management", () => {
 		await openInvitations(page, invitations.length);
 
 		const pageSize = page.getByRole("button", {
-			name: "Invitations elements per page",
+			name: "Rows",
+			exact: true,
 		});
 		await pageSize.click();
 		await page.getByRole("option", { name: "25" }).click();
@@ -115,17 +129,23 @@ test.describe("Invitation management", () => {
 		await expect(page.getByRole("button", { name: "Previous" })).toBeEnabled();
 	});
 
-	test("keeps invitation pagination separate from members", async ({
+	test("does not carry member pagination into invitations", async ({
 		page,
 	}) => {
 		await gotoHydrated(
 			page,
-			"/dashboard/members?tab=members&page=2&pageSize=25",
+			"/dashboard/members/directory?pageSize=25&q=member",
 		);
-		await page.getByRole("tab", { name: "Invitations" }).click();
-		await expect(page.getByPlaceholder("Search invitations")).toBeVisible();
-		await expectQueryParam(page, "page", "2");
-		await expectQueryParam(page, "pageSize", "25");
+		await page.getByRole("link", { name: "Invitations", exact: true }).click();
+		await expect(page).toHaveURL(INVITATIONS_PATH);
+		await expect(
+			page.getByRole("searchbox", {
+				name: "Search invitations",
+				exact: true,
+			}),
+		).toBeVisible();
+		expect(new URL(page.url()).searchParams.has("pageSize")).toBe(false);
+		expect(new URL(page.url()).searchParams.has("q")).toBe(false);
 		expect(page.url()).not.toContain("inviteCursor=");
 	});
 
@@ -142,7 +162,7 @@ test.describe("Invitation management", () => {
 		);
 		await row.getByLabel("Resend invitation email").click();
 		expect((await responsePromise).ok()).toBe(true);
-		await expect(page.getByText("Invitation link resent")).toBeVisible();
+		await expect(page.getByText("Invitation email resent")).toBeVisible();
 	});
 
 	test("reports resend failures", async ({ page }) => {
@@ -160,7 +180,7 @@ test.describe("Invitation management", () => {
 
 		await row.getByLabel("Resend invitation email").click();
 		await expect(
-			page.getByText("Failed to resend invitation link"),
+			page.getByText("Failed to resend invitation email"),
 		).toBeVisible();
 	});
 });

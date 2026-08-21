@@ -5,6 +5,7 @@ defmodule Dhc.Invitations.BulkInviteWorkerTest do
 
   alias Dhc.Invitations.Invitation
   alias Dhc.Invitations.BulkInviteWorker
+  alias Dhc.Invitations.Repository
   alias Dhc.Invitations.ProcessingLog
   alias Dhc.Notifications.Broadcaster
   alias Dhc.Notifications.Notification
@@ -154,6 +155,89 @@ defmodule Dhc.Invitations.BulkInviteWorkerTest do
              ) == 1
 
       assert [_job] = all_enqueued(worker: Dhc.Email.Worker)
+    end
+  end
+
+  describe "perform/1 duplicate rejection" do
+    test "records a per-invite failure and leaves the existing pending invitation untouched" do
+      created_by_id = insert_principal!("dup-admin@example.com")
+
+      invite = %{
+        "firstName" => "Ada",
+        "lastName" => "Lovelace",
+        "email" => "already-pending@example.com",
+        "phoneNumber" => "+353810000001",
+        "dateOfBirth" => "1990-01-01"
+      }
+
+      assert {:ok, original_id} =
+               Repository.insert_pending_invitation(invite, nil, created_by_id)
+
+      args = %{
+        # Different casing on purpose: rejection must be case-insensitive.
+        "invites" => [%{invite | "email" => "Already-Pending@example.com"}],
+        "user" => %{"id" => created_by_id, "email" => "dup-admin@example.com"}
+      }
+
+      assert :ok = BulkInviteWorker.perform(%Oban.Job{args: args})
+
+      # No second invitation row was created for the email (citext match).
+      invitations =
+        Repo.all(from(i in Invitation, where: i.email == "already-pending@example.com"))
+
+      assert [%Invitation{id: ^original_id, status: "pending"}] = invitations
+
+      # The duplicate surfaced as a per-invite failure in the processing log.
+      log = Repo.get_by!(ProcessingLog, principal_id: created_by_id)
+      assert log.total_count == 1
+      assert log.success_count == 0
+      assert log.failure_count == 1
+
+      assert [%{"success" => false, "error" => error}] = log.results["items"]
+      assert error =~ "duplicate_pending_invitation"
+
+      # No invite email was enqueued for the rejected duplicate.
+      assert [] = all_enqueued(worker: Dhc.Email.Worker)
+    end
+
+    test "processes the rest of the batch when one invite is a duplicate" do
+      created_by_id = insert_principal!("mixed-admin@example.com")
+
+      pending_invite = %{
+        "firstName" => "Ada",
+        "lastName" => "Lovelace",
+        "email" => "taken@example.com",
+        "phoneNumber" => "+353810000001",
+        "dateOfBirth" => "1990-01-01"
+      }
+
+      fresh_invite = %{
+        "firstName" => "Grace",
+        "lastName" => "Hopper",
+        "email" => "fresh@example.com",
+        "phoneNumber" => "+353810000002",
+        "dateOfBirth" => "1990-01-01"
+      }
+
+      assert {:ok, _pending_id} =
+               Repository.insert_pending_invitation(pending_invite, nil, created_by_id)
+
+      args = %{
+        "invites" => [pending_invite, fresh_invite],
+        "user" => %{"id" => created_by_id, "email" => "mixed-admin@example.com"}
+      }
+
+      assert :ok = BulkInviteWorker.perform(%Oban.Job{args: args})
+
+      assert %ProcessingLog{total_count: 2, success_count: 1, failure_count: 1} =
+               Repo.get_by!(ProcessingLog, principal_id: created_by_id)
+
+      assert %Invitation{status: "pending"} =
+               Repo.get_by!(Invitation, email: "fresh@example.com")
+
+      # Only the fresh invite got an email.
+      assert [%Oban.Job{args: email_args}] = all_enqueued(worker: Dhc.Email.Worker)
+      assert email_args["email"] == "fresh@example.com"
     end
   end
 

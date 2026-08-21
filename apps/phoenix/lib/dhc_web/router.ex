@@ -33,6 +33,10 @@ defmodule DhcWeb.Router do
     plug DhcWeb.Plugs.RequireSession, roles: ~w(president committee_coordinator admin)
   end
 
+  pipeline :discord_doctor_admin_api do
+    plug DhcWeb.Plugs.RequireSession, roles: ~w(admin president committee_coordinator)
+  end
+
   # ALE-105 inventory category management. Mirrors the existing SvelteKit
   # `INVENTORY_ROLES` (`quartermaster`, `admin`, `president`). Reads of
   # categories are any authenticated member — the existing Svelte category
@@ -166,6 +170,13 @@ defmodule DhcWeb.Router do
 
     get "/members", MembersController, :index
     get "/members/analytics", MembersController, :analytics
+  end
+
+  scope "/api", DhcWeb do
+    pipe_through [:api, :discord_doctor_admin_api]
+
+    get "/discord-doctor/report", DiscordDoctorController, :report
+    post "/discord-doctor/kick", DiscordDoctorController, :kick
   end
 
   scope "/api", DhcWeb do

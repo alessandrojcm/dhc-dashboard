@@ -44,11 +44,11 @@ test.describe("Members analytics panel", () => {
 		// SvelteKit -> Phoenix `membersAnalytics` path.
 		await page.goto("/dashboard/members");
 
-		// The "Total Members" and "Average age" cards render from the Phoenix
+		// The "Active members" and "Average age" cards render from the Phoenix
 		// response's `totalCount` / `averageAge`. Visibility proves the read
 		// returned a data envelope rather than degrading.
 		await expect(
-			page.getByText("Total Members", { exact: true }),
+			page.getByText("Active members", { exact: true }),
 		).toBeVisible();
 		await expect(page.getByText("Average age", { exact: true })).toBeVisible();
 
@@ -58,10 +58,13 @@ test.describe("Members analytics panel", () => {
 		// from `value`, so a visible "Preferred Weapons" pane confirms the new
 		// shape flows through end-to-end.
 		await expect(
-			page.getByRole("heading", { name: "Gender Demographics" }),
+			page.getByRole("heading", {
+				name: "Gender distribution",
+				exact: true,
+			}),
 		).toBeVisible();
 		await expect(
-			page.getByRole("heading", { name: "Preferred Weapons" }),
+			page.getByRole("heading", { name: "Preferred weapons", exact: true }),
 		).toBeVisible();
 	});
 });

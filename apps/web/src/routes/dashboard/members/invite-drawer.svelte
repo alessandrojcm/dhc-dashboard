@@ -6,85 +6,152 @@ import DatePicker from "$lib/components/ui/date-picker.svelte";
 import * as Field from "$lib/components/ui/field";
 import { Input } from "$lib/components/ui/input";
 import PhoneInput from "$lib/components/ui/phone-input.svelte";
-import { ScrollArea } from "$lib/components/ui/scroll-area";
 import { Separator } from "$lib/components/ui/separator";
 import * as Sheet from "$lib/components/ui/sheet/index.js";
 import { fromDate, getLocalTimeZone } from "@internationalized/date";
 import dayjs from "dayjs";
-import { Info, Loader, Plus, Trash2 } from "@lucide/svelte";
-import { submitBulkInvites, validateSingleInvite } from "./data.remote";
+import { Info, Loader, Pencil, Plus, Trash2 } from "@lucide/svelte";
+import { submitBulkInvites } from "./data.remote";
 import { adminInviteRemoteSchema } from "$lib/schemas/adminInvite";
+import * as v from "valibot";
 
-// Local state for the invite list (since we're building it client-side)
-let invitesList = $state<
-	Array<{
-		firstName: string;
-		lastName: string;
-		email: string;
-		phoneNumber: string;
-		dateOfBirth: string;
-	}>
->([]);
+type Invite = {
+	firstName: string;
+	lastName: string;
+	email: string;
+	phoneNumber: string;
+	dateOfBirth: string;
+};
+
+type InviteFieldErrors = {
+	firstName: string[];
+	lastName: string[];
+	email: string[];
+	phoneNumber: string[];
+	dateOfBirth: string[];
+};
+
+type InviteField = keyof InviteFieldErrors;
+
+function emptyInvite(): Invite {
+	return {
+		firstName: "",
+		lastName: "",
+		email: "",
+		phoneNumber: "",
+		dateOfBirth: "",
+	};
+}
+
+function emptyFieldErrors(): InviteFieldErrors {
+	return {
+		firstName: [],
+		lastName: [],
+		email: [],
+		phoneNumber: [],
+		dateOfBirth: [],
+	};
+}
+
+let invitesList = $state<Invite[]>([]);
+let editingIndex = $state<number | null>(null);
+let firstNameInput = $state<HTMLInputElement | null>(null);
+let dialogHeading = $state<HTMLElement | null>(null);
+let queueAnnouncement = $state("");
+let inviteFields = $state<Invite>(emptyInvite());
+let fieldErrors = $state<InviteFieldErrors>(emptyFieldErrors());
 
 // Success/error message state
 let formMessage = $state<{ success?: string; failure?: string } | null>(null);
 
 // Date picker value for single invite form
 const dobValue = $derived.by(() => {
-	const dob = validateSingleInvite.fields.dateOfBirth.value();
+	const dob = inviteFields.dateOfBirth;
 	if (!dob || !dayjs(dob).isValid()) return undefined;
 	return fromDate(dayjs(dob).toDate(), getLocalTimeZone());
 });
 
-// Add current invite to the list
-async function addInviteToList() {
-	// Trigger validation
-	await validateSingleInvite.validate({ includeUntouched: true });
-	if (
-		validateSingleInvite.fields.allIssues() &&
-		validateSingleInvite.fields.allIssues()!.length > 0
-	)
+function resetInviteForm({ focus = false } = {}) {
+	inviteFields = emptyInvite();
+	fieldErrors = emptyFieldErrors();
+	editingIndex = null;
+	if (focus) queueMicrotask(() => firstNameInput?.focus());
+}
+
+function clearFieldError(field: InviteField) {
+	fieldErrors[field] = [];
+}
+
+function addInviteToList() {
+	formMessage = null;
+	const result = v.safeParse(adminInviteRemoteSchema, inviteFields);
+	if (!result.success) {
+		const errors = v.flatten(result.issues).nested;
+		fieldErrors = {
+			firstName: errors?.firstName ?? [],
+			lastName: errors?.lastName ?? [],
+			email: errors?.email ?? [],
+			phoneNumber: errors?.phoneNumber ?? [],
+			dateOfBirth: errors?.dateOfBirth ?? [],
+		};
 		return;
+	}
 
-	// Get values and add to list
-	const values = validateSingleInvite.fields.value();
-	invitesList = [
-		...invitesList,
-		{
-			firstName: values.firstName || "",
-			lastName: values.lastName || "",
-			email: values.email ?? "",
-			phoneNumber: values.phoneNumber || "",
-			dateOfBirth: values.dateOfBirth || "",
-		},
-	];
-	// Reset single invite form
-	validateSingleInvite.fields.set({
-		firstName: "",
-		lastName: "",
-		email: "",
-		phoneNumber: "",
-		dateOfBirth: "",
-	});
+	const invite: Invite = { ...result.output };
+
+	if (editingIndex === null) {
+		invitesList = [...invitesList, invite];
+		queueAnnouncement = `${invite.firstName} ${invite.lastName} added. ${invitesList.length} ${invitesList.length === 1 ? "invitation" : "invitations"} ready to send.`;
+	} else {
+		invitesList = invitesList.map((currentInvite, index) =>
+			index === editingIndex ? invite : currentInvite,
+		);
+		queueAnnouncement = `${invite.firstName} ${invite.lastName} updated.`;
+	}
+
+	resetInviteForm({ focus: true });
 }
 
-// Remove an invite from the list
+function editInvite(index: number) {
+	const invite = invitesList[index];
+	if (!invite) return;
+
+	formMessage = null;
+	editingIndex = index;
+	inviteFields = { ...invite };
+	fieldErrors = emptyFieldErrors();
+	queueAnnouncement = `Editing ${invite.firstName} ${invite.lastName}.`;
+	queueMicrotask(() => firstNameInput?.focus());
+}
+
+function cancelEditing() {
+	resetInviteForm({ focus: true });
+	queueAnnouncement = "Editing cancelled.";
+}
+
 function removeInvite(index: number) {
+	const invite = invitesList[index];
+	if (!invite) return;
+
 	invitesList = invitesList.filter((_, i) => i !== index);
+	if (editingIndex === index) resetInviteForm();
+	else if (editingIndex !== null && editingIndex > index) editingIndex -= 1;
+	queueAnnouncement = `${invite.firstName} ${invite.lastName} removed. ${invitesList.length} ${invitesList.length === 1 ? "invitation" : "invitations"} ready to send.`;
 }
 
-// Clear all invites
 function clearAllInvites() {
 	invitesList = [];
+	resetInviteForm({ focus: true });
+	queueAnnouncement = "Invitation list cleared.";
 }
 
-// Handle bulk form submission
 function handleBulkSubmit() {
-	// Sync invites list to bulk form before submission
+	const invitationCount = invitesList.length;
 	submitBulkInvites({ invites: invitesList })
 		.then((response) => {
-			// Clear the list after successful submission
 			invitesList = [];
+			resetInviteForm();
+			queueAnnouncement = `${invitationCount} ${invitationCount === 1 ? "invitation" : "invitations"} sent for processing.`;
 			formMessage = {
 				success:
 					response?.success ||
@@ -101,26 +168,44 @@ function handleBulkSubmit() {
 </script>
 
 <Sheet.Root>
-	<Sheet.Trigger class={buttonVariants({ variant: "outline" })}
-		>Invite Members</Sheet.Trigger
+	<Sheet.Trigger class={buttonVariants()}>Invite members</Sheet.Trigger>
+	<Sheet.Content
+		class="w-full max-w-none gap-0 overflow-hidden border-l-0 p-0 sm:w-[30rem] sm:max-w-[calc(100vw-2rem)] sm:border-l"
+		side="right"
+		onOpenAutoFocus={(event) => {
+			event.preventDefault();
+			dialogHeading?.focus();
+		}}
 	>
-	<Sheet.Content class="w-[400px] sm:w-[540px] p-4 scroll-smooth" side="right">
-		<Sheet.Header>
-			<Sheet.Title>Invite Members</Sheet.Title>
+		<Sheet.Header
+			class="shrink-0 border-b bg-background px-4 pt-[max(1rem,env(safe-area-inset-top))] pr-16 pb-4 sm:px-6 sm:pt-5 sm:pb-5"
+		>
+			<Sheet.Title bind:ref={dialogHeading} tabindex={-1}
+				>Invite Members</Sheet.Title
+			>
 			<Sheet.Description
 				>Add new members to the club by sending them invitations.
 			</Sheet.Description>
 		</Sheet.Header>
 
-		<div class="space-y-6 scroll-smooth overflow-y-scroll">
-			<!-- Invite Form -->
+		<div
+			class="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6"
+		>
+			<div class="space-y-1">
+				<h3 class="font-semibold">Member details</h3>
+				<p class="text-sm leading-5 text-muted-foreground">
+					All fields are required. Date of birth confirms the member meets the
+					club's age requirement.
+				</p>
+			</div>
+
 			<form
-				{...validateSingleInvite.preflight(adminInviteRemoteSchema)}
+				novalidate
 				onsubmit={(e) => {
 					e.preventDefault();
 					addInviteToList();
 				}}
-				class="space-y-4"
+				class="space-y-5"
 			>
 				{#if formMessage}
 					<Alert variant={formMessage.success ? "success" : "destructive"}>
@@ -141,153 +226,221 @@ function handleBulkSubmit() {
 					</Alert>
 				{/if}
 
-				<Field.Group>
-					<div class="grid grid-cols-2 gap-4">
-						<!-- First Name -->
+				<Field.Group class="gap-4">
+					<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 						<Field.Field>
-							{@const fieldProps =
-								validateSingleInvite.fields.firstName.as("text")}
-							<Field.Label for={fieldProps.name}>First Name</Field.Label>
-							<Input {...fieldProps} id={fieldProps.name} />
-							{#each validateSingleInvite.fields.firstName.issues() as issue (issue.message)}
-								<Field.Error>{issue.message}</Field.Error>
+							<Field.Label for="invite-first-name"
+								>First Name <span aria-hidden="true" class="text-destructive"
+									>*</span
+								><span class="sr-only"> required</span></Field.Label
+							>
+							<Input
+								bind:ref={firstNameInput}
+								bind:value={inviteFields.firstName}
+								id="invite-first-name"
+								name="firstName"
+								type="text"
+								autocomplete="given-name"
+								class="h-11"
+								aria-invalid={fieldErrors.firstName.length > 0}
+								oninput={() => clearFieldError("firstName")}
+							/>
+							{#each fieldErrors.firstName as error (error)}
+								<Field.Error>{error}</Field.Error>
 							{/each}
 						</Field.Field>
 
-						<!-- Last Name -->
 						<Field.Field>
-							{@const fieldProps =
-								validateSingleInvite.fields.lastName.as("text")}
-							<Field.Label for={fieldProps.name}>Last Name</Field.Label>
-							<Input {...fieldProps} id={fieldProps.name} />
-							{#each validateSingleInvite.fields.lastName.issues() as issue (issue.message)}
-								<Field.Error>{issue.message}</Field.Error>
+							<Field.Label for="invite-last-name"
+								>Last Name <span aria-hidden="true" class="text-destructive"
+									>*</span
+								><span class="sr-only"> required</span></Field.Label
+							>
+							<Input
+								bind:value={inviteFields.lastName}
+								id="invite-last-name"
+								name="lastName"
+								type="text"
+								autocomplete="family-name"
+								class="h-11"
+								aria-invalid={fieldErrors.lastName.length > 0}
+								oninput={() => clearFieldError("lastName")}
+							/>
+							{#each fieldErrors.lastName as error (error)}
+								<Field.Error>{error}</Field.Error>
 							{/each}
 						</Field.Field>
 					</div>
 
-					<!-- Email -->
 					<Field.Field>
-						{@const fieldProps = validateSingleInvite.fields.email.as("email")}
-						<Field.Label for={fieldProps.name}>Email</Field.Label>
-						<Input {...fieldProps} id={fieldProps.name} />
-						{#each validateSingleInvite.fields.email.issues() as issue (issue.message)}
-							<Field.Error>{issue.message}</Field.Error>
+						<Field.Label for="invite-email"
+							>Email <span aria-hidden="true" class="text-destructive">*</span
+							><span class="sr-only"> required</span></Field.Label
+						>
+						<Input
+							bind:value={inviteFields.email}
+							id="invite-email"
+							name="email"
+							type="email"
+							autocomplete="email"
+							class="h-11"
+							aria-invalid={fieldErrors.email.length > 0}
+							oninput={() => clearFieldError("email")}
+						/>
+						{#each fieldErrors.email as error (error)}
+							<Field.Error>{error}</Field.Error>
 						{/each}
 					</Field.Field>
 
-					<!-- Date of Birth -->
 					<Field.Field>
-						{@const { value, ...fieldProps } =
-							validateSingleInvite.fields.dateOfBirth.as("text")}
-						<Field.Label for={fieldProps.name}>Date of birth</Field.Label>
+						<Field.Label for="invite-date-of-birth"
+							>Date of birth <span aria-hidden="true" class="text-destructive"
+								>*</span
+							><span class="sr-only"> required</span></Field.Label
+						>
 						<DatePicker
-							{...fieldProps}
-							id={fieldProps.name}
+							id="invite-date-of-birth"
+							name="dateOfBirth"
 							value={dobValue}
 							onDateChange={(date) => {
 								if (!date) return;
-								validateSingleInvite.fields.dateOfBirth.set(
-									dayjs(date).format("YYYY-MM-DD"),
-								);
+								inviteFields.dateOfBirth = dayjs(date).format("YYYY-MM-DD");
+								clearFieldError("dateOfBirth");
 							}}
 						/>
-						{#each validateSingleInvite.fields.dateOfBirth.issues() as issue (issue.message)}
-							<Field.Error>{issue.message}</Field.Error>
+						{#each fieldErrors.dateOfBirth as error (error)}
+							<Field.Error>{error}</Field.Error>
 						{/each}
 					</Field.Field>
 
-					<!-- Phone Number -->
 					<Field.Field>
-						{@const fieldProps =
-							validateSingleInvite.fields.phoneNumber.as("tel")}
-						<Field.Label for={fieldProps.name}>Phone Number</Field.Label>
+						<Field.Label for="invite-phone-number"
+							>Phone Number <span aria-hidden="true" class="text-destructive"
+								>*</span
+							><span class="sr-only"> required</span></Field.Label
+						>
 						<PhoneInput
 							placeholder="Enter your phone number"
-							{...fieldProps}
-							id={fieldProps.name}
-							onChange={(v) =>
-								validateSingleInvite.fields.phoneNumber.set(String(v))}
+							id="invite-phone-number"
+							name="phoneNumber"
+							value={inviteFields.phoneNumber}
+							aria-invalid={fieldErrors.phoneNumber.length > 0}
+							onChange={(value) => {
+								inviteFields.phoneNumber = value;
+								clearFieldError("phoneNumber");
+							}}
 						/>
-						{#each validateSingleInvite.fields.phoneNumber.issues() as issue (issue.message)}
-							<Field.Error>{issue.message}</Field.Error>
+						{#each fieldErrors.phoneNumber as error (error)}
+							<Field.Error>{error}</Field.Error>
 						{/each}
 					</Field.Field>
 				</Field.Group>
-			</form>
 
-			<div class="flex justify-between gap-2">
-				<Button
-					type="button"
-					onclick={handleBulkSubmit}
-					disabled={invitesList.length === 0 || !!submitBulkInvites.pending}
-				>
-					{#if submitBulkInvites.pending}
-						<Loader class="mr-2 h-4 w-4 animate-spin" />
-					{/if}
-					Send {invitesList.length} Invitations
-				</Button>
-				<Button type="button" variant="outline" onclick={addInviteToList}>
-					<Plus class="mr-2 h-4 w-4" />
-					Add to List
-				</Button>
-			</div>
-
-			<Separator />
-
-			<!-- Invite List -->
-			<div class="space-y-4">
-				<div class="flex items-center justify-between">
-					<h3 class="text-lg font-medium">
-						Invite List ({invitesList.length})
-					</h3>
-					{#if invitesList.length > 0}
-						<Button variant="outline" size="sm" onclick={clearAllInvites}
-							>Clear All</Button
+				<div class="space-y-2 pt-1">
+					<Button type="submit" class="w-full">
+						<Plus class="size-4" />
+						{editingIndex === null ? "Add invite" : "Update invite"}
+					</Button>
+					{#if editingIndex !== null}
+						<Button
+							type="button"
+							variant="ghost"
+							class="w-full"
+							onclick={cancelEditing}>Cancel editing</Button
 						>
 					{/if}
 				</div>
+			</form>
 
-				{#if invitesList.length === 0}
-					<div class="text-center py-8 text-muted-foreground">
-						<p>No invites added yet. Add members using the form above.</p>
+			{#if invitesList.length > 0}
+				<Separator />
+
+				<section class="space-y-3" aria-labelledby="ready-to-send-heading">
+					<div class="flex items-center justify-between gap-3">
+						<h3 id="ready-to-send-heading" class="text-lg font-semibold">
+							Ready to send ({invitesList.length})
+						</h3>
+						<Button variant="ghost" onclick={clearAllInvites}>Clear All</Button>
 					</div>
-				{:else}
-					<ScrollArea class="h-[300px]">
-						<div class="space-y-3 pr-2">
-							{#each invitesList as invite, index (invite.email + index)}
-								<Card class="p-3">
-									<div class="flex justify-between items-start">
-										<div>
-											<p class="font-medium">
+
+					<ul class="space-y-3">
+						{#each invitesList as invite, index (invite.email + index)}
+							<li>
+								<Card class="gap-3 p-4">
+									<div class="flex items-start justify-between gap-3">
+										<div class="min-w-0 flex-1">
+											<p class="font-semibold">
 												{invite.firstName}
 												{invite.lastName}
 											</p>
-											<p class="text-sm text-muted-foreground">
+											<p class="break-all text-sm text-muted-foreground">
 												{invite.email}
 											</p>
-											{#if invite.phoneNumber}
-												<p class="text-xs text-muted-foreground">
-													{invite.phoneNumber}
-												</p>
-											{/if}
+											<p class="mt-1 text-xs leading-5 text-muted-foreground">
+												Born {dayjs(invite.dateOfBirth).format("D MMM YYYY")}
+												<span aria-hidden="true"> · </span>
+												{invite.phoneNumber}
+											</p>
 										</div>
-										<Button
-											variant="ghost"
-											size="icon"
-											class="h-8 w-8"
-											onclick={() => removeInvite(index)}
-											aria-label="Remove invite"
-										>
-											<Trash2 class="h-4 w-4" />
-										</Button>
+										<div class="flex shrink-0 gap-2">
+											<Button
+												variant="ghost"
+												size="icon"
+												onclick={() => editInvite(index)}
+												aria-label={`Edit invite for ${invite.firstName} ${invite.lastName}`}
+											>
+												<Pencil class="size-4" />
+											</Button>
+											<Button
+												variant="ghost"
+												size="icon"
+												onclick={() => removeInvite(index)}
+												aria-label={`Remove invite for ${invite.firstName} ${invite.lastName}`}
+											>
+												<Trash2 class="size-4" />
+											</Button>
+										</div>
 									</div>
 								</Card>
-							{/each}
-						</div>
-					</ScrollArea>
-				{/if}
-			</div>
+							</li>
+						{/each}
+					</ul>
+				</section>
+			{/if}
 		</div>
+
+		<p class="sr-only" aria-live="polite">{queueAnnouncement}</p>
+
+		{#if invitesList.length > 0}
+			<Sheet.Footer
+				class="shrink-0 border-t bg-background/95 px-4 pt-3 pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur sm:px-6"
+			>
+				{#if editingIndex !== null}
+					<p
+						id="finish-editing-hint"
+						class="text-center text-sm text-muted-foreground"
+					>
+						Save or cancel your edits before sending.
+					</p>
+				{/if}
+				<Button
+					type="button"
+					class="w-full"
+					onclick={handleBulkSubmit}
+					disabled={editingIndex !== null || !!submitBulkInvites.pending}
+					aria-describedby={editingIndex !== null
+						? "finish-editing-hint"
+						: undefined}
+				>
+					{#if submitBulkInvites.pending}
+						<Loader class="size-4 animate-spin" />
+						Sending invitations…
+					{:else}
+						Send {invitesList.length}
+						{invitesList.length === 1 ? "invitation" : "invitations"}
+					{/if}
+				</Button>
+			</Sheet.Footer>
+		{/if}
 	</Sheet.Content>
 </Sheet.Root>

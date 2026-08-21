@@ -14,16 +14,30 @@
 			console via logUnhandledServerError in hooks.server.ts.
 		-->
 		<main
-			style="min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; font-family: system-ui, sans-serif; padding: 16px; text-align: center;"
+			style="
+				min-height: 100vh;
+				display: flex;
+				flex-direction: column;
+				align-items: center;
+				justify-content: center;
+				gap: 12px;
+				font-family: system-ui, sans-serif;
+				padding: 16px;
+				text-align: center;
+			"
 		>
-			<h1 style="margin: 0; font-size: 1.25rem;">Something went wrong</h1>
-			<p style="margin: 0; color: #666; max-width: 32rem;">
+			<h1 style="margin: 0; font-size: 1.25rem">Something went wrong</h1>
+			<p style="margin: 0; color: #666; max-width: 32rem">
 				Status: %sveltekit.status% — %sveltekit.error.message%. The error has
 				been logged on the server. Please try again in a moment.
 			</p>
 			<a
 				href="/"
-				style="color: inherit; text-decoration: underline; text-underline-offset: 4px;"
+				style="
+					color: inherit;
+					text-decoration: underline;
+					text-underline-offset: 4px;
+				"
 			>
 				Back to home
 			</a>

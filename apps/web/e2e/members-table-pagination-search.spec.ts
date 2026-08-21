@@ -44,7 +44,7 @@ test.describe("Members table pagination and search", () => {
 	test("should paginate members table correctly via cursor prev/next", async ({
 		page,
 	}) => {
-		await gotoHydrated(page, "/dashboard/members?tab=members");
+		await gotoHydrated(page, "/dashboard/members/directory");
 
 		// Wait for table rows to be attached in DOM
 		const memberRows = page.getByTestId("members-table").locator("tbody tr");
@@ -100,7 +100,7 @@ test.describe("Members table pagination and search", () => {
 	});
 
 	test("should change page size correctly", async ({ page }) => {
-		await gotoHydrated(page, "/dashboard/members?tab=members");
+		await gotoHydrated(page, "/dashboard/members/directory");
 
 		// Wait for table rows to be attached in DOM
 		const memberRows = page.getByTestId("members-table").locator("tbody tr");
@@ -110,7 +110,8 @@ test.describe("Members table pagination and search", () => {
 		});
 
 		const pageSizeTrigger = page.getByRole("button", {
-			name: "Members elements per page",
+			name: "Rows",
+			exact: true,
 		});
 		await pageSizeTrigger.click();
 
@@ -118,7 +119,7 @@ test.describe("Members table pagination and search", () => {
 		await page.getByRole("option", { name: "25" }).click();
 
 		// Wait for URL to update
-		await page.waitForURL("**/dashboard/members?**pageSize=25**", {
+		await page.waitForURL("**/dashboard/members/directory?**pageSize=25**", {
 			timeout: 10000,
 		});
 
@@ -139,7 +140,7 @@ test.describe("Members table pagination and search", () => {
 	});
 
 	test("should search members correctly", async ({ page }) => {
-		await gotoHydrated(page, "/dashboard/members?tab=members");
+		await gotoHydrated(page, "/dashboard/members/directory");
 
 		// Wait for table rows to be attached in DOM (not necessarily visible due to responsive CSS)
 		await page
@@ -151,42 +152,32 @@ test.describe("Members table pagination and search", () => {
 				timeout: 10000,
 			});
 
-		const searchInput = page.getByPlaceholder("Search members");
+		const searchInput = page.getByRole("searchbox", {
+			name: "Search members",
+			exact: true,
+		});
 		await searchInput.fill(searchTarget.email);
+		await page.getByRole("button", { name: "Search", exact: true }).click();
 		await expect
 			.poll(() => new URL(page.url()).searchParams.get("q") ?? "")
 			.toBe(searchTarget.email);
 		await expect(
-			page.locator(`a[href="mailto:${searchTarget.email}"]`),
+			page
+				.getByTestId("members-table")
+				.locator(`a[href="mailto:${searchTarget.email}"]`),
 		).toHaveCount(1);
 	});
 
 	test("should clear search correctly", async ({ page }) => {
-		await gotoHydrated(page, "/dashboard/members?tab=members&q=test");
+		await gotoHydrated(page, "/dashboard/members/directory?q=test");
 
-		// Wait for table to load or no results message
-		await page
-			.getByTestId("members-table")
-			.locator('tbody tr, p:has-text("No results found")')
-			.first()
-			.waitFor({ state: "attached", timeout: 10000 });
+		await expect(
+			page.getByRole("region", { name: "Member directory", exact: true }),
+		).toHaveAttribute("aria-busy", "false");
 
 		// Find and click the clear search button
 		const clearButton = page.getByRole("button", { name: "Clear search" });
-		await clearButton.click({ force: true });
-
-		const waitForClearedQuery = () =>
-			expect
-				.poll(() => new URL(page.url()).searchParams.get("q") ?? "", {
-					timeout: 3000,
-				})
-				.toBe("");
-
-		try {
-			await waitForClearedQuery();
-		} catch {
-			await page.getByPlaceholder("Search members").fill("");
-		}
+		await clearButton.click();
 
 		await expect
 			.poll(() => new URL(page.url()).searchParams.get("q") ?? "", {
@@ -206,7 +197,7 @@ test.describe("Members table pagination and search", () => {
 		// Navigate with the membershipStatus filter applied (renamed from `status`).
 		await gotoHydrated(
 			page,
-			"/dashboard/members?tab=members&membershipStatus=active",
+			"/dashboard/members/directory?membershipStatus=active",
 		);
 
 		// Wait for table rows to be attached in DOM
@@ -222,18 +213,17 @@ test.describe("Members table pagination and search", () => {
 		// Verify the URL carries the membershipStatus param
 		expect(page.url()).toContain("membershipStatus=active");
 
-		// The "active" checkbox in the status filter should be checked
-		const activeCheckbox = page.getByRole("checkbox", {
+		const activeFilter = page.getByRole("button", {
 			name: "active",
 			exact: true,
 		});
-		await expect(activeCheckbox).toBeChecked();
+		await expect(activeFilter).toHaveAttribute("aria-pressed", "true");
 	});
 
 	test("should display correct total count for pagination", async ({
 		page,
 	}) => {
-		await gotoHydrated(page, "/dashboard/members?tab=members");
+		await gotoHydrated(page, "/dashboard/members/directory");
 
 		// Wait for table rows to be attached in DOM
 		const memberRows = page.getByTestId("members-table").locator("tbody tr");
