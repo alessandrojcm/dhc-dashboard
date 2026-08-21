@@ -14,6 +14,11 @@ defmodule Dhc.StripeSync do
 
   @price_cache_ttl_hours 24
 
+  # Subscription statuses that satisfy an expected membership price during
+  # sync. `trialing` covers prices whose billing starts in the future
+  # (e.g. a reactivated member's annual fee deferred to next January).
+  @covering_statuses ["active", "trialing"]
+
   @type sync_summary :: %{
           target_customers: non_neg_integer(),
           stripe_subscriptions_scanned: non_neg_integer(),
@@ -305,9 +310,14 @@ defmodule Dhc.StripeSync do
   @doc """
   Syncs a single customer's membership status against their Stripe subscriptions.
 
-  The customer must have at least one active subscription for EACH expected
-  membership price. If any price is missing an active subscription, the
-  customer is marked inactive.
+  The customer must have at least one covering subscription for EACH expected
+  membership price. A subscription covers its price when its status is
+  `active` or `trialing` (a trialing subscription awaits a future start,
+  e.g. an annual fee deferred to next January). If any price lacks coverage,
+  the customer is marked inactive.
+
+  Pause detection is unchanged: `pause_collection` on any subscription with
+  complete price coverage resolves the member to paused.
 
   Returns `{:ok, action}` where action is `:inactive`, `:paused`, `:active`,
   or `:unchanged`. Returns `{:error, reason}` if the database write fails.
@@ -324,25 +334,25 @@ defmodule Dhc.StripeSync do
   end
 
   def sync_customer(customer_id, subscriptions, price_ids) when is_list(subscriptions) do
-    active_subs = Enum.filter(subscriptions, &(&1["status"] == "active"))
+    covering_subs = Enum.filter(subscriptions, &(&1["status"] in @covering_statuses))
 
-    active_price_ids =
-      active_subs
+    covered_price_ids =
+      covering_subs
       |> Enum.map(&subscription_price_id/1)
       |> Enum.reject(&is_nil/1)
       |> Enum.uniq()
 
-    missing_price_ids = price_ids -- active_price_ids
+    missing_price_ids = price_ids -- covered_price_ids
 
     has_paused = Enum.any?(subscriptions, &(Map.get(&1, "pause_collection") != nil))
 
     cond do
       missing_price_ids != [] ->
         Logger.info(
-          "[stripe-sync] Customer missing active subscription for price(s) — marking inactive",
+          "[stripe-sync] Customer missing active/trialing subscription for price(s) — marking inactive",
           customer_id: customer_id,
           missing_price_ids: missing_price_ids,
-          active_price_ids: active_price_ids,
+          covered_price_ids: covered_price_ids,
           expected_price_ids: price_ids
         )
 
@@ -357,8 +367,8 @@ defmodule Dhc.StripeSync do
         mark_paused(customer_id, paused_sub)
 
       true ->
-        best_active = List.first(active_subs)
-        mark_active(customer_id, best_active)
+        best_covered = List.first(covering_subs)
+        mark_active(customer_id, best_covered)
     end
   end
 
