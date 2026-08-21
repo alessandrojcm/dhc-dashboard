@@ -377,6 +377,11 @@ paths:
         longer calls the Supabase admin API, creates a Stripe customer, or
         inserts a `user_profiles` row — acceptance materializes the
         Principal + Member record set atomically.
+
+        An invite whose email already has a pending invitation is rejected
+        per-invite (case-insensitively) and surfaces as a failure in the
+        processing log; re-inviting is possible again once the pending
+        invitation expires or is revoked.
       security:
         - bearerAuth: []
       requestBody:
