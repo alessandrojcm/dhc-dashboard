@@ -145,7 +145,7 @@ function formatTime(timestamp: string): string {
 
 <DropdownMenu.Root>
 	<DropdownMenu.Trigger
-		class="relative flex items-center py-2 rounded hover:bg-muted min-h-[40px] w-full"
+		class="relative flex items-center rounded-md py-2 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground min-h-[40px] w-full"
 	>
 		<div class="flex items-center w-full px-5">
 			<Bell
