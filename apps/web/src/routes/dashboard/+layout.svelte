@@ -93,7 +93,7 @@ function getBreadcrumbLabel(item: string, index: number): string {
 				<div
 					class="ml-12 hidden border-r border-border pr-4 text-xs font-bold uppercase tracking-[0.18em] text-primary sm:block md:ml-0"
 				>
-					Club desk
+					Dashboard
 				</div>
 				<Breadcrumb.Root>
 					<Breadcrumb.List class="ml-12 md:ml-0">

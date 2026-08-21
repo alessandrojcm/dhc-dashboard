@@ -106,7 +106,7 @@ function isActive(url: string) {
 			>
 				Dublin HEMA
 			</p>
-			<h2 class="text-lg leading-tight text-sidebar-foreground">Club desk</h2>
+			<h2 class="text-lg leading-tight text-sidebar-foreground">Dashboard</h2>
 		</div>
 	</Sidebar.Header>
 	<Sidebar.Content data-testid="sidebar" class="px-2 py-4">

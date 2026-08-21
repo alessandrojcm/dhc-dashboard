@@ -119,7 +119,7 @@ function formatWorkshopDate(startDate?: string | null) {
 					<p
 						class="mr-1 text-xs font-bold tracking-[0.18em] text-primary uppercase"
 					>
-						Attendance operations
+						Workshop attendance
 					</p>
 					<Badge variant={getStatusVariant(workshop.status)} class="capitalize">
 						{workshop.status}
@@ -132,8 +132,7 @@ function formatWorkshopDate(startDate?: string | null) {
 					{workshop.title}
 				</h1>
 				<p class="mt-2 text-base leading-7 text-muted-foreground">
-					Check participants in, monitor the live headcount, and handle
-					registration exceptions from one desk.
+					Check in participants and manage registration issues.
 				</p>
 			</div>
 

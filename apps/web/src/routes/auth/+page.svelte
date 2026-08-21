@@ -30,7 +30,7 @@ const discordAuthUrl = publicApiUrl("/auth/discord");
 		<p class="text-xs font-bold uppercase tracking-[0.2em] text-primary">
 			Welcome back
 		</p>
-		<h2 class="text-3xl leading-tight sm:text-4xl">Enter the club desk</h2>
+		<h2 class="text-3xl leading-tight sm:text-4xl">Sign in</h2>
 		<p class="text-sm leading-6 text-muted-foreground">
 			Use your club email or continue with Discord.
 		</p>
