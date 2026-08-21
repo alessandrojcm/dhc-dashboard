@@ -131,7 +131,8 @@ Phoenix runtime task.
 # Code quality
 mise run phx-format         # Format all Elixir files
 mise run phx-format-check   # Check formatting (CI)
-mise run phx-precommit      # Full check: compile + deps.unlock + format + test
+mise run phx-reach          # Reach architecture policy checks (.reach.exs)
+mise run phx-precommit      # Full check: credo + reach arch + audit + compile + unlock + format + test
 
 # Testing
 mise run phx-test           # Run all Phoenix tests (excludes :integration tests)
@@ -159,6 +160,21 @@ per-test sandbox transaction and must explicitly delete every durable fixture
 in `on_exit/1`. If teardown must remove immutable Discord assignment audit rows,
 disable only `discord_assignment_reject_audit_mutation` for that deletion and
 always re-enable it in an `after` block.
+
+### Reach architecture policy (`apps/phoenix/.reach.exs`)
+
+Reach (`mix reach.check --arch`, also in the `precommit` alias) enforces module-boundary rules Credo cannot express:
+
+- Layers: `DhcWeb.*` / `Dhc.*` / `Dhc.Repo`; domain must not depend on web (except `DhcWeb.Endpoint` infrastructure edges), Repo must not depend on web, and the web layer must not touch the Repo directly (`DhcWeb.Plugs.MagicLinkRateLimit` is the one documented seam).
+- Forbidden calls: `Dhc.Stripe.Client.request/1` outside the client itself (Stripe goes through generated `Dhc.Stripe.Operations.*`), any `Nostrum.*` outside `Dhc.Discord.*`, `HTTPoison`/`Tesla`/`:httpc` anywhere, and `IO.puts` outside Mix tasks and `Dhc.Release`.
+
+Findings are fingerprinted against `.reach-baseline.json`. New findings fail the build; only baseline a known transitional finding with:
+
+```bash
+cd apps/phoenix && MIX_ENV=dev mix reach.check --arch --write-baseline .reach-baseline.json
+```
+
+The config pins `checks.source_paths: ["lib"]`, so one baseline stays valid across dev and test environments.
 
 ### Sentry (production error tracking)
 
