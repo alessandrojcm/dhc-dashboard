@@ -16,7 +16,15 @@ defmodule Dhc.Stripe.InvoiceItemPeriodEnd do
       timestamp: {:integer, "unix-time"},
       type:
         {:enum,
-         ["min_item_period_end", "min_item_period_end", "phase_end", "timestamp", "timestamp"]}
+         [
+           "min_item_period_end",
+           "min_item_period_end",
+           "min_item_period_end",
+           "phase_end",
+           "timestamp",
+           "timestamp",
+           "timestamp"
+         ]}
     ]
   end
 end

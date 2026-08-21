@@ -20,6 +20,13 @@ defmodule DhcWeb.Router do
         ~w(admin president treasurer committee_coordinator sparring_coordinator workshop_coordinator beginners_coordinator quartermaster pr_manager volunteer_coordinator research_coordinator coach)
   end
 
+  # Membership commands that MINT new Stripe charges (ALE-251 reactivation).
+  # Deliberately narrower than :members_admin_api: only officers with billing
+  # authority, and no self-service fallback.
+  pipeline :membership_minting_api do
+    plug DhcWeb.Plugs.RequireSession, roles: ~w(admin president treasurer committee_coordinator)
+  end
+
   pipeline :workshop_coordinator_api do
     # Mirrors the corrected registration RLS policy
     # (`20250923100806_fix_workshops_rls.sql`) and the canonical
@@ -170,6 +177,14 @@ defmodule DhcWeb.Router do
 
     get "/members", MembersController, :index
     get "/members/analytics", MembersController, :analytics
+  end
+
+  scope "/api", DhcWeb do
+    pipe_through [:api, :membership_minting_api]
+
+    # ALE-251 — mints new Stripe charges, so only billing-authority roles and
+    # NO self-service fallback (unlike pause/resume under :authenticated_api).
+    post "/members/:memberId/membership/reactivate", MembershipController, :reactivate
   end
 
   scope "/api", DhcWeb do
