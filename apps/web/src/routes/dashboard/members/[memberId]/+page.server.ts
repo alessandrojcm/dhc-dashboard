@@ -2,7 +2,11 @@ import { membersOptions, membersShow } from "@dhc/api-client";
 import * as Sentry from "@sentry/sveltekit";
 import { error, type ServerLoadEvent } from "@sveltejs/kit";
 import { apiClientOptions } from "$lib/server/api-client";
-import { getRolesFromSession, MEMBERS_ADMIN_ROLES } from "$lib/server/roles";
+import {
+	getRolesFromSession,
+	MEMBERS_ADMIN_ROLES,
+	MEMBERSHIP_MINTING_ROLES,
+} from "$lib/server/roles";
 import { SocialMediaConsent as SocialMediaConsentValues } from "$lib/types";
 import type { PageServerLoad } from "./$types";
 import * as v from "valibot";
@@ -35,6 +39,11 @@ export const load: PageServerLoad = async (event) => {
 
 	try {
 		const canUpdate = await canUpdateSettings(event);
+		const roles = getRolesFromSession(session);
+		// ALE-252: reactivation mints new charges, so gate the UI on the same
+		// four billing-authority roles the `:membership_minting_api` pipeline
+		// enforces server-side (403 for everyone else, incl. self-service).
+		const canReactivate = roles.intersection(MEMBERSHIP_MINTING_ROLES).size > 0;
 		const apiOptions = apiClientOptions(cookies);
 		const [memberResponse, optionsResponse] = await Promise.all([
 			membersShow({
@@ -88,9 +97,11 @@ export const load: PageServerLoad = async (event) => {
 			member: {
 				id: params.memberId,
 				subscription_paused_until: memberProfile.subscriptionPausedUntil,
+				membership_status: memberProfile.membershipStatus,
 				discordIdentity: memberProfile.discordIdentity,
 			},
 			canUpdate,
+			canReactivate,
 		};
 	} catch (e) {
 		Sentry.captureMessage(`Error loading member data: ${e}`, "error");

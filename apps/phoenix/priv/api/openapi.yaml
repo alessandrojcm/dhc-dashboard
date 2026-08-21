@@ -46,10 +46,11 @@ tags:
   - name: Membership
     description: |
       A Member's subscription/access state (active, inactive, paused) and the
-      Stripe-facing pause/resume commands. Owned by the Dhc.Membership context;
-      shares storage with Dhc.Members (`subscription_paused_until` lives in
-      `member_profiles`) — the boundary is expressed in the contract and
-      context functions, not in a separate schema (see ADR-0007).
+      Stripe-facing pause/resume/reactivate commands. Owned by the
+      Dhc.Membership context; shares storage with Dhc.Members
+      (`subscription_paused_until` lives in `member_profiles`) — the boundary
+      is expressed in the contract and context functions, not in a separate
+      schema (see ADR-0007).
     x-context: Dhc.Membership
     x-resource: Membership
   - name: Workshops
@@ -1954,6 +1955,255 @@ paths:
                 $ref: "#/components/schemas/Error"
         "502":
           description: Stripe rejected the resume call
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /members/{memberId}/membership/reactivate:
+    post:
+      operationId: membership.reactivate
+      tags:
+        - Membership
+      summary: Reactivate an inactive member's membership
+      description: |
+        Creates fresh monthly + annual membership subscriptions against the
+        member's previously saved SEPA Direct Debit payment method, charging
+        off-session. No mandate is collected — the mandate already attached to
+        the saved method is reused, so the first-invoice confirmation runs
+        without `mandate_data`. Async SEPA settlement surfaces as a
+        `pending`/`needs_action` `paymentState`, not an error.
+
+        The operator-chosen start date anchors the monthly subscription via
+        Stripe's `billing_cycle_anchor`: the first invoice raised today covers
+        the prorated remainder up to the anchor, then full periods bill from
+        the anchor onward. The annual fee keeps signup semantics — anchored at
+        next January and charged prorated for the remainder of this year.
+
+        Restricted to officers with billing authority — `admin`, `president`,
+        `treasurer`, `committee_coordinator` only. NOT self-or-admin and NOT
+        the broader members-admin role list, because this mints new charges.
+        Retries with identical params are idempotent: Stripe
+        idempotency keys are derived from the member id and requested start
+        date.
+
+        Distinct error conditions: `409` when the member already has an active
+        or paused/trialing membership subscription; `409` with
+        `code: no_saved_payment_method` when the customer has no usable saved
+        SEPA method (the UI offers the billing portal as manual fallback);
+        `404` unknown member/customer; `403` non-committee caller; `422`
+        invalid start date; `502` Stripe failure.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: memberId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The member to reactivate.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MembershipReactivateRequest"
+      responses:
+        "200":
+          description: |
+            Subscriptions created and first invoices confirmed off-session.
+            `paymentState` reports the async SEPA settlement outcome.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MembershipReactivateResponse"
+        "401":
+          description: Missing or invalid session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Caller is not admin, president, treasurer, or committee_coordinator
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No member/customer record exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |
+            Member already has an active or paused membership subscription,
+            or has no usable saved SEPA payment method (`code:
+            no_saved_payment_method`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Invalid payload (e.g. startDate not a date, in the past, or too far ahead)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: Stripe rejected part of the reactivation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /members/{memberId}/membership/reactivation-preview:
+    get:
+      operationId: membership.reactivationPreview
+      tags:
+        - Membership
+      summary: Preview the saved SEPA method a reactivation would charge
+      description: |
+        Read-side companion to `POST /members/{memberId}/membership/reactivate`
+        (ALE-252): projects the member's saved SEPA Direct Debit payment method
+        from Stripe so the operator modal can show what would be charged
+        BEFORE any charge happens. Performs no mutation.
+
+        `savedPaymentMethod` is `null` when the customer has no usable saved
+        SEPA method. The UI then offers the billing portal as the manual
+        fallback instead of a confirmation button. The same lookup the
+        reactivation command performs is used, so "preview shows a method"
+        implies "confirm will not fail with `no_saved_payment_method`"
+        (modulo races).
+
+        Restricted to the same officers with billing authority as the
+        reactivation command itself (`admin`, `president`, `treasurer`,
+        `committee_coordinator`) because saved payment data must not leak to
+        the broader members-admin list.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: memberId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The member whose saved payment method to preview.
+      responses:
+        "200":
+          description: |
+            The saved payment method a reactivation would charge, or `null`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MembershipReactivationPreviewResponse"
+        "401":
+          description: Missing or invalid session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Caller is not admin, president, treasurer, or committee_coordinator
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No member/customer record exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: Stripe payment-method lookup failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /members/{memberId}/membership/reactivation-preview/amounts:
+    get:
+      operationId: membership.reactivationPreviewAmounts
+      tags:
+        - Membership
+      summary: Preview the amounts a reactivation would charge
+      description: |
+        Read-side companion to `POST /members/{memberId}/membership/reactivate`
+        (ALE-254): projects what Stripe will charge for a reactivation starting
+        on the operator-chosen `startDate` — the amount due today plus the
+        upcoming recurring fees. Performs no mutation.
+
+        All amounts are computed by Stripe's invoice-preview machinery for a
+        hypothetical subscription pair with exactly the parameters the command
+        will use (monthly anchored at the start date when it is in the future;
+        annual anchored at next January's renewal date), so the operator sees
+        the real numbers instead of client-side approximations.
+
+        Independent of the saved-payment-method preview by design: this read
+        may fail without invalidating it, and the UI hides the amounts while
+        keeping the form functional (graceful degradation). Performs no
+        reactivatability guard either — the command's guards stay authoritative
+        at POST time.
+
+        Restricted to the same officers with billing authority as the
+        reactivation command itself (`admin`, `president`, `treasurer`,
+        `committee_coordinator`).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: memberId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The member whose reactivation amounts to preview.
+        - name: startDate
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+          description: |
+            Operator-chosen membership start date (YYYY-MM-DD), within the same
+            window the reactivation command accepts (today up to one year
+            ahead).
+      responses:
+        "200":
+          description: The Stripe-computed amounts for the chosen start date.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MembershipReactivationAmountsResponse"
+        "401":
+          description: Missing or invalid session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Caller is not admin, president, treasurer, or committee_coordinator
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No member/customer record exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: startDate missing, not a date, or outside the allowed window
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: Stripe invoice-preview computation failed
           content:
             application/json:
               schema:
@@ -5152,6 +5402,122 @@ components:
           type: string
           format: date-time
           description: Must be 1 day–6 months from now.
+    MembershipReactivateRequest:
+      type: object
+      required:
+        - startDate
+      additionalProperties: false
+      properties:
+        startDate:
+          type: string
+          format: date
+          description: |
+            The date the reactivated monthly membership cycle anchors to
+            (today or a future date, at most one year ahead). Drives Stripe's
+            billing_cycle_anchor: the first invoice covers the prorated
+            remainder up to this date, then full periods bill from it. The
+            annual fee is charged prorated for the remainder of this year
+            regardless (anchored at next January, same as signup).
+    MembershipReactivatePaymentState:
+      type: string
+      enum:
+        - succeeded
+        - pending
+        - needs_action
+        - terminal
+      description: |
+        Off-session first-invoice payment outcome. SEPA Direct Debit settles
+        asynchronously, so a healthy reactivation typically reports `pending`
+        until `payment_intent.succeeded` arrives via webhook.
+    MembershipReactivateResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - memberId
+            - paymentState
+            - monthlySubscriptionId
+            - annualSubscriptionId
+          properties:
+            memberId:
+              type: string
+              format: uuid
+            paymentState:
+              $ref: "#/components/schemas/MembershipReactivatePaymentState"
+            monthlySubscriptionId:
+              type: string
+              description: Stripe subscription id carrying the monthly membership price.
+            annualSubscriptionId:
+              type: string
+              description: Stripe subscription id carrying the annual membership price.
+    MembershipReactivationPreviewResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - memberId
+            - savedPaymentMethod
+          properties:
+            memberId:
+              type: string
+              format: uuid
+            savedPaymentMethod:
+              nullable: true
+              description: |
+                Summary of the saved SEPA Direct Debit method a reactivation
+                would charge. `null` when the customer has none; offer the
+                billing portal as manual fallback instead of confirming.
+              type: object
+              required:
+                - id
+                - last4
+                - country
+              properties:
+                id:
+                  type: string
+                  description: Stripe PaymentMethod id (pm_...).
+                last4:
+                  type: string
+                  description: Last four digits of the SEPA account number.
+                bankCode:
+                  type: string
+                  description: Bank code of the account (e.g. German BLZ), when Stripe reports one.
+                country:
+                  type: string
+                  description: Two-letter ISO country code of the account.
+
+    MembershipReactivationAmountsResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          description: |
+            Stripe-computed amounts for a reactivation starting on the
+            requested startDate (ALE-254). All values are Dinero-compatible
+            minor-unit money objects.
+          required:
+            - dueToday
+            - monthlyFee
+            - annualFee
+          properties:
+            dueToday:
+              description: Total charged immediately — the prorated first invoices of both subscriptions.
+              $ref: "#/components/schemas/DineroAmount"
+            monthlyFee:
+              description: Recurring full monthly membership fee charged from the start date onward.
+              $ref: "#/components/schemas/DineroAmount"
+            annualFee:
+              description: Recurring full annual membership fee, renewing each January anchor.
+              $ref: "#/components/schemas/DineroAmount"
+
     OptionsResponse:
       type: object
       required:
@@ -7076,6 +7442,11 @@ components:
           properties:
             detail:
               type: string
+            code:
+              type: string
+              description: |
+                Optional machine-readable error code for programmatic handling,
+                e.g. `no_saved_payment_method` on membership reactivation.
     AuthSessionProjection:
       type: object
       required:

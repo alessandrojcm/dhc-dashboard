@@ -59,7 +59,9 @@ defmodule Dhc.Stripe.Processor do
                         # Customers (needed for sync worker)
                         "GetCustomers",
                         "GetCustomersCustomer",
-                        "PostCustomers"
+                        "PostCustomers",
+                        # Payment methods (saved SEPA methods for reactivation)
+                        "GetCustomersCustomerPaymentMethods"
                       ])
 
   # ── Operation filtering ──────────────────────────────────────────────
