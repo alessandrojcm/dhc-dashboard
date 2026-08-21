@@ -215,6 +215,7 @@ function isActive(url: string) {
 							>
 								<Avatar.Root class="h-8 w-8 border border-secondary/50">
 									<Avatar.Fallback
+										class="bg-sidebar-primary font-semibold text-sidebar-primary-foreground"
 										>{user?.firstName?.charAt(0)}{user?.lastName?.charAt(
 											0,
 										)}</Avatar.Fallback
@@ -235,13 +236,11 @@ function isActive(url: string) {
 						</DropdownMenu.Trigger>
 
 						<DropdownMenu.Content strategy="fixed" {customAnchor} class="w-56">
-							{#if roles.size > 1}
-								<DropdownMenu.Item>
-									<a href={resolve(`/dashboard/members/${user?.id}`)}
-										>My Profile</a
-									>
-								</DropdownMenu.Item>
-							{/if}
+							<DropdownMenu.Item>
+								<a href={resolve(`/dashboard/members/${user?.id}`)}
+									>My Profile</a
+								>
+							</DropdownMenu.Item>
 							<DropdownMenu.Item onclick={logout}>Log out</DropdownMenu.Item>
 						</DropdownMenu.Content>
 					{/await}
