@@ -67,7 +67,9 @@ defmodule Mix.Tasks.Stripe.Gen do
                         # Customers
                         "GetCustomers",
                         "GetCustomersCustomer",
-                        "PostCustomers"
+                        "PostCustomers",
+                        # Payment methods (saved SEPA methods for reactivation)
+                        "GetCustomersCustomerPaymentMethods"
                       ])
 
   @impl Mix.Task
