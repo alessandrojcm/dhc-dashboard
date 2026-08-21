@@ -7,7 +7,13 @@ import {
 } from "$lib/components/ui/card";
 import { Button } from "$lib/components/ui/button";
 import { Badge } from "$lib/components/ui/badge";
-import { FolderOpen, Plus, SquarePen, Package, TriangleAlert } from "@lucide/svelte";
+import {
+	FolderOpen,
+	Plus,
+	SquarePen,
+	Package,
+	TriangleAlert,
+} from "@lucide/svelte";
 import LoaderCircle from "$lib/components/ui/loader-circle.svelte";
 import { createQuery } from "@tanstack/svelte-query";
 import {

@@ -640,7 +640,7 @@ function markAttended(registrationIds: string[]) {
 					onclick={confirmRefund}
 				>
 					{#if refundMutation.isPending}
-							<LoaderCircle aria-hidden="true" class="animate-spin" />
+						<LoaderCircle aria-hidden="true" class="animate-spin" />
 						Processing…
 					{:else if selectedRefundEligibility.isEligible}
 						<DollarSign aria-hidden="true" />
