@@ -312,7 +312,7 @@ const hasActiveFilters = $derived(
 												variant="destructive"
 												class="text-xs flex items-center gap-1"
 											>
-								<TriangleAlert class="h-3 w-3" />
+												<TriangleAlert class="h-3 w-3" />
 												Maintenance
 											</Badge>
 										{/if}

@@ -11,7 +11,7 @@ function handleSuccess() {
 }
 </script>
 
-<div class="mx-auto max-w-4xl space-y-8 p-6">
+<div class="mx-auto max-w-7xl space-y-8 px-4 py-6 sm:px-6 lg:px-8 lg:py-10">
 	<div class="flex items-center justify-between">
 		<h1 class="text-3xl font-bold">Edit Workshop</h1>
 		<Button variant="outline" href="/dashboard/workshops"

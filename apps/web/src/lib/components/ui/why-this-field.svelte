@@ -11,7 +11,10 @@ export { whyThisField };
 				aria-label="Why we ask for this information"
 				class="cursor-help rounded-sm focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
 			>
-				<CircleQuestionMark class="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+				<CircleQuestionMark
+					class="h-4 w-4 text-muted-foreground"
+					aria-hidden="true"
+				/>
 			</Tooltip.Trigger>
 			<Tooltip.Content>
 				{message}
