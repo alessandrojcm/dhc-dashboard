@@ -76,7 +76,17 @@ defmodule DhcWeb.MembersJSON do
       guardianPhoneNumber: member.guardian_phone_number,
       medicalConditions: member.medical_conditions,
       subscriptionPausedUntil: member.subscription_paused_until,
-      membershipStatus: member.membership_status
+      membershipStatus: member.membership_status,
+      discordIdentity: discord_identity(Map.get(member, :discord_identity))
+    }
+  end
+
+  defp discord_identity(nil), do: nil
+
+  defp discord_identity(identity) do
+    %{
+      username: identity.username,
+      avatarUrl: identity.avatar_url
     }
   end
 end

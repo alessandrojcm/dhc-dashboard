@@ -20,8 +20,10 @@ test.describe("Workshop Registration", () => {
 		// This is a basic test until we have actual workshop pages set up
 		await page.goto("/dashboard");
 
-		// Verify user is logged in
-		await expect(page.locator("text=Dashboard")).toBeVisible();
+		await expect(page).toHaveURL(`/dashboard/members/${memberData.userId}`);
+		await expect(
+			page.getByRole("heading", { name: "My profile", exact: true }),
+		).toBeVisible();
 	});
 
 	test("registration schema validation works", async ({ page }) => {

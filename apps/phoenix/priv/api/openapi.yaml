@@ -64,8 +64,106 @@ tags:
        (`cookieSession` security scheme) instead of the Supabase bearer JWT.
   - name: Onboarding
     description: Protected, pre-payment Invitation Acceptance journey.
+  - name: DiscordDoctor
+    description: Live Discord server reconciliation for authorized committee administrators.
+    x-context: Dhc.Discord
+    x-resource: DoctorReport
 
 paths:
+  /discord-doctor/report:
+    get:
+      operationId: discordDoctor.report
+      tags:
+        - DiscordDoctor
+      summary: Get the Discord Doctor reconciliation report
+      description: Returns every human server account in exactly one reconciliation bucket and every Member not known to be in the server.
+      security:
+        - cookieSession: []
+      parameters:
+        - name: refresh
+          in: query
+          required: false
+          description: Bypass the short-lived Discord member-list cache.
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Complete reconciliation report.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiscordDoctorReportResponse"
+        "401":
+          description: Authentication required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Discord Doctor role required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: Discord member list could not be fetched.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /discord-doctor/kick:
+    post:
+      operationId: discordDoctor.kick
+      tags:
+        - DiscordDoctor
+      summary: Kick reviewed Discord server accounts
+      description: |
+        Kicks the explicit Discord user ids after re-deriving each account's
+        current reconciliation bucket and enforcing every safety rule. Partial
+        failures are returned as per-row outcomes; this operation never bans an
+        account and does not create an application-side audit record.
+      security:
+        - cookieSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DiscordDoctorKickRequest"
+      responses:
+        "200":
+          description: Per-account kick outcomes.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiscordDoctorKickResponse"
+        "401":
+          description: Authentication required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Discord Doctor role required.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Invalid kick request.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: Discord member list could not be fetched.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /health:
     get:
       operationId: health.index
@@ -279,6 +377,11 @@ paths:
         longer calls the Supabase admin API, creates a Stripe customer, or
         inserts a `user_profiles` row — acceptance materializes the
         Principal + Member record set atomically.
+
+        An invite whose email already has a pending invitation is rejected
+        per-invite (case-insensitively) and surfaces as a failure in the
+        processing log; re-inviting is possible again once the pending
+        invitation expires or is revoked.
       security:
         - bearerAuth: []
       requestBody:
@@ -4745,6 +4848,7 @@ components:
         - medicalConditions
         - subscriptionPausedUntil
         - membershipStatus
+        - discordIdentity
       properties:
         id:
           type: string
@@ -4821,6 +4925,174 @@ components:
           nullable: true
         membershipStatus:
           $ref: "#/components/schemas/MembershipStatus"
+        discordIdentity:
+          allOf:
+            - $ref: "#/components/schemas/DiscordIdentitySummary"
+          nullable: true
+          description: Active Discord link presentation, or null when no account is linked. Never includes the provider subject or provider email.
+    DiscordIdentitySummary:
+      type: object
+      required:
+        - username
+        - avatarUrl
+      properties:
+        username:
+          type: string
+          nullable: true
+          description: Mutable Discord username metadata, when available.
+        avatarUrl:
+          type: string
+          format: uri
+          nullable: true
+          description: Provider-hosted avatar URL, when available.
+    DiscordDoctorReportResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          $ref: "#/components/schemas/DiscordDoctorReport"
+    DiscordDoctorReport:
+      type: object
+      required: [serverMembers, missingMembers, cache]
+      properties:
+        serverMembers:
+          $ref: "#/components/schemas/DiscordDoctorServerMembers"
+        missingMembers:
+          type: array
+          items:
+            $ref: "#/components/schemas/DiscordDoctorMissingMember"
+        cache:
+          $ref: "#/components/schemas/DiscordDoctorCacheMetadata"
+    DiscordDoctorServerMembers:
+      type: object
+      required: [linkedActive, linkedInactive, pendingLink, unrecognized]
+      properties:
+        linkedActive:
+          type: array
+          items:
+            $ref: "#/components/schemas/DiscordDoctorServerMember"
+        linkedInactive:
+          type: array
+          items:
+            $ref: "#/components/schemas/DiscordDoctorServerMember"
+        pendingLink:
+          type: array
+          items:
+            $ref: "#/components/schemas/DiscordDoctorServerMember"
+        unrecognized:
+          type: array
+          items:
+            $ref: "#/components/schemas/DiscordDoctorServerMember"
+    DiscordDoctorServerMember:
+      type: object
+      required: [discordUserId, username, displayName, avatar, joinedAt, member, membershipStatus, protected, kickable]
+      properties:
+        discordUserId:
+          type: string
+        username:
+          type: string
+        displayName:
+          type: string
+        avatar:
+          type: string
+          nullable: true
+        joinedAt:
+          type: string
+          format: date-time
+          nullable: true
+        member:
+          allOf:
+            - $ref: "#/components/schemas/DiscordDoctorMemberSummary"
+          nullable: true
+        membershipStatus:
+          allOf:
+            - $ref: "#/components/schemas/MembershipStatus"
+          nullable: true
+        protected:
+          type: boolean
+        kickable:
+          type: boolean
+    DiscordDoctorMemberSummary:
+      type: object
+      required: [id, firstName, lastName]
+      properties:
+        id:
+          type: string
+          format: uuid
+        firstName:
+          type: string
+        lastName:
+          type: string
+    DiscordDoctorMissingMember:
+      type: object
+      required: [member, membershipStatus, linkStatus, discordUserId, autoJoinPending]
+      properties:
+        member:
+          $ref: "#/components/schemas/DiscordDoctorMemberSummary"
+        membershipStatus:
+          $ref: "#/components/schemas/MembershipStatus"
+        linkStatus:
+          type: string
+          enum: [linked, pending, never_linked]
+        discordUserId:
+          type: string
+          nullable: true
+        autoJoinPending:
+          type: boolean
+    DiscordDoctorCacheMetadata:
+      type: object
+      required: [fetchedAt, ttlSeconds]
+      properties:
+        fetchedAt:
+          type: string
+          format: date-time
+        ttlSeconds:
+          type: integer
+          minimum: 1
+    DiscordDoctorKickRequest:
+      type: object
+      required: [discordUserIds]
+      additionalProperties: false
+      properties:
+        discordUserIds:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+        note:
+          type: string
+          description: Optional note appended to each generated Discord audit-log reason.
+    DiscordDoctorKickResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: object
+          required: [results]
+          properties:
+            results:
+              type: array
+              items:
+                $ref: "#/components/schemas/DiscordDoctorKickResult"
+    DiscordDoctorKickResult:
+      type: object
+      required: [discordUserId, outcome, reason, error]
+      properties:
+        discordUserId:
+          type: string
+        outcome:
+          type: string
+          enum: [kicked, already_left, refused, failed]
+        reason:
+          type: string
+          nullable: true
+          description: Server-side safety reason when the outcome is refused.
+        error:
+          type: string
+          nullable: true
+          description: Safe Discord failure detail when the outcome is failed.
     MemberResponse:
       type: object
       required:
@@ -5574,6 +5846,9 @@ components:
         - interestCount
         - pendingRegistrationCount
         - confirmedRegistrationCount
+        - registrationCount
+        - placesRemaining
+        - isAtCapacity
       properties:
         id:
           type: string
@@ -5622,6 +5897,18 @@ components:
         confirmedRegistrationCount:
           type: integer
           minimum: 0
+        registrationCount:
+          type: integer
+          minimum: 0
+          description: Number of active pending or confirmed Registrations.
+        placesRemaining:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Remaining capacity, or null when the Workshop is uncapped.
+        isAtCapacity:
+          type: boolean
+          description: False for uncapped Workshops.
     WorkshopCalendarItem:
       type: object
       required:
@@ -5643,6 +5930,9 @@ components:
         - interestCount
         - pendingRegistrationCount
         - confirmedRegistrationCount
+        - registrationCount
+        - placesRemaining
+        - isAtCapacity
       properties:
         id:
           type: string
@@ -5702,6 +5992,18 @@ components:
           type: integer
           minimum: 0
           description: Total confirmed registrations (counts toward availability).
+        registrationCount:
+          type: integer
+          minimum: 0
+          description: Total active registrations counted toward Workshop capacity.
+        placesRemaining:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Remaining capacity, clamped to zero; null when the Workshop is uncapped.
+        isAtCapacity:
+          type: boolean
+          description: Whether active registrations have reached or exceeded a capped Workshop's capacity. Always false when uncapped.
     WorkshopCalendarResponse:
       type: object
       required:
@@ -5733,6 +6035,9 @@ components:
         - interestCount
         - pendingRegistrationCount
         - confirmedRegistrationCount
+        - registrationCount
+        - placesRemaining
+        - isAtCapacity
         - currentUserInterest
         - currentUserRegistration
       properties:
@@ -5755,6 +6060,7 @@ components:
         maxCapacity:
           type: integer
           minimum: 1
+          nullable: true
         priceMember:
           type: number
           description: Member price in cents (minor units).
@@ -5781,6 +6087,18 @@ components:
           type: integer
           minimum: 0
           description: Confirmed registrations counted toward availability.
+        registrationCount:
+          type: integer
+          minimum: 0
+          description: Total active registrations counted toward Workshop capacity.
+        placesRemaining:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Remaining capacity, clamped to zero; null when the Workshop is uncapped.
+        isAtCapacity:
+          type: boolean
+          description: Whether active registrations have reached or exceeded a capped Workshop's capacity. Always false when uncapped.
         currentUserInterest:
           type: boolean
           description: Whether the authenticated member expressed interest in this Workshop.
@@ -5790,7 +6108,7 @@ components:
           nullable: true
           description: The authenticated member's registration for this Workshop, or null.
       description: |
-        Member-safe Workshop DTO. Exposes availability counts and the current
+        Member-safe Workshop DTO. Exposes authoritative capacity projections and the current
         user's interest/registration state, but never other attendees'
         identities or storage-shaped join details. Internal fields
         (`announceDiscord`, `announceEmail`, `createdBy`, timestamps) are

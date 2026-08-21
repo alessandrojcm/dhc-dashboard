@@ -193,7 +193,7 @@ test.describe("Member Signup - Valid invitation", () => {
 
 		await page.getByRole("link", { name: "Go to sign in" }).click();
 		await expect(
-			page.getByRole("heading", { name: "Log in to the DHC Dashboard" }),
+			page.getByRole("heading", { name: "Enter the club desk", exact: true }),
 		).toBeVisible();
 		await signInWithDiscord(page, context);
 
@@ -201,7 +201,7 @@ test.describe("Member Signup - Valid invitation", () => {
 			`http://127.0.0.1:5173/dashboard/members/${testData.userId}`,
 		);
 		await expect(
-			page.getByText("Member Information", { exact: true }),
+			page.getByRole("heading", { name: "My profile", exact: true }),
 		).toBeVisible();
 		await expect(page.getByLabel("Email")).toHaveValue(testData.email);
 	});

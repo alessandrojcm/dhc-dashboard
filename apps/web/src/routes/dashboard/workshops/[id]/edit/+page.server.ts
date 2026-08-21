@@ -28,10 +28,7 @@ export const load: PageServerLoad = async ({ locals, cookies, params }) => {
 
 	const workshop = data.data.workshop;
 	const workshopEditable = workshop.status === "planned";
-	const pricingEditable =
-		workshopEditable ||
-		(workshop.pendingRegistrationCount === 0 &&
-			workshop.confirmedRegistrationCount === 0);
+	const pricingEditable = workshopEditable || workshop.registrationCount === 0;
 
 	// Transform workshop data to form format
 	const initialData = {

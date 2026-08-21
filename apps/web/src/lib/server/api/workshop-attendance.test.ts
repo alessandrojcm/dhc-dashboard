@@ -54,7 +54,7 @@ describe("submitWorkshopAttendance", () => {
 		);
 
 		expect(workshopsUpdateAttendance).toHaveBeenCalledWith({
-			baseUrl: "http://localhost:4000/api",
+			baseUrl: "http://127.0.0.1:4000/api",
 			credentials: "include",
 			headers: { cookie: "_dhc_session=signed-session-cookie" },
 			path: { workshopId: "11111111-1111-1111-1111-111111111111" },

@@ -184,10 +184,9 @@ onMount(() => {
 
 {#if success}
 	<Alert.Root variant="success" class="w-full">
-		<Alert.Title>Registration Successful!</Alert.Title>
+		<Alert.Title>Registration confirmed</Alert.Title>
 		<Alert.Description>
-			You have successfully registered for {workshopTitle}. You will receive a
-			confirmation email shortly.
+			You are registered for {workshopTitle}. We will send the details by email.
 		</Alert.Description>
 	</Alert.Root>
 {:else if error}

@@ -185,7 +185,7 @@ defmodule Dhc.WorkshopsTest do
 
       # Domain fields present.
       for field <-
-            ~w(id title description location start_date end_date max_capacity price_member price_non_member is_public refund_days status interest_count pending_registration_count confirmed_registration_count)a do
+            ~w(id title description location start_date end_date max_capacity price_member price_non_member is_public refund_days status interest_count pending_registration_count confirmed_registration_count registration_count places_remaining is_at_capacity)a do
         assert Map.has_key?(summary, field), "missing domain field #{inspect(field)}"
       end
 
@@ -539,6 +539,20 @@ defmodule Dhc.WorkshopsTest do
       workshop = WorkshopFixtures.workshop_fixture()
 
       assert Workshops.registration_counts(workshop.id) == %{pending: 0, confirmed: 0}
+    end
+  end
+
+  describe "capacity_projection/1" do
+    test "keeps uncapped Workshops unlimited" do
+      assert Workshops.capacity_projection(%{
+               max_capacity: nil,
+               pending_registration_count: 2,
+               confirmed_registration_count: 1
+             }) == %{
+               registration_count: 3,
+               places_remaining: nil,
+               is_at_capacity: false
+             }
     end
   end
 

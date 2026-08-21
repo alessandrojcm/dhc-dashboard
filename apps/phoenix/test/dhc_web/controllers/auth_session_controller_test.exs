@@ -14,8 +14,12 @@ defmodule DhcWeb.AuthSessionControllerTest do
     test "starts Discord OAuth with state stored in the Phoenix session" do
       conn = get(conn(), "/api/auth/discord")
 
-      assert redirected_to(conn, 302) ==
-               "https://discord.example.com/oauth2/authorize?state=test-state"
+      redirect_query = conn |> redirected_to(302) |> URI.parse() |> Map.fetch!(:query)
+
+      assert URI.decode_query(redirect_query) == %{
+               "scope" => "identify email",
+               "state" => "test-state"
+             }
 
       assert get_session(conn, :discord_oauth_flow) == %{
                purpose: :sign_in,
@@ -31,6 +35,9 @@ defmodule DhcWeb.AuthSessionControllerTest do
         conn()
         |> put_signed_cookie(@session_cookie, token)
         |> get("/api/auth/discord/link")
+
+      redirect_query = link_conn |> redirected_to(302) |> URI.parse() |> Map.fetch!(:query)
+      assert URI.decode_query(redirect_query)["scope"] == "identify email"
 
       %{session_params: %{state: stale_state}} = get_session(link_conn, :discord_oauth_flow)
       Dhc.DiscordOAuthStub.fail_next_authorization()

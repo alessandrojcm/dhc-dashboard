@@ -1,7 +1,7 @@
 <script lang="ts">
 import { goto } from "$app/navigation";
 import { resolve } from "$app/paths";
-import { Button } from "$lib/components/ui/button";
+import { Button, buttonVariants } from "$lib/components/ui/button";
 import { Textarea } from "$lib/components/ui/textarea";
 import {
 	Popover,
@@ -10,7 +10,7 @@ import {
 } from "$lib/components/ui/popover";
 import { createMutation } from "@tanstack/svelte-query";
 import { toast } from "svelte-sonner";
-import { Sparkles, Loader2 } from "@lucide/svelte";
+import { Sparkles, LoaderCircle } from "@lucide/svelte";
 import { generateWorkshop } from "../../../routes/dashboard/my-workshops/generate.remote";
 
 let prompt = $state("");
@@ -56,39 +56,49 @@ function handleKeydown(event: KeyboardEvent) {
 </script>
 
 <Popover bind:open>
-	<PopoverTrigger>
-		<Button variant="outline" class="gap-2">
-			<Sparkles class="h-4 w-4" />
-			Quick Create
-		</Button>
+	<PopoverTrigger
+		class={`${buttonVariants({ variant: "outline" })} w-full sm:w-auto`}
+	>
+		<Sparkles aria-hidden="true" class="h-4 w-4" />
+		Quick create
 	</PopoverTrigger>
-	<PopoverContent class="w-96 p-4" align="end">
+	<PopoverContent
+		class="w-[calc(100vw-2rem)] max-w-96 p-4"
+		align="end"
+		sideOffset={8}
+	>
 		<div class="space-y-4">
 			<div class="space-y-2">
-				<h4 class="font-medium leading-none">Quick Create Workshop</h4>
-				<p class="text-sm text-muted-foreground">
+				<h4 class="font-bold leading-none">Quick create a workshop</h4>
+				<p id="quick-create-help" class="text-sm text-muted-foreground">
 					Describe your workshop in natural language and we'll generate the
 					details for you.
 				</p>
 			</div>
 
 			<div class="space-y-3">
+				<label for="quick-create-description" class="text-sm font-medium">
+					Workshop description
+				</label>
 				<Textarea
+					id="quick-create-description"
 					bind:value={prompt}
 					placeholder="e.g., Create a longsword workshop next Saturday from 2pm to 4pm, cost is 25 euro, maximum 15 people"
 					class="min-h-[100px] resize-none"
 					onkeydown={handleKeydown}
 					disabled={generateWorkshopMutation.isPending}
+					aria-describedby="quick-create-help quick-create-shortcut"
 				/>
 
-				<div class="flex justify-between items-center">
-					<p class="text-xs text-muted-foreground">
+				<div
+					class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+				>
+					<p id="quick-create-shortcut" class="text-xs text-muted-foreground">
 						Press Cmd+Enter (or Ctrl+Enter) to generate
 					</p>
-					<div class="flex gap-2">
+					<div class="grid grid-cols-2 gap-2 sm:flex">
 						<Button
 							variant="outline"
-							size="sm"
 							onclick={() => {
 								open = false;
 								prompt = "";
@@ -98,16 +108,15 @@ function handleKeydown(event: KeyboardEvent) {
 							Cancel
 						</Button>
 						<Button
-							size="sm"
 							onclick={handleSubmit}
 							disabled={!prompt.trim() || generateWorkshopMutation.isPending}
 							class="gap-2"
 						>
 							{#if generateWorkshopMutation.isPending}
-								<Loader2 class="h-3 w-3 animate-spin" />
+								<LoaderCircle aria-hidden="true" class="h-3 w-3 animate-spin" />
 								Generating...
 							{:else}
-								<Sparkles class="h-3 w-3" />
+								<Sparkles aria-hidden="true" class="h-3 w-3" />
 								Generate
 							{/if}
 						</Button>

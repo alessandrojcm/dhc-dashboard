@@ -6,6 +6,7 @@
 - **Backend**: Supabase (Postgres + Auth + Edge Functions)
 - **ORM**: Kysely (mutations), Supabase client (queries)
 - **State**: TanStack Query (`createQuery(() => ({}))` thunk pattern)
+- **Charts**: LayerChart 2.2 on Svelte 5. The shared tooltip adapter reads `getChartContext().tooltip`; `getTooltipContext()` was removed in LayerChart 2.x and must not be reintroduced.
 - **Table**: `@tanstack/table-core` `^8.21.x`, integrated through the custom Svelte 5 adapter in `src/lib/components/ui/data-table/`. The adapter supplies rune-based table state and rendering helpers, and imports shared table types directly from `table-core`; `@tanstack/svelte-table` is not required. Treat adoption of the official Svelte adapter as a deliberate v9 migration rather than adding its v8 package alongside the custom adapter.
 - **Payments**: Stripe
 - **Validation**: Valibot
@@ -21,6 +22,7 @@
 - **Background Jobs**: Oban 2.23 (replaces pgmq + pg_cron)
 - **Dev email catching**: Mailpit (compose `mailpit` service); `Dhc.Email.Worker` relays non-prod email jobs to it via `gen_smtp` 1.3 as plain JSON. See [commands.md](commands.md) for the dev workflow.
 - **Authentication target**: Phoenix 1.8 generated authentication (`mix phx.gen.auth`) with Assent 0.3.1 for Discord OAuth; DHC-owned Postgres principals, identities, tokens, and sessions replace Supabase Auth after the specified cutover
+- **Discord server REST**: Nostrum 0.10.4 behind `Dhc.Discord.Adapter`; the stable release is loaded as an included application and only its ratelimiter is supervised, avoiding a gateway connection in tokenless dev/test environments
 - **API Style**: JSON API via Phoenix controllers, spec-first with OpenAPI
 - **Error Tracking**: Sentry 13.4 via the `sentry` package and Finch; Hackney is test-only for Testcontainers
 - **Realtime (browser)**: official `phoenix` JS client (~1.8.x) for Notification invalidation signals over the WebSocket `/socket`; local to `NotificationCenter` via `notification-realtime.svelte.ts`. Best-effort only; HTTP API remains authoritative. `authToken` is captured at `Socket` construction, so `TOKEN_REFRESHED` rebuilds the socket/channel.

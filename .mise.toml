@@ -198,6 +198,14 @@ arg "[count]" help="Number of waitlist entries to seed" default="10"
 '''
 run = 'mix seed.waitlist "${usage_count?}"'
 
+[tasks."seed-invitations"]
+description = "Seed pending member invitations"
+dir = "apps/phoenix"
+usage = '''
+arg "[count]" help="Number of invitations to seed" default="10"
+'''
+run = 'mix seed.invitations "${usage_count?}"'
+
 [tasks."seed-members"]
 description = "Seed member records"
 dir = "apps/phoenix"

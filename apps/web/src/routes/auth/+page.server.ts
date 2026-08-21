@@ -1,10 +1,6 @@
 import type { PageServerLoad } from "./$types";
+import { consumeInvitationSignInPrefill } from "$lib/server/post-acceptance-sign-in-handoff";
 
 export const load: PageServerLoad = async ({ cookies }) => {
-	const prefillEmail = cookies.get("invitation-sign-in-prefill");
-	if (prefillEmail) {
-		cookies.delete("invitation-sign-in-prefill", { path: "/auth" });
-	}
-
-	return { prefillEmail };
+	return { prefillEmail: consumeInvitationSignInPrefill(cookies) };
 };

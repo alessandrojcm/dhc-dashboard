@@ -128,10 +128,12 @@ defmodule DhcWeb.InvitationsControllerTest do
     test "duplicate emails within one batch are accepted and enqueued verbatim",
          %{conn: conn} do
       # The controller does NOT dedup — duplicates pass through to the worker,
-      # which processes each invite separately in its own transaction. A
+      # which processes each invite separately in its own transaction and
+      # rejects any invite whose email already has a pending invitation
+      # (surfaced as a per-invite failure in the processing log). A
       # regression that silently dropped duplicates at the controller layer
-      # would change worker semantics (the second invite would no longer fail
-      # at Supabase user creation and surface in the processing log).
+      # would change worker semantics (the second invite would no longer be
+      # rejected as a duplicate and surface in the processing log).
       dup_invite = %{
         "firstName" => "Ada",
         "lastName" => "Lovelace",
@@ -948,6 +950,48 @@ defmodule DhcWeb.InvitationsControllerTest do
 
       assert %{"errors" => %{"detail" => "emails must be a non-empty list"}} =
                json_response(conn, 400)
+    end
+
+    test "resending never resurrects accepted or revoked invitations", %{conn: conn} do
+      accepted_id = insert_invitation(email: "settled@example.com", status: "accepted")
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> post("/api/invitations/resend", %{"emails" => ["settled@example.com"]})
+
+      # The accepted invitation is not actionable, so the resend reports a
+      # failure instead of silently re-arming it.
+      assert %{"data" => %{"succeeded" => 0, "failed" => 1}} = json_response(conn, 202)
+      refute_enqueued(worker: Dhc.Email.Worker)
+      assert Repo.get!(Invitation, accepted_id).status == "accepted"
+    end
+
+    test "resending an email with an expired and a pending invitation refreshes only the pending one",
+         %{conn: conn} do
+      expired_id = insert_invitation(email: "mixed@example.com", status: "expired", seconds: 1)
+      pending_id = insert_invitation(email: "mixed@example.com", status: "pending", seconds: 2)
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> post("/api/invitations/resend", %{"emails" => ["mixed@example.com"]})
+
+      assert %{"data" => %{"succeeded" => 1, "failed" => 0}} = json_response(conn, 202)
+
+      # One email for the address (the newest, pending invitation), and the
+      # older expired row keeps its status — flipping both to pending would
+      # violate invitations_email_pending_unique.
+      assert [%Oban.Job{args: email_args}] = all_enqueued(worker: Dhc.Email.Worker)
+      assert email_args["email"] == "mixed@example.com"
+
+      assert %Invitation{status: "expired"} = Repo.get!(Invitation, expired_id)
+
+      refreshed = Repo.get!(Invitation, pending_id)
+      assert refreshed.status == "pending"
+
+      expected = DateTime.add(DateTime.utc_now(), 1, :day) |> DateTime.truncate(:second)
+      assert DateTime.diff(refreshed.expires_at, expected, :second) in -5..5
     end
   end
 

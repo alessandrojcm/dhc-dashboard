@@ -8,6 +8,8 @@ Dublin Hema Club dashboard monorepo: the SvelteKit 2.x + Svelte 5 frontend lives
 
 JavaScript/TypeScript linting uses the shared root Oxlint config through the `apps/web` and `packages/api-client` workspace scripts; formatting uses Oxfmt from `apps/web`. Root `pnpm` and mise tasks delegate to those workspace scripts.
 
+Dev data can include pending direct member invitations through `mise run seed-invitations [count]`; see the Seeds section in `docs/agents/commands.md` for all seed tasks.
+
 ## Navigation
 
 - Structure: [docs/agents/structure.md](docs/agents/structure.md)
@@ -20,6 +22,7 @@ JavaScript/TypeScript linting uses the shared root Oxlint config through the `ap
 - Services & roles: [docs/agents/services-and-roles.md](docs/agents/services-and-roles.md)
 - Notes: [docs/agents/notes.md](docs/agents/notes.md)
 - Visual previews: [docs/agents/visual-previews.md](docs/agents/visual-previews.md)
+- Frontend design system: [design-system/dublin-hema-club/MASTER.md](design-system/dublin-hema-club/MASTER.md)
 
 ## Agent skills
 

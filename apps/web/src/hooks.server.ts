@@ -102,4 +102,6 @@ export const handle: Handle = sequence(
 	authGuard,
 	roleGuard,
 );
-export const handleError = Sentry.handleErrorWithSentry(logUnhandledServerError);
+export const handleError = Sentry.handleErrorWithSentry(
+	logUnhandledServerError,
+);

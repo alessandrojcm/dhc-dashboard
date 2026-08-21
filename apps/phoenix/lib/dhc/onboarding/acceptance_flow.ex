@@ -186,10 +186,14 @@ defmodule Dhc.Onboarding.AcceptanceFlow do
   end
 
   def verify_discord(continuation_id, claims) when is_map(claims) do
+    verify_discord(continuation_id, claims, nil)
+  end
+
+  def verify_discord(continuation_id, claims, token) when is_map(claims) do
     with {:ok, continuation_id} <- Ecto.UUID.cast(continuation_id),
          subject when is_binary(subject) and subject != "" <- Map.get(claims, "sub") do
       Repo.transaction(fn ->
-        verify_discord_locked(continuation_id, subject, claims)
+        verify_discord_with_grant_locked(continuation_id, subject, claims, token)
       end)
       |> case do
         {:ok, {:ok, state}} -> {:ok, state}
@@ -198,6 +202,26 @@ defmodule Dhc.Onboarding.AcceptanceFlow do
       end
     else
       _ -> {:error, :invalid_continuation}
+    end
+  end
+
+  defp verify_discord_with_grant_locked(continuation_id, subject, claims, token) do
+    case verify_discord_locked(continuation_id, subject, claims) do
+      {:ok, _state} = result ->
+        maybe_create_join_grant!(continuation_id, token)
+        result
+
+      error ->
+        error
+    end
+  end
+
+  defp maybe_create_join_grant!(_continuation_id, nil), do: :ok
+
+  defp maybe_create_join_grant!(continuation_id, token) do
+    case Dhc.Discord.create_join_grant(continuation_id, token) do
+      {:ok, _grant} -> :ok
+      {:error, reason} -> Repo.rollback(reason)
     end
   end
 

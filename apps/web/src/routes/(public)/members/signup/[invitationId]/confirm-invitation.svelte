@@ -52,12 +52,7 @@ const dobValue = $derived.by(() => {
 		</Alert.Root>
 	</div>
 {:else}
-	<div class="max-w-md mx-auto p-6">
-		<h4 class="font-bold mb-6">Verify Your Invitation</h4>
-		<p class="mb-6 text-gray-600">
-			Please enter your email and date of birth to verify your invitation.
-		</p>
-
+	<div class="max-w-lg">
 		{#if validateInvitation.result?.success === false}
 			<Alert.Root variant="destructive" class="w-full mb-6">
 				<Alert.Title>Something has gone wrong</Alert.Title>
@@ -81,7 +76,7 @@ const dobValue = $derived.by(() => {
 						}
 					});
 				})}
-			class="space-y-6"
+			class="space-y-7"
 		>
 			<Field.Group>
 				<Field.Field>
@@ -123,7 +118,8 @@ const dobValue = $derived.by(() => {
 
 			<Button
 				type="submit"
-				class="w-full"
+				class="w-full sm:w-auto"
+				size="lg"
 				disabled={!!validateInvitation.pending}
 			>
 				{#if validateInvitation.pending}

@@ -17,21 +17,36 @@ defmodule Dhc.Application do
     OpentelemetryPhoenix.setup(adapter: :bandit)
     OpentelemetryEcto.setup([:dhc, :repo], db_statement: :enabled)
 
-    children = [
-      DhcWeb.Telemetry,
-      Dhc.Repo,
-      {DNSCluster, query: Application.get_env(:dhc, :dns_cluster_query) || :ignore},
-      {Phoenix.PubSub, name: Dhc.PubSub},
-      # Oban for background job processing
-      {Oban, Application.fetch_env!(:dhc, Oban)},
-      # Start to serve requests, typically the last entry
-      DhcWeb.Endpoint
-    ]
+    children =
+      [
+        DhcWeb.Telemetry,
+        Dhc.Repo,
+        {DNSCluster, query: Application.get_env(:dhc, :dns_cluster_query) || :ignore},
+        {Phoenix.PubSub, name: Dhc.PubSub},
+        # Oban for background job processing
+        {Oban, Application.fetch_env!(:dhc, Oban)},
+        Dhc.Discord.GuildMemberCache
+      ] ++
+        discord_children() ++
+        [
+          # Start to serve requests, typically the last entry
+          DhcWeb.Endpoint
+        ]
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
     opts = [strategy: :one_for_one, name: Dhc.Supervisor]
     Supervisor.start_link(children, opts)
+  end
+
+  defp discord_children do
+    case Application.get_env(:dhc, :discord_bot_token) do
+      token when is_binary(token) and byte_size(token) > 0 ->
+        [{Dhc.Discord.RestClientSupervisor, token: token}]
+
+      _missing ->
+        []
+    end
   end
 
   # Tell Phoenix to update the endpoint configuration

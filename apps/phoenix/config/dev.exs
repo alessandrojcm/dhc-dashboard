@@ -143,6 +143,7 @@ config :dhc, :auth_session_same_site, "None"
 
 config :dhc, :environment, :development
 config :dhc, :cors_allowed_origins, cors_allowed_origins
+config :dhc, :discord_adapter, Dhc.Discord.Adapter.Dev
 
 config :dhc, :discord_oauth,
   client_id: System.get_env("DISCORD_CLIENT_ID"),

@@ -20,29 +20,50 @@ test.describe("Member Self-Management", () => {
 		page,
 	}) => {
 		await gotoHydrated(page, "/dashboard");
-		await expect(page.getByText(/member information/i)).toBeVisible();
+		await expect(
+			page.getByRole("heading", { name: "My profile" }),
+		).toBeVisible();
+		await expect(
+			page.getByRole("navigation", { name: "Members sections" }),
+		).toHaveCount(0);
 	});
 
 	test("should update member profile", async ({ page }) => {
 		await gotoHydrated(page, "/dashboard");
-		await expect(page.getByText(/member information/i)).toBeVisible();
+		await expect(
+			page.getByRole("heading", { name: "My profile" }),
+		).toBeVisible();
 		await page.getByLabel(/first name/i).fill("Updated name");
-		await page.getByLabel("Next of Kin", { exact: true }).fill("Test Contact");
-		await page.getByLabel("Next of Kin Phone Number").fill("0871234567");
+		await page
+			.getByLabel("Emergency contact", { exact: true })
+			.fill("Test Contact");
+		await page.getByLabel("Emergency contact phone").fill("0871234567");
 		await page.getByLabel(/preferred weapon/i).click();
 		await page.getByRole("option", { name: "Rapier" }).click();
 		await page.getByRole("button", { name: /save changes/i }).click();
 
 		await expect(page.getByText(/profile has been updated/i)).toBeVisible();
-		await page.reload();
 		await expect(page.getByLabel(/first name/i)).toHaveValue("Updated name");
 		await expect(page.getByText(/Rapier/i).first()).toBeVisible();
+		await expect(
+			page
+				.getByRole("button", {
+					name: new RegExp(
+						`Updated name.*${testData.last_name}.*${testData.email}`,
+						"i",
+					),
+				})
+				.first(),
+		).toBeVisible();
 	});
 
 	test("it should show manage subscription button", async ({ page }) => {
 		await gotoHydrated(page, "/dashboard");
-		await page.getByText(/manage payment settings/i).click();
-		const newPage = await page.waitForEvent("popup");
+		const popup = page.waitForEvent("popup");
+		await page
+			.getByRole("button", { name: "Manage billing", exact: true })
+			.click();
+		const newPage = await popup;
 		await expect(newPage).toHaveURL(/billing\.stripe\.com/);
 	});
 
@@ -51,7 +72,16 @@ test.describe("Member Self-Management", () => {
 	}) => {
 		await gotoHydrated(page, "/dashboard");
 		expect(page.url()).toContain(`/dashboard/members/${testData.userId}`);
-		await expect(page.getByTestId("sidebar")).toHaveText("My Workshops");
+		const sidebar = page.getByTestId("sidebar");
+		await expect(
+			sidebar.getByRole("link", { name: "Home", exact: true }),
+		).toBeVisible();
+		await expect(
+			sidebar.getByRole("link", { name: "My Workshops", exact: true }),
+		).toBeVisible();
+		await expect(
+			sidebar.getByRole("link", { name: "Members", exact: true }),
+		).toHaveCount(0);
 	});
 });
 
@@ -69,6 +99,7 @@ test.describe("Member Management - Admin", () => {
 			email: `member-${Date.now()}@test.com`,
 			roles: new Set(["member"]),
 			createSubscription: true,
+			subscriptionPaymentMethod: "card",
 		});
 	});
 	test.beforeEach(async ({ context }) => {
@@ -84,23 +115,112 @@ test.describe("Member Management - Admin", () => {
 			.getByRole("button", { name: new RegExp(adminData.email, "i") })
 			.first()
 			.click();
-		await page.getByRole("link", { name: "My Profile" }).click();
-		await expect(page.getByTestId("sidebar")).not.toHaveText("");
+		const profileLink = page
+			.getByRole("menu")
+			.getByRole("link", { name: "My Profile", exact: true });
+		await expect(profileLink).toBeVisible();
+		await profileLink.click();
+		await expect(page).toHaveURL(`/dashboard/members/${adminData.userId}`);
+		await expect(
+			page.getByRole("heading", { name: "My profile", exact: true }),
+		).toBeVisible();
 	});
 
 	test("admin should be able to navigate to a specific member profile", async ({
 		page,
 	}) => {
-		await gotoHydrated(page, `/dashboard/members/${memberData.userId}`);
+		await gotoHydrated(page, "/dashboard/members/directory");
+		const memberEntry = () =>
+			page.getByRole("article").filter({
+				has: page.getByRole("link", { name: memberData.email }),
+			});
+		await memberEntry().getByRole("link", { name: "Edit member" }).click();
+		await expect(
+			page.getByRole("heading", {
+				name: `Edit ${memberData.first_name} ${memberData.last_name}`,
+			}),
+		).toBeVisible();
+		await expect(
+			page.getByRole("link", { name: "Back to members" }),
+		).toBeVisible();
+		await expect(
+			page.getByRole("navigation", { name: "Members sections" }),
+		).toHaveCount(0);
 		await page.getByLabel(/first name/i).fill("Updated name");
-		await page.getByLabel("Next of Kin", { exact: true }).fill("Test Contact");
-		await page.getByLabel("Next of Kin Phone Number").fill("0871234567");
+		await page
+			.getByLabel("Emergency contact", { exact: true })
+			.fill("Test Contact");
+		await page.getByLabel("Emergency contact phone").fill("0871234567");
 		await page.getByLabel(/preferred weapon/i).click();
 		await page.getByRole("option", { name: "Rapier" }).click();
 		await page.getByRole("button", { name: /save changes/i }).click();
 		await expect(page.getByText(/profile has been updated/i)).toBeVisible();
-		await page.reload();
 		await expect(page.getByLabel(/first name/i)).toHaveValue("Updated name");
+		await page.getByRole("link", { name: "Back to members" }).click();
+		await expect(memberEntry()).toContainText("Updated name");
+	});
+
+	test("pause and resume update the member detail and directory without a reload", async ({
+		page,
+	}) => {
+		await gotoHydrated(page, "/dashboard/members/directory");
+		const memberEntry = () =>
+			page.getByRole("article").filter({
+				has: page.getByRole("link", { name: memberData.email }),
+			});
+
+		await expect(memberEntry()).toContainText("Active");
+		await memberEntry().getByRole("link", { name: "Edit member" }).click();
+
+		await page.getByRole("button", { name: "Pause subscription" }).click();
+		const pauseDate = new Date();
+		pauseDate.setDate(pauseDate.getDate() + 2);
+		const pauseDateLabel = pauseDate.toLocaleDateString("en-US", {
+			month: "long",
+			day: "numeric",
+			year: "numeric",
+		});
+		const pauseDialog = page.getByRole("dialog");
+		await pauseDialog.getByRole("button", { name: "Resume Date" }).click();
+		await page
+			.getByRole("button", { name: new RegExp(pauseDateLabel) })
+			.click();
+		const pauseResponse = page.waitForResponse(
+			(response) =>
+				response.request().method() === "POST" &&
+				response
+					.url()
+					.endsWith(`/members/${memberData.userId}/membership/pause`),
+		);
+		await pauseDialog
+			.getByRole("button", { name: "Pause subscription" })
+			.click();
+		expect((await pauseResponse).status()).toBe(200);
+		await expect(
+			page.getByLabel("Membership settings").getByText(/Paused until/),
+		).toBeVisible();
+
+		await page.getByRole("link", { name: "Back to members" }).click();
+		await expect(memberEntry()).toContainText("Paused");
+		await memberEntry().getByRole("link", { name: "Edit member" }).click();
+
+		const resumeResponse = page.waitForResponse(
+			(response) =>
+				response.request().method() === "POST" &&
+				response
+					.url()
+					.endsWith(`/members/${memberData.userId}/membership/resume`),
+		);
+		await page.getByRole("button", { name: "Resume", exact: true }).click();
+		expect((await resumeResponse).status()).toBe(200);
+		await expect(
+			page.getByLabel("Membership settings").getByText("Active", {
+				exact: true,
+			}),
+		).toBeVisible();
+
+		await page.getByRole("link", { name: "Back to members" }).click();
+		await expect(memberEntry()).toContainText("Active");
 	});
 });
 

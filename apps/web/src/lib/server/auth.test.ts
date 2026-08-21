@@ -60,7 +60,7 @@ describe("getPhoenixSession (SSR auth seam, ALE-164)", () => {
 		// The cookie is forwarded via the `cookie` header — not a bearer `auth`.
 		expect(authShowSession).toHaveBeenCalledTimes(1);
 		expect(authShowSession).toHaveBeenCalledWith({
-			baseUrl: "http://localhost:4000/api",
+			baseUrl: "http://127.0.0.1:4000/api",
 			headers: { cookie: "_dhc_session=signed-session-cookie" },
 		});
 	});
