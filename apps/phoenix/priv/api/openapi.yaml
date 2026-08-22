@@ -5434,11 +5434,11 @@ components:
           type: string
           format: date
           description: |
-            The date the reactivated monthly membership cycle anchors to
-            (today or a future date, at most one year ahead). Drives Stripe's
-            billing_cycle_anchor: the first invoice covers the prorated
-            remainder up to this date, then full periods bill from it. How the
-            annual fee starts is chosen separately via annualFeeMode.
+            The date monthly billing begins (today or a future date, at most
+            one year ahead). The first paid monthly invoice is prorated from
+            this date through the first day of the following month, then full
+            monthly periods bill from that anchor. How the annual fee starts is
+            chosen separately via annualFeeMode.
         annualFeeMode:
           $ref: "#/components/schemas/MembershipReactivateAnnualFeeMode"
     MembershipReactivateAnnualFeeMode:
@@ -5541,24 +5541,37 @@ components:
         data:
           type: object
           description: |
-            Stripe-computed amounts for a reactivation starting on the
-            requested startDate (ALE-254), under the requested annualFeeMode
-            (ALE-253). All values are Dinero-compatible minor-unit money
-            objects.
+            Stripe-computed amounts for a reactivation under the requested
+            annualFeeMode. Monthly billing is prorated from startDate through
+            the first day of the following month. All values are
+            Dinero-compatible minor-unit money objects.
           required:
             - dueToday
+            - proratedMonthlyPrice
+            - proratedAnnualPrice
             - monthlyFee
             - annualFee
           properties:
             dueToday:
               description: |
-                Total charged immediately — the prorated first invoice of the
-                monthly subscription, plus the prorated annual invoice unless
-                `annualFeeMode=deferred_next_year` (then annual charges nothing
-                until next January's anchor).
+                Total charged immediately. The prorated monthly invoice is
+                included when startDate is today; a future monthly start is
+                charged on that date instead. The prorated annual invoice is
+                included unless `annualFeeMode=deferred_next_year`.
+              $ref: "#/components/schemas/DineroAmount"
+            proratedMonthlyPrice:
+              description: |
+                First monthly charge, prorated from startDate through the first
+                day of the following month. For a future start this amount is
+                charged on startDate rather than included in dueToday.
+              $ref: "#/components/schemas/DineroAmount"
+            proratedAnnualPrice:
+              description: |
+                First annual charge, prorated through the next January anchor.
+                Zero when annualFeeMode is deferred_next_year.
               $ref: "#/components/schemas/DineroAmount"
             monthlyFee:
-              description: Recurring full monthly membership fee charged from the start date onward.
+              description: Recurring full monthly membership fee charged from the first day of the month following startDate.
               $ref: "#/components/schemas/DineroAmount"
             annualFee:
               description: |

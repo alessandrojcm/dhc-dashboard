@@ -189,12 +189,17 @@ test.describe("Member reactivation", () => {
 		const amountsBody = await amounts.json();
 		expect(amountsBody.data.dueToday.amount).toBeGreaterThan(0);
 		expect(amountsBody.data.dueToday.currency).toBe("EUR");
+		expect(amountsBody.data.proratedMonthlyPrice.amount).toBeGreaterThan(0);
+		expect(amountsBody.data.proratedAnnualPrice.amount).toBeGreaterThan(0);
 		expect(amountsBody.data.monthlyFee.amount).toBeGreaterThan(0);
 		expect(amountsBody.data.annualFee.amount).toBeGreaterThan(0);
 
 		await expect(dialog.getByText("Due today")).toBeVisible();
-		await expect(dialog.getByText(/monthly membership/i).first()).toBeVisible();
-		await expect(dialog.getByText(/annual membership/i).first()).toBeVisible();
+		await expect(
+			dialog.getByText(/for this month.*for this year/i),
+		).toBeVisible();
+		await expect(dialog.getByText("Then monthly")).toBeVisible();
+		await expect(dialog.getByText("Then annually")).toBeVisible();
 		await expect(
 			dialog.getByTestId("reactivation-amounts").getByText(/€\d/).first(),
 		).toBeVisible();
@@ -270,10 +275,16 @@ test.describe("Member reactivation", () => {
 		await dialog
 			.getByRole("radio", { name: /defer until next january/i })
 			.click();
-		expect((await deferredAmountsResponse).status()).toBe(200);
+		const deferredAmounts = await deferredAmountsResponse;
+		expect(deferredAmounts.status()).toBe(200);
+		const deferredAmountsBody = await deferredAmounts.json();
+		expect(
+			deferredAmountsBody.data.proratedMonthlyPrice.amount,
+		).toBeGreaterThan(0);
+		expect(deferredAmountsBody.data.proratedAnnualPrice.amount).toBe(0);
 
-		// …and the annual line is labelled for its January billing.
-		await expect(dialog.getByText(/bills next january/i)).toBeVisible();
+		// …and the recurring annual line is labelled for its January billing.
+		await expect(dialog.getByText("Then annually")).toBeVisible();
 		// Nothing annual is due today in this mode.
 		await expect(dialog.getByText("Due today")).toBeVisible();
 

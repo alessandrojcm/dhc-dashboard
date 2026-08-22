@@ -19,6 +19,7 @@ import {
 } from "@internationalized/date";
 import dayjs from "dayjs";
 import Dinero from "dinero.js";
+import { untrack } from "svelte";
 import type {
 	MembershipReactivateAnnualFeeMode,
 	MembershipReactivationPreviewAmountsResponse,
@@ -60,9 +61,11 @@ type Props = {
 	errorDetail?: string | null;
 	paymentMethodUnavailable?: boolean;
 	onOpenBillingPortal?: () => void;
-	/** Stripe-computed amounts for the selected start date; hidden on failure. */
+	/** Stripe-computed reactivation amounts; hidden on failure. */
 	amounts?: ReactivationAmounts | null;
 	isLoadingAmounts?: boolean;
+	/** Optional initial selection when the caller already has a requested date. */
+	initialStartDate?: DateValue;
 	/** Reports start date + annual fee mode so the container can fetch amounts. */
 	onSelectionChange?: (selection: {
 		startDate: string;
@@ -82,6 +85,7 @@ let {
 	onOpenBillingPortal,
 	amounts = null,
 	isLoadingAmounts = false,
+	initialStartDate,
 	onSelectionChange,
 }: Props = $props();
 
@@ -92,13 +96,27 @@ const MAX_START_DAYS_AHEAD = 366;
 const minDate = $derived(today(getLocalTimeZone()));
 const maxDate = $derived(minDate.add({ days: MAX_START_DAYS_AHEAD }));
 // Fresh per mount: the page mounts the modal inside {#if} only while open.
-let selectedDate = $state<DateValue>(today(getLocalTimeZone()));
+let selectedDate = $state<DateValue>(
+	untrack(() => initialStartDate ?? today(getLocalTimeZone())),
+);
 // ALE-253: default keeps the initial-release semantics (annual charged
 // prorated for the remainder of this year).
 let annualFeeMode = $state<AnnualFeeMode>("prorated_now");
 
 const startDateIso = $derived(toCalendarDate(selectedDate).toString());
 const deferredAnnual = $derived(annualFeeMode === "deferred_next_year");
+const futureStart = $derived(dayjs(startDateIso).isAfter(dayjs(), "day"));
+const formattedStartDate = $derived(dayjs(startDateIso).format("D MMM YYYY"));
+const nextMonthlyBillingDate = $derived(
+	dayjs(startDateIso).add(1, "month").startOf("month").format("D MMM YYYY"),
+);
+const nextAnnualBillingDate = $derived.by(() => {
+	const now = dayjs();
+	const thisJanuary = dayjs(`${now.year()}-01-07`);
+	return (
+		thisJanuary.isAfter(now, "day") ? thisJanuary : thisJanuary.add(1, "year")
+	).format("D MMM YYYY");
+});
 // Distinguishes "Stripe says there is nothing to charge" (fallback applies)
 // from "the preview lookup itself failed" (plain error, retry by reopening).
 const methodUnavailable = $derived(
@@ -220,12 +238,13 @@ function handleDateChange(date: Date) {
 						onDateChange={handleDateChange}
 					/>
 					<p class="text-xs leading-4 text-muted-foreground">
-						Billing starts on this date: the first invoice covers only the days
-						up to it (prorated), then full months bill from there.
+						Billing starts on this date. The first monthly charge is prorated
+						from this date to the first of the following month, then full months
+						bill from there.
 						{deferredAnnual
-							? "The annual fee isn’t charged today — its subscription waits on a free trial until next January."
+							? "The annual fee isn’t charged today; annual billing begins next January."
 							: "The annual fee is charged prorated for the rest of this year."}
-						Allowed window: {dayjs().format("MMM D, YYYY")} – {dayjs()
+						Allowed window: {dayjs().format("MMM D, YYYY")} to {dayjs()
 							.add(MAX_START_DAYS_AHEAD, "day")
 							.format("MMM D, YYYY")}.
 					</p>
@@ -272,8 +291,7 @@ function handleDateChange(date: Date) {
 								<span
 									class="mt-0.5 block text-sm font-normal text-muted-foreground"
 								>
-									The annual subscription starts on a free trial today; nothing
-									is charged until next January’s renewal date.
+									Nothing is charged today. Annual billing begins next January.
 								</span>
 							</span>
 						</Label>
@@ -295,27 +313,72 @@ function handleDateChange(date: Date) {
 								Calculating what this reactivation will charge…
 							</p>
 						{:else}
-							<dl class="space-y-1.5 text-sm">
-								<div class="flex items-baseline justify-between gap-3">
-									<dt class="font-semibold">Due today</dt>
-									<dd class="font-semibold">{formatMoney(amounts.dueToday)}</dd>
+							<div class="space-y-4">
+								<div class="flex items-start justify-between gap-4">
+									<div>
+										<p class="font-semibold">Due today</p>
+										{#if futureStart}
+											<p class="mt-1 text-xs leading-5 text-muted-foreground">
+												{formatMoney(amounts.proratedAnnualPrice)} for this year
+											</p>
+										{:else}
+											<p class="mt-1 text-xs leading-5 text-muted-foreground">
+												{formatMoney(amounts.proratedMonthlyPrice)} for this month
+												+
+												{formatMoney(amounts.proratedAnnualPrice)} for this year
+											</p>
+										{/if}
+									</div>
+									<span class="text-lg font-bold"
+										>{formatMoney(amounts.dueToday)}</span
+									>
 								</div>
-								<div class="flex items-baseline justify-between gap-3">
-									<dt class="text-muted-foreground">Monthly membership</dt>
-									<dd>{formatMoney(amounts.monthlyFee)}</dd>
+
+								{#if futureStart}
+									<div
+										class="flex items-start justify-between gap-4 border-t border-border/70 pt-4"
+									>
+										<div>
+											<p class="text-sm font-medium">
+												Due on {formattedStartDate}
+											</p>
+											<p class="mt-1 text-xs text-muted-foreground">
+												First prorated monthly charge
+											</p>
+										</div>
+										<span class="font-semibold"
+											>{formatMoney(amounts.proratedMonthlyPrice)}</span
+										>
+									</div>
+								{/if}
+
+								<div
+									class="grid gap-3 border-t border-border/70 pt-4 sm:grid-cols-2"
+								>
+									<div>
+										<p class="text-sm font-medium">Then monthly</p>
+										<p class="mt-1 font-semibold">
+											{formatMoney(amounts.monthlyFee)}
+										</p>
+										<p class="mt-1 text-xs text-muted-foreground">
+											From {nextMonthlyBillingDate}
+										</p>
+									</div>
+									<div>
+										<p class="text-sm font-medium">Then annually</p>
+										<p class="mt-1 font-semibold">
+											{formatMoney(amounts.annualFee)}
+										</p>
+										<p class="mt-1 text-xs text-muted-foreground">
+											From {nextAnnualBillingDate}
+										</p>
+									</div>
 								</div>
-								<div class="flex items-baseline justify-between gap-3">
-									<dt class="text-muted-foreground">
-										{deferredAnnual
-											? "Annual membership · bills next January"
-											: "Annual membership"}
-									</dt>
-									<dd>{formatMoney(amounts.annualFee)}</dd>
-								</div>
-							</dl>
+							</div>
 							<p class="mt-2 text-xs leading-4 text-muted-foreground">
-								Computed by Stripe for the selected start date: the monthly fee
-								starts prorated on that day,
+								Computed by Stripe: monthly billing is prorated from the
+								selected start date to the first of the following month, then
+								renews on the first of each month;
 								{deferredAnnual
 									? "the annual fee first bills at next January’s renewal date and renews each year after."
 									: "the annual fee is charged prorated for the rest of this year and renews each January."}
