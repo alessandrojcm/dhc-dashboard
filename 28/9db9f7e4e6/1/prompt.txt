@@ -1,0 +1,1 @@
+Research the two Bandit advisories affecting version 1.12.4: CVE-2026-74836 / GHSA-xj8g-532w-jv94 and CVE-2026-75484 / GHSA-x3gh-xhj4-3vq8. Determine the minimum patched Bandit version(s), latest appropriate stable release, and any upgrade caveats for a Phoenix app. Use current authoritative package/advisory sources. Do not edit code. Return concise findings with source URLs.

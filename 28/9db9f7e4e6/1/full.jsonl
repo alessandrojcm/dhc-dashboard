@@ -1,0 +1,293 @@
+{
+  "info": {
+    "id": "ses_fd4575d9affe0CdiaBkQeVvILf",
+    "slug": "happy-otter",
+    "projectID": "b56e6179f69f740273614dd8e3c2bcdf1ad94c3a",
+    "directory": "/Users/alessandrojcm/.herdr/worktrees/dhc-dashboard/worktree-silver-forest-5b5f",
+    "path": "",
+    "parentID": "ses_fd46f3f15ffeS3Bt4vivmd3SFE",
+    "title": "Find patched Bandit release (@docs subagent)",
+    "agent": "docs",
+    "model": {
+      "id": "minimax-m3",
+      "providerID": "opencode-go",
+      "variant": "default"
+    },
+    "version": "1.18.21",
+    "summary": {
+      "additions": 0,
+      "deletions": 0,
+      "files": 0
+    },
+    "cost": 0.00128088,
+    "tokens": {
+      "input": 264,
+      "output": 323,
+      "reasoning": 0,
+      "cache": {
+        "read": 13568,
+        "write": 0
+      }
+    },
+    "permission": [
+      {
+        "permission": "todowrite",
+        "pattern": "*",
+        "action": "deny"
+      },
+      {
+        "permission": "task",
+        "pattern": "*",
+        "action": "deny"
+      }
+    ],
+    "time": {
+      "created": 1787438867045,
+      "updated": 1787438874062
+    }
+  },
+  "messages": [
+    {
+      "info": {
+        "role": "user",
+        "time": {
+          "created": 1787438867049
+        },
+        "agent": "docs",
+        "model": {
+          "providerID": "opencode-go",
+          "modelID": "minimax-m3"
+        },
+        "summary": {
+          "diffs": []
+        },
+        "id": "msg_02ba8a268001TZWEUwuUQ8JSoX",
+        "sessionID": "ses_fd4575d9affe0CdiaBkQeVvILf"
+      },
+      "parts": [
+        {
+          "type": "text",
+          "text": "Research the two Bandit advisories affecting version 1.12.4: CVE-2026-74836 / GHSA-xj8g-532w-jv94 and CVE-2026-75484 / GHSA-x3gh-xhj4-3vq8. Determine the minimum patched Bandit version(s), latest appropriate stable release, and any upgrade caveats for a Phoenix app. Use current authoritative package/advisory sources. Do not edit code. Return concise findings with source URLs.",
+          "id": "prt_02ba8a26b001A10i6ACI03owWK",
+          "sessionID": "ses_fd4575d9affe0CdiaBkQeVvILf",
+          "messageID": "msg_02ba8a268001TZWEUwuUQ8JSoX"
+        }
+      ]
+    },
+    {
+      "info": {
+        "parentID": "msg_02ba8a268001TZWEUwuUQ8JSoX",
+        "role": "assistant",
+        "mode": "docs",
+        "agent": "docs",
+        "path": {
+          "cwd": "/Users/alessandrojcm/.herdr/worktrees/dhc-dashboard/worktree-silver-forest-5b5f",
+          "root": "/Users/alessandrojcm/.herdr/worktrees/dhc-dashboard/worktree-silver-forest-5b5f"
+        },
+        "cost": 0.00128088,
+        "tokens": {
+          "total": 14155,
+          "input": 264,
+          "output": 323,
+          "reasoning": 0,
+          "cache": {
+            "write": 0,
+            "read": 13568
+          }
+        },
+        "modelID": "minimax-m3",
+        "providerID": "opencode-go",
+        "time": {
+          "created": 1787438867698,
+          "completed": 1787438874060
+        },
+        "finish": "tool-calls",
+        "id": "msg_02ba8a4f2001UeRWB0NWEd5Vfw",
+        "sessionID": "ses_fd4575d9affe0CdiaBkQeVvILf"
+      },
+      "parts": [
+        {
+          "snapshot": "7b6a74d4539513f6c1360b8e402d2d2078a85f68",
+          "type": "step-start",
+          "id": "prt_02ba8ab7d001enrCz0CzyM58M9",
+          "sessionID": "ses_fd4575d9affe0CdiaBkQeVvILf",
+          "messageID": "msg_02ba8a4f2001UeRWB0NWEd5Vfw"
+        },
+        {
+          "type": "reasoning",
+          "text": "The user wants me to research two Bandit security advisories:\n1. CVE-2026-74836 / GHSA-xj8g-532w-jv94\n2. CVE-2026-75484 / GHSA-x3gh-xhj4-3vq8\n\nI need to determine:\n- Minimum patched Bandit version(s)\n- Latest appropriate stable release\n- Any upgrade caveats for a Phoenix app\n\nI should use Exa for web search to find authoritative sources (GitHub Security Advisories, CVE databases, PyPI) and Context7 to get Bandit documentation if needed.\n\nLet me start by searching for these specific advisories.",
+          "time": {
+            "start": 1787438869375,
+            "end": 1787438870522
+          },
+          "metadata": {
+            "anthropic": {
+              "signature": "67d5fa0d8c754034a32cf90f52d1f399804b33e6f037b67029fc9a082a94e4eb"
+            }
+          },
+          "id": "prt_02ba8ab7f001l6BmkxCApy9HRg",
+          "sessionID": "ses_fd4575d9affe0CdiaBkQeVvILf",
+          "messageID": "msg_02ba8a4f2001UeRWB0NWEd5Vfw"
+        },
+        {
+          "type": "text",
+          "text": "I'll research these two Bandit security advisories using authoritative sources. Let me search for them in parallel.",
+          "time": {
+            "start": 1787438870523,
+            "end": 1787438871817
+          },
+          "id": "prt_02ba8affb001zKTScXCFwrUR6b",
+          "sessionID": "ses_fd4575d9affe0CdiaBkQeVvILf",
+          "messageID": "msg_02ba8a4f2001UeRWB0NWEd5Vfw"
+        },
+        {
+          "type": "tool",
+          "tool": "exa_web_search_exa",
+          "callID": "call_85bf465c95fe4570841281cc",
+          "state": {
+            "status": "completed",
+            "input": {
+              "query": "GHSA-xj8g-532w-jv94 Bandit CVE-2026-74836 patched version",
+              "numResults": 8
+            },
+            "output": "Title: HTTP/2 connection-window starvation pins Plug processes indefinitely; RST_STREAM does not release them · Advisory · mtrudel/bandit · GitHub\nURL: https://github.com/mtrudel/bandit/security/advisories/GHSA-xj8g-532w-jv94\nPublished: N/A\nAuthor: mtrudel\nHighlights:\npublished GHSA-xj8g-532w-jv94 Aug 20, 2026\n...\n## Affected versions\n...\n1.12.4\n...\n## Patched versions\n...\nAffected: Bandit 1.12.4 (latest) and`main`@`b65c235`. The code path is long-standing, not a recent regression. Component:`Bandit.HTTP2`— outbound flow control Suggested severity: High — CVSS 3.1`AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H`(7.5). Availability only; no confidentiality or integrity impact. Yours to adjust.\n\n---\n\nTitle: f6914aa Bound and cancel HTTP/2 sends blocked on the connection window (GHSA-xj8g-532w-jv94) (#671)\nURL: https://github.com/mtrudel/bandit/commit/f6914aad14bb1365dd6f306aa592cfb0819bed3e\nPublished: N/A\nAuthor: N/A\nHighlights:\n# f6914aa Bound and cancel HTTP/2 sends blocked on the connection window (GHSA-xj8g-532w-jv94) (#671)\n...\n- SHA: f6914aad14bb1365dd6f306aa592cfb0819bed3e\n- Repository: mtrudel/bandit\n- Author: mtrudel\n- Date: 2026-08-20T19:47:12Z\n- +208 -12 in 5 files\n- Verified: yes\n...\nBound and cancel HTTP/2 sends blocked on the connection window (GHSA-xj8g-532w-jv94) (#671)\n...\nFixes, matching the suggested direction in\n...\n## Changed Files\n...\n| File | Status | + | - |\n| --- | --- | --- | --- |\n| lib/bandit/http2/connection.ex | modified | 68 | 4 |\n| lib/bandit/http2/handler.ex | modified | 9 | 2 |\n| lib/bandit/http2/stream.ex | modified | 18 | 6 |\n| lib/bandit/http2/stream_collection.ex | modified | 3 | 0 |\n| test/bandit/http2/protocol_test.exs | modified | 110 | 0 |\n\n---\n\nTitle: CVE-2026-74836 - HTTP/2 connection-window starvation pins Plug processes indefinitely in Bandit - Threat Intelligence Index\nURL: https://intel.controlassurance.com/cves/2026/74xxx/CVE-2026-74836.html\nPublished: 2026-08-20T00:00:00.000Z\nAuthor: N/A\nHighlights:\nhttps://github.com/mtrudel/bandit/security/advisories/GHSA-xj8g-532w-jv94\n- patch\n...\nhttps://github.com/mtrudel/bandit/commit/f6914aad14bb1365dd6f306aa592cfb0819bed3e\n...\nThis issue affects bandit: from 0.3.4 before 1.12.5.\n...\n0.3.4 [affected] <\n...\n1.1\n...\n6feadb31189d18b7dcda6c663112cd3bbaf63a46 [affected] < f6914aad14bb1365dd6f306aa592cfb0819bed3e\n...\nGitHub Security Advisory: GHSA-XJ8G-532W-JV94\n\n---\n\nTitle: CVE-2026-74836 - Vulnerability Details - OpenCVE\nURL: https://app.opencve.io/cve/CVE-2026-74836\nPublished: 2026-08-20T22:47:52.776Z\nAuthor: N/A\nHighlights:\nof Resources Without Limits or Throttling vulnerability in mtrudel bandit allows an unauthenticated remote attacker to\n...\nan unbounded number of HTTP/\n...\nstream processes indefinitely\n...\nflow control. When a stream's response body outruns the HTTP/2 connection-level send window (default 65,535 bytes, shared across all streams on the connection), Bandit.HTTP2.Connection queues the remaining bytes and a reply closure in pending_sends and the stream process blocks forever inside a synchronous call to the connection process. Nothing bounds that wait and nothing purges the queue: a client RST_STREAM for the blocked stream is delivered to its mailbox but never read while it is stuck inside the call, so cancelling frees nothing, and periodic PING frames keep the transport-level read timeout from ever firing. The equivalent block on the stream-level send window is already bounded at 15 seconds; the connection-level path had no such bound. Each stalled stream pins its process, Plug state, and any resource the Plug holds across the blocked write, such as a pooled upstream connection in a reverse-proxy Plug. The attacker chooses any endpoint whose response exceeds the connection window (common for most non-trivial payloads), grants a generous stream-level window so only the connection window limits it, and keeps the connection alive with periodic PINGs; the primitive is repeatable across streams and connections at the cost of one idle socket each. This issue affects bandit: from 0.3.4 before 1.12.5. \n\n Published: 2026-08-20 Score: 8.7 High EPSS: n/a KEV: No Impact: n/a Action: n/a \n\n Analysis \n\n Default status is the baseline for the product, each version can override it (e.g. patched versions marked unaffected). \n\n| Vendor | Product | Default status | Versions |\n| --- | --- | --- | --- |\n| mtrudel | bandit | unaffected | Version Status Constraints `0.3.4` affected < 1.12.5 |\n| mtrudel | bandit | unaffected | Version Status Constraints `6feadb31189d18b7dcda6c663112cd3bbaf63a46` affected < f6914aad14bb1365dd6f306aa592cfb0819bed3e |\n...\n| Link | Providers |\n| --- | --- |\n| https://cna.erlef.org/cves/CVE-2026-74836.html | |\n| https://github.com/mtrudel/bandit/commit/f6914aad14bb1365dd6f306aa592cfb0819bed3e | |\n| https://github.com/mtrudel/bandit/security/advisories/GHSA-xj8g-532w-jv94 | |\n| https://osv.dev/vulnerability/EEF-CVE-2026-74836 | |\n...\n| Description | | Allocation\n...\nResources Without Limits or Throttling vulnerability in mtrudel bandit allows an unauthenticated remote attacker to pin an unbounded number of HTTP/2 stream processes indefinitely via connection-level flow control. When a stream's response body outruns the HTTP/2 connection-level send window (default 65,535 bytes, shared across all streams on\n...\nconnection), Bandit.HTTP2.Connection queues the remaining bytes and a reply closure in pending_sends and the stream process blocks forever inside a synchronous call to the connection process. Nothing bounds that wait and nothing purges the queue: a client RST_STREAM for the blocked stream is delivered to its mailbox but never read while it is stuck inside the call, so cancelling frees nothing, and periodic PING frames keep the transport-level read timeout from ever firing. The equivalent block on the stream-level send window is already bounded at 15 seconds; the connection-level path had no such bound. Each stalled stream pins its process, Plug state, and any resource the Plug holds across the blocked write, such as a pooled upstream connection in a reverse-proxy Plug. The attacker chooses any endpoint whose response exceeds the connection window (common for most non-trivial payloads), grants a generous stream-level window so only the connection window limits it, and keeps the connection alive with periodic PINGs; the primitive is repeatable across streams and connections at the cost of one idle socket each. This issue affects bandit: from 0.3.4 before 1.12.5. |\n...\n| References | | https://cna.erlef.org/cves/CVE-2026-74836.html https://github.com/mtrudel/bandit/commit/f6914aad14bb1365dd6f306aa592cfb0819bed3e https://github.com/mtrudel/bandit/security/advisories/GHSA-xj8g-532w-jv94 https://osv.dev/vulnerability/EEF-CVE-2026-74836 |\n\n---\n\nTitle: Allocation of Resources Without Limits or Throttling... · CVE-2026-74836 · GitHub Advisory Database · GitHub\nURL: https://github.com/advisories/ghsa-fv6j-9p8m-c3wr\nPublished: N/A\nAuthor: N/A\nHighlights:\n## Affected versions\n...\n## Patched versions\n...\nThis issue affects bandit: from 0.3.4 before 1.12.5.\n...\n- GHSA-xj8g-532w-jv94\n- https://nvd.nist.gov/vuln/detail/CVE-2026-74836\n- mtrudel/bandit@\n...\nCVE-2026-74836 \n\n### GHSA ID\n...\nare not supported on this\n...\nfixed version.\n\n---\n\nTitle: N/A\nURL: https://cvefeed.io/vuln/detail/CVE-2026-74836\nPublished: N/A\nAuthor: N/A\nHighlights:\nThis issue affects bandit: from 0.3.4 before 1.12.5.\n...\nUpdate Bandit to version 1.12.5 or later to fix denial-of-service via unbounded stream processing.\n...\n- Update Bandit to version 1.12.5 or later.\n- Apply vendor patches if available.\n- Review connection pooling configurations.\n- Monitor resource utilization closely.\n...\n- https://cna.erlef.org/cves/CVE-2026-74836.html\n- https://github.com/mtrudel/bandit/commit/f6914aad14bb1365dd6f306aa592cfb0819bed3e\n- https://github.com/mtrudel/bandit/security/advisories/GHSA-xj8g-532w-jv94\n- https://osv.dev/vulnerability/EEF-CVE-2026-74836\n\n---\n\nTitle: CVE-2026-74836 | Release Alert\nURL: https://releasealert.dev/cve/CVE-2026-74836\nPublished: 2026-08-20T00:00:00.000Z\nAuthor: N/A\nHighlights:\n# CVE-2026-74836\n...\nPublished August 20, 2026\n...\nAffected 1 project\n...\nAllocation of Resources Without Limits or Throttling vulnerability in mtrudel bandit allows an unauthenticated remote attacker to pin an unbounded number of HTTP/2 stream processes indefinitely via connection-level flow control. When a stream's response body outruns the HTTP/2 connection-level send window (default 65,535 bytes, shared across all streams on the connection), Bandit.HTTP2.Connection queues the remaining bytes and a reply closure in pending_sends and the stream process blocks forever inside a synchronous call to the connection process. Nothing bounds that wait and nothing purges the queue: a client RST_STREAM for the blocked stream is delivered to its mailbox but never read while it is stuck inside the call, so cancelling frees nothing, and periodic PING frames keep the transport-level read timeout from ever firing. The equivalent block on the stream-level send window is already bounded at 15 seconds; the connection-level path had no such bound. Each stalled stream pins its process, Plug state, and any resource the Plug holds across the blocked write, such as a pooled upstream connection in a reverse-proxy Plug. The attacker chooses any endpoint whose response exceeds the connection window (common for most non-trivial payloads), grants a generous stream-level window so only the connection window limits it, and keeps the connection alive with periodic PINGs; the primitive is repeatable across streams and connections at the cost of one idle socket each. This issue affects bandit: from 0.3.4 before 1.12.5.\n\n---\n\nTitle: CVE-2026-74836\nURL: https://cna.erlef.org/cves/CVE-2026-74836.html\nPublished: 2026-08-20T22:47:52.776Z\nAuthor: N/A\nHighlights:\nWeaknesses & attack patterns\n...\nness\n...\n` · Allocation\n...\n↗ \n\n Attack patterns \n\n `CAPEC-1\n...\n0` ·\n...\n### Affected — Hex / bandit Hex.pm ↗ Repository ↗ \n\n ≥ 0.3.4 < 1.12.5 affected \n\n every other version: unaffected \n\n default status unaffected cpe cpe:2.3:a:mtrudel:bandit:*:*:*:*:*:*:*:* \n\n ▸ modules · source files · routines \n\n modules 'Elixir.Bandit.HTTP2.Connection' · 'Elixir.Bandit.HTTP2.Stream' \n\n source files lib/bandit/http2/connection.ex · lib/bandit/http2/stream.ex \n\n routines 'Elixir.Bandit.HTTP2.Connection':finish_data/5 · 'Elixir.Bandit.HTTP2.Connection':handle_frame/3 · 'Elixir.Bandit.HTTP2.Stream':send_data/3 \n\n### Affected — GitHub / mtrudel/bandit Repository ↗ \n\n ≥ 6feadb3 < f6914aa affected \n\n every other version: unaffected \n\n default status unaffected cpe cpe:2.3:a:mtrudel:bandit:*:*:*:*:*:*:*:* \n\n ▸ modules · source files · routines \n\n modules 'Elixir.Bandit.HTTP2.Connection' · 'Elixir.Bandit.HTTP2.Stream' \n\n source files lib/bandit/http2/connection.ex · lib/bandit/http2/stream.ex \n\n routines 'Elixir.Bandit.HTTP2.Connection':finish_data/5 · 'Elixir.Bandit.HTTP2.Connection':handle_frame/3 · 'Elixir.Bandit.HTTP2.Stream':send_data/3 \n\n### References \n\n github.com/mtrudel/bandit · `GHSA-xj8g-532w-jv94` ↗ vendor-advisory \n\n github.com/mtrudel/bandit · `f6914aa` ↗ patch \n\n osv.dev · `EEF-CVE-2026-74836` ↗ related \n\n### Credits \n\n Giovanni Visciano / Hewlett Packard Enterprise - Athonet Reporter \n\n Mat Trudel Remediation developer \n\n Jonatan Männchen / EEF Coordinator \n\n### CVSS breakdown \n\n HIGH 8.7 open in calculator → \n\nCVSS:4.0/\n\nAV:N/\n\nAC:L/\n\nAT:N/\n\nPR:N/\n\nUI:N/\n\nVC:N/\n\nVI:N/\n\nVA:H/\n\nSC:N/\n\nSI:N/\n\nSA:N",
+            "metadata": {
+              "truncated": false
+            },
+            "title": "",
+            "time": {
+              "start": 1787438871820,
+              "end": 1787438872966
+            }
+          },
+          "id": "prt_02ba8b50a001ysHjT6OtXgxdfH",
+          "sessionID": "ses_fd4575d9affe0CdiaBkQeVvILf",
+          "messageID": "msg_02ba8a4f2001UeRWB0NWEd5Vfw"
+        },
+        {
+          "type": "tool",
+          "tool": "exa_web_search_exa",
+          "callID": "call_9677e89c13424a8996c61c5a",
+          "state": {
+            "status": "completed",
+            "input": {
+              "query": "GHSA-x3gh-xhj4-3vq8 Bandit CVE-2026-75484 patched version",
+              "numResults": 8
+            },
+            "output": "Title: HTTP/2 header field values containing CR, LF or NUL are passed to the application unvalidated · Advisory · mtrudel/bandit · GitHub\nURL: https://github.com/mtrudel/bandit/security/advisories/GHSA-x3gh-xhj4-3vq8\nPublished: N/A\nAuthor: mtrudel\nHighlights:\npublished GHSA-x3gh-xhj4-3vq8 Aug 20, 2026\n...\n## Affected versions\n...\n<=1.12.4\n...\n## Patched versions\n...\nOn July 26 you hardened HTTP/1 against header field values containing CR, LF or NUL (#620); the comment in`validate_field_value!` itself calls this a request-smuggling / response-splitting vector. HTTP/2 never got the same check. A HEADERS block whose field values contain`\\r`,`\\n` or`\\0` decodes fine (HPACK carries arbitrary octets) and the values land in`conn.req_headers` exactly as sent. I confirmed this on 1.12.4: a value of`aaa\\r\\nx-injected: yes` and another with a NUL in the middle both reached my test plug unchanged over h2c, while the same construct over HTTP/1 dies with a 400 before the app ever runs.\n\n---\n\nTitle: OSV - Open Source Vulnerabilities\nURL: https://osv.dev/vulnerability/EEF-CVE-2026-75484\nPublished: N/A\nAuthor: N/A\nHighlights:\n- CVE-2026-75484\n- GHSA-x3gh-xhj4-3vq8\n...\nThis issue affects bandit: from 1.4.0 before 1.12.5.\n...\n## Affected packages\n...\n## Hex / bandit\n...\n### Affected ranges\n...\n1.4.0\n...\n1.12.5\n...\n### Affected versions\n...\n1.4.0\n...\n12.0\n...\n12.4\n...\n## Git / github.com/mtrudel/bandit\n...\n### Affected ranges\n...\n### Affected versions\n...\n1.10.0\n...\n1.12.0\n...\n1.12.1\n...\n1.12.3\n...\n1.12.4\n...\n1.4.0\n...\n1.4.1\n...\n1.4.2\n\n---\n\nTitle: d38cf04 Validate HTTP/2 header field values for CR/LF/NUL (GHSA-x3gh-xhj4-3vq8) (#670)\nURL: https://github.com/mtrudel/bandit/commit/d38cf046c9a3cae4d0f88001c2ceb4143f86366b\nPublished: N/A\nAuthor: N/A\nHighlights:\n# d38cf04 Validate HTTP/2 header field values for CR/LF/NUL (GHSA-x3gh-xhj4-3vq8) (#670)\n...\n- SHA: d38cf046c9a3cae4d0f88001c2ceb4143f86366b\n- Repository: mtrudel/bandit\n- Author: mtrudel\n- Date: 2026-08-20T13:20:59Z\n- +131 -21 in 4 files\n- Verified: yes\n...\nValidate HTTP/2 header field values for CR/LF/NUL (GHSA-x3gh-xhj4-3vq8) (#670)\n...\nRFC9110§5.5 was already enforced on the HTTP/1 path (#620), but HTTP/2\nHEADERS blocks were never checked: HPACK/QPACK carry arbitrary octets,\nso a field value containing \\r, \\n or \\0 decoded fine and landed in\nconn.req_headers unchanged. RFC9113§8.2.1 requires the same rejection\nHTTP/1 already applies. Lift the check into Bandit.Headers so both\ntransports share one implementation and can't drift apart again.\n...\n| File | Status | + | - |\n| --- | --- | --- | --- |\n| lib/bandit/headers.ex | modified | 25 | 0 |\n| lib/bandit/http1/socket.ex | modified | 3 | 21 |\n| lib/bandit/http2/stream.ex | modified | 16 | 0 |\n| test/bandit/http2/protocol_test.exs | modified | 87 | 0 |\n\n---\n\nTitle: CVE-2026-75484 - HTTP/2 header field values containing CR, LF or NUL are passed to the application unvalidated in Bandit - Threat Intelligence Index\nURL: https://intel.controlassurance.com/cves/2026/75xxx/CVE-2026-75484.html\nPublished: 2026-08-20T00:00:00.000Z\nAuthor: N/A\nHighlights:\nhttps://github.com/mtrudel/bandit/security/advisories/GHSA-x3gh-xhj4-3vq8\n- patch\n...\nhttps://github.com/mtrudel/bandit/commit/d38cf046c9a3cae4d0f88001c2ceb4143f86366b\n...\nThis issue affects bandit: from 1.4.0\n...\n1.12.5.\n...\n1.4.0 [affected] < 1.12.5\n...\nfff06efe3be962b484bd4d3eb339372fda5a231f [affected] < d38cf046c9a3cae4d0f88001c2ceb4143f86366b\n...\n:mtrudel:bandit:*:*:*:*:*:\n\n---\n\nTitle: CVE-2026-75484: HTTP/2 header field values... - CVE.report\nURL: https://cve.report/CVE-2026-75484\nPublished: 2026-08-20T00:00:00.000Z\nAuthor: CVE.report\nHighlights:\n| Description | Improper Neutralization of CRLF Sequences ('CRLF Injection') vulnerability in mtrudel bandit allows an unauthenticated remote attacker to smuggle CR, LF, or NUL characters into application-visible request headers via HTTP/2. Bandit.HTTP2.Stream.read_headers/1 validates pseudo-header placement and uniqueness, header-name casing, connection-specific headers, the te value, and content-length, but never checks field values. Because HPACK carries arbitrary octets, a HEADERS block whose field values contain \\r, \\n, or \\0 decodes without error and the values land in conn.req_headers unchanged. The HTTP/1 path already rejects the same octets; HTTP/2 did not. Bandit itself is not a sink for the injected bytes: its own logging uses fixed strings or inspect, and HTTP/2 response headers are HPACK-encoded and separately rejected by Plug's put_resp_header, so response splitting is not reachable through this path. The risk is entirely in how a downstream application consumes header values, such as appending one verbatim to a plain-text log or concatenating it into an upstream request. A related gap bundled in the same fix: only :method, :scheme, and :path were checked for at most one occurrence; a duplicate :authority pseudo-header was accepted, with the first instance silently winning as conn.host while a conflicting value remained visible to the application. This issue affects bandit: from 1.4.0 before 1.12.5. |\n...\n| Source | Vendor | Product | Version | Platforms |\n| --- | --- | --- | --- | --- |\n| CNA | Mtrudel | Bandit | affected 1.4.0 1.12.5 semver | Not specified |\n| CNA | Mtrudel | Bandit | affected fff06efe3be962b484bd4d3eb339372fda5a231f d38cf046c9a3cae4d0f88001c2ceb4143f86366b git | Not specified |\n...\n| Reference | Source | Link | Tags |\n| --- | --- | --- | --- |\n| osv.dev/vulnerability/EEF-CVE-2026-75484 | 6b3ad84c-e1a6-4bf7-a703-f496b71e49db | osv.dev | |\n| cna.erlef.org/cves/CVE-2026-75484.html | 6b3ad84c-e1a6-4bf7-a703-f496b71e49db | cna.erlef.org | |\n| github.com/mtrudel/bandit/security/advisories/GHSA-x3gh-xhj4-3vq8 | 6b3ad84c-e1a6-4bf7-a703-f496b71e49db | github.com | |\n| github.com/mtrudel/bandit/commit/d38cf046c9a3cae4d0f88001c2ceb4143f86366b | 6b3ad84c-e1a6-4bf7-a703-f496b71e49db | github.com | |\n| CVE Program record | CVE.ORG | www.cve.org | canonical |\n| NVD vulnerability detail | NVD | nvd.nist.gov | canonical, analysis |\n\n---\n\nTitle: CVE-2026-75484\nURL: https://cna.erlef.org/cves/CVE-2026-75484.html\nPublished: N/A\nAuthor: N/A\nHighlights:\nThis issue affects bandit: from 1.4.0 before 1.12.5.\n...\n### Weaknesses &\n...\nWeakness\n...\n3` · Improper\n...\n↗\n...\npatterns \n\n `\n...\n↗ \n\n### Affected — Hex / bandit Hex.pm ↗ Repository ↗ \n\n ≥ 1.4.0 < 1.12.5 affected \n\n every other version: unaffected \n\n default status unaffected cpe cpe:2.3:a:mtrudel:bandit:*:*:*:*:*:*:*:* \n\n ▸ modules · source files · routines \n\n modules 'Elixir.Bandit.HTTP2.Stream' source files lib/bandit/http2/stream.ex routines 'Elixir.Bandit.HTTP2.Stream':read_headers/1 \n\n### Affected — GitHub / mtrudel/bandit Repository ↗ \n\n ≥ fff06ef < d38cf04 affected \n\n every other version: unaffected \n\n default status unaffected cpe cpe:2.3:a:mtrudel:bandit:*:*:*:*:*:*:*:* \n\n ▸ modules · source files · routines \n\n modules 'Elixir.Bandit.HTTP2.Stream' source files lib/bandit/http2/stream.ex routines 'Elixir.Bandit.HTTP2.Stream':read_headers/1 \n\n### References \n\n github.com/mtrudel/bandit · `GHSA-x3gh-xhj4-3vq8` ↗ vendor-advisory \n\n github.com/mtrudel/bandit · `d38cf04` ↗ patch \n\n osv.dev · `EEF-CVE-2026-75484` ↗ related \n\n### Credits \n\n Mat Trudel Remediation developer Jonatan Männchen / EEF Coordinator \n\n### CVSS breakdown \n\n MEDIUM 6.9 open in calculator → \n\nCVSS:4.0/\n\nAV:N/\n\nAC:L/\n\nAT:N/\n\nPR:N/\n\nUI:N/\n\nVC:N/\n\nVI:L/\n\nVA:N/\n\nSC:N/\n\nSI:N/\n\nSA:N\n\n---\n\nTitle: CHANGELOG.md - bandit 1.12.4 | Hex\nURL: https://hex.pm/packages/bandit/1.12.4/files/CHANGELOG.md\nPublished: N/A\nAuthor: N/A\nHighlights:\n```\n# 1.12.4 (27 July 2026)\n...\n### Fixes\n...\n### Enhancements\n...\n### Fixes\n...\n1.12.1 (24\n...\n2026)\n...\n### Fixes\n...\n### Fixes\n...\n### Fixes\n...\n### Fixes\n...\n### Enhancements\n...\n### Enhancements\n...\n### Fixes\n...\n### Enhancements\n...\n### Fixes\n...\n### Fixes\n...\n### Fixes\n...\n### Fixes\n...\n### Fixes\n...\n### Enhancements\n...\n### Fixes\n...\n### Fixes\n...\n### Fixes\n...\n### Fixes\n...\n### Fixes\n...\n### Fixes\n...\n### Fixes\n...\n### Enhancements\n...\n### Fixes\n...\n### Fixes\n...\n### Fixes\n...\n### Fixes\n...\n### Fixes\n...\n### Fixes\n...\n### Fixes\n...\n### Fixes\n\n---\n\nTitle: Security Advisories for bandit - Hex.pm\nURL: https://hex.pm/packages/bandit/advisories\nPublished: 2026-05-01T00:00:00.000Z\nAuthor: N/A\nHighlights:\n1.12.5\n...\nHTTP/2 header field values containing CR, LF or NUL are passed to the application unvalidated in Bandit\n...\n>= 1.4.0 and < 1.12.5\n...\n>= 0.3.4 and < 1.12.5\n...\n11.0\n...\n>= 1.4.0\n...\n1.11.1\n...\n.3.6\n...\n< 1.11.0 >= 0.3.5 and < 1.11.0",
+            "metadata": {
+              "truncated": false
+            },
+            "title": "",
+            "time": {
+              "start": 1787438871821,
+              "end": 1787438873023
+            }
+          },
+          "id": "prt_02ba8b50c001n0Inpff83x9AQw",
+          "sessionID": "ses_fd4575d9affe0CdiaBkQeVvILf",
+          "messageID": "msg_02ba8a4f2001UeRWB0NWEd5Vfw"
+        },
+        {
+          "type": "tool",
+          "tool": "exa_web_search_exa",
+          "callID": "call_b2d6a77cc26b4db4a2a527cb",
+          "state": {
+            "status": "completed",
+            "input": {
+              "query": "PyPI Bandit latest stable release 2026",
+              "numResults": 5
+            },
+            "output": "Title: Bandit - PyPI\nURL: https://pypi.org/project/bandit/\nPublished: N/A\nAuthor: N/A\nHighlights:\n# bandit v1.9.4\n...\n- Discord: https://discord.gg/qYxpadCgkx\n- Documentation: https://bandit.readthedocs.io/\n- Homepage: https://bandit\n...\nio/\n- Issue Tracker: https://github.com/PyCQA/bandit/issues\n- Release Notes: https://github.com/PyCQA/bandit/releases\n- Source Code: https://github.com/PyCQA/bandit\n-\n...\n: https://psfmember.org/civicrm/contribute/transact/?reset=1&id=42\n...\n## Version History\n...\n| Version | Uploaded | Type | Yanked |\n| --- | --- | --- | --- |\n| 0.10.0 | 2015-03-23T21:00:20.574271Z | sdist | no |\n| 0.10.1 | 2015-03-25T15:32:23.052544Z | sdist | no |\n| 0.11.0 | 2015-05-07T16:20:18.258529Z | sdist | no |\n| 0.12.0 | 2015-06-29T22:22:33.193334Z | sdist | no |\n| 0.13.0 | 2015-08-05T18:46:48.492959Z | sdist | no |\n| 0.13.1 | 2015-08-12T16:02:43.747971Z | sdist | no |\n| 0.13.2 | 2015-08-14T18:28:56.923256Z | sdist | no |\n| 0.14.0 | 2015-10-12T10:50:33.287058Z | sdist | no |\n| 0.14.1 | 2015-10-14T13:00:40.266886Z | sdist | no |\n| 0.15.0 | 2015-10-29T15:13:29.184334Z | sdist | no |\n| 0.15.1 | 2015-11-04T16:33:30.472471Z | sdist | no |\n| 0.15.2 | 2015-11-04T17:28:29.247076Z | sdist | no |\n| 0.16.0 | 2015-11-13T16:41:18.244733Z | sdist | no |\n| 0.16.1 | 2015-11-13T18:59:16.585269Z | sdist | no |\n| 0.16.2 | 2015-11-19T16:47:10.132787Z | sdist | no |\n| 0.17.0 | 2015-12-17T18:37:33.836859Z | sdist | no |\n| 0.17.2 | 2016-01-27T00:22:50.808206Z | sdist | no |\n| 0.17.3 | 2016-01-27T23:19:02.077477Z | sdist | no |\n| 1.0.1 | 2016-04-05T07:48:26.039002Z | sdist | no |\n| 1.1.0 | 2016-08-15T11:43:09.625460Z | sdist | no |\n...\n.. image:: https://img.shields.io/pypi/v/bandit.svg\n :target: https://pypi.org/project/bandit/\n :alt: Latest Version\n...\n.. code-block\n...\nghcr.\n...\n/pycqa/bandit\n...\nbandit:latest\n...\nWhere ` ` is the release version of Bandit.\n\n---\n\nTitle: Releases · PyCQA/bandit - GitHub\nURL: https://github.com/PyCQA/bandit/releases\nPublished: 2026-02-22T00:00:00.000Z\nAuthor: PyCQA\nHighlights:\nReleases · PyCQA/bandit · GitHub\n...\n## Release list\n...\n- 1.9.4\n- 1.9.3\n- 1.9.2\n- 1.9.1\n- 1.9.0\n- 1.8.6\n- 1.8.5\n- 1.8.4\n- 1.8.3\n- 1.8.2\n...\nericwb released this 25 Feb 06:37\n\n---\n\nTitle: PyCQA/bandit\nURL: https://github.com/PyCQA/bandit\nPublished: N/A\nAuthor: N/A\nHighlights:\n.. image:: https://img.shields.io/pypi/v/bandit.svg\n :target: https://pypi.org/project/bandit/\n :alt: Latest Version\n...\nBandit is available as a container image, built within the bandit repository\nusing GitHub Actions. The image is available on ghcr.io:\n...\n.. code-block:: console\n\n docker pull --platform= ghcr.io/pycqa/bandit/bandit:latest\n...\n.. code-block:: console\n\n cosign verify ghcr.io/pycqa/bandit/bandit:latest \\\n --certificate-identity https://github.com/pycqa/bandit\n...\n.githubusercontent.com\n...\nWhere ` ` is the release version of Bandit.\n\n---\n\nTitle: Getting Started — Bandit documentation\nURL: https://bandit.readthedocs.io/en/latest/start.html\nPublished: N/A\nAuthor: N/A\nHighlights:\nBandit is distributed on PyPI. The best way to install it is with pip.\n...\nUse [pre-commit](https://pre-commit.com/). Once you [have it installed](https://pre-commit.com/#install), add this to the `.pre-commit-config.yaml` in your repository (be sure to update rev to point to a [real git tag/revision](https://github.com/PyCQA/bandit/releases)!):\n\nrepos:\n...\n- repo: https://github.com/PyCQA/bandit\n rev: '' # Update me!\n hooks:\n - id: bandit\n...\nrun `pre-commit install` and you’re\n...\nto go.\n\n---\n\nTitle: bandit 1.9.4 on Python PyPI\nURL: https://newreleases.io/project/pypi/bandit/release/1.9.4\nPublished: 2026-02-25T00:00:00.000Z\nAuthor: N/A\nHighlights:\nbandit 1.9.4 on Python PyPI\n...\n# bandit 1.9.4 on Python PyPI\n...\nCheck out latest releases or releases around bandit 1.9.4",
+            "metadata": {
+              "truncated": false
+            },
+            "title": "",
+            "time": {
+              "start": 1787438871860,
+              "end": 1787438874004
+            }
+          },
+          "id": "prt_02ba8b50e0010fO0F7SK4CIEvI",
+          "sessionID": "ses_fd4575d9affe0CdiaBkQeVvILf",
+          "messageID": "msg_02ba8a4f2001UeRWB0NWEd5Vfw"
+        },
+        {
+          "reason": "tool-calls",
+          "snapshot": "7b6a74d4539513f6c1360b8e402d2d2078a85f68",
+          "type": "step-finish",
+          "tokens": {
+            "total": 14155,
+            "input": 264,
+            "output": 323,
+            "reasoning": 0,
+            "cache": {
+              "write": 0,
+              "read": 13568
+            }
+          },
+          "cost": 0.00128088,
+          "id": "prt_02ba8bdb3001nosrTLLU1EaeFk",
+          "sessionID": "ses_fd4575d9affe0CdiaBkQeVvILf",
+          "messageID": "msg_02ba8a4f2001UeRWB0NWEd5Vfw"
+        }
+      ]
+    },
+    {
+      "info": {
+        "parentID": "msg_02ba8a268001TZWEUwuUQ8JSoX",
+        "role": "assistant",
+        "mode": "docs",
+        "agent": "docs",
+        "path": {
+          "cwd": "/Users/alessandrojcm/.herdr/worktrees/dhc-dashboard/worktree-silver-forest-5b5f",
+          "root": "/Users/alessandrojcm/.herdr/worktrees/dhc-dashboard/worktree-silver-forest-5b5f"
+        },
+        "cost": 0,
+        "tokens": {
+          "input": 0,
+          "output": 0,
+          "reasoning": 0,
+          "cache": {
+            "read": 0,
+            "write": 0
+          }
+        },
+        "modelID": "minimax-m3",
+        "providerID": "opencode-go",
+        "time": {
+          "created": 1787438874062,
+          "completed": 1787438879334
+        },
+        "error": {
+          "name": "MessageAbortedError",
+          "data": {
+            "message": "Aborted"
+          }
+        },
+        "id": "msg_02ba8bdce001v7UPrSItBVz9b0",
+        "sessionID": "ses_fd4575d9affe0CdiaBkQeVvILf"
+      },
+      "parts": [
+        {
+          "snapshot": "7b6a74d4539513f6c1360b8e402d2d2078a85f68",
+          "type": "step-start",
+          "id": "prt_02ba8c277001XX6gjxhqcpZWgt",
+          "sessionID": "ses_fd4575d9affe0CdiaBkQeVvILf",
+          "messageID": "msg_02ba8bdce001v7UPrSItBVz9b0"
+        },
+        {
+          "type": "reasoning",
+          "text": "Excellent. I have very clear information now. Important: there's a name collision",
+          "time": {
+            "start": 1787438875293,
+            "end": 1787438879332
+          },
+          "id": "prt_02ba8c29d001m9OGri1b7vDi3x",
+          "sessionID": "ses_fd4575d9affe0CdiaBkQeVvILf",
+          "messageID": "msg_02ba8bdce001v7UPrSItBVz9b0"
+        }
+      ]
+    }
+  ]
+}
