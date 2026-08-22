@@ -172,17 +172,15 @@ run = "exec pnpm dev"
 # ── Linting & formatting ──────────────────────────
 
 [tasks.lint]
-description = "Lint frontend and API client JS/TS/Svelte scripts with Oxlint"
+description = "Lint frontend, API client, and email templates JS/TS with Oxlint"
 run = "pnpm lint"
 
 [tasks.format]
-description = "Auto-format frontend files with Oxfmt"
-dir = "apps/web"
+description = "Auto-format web and email template files with Oxfmt"
 run = "pnpm format"
 
 [tasks."format-check"]
 description = "Check formatting without writing (CI)"
-dir = "apps/web"
 run = "pnpm format:check"
 
 # ── Seeds ─────────────────────────────────────────
