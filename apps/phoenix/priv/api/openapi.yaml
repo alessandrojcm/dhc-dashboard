@@ -58,7 +58,7 @@ tags:
     x-resource: Workshop
   - name: AuthSession
     description: |
-      Phoenix-owned session auth API (ALE-165/ALE-164). Magic-link sign-in,
+      Phoenix-owned session auth API. Magic-link sign-in,
       session projection read, sign-out, and socket-token exchange. The
       dashboard authenticates through the signed `_dhc_session` cookie
        (`cookieSession` security scheme) instead of the Supabase bearer JWT.
