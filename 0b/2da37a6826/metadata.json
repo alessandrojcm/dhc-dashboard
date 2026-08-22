@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "0b2da37a6826",
+  "strategy": "manual-commit",
+  "branch": "worktree/silver-forest-5b5f",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "docs/agents/structure.md",
+    "docs/agents/tech-stack.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0b/2da37a6826/0/metadata.json",
+      "transcript": "/0b/2da37a6826/0/full.jsonl",
+      "compact_transcript": "/0b/2da37a6826/0/transcript.jsonl",
+      "content_hash": "/0b/2da37a6826/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  }
+}
