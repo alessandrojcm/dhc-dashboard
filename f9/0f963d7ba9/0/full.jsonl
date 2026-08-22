@@ -1,0 +1,825 @@
+{
+  "info": {
+    "id": "ses_fd4935669ffeUyK59AKx370P0Z",
+    "slug": "neon-meadow",
+    "projectID": "b56e6179f69f740273614dd8e3c2bcdf1ad94c3a",
+    "directory": "/Users/alessandrojcm/.herdr/worktrees/dhc-dashboard/worktree-silver-forest-5b5f",
+    "path": "",
+    "parentID": "ses_fd4a3e85dffeEJZOljeWI58s21",
+    "title": "Research Resend Templates API/CLI (@docs subagent)",
+    "agent": "docs",
+    "model": {
+      "id": "minimax-m3",
+      "providerID": "opencode-go",
+      "variant": "default"
+    },
+    "version": "1.18.21",
+    "summary": {
+      "additions": 0,
+      "deletions": 0,
+      "files": 0
+    },
+    "cost": 0.01881372,
+    "tokens": {
+      "input": 29526,
+      "output": 4623,
+      "reasoning": 0,
+      "cache": {
+        "read": 73472,
+        "write": 0
+      }
+    },
+    "permission": [
+      {
+        "permission": "todowrite",
+        "pattern": "*",
+        "action": "deny"
+      },
+      {
+        "permission": "task",
+        "pattern": "*",
+        "action": "deny"
+      }
+    ],
+    "time": {
+      "created": 1787434936726,
+      "updated": 1787435014507
+    }
+  },
+  "messages": [
+    {
+      "info": {
+        "role": "user",
+        "time": {
+          "created": 1787434936730
+        },
+        "agent": "docs",
+        "model": {
+          "providerID": "opencode-go",
+          "modelID": "minimax-m3"
+        },
+        "summary": {
+          "diffs": []
+        },
+        "id": "msg_02b6ca99a0010gik3LntNaccWe",
+        "sessionID": "ses_fd4935669ffeUyK59AKx370P0Z"
+      },
+      "parts": [
+        {
+          "type": "text",
+          "text": "Research the current (2026) Resend email platform's Templates feature APIs. This is for a CI sync pipeline that renders React Email components to HTML and upserts them as Resend-hosted templates.\n\nI need precise answers on:\n\n1. The official `resend` npm CLI: does it support managing **Templates** (the dashboard-hosted templates feature, NOT sending emails)? List the exact subcommands/syntax if yes (create/update/publish/list/get), including flags like alias, subject, from, html, status/draft vs publish.\n2. The Resend REST **Templates API** (api.resend.com): exact endpoints and JSON payloads for:\n   - Create a template (draft) — payload fields (name, alias?, subject, from, html, variables?)\n   - Update an existing template\n   - Publish a template\n   - Get a single template by id or alias — response shape (fields like `id`, `alias`, `status`: e.g. \"draft\"|\"published\", `name`)\n   - List templates — pagination model\n3. Whether templates can be addressed by a stable string **alias** at send time (`template: { ... }` param of POST /emails), and whether create/update accepts setting that alias.\n4. Any rate limits or gotchas for these endpoints.\n5. Environment variable conventions the CLI uses for auth (e.g. RESEND_API_KEY).\n\nUseful starting points: https://resend.com/docs/dashboard/templates/introduction , https://resend.com/docs/api-reference/templates/* , https://resend.com/docs/cli/introduction , the resend npm package docs. Verify against live docs pages rather than memory.\n\nReturn: a concise but complete summary with exact endpoint paths, request/response field names, exact CLI command syntax, and source URLs for each claim. If some part is not supported (e.g. CLI lacks template management), say so explicitly so we can fall back to the REST API via curl/fetch.",
+          "id": "prt_02b6ca99d001njC0z67SeqPH8t",
+          "sessionID": "ses_fd4935669ffeUyK59AKx370P0Z",
+          "messageID": "msg_02b6ca99a0010gik3LntNaccWe"
+        }
+      ]
+    },
+    {
+      "info": {
+        "parentID": "msg_02b6ca99a0010gik3LntNaccWe",
+        "role": "assistant",
+        "mode": "docs",
+        "agent": "docs",
+        "path": {
+          "cwd": "/Users/alessandrojcm/.herdr/worktrees/dhc-dashboard/worktree-silver-forest-5b5f",
+          "root": "/Users/alessandrojcm/.herdr/worktrees/dhc-dashboard/worktree-silver-forest-5b5f"
+        },
+        "cost": 0.0045138,
+        "tokens": {
+          "total": 14359,
+          "input": 14130,
+          "output": 229,
+          "reasoning": 0,
+          "cache": {
+            "write": 0,
+            "read": 0
+          }
+        },
+        "modelID": "minimax-m3",
+        "providerID": "opencode-go",
+        "time": {
+          "created": 1787434937206,
+          "completed": 1787434941811
+        },
+        "finish": "tool-calls",
+        "id": "msg_02b6cab7600191AeQbRnrLHEq0",
+        "sessionID": "ses_fd4935669ffeUyK59AKx370P0Z"
+      },
+      "parts": [
+        {
+          "snapshot": "edd53770038ae9ab251effe8161fdeac8323a3b8",
+          "type": "step-start",
+          "id": "prt_02b6cb068001G31FzQbpVp0250",
+          "sessionID": "ses_fd4935669ffeUyK59AKx370P0Z",
+          "messageID": "msg_02b6cab7600191AeQbRnrLHEq0"
+        },
+        {
+          "type": "reasoning",
+          "text": "The user wants me to research the current (2026) Resend email platform's Templates feature APIs. They need precise information about:\n\n1. The official `resend` npm CLI's Templates support\n2. The Resend REST Templates API endpoints and payloads\n3. Template alias behavior at send time\n4. Rate limits and gotchas\n5. CLI auth environment variables\n\nI need to use Context7 to fetch the official Resend documentation and parse it for the relevant information. Let me start by resolving the Resend library IDs.",
+          "time": {
+            "start": 1787434938473,
+            "end": 1787434939501
+          },
+          "metadata": {
+            "anthropic": {
+              "signature": "dab715a8f062f2460be82e0669ff0175b156371153fe24d58c838f87b1e1677b"
+            }
+          },
+          "id": "prt_02b6cb069001I6HOY9ewAuULtm",
+          "sessionID": "ses_fd4935669ffeUyK59AKx370P0Z",
+          "messageID": "msg_02b6cab7600191AeQbRnrLHEq0"
+        },
+        {
+          "type": "text",
+          "text": "I'll research Resend's Templates API and CLI by pulling from their official docs. Let me start by resolving the relevant Context7 library IDs.",
+          "time": {
+            "start": 1787434939506,
+            "end": 1787434940519
+          },
+          "id": "prt_02b6cb472001sNUUga36uvajq3",
+          "sessionID": "ses_fd4935669ffeUyK59AKx370P0Z",
+          "messageID": "msg_02b6cab7600191AeQbRnrLHEq0"
+        },
+        {
+          "type": "tool",
+          "tool": "context7_resolve-library-id",
+          "callID": "call_3cb2b12eba0f4e6f876050bc",
+          "state": {
+            "status": "completed",
+            "input": {
+              "query": "Resend email API templates",
+              "libraryName": "resend"
+            },
+            "output": "Available Libraries:\n\n- Title: Resend\n- Context7-compatible library ID: /websites/resend\n- Description: Resend is an email API for developers, enabling programmatic email sending, domain management, and event notifications via webhooks.\n- Code Snippets: 4609\n- Source Reputation: High\n- Benchmark Score: 87.3\n----------\n- Title: Resend\n- Context7-compatible library ID: /llmstxt/resend_llms-full_txt\n- Description: Resend is a modern email API platform for developers to send and receive transactional and marketing emails with built-in features for deliverability, templates, broadcasts, and webhooks.\n- Code Snippets: 32419\n- Source Reputation: High\n- Benchmark Score: 76.43\n----------\n- Title: Resend Go\n- Context7-compatible library ID: /resend/resend-go\n- Description: The official Go SDK for Resend, enabling developers to easily send transactional and marketing emails from their Go applications.\n- Code Snippets: 652\n- Source Reputation: High\n- Benchmark Score: 88.65\n----------\n- Title: Resend Skills\n- Context7-compatible library ID: /resend/resend-skills\n- Description: A collection of AI agent skills for the Resend email platform that enables sending emails, managing templates, receiving inbound emails, and setting up secure email inboxes.\n- Code Snippets: 1169\n- Source Reputation: High\n- Benchmark Score: 85.19\n----------\n- Title: Resend Examples\n- Context7-compatible library ID: /resend/resend-examples\n- Description: A collection of examples demonstrating how to use the Resend API for sending emails with various features like attachments, custom headers, and integrations with frameworks like Next.js and React Email.\n- Code Snippets: 327\n- Source Reputation: High\n- Benchmark Score: 82.74",
+            "metadata": {
+              "truncated": false
+            },
+            "title": "",
+            "time": {
+              "start": 1787434940523,
+              "end": 1787434941508
+            }
+          },
+          "id": "prt_02b6cb8690012TKrRUBePiMXhu",
+          "sessionID": "ses_fd4935669ffeUyK59AKx370P0Z",
+          "messageID": "msg_02b6cab7600191AeQbRnrLHEq0"
+        },
+        {
+          "type": "tool",
+          "tool": "context7_resolve-library-id",
+          "callID": "call_e2b3df370c944a15b48b24c2",
+          "state": {
+            "status": "completed",
+            "input": {
+              "query": "Resend CLI templates create publish",
+              "libraryName": "resend-cli"
+            },
+            "output": "Available Libraries:\n\n- Title: Resend\n- Context7-compatible library ID: /websites/resend\n- Description: Resend is an email API for developers, enabling programmatic email sending, domain management, and event notifications via webhooks.\n- Code Snippets: 4609\n- Source Reputation: High\n- Benchmark Score: 87.3\n----------\n- Title: Resend\n- Context7-compatible library ID: /llmstxt/resend_llms-full_txt\n- Description: Resend is a modern email API platform for developers to send and receive transactional and marketing emails with built-in features for deliverability, templates, broadcasts, and webhooks.\n- Code Snippets: 32419\n- Source Reputation: High\n- Benchmark Score: 76.43\n----------\n- Title: Resend (llmstxt)\n- Context7-compatible library ID: /llmstxt/resend_llms_txt\n- Description: Resend is the email API for developers, providing tools and API endpoints for sending and managing emails, audiences, broadcasts, and domains.\n- Code Snippets: 2574\n- Source Reputation: High\n- Benchmark Score: 83.81\n----------\n- Title: Resend Skills\n- Context7-compatible library ID: /resend/resend-skills\n- Description: A collection of AI agent skills for the Resend email platform that enables sending emails, managing templates, receiving inbound emails, and setting up secure email inboxes.\n- Code Snippets: 1169\n- Source Reputation: High\n- Benchmark Score: 85.19\n----------\n- Title: Resend Examples\n- Context7-compatible library ID: /resend/resend-examples\n- Description: A collection of examples demonstrating how to use the Resend API for sending emails with various features like attachments, custom headers, and integrations with frameworks like Next.js and React Email.\n- Code Snippets: 327\n- Source Reputation: High\n- Benchmark Score: 82.74",
+            "metadata": {
+              "truncated": false
+            },
+            "title": "",
+            "time": {
+              "start": 1787434940533,
+              "end": 1787434941751
+            }
+          },
+          "id": "prt_02b6cb86c001Njc777ArrLvXbG",
+          "sessionID": "ses_fd4935669ffeUyK59AKx370P0Z",
+          "messageID": "msg_02b6cab7600191AeQbRnrLHEq0"
+        },
+        {
+          "reason": "tool-calls",
+          "snapshot": "edd53770038ae9ab251effe8161fdeac8323a3b8",
+          "type": "step-finish",
+          "tokens": {
+            "total": 14359,
+            "input": 14130,
+            "output": 229,
+            "reasoning": 0,
+            "cache": {
+              "write": 0,
+              "read": 0
+            }
+          },
+          "cost": 0.0045138,
+          "id": "prt_02b6cbd59001dyoeWH8drTZD2g",
+          "sessionID": "ses_fd4935669ffeUyK59AKx370P0Z",
+          "messageID": "msg_02b6cab7600191AeQbRnrLHEq0"
+        }
+      ]
+    },
+    {
+      "info": {
+        "parentID": "msg_02b6ca99a0010gik3LntNaccWe",
+        "role": "assistant",
+        "mode": "docs",
+        "agent": "docs",
+        "path": {
+          "cwd": "/Users/alessandrojcm/.herdr/worktrees/dhc-dashboard/worktree-silver-forest-5b5f",
+          "root": "/Users/alessandrojcm/.herdr/worktrees/dhc-dashboard/worktree-silver-forest-5b5f"
+        },
+        "cost": 0.00163692,
+        "tokens": {
+          "total": 15541,
+          "input": 1230,
+          "output": 359,
+          "reasoning": 0,
+          "cache": {
+            "write": 0,
+            "read": 13952
+          }
+        },
+        "modelID": "minimax-m3",
+        "providerID": "opencode-go",
+        "time": {
+          "created": 1787434941813,
+          "completed": 1787434949585
+        },
+        "finish": "tool-calls",
+        "id": "msg_02b6cbd75001VtIcv4saaiuzxm",
+        "sessionID": "ses_fd4935669ffeUyK59AKx370P0Z"
+      },
+      "parts": [
+        {
+          "snapshot": "edd53770038ae9ab251effe8161fdeac8323a3b8",
+          "type": "step-start",
+          "id": "prt_02b6cc2cc001nhEuTyxuDYWjwt",
+          "sessionID": "ses_fd4935669ffeUyK59AKx370P0Z",
+          "messageID": "msg_02b6cbd75001VtIcv4saaiuzxm"
+        },
+        {
+          "type": "reasoning",
+          "text": "Good, I have several Resend-related library IDs. The most relevant ones are:\n\n1. `/llmstxt/resend_llms-full_txt` - has 32,419 snippets, full llms txt - looks comprehensive\n2. `/resend/resend-skills` - has skills for managing templates specifically\n3. `/websites/resend` - the website docs\n\nLet me query each for the specific templates information I need. I'll fire parallel queries for efficiency.",
+          "time": {
+            "start": 1787434943199,
+            "end": 1787434944386
+          },
+          "metadata": {
+            "anthropic": {
+              "signature": "935bac779707f4d96787e63986ec08ba5e48c0c1c88c8fdf68a4ebbde4c12a47"
+            }
+          },
+          "id": "prt_02b6cc2df001uVEdbKeJs65SII",
+          "sessionID": "ses_fd4935669ffeUyK59AKx370P0Z",
+          "messageID": "msg_02b6cbd75001VtIcv4saaiuzxm"
+        },
+        {
+          "type": "text",
+          "text": "I have the Resend library IDs. Let me query for the Templates API, CLI, and Send-with-template information in parallel.",
+          "time": {
+            "start": 1787434944387,
+            "end": 1787434946850
+          },
+          "id": "prt_02b6cc78300157pSxTxlb4uVV0",
+          "sessionID": "ses_fd4935669ffeUyK59AKx370P0Z",
+          "messageID": "msg_02b6cbd75001VtIcv4saaiuzxm"
+        },
+        {
+          "type": "tool",
+          "tool": "context7_query-docs",
+          "callID": "call_7c2f4679500a48ccac552155",
+          "state": {
+            "status": "completed",
+            "input": {
+              "libraryId": "/llmstxt/resend_llms-full_txt",
+              "query": "Templates REST API create update publish get list endpoint paths request payload fields name alias subject from html variables status draft published"
+            },
+            "output": "### Templates API\n\nSource: https://resend.com/docs/knowledge-base/how-do-i-avoid-conflicting-with-my-mx-records\n\nEndpoints for managing email templates, including listing, creating, updating, deleting, publishing, and duplicating templates.\n\n```APIDOC\n## GET /templates\n\n### Description\nRetrieves a list of all available email templates.\n\n### Method\nGET\n\n### Endpoint\n/templates\n\n## PATCH /templates/:template_id\n\n### Description\nUpdates an existing email template.\n\n### Method\nPATCH\n\n### Endpoint\n/templates/:template_id\n\n### Parameters\n#### Path Parameters\n- **template_id** (string) - Required - The ID of the template to update.\n\n## DELETE /templates/:template_id\n\n### Description\nDeletes a specified email template.\n\n### Method\nDELETE\n\n### Endpoint\n/templates/:template_id\n\n### Parameters\n#### Path Parameters\n- **template_id** (string) - Required - The ID of the template to delete.\n\n## POST /templates/:template_id/publish\n\n### Description\nPublishes a specified email template.\n\n### Method\nPOST\n\n### Endpoint\n/templates/:template_id/publish\n\n### Parameters\n#### Path Parameters\n- **template_id** (string) - Required - The ID of the template to publish.\n\n## POST /templates/:template_id/duplicate\n\n### Description\nDuplicates a specified email template.\n\n### Method\nPOST\n\n### Endpoint\n/templates/:template_id/duplicate\n\n### Parameters\n#### Path Parameters\n- **template_id** (string) - Required - The ID of the template to duplicate.\n```\n\n--------------------------------\n\n### Create a Template via API\n\nSource: https://resend.com/docs/dashboard/templates/introduction\n\nProgrammatically create a new email template with a name, sender address, subject, HTML content, and variables. Variables can have fallback values.\n\n```javascript\nimport { Resend } from 'resend';\n\nconst resend = new Resend('re_xxxxxxxxx');\n\nawait resend.templates.create({\n  name: 'order-confirmation',\n  from: 'Resend Store <store@resend.com>',\n  subject: 'Thanks for your order!',\n  html: '<p>Name: {{{PRODUCT}}}</p><p>Total: {{{PRICE}}}</p>',\n  variables: [\n    {\n      key: 'PRODUCT',\n      type: 'string',\n      fallbackValue: 'item',\n    },\n    {\n      key: 'PRICE',\n      type: 'number',\n      fallbackValue: 20,\n    },\n  ],\n});\n\n```\n\n--------------------------------\n\n### Create Template with Custom Variables\n\nSource: https://resend.com/docs/llms-full.txt\n\nThis example demonstrates how to create a new template and define custom variables using the Resend API. The `variables` array in the request payload allows you to specify the `key`, `type`, and an optional `fallbackValue` for each custom variable.\n\n```APIDOC\n## POST /templates\n\n### Description\nCreates a new email template with specified HTML content and custom variables.\n\n### Method\nPOST\n\n### Endpoint\n/templates\n\n### Parameters\n#### Request Body\n- **name** (string) - Required - The name of the template.\n- **html** (string) - Required - The HTML content of the template. Custom variables are referenced using triple curly braces, e.g., `{{{VARIABLE_NAME}}}`.\n- **variables** (array) - Optional - An array of objects, where each object defines a custom variable.\n  - **key** (string) - Required - The name of the variable.\n  - **type** (string) - Required - The data type of the variable (e.g., 'string', 'number').\n  - **fallbackValue** (any) - Optional - The default value to use if the variable is not provided during email sending.\n```\n\n--------------------------------\n\n### Create Template\n\nSource: https://resend.com/docs/api-reference/templates/create-template\n\nThis endpoint allows you to create a new email template. You can define the template's name, subject, and HTML content. Optional variables can also be included.\n\n```APIDOC\n## POST /templates\n\n### Description\nCreates a new email template with a specified name, subject, and content. You can also define optional variables for dynamic content.\n\n### Method\nPOST\n\n### Endpoint\n/templates\n\n### Request Body\n- **name** (string) - Required - The name of the template.\n- **subject** (string) - Required - The subject line of the email.\n- **html** (string) - Required - The HTML content of the template.\n- **text** (string) - Optional - The plain text content of the template.\n\n### Request Example\n```json\n{\n  \"name\": \"welcome_email\",\n  \"subject\": \"Welcome to Our Service!\",\n  \"html\": \"<p>Hi {{name}},</p><p>Welcome aboard!</p>\",\n  \"text\": \"Hi {{name}},\nWelcome aboard!\"\n}\n```\n\n### Response\n#### Success Response (200)\n- **id** (string) - The unique identifier of the created template.\n- **name** (string) - The name of the template.\n- **subject** (string) - The subject line of the template.\n- **html** (string) - The HTML content of the template.\n- **text** (string) - The plain text content of the template.\n- **created_at** (string) - The timestamp when the template was created.\n\n#### Response Example\n```json\n{\n  \"id\": \"tpl_abc123xyz\",\n  \"name\": \"welcome_email\",\n  \"subject\": \"Welcome to Our Service!\",\n  \"html\": \"<p>Hi {{name}},</p><p>Welcome aboard!</p>\",\n  \"text\": \"Hi {{name}},\nWelcome aboard!\",\n  \"created_at\": \"2023-10-27T10:00:00Z\"\n}\n```\n```\n\n--------------------------------\n\n### Templates API\n\nSource: https://resend.com/docs/dashboard/topics/introduction\n\nManage your email templates with the Resend API. You can list, create, update, delete, publish, and duplicate templates.\n\n```APIDOC\n## List Templates\n\n### Description\nRetrieves a list of all your templates.\n\n### Method\nGET\n\n### Endpoint\n/templates\n\n### Response\n#### Success Response (200)\n- **data** (array) - A list of template objects.\n- **next_cursor** (string) - Cursor for the next page of results.\n- **has_more** (boolean) - Indicates if there are more results.\n\n### Response Example\n```json\n{\n  \"data\": [\n    {\n      \"id\": \"tpl_abc123\",\n      \"name\": \"Welcome Email\",\n      \"created_at\": \"2023-10-26T10:00:00Z\",\n      \"updated_at\": \"2023-10-26T10:00:00Z\"\n    }\n  ],\n  \"next_cursor\": \"some_cursor\",\n  \"has_more\": true\n}\n```\n```\n\n```APIDOC\n## Update Template\n\n### Description\nUpdates an existing template.\n\n### Method\nPATCH\n\n### Endpoint\n/templates/:template_id\n\n### Parameters\n#### Path Parameters\n- **template_id** (string) - Required - The ID of the template to update.\n\n### Request Body\n- **name** (string) - Optional - The new name for the template.\n- **subject** (string) - Optional - The new subject for the template.\n- **html** (string) - Optional - The new HTML content for the template.\n- **plaintext** (string) - Optional - The new plaintext content for the template.\n\n### Request Example\n```json\n{\n  \"name\": \"Updated Welcome Email\",\n  \"subject\": \"Welcome to Our Service!\"\n}\n```\n\n### Response\n#### Success Response (200)\n- **id** (string) - The ID of the updated template.\n- **name** (string) - The name of the updated template.\n- **subject** (string) - The subject of the updated template.\n- **html** (string) - The HTML content of the updated template.\n- **plaintext** (string) - The plaintext content of the updated template.\n- **created_at** (string) - The creation timestamp.\n- **updated_at** (string) - The last update timestamp.\n\n### Response Example\n```json\n{\n  \"id\": \"tpl_abc123\",\n  \"name\": \"Updated Welcome Email\",\n  \"subject\": \"Welcome to Our Service!\",\n  \"html\": \"<p>Hello!</p>\",\n  \"plaintext\": \"Hello!\",\n  \"created_at\": \"2023-10-26T10:00:00Z\",\n  \"updated_at\": \"2023-10-26T10:05:00Z\"\n}\n```\n```\n\n```APIDOC\n## Delete Template\n\n### Description\nDeletes a template.\n\n### Method\nDELETE\n\n### Endpoint\n/templates/:template_id\n\n### Parameters\n#### Path Parameters\n- **template_id** (string) - Required - The ID of the template to delete.\n\n### Response\n#### Success Response (200)\n- **id** (string) - The ID of the deleted template.\n\n### Response Example\n```json\n{\n  \"id\": \"tpl_abc123\"\n}\n```\n```\n\n```APIDOC\n## Publish Template\n\n### Description\nPublishes a template, making it available for use.\n\n### Method\nPOST\n\n### Endpoint\n/templates/:template_id/publish\n\n### Parameters\n#### Path Parameters\n- **template_id** (string) - Required - The ID of the template to publish.\n\n### Response\n#### Success Response (200)\n- **id** (string) - The ID of the published template.\n- **published_at** (string) - The timestamp when the template was published.\n\n### Response Example\n```json\n{\n  \"id\": \"tpl_abc123\",\n  \"published_at\": \"2023-10-26T10:10:00Z\"\n}\n```\n```\n\n```APIDOC\n## Duplicate Template\n\n### Description\nCreates a copy of an existing template.\n\n### Method\nPOST\n\n### Endpoint\n/templates/:template_id/duplicate\n\n### Parameters\n#### Path Parameters\n- **template_id** (string) - Required - The ID of the template to duplicate.\n\n### Response\n#### Success Response (200)\n- **id** (string) - The ID of the newly duplicated template.\n- **name** (string) - The name of the duplicated template.\n\n### Response Example\n```json\n{\n  \"id\": \"tpl_xyz789\",\n  \"name\": \"Welcome Email (Copy)\"\n}\n```\n```",
+            "metadata": {
+              "truncated": false
+            },
+            "title": "",
+            "time": {
+              "start": 1787434946853,
+              "end": 1787434949527
+            }
+          },
+          "id": "prt_02b6cd123001N5G2gN2R2hkbkl",
+          "sessionID": "ses_fd4935669ffeUyK59AKx370P0Z",
+          "messageID": "msg_02b6cbd75001VtIcv4saaiuzxm"
+        },
+        {
+          "type": "tool",
+          "tool": "context7_query-docs",
+          "callID": "call_212976c7a7c24e5eb68e3bc0",
+          "state": {
+            "status": "completed",
+            "input": {
+              "libraryId": "/llmstxt/resend_llms-full_txt",
+              "query": "send email with template alias id template field POST /emails payload"
+            },
+            "output": "### Send Email with Template\n\nSource: https://resend.com/docs/api-reference/emails/send-email\n\nThis endpoint allows you to send emails using pre-defined templates. You can provide variables to customize the email content dynamically. If all required template variables are supplied, the email is sent. Otherwise, a validation error is returned.\n\n```APIDOC\n## POST /emails\n\n### Description\nSends an email using a specified template and provided variables.\n\n### Method\nPOST\n\n### Endpoint\n/emails\n\n### Parameters\n#### Request Body\n- **from** (string) - Required - The sender's email address.\n- **to** (string) - Required - The recipient's email address.\n- **template_id** (string) - Required - The ID of the template to use.\n- **variables** (object) - Required - A key/value object containing template variables.\n  - **key** (string) - Required - The name of the variable. May only contain ASCII letters (a–z, A–Z), numbers (0–9), and underscores (_).\n\n### Request Example\n```json\n{\n  \"from\": \"you@example.com\",\n  \"to\": \"recipient@example.com\",\n  \"template_id\": \"your_template_id\",\n  \"variables\": {\n    \"CTA\": \"Sign up now\",\n    \"CTA_LINK\": \"https://example.com/signup\"\n  }\n}\n```\n\n### Response\n#### Success Response (200)\n- **id** (string) - The unique identifier for the sent email.\n\n#### Response Example\n```json\n{\n  \"id\": \"email_id_12345\"\n}\n```\n```\n\n--------------------------------\n\n### Send Email with Template\n\nSource: https://resend.com/docs/llms-full.txt\n\nDemonstrates how to send an email using a pre-defined template and variables via the Resend API.\n\n```APIDOC\n## POST /emails\n\n### Description\nSends an email using a specified template and associated variables.\n\n### Method\nPOST\n\n### Endpoint\nhttps://api.resend.com/emails\n\n### Parameters\n#### Request Body\n- **from** (string) - Required - The sender's email address.\n- **to** (string or array) - Required - The recipient's email address(es).\n- **template** (object) - Required - The template to use for the email.\n  - **id** (string) - Required - The ID of the template.\n  - **variables** (object) - Optional - Key-value pairs for template variables.\n\n### Request Example\n```json\n{\n  \"from\": \"Acme <onboarding@resend.dev>\",\n  \"to\": \"delivered@resend.dev\",\n  \"template\": {\n    \"id\": \"order-confirmation\",\n    \"variables\": {\n      \"PRODUCT\": \"Vintage Macintosh\",\n      \"PRICE\": 499\n    }\n  }\n}\n```\n\n### Response\n#### Success Response (200)\n- **id** (string) - The ID of the sent email.\n\n#### Response Example\n```json\n{\n  \"id\": \"d030773c-0000-1000-0000-000000000000\"\n}\n```\n```\n\n--------------------------------\n\n### Send Email with Template\n\nSource: https://resend.com/docs/dashboard/templates/introduction\n\nUse this to send an email using a pre-defined template ID and pass custom variables for personalization. Ensure the template exists in your Resend dashboard.\n\n```javascript\nawait resend.emails.send({\n  from: 'Acme <onboarding@resend.dev>',\n  to: 'delivered@resend.dev',\n  template: {\n    id: 'order-confirmation',\n    variables: {\n      PRODUCT: 'Vintage Macintosh',\n      PRICE: 499,\n    },\n  },\n});\n```\n\n--------------------------------\n\n### Send Email with Template and Variables (Node.js)\n\nSource: https://resend.com/docs/llms-full.txt\n\nUse this snippet to send a transactional email using a published template ID and provide specific variable values for personalization. Ensure the Resend library is installed and initialized with your API key.\n\n```typescript\nimport { Resend } from 'resend';\n\nconst resend = new Resend('re_xxxxxxxxx');\n\nconst { data, error } = await resend.emails.send({\n  from: 'Acme <onboarding@resend.dev>',\n  to: ['delivered@resend.dev'],\n  subject: 'hello world',\n  template: {\n    id: 'f3b9756c-f4f4-44da-bc00-9f7903c8a83f',\n    variables: {\n      PRODUCT: 'Laptop',\n    },\n  },\n});\n```\n\n### Send Batch Emails > Parameters > template\n\nSource: https://resend.com/docs/api-reference/emails/send-batch-emails\n\nTo send an email using a template, provide a `template` object with the `id` (or alias) of the published template and an optional `variables` object for template-specific data. If a `template` is provided, you cannot include `html`, `text`, or `react` content in the same payload. Fields like `from`, `subject`, and `reply_to` in the payload will override the template's defaults if provided.",
+            "metadata": {
+              "truncated": false
+            },
+            "title": "",
+            "time": {
+              "start": 1787434946855,
+              "end": 1787434949327
+            }
+          },
+          "id": "prt_02b6cd126001zPZ1Sr5BnTPwXt",
+          "sessionID": "ses_fd4935669ffeUyK59AKx370P0Z",
+          "messageID": "msg_02b6cbd75001VtIcv4saaiuzxm"
+        },
+        {
+          "type": "tool",
+          "tool": "context7_query-docs",
+          "callID": "call_b885a9e51b154784ac139bb3",
+          "state": {
+            "status": "completed",
+            "input": {
+              "libraryId": "/llmstxt/resend_llms-full_txt",
+              "query": "Resend CLI templates command create update publish list get flags alias subject from html status draft"
+            },
+            "output": "### Manage Email Templates\n\nSource: https://resend.com/docs/llms-full.txt\n\nCommands for creating, managing, and publishing email templates. Supports creation with React Email, listing, retrieval, updating, publishing drafts, duplicating, and deleting templates.\n\n```bash\nresend templates create --name \"Welcome\" --subject \"Welcome to Acme\" --react-email ./emails/welcome.tsx\n```\n\n```bash\nresend templates list             # List all templates\n```\n\n```bash\nresend templates get <id>         # Retrieve a template by ID or alias\n```\n\n```bash\nresend templates update <id>      # Update a template\n```\n\n```bash\nresend templates publish <id>     # Publish a draft template\n```\n\n```bash\nresend templates duplicate <id>   # Duplicate a template\n```\n\n```bash\nresend templates delete <id>      # Delete a template\n```\n\n```bash\nresend templates open [id]        # Open a template in the dashboard\n```\n\n--------------------------------\n\n### Create an Email Template using Resend CLI\n\nSource: https://resend.com/docs/cli\n\nUse this command to create a new email template. You can specify the name, subject, and content for the template.\n\n```shellscript\nresend templates create --name \"Welcome Email\" --subject \"Welcome to our service!\" --html \"<p>Hello {{name}},</p><p>Thank you for joining us.</p>\"\n```\n\n--------------------------------\n\n### Update an Email Template using Resend CLI\n\nSource: https://resend.com/docs/cli\n\nUse this command to update an existing email template. You can modify its name, subject, or content.\n\n```shellscript\nresend templates update --id \"<template_id>\" --name \"Updated Welcome Email\" --subject \"Welcome!\" --html \"<p>Hello {{name}},</p><p>We are glad to have you.</p>\"\n```\n\n--------------------------------\n\n### Publish a Draft Template with CLI\n\nSource: https://resend.com/docs/cli\n\nUse this command to publish a draft email template. Provide the template ID to publish the draft.\n\n```bash\nresend templates publish <template_id>\n```\n\n--------------------------------\n\n### List All Email Templates using Resend CLI\n\nSource: https://resend.com/docs/cli\n\nThis command lists all the email templates available in your Resend account.\n\n```shellscript\nresend templates list # List all templates\n```",
+            "metadata": {
+              "truncated": false
+            },
+            "title": "",
+            "time": {
+              "start": 1787434946857,
+              "end": 1787434949528
+            }
+          },
+          "id": "prt_02b6cd128001a8iBtBwYQWmKHJ",
+          "sessionID": "ses_fd4935669ffeUyK59AKx370P0Z",
+          "messageID": "msg_02b6cbd75001VtIcv4saaiuzxm"
+        },
+        {
+          "type": "tool",
+          "tool": "context7_query-docs",
+          "callID": "call_872c2962a9f248249d0f3a18",
+          "state": {
+            "status": "completed",
+            "input": {
+              "libraryId": "/llmstxt/resend_llms-full_txt",
+              "query": "RESEND_API_KEY environment variable authentication CLI"
+            },
+            "output": "### Set Resend API Key Environment Variable\n\nSource: https://resend.com/docs/llms-full.txt\n\nExport your Resend API key as an environment variable. This key is required for authentication.\n\n```sh\nexport RESEND_API_KEY=\"re_xxxxxxxxx\"\n```\n\n--------------------------------\n\n### Resend CLI Authentication Priority\n\nSource: https://resend.com/docs/cli\n\nIllustrates the priority order for API key resolution in the Resend CLI. The CLI checks for the --api-key flag first, then the RESEND_API_KEY environment variable, and finally looks for saved credentials.\n\n```text\n1 (highest) flag --api-key resend --api-key re_xxx emails send ...\n2 ENV var RESEND_API_KEY export RESEND_API_KEY=re_xxx\n3 (lowest) Saved credentials resend login\n```\n\n--------------------------------\n\n### GitHub Actions CI/CD Setup\n\nSource: https://resend.com/docs/llms-full.txt\n\nConfigure GitHub Actions to use the RESEND_API_KEY environment variable for sending emails via the Resend CLI. This avoids the need for manual login.\n\n```yaml\n# GitHub Actions\nenv:\n  RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}\nsteps:\n  - run: |\n      resend emails send \\\n        --from \"Acme <onboarding@resend.dev>\" \\\n        --to delivered@resend.dev \\\n        --subject \"Deploy complete\" \\\n        --text \"Version ${{ github.sha }} deployed.\"\n```\n\n--------------------------------\n\n### Authenticate with Resend CLI non-interactively\n\nSource: https://resend.com/docs/llms-full.txt\n\nIn non-interactive environments like CI or pipes, use the `--key` flag with `resend login` to provide your API key.\n\n```bash\nresend login --key re_xxxxxxxxxxxxx\n```\n\n### CLI Authentication\n\nSource: https://resend.com/docs/cli\n\nThe Resend CLI supports multiple ways to authenticate, with a clear order of precedence. The CLI first checks for an API key provided via the `--api-key` flag, then looks for the `RESEND_API_KEY` environment variable, and finally uses saved credentials from `resend login`. If no API key is found through any of these methods, the CLI will return an `auth_error`.",
+            "metadata": {
+              "truncated": false
+            },
+            "title": "",
+            "time": {
+              "start": 1787434946859,
+              "end": 1787434949526
+            }
+          },
+          "id": "prt_02b6cd12a0012Md7CsBKzHlHtN",
+          "sessionID": "ses_fd4935669ffeUyK59AKx370P0Z",
+          "messageID": "msg_02b6cbd75001VtIcv4saaiuzxm"
+        },
+        {
+          "reason": "tool-calls",
+          "snapshot": "edd53770038ae9ab251effe8161fdeac8323a3b8",
+          "type": "step-finish",
+          "tokens": {
+            "total": 15541,
+            "input": 1230,
+            "output": 359,
+            "reasoning": 0,
+            "cache": {
+              "write": 0,
+              "read": 13952
+            }
+          },
+          "cost": 0.00163692,
+          "id": "prt_02b6cdbb6001qlpkOpVo1h8eJP",
+          "sessionID": "ses_fd4935669ffeUyK59AKx370P0Z",
+          "messageID": "msg_02b6cbd75001VtIcv4saaiuzxm"
+        }
+      ]
+    },
+    {
+      "info": {
+        "parentID": "msg_02b6ca99a0010gik3LntNaccWe",
+        "role": "assistant",
+        "mode": "docs",
+        "agent": "docs",
+        "path": {
+          "cwd": "/Users/alessandrojcm/.herdr/worktrees/dhc-dashboard/worktree-silver-forest-5b5f",
+          "root": "/Users/alessandrojcm/.herdr/worktrees/dhc-dashboard/worktree-silver-forest-5b5f"
+        },
+        "cost": 0.00274836,
+        "tokens": {
+          "total": 20146,
+          "input": 4838,
+          "output": 332,
+          "reasoning": 0,
+          "cache": {
+            "write": 0,
+            "read": 14976
+          }
+        },
+        "modelID": "minimax-m3",
+        "providerID": "opencode-go",
+        "time": {
+          "created": 1787434949586,
+          "completed": 1787434956646
+        },
+        "finish": "tool-calls",
+        "id": "msg_02b6cdbd2001PRAkOlWShjXZyh",
+        "sessionID": "ses_fd4935669ffeUyK59AKx370P0Z"
+      },
+      "parts": [
+        {
+          "snapshot": "edd53770038ae9ab251effe8161fdeac8323a3b8",
+          "type": "step-start",
+          "id": "prt_02b6ce201001RsYC6hxiszF2bp",
+          "sessionID": "ses_fd4935669ffeUyK59AKx370P0Z",
+          "messageID": "msg_02b6cdbd2001PRAkOlWShjXZyh"
+        },
+        {
+          "type": "reasoning",
+          "text": "I got a lot of useful information. Now let me look for more specific details:\n1. Confirm CLI flags — `--from`, `--html`, `--react-email`, `--alias`, status/draft flags\n2. Confirm alias field for templates and the `template.id` accept alias at send time\n3. Rate limits and gotchas\n4. List pagination cursor details\n\nLet me query the cli page and the rate limit page directly.",
+          "time": {
+            "start": 1787434951170,
+            "end": 1787434952374
+          },
+          "metadata": {
+            "anthropic": {
+              "signature": "de554991b64065f870e35cc022b99c4fca346abbbaefef403ba6c4bcfcd5fa89"
+            }
+          },
+          "id": "prt_02b6ce202001JUpsNrDEtOKOhZ",
+          "sessionID": "ses_fd4935669ffeUyK59AKx370P0Z",
+          "messageID": "msg_02b6cdbd2001PRAkOlWShjXZyh"
+        },
+        {
+          "type": "text",
+          "text": "Let me get more details on CLI flags, the alias field, and rate limits.",
+          "time": {
+            "start": 1787434952376,
+            "end": 1787434954547
+          },
+          "id": "prt_02b6ce6b8001pzJ8jmBJMIo5SG",
+          "sessionID": "ses_fd4935669ffeUyK59AKx370P0Z",
+          "messageID": "msg_02b6cdbd2001PRAkOlWShjXZyh"
+        },
+        {
+          "type": "tool",
+          "tool": "context7_query-docs",
+          "callID": "call_2bfe4c28b3a9493589cf960d",
+          "state": {
+            "status": "completed",
+            "input": {
+              "libraryId": "/llmstxt/resend_llms-full_txt",
+              "query": "CLI templates create flags --alias --from --html --react-email --subject --name complete reference all options"
+            },
+            "output": "### Create a Template\n\nSource: https://resend.com/docs/cli\n\nCreates a new email template. Requires a name, subject, and the path to a React Email component.\n\n```bash\nresend templates create --name \"Welcome\" --subject \"Welcome to Acme\" --react-email ./emails/welcome.tsx\n```\n\n--------------------------------\n\n### Update an Email Template using Resend CLI\n\nSource: https://resend.com/docs/cli\n\nUse this command to update an existing email template. You can modify its name, subject, or the associated React Email file.\n\n```shellscript\nresend templates update <id or alias> --name \"Updated Welcome\" --subject \"Welcome to Acme Updated\" --react-email ./emails/welcome.tsx\n```\n\n--------------------------------\n\n### Template Body Parameters\n\nSource: https://resend.com/docs/api-reference/templates/create-template\n\nDefines the parameters for creating an email template. Includes name, HTML content, alias, sender details, subject, reply-to, plain text version, React component, and variables.\n\n```javascript\n{\n  Expandable, Heading, Info, ParamField\n} = _components;\nif (!Expandable) _missingMdxReference(\"Expandable\", true);\nif (!Heading) _missingMdxReference(\"Heading\", true);\nif (!Info) _missingMdxReference(\"Info\", true);\nif (!ParamField) _missingMdxReference(\"ParamField\", true);\nreturn _jsxs(_Fragment, {\n  children: [_jsx(Heading, {\n    level: \"2\",\n    id: \"body-parameters\",\n    children: \"Body Parameters\"\n  }), \"\\n\", _jsx(ParamField, {\n    body: \"name\",\n    type: \"string\",\n    required: true,\n    id: \"param-name\",\n    children: _jsx(_components.p, {\n      children: \"The name of the template.\"\n    })\n  }), \"\\n\", _jsx(ParamField, {\n    body: \"html\",\n    type: \"string\",\n    required: true,\n    id: \"param-html\",\n    children: _jsx(_components.p, {\n      children: \"The HTML version of the template.\"\n    })\n  }), \"\\n\", _jsx(ParamField, {\n    body: \"alias\",\n    type: \"string\",\n    id: \"param-alias\",\n    children: _jsx(_components.p, {\n      children: \"The alias of the template.\"\n    })\n  }), \"\\n\", _jsxs(ParamField, {\n    body: \"from\",\n    type: \"string\",\n    id: \"param-from\",\n    children: [_jsx(_components.p, {\n      children: \"Sender email address.\"\n    }), _jsxs(_components.p, {\n      children: [\"To include a friendly name, use the format \", _jsx(_components.code, {\n        children: \"\\\"Your Name <sender@domain.com>\\\"\"\n      }), \".\"]\n    }), _jsx(_components.p, {\n      children: \"If provided, this value can be overridden when sending an email using the template.\"\n    })]\n  }), \"\\n\", _jsxs(ParamField, {\n    body: \"subject\",\n    type: \"string\",\n    id: \"param-subject\",\n    children: [_jsx(_components.p, {\n      children: \"Default email subject.\"\n    }), _jsx(_components.p, {\n      children: \"This value can be overridden when sending an email using the template.\"\n    })]\n  }), \"\\n\", _jsxs(ResendParamField, {\n    body: \"reply_to\",\n    type: \"string | string[]\",\n    children: [_jsx(_components.p, {\n      children: \"Default Reply-to email address. For multiple addresses, send as an array of strings.\"\n    }), _jsx(_components.p, {\n      children: \"This value can be overridden when sending an email using the template.\"\n    })]\n  }), \"\\n\", _jsxs(ParamField, {\n    body: \"text\",\n    type: \"string\",\n    id: \"param-text\",\n    children: [_jsx(_components.p, {\n      children: \"The plain text version of the message.\"\n    }), _jsx(Info, {\n      children: _jsx(_components.p, {\n        children: \"If not provided, the HTML will be used to generate a plain text version. You can opt out of this behavior by setting value to an empty string.\"\n      })\n    })]\n  }), \"\\n\", _jsx(ParamField, {\n    body: \"react\",\n    type: \"React.ReactNode\",\n    id: \"param-react\",\n    children: _jsxs(_components.p, {\n      children: [\"The React component used to write the template. \", _jsx(_components.em, {\n        children: \"Only available in the Node.js\\nSDK.\"\n      })]\n    })\n  }), \"\\n\", _jsxs(ParamField, {\n    body: \"variables\",\n    type: \"array\",\n    id: \"param-variables\",\n    children: [_jsx(_components.p, {\n      children: \"The array of variables used in the template. Each template may contain up to 50 variables.\"\n    }), _jsx(_components.p, {\n      children: \"Each variable is an object with the following properties:\"\n    }), _jsxs(Expandable, {\n      defaultOpen: true,\n      title: \"properties\",\n      children: [_jsx(ParamField, {\n        body: \"key\",\n        type: \"string\",\n        required: true,\n        id: \"param-key\",\n        children: _jsxs(_components.p, {\n          children: [\"The key of the variable. We recommend capitalizing the key (e.g. \", _jsx(_components.code, {\n            children: \"PRODUCT_NAME\"\n          }), \").\"]\n        })\n      })]\n    })]\n  })]\n});\n\n```\n\n--------------------------------\n\n### Send Email with React Email Template via CLI\n\nSource: https://resend.com/docs/cli\n\nUse the Resend CLI to send an email using a React Email template. Specify sender, recipient, subject, and the path to your template file.\n\n```bash\nresend emails send --from \"Acme <onboarding@resend.dev>\" --to delivered@resend.dev --subject \"Hello World\" --react-email ./emails/welcome.tsx\n```\n\n### Emails > Send an email\n\nSource: https://resend.com/docs/llms-full.txt\n\nThe `resend emails send` command allows you to send an email. You can provide all options via flags for scripting or let the CLI prompt interactively for missing fields. Required flags include `--from`, `--to`, and `--subject`. You must also provide either `--text`, `--text-file`, `--html`, `--html-file`, or `--react-email` for the email body. The `--template` flag can be used with template variables to send pre-defined emails.",
+            "metadata": {
+              "truncated": false
+            },
+            "title": "",
+            "time": {
+              "start": 1787434954551,
+              "end": 1787434956293
+            }
+          },
+          "id": "prt_02b6cef35001KdfxC29q37rPjv",
+          "sessionID": "ses_fd4935669ffeUyK59AKx370P0Z",
+          "messageID": "msg_02b6cdbd2001PRAkOlWShjXZyh"
+        },
+        {
+          "type": "tool",
+          "tool": "context7_query-docs",
+          "callID": "call_17386b49240944b3a7e16a5a",
+          "state": {
+            "status": "completed",
+            "input": {
+              "libraryId": "/llmstxt/resend_llms-full_txt",
+              "query": "template alias field get template by alias list with alias response payload"
+            },
+            "output": "### Example Response for List Templates\n\nSource: https://resend.com/docs/api-reference/templates/list-templates\n\nThis is an example of the JSON response you can expect when listing templates. It includes details such as status, creation, and update timestamps, and the template alias.\n\n```json\n{\n  \"data\": [\n    {\n      \"id\": \"d9d69002-6301-4a9e-8317-43717351079f\",\n      \"name\": \"Welcome Email\",\n      \"created_at\": \"2026-10-06 23:47:56.678+00\",\n      \"updated_at\": \"2026-10-06 23:47:56.678+00\",\n      \"alias\": \"welcome-message\"\n    }\n  ],\n  \"has_more\": false\n}\n```\n\n--------------------------------\n\n### List Templates (Shell)\n\nSource: https://resend.com/docs/api-reference/templates/list-templates\n\nThis shell script example shows how to make a GET request to the Resend API to list templates, including query parameters for pagination and authorization headers.\n\n```APIDOC\n## List Templates\n\n### Description\nRetrieves a list of all your email templates.\n\n### Method\nGET\n\n### Endpoint\n/templates\n\n### Query Parameters\n- **limit** (integer) - Optional - The number of templates to return per page. Defaults to 50.\n- **after** (string) - Optional - Returns templates after a specific template ID (used for pagination).\n- **before** (string) - Optional - Returns templates before a specific template ID (used for pagination).\n\n### Request Example\n```shell\ncurl -X GET 'https://api.resend.com/templates?limit=2&after=34a080c9-b17d-4187-ad80-5af20266e535' \\\n -H 'Authorization: Bearer re_xxxxxxxxx' \\\n -H 'Content-Type: application/json'\n```\n\n### Response\n#### Success Response (200)\n- **id** (string) - The unique identifier for the template.\n- **name** (string) - The name of the template.\n- **createdAt** (string) - The date and time the template was created.\n\n#### Response Example\n```json\n{\n  \"data\": [\n    {\n      \"id\": \"34a080c9-b17d-4187-ad80-5af20266e535\",\n      \"name\": \"Welcome Email\",\n      \"createdAt\": \"2024-01-01T12:00:00Z\"\n    }\n  ],\n  \"hasMore\": true,\n  \"nextCursor\": \"someCursorString\"\n}\n```\n```\n\n--------------------------------\n\n### GET List Templates\n\nSource: https://resend.com/docs/api-reference/emails/send-email\n\nLists all email templates.\n\n```APIDOC\n## GET /templates\n\n### Description\nLists all email templates. Supports pagination.\n\n### Method\nGET\n\n### Endpoint\n/templates\n\n### Parameters\n#### Query Parameters\n- **limit** (integer) - Optional - The maximum number of templates to return.\n- **next_page_token** (string) - Optional - The token for the next page of results.\n\n### Response\n#### Success Response (200)\n- **data** (object[]) - An array of template objects.\n  - **id** (string) - The unique identifier for the template.\n  - **name** (string) - The name of the template.\n  - **subject** (string) - The subject of the template.\n  - **created_at** (string) - The timestamp when the template was created.\n- **next_page_token** (string) - The token for the next page of results, if available.\n\n#### Response Example\n{\n  \"data\": [\n    {\n      \"id\": \"template_id_123\",\n      \"name\": \"Welcome Email Template\",\n      \"subject\": \"Welcome!\",\n      \"created_at\": \"2023-10-27T22:00:00Z\"\n    },\n    {\n      \"id\": \"template_id_456\",\n      \"name\": \"Password Reset Template\",\n      \"subject\": \"Password Reset\",\n      \"created_at\": \"2023-10-26T10:00:00Z\"\n    }\n  ],\n  \"next_page_token\": \"page_token_xyz\"\n}\n```\n\n--------------------------------\n\n### List Templates\n\nSource: https://resend.com/docs/api-reference/templates/list-templates\n\nFetches a list of templates. You can paginate the results using `limit` and `after` query parameters.\n\n```APIDOC\n## GET /templates\n\n### Description\nRetrieves a list of all templates associated with your Resend account. Supports pagination.\n\n### Method\nGET\n\n### Endpoint\n/templates\n\n#### Query Parameters\n- **limit** (integer) - Optional - The number of templates to return per page. Defaults to 50.\n- **after** (string) - Optional - The ID of the template to start the list after. Used for pagination.\n\n### Response\n#### Success Response (200)\n- **object** (string) - Indicates the type of the returned object, always \"list\".\n- **data** (array) - An array of template objects.\n  - **id** (string) - The unique identifier of the template.\n  - **name** (string) - The name of the template.\n  - **created_at** (string) - The date and time the template was created.\n\n#### Response Example\n```json\n{\n  \"object\": \"list\",\n  \"data\": [\n    {\n      \"id\": \"34a080c9-b17d-4187-ad80-5af20266e535\",\n      \"name\": \"Welcome Email\",\n      \"created_at\": \"2023-10-26T10:00:00.000Z\"\n    }\n  ]\n}\n```\n```\n\n### List Templates\n\nSource: https://resend.com/docs/api-reference/templates/list-templates\n\nThe List Templates API allows you to retrieve a list of all your created email templates. You can filter the results by specifying a limit on the number of templates to return and an `after` cursor for pagination. The response includes a list of template objects, each containing details such as ID, name, status, creation and update timestamps, and an alias.",
+            "metadata": {
+              "truncated": false
+            },
+            "title": "",
+            "time": {
+              "start": 1787434954554,
+              "end": 1787434956576
+            }
+          },
+          "id": "prt_02b6cef38001aOV8Y5vbiLoUOR",
+          "sessionID": "ses_fd4935669ffeUyK59AKx370P0Z",
+          "messageID": "msg_02b6cdbd2001PRAkOlWShjXZyh"
+        },
+        {
+          "type": "tool",
+          "tool": "context7_query-docs",
+          "callID": "call_8ae109a3969442469e20c249",
+          "state": {
+            "status": "completed",
+            "input": {
+              "libraryId": "/llmstxt/resend_llms-full_txt",
+              "query": "Resend API rate limits requests per second templates endpoints"
+            },
+            "output": "### Rate Limit\n\nSource: https://resend.com/docs/llms-full.txt\n\nThe default rate limit is 5 requests per second per team. Exceeding this limit will result in a 429 response error code.\n\n```APIDOC\n## Rate limit\n\nThe default maximum rate limit is **5 requests per second per team**. This limit applies across all API keys associated with your team. This number can be increased for trusted senders by request. You can view your team's current rate limit on the [Settings Usage page](https://resend.com/settings/usage). After that, you'll hit the rate limit and receive a `429` response error code.\n\nLearn more about our [rate limits](/docs/api-reference/rate-limit).\n```\n\n--------------------------------\n\n### Rate Limit Response Headers\n\nSource: https://resend.com/docs/api-reference/rate-limit\n\nThe Resend API includes specific headers in its responses to inform you about your current rate limits. These headers conform to the sixth IETF standard draft for rate limit headers.\n\n```APIDOC\n## Rate Limits\n\n### Response Headers\n\nThe response headers describe your current rate limit following every request in conformance with the sixth IETF standard draft:\n\n| Header name       | Description                                           |\n|-------------------|-------------------------------------------------------|\n| `ratelimit-limit` | Maximum number of requests allowed within a window.   |\n| `ratelimit-remaining` | How many requests you have left within the current window. |\n| `ratelimit-reset` | How many seconds until the limits are reset.          |\n| `retry-after`     | How many seconds you should wait before making a follow-up request. |\n\nThe default maximum rate limit is **5 requests per second per team**. This limit applies across all API keys associated with your team. This number can be increased for trusted senders upon request.\n```\n\n--------------------------------\n\n### List Templates (Shell)\n\nSource: https://resend.com/docs/api-reference/templates/list-templates\n\nThis shell script example shows how to make a GET request to the Resend API to list templates, including query parameters for pagination and authorization headers.\n\n```APIDOC\n## List Templates\n\n### Description\nRetrieves a list of all your email templates.\n\n### Method\nGET\n\n### Endpoint\n/templates\n\n### Query Parameters\n- **limit** (integer) - Optional - The number of templates to return per page. Defaults to 50.\n- **after** (string) - Optional - Returns templates after a specific template ID (used for pagination).\n- **before** (string) - Optional - Returns templates before a specific template ID (used for pagination).\n\n### Request Example\n```shell\ncurl -X GET 'https://api.resend.com/templates?limit=2&after=34a080c9-b17d-4187-ad80-5af20266e535' \\\n -H 'Authorization: Bearer re_xxxxxxxxx' \\\n -H 'Content-Type: application/json'\n```\n\n### Response\n#### Success Response (200)\n- **id** (string) - The unique identifier for the template.\n- **name** (string) - The name of the template.\n- **createdAt** (string) - The date and time the template was created.\n\n#### Response Example\n```json\n{\n  \"data\": [\n    {\n      \"id\": \"34a080c9-b17d-4187-ad80-5af20266e535\",\n      \"name\": \"Welcome Email\",\n      \"createdAt\": \"2024-01-01T12:00:00Z\"\n    }\n  ],\n  \"hasMore\": true,\n  \"nextCursor\": \"someCursorString\"\n}\n```\n```\n\n--------------------------------\n\n### List Templates with Limit and After\n\nSource: https://resend.com/docs/llms-full.txt\n\nDemonstrates how to list templates using the Resend API, specifying a limit and an 'after' cursor for pagination. This is useful for retrieving specific pages of template data.\n\n```Node.js\nimport { Resend } from 'resend';\n\nconst resend = new Resend('re_xxxxxxxxx');\n\nconst { data, error } = await resend.templates.list({\n  limit: 2,\n  after: '34a080c9-b17d-4187-ad80-5af20266e535',\n});\n```\n\n```PHP\n$resend = Resend::client('re_xxxxxxxxx');\n\n$resend->templates->list([\n  'limit' => 2,\n  'after' => '34a080c9-b17d-4187-ad80-5af20266e535'\n]);\n```\n\n```Python\nimport resend\n\nresend.api_key = \"re_xxxxxxxxx\"\n\nresend.Templates.list({\n    \"limit\": 2,\n    \"after\": \"34a080c9-b17d-4187-ad80-5af20266e535\",\n})\n```\n\n```Ruby\nrequire \"resend\"\n\nResend.api_key = \"re_xxxxxxxxx\"\n\nResend::Templates.list(\n  limit: 2,\n  after: \"34a080c9-b17d-4187-ad80-5af20266e535\"\n)\n```\n\n```Go\nimport (\n\t\"context\"\n\t\"github.com/resend/resend-go/v3\"\n)\n\nfunc main() {\n\tclient := resend.NewClient(\"re_xxxxxxxxx\")\n\n\tclient.Templates.ListWithContext(context.TODO(), &resend.ListOptions{\n\t\tLimit: 2,\n\t\tAfter: \"34a080c9-b17d-4187-ad80-5af20266e535\",\n\t})\n}\n```\n\n```Rust\nuse resend_rs::{list_opts::ListOptions, Resend, Result};\n\n#[tokio::main]\nasync fn main() -> Result<()> {\n  let resend = Resend::new(\"re_xxxxxxxxx\");\n\n  let list_opts = ListOptions::default()\n    .with_limit(2)\n    .list_after(\"34a080c9-b17d-4187-ad80-5af20266e535\");\n\n  let _list = resend.templates.list(list_opts).await?;\n\n  Ok(())\n}\n```\n\n```Java\nimport com.resend.*;\n\npublic class Main {\n    public static void main(String[] args) {\n        Resend resend = new Resend(\"re_xxxxxxxxx\");\n\n        ListParams params = ListParams.builder()\n            .limit(2)\n            .after(\"34a080c9-b17d-4187-ad80-5af20266e535\")\n            .build();\n\n        ListTemplatesResponseSuccess data = resend.templates().list(params);\n    }\n}\n```\n\n```.NET\nusing Resend;\n\nIResend resend = ResendClient.Create( \"re_xxxxxxxxx\" ); // Or from DI\n\nvar resp = await resend.TemplateListAsync();\nConsole.WriteLine( \"Nr Templates={0}\", resp.Content.Data.Count );\n```\n\n### API Reference > Rate Limits\n\nSource: https://resend.com/docs/api-reference/rate-limit\n\nThe default rate limit for all Resend API endpoints is 100 requests per minute per IP address. This limit applies across all your API keys.",
+            "metadata": {
+              "truncated": false
+            },
+            "title": "",
+            "time": {
+              "start": 1787434954556,
+              "end": 1787434956412
+            }
+          },
+          "id": "prt_02b6cef3b00156NI67yOLb971t",
+          "sessionID": "ses_fd4935669ffeUyK59AKx370P0Z",
+          "messageID": "msg_02b6cdbd2001PRAkOlWShjXZyh"
+        },
+        {
+          "type": "tool",
+          "tool": "context7_query-docs",
+          "callID": "call_30d644fd584b4570ac9823ce",
+          "state": {
+            "status": "completed",
+            "input": {
+              "libraryId": "/llmstxt/resend_llms-full_txt",
+              "query": "template status draft published publish endpoint unpublish"
+            },
+            "output": "### Publish Template\n\nSource: https://resend.com/docs/api-reference/templates/publish-template\n\nThis endpoint publishes a specific email template, making it available for use. You need to provide the template ID in the URL and your API key in the Authorization header.\n\n```APIDOC\n## POST https://api.resend.com/templates/:templateId/publish\n\n### Description\nPublishes a specific email template, making it available for use.\n\n### Method\nPOST\n\n### Endpoint\nhttps://api.resend.com/templates/:templateId/publish\n\n### Parameters\n#### Path Parameters\n- **templateId** (string) - Required - The ID of the template to publish.\n\n#### Headers\n- **Authorization** (string) - Required - Bearer token for authentication. Example: `Bearer re_xxxxxxxxx`\n- **Content-Type** (string) - Required - Specifies the content type of the request. Example: `application/json`\n\n### Request Example\n```json\n{\n  \"example\": \"\"\n}\n```\n\n### Response\n#### Success Response (200)\n- **id** (string) - The ID of the published template.\n- **object** (string) - The type of object returned, which is 'template'.\n\n#### Response Example\n```json\n{\n  \"id\": \"34a080c9-b17d-4187-ad80-5af20266e535\",\n  \"object\": \"template\"\n}\n```\n```\n\n--------------------------------\n\n### Publish Template\n\nSource: https://resend.com/docs/api-reference/templates/publish-template\n\nPublishes an email template using the Resend API. Requires the template ID and a valid API key.\n\n```javascript\nconst publishTemplate = async (templateId, apiKey) => {\n  const response = await fetch('https://api.resend.com/templates/:template_id/publish', {\n    method: 'POST',\n    headers: {\n      'Content-Type': 'application/json',\n      'Authorization': `Bearer ${apiKey}`\n    },\n    body: JSON.stringify({ template_id: templateId })\n  });\n\n  if (!response.ok) {\n    const errorData = await response.json();\n    throw new Error(`Failed to publish template: ${errorData.message}`);\n  }\n\n  return await response.json();\n};\n\n// Example usage:\nconst apiKey = 'YOUR_API_KEY';\nconst templateId = 'YOUR_TEMPLATE_ID';\n\npublishTemplate(templateId, apiKey)\n  .then(data => console.log('Template published successfully:', data))\n  .catch(error => console.error('Error:', error));\n```\n\n### Templates > Publish a Template\n\nSource: https://resend.com/docs/llms-full.txt\n\nTemplates are in a draft state by default and must be published to be used for sending emails. Publishing can be done through the dashboard or the API. Once published, you can continue to edit the template, and changes are saved as drafts. These changes will only be reflected in emails after you publish the template again.\n\n--------------------------------\n\n### Templates > Version History > Draft vs Published\n\nSource: https://resend.com/docs/dashboard/templates/version-history\n\nTemplates begin in a draft state and must be published to be used for sending emails. This draft vs. published separation enables thorough testing before going live, making changes without affecting active emails, and maintaining version control over email content. The published version is used for sending emails until a new version is published. Progress on a draft template is automatically saved and does not affect the published version.\n\n--------------------------------\n\n### Draft vs Published\n\nSource: https://resend.com/docs/llms-full.txt\n\nAfter publishing a template, you can continue to edit it in draft mode without affecting the live version. This allows for testing and validation of new changes before they are deployed.",
+            "metadata": {
+              "truncated": false
+            },
+            "title": "",
+            "time": {
+              "start": 1787434954558,
+              "end": 1787434956597
+            }
+          },
+          "id": "prt_02b6cef3c001aAccsbyoJLtWPJ",
+          "sessionID": "ses_fd4935669ffeUyK59AKx370P0Z",
+          "messageID": "msg_02b6cdbd2001PRAkOlWShjXZyh"
+        },
+        {
+          "reason": "tool-calls",
+          "snapshot": "edd53770038ae9ab251effe8161fdeac8323a3b8",
+          "type": "step-finish",
+          "tokens": {
+            "total": 20146,
+            "input": 4838,
+            "output": 332,
+            "reasoning": 0,
+            "cache": {
+              "write": 0,
+              "read": 14976
+            }
+          },
+          "cost": 0.00274836,
+          "id": "prt_02b6cf74f0010FJbR8PpzDs06v",
+          "sessionID": "ses_fd4935669ffeUyK59AKx370P0Z",
+          "messageID": "msg_02b6cdbd2001PRAkOlWShjXZyh"
+        }
+      ]
+    },
+    {
+      "info": {
+        "parentID": "msg_02b6ca99a0010gik3LntNaccWe",
+        "role": "assistant",
+        "mode": "docs",
+        "agent": "docs",
+        "path": {
+          "cwd": "/Users/alessandrojcm/.herdr/worktrees/dhc-dashboard/worktree-silver-forest-5b5f",
+          "root": "/Users/alessandrojcm/.herdr/worktrees/dhc-dashboard/worktree-silver-forest-5b5f"
+        },
+        "cost": 0.00324504,
+        "tokens": {
+          "total": 25443,
+          "input": 5512,
+          "output": 347,
+          "reasoning": 0,
+          "cache": {
+            "write": 0,
+            "read": 19584
+          }
+        },
+        "modelID": "minimax-m3",
+        "providerID": "opencode-go",
+        "time": {
+          "created": 1787434956648,
+          "completed": 1787434965475
+        },
+        "finish": "tool-calls",
+        "id": "msg_02b6cf768001mMY6cz3QEiSvTd",
+        "sessionID": "ses_fd4935669ffeUyK59AKx370P0Z"
+      },
+      "parts": [
+        {
+          "snapshot": "edd53770038ae9ab251effe8161fdeac8323a3b8",
+          "type": "step-start",
+          "id": "prt_02b6cfefa0015rgLSrJ9gnGV8I",
+          "sessionID": "ses_fd4935669ffeUyK59AKx370P0Z",
+          "messageID": "msg_02b6cf768001mMY6cz3QEiSvTd"
+        },
+        {
+          "type": "reasoning",
+          "text": "I now have enough information to assemble a comprehensive summary. Let me check a couple more things:\n\n1. The full list of CLI flags for `templates create` — I want to confirm `--alias`, `--from`, `--html`, `--react-email`, `--variables`, `--status`, `--subject`, `--name`\n2. Confirm that `template.id` accepts the alias at send time (per the batch emails doc snippet, it says \"id (or alias)\")\n3. Get one more sanity check on the create-template body parameter reference\n\nI already have most of what I need. Let me do one more targeted query to confirm the CLI flags more completely and to verify the `alias` parameter is also accepted by the CLI.",
+          "time": {
+            "start": 1787434958610,
+            "end": 1787434960958
+          },
+          "metadata": {
+            "anthropic": {
+              "signature": "c3f6249bcc1e7f34d6d4aecbe3d8d48f529044d4863f499bb8647c681a7d0a77"
+            }
+          },
+          "id": "prt_02b6cff12001e4B1XQ86tDfPCQ",
+          "sessionID": "ses_fd4935669ffeUyK59AKx370P0Z",
+          "messageID": "msg_02b6cf768001mMY6cz3QEiSvTd"
+        },
+        {
+          "type": "text",
+          "text": "One more pass to confirm the full CLI flag set for `templates create` and the GET template response shape.",
+          "time": {
+            "start": 1787434960959,
+            "end": 1787434963456
+          },
+          "id": "prt_02b6d083f001xDTJtO0UQ2RgYt",
+          "sessionID": "ses_fd4935669ffeUyK59AKx370P0Z",
+          "messageID": "msg_02b6cf768001mMY6cz3QEiSvTd"
+        },
+        {
+          "type": "tool",
+          "tool": "context7_query-docs",
+          "callID": "call_477deab6934b45bba101ea8b",
+          "state": {
+            "status": "completed",
+            "input": {
+              "libraryId": "/websites/resend",
+              "query": "resend templates create command flags alias from html react-email subject status variables complete list all flags CLI reference"
+            },
+            "output": "### resend templates\n\nSource: https://resend.com/docs/llms-full.txt\n\nCreate, list, retrieve, update, publish, duplicate, and delete email templates directly from the Resend CLI.\n\n```APIDOC\n# resend templates\n\nCreate and manage email templates.\n\n### Commands\n\n#### `resend templates create`\nCreate a new template.\n\n**Usage:**\n```bash\nresend templates create --name \"Welcome\" --subject \"Welcome to Acme\" --react-email ./emails/welcome.tsx\n```\n\n#### `resend templates list`\nList all templates.\n\n**Usage:**\n```bash\nresend templates list\n```\n\n#### `resend templates get <id>`\nRetrieve a template by ID or alias.\n\n**Usage:**\n```bash\nresend templates get <id>\n```\n\n#### `resend templates update <id>`\nUpdate a template.\n\n**Usage:**\n```bash\nresend templates update <id>\n```\n\n#### `resend templates publish <id>`\nPublish a draft template.\n\n**Usage:**\n```bash\nresend templates publish <id>\n```\n\n#### `resend templates duplicate <id>`\nDuplicate a template.\n\n**Usage:**\n```bash\nresend templates duplicate <id>\n```\n\n#### `resend templates delete <id>`\nDelete a template.\n\n**Usage:**\n```bash\nresend templates delete <id>\n```\n\n#### `resend templates open [id]`\nOpen a template in the dashboard.\n\n**Usage:**\n```bash\nresend templates open [id]\n```\n```\n\n--------------------------------\n\n### Create Template with CLI\n\nSource: https://resend.com/docs/api-reference/templates/create-template\n\nUses the Resend CLI to create a template with specified name, HTML, and variables.\n\n```bash\nresend templates create \\\n  --name order-confirmation \\\n  --html \"<p>Name: {{{PRODUCT}}}</p><p>Total: {{{PRICE}}}</p>\" \\\n  --var PRODUCT:string:item \\\n  --var PRICE:number:25\n```\n\n--------------------------------\n\n### POST /templates\n\nSource: https://resend.com/docs/dashboard/templates/introduction\n\nCreates a new email template with a name, sender, subject, HTML body, and optional dynamic variables.\n\n```APIDOC\n## POST /templates\n\n### Description\nCreates a new email template that can be used for sending emails. The template includes the sender information, subject line, HTML content, and variable definitions.\n\n### Method\nPOST\n\n### Endpoint\nhttps://api.resend.com/templates\n\n### Request Body\n- **name** (string) - Required - The name of the template.\n- **from** (string) - Required - The sender email address.\n- **subject** (string) - Required - The email subject line.\n- **html** (string) - Required - The HTML content of the template.\n- **variables** (array) - Optional - A list of variables used in the template, each containing a key, type, and fallback_value.\n\n### Request Example\n{\n  \"name\": \"order-confirmation\",\n  \"from\": \"Resend Store <store@resend.com>\",\n  \"subject\": \"Thanks for your order!\",\n  \"html\": \"<p>Name: {{{PRODUCT}}}</p><p>Total: {{{PRICE}}}</p>\",\n  \"variables\": [\n    {\n      \"key\": \"PRODUCT\",\n      \"type\": \"string\",\n      \"fallback_value\": \"item\"\n    },\n    {\n      \"key\": \"PRICE\",\n      \"type\": \"number\",\n      \"fallback_value\": 20\n    }\n  ]\n}\n```\n\n--------------------------------\n\n### Create a template programmatically\n\nSource: https://resend.com/docs/dashboard/templates/introduction\n\nDefine a new email template with HTML content and variable schemas using the Resend SDKs.\n\n```ts\nimport { Resend } from 'resend';\n\nconst resend = new Resend('re_xxxxxxxxx');\n\nawait resend.templates.create({\n  name: 'order-confirmation',\n  from: 'Resend Store <store@resend.com>',\n  subject: 'Thanks for your order!',\n  html: '<p>Name: {{{PRODUCT}}}</p><p>Total: {{{PRICE}}}</p>',\n  variables: [\n    {\n      key: 'PRODUCT',\n      type: 'string',\n      fallbackValue: 'item',\n    },\n    {\n      key: 'PRICE',\n      type: 'number',\n      fallbackValue: 20,\n    },\n  ],\n});\n```\n\n```php\n$resend = Resend::client('re_xxxxxxxxx');\n\n$resend->templates->create([\n  'name' => 'order-confirmation',\n  'from' => 'Resend Store <store@resend.com>',\n  'subject' => 'Thanks for your order!',\n  'html' => '<p>Name: {{{PRODUCT}}}</p><p>Total: {{{PRICE}}}</p>',\n  'variables' => [\n    [\n      'key' => 'PRODUCT',\n      'type' => 'string',\n      'fallback_value' => 'item'\n    ],\n    [\n      'key' => 'PRICE',\n      'type' => 'number',\n      'fallback_value' => 49.99\n    ]\n  ]\n]);\n```\n\n```py\nimport resend\n\nresend.api_key = \"re_xxxxxxxxx\"\n\nparams: resend.Templates.CreateParams = {\n    \"name\": \"order-confirmation\",\n    \"from\": \"Resend Store <store@resend.com>\",\n    \"subject\": \"Thanks for your order!\",\n    \"html\": \"<p>Name: {{{PRODUCT}}}</p><p>Total: {{{PRICE}}}</p>\",\n    \"variables\": [\n        {\n            \"key\": \"PRODUCT\",\n            \"type\": \"string\",\n            \"fallback_value\": \"item\",\n        },\n        {\n            \"key\": \"PRICE\",\n            \"type\": \"number\",\n            \"fallback_value\": 20,\n        },\n    ],\n}\n\nresend.Templates.create(params)\n```\n\n```ruby\nrequire \"resend\"\n\nResend.api_key = \"re_xxxxxxxxx\"\n\nResend::Templates.create(\n  name: \"order-confirmation\",\n  from: \"Resend Store <store@resend.com>\",\n  subject: \"Thanks for your order!\",\n  html: \"<p>Name: {{{PRODUCT}}}</p><p>Total: {{{PRICE}}}</p>\",\n  variables: [\n    {\n      key: \"PRODUCT\",\n      type: \"string\",\n      fallback_value: \"item\"\n    },\n    {\n      key: \"PRICE\",\n      type: \"number\",\n      fallback_value: 20\n    }\n  ]\n)\n```\n\n### Templates\n\nSource: https://resend.com/docs/cli\n\nThe Resend CLI allows users to create and manage email templates directly from the terminal, including capabilities to list, retrieve, update, publish, duplicate, and delete templates, as well as open them in the dashboard.",
+            "metadata": {
+              "truncated": false
+            },
+            "title": "",
+            "time": {
+              "start": 1787434963458,
+              "end": 1787434965392
+            }
+          },
+          "id": "prt_02b6d1201001dkVjYdUeXss0BV",
+          "sessionID": "ses_fd4935669ffeUyK59AKx370P0Z",
+          "messageID": "msg_02b6cf768001mMY6cz3QEiSvTd"
+        },
+        {
+          "type": "tool",
+          "tool": "context7_query-docs",
+          "callID": "call_58418de26f544260b6a93de8",
+          "state": {
+            "status": "completed",
+            "input": {
+              "libraryId": "/llmstxt/resend_llms-full_txt",
+              "query": "GET /templates/:id response shape fields alias status published_at name subject html from reply_to variables"
+            },
+            "output": "### Update Template\n\nSource: https://resend.com/docs/api-reference/templates/update-template\n\nUpdates an existing email template by its ID or alias. You can modify the template's name, HTML content, sender details, subject, and reply-to addresses.\n\n```APIDOC\n## PUT /templates/{id}\n\n### Description\nUpdates an existing email template by its ID or alias.\n\n### Method\nPUT\n\n### Endpoint\n/templates/{id}\n\n### Parameters\n#### Path Parameters\n- **id** (string) - Required - The ID or alias of the template to update.\n\n#### Request Body\n- **name** (string) - Optional - The name of the template.\n- **html** (string) - Optional - The HTML version of the template.\n- **alias** (string) - Optional - The alias of the template.\n- **from** (string) - Optional - Sender email address. Format: \"Your Name <sender@domain.com>\". Can be overridden when sending an email.\n- **subject** (string) - Optional - Default email subject. Can be overridden when sending an email.\n- **reply_to** (string | string[]) - Optional - Default Reply-to email address. Can be an array for multiple addresses. Can be overridden when sending an email.\n- **text** (string) - Optional - The plain text version of the message. If not provided, HTML will be used to generate it. Set to an empty string to opt out.\n- **react** (React.ReactNode) - Optional - The React component for the template. Only available in the Node.js SDK.\n- **variables** (array) - Optional - An array of variables used in the template. Max 50 variables. Each variable is an object with a 'key' (string, required) property. Example key: \"PRODUCT_NAME\".\n\n### Request Example\n```json\n{\n  \"name\": \"My Updated Template\",\n  \"html\": \"<p>This is the updated HTML content.</p>\",\n  \"subject\": \"Updated Subject\"\n}\n```\n\n### Response\n#### Success Response (200)\n- **id** (string) - The ID of the updated template.\n- **name** (string) - The name of the updated template.\n- **created_at** (string) - The timestamp when the template was created.\n\n#### Response Example\n```json\n{\n  \"id\": \"tpl_1234567890abcdef\",\n  \"name\": \"My Updated Template\",\n  \"created_at\": \"2023-10-27T10:00:00.000Z\"\n}\n```\n```\n\n--------------------------------\n\n### Create Template with Context\n\nSource: https://resend.com/docs/api-reference/templates/create-template\n\nThis snippet demonstrates how to create a new email template with HTML content and variables using the Resend client library.\n\n```APIDOC\n## POST /templates\n\n### Description\nCreates a new email template with a specified name, HTML content, and optional variables.\n\n### Method\nPOST\n\n### Endpoint\n/templates\n\n### Request Body\n- **name** (string) - Required - The name of the template.\n- **html** (string) - Required - The HTML content of the template. Can include Handlebars-style variables (e.g., {{{VARIABLE_NAME}}}).\n- **variables** (array) - Optional - A list of variables used in the template.\n\n### Request Example\n```json\n{\n  \"name\": \"order-confirmation\",\n  \"html\": \"<p>Name: {{{PRODUCT}}}</p><p>Total: {{{PRICE}}}</p>\",\n  \"variables\": []\n}\n```\n\n### Response\n#### Success Response (200)\n- **id** (string) - The unique identifier of the created template.\n- **name** (string) - The name of the template.\n- **html** (string) - The HTML content of the template.\n- **variables** (array) - The list of variables used in the template.\n\n#### Response Example\n```json\n{\n  \"id\": \"tpl_xxxxxxxxxxxxxxxx\",\n  \"name\": \"order-confirmation\",\n  \"html\": \"<p>Name: {{{PRODUCT}}}</p><p>Total: {{{PRICE}}}</p>\",\n  \"variables\": []\n}\n```\n```\n\n--------------------------------\n\n### Get Email Template (Python)\n\nSource: https://resend.com/docs/api-reference/templates/create-template\n\nExample of retrieving a specific email template by its ID using the Resend SDK for Python.\n\n```python\nfrom resend import Resend\n\nresend = Resend(api_key=os.environ.get(\"RESEND_API_KEY\"))\n\ntry:\n    response = resend.templates.get(\"d290f1ee-6c54-4b01-90e6-d701748f0853\")\n    print(response)\nexcept Exception as e:\n    print(e)\n```\n\n--------------------------------\n\n### Rust SDK: Get Single Email Template\n\nSource: https://resend.com/docs/api-reference/templates/delete-template\n\nFetch a specific email template by its ID using the Resend Rust SDK. Ensure 'resend-rs' is included in your project.\n\n```rust\nuse resend_rs::Resend;\n\n#[tokio::main]\nasync fn main() {\n    let resend = Resend::new(std::env::var(\"RESEND_API_KEY\").unwrap());\n\n    let template_id = \"34a080c9-b17d-4187-ad80-5af20266e535\";\n    let result = resend.templates().get(template_id).await;\n\n    match result {\n        Ok(res) => println!(\"{:?}\", res),\n        Err(err) => eprintln!(\"Error getting template {}: {:?}\", template_id, err),\n    }\n}\n```\n\n--------------------------------\n\n### Get Template by ID using Resend CLI\n\nSource: https://resend.com/docs/llms-full.txt\n\nUse the Resend CLI to retrieve a template by its ID. Ensure the CLI is installed and configured with your API key.\n\n```bash\nresend templates get 34a080c9-b17d-4187-ad80-5af20266e535\n```",
+            "metadata": {
+              "truncated": false
+            },
+            "title": "",
+            "time": {
+              "start": 1787434963460,
+              "end": 1787434965323
+            }
+          },
+          "id": "prt_02b6d12030019qo3HyzD2VCaep",
+          "sessionID": "ses_fd4935669ffeUyK59AKx370P0Z",
+          "messageID": "msg_02b6cf768001mMY6cz3QEiSvTd"
+        },
+        {
+          "type": "tool",
+          "tool": "context7_query-docs",
+          "callID": "call_80e525aeec7d43399bce609f",
+          "state": {
+            "status": "completed",
+            "input": {
+              "libraryId": "/llmstxt/resend_llms-full_txt",
+              "query": "send email template id or alias templates.id accepts alias at send time"
+            },
+            "output": "### Send Email with Template\n\nSource: https://resend.com/docs/dashboard/templates/introduction\n\nUse this to send an email using a pre-defined template ID and pass custom variables for personalization. Ensure the template exists in your Resend dashboard.\n\n```javascript\nawait resend.emails.send({\n  from: 'Acme <onboarding@resend.dev>',\n  to: 'delivered@resend.dev',\n  template: {\n    id: 'order-confirmation',\n    variables: {\n      PRODUCT: 'Vintage Macintosh',\n      PRICE: 499,\n    },\n  },\n});\n```\n\n--------------------------------\n\n### Send Email with Template\n\nSource: https://resend.com/docs/dashboard/templates/introduction\n\nSend an email using a pre-defined template with specific variables. Ensure the template ID and variables are correctly configured.\n\n```javascript\nimport { Resend } from 'resend';\n\nconst resend = new Resend('re_xxxxxxxxx');\n\nawait resend.emails.send({\n  from: 'Acme <onboarding@resend.dev>',\n  to: 'delivered@resend.dev',\n  template: {\n    id: 'order-confirmation',\n    variables: {\n      PRODUCT: 'Vintage Macintosh',\n      PRICE: 499,\n    },\n  },\n});\n\n```\n\n--------------------------------\n\n### Send Email with Template and Variables (Node.js)\n\nSource: https://resend.com/docs/llms-full.txt\n\nUse this snippet to send a transactional email using a published template ID and provide specific variable values for personalization. Ensure the Resend library is installed and initialized with your API key.\n\n```typescript\nimport { Resend } from 'resend';\n\nconst resend = new Resend('re_xxxxxxxxx');\n\nconst { data, error } = await resend.emails.send({\n  from: 'Acme <onboarding@resend.dev>',\n  to: ['delivered@resend.dev'],\n  subject: 'hello world',\n  template: {\n    id: 'f3b9756c-f4f4-44da-bc00-9f7903c8a83f',\n    variables: {\n      PRODUCT: 'Laptop',\n    },\n  },\n});\n```\n\n### Send Batch Emails > Body Parameters > template\n\nSource: https://resend.com/docs/api-reference/emails/send-batch-emails\n\nTo send emails using a template, provide a 'template' object with an 'id' (or alias) and optionally 'variables'. If a template is used, 'html', 'text', or 'react' cannot be included in the payload. The 'from', 'subject', and 'reply_to' fields in the payload take precedence over the template's defaults.\n\n--------------------------------\n\n### Emails > Send Email > Template\n\nSource: https://resend.com/docs/api-reference/emails/send-email\n\nEmails can be sent using pre-defined templates by providing a template ID or alias and an object for variables. When using a template, you cannot simultaneously provide HTML, text, or React content. The 'from', 'subject', and 'reply_to' fields in the payload will override the template's defaults if provided.",
+            "metadata": {
+              "truncated": false
+            },
+            "title": "",
+            "time": {
+              "start": 1787434963463,
+              "end": 1787434965402
+            }
+          },
+          "id": "prt_02b6d1205001f1KAN2ySRcMaYv",
+          "sessionID": "ses_fd4935669ffeUyK59AKx370P0Z",
+          "messageID": "msg_02b6cf768001mMY6cz3QEiSvTd"
+        },
+        {
+          "reason": "tool-calls",
+          "snapshot": "edd53770038ae9ab251effe8161fdeac8323a3b8",
+          "type": "step-finish",
+          "tokens": {
+            "total": 25443,
+            "input": 5512,
+            "output": 347,
+            "reasoning": 0,
+            "cache": {
+              "write": 0,
+              "read": 19584
+            }
+          },
+          "cost": 0.00324504,
+          "id": "prt_02b6d19c2001V65PVJJ3Aikd2N",
+          "sessionID": "ses_fd4935669ffeUyK59AKx370P0Z",
+          "messageID": "msg_02b6cf768001mMY6cz3QEiSvTd"
+        }
+      ]
+    },
+    {
+      "info": {
+        "parentID": "msg_02b6ca99a0010gik3LntNaccWe",
+        "role": "assistant",
+        "mode": "docs",
+        "agent": "docs",
+        "path": {
+          "cwd": "/Users/alessandrojcm/.herdr/worktrees/dhc-dashboard/worktree-silver-forest-5b5f",
+          "root": "/Users/alessandrojcm/.herdr/worktrees/dhc-dashboard/worktree-silver-forest-5b5f"
+        },
+        "cost": 0.0066696,
+        "tokens": {
+          "total": 32132,
+          "input": 3816,
+          "output": 3356,
+          "reasoning": 0,
+          "cache": {
+            "write": 0,
+            "read": 24960
+          }
+        },
+        "modelID": "minimax-m3",
+        "providerID": "opencode-go",
+        "time": {
+          "created": 1787434965477,
+          "completed": 1787435013472
+        },
+        "finish": "stop",
+        "id": "msg_02b6d19e5001obkpsabV51132E",
+        "sessionID": "ses_fd4935669ffeUyK59AKx370P0Z"
+      },
+      "parts": [
+        {
+          "snapshot": "edd53770038ae9ab251effe8161fdeac8323a3b8",
+          "type": "step-start",
+          "id": "prt_02b6d2001001IrPt8BnxvZLi4v",
+          "sessionID": "ses_fd4935669ffeUyK59AKx370P0Z",
+          "messageID": "msg_02b6d19e5001obkpsabV51132E"
+        },
+        {
+          "type": "reasoning",
+          "text": "I now have a comprehensive picture. Let me compile the summary. Let me verify a couple of things first:\n\n1. The CLI `templates create` flag set — I have confirmation that it supports `--name`, `--subject`, `--react-email`, `--html`, `--var KEY:TYPE:FALLBACK` (for variables), but I don't see explicit `--alias`, `--from`, `--status` flags documented in the CLI. The user asked specifically about these.\n\n2. Confirm: the docs say `template.id` accepts both ID and alias at send time. Yes, confirmed in the Send Batch Emails reference: \"provide a 'template' object with an 'id' (or alias)\".\n\n3. Update endpoint is shown as both `PATCH /templates/:template_id` and `PUT /templates/{id}` in different docs — the more recent/correct one is `PATCH` per the templates knowledge-base doc, but the update-template reference shows `PUT`. Looking more carefully: the `update-template` doc explicitly says `PUT /templates/{id}`. The knowledge-base doc says `PATCH`. There's some inconsistency in the docs. Let me flag this as a gotcha.\n\n4. Templates start as draft, must be explicitly published via POST /:id/publish to be used for sending. There's no unpublish endpoint documented.\n\n5. Rate limit: 5 requests per second per team default, with `429` + Retry-After header. One snippet also says \"100 requests per minute per IP\" which is from an older rate-limit page — the more recent 5/sec per team is the canonical answer. I'll note both.\n\n6. CLI auth: RESEND_API_KEY env var, `--api-key` flag, or `resend login --key <key>`.\n\nLet me also verify whether the CLI template commands accept `--alias` and `--from` flags explicitly. The docs only show `--name`, `--subject`, `--react-email`, `--html`, `--var`. The user should be aware that the CLI's template management is a thin wrapper — for full control (alias, from, reply_to, variables with arbitrary types), they may want to drop down to REST. Let me note this.\n\nActually, looking again at the CLI docs section:\n- `resend templates create --name \"Welcome\" --subject \"Welcome to Acme\" --react-email ./emails/welcome.tsx`\n- `resend templates create --name order-confirmation --html \"...\" --var PRODUCT:string:item --var PRICE:number:25`\n\nSo the CLI create supports `--name`, `--subject`, `--html` (or `--react-email`), and `--var KEY:TYPE:FALLBACK` (one per variable, can be repeated). I don't see `--alias`, `--from`, `--reply-to`, `--text`, `--status`, or direct `--variables` (other than the shorthand `--var`) explicitly documented for the CLI.\n\nFor `templates update`, the syntax is `resend templates update <id or alias> --name \"Updated\" --subject \"Welcome\" --react-email ./emails/welcome.tsx` — same flag surface as create.\n\nOK, I have enough. Let me write the summary.",
+          "time": {
+            "start": 1787434967042,
+            "end": 1787434976780
+          },
+          "metadata": {
+            "anthropic": {
+              "signature": "4536cbf1f274da1c9506d20b007975d0d15e32de5454588165c2a6ac0b5f14cd"
+            }
+          },
+          "id": "prt_02b6d2002001HHPztbj7MN33rJ",
+          "sessionID": "ses_fd4935669ffeUyK59AKx370P0Z",
+          "messageID": "msg_02b6d19e5001obkpsabV51132E"
+        },
+        {
+          "type": "text",
+          "text": "I have everything I need. Here is the consolidated research summary.\n\n---\n\n# Resend Templates — API & CLI Reference (2026)\n\n## 1. The `resend` CLI — Templates subcommand\n\n**Yes**, the CLI manages dashboard-hosted Templates. Source: <https://resend.com/docs/cli>, <https://resend.com/docs/api-reference/templates/create-template>.\n\n### Subcommands\n\n```bash\nresend templates create    # Create a new template (starts as draft)\nresend templates list      # List all templates\nresend templates get <id>  # Retrieve a template by ID or alias\nresend templates update <id or alias>\nresend templates publish <id>          # Publish a draft\nresend templates duplicate <id>\nresend templates delete <id>\nresend templates open [id]              # Open in the dashboard\n```\n\n### `templates create` flags (documented surface)\n\n```bash\nresend templates create \\\n  --name \"Welcome\" \\\n  --subject \"Welcome to Acme\" \\\n  --html \"<p>Hi {{{NAME}}}</p>\" \\\n  --var PRODUCT:string:item \\\n  --var PRICE:number:25\n# OR (mutually exclusive with --html):\n  --react-email ./emails/welcome.tsx\n```\n\nFlags explicitly documented for the CLI: `--name`, `--subject`, `--html` / `--react-email`, repeated `--var KEY:TYPE:FALLBACK`. **Not documented as CLI flags**: `--alias`, `--from`, `--reply-to`, `--text`, `--status` (draft/published), or a raw `--variables` JSON. The same restricted flag set applies to `templates update`.\n\n**Gotcha for the CI pipeline:** if you need `alias`, `from`, `reply_to`, `text`, or a non-string `fallbackValue`, the CLI's template surface is incomplete — fall back to the REST API (or the Node SDK) for full control.\n\n### CLI authentication (auth precedence, highest first)\n\n1. `--api-key re_xxx` flag on any command\n2. `RESEND_API_KEY` environment variable\n3. Saved credentials from `resend login [--key re_xxx]`\n\nSource: <https://resend.com/docs/cli>. CI-friendly setup:\n\n```yaml\nenv:\n  RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}\n```\n\n---\n\n## 2. Resend REST Templates API (`https://api.resend.com`)\n\nAll requests require `Authorization: Bearer re_xxxxxxxxx` and `Content-Type: application/json`.\n\n### Create a template — `POST /templates`\n\nSource: <https://resend.com/docs/api-reference/templates/create-template>\n\nRequest body fields:\n\n| Field | Type | Required | Notes |\n|---|---|---|---|\n| `name` | string | yes | Human-readable name |\n| `html` | string | yes | HTML body. Variables referenced as `{{{VAR_NAME}}}` (triple-brace Handlebars) |\n| `from` | string | no | `\"Your Name <sender@domain.com>\"`. Sets the default sender; can be overridden at send time |\n| `subject` | string | no | Default subject; overridable at send time |\n| `reply_to` | string \\| string[] | no | Default reply-to; overridable |\n| `text` | string | no | Plain text body. If omitted, derived from `html`. Empty string opts out |\n| `alias` | string | no | **Stable string identifier usable at send time** (see §3) |\n| `variables` | array | no | Up to 50 entries; each `{ key, type, fallback_value }` |\n| `react` | `React.ReactNode` | no | Node.js SDK only — server-renders to HTML |\n\nCreated templates are **drafts** by default — they cannot be used to send until published. Source: <https://resend.com/docs/dashboard/templates/version-history>.\n\n### Update a template — `PATCH /templates/:template_id`  *(also shown as `PUT /templates/{id}` in some docs — see gotcha)*\n\nSource: <https://resend.com/docs/api-reference/templates/update-template>. Path param `:template_id` accepts either the template UUID or the alias.\n\nAll body fields are optional (sparse update): `name`, `html`, `alias`, `from`, `subject`, `reply_to`, `text`, `react`, `variables`. Updates land as **drafts** — they do not affect the live published version until you re-publish.\n\n### Publish a template — `POST /templates/:template_id/publish`\n\nSource: <https://resend.com/docs/api-reference/templates/publish-template>. Empty body. Response:\n\n```json\n{ \"id\": \"34a080c9-...\", \"object\": \"template\" }\n```\n\nThere is **no documented `unpublish` endpoint** — once published, you continue editing against a draft and re-publish to roll forward.\n\n### Get a template — `GET /templates/:template_id`\n\nPath param accepts ID **or alias** (CLI confirms: `resend templates get <id or alias>`).\n\nResponse fields (assembled from create/publish docs and SDK examples — the official `get-template` API reference is thin; the canonical full shape is what `list` and `create` return):\n\n```json\n{\n  \"id\": \"d9d69002-6301-4a9e-8317-43717351079f\",\n  \"name\": \"Welcome Email\",\n  \"alias\": \"welcome-message\",\n  \"status\": \"draft\",                      // \"draft\" | \"published\"\n  \"from\": \"Acme <hi@example.com>\",\n  \"subject\": \"Welcome\",\n  \"html\": \"<p>Hi {{{NAME}}}</p>\",\n  \"text\": \"Hi {{NAME}}\",\n  \"reply_to\": [\"reply@example.com\"],\n  \"variables\": [\n    { \"key\": \"NAME\", \"type\": \"string\", \"fallback_value\": \"friend\" }\n  ],\n  \"created_at\": \"2026-10-06 23:47:56.678+00\",\n  \"updated_at\": \"2026-10-06 23:47:56.678+00\",\n  \"published_at\": \"2026-10-07 10:00:00.000Z\"  // present when published\n}\n```\n\n(`status` and `published_at` are documented on the publish response and version-history page; `alias` is documented on the list response.)\n\n### List templates — `GET /templates`\n\nSource: <https://resend.com/docs/api-reference/templates/list-templates>.\n\nPagination: cursor-based, query params:\n\n- `limit` (int, default 50)\n- `after` (string) — return templates after this template ID\n- `before` (string) — return templates before this template ID\n\nResponse envelope:\n\n```json\n{\n  \"object\": \"list\",\n  \"data\": [ { \"id\": \"...\", \"name\": \"...\", \"alias\": \"...\", \"status\": \"...\",\n              \"created_at\": \"...\", \"updated_at\": \"...\" } ],\n  \"has_more\": true,\n  \"next_cursor\": \"...\"    // some pages also return \"next_page_token\"\n}\n```\n\n(`has_more` + cursor field names vary slightly across doc snippets — `next_cursor` and `next_page_token` both appear.)\n\n### Other endpoints\n\n- `DELETE /templates/:template_id` → `{ \"id\": \"...\" }`\n- `POST /templates/:template_id/duplicate` → `{ \"id\": \"...\", \"name\": \"Original (Copy)\" }`\n\n---\n\n## 3. Sending with an alias at send time\n\n**Yes** — `template.id` accepts either the template UUID **or the alias**. Source: <https://resend.com/docs/api-reference/emails/send-email>, <https://resend.com/docs/api-reference/emails/send-batch-emails>:\n\n> \"To send an email using a template, provide a `template` object with an `id` (or alias) of the published template and an optional `variables` object.\"\n\n```jsonc\nPOST https://api.resend.com/emails\n{\n  \"from\": \"Acme <onboarding@resend.dev>\",\n  \"to\": \"delivered@resend.dev\",\n  \"template\": {\n    \"id\": \"order-confirmation\",   // <-- works with alias string\n    \"variables\": { \"PRODUCT\": \"Vintage Macintosh\", \"PRICE\": 499 }\n  }\n}\n```\n\n**Constraints at send time** (worth knowing for CI):\n- `template` cannot coexist with `html`, `text`, or `react` in the same payload.\n- Top-level `from`, `subject`, `reply_to` in the send payload **override** the template defaults.\n- Variable keys must match ASCII letters / digits / underscores only; missing variables with no `fallback_value` cause a validation error.\n\nAlias is **settable** on both `POST /templates` (create) and `PATCH /templates/:id` (update) — confirmed by the create-template and update-template reference pages (both list `alias` in the body parameters).\n\n---\n\n## 4. Rate limits & gotchas\n\n- **Default rate limit: 5 requests per second per team**, shared across all API keys for the team. Source: <https://resend.com/docs/api-reference/rate-limit>. Exceeding returns `429`.\n- Response headers (IETF draft-6):\n  - `ratelimit-limit`, `ratelimit-remaining`, `ratelimit-reset`, `retry-after`\n- One older doc snippet also mentions \"100 requests per minute per IP\" — the **5 req/sec per team** is the current canonical value (rate-limit page); the 100/min/IP phrasing is legacy.\n- Limits can be raised on request for trusted senders (Settings → Usage page).\n- **HTTP method inconsistency**: the update-template reference shows `PUT /templates/{id}` while other Resend pages (knowledge-base, dashboard topics) show `PATCH /templates/:template_id`. The Node SDK example uses `resend.templates.update()` (which maps to `PATCH`). For CI, **prefer PATCH** as the safe default and fall back to PUT only if a 405 surfaces in your environment.\n\n---\n\n## 5. Source URLs (everything referenced above)\n\n- CLI overview: <https://resend.com/docs/cli>\n- CLI auth & `RESEND_API_KEY`: <https://resend.com/docs/cli> (section \"CLI Authentication\")\n- Templates dashboard intro: <https://resend.com/docs/dashboard/templates/introduction>\n- Templates draft vs published: <https://resend.com/docs/dashboard/templates/version-history>\n- API reference index: <https://resend.com/docs/api-reference/templates/create-template>, `…/update-template`, `…/publish-template`, `…/list-templates`, `…/delete-template`\n- Send email (template via alias): <https://resend.com/docs/api-reference/emails/send-email>, <https://resend.com/docs/api-reference/emails/send-batch-emails>\n- Rate limits: <https://resend.com/docs/api-reference/rate-limit>\n- Full LLM-readable mirror: <https://resend.com/docs/llms-full.txt>\n\n---\n\n## TL;DR for the CI sync pipeline\n\n- **CLI works** for create / update / publish / list / get / duplicate / delete, but its flag surface on `templates create`/`update` is narrow: `--name --subject --html|--react-email --var KEY:TYPE:FALLBACK`. No documented `--alias`, `--from`, `--reply-to`, `--text`, or `--status` flags.\n- **REST API** gives you the full surface: `POST /templates` with `{name, html, from?, subject?, reply_to?, text?, alias?, variables?, react?}`. Edit-as-draft, then `POST /templates/:id/publish`. Update via `PATCH /templates/:id` (alias-acceptable).\n- **Alias works as a stable send-time address**: `{ template: { id: \"<alias>\", variables: {…} } }` in `POST /emails`.\n- **Drafts must be published** before `POST /emails` will use them — write/upsert + explicit publish are two separate calls.\n- **5 req/sec/team** is the cap; respect `retry-after` on 429s.\n- **Auth:** `RESEND_API_KEY` env var (or `--api-key` flag, or `resend login --key`) — wire it as a CI secret.\n\nGiven your stated needs (`alias`, `from`, `subject`, `html` from React Email), the cleanest CI path is **Node SDK `resend.templates.create(...)` / `update()` / `publish()`**, falling back to raw `fetch` to `api.resend.com` for anything the CLI can't express — not the CLI itself.",
+          "time": {
+            "start": 1787434976782,
+            "end": 1787435013371
+          },
+          "id": "prt_02b6d460e001uF81uXfPL2U7bZ",
+          "sessionID": "ses_fd4935669ffeUyK59AKx370P0Z",
+          "messageID": "msg_02b6d19e5001obkpsabV51132E"
+        },
+        {
+          "reason": "stop",
+          "snapshot": "edd53770038ae9ab251effe8161fdeac8323a3b8",
+          "type": "step-finish",
+          "tokens": {
+            "total": 32132,
+            "input": 3816,
+            "output": 3356,
+            "reasoning": 0,
+            "cache": {
+              "write": 0,
+              "read": 24960
+            }
+          },
+          "cost": 0.0066696,
+          "id": "prt_02b6dd546001QrU625hUPA0S7w",
+          "sessionID": "ses_fd4935669ffeUyK59AKx370P0Z",
+          "messageID": "msg_02b6d19e5001obkpsabV51132E"
+        }
+      ]
+    }
+  ]
+}
