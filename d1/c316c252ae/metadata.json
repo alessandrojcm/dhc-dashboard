@@ -3,7 +3,7 @@
   "checkpoint_id": "d1c316c252ae",
   "strategy": "manual-commit",
   "branch": "worktree/silver-forest-5b5f",
-  "checkpoints_count": 2,
+  "checkpoints_count": 9,
   "files_touched": [
     "CONTEXT.md",
     "apps/phoenix/AGENTS.md",
@@ -19,6 +19,8 @@
     "apps/phoenix/test/dhc/email/api_client_test.exs",
     "apps/phoenix/test/dhc/email/workers/worker_test.exs",
     "apps/phoenix/test/support/email_adapter_stub.ex",
+    "docs/adr/0021-swoosh-is-the-email-transport-seam.md",
+    "docs/adr/0022-code-authored-templates-synced-to-resend.md",
     "docs/agents/commands.md",
     "docs/agents/migration-notes.md",
     "docs/agents/where-to-look.md"
@@ -37,13 +39,20 @@
       "compact_transcript": "/d1/c316c252ae/1/transcript.jsonl",
       "content_hash": "/d1/c316c252ae/1/content_hash.txt",
       "prompt": ""
+    },
+    {
+      "metadata": "/d1/c316c252ae/2/metadata.json",
+      "transcript": "/d1/c316c252ae/2/full.jsonl",
+      "compact_transcript": "/d1/c316c252ae/2/transcript.jsonl",
+      "content_hash": "/d1/c316c252ae/2/content_hash.txt",
+      "prompt": "/d1/c316c252ae/2/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 214371,
+    "input_tokens": 538545,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 9756103,
-    "output_tokens": 51105,
-    "api_call_count": 104
+    "cache_read_tokens": 14278535,
+    "output_tokens": 78923,
+    "api_call_count": 170
   }
 }
