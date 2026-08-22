@@ -146,11 +146,37 @@ test.describe("Member reactivation", () => {
 		test.setTimeout(120_000);
 		await loginAsUser(context, adminEmail);
 
+		const amountsResponse = page.waitForResponse(
+			(response) =>
+				response.request().method() === "GET" &&
+				response
+					.url()
+					.includes(
+						`/members/${memberData.userId}/membership/reactivation-preview/amounts`,
+					),
+		);
 		const dialog = await openReactivationFromDirectory(page);
 
 		// The saved SEPA method is shown BEFORE any charge happens.
 		await expect(dialog.getByText(/saved SEPA direct debit/i)).toBeVisible();
 		await expect(dialog.getByText(/ending in 5678/i)).toBeVisible();
+
+		// ALE-254: before confirming, the operator sees the Stripe-computed
+		// amounts for the selected start date — never client-side math.
+		const amounts = await amountsResponse;
+		expect(amounts.status()).toBe(200);
+		const amountsBody = await amounts.json();
+		expect(amountsBody.data.dueToday.amount).toBeGreaterThan(0);
+		expect(amountsBody.data.dueToday.currency).toBe("EUR");
+		expect(amountsBody.data.monthlyFee.amount).toBeGreaterThan(0);
+		expect(amountsBody.data.annualFee.amount).toBeGreaterThan(0);
+
+		await expect(dialog.getByText("Due today")).toBeVisible();
+		await expect(dialog.getByText(/monthly membership/i).first()).toBeVisible();
+		await expect(dialog.getByText(/annual membership/i).first()).toBeVisible();
+		await expect(
+			dialog.getByTestId("reactivation-amounts").getByText(/€\d/).first(),
+		).toBeVisible();
 
 		const reactivateResponse = page.waitForResponse(
 			(response) =>

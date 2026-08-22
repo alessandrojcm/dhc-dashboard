@@ -44,7 +44,11 @@ defmodule Dhc.Membership.Reactivation do
 
   @annual_anchor_month "1"
   @annual_anchor_day "7"
+  # Integer twins for date math (the string pair above feeds form encoding).
+  @annual_anchor_month_int 1
+  @annual_anchor_day_int 7
   @metadata_purpose "membership-reactivation"
+  @currency "EUR"
 
   # Shared with Dhc.Membership's guard so it can recognise subscriptions
   # created by this command.
@@ -101,6 +105,177 @@ defmodule Dhc.Membership.Reactivation do
   end
 
   def activate(_attrs), do: {:error, :stripe_error}
+
+  @doc """
+  Computes what a reactivation starting on `start_date` would charge, via
+  Stripe's invoice-preview machinery — the same endpoint signup pricing uses
+  — so the operator sees exact amounts before confirming (ALE-254). No local
+  arithmetic: Stripe prices the hypothetical subscriptions.
+
+  The preview parameters mirror `activate/1` exactly:
+
+  * Monthly first invoice anchored at the operator-chosen start date when it
+    is in the future; a start of today needs no anchor (full period starts
+    immediately).
+  * Annual first invoice prorated to the next January 7 anchor. The actual
+    subscription resolves `billing_cycle_anchor_config` to that date at the
+    CREATION time-of-day UTC (verified against real Stripe), so the preview
+    passes the same resolved timestamp instead of midnight.
+  * Recurring fees come from previews dated at each period start, which
+    return the full upcoming period's subtotal.
+
+  Any Stripe failure aborts the whole computation with `{:error,
+  :stripe_error}`; the UI hides the amounts and keeps the form usable.
+  """
+  @spec preview_amounts(Date.t()) ::
+          {:ok,
+           %{
+             dueToday: %{amount: non_neg_integer(), currency: String.t(), precision: 2},
+             monthlyFee: %{amount: non_neg_integer(), currency: String.t(), precision: 2},
+             annualFee: %{amount: non_neg_integer(), currency: String.t(), precision: 2}
+           }}
+          | {:error, :stripe_error}
+  def preview_amounts(%Date{} = start_date) do
+    # membership_prices/0 models internal failure shapes for activate/1's
+    # logging; a preview must collapse every Stripe failure into the single
+    # error the API contract exposes (a partial price list is as useless as
+    # no amounts at all).
+    case membership_prices() do
+      {:ok, prices} ->
+        run_amount_previews(prices, start_date)
+
+      {:error, reason} ->
+        Logger.error("[membership.reactivation] Membership price lookup failed",
+          reason: inspect(reason)
+        )
+
+        {:error, :stripe_error}
+    end
+  end
+
+  defp run_amount_previews(prices, %Date{} = start_date) do
+    annual_anchor = next_annual_anchor_unix()
+    start_unix = date_to_unix(start_date)
+
+    calls = [
+      monthly_initial: fn ->
+        # Same rule add_billing_anchor/3 applies at creation time.
+        date_opts =
+          if Date.compare(start_date, Date.utc_today()) == :gt,
+            do: [billing_cycle_anchor: start_unix],
+            else: []
+
+        preview_invoice(prices.monthly, date_opts)
+      end,
+      annual_initial: fn ->
+        preview_invoice(prices.annual, billing_cycle_anchor: annual_anchor)
+      end,
+      monthly_recurring: fn ->
+        preview_invoice(prices.monthly, start_date: start_unix)
+      end,
+      annual_recurring: fn ->
+        preview_invoice(prices.annual, start_date: annual_anchor)
+      end
+    ]
+
+    calls
+    |> Task.async_stream(
+      fn {name, preview} -> {name, preview.()} end,
+      ordered: false,
+      timeout: :infinity
+    )
+    |> collect_previews()
+    |> build_amounts()
+  end
+
+  defp preview_invoice(price_id, date_opts) do
+    form =
+      Map.merge(
+        %{
+          "subscription_details[items][0][price]" => price_id,
+          "subscription_details[items][0][quantity]" => "1"
+        },
+        Map.new(date_opts, fn {key, unix} ->
+          {"subscription_details[#{key}]", Integer.to_string(unix)}
+        end)
+      )
+
+    case Operations.post_invoices_create_preview(form) do
+      {:ok, invoice} -> {:ok, invoice}
+      {:error, reason} -> {:error, {:invoice_preview_failed, reason}}
+    end
+  end
+
+  # Fails the whole computation on the first unsuccessful preview; a partial
+  # amount summary would be worse than none. Results are keyed by call name —
+  # the stream is unordered.
+  defp collect_previews(stream) do
+    Enum.reduce_while(stream, %{}, fn
+      {:ok, {name, {:ok, invoice}}}, acc ->
+        {:cont, Map.put(acc, name, invoice)}
+
+      {:ok, {name, {:error, reason}}}, _acc ->
+        Logger.error("[membership.reactivation] Invoice preview failed",
+          kind: name,
+          reason: inspect(reason)
+        )
+
+        {:halt, {:error, :stripe_error}}
+
+      {:exit, reason}, _acc ->
+        Logger.error("[membership.reactivation] Invoice preview task exited",
+          reason: inspect(reason)
+        )
+
+        {:halt, {:error, :stripe_error}}
+    end)
+  end
+
+  defp build_amounts({:error, :stripe_error}), do: {:error, :stripe_error}
+
+  defp build_amounts(previews) when is_map(previews) do
+    with {:ok, monthly_first} <- Map.fetch(previews, :monthly_initial),
+         {:ok, annual_first} <- Map.fetch(previews, :annual_initial),
+         {:ok, monthly_recurring} <- Map.fetch(previews, :monthly_recurring),
+         {:ok, annual_recurring} <- Map.fetch(previews, :annual_recurring) do
+      {:ok,
+       %{
+         dueToday:
+           money(
+             invoice_amount(monthly_first, "amount_due") +
+               invoice_amount(annual_first, "amount_due")
+           ),
+         monthlyFee: money(invoice_amount(monthly_recurring, "subtotal")),
+         annualFee: money(invoice_amount(annual_recurring, "subtotal"))
+       }}
+    else
+      _ -> {:error, :stripe_error}
+    end
+  end
+
+  defp invoice_amount(invoice, key), do: Map.get(invoice, key, 0) || 0
+
+  defp money(amount),
+    do: %{amount: amount, currency: @currency, precision: 2}
+
+  # billing_cycle_anchor_config resolves to the next occurrence of Jan 7 at
+  # the subscription's creation time-of-day UTC (verified against real Stripe
+  # in the integration test); mirroring it here keeps the prorated preview
+  # within cents of the actual charge.
+  defp next_annual_anchor_unix do
+    today = Date.utc_today()
+    candidate = Date.new!(today.year, 1, @annual_anchor_day_int)
+
+    date =
+      if Date.compare(candidate, today) == :gt,
+        do: candidate,
+        else: Date.new!(today.year + 1, @annual_anchor_month_int, @annual_anchor_day_int)
+
+    now = Time.utc_now()
+
+    DateTime.new!(date, %{now | microsecond: {0, 0}}, "Etc/UTC")
+    |> DateTime.to_unix()
+  end
 
   # Lists the customer's saved SEPA debit methods. Any listed method is
   # usable: it carries the mandate from when the member paid by card-free

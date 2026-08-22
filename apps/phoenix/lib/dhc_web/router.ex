@@ -192,6 +192,13 @@ defmodule DhcWeb.Router do
     get "/members/:memberId/membership/reactivation-preview",
         MembershipController,
         :reactivation_preview
+
+    # ALE-254: read-only Stripe-computed amounts for a reactivation starting
+    # on a chosen date. Same narrow pipeline — pricing data rides on the same
+    # authority as the command itself.
+    get "/members/:memberId/membership/reactivation-preview/amounts",
+        MembershipController,
+        :reactivation_amounts_preview
   end
 
   scope "/api", DhcWeb do

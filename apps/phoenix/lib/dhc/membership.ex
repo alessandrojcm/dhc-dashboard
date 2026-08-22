@@ -154,6 +154,30 @@ defmodule Dhc.Membership do
     end
   end
 
+  @doc """
+  Previews the Stripe-computed amounts a reactivation starting on the given
+  start date would charge (ALE-254).
+
+  Backing read for the operator modal's pre-confirmation cost preview:
+  performs no Stripe mutation and no reactivatability or saved-method checks,
+  so it can fail independently of `reactivation_preview/2` and the command's
+  guards stay authoritative at POST time. All amounts come from Stripe
+  invoice previews — never local arithmetic.
+  """
+  @spec reactivation_amounts_preview(String.t(), map()) ::
+          {:ok, map()} | {:error, :invalid_payload | :not_found | :stripe_error}
+  def reactivation_amounts_preview(member_id, %{} = params) do
+    # The member load doubles as the 404 guard; amounts themselves are
+    # customer-independent (lookup-key prices + date anchors).
+    with {:ok, _member} <- load_member_customer(member_id),
+         {:ok, parsed_start_date} <- parse_start_date(Map.get(params, "startDate")),
+         {:ok, amounts} <- Reactivation.preview_amounts(parsed_start_date) do
+      {:ok, amounts}
+    end
+  end
+
+  def reactivation_amounts_preview(_member_id, _params), do: {:error, :invalid_payload}
+
   @doc "Creates a short-lived Stripe Billing Portal session for a member."
   @spec create_billing_portal_session(String.t(), String.t()) ::
           {:ok, String.t()} | {:error, :invalid_payload | :not_found | :stripe_error}
@@ -201,7 +225,7 @@ defmodule Dhc.Membership do
     end
   end
 
-  defp parse_start_date(value) do
+  defp parse_start_date(value) when is_binary(value) do
     with {:ok, date} <- Date.from_iso8601(value),
          :ok <- validate_start_date_range(date) do
       {:ok, date}
@@ -209,6 +233,8 @@ defmodule Dhc.Membership do
       _ -> {:error, :invalid_payload}
     end
   end
+
+  defp parse_start_date(_value), do: {:error, :invalid_payload}
 
   defp validate_start_date_range(date) do
     today = Date.utc_today()

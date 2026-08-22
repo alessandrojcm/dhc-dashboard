@@ -152,6 +152,72 @@ defmodule Dhc.Membership.ReactivationIntegrationTest do
 
   # ── Stripe fixtures ──────────────────────────────────────────────────
 
+  # ALE-254: the operator modal previews amounts through Stripe invoice
+  # previews before any charge. Against real Stripe we can prove the preview
+  # is truthful: the projected due-today must equal what the subsequent
+  # reactivation actually charges, and the recurring fees must equal the real
+  # price unit amounts.
+  test "previewed reactivation amounts match the actual Stripe charge" do
+    run_id = "dhc-amounts-#{System.unique_integer([:positive])}"
+    customer = create_customer!(run_id)
+
+    try do
+      attach_saved_sepa_method!(customer["id"])
+
+      member =
+        Dhc.MemberFixtures.member_fixture(
+          is_active: false,
+          customer_id: customer["id"],
+          email: "#{run_id}@example.com"
+        )
+
+      start_date = Date.utc_today() |> Date.add(5)
+
+      preview_conn =
+        build_conn()
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> get("/api/members/#{member.auth_user_id}/membership/reactivation-preview/amounts", %{
+          "startDate" => Date.to_iso8601(start_date)
+        })
+
+      assert %{
+               "data" => %{
+                 "dueToday" => %{"amount" => due_today, "currency" => "EUR"},
+                 "monthlyFee" => %{"amount" => monthly_fee, "currency" => "EUR"},
+                 "annualFee" => %{"amount" => annual_fee, "currency" => "EUR"}
+               }
+             } = json_response(preview_conn, 200)
+
+      price_ids = membership_price_ids!()
+
+      assert monthly_fee == price_unit_amount!(price_ids.monthly)
+      assert annual_fee == price_unit_amount!(price_ids.annual)
+      assert due_today > 0
+
+      charge_conn =
+        build_conn()
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> post("/api/members/#{member.auth_user_id}/membership/reactivate", %{
+          "startDate" => Date.to_iso8601(start_date)
+        })
+
+      assert %{"data" => data} = json_response(charge_conn, 200)
+
+      monthly_invoice = fetch_subscription!(data["monthlySubscriptionId"])["latest_invoice"]
+      annual_invoice = fetch_subscription!(data["annualSubscriptionId"])["latest_invoice"]
+
+      actual_due_today =
+        monthly_invoice["amount_due"] + annual_invoice["amount_due"]
+
+      # Preview and creation happen seconds apart; second-based proration can
+      # shift the rounded total by a cent at most.
+      assert abs(due_today - actual_due_today) <= 2,
+             "preview #{inspect(due_today)} vs actual charge #{inspect(actual_due_today)}"
+    after
+      cleanup_customer!(customer["id"])
+    end
+  end
+
   defp create_customer!(run_id) do
     stripe_request!(:post, "/v1/customers", %{
       "name" => "DHC Reactivation #{run_id}",
@@ -297,6 +363,13 @@ defmodule Dhc.Membership.ReactivationIntegrationTest do
          ) do
       {:ok, %{"data" => [%{"id" => price_id}]}} -> price_id
       {:error, reason} -> raise "No active price for #{lookup_key}: #{inspect(reason)}"
+    end
+  end
+
+  defp price_unit_amount!(price_id) do
+    case StripeClient.request(method: :get, url: "/v1/prices/#{URI.encode(price_id)}") do
+      {:ok, %{"unit_amount" => amount}} when is_integer(amount) -> amount
+      {:error, reason} -> raise "Fetching price failed: #{inspect(reason)}"
     end
   end
 
