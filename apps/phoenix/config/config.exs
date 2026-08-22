@@ -46,10 +46,11 @@ config :swoosh,
 
 config :swoosh, :finch_name, Swoosh.Finch
 
-# Sender on outgoing messages. Providers render the real sender from their
-# templates; this shows up in the dev Mailpit inbox and satisfies Swoosh's
-# requirement for a from address.
+# Sender and reply-to address on outgoing messages. Providers render the real
+# sender from their templates; these values show up in the dev Mailpit inbox
+# and satisfy Swoosh's addressing requirements.
 config :dhc, :email_from, "dev@dhc.local"
+config :dhc, :email_reply_to, "contact@dublinhemaclub.com"
 
 # Configure Oban for background job processing
 config :dhc, Oban,

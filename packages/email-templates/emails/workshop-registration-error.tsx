@@ -12,7 +12,7 @@ export interface WorkshopRegistrationErrorProps {
 export const workshopRegistrationErrorTemplate: TemplateMetadata = defineTemplate({
   kind: "workshopRegistrationError",
   subject: "Your DHC workshop registration could not be confirmed",
-  from: "Dublin HEMA Club <no-reply@mail.dublinhemaclub.com>",
+  from: "Dublin HEMA Club <info@dublinhemaclub.com>",
   variables: [{ key: "WORKSHOP_NAME", type: "string" }],
 });
 

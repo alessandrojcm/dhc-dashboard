@@ -19,7 +19,7 @@ export interface MagicLinkProps {
 export const magicLinkTemplate: TemplateMetadata = defineTemplate({
   kind: "magicLink",
   subject: "Your Dublin HEMA Club login link",
-  from: "Dublin HEMA Club <no-reply@mail.dublinhemaclub.com>",
+  from: "Dublin HEMA Club <info@dublinhemaclub.com>",
   variables: [{ key: "LOGIN_LINK", type: "string" }],
 });
 

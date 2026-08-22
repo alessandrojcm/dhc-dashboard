@@ -25,7 +25,7 @@ export interface WorkshopAnnouncementProps {
 export const workshopAnnouncementTemplate: TemplateMetadata = defineTemplate({
   kind: "workshopAnnouncement",
   subject: "Dublin HEMA Club Workshop Update",
-  from: "Dublin HEMA Club <no-reply@mail.dublinhemaclub.com>",
+  from: "Dublin HEMA Club <info@dublinhemaclub.com>",
   variables: [
     { key: "MEMBER_FIRST_NAME", type: "string", fallback: "there" },
     { key: "MEMBER_LAST_NAME", type: "string", fallback: "" },
