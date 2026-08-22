@@ -141,7 +141,11 @@ if config_env() == :prod do
            "#{app_url}/auth/discord/acceptance/callback"
          )
 
-  config :dhc, :loops_api_key, System.get_env("LOOPS_API_KEY")
+  # Transactional email transport (ADR 0021): Loops until the Resend cutover
+  # (ADR 0022), which is a config flip on this block — not new code.
+  config :dhc, Dhc.Email.Mailer,
+    adapter: Swoosh.Adapters.Loops,
+    api_key: System.get_env("LOOPS_API_KEY")
 
   # Friendly name -> real Loops transactional ID mapping.
   # Mirrors the edge function's env-var lookup (supabase/functions/process-emails).
@@ -240,10 +244,8 @@ if config_env() == :prod do
         # Email worker (Dhc.Email.Worker)
         :email,
         :transactional_id,
-        :loops_id,
-        :loops_status,
-        :loops_body,
-        :loops_url,
+        :provider_status,
+        :receipt,
         :data_variables,
         :reason,
         :validation_errors,
@@ -301,10 +303,8 @@ if config_env() == :prod do
            # Email worker
            :email,
            :transactional_id,
-           :loops_id,
-           :loops_status,
-           :loops_body,
-           :loops_url,
+           :provider_status,
+           :receipt,
            :reason,
            :validation_errors,
            :http_error,

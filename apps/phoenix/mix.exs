@@ -86,9 +86,10 @@ defmodule Dhc.MixProject do
       {:req, "~> 0.7.2"},
       {:nostrum, "~> 0.10.4"},
       {:assent, "~> 0.3.1"},
-      # SMTP client for the dev email relay (Mailpit). Used by
-      # Dhc.Email.DevMailer in non-prod environments.
-      {:gen_smtp, "~> 1.3", only: :dev},
+      # Email transport seam for transactional emails (ADR 0021). First-party
+      # adapters per environment: Loops in prod, Mailpit over HTTP in dev,
+      # Swoosh.Adapters.Test in tests. Needs >= 1.26 for Swoosh.Adapters.Mailpit.
+      {:swoosh, "~> 1.26"},
       # Fakerer: maintained fork of elixirs/faker. OTP app stays `:faker`,
       # Hex package is `:fakerer`. Dev-only (used by seeding mix tasks).
       # NOT `runtime: false`: seed tasks call `Mix.Task.run("app.start")`,
