@@ -115,9 +115,8 @@ defmodule Dhc.Membership do
 
       {:error, reason} ->
         Logger.error(
-          "[membership] Failed to restore member access after reactivation",
+          "[membership] Failed to restore member access after reactivation for profile #{profile_id}",
           member_id: member_id,
-          profile_id: profile_id,
           reason: inspect(reason)
         )
 

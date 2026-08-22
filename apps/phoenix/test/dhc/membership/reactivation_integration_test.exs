@@ -174,7 +174,7 @@ defmodule Dhc.Membership.ReactivationIntegrationTest do
           email: "#{run_id}@example.com"
         )
 
-      start_date = Date.utc_today() |> Date.add(5)
+      start_date = Date.utc_today()
 
       preview_conn =
         build_conn()
@@ -403,21 +403,26 @@ defmodule Dhc.Membership.ReactivationIntegrationTest do
       assert get_in(subscription, ["items", "data", Access.at(0), "price", "id"]) in Map.values(
                price_ids
              )
-
-      # The first invoice was raised immediately (prorated stub) and the
-      # off-session confirmation submitted it for settlement.
-      invoice = subscription["latest_invoice"]
-      assert is_map(invoice)
-      assert invoice["amount_due"] > 0
-      assert invoice["status"] in ["open", "paid"]
     end)
 
     assert get_in(monthly, ["items", "data", Access.at(0), "price", "id"]) == price_ids.monthly
     assert get_in(annual, ["items", "data", Access.at(0), "price", "id"]) == price_ids.annual
 
-    # Monthly honours the operator-chosen start date as the cycle anchor.
-    expected_anchor = midnight_unix(expected["start_date"])
+    # A future monthly start is free until the selected date, then Stripe
+    # charges the prorated period to the following month's first day.
+    assert monthly["status"] == "trialing"
+    assert monthly["trial_end"] == midnight_unix(expected["start_date"])
+    assert monthly["latest_invoice"]["amount_due"] == 0
+
+    expected_anchor = midnight_unix(next_month_anchor(expected["start_date"]))
     assert monthly["billing_cycle_anchor"] == expected_anchor
+
+    # Annual prorated-now still raises and confirms its first invoice
+    # immediately.
+    annual_invoice = annual["latest_invoice"]
+    assert is_map(annual_invoice)
+    assert annual_invoice["amount_due"] > 0
+    assert annual_invoice["status"] in ["open", "paid"]
 
     # Annual keeps signup semantics: anchored at the next January 7, at the
     # subscription's CREATION time-of-day UTC (verified against real Stripe —
@@ -442,9 +447,7 @@ defmodule Dhc.Membership.ReactivationIntegrationTest do
            query: [customer: customer_id, status: "all", limit: 100]
          ) do
       {:ok, %{"data" => subscriptions}} ->
-        subscriptions
-        |> Enum.filter(&membership_subscription?(&1, price_ids))
-        |> Enum.map(& &1["id"])
+        Enum.flat_map(subscriptions, &membership_subscription_id(&1, price_ids))
         |> Enum.sort()
 
       {:error, reason} ->
@@ -452,9 +455,10 @@ defmodule Dhc.Membership.ReactivationIntegrationTest do
     end
   end
 
-  defp membership_subscription?(subscription, price_ids) do
+  defp membership_subscription_id(subscription, price_ids) do
     price_id = get_in(subscription, ["items", "data", Access.at(0), "price", "id"])
-    price_id in Map.values(price_ids)
+
+    if price_id in Map.values(price_ids), do: [subscription["id"]], else: []
   end
 
   defp list_membership_subscriptions!(customer_id) do
@@ -580,4 +584,7 @@ defmodule Dhc.Membership.ReactivationIntegrationTest do
       do: candidate,
       else: Date.new!(today.year + 1, 1, 7)
   end
+
+  defp next_month_anchor(%Date{year: year, month: 12}), do: Date.new!(year + 1, 1, 1)
+  defp next_month_anchor(%Date{year: year, month: month}), do: Date.new!(year, month + 1, 1)
 end

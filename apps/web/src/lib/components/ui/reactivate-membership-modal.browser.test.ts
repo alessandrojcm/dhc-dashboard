@@ -1,6 +1,8 @@
 import { expect, test, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
+import { getLocalTimeZone, today } from "@internationalized/date";
+import dayjs from "dayjs";
 import ReactivateMembershipModal from "./reactivate-membership-modal.svelte";
 
 const savedMethod = {
@@ -13,6 +15,8 @@ const savedMethod = {
 // Mirrors GET .../reactivation-preview/amounts data (Dinero minor units).
 const amounts = {
 	dueToday: { amount: 33000, currency: "EUR", precision: 2 },
+	proratedMonthlyPrice: { amount: 1500, currency: "EUR", precision: 2 },
+	proratedAnnualPrice: { amount: 31500, currency: "EUR", precision: 2 },
 	monthlyFee: { amount: 4200, currency: "EUR", precision: 2 },
 	annualFee: { amount: 36000, currency: "EUR", precision: 2 },
 };
@@ -129,6 +133,30 @@ test("defaults to charging the annual fee prorated now", async () => {
 	await expect.element(deferred).not.toBeChecked();
 });
 
+test("explains deferred billing without exposing Stripe trial mechanics", async () => {
+	const screen = await render(ReactivateMembershipModal, {
+		open: true,
+		isPending: false,
+		savedPaymentMethod: savedMethod,
+		onConfirm: vi.fn(),
+	});
+
+	await userEvent.click(
+		screen.getByRole("radio", { name: /defer until next january/i }),
+	);
+
+	await expect
+		.element(
+			screen.getByText(
+				"Nothing is charged today. Annual billing begins next January.",
+				{ exact: true },
+			),
+		)
+		.toBeVisible();
+	expect(document.body.textContent).not.toContain("free trial");
+	expect(document.body.textContent).not.toContain(" – ");
+});
+
 test("reports the chosen annual fee mode so amounts can be fetched for it", async () => {
 	const onSelectionChange = vi.fn();
 	const screen = await render(ReactivateMembershipModal, {
@@ -193,15 +221,50 @@ test("shows the Stripe-computed amounts before confirmation", async () => {
 	await expect.element(block).toBeVisible();
 	await expect.element(block.getByText("Due today")).toBeVisible();
 	await expect.element(block.getByText("€330.00")).toBeVisible();
-	await expect.element(block.getByText(/monthly membership/i)).toBeVisible();
+	await expect
+		.element(block.getByText("€15.00 for this month + €315.00 for this year"))
+		.toBeVisible();
+	await expect.element(block.getByText("Then monthly")).toBeVisible();
 	await expect.element(block.getByText("€42.00")).toBeVisible();
-	await expect.element(block.getByText(/annual membership/i)).toBeVisible();
+	await expect.element(block.getByText("Then annually")).toBeVisible();
 	await expect.element(block.getByText("€360.00")).toBeVisible();
 
 	// Amounts never block the operator from confirming.
 	await expect
 		.element(screen.getByRole("button", { name: "Reactivate membership" }))
 		.toBeEnabled();
+});
+
+test("separates a future monthly charge from the amount due today", async () => {
+	const futureDate = today(getLocalTimeZone()).add({ days: 10 });
+	const screen = await render(ReactivateMembershipModal, {
+		open: true,
+		isPending: false,
+		savedPaymentMethod: savedMethod,
+		initialStartDate: futureDate,
+		amounts: {
+			...amounts,
+			dueToday: amounts.proratedAnnualPrice,
+		},
+		onConfirm: vi.fn(),
+	});
+
+	const block = screen.getByTestId("reactivation-amounts");
+	await expect.element(block.getByText("€315.00").first()).toBeVisible();
+	await expect
+		.element(
+			block.getByText(
+				`Due on ${dayjs(futureDate.toString()).format("D MMM YYYY")}`,
+			),
+		)
+		.toBeVisible();
+	await expect
+		.element(block.getByText("First prorated monthly charge"))
+		.toBeVisible();
+	await expect.element(block.getByText("€15.00")).toBeVisible();
+	await expect
+		.element(block.getByText("€15.00 for this month + €315.00 for this year"))
+		.not.toBeInTheDocument();
 });
 
 test("reports its selected start date so amounts can be fetched for it", async () => {
