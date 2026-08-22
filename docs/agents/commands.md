@@ -57,16 +57,14 @@ in `playwright.config.ts` command strings.
 ## Dev email catching (Mailpit)
 
 The compose file ships a `mailpit` service (`axllent/mailpit`). In dev, the
-email worker (`Dhc.Email.Worker`) relays every email job to it over SMTP
-instead of calling the Loops API — the raw payload (recipient, template name,
-data variables) arrives as pretty-printed JSON, since only Loops can render
-the real templates. Web UI at `http://localhost:8025`, SMTP on
-`localhost:1025` (override with `MAILPIT_HOST`/`MAILPIT_PORT`). Messages are
-in-memory and lost on container restart. A stopped Mailpit container is not an
-error: delivery failures log a warning and the job still succeeds.
-`Dhc.Email.DevMailer` belongs under `apps/phoenix/dev/` because `gen_smtp` is a
-dev-only dependency; placing the adapter under `lib/` breaks test-environment
-compilation under `--warnings-as-errors`.
+email worker (`Dhc.Email.Worker`) delivers through Swoosh's Mailpit **HTTP**
+adapter (ADR 0021): each job arrives as a real message whose body is the
+pretty-printed JSON summary (recipient, friendly template name, data
+variables), since only the provider can render the real templates. Web UI at
+`http://localhost:8025` (override with `MAILPIT_HTTP_URL`; the SMTP port 1025
+is no longer used). Messages are in-memory and lost on container restart. A
+stopped Mailpit container is not an error: delivery failures log a warning and
+the job still succeeds.
 
 The E2E suite intentionally uses Stripe's real test API for invitation acceptance.
 It fails before startup unless `STRIPE_SECRET_KEY` starts with `sk_test_`. The test
@@ -225,8 +223,6 @@ mise run api-gen
 Fails fast: if either step exits non-zero, mise stops immediately and does not proceed.
 
 **`mix gen.controllers` clobber caveat**: the task maps every operation under a tag to a REST action derived from HTTP method + path (or `operationId`), and regenerates the *whole* controller + JSON renderer + contract test for that tag. When a tag carries multiple non-REST operations (e.g. `Members` has `members.list`, `members.analytics`, `members.insuranceForm`), `--force=<path>` will overwrite the controller with stubs that map *all three* to `index` and call a non-existent `Members.list_members()` — clobbering any hand-written action bodies. After regenerating, restore the hand-written controller (keep your real action names + bodies) and never re-run `--force` on a tag whose controller you've fleshed out unless you're prepared to restore it from git. The JSON renderer and contract test are likewise tag-scoped, so extend them by hand for non-REST operations.
-
-**`mise run api-gen` phantom-renderer caveat**: for tags whose controllers render plain `json/2` and have no `<tag>_json.ex` on disk (`Membership`, `Onboarding`), a plain `mix gen.controllers` run CREATES a new generated `lib/dhc_web/controllers/<tag>_json.ex` stub referencing a phantom struct (e.g. `%Dhc.Membership.Membership{}`) that fails compilation under `--warnings-as-errors`. Existing files are skipped without `--force`, so this only bites tags whose renderer file is absent; if `api-gen` is followed by compile errors in freshly created `<tag>_json.ex` files you didn't ask for, delete those generated stubs — do not "fix" them by creating the phantom schema modules.
 
 ## API Client (TypeScript)
 
