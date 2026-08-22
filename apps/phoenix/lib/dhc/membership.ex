@@ -9,6 +9,7 @@ defmodule Dhc.Membership do
 
   import Ecto.Query
 
+  alias Dhc.Auth
   alias Dhc.Membership.Reactivation
   alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.Members
@@ -92,11 +93,66 @@ defmodule Dhc.Membership do
              operator_principal_id: Map.get(attrs, "operatorPrincipalId"),
              start_date: parsed_start_date
            }) do
+      restore_member_access(member_id, member.profile_id)
       {:ok, result}
     end
   end
 
   def reactivate(_member_id, _attrs), do: {:error, :invalid_payload}
+
+  # Restores dashboard access immediately after a successful reactivation
+  # (ALE-252). The Stripe sync stays authoritative and will reconcile this
+  # flag on later runs; writing it here means the operator sees the member as
+  # active without waiting for the daily cron or a webhook round-trip.
+  defp restore_member_access(member_id, profile_id) do
+    case Auth.apply_member_access(profile_id, true) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Logger.error(
+          "[membership] Failed to restore member access after reactivation",
+          member_id: member_id,
+          profile_id: profile_id,
+          reason: inspect(reason)
+        )
+
+        :ok
+    end
+  end
+
+  @doc """
+  Previews the saved SEPA payment method a reactivation would charge (ALE-252).
+
+  Read-only companion to `reactivate/2` backing the operator modal: performs
+  no Stripe mutation and no reactivatability guard, so the command's guards
+  stay authoritative at POST time. `savedPaymentMethod` is `nil` when the
+  customer has no usable saved SEPA method; the UI offers the billing portal
+  fallback in that case.
+  """
+  @spec reactivation_preview(String.t()) ::
+          {:ok, map()} | {:error, :not_found | :stripe_error}
+  def reactivation_preview(member_id) do
+    with {:ok, member} <- load_member_customer(member_id),
+         {:ok, saved_method} <- Reactivation.saved_sepa_method(member.customer_id) do
+      {:ok,
+       %{
+         memberId: member.id,
+         savedPaymentMethod: payment_method_summary(saved_method)
+       }}
+    end
+  end
+
+  defp payment_method_summary(nil), do: nil
+
+  defp payment_method_summary(%{id: id, last4: last4, bank_code: bank_code, country: country}) do
+    summary = %{id: id, last4: last4, country: country}
+
+    case bank_code do
+      nil -> summary
+      code -> Map.put(summary, :bankCode, code)
+    end
+  end
 
   @doc "Creates a short-lived Stripe Billing Portal session for a member."
   @spec create_billing_portal_session(String.t(), String.t()) ::
@@ -249,6 +305,7 @@ defmodule Dhc.Membership do
         where: m.id == ^member_id,
         select: %{
           id: m.id,
+          profile_id: p.id,
           customer_id: p.customer_id,
           subscription_paused_until: m.subscription_paused_until
         }

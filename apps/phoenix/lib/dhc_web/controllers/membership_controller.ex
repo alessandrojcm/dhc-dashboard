@@ -105,6 +105,25 @@ defmodule DhcWeb.MembershipController do
     end
   end
 
+  @doc """
+  GET /members/:memberId/membership/reactivation-preview
+
+  Same `:membership_minting_api` restrictions as `reactivate/2` — saved
+  payment data must not leak to the broader members-admin list.
+  """
+  def reactivation_preview(conn, %{"memberId" => member_id}) do
+    case Membership.reactivation_preview(member_id) do
+      {:ok, preview} ->
+        json(conn, %{data: preview})
+
+      {:error, :not_found} ->
+        not_found(conn, "Member not found")
+
+      {:error, :stripe_error} ->
+        bad_gateway(conn, "Stripe payment-method lookup failed")
+    end
+  end
+
   defp authorize_self_or_admin(conn, member_id) do
     current_session = conn.assigns.current_session
 

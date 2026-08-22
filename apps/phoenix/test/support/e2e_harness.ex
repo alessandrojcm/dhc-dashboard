@@ -139,7 +139,10 @@ defmodule Dhc.E2EHarness do
         gender: Map.get(attrs, "gender", "man (cis)"),
         pronouns: Map.get(attrs, "pronouns", "they/them"),
         medical_conditions: Map.get(attrs, "medicalConditions", "None"),
-        customer_id: Map.get(attrs, "customerId", "cus_e2e_#{System.unique_integer([:positive])}")
+        customer_id: Map.get(attrs, "customerId", "cus_e2e_#{System.unique_integer([:positive])}"),
+        # ALE-252 reactivation fixtures need lapsed members: locally flagged
+        # inactive exactly as the Stripe sync leaves them after coverage ends.
+        is_active: Map.get(attrs, "isActive", true)
       })
 
     roles = Map.get(attrs, "roles", ["member"]) |> Enum.uniq()

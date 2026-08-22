@@ -106,16 +106,39 @@ defmodule Dhc.Membership.Reactivation do
   # usable: it carries the mandate from when the member paid by card-free
   # signup, so off-session confirmation works without re-collecting anything.
   defp find_saved_sepa_method(customer_id) do
+    case saved_sepa_method(customer_id) do
+      {:ok, %{id: payment_method_id}} -> {:ok, payment_method_id}
+      {:ok, nil} -> {:error, :no_saved_payment_method}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc """
+  Summarises the customer's first saved SEPA debit method (the one a
+  reactivation would charge). `{:ok, nil}` when none exists; this is a normal
+  outcome for the preview read (ALE-252), not an error.
+  """
+  @spec saved_sepa_method(String.t()) ::
+          {:ok,
+           %{
+             id: String.t(),
+             last4: String.t() | nil,
+             bank_code: String.t() | nil,
+             country: String.t() | nil
+           }}
+          | {:ok, nil}
+          | {:error, :stripe_error}
+  def saved_sepa_method(customer_id) do
     case Operations.get_customers_customer_payment_methods(customer_id, %{},
            type: "sepa_debit",
            limit: 10
          ) do
-      {:ok, %{"data" => [%{"id" => payment_method_id} | _]}}
+      {:ok, %{"data" => [%{"id" => payment_method_id} = method | _]}}
       when is_binary(payment_method_id) ->
-        {:ok, payment_method_id}
+        {:ok, summarise_sepa_method(method)}
 
       {:ok, %{"data" => []}} ->
-        {:error, :no_saved_payment_method}
+        {:ok, nil}
 
       {:error, reason} ->
         Logger.error("[membership.reactivation] Saved SEPA method lookup failed",
@@ -124,7 +147,26 @@ defmodule Dhc.Membership.Reactivation do
         )
 
         {:error, :stripe_error}
+
+      other ->
+        Logger.error("[membership.reactivation] Unexpected saved-method response",
+          customer_id: customer_id,
+          reason: inspect(other)
+        )
+
+        {:error, :stripe_error}
     end
+  end
+
+  defp summarise_sepa_method(%{"id" => id} = method) do
+    sepa_debit = Map.get(method, "sepa_debit", %{})
+
+    %{
+      id: id,
+      last4: Map.get(sepa_debit, "last4"),
+      bank_code: Map.get(sepa_debit, "bank_code"),
+      country: Map.get(sepa_debit, "country")
+    }
   end
 
   defp membership_prices do
