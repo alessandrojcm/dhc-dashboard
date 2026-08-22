@@ -1,15 +1,9 @@
-Implement the work described by the user in the spec or tickets.
+i think trying to test escaping is a bit counter productive. see if resend has any guidance around testing react-email. if not just leave it dont write any tests for templates. also make sure we reuse the colour scheme of the web app
 
-Use /tdd where possible, at pre-agreed seams.
+---
 
-Run typechecking regularly, single test files regularly, and the full test suite once at the end.
+something like this maybe [Image 1] with the logo on top, idk why youre adding that card
 
-Once done, use /code-review to review the work.
+---
 
-Commit your work to the current branch.
-
-
-Base directory for this skill: /Users/alessandrojcm/.agents/skills/implement
-Relative paths in this skill (e.g., scripts/, references/) are relative to this base directory.
-
-first available ticket on  ALE-263
+whats the point of these tests though? what are they testing? does resend even recommend this?
