@@ -43,8 +43,9 @@ mise run lint               # Oxlint (web Svelte/JS/TS + API client TS)
 mise run format             # Auto-format with Oxfmt
 ```
 
-Oxlint runs in both `apps/web` and `packages/api-client`; the generated API client
-under `packages/api-client/src/client/` is ignored. Oxfmt remains scoped to `apps/web`.
+Oxlint runs in `apps/web`, `packages/api-client`, and `packages/email-templates`;
+the generated API client under `packages/api-client/src/client/` is ignored.
+Oxfmt covers `apps/web` and `packages/email-templates`.
 The shared config loads the project-local anti-slop plugin from
 `tools/oxlint/anti-slop/`; keep `oxlint` and `@oxlint/plugins` on the same pinned
 version when upgrading it, and leave all anti-slop rules enabled at error severity.
@@ -57,22 +58,45 @@ in `playwright.config.ts` command strings.
 ## Dev email catching (Mailpit)
 
 The compose file ships a `mailpit` service (`axllent/mailpit`). In dev, the
-email worker (`Dhc.Email.Worker`) relays every email job to it over SMTP
-instead of calling the Loops API — the raw payload (recipient, template name,
-data variables) arrives as pretty-printed JSON, since only Loops can render
-the real templates. Web UI at `http://localhost:8025`, SMTP on
-`localhost:1025` (override with `MAILPIT_HOST`/`MAILPIT_PORT`). Messages are
-in-memory and lost on container restart. A stopped Mailpit container is not an
-error: delivery failures log a warning and the job still succeeds.
-`Dhc.Email.DevMailer` belongs under `apps/phoenix/dev/` because `gen_smtp` is a
-dev-only dependency; placing the adapter under `lib/` breaks test-environment
-compilation under `--warnings-as-errors`.
+email worker (`Dhc.Email.Worker`) delivers through Swoosh's Mailpit **HTTP**
+adapter (ADR 0021): each job arrives as a real message whose body is the
+pretty-printed JSON summary (recipient, friendly template name, data
+variables), since only the provider can render the real templates. Web UI at
+`http://localhost:8025` (override with `MAILPIT_HTTP_URL`; the SMTP port 1025
+is no longer used). Messages are in-memory and lost on container restart. A
+stopped Mailpit container is not an error: delivery failures log a warning and
+the job still succeeds.
 
 The E2E suite intentionally uses Stripe's real test API for invitation acceptance.
 It fails before startup unless `STRIPE_SECRET_KEY` starts with `sk_test_`. The test
 account must provide active `monthly_membership_fee` and `annual_membership_fee`
 lookup-key prices; coupon tests create unique promotion fixtures and clean them up.
 Never supply a live-mode key.
+
+## Email templates (Resend sync)
+
+The five transactional templates are React Email components in
+`packages/email-templates`, synced upsert-by-alias to Resend-hosted templates
+(ADR 0022). See that package's README for the drift policy and CI wiring.
+
+```bash
+mise run email-sync          # render + upsert drafts (what PRs do)
+mise run email-sync-publish  # upsert + publish (what merge-to-main does)
+mise run email-smoke         # fail unless every whitelisted kind has a published template
+```
+
+All three need a Full Access key as `RESEND_API_KEY` (`fnox` holds the send-only
+key under that name; use the `RESEND_API_KEY_CI` value for syncs). The GitHub
+Actions workflow `.github/workflows/email-templates.yml` runs the same pipeline:
+drafts on pull requests, publish + smoke on main, gated by change detection on
+`packages/email-templates/**`.
+
+Template assets (the crest) are served from the R2 bucket `dhc-email-assets`
+at `https://assets.dublinhemaclub.com`, decoupled from the web app. After
+changing files in `packages/email-templates/emails/static/`, run
+`mise run email-asset-upload` (needs `CLOUDFLARE_API_TOKEN` or an interactive
+`wrangler login`; one-time bootstrap: create the bucket and attach its custom
+domain).
 
 ## Phoenix (in progress)
 
@@ -132,7 +156,7 @@ Phoenix runtime task.
 mise run phx-format         # Format all Elixir files
 mise run phx-format-check   # Check formatting (CI)
 mise run phx-reach          # Reach architecture policy checks (.reach.exs)
-mise run phx-precommit      # Full check: credo + reach arch + audit + compile + unlock + format + test
+mise run phx-precommit      # Full check: audit + credo + reach arch + compile + unlock + format + test
 
 # Testing
 mise run phx-test           # Run all Phoenix tests (excludes :integration tests)

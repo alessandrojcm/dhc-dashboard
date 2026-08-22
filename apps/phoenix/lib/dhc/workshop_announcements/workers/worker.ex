@@ -154,10 +154,10 @@ defmodule Dhc.WorkshopAnnouncements.Worker do
           "email" => user.email,
           "transactional_id" => "workshopAnnouncement",
           "data_variables" => %{
-            "first_name" => user.first_name,
-            "last_name" => user.last_name,
-            "message" => message,
-            "workshop_count" => 1
+            "MEMBER_FIRST_NAME" => user.first_name,
+            "MEMBER_LAST_NAME" => user.last_name,
+            "MESSAGE" => message,
+            "WORKSHOP_COUNT" => 1
           }
         })
       end)

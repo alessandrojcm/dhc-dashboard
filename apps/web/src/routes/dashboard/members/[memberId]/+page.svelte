@@ -21,6 +21,7 @@ import {
 	ExternalLink,
 	HeartPulse,
 	LockKeyhole,
+	RotateCcw,
 	Swords,
 	UserRound,
 } from "@lucide/svelte";
@@ -48,6 +49,7 @@ import {
 	membersMeQueryKey,
 	membersShowQueryKey,
 } from "@dhc/api-client";
+import ReactivateMemberDialog from "$lib/components/ui/reactivate-member-dialog.svelte";
 import { SocialMediaConsent } from "$lib/types";
 
 const { data } = $props();
@@ -207,6 +209,14 @@ const resumeMutation = createMutation(() => ({
 		toast.error(error.errors?.detail ?? "Failed to resume subscription");
 	},
 }));
+
+// ALE-252: reactivation is offered only for inactive members, and only to
+// the four billing-authority roles mirrored from the `:membership_minting_api`
+// pipeline (the server enforces 403 for everyone else).
+const memberIsInactive = $derived(data.member.membership_status === "inactive");
+const canReactivate = $derived(Boolean(data.canReactivate) && memberIsInactive);
+
+let showReactivateModal = $state(false);
 </script>
 
 <svelte:head>
@@ -696,6 +706,26 @@ const resumeMutation = createMutation(() => ({
 						{/if}
 					{/if}
 
+					{#if canReactivate && memberIsInactive}
+						<div class="border-t border-border/70 pt-4">
+							<Button
+								variant="default"
+								type="button"
+								class="w-full"
+								onclick={() => {
+									showReactivateModal = true;
+								}}
+							>
+								<RotateCcw class="size-4" aria-hidden="true" />
+								Reactivate membership
+							</Button>
+							<p class="mt-2 text-xs leading-4 text-muted-foreground">
+								Starts fresh monthly and annual subscriptions charged to the
+								saved SEPA payment method.
+							</p>
+						</div>
+					{/if}
+
 					{#if isOwnProfile}
 						<div class="border-t border-border/70 pt-4">
 							{#if data.member.discordIdentity}
@@ -790,5 +820,13 @@ const resumeMutation = createMutation(() => ({
 		isPending={pauseMutation.isPending}
 		extend={pausedUntil?.isAfter(dayjs())}
 		pausedUntil={pausedUntil ?? undefined}
+	/>
+{/if}
+
+{#if showReactivateModal}
+	<ReactivateMemberDialog
+		bind:open={showReactivateModal}
+		memberId={requireMemberId()}
+		onSettled={() => invalidate(detailDependency(requireMemberId()))}
 	/>
 {/if}

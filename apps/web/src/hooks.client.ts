@@ -39,7 +39,10 @@ Sentry.init({
 			severityAllowList: ["error", "info"],
 		}),
 	],
-	sendDefaultPii: true,
+	// Replaces the deprecated `sendDefaultPii: true` with identical behavior:
+	// every other dataCollection category already defaults to enabled, so user
+	// info is the only one to opt into explicitly.
+	dataCollection: { userInfo: true },
 	tracePropagationTargets: [
 		"localhost",
 		/^\/api\//,

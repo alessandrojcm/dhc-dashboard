@@ -34,7 +34,7 @@ export default defineConfig(({ command }) => ({
 		...(process.env.E2E_SERVER === "true" ? [] : [mkcert()]),
 	],
 	build: {
-		rollupOptions: {
+		rolldownOptions: {
 			external: ["cloudflare:workers"],
 		},
 		sourcemap: true,

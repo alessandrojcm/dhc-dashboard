@@ -34,6 +34,13 @@ Apply the matching triage label/status string from `docs/agents/triage-labels.md
 
 Repository: `alessandrojcm/dhc-dashboard`
 
+## Projects & milestones
+
+- Feature tickets may target the `DHC Dashboard` project: `linctl issue create --team ALE --project "DHC Dashboard" ...`, optionally with `--project-milestone <name>` for release grouping (e.g. `v3`).
+- linctl has no milestone management subcommand. Create milestones via raw GraphQL:
+  `linctl graphql -q 'mutation { projectMilestoneCreate(input: { projectId: "<project-uuid>", name: "<name>" }) { success projectMilestone { id name } } }'`
+  Get the project UUID from `linctl project list -j` / `linctl project get`.
+
 ## Wayfinding operations
 
 - Wayfinder maps use `wayfinder:map`; child tickets use exactly one of `wayfinder:research`, `wayfinder:prototype`, `wayfinder:grilling`, or `wayfinder:task`.

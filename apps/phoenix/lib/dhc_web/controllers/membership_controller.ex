@@ -59,6 +59,95 @@ defmodule DhcWeb.MembershipController do
   def billing_portal(conn, _params),
     do: validation_error(conn, "Invalid billing portal payload")
 
+  @doc """
+  POST /members/:memberId/membership/reactivate
+
+  Restricted by the `:membership_minting_api` pipeline to officers with
+  billing authority (admin, president, treasurer, committee_coordinator) —
+  there is no self-service fallback because the command mints new Stripe
+  charges.
+  """
+  def reactivate(conn, %{"memberId" => member_id} = params) do
+    attrs =
+      params
+      |> Map.delete("memberId")
+      |> Map.put("operatorPrincipalId", conn.assigns.current_session.principal.id)
+
+    case Membership.reactivate(member_id, attrs) do
+      {:ok, result} ->
+        json(conn, %{data: result})
+
+      {:error, :invalid_payload} ->
+        validation_error(conn, "Invalid membership reactivation payload")
+
+      {:error, :not_found} ->
+        not_found(conn, "Member not found")
+
+      {:error, :membership_paused} ->
+        conflict(conn, "Member's membership subscription is paused")
+
+      {:error, :membership_active} ->
+        conflict(conn, "Member already has an active membership subscription")
+
+      {:error, :no_saved_payment_method} ->
+        conn
+        |> put_status(:conflict)
+        |> json(%{
+          errors: %{
+            detail:
+              "Member has no usable saved SEPA payment method; use the billing portal as fallback",
+            code: "no_saved_payment_method"
+          }
+        })
+
+      {:error, :stripe_error} ->
+        bad_gateway(conn, "Stripe membership reactivation failed")
+    end
+  end
+
+  @doc """
+  GET /members/:memberId/membership/reactivation-preview
+
+  Same `:membership_minting_api` restrictions as `reactivate/2` — saved
+  payment data must not leak to the broader members-admin list.
+  """
+  def reactivation_preview(conn, %{"memberId" => member_id}) do
+    case Membership.reactivation_preview(member_id) do
+      {:ok, preview} ->
+        json(conn, %{data: preview})
+
+      {:error, :not_found} ->
+        not_found(conn, "Member not found")
+
+      {:error, :stripe_error} ->
+        bad_gateway(conn, "Stripe payment-method lookup failed")
+    end
+  end
+
+  @doc """
+  GET /members/:memberId/membership/reactivation-preview/amounts
+
+  Stripe-computed amounts for a reactivation starting on the query param
+  `startDate` (ALE-254). Same `:membership_minting_api` restrictions as
+  `reactivation_preview/2`. Deliberately independent of that read: a failure
+  here degrades to hidden amounts in the UI while the form stays usable.
+  """
+  def reactivation_amounts_preview(conn, %{"memberId" => member_id} = params) do
+    case Membership.reactivation_amounts_preview(member_id, params) do
+      {:ok, result} ->
+        json(conn, %{data: result})
+
+      {:error, :invalid_payload} ->
+        validation_error(conn, "Invalid membership reactivation amounts payload")
+
+      {:error, :not_found} ->
+        not_found(conn, "Member not found")
+
+      {:error, :stripe_error} ->
+        bad_gateway(conn, "Stripe membership cost preview failed")
+    end
+  end
+
   defp authorize_self_or_admin(conn, member_id) do
     current_session = conn.assigns.current_session
 

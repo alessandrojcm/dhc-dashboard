@@ -271,9 +271,9 @@ defmodule Dhc.Invitations.BulkInviteWorker do
       "email" => invite_data["email"],
       "transactional_id" => @invite_email_template,
       "data_variables" => %{
-        "firstName" => invite_data["firstName"],
-        "lastName" => invite_data["lastName"],
-        "invitationLink" => invitation_link
+        "INVITEE_FIRST_NAME" => invite_data["firstName"],
+        "INVITEE_LAST_NAME" => invite_data["lastName"],
+        "INVITATION_LINK" => invitation_link
       }
     }
 

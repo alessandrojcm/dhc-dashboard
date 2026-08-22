@@ -1,424 +1,278 @@
 defmodule Dhc.Email.WorkerTest do
+  # async: false — swaps :environment and the Dhc.Email.Mailer adapter via
+  # application env (house seam pattern), which cannot race across tests.
   use ExUnit.Case, async: false
+
+  import Swoosh.TestAssertions
 
   alias Dhc.Email.Worker
 
-  describe "perform/1 with valid args in test environment" do
-    # test.exs swaps :email_dev_mailer to Dhc.Email.DevMailerStub, which
-    # captures deliveries in the test process mailbox.
-    setup do
-      Application.put_env(:dhc, :email_dev_mailer_test_pid, self())
+  @job_id 42
 
-      on_exit(fn ->
-        Application.delete_env(:dhc, :email_dev_mailer_test_pid)
-        Application.delete_env(:dhc, :email_dev_mailer_stub_result)
+  @valid_args %{
+    "email" => "user@example.com",
+    "transactional_id" => "inviteMember",
+    "data_variables" => %{
+      "INVITEE_FIRST_NAME" => "Alice",
+      "INVITATION_LINK" => "https://example.com/invite"
+    }
+  }
+
+  defp job(args, id \\ @job_id), do: %Oban.Job{id: id, args: args}
+
+  setup do
+    original_mailer = Application.get_env(:dhc, Dhc.Email.Mailer)
+    original_env = Application.get_env(:dhc, :environment)
+
+    on_exit(fn ->
+      if original_mailer do
+        Application.put_env(:dhc, Dhc.Email.Mailer, original_mailer)
+      else
+        Application.delete_env(:dhc, Dhc.Email.Mailer)
+      end
+
+      Application.put_env(:dhc, :environment, original_env)
+    end)
+
+    :ok
+  end
+
+  # ---------------------------------------------------------------------------
+  # Seam 1: the public worker contract, observed through Swoosh.TestAssertions
+  # (test.exs wires Dhc.Email.Mailer to Swoosh.Adapters.Test).
+  # ---------------------------------------------------------------------------
+
+  describe "perform/1 delivers through the configured mailer" do
+    test "sends the email kind and data variables to the recipient" do
+      assert Worker.perform(job(@valid_args)) == :ok
+
+      # One delivered email per job; assert everything on that single message
+      # because assertions consume mailbox messages.
+      assert_email_sent(fn email ->
+        assert email.provider_options.template == %{
+                 id: "invite-member",
+                 variables: %{
+                   "INVITEE_FIRST_NAME" => "Alice",
+                   "INVITATION_LINK" => "https://example.com/invite"
+                 }
+               }
+
+        assert Enum.any?(email.to, fn {_name, address} ->
+                 address == "user@example.com"
+               end)
       end)
-
-      :ok
     end
 
-    test "delivers the Loops payload as JSON to the dev mailer" do
-      args = %{
-        "email" => "user@example.com",
-        "transactional_id" => "inviteMember",
-        "data_variables" => %{"name" => "Alice", "inviteLink" => "https://example.com/invite"}
-      }
+    test "carries an Idempotency-Key derived from the Oban job id" do
+      assert Worker.perform(job(@valid_args)) == :ok
 
-      assert Worker.perform(%Oban.Job{args: args}) == :ok
-
-      assert_receive {:dev_email, %{to: to, subject: subject, body: body}}
-      assert to == "user@example.com"
-      assert subject == "[dev] Loops email: inviteMember"
-
-      payload = Jason.decode!(body)
-
-      assert payload["email"] == "user@example.com"
-      assert payload["transactional_id"] == "inviteMember"
-      assert payload["data_variables"]["name"] == "Alice"
-      assert payload["data_variables"]["inviteLink"] == "https://example.com/invite"
+      assert_email_sent(
+        to: "user@example.com",
+        headers: %{"Idempotency-Key" => "oban-#{@job_id}"}
+      )
     end
 
-    test "delivers for workshopAnnouncement transactional type" do
-      args = %{
-        "email" => "user@example.com",
-        "transactional_id" => "workshopAnnouncement",
-        "data_variables" => %{
-          "workshopTitle" => "HEMA Open Session",
-          "date" => "2024-01-15"
-        }
-      }
+    test "decorates the message with a JSON summary for the dev inbox" do
+      assert Worker.perform(job(@valid_args)) == :ok
 
-      assert Worker.perform(%Oban.Job{args: args}) == :ok
+      assert_email_sent(fn email ->
+        assert email.subject == "[dev] Email: inviteMember"
 
-      assert_receive {:dev_email, %{subject: subject, body: body}}
-      assert subject == "[dev] Loops email: workshopAnnouncement"
+        payload =
+          email.text_body && Jason.decode!(email.text_body)
 
-      payload = Jason.decode!(body)
-      assert payload["data_variables"]["workshopTitle"] == "HEMA Open Session"
+        assert payload["transactional_id"] == "inviteMember"
+        assert payload["data_variables"]["INVITEE_FIRST_NAME"] == "Alice"
+
+        assert payload["data_variables"]["INVITATION_LINK"] ==
+                 "https://example.com/invite"
+      end)
     end
 
-    test "delivers without data_variables (defaults to empty map)" do
-      args = %{
-        "email" => "user@example.com",
-        "transactional_id" => "inviteMember"
-      }
+    test "defaults data_variables to an empty map" do
+      args = Map.delete(@valid_args, "data_variables")
 
-      assert Worker.perform(%Oban.Job{args: args}) == :ok
+      assert Worker.perform(job(args)) == :ok
 
-      assert_receive {:dev_email, %{body: body}}
-      assert Jason.decode!(body)["data_variables"] == %{}
+      assert_email_sent(fn email ->
+        assert email.provider_options.template.variables == %{}
+      end)
     end
 
-    test "delivers with numeric data variable values" do
+    test "accepts numeric data variable values" do
       args = %{
         "email" => "user@example.com",
         "transactional_id" => "workshopAnnouncement",
-        "data_variables" => %{"count" => 5, "name" => "Bob"}
+        "data_variables" => %{"WORKSHOP_COUNT" => 5, "MEMBER_FIRST_NAME" => "Bob"}
       }
 
-      assert Worker.perform(%Oban.Job{args: args}) == :ok
+      assert Worker.perform(job(args)) == :ok
 
-      assert_receive {:dev_email, %{body: body}}
-      assert Jason.decode!(body)["data_variables"]["count"] == 5
+      assert_email_sent(fn email ->
+        assert email.provider_options.template == %{
+                 id: "workshop-announcement",
+                 variables: %{"WORKSHOP_COUNT" => 5, "MEMBER_FIRST_NAME" => "Bob"}
+               }
+      end)
     end
 
-    test "succeeds without retrying when the Mailpit relay is unreachable" do
-      # A dev relay being down is expected (container not started), so the
-      # job must still complete rather than burn its 5 Oban attempts.
-      Application.put_env(:dhc, :email_dev_mailer_stub_result, {:error, :econnrefused})
-
-      args = %{
-        "email" => "user@example.com",
-        "transactional_id" => "inviteMember"
+    test "derives every Resend template alias from the email kind" do
+      aliases = %{
+        "inviteMember" => "invite-member",
+        "workshopAnnouncement" => "workshop-announcement",
+        "workshopRegistration" => "workshop-registration",
+        "workshopRegistrationError" => "workshop-registration-error",
+        "magicLink" => "magic-link"
       }
 
-      assert Worker.perform(%Oban.Job{args: args}) == :ok
-      assert_received {:dev_email, %{to: "user@example.com"}}
+      for {kind, template_alias} <- aliases do
+        args = %{"email" => "user@example.com", "transactional_id" => kind}
+
+        assert Worker.perform(job(args)) == :ok
+
+        assert_email_sent(fn email ->
+          assert email.provider_options.template == %{id: template_alias, variables: %{}}
+        end)
+      end
     end
   end
 
   describe "perform/1 with invalid args" do
-    test "returns error when email is missing" do
-      args = %{
-        "transactional_id" => "inviteMember"
-      }
+    test "returns {:cancel, ...} when email is missing" do
+      args = Map.delete(@valid_args, "email")
 
-      assert {:error, {:validation, errors}} = Worker.perform(%Oban.Job{args: args})
+      assert {:cancel, {:validation, errors}} = Worker.perform(job(args))
       assert "missing email" in errors
     end
 
-    test "returns error when email is empty string" do
-      args = %{
-        "email" => "",
-        "transactional_id" => "inviteMember"
-      }
+    test "returns {:cancel, ...} when email is empty string" do
+      args = Map.put(@valid_args, "email", "")
 
-      assert {:error, {:validation, errors}} = Worker.perform(%Oban.Job{args: args})
+      assert {:cancel, {:validation, errors}} = Worker.perform(job(args))
       assert "missing email" in errors
     end
 
-    test "returns error when email has invalid format" do
-      args = %{
-        "email" => "not-an-email",
-        "transactional_id" => "inviteMember"
-      }
+    test "returns {:cancel, ...} when email has invalid format" do
+      args = Map.put(@valid_args, "email", "not-an-email")
 
-      assert {:error, {:validation, errors}} = Worker.perform(%Oban.Job{args: args})
+      assert {:cancel, {:validation, errors}} = Worker.perform(job(args))
       assert "invalid email format" in errors
     end
 
-    test "returns error when transactional_id is missing" do
-      args = %{
-        "email" => "user@example.com"
-      }
+    test "returns {:cancel, ...} when transactional_id is missing" do
+      args = Map.delete(@valid_args, "transactional_id")
 
-      assert {:error, {:validation, errors}} = Worker.perform(%Oban.Job{args: args})
+      assert {:cancel, {:validation, errors}} = Worker.perform(job(args))
       assert "missing transactional_id" in errors
     end
 
-    test "returns error when transactional_id is invalid" do
-      args = %{
-        "email" => "user@example.com",
-        "transactional_id" => "unknownTemplate"
-      }
+    test "returns {:cancel, ...} when transactional_id is unknown" do
+      args = Map.put(@valid_args, "transactional_id", "unknownTemplate")
 
-      assert {:error, {:validation, errors}} = Worker.perform(%Oban.Job{args: args})
+      assert {:cancel, {:validation, errors}} = Worker.perform(job(args))
       assert "invalid transactional_id" in errors
     end
 
-    test "returns error when data_variables has non-string/number values" do
-      args = %{
-        "email" => "user@example.com",
-        "transactional_id" => "inviteMember",
-        "data_variables" => %{"link" => %{"nested" => "object"}}
-      }
+    test "returns {:cancel, ...} when data_variables has non-string/number values" do
+      args = put_in(@valid_args, ["data_variables", "link"], %{"nested" => "object"})
 
-      assert {:error, {:validation, errors}} = Worker.perform(%Oban.Job{args: args})
+      assert {:cancel, {:validation, errors}} = Worker.perform(job(args))
       assert "data_variables values must be strings or numbers" in errors
     end
 
     test "accumulates multiple validation errors" do
-      args = %{}
-
-      assert {:error, {:validation, errors}} = Worker.perform(%Oban.Job{args: args})
+      assert {:cancel, {:validation, errors}} = Worker.perform(job(%{}))
       assert "missing email" in errors
       assert "missing transactional_id" in errors
       assert "invalid transactional_id" in errors
     end
+
+    test "never delivers when args are invalid" do
+      refute_email_sent()
+      Worker.perform(job(%{}))
+      refute_email_sent()
+    end
   end
 
-  describe "perform/1 in prod environment" do
+  # ---------------------------------------------------------------------------
+  # Seam 2: delivery-failure semantics. The mailer adapter is swapped for a
+  # configurable stub (mirroring the :discord_adapter / :onboarding_stripe_adapter
+  # seams) so classification can be exercised without real HTTP.
+  # ---------------------------------------------------------------------------
+
+  describe "perform/1 failure semantics in prod" do
+    import ExUnit.CaptureLog
+
     setup do
-      original_env = Application.get_env(:dhc, :environment)
-      original_key = Application.get_env(:dhc, :loops_api_key)
-      original_map = Application.get_env(:dhc, :loops_transactional_ids)
-
       Application.put_env(:dhc, :environment, :prod)
-
-      on_exit(fn ->
-        Application.put_env(:dhc, :environment, original_env)
-        Application.put_env(:dhc, :loops_api_key, original_key)
-        Application.put_env(:dhc, :loops_transactional_ids, original_map)
-      end)
-
       :ok
     end
 
-    test "returns error when Loops API returns non-2xx" do
-      bypass = Bypass.open()
+    test "cancels deterministically when the provider rejects a 4xx validation family response" do
+      stub_delivery({:error, {400, %{"message" => "Missing required data variable"}}})
 
-      Application.put_env(:dhc, :loops_api_key, "test-api-key")
-
-      Bypass.expect(bypass, "POST", "/api/v1/transactional", fn conn ->
-        Plug.Conn.send_resp(conn, 400, "{\"error\": \"Invalid request\"}")
-      end)
-
-      # Temporarily override the API URL to point to Bypass
-      original_url = Application.get_env(:dhc, :loops_api_url)
-
-      Application.put_env(
-        :dhc,
-        :loops_api_url,
-        "http://localhost:#{bypass.port}/api/v1/transactional"
-      )
-
-      args = %{
-        "email" => "user@example.com",
-        "transactional_id" => "inviteMember",
-        "data_variables" => %{"name" => "Alice"}
-      }
-
-      assert {:error, {:loops_api, 400}} = Worker.perform(%Oban.Job{args: args})
-    after
-      Application.delete_env(:dhc, :loops_api_url)
+      assert {:cancel, {:provider_rejected, 400}} = Worker.perform(job(@valid_args))
     end
 
-    test "returns error when Loops API key is not configured" do
-      Application.put_env(:dhc, :loops_api_key, nil)
+    test "cancels on 422-style unprocessable content" do
+      stub_delivery({:error, {422, %{"message" => "unprocessable"}}})
 
-      args = %{
-        "email" => "user@example.com",
-        "transactional_id" => "inviteMember"
-      }
-
-      assert {:error, :api_key_not_configured} = Worker.perform(%Oban.Job{args: args})
+      assert {:cancel, {:provider_rejected, 422}} = Worker.perform(job(@valid_args))
     end
 
-    test "returns error when Loops API key is empty string" do
-      Application.put_env(:dhc, :loops_api_key, "")
+    test "retries on rate limiting (429)" do
+      stub_delivery({:error, {429, %{"message" => "rate limited"}}})
 
-      args = %{
-        "email" => "user@example.com",
-        "transactional_id" => "inviteMember"
-      }
-
-      assert {:error, :api_key_not_configured} = Worker.perform(%Oban.Job{args: args})
+      assert {:error, {429, %{"message" => "rate limited"}}} = Worker.perform(job(@valid_args))
     end
 
-    test "sends email successfully when Loops API returns 2xx" do
-      bypass = Bypass.open()
+    test "retries on provider 5xx" do
+      stub_delivery({:error, {503, "upstream unavailable"}})
 
-      Application.put_env(:dhc, :loops_api_key, "test-api-key")
-
-      Bypass.expect(bypass, "POST", "/api/v1/transactional", fn conn ->
-        Plug.Conn.send_resp(conn, 200, "{\"success\": true}")
-      end)
-
-      original_url = Application.get_env(:dhc, :loops_api_url)
-
-      Application.put_env(
-        :dhc,
-        :loops_api_url,
-        "http://localhost:#{bypass.port}/api/v1/transactional"
-      )
-
-      args = %{
-        "email" => "user@example.com",
-        "transactional_id" => "inviteMember",
-        "data_variables" => %{"name" => "Alice"}
-      }
-
-      assert Worker.perform(%Oban.Job{args: args}) == :ok
-    after
-      Application.delete_env(:dhc, :loops_api_url)
+      assert {:error, {503, "upstream unavailable"}} = Worker.perform(job(@valid_args))
     end
 
-    test "sends correct payload to Loops API" do
-      bypass = Bypass.open()
+    test "retries on network errors" do
+      stub_delivery({:error, %Mint.TransportError{reason: :econnrefused}})
 
-      Application.put_env(:dhc, :loops_api_key, "test-api-key")
-
-      Bypass.expect(bypass, "POST", "/api/v1/transactional", fn conn ->
-        {:ok, body, conn} = Plug.Conn.read_body(conn)
-        payload = Jason.decode!(body)
-
-        assert payload["email"] == "user@example.com"
-        # The worker translates the friendly name "inviteMember" to the mapped
-        # Loops ID from :loops_transactional_ids (configured in test.exs).
-        assert payload["transactionalId"] == "test-loops-id-inviteMember"
-        assert payload["dataVariables"]["name"] == "Alice"
-
-        Plug.Conn.send_resp(conn, 200, "{\"success\": true}")
-      end)
-
-      # Temporarily override the API URL to point to Bypass
-      original_url = Application.get_env(:dhc, :loops_api_url)
-
-      Application.put_env(
-        :dhc,
-        :loops_api_url,
-        "http://localhost:#{bypass.port}/api/v1/transactional"
-      )
-
-      args = %{
-        "email" => "user@example.com",
-        "transactional_id" => "inviteMember",
-        "data_variables" => %{"name" => "Alice"}
-      }
-
-      assert Worker.perform(%Oban.Job{args: args}) == :ok
-    after
-      Application.delete_env(:dhc, :loops_api_url)
+      assert {:error, %Mint.TransportError{reason: :econnrefused}} =
+               Worker.perform(job(@valid_args))
     end
 
-    test "sends authorization header with Bearer token" do
-      bypass = Bypass.open()
+    test "logs the failure before returning" do
+      stub_delivery({:error, {503, "upstream unavailable"}})
 
-      Application.put_env(:dhc, :loops_api_key, "my-secret-key")
+      assert capture_log(fn -> Worker.perform(job(@valid_args)) end) =~ "503"
+    end
+  end
 
-      Bypass.expect(bypass, "POST", "/api/v1/transactional", fn conn ->
-        assert ["Bearer my-secret-key"] = Plug.Conn.get_req_header(conn, "authorization")
+  describe "perform/1 failure semantics outside prod" do
+    import ExUnit.CaptureLog
 
-        Plug.Conn.send_resp(conn, 200, "{\"success\": true}")
-      end)
+    # environment stays :test (set by config/test.exs); the mailer adapter
+    # stands in for a stopped local Mailpit relay.
+    test "swallows delivery failures so the dev queue never wedges" do
+      stub_delivery({:error, %Mint.TransportError{reason: :econnrefused}})
 
-      original_url = Application.get_env(:dhc, :loops_api_url)
+      logs =
+        capture_log(fn ->
+          assert Worker.perform(job(@valid_args)) == :ok
+        end)
 
-      Application.put_env(
-        :dhc,
-        :loops_api_url,
-        "http://localhost:#{bypass.port}/api/v1/transactional"
-      )
-
-      args = %{
-        "email" => "user@example.com",
-        "transactional_id" => "inviteMember"
-      }
-
-      assert Worker.perform(%Oban.Job{args: args}) == :ok
-    after
-      Application.delete_env(:dhc, :loops_api_url)
+      assert logs =~ "will not retry"
     end
 
-    test "returns error on HTTP connection failure" do
-      # Use a URL that will fail to connect
-      Application.put_env(:dhc, :loops_api_key, "test-api-key")
+    test "still swallows provider-side rejections outside prod" do
+      stub_delivery({:error, {400, %{"message" => "nope"}}})
 
-      # Use a port that's not listening
-      original_url = Application.get_env(:dhc, :loops_api_url)
-      Application.put_env(:dhc, :loops_api_url, "http://localhost:1/invalid-api")
-
-      args = %{
-        "email" => "user@example.com",
-        "transactional_id" => "inviteMember"
-      }
-
-      assert {:error, {:http_error, _}} = Worker.perform(%Oban.Job{args: args})
-    after
-      Application.delete_env(:dhc, :loops_api_url)
+      assert Worker.perform(job(@valid_args)) == :ok
     end
+  end
 
-    test "translates each friendly name to its mapped Loops ID" do
-      bypass = Bypass.open()
-      Application.put_env(:dhc, :loops_api_key, "test-api-key")
-
-      seen_ids = :ets.new(:seen_ids, [:set, :public])
-
-      Bypass.expect(bypass, "POST", "/api/v1/transactional", fn conn ->
-        {:ok, body, conn} = Plug.Conn.read_body(conn)
-        payload = Jason.decode!(body)
-        :ets.insert(seen_ids, {payload["transactionalId"], true})
-        Plug.Conn.send_resp(conn, 200, "{\"success\": true}")
-      end)
-
-      original_url = Application.get_env(:dhc, :loops_api_url)
-
-      Application.put_env(
-        :dhc,
-        :loops_api_url,
-        "http://localhost:#{bypass.port}/api/v1/transactional"
-      )
-
-      for friendly <- [
-            "inviteMember",
-            "workshopAnnouncement",
-            "workshopRegistration",
-            "workshopRegistrationError"
-          ] do
-        args = %{"email" => "user@example.com", "transactional_id" => friendly}
-        assert Worker.perform(%Oban.Job{args: args}) == :ok
-      end
-
-      # Each friendly name was translated to its test-exs stub ID, not sent as-is
-      assert :ets.member(seen_ids, "test-loops-id-inviteMember")
-      assert :ets.member(seen_ids, "test-loops-id-workshopAnnouncement")
-      assert :ets.member(seen_ids, "test-loops-id-workshopRegistration")
-      assert :ets.member(seen_ids, "test-loops-id-workshopRegistrationError")
-      refute :ets.member(seen_ids, "inviteMember")
-      refute :ets.member(seen_ids, "workshopAnnouncement")
-
-      :ets.delete(seen_ids)
-    after
-      Application.delete_env(:dhc, :loops_api_url)
-    end
-
-    test "fails fast when a friendly name has no mapped Loops ID" do
-      # Remove the mapping entirely so resolve_loops_id/2 can't translate
-      Application.put_env(:dhc, :loops_api_key, "test-api-key")
-      Application.put_env(:dhc, :loops_transactional_ids, %{})
-
-      args = %{
-        "email" => "user@example.com",
-        "transactional_id" => "inviteMember"
-      }
-
-      # The worker must NOT send the friendly name to Loops (that 404s).
-      # Instead it returns a clear configuration error.
-      assert {:error, {:transactional_id_not_configured, "inviteMember"}} =
-               Worker.perform(%Oban.Job{args: args})
-    end
-
-    test "fails fast when a friendly name maps to an empty string" do
-      Application.put_env(:dhc, :loops_api_key, "test-api-key")
-      Application.put_env(:dhc, :loops_transactional_ids, %{"inviteMember" => ""})
-
-      args = %{
-        "email" => "user@example.com",
-        "transactional_id" => "inviteMember"
-      }
-
-      assert {:error, {:transactional_id_not_configured, "inviteMember"}} =
-               Worker.perform(%Oban.Job{args: args})
-    end
+  defp stub_delivery(result) do
+    Application.put_env(:dhc, Dhc.Email.Mailer,
+      adapter: Dhc.Email.AdapterStub,
+      stub_result: result
+    )
   end
 end
