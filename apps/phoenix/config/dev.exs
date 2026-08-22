@@ -86,30 +86,14 @@ config :phoenix, :stacktrace_depth, 20
 
 # Discord webhook URL (not sent in dev — messages are logged instead)
 config :dhc, :discord_webhook_url, System.get_env("DISCORD_WEBHOOK_URL")
-# Loops API key (not sent in dev — jobs are relayed to Mailpit instead)
-config :dhc, :loops_api_key, System.get_env("LOOPS_API_KEY")
 
-# Local Mailpit relay (docker-compose `mailpit` service). The email worker
-# delivers the raw Loops payload here as JSON instead of calling the API.
-config :dhc, :dev_smtp,
-  relay: System.get_env("MAILPIT_HOST", "localhost"),
-  port: String.to_integer(System.get_env("MAILPIT_PORT", "1025")),
-  from: "dev@dhc.local"
-
-# Friendly name -> real Loops transactional ID mapping.
-# Mirrors the edge function's env-var lookup. In dev the worker skips the
-# actual send, but the mapping is still resolved so the skip log shows the
-# real Loops ID. Defaults match the edge function fallbacks.
-config :dhc, :loops_transactional_ids, %{
-  "inviteMember" => System.get_env("INVITE_MEMBER_TRANSACTIONAL_ID", "invite_member"),
-  "workshopAnnouncement" =>
-    System.get_env("WORKSHOP_ANNOUNCEMENT_TRANSACTIONAL_ID", "workshop_announcement"),
-  "workshopRegistration" =>
-    System.get_env("WORKSHOP_REGISTRATION_TRANSACTIONAL_ID", "cmnok76cq02tq0ix92oeoi1kk"),
-  "workshopRegistrationError" =>
-    System.get_env("WORKSHOP_REGISTRATION_ERROR_TRANSACTIONAL_ID", "workshopRegistrationError"),
-  "magicLink" => System.get_env("MAGIC_LINK_TRANSACTIONAL_ID", "magic_link")
-}
+# Dev email delivery: the Mailpit HTTP adapter posts to Mailpit's API port
+# (8025 — the same port as its web UI; SMTP's 1025 is no longer used since
+# ADR 0021). Delivery failures are swallowed by Dhc.Email.Worker, so a
+# stopped `mailpit` container never wedges the dev Oban queue.
+config :dhc, Dhc.Email.Mailer,
+  adapter: Swoosh.Adapters.Mailpit,
+  base_url: System.get_env("MAILPIT_HTTP_URL", "http://localhost:8025")
 
 # Stripe API (not called in dev — sync logs and returns :ok)
 config :dhc, :stripe_secret_key, System.get_env("STRIPE_SECRET_KEY")

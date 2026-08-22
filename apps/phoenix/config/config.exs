@@ -35,9 +35,21 @@ config :dhc, :invitation_verification_token_salt, "invitation-verification-v1"
 config :dhc, :invitation_payment_processor, Dhc.Invitations.StripePayment
 config :dhc, :onboarding_stripe_adapter, Dhc.Onboarding.StripeAdapter.Live
 config :dhc, :workshop_stripe_adapter, Dhc.Workshops.StripeAdapter.Live
-# Non-prod email delivery seam — relays email jobs to the local Mailpit
-# container (see Dhc.Email.DevMailer). Overridden with a stub in test.exs.
-config :dhc, :email_dev_mailer, Dhc.Email.DevMailer
+# Transactional email transport seam (ADR 0021). The adapter itself is chosen
+# per environment: Swoosh.Adapters.Resend (prod), Swoosh.Adapters.Mailpit (dev),
+# Swoosh.Adapters.Test (test) — see Dhc.Email.Mailer.
+#
+# All adapters run over Finch, wrapped by Dhc.Email.ApiClient so every provider
+# request carries an Idempotency-Key header derived from the Oban job id.
+config :swoosh,
+  api_client: Dhc.Email.ApiClient
+
+config :swoosh, :finch_name, Swoosh.Finch
+
+# Sender on outgoing messages. Providers render the real sender from their
+# templates; this shows up in the dev Mailpit inbox and satisfies Swoosh's
+# requirement for a from address.
+config :dhc, :email_from, "dev@dhc.local"
 
 # Configure Oban for background job processing
 config :dhc, Oban,
@@ -79,6 +91,7 @@ config :logger, :default_formatter,
     :body,
     :charge_id,
     :continuation_ids,
+    :covered_price_ids,
     :created_by,
     :customer_id,
     :discord_jobs,
@@ -97,10 +110,12 @@ config :logger, :default_formatter,
     :input_count,
     :invitation_id,
     :invite_count,
+    :kind,
     :last_payment_date,
+    :lookup_key,
     :lookup_keys,
-    :loops_id,
-    :loops_status,
+    :receipt,
+    :provider_status,
     :manual_customer_count,
     :manual_customer_ids_provided,
     :matched_customers,
@@ -116,6 +131,7 @@ config :logger, :default_formatter,
     :outcome,
     :paused,
     :price_ids,
+    :profile_id,
     :processed,
     :provider,
     :reason,
@@ -162,15 +178,14 @@ config :sentry,
       :failed,
       :inactive,
       :paused,
+      :profile_id,
       :active,
       :unchanged,
       # Email worker
       :email,
       :transactional_id,
-      :loops_id,
-      :loops_status,
-      :loops_body,
-      :loops_url,
+      :provider_status,
+      :receipt,
       :reason,
       :validation_errors,
       :http_error,

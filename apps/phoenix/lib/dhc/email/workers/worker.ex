@@ -1,93 +1,84 @@
 defmodule Dhc.Email.Worker do
   @moduledoc """
-  Oban worker that sends transactional emails via the Loops API.
+  Oban worker that sends transactional emails through the Swoosh transport
+  seam (ADR 0021 — Swoosh Is the Email Transport Seam).
 
   Migrated from the `process-emails` Deno edge function. Each job represents
   a single email (one Oban job per message, replacing the pgmq batch-read
   pattern).
 
-  ## Job args
+  ## Job args (public contract — unchanged)
 
     * `email` — the recipient email address
-    * `transactional_id` — a friendly template name (`"inviteMember"`,
+    * `transactional_id` — the Email Kind (`"inviteMember"`,
       `"workshopAnnouncement"`, `"workshopRegistration"`,
-      `"workshopRegistrationError"`, `"magicLink"`). The worker translates
-      this to the real Loops dashboard transactional ID via the
-      `:loops_transactional_ids` app env map (mirroring the edge function's
-      env-var lookup).
+      `"workshopRegistrationError"`, `"magicLink"`). The worker derives the
+      Resend template alias mechanically in kebab-case.
     * `data_variables` — key-value pairs injected into the email template
       (values must be strings or numbers)
 
-  ## Friendly name → Loops ID translation
+  ## Delivery
 
-  The arg carries a friendly name; Loops wants the dashboard-generated ID
-  (e.g. `clfq6dinn000yl70fgwwyp82l`). Translation happens at send time via
-  `Application.get_env(:dhc, :loops_transactional_ids)`, a map keyed by
-  friendly name. The map is built in `config/runtime.exs` and `config/dev.exs`
-  from the `INVITE_MEMBER_TRANSACTIONAL_ID`,
-  `WORKSHOP_ANNOUNCEMENT_TRANSACTIONAL_ID`,
-  `WORKSHOP_REGISTRATION_TRANSACTIONAL_ID`, and
-  `WORKSHOP_REGISTRATION_ERROR_TRANSACTIONAL_ID` env vars.
+  The worker builds one `%Swoosh.Email{}` per job — recipient, sender, and
+  Resend template option — and hands it to `Dhc.Email.Mailer`. The configured
+  adapters are `Swoosh.Adapters.Resend` in prod, `Swoosh.Adapters.Mailpit`
+  over HTTP in dev (`http://localhost:8025` web UI), and
+  `Swoosh.Adapters.Test` in tests.
 
-  Only `workshopRegistration` has a real Loops ID as its fallback default
-  (`cmnok76cq02tq0ix92oeoi1kk`). The other three **must** be set in
-  production or the worker fails fast with
-  `{:error, {:transactional_id_not_configured, friendly_name}}` — it never
-  sends the friendly name to Loops (that produces a 404 after 5 retries).
+  Outside prod the message is decorated with a JSON summary body
+  (recipient + friendly Kind + data variables) so the dev inbox shows who
+  would receive what; providers render real bodies from their templates.
 
-  ## Environment behaviour
+  ## Idempotency
 
-    * **dev/test** — delivers the Loops payload (recipient, friendly template
-      name, data variables) as plain JSON to the local Mailpit relay via the
-      `:email_dev_mailer` module (`Dhc.Email.DevMailer` by default, SMTP to
-      `localhost:1025`, web UI `http://localhost:8025`). Delivery failures are
-      logged and swallowed — a stopped Mailpit container must never fail or
-      retry dev jobs — so the job always succeeds even if the relay is down.
-    * **prod** — POSTs to `https://app.loops.so/api/v1/transactional` using
-      the `LOOPS_API_KEY` environment variable
+  Every send carries an `Idempotency-Key` derived from the Oban job id
+  (`oban-<job.id>`), applied at the HTTP layer by `Dhc.Email.ApiClient`.
+  Provider retries therefore cannot double-send a delivered email.
 
-  Oban handles retries with exponential backoff. If the Loops API returns
-  a non-2xx response, the job returns `{:error, reason}` and will be retried
-  up to `max_attempts` times.
+  ## Error classification
+
+    * Invalid job args are deterministic: the job is **cancelled
+      immediately** (`{:cancel, _}`) with a Sentry capture instead of burning
+      five identical attempts.
+    * In prod, provider responses of 4xx (except 429 rate limiting) are
+      deterministic rejections too: cancelled with Sentry capture. Rate
+      limits, 5xx, and network errors are transient: returned as
+      `{:error, reason}` for Oban's exponential-backoff retries
+      (`max_attempts: 5`).
+    * Outside prod, delivery failures are logged and swallowed (`:ok`) —
+      a stopped Mailpit container must never fail or retry dev jobs.
 
   ## Logging
 
   Every log line carries the Oban job context (`oban_job_id`, `oban_attempt`,
-  `oban_queue`, `oban_worker`) plus `email` and `transactional_id`. The Loops
-  request/response is logged at debug level (without the API key) so failures
-  can be correlated to a specific job and HTTP exchange.
+  `oban_queue`, `oban_worker`) plus `email` and `transactional_id`, so
+  failures can be correlated to a specific job.
   """
 
   use Oban.Worker, queue: :emails, max_attempts: 5
 
   require Logger
 
+  alias Dhc.Email.Mailer
+  alias Swoosh.Email
+
   @transactional_ids ~w(inviteMember workshopAnnouncement workshopRegistration workshopRegistrationError magicLink)
-  # Default Loops API URL. Overridable via app config for tests.
-  defp loops_api_url,
-    do: Application.get_env(:dhc, :loops_api_url, "https://app.loops.so/api/v1/transactional")
+  @idempotency_header "Idempotency-Key"
 
   @impl Worker
   def perform(%Oban.Job{args: args} = job) do
     ctx = job_log_context(job)
 
     with :ok <- validate_args(args, ctx),
-         :ok <- send_email(args, ctx) do
+         :ok <- deliver(args, job, ctx) do
       :ok
     else
-      {:error, reason} = error ->
-        Logger.error(
-          "[email-worker] Job failed: #{format_reason(reason)}",
-          Keyword.merge(ctx,
-            email: args["email"],
-            transactional_id: args["transactional_id"],
-            reason: format_reason(reason)
-          )
-        )
-
-        error
+      {:cancel, _reason} = cancelled -> cancelled
+      {:error, _reason} = retryable -> retryable
     end
   end
+
+  # -- Argument validation ----------------------------------------------------
 
   defp validate_args(args, ctx) do
     errors =
@@ -114,19 +105,12 @@ defmodule Dhc.Email.Worker do
           )
         )
 
-        Sentry.capture_message(message,
-          level: :error,
-          extra: %{
-            args: args,
-            validation_errors: errors,
-            oban_job_id: ctx[:oban_job_id],
-            oban_attempt: ctx[:oban_attempt],
-            oban_queue: ctx[:oban_queue],
-            oban_worker: ctx[:oban_worker]
-          }
+        capture_deterministic_failure(message, ctx,
+          args: args,
+          validation_errors: errors
         )
 
-        {:error, {:validation, errors}}
+        {:cancel, {:validation, errors}}
     end
   end
 
@@ -172,189 +156,176 @@ defmodule Dhc.Email.Worker do
 
   defp validate_data_variables(errors, _args), do: errors
 
-  defp send_email(%{"transactional_id" => transactional_id} = args, ctx) do
-    if env() == :prod do
-      with {:ok, loops_id} <- resolve_loops_id(transactional_id, ctx) do
-        post_to_loops(args, loops_id, ctx)
-      end
+  # -- Delivery ----------------------------------------------------------------
+
+  defp deliver(
+         %{"email" => recipient, "transactional_id" => kind} = args,
+         %Oban.Job{} = job,
+         ctx
+       ) do
+    data_variables = Map.get(args, "data_variables", %{})
+
+    recipient
+    |> build_email(kind, data_variables, job.id)
+    |> deliver_email(kind, ctx)
+  end
+
+  defp build_email(recipient, kind, data_variables, oban_job_id) do
+    email =
+      Email.new()
+      |> Email.from(email_from())
+      |> Email.to(recipient)
+      |> Email.put_provider_option(:template, %{
+        id: template_alias(kind),
+        variables: data_variables
+      })
+
+    if oban_job_id do
+      key = "oban-#{oban_job_id}"
+
+      email
+      |> Email.put_provider_option(:idempotency_key, key)
+      # MIME-level copy for dev-inbox observability; the wire header comes from
+      # the provider option via Dhc.Email.ApiClient.
+      |> Email.header(@idempotency_header, key)
     else
-      deliver_dev_email(args, ctx)
+      email
+    end
+    |> decorate_for_dev(recipient, kind, data_variables)
+  end
+
+  # Non-prod only: providers render real bodies from their templates, so the
+  # dev inbox gets a JSON summary (recipient + friendly Kind + variables).
+  defp decorate_for_dev(email, recipient, kind, data_variables) do
+    if env() == :prod do
+      email
+    else
+      payload = %{
+        email: recipient,
+        transactional_id: kind,
+        data_variables: data_variables
+      }
+
+      subject = "[dev] Email: #{kind}"
+      body = Jason.encode!(payload, pretty: true)
+
+      email
+      |> Email.subject(subject)
+      |> Email.text_body(body)
     end
   end
 
-  defp env do
-    Application.get_env(:dhc, :environment, :development)
-  end
-
-  # Non-prod delivery: the raw Loops payload as JSON through the dev mailer
-  # seam (Mailpit by default). The job never fails on delivery errors — the
-  # dev relay being down is an expected condition (e.g. the compose service
-  # was never started), not something to retry 5 times into Oban's discard.
-  defp deliver_dev_email(
-         %{"email" => email, "transactional_id" => transactional_id} = args,
-         ctx
-       ) do
-    payload = %{
-      email: email,
-      transactional_id: transactional_id,
-      data_variables: Map.get(args, "data_variables", %{})
-    }
-
-    subject = "[dev] Loops email: #{transactional_id}"
-    body = Jason.encode!(payload, pretty: true)
-
-    case dev_mailer().deliver(email, subject, body) do
-      :ok ->
+  defp deliver_email(%Email{} = email, kind, ctx) do
+    case Mailer.deliver(email) do
+      {:ok, receipt} ->
         Logger.info(
-          "[email-worker] Email delivered to Mailpit (dev)",
-          Keyword.merge(ctx, email: email, transactional_id: transactional_id)
+          "[email-worker] Email sent successfully",
+          Keyword.merge(ctx,
+            email: recipient_address(email),
+            transactional_id: kind,
+            receipt: inspect(receipt)
+          )
         )
 
         :ok
 
       {:error, reason} ->
-        Logger.warning(
-          "[email-worker] Mailpit delivery failed (is `docker compose up -d mailpit` running?), job will not retry",
-          Keyword.merge(ctx,
-            email: email,
-            transactional_id: transactional_id,
-            reason: inspect(reason)
-          )
-        )
-
-        :ok
+        handle_delivery_error(reason, kind, ctx)
     end
   end
 
-  defp dev_mailer, do: Application.get_env(:dhc, :email_dev_mailer, Dhc.Email.DevMailer)
-
-  defp resolve_loops_id(friendly_name, ctx) do
-    # Translation mirrors the edge function's env-var lookup. The map is built
-    # in config/runtime.exs / config/dev.exs from *_TRANSACTIONAL_ID env vars.
-    # Only workshopRegistration has a real Loops ID as its fallback default;
-    # the others must be configured or we fail fast (never send the friendly
-    # name to Loops — that produces a 404 after 5 retries).
-    map = Application.get_env(:dhc, :loops_transactional_ids, %{})
-
-    case Map.get(map, to_string(friendly_name)) do
-      nil ->
-        Logger.error(
-          "[email-worker] No Loops ID mapped for transactional_id",
-          Keyword.merge(ctx, transactional_id: friendly_name)
-        )
-
-        Sentry.capture_message("Loops transactional ID not configured",
-          level: :error,
-          extra: %{
-            transactional_id: friendly_name,
-            oban_job_id: ctx[:oban_job_id],
-            oban_attempt: ctx[:oban_attempt],
-            oban_queue: ctx[:oban_queue],
-            oban_worker: ctx[:oban_worker]
-          }
-        )
-
-        {:error, {:transactional_id_not_configured, friendly_name}}
-
-      loops_id when is_binary(loops_id) and loops_id != "" ->
-        {:ok, loops_id}
-
-      _ ->
-        Logger.error(
-          "[email-worker] Loops ID mapping is empty for transactional_id",
-          Keyword.merge(ctx, transactional_id: friendly_name)
-        )
-
-        {:error, {:transactional_id_not_configured, friendly_name}}
-    end
-  end
-
-  defp post_to_loops(
-         %{"email" => email, "transactional_id" => transactional_id} = args,
-         loops_id,
-         ctx
-       ) do
-    api_key = loops_api_key()
-
-    if is_nil(api_key) or api_key == "" do
-      Logger.error(
-        "[email-worker] LOOPS_API_KEY not configured",
-        Keyword.merge(ctx, email: email, transactional_id: transactional_id)
-      )
-
-      {:error, :api_key_not_configured}
+  defp handle_delivery_error(reason, kind, ctx) do
+    if env() == :prod do
+      classify_delivery_error(reason, kind, ctx)
     else
-      data_variables = Map.get(args, "data_variables", %{})
-
-      payload = %{
-        email: email,
-        transactionalId: loops_id,
-        dataVariables: data_variables
-      }
-
-      headers = [
-        {"authorization", "Bearer #{api_key}"},
-        {"content-type", "application/json"}
-      ]
-
-      Logger.debug(
-        "[email-worker] POST to Loops",
+      Logger.warning(
+        "[email-worker] Dev relay delivery failed (is `docker compose up -d mailpit` running?), job will not retry",
         Keyword.merge(ctx,
-          email: email,
-          transactional_id: transactional_id,
-          loops_id: loops_id,
-          loops_url: loops_api_url(),
-          data_variables: inspect(data_variables)
+          transactional_id: kind,
+          reason: inspect(reason)
         )
       )
 
-      case Req.post(loops_api_url(), json: payload, headers: headers) do
-        {:ok, %Req.Response{status: status}} when status in 200..299 ->
-          Logger.info(
-            "[email-worker] Email sent successfully",
-            Keyword.merge(ctx,
-              email: email,
-              transactional_id: transactional_id,
-              loops_id: loops_id,
-              loops_status: status
-            )
-          )
-
-          :ok
-
-        {:ok, %Req.Response{status: status} = response} ->
-          Logger.error(
-            "[email-worker] Loops API returned #{status}",
-            Keyword.merge(ctx,
-              email: email,
-              transactional_id: transactional_id,
-              loops_id: loops_id,
-              loops_status: status,
-              loops_body: inspect(response.body)
-            )
-          )
-
-          {:error, {:loops_api, status}}
-
-        {:error, exception} ->
-          Logger.error(
-            "[email-worker] HTTP request failed: #{inspect(exception)}",
-            Keyword.merge(ctx,
-              email: email,
-              transactional_id: transactional_id,
-              loops_id: loops_id,
-              http_error: inspect(exception)
-            )
-          )
-
-          {:error, {:http_error, exception}}
-      end
+      :ok
     end
   end
 
-  defp loops_api_key do
-    Application.get_env(:dhc, :loops_api_key)
+  # Deterministic rejections (4xx except rate limiting): retrying cannot fix a
+  # bad payload or template mapping, so cancel immediately with a Sentry
+  # capture rather than burn all attempts.
+  defp classify_delivery_error({status, _body}, kind, ctx)
+       when is_integer(status) and status >= 400 and status < 500 and status != 429 do
+    message = "Provider rejected #{kind}; discarding job"
+
+    Logger.error(
+      "[email-worker] #{message}",
+      Keyword.merge(ctx,
+        transactional_id: kind,
+        provider_status: status
+      )
+    )
+
+    capture_deterministic_failure(message, ctx,
+      transactional_id: kind,
+      provider_status: status
+    )
+
+    {:cancel, {:provider_rejected, status}}
   end
+
+  # Rate limits (429), 5xx, and network errors are transient — let Oban retry
+  # with backoff. The Idempotency-Key makes those retries safe against
+  # double-sends that were already accepted.
+  defp classify_delivery_error(reason, kind, ctx) do
+    Logger.error(
+      "[email-worker] Transient delivery failure; Oban will retry",
+      Keyword.merge(ctx,
+        transactional_id: kind,
+        reason: inspect(reason)
+      )
+    )
+
+    {:error, reason}
+  end
+
+  # -- Environment & helpers ---------------------------------------------------
+
+  defp env do
+    Application.get_env(:dhc, :environment, :development)
+  end
+
+  defp template_alias(kind) do
+    ~r/([a-z0-9])([A-Z])/
+    |> Regex.replace(kind, "\\1-\\2")
+    |> String.downcase()
+  end
+
+  # Sentry capture for deterministic failures (invalid args, unmapped template
+  # IDs, provider rejections). Oban context rides in :extra as a flat map —
+  # this Sentry version does not accept :contexts.
+  defp capture_deterministic_failure(message, ctx, extra) do
+    Sentry.capture_message(message,
+      level: :error,
+      extra:
+        Map.merge(Map.new(extra), %{
+          oban_job_id: ctx[:oban_job_id],
+          oban_attempt: ctx[:oban_attempt],
+          oban_queue: ctx[:oban_queue],
+          oban_worker: ctx[:oban_worker]
+        })
+    )
+  end
+
+  # Swoosh requires a sender on every message. Resend templates define the
+  # production sender; Mailpit shows this fallback in the dev inbox.
+  defp email_from do
+    Application.get_env(:dhc, :email_from, "dev@dhc.local")
+  end
+
+  defp recipient_address(%Email{to: [{_, recipient}]}) when is_binary(recipient),
+    do: recipient
+
+  defp recipient_address(%Email{to: to}), do: inspect(to)
 
   defp job_log_context(%Oban.Job{} = job) do
     [
@@ -364,11 +335,4 @@ defmodule Dhc.Email.Worker do
       oban_worker: job.worker
     ]
   end
-
-  defp format_reason({:transactional_id_not_configured, name}),
-    do: "transactional_id #{name} not configured"
-
-  defp format_reason({:loops_api, status}), do: "loops_api #{status}"
-  defp format_reason({:validation, errors}), do: "validation: #{Enum.join(errors, ", ")}"
-  defp format_reason(other), do: inspect(other)
 end

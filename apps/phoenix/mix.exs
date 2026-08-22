@@ -68,7 +68,7 @@ defmodule Dhc.MixProject do
       {:telemetry_poller, "~> 1.0"},
       {:jason, "~> 1.2"},
       {:dns_cluster, "~> 0.2.0"},
-      {:bandit, "~> 1.12.4"},
+      {:bandit, "~> 1.12.5"},
       {:oban, "~> 2.19"},
       {:sentry, "~> 13.4"},
       {:opentelemetry, "~> 1.5"},
@@ -86,9 +86,10 @@ defmodule Dhc.MixProject do
       {:req, "~> 0.7.2"},
       {:nostrum, "~> 0.10.4"},
       {:assent, "~> 0.3.1"},
-      # SMTP client for the dev email relay (Mailpit). Used by
-      # Dhc.Email.DevMailer in non-prod environments.
-      {:gen_smtp, "~> 1.3", only: :dev},
+      # Email transport seam for transactional emails (ADR 0021). First-party
+      # adapters per environment: Resend in prod, Mailpit over HTTP in dev,
+      # Swoosh.Adapters.Test in tests. Needs >= 1.26 for Swoosh.Adapters.Mailpit.
+      {:swoosh, "~> 1.26"},
       # Fakerer: maintained fork of elixirs/faker. OTP app stays `:faker`,
       # Hex package is `:fakerer`. Dev-only (used by seeding mix tasks).
       # NOT `runtime: false`: seed tasks call `Mix.Task.run("app.start")`,
@@ -141,11 +142,12 @@ defmodule Dhc.MixProject do
       # (ADR 0006). `mix test path/to/file.exs` still routes through here.
       test: ["test --no-start"],
       precommit: [
+        # Hex tasks must run before project tasks prune the archive load path.
+        "hex.audit",
         "credo",
         # Architecture policy from .reach.exs (layer/forbidden-call rules).
         # Findings not in .reach-baseline.json fail the build.
         "reach.check --arch",
-        "hex.audit",
         "compile --warnings-as-errors",
         "deps.unlock --unused",
         "format",

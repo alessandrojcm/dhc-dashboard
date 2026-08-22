@@ -23,6 +23,9 @@ defmodule Dhc.Application do
         Dhc.Repo,
         {DNSCluster, query: Application.get_env(:dhc, :dns_cluster_query) || :ignore},
         {Phoenix.PubSub, name: Dhc.PubSub},
+        # HTTP pool for the Swoosh email transport (ADR 0021). The name must
+        # match config :swoosh, :finch_name.
+        {Finch, name: Swoosh.Finch},
         # Oban for background job processing
         {Oban, Application.fetch_env!(:dhc, Oban)},
         Dhc.Discord.GuildMemberCache

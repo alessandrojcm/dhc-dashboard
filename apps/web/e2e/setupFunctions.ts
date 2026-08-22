@@ -75,22 +75,28 @@ export async function createMember({
 	roles = new Set<E2ERole>(["member"]),
 	createSubscription = false,
 	subscriptionPaymentMethod = "sepa_debit",
+	customerId,
+	isActive = true,
 }: {
 	email: string;
 	roles?: Set<E2ERole>;
 	createSubscription?: boolean;
 	subscriptionPaymentMethod?: "sepa_debit" | "card";
+	/** Existing Stripe customer id to seed (e.g. an inactive member's lapsed customer). */
+	customerId?: string;
+	/** Local access projection; pass false to seed an inactive/lapsed member. */
+	isActive?: boolean;
 }) {
 	const testData = person(email);
 	let stripeCleanup: (() => Promise<void>) | undefined;
-	let customerId: string | undefined;
+	let effectiveCustomerId = customerId;
 
 	if (createSubscription) {
 		const subscription = await createStripeCustomerWithSubscription(
 			email,
 			subscriptionPaymentMethod,
 		);
-		customerId = subscription.customerId;
+		effectiveCustomerId = subscription.customerId;
 		stripeCleanup = subscription.cleanUp;
 	}
 
@@ -104,7 +110,8 @@ export async function createMember({
 		pronouns: testData.pronouns,
 		gender: testData.gender,
 		medicalConditions: testData.medical_conditions,
-		customerId,
+		customerId: effectiveCustomerId,
+		isActive,
 	});
 
 	return {
@@ -113,6 +120,37 @@ export async function createMember({
 		async cleanUp() {
 			await deleteE2EFixture("member", seeded.userId);
 			await stripeCleanup?.();
+		},
+	};
+}
+
+/**
+ * ALE-252: an INACTIVE member still holds a Stripe customer with a saved
+ * SEPA payment method but no live subscription — exactly what the
+ * reactivation flow previews and charges.
+ */
+export async function createStripeCustomerWithSavedSepaMethod(email: string) {
+	const customer = await stripeClient.customers.create({
+		email,
+		metadata: { source: "test" },
+	});
+	const paymentMethod = await stripeClient.paymentMethods.create({
+		type: "sepa_debit",
+		sepa_debit: { iban: "IE29AIBK93115212345678" },
+		billing_details: { email, name: "Test User" },
+	});
+	await stripeClient.paymentMethods.attach(paymentMethod.id, {
+		customer: customer.id,
+	});
+	await stripeClient.customers.update(customer.id, {
+		invoice_settings: { default_payment_method: paymentMethod.id },
+	});
+
+	return {
+		customerId: customer.id,
+		paymentMethodId: paymentMethod.id,
+		async cleanUp() {
+			await stripeClient.customers.del(customer.id);
 		},
 	};
 }

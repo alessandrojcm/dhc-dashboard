@@ -9,6 +9,8 @@ defmodule Dhc.Membership do
 
   import Ecto.Query
 
+  alias Dhc.Auth
+  alias Dhc.Membership.Reactivation
   alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.Members
   alias Dhc.Repo
@@ -24,6 +26,20 @@ defmodule Dhc.Membership do
           | :subscription_not_found
           | :stripe_error
           | Ecto.Changeset.t()
+
+  @type reactivate_error ::
+          :invalid_payload
+          | :not_found
+          | :membership_active
+          | :membership_paused
+          | :no_saved_payment_method
+          | :stripe_error
+
+  # A subscription covers its price when active or awaiting a future start
+  # (`trialing`) — same coverage rule the Stripe sync applies (ALE-250).
+  @covering_statuses ["active", "trialing"]
+
+  @max_start_date_days_ahead 366
 
   @doc """
   Pauses a member's active Stripe membership subscription until `pause_until`.
@@ -54,6 +70,112 @@ defmodule Dhc.Membership do
       write_pause_until(member_id, nil)
     end
   end
+
+  @doc """
+  Reactivates an inactive member by creating fresh monthly + annual membership
+  subscriptions against their saved SEPA payment method (ALE-251).
+
+  Stripe is the source of truth (ADR-0008): the guard lists the customer's
+  live subscriptions, so a member whose local `is_active` flag lags behind a
+  still-active Stripe subscription is rejected with `:membership_active`.
+  Retries with identical params are idempotent — Stripe idempotency keys are
+  derived from member id + requested start date.
+  """
+  @spec reactivate(String.t(), map()) :: {:ok, map()} | {:error, reactivate_error()}
+  def reactivate(member_id, %{"startDate" => start_date} = attrs) when is_binary(start_date) do
+    with {:ok, member} <- load_member_customer(member_id),
+         {:ok, parsed_start_date} <- parse_start_date(start_date),
+         :ok <- ensure_reactivatable(member.customer_id, Date.to_iso8601(parsed_start_date)),
+         {:ok, result} <-
+           Reactivation.activate(%{
+             member_id: member.id,
+             customer_id: member.customer_id,
+             operator_principal_id: Map.get(attrs, "operatorPrincipalId"),
+             start_date: parsed_start_date
+           }) do
+      restore_member_access(member_id, member.profile_id)
+      {:ok, result}
+    end
+  end
+
+  def reactivate(_member_id, _attrs), do: {:error, :invalid_payload}
+
+  # Restores dashboard access immediately after a successful reactivation
+  # (ALE-252). The Stripe sync stays authoritative and will reconcile this
+  # flag on later runs; writing it here means the operator sees the member as
+  # active without waiting for the daily cron or a webhook round-trip.
+  defp restore_member_access(member_id, profile_id) do
+    case Auth.apply_member_access(profile_id, true) do
+      :ok ->
+        :ok
+
+      {:error, reason} ->
+        Logger.error(
+          "[membership] Failed to restore member access after reactivation",
+          member_id: member_id,
+          profile_id: profile_id,
+          reason: inspect(reason)
+        )
+
+        :ok
+    end
+  end
+
+  @doc """
+  Previews the saved SEPA payment method a reactivation would charge (ALE-252).
+
+  Read-only companion to `reactivate/2` backing the operator modal: performs
+  no Stripe mutation and no reactivatability guard, so the command's guards
+  stay authoritative at POST time. `savedPaymentMethod` is `nil` when the
+  customer has no usable saved SEPA method; the UI offers the billing portal
+  fallback in that case.
+  """
+  @spec reactivation_preview(String.t()) ::
+          {:ok, map()} | {:error, :not_found | :stripe_error}
+  def reactivation_preview(member_id) do
+    with {:ok, member} <- load_member_customer(member_id),
+         {:ok, saved_method} <- Reactivation.saved_sepa_method(member.customer_id) do
+      {:ok,
+       %{
+         memberId: member.id,
+         savedPaymentMethod: payment_method_summary(saved_method)
+       }}
+    end
+  end
+
+  defp payment_method_summary(nil), do: nil
+
+  defp payment_method_summary(%{id: id, last4: last4, bank_code: bank_code, country: country}) do
+    summary = %{id: id, last4: last4, country: country}
+
+    case bank_code do
+      nil -> summary
+      code -> Map.put(summary, :bankCode, code)
+    end
+  end
+
+  @doc """
+  Previews the Stripe-computed amounts a reactivation starting on the given
+  start date would charge (ALE-254).
+
+  Backing read for the operator modal's pre-confirmation cost preview:
+  performs no Stripe mutation and no reactivatability or saved-method checks,
+  so it can fail independently of `reactivation_preview/2` and the command's
+  guards stay authoritative at POST time. All amounts come from Stripe
+  invoice previews — never local arithmetic.
+  """
+  @spec reactivation_amounts_preview(String.t(), map()) ::
+          {:ok, map()} | {:error, :invalid_payload | :not_found | :stripe_error}
+  def reactivation_amounts_preview(member_id, %{} = params) do
+    # The member load doubles as the 404 guard; amounts themselves are
+    # customer-independent (lookup-key prices + date anchors).
+    with {:ok, _member} <- load_member_customer(member_id),
+         {:ok, parsed_start_date} <- parse_start_date(Map.get(params, "startDate")) do
+      Reactivation.preview_amounts(parsed_start_date)
+    end
+  end
+
+  def reactivation_amounts_preview(_member_id, _params), do: {:error, :invalid_payload}
 
   @doc "Creates a short-lived Stripe Billing Portal session for a member."
   @spec create_billing_portal_session(String.t(), String.t()) ::
@@ -102,6 +224,90 @@ defmodule Dhc.Membership do
     end
   end
 
+  defp parse_start_date(value) when is_binary(value) do
+    with {:ok, date} <- Date.from_iso8601(value),
+         :ok <- validate_start_date_range(date) do
+      {:ok, date}
+    else
+      _ -> {:error, :invalid_payload}
+    end
+  end
+
+  defp parse_start_date(_value), do: {:error, :invalid_payload}
+
+  defp validate_start_date_range(date) do
+    today = Date.utc_today()
+    max = Date.add(today, @max_start_date_days_ahead)
+
+    if Date.compare(date, today) == :lt or Date.compare(date, max) == :gt do
+      {:error, :out_of_range}
+    else
+      :ok
+    end
+  end
+
+  # Rejects members whose Stripe customer still holds a live membership
+  # subscription (active, trialing, or paused). Stripe is authoritative —
+  # the local `is_active` projection may lag behind it.
+  #
+  # Subscriptions tagged as belonging to THIS reactivation (same purpose and
+  # start date) are exempt: an identical retry must reach Stripe's idempotency
+  # layer and replay the stored responses instead of being rejected — this is
+  # also what recovers a partially-completed reactivation.
+  defp ensure_reactivatable(customer_id, start_date_iso) do
+    case Operations.get_subscriptions(%{}, customer: customer_id, status: "all", limit: 100) do
+      {:ok, %{"data" => subscriptions}} ->
+        blocking? = fn subscription ->
+          covering_membership_subscription?(subscription) and
+            not owned_by_this_reactivation?(subscription, start_date_iso)
+        end
+
+        cond do
+          Enum.any?(subscriptions, &paused_membership_subscription?/1) ->
+            {:error, :membership_paused}
+
+          Enum.any?(subscriptions, blocking?) ->
+            {:error, :membership_active}
+
+          true ->
+            :ok
+        end
+
+      {:error, reason} ->
+        Logger.error("[membership] Stripe subscription guard failed",
+          customer_id: customer_id,
+          reason: inspect(reason)
+        )
+
+        {:error, :stripe_error}
+    end
+  end
+
+  defp owned_by_this_reactivation?(subscription, start_date_iso) do
+    metadata = Map.get(subscription, "metadata", %{})
+
+    metadata["purpose"] == Reactivation.purpose() and
+      metadata["reactivation_start_date"] == start_date_iso
+  end
+
+  defp paused_membership_subscription?(subscription) do
+    membership_price_subscription?(subscription) and
+      not is_nil(Map.get(subscription, "pause_collection"))
+  end
+
+  defp covering_membership_subscription?(subscription) do
+    membership_price_subscription?(subscription) and
+      Map.get(subscription, "status") in @covering_statuses
+  end
+
+  defp membership_price_subscription?(%{"items" => %{"data" => items}}) when is_list(items) do
+    Enum.any?(items, fn item ->
+      get_in(item, ["price", "lookup_key"]) in [LookupKeys.monthly(), LookupKeys.annual()]
+    end)
+  end
+
+  defp membership_price_subscription?(_subscription), do: false
+
   defp validate_pause_window(datetime) do
     now = DateTime.utc_now()
     min = DateTime.add(now, 1, :day)
@@ -124,6 +330,7 @@ defmodule Dhc.Membership do
         where: m.id == ^member_id,
         select: %{
           id: m.id,
+          profile_id: p.id,
           customer_id: p.customer_id,
           subscription_paused_until: m.subscription_paused_until
         }

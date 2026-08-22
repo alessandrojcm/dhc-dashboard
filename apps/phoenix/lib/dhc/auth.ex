@@ -378,17 +378,13 @@ defmodule Dhc.Auth do
   end
 
   defp enqueue_magic_link_email(principal, url) do
-    # ALE-165: enqueue via the existing Oban email worker so magic-link
-    # delivery goes through the same Loops / Sentry / retry path as
-    # invitation and workshop emails. The Loops transactional ID is resolved
-    # at send time from :loops_transactional_ids config (the "magicLink"
-    # friendly name). The URL is passed as the `LoginLink` data variable —
-    # the Loops "magic link" transactional template (`cma3yqgqw68tv9pm5v0si5ge3`)
-    # renders `{{LoginLink}}`, so the key here must match the template.
+    # Enqueue through the shared worker so magic-link delivery uses the same
+    # Resend, Sentry, and retry path as invitation and workshop emails. The
+    # variable name matches the code-authored Resend template contract.
     %{
       email: principal.email,
       transactional_id: "magicLink",
-      data_variables: %{"LoginLink" => url}
+      data_variables: %{"LOGIN_LINK" => url}
     }
     |> Dhc.Email.Worker.new()
     |> Oban.insert()

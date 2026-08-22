@@ -22,7 +22,8 @@
   "devDependencies": {
     "@hey-api/openapi-ts": "0.97.2",
     "@oxlint/plugins": "1.78.0",
-    "oxlint": "^1.78.0"
+    "oxlint": "^1.78.0",
+    "oxlint-tsgolint": "^7.0.2001"
   },
   "engines": {
     "node": ">=22.13.0"

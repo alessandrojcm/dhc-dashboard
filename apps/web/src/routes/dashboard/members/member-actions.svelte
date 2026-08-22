@@ -1,19 +1,32 @@
 <script lang="ts">
 import { Button } from "$lib/components/ui/button";
 import * as Tooltip from "$lib/components/ui/tooltip";
-import { ChevronDown, ChevronUp, SquarePen } from "@lucide/svelte";
+import { ChevronDown, ChevronUp, RotateCcw, SquarePen } from "@lucide/svelte";
+import type { MemberStatus } from "./member-table.types";
 type Props = {
 	memberId: string;
 	isExpanded?: boolean;
 	onToggleExpand?: () => void;
 	showLabels?: boolean;
+	/** ALE-252: viewer holds a billing-authority role (minting pipeline). */
+	canReactivate?: boolean;
+	/** Row's membership status; the Reactivate action targets inactive rows. */
+	membershipStatus?: MemberStatus | null;
+	onReactivate?: () => void;
 };
 const {
 	memberId,
 	isExpanded = false,
 	onToggleExpand,
 	showLabels = false,
+	canReactivate = false,
+	membershipStatus = null,
+	onReactivate,
 }: Props = $props();
+
+const showReactivate = $derived(
+	canReactivate && membershipStatus === "inactive" && !!onReactivate,
+);
 </script>
 
 <div
@@ -21,7 +34,31 @@ const {
 		? "grid w-full grid-cols-2 gap-2"
 		: "flex justify-end gap-1"}
 >
-	<!-- Expander Button -->
+	{#if showReactivate}
+		{#if showLabels}
+			<Button variant="outline" onclick={() => onReactivate?.()}>
+				<RotateCcw class="size-4" aria-hidden="true" />
+				Reactivate
+			</Button>
+		{:else}
+			<Tooltip.Root>
+				<Tooltip.Trigger>
+					{#snippet child({ props })}
+						<Button
+							variant="ghost"
+							size="icon"
+							aria-label="Reactivate membership"
+							{...props}
+							onclick={() => onReactivate?.()}
+						>
+							<RotateCcw class="size-4" aria-hidden="true" />
+						</Button>
+					{/snippet}
+				</Tooltip.Trigger>
+				<Tooltip.Content>Reactivate membership</Tooltip.Content>
+			</Tooltip.Root>
+		{/if}
+	{/if}
 	{#if onToggleExpand}
 		{#if showLabels}
 			<Button

@@ -94,7 +94,10 @@ export const handle: Handle = sequence(
 		tracesSampleRate: 1,
 		enableLogs: true,
 		enableMetrics: true,
-		sendDefaultPii: true,
+		// Replaces the deprecated `sendDefaultPii: true` with identical
+		// behavior: every other dataCollection category already defaults to
+		// enabled, so user info is the only one to opt into explicitly.
+		dataCollection: { userInfo: true },
 	}),
 	Sentry.sentryHandle({
 		injectFetchProxyScript: true,

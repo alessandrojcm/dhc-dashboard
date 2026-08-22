@@ -614,9 +614,9 @@ defmodule Dhc.Invitations do
       "email" => invitation.email,
       "transactional_id" => @invite_email_template,
       "data_variables" => %{
-        "firstName" => invitation.first_name || "",
-        "lastName" => invitation.last_name || "",
-        "invitationLink" => invitation_link(invitation)
+        "INVITEE_FIRST_NAME" => invitation.first_name || "",
+        "INVITEE_LAST_NAME" => invitation.last_name || "",
+        "INVITATION_LINK" => invitation_link(invitation)
       }
     }
 

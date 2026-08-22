@@ -42,21 +42,12 @@ config :dhc, Oban,
 
 # Discord worker — skip sending in test
 config :dhc, :discord_webhook_url, "https://discord.example.com/webhook/test"
-# Email worker — dev delivery goes to the stub (never a real SMTP relay);
-# the Loops API path is exercised by the prod-env describe block via Bypass.
-config :dhc, :email_dev_mailer, Dhc.Email.DevMailerStub
-config :dhc, :loops_api_key, "test-loops-api-key"
-# Friendly name -> real Loops transactional ID mapping (test stubs).
-# The worker resolves this in prod-env tests (the describe block that flips
-# :environment to :prod and hits Bypass). Test env proper skips the send
-# before resolving, so these stubs only matter for the prod-env tests.
-config :dhc, :loops_transactional_ids, %{
-  "inviteMember" => "test-loops-id-inviteMember",
-  "workshopAnnouncement" => "test-loops-id-workshopAnnouncement",
-  "workshopRegistration" => "test-loops-id-workshopRegistration",
-  "workshopRegistrationError" => "test-loops-id-workshopRegistrationError",
-  "magicLink" => "test-loops-id-magicLink"
-}
+
+# Email worker — deliveries are asserted through Swoosh.TestAssertions
+# (Swoosh.Adapters.Test sends the %Swoosh.Email{} to the calling test
+# process). The provider path itself needs no HTTP stubbing; classification
+# tests swap the adapter for Dhc.Email.AdapterStub (ADR 0021).
+config :dhc, Dhc.Email.Mailer, adapter: Swoosh.Adapters.Test
 
 # Tests that exercise Stripe replace the client or use test-mode credentials.
 e2e_server? = System.get_env("E2E_SERVER") == "true"
