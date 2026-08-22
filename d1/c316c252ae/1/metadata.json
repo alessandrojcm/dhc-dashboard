@@ -1,0 +1,93 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "d1c316c252ae",
+  "session_id": "ses_fd512f5c2ffeGdVm1zkFm5vxgG",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-22T20:07:39.145556Z",
+  "branch": "worktree/silver-forest-5b5f",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "apps/phoenix/mix.exs",
+    "apps/phoenix/test/dhc/email/workers/worker_test.exs",
+    "apps/phoenix/test/dhc/email/api_client_test.exs",
+    "apps/phoenix/lib/dhc/email/mailer.ex",
+    "apps/phoenix/lib/dhc/email/api_client.ex",
+    "apps/phoenix/lib/dhc/email/workers/worker.ex",
+    "apps/phoenix/test/support/email_adapter_stub.ex",
+    "apps/phoenix/config/config.exs",
+    "apps/phoenix/config/dev.exs",
+    "apps/phoenix/config/test.exs",
+    "apps/phoenix/config/runtime.exs",
+    "apps/phoenix/lib/dhc/application.ex",
+    "apps/phoenix/AGENTS.md",
+    "docs/agents/where-to-look.md",
+    "docs/agents/migration-notes.md",
+    "docs/agents/commands.md"
+  ],
+  "agent": "OpenCode",
+  "model": "",
+  "turn_id": "5f8765e94548",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 147725,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 9588736,
+    "output_tokens": 41927,
+    "api_call_count": 99
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-22T20:07:39.065086Z",
+    "agent_lines": 600,
+    "agent_removed": 575,
+    "human_added": 0,
+    "human_modified": 1,
+    "human_removed": 1,
+    "total_committed": 601,
+    "total_lines_changed": 1276,
+    "agent_percentage": 92.0846394984326,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 81,
+      "user_lines_removed": 985,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        "CONTEXT.md": 6,
+        "apps/phoenix/lib/dhc/membership.ex": 1,
+        "apps/phoenix/test/support/e2e_harness.ex": 1,
+        "apps/web/src/hooks.client.ts": 1,
+        "apps/web/src/hooks.server.ts": 1,
+        "apps/web/src/lib/components/ui/reactivate-membership-modal.svelte": 1,
+        "apps/web/vite.config.ts": 1,
+        "docs/adr/0021-swoosh-is-the-email-transport-seam.md": 35,
+        "docs/adr/0022-code-authored-templates-synced-to-resend.md": 33,
+        "packages/api-client/package.json": 1
+      },
+      "user_removed_per_file": {
+        "CONTEXT.md": 1,
+        "apps/phoenix/lib/dhc/membership.ex": 27,
+        "apps/phoenix/lib/dhc/membership/reactivation.ex": 175,
+        "apps/phoenix/lib/dhc_web/controllers/membership_controller.ex": 24,
+        "apps/phoenix/lib/dhc_web/router.ex": 7,
+        "apps/phoenix/priv/api/openapi.yaml": 111,
+        "apps/phoenix/test/dhc/membership/reactivation_integration_test.exs": 73,
+        "apps/phoenix/test/dhc_web/controllers/membership_controller_test.exs": 330,
+        "apps/phoenix/test/support/e2e_harness.ex": 2,
+        "apps/web/e2e/member-reactivation.spec.ts": 26,
+        "apps/web/src/hooks.client.ts": 4,
+        "apps/web/src/hooks.server.ts": 4,
+        "apps/web/src/lib/components/ui/reactivate-member-dialog.svelte": 27,
+        "apps/web/src/lib/components/ui/reactivate-membership-modal.browser.test.ts": 87,
+        "apps/web/src/lib/components/ui/reactivate-membership-modal.svelte": 68,
+        "apps/web/vite.config.ts": 1,
+        "docs/agents/commands.md": 2,
+        "packages/api-client/package.json": 2,
+        "packages/api-client/src/index.ts": 11,
+        "pnpm-lock.yaml": 3
+      }
+    }
+  ]
+}
