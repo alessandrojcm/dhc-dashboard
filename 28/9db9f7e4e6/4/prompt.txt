@@ -1,0 +1,1 @@
+Research only, do not edit. Find all Phoenix production call sites that enqueue or construct Dhc.Email.Worker jobs. For each Email Kind, report the exact data_variables keys and representative values, and whether they match the UPPER_SNAKE variables declared in packages/email-templates. Also identify any sender/from configuration used by production. Return paths and line ranges.

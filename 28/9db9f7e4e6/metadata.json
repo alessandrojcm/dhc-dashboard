@@ -3,7 +3,7 @@
   "checkpoint_id": "289db9f7e4e6",
   "strategy": "manual-commit",
   "branch": "worktree/silver-forest-5b5f",
-  "checkpoints_count": 5,
+  "checkpoints_count": 6,
   "files_touched": [
     ".env.example",
     "AGENTS.md",
@@ -64,13 +64,20 @@
       "compact_transcript": "/28/9db9f7e4e6/3/transcript.jsonl",
       "content_hash": "/28/9db9f7e4e6/3/content_hash.txt",
       "prompt": "/28/9db9f7e4e6/3/prompt.txt"
+    },
+    {
+      "metadata": "/28/9db9f7e4e6/4/metadata.json",
+      "transcript": "/28/9db9f7e4e6/4/full.jsonl",
+      "compact_transcript": "/28/9db9f7e4e6/4/transcript.jsonl",
+      "content_hash": "/28/9db9f7e4e6/4/content_hash.txt",
+      "prompt": "/28/9db9f7e4e6/4/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 172451,
+    "input_tokens": 260527,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 803072,
-    "output_tokens": 18004,
-    "api_call_count": 24
+    "cache_read_tokens": 1504880,
+    "output_tokens": 24696,
+    "api_call_count": 47
   }
 }
