@@ -1,0 +1,39 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "94de6df2655f",
+  "session_id": "ses_fd50d52beffeobs30UAMW6Plhh",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-22T21:20:09.318482Z",
+  "branch": "worktree/silver-forest-5b5f",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [
+    "pnpm-lock.yaml"
+  ],
+  "agent": "OpenCode",
+  "model": "minimax-m3",
+  "turn_id": "35291be97570",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 66646,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 167367,
+    "output_tokens": 9178,
+    "api_call_count": 5
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-22T21:20:09.302588Z",
+    "agent_lines": 1127,
+    "agent_removed": 0,
+    "human_added": 904,
+    "human_modified": 8,
+    "human_removed": 0,
+    "total_committed": 2039,
+    "total_lines_changed": 2049,
+    "agent_percentage": 55.002440214738904,
+    "metric_version": 2
+  }
+}
