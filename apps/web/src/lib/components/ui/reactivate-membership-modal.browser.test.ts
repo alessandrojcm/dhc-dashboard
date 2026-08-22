@@ -110,6 +110,76 @@ test("distinguishes pending settlement from a completed activation while confirm
 
 // ── ALE-254: pre-confirmation amount preview ─────────────────────────────
 
+// ── ALE-253: annual fee deferral option ──────────────────────────────────
+
+test("defaults to charging the annual fee prorated now", async () => {
+	const screen = await render(ReactivateMembershipModal, {
+		open: true,
+		isPending: false,
+		savedPaymentMethod: savedMethod,
+		onConfirm: vi.fn(),
+	});
+
+	const proratedNow = screen.getByRole("radio", { name: /charge now/i });
+	await expect.element(proratedNow).toBeChecked();
+
+	const deferred = screen.getByRole("radio", {
+		name: /defer until next january/i,
+	});
+	await expect.element(deferred).not.toBeChecked();
+});
+
+test("reports the chosen annual fee mode so amounts can be fetched for it", async () => {
+	const onSelectionChange = vi.fn();
+	const screen = await render(ReactivateMembershipModal, {
+		open: true,
+		isPending: false,
+		savedPaymentMethod: savedMethod,
+		onSelectionChange,
+		onConfirm: vi.fn(),
+	});
+
+	expect(onSelectionChange).toHaveBeenCalledWith(
+		expect.objectContaining({
+			startDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+			annualFeeMode: "prorated_now",
+		}),
+	);
+
+	await userEvent.click(
+		screen.getByRole("radio", { name: /defer until next january/i }),
+	);
+
+	expect(onSelectionChange).toHaveBeenLastCalledWith(
+		expect.objectContaining({ annualFeeMode: "deferred_next_year" }),
+	);
+});
+
+test("confirms with the selected annual fee mode", async () => {
+	const onConfirm = vi.fn();
+	const screen = await render(ReactivateMembershipModal, {
+		open: true,
+		isPending: false,
+		savedPaymentMethod: savedMethod,
+		onConfirm,
+	});
+
+	await userEvent.click(
+		screen.getByRole("radio", { name: /defer until next january/i }),
+	);
+
+	await userEvent.click(
+		screen.getByRole("button", { name: "Reactivate membership" }),
+	);
+
+	expect(onConfirm).toHaveBeenCalledWith(
+		expect.objectContaining({
+			startDate: expect.any(String),
+			annualFeeMode: "deferred_next_year",
+		}),
+	);
+});
+
 test("shows the Stripe-computed amounts before confirmation", async () => {
 	const screen = await render(ReactivateMembershipModal, {
 		open: true,
@@ -135,18 +205,20 @@ test("shows the Stripe-computed amounts before confirmation", async () => {
 });
 
 test("reports its selected start date so amounts can be fetched for it", async () => {
-	const onStartDateChange = vi.fn();
+	const onSelectionChange = vi.fn();
 	const onConfirm = vi.fn();
 	await render(ReactivateMembershipModal, {
 		open: true,
 		isPending: false,
 		savedPaymentMethod: savedMethod,
-		onStartDateChange,
+		onSelectionChange,
 		onConfirm,
 	});
 
-	expect(onStartDateChange).toHaveBeenCalledWith(
-		expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+	expect(onSelectionChange).toHaveBeenCalledWith(
+		expect.objectContaining({
+			startDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+		}),
 	);
 });
 

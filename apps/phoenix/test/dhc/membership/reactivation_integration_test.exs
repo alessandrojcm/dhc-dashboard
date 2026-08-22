@@ -19,7 +19,10 @@ defmodule Dhc.Membership.ReactivationIntegrationTest do
 
   use DhcWeb.ConnCase, async: false
 
+  import Ecto.Query
+
   alias Dhc.Stripe.Client, as: StripeClient
+  alias Dhc.StripeSync
 
   @moduletag :integration
 
@@ -218,6 +221,120 @@ defmodule Dhc.Membership.ReactivationIntegrationTest do
     end
   end
 
+  # ALE-253: deferred annual fee. The annual subscription is created
+  # immediately but trialing until next January's anchor — nothing annual is
+  # charged today, the monthly flow behaves exactly as in the initial
+  # release, and the member must stay active across sync runs while the
+  # annual fee waits (trialing coverage, ALE-250).
+  test "deferred_next_year starts the annual fee on a trial ending at next January" do
+    run_id = "dhc-deferred-#{System.unique_integer([:positive])}"
+    customer = create_customer!(run_id)
+
+    try do
+      payment_method_id = attach_saved_sepa_method!(customer["id"])
+
+      member =
+        Dhc.MemberFixtures.member_fixture(
+          is_active: false,
+          customer_id: customer["id"],
+          email: "#{run_id}@example.com"
+        )
+
+      start_date = Date.utc_today() |> Date.add(3)
+
+      conn =
+        build_conn()
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> post("/api/members/#{member.auth_user_id}/membership/reactivate", %{
+          "startDate" => Date.to_iso8601(start_date),
+          "annualFeeMode" => "deferred_next_year"
+        })
+
+      assert %{"data" => data} = json_response(conn, 200)
+      assert data["memberId"] == member.auth_user_id
+      # Only the monthly charge settles; succeeded or pending are healthy.
+      assert data["paymentState"] in ["succeeded", "pending"]
+
+      monthly = fetch_subscription!(data["monthlySubscriptionId"])
+      annual = fetch_subscription!(data["annualSubscriptionId"])
+      price_ids = membership_price_ids!()
+
+      # ── Monthly: unchanged initial-release behaviour ──────────────────
+      assert get_in(monthly, ["items", "data", Access.at(0), "price", "id"]) == price_ids.monthly
+      assert monthly["default_payment_method"] == payment_method_id
+      assert get_in(monthly, ["metadata", "kind"]) == "monthly"
+
+      monthly_invoice = monthly["latest_invoice"]
+      assert is_map(monthly_invoice)
+      assert monthly_invoice["amount_due"] > 0
+
+      # ── Annual: created now, trialing until next January's anchor ────
+      assert annual["status"] == "trialing"
+      assert get_in(annual, ["items", "data", Access.at(0), "price", "id"]) == price_ids.annual
+      assert annual["default_payment_method"] == payment_method_id
+      assert get_in(annual, ["metadata", "kind"]) == "annual"
+
+      # trial_end is deterministic: next January 7 at midnight UTC (a
+      # time-of-day-dependent value would break idempotent retries — Stripe
+      # rejects a changed body under the same key).
+      expected_trial_end =
+        next_january_anchor(Date.utc_today())
+        |> DateTime.new!(~T[00:00:00], "Etc/UTC")
+        |> DateTime.to_unix()
+
+      assert annual["trial_end"] == expected_trial_end
+      assert annual["billing_cycle_anchor"] == expected_trial_end
+
+      # Nothing was charged for the annual fee today: real Stripe raises a
+      # ZERO-amount invoice for the trial period (verified against test
+      # mode), so "no charge" shows up as amount_due == 0, not as a missing
+      # invoice.
+      annual_invoice = annual["latest_invoice"]
+      assert is_map(annual_invoice)
+      assert annual_invoice["amount_due"] == 0
+      assert annual_invoice["amount_paid"] == 0
+
+      # ── Idempotent replay keeps the same subscriptions ───────────────
+      retry_conn =
+        build_conn()
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> post("/api/members/#{member.auth_user_id}/membership/reactivate", %{
+          "startDate" => Date.to_iso8601(start_date),
+          "annualFeeMode" => "deferred_next_year"
+        })
+
+      assert %{"data" => replayed} = json_response(retry_conn, 200)
+      assert replayed["annualSubscriptionId"] == data["annualSubscriptionId"]
+
+      # ── Member stays active across sync runs in deferred mode ────────
+      # The trialing annual satisfies its price's coverage (ALE-250) once
+      # the monthly SEPA debit settles.
+      eventually(fn ->
+        case fetch_subscription!(data["monthlySubscriptionId"])["status"] do
+          "active" -> {:ok, :active}
+          _ -> :retry
+        end
+      end)
+
+      subscriptions = list_membership_subscriptions!(customer["id"])
+
+      assert {:ok, :active} =
+               StripeSync.sync_customer(customer["id"], subscriptions, [
+                 price_ids.monthly,
+                 price_ids.annual
+               ])
+
+      assert %{is_active: true} =
+               Dhc.Repo.one!(
+                 from up in Dhc.UserProfiles.UserProfile,
+                   where: up.customer_id == ^customer["id"],
+                   select: %{is_active: up.is_active}
+               )
+    after
+      cleanup_customer!(customer["id"])
+    end
+  end
+
   defp create_customer!(run_id) do
     stripe_request!(:post, "/v1/customers", %{
       "name" => "DHC Reactivation #{run_id}",
@@ -338,6 +455,17 @@ defmodule Dhc.Membership.ReactivationIntegrationTest do
   defp membership_subscription?(subscription, price_ids) do
     price_id = get_in(subscription, ["items", "data", Access.at(0), "price", "id"])
     price_id in Map.values(price_ids)
+  end
+
+  defp list_membership_subscriptions!(customer_id) do
+    case StripeClient.request(
+           method: :get,
+           url: "/v1/subscriptions",
+           query: [customer: customer_id, status: "all", limit: 100]
+         ) do
+      {:ok, %{"data" => subscriptions}} -> subscriptions
+      {:error, reason} -> raise "Listing subscriptions failed: #{inspect(reason)}"
+    end
   end
 
   defp fetch_subscription!(subscription_id) do

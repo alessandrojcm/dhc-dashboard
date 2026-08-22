@@ -1977,15 +1977,22 @@ paths:
         The operator-chosen start date anchors the monthly subscription via
         Stripe's `billing_cycle_anchor`: the first invoice raised today covers
         the prorated remainder up to the anchor, then full periods bill from
-        the anchor onward. The annual fee keeps signup semantics — anchored at
-        next January and charged prorated for the remainder of this year.
+        the anchor onward.
+
+        The annual fee starts per `annualFeeMode`: `prorated_now` (default)
+        keeps signup semantics — anchored at next January and charged prorated
+        for the remainder of this year; `deferred_next_year` creates the
+        annual subscription immediately with a free trial ending at next
+        January's anchor, so nothing is charged for the annual fee until that
+        renewal date (the Stripe sync treats trialing coverage as active).
 
         Restricted to officers with billing authority — `admin`, `president`,
         `treasurer`, `committee_coordinator` only. NOT self-or-admin and NOT
         the broader members-admin role list, because this mints new charges.
-        Retries with identical params are idempotent: Stripe
-        idempotency keys are derived from the member id and requested start
-        date.
+        Retries with identical params are idempotent: Stripe idempotency keys
+        are derived from the member id, requested start date, and annual fee
+        mode — so a retry after switching modes reaches Stripe as fresh
+        requests instead of replaying the other mode's stored responses.
 
         Distinct error conditions: `409` when the member already has an active
         or paused/trialing membership subscription; `409` with
@@ -2136,6 +2143,10 @@ paths:
         on the operator-chosen `startDate` — the amount due today plus the
         upcoming recurring fees. Performs no mutation.
 
+        The optional `annualFeeMode` query param mirrors the command's annual
+        fee choice (ALE-253) so the previewed numbers always match what the
+        chosen mode would actually charge.
+
         All amounts are computed by Stripe's invoice-preview machinery for a
         hypothetical subscription pair with exactly the parameters the command
         will use (monthly anchored at the start date when it is in the future;
@@ -2171,6 +2182,17 @@ paths:
             Operator-chosen membership start date (YYYY-MM-DD), within the same
             window the reactivation command accepts (today up to one year
             ahead).
+        - name: annualFeeMode
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/MembershipReactivateAnnualFeeMode"
+          description: |
+            Mirrors the reactivation command's annual fee choice (ALE-253).
+            In `deferred_next_year` mode nothing is charged for the annual fee
+            today, so `dueToday` covers only the monthly subscription while
+            `annualFee` previews the full fee that will bill at next January's
+            anchor. Defaults to `prorated_now`.
       responses:
         "200":
           description: The Stripe-computed amounts for the chosen start date.
@@ -5415,9 +5437,28 @@ components:
             The date the reactivated monthly membership cycle anchors to
             (today or a future date, at most one year ahead). Drives Stripe's
             billing_cycle_anchor: the first invoice covers the prorated
-            remainder up to this date, then full periods bill from it. The
-            annual fee is charged prorated for the remainder of this year
-            regardless (anchored at next January, same as signup).
+            remainder up to this date, then full periods bill from it. How the
+            annual fee starts is chosen separately via annualFeeMode.
+        annualFeeMode:
+          $ref: "#/components/schemas/MembershipReactivateAnnualFeeMode"
+    MembershipReactivateAnnualFeeMode:
+      type: string
+      enum:
+        - prorated_now
+        - deferred_next_year
+      default: prorated_now
+      description: |
+        How the annual membership fee begins (ALE-253).
+
+        `prorated_now` keeps signup semantics: the annual fee is charged
+        prorated for the remainder of this year at reactivation time, then
+        renews each January anchor.
+
+        `deferred_next_year` creates the annual subscription immediately with
+        a free trial ending at next January's anchor: nothing is charged for
+        the annual fee until then, and the subscription sits in `trialing`
+        status — which the Stripe sync treats as covering the price, so the
+        member stays active across sync runs.
     MembershipReactivatePaymentState:
       type: string
       enum:
@@ -5501,21 +5542,29 @@ components:
           type: object
           description: |
             Stripe-computed amounts for a reactivation starting on the
-            requested startDate (ALE-254). All values are Dinero-compatible
-            minor-unit money objects.
+            requested startDate (ALE-254), under the requested annualFeeMode
+            (ALE-253). All values are Dinero-compatible minor-unit money
+            objects.
           required:
             - dueToday
             - monthlyFee
             - annualFee
           properties:
             dueToday:
-              description: Total charged immediately — the prorated first invoices of both subscriptions.
+              description: |
+                Total charged immediately — the prorated first invoice of the
+                monthly subscription, plus the prorated annual invoice unless
+                `annualFeeMode=deferred_next_year` (then annual charges nothing
+                until next January's anchor).
               $ref: "#/components/schemas/DineroAmount"
             monthlyFee:
               description: Recurring full monthly membership fee charged from the start date onward.
               $ref: "#/components/schemas/DineroAmount"
             annualFee:
-              description: Recurring full annual membership fee, renewing each January anchor.
+              description: |
+                Full annual membership fee — charged at next January's anchor,
+                either as a prorated remainder now plus renewals, or first at
+                next January in deferred mode.
               $ref: "#/components/schemas/DineroAmount"
 
     OptionsResponse:

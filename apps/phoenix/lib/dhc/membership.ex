@@ -79,19 +79,23 @@ defmodule Dhc.Membership do
   live subscriptions, so a member whose local `is_active` flag lags behind a
   still-active Stripe subscription is rejected with `:membership_active`.
   Retries with identical params are idempotent — Stripe idempotency keys are
-  derived from member id + requested start date.
+  derived from member id + requested start date + annual fee mode, so a retry
+  after switching modes reaches Stripe as fresh requests instead of replaying
+  the other mode's stored responses.
   """
   @spec reactivate(String.t(), map()) :: {:ok, map()} | {:error, reactivate_error()}
   def reactivate(member_id, %{"startDate" => start_date} = attrs) when is_binary(start_date) do
     with {:ok, member} <- load_member_customer(member_id),
          {:ok, parsed_start_date} <- parse_start_date(start_date),
+         {:ok, annual_fee_mode} <- parse_annual_fee_mode(attrs["annualFeeMode"]),
          :ok <- ensure_reactivatable(member.customer_id, Date.to_iso8601(parsed_start_date)),
          {:ok, result} <-
            Reactivation.activate(%{
              member_id: member.id,
              customer_id: member.customer_id,
              operator_principal_id: Map.get(attrs, "operatorPrincipalId"),
-             start_date: parsed_start_date
+             start_date: parsed_start_date,
+             annual_fee_mode: annual_fee_mode
            }) do
       restore_member_access(member_id, member.profile_id)
       {:ok, result}
@@ -162,7 +166,9 @@ defmodule Dhc.Membership do
   performs no Stripe mutation and no reactivatability or saved-method checks,
   so it can fail independently of `reactivation_preview/2` and the command's
   guards stay authoritative at POST time. All amounts come from Stripe
-  invoice previews — never local arithmetic.
+  invoice previews — never local arithmetic. The optional `annualFeeMode`
+  mirrors the command's annual fee choice (ALE-253): in `deferred_next_year`
+  mode nothing is charged for the annual fee today.
   """
   @spec reactivation_amounts_preview(String.t(), map()) ::
           {:ok, map()} | {:error, :invalid_payload | :not_found | :stripe_error}
@@ -170,8 +176,9 @@ defmodule Dhc.Membership do
     # The member load doubles as the 404 guard; amounts themselves are
     # customer-independent (lookup-key prices + date anchors).
     with {:ok, _member} <- load_member_customer(member_id),
-         {:ok, parsed_start_date} <- parse_start_date(Map.get(params, "startDate")) do
-      Reactivation.preview_amounts(parsed_start_date)
+         {:ok, parsed_start_date} <- parse_start_date(Map.get(params, "startDate")),
+         {:ok, annual_fee_mode} <- parse_annual_fee_mode(params["annualFeeMode"]) do
+      Reactivation.preview_amounts(parsed_start_date, annual_fee_mode)
     end
   end
 
@@ -234,6 +241,14 @@ defmodule Dhc.Membership do
   end
 
   defp parse_start_date(_value), do: {:error, :invalid_payload}
+
+  # Absent field defaults to the initial-release behaviour (prorated now);
+  # anything other than the two known modes is a 422. Explicit clauses keep
+  # user input away from String.to_atom.
+  defp parse_annual_fee_mode(nil), do: {:ok, :prorated_now}
+  defp parse_annual_fee_mode("prorated_now"), do: {:ok, :prorated_now}
+  defp parse_annual_fee_mode("deferred_next_year"), do: {:ok, :deferred_next_year}
+  defp parse_annual_fee_mode(_value), do: {:error, :invalid_payload}
 
   defp validate_start_date_range(date) do
     today = Date.utc_today()
