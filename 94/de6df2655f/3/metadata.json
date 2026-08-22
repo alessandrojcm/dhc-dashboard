@@ -1,0 +1,57 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "94de6df2655f",
+  "session_id": "ses_fd512f5c2ffeGdVm1zkFm5vxgG",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-22T21:20:10.96809Z",
+  "branch": "worktree/silver-forest-5b5f",
+  "checkpoints_count": 3,
+  "save_step_count": 1,
+  "files_touched": [
+    "pnpm-lock.yaml"
+  ],
+  "agent": "OpenCode",
+  "model": "x-preview-f-free",
+  "turn_id": "65ac94fa41a2",
+  "checkpoint_transcript_start": 106,
+  "transcript_lines_at_start": 106,
+  "compact_transcript_start": 106,
+  "token_usage": {
+    "input_tokens": 7217,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1805504,
+    "output_tokens": 4175,
+    "api_call_count": 11
+  },
+  "session_metrics": {
+    "turn_count": 3
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-22T21:20:10.885671Z",
+    "agent_lines": 1127,
+    "agent_removed": 0,
+    "human_added": 904,
+    "human_modified": 8,
+    "human_removed": 0,
+    "total_committed": 2039,
+    "total_lines_changed": 2049,
+    "agent_percentage": 55.002440214738904,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
