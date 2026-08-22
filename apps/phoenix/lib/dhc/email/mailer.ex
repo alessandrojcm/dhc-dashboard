@@ -6,9 +6,8 @@ defmodule Dhc.Email.Mailer do
   The adapter is chosen per environment purely through configuration under
   `config :dhc, Dhc.Email.Mailer`:
 
-    * **prod** — `Swoosh.Adapters.Loops` with `api_key: System.get_env("LOOPS_API_KEY")`.
-      The Loops→Resend cutover (ADR 0022) is a config flip to
-      `Swoosh.Adapters.Resend`, not new code.
+    * **prod** — `Swoosh.Adapters.Resend` with the send-only
+      `RESEND_API_KEY` (ADR 0022).
     * **dev** — `Swoosh.Adapters.Mailpit` over HTTP (`base_url:` pointing at
       the local Mailpit API, default `http://localhost:8025`).
     * **test** — `Swoosh.Adapters.Test`, asserted via `Swoosh.TestAssertions`.

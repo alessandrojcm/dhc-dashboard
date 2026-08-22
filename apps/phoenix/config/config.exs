@@ -36,7 +36,7 @@ config :dhc, :invitation_payment_processor, Dhc.Invitations.StripePayment
 config :dhc, :onboarding_stripe_adapter, Dhc.Onboarding.StripeAdapter.Live
 config :dhc, :workshop_stripe_adapter, Dhc.Workshops.StripeAdapter.Live
 # Transactional email transport seam (ADR 0021). The adapter itself is chosen
-# per environment: Swoosh.Adapters.Loops (prod), Swoosh.Adapters.Mailpit (dev),
+# per environment: Swoosh.Adapters.Resend (prod), Swoosh.Adapters.Mailpit (dev),
 # Swoosh.Adapters.Test (test) — see Dhc.Email.Mailer.
 #
 # All adapters run over Finch, wrapped by Dhc.Email.ApiClient so every provider
@@ -131,6 +131,7 @@ config :logger, :default_formatter,
     :outcome,
     :paused,
     :price_ids,
+    :profile_id,
     :processed,
     :provider,
     :reason,
@@ -177,6 +178,7 @@ config :sentry,
       :failed,
       :inactive,
       :paused,
+      :profile_id,
       :active,
       :unchanged,
       # Email worker

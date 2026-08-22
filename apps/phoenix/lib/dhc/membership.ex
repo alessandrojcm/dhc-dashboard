@@ -170,9 +170,8 @@ defmodule Dhc.Membership do
     # The member load doubles as the 404 guard; amounts themselves are
     # customer-independent (lookup-key prices + date anchors).
     with {:ok, _member} <- load_member_customer(member_id),
-         {:ok, parsed_start_date} <- parse_start_date(Map.get(params, "startDate")),
-         {:ok, amounts} <- Reactivation.preview_amounts(parsed_start_date) do
-      {:ok, amounts}
+         {:ok, parsed_start_date} <- parse_start_date(Map.get(params, "startDate")) do
+      Reactivation.preview_amounts(parsed_start_date)
     end
   end
 

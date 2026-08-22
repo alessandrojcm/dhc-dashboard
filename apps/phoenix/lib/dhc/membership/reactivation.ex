@@ -74,8 +74,8 @@ defmodule Dhc.Membership.Reactivation do
              start_date,
              attrs
            ),
-         monthly_outcome = maybe_confirm_first_invoice(monthly, payment_method_id, attrs),
-         :ok <- continue_after_outcome(monthly_outcome),
+         {:ok, monthly_outcome} <-
+           confirm_first_invoice_and_continue(monthly, payment_method_id, attrs),
          {:ok, annual} <-
            create_subscription(
              :annual,
@@ -84,8 +84,9 @@ defmodule Dhc.Membership.Reactivation do
              prices.annual,
              start_date,
              attrs
-           ),
-         annual_outcome = maybe_confirm_first_invoice(annual, payment_method_id, attrs) do
+           ) do
+      annual_outcome = maybe_confirm_first_invoice(annual, payment_method_id, attrs)
+
       {:ok,
        build_result(member_id, monthly, annual, combine_outcomes(monthly_outcome, annual_outcome))}
     else
@@ -105,6 +106,15 @@ defmodule Dhc.Membership.Reactivation do
   end
 
   def activate(_attrs), do: {:error, :stripe_error}
+
+  defp confirm_first_invoice_and_continue(subscription, payment_method_id, attrs) do
+    outcome = maybe_confirm_first_invoice(subscription, payment_method_id, attrs)
+
+    case continue_after_outcome(outcome) do
+      :ok -> {:ok, outcome}
+      {:error, _reason} = error -> error
+    end
+  end
 
   @doc """
   Computes what a reactivation starting on `start_date` would charge, via

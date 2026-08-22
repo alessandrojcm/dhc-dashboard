@@ -79,7 +79,7 @@ Required production items:
 | `DATABASE_URL` | Yes | Production Postgres connection URL |
 | `SECRET_KEY_BASE` | Yes | Phoenix signing/encryption secret |
 | `DISCORD_WEBHOOK_URL` | Yes | Discord webhook target |
-| `LOOPS_API_KEY` | Yes | Loops transactional email API key |
+| `RESEND_API_KEY` | Yes | Resend send-only transactional email API key |
 | `STRIPE_SECRET_KEY` | Yes | Stripe API key |
 | `STRIPE_WEBHOOK_SIGNING_SECRET` | Yes | Stripe webhook signature secret |
 | `SUPABASE_URL` | No/low sensitivity | Supabase project URL used for auth/service clients |

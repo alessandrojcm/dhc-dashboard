@@ -95,21 +95,6 @@ config :dhc, Dhc.Email.Mailer,
   adapter: Swoosh.Adapters.Mailpit,
   base_url: System.get_env("MAILPIT_HTTP_URL", "http://localhost:8025")
 
-# Friendly name -> real provider template ID mapping. Resolved by
-# Dhc.Email.Worker on every job; an unmapped or empty value cancels the job
-# instead of sending the friendly name to the provider. In dev these IDs only
-# show up in the Mailpit JSON summary and the logs.
-config :dhc, :loops_transactional_ids, %{
-  "inviteMember" => System.get_env("INVITE_MEMBER_TRANSACTIONAL_ID", "invite_member"),
-  "workshopAnnouncement" =>
-    System.get_env("WORKSHOP_ANNOUNCEMENT_TRANSACTIONAL_ID", "workshop_announcement"),
-  "workshopRegistration" =>
-    System.get_env("WORKSHOP_REGISTRATION_TRANSACTIONAL_ID", "cmnok76cq02tq0ix92oeoi1kk"),
-  "workshopRegistrationError" =>
-    System.get_env("WORKSHOP_REGISTRATION_ERROR_TRANSACTIONAL_ID", "workshopRegistrationError"),
-  "magicLink" => System.get_env("MAGIC_LINK_TRANSACTIONAL_ID", "magic_link")
-}
-
 # Stripe API (not called in dev — sync logs and returns :ok)
 config :dhc, :stripe_secret_key, System.get_env("STRIPE_SECRET_KEY")
 config :dhc, :stripe_api_url, "https://api.stripe.com"

@@ -18,7 +18,7 @@ Templates remain hosted at Resend. A sync pipeline renders components to HTML an
 - Templates carry a stable alias derived mechanically from the Email Kind (kebab-case). Sends address `template.id` by that alias, so no kind→ID configuration map or env-var indirection exists at runtime.
 - Dashboard edits to templates are drift; the next sync overwrites them. Resend's version history is the recovery mechanism.
 
-The cutover from Loops is a single global adapter flip rehearsed against Resend's sandbox in dev (no staging environment exists), with Loops credentials kept warm for instant rollback.
+The cutover from Loops is a single global adapter flip. Resend does not provide a sandbox that can exercise production recipients, and no staging environment exists, so auth-critical delivery is verified directly during a quiet production window before the remaining flows.
 
 ## Consequences
 

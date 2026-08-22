@@ -6,10 +6,9 @@ defmodule Dhc.Email.ApiClientTest do
 
   @job_id 42
 
-  # Swoosh's first-party adapters hard-code their HTTP request headers, so the
-  # repo ships a tiny api_client wrapper that lifts the :idempotency_key
-  # provider option onto every provider call as an Idempotency-Key HTTP header
-  # (ADR 0021). These tests pin that contract.
+  # The repo ships a tiny api_client wrapper that lifts the :idempotency_key
+  # provider option when the selected adapter does not already supply an
+  # Idempotency-Key HTTP header (ADR 0021). These tests pin that contract.
 
   defp email_with(opts) do
     email = %Email{} |> Email.to("user@example.com") |> Email.from("dev@dhc.local")
@@ -45,6 +44,14 @@ defmodule Dhc.Email.ApiClientTest do
 
       assert ApiClient.idempotency_header(base_headers, email_with([])) == base_headers
     end
-  end
 
+    test "does not duplicate an idempotency header supplied by the adapter" do
+      base_headers = [{"Idempotency-Key", "oban-7"}, {"Content-Type", "application/json"}]
+
+      assert ApiClient.idempotency_header(
+               base_headers,
+               email_with(idempotency_key: "oban-7")
+             ) == base_headers
+    end
+  end
 end
