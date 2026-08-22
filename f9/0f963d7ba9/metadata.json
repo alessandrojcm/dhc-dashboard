@@ -3,7 +3,7 @@
   "checkpoint_id": "f90f963d7ba9",
   "strategy": "manual-commit",
   "branch": "worktree/silver-forest-5b5f",
-  "checkpoints_count": 1,
+  "checkpoints_count": 2,
   "files_touched": [
     "apps/web/wrangler.jsonc"
   ],
@@ -14,13 +14,20 @@
       "compact_transcript": "/f9/0f963d7ba9/0/transcript.jsonl",
       "content_hash": "/f9/0f963d7ba9/0/content_hash.txt",
       "prompt": "/f9/0f963d7ba9/0/prompt.txt"
+    },
+    {
+      "metadata": "/f9/0f963d7ba9/1/metadata.json",
+      "transcript": "/f9/0f963d7ba9/1/full.jsonl",
+      "compact_transcript": "/f9/0f963d7ba9/1/transcript.jsonl",
+      "content_hash": "/f9/0f963d7ba9/1/content_hash.txt",
+      "prompt": "/f9/0f963d7ba9/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 29526,
+    "input_tokens": 131232,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 73472,
-    "output_tokens": 4623,
-    "api_call_count": 5
+    "cache_read_tokens": 125259,
+    "output_tokens": 12142,
+    "api_call_count": 9
   }
 }
