@@ -100,20 +100,16 @@ export const updateWorkshop = form(UpdateWorkshopRemoteSchema, async (data) => {
 		title: data.title,
 		description: data.description || null,
 		location: data.location,
+		// Pass the submitted instants through untouched: the form keeps both
+		// fields coherent when only the date or only the time changes. Do NOT
+		// rebuild endDate from startDate plus endDate's local time-of-day — that
+		// silently drops a midnight rollover whenever the Workshop crosses days,
+		// producing an end_date before start_date.
 		startDate: data.workshop_date
 			? dayjs(data.workshop_date).toISOString()
 			: undefined,
 		endDate: data.workshop_end_date
-			? (() => {
-					const endDate = dayjs(data.workshop_end_date);
-					if (data.workshop_date) {
-						return dayjs(data.workshop_date)
-							.set("hour", endDate.hour())
-							.set("minute", endDate.minute())
-							.toISOString();
-					}
-					return endDate.toISOString();
-				})()
+			? dayjs(data.workshop_end_date).toISOString()
 			: undefined,
 		maxCapacity: data.max_capacity,
 		isPublic: data.is_public,

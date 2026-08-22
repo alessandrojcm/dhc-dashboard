@@ -469,7 +469,7 @@ test.describe("Member Signup - Coupon Codes", () => {
 				);
 
 				await page.getByRole("button", { name: /sign up/i }).click();
-				await expect(page.getByText(/You are not signed in\./)).toBeVisible({
+				await expect(page.getByText("Membership created")).toBeVisible({
 					timeout: 30_000,
 				});
 				await expect(

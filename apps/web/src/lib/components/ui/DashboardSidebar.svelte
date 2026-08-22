@@ -75,10 +75,10 @@ function isActive(url: string) {
 }
 </script>
 
-<div class="fixed left-3 top-2 z-50 md:hidden">
+<div class="fixed left-3 top-1 z-50 md:hidden">
 	<Button
 		variant="outline"
-		size="icon"
+		size="icon-sm"
 		aria-label="Toggle menu"
 		onclick={toggleSidebar}
 	>

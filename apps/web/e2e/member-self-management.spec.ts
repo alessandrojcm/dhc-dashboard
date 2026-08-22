@@ -16,12 +16,10 @@ test.describe("Member Self-Management", () => {
 	});
 	test.afterAll(() => testData?.cleanUp());
 
-	test("should navigate to member profile when using only member", async ({
-		page,
-	}) => {
+	test("lands in the dashboard when using only member", async ({ page }) => {
 		await gotoHydrated(page, "/dashboard");
 		await expect(
-			page.getByRole("heading", { name: "My profile" }),
+			page.getByRole("heading", { name: "Dublin HEMA Club", level: 1 }),
 		).toBeVisible();
 		await expect(
 			page.getByRole("navigation", { name: "Members sections" }),
@@ -29,7 +27,7 @@ test.describe("Member Self-Management", () => {
 	});
 
 	test("should update member profile", async ({ page }) => {
-		await gotoHydrated(page, "/dashboard");
+		await gotoHydrated(page, `/dashboard/members/${testData.userId}`);
 		await expect(
 			page.getByRole("heading", { name: "My profile" }),
 		).toBeVisible();
@@ -58,7 +56,7 @@ test.describe("Member Self-Management", () => {
 	});
 
 	test("it should show manage subscription button", async ({ page }) => {
-		await gotoHydrated(page, "/dashboard");
+		await gotoHydrated(page, `/dashboard/members/${testData.userId}`);
 		const popup = page.waitForEvent("popup");
 		await page
 			.getByRole("button", { name: "Manage billing", exact: true })
@@ -70,7 +68,7 @@ test.describe("Member Self-Management", () => {
 	test("it should not show other options when user is only member", async ({
 		page,
 	}) => {
-		await gotoHydrated(page, "/dashboard");
+		await gotoHydrated(page, `/dashboard/members/${testData.userId}`);
 		expect(page.url()).toContain(`/dashboard/members/${testData.userId}`);
 		const sidebar = page.getByTestId("sidebar");
 		await expect(

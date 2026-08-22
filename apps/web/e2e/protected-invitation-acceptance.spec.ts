@@ -100,10 +100,10 @@ async function expectUnsignedCompletedAcceptance(
 		`http://127.0.0.1:5173/members/signup/${invitationId}/success`,
 		{ timeout: 30_000 },
 	);
+	await expect(page.getByText("Membership created")).toBeVisible();
 	await expect(
-		page.getByText("Your membership has been created."),
+		page.getByText("Sign in with your membership email to continue."),
 	).toBeVisible();
-	await expect(page.getByText("You are not signed in.")).toBeVisible();
 	await expect(page.getByRole("link", { name: "Go to sign in" })).toBeVisible();
 
 	const cookies = await context.cookies();
@@ -459,9 +459,7 @@ test("recovers a real Stripe acceptance interrupted before local finalization", 
 			discordIdentityCount: 1,
 		});
 		await page.reload();
-		await expect(
-			page.getByText("Your membership has been created."),
-		).toBeVisible();
+		await expect(page.getByText("Membership created")).toBeVisible();
 		await expectUnsignedCompletedAcceptance(
 			page,
 			context,
