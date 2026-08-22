@@ -141,28 +141,15 @@ if config_env() == :prod do
            "#{app_url}/auth/discord/acceptance/callback"
          )
 
-  # Transactional email transport (ADR 0021): Loops until the Resend cutover
-  # (ADR 0022), which is a config flip on this block — not new code.
+  # Transactional email transport (ADRs 0021 and 0022). Production uses the
+  # send-only Resend key; template aliases are derived from Email Kinds.
   config :dhc, Dhc.Email.Mailer,
-    adapter: Swoosh.Adapters.Loops,
-    api_key: System.get_env("LOOPS_API_KEY")
+    adapter: Swoosh.Adapters.Resend,
+    api_key: System.fetch_env!("RESEND_API_KEY")
 
-  # Friendly name -> real Loops transactional ID mapping.
-  # Mirrors the edge function's env-var lookup (supabase/functions/process-emails).
-  # Only workshopRegistration has a real Loops ID as its fallback default; the
-  # other three MUST be set via env vars in production or the email worker fails
-  # fast with {:error, {:transactional_id_not_configured, name}} rather than
-  # sending the friendly name to Loops (which 404s after 5 retries).
-  config :dhc, :loops_transactional_ids, %{
-    "inviteMember" => System.get_env("INVITE_MEMBER_TRANSACTIONAL_ID", "invite_member"),
-    "workshopAnnouncement" =>
-      System.get_env("WORKSHOP_ANNOUNCEMENT_TRANSACTIONAL_ID", "workshop_announcement"),
-    "workshopRegistration" =>
-      System.get_env("WORKSHOP_REGISTRATION_TRANSACTIONAL_ID", "cmnok76cq02tq0ix92oeoi1kk"),
-    "workshopRegistrationError" =>
-      System.get_env("WORKSHOP_REGISTRATION_ERROR_TRANSACTIONAL_ID", "workshopRegistrationError"),
-    "magicLink" => System.get_env("MAGIC_LINK_TRANSACTIONAL_ID", "magic_link")
-  }
+  # Swoosh includes the Email sender as a template override, so it must match
+  # the sender declared by every code-authored Resend template.
+  config :dhc, :email_from, "Dublin HEMA Club <no-reply@mail.dublinhemaclub.com>"
 
   config :dhc, :stripe_secret_key, System.get_env("STRIPE_SECRET_KEY")
   config :dhc, :stripe_api_url, System.get_env("STRIPE_API_URL", "https://api.stripe.com")
@@ -239,6 +226,7 @@ if config_env() == :prod do
         :failed,
         :inactive,
         :paused,
+        :profile_id,
         :active,
         :unchanged,
         # Email worker (Dhc.Email.Worker)
@@ -297,6 +285,7 @@ if config_env() == :prod do
            :stripe_customer_id,
            :inactive_reason,
            :inactive_updated_count,
+           :profile_id,
            :subscription_id,
            :subscription_status,
            :subscription_created_at,

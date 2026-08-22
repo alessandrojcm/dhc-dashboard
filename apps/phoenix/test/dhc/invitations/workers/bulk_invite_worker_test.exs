@@ -105,9 +105,11 @@ defmodule Dhc.Invitations.BulkInviteWorkerTest do
       assert [%Oban.Job{args: email_args}] = all_enqueued(worker: Dhc.Email.Worker)
       assert email_args["email"] == "ada@example.com"
       assert email_args["transactional_id"] == "inviteMember"
-      assert email_args["data_variables"]["firstName"] == "Ada"
-      assert email_args["data_variables"]["lastName"] == "Lovelace"
-      assert email_args["data_variables"]["invitationLink"] =~ "/members/signup/#{invitation.id}"
+      assert email_args["data_variables"]["INVITEE_FIRST_NAME"] == "Ada"
+      assert email_args["data_variables"]["INVITEE_LAST_NAME"] == "Lovelace"
+
+      assert email_args["data_variables"]["INVITATION_LINK"] =~
+               "/members/signup/#{invitation.id}"
 
       assert %ProcessingLog{total_count: 1, success_count: 1, failure_count: 0} =
                Repo.get_by(ProcessingLog, principal_id: created_by_id)

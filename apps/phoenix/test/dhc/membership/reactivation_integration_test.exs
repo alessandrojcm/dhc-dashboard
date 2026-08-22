@@ -325,16 +325,19 @@ defmodule Dhc.Membership.ReactivationIntegrationTest do
            query: [customer: customer_id, status: "all", limit: 100]
          ) do
       {:ok, %{"data" => subscriptions}} ->
-        Enum.flat_map(subscriptions, fn subscription ->
-          price_id = get_in(subscription, ["items", "data", Access.at(0), "price", "id"])
-
-          if price_id in Map.values(price_ids), do: [subscription["id"]], else: []
-        end)
+        subscriptions
+        |> Enum.filter(&membership_subscription?(&1, price_ids))
+        |> Enum.map(& &1["id"])
         |> Enum.sort()
 
       {:error, reason} ->
         raise "Listing subscriptions failed: #{inspect(reason)}"
     end
+  end
+
+  defp membership_subscription?(subscription, price_ids) do
+    price_id = get_in(subscription, ["items", "data", Access.at(0), "price", "id"])
+    price_id in Map.values(price_ids)
   end
 
   defp fetch_subscription!(subscription_id) do

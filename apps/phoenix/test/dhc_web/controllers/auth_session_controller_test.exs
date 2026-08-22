@@ -468,7 +468,7 @@ defmodule DhcWeb.AuthSessionControllerTest do
       assert %{"data" => %{"sent" => true}} = json_response(conn, 200)
     end
 
-    test "enqueues a Loops email job for a known Principal only" do
+    test "enqueues a Resend template email job for a known Principal only" do
       known = principal_fixture()
       unknown_email = "unknown-#{System.unique_integer([:positive])}@example.com"
 
@@ -491,11 +491,10 @@ defmodule DhcWeb.AuthSessionControllerTest do
 
       # The args carry the friendly name and the recipient email — no token
       # in the args (the token is in the URL data variable). The data
-      # variable key is `LoginLink` to match the Loops "magic link"
-      # transactional template (`cma3yqgqw68tv9pm5v0si5ge3`).
+      # variable key matches the code-authored Resend template contract.
       assert job.args["transactional_id"] == "magicLink"
       assert job.args["email"] == known.email
-      assert Map.has_key?(job.args["data_variables"], "LoginLink")
+      assert Map.has_key?(job.args["data_variables"], "LOGIN_LINK")
       refute Map.has_key?(job.args["data_variables"], "url")
     end
   end

@@ -156,7 +156,7 @@ Phoenix runtime task.
 mise run phx-format         # Format all Elixir files
 mise run phx-format-check   # Check formatting (CI)
 mise run phx-reach          # Reach architecture policy checks (.reach.exs)
-mise run phx-precommit      # Full check: credo + reach arch + audit + compile + unlock + format + test
+mise run phx-precommit      # Full check: audit + credo + reach arch + compile + unlock + format + test
 
 # Testing
 mise run phx-test           # Run all Phoenix tests (excludes :integration tests)

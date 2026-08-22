@@ -49,17 +49,6 @@ config :dhc, :discord_webhook_url, "https://discord.example.com/webhook/test"
 # tests swap the adapter for Dhc.Email.AdapterStub (ADR 0021).
 config :dhc, Dhc.Email.Mailer, adapter: Swoosh.Adapters.Test
 
-# Friendly name -> real template ID mapping (test stubs). The worker resolves
-# this on every job, so these IDs show up in the delivered emails' provider
-# options.
-config :dhc, :loops_transactional_ids, %{
-  "inviteMember" => "test-loops-id-inviteMember",
-  "workshopAnnouncement" => "test-loops-id-workshopAnnouncement",
-  "workshopRegistration" => "test-loops-id-workshopRegistration",
-  "workshopRegistrationError" => "test-loops-id-workshopRegistrationError",
-  "magicLink" => "test-loops-id-magicLink"
-}
-
 # Tests that exercise Stripe replace the client or use test-mode credentials.
 e2e_server? = System.get_env("E2E_SERVER") == "true"
 stripe_secret_key = System.get_env("STRIPE_SECRET_KEY")

@@ -10,22 +10,20 @@ defmodule Dhc.Email.Worker do
   ## Job args (public contract — unchanged)
 
     * `email` — the recipient email address
-    * `transactional_id` — a friendly template name (`"inviteMember"`,
+    * `transactional_id` — the Email Kind (`"inviteMember"`,
       `"workshopAnnouncement"`, `"workshopRegistration"`,
-      `"workshopRegistrationError"`, `"magicLink"`). The worker translates
-      this to the provider's dashboard-generated template ID via the
-      `:loops_transactional_ids` app env map.
+      `"workshopRegistrationError"`, `"magicLink"`). The worker derives the
+      Resend template alias mechanically in kebab-case.
     * `data_variables` — key-value pairs injected into the email template
       (values must be strings or numbers)
 
   ## Delivery
 
   The worker builds one `%Swoosh.Email{}` per job — recipient, sender, and
-  provider options (`transactional_id`, `data_variables`) — and hands it to
-  `Dhc.Email.Mailer`. Which provider actually delivers is environment config,
-  not code: `Swoosh.Adapters.Loops` in prod, `Swoosh.Adapters.Mailpit` over
-  HTTP in dev (`http://localhost:8025` web UI), `Swoosh.Adapters.Test` in
-  tests.
+  Resend template option — and hands it to `Dhc.Email.Mailer`. The configured
+  adapters are `Swoosh.Adapters.Resend` in prod, `Swoosh.Adapters.Mailpit`
+  over HTTP in dev (`http://localhost:8025` web UI), and
+  `Swoosh.Adapters.Test` in tests.
 
   Outside prod the message is decorated with a JSON summary body
   (recipient + friendly Kind + data variables) so the dev inbox shows who
@@ -39,9 +37,9 @@ defmodule Dhc.Email.Worker do
 
   ## Error classification
 
-    * Invalid job args and unmapped/empty template IDs are deterministic:
-      the job is **cancelled immediately** (`{:cancel, _}`) with a Sentry
-      capture instead of burning five identical attempts.
+    * Invalid job args are deterministic: the job is **cancelled
+      immediately** (`{:cancel, _}`) with a Sentry capture instead of burning
+      five identical attempts.
     * In prod, provider responses of 4xx (except 429 rate limiting) are
       deterministic rejections too: cancelled with Sentry capture. Rate
       limits, 5xx, and network errors are transient: returned as
@@ -165,49 +163,22 @@ defmodule Dhc.Email.Worker do
          %Oban.Job{} = job,
          ctx
        ) do
-    with {:ok, template_id} <- resolve_template_id(kind, ctx) do
-      data_variables = Map.get(args, "data_variables", %{})
+    data_variables = Map.get(args, "data_variables", %{})
 
-      recipient
-      |> build_email(kind, template_id, data_variables, job.id)
-      |> deliver_email(kind, ctx)
-    end
+    recipient
+    |> build_email(kind, data_variables, job.id)
+    |> deliver_email(kind, ctx)
   end
 
-  defp resolve_template_id(friendly_name, ctx) do
-    # Translation mirrors the edge function's env-var lookup. The map is built
-    # in config/runtime.exs / config/dev.exs from *_TRANSACTIONAL_ID env vars.
-    # We never send the friendly name to the provider (it 404s there); an
-    # unmapped or empty mapping is a deterministic configuration failure.
-    map = Application.get_env(:dhc, :loops_transactional_ids, %{})
-
-    case Map.get(map, friendly_name) do
-      template_id when is_binary(template_id) and template_id != "" ->
-        {:ok, template_id}
-
-      _ ->
-        message = "No template ID mapped for transactional_id"
-
-        Logger.error(
-          "[email-worker] #{message}",
-          Keyword.merge(ctx, transactional_id: friendly_name)
-        )
-
-        capture_deterministic_failure(message, ctx,
-          transactional_id: friendly_name
-        )
-
-        {:cancel, {:transactional_id_not_configured, friendly_name}}
-    end
-  end
-
-  defp build_email(recipient, kind, template_id, data_variables, oban_job_id) do
+  defp build_email(recipient, kind, data_variables, oban_job_id) do
     email =
       Email.new()
       |> Email.from(email_from())
       |> Email.to(recipient)
-      |> Email.put_provider_option(:transactional_id, template_id)
-      |> Email.put_provider_option(:data_variables, data_variables)
+      |> Email.put_provider_option(:template, %{
+        id: template_alias(kind),
+        variables: data_variables
+      })
 
     if oban_job_id do
       key = "oban-#{oban_job_id}"
@@ -323,6 +294,12 @@ defmodule Dhc.Email.Worker do
     Application.get_env(:dhc, :environment, :development)
   end
 
+  defp template_alias(kind) do
+    ~r/([a-z0-9])([A-Z])/
+    |> Regex.replace(kind, "\\1-\\2")
+    |> String.downcase()
+  end
+
   # Sentry capture for deterministic failures (invalid args, unmapped template
   # IDs, provider rejections). Oban context rides in :extra as a flat map —
   # this Sentry version does not accept :contexts.
@@ -339,8 +316,8 @@ defmodule Dhc.Email.Worker do
     )
   end
 
-  # Swoosh requires a sender on every message. Loops ignores it (templates
-  # define the sender); Mailpit shows it in the dev inbox.
+  # Swoosh requires a sender on every message. Resend templates define the
+  # production sender; Mailpit shows this fallback in the dev inbox.
   defp email_from do
     Application.get_env(:dhc, :email_from, "dev@dhc.local")
   end

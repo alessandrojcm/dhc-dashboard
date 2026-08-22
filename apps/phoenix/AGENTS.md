@@ -2,7 +2,8 @@ This is a web application written using the Phoenix web framework.
 
 ## Project guidelines
 
-- Use `mix precommit` alias when you are done with all changes and fix any pending issues; it runs `reach.check --arch` then `mix hex.audit`, so architecture-boundary violations (`.reach.exs`) and dependency advisories fail validation
+- Use `mix precommit` when you are done and fix pending issues. Its alias must keep `hex.audit` first because dependency-provided tasks unload archived Hex tasks from the current Mix process; it then runs Credo, `reach.check --arch`, compilation, formatting, and tests.
+- Keep Bandit at `~> 1.12.5` or newer within the compatible minor line; 1.12.5 fixes CVE-2026-74836 and CVE-2026-75484.
 - Run `mix credo --all` from `apps/phoenix` for static analysis; the project configuration also enables `ExSlop`
 - Reach enforces module boundaries in `.reach.exs`: web→Repo only via `DhcWeb.Plugs.MagicLinkRateLimit`, Stripe only via `Dhc.Stripe.Operations.*` (never `Dhc.Stripe.Client.request/1`), Nostrum only inside `Dhc.Discord.*`, Req as the only HTTP client, no `IO.puts` outside Mix tasks/`Dhc.Release`. New findings fail the build; baseline known transitional findings with `MIX_ENV=dev mix reach.check --arch --write-baseline .reach-baseline.json`
 - Keep generated Stripe modules under `lib/dhc/stripe/generated/` excluded from Credo instead of refactoring generated source

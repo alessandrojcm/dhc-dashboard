@@ -583,8 +583,8 @@ defmodule DhcWeb.MembershipControllerTest do
 
     @monthly_initial_amount 1500
     @monthly_recurring_amount 4200
-    @annual_initial_amount 31500
-    @annual_recurring_amount 36000
+    @annual_initial_amount 31_500
+    @annual_recurring_amount 36_000
 
     test "keeps the minting pipeline in front of the amounts read", %{conn: conn} do
       conn =
@@ -937,18 +937,8 @@ defmodule DhcWeb.MembershipControllerTest do
     observe_keys = Map.get(opts, :observe_keys)
     assert_confirm_body = Map.get(opts, :assert_confirm_body)
 
-    record_key = fn conn ->
-      case Plug.Conn.get_req_header(conn, "idempotency-key") do
-        [key] ->
-          if observe_keys, do: :ets.insert(observe_keys, {key})
-
-          assert String.starts_with?(key, "#{opts.idempotency_prefix}:"),
-                 "unexpected idempotency key #{inspect(key)}"
-
-        [] ->
-          flunk("mutating Stripe call missing Idempotency-Key header")
-      end
-    end
+    record_key =
+      &record_idempotency_key(&1, observe_keys, opts.idempotency_prefix)
 
     Bypass.expect(bypass, "POST", "/v1/subscriptions", fn conn ->
       {:ok, body, conn} = Plug.Conn.read_body(conn)
@@ -989,7 +979,7 @@ defmodule DhcWeb.MembershipControllerTest do
         params = URI.decode_query(body)
         record_key.(conn)
 
-        if assert_confirm_body, do: assert_confirm_body.(params)
+        assert_optional_confirm_body(assert_confirm_body, params)
 
         assert params["payment_method"] == opts.payment_method_id
 
@@ -997,6 +987,25 @@ defmodule DhcWeb.MembershipControllerTest do
       end)
     end)
   end
+
+  defp record_idempotency_key(conn, observe_keys, prefix) do
+    case Plug.Conn.get_req_header(conn, "idempotency-key") do
+      [key] ->
+        observe_idempotency_key(observe_keys, key)
+
+        assert String.starts_with?(key, "#{prefix}:"),
+               "unexpected idempotency key #{inspect(key)}"
+
+      [] ->
+        flunk("mutating Stripe call missing Idempotency-Key header")
+    end
+  end
+
+  defp observe_idempotency_key(nil, _key), do: :ok
+  defp observe_idempotency_key(table, key), do: :ets.insert(table, {key})
+
+  defp assert_optional_confirm_body(nil, _params), do: :ok
+  defp assert_optional_confirm_body(assertion, params), do: assertion.(params)
 
   defp incomplete_subscription_json(subscription_id) do
     %{
@@ -1075,35 +1084,48 @@ defmodule DhcWeb.MembershipControllerTest do
       anchored? = Map.has_key?(params, anchor_key)
       start_dated? = Map.has_key?(params, start_key)
 
-      kind =
-        cond do
-          price_id == opts.monthly_price_id and not anchored? and not start_dated? ->
-            :monthly_initial
-
-          price_id == opts.monthly_price_id and anchored? ->
-            assert params[anchor_key] == Integer.to_string(opts.monthly_initial_anchor)
-            :monthly_initial
-
-          price_id == opts.monthly_price_id ->
-            assert params[start_key] == Integer.to_string(opts.start_date_unix)
-            :monthly_recurring
-
-          price_id == opts.annual_price_id and anchored? ->
-            # The command resolves billing_cycle_anchor_config to next Jan 7 at
-            # creation time-of-day UTC; tolerate second-level drift.
-            assert abs(String.to_integer(params[anchor_key]) - january_anchor_now_unix()) <= 60
-            :annual_initial
-
-          price_id == opts.annual_price_id ->
-            assert abs(String.to_integer(params[start_key]) - january_anchor_now_unix()) <= 60
-            :annual_recurring
-
-          true ->
-            flunk("unexpected create_preview price #{inspect(price_id)}")
-        end
+      kind = preview_kind(price_id, anchored?, start_dated?, params, opts, anchor_key, start_key)
 
       stripe_json(conn, preview_invoice_json(kind, Map.fetch!(opts.invoices, kind)))
     end)
+  end
+
+  defp preview_kind(price_id, anchored?, start_dated?, params, opts, anchor_key, start_key) do
+    cond do
+      price_id == opts.monthly_price_id ->
+        monthly_preview_kind(anchored?, start_dated?, params, opts, anchor_key, start_key)
+
+      price_id == opts.annual_price_id ->
+        annual_preview_kind(anchored?, params, anchor_key, start_key)
+
+      true ->
+        flunk("unexpected create_preview price #{inspect(price_id)}")
+    end
+  end
+
+  defp monthly_preview_kind(false, false, _params, _opts, _anchor_key, _start_key),
+    do: :monthly_initial
+
+  defp monthly_preview_kind(true, _start_dated?, params, opts, anchor_key, _start_key) do
+    assert params[anchor_key] == Integer.to_string(opts.monthly_initial_anchor)
+    :monthly_initial
+  end
+
+  defp monthly_preview_kind(false, true, params, opts, _anchor_key, start_key) do
+    assert params[start_key] == Integer.to_string(opts.start_date_unix)
+    :monthly_recurring
+  end
+
+  defp annual_preview_kind(true, params, anchor_key, _start_key) do
+    # The command resolves billing_cycle_anchor_config to next Jan 7 at
+    # creation time-of-day UTC; tolerate second-level drift.
+    assert abs(String.to_integer(params[anchor_key]) - january_anchor_now_unix()) <= 60
+    :annual_initial
+  end
+
+  defp annual_preview_kind(false, params, _anchor_key, start_key) do
+    assert abs(String.to_integer(params[start_key]) - january_anchor_now_unix()) <= 60
+    :annual_recurring
   end
 
   defp preview_invoice_json(kind, amount) do

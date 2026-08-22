@@ -12,7 +12,10 @@ defmodule Dhc.Email.WorkerTest do
   @valid_args %{
     "email" => "user@example.com",
     "transactional_id" => "inviteMember",
-    "data_variables" => %{"name" => "Alice", "inviteLink" => "https://example.com/invite"}
+    "data_variables" => %{
+      "INVITEE_FIRST_NAME" => "Alice",
+      "INVITATION_LINK" => "https://example.com/invite"
+    }
   }
 
   defp job(args, id \\ @job_id), do: %Oban.Job{id: id, args: args}
@@ -46,13 +49,12 @@ defmodule Dhc.Email.WorkerTest do
       # One delivered email per job; assert everything on that single message
       # because assertions consume mailbox messages.
       assert_email_sent(fn email ->
-        # The friendly name is translated through :loops_transactional_ids
-        # (configured in test.exs) before it reaches the provider options.
-        assert email.provider_options.transactional_id == "test-loops-id-inviteMember"
-
-        assert email.provider_options.data_variables == %{
-                 "name" => "Alice",
-                 "inviteLink" => "https://example.com/invite"
+        assert email.provider_options.template == %{
+                 id: "invite-member",
+                 variables: %{
+                   "INVITEE_FIRST_NAME" => "Alice",
+                   "INVITATION_LINK" => "https://example.com/invite"
+                 }
                }
 
         assert Enum.any?(email.to, fn {_name, address} ->
@@ -80,8 +82,10 @@ defmodule Dhc.Email.WorkerTest do
           email.text_body && Jason.decode!(email.text_body)
 
         assert payload["transactional_id"] == "inviteMember"
-        assert payload["data_variables"]["name"] == "Alice"
-        assert payload["data_variables"]["inviteLink"] == "https://example.com/invite"
+        assert payload["data_variables"]["INVITEE_FIRST_NAME"] == "Alice"
+
+        assert payload["data_variables"]["INVITATION_LINK"] ==
+                 "https://example.com/invite"
       end)
     end
 
@@ -91,7 +95,7 @@ defmodule Dhc.Email.WorkerTest do
       assert Worker.perform(job(args)) == :ok
 
       assert_email_sent(fn email ->
-        assert email.provider_options.data_variables == %{}
+        assert email.provider_options.template.variables == %{}
       end)
     end
 
@@ -99,33 +103,35 @@ defmodule Dhc.Email.WorkerTest do
       args = %{
         "email" => "user@example.com",
         "transactional_id" => "workshopAnnouncement",
-        "data_variables" => %{"count" => 5, "name" => "Bob"}
+        "data_variables" => %{"WORKSHOP_COUNT" => 5, "MEMBER_FIRST_NAME" => "Bob"}
       }
 
       assert Worker.perform(job(args)) == :ok
 
       assert_email_sent(fn email ->
-        assert email.provider_options.data_variables == %{"count" => 5, "name" => "Bob"}
-        assert email.provider_options.transactional_id == "test-loops-id-workshopAnnouncement"
+        assert email.provider_options.template == %{
+                 id: "workshop-announcement",
+                 variables: %{"WORKSHOP_COUNT" => 5, "MEMBER_FIRST_NAME" => "Bob"}
+               }
       end)
     end
 
-    test "translates every known friendly name to its mapped template id" do
-      mappings = %{
-        "inviteMember" => "test-loops-id-inviteMember",
-        "workshopAnnouncement" => "test-loops-id-workshopAnnouncement",
-        "workshopRegistration" => "test-loops-id-workshopRegistration",
-        "workshopRegistrationError" => "test-loops-id-workshopRegistrationError",
-        "magicLink" => "test-loops-id-magicLink"
+    test "derives every Resend template alias from the email kind" do
+      aliases = %{
+        "inviteMember" => "invite-member",
+        "workshopAnnouncement" => "workshop-announcement",
+        "workshopRegistration" => "workshop-registration",
+        "workshopRegistrationError" => "workshop-registration-error",
+        "magicLink" => "magic-link"
       }
 
-      for {friendly_name, mapped_id} <- mappings do
-        args = %{"email" => "user@example.com", "transactional_id" => friendly_name}
+      for {kind, template_alias} <- aliases do
+        args = %{"email" => "user@example.com", "transactional_id" => kind}
 
         assert Worker.perform(job(args)) == :ok
 
         assert_email_sent(fn email ->
-          assert email.provider_options.transactional_id == mapped_id
+          assert email.provider_options.template == %{id: template_alias, variables: %{}}
         end)
       end
     end
@@ -237,40 +243,6 @@ defmodule Dhc.Email.WorkerTest do
       stub_delivery({:error, {503, "upstream unavailable"}})
 
       assert capture_log(fn -> Worker.perform(job(@valid_args)) end) =~ "503"
-    end
-
-    test "cancels instead of sending when the template id mapping is absent" do
-      original_map = Application.get_env(:dhc, :loops_transactional_ids)
-      Application.put_env(:dhc, :loops_transactional_ids, %{})
-      stub_delivery({:ok, %{}})
-
-      on_exit(fn ->
-        if original_map,
-          do: Application.put_env(:dhc, :loops_transactional_ids, original_map),
-          else: Application.delete_env(:dhc, :loops_transactional_ids)
-      end)
-
-      assert {:cancel, {:transactional_id_not_configured, "inviteMember"}} =
-               Worker.perform(job(@valid_args))
-
-      refute_email_sent()
-    end
-
-    test "cancels instead of sending when the template id mapping is empty" do
-      original_map = Application.get_env(:dhc, :loops_transactional_ids)
-      Application.put_env(:dhc, :loops_transactional_ids, %{"inviteMember" => ""})
-      stub_delivery({:ok, %{}})
-
-      on_exit(fn ->
-        if original_map,
-          do: Application.put_env(:dhc, :loops_transactional_ids, original_map),
-          else: Application.delete_env(:dhc, :loops_transactional_ids)
-      end)
-
-      assert {:cancel, {:transactional_id_not_configured, "inviteMember"}} =
-               Worker.perform(job(@valid_args))
-
-      refute_email_sent()
     end
   end
 
