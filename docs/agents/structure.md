@@ -33,7 +33,8 @@ dhc-dashboard/
 │   └── email-templates/         # Code-authored transactional emails (@dhc/email-templates)
 │       ├── emails/               # React Email components + metadata exports (ADR 0022)
 │       ├── src/                  # Template metadata schema + kind→template registry
-│       └── test/                 # Schema validation tests only (no render tests)
+│       ├── scripts/sync.tsx      # Resend sync pipeline: render → upsert-by-alias → publish/smoke
+│       └── test/                 # Metadata validation + sync helper/render tests
 ├── supabase/
 │   ├── functions/             # Deno edge functions (BEING MIGRATED to Oban)
 │   ├── migrations/            # SQL migrations (FROZEN — no new ones)

@@ -73,6 +73,31 @@ account must provide active `monthly_membership_fee` and `annual_membership_fee`
 lookup-key prices; coupon tests create unique promotion fixtures and clean them up.
 Never supply a live-mode key.
 
+## Email templates (Resend sync)
+
+The five transactional templates are React Email components in
+`packages/email-templates`, synced upsert-by-alias to Resend-hosted templates
+(ADR 0022). See that package's README for the drift policy and CI wiring.
+
+```bash
+mise run email-sync          # render + upsert drafts (what PRs do)
+mise run email-sync-publish  # upsert + publish (what merge-to-main does)
+mise run email-smoke         # fail unless every whitelisted kind has a published template
+```
+
+All three need a Full Access key as `RESEND_API_KEY` (`fnox` holds the send-only
+key under that name; use the `RESEND_API_KEY_CI` value for syncs). The GitHub
+Actions workflow `.github/workflows/email-templates.yml` runs the same pipeline:
+drafts on pull requests, publish + smoke on main, gated by change detection on
+`packages/email-templates/**`.
+
+Template assets (the crest) are served from the R2 bucket `dhc-email-assets`
+at `https://assets.dublinhemaclub.com`, decoupled from the web app. After
+changing files in `packages/email-templates/emails/static/`, run
+`mise run email-asset-upload` (needs `CLOUDFLARE_API_TOKEN` or an interactive
+`wrangler login`; one-time bootstrap: create the bucket and attach its custom
+domain).
+
 ## Phoenix (in progress)
 
 Phoenix mise tasks override the root Supabase Docker `.env` database host and connect to host-local Supabase Postgres at `localhost:54322`.

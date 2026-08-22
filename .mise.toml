@@ -225,6 +225,34 @@ arg "[count]" help="Number of workshops to seed" default="5"
 '''
 run = 'mix seed.workshops "${usage_count?}"'
 
+# ── Email templates (Resend sync, ADR 0022) ────────
+# Requires a Full Access Resend key in RESEND_API_KEY (CI secret
+# RESEND_API_KEY_CI); send-only keys cannot manage templates.
+
+[tasks."email-sync"]
+description = "Upsert email templates to Resend as drafts"
+dir = "packages/email-templates"
+run = "pnpm sync"
+
+[tasks."email-sync-publish"]
+description = "Upsert and publish email templates to Resend"
+dir = "packages/email-templates"
+run = "pnpm sync:publish"
+
+[tasks."email-smoke"]
+description = "Assert every whitelisted Email Kind has a published Resend template"
+dir = "packages/email-templates"
+run = "pnpm smoke"
+
+# One-time bootstrap (dashboard or `wrangler r2 bucket create`): the R2
+# bucket plus its custom domain (assets.dublinhemaclub.com). Needs
+# CLOUDFLARE_API_TOKEN (or an interactive `wrangler login`) — run after
+# changing anything under packages/email-templates/emails/static/.
+[tasks."email-asset-upload"]
+description = "Upload the email crest to the R2 assets bucket"
+dir = "apps/web"
+run = 'pnpm exec wrangler r2 object put "${EMAIL_ASSETS_BUCKET:-dhc-email-assets}/logo.png" --file ../../packages/email-templates/emails/static/logo.png --content-type image/png --cache-control "public, max-age=86400"'
+
 # ── Composed / CI tasks ───────────────────────────
 
 [tasks.ci]

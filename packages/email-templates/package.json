@@ -10,10 +10,13 @@
 	},
 	"scripts": {
 		"dev": "email dev --dir emails",
+		"sync": "tsx scripts/sync.tsx",
+		"sync:publish": "tsx scripts/sync.tsx --publish",
+		"smoke": "tsx scripts/sync.tsx --smoke",
 		"lint": "oxlint",
 		"lint:fix": "oxlint --fix",
-		"format": "oxfmt ./emails ./src ./test",
-		"format:check": "oxfmt --check ./emails ./src ./test",
+		"format": "oxfmt ./emails ./src ./test ./scripts",
+		"format:check": "oxfmt --check ./emails ./src ./test ./scripts",
 		"typecheck": "tsc --noEmit",
 		"test": "vitest run"
 	},
@@ -23,7 +26,8 @@
 	"dependencies": {
 		"react": "^19.1.0",
 		"react-dom": "^19.1.0",
-		"react-email": "^6.9.1"
+		"react-email": "^6.9.1",
+		"resend": "^6.21.0"
 	},
 	"devDependencies": {
 		"@oxlint/plugins": "1.78.0",
@@ -34,6 +38,7 @@
 		"oxfmt": "^0.60.0",
 		"oxlint": "1.78.0",
 		"oxlint-tsgolint": "^7.0.2001",
+		"tsx": "^4.23.12",
 		"typescript": "^5.9.3",
 		"vitest": "^4.1.7"
 	}
