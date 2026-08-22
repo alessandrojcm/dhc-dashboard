@@ -1,0 +1,1 @@
+Research current authoritative guidance for making `mix hex.audit` available in an Elixir/Phoenix project precommit alias. Identify the correct Hex package/dependency name, recommended version constraint, environments/runtime options, and whether the task is `hex.audit`. Return authoritative links and concise mix.exs example. Do not edit files.
