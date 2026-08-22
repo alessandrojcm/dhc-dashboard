@@ -172,10 +172,10 @@ defmodule Dhc.Email.Worker do
 
   defp build_email(recipient, kind, data_variables, oban_job_id) do
     email =
-       Email.new()
-       |> Email.from(email_from())
-       |> Email.reply_to(email_reply_to())
-       |> Email.to(recipient)
+      Email.new()
+      |> Email.from(email_from())
+      |> Email.reply_to(email_reply_to())
+      |> Email.to(recipient)
       |> Email.put_provider_option(:template, %{
         id: template_alias(kind),
         variables: data_variables
