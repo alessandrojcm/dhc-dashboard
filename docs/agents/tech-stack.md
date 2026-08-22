@@ -21,6 +21,7 @@
 - **Database**: Ecto 3.14 + Postgrex 0.22.4 (shared Postgres with Supabase)
 - **Background Jobs**: Oban 2.23 (replaces pgmq + pg_cron)
 - **Email transport**: Swoosh 1.27 behind `Dhc.Email.Mailer` (ADR 0021) — `Swoosh.Adapters.Loops` in prod, Mailpit over HTTP in dev, `Swoosh.Adapters.Test` in tests; `gen_smtp` is gone. See [commands.md](commands.md) for the dev workflow.
+- **Email templates**: React Email 6 (`react-email` unified package) in `packages/email-templates` (ADR 0022) — one component per Email Kind with metadata exports (`defineTemplate`: subject, sender, UPPER_SNAKE typed variables); Resend constraints (≤20 vars, reserved names like `FIRST_NAME`/`LAST_NAME`/`EMAIL`) are validated at import time. Preview via `pnpm --filter @dhc/email-templates dev`. No render/copy tests — neither React Email nor Resend publishes testing guidance for template assertions.
 - **Authentication target**: Phoenix 1.8 generated authentication (`mix phx.gen.auth`) with Assent 0.3.1 for Discord OAuth; DHC-owned Postgres principals, identities, tokens, and sessions replace Supabase Auth after the specified cutover
 - **Discord server REST**: Nostrum 0.10.4 behind `Dhc.Discord.Adapter`; the stable release is loaded as an included application and only its ratelimiter is supervised, avoiding a gateway connection in tokenless dev/test environments
 - **API Style**: JSON API via Phoenix controllers, spec-first with OpenAPI
