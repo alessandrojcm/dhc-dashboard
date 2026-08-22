@@ -17,13 +17,21 @@ import {
 	toCalendarDate,
 } from "@internationalized/date";
 import dayjs from "dayjs";
-import type { MembershipReactivationPreviewResponse } from "@dhc/api-client";
+import Dinero from "dinero.js";
+import type {
+	MembershipReactivationPreviewAmountsResponse,
+	MembershipReactivationPreviewResponse,
+} from "@dhc/api-client";
 
 // Mirrors the savedPaymentMethod summary projected by
 // GET /members/{memberId}/membership/reactivation-preview.
 type SavedPaymentMethod = NonNullable<
 	MembershipReactivationPreviewResponse["data"]["savedPaymentMethod"]
 >;
+
+// Mirrors the Stripe-computed amounts projected by
+// GET /members/{memberId}/membership/reactivation-preview/amounts (ALE-254).
+type ReactivationAmounts = MembershipReactivationPreviewAmountsResponse["data"];
 
 type Props = {
 	open: boolean;
@@ -36,6 +44,11 @@ type Props = {
 	errorDetail?: string | null;
 	paymentMethodUnavailable?: boolean;
 	onOpenBillingPortal?: () => void;
+	/** Stripe-computed amounts for the selected start date; hidden on failure. */
+	amounts?: ReactivationAmounts | null;
+	isLoadingAmounts?: boolean;
+	/** Reports the selected start date up to the container so it can fetch amounts. */
+	onStartDateChange?: (startDateIso: string) => void;
 };
 
 let {
@@ -48,6 +61,9 @@ let {
 	errorDetail = null,
 	paymentMethodUnavailable = false,
 	onOpenBillingPortal,
+	amounts = null,
+	isLoadingAmounts = false,
+	onStartDateChange,
 }: Props = $props();
 
 // The server accepts today up to one year ahead (Membership's
@@ -74,6 +90,19 @@ function handleConfirm(event: Event) {
 	event.stopPropagation();
 	if (!selectedDate || isPending || methodUnavailable) return;
 	onConfirm({ startDate: startDateIso });
+}
+
+// The container fetches Stripe-computed amounts for the selected date; the
+// query key changes with it, so this fires on mount and every date change.
+$effect(() => {
+	onStartDateChange?.(startDateIso);
+});
+
+function formatMoney(money: ReactivationAmounts["dueToday"]) {
+	// SAFETY: dinero.js narrows currency to an ISO-4217 literal union while
+	// the API type keeps `string`; the server pins the currency to EUR, so
+	// every value reaching here satisfies the narrower union.
+	return Dinero(money as Dinero.DineroObject).toFormat();
 }
 
 function handleDateChange(date: Date) {
@@ -168,6 +197,44 @@ function handleDateChange(date: Date) {
 							.format("MMM D, YYYY")}.
 					</p>
 				</div>
+
+				{#if amounts || isLoadingAmounts}
+					<div
+						class="rounded-xl border border-border/80 bg-muted/40 p-3"
+						data-slot="reactivation-amounts"
+						data-testid="reactivation-amounts"
+					>
+						{#if !amounts}
+							<p
+								class="flex items-center gap-2 text-sm text-muted-foreground"
+								role="status"
+							>
+								<LoaderCircle class="size-4 animate-spin" />
+								Calculating what this reactivation will charge…
+							</p>
+						{:else}
+							<dl class="space-y-1.5 text-sm">
+								<div class="flex items-baseline justify-between gap-3">
+									<dt class="font-semibold">Due today</dt>
+									<dd class="font-semibold">{formatMoney(amounts.dueToday)}</dd>
+								</div>
+								<div class="flex items-baseline justify-between gap-3">
+									<dt class="text-muted-foreground">Monthly membership</dt>
+									<dd>{formatMoney(amounts.monthlyFee)}</dd>
+								</div>
+								<div class="flex items-baseline justify-between gap-3">
+									<dt class="text-muted-foreground">Annual membership</dt>
+									<dd>{formatMoney(amounts.annualFee)}</dd>
+								</div>
+							</dl>
+							<p class="mt-2 text-xs leading-4 text-muted-foreground">
+								Computed by Stripe for the selected start date: the monthly fee
+								starts prorated on that day, the annual fee is charged prorated
+								for the rest of this year and renews each January.
+							</p>
+						{/if}
+					</div>
+				{/if}
 
 				{#if errorDetail}
 					<Alert.Root variant="destructive">

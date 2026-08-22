@@ -11,6 +11,7 @@ import {
 	membersShowQueryKey,
 	membershipBillingPortalMutation,
 	membershipReactivateMutation,
+	membershipReactivationPreviewAmountsOptions,
 	membershipReactivationPreviewOptions,
 } from "@dhc/api-client";
 import { page } from "$app/state";
@@ -44,6 +45,27 @@ const reactivationPreview = createQuery(() => ({
 		path: { memberId },
 	}),
 	enabled: open && memberId !== "",
+}));
+
+// The selected start date is owned by the modal (date picker) and reported
+// up through onStartDateChange so the amounts query can key off it (ALE-254).
+let previewStartDate = $state<string | null>(null);
+
+// Stripe-computed amounts for the chosen start date, fetched only once a
+// saved method exists (otherwise the operator gets the billing-portal
+// fallback instead). Keyed by startDate, so changing the date refetches.
+// Failure degrades gracefully: the modal hides amounts and keeps the form
+// usable — this query failing must never block a valid charge.
+const reactivationAmounts = createQuery(() => ({
+	...membershipReactivationPreviewAmountsOptions({
+		path: { memberId },
+		query: { startDate: previewStartDate ?? "" },
+	}),
+	enabled:
+		open &&
+		memberId !== "" &&
+		previewStartDate !== null &&
+		Boolean(reactivationPreview.data?.data.savedPaymentMethod),
 }));
 
 // Submission error kept inside the modal so the operator can retry without
@@ -121,6 +143,8 @@ const billingPortalMutation = createMutation(() => ({
 	isLoadingPreview={reactivationPreview.isPending}
 	savedPaymentMethod={reactivationPreview.data?.data.savedPaymentMethod ??
 		undefined}
+	amounts={reactivationAmounts.data?.data ?? null}
+	isLoadingAmounts={reactivationAmounts.isFetching}
 	errorDetail={submitError?.detail ?? null}
 	paymentMethodUnavailable={submitError?.noSavedMethod ?? false}
 	onOpenBillingPortal={() =>
@@ -128,6 +152,9 @@ const billingPortalMutation = createMutation(() => ({
 			path: { memberId },
 			body: { returnUrl: window.location.href },
 		})}
+	onStartDateChange={(startDateIso) => {
+		previewStartDate = startDateIso;
+	}}
 	onConfirm={({ startDate }) => {
 		submitError = null;
 		reactivateMutation.mutate({ path: { memberId }, body: { startDate } });

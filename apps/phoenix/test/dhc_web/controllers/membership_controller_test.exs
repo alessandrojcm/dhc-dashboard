@@ -576,6 +576,230 @@ defmodule DhcWeb.MembershipControllerTest do
     end
   end
 
+  # ALE-254: Stripe-computed amounts behind the operator modal's
+  # pre-confirmation preview.
+  describe "reactivation amounts preview" do
+    setup :stripe_bypass
+
+    @monthly_initial_amount 1500
+    @monthly_recurring_amount 4200
+    @annual_initial_amount 31500
+    @annual_recurring_amount 36000
+
+    test "keeps the minting pipeline in front of the amounts read", %{conn: conn} do
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer coach-token")
+        |> get(
+          "/api/members/11111111-1111-1111-1111-111111111111/membership/reactivation-preview/amounts?startDate=#{Date.to_iso8601(Date.utc_today())}"
+        )
+
+      assert %{"errors" => %{"detail" => "Insufficient role"}} = json_response(conn, 403)
+    end
+
+    test "returns 401 without a session", %{conn: conn} do
+      conn =
+        get(
+          conn,
+          "/api/members/11111111-1111-1111-1111-111111111111/membership/reactivation-preview/amounts?startDate=#{Date.to_iso8601(Date.utc_today())}"
+        )
+
+      assert %{"errors" => %{"detail" => "Unauthorized"}} = json_response(conn, 401)
+    end
+
+    test "returns Stripe-computed amounts for a start date of today", %{
+      conn: conn,
+      bypass: bypass
+    } do
+      member = insert_member(is_active: false, customer_id: "cus_amounts")
+
+      opts = amounts_opts("price_monthly", "price_annual", Date.utc_today())
+
+      expect_amounts_previews(bypass, opts)
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer treasurer-token")
+        |> get(
+          "/api/members/#{member.auth_user_id}/membership/reactivation-preview/amounts",
+          startDate: Date.to_iso8601(Date.utc_today())
+        )
+
+      expected_due_today = @monthly_initial_amount + @annual_initial_amount
+
+      assert %{
+               "data" => %{
+                 "dueToday" => %{"amount" => due_today, "currency" => "EUR", "precision" => 2},
+                 "monthlyFee" => %{
+                   "amount" => @monthly_recurring_amount,
+                   "currency" => "EUR",
+                   "precision" => 2
+                 },
+                 "annualFee" => %{
+                   "amount" => @annual_recurring_amount,
+                   "currency" => "EUR",
+                   "precision" => 2
+                 }
+               }
+             } = json_response(conn, 200)
+
+      assert due_today == expected_due_today
+    end
+
+    test "anchors the monthly first-invoice preview at a future start date", %{
+      conn: conn,
+      bypass: bypass
+    } do
+      member = insert_member(is_active: false, customer_id: "cus_amounts_future")
+      start_date = Date.add(Date.utc_today(), 10)
+
+      opts = amounts_opts("price_monthly_f", "price_annual_f", start_date)
+
+      expect_amounts_previews(bypass, opts)
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> get(
+          "/api/members/#{member.auth_user_id}/membership/reactivation-preview/amounts",
+          startDate: Date.to_iso8601(start_date)
+        )
+
+      assert %{"data" => %{"dueToday" => %{"amount" => due_today}}} = json_response(conn, 200)
+
+      assert due_today == @monthly_initial_amount + @annual_initial_amount
+    end
+
+    test "does not look up payment methods or subscriptions", %{conn: conn, bypass: bypass} do
+      member = insert_member(is_active: false, customer_id: "cus_amounts_only")
+      opts = amounts_opts("price_monthly_o", "price_annual_o", Date.utc_today())
+
+      expect_amounts_previews(bypass, opts)
+
+      # Any other Stripe call (payment methods, subscription guard) would hit
+      # Bypass and find no route → the request would fail with a raised error
+      # rather than silently passing.
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> get(
+          "/api/members/#{member.auth_user_id}/membership/reactivation-preview/amounts",
+          startDate: Date.to_iso8601(Date.utc_today())
+        )
+
+      assert %{"data" => %{}} = json_response(conn, 200)
+    end
+
+    test "returns 422 when startDate is missing, malformed, or out of range", %{conn: _conn} do
+      member = insert_member(is_active: false, customer_id: "cus_amounts_invalid")
+
+      base = "/api/members/#{member.auth_user_id}/membership/reactivation-preview/amounts"
+      headers = [authorization: "Bearer admin-token"]
+
+      past = Date.add(Date.utc_today(), -1)
+      too_far = Date.add(Date.utc_today(), 367)
+
+      for {label, query} <- [
+            {"missing", []},
+            {"malformed", [startDate: "not-a-date"]},
+            {"past", [startDate: Date.to_iso8601(past)]},
+            {"beyond-max-window", [startDate: Date.to_iso8601(too_far)]}
+          ] do
+        conn =
+          build_conn()
+          |> put_req_header("authorization", Keyword.fetch!(headers, :authorization))
+          |> get(base, query)
+
+        assert %{"errors" => %{"detail" => detail}} = json_response(conn, 422), label
+        assert detail =~ "Invalid membership reactivation", label
+      end
+    end
+
+    test "returns 404 when the member does not exist", %{conn: conn} do
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> get(
+          "/api/members/11111111-1111-1111-1111-111111111111/membership/reactivation-preview/amounts?startDate=#{Date.to_iso8601(Date.utc_today())}"
+        )
+
+      assert %{"errors" => %{"detail" => "Member not found"}} = json_response(conn, 404)
+    end
+
+    test "returns 502 when a Stripe invoice preview fails", %{conn: conn, bypass: bypass} do
+      member = insert_member(is_active: false, customer_id: "cus_amounts_fail")
+      opts = amounts_opts("price_monthly_x", "price_annual_x", Date.utc_today())
+
+      expect_membership_prices(bypass, opts.monthly_price_id, opts.annual_price_id)
+
+      Bypass.expect(bypass, "POST", "/v1/invoices/create_preview", fn conn ->
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(500, Jason.encode!(%{"error" => %{"message" => "boom"}}))
+      end)
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> get(
+          "/api/members/#{member.auth_user_id}/membership/reactivation-preview/amounts",
+          startDate: Date.to_iso8601(Date.utc_today())
+        )
+
+      assert %{"errors" => %{"detail" => "Stripe membership cost preview failed"}} =
+               json_response(conn, 502)
+    end
+
+    test "returns 502 (not a crash) when the membership price lookup fails", %{
+      conn: _conn,
+      bypass: bypass
+    } do
+      # Regression (spec review): internal price-lookup error tuples used to
+      # escape preview_amounts/1 and fall through the controller case as a
+      # 500. Every Stripe failure must surface as the graceful 502.
+      # Stripe answers 200 but has no active membership prices
+      # → internal {:price_not_found, _}.
+      Bypass.expect_once(bypass, "GET", "/v1/prices", fn conn ->
+        stripe_json(conn, %{"object" => "list", "data" => [], "has_more" => false})
+      end)
+
+      member_empty =
+        insert_member(is_active: false, customer_id: "cus_amounts_no_prices")
+
+      empty_conn =
+        build_conn()
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> get(
+          "/api/members/#{member_empty.auth_user_id}/membership/reactivation-preview/amounts",
+          startDate: Date.to_iso8601(Date.utc_today())
+        )
+
+      assert %{"errors" => %{"detail" => "Stripe membership cost preview failed"}} =
+               json_response(empty_conn, 502)
+
+      # Stripe answers 500 → internal {:stripe, _}.
+      Bypass.expect_once(bypass, "GET", "/v1/prices", fn conn ->
+        conn
+        |> Plug.Conn.put_resp_content_type("application/json")
+        |> Plug.Conn.send_resp(500, Jason.encode!(%{"error" => %{"message" => "boom"}}))
+      end)
+
+      member_500 =
+        insert_member(is_active: false, customer_id: "cus_amounts_prices_500")
+
+      failing_prices_conn =
+        build_conn()
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> get(
+          "/api/members/#{member_500.auth_user_id}/membership/reactivation-preview/amounts",
+          startDate: Date.to_iso8601(Date.utc_today())
+        )
+
+      assert %{"errors" => %{"detail" => "Stripe membership cost preview failed"}} =
+               json_response(failing_prices_conn, 502)
+    end
+  end
+
   defp insert_member(attrs \\ []) do
     today = Date.utc_today()
     date_of_birth = %{today | year: today.year - Keyword.get(attrs, :age, 20)}
@@ -801,6 +1025,112 @@ defmodule DhcWeb.MembershipControllerTest do
         "has_more" => false
       })
     end)
+  end
+
+  # Options for `expect_amounts_previews/2`: pins which invoice amount each
+  # create_preview branch returns and which anchor parameters the command's
+  # preview must mirror (ALE-254).
+  defp amounts_opts(monthly_price_id, annual_price_id, start_date) do
+    today = Date.utc_today()
+
+    monthly_initial_anchor =
+      if Date.compare(start_date, today) == :gt, do: midnight_unix(start_date)
+
+    %{
+      monthly_price_id: monthly_price_id,
+      annual_price_id: annual_price_id,
+      start_date_unix: midnight_unix(start_date),
+      monthly_initial_anchor: monthly_initial_anchor,
+      invoices: %{
+        monthly_initial: @monthly_initial_amount,
+        monthly_recurring: @monthly_recurring_amount,
+        annual_initial: @annual_initial_amount,
+        annual_recurring: @annual_recurring_amount
+      }
+    }
+  end
+
+  # Stubs GET /v1/prices plus the four POST /v1/invoices/create_preview calls
+  # a reactivation amounts preview performs, branching on the subscription
+  # price and date key:
+  #
+  #   monthly price + billing_cycle_anchor → prorated first invoice (future start)
+  #   monthly price + no date key          → full first invoice (start = today)
+  #   monthly price + start_date           → upcoming full monthly period
+  #   annual price  + billing_cycle_anchor → prorated annual fee to January
+  #   annual price  + start_date           → upcoming full annual period
+  defp expect_amounts_previews(bypass, opts) do
+    expect_membership_prices(bypass, opts.monthly_price_id, opts.annual_price_id)
+
+    Bypass.expect(bypass, "POST", "/v1/invoices/create_preview", fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      params = URI.decode_query(body)
+      anchor_key = "subscription_details[billing_cycle_anchor]"
+      start_key = "subscription_details[start_date]"
+
+      assert params["subscription_details[items][0][quantity]"] == "1"
+      assert map_size(Map.take(params, [anchor_key, start_key])) in 0..1
+
+      price_id = Map.fetch!(params, "subscription_details[items][0][price]")
+      anchored? = Map.has_key?(params, anchor_key)
+      start_dated? = Map.has_key?(params, start_key)
+
+      kind =
+        cond do
+          price_id == opts.monthly_price_id and not anchored? and not start_dated? ->
+            :monthly_initial
+
+          price_id == opts.monthly_price_id and anchored? ->
+            assert params[anchor_key] == Integer.to_string(opts.monthly_initial_anchor)
+            :monthly_initial
+
+          price_id == opts.monthly_price_id ->
+            assert params[start_key] == Integer.to_string(opts.start_date_unix)
+            :monthly_recurring
+
+          price_id == opts.annual_price_id and anchored? ->
+            # The command resolves billing_cycle_anchor_config to next Jan 7 at
+            # creation time-of-day UTC; tolerate second-level drift.
+            assert abs(String.to_integer(params[anchor_key]) - january_anchor_now_unix()) <= 60
+            :annual_initial
+
+          price_id == opts.annual_price_id ->
+            assert abs(String.to_integer(params[start_key]) - january_anchor_now_unix()) <= 60
+            :annual_recurring
+
+          true ->
+            flunk("unexpected create_preview price #{inspect(price_id)}")
+        end
+
+      stripe_json(conn, preview_invoice_json(kind, Map.fetch!(opts.invoices, kind)))
+    end)
+  end
+
+  defp preview_invoice_json(kind, amount) do
+    %{
+      "id" => "in_preview_#{kind}",
+      "object" => "invoice",
+      "currency" => "eur",
+      "amount_due" => amount,
+      "subtotal" => amount
+    }
+  end
+
+  # Mirrors the documented annual anchor rule: the next January 7 at the
+  # current UTC time-of-day (billing_cycle_anchor_config resolution).
+  defp january_anchor_now_unix do
+    today = Date.utc_today()
+    candidate = Date.new!(today.year, 1, 7)
+
+    date =
+      if Date.compare(candidate, today) == :gt,
+        do: candidate,
+        else: Date.new!(today.year + 1, 1, 7)
+
+    now = Time.utc_now()
+
+    DateTime.new!(date, %{now | microsecond: {0, 0}}, "Etc/UTC")
+    |> DateTime.to_unix()
   end
 
   defp active_membership_subscription do

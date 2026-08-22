@@ -10,6 +10,13 @@ const savedMethod = {
 	country: "DE",
 };
 
+// Mirrors GET .../reactivation-preview/amounts data (Dinero minor units).
+const amounts = {
+	dueToday: { amount: 33000, currency: "EUR", precision: 2 },
+	monthlyFee: { amount: 4200, currency: "EUR", precision: 2 },
+	annualFee: { amount: 36000, currency: "EUR", precision: 2 },
+};
+
 test("shows the saved SEPA method summary before any charge", async () => {
 	const screen = await render(ReactivateMembershipModal, {
 		open: true,
@@ -99,4 +106,84 @@ test("distinguishes pending settlement from a completed activation while confirm
 		name: /confirming/i,
 	});
 	await expect.element(confirm).toBeDisabled();
+});
+
+// ── ALE-254: pre-confirmation amount preview ─────────────────────────────
+
+test("shows the Stripe-computed amounts before confirmation", async () => {
+	const screen = await render(ReactivateMembershipModal, {
+		open: true,
+		isPending: false,
+		savedPaymentMethod: savedMethod,
+		amounts,
+		onConfirm: vi.fn(),
+	});
+
+	const block = screen.getByTestId("reactivation-amounts");
+	await expect.element(block).toBeVisible();
+	await expect.element(block.getByText("Due today")).toBeVisible();
+	await expect.element(block.getByText("€330.00")).toBeVisible();
+	await expect.element(block.getByText(/monthly membership/i)).toBeVisible();
+	await expect.element(block.getByText("€42.00")).toBeVisible();
+	await expect.element(block.getByText(/annual membership/i)).toBeVisible();
+	await expect.element(block.getByText("€360.00")).toBeVisible();
+
+	// Amounts never block the operator from confirming.
+	await expect
+		.element(screen.getByRole("button", { name: "Reactivate membership" }))
+		.toBeEnabled();
+});
+
+test("reports its selected start date so amounts can be fetched for it", async () => {
+	const onStartDateChange = vi.fn();
+	const onConfirm = vi.fn();
+	await render(ReactivateMembershipModal, {
+		open: true,
+		isPending: false,
+		savedPaymentMethod: savedMethod,
+		onStartDateChange,
+		onConfirm,
+	});
+
+	expect(onStartDateChange).toHaveBeenCalledWith(
+		expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+	);
+});
+
+test("shows a calculating state while the amounts are being computed", async () => {
+	const screen = await render(ReactivateMembershipModal, {
+		open: true,
+		isPending: false,
+		savedPaymentMethod: savedMethod,
+		isLoadingAmounts: true,
+		onConfirm: vi.fn(),
+	});
+
+	await expect
+		.element(
+			screen.getByTestId("reactivation-amounts").getByText(/calculating/i),
+		)
+		.toBeVisible();
+});
+
+test("hides the amounts and keeps the form functional when their preview fails", async () => {
+	const onConfirm = vi.fn();
+	const screen = await render(ReactivateMembershipModal, {
+		open: true,
+		isPending: false,
+		savedPaymentMethod: savedMethod,
+		amounts: null,
+		isLoadingAmounts: false,
+		onConfirm,
+	});
+
+	// Graceful degradation: no amounts block at all, and nothing else breaks.
+	expect(
+		document.querySelectorAll('[data-testid="reactivation-amounts"]').length,
+	).toBe(0);
+
+	const confirm = screen.getByRole("button", { name: "Reactivate membership" });
+	await expect.element(confirm).toBeEnabled();
+	await userEvent.click(confirm);
+	expect(onConfirm).toHaveBeenCalledOnce();
 });
