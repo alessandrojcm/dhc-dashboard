@@ -13,6 +13,7 @@ import {
 	membershipReactivateMutation,
 	membershipReactivationPreviewAmountsOptions,
 	membershipReactivationPreviewOptions,
+	type MembershipReactivateAnnualFeeMode,
 } from "@dhc/api-client";
 import { page } from "$app/state";
 import { toast } from "svelte-sonner";
@@ -47,19 +48,26 @@ const reactivationPreview = createQuery(() => ({
 	enabled: open && memberId !== "",
 }));
 
-// The selected start date is owned by the modal (date picker) and reported
-// up through onStartDateChange so the amounts query can key off it (ALE-254).
+// The selected start date and annual fee mode are owned by the modal (date
+// picker + radio group) and reported up through onSelectionChange so the
+// amounts query can key off both (ALE-254, ALE-253).
 let previewStartDate = $state<string | null>(null);
+let previewAnnualFeeMode =
+	$state<MembershipReactivateAnnualFeeMode>("prorated_now");
 
-// Stripe-computed amounts for the chosen start date, fetched only once a
+// Stripe-computed amounts for the chosen selection, fetched only once a
 // saved method exists (otherwise the operator gets the billing-portal
-// fallback instead). Keyed by startDate, so changing the date refetches.
-// Failure degrades gracefully: the modal hides amounts and keeps the form
-// usable — this query failing must never block a valid charge.
+// fallback instead). Keyed by startDate AND annualFeeMode, so changing
+// either refetches. Failure degrades gracefully: the modal hides amounts
+// and keeps the form usable — this query failing must never block a valid
+// charge.
 const reactivationAmounts = createQuery(() => ({
 	...membershipReactivationPreviewAmountsOptions({
 		path: { memberId },
-		query: { startDate: previewStartDate ?? "" },
+		query: {
+			startDate: previewStartDate ?? "",
+			annualFeeMode: previewAnnualFeeMode,
+		},
 	}),
 	enabled:
 		open &&
@@ -152,11 +160,15 @@ const billingPortalMutation = createMutation(() => ({
 			path: { memberId },
 			body: { returnUrl: window.location.href },
 		})}
-	onStartDateChange={(startDateIso) => {
-		previewStartDate = startDateIso;
+	onSelectionChange={({ startDate, annualFeeMode }) => {
+		previewStartDate = startDate;
+		previewAnnualFeeMode = annualFeeMode;
 	}}
-	onConfirm={({ startDate }) => {
+	onConfirm={({ startDate, annualFeeMode }) => {
 		submitError = null;
-		reactivateMutation.mutate({ path: { memberId }, body: { startDate } });
+		reactivateMutation.mutate({
+			path: { memberId },
+			body: { startDate, annualFeeMode },
+		});
 	}}
 />
