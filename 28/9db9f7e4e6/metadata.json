@@ -1,0 +1,55 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "289db9f7e4e6",
+  "strategy": "manual-commit",
+  "branch": "worktree/silver-forest-5b5f",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".env.example",
+    "AGENTS.md",
+    "apps/phoenix/AGENTS.md",
+    "apps/phoenix/config/config.exs",
+    "apps/phoenix/config/dev.exs",
+    "apps/phoenix/config/runtime.exs",
+    "apps/phoenix/config/test.exs",
+    "apps/phoenix/lib/dhc/auth.ex",
+    "apps/phoenix/lib/dhc/email/api_client.ex",
+    "apps/phoenix/lib/dhc/email/mailer.ex",
+    "apps/phoenix/lib/dhc/email/workers/worker.ex",
+    "apps/phoenix/lib/dhc/invitations.ex",
+    "apps/phoenix/lib/dhc/invitations/workers/bulk_invite_worker.ex",
+    "apps/phoenix/lib/dhc/membership.ex",
+    "apps/phoenix/lib/dhc/membership/reactivation.ex",
+    "apps/phoenix/lib/dhc/workshop_announcements/workers/worker.ex",
+    "apps/phoenix/mix.exs",
+    "apps/phoenix/mix.lock",
+    "apps/phoenix/test/dhc/email/api_client_test.exs",
+    "apps/phoenix/test/dhc/email/workers/worker_test.exs",
+    "apps/phoenix/test/dhc/invitations/workers/bulk_invite_worker_test.exs",
+    "apps/phoenix/test/dhc/membership/reactivation_integration_test.exs",
+    "apps/phoenix/test/dhc_web/controllers/auth_session_controller_test.exs",
+    "apps/phoenix/test/dhc_web/controllers/membership_controller_test.exs",
+    "docs/adr/0022-code-authored-templates-synced-to-resend.md",
+    "docs/agents/commands.md",
+    "docs/agents/migration-notes.md",
+    "docs/agents/tech-stack.md",
+    "docs/agents/where-to-look.md",
+    "fnox.toml"
+  ],
+  "sessions": [
+    {
+      "metadata": "/28/9db9f7e4e6/0/metadata.json",
+      "transcript": "/28/9db9f7e4e6/0/full.jsonl",
+      "compact_transcript": "/28/9db9f7e4e6/0/transcript.jsonl",
+      "content_hash": "/28/9db9f7e4e6/0/content_hash.txt",
+      "prompt": "/28/9db9f7e4e6/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 76937,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 363904,
+    "output_tokens": 8650,
+    "api_call_count": 9
+  }
+}
