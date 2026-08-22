@@ -2058,6 +2058,72 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /members/{memberId}/membership/reactivation-preview:
+    get:
+      operationId: membership.reactivationPreview
+      tags:
+        - Membership
+      summary: Preview the saved SEPA method a reactivation would charge
+      description: |
+        Read-side companion to `POST /members/{memberId}/membership/reactivate`
+        (ALE-252): projects the member's saved SEPA Direct Debit payment method
+        from Stripe so the operator modal can show what would be charged
+        BEFORE any charge happens. Performs no mutation.
+
+        `savedPaymentMethod` is `null` when the customer has no usable saved
+        SEPA method. The UI then offers the billing portal as the manual
+        fallback instead of a confirmation button. The same lookup the
+        reactivation command performs is used, so "preview shows a method"
+        implies "confirm will not fail with `no_saved_payment_method`"
+        (modulo races).
+
+        Restricted to the same officers with billing authority as the
+        reactivation command itself (`admin`, `president`, `treasurer`,
+        `committee_coordinator`) because saved payment data must not leak to
+        the broader members-admin list.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: memberId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The member whose saved payment method to preview.
+      responses:
+        "200":
+          description: |
+            The saved payment method a reactivation would charge, or `null`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MembershipReactivationPreviewResponse"
+        "401":
+          description: Missing or invalid session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Caller is not admin, president, treasurer, or committee_coordinator
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No member/customer record exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: Stripe payment-method lookup failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /options:
     get:
       operationId: members.options
@@ -5302,6 +5368,45 @@ components:
             annualSubscriptionId:
               type: string
               description: Stripe subscription id carrying the annual membership price.
+    MembershipReactivationPreviewResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - memberId
+            - savedPaymentMethod
+          properties:
+            memberId:
+              type: string
+              format: uuid
+            savedPaymentMethod:
+              nullable: true
+              description: |
+                Summary of the saved SEPA Direct Debit method a reactivation
+                would charge. `null` when the customer has none; offer the
+                billing portal as manual fallback instead of confirming.
+              type: object
+              required:
+                - id
+                - last4
+                - country
+              properties:
+                id:
+                  type: string
+                  description: Stripe PaymentMethod id (pm_...).
+                last4:
+                  type: string
+                  description: Last four digits of the SEPA account number.
+                bankCode:
+                  type: string
+                  description: Bank code of the account (e.g. German BLZ), when Stripe reports one.
+                country:
+                  type: string
+                  description: Two-letter ISO country code of the account.
+
     OptionsResponse:
       type: object
       required:

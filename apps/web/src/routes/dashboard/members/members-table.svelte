@@ -47,6 +47,7 @@ import MemberPhoneCell from "./member-phone-cell.svelte";
 import MemberStatusBadge from "./member-status-badge.svelte";
 import type { MemberStatus, MemberTableRow } from "./member-table.types";
 import MemberWeapons from "./member-weapons.svelte";
+import ReactivateMemberDialog from "$lib/components/ui/reactivate-member-dialog.svelte";
 
 type MemberTableQueryParams = {
 	searchQuery: string;
@@ -155,6 +156,18 @@ const hasActiveFilters = $derived(
 
 let searchDraft = $derived(searchQuery);
 let expandedState = $state({});
+
+// ALE-252: Reactivate row action, shown only when the viewer holds a
+// billing-authority role (layout load mirrors the minting pipeline) and the
+// row's membership status is inactive.
+const canReactivate = $derived(page.data.canReactivate === true);
+let reactivateOpen = $state(false);
+let reactivateTargetId = $state<string | null>(null);
+
+function openReactivation(memberId: string) {
+	reactivateTargetId = memberId;
+	reactivateOpen = true;
+}
 
 const membersQueryParams = $derived<MemberTableQueryParams>({
 	searchQuery,
@@ -381,6 +394,9 @@ const tableOptions = $state<TableOptions<MemberTableRow>>({
 					memberId: row.original.id,
 					isExpanded: row.getIsExpanded(),
 					onToggleExpand: () => row.toggleExpanded(),
+					canReactivate,
+					membershipStatus: row.original.membership_status,
+					onReactivate: () => openReactivation(row.original.id),
 				}),
 		},
 	],
@@ -717,6 +733,9 @@ const table = createSvelteTable(tableOptions);
 							isExpanded={row.getIsExpanded()}
 							onToggleExpand={() => row.toggleExpanded()}
 							showLabels
+							{canReactivate}
+							membershipStatus={row.original.membership_status}
+							onReactivate={() => openReactivation(row.original.id)}
 						/>
 					</div>
 
@@ -799,3 +818,13 @@ const table = createSvelteTable(tableOptions);
 		</footer>
 	{/if}
 </section>
+
+{#if reactivateTargetId}
+	<ReactivateMemberDialog
+		bind:open={reactivateOpen}
+		memberId={reactivateTargetId}
+		onSettled={() => {
+			void membersQuery.refetch();
+		}}
+	/>
+{/if}

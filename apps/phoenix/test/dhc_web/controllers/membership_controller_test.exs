@@ -1,6 +1,8 @@
 defmodule DhcWeb.MembershipControllerTest do
   use DhcWeb.ConnCase, async: false
 
+  import Ecto.Query
+
   # Only these roles may mint new membership charges (ALE-251 review
   # decision). Deliberately narrower than the members-admin read list —
   # coordinators without billing authority must be rejected.
@@ -274,6 +276,11 @@ defmodule DhcWeb.MembershipControllerTest do
              } = json_response(conn, 200)
 
       assert returned_member_id == member.auth_user_id
+
+      # Success restores dashboard access immediately (ALE-252): the daily
+      # sync would eventually catch up, but the operator must see the member
+      # as active right away.
+      assert_member_active("cus_happy")
     end
 
     test "confirms the first invoice WITHOUT mandate_data (mandate is reused)", %{
@@ -338,6 +345,10 @@ defmodule DhcWeb.MembershipControllerTest do
                  "annualSubscriptionId" => "sub_annual_pending"
                }
              } = json_response(conn, 200)
+
+      # Async SEPA settlement is still a healthy reactivation: subscriptions
+      # exist and cover the member while the bank processes the debit.
+      assert_member_active("cus_pending")
     end
   end
 
@@ -417,6 +428,154 @@ defmodule DhcWeb.MembershipControllerTest do
     end
   end
 
+  describe "reactivation preview authorization" do
+    test "returns 403 for a caller without a committee role", %{conn: conn} do
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer member-token")
+        |> get(
+          "/api/members/11111111-1111-1111-1111-111111111111/membership/reactivation-preview"
+        )
+
+      assert %{"errors" => %{"detail" => "Insufficient role"}} = json_response(conn, 403)
+    end
+
+    test "returns 401 without a session", %{conn: conn} do
+      conn =
+        get(
+          conn,
+          "/api/members/11111111-1111-1111-1111-111111111111/membership/reactivation-preview"
+        )
+
+      assert %{"errors" => %{"detail" => "Unauthorized"}} = json_response(conn, 401)
+    end
+
+    test "returns 404 when the member does not exist", %{conn: conn} do
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> get(
+          "/api/members/11111111-1111-1111-1111-111111111111/membership/reactivation-preview"
+        )
+
+      assert %{"errors" => %{"detail" => "Member not found"}} = json_response(conn, 404)
+    end
+
+    test "lets every membership-minting role past the pipeline", %{conn: conn} do
+      Enum.each(@membership_minting_roles, fn role ->
+        conn =
+          build_conn()
+          |> put_req_header("authorization", "Bearer #{role}-token")
+          |> get(
+            "/api/members/11111111-1111-1111-1111-111111111111/membership/reactivation-preview"
+          )
+
+        # No member fixture → the request must reach the controller (404).
+        # A pipeline rejection would surface as 403 instead.
+        response = json_response(conn, 404)
+
+        assert %{"errors" => %{"detail" => "Member not found"}} = response,
+               "role #{role} should pass the minting pipeline"
+      end)
+    end
+
+    test "returns 403 for committee roles without minting authority", %{conn: conn} do
+      Enum.each(@non_minting_committee_roles, fn role ->
+        conn =
+          build_conn()
+          |> put_req_header("authorization", "Bearer #{role}-token")
+          |> get(
+            "/api/members/11111111-1111-1111-1111-111111111111/membership/reactivation-preview"
+          )
+
+        assert %{"errors" => %{"detail" => "Insufficient role"}} = json_response(conn, 403),
+               "role #{role} must not read saved payment data"
+      end)
+    end
+  end
+
+  describe "reactivation preview" do
+    setup :stripe_bypass
+
+    test "summarises the saved SEPA method a reactivation would charge", %{
+      conn: conn,
+      bypass: bypass
+    } do
+      member = insert_member(is_active: false, customer_id: "cus_preview")
+
+      expect_saved_sepa_method(bypass, "cus_preview", "pm_sepa_preview", %{
+        "last4" => "1234",
+        "bank_code" => "37040044",
+        "country" => "DE"
+      })
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer treasurer-token")
+        |> get("/api/members/#{member.auth_user_id}/membership/reactivation-preview")
+
+      assert %{
+               "data" => %{
+                 "memberId" => returned_member_id,
+                 "savedPaymentMethod" => %{
+                   "id" => "pm_sepa_preview",
+                   "last4" => "1234",
+                   "bankCode" => "37040044",
+                   "country" => "DE"
+                 }
+               }
+             } = json_response(conn, 200)
+
+      assert returned_member_id == member.auth_user_id
+    end
+
+    test "returns a null savedPaymentMethod when no usable method exists", %{
+      conn: conn,
+      bypass: bypass
+    } do
+      member = insert_member(is_active: false, customer_id: "cus_preview_empty")
+
+      expect_saved_sepa_methods(bypass, "cus_preview_empty", [])
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> get("/api/members/#{member.auth_user_id}/membership/reactivation-preview")
+
+      assert %{
+               "data" => %{
+                 "memberId" => returned_member_id,
+                 "savedPaymentMethod" => nil
+               }
+             } = json_response(conn, 200)
+
+      assert returned_member_id == member.auth_user_id
+    end
+
+    test "returns 502 when the Stripe lookup fails", %{conn: conn, bypass: bypass} do
+      member = insert_member(is_active: false, customer_id: "cus_preview_fail")
+
+      Bypass.expect_once(
+        bypass,
+        "GET",
+        "/v1/customers/cus_preview_fail/payment_methods",
+        fn conn ->
+          conn
+          |> Plug.Conn.put_resp_content_type("application/json")
+          |> Plug.Conn.send_resp(500, Jason.encode!(%{"error" => %{"message" => "boom"}}))
+        end
+      )
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> get("/api/members/#{member.auth_user_id}/membership/reactivation-preview")
+
+      assert %{"errors" => %{"detail" => "Stripe payment-method lookup failed"}} =
+               json_response(conn, 502)
+    end
+  end
+
   defp insert_member(attrs \\ []) do
     today = Date.utc_today()
     date_of_birth = %{today | year: today.year - Keyword.get(attrs, :age, 20)}
@@ -434,6 +593,17 @@ defmodule DhcWeb.MembershipControllerTest do
       phone_number: Keyword.get(attrs, :phone_number),
       customer_id: Keyword.get(attrs, :customer_id)
     )
+  end
+
+  defp assert_member_active(customer_id) do
+    profile =
+      Dhc.Repo.one!(
+        from up in Dhc.UserProfiles.UserProfile,
+          where: up.customer_id == ^customer_id,
+          select: %{id: up.id, is_active: up.is_active}
+      )
+
+    assert profile.is_active, "reactivation must restore member access"
   end
 
   defp stripe_bypass(_context) do
@@ -481,19 +651,25 @@ defmodule DhcWeb.MembershipControllerTest do
     "membership-reactivate:#{member_id}:#{Date.to_iso8601(start_date)}"
   end
 
-  defp expect_saved_sepa_method(bypass, customer_id, payment_method_id) do
+  defp expect_saved_sepa_method(bypass, customer_id, payment_method_id, sepa_debit \\ nil) do
+    expect_saved_sepa_methods(bypass, customer_id, [
+      %{
+        "id" => payment_method_id,
+        "type" => "sepa_debit",
+        # Real Stripe omits last4 unless the method was used at least once;
+        # the reactivation fixtures keep the minimal legacy shape.
+        "sepa_debit" => sepa_debit || %{"bank_code" => "37040044", "country" => "DE"}
+      }
+    ])
+  end
+
+  defp expect_saved_sepa_methods(bypass, customer_id, methods) do
     Bypass.expect(bypass, "GET", "/v1/customers/#{customer_id}/payment_methods", fn conn ->
       assert conn.query_params["type"] == "sepa_debit"
 
       stripe_json(conn, %{
         "object" => "list",
-        "data" => [
-          %{
-            "id" => payment_method_id,
-            "type" => "sepa_debit",
-            "sepa_debit" => %{"bank_code" => "37040044", "country" => "DE"}
-          }
-        ],
+        "data" => methods,
         "has_more" => false
       })
     end)

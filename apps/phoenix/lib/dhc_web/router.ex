@@ -185,6 +185,13 @@ defmodule DhcWeb.Router do
     # ALE-251 — mints new Stripe charges, so only billing-authority roles and
     # NO self-service fallback (unlike pause/resume under :authenticated_api).
     post "/members/:memberId/membership/reactivate", MembershipController, :reactivate
+
+    # ALE-252: read-only preview of the saved SEPA method the command would
+    # charge. Same narrow pipeline, because saved payment data must not leak
+    # to the broader members-admin list.
+    get "/members/:memberId/membership/reactivation-preview",
+        MembershipController,
+        :reactivation_preview
   end
 
   scope "/api", DhcWeb do

@@ -45,6 +45,19 @@ export const MEMBERS_ADMIN_ROLES = new Set([
 	"coach",
 ]);
 
+/**
+ * ALE-252: officers with billing authority who may mint membership charges
+ * (reactivation). Mirrors the Phoenix `:membership_minting_api` pipeline;
+ * deliberately narrower than MEMBERS_ADMIN_ROLES and with no self-service
+ * fallback, because the command creates new Stripe charges.
+ */
+export const MEMBERSHIP_MINTING_ROLES = new Set([
+	"admin",
+	"president",
+	"treasurer",
+	"committee_coordinator",
+]);
+
 export const WORKSHOP_ROLES = new Set([
 	"workshop_coordinator",
 	"president",
