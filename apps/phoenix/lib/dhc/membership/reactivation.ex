@@ -16,19 +16,29 @@ defmodule Dhc.Membership.Reactivation do
   * `payment_behavior: default_incomplete` leaves the subscription
     `incomplete` with a PaymentIntent on its first invoice; confirming that
     intent activates the subscription.
-  * A future `billing_cycle_anchor` raises a prorated invoice immediately for
-    the remainder up to the anchor, then full periods bill from it. The
-    operator-chosen start date anchors the monthly subscription this way; a
-    start date of today needs no anchor (the full period starts now).
-  * The annual subscription keeps signup semantics: anchored at next January
-    7 via `billing_cycle_anchor_config`, so its immediate prorated invoice is
-    "the annual fee charged for the remainder of this year".
+  * The monthly subscription matches signup billing from the selected start
+    date: billing before a future start is deferred, the first paid invoice is
+    prorated from that date through the first day of the following month, then
+    full monthly periods bill from that anchor.
+  * The annual subscription keeps signup semantics by default (`prorated_now`,
+    ALE-253): anchored at next January 7 via `billing_cycle_anchor_config`, so
+    its immediate prorated invoice is "the annual fee charged for the
+    remainder of this year".
+  * In `deferred_next_year` mode (ALE-253) the annual subscription is created
+    immediately but with a free trial ending at that same next-January anchor:
+    it goes live as `trialing` — no first invoice exists yet, so there is
+    nothing to confirm and nothing is charged today. This stays safe across
+    sync runs because the Stripe sync accepts trialing coverage for a price
+    (ALE-250).
   * SEPA settles asynchronously: a confirmed intent reports `processing`,
     which surfaces as a pending outcome, not a failure.
 
   Retries are idempotent: every mutating call carries an idempotency key
   derived from member id + requested start date (+ call suffix), so a replay
-  returns Stripe's stored response instead of duplicating subscriptions.
+  returns Stripe's stored response instead of duplicating subscriptions. The
+  annual fee mode is part of that namespace (ALE-253): switching modes must
+  reach Stripe as fresh requests rather than replaying the other mode's
+  stored responses.
 
   This module deliberately mirrors `Dhc.Invitations.StripePayment`'s proven
   form-encoding and outcome vocabulary while staying independent of the
@@ -63,57 +73,93 @@ defmodule Dhc.Membership.Reactivation do
         %{customer_id: customer_id, member_id: member_id, start_date: %Date{} = start_date} =
           attrs
       ) do
-    with {:ok, payment_method_id} <- find_saved_sepa_method(customer_id),
-         {:ok, prices} <- membership_prices(),
-         {:ok, monthly} <-
-           create_subscription(
-             :monthly,
-             customer_id,
-             payment_method_id,
-             prices.monthly,
-             start_date,
-             attrs
-           ),
-         {:ok, monthly_outcome} <-
-           confirm_first_invoice_and_continue(monthly, payment_method_id, attrs),
+    annual_fee_mode = Map.get(attrs, :annual_fee_mode, :prorated_now)
+
+    result =
+      with {:ok, payment_method_id} <- find_saved_sepa_method(customer_id),
+           {:ok, prices} <- membership_prices(),
+           {:ok, monthly} <-
+             create_subscription(
+               :monthly,
+               customer_id,
+               payment_method_id,
+               prices.monthly,
+               start_date,
+               attrs
+             ) do
+        finish_activation(
+          monthly,
+          customer_id,
+          payment_method_id,
+          prices.annual,
+          start_date,
+          attrs,
+          annual_fee_mode,
+          member_id
+        )
+      end
+
+    handle_activation_result(result, attrs, customer_id)
+  end
+
+  def activate(_attrs), do: {:error, :stripe_error}
+
+  defp handle_activation_result({:ok, _result} = success, _attrs, _customer_id), do: success
+
+  defp handle_activation_result(
+         {:error, :no_saved_payment_method} = error,
+         _attrs,
+         _customer_id
+       ),
+       do: error
+
+  defp handle_activation_result({:error, reason}, attrs, customer_id) do
+    Logger.error(
+      "[membership.reactivation] Reactivation failed: #{inspect(reason)}",
+      member_id: Map.get(attrs, :member_id),
+      customer_id: customer_id,
+      reason: inspect(reason)
+    )
+
+    {:error, :stripe_error}
+  end
+
+  defp finish_activation(
+         monthly,
+         customer_id,
+         payment_method_id,
+         annual_price_id,
+         start_date,
+         attrs,
+         annual_fee_mode,
+         member_id
+       ) do
+    monthly_outcome = maybe_confirm_first_invoice(monthly, payment_method_id, attrs)
+
+    with :ok <- continue_after_outcome(monthly_outcome),
          {:ok, annual} <-
            create_subscription(
              :annual,
              customer_id,
              payment_method_id,
-             prices.annual,
+             annual_price_id,
              start_date,
              attrs
            ) do
-      annual_outcome = maybe_confirm_first_invoice(annual, payment_method_id, attrs)
+      annual_outcome = annual_outcome(annual, payment_method_id, attrs, annual_fee_mode)
 
       {:ok,
        build_result(member_id, monthly, annual, combine_outcomes(monthly_outcome, annual_outcome))}
-    else
-      {:error, :no_saved_payment_method} = error ->
-        error
-
-      {:error, reason} ->
-        Logger.error(
-          "[membership.reactivation] Reactivation failed: #{inspect(reason)}",
-          member_id: Map.get(attrs, :member_id),
-          customer_id: customer_id,
-          reason: inspect(reason)
-        )
-
-        {:error, :stripe_error}
     end
   end
 
-  def activate(_attrs), do: {:error, :stripe_error}
+  # Deferred annual (ALE-253): created with a trial ending at next January's
+  # anchor, so it is trialing with no first invoice — nothing to confirm and
+  # nothing charged today. Prorated-now keeps the initial-release confirm.
+  defp annual_outcome(_annual, _payment_method_id, _attrs, :deferred_next_year), do: :ok
 
-  defp confirm_first_invoice_and_continue(subscription, payment_method_id, attrs) do
-    outcome = maybe_confirm_first_invoice(subscription, payment_method_id, attrs)
-
-    case continue_after_outcome(outcome) do
-      :ok -> {:ok, outcome}
-      {:error, _reason} = error -> error
-    end
+  defp annual_outcome(annual, payment_method_id, attrs, :prorated_now) do
+    maybe_confirm_first_invoice(annual, payment_method_id, attrs)
   end
 
   @doc """
@@ -124,35 +170,49 @@ defmodule Dhc.Membership.Reactivation do
 
   The preview parameters mirror `activate/1` exactly:
 
-  * Monthly first invoice anchored at the operator-chosen start date when it
-    is in the future; a start of today needs no anchor (full period starts
-    immediately).
+  * Monthly first paid invoice prorated from the selected start date through
+    the first day of the following month, with full recurring periods beginning
+    at that anchor. A future start contributes nothing to `dueToday`.
   * Annual first invoice prorated to the next January 7 anchor. The actual
     subscription resolves `billing_cycle_anchor_config` to that date at the
     CREATION time-of-day UTC (verified against real Stripe), so the preview
     passes the same resolved timestamp instead of midnight.
   * Recurring fees come from previews dated at each period start, which
     return the full upcoming period's subtotal.
+  * In `deferred_next_year` mode (ALE-253) the annual subscription has no
+    first invoice — nothing annual is charged today, so `dueToday` covers
+    only the monthly subscription while `annualFee` still previews the full
+    fee that will bill at the January anchor.
 
   Any Stripe failure aborts the whole computation with `{:error,
   :stripe_error}`; the UI hides the amounts and keeps the form usable.
   """
-  @spec preview_amounts(Date.t()) ::
+  @spec preview_amounts(Date.t(), :prorated_now | :deferred_next_year) ::
           {:ok,
            %{
              dueToday: %{amount: non_neg_integer(), currency: String.t(), precision: 2},
+             proratedMonthlyPrice: %{
+               amount: non_neg_integer(),
+               currency: String.t(),
+               precision: 2
+             },
+             proratedAnnualPrice: %{
+               amount: non_neg_integer(),
+               currency: String.t(),
+               precision: 2
+             },
              monthlyFee: %{amount: non_neg_integer(), currency: String.t(), precision: 2},
              annualFee: %{amount: non_neg_integer(), currency: String.t(), precision: 2}
            }}
           | {:error, :stripe_error}
-  def preview_amounts(%Date{} = start_date) do
+  def preview_amounts(%Date{} = start_date, annual_fee_mode \\ :prorated_now) do
     # membership_prices/0 models internal failure shapes for activate/1's
     # logging; a preview must collapse every Stripe failure into the single
     # error the API contract exposes (a partial price list is as useless as
     # no amounts at all).
     case membership_prices() do
       {:ok, prices} ->
-        run_amount_previews(prices, start_date)
+        run_amount_previews(prices, start_date, annual_fee_mode)
 
       {:error, reason} ->
         Logger.error("[membership.reactivation] Membership price lookup failed",
@@ -163,30 +223,40 @@ defmodule Dhc.Membership.Reactivation do
     end
   end
 
-  defp run_amount_previews(prices, %Date{} = start_date) do
-    annual_anchor = next_annual_anchor_unix()
-    start_unix = date_to_unix(start_date)
+  defp run_amount_previews(prices, %Date{} = start_date, mode) do
+    # Each mode mirrors its own creation-time parameters: prorated resolves
+    # billing_cycle_anchor_config to creation time-of-day; deferred pins
+    # trial_end to midnight of the same January date.
+    annual_anchor =
+      if mode == :deferred_next_year,
+        do: next_annual_trial_end_unix(),
+        else: next_annual_anchor_unix()
 
-    calls = [
-      monthly_initial: fn ->
-        # Same rule add_billing_anchor/3 applies at creation time.
-        date_opts =
-          if Date.compare(start_date, Date.utc_today()) == :gt,
-            do: [billing_cycle_anchor: start_unix],
-            else: []
+    monthly_anchor = monthly_anchor_unix(start_date)
 
-        preview_invoice(prices.monthly, date_opts)
-      end,
-      annual_initial: fn ->
-        preview_invoice(prices.annual, billing_cycle_anchor: annual_anchor)
-      end,
-      monthly_recurring: fn ->
-        preview_invoice(prices.monthly, start_date: start_unix)
-      end,
-      annual_recurring: fn ->
-        preview_invoice(prices.annual, start_date: annual_anchor)
-      end
-    ]
+    # The prorated-now annual first invoice exists only in that mode; in
+    # deferred mode there is no annual charge today to preview.
+    calls =
+      [
+        monthly_initial: fn ->
+          preview_invoice(prices.monthly, monthly_preview_opts(start_date, monthly_anchor))
+        end,
+        monthly_recurring: fn ->
+          preview_invoice(prices.monthly, start_date: monthly_anchor)
+        end,
+        annual_recurring: fn ->
+          preview_invoice(prices.annual, start_date: annual_anchor)
+        end
+      ] ++
+        if mode == :prorated_now do
+          [
+            annual_initial: fn ->
+              preview_invoice(prices.annual, billing_cycle_anchor: annual_anchor)
+            end
+          ]
+        else
+          []
+        end
 
     calls
     |> Task.async_stream(
@@ -195,7 +265,15 @@ defmodule Dhc.Membership.Reactivation do
       timeout: :infinity
     )
     |> collect_previews()
-    |> build_amounts()
+    |> build_amounts(start_date)
+  end
+
+  defp monthly_preview_opts(start_date, monthly_anchor) do
+    opts = [billing_cycle_anchor: monthly_anchor]
+
+    if Date.compare(start_date, Date.utc_today()) == :gt,
+      do: [{:start_date, date_to_unix(start_date)} | opts],
+      else: opts
   end
 
   defp preview_invoice(price_id, date_opts) do
@@ -241,20 +319,30 @@ defmodule Dhc.Membership.Reactivation do
     end)
   end
 
-  defp build_amounts({:error, :stripe_error}), do: {:error, :stripe_error}
+  defp build_amounts({:error, :stripe_error}, _start_date), do: {:error, :stripe_error}
 
-  defp build_amounts(previews) when is_map(previews) do
+  # `annual_initial` is present only in prorated-now mode; its absence is
+  # the deferred mode's "nothing annual is charged today" (ALE-253).
+  defp build_amounts(previews, start_date) when is_map(previews) do
     with {:ok, monthly_first} <- Map.fetch(previews, :monthly_initial),
-         {:ok, annual_first} <- Map.fetch(previews, :annual_initial),
          {:ok, monthly_recurring} <- Map.fetch(previews, :monthly_recurring),
          {:ok, annual_recurring} <- Map.fetch(previews, :annual_recurring) do
+      annual_due_today =
+        case Map.fetch(previews, :annual_initial) do
+          {:ok, annual_first} -> invoice_amount(annual_first, "amount_due")
+          :error -> 0
+        end
+
+      monthly_due_today =
+        if Date.compare(start_date, Date.utc_today()) == :gt,
+          do: 0,
+          else: invoice_amount(monthly_first, "amount_due")
+
       {:ok,
        %{
-         dueToday:
-           money(
-             invoice_amount(monthly_first, "amount_due") +
-               invoice_amount(annual_first, "amount_due")
-           ),
+         dueToday: money(monthly_due_today + annual_due_today),
+         proratedMonthlyPrice: money(invoice_amount(monthly_first, "amount_due")),
+         proratedAnnualPrice: money(annual_due_today),
          monthlyFee: money(invoice_amount(monthly_recurring, "subtotal")),
          annualFee: money(invoice_amount(annual_recurring, "subtotal"))
        }}
@@ -273,18 +361,41 @@ defmodule Dhc.Membership.Reactivation do
   # in the integration test); mirroring it here keeps the prorated preview
   # within cents of the actual charge.
   defp next_annual_anchor_unix do
-    today = Date.utc_today()
-    candidate = Date.new!(today.year, 1, @annual_anchor_day_int)
-
-    date =
-      if Date.compare(candidate, today) == :gt,
-        do: candidate,
-        else: Date.new!(today.year + 1, @annual_anchor_month_int, @annual_anchor_day_int)
-
     now = Time.utc_now()
 
-    DateTime.new!(date, %{now | microsecond: {0, 0}}, "Etc/UTC")
+    DateTime.new!(next_annual_anchor_date(), %{now | microsecond: {0, 0}}, "Etc/UTC")
     |> DateTime.to_unix()
+  end
+
+  # Deferred annual's trial_end must be byte-stable across retries: a
+  # repeated request encoding a different timestamp under the same
+  # idempotency key is rejected by Stripe with 400 (caught by the real-Stripe
+  # integration test). Midnight UTC keeps the renewal on the same January
+  # anchor while making the form deterministic for the whole billing year.
+  defp next_annual_trial_end_unix do
+    date = next_annual_anchor_date()
+
+    DateTime.new!(date, ~T[00:00:00], "Etc/UTC")
+    |> DateTime.to_unix()
+  end
+
+  defp next_annual_anchor_date do
+    today = Date.utc_today()
+    candidate = Date.new!(today.year, @annual_anchor_month_int, @annual_anchor_day_int)
+
+    if Date.compare(candidate, today) == :gt,
+      do: candidate,
+      else: Date.new!(today.year + 1, @annual_anchor_month_int, @annual_anchor_day_int)
+  end
+
+  defp monthly_anchor_unix(start_date) do
+    date =
+      case start_date.month do
+        12 -> Date.new!(start_date.year + 1, 1, 1)
+        month -> Date.new!(start_date.year, month + 1, 1)
+      end
+
+    date_to_unix(date)
   end
 
   # Lists the customer's saved SEPA debit methods. Any listed method is
@@ -383,10 +494,10 @@ defmodule Dhc.Membership.Reactivation do
 
   defp create_subscription(kind, customer_id, payment_method_id, price_id, start_date, attrs) do
     # NOTE: the operator principal id is deliberately NOT part of this
-    # request. Idempotency keys are scoped to member + start date (per
-    # ALE-251), and Stripe rejects key reuse with a modified body — including
-    # the operator would turn every retry from a different session into a
-    # spurious 400.
+    # request. Idempotency keys are scoped to member + start date + annual
+    # fee mode (ALE-251, ALE-253), and Stripe rejects key reuse with a
+    # modified body — including the operator would turn every retry from a
+    # different session into a spurious 400.
     form =
       [
         {"customer", customer_id},
@@ -400,7 +511,7 @@ defmodule Dhc.Membership.Reactivation do
         {"metadata[member_id]", Map.get(attrs, :member_id)},
         {"metadata[kind]", Atom.to_string(kind)}
       ]
-      |> add_billing_anchor(kind, start_date)
+      |> add_billing_anchor(kind, start_date, annual_fee_mode(attrs))
 
     case Operations.post_subscriptions(Map.new(form),
            idempotency_key: idempotency_key(attrs, "subscription-#{kind}")
@@ -419,18 +530,27 @@ defmodule Dhc.Membership.Reactivation do
     end
   end
 
-  # Monthly honours the operator-chosen start date as a raw billing cycle
-  # anchor (must be future); annual keeps the calendar anchor signup uses so
-  # renewals land each January.
-  defp add_billing_anchor(form, :monthly, start_date) do
-    if Date.compare(start_date, Date.utc_today()) == :gt do
-      [{"billing_cycle_anchor", Integer.to_string(date_to_unix(start_date))} | form]
-    else
-      form
-    end
+  # Monthly matches signup from the selected start date: a future start defers
+  # billing until then, Stripe charges the prorated period from that date to the
+  # following month's first day, and full monthly periods renew from that
+  # anchor. Annual depends on the chosen fee mode (ALE-253).
+  defp add_billing_anchor(form, :monthly, start_date, _mode) do
+    anchored =
+      [
+        {"billing_cycle_anchor", Integer.to_string(monthly_anchor_unix(start_date))}
+        | form
+      ]
+
+    if Date.compare(start_date, Date.utc_today()) == :gt,
+      do: [{"trial_end", Integer.to_string(date_to_unix(start_date))} | anchored],
+      else: anchored
   end
 
-  defp add_billing_anchor(form, :annual, _start_date) do
+  defp add_billing_anchor(form, :annual, _start_date, :deferred_next_year) do
+    [{"trial_end", Integer.to_string(next_annual_trial_end_unix())} | form]
+  end
+
+  defp add_billing_anchor(form, :annual, _start_date, :prorated_now) do
     [
       {"billing_cycle_anchor_config[month]", @annual_anchor_month},
       {"billing_cycle_anchor_config[day_of_month]", @annual_anchor_day}
@@ -557,9 +677,15 @@ defmodule Dhc.Membership.Reactivation do
     date |> DateTime.new!(~T[00:00:00], "Etc/UTC") |> DateTime.to_unix()
   end
 
+  # Mode-scoped (ALE-253): the same member + start date under a different
+  # annual fee mode must produce different keys, so switching modes reaches
+  # Stripe as fresh requests instead of replaying the other mode's stored
+  # responses.
   defp idempotency_key(attrs, suffix) do
-    "membership-reactivate:#{Map.fetch!(attrs, :member_id)}:#{Date.to_iso8601(Map.fetch!(attrs, :start_date))}:#{suffix}"
+    "membership-reactivate:#{Map.fetch!(attrs, :member_id)}:#{Date.to_iso8601(Map.fetch!(attrs, :start_date))}:#{annual_fee_mode(attrs)}:#{suffix}"
   end
+
+  defp annual_fee_mode(attrs), do: Map.get(attrs, :annual_fee_mode, :prorated_now)
 
   defp resource_id(%{"id" => id}) when is_binary(id), do: id
   defp resource_id(_resource), do: nil

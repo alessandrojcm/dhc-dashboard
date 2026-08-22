@@ -25,7 +25,7 @@ export interface InviteMemberProps {
 export const inviteMemberTemplate: TemplateMetadata = defineTemplate({
   kind: "inviteMember",
   subject: "You're invited to join Dublin HEMA Club",
-  from: "Dublin HEMA Club <no-reply@mail.dublinhemaclub.com>",
+  from: "Dublin HEMA Club <info@dublinhemaclub.com>",
   variables: [
     { key: "INVITEE_FIRST_NAME", type: "string", fallback: "" },
     { key: "INVITEE_LAST_NAME", type: "string", fallback: "" },

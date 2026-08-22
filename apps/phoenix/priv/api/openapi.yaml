@@ -371,7 +371,7 @@ paths:
         Requires a Supabase JWT whose `app_metadata.roles` includes one of:
         `president`, `admin`, or `committee_coordinator`.
 
-        Under ALE-162 (ADR 0010), issue time is side-effect free: the
+        Under ADR 0010, issue time is side-effect free: the
         enqueued worker only inserts the pending invitation row (carrying
         the invite's first/last name, phone, date of birth, and a fresh
         Phoenix UUID for `user_id`) and enqueues the invite email. It no
@@ -546,7 +546,7 @@ paths:
         promotion code is supplied, Stripe validates it and applies it to the
         invoice previews before the DTO is returned.
 
-        Under ALE-162 (ADR 0010), no `user_profiles` row exists at pricing
+        Under ADR 0010, no `user_profiles` row exists at pricing
         time. The endpoint lazily creates a Stripe Customer on first preview
         and persists the customer id on the invitation row so acceptance can
         reuse it; subsequent pricing calls reuse the same customer.
@@ -1977,15 +1977,22 @@ paths:
         The operator-chosen start date anchors the monthly subscription via
         Stripe's `billing_cycle_anchor`: the first invoice raised today covers
         the prorated remainder up to the anchor, then full periods bill from
-        the anchor onward. The annual fee keeps signup semantics — anchored at
-        next January and charged prorated for the remainder of this year.
+        the anchor onward.
+
+        The annual fee starts per `annualFeeMode`: `prorated_now` (default)
+        keeps signup semantics — anchored at next January and charged prorated
+        for the remainder of this year; `deferred_next_year` creates the
+        annual subscription immediately with a free trial ending at next
+        January's anchor, so nothing is charged for the annual fee until that
+        renewal date (the Stripe sync treats trialing coverage as active).
 
         Restricted to officers with billing authority — `admin`, `president`,
         `treasurer`, `committee_coordinator` only. NOT self-or-admin and NOT
         the broader members-admin role list, because this mints new charges.
-        Retries with identical params are idempotent: Stripe
-        idempotency keys are derived from the member id and requested start
-        date.
+        Retries with identical params are idempotent: Stripe idempotency keys
+        are derived from the member id, requested start date, and annual fee
+        mode — so a retry after switching modes reaches Stripe as fresh
+        requests instead of replaying the other mode's stored responses.
 
         Distinct error conditions: `409` when the member already has an active
         or paused/trialing membership subscription; `409` with
@@ -2065,8 +2072,8 @@ paths:
         - Membership
       summary: Preview the saved SEPA method a reactivation would charge
       description: |
-        Read-side companion to `POST /members/{memberId}/membership/reactivate`
-        (ALE-252): projects the member's saved SEPA Direct Debit payment method
+        Read-side companion to `POST /members/{memberId}/membership/reactivate`:
+        projects the member's saved SEPA Direct Debit payment method
         from Stripe so the operator modal can show what would be charged
         BEFORE any charge happens. Performs no mutation.
 
@@ -2131,10 +2138,14 @@ paths:
         - Membership
       summary: Preview the amounts a reactivation would charge
       description: |
-        Read-side companion to `POST /members/{memberId}/membership/reactivate`
-        (ALE-254): projects what Stripe will charge for a reactivation starting
+        Read-side companion to `POST /members/{memberId}/membership/reactivate`:
+        projects what Stripe will charge for a reactivation starting
         on the operator-chosen `startDate` — the amount due today plus the
         upcoming recurring fees. Performs no mutation.
+
+        The optional `annualFeeMode` query param mirrors the command's annual
+        fee choice so the previewed numbers always match what the
+        chosen mode would actually charge.
 
         All amounts are computed by Stripe's invoice-preview machinery for a
         hypothetical subscription pair with exactly the parameters the command
@@ -2171,6 +2182,17 @@ paths:
             Operator-chosen membership start date (YYYY-MM-DD), within the same
             window the reactivation command accepts (today up to one year
             ahead).
+        - name: annualFeeMode
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/MembershipReactivateAnnualFeeMode"
+          description: |
+            Mirrors the reactivation command's annual fee choice.
+            In `deferred_next_year` mode nothing is charged for the annual fee
+            today, so `dueToday` covers only the monthly subscription while
+            `annualFee` previews the full fee that will bill at next January's
+            anchor. Defaults to `prorated_now`.
       responses:
         "200":
           description: The Stripe-computed amounts for the chosen start date.
@@ -3983,7 +4005,7 @@ paths:
         and records an `inventory_history` row with action `moved` carrying the
         old/new container ids and the optional `notes` (preserves the prior
         SvelteKit `ItemService.moveToContainer` behavior as a dedicated command
-        endpoint — ALE-108).
+        endpoint).
 
         `updatedBy` is set from the caller's JWT `sub`. The item's other fields
         (quantity, category, attributes, maintenance flag) are left untouched; use
@@ -4054,7 +4076,7 @@ paths:
         Sets an inventory item's `outForMaintenance` flag and records an
         `inventory_history` row in the same transaction: action
         `maintenance_out` when the flag is set to `true`, action `maintenance_in`
-        when set to `false` (ALE-108). `updatedBy` is set from the caller's JWT
+        when set to `false`. `updatedBy` is set from the caller's JWT
         `sub`; the optional `notes` is stored on the history row.
 
         The previous SvelteKit `ItemService.markMaintenance` toggled the flag
@@ -4258,7 +4280,7 @@ paths:
         well-formed email whether or not a Principal exists. Rate-limited to
         3 requests per email per 15 minutes and 10 per IP per hour; over-the-
         limit requests return the same `200` body (the plug halts before the
-        controller). ALE-164 replaces the Supabase `signInWithOtp` browser
+        controller). Replaces the Supabase `signInWithOtp` browser
         path with this endpoint.
       security: []
       requestBody:
@@ -4304,7 +4326,7 @@ paths:
         invalid, expired, or reused token returns `401` with the same generic
         body (non-enumerating). A valid token for an inactive Principal is
         consumed but returns `403` with a clear membership message and creates
-        no session. ALE-164 routes the dashboard magic-link landing page here.
+        no session. The dashboard magic-link landing page routes here.
       security: []
       requestBody:
         required: true
@@ -4371,7 +4393,7 @@ paths:
         Returns `{ principal: { id, email }, roles }` for the session carried
         by the `_dhc_session` cookie. Used by SvelteKit SSR and the browser
         to read who is signed in. Returns `401` when there is no valid,
-        active session. ALE-164: the dashboard consumes this instead of the
+        active session. The dashboard consumes this instead of the
         Supabase `getSession()` projection.
       security:
         - cookieSession: []
@@ -4395,7 +4417,7 @@ paths:
       summary: Sign out the current device
       description: |
         Revokes the current session token and clears the `_dhc_session`
-        cookie. Idempotent. ALE-164 replaces `supabase.auth.signOut()` on the
+        cookie. Idempotent. Replaces `supabase.auth.signOut()` on the
         dashboard.
       security:
         - cookieSession: []
@@ -4425,7 +4447,7 @@ paths:
         - AuthSession
       summary: Exchange the session cookie for a short-lived socket token
       description: |
-        ALE-164: the dashboard browser cannot read the HTTP-only
+        The dashboard browser cannot read the HTTP-only
         `_dhc_session` cookie to pass it via the Phoenix JS `authToken` socket
         option, and `new WebSocket(url, protocols)` has no `withCredentials`
         so a cross-origin socket cannot send the cookie. This endpoint
@@ -4475,9 +4497,9 @@ components:
       description: |
         The signed `_dhc_session` cookie set by `POST /api/auth/magic-link/verify`.
         Browsers send it automatically with `credentials: 'include'`; SvelteKit
-        SSR forwards it explicitly. ALE-164: the dashboard's primary auth
+        SSR forwards it explicitly. It is the dashboard's primary auth
         credential. `RequireAuth` accepts this cookie in addition to the
-        transitional Supabase bearer JWT (`bearerAuth`) until the ALE-163
+        transitional Supabase bearer JWT (`bearerAuth`) until the Supabase
         cutover.
     onboardingAcceptanceSession:
       type: apiKey
@@ -5412,12 +5434,31 @@ components:
           type: string
           format: date
           description: |
-            The date the reactivated monthly membership cycle anchors to
-            (today or a future date, at most one year ahead). Drives Stripe's
-            billing_cycle_anchor: the first invoice covers the prorated
-            remainder up to this date, then full periods bill from it. The
-            annual fee is charged prorated for the remainder of this year
-            regardless (anchored at next January, same as signup).
+            The date monthly billing begins (today or a future date, at most
+            one year ahead). The first paid monthly invoice is prorated from
+            this date through the first day of the following month, then full
+            monthly periods bill from that anchor. How the annual fee starts is
+            chosen separately via annualFeeMode.
+        annualFeeMode:
+          $ref: "#/components/schemas/MembershipReactivateAnnualFeeMode"
+    MembershipReactivateAnnualFeeMode:
+      type: string
+      enum:
+        - prorated_now
+        - deferred_next_year
+      default: prorated_now
+      description: |
+        How the annual membership fee begins.
+
+        `prorated_now` keeps signup semantics: the annual fee is charged
+        prorated for the remainder of this year at reactivation time, then
+        renews each January anchor.
+
+        `deferred_next_year` creates the annual subscription immediately with
+        a free trial ending at next January's anchor: nothing is charged for
+        the annual fee until then, and the subscription sits in `trialing`
+        status — which the Stripe sync treats as covering the price, so the
+        member stays active across sync runs.
     MembershipReactivatePaymentState:
       type: string
       enum:
@@ -5500,22 +5541,43 @@ components:
         data:
           type: object
           description: |
-            Stripe-computed amounts for a reactivation starting on the
-            requested startDate (ALE-254). All values are Dinero-compatible
-            minor-unit money objects.
+            Stripe-computed amounts for a reactivation under the requested
+            annualFeeMode. Monthly billing is prorated from startDate through
+            the first day of the following month. All values are
+            Dinero-compatible minor-unit money objects.
           required:
             - dueToday
+            - proratedMonthlyPrice
+            - proratedAnnualPrice
             - monthlyFee
             - annualFee
           properties:
             dueToday:
-              description: Total charged immediately — the prorated first invoices of both subscriptions.
+              description: |
+                Total charged immediately. The prorated monthly invoice is
+                included when startDate is today; a future monthly start is
+                charged on that date instead. The prorated annual invoice is
+                included unless `annualFeeMode=deferred_next_year`.
+              $ref: "#/components/schemas/DineroAmount"
+            proratedMonthlyPrice:
+              description: |
+                First monthly charge, prorated from startDate through the first
+                day of the following month. For a future start this amount is
+                charged on startDate rather than included in dueToday.
+              $ref: "#/components/schemas/DineroAmount"
+            proratedAnnualPrice:
+              description: |
+                First annual charge, prorated through the next January anchor.
+                Zero when annualFeeMode is deferred_next_year.
               $ref: "#/components/schemas/DineroAmount"
             monthlyFee:
-              description: Recurring full monthly membership fee charged from the start date onward.
+              description: Recurring full monthly membership fee charged from the first day of the month following startDate.
               $ref: "#/components/schemas/DineroAmount"
             annualFee:
-              description: Recurring full annual membership fee, renewing each January anchor.
+              description: |
+                Full annual membership fee — charged at next January's anchor,
+                either as a prorated remainder now plus renewals, or first at
+                next January in deferred mode.
               $ref: "#/components/schemas/DineroAmount"
 
     OptionsResponse:
@@ -7455,7 +7517,7 @@ components:
         The Phoenix session projection. The authoritative login identity
         (`principal.id` / `principal.email`) plus the current live roles. No
         `is_active`, no raw token, no Supabase `sub`/bearer/refresh
-        compatibility. ALE-164: this replaces the Supabase `Session` +
+        compatibility. This replaces the Supabase `Session` +
         `getUser()` projection on the dashboard.
       properties:
         data:

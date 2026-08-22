@@ -1,6 +1,7 @@
 test-results
 playwright-report
 vitest-attachments
+.vitest-attachments
 __screenshots__
 node_modules
 

@@ -1,6 +1,8 @@
 import { expect, test, vi } from "vitest";
 import { userEvent } from "vitest/browser";
 import { render } from "vitest-browser-svelte";
+import { getLocalTimeZone, today } from "@internationalized/date";
+import dayjs from "dayjs";
 import ReactivateMembershipModal from "./reactivate-membership-modal.svelte";
 
 const savedMethod = {
@@ -13,6 +15,8 @@ const savedMethod = {
 // Mirrors GET .../reactivation-preview/amounts data (Dinero minor units).
 const amounts = {
 	dueToday: { amount: 33000, currency: "EUR", precision: 2 },
+	proratedMonthlyPrice: { amount: 1500, currency: "EUR", precision: 2 },
+	proratedAnnualPrice: { amount: 31500, currency: "EUR", precision: 2 },
 	monthlyFee: { amount: 4200, currency: "EUR", precision: 2 },
 	annualFee: { amount: 36000, currency: "EUR", precision: 2 },
 };
@@ -110,6 +114,100 @@ test("distinguishes pending settlement from a completed activation while confirm
 
 // ── ALE-254: pre-confirmation amount preview ─────────────────────────────
 
+// ── ALE-253: annual fee deferral option ──────────────────────────────────
+
+test("defaults to charging the annual fee prorated now", async () => {
+	const screen = await render(ReactivateMembershipModal, {
+		open: true,
+		isPending: false,
+		savedPaymentMethod: savedMethod,
+		onConfirm: vi.fn(),
+	});
+
+	const proratedNow = screen.getByRole("radio", { name: /charge now/i });
+	await expect.element(proratedNow).toBeChecked();
+
+	const deferred = screen.getByRole("radio", {
+		name: /defer until next january/i,
+	});
+	await expect.element(deferred).not.toBeChecked();
+});
+
+test("explains deferred billing without exposing Stripe trial mechanics", async () => {
+	const screen = await render(ReactivateMembershipModal, {
+		open: true,
+		isPending: false,
+		savedPaymentMethod: savedMethod,
+		onConfirm: vi.fn(),
+	});
+
+	await userEvent.click(
+		screen.getByRole("radio", { name: /defer until next january/i }),
+	);
+
+	await expect
+		.element(
+			screen.getByText(
+				"Nothing is charged today. Annual billing begins next January.",
+				{ exact: true },
+			),
+		)
+		.toBeVisible();
+	expect(document.body.textContent).not.toContain("free trial");
+	expect(document.body.textContent).not.toContain(" – ");
+});
+
+test("reports the chosen annual fee mode so amounts can be fetched for it", async () => {
+	const onSelectionChange = vi.fn();
+	const screen = await render(ReactivateMembershipModal, {
+		open: true,
+		isPending: false,
+		savedPaymentMethod: savedMethod,
+		onSelectionChange,
+		onConfirm: vi.fn(),
+	});
+
+	expect(onSelectionChange).toHaveBeenCalledWith(
+		expect.objectContaining({
+			startDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+			annualFeeMode: "prorated_now",
+		}),
+	);
+
+	await userEvent.click(
+		screen.getByRole("radio", { name: /defer until next january/i }),
+	);
+
+	expect(onSelectionChange).toHaveBeenLastCalledWith(
+		expect.objectContaining({ annualFeeMode: "deferred_next_year" }),
+	);
+});
+
+test("confirms with the selected annual fee mode", async () => {
+	const onConfirm = vi.fn();
+	const screen = await render(ReactivateMembershipModal, {
+		open: true,
+		isPending: false,
+		savedPaymentMethod: savedMethod,
+		onConfirm,
+	});
+
+	await userEvent.click(
+		screen.getByRole("radio", { name: /defer until next january/i }),
+	);
+
+	await userEvent.click(
+		screen.getByRole("button", { name: "Reactivate membership" }),
+	);
+
+	expect(onConfirm).toHaveBeenCalledWith(
+		expect.objectContaining({
+			startDate: expect.any(String),
+			annualFeeMode: "deferred_next_year",
+		}),
+	);
+});
+
 test("shows the Stripe-computed amounts before confirmation", async () => {
 	const screen = await render(ReactivateMembershipModal, {
 		open: true,
@@ -123,9 +221,12 @@ test("shows the Stripe-computed amounts before confirmation", async () => {
 	await expect.element(block).toBeVisible();
 	await expect.element(block.getByText("Due today")).toBeVisible();
 	await expect.element(block.getByText("€330.00")).toBeVisible();
-	await expect.element(block.getByText(/monthly membership/i)).toBeVisible();
+	await expect
+		.element(block.getByText("€15.00 for this month + €315.00 for this year"))
+		.toBeVisible();
+	await expect.element(block.getByText("Then monthly")).toBeVisible();
 	await expect.element(block.getByText("€42.00")).toBeVisible();
-	await expect.element(block.getByText(/annual membership/i)).toBeVisible();
+	await expect.element(block.getByText("Then annually")).toBeVisible();
 	await expect.element(block.getByText("€360.00")).toBeVisible();
 
 	// Amounts never block the operator from confirming.
@@ -134,19 +235,53 @@ test("shows the Stripe-computed amounts before confirmation", async () => {
 		.toBeEnabled();
 });
 
+test("separates a future monthly charge from the amount due today", async () => {
+	const futureDate = today(getLocalTimeZone()).add({ days: 10 });
+	const screen = await render(ReactivateMembershipModal, {
+		open: true,
+		isPending: false,
+		savedPaymentMethod: savedMethod,
+		initialStartDate: futureDate,
+		amounts: {
+			...amounts,
+			dueToday: amounts.proratedAnnualPrice,
+		},
+		onConfirm: vi.fn(),
+	});
+
+	const block = screen.getByTestId("reactivation-amounts");
+	await expect.element(block.getByText("€315.00").first()).toBeVisible();
+	await expect
+		.element(
+			block.getByText(
+				`Due on ${dayjs(futureDate.toString()).format("D MMM YYYY")}`,
+			),
+		)
+		.toBeVisible();
+	await expect
+		.element(block.getByText("First prorated monthly charge"))
+		.toBeVisible();
+	await expect.element(block.getByText("€15.00")).toBeVisible();
+	await expect
+		.element(block.getByText("€15.00 for this month + €315.00 for this year"))
+		.not.toBeInTheDocument();
+});
+
 test("reports its selected start date so amounts can be fetched for it", async () => {
-	const onStartDateChange = vi.fn();
+	const onSelectionChange = vi.fn();
 	const onConfirm = vi.fn();
 	await render(ReactivateMembershipModal, {
 		open: true,
 		isPending: false,
 		savedPaymentMethod: savedMethod,
-		onStartDateChange,
+		onSelectionChange,
 		onConfirm,
 	});
 
-	expect(onStartDateChange).toHaveBeenCalledWith(
-		expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+	expect(onSelectionChange).toHaveBeenCalledWith(
+		expect.objectContaining({
+			startDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+		}),
 	);
 });
 

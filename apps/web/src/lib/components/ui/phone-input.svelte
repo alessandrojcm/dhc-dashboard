@@ -157,7 +157,8 @@ function updatePhoneNumber(inputValue: string) {
 				<Button
 					aria-label="Country code"
 					variant="outline"
-					class="w-[16ch] justify-between"
+					size="sm"
+					class="w-[16ch] justify-between rounded-md"
 					{...props}
 					role="combobox"
 					aria-expanded={open}

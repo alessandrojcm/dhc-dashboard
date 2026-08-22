@@ -12,7 +12,7 @@ export interface WorkshopRegistrationProps {
 export const workshopRegistrationTemplate: TemplateMetadata = defineTemplate({
   kind: "workshopRegistration",
   subject: "Your DHC workshop registration is confirmed",
-  from: "Dublin HEMA Club <no-reply@mail.dublinhemaclub.com>",
+  from: "Dublin HEMA Club <info@dublinhemaclub.com>",
   variables: [{ key: "WORKSHOP_NAME", type: "string" }],
 });
 

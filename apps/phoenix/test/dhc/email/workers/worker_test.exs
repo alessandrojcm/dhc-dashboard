@@ -60,6 +60,8 @@ defmodule Dhc.Email.WorkerTest do
         assert Enum.any?(email.to, fn {_name, address} ->
                  address == "user@example.com"
                end)
+
+        assert email.reply_to == {"", "contact@dublinhemaclub.com"}
       end)
     end
 

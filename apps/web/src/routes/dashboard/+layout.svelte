@@ -108,12 +108,12 @@ function getBreadcrumbLabel(item: string, index: number): string {
 		>
 			<div class="mx-auto flex max-w-[90rem] items-center gap-4">
 				<div
-					class="ml-12 hidden border-r border-border pr-4 text-xs font-bold uppercase tracking-[0.18em] text-primary sm:block md:ml-0"
+					class="ml-14 hidden border-r border-border pr-4 text-xs font-bold uppercase tracking-[0.18em] text-primary sm:block md:ml-0"
 				>
 					Dashboard
 				</div>
 				<Breadcrumb.Root>
-					<Breadcrumb.List class="ml-12 md:ml-0">
+					<Breadcrumb.List class="ml-14 md:ml-0">
 						{#each paths as item, index (item)}
 							{#if index !== paths.length - 1}
 								<Breadcrumb.Item>

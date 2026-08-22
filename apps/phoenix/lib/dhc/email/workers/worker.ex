@@ -174,6 +174,7 @@ defmodule Dhc.Email.Worker do
     email =
       Email.new()
       |> Email.from(email_from())
+      |> Email.reply_to(email_reply_to())
       |> Email.to(recipient)
       |> Email.put_provider_option(:template, %{
         id: template_alias(kind),
@@ -320,6 +321,10 @@ defmodule Dhc.Email.Worker do
   # production sender; Mailpit shows this fallback in the dev inbox.
   defp email_from do
     Application.get_env(:dhc, :email_from, "dev@dhc.local")
+  end
+
+  defp email_reply_to do
+    Application.get_env(:dhc, :email_reply_to, "contact@dublinhemaclub.com")
   end
 
   defp recipient_address(%Email{to: [{_, recipient}]}) when is_binary(recipient),

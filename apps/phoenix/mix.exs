@@ -142,7 +142,8 @@ defmodule Dhc.MixProject do
       # (ADR 0006). `mix test path/to/file.exs` still routes through here.
       test: ["test --no-start"],
       precommit: [
-        # Hex tasks must run before project tasks prune the archive load path.
+        # Run archived Hex tasks before dependency-provided tasks, which unload
+        # them from the current Mix process during project analysis.
         "hex.audit",
         "credo",
         # Architecture policy from .reach.exs (layer/forbidden-call rules).

@@ -828,7 +828,7 @@ test.describe("Workshop Management", () => {
 			).toBeVisible();
 			await expect(
 				page.getByText(
-					"Check participants in, monitor the live headcount, and handle registration exceptions from one desk.",
+					"Check in participants and manage registration issues.",
 					{ exact: true },
 				),
 			).toBeVisible();
