@@ -1,0 +1,17 @@
+{
+	"$schema": "./node_modules/oxlint/configuration_schema.json",
+	"extends": ["../../.oxlintrc.json"],
+	"env": {
+		"node": true
+	},
+	"ignorePatterns": [".react-email/**", "out/**"],
+	"overrides": [
+		{
+			"files": ["**/*.test.ts", "**/*.test.tsx"],
+			"env": {
+				"vitest": true,
+				"node": true
+			}
+		}
+	]
+}
