@@ -13,6 +13,6 @@
 		"noEmit": true,
 		"types": ["node"]
 	},
-	"include": ["src/**/*.ts", "emails/**/*.tsx", "test/**/*.ts", "test/**/*.tsx", "vitest.config.ts"],
+	"include": ["src/**/*.ts", "emails/**/*.tsx", "scripts/**/*.tsx", "test/**/*.ts", "test/**/*.tsx", "vitest.config.ts"],
 	"exclude": ["node_modules"]
 }

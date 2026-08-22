@@ -1,0 +1,152 @@
+name: Email Templates
+
+# Template sync pipeline (ADR 0022): pull requests upload drafts only;
+# merging to main publishes. Publishing therefore gates on review plus this
+# pipeline's checks — never an arbitrary push.
+on:
+  pull_request:
+    paths:
+      - 'packages/email-templates/**'
+      - 'package.json'
+      - 'pnpm-workspace.yaml'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/email-templates.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'packages/email-templates/**'
+      - 'package.json'
+      - 'pnpm-workspace.yaml'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/email-templates.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: email-templates-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      email-templates: ${{ steps.filter.outputs.email-templates }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Check for changes
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            email-templates:
+              - 'packages/email-templates/**'
+              - 'package.json'
+              - 'pnpm-workspace.yaml'
+              - 'pnpm-lock.yaml'
+              - '.github/workflows/email-templates.yml'
+
+  check:
+    needs: changes
+    if: needs.changes.outputs.email-templates == 'true'
+    name: Lint, typecheck & test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: "pnpm"
+
+      - name: Install Dependencies
+        run: pnpm install
+
+      # Required checks gate publishing: main only ever publishes what a
+      # reviewed commit proved green.
+      - name: Lint
+        run: pnpm --filter @dhc/email-templates lint
+      - name: Check formatting
+        run: pnpm --filter @dhc/email-templates format:check
+      - name: Typecheck
+        run: pnpm --filter @dhc/email-templates typecheck
+      - name: Test
+        run: pnpm --filter @dhc/email-templates test
+
+  sync:
+    needs: check
+    name: Sync templates to Resend
+    runs-on: ubuntu-latest
+
+    env:
+      # Full Access key (bootstrap ticket ALE-256) — send-only keys cannot
+      # manage templates. Locally, export the Full Access key the same way.
+      RESEND_API_KEY: ${{ secrets.RESEND_API_KEY_CI }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: "pnpm"
+
+      - name: Install Dependencies
+        run: pnpm install
+
+      # Pull requests (and manual dispatches off main) touch drafts only.
+      - name: Upsert draft templates
+        if: github.ref != 'refs/heads/main'
+        run: pnpm --filter @dhc/email-templates sync
+
+      # Merging to main publishes, then asserts every whitelisted Email Kind
+      # resolves to a published template — the guard against typo'd aliases
+      # surfacing only at send time.
+      - name: Publish templates
+        if: github.ref == 'refs/heads/main'
+        run: pnpm --filter @dhc/email-templates sync:publish
