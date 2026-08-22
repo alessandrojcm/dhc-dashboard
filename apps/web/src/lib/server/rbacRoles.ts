@@ -82,9 +82,17 @@ const data: NavData = {
 };
 
 export function canAccessUrl(url: string, roles: Set<string>): boolean {
-	return data.navMain.some(
-		(group) =>
-			url.includes(group.url) && group.role.intersection(roles).size > 0,
+	const governingGroups = data.navMain.filter((group) =>
+		url.includes(group.url),
+	);
+
+	// Paths outside the role-gated nav (e.g. `/dashboard` itself or a
+	// member's own profile) belong to every signed-in role. Only paths a
+	// nav group actually governs are restricted to that group's roles.
+	if (governingGroups.length === 0) return true;
+
+	return governingGroups.some(
+		(group) => group.role.intersection(roles).size > 0,
 	);
 }
 

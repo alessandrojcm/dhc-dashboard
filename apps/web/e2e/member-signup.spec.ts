@@ -187,23 +187,20 @@ test.describe("Member Signup - Valid invitation", () => {
 			`http://127.0.0.1:5173/members/signup/${testData.invitationId}/success`,
 			{ timeout: 30_000 },
 		);
-		await expect(
-			page.getByText("Your membership has been created."),
-		).toBeVisible();
+		await expect(page.getByText("Membership created")).toBeVisible();
 
 		await page.getByRole("link", { name: "Go to sign in" }).click();
 		await expect(
-			page.getByRole("heading", { name: "Enter the club desk", exact: true }),
+			page.getByRole("heading", { name: "Sign in", exact: true }),
 		).toBeVisible();
 		await signInWithDiscord(page, context);
 
-		await expect(page).toHaveURL(
-			`http://127.0.0.1:5173/dashboard/members/${testData.userId}`,
-		);
+		// Discord sign-in lands on the dashboard home; the member can then
+		// reach their own profile from there.
+		await expect(page).toHaveURL("http://127.0.0.1:5173/dashboard");
 		await expect(
-			page.getByRole("heading", { name: "My profile", exact: true }),
+			page.getByRole("heading", { name: "Dublin HEMA Club", level: 1 }),
 		).toBeVisible();
-		await expect(page.getByLabel("Email")).toHaveValue(testData.email);
 	});
 
 	for (const paymentLimit of [

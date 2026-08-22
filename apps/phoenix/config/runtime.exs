@@ -149,7 +149,8 @@ if config_env() == :prod do
 
   # Swoosh includes the Email sender as a template override, so it must match
   # the sender declared by every code-authored Resend template.
-  config :dhc, :email_from, "Dublin HEMA Club <no-reply@mail.dublinhemaclub.com>"
+  config :dhc, :email_from, "Dublin HEMA Club <info@dublinhemaclub.com>"
+  config :dhc, :email_reply_to, "contact@dublinhemaclub.com"
 
   config :dhc, :stripe_secret_key, System.get_env("STRIPE_SECRET_KEY")
   config :dhc, :stripe_api_url, System.get_env("STRIPE_API_URL", "https://api.stripe.com")

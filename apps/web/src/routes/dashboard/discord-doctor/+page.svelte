@@ -133,6 +133,14 @@ const reportQuery = createQuery(() => ({
 }));
 
 const report = $derived(reportQuery.data?.data);
+
+// A single tab panel renders the selected server-view bucket; the shared
+// table swaps its rows when the tab changes while keeping the active search
+// and join-date sort.
+const bucket = $derived(
+	buckets.find((candidate) => candidate.key === selectedBucket) ?? buckets[0],
+);
+const rows = $derived(report?.serverMembers[bucket.key] ?? []);
 const currentUserQuery = createQuery(() => ({
 	...membersMeOptions(),
 	refetchOnWindowFocus: false,
@@ -559,248 +567,244 @@ async function refreshMembers() {
 						{/each}
 					</Tabs.List>
 
-					{#each buckets as bucket (bucket.key)}
-						{@const rows = report.serverMembers[bucket.key]}
-						<Tabs.Content value={bucket.key} class="mt-4">
-							<section
-								class="overflow-hidden rounded-2xl border border-border bg-card shadow-[4px_4px_0_hsl(var(--secondary)/0.35)]"
+					<Tabs.Content value={selectedBucket} class="mt-4">
+						<section
+							class="overflow-hidden rounded-2xl border border-border bg-card shadow-[4px_4px_0_hsl(var(--secondary)/0.35)]"
+						>
+							<header
+								class="flex flex-col gap-4 border-b border-border bg-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5"
 							>
-								<header
-									class="flex flex-col gap-4 border-b border-border bg-muted/20 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5"
-								>
-									<div>
-										<h2 class="font-heading text-xl text-foreground">
-											{bucket.label}
-										</h2>
-										<p class="mt-1 text-sm leading-6 text-muted-foreground">
-											{bucket.blurb}
-										</p>
-									</div>
-									{#if bulkActionLabel(bucket.key) && rows.some( (row) => canKick(bucket.key, row) )}
-										<Button
-											variant="destructive"
-											class="min-h-11 self-start sm:self-center"
-											onclick={() => startBulkKick(bucket.key, rows)}
-										>
-											<UserMinus aria-hidden="true" />
-											{bulkActionLabel(bucket.key)}
-										</Button>
-									{/if}
-								</header>
-
-								{#if rows.length === 0}
-									<p class="p-8 text-center text-sm text-muted-foreground">
-										Nothing in this bucket.
+								<div>
+									<h2 class="font-heading text-xl text-foreground">
+										{bucket.label}
+									</h2>
+									<p class="mt-1 text-sm leading-6 text-muted-foreground">
+										{bucket.blurb}
 									</p>
-								{:else}
-									<div
-										class="flex flex-col gap-3 border-b border-border bg-muted/10 p-4 sm:flex-row sm:items-center"
+								</div>
+								{#if bulkActionLabel(bucket.key) && rows.some( (row) => canKick(bucket.key, row) )}
+									<Button
+										variant="destructive"
+										class="min-h-11 self-start sm:self-center"
+										onclick={() => startBulkKick(bucket.key, rows)}
 									>
-										<div class="relative w-full sm:max-w-xs">
-											<Search
-												class="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
-												aria-hidden="true"
-											/>
-											<Input
-												type="search"
-												class="min-h-11 pl-9 pr-11"
-												bind:value={globalFilter}
-												placeholder="Filter by name or @username"
-												aria-label="Filter accounts by name or username"
-											/>
-											{#if globalFilter}
-												<Button
-													variant="ghost"
-													size="icon"
-													type="button"
-													class="absolute top-0 right-0"
-													aria-label="Clear filter"
-													onclick={() => {
-														globalFilter = "";
-													}}
-												>
-													<X class="size-4" aria-hidden="true" />
-												</Button>
-											{/if}
-										</div>
-										{#if globalFilter.trim()}
-											<p
-												class="text-xs text-muted-foreground sm:ml-auto"
-												aria-live="polite"
+										<UserMinus aria-hidden="true" />
+										{bulkActionLabel(bucket.key)}
+									</Button>
+								{/if}
+							</header>
+
+							{#if rows.length === 0}
+								<p class="p-8 text-center text-sm text-muted-foreground">
+									Nothing in this bucket.
+								</p>
+							{:else}
+								<div
+									class="flex flex-col gap-3 border-b border-border bg-muted/10 p-4 sm:flex-row sm:items-center"
+								>
+									<div class="relative w-full sm:max-w-xs">
+										<Search
+											class="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+											aria-hidden="true"
+										/>
+										<Input
+											type="search"
+											class="min-h-11 pl-9 pr-11"
+											bind:value={globalFilter}
+											placeholder="Filter by name or @username"
+											aria-label="Filter accounts by name or username"
+										/>
+										{#if globalFilter}
+											<Button
+												variant="ghost"
+												size="icon"
+												type="button"
+												class="absolute top-0 right-0"
+												aria-label="Clear filter"
+												onclick={() => {
+													globalFilter = "";
+												}}
 											>
-												Showing {table.getRowModel().rows.length} of {rows.length}
-											</p>
+												<X class="size-4" aria-hidden="true" />
+											</Button>
 										{/if}
 									</div>
-
-									{#if table.getRowModel().rows.length === 0}
-										<p class="p-8 text-center text-sm text-muted-foreground">
-											No accounts match “{globalFilter.trim()}”.
+									{#if globalFilter.trim()}
+										<p
+											class="text-xs text-muted-foreground sm:ml-auto"
+											aria-live="polite"
+										>
+											Showing {table.getRowModel().rows.length} of {rows.length}
 										</p>
-									{:else}
-										<div class="overflow-x-auto">
-											<Table.Root class="min-w-[54rem]">
-												<Table.Caption class="sr-only">
-													{bucket.label} Discord server accounts
-												</Table.Caption>
-												<Table.Header>
+									{/if}
+								</div>
+
+								{#if table.getRowModel().rows.length === 0}
+									<p class="p-8 text-center text-sm text-muted-foreground">
+										No accounts match “{globalFilter.trim()}”.
+									</p>
+								{:else}
+									<div class="overflow-x-auto">
+										<Table.Root class="min-w-[54rem]">
+											<Table.Caption class="sr-only">
+												{bucket.label} Discord server accounts
+											</Table.Caption>
+											<Table.Header>
+												<Table.Row>
+													<Table.Head
+														aria-sort={accountSort === "asc"
+															? "ascending"
+															: accountSort === "desc"
+																? "descending"
+																: undefined}
+													>
+														<SortHeader
+															onclick={() =>
+																accountColumn?.toggleSorting(
+																	accountColumn.getIsSorted() === "asc",
+																)}
+															header="Server account"
+															class="-ml-2 h-9 px-2"
+															sortDirection={accountSort}
+														/>
+													</Table.Head>
+													<Table.Head>Member match</Table.Head>
+													<Table.Head>Membership</Table.Head>
+													<Table.Head>Status</Table.Head>
+													<Table.Head class="text-right">Actions</Table.Head>
+												</Table.Row>
+											</Table.Header>
+											<Table.Body>
+												{#each table.getRowModel().rows as tableRow (tableRow.id)}
+													{@const row = tableRow.original}
+													{@const outcome = kickResults[row.discordUserId]}
 													<Table.Row>
-														<Table.Head
-															aria-sort={accountSort === "asc"
-																? "ascending"
-																: accountSort === "desc"
-																	? "descending"
-																	: undefined}
-														>
-															<SortHeader
-																onclick={() =>
-																	accountColumn?.toggleSorting(
-																		accountColumn.getIsSorted() === "asc",
-																	)}
-																header="Server account"
-																class="-ml-2 h-9 px-2"
-																sortDirection={accountSort}
-															/>
-														</Table.Head>
-														<Table.Head>Member match</Table.Head>
-														<Table.Head>Membership</Table.Head>
-														<Table.Head>Status</Table.Head>
-														<Table.Head class="text-right">Actions</Table.Head>
-													</Table.Row>
-												</Table.Header>
-												<Table.Body>
-													{#each table.getRowModel().rows as tableRow (tableRow.id)}
-														{@const row = tableRow.original}
-														{@const outcome = kickResults[row.discordUserId]}
-														<Table.Row>
-															<Table.Cell class="p-4 sm:p-5">
-																<div class="flex min-w-0 items-center gap-3">
-																	<div
-																		class="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 font-heading text-sm text-primary"
-																		aria-hidden="true"
-																	>
-																		{row.displayName.slice(0, 2).toUpperCase()}
-																	</div>
-																	<div class="min-w-0">
-																		<p class="font-semibold text-foreground">
-																			<span>{row.displayName}</span>
-																			<span
-																				class="ml-1 font-normal text-muted-foreground"
-																				>@{row.username}</span
-																			>
-																		</p>
-																		<p class="text-xs text-muted-foreground">
-																			{formatJoinedAt(row.joinedAt)}
-																		</p>
-																	</div>
+														<Table.Cell class="p-4 sm:p-5">
+															<div class="flex min-w-0 items-center gap-3">
+																<div
+																	class="flex size-10 shrink-0 items-center justify-center rounded-full bg-primary/10 font-heading text-sm text-primary"
+																	aria-hidden="true"
+																>
+																	{row.displayName.slice(0, 2).toUpperCase()}
 																</div>
-															</Table.Cell>
-															<Table.Cell class="p-4 sm:p-5">
-																{#if row.member}
-																	<p class="font-medium text-foreground">
-																		{fullName(row.member)}
-																	</p>
-																	{#if bucket.key === "pendingLink"}
-																		<p
-																			class="mt-1 max-w-xs whitespace-normal text-xs text-destructive"
+																<div class="min-w-0">
+																	<p class="font-semibold text-foreground">
+																		<span>{row.displayName}</span>
+																		<span
+																			class="ml-1 font-normal text-muted-foreground"
+																			>@{row.username}</span
 																		>
-																			Unconfirmed match — verify on Discord
-																			first.
-																		</p>
-																	{:else}
-																		<p class="text-xs text-muted-foreground">
-																			Proven link
-																		</p>
-																	{/if}
-																{:else}
-																	<span class="text-sm text-muted-foreground"
-																		>No member match</span
+																	</p>
+																	<p class="text-xs text-muted-foreground">
+																		{formatJoinedAt(row.joinedAt)}
+																	</p>
+																</div>
+															</div>
+														</Table.Cell>
+														<Table.Cell class="p-4 sm:p-5">
+															{#if row.member}
+																<p class="font-medium text-foreground">
+																	{fullName(row.member)}
+																</p>
+																{#if bucket.key === "pendingLink"}
+																	<p
+																		class="mt-1 max-w-xs whitespace-normal text-xs text-destructive"
 																	>
+																		Unconfirmed match — verify on Discord first.
+																	</p>
+																{:else}
+																	<p class="text-xs text-muted-foreground">
+																		Proven link
+																	</p>
 																{/if}
-															</Table.Cell>
-															<Table.Cell class="p-4 sm:p-5">
-																{#if row.membershipStatus}
+															{:else}
+																<span class="text-sm text-muted-foreground"
+																	>No member match</span
+																>
+															{/if}
+														</Table.Cell>
+														<Table.Cell class="p-4 sm:p-5">
+															{#if row.membershipStatus}
+																<Badge
+																	variant="outline"
+																	class={cn(
+																		"capitalize",
+																		membershipStyles[row.membershipStatus],
+																	)}
+																>
+																	{row.membershipStatus}
+																</Badge>
+															{:else}
+																<span class="text-sm text-muted-foreground"
+																	>Unknown</span
+																>
+															{/if}
+														</Table.Cell>
+														<Table.Cell class="p-4 sm:p-5">
+															<div class="flex flex-col items-start gap-2">
+																{#if outcome}
 																	<Badge
 																		variant="outline"
-																		class={cn(
-																			"capitalize",
-																			membershipStyles[row.membershipStatus],
-																		)}
+																		class={outcomeStyle(outcome.outcome)}
 																	>
-																		{row.membershipStatus}
+																		{outcomeLabels[outcome.outcome]}
 																	</Badge>
-																{:else}
+																	{#if outcome.reason || outcome.error}
+																		<p
+																			class="max-w-48 whitespace-normal text-xs text-muted-foreground"
+																		>
+																			{outcome.reason ?? outcome.error}
+																		</p>
+																	{/if}
+																{/if}
+																{#if row.protected}
+																	<Badge
+																		variant="outline"
+																		class="border-primary/40 bg-primary/10 font-semibold text-primary"
+																	>
+																		<ShieldCheck aria-hidden="true" />
+																		Protected
+																	</Badge>
+																{:else if bucket.key === "pendingLink"}
+																	<Badge variant="secondary"
+																		>Unproven match</Badge
+																	>
+																{:else if !outcome}
 																	<span class="text-sm text-muted-foreground"
-																		>Unknown</span
+																		>Review</span
 																	>
 																{/if}
-															</Table.Cell>
-															<Table.Cell class="p-4 sm:p-5">
-																<div class="flex flex-col items-start gap-2">
-																	{#if outcome}
-																		<Badge
-																			variant="outline"
-																			class={outcomeStyle(outcome.outcome)}
-																		>
-																			{outcomeLabels[outcome.outcome]}
-																		</Badge>
-																		{#if outcome.reason || outcome.error}
-																			<p
-																				class="max-w-48 whitespace-normal text-xs text-muted-foreground"
-																			>
-																				{outcome.reason ?? outcome.error}
-																			</p>
-																		{/if}
-																	{/if}
-																	{#if row.protected}
-																		<Badge
-																			variant="outline"
-																			class="border-primary/40 bg-primary/10 font-semibold text-primary"
-																		>
-																			<ShieldCheck aria-hidden="true" />
-																			Protected
-																		</Badge>
-																	{:else if bucket.key === "pendingLink"}
-																		<Badge variant="secondary"
-																			>Unproven match</Badge
-																		>
-																	{:else if !outcome}
-																		<span class="text-sm text-muted-foreground"
-																			>Review</span
-																		>
-																	{/if}
-																</div>
-															</Table.Cell>
-															<Table.Cell class="p-4 text-right sm:p-5">
-																{#if canKick(bucket.key, row)}
-																	<Button
-																		variant="destructive"
-																		size="sm"
-																		class="min-h-11"
-																		aria-label={`Kick ${row.displayName}`}
-																		disabled={kickMutation.isPending}
-																		onclick={() =>
-																			startSingleKick(bucket.key, row)}
-																	>
-																		<UserMinus aria-hidden="true" />
-																		Kick
-																	</Button>
-																{:else}
-																	<span class="text-sm text-muted-foreground"
-																		>No action</span
-																	>
-																{/if}
-															</Table.Cell>
-														</Table.Row>
-													{/each}
-												</Table.Body>
-											</Table.Root>
-										</div>
-									{/if}
+															</div>
+														</Table.Cell>
+														<Table.Cell class="p-4 text-right sm:p-5">
+															{#if canKick(bucket.key, row)}
+																<Button
+																	variant="destructive"
+																	size="sm"
+																	class="min-h-11"
+																	aria-label={`Kick ${row.displayName}`}
+																	disabled={kickMutation.isPending}
+																	onclick={() =>
+																		startSingleKick(bucket.key, row)}
+																>
+																	<UserMinus aria-hidden="true" />
+																	Kick
+																</Button>
+															{:else}
+																<span class="text-sm text-muted-foreground"
+																	>No action</span
+																>
+															{/if}
+														</Table.Cell>
+													</Table.Row>
+												{/each}
+											</Table.Body>
+										</Table.Root>
+									</div>
 								{/if}
-							</section>
-						</Tabs.Content>
-					{/each}
+							{/if}
+						</section>
+					</Tabs.Content>
 				</Tabs.Root>
 			{:else}
 				<section
