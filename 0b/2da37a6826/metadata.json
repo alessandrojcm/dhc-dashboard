@@ -3,7 +3,7 @@
   "checkpoint_id": "0b2da37a6826",
   "strategy": "manual-commit",
   "branch": "worktree/silver-forest-5b5f",
-  "checkpoints_count": 7,
+  "checkpoints_count": 8,
   "files_touched": [
     "docs/agents/structure.md",
     "docs/agents/tech-stack.md"
@@ -29,6 +29,13 @@
       "compact_transcript": "/0b/2da37a6826/2/transcript.jsonl",
       "content_hash": "/0b/2da37a6826/2/content_hash.txt",
       "prompt": "/0b/2da37a6826/2/prompt.txt"
+    },
+    {
+      "metadata": "/0b/2da37a6826/3/metadata.json",
+      "transcript": "/0b/2da37a6826/3/full.jsonl",
+      "compact_transcript": "/0b/2da37a6826/3/transcript.jsonl",
+      "content_hash": "/0b/2da37a6826/3/content_hash.txt",
+      "prompt": "/0b/2da37a6826/3/prompt.txt"
     }
   ],
   "token_usage": {
