@@ -101,6 +101,11 @@ description = "Check Elixir formatting (CI)"
 dir = "apps/phoenix"
 run = "mix format --check-formatted"
 
+[tasks.phx-reach]
+description = "Run Reach architecture policy checks (.reach.exs)"
+dir = "apps/phoenix"
+run = "mix reach.check --arch"
+
 # ── Structural lint (ast-grep) ─────────────────────
 # Rules live in .ast-grep/rules/, config in sgconfig.yml at repo root.
 # The LSP is wired in opencode.json; this task is for CI/precommit.

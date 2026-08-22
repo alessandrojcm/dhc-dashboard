@@ -112,7 +112,12 @@ defmodule Dhc.MixProject do
       # reads the dynamic port, then starts the app + runs migrations.
       {:testcontainers, "~> 2.3", only: :test},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
-      {:ex_slop, "~> 0.1", only: [:dev, :test], runtime: false}
+      {:ex_slop, "~> 0.1", only: [:dev, :test], runtime: false},
+      # Reach: program dependence graph + architecture policy checks driven by
+      # .reach.exs (layer/forbidden-call rules). Static analysis only, never part
+      # of the release. Listed for :test too because the precommit alias (pinned
+      # to :test via preferred_envs) runs `reach.check --arch`.
+      {:reach, "~> 2.8", only: [:dev, :test], runtime: false}
     ]
   end
 
@@ -137,6 +142,9 @@ defmodule Dhc.MixProject do
       test: ["test --no-start"],
       precommit: [
         "credo",
+        # Architecture policy from .reach.exs (layer/forbidden-call rules).
+        # Findings not in .reach-baseline.json fail the build.
+        "reach.check --arch",
         "hex.audit",
         "compile --warnings-as-errors",
         "deps.unlock --unused",
