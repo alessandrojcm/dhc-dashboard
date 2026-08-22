@@ -3,8 +3,21 @@
   "checkpoint_id": "94de6df2655f",
   "strategy": "manual-commit",
   "branch": "worktree/silver-forest-5b5f",
-  "checkpoints_count": 1,
+  "checkpoints_count": 6,
   "files_touched": [
+    "packages/email-templates/.oxlintrc.json",
+    "packages/email-templates/emails/_components/layout.tsx",
+    "packages/email-templates/emails/invite-member.tsx",
+    "packages/email-templates/emails/magic-link.tsx",
+    "packages/email-templates/emails/workshop-announcement.tsx",
+    "packages/email-templates/emails/workshop-registration-error.tsx",
+    "packages/email-templates/emails/workshop-registration.tsx",
+    "packages/email-templates/package.json",
+    "packages/email-templates/src/index.ts",
+    "packages/email-templates/src/template-metadata.ts",
+    "packages/email-templates/test/template-metadata.test.ts",
+    "packages/email-templates/tsconfig.json",
+    "packages/email-templates/vitest.config.ts",
     "pnpm-lock.yaml"
   ],
   "sessions": [
@@ -14,13 +27,20 @@
       "compact_transcript": "/94/de6df2655f/0/transcript.jsonl",
       "content_hash": "/94/de6df2655f/0/content_hash.txt",
       "prompt": "/94/de6df2655f/0/prompt.txt"
+    },
+    {
+      "metadata": "/94/de6df2655f/1/metadata.json",
+      "transcript": "/94/de6df2655f/1/full.jsonl",
+      "compact_transcript": "/94/de6df2655f/1/transcript.jsonl",
+      "content_hash": "/94/de6df2655f/1/content_hash.txt",
+      "prompt": "/94/de6df2655f/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 37072,
+    "input_tokens": 1783561,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 73216,
-    "output_tokens": 2344,
-    "api_call_count": 4
+    "cache_read_tokens": 11757504,
+    "output_tokens": 47071,
+    "api_call_count": 143
   }
 }
