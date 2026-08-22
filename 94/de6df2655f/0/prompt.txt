@@ -1,0 +1,7 @@
+Research whether there is OFFICIAL guidance from React Email (react.email) or Resend on how to TEST React Email templates. Specifically:
+
+1. Does react.email documentation have any section on testing email templates (unit tests, snapshot tests, render assertions)? Check their docs site sections like CLI, FAQ, utilities, or any testing guide.
+2. Does Resend's documentation recommend any testing approach for templates or transactional emails?
+3. Is there an official recommended pattern at all (e.g., `email export` in CI as a smoke check, preview-based review instead of automated assertions)?
+
+If there is NO official guidance, say so explicitly. Be concise: answer with what exists (with citations) or a clear "no official guidance found". Do NOT write project code — research only.
