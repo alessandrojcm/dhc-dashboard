@@ -1,0 +1,106 @@
+{
+  "cli_version": "0.9.0",
+  "checkpoint_id": "7c7f79bc52e9",
+  "session_id": "ses_fd4a3e85dffeEJZOljeWI58s21",
+  "strategy": "manual-commit",
+  "created_at": "2026-08-22T22:15:21.519459Z",
+  "branch": "worktree/silver-forest-5b5f",
+  "checkpoints_count": 5,
+  "save_step_count": 5,
+  "files_touched": [
+    ".github/workflows/email-templates.yml",
+    ".mise.toml",
+    "docs/agents/commands.md",
+    "docs/agents/structure.md",
+    "docs/agents/tech-stack.md",
+    "packages/email-templates/README.md",
+    "packages/email-templates/package.json",
+    "packages/email-templates/scripts/sync.tsx",
+    "packages/email-templates/test/render.test.ts",
+    "packages/email-templates/test/sync.test.ts",
+    "packages/email-templates/tsconfig.json",
+    "pnpm-lock.yaml"
+  ],
+  "agent": "OpenCode",
+  "model": "x-preview-f-free",
+  "turn_id": "5ed8332625dd",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 125438,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 9097920,
+    "output_tokens": 40000,
+    "api_call_count": 119
+  },
+  "session_metrics": {
+    "turn_count": 5
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-08-22T22:15:21.468032Z",
+    "agent_lines": 529,
+    "agent_removed": 5,
+    "human_added": 88,
+    "human_modified": 91,
+    "human_removed": 0,
+    "total_committed": 708,
+    "total_lines_changed": 713,
+    "agent_percentage": 74.89481065918653,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 308,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        "packages/email-templates/src/render-templates.tsx": 76,
+        "packages/email-templates/src/resend-client.ts": 232
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 140,
+      "user_lines_removed": 80,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        "packages/email-templates/package.json": 3,
+        "pnpm-lock.yaml": 137
+      },
+      "user_removed_per_file": {
+        "packages/email-templates/package.json": 1,
+        "pnpm-lock.yaml": 79
+      }
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 140,
+      "agent_lines_removed": 80
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 140,
+      "agent_lines_removed": 80
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 760,
+      "agent_lines_removed": 85
+    }
+  ]
+}
