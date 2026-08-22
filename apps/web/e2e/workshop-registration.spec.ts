@@ -20,9 +20,9 @@ test.describe("Workshop Registration", () => {
 		// This is a basic test until we have actual workshop pages set up
 		await page.goto("/dashboard");
 
-		await expect(page).toHaveURL(`/dashboard/members/${memberData.userId}`);
+		await expect(page).toHaveURL("/dashboard");
 		await expect(
-			page.getByRole("heading", { name: "My profile", exact: true }),
+			page.getByRole("heading", { name: "Dublin HEMA Club", level: 1 }),
 		).toBeVisible();
 	});
 

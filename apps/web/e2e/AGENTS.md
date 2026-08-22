@@ -52,6 +52,7 @@ Authentication uses Phoenix `_dhc_session` cookies. `loginAsUser()` calls the pr
 ## Isolation and reports
 
 - The database is fresh per Playwright run, not per test.
+- Playwright swallows both web servers' stdout. To see Phoenix/SvelteKit logs (SQL, 4xx/5xx responses, stack traces) while reproducing a failure, prefix the run with `DEBUG=pw:webserver`, e.g. `DEBUG=pw:webserver STRIPE_SECRET_KEY=sk_test_... mise run test-e2e -- e2e/some.spec.ts -g "test name"`.
 - Tests should still use unique emails and clean up named fixtures where practical.
 - A failing browser assertion must not prevent fixture cleanup.
 - Browser-storage security assertions target sensitive keys and values; SvelteKit and theme tooling legitimately create their own storage entries, so an empty-storage assertion is not a stable privacy check.
