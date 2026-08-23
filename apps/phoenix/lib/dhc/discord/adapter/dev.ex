@@ -2,8 +2,9 @@ defmodule Dhc.Discord.Adapter.Dev do
   @moduledoc """
   Prevents local development from mutating the real Discord guild.
 
-  Discord OAuth remains live so the onboarding flow can verify an identity, but
-  guild membership operations stop at this adapter.
+  Discord sign-in and account-linking OAuth remain live. Invitation onboarding
+  may use the separate development OAuth bypass, while guild membership
+  operations always stop at this adapter.
   """
 
   @behaviour Dhc.Discord.Adapter

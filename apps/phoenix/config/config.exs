@@ -35,6 +35,16 @@ config :dhc, :invitation_verification_token_salt, "invitation-verification-v1"
 config :dhc, :invitation_payment_processor, Dhc.Invitations.StripePayment
 config :dhc, :onboarding_stripe_adapter, Dhc.Onboarding.StripeAdapter.Live
 config :dhc, :workshop_stripe_adapter, Dhc.Workshops.StripeAdapter.Live
+
+# Private Stripe coupon IDs backing invitation pricing tiers (see
+# Dhc.Invitations.Pricing.tier_coupon_id/1). These coupons are applied directly
+# by the backend: coach = percent_off 100 / duration forever; student =
+# percent_off 20 / duration forever / monthly membership product only.
+config :dhc,
+       :membership_tier_coupons,
+       coach: "DHC_COACH_TIER",
+       student: "DHC_STUDENT_TIER"
+
 # Transactional email transport seam (ADR 0021). The adapter itself is chosen
 # per environment: Swoosh.Adapters.Resend (prod), Swoosh.Adapters.Mailpit (dev),
 # Swoosh.Adapters.Test (test) — see Dhc.Email.Mailer.
@@ -115,6 +125,7 @@ config :logger, :default_formatter,
     :last_payment_date,
     :lookup_key,
     :lookup_keys,
+    :pricing_tier,
     :receipt,
     :provider_status,
     :manual_customer_count,
@@ -201,6 +212,7 @@ config :sentry,
       :success_count,
       :failure_count,
       :invitation_id,
+      :pricing_tier,
       :processing_time_ms,
       # Workshop announcements worker
       :workshop_id,

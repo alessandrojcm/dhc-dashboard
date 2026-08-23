@@ -6,6 +6,17 @@ discord_guild_id = System.get_env("DISCORD_GUILD_ID")
 config :dhc, :discord_bot_token, discord_bot_token
 config :dhc, :discord_guild_id, discord_guild_id
 
+membership_tier_coupons =
+  [
+    coach: System.get_env("STRIPE_COACH_COUPON_ID"),
+    student: System.get_env("STRIPE_STUDENT_COUPON_ID")
+  ]
+  |> Enum.reject(fn {_key, value} -> is_nil(value) or String.trim(value) == "" end)
+
+if membership_tier_coupons != [] do
+  config :dhc, :membership_tier_coupons, membership_tier_coupons
+end
+
 if config_env() == :prod do
   if is_nil(discord_bot_token) or String.trim(discord_bot_token) == "" do
     raise "environment variable DISCORD_BOT_TOKEN is missing"
@@ -250,6 +261,7 @@ if config_env() == :prod do
         :success_count,
         :failure_count,
         :invitation_id,
+        :pricing_tier,
         :processing_time_ms,
         # Workshop announcements worker
         :workshop_id,
@@ -306,6 +318,7 @@ if config_env() == :prod do
            # Bulk invite worker
            :created_by,
            :invitation_id,
+           :pricing_tier,
            # Workshop announcements worker
            :workshop_id,
            :announcement_type

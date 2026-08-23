@@ -191,7 +191,7 @@ export async function setupInvitedUser(
 		email: string;
 		invitationStatus: "pending" | "expired" | "accepted" | "revoked";
 		token: string;
-		useFakeCustomerId: boolean;
+		pricingTier: "standard" | "coach" | "student";
 	}> = {},
 ) {
 	const email = params.email ?? faker.internet.email().toLowerCase();
@@ -214,7 +214,7 @@ export async function setupInvitedUser(
 		lastName: testData.last_name,
 		dateOfBirth: testData.date_of_birth.toISOString(),
 		phoneNumber: testData.phone_number,
-		customerId: params.useFakeCustomerId ? "cus_e2e_fake" : undefined,
+		pricingTier: params.pricingTier ?? "standard",
 	});
 
 	return {

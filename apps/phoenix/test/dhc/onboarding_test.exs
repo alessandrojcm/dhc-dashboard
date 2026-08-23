@@ -131,11 +131,124 @@ defmodule Dhc.OnboardingTest do
              Onboarding.pricing(invitation.id, "WELCOME")
 
     assert_received {:preview_membership, "WELCOME"}
-    assert Repo.get!(Invitation, invitation.id).stripe_customer_id == nil
 
     refute Repo.exists?(
              from(a in InvitationAcceptanceAttempt, where: a.invitation_id == ^invitation.id)
            )
+  end
+
+  describe "invitation pricing tiers" do
+    setup do
+      original_coupons = Application.get_env(:dhc, :membership_tier_coupons)
+
+      Application.put_env(
+        :dhc,
+        :membership_tier_coupons,
+        coach: "DHC_COACH_TIER",
+        student: "DHC_STUDENT_TIER"
+      )
+
+      on_exit(fn ->
+        if original_coupons do
+          Application.put_env(:dhc, :membership_tier_coupons, original_coupons)
+        else
+          Application.delete_env(:dhc, :membership_tier_coupons)
+        end
+      end)
+
+      :ok
+    end
+
+    test "a student invitation resolves its configured coupon for previews" do
+      invitation = insert_invitation!(pricing_tier: "student")
+
+      assert {:ok, %{proratedPrice: %{amount: 0}}} =
+               Onboarding.pricing(invitation.id, "USER-SUPPLIED")
+
+      # The tier coupon wins; a user-supplied code is never passed through.
+      assert_received {:preview_membership, {:coupon, "DHC_STUDENT_TIER", [:monthly]}}
+    end
+
+    test "a student invitation discounts only the monthly subscription" do
+      invitation = insert_invitation!(pricing_tier: "student")
+      continuation_id = continuation_for(invitation)
+
+      assert {:ok, %{member_id: member_id}} =
+               Onboarding.accept(
+                 invitation.id,
+                 continuation_id,
+                 "Next of Kin",
+                 "+353810000001",
+                 %{
+                   confirmation_token: "ctok_success"
+                 }
+               )
+
+      assert %{status: "accepted", pricing_tier: "student"} =
+               Repo.get!(Invitation, invitation.id)
+
+      assert_received {:prepare_payment, {:coupon, "DHC_STUDENT_TIER", [:monthly]}}
+
+      assert_received {:provision_membership,
+                       %{
+                         payment_plan: %{
+                           coupon_id: "DHC_STUDENT_TIER",
+                           discount_targets: [:monthly],
+                           promotion_code_id: nil
+                         }
+                       }}
+
+      assert %Principal{} = Repo.get!(Principal, member_id)
+    end
+
+    test "a coach invitation resolves its configured coupon for both subscriptions" do
+      invitation = insert_invitation!(pricing_tier: "coach")
+      continuation_id = continuation_for(invitation)
+
+      assert {:ok, %{member_id: _member_id}} =
+               Onboarding.accept(
+                 invitation.id,
+                 continuation_id,
+                 "Next of Kin",
+                 "+353810000001",
+                 %{
+                   confirmation_token: "ctok_success"
+                 }
+               )
+
+      assert_received {:prepare_payment, {:coupon, "DHC_COACH_TIER", [:monthly, :annual]}}
+
+      assert_received {:provision_membership,
+                       %{
+                         payment_plan: %{
+                           coupon_id: "DHC_COACH_TIER",
+                           discount_targets: [:monthly, :annual],
+                           promotion_code_id: nil
+                         }
+                       }}
+    end
+
+    test "an unconfigured tier coupon fails acceptance before any Stripe work" do
+      Application.put_env(:dhc, :membership_tier_coupons, [])
+      invitation = insert_invitation!(pricing_tier: "coach")
+      continuation_id = continuation_for(invitation)
+
+      assert {:error, :tier_coupon_not_configured} =
+               Onboarding.accept(
+                 invitation.id,
+                 continuation_id,
+                 "Next of Kin",
+                 "+353810000001",
+                 %{
+                   confirmation_token: "ctok_success"
+                 }
+               )
+
+      assert Repo.get!(Invitation, invitation.id).status == "pending"
+      refute_received {:prepare_payment, _}
+      refute_received {:create_customer, _}
+      refute_received {:provision_membership, _}
+    end
   end
 
   test "credential verification starts one protected pre-payment attempt and continuation" do
@@ -520,6 +633,46 @@ defmodule Dhc.OnboardingTest do
     assert Repo.get!(Invitation, invitation.id).status == "accepted"
     assert Repo.exists?(ExternalIdentity)
     refute Repo.exists?(PrincipalToken)
+  end
+
+  test "payment submission resolves the invitation tier before preparing Stripe" do
+    invitation = insert_invitation!(pricing_tier: "student")
+    student_coupon_id = Application.fetch_env!(:dhc, :membership_tier_coupons)[:student]
+
+    {:ok, started} =
+      Onboarding.start_acceptance(
+        invitation.id,
+        invitation.email,
+        Date.to_iso8601(invitation.date_of_birth)
+      )
+
+    {:ok, _state} =
+      Onboarding.verify_discord(started.continuation_id, %{
+        "sub" => "student-tier-payment-subject",
+        "preferred_username" => "student-tier-member"
+      })
+
+    assert {:ok, %{state: "paymentReady"}} =
+             Onboarding.continue_acceptance(started.continuation_id)
+
+    assert {:ok, %{state: "accepted"}} =
+             Onboarding.submit_payment(started.continuation_id, %{
+               next_of_kin_name: "Grace Hopper",
+               next_of_kin_phone: "+353810000099",
+               confirmation_token: "ctok_student_tier",
+               coupon_code: "MUST-NOT-WIN"
+             })
+
+    assert_received {:prepare_payment, {:coupon, ^student_coupon_id, [:monthly]}}
+
+    assert_received {:provision_membership,
+                     %{
+                       payment_plan: %{
+                         coupon_id: ^student_coupon_id,
+                         discount_targets: [:monthly],
+                         promotion_code_id: nil
+                       }
+                     }}
   end
 
   test "duplicate Continue returns the current projection and only explicit Retry resumes Stripe" do
@@ -1402,10 +1555,10 @@ defmodule Dhc.OnboardingTest do
            ) == 1
   end
 
-  defp insert_invitation! do
+  defp insert_invitation!(attrs \\ []) do
     now = DateTime.utc_now() |> DateTime.truncate(:second)
 
-    %Invitation{
+    invitation = %Invitation{
       email: "onboarding-#{System.unique_integer([:positive])}@example.com",
       prospective_principal_id: Ecto.UUID.generate(),
       status: "pending",
@@ -1416,7 +1569,11 @@ defmodule Dhc.OnboardingTest do
       phone_number: "+353810000000",
       date_of_birth: ~D[1990-01-01]
     }
-    |> Repo.insert!()
+
+    case Keyword.fetch(attrs, :pricing_tier) do
+      {:ok, tier} -> Repo.insert!(%{invitation | pricing_tier: tier})
+      :error -> Repo.insert!(invitation)
+    end
   end
 
   defp insert_waitlist_invitation!(attrs) do

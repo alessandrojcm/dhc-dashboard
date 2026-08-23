@@ -7,6 +7,7 @@ defmodule Dhc.Onboarding.PaymentSubmission do
   alias Dhc.Auth.DiscordSubjectLock
   alias Dhc.Invitations
   alias Dhc.Invitations.Invitation
+  alias Dhc.Invitations.Pricing
   alias Dhc.Onboarding.AcceptanceFlow
   alias Dhc.Onboarding.AttemptState
   alias Dhc.Onboarding.InvitationAcceptanceAttempt
@@ -17,7 +18,7 @@ defmodule Dhc.Onboarding.PaymentSubmission do
   alias Dhc.Repo
 
   def submit_payment(continuation_id, attrs) when is_map(attrs) do
-    with :ok <- validate_acceptance_details(attrs),
+    with :ok <- validate_next_of_kin(attrs),
          {:ok, invitation, attempt, advance?} <-
            record_payment_submission(continuation_id, attrs) do
       if advance?,
@@ -37,8 +38,17 @@ defmodule Dhc.Onboarding.PaymentSubmission do
   end
 
   def pricing(invitation_id, coupon_code \\ nil) do
-    with {:ok, %Invitation{}} <- pending_invitation(invitation_id) do
-      stripe_adapter().preview_membership(coupon_code)
+    with {:ok, %Invitation{} = invitation} <- pending_invitation(invitation_id) do
+      case invitation.pricing_tier do
+        "coach" -> {:ok, Pricing.complimentary_preview()}
+        _ -> preview_membership(invitation, coupon_code)
+      end
+    end
+  end
+
+  defp preview_membership(invitation, coupon_code) do
+    with {:ok, effective_coupon} <- effective_coupon_code(invitation, coupon_code) do
+      stripe_adapter().preview_membership(effective_coupon)
     end
   end
 
@@ -231,10 +241,9 @@ defmodule Dhc.Onboarding.PaymentSubmission do
     {attempt, :claimed}
   end
 
-  defp validate_acceptance_details(attrs) do
+  defp validate_next_of_kin(attrs) do
     if present?(Map.get(attrs, :next_of_kin_name)) and
-         present?(Map.get(attrs, :next_of_kin_phone)) and
-         present?(Map.get(attrs, :confirmation_token)) do
+         present?(Map.get(attrs, :next_of_kin_phone)) do
       :ok
     else
       {:error, :invalid_acceptance_details}
@@ -262,16 +271,30 @@ defmodule Dhc.Onboarding.PaymentSubmission do
     attempt = lock_payment_attempt!(continuation.attempt_id)
     invitation = lock_payment_invitation!(continuation.invitation_id)
 
-    cond do
-      payment_already_submitted?(continuation, attempt) ->
-        {invitation, attempt, false}
+    case validate_confirmation_token(invitation, attrs) do
+      :ok ->
+        cond do
+          payment_already_submitted?(continuation, attempt) ->
+            {invitation, attempt, false}
 
-      invalid_payment_submission?(continuation, invitation, attempt) ->
-        Repo.rollback(:invalid_continuation)
+          invalid_payment_submission?(continuation, invitation, attempt) ->
+            Repo.rollback(:invalid_continuation)
 
-      true ->
-        submit_payment_attempt(continuation, invitation, attempt, attrs)
+          true ->
+            submit_payment_attempt(continuation, invitation, attempt, attrs)
+        end
+
+      {:error, reason} ->
+        Repo.rollback(reason)
     end
+  end
+
+  defp validate_confirmation_token(%Invitation{pricing_tier: "coach"}, _attrs), do: :ok
+
+  defp validate_confirmation_token(_invitation, attrs) do
+    if present?(Map.get(attrs, :confirmation_token)),
+      do: :ok,
+      else: {:error, :invalid_acceptance_details}
   end
 
   defp lock_payment_continuation!(continuation_id) do
@@ -337,8 +360,9 @@ defmodule Dhc.Onboarding.PaymentSubmission do
   defp begin_payment(_invitation, attempt) do
     attrs = payment_attrs(attempt)
 
-    with {:ok, _invitation, attempt} <- revalidate_payment_fence(attempt.id),
-         {:ok, attempt, payment_plan} <- ensure_payment_plan(attempt, attrs.coupon_code),
+    with {:ok, invitation, attempt} <- revalidate_payment_fence(attempt.id),
+         {:ok, discount_reference} <- effective_coupon_code(invitation, attrs.coupon_code),
+         {:ok, attempt, payment_plan} <- ensure_payment_plan(attempt, discount_reference),
          {:ok, invitation, attempt} <- revalidate_payment_fence(attempt.id),
          {:ok, attempt} <- ensure_customer(invitation, attempt) do
       case payment_plan.requirement do
@@ -346,7 +370,7 @@ defmodule Dhc.Onboarding.PaymentSubmission do
           provision_and_finalize(invitation, attempt, Map.put(attrs, :payment_plan, payment_plan))
 
         :complimentary ->
-          provision_complimentary(invitation, attempt, attrs.coupon_code, payment_plan)
+          provision_complimentary(invitation, attempt, discount_reference, payment_plan)
       end
     else
       {:error, reason} ->
@@ -475,6 +499,19 @@ defmodule Dhc.Onboarding.PaymentSubmission do
     Application.get_env(:dhc, :onboarding_finalizer, Invitations)
   end
 
+  # The invitation's pricing tier decides the discount; a tier invitee never
+  # supplies (or needs) a coupon code. Only standard invitations honour a
+  # user-entered promotion code, so tiers can never be stacked with one.
+  defp effective_coupon_code(%Invitation{pricing_tier: "coach"}, _user_coupon) do
+    Pricing.tier_coupon_id(:coach)
+  end
+
+  defp effective_coupon_code(%Invitation{pricing_tier: "student"}, _user_coupon) do
+    Pricing.tier_coupon_id(:student)
+  end
+
+  defp effective_coupon_code(_invitation, user_coupon), do: {:ok, user_coupon}
+
   defp ensure_payment_plan(attempt, coupon_code) do
     case Map.get(attempt.stripe_state, "payment_plan") do
       plan when is_map(plan) ->
@@ -516,8 +553,13 @@ defmodule Dhc.Onboarding.PaymentSubmission do
       "requirement" => Atom.to_string(plan.requirement),
       "monthly_price_id" => plan.monthly_price_id,
       "annual_price_id" => plan.annual_price_id,
+      "coupon_id" => plan.coupon_id,
       "promotion_code_id" => plan.promotion_code_id,
-      "migration" => plan.migration?
+      "migration" => plan.migration?,
+      "discount_targets" =>
+        plan
+        |> Map.get(:discount_targets, [:monthly, :annual])
+        |> Enum.map(&Atom.to_string/1)
     }
   end
 
@@ -527,10 +569,18 @@ defmodule Dhc.Onboarding.PaymentSubmission do
         if(Map.get(plan, "requirement") == "complimentary", do: :complimentary, else: :paid),
       monthly_price_id: Map.fetch!(plan, "monthly_price_id"),
       annual_price_id: Map.fetch!(plan, "annual_price_id"),
+      coupon_id: Map.get(plan, "coupon_id"),
       promotion_code_id: Map.get(plan, "promotion_code_id"),
-      migration?: Map.get(plan, "migration", false)
+      migration?: Map.get(plan, "migration", false),
+      discount_targets:
+        plan
+        |> Map.get("discount_targets", ["monthly", "annual"])
+        |> Enum.map(&cast_discount_target/1)
     }
   end
+
+  defp cast_discount_target("annual"), do: :annual
+  defp cast_discount_target(_kind), do: :monthly
 
   defp release_operation_error(attempt, error_code) do
     Repo.transaction(fn -> release_operation_error_locked(attempt, error_code) end)
@@ -591,7 +641,8 @@ defmodule Dhc.Onboarding.PaymentSubmission do
   end
 
   defp provision_membership_with_attrs(invitation, attempt, attrs) do
-    with {:ok, attempt, payment_plan} <- ensure_payment_plan(attempt, attrs.coupon_code),
+    with {:ok, coupon_code} <- effective_coupon_code(invitation, attrs.coupon_code),
+         {:ok, attempt, payment_plan} <- ensure_payment_plan(attempt, coupon_code),
          {:ok, attempt} <- ensure_customer(invitation, attempt),
          {:ok, stripe_state} <-
            stripe_adapter().provision_membership(
@@ -604,6 +655,18 @@ defmodule Dhc.Onboarding.PaymentSubmission do
            ) do
       mark_provisioned(attempt, stripe_state)
     else
+      # A misconfigured tier coupon is an operator error, not a payment
+      # failure — surface it without recording a provider failure or
+      # scheduling acceptance recovery retries.
+      {:error, :tier_coupon_not_configured} = error ->
+        Logger.warning(
+          "[onboarding] Pricing tier coupon is not configured",
+          invitation_id: invitation.id,
+          pricing_tier: invitation.pricing_tier
+        )
+
+        error
+
       {:error, reason} ->
         record_provider_failure(attempt, reason)
         {:error, {:payment_failed, reason}}
@@ -648,16 +711,6 @@ defmodule Dhc.Onboarding.PaymentSubmission do
        )
        when is_binary(id) and id != "",
        do: {:ok, attempt}
-
-  defp ensure_customer(
-         %Invitation{stripe_customer_id: id},
-         %InvitationAcceptanceAttempt{} = attempt
-       )
-       when is_binary(id) and id != "" do
-    attempt
-    |> Ecto.Changeset.change(stripe_customer_id: id)
-    |> Repo.update()
-  end
 
   defp ensure_customer(invitation, attempt) do
     name =

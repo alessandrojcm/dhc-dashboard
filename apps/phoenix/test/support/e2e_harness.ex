@@ -219,12 +219,12 @@ defmodule Dhc.E2EHarness do
         status: status,
         expires_at: expires_at,
         invitation_type: Map.get(attrs, "invitationType", "admin"),
+        pricing_tier: Map.get(attrs, "pricingTier", "standard"),
         metadata: %{},
         first_name: Map.get(attrs, "firstName", "Test"),
         last_name: Map.get(attrs, "lastName", "Invitee"),
         phone_number: Map.get(attrs, "phoneNumber", "+353810000000"),
-        date_of_birth: date_of_birth,
-        stripe_customer_id: Map.get(attrs, "customerId")
+        date_of_birth: date_of_birth
       })
       |> Repo.insert!()
 

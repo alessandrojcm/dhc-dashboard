@@ -27,6 +27,7 @@ mise run dev                      # 3. SvelteKit dev from apps/web
 
 - The SvelteKit dev server serves **HTTPS** at the canonical local origin `https://127.0.0.1:5173` (`vite-plugin-mkcert`, self-signed). Probe it with `curl -sk https://127.0.0.1:5173/...`; plain `http://` curls fail even when the server is up. Keep frontend URLs, redirects, and browser visits on `127.0.0.1` rather than mixing it with `localhost`, because host-only auth cookies do not cross between them.
 - Phoenix remains on `http://127.0.0.1:4000` in development. Since the browser frontend and API use different schemes, development auth cookies are intentionally `Secure; SameSite=None` and browser API calls use credentialed CORS. E2E remains a separate HTTP-only `127.0.0.1` topology with `SameSite=Lax` cookies.
+- Invitation onboarding skips the external Discord authorization screen in development and returns through the normal callback automatically. Set `DISCORD_DEV_BYPASS=false` on `mise run phx-server` when manually testing the real Discord OAuth integration; sign-in and account-linking OAuth are never bypassed.
 - Unhandled server errors are console-logged (status, method, path, route, stack) by `logUnhandledServerError` in `apps/web/src/hooks.server.ts`, wrapped inside Sentry's `handleError`. The catch-all UI is the root `apps/web/src/routes/+error.svelte` plus `apps/web/src/error.html` (fallback for errors in `handle`, `+server.js`, or the root layout load, which no `+error.svelte` can render).
 
 ```bash

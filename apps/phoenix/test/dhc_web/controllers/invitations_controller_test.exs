@@ -222,7 +222,9 @@ defmodule DhcWeb.InvitationsControllerTest do
              } = invitation
 
       # No extra fields leak into the DTO.
-      assert Map.keys(invitation) |> Enum.sort() == ~w(createdAt email expiresAt id status)
+      assert Map.keys(invitation) |> Enum.sort() ==
+               ~w(createdAt email expiresAt id pricingTier status)
+
       assert is_nil(next_cursor)
     end
 
@@ -509,10 +511,10 @@ defmodule DhcWeb.InvitationsControllerTest do
 
       assert %{"data" => %{"accepted" => true, "memberId" => ^user_id}} = json_response(conn, 200)
 
-      # The customer_id pre-attached by insert_invitation_with_profile/1 is
-      # the one acceptance passes to the payment processor (no
-      # create_customer call when stripe_customer_id is already set).
-      refute_receive {:create_customer, _}
+      # Acceptance creates the Stripe customer (the adapter returns the
+      # setup-configured "cus_accept") and passes it to the payment
+      # processor.
+      assert_received {:create_customer, _}
 
       assert_receive {:provision_membership,
                       %{
@@ -574,12 +576,6 @@ defmodule DhcWeb.InvitationsControllerTest do
          %{conn: conn} do
       %{invitation_id: invitation_id, user_id: user_id} =
         insert_invitation_with_profile(email: "no-customer@example.com", waitlist: true)
-
-      # Strip the pre-attached customer so acceptance has to create one.
-      Repo.update_all(
-        from(i in Invitation, where: i.id == ^invitation_id),
-        set: [stripe_customer_id: nil]
-      )
 
       continuation_id = verified_continuation_for(invitation_id)
 
@@ -822,7 +818,7 @@ defmodule DhcWeb.InvitationsControllerTest do
       reused = hd(profiles)
 
       # The reused row is the one acceptance flipped to active + linked to
-      # the new Principal, carrying the Stripe customer from the invitation.
+      # the new Principal, carrying the Stripe customer acceptance created.
       assert reused.principal_id == user_id
       assert reused.is_active == true
       assert reused.customer_id == "cus_accept"
@@ -999,12 +995,8 @@ defmodule DhcWeb.InvitationsControllerTest do
   #
   # ALE-162 (ADR 0010): issue time is side-effect free — the helper only
   # inserts the invitation row. No `auth.users` row, no `user_profiles` row,
-  # no Stripe customer is created at issue time. The invitation carries the
-  # invite data (first/last/phone/DOB) and a pre-attached
-  # `stripe_customer_id` so acceptance tests can exercise the "reuse
-  # attached customer" path without standing up a Stripe Bypass. Tests that
-  # want to exercise the "acceptance creates the customer" path strip the
-  # customer_id after insert.
+  # and no Stripe customer is created at issue time; acceptance creates the
+  # customer (the adapter returns the setup-configured "cus_accept").
   #
   # `search_text` is a `GENERATED ALWAYS AS (to_tsvector(email)) STORED`
   # column, so it is intentionally omitted — Postgres populates it from
@@ -1033,8 +1025,7 @@ defmodule DhcWeb.InvitationsControllerTest do
         first_name: Keyword.get(attrs, :first_name, "Ada"),
         last_name: Keyword.get(attrs, :last_name, "Lovelace"),
         phone_number: Keyword.get(attrs, :phone_number, "+353810000000"),
-        date_of_birth: Keyword.get(attrs, :date_of_birth, ~D[1990-01-01]),
-        stripe_customer_id: Keyword.get(attrs, :stripe_customer_id, "cus_accept")
+        date_of_birth: Keyword.get(attrs, :date_of_birth, ~D[1990-01-01])
       }
       |> Repo.insert()
 
@@ -1102,8 +1093,7 @@ defmodule DhcWeb.InvitationsControllerTest do
         first_name: Keyword.get(attrs, :first_name, "Ada"),
         last_name: Keyword.get(attrs, :last_name, "Lovelace"),
         phone_number: Keyword.get(attrs, :phone_number, "+353810000000"),
-        date_of_birth: date_of_birth,
-        stripe_customer_id: Keyword.get(attrs, :stripe_customer_id, "cus_accept")
+        date_of_birth: date_of_birth
       }
       |> Repo.insert()
 
@@ -1181,8 +1171,7 @@ defmodule DhcWeb.InvitationsControllerTest do
         first_name: "Ada",
         last_name: "Lovelace",
         phone_number: "+353810000000",
-        date_of_birth: date_of_birth,
-        stripe_customer_id: "cus_accept"
+        date_of_birth: date_of_birth
       }
       |> Repo.insert()
 

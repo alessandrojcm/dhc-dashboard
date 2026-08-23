@@ -4527,7 +4527,7 @@ components:
         dateOfBirth: { type: string, format: date }
     OnboardingPaymentRequest:
       type: object
-      required: [nextOfKinName, nextOfKinPhone, stripeConfirmationToken]
+      required: [nextOfKinName, nextOfKinPhone]
       properties:
         nextOfKinName:
           type: string
@@ -4537,7 +4537,7 @@ components:
           minLength: 1
         stripeConfirmationToken:
           type: string
-          minLength: 1
+          description: Required for paid invitations and omitted for complimentary coach invitations.
         couponCode:
           type: string
         mandateContext:
@@ -4581,6 +4581,9 @@ components:
             expiresAt:
               type: string
               format: date-time
+            complimentary:
+              type: boolean
+              description: True when the invitation requires no payment details or membership fees.
     OnboardingSafeDiscordPresentation:
       type: object
       description: Mutable display snapshot for account recognition; never an identity binding fact.
@@ -4625,6 +4628,17 @@ components:
         dateOfBirth:
           type: string
           format: date
+        pricingTier:
+          type: string
+          enum:
+            - standard
+            - coach
+            - student
+          default: standard
+          description: >-
+            Membership discount tier resolved at acceptance. `coach` applies a
+            100%-off forever coupon to both subscriptions; `student` applies a
+            20%-off forever coupon scoped to the monthly product.
     InvitationCreateResponse:
       type: object
       properties:
@@ -4724,6 +4738,7 @@ components:
         - id
         - email
         - status
+        - pricingTier
         - expiresAt
         - createdAt
       properties:
@@ -4735,6 +4750,13 @@ components:
           format: email
         status:
           $ref: "#/components/schemas/InvitationStatus"
+        pricingTier:
+          type: string
+          enum:
+            - standard
+            - coach
+            - student
+          description: Membership discount tier applied at acceptance.
         expiresAt:
           type: string
           format: date-time
@@ -4747,6 +4769,7 @@ components:
         - id
         - status
         - invitationType
+        - pricingTier
         - expiresAt
       properties:
         id:
@@ -4757,6 +4780,13 @@ components:
         invitationType:
           type: string
           description: Domain invitation type used by the signup UI.
+        pricingTier:
+          type: string
+          enum:
+            - standard
+            - coach
+            - student
+          description: Membership discount tier applied at acceptance.
         expiresAt:
           type: string
           format: date-time
@@ -4793,6 +4823,9 @@ components:
         - annualFee
         - discountPercentage
       properties:
+        complimentary:
+          type: boolean
+          description: True when the invitation grants membership with no current or future membership fees.
         proratedPrice:
           $ref: "#/components/schemas/DineroAmount"
         proratedMonthlyPrice:
