@@ -5,9 +5,11 @@ import { Card } from "$lib/components/ui/card";
 import DatePicker from "$lib/components/ui/date-picker.svelte";
 import * as Field from "$lib/components/ui/field";
 import { Input } from "$lib/components/ui/input";
+import { Label } from "$lib/components/ui/label";
 import PhoneInput from "$lib/components/ui/phone-input.svelte";
 import { Separator } from "$lib/components/ui/separator";
 import * as Sheet from "$lib/components/ui/sheet/index.js";
+import * as RadioGroup from "$lib/components/ui/radio-group/index.js";
 import { fromDate, getLocalTimeZone } from "@internationalized/date";
 import dayjs from "dayjs";
 import { Info, Loader, Pencil, Plus, Trash2 } from "@lucide/svelte";
@@ -15,12 +17,25 @@ import { submitBulkInvites } from "./data.remote";
 import { adminInviteRemoteSchema } from "$lib/schemas/adminInvite";
 import * as v from "valibot";
 
+type PricingTier = "standard" | "coach" | "student";
+
+const pricingTiers: { value: PricingTier; label: string }[] = [
+	{ value: "standard", label: "No discount" },
+	{ value: "coach", label: "Coach discount (no fees)" },
+	{ value: "student", label: "Student discount (20% off monthly)" },
+];
+
+function tierLabel(value: PricingTier) {
+	return pricingTiers.find((tier) => tier.value === value)?.label ?? value;
+}
+
 type Invite = {
 	firstName: string;
 	lastName: string;
 	email: string;
 	phoneNumber: string;
 	dateOfBirth: string;
+	pricingTier: PricingTier;
 };
 
 type InviteFieldErrors = {
@@ -40,6 +55,7 @@ function emptyInvite(): Invite {
 		email: "",
 		phoneNumber: "",
 		dateOfBirth: "",
+		pricingTier: "standard",
 	};
 }
 
@@ -334,6 +350,36 @@ function handleBulkSubmit() {
 							<Field.Error>{error}</Field.Error>
 						{/each}
 					</Field.Field>
+					<Field.Field>
+						<Field.Label>Discount</Field.Label>
+						<RadioGroup.Root
+							name="pricingTier"
+							class="grid gap-2"
+							value={inviteFields.pricingTier}
+							onValueChange={(value) => {
+								if (
+									value === "standard" ||
+									value === "coach" ||
+									value === "student"
+								) {
+									inviteFields.pricingTier = value;
+								}
+							}}
+						>
+							{#each pricingTiers as tier (tier.value)}
+								<Label
+									for={`invite-tier-${tier.value}`}
+									class="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-border/80 px-3 py-2 transition-colors hover:bg-muted/50 has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary/5"
+								>
+									<RadioGroup.Item
+										value={tier.value}
+										id={`invite-tier-${tier.value}`}
+									/>
+									<span class="text-sm font-medium">{tier.label}</span>
+								</Label>
+							{/each}
+						</RadioGroup.Root>
+					</Field.Field>
 				</Field.Group>
 
 				<div class="space-y-2 pt-1">
@@ -381,6 +427,11 @@ function handleBulkSubmit() {
 												<span aria-hidden="true"> · </span>
 												{invite.phoneNumber}
 											</p>
+											{#if invite.pricingTier !== "standard"}
+												<p class="mt-1 text-xs font-medium text-foreground">
+													{tierLabel(invite.pricingTier)}
+												</p>
+											{/if}
 										</div>
 										<div class="flex shrink-0 gap-2">
 											<Button

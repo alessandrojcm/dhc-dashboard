@@ -4625,6 +4625,17 @@ components:
         dateOfBirth:
           type: string
           format: date
+        pricingTier:
+          type: string
+          enum:
+            - standard
+            - coach
+            - student
+          default: standard
+          description: >-
+            Membership discount tier resolved at acceptance. `coach` applies a
+            100%-off forever coupon to both subscriptions; `student` applies a
+            20%-off forever coupon scoped to the monthly product.
     InvitationCreateResponse:
       type: object
       properties:
@@ -4724,6 +4735,7 @@ components:
         - id
         - email
         - status
+        - pricingTier
         - expiresAt
         - createdAt
       properties:
@@ -4735,6 +4747,13 @@ components:
           format: email
         status:
           $ref: "#/components/schemas/InvitationStatus"
+        pricingTier:
+          type: string
+          enum:
+            - standard
+            - coach
+            - student
+          description: Membership discount tier applied at acceptance.
         expiresAt:
           type: string
           format: date-time
@@ -4747,6 +4766,7 @@ components:
         - id
         - status
         - invitationType
+        - pricingTier
         - expiresAt
       properties:
         id:
@@ -4757,6 +4777,13 @@ components:
         invitationType:
           type: string
           description: Domain invitation type used by the signup UI.
+        pricingTier:
+          type: string
+          enum:
+            - standard
+            - coach
+            - student
+          description: Membership discount tier applied at acceptance.
         expiresAt:
           type: string
           format: date-time

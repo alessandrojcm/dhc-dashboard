@@ -60,6 +60,7 @@ defmodule DhcWeb.InvitationsJSON do
       id: invitation.id,
       status: invitation.status,
       invitationType: invitation.invitation_type,
+      pricingTier: invitation.pricing_tier,
       expiresAt: invitation.expires_at
     }
   end
@@ -70,6 +71,7 @@ defmodule DhcWeb.InvitationsJSON do
       id: invitation.id,
       email: invitation.email,
       status: invitation.status,
+      pricingTier: invitation.pricing_tier,
       expiresAt: invitation.expires_at,
       createdAt: invitation.created_at
     }

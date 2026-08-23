@@ -80,6 +80,87 @@ test.describe("Invitation System", () => {
 		).toBeVisible({ timeout: 10000 });
 	});
 
+	test("issues a coach discount invitation from the discount radio", async ({
+		page,
+	}) => {
+		test.setTimeout(60_000);
+		// The invitations table only renders at the xl breakpoint.
+		await page.setViewportSize({ width: 1280, height: 720 });
+		await gotoHydrated(page, "/dashboard/members");
+		await page.getByRole("button", { name: "Invite Members" }).click();
+
+		const testEmail = `coach-invite-${Date.now()}@test.com`;
+		await page.getByLabel("First Name").fill(faker.person.firstName());
+		await page.getByLabel("Last Name").fill(faker.person.lastName());
+		await page.getByRole("textbox", { name: "Email" }).fill(testEmail);
+
+		const dateOfBirth = dayjs().subtract(25, "year");
+		await page.getByLabel("Date of birth").click();
+		await page
+			.getByLabel("Select a year")
+			.selectOption(dateOfBirth.year().toString());
+		await page
+			.getByLabel("Select a month")
+			.selectOption(dateOfBirth.format("M"));
+		await page
+			.getByRole("button", { name: dateOfBirth.format("dddd, MMMM D,") })
+			.click();
+
+		await page.getByLabel("Phone Number").fill("123456789");
+
+		// No discount is the default; switch to the coach discount radio.
+		await expect(
+			page.getByRole("radio", { name: "No discount" }),
+		).toBeChecked();
+		await page.getByRole("radio", { name: "Coach discount (no fees)" }).check();
+
+		await page.getByRole("button", { name: "Add invite" }).click();
+		await expect(page.getByText("Ready to send (1)")).toBeVisible();
+		await expect(
+			page
+				.getByRole("listitem")
+				.filter({ hasText: testEmail })
+				.getByText("Coach discount (no fees)"),
+		).toBeVisible();
+
+		await page.getByRole("button", { name: "Send 1 invitation" }).click();
+		await expect(
+			page.getByText(
+				"Invitations are being processed in the background. You will be notified when completed.",
+				{ exact: false },
+			),
+		).toBeVisible({ timeout: 10000 });
+
+		// The issued invitation shows its discount in the invitations table
+		// (the bulk invite worker may need a moment to insert the row).
+		await gotoHydrated(page, "/dashboard/members/invitations");
+		const search = page.getByRole("searchbox", {
+			name: "Search invitations",
+			exact: true,
+		});
+
+		await expect(async () => {
+			await search.fill(testEmail);
+			await page.getByRole("button", { name: "Search", exact: true }).click();
+			await expect(
+				page.getByRole("row").filter({ hasText: testEmail }),
+			).toBeVisible();
+		}).toPass({ timeout: 30_000 });
+
+		const row = page.getByRole("row").filter({ hasText: testEmail });
+		await expect(row.getByText("pending", { exact: true })).toBeVisible();
+		await expect(
+			row.getByText("Coach discount", { exact: true }),
+		).toBeVisible();
+
+		// Clean up the issued invitation so run-level counts stay stable.
+		await row.getByLabel("Delete invitation").click();
+		await expect(page.getByText("Invitation deleted")).toBeVisible();
+		await expect(
+			page.getByRole("row").filter({ hasText: testEmail }),
+		).not.toBeVisible();
+	});
+
 	test("should validate required fields when adding to list", async ({
 		page,
 	}) => {

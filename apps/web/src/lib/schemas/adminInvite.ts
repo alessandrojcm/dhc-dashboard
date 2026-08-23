@@ -1,6 +1,13 @@
 import * as v from "valibot";
 import { dobValidator, phoneNumberValidator } from "./commonValidators";
 
+// Membership discount tier indicated at issue time; Phoenix resolves the
+// matching private Stripe coupon at acceptance.
+const pricingTierSchema = v.optional(
+	v.picklist(["standard", "coach", "student"]),
+	"standard",
+);
+
 const adminInviteSchema = v.object({
 	firstName: v.pipe(v.string(), v.nonEmpty("First name is required.")),
 	lastName: v.pipe(v.string(), v.nonEmpty("Last name is required.")),
@@ -12,6 +19,7 @@ const adminInviteSchema = v.object({
 	),
 	phoneNumber: phoneNumberValidator(),
 	dateOfBirth: dobValidator,
+	pricingTier: pricingTierSchema,
 });
 
 const adminInviteRemoteSchema = v.object({

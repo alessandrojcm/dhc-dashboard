@@ -100,6 +100,19 @@ if e2e_server? do
   config :dhc, :onboarding_finalizer, Dhc.Onboarding.Finalizer.E2E
   config :dhc, :acceptance_recovery_delay_seconds, 1
 
+  membership_tier_coupons =
+    [
+      coach: System.get_env("STRIPE_COACH_COUPON_ID"),
+      student: System.get_env("STRIPE_STUDENT_COUPON_ID")
+    ]
+    |> Enum.reject(fn {_tier, coupon_id} ->
+      is_nil(coupon_id) or String.trim(coupon_id) == ""
+    end)
+
+  if membership_tier_coupons != [] do
+    config :dhc, :membership_tier_coupons, membership_tier_coupons
+  end
+
   config :dhc, Oban,
     repo: Dhc.Repo,
     testing: :disabled,
