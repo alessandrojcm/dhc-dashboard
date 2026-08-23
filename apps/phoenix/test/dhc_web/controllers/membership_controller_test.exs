@@ -117,7 +117,10 @@ defmodule DhcWeb.MembershipControllerTest do
     } do
       member = insert_member(is_active: true, customer_id: "cus_active")
 
-      expect_subscription_list(bypass, "cus_active", [active_membership_subscription()])
+      expect_subscription_list(bypass, "cus_active", [
+        active_membership_subscription("standard_membership_fee", "sub_monthly"),
+        active_membership_subscription("annual_membership_fee_revised", "sub_annual")
+      ])
 
       conn =
         conn
@@ -160,7 +163,10 @@ defmodule DhcWeb.MembershipControllerTest do
       # reactivated into a second set of subscriptions.
       member = insert_member(is_active: false, customer_id: "cus_drift")
 
-      expect_subscription_list(bypass, "cus_drift", [active_membership_subscription()])
+      expect_subscription_list(bypass, "cus_drift", [
+        active_membership_subscription("standard_membership_fee", "sub_monthly"),
+        active_membership_subscription("annual_membership_fee_revised", "sub_annual")
+      ])
 
       conn =
         conn
@@ -242,6 +248,107 @@ defmodule DhcWeb.MembershipControllerTest do
 
   describe "reactivate happy path" do
     setup :stripe_bypass
+
+    test "creates only the lapsed subscription when the other membership subscription is active",
+         %{
+           conn: conn,
+           bypass: bypass
+         } do
+      member = insert_member(is_active: false, customer_id: "cus_partial_lapse")
+      start_date = Date.utc_today()
+
+      expect_subscription_list(bypass, "cus_partial_lapse", [
+        active_membership_subscription("standard_membership_fee", "sub_monthly_active"),
+        lapsed_membership_subscription("annual_membership_fee_revised", "sub_annual_lapsed")
+      ])
+
+      expect_saved_sepa_method(bypass, "cus_partial_lapse", "pm_sepa_saved")
+      expect_membership_prices(bypass, "price_monthly", "price_annual")
+
+      Bypass.expect_once(bypass, "POST", "/v1/subscriptions", fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        params = URI.decode_query(body)
+
+        assert params["items[0][price]"] == "price_annual"
+        assert params["metadata[kind]"] == "annual"
+        refute Map.has_key?(params, "billing_cycle_anchor")
+
+        stripe_json(conn, incomplete_subscription_json("sub_annual_reactivated"))
+      end)
+
+      Bypass.expect_once(
+        bypass,
+        "POST",
+        "/v1/payment_intents/pi_sub_annual_reactivated/confirm",
+        fn conn ->
+          stripe_json(conn, %{
+            "id" => "pi_sub_annual_reactivated",
+            "status" => "succeeded"
+          })
+        end
+      )
+
+      conn = post_reactivate(conn, member.auth_user_id, start_date)
+
+      assert %{
+               "data" => %{
+                 "paymentState" => "succeeded",
+                 "monthlySubscriptionId" => "sub_monthly_active",
+                 "annualSubscriptionId" => "sub_annual_reactivated"
+               }
+             } = json_response(conn, 200)
+
+      assert_member_active("cus_partial_lapse")
+    end
+
+    test "reuses an active annual subscription when the monthly subscription has lapsed", %{
+      conn: conn,
+      bypass: bypass
+    } do
+      member = insert_member(is_active: false, customer_id: "cus_monthly_lapse")
+      start_date = Date.utc_today()
+
+      expect_subscription_list(bypass, "cus_monthly_lapse", [
+        lapsed_membership_subscription("standard_membership_fee", "sub_monthly_lapsed"),
+        active_membership_subscription("annual_membership_fee_revised", "sub_annual_active")
+      ])
+
+      expect_saved_sepa_method(bypass, "cus_monthly_lapse", "pm_sepa_saved")
+      expect_membership_prices(bypass, "price_monthly", "price_annual")
+
+      Bypass.expect_once(bypass, "POST", "/v1/subscriptions", fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        params = URI.decode_query(body)
+
+        assert params["items[0][price]"] == "price_monthly"
+        assert params["metadata[kind]"] == "monthly"
+        assert Map.has_key?(params, "billing_cycle_anchor")
+
+        stripe_json(conn, incomplete_subscription_json("sub_monthly_reactivated"))
+      end)
+
+      Bypass.expect_once(
+        bypass,
+        "POST",
+        "/v1/payment_intents/pi_sub_monthly_reactivated/confirm",
+        fn conn ->
+          stripe_json(conn, %{
+            "id" => "pi_sub_monthly_reactivated",
+            "status" => "succeeded"
+          })
+        end
+      )
+
+      conn = post_reactivate(conn, member.auth_user_id, start_date)
+
+      assert %{
+               "data" => %{
+                 "paymentState" => "succeeded",
+                 "monthlySubscriptionId" => "sub_monthly_reactivated",
+                 "annualSubscriptionId" => "sub_annual_active"
+               }
+             } = json_response(conn, 200)
+    end
 
     test "creates both subscriptions against the saved SEPA method and confirms off-session", %{
       conn: conn,
@@ -1492,14 +1599,27 @@ defmodule DhcWeb.MembershipControllerTest do
   defp assert_optional_unix(nil, nil), do: :ok
   defp assert_optional_unix(actual, expected), do: assert(actual == Integer.to_string(expected))
 
-  defp active_membership_subscription do
+  defp active_membership_subscription(lookup_key, subscription_id) do
     %{
-      "id" => "sub_membership",
+      "id" => subscription_id,
       "status" => "active",
       "pause_collection" => nil,
       "items" => %{
         "data" => [
-          %{"price" => %{"lookup_key" => "standard_membership_fee"}}
+          %{"price" => %{"lookup_key" => lookup_key}}
+        ]
+      }
+    }
+  end
+
+  defp lapsed_membership_subscription(lookup_key, subscription_id) do
+    %{
+      "id" => subscription_id,
+      "status" => "canceled",
+      "pause_collection" => nil,
+      "items" => %{
+        "data" => [
+          %{"price" => %{"lookup_key" => lookup_key}}
         ]
       }
     }
