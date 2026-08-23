@@ -72,8 +72,10 @@ defmodule Dhc.Membership do
   end
 
   @doc """
-  Reactivates an inactive member by creating fresh monthly + annual membership
-  subscriptions against their saved SEPA payment method (ALE-251).
+  Reactivates an inactive member by ensuring they have live monthly + annual
+  membership subscriptions against their saved SEPA payment method (ALE-251).
+  If one subscription is still active, it is reused and only the lapsed one is
+  recreated.
 
   Stripe is the source of truth (ADR-0008): the guard lists the customer's
   live subscriptions, so a member whose local `is_active` flag lags behind a
@@ -88,14 +90,16 @@ defmodule Dhc.Membership do
     with {:ok, member} <- load_member_customer(member_id),
          {:ok, parsed_start_date} <- parse_start_date(start_date),
          {:ok, annual_fee_mode} <- parse_annual_fee_mode(attrs["annualFeeMode"]),
-         :ok <- ensure_reactivatable(member.customer_id, Date.to_iso8601(parsed_start_date)),
+         {:ok, existing_subscriptions} <-
+           ensure_reactivatable(member.customer_id, Date.to_iso8601(parsed_start_date)),
          {:ok, result} <-
            Reactivation.activate(%{
              member_id: member.id,
              customer_id: member.customer_id,
              operator_principal_id: Map.get(attrs, "operatorPrincipalId"),
              start_date: parsed_start_date,
-             annual_fee_mode: annual_fee_mode
+             annual_fee_mode: annual_fee_mode,
+             existing_subscriptions: existing_subscriptions
            }) do
       restore_member_access(member_id, member.profile_id)
       {:ok, result}
@@ -260,9 +264,11 @@ defmodule Dhc.Membership do
     end
   end
 
-  # Rejects members whose Stripe customer still holds a live membership
-  # subscription (active, trialing, or paused). Stripe is authoritative —
-  # the local `is_active` projection may lag behind it.
+  # Rejects members whose Stripe customer still holds complete live membership
+  # coverage (active or trialing) or a paused subscription. Partial coverage is
+  # returned by price kind so reactivation can reuse it and create only the
+  # missing subscription. Stripe is authoritative — the local `is_active`
+  # projection may lag behind it.
   #
   # Subscriptions tagged as belonging to THIS reactivation (same purpose and
   # start date) are exempt: an identical retry must reach Stripe's idempotency
@@ -271,20 +277,23 @@ defmodule Dhc.Membership do
   defp ensure_reactivatable(customer_id, start_date_iso) do
     case Operations.get_subscriptions(%{}, customer: customer_id, status: "all", limit: 100) do
       {:ok, %{"data" => subscriptions}} ->
-        blocking? = fn subscription ->
-          covering_membership_subscription?(subscription) and
-            not owned_by_this_reactivation?(subscription, start_date_iso)
-        end
+        existing_subscriptions =
+          subscriptions
+          |> Enum.filter(fn subscription ->
+            covering_membership_subscription?(subscription) and
+              not owned_by_this_reactivation?(subscription, start_date_iso)
+          end)
+          |> covering_subscriptions_by_kind()
 
         cond do
           Enum.any?(subscriptions, &paused_membership_subscription?/1) ->
             {:error, :membership_paused}
 
-          Enum.any?(subscriptions, blocking?) ->
+          complete_membership_coverage?(existing_subscriptions) ->
             {:error, :membership_active}
 
           true ->
-            :ok
+            {:ok, existing_subscriptions}
         end
 
       {:error, reason} ->
@@ -312,6 +321,35 @@ defmodule Dhc.Membership do
   defp covering_membership_subscription?(subscription) do
     membership_price_subscription?(subscription) and
       Map.get(subscription, "status") in @covering_statuses
+  end
+
+  defp covering_subscriptions_by_kind(subscriptions) do
+    Enum.reduce(subscriptions, %{}, fn subscription, coverage ->
+      subscription
+      |> membership_subscription_kinds()
+      |> Enum.reduce(coverage, &Map.put_new(&2, &1, subscription))
+    end)
+  end
+
+  defp membership_subscription_kinds(subscription) do
+    monthly_lookup_key = LookupKeys.monthly()
+    annual_lookup_key = LookupKeys.annual()
+
+    subscription
+    |> get_in(["items", "data"])
+    |> List.wrap()
+    |> Enum.flat_map(fn item ->
+      case get_in(item, ["price", "lookup_key"]) do
+        ^monthly_lookup_key -> [:monthly]
+        ^annual_lookup_key -> [:annual]
+        _other -> []
+      end
+    end)
+    |> Enum.uniq()
+  end
+
+  defp complete_membership_coverage?(subscriptions) do
+    Map.has_key?(subscriptions, :monthly) and Map.has_key?(subscriptions, :annual)
   end
 
   defp membership_price_subscription?(%{"items" => %{"data" => items}}) when is_list(items) do

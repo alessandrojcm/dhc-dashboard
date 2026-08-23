@@ -78,8 +78,8 @@ defmodule Dhc.Membership.Reactivation do
     result =
       with {:ok, payment_method_id} <- find_saved_sepa_method(customer_id),
            {:ok, prices} <- membership_prices(),
-           {:ok, monthly} <-
-             create_subscription(
+           {:ok, monthly, monthly_created?} <-
+             existing_or_create_subscription(
                :monthly,
                customer_id,
                payment_method_id,
@@ -88,7 +88,7 @@ defmodule Dhc.Membership.Reactivation do
                attrs
              ) do
         finish_activation(
-          monthly,
+          {monthly, monthly_created?},
           customer_id,
           payment_method_id,
           prices.annual,
@@ -125,7 +125,7 @@ defmodule Dhc.Membership.Reactivation do
   end
 
   defp finish_activation(
-         monthly,
+         {monthly, monthly_created?},
          customer_id,
          payment_method_id,
          annual_price_id,
@@ -134,11 +134,14 @@ defmodule Dhc.Membership.Reactivation do
          annual_fee_mode,
          member_id
        ) do
-    monthly_outcome = maybe_confirm_first_invoice(monthly, payment_method_id, attrs)
+    monthly_outcome =
+      if monthly_created?,
+        do: maybe_confirm_first_invoice(monthly, payment_method_id, attrs),
+        else: :ok
 
     with :ok <- continue_after_outcome(monthly_outcome),
-         {:ok, annual} <-
-           create_subscription(
+         {:ok, annual, annual_created?} <-
+           existing_or_create_subscription(
              :annual,
              customer_id,
              payment_method_id,
@@ -146,7 +149,10 @@ defmodule Dhc.Membership.Reactivation do
              start_date,
              attrs
            ) do
-      annual_outcome = annual_outcome(annual, payment_method_id, attrs, annual_fee_mode)
+      annual_outcome =
+        if annual_created?,
+          do: annual_outcome(annual, payment_method_id, attrs, annual_fee_mode),
+          else: :ok
 
       {:ok,
        build_result(member_id, monthly, annual, combine_outcomes(monthly_outcome, annual_outcome))}
@@ -489,6 +495,33 @@ defmodule Dhc.Membership.Reactivation do
 
       _ ->
         {:error, {:invalid_price_response, lookup_key}}
+    end
+  end
+
+  defp existing_or_create_subscription(
+         kind,
+         customer_id,
+         payment_method_id,
+         price_id,
+         start_date,
+         attrs
+       ) do
+    case get_in(attrs, [:existing_subscriptions, kind]) do
+      %{"id" => subscription_id} = subscription when is_binary(subscription_id) ->
+        {:ok, subscription, false}
+
+      _missing ->
+        case create_subscription(
+               kind,
+               customer_id,
+               payment_method_id,
+               price_id,
+               start_date,
+               attrs
+             ) do
+          {:ok, subscription} -> {:ok, subscription, true}
+          {:error, reason} -> {:error, reason}
+        end
     end
   end
 
