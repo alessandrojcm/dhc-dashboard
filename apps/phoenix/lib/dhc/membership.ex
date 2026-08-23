@@ -141,11 +141,15 @@ defmodule Dhc.Membership do
           {:ok, map()} | {:error, :not_found | :stripe_error}
   def reactivation_preview(member_id) do
     with {:ok, member} <- load_member_customer(member_id),
-         {:ok, saved_method} <- Reactivation.saved_sepa_method(member.customer_id) do
+         {:ok, saved_method} <- Reactivation.saved_sepa_method(member.customer_id),
+         {:ok, subscriptions} <- list_customer_subscriptions(member.customer_id) do
+      coverage = covering_subscriptions_by_kind(subscriptions)
+
       {:ok,
        %{
          memberId: member.id,
-         savedPaymentMethod: payment_method_summary(saved_method)
+         savedPaymentMethod: payment_method_summary(saved_method),
+         membershipCoverage: membership_coverage_summary(coverage)
        }}
     end
   end
@@ -178,10 +182,16 @@ defmodule Dhc.Membership do
   def reactivation_amounts_preview(member_id, %{} = params) do
     # The member load doubles as the 404 guard; amounts themselves are
     # customer-independent (lookup-key prices + date anchors).
-    with {:ok, _member} <- load_member_customer(member_id),
+    with {:ok, member} <- load_member_customer(member_id),
          {:ok, parsed_start_date} <- parse_start_date(Map.get(params, "startDate")),
-         {:ok, annual_fee_mode} <- parse_annual_fee_mode(params["annualFeeMode"]) do
-      Reactivation.preview_amounts(parsed_start_date, annual_fee_mode)
+         {:ok, annual_fee_mode} <- parse_annual_fee_mode(params["annualFeeMode"]),
+         {:ok, subscriptions} <- list_customer_subscriptions(member.customer_id) do
+      active_kinds =
+        subscriptions
+        |> covering_subscriptions_by_kind()
+        |> Map.keys()
+
+      Reactivation.preview_amounts(parsed_start_date, annual_fee_mode, active_kinds)
     end
   end
 
@@ -275,8 +285,8 @@ defmodule Dhc.Membership do
   # layer and replay the stored responses instead of being rejected — this is
   # also what recovers a partially-completed reactivation.
   defp ensure_reactivatable(customer_id, start_date_iso) do
-    case Operations.get_subscriptions(%{}, customer: customer_id, status: "all", limit: 100) do
-      {:ok, %{"data" => subscriptions}} ->
+    case list_customer_subscriptions(customer_id) do
+      {:ok, subscriptions} ->
         existing_subscriptions =
           subscriptions
           |> Enum.filter(fn subscription ->
@@ -296,10 +306,28 @@ defmodule Dhc.Membership do
             {:ok, existing_subscriptions}
         end
 
+      {:error, :stripe_error} = error ->
+        error
+    end
+  end
+
+  defp list_customer_subscriptions(customer_id) do
+    case Operations.get_subscriptions(%{}, customer: customer_id, status: "all", limit: 100) do
+      {:ok, %{"data" => subscriptions}} when is_list(subscriptions) ->
+        {:ok, subscriptions}
+
       {:error, reason} ->
-        Logger.error("[membership] Stripe subscription guard failed",
+        Logger.error("[membership] Stripe subscription lookup failed",
           customer_id: customer_id,
           reason: inspect(reason)
+        )
+
+        {:error, :stripe_error}
+
+      other ->
+        Logger.error("[membership] Unexpected Stripe subscription response",
+          customer_id: customer_id,
+          reason: inspect(other)
         )
 
         {:error, :stripe_error}
@@ -324,7 +352,9 @@ defmodule Dhc.Membership do
   end
 
   defp covering_subscriptions_by_kind(subscriptions) do
-    Enum.reduce(subscriptions, %{}, fn subscription, coverage ->
+    subscriptions
+    |> Enum.filter(&covering_membership_subscription?/1)
+    |> Enum.reduce(%{}, fn subscription, coverage ->
       subscription
       |> membership_subscription_kinds()
       |> Enum.reduce(coverage, &Map.put_new(&2, &1, subscription))
@@ -350,6 +380,17 @@ defmodule Dhc.Membership do
 
   defp complete_membership_coverage?(subscriptions) do
     Map.has_key?(subscriptions, :monthly) and Map.has_key?(subscriptions, :annual)
+  end
+
+  defp membership_coverage_summary(subscriptions) do
+    %{
+      monthly: coverage_status(subscriptions, :monthly),
+      annual: coverage_status(subscriptions, :annual)
+    }
+  end
+
+  defp coverage_status(subscriptions, kind) do
+    if Map.has_key?(subscriptions, kind), do: "active", else: "lapsed"
   end
 
   defp membership_price_subscription?(%{"items" => %{"data" => items}}) when is_list(items) do

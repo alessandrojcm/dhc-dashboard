@@ -35,6 +35,8 @@ type SavedPaymentMethod = NonNullable<
 // Mirrors the Stripe-computed amounts projected by
 // GET /members/{memberId}/membership/reactivation-preview/amounts (ALE-254).
 type ReactivationAmounts = MembershipReactivationPreviewAmountsResponse["data"];
+type MembershipCoverage =
+	MembershipReactivationPreviewResponse["data"]["membershipCoverage"];
 
 // ALE-253: how the annual membership fee begins — charged prorated now, or
 // deferred to next January's anchor behind a free trial.
@@ -55,6 +57,7 @@ type Props = {
 	}) => void;
 	isPending: boolean;
 	savedPaymentMethod?: SavedPaymentMethod | null;
+	membershipCoverage?: MembershipCoverage;
 	isLoadingPreview?: boolean;
 	/** The saved-method preview itself failed to load (e.g. Stripe 502). */
 	previewError?: boolean;
@@ -78,6 +81,7 @@ let {
 	onConfirm,
 	isPending,
 	savedPaymentMethod,
+	membershipCoverage = { monthly: "lapsed", annual: "lapsed" },
 	isLoadingPreview = false,
 	previewError = false,
 	errorDetail = null,
@@ -105,6 +109,9 @@ let annualFeeMode = $state<AnnualFeeMode>("prorated_now");
 
 const startDateIso = $derived(toCalendarDate(selectedDate).toString());
 const deferredAnnual = $derived(annualFeeMode === "deferred_next_year");
+const monthlyActive = $derived(membershipCoverage.monthly === "active");
+const annualActive = $derived(membershipCoverage.annual === "active");
+const completeCoverage = $derived(monthlyActive && annualActive);
 const futureStart = $derived(dayjs(startDateIso).isAfter(dayjs(), "day"));
 const formattedStartDate = $derived(dayjs(startDateIso).format("D MMM YYYY"));
 const nextMonthlyBillingDate = $derived(
@@ -129,7 +136,8 @@ const methodUnavailable = $derived(
 function handleConfirm(event: Event) {
 	event.preventDefault();
 	event.stopPropagation();
-	if (!selectedDate || isPending || methodUnavailable) return;
+	if (!selectedDate || isPending || methodUnavailable || completeCoverage)
+		return;
 	onConfirm({ startDate: startDateIso, annualFeeMode });
 }
 
@@ -164,9 +172,20 @@ function handleDateChange(date: Date) {
 		<Dialog.Header>
 			<Dialog.Title>Reactivate membership</Dialog.Title>
 			<Dialog.Description>
-				Starts new monthly and annual membership subscriptions, charged
-				automatically to the member’s saved SEPA payment method. They don’t need
-				to enter their bank details again.
+				{#if completeCoverage}
+					Stripe already reports both membership subscriptions as active.
+					Nothing will be recreated or charged.
+				{:else if monthlyActive}
+					Keeps the active monthly subscription unchanged and reactivates only
+					the annual subscription using the member’s saved SEPA payment method.
+				{:else if annualActive}
+					Keeps the active annual subscription unchanged and reactivates only
+					the monthly subscription using the member’s saved SEPA payment method.
+				{:else}
+					Starts new monthly and annual membership subscriptions, charged
+					automatically to the member’s saved SEPA payment method. They don’t
+					need to enter their bank details again.
+				{/if}
 			</Dialog.Description>
 		</Dialog.Header>
 
@@ -203,6 +222,31 @@ function handleDateChange(date: Date) {
 			{/if}
 		{:else if savedPaymentMethod}
 			<div class="space-y-4">
+				<div class="grid gap-2 sm:grid-cols-2" aria-label="Membership coverage">
+					<div
+						class="rounded-xl border border-border/80 p-3"
+						data-testid="monthly-coverage"
+					>
+						<p class="text-sm font-medium">Monthly subscription</p>
+						<p class="mt-1 text-xs text-muted-foreground">
+							{monthlyActive
+								? "Already active — kept unchanged"
+								: "Will be reactivated"}
+						</p>
+					</div>
+					<div
+						class="rounded-xl border border-border/80 p-3"
+						data-testid="annual-coverage"
+					>
+						<p class="text-sm font-medium">Annual subscription</p>
+						<p class="mt-1 text-xs text-muted-foreground">
+							{annualActive
+								? "Already active — kept unchanged"
+								: "Will be reactivated"}
+						</p>
+					</div>
+				</div>
+
 				<div
 					class="flex items-center gap-3 rounded-xl border border-border/80 bg-muted/40 p-3"
 					data-slot="saved-payment-method"
@@ -238,65 +282,73 @@ function handleDateChange(date: Date) {
 						onDateChange={handleDateChange}
 					/>
 					<p class="text-xs leading-4 text-muted-foreground">
-						Billing starts on this date. The first monthly charge is prorated
-						from this date to the first of the following month, then full months
-						bill from there.
-						{deferredAnnual
-							? "The annual fee isn’t charged today; annual billing begins next January."
-							: "The annual fee is charged prorated for the rest of this year."}
+						Billing starts on this date.
+						{#if !monthlyActive}
+							The first monthly charge is prorated from this date to the first
+							of the following month, then full months bill from there.
+						{/if}
+						{#if !annualActive}
+							{deferredAnnual
+								? "The annual fee isn’t charged today; annual billing begins next January."
+								: "The annual fee is charged prorated for the rest of this year."}
+						{/if}
 						Allowed window: {dayjs().format("MMM D, YYYY")} to {dayjs()
 							.add(MAX_START_DAYS_AHEAD, "day")
 							.format("MMM D, YYYY")}.
 					</p>
 				</div>
 
-				<fieldset class="space-y-2">
-					<legend class="text-sm font-medium">Annual fee</legend>
-					<RadioGroup.Root
-						name="annualFeeMode"
-						class="grid gap-2"
-						value={annualFeeMode}
-						onValueChange={handleModeChange}
-					>
-						<Label
-							for="annual-fee-prorated-now"
-							class="flex min-h-12 cursor-pointer items-start gap-3 rounded-xl border border-border/80 p-3 transition-colors hover:bg-muted/50 has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary/5"
+				{#if !annualActive}
+					<fieldset class="space-y-2">
+						<legend class="text-sm font-medium">Annual fee</legend>
+						<RadioGroup.Root
+							name="annualFeeMode"
+							class="grid gap-2"
+							value={annualFeeMode}
+							onValueChange={handleModeChange}
 						>
-							<RadioGroup.Item
-								value="prorated_now"
-								id="annual-fee-prorated-now"
-								class="mt-0.5"
-							/>
-							<span>
-								<span class="block font-medium">Charge now, prorated</span>
-								<span
-									class="mt-0.5 block text-sm font-normal text-muted-foreground"
-								>
-									The annual fee is charged prorated for the rest of this year,
-									then renews each January.
+							<Label
+								for="annual-fee-prorated-now"
+								class="flex min-h-12 cursor-pointer items-start gap-3 rounded-xl border border-border/80 p-3 transition-colors hover:bg-muted/50 has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary/5"
+							>
+								<RadioGroup.Item
+									value="prorated_now"
+									id="annual-fee-prorated-now"
+									class="mt-0.5"
+								/>
+								<span>
+									<span class="block font-medium">Charge now, prorated</span>
+									<span
+										class="mt-0.5 block text-sm font-normal text-muted-foreground"
+									>
+										The annual fee is charged prorated for the rest of this
+										year, then renews each January.
+									</span>
 								</span>
-							</span>
-						</Label>
-						<Label
-							for="annual-fee-deferred"
-							class="flex min-h-12 cursor-pointer items-start gap-3 rounded-xl border border-border/80 p-3 transition-colors hover:bg-muted/50 has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary/5"
-						>
-							<RadioGroup.Item
-								value="deferred_next_year"
-								id="annual-fee-deferred"
-								class="mt-0.5"
-							/>
-							<span>
-								<span class="block font-medium">Defer until next January</span>
-								<span
-									class="mt-0.5 block text-sm font-normal text-muted-foreground"
-								>
-									Nothing is charged today. Annual billing begins next January.
+							</Label>
+							<Label
+								for="annual-fee-deferred"
+								class="flex min-h-12 cursor-pointer items-start gap-3 rounded-xl border border-border/80 p-3 transition-colors hover:bg-muted/50 has-[[data-state=checked]]:border-primary has-[[data-state=checked]]:bg-primary/5"
+							>
+								<RadioGroup.Item
+									value="deferred_next_year"
+									id="annual-fee-deferred"
+									class="mt-0.5"
+								/>
+								<span>
+									<span class="block font-medium">Defer until next January</span
+									>
+									<span
+										class="mt-0.5 block text-sm font-normal text-muted-foreground"
+									>
+										Nothing is charged today. Annual billing begins next
+										January.
+									</span>
 								</span>
-							</span>
-						</Label>
-					</RadioGroup.Root>
-				</fieldset>
+							</Label>
+						</RadioGroup.Root>
+					</fieldset>
+				{/if}
 
 				{#if amounts || isLoadingAmounts}
 					<div
@@ -317,7 +369,17 @@ function handleDateChange(date: Date) {
 								<div class="flex items-start justify-between gap-4">
 									<div>
 										<p class="font-semibold">Due today</p>
-										{#if futureStart}
+										{#if monthlyActive}
+											<p class="mt-1 text-xs leading-5 text-muted-foreground">
+												{formatMoney(amounts.proratedAnnualPrice)} for this year
+											</p>
+										{:else if annualActive}
+											<p class="mt-1 text-xs leading-5 text-muted-foreground">
+												{futureStart
+													? "Monthly billing begins on the selected start date"
+													: `${formatMoney(amounts.proratedMonthlyPrice)} for this month`}
+											</p>
+										{:else if futureStart}
 											<p class="mt-1 text-xs leading-5 text-muted-foreground">
 												{formatMoney(amounts.proratedAnnualPrice)} for this year
 											</p>
@@ -334,7 +396,7 @@ function handleDateChange(date: Date) {
 									>
 								</div>
 
-								{#if futureStart}
+								{#if futureStart && !monthlyActive}
 									<div
 										class="flex items-start justify-between gap-4 border-t border-border/70 pt-4"
 									>
@@ -355,33 +417,45 @@ function handleDateChange(date: Date) {
 								<div
 									class="grid gap-3 border-t border-border/70 pt-4 sm:grid-cols-2"
 								>
-									<div>
-										<p class="text-sm font-medium">Then monthly</p>
-										<p class="mt-1 font-semibold">
-											{formatMoney(amounts.monthlyFee)}
-										</p>
-										<p class="mt-1 text-xs text-muted-foreground">
-											From {nextMonthlyBillingDate}
-										</p>
-									</div>
-									<div>
-										<p class="text-sm font-medium">Then annually</p>
-										<p class="mt-1 font-semibold">
-											{formatMoney(amounts.annualFee)}
-										</p>
-										<p class="mt-1 text-xs text-muted-foreground">
-											From {nextAnnualBillingDate}
-										</p>
-									</div>
+									{#if !monthlyActive}
+										<div>
+											<p class="text-sm font-medium">Then monthly</p>
+											<p class="mt-1 font-semibold">
+												{formatMoney(amounts.monthlyFee)}
+											</p>
+											<p class="mt-1 text-xs text-muted-foreground">
+												From {nextMonthlyBillingDate}
+											</p>
+										</div>
+									{/if}
+									{#if !annualActive}
+										<div>
+											<p class="text-sm font-medium">Then annually</p>
+											<p class="mt-1 font-semibold">
+												{formatMoney(amounts.annualFee)}
+											</p>
+											<p class="mt-1 text-xs text-muted-foreground">
+												From {nextAnnualBillingDate}
+											</p>
+										</div>
+									{/if}
 								</div>
 							</div>
 							<p class="mt-2 text-xs leading-4 text-muted-foreground">
-								Computed by Stripe: monthly billing is prorated from the
-								selected start date to the first of the following month, then
-								renews on the first of each month;
-								{deferredAnnual
-									? "the annual fee first bills at next January’s renewal date and renews each year after."
-									: "the annual fee is charged prorated for the rest of this year and renews each January."}
+								Computed by Stripe for the subscription{monthlyActive ||
+								annualActive
+									? ""
+									: "s"} being reactivated.
+								{#if !monthlyActive}
+									Monthly billing is prorated from the selected start date to
+									the first of the following month, then renews on the first of
+									each month.
+								{/if}
+								{#if !annualActive}
+									{deferredAnnual
+										? "The annual fee first bills at next January’s renewal date and renews each year after."
+										: "The annual fee is charged prorated for the rest of this year and renews each January."}
+								{/if}
 							</p>
 						{/if}
 					</div>
@@ -412,7 +486,8 @@ function handleDateChange(date: Date) {
 				disabled={isPending ||
 					isLoadingPreview ||
 					previewError ||
-					methodUnavailable}
+					methodUnavailable ||
+					completeCoverage}
 			>
 				{#if isPending}
 					<LoaderCircle class="size-4" />

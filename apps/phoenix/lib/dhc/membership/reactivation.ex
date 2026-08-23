@@ -193,7 +193,11 @@ defmodule Dhc.Membership.Reactivation do
   Any Stripe failure aborts the whole computation with `{:error,
   :stripe_error}`; the UI hides the amounts and keeps the form usable.
   """
-  @spec preview_amounts(Date.t(), :prorated_now | :deferred_next_year) ::
+  @spec preview_amounts(
+          Date.t(),
+          :prorated_now | :deferred_next_year,
+          [:monthly | :annual]
+        ) ::
           {:ok,
            %{
              dueToday: %{amount: non_neg_integer(), currency: String.t(), precision: 2},
@@ -211,14 +215,18 @@ defmodule Dhc.Membership.Reactivation do
              annualFee: %{amount: non_neg_integer(), currency: String.t(), precision: 2}
            }}
           | {:error, :stripe_error}
-  def preview_amounts(%Date{} = start_date, annual_fee_mode \\ :prorated_now) do
+  def preview_amounts(
+        %Date{} = start_date,
+        annual_fee_mode \\ :prorated_now,
+        active_kinds \\ []
+      ) do
     # membership_prices/0 models internal failure shapes for activate/1's
     # logging; a preview must collapse every Stripe failure into the single
     # error the API contract exposes (a partial price list is as useless as
     # no amounts at all).
     case membership_prices() do
       {:ok, prices} ->
-        run_amount_previews(prices, start_date, annual_fee_mode)
+        run_amount_previews(prices, start_date, annual_fee_mode, active_kinds)
 
       {:error, reason} ->
         Logger.error("[membership.reactivation] Membership price lookup failed",
@@ -229,7 +237,7 @@ defmodule Dhc.Membership.Reactivation do
     end
   end
 
-  defp run_amount_previews(prices, %Date{} = start_date, mode) do
+  defp run_amount_previews(prices, %Date{} = start_date, mode, active_kinds) do
     # Each mode mirrors its own creation-time parameters: prorated resolves
     # billing_cycle_anchor_config to creation time-of-day; deferred pins
     # trial_end to midnight of the same January date.
@@ -242,27 +250,41 @@ defmodule Dhc.Membership.Reactivation do
 
     # The prorated-now annual first invoice exists only in that mode; in
     # deferred mode there is no annual charge today to preview.
-    calls =
-      [
-        monthly_initial: fn ->
-          preview_invoice(prices.monthly, monthly_preview_opts(start_date, monthly_anchor))
-        end,
-        monthly_recurring: fn ->
-          preview_invoice(prices.monthly, start_date: monthly_anchor)
-        end,
-        annual_recurring: fn ->
-          preview_invoice(prices.annual, start_date: annual_anchor)
-        end
-      ] ++
-        if mode == :prorated_now do
-          [
-            annual_initial: fn ->
-              preview_invoice(prices.annual, billing_cycle_anchor: annual_anchor)
-            end
-          ]
-        else
-          []
-        end
+    monthly_calls =
+      if :monthly in active_kinds do
+        []
+      else
+        [
+          monthly_initial: fn ->
+            preview_invoice(prices.monthly, monthly_preview_opts(start_date, monthly_anchor))
+          end,
+          monthly_recurring: fn ->
+            preview_invoice(prices.monthly, start_date: monthly_anchor)
+          end
+        ]
+      end
+
+    annual_calls =
+      if :annual in active_kinds do
+        []
+      else
+        [
+          annual_recurring: fn ->
+            preview_invoice(prices.annual, start_date: annual_anchor)
+          end
+        ] ++
+          if mode == :prorated_now do
+            [
+              annual_initial: fn ->
+                preview_invoice(prices.annual, billing_cycle_anchor: annual_anchor)
+              end
+            ]
+          else
+            []
+          end
+      end
+
+    calls = monthly_calls ++ annual_calls
 
     calls
     |> Task.async_stream(
@@ -330,31 +352,26 @@ defmodule Dhc.Membership.Reactivation do
   # `annual_initial` is present only in prorated-now mode; its absence is
   # the deferred mode's "nothing annual is charged today" (ALE-253).
   defp build_amounts(previews, start_date) when is_map(previews) do
-    with {:ok, monthly_first} <- Map.fetch(previews, :monthly_initial),
-         {:ok, monthly_recurring} <- Map.fetch(previews, :monthly_recurring),
-         {:ok, annual_recurring} <- Map.fetch(previews, :annual_recurring) do
-      annual_due_today =
-        case Map.fetch(previews, :annual_initial) do
-          {:ok, annual_first} -> invoice_amount(annual_first, "amount_due")
-          :error -> 0
-        end
+    monthly_first = Map.get(previews, :monthly_initial, %{})
+    monthly_recurring = Map.get(previews, :monthly_recurring, %{})
+    annual_first = Map.get(previews, :annual_initial, %{})
+    annual_recurring = Map.get(previews, :annual_recurring, %{})
 
-      monthly_due_today =
-        if Date.compare(start_date, Date.utc_today()) == :gt,
-          do: 0,
-          else: invoice_amount(monthly_first, "amount_due")
+    annual_due_today = invoice_amount(annual_first, "amount_due")
 
-      {:ok,
-       %{
-         dueToday: money(monthly_due_today + annual_due_today),
-         proratedMonthlyPrice: money(invoice_amount(monthly_first, "amount_due")),
-         proratedAnnualPrice: money(annual_due_today),
-         monthlyFee: money(invoice_amount(monthly_recurring, "subtotal")),
-         annualFee: money(invoice_amount(annual_recurring, "subtotal"))
-       }}
-    else
-      _ -> {:error, :stripe_error}
-    end
+    monthly_due_today =
+      if Date.compare(start_date, Date.utc_today()) == :gt,
+        do: 0,
+        else: invoice_amount(monthly_first, "amount_due")
+
+    {:ok,
+     %{
+       dueToday: money(monthly_due_today + annual_due_today),
+       proratedMonthlyPrice: money(invoice_amount(monthly_first, "amount_due")),
+       proratedAnnualPrice: money(annual_due_today),
+       monthlyFee: money(invoice_amount(monthly_recurring, "subtotal")),
+       annualFee: money(invoice_amount(annual_recurring, "subtotal"))
+     }}
   end
 
   defp invoice_amount(invoice, key), do: Map.get(invoice, key, 0) || 0

@@ -5504,10 +5504,24 @@ components:
           required:
             - memberId
             - savedPaymentMethod
+            - membershipCoverage
           properties:
             memberId:
               type: string
               format: uuid
+            membershipCoverage:
+              type: object
+              description: Current Stripe coverage for each membership fee.
+              required:
+                - monthly
+                - annual
+              properties:
+                monthly:
+                  type: string
+                  enum: [active, lapsed]
+                annual:
+                  type: string
+                  enum: [active, lapsed]
             savedPaymentMethod:
               nullable: true
               description: |
