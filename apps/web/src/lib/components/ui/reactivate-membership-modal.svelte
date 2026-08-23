@@ -230,7 +230,7 @@ function handleDateChange(date: Date) {
 						<p class="text-sm font-medium">Monthly subscription</p>
 						<p class="mt-1 text-xs text-muted-foreground">
 							{monthlyActive
-								? "Already active — kept unchanged"
+								? "Already active, kept unchanged"
 								: "Will be reactivated"}
 						</p>
 					</div>
@@ -241,7 +241,7 @@ function handleDateChange(date: Date) {
 						<p class="text-sm font-medium">Annual subscription</p>
 						<p class="mt-1 text-xs text-muted-foreground">
 							{annualActive
-								? "Already active — kept unchanged"
+								? "Already active, kept unchanged"
 								: "Will be reactivated"}
 						</p>
 					</div>
