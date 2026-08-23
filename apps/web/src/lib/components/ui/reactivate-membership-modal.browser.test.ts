@@ -21,6 +21,11 @@ const amounts = {
 	annualFee: { amount: 36000, currency: "EUR", precision: 2 },
 };
 
+const fullyLapsedCoverage = {
+	monthly: "lapsed" as const,
+	annual: "lapsed" as const,
+};
+
 test("shows the saved SEPA method summary before any charge", async () => {
 	const screen = await render(ReactivateMembershipModal, {
 		open: true,
@@ -33,12 +38,76 @@ test("shows the saved SEPA method summary before any charge", async () => {
 	await expect.element(screen.getByText("DE · 37040044")).toBeVisible();
 });
 
+test("keeps active monthly coverage unchanged and shows only annual costs", async () => {
+	const screen = await render(ReactivateMembershipModal, {
+		open: true,
+		isPending: false,
+		savedPaymentMethod: savedMethod,
+		membershipCoverage: { monthly: "active", annual: "lapsed" },
+		amounts: {
+			...amounts,
+			dueToday: amounts.proratedAnnualPrice,
+			proratedMonthlyPrice: { ...amounts.proratedMonthlyPrice, amount: 0 },
+			monthlyFee: { ...amounts.monthlyFee, amount: 0 },
+		},
+		onConfirm: vi.fn(),
+	});
+
+	await expect
+		.element(
+			screen.getByTestId("monthly-coverage").getByText(/already active/i),
+		)
+		.toBeVisible();
+	await expect
+		.element(
+			screen.getByTestId("annual-coverage").getByText(/will be reactivated/i),
+		)
+		.toBeVisible();
+	await expect.element(screen.getByText("Then annually")).toBeVisible();
+	await expect
+		.element(screen.getByText("Then monthly"))
+		.not.toBeInTheDocument();
+});
+
+test("keeps active annual coverage unchanged and shows only monthly costs", async () => {
+	const screen = await render(ReactivateMembershipModal, {
+		open: true,
+		isPending: false,
+		savedPaymentMethod: savedMethod,
+		membershipCoverage: { monthly: "lapsed", annual: "active" },
+		amounts: {
+			...amounts,
+			dueToday: amounts.proratedMonthlyPrice,
+			proratedAnnualPrice: { ...amounts.proratedAnnualPrice, amount: 0 },
+			annualFee: { ...amounts.annualFee, amount: 0 },
+		},
+		onConfirm: vi.fn(),
+	});
+
+	await expect
+		.element(
+			screen.getByTestId("monthly-coverage").getByText(/will be reactivated/i),
+		)
+		.toBeVisible();
+	await expect
+		.element(screen.getByTestId("annual-coverage").getByText(/already active/i))
+		.toBeVisible();
+	await expect.element(screen.getByText("Then monthly")).toBeVisible();
+	await expect
+		.element(screen.getByText("Then annually"))
+		.not.toBeInTheDocument();
+	await expect
+		.element(screen.getByRole("group", { name: "Annual fee" }))
+		.not.toBeInTheDocument();
+});
+
 test("confirms with a date-only ISO start date", async () => {
 	const onConfirm = vi.fn();
 	const screen = await render(ReactivateMembershipModal, {
 		open: true,
 		isPending: false,
 		savedPaymentMethod: savedMethod,
+		membershipCoverage: fullyLapsedCoverage,
 		onConfirm,
 	});
 
