@@ -25,7 +25,40 @@ defmodule Dhc.Invitations.Pricing do
   end
 
   @doc false
-  def membership_payment_plan(coupon_code \\ nil) do
+  def complimentary_preview do
+    zero = money(0)
+
+    %{
+      complimentary: true,
+      proratedPrice: zero,
+      proratedMonthlyPrice: zero,
+      proratedAnnualPrice: zero,
+      monthlyFee: zero,
+      annualFee: zero,
+      discountPercentage: 100
+    }
+  end
+
+  def membership_payment_plan(coupon_code \\ nil)
+
+  def membership_payment_plan({:coupon, _coupon_id, [:monthly, :annual]} = coupon) do
+    with {:ok, prices} <- membership_price_ids(),
+         {:ok, promotion} <- resolve_promotion(coupon),
+         :ok <- validate_complimentary_coupon(promotion.coupon) do
+      {:ok,
+       %{
+         requirement: :complimentary,
+         monthly_price_id: prices.monthly.id,
+         annual_price_id: prices.annual.id,
+         coupon_id: promotion.coupon_id,
+         promotion_code_id: nil,
+         migration?: false,
+         discount_targets: [:monthly, :annual]
+       }}
+    end
+  end
+
+  def membership_payment_plan(coupon_code) do
     with {:ok, prices} <- membership_price_ids(),
          {:ok, promotion} <- resolve_promotion(coupon_code),
          {:ok, details} <- pricing_details(prices, promotion) do
@@ -207,6 +240,15 @@ defmodule Dhc.Invitations.Pricing do
 
   defp validate_coupon(_coupon), do: :ok
 
+  defp validate_complimentary_coupon(%{
+         "duration" => "forever",
+         "percent_off" => percent_off
+       })
+       when percent_off == 100,
+       do: :ok
+
+  defp validate_complimentary_coupon(_coupon), do: {:error, :invalid_complimentary_coupon}
+
   defp pricing_details(prices, promotion) do
     next_month = next_month_anchor()
     next_january = next_january_anchor()
@@ -299,9 +341,9 @@ defmodule Dhc.Invitations.Pricing do
          discount_percentage: discount_percentage,
          coupon: promotion.code,
          discounted_monthly_fee:
-           if(monthly_discount > 0, do: amount(next_month_invoice, "amount_due"), else: 0),
+           if(monthly_discount > 0, do: amount(next_month_invoice, "amount_due"), else: nil),
          discounted_annual_fee:
-           if(annual_discount > 0, do: amount(next_january_invoice, "amount_due"), else: 0),
+           if(annual_discount > 0, do: amount(next_january_invoice, "amount_due"), else: nil),
          prorated_annual_price: prorated_annual_price,
          prorated_monthly_price: prorated_monthly_price,
          coupon_details: promotion.coupon
@@ -407,8 +449,8 @@ defmodule Dhc.Invitations.Pricing do
        when is_number(percent_off) do
     details
     |> Map.put(:discount_percentage, percent_off)
-    |> Map.put(:discounted_monthly_fee, 0)
-    |> Map.put(:discounted_annual_fee, 0)
+    |> Map.put(:discounted_monthly_fee, nil)
+    |> Map.put(:discounted_annual_fee, nil)
     |> Map.delete(:coupon_details)
     |> generate_pricing_info()
   end
@@ -429,7 +471,7 @@ defmodule Dhc.Invitations.Pricing do
 
   defp money(amount), do: %{amount: amount, currency: @currency, precision: 2}
 
-  defp maybe_put_money(map, _key, amount) when amount in [nil, 0], do: map
+  defp maybe_put_money(map, _key, nil), do: map
   defp maybe_put_money(map, key, amount), do: Map.put(map, key, money(amount))
 
   defp maybe_put(map, _key, value) when value in [nil, ""], do: map

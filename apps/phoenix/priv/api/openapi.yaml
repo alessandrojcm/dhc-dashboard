@@ -4527,7 +4527,7 @@ components:
         dateOfBirth: { type: string, format: date }
     OnboardingPaymentRequest:
       type: object
-      required: [nextOfKinName, nextOfKinPhone, stripeConfirmationToken]
+      required: [nextOfKinName, nextOfKinPhone]
       properties:
         nextOfKinName:
           type: string
@@ -4537,7 +4537,7 @@ components:
           minLength: 1
         stripeConfirmationToken:
           type: string
-          minLength: 1
+          description: Required for paid invitations and omitted for complimentary coach invitations.
         couponCode:
           type: string
         mandateContext:
@@ -4581,6 +4581,9 @@ components:
             expiresAt:
               type: string
               format: date-time
+            complimentary:
+              type: boolean
+              description: True when the invitation requires no payment details or membership fees.
     OnboardingSafeDiscordPresentation:
       type: object
       description: Mutable display snapshot for account recognition; never an identity binding fact.
@@ -4820,6 +4823,9 @@ components:
         - annualFee
         - discountPercentage
       properties:
+        complimentary:
+          type: boolean
+          description: True when the invitation grants membership with no current or future membership fees.
         proratedPrice:
           $ref: "#/components/schemas/DineroAmount"
         proratedMonthlyPrice:

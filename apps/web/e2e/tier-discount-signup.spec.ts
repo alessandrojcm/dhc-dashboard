@@ -155,7 +155,11 @@ test.beforeAll(async () => {
 	await assertTierCouponConfiguration();
 });
 
-async function walkToPayment(page: Page, invitation: InvitedUser) {
+async function walkToPayment(
+	page: Page,
+	invitation: InvitedUser,
+	expectsPaymentElement = true,
+) {
 	await routeSuccessfulDiscordAcceptance(page, invitation.invitationId);
 	await page.goto(`/members/signup/${invitation.invitationId}`);
 	const verifyButton = page.getByRole("button", {
@@ -178,16 +182,24 @@ async function walkToPayment(page: Page, invitation: InvitedUser) {
 		"data-ready",
 		"true",
 	);
-	await expect(getStripeFrame(page).getByLabel("IBAN")).toBeVisible({
-		timeout: 15_000,
-	});
+	if (expectsPaymentElement) {
+		await expect(getStripeFrame(page).getByLabel("IBAN")).toBeVisible({
+			timeout: 15_000,
+		});
+	} else {
+		await expect(page.locator(".__PrivateStripeElement")).toHaveCount(0);
+	}
 }
 
-async function fillNextOfKinAndPayment(page: Page, invitation: InvitedUser) {
+async function fillNextOfKin(page: Page) {
 	await page.getByLabel("Next of Kin", { exact: true }).fill("John Doe");
 	const phoneInputField = page.getByLabel("Next of Kin Phone Number");
 	await phoneInputField.pressSequentially("0838774532", { delay: 50 });
 	await phoneInputField.press("Tab");
+}
+
+async function fillNextOfKinAndPayment(page: Page, invitation: InvitedUser) {
+	await fillNextOfKin(page);
 
 	const stripeFrame = getStripeFrame(page);
 	await stripeFrame.getByLabel("IBAN").fill("IE29AIBK93115212345678");
@@ -338,13 +350,13 @@ test("a coach tier invitation completes signup with complimentary membership", a
 		expect(pricing.proratedPrice.amount).toBe(0);
 		expect(pricing.discountPercentage).toBe(100);
 
-		await walkToPayment(page, invitation);
+		await walkToPayment(page, invitation, false);
 
-		await expect(page.getByText("€0.00", { exact: true })).toBeVisible();
-		await expect(page.getByText("Discount applied: 100% off")).toBeVisible();
+		await expect(page.getByText("Due today", { exact: true })).toHaveCount(0);
+		await expect(page.getByText("Have a promotional code?")).toHaveCount(0);
 
-		await fillNextOfKinAndPayment(page, invitation);
-		await page.getByRole("button", { name: /sign up/i }).click();
+		await fillNextOfKin(page);
+		await page.getByRole("button", { name: "Complete signup" }).click();
 		await expect(page.getByText("Membership created")).toBeVisible({
 			timeout: 30_000,
 		});

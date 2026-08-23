@@ -106,8 +106,7 @@ defmodule DhcWeb.OnboardingController do
         conn,
         %{
           "nextOfKinName" => next_of_kin_name,
-          "nextOfKinPhone" => next_of_kin_phone,
-          "stripeConfirmationToken" => confirmation_token
+          "nextOfKinPhone" => next_of_kin_phone
         } = params
       ) do
     continuation_id = continuation_id(conn)
@@ -116,7 +115,7 @@ defmodule DhcWeb.OnboardingController do
     attrs = %{
       next_of_kin_name: next_of_kin_name,
       next_of_kin_phone: next_of_kin_phone,
-      confirmation_token: confirmation_token,
+      confirmation_token: Map.get(params, "stripeConfirmationToken"),
       coupon_code: Map.get(params, "couponCode"),
       mandate_context: %{
         ip_address: Map.get(mandate_context, "ipAddress", client_ip(conn)),
@@ -171,6 +170,7 @@ defmodule DhcWeb.OnboardingController do
       |> maybe_put(:payment, state[:payment])
       |> maybe_put(:discordVerified, state[:discord_verified])
       |> maybe_put(:retryAllowed, state[:retry_allowed])
+      |> maybe_put(:complimentary, state[:complimentary])
 
     json(conn, %{data: data})
   end

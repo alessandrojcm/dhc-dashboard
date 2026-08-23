@@ -56,6 +56,7 @@ export type StripePaymentInfo = {
 };
 
 export type PlanPricing = {
+	complimentary?: boolean;
 	proratedPrice: Dinero.DineroObject;
 	proratedMonthlyPrice: Dinero.DineroObject;
 	proratedAnnualPrice: Dinero.DineroObject;

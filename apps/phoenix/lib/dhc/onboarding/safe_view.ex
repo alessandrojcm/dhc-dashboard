@@ -83,9 +83,9 @@ defmodule Dhc.Onboarding.SafeView do
   def attempt_state(%{status: "completed"}, invitation),
     do: %{state: "accepted", invitation_email: invitation.email}
 
-  def attempt_state(%{status: "processing"} = attempt, _invitation) do
+  def attempt_state(%{status: "processing"} = attempt, invitation) do
     if AttemptState.payment_ready?(attempt),
-      do: %{state: "paymentReady"},
+      do: %{state: "paymentReady", complimentary: invitation.pricing_tier == "coach"},
       else: %{state: "restartVerification"}
   end
 

@@ -18,6 +18,7 @@ const dineroAmountSchema = v.object({
 });
 
 const planPricingSchema = v.object({
+	complimentary: v.optional(v.boolean()),
 	proratedPrice: dineroAmountSchema,
 	proratedMonthlyPrice: dineroAmountSchema,
 	proratedAnnualPrice: dineroAmountSchema,
