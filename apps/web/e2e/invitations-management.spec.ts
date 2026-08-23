@@ -66,7 +66,6 @@ test.describe("Invitation management", () => {
 				return setupInvitedUser({
 					email: createUniqueEmail("invitation-management", index),
 					invitationStatus: index % 2 === 0 ? "pending" : "expired",
-					useFakeCustomerId: true,
 				});
 			}),
 		);

@@ -133,6 +133,7 @@ defmodule Dhc.Invitations.Repository do
       expires_at: DateTime.utc_now() |> DateTime.add(7, :day) |> DateTime.truncate(:second),
       created_by_principal_id: created_by_id,
       invitation_type: Map.get(invite_data, "invitationType", "admin"),
+      pricing_tier: Map.get(invite_data, "pricingTier", "standard"),
       metadata: Map.get(invite_data, "metadata"),
       first_name: invite_data["firstName"],
       last_name: invite_data["lastName"],

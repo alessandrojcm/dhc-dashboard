@@ -88,7 +88,7 @@ defmodule DhcWeb.AuthSessionController do
   # Starting another Discord flow replaces this value; only the most recently
   # started flow may complete.
   defp authorize_discord(conn, purpose) do
-    strategy = discord_strategy()
+    strategy = discord_strategy(purpose)
     conn = Plug.Conn.delete_session(conn, @discord_oauth_flow_session_key)
 
     case strategy.authorize_url(discord_config(purpose)) do
@@ -208,9 +208,12 @@ defmodule DhcWeb.AuthSessionController do
   defp valid_discord_oauth_flow(_flow), do: {:error, :invalid_purpose}
 
   defp complete_discord_oauth_callback(params, session_params, purpose) do
-    discord_config(purpose)
-    |> Keyword.put(:session_params, session_params)
-    |> discord_strategy().callback(params)
+    config =
+      purpose
+      |> discord_config()
+      |> Keyword.put(:session_params, session_params)
+
+    discord_strategy(purpose).callback(config, params)
   end
 
   defp complete_discord_auth(conn, :sign_in, claims, _token) do
@@ -403,6 +406,16 @@ defmodule DhcWeb.AuthSessionController do
   defp discord_strategy do
     Application.get_env(:dhc, :discord_oauth_strategy, Assent.Strategy.Discord)
   end
+
+  defp discord_strategy({:invitation_acceptance, _continuation_id}) do
+    Application.get_env(
+      :dhc,
+      :invitation_acceptance_discord_oauth_strategy,
+      discord_strategy()
+    )
+  end
+
+  defp discord_strategy(_purpose), do: discord_strategy()
 
   defp discord_config do
     Application.get_env(:dhc, :discord_oauth, [])

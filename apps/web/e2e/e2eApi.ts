@@ -87,7 +87,6 @@ type E2EInvitationSeedRequest = Partial<InvitationCreateInvite> &
 	Pick<InvitationCreateInvite, "email"> & {
 		status?: InvitationStatus;
 		invitationType?: string;
-		customerId?: string;
 	};
 
 type InvitationSeed = {

@@ -61,6 +61,7 @@ export const submitBulkInvites = command(
 					email: invite.email,
 					phoneNumber: invite.phoneNumber,
 					dateOfBirth: invite.dateOfBirth.toISOString().slice(0, 10),
+					pricingTier: invite.pricingTier,
 				})),
 			},
 		});

@@ -205,6 +205,83 @@ defmodule DhcWeb.OnboardingControllerTest do
     refute Repo.exists?(Dhc.Auth.PrincipalToken)
   end
 
+  test "development acceptance OAuth returns directly through the callback", %{conn: conn} do
+    original_strategy =
+      Application.get_env(:dhc, :invitation_acceptance_discord_oauth_strategy)
+
+    original_environment = Application.get_env(:dhc, :environment)
+
+    Application.put_env(:dhc, :environment, :development)
+
+    Application.put_env(
+      :dhc,
+      :invitation_acceptance_discord_oauth_strategy,
+      Dhc.Discord.OAuthDevStub
+    )
+
+    on_exit(fn ->
+      Application.put_env(:dhc, :environment, original_environment)
+
+      if original_strategy do
+        Application.put_env(
+          :dhc,
+          :invitation_acceptance_discord_oauth_strategy,
+          original_strategy
+        )
+      else
+        Application.delete_env(:dhc, :invitation_acceptance_discord_oauth_strategy)
+      end
+    end)
+
+    invitation = invitation_fixture()
+
+    started =
+      post(conn, "/api/onboarding/invitation-acceptance/verify", %{
+        "invitationId" => invitation.id,
+        "email" => invitation.email,
+        "dateOfBirth" => Date.to_iso8601(invitation.date_of_birth)
+      })
+
+    oauth =
+      started
+      |> recycle()
+      |> get("/api/onboarding/invitation-acceptance/discord")
+
+    callback_uri = oauth |> redirected_to(302) |> URI.parse()
+    callback_query = URI.decode_query(callback_uri.query)
+
+    assert callback_uri.scheme == "http"
+    assert callback_uri.host == "localhost"
+    assert callback_uri.path == "/auth/discord/acceptance/callback"
+    assert callback_query["code"] == "dev-success"
+    assert is_binary(callback_query["state"])
+
+    callback =
+      oauth
+      |> recycle()
+      |> get("/api/auth/discord/callback?#{URI.encode_query(callback_query)}")
+
+    assert redirected_to(callback, 302) ==
+             "http://localhost:5173/members/signup/#{invitation.id}/resume"
+
+    assert %InvitationAcceptanceDiscordSubjectClaim{
+             provider: "discord",
+             provider_subject: <<"development-invitation-", _suffix::binary>>
+           } = Repo.one(InvitationAcceptanceDiscordSubjectClaim)
+
+    safe =
+      callback
+      |> recycle()
+      |> get("/api/onboarding/invitation-acceptance")
+
+    assert %{
+             "data" => %{
+               "state" => "discordVerified",
+               "discord" => %{"username" => "Local development member"}
+             }
+           } = json_response(safe, 200)
+  end
+
   test "cancelling a verified continuation zeroizes it and releases its subject claim", %{
     conn: conn
   } do
