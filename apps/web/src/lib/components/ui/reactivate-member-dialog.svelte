@@ -151,6 +151,7 @@ const billingPortalMutation = createMutation(() => ({
 	isLoadingPreview={reactivationPreview.isPending}
 	savedPaymentMethod={reactivationPreview.data?.data.savedPaymentMethod ??
 		undefined}
+	membershipCoverage={reactivationPreview.data?.data.membershipCoverage}
 	amounts={reactivationAmounts.data?.data ?? null}
 	isLoadingAmounts={reactivationAmounts.isFetching}
 	errorDetail={submitError?.detail ?? null}
