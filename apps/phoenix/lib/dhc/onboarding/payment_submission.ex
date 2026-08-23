@@ -18,7 +18,7 @@ defmodule Dhc.Onboarding.PaymentSubmission do
   alias Dhc.Repo
 
   def submit_payment(continuation_id, attrs) when is_map(attrs) do
-    with :ok <- validate_acceptance_details(attrs),
+    with :ok <- validate_next_of_kin(attrs),
          {:ok, invitation, attempt, advance?} <-
            record_payment_submission(continuation_id, attrs) do
       if advance?,
@@ -38,8 +38,16 @@ defmodule Dhc.Onboarding.PaymentSubmission do
   end
 
   def pricing(invitation_id, coupon_code \\ nil) do
-    with {:ok, %Invitation{} = invitation} <- pending_invitation(invitation_id),
-         {:ok, effective_coupon} <- effective_coupon_code(invitation, coupon_code) do
+    with {:ok, %Invitation{} = invitation} <- pending_invitation(invitation_id) do
+      case invitation.pricing_tier do
+        "coach" -> {:ok, Pricing.complimentary_preview()}
+        _ -> preview_membership(invitation, coupon_code)
+      end
+    end
+  end
+
+  defp preview_membership(invitation, coupon_code) do
+    with {:ok, effective_coupon} <- effective_coupon_code(invitation, coupon_code) do
       stripe_adapter().preview_membership(effective_coupon)
     end
   end
@@ -233,10 +241,9 @@ defmodule Dhc.Onboarding.PaymentSubmission do
     {attempt, :claimed}
   end
 
-  defp validate_acceptance_details(attrs) do
+  defp validate_next_of_kin(attrs) do
     if present?(Map.get(attrs, :next_of_kin_name)) and
-         present?(Map.get(attrs, :next_of_kin_phone)) and
-         present?(Map.get(attrs, :confirmation_token)) do
+         present?(Map.get(attrs, :next_of_kin_phone)) do
       :ok
     else
       {:error, :invalid_acceptance_details}
@@ -264,16 +271,30 @@ defmodule Dhc.Onboarding.PaymentSubmission do
     attempt = lock_payment_attempt!(continuation.attempt_id)
     invitation = lock_payment_invitation!(continuation.invitation_id)
 
-    cond do
-      payment_already_submitted?(continuation, attempt) ->
-        {invitation, attempt, false}
+    case validate_confirmation_token(invitation, attrs) do
+      :ok ->
+        cond do
+          payment_already_submitted?(continuation, attempt) ->
+            {invitation, attempt, false}
 
-      invalid_payment_submission?(continuation, invitation, attempt) ->
-        Repo.rollback(:invalid_continuation)
+          invalid_payment_submission?(continuation, invitation, attempt) ->
+            Repo.rollback(:invalid_continuation)
 
-      true ->
-        submit_payment_attempt(continuation, invitation, attempt, attrs)
+          true ->
+            submit_payment_attempt(continuation, invitation, attempt, attrs)
+        end
+
+      {:error, reason} ->
+        Repo.rollback(reason)
     end
+  end
+
+  defp validate_confirmation_token(%Invitation{pricing_tier: "coach"}, _attrs), do: :ok
+
+  defp validate_confirmation_token(_invitation, attrs) do
+    if present?(Map.get(attrs, :confirmation_token)),
+      do: :ok,
+      else: {:error, :invalid_acceptance_details}
   end
 
   defp lock_payment_continuation!(continuation_id) do
