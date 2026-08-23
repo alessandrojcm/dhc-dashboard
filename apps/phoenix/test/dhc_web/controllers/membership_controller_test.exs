@@ -791,6 +791,11 @@ defmodule DhcWeb.MembershipControllerTest do
         "country" => "DE"
       })
 
+      expect_subscription_list(bypass, "cus_preview", [
+        active_membership_subscription("standard_membership_fee", "sub_monthly_active"),
+        lapsed_membership_subscription("annual_membership_fee_revised", "sub_annual_lapsed")
+      ])
+
       conn =
         conn
         |> put_req_header("authorization", "Bearer treasurer-token")
@@ -804,6 +809,10 @@ defmodule DhcWeb.MembershipControllerTest do
                    "last4" => "1234",
                    "bankCode" => "37040044",
                    "country" => "DE"
+                 },
+                 "membershipCoverage" => %{
+                   "monthly" => "active",
+                   "annual" => "lapsed"
                  }
                }
              } = json_response(conn, 200)
@@ -818,6 +827,7 @@ defmodule DhcWeb.MembershipControllerTest do
       member = insert_member(is_active: false, customer_id: "cus_preview_empty")
 
       expect_saved_sepa_methods(bypass, "cus_preview_empty", [])
+      expect_subscription_list(bypass, "cus_preview_empty", [])
 
       conn =
         conn
@@ -827,7 +837,11 @@ defmodule DhcWeb.MembershipControllerTest do
       assert %{
                "data" => %{
                  "memberId" => returned_member_id,
-                 "savedPaymentMethod" => nil
+                 "savedPaymentMethod" => nil,
+                 "membershipCoverage" => %{
+                   "monthly" => "lapsed",
+                   "annual" => "lapsed"
+                 }
                }
              } = json_response(conn, 200)
 
@@ -897,6 +911,7 @@ defmodule DhcWeb.MembershipControllerTest do
 
       opts = amounts_opts("price_monthly", "price_annual", Date.utc_today())
 
+      expect_subscription_list(bypass, "cus_amounts", [])
       expect_amounts_previews(bypass, opts)
 
       conn =
@@ -938,6 +953,98 @@ defmodule DhcWeb.MembershipControllerTest do
       assert due_today == expected_due_today
     end
 
+    test "previews only the monthly subscription when annual coverage is active", %{
+      conn: conn,
+      bypass: bypass
+    } do
+      member = insert_member(is_active: false, customer_id: "cus_amounts_monthly_only")
+
+      expect_subscription_list(bypass, "cus_amounts_monthly_only", [
+        lapsed_membership_subscription("standard_membership_fee", "sub_monthly_lapsed"),
+        active_membership_subscription("annual_membership_fee_revised", "sub_annual_active")
+      ])
+
+      expect_membership_prices(bypass, "price_monthly", "price_annual")
+
+      Bypass.expect(bypass, "POST", "/v1/invoices/create_preview", fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        params = URI.decode_query(body)
+
+        assert params["subscription_details[items][0][price]"] == "price_monthly"
+
+        amount =
+          if params["subscription_details[start_date]"],
+            do: @monthly_recurring_amount,
+            else: @monthly_initial_amount
+
+        stripe_json(conn, preview_invoice_json(:monthly, amount))
+      end)
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer treasurer-token")
+        |> get(
+          "/api/members/#{member.auth_user_id}/membership/reactivation-preview/amounts",
+          startDate: Date.to_iso8601(Date.utc_today())
+        )
+
+      assert %{
+               "data" => %{
+                 "dueToday" => %{"amount" => @monthly_initial_amount},
+                 "proratedMonthlyPrice" => %{"amount" => @monthly_initial_amount},
+                 "monthlyFee" => %{"amount" => @monthly_recurring_amount},
+                 "proratedAnnualPrice" => %{"amount" => 0},
+                 "annualFee" => %{"amount" => 0}
+               }
+             } = json_response(conn, 200)
+    end
+
+    test "previews only the annual subscription when monthly coverage is active", %{
+      conn: conn,
+      bypass: bypass
+    } do
+      member = insert_member(is_active: false, customer_id: "cus_amounts_annual_only")
+
+      expect_subscription_list(bypass, "cus_amounts_annual_only", [
+        active_membership_subscription("standard_membership_fee", "sub_monthly_active"),
+        lapsed_membership_subscription("annual_membership_fee_revised", "sub_annual_lapsed")
+      ])
+
+      expect_membership_prices(bypass, "price_monthly", "price_annual")
+
+      Bypass.expect(bypass, "POST", "/v1/invoices/create_preview", fn conn ->
+        {:ok, body, conn} = Plug.Conn.read_body(conn)
+        params = URI.decode_query(body)
+
+        assert params["subscription_details[items][0][price]"] == "price_annual"
+
+        amount =
+          if Map.has_key?(params, "subscription_details[billing_cycle_anchor]"),
+            do: @annual_initial_amount,
+            else: @annual_recurring_amount
+
+        stripe_json(conn, preview_invoice_json(:annual, amount))
+      end)
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer treasurer-token")
+        |> get(
+          "/api/members/#{member.auth_user_id}/membership/reactivation-preview/amounts",
+          startDate: Date.to_iso8601(Date.utc_today())
+        )
+
+      assert %{
+               "data" => %{
+                 "dueToday" => %{"amount" => @annual_initial_amount},
+                 "proratedMonthlyPrice" => %{"amount" => 0},
+                 "monthlyFee" => %{"amount" => 0},
+                 "proratedAnnualPrice" => %{"amount" => @annual_initial_amount},
+                 "annualFee" => %{"amount" => @annual_recurring_amount}
+               }
+             } = json_response(conn, 200)
+    end
+
     test "anchors the monthly first-invoice preview at the first of next month", %{
       conn: conn,
       bypass: bypass
@@ -947,6 +1054,7 @@ defmodule DhcWeb.MembershipControllerTest do
 
       opts = amounts_opts("price_monthly_f", "price_annual_f", start_date)
 
+      expect_subscription_list(bypass, "cus_amounts_future", [])
       expect_amounts_previews(bypass, opts)
 
       conn =
@@ -977,6 +1085,7 @@ defmodule DhcWeb.MembershipControllerTest do
       opts =
         amounts_opts("price_monthly_pd", "price_annual_pd", Date.utc_today(), :deferred_next_year)
 
+      expect_subscription_list(bypass, "cus_amounts_deferred", [])
       expect_amounts_previews(bypass, opts)
 
       conn =
@@ -1018,15 +1127,15 @@ defmodule DhcWeb.MembershipControllerTest do
       assert detail =~ "Invalid membership reactivation"
     end
 
-    test "does not look up payment methods or subscriptions", %{conn: conn, bypass: bypass} do
+    test "does not look up payment methods", %{conn: conn, bypass: bypass} do
       member = insert_member(is_active: false, customer_id: "cus_amounts_only")
       opts = amounts_opts("price_monthly_o", "price_annual_o", Date.utc_today())
 
+      expect_subscription_list(bypass, "cus_amounts_only", [])
       expect_amounts_previews(bypass, opts)
 
-      # Any other Stripe call (payment methods, subscription guard) would hit
-      # Bypass and find no route → the request would fail with a raised error
-      # rather than silently passing.
+      # Any payment-method lookup would hit Bypass and find no route, so the
+      # request would fail rather than silently passing.
       conn =
         conn
         |> put_req_header("authorization", "Bearer admin-token")
@@ -1078,6 +1187,7 @@ defmodule DhcWeb.MembershipControllerTest do
       member = insert_member(is_active: false, customer_id: "cus_amounts_fail")
       opts = amounts_opts("price_monthly_x", "price_annual_x", Date.utc_today())
 
+      expect_subscription_list(bypass, "cus_amounts_fail", [])
       expect_membership_prices(bypass, opts.monthly_price_id, opts.annual_price_id)
 
       Bypass.expect(bypass, "POST", "/v1/invoices/create_preview", fn conn ->
@@ -1114,6 +1224,8 @@ defmodule DhcWeb.MembershipControllerTest do
       member_empty =
         insert_member(is_active: false, customer_id: "cus_amounts_no_prices")
 
+      expect_subscription_list(bypass, "cus_amounts_no_prices", [])
+
       empty_conn =
         build_conn()
         |> put_req_header("authorization", "Bearer admin-token")
@@ -1134,6 +1246,8 @@ defmodule DhcWeb.MembershipControllerTest do
 
       member_500 =
         insert_member(is_active: false, customer_id: "cus_amounts_prices_500")
+
+      expect_subscription_list(bypass, "cus_amounts_prices_500", [])
 
       failing_prices_conn =
         build_conn()
