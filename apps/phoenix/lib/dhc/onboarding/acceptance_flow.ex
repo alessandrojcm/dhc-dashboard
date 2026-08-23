@@ -610,7 +610,6 @@ defmodule Dhc.Onboarding.AcceptanceFlow do
       select: a.stripe_customer_id
     )
     |> Repo.one()
-    |> Kernel.||(invitation.stripe_customer_id)
   end
 
   defp earliest_expiry(left, right) do

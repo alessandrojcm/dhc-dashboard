@@ -129,6 +129,12 @@ config :dhc, :environment, :development
 config :dhc, :cors_allowed_origins, cors_allowed_origins
 config :dhc, :discord_adapter, Dhc.Discord.Adapter.Dev
 
+if System.get_env("DISCORD_DEV_BYPASS", "true") in ["true", "1"] do
+  config :dhc,
+         :invitation_acceptance_discord_oauth_strategy,
+         Dhc.Discord.OAuthDevStub
+end
+
 config :dhc, :discord_oauth,
   client_id: System.get_env("DISCORD_CLIENT_ID"),
   client_secret: System.get_env("DISCORD_CLIENT_SECRET"),

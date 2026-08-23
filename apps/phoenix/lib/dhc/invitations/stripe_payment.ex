@@ -298,7 +298,7 @@ defmodule Dhc.Invitations.StripePayment do
       ]
       |> maybe_add_payment_method(payment_method_id)
       |> add_billing_anchor(kind)
-      |> maybe_add_discount(promotion)
+      |> maybe_add_discount(promotion, kind)
       |> then(
         &[
           {"metadata[acceptance_attempt_id]", Map.fetch!(attrs, :attempt_id)},
@@ -323,11 +323,28 @@ defmodule Dhc.Invitations.StripePayment do
       {"billing_cycle_anchor_config[day_of_month]", "7"} | form
     ]
 
-  defp maybe_add_discount(form, %{migration?: true}), do: form
-  defp maybe_add_discount(form, %{promotion_code_id: nil}), do: form
+  defp maybe_add_discount(form, %{migration?: true}, _kind), do: form
 
-  defp maybe_add_discount(form, %{promotion_code_id: promotion_code_id}),
-    do: [{"discounts[0][promotion_code]", promotion_code_id} | form]
+  defp maybe_add_discount(form, %{coupon_id: id} = discount, kind) when is_binary(id) do
+    if kind in Map.get(discount, :discount_targets, [:monthly, :annual]) do
+      [{"discounts[0][coupon]", id} | form]
+    else
+      form
+    end
+  end
+
+  defp maybe_add_discount(form, %{promotion_code_id: nil}, _kind), do: form
+
+  # Product-scoped coupons (e.g. the student tier's monthly-only discount)
+  # are only attached to subscriptions within their target scope; Stripe
+  # rejects out-of-scope attachments at creation time.
+  defp maybe_add_discount(form, %{promotion_code_id: id} = promotion, kind) do
+    if kind in Map.get(promotion, :discount_targets, [:monthly, :annual]) do
+      [{"discounts[0][promotion_code]", id} | form]
+    else
+      form
+    end
+  end
 
   defp maybe_add_payment_method(form, nil), do: form
 

@@ -66,6 +66,7 @@ type InvitationTableRow = {
 	id: string;
 	email: string;
 	status: Invitation["status"];
+	pricing_tier: Invitation["pricingTier"];
 	expires_at: string;
 	created_at: string;
 };
@@ -142,9 +143,16 @@ function toTableRow(invitation: Invitation): InvitationTableRow {
 		id: invitation.id,
 		email: invitation.email,
 		status: invitation.status,
+		pricing_tier: invitation.pricingTier,
 		expires_at: invitation.expiresAt,
 		created_at: invitation.createdAt,
 	};
+}
+
+function discountBadgeLabel(tier: Invitation["pricingTier"]): string | null {
+	if (tier === "coach") return "Coach discount";
+	if (tier === "student") return "Student discount";
+	return null;
 }
 
 const invitationsQuery = createQuery(() => ({
@@ -315,6 +323,13 @@ function statusVariant(status: Invitation["status"]): BadgeVariant {
 
 {#snippet statusBadge(status: Invitation["status"])}
 	<Badge variant={statusVariant(status)} class="capitalize">{status}</Badge>
+{/snippet}
+
+{#snippet discountBadge(tier: Invitation["pricingTier"])}
+	{@const label = discountBadgeLabel(tier)}
+	{#if label}
+		<Badge variant="outline">{label}</Badge>
+	{/if}
 {/snippet}
 
 {#snippet expirationDate(value: string)}
@@ -659,6 +674,7 @@ function statusVariant(status: Invitation["status"]): BadgeVariant {
 								class="min-w-64 px-4 py-3.5 font-semibold text-foreground"
 							>
 								{invitation.email}
+								{@render discountBadge(invitation.pricing_tier)}
 							</Table.Cell>
 							<Table.Cell class="px-4 py-3.5">
 								{@render statusBadge(invitation.status)}
@@ -725,7 +741,10 @@ function statusVariant(status: Invitation["status"]): BadgeVariant {
 							<p class="break-all font-semibold leading-6 text-foreground">
 								{invitation.email}
 							</p>
-							<div class="mt-2">{@render statusBadge(invitation.status)}</div>
+							<div class="mt-2 flex flex-wrap items-center gap-2">
+								{@render statusBadge(invitation.status)}
+								{@render discountBadge(invitation.pricing_tier)}
+							</div>
 						</div>
 					</div>
 

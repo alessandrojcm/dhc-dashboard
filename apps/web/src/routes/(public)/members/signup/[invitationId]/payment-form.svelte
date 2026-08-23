@@ -25,6 +25,7 @@ import { initForm } from "$lib/utils/init-form.svelte";
 const { data }: { data: PageServerData } = $props();
 let currentCoupon = $state("");
 
+const complimentary = $derived(data.complimentary === true);
 const nextMonthlyBillingDate = $derived(data.nextMonthlyBillingDate);
 const nextAnnualBillingDate = $derived(data.nextAnnualBillingDate);
 let stripe: Awaited<ReturnType<typeof loadStripe>> | null = $state(null);
@@ -93,6 +94,11 @@ $effect(() => {
 });
 
 onMount(() => {
+	if (complimentary) {
+		paymentElementReady = true;
+		return;
+	}
+
 	loadStripe(PUBLIC_STRIPE_KEY).then((result) => {
 		stripe = result;
 		elements = stripe?.elements(stripeElementsOptions);
@@ -111,6 +117,11 @@ const handleSubmit: ButtonProps["onclick"] = async (e) => {
 	e.preventDefault();
 	if (!(e.currentTarget instanceof HTMLButtonElement)) return;
 	const form = e.currentTarget.form;
+
+	if (complimentary) {
+		form?.requestSubmit();
+		return;
+	}
 
 	// Validate Stripe is ready
 	if (!stripe || !elements) {
@@ -206,33 +217,35 @@ const handleSubmit: ButtonProps["onclick"] = async (e) => {
 				<Field.Error>{issue.message}</Field.Error>
 			{/each}
 		</Field.Field>
-		<div class="border-t border-border/70 pt-6">
-			<p class="font-display text-xl text-foreground">Membership & payment</p>
-			<p class="mt-1 text-sm leading-6 text-muted-foreground">
-				Review your plan and enter the account used for your membership fee.
-			</p>
-		</div>
-		<svelte:boundary>
-			{#if page.params.invitationId}
-				<PricingDisplay
-					invitationId={page.params.invitationId ?? ""}
-					bind:currentCoupon
-					{nextMonthlyBillingDate}
-					{nextAnnualBillingDate}
-				/>
-			{/if}
-			{#snippet failed(error, reset)}
-				<Alert.Root variant="destructive" class="w-full mb-4">
-					<Alert.Title>Error loading pricing information</Alert.Title>
-					<Alert.Description>
-						{error instanceof Error ? error.message : String(error)}
-					</Alert.Description>
-					<Button onclick={reset} variant="outline" class="mt-2 w-fit"
-						>Try Again</Button
-					>
-				</Alert.Root>
-			{/snippet}
-		</svelte:boundary>
+		{#if !complimentary}
+			<div class="border-t border-border/70 pt-6">
+				<p class="font-display text-xl text-foreground">Membership & payment</p>
+				<p class="mt-1 text-sm leading-6 text-muted-foreground">
+					Review your plan and enter the account used for your membership fee.
+				</p>
+			</div>
+			<svelte:boundary>
+				{#if page.params.invitationId}
+					<PricingDisplay
+						invitationId={page.params.invitationId ?? ""}
+						bind:currentCoupon
+						{nextMonthlyBillingDate}
+						{nextAnnualBillingDate}
+					/>
+				{/if}
+				{#snippet failed(error, reset)}
+					<Alert.Root variant="destructive" class="w-full mb-4">
+						<Alert.Title>Error loading pricing information</Alert.Title>
+						<Alert.Description>
+							{error instanceof Error ? error.message : String(error)}
+						</Alert.Description>
+						<Button onclick={reset} variant="outline" class="mt-2 w-fit"
+							>Try Again</Button
+						>
+					</Alert.Root>
+				{/snippet}
+			</svelte:boundary>
+		{/if}
 	</div>
 	<div class="flex justify-end border-t border-border/70 pt-6">
 		<Button
@@ -245,7 +258,7 @@ const handleSubmit: ButtonProps["onclick"] = async (e) => {
 			{#if processPayment.pending}
 				<LoaderCircle />
 			{:else}
-				Sign up
+				{complimentary ? "Complete signup" : "Sign up"}
 				<ArrowRightIcon class="ml-2 h-4 w-4" />
 			{/if}
 		</Button>

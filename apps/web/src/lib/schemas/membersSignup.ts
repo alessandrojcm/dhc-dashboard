@@ -9,10 +9,7 @@ export const memberSignupSchema = v.object({
 		"Phone number of your next of kin is required.",
 	),
 	insuranceFormSubmitted: v.optional(v.boolean()),
-	stripeConfirmationToken: v.pipe(
-		v.string(),
-		v.nonEmpty("Something has gone wrong with your payment, please try again."),
-	),
+	stripeConfirmationToken: v.string(),
 	couponCode: v.optional(v.string()),
 });
 

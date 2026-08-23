@@ -16,9 +16,13 @@ The suite uses the real Stripe test API and rejects missing keys and all keys th
 do not start with `sk_test_`. Never run it with live-mode credentials. The Stripe
 test account must have active membership prices under the lookup keys used by the
 application. Every spec that creates customers, subscriptions, coupons, or
-promotion codes owns cleanup from the first successful resource creation.
+promotion codes owns cleanup from the first successful resource creation, except
+durable account configuration explicitly shared with the application. The tier
+signup spec creates missing `DHC_COACH_TIER` / `DHC_STUDENT_TIER` coupons and
+retains them just like membership prices.
 
 - `playwright.config.ts` starts the `e2e-phoenix-server` and `e2e-web-server` mise tasks; their task-local `env` tables define the test server environment.
+- `mix e2e.server` starts the application through a custom Mix task, so E2E-only Stripe coupon overrides are read in `config/test.exs` when `E2E_SERVER=true`; do not rely on production-only runtime configuration for the test server.
 - `playwright.config.ts` appends its process ID to the configured `E2E_COMPOSE_PROJECT` prefix. Phoenix and global teardown inherit that value, giving every run an isolated Compose project instead of attaching to a stale database from another worktree.
 - `mix e2e.server` starts the root Compose `test-db` through testcontainers-elixir, reads its dynamic port, migrates it, and starts Phoenix on `127.0.0.1:4000`.
 - Keep the E2E Oban configuration at `plugins: []`, not `plugins: false`. Oban 2.23 uses peer leadership to stage scheduled jobs; `false` disables leadership even when queues are enabled and leaves delayed recovery jobs unexecuted.

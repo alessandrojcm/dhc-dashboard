@@ -4,22 +4,26 @@ defmodule Dhc.Onboarding.StripeAdapter.Test do
   @behaviour Dhc.Onboarding.StripeAdapter
 
   @impl true
-  def preview_membership(coupon_code) do
-    send(test_pid(), {:preview_membership, coupon_code})
+  def preview_membership(discount_reference) do
+    send(test_pid(), {:preview_membership, discount_reference})
     {:ok, %{proratedPrice: %{amount: 0}}}
   end
 
   @impl true
-  def prepare_payment(coupon_code) do
-    send(test_pid(), {:prepare_payment, coupon_code})
+  def prepare_payment(discount_reference) do
+    send(test_pid(), {:prepare_payment, discount_reference})
 
     {:ok,
      %{
-       requirement: if(coupon_code == "COMPLIMENTARY", do: :complimentary, else: :paid),
+       requirement: payment_requirement(discount_reference),
        monthly_price_id: "price_monthly_onboarding",
        annual_price_id: "price_annual_onboarding",
-       promotion_code_id: if(coupon_code, do: "promo_onboarding"),
-       migration?: false
+       coupon_id: coupon_id(discount_reference),
+       promotion_code_id: promotion_code_id(discount_reference),
+       migration?: false,
+       # Simulates a product-scoped coupon (the student tier's monthly-only
+       # discount) resolved by Dhc.Invitations.Pricing.
+       discount_targets: discount_targets(discount_reference)
      }}
   end
 
@@ -60,6 +64,19 @@ defmodule Dhc.Onboarding.StripeAdapter.Test do
   end
 
   defp report_progress(_attrs), do: :ok
+
+  defp coupon_id({:coupon, id, _targets}), do: id
+  defp coupon_id(_discount_reference), do: nil
+
+  defp payment_requirement("COMPLIMENTARY"), do: :complimentary
+  defp payment_requirement({:coupon, _id, [:monthly, :annual]}), do: :complimentary
+  defp payment_requirement(_discount_reference), do: :paid
+
+  defp discount_targets({:coupon, _id, targets}), do: targets
+  defp discount_targets(_discount_reference), do: [:monthly, :annual]
+
+  defp promotion_code_id(code) when is_binary(code) and code != "", do: "promo_onboarding"
+  defp promotion_code_id(_discount_reference), do: nil
 
   defp test_pid, do: Application.fetch_env!(:dhc, :onboarding_test_pid)
 end

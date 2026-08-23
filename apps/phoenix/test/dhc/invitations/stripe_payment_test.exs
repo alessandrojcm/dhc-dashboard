@@ -123,6 +123,7 @@ defmodule Dhc.Invitations.StripePaymentTest do
     plan = %{
       monthly_price_id: "price_monthly",
       annual_price_id: "price_annual",
+      coupon_id: nil,
       migration?: false,
       promotion_code_id: nil,
       requirement: :paid
@@ -138,6 +139,55 @@ defmodule Dhc.Invitations.StripePaymentTest do
 
     assert_received {:subscription_created, :monthly}
     assert_received {:subscription_created, :annual}
+  end
+
+  test "applies a private coupon ID directly to complimentary tier subscriptions", %{
+    bypass: bypass
+  } do
+    test_process = self()
+
+    Bypass.stub(bypass, "POST", "/v1/subscriptions", fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      params = URI.decode_query(body)
+
+      send(test_process, {
+        :tier_subscription_created,
+        params["metadata[acceptance_kind]"],
+        params["discounts[0][coupon]"],
+        params["discounts[0][promotion_code]"]
+      })
+
+      stripe_json(conn, %{
+        "id" => "sub_#{params["metadata[acceptance_kind]"]}",
+        "latest_invoice" => %{
+          "id" => "in_#{params["metadata[acceptance_kind]"]}",
+          "status" => "paid",
+          "amount_due" => 0,
+          "payments" => %{"data" => []}
+        }
+      })
+    end)
+
+    plan = %{
+      monthly_price_id: "price_monthly",
+      annual_price_id: "price_annual",
+      coupon_id: "DHC_COACH_TIER",
+      migration?: false,
+      promotion_code_id: nil,
+      requirement: :complimentary,
+      discount_targets: [:monthly, :annual]
+    }
+
+    assert :ok =
+             StripePayment.complete(%{
+               complimentary: true,
+               customer_id: "cus_coach",
+               attempt_id: "attempt-coach",
+               payment_plan: plan
+             })
+
+    assert_received {:tier_subscription_created, "monthly", "DHC_COACH_TIER", nil}
+    assert_received {:tier_subscription_created, "annual", "DHC_COACH_TIER", nil}
   end
 
   defp stripe_json(conn, body) do

@@ -20,6 +20,11 @@ defmodule Dhc.Invitations.Invitation do
     field :expires_at, :utc_datetime
     field :created_by_principal_id, Ecto.UUID
     field :invitation_type, :string
+    # Membership discount indicated at issue time. `standard` pays full
+    # price; `coach` resolves the configured 100%-off coupon and `student`
+    # the configured 20%-off monthly coupon at acceptance (see
+    # `Dhc.Invitations.Pricing.tier_coupon_id/1`).
+    field :pricing_tier, :string, default: "standard"
     field :metadata, :map
 
     # ALE-162: carried at issue time so acceptance can build the
@@ -33,11 +38,6 @@ defmodule Dhc.Invitations.Invitation do
     field :phone_number, :string
     field :date_of_birth, :date
 
-    # Historical pre-ADR-0013 field. New pricing calls never write it; the
-    # acceptance workflow only reads it to resume Invitations already priced
-    # before the migration.
-    field :stripe_customer_id, :string
-
     timestamps(inserted_at: :created_at, type: :utc_datetime)
   end
 
@@ -50,12 +50,12 @@ defmodule Dhc.Invitations.Invitation do
       :status,
       :expires_at,
       :invitation_type,
+      :pricing_tier,
       :metadata,
       :first_name,
       :last_name,
       :phone_number,
-      :date_of_birth,
-      :stripe_customer_id
+      :date_of_birth
     ])
     |> validate_required([
       :email,
@@ -71,6 +71,7 @@ defmodule Dhc.Invitations.Invitation do
     |> update_change(:email, &(&1 |> String.trim() |> String.downcase()))
     |> validate_format(:email, ~r/^[^\s]+@[^\s]+$/)
     |> validate_inclusion(:status, ~w(pending accepted expired revoked))
+    |> validate_inclusion(:pricing_tier, ~w(standard coach student))
     |> unique_constraint(:email, name: :invitations_email_pending_unique)
   end
 end

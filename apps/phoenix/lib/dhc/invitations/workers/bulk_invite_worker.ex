@@ -208,7 +208,14 @@ defmodule Dhc.Invitations.BulkInviteWorker do
     required = ~w(firstName lastName email phoneNumber dateOfBirth)
     missing = Enum.filter(required, &(is_nil(invite[&1]) or invite[&1] == ""))
 
-    if missing == [], do: {:ok, invite}, else: {:error, {:invalid_invite, missing}}
+    invalid_tier? =
+      invite["pricingTier"] not in [nil, "" | ~w(standard coach student)]
+
+    cond do
+      missing != [] -> {:error, {:invalid_invite, missing}}
+      invalid_tier? -> {:error, {:invalid_invite, ["pricingTier"]}}
+      true -> {:ok, invite}
+    end
   end
 
   defp resolve_invite_data(_invite), do: {:error, :invalid_invite_shape}

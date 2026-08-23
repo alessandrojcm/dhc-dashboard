@@ -159,7 +159,7 @@ export const processPayment = form(memberSignupSchema, async (data) => {
 			body: {
 				nextOfKinName: data.nextOfKin,
 				nextOfKinPhone: data.nextOfKinNumber,
-				stripeConfirmationToken: data.stripeConfirmationToken,
+				stripeConfirmationToken: data.stripeConfirmationToken || undefined,
 				couponCode: data.couponCode || undefined,
 				mandateContext: {
 					ipAddress: event.getClientAddress(),

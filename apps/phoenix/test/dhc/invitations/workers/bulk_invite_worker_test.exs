@@ -49,6 +49,58 @@ defmodule Dhc.Invitations.BulkInviteWorkerTest do
     end
   end
 
+  describe "perform/1 pricing tiers" do
+    test "persists the invited pricing tier on the invitation" do
+      created_by_id = insert_principal!("tier-admin@example.com")
+
+      args = %{
+        "invites" => [
+          base_invite("coach-invite@example.com", %{"pricingTier" => "coach"})
+        ],
+        "user" => %{"id" => created_by_id, "email" => "tier-admin@example.com"}
+      }
+
+      assert :ok = BulkInviteWorker.perform(%Oban.Job{args: args})
+
+      assert %{pricing_tier: "coach"} =
+               Repo.get_by!(Invitation, email: "coach-invite@example.com")
+    end
+
+    test "defaults to the standard tier when no pricing tier is supplied" do
+      created_by_id = insert_principal!("standard-tier-admin@example.com")
+
+      args = %{
+        "invites" => [base_invite("standard-invite@example.com")],
+        "user" => %{"id" => created_by_id, "email" => "standard-tier-admin@example.com"}
+      }
+
+      assert :ok = BulkInviteWorker.perform(%Oban.Job{args: args})
+
+      assert %{pricing_tier: "standard"} =
+               Repo.get_by!(Invitation, email: "standard-invite@example.com")
+    end
+
+    test "records a per-invite failure for an unknown pricing tier" do
+      created_by_id = insert_principal!("bad-tier-admin@example.com")
+
+      args = %{
+        "invites" => [base_invite("gold-invite@example.com", %{"pricingTier" => "gold"})],
+        "user" => %{"id" => created_by_id, "email" => "bad-tier-admin@example.com"}
+      }
+
+      assert :ok = BulkInviteWorker.perform(%Oban.Job{args: args})
+
+      refute Repo.get_by(Invitation, email: "gold-invite@example.com")
+
+      log = Repo.get_by!(ProcessingLog, principal_id: created_by_id)
+      assert log.failure_count == 1
+
+      assert [%{"success" => false, "error" => error}] = log.results["items"]
+      assert error =~ "invalid_invite"
+      assert [] = all_enqueued(worker: Dhc.Email.Worker)
+    end
+  end
+
   describe "perform/1 waitlist invitations" do
     test "resolves a waitlist id and creates the invitation with no profile or Stripe customer" do
       created_by_id = insert_principal!("admin@example.com")
@@ -94,9 +146,6 @@ defmodule Dhc.Invitations.BulkInviteWorkerTest do
                from up in UserProfile,
                  where: up.principal_id == ^invitation.prospective_principal_id
              )
-
-      # No Stripe customer was created at issue time.
-      assert invitation.stripe_customer_id in [nil, ""]
 
       # The waitlist entry was marked invited.
       assert %WaitlistEntry{status: "invited"} = Repo.get(WaitlistEntry, waitlist_entry.id)
@@ -241,6 +290,19 @@ defmodule Dhc.Invitations.BulkInviteWorkerTest do
       assert [%Oban.Job{args: email_args}] = all_enqueued(worker: Dhc.Email.Worker)
       assert email_args["email"] == "fresh@example.com"
     end
+  end
+
+  defp base_invite(email, overrides \\ %{}) do
+    Map.merge(
+      %{
+        "firstName" => "Ada",
+        "lastName" => "Lovelace",
+        "email" => email,
+        "phoneNumber" => "+353810000001",
+        "dateOfBirth" => "1990-01-01"
+      },
+      overrides
+    )
   end
 
   defp insert_principal!(email) do
