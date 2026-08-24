@@ -16,6 +16,9 @@ defmodule Dhc.Onboarding.Workers.AcceptanceRecoveryWorker do
       :discard -> {:cancel, :attempt_not_found}
       {:error, :operation_in_progress} -> {:snooze, 30}
       {:error, :payment_not_started} -> {:cancel, :payment_not_started}
+      # A misconfigured tier coupon stays broken until an operator fixes the
+      # configuration; retrying cannot succeed, so discard remaining attempts.
+      {:error, :tier_coupon_not_configured} -> {:cancel, :tier_coupon_not_configured}
       {:error, reason} -> {:error, reason}
     end
   end
