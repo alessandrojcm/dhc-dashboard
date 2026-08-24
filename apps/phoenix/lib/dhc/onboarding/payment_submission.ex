@@ -357,7 +357,7 @@ defmodule Dhc.Onboarding.PaymentSubmission do
     {invitation, attempt, true}
   end
 
-  defp begin_payment(_invitation, attempt) do
+  defp begin_payment(invitation, attempt) do
     attrs = payment_attrs(attempt)
 
     with {:ok, invitation, attempt} <- revalidate_payment_fence(attempt.id),
@@ -373,6 +373,20 @@ defmodule Dhc.Onboarding.PaymentSubmission do
           provision_complimentary(invitation, attempt, discount_reference, payment_plan)
       end
     else
+      # A misconfigured tier coupon is an operator error, not a payment
+      # failure — surface it without recording a provider failure or
+      # scheduling acceptance recovery retries. Release the operation so the
+      # invitee can retry once the tier configuration is fixed.
+      {:error, :tier_coupon_not_configured} = error ->
+        Logger.warning(
+          "[onboarding] Pricing tier coupon is not configured",
+          invitation_id: invitation.id,
+          pricing_tier: invitation.pricing_tier
+        )
+
+        release_operation_error(attempt, "tier_coupon_not_configured")
+        error
+
       {:error, reason} ->
         retryable? = stripe_adapter().retryable_failure?(reason)
         record_provider_failure(attempt, reason)

@@ -190,6 +190,36 @@ defmodule Dhc.Invitations.StripePaymentTest do
     assert_received {:tier_subscription_created, "annual", "DHC_COACH_TIER", nil}
   end
 
+  test "skips subscription discovery when cleanup state has no Stripe customer", %{
+    bypass: bypass
+  } do
+    # Any Stripe call would fail while Bypass is down, so a passing assertion
+    # proves discovery was skipped for attempts that never created a customer.
+    Bypass.down(bypass)
+
+    assert :ok = StripePayment.cancel_membership(%{"customer_id" => nil, "other" => "ignored"})
+    assert :ok = StripePayment.cancel_membership(%{"customer_id" => ""})
+  end
+
+  test "still cancels known subscriptions when cleanup state has no Stripe customer", %{
+    bypass: bypass
+  } do
+    test_process = self()
+
+    Bypass.expect_once(bypass, "DELETE", "/v1/subscriptions/sub_monthly", fn conn ->
+      send(test_process, :subscription_cancelled)
+      stripe_json(conn, %{"id" => "sub_monthly", "status" => "canceled"})
+    end)
+
+    assert :ok =
+             StripePayment.cancel_membership(%{
+               "customer_id" => nil,
+               "monthly_subscription_id" => "sub_monthly"
+             })
+
+    assert_received :subscription_cancelled
+  end
+
   defp stripe_json(conn, body) do
     conn
     |> Plug.Conn.put_resp_content_type("application/json")
