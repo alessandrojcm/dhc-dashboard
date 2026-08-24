@@ -24,6 +24,7 @@ defmodule Dhc.OnboardingTest do
   setup do
     original_adapter = Application.get_env(:dhc, :onboarding_stripe_adapter)
     original_result = Application.get_env(:dhc, :onboarding_stripe_result)
+    original_prepare_result = Application.get_env(:dhc, :onboarding_stripe_prepare_result)
     original_customer_result = Application.get_env(:dhc, :onboarding_stripe_customer_result)
     original_cancel_result = Application.get_env(:dhc, :onboarding_stripe_cancel_result)
     original_progress = Application.get_env(:dhc, :onboarding_stripe_progress)
@@ -40,6 +41,12 @@ defmodule Dhc.OnboardingTest do
         Application.put_env(:dhc, :onboarding_stripe_result, original_result)
       else
         Application.delete_env(:dhc, :onboarding_stripe_result)
+      end
+
+      if original_prepare_result do
+        Application.put_env(:dhc, :onboarding_stripe_prepare_result, original_prepare_result)
+      else
+        Application.delete_env(:dhc, :onboarding_stripe_prepare_result)
       end
 
       if original_customer_result do
@@ -1274,6 +1281,103 @@ defmodule Dhc.OnboardingTest do
 
     assert :ok = perform_job(AcceptanceRecoveryWorker, %{"attempt_id" => attempt.id})
     assert Repo.get!(InvitationAcceptanceAttempt, attempt.id).status == "declined"
+  end
+
+  test "cleanup succeeds when the attempt failed before its Stripe customer was created" do
+    invitation = insert_invitation!()
+    continuation_id = continuation_for(invitation)
+
+    # Regression for the 2026-08-24 coach-invitation incident: a failure before
+    # customer creation used to poison cleanup with an empty Stripe customer,
+    # making discovery reject with "empty string for 'customer'" on every
+    # recovery retry.
+    Application.put_env(
+      :dhc,
+      :onboarding_stripe_customer_result,
+      {:error, {:stripe_api, 400, %{"error" => %{"code" => "parameter_invalid_empty"}}}}
+    )
+
+    assert {:error, {:payment_failed, {:stripe_api, 400, _body}}} =
+             Onboarding.accept(invitation.id, continuation_id, "Next of Kin", "+353810000001", %{
+               confirmation_token: "ctok_success"
+             })
+
+    # Cleanup runs synchronously after the conclusion; without a customer it
+    # needs no Stripe call at all and concludes immediately.
+    assert_received {:create_customer, _}
+    refute_received {:provision_membership, _}
+
+    assert_received {:cancel_membership,
+                     %{"customer_id" => nil, "acceptance_attempt_id" => cleaned_attempt_id}}
+
+    attempt = Repo.get!(InvitationAcceptanceAttempt, cleaned_attempt_id)
+
+    assert cleaned_attempt_id ==
+             Repo.get_by!(InvitationAcceptanceAttempt, invitation_id: invitation.id).id
+
+    assert attempt.status == "declined"
+    assert is_nil(attempt.stripe_customer_id)
+
+    # The scheduled recovery job remains a harmless idempotent no-op.
+    assert :ok = perform_job(AcceptanceRecoveryWorker, %{"attempt_id" => attempt.id})
+    assert Repo.get!(InvitationAcceptanceAttempt, attempt.id).status == "declined"
+  end
+
+  test "a misconfigured coach tier coupon fails payment without recording a provider failure" do
+    original_coupons = Application.get_env(:dhc, :membership_tier_coupons)
+
+    Application.put_env(:dhc, :membership_tier_coupons, coach: "DHC_COACH_TIER")
+
+    Application.put_env(
+      :dhc,
+      :onboarding_stripe_prepare_result,
+      {:error, :tier_coupon_not_configured}
+    )
+
+    on_exit(fn ->
+      if original_coupons do
+        Application.put_env(:dhc, :membership_tier_coupons, original_coupons)
+      else
+        Application.delete_env(:dhc, :membership_tier_coupons)
+      end
+    end)
+
+    invitation = insert_invitation!(pricing_tier: "coach")
+
+    {:ok, started} =
+      Onboarding.start_acceptance(
+        invitation.id,
+        invitation.email,
+        Date.to_iso8601(invitation.date_of_birth)
+      )
+
+    {:ok, _state} =
+      Onboarding.verify_discord(started.continuation_id, %{
+        "sub" => "coach-misconfig-discord-subject",
+        "preferred_username" => "coach-misconfig-member"
+      })
+
+    assert {:ok, %{state: "paymentReady"}} =
+             Onboarding.continue_acceptance(started.continuation_id)
+
+    assert {:error, :tier_coupon_not_configured} =
+             Onboarding.submit_payment(started.continuation_id, %{
+               next_of_kin_name: "Grace Hopper",
+               next_of_kin_phone: "+353810000099",
+               confirmation_token: "ctok_coach_misconfig"
+             })
+
+    attempt = Repo.get_by!(InvitationAcceptanceAttempt, invitation_id: invitation.id)
+    assert attempt.status == "payment_pending"
+    assert is_nil(attempt.operation_token)
+    assert attempt.last_error == "tier_coupon_not_configured"
+    assert_received {:prepare_payment, {:coupon, "DHC_COACH_TIER", [:monthly, :annual]}}
+    refute_received {:create_customer, _}
+    refute_received {:provision_membership, _}
+
+    # Recovery cancels instead of retry-looping a configuration error.
+    assert {:cancel, :tier_coupon_not_configured} =
+             perform_job(AcceptanceRecoveryWorker, %{"attempt_id" => attempt.id})
   end
 
   test "an active attempt keeps its original Stripe parameters across transport retries" do

@@ -13,18 +13,27 @@ defmodule Dhc.Onboarding.StripeAdapter.Test do
   def prepare_payment(discount_reference) do
     send(test_pid(), {:prepare_payment, discount_reference})
 
-    {:ok,
-     %{
-       requirement: payment_requirement(discount_reference),
-       monthly_price_id: "price_monthly_onboarding",
-       annual_price_id: "price_annual_onboarding",
-       coupon_id: coupon_id(discount_reference),
-       promotion_code_id: promotion_code_id(discount_reference),
-       migration?: false,
-       # Simulates a product-scoped coupon (the student tier's monthly-only
-       # discount) resolved by Dhc.Invitations.Pricing.
-       discount_targets: discount_targets(discount_reference)
-     }}
+    case Application.get_env(:dhc, :onboarding_stripe_prepare_result) do
+      nil ->
+        {:ok,
+         %{
+           requirement: payment_requirement(discount_reference),
+           monthly_price_id: "price_monthly_onboarding",
+           annual_price_id: "price_annual_onboarding",
+           coupon_id: coupon_id(discount_reference),
+           promotion_code_id: promotion_code_id(discount_reference),
+           migration?: false,
+           # Simulates a product-scoped coupon (the student tier's monthly-only
+           # discount) resolved by Dhc.Invitations.Pricing.
+           discount_targets: discount_targets(discount_reference)
+         }}
+
+      result when is_function(result, 0) ->
+        result.()
+
+      result ->
+        result
+    end
   end
 
   @impl true
