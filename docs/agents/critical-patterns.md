@@ -128,6 +128,12 @@ Conventions established by the Waitlist migration (#105–#107) and reinforced b
 - Spread generated `*Mutation()` options into `createMutation` whenever the mutation calls the generated Phoenix client directly. Custom SvelteKit remote functions and non-Phoenix operations may keep a manual `mutationFn`.
 - Use generated `*QueryKey()` helpers for invalidation and direct cache updates. Add `select` only for UI-specific response shaping; remember that `queryClient` reads and writes the unselected API response stored in the cache.
 
+## Stripe List Requests Must Expand Nested Objects
+
+Stripe list endpoints return nested objects as **bare ID strings** unless the request passes an `expand[]` param. Reading fields off an unexpanded value silently returns nothing and triggers whatever fallback exists downstream — e.g. the stripe-sync job stored every member's `last_payment_date` as their subscription's original `start_date` for months because `latest_invoice.status_transitions.paid_at` was never present (`expand[]=data.latest_invoice` was missing from `/v1/subscriptions`). Regression coverage: `test/dhc/stripe_sync/last_payment_sync_test.exs` (deterministic Bypass gate) and `test/dhc/stripe_sync/workers/worker_integration_test.exs` (real-sandbox contract test using `backdate_start_date` so `start_date ≠ paid_at`; needs its `@moduletag timeout: 600_000` — one list page against api.stripe.com can take tens of seconds).
+
+When adding any Stripe list call, enumerate the nested fields you consume and pass the matching `expand[]` paths (existing examples: `invitations/stripe_payment.ex`, `membership/reactivation.ex`, `stripe_sync.ex`).
+
 ## API Response Format
 
 ```typescript

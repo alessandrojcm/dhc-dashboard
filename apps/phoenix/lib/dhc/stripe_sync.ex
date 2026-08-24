@@ -200,12 +200,25 @@ defmodule Dhc.StripeSync do
     end
   end
 
+  # `expand[]=data.latest_invoice` makes Stripe return each subscription's
+  # latest invoice as an object instead of a bare ID, so
+  # `resolve_last_payment_date/1` can read its `paid_at`. Without it every
+  # active member's last payment date falls back to the subscription's
+  # original `start_date`.
+  @subscriptions_expand "data.latest_invoice"
+
   defp build_list_params(price_id, nil) do
-    %{status: "all", price: price_id, limit: 100}
+    %{"status" => "all", "price" => price_id, "limit" => 100, "expand[]" => @subscriptions_expand}
   end
 
   defp build_list_params(price_id, starting_after) do
-    %{status: "all", price: price_id, limit: 100, starting_after: starting_after}
+    %{
+      "status" => "all",
+      "price" => price_id,
+      "limit" => 100,
+      "starting_after" => starting_after,
+      "expand[]" => @subscriptions_expand
+    }
   end
 
   defp extract_customer_id(%{"customer" => customer}) when is_binary(customer), do: customer
