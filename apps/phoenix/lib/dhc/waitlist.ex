@@ -351,7 +351,7 @@ defmodule Dhc.Waitlist do
         email: attrs |> required("email") |> trim() |> String.downcase(),
         phone_number: trim(required(attrs, "phoneNumber")),
         date_of_birth: date_of_birth,
-        pronouns: attrs |> required("pronouns") |> trim() |> String.downcase(),
+        pronouns: attrs |> Map.get("pronouns", "") |> trim() |> String.downcase(),
         gender: required(attrs, "gender"),
         medical_conditions: Map.get(attrs, "medicalConditions", ""),
         social_media_consent: social_media_consent
@@ -364,7 +364,6 @@ defmodule Dhc.Waitlist do
             normalized.last_name,
             normalized.email,
             normalized.phone_number,
-            normalized.pronouns,
             normalized.gender
           ],
           &(&1 == "")

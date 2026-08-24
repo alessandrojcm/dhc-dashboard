@@ -193,9 +193,9 @@ function isSocialMediaConsent(value: string): value is SocialMediaConsent {
 							id={fieldProps.name}
 							placeholder="Enter your pronouns"
 						/>
-						<Field.Description
-							>Please separate with slashes (e.g. they/them).</Field.Description
-						>
+						<Field.Description>
+							Optional — please separate with slashes (e.g. they/them).
+						</Field.Description>
 						{#each submitWaitlist.fields.pronouns.issues() as issue (issue.message)}
 							<Field.Error>{issue.message}</Field.Error>
 						{/each}
