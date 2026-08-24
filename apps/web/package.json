@@ -85,7 +85,7 @@
 		"stripe": "19.3.0",
 		"svelte": "^5.55.1",
 		"svelte-check": "^4.3.4",
-		"svelte-sonner": "^1.0.6",
+		"svelte-sonner": "^1.2.1",
 		"tailwind-merge": "^3.4.0",
 		"tailwind-variants": "^3.2.2",
 		"tailwindcss": "4.1.17",
