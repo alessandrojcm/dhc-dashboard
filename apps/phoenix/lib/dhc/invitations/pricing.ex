@@ -168,6 +168,18 @@ defmodule Dhc.Invitations.Pricing do
          discount_targets: discount_targets,
          migration?: false
        }}
+    else
+      # This clause shape only comes from backend-applied tier coupons
+      # (`Pricing.tier_coupon_id/1`). A 404 means the configured ID does not
+      # exist in this Stripe account (wrong ID, deleted, or test/live
+      # mismatch) — an operator configuration error, not a transient provider
+      # failure. Surface it like an unconfigured tier so callers skip provider
+      # failure recording and acceptance-recovery retries.
+      {:error, {:stripe, {:stripe_api, 404, _body}}} ->
+        {:error, :tier_coupon_not_configured}
+
+      error ->
+        error
     end
   end
 

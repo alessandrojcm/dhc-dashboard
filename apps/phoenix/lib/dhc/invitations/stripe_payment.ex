@@ -596,10 +596,16 @@ defmodule Dhc.Invitations.StripePayment do
   defp payment_method_value(%{"payment_method" => %{"id" => id}}), do: id
   defp payment_method_value(_setup_intent), do: nil
 
+  # An attempt that failed before its Stripe customer was created has no
+  # customer to discover subscriptions for. Passing a nil/empty customer to
+  # Stripe rejects the request ("empty string for 'customer'") and would loop
+  # cleanup retries forever; known subscription IDs in the state are still
+  # cancelled by cancel_membership/1.
   defp discover_subscription_ids(%{
          "customer_id" => customer_id,
          "acceptance_attempt_id" => attempt_id
-       }) do
+       })
+       when is_binary(customer_id) and customer_id != "" do
     case Operations.get_subscriptions(%{}, customer: customer_id, status: "all", limit: 100) do
       {:ok, %{"data" => subscriptions}} ->
         ids =
