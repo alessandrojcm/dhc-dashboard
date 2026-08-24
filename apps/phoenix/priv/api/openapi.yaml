@@ -5011,7 +5011,6 @@ components:
         - email
         - phoneNumber
         - dateOfBirth
-        - pronouns
         - gender
         - medicalConditions
       properties:
@@ -5033,7 +5032,7 @@ components:
           description: Applicant date of birth. Applicants must be at least 16.
         pronouns:
           type: string
-          minLength: 1
+          description: Optional. Empty string when the applicant prefers not to share.
         gender:
           type: string
         medicalConditions:

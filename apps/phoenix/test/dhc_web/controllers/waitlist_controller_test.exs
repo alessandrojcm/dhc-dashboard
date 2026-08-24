@@ -487,6 +487,21 @@ defmodule DhcWeb.WaitlistControllerTest do
              ) == 0
     end
 
+    test "creates an adult entry when pronouns are omitted", %{conn: conn} do
+      set_waitlist_open(true)
+
+      payload =
+        adult_payload(email: "no-pronouns@example.com")
+        |> Map.delete(:pronouns)
+
+      conn = post(conn, "/api/waitlist/entries", payload)
+
+      assert %{"data" => %{"id" => id, "status" => "waiting"}} = json_response(conn, 201)
+
+      profile = Repo.get_by!(UserProfile, waitlist_id: id)
+      assert profile.pronouns == ""
+    end
+
     test "creates guardian information for a minor", %{conn: conn} do
       set_waitlist_open(true)
 

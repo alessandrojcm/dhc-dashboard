@@ -56,12 +56,15 @@ export const beginnersWaitlistClientSchema = v.object({
 		}, "You must be at least 16 years old."),
 	),
 	medicalConditions: v.pipe(v.string()),
-	pronouns: v.pipe(
-		v.string(),
-		v.check(
-			(input) => /^\/?[\w-]+(\/[\w-]+)*\/?$/.test(input),
-			"Pronouns must be written between slashes (e.g., he/him/they).",
+	pronouns: v.optional(
+		v.pipe(
+			v.string(),
+			v.check(
+				(input) => input === "" || /^\/?[\w-]+(\/[\w-]+)*\/?$/.test(input),
+				"Pronouns must be written between slashes (e.g., he/him/they), or left blank.",
+			),
 		),
+		"",
 	),
 	gender: v.pipe(v.string(), v.nonEmpty("Please select your gender.")),
 	socialMediaConsent: v.optional(

@@ -416,7 +416,9 @@ let showReactivateModal = $state(false);
 					<Field.Field>
 						{@const fieldProps = updateProfile.fields.pronouns.as("text")}
 						<div class="flex items-center gap-2">
-							<Field.Label for={fieldProps.name}>Pronouns</Field.Label>
+							<Field.Label for={fieldProps.name}>
+								Pronouns (optional)
+							</Field.Label>
 							{@render whyThisField(
 								"This helps us maintain a balanced and inclusive training environment",
 							)}
