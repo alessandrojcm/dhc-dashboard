@@ -8,6 +8,7 @@ defmodule Dhc.Inventory.Items do
   alias Dhc.Inventory.EquipmentCategory
   alias Dhc.Inventory.Item
   alias Dhc.Inventory.ItemHistory
+  alias Dhc.OptimisticLock
   alias Dhc.Repo
 
   @type item :: Item.t()
@@ -117,11 +118,11 @@ defmodule Dhc.Inventory.Items do
         {:error, :not_found}
 
       %Item{} = item ->
-        case check_precondition(item, opts) do
+        case OptimisticLock.check_version(item, opts[:expected_lock_version]) do
           :ok ->
             update_existing_item(item, attrs, actor_id)
 
-          {:version_precondition_failed, %Item{} = current} ->
+          {:error, {:version_precondition_failed, %Item{} = current}} ->
             {:error, {:version_precondition_failed, load_item_aggregates(current)}}
         end
     end
@@ -145,11 +146,11 @@ defmodule Dhc.Inventory.Items do
         {:error, :not_found}
 
       %Item{} = item ->
-        case check_precondition(item, opts) do
+        case OptimisticLock.check_version(item, opts[:expected_lock_version]) do
           :ok ->
             delete_existing_item(item)
 
-          {:version_precondition_failed, %Item{} = current} ->
+          {:error, {:version_precondition_failed, %Item{} = current}} ->
             {:error, {:version_precondition_failed, load_item_aggregates(current)}}
         end
     end
@@ -220,24 +221,6 @@ defmodule Dhc.Inventory.Items do
 
       {:error, _changeset} ->
         {:error, :not_found}
-    end
-  end
-
-  defp check_precondition(%Item{} = item, opts) do
-    case Keyword.fetch(opts, :expected_lock_version) do
-      :error ->
-        :ok
-
-      {:ok, :*} ->
-        # If-Match: * — any existing version passes.
-        :ok
-
-      {:ok, expected} when is_integer(expected) ->
-        if item.lock_version == expected do
-          :ok
-        else
-          {:version_precondition_failed, item}
-        end
     end
   end
 
