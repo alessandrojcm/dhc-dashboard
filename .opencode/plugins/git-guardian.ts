@@ -1,58 +1,57 @@
-import type { Plugin } from "@opencode-ai/plugin";
+import { Plugin } from "@opencode-ai/plugin";
 
 /**
  * Git Guardian
  *
- * Blocks the agent from invoking any `git` command in the `bash` tool.
+ * Blocks the agent from invoking any `git` command in the `shell` tool.
  * Git operations should be performed through GitButler (`but`) instead.
  * Linked Git worktrees are exempt because GitButler cannot manage them.
  */
-export default (async ({ client, directory }) => {
-  const gitMetadata = Bun.spawnSync(
-    [
-      "git",
-      "rev-parse",
-      "--path-format=absolute",
-      "--git-dir",
-      "--git-common-dir",
-    ],
-    {
-      cwd: directory,
-      stdout: "pipe",
-      stderr: "ignore",
-    },
-  );
-  const [gitDirectory, gitCommonDirectory] = gitMetadata.stdout
-    .toString()
-    .trim()
-    .split("\n");
-  const isLinkedWorktree =
-    gitMetadata.exitCode === 0 &&
-    Boolean(gitDirectory && gitCommonDirectory) &&
-    gitDirectory !== gitCommonDirectory;
+export default Plugin.define({
+  id: "git-guardian",
+  async setup(ctx) {
+    const gitMetadata = Bun.spawnSync(
+      [
+        "git",
+        "rev-parse",
+        "--path-format=absolute",
+        "--git-dir",
+        "--git-common-dir",
+      ],
+      {
+        cwd: ctx.location.directory,
+        stdout: "pipe",
+        stderr: "ignore",
+      },
+    );
+    const [gitDirectory, gitCommonDirectory] = gitMetadata.stdout
+      .toString()
+      .trim()
+      .split("\n");
+    const isLinkedWorktree =
+      gitMetadata.exitCode === 0 &&
+      Boolean(gitDirectory && gitCommonDirectory) &&
+      gitDirectory !== gitCommonDirectory;
 
-  await client.app.log({
-    body: {
-      service: "git-guardian",
-      level: "info",
-      message: isLinkedWorktree
+    console.info(
+      isLinkedWorktree
         ? "Git Guardian disabled in linked Git worktree"
         : "Git Guardian plugin initialized",
-    },
-  });
+    );
 
-  return {
-    "tool.execute.before": async (input, output) => {
+    await ctx.tool.hook("execute.before", (event) => {
       if (
         isLinkedWorktree ||
-        input.tool !== "bash" ||
-        !output.args ||
-        typeof output.args.command !== "string"
+        event.tool !== "shell" ||
+        !event.input ||
+        typeof event.input !== "object" ||
+        !("command" in event.input) ||
+        typeof event.input.command !== "string"
       ) {
         return;
       }
 
-      const command = output.args.command.trim();
+      const command = event.input.command.trim();
 
       // Match `git` as the first word or after common shell separators/prefixes.
       // Catches direct invocations like `git status`, `git add ...`,
@@ -60,13 +59,8 @@ export default (async ({ client, directory }) => {
       const gitPattern = /(^|&&|;|\|\||`|\$\()\s*git\b/;
 
       if (gitPattern.test(command)) {
-        await client.app.log({
-          body: {
-            service: "git-guardian",
-            level: "warn",
-            message: "Blocked git command",
-            extra: { command: command.slice(0, 200) },
-          },
+        console.warn("Git Guardian blocked git command", {
+          command: command.slice(0, 200),
         });
 
         throw new Error(
@@ -75,6 +69,6 @@ export default (async ({ client, directory }) => {
             "See the `but` skill for common workflows.",
         );
       }
-    },
-  };
-}) satisfies Plugin;
+    });
+  },
+});

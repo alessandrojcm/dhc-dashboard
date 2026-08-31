@@ -366,6 +366,53 @@ defmodule Dhc.OptimisticLockTest do
     end
   end
 
+  # ── Bulk update_all paths ──────────────────────────────────────────────
+
+  describe "bulk update paths" do
+    test "apply_member_access bumps the user_profiles version" do
+      member = MemberFixtures.member_fixture()
+
+      assert :ok = Dhc.Auth.apply_member_access(member.profile_id, false)
+
+      profile =
+        Dhc.UserProfiles.UserProfile
+        |> Repo.get!(member.profile_id)
+
+      assert profile.is_active == false
+      assert profile.lock_version == 2
+    end
+
+    test "waitlist joined-by-invitation conversion bumps the entry version" do
+      entry = insert_waitlist_entry("joined-#{System.unique_integer([:positive])}@example.com")
+
+      # Mirrors the invitation-conversion bulk write in Dhc.Invitations: the
+      # update_all uses `inc:` to bump lock_version atomically (ADR 0023),
+      # so the version remains a truthful witness for bulk paths.
+      import Ecto.Query
+
+      from(w in Dhc.Waitlist.WaitlistEntry, where: w.id == ^entry.id)
+      |> Repo.update_all(
+        set: [
+          status: "joined",
+          last_status_change: DateTime.utc_now() |> DateTime.truncate(:second)
+        ],
+        inc: [lock_version: 1]
+      )
+
+      assert %{status: "joined", lock_version: 2} = Repo.reload!(entry)
+    end
+
+    defp insert_waitlist_entry(email) do
+      {:ok, entry} =
+        %Dhc.Waitlist.WaitlistEntry{}
+        |> Ecto.Changeset.cast(%{email: email, status: "waiting"}, [:email, :status])
+        |> Ecto.Changeset.validate_required([:email, :status])
+        |> Repo.insert()
+
+      entry
+    end
+  end
+
   # ── Helpers ─────────────────────────────────────────────────────────────
 
   defp columns_with_defaults do
@@ -379,51 +426,7 @@ defmodule Dhc.OptimisticLockTest do
     Enum.map(rows, &hd/1)
   end
 
-  defp insert_category(attrs) do
-    attrs = Enum.into(attrs, %{})
-
-    {:ok, category} =
-      %EquipmentCategory{}
-      |> Ecto.Changeset.cast(attrs, [:name, :description, :available_attributes])
-      |> Ecto.Changeset.validate_required([:name])
-      |> Repo.insert()
-
-    category
-  end
-
-  defp insert_container!(container_name \\ "Lock Container") do
-    user_id = Ecto.UUID.generate()
-
-    %Dhc.Auth.Principal{id: user_id}
-    |> Dhc.Auth.Principal.email_changeset(%{
-      email: "optlock-#{System.unique_integer([:positive])}@example.com"
-    })
-    |> Repo.insert!()
-
-    container_id = Ecto.UUID.generate()
-
-    {:ok, _} =
-      Repo.query(
-        "INSERT INTO containers (id, name, created_by, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW())",
-        [Ecto.UUID.dump!(container_id), container_name, Ecto.UUID.dump!(user_id)]
-      )
-
-    container_id
-  end
-
-  defp insert_item(container_id, category_id) do
-    item_id = Ecto.UUID.generate()
-
-    {:ok, _} =
-      Repo.query(
-        """
-        INSERT INTO inventory_items
-          (id, container_id, category_id, attributes, quantity, created_at, updated_at)
-        VALUES ($1, $2, $3, '{}'::jsonb, 1, NOW(), NOW())
-        """,
-        [Ecto.UUID.dump!(item_id), Ecto.UUID.dump!(container_id), Ecto.UUID.dump!(category_id)]
-      )
-
-    {:ok, item_id}
-  end
+  defdelegate insert_category(attrs), to: InventoryFixtures
+  defdelegate insert_container!(container_name \\ "Lock Container"), to: InventoryFixtures
+  defdelegate insert_item(container_id, category_id), to: InventoryFixtures
 end
