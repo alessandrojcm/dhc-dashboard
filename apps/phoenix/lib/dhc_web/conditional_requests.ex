@@ -103,6 +103,24 @@ defmodule DhcWeb.ConditionalRequests do
   end
 
   @doc """
+  Convert write-side conditional headers into context options.
+
+  An absent `If-Match` keeps the write unconditional. A concrete entity tag
+  becomes an expected lock version, while `*` records that any existing
+  entity satisfies the precondition.
+  """
+  @spec write_options(Plug.Conn.t()) ::
+          {:ok, keyword()} | {:error, :unsupported_header | :invalid_if_match}
+  def write_options(conn) do
+    case parse_if_match(conn) do
+      {:ok, nil} -> {:ok, []}
+      {:ok, {:version, version}} -> {:ok, expected_lock_version: version}
+      {:ok, {:any_existing, :*}} -> {:ok, expected_lock_version: :*}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc """
   Enforce a parsed `If-Match` instruction against `lock_version`.
   """
   @spec enforce_if_match(if_match(), pos_integer()) :: :ok | {:precondition_failed}
