@@ -96,29 +96,61 @@ defmodule Dhc.Inventory.Items do
     end
   end
 
-  @spec update_item(String.t(), map(), String.t()) ::
-          {:ok, item()} | {:error, :not_found} | {:error, Ecto.Changeset.t()}
-  def update_item(id, attrs, actor_id)
-      when is_binary(id) and is_map(attrs) and is_binary(actor_id) do
+  @doc """
+  Update an item, optionally guarded by an expected `lock_version`.
+
+  When `opts[:expected_lock_version]` is present (from an `If-Match`
+  precondition, ADR 0023), a mismatch with the stored version — including a
+  race lost to a concurrent edit — fails fast with
+  `{:error, {:version_precondition_failed, current_item}}` without applying
+  any changes.
+  """
+  @spec update_item(String.t(), map(), String.t(), keyword()) ::
+          {:ok, item()}
+          | {:error, :not_found}
+          | {:error, {:version_precondition_failed, item()}}
+          | {:error, Ecto.Changeset.t()}
+  def update_item(id, attrs, actor_id, opts \\ [])
+      when is_binary(id) and is_map(attrs) and is_binary(actor_id) and is_list(opts) do
     case Repo.get(Item, id) do
       nil ->
         {:error, :not_found}
 
       %Item{} = item ->
-        update_existing_item(item, attrs, actor_id)
+        case check_precondition(item, opts) do
+          :ok ->
+            update_existing_item(item, attrs, actor_id)
+
+          {:version_precondition_failed, %Item{} = current} ->
+            {:error, {:version_precondition_failed, load_item_aggregates(current)}}
+        end
     end
   end
 
-  @spec delete_item(String.t()) :: {:ok, item()} | {:error, :not_found}
-  def delete_item(id) when is_binary(id) do
+  @doc """
+  Delete an item, optionally guarded by an expected `lock_version` —
+  ADR 0023 Phase 1.2 (ALE-266).
+
+  With `opts[:expected_lock_version]`, a stale witness returns
+  `{:error, {:version_precondition_failed, current_item}}` and the item is
+  left untouched. The delete itself carries an `optimistic_lock` so a
+  version race that slips past the check still fails safely.
+  """
+  @spec delete_item(String.t(), keyword()) ::
+          {:ok, item()} | {:error, :not_found} | {:error, {:version_precondition_failed, item()}}
+  def delete_item(id, opts \\ [])
+      when is_binary(id) and is_list(opts) do
     case Repo.get(Item, id) do
       nil ->
         {:error, :not_found}
 
       %Item{} = item ->
-        case Repo.delete(item) do
-          {:ok, deleted} -> {:ok, deleted}
-          {:error, _changeset} -> {:error, :not_found}
+        case check_precondition(item, opts) do
+          :ok ->
+            delete_existing_item(item)
+
+          {:version_precondition_failed, %Item{} = current} ->
+            {:error, {:version_precondition_failed, load_item_aggregates(current)}}
         end
     end
   end
@@ -163,6 +195,49 @@ defmodule Dhc.Inventory.Items do
 
       %Item{} = item ->
         set_existing_item_maintenance(item, attrs, actor_id)
+    end
+  end
+
+  defp delete_existing_item(%Item{} = item) do
+    changeset = Ecto.Changeset.optimistic_lock(item, :lock_version)
+
+    case Repo.delete(changeset) do
+      {:ok, deleted} ->
+        {:ok, deleted}
+
+      # A concurrent edit bumped the version between read and delete; map
+      # the race to the same precondition failure the caller sees on the
+      # checked path. (Repo.delete has no reload path here, so the caller
+      # refetches via the 412 body's own contract only on the checked path;
+      # for the race window the entity simply was not deleted.)
+      {:error, %Ecto.StaleEntryError{} = _stale} ->
+        case Repo.get(Item, item.id) do
+          # The row vanished between read and delete — nothing to conflict
+          # with; report it the same way a plain missing delete would.
+          nil -> {:error, :not_found}
+          %Item{} = current -> {:error, {:version_precondition_failed, current}}
+        end
+
+      {:error, _changeset} ->
+        {:error, :not_found}
+    end
+  end
+
+  defp check_precondition(%Item{} = item, opts) do
+    case Keyword.fetch(opts, :expected_lock_version) do
+      :error ->
+        :ok
+
+      {:ok, :*} ->
+        # If-Match: * — any existing version passes.
+        :ok
+
+      {:ok, expected} when is_integer(expected) ->
+        if item.lock_version == expected do
+          :ok
+        else
+          {:version_precondition_failed, item}
+        end
     end
   end
 

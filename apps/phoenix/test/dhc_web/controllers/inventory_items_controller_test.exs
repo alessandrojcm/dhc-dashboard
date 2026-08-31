@@ -405,6 +405,295 @@ defmodule DhcWeb.InventoryItemsControllerTest do
     end
   end
 
+  # ── Conditional requests (ALE-266 Phase 1.2) ──────────────────────────
+  #
+  # The ETag/If-Match/If-None-Match wire contract per ADR 0023: strong ETag
+  # derived from lock_version, 412 (with current entity) on stale If-Match,
+  # 304 on matching If-None-Match, 400 on unsupported conditional headers,
+  # unchanged behaviour when no headers are sent.
+
+  describe "conditional requests — GET" do
+    setup do
+      category = insert_category!("Etag Category")
+      container = create_container!(%{"name" => "Etag Container"})
+      item = create_item!(item_payload(container, category))
+      %{item: item, id: to_uuid(item.id)}
+    end
+
+    test "GET returns lockVersion in body and a strong ETag header", %{
+      conn: conn,
+      id: id
+    } do
+      conn =
+        conn
+        |> auth_conn("member")
+        |> get("/api/inventory/items/#{id}")
+
+      assert %{"data" => payload} = json_response(conn, 200)
+      assert payload["lockVersion"] == 1
+      assert get_resp_header(conn, "etag") == ["\"1\""]
+    end
+
+    test "GET with matching If-None-Match returns 304 with ETag and no body", %{
+      conn: conn,
+      id: id
+    } do
+      conn =
+        conn
+        |> auth_conn("member")
+        |> put_req_header("if-none-match", "\"1\"")
+        |> get("/api/inventory/items/#{id}")
+
+      assert response(conn, 304) == ""
+      assert get_resp_header(conn, "etag") == ["\"1\""]
+    end
+
+    test "GET with stale If-None-Match returns 200 with the item", %{
+      conn: conn,
+      id: id
+    } do
+      conn =
+        conn
+        |> auth_conn("member")
+        |> put_req_header("if-none-match", "\"999\"")
+        |> get("/api/inventory/items/#{id}")
+
+      assert %{"data" => payload} = json_response(conn, 200)
+      assert payload["lockVersion"] == 1
+      assert get_resp_header(conn, "etag") == ["\"1\""]
+    end
+
+    test "GET with unsupported conditional header returns 400", %{
+      conn: conn,
+      id: id
+    } do
+      conn =
+        conn
+        |> auth_conn("member")
+        |> put_req_header("if-modified-since", "Mon, 31 Aug 2026 00:00:00 GMT")
+        |> get("/api/inventory/items/#{id}")
+
+      assert %{"errors" => %{"detail" => detail}} = json_response(conn, 400)
+      assert detail =~ "not supported"
+    end
+
+    test "GET with matching If-Match serves the item; stale If-Match returns 412", %{
+      conn: conn,
+      id: id
+    } do
+      conn =
+        conn
+        |> auth_conn("member")
+        |> put_req_header("if-match", "\"1\"")
+        |> get("/api/inventory/items/#{id}")
+
+      assert %{"data" => payload} = json_response(conn, 200)
+      assert payload["lockVersion"] == 1
+
+      {:ok, _} = Dhc.Inventory.update_item(id, %{"quantity" => 99}, @actor_id)
+
+      conn =
+        build_conn()
+        |> auth_conn("member")
+        |> put_req_header("if-match", "\"1\"")
+        |> get("/api/inventory/items/#{id}")
+
+      assert %{"data" => current, "errors" => %{"detail" => "version precondition failed"}} =
+               json_response(conn, 412)
+
+      assert current["quantity"] == 99
+      assert current["lockVersion"] == 2
+    end
+  end
+
+  describe "conditional requests — PATCH" do
+    setup do
+      category = insert_category!("Etag Patch Category")
+      container = create_container!(%{"name" => "Etag Patch Container"})
+      item = create_item!(item_payload(container, category))
+      %{item: item, id: to_uuid(item.id)}
+    end
+
+    test "PATCH with matching If-Match succeeds and bumps the version", %{
+      conn: conn,
+      id: id
+    } do
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> put_req_header("if-match", "\"1\"")
+        |> patch("/api/inventory/items/#{id}", %{"quantity" => 7})
+
+      assert %{"data" => payload} = json_response(conn, 200)
+      assert payload["quantity"] == 7
+      assert payload["lockVersion"] == 2
+      assert get_resp_header(conn, "etag") == ["\"2\""]
+    end
+
+    test "PATCH with If-Match: * succeeds while the item exists", %{
+      conn: conn,
+      id: id
+    } do
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> put_req_header("if-match", "*")
+        |> patch("/api/inventory/items/#{id}", %{"quantity" => 5})
+
+      assert %{"data" => payload} = json_response(conn, 200)
+      assert payload["lockVersion"] == 2
+    end
+
+    test "PATCH with stale If-Match returns 412 with the current entity", %{
+      conn: conn,
+      id: id
+    } do
+      # A concurrent edit bumps the server version past the client's witness.
+      {:ok, _} = Dhc.Inventory.update_item(id, %{"quantity" => 99}, @actor_id)
+
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> put_req_header("if-match", "\"1\"")
+        |> patch("/api/inventory/items/#{id}", %{"quantity" => 7})
+
+      assert %{"data" => current, "errors" => %{"detail" => "version precondition failed"}} =
+               json_response(conn, 412)
+
+      assert current["quantity"] == 99
+      assert current["lockVersion"] == 2
+      assert get_resp_header(conn, "etag") == ["\"2\""]
+    end
+
+    test "PATCH with malformed If-Match returns 400", %{conn: conn, id: id} do
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> put_req_header("if-match", "garbage")
+        |> patch("/api/inventory/items/#{id}", %{"quantity" => 7})
+
+      assert %{"errors" => %{"detail" => detail}} = json_response(conn, 400)
+      assert detail =~ "Invalid"
+    end
+
+    test "PATCH with unsupported conditional header returns 400", %{conn: conn, id: id} do
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> put_req_header("if-unmodified-since", "Mon, 31 Aug 2026 00:00:00 GMT")
+        |> patch("/api/inventory/items/#{id}", %{"quantity" => 7})
+
+      assert %{"errors" => %{"detail" => detail}} = json_response(conn, 400)
+      assert detail =~ "not supported"
+    end
+
+    test "PATCH with stale If-Match returns exactly the 412 envelope shape", %{
+      conn: conn,
+      id: id
+    } do
+      {:ok, _} = Dhc.Inventory.update_item(id, %{"quantity" => 99}, @actor_id)
+
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> put_req_header("if-match", "\"1\"")
+        |> patch("/api/inventory/items/#{id}", %{"quantity" => 7})
+
+      assert %{"data" => current, "errors" => %{"detail" => "version precondition failed"}} =
+               json_response(conn, 412)
+
+      assert Map.keys(current) |> Enum.sort() ==
+               [
+                 "attributes",
+                 "category",
+                 "categoryId",
+                 "container",
+                 "containerId",
+                 "createdAt",
+                 "createdBy",
+                 "id",
+                 "lockVersion",
+                 "notes",
+                 "outForMaintenance",
+                 "photoUrl",
+                 "quantity",
+                 "updatedAt",
+                 "updatedBy"
+               ]
+    end
+
+    test "PATCH without If-Match keeps current behaviour", %{conn: conn, id: id} do
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> patch("/api/inventory/items/#{id}", %{"quantity" => 7})
+
+      assert %{"data" => payload} = json_response(conn, 200)
+      assert payload["quantity"] == 7
+      assert payload["lockVersion"] == 2
+    end
+  end
+
+  describe "conditional requests — DELETE" do
+    setup do
+      category = insert_category!("Etag Delete Category")
+      container = create_container!(%{"name" => "Etag Delete Container"})
+      item = create_item!(item_payload(container, category))
+      %{item: item, id: to_uuid(item.id)}
+    end
+
+    test "DELETE with matching If-Match succeeds with 204", %{conn: conn, id: id} do
+      conn =
+        conn
+        |> auth_conn("president")
+        |> put_req_header("if-match", "\"1\"")
+        |> delete("/api/inventory/items/#{id}")
+
+      assert response(conn, 204) == ""
+      assert {:error, :not_found} = Dhc.Inventory.get_item(id)
+    end
+
+    test "DELETE with stale If-Match returns 412 with the current entity", %{
+      conn: conn,
+      id: id
+    } do
+      {:ok, _} = Dhc.Inventory.update_item(id, %{"quantity" => 99}, @actor_id)
+
+      conn =
+        conn
+        |> auth_conn("president")
+        |> put_req_header("if-match", "\"1\"")
+        |> delete("/api/inventory/items/#{id}")
+
+      assert %{"data" => current, "errors" => %{"detail" => "version precondition failed"}} =
+               json_response(conn, 412)
+
+      assert current["quantity"] == 99
+      assert current["lockVersion"] == 2
+    end
+
+    test "DELETE without If-Match keeps current behaviour", %{conn: conn, id: id} do
+      conn =
+        conn
+        |> auth_conn("president")
+        |> delete("/api/inventory/items/#{id}")
+
+      assert response(conn, 204) == ""
+    end
+
+    test "DELETE with unsupported conditional header returns 400", %{conn: conn, id: id} do
+      conn =
+        conn
+        |> auth_conn("president")
+        |> put_req_header("if-range", "\"1\"")
+        |> delete("/api/inventory/items/#{id}")
+
+      assert %{"errors" => %{"detail" => detail}} = json_response(conn, 400)
+      assert detail =~ "not supported"
+      assert {:ok, _} = Dhc.Inventory.get_item(id)
+    end
+  end
+
   test "read endpoints allow authenticated roles", %{conn: conn} do
     category = insert_category!("Read Roles")
     container = create_container!(%{"name" => "Read Box"})

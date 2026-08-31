@@ -27,6 +27,7 @@ defmodule DhcWeb.InventoryItemsController do
   use DhcWeb, :controller
 
   alias Dhc.Inventory
+  alias DhcWeb.ConditionalRequests
 
   @doc """
   GET /inventory/items
@@ -56,6 +57,7 @@ defmodule DhcWeb.InventoryItemsController do
       {:ok, item} ->
         conn
         |> put_status(:created)
+        |> ConditionalRequests.put_etag(item.lock_version)
         |> put_view(json: DhcWeb.InventoryItemsJSON)
         |> render(:item, item: item)
 
@@ -70,9 +72,23 @@ defmodule DhcWeb.InventoryItemsController do
   def show(conn, %{"id" => id}) do
     case Inventory.get_item(id) do
       {:ok, item} ->
-        conn
-        |> put_view(json: DhcWeb.InventoryItemsJSON)
-        |> render(:item, item: item)
+        precondition = ConditionalRequests.evaluate(conn, item.lock_version)
+
+        case ConditionalRequests.maybe_send_not_modified(conn, precondition) do
+          %Plug.Conn{} = conn_304 ->
+            conn_304
+
+          {:ok, nil} ->
+            item_response(conn, item)
+
+          # If-Match on a GET: RFC 9110 §13.1.1 — match serves normally, a
+          # stale witness is a 412 (AEP-154: never silently ignored).
+          {:ok, if_match} ->
+            enforce_get_if_match(conn, item, if_match)
+
+          {:error, reason} ->
+            bad_request(conn, ConditionalRequests.error_detail(reason))
+        end
 
       {:error, :not_found} ->
         not_found(conn, "Item not found")
@@ -85,17 +101,16 @@ defmodule DhcWeb.InventoryItemsController do
   def update(conn, %{"id" => id} = params) do
     actor_id = conn.assigns.current_session.principal.id
 
-    case Inventory.update_item(id, params, actor_id) do
-      {:ok, item} ->
-        conn
-        |> put_view(json: DhcWeb.InventoryItemsJSON)
-        |> render(:item, item: item)
+    case fetch_if_match(conn) do
+      {:ok, nil} ->
+        apply_update(conn, id, params, actor_id, [])
 
-      {:error, :not_found} ->
-        not_found(conn, "Item not found")
+      {:ok, if_match} ->
+        opts = [expected_lock_version: expected_version(if_match)]
+        apply_update(conn, id, params, actor_id, opts)
 
-      {:error, changeset} ->
-        unprocessable(conn, changeset)
+      {:error, reason} ->
+        bad_request(conn, ConditionalRequests.error_detail(reason))
     end
   end
 
@@ -103,12 +118,15 @@ defmodule DhcWeb.InventoryItemsController do
   DELETE /inventory/items/{id}
   """
   def delete(conn, %{"id" => id}) do
-    case Inventory.delete_item(id) do
-      {:ok, _item} ->
-        send_delete(conn)
+    case fetch_if_match(conn) do
+      {:ok, nil} ->
+        apply_delete(conn, id, [])
 
-      {:error, :not_found} ->
-        not_found(conn, "Item not found")
+      {:ok, if_match} ->
+        apply_delete(conn, id, expected_lock_version: expected_version(if_match))
+
+      {:error, reason} ->
+        bad_request(conn, ConditionalRequests.error_detail(reason))
     end
   end
 
@@ -170,6 +188,67 @@ defmodule DhcWeb.InventoryItemsController do
       {:error, changeset} ->
         unprocessable(conn, changeset)
     end
+  end
+
+  # ── Conditional-request helpers (ALE-266, ADR 0023) ──────────────────
+
+  defp enforce_get_if_match(conn, item, if_match) do
+    case ConditionalRequests.enforce_if_match(if_match, item.lock_version) do
+      :ok -> item_response(conn, item)
+      {:precondition_failed} -> precondition_failed(conn, item)
+    end
+  end
+
+  defp fetch_if_match(conn), do: ConditionalRequests.parse_if_match(conn)
+
+  defp expected_version({:version, version}), do: version
+  defp expected_version({:any_existing, :*}), do: :*
+
+  defp apply_update(conn, id, params, actor_id, opts) do
+    case Inventory.update_item(id, params, actor_id, opts) do
+      {:ok, item} ->
+        item_response(conn, item)
+
+      {:error, :not_found} ->
+        not_found(conn, "Item not found")
+
+      {:error, {:version_precondition_failed, current}} ->
+        precondition_failed(conn, current)
+
+      {:error, changeset} ->
+        unprocessable(conn, changeset)
+    end
+  end
+
+  defp apply_delete(conn, id, opts) do
+    case Inventory.delete_item(id, opts) do
+      {:ok, _item} ->
+        send_delete(conn)
+
+      {:error, :not_found} ->
+        not_found(conn, "Item not found")
+
+      {:error, {:version_precondition_failed, current}} ->
+        precondition_failed(conn, current)
+    end
+  end
+
+  defp item_response(conn, item) do
+    conn
+    |> ConditionalRequests.put_etag(item.lock_version)
+    |> put_view(json: DhcWeb.InventoryItemsJSON)
+    |> render(:item, item: item)
+  end
+
+  # 412 Precondition Failed — ADR 0023: the body carries the *current*
+  # server entity so the client can refetch/reconcile, alongside the error
+  # detail, reusing the response envelope.
+  defp precondition_failed(conn, current_item) do
+    conn
+    |> ConditionalRequests.put_etag(current_item.lock_version)
+    |> put_status(:precondition_failed)
+    |> put_view(json: DhcWeb.InventoryItemsJSON)
+    |> render(:precondition_failed, item: current_item)
   end
 
   # ── Error helpers ─────────────────────────────────────────────────────
