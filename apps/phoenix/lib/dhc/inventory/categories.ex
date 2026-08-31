@@ -72,6 +72,7 @@ defmodule Dhc.Inventory.Categories do
 
         category
         |> category_changeset(normalized)
+        |> Ecto.Changeset.optimistic_lock(:lock_version)
         |> Repo.update()
         |> handle_update_result()
     end

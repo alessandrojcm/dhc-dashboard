@@ -112,7 +112,7 @@ run = "mix reach.check --arch"
 
 [tasks."ast-lint"]
 description = "Run ast-grep structural lint rules (fails on violations)"
-run = "ast-grep scan -c sgconfig.yml apps/phoenix/priv/repo/migrations/ apps/web/src/"
+run = "ast-grep scan -c sgconfig.yml apps/phoenix"
 
 [tasks."ast-test"]
 description = "Run ast-grep rule test fixtures"

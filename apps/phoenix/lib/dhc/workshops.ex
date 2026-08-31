@@ -935,6 +935,7 @@ defmodule Dhc.Workshops do
         status: "cancelled",
         cancelled_at: DateTime.utc_now() |> DateTime.truncate(:second)
       )
+      |> Ecto.Changeset.optimistic_lock(:lock_version)
       |> Repo.update()
 
     {:ok, %{registration: updated, refund_pending: false}}
@@ -1177,6 +1178,7 @@ defmodule Dhc.Workshops do
         attendance_marked_at: now,
         attendance_marked_by: marked_by
       })
+      |> Ecto.Changeset.optimistic_lock(:lock_version)
       |> Repo.update!()
     end)
   end
@@ -1212,6 +1214,7 @@ defmodule Dhc.Workshops do
          :ok <- authorize_update(workshop, attrs) do
       workshop
       |> Workshop.management_changeset(attrs)
+      |> Ecto.Changeset.optimistic_lock(:lock_version)
       |> Repo.update()
     else
       nil -> {:error, :not_found}
@@ -1287,6 +1290,7 @@ defmodule Dhc.Workshops do
     {:ok, archived} =
       workshop
       |> Ecto.Changeset.change(archived_at: now)
+      |> Ecto.Changeset.optimistic_lock(:lock_version)
       |> Repo.update()
 
     counts = registration_counts(workshop.id)
@@ -1339,6 +1343,7 @@ defmodule Dhc.Workshops do
 
     workshop
     |> Ecto.Changeset.change(status: "cancelled")
+    |> Ecto.Changeset.optimistic_lock(:lock_version)
     |> Repo.update!()
   end
 
@@ -1914,6 +1919,7 @@ defmodule Dhc.Workshops do
   defp mark_registration_refunded(registration) do
     registration
     |> Ecto.Changeset.change(status: "refunded")
+    |> Ecto.Changeset.optimistic_lock(:lock_version)
     |> Repo.update!()
   end
 
@@ -1938,6 +1944,7 @@ defmodule Dhc.Workshops do
       %Workshop{status: ^from_status} = workshop ->
         workshop
         |> Ecto.Changeset.change(status: to_status)
+        |> Ecto.Changeset.optimistic_lock(:lock_version)
         |> Repo.update()
 
       %Workshop{} ->

@@ -13,6 +13,9 @@ defmodule Dhc.Waitlist.WaitlistEntry do
     field :last_status_change, :utc_datetime
     field :last_contacted, :utc_datetime
     field :admin_notes, :string
+    # Optimistic-concurrency version witness (ADR 0023); bumped on every
+    # update via `Ecto.Changeset.optimistic_lock/3`, never client-writable.
+    field :lock_version, :integer, default: 1
   end
 
   @doc false

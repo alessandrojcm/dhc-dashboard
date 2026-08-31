@@ -196,9 +196,16 @@ defmodule Dhc.Settings do
 
   # ── Persistence ───────────────────────────────────────────────────────
 
+  # Persisted via a struct changeset so the optimistic lock (ADR 0023) bumps
+  # `lock_version` on every write; a read-modify-write racing this update
+  # fails with `Ecto.StaleEntryError` instead of silently clobbering it.
   defp persist!(key, value) do
-    from(s in Setting, where: s.key == ^key)
-    |> Repo.update_all(set: [value: value, updated_at: now()])
+    row = Repo.one!(from(s in Setting, where: s.key == ^key, select: s))
+
+    row
+    |> Ecto.Changeset.change(value: value, updated_at: now())
+    |> Ecto.Changeset.optimistic_lock(:lock_version)
+    |> Repo.update!()
   end
 
   defp now, do: DateTime.utc_now() |> DateTime.truncate(:second)

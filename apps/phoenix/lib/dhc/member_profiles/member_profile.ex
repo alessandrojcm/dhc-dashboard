@@ -30,6 +30,9 @@ defmodule Dhc.MemberProfiles.MemberProfile do
     field :insurance_form_submitted, :boolean, default: false
     field :additional_data, :map, default: %{}
     field :subscription_paused_until, :utc_datetime
+    # Optimistic-concurrency version witness (ADR 0023); bumped on every
+    # update via `Ecto.Changeset.optimistic_lock/3`, never client-writable.
+    field :lock_version, :integer, default: 1
 
     timestamps(type: :utc_datetime, inserted_at: :created_at)
   end

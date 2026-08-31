@@ -184,6 +184,7 @@ defmodule Dhc.Inventory.Items do
       |> Ecto.Changeset.foreign_key_constraint(:updated_by,
         name: :inventory_items_updated_by_fkey
       )
+      |> Ecto.Changeset.optimistic_lock(:lock_version)
 
     Ecto.Multi.new()
     |> Ecto.Multi.update(:item, changeset)
@@ -209,6 +210,7 @@ defmodule Dhc.Inventory.Items do
       |> Ecto.Changeset.foreign_key_constraint(:updated_by,
         name: :inventory_items_updated_by_fkey
       )
+      |> Ecto.Changeset.optimistic_lock(:lock_version)
 
     Ecto.Multi.new()
     |> Ecto.Multi.update(:item, changeset)
@@ -237,6 +239,7 @@ defmodule Dhc.Inventory.Items do
       |> Ecto.Changeset.foreign_key_constraint(:updated_by,
         name: :inventory_items_updated_by_fkey
       )
+      |> Ecto.Changeset.optimistic_lock(:lock_version)
 
     Ecto.Multi.new()
     |> Ecto.Multi.update(:item, changeset)

@@ -293,6 +293,7 @@ defmodule Dhc.Members do
 
     user_profile
     |> UserProfile.member_profile_changeset(attrs)
+    |> Ecto.Changeset.optimistic_lock(:lock_version)
     |> Repo.update()
   end
 
@@ -306,6 +307,7 @@ defmodule Dhc.Members do
 
     member_profile
     |> MemberProfile.member_profile_changeset(attrs)
+    |> Ecto.Changeset.optimistic_lock(:lock_version)
     |> Repo.update()
   end
 

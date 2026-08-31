@@ -6,6 +6,7 @@ defmodule Dhc.Waitlist do
   import Ecto.Query
 
   alias Dhc.CursorPagination
+  alias Dhc.Settings.Setting
   alias Dhc.Waitlist.WaitlistGuardian
   alias Dhc.Waitlist.WaitlistEntry
   alias Dhc.UserProfiles.UserProfile
@@ -58,11 +59,17 @@ defmodule Dhc.Waitlist do
   def set_open(open?) when is_boolean(open?) do
     value = if open?, do: "true", else: "false"
 
-    from(s in "settings", where: field(s, :key) == ^@waitlist_open_key)
-    |> Repo.update_all(set: [value: value])
-    |> case do
-      {1, _rows} -> {:ok, %{is_open: open?}}
-      {0, _rows} -> {:error, :not_found}
+    case Repo.get_by(Setting, key: @waitlist_open_key) do
+      nil ->
+        {:error, :not_found}
+
+      %Setting{} = setting ->
+        setting
+        |> Ecto.Changeset.change(value: value)
+        |> Ecto.Changeset.optimistic_lock(:lock_version)
+        |> Repo.update()
+
+        {:ok, %{is_open: open?}}
     end
   end
 
@@ -201,6 +208,7 @@ defmodule Dhc.Waitlist do
       entry ->
         entry
         |> WaitlistEntry.admin_update_changeset(normalized)
+        |> Ecto.Changeset.optimistic_lock(:lock_version)
         |> Repo.update()
         |> case do
           {:ok, _entry} -> get_entry(id)

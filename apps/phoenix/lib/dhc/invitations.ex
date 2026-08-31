@@ -236,7 +236,13 @@ defmodule Dhc.Invitations do
 
       waitlist_query = waitlist_entry_query(invitation)
 
-      Repo.update_all(waitlist_query, set: [status: "joined", last_status_change: now])
+      # ADR 0023: every write path bumps the optimistic-lock version; `inc:`
+      # increments it atomically inside the UPDATE statement.
+      waitlist_query
+      |> Repo.update_all(
+        set: [status: "joined", last_status_change: now],
+        inc: [lock_version: 1]
+      )
 
       from(a in InvitationAcceptanceAttempt,
         where: a.id == ^attempt_id and a.invitation_id == ^invitation.id

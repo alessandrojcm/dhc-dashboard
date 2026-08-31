@@ -29,6 +29,9 @@ defmodule Dhc.Inventory.EquipmentCategory do
     # Persisted for future item-attribute validation; not exposed in the
     # ALE-105 category contract.
     field :attribute_schema, Dhc.Inventory.JsonArray
+    # Optimistic-concurrency version witness (ADR 0023); bumped on every
+    # update via `Ecto.Changeset.optimistic_lock/3`, never client-writable.
+    field :lock_version, :integer, default: 1
 
     # Optional aggregate populated by `Dhc.Inventory` read helpers. Not a
     # column — set via `inspect/2` query disables / or assigned directly.

@@ -53,6 +53,10 @@ defmodule Dhc.Workshops.Registration do
     field :attendance_marked_by, :binary_id
     field :attendance_notes, :string
 
+    # Optimistic-concurrency version witness (ADR 0023); bumped on every
+    # update via `Ecto.Changeset.optimistic_lock/3`, never client-writable.
+    field :lock_version, :integer, default: 1
+
     timestamps(type: :utc_datetime, inserted_at: :created_at)
   end
 

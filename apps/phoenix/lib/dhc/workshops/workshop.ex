@@ -44,6 +44,9 @@ defmodule Dhc.Workshops.Workshop do
     # `summary_query/0` filters `archived_at IS NULL` so archived Workshops
     # drop out of summaries without losing their financial/audit rows.
     field :archived_at, :utc_datetime
+    # Optimistic-concurrency version witness (ADR 0023); bumped on every
+    # update via `Ecto.Changeset.optimistic_lock/3`, never client-writable.
+    field :lock_version, :integer, default: 1
 
     timestamps(type: :utc_datetime, inserted_at: :created_at)
   end

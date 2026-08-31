@@ -72,6 +72,7 @@ defmodule Dhc.Inventory.Containers do
         else
           container
           |> container_changeset(normalized)
+          |> Ecto.Changeset.optimistic_lock(:lock_version)
           |> Repo.update()
           |> handle_container_update(id)
         end

@@ -40,6 +40,9 @@ defmodule Dhc.Inventory.Container do
     field :name, :string
     field :description, :string
     field :parent_container_id, :binary_id
+    # Optimistic-concurrency version witness (ADR 0023); bumped on every
+    # update via `Ecto.Changeset.optimistic_lock/3`, never client-writable.
+    field :lock_version, :integer, default: 1
     # NOT NULL FK → auth.users. Set programmatically from the JWT `sub`; never
     # cast from request params.
     field :created_by, :binary_id

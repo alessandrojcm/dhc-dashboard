@@ -47,6 +47,9 @@ defmodule Dhc.Inventory.Item do
     field :photo_url, :string
     field :out_for_maintenance, :boolean, default: false
     field :notes, :string
+    # Optimistic-concurrency version witness (ADR 0023); bumped on every
+    # update via `Ecto.Changeset.optimistic_lock/3`, never client-writable.
+    field :lock_version, :integer, default: 1
     # Programmatic, derived from the caller's JWT `sub`; never cast.
     field :created_by, :binary_id
     field :updated_by, :binary_id

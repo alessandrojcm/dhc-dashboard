@@ -26,6 +26,7 @@ Invitation pricing tiers use backend-applied Stripe coupon IDs, not customer-fac
 - Services & roles: [docs/agents/services-and-roles.md](docs/agents/services-and-roles.md)
 - Notes: [docs/agents/notes.md](docs/agents/notes.md)
 - Visual previews: [docs/agents/visual-previews.md](docs/agents/visual-previews.md)
+- Local-first PWA plan: [docs/local-first-pwa/](docs/local-first-pwa/) — phased handoffs (Phoenix versioning/idempotency → PWA shell → IndexedDB persistence/outbox → pilot entity → expansion)
 - Frontend design system: [design-system/dublin-hema-club/MASTER.md](design-system/dublin-hema-club/MASTER.md)
 
 ## Agent skills

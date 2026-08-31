@@ -20,6 +20,9 @@ defmodule Dhc.UserProfiles.UserProfile do
     field :social_media_consent, :string
     field :customer_id, :string
     field :waitlist_id, Ecto.UUID
+    # Optimistic-concurrency version witness (ADR 0023); bumped on every
+    # update via `Ecto.Changeset.optimistic_lock/3`, never client-writable.
+    field :lock_version, :integer, default: 1
 
     timestamps(inserted_at: :created_at, type: :utc_datetime)
   end

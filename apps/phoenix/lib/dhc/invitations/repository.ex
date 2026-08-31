@@ -152,7 +152,7 @@ defmodule Dhc.Invitations.Repository do
   @doc """
   Marks a waitlist entry as invited when an Invitation was created from it.
   """
-  @spec mark_waitlist_invited(String.t()) :: :ok
+  @spec mark_waitlist_invited(String.t()) :: :ok | {:error, :not_found}
   def mark_waitlist_invited(waitlist_id) when is_binary(waitlist_id) do
     WaitlistRepository.mark_invited(waitlist_id)
   end

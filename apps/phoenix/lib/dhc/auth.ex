@@ -611,7 +611,12 @@ defmodule Dhc.Auth do
       if length(profiles) != length(profile_ids), do: Repo.rollback(:not_found)
 
       from(p in UserProfile, where: p.id in ^profile_ids)
-      |> Repo.update_all(set: [is_active: is_active, updated_at: DateTime.utc_now(:second)])
+      # ADR 0023: every write path bumps the optimistic-lock version; `inc:`
+      # increments it atomically inside the UPDATE statement.
+      |> Repo.update_all(
+        set: [is_active: is_active, updated_at: DateTime.utc_now(:second)],
+        inc: [lock_version: 1]
+      )
 
       principal_ids =
         profiles
