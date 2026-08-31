@@ -89,27 +89,29 @@ onMount(() => {
 	<title>Workshop registration</title>
 </svelte:head>
 
-<div class="container mx-auto px-4 py-8">
-	<div class="mx-auto max-w-5xl">
+<div id="workshop-registration" class="w-full py-6 sm:py-8">
+	<div class="mx-auto max-w-6xl">
 		<Card.Root>
-			<Card.Header class="pb-4">
-				<Card.Title class="text-2xl">Workshop registration</Card.Title>
+			<Card.Header class="px-4 pb-4 sm:px-6 sm:pb-6">
+				<Card.Title class="text-2xl sm:text-3xl"
+					>Workshop registration</Card.Title
+				>
 				<Card.Description>
 					Review workshop details and complete your registration below.
 				</Card.Description>
 			</Card.Header>
-			<Card.Content class="pt-0">
+			<Card.Content class="px-4 pt-0 sm:px-6">
 				<div
-					class="grid gap-6 xl:grid-cols-[minmax(0,0.85fr)_minmax(420px,1fr)] xl:items-start"
+					class="grid gap-6 2xl:grid-cols-[minmax(18rem,20rem)_minmax(0,1fr)] 2xl:items-start"
 				>
 					<div class="min-w-0 space-y-4">
-						<div class="rounded-lg border bg-muted/20 p-4">
+						<div class="rounded-lg border bg-muted/20 p-4 sm:p-5">
 							<h2 class="text-lg font-semibold text-foreground">
 								{workshop.title}
 							</h2>
 
 							<div
-								class="mt-4 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-1"
+								class="mt-4 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 2xl:grid-cols-1"
 							>
 								<div>
 									<p class="font-medium text-foreground">Date</p>
@@ -170,6 +172,14 @@ onMount(() => {
 </div>
 
 <style>
+:global(.public-shell main:has(#workshop-registration)) {
+	padding-inline: 0.75rem;
+}
+
+:global(.public-shell main:has(#workshop-registration) > div) {
+	max-width: none;
+}
+
 :global(#workshop-checkout iframe) {
 	max-width: 100%;
 }
