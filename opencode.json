@@ -3,30 +3,32 @@
   "autoupdate": true,
   "lsp": false,
   "mcp": {
-    "sentry": {
-      "type": "remote",
-      "url": "https://mcp.sentry.dev/mcp",
-      "enabled": true,
-      "oauth": {}
-    },
-    "svelte": {
-      "type": "remote",
-      "url": "https://mcp.svelte.dev/mcp",
-      "enabled": true
-    }
-  },
-  "tools": {
-    "sentry_*": false
-  },
-  "agent": {
-    "triaging": {
-      "description": "Triage Sentry production issues using the build agent workflow with Sentry MCP tools enabled.",
-      "mode": "primary",
-      "prompt": "Inherit and follow the same build-task implementation prompt and project instructions as the build agent. You are additionally responsible for triaging Sentry production issues: inspect Sentry issues, events, traces, breadcrumbs, and Seer analysis when relevant; summarize impact, root cause, and recommended code fixes; and only make code changes when the user asks for implementation.",
-      "tools": {
-        "sentry_*": true
+    "servers": {
+      "sentry": {
+        "type": "remote",
+        "url": "https://mcp.sentry.dev/mcp",
+        "disabled": false,
+        "oauth": {}
+      },
+      "svelte": {
+        "type": "remote",
+        "url": "https://mcp.svelte.dev/mcp",
+        "disabled": false
       }
     }
   },
-  "plugin": ["./.opencode/plugins/git-guardian.ts", "./.opencode/plugins/entire.ts"]
+  "permissions": [
+    { "action": "sentry_*", "resource": "*", "effect": "deny" }
+  ],
+  "agents": {
+    "triaging": {
+      "description": "Triage Sentry production issues using the build agent workflow with Sentry MCP tools enabled.",
+      "mode": "primary",
+      "system": "Inherit and follow the same build-task implementation prompt and project instructions as the build agent. You are additionally responsible for triaging Sentry production issues: inspect Sentry issues, events, traces, breadcrumbs, and Seer analysis when relevant; summarize impact, root cause, and recommended code fixes; and only make code changes when the user asks for implementation.",
+      "permissions": [
+        { "action": "sentry_*", "resource": "*", "effect": "allow" }
+      ]
+    }
+  },
+  "plugins": ["./.opencode/plugins/git-guardian.ts", "./.opencode/plugins/entire.ts"]
 }
