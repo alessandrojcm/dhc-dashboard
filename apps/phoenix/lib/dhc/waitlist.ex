@@ -189,7 +189,14 @@ defmodule Dhc.Waitlist do
   end
 
   defp handle_create_result({:ok, %{waitlist_entry: entry, user_profile: profile}}),
-    do: {:ok, %{id: entry.id, profile_id: profile.id, status: entry.status}}
+    do:
+      {:ok,
+       %{
+         id: entry.id,
+         profile_id: profile.id,
+         status: entry.status,
+         lock_version: entry.lock_version
+       }}
 
   defp handle_create_result({:error, :waitlist_entry, changeset, _changes}) do
     if duplicate_email_changeset?(changeset),
@@ -217,7 +224,7 @@ defmodule Dhc.Waitlist do
             update_if_version_matches(entry, normalized, id, expected_versions)
 
           _ ->
-            {:error, {:version_precondition_failed, get_entry!(id)}}
+            current_entry_error(id)
         end
     end
   end
@@ -225,23 +232,35 @@ defmodule Dhc.Waitlist do
   defp update_if_version_matches(entry, normalized, id, expected_versions) do
     if entry.lock_version in expected_versions,
       do: update_waitlist_entry(entry, normalized, id),
-      else: {:error, {:version_precondition_failed, get_entry!(id)}}
+      else: current_entry_error(id)
   end
 
   defp update_waitlist_entry(entry, normalized, id) do
     entry
     |> WaitlistEntry.admin_update_changeset(normalized)
     |> Ecto.Changeset.optimistic_lock(:lock_version)
-    |> Repo.update()
+    |> Repo.update(stale_error_field: :lock_version)
     |> case do
       {:ok, _entry} -> get_entry(id)
-      {:error, changeset} -> {:error, changeset}
+      {:error, changeset} -> handle_waitlist_update_error(changeset, id)
     end
   end
 
-  defp get_entry!(id) do
-    {:ok, entry} = get_entry(id)
-    entry
+  defp handle_waitlist_update_error(changeset, id) do
+    if stale_changeset?(changeset),
+      do: current_entry_error(id),
+      else: {:error, changeset}
+  end
+
+  defp current_entry_error(id) do
+    case get_entry(id) do
+      {:ok, entry} -> {:error, {:version_precondition_failed, entry}}
+      {:error, :not_found} -> {:error, :not_found}
+    end
+  end
+
+  defp stale_changeset?(%Ecto.Changeset{} = changeset) do
+    Enum.any?(changeset.errors, fn {_field, {_message, options}} -> options[:stale] end)
   end
 
   @doc false

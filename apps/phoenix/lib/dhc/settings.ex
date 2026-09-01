@@ -138,14 +138,17 @@ defmodule Dhc.Settings do
           {:version_precondition_failed, current} ->
             {:error, {:version_precondition_failed, current}}
 
-          {:error, %Ecto.StaleEntryError{}} ->
-            {:error, {:version_precondition_failed, fetch_item!(key)}}
+          {:error, :stale} ->
+            current_setting_error(key)
 
           {:error, :missing} ->
             {:error, :missing}
 
           {:error, :invalid_value, detail} ->
             {:error, :invalid_value, detail}
+
+          {:error, %Ecto.Changeset{} = changeset} ->
+            {:error, :invalid_value, changeset_error_detail(changeset)}
         end
     end
   end
@@ -194,6 +197,13 @@ defmodule Dhc.Settings do
   defp fetch_item!(key) do
     row = Repo.one!(from(s in Setting, where: s.key == ^key, select: s))
     row_to_item(row, key)
+  end
+
+  defp current_setting_error(key) do
+    case fetch_row(key) do
+      {:ok, current} -> {:error, {:version_precondition_failed, row_to_item(current, key)}}
+      {:error, :missing} -> {:error, :missing}
+    end
   end
 
   defp row_to_item(nil, key) do
@@ -271,13 +281,34 @@ defmodule Dhc.Settings do
   # ── Persistence ───────────────────────────────────────────────────────
 
   # Persisted via a struct changeset so the optimistic lock (ADR 0023) bumps
-  # `lock_version` on every write; a read-modify-write racing this update
-  # fails with `Ecto.StaleEntryError` instead of silently clobbering it.
+  # `lock_version` on every write. A read-modify-write race is returned as a
+  # specifically marked stale changeset error, distinct from ordinary errors.
   defp persist(row, value) do
-    row
-    |> Ecto.Changeset.change(value: value, updated_at: now())
-    |> Ecto.Changeset.optimistic_lock(:lock_version)
-    |> Repo.update()
+    result =
+      row
+      |> Ecto.Changeset.change(value: value, updated_at: now())
+      |> Ecto.Changeset.optimistic_lock(:lock_version)
+      |> Repo.update(stale_error_field: :lock_version)
+
+    case result do
+      {:error, changeset} -> if stale_changeset?(changeset), do: {:error, :stale}, else: result
+      result -> result
+    end
+  end
+
+  defp stale_changeset?(%Ecto.Changeset{errors: errors}) do
+    Enum.any?(errors, fn
+      {:lock_version, {_, [stale: true]}} -> true
+      _ -> false
+    end)
+  end
+
+  defp changeset_error_detail(%Ecto.Changeset{} = changeset) do
+    changeset
+    |> Ecto.Changeset.traverse_errors(fn {message, _opts} -> message end)
+    |> Enum.map_join("; ", fn {field, messages} ->
+      "#{field} #{Enum.join(List.wrap(messages), ", ")}"
+    end)
   end
 
   defp now, do: DateTime.utc_now() |> DateTime.truncate(:second)

@@ -65,6 +65,7 @@ defmodule DhcWeb.WaitlistController do
       {:ok, entry} ->
         conn
         |> put_status(:created)
+        |> ConditionalRequests.put_etag(entry.lock_version)
         |> put_view(json: DhcWeb.WaitlistJSON)
         |> render(:create, entry: entry)
 

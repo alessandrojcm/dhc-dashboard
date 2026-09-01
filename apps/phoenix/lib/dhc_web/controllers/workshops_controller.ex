@@ -62,8 +62,7 @@ defmodule DhcWeb.WorkshopsController do
       {:ok, workshop} ->
         conn
         |> put_status(:created)
-        |> put_view(json: DhcWeb.WorkshopsJSON)
-        |> render(:management, workshop: Workshops.workshop_summary(workshop.id))
+        |> render_management(Workshops.workshop_summary(workshop.id))
 
       {:error, %Ecto.Changeset{} = changeset} ->
         validation_error(conn, changeset)
@@ -157,6 +156,9 @@ defmodule DhcWeb.WorkshopsController do
 
       {:ok, :archived, workshop} ->
         render_management(conn, workshop)
+
+      {:error, {:version_precondition_failed, current}} ->
+        workshop_precondition_failed(conn, current)
 
       {:error, reason} ->
         lifecycle_error(conn, reason)
@@ -268,6 +270,7 @@ defmodule DhcWeb.WorkshopsController do
       {:ok, registration} ->
         conn
         |> put_status(:created)
+        |> ConditionalRequests.put_etag(registration.lock_version)
         |> put_view(json: DhcWeb.WorkshopsJSON)
         |> render(:registration, registration: registration)
 
@@ -324,6 +327,7 @@ defmodule DhcWeb.WorkshopsController do
            Workshops.complete_external_registration(workshop_id, checkout_session_id) do
       conn
       |> put_status(:created)
+      |> ConditionalRequests.put_etag(registration.lock_version)
       |> put_view(json: DhcWeb.WorkshopsJSON)
       |> render(:registration, registration: registration)
     else
@@ -361,6 +365,10 @@ defmodule DhcWeb.WorkshopsController do
 
       {:error, {:bad_request, detail}} ->
         bad_request(conn, detail)
+
+      {:error, reason}
+      when reason in [:unsupported_header, :unsupported_if_none_match, :invalid_if_match] ->
+        bad_request(conn, ConditionalRequests.error_detail(reason))
 
       {:error, reason} ->
         member_registration_error(conn, reason)
@@ -457,7 +465,8 @@ defmodule DhcWeb.WorkshopsController do
   start time. The coordinator identity is derived from the authenticated JWT.
   """
   def update_attendance(conn, %{"id" => id, "updates" => updates}) when is_list(updates) do
-    with {:ok, updates} <- attendance_updates(updates),
+    with {:ok, []} <- ConditionalRequests.write_options(conn),
+         {:ok, updates} <- attendance_updates(updates),
          {:ok, registrations} <-
            Workshops.update_workshop_attendance(
              id,
@@ -468,7 +477,21 @@ defmodule DhcWeb.WorkshopsController do
       |> put_view(json: DhcWeb.WorkshopsJSON)
       |> render(:attendance, registrations: registrations)
     else
-      {:error, reason} -> attendance_error(conn, reason)
+      {:ok, _opts} ->
+        bad_request(
+          conn,
+          "If-Match is not supported for attendance batches; use updates[].lockVersion"
+        )
+
+      {:error, {:version_precondition_failed, current}} ->
+        registration_precondition_failed(conn, current)
+
+      {:error, reason}
+      when reason in [:unsupported_header, :unsupported_if_none_match, :invalid_if_match] ->
+        bad_request(conn, ConditionalRequests.error_detail(reason))
+
+      {:error, reason} ->
+        attendance_error(conn, reason)
     end
   end
 
@@ -550,6 +573,8 @@ defmodule DhcWeb.WorkshopsController do
     |> Enum.reduce_while({:ok, []}, fn update, {:ok, parsed} ->
       with registration_id when is_binary(registration_id) <- Map.get(update, "registrationId"),
            {:ok, registration_id} <- Ecto.UUID.cast(registration_id),
+           lock_version when is_integer(lock_version) and lock_version >= 1 <-
+             Map.get(update, "lockVersion"),
            attendance_status when attendance_status in ["attended", "noShow", "excused"] <-
              Map.get(update, "attendanceStatus"),
            notes when is_nil(notes) or (is_binary(notes) and byte_size(notes) <= 500) <-
@@ -559,6 +584,7 @@ defmodule DhcWeb.WorkshopsController do
           [
             %{
               registration_id: registration_id,
+              lock_version: lock_version,
               attendance_status: attendance_status_to_persistence(attendance_status),
               notes: notes
             }

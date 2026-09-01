@@ -3131,7 +3131,9 @@ paths:
         derives the marker from the authenticated coordinator JWT, accepts only
         pending/confirmed registrations belonging to this Workshop, and rejects
         the entire batch if any update is invalid. Attendance is available only
-        once the Workshop has started. Requires `workshop_coordinator`,
+        once the Workshop has started. Each update carries the current
+        Registration `lockVersion`; a stale witness rejects the entire batch.
+        Requires `workshop_coordinator`,
         `president`, or `admin`; `beginners_coordinator` is not authorized.
       security:
         - bearerAuth: []
@@ -3168,6 +3170,17 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "412":
+          description: A Registration lockVersion is stale; returns the current Registration
+          headers:
+            ETag:
+              description: Strong ETag for the current Registration version
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkshopRegistrationPreconditionFailedResponse"
         "422":
           description: Workshop has not started, the batch is invalid, or an update targets a non-active attendee
           content:
@@ -6016,12 +6029,16 @@ components:
       required:
         - id
         - status
+        - lockVersion
       properties:
         id:
           type: string
           format: uuid
         status:
           $ref: "#/components/schemas/RegistrationStatus"
+        lockVersion:
+          type: integer
+          minimum: 1
       description: |
         The authenticated member's own registration for a Workshop. Exposed only
         as the current user's state (`currentUserRegistration`) on the
@@ -6068,6 +6085,27 @@ components:
           properties:
             registration:
               $ref: "#/components/schemas/WorkshopRegistration"
+    WorkshopRegistrationPreconditionFailedResponse:
+      type: object
+      required:
+        - data
+        - errors
+      properties:
+        data:
+          type: object
+          required:
+            - registration
+          properties:
+            registration:
+              $ref: "#/components/schemas/WorkshopRegistration"
+        errors:
+          type: object
+          required:
+            - detail
+          properties:
+            detail:
+              type: string
+              enum: [version precondition failed]
     WorkshopRegistrationCancelResponse:
       type: object
       required:
@@ -6401,6 +6439,7 @@ components:
         - announceDiscord
         - announceEmail
         - createdBy
+        - lockVersion
         - interestCount
         - pendingRegistrationCount
         - confirmedRegistrationCount
@@ -6454,6 +6493,9 @@ components:
           format: uuid
           nullable: true
           description: Supabase auth user id of the Workshop creator, or null.
+        lockVersion:
+          type: integer
+          minimum: 1
         interestCount:
           type: integer
           minimum: 0
@@ -6682,11 +6724,16 @@ components:
       type: object
       required:
         - registrationId
+        - lockVersion
         - attendanceStatus
       properties:
         registrationId:
           type: string
           format: uuid
+        lockVersion:
+          type: integer
+          minimum: 1
+          description: Current Registration version witness for this update.
         attendanceStatus:
           type: string
           enum: [attended, noShow, excused]
@@ -6708,6 +6755,7 @@ components:
       type: object
       required:
         - id
+        - lockVersion
         - attendanceStatus
         - attendanceMarkedAt
         - attendanceMarkedBy
@@ -6716,6 +6764,9 @@ components:
         id:
           type: string
           format: uuid
+        lockVersion:
+          type: integer
+          minimum: 1
         attendanceStatus:
           type: string
           enum: [pending, attended, noShow, excused]

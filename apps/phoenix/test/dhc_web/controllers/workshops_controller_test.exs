@@ -732,6 +732,58 @@ defmodule DhcWeb.WorkshopsControllerTest do
       assert get_resp_header(conn, "etag") == [~s("1")]
     end
 
+    test "rejects unsupported conditional GET headers", %{conn: conn} do
+      workshop = WorkshopFixtures.workshop_fixture(status: "planned")
+
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> put_req_header("if-modified-since", "Mon, 01 Sep 2026 00:00:00 GMT")
+        |> get("/api/workshops/#{to_uuid(workshop.id)}")
+
+      assert %{"errors" => %{"detail" => detail}} = json_response(conn, 400)
+      assert detail =~ "if-modified-since"
+    end
+
+    test "sets an ETag on Workshop creation", %{conn: conn} do
+      conn =
+        conn
+        |> auth_conn("workshop_coordinator")
+        |> post("/api/workshops", valid_workshop_payload())
+
+      assert %{"data" => %{"workshop" => %{"lockVersion" => 1}}} = json_response(conn, 201)
+      assert get_resp_header(conn, "etag") == [~s("1")]
+    end
+
+    test "honors matching If-Match on Workshop PATCH and returns the bumped ETag", %{conn: conn} do
+      workshop = WorkshopFixtures.workshop_fixture(status: "planned")
+
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> put_req_header("if-match", ~s("1"))
+        |> patch("/api/workshops/#{to_uuid(workshop.id)}", %{"title" => "Conditionally updated"})
+
+      assert %{"data" => %{"workshop" => %{"lockVersion" => 2}}} = json_response(conn, 200)
+      assert get_resp_header(conn, "etag") == [~s("2")]
+    end
+
+    test "rejects malformed write conditionals without mutating Workshops", %{conn: conn} do
+      workshop = WorkshopFixtures.workshop_fixture(status: "planned")
+
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> put_req_header("if-match", "1")
+        |> patch("/api/workshops/#{to_uuid(workshop.id)}", %{"title" => "Not applied"})
+
+      assert %{"errors" => %{"detail" => detail}} = json_response(conn, 400)
+      assert detail =~ "Invalid If-Match"
+
+      assert %{title: "Test Workshop", lock_version: 1} =
+               Repo.get(Dhc.Workshops.Workshop, workshop.id)
+    end
+
     test "returns 412 with the current Workshop for stale PATCH", %{conn: conn} do
       workshop = WorkshopFixtures.workshop_fixture(status: "planned")
 
@@ -761,6 +813,19 @@ defmodule DhcWeb.WorkshopsControllerTest do
 
       assert get_in(json_response(conn, 412), ["data", "workshop", "id"]) == workshop.id
       assert Repo.get(Dhc.Workshops.Workshop, workshop.id)
+    end
+
+    test "deletes with a matching If-Match", %{conn: conn} do
+      workshop = WorkshopFixtures.workshop_fixture(status: "planned")
+
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> put_req_header("if-match", ~s("1"))
+        |> delete("/api/workshops/#{to_uuid(workshop.id)}")
+
+      assert response(conn, 204) == ""
+      refute Repo.get(Dhc.Workshops.Workshop, workshop.id)
     end
 
     test "rejects If-None-Match on DELETE rather than ignoring it", %{conn: conn} do
@@ -1470,9 +1535,14 @@ defmodule DhcWeb.WorkshopsControllerTest do
         |> auth_conn("workshop_coordinator")
         |> patch("/api/workshops/#{to_uuid(workshop.id)}/attendance", %{
           "updates" => [
-            %{"registrationId" => to_uuid(confirmed.id), "attendanceStatus" => "attended"},
+            %{
+              "registrationId" => to_uuid(confirmed.id),
+              "lockVersion" => confirmed.lock_version,
+              "attendanceStatus" => "attended"
+            },
             %{
               "registrationId" => to_uuid(pending.id),
+              "lockVersion" => pending.lock_version,
               "attendanceStatus" => "excused",
               "notes" => "Injured"
             }
@@ -1484,6 +1554,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
       assert Enum.map(registrations, & &1["attendanceStatus"]) == ["attended", "excused"]
       assert Enum.at(registrations, 1)["attendanceNotes"] == "Injured"
       assert Enum.all?(registrations, &(&1["attendanceMarkedBy"] == @coordinator_user_id))
+      assert Enum.map(registrations, & &1["lockVersion"]) == [2, 2]
     end
 
     test "rejects the entire batch when it includes a non-active registration", %{conn: conn} do
@@ -1515,8 +1586,16 @@ defmodule DhcWeb.WorkshopsControllerTest do
         |> auth_conn("admin")
         |> patch("/api/workshops/#{to_uuid(workshop.id)}/attendance", %{
           "updates" => [
-            %{"registrationId" => to_uuid(active.id), "attendanceStatus" => "attended"},
-            %{"registrationId" => to_uuid(cancelled.id), "attendanceStatus" => "noShow"}
+            %{
+              "registrationId" => to_uuid(active.id),
+              "lockVersion" => active.lock_version,
+              "attendanceStatus" => "attended"
+            },
+            %{
+              "registrationId" => to_uuid(cancelled.id),
+              "lockVersion" => cancelled.lock_version,
+              "attendanceStatus" => "noShow"
+            }
           ]
         })
 
@@ -1550,7 +1629,11 @@ defmodule DhcWeb.WorkshopsControllerTest do
         |> auth_conn("president")
         |> patch("/api/workshops/#{to_uuid(workshop.id)}/attendance", %{
           "updates" => [
-            %{"registrationId" => to_uuid(registration.id), "attendanceStatus" => "attended"}
+            %{
+              "registrationId" => to_uuid(registration.id),
+              "lockVersion" => registration.lock_version,
+              "attendanceStatus" => "attended"
+            }
           ]
         })
 
@@ -1560,6 +1643,116 @@ defmodule DhcWeb.WorkshopsControllerTest do
                }
              } =
                json_response(conn, 422)
+    end
+
+    test "rejects stale attendance witnesses atomically with the current registration", %{
+      conn: conn
+    } do
+      workshop = started_workshop()
+      active = active_registration(workshop)
+      stale = active_registration(workshop)
+
+      stale =
+        stale
+        |> Ecto.Changeset.change(attendance_notes: "Changed elsewhere")
+        |> Ecto.Changeset.optimistic_lock(:lock_version)
+        |> Repo.update!()
+
+      conn =
+        conn
+        |> auth_conn("workshop_coordinator")
+        |> patch("/api/workshops/#{to_uuid(workshop.id)}/attendance", %{
+          "updates" => [
+            %{
+              "registrationId" => to_uuid(active.id),
+              "lockVersion" => active.lock_version,
+              "attendanceStatus" => "attended"
+            },
+            %{
+              "registrationId" => to_uuid(stale.id),
+              "lockVersion" => stale.lock_version - 1,
+              "attendanceStatus" => "excused"
+            }
+          ]
+        })
+
+      assert %{
+               "data" => %{"registration" => %{"id" => registration_id, "lockVersion" => 2}},
+               "errors" => %{"detail" => "version precondition failed"}
+             } = json_response(conn, 412)
+
+      assert registration_id == to_uuid(stale.id)
+      assert get_resp_header(conn, "etag") == [~s("2")]
+      assert %{attendance_status: "pending"} = Repo.get(Dhc.Workshops.Registration, active.id)
+    end
+
+    test "rejects malformed conditional headers without mutating attendance", %{conn: conn} do
+      workshop = started_workshop()
+      registration = active_registration(workshop)
+
+      conn =
+        conn
+        |> auth_conn("workshop_coordinator")
+        |> put_req_header("if-none-match", ~s("1"))
+        |> patch("/api/workshops/#{to_uuid(workshop.id)}/attendance", %{
+          "updates" => [
+            %{
+              "registrationId" => to_uuid(registration.id),
+              "lockVersion" => registration.lock_version,
+              "attendanceStatus" => "attended"
+            }
+          ]
+        })
+
+      assert %{"errors" => %{"detail" => detail}} = json_response(conn, 400)
+      assert detail =~ "If-None-Match"
+
+      assert %{attendance_status: "pending"} =
+               Repo.get(Dhc.Workshops.Registration, registration.id)
+    end
+
+    test "requires a lockVersion for every attendance update", %{conn: conn} do
+      workshop = started_workshop()
+      registration = active_registration(workshop)
+
+      conn =
+        conn
+        |> auth_conn("workshop_coordinator")
+        |> patch("/api/workshops/#{to_uuid(workshop.id)}/attendance", %{
+          "updates" => [
+            %{"registrationId" => to_uuid(registration.id), "attendanceStatus" => "attended"}
+          ]
+        })
+
+      assert %{"errors" => %{"detail" => "Invalid attendance updates"}} = json_response(conn, 422)
+
+      assert %{attendance_status: "pending"} =
+               Repo.get(Dhc.Workshops.Registration, registration.id)
+    end
+
+    test "rejects If-Match attendance batches without mutating", %{conn: conn} do
+      workshop = started_workshop()
+      registration = active_registration(workshop)
+
+      conn =
+        conn
+        |> auth_conn("workshop_coordinator")
+        |> put_req_header("if-match", ~s("1"))
+        |> patch("/api/workshops/#{to_uuid(workshop.id)}/attendance", %{
+          "updates" => [
+            %{
+              "registrationId" => to_uuid(registration.id),
+              "lockVersion" => registration.lock_version,
+              "attendanceStatus" => "attended"
+            }
+          ]
+        })
+
+      assert %{"errors" => %{"detail" => detail}} = json_response(conn, 400)
+      assert detail =~ "updates[].lockVersion"
+
+      assert %{attendance_status: "pending"} =
+               Repo.get(Dhc.Workshops.Registration, registration.id)
     end
 
     test "requires a Workshop coordinator management role", %{conn: conn} do
@@ -1572,6 +1765,23 @@ defmodule DhcWeb.WorkshopsControllerTest do
 
       assert %{"errors" => %{"detail" => "Insufficient role"}} = json_response(conn, 403)
     end
+  end
+
+  defp started_workshop do
+    WorkshopFixtures.workshop_fixture(
+      start_date: DateTime.utc_now() |> DateTime.add(-1, :hour) |> DateTime.truncate(:second),
+      end_date: DateTime.utc_now() |> DateTime.add(1, :hour) |> DateTime.truncate(:second)
+    )
+  end
+
+  defp active_registration(workshop) do
+    %{auth_user_id: user_id} = WorkshopFixtures.member_fixture()
+
+    WorkshopFixtures.registration_fixture(
+      workshop_id: workshop.id,
+      member_user_id: user_id,
+      status: "confirmed"
+    )
   end
 
   # ── Member registration ───────────────────────────────────────────────
@@ -1637,6 +1847,8 @@ defmodule DhcWeb.WorkshopsControllerTest do
 
       assert %{"data" => %{"registration" => registration}} = json_response(conn, 201)
       assert registration["status"] == "confirmed"
+      assert registration["lockVersion"] == 1
+      assert get_resp_header(conn, "etag") == [~s("1")]
 
       assert %{status: "confirmed"} =
                Dhc.Workshops.current_user_registration(to_uuid(workshop.id), @member_user_id)
@@ -1694,6 +1906,54 @@ defmodule DhcWeb.WorkshopsControllerTest do
              } = json_response(conn, 200)
 
       assert id == to_uuid(registration.id)
+      assert get_resp_header(conn, "etag") == [~s("2")]
+    end
+
+    test "cancels with a matching If-Match and rejects stale and malformed conditionals", %{
+      conn: conn
+    } do
+      workshop = insert_workshop(status: "published")
+
+      registration =
+        WorkshopFixtures.registration_fixture(
+          workshop_id: workshop.id,
+          member_user_id: @member_user_id,
+          status: "confirmed"
+        )
+
+      stale_conn =
+        conn
+        |> auth_conn("member")
+        |> put_req_header("if-match", ~s("9"))
+        |> delete("/api/workshops/#{to_uuid(workshop.id)}/registration")
+
+      assert %{
+               "data" => %{"registration" => %{"id" => id, "lockVersion" => 1}},
+               "errors" => %{"detail" => "version precondition failed"}
+             } = json_response(stale_conn, 412)
+
+      assert id == to_uuid(registration.id)
+      assert get_resp_header(stale_conn, "etag") == [~s("1")]
+
+      malformed_conn =
+        build_conn()
+        |> auth_conn("member")
+        |> put_req_header("if-none-match", ~s("1"))
+        |> delete("/api/workshops/#{to_uuid(workshop.id)}/registration")
+
+      assert %{"errors" => %{"detail" => detail}} = json_response(malformed_conn, 400)
+      assert detail =~ "If-None-Match"
+
+      matching_conn =
+        build_conn()
+        |> auth_conn("member")
+        |> put_req_header("if-match", ~s("1"))
+        |> delete("/api/workshops/#{to_uuid(workshop.id)}/registration")
+
+      assert %{"data" => %{"registration" => %{"lockVersion" => 2}}} =
+               json_response(matching_conn, 200)
+
+      assert get_resp_header(matching_conn, "etag") == [~s("2")]
     end
 
     test "cancellation durably schedules an eligible paid registration refund", %{conn: conn} do
@@ -1863,6 +2123,8 @@ defmodule DhcWeb.WorkshopsControllerTest do
 
       assert %{"data" => %{"registration" => %{"id" => registration_id, "status" => "confirmed"}}} =
                json_response(conn, 201)
+
+      assert get_resp_header(conn, "etag") == [~s("1")]
 
       repeat_conn =
         post(
@@ -2222,7 +2484,11 @@ defmodule DhcWeb.WorkshopsControllerTest do
           "paymentIntentId" => payment_intent_id
         })
 
-      assert %{"data" => %{"registration" => %{"id" => registration_id}}} =
+      assert %{
+               "data" => %{
+                 "registration" => %{"id" => registration_id, "lockVersion" => lock_version}
+               }
+             } =
                json_response(registration_conn, 201)
 
       attendance_conn =
@@ -2230,7 +2496,11 @@ defmodule DhcWeb.WorkshopsControllerTest do
         |> auth_conn("workshop_coordinator")
         |> patch("/api/workshops/#{workshop_id}/attendance", %{
           "updates" => [
-            %{"registrationId" => registration_id, "attendanceStatus" => "attended"}
+            %{
+              "registrationId" => registration_id,
+              "lockVersion" => lock_version,
+              "attendanceStatus" => "attended"
+            }
           ]
         })
 

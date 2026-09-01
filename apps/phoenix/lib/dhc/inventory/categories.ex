@@ -133,11 +133,21 @@ defmodule Dhc.Inventory.Categories do
   defp update_existing_category(%EquipmentCategory{} = category, attrs) do
     normalized = normalize_attrs(attrs)
 
-    category
-    |> category_changeset(normalized)
-    |> Ecto.Changeset.optimistic_lock(:lock_version)
-    |> Repo.update()
-    |> handle_update_result()
+    result =
+      category
+      |> category_changeset(normalized)
+      |> Ecto.Changeset.optimistic_lock(:lock_version)
+      |> Repo.update(stale_error_field: :lock_version)
+
+    case result do
+      {:error, changeset} ->
+        if stale_changeset?(changeset),
+          do: current_category_error(category.id),
+          else: handle_update_result(result)
+
+      result ->
+        handle_update_result(result)
+    end
   end
 
   defp category_changeset(%EquipmentCategory{} = category, attrs) do
@@ -172,26 +182,27 @@ defmodule Dhc.Inventory.Categories do
     else
       changeset = Ecto.Changeset.optimistic_lock(category, :lock_version)
 
-      case Repo.delete(changeset) do
+      case Repo.delete(changeset, stale_error_field: :lock_version) do
         {:ok, deleted} ->
           {:ok, deleted}
 
-        # A concurrent edit bumped the version between read and delete; map
-        # the race to the same precondition failure the checked path sees
-        # (ADR 0023).
-        {:error, %Ecto.StaleEntryError{} = _stale} ->
-          current_category_error(category.id)
-
-        {:error, _changeset} ->
-          {:error, :not_found}
+        # A concurrent edit bumped the version between read and delete; Ecto
+        # returns an explicitly marked changeset error when stale_error_field
+        # is set. Map it to the same failure the checked path sees.
+        {:error, changeset} ->
+          handle_category_delete_error(changeset, category.id)
       end
     end
   end
 
+  defp handle_category_delete_error(changeset, id) do
+    if stale_changeset?(changeset), do: current_category_error(id), else: {:error, :not_found}
+  end
+
   defp current_category_error(id) do
-    case Repo.get(EquipmentCategory, id) do
-      nil -> {:error, :not_found}
-      %EquipmentCategory{} = current -> {:error, {:version_precondition_failed, current}}
+    case get_category(id) do
+      {:error, :not_found} -> {:error, :not_found}
+      {:ok, current} -> {:error, {:version_precondition_failed, current}}
     end
   end
 
@@ -251,6 +262,13 @@ defmodule Dhc.Inventory.Categories do
 
   defp handle_update_result({:error, %Ecto.Changeset{} = changeset}) do
     if conflict?(changeset), do: {:error, :conflict, changeset}, else: {:error, changeset}
+  end
+
+  defp stale_changeset?(%Ecto.Changeset{errors: errors}) do
+    Enum.any?(errors, fn
+      {:lock_version, {_, [stale: true]}} -> true
+      _ -> false
+    end)
   end
 
   defp conflict?(%Ecto.Changeset{errors: errors}) do

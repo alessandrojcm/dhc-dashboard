@@ -291,6 +291,8 @@ defmodule DhcWeb.InventoryContainersControllerTest do
         assert payload["parentContainerId"] == nil
         assert payload["parentContainer"] == nil
         assert is_binary(payload["id"])
+        assert payload["lockVersion"] == 1
+        assert get_resp_header(conn, "etag") == ["\"1\""]
       end
     end
 
@@ -392,6 +394,8 @@ defmodule DhcWeb.InventoryContainersControllerTest do
       assert %{"data" => payload} = json_response(conn, 200)
       assert payload["name"] == "New Name"
       assert payload["description"] == "new desc"
+      assert payload["lockVersion"] == 2
+      assert get_resp_header(conn, "etag") == ["\"2\""]
     end
 
     test "can re-parent to an existing container", %{conn: conn} do
@@ -519,6 +523,39 @@ defmodule DhcWeb.InventoryContainersControllerTest do
 
       assert get_resp_header(conn, "etag") == ["\"2\""]
     end
+
+    test "honors matching If-Match and rejects malformed or unsupported conditionals without mutating",
+         %{
+           conn: conn
+         } do
+      container = create_container!(%{"name" => "Conditional Write"})
+      path = "/api/inventory/containers/#{to_uuid(container.id)}"
+
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> put_req_header("if-match", "\"1\"")
+        |> patch(path, %{"name" => "Updated Conditionally"})
+
+      assert %{"data" => %{"name" => "Updated Conditionally", "lockVersion" => 2}} =
+               json_response(conn, 200)
+
+      for {header, value} <- [
+            {"if-match", "not-an-etag"},
+            {"if-range", "\"2\""}
+          ] do
+        conn =
+          build_conn()
+          |> auth_conn("admin")
+          |> put_req_header(header, value)
+          |> patch(path, %{"name" => "Must Not Persist"})
+
+        assert %{"errors" => %{"detail" => _}} = json_response(conn, 400)
+
+        assert {:ok, %{name: "Updated Conditionally", lock_version: 2}} =
+                 Dhc.Inventory.get_container(container.id)
+      end
+    end
   end
 
   # ── Delete ────────────────────────────────────────────────────────────
@@ -545,6 +582,64 @@ defmodule DhcWeb.InventoryContainersControllerTest do
         |> Enum.map(& &1["name"])
 
       refute "Delete Me" in names
+    end
+
+    test "honors matching and stale If-Match on delete", %{conn: conn} do
+      container = create_container!(%{"name" => "Conditional Delete"})
+      path = "/api/inventory/containers/#{to_uuid(container.id)}"
+
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> put_req_header("if-match", "\"1\"")
+        |> delete(path)
+
+      assert response(conn, 204) == ""
+
+      stale = create_container!(%{"name" => "Stale Conditional Delete"})
+      {:ok, _} = Dhc.Inventory.update_container(stale.id, %{"description" => "current"})
+
+      conn =
+        build_conn()
+        |> auth_conn("admin")
+        |> put_req_header("if-match", "\"1\"")
+        |> delete("/api/inventory/containers/#{to_uuid(stale.id)}")
+
+      assert %{
+               "data" => %{"name" => "Stale Conditional Delete", "lockVersion" => 2},
+               "errors" => %{"detail" => "version precondition failed"}
+             } = json_response(conn, 412)
+
+      assert get_resp_header(conn, "etag") == ["\"2\""]
+      assert {:ok, _} = Dhc.Inventory.get_container(stale.id)
+    end
+
+    test "rejects unsupported write conditionals without deleting", %{conn: conn} do
+      container = create_container!(%{"name" => "Unsupported Delete Conditional"})
+
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> put_req_header("if-none-match", "\"1\"")
+        |> delete("/api/inventory/containers/#{to_uuid(container.id)}")
+
+      assert %{"errors" => %{"detail" => detail}} = json_response(conn, 400)
+      assert detail =~ "If-None-Match"
+      assert {:ok, _} = Dhc.Inventory.get_container(container.id)
+    end
+
+    test "rejects malformed If-Match without deleting", %{conn: conn} do
+      container = create_container!(%{"name" => "Malformed Delete Conditional"})
+
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> put_req_header("if-match", "not-an-etag")
+        |> delete("/api/inventory/containers/#{to_uuid(container.id)}")
+
+      assert %{"errors" => %{"detail" => detail}} = json_response(conn, 400)
+      assert detail =~ "Invalid"
+      assert {:ok, _} = Dhc.Inventory.get_container(container.id)
     end
 
     test "cascades deletion to empty child containers", %{conn: conn} do

@@ -159,6 +159,7 @@ defmodule DhcWeb.InventoryCategoriesControllerTest do
         |> get(path)
 
       assert response(conn, 304) == ""
+      assert get_resp_header(conn, "etag") == ["\"1\""]
     end
   end
 
@@ -181,6 +182,8 @@ defmodule DhcWeb.InventoryCategoriesControllerTest do
         assert %{"data" => payload} = json_response(conn, 201)
         assert payload["name"] == "Test #{role}"
         assert payload["itemCount"] == 0
+        assert payload["lockVersion"] == 1
+        assert get_resp_header(conn, "etag") == ["\"1\""]
         assert [attr] = payload["availableAttributes"]
         assert attr["name"] == "brand"
       end
@@ -267,6 +270,8 @@ defmodule DhcWeb.InventoryCategoriesControllerTest do
       assert %{"data" => payload} = json_response(conn, 200)
       assert payload["name"] == "New Name"
       assert payload["description"] == "updated desc"
+      assert payload["lockVersion"] == 2
+      assert get_resp_header(conn, "etag") == ["\"2\""]
     end
 
     test "returns 404 for an unknown id", %{conn: conn} do
@@ -316,6 +321,41 @@ defmodule DhcWeb.InventoryCategoriesControllerTest do
                "data" => %{"name" => "Conditional Current", "lockVersion" => 2},
                "errors" => %{"detail" => "version precondition failed"}
              } = json_response(conn, 412)
+
+      assert get_resp_header(conn, "etag") == ["\"2\""]
+    end
+
+    test "honors matching If-Match and rejects malformed or unsupported conditionals without mutating",
+         %{
+           conn: conn
+         } do
+      category = insert_category(name: "Conditional Write")
+      path = "/api/inventory/categories/#{to_uuid(category.id)}"
+
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> put_req_header("if-match", "\"1\"")
+        |> patch(path, %{"name" => "Updated Conditionally"})
+
+      assert %{"data" => %{"name" => "Updated Conditionally", "lockVersion" => 2}} =
+               json_response(conn, 200)
+
+      for {header, value} <- [
+            {"if-match", "not-an-etag"},
+            {"if-unmodified-since", "Mon, 31 Aug 2026 00:00:00 GMT"}
+          ] do
+        conn =
+          build_conn()
+          |> auth_conn("admin")
+          |> put_req_header(header, value)
+          |> patch(path, %{"name" => "Must Not Persist"})
+
+        assert %{"errors" => %{"detail" => _}} = json_response(conn, 400)
+
+        assert {:ok, %{name: "Updated Conditionally", lock_version: 2}} =
+                 Dhc.Inventory.get_category(category.id)
+      end
     end
   end
 
@@ -346,6 +386,64 @@ defmodule DhcWeb.InventoryCategoriesControllerTest do
         |> Enum.map(& &1["name"])
 
       refute "Delete Me" in names
+    end
+
+    test "honors matching and stale If-Match on delete", %{conn: conn} do
+      category = insert_category(name: "Conditional Delete")
+      path = "/api/inventory/categories/#{to_uuid(category.id)}"
+
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> put_req_header("if-match", "\"1\"")
+        |> delete(path)
+
+      assert response(conn, 204) == ""
+
+      stale = insert_category(name: "Stale Conditional Delete")
+      {:ok, _} = Dhc.Inventory.update_category(stale.id, %{"description" => "current"})
+
+      conn =
+        build_conn()
+        |> auth_conn("admin")
+        |> put_req_header("if-match", "\"1\"")
+        |> delete("/api/inventory/categories/#{to_uuid(stale.id)}")
+
+      assert %{
+               "data" => %{"name" => "Stale Conditional Delete", "lockVersion" => 2},
+               "errors" => %{"detail" => "version precondition failed"}
+             } = json_response(conn, 412)
+
+      assert get_resp_header(conn, "etag") == ["\"2\""]
+      assert {:ok, _} = Dhc.Inventory.get_category(stale.id)
+    end
+
+    test "rejects unsupported write conditionals without deleting", %{conn: conn} do
+      category = insert_category(name: "Unsupported Delete Conditional")
+
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> put_req_header("if-none-match", "\"1\"")
+        |> delete("/api/inventory/categories/#{to_uuid(category.id)}")
+
+      assert %{"errors" => %{"detail" => detail}} = json_response(conn, 400)
+      assert detail =~ "If-None-Match"
+      assert {:ok, _} = Dhc.Inventory.get_category(category.id)
+    end
+
+    test "rejects malformed If-Match without deleting", %{conn: conn} do
+      category = insert_category(name: "Malformed Delete Conditional")
+
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> put_req_header("if-match", "not-an-etag")
+        |> delete("/api/inventory/categories/#{to_uuid(category.id)}")
+
+      assert %{"errors" => %{"detail" => detail}} = json_response(conn, 400)
+      assert detail =~ "Invalid"
+      assert {:ok, _} = Dhc.Inventory.get_category(category.id)
     end
 
     test "returns 404 for an unknown id", %{conn: conn} do

@@ -194,7 +194,10 @@ defmodule Dhc.Inventory.Items do
   with optional notes.
   """
   @spec set_item_maintenance(String.t(), map(), String.t(), keyword()) ::
-          {:ok, item()} | {:error, :not_found} | {:error, Ecto.Changeset.t()}
+          {:ok, item()}
+          | {:error, :not_found}
+          | {:error, {:version_precondition_failed, item()}}
+          | {:error, Ecto.Changeset.t()}
   def set_item_maintenance(id, attrs, actor_id, opts \\ [])
       when is_binary(id) and is_map(attrs) and is_binary(actor_id) and is_list(opts) do
     case Repo.get(Item, id) do
@@ -215,28 +218,17 @@ defmodule Dhc.Inventory.Items do
   defp delete_existing_item(%Item{} = item) do
     changeset = Ecto.Changeset.optimistic_lock(item, :lock_version)
 
-    case Repo.delete(changeset) do
-      {:ok, deleted} ->
-        {:ok, deleted}
-
-      # A concurrent edit bumped the version between read and delete; map
-      # the race to the same precondition failure the caller sees on the
-      # checked path. (Repo.delete has no reload path here, so the caller
-      # refetches via the 412 body's own contract only on the checked path;
-      # for the race window the entity simply was not deleted.)
-      {:error, %Ecto.StaleEntryError{} = _stale} ->
-        case Repo.get(Item, item.id) do
-          # The row vanished between read and delete — nothing to conflict
-          # with; report it the same way a plain missing delete would.
-          nil ->
-            {:error, :not_found}
-
-          %Item{} = current ->
-            {:error, {:version_precondition_failed, load_item_aggregates(current)}}
-        end
-
-      {:error, _changeset} ->
-        {:error, :not_found}
+    try do
+      case Repo.delete(changeset) do
+        {:ok, deleted} -> {:ok, deleted}
+        {:error, _changeset} -> {:error, :not_found}
+      end
+    rescue
+      Ecto.StaleEntryError ->
+        # Repo.delete/2 raises for a stale optimistic-lock write. The rescue
+        # runs after its transaction has rolled back, so this refetch sees the
+        # concurrent item's committed state (or its absence).
+        current_item_error(item.id)
     end
   end
 
@@ -261,7 +253,7 @@ defmodule Dhc.Inventory.Items do
       |> Ecto.Changeset.optimistic_lock(:lock_version)
 
     Ecto.Multi.new()
-    |> Ecto.Multi.update(:item, changeset)
+    |> update_item_with_stale_error(changeset)
     |> maybe_record_move(item, new_container_id, actor_id, Map.get(normalized, "notes"))
     |> Ecto.Multi.insert(:history_updated, fn %{item: %Item{}} ->
       ItemHistory.record_updated_history(item.id, actor_id, Map.get(normalized, "notes"))
@@ -287,7 +279,7 @@ defmodule Dhc.Inventory.Items do
       |> Ecto.Changeset.optimistic_lock(:lock_version)
 
     Ecto.Multi.new()
-    |> Ecto.Multi.update(:item, changeset)
+    |> update_item_with_stale_error(changeset)
     |> maybe_record_move(item, new_container_id, actor_id, parse_notes(attrs))
     |> Repo.transaction()
     |> handle_move_transaction()
@@ -316,7 +308,7 @@ defmodule Dhc.Inventory.Items do
       |> Ecto.Changeset.optimistic_lock(:lock_version)
 
     Ecto.Multi.new()
-    |> Ecto.Multi.update(:item, changeset)
+    |> update_item_with_stale_error(changeset)
     |> maybe_record_maintenance(item, out_for_maintenance, actor_id, notes)
     |> Repo.transaction()
     |> handle_item_transaction()
@@ -355,16 +347,28 @@ defmodule Dhc.Inventory.Items do
   defp handle_item_transaction({:ok, %{item: %Item{} = updated}}),
     do: {:ok, load_item_aggregates(updated)}
 
+  defp handle_item_transaction({:error, :item, %Ecto.Changeset{} = err, _changes}) do
+    if stale_item_error?(err), do: current_item_error(err.data.id), else: {:error, err}
+  end
+
   defp handle_item_transaction({:error, _step, %Ecto.Changeset{} = err, _changes}),
     do: {:error, err}
 
-  defp handle_item_transaction(
-         {:error, :item, %Ecto.StaleEntryError{changeset: changeset}, _changes}
-       ) do
-    current_item_error(changeset.data.id)
+  defp handle_item_transaction({:error, _step, reason, _changes}), do: {:error, reason}
+
+  defp update_item_with_stale_error(multi, changeset) do
+    Ecto.Multi.update(multi, :item, changeset,
+      stale_error_field: :lock_version,
+      stale_error_message: "is stale"
+    )
   end
 
-  defp handle_item_transaction({:error, _step, reason, _changes}), do: {:error, reason}
+  defp stale_item_error?(changeset) do
+    Enum.any?(changeset.errors, fn
+      {:lock_version, {_message, options}} -> Keyword.get(options, :stale, false)
+      _error -> false
+    end)
+  end
 
   defp current_item_error(id) do
     case Repo.get(Item, id) do

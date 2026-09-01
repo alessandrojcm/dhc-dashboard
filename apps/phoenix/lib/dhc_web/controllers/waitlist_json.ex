@@ -32,7 +32,8 @@ defmodule DhcWeb.WaitlistJSON do
     %{
       data: %{
         id: entry.id,
-        status: entry.status
+        status: entry.status,
+        lockVersion: entry.lock_version
       }
     }
   end

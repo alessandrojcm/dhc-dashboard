@@ -234,31 +234,29 @@ defmodule Dhc.Members do
   end
 
   defp do_update_member(member_id, attrs, opts) do
-    Repo.transaction(fn ->
-      case load_profile_pair(member_id) do
-        nil ->
-          Repo.rollback(:not_found)
+    result =
+      Repo.transaction(fn ->
+        case load_profile_pair(member_id) do
+          nil ->
+            Repo.rollback(:not_found)
 
-        profile_pair ->
-          update_checked_profile_pair(member_id, profile_pair, attrs, opts)
-      end
-    end)
-    |> case do
-      {:ok, member} -> {:ok, member}
-      {:error, reason} -> {:error, reason}
-    end
+          profile_pair ->
+            update_checked_profile_pair(profile_pair, attrs, opts)
+        end
+      end)
+
+    handle_member_update_result(result, member_id, attrs)
   rescue
     _e in Postgrex.Error -> {:error, :invalid_payload}
   end
 
   defp update_checked_profile_pair(
-         member_id,
          {_user_profile, member_profile} = profile_pair,
          attrs,
          opts
        ) do
     case check_member_precondition(member_profile, opts) do
-      :ok -> update_profile_pair(member_id, profile_pair, attrs)
+      :ok -> update_profile_pair(profile_pair, attrs)
       {:error, reason} -> Repo.rollback(reason)
     end
   end
@@ -277,19 +275,47 @@ defmodule Dhc.Members do
       versions when is_list(versions) ->
         if member_profile.lock_version in versions,
           do: :ok,
-          else: {:error, {:version_precondition_failed, get_member!(member_profile.id)}}
+          else: {:error, :version_precondition_failed}
 
       _version ->
-        {:error, {:version_precondition_failed, get_member!(member_profile.id)}}
+        {:error, :version_precondition_failed}
     end
   end
 
-  defp get_member!(member_id) do
-    {:ok, member} = get_member(member_id)
-    member
+  defp handle_member_update_result({:ok, current}, member_id, attrs) do
+    with {:ok, member} <- get_member(member_id) do
+      maybe_echo_customer_to_stripe(current, member, attrs)
+      {:ok, member}
+    end
   end
 
-  defp update_profile_pair(member_id, {user_profile, member_profile}, attrs) do
+  defp handle_member_update_result({:error, :version_precondition_failed}, member_id, _attrs),
+    do: current_member_error(member_id)
+
+  defp handle_member_update_result(
+         {:error, _step, %Ecto.StaleEntryError{}, _changes},
+         member_id,
+         _attrs
+       ),
+       do: current_member_error(member_id)
+
+  defp handle_member_update_result(
+         {:error, _step, %Ecto.Changeset{} = changeset, _changes},
+         _member_id,
+         _attrs
+       ),
+       do: {:error, changeset}
+
+  defp handle_member_update_result({:error, reason}, _member_id, _attrs), do: {:error, reason}
+
+  defp current_member_error(member_id) do
+    case get_member(member_id) do
+      {:ok, member} -> {:error, {:version_precondition_failed, member}}
+      {:error, :not_found} -> {:error, :not_found}
+    end
+  end
+
+  defp update_profile_pair({user_profile, member_profile}, attrs) do
     current = %{
       first_name: user_profile.first_name,
       last_name: user_profile.last_name,
@@ -298,13 +324,10 @@ defmodule Dhc.Members do
     }
 
     with {:ok, _user_profile} <- update_user_profile(user_profile, attrs),
-         {:ok, _member_profile} <- update_member_profile(member_profile, attrs),
-         {:ok, member} <- get_member(member_id) do
-      maybe_echo_customer_to_stripe(current, member, attrs)
-      member
+         {:ok, _member_profile} <- update_member_profile(member_profile, attrs) do
+      current
     else
-      {:error, %Ecto.Changeset{} = changeset} -> Repo.rollback(changeset)
-      {:error, :not_found} -> Repo.rollback(:not_found)
+      {:error, changeset} -> rollback_update_error(changeset)
     end
   end
 
@@ -333,7 +356,7 @@ defmodule Dhc.Members do
     user_profile
     |> UserProfile.member_profile_changeset(attrs)
     |> Ecto.Changeset.optimistic_lock(:lock_version)
-    |> Repo.update()
+    |> Repo.update(stale_error_field: :lock_version)
   end
 
   defp update_member_profile(member_profile, attrs) do
@@ -348,7 +371,17 @@ defmodule Dhc.Members do
     |> MemberProfile.member_profile_changeset(attrs)
     |> Ecto.Changeset.force_change(:updated_at, DateTime.utc_now() |> DateTime.truncate(:second))
     |> Ecto.Changeset.optimistic_lock(:lock_version)
-    |> Repo.update()
+    |> Repo.update(stale_error_field: :lock_version)
+  end
+
+  defp rollback_update_error(%Ecto.Changeset{} = changeset) do
+    if stale_changeset?(changeset),
+      do: Repo.rollback(:version_precondition_failed),
+      else: Repo.rollback(changeset)
+  end
+
+  defp stale_changeset?(changeset) do
+    Enum.any?(changeset.errors, fn {_field, {_message, options}} -> options[:stale] end)
   end
 
   defp put_if_present(result, atom_key, source, string_key) do

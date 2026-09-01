@@ -131,11 +131,21 @@ defmodule Dhc.Inventory.Containers do
   end
 
   defp update_existing_container(%Container{} = container, normalized, id) do
-    container
-    |> container_changeset(normalized)
-    |> Ecto.Changeset.optimistic_lock(:lock_version)
-    |> Repo.update()
-    |> handle_container_update(id)
+    result =
+      container
+      |> container_changeset(normalized)
+      |> Ecto.Changeset.optimistic_lock(:lock_version)
+      |> Repo.update(stale_error_field: :lock_version)
+
+    case result do
+      {:error, changeset} ->
+        if stale_changeset?(changeset),
+          do: current_container_error(id),
+          else: handle_container_update(result, id)
+
+      result ->
+        handle_container_update(result, id)
+    end
   end
 
   defp delete_unreferenced_container(%Container{} = container) do
@@ -144,26 +154,29 @@ defmodule Dhc.Inventory.Containers do
     else
       changeset = Ecto.Changeset.optimistic_lock(container, :lock_version)
 
-      case Repo.delete(changeset) do
+      case Repo.delete(changeset, stale_error_field: :lock_version) do
         {:ok, deleted} ->
           {:ok, deleted}
 
-        # A concurrent edit bumped the version between read and delete; map
-        # the race to the same precondition failure the checked path sees
-        # (ADR 0023).
-        {:error, %Ecto.StaleEntryError{} = _stale} ->
-          current_container_error(container.id)
-
-        {:error, _changeset} ->
-          {:error, :still_referenced}
+        # A concurrent edit bumped the version between read and delete; Ecto
+        # returns an explicitly marked changeset error when stale_error_field
+        # is set. Map it to the same failure the checked path sees.
+        {:error, changeset} ->
+          handle_container_delete_error(changeset, container.id)
       end
     end
   end
 
+  defp handle_container_delete_error(changeset, id) do
+    if stale_changeset?(changeset),
+      do: current_container_error(id),
+      else: {:error, :still_referenced}
+  end
+
   defp current_container_error(id) do
-    case Repo.get(Container, id) do
-      nil -> {:error, :not_found}
-      %Container{} = current -> {:error, {:version_precondition_failed, current}}
+    case get_container(id) do
+      {:error, :not_found} -> {:error, :not_found}
+      {:ok, current} -> {:error, {:version_precondition_failed, current}}
     end
   end
 
@@ -324,6 +337,13 @@ defmodule Dhc.Inventory.Containers do
 
   defp handle_container_update({:error, %Ecto.Changeset{} = changeset}, _id) do
     {:error, changeset}
+  end
+
+  defp stale_changeset?(%Ecto.Changeset{errors: errors}) do
+    Enum.any?(errors, fn
+      {:lock_version, {_, [stale: true]}} -> true
+      _ -> false
+    end)
   end
 
   defp populate_flat_aggregates(%Container{} = container) do

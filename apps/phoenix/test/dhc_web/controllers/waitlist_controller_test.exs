@@ -471,6 +471,42 @@ defmodule DhcWeb.WaitlistControllerTest do
                "data" => %{"status" => "deferred", "lockVersion" => 2},
                "errors" => %{"detail" => "version precondition failed"}
              } = json_response(conn, 412)
+
+      assert get_resp_header(conn, "etag") == ["\"2\""]
+    end
+
+    test "updates with a matching If-Match and returns the bumped ETag", %{conn: conn} do
+      id = insert_waitlist_profile(status: "waiting")
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> put_req_header("if-match", "\"1\"")
+        |> patch("/api/waitlist/entries/#{id}", %{status: "deferred"})
+
+      assert %{"data" => %{"status" => "deferred", "lockVersion" => 2}} = json_response(conn, 200)
+      assert get_resp_header(conn, "etag") == ["\"2\""]
+    end
+
+    test "rejects unsupported or malformed conditional headers without mutation", %{conn: conn} do
+      id = insert_waitlist_profile(status: "waiting")
+      path = "/api/waitlist/entries/#{id}"
+
+      for {header, value} <- [{"if-match", "1"}, {"if-none-match", "\"1\""}] do
+        response =
+          build_conn()
+          |> put_req_header("authorization", "Bearer admin-token")
+          |> put_req_header(header, value)
+          |> patch(path, %{status: "deferred"})
+
+        assert %{"errors" => %{"detail" => _}} = json_response(response, 400)
+      end
+
+      assert %{"data" => %{"status" => "waiting", "lockVersion" => 1}} =
+               build_conn()
+               |> put_req_header("authorization", "Bearer admin-token")
+               |> get(path)
+               |> json_response(200)
     end
   end
 
@@ -510,7 +546,10 @@ defmodule DhcWeb.WaitlistControllerTest do
 
       conn = post(conn, "/api/waitlist/entries", adult_payload(email: "Adult@Example.COM"))
 
-      assert %{"data" => %{"id" => id, "status" => "waiting"}} = json_response(conn, 201)
+      assert %{"data" => %{"id" => id, "status" => "waiting", "lockVersion" => 1}} =
+               json_response(conn, 201)
+
+      assert get_resp_header(conn, "etag") == ["\"1\""]
 
       profile = Repo.get_by!(UserProfile, waitlist_id: id)
       assert profile.is_active == false

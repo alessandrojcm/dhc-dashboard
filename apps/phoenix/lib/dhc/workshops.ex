@@ -917,6 +917,21 @@ defmodule Dhc.Workshops do
           {:error, reason} -> {:error, reason}
         end
     end
+  rescue
+    Ecto.StaleEntryError -> current_registration_error_for_member(workshop_id, user_id)
+  end
+
+  defp current_registration_error_for_member(workshop_id, user_id) do
+    from(r in Registration,
+      where: r.club_activity_id == ^workshop_id and r.member_user_id == ^user_id,
+      order_by: [desc: r.updated_at],
+      limit: 1
+    )
+    |> Repo.one()
+    |> case do
+      nil -> {:error, :not_found}
+      current -> {:error, {:version_precondition_failed, current}}
+    end
   end
 
   defp cancel_existing_member_registration(registration, workshop_id, user_id, opts) do
@@ -1198,13 +1213,26 @@ defmodule Dhc.Workshops do
   """
   @spec update_workshop_attendance(binary(), binary(), [map()]) ::
           {:ok, [Registration.t()]}
-          | {:error, :not_found | :not_started | :invalid_attendee | :invalid_updates}
+          | {
+              :error,
+              :not_found
+              | :not_started
+              | :invalid_attendee
+              | :invalid_updates
+              | {:version_precondition_failed, Registration.t()}
+            }
   def update_workshop_attendance(workshop_id, marked_by, updates)
       when is_binary(workshop_id) and is_binary(marked_by) and is_list(updates) do
     Repo.transaction(fn -> update_workshop_attendance_locked(workshop_id, marked_by, updates) end)
     |> case do
-      {:ok, registrations} -> {:ok, registrations}
-      {:error, reason} -> {:error, reason}
+      {:ok, registrations} ->
+        {:ok, registrations}
+
+      {:error, {:version_precondition_failed, registration_id}} ->
+        current_registration_error(registration_id)
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -1214,7 +1242,8 @@ defmodule Dhc.Workshops do
            Repo.one(from(w in Workshop, where: w.id == ^workshop_id, lock: "FOR UPDATE")),
          :ok <- ensure_workshop_started(workshop),
          :ok <- ensure_unique_attendance_registration_ids(updates),
-         {:ok, registrations} <- active_attendance_registrations(workshop_id, updates) do
+         {:ok, registrations} <- active_attendance_registrations(workshop_id, updates),
+         :ok <- ensure_attendance_preconditions(updates, registrations) do
       persist_attendance_updates(updates, registrations, marked_by)
     else
       nil -> Repo.rollback(:not_found)
@@ -1236,8 +1265,25 @@ defmodule Dhc.Workshops do
         attendance_marked_by: marked_by
       })
       |> Ecto.Changeset.optimistic_lock(:lock_version)
-      |> Repo.update!()
+      |> Repo.update(stale_error_field: :lock_version)
+      |> case do
+        {:ok, updated} ->
+          updated
+
+        {:error, %Ecto.Changeset{} = changeset} ->
+          rollback_attendance_error(changeset, registration)
+      end
     end)
+  end
+
+  defp rollback_attendance_error(changeset, registration) do
+    if stale_changeset?(changeset),
+      do: Repo.rollback({:version_precondition_failed, registration.id}),
+      else: Repo.rollback(changeset)
+  end
+
+  defp stale_changeset?(changeset) do
+    Enum.any?(changeset.errors, fn {_field, {_message, options}} -> options[:stale] end)
   end
 
   # ── Management lifecycle ──────────────────────────────────────────────
@@ -1263,9 +1309,16 @@ defmodule Dhc.Workshops do
   looser rule approved in ALE-118: pricing may also be changed after publish as
   long as there are zero active (`pending`/`confirmed`) registrations.
   """
-  @spec update_workshop(binary(), map()) ::
+  @spec update_workshop(binary(), map(), keyword()) ::
           {:ok, Workshop.t()}
-          | {:error, :not_found | :not_editable | :pricing_locked | Ecto.Changeset.t()}
+          | {
+              :error,
+              :not_found
+              | :not_editable
+              | :pricing_locked
+              | {:version_precondition_failed, map()}
+              | Ecto.Changeset.t()
+            }
   def update_workshop(workshop_id, attrs, opts \\ [])
       when is_binary(workshop_id) and is_map(attrs) do
     with %Workshop{} = workshop <- Repo.get(Workshop, workshop_id),
@@ -1279,6 +1332,8 @@ defmodule Dhc.Workshops do
       nil -> {:error, :not_found}
       {:error, reason} -> {:error, reason}
     end
+  rescue
+    Ecto.StaleEntryError -> current_workshop_error(workshop_id)
   end
 
   @doc """
@@ -1302,15 +1357,17 @@ defmodule Dhc.Workshops do
     * `{:error, :not_found}` — no such Workshop. The controller returns
       `404`.
   """
-  @spec delete_workshop(binary()) ::
+  @spec delete_workshop(binary(), keyword()) ::
           {:ok, :archived, map()}
           | {:ok, :deleted}
-          | {:error, :not_found | :already_archived}
+          | {:error, :not_found | :already_archived | {:version_precondition_failed, map()}}
   def delete_workshop(workshop_id, opts \\ []) when is_binary(workshop_id) do
     {:ok, result} =
       Repo.transaction(fn -> delete_workshop_locked(workshop_id, opts) end)
 
     result
+  rescue
+    Ecto.StaleEntryError -> current_workshop_error(workshop_id)
   end
 
   defp delete_workshop_locked(workshop_id, opts) do
@@ -1358,6 +1415,29 @@ defmodule Dhc.Workshops do
     else
       {:ok, _} = workshop |> Ecto.Changeset.optimistic_lock(:lock_version) |> Repo.delete()
       {:ok, :deleted}
+    end
+  end
+
+  defp current_workshop_error(workshop_id) do
+    case current_workshop_summary(workshop_id) do
+      nil -> {:error, :not_found}
+      current -> {:error, {:version_precondition_failed, current}}
+    end
+  end
+
+  defp current_workshop_summary(workshop_id) do
+    case Repo.get(Workshop, workshop_id) do
+      nil ->
+        nil
+
+      workshop ->
+        counts = registration_counts(workshop_id)
+
+        build_summary(workshop, %{
+          interest_count: interest_count(workshop_id),
+          pending_registration_count: counts.pending,
+          confirmed_registration_count: counts.confirmed
+        })
     end
   end
 
@@ -1490,6 +1570,24 @@ defmodule Dhc.Workshops do
     if length(registration_ids) == length(Enum.uniq(registration_ids)),
       do: :ok,
       else: {:error, :invalid_attendee}
+  end
+
+  defp ensure_attendance_preconditions(updates, registrations) do
+    case Enum.find(updates, &attendance_precondition_failed?(&1, registrations)) do
+      nil -> :ok
+      update -> Repo.rollback({:version_precondition_failed, update.registration_id})
+    end
+  end
+
+  defp attendance_precondition_failed?(update, registrations) do
+    case Map.fetch(update, :lock_version) do
+      {:ok, lock_version} ->
+        registration = Map.fetch!(registrations, update.registration_id)
+        lock_version != registration.lock_version
+
+      :error ->
+        false
+    end
   end
 
   defp active_attendance_registrations(workshop_id, updates) do

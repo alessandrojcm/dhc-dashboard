@@ -91,6 +91,9 @@ defmodule DhcWeb.MembersController do
         {:error, {:version_precondition_failed, current}} ->
           member_precondition_failed(conn, current)
 
+        {:error, :not_found} ->
+          not_found(conn, "Member not found")
+
         {:error, :invalid_payload} ->
           validation_error(conn, "Invalid member update payload")
 
