@@ -1,6 +1,6 @@
 defmodule Dhc.Stripe.CashBalanceParam do
   @moduledoc """
-  Provides struct and type for a CashBalanceParam
+  Provides struct and types for a CashBalanceParam
   """
 
   @type t :: %__MODULE__{settings: Dhc.Stripe.BalanceSettingsParam.t() | nil}

@@ -533,6 +533,27 @@ defmodule DhcWeb.MembersControllerTest do
 
       assert %{"errors" => %{"detail" => "Member not found"}} = json_response(conn, 404)
     end
+
+    test "returns lockVersion and supports a matching If-None-Match", %{conn: conn} do
+      %{auth_user_id: member_id} = insert_member(first_name: "Conditional")
+      path = "/api/members/#{member_id}"
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> get(path)
+
+      assert %{"data" => %{"lockVersion" => 1}} = json_response(conn, 200)
+      assert get_resp_header(conn, "etag") == ["\"1\""]
+
+      conn =
+        build_conn()
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> put_req_header("if-none-match", "\"1\"")
+        |> get(path)
+
+      assert response(conn, 304) == ""
+    end
   end
 
   describe "update" do
@@ -698,6 +719,22 @@ defmodule DhcWeb.MembersControllerTest do
 
       assert %{"errors" => %{"detail" => "Invalid member update payload"}} =
                json_response(conn, 422)
+    end
+
+    test "returns the current member for a stale If-Match", %{conn: conn} do
+      %{auth_user_id: member_id} = insert_member(first_name: "Before", customer_id: nil)
+      {:ok, _} = Dhc.Members.update_member(member_id, %{"firstName" => "Current"})
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> put_req_header("if-match", "\"1\"")
+        |> patch("/api/members/#{member_id}", %{"firstName" => "Stale"})
+
+      assert %{
+               "data" => %{"firstName" => "Current", "lockVersion" => 2},
+               "errors" => %{"detail" => "version precondition failed"}
+             } = json_response(conn, 412)
     end
   end
 

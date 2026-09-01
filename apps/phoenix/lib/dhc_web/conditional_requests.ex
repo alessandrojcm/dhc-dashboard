@@ -19,7 +19,7 @@ defmodule DhcWeb.ConditionalRequests do
   @unsupported_if_headers ~w(if-modified-since if-unmodified-since if-range)
 
   @typedoc "Parsed If-Match instruction."
-  @type if_match :: {:any_existing, :*} | {:version, pos_integer()}
+  @type if_match :: {:any_existing, :*} | {:version, pos_integer()} | {:versions, [pos_integer()]}
 
   @typedoc "Outcome of evaluating conditional headers against an entity version."
   @type precondition ::
@@ -87,17 +87,23 @@ defmodule DhcWeb.ConditionalRequests do
 
   Returns `{:ok, nil}` (no If-Match — behave as before), `{:ok, if_match}`,
   or `{:error, reason}` for malformed or unsupported conditional headers.
-  `If-None-Match` is ignored on writes (RFC 9110: it is a GET/HEAD
-  validator), but unsupported date-based conditionals still 400.
+   `If-None-Match` is not supported on writes, so it is rejected rather than
+   silently ignored (AEP-154).
   """
   @spec parse_if_match(Plug.Conn.t()) ::
-          {:ok, nil | if_match()} | {:error, :unsupported_header | :invalid_if_match}
+          {:ok, nil | if_match()}
+          | {:error, :unsupported_header | :unsupported_if_none_match | :invalid_if_match}
   def parse_if_match(conn) do
     with :ok <- reject_unsupported(conn) do
-      if header_present?(conn, "if-match") do
-        conn |> header("if-match") |> parse_if_match_tag()
-      else
-        {:ok, nil}
+      cond do
+        header_present?(conn, "if-none-match") ->
+          {:error, :unsupported_if_none_match}
+
+        header_present?(conn, "if-match") ->
+          conn |> header("if-match") |> parse_if_match_tag()
+
+        true ->
+          {:ok, nil}
       end
     end
   end
@@ -110,11 +116,13 @@ defmodule DhcWeb.ConditionalRequests do
   entity satisfies the precondition.
   """
   @spec write_options(Plug.Conn.t()) ::
-          {:ok, keyword()} | {:error, :unsupported_header | :invalid_if_match}
+          {:ok, keyword()}
+          | {:error, :unsupported_header | :unsupported_if_none_match | :invalid_if_match}
   def write_options(conn) do
     case parse_if_match(conn) do
       {:ok, nil} -> {:ok, []}
       {:ok, {:version, version}} -> {:ok, expected_lock_version: version}
+      {:ok, {:versions, versions}} -> {:ok, expected_lock_version: versions}
       {:ok, {:any_existing, :*}} -> {:ok, expected_lock_version: :*}
       {:error, reason} -> {:error, reason}
     end
@@ -128,6 +136,10 @@ defmodule DhcWeb.ConditionalRequests do
 
   def enforce_if_match({:version, expected}, lock_version) do
     if expected == lock_version, do: :ok, else: {:precondition_failed}
+  end
+
+  def enforce_if_match({:versions, expected}, lock_version) do
+    if lock_version in expected, do: :ok, else: {:precondition_failed}
   end
 
   # ── Controller wiring ─────────────────────────────────────────────────
@@ -152,7 +164,8 @@ defmodule DhcWeb.ConditionalRequests do
   @doc """
   Human-readable error detail for the `400` outcomes.
   """
-  @spec error_detail(:unsupported_header | :invalid_if_match) :: String.t()
+  @spec error_detail(:unsupported_header | :unsupported_if_none_match | :invalid_if_match) ::
+          String.t()
   def error_detail(:unsupported_header) do
     "Conditional headers if-modified-since, if-unmodified-since, and if-range are not supported"
   end
@@ -161,27 +174,44 @@ defmodule DhcWeb.ConditionalRequests do
     "Invalid If-Match header; expected a quoted lock version or *"
   end
 
+  def error_detail(:unsupported_if_none_match) do
+    "If-None-Match is not supported on write requests"
+  end
+
   # ── Internals ─────────────────────────────────────────────────────────
 
   defp header(conn, name), do: hd(get_req_header(conn, name))
 
   defp header_present?(conn, name), do: get_req_header(conn, name) != []
 
-  # If-Match side: exactly `*` or a single strong version tag.
+  # If-Match side: `*` or one-or-more strong version tags. RFC 9110 treats a
+  # list as a match when any supplied strong tag matches the current entity.
   defp parse_if_match_tag(raw) do
     case parse_etag_list(raw) do
       {:ok, ["*"]} -> {:ok, {:any_existing, :*}}
-      {:ok, [tag]} -> version_or_invalid(tag)
+      {:ok, tags} -> versions_or_invalid(tags)
       _ -> {:error, :invalid_if_match}
     end
   end
 
-  defp version_or_invalid(tag) do
-    case parse_version_tag(tag) do
-      {:ok, version} -> {:ok, {:version, version}}
-      :error -> {:error, :invalid_if_match}
+  defp versions_or_invalid(tags) do
+    tags
+    |> Enum.map(&parse_version_tag/1)
+    |> collect_versions()
+  end
+
+  defp collect_versions(parsed_versions) do
+    if Enum.all?(parsed_versions, &match?({:ok, _}, &1)) do
+      parsed_versions
+      |> Enum.map(fn {:ok, version} -> version end)
+      |> version_match()
+    else
+      {:error, :invalid_if_match}
     end
   end
+
+  defp version_match([version]), do: {:ok, {:version, version}}
+  defp version_match(versions), do: {:ok, {:versions, versions}}
 
   # If-None-Match side (GET): any listed tag (or `*`) matching the current
   # ETag means the client already holds the current version.

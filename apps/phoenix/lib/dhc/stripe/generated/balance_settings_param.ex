@@ -1,6 +1,6 @@
 defmodule Dhc.Stripe.BalanceSettingsParam do
   @moduledoc """
-  Provides struct and type for a BalanceSettingsParam
+  Provides struct and types for a BalanceSettingsParam
   """
 
   @type t :: %__MODULE__{reconciliation_mode: String.t() | nil}

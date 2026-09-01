@@ -893,11 +893,11 @@ defmodule Dhc.Workshops do
     end
   end
 
-  @spec cancel_member_registration(binary(), binary()) ::
+  @spec cancel_member_registration(binary(), binary(), keyword()) ::
           {:ok, %{registration: Registration.t(), refund_pending: boolean()}}
-          | {:error, :not_found}
-  def cancel_member_registration(workshop_id, user_id)
-      when is_binary(workshop_id) and is_binary(user_id) do
+          | {:error, :not_found | {:version_precondition_failed, Registration.t()}}
+  def cancel_member_registration(workshop_id, user_id, opts \\ [])
+      when is_binary(workshop_id) and is_binary(user_id) and is_list(opts) do
     registration =
       from(r in Registration,
         where:
@@ -912,26 +912,30 @@ defmodule Dhc.Workshops do
         {:error, :not_found}
 
       %Registration{} = registration ->
-        cancel_existing_member_registration(registration, workshop_id, user_id)
+        case check_registration_precondition(registration, opts) do
+          :ok -> cancel_existing_member_registration(registration, workshop_id, user_id, opts)
+          {:error, reason} -> {:error, reason}
+        end
     end
   end
 
-  defp cancel_existing_member_registration(registration, workshop_id, user_id) do
+  defp cancel_existing_member_registration(registration, workshop_id, user_id, opts) do
     case refund_eligibility(registration.id) do
       {:ok, _registration} ->
-        refund_cancelled_member(registration, workshop_id, user_id)
+        refund_cancelled_member(registration, workshop_id, user_id, opts)
 
       {:error, _ineligible_reason} ->
-        cancel_member_without_refund(registration)
+        cancel_member_without_refund(registration, opts)
     end
   end
 
-  defp refund_cancelled_member(registration, workshop_id, user_id) do
+  defp refund_cancelled_member(registration, workshop_id, user_id, opts) do
     case process_refund(
            workshop_id,
            registration.id,
            "Member cancelled registration",
-           user_id
+           user_id,
+           opts
          ) do
       {:ok, refund} ->
         {:ok,
@@ -945,17 +949,47 @@ defmodule Dhc.Workshops do
     end
   end
 
-  defp cancel_member_without_refund(registration) do
-    {:ok, updated} =
-      registration
-      |> Ecto.Changeset.change(
-        status: "cancelled",
-        cancelled_at: DateTime.utc_now() |> DateTime.truncate(:second)
-      )
-      |> Ecto.Changeset.optimistic_lock(:lock_version)
-      |> Repo.update()
+  defp cancel_member_without_refund(registration, _opts) do
+    registration
+    |> Ecto.Changeset.change(
+      status: "cancelled",
+      cancelled_at: DateTime.utc_now() |> DateTime.truncate(:second)
+    )
+    |> Ecto.Changeset.optimistic_lock(:lock_version)
+    |> Repo.update()
+    |> case do
+      {:ok, updated} -> {:ok, %{registration: updated, refund_pending: false}}
+      {:error, %Ecto.StaleEntryError{}} -> current_registration_error(registration.id)
+      {:error, reason} -> {:error, reason}
+    end
+  end
 
-    {:ok, %{registration: updated, refund_pending: false}}
+  defp check_registration_precondition(registration, opts) do
+    case Keyword.get(opts, :expected_lock_version) do
+      nil ->
+        :ok
+
+      :* ->
+        :ok
+
+      expected when is_integer(expected) and expected == registration.lock_version ->
+        :ok
+
+      expected_versions when is_list(expected_versions) ->
+        if registration.lock_version in expected_versions,
+          do: :ok,
+          else: {:error, {:version_precondition_failed, registration}}
+
+      _ ->
+        {:error, {:version_precondition_failed, registration}}
+    end
+  end
+
+  defp current_registration_error(registration_id) do
+    case Repo.get(Registration, registration_id) do
+      nil -> {:error, :not_found}
+      current -> {:error, {:version_precondition_failed, current}}
+    end
   end
 
   @doc """
@@ -1016,7 +1050,7 @@ defmodule Dhc.Workshops do
 
     with {:ok, %Registration{club_activity_id: ^workshop_id} = registration} <- eligibility,
          {:ok, refund} <-
-           create_durable_refund_obligation(registration, reason, requested_by) do
+           create_durable_refund_obligation(registration, reason, requested_by, opts) do
       {:ok, refund}
     else
       {:ok, %Registration{}} -> {:error, :registration_not_found}
@@ -1024,10 +1058,15 @@ defmodule Dhc.Workshops do
     end
   end
 
-  defp create_durable_refund_obligation(registration, reason, requested_by) do
+  defp create_durable_refund_obligation(registration, reason, requested_by, opts) do
     Repo.transaction(fn ->
       registration =
         Repo.one!(from(r in Registration, where: r.id == ^registration.id, lock: "FOR UPDATE"))
+
+      case check_registration_precondition(registration, opts) do
+        {:error, reason} -> Repo.rollback(reason)
+        :ok -> :ok
+      end
 
       if Repo.exists?(from(rf in Refund, where: rf.registration_id == ^registration.id)) do
         Repo.rollback(:already_requested)
@@ -1294,10 +1333,22 @@ defmodule Dhc.Workshops do
 
   defp check_version_precondition(workshop, opts) do
     case Keyword.get(opts, :expected_lock_version) do
-      nil -> :ok
-      {:any_existing, :*} -> :ok
-      {:version, version} when version == workshop.lock_version -> :ok
-      _version -> {:error, {:version_precondition_failed, workshop_summary(workshop.id)}}
+      nil ->
+        :ok
+
+      :* ->
+        :ok
+
+      version when is_integer(version) and version == workshop.lock_version ->
+        :ok
+
+      versions when is_list(versions) ->
+        if workshop.lock_version in versions,
+          do: :ok,
+          else: {:error, {:version_precondition_failed, workshop_summary(workshop.id)}}
+
+      _version ->
+        {:error, {:version_precondition_failed, workshop_summary(workshop.id)}}
     end
   end
 
@@ -1305,7 +1356,7 @@ defmodule Dhc.Workshops do
     if has_registrations?(workshop.id) do
       archive_workshop(workshop)
     else
-      {:ok, _} = Repo.delete(workshop)
+      {:ok, _} = workshop |> Ecto.Changeset.optimistic_lock(:lock_version) |> Repo.delete()
       {:ok, :deleted}
     end
   end

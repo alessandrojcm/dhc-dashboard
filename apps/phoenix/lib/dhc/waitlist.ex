@@ -210,13 +210,22 @@ defmodule Dhc.Waitlist do
           expected when expected in [nil, :*] ->
             update_waitlist_entry(entry, normalized, id)
 
-          expected when entry.lock_version == expected ->
+          expected when is_integer(expected) and entry.lock_version == expected ->
             update_waitlist_entry(entry, normalized, id)
+
+          expected_versions when is_list(expected_versions) ->
+            update_if_version_matches(entry, normalized, id, expected_versions)
 
           _ ->
             {:error, {:version_precondition_failed, get_entry!(id)}}
         end
     end
+  end
+
+  defp update_if_version_matches(entry, normalized, id, expected_versions) do
+    if entry.lock_version in expected_versions,
+      do: update_waitlist_entry(entry, normalized, id),
+      else: {:error, {:version_precondition_failed, get_entry!(id)}}
   end
 
   defp update_waitlist_entry(entry, normalized, id) do
@@ -239,8 +248,14 @@ defmodule Dhc.Waitlist do
   @spec delete_entry(Ecto.UUID.t()) :: :ok | {:error, :not_found}
   def delete_entry(id) do
     case Repo.get(WaitlistEntry, id) do
-      nil -> {:error, :not_found}
-      entry -> Repo.delete(entry) |> then(fn {:ok, _entry} -> :ok end)
+      nil ->
+        {:error, :not_found}
+
+      entry ->
+        entry
+        |> Ecto.Changeset.optimistic_lock(:lock_version)
+        |> Repo.delete()
+        |> then(fn {:ok, _entry} -> :ok end)
     end
   end
 

@@ -92,6 +92,52 @@ defmodule DhcWeb.SettingsControllerTest do
   end
 
   describe "update" do
+    test "exposes a single setting version and rejects a stale conditional update", %{conn: conn} do
+      path = "/api/settings/subscription_max_pause_months"
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> get(path)
+
+      assert %{"data" => %{"lockVersion" => 1}} = json_response(conn, 200)
+      assert get_resp_header(conn, "etag") == ["\"1\""]
+
+      {:ok, _} = Dhc.Settings.update("subscription_max_pause_months", 12)
+
+      conn =
+        build_conn()
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> put_req_header("if-match", "\"1\"")
+        |> patch(path, %{"value" => 6})
+
+      assert %{
+               "data" => %{"value" => 12, "lockVersion" => 2},
+               "errors" => %{"detail" => "version precondition failed"}
+             } = json_response(conn, 412)
+    end
+
+    test "accepts a matching tag from an If-Match list", %{conn: conn} do
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> put_req_header("if-match", "\"1\", \"2\"")
+        |> patch("/api/settings/subscription_max_pause_months", %{"value" => 12})
+
+      assert %{"data" => %{"value" => 12, "lockVersion" => 2}} = json_response(conn, 200)
+    end
+
+    test "rejects If-None-Match instead of ignoring it", %{conn: conn} do
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> put_req_header("if-none-match", "\"1\"")
+        |> patch("/api/settings/subscription_max_pause_months", %{"value" => 12})
+
+      assert %{"errors" => %{"detail" => detail}} = json_response(conn, 400)
+      assert detail =~ "If-None-Match"
+    end
+
     test "updates hema_insurance_form_link with a valid URL", %{conn: conn} do
       conn =
         conn

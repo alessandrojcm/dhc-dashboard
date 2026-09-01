@@ -40,7 +40,7 @@
       # If you create your own checks, you must specify the source files for
       # them here, so they can be loaded by Credo before running the analysis.
       #
-      requires: [],
+      requires: ["./lib/dhc/credo/**/*.ex"],
       #
       # If you want to enforce a style guide and need a more traditional linting
       # experience, you can change `strict` to `true` below:
@@ -90,6 +90,7 @@
             # set this value to 0 (zero).
             #
             {Credo.Check.Design.TagTODO, [exit_status: 2]},
+            {Dhc.Credo.OptimisticLock, []},
 
             #
             ## Readability Checks

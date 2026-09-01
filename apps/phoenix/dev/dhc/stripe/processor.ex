@@ -60,6 +60,7 @@ defmodule Dhc.Stripe.Processor do
                         "GetCustomers",
                         "GetCustomersCustomer",
                         "PostCustomers",
+                        "PostCustomersCustomer",
                         # Payment methods (saved SEPA methods for reactivation)
                         "GetCustomersCustomerPaymentMethods"
                       ])

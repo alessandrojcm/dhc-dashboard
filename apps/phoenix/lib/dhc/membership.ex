@@ -538,6 +538,7 @@ defmodule Dhc.Membership do
 
       member_profile
       |> Ecto.Changeset.change(subscription_paused_until: pause_until)
+      |> Ecto.Changeset.optimistic_lock(:lock_version)
       |> Repo.update()
       |> case do
         {:ok, _profile} ->

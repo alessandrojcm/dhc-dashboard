@@ -122,6 +122,11 @@ defmodule Dhc.Inventory.Containers do
         if container.lock_version == expected,
           do: :ok,
           else: {:version_precondition_failed, container}
+
+      {:ok, expected_versions} when is_list(expected_versions) ->
+        if container.lock_version in expected_versions,
+          do: :ok,
+          else: {:version_precondition_failed, container}
     end
   end
 

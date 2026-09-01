@@ -72,7 +72,8 @@ defmodule Dhc.StripeSync.Repository do
       _ ->
         Repo.update_all(
           from(s in "settings", where: s.key == ^@price_setting_key),
-          set: [value: price_id, updated_at: now]
+          set: [value: price_id, updated_at: now],
+          inc: [lock_version: 1]
         )
     end
 
@@ -157,7 +158,7 @@ defmodule Dhc.StripeSync.Repository do
     from(mp in MemberProfile,
       where: mp.user_profile_id in ^user_profile_ids
     )
-    |> Repo.update_all(updates)
+    |> Repo.update_all(set: Keyword.fetch!(updates, :set), inc: [lock_version: 1])
 
     :ok
   end

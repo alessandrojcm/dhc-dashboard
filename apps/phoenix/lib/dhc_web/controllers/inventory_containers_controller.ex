@@ -92,12 +92,9 @@ defmodule DhcWeb.InventoryContainersController do
   PATCH /inventory/containers/{id}
   """
   def update(conn, %{"id" => id} = params) do
-    case fetch_if_match(conn) do
-      {:ok, nil} ->
-        apply_update(conn, id, params, [])
-
-      {:ok, if_match} ->
-        apply_update(conn, id, params, expected_lock_version: expected_version(if_match))
+    case ConditionalRequests.write_options(conn) do
+      {:ok, opts} ->
+        apply_update(conn, id, params, opts)
 
       {:error, reason} ->
         bad_request(conn, ConditionalRequests.error_detail(reason))
@@ -108,12 +105,9 @@ defmodule DhcWeb.InventoryContainersController do
   DELETE /inventory/containers/{id}
   """
   def delete(conn, %{"id" => id}) do
-    case fetch_if_match(conn) do
-      {:ok, nil} ->
-        apply_delete(conn, id, [])
-
-      {:ok, if_match} ->
-        apply_delete(conn, id, expected_lock_version: expected_version(if_match))
+    case ConditionalRequests.write_options(conn) do
+      {:ok, opts} ->
+        apply_delete(conn, id, opts)
 
       {:error, reason} ->
         bad_request(conn, ConditionalRequests.error_detail(reason))
@@ -128,11 +122,6 @@ defmodule DhcWeb.InventoryContainersController do
       {:precondition_failed} -> precondition_failed(conn, container)
     end
   end
-
-  defp fetch_if_match(conn), do: ConditionalRequests.parse_if_match(conn)
-
-  defp expected_version({:version, version}), do: version
-  defp expected_version({:any_existing, :*}), do: :*
 
   defp apply_update(conn, id, params, opts) do
     case Inventory.update_container(id, params, opts) do

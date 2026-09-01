@@ -82,8 +82,9 @@ defmodule DhcWeb.MembersController do
 
     with :ok <- authorize_self_or_admin(conn, member_id),
          {:ok, current} <- Members.get_member(member_id),
-         :ok <- verify_if_match(conn, current) do
-      case Members.update_member(member_id, attrs, expected_version_opts(conn)) do
+         {:ok, opts} <- ConditionalRequests.write_options(conn),
+         :ok <- verify_if_match(current, opts) do
+      case Members.update_member(member_id, attrs, opts) do
         {:ok, member} ->
           member_response(conn, member)
 
@@ -100,7 +101,7 @@ defmodule DhcWeb.MembersController do
       {:error, :forbidden} -> forbidden(conn, "Insufficient role")
       {:error, :not_found} -> not_found(conn, "Member not found")
       {:error, {:precondition_failed, current}} -> member_precondition_failed(conn, current)
-      {:error, {:bad_request, detail}} -> bad_request(conn, detail)
+      {:error, reason} -> bad_request(conn, ConditionalRequests.error_detail(reason))
     end
   end
 
@@ -148,26 +149,13 @@ defmodule DhcWeb.MembersController do
     |> render(:precondition_failed, member: member)
   end
 
-  defp verify_if_match(conn, current) do
-    case ConditionalRequests.parse_if_match(conn) do
-      {:ok, nil} ->
-        :ok
+  defp verify_if_match(_current, []), do: :ok
+  defp verify_if_match(_current, expected_lock_version: :*), do: :ok
 
-      {:ok, if_match} ->
-        if ConditionalRequests.enforce_if_match(if_match, current.lock_version) == :ok,
-          do: :ok,
-          else: {:error, {:precondition_failed, current}}
-
-      {:error, reason} ->
-        {:error, {:bad_request, ConditionalRequests.error_detail(reason)}}
-    end
-  end
-
-  defp expected_version_opts(conn) do
-    case ConditionalRequests.parse_if_match(conn) do
-      {:ok, nil} -> []
-      {:ok, if_match} -> [expected_lock_version: if_match]
-    end
+  defp verify_if_match(current, expected_lock_version: expected) do
+    if current.lock_version in List.wrap(expected),
+      do: :ok,
+      else: {:error, {:precondition_failed, current}}
   end
 
   defp bad_request(conn, detail) do

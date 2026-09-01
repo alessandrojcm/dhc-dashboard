@@ -694,6 +694,49 @@ defmodule DhcWeb.InventoryItemsControllerTest do
     end
   end
 
+  describe "conditional requests — command writes" do
+    test "move honors If-Match and returns the bumped ETag", %{conn: conn} do
+      category = insert_category!("Command Etag Category")
+      source = create_container!(%{"name" => "Command Source"})
+      destination = create_container!(%{"name" => "Command Destination"})
+      item = create_item!(item_payload(source, category))
+
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> put_req_header("if-match", "\"1\"")
+        |> post("/api/inventory/items/#{to_uuid(item.id)}/move", %{
+          "containerId" => to_uuid(destination.id)
+        })
+
+      assert %{"data" => %{"containerId" => container_id, "lockVersion" => 2}} =
+               json_response(conn, 200)
+
+      assert container_id == to_uuid(destination.id)
+      assert get_resp_header(conn, "etag") == ["\"2\""]
+    end
+
+    test "maintenance rejects a stale If-Match with the current item", %{conn: conn} do
+      category = insert_category!("Command Stale Category")
+      container = create_container!(%{"name" => "Command Stale Container"})
+      item = create_item!(item_payload(container, category))
+      {:ok, _} = Dhc.Inventory.update_item(to_uuid(item.id), %{"quantity" => 9}, @actor_id)
+
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> put_req_header("if-match", "\"1\"")
+        |> post("/api/inventory/items/#{to_uuid(item.id)}/maintenance", %{
+          "outForMaintenance" => true
+        })
+
+      assert %{
+               "data" => %{"quantity" => 9, "lockVersion" => 2},
+               "errors" => %{"detail" => "version precondition failed"}
+             } = json_response(conn, 412)
+    end
+  end
+
   test "read endpoints allow authenticated roles", %{conn: conn} do
     category = insert_category!("Read Roles")
     container = create_container!(%{"name" => "Read Box"})

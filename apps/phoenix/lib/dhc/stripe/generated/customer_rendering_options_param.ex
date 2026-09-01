@@ -1,6 +1,6 @@
 defmodule Dhc.Stripe.CustomerRenderingOptionsParam do
   @moduledoc """
-  Provides struct and type for a CustomerRenderingOptionsParam
+  Provides struct and types for a CustomerRenderingOptionsParam
   """
 
   @type t :: %__MODULE__{amount_tax_display: String.t() | nil, template: String.t() | nil}

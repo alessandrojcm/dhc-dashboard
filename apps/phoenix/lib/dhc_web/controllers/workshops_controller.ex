@@ -170,15 +170,24 @@ defmodule DhcWeb.WorkshopsController do
   end
 
   defp conditional_delete_workshop(conn, id) do
-    if get_req_header(conn, "if-match") == [] do
-      Workshops.delete_workshop(id)
-    else
-      case conditional_workshop(conn, id) do
-        {:ok, _current} -> Workshops.delete_workshop(id, workshop_version_opts(conn))
-        {:error, {:precondition_failed, current}} -> {:precondition_failed, current}
-        {:error, {:bad_request, detail}} -> {:bad_request, detail}
-        {:error, :not_found} -> {:error, :not_found}
-      end
+    case ConditionalRequests.write_options(conn) do
+      {:ok, []} ->
+        Workshops.delete_workshop(id)
+
+      {:ok, opts} ->
+        conditional_delete_workshop_with_precondition(conn, id, opts)
+
+      {:error, reason} ->
+        {:bad_request, ConditionalRequests.error_detail(reason)}
+    end
+  end
+
+  defp conditional_delete_workshop_with_precondition(conn, id, opts) do
+    case conditional_workshop(conn, id) do
+      {:ok, _current} -> Workshops.delete_workshop(id, opts)
+      {:error, {:precondition_failed, current}} -> {:precondition_failed, current}
+      {:error, {:bad_request, detail}} -> {:bad_request, detail}
+      {:error, :not_found} -> {:error, :not_found}
     end
   end
 
@@ -334,9 +343,8 @@ defmodule DhcWeb.WorkshopsController do
   def cancel_registration(conn, %{"id" => id}) do
     user_id = conn.assigns.current_session.principal.id
 
-    with {:ok, current} <- Workshops.current_member_registration(id, user_id),
-         :ok <- registration_if_match(conn, current) do
-      Workshops.cancel_member_registration(id, user_id)
+    with {:ok, opts} <- ConditionalRequests.write_options(conn) do
+      Workshops.cancel_member_registration(id, user_id, opts)
     end
     |> case do
       {:ok, result} ->
@@ -346,6 +354,9 @@ defmodule DhcWeb.WorkshopsController do
         |> render(:registration_cancelled, result: result)
 
       {:error, {:precondition_failed, current}} ->
+        registration_precondition_failed(conn, current)
+
+      {:error, {:version_precondition_failed, current}} ->
         registration_precondition_failed(conn, current)
 
       {:error, {:bad_request, detail}} ->
@@ -486,20 +497,6 @@ defmodule DhcWeb.WorkshopsController do
     |> render(:registration_precondition_failed, registration: registration)
   end
 
-  defp registration_if_match(conn, registration) do
-    case ConditionalRequests.parse_if_match(conn) do
-      {:ok, nil} -> :ok
-      {:ok, if_match} -> enforce_registration_if_match(registration, if_match)
-      {:error, reason} -> {:error, {:bad_request, ConditionalRequests.error_detail(reason)}}
-    end
-  end
-
-  defp enforce_registration_if_match(registration, if_match) do
-    if ConditionalRequests.enforce_if_match(if_match, registration.lock_version) == :ok,
-      do: :ok,
-      else: {:error, {:precondition_failed, registration}}
-  end
-
   defp conditional_workshop(conn, id) do
     case Workshops.workshop_summary(id) do
       nil ->
@@ -511,23 +508,24 @@ defmodule DhcWeb.WorkshopsController do
   end
 
   defp conditional_workshop_if_match(conn, current) do
-    case ConditionalRequests.parse_if_match(conn) do
-      {:ok, nil} -> {:ok, current}
-      {:ok, if_match} -> enforce_workshop_if_match(current, if_match)
+    case ConditionalRequests.write_options(conn) do
+      {:ok, opts} -> enforce_workshop_if_match(current, opts)
       {:error, reason} -> {:error, {:bad_request, ConditionalRequests.error_detail(reason)}}
     end
   end
 
-  defp enforce_workshop_if_match(current, if_match) do
-    if ConditionalRequests.enforce_if_match(if_match, current.lock_version) == :ok,
+  defp enforce_workshop_if_match(current, []), do: {:ok, current}
+  defp enforce_workshop_if_match(current, expected_lock_version: :*), do: {:ok, current}
+
+  defp enforce_workshop_if_match(current, expected_lock_version: expected) do
+    if current.lock_version in List.wrap(expected),
       do: {:ok, current},
       else: {:error, {:precondition_failed, current}}
   end
 
   defp workshop_version_opts(conn) do
-    case ConditionalRequests.parse_if_match(conn) do
-      {:ok, nil} -> []
-      {:ok, if_match} -> [expected_lock_version: if_match]
+    case ConditionalRequests.write_options(conn) do
+      {:ok, opts} -> opts
     end
   end
 

@@ -1,6 +1,6 @@
 defmodule Dhc.Stripe.CustomerParam do
   @moduledoc """
-  Provides struct and type for a CustomerParam
+  Provides struct and types for a CustomerParam
   """
 
   @type t :: %__MODULE__{

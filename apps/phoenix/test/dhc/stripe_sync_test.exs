@@ -1,5 +1,6 @@
 defmodule Dhc.StripeSyncTest do
-  use ExUnit.Case, async: true
+  # This module overrides global Stripe application configuration for Bypass.
+  use ExUnit.Case, async: false
 
   alias Dhc.StripeSync
 

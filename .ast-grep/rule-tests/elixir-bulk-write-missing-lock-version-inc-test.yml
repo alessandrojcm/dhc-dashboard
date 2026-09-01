@@ -1,7 +1,0 @@
-id: elixir-inventory-bulk-write-missing-lock-version-inc
-language: elixir
-valid:
-  - "Repo.update_all(from(i in Item), set: [name: name], inc: [lock_version: 1])"
-invalid:
-  - "Repo.update_all(from(i in Item), set: [name: name])"
-  - "Repo.delete_all(from(i in \"inventory_items\"), [])"

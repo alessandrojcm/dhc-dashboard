@@ -124,21 +124,25 @@ defmodule Dhc.Settings do
       not allowlisted?(key) ->
         {:error, :not_found}
 
-      not row_exists?(key) ->
-        {:error, :missing}
-
       is_nil(value) ->
         {:error, :no_value}
 
       true ->
-        with :ok <- check_precondition(key, opts),
+        with {:ok, row} <- fetch_row(key),
+             :ok <- check_precondition(row, opts),
              {:ok, coerced} <- coerce_value(key, value),
-             {:ok, validated} <- validate_value(key, coerced) do
-          persist!(key, to_string(validated))
+             {:ok, validated} <- validate_value(key, coerced),
+             {:ok, _updated} <- persist(row, to_string(validated)) do
           {:ok, fetch_item!(key)}
         else
           {:version_precondition_failed, current} ->
             {:error, {:version_precondition_failed, current}}
+
+          {:error, %Ecto.StaleEntryError{}} ->
+            {:error, {:version_precondition_failed, fetch_item!(key)}}
+
+          {:error, :missing} ->
+            {:error, :missing}
 
           {:error, :invalid_value, detail} ->
             {:error, :invalid_value, detail}
@@ -148,26 +152,27 @@ defmodule Dhc.Settings do
 
   # If-Match precondition check — ADR 0023 (ALE-267). Absent or `*` passes;
   # a version mismatch fails fast without applying any changes.
-  defp check_precondition(key, opts) do
+  defp check_precondition(row, opts) do
     case Keyword.fetch(opts, :expected_lock_version) do
-      :error -> :ok
-      {:ok, :*} -> :ok
-      {:ok, expected} when is_integer(expected) -> check_version(key, expected)
+      :error ->
+        :ok
+
+      {:ok, :*} ->
+        :ok
+
+      {:ok, expected} when is_integer(expected) ->
+        check_version(row, expected)
+
+      {:ok, expected_versions} when is_list(expected_versions) ->
+        check_version(row, expected_versions)
     end
   end
 
-  defp check_version(key, expected) do
-    if current_version(key) == expected do
+  defp check_version(row, expected) do
+    if row.lock_version in List.wrap(expected) do
       :ok
     else
-      {:version_precondition_failed, fetch_item!(key)}
-    end
-  end
-
-  defp current_version(key) do
-    case Repo.one(from(s in Setting, where: s.key == ^key, select: s.lock_version)) do
-      nil -> nil
-      version when is_integer(version) -> version
+      {:version_precondition_failed, row_to_item(row, row.key)}
     end
   end
 
@@ -177,6 +182,13 @@ defmodule Dhc.Settings do
     from(s in Setting, where: s.key == ^key, select: count(s.id))
     |> Repo.one()
     |> Kernel.>(0)
+  end
+
+  defp fetch_row(key) do
+    case Repo.get_by(Setting, key: key) do
+      nil -> {:error, :missing}
+      row -> {:ok, row}
+    end
   end
 
   defp fetch_item!(key) do
@@ -261,13 +273,11 @@ defmodule Dhc.Settings do
   # Persisted via a struct changeset so the optimistic lock (ADR 0023) bumps
   # `lock_version` on every write; a read-modify-write racing this update
   # fails with `Ecto.StaleEntryError` instead of silently clobbering it.
-  defp persist!(key, value) do
-    row = Repo.one!(from(s in Setting, where: s.key == ^key, select: s))
-
+  defp persist(row, value) do
     row
     |> Ecto.Changeset.change(value: value, updated_at: now())
     |> Ecto.Changeset.optimistic_lock(:lock_version)
-    |> Repo.update!()
+    |> Repo.update()
   end
 
   defp now, do: DateTime.utc_now() |> DateTime.truncate(:second)

@@ -146,20 +146,18 @@ defmodule DhcWeb.InventoryItemsController do
   def move(conn, %{"id" => id} = params) do
     actor_id = conn.assigns.current_session.principal.id
 
-    case Inventory.move_item(id, params, actor_id) do
-      {:ok, item} ->
-        conn
-        |> put_view(json: DhcWeb.InventoryItemsJSON)
-        |> render(:item, item: item)
+    case ConditionalRequests.write_options(conn) do
+      {:ok, opts} ->
+        case Inventory.move_item(id, params, actor_id, opts) do
+          {:ok, item} -> item_response(conn, item)
+          {:error, :not_found} -> not_found(conn, "Item not found")
+          {:error, {:version_precondition_failed, current}} -> precondition_failed(conn, current)
+          {:error, :invalid_container} -> unprocessable(conn, "container_id unknown container")
+          {:error, changeset} -> unprocessable(conn, changeset)
+        end
 
-      {:error, :not_found} ->
-        not_found(conn, "Item not found")
-
-      {:error, :invalid_container} ->
-        unprocessable(conn, "container_id unknown container")
-
-      {:error, changeset} ->
-        unprocessable(conn, changeset)
+      {:error, reason} ->
+        bad_request(conn, ConditionalRequests.error_detail(reason))
     end
   end
 
@@ -169,17 +167,17 @@ defmodule DhcWeb.InventoryItemsController do
   def maintenance(conn, %{"id" => id} = params) do
     actor_id = conn.assigns.current_session.principal.id
 
-    case Inventory.set_item_maintenance(id, params, actor_id) do
-      {:ok, item} ->
-        conn
-        |> put_view(json: DhcWeb.InventoryItemsJSON)
-        |> render(:item, item: item)
+    case ConditionalRequests.write_options(conn) do
+      {:ok, opts} ->
+        case Inventory.set_item_maintenance(id, params, actor_id, opts) do
+          {:ok, item} -> item_response(conn, item)
+          {:error, :not_found} -> not_found(conn, "Item not found")
+          {:error, {:version_precondition_failed, current}} -> precondition_failed(conn, current)
+          {:error, changeset} -> unprocessable(conn, changeset)
+        end
 
-      {:error, :not_found} ->
-        not_found(conn, "Item not found")
-
-      {:error, changeset} ->
-        unprocessable(conn, changeset)
+      {:error, reason} ->
+        bad_request(conn, ConditionalRequests.error_detail(reason))
     end
   end
 

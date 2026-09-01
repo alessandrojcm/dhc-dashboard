@@ -44,12 +44,9 @@ defmodule DhcWeb.SettingsController do
   def update(conn, %{"key" => key} = params) do
     value = Map.get(params, "value")
 
-    case ConditionalRequests.parse_if_match(conn) do
-      {:ok, nil} ->
-        apply_update(conn, key, value, [])
-
-      {:ok, if_match} ->
-        apply_update(conn, key, value, expected_lock_version: expected_version(if_match))
+    case ConditionalRequests.write_options(conn) do
+      {:ok, opts} ->
+        apply_update(conn, key, value, opts)
 
       {:error, reason} ->
         bad_request(conn, ConditionalRequests.error_detail(reason))
@@ -62,9 +59,6 @@ defmodule DhcWeb.SettingsController do
       {:precondition_failed} -> precondition_failed(conn, setting)
     end
   end
-
-  defp expected_version({:version, version}), do: version
-  defp expected_version({:any_existing, :*}), do: :*
 
   defp apply_update(conn, key, value, opts) do
     case Settings.update(key, value, opts) do

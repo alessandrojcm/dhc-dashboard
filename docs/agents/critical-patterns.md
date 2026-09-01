@@ -97,9 +97,11 @@ Mutable schemas listed by ADR 0023 carry `lock_version`. Before `Repo.update`,
 `Ecto.Changeset.optimistic_lock(:lock_version)`. Bulk `Repo.update_all` writes
 must include `inc: [lock_version: 1]`.
 
-Credo and ast-grep enforce these shapes and tell agents which call to add. The
-rules intentionally report existing bypasses until those paths are repaired;
-do not silence them with exclusions or a baseline.
+The production-only Credo `Dhc.Credo.OptimisticLock` check enforces these
+shapes and tells agents which call to add. It intentionally reports existing
+bypasses until those paths are repaired; do not silence them with exclusions
+or a baseline. Tests, seeds, and controller code are deliberately out of its
+scope.
 
 ## Discord External Identities
 

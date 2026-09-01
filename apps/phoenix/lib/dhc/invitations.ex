@@ -453,6 +453,7 @@ defmodule Dhc.Invitations do
         customer_id: customer_id,
         updated_at: now
       )
+      |> Ecto.Changeset.optimistic_lock(:lock_version)
       |> Repo.update!()
 
       waitlist_profile.id

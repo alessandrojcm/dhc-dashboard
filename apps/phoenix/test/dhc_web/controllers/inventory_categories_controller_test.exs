@@ -143,6 +143,23 @@ defmodule DhcWeb.InventoryCategoriesControllerTest do
       conn = get(conn, "/api/inventory/categories/#{Ecto.UUID.generate()}")
       assert %{"errors" => %{"detail" => "Unauthorized"}} = json_response(conn, 401)
     end
+
+    test "returns lockVersion and a bodyless 304 for a matching ETag", %{conn: conn} do
+      category = insert_category(name: "Conditional Category")
+      path = "/api/inventory/categories/#{to_uuid(category.id)}"
+
+      conn = conn |> auth_conn("member") |> get(path)
+      assert %{"data" => %{"lockVersion" => 1}} = json_response(conn, 200)
+      assert get_resp_header(conn, "etag") == ["\"1\""]
+
+      conn =
+        build_conn()
+        |> auth_conn("member")
+        |> put_req_header("if-none-match", "\"1\"")
+        |> get(path)
+
+      assert response(conn, 304) == ""
+    end
   end
 
   # ── Create ────────────────────────────────────────────────────────────
@@ -283,6 +300,22 @@ defmodule DhcWeb.InventoryCategoriesControllerTest do
         |> patch("/api/inventory/categories/#{to_uuid(category.id)}", %{"name" => "Blocked"})
 
       assert %{"errors" => %{"detail" => "Insufficient role"}} = json_response(conn, 403)
+    end
+
+    test "rejects stale If-Match with the current category", %{conn: conn} do
+      category = insert_category(name: "Conditional Old")
+      {:ok, _} = Dhc.Inventory.update_category(category.id, %{"name" => "Conditional Current"})
+
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> put_req_header("if-match", "\"1\"")
+        |> patch("/api/inventory/categories/#{to_uuid(category.id)}", %{"name" => "Stale"})
+
+      assert %{
+               "data" => %{"name" => "Conditional Current", "lockVersion" => 2},
+               "errors" => %{"detail" => "version precondition failed"}
+             } = json_response(conn, 412)
     end
   end
 

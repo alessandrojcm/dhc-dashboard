@@ -122,6 +122,11 @@ defmodule Dhc.Inventory.Categories do
         if category.lock_version == expected,
           do: :ok,
           else: {:version_precondition_failed, category}
+
+      {:ok, expected_versions} when is_list(expected_versions) ->
+        if category.lock_version in expected_versions,
+          do: :ok,
+          else: {:version_precondition_failed, category}
     end
   end
 

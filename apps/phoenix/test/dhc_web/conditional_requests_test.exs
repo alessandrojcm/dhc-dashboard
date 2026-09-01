@@ -16,6 +16,12 @@ defmodule DhcWeb.ConditionalRequestsTest do
       assert {:ok, [expected_lock_version: 7]} = ConditionalRequests.write_options(conn)
     end
 
+    test "preserves all strong tags from an If-Match list" do
+      conn = put_req_header(conn(), "if-match", ~s("2", "7"))
+
+      assert {:ok, [expected_lock_version: [2, 7]]} = ConditionalRequests.write_options(conn)
+    end
+
     test "converts the wildcard into an existing-entity context option" do
       conn = put_req_header(conn(), "if-match", "*")
 
@@ -34,6 +40,12 @@ defmodule DhcWeb.ConditionalRequestsTest do
 
         assert {:error, :unsupported_header} = ConditionalRequests.write_options(conn)
       end
+    end
+
+    test "rejects If-None-Match on writes" do
+      conn = put_req_header(conn(), "if-none-match", ~s("7"))
+
+      assert {:error, :unsupported_if_none_match} = ConditionalRequests.write_options(conn)
     end
   end
 

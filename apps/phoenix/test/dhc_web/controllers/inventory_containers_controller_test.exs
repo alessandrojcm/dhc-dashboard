@@ -251,6 +251,24 @@ defmodule DhcWeb.InventoryContainersControllerTest do
       conn = get(conn, "/api/inventory/containers/#{Ecto.UUID.generate()}")
       assert %{"errors" => %{"detail" => "Unauthorized"}} = json_response(conn, 401)
     end
+
+    test "returns lockVersion and supports conditional GET", %{conn: conn} do
+      container = create_container!(%{"name" => "Conditional Container"})
+      path = "/api/inventory/containers/#{to_uuid(container.id)}"
+
+      conn = conn |> auth_conn("member") |> get(path)
+      assert %{"data" => %{"lockVersion" => 1}} = json_response(conn, 200)
+      assert get_resp_header(conn, "etag") == ["\"1\""]
+
+      conn =
+        build_conn()
+        |> auth_conn("member")
+        |> put_req_header("if-none-match", "\"1\"")
+        |> get(path)
+
+      assert response(conn, 304) == ""
+      assert get_resp_header(conn, "etag") == ["\"1\""]
+    end
   end
 
   # ── Create ────────────────────────────────────────────────────────────
@@ -481,6 +499,25 @@ defmodule DhcWeb.InventoryContainersControllerTest do
         |> patch("/api/inventory/containers/#{to_uuid(container.id)}", %{"name" => "Blocked"})
 
       assert %{"errors" => %{"detail" => "Insufficient role"}} = json_response(conn, 403)
+    end
+
+    test "returns 412 with the current container for stale If-Match", %{conn: conn} do
+      container = create_container!(%{"name" => "Stale Container"})
+
+      {:ok, _} = Dhc.Inventory.update_container(container.id, %{"name" => "Current Container"})
+
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> put_req_header("if-match", "\"1\"")
+        |> patch("/api/inventory/containers/#{to_uuid(container.id)}", %{"name" => "Stale"})
+
+      assert %{
+               "data" => %{"name" => "Current Container", "lockVersion" => 2},
+               "errors" => %{"detail" => "version precondition failed"}
+             } = json_response(conn, 412)
+
+      assert get_resp_header(conn, "etag") == ["\"2\""]
     end
   end
 

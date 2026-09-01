@@ -13,6 +13,7 @@ defmodule Dhc.Members do
   alias Dhc.CursorPagination
   alias Dhc.MemberProfiles.MemberProfile
   alias Dhc.Repo
+  alias Dhc.Stripe.Operations
   alias Dhc.UserProfiles.UserProfile
 
   require Logger
@@ -264,10 +265,22 @@ defmodule Dhc.Members do
 
   defp check_member_precondition(member_profile, opts) do
     case Keyword.get(opts, :expected_lock_version) do
-      nil -> :ok
-      {:any_existing, :*} -> :ok
-      {:version, version} when version == member_profile.lock_version -> :ok
-      _version -> {:error, {:version_precondition_failed, get_member!(member_profile.id)}}
+      nil ->
+        :ok
+
+      :* ->
+        :ok
+
+      version when is_integer(version) and version == member_profile.lock_version ->
+        :ok
+
+      versions when is_list(versions) ->
+        if member_profile.lock_version in versions,
+          do: :ok,
+          else: {:error, {:version_precondition_failed, get_member!(member_profile.id)}}
+
+      _version ->
+        {:error, {:version_precondition_failed, get_member!(member_profile.id)}}
     end
   end
 
@@ -285,26 +298,13 @@ defmodule Dhc.Members do
     }
 
     with {:ok, _user_profile} <- update_user_profile(user_profile, attrs),
-         {:ok, updated_member_profile} <- update_member_profile(member_profile, attrs),
-         {:ok, _member_profile} <-
-           maybe_bump_member_witness(member_profile, updated_member_profile),
+         {:ok, _member_profile} <- update_member_profile(member_profile, attrs),
          {:ok, member} <- get_member(member_id) do
       maybe_echo_customer_to_stripe(current, member, attrs)
       member
     else
       {:error, %Ecto.Changeset{} = changeset} -> Repo.rollback(changeset)
       {:error, :not_found} -> Repo.rollback(:not_found)
-    end
-  end
-
-  defp maybe_bump_member_witness(original, updated) do
-    if updated.lock_version == original.lock_version do
-      original
-      |> Ecto.Changeset.change()
-      |> Ecto.Changeset.optimistic_lock(:lock_version)
-      |> Repo.update()
-    else
-      {:ok, updated}
     end
   end
 
@@ -346,6 +346,7 @@ defmodule Dhc.Members do
 
     member_profile
     |> MemberProfile.member_profile_changeset(attrs)
+    |> Ecto.Changeset.force_change(:updated_at, DateTime.utc_now() |> DateTime.truncate(:second))
     |> Ecto.Changeset.optimistic_lock(:lock_version)
     |> Repo.update()
   end
@@ -398,12 +399,8 @@ defmodule Dhc.Members do
   defp maybe_put_customer_change(changes, _key, _value, false), do: changes
 
   defp echo_customer_to_stripe(customer_id, changes, member_id) do
-    case Dhc.Stripe.Client.request(
-           method: :post,
-           url: "/v1/customers/#{URI.encode(customer_id)}",
-           body: changes
-         ) do
-      {:ok, _body} ->
+    case Operations.post_customers_customer(customer_id, changes) do
+      {:ok, _customer} ->
         :ok
 
       {:error, reason} ->

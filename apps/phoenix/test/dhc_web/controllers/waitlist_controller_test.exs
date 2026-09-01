@@ -392,6 +392,27 @@ defmodule DhcWeb.WaitlistControllerTest do
 
       assert %{"errors" => %{"detail" => "Insufficient role"}} = json_response(conn, 403)
     end
+
+    test "returns lockVersion and honors If-None-Match", %{conn: conn} do
+      id = insert_waitlist_profile()
+      path = "/api/waitlist/entries/#{id}"
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> get(path)
+
+      assert %{"data" => %{"lockVersion" => 1}} = json_response(conn, 200)
+      assert get_resp_header(conn, "etag") == ["\"1\""]
+
+      conn =
+        build_conn()
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> put_req_header("if-none-match", "\"1\"")
+        |> get(path)
+
+      assert response(conn, 304) == ""
+    end
   end
 
   describe "update" do
@@ -434,6 +455,22 @@ defmodule DhcWeb.WaitlistControllerTest do
         |> patch("/api/waitlist/entries/#{id}", %{status: "declined"})
 
       assert %{"errors" => %{"detail" => "Invalid waitlist status"}} = json_response(conn, 422)
+    end
+
+    test "returns the current entry for a stale If-Match", %{conn: conn} do
+      id = insert_waitlist_profile(status: "waiting")
+      {:ok, _} = Dhc.Waitlist.update_entry(id, %{"status" => "deferred"})
+
+      conn =
+        conn
+        |> put_req_header("authorization", "Bearer admin-token")
+        |> put_req_header("if-match", "\"1\"")
+        |> patch("/api/waitlist/entries/#{id}", %{status: "invited"})
+
+      assert %{
+               "data" => %{"status" => "deferred", "lockVersion" => 2},
+               "errors" => %{"detail" => "version precondition failed"}
+             } = json_response(conn, 412)
     end
   end
 

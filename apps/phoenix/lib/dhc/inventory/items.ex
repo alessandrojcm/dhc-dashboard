@@ -163,19 +163,26 @@ defmodule Dhc.Inventory.Items do
   old/new container ids and optional notes. General edits (quantity, notes,
   attributes, maintenance) are not part of this command; use `update_item/3`.
   """
-  @spec move_item(String.t(), map(), String.t()) ::
+  @spec move_item(String.t(), map(), String.t(), keyword()) ::
           {:ok, item()}
           | {:error, :not_found}
+          | {:error, {:version_precondition_failed, item()}}
           | {:error, :invalid_container}
           | {:error, Ecto.Changeset.t()}
-  def move_item(id, attrs, actor_id)
-      when is_binary(id) and is_map(attrs) and is_binary(actor_id) do
+  def move_item(id, attrs, actor_id, opts \\ [])
+      when is_binary(id) and is_map(attrs) and is_binary(actor_id) and is_list(opts) do
     case Repo.get(Item, id) do
       nil ->
         {:error, :not_found}
 
       %Item{} = item ->
-        move_existing_item(item, attrs, actor_id)
+        case OptimisticLock.check_version(item, opts[:expected_lock_version]) do
+          :ok ->
+            move_existing_item(item, attrs, actor_id)
+
+          {:error, {:version_precondition_failed, current}} ->
+            {:error, {:version_precondition_failed, load_item_aggregates(current)}}
+        end
     end
   end
 
@@ -186,16 +193,22 @@ defmodule Dhc.Inventory.Items do
   (when the flag goes to `true`) or `maintenance_in` (when `false`) history row
   with optional notes.
   """
-  @spec set_item_maintenance(String.t(), map(), String.t()) ::
+  @spec set_item_maintenance(String.t(), map(), String.t(), keyword()) ::
           {:ok, item()} | {:error, :not_found} | {:error, Ecto.Changeset.t()}
-  def set_item_maintenance(id, attrs, actor_id)
-      when is_binary(id) and is_map(attrs) and is_binary(actor_id) do
+  def set_item_maintenance(id, attrs, actor_id, opts \\ [])
+      when is_binary(id) and is_map(attrs) and is_binary(actor_id) and is_list(opts) do
     case Repo.get(Item, id) do
       nil ->
         {:error, :not_found}
 
       %Item{} = item ->
-        set_existing_item_maintenance(item, attrs, actor_id)
+        case OptimisticLock.check_version(item, opts[:expected_lock_version]) do
+          :ok ->
+            set_existing_item_maintenance(item, attrs, actor_id)
+
+          {:error, {:version_precondition_failed, current}} ->
+            {:error, {:version_precondition_failed, load_item_aggregates(current)}}
+        end
     end
   end
 
@@ -215,8 +228,11 @@ defmodule Dhc.Inventory.Items do
         case Repo.get(Item, item.id) do
           # The row vanished between read and delete — nothing to conflict
           # with; report it the same way a plain missing delete would.
-          nil -> {:error, :not_found}
-          %Item{} = current -> {:error, {:version_precondition_failed, current}}
+          nil ->
+            {:error, :not_found}
+
+          %Item{} = current ->
+            {:error, {:version_precondition_failed, load_item_aggregates(current)}}
         end
 
       {:error, _changeset} ->
@@ -342,7 +358,20 @@ defmodule Dhc.Inventory.Items do
   defp handle_item_transaction({:error, _step, %Ecto.Changeset{} = err, _changes}),
     do: {:error, err}
 
+  defp handle_item_transaction(
+         {:error, :item, %Ecto.StaleEntryError{changeset: changeset}, _changes}
+       ) do
+    current_item_error(changeset.data.id)
+  end
+
   defp handle_item_transaction({:error, _step, reason, _changes}), do: {:error, reason}
+
+  defp current_item_error(id) do
+    case Repo.get(Item, id) do
+      nil -> {:error, :not_found}
+      %Item{} = current -> {:error, {:version_precondition_failed, load_item_aggregates(current)}}
+    end
+  end
 
   defp handle_move_transaction(
          {:error, :item, %Ecto.Changeset{errors: [{:container_id, _} | _]}, _changes}

@@ -6,7 +6,7 @@ defmodule Dhc.OptimisticLock do
   a supplied expected version with an existing entity's `lock_version`.
   """
 
-  @type expected_version :: nil | :* | pos_integer()
+  @type expected_version :: nil | :* | pos_integer() | [pos_integer()]
 
   @doc """
   Check an expected version against an existing entity.
@@ -21,6 +21,13 @@ defmodule Dhc.OptimisticLock do
   def check_version(_entity, :*), do: :ok
 
   def check_version(%{lock_version: version}, version) when is_integer(version), do: :ok
+
+  def check_version(%{lock_version: version} = entity, expected_versions)
+      when is_list(expected_versions) do
+    if version in expected_versions,
+      do: :ok,
+      else: {:error, {:version_precondition_failed, entity}}
+  end
 
   def check_version(entity, expected_version) when is_integer(expected_version) do
     {:error, {:version_precondition_failed, entity}}

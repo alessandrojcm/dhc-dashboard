@@ -763,6 +763,20 @@ defmodule DhcWeb.WorkshopsControllerTest do
       assert Repo.get(Dhc.Workshops.Workshop, workshop.id)
     end
 
+    test "rejects If-None-Match on DELETE rather than ignoring it", %{conn: conn} do
+      workshop = WorkshopFixtures.workshop_fixture(status: "planned")
+
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> put_req_header("if-none-match", ~s("1"))
+        |> delete("/api/workshops/#{to_uuid(workshop.id)}")
+
+      assert %{"errors" => %{"detail" => detail}} = json_response(conn, 400)
+      assert detail =~ "If-None-Match"
+      assert Repo.get(Dhc.Workshops.Workshop, workshop.id)
+    end
+
     test "creates planned Workshops from camelCase input and returns management DTO", %{
       conn: conn
     } do

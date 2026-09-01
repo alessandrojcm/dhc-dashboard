@@ -114,17 +114,9 @@ defmodule DhcWeb.WaitlistController do
   PATCH /waitlist/entries/:id
   """
   def update(conn, %{"id" => id} = params) do
-    opts =
-      case ConditionalRequests.parse_if_match(conn) do
-        {:ok, nil} -> []
-        {:ok, {:version, version}} -> [expected_lock_version: version]
-        {:ok, {:any_existing, :*}} -> [expected_lock_version: :*]
-        {:error, reason} -> {:error, reason}
-      end
-
-    case opts do
+    case ConditionalRequests.write_options(conn) do
+      {:ok, opts} -> update_entry(conn, id, Map.delete(params, "id"), opts)
       {:error, reason} -> bad_request(conn, ConditionalRequests.error_detail(reason))
-      opts -> update_entry(conn, id, Map.delete(params, "id"), opts)
     end
   end
 
