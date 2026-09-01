@@ -1580,14 +1580,9 @@ defmodule Dhc.Workshops do
   end
 
   defp attendance_precondition_failed?(update, registrations) do
-    case Map.fetch(update, :lock_version) do
-      {:ok, lock_version} ->
-        registration = Map.fetch!(registrations, update.registration_id)
-        lock_version != registration.lock_version
-
-      :error ->
-        false
-    end
+    lock_version = Map.get(update, :expected_lock_version, Map.get(update, :lock_version))
+    registration = Map.fetch!(registrations, update.registration_id)
+    lock_version not in [nil, :*] and lock_version != registration.lock_version
   end
 
   defp active_attendance_registrations(workshop_id, updates) do
