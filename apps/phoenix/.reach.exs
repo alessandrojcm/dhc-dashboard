@@ -26,8 +26,10 @@
       # Controllers/plugs go through Phoenix contexts; direct Repo access from
       # the web layer is forbidden. The magic-link rate limiter is the single
       # documented seam: an atomic upsert on auth_rate_limit_windows that has
-      # no context home (lib/dhc_web/plugs/magic_link_rate_limit.ex).
-      {:web, :data, except: ["DhcWeb.Plugs.MagicLinkRateLimit"]}
+      # no context home (lib/dhc_web/plugs/magic_link_rate_limit.ex). The
+      # vendored idempotency Ecto store is likewise a storage adapter at the
+      # web boundary, not a domain context.
+      {:web, :data, except: ["DhcWeb.Plugs.MagicLinkRateLimit", "IdempotencyPlug.EctoStore"]}
     ]
   ],
   calls: [

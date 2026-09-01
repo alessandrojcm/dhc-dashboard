@@ -21,6 +21,9 @@ defmodule Dhc.Application do
       [
         DhcWeb.Telemetry,
         Dhc.Repo,
+        {IdempotencyPlug.RequestTracker,
+         name: DhcWeb.IdempotencyRequestTracker,
+         store: {IdempotencyPlug.EctoStore, repo: Dhc.Repo}},
         {DNSCluster, query: Application.get_env(:dhc, :dns_cluster_query) || :ignore},
         {Phoenix.PubSub, name: Dhc.PubSub},
         # HTTP pool for the Swoosh email transport (ADR 0021). The name must

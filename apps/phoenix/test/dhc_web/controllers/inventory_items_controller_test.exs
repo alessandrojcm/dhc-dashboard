@@ -12,8 +12,10 @@ defmodule DhcWeb.InventoryItemsControllerTest do
   use DhcWeb.ConnCase, async: false
 
   alias Dhc.Repo
+  alias IdempotencyPlug.IdempotentRequest
 
   @actor_id "11111111-1111-1111-1111-111111111111"
+  @other_actor_id "22222222-2222-2222-2222-222222222222"
   @read_roles ~w(member quartermaster admin president)
   @write_roles ~w(quartermaster admin president)
 
@@ -33,16 +35,37 @@ defmodule DhcWeb.InventoryItemsControllerTest do
     end
 
     def verify("bad-token"), do: {:error, :invalid_token}
+
+    def verify("other-token") do
+      {:ok,
+       %{
+         sub: "22222222-2222-2222-2222-222222222222",
+         email: "other@example.com",
+         roles: ["quartermaster"],
+         raw: %{}
+       }}
+    end
+
     def verify(_token), do: {:error, :invalid_token}
   end
 
   setup do
     original = Application.get_env(:dhc, :auth_verifier)
+    original_tracker = Application.get_env(:dhc, :idempotency_tracker)
     Application.put_env(:dhc, :auth_verifier, Verifier)
 
-    insert_user!(@actor_id, "inv-item-actor@example.com")
+    tracker =
+      start_supervised!(request_tracker_child_spec())
 
-    on_exit(fn -> Application.put_env(:dhc, :auth_verifier, original) end)
+    Application.put_env(:dhc, :idempotency_tracker, tracker)
+
+    insert_user!(@actor_id, "inv-item-actor@example.com")
+    insert_user!(@other_actor_id, "inv-item-other@example.com")
+
+    on_exit(fn ->
+      Application.put_env(:dhc, :auth_verifier, original)
+      Application.put_env(:dhc, :idempotency_tracker, original_tracker)
+    end)
 
     :ok
   end
@@ -220,6 +243,205 @@ defmodule DhcWeb.InventoryItemsControllerTest do
       assert history_actions(payload["id"]) == ["created"]
     end
 
+    test "replays the original response byte-for-byte without creating a second item", %{
+      conn: conn
+    } do
+      category = insert_category!("Idempotency Replay")
+      container = create_container!(%{"name" => "Idempotency Rack"})
+      key = "item-create-replay"
+      payload = item_payload(container, category)
+
+      first =
+        conn
+        |> auth_conn("quartermaster")
+        |> put_req_header("idempotency-key", key)
+        |> post("/api/inventory/items", payload)
+
+      assert first.status == 201
+
+      replay =
+        build_conn()
+        |> auth_conn("quartermaster")
+        |> put_req_header("idempotency-key", key)
+        |> post("/api/inventory/items", payload)
+
+      assert replay.status == 201
+      assert replay.resp_body == first.resp_body
+      assert get_resp_header(replay, "idempotent-replayed") == ["true"]
+      assert Repo.aggregate(Dhc.Inventory.Item, :count) == 1
+    end
+
+    test "replays a completed response after the request tracker restarts", %{conn: conn} do
+      category = insert_category!("Idempotency Restart")
+      container = create_container!(%{"name" => "Restart Rack"})
+      key = "item-create-restart"
+      payload = item_payload(container, category)
+
+      first =
+        conn
+        |> auth_conn("quartermaster")
+        |> put_req_header("idempotency-key", key)
+        |> post("/api/inventory/items", payload)
+
+      assert first.status == 201
+
+      tracker = idempotency_tracker()
+      reference = Process.monitor(tracker)
+      :ok = GenServer.stop(tracker)
+      assert_receive {:DOWN, ^reference, :process, ^tracker, :normal}
+
+      restarted_tracker = start_supervised!(request_tracker_child_spec())
+      Application.put_env(:dhc, :idempotency_tracker, restarted_tracker)
+
+      replay =
+        build_conn()
+        |> auth_conn("quartermaster")
+        |> put_req_header("idempotency-key", key)
+        |> post("/api/inventory/items", payload)
+
+      assert replay.status == 201
+      assert replay.resp_body == first.resp_body
+      assert get_resp_header(replay, "idempotent-replayed") == ["true"]
+      assert Repo.aggregate(Dhc.Inventory.Item, :count) == 1
+    end
+
+    test "rejects a reused key with a different payload", %{conn: conn} do
+      category = insert_category!("Idempotency Mismatch")
+      container = create_container!(%{"name" => "Mismatch Rack"})
+      key = "item-create-mismatch"
+
+      first_payload = item_payload(container, category)
+
+      first =
+        conn
+        |> auth_conn("quartermaster")
+        |> put_req_header("idempotency-key", key)
+        |> post("/api/inventory/items", first_payload)
+
+      assert first.status == 201
+
+      mismatch =
+        build_conn()
+        |> auth_conn("quartermaster")
+        |> put_req_header("idempotency-key", key)
+        |> post("/api/inventory/items", Map.put(first_payload, "quantity", 3))
+
+      assert %{"errors" => %{"detail" => detail}} = json_response(mismatch, 422)
+      assert detail =~ "cannot be reused"
+      assert Repo.aggregate(Dhc.Inventory.Item, :count) == 1
+    end
+
+    test "returns 409 while the original request is in flight", %{conn: conn} do
+      category = insert_category!("Idempotency In Flight")
+      container = create_container!(%{"name" => "In Flight Rack"})
+      payload = item_payload(container, category)
+      key = "item-create-processing"
+
+      request_id =
+        IdempotencyPlug.sha256_hash(
+          :idempotency_key,
+          {@actor_id, key}
+        )
+
+      fingerprint =
+        IdempotencyPlug.sha256_hash(
+          :request_payload,
+          {["api", "inventory", "items"], payload |> Map.to_list() |> Enum.sort()}
+        )
+
+      assert {:init, ^request_id, _expires_at} =
+               IdempotencyPlug.RequestTracker.track(
+                 idempotency_tracker(),
+                 request_id,
+                 fingerprint
+               )
+
+      duplicate =
+        conn
+        |> auth_conn("quartermaster")
+        |> put_req_header("idempotency-key", key)
+        |> post("/api/inventory/items", payload)
+
+      assert %{"errors" => %{"detail" => detail}} = json_response(duplicate, 409)
+      assert detail =~ "currently being processed"
+      assert Repo.aggregate(Dhc.Inventory.Item, :count) == 0
+
+      assert {:ok, _expires_at} =
+               IdempotencyPlug.RequestTracker.put_response(idempotency_tracker(), request_id, %{})
+    end
+
+    test "scopes idempotency keys to the authenticated principal", %{conn: conn} do
+      category = insert_category!("Idempotency Principal Scope")
+      container = create_container!(%{"name" => "Principal Scope Rack"})
+      payload = item_payload(container, category)
+      key = "shared-user-key"
+
+      first =
+        conn
+        |> auth_conn("quartermaster")
+        |> put_req_header("idempotency-key", key)
+        |> post("/api/inventory/items", payload)
+
+      assert first.status == 201
+
+      other_user =
+        build_conn()
+        |> auth_conn("other")
+        |> put_req_header("idempotency-key", key)
+        |> post("/api/inventory/items", payload)
+
+      assert other_user.status == 201
+      assert get_resp_header(other_user, "idempotent-replayed") == []
+      assert Repo.aggregate(Dhc.Inventory.Item, :count) == 2
+    end
+
+    test "executes a fresh request when the stored key is expired", %{conn: conn} do
+      category = insert_category!("Idempotency Expiry")
+      container = create_container!(%{"name" => "Expiry Rack"})
+      payload = item_payload(container, category)
+      key = "expired-item-create"
+
+      request_id = IdempotencyPlug.sha256_hash(:idempotency_key, {@actor_id, key})
+
+      fingerprint =
+        IdempotencyPlug.sha256_hash(
+          :request_payload,
+          {["api", "inventory", "items"], payload |> Map.to_list() |> Enum.sort()}
+        )
+
+      %IdempotentRequest{
+        id: request_id,
+        fingerprint: fingerprint,
+        data: {:ok, %{status: 201, resp_body: "stale", resp_headers: []}},
+        expires_at: DateTime.add(DateTime.utc_now(), -1, :second)
+      }
+      |> IdempotentRequest.changeset()
+      |> Repo.insert!()
+
+      fresh =
+        conn
+        |> auth_conn("quartermaster")
+        |> put_req_header("idempotency-key", key)
+        |> post("/api/inventory/items", payload)
+
+      assert fresh.status == 201
+      refute fresh.resp_body == "stale"
+      assert Repo.aggregate(Dhc.Inventory.Item, :count) == 1
+    end
+
+    test "processes requests with no idempotency key normally", %{conn: conn} do
+      category = insert_category!("No Idempotency Key")
+      container = create_container!(%{"name" => "No Key Rack"})
+      payload = item_payload(container, category)
+
+      first = conn |> auth_conn("quartermaster") |> post("/api/inventory/items", payload)
+      second = build_conn() |> auth_conn("quartermaster") |> post("/api/inventory/items", payload)
+
+      assert first.status == 201
+      assert second.status == 201
+      assert Repo.aggregate(Dhc.Inventory.Item, :count) == 2
+    end
+
     test "returns 403 for non-write roles", %{conn: conn} do
       category = insert_category!("No Write")
       container = create_container!(%{"name" => "Protected"})
@@ -278,6 +500,20 @@ defmodule DhcWeb.InventoryItemsControllerTest do
         assert detail =~ "attributes"
       end
     end
+  end
+
+  defp idempotency_tracker do
+    Application.get_env(:dhc, :idempotency_tracker, DhcWeb.IdempotencyRequestTracker)
+  end
+
+  defp request_tracker_child_spec do
+    %{
+      id: make_ref(),
+      restart: :temporary,
+      start:
+        {IdempotencyPlug.RequestTracker, :start_link,
+         [[name: nil, store: {IdempotencyPlug.EctoStore, repo: Dhc.Repo}]]}
+    }
   end
 
   describe "show" do

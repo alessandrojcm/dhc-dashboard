@@ -7,17 +7,22 @@ defmodule DhcWeb.Router do
 
   pipeline :invitation_admin_api do
     plug DhcWeb.Plugs.RequireSession, roles: ~w(president admin committee_coordinator)
+    plug DhcWeb.Plugs.IdempotencyGate
   end
 
   pipeline :waitlist_admin_api do
     plug DhcWeb.Plugs.RequireSession,
       roles: ~w(admin president committee_coordinator beginners_coordinator coach)
+
+    plug DhcWeb.Plugs.IdempotencyGate
   end
 
   pipeline :members_admin_api do
     plug DhcWeb.Plugs.RequireSession,
       roles:
         ~w(admin president treasurer committee_coordinator sparring_coordinator workshop_coordinator beginners_coordinator quartermaster pr_manager volunteer_coordinator research_coordinator coach)
+
+    plug DhcWeb.Plugs.IdempotencyGate
   end
 
   # Membership commands that MINT new Stripe charges (ALE-251 reactivation).
@@ -25,6 +30,7 @@ defmodule DhcWeb.Router do
   # authority, and no self-service fallback.
   pipeline :membership_minting_api do
     plug DhcWeb.Plugs.RequireSession, roles: ~w(admin president treasurer committee_coordinator)
+    plug DhcWeb.Plugs.IdempotencyGate
   end
 
   pipeline :workshop_coordinator_api do
@@ -34,14 +40,17 @@ defmodule DhcWeb.Router do
     # `beginners_coordinator` — the historical registration visibility drift
     # (see the `Dhc.Workshops` moduledoc) must not be reproduced.
     plug DhcWeb.Plugs.RequireSession, roles: Dhc.Workshops.coordinator_management_roles()
+    plug DhcWeb.Plugs.IdempotencyGate
   end
 
   pipeline :settings_admin_api do
     plug DhcWeb.Plugs.RequireSession, roles: ~w(president committee_coordinator admin)
+    plug DhcWeb.Plugs.IdempotencyGate
   end
 
   pipeline :discord_doctor_admin_api do
     plug DhcWeb.Plugs.RequireSession, roles: ~w(admin president committee_coordinator)
+    plug DhcWeb.Plugs.IdempotencyGate
   end
 
   # ALE-105 inventory category management. Mirrors the existing SvelteKit
@@ -50,14 +59,17 @@ defmodule DhcWeb.Router do
   # list view is member-readable; writes require the inventory write roles.
   pipeline :inventory_admin_api do
     plug DhcWeb.Plugs.RequireSession, roles: ~w(quartermaster admin president)
+    plug DhcWeb.Plugs.IdempotencyGate
   end
 
   pipeline :authenticated_api do
     plug DhcWeb.Plugs.RequireSession
+    plug DhcWeb.Plugs.IdempotencyGate
   end
 
   pipeline :authenticated_session_api do
     plug DhcWeb.Plugs.RequireSession
+    plug DhcWeb.Plugs.IdempotencyGate
   end
 
   # ALE-165 — rate-limited, non-enumerating magic-link request. Public.
