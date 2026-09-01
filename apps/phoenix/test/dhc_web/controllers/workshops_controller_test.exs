@@ -335,6 +335,7 @@ defmodule DhcWeb.WorkshopsControllerTest do
                "announceDiscord" => true,
                "announceEmail" => true,
                "createdBy" => nil,
+               "lockVersion" => 1,
                "interestCount" => 2,
                "pendingRegistrationCount" => 1,
                "confirmedRegistrationCount" => 1,
@@ -517,7 +518,8 @@ defmodule DhcWeb.WorkshopsControllerTest do
 
       assert payload["currentUserRegistration"] == %{
                "id" => current_registration.id,
-               "status" => "confirmed"
+               "status" => "confirmed",
+               "lockVersion" => 1
              }
     end
 
@@ -712,6 +714,55 @@ defmodule DhcWeb.WorkshopsControllerTest do
   end
 
   describe "management endpoints — create/update/delete/publish/cancel" do
+    test "supports conditional GET with a strong ETag", %{conn: conn} do
+      workshop = WorkshopFixtures.workshop_fixture(status: "planned")
+      path = "/api/workshops/#{to_uuid(workshop.id)}"
+
+      conn = conn |> auth_conn("admin") |> get(path)
+      assert get_resp_header(conn, "etag") == [~s("1")]
+      assert get_in(json_response(conn, 200), ["data", "workshop", "lockVersion"]) == 1
+
+      conn =
+        build_conn()
+        |> auth_conn("admin")
+        |> put_req_header("if-none-match", ~s("1"))
+        |> get(path)
+
+      assert response(conn, 304) == ""
+      assert get_resp_header(conn, "etag") == [~s("1")]
+    end
+
+    test "returns 412 with the current Workshop for stale PATCH", %{conn: conn} do
+      workshop = WorkshopFixtures.workshop_fixture(status: "planned")
+
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> put_req_header("if-match", ~s("9"))
+        |> patch("/api/workshops/#{to_uuid(workshop.id)}", %{"title" => "Stale"})
+
+      assert %{
+               "data" => %{"workshop" => %{"id" => id, "lockVersion" => 1}},
+               "errors" => %{"detail" => "version precondition failed"}
+             } = json_response(conn, 412)
+
+      assert id == workshop.id
+      assert get_resp_header(conn, "etag") == [~s("1")]
+    end
+
+    test "returns 412 without deleting for stale conditional DELETE", %{conn: conn} do
+      workshop = WorkshopFixtures.workshop_fixture(status: "planned")
+
+      conn =
+        conn
+        |> auth_conn("admin")
+        |> put_req_header("if-match", ~s("9"))
+        |> delete("/api/workshops/#{to_uuid(workshop.id)}")
+
+      assert get_in(json_response(conn, 412), ["data", "workshop", "id"]) == workshop.id
+      assert Repo.get(Dhc.Workshops.Workshop, workshop.id)
+    end
+
     test "creates planned Workshops from camelCase input and returns management DTO", %{
       conn: conn
     } do

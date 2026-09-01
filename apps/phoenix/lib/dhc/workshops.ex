@@ -116,7 +116,7 @@ defmodule Dhc.Workshops do
   # passed into `build_summary/2` separately because each caller computes them
   # differently (a SQL aggregate for the list, the `registration_counts/1` +
   # `interest_count/1` helpers for the single archived read).
-  @summary_scalar_fields ~w(id title description location start_date end_date
+  @summary_scalar_fields ~w(id title description location start_date end_date lock_version
     max_capacity price_member price_non_member is_public refund_days status
     announce_discord announce_email created_by)a
 
@@ -338,7 +338,7 @@ defmodule Dhc.Workshops do
       when is_binary(workshop_id) and is_binary(user_id) do
     from(r in Registration,
       where: r.club_activity_id == ^workshop_id and r.member_user_id == ^user_id,
-      select: %{id: r.id, status: r.status},
+      select: %{id: r.id, status: r.status, lock_version: r.lock_version},
       limit: 1
     )
     |> Repo.one()
@@ -876,6 +876,23 @@ defmodule Dhc.Workshops do
   @doc """
   Cancels the current member's active Workshop registration.
   """
+  def current_member_registration(workshop_id, user_id)
+      when is_binary(workshop_id) and is_binary(user_id) do
+    registration =
+      from(r in Registration,
+        where:
+          r.club_activity_id == ^workshop_id and r.member_user_id == ^user_id and
+            r.status in @counted_registration_statuses,
+        limit: 1
+      )
+      |> Repo.one()
+
+    case registration do
+      nil -> {:error, :not_found}
+      registration -> {:ok, registration}
+    end
+  end
+
   @spec cancel_member_registration(binary(), binary()) ::
           {:ok, %{registration: Registration.t(), refund_pending: boolean()}}
           | {:error, :not_found}
@@ -1068,7 +1085,8 @@ defmodule Dhc.Workshops do
         member_user_id: r.member_user_id,
         external_user_id: r.external_user_id,
         display_name: r.display_name,
-        email: r.email
+        email: r.email,
+        lock_version: r.lock_version
       }
     )
     |> Repo.all()
@@ -1209,8 +1227,10 @@ defmodule Dhc.Workshops do
   @spec update_workshop(binary(), map()) ::
           {:ok, Workshop.t()}
           | {:error, :not_found | :not_editable | :pricing_locked | Ecto.Changeset.t()}
-  def update_workshop(workshop_id, attrs) when is_binary(workshop_id) and is_map(attrs) do
+  def update_workshop(workshop_id, attrs, opts \\ [])
+      when is_binary(workshop_id) and is_map(attrs) do
     with %Workshop{} = workshop <- Repo.get(Workshop, workshop_id),
+         :ok <- check_version_precondition(workshop, opts),
          :ok <- authorize_update(workshop, attrs) do
       workshop
       |> Workshop.management_changeset(attrs)
@@ -1247,20 +1267,37 @@ defmodule Dhc.Workshops do
           {:ok, :archived, map()}
           | {:ok, :deleted}
           | {:error, :not_found | :already_archived}
-  def delete_workshop(workshop_id) when is_binary(workshop_id) do
+  def delete_workshop(workshop_id, opts \\ []) when is_binary(workshop_id) do
     {:ok, result} =
-      Repo.transaction(fn -> delete_workshop_locked(workshop_id) end)
+      Repo.transaction(fn -> delete_workshop_locked(workshop_id, opts) end)
 
     result
   end
 
-  defp delete_workshop_locked(workshop_id) do
+  defp delete_workshop_locked(workshop_id, opts) do
     workshop = Repo.one(from(w in Workshop, where: w.id == ^workshop_id, lock: "FOR UPDATE"))
 
     case workshop do
-      nil -> {:error, :not_found}
-      %Workshop{archived_at: %DateTime{}} -> {:error, :already_archived}
-      %Workshop{} = workshop -> delete_or_archive_workshop(workshop)
+      nil ->
+        {:error, :not_found}
+
+      %Workshop{archived_at: %DateTime{}} ->
+        {:error, :already_archived}
+
+      %Workshop{} = workshop ->
+        case check_version_precondition(workshop, opts) do
+          :ok -> delete_or_archive_workshop(workshop)
+          {:error, reason} -> {:error, reason}
+        end
+    end
+  end
+
+  defp check_version_precondition(workshop, opts) do
+    case Keyword.get(opts, :expected_lock_version) do
+      nil -> :ok
+      {:any_existing, :*} -> :ok
+      {:version, version} when version == workshop.lock_version -> :ok
+      _version -> {:error, {:version_precondition_failed, workshop_summary(workshop.id)}}
     end
   end
 
@@ -2039,6 +2076,7 @@ defmodule Dhc.Workshops do
         announce_discord: w.announce_discord,
         announce_email: w.announce_email,
         created_by: w.created_by,
+        lock_version: w.lock_version,
         # `count(DISTINCT) FILTER` keeps the counts correct despite the
         # interest × registration cartesian product from the double join.
         interest_count: count(i.id, :distinct),

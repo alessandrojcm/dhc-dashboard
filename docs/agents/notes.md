@@ -2,7 +2,7 @@
 
 ## Opencode config
 
-- Project `opencode.json` disables `sentry_*` MCP tools by default via top-level `tools` and exposes them only through the primary `triaging` agent. Restart opencode after config edits before expecting agent/MCP tool changes to take effect.
+- Project `opencode.json` uses native OpenCode V2 shapes. It denies `sentry_*` MCP actions through top-level `permissions` and lets the primary `triaging` agent override that denial. Local V2 plugins are auto-discovered from `.opencode/plugins/`, must default-export `Plugin.define(...)`, and should not also be listed as file paths in `plugins`. Restart the OpenCode service after config or plugin edits.
 
 ## SvelteKit (current)
 

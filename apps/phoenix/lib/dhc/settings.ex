@@ -34,6 +34,7 @@ defmodule Dhc.Settings do
           key: String.t(),
           value: value | nil,
           description: String.t() | nil,
+          lock_version: pos_integer() | nil,
           updated_at: DateTime.t() | nil
         }
 
@@ -69,7 +70,31 @@ defmodule Dhc.Settings do
   end
 
   @doc """
-  Updates one allowlisted setting by key.
+  Returns one allowlisted setting as a domain item, or `{:error, :not_found}`
+  when the key is not allowlisted (ADR 0023 Phase 1.3: single-entity reads
+  need the version witness for If-None-Match).
+
+  A missing configured row is surfaced as `{:error, :missing}` (server/data
+  error) rather than a value-nil item, since conditional requests have no
+  version to validate against.
+  """
+  @spec get(String.t()) :: {:ok, item()} | {:error, :not_found} | {:error, :missing}
+  def get(key) do
+    cond do
+      not allowlisted?(key) ->
+        {:error, :not_found}
+
+      not row_exists?(key) ->
+        {:error, :missing}
+
+      true ->
+        {:ok, fetch_item!(key)}
+    end
+  end
+
+  @doc """
+  Updates one allowlisted setting by key, optionally guarded by an expected
+  `lock_version` (ADR 0023, If-Match precondition).
 
   ## Value coercion
 
@@ -82,15 +107,19 @@ defmodule Dhc.Settings do
     * `{:ok, item}` — the updated setting as a domain item
     * `{:error, :not_found}` — the key is not allowlisted (404)
     * `{:error, :missing}` — the configured row does not exist (server/data error)
+    * `{:error, :version_precondition_failed, item}` — If-Match version
+      mismatch; carries the current item for the 412 body
     * `{:error, :invalid_value, detail}` — validation failed (422)
+    * `{:error, :no_value}` — the request carried no value (422)
   """
-  @spec update(String.t(), term()) ::
+  @spec update(String.t(), term(), keyword()) ::
           {:ok, item()}
           | {:error, :not_found}
           | {:error, :missing}
+          | {:error, {:version_precondition_failed, item()}}
           | {:error, :no_value}
           | {:error, :invalid_value, String.t()}
-  def update(key, value) do
+  def update(key, value, opts \\ []) when is_list(opts) do
     cond do
       not allowlisted?(key) ->
         {:error, :not_found}
@@ -102,11 +131,43 @@ defmodule Dhc.Settings do
         {:error, :no_value}
 
       true ->
-        with {:ok, coerced} <- coerce_value(key, value),
+        with :ok <- check_precondition(key, opts),
+             {:ok, coerced} <- coerce_value(key, value),
              {:ok, validated} <- validate_value(key, coerced) do
           persist!(key, to_string(validated))
           {:ok, fetch_item!(key)}
+        else
+          {:version_precondition_failed, current} ->
+            {:error, {:version_precondition_failed, current}}
+
+          {:error, :invalid_value, detail} ->
+            {:error, :invalid_value, detail}
         end
+    end
+  end
+
+  # If-Match precondition check — ADR 0023 (ALE-267). Absent or `*` passes;
+  # a version mismatch fails fast without applying any changes.
+  defp check_precondition(key, opts) do
+    case Keyword.fetch(opts, :expected_lock_version) do
+      :error -> :ok
+      {:ok, :*} -> :ok
+      {:ok, expected} when is_integer(expected) -> check_version(key, expected)
+    end
+  end
+
+  defp check_version(key, expected) do
+    if current_version(key) == expected do
+      :ok
+    else
+      {:version_precondition_failed, fetch_item!(key)}
+    end
+  end
+
+  defp current_version(key) do
+    case Repo.one(from(s in Setting, where: s.key == ^key, select: s.lock_version)) do
+      nil -> nil
+      version when is_integer(version) -> version
     end
   end
 
@@ -124,7 +185,7 @@ defmodule Dhc.Settings do
   end
 
   defp row_to_item(nil, key) do
-    %{key: key, value: nil, description: nil, updated_at: nil}
+    %{key: key, value: nil, description: nil, lock_version: nil, updated_at: nil}
   end
 
   defp row_to_item(%Setting{} = row, _key) do
@@ -132,6 +193,7 @@ defmodule Dhc.Settings do
       key: row.key,
       value: decode_value(row.key, row.value),
       description: row.description,
+      lock_version: row.lock_version,
       updated_at: row.updated_at
     }
   end

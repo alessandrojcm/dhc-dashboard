@@ -35,6 +35,10 @@ defmodule DhcWeb.MembersJSON do
     %{data: member(member)}
   end
 
+  def render("precondition_failed.json", %{member: member}) do
+    %{data: member(member), errors: %{detail: "version precondition failed"}}
+  end
+
   def render("analytics.json", %{analytics: analytics}) do
     %{
       data: %{
@@ -54,6 +58,7 @@ defmodule DhcWeb.MembersJSON do
   defp member(member) do
     %{
       id: member.id,
+      lockVersion: member.lock_version,
       firstName: member.first_name,
       lastName: member.last_name,
       email: member.email,

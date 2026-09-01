@@ -31,6 +31,13 @@ defmodule DhcWeb.InventoryContainersJSON do
     %{data: render_detail(container)}
   end
 
+  # 412 Precondition Failed — ADR 0023 Phase 1.3 (ALE-267): the current
+  # server entity rides alongside the error detail so the client can
+  # reconcile, reusing the response envelope.
+  def render("precondition_failed.json", %{container: container}) do
+    %{data: render_container(container), errors: %{detail: "version precondition failed"}}
+  end
+
   def render("error.json", %{detail: detail}) do
     %{errors: %{detail: detail}}
   end
@@ -43,6 +50,7 @@ defmodule DhcWeb.InventoryContainersJSON do
       parentContainerId: container.parent_container_id,
       parentContainer: container.parent_container,
       itemCount: container.item_count || 0,
+      lockVersion: container.lock_version,
       createdAt: serialize_datetime(container.created_at),
       updatedAt: serialize_datetime(container.updated_at)
     }
@@ -58,6 +66,7 @@ defmodule DhcWeb.InventoryContainersJSON do
       childContainers: container.child_containers || [],
       items: Enum.map(container.items || [], &render_item/1),
       itemCount: container.item_count || 0,
+      lockVersion: container.lock_version,
       createdAt: serialize_datetime(container.created_at),
       updatedAt: serialize_datetime(container.updated_at)
     }

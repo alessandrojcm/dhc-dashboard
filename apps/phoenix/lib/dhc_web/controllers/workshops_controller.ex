@@ -2,6 +2,7 @@ defmodule DhcWeb.WorkshopsController do
   use DhcWeb, :controller
 
   alias Dhc.Workshops
+  alias DhcWeb.ConditionalRequests
 
   @moduledoc """
   Workshop management reads.
@@ -76,9 +77,27 @@ defmodule DhcWeb.WorkshopsController do
   """
   def show(conn, %{"id" => id}) do
     case Workshops.workshop_summary(id) do
-      nil -> not_found(conn)
-      workshop -> render_management(conn, workshop)
+      nil ->
+        not_found(conn)
+
+      workshop ->
+        show_workshop(conn, workshop)
     end
+  end
+
+  defp show_workshop(conn, workshop) do
+    case ConditionalRequests.evaluate(conn, workshop.lock_version) do
+      {:not_modified, etag} -> conn |> put_resp_header("etag", etag) |> send_resp(304, "")
+      {:ok, nil} -> render_management(conn, workshop)
+      {:ok, if_match} -> show_workshop_if_match(conn, workshop, if_match)
+      {:error, reason} -> bad_request(conn, ConditionalRequests.error_detail(reason))
+    end
+  end
+
+  defp show_workshop_if_match(conn, workshop, if_match) do
+    if ConditionalRequests.enforce_if_match(if_match, workshop.lock_version) == :ok,
+      do: render_management(conn, workshop),
+      else: workshop_precondition_failed(conn, workshop)
   end
 
   @doc """
@@ -93,15 +112,30 @@ defmodule DhcWeb.WorkshopsController do
       |> Map.delete("id")
       |> management_attrs()
 
-    case Workshops.update_workshop(id, attrs) do
-      {:ok, workshop} ->
-        render_management(conn, Workshops.workshop_summary(workshop.id))
+    case conditional_workshop(conn, id) do
+      {:ok, _current} ->
+        case Workshops.update_workshop(id, attrs, workshop_version_opts(conn)) do
+          {:ok, workshop} ->
+            render_management(conn, Workshops.workshop_summary(workshop.id))
 
-      {:error, %Ecto.Changeset{} = changeset} ->
-        validation_error(conn, changeset)
+          {:error, %Ecto.Changeset{} = changeset} ->
+            validation_error(conn, changeset)
 
-      {:error, reason} ->
-        lifecycle_error(conn, reason)
+          {:error, {:version_precondition_failed, current}} ->
+            workshop_precondition_failed(conn, current)
+
+          {:error, reason} ->
+            lifecycle_error(conn, reason)
+        end
+
+      {:error, {:precondition_failed, current}} ->
+        workshop_precondition_failed(conn, current)
+
+      {:error, {:bad_request, detail}} ->
+        bad_request(conn, detail)
+
+      {:error, :not_found} ->
+        not_found(conn)
     end
   end
 
@@ -116,7 +150,8 @@ defmodule DhcWeb.WorkshopsController do
     * Unknown Workshop → `404`.
   """
   def delete(conn, %{"id" => id}) do
-    case Workshops.delete_workshop(id) do
+    conditional_delete_workshop(conn, id)
+    |> case do
       {:ok, :deleted} ->
         send_resp(conn, :no_content, "")
 
@@ -125,6 +160,25 @@ defmodule DhcWeb.WorkshopsController do
 
       {:error, reason} ->
         lifecycle_error(conn, reason)
+
+      {:precondition_failed, current} ->
+        workshop_precondition_failed(conn, current)
+
+      {:bad_request, detail} ->
+        bad_request(conn, detail)
+    end
+  end
+
+  defp conditional_delete_workshop(conn, id) do
+    if get_req_header(conn, "if-match") == [] do
+      Workshops.delete_workshop(id)
+    else
+      case conditional_workshop(conn, id) do
+        {:ok, _current} -> Workshops.delete_workshop(id, workshop_version_opts(conn))
+        {:error, {:precondition_failed, current}} -> {:precondition_failed, current}
+        {:error, {:bad_request, detail}} -> {:bad_request, detail}
+        {:error, :not_found} -> {:error, :not_found}
+      end
     end
   end
 
@@ -278,11 +332,24 @@ defmodule DhcWeb.WorkshopsController do
   Cancels the authenticated member's active registration.
   """
   def cancel_registration(conn, %{"id" => id}) do
-    case Workshops.cancel_member_registration(id, conn.assigns.current_session.principal.id) do
+    user_id = conn.assigns.current_session.principal.id
+
+    with {:ok, current} <- Workshops.current_member_registration(id, user_id),
+         :ok <- registration_if_match(conn, current) do
+      Workshops.cancel_member_registration(id, user_id)
+    end
+    |> case do
       {:ok, result} ->
         conn
+        |> ConditionalRequests.put_etag(result.registration.lock_version)
         |> put_view(json: DhcWeb.WorkshopsJSON)
         |> render(:registration_cancelled, result: result)
+
+      {:error, {:precondition_failed, current}} ->
+        registration_precondition_failed(conn, current)
+
+      {:error, {:bad_request, detail}} ->
+        bad_request(conn, detail)
 
       {:error, reason} ->
         member_registration_error(conn, reason)
@@ -398,8 +465,70 @@ defmodule DhcWeb.WorkshopsController do
 
   defp render_management(conn, workshop) do
     conn
+    |> ConditionalRequests.put_etag(workshop.lock_version)
     |> put_view(json: DhcWeb.WorkshopsJSON)
     |> render(:management, workshop: workshop)
+  end
+
+  defp workshop_precondition_failed(conn, workshop) do
+    conn
+    |> ConditionalRequests.put_etag(workshop.lock_version)
+    |> put_status(:precondition_failed)
+    |> put_view(json: DhcWeb.WorkshopsJSON)
+    |> render(:precondition_failed, workshop: workshop)
+  end
+
+  defp registration_precondition_failed(conn, registration) do
+    conn
+    |> ConditionalRequests.put_etag(registration.lock_version)
+    |> put_status(:precondition_failed)
+    |> put_view(json: DhcWeb.WorkshopsJSON)
+    |> render(:registration_precondition_failed, registration: registration)
+  end
+
+  defp registration_if_match(conn, registration) do
+    case ConditionalRequests.parse_if_match(conn) do
+      {:ok, nil} -> :ok
+      {:ok, if_match} -> enforce_registration_if_match(registration, if_match)
+      {:error, reason} -> {:error, {:bad_request, ConditionalRequests.error_detail(reason)}}
+    end
+  end
+
+  defp enforce_registration_if_match(registration, if_match) do
+    if ConditionalRequests.enforce_if_match(if_match, registration.lock_version) == :ok,
+      do: :ok,
+      else: {:error, {:precondition_failed, registration}}
+  end
+
+  defp conditional_workshop(conn, id) do
+    case Workshops.workshop_summary(id) do
+      nil ->
+        {:error, :not_found}
+
+      current ->
+        conditional_workshop_if_match(conn, current)
+    end
+  end
+
+  defp conditional_workshop_if_match(conn, current) do
+    case ConditionalRequests.parse_if_match(conn) do
+      {:ok, nil} -> {:ok, current}
+      {:ok, if_match} -> enforce_workshop_if_match(current, if_match)
+      {:error, reason} -> {:error, {:bad_request, ConditionalRequests.error_detail(reason)}}
+    end
+  end
+
+  defp enforce_workshop_if_match(current, if_match) do
+    if ConditionalRequests.enforce_if_match(if_match, current.lock_version) == :ok,
+      do: {:ok, current},
+      else: {:error, {:precondition_failed, current}}
+  end
+
+  defp workshop_version_opts(conn) do
+    case ConditionalRequests.parse_if_match(conn) do
+      {:ok, nil} -> []
+      {:ok, if_match} -> [expected_lock_version: if_match]
+    end
   end
 
   defp management_attrs(params) do
@@ -623,6 +752,10 @@ defmodule DhcWeb.WorkshopsController do
     conn
     |> put_status(:not_found)
     |> json(%{errors: %{detail: "Workshop not found"}})
+  end
+
+  defp bad_request(conn, detail) do
+    conn |> put_status(:bad_request) |> json(%{errors: %{detail: detail}})
   end
 
   defp unprocessable(conn, detail) do

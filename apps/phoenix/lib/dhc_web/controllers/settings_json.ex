@@ -9,11 +9,22 @@ defmodule DhcWeb.SettingsJSON do
     %{data: render_setting(setting)}
   end
 
-  defp render_setting(%{key: key, value: value, description: description, updated_at: updated_at}) do
+  def render("precondition_failed.json", %{setting: setting}) do
+    %{data: render_setting(setting), errors: %{detail: "version precondition failed"}}
+  end
+
+  defp render_setting(%{
+         key: key,
+         value: value,
+         description: description,
+         lock_version: lock_version,
+         updated_at: updated_at
+       }) do
     %{
       key: key,
       value: value,
       description: description,
+      lockVersion: lock_version,
       updatedAt: serialize_datetime(updated_at)
     }
   end

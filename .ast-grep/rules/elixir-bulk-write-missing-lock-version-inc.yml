@@ -1,0 +1,16 @@
+id: elixir-inventory-bulk-write-missing-lock-version-inc
+language: elixir
+severity: error
+files:
+  - apps/phoenix/lib/dhc/inventory/**/*.ex
+rule:
+  all:
+    - any:
+        - pattern: Repo.update_all($QUERY, $$$UPDATES)
+        - pattern: Repo.delete_all($QUERY, $$$UPDATES)
+    - regex: '(Item|Container|EquipmentCategory|"inventory_items"|"containers"|"equipment_categories")'
+    - not:
+        regex: 'inc:\s*\[\s*lock_version:\s*1\s*\]'
+message: |
+  ALE-266/ALE-267 inventory bulk writes must include
+  inc: [lock_version: 1] so the version witness remains truthful.

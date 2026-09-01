@@ -41,6 +41,10 @@ defmodule DhcWeb.WaitlistJSON do
     %{data: entry(entry)}
   end
 
+  def render("precondition_failed.json", %{entry: entry}) do
+    %{data: entry(entry), errors: %{detail: "version precondition failed"}}
+  end
+
   def render("guardian.json", %{guardian: nil}) do
     %{data: nil}
   end
@@ -58,6 +62,7 @@ defmodule DhcWeb.WaitlistJSON do
   defp entry(entry) do
     %{
       id: entry.id,
+      lockVersion: entry.lock_version,
       position: entry.position,
       fullName: entry.full_name,
       email: entry.email,

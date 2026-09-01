@@ -15,6 +15,20 @@ defmodule DhcWeb.WorkshopsJSON do
     %{data: %{workshop: calendar_workshop(workshop)}}
   end
 
+  def render("precondition_failed.json", %{workshop: workshop}) do
+    %{
+      data: %{workshop: calendar_workshop(workshop)},
+      errors: %{detail: "version precondition failed"}
+    }
+  end
+
+  def render("registration_precondition_failed.json", %{registration: registration}) do
+    %{
+      data: %{registration: registration(registration)},
+      errors: %{detail: "version precondition failed"}
+    }
+  end
+
   def render("interest.json", %{result: result}) do
     %{
       data: %{
@@ -116,6 +130,7 @@ defmodule DhcWeb.WorkshopsJSON do
       announceDiscord: workshop.announce_discord,
       announceEmail: workshop.announce_email,
       createdBy: workshop.created_by,
+      lockVersion: Map.get(workshop, :lock_version),
       interestCount: workshop.interest_count,
       pendingRegistrationCount: workshop.pending_registration_count,
       confirmedRegistrationCount: workshop.confirmed_registration_count,
@@ -152,6 +167,7 @@ defmodule DhcWeb.WorkshopsJSON do
       isPublic: workshop.is_public,
       refundDays: workshop.refund_days,
       status: workshop.status,
+      lockVersion: Map.get(workshop, :lock_version),
       interestCount: workshop.interest_count,
       pendingRegistrationCount: workshop.pending_registration_count,
       confirmedRegistrationCount: workshop.confirmed_registration_count,
@@ -168,7 +184,8 @@ defmodule DhcWeb.WorkshopsJSON do
   defp registration(registration) do
     %{
       id: registration.id,
-      status: registration.status
+      status: registration.status,
+      lockVersion: Map.get(registration, :lock_version)
     }
   end
 
@@ -209,6 +226,7 @@ defmodule DhcWeb.WorkshopsJSON do
       confirmedAt: attendee.confirmed_at,
       cancelledAt: attendee.cancelled_at,
       registrationNotes: attendee.registration_notes,
+      lockVersion: Map.get(attendee, :lock_version),
       participant: participant(attendee.participant)
     }
   end
@@ -219,7 +237,8 @@ defmodule DhcWeb.WorkshopsJSON do
       attendanceStatus: attendance_status(registration.attendance_status),
       attendanceMarkedAt: registration.attendance_marked_at,
       attendanceMarkedBy: registration.attendance_marked_by,
-      attendanceNotes: registration.attendance_notes
+      attendanceNotes: registration.attendance_notes,
+      lockVersion: Map.get(registration, :lock_version)
     }
   end
 

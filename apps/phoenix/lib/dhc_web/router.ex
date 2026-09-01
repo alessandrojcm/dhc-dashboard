@@ -231,6 +231,7 @@ defmodule DhcWeb.Router do
     pipe_through [:api, :settings_admin_api]
 
     get "/settings", SettingsController, :index
+    get "/settings/:key", SettingsController, :show
     patch "/settings/:key", SettingsController, :update
   end
 

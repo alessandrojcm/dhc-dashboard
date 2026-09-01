@@ -55,41 +55,84 @@ defmodule Dhc.Inventory.Categories do
     |> handle_insert_result()
   end
 
-  @spec update_category(category() | String.t(), map()) ::
+  @spec update_category(category() | String.t(), map(), keyword()) ::
           {:ok, category()}
           | {:error, :not_found}
+          | {:error, {:version_precondition_failed, category()}}
           | {:error, :conflict, Ecto.Changeset.t()}
           | {:error, Ecto.Changeset.t()}
-  def update_category(%EquipmentCategory{id: id}, attrs), do: update_category(id, attrs)
+  def update_category(category_or_id, attrs, opts \\ [])
 
-  def update_category(id, attrs) when is_binary(id) do
+  def update_category(%EquipmentCategory{id: id}, attrs, opts),
+    do: update_category(id, attrs, opts)
+
+  def update_category(id, attrs, opts)
+      when is_binary(id) and is_map(attrs) and is_list(opts) do
     case Repo.get(EquipmentCategory, id) do
       nil ->
         {:error, :not_found}
 
       %EquipmentCategory{} = category ->
-        normalized = normalize_attrs(attrs)
+        case check_precondition(category, opts) do
+          :ok ->
+            update_existing_category(category, attrs)
 
-        category
-        |> category_changeset(normalized)
-        |> Ecto.Changeset.optimistic_lock(:lock_version)
-        |> Repo.update()
-        |> handle_update_result()
+          {:version_precondition_failed, current} ->
+            {:error, {:version_precondition_failed, current}}
+        end
     end
   end
 
-  @spec delete_category(category() | String.t()) ::
-          {:ok, category()} | {:error, :not_found} | {:error, :still_referenced}
-  def delete_category(%EquipmentCategory{id: id}), do: delete_category(id)
+  @spec delete_category(category() | String.t(), keyword()) ::
+          {:ok, category()}
+          | {:error, :not_found}
+          | {:error, {:version_precondition_failed, category()}}
+          | {:error, :still_referenced}
+  def delete_category(category_or_id, opts \\ [])
 
-  def delete_category(id) when is_binary(id) do
+  def delete_category(%EquipmentCategory{id: id}, opts), do: delete_category(id, opts)
+
+  def delete_category(id, opts) when is_binary(id) and is_list(opts) do
     case Repo.get(EquipmentCategory, id) do
       nil ->
         {:error, :not_found}
 
       %EquipmentCategory{} = category ->
-        delete_unreferenced_category(category)
+        case check_precondition(category, opts) do
+          :ok ->
+            delete_unreferenced_category(category)
+
+          {:version_precondition_failed, current} ->
+            {:error, {:version_precondition_failed, current}}
+        end
     end
+  end
+
+  # If-Match precondition check — ADR 0023 (ALE-267). Absent or `*` passes;
+  # a version mismatch fails fast without applying any changes.
+  defp check_precondition(%EquipmentCategory{} = category, opts) do
+    case Keyword.fetch(opts, :expected_lock_version) do
+      :error ->
+        :ok
+
+      {:ok, :*} ->
+        :ok
+
+      {:ok, expected} when is_integer(expected) ->
+        if category.lock_version == expected,
+          do: :ok,
+          else: {:version_precondition_failed, category}
+    end
+  end
+
+  defp update_existing_category(%EquipmentCategory{} = category, attrs) do
+    normalized = normalize_attrs(attrs)
+
+    category
+    |> category_changeset(normalized)
+    |> Ecto.Changeset.optimistic_lock(:lock_version)
+    |> Repo.update()
+    |> handle_update_result()
   end
 
   defp category_changeset(%EquipmentCategory{} = category, attrs) do
@@ -118,14 +161,32 @@ defmodule Dhc.Inventory.Categories do
     end
   end
 
-  defp delete_unreferenced_category(%EquipmentCategory{id: id} = category) do
-    if category_item_count(id) > 0 do
+  defp delete_unreferenced_category(%EquipmentCategory{} = category) do
+    if category_item_count(category.id) > 0 do
       {:error, :still_referenced}
     else
-      case Repo.delete(category) do
-        {:ok, deleted} -> {:ok, deleted}
-        {:error, _changeset} -> {:error, :not_found}
+      changeset = Ecto.Changeset.optimistic_lock(category, :lock_version)
+
+      case Repo.delete(changeset) do
+        {:ok, deleted} ->
+          {:ok, deleted}
+
+        # A concurrent edit bumped the version between read and delete; map
+        # the race to the same precondition failure the checked path sees
+        # (ADR 0023).
+        {:error, %Ecto.StaleEntryError{} = _stale} ->
+          current_category_error(category.id)
+
+        {:error, _changeset} ->
+          {:error, :not_found}
       end
+    end
+  end
+
+  defp current_category_error(id) do
+    case Repo.get(EquipmentCategory, id) do
+      nil -> {:error, :not_found}
+      %EquipmentCategory{} = current -> {:error, {:version_precondition_failed, current}}
     end
   end
 

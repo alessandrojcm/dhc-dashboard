@@ -21,6 +21,7 @@ defmodule DhcWeb.InventoryCategoriesController do
   use DhcWeb, :controller
 
   alias Dhc.Inventory
+  alias DhcWeb.ConditionalRequests
 
   @doc """
   GET /inventory/categories
@@ -39,9 +40,23 @@ defmodule DhcWeb.InventoryCategoriesController do
   def show(conn, %{"id" => id}) do
     case Inventory.get_category(id) do
       {:ok, category} ->
-        conn
-        |> put_view(json: DhcWeb.InventoryCategoriesJSON)
-        |> render(:show, category: category)
+        precondition = ConditionalRequests.evaluate(conn, category.lock_version)
+
+        case ConditionalRequests.maybe_send_not_modified(conn, precondition) do
+          %Plug.Conn{} = conn_304 ->
+            conn_304
+
+          {:ok, nil} ->
+            category_response(conn, category)
+
+          # If-Match on a GET: RFC 9110 §13.1.1 — match serves normally, a
+          # stale witness is a 412 (AEP-154: never silently ignored).
+          {:ok, if_match} ->
+            enforce_get_if_match(conn, category, if_match)
+
+          {:error, reason} ->
+            bad_request(conn, ConditionalRequests.error_detail(reason))
+        end
 
       {:error, :not_found} ->
         not_found(conn, "Category not found")
@@ -56,6 +71,7 @@ defmodule DhcWeb.InventoryCategoriesController do
       {:ok, category} ->
         conn
         |> put_status(:created)
+        |> ConditionalRequests.put_etag(category.lock_version)
         |> put_view(json: DhcWeb.InventoryCategoriesJSON)
         |> render(:show, category: category)
 
@@ -71,14 +87,58 @@ defmodule DhcWeb.InventoryCategoriesController do
   PATCH /inventory/categories/{id}
   """
   def update(conn, %{"id" => id} = params) do
-    case Inventory.update_category(id, params) do
+    case fetch_if_match(conn) do
+      {:ok, nil} ->
+        apply_update(conn, id, params, [])
+
+      {:ok, if_match} ->
+        apply_update(conn, id, params, expected_lock_version: expected_version(if_match))
+
+      {:error, reason} ->
+        bad_request(conn, ConditionalRequests.error_detail(reason))
+    end
+  end
+
+  @doc """
+  DELETE /inventory/categories/{id}
+  """
+  def delete(conn, %{"id" => id}) do
+    case fetch_if_match(conn) do
+      {:ok, nil} ->
+        apply_delete(conn, id, [])
+
+      {:ok, if_match} ->
+        apply_delete(conn, id, expected_lock_version: expected_version(if_match))
+
+      {:error, reason} ->
+        bad_request(conn, ConditionalRequests.error_detail(reason))
+    end
+  end
+
+  # ── Conditional-request helpers (ALE-267, ADR 0023) ──────────────────
+
+  defp enforce_get_if_match(conn, category, if_match) do
+    case ConditionalRequests.enforce_if_match(if_match, category.lock_version) do
+      :ok -> category_response(conn, category)
+      {:precondition_failed} -> precondition_failed(conn, category)
+    end
+  end
+
+  defp fetch_if_match(conn), do: ConditionalRequests.parse_if_match(conn)
+
+  defp expected_version({:version, version}), do: version
+  defp expected_version({:any_existing, :*}), do: :*
+
+  defp apply_update(conn, id, params, opts) do
+    case Inventory.update_category(id, params, opts) do
       {:ok, category} ->
-        conn
-        |> put_view(json: DhcWeb.InventoryCategoriesJSON)
-        |> render(:show, category: category)
+        category_response(conn, category)
 
       {:error, :not_found} ->
         not_found(conn, "Category not found")
+
+      {:error, {:version_precondition_failed, current}} ->
+        precondition_failed(conn, current)
 
       {:error, :conflict, _changeset} ->
         conflict(conn, "A category with that name already exists")
@@ -88,16 +148,16 @@ defmodule DhcWeb.InventoryCategoriesController do
     end
   end
 
-  @doc """
-  DELETE /inventory/categories/{id}
-  """
-  def delete(conn, %{"id" => id}) do
-    case Inventory.delete_category(id) do
+  defp apply_delete(conn, id, opts) do
+    case Inventory.delete_category(id, opts) do
       {:ok, _category} ->
         send_delete(conn)
 
       {:error, :not_found} ->
         not_found(conn, "Category not found")
+
+      {:error, {:version_precondition_failed, current}} ->
+        precondition_failed(conn, current)
 
       {:error, :still_referenced} ->
         # 409, matching the ALE-104 contract.
@@ -105,11 +165,36 @@ defmodule DhcWeb.InventoryCategoriesController do
     end
   end
 
+  defp category_response(conn, category) do
+    conn
+    |> ConditionalRequests.put_etag(category.lock_version)
+    |> put_view(json: DhcWeb.InventoryCategoriesJSON)
+    |> render(:show, category: category)
+  end
+
+  # 412 Precondition Failed — ADR 0023: the body carries the *current*
+  # server entity so the client can refetch/reconcile, alongside the error
+  # detail, reusing the response envelope.
+  defp precondition_failed(conn, current_category) do
+    conn
+    |> ConditionalRequests.put_etag(current_category.lock_version)
+    |> put_status(:precondition_failed)
+    |> put_view(json: DhcWeb.InventoryCategoriesJSON)
+    |> render(:precondition_failed, category: current_category)
+  end
+
   # ── Error helpers ─────────────────────────────────────────────────────
 
   defp not_found(conn, detail) do
     conn
     |> put_status(:not_found)
+    |> put_view(json: DhcWeb.InventoryCategoriesJSON)
+    |> render(:error, detail: detail)
+  end
+
+  defp bad_request(conn, detail) do
+    conn
+    |> put_status(:bad_request)
     |> put_view(json: DhcWeb.InventoryCategoriesJSON)
     |> render(:error, detail: detail)
   end

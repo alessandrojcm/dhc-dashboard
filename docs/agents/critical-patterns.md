@@ -90,6 +90,17 @@ Spread the remote form or its preflight-enhanced variant onto the native form el
 
 - `Ecto.Adapters.SQL.Sandbox.unboxed_run/2` commits outside the normal test-owner transaction. Cleanup must remove both domain rows and committed side effects, including attempt-scoped Oban jobs; do not rely on sandbox rollback.
 
+## Optimistic locking
+
+Mutable schemas listed by ADR 0023 carry `lock_version`. Before `Repo.update`,
+`Repo.update!`, `Repo.delete`, or `Repo.delete!`, pipe the changeset through
+`Ecto.Changeset.optimistic_lock(:lock_version)`. Bulk `Repo.update_all` writes
+must include `inc: [lock_version: 1]`.
+
+Credo and ast-grep enforce these shapes and tell agents which call to add. The
+rules intentionally report existing bypasses until those paths are repaired;
+do not silence them with exclusions or a baseline.
+
 ## Discord External Identities
 
 - Resolve Discord login by `(provider, provider_subject)` before looking at profile email.

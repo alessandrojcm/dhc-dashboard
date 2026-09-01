@@ -140,7 +140,7 @@ export const EntirePlugin = Plugin.define({
 
   await ctx.session.hook("context", (event) => {
     if (!pendingInjection) return
-    event.system.push({ text: pendingInjection })
+    event.system.push({ type: "text", text: pendingInjection })
     pendingInjection = null
   })
 
@@ -203,3 +203,5 @@ export const EntirePlugin = Plugin.define({
   }
   },
 })
+
+export default EntirePlugin

@@ -2,6 +2,7 @@ defmodule DhcWeb.MembersController do
   use DhcWeb, :controller
 
   alias Dhc.Members
+  alias DhcWeb.ConditionalRequests
 
   @members_admin_roles ~w(admin president treasurer committee_coordinator sparring_coordinator workshop_coordinator beginners_coordinator quartermaster pr_manager volunteer_coordinator research_coordinator coach)
 
@@ -51,13 +52,26 @@ defmodule DhcWeb.MembersController do
   def show(conn, %{"memberId" => member_id}) do
     with :ok <- authorize_self_or_admin(conn, member_id),
          {:ok, member} <- Members.get_member(member_id) do
-      conn
-      |> put_view(json: DhcWeb.MembersJSON)
-      |> render(:show, member: member)
+      show_member(conn, member)
     else
       {:error, :forbidden} -> forbidden(conn, "Insufficient role")
       {:error, :not_found} -> not_found(conn, "Member not found")
     end
+  end
+
+  defp show_member(conn, member) do
+    case ConditionalRequests.evaluate(conn, member.lock_version) do
+      {:not_modified, etag} -> conn |> put_resp_header("etag", etag) |> send_resp(304, "")
+      {:ok, nil} -> member_response(conn, member)
+      {:ok, if_match} -> show_member_if_match(conn, member, if_match)
+      {:error, reason} -> bad_request(conn, ConditionalRequests.error_detail(reason))
+    end
+  end
+
+  defp show_member_if_match(conn, member, if_match) do
+    if ConditionalRequests.enforce_if_match(if_match, member.lock_version) == :ok,
+      do: member_response(conn, member),
+      else: member_precondition_failed(conn, member)
   end
 
   @doc """
@@ -67,15 +81,26 @@ defmodule DhcWeb.MembersController do
     attrs = Map.delete(params, "memberId")
 
     with :ok <- authorize_self_or_admin(conn, member_id),
-         {:ok, member} <- Members.update_member(member_id, attrs) do
-      conn
-      |> put_view(json: DhcWeb.MembersJSON)
-      |> render(:show, member: member)
+         {:ok, current} <- Members.get_member(member_id),
+         :ok <- verify_if_match(conn, current) do
+      case Members.update_member(member_id, attrs, expected_version_opts(conn)) do
+        {:ok, member} ->
+          member_response(conn, member)
+
+        {:error, {:version_precondition_failed, current}} ->
+          member_precondition_failed(conn, current)
+
+        {:error, :invalid_payload} ->
+          validation_error(conn, "Invalid member update payload")
+
+        {:error, %Ecto.Changeset{} = changeset} ->
+          validation_error(conn, changeset)
+      end
     else
       {:error, :forbidden} -> forbidden(conn, "Insufficient role")
       {:error, :not_found} -> not_found(conn, "Member not found")
-      {:error, :invalid_payload} -> validation_error(conn, "Invalid member update payload")
-      {:error, %Ecto.Changeset{} = changeset} -> validation_error(conn, changeset)
+      {:error, {:precondition_failed, current}} -> member_precondition_failed(conn, current)
+      {:error, {:bad_request, detail}} -> bad_request(conn, detail)
     end
   end
 
@@ -105,6 +130,43 @@ defmodule DhcWeb.MembersController do
       :ok
     else
       {:error, :forbidden}
+    end
+  end
+
+  defp member_response(conn, member) do
+    conn
+    |> ConditionalRequests.put_etag(member.lock_version)
+    |> put_view(json: DhcWeb.MembersJSON)
+    |> render(:show, member: member)
+  end
+
+  defp member_precondition_failed(conn, member) do
+    conn
+    |> ConditionalRequests.put_etag(member.lock_version)
+    |> put_status(:precondition_failed)
+    |> put_view(json: DhcWeb.MembersJSON)
+    |> render(:precondition_failed, member: member)
+  end
+
+  defp verify_if_match(conn, current) do
+    case ConditionalRequests.parse_if_match(conn) do
+      {:ok, nil} ->
+        :ok
+
+      {:ok, if_match} ->
+        if ConditionalRequests.enforce_if_match(if_match, current.lock_version) == :ok,
+          do: :ok,
+          else: {:error, {:precondition_failed, current}}
+
+      {:error, reason} ->
+        {:error, {:bad_request, ConditionalRequests.error_detail(reason)}}
+    end
+  end
+
+  defp expected_version_opts(conn) do
+    case ConditionalRequests.parse_if_match(conn) do
+      {:ok, nil} -> []
+      {:ok, if_match} -> [expected_lock_version: if_match]
     end
   end
 

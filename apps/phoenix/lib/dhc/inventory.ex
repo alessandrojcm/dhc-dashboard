@@ -25,14 +25,14 @@ defmodule Dhc.Inventory do
   defdelegate list_categories(), to: Categories
   defdelegate get_category(id), to: Categories
   defdelegate create_category(attrs), to: Categories
-  defdelegate update_category(category_or_id, attrs), to: Categories
-  defdelegate delete_category(category_or_id), to: Categories
+  defdelegate update_category(category_or_id, attrs, opts \\ []), to: Categories
+  defdelegate delete_category(category_or_id, opts \\ []), to: Categories
 
   defdelegate list_containers(), to: Containers
   defdelegate get_container(id), to: Containers
   defdelegate create_container(attrs, actor_id), to: Containers
-  defdelegate update_container(id, attrs), to: Containers
-  defdelegate delete_container(id), to: Containers
+  defdelegate update_container(id, attrs, opts \\ []), to: Containers
+  defdelegate delete_container(id, opts \\ []), to: Containers
 
   defdelegate list_items(opts \\ %{}), to: Items
   defdelegate get_item(id), to: Items

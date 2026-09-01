@@ -147,7 +147,7 @@ defmodule DhcWeb.ConditionalRequests do
     |> send_resp(:not_modified, "")
   end
 
-  def maybe_send_not_modified(conn, other), do: other
+  def maybe_send_not_modified(_conn, other), do: other
 
   @doc """
   Human-readable error detail for the `400` outcomes.

@@ -54,12 +54,14 @@ defmodule Dhc.Inventory.Containers do
     |> handle_container_insert()
   end
 
-  @spec update_container(String.t(), map()) ::
+  @spec update_container(String.t(), map(), keyword()) ::
           {:ok, container()}
           | {:error, :not_found}
+          | {:error, {:version_precondition_failed, container()}}
           | {:error, :circular_parent}
           | {:error, Ecto.Changeset.t()}
-  def update_container(id, attrs) when is_binary(id) and is_map(attrs) do
+  def update_container(id, attrs, opts \\ [])
+      when is_binary(id) and is_map(attrs) and is_list(opts) do
     normalized = normalize_container_attrs(attrs)
 
     case Repo.get(Container, id) do
@@ -67,38 +69,96 @@ defmodule Dhc.Inventory.Containers do
         {:error, :not_found}
 
       %Container{} = container ->
-        if circular_parent?(id, normalized) do
-          {:error, :circular_parent}
-        else
-          container
-          |> container_changeset(normalized)
-          |> Ecto.Changeset.optimistic_lock(:lock_version)
-          |> Repo.update()
-          |> handle_container_update(id)
-        end
+        update_fetched_container(container, normalized, id, opts)
     end
   end
 
-  @spec delete_container(String.t()) ::
-          {:ok, container()} | {:error, :not_found} | {:error, :still_referenced}
-  def delete_container(id) when is_binary(id) do
+  defp update_fetched_container(container, normalized, id, opts) do
+    if circular_parent?(id, normalized) do
+      {:error, :circular_parent}
+    else
+      case check_precondition(container, opts) do
+        :ok ->
+          update_existing_container(container, normalized, id)
+
+        {:version_precondition_failed, current} ->
+          {:error, {:version_precondition_failed, current}}
+      end
+    end
+  end
+
+  @spec delete_container(String.t(), keyword()) ::
+          {:ok, container()}
+          | {:error, :not_found}
+          | {:error, {:version_precondition_failed, container()}}
+          | {:error, :still_referenced}
+  def delete_container(id, opts \\ []) when is_binary(id) and is_list(opts) do
     case Repo.get(Container, id) do
       nil ->
         {:error, :not_found}
 
       %Container{} = container ->
-        delete_unreferenced_container(container)
+        case check_precondition(container, opts) do
+          :ok ->
+            delete_unreferenced_container(container)
+
+          {:version_precondition_failed, current} ->
+            {:error, {:version_precondition_failed, current}}
+        end
     end
+  end
+
+  # If-Match precondition check — ADR 0023 (ALE-267). Absent or `*` passes;
+  # a version mismatch fails fast without applying any changes.
+  defp check_precondition(%Container{} = container, opts) do
+    case Keyword.fetch(opts, :expected_lock_version) do
+      :error ->
+        :ok
+
+      {:ok, :*} ->
+        :ok
+
+      {:ok, expected} when is_integer(expected) ->
+        if container.lock_version == expected,
+          do: :ok,
+          else: {:version_precondition_failed, container}
+    end
+  end
+
+  defp update_existing_container(%Container{} = container, normalized, id) do
+    container
+    |> container_changeset(normalized)
+    |> Ecto.Changeset.optimistic_lock(:lock_version)
+    |> Repo.update()
+    |> handle_container_update(id)
   end
 
   defp delete_unreferenced_container(%Container{} = container) do
     if direct_item_count(container.id) > 0 do
       {:error, :still_referenced}
     else
-      case Repo.delete(container) do
-        {:ok, deleted} -> {:ok, deleted}
-        {:error, _changeset} -> {:error, :still_referenced}
+      changeset = Ecto.Changeset.optimistic_lock(container, :lock_version)
+
+      case Repo.delete(changeset) do
+        {:ok, deleted} ->
+          {:ok, deleted}
+
+        # A concurrent edit bumped the version between read and delete; map
+        # the race to the same precondition failure the checked path sees
+        # (ADR 0023).
+        {:error, %Ecto.StaleEntryError{} = _stale} ->
+          current_container_error(container.id)
+
+        {:error, _changeset} ->
+          {:error, :still_referenced}
       end
+    end
+  end
+
+  defp current_container_error(id) do
+    case Repo.get(Container, id) do
+      nil -> {:error, :not_found}
+      %Container{} = current -> {:error, {:version_precondition_failed, current}}
     end
   end
 

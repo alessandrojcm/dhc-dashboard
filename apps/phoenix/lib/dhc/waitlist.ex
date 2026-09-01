@@ -182,9 +182,9 @@ defmodule Dhc.Waitlist do
   """
   @spec update_entry(Ecto.UUID.t(), map()) ::
           {:ok, map()} | {:error, :not_found} | {:error, atom()} | {:error, Ecto.Changeset.t()}
-  def update_entry(id, attrs) when is_map(attrs) do
+  def update_entry(id, attrs, opts \\ []) when is_map(attrs) and is_list(opts) do
     with {:ok, normalized} <- normalize_update_attrs(attrs) do
-      update_normalized_entry(id, normalized)
+      update_normalized_entry(id, normalized, opts)
     end
   end
 
@@ -200,21 +200,39 @@ defmodule Dhc.Waitlist do
   defp handle_create_result({:error, _operation, %Ecto.Changeset{} = changeset, _changes}),
     do: {:error, changeset}
 
-  defp update_normalized_entry(id, normalized) do
+  defp update_normalized_entry(id, normalized, opts) do
     case Repo.get(WaitlistEntry, id) do
       nil ->
         {:error, :not_found}
 
       entry ->
-        entry
-        |> WaitlistEntry.admin_update_changeset(normalized)
-        |> Ecto.Changeset.optimistic_lock(:lock_version)
-        |> Repo.update()
-        |> case do
-          {:ok, _entry} -> get_entry(id)
-          {:error, changeset} -> {:error, changeset}
+        case Keyword.get(opts, :expected_lock_version) do
+          expected when expected in [nil, :*] ->
+            update_waitlist_entry(entry, normalized, id)
+
+          expected when entry.lock_version == expected ->
+            update_waitlist_entry(entry, normalized, id)
+
+          _ ->
+            {:error, {:version_precondition_failed, get_entry!(id)}}
         end
     end
+  end
+
+  defp update_waitlist_entry(entry, normalized, id) do
+    entry
+    |> WaitlistEntry.admin_update_changeset(normalized)
+    |> Ecto.Changeset.optimistic_lock(:lock_version)
+    |> Repo.update()
+    |> case do
+      {:ok, _entry} -> get_entry(id)
+      {:error, changeset} -> {:error, changeset}
+    end
+  end
+
+  defp get_entry!(id) do
+    {:ok, entry} = get_entry(id)
+    entry
   end
 
   @doc false
@@ -575,6 +593,7 @@ defmodule Dhc.Waitlist do
     |> base_entries_query()
     |> select([w, p, wg], %{
       id: w.id,
+      lock_version: w.lock_version,
       position:
         fragment(
           "row_number() OVER (ORDER BY ? ASC, ? ASC)::int",
@@ -616,6 +635,7 @@ defmodule Dhc.Waitlist do
       where: p.is_active == false and is_nil(p.principal_id),
       select: %{
         id: w.id,
+        lock_version: w.lock_version,
         position:
           fragment(
             "row_number() OVER (ORDER BY ? ASC, ? ASC)::int",

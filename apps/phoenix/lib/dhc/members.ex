@@ -195,9 +195,9 @@ defmodule Dhc.Members do
   When name or phone changes, Stripe customer fields are echoed best-effort after
   the database write; Stripe failures are logged but do not fail the API call.
   """
-  @spec update_member(String.t(), map()) ::
+  @spec update_member(String.t(), map(), keyword()) ::
           {:ok, map()} | {:error, :not_found | :invalid_payload | Ecto.Changeset.t()}
-  def update_member(member_id, attrs) when is_map(attrs) do
+  def update_member(member_id, attrs, opts \\ []) when is_map(attrs) do
     cond do
       Map.has_key?(attrs, "isActive") ->
         {:error, :invalid_payload}
@@ -209,7 +209,7 @@ defmodule Dhc.Members do
         {:error, :invalid_payload}
 
       true ->
-        do_update_member(member_id, attrs)
+        do_update_member(member_id, attrs, opts)
     end
   end
 
@@ -232,14 +232,14 @@ defmodule Dhc.Members do
     end
   end
 
-  defp do_update_member(member_id, attrs) do
+  defp do_update_member(member_id, attrs, opts) do
     Repo.transaction(fn ->
       case load_profile_pair(member_id) do
         nil ->
           Repo.rollback(:not_found)
 
         profile_pair ->
-          update_profile_pair(member_id, profile_pair, attrs)
+          update_checked_profile_pair(member_id, profile_pair, attrs, opts)
       end
     end)
     |> case do
@@ -248,6 +248,32 @@ defmodule Dhc.Members do
     end
   rescue
     _e in Postgrex.Error -> {:error, :invalid_payload}
+  end
+
+  defp update_checked_profile_pair(
+         member_id,
+         {_user_profile, member_profile} = profile_pair,
+         attrs,
+         opts
+       ) do
+    case check_member_precondition(member_profile, opts) do
+      :ok -> update_profile_pair(member_id, profile_pair, attrs)
+      {:error, reason} -> Repo.rollback(reason)
+    end
+  end
+
+  defp check_member_precondition(member_profile, opts) do
+    case Keyword.get(opts, :expected_lock_version) do
+      nil -> :ok
+      {:any_existing, :*} -> :ok
+      {:version, version} when version == member_profile.lock_version -> :ok
+      _version -> {:error, {:version_precondition_failed, get_member!(member_profile.id)}}
+    end
+  end
+
+  defp get_member!(member_id) do
+    {:ok, member} = get_member(member_id)
+    member
   end
 
   defp update_profile_pair(member_id, {user_profile, member_profile}, attrs) do
@@ -259,13 +285,26 @@ defmodule Dhc.Members do
     }
 
     with {:ok, _user_profile} <- update_user_profile(user_profile, attrs),
-         {:ok, _member_profile} <- update_member_profile(member_profile, attrs),
+         {:ok, updated_member_profile} <- update_member_profile(member_profile, attrs),
+         {:ok, _member_profile} <-
+           maybe_bump_member_witness(member_profile, updated_member_profile),
          {:ok, member} <- get_member(member_id) do
       maybe_echo_customer_to_stripe(current, member, attrs)
       member
     else
       {:error, %Ecto.Changeset{} = changeset} -> Repo.rollback(changeset)
       {:error, :not_found} -> Repo.rollback(:not_found)
+    end
+  end
+
+  defp maybe_bump_member_witness(original, updated) do
+    if updated.lock_version == original.lock_version do
+      original
+      |> Ecto.Changeset.change()
+      |> Ecto.Changeset.optimistic_lock(:lock_version)
+      |> Repo.update()
+    else
+      {:ok, updated}
     end
   end
 
@@ -645,6 +684,7 @@ defmodule Dhc.Members do
       [m, p, u, wg],
       %{
         id: m.id,
+        lock_version: m.lock_version,
         first_name: p.first_name,
         last_name: p.last_name,
         email: u.email,

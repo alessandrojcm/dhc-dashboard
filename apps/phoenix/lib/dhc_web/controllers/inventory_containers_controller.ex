@@ -25,6 +25,7 @@ defmodule DhcWeb.InventoryContainersController do
   use DhcWeb, :controller
 
   alias Dhc.Inventory
+  alias DhcWeb.ConditionalRequests
 
   @doc """
   GET /inventory/containers
@@ -43,9 +44,23 @@ defmodule DhcWeb.InventoryContainersController do
   def show(conn, %{"id" => id}) do
     case Inventory.get_container(id) do
       {:ok, container} ->
-        conn
-        |> put_view(json: DhcWeb.InventoryContainersJSON)
-        |> render(:show, container: container)
+        precondition = ConditionalRequests.evaluate(conn, container.lock_version)
+
+        case ConditionalRequests.maybe_send_not_modified(conn, precondition) do
+          %Plug.Conn{} = conn_304 ->
+            conn_304
+
+          {:ok, nil} ->
+            container_response(conn, container, :show)
+
+          # If-Match on a GET: RFC 9110 §13.1.1 — match serves normally, a
+          # stale witness is a 412 (AEP-154: never silently ignored).
+          {:ok, if_match} ->
+            enforce_get_if_match(conn, container, if_match)
+
+          {:error, reason} ->
+            bad_request(conn, ConditionalRequests.error_detail(reason))
+        end
 
       {:error, :not_found} ->
         not_found(conn, "Container not found")
@@ -64,6 +79,7 @@ defmodule DhcWeb.InventoryContainersController do
       {:ok, container} ->
         conn
         |> put_status(:created)
+        |> ConditionalRequests.put_etag(container.lock_version)
         |> put_view(json: DhcWeb.InventoryContainersJSON)
         |> render(:item, container: container)
 
@@ -76,14 +92,58 @@ defmodule DhcWeb.InventoryContainersController do
   PATCH /inventory/containers/{id}
   """
   def update(conn, %{"id" => id} = params) do
-    case Inventory.update_container(id, params) do
+    case fetch_if_match(conn) do
+      {:ok, nil} ->
+        apply_update(conn, id, params, [])
+
+      {:ok, if_match} ->
+        apply_update(conn, id, params, expected_lock_version: expected_version(if_match))
+
+      {:error, reason} ->
+        bad_request(conn, ConditionalRequests.error_detail(reason))
+    end
+  end
+
+  @doc """
+  DELETE /inventory/containers/{id}
+  """
+  def delete(conn, %{"id" => id}) do
+    case fetch_if_match(conn) do
+      {:ok, nil} ->
+        apply_delete(conn, id, [])
+
+      {:ok, if_match} ->
+        apply_delete(conn, id, expected_lock_version: expected_version(if_match))
+
+      {:error, reason} ->
+        bad_request(conn, ConditionalRequests.error_detail(reason))
+    end
+  end
+
+  # ── Conditional-request helpers (ALE-267, ADR 0023) ──────────────────
+
+  defp enforce_get_if_match(conn, container, if_match) do
+    case ConditionalRequests.enforce_if_match(if_match, container.lock_version) do
+      :ok -> container_response(conn, container, :show)
+      {:precondition_failed} -> precondition_failed(conn, container)
+    end
+  end
+
+  defp fetch_if_match(conn), do: ConditionalRequests.parse_if_match(conn)
+
+  defp expected_version({:version, version}), do: version
+  defp expected_version({:any_existing, :*}), do: :*
+
+  defp apply_update(conn, id, params, opts) do
+    case Inventory.update_container(id, params, opts) do
       {:ok, container} ->
-        conn
-        |> put_view(json: DhcWeb.InventoryContainersJSON)
-        |> render(:item, container: container)
+        container_response(conn, container, :item)
 
       {:error, :not_found} ->
         not_found(conn, "Container not found")
+
+      {:error, {:version_precondition_failed, current}} ->
+        precondition_failed(conn, current)
 
       {:error, :circular_parent} ->
         unprocessable_detail(conn, "parentContainerId would create a cycle")
@@ -93,16 +153,16 @@ defmodule DhcWeb.InventoryContainersController do
     end
   end
 
-  @doc """
-  DELETE /inventory/containers/{id}
-  """
-  def delete(conn, %{"id" => id}) do
-    case Inventory.delete_container(id) do
+  defp apply_delete(conn, id, opts) do
+    case Inventory.delete_container(id, opts) do
       {:ok, _container} ->
         send_delete(conn)
 
       {:error, :not_found} ->
         not_found(conn, "Container not found")
+
+      {:error, {:version_precondition_failed, current}} ->
+        precondition_failed(conn, current)
 
       {:error, :still_referenced} ->
         # 409, matching the ALE-104 contract.
@@ -110,11 +170,36 @@ defmodule DhcWeb.InventoryContainersController do
     end
   end
 
+  defp container_response(conn, container, template) do
+    conn
+    |> ConditionalRequests.put_etag(container.lock_version)
+    |> put_view(json: DhcWeb.InventoryContainersJSON)
+    |> render(template, container: container)
+  end
+
+  # 412 Precondition Failed — ADR 0023: the body carries the *current*
+  # server entity so the client can refetch/reconcile, alongside the error
+  # detail, reusing the response envelope.
+  defp precondition_failed(conn, current_container) do
+    conn
+    |> ConditionalRequests.put_etag(current_container.lock_version)
+    |> put_status(:precondition_failed)
+    |> put_view(json: DhcWeb.InventoryContainersJSON)
+    |> render(:precondition_failed, container: current_container)
+  end
+
   # ── Error helpers ─────────────────────────────────────────────────────
 
   defp not_found(conn, detail) do
     conn
     |> put_status(:not_found)
+    |> put_view(json: DhcWeb.InventoryContainersJSON)
+    |> render(:error, detail: detail)
+  end
+
+  defp bad_request(conn, detail) do
+    conn
+    |> put_status(:bad_request)
     |> put_view(json: DhcWeb.InventoryContainersJSON)
     |> render(:error, detail: detail)
   end

@@ -26,6 +26,13 @@ defmodule DhcWeb.InventoryCategoriesJSON do
     %{data: render_category(category)}
   end
 
+  # 412 Precondition Failed — ADR 0023 Phase 1.3 (ALE-267): the current
+  # server entity rides alongside the error detail so the client can
+  # reconcile, reusing the response envelope.
+  def render("precondition_failed.json", %{category: category}) do
+    %{data: render_category(category), errors: %{detail: "version precondition failed"}}
+  end
+
   def render("error.json", %{detail: detail}) do
     %{errors: %{detail: detail}}
   end
@@ -37,6 +44,7 @@ defmodule DhcWeb.InventoryCategoriesJSON do
       description: category.description,
       availableAttributes: category.available_attributes || [],
       itemCount: category.item_count || 0,
+      lockVersion: category.lock_version,
       createdAt: serialize_datetime(category.created_at),
       updatedAt: serialize_datetime(category.updated_at)
     }
