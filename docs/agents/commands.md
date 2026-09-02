@@ -44,6 +44,12 @@ mise run lint               # Oxlint (web Svelte/JS/TS + API client TS)
 mise run format             # Auto-format with Oxfmt
 ```
 
+In a fresh linked worktree, run `mise run check` before `mise run lint` or
+`mise run ci`. The check runs `svelte-kit sync` and creates
+`apps/web/.svelte-kit/tsconfig.json`; without it, Oxlint can fail while loading
+the web TypeScript project, and the parallel `ci` tasks cannot reliably create
+the file before lint starts.
+
 Oxlint runs in `apps/web`, `packages/api-client`, and `packages/email-templates`;
 the generated API client under `packages/api-client/src/client/` is ignored.
 Oxfmt covers `apps/web` and `packages/email-templates`.
