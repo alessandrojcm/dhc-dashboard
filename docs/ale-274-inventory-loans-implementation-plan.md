@@ -29,7 +29,7 @@ checked-out Loan due dates. The linked sources are:
 [`docs/agents/migration-notes.md`](agents/migration-notes.md) records durable
 repository migration conventions. In particular, use the glossary definitions
 of **Item**, **Container**, **Category**, **Property Definition**,
-**Maintenance Period**, **Loan**, **Item Label**, and **Retention Policy**.
+**Maintenance Period**, **Loan**, and **Retention Policy**.
 
 [ale-272]: ale-272-inventory-migration-delivery-strategy.md
 [ale-276]: ale-276-mobile-inventory-and-loan-workflow-prototype.md
@@ -45,12 +45,10 @@ of **Item**, **Container**, **Category**, **Property Definition**,
 Deliver one Phoenix-owned Inventory capability, exposed by the generated
 OpenAPI client, that supports:
 
-- Member-safe Item browse, search, filter, slug deep-link, request, and own
+- Member-safe Item browse, search, filter, slug lookup, request, and own
   Loan history;
 - Inventory Operator structure and Item administration, retained Maintenance,
-  and a shared action-led Loan queue; and
-- Item labels (slug plus QR deep-link) and an optional QR scan entry that
-  selects the ordinary Item route and never bypasses authorization or commands.
+  and a shared action-led Loan queue.
 
 Following [ALE-272][ale-272], `Dhc.Inventory` is the public deep module seam
 for controllers and workers. Its callers use viewer-shaped projections and
@@ -102,9 +100,9 @@ source and test its acceptance examples instead.
    never extend or fabricate it. Member anonymization remains deferred behind
    stable Principal references. Follow [ALE-279][ale-279].
 5. **Mobile workflows.** Make physical work Item-led and present only legal next
-   actions. Use the selected browse/request, shared queue, and label/scan
-   journeys from [ALE-276][ale-276]; do not make scan a separate authorization,
-   identifier, or command surface.
+   actions. Use the selected browse/request and shared queue journeys from
+   [ALE-276][ale-276]. Physical labels, QR/barcode, and camera scan are out of
+   scope for v1; do not build them.
 
 ## Delivery sequence and dependencies
 
@@ -115,12 +113,11 @@ quantity/JSON semantics.
 | Stage | Implementable work | Depends on | Exit gate |
 | --- | --- | --- | --- |
 | 0. Prepare | Characterization only where it protects a touched legacy path; profile, mapping, and repeat-safe backfill tooling; restored-backup rehearsal | Read-only backup/production access and frozen unrelated Inventory changes | Aggregate profile is complete; anomalies are either absent or have approved mapping dispositions; rehearsal proves source/target reconciliation |
-| 1. Expand | Add target tables, constraints, restrictive FKs, target read support, migration tooling, and independently controlled server-side flags for target catalog reads, commands, and label/scan UI | Stage 0 | Additive migrations deploy cleanly; no target command is exposed; each target surface can be stopped without restoring legacy writes; profile/backfill rehearsal remains reproducible |
+| 1. Expand | Add target tables, constraints, restrictive FKs, target read support, migration tooling, and independently controlled server-side flags for target catalog reads and commands | Stage 0 | Additive migrations deploy cleanly; no target command is exposed; each target surface can be stopped without restoring legacy writes; profile/backfill rehearsal remains reproducible |
 | 2a. Structure | Operator Category, Definition/Option, and Container target interfaces | Stage 1 | Typed-property and hierarchy/dependency invariants pass through public interfaces and DB backstops |
-| 2b. Items and Maintenance | Operator Item lifecycle, labels, movement interlocks, and retained Maintenance | Stage 2a | Archive/delete and Maintenance interlocks pass; legacy generic writes are not used by target paths |
-| 2c. Member catalog | Catalog/search and availability projections; label printing | Stages 2a–2b | Member privacy and mobile browse scenarios pass with generated-client types |
+| 2b. Items and Maintenance | Operator Item lifecycle, movement interlocks, and retained Maintenance | Stage 2a | Archive/delete and Maintenance interlocks pass; legacy generic writes are not used by target paths |
+| 2c. Member catalog | Catalog/search and availability projections | Stages 2a–2b | Member privacy and mobile browse scenarios pass with generated-client types |
 | 2d. Loan operations | Member request/cancel/history, operator queue and lifecycle commands, Notification idempotency prerequisite, and reminders | Stage 2c and the amended Notification migration specification | Lifecycle, allocation, privacy, transition-notification retry, reminder retry, and due-date supersession tests pass |
-| 2e. Scan convenience | Browser QR adapter with typed-slug/search fallback | Stages 2c–2d; labels/slug lookup | Scan reaches the normal authorized Item route; denial or failure has no workflow impact |
 | 3. Cut over | Freeze writes, take verified backup and final profile, run approved backfill, disable legacy mutations, deploy paired target API/UI, and enable target commands | All required Stage 2 slices and a successful production rehearsal | All reconciliation and smoke checks pass while maintenance mode remains enabled |
 | 4. Contract | Remove legacy callers/routes/spec/client/UI/tests and obsolete columns after observation | Zero legacy traffic for the agreed observation period | Legacy endpoint telemetry is zero; retained history and target constraints are verified before each destructive removal |
 
@@ -154,7 +151,7 @@ endpoint works.
   legacy mutation during compatibility.
 - **Release gate:** before reopening Inventory traffic, verify the independent
   target-surface flags and pass the target schema and backfill checks,
-  Item/slug/label flow, Member browse/request/cancel, operator
+  Item/slug flow, Member browse/request/cancel, operator
   approval/checkout/return/Maintenance/archive interlocks, auth responses, and
   idempotent due-date/reminder reconciliation. A mismatch, privacy breach,
   duplicate reminder, or smoke failure is a no-go.
@@ -163,8 +160,8 @@ endpoint works.
 
 Do not add bulk consumables, fines, renewals, waitlists, recurring Loans,
 member-recorded returns, property defaults or advanced property types, email
-notifications, barcode hardware/schema, or general reporting/export. Camera
-scan is optional convenience after the correct slug-based flows. Utilization,
+notifications, physical labels, QR/barcode, camera scan, or general
+reporting/export. Utilization,
 member borrowing analytics, stock audits, and custom reports wait for real Loan
 volume.
 

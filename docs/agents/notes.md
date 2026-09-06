@@ -3,6 +3,7 @@
 ## Opencode config
 
 - Project `opencode.json` disables `sentry_*` MCP tools by default via top-level `tools` and exposes them only through the primary `triaging` agent. Restart opencode after config edits before expecting agent/MCP tool changes to take effect.
+- OpenCode V2 local plugins auto-load from `.opencode/plugins/` — do not list files there in `opencode.json` `plugins` (file entries log "configured plugin path must be a directory"). V2 plugins import `@opencode-ai/plugin`, which must be installed at the workspace root pinned to the running `opencode2` beta (e.g. `pnpm add -w -D @opencode-ai/plugin@0.0.0-beta-18999`); without it every plugin fails with "Cannot find package". To block a tool, use a `ctx.permission.hook("evaluate", ...)` hook setting `event.effect = "deny"` — throwing from `ctx.tool.hook("execute.before")` is a V1 pattern.
 
 ## SvelteKit (current)
 

@@ -92,7 +92,7 @@ active Category/Container dependencies and required property values.
 | Maintenance boolean and generic history writes | **Replace** | Use retained Maintenance Periods and Loans; preserve old history read-only as legacy evidence. |
 | Cascade deletion | **Correct** | Replace Item-history and Container-parent cascades with restrictive FKs plus archive/restore rules. |
 | Existing Svelte management pages/skipped E2E | **Replace** | Build member catalog/request/history and operator management/queue/actions from target generated types. |
-| Physical labels and QR scan | **Build** | Label printing is in the first target release once slugs exist. QR camera scan is an optional convenience adapter; it chooses the normal slug route and never authorizes or acts. |
+| Physical labels, QR/barcode, and camera scan | **Exclude from v1** | No label printing, QR deep link, scanner adapter, or barcode schema. Item identification is typed slug/search only. |
 
 ## Additive database target
 
@@ -270,8 +270,8 @@ of mutating legacy Item schemas in place:
 
 | Contract | Required target operations |
 | --- | --- |
-| Catalog operations | Member-safe Item list/filter/detail, immutable slug lookup/deep link, derived label, facets, generic availability reason, no borrower/operator leakage. |
-| Management operations | Operator Category/Definition/Option, Container, Item management; typed values; explicit archive/restore/delete eligibility; label-print payload. |
+| Catalog operations | Member-safe Item list/filter/detail, immutable slug lookup, derived label, facets, generic availability reason, no borrower/operator leakage. |
+| Management operations | Operator Category/Definition/Option, Container, Item management; typed values; explicit archive/restore/delete eligibility. |
 | Maintenance operations | Operator start/end/list retained Maintenance Periods. |
 | Loan operations | Member request/list/detail/cancel; operator list/detail/queue/counts and approve/reject/cancel/checkout/return/due-date commands. Explicit `409` conflict and `422` invalid transition errors. |
 
@@ -379,9 +379,8 @@ Deliver small slices in this dependency order:
 
 1. operator Structure;
 2. operator Items/Maintenance;
-3. member Catalog/request/own history and physical label printing;
-4. operator Loan queue/commands and notifications/reminders; then
-5. optional camera scan adapter.
+3. member Catalog/request/own history;
+4. operator Loan queue/commands and notifications/reminders.
 
 Gate target reads and commands separately. Exercise them first with designated
 test accounts against migrated backup/staging data. Remove legacy navigation
@@ -423,8 +422,8 @@ not production `mix ecto.rollback`.
 - Every destructive/contract migration has zero-anomaly aggregate gates and
   aborts on a mapping, quantity, cycle, collision, orphan, or reference error;
   no skip lists.
-- A server-side flag independently stops target catalog reads, target commands,
-  and scan/label UI without re-enabling unsafe legacy semantics.
+- A server-side flag independently stops target catalog reads and target commands
+  without re-enabling unsafe legacy semantics.
 - Preserve verified pre-cutover backup and exact release IDs. On failure: keep
   maintenance enabled, stop writes, preserve aggregate evidence, restore,
   redeploy old pair, smoke test old pair, then reopen.
@@ -468,7 +467,7 @@ interface cannot reveal.
 - The existing Playwright harness migration remains deferred by `CONTEXT.md`.
   Record the target browser scenarios—member browse/request/cancel/history,
   competing approval, handover/return, Maintenance/movement interlocks,
-  archive, and QR slug fallback—for that later harness ticket; do not unskip
+  archive—for that later harness ticket; do not unskip
   the obsolete quantity/JSON suites as part of this delivery.
 - Rehearse profile → expand/backfill → target smoke → restore → legacy rollback
   on restored production backup, keeping only aggregate artifacts.
@@ -478,7 +477,7 @@ interface cannot reveal.
 Record pass/fail before reopening traffic for:
 
 1. target schema version and preflight/backfill aggregate checks;
-2. operator Item create/search/printed-slug resolution;
+2. operator Item create/search/slug resolution;
 3. Member available/unavailable browse without leakage, request, and cancel;
 4. operator approval, competing-request rejection, checkout, return,
    Maintenance, and archive interlock;
@@ -502,5 +501,5 @@ path.
    Loan/reminder slice.
 4. Legacy actor references and photo storage ownership remain preserved until
    profile evidence proves a safe disposition.
-5. QR camera support and printed labels are convenience adapters; neither is a
-   prerequisite for correct server-side commands.
+5. Physical labels, QR/barcode, and camera scan are out of scope for v1; do not
+   build label printing, QR deep links, scanner adapters, or barcode schemas.
