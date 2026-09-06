@@ -7,6 +7,8 @@ allowBuilds:
   better-sqlite3: true
   core-js: true
   esbuild: true
+  msgpackr-extract: set this to true or false
+  protobufjs: set this to true or false
   sharp: true
   workerd: true
 

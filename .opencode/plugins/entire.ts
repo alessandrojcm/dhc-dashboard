@@ -4,7 +4,7 @@
 // Requires Bun runtime (used by OpenCode's plugin system for loading ESM plugins).
 import { Plugin } from "@opencode-ai/plugin"
 
-export const EntirePlugin = Plugin.define({
+export default Plugin.define({
   id: "entire",
   async setup(ctx) {
   const ENTIRE_CMD = "entire"

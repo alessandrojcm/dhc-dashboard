@@ -29,6 +29,5 @@
         { "action": "sentry_*", "resource": "*", "effect": "allow" }
       ]
     }
-  },
-  "plugins": ["./.opencode/plugins/git-guardian.ts", "./.opencode/plugins/entire.ts"]
+  }
 }

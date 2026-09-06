@@ -14,7 +14,6 @@ route:
 ```
 /dashboard/inventory/prototype/mobile-workflows?variant=member
 /dashboard/inventory/prototype/mobile-workflows?variant=queue
-/dashboard/inventory/prototype/mobile-workflows?variant=scan
 ```
 
 It uses local sample state only. In development, the floating control can also
@@ -45,7 +44,7 @@ is compiled out of production builds.
 2. A request card has Member, Item, requested dates/note, and the single next
    decision: approve or reject. Approval collects the final dates/note and
    atomically reserves the Item and rejects competing requests.
-3. A ready-to-handover card shows the Item label/slug and Container path.
+3. A ready-to-handover card shows the derived Item label/slug and Container path.
    After the operator checks the physical Item, the one primary action records
    checkout. A checked-out or overdue card similarly offers return. This keeps
    the retained Loan lifecycle visible without exposing invalid transitions.
@@ -54,24 +53,12 @@ is compiled out of production builds.
    checked out), start Maintenance with a reason, or end Maintenance with an
    optional note. The backend remains the concurrency authority.
 
-## Labels and scanning
+## Labels and scanning — out of scope for v1
 
-**Adopt physical Item labels in the first release.** Every label shows the
-immutable, human-readable Item slug in plain text and a QR code that resolves
-to the Item by slug. The system-generated slug is already the stable physical
-identity; a label does not introduce a second identifier.
-
-**Adopt QR scan entry as an operator convenience, not as a prerequisite.** A
-scan must resolve to the same authenticated Item detail/action route as a typed
-slug or ordinary search. Camera denial, poor connectivity, damaged labels, and
-manual collection all retain the human-readable slug fallback. Do not add a
-separate barcode representation or scanner-only API in v1. QR is preferable to
-linear barcodes because the label can encode/deep-link the Item URL while the
-slug remains visible and manually searchable.
-
-The scan result must not bypass authorization or state validation. It only
-selects an Item; the normal command endpoint determines whether checkout,
-return, move, or Maintenance is legal.
+No physical Item labels, QR codes, barcodes, or camera scan in the first
+release. Item identification is typed slug/search only; there is no
+label-printing surface, no QR deep link, no scanner adapter, and no
+barcode schema. Do not build them.
 
 ## Search, queue, and reporting scope
 
@@ -95,12 +82,11 @@ without a new workflow model.
 - Add a Member-facing inventory browse/detail/request capability distinct from
   Inventory Operator Category/Container management.
 - Add Loan list/detail and queue contracts alongside the lifecycle decisions in
-  ALE-273; return Item labels, slug, derived availability, and the Container
+  ALE-273; return derived Item labels, slug, derived availability, and the Container
   path only where the viewer is entitled to see it.
-- Add a slug lookup/deep link that the QR code can target, a label-printing
-  surface, and an optional browser scanner adapter owned by the web UI. No
-  scanner package, hardware integration, or barcode schema is chosen by this
-  prototype.
+- Add a slug lookup over the immutable slug alongside ordinary search. No
+  label-printing surface, no QR deep link, no scanner adapter, and no barcode
+  schema in v1.
 - Ensure queue counters and search are projections/queries only; approvals,
   checkouts, returns, moves, and Maintenance remain atomic Phoenix commands.
 
@@ -110,9 +96,9 @@ without a new workflow model.
   a request.
 - Two Members request the same available Item. The operator approves one; the
   other ordinary request is rejected, and the queue no longer offers it.
-- A QR label is scanned at the rack while the Item has an approved Loan: the
-  action screen offers checkout, not movement or Maintenance.
+- An operator at the rack with an approved Loan sees checkout offered for that
+  Item, not movement or Maintenance.
 - An Item returns with a fault: record return first, then start Maintenance
   with its reason. There is no return-condition subdomain in v1.
-- A label is damaged or a camera is unavailable: search the printed slug and
-  perform the same action path.
+- An operator identifies an Item by typed slug/search and performs the same
+  action path; there is no scan fallback because there is no scan in v1.
