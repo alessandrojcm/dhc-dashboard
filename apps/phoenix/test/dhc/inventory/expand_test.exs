@@ -1,93 +1,17 @@
 defmodule Dhc.Inventory.ExpandTest do
   @moduledoc """
-  ALE-282 expand: additive target tables and kill flags.
+  ALE-282: target inventory tables (nuke-ok, no backfill).
 
-  Proves the expand migration deployed cleanly (tables, restrictive keys,
-  backstop constraints), that each target surface stops via its flag without
-  restoring legacy writes, and that legacy behavior is untouched (no backfill,
-  no dual-write).
+  Proves the target storage migration deployed cleanly (tables, restrictive
+  keys, backstop constraints). Legacy inventory is unused — rows need no
+  preservation, no backfill, no dual-write.
   """
 
   use Dhc.DataCase, async: false
 
   alias Dhc.Auth.Principal
   alias Dhc.Inventory
-  alias Dhc.Inventory.TargetFlags
   alias Dhc.Repo
-
-  setup do
-    original = Application.get_env(:dhc, TargetFlags)
-
-    on_exit(fn ->
-      if original == nil do
-        Application.delete_env(:dhc, TargetFlags)
-      else
-        Application.put_env(:dhc, TargetFlags, original)
-      end
-    end)
-
-    Application.put_env(:dhc, TargetFlags,
-      catalog_reads_enabled: false,
-      commands_enabled: false
-    )
-
-    :ok
-  end
-
-  describe "kill flags" do
-    test "both surfaces default to stopped" do
-      refute TargetFlags.catalog_reads_enabled?()
-      refute TargetFlags.commands_enabled?()
-      assert {:error, :disabled} = TargetFlags.ensure_catalog_reads()
-      assert {:error, :disabled} = TargetFlags.ensure_commands()
-    end
-
-    test "each surface toggles independently" do
-      Application.put_env(:dhc, TargetFlags,
-        catalog_reads_enabled: true,
-        commands_enabled: false
-      )
-
-      assert TargetFlags.catalog_reads_enabled?()
-      refute TargetFlags.commands_enabled?()
-      assert :ok = TargetFlags.ensure_catalog_reads()
-      assert {:error, :disabled} = TargetFlags.ensure_commands()
-
-      Application.put_env(:dhc, TargetFlags,
-        catalog_reads_enabled: false,
-        commands_enabled: true
-      )
-
-      refute TargetFlags.catalog_reads_enabled?()
-      assert TargetFlags.commands_enabled?()
-    end
-
-    test "stopping a flag never restores legacy writes" do
-      # Legacy writes do not consult the flags at all: they keep working
-      # with flags on or off. Flags only gate future target entry points.
-      category = insert_category()
-      container_id = insert_container!()
-
-      Application.put_env(:dhc, TargetFlags,
-        catalog_reads_enabled: true,
-        commands_enabled: true
-      )
-
-      assert {:ok, item_id} = insert_item(container_id, category.id)
-
-      Application.put_env(:dhc, TargetFlags,
-        catalog_reads_enabled: false,
-        commands_enabled: false
-      )
-
-      assert {:ok, _} = insert_item(container_id, category.id)
-
-      assert %{rows: [[_]]} =
-               Repo.query!("SELECT id FROM inventory_items WHERE id = $1", [
-                 Ecto.UUID.dump!(item_id)
-               ])
-    end
-  end
 
   describe "no target command is reachable" do
     test "public seam exposes no target lifecycle functions" do
@@ -264,15 +188,10 @@ defmodule Dhc.Inventory.ExpandTest do
       assert definition_id != nil
     end
 
-    test "legacy behavior is untouched: quantity/JSON columns still work, no backfill needed" do
+    test "new target columns default to NULL: legacy rows need no preservation" do
       category = insert_category()
       container_id = insert_container!()
       {:ok, item_id} = insert_item(container_id, category.id, quantity: 3)
-
-      assert %{rows: [[3]]} =
-               Repo.query!("SELECT quantity FROM inventory_items WHERE id = $1", [
-                 Ecto.UUID.dump!(item_id)
-               ])
 
       # New target columns default to NULL — legacy rows need no preservation.
       assert %{rows: [[nil, nil]]} =

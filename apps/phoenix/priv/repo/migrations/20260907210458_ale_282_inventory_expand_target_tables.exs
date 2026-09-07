@@ -1,15 +1,13 @@
 defmodule Dhc.Repo.Migrations.Ale282InventoryExpandTargetTables do
   @moduledoc """
-  ALE-282 expand: additive target inventory tables and kill-flag storage.
+  ALE-282: target inventory tables (nuke-ok, no backfill).
 
-  Purely additive — no existing column, constraint, or row is modified or
-  removed, so legacy behavior is untouched and the migration is fully
-  reversible. No target command is exposed by this migration; the
-  `Dhc.Inventory.TargetFlags` server-side flags (default off) gate every
-  future target read/command surface independently.
+  Creates the target inventory storage directly. Legacy inventory is unused
+  (ALE-281 decision): legacy rows need no preservation, no backfill, and no
+  dual-write — cutover wipes or ignores them. No target command is exposed
+  by this migration.
 
-  Adds (per ALE-272 "Additive database target", as adjusted by the ALE-281
-  decision — legacy rows need no preservation, no backfill, no dual-write):
+  Adds:
 
     * `inventory_items.slug` (nullable, unique where present) backed by the
       `inventory_item_slug_seq` sequence. Slugs are minted server-side as
@@ -28,9 +26,8 @@ defmodule Dhc.Repo.Migrations.Ale282InventoryExpandTargetTables do
 
   Every new foreign key uses `ON DELETE RESTRICT` (`:nothing`) so a
   destructive bypass fails at the database. Existing legacy cascades
-  (`containers.parent_container_id`, `inventory_history.item_id`) are
-  deliberately left untouched here — tightening them would change legacy
-  delete behavior; that moves to the contract stage (ALE-289).
+  (`containers.parent_container_id`, `inventory_history.item_id`) are left
+  as-is: legacy inventory is unused and will be wiped, not migrated.
   """
 
   use Ecto.Migration

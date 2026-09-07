@@ -112,12 +112,12 @@ defmodule Dhc.AuthMigrationFixtures do
 
   The rehearsal starts from a pre-M2 backup, while testcontainers migrates the
   database through the full stack. Recreate the empty history table, remove the
-  later Notification ownership FK, drop the later additive inventory expand
+  later Notification ownership FK, drop the later target inventory
   tables/columns (ALE-282), and restore the old ownership column names
   before `M2.rollback!/1` rebuilds the legacy auth foreign keys.
   """
   def restore_pre_m2_schema! do
-    # ALE-282 expand tables reference `principals.id` with restrictive FKs.
+    # ALE-282 target tables reference `principals.id` with restrictive FKs.
     # A genuine pre-M2 backup predates them, so drop them in reverse
     # dependency order (no CASCADE — the order is explicit).
     repo().query!("DROP TABLE IF EXISTS inventory_loan_reminders", [])
