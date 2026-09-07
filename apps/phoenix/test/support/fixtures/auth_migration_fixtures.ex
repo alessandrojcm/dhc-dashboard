@@ -111,11 +111,36 @@ defmodule Dhc.AuthMigrationFixtures do
   Restores schema objects changed by migrations that shipped after M2.
 
   The rehearsal starts from a pre-M2 backup, while testcontainers migrates the
-  database through ALE-186 first. Recreate the empty history table, remove the
-  later Notification ownership FK, and restore the old ownership column names
+  database through the full stack. Recreate the empty history table, remove the
+  later Notification ownership FK, drop the later additive inventory expand
+  tables/columns (ALE-282), and restore the old ownership column names
   before `M2.rollback!/1` rebuilds the legacy auth foreign keys.
   """
   def restore_pre_m2_schema! do
+    # ALE-282 expand tables reference `principals.id` with restrictive FKs.
+    # A genuine pre-M2 backup predates them, so drop them in reverse
+    # dependency order (no CASCADE — the order is explicit).
+    repo().query!("DROP TABLE IF EXISTS inventory_loan_reminders", [])
+    repo().query!("DROP TABLE IF EXISTS inventory_loans", [])
+    repo().query!("DROP TABLE IF EXISTS inventory_maintenance_periods", [])
+    repo().query!("DROP TABLE IF EXISTS inventory_item_property_values", [])
+    repo().query!("DROP TABLE IF EXISTS inventory_property_options", [])
+    repo().query!("DROP TABLE IF EXISTS inventory_property_definitions", [])
+
+    repo().query!(
+      """
+      ALTER TABLE inventory_items
+        DROP COLUMN IF EXISTS slug,
+        DROP COLUMN IF EXISTS archived_at,
+        DROP COLUMN IF EXISTS archived_by_principal_id
+      """,
+      []
+    )
+
+    repo().query!("ALTER TABLE equipment_categories DROP COLUMN IF EXISTS archived_at", [])
+    repo().query!("ALTER TABLE containers DROP COLUMN IF EXISTS archived_at", [])
+    repo().query!("DROP SEQUENCE IF EXISTS inventory_item_slug_seq", [])
+
     repo().query!(
       """
       CREATE TABLE IF NOT EXISTS waitlist_status_history (
