@@ -81,7 +81,11 @@ defmodule Dhc.Inventory.ExpandTest do
       )
 
       assert {:ok, _} = insert_item(container_id, category.id)
-      assert Repo.get(:inventory_items, item_id) != nil
+
+      assert %{rows: [[_]]} =
+               Repo.query!("SELECT id FROM inventory_items WHERE id = $1", [
+                 Ecto.UUID.dump!(item_id)
+               ])
     end
   end
 
@@ -172,8 +176,8 @@ defmodule Dhc.Inventory.ExpandTest do
       end
 
       # Exactly one value is fine.
-      assert {:ok, _} =
-               Repo.query(
+      assert %Postgrex.Result{} =
+               Repo.query!(
                  "INSERT INTO inventory_item_property_values (item_id, property_definition_id, option_id, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW())",
                  [
                    Ecto.UUID.dump!(item_id),
@@ -319,8 +323,8 @@ defmodule Dhc.Inventory.ExpandTest do
     user_id = insert_principal!()
     container_id = Ecto.UUID.generate()
 
-    {:ok, _} =
-      Repo.query(
+    %Postgrex.Result{} =
+      Repo.query!(
         "INSERT INTO containers (id, name, created_by, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW())",
         [Ecto.UUID.dump!(container_id), "Expand Container", Ecto.UUID.dump!(user_id)]
       )
@@ -332,8 +336,8 @@ defmodule Dhc.Inventory.ExpandTest do
     item_id = Ecto.UUID.generate()
     quantity = Keyword.get(opts, :quantity, 1)
 
-    {:ok, _} =
-      Repo.query(
+    %Postgrex.Result{} =
+      Repo.query!(
         "INSERT INTO inventory_items (id, container_id, category_id, attributes, quantity, created_at, updated_at) VALUES ($1, $2, $3, '{}'::jsonb, $4, NOW(), NOW())",
         [
           Ecto.UUID.dump!(item_id),
@@ -349,8 +353,8 @@ defmodule Dhc.Inventory.ExpandTest do
   defp insert_definition!(category_id, label) do
     definition_id = Ecto.UUID.generate()
 
-    {:ok, _} =
-      Repo.query(
+    %Postgrex.Result{} =
+      Repo.query!(
         "INSERT INTO inventory_property_definitions (id, category_id, label, value_type, required, created_at, updated_at) VALUES ($1, $2, $3, 'single_select', FALSE, NOW(), NOW())",
         [Ecto.UUID.dump!(definition_id), Ecto.UUID.dump!(category_id), label]
       )
@@ -361,8 +365,8 @@ defmodule Dhc.Inventory.ExpandTest do
   defp insert_option!(definition_id, label) do
     option_id = Ecto.UUID.generate()
 
-    {:ok, _} =
-      Repo.query(
+    %Postgrex.Result{} =
+      Repo.query!(
         "INSERT INTO inventory_property_options (id, property_definition_id, label, position, created_at, updated_at) VALUES ($1, $2, $3, 0, NOW(), NOW())",
         [Ecto.UUID.dump!(option_id), Ecto.UUID.dump!(definition_id), label]
       )
@@ -373,8 +377,8 @@ defmodule Dhc.Inventory.ExpandTest do
   defp insert_maintenance!(item_id, principal_id, reason) do
     maintenance_id = Ecto.UUID.generate()
 
-    {:ok, _} =
-      Repo.query(
+    %Postgrex.Result{} =
+      Repo.query!(
         "INSERT INTO inventory_maintenance_periods (id, item_id, started_at, started_by_principal_id, start_reason, created_at, updated_at) VALUES ($1, $2, NOW(), $3, $4, NOW(), NOW())",
         [
           Ecto.UUID.dump!(maintenance_id),
@@ -390,8 +394,8 @@ defmodule Dhc.Inventory.ExpandTest do
   defp insert_loan!(item_id, borrower_id, status) do
     loan_id = Ecto.UUID.generate()
 
-    {:ok, _} =
-      Repo.query(
+    %Postgrex.Result{} =
+      Repo.query!(
         """
         INSERT INTO inventory_loans
           (id, item_id, borrower_principal_id, status, requested_start_on, requested_due_on,
@@ -407,8 +411,8 @@ defmodule Dhc.Inventory.ExpandTest do
   defp insert_reminder!(loan_id, recipient_id, kind, revision) do
     reminder_id = Ecto.UUID.generate()
 
-    {:ok, _} =
-      Repo.query(
+    %Postgrex.Result{} =
+      Repo.query!(
         "INSERT INTO inventory_loan_reminders (id, loan_id, recipient_principal_id, kind, due_on_revision, scheduled_for, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, NOW() + INTERVAL '1 day', NOW(), NOW())",
         [
           Ecto.UUID.dump!(reminder_id),
