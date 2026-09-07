@@ -29,6 +29,10 @@ defmodule Dhc.Inventory.EquipmentCategory do
     # Persisted for future item-attribute validation; not exposed in the
     # ALE-105 category contract.
     field :attribute_schema, Dhc.Inventory.JsonArray
+    # ALE-282 target column: set when the category is archived instead of
+    # hard-deleted. ALE-283b owns the archive/restore commands; the field
+    # exists here so structure reads can distinguish active rows.
+    field :archived_at, :utc_datetime_usec
 
     # Optional aggregate populated by `Dhc.Inventory` read helpers. Not a
     # column — set via `inspect/2` query disables / or assigned directly.
