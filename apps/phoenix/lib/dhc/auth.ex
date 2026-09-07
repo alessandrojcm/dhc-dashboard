@@ -514,6 +514,24 @@ defmodule Dhc.Auth do
   end
 
   @doc """
+  Looks up the session Principal **and** its access projection in one query.
+
+  Combines `get_principal_by_session_token/1` and `load_session_principal/1`
+  for the per-request hot path (`DhcWeb.Plugs.RequireSession`), halving the
+  authentication round trips. Returns the same projection shape as
+  `load_session_principal/1`, `{:error, :invalid}` for a bad/expired token,
+  or `{:error, :no_profile}` when the Principal has no `user_profiles` row.
+  """
+  def get_session_projection(token) do
+    {:ok, query} = PrincipalToken.verify_session_projection_query(token)
+
+    case Repo.one(query) do
+      nil -> {:error, :invalid}
+      row -> normalize_session_projection(row)
+    end
+  end
+
+  @doc """
   Resolves a valid raw session token to its non-secret row UUID.
 
   The UUID can be retained by a server-managed multi-request flow without
@@ -752,18 +770,20 @@ defmodule Dhc.Auth do
         }
 
     case Repo.one(query) do
-      nil ->
-        {:error, :no_profile}
-
-      %{principal: _principal, is_active: nil} ->
-        # Left join produced a row (the Principal exists) but no user_profiles
-        # matched — the Principal has no Member profile, so it has no club
-        # access. Treat as no_profile: the request plug returns 401.
-        {:error, :no_profile}
-
-      %{principal: principal, is_active: is_active, roles: roles} ->
-        roles = roles |> Enum.filter(&is_binary/1) |> Enum.reject(&(&1 == ""))
-        {:ok, %{principal: principal, is_active: is_active, roles: roles}}
+      nil -> {:error, :no_profile}
+      row -> normalize_session_projection(row)
     end
+  end
+
+  defp normalize_session_projection(%{is_active: nil}) do
+    # The join produced a row (the Principal exists) but no user_profiles
+    # matched — the Principal has no Member profile, so it has no club
+    # access. Treat as no_profile: the request plug returns 401.
+    {:error, :no_profile}
+  end
+
+  defp normalize_session_projection(%{principal: principal, is_active: is_active, roles: roles}) do
+    roles = roles |> Enum.filter(&is_binary/1) |> Enum.reject(&(&1 == ""))
+    {:ok, %{principal: principal, is_active: is_active, roles: roles}}
   end
 end

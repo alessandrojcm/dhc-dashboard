@@ -71,8 +71,7 @@ defmodule DhcWeb.Plugs.RequireSession do
 
   defp authenticate(conn) do
     with {:ok, token} <- session_token(conn),
-         {:ok, principal} <- Dhc.Auth.get_principal_by_session_token(token),
-         {:ok, projection} <- Dhc.Auth.load_session_principal(principal) do
+         {:ok, projection} <- Dhc.Auth.get_session_projection(token) do
       {:ok, token, projection}
     else
       {:error, :missing_token} -> test_projection(conn)

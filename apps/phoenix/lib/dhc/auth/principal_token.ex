@@ -122,6 +122,38 @@ defmodule Dhc.Auth.PrincipalToken do
   end
 
   @doc """
+  Query that verifies a session token and loads the access projection —
+  `user_profiles.is_active` plus aggregated `user_roles` — in the same round
+  trip.
+
+  Combines `verify_session_token_query/1` with the projection join that
+  `Dhc.Auth.load_session_principal/1` runs, so the request plug authenticates
+  with one query instead of two. Selects
+  `%{principal: principal, is_active: boolean | nil, roles: [String.t()]}`;
+  a `nil` `is_active` means the Principal has no `user_profiles` row.
+  """
+  def verify_session_projection_query(token) do
+    hashed_token = hash_token(token)
+
+    query =
+      from t in by_token_and_context_query(hashed_token, "session"),
+        join: p in assoc(t, :principal),
+        left_join: profile in "user_profiles",
+        on: profile.principal_id == p.id,
+        left_join: ur in "user_roles",
+        on: ur.principal_id == p.id,
+        where: t.created_at > ago(@session_validity_in_days, "day"),
+        group_by: [t.id, p.id, profile.is_active],
+        select: %{
+          principal: %{p | authenticated_at: t.authenticated_at},
+          is_active: profile.is_active,
+          roles: fragment("array_agg(?)", ur.role)
+        }
+
+    {:ok, query}
+  end
+
+  @doc """
   Query that verifies a non-secret session row reference.
 
   The reference is the session row UUID, not the raw bearer token. It is used
