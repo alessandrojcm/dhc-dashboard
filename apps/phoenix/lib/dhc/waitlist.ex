@@ -80,12 +80,17 @@ defmodule Dhc.Waitlist do
           age_distribution: [%{age: non_neg_integer(), value: non_neg_integer()}]
         }
   def analytics do
-    %{
-      total_count: total_count(),
-      average_age: average_age(),
-      gender_distribution: gender_distribution(),
-      age_distribution: age_distribution()
-    }
+    # The four aggregates are independent scans over the same base join; run
+    # them concurrently so response latency is the slowest scan, not the sum.
+    # Each task checks out its own pool connection.
+    [
+      total_count: &total_count/0,
+      average_age: &average_age/0,
+      gender_distribution: &gender_distribution/0,
+      age_distribution: &age_distribution/0
+    ]
+    |> Task.async_stream(fn {key, fun} -> {key, fun.()} end, timeout: :infinity)
+    |> Map.new(fn {:ok, {key, value}} -> {key, value} end)
   end
 
   @doc """
