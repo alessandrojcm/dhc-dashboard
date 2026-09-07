@@ -17,6 +17,12 @@ if membership_tier_coupons != [] do
   config :dhc, :membership_tier_coupons, membership_tier_coupons
 end
 
+# ALE-282 expand kill flags. Env vars flip each target surface independently;
+# anything other than "true"/"1" keeps the surface stopped.
+config :dhc, Dhc.Inventory.TargetFlags,
+  catalog_reads_enabled: System.get_env("INVENTORY_TARGET_CATALOG_READS") in ~w(true 1),
+  commands_enabled: System.get_env("INVENTORY_TARGET_COMMANDS") in ~w(true 1)
+
 if config_env() == :prod do
   if is_nil(discord_bot_token) or String.trim(discord_bot_token) == "" do
     raise "environment variable DISCORD_BOT_TOKEN is missing"

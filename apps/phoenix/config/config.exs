@@ -36,6 +36,14 @@ config :dhc, :invitation_payment_processor, Dhc.Invitations.StripePayment
 config :dhc, :onboarding_stripe_adapter, Dhc.Onboarding.StripeAdapter.Live
 config :dhc, :workshop_stripe_adapter, Dhc.Workshops.StripeAdapter.Live
 
+# ALE-282 expand kill flags. Both default to false: deploying the additive
+# target tables exposes nothing. Each target surface is stopped independently
+# via these flags without restoring legacy writes. Runtime overrides come
+# from `INVENTORY_TARGET_CATALOG_READS` / `INVENTORY_TARGET_COMMANDS`.
+config :dhc, Dhc.Inventory.TargetFlags,
+  catalog_reads_enabled: false,
+  commands_enabled: false
+
 # Private Stripe coupon IDs backing invitation pricing tiers (see
 # Dhc.Invitations.Pricing.tier_coupon_id/1). These coupons are applied directly
 # by the backend: coach = percent_off 100 / duration forever; student =
