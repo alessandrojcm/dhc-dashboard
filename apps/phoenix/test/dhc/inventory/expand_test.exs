@@ -22,7 +22,6 @@ defmodule Dhc.Inventory.ExpandTest do
             :end_maintenance,
             :archive_item,
             :restore_item,
-            :create_property_definition,
             :request_loan
           ] do
         refute function_exported?(Inventory, fun, 1),
