@@ -159,10 +159,20 @@ defmodule Dhc.Workshops do
   @spec list_member_workshops(binary(), map()) :: [map()]
   def list_member_workshops(user_id, params \\ %{}) when is_binary(user_id) and is_map(params) do
     statuses = member_status_filter(Map.get(params, "status"))
+    summaries = list_workshop_summaries(statuses: statuses)
 
-    [statuses: statuses]
-    |> list_workshop_summaries()
-    |> Enum.map(&with_current_user_state(&1, user_id))
+    # Batch the current-user state for the whole page in two queries instead
+    # of two queries per Workshop (N+1).
+    workshop_ids = Enum.map(summaries, & &1.id)
+    interested_ids = interested_workshop_ids(workshop_ids, user_id)
+    registrations = registrations_by_workshop(workshop_ids, user_id)
+
+    Enum.map(summaries, fn workshop ->
+      Map.merge(workshop, %{
+        current_user_interest: MapSet.member?(interested_ids, workshop.id),
+        current_user_registration: Map.get(registrations, workshop.id)
+      })
+    end)
   end
 
   # ── Workshop summaries ────────────────────────────────────────────────
@@ -2009,13 +2019,32 @@ defmodule Dhc.Workshops do
     # explicitly against its binding because Ecto's `select` needs literal
     # field references, not a `Map.take`; keep the two in sync when adding a
     # summary field.
+    #
+    # Counts are correlated subqueries instead of a `left_join` pair: joining
+    # interests × registrations produced an I × R cartesian product per
+    # Workshop that `count(DISTINCT) FILTER` then had to collapse. Each
+    # subquery scans only its own index range.
+    interest_count =
+      from(i in WorkshopInterest,
+        where: i.club_activity_id == parent_as(:workshop).id,
+        select: count(i.id)
+      )
+
+    pending_count =
+      from(r in Registration,
+        where: r.club_activity_id == parent_as(:workshop).id and r.status == "pending",
+        select: count(r.id)
+      )
+
+    confirmed_count =
+      from(r in Registration,
+        where: r.club_activity_id == parent_as(:workshop).id and r.status == "confirmed",
+        select: count(r.id)
+      )
+
     from(w in Workshop,
-      left_join: i in WorkshopInterest,
-      on: i.club_activity_id == w.id,
-      left_join: r in Registration,
-      on: r.club_activity_id == w.id,
+      as: :workshop,
       where: is_nil(w.archived_at),
-      group_by: w.id,
       select: %{
         id: w.id,
         title: w.title,
@@ -2032,13 +2061,9 @@ defmodule Dhc.Workshops do
         announce_discord: w.announce_discord,
         announce_email: w.announce_email,
         created_by: w.created_by,
-        # `count(DISTINCT) FILTER` keeps the counts correct despite the
-        # interest × registration cartesian product from the double join.
-        interest_count: count(i.id, :distinct),
-        pending_registration_count:
-          fragment("count(DISTINCT ?) FILTER (WHERE ? = 'pending')", r.id, r.status),
-        confirmed_registration_count:
-          fragment("count(DISTINCT ?) FILTER (WHERE ? = 'confirmed')", r.id, r.status)
+        interest_count: subquery(interest_count),
+        pending_registration_count: subquery(pending_count),
+        confirmed_registration_count: subquery(confirmed_count)
       }
     )
   end
@@ -2072,11 +2097,29 @@ defmodule Dhc.Workshops do
     |> Enum.uniq()
   end
 
-  defp with_current_user_state(workshop, user_id) do
-    Map.merge(workshop, %{
-      current_user_interest: current_user_interest?(workshop.id, user_id),
-      current_user_registration: current_user_registration(workshop.id, user_id)
-    })
+  # Batched variants of `current_user_interest?/2` /
+  # `current_user_registration/2` for the member collection: one query per
+  # page instead of one per Workshop.
+  defp interested_workshop_ids([], _user_id), do: MapSet.new()
+
+  defp interested_workshop_ids(workshop_ids, user_id) do
+    from(i in WorkshopInterest,
+      where: i.club_activity_id in ^workshop_ids and i.user_id == ^user_id,
+      select: i.club_activity_id
+    )
+    |> Repo.all()
+    |> MapSet.new()
+  end
+
+  defp registrations_by_workshop([], _user_id), do: %{}
+
+  defp registrations_by_workshop(workshop_ids, user_id) do
+    from(r in Registration,
+      where: r.club_activity_id in ^workshop_ids and r.member_user_id == ^user_id,
+      select: {r.club_activity_id, %{id: r.id, status: r.status}}
+    )
+    |> Repo.all()
+    |> Map.new()
   end
 
   # ── Private: participant normalization ────────────────────────────────
