@@ -33,6 +33,9 @@ defmodule Dhc.Inventory do
   defdelegate get_container(id), to: Containers
   defdelegate create_container(attrs, actor_id), to: Containers
   defdelegate update_container(id, attrs), to: Containers
+  defdelegate move_container(id, parent_container_id), to: Containers
+  defdelegate archive_container(id), to: Containers
+  defdelegate restore_container(id), to: Containers
   defdelegate delete_container(id), to: Containers
 
   defdelegate list_items(opts \\ %{}), to: Items

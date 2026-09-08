@@ -40,6 +40,7 @@ defmodule Dhc.Inventory.Container do
     field :name, :string
     field :description, :string
     field :parent_container_id, :binary_id
+    field :archived_at, :utc_datetime_usec
     # NOT NULL FK → auth.users. Set programmatically from the JWT `sub`; never
     # cast from request params.
     field :created_by, :binary_id

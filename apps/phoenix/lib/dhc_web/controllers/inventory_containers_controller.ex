@@ -88,6 +88,9 @@ defmodule DhcWeb.InventoryContainersController do
       {:error, :circular_parent} ->
         unprocessable_detail(conn, "parentContainerId would create a cycle")
 
+      {:error, :archived_parent} ->
+        unprocessable_detail(conn, "parentContainerId must refer to an active container")
+
       {:error, changeset} ->
         unprocessable(conn, changeset)
     end
@@ -105,8 +108,7 @@ defmodule DhcWeb.InventoryContainersController do
         not_found(conn, "Container not found")
 
       {:error, :still_referenced} ->
-        # 409, matching the ALE-104 contract.
-        conflict(conn, "Container still contains inventory items")
+        conflict(conn, "Container still has child containers or inventory items")
     end
   end
 

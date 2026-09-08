@@ -510,7 +510,7 @@ defmodule DhcWeb.InventoryContainersControllerTest do
       refute "Delete Me" in names
     end
 
-    test "cascades deletion to empty child containers", %{conn: conn} do
+    test "requires child containers to be handled explicitly", %{conn: conn} do
       parent = create_container!(%{"name" => "Cascade Parent"})
       create_container!(%{"name" => "Cascade Child", "parentContainerId" => parent.id})
 
@@ -519,7 +519,12 @@ defmodule DhcWeb.InventoryContainersControllerTest do
         |> auth_conn("admin")
         |> delete("/api/inventory/containers/#{to_uuid(parent.id)}")
 
-      assert conn.status == 204
+      assert %{
+               "errors" => %{
+                 "detail" => "Container still has child containers or inventory items"
+               }
+             } =
+               json_response(conn, 409)
 
       names =
         build_conn()
@@ -529,8 +534,8 @@ defmodule DhcWeb.InventoryContainersControllerTest do
         |> get_in(["data", "containers"])
         |> Enum.map(& &1["name"])
 
-      refute "Cascade Parent" in names
-      refute "Cascade Child" in names
+      assert "Cascade Parent" in names
+      assert "Cascade Child" in names
     end
 
     test "returns 409 when the container still contains items", %{conn: conn} do
@@ -543,7 +548,11 @@ defmodule DhcWeb.InventoryContainersControllerTest do
         |> auth_conn("admin")
         |> delete("/api/inventory/containers/#{to_uuid(container.id)}")
 
-      assert %{"errors" => %{"detail" => "Container still contains inventory items"}} =
+      assert %{
+               "errors" => %{
+                 "detail" => "Container still has child containers or inventory items"
+               }
+             } =
                json_response(conn, 409)
 
       # Still exists.
