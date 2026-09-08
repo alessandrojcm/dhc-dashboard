@@ -10,6 +10,9 @@ defmodule DhcWeb.InventoryContainersController do
     * GET    /inventory/containers/:id   — detail (parent + childContainers +
       items with category summary), any authenticated member.
     * PATCH  /inventory/containers/:id   — update, write roles.
+    * POST   /inventory/containers/:id/move    — dedicated move, write roles.
+    * POST   /inventory/containers/:id/archive — archive, write roles.
+    * POST   /inventory/containers/:id/restore — restore, write roles.
     * DELETE /inventory/containers/:id   — delete (204), write roles.
 
   RBAC is enforced by the `:inventory_admin_api` (writes) and
@@ -97,6 +100,69 @@ defmodule DhcWeb.InventoryContainersController do
   end
 
   @doc """
+  POST /inventory/containers/{id}/move
+  """
+  def move(conn, %{"id" => id} = params) do
+    parent_id = Map.get(params, "parentContainerId") || Map.get(params, "parent_container_id")
+
+    case Inventory.move_container(id, parent_id) do
+      {:ok, container} ->
+        conn
+        |> put_view(json: DhcWeb.InventoryContainersJSON)
+        |> render(:item, container: container)
+
+      {:error, :not_found} ->
+        not_found(conn, "Container not found")
+
+      {:error, :circular_parent} ->
+        unprocessable_detail(conn, "parentContainerId would create a cycle")
+
+      {:error, :archived_parent} ->
+        unprocessable_detail(conn, "parentContainerId must refer to an active container")
+    end
+  end
+
+  @doc """
+  POST /inventory/containers/{id}/archive
+  """
+  def archive(conn, %{"id" => id}) do
+    case Inventory.archive_container(id) do
+      {:ok, container} ->
+        conn
+        |> put_view(json: DhcWeb.InventoryContainersJSON)
+        |> render(:item, container: container)
+
+      {:error, :not_found} ->
+        not_found(conn, "Container not found")
+
+      {:error, :active_dependants} ->
+        conflict_code(
+          conn,
+          "container still has active child containers or items",
+          "active_dependants"
+        )
+    end
+  end
+
+  @doc """
+  POST /inventory/containers/{id}/restore
+  """
+  def restore(conn, %{"id" => id}) do
+    case Inventory.restore_container(id) do
+      {:ok, container} ->
+        conn
+        |> put_view(json: DhcWeb.InventoryContainersJSON)
+        |> render(:item, container: container)
+
+      {:error, :not_found} ->
+        not_found(conn, "Container not found")
+
+      {:error, :archived_parent} ->
+        unprocessable_detail(conn, "parentContainerId must refer to an active container")
+    end
+  end
+
+  @doc """
   DELETE /inventory/containers/{id}
   """
   def delete(conn, %{"id" => id}) do
@@ -126,6 +192,13 @@ defmodule DhcWeb.InventoryContainersController do
     |> put_status(:conflict)
     |> put_view(json: DhcWeb.InventoryContainersJSON)
     |> render(:error, detail: detail)
+  end
+
+  defp conflict_code(conn, detail, code) do
+    conn
+    |> put_status(:conflict)
+    |> put_view(json: DhcWeb.InventoryContainersJSON)
+    |> render(:error, detail: detail, code: code)
   end
 
   defp unprocessable(conn, %Ecto.Changeset{} = changeset) do

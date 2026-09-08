@@ -187,6 +187,59 @@ defmodule Dhc.Inventory.ExpandTest do
       assert definition_id != nil
     end
 
+    test "typed values must match definition type and option membership" do
+      category = insert_category()
+      text_id = insert_definition!(category.id, "Note", "text")
+      select_id = insert_definition!(category.id, "Guard", "single_select")
+      option_id = insert_option!(select_id, "Large")
+      other_id = insert_definition!(category.id, "Other", "single_select")
+      other_option = insert_option!(other_id, "Small")
+      container_id = insert_container!()
+      {:ok, item_id} = insert_item(container_id, category.id)
+
+      assert_raise Postgrex.Error, ~r/value_type_match|check/i, fn ->
+        Repo.query!(
+          "INSERT INTO inventory_item_property_values (item_id, property_definition_id, boolean_value, created_at, updated_at) VALUES ($1, $2, TRUE, NOW(), NOW())",
+          [Ecto.UUID.dump!(item_id), Ecto.UUID.dump!(text_id)]
+        )
+      end
+
+      assert_raise Postgrex.Error, ~r/option_membership|check|foreign key/i, fn ->
+        Repo.query!(
+          "INSERT INTO inventory_item_property_values (item_id, property_definition_id, option_id, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW())",
+          [
+            Ecto.UUID.dump!(item_id),
+            Ecto.UUID.dump!(select_id),
+            Ecto.UUID.dump!(other_option)
+          ]
+        )
+      end
+
+      assert %Postgrex.Result{} =
+               Repo.query!(
+                 "INSERT INTO inventory_item_property_values (item_id, property_definition_id, option_id, created_at, updated_at) VALUES ($1, $2, $3, NOW(), NOW())",
+                 [
+                   Ecto.UUID.dump!(item_id),
+                   Ecto.UUID.dump!(select_id),
+                   Ecto.UUID.dump!(option_id)
+                 ]
+               )
+
+      assert_raise Postgrex.Error, ~r/value_type_match|check/i, fn ->
+        Repo.query!(
+          "UPDATE inventory_property_definitions SET value_type = 'text' WHERE id = $1",
+          [Ecto.UUID.dump!(select_id)]
+        )
+      end
+
+      assert_raise Postgrex.Error, ~r/option_membership|check/i, fn ->
+        Repo.query!(
+          "UPDATE inventory_property_options SET property_definition_id = $1 WHERE id = $2",
+          [Ecto.UUID.dump!(other_id), Ecto.UUID.dump!(option_id)]
+        )
+      end
+    end
+
     test "new target columns default to NULL: legacy rows need no preservation" do
       category = insert_category()
       container_id = insert_container!()
@@ -268,13 +321,13 @@ defmodule Dhc.Inventory.ExpandTest do
     {:ok, item_id}
   end
 
-  defp insert_definition!(category_id, label) do
+  defp insert_definition!(category_id, label, value_type \\ "single_select") do
     definition_id = Ecto.UUID.generate()
 
     %Postgrex.Result{} =
       Repo.query!(
-        "INSERT INTO inventory_property_definitions (id, category_id, label, value_type, required, created_at, updated_at) VALUES ($1, $2, $3, 'single_select', FALSE, NOW(), NOW())",
-        [Ecto.UUID.dump!(definition_id), Ecto.UUID.dump!(category_id), label]
+        "INSERT INTO inventory_property_definitions (id, category_id, label, value_type, required, created_at, updated_at) VALUES ($1, $2, $3, $4, FALSE, NOW(), NOW())",
+        [Ecto.UUID.dump!(definition_id), Ecto.UUID.dump!(category_id), label, value_type]
       )
 
     definition_id

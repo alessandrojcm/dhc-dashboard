@@ -259,6 +259,14 @@ defmodule DhcWeb.Router do
     # ALE-105: any authenticated member may read equipment categories.
     get "/inventory/categories", InventoryCategoriesController, :index
     get "/inventory/categories/:id", InventoryCategoriesController, :show
+    # ALE-283c: any authenticated member may read property definitions/options.
+    get "/inventory/categories/:categoryId/definitions", InventoryStructureController, :index
+    get "/inventory/definitions/:id", InventoryStructureController, :show
+
+    get "/inventory/definitions/:definitionId/options",
+        InventoryStructureController,
+        :index_options
+
     # ALE-106: any authenticated member may read inventory containers.
     get "/inventory/containers", InventoryContainersController, :index
     get "/inventory/containers/:id", InventoryContainersController, :show
@@ -278,6 +286,20 @@ defmodule DhcWeb.Router do
     post "/inventory/categories", InventoryCategoriesController, :create
     patch "/inventory/categories/:id", InventoryCategoriesController, :update
     delete "/inventory/categories/:id", InventoryCategoriesController, :delete
+    # ALE-283c: write roles only.
+    post "/inventory/categories/:categoryId/definitions", InventoryStructureController, :create
+    patch "/inventory/definitions/:id", InventoryStructureController, :update
+    post "/inventory/definitions/:id/retire", InventoryStructureController, :retire
+
+    post "/inventory/definitions/:definitionId/options",
+         InventoryStructureController,
+         :create_option
+
+    patch "/inventory/options/:id", InventoryStructureController, :update_option
+    post "/inventory/options/:id/retire", InventoryStructureController, :retire_option
+    post "/inventory/containers/:id/move", InventoryContainersController, :move
+    post "/inventory/containers/:id/archive", InventoryContainersController, :archive
+    post "/inventory/containers/:id/restore", InventoryContainersController, :restore
     # ALE-106: write roles only.
     post "/inventory/containers", InventoryContainersController, :create
     patch "/inventory/containers/:id", InventoryContainersController, :update

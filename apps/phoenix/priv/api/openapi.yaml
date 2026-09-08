@@ -32,6 +32,14 @@ tags:
     description: Aggregate inventory dashboard reads
     x-context: Dhc.Inventory
     x-resource: InventoryDashboard
+  - name: InventoryStructure
+    description: |
+      Operator inventory taxonomy: typed property definitions and
+      single-select options owned by a Category (ALE-283c). Categories
+      and containers keep their existing tags; this tag owns the
+      Definition/Option viewer contract.
+    x-context: Dhc.Inventory
+    x-resource: PropertyDefinition
   - name: Members
     description: |
       Member profile facts (identity, contact, preferred weapon), aggregate
@@ -3440,6 +3448,655 @@ paths:
                 $ref: "#/components/schemas/Error"
         "409":
           description: The category is still referenced by inventory items
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /inventory/categories/{categoryId}/definitions:
+    get:
+      operationId: inventoryStructure.listDefinitions
+      tags:
+        - InventoryStructure
+      summary: List property definitions for a category
+      description: |
+        Returns the operator viewer for Property Definitions owned by a
+        Category, ordered by identifying position then label. Live and
+        retired single-select options are nested so archived-only
+        references stay displayable.
+
+        Requires a valid Phoenix session (any authenticated member).
+      security:
+        - cookieSession: []
+      parameters:
+        - name: categoryId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The category id.
+      responses:
+        "200":
+          description: Property definitions for the category
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryDefinitionListResponse"
+        "401":
+          description: Missing or invalid Phoenix session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      operationId: inventoryStructure.createDefinition
+      tags:
+        - InventoryStructure
+      summary: Create a property definition
+      description: |
+        Creates a typed Property Definition on a Category. `valueType` is
+        one of `text`, `decimal`, `boolean`, or `single_select`. Labels
+        are unique case-insensitively within the Category.
+
+        Requires a Phoenix session whose roles include one of:
+        `quartermaster`, `president`, or `admin`.
+      security:
+        - cookieSession: []
+      parameters:
+        - name: categoryId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The category id.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryDefinitionCreateRequest"
+      responses:
+        "201":
+          description: The created definition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryDefinitionResponse"
+        "401":
+          description: Missing or invalid Phoenix session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a write role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No category exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: A definition with that label already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Invalid definition payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /inventory/definitions/{id}:
+    get:
+      operationId: inventoryStructure.showDefinition
+      tags:
+        - InventoryStructure
+      summary: Get one property definition
+      description: |
+        Returns a single Property Definition viewer, including live and
+        retired options.
+
+        Requires a valid Phoenix session (any authenticated member).
+      security:
+        - cookieSession: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The definition id.
+      responses:
+        "200":
+          description: The property definition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryDefinitionResponse"
+        "401":
+          description: Missing or invalid Phoenix session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No definition exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    patch:
+      operationId: inventoryStructure.updateDefinition
+      tags:
+        - InventoryStructure
+      summary: Update a property definition
+      description: |
+        Renames, requires, or reorders identifying position. `valueType`
+        is immutable once the definition is used. Making a definition
+        required is blocked until every active item has a valid value.
+
+        Requires a Phoenix session whose roles include one of:
+        `quartermaster`, `president`, or `admin`.
+      security:
+        - cookieSession: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The definition id.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryDefinitionUpdateRequest"
+      responses:
+        "200":
+          description: The updated definition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryDefinitionResponse"
+        "401":
+          description: Missing or invalid Phoenix session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a write role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No definition exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: A definition with that label already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Invalid payload, type immutable, or required blocked
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /inventory/definitions/{id}/retire:
+    post:
+      operationId: inventoryStructure.retireDefinition
+      tags:
+        - InventoryStructure
+      summary: Retire a property definition
+      description: |
+        Retires a Property Definition from current Item forms. Active
+        values must be cleared or migrated first; archived-only
+        references may retire and stay displayable.
+
+        Requires a Phoenix session whose roles include one of:
+        `quartermaster`, `president`, or `admin`.
+      security:
+        - cookieSession: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The definition id.
+      responses:
+        "200":
+          description: The retired definition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryDefinitionResponse"
+        "401":
+          description: Missing or invalid Phoenix session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a write role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No definition exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: The definition is still referenced by active item values
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /inventory/definitions/{definitionId}/options:
+    get:
+      operationId: inventoryStructure.listOptions
+      tags:
+        - InventoryStructure
+      summary: List options for a property definition
+      description: |
+        Returns single-select options for a Property Definition, including
+        retired options so archived-only references stay displayable.
+
+        Requires a valid Phoenix session (any authenticated member).
+      security:
+        - cookieSession: []
+      parameters:
+        - name: definitionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The definition id.
+      responses:
+        "200":
+          description: Options for the definition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOptionListResponse"
+        "401":
+          description: Missing or invalid Phoenix session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      operationId: inventoryStructure.createOption
+      tags:
+        - InventoryStructure
+      summary: Create a single-select option
+      description: |
+        Creates an option on a `single_select` Property Definition.
+        Labels are unique case-insensitively within the Definition.
+
+        Requires a Phoenix session whose roles include one of:
+        `quartermaster`, `president`, or `admin`.
+      security:
+        - cookieSession: []
+      parameters:
+        - name: definitionId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The definition id.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryOptionCreateRequest"
+      responses:
+        "201":
+          description: The created option
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOptionResponse"
+        "401":
+          description: Missing or invalid Phoenix session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a write role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No definition exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: An option with that label already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Invalid payload or definition is not single_select
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /inventory/options/{id}:
+    patch:
+      operationId: inventoryStructure.updateOption
+      tags:
+        - InventoryStructure
+      summary: Update a single-select option
+      description: |
+        Renames or reorders a single-select option. Identity is stable.
+
+        Requires a Phoenix session whose roles include one of:
+        `quartermaster`, `president`, or `admin`.
+      security:
+        - cookieSession: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The option id.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryOptionUpdateRequest"
+      responses:
+        "200":
+          description: The updated option
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOptionResponse"
+        "401":
+          description: Missing or invalid Phoenix session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a write role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No option exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: An option with that label already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Invalid option payload
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /inventory/options/{id}/retire:
+    post:
+      operationId: inventoryStructure.retireOption
+      tags:
+        - InventoryStructure
+      summary: Retire a single-select option
+      description: |
+        Retires an option from current Item forms. Active values must be
+        cleared or migrated first; archived-only references may retire.
+
+        Requires a Phoenix session whose roles include one of:
+        `quartermaster`, `president`, or `admin`.
+      security:
+        - cookieSession: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The option id.
+      responses:
+        "200":
+          description: The retired option
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOptionResponse"
+        "401":
+          description: Missing or invalid Phoenix session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a write role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No option exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: The option is still referenced by active item values
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /inventory/containers/{id}/move:
+    post:
+      operationId: inventoryContainers.move
+      tags:
+        - InventoryContainers
+      summary: Move a container
+      description: |
+        Dedicated move command. Relocates the container and its whole
+        subtree under a new parent (or to the root). Rejects a
+        self/descendant parent and an archived parent.
+
+        Requires a Phoenix session whose roles include one of:
+        `quartermaster`, `president`, or `admin`.
+      security:
+        - cookieSession: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The container id.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryContainerMoveRequest"
+      responses:
+        "200":
+          description: The moved container
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryContainerListItemResponse"
+        "401":
+          description: Missing or invalid Phoenix session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a write role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No container exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: parentContainerId would create a cycle or is archived
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /inventory/containers/{id}/archive:
+    post:
+      operationId: inventoryContainers.archive
+      tags:
+        - InventoryContainers
+      summary: Archive a container
+      description: |
+        Archives a container. Active child containers and items must be
+        moved, archived, or deleted first — the command never cascades.
+
+        Requires a Phoenix session whose roles include one of:
+        `quartermaster`, `president`, or `admin`.
+      security:
+        - cookieSession: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The container id.
+      responses:
+        "200":
+          description: The archived container
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryContainerListItemResponse"
+        "401":
+          description: Missing or invalid Phoenix session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a write role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No container exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: The container still has active child containers or items
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /inventory/containers/{id}/restore:
+    post:
+      operationId: inventoryContainers.restore
+      tags:
+        - InventoryContainers
+      summary: Restore an archived container
+      description: |
+        Restores an archived container. The parent chain must be active.
+
+        Requires a Phoenix session whose roles include one of:
+        `quartermaster`, `president`, or `admin`.
+      security:
+        - cookieSession: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The container id.
+      responses:
+        "200":
+          description: The restored container
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryContainerListItemResponse"
+        "401":
+          description: Missing or invalid Phoenix session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a write role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No container exists for the given id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: parentContainerId must refer to an active container
           content:
             application/json:
               schema:
@@ -7055,6 +7712,11 @@ components:
         itemCount:
           type: integer
           description: Number of inventory items directly in this container.
+        archivedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Set when the container is archived instead of deleted.
         createdAt:
           type: string
           format: date-time
@@ -7194,6 +7856,11 @@ components:
         itemCount:
           type: integer
           description: Number of inventory items directly in this container.
+        archivedAt:
+          type: string
+          format: date-time
+          nullable: true
+          description: Set when the container is archived instead of deleted.
         createdAt:
           type: string
           format: date-time
@@ -7207,6 +7874,194 @@ components:
       properties:
         data:
           $ref: "#/components/schemas/InventoryContainerDetail"
+    InventoryPropertyOption:
+      type: object
+      description: |
+        Operator viewer for a stable single-select option. Identity is
+        immutable; `label` may change. `retiredAt` is set when the option
+        has left current Item forms but remains displayable in history.
+      required:
+        - id
+        - propertyDefinitionId
+        - label
+        - position
+        - retiredAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        propertyDefinitionId:
+          type: string
+          format: uuid
+        label:
+          type: string
+        position:
+          type: integer
+        retiredAt:
+          type: string
+          format: date-time
+          nullable: true
+    InventoryPropertyDefinition:
+      type: object
+      description: |
+        Operator viewer for a Category-owned Property Definition. Identity
+        is stable across renames. `valueType` is one of `text`, `decimal`,
+        `boolean`, or `single_select`. `identifyingPosition` orders the
+        derived Item label; null means the definition is not identifying.
+      required:
+        - id
+        - categoryId
+        - label
+        - valueType
+        - required
+        - identifyingPosition
+        - retiredAt
+        - options
+      properties:
+        id:
+          type: string
+          format: uuid
+        categoryId:
+          type: string
+          format: uuid
+        label:
+          type: string
+        valueType:
+          type: string
+          enum:
+            - text
+            - decimal
+            - boolean
+            - single_select
+        required:
+          type: boolean
+        identifyingPosition:
+          type: integer
+          nullable: true
+        retiredAt:
+          type: string
+          format: date-time
+          nullable: true
+        options:
+          type: array
+          items:
+            $ref: "#/components/schemas/InventoryPropertyOption"
+    InventoryDefinitionListResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - definitions
+          properties:
+            definitions:
+              type: array
+              items:
+                $ref: "#/components/schemas/InventoryPropertyDefinition"
+    InventoryDefinitionResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: "#/components/schemas/InventoryPropertyDefinition"
+    InventoryDefinitionCreateRequest:
+      type: object
+      required:
+        - label
+        - valueType
+      properties:
+        label:
+          type: string
+          minLength: 1
+          maxLength: 100
+        valueType:
+          type: string
+          enum:
+            - text
+            - decimal
+            - boolean
+            - single_select
+        required:
+          type: boolean
+        identifyingPosition:
+          type: integer
+          nullable: true
+          minimum: 0
+    InventoryDefinitionUpdateRequest:
+      type: object
+      properties:
+        label:
+          type: string
+          minLength: 1
+          maxLength: 100
+        valueType:
+          type: string
+          enum:
+            - text
+            - decimal
+            - boolean
+            - single_select
+        required:
+          type: boolean
+        identifyingPosition:
+          type: integer
+          nullable: true
+          minimum: 0
+    InventoryOptionListResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - options
+          properties:
+            options:
+              type: array
+              items:
+                $ref: "#/components/schemas/InventoryPropertyOption"
+    InventoryOptionResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: "#/components/schemas/InventoryPropertyOption"
+    InventoryOptionCreateRequest:
+      type: object
+      required:
+        - label
+      properties:
+        label:
+          type: string
+          minLength: 1
+          maxLength: 100
+        position:
+          type: integer
+          minimum: 0
+    InventoryOptionUpdateRequest:
+      type: object
+      properties:
+        label:
+          type: string
+          minLength: 1
+          maxLength: 100
+        position:
+          type: integer
+          minimum: 0
+    InventoryContainerMoveRequest:
+      type: object
+      properties:
+        parentContainerId:
+          type: string
+          format: uuid
+          nullable: true
+          description: |
+            New parent container id, or null to make this a root container.
     InventoryDashboardStatsResponse:
       type: object
       required:
@@ -7554,7 +8409,23 @@ components:
               type: string
               description: |
                 Optional machine-readable error code for programmatic handling,
-                e.g. `no_saved_payment_method` on membership reactivation.
+                e.g. `no_saved_payment_method` on membership reactivation,
+                `type_immutable`, `required_blocked`, `still_referenced`,
+                `not_single_select`, or `active_dependants` on inventory
+                structure commands.
+            itemIds:
+              type: array
+              items:
+                type: string
+                format: uuid
+              description: |
+                Active item ids that block making a definition required
+                (`required_blocked`).
+            activeValueCount:
+              type: integer
+              description: |
+                Number of active item values that still reference a
+                definition or option (`still_referenced`).
     AuthSessionProjection:
       type: object
       required:
