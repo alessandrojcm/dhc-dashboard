@@ -4,8 +4,7 @@ defmodule Dhc.Inventory.Structure do
 
   Owns typed property definitions and single-select options behind the
   `Dhc.Inventory` seam. Categories and containers keep their existing
-  slices; archive/restore for categories and the container hierarchy
-  guards land in ALE-283b. Viewer contracts land in ALE-283c.
+  slices. Viewer contracts live in `DhcWeb.InventoryStructureController`.
 
   Evolution gates (spec ALE-280 stories 18–21):
 

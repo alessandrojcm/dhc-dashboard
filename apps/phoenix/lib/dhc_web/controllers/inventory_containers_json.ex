@@ -31,8 +31,14 @@ defmodule DhcWeb.InventoryContainersJSON do
     %{data: render_detail(container)}
   end
 
-  def render("error.json", %{detail: detail}) do
-    %{errors: %{detail: detail}}
+  def render("error.json", assigns) do
+    errors =
+      assigns
+      |> Map.take([:detail, :code])
+      |> Enum.reject(fn {_k, v} -> is_nil(v) end)
+      |> Map.new()
+
+    %{errors: errors}
   end
 
   defp render_container(%Dhc.Inventory.Container{} = container) do
@@ -43,6 +49,7 @@ defmodule DhcWeb.InventoryContainersJSON do
       parentContainerId: container.parent_container_id,
       parentContainer: container.parent_container,
       itemCount: container.item_count || 0,
+      archivedAt: serialize_datetime(container.archived_at),
       createdAt: serialize_datetime(container.created_at),
       updatedAt: serialize_datetime(container.updated_at)
     }
@@ -58,6 +65,7 @@ defmodule DhcWeb.InventoryContainersJSON do
       childContainers: container.child_containers || [],
       items: Enum.map(container.items || [], &render_item/1),
       itemCount: container.item_count || 0,
+      archivedAt: serialize_datetime(container.archived_at),
       createdAt: serialize_datetime(container.created_at),
       updatedAt: serialize_datetime(container.updated_at)
     }
