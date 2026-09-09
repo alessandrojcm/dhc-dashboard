@@ -245,6 +245,45 @@ defmodule Dhc.Inventory.OperatorItemsTest do
       assert errors[size.id] == :retired_option
     end
 
+    test "a concurrent option retirement cannot land between validation and insert" do
+      %{category: category, container_id: container_id} = fixture()
+      {:ok, size} = create_definition(category.id, "Size", "single_select")
+      {:ok, option} = Inventory.create_option(size.id, %{"label" => "Large"})
+      actor = principal_id()
+
+      # `Structure.retire_option/1` locks the option FOR UPDATE. The create
+      # path share-locks the same row while validating, so the retirement must
+      # wait for the create to commit rather than slipping in behind it.
+      task =
+        Task.async(fn ->
+          Ecto.Adapters.SQL.Sandbox.allow(Repo, self(), self())
+          Inventory.retire_option(option.id)
+        end)
+
+      result =
+        Inventory.create_operator_item(
+          %{
+            "container_id" => container_id,
+            "category_id" => category.id,
+            "values" => %{size.id => option.id}
+          },
+          actor
+        )
+
+      Task.await(task)
+
+      # Either the create wins (and stores a then-live option) or it is
+      # rejected — never a committed active value pointing at a retired option.
+      case result do
+        {:ok, item} ->
+          assert [%{option_id: stored, option_label: "Large"}] = item.values
+          assert stored == option.id
+
+        {:error, :invalid_values, errors} ->
+          assert errors[size.id] in [:retired_option, :unknown_option]
+      end
+    end
+
     test "rejects a value for a retired definition" do
       %{category: category, container_id: container_id} = fixture()
       {:ok, brand} = create_definition(category.id, "Brand", "text")
@@ -414,6 +453,40 @@ defmodule Dhc.Inventory.OperatorItemsTest do
       assert {:ok, unchanged} = Inventory.resolve_operator_item(item.id)
       assert unchanged.notes == nil
       assert [%{text: "Regenyei"}] = unchanged.values
+    end
+
+    test "rejects non-textual notes instead of silently dropping them" do
+      %{category: category, container_id: container_id} = fixture()
+
+      assert {:error, :invalid_notes} =
+               Inventory.create_operator_item(
+                 %{
+                   "container_id" => container_id,
+                   "category_id" => category.id,
+                   "notes" => %{"structured" => "nope"}
+                 },
+                 principal_id()
+               )
+
+      {:ok, item} =
+        Inventory.create_operator_item(
+          %{
+            "container_id" => container_id,
+            "category_id" => category.id,
+            "notes" => "Chipped tip"
+          },
+          principal_id()
+        )
+
+      assert {:error, :invalid_notes} =
+               Inventory.update_operator_item(item.id, %{"notes" => 42}, principal_id())
+
+      # The rejected edit left the stored note intact.
+      assert {:ok, %{notes: "Chipped tip"}} = Inventory.resolve_operator_item(item.id)
+
+      # Explicit empty text still clears it.
+      assert {:ok, %{notes: nil}} =
+               Inventory.update_operator_item(item.id, %{"notes" => "  "}, principal_id())
     end
 
     test "is not a movement command: containerId in an edit is ignored" do

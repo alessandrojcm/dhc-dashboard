@@ -71,6 +71,7 @@ defmodule Dhc.Inventory.OperatorItems do
           | {:error, :not_found}
           | {:error, :archived_container}
           | {:error, :archived_category}
+          | {:error, :invalid_notes}
           | {:error, :invalid_values, value_errors()}
           | {:error, Ecto.Changeset.t()}
   def create_operator_item(attrs, actor_id) when is_map(attrs) and is_binary(actor_id) do
@@ -83,9 +84,10 @@ defmodule Dhc.Inventory.OperatorItems do
   defp insert_item(attrs, actor_id) do
     with {:ok, container_id} <- require_active_container(attrs[:container_id]),
          {:ok, category_id} <- require_active_category(attrs[:category_id]),
+         {:ok, notes} <- normalize_notes(attrs[:notes]),
          definitions = ItemValues.load_definitions(category_id),
          {:ok, rows} <- validate_values(definitions, attrs[:values] || %{}) do
-      item = insert_row(container_id, category_id, attrs, actor_id)
+      item = insert_row(container_id, category_id, notes, actor_id)
       ItemValues.insert_all(item.id, rows)
       project(item)
     else
@@ -94,12 +96,12 @@ defmodule Dhc.Inventory.OperatorItems do
     end
   end
 
-  defp insert_row(container_id, category_id, attrs, actor_id) do
+  defp insert_row(container_id, category_id, notes, actor_id) do
     %Item{created_by: actor_id, slug: mint_slug()}
     |> Ecto.Changeset.change(%{
       container_id: container_id,
       category_id: category_id,
-      notes: normalize_notes(attrs[:notes]),
+      notes: notes,
       # Only to satisfy the surviving legacy NOT NULL; ALE-289 drops it.
       quantity: 1
     })
@@ -122,6 +124,7 @@ defmodule Dhc.Inventory.OperatorItems do
           {:ok, item()}
           | {:error, :not_found}
           | {:error, :archived}
+          | {:error, :invalid_notes}
           | {:error, :invalid_values, value_errors()}
           | {:error, Ecto.Changeset.t()}
   def update_operator_item(slug_or_id, attrs, actor_id)
@@ -134,12 +137,13 @@ defmodule Dhc.Inventory.OperatorItems do
 
   defp edit_item(slug_or_id, attrs, actor_id) do
     with {:ok, %Item{} = item} <- lock_active_item(slug_or_id),
+         {:ok, notes} <- normalize_edit_notes(attrs),
          definitions = ItemValues.load_definitions(item.category_id),
          {:ok, rows} <- validate_edit_values(definitions, item, attrs) do
       maybe_replace_values(item.id, attrs, rows)
 
       item
-      |> apply_notes(attrs)
+      |> apply_notes(notes)
       |> Ecto.Changeset.put_change(:updated_by, actor_id)
       |> Ecto.Changeset.validate_length(:notes, max: 1000)
       |> Repo.update!()
@@ -160,10 +164,14 @@ defmodule Dhc.Inventory.OperatorItems do
   defp maybe_replace_values(_item_id, %{values: nil}, _rows), do: :ok
   defp maybe_replace_values(item_id, _attrs, rows), do: ItemValues.replace_all(item_id, rows)
 
-  defp apply_notes(%Item{} = item, attrs) do
+  # `:skip` keeps an omitted `notes` untouched; a supplied one always applies.
+  defp apply_notes(%Item{} = item, :skip), do: Ecto.Changeset.change(item, %{})
+  defp apply_notes(%Item{} = item, notes), do: Ecto.Changeset.change(item, %{notes: notes})
+
+  defp normalize_edit_notes(attrs) do
     case Map.fetch(attrs, :notes) do
-      {:ok, notes} -> Ecto.Changeset.change(item, %{notes: normalize_notes(notes)})
-      :error -> Ecto.Changeset.change(item, %{})
+      :error -> {:ok, :skip}
+      {:ok, notes} -> normalize_notes(notes)
     end
   end
 
@@ -402,16 +410,18 @@ defmodule Dhc.Inventory.OperatorItems do
     end)
   end
 
-  defp normalize_notes(nil), do: nil
+  # Notes are plain text. Empty or whitespace-only clears them; anything
+  # non-textual is rejected rather than silently dropped.
+  defp normalize_notes(nil), do: {:ok, nil}
 
   defp normalize_notes(notes) when is_binary(notes) do
     case String.trim(notes) do
-      "" -> nil
-      trimmed -> trimmed
+      "" -> {:ok, nil}
+      trimmed -> {:ok, trimmed}
     end
   end
 
-  defp normalize_notes(_notes), do: nil
+  defp normalize_notes(_notes), do: {:error, :invalid_notes}
 
   # ── Result translation ──────────────────────────────────────────
 
