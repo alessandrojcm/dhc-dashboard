@@ -31,22 +31,28 @@ defmodule Dhc.Inventory.OperatorItems do
   `quantity` is server-set to 1 solely to satisfy the surviving NOT NULL
   until ALE-289 removes the column.
 
-  Movement, maintenance periods, and archive interlocks are ALE-284b; the
-  viewer contract is ALE-284c. Editing an already archived item is refused
-  here so the read-only rule holds before those commands exist.
+  Movement, maintenance periods, and archive interlocks live in
+  `Dhc.Inventory.OperatorItemLifecycle` (ALE-284b); the viewer contract is
+  ALE-284c. Editing an archived item is refused here — restoring it first is
+  the way back. Reads project through `Dhc.Inventory.ItemProjection`, which
+  also owns the availability projection.
   """
 
   import Ecto.Query
 
-  alias Dhc.Inventory.EquipmentCategory
   alias Dhc.Inventory.Item
+  alias Dhc.Inventory.ItemGuards
+  alias Dhc.Inventory.ItemProjection
   alias Dhc.Inventory.ItemValues
   alias Dhc.Repo
+
+  import ItemGuards,
+    only: [lock_active_item: 1, require_active_container: 1, require_active_category: 1]
 
   @type item :: Item.t()
   @type value_errors :: %{String.t() => ItemValues.error_reason()}
 
-  @label_separator " · "
+  defdelegate derive_label(category_name, slug, values), to: ItemProjection
 
   # ── Reads ───────────────────────────────────────────────────────
 
@@ -57,7 +63,7 @@ defmodule Dhc.Inventory.OperatorItems do
   def resolve_operator_item(slug_or_id) when is_binary(slug_or_id) do
     case fetch_item(slug_or_id) do
       nil -> {:error, :not_found}
-      %Item{} = item -> {:ok, project(item)}
+      %Item{} = item -> {:ok, ItemProjection.project(item)}
     end
   end
 
@@ -89,7 +95,7 @@ defmodule Dhc.Inventory.OperatorItems do
          {:ok, rows} <- validate_values(definitions, attrs[:values] || %{}) do
       item = insert_row(container_id, category_id, notes, actor_id)
       ItemValues.insert_all(item.id, rows)
-      project(item)
+      ItemProjection.project(item)
     else
       {:error, reason} -> Repo.rollback(reason)
       {:error, reason, info} -> Repo.rollback({reason, info})
@@ -147,7 +153,7 @@ defmodule Dhc.Inventory.OperatorItems do
       |> Ecto.Changeset.put_change(:updated_by, actor_id)
       |> Ecto.Changeset.validate_length(:notes, max: 1000)
       |> Repo.update!()
-      |> project()
+      |> ItemProjection.project()
     else
       {:error, reason} -> Repo.rollback(reason)
       {:error, reason, info} -> Repo.rollback({reason, info})
@@ -210,7 +216,7 @@ defmodule Dhc.Inventory.OperatorItems do
       item
       |> Ecto.Changeset.change(%{category_id: category_id, updated_by: actor_id})
       |> Repo.update!()
-      |> project()
+      |> ItemProjection.project()
     else
       {:error, reason} -> Repo.rollback(reason)
       {:error, reason, info} -> Repo.rollback({reason, info})
@@ -224,147 +230,10 @@ defmodule Dhc.Inventory.OperatorItems do
     "item-" <> String.pad_leading(to_string(value), 6, "0")
   end
 
-  # ── Derived label ───────────────────────────────────────────────
-
-  @doc """
-  Derive an item's display label from its category and identifying values.
-
-  Returns the category name joined with each identifying property value in
-  order, or the category name plus the slug when no identifying value is
-  present. Never stored.
-  """
-  @spec derive_label(String.t() | nil, String.t() | nil, [ItemValues.value_view()]) :: String.t()
-  def derive_label(category_name, slug, values) do
-    identifying =
-      values
-      |> Enum.filter(&is_integer(&1.identifying_position))
-      |> Enum.sort_by(& &1.identifying_position)
-      |> Enum.map(&render_value/1)
-      |> Enum.reject(&(&1 in [nil, ""]))
-
-    parts = if identifying == [], do: [slug], else: identifying
-
-    [category_name | parts]
-    |> Enum.reject(&(&1 in [nil, ""]))
-    |> Enum.join(@label_separator)
-  end
-
-  defp render_value(%{value_type: "text", text: text}), do: text
-  defp render_value(%{value_type: "decimal", decimal: nil}), do: nil
-  defp render_value(%{value_type: "decimal", decimal: decimal}), do: Decimal.to_string(decimal)
-  defp render_value(%{value_type: "boolean", boolean: true}), do: "Yes"
-  defp render_value(%{value_type: "boolean", boolean: false}), do: "No"
-  defp render_value(%{value_type: "boolean"}), do: nil
-  defp render_value(%{value_type: "single_select", option_label: label}), do: label
-  defp render_value(_value), do: nil
-
-  # ── Projection ──────────────────────────────────────────────────
-
-  defp project(%Item{} = item) do
-    values = ItemValues.list_values(item.id)
-    container = container_summary(item.container_id)
-    category = category_summary(item.category_id)
-
-    %Item{
-      item
-      | container: container,
-        category: category,
-        values: values,
-        label: derive_label(category && category["name"], item.slug, values)
-    }
-  end
-
-  defp container_summary(nil), do: nil
-
-  defp container_summary(container_id) do
-    from(c in "containers",
-      where: c.id == type(^container_id, :binary_id),
-      select: %{
-        "id" => fragment("?::text", c.id),
-        "name" => c.name,
-        "archived_at" => c.archived_at
-      }
-    )
-    |> Repo.one()
-  end
-
-  defp category_summary(nil), do: nil
-
-  defp category_summary(category_id) do
-    from(c in EquipmentCategory,
-      where: c.id == ^category_id,
-      select: %{"id" => c.id, "name" => c.name, "archived_at" => c.archived_at}
-    )
-    |> Repo.one()
-  end
-
   # ── Guards ──────────────────────────────────────────────────────
 
   defp fetch_item(slug_or_id) do
-    Repo.one(item_query(slug_or_id))
-  end
-
-  defp lock_active_item(slug_or_id) do
-    case slug_or_id |> item_query() |> lock("FOR UPDATE") |> Repo.one() do
-      nil -> {:error, :not_found}
-      %Item{archived_at: archived_at} when not is_nil(archived_at) -> {:error, :archived}
-      %Item{} = item -> {:ok, item}
-    end
-  end
-
-  defp item_query(slug_or_id) do
-    case Ecto.UUID.cast(slug_or_id) do
-      {:ok, id} -> from(i in Item, where: i.id == ^id)
-      :error -> from(i in Item, where: i.slug == ^slug_or_id)
-    end
-  end
-
-  defp require_active_container(nil), do: {:error, :not_found}
-
-  defp require_active_container(container_id) do
-    case Ecto.UUID.cast(container_id) do
-      :error -> {:error, :not_found}
-      {:ok, id} -> check_container(id)
-    end
-  end
-
-  defp check_container(id) do
-    query =
-      from(c in "containers",
-        where: c.id == type(^id, :binary_id),
-        select: %{archived_at: c.archived_at},
-        lock: "FOR SHARE"
-      )
-
-    case Repo.one(query) do
-      nil -> {:error, :not_found}
-      %{archived_at: nil} -> {:ok, id}
-      %{archived_at: _archived} -> {:error, :archived_container}
-    end
-  end
-
-  defp require_active_category(nil), do: {:error, :not_found}
-
-  defp require_active_category(category_id) do
-    case Ecto.UUID.cast(category_id) do
-      :error -> {:error, :not_found}
-      {:ok, id} -> check_category(id)
-    end
-  end
-
-  defp check_category(id) do
-    query =
-      from(c in EquipmentCategory,
-        where: c.id == ^id,
-        select: %{archived_at: c.archived_at},
-        lock: "FOR SHARE"
-      )
-
-    case Repo.one(query) do
-      nil -> {:error, :not_found}
-      %{archived_at: nil} -> {:ok, id}
-      %{archived_at: _archived} -> {:error, :archived_category}
-    end
+    Repo.one(ItemGuards.item_query(slug_or_id))
   end
 
   defp validate_values(definitions, values) do

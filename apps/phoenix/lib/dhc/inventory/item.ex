@@ -39,8 +39,13 @@ defmodule Dhc.Inventory.Item do
       or `nil`.
     * `:label` — server-derived display label (category plus ordered
       identifying property values, slug as fallback). Never stored; see
-      `Dhc.Inventory.OperatorItems`.
+      `Dhc.Inventory.ItemProjection`.
     * `:values` — typed property value views for the item's category.
+    * `:availability` — `%{available?: boolean, status: atom}` recomputed on
+      every read from archive state, the open maintenance period, and
+      approved/checked-out loans. Never a stored flag; the legacy
+      `out_for_maintenance` column is not its source and target paths never
+      write it (ALE-284b).
   """
 
   use Ecto.Schema
@@ -75,6 +80,7 @@ defmodule Dhc.Inventory.Item do
     field :category, :map, virtual: true
     field :label, :string, virtual: true
     field :values, {:array, :map}, virtual: true, default: []
+    field :availability, :map, virtual: true
 
     # Production Supabase uses `created_at`/`updated_at` (see the baseline
     # migration `20260512000010_create_inventory.exs`). Use `timestamps/1`

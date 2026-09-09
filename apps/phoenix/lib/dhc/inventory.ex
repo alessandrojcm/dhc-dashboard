@@ -15,6 +15,7 @@ defmodule Dhc.Inventory do
   alias Dhc.Inventory.Item
   alias Dhc.Inventory.ItemHistory
   alias Dhc.Inventory.Items
+  alias Dhc.Inventory.OperatorItemLifecycle
   alias Dhc.Inventory.OperatorItems
   alias Dhc.Inventory.Stats
   alias Dhc.Inventory.Structure
@@ -53,6 +54,21 @@ defmodule Dhc.Inventory do
   defdelegate create_operator_item(attrs, actor_id), to: OperatorItems
   defdelegate update_operator_item(slug_or_id, attrs, actor_id), to: OperatorItems
   defdelegate change_operator_item_category(slug_or_id, attrs, actor_id), to: OperatorItems
+
+  # ALE-284b availability-changing commands. Each serializes on the item and
+  # returns a domain conflict on races; availability stays a projection.
+  defdelegate move_operator_item(slug_or_id, attrs, actor_id), to: OperatorItemLifecycle
+
+  defdelegate start_operator_item_maintenance(slug_or_id, attrs, actor_id),
+    to: OperatorItemLifecycle
+
+  defdelegate end_operator_item_maintenance(slug_or_id, attrs, actor_id),
+    to: OperatorItemLifecycle
+
+  defdelegate list_operator_item_maintenance_periods(slug_or_id), to: OperatorItemLifecycle
+  defdelegate archive_operator_item(slug_or_id, attrs, actor_id), to: OperatorItemLifecycle
+  defdelegate restore_operator_item(slug_or_id, actor_id), to: OperatorItemLifecycle
+  defdelegate delete_operator_item(slug_or_id, attrs), to: OperatorItemLifecycle
 
   defdelegate list_item_history(id, opts \\ %{}), to: ItemHistory
   defdelegate list_history(opts \\ %{}), to: ItemHistory
