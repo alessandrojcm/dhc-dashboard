@@ -4,7 +4,10 @@ info:
   description: |
     Dublin Hema Club dashboard API.
 
-    **Auth**: Phoenix validates Supabase JWT. Pass as `Authorization: Bearer <token>`.
+    **Auth**: Phoenix validates the signed `_dhc_session` cookie
+    (`cookieSession`). Target Inventory and session operations declare
+    that scheme. Remaining `bearerAuth` entries are transitional leftover
+    on unmigrated operations.
   version: 0.1.0
 
 servers:
@@ -32,12 +35,13 @@ tags:
     description: Aggregate inventory dashboard reads
     x-context: Dhc.Inventory
     x-resource: InventoryDashboard
-  - name: InventoryStructure
+  - name: Inventory
     description: |
-      Operator inventory taxonomy: typed property definitions and
-      single-select options owned by a Category (ALE-283c). Categories
-      and containers keep their existing tags; this tag owns the
-      Definition/Option viewer contract.
+      Target Inventory capability (ALE-272 / ALE-283c). New operator
+      structure viewer operations — Property Definitions and
+      single-select Options — live here under the one `/api/inventory`
+      root. Legacy category, container, item, history, and dashboard
+      operations keep their existing tags until ALE-289 collapses them.
     x-context: Dhc.Inventory
     x-resource: PropertyDefinition
   - name: Members
@@ -3231,9 +3235,9 @@ paths:
         Returns equipment categories ordered by name, each with an `itemCount`
         of inventory items in that category.
 
-        Requires a valid Supabase JWT (any authenticated member).
+        Requires a valid Phoenix session (any authenticated member).
       security:
-        - bearerAuth: []
+        - cookieSession: []
       responses:
         "200":
           description: Equipment categories ordered by name
@@ -3242,7 +3246,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/InventoryCategoryListResponse"
         "401":
-          description: Missing or invalid Supabase JWT
+          description: Missing or invalid Phoenix session
           content:
             application/json:
               schema:
@@ -3258,10 +3262,10 @@ paths:
         carry. Supported attribute `type` values: `text`, `select`, `number`,
         `boolean`. Select attributes must include `options`.
 
-        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
+        Requires a Phoenix session whose roles include one of:
         `quartermaster`, `president`, or `admin`.
       security:
-        - bearerAuth: []
+        - cookieSession: []
       requestBody:
         required: true
         content:
@@ -3276,7 +3280,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/InventoryCategoryResponse"
         "401":
-          description: Missing or invalid Supabase JWT
+          description: Missing or invalid Phoenix session
           content:
             application/json:
               schema:
@@ -3309,9 +3313,9 @@ paths:
       description: |
         Returns a single equipment category by id, including its `itemCount`.
 
-        Requires a valid Supabase JWT (any authenticated member).
+        Requires a valid Phoenix session (any authenticated member).
       security:
-        - bearerAuth: []
+        - cookieSession: []
       parameters:
         - name: id
           in: path
@@ -3328,7 +3332,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/InventoryCategoryResponse"
         "401":
-          description: Missing or invalid Supabase JWT
+          description: Missing or invalid Phoenix session
           content:
             application/json:
               schema:
@@ -3348,10 +3352,10 @@ paths:
         Updates a single equipment category. Accepts the same writable fields
         as create (`name`, `description`, `availableAttributes`).
 
-        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
+        Requires a Phoenix session whose roles include one of:
         `quartermaster`, `president`, or `admin`.
       security:
-        - bearerAuth: []
+        - cookieSession: []
       parameters:
         - name: id
           in: path
@@ -3374,7 +3378,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/InventoryCategoryResponse"
         "401":
-          description: Missing or invalid Supabase JWT
+          description: Missing or invalid Phoenix session
           content:
             application/json:
               schema:
@@ -3413,10 +3417,10 @@ paths:
         any inventory items still reference the category; remove or reassign
         those items first.
 
-        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
+        Requires a Phoenix session whose roles include one of:
         `quartermaster`, `president`, or `admin`.
       security:
-        - bearerAuth: []
+        - cookieSession: []
       parameters:
         - name: id
           in: path
@@ -3429,7 +3433,7 @@ paths:
         "204":
           description: The category was deleted
         "401":
-          description: Missing or invalid Supabase JWT
+          description: Missing or invalid Phoenix session
           content:
             application/json:
               schema:
@@ -3457,7 +3461,7 @@ paths:
     get:
       operationId: inventoryStructure.listDefinitions
       tags:
-        - InventoryStructure
+        - Inventory
       summary: List property definitions for a category
       description: |
         Returns the operator viewer for Property Definitions owned by a
@@ -3492,7 +3496,7 @@ paths:
     post:
       operationId: inventoryStructure.createDefinition
       tags:
-        - InventoryStructure
+        - Inventory
       summary: Create a property definition
       description: |
         Creates a typed Property Definition on a Category. `valueType` is
@@ -3559,7 +3563,7 @@ paths:
     get:
       operationId: inventoryStructure.showDefinition
       tags:
-        - InventoryStructure
+        - Inventory
       summary: Get one property definition
       description: |
         Returns a single Property Definition viewer, including live and
@@ -3598,7 +3602,7 @@ paths:
     patch:
       operationId: inventoryStructure.updateDefinition
       tags:
-        - InventoryStructure
+        - Inventory
       summary: Update a property definition
       description: |
         Renames, requires, or reorders identifying position. `valueType`
@@ -3659,13 +3663,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: "#/components/schemas/InventoryDefinitionUpdateError"
 
   /inventory/definitions/{id}/retire:
     post:
       operationId: inventoryStructure.retireDefinition
       tags:
-        - InventoryStructure
+        - Inventory
       summary: Retire a property definition
       description: |
         Retires a Property Definition from current Item forms. Active
@@ -3714,13 +3718,13 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: "#/components/schemas/InventoryDefinitionRetireError"
 
   /inventory/definitions/{definitionId}/options:
     get:
       operationId: inventoryStructure.listOptions
       tags:
-        - InventoryStructure
+        - Inventory
       summary: List options for a property definition
       description: |
         Returns single-select options for a Property Definition, including
@@ -3753,7 +3757,7 @@ paths:
     post:
       operationId: inventoryStructure.createOption
       tags:
-        - InventoryStructure
+        - Inventory
       summary: Create a single-select option
       description: |
         Creates an option on a `single_select` Property Definition.
@@ -3819,7 +3823,7 @@ paths:
     patch:
       operationId: inventoryStructure.updateOption
       tags:
-        - InventoryStructure
+        - Inventory
       summary: Update a single-select option
       description: |
         Renames or reorders a single-select option. Identity is stable.
@@ -3884,7 +3888,7 @@ paths:
     post:
       operationId: inventoryStructure.retireOption
       tags:
-        - InventoryStructure
+        - Inventory
       summary: Retire a single-select option
       description: |
         Retires an option from current Item forms. Active values must be
@@ -3932,7 +3936,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
+                $ref: "#/components/schemas/InventoryOptionRetireError"
 
   /inventory/containers/{id}/move:
     post:
@@ -4115,9 +4119,9 @@ paths:
         The UI rebuilds the parent/child hierarchy client-side from
         `parentContainerId`.
 
-        Requires a valid Supabase JWT (any authenticated member).
+        Requires a valid Phoenix session (any authenticated member).
       security:
-        - bearerAuth: []
+        - cookieSession: []
       responses:
         "200":
           description: Inventory containers ordered by name
@@ -4126,7 +4130,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/InventoryContainerListResponse"
         "401":
-          description: Missing or invalid Supabase JWT
+          description: Missing or invalid Phoenix session
           content:
             application/json:
               schema:
@@ -4139,12 +4143,12 @@ paths:
       description: |
         Creates a new inventory container. Optionally nest it under a parent
         container via `parentContainerId`. `createdBy` is derived from the
-        caller's Supabase JWT `sub`.
+        authenticated Phoenix session principal.
 
-        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
+        Requires a Phoenix session whose roles include one of:
         `quartermaster`, `president`, or `admin`.
       security:
-        - bearerAuth: []
+        - cookieSession: []
       requestBody:
         required: true
         content:
@@ -4159,7 +4163,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/InventoryContainerListItemResponse"
         "401":
-          description: Missing or invalid Supabase JWT
+          description: Missing or invalid Phoenix session
           content:
             application/json:
               schema:
@@ -4189,9 +4193,9 @@ paths:
         in it — each item carrying a `category` summary (`{id, name}`) and
         `quantity`/`outForMaintenance`. Item-level history is not embedded.
 
-        Requires a valid Supabase JWT (any authenticated member).
+        Requires a valid Phoenix session (any authenticated member).
       security:
-        - bearerAuth: []
+        - cookieSession: []
       parameters:
         - name: id
           in: path
@@ -4208,7 +4212,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/InventoryContainerDetailResponse"
         "401":
-          description: Missing or invalid Supabase JWT
+          description: Missing or invalid Phoenix session
           content:
             application/json:
               schema:
@@ -4233,10 +4237,10 @@ paths:
         UI also filters available parents client-side, but the server enforces
         the invariant for safety.
 
-        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
+        Requires a Phoenix session whose roles include one of:
         `quartermaster`, `president`, or `admin`.
       security:
-        - bearerAuth: []
+        - cookieSession: []
       parameters:
         - name: id
           in: path
@@ -4259,7 +4263,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/InventoryContainerListItemResponse"
         "401":
-          description: Missing or invalid Supabase JWT
+          description: Missing or invalid Phoenix session
           content:
             application/json:
               schema:
@@ -4294,10 +4298,10 @@ paths:
         `containers.parent_container_id` `on_delete: :delete_all` foreign key;
         a child that itself holds items will surface as `409` via that cascade.
 
-        Requires a Supabase JWT whose `app_metadata.roles` includes one of:
+        Requires a Phoenix session whose roles include one of:
         `quartermaster`, `president`, or `admin`.
       security:
-        - bearerAuth: []
+        - cookieSession: []
       parameters:
         - name: id
           in: path
@@ -4310,7 +4314,7 @@ paths:
         "204":
           description: The container was deleted
         "401":
-          description: Missing or invalid Supabase JWT
+          description: Missing or invalid Phoenix session
           content:
             application/json:
               schema:
@@ -8031,6 +8035,86 @@ components:
       properties:
         data:
           $ref: "#/components/schemas/InventoryPropertyOption"
+    InventoryDefinitionUpdateError:
+      type: object
+      required:
+        - errors
+      description: |
+        422 extras for definition update: `type_immutable` or
+        `required_blocked` with the active item ids that still lack a
+        valid value.
+      properties:
+        errors:
+          type: object
+          required:
+            - detail
+            - code
+          properties:
+            detail:
+              type: string
+            code:
+              type: string
+              enum:
+                - type_immutable
+                - required_blocked
+            itemIds:
+              type: array
+              items:
+                type: string
+                format: uuid
+              description: |
+                Active item ids that block making a definition required
+                (`required_blocked`).
+    InventoryDefinitionRetireError:
+      type: object
+      required:
+        - errors
+      description: |
+        409 extras when a definition still has active item values.
+      properties:
+        errors:
+          type: object
+          required:
+            - detail
+            - code
+            - activeValueCount
+          properties:
+            detail:
+              type: string
+            code:
+              type: string
+              enum:
+                - still_referenced
+            activeValueCount:
+              type: integer
+              description: |
+                Number of active item values that still reference the
+                definition.
+    InventoryOptionRetireError:
+      type: object
+      required:
+        - errors
+      description: |
+        409 extras when an option still has active item values.
+      properties:
+        errors:
+          type: object
+          required:
+            - detail
+            - code
+            - activeValueCount
+          properties:
+            detail:
+              type: string
+            code:
+              type: string
+              enum:
+                - still_referenced
+            activeValueCount:
+              type: integer
+              description: |
+                Number of active item values that still reference the
+                option.
     InventoryOptionCreateRequest:
       type: object
       required:
@@ -8409,23 +8493,10 @@ components:
               type: string
               description: |
                 Optional machine-readable error code for programmatic handling,
-                e.g. `no_saved_payment_method` on membership reactivation,
-                `type_immutable`, `required_blocked`, `still_referenced`,
-                `not_single_select`, or `active_dependants` on inventory
-                structure commands.
-            itemIds:
-              type: array
-              items:
-                type: string
-                format: uuid
-              description: |
-                Active item ids that block making a definition required
-                (`required_blocked`).
-            activeValueCount:
-              type: integer
-              description: |
-                Number of active item values that still reference a
-                definition or option (`still_referenced`).
+                e.g. `no_saved_payment_method` on membership reactivation
+                or `not_single_select` / `active_dependants` on inventory
+                structure commands. Definition update/retire extras live
+                on the named `InventoryDefinition*Error` schemas.
     AuthSessionProjection:
       type: object
       required:

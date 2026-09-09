@@ -533,4 +533,140 @@ defmodule DhcWeb.InventoryStructureControllerTest do
       [Ecto.UUID.dump!(item_id), Ecto.UUID.dump!(definition_id), text]
     )
   end
+
+  # ── OpenAPI contract backstops (ALE-292 review) ─────────────────
+
+  describe "openapi structure contract" do
+    test "definition and option operations live on the Inventory tag with typed extras" do
+      spec = load_openapi_spec!()
+
+      Enum.each(structure_operations(), fn {path, method, operation_id} ->
+        operation = get_in(spec, ["paths", path, method])
+        assert operation, "missing #{method} #{path}"
+        assert operation["operationId"] == operation_id
+        assert operation["tags"] == ["Inventory"]
+        assert operation["security"] == [%{"cookieSession" => []}]
+      end)
+
+      update_422 =
+        get_in(spec, [
+          "paths",
+          "/inventory/definitions/{id}",
+          "patch",
+          "responses",
+          "422",
+          "content",
+          "application/json",
+          "schema",
+          "$ref"
+        ])
+
+      retire_409 =
+        get_in(spec, [
+          "paths",
+          "/inventory/definitions/{id}/retire",
+          "post",
+          "responses",
+          "409",
+          "content",
+          "application/json",
+          "schema",
+          "$ref"
+        ])
+
+      option_retire_409 =
+        get_in(spec, [
+          "paths",
+          "/inventory/options/{id}/retire",
+          "post",
+          "responses",
+          "409",
+          "content",
+          "application/json",
+          "schema",
+          "$ref"
+        ])
+
+      assert update_422 == "#/components/schemas/InventoryDefinitionUpdateError"
+      assert retire_409 == "#/components/schemas/InventoryDefinitionRetireError"
+      assert option_retire_409 == "#/components/schemas/InventoryOptionRetireError"
+
+      update_error = get_in(spec, ["components", "schemas", "InventoryDefinitionUpdateError"])
+      retire_error = get_in(spec, ["components", "schemas", "InventoryDefinitionRetireError"])
+      option_error = get_in(spec, ["components", "schemas", "InventoryOptionRetireError"])
+
+      assert update_error["required"] == ["errors"]
+
+      assert get_in(update_error, ["properties", "errors", "properties", "itemIds", "type"]) ==
+               "array"
+
+      assert get_in(update_error, ["properties", "errors", "properties", "code", "enum"]) ==
+               ["type_immutable", "required_blocked"]
+
+      assert get_in(retire_error, ["properties", "errors", "required"]) ==
+               ["detail", "code", "activeValueCount"]
+
+      assert get_in(option_error, ["properties", "errors", "required"]) ==
+               ["detail", "code", "activeValueCount"]
+    end
+
+    test "category and container viewer operations declare cookieSession" do
+      spec = load_openapi_spec!()
+
+      Enum.each(structure_owned_legacy_operations(), fn {path, method} ->
+        operation = get_in(spec, ["paths", path, method])
+        assert operation, "missing #{method} #{path}"
+        assert operation["security"] == [%{"cookieSession" => []}]
+        refute operation["description"] =~ "Supabase JWT"
+        refute operation["description"] =~ "auth.users"
+      end)
+
+      refute spec["info"]["description"] =~ "Supabase JWT"
+      assert spec["info"]["description"] =~ "cookieSession"
+    end
+  end
+
+  defp structure_operations do
+    [
+      {"/inventory/categories/{categoryId}/definitions", "get",
+       "inventoryStructure.listDefinitions"},
+      {"/inventory/categories/{categoryId}/definitions", "post",
+       "inventoryStructure.createDefinition"},
+      {"/inventory/definitions/{id}", "get", "inventoryStructure.showDefinition"},
+      {"/inventory/definitions/{id}", "patch", "inventoryStructure.updateDefinition"},
+      {"/inventory/definitions/{id}/retire", "post", "inventoryStructure.retireDefinition"},
+      {"/inventory/definitions/{definitionId}/options", "get", "inventoryStructure.listOptions"},
+      {"/inventory/definitions/{definitionId}/options", "post",
+       "inventoryStructure.createOption"},
+      {"/inventory/options/{id}", "patch", "inventoryStructure.updateOption"},
+      {"/inventory/options/{id}/retire", "post", "inventoryStructure.retireOption"}
+    ]
+  end
+
+  defp structure_owned_legacy_operations do
+    [
+      {"/inventory/categories", "get"},
+      {"/inventory/categories", "post"},
+      {"/inventory/categories/{id}", "get"},
+      {"/inventory/categories/{id}", "patch"},
+      {"/inventory/categories/{id}", "delete"},
+      {"/inventory/containers", "get"},
+      {"/inventory/containers", "post"},
+      {"/inventory/containers/{id}", "get"},
+      {"/inventory/containers/{id}", "patch"},
+      {"/inventory/containers/{id}", "delete"},
+      {"/inventory/containers/{id}/move", "post"},
+      {"/inventory/containers/{id}/archive", "post"},
+      {"/inventory/containers/{id}/restore", "post"}
+    ]
+  end
+
+  defp load_openapi_spec! do
+    path = Path.expand("../../../priv/api/openapi.yaml", __DIR__)
+
+    case YamlElixir.read_from_file(path) do
+      {:ok, spec} -> spec
+      {:error, error} -> flunk("failed to parse OpenAPI spec: #{inspect(error)}")
+    end
+  end
 end
