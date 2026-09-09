@@ -15,9 +15,10 @@ defmodule Dhc.Inventory.ItemValues do
     * A required definition with no value fails with `:required`.
     * Errors are per definition, so an operator sees every field to fix.
 
-  Definitions are read with `FOR SHARE` so a concurrent evolution command
-  (`Dhc.Inventory.Structure.update_definition/2`, which locks `FOR UPDATE`)
-  cannot change requiredness or type underneath a validated write.
+  Definitions **and their options** are read with `FOR SHARE` so a concurrent
+  evolution command (`Dhc.Inventory.Structure.update_definition/2` or
+  `retire_option/1`, both of which lock `FOR UPDATE`) cannot change
+  requiredness, type, or option membership underneath a validated write.
   """
 
   import Ecto.Query
@@ -280,9 +281,14 @@ defmodule Dhc.Inventory.ItemValues do
   defp options_by_definition([]), do: %{}
 
   defp options_by_definition(definition_ids) do
+    # Locked with the definitions: `retire_option/1` takes `FOR UPDATE`, so
+    # without this an option could retire between validation and the value
+    # insert, leaving an active item pointing at a retired option (its
+    # active-value gate cannot see the uncommitted row).
     from(o in PropertyOption,
       where: o.property_definition_id in ^definition_ids,
-      order_by: [asc: o.position, asc: o.label]
+      order_by: [asc: o.position, asc: o.label],
+      lock: "FOR SHARE"
     )
     |> Repo.all()
     |> Enum.group_by(& &1.property_definition_id)
