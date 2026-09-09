@@ -282,13 +282,6 @@ defmodule Dhc.Inventory.Containers do
   defp normalize_parent_id(value) when is_binary(value), do: value
   defp normalize_parent_id(value), do: value
 
-  defp circular_parent?(container_id, normalized) do
-    case Map.get(normalized, "parent_container_id") do
-      nil -> false
-      proposed when is_binary(proposed) -> cycle?(container_id, proposed)
-    end
-  end
-
   defp parent_is_active(normalized) do
     case Map.get(normalized, "parent_container_id") do
       nil -> :ok

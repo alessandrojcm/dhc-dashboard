@@ -133,9 +133,13 @@ defmodule Dhc.Repo.Migrations.Ale292TypedValueBackstops do
   def down do
     execute "DROP TRIGGER inventory_property_options_membership ON inventory_property_options"
     execute "DROP FUNCTION inventory_property_options_reject_foreign_values()"
+
     execute "DROP TRIGGER inventory_property_definitions_value_type_match ON inventory_property_definitions"
+
     execute "DROP FUNCTION inventory_property_definitions_reject_incompatible_values()"
+
     execute "DROP TRIGGER inventory_item_property_values_type_match ON inventory_item_property_values"
+
     execute "DROP FUNCTION inventory_item_property_values_reject_type_mismatch()"
   end
 end
