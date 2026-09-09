@@ -89,6 +89,12 @@ Spread the remote form or its preflight-enhanced variant onto the native form el
 ## Real PostgreSQL Concurrency Tests
 
 - `Ecto.Adapters.SQL.Sandbox.unboxed_run/2` commits outside the normal test-owner transaction. Cleanup must remove both domain rows and committed side effects, including attempt-scoped Oban jobs; do not rely on sandbox rollback.
+- `Sandbox.allow(Repo, self(), self())` inside a `Task` does **not** produce a race: the sibling shares the one sandbox connection, so the operations serialize and the test proves nothing about concurrency. Build the fixture, run the competing operations, and clean up inside `unboxed_run` (see `apps/phoenix/test/dhc/inventory/operator_item_lifecycle_test.exs` for the fixture/`race`/cleanup helpers).
+
+## Domain Conflicts Instead of Server Errors
+
+- A command whose interlock is also backed by a database constraint must translate that constraint, not let it raise. Take the row lock that serializes the command, and additionally attach `Ecto.Changeset.unique_constraint/3` with the index name and return the domain reason (`Repo.insert` + `case`, not `Repo.insert!`). The lock handles command-against-command; the translated constraint handles anything writing outside the seam, so a race never surfaces as a `Postgrex.Error`.
+- Guards that run raw SQL must not pattern-match a single expected row shape (`%{rows: [[value]]}`); a recursive CTE over a missing row returns no rows and raises `MatchError` instead of the intended domain error. Match the result and map "missing" onto the same domain reason as "inactive".
 
 ## Discord External Identities
 
