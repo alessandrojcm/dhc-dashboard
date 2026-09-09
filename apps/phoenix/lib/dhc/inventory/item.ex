@@ -18,6 +18,16 @@ defmodule Dhc.Inventory.Item do
   `sub` on insert and `updated_by` on update; neither is ever user-writable
   (the controller does not cast them).
 
+  ## Target columns (ALE-282 expand, written from ALE-284a)
+
+    * `:slug` — immutable, server-minted, human-readable identity
+      (`item-000001`) drawn from `inventory_item_slug_seq`. Unique where
+      present; stable across category changes. Legacy create paths leave it
+      `nil` until ALE-289 removes them.
+    * `:archived_at` / `:archived_by_principal_id` — set when the item is
+      archived instead of hard-deleted. ALE-284b owns those commands; the
+      fields exist here so target reads can tell active rows apart.
+
   ## Virtual (non-column) fields
 
   Read helpers in `Dhc.Inventory` populate these aggregates; they are never
@@ -27,6 +37,10 @@ defmodule Dhc.Inventory.Item do
       item's container, or `nil`.
     * `:category` — `%{id, name}` summary of the item's equipment category,
       or `nil`.
+    * `:label` — server-derived display label (category plus ordered
+      identifying property values, slug as fallback). Never stored; see
+      `Dhc.Inventory.OperatorItems`.
+    * `:values` — typed property value views for the item's category.
   """
 
   use Ecto.Schema
@@ -51,9 +65,16 @@ defmodule Dhc.Inventory.Item do
     field :created_by, :binary_id
     field :updated_by, :binary_id
 
+    # ALE-282 target columns.
+    field :slug, :string
+    field :archived_at, :utc_datetime_usec
+    field :archived_by_principal_id, :binary_id
+
     # Virtual aggregates populated by `Dhc.Inventory` read helpers.
     field :container, :map, virtual: true
     field :category, :map, virtual: true
+    field :label, :string, virtual: true
+    field :values, {:array, :map}, virtual: true, default: []
 
     # Production Supabase uses `created_at`/`updated_at` (see the baseline
     # migration `20260512000010_create_inventory.exs`). Use `timestamps/1`
