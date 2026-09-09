@@ -15,6 +15,7 @@ defmodule Dhc.Inventory do
   alias Dhc.Inventory.Item
   alias Dhc.Inventory.ItemHistory
   alias Dhc.Inventory.Items
+  alias Dhc.Inventory.OperatorItems
   alias Dhc.Inventory.Stats
   alias Dhc.Inventory.Structure
 
@@ -45,6 +46,13 @@ defmodule Dhc.Inventory do
   defdelegate delete_item(id), to: Items
   defdelegate move_item(id, attrs, actor_id), to: Items
   defdelegate set_item_maintenance(id, attrs, actor_id), to: Items
+
+  # ALE-284a target item slice. The legacy `*_item` functions above stay
+  # until ALE-289 removes them; target paths never write `inventory_history`.
+  defdelegate resolve_operator_item(slug_or_id), to: OperatorItems
+  defdelegate create_operator_item(attrs, actor_id), to: OperatorItems
+  defdelegate update_operator_item(slug_or_id, attrs, actor_id), to: OperatorItems
+  defdelegate change_operator_item_category(slug_or_id, attrs, actor_id), to: OperatorItems
 
   defdelegate list_item_history(id, opts \\ %{}), to: ItemHistory
   defdelegate list_history(opts \\ %{}), to: ItemHistory
