@@ -6,8 +6,11 @@ defmodule Dhc.Inventory.Loan do
   immutable borrower-history display facts captured at request time;
   `approved_container_path_snapshot` is captured at approval for the entitled
   collection flow. Snapshots are presentation evidence, not a second item
-  identity or availability source. Storage only — lifecycle commands land in
-  ALE-286. Not reachable through `Dhc.Inventory` yet.
+  identity or availability source. The lifecycle commands land in ALE-286;
+  ALE-284b already reads these rows for its interlocks (`approved` and
+  `checked_out` block movement, maintenance, and archive, while `requested`
+  rows are rejected) and for the availability projection in
+  `Dhc.Inventory.ItemProjection`.
   """
 
   use Ecto.Schema

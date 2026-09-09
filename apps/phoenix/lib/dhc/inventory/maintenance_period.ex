@@ -3,9 +3,11 @@ defmodule Dhc.Inventory.MaintenancePeriod do
   Ecto schema for `inventory_maintenance_periods` (ALE-282 expand).
 
   Retained maintenance fact with at most one open period per item (partial
-  unique index on `item_id WHERE ended_at IS NULL`). Storage only — the
-  start/end commands land in ALE-284. Not reachable through `Dhc.Inventory`
-  yet.
+  unique index on `item_id WHERE ended_at IS NULL`), replacing the legacy
+  `inventory_items.out_for_maintenance` boolean. The start/end commands and
+  the open-period gate live in `Dhc.Inventory.OperatorItemLifecycle`
+  (ALE-284b); an open period is also what makes an item unavailable for
+  maintenance reasons in `Dhc.Inventory.ItemProjection`.
   """
 
   use Ecto.Schema
