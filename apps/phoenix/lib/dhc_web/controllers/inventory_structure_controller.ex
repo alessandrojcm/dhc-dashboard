@@ -227,7 +227,7 @@ defmodule DhcWeb.InventoryStructureController do
     |> render(:error, detail: detail)
   end
 
-  defp conflict_code(conn, detail, code, extra \\ %{}) do
+  defp conflict_code(conn, detail, code, extra) do
     conn
     |> put_status(:conflict)
     |> put_view(json: DhcWeb.InventoryStructureJSON)

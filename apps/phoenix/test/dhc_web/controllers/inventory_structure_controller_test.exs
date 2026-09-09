@@ -662,7 +662,7 @@ defmodule DhcWeb.InventoryStructureControllerTest do
   end
 
   defp load_openapi_spec! do
-    path = Path.expand("../../../priv/api/openapi.yaml", __DIR__)
+    path = Application.app_dir(:dhc, "priv/api/openapi.yaml")
 
     case YamlElixir.read_from_file(path) do
       {:ok, spec} -> spec
