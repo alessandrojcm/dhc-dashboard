@@ -128,6 +128,14 @@ Conventions established by the Waitlist migration (#105–#107) and reinforced b
 - Spread generated `*Mutation()` options into `createMutation` whenever the mutation calls the generated Phoenix client directly. Custom SvelteKit remote functions and non-Phoenix operations may keep a manual `mutationFn`.
 - Use generated `*QueryKey()` helpers for invalidation and direct cache updates. Add `select` only for UI-specific response shaping; remember that `queryClient` reads and writes the unselected API response stored in the cache.
 
+## Validating Against Evolving Schema Rows (Inventory typed properties)
+
+When a write validates against rows another command may evolve, share-lock **every** row the validation depends on, not just the obvious parent. The evolution commands in `Dhc.Inventory.Structure` lock `FOR UPDATE` (`update_definition/2`, `retire_definition/1`, `retire_option/1`) and gate themselves on *committed* active values, so they cannot see an in-flight uncommitted insert. A value write that reads any of those rows unlocked can therefore validate against a row that retires before it commits.
+
+`Dhc.Inventory.ItemValues.load_definitions/1` is the reference shape: it loads a category's property definitions **and their options** with `lock: "FOR SHARE"` inside the caller's transaction. Locking only the definitions was a real bug — a concurrent `retire_option/1` slipped between validation and the value insert, leaving an active item pointing at a retired option. Regression coverage: the concurrency test in `test/dhc/inventory/operator_items_test.exs`.
+
+Applies to any future slice that validates item data against definitions/options; extend the lock set when you add a new dependency to a validation path.
+
 ## Stripe List Requests Must Expand Nested Objects
 
 Stripe list endpoints return nested objects as **bare ID strings** unless the request passes an `expand[]` param. Reading fields off an unexpanded value silently returns nothing and triggers whatever fallback exists downstream — e.g. the stripe-sync job stored every member's `last_payment_date` as their subscription's original `start_date` for months because `latest_invoice.status_transitions.paid_at` was never present (`expand[]=data.latest_invoice` was missing from `/v1/subscriptions`). Regression coverage: `test/dhc/stripe_sync/last_payment_sync_test.exs` (deterministic Bypass gate) and `test/dhc/stripe_sync/workers/worker_integration_test.exs` (real-sandbox contract test using `backdate_start_date` so `start_date ≠ paid_at`; needs its `@moduletag timeout: 600_000` — one list page against api.stripe.com can take tens of seconds).
