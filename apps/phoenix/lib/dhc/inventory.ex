@@ -16,6 +16,7 @@ defmodule Dhc.Inventory do
   alias Dhc.Inventory.ItemHistory
   alias Dhc.Inventory.Items
   alias Dhc.Inventory.MemberCatalog
+  alias Dhc.Inventory.MemberLoans
   alias Dhc.Inventory.OperatorItemLifecycle
   alias Dhc.Inventory.OperatorItemList
   alias Dhc.Inventory.OperatorItems
@@ -79,6 +80,14 @@ defmodule Dhc.Inventory do
   # maintenance facts, and availability is a generic reason (story 45).
   defdelegate list_catalog_items(params \\ %{}), to: MemberCatalog
   defdelegate resolve_catalog_item(slug_or_id), to: MemberCatalog
+
+  # ALE-285 member loan commands and own history. A member acts only on their
+  # own loans and only before checkout; approve/reject/checkout/return and the
+  # operator queue are ALE-286.
+  defdelegate request_loan(slug_or_id, attrs, borrower_id), to: MemberLoans
+  defdelegate cancel_loan(loan_id, attrs, borrower_id), to: MemberLoans
+  defdelegate list_own_loans(borrower_id, params \\ %{}), to: MemberLoans
+  defdelegate get_own_loan(loan_id, borrower_id), to: MemberLoans
 
   defdelegate list_item_history(id, opts \\ %{}), to: ItemHistory
   defdelegate list_history(opts \\ %{}), to: ItemHistory
