@@ -290,6 +290,14 @@ defmodule DhcWeb.InventoryOperatorItemsControllerTest do
 
       assert json_response(bad_property, 400)
 
+      bad_category =
+        build_conn()
+        |> auth_conn("quartermaster")
+        |> get("/api/inventory/operator/items", %{"categoryId" => "not-a-uuid"})
+
+      assert %{"errors" => %{"detail" => category_detail}} = json_response(bad_category, 400)
+      assert category_detail =~ "categoryId"
+
       first =
         build_conn()
         |> auth_conn("quartermaster")

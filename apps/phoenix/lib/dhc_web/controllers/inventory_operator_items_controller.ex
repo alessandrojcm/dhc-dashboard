@@ -220,6 +220,9 @@ defmodule DhcWeb.InventoryOperatorItemsController do
   defp list_error_detail(:invalid_archived),
     do: "archived must be exclude, include, or only"
 
+  defp list_error_detail(:invalid_category),
+    do: "categoryId must be comma-separated category UUIDs"
+
   defp list_error_detail(:invalid_property),
     do: "property must be comma-separated definitionId:value pairs"
 

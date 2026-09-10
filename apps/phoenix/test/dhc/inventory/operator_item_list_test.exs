@@ -138,6 +138,21 @@ defmodule Dhc.Inventory.OperatorItemListTest do
       assert {:ok, page} = Inventory.list_operator_items(%{"categoryId" => ""})
       assert Enum.map(page.items, & &1.id) == [item.id]
     end
+
+    # The filter binds to a UUID column, so a malformed entry has to fail as a
+    # domain error here rather than reach Ecto's parameter casting.
+    test "rejects a malformed category id instead of querying with it" do
+      assert {:error, :invalid_category} =
+               Inventory.list_operator_items(%{"categoryId" => "not-a-uuid"})
+
+      assert {:error, :invalid_category} =
+               Inventory.list_operator_items(%{
+                 "categoryId" => "#{Ecto.UUID.generate()},not-a-uuid"
+               })
+
+      assert {:error, :invalid_category} =
+               Inventory.list_operator_items(%{"categoryId" => %{"in" => "1"}})
+    end
   end
 
   describe "property filter" do
