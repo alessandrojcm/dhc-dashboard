@@ -404,7 +404,7 @@ defmodule Mix.Tasks.Gen.Controllers do
 
       # GET single → show
       "show" ->
-        id_param = path_id_param_or_default(op)
+        id_param = path_id_param_or_default(op, spec)
 
         """
           @doc \"\"\"
@@ -436,7 +436,7 @@ defmodule Mix.Tasks.Gen.Controllers do
 
       # DELETE single → delete
       "delete" ->
-        id_param = path_id_param_or_default(op)
+        id_param = path_id_param_or_default(op, spec)
 
         """
           @doc \"\"\"
@@ -453,7 +453,7 @@ defmodule Mix.Tasks.Gen.Controllers do
 
       # PUT/PATCH single → update
       "update" ->
-        id_param = path_id_param_or_default(op)
+        id_param = path_id_param_or_default(op, spec)
 
         """
           @doc \"\"\"
@@ -470,7 +470,7 @@ defmodule Mix.Tasks.Gen.Controllers do
 
       # Non-REST (e.g. POST /resources/{id}/renew → renew)
       _ ->
-        id_param = path_id_param_or_default(op)
+        id_param = path_id_param_or_default(op, spec)
         assigns = params_binding(has_body)
 
         """
@@ -488,7 +488,7 @@ defmodule Mix.Tasks.Gen.Controllers do
     end
   end
 
-  defp path_id_param_or_default(op), do: path_id_param(op) || "id"
+  defp path_id_param_or_default(op, spec), do: path_id_param(op, spec) || "id"
   defp params_binding(true), do: "params"
   defp params_binding(false), do: "_params"
 
@@ -589,9 +589,10 @@ defmodule Mix.Tasks.Gen.Controllers do
 
   # ── Contract test content ────────────────────────────────────────────
 
-  defp contract_test_content(slice, _spec) do
+  @doc false
+  def contract_test_content(slice, spec) do
     module_name = controller_test_module(slice.name)
-    test_cases = Enum.map(slice.operations, &contract_test_case(&1, slice.tag))
+    test_cases = Enum.map(slice.operations, &contract_test_case(&1, spec))
 
     """
     defmodule #{module_name} do
@@ -602,11 +603,11 @@ defmodule Mix.Tasks.Gen.Controllers do
     """
   end
 
-  defp contract_test_case(op, _tag) do
+  defp contract_test_case(op, spec) do
     action = action_name(op)
     method = op.method |> to_string() |> String.upcase()
     status_code = expected_status(op)
-    phx_path = contract_test_path(op)
+    phx_path = contract_test_path(op, spec)
     http_method = op.method |> to_string() |> String.downcase()
 
     body =
@@ -913,26 +914,55 @@ defmodule Mix.Tasks.Gen.Controllers do
     String.starts_with?(segment, "{") and String.ends_with?(segment, "}")
   end
 
-  defp path_id_param(op) do
-    op.operation.parameters
-    |> Enum.find(fn p -> p.in == :path end)
+  defp path_id_param(op, spec) do
+    op
+    |> path_parameters(spec)
     |> case do
-      nil -> nil
-      param -> param.name
+      [] -> nil
+      [param | _rest] -> param.name
     end
   end
 
-  defp contract_test_path(op) do
+  defp contract_test_path(op, spec) do
     # Convert /widgets/{id} → /api/widgets/1 (with placeholder values for path params)
     path =
-      op.operation.parameters
-      |> Enum.filter(&(&1.in == :path))
+      op
+      |> path_parameters(spec)
       |> Enum.reduce(op.path, fn param, acc ->
         String.replace(acc, "{#{param.name}}", "1")
       end)
 
     "/api" <> path
   end
+
+  # The `in: :path` parameters of an operation, with any
+  # `$ref: "#/components/parameters/X"` entries dereferenced first. A ref that
+  # cannot be resolved is dropped rather than crashing the generator, so a
+  # partial or dangling spec still scaffolds (falling back to the `id`
+  # default and leaving the placeholder in the contract test path).
+  defp path_parameters(op, spec) do
+    (op.operation.parameters || [])
+    |> Enum.map(&resolve_parameter(&1, spec))
+    |> Enum.filter(&match?(%OpenApiSpex.Parameter{in: :path}, &1))
+  end
+
+  # ── Component reference helpers ──────────────────────────────────────
+
+  defp resolve_parameter(parameter_or_ref, spec) do
+    case parameter_or_ref do
+      %OpenApiSpex.Reference{"$ref": "#/components/parameters/" <> name} ->
+        component_parameters(spec)[name]
+
+      other ->
+        other
+    end
+  end
+
+  defp component_parameters(%OpenApiSpex.OpenApi{components: %{parameters: params}})
+       when is_map(params),
+       do: params
+
+  defp component_parameters(_spec), do: %{}
 
   # ── Schema helpers ───────────────────────────────────────────────────
 

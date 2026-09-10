@@ -4005,14 +4005,7 @@ paths:
       security:
         - cookieSession: []
       parameters:
-        - name: slugOrId
-          in: path
-          required: true
-          schema:
-            type: string
-          description: |
-            The Item's immutable slug (`item-000001`) or its uuid. A value
-            that parses as a uuid resolves by id, anything else by slug.
+        - $ref: "#/components/parameters/SlugOrId"
       responses:
         "200":
           description: The item
@@ -4059,14 +4052,7 @@ paths:
       security:
         - cookieSession: []
       parameters:
-        - name: slugOrId
-          in: path
-          required: true
-          schema:
-            type: string
-          description: |
-            The Item's immutable slug (`item-000001`) or its uuid. A value
-            that parses as a uuid resolves by id, anything else by slug.
+        - $ref: "#/components/parameters/SlugOrId"
       requestBody:
         required: true
         content:
@@ -4126,14 +4112,7 @@ paths:
       security:
         - cookieSession: []
       parameters:
-        - name: slugOrId
-          in: path
-          required: true
-          schema:
-            type: string
-          description: |
-            The Item's immutable slug (`item-000001`) or its uuid. A value
-            that parses as a uuid resolves by id, anything else by slug.
+        - $ref: "#/components/parameters/SlugOrId"
       requestBody:
         required: true
         content:
@@ -4197,14 +4176,7 @@ paths:
       security:
         - cookieSession: []
       parameters:
-        - name: slugOrId
-          in: path
-          required: true
-          schema:
-            type: string
-          description: |
-            The Item's immutable slug (`item-000001`) or its uuid. A value
-            that parses as a uuid resolves by id, anything else by slug.
+        - $ref: "#/components/parameters/SlugOrId"
       requestBody:
         required: true
         content:
@@ -4268,14 +4240,7 @@ paths:
       security:
         - cookieSession: []
       parameters:
-        - name: slugOrId
-          in: path
-          required: true
-          schema:
-            type: string
-          description: |
-            The Item's immutable slug (`item-000001`) or its uuid. A value
-            that parses as a uuid resolves by id, anything else by slug.
+        - $ref: "#/components/parameters/SlugOrId"
       requestBody:
         required: true
         content:
@@ -4341,14 +4306,7 @@ paths:
       security:
         - cookieSession: []
       parameters:
-        - name: slugOrId
-          in: path
-          required: true
-          schema:
-            type: string
-          description: |
-            The Item's immutable slug (`item-000001`) or its uuid. A value
-            that parses as a uuid resolves by id, anything else by slug.
+        - $ref: "#/components/parameters/SlugOrId"
       responses:
         "200":
           description: The item's maintenance periods
@@ -4395,14 +4353,7 @@ paths:
       security:
         - cookieSession: []
       parameters:
-        - name: slugOrId
-          in: path
-          required: true
-          schema:
-            type: string
-          description: |
-            The Item's immutable slug (`item-000001`) or its uuid. A value
-            that parses as a uuid resolves by id, anything else by slug.
+        - $ref: "#/components/parameters/SlugOrId"
       requestBody:
         required: true
         content:
@@ -4468,14 +4419,7 @@ paths:
       security:
         - cookieSession: []
       parameters:
-        - name: slugOrId
-          in: path
-          required: true
-          schema:
-            type: string
-          description: |
-            The Item's immutable slug (`item-000001`) or its uuid. A value
-            that parses as a uuid resolves by id, anything else by slug.
+        - $ref: "#/components/parameters/SlugOrId"
       requestBody:
         required: true
         content:
@@ -4537,14 +4481,7 @@ paths:
       security:
         - cookieSession: []
       parameters:
-        - name: slugOrId
-          in: path
-          required: true
-          schema:
-            type: string
-          description: |
-            The Item's immutable slug (`item-000001`) or its uuid. A value
-            that parses as a uuid resolves by id, anything else by slug.
+        - $ref: "#/components/parameters/SlugOrId"
       requestBody:
         required: true
         content:
@@ -4605,14 +4542,7 @@ paths:
       security:
         - cookieSession: []
       parameters:
-        - name: slugOrId
-          in: path
-          required: true
-          schema:
-            type: string
-          description: |
-            The Item's immutable slug (`item-000001`) or its uuid. A value
-            that parses as a uuid resolves by id, anything else by slug.
+        - $ref: "#/components/parameters/SlugOrId"
       responses:
         "200":
           description: The restored item
@@ -5887,6 +5817,15 @@ components:
         type: string
         format: uuid
       description: The Workshop id.
+    SlugOrId:
+      name: slugOrId
+      in: path
+      required: true
+      schema:
+        type: string
+      description: |
+        The Item's immutable slug (`item-000001`) or its uuid. A value
+        that parses as a uuid resolves by id, anything else by slug.
   schemas:
     OnboardingStartAcceptanceRequest:
       type: object
