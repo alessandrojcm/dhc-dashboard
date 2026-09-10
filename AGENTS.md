@@ -14,6 +14,8 @@ Dev data can include pending direct member invitations through `mise run seed-in
 
 Invitation pricing tiers use backend-applied Stripe coupon IDs, not customer-facing promotion codes; see the invitation pricing tier note in `docs/agents/notes.md` for coupon configuration and E2E conventions.
 
+Target Inventory Item operations are exposed on the temporary `/api/inventory/operator/items` sub-root under the one `Inventory` tag until ALE-289 frees the legacy `/inventory/items*` URLs; those reads are operator-only by design. See the Inventory Item rows in `docs/agents/where-to-look.md` and the `mix gen.controllers` / `api-gen` gotchas in `docs/agents/notes.md` before editing the API contract.
+
 ## Navigation
 
 - Structure: [docs/agents/structure.md](docs/agents/structure.md)
