@@ -3,31 +3,47 @@ defmodule Mix.Tasks.Gen.Controllers do
   Generates Phoenix controllers, JSON renderers, and contract tests from an OpenAPI spec.
 
   Reads `priv/api/openapi.yaml` and emits one controller, one JSON
-  renderer, and one test file per tag found in the spec's operations.
+  renderer, and one test file per **slice** found in the spec's operations.
+
+  ## Slices vs tags
+
+  A *slice* is the scaffolding unit and is named by the `operationId` prefix
+  (`inventoryStructure.showDefinition` → slice `inventoryStructure` →
+  `inventory_structure_controller.ex`).
+
+  The *tag* remains the domain boundary — "one domain = one tag = one URL
+  root" — and supplies the `x-context` / `x-resource` extensions. Because a
+  domain may be served by several controllers, one tag may contain several
+  slices: the `Inventory` tag holds both `inventoryStructure` and
+  `inventoryOperatorItems`. Keying scaffolding on the slice is what keeps
+  `mix gen.controllers` idempotent for such tags.
 
   ## Usage
 
       mix gen.controllers              # generate from priv/api/openapi.yaml
       mix gen.controllers --force      # overwrite all existing files
-      mix gen.controllers --force=<path> # overwrite a specific file
+      mix gen.controllers --force=<path> # overwrite a specific slice's files
 
   ## Output
 
-  For each unique tag found (e.g. `Widgets`), the task generates:
+  For each unique slice found (e.g. `widgets`), the task generates:
 
-    - `lib/dhc_web/controllers/<tag>_controller.ex`
-    - `lib/dhc_web/controllers/<tag>_json.ex`
-    - `test/dhc_web/controllers/<tag>_controller_test.exs`
+    - `lib/dhc_web/controllers/<slice>_controller.ex`
+    - `lib/dhc_web/controllers/<slice>_json.ex`
+    - `test/dhc_web/controllers/<slice>_controller_test.exs`
     - A router entry printed to the console
 
-  Existing files are skipped by default. Pass `--force` to overwrite all,
-  or `--force=lib/dhc_web/controllers/foo_controller.ex` to overwrite a specific file.
+  The three files are one all-or-nothing unit: if the slice's controller
+  already exists the slice is considered hand-owned and none of the three is
+  written. Pass `--force` to overwrite all, or
+  `--force=lib/dhc_web/controllers/foo_controller.ex` to overwrite one slice.
 
   ## OpenAPI Conventions
 
   - Each operation **must** be tagged with exactly one tag.
-  - The tag name determines the controller name. E.g. tag `Widgets` produces
-    `DhcWeb.WidgetsController`.
+  - The `operationId` **should** be `<slice>.<action>`; the slice names the
+    controller. E.g. `widgets.index` produces `DhcWeb.WidgetsController`.
+    An operationId with no prefix falls back to the tag name as its slice.
   - REST action names are derived from HTTP method + path pattern:
     `GET /resources` → `index`, `GET /resources/{id}` → `show`,
     `POST /resources` → `create`, `PUT|PATCH /resources/{id}` → `update`,
@@ -58,20 +74,16 @@ defmodule Mix.Tasks.Gen.Controllers do
     # extensions without threading `spec` through every call site.
     Process.put(:gen_controllers_spec, spec)
 
-    tags = unique_tags(spec)
+    slices = unique_slices(spec)
 
-    if Enum.empty?(tags) do
+    if Enum.empty?(slices) do
       Mix.shell().info("No tagged operations found in #{@spec_file}.")
     else
-      Mix.shell().info("Found tags: #{Enum.join(tags, ", ")}")
+      Mix.shell().info("Found slices: #{Enum.map_join(slices, ", ", & &1.name)}")
 
-      Enum.each(tags, fn tag ->
-        generate_controller(tag, spec, opts)
-        generate_json_renderer(tag, spec, opts)
-        generate_contract_test(tag, spec, opts)
-      end)
+      Enum.each(slices, &generate_slice(&1, spec, opts))
 
-      print_router_entries(tags, spec)
+      print_router_entries(slices)
     end
   end
 
@@ -170,53 +182,114 @@ defmodule Mix.Tasks.Gen.Controllers do
     end
   end
 
+  # ── Slice discovery ──────────────────────────────────────────────────
+  #
+  # A *slice* is the generator's scaffolding unit: one controller, one JSON
+  # renderer, one contract test. It is named by the `operationId` prefix
+  # (`inventoryStructure.showDefinition` → `inventoryStructure`), because
+  # that is what maps 1:1 onto a controller file.
+  #
+  # The tag remains the *domain* boundary ("one domain = one tag = one URL
+  # root"). Keying scaffolding on the slice lets one domain be served by
+  # more than one controller without the generator re-emitting a broken
+  # stub for a tag-named controller that intentionally does not exist.
+  #
+  # Each slice keeps its owning `tag` so the `x-context` / `x-resource` tag
+  # extensions continue to resolve context and resource names.
+
+  @doc """
+  Returns the slices in the spec, sorted by name.
+
+  Each slice is a map of `%{name: String.t(), tag: String.t(), operations: [map]}`.
+  Operations whose `operationId` has no `<slice>.<action>` prefix fall back to
+  their tag name as the slice name, preserving the historical one-per-tag
+  behaviour for specs that do not use prefixed operationIds.
+  """
+  def unique_slices(spec) do
+    spec
+    |> unique_tags()
+    |> Enum.flat_map(fn tag ->
+      spec
+      |> operations_for_tag(tag)
+      |> Enum.group_by(&slice_name_for(&1, tag))
+      |> Enum.map(fn {slice_name, operations} ->
+        %{name: slice_name, tag: tag, operations: operations}
+      end)
+    end)
+    |> Enum.sort_by(& &1.name)
+  end
+
+  defp slice_name_for(op, tag) do
+    operation_id_to_slice(op.operation_id) || tag
+  end
+
+  @doc """
+  Derives the slice name from an operationId.
+
+  The operationId is expected in the form `<slice>.<action>` (e.g.
+  `inventoryStructure.showDefinition` → `inventoryStructure`). Returns `nil`
+  when the operationId is absent or carries no prefix.
+  """
+  def operation_id_to_slice(operation_id) when is_binary(operation_id) do
+    case String.split(operation_id, ".", parts: 2) do
+      [slice, _action] -> slice
+      _ -> nil
+    end
+  end
+
+  def operation_id_to_slice(_operation_id), do: nil
+
   # ── File generation ──────────────────────────────────────────────────
 
-  defp generate_controller(tag, spec, opts) do
-    module_name = controller_module(tag)
-    file_path = controller_file_path(tag)
+  # The controller, JSON renderer and contract test form one all-or-nothing
+  # scaffolding unit. Once a slice's controller exists the slice is
+  # hand-owned, so none of the three is re-emitted. Checking each file
+  # independently used to resurrect renderers for slices that deliberately
+  # render through another module (e.g. `membership_json.ex` against the
+  # non-existent `%Dhc.Membership.Membership{}`).
+  defp generate_slice(slice, spec, opts) do
+    controller_path = controller_file_path(slice.name)
 
-    if write_file_permitted?(file_path, opts) do
-      content = controller_content(module_name, tag, spec)
-      write_file!(file_path, content)
-      Mix.shell().info([:green, "  create ", :reset, file_path])
+    if scaffold_slice?(slice.name, opts) do
+      write_file!(controller_path, controller_content(controller_module(slice.name), slice, spec))
+      Mix.shell().info([:green, "  create ", :reset, controller_path])
+
+      json_path = json_file_path(slice.name)
+      write_file!(json_path, json_renderer_content(json_module(slice.name), slice, spec))
+      Mix.shell().info([:green, "  create ", :reset, json_path])
+
+      test_path = contract_test_file_path(slice.name)
+      write_file!(test_path, contract_test_content(slice, spec))
+      Mix.shell().info([:green, "  create ", :reset, test_path])
     else
-      Mix.shell().info([:yellow, "  skip ", :reset, file_path, " (already exists)"])
+      Mix.shell().info([
+        :yellow,
+        "  skip ",
+        :reset,
+        "#{slice.name} (#{controller_path} already exists)"
+      ])
     end
   end
 
-  defp generate_json_renderer(tag, spec, opts) do
-    module_name = json_module(tag)
-    file_path = json_file_path(tag)
+  @doc """
+  Returns true when a slice should be scaffolded.
 
-    if write_file_permitted?(file_path, opts) do
-      content = json_renderer_content(module_name, tag, spec)
-      write_file!(file_path, content)
-      Mix.shell().info([:green, "  create ", :reset, file_path])
-    else
-      Mix.shell().info([:yellow, "  skip ", :reset, file_path, " (already exists)"])
-    end
-  end
+  A slice is scaffolded only when its controller does not yet exist, or when
+  `--force` / `--force=<controller path>` was passed. The controller's
+  presence is the single signal that the slice is hand-owned, so its JSON
+  renderer and contract test are governed by the same answer.
 
-  defp generate_contract_test(tag, spec, opts) do
-    file_path = contract_test_file_path(tag)
+  `root` defaults to the current working directory; it is passed explicitly
+  in tests.
+  """
+  def scaffold_slice?(slice_name, opts, root \\ nil) do
+    root = root || File.cwd!()
+    controller_path = controller_file_path(slice_name)
 
-    if write_file_permitted?(file_path, opts) do
-      content = contract_test_content(tag, spec)
-      write_file!(file_path, content)
-      Mix.shell().info([:green, "  create ", :reset, file_path])
-    else
-      Mix.shell().info([:yellow, "  skip ", :reset, file_path, " (already exists)"])
-    end
-  end
-
-  defp write_file_permitted?(file_path, opts) do
-    full_path = Path.join(File.cwd!(), file_path)
-
-    if File.exists?(full_path) do
+    if File.exists?(Path.join(root, controller_path)) do
       case opts[:force] do
         :all -> true
-        ^file_path -> true
+        ^controller_path -> true
         _ -> false
       end
     else
@@ -233,8 +306,8 @@ defmodule Mix.Tasks.Gen.Controllers do
   # ── Controller module content ────────────────────────────────────────
 
   @doc false
-  def controller_content(module_name, tag, spec) do
-    operations = operations_for_tag(spec, tag)
+  def controller_content(module_name, slice, spec) do
+    %{tag: tag, operations: operations} = slice
     aliases = controller_aliases(operations, spec, tag)
     action_defs = Enum.map(operations, &controller_action(&1, tag, spec))
 
@@ -422,8 +495,8 @@ defmodule Mix.Tasks.Gen.Controllers do
   # ── JSON renderer module content ─────────────────────────────────────
 
   @doc false
-  def json_renderer_content(module_name, tag, spec) do
-    operations = operations_for_tag(spec, tag)
+  def json_renderer_content(module_name, slice, spec) do
+    %{tag: tag, operations: operations} = slice
     r_singular = resource_singular(tag)
     r_var = resource_var(tag)
     r_plural = resource_plural(tag)
@@ -463,7 +536,7 @@ defmodule Mix.Tasks.Gen.Controllers do
 
     # Emit render_<resource> helper with pattern match on the struct
     struct_module = context_module(tag) <> "." <> Macro.camelize(r_singular)
-    fields = renderer_fields(tag, spec)
+    fields = renderer_fields(slice, spec)
 
     """
     defmodule #{module_name} do
@@ -480,9 +553,9 @@ defmodule Mix.Tasks.Gen.Controllers do
     """
   end
 
-  defp renderer_fields(tag, spec) do
+  defp renderer_fields(slice, spec) do
     # Find the first response schema that has a data property with fields
-    ops = operations_for_tag(spec, tag)
+    %{tag: tag, operations: ops} = slice
 
     field_schema =
       Enum.find_value(ops, fn op ->
@@ -516,10 +589,9 @@ defmodule Mix.Tasks.Gen.Controllers do
 
   # ── Contract test content ────────────────────────────────────────────
 
-  defp contract_test_content(tag, spec) do
-    module_name = controller_test_module(tag)
-    operations = operations_for_tag(spec, tag)
-    test_cases = Enum.map(operations, &contract_test_case(&1, tag))
+  defp contract_test_content(slice, _spec) do
+    module_name = controller_test_module(slice.name)
+    test_cases = Enum.map(slice.operations, &contract_test_case(&1, slice.tag))
 
     """
     defmodule #{module_name} do
@@ -574,15 +646,14 @@ defmodule Mix.Tasks.Gen.Controllers do
 
   # ── Router entries ───────────────────────────────────────────────────
 
-  defp print_router_entries(tags, spec) do
+  defp print_router_entries(slices) do
     Mix.shell().info("\n── Router entries (paste into lib/dhc_web/router.ex) ──")
 
-    Enum.each(tags, fn tag ->
-      operations = operations_for_tag(spec, tag)
+    Enum.each(slices, fn slice ->
+      short_ctrl = String.split(controller_module(slice.name), ".") |> List.last()
 
-      Enum.each(operations, fn op ->
+      Enum.each(slice.operations, fn op ->
         action = action_name(op)
-        short_ctrl = String.split(controller_module(tag), ".") |> List.last()
 
         route =
           "#{op.method} \"#{op.path}\", #{short_ctrl}, :#{action}"
@@ -792,16 +863,22 @@ defmodule Mix.Tasks.Gen.Controllers do
 
   # ── File path helpers ────────────────────────────────────────────────
 
-  defp controller_file_path(tag) do
-    Path.join(@controller_dir, "#{Macro.underscore(tag)}_controller.ex")
+  @doc """
+  The controller path for a slice name. Exposed for testing.
+  """
+  def controller_file_path(slice_name) do
+    Path.join(@controller_dir, "#{Macro.underscore(slice_name)}_controller.ex")
   end
 
-  defp json_file_path(tag) do
-    Path.join(@controller_dir, "#{Macro.underscore(tag)}_json.ex")
+  @doc """
+  The JSON renderer path for a slice name. Exposed for testing.
+  """
+  def json_file_path(slice_name) do
+    Path.join(@controller_dir, "#{Macro.underscore(slice_name)}_json.ex")
   end
 
-  defp contract_test_file_path(tag) do
-    Path.join(@test_dir, "#{Macro.underscore(tag)}_controller_test.exs")
+  defp contract_test_file_path(slice_name) do
+    Path.join(@test_dir, "#{Macro.underscore(slice_name)}_controller_test.exs")
   end
 
   # ── Action name resolution ───────────────────────────────────────────

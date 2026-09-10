@@ -1,4 +1,4 @@
-import { authShowSession } from "@dhc/api-client";
+import { authSessionShowSession } from "@dhc/api-client";
 import { env } from "$env/dynamic/private";
 import { error } from "@sveltejs/kit";
 import { invariant } from "./invariant";
@@ -16,7 +16,7 @@ export interface PhoenixSessionClient {
 }
 
 const defaultSessionClient: PhoenixSessionClient = {
-	showSession: async (options) => authShowSession(options),
+	showSession: async (options) => authSessionShowSession(options),
 };
 
 const DEFAULT_API_BASE_URL = "http://127.0.0.1:4000/api";

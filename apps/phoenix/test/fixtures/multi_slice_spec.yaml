@@ -1,0 +1,153 @@
+openapi: 3.0.3
+info:
+  title: DHC Dashboard API (multi-slice tag fixture)
+  version: 0.1.0
+
+servers:
+  - url: /api
+
+# One tag (`Inventory`) owning two scaffolding slices, mirroring the real
+# spec after ALE-292/ALE-295: the domain keeps a single tag and a single URL
+# root, while the `operationId` prefix (`inventoryStructure`,
+# `inventoryOperatorItems`) names the controller that serves each group.
+#
+# `Legacy` exercises the fallback: an operation whose operationId carries no
+# `<slice>.<action>` prefix falls back to the tag name as its slice.
+tags:
+  - name: Inventory
+    x-context: Dhc.Inventory
+    x-resource: PropertyDefinition
+  - name: Legacy
+
+paths:
+  /inventory/definitions/{id}:
+    get:
+      operationId: inventoryStructure.showDefinition
+      tags:
+        - Inventory
+      summary: Show a property definition
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/PropertyDefinition"
+
+  /inventory/definitions/{id}/retire:
+    post:
+      operationId: inventoryStructure.retireDefinition
+      tags:
+        - Inventory
+      summary: Retire a property definition
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/PropertyDefinition"
+
+  /inventory/operator/items:
+    get:
+      operationId: inventoryOperatorItems.list
+      tags:
+        - Inventory
+      summary: List target inventory items
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Item"
+
+    post:
+      operationId: inventoryOperatorItems.create
+      tags:
+        - Inventory
+      summary: Create a target inventory item
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - label
+              properties:
+                label:
+                  type: string
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/Item"
+
+  /legacy/things:
+    get:
+      operationId: legacyThings
+      tags:
+        - Legacy
+      summary: An operation whose operationId has no slice prefix
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+
+components:
+  schemas:
+    PropertyDefinition:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+
+    Item:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string

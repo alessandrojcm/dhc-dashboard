@@ -8,7 +8,7 @@ import { createQuery } from "@tanstack/svelte-query";
 import { goto } from "$app/navigation";
 import { invalidateAll, invalidate } from "$app/navigation";
 import { resolve } from "$app/paths";
-import { membersMeOptions, authDeleteSession } from "@dhc/api-client";
+import { membersMeOptions, authSessionDeleteSession } from "@dhc/api-client";
 import type { Snippet } from "svelte";
 
 let { children, data }: { data: LayoutData; children: Snippet } = $props();
@@ -36,7 +36,7 @@ const userDataQuery = createQuery(() => ({
  */
 async function logout() {
 	try {
-		await authDeleteSession();
+		await authSessionDeleteSession();
 	} catch {
 		// Even if Phoenix is unreachable, clear the local session and
 		// redirect — the cookie will expire on its own.

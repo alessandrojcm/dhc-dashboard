@@ -5763,7 +5763,7 @@ paths:
 
   /auth/magic-link:
     post:
-      operationId: auth.requestMagicLink
+      operationId: authSession.requestMagicLink
       tags:
         - AuthSession
       summary: Request a magic-link sign-in email
@@ -5809,7 +5809,7 @@ paths:
 
   /auth/magic-link/verify:
     post:
-      operationId: auth.verifyMagicLink
+      operationId: authSession.verifyMagicLink
       tags:
         - AuthSession
       summary: Consume a magic link and establish a session
@@ -5855,7 +5855,7 @@ paths:
 
   /auth/discord/link:
     get:
-      operationId: auth.linkDiscord
+      operationId: authSession.linkDiscord
       tags:
         - AuthSession
       summary: Start authenticated Discord identity linking
@@ -5878,7 +5878,7 @@ paths:
 
   /auth/session:
     get:
-      operationId: auth.showSession
+      operationId: authSession.showSession
       tags:
         - AuthSession
       summary: Read the current session projection
@@ -5904,7 +5904,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
     delete:
-      operationId: auth.deleteSession
+      operationId: authSession.deleteSession
       tags:
         - AuthSession
       summary: Sign out the current device
@@ -5935,7 +5935,7 @@ paths:
 
   /auth/socket-token:
     get:
-      operationId: auth.socketToken
+      operationId: authSession.socketToken
       tags:
         - AuthSession
       summary: Exchange the session cookie for a short-lived socket token
