@@ -255,7 +255,11 @@ mise run api-gen
 
 Fails fast: if either step exits non-zero, mise stops immediately and does not proceed.
 
-**`mix gen.controllers` clobber caveat**: the task maps every operation under a tag to a REST action derived from HTTP method + path (or `operationId`), and regenerates the *whole* controller + JSON renderer + contract test for that tag. When a tag carries multiple non-REST operations (e.g. `Members` has `members.list`, `members.analytics`, `members.insuranceForm`), `--force=<path>` will overwrite the controller with stubs that map *all three* to `index` and call a non-existent `Members.list_members()` — clobbering any hand-written action bodies. After regenerating, restore the hand-written controller (keep your real action names + bodies) and never re-run `--force` on a tag whose controller you've fleshed out unless you're prepared to restore it from git. The JSON renderer and contract test are likewise tag-scoped, so extend them by hand for non-REST operations.
+**`mix gen.controllers` scaffolds per slice**: the *slice* — the `operationId` prefix, e.g. `inventoryStructure` from `inventoryStructure.showDefinition` — names the controller, JSON renderer, and contract test. The *tag* remains the domain boundary ("one domain = one tag = one URL root") and supplies `x-context`/`x-resource`, so one tag can own several controllers. Give every operation an `operationId` of `<slice>.<action>` whose `<slice>` underscores to the controller filename; otherwise the generator writes a stub for a controller you did not intend.
+
+Re-running is safe by default: a slice whose controller already exists is skipped **together with its renderer and test**, so `mise run api-gen` is idempotent and should print only `skip` lines for existing slices.
+
+**`--force` clobber caveat**: `--force`/`--force=<path>` bypasses that skip and regenerates the whole trio from the spec, mapping operations to REST actions derived from HTTP method + path (or `operationId`). When a slice carries multiple non-REST operations (e.g. `members` has `members.list`, `members.analytics`, `members.insuranceForm`), it will overwrite the controller with stubs that map *all three* to `index` and call a non-existent `Members.list_members()` — clobbering hand-written action bodies. After forcing, restore the hand-written controller (keep your real action names + bodies), and never `--force` a slice you have fleshed out unless you can restore it from version control.
 
 ## API Client (TypeScript)
 
