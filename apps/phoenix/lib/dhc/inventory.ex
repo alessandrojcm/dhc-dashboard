@@ -16,6 +16,7 @@ defmodule Dhc.Inventory do
   alias Dhc.Inventory.ItemHistory
   alias Dhc.Inventory.Items
   alias Dhc.Inventory.OperatorItemLifecycle
+  alias Dhc.Inventory.OperatorItemList
   alias Dhc.Inventory.OperatorItems
   alias Dhc.Inventory.Stats
   alias Dhc.Inventory.Structure
@@ -51,6 +52,8 @@ defmodule Dhc.Inventory do
   # ALE-284a target item slice. The legacy `*_item` functions above stay
   # until ALE-289 removes them; target paths never write `inventory_history`.
   defdelegate resolve_operator_item(slug_or_id), to: OperatorItems
+  # ALE-284c paginated operator read backing the viewer contract.
+  defdelegate list_operator_items(params \\ %{}), to: OperatorItemList
   defdelegate create_operator_item(attrs, actor_id), to: OperatorItems
   defdelegate update_operator_item(slug_or_id, attrs, actor_id), to: OperatorItems
   defdelegate change_operator_item_category(slug_or_id, attrs, actor_id), to: OperatorItems

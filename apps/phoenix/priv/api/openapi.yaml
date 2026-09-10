@@ -37,11 +37,17 @@ tags:
     x-resource: InventoryDashboard
   - name: Inventory
     description: |
-      Target Inventory capability (ALE-272 / ALE-283c). New operator
-      structure viewer operations — Property Definitions and
-      single-select Options — live here under the one `/api/inventory`
+      Target Inventory capability (ALE-272 / ALE-283c / ALE-284c). New
+      operator viewer operations — Property Definitions, single-select
+      Options, and target Items — live here under the one `/api/inventory`
       root. Legacy category, container, item, history, and dashboard
       operations keep their existing tags until ALE-289 collapses them.
+
+      Target operator item operations are parked under
+      `/inventory/operator/items` only because the legacy `/inventory/items`
+      paths are still serving the current dashboard. ALE-289 deletes the
+      legacy operations and moves these onto the freed `/inventory/items`
+      URLs, leaving one tag and one root with no `operator` segment.
     x-context: Dhc.Inventory
     x-resource: PropertyDefinition
   - name: Members
@@ -3937,6 +3943,832 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/InventoryOptionRetireError"
+
+  /inventory/operator/items:
+    get:
+      operationId: inventoryOperatorItems.list
+      tags:
+        - Inventory
+      summary: List target inventory items for an operator
+      description: |
+        Returns the cursor-paginated operator viewer for target Items. Each
+        row carries the immutable slug, the server-derived label, its typed
+        property values, and the recomputed availability projection.
+
+        Ordering is by `slug` with an `id` tie-break, so page boundaries are
+        stable under concurrent edits — the slug is the only ordering key no
+        command can change. `totalCount` is an exact count over the same
+        filtered set.
+
+        Archived Items are absent unless `archived` asks for them. Filters:
+        `categoryId` (comma-separated) and `property` (comma-separated
+        `definitionId:value` pairs, OR within one definition and AND across
+        definitions). Absent or empty means no filter.
+
+        Cursors are opaque and bind to limit, direction, and every filter; a
+        cursor replayed against a different query returns `400`.
+
+        This is the operator viewer: it discloses container location,
+        operator notes, and maintenance-derived availability, so it is
+        restricted to the inventory write roles rather than any member. The
+        member-shaped catalog is a separate operation.
+
+        Requires a Phoenix session whose roles include one of:
+        `quartermaster`, `president`, or `admin`.
+      security:
+        - cookieSession: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            enum: [10, 25, 50, 100]
+            default: 25
+        - name: cursor
+          in: query
+          schema:
+            type: string
+          description: |
+            Opaque cursor from a previous response. Binds to limit,
+            direction, and every filter; a mismatched cursor returns 400.
+        - name: direction
+          in: query
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
+          description: Slug ordering direction.
+        - name: archived
+          in: query
+          schema:
+            type: string
+            enum: [exclude, include, only]
+            default: exclude
+          description: |
+            `exclude` (default) hides archived Items, `only` returns just
+            them, `include` returns both.
+        - name: categoryId
+          in: query
+          schema:
+            type: string
+          description: |
+            Comma-separated category ids. Absent or empty returns all
+            categories.
+        - name: property
+          in: query
+          schema:
+            type: string
+          description: |
+            Comma-separated `definitionId:value` pairs. Values of the same
+            definition are ORed; separate definitions are ANDed. A value
+            matches an option id, boolean, decimal, or (case-insensitive)
+            text.
+      responses:
+        "200":
+          description: Cursor-paginated operator items
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOperatorItemListResponse"
+        "400":
+          description: Invalid query parameter or mismatched cursor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid Phoenix session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks an operator role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      operationId: inventoryOperatorItems.create
+      tags:
+        - Inventory
+      summary: Create one target inventory item
+      description: |
+        Creates one physical unit in an active Container and Category. The
+        slug is server-minted and immutable; the label is derived, never
+        supplied. Typed values are validated against the Category's live
+        Property Definitions in the same transaction, so requiredness, value
+        type, and single-select option membership are enforced together and
+        reported per definition.
+
+        Empty text is absence (no value is stored); boolean `false` is a
+        real value. There are no defaults.
+
+        Requires a Phoenix session whose roles include one of:
+        `quartermaster`, `president`, or `admin`.
+      security:
+        - cookieSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryOperatorItemCreateRequest"
+      responses:
+        "201":
+          description: The created item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOperatorItemResponse"
+        "401":
+          description: Missing or invalid Phoenix session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a write role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No such container or category
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |
+            Archived container/category, invalid notes, or per-definition
+            value errors.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOperatorItemValidationError"
+
+  /inventory/operator/items/{slugOrId}:
+    get:
+      operationId: inventoryOperatorItems.show
+      tags:
+        - Inventory
+      summary: Get one target inventory item by slug or id
+      description: |
+        Resolves one Item by its immutable slug (`item-000001`) or its id —
+        the slug is stable across category changes, so operators can type
+        it from a physical unit. Returns the same viewer shape as the list,
+        including the derived label, typed values, and availability.
+
+        Operator-only for the same reason as the list: it discloses container
+        location, operator notes, and maintenance facts.
+
+        Requires a Phoenix session whose roles include one of:
+        `quartermaster`, `president`, or `admin`.
+      security:
+        - cookieSession: []
+      parameters:
+        - name: slugOrId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: |
+            The Item's immutable slug (`item-000001`) or its uuid. A value
+            that parses as a uuid resolves by id, anything else by slug.
+      responses:
+        "200":
+          description: The item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOperatorItemResponse"
+        "401":
+          description: Missing or invalid Phoenix session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks an operator role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No item exists for the given slug or id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    patch:
+      operationId: inventoryOperatorItems.update
+      tags:
+        - Inventory
+      summary: Edit a target inventory item's notes and values
+      description: |
+        The generic Item edit, deliberately narrow: it touches **only**
+        notes and typed values. It can never move the Item, change its
+        maintenance or archive state, or affect a Loan — those are separate
+        commands. A supplied `containerId` or `categoryId` is ignored;
+        reclassification goes through the `category` command.
+
+        Omitting `values` leaves the stored set untouched; supplying it
+        replaces the complete set, so an omitted definition becomes absent.
+        Editing an archived Item is refused — restore it first.
+
+        Requires a Phoenix session whose roles include one of:
+        `quartermaster`, `president`, or `admin`.
+      security:
+        - cookieSession: []
+      parameters:
+        - name: slugOrId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: |
+            The Item's immutable slug (`item-000001`) or its uuid. A value
+            that parses as a uuid resolves by id, anything else by slug.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryOperatorItemUpdateRequest"
+      responses:
+        "200":
+          description: The updated item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOperatorItemResponse"
+        "401":
+          description: Missing or invalid Phoenix session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a write role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No item exists for the given slug or id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: The item is archived and therefore read-only
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOperatorItemConflictError"
+        "422":
+          description: Invalid notes or per-definition value errors
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOperatorItemValidationError"
+    delete:
+      operationId: inventoryOperatorItems.delete
+      tags:
+        - Inventory
+      summary: Delete a history-free target inventory item
+      description: |
+        Hard-deletes an Item only when it has no Loan or Maintenance
+        history, and only with explicit confirmation (`confirm: true` — a
+        truthy string is not consent). Anything with history must be
+        archived instead, because history is never destroyed.
+
+        Requires a Phoenix session whose roles include one of:
+        `quartermaster`, `president`, or `admin`.
+      security:
+        - cookieSession: []
+      parameters:
+        - name: slugOrId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: |
+            The Item's immutable slug (`item-000001`) or its uuid. A value
+            that parses as a uuid resolves by id, anything else by slug.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryOperatorItemDeleteRequest"
+      responses:
+        "200":
+          description: The deleted item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOperatorItemResponse"
+        "401":
+          description: Missing or invalid Phoenix session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a write role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No item exists for the given slug or id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: The item has loan or maintenance history — archive it
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOperatorItemConflictError"
+        "422":
+          description: Confirmation was not given
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOperatorItemValidationError"
+
+  /inventory/operator/items/{slugOrId}/category:
+    post:
+      operationId: inventoryOperatorItems.changeCategory
+      tags:
+        - Inventory
+      summary: Reclassify a target inventory item
+      description: |
+        Moves one Item to a different Category as a single atomic command.
+        The supplied values are validated against the **new** Category's
+        live definitions, so every value it requires must be present —
+        partial reclassification is impossible. Old values survive only
+        through explicit operator mapping onto the new definitions; anything
+        unmapped stops being a current fact. The slug is unaffected.
+
+        Requires a Phoenix session whose roles include one of:
+        `quartermaster`, `president`, or `admin`.
+      security:
+        - cookieSession: []
+      parameters:
+        - name: slugOrId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: |
+            The Item's immutable slug (`item-000001`) or its uuid. A value
+            that parses as a uuid resolves by id, anything else by slug.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryOperatorItemCategoryRequest"
+      responses:
+        "200":
+          description: The reclassified item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOperatorItemResponse"
+        "401":
+          description: Missing or invalid Phoenix session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a write role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No such item or category
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: The item is archived and therefore read-only
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOperatorItemConflictError"
+        "422":
+          description: Archived category or per-definition value errors
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOperatorItemValidationError"
+
+  /inventory/operator/items/{slugOrId}/move:
+    post:
+      operationId: inventoryOperatorItems.move
+      tags:
+        - Inventory
+      summary: Move a target inventory item to another container
+      description: |
+        The dedicated movement command: it changes `containerId` and nothing
+        else, so a move can never quietly reclassify or re-value an Item.
+
+        Movement is permitted while the Item is in maintenance (servicing
+        and storage are independent) and refused while a Loan is approved or
+        checked out, because that Loan holds custody.
+
+        Requires a Phoenix session whose roles include one of:
+        `quartermaster`, `president`, or `admin`.
+      security:
+        - cookieSession: []
+      parameters:
+        - name: slugOrId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: |
+            The Item's immutable slug (`item-000001`) or its uuid. A value
+            that parses as a uuid resolves by id, anything else by slug.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryOperatorItemMoveRequest"
+      responses:
+        "200":
+          description: The moved item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOperatorItemResponse"
+        "401":
+          description: Missing or invalid Phoenix session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a write role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No such item or container
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |
+            The item is archived, or an approved/checked-out loan holds it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOperatorItemConflictError"
+        "422":
+          description: The destination container is archived
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOperatorItemValidationError"
+
+  /inventory/operator/items/{slugOrId}/maintenance:
+    get:
+      operationId: inventoryOperatorItems.listMaintenance
+      tags:
+        - Inventory
+      summary: List an item's retained maintenance periods
+      description: |
+        Returns every retained Maintenance Period of one Item, newest first,
+        with start and end timestamps, the recording operators, the required
+        start reason, and the optional end note. `open` is derived from the
+        absence of `endedAt`.
+
+        These are operator facts and are never exposed to members, who see
+        only a generic maintenance status.
+
+        Requires a Phoenix session whose roles include one of:
+        `quartermaster`, `president`, or `admin`.
+      security:
+        - cookieSession: []
+      parameters:
+        - name: slugOrId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: |
+            The Item's immutable slug (`item-000001`) or its uuid. A value
+            that parses as a uuid resolves by id, anything else by slug.
+      responses:
+        "200":
+          description: The item's maintenance periods
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryMaintenancePeriodListResponse"
+        "401":
+          description: Missing or invalid Phoenix session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a write role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No item exists for the given slug or id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /inventory/operator/items/{slugOrId}/maintenance/start:
+    post:
+      operationId: inventoryOperatorItems.startMaintenance
+      tags:
+        - Inventory
+      summary: Start a maintenance period on a target inventory item
+      description: |
+        Opens a Maintenance Period effective immediately. The reason is
+        required — an Item leaves circulation with context or not at all.
+
+        Pending Loan requests are rejected in the same transaction so
+        servicing never strands a member waiting on a decision. An approved
+        or checked-out Loan blocks the command instead, because that member
+        already holds the Item. At most one period per Item is open.
+
+        Requires a Phoenix session whose roles include one of:
+        `quartermaster`, `president`, or `admin`.
+      security:
+        - cookieSession: []
+      parameters:
+        - name: slugOrId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: |
+            The Item's immutable slug (`item-000001`) or its uuid. A value
+            that parses as a uuid resolves by id, anything else by slug.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryMaintenanceStartRequest"
+      responses:
+        "200":
+          description: The item, now in maintenance
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOperatorItemResponse"
+        "401":
+          description: Missing or invalid Phoenix session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a write role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No item exists for the given slug or id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |
+            The item is archived, already has an open period, or is held by
+            an approved/checked-out loan.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOperatorItemConflictError"
+        "422":
+          description: The start reason is missing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOperatorItemValidationError"
+
+  /inventory/operator/items/{slugOrId}/maintenance/end:
+    post:
+      operationId: inventoryOperatorItems.endMaintenance
+      tags:
+        - Inventory
+      summary: End a target inventory item's open maintenance period
+      description: |
+        Closes the Item's open Maintenance Period, optionally with a note,
+        and records the closing operator. Start and end timestamps are kept
+        forever.
+
+        Refused on an archived Item, which is read-only: archiving already
+        closed any open period atomically, so there is nothing left to end.
+
+        Requires a Phoenix session whose roles include one of:
+        `quartermaster`, `president`, or `admin`.
+      security:
+        - cookieSession: []
+      parameters:
+        - name: slugOrId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: |
+            The Item's immutable slug (`item-000001`) or its uuid. A value
+            that parses as a uuid resolves by id, anything else by slug.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryMaintenanceEndRequest"
+      responses:
+        "200":
+          description: The item, back in circulation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOperatorItemResponse"
+        "401":
+          description: Missing or invalid Phoenix session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a write role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No item exists for the given slug or id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |
+            The item is archived, or it has no open maintenance period.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOperatorItemConflictError"
+
+  /inventory/operator/items/{slugOrId}/archive:
+    post:
+      operationId: inventoryOperatorItems.archive
+      tags:
+        - Inventory
+      summary: Archive a target inventory item
+      description: |
+        Archives an Item instead of destroying it — the lifecycle end for
+        anything with Loan or Maintenance history.
+
+        Pending requests are rejected and any open Maintenance Period is
+        closed in the same transaction, with the supplied reason recorded as
+        that period's end note. An approved or checked-out Loan blocks
+        archival: a member holding the Item outranks retirement. Archiving
+        an already archived Item is a no-op, so a repeated command is not an
+        error.
+
+        Requires a Phoenix session whose roles include one of:
+        `quartermaster`, `president`, or `admin`.
+      security:
+        - cookieSession: []
+      parameters:
+        - name: slugOrId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: |
+            The Item's immutable slug (`item-000001`) or its uuid. A value
+            that parses as a uuid resolves by id, anything else by slug.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InventoryOperatorItemArchiveRequest"
+      responses:
+        "200":
+          description: The archived item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOperatorItemResponse"
+        "401":
+          description: Missing or invalid Phoenix session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a write role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No item exists for the given slug or id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: An approved or checked-out loan holds the item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOperatorItemConflictError"
+
+  /inventory/operator/items/{slugOrId}/restore:
+    post:
+      operationId: inventoryOperatorItems.restore
+      tags:
+        - Inventory
+      summary: Restore an archived target inventory item
+      description: |
+        Returns an archived Item to circulation, gated on the dependencies
+        an active Item needs: a live Category, an entirely active Container
+        chain, and retained values that still satisfy the Category's current
+        definitions.
+
+        The last gate matters because the make-required and retire gates
+        only consider *active* Items, so an archived Item can legitimately
+        drift out of validity while retired. Restoring an Item that is not
+        archived is a no-op.
+
+        Requires a Phoenix session whose roles include one of:
+        `quartermaster`, `president`, or `admin`.
+      security:
+        - cookieSession: []
+      parameters:
+        - name: slugOrId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: |
+            The Item's immutable slug (`item-000001`) or its uuid. A value
+            that parses as a uuid resolves by id, anything else by slug.
+      responses:
+        "200":
+          description: The restored item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOperatorItemResponse"
+        "401":
+          description: Missing or invalid Phoenix session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Authenticated user lacks a write role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: No item exists for the given slug or id
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |
+            The category or container chain is archived, or retained values
+            no longer validate.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventoryOperatorItemValidationError"
 
   /inventory/containers/{id}/move:
     post:
@@ -8137,6 +8969,430 @@ components:
         position:
           type: integer
           minimum: 0
+    InventoryOperatorItemValue:
+      type: object
+      description: |
+        One typed property value of an Item, joined to its definition so the
+        viewer can render it without a second lookup. Exactly one of `text`,
+        `decimal`, `boolean`, or `optionId`/`optionLabel` is populated,
+        matching `valueType`. Values whose definition or option has been
+        retired are still returned so archived and historical facts stay
+        readable.
+      required:
+        - definitionId
+        - definitionLabel
+        - valueType
+        - identifyingPosition
+        - text
+        - decimal
+        - boolean
+        - optionId
+        - optionLabel
+      properties:
+        definitionId:
+          type: string
+          format: uuid
+        definitionLabel:
+          type: string
+        valueType:
+          type: string
+          enum:
+            - text
+            - decimal
+            - boolean
+            - single_select
+        identifyingPosition:
+          type: integer
+          nullable: true
+          description: |
+            Position of this value in the derived label, or null when the
+            definition is not identifying.
+        text:
+          type: string
+          nullable: true
+        decimal:
+          type: string
+          nullable: true
+          description: Decimal serialized as a string to preserve precision.
+        boolean:
+          type: boolean
+          nullable: true
+        optionId:
+          type: string
+          format: uuid
+          nullable: true
+        optionLabel:
+          type: string
+          nullable: true
+    InventoryOperatorItemAvailability:
+      type: object
+      description: |
+        Recomputed on every read from archive state, the open Maintenance
+        Period, and approved/checked-out Loans — never a stored flag. Status
+        precedence is `archived`, then `maintenance`, then `on_loan`, then
+        `available`. A pending request is not an availability input.
+      required:
+        - available
+        - status
+      properties:
+        available:
+          type: boolean
+        status:
+          type: string
+          enum:
+            - available
+            - maintenance
+            - on_loan
+            - archived
+    InventoryOperatorItemSummaryRef:
+      type: object
+      description: A minimal container or category reference for the viewer.
+      required:
+        - id
+        - name
+        - archivedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        archivedAt:
+          type: string
+          format: date-time
+          nullable: true
+    InventoryOperatorItem:
+      type: object
+      description: |
+        Operator viewer for one target Item — one row is one physical unit.
+        `slug` is the immutable server-minted identity; `label` is derived
+        server-side from the category plus its ordered identifying values
+        (slug as fallback) and is never stored. Internal and legacy columns
+        (`quantity`, `photoUrl`, `attributes`, `outForMaintenance`,
+        `createdBy`, `updatedBy`) are deliberately absent.
+      required:
+        - id
+        - slug
+        - label
+        - categoryId
+        - containerId
+        - category
+        - container
+        - values
+        - notes
+        - availability
+        - archivedAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+          description: Immutable server-minted identity, e.g. `item-000001`.
+        label:
+          type: string
+          description: Server-derived display label. Never stored.
+        categoryId:
+          type: string
+          format: uuid
+        containerId:
+          type: string
+          format: uuid
+          nullable: true
+        category:
+          allOf:
+            - $ref: "#/components/schemas/InventoryOperatorItemSummaryRef"
+          nullable: true
+        container:
+          allOf:
+            - $ref: "#/components/schemas/InventoryOperatorItemSummaryRef"
+          nullable: true
+        values:
+          type: array
+          items:
+            $ref: "#/components/schemas/InventoryOperatorItemValue"
+        notes:
+          type: string
+          nullable: true
+          description: Plain-text current facts. No audit history.
+        availability:
+          $ref: "#/components/schemas/InventoryOperatorItemAvailability"
+        archivedAt:
+          type: string
+          format: date-time
+          nullable: true
+    InventoryOperatorItemListResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - items
+            - totalCount
+            - limit
+            - nextCursor
+            - previousCursor
+          properties:
+            items:
+              type: array
+              items:
+                $ref: "#/components/schemas/InventoryOperatorItem"
+            totalCount:
+              type: integer
+              minimum: 0
+              description: Exact count over the filtered set, never an estimate.
+            limit:
+              type: integer
+              enum: [10, 25, 50, 100]
+            nextCursor:
+              type: string
+              nullable: true
+            previousCursor:
+              type: string
+              nullable: true
+    InventoryOperatorItemResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          $ref: "#/components/schemas/InventoryOperatorItem"
+    InventoryOperatorItemValues:
+      type: object
+      description: |
+        Supplied typed values keyed by Property Definition id. A value is a
+        string (text, decimal, or option id), a boolean, or a number. Empty
+        text means absence; boolean `false` is a real value.
+      additionalProperties:
+        nullable: true
+        oneOf:
+          - type: string
+          - type: boolean
+          - type: number
+    InventoryOperatorItemCreateRequest:
+      type: object
+      required:
+        - containerId
+        - categoryId
+      properties:
+        containerId:
+          type: string
+          format: uuid
+        categoryId:
+          type: string
+          format: uuid
+        notes:
+          type: string
+          nullable: true
+          maxLength: 1000
+        values:
+          $ref: "#/components/schemas/InventoryOperatorItemValues"
+    InventoryOperatorItemUpdateRequest:
+      type: object
+      description: |
+        The generic Item edit. It carries no container, category,
+        maintenance, archive, or loan field by construction, so it cannot
+        express those state changes.
+      properties:
+        notes:
+          type: string
+          nullable: true
+          maxLength: 1000
+          description: |
+            Omit to leave notes untouched. Empty or whitespace-only clears
+            them.
+        values:
+          allOf:
+            - $ref: "#/components/schemas/InventoryOperatorItemValues"
+          description: |
+            Omit to leave stored values untouched. Supplying it replaces the
+            complete set, so an omitted definition becomes absent.
+    InventoryOperatorItemCategoryRequest:
+      type: object
+      required:
+        - categoryId
+      properties:
+        categoryId:
+          type: string
+          format: uuid
+        values:
+          allOf:
+            - $ref: "#/components/schemas/InventoryOperatorItemValues"
+          description: |
+            Values for the **new** category. Every value it requires must be
+            present; anything unmapped stops being a current fact.
+    InventoryOperatorItemMoveRequest:
+      type: object
+      required:
+        - containerId
+      properties:
+        containerId:
+          type: string
+          format: uuid
+          description: The destination container. Must be active.
+    InventoryOperatorItemArchiveRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+          nullable: true
+          maxLength: 1000
+          description: |
+            Recorded as the end note of an open Maintenance Period closed by
+            this archival.
+    InventoryOperatorItemDeleteRequest:
+      type: object
+      required:
+        - confirm
+      properties:
+        confirm:
+          type: boolean
+          description: |
+            Must be the boolean `true`. A truthy string is not consent.
+    InventoryMaintenancePeriod:
+      type: object
+      description: |
+        One retained Maintenance Period. Timestamps and recording operators
+        are kept forever; `open` is derived from the absence of `endedAt`.
+      required:
+        - id
+        - itemId
+        - startedAt
+        - startedByPrincipalId
+        - startReason
+        - endedAt
+        - endedByPrincipalId
+        - endNote
+        - open
+      properties:
+        id:
+          type: string
+          format: uuid
+        itemId:
+          type: string
+          format: uuid
+        startedAt:
+          type: string
+          format: date-time
+        startedByPrincipalId:
+          type: string
+          format: uuid
+        startReason:
+          type: string
+        endedAt:
+          type: string
+          format: date-time
+          nullable: true
+        endedByPrincipalId:
+          type: string
+          format: uuid
+          nullable: true
+        endNote:
+          type: string
+          nullable: true
+        open:
+          type: boolean
+    InventoryMaintenancePeriodListResponse:
+      type: object
+      required:
+        - data
+      properties:
+        data:
+          type: object
+          required:
+            - periods
+          properties:
+            periods:
+              type: array
+              items:
+                $ref: "#/components/schemas/InventoryMaintenancePeriod"
+    InventoryMaintenanceStartRequest:
+      type: object
+      required:
+        - reason
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 1000
+          description: |
+            Required — an item leaves circulation with context or not at all.
+    InventoryMaintenanceEndRequest:
+      type: object
+      properties:
+        endNote:
+          type: string
+          nullable: true
+          maxLength: 1000
+    InventoryOperatorItemConflictError:
+      type: object
+      required:
+        - errors
+      description: |
+        409 interlock conflicts on an operator item command. Each is a domain
+        conflict a losing racer receives instead of a server error: the item
+        is archived and read-only, a loan holds it, a maintenance period is
+        already open or absent, or loan/maintenance history forbids deletion.
+      properties:
+        errors:
+          type: object
+          required:
+            - detail
+            - code
+          properties:
+            detail:
+              type: string
+            code:
+              type: string
+              enum:
+                - archived
+                - loan_active
+                - maintenance_open
+                - no_open_maintenance
+                - has_history
+    InventoryOperatorItemValidationError:
+      type: object
+      required:
+        - errors
+      description: |
+        422 extras on an operator item command. `invalid_values` carries the
+        per-definition reasons (mirroring the ALE-292
+        `InventoryDefinitionUpdateError` shape) so the generated client can
+        map each failing definition back to its form field.
+      properties:
+        errors:
+          type: object
+          required:
+            - detail
+            - code
+          properties:
+            detail:
+              type: string
+            code:
+              type: string
+              enum:
+                - invalid_values
+                - invalid_notes
+                - archived_category
+                - archived_container
+                - reason_required
+                - confirmation_required
+            valueErrors:
+              type: object
+              description: |
+                Property Definition id → reason, present when `code` is
+                `invalid_values`.
+              additionalProperties:
+                type: string
+                enum:
+                  - required
+                  - type_mismatch
+                  - unknown_option
+                  - retired_option
+                  - retired_definition
+                  - unknown_definition
     InventoryContainerMoveRequest:
       type: object
       properties:

@@ -134,18 +134,36 @@ defmodule Dhc.Inventory.ItemValues do
   """
   @spec list_values(String.t()) :: [value_view()]
   def list_values(item_id) when is_binary(item_id) do
+    item_id
+    |> List.wrap()
+    |> list_values_by_item()
+    |> Map.get(item_id, [])
+  end
+
+  @doc """
+  Stored values of every id in `item_ids`, grouped by item id.
+
+  The batched form of `list_values/1`, so a list read projects a whole page
+  in one query instead of one per row. Ordering within each item is
+  identical.
+  """
+  @spec list_values_by_item([String.t()]) :: %{String.t() => [value_view()]}
+  def list_values_by_item([]), do: %{}
+
+  def list_values_by_item(item_ids) when is_list(item_ids) do
     from(v in ItemPropertyValue,
       join: d in PropertyDefinition,
       on: d.id == v.property_definition_id,
       left_join: o in PropertyOption,
       on: o.id == v.option_id,
-      where: v.item_id == ^item_id,
+      where: v.item_id in ^item_ids,
       order_by: [
         asc: fragment("? IS NULL", d.identifying_position),
         asc: d.identifying_position,
         asc: fragment("lower(?)", d.label)
       ],
       select: %{
+        item_id: v.item_id,
         definition_id: d.id,
         definition_label: d.label,
         value_type: d.value_type,
@@ -158,6 +176,7 @@ defmodule Dhc.Inventory.ItemValues do
       }
     )
     |> Repo.all()
+    |> Enum.group_by(& &1.item_id, &Map.delete(&1, :item_id))
   end
 
   # ── Per-definition validation ───────────────────────────────────

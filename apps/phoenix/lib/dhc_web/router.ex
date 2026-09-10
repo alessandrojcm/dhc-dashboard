@@ -274,6 +274,12 @@ defmodule DhcWeb.Router do
     get "/inventory/items", InventoryItemsController, :index
     get "/inventory/items/:id", InventoryItemsController, :show
     get "/inventory/items/:id/history", InventoryItemsController, :history
+
+    # ALE-284c target item reads are NOT here on purpose: the operator viewer
+    # carries container location, notes, and maintenance facts, which spec
+    # ALE-280 story 45 forbids showing members in ordinary browsing. They live
+    # in the :inventory_admin_api scope below; the member-shaped catalog is
+    # ALE-285.
     # ALE-108: any authenticated member may read the global inventory activity feed.
     get "/inventory/history", InventoryHistoryController, :index
     get "/inventory/stats", InventoryDashboardController, :stats
@@ -311,6 +317,45 @@ defmodule DhcWeb.Router do
     # ALE-108: dedicated movement/maintenance command endpoints, write roles only.
     post "/inventory/items/:id/move", InventoryItemsController, :move
     post "/inventory/items/:id/maintenance", InventoryItemsController, :maintenance
+
+    # ALE-284c target item viewers and commands. Equal authority for
+    # quartermaster, president, and admin. Reads live here rather than in the
+    # member scope because the operator viewer discloses container location,
+    # notes, and maintenance facts (ALE-280 story 45). Each
+    # availability-changing command is its own route so the generic PATCH
+    # cannot express it. These sit under /operator only until ALE-289 frees
+    # the legacy /inventory/items paths and moves them there.
+    get "/inventory/operator/items", InventoryOperatorItemsController, :index
+    get "/inventory/operator/items/:slugOrId", InventoryOperatorItemsController, :show
+    post "/inventory/operator/items", InventoryOperatorItemsController, :create
+    patch "/inventory/operator/items/:slugOrId", InventoryOperatorItemsController, :update
+    delete "/inventory/operator/items/:slugOrId", InventoryOperatorItemsController, :delete
+
+    post "/inventory/operator/items/:slugOrId/category",
+         InventoryOperatorItemsController,
+         :change_category
+
+    post "/inventory/operator/items/:slugOrId/move", InventoryOperatorItemsController, :move
+
+    get "/inventory/operator/items/:slugOrId/maintenance",
+        InventoryOperatorItemsController,
+        :maintenance
+
+    post "/inventory/operator/items/:slugOrId/maintenance/start",
+         InventoryOperatorItemsController,
+         :start_maintenance
+
+    post "/inventory/operator/items/:slugOrId/maintenance/end",
+         InventoryOperatorItemsController,
+         :end_maintenance
+
+    post "/inventory/operator/items/:slugOrId/archive",
+         InventoryOperatorItemsController,
+         :archive
+
+    post "/inventory/operator/items/:slugOrId/restore",
+         InventoryOperatorItemsController,
+         :restore
   end
 
   # Phoenix-session auth API. Lives under /api/auth/* and is the first
