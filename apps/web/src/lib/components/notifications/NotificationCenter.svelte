@@ -6,7 +6,7 @@ import {
 	notificationsMarkAllReadMutation,
 	notificationsMarkReadMutation,
 	type Notification as ApiNotification,
-	authSocketToken,
+	authSessionSocketToken,
 } from "@dhc/api-client";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
@@ -109,7 +109,7 @@ onMount(() => {
 	const realtime = connectNotificationRealtime({
 		socketUrl: env.PUBLIC_PHOENIX_SOCKET_URL,
 		getSocketToken: async () => {
-			const { data, error } = await authSocketToken();
+			const { data, error } = await authSessionSocketToken();
 			if (error || !data) return null;
 			return data.data.socketToken;
 		},

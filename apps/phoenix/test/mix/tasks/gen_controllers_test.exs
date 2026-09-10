@@ -6,11 +6,13 @@ defmodule Mix.Tasks.Gen.ControllersTest do
   @minimal_fixture "test/fixtures/minimal_spec.yaml"
   @crud_fixture "test/fixtures/crud_spec.yaml"
   @multi_resource_fixture "test/fixtures/multi_resource_spec.yaml"
+  @multi_slice_fixture "test/fixtures/multi_slice_spec.yaml"
 
   setup do
     minimal_spec = parse_fixture!(@minimal_fixture)
     crud_spec = parse_fixture!(@crud_fixture)
     multi_resource_spec = parse_fixture!(@multi_resource_fixture)
+    multi_slice_spec = parse_fixture!(@multi_slice_fixture)
 
     # `tag_extension/2` reads the stashed spec from the process dictionary,
     # exactly as `run/1` does. Stash each spec under test so the private
@@ -20,7 +22,8 @@ defmodule Mix.Tasks.Gen.ControllersTest do
     %{
       spec: minimal_spec,
       crud_spec: crud_spec,
-      multi_resource_spec: multi_resource_spec
+      multi_resource_spec: multi_resource_spec,
+      multi_slice_spec: multi_slice_spec
     }
   end
 
@@ -336,7 +339,238 @@ defmodule Mix.Tasks.Gen.ControllersTest do
     end
   end
 
+  # ── Slices (operationId prefix → scaffolding unit) ───────────────────
+  #
+  # The generator's scaffolding unit is the *slice*, not the tag. A slice is
+  # named by the `operationId` prefix (`inventoryStructure.showDefinition` →
+  # `inventoryStructure`), which is what actually maps 1:1 onto a controller
+  # file. This lets one domain keep one tag and one URL root while being
+  # served by more than one controller.
+
+  describe "operation_id_to_slice/1" do
+    test "extracts the slice prefix from a dotted operationId" do
+      assert Controllers.operation_id_to_slice("inventoryStructure.showDefinition") ==
+               "inventoryStructure"
+
+      assert Controllers.operation_id_to_slice("inventoryOperatorItems.list") ==
+               "inventoryOperatorItems"
+
+      assert Controllers.operation_id_to_slice("members.index") == "members"
+    end
+
+    test "returns nil when the operationId carries no slice prefix" do
+      assert Controllers.operation_id_to_slice("legacyThings") == nil
+      assert Controllers.operation_id_to_slice(nil) == nil
+    end
+  end
+
+  describe "unique_slices/1" do
+    test "splits a single tag into one slice per operationId prefix", %{
+      multi_slice_spec: spec
+    } do
+      slices = Controllers.unique_slices(spec)
+      names = Enum.map(slices, & &1.name) |> Enum.sort()
+
+      # `Inventory` yields two slices; it must NOT yield an "Inventory" slice.
+      assert "inventoryOperatorItems" in names
+      assert "inventoryStructure" in names
+      refute "Inventory" in names
+    end
+
+    test "each slice carries its owning tag so x-context still resolves", %{
+      multi_slice_spec: spec
+    } do
+      slices = Controllers.unique_slices(spec)
+      structure = Enum.find(slices, &(&1.name == "inventoryStructure"))
+
+      assert structure.tag == "Inventory"
+    end
+
+    test "groups only that slice's operations, not the whole tag's", %{
+      multi_slice_spec: spec
+    } do
+      slices = Controllers.unique_slices(spec)
+
+      structure = Enum.find(slices, &(&1.name == "inventoryStructure"))
+      items = Enum.find(slices, &(&1.name == "inventoryOperatorItems"))
+
+      structure_ids = Enum.map(structure.operations, & &1.operation_id) |> Enum.sort()
+      items_ids = Enum.map(items.operations, & &1.operation_id) |> Enum.sort()
+
+      assert structure_ids == [
+               "inventoryStructure.retireDefinition",
+               "inventoryStructure.showDefinition"
+             ]
+
+      assert items_ids == [
+               "inventoryOperatorItems.create",
+               "inventoryOperatorItems.list"
+             ]
+    end
+
+    test "falls back to the tag name when an operationId has no prefix", %{
+      multi_slice_spec: spec
+    } do
+      slices = Controllers.unique_slices(spec)
+      legacy = Enum.find(slices, &(&1.name == "Legacy"))
+
+      assert legacy
+      assert legacy.tag == "Legacy"
+      assert Enum.map(legacy.operations, & &1.operation_id) == ["legacyThings"]
+    end
+
+    test "a tag whose ops all share one prefix yields exactly one slice", %{
+      multi_resource_spec: spec
+    } do
+      slices = Controllers.unique_slices(spec)
+      names = Enum.map(slices, & &1.name) |> Enum.sort()
+
+      assert names == ["inventoryCategories", "inventoryContainers"]
+    end
+
+    test "slices are sorted by name for deterministic output", %{multi_slice_spec: spec} do
+      names = Controllers.unique_slices(spec) |> Enum.map(& &1.name)
+
+      assert names == Enum.sort(names)
+    end
+  end
+
+  # ── Slice-derived file paths and module names ────────────────────────
+
+  describe "slice-derived naming" do
+    test "controller module and file come from the slice, not the tag", %{
+      multi_slice_spec: spec
+    } do
+      slices = Controllers.unique_slices(spec)
+      structure = Enum.find(slices, &(&1.name == "inventoryStructure"))
+      items = Enum.find(slices, &(&1.name == "inventoryOperatorItems"))
+
+      assert Controllers.controller_module(structure.name) ==
+               "DhcWeb.InventoryStructureController"
+
+      assert Controllers.controller_module(items.name) ==
+               "DhcWeb.InventoryOperatorItemsController"
+
+      assert Controllers.controller_file_path(structure.name) ==
+               "lib/dhc_web/controllers/inventory_structure_controller.ex"
+
+      assert Controllers.controller_file_path(items.name) ==
+               "lib/dhc_web/controllers/inventory_operator_items_controller.ex"
+    end
+
+    test "json module and file come from the slice", %{multi_slice_spec: spec} do
+      slices = Controllers.unique_slices(spec)
+      items = Enum.find(slices, &(&1.name == "inventoryOperatorItems"))
+
+      assert Controllers.json_module(items.name) == "DhcWeb.InventoryOperatorItemsJSON"
+
+      assert Controllers.json_file_path(items.name) ==
+               "lib/dhc_web/controllers/inventory_operator_items_json.ex"
+    end
+
+    test "no slice derives the bare tag-named controller path", %{multi_slice_spec: spec} do
+      paths =
+        spec
+        |> Controllers.unique_slices()
+        |> Enum.map(&Controllers.controller_file_path(&1.name))
+
+      refute "lib/dhc_web/controllers/inventory_controller.ex" in paths
+    end
+  end
+
+  # ── Scaffolding trio is one all-or-nothing unit ──────────────────────
+  #
+  # A slice's controller, JSON renderer and contract test are scaffolded
+  # together or not at all. Once the controller exists the slice is
+  # hand-owned, so re-running the generator must not reintroduce a renderer
+  # or test for it — that is what used to resurrect `membership_json.ex`
+  # and `onboarding_json.ex` against structs that do not exist.
+
+  describe "scaffold_slice?/3" do
+    test "scaffolds when the slice has no controller yet" do
+      in_tmp_project(fn root ->
+        assert Controllers.scaffold_slice?("brandNew", %{force: false}, root)
+      end)
+    end
+
+    test "skips the whole trio when the controller already exists" do
+      in_tmp_project(fn root ->
+        write_controller!(root, "membership")
+
+        refute Controllers.scaffold_slice?("membership", %{force: false}, root)
+      end)
+    end
+
+    test "skips even when the renderer and test are absent" do
+      in_tmp_project(fn root ->
+        write_controller!(root, "membership")
+
+        # Only the controller is on disk. The renderer/test must still be
+        # skipped, because the slice is hand-owned. This is the regression
+        # that used to resurrect `membership_json.ex` on every api-gen run.
+        refute File.exists?(Path.join(root, "lib/dhc_web/controllers/membership_json.ex"))
+
+        refute File.exists?(
+                 Path.join(root, "test/dhc_web/controllers/membership_controller_test.exs")
+               )
+
+        refute Controllers.scaffold_slice?("membership", %{force: false}, root)
+      end)
+    end
+
+    test "--force overrides the skip" do
+      in_tmp_project(fn root ->
+        write_controller!(root, "membership")
+
+        assert Controllers.scaffold_slice?("membership", %{force: :all}, root)
+      end)
+    end
+
+    test "--force=<path> overrides the skip for that slice's controller" do
+      in_tmp_project(fn root ->
+        write_controller!(root, "membership")
+        path = "lib/dhc_web/controllers/membership_controller.ex"
+
+        assert Controllers.scaffold_slice?("membership", %{force: path}, root)
+
+        refute Controllers.scaffold_slice?(
+                 "membership",
+                 %{force: "lib/other_controller.ex"},
+                 root
+               )
+      end)
+    end
+  end
+
   # ── Helpers ──────────────────────────────────────────────────────────
+
+  # Creates a throwaway directory that looks enough like the Phoenix app for
+  # the generator's existence checks to run against it. The root is passed
+  # explicitly (never via `File.cd!/1`, which is VM-global and would race
+  # with `async: true` tests).
+  defp in_tmp_project(fun) do
+    tmp =
+      Path.join(
+        System.tmp_dir!(),
+        "gen_controllers_test_#{System.unique_integer([:positive])}"
+      )
+
+    File.mkdir_p!(Path.join(tmp, "lib/dhc_web/controllers"))
+    File.mkdir_p!(Path.join(tmp, "test/dhc_web/controllers"))
+
+    try do
+      fun.(tmp)
+    after
+      File.rm_rf!(tmp)
+    end
+  end
+
+  defp write_controller!(root, slice) do
+    File.write!(
+      Path.join(root, "lib/dhc_web/controllers/#{slice}_controller.ex"),
+      "defmodule Stub do\nend\n"
+    )
+  end
 
   defp parse_fixture!(path) do
     full_path = Path.join(File.cwd!(), path)
@@ -357,13 +591,26 @@ defmodule Mix.Tasks.Gen.ControllersTest do
   # that call `tag_extension/2` resolve overrides exactly as in production.
   defp controller_module_text!(spec, tag) do
     Process.put(:gen_controllers_spec, spec)
-    module_name = Controllers.controller_module(tag)
-    Controllers.controller_content(module_name, tag, spec)
+    slice = slice_for_tag!(spec, tag)
+    Controllers.controller_content(Controllers.controller_module(slice.name), slice, spec)
   end
 
   defp json_renderer_module_text!(spec, tag) do
     Process.put(:gen_controllers_spec, spec)
-    module_name = Controllers.json_module(tag)
-    Controllers.json_renderer_content(module_name, tag, spec)
+    slice = slice_for_tag!(spec, tag)
+    Controllers.json_renderer_content(Controllers.json_module(slice.name), slice, spec)
+  end
+
+  # The single slice owned by `tag`. Used by the naming tests, which predate
+  # slices and assert on tags that map to exactly one slice.
+  defp slice_for_tag!(spec, tag) do
+    case Enum.filter(Controllers.unique_slices(spec), &(&1.tag == tag)) do
+      [slice] ->
+        slice
+
+      slices ->
+        raise "expected exactly one slice for tag #{tag}, got: " <>
+                inspect(Enum.map(slices, & &1.name))
+    end
   end
 end
