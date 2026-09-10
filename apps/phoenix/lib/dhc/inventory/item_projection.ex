@@ -83,8 +83,7 @@ defmodule Dhc.Inventory.ItemProjection do
     values_by_item = ItemValues.list_values_by_item(item_ids)
     containers = container_summaries(items)
     categories = category_summaries(items)
-    maintained = open_maintenance_ids(item_ids)
-    on_loan = active_loan_ids(item_ids)
+    availabilities = availability_by_item(items)
 
     Enum.map(items, fn %Item{} = item ->
       values = Map.get(values_by_item, item.id, [])
@@ -96,11 +95,33 @@ defmodule Dhc.Inventory.ItemProjection do
           category: category,
           values: values,
           label: derive_label(category && category["name"], item.slug, values),
-          availability:
-            batched_availability(item, MapSet.member?(maintained, item.id),
-              on_loan: MapSet.member?(on_loan, item.id)
-            )
+          availability: Map.fetch!(availabilities, item.id)
       }
+    end)
+  end
+
+  @doc """
+  Recompute the availability of a whole page of items in a fixed number of
+  queries, keyed by item id.
+
+  The batched counterpart of `availability/1`, extracted so every paginated
+  read — operator or member — decides availability from the same precedence
+  rules without either duplicating the maintenance and loan queries or
+  paying them per row.
+  """
+  @spec availability_by_item([Item.t()]) :: %{String.t() => availability()}
+  def availability_by_item([]), do: %{}
+
+  def availability_by_item(items) when is_list(items) do
+    item_ids = Enum.map(items, & &1.id)
+    maintained = open_maintenance_ids(item_ids)
+    on_loan = active_loan_ids(item_ids)
+
+    Map.new(items, fn %Item{} = item ->
+      {item.id,
+       batched_availability(item, MapSet.member?(maintained, item.id),
+         on_loan: MapSet.member?(on_loan, item.id)
+       )}
     end)
   end
 

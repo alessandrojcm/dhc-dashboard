@@ -15,6 +15,7 @@ defmodule Dhc.Inventory do
   alias Dhc.Inventory.Item
   alias Dhc.Inventory.ItemHistory
   alias Dhc.Inventory.Items
+  alias Dhc.Inventory.MemberCatalog
   alias Dhc.Inventory.OperatorItemLifecycle
   alias Dhc.Inventory.OperatorItemList
   alias Dhc.Inventory.OperatorItems
@@ -72,6 +73,12 @@ defmodule Dhc.Inventory do
   defdelegate archive_operator_item(slug_or_id, attrs, actor_id), to: OperatorItemLifecycle
   defdelegate restore_operator_item(slug_or_id, actor_id), to: OperatorItemLifecycle
   defdelegate delete_operator_item(slug_or_id, attrs), to: OperatorItemLifecycle
+
+  # ALE-285 member catalog. A separate read model, not a role variant of the
+  # operator viewer: member rows never carry container, notes, or operator
+  # maintenance facts, and availability is a generic reason (story 45).
+  defdelegate list_catalog_items(params \\ %{}), to: MemberCatalog
+  defdelegate resolve_catalog_item(slug_or_id), to: MemberCatalog
 
   defdelegate list_item_history(id, opts \\ %{}), to: ItemHistory
   defdelegate list_history(opts \\ %{}), to: ItemHistory
