@@ -7,12 +7,14 @@ defmodule Mix.Tasks.Gen.ControllersTest do
   @crud_fixture "test/fixtures/crud_spec.yaml"
   @multi_resource_fixture "test/fixtures/multi_resource_spec.yaml"
   @multi_slice_fixture "test/fixtures/multi_slice_spec.yaml"
+  @ref_param_fixture "test/fixtures/ref_param_spec.yaml"
 
   setup do
     minimal_spec = parse_fixture!(@minimal_fixture)
     crud_spec = parse_fixture!(@crud_fixture)
     multi_resource_spec = parse_fixture!(@multi_resource_fixture)
     multi_slice_spec = parse_fixture!(@multi_slice_fixture)
+    ref_param_spec = parse_fixture!(@ref_param_fixture)
 
     # `tag_extension/2` reads the stashed spec from the process dictionary,
     # exactly as `run/1` does. Stash each spec under test so the private
@@ -23,7 +25,8 @@ defmodule Mix.Tasks.Gen.ControllersTest do
       spec: minimal_spec,
       crud_spec: crud_spec,
       multi_resource_spec: multi_resource_spec,
-      multi_slice_spec: multi_slice_spec
+      multi_slice_spec: multi_slice_spec,
+      ref_param_spec: ref_param_spec
     }
   end
 
@@ -542,6 +545,73 @@ defmodule Mix.Tasks.Gen.ControllersTest do
     end
   end
 
+  # ── `$ref` path parameters ───────────────────────────────────────────
+  #
+  # A path may declare its parameters as `- $ref: "#/components/parameters/X"`
+  # instead of inline. OpenApiSpex decodes those to `%OpenApiSpex.Reference{}`,
+  # which carries only a `"$ref":` field — so the generator has to dereference
+  # against `spec.components.parameters` before it can read `.in` / `.name`,
+  # exactly as it already does for schema refs.
+
+  describe "$ref path parameters" do
+    test "the fixture really decodes its path parameters as references", %{
+      ref_param_spec: spec
+    } do
+      assert [%OpenApiSpex.Reference{"$ref": "#/components/parameters/SlugOrId"}] =
+               spec.paths["/refs/{slugOrId}"].get.parameters
+    end
+
+    test "the fixture's slice is one the generator would actually write", %{
+      ref_param_spec: spec
+    } do
+      # The bug hid behind the skip: every slice in the real spec already has a
+      # hand-written controller, so `controller_content/3` never ran for it.
+      # This fixture is only a regression test while its slice stays
+      # unscaffolded — assert that rather than trusting a comment.
+      assert [%{name: "refs"}] = Controllers.unique_slices(spec)
+      assert Controllers.scaffold_slice?("refs", %{force: false})
+      refute File.exists?(Path.join(File.cwd!(), Controllers.controller_file_path("refs")))
+    end
+
+    test "action signatures bind the referenced parameter name", %{ref_param_spec: spec} do
+      content = controller_module_text!(spec, "Refs")
+
+      assert content =~ ~S|def show(conn, %{"slugOrId" => id})|
+      assert content =~ ~S|def update(conn, %{"slugOrId" => id} = params)|
+      assert content =~ ~S|def delete(conn, %{"slugOrId" => id})|
+      assert content =~ ~S|def archive(conn, %{"slugOrId" => id}|
+
+      # The `|| "id"` fallback must not swallow a resolvable ref.
+      refute content =~ ~S|%{"id" => id}|
+    end
+
+    test "contract test paths substitute the referenced parameter", %{ref_param_spec: spec} do
+      content = contract_test_text!(spec, "Refs")
+
+      assert content =~ ~S|get(conn, "/api/refs/1")|
+      assert content =~ ~S|patch(conn, "/api/refs/1", %{})|
+      assert content =~ ~S|delete(conn, "/api/refs/1")|
+      assert content =~ ~S|post(conn, "/api/refs/1/archive")|
+
+      # `{slugOrId}` may still appear in a test *name* (which quotes the raw
+      # `op.path` as documentation), but never in a request path.
+      refute content =~ ~r/conn, "[^"]*\{slugOrId\}/
+    end
+
+    test "an unresolvable parameter ref is dropped rather than crashing", %{
+      ref_param_spec: spec
+    } do
+      # A spec whose component parameters were stripped (or a dangling ref)
+      # must degrade to the `id` default instead of raising.
+      stripped = put_in(spec.components.parameters, nil)
+
+      content = controller_module_text!(stripped, "Refs")
+
+      assert content =~ ~S|def show(conn, %{"id" => id})|
+      assert contract_test_text!(stripped, "Refs") =~ ~S|get(conn, "/api/refs/{slugOrId}")|
+    end
+  end
+
   # ── Helpers ──────────────────────────────────────────────────────────
 
   # Creates a throwaway directory that looks enough like the Phoenix app for
@@ -599,6 +669,11 @@ defmodule Mix.Tasks.Gen.ControllersTest do
     Process.put(:gen_controllers_spec, spec)
     slice = slice_for_tag!(spec, tag)
     Controllers.json_renderer_content(Controllers.json_module(slice.name), slice, spec)
+  end
+
+  defp contract_test_text!(spec, tag) do
+    Process.put(:gen_controllers_spec, spec)
+    Controllers.contract_test_content(slice_for_tag!(spec, tag), spec)
   end
 
   # The single slice owned by `tag`. Used by the naming tests, which predate
