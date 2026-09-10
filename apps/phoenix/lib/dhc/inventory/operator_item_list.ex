@@ -56,6 +56,7 @@ defmodule Dhc.Inventory.OperatorItemList do
           :invalid_limit
           | :invalid_direction
           | :invalid_archived
+          | :invalid_category
           | :invalid_property
           | :bad_cursor
 
@@ -161,6 +162,7 @@ defmodule Dhc.Inventory.OperatorItemList do
     with {:ok, limit} <- parse_limit(take(params, ["limit"])),
          {:ok, direction} <- parse_direction(take(params, ["direction"])),
          {:ok, archived} <- parse_archived(take(params, ["archived"])),
+         {:ok, category_ids} <- parse_categories(take(params, ["categoryId", "category_id"])),
          {:ok, properties} <- parse_properties(take(params, ["property", "properties"])) do
       {:ok,
        %{
@@ -168,7 +170,7 @@ defmodule Dhc.Inventory.OperatorItemList do
          sort: "slug",
          direction: direction,
          archived: archived,
-         category_ids: parse_list(take(params, ["categoryId", "category_id"])),
+         category_ids: category_ids,
          properties: properties,
          cursor: blank_to_nil(take(params, ["cursor"]))
        }}
@@ -235,14 +237,30 @@ defmodule Dhc.Inventory.OperatorItemList do
     end
   end
 
-  defp parse_list(nil), do: []
-  defp parse_list(""), do: []
+  # Category ids bind to a UUID column, so a malformed entry has to fail here
+  # as a domain error; reaching the query would raise out of the API's error
+  # envelope instead of answering 400.
+  defp parse_categories(nil), do: {:ok, []}
+  defp parse_categories(""), do: {:ok, []}
 
-  defp parse_list(raw) when is_binary(raw),
-    do:
-      raw |> String.split(",", trim: true) |> Enum.map(&String.trim/1) |> Enum.reject(&(&1 == ""))
+  defp parse_categories(raw) when is_binary(raw) do
+    raw |> String.split(",", trim: true) |> Enum.map(&String.trim/1) |> cast_categories()
+  end
 
-  defp parse_list(raw) when is_list(raw), do: raw
+  defp parse_categories(raw) when is_list(raw), do: cast_categories(raw)
+
+  defp parse_categories(_raw), do: {:error, :invalid_category}
+
+  defp cast_categories(entries) do
+    entries
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.reduce_while({:ok, []}, fn entry, {:ok, acc} ->
+      case Ecto.UUID.cast(entry) do
+        {:ok, id} -> {:cont, {:ok, acc ++ [id]}}
+        :error -> {:halt, {:error, :invalid_category}}
+      end
+    end)
+  end
 
   defp take(params, keys) do
     Enum.find_value(keys, fn key ->
