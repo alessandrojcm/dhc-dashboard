@@ -98,7 +98,10 @@ describe("getPhoenixSession (SSR auth seam, ALE-164)", () => {
 	});
 
 	it("returns null when Phoenix returns no data and no error", async () => {
-		authSessionShowSession.mockResolvedValue({ data: undefined, error: undefined });
+		authSessionShowSession.mockResolvedValue({
+			data: undefined,
+			error: undefined,
+		});
 
 		const session = await getPhoenixSession(
 			fakeCookies("signed-session-cookie"),
