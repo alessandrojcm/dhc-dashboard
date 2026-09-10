@@ -44,6 +44,16 @@ mise run lint               # Oxlint (web Svelte/JS/TS + API client TS)
 mise run format             # Auto-format with Oxfmt
 ```
 
+**herdr panes in this repo run `fish`, not `zsh`.** `(...)` is command
+substitution and `$?` does not exist there, so a chained gate written as
+`(mise run check && mise run lint) ...; echo $?` fails to parse — and the
+rejected text stays on the prompt, silently swallowing the next command you
+send. Put multi-step or exit-code-checking runs in a `#!/bin/zsh` script under
+the approved temp dir and have the pane execute that file. `mix` is also not on
+the pane's PATH; prefix it with `mise exec --`. If a pane starts echoing your
+command back instead of running it, clear the stuck prompt with
+`herdr pane send-keys <id> ctrl+c` then `ctrl+u`.
+
 In a fresh linked worktree, run `mise run check` before `mise run lint` or
 `mise run ci`. The check runs `svelte-kit sync` and creates
 `apps/web/.svelte-kit/tsconfig.json`; without it, Oxlint can fail while loading
