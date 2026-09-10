@@ -38,8 +38,6 @@ defmodule Dhc.Inventory.OperatorItems do
   also owns the availability projection.
   """
 
-  import Ecto.Query
-
   alias Dhc.Inventory.Item
   alias Dhc.Inventory.ItemGuards
   alias Dhc.Inventory.ItemProjection

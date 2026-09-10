@@ -67,6 +67,44 @@ defmodule Dhc.Inventory.ItemProjection do
   end
 
   @doc """
+  Project a whole page of item rows in a fixed number of queries.
+
+  `project/1` is the single-item read and issues its aggregates per row,
+  which a paginated list would turn into N+1. This form batches the values,
+  container and category summaries, open maintenance periods, and active
+  loans across `items`, so a page costs the same number of queries whatever
+  its size. The resulting read model is identical to `project/1`.
+  """
+  @spec project_all([Item.t()]) :: [Item.t()]
+  def project_all([]), do: []
+
+  def project_all(items) when is_list(items) do
+    item_ids = Enum.map(items, & &1.id)
+    values_by_item = ItemValues.list_values_by_item(item_ids)
+    containers = container_summaries(items)
+    categories = category_summaries(items)
+    maintained = open_maintenance_ids(item_ids)
+    on_loan = active_loan_ids(item_ids)
+
+    Enum.map(items, fn %Item{} = item ->
+      values = Map.get(values_by_item, item.id, [])
+      category = Map.get(categories, item.category_id)
+
+      %Item{
+        item
+        | container: Map.get(containers, item.container_id),
+          category: category,
+          values: values,
+          label: derive_label(category && category["name"], item.slug, values),
+          availability:
+            batched_availability(item, MapSet.member?(maintained, item.id),
+              on_loan: MapSet.member?(on_loan, item.id)
+            )
+      }
+    end)
+  end
+
+  @doc """
   Derive an item's display label from its category and identifying values.
 
   Returns the category name joined with each identifying property value in
@@ -120,6 +158,73 @@ defmodule Dhc.Inventory.ItemProjection do
   def active_loan?(item_id) when is_binary(item_id) do
     from(l in Loan, where: l.item_id == ^item_id, where: l.status in @active_loan_statuses)
     |> Repo.exists?()
+  end
+
+  # Same precedence as `availability/1`, decided from pre-fetched sets rather
+  # than a query per item.
+  defp batched_availability(%Item{archived_at: archived_at}, _maintenance?, _opts)
+       when not is_nil(archived_at),
+       do: unavailable(:archived)
+
+  defp batched_availability(%Item{}, true, _opts), do: unavailable(:maintenance)
+
+  defp batched_availability(%Item{}, false, on_loan: true), do: unavailable(:on_loan)
+
+  defp batched_availability(%Item{}, false, on_loan: false),
+    do: %{available?: true, status: :available}
+
+  defp open_maintenance_ids(item_ids) do
+    from(p in MaintenancePeriod,
+      where: p.item_id in ^item_ids,
+      where: is_nil(p.ended_at),
+      select: p.item_id
+    )
+    |> Repo.all()
+    |> MapSet.new()
+  end
+
+  defp active_loan_ids(item_ids) do
+    from(l in Loan,
+      where: l.item_id in ^item_ids,
+      where: l.status in @active_loan_statuses,
+      select: l.item_id
+    )
+    |> Repo.all()
+    |> MapSet.new()
+  end
+
+  defp container_summaries(items) do
+    ids = items |> Enum.map(& &1.container_id) |> Enum.reject(&is_nil/1) |> Enum.uniq()
+
+    if ids == [] do
+      %{}
+    else
+      from(c in "containers",
+        where: c.id in ^Enum.map(ids, &Ecto.UUID.dump!/1),
+        select: %{
+          "id" => fragment("?::text", c.id),
+          "name" => c.name,
+          "archived_at" => c.archived_at
+        }
+      )
+      |> Repo.all()
+      |> Map.new(&{&1["id"], &1})
+    end
+  end
+
+  defp category_summaries(items) do
+    ids = items |> Enum.map(& &1.category_id) |> Enum.reject(&is_nil/1) |> Enum.uniq()
+
+    if ids == [] do
+      %{}
+    else
+      from(c in EquipmentCategory,
+        where: c.id in ^ids,
+        select: %{"id" => c.id, "name" => c.name, "archived_at" => c.archived_at}
+      )
+      |> Repo.all()
+      |> Map.new(&{&1["id"], &1})
+    end
   end
 
   defp unavailable(status), do: %{available?: false, status: status}
